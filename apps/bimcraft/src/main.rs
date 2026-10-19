@@ -11,8 +11,13 @@ use bimcraft_ui_egui::{BimApp, Status, lang};
 use serde_json::json;
 
 const USAGE: &str = "USAGE: bimcraft [FILE] [--sample]
-  FILE      a .bimcraft project to open, or an .ifc file to import
-  --sample  start on the sample house";
+  FILE       a .bimcraft project to open, or an .ifc file to import
+  --sample   start on the sample house
+  --version  the release";
+
+/// What the desktop knows the app by: Wayland's app id and X11's window class, which a Linux desktop
+/// matches to the `.desktop` file of that name for the window's icon, and the macOS bundle's identifier.
+const APP_ID: &str = "io.github.ipedrax.bimcraft";
 
 fn main() -> ExitCode {
     let language = lang::from_env();
@@ -26,6 +31,10 @@ fn main() -> ExitCode {
         let done = match arg.as_str() {
             "-h" | "--help" => {
                 println!("{USAGE}");
+                return ExitCode::SUCCESS;
+            }
+            "-V" | "--version" => {
+                println!("bimcraft {}", env!("CARGO_PKG_VERSION"));
                 return ExitCode::SUCCESS;
             }
             "--sample" => session.script(SAMPLE).map(|_| ()),
@@ -47,6 +56,7 @@ fn main() -> ExitCode {
     }
     let mut viewport = eframe::egui::ViewportBuilder::default()
         .with_title("BIMCraft")
+        .with_app_id(APP_ID)
         .with_inner_size([1440.0, 900.0])
         .with_min_inner_size([900.0, 560.0]);
     // The logo, for the title bar and the taskbar.
@@ -54,11 +64,41 @@ fn main() -> ExitCode {
         viewport = viewport.with_icon(icon);
     }
     let options = eframe::NativeOptions { viewport, ..Default::default() };
-    match eframe::run_native("BIMCraft", options, Box::new(|_| Ok(Box::new(app)))) {
+    // Registered before the window opens, to catch the event that launched the app from Finder, and
+    // held until it closes.
+    #[cfg(target_os = "macos")]
+    let (_registration, inbox) = fmv_macos_events::Registration::install();
+    let start = move |cc: &eframe::CreationContext| -> Result<Box<dyn eframe::App>, _> {
+        #[cfg(target_os = "macos")]
+        apple_events(&mut app, &cc.egui_ctx, inbox);
+        let _ = cc;
+        Ok(Box::new(app))
+    };
+    match eframe::run_native("BIMCraft", options, Box::new(start)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("bimcraft: {e}");
             ExitCode::FAILURE
         }
     }
+}
+
+/// Finder, the Dock and Open With hand macOS apps their files, and the Dock its Quit, as Apple events,
+/// not as arguments: the app reads them each frame, and one arriving wakes it.
+#[cfg(target_os = "macos")]
+fn apple_events(app: &mut BimApp, ctx: &eframe::egui::Context, inbox: fmv_macos_events::Inbox) {
+    use bimcraft_ui_egui::OsEvent;
+    use fmv_macos_events::Event;
+    let ctx = ctx.clone();
+    inbox.set_wake(move || ctx.request_repaint());
+    app.os_events = Some(Box::new(move || {
+        let mut events = Vec::new();
+        for event in inbox.drain() {
+            match event {
+                Event::Open(paths) => events.extend(paths.into_iter().map(OsEvent::Open)),
+                Event::Quit => events.push(OsEvent::Quit),
+            }
+        }
+        events
+    }));
 }

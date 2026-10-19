@@ -18,7 +18,8 @@ const USAGE: &str = "USAGE:
   bimcraft-cli info FILE         levels, element counts, types and warnings of a project or an IFC file
   bimcraft-cli convert IN OUT    a project or an IFC file to .ifc, .svg, .png or .bimcraft
   bimcraft-cli commands          every command and its parameters
-  bimcraft-cli mcp               an MCP server on stdio, for agents";
+  bimcraft-cli mcp               an MCP server on stdio, for agents
+  bimcraft-cli --version         the release";
 
 fn print(out: &mut impl Write, v: &Value) -> Result<(), String> {
     writeln!(out, "{v}").map_err(|e| format!("stdout: {e}"))
@@ -61,6 +62,9 @@ fn cli(args: &[String], out: &mut impl Write) -> Result<(), String> {
             print(out, &s.execute("save", &json!({ "path": to }))?)
         }
         [cmd] if cmd == "commands" => print_pretty(out, &catalog()),
+        [flag] if flag == "--version" || flag == "-V" => {
+            writeln!(out, "bimcraft-cli {}", env!("CARGO_PKG_VERSION")).map_err(|e| format!("stdout: {e}"))
+        }
         _ => Err(USAGE.into()),
     }
 }
@@ -123,5 +127,13 @@ mod tests {
         assert!(cli_out(&["run", "--save"]).unwrap_err().contains("needs"));
         assert!(cli_out(&["run", "--cmd", r#"door {"at": [0, 0]}"#]).unwrap_err().contains("no wall"));
         assert!(cli_out(&["commands"]).unwrap().contains("\"wall\""));
+    }
+
+    #[test]
+    fn version_names_the_release() {
+        let line = format!("bimcraft-cli {}\n", env!("CARGO_PKG_VERSION"));
+        assert_eq!(cli_out(&["--version"]).unwrap(), line);
+        assert_eq!(cli_out(&["-V"]).unwrap(), line);
+        assert!(cli_out(&["--version", "x"]).unwrap_err().contains("USAGE"));
     }
 }

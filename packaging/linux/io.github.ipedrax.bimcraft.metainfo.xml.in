@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata, for software centres. package.sh substitutes @VERSION@ and @DATE@. -->
+<component type="desktop-application">
+  <id>io.github.ipedrax.bimcraft</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT OR Apache-2.0</project_license>
+  <name>BIMCraft</name>
+  <summary>Model buildings and draw them</summary>
+  <developer id="io.github.ipedrax">
+    <name>IPedrax</name>
+  </developer>
+  <description>
+    <p>
+      BIMCraft is an open-source building information modeling application. Draw walls, floors,
+      roofs, ceilings, stairs, doors and windows on levels; the plans, sections, elevations and
+      3D view are drawn from the one model, and rooms, schedules and sheets follow it.
+    </p>
+    <p>
+      It saves its own projects, opens and saves IFC, exports PNG, SVG and PDF, and can be driven
+      by AI agents through its command line and MCP server.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.ipedrax.bimcraft.desktop</launchable>
+  <icon type="stock">io.github.ipedrax.bimcraft</icon>
+  <!-- Only url types appstream 0.15 knows (Ubuntu 22.04, where CI validates): no vcs-browser. -->
+  <url type="homepage">https://github.com/IPedrax/BIMCraft</url>
+  <url type="bugtracker">https://github.com/IPedrax/BIMCraft/issues</url>
+  <categories>
+    <category>Graphics</category>
+    <category>Engineering</category>
+  </categories>
+  <keywords>
+    <keyword>BIM</keyword>
+    <keyword>IFC</keyword>
+    <keyword>architecture</keyword>
+    <keyword>building</keyword>
+  </keywords>
+  <screenshots>
+    <screenshot type="default">
+      <caption>The sample house: its plan with dimensions, door and window tags and a section</caption>
+      <image>https://raw.githubusercontent.com/IPedrax/BIMCraft/main/docs/images/desktop.png</image>
+    </screenshot>
+  </screenshots>
+  <requires>
+    <display_length compare="ge">900</display_length>
+  </requires>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+  <provides>
+    <binary>bimcraft</binary>
+    <binary>bimcraft-cli</binary>
+    <mediatype>application/x-bimcraft</mediatype>
+    <mediatype>application/x-ifc</mediatype>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="@VERSION@" date="@DATE@"/>
+  </releases>
+</component>

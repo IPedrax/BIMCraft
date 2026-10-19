@@ -1475,6 +1475,43 @@ wall {"points": [[6000, 6000], [10000, 6000], [10000, 10000], [6000, 10000]], "c
 }
 
 #[test]
+fn files_the_system_opens_open_as_from_the_menu_and_quit_asks_first() {
+    // macOS hands the app a file Finder opened, and Quit from the Dock, as Apple events, not arguments.
+    use crate::OsEvent;
+    use std::{cell::RefCell, rc::Rc};
+    let dir = std::env::temp_dir().join(format!("bimcraft-ui-os-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (house, box_) = (dir.join("house.bimcraft"), dir.join("box.bimcraft"));
+    for (script, path) in [(SAMPLE, &house), (BOX, &box_)] {
+        let mut s = Session::new();
+        s.script(script).unwrap();
+        s.execute("save", &json!({"path": path})).unwrap();
+    }
+    let mut h = app(BOX);
+    let inbox: Rc<RefCell<Vec<OsEvent>>> = Rc::default();
+    let queue = Rc::clone(&inbox);
+    h.state_mut().os_events = Some(Box::new(move || queue.borrow_mut().drain(..).collect()));
+    let wall = |h: &mut Harness<BimApp>| h.state_mut().session.execute("wall", &json!({"points": [[0, 0], [0, 9000]]})).unwrap();
+    wall(&mut h);
+    inbox.borrow_mut().push(OsEvent::Open(house.clone()));
+    h.run();
+    assert_eq!(walls(&h).len(), 5, "unsaved changes: it asks first");
+    press(&mut h, "Don't Save");
+    assert_eq!(walls(&h).len(), 7);
+    assert_eq!(h.state().session.path.as_deref(), Some(house.as_path()));
+    inbox.borrow_mut().push(OsEvent::Open(box_.clone()));
+    h.run();
+    assert_eq!(walls(&h).len(), 4, "nothing unsaved, so straight away, the events still heard after the house opened");
+    wall(&mut h);
+    inbox.borrow_mut().push(OsEvent::Quit);
+    h.run();
+    assert!(h.query_by_label_contains("Save changes").is_some(), "Quit asks about unsaved changes, as closing the window does");
+    press(&mut h, "Cancel");
+    assert_eq!(walls(&h).len(), 5);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn opening_an_ifc_file_imports_it_and_says_what_came_in() {
     let mut h = app(SAMPLE);
     let dir = std::env::temp_dir().join(format!("bimcraft-ui-ifc-{}", std::process::id()));

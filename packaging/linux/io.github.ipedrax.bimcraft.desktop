@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=BIMCraft
+GenericName=Building Information Modeling
+Comment=Model buildings: walls, floors, roofs, rooms, sheets and schedules; open and save IFC
+Exec=bimcraft %F
+TryExec=bimcraft
+Icon=io.github.ipedrax.bimcraft
+Terminal=false
+StartupNotify=true
+StartupWMClass=io.github.ipedrax.bimcraft
+Categories=Graphics;Engineering;3DGraphics;
+MimeType=application/x-bimcraft;application/x-ifc;
+Keywords=bim;ifc;architecture;building;cad;revit;floor plan;

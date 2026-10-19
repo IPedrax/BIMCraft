@@ -111,8 +111,8 @@
   the way in and out.
 - **Built for agents.** Every tool, button and field is a command. Agents call any of them with JSON, inspect the model to
   check their work, and render any view to look at it, over MCP or the CLI.
-- **Fast and native.** Pure Rust and egui: no Electron, no web view. Developed on Linux; macOS and Windows builds aren't
-  tested yet.
+- **Fast and native.** Pure Rust and egui: no Electron, no web view. Packaged for Windows, Linux and macOS; developed on
+  Linux, and the macOS app isn't tried by hand yet.
 - **Free.** MIT OR Apache-2.0, with no account and no subscription.
 
 ## What works today
@@ -417,8 +417,8 @@ ends, courtyards), extrusion roofs and dormers, materials, with floors, roofs an
 are, families, BIMCraft's own parametric components (never Autodesk's `.rfa`), and project parameters and schedules with
 chosen fields, filters, sorting and formulas, and visibility and graphics (overrides, view filters, view templates, phases and design options, which go out to IFC and come back).
 Next, in order: locked and equal dimensions, arrays and groups; fill patterns of your own, material appearances, perspective views and a section box; DWG and DXF, more of
-IFC, and gbXML; structure, then MEP; site and massing; several people editing one model; and packaging for macOS and Linux,
-signed installers and auto-update. Revit's own `.rvt` format is closed and undocumented, so BIMCraft won't read it itself;
+IFC, and gbXML; structure, then MEP; site and massing; several people editing one model; and signed installers (macOS
+signing and notarization are wired up, waiting on a Developer ID) and auto-update. Revit's own `.rvt` format is closed and undocumented, so BIMCraft won't read it itself;
 IFC is the way in and out, and `.rvt` files will come in through Autodesk's own converter.
 
 ## Downloads
@@ -435,9 +435,35 @@ with for `.ifc` files. It needs no Visual C++ runtime, and a newer version upgra
 shortcut as it was. For a silent install with a desktop shortcut: `msiexec /i bimcraft-<ver>-windows-x64.msi /qn
 DESKTOPSHORTCUT=1`. It isn't code-signed yet, so Windows SmartScreen asks before it runs: More info, then Run anyway.
 
-Versions are published on the [releases page](https://github.com/IPedrax/bimcraft/releases) as they're tagged. Between
-releases, the Release workflow (Actions > Release > Run workflow) builds the installer for any commit, as that run's
-artifact. On Linux and macOS, build from source: see [Quick start](#quick-start).
+### Linux
+
+| Build | Packages |
+|---|---|
+| x86_64 | `bimcraft-<ver>-linux-x86_64.AppImage`, `.deb`, `.rpm`, `.tar.gz` |
+| aarch64 (64-bit Arm) | `bimcraft-<ver>-linux-aarch64.AppImage`, `.deb`, `.rpm`, `.tar.gz` |
+
+They run on any distro with glibc 2.35 or later (Ubuntu 22.04, Debian 12, Fedora 36 and after). The AppImage runs as it
+is, with nothing installed and no FUSE needed (`chmod +x`, then run it), and AppImageUpdate or AppImageLauncher bring it
+up to date from the `.zsync` next to it, downloading only what changed. The `.deb` (`sudo apt install
+./bimcraft-<ver>-linux-x86_64.deb`) and the `.rpm` (`sudo dnf install ./bimcraft-<ver>-linux-x86_64.rpm`) put
+`bimcraft` and `bimcraft-cli` on the path, add BIMCraft to the applications menu and open `.bimcraft` projects and
+`.ifc` files in it. The `.tar.gz` holds the same tree (`bin/`, `share/`) to unpack anywhere.
+
+### macOS
+
+| Build | Download |
+|---|---|
+| Universal (Apple silicon and Intel), macOS 11 or later | `bimcraft-<ver>-macos-universal.dmg` |
+| The CLI alone | `bimcraft-cli-<ver>-macos-universal.zip` |
+
+Open the DMG and drag BIMCraft to Applications. It opens `.bimcraft` projects from Finder and offers itself under Open
+With for `.ifc` files. Until releases are signed with a Developer ID, macOS asks before it opens the app the first time:
+Control-click it, then Open (on macOS 15, System Settings > Privacy & Security > Open Anyway).
+
+Versions are published on the [releases page](https://github.com/IPedrax/bimcraft/releases) as they're tagged, with a
+`SHA256SUMS` of every file. Between releases, the Release workflow (Actions > Release > Run workflow) builds them all
+for any commit, as that run's artifacts. The scripts behind them are in `packaging/` (`linux/package.sh`,
+`macos/package.sh`, each with its `--help`), and run on your own machine too.
 
 ## License and credits
 

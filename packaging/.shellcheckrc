@@ -1,0 +1,3 @@
+# shellcheck reads env.sh where the packaging scripts source it from.
+source-path=SCRIPTDIR
+external-sources=true

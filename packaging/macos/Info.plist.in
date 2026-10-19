@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- packaging/macos/package.sh substitutes @VERSION@ (in full, 0.5.0-rc.1 say), @SHORT_VERSION@
+     (the numbers, 0.5.0) and @BUILD_SHA@. -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleDisplayName</key>
+  <string>BIMCraft</string>
+  <key>CFBundleName</key>
+  <string>BIMCraft</string>
+  <key>CFBundleExecutable</key>
+  <string>BIMCraft</string>
+  <key>CFBundleIdentifier</key>
+  <string>io.github.ipedrax.bimcraft</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleSignature</key>
+  <string>????</string>
+  <key>CFBundleShortVersionString</key>
+  <string>@SHORT_VERSION@</string>
+  <key>CFBundleVersion</key>
+  <string>@SHORT_VERSION@</string>
+  <key>BIMCraftVersion</key>
+  <string>@VERSION@</string>
+  <key>BIMCraftBuildCommit</key>
+  <string>@BUILD_SHA@</string>
+  <key>CFBundleIconFile</key>
+  <string>BIMCraft</string>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.graphics-design</string>
+  <!-- As MACOSX_DEPLOYMENT_TARGET in package.sh: Big Sur, the first macOS on Apple silicon. -->
+  <key>LSMinimumSystemVersion</key>
+  <string>11.0</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSSupportsAutomaticGraphicsSwitching</key>
+  <true/>
+  <key>NSRequiresAquaSystemAppearance</key>
+  <false/>
+  <key>NSHumanReadableCopyright</key>
+  <string>Copyright © 2026 IPedrax and the BIMCraft contributors. MIT OR Apache-2.0.</string>
+
+  <!-- A .bimcraft project is BIMCraft's own type; IFC is buildingSMART's, declared here in case
+       nothing on the Mac declares it. -->
+  <key>UTExportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>io.github.ipedrax.bimcraft.project</string>
+      <key>UTTypeDescription</key>
+      <string>BIMCraft project</string>
+      <key>UTTypeConformsTo</key>
+      <array><string>public.json</string></array>
+      <key>UTTypeIconFile</key>
+      <string>BIMCraft</string>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array><string>bimcraft</string></array>
+        <key>public.mime-type</key>
+        <array><string>application/x-bimcraft</string></array>
+      </dict>
+    </dict>
+  </array>
+  <key>UTImportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>io.github.ipedrax.bimcraft.ifc</string>
+      <key>UTTypeDescription</key>
+      <string>IFC building model</string>
+      <key>UTTypeConformsTo</key>
+      <array><string>public.data</string></array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array><string>ifc</string></array>
+        <key>public.mime-type</key>
+        <array><string>application/x-ifc</string></array>
+      </dict>
+    </dict>
+  </array>
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>BIMCraft project</string>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>LSHandlerRank</key>
+      <string>Owner</string>
+      <key>LSItemContentTypes</key>
+      <array><string>io.github.ipedrax.bimcraft.project</string></array>
+      <key>CFBundleTypeIconFile</key>
+      <string>BIMCraft</string>
+    </dict>
+    <!-- Offered under Open With, never taking .ifc from another app. -->
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>IFC building model</string>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array><string>io.github.ipedrax.bimcraft.ifc</string></array>
+    </dict>
+  </array>
+</dict>
+</plist>

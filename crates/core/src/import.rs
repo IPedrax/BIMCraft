@@ -1968,7 +1968,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             leave(&mut skipped, &mut seen, id, why);
             continue;
         };
-        let mut faces = opening.and_then(&e).map(|op| r.body(op)).unwrap_or_default();
+        let mut faces = opening.and_then(e).map(|op| r.body(op)).unwrap_or_default();
         if faces.is_empty() {
             faces = r.body(o);
         }

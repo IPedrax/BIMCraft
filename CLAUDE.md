@@ -56,6 +56,12 @@ cargo test --workspace
   cross (`ifc::PHASING`), do it with a phased sample too: `run --sample --script phased.txt --save p.ifc`, `convert p.ifc
   p.bimcraft`, and compare `phases`, `phase_filters`, `phase_overrides`, `option_sets` and each element's `params` with the project's.
 
+- Packages: `packaging/linux/package.sh` writes the AppImage, deb, rpm and tarball into `dist/release` (build on Ubuntu
+  22.04, as CI does, so they run on its glibc and later); `packaging/macos/package.sh` the DMG, on a Mac. After touching
+  `packaging/`, run shellcheck on the scripts and the Linux one through, and install the deb in a clean container. The app
+  id is `io.github.ipedrax.bimcraft` everywhere (`APP_ID`, the desktop file, AppStream, the bundle); the icons come from
+  `packaging/icons.sh`.
+
 ## Conventions
 
 Millimetres; x east, y north, z up. A project's units (`Model::units`, `units.rs`) change only what's shown and typed:

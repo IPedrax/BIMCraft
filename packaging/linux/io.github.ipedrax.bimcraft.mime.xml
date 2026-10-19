@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- shared-mime-info has no type for either, so BIMCraft declares both. application/x-bimcraft is
+     the content type the Windows installer registers for .bimcraft. -->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-bimcraft">
+    <comment>BIMCraft project</comment>
+    <sub-class-of type="application/json"/>
+    <generic-icon name="io.github.ipedrax.bimcraft"/>
+    <glob pattern="*.bimcraft"/>
+  </mime-type>
+  <mime-type type="application/x-ifc">
+    <comment>IFC building model</comment>
+    <sub-class-of type="text/plain"/>
+    <!-- An IFC file is ISO 10303-21 (STEP) text. -->
+    <magic priority="50"><match type="string" value="ISO-10303-21;" offset="0"/></magic>
+    <glob pattern="*.ifc"/>
+  </mime-type>
+</mime-info>

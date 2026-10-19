@@ -1,0 +1,76 @@
+# The .deb and the .rpm (nfpm: https://nfpm.goreleaser.com). Run by package.sh, which stages the
+# file tree, puts its path for ${STAGE} (nfpm doesn't expand variables in `src`) and exports
+# VERSION, NFPM_ARCH and BIMCRAFT_MAINTAINER.
+name: bimcraft
+arch: ${NFPM_ARCH}
+platform: linux
+version: ${VERSION}
+# semver: 0.5.0-rc.1 becomes 0.5.0~rc.1 in a deb or an rpm, so a pre-release sorts before the release.
+version_schema: semver
+release: 1
+section: graphics
+priority: optional
+maintainer: ${BIMCRAFT_MAINTAINER}
+homepage: https://github.com/IPedrax/BIMCraft
+license: MIT OR Apache-2.0
+description: |-
+  Open-source building information modeling: walls, floors, roofs, ceilings,
+  stairs, doors and windows on levels, with plans, sections, elevations, a 3D
+  view, rooms, schedules and sheets drawn from the one model. Opens and saves
+  IFC; exports PNG, SVG and PDF.
+  Includes bimcraft-cli, which runs scripts, converts files and serves MCP.
+
+# The binaries link only glibc and libgcc_s. The window (X11 or Wayland, xkbcommon) and OpenGL,
+# through EGL on both, are loaded while it runs, so they are dependencies here, not ELF NEEDED
+# entries: `strings` on the binary lists the libraries it opens. The file dialogs go through the
+# XDG desktop portal.
+overrides:
+  deb:
+    depends:
+      - libc6 (>= 2.35)
+      - libgcc-s1
+      - libxkbcommon0
+      - libegl1
+    recommends:
+      - libegl-mesa0
+      - libwayland-client0
+      - libwayland-egl1
+      - libx11-6
+      - libx11-xcb1
+      - libxcb1
+      - libxcursor1
+      - libxi6
+      - libxkbcommon-x11-0
+      - libdbus-1-3
+      - xdg-desktop-portal
+  rpm:
+    depends:
+      - libxkbcommon
+      - libglvnd-egl
+    recommends:
+      - mesa-libEGL
+      - libwayland-client
+      - libwayland-egl
+      - libX11
+      - libX11-xcb
+      - libxcb
+      - libXcursor
+      - libXi
+      - libxkbcommon-x11
+      - dbus-libs
+      - xdg-desktop-portal
+
+contents:
+  - src: ${STAGE}/usr/bin/bimcraft
+    dst: /usr/bin/bimcraft
+    file_info: { mode: 0755 }
+  - src: ${STAGE}/usr/bin/bimcraft-cli
+    dst: /usr/bin/bimcraft-cli
+    file_info: { mode: 0755 }
+  - src: ${STAGE}/usr/share/
+    dst: /usr/share/
+    type: tree
+
+scripts:
+  postinstall: packaging/linux/postinst.sh
+  postremove: packaging/linux/postinst.sh

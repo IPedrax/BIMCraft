@@ -15,3 +15,9 @@ bimcraft-core = { workspace = true }
 bimcraft-ui-egui = { workspace = true }
 eframe = { workspace = true }
 serde_json = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Finder's double-click, Open With and drops on the Dock icon arrive as Apple events, which winit doesn't
+# hand on. Handling them needs Objective-C, so unsafe, which this workspace forbids: this small crate (the
+# one PhotoCraft uses) does it behind a safe API. Pinned exactly: read the diff before bumping.
+fmv-macos-events = "=0.1.0"

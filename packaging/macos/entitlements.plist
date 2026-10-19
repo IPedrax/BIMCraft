@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The hardened runtime's entitlements. Empty on purpose: BIMCraft is pure Rust, loads no unsigned
+     code, needs no JIT and isn't sandboxed (it opens files by path, from the command line and from
+     Finder). Add an exception here only with its reason in a comment. -->
+<plist version="1.0">
+<dict>
+</dict>
+</plist>

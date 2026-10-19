@@ -179,11 +179,22 @@ enum Tab {
 }
 
 /// A step that would drop unsaved changes, waiting on the user.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 enum Pending {
     New,
     Open,
+    /// A file the system asked to open ([`OsEvent::Open`]).
+    OpenPath(PathBuf),
     Close,
+}
+
+/// What the system asks of the app from outside its window. macOS sends a file Finder, the Dock or
+/// Open With opens, and Quit from the Dock, as Apple events rather than as arguments; the front end
+/// hands them over through [`BimApp::os_events`].
+#[derive(Clone, Debug, PartialEq)]
+pub enum OsEvent {
+    Open(PathBuf),
+    Quit,
 }
 
 /// The schedules: the category `schedule` takes, and the view's name.
@@ -267,6 +278,8 @@ fn import_note(file: &str, reply: &Value) -> String {
 
 pub struct BimApp {
     pub session: Session,
+    /// The system's requests since the last frame, read once a frame. None where it sends none.
+    pub os_events: Option<Box<dyn FnMut() -> Vec<OsEvent>>>,
     /// The active view; `views` holds every open one, as tabs.
     pub sheet: Sheet,
     pub tool: Tool,
@@ -554,6 +567,7 @@ impl BimApp {
         BimApp {
             saved: Arc::clone(&session.model),
             session,
+            os_events: None,
             sheet: first,
             tool: Tool::Modify,
             selection: Vec::new(),
@@ -778,6 +792,7 @@ impl BimApp {
         lang::set(self.lang);
         self.tidy();
         self.keys(&ctx);
+        self.os_requests(&ctx);
         let view = self.view_title(self.sheet);
         let title = format!("{}{} · {view} · BIMCraft", self.session.model.name, if self.dirty() { "*" } else { "" });
         if title != self.title {
@@ -1561,9 +1576,22 @@ impl BimApp {
     fn reopened(&mut self) {
         let mut fresh = BimApp::new(std::mem::take(&mut self.session));
         fresh.status = std::mem::take(&mut self.status);
+        fresh.os_events = self.os_events.take();
         (fresh.thin, fresh.show_properties, fresh.show_browser, fresh.lang, fresh.snaps) =
             (self.thin, self.show_properties, self.show_browser, self.lang, self.snaps);
         *self = fresh;
+    }
+
+    /// What the system asked for, as File > Open and closing the window do it: a file opened in turn
+    /// (the last one wins), and Quit, each asking first about unsaved changes.
+    fn os_requests(&mut self, ctx: &Context) {
+        let Some(events) = self.os_events.as_mut().map(|poll| poll()) else { return };
+        for event in events {
+            match event {
+                OsEvent::Open(path) => self.guard(Pending::OpenPath(path), ctx),
+                OsEvent::Quit => self.guard(Pending::Close, ctx),
+            }
+        }
     }
 
     /// Do `p` now, or first ask about unsaved changes.
@@ -1578,6 +1606,9 @@ impl BimApp {
                 if self.run("new", json!({"language": self.lang.code()})).is_some() {
                     self.reopened();
                 }
+            }
+            Pending::OpenPath(path) => {
+                self.open_path(&path);
             }
             Pending::Open => {
                 // `.revcraft`: projects saved before the name changed.
@@ -2721,7 +2752,7 @@ impl BimApp {
         self.phasing_window(ctx);
         self.options_window(ctx);
         self.shortcuts_window(ctx);
-        let Some(pending) = self.pending else { return };
+        let Some(pending) = self.pending.clone() else { return };
         #[derive(PartialEq)]
         enum Choice {
             Save,
