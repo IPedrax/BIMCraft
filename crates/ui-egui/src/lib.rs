@@ -982,7 +982,7 @@ impl BimApp {
         {
             match (&self.tool, self.typed_length.is_empty()) {
                 (Tool::Railing(_), true) => self.finish_railing(level),
-                (_, true) => self.finish_wall(level, false),
+                (_, true) => self.finish_wall(),
                 (_, false) => self.place_typed(level),
             }
             // A snap override typed was for that point.
@@ -1342,8 +1342,8 @@ impl BimApp {
         }
     }
 
-    /// The Wall tool's Draw panel: lines, or arcs. A chain of lines drawn so far is built, and the
-    /// next wall starts where it ended (an arc not finished yet, where it started).
+    /// The Wall tool's Draw panel: lines, or arcs. The next wall starts where the last one ended
+    /// (an arc not finished yet, where it started).
     fn draw_arc(&mut self, arc: bool) {
         if arc == self.wall_arc {
             return;
@@ -1353,11 +1353,6 @@ impl BimApp {
             Tool::Wall(chain) => chain.last().copied(),
             _ => None,
         };
-        if let Some(level) = self.plan_level()
-            && !self.wall_arc
-        {
-            self.finish_wall(level, false);
-        }
         self.wall_arc = arc;
         if let Tool::Wall(chain) = &mut self.tool {
             *chain = keep.into_iter().collect();
@@ -1819,7 +1814,7 @@ impl BimApp {
             ui,
             "Build",
             &[
-                (Icon::Wall, "Wall", "Wall (WA): click points; Enter finishes, Esc cancels", Tool::Wall(Vec::new())),
+                (Icon::Wall, "Wall", "Wall (WA): each click builds a wall; Enter or Esc ends the chain", Tool::Wall(Vec::new())),
                 (Icon::Door, "Door", "Door (DR): click a wall", Tool::Door),
                 (Icon::Window, "Window", "Window (WN): click a wall", Tool::Window),
                 (Icon::Column, "Column", "Column (CL): click where it stands", Tool::Column),
@@ -2523,7 +2518,7 @@ impl BimApp {
             Tool::Wall(chain) if chain.is_empty() => "Click to enter the wall's start point.",
             Tool::Wall(chain) if self.wall_arc && chain.len() == 1 => "Click to enter the arc's end point.",
             Tool::Wall(_) if self.wall_arc => "Click a point the arc passes through: it sets the radius. Esc cancels.",
-            Tool::Wall(_) => "Click to enter the next point. Enter finishes, Esc cancels, Shift keeps it square.",
+            Tool::Wall(_) => "Click to build the wall to the next point. Enter or Esc ends the chain, Shift keeps it square.",
             Tool::Attach if self.attach_base => "Pick a roof or a floor: the selected walls' bases stand on it.",
             Tool::Attach => "Pick a roof or a floor: the selected walls' tops follow its underside.",
             Tool::Door => "Click a wall to place the door.",

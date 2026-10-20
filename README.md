@@ -237,7 +237,7 @@ switches.
 
 | To | Do |
 |---|---|
-| Draw walls | Wall (WA), click points; Enter builds the chain, Esc drops it, a click back on its start closes it. Ends snap to wall ends and location lines; Shift keeps a segment square. The Draw panel draws a Line, or a Start-End-Radius Arc: its start, its end, then a point it passes through. The Options Bar sets the height (up to a level, or unconnected), the Location Line (the line of the wall you click along) and Chain. A wall's exterior is to your left as you go, so draw clockwise for walls that face out |
+| Draw walls | Wall (WA), click points: each click builds a wall from the point before, one undo step each; Enter or Esc ends the chain, and a click back on its start closes it. Ends snap to wall ends and location lines; Shift keeps a segment square. The Draw panel draws a Line, or a Start-End-Radius Arc: its start, its end, then a point it passes through. The Options Bar sets the height (up to a level, or unconnected), the Location Line (the line of the wall you click along) and Chain. A wall's exterior is to your left as you go, so draw clockwise for walls that face out |
 | Flip, attach walls | Select walls, and Modify \| Walls has Flip (or Space) to turn their exterior side round about their location line, Attach Top/Base to pick a roof or a floor for their tops (or, as the Options Bar says, their bases) to follow, and Detach Top/Base. Properties shows their Location Line (pick another and the wall stays where it is) and whether they're attached |
 | Place doors, windows | Door (DR) or Window (WN), click a wall; the Type Selector at the top of Properties picks the type |
 | Place rooms | Room (RM), click inside walls; the outline and area show before you click, and the tag's area follows the walls |

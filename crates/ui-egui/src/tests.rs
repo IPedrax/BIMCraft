@@ -252,31 +252,35 @@ fn clicking_the_plan_selects_the_element_drawn_nearest_the_cursor() {
 }
 
 #[test]
-fn the_wall_tool_chains_clicks_and_enter_makes_them_one_undo_step() {
+fn each_click_of_the_wall_tool_builds_a_wall_and_the_next_starts_where_it_ends() {
     let mut h = app("");
     tool(&mut h, "Wall");
-    for p in [P2(-3000.0, -3000.0), P2(3000.0, -3000.0), P2(3000.0, 2000.0)] {
-        click(&mut h, p);
-    }
-    assert!(walls(&h).is_empty(), "nothing is built before Enter");
-    key(&mut h, Key::Enter);
+    click(&mut h, P2(-3000.0, -3000.0));
+    assert!(walls(&h).is_empty(), "one point is no wall");
+    click(&mut h, P2(3000.0, -3000.0));
+    assert_eq!(walls(&h), [(P2(-3000.0, -3000.0), P2(3000.0, -3000.0))], "the second click builds it");
+    click(&mut h, P2(3000.0, 2000.0));
     assert_eq!(walls(&h), [(P2(-3000.0, -3000.0), P2(3000.0, -3000.0)), (P2(3000.0, -3000.0), P2(3000.0, 2000.0))]);
-    assert_eq!(h.state().session.history(), ["Wall"]);
-    assert!(matches!(&h.state().tool, Tool::Wall(pts) if pts.is_empty()), "the tool stays on for the next chain");
+    assert_eq!(h.state().session.history(), ["Wall", "Wall"], "each wall its own undo step");
+    key(&mut h, Key::Enter);
+    assert_eq!(walls(&h).len(), 2, "Enter builds nothing more");
+    assert!(matches!(&h.state().tool, Tool::Wall(pts) if pts.is_empty()), "it ends the chain; the tool stays on");
 }
 
 #[test]
-fn escape_drops_the_chain_and_clicking_its_start_closes_it() {
+fn escape_ends_the_chain_keeping_its_walls_and_clicking_its_start_closes_it() {
     let mut h = app("");
     tool(&mut h, "Wall");
     click(&mut h, P2(0.0, 0.0));
     click(&mut h, P2(4000.0, 0.0));
     key(&mut h, Key::Escape);
-    assert!(walls(&h).is_empty());
-    for p in [P2(0.0, 0.0), P2(4000.0, 0.0), P2(4000.0, 3000.0), P2(0.0, 3000.0), P2(0.0, 0.0)] {
+    assert_eq!(walls(&h), [(P2(0.0, 0.0), P2(4000.0, 0.0))], "what was built stays");
+    assert!(matches!(&h.state().tool, Tool::Wall(pts) if pts.is_empty()));
+    for p in [P2(0.0, 0.0), P2(0.0, 3000.0), P2(4000.0, 3000.0), P2(4000.0, 0.0), P2(0.0, 0.0)] {
         click(&mut h, p);
     }
-    assert_eq!(walls(&h).len(), 4, "back on its start, the chain closes");
+    assert_eq!(walls(&h).len(), 5);
+    assert!(matches!(&h.state().tool, Tool::Wall(pts) if pts.is_empty()), "back on its start, the chain closes");
     key(&mut h, Key::Escape);
     assert!(matches!(h.state().tool, Tool::Modify), "Escape with no chain leaves the tool");
 }
@@ -2714,7 +2718,7 @@ fn a_snap_override_is_used_up_by_a_typed_length_and_by_enter_too() {
     assert_eq!(h.state().snap_once, None, "the typed point was the one");
     shortcut(&mut h, "SE");
     key(&mut h, Key::Enter);
-    assert_eq!(h.state().snap_once, None, "so was the Enter that built the walls");
+    assert_eq!(h.state().snap_once, None, "so was the Enter that ended the chain");
 }
 
 #[test]

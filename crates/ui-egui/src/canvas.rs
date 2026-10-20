@@ -1489,16 +1489,21 @@ impl BimApp {
             return;
         }
         match &mut self.tool {
-            Tool::Wall(chain) => match chain.first() {
-                Some(&first) if chain.len() >= 3 && first.dist(p) <= TOL => self.finish_wall(level, true),
-                _ if chain.last().is_some_and(|l| l.dist(p) <= TOL) => {}
-                _ => {
-                    chain.push(p);
-                    // Without Chain, every second click ends a wall.
-                    if !self.chain && chain.len() == 2 {
-                        self.finish_wall(level, false);
+            // A line: each click after the first builds the wall from the one before it.
+            Tool::Wall(chain) => match (chain.first().copied(), chain.last().copied()) {
+                (Some(first), Some(last)) if last.dist(p) > TOL => {
+                    if self.build_walls(level, &[last, p], false, 0.0) {
+                        let Tool::Wall(chain) = &mut self.tool else { return };
+                        // Back on its start, the chain closes; without Chain, every wall stands alone.
+                        if !self.chain || first.dist(p) <= TOL {
+                            chain.clear();
+                        } else {
+                            chain.push(p);
+                        }
                     }
                 }
+                (Some(_), _) => {}
+                (None, _) => chain.push(p),
             },
             Tool::Grid(start) => match start.take() {
                 None => *start = Some(p),
@@ -1559,12 +1564,11 @@ impl BimApp {
         }
     }
 
-    /// Build the wall chain drawn so far: the tool's Enter. An arc not finished yet is dropped.
-    pub(crate) fn finish_wall(&mut self, level: Id, closed: bool) {
-        let Tool::Wall(chain) = &mut self.tool else { return };
-        let chain = std::mem::take(chain);
-        if chain.len() >= 2 && !self.wall_arc {
-            self.build_walls(level, &chain, closed, 0.0);
+    /// End the wall chain, its walls built as it went: the tool's Enter. An arc not finished yet
+    /// is dropped.
+    pub(crate) fn finish_wall(&mut self) {
+        if let Tool::Wall(chain) = &mut self.tool {
+            chain.clear();
         }
     }
 
@@ -2138,7 +2142,9 @@ impl BimApp {
             let delta = sc.screen(next) - sc.screen(*base);
             ghost(&|pt| pt + delta);
         }
-        let mut pts: Vec<Pos2> = chain.iter().map(|pt| sc.screen(*pt)).collect();
+        // A line's walls are built as it goes: only the next one is to come.
+        let built = if matches!(self.tool, Tool::Wall(_)) && !self.wall_arc { chain.len().saturating_sub(1) } else { 0 };
+        let mut pts: Vec<Pos2> = chain.iter().skip(built).map(|pt| sc.screen(*pt)).collect();
         pts.push(sc.screen(next));
         // An arc waiting for its third point: the arc through the cursor.
         if let (true, &[start, end]) = (self.wall_arc && matches!(self.tool, Tool::Wall(_)), chain) {

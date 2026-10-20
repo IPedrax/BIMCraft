@@ -132,9 +132,9 @@ const WORDS: &[[&str; 3]] = &[
     // Tools and their tips.
     ["Modify (MD): select elements", "Modificar (MD): selecionar elementos", "Modificar (MD): seleccionar elementos"],
     [
-        "Wall (WA): click points; Enter finishes, Esc cancels",
-        "Parede (WA): clique nos pontos; Enter termina, Esc cancela",
-        "Muro (WA): haz clic en los puntos; Enter termina, Esc cancela",
+        "Wall (WA): each click builds a wall; Enter or Esc ends the chain",
+        "Parede (WA): cada clique constrói uma parede; Enter ou Esc termina a cadeia",
+        "Muro (WA): cada clic construye un muro; Enter o Esc termina la cadena",
     ],
     ["Door", "Porta", "Puerta"],
     ["Door (DR): click a wall", "Porta (DR): clique numa parede", "Puerta (DR): haz clic en un muro"],
@@ -404,9 +404,9 @@ const WORDS: &[[&str; 3]] = &[
         "Haz clic para indicar el punto inicial del muro.",
     ],
     [
-        "Click to enter the next point. Enter finishes, Esc cancels, Shift keeps it square.",
-        "Clique para indicar o próximo ponto. Enter termina, Esc cancela, Shift mantém no esquadro.",
-        "Haz clic para indicar el siguiente punto. Enter termina, Esc cancela, Shift lo mantiene a escuadra.",
+        "Click to build the wall to the next point. Enter or Esc ends the chain, Shift keeps it square.",
+        "Clique para construir a parede até o próximo ponto. Enter ou Esc termina a cadeia, Shift mantém no esquadro.",
+        "Haz clic para construir el muro hasta el siguiente punto. Enter o Esc termina la cadena, Shift lo mantiene a escuadra.",
     ],
     ["Click a wall to place the door.", "Clique numa parede para inserir a porta.", "Haz clic en un muro para colocar la puerta."],
     ["Click a wall to place the window.", "Clique numa parede para inserir a janela.", "Haz clic en un muro para colocar la ventana."],
