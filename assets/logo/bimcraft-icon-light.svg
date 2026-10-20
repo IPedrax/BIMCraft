@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img">
+  <title>BIMCraft</title>
+  <rect x="8" y="8" width="240" height="240" rx="44" fill="#0A6CFF"/>
+  <polygon points="108.4,95.84 136.4,79.67 192.4,112 147.6,137.87 108.4,115.24" fill="#FFFFFF" fill-opacity="0.55"/>
+  <polygon points="63.6,69.87 108.4,44 108.4,212 63.6,186.13" fill="#FFFFFF"/>
+  <polygon points="147.6,137.87 192.4,163.73 192.4,186.13 147.6,212" fill="#FFFFFF"/>
+</svg>

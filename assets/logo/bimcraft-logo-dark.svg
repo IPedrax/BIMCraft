@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1086" height="300" viewBox="0 0 1086 300" role="img">
+  <title>BIMCraft</title>
+  <polygon points="80,92.57 130,63.7 230,121.44 150,167.62 80,127.21" fill="#0A6CFF"/>
+  <polygon points="0,46.19 80,0 80,300 0,253.81" fill="#FFFFFF"/>
+  <polygon points="150,167.62 230,213.81 230,253.81 150,300" fill="#FFFFFF"/>
+  <g transform="translate(-231 -207)" fill="none" stroke="#FFFFFF" stroke-width="24">
+    <path d="M550 307V463 M553 406a45 45 0 1 0 90 0a45 45 0 1 0 -90 0 M679 349V463 M720 463V349M720 398A37 37 0 0 1 794 398V463M794 398A37 37 0 0 1 868 398V463 M987.73 384.87A45 45 0 1 0 987.73 427.13 M1026 463V349M1026 398A37 37 0 0 1 1063 361H1071 M1085 406a45 45 0 1 0 90 0a45 45 0 1 0 -90 0 M1177 349V463 M1212 463V334A25 25 0 0 1 1237 309H1243M1200 361H1245 M1278 297V428A23 23 0 0 0 1301 451H1317M1254 361H1317"/>
+    <circle cx="679" cy="316" r="13" fill="#FFFFFF" stroke="none"/>
+  </g>
+</svg>
