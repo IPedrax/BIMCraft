@@ -136,7 +136,7 @@ struct Table {
 }
 
 fn table_of(m: &Model, sc: &Schedule) -> Table {
-    let t = schedule::table(m, sc).unwrap_or(schedule::Table { columns: Vec::new(), rows: Vec::new(), totals: None });
+    let t = schedule::table(m, sc).unwrap_or(schedule::Table { columns: Vec::new(), rows: Vec::new(), ids: Vec::new(), totals: None });
     let said = |c: &schedule::Column, v: &serde_json::Value| {
         let s = schedule::shown(m.units, c.kind, v);
         if v.is_boolean() { m.language.word(&s).to_string() } else { s }

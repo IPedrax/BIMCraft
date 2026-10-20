@@ -102,6 +102,8 @@ pub struct Column {
 pub struct Table {
     pub columns: Vec<Column>,
     pub rows: Vec<Vec<Value>>,
+    /// The elements each row lists: one, or a group's.
+    pub ids: Vec<Vec<Id>>,
     /// Its total fields' sums, each under its column, `null` under the rest; none without one.
     pub totals: Option<Vec<Value>>,
 }
@@ -692,16 +694,16 @@ pub fn table(m: &Model, sc: &Schedule) -> Result<Table, String> {
         (true, false, Some(first)) => vec![(first.name.as_str(), false)],
         _ => sc.sort.iter().map(|s| (s.field.as_str(), s.descending)).collect(),
     };
-    // Each element its filters keep: its cells, and its sort fields' values.
-    let mut rows: Vec<(Vec<Value>, Vec<Value>)> = Vec::new();
+    // Each element its filters keep: its cells, its sort fields' values, and itself.
+    let mut rows: Vec<(Vec<Value>, Vec<Value>, Id)> = Vec::new();
     for (&id, e) in m.elements.iter().filter(|(_, e)| e.category() == cat) {
         let mut row = Row { m, e, json: element_json(m, id), formulas: &formulas, done: BTreeMap::new() };
         if sc.filters.iter().all(|f| keeps(f, &row.get(&f.field), kind_of(&f.field), m.units)) {
             let cells = fields.iter().map(|f| row.get(&f.name)).collect();
-            rows.push((cells, sort.iter().map(|(n, _)| sorts_as(m, &cat, n, row.get(n))).collect()));
+            rows.push((cells, sort.iter().map(|(n, _)| sorts_as(m, &cat, n, row.get(n))).collect(), id));
         }
     }
-    rows.sort_by(|(_, a), (_, b)| {
+    rows.sort_by(|(_, a, _), (_, b, _)| {
         for ((_, down), (x, y)) in sort.iter().zip(a.iter().zip(b)) {
             let o = natural(x, y);
             if o != Ordering::Equal {
@@ -712,21 +714,25 @@ pub fn table(m: &Model, sc: &Schedule) -> Result<Table, String> {
     });
     let summed = |f: &Field| f.total || (f.formula.is_none() && f.name == "Count");
     let totals = fields.iter().any(|f| f.total).then(|| {
-        fields.iter().enumerate().map(|(i, f)| if f.total { sum(rows.iter().map(|(cells, _)| &cells[i])) } else { Value::Null }).collect()
+        fields.iter().enumerate().map(|(i, f)| if f.total { sum(rows.iter().map(|(cells, ..)| &cells[i])) } else { Value::Null }).collect()
     });
-    let rows = if sc.grouped {
-        let mut groups: Vec<Vec<Vec<Value>>> = Vec::new();
+    let (rows, ids) = if sc.grouped {
+        let mut groups: Vec<(Vec<Vec<Value>>, Vec<Id>)> = Vec::new();
         let mut last: Option<&Vec<Value>> = None;
-        for (cells, keys) in &rows {
+        for (cells, keys, id) in &rows {
             match (groups.last_mut(), last) {
-                (Some(g), Some(k)) if k.iter().zip(keys).all(|(a, b)| natural(a, b) == Ordering::Equal) => g.push(cells.clone()),
-                _ => groups.push(vec![cells.clone()]),
+                (Some((g, ids)), Some(k)) if k.iter().zip(keys).all(|(a, b)| natural(a, b) == Ordering::Equal) => {
+                    g.push(cells.clone());
+                    ids.push(*id);
+                }
+                _ => groups.push((vec![cells.clone()], vec![*id])),
             }
             last = Some(keys);
         }
-        groups
+        let ids = groups.iter().map(|(_, ids)| ids.clone()).collect();
+        let rows = groups
             .into_iter()
-            .map(|g| {
+            .map(|(g, _)| {
                 fields
                     .iter()
                     .enumerate()
@@ -742,11 +748,12 @@ pub fn table(m: &Model, sc: &Schedule) -> Result<Table, String> {
                     })
                     .collect()
             })
-            .collect()
+            .collect();
+        (rows, ids)
     } else {
-        rows.into_iter().map(|(cells, _)| cells).collect()
+        rows.into_iter().map(|(cells, _, id)| (cells, vec![id])).unzip()
     };
-    Ok(Table { columns, rows, totals })
+    Ok(Table { columns, rows, ids, totals })
 }
 
 /// What field `name` of category `cat` sorts and groups by, where a row's value for it is `v`: a phase, its place
@@ -943,6 +950,7 @@ mod tests {
         let t = Table {
             columns: vec![Column { heading: "Name".into(), kind: Kind::Text }, Column { heading: "Offset".into(), kind: Kind::Length }],
             rows: vec![vec![json!("=1+1"), json!(-5.0)], vec![json!("@SUM(A1)"), json!(5.0)]],
+            ids: Vec::new(),
             totals: None,
         };
         assert_eq!(to_csv(&t), "Name,Offset\n'=1+1,-5.0\n'@SUM(A1),5.0\n");
@@ -954,6 +962,7 @@ mod tests {
         let t = Table {
             columns: vec![column("Name", Kind::Text), column("Area", Kind::Area)],
             rows: vec![vec![json!("A, B"), json!(1.5)], vec![json!("say \"hi\""), Value::Null]],
+            ids: Vec::new(),
             totals: Some(vec![Value::Null, json!(1.5)]),
         };
         assert_eq!(to_csv(&t), "Name,Area (m²)\n\"A, B\",1.5\n\"say \"\"hi\"\"\",\n,1.5\n");

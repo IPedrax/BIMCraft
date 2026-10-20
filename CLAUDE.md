@@ -91,6 +91,9 @@ lengths with `Units::parse`; files, JSON and every command stay in millimetres. 
 `crates/ui-egui/src/lang.rs`, with its Portuguese and its Spanish (the core's words are rows in `language.rs`);
 `nothing_a_translated_interface_shows_is_left_in_english` catches a label the table knows that the window forgot to
 translate. The core's messages stay English, because agents read them.
+The selection is the model's, not a view's: opening any view (a plan, a section, the 3D view, a sheet, a schedule) keeps it
+(`BimApp::open_sheet`), each view shows it, and a schedule's rows (`schedule::Table::ids`, `elements` in the command's output)
+highlight what's selected and pick what they list.
 Levels have elevations, and a level is its plan: its view range (`Model::plan_range`)
 cuts 1200 mm above it unless set, and its crop region bounds what the plan shows. Rooms find their walls at 1200 mm whatever
 a plan cuts (`Model::bounding`). In a section or an elevation, points run along its line from its start, and up; on a sheet,

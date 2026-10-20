@@ -533,6 +533,16 @@ fn schedules_show_the_fields_chosen_of_the_elements_their_filters_keep_sorted_gr
     );
     assert_eq!(r["rows"], json!([["Single 800 x 2100", 800.0, 1.0, "2"], ["Single 900 x 2100", 900.0, 2.0, null]]));
     assert_eq!(r["totals"], json!([null, null, 3.0, null]));
+    // Each row says which elements it lists: a group, all of them.
+    let doors: Vec<u64> = run(&mut s, "elements", json!({"category": "door"}))["elements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|d| d["type"] == "Single 900 x 2100")
+        .map(|d| d["id"].as_u64().unwrap())
+        .collect();
+    assert_eq!(r["elements"][1], json!(doors));
+    assert_eq!(r["elements"].as_array().map(Vec::len), Some(2));
     assert_eq!(count(&mut s, "schedule"), 2);
     assert_eq!(run(&mut s, "schedule", json!({"category": "doors"}))["rows"].as_array().map(Vec::len), Some(2));
     // Back to its category's fields, every element its row, sorted by its first column.

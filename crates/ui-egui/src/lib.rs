@@ -1468,7 +1468,7 @@ impl BimApp {
             self.views.push(sheet);
         }
         self.sheet = sheet;
-        self.selection.clear();
+        // The selection is the model's, not the view's: it stays, whatever view comes up.
         self.typed_length.clear();
         self.snap_once = None;
         // A ruler belongs to the view it was laid in.
@@ -2804,20 +2804,33 @@ impl BimApp {
                         let text = schedule::shown(units, c.kind, v);
                         if v.is_boolean() { t(&text).to_string() } else { text }
                     };
+                    // A row is highlighted while what it lists is selected; a click on it picks that.
+                    let selected: Vec<bool> = table.ids.iter().map(|ids| ids.iter().any(|id| self.selection.contains(id))).collect();
+                    // Striped, as a grid is; the heading is row 0.
+                    let shaded = selected.clone();
+                    let row_color = move |row: usize, style: &egui::Style| match row.checked_sub(1).and_then(|r| shaded.get(r)) {
+                        Some(true) => Some(style.visuals.selection.bg_fill.gamma_multiply(0.5)),
+                        _ => (row % 2 == 1).then_some(style.visuals.faint_bg_color),
+                    };
+                    let mut picked = None;
                     ScrollArea::both().show(ui, |ui| {
-                        Grid::new(("schedule", &sc.name)).striped(true).spacing(vec2(28.0, 6.0)).show(ui, |ui| {
+                        Grid::new(("schedule", &sc.name)).with_row_color(row_color).spacing(vec2(28.0, 6.0)).show(ui, |ui| {
                             for c in &table.columns {
                                 let heading = schedule::Column { heading: t(&c.heading).to_string(), kind: c.kind };
                                 ui.label(RichText::new(schedule::heading(units, &heading)).strong());
                             }
                             ui.end_row();
-                            for row in &table.rows {
+                            for ((row, ids), &selected) in table.rows.iter().zip(&table.ids).zip(&selected) {
                                 for (v, c) in row.iter().zip(&table.columns) {
-                                    if v.is_number() {
-                                        ui.monospace(said(c, v))
-                                    } else {
-                                        ui.label(said(c, v))
-                                    };
+                                    let said = said(c, v);
+                                    let text = RichText::new(&said);
+                                    let text = if v.is_number() { text.monospace() } else { text };
+                                    let r = ui.add(egui::Label::new(text).sense(egui::Sense::click()));
+                                    // Selected or not, for screen readers, as a selectable label says.
+                                    r.widget_info(|| WidgetInfo::selected(WidgetType::SelectableLabel, true, selected, &said));
+                                    if r.clicked() {
+                                        picked = Some((ids.clone(), ui.input(|i| i.modifiers)));
+                                    }
                                 }
                                 ui.end_row();
                             }
@@ -2832,6 +2845,9 @@ impl BimApp {
                             }
                         });
                     });
+                    if let Some((ids, mods)) = picked {
+                        self.pick_up(ids, mods);
+                    }
                 }
             }
         });

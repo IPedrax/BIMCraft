@@ -615,6 +615,36 @@ fn the_browser_opens_level_plans_and_schedules() {
 }
 
 #[test]
+fn the_selection_stays_as_views_change_and_a_schedule_shows_and_picks_it() {
+    let mut h = app(&format!(
+        "{BOX}\nwall {{\"points\": [[4000,0],[4000,6000]]}}\nroom {{\"point\": [2000, 3000], \"name\": \"Hall\"}}\nroom {{\"point\": [6000, 3000], \"name\": \"Den\"}}"
+    ));
+    let hall = find(&h, |e| matches!(e, Element::Room(r) if r.name == "Hall"));
+    let den = find(&h, |e| matches!(e, Element::Room(r) if r.name == "Den"));
+    click(&mut h, P2(2000.0, 3000.0));
+    assert_eq!(h.state().selection, [hall]);
+    press(&mut h, "Default 3D View");
+    assert_eq!(h.state().selection, [hall], "kept in the 3D view");
+    browse(&mut h, "Room Schedule");
+    assert_eq!(h.state().sheet, Sheet::Schedule("room"));
+    assert_eq!(h.state().selection, [hall], "kept in a schedule");
+    use egui_kittest::kittest::NodeT;
+    let selected = |h: &Harness<BimApp>, name: &str| h.get_by_label(name).accesskit_node().toggled();
+    use egui::accesskit::Toggled;
+    assert_eq!((selected(&h, "Hall"), selected(&h, "Den")), (Some(Toggled::True), Some(Toggled::False)), "its row is highlighted");
+    // A click on a row picks what it lists; Ctrl adds.
+    h.get_by_label("Den").click();
+    h.run();
+    assert_eq!(h.state().selection, [den]);
+    h.get_by_label("Hall").click_modifiers(Modifiers::COMMAND);
+    h.run();
+    assert_eq!(h.state().selection, [den, hall]);
+    topmost(&mut h, "Level 1");
+    assert_eq!(h.state().sheet, Sheet::Plan(1));
+    assert_eq!(h.state().selection, [den, hall], "and back in the plan");
+}
+
+#[test]
 fn typed_shortcuts_pick_tools_like_revit() {
     let mut h = app(SAMPLE);
     h.event(Event::Text("W".into()));
