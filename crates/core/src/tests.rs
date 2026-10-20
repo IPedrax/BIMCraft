@@ -3446,3 +3446,28 @@ fn favorites_keep_materials_and_families_for_every_project() {
         let _ = std::fs::remove_file(f);
     }
 }
+
+#[test]
+fn a_section_uncropped_shows_all_there_is_along_its_line_and_cropped_only_its_region() {
+    let mut s = Session::new();
+    let w = house(&mut s);
+    let sec = run(&mut s, "section", json!({"start": [-1000, 3000], "end": [9000, 3000]}))["id"].as_u64().unwrap();
+    // Cropped from 2000 along its line: the west wall, at 1000, is left out.
+    run(&mut s, "crop", json!({"view": sec, "region": [[2000, -600], [10000, 3600]]}));
+    assert_eq!(element(&mut s, sec)["start"], json!([1000.0, 3000.0]));
+    let west = w[3];
+    let shows = |s: &Session| {
+        let view = crate::render::section_fit(&s.model, sec, 1600, 1000);
+        let d = crate::render::section(&s.model, sec, view);
+        d.pick(view.px(P2(-1000.0, 1500.0)), 3.0)
+    };
+    assert_ne!(shows(&s), Some(west));
+    assert!(crate::render::crop_region(&s.model, sec).is_some());
+    // Uncropped: no crop region, and the wall before its start is cut again.
+    run(&mut s, "crop", json!({"view": sec, "region": null}));
+    assert!(crate::render::crop_region(&s.model, sec).is_none());
+    assert_eq!(shows(&s), Some(west));
+    // Cropped again to what it shows: its line and the model's heights.
+    let r = run(&mut s, "crop", json!({"view": sec}));
+    assert_eq!(r["crop"], json!([-600.0, 3600.0]));
+}

@@ -3049,7 +3049,7 @@ fn crop(s: &mut Session, p: &Value) -> R {
                     (v.start, v.end, v.crop, shift) = (micron(v.start + u * a.0), micron(v.start + u * b.0), Some([a.1, b.1]), a.0);
                 }
                 Some(None) => v.crop = None,
-                None => v.crop = render::crop_region(m, view).map(|[lo, hi]| [lo.1, hi.1]),
+                None => v.crop = Some(render::section_heights(m, view)),
             }
             let crop = v.crop;
             let m = s.model_mut();

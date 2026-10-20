@@ -198,7 +198,7 @@ impl Solid {
     }
 
     /// Its corners.
-    fn corners(&self) -> Vec<P3> {
+    pub(crate) fn corners(&self) -> Vec<P3> {
         let mut out = Vec::new();
         match self {
             Solid::Box { frame, a, c, z, .. } => {

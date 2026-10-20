@@ -1628,14 +1628,32 @@ fn crop_view_and_its_grips_frame_plans_and_sections() {
     assert!(h.state().selection.is_empty(), "the grip took the drag, not a selection box");
     crop_view(&mut h);
     assert_eq!(field(&h, 1, "crop"), Value::Null);
-    // A section's top, dragged down; its start, dragged along its line: what's on screen stays put.
+    // A section uncropped has no crop region to drag: it shows all there is along its line.
     browse(&mut h, "Section 1");
+    assert_eq!(field(&h, section, "crop"), Value::Null);
+    assert!(bimcraft_core::render::crop_region(&h.state().session.model, section).is_none());
+    // Cropped, its top dragged down; its start, dragged along its line: what's on screen stays put.
+    crop_view(&mut h);
+    assert_eq!(field(&h, section, "crop"), json!([-600.0, 3600.0]));
     drag(&mut h, P2(5000.0, 3600.0), P2(5000.0, 2000.0));
     assert_eq!(field(&h, section, "crop"), json!([-600.0, 2000.0]));
-    let before = h.state().screen(P2(1000.0, 700.0));
-    drag(&mut h, P2(0.0, 700.0), P2(1000.0, 700.0));
-    assert_eq!(field(&h, section, "start"), json!([0.0, 3000.0]));
+    let before = h.state().screen(P2(2000.0, 700.0));
+    drag(&mut h, P2(0.0, 700.0), P2(2000.0, 700.0));
+    assert_eq!(field(&h, section, "start"), json!([1000.0, 3000.0]));
     assert!((h.state().screen(P2(0.0, 700.0)) - before).length() < 1.0);
+    // The west wall now lies before its start: cropped out, nothing is there to pick.
+    let west = find(&h, |e| matches!(e, Element::Wall(w) if w.start == P2(0.0, 6000.0)));
+    h.get_by_label("Zoom to Fit").click();
+    h.run();
+    click(&mut h, P2(-1000.0, 1000.0));
+    assert!(h.state().selection.is_empty(), "{:?}", h.state().selection);
+    // Uncropped, the section shows it again, past its line's start.
+    crop_view(&mut h);
+    assert_eq!(field(&h, section, "crop"), Value::Null);
+    h.get_by_label("Zoom to Fit").click();
+    h.run();
+    click(&mut h, P2(-1000.0, 1000.0));
+    assert_eq!(h.state().selection, [west]);
 }
 
 #[test]
