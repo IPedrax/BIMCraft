@@ -208,7 +208,7 @@ impl Canvas {
     }
 
     /// Zoom by `factor` about the middle of the view.
-    fn zoom(&mut self, level: Id, factor: f64) {
+    pub(crate) fn zoom(&mut self, level: Id, factor: f64) {
         if let Some(v) = self.view(level) {
             let mid = self.rect.size() / 2.0;
             self.hold(level, v.mm(mid.into()), mid, v.scale * factor);
@@ -852,6 +852,7 @@ impl BimApp {
         }
         self.grip_overlay(ui, &model, &view, rect, level, &d);
         self.temporary_dimension(ui, &model, &view, rect);
+        self.context_menu(&response);
         self.nav_bar(ui, rect, level);
     }
 

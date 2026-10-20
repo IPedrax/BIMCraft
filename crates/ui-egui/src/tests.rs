@@ -4113,3 +4113,80 @@ mod updates {
         }
     }
 }
+
+/// A right click at a point on screen.
+fn right_click_at(h: &mut Harness<BimApp>, pos: Pos2) {
+    h.hover_at(pos);
+    h.run();
+    for pressed in [true, false] {
+        h.event(Event::PointerButton { pos, button: PointerButton::Secondary, pressed, modifiers: Modifiers::NONE });
+    }
+    h.run();
+}
+
+/// Which of `labels` a right click at `pos` offers: those the menu it opens adds to the window
+/// (the navigation bar's Zoom to Fit is there anyway).
+fn offered(h: &mut Harness<BimApp>, pos: Pos2, labels: &[&'static str]) -> Vec<&'static str> {
+    let count = |h: &Harness<BimApp>, l: &str| h.query_all_by(|n| n.label().is_some_and(|x| x.starts_with(l))).count();
+    let before: Vec<usize> = labels.iter().map(|l| count(h, l)).collect();
+    right_click_at(h, pos);
+    labels.iter().zip(before).filter(|(l, n)| count(h, l) > *n).map(|(l, _)| *l).collect()
+}
+
+/// The open menu's item `label` (its shortcut beside it): the one drawn last, over the view.
+fn choose(h: &mut Harness<BimApp>, label: &str) {
+    h.get_all_by(|n| n.label().is_some_and(|x| x.starts_with(label))).last().unwrap().click();
+    h.run();
+}
+
+const MENU: [&str; 8] = ["Cancel", "Zoom to Fit", "Zoom In", "Home View", "Edit Type", "Select All Instances", "Hide Element", "Delete"];
+
+#[test]
+fn a_right_click_in_a_plan_opens_a_menu_of_what_the_view_and_the_selection_can_do() {
+    let mut h = app(BOX);
+    // Nothing selected: the view's own items, not the selection's.
+    let at = h.state().screen(P2(4000.0, 3000.0));
+    assert_eq!(offered(&mut h, at, &MENU), ["Cancel", "Zoom to Fit", "Zoom In"]);
+    // Zoom In zooms about the view's middle, and the menu closes.
+    let before = h.state().screen(P2(0.0, 0.0));
+    choose(&mut h, "Zoom In");
+    assert_ne!(h.state().screen(P2(0.0, 0.0)), before);
+    assert_eq!(h.query_all_by_label("Zoom Out").count(), 1, "the menu closed: only the navigation bar's");
+    // A wall selected: Edit Type opens its type's properties.
+    let south = find(&h, |e| matches!(e, Element::Wall(w) if w.start == P2(0.0, 0.0)));
+    click(&mut h, P2(4000.0, 0.0));
+    assert_eq!(h.state().selection, [south]);
+    let at = h.state().screen(P2(4000.0, 3000.0));
+    assert_eq!(
+        offered(&mut h, at, &MENU),
+        ["Cancel", "Zoom to Fit", "Zoom In", "Edit Type", "Select All Instances", "Hide Element", "Delete"]
+    );
+    choose(&mut h, "Edit Type");
+    assert!(h.state().type_dialog.is_some(), "Type Properties is open");
+    assert_eq!(h.state().selection, [south], "a right click leaves the selection as it was");
+}
+
+#[test]
+fn every_view_has_the_right_click_menu() {
+    let mut h = app(&format!(
+        "{BOX}\nsection {{\"start\": [-1000, 3000], \"end\": [9000, 3000]}}\nroom {{\"point\": [4000, 3000], \"name\": \"Hall\"}}"
+    ));
+    // The 3D view: Home View among its items.
+    press(&mut h, "Default 3D View");
+    let at = h.state().orbit.rect.center();
+    assert_eq!(offered(&mut h, at, &MENU), ["Cancel", "Zoom to Fit", "Zoom In", "Home View"]);
+    key(&mut h, Key::Escape);
+    // A section.
+    browse(&mut h, "Section 1");
+    let at = h.state().screen(P2(5000.0, 1500.0));
+    assert_eq!(offered(&mut h, at, &MENU), ["Cancel", "Zoom to Fit", "Zoom In"]);
+    key(&mut h, Key::Escape);
+    // A schedule: no zooming; its row's room selected, deleted from the menu.
+    browse(&mut h, "Room Schedule");
+    h.get_by_label("Hall").click();
+    h.run();
+    let at = h.get_by_label("Hall").rect().center();
+    assert_eq!(offered(&mut h, at, &MENU), ["Cancel", "Edit Type", "Select All Instances", "Delete"]);
+    choose(&mut h, "Delete");
+    assert!(ids(&h, "room").is_empty());
+}

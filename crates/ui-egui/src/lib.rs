@@ -6,6 +6,7 @@
 //! (plans, the 3D view, schedules), and the tool's prompt in the status bar.
 
 mod canvas;
+mod context;
 mod editor;
 mod favorites;
 mod graphics;
@@ -949,6 +950,8 @@ impl BimApp {
             || self.show_snaps
             || self.pending.is_some()
             || self.installing()
+            // An open menu takes the keys: Esc closes it, not the tool.
+            || egui::Popup::is_any_open(ctx)
         {
             return;
         }
@@ -1451,6 +1454,19 @@ impl BimApp {
     fn delete(&mut self) {
         if !self.selection.is_empty() {
             self.run("delete", json!({"ids": self.selection}));
+        }
+    }
+
+    /// Zoom the view on screen by `factor` about its middle.
+    fn zoom_view(&mut self, factor: f64) {
+        match self.sheet {
+            Sheet::Plan(id) | Sheet::Ceiling(id) | Sheet::Section(id) | Sheet::Paper(id) => self.canvas.zoom(id, factor),
+            Sheet::View3D => {
+                if let Some(c) = self.orbit.camera {
+                    self.orbit.camera = Some(c.zoom(factor, (f64::from(c.width) / 2.0, f64::from(c.height) / 2.0)));
+                }
+            }
+            Sheet::Schedule(_) | Sheet::Table(_) => {}
         }
     }
 
@@ -2786,8 +2802,13 @@ impl BimApp {
     /// The schedule on screen as a table: its headings, its rows, its totals under a rule.
     fn schedule(&mut self, ui: &mut Ui) {
         let Some((_, sc)) = self.shown_schedule() else { return };
+        // The right-click menu, on the schedule and on each of its cells.
+        let groups = self.context_items();
+        let mut chosen = None;
         Frame::new().fill(pal().surface).inner_margin(16.0).show(ui, |ui| {
             ui.set_min_size(ui.available_size());
+            let ground = ui.interact(ui.max_rect(), ui.id().with("schedule menu"), egui::Sense::click());
+            context::menu(&ground, &groups, &mut chosen);
             let name = self.view_name(self.sheet);
             ui.label(RichText::new(&name).heading());
             ui.add_space(8.0);
@@ -2831,6 +2852,7 @@ impl BimApp {
                                     if r.clicked() {
                                         picked = Some((ids.clone(), ui.input(|i| i.modifiers)));
                                     }
+                                    context::menu(&r, &groups, &mut chosen);
                                 }
                                 ui.end_row();
                             }
@@ -2851,6 +2873,9 @@ impl BimApp {
                 }
             }
         });
+        if let Some(action) = chosen {
+            self.act(action);
+        }
     }
 
     fn dialogs(&mut self, ctx: &Context) {

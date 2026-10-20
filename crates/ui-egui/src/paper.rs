@@ -139,6 +139,7 @@ impl BimApp {
                 }
             }
         }
+        self.context_menu(&response);
         self.nav_bar(ui, rect, id);
     }
 }

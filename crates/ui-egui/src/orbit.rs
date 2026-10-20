@@ -200,6 +200,7 @@ impl BimApp {
             }
             None => {}
         }
+        self.context_menu(&response);
         // The navigation bar, at the view's top right: Home (Revit's default orientation), fit, zoom.
         let bar = Rect::from_min_size(rect.right_top() + vec2(-46.0, 14.0), vec2(32.0, 104.0));
         p.rect(bar, 6.0, pal().surface, Stroke::new(1.0, pal().border), StrokeKind::Inside);
