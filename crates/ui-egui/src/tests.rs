@@ -4118,3 +4118,40 @@ mod updates {
         }
     }
 }
+
+#[test]
+fn a_selected_levels_ends_are_grips_in_a_section_that_drag_its_extent() {
+    let mut h = app(&format!(
+        "{BOX}\nsection {{\"start\": [-1000, 3000], \"end\": [9000, 3000]}}\nlevel {{\"elevation\": 1500, \"name\": \"Mezzanine\", \"extent\": [[0, 0], [4000, 6000]]}}"
+    ));
+    let mezz = find(&h, |e| matches!(e, Element::Level(l) if l.name == "Mezzanine"));
+    browse(&mut h, "Section 1");
+    click(&mut h, P2(3000.0, 1500.0));
+    assert_eq!(h.state().selection, [mezz]);
+    // Its far end, along the line from 5000 to 7000: the extent's east edge goes 2 m east.
+    drag(&mut h, P2(5000.0, 1500.0), P2(7000.0, 1500.0));
+    assert_eq!(field(&h, mezz, "extent"), json!([[0.0, 0.0], [6000.0, 6000.0]]));
+    assert_eq!(h.state().selection, [mezz], "the grip took the drag, not a selection box");
+    // And its near end back west.
+    drag(&mut h, P2(1000.0, 1500.0), P2(500.0, 1500.0));
+    assert_eq!(field(&h, mezz, "extent"), json!([[-500.0, 0.0], [6000.0, 6000.0]]));
+}
+
+#[test]
+fn a_selected_levels_plane_has_a_grip_on_each_edge_in_3d_that_drags_it() {
+    let mut h = app(&format!("{BOX}\nlevel {{\"elevation\": 9000, \"name\": \"Top\", \"extent\": [[0, 0], [8000, 6000]]}}"));
+    let top = find(&h, |e| matches!(e, Element::Level(l) if l.name == "Top"));
+    press(&mut h, "Default 3D View");
+    // Its far north edge picks it.
+    let at = h.state().screen3([4000.0, 6000.0, 9000.0]);
+    click_at(&mut h, at);
+    assert_eq!(h.state().selection, [top]);
+    let before = h.state().orbit.camera;
+    // The east edge's grip, dragged a metre east on the level's plane.
+    let (a, b) = (h.state().screen3([8000.0, 3000.0, 9000.0]), h.state().screen3([9000.0, 3000.0, 9000.0]));
+    drag_screen(&mut h, a, b, PointerButton::Primary);
+    let extent = field(&h, top, "extent");
+    assert!((extent[1][0].as_f64().unwrap() - 9000.0).abs() <= 10.0, "{extent}");
+    assert_eq!((extent[0].clone(), extent[1][1].clone()), (json!([0.0, 0.0]), json!(6000.0)));
+    assert_eq!(h.state().orbit.camera, before, "the grip took the drag, not the camera");
+}

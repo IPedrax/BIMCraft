@@ -2,10 +2,12 @@
 //! in Revit. Shift and the middle button orbit, and so does a drag with the primary button (for
 //! a hand without a middle button); the middle button pans; the wheel zooms about the cursor. A
 //! click picks the element the picture shows there, and so does a press let go quickly, however
-//! far the hand went with it (`Canvas::quick_press`): the camera it turned goes back.
+//! far the hand went with it (`Canvas::quick_press`): the camera it turned goes back. A level
+//! selected alone has a grip at the middle of each edge of its plane, which a drag moves over it.
 
 use std::sync::Arc;
 
+use bimcraft_core::geom::{self, P2};
 use bimcraft_core::graphics::Look;
 use bimcraft_core::model::{Id, Model};
 use bimcraft_core::render::{self, Rgb};
@@ -40,12 +42,32 @@ pub struct Orbit {
     drag: Option<(bool, Pos2)>,
     /// The camera as that drag found it, for a drag that turns out a click.
     before: Option<Camera>,
+    /// A selected level's grip being dragged: the level, and which edge of its plane (as
+    /// `geom::edge_grips` orders them).
+    grip: Option<(Id, usize)>,
 }
 
 impl Default for Orbit {
     fn default() -> Orbit {
-        Orbit { camera: None, rect: Rect::ZERO, ppp: 1.0, scene: None, image: None, shown: None, texture: None, drag: None, before: None }
+        Orbit {
+            camera: None,
+            rect: Rect::ZERO,
+            ppp: 1.0,
+            scene: None,
+            image: None,
+            shown: None,
+            texture: None,
+            drag: None,
+            before: None,
+            grip: None,
+        }
     }
+}
+
+/// Where model point `p` shows on screen, in a view in `rect` through `cam`, `ppp` pixels a point.
+fn on_screen(cam: &Camera, rect: Rect, ppp: f32, p: [f64; 3]) -> Pos2 {
+    let (x, y, _) = cam.project(p);
+    rect.min + vec2(x as f32 / ppp, y as f32 / ppp)
 }
 
 pub(crate) fn rgb(c: Color32) -> Rgb {
@@ -126,9 +148,41 @@ impl BimApp {
                 cam = cam.zoom(factor.clamp(0.2, 5.0), px(at));
             }
         }
+        // A level selected alone has a grip at the middle of each edge of its plane: a drag from one
+        // moves that edge over the plane, rather than turning the view.
+        let level = match selection.as_slice() {
+            &[id] if modify => model.level(id).and_then(|l| Some((id, l.elevation, model.level_extent(id)?))),
+            _ => None,
+        };
+        if let Some((id, z, extent)) = level
+            && response.drag_started_by(PointerButton::Primary)
+            && let Some(origin) = ui.input(|i| i.pointer.press_origin())
+            && let Some(k) = geom::edge_grips(extent).iter().position(|g| on_screen(&cam, rect, ppp, [g.0, g.1, z]).distance(origin) <= 8.0)
+        {
+            o.grip = Some((id, k));
+        }
+        if !level.is_some_and(|(id, ..)| o.grip.is_some_and(|(g, _)| g == id)) {
+            o.grip = None;
+        }
+        // Where the held grip's edge is now: over the level's plane, under the pointer, to 10 mm.
+        let regripped = match (level, o.grip, latest) {
+            (Some((_, z, extent)), Some((_, k)), Some(now)) => cam.on_plane(px(now), z).map(|p| {
+                let round = |v: f64| (v / 10.0).round() * 10.0;
+                geom::move_edge(extent, k, P2(round(p[0]), round(p[1])))
+            }),
+            _ => None,
+        };
+        let mut moved = None;
+        if response.drag_stopped()
+            && let (Some((id, _)), Some(to)) = (o.grip.take(), regripped)
+            && !self.canvas.quick()
+        {
+            moved = Some((id, to));
+        }
         // The primary button, or Shift and the middle button, orbit, 0.4° a point; the middle
         // button alone pans.
         if response.drag_started()
+            && o.grip.is_none()
             && let Some(origin) = ui.input(|i| i.pointer.press_origin())
         {
             o.drag = Some((response.dragged_by(PointerButton::Primary) || shift, origin));
@@ -181,6 +235,21 @@ impl BimApp {
         if let Some(t) = &o.texture {
             p.image(t.id(), rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
         }
+        // The selected level's grips, and its plane as the held one would leave it.
+        if let Some((_, z, extent)) = level {
+            let shown = if o.grip.is_some() { regripped.unwrap_or(extent) } else { extent };
+            let at = |q: P2| on_screen(&cam, rect, ppp, [q.0, q.1, z]);
+            if o.grip.is_some() {
+                let [lo, hi] = shown;
+                let ring = [lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)].map(at).to_vec();
+                p.add(egui::Shape::closed_line(ring, Stroke::new(1.5, pal().accent)));
+            }
+            for g in geom::edge_grips(shown) {
+                let r = Rect::from_center_size(at(g), vec2(9.0, 9.0));
+                p.rect_filled(r, 1.0, pal().surface);
+                p.rect_stroke(r, 1.0, Stroke::new(1.5, pal().accent), StrokeKind::Middle);
+            }
+        }
         let click = response.clicked().then(|| response.interact_pointer_pos()).flatten().or(self.canvas.quick_press());
         let clicked = click.map(|at| pick(&o.image, at));
         // The face of what's clicked, as paint names the faces of an element.
@@ -199,6 +268,9 @@ impl BimApp {
                     Status { text: crate::lang::t("this tool works in plan views: open one from the Project Browser").into(), error: true }
             }
             None => {}
+        }
+        if let Some((id, [lo, hi])) = moved {
+            self.run("modify", json!({"id": id, "extent": [[lo.0, lo.1], [hi.0, hi.1]]}));
         }
         // The navigation bar, at the view's top right: Home (Revit's default orientation), fit, zoom.
         let bar = Rect::from_min_size(rect.right_top() + vec2(-46.0, 14.0), vec2(32.0, 104.0));

@@ -1434,6 +1434,37 @@ impl Model {
         }
     }
 
+    /// Level `level`'s extent with the end it shows at in section or elevation `view` dragged to
+    /// `to` along its line (its far end with `far`, else its near one): the edge of the extent that
+    /// end lies on (across the axis nearest the line's) moves as far as takes it there, leaving it
+    /// at least 100 mm across.
+    pub fn level_extent_along(&self, level: Id, view: Id, far: bool, to: f64) -> Option<[P2; 2]> {
+        let v = self.section(view)?;
+        let extent @ [lo, hi] = self.level_extent(level)?;
+        let u = (v.end - v.start).unit();
+        let along: Vec<f64> = [lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)].iter().map(|q| (*q - v.start).dot(u)).collect();
+        let now = if far { along.iter().copied().fold(f64::MIN, f64::max) } else { along.iter().copied().fold(f64::MAX, f64::min) };
+        let toward = if far { u } else { u * -1.0 };
+        // The edge: west, east, south or north, as `geom::edge_grips` orders them; and how far along
+        // the line a mm of it goes.
+        let (k, rate) = match toward.0.abs() >= toward.1.abs() {
+            true => (usize::from(toward.0 > 0.0), u.0),
+            false => (2 + usize::from(toward.1 > 0.0), u.1),
+        };
+        let by = (to - now) / rate;
+        if !by.is_finite() {
+            return None;
+        }
+        let edge = match k {
+            0 => P2(lo.0 + by, 0.0),
+            1 => P2(hi.0 + by, 0.0),
+            2 => P2(0.0, lo.1 + by),
+            _ => P2(0.0, hi.1 + by),
+        };
+        let [a, b] = geom::move_edge(extent, k, edge);
+        Some([crate::commands::micron(a), crate::commands::micron(b)])
+    }
+
     /// Levels from lowest to highest.
     pub fn levels(&self) -> Vec<(Id, &Level)> {
         let mut v: Vec<(Id, &Level)> = self

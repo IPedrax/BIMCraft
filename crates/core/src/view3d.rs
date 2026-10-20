@@ -742,6 +742,21 @@ fn basis(t: &Tri) -> [P3; 2] {
     [across, unit(cross(n, across))]
 }
 
+/// Where a level's name goes in a 3D view: a vertical plane, unseen, past the right end of its
+/// plane's far edges and in line with the one that ends there, lettered with the name. It is where an
+/// elevation marker (an annotation family, later) will stand.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LevelHead {
+    pub level: Id,
+    pub name: String,
+    /// Along its foot, then up its far side: on the level's elevation, and its lettering's height above.
+    pub corners: [P3; 4],
+}
+
+/// How tall a level's name is lettered in 3D, px; and the room round it.
+const HEAD_TEXT: f32 = 11.0;
+const HEAD_PAD: f32 = 3.0;
+
 impl Scene {
     pub fn new(m: &Model) -> Scene {
         let mut tris = Vec::new();
@@ -796,14 +811,41 @@ impl Scene {
         let room = |px: u32| (f64::from(px) - 2.0 * MARGIN).max(1.0);
         let solids = self.tris.iter().filter(|t| look.shows(t.owner)).flat_map(|t| t.p);
         let levels = self.levels.iter().filter(|(id, ..)| look.shows(*id)).flat_map(|(.., c)| *c);
-        let pts: Vec<P3> = solids.chain(levels).collect();
+        let mut pts: Vec<P3> = solids.chain(levels).collect();
         let Some((target, w, h)) = extent(&cam, &pts) else {
             cam.scale = room(width).min(room(height)) / 10_000.0;
             return cam;
         };
         cam.target = target;
         cam.scale = (room(width) / w.max(1000.0)).min(room(height) / h.max(1000.0)).clamp(1e-6, 50.0);
+        // The levels' names take room at the scale that gives: fitted again with their heads.
+        pts.extend(self.level_heads(&cam).into_iter().filter(|h| look.shows(h.level)).flat_map(|h| h.corners));
+        if let Some((target, w, h)) = extent(&cam, &pts) {
+            cam.target = target;
+            cam.scale = (room(width) / w.max(1000.0)).min(room(height) / h.max(1000.0)).clamp(1e-6, 50.0);
+        }
         cam
+    }
+
+    /// Each level's head as `cam` sees it: see [`LevelHead`].
+    pub fn level_heads(&self, cam: &Camera) -> Vec<LevelHead> {
+        let px = 1.0 / cam.scale.max(1e-9);
+        self.levels
+            .iter()
+            .map(|(id, name, c)| {
+                let near = nearest(cam, c);
+                let (far, sides) = (c[(near + 2) % 4], [c[(near + 1) % 4], c[(near + 3) % 4]]);
+                // The far edges' outer ends: the one further right.
+                let end = if cam.project(sides[0]).0 >= cam.project(sides[1]).0 { sides[0] } else { sides[1] };
+                let d = unit(sub(end, far));
+                let (w, h) =
+                    (f64::from(crate::font::width(name, HEAD_TEXT) + 2.0 * HEAD_PAD) * px, f64::from(HEAD_TEXT + 2.0 * HEAD_PAD) * px);
+                let foot = add(end, mul(d, 2.0 * f64::from(HEAD_PAD) * px));
+                let up = [0.0, 0.0, h];
+                let corners = [foot, add(foot, mul(d, w)), add(add(foot, mul(d, w)), up), add(foot, up)];
+                LevelHead { level: *id, name: name.clone(), corners }
+            })
+            .collect()
     }
 
     /// The picture `cam` takes. Elements in `tints` show halfway to their tint, and their edges in it.
@@ -1010,9 +1052,12 @@ impl Scene {
         let mut owners: Vec<Id> = self.tris.iter().map(|t| t.owner).collect();
         // Over it, each level's plane outlined where nothing nearer hides it (not in a section's picture,
         // which draws its own), picked as the level.
+        // Unselected, the two edges nearer the camera are left out, as in Revit; selected, all four.
+        // Its head goes past the far edges' right end: its name lettered, all of it picking the level.
         if clip.is_none() {
             let slack = 1.5 / cam.scale.max(1e-9);
-            for (id, _, corners) in self.levels.iter().filter(|(id, ..)| plain || look.shows(*id)) {
+            let heads = self.level_heads(cam);
+            for ((id, _, corners), head) in self.levels.iter().zip(&heads).filter(|((id, ..), _)| plain || look.shows(*id)) {
                 let c = tints.get(id).copied().unwrap_or_else(|| look.edge(*id, DATUM));
                 let slot = owners.len() as u32;
                 owners.push(*id);
@@ -1022,13 +1067,51 @@ impl Scene {
                         *t = slot;
                     }
                 };
-                for (a, b) in corners.iter().zip(corners.iter().cycle().skip(1)) {
-                    outline((cam.project(*a), cam.project(*b)), (w, h), 2, slack, &depth, &mut paint);
+                let near = nearest(cam, corners);
+                for (i, (a, b)) in corners.iter().zip(corners.iter().cycle().skip(1)).enumerate() {
+                    if tints.contains_key(id) || (i != near && (i + 1) % 4 != near) {
+                        outline((cam.project(*a), cam.project(*b)), (w, h), 2, slack, &depth, &mut paint);
+                    }
+                }
+                let [foot, along, ..] = head.corners;
+                let (d, px) = (unit(sub(along, foot)), 1.0 / cam.scale.max(1e-9));
+                let height = f64::from(HEAD_TEXT + 2.0 * HEAD_PAD);
+                let to3 = |(x, y): (f32, f32)| add(add(foot, mul(d, f64::from(x) * px)), [0.0, 0.0, (height - f64::from(y)) * px]);
+                for stroke in crate::font::strokes(&head.name, HEAD_PAD, HEAD_PAD + HEAD_TEXT, HEAD_TEXT) {
+                    for seg in stroke.windows(2) {
+                        if let [a, b] = seg {
+                            outline((cam.project(to3(*a)), cam.project(to3(*b))), (w, h), 1, slack, &depth, &mut paint);
+                        }
+                    }
+                }
+                // The rest of the head picks the level too, unpainted.
+                let ring: Vec<P2> = head.corners.iter().map(|p| cam.project(*p)).map(|(x, y, _)| P2(x, y)).collect();
+                let z = head.corners.iter().map(|p| cam.project(*p).2).sum::<f64>() / 4.0;
+                let (lo, hi) = ring.iter().fold((P2(f64::MAX, f64::MAX), P2(f64::MIN, f64::MIN)), |(lo, hi), q| {
+                    (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1)))
+                });
+                let (x0, x1) = (lo.0.max(0.0).floor() as usize, hi.0.min(w as f64 - 1.0).max(0.0) as usize);
+                let (y0, y1) = (lo.1.max(0.0).floor() as usize, hi.1.min(h as f64 - 1.0).max(0.0) as usize);
+                for py in y0..=y1.min(y0 + 4 * MAX_SIDE as usize) {
+                    for px in x0..=x1.min(x0 + 4 * MAX_SIDE as usize) {
+                        let k = py * w + px;
+                        if geom::contains(&ring, P2(px as f64 + 0.5, py as f64 + 0.5))
+                            && depth.get(k).is_some_and(|d| f64::from(*d) <= z + slack)
+                            && let Some(t) = hit.get_mut(k)
+                        {
+                            *t = slot;
+                        }
+                    }
                 }
             }
         }
         Image { width: w as u32, height: h as u32, rgba, hit, owners, faces: Arc::clone(&self.faces) }
     }
+}
+
+/// Which of a level plane's `corners` is nearest the camera: the two edges from it are its near ones.
+fn nearest(cam: &Camera, corners: &[P3; 4]) -> usize {
+    (0..4).max_by(|a, b| cam.project(corners[*a]).2.total_cmp(&cam.project(corners[*b]).2)).unwrap_or(0)
 }
 
 /// The pixels of a `w` x `h` picture a line from `a` to `b` (each a pixel and its nearness)
@@ -1161,6 +1244,15 @@ impl Camera {
         let (back, right, up) = self.axes();
         let d = sub(p, self.target);
         (f64::from(self.width) / 2.0 + dot(d, right) * self.scale, f64::from(self.height) / 2.0 - dot(d, up) * self.scale, dot(d, back))
+    }
+
+    /// The point at pixel `(x, y)` on the horizontal plane at height `z`; none where the view is
+    /// level with it.
+    pub fn on_plane(&self, at: (f64, f64), z: f64) -> Option<P3> {
+        let (back, ..) = self.axes();
+        let p = self.unproject(at);
+        let t = (z - p[2]) / back[2];
+        (back[2].abs() > 1e-9 && t.is_finite()).then(|| add(p, mul(back, t)))
     }
 
     /// The model point at pixel `(x, y)` on the plane through the target, square to the view.

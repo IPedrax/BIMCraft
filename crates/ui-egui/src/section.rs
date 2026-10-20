@@ -38,6 +38,7 @@ impl BimApp {
         let fit = |w, h| render::section_fit(&model, id, w, h);
         let Some((view, local)) = self.canvas.navigate(ui, &response, rect, id, fit) else { return };
         let crop = self.crop_grips(ui, &response, rect, &view, id);
+        let datum = self.level_grips(ui, &response, rect, &view, id);
         let d = render::section(&model, id, view);
         // The picture at the screen's pixels, framed as the drawing is in points.
         let ppp = f64::from(ui.ctx().pixels_per_point());
@@ -93,6 +94,7 @@ impl BimApp {
         let boxed = self.drag_box(ui, &response, rect, inside);
         self.cut.image = held;
         p.extend(boxed);
+        p.extend(datum);
         let clicked = self.clicked_at(&response).map(|at| (at.x - rect.min.x, at.y - rect.min.y));
         // Along the line and up, to the nearest 10 mm.
         let at = |q: (f32, f32)| {

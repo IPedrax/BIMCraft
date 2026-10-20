@@ -55,6 +55,23 @@ impl P2 {
 }
 
 /// The edges of a closed ring: (p0, p1), (p1, p2) … (pn, p0).
+/// Where a rectangle's edges have their grips, at their middles: west, east, south and north (a
+/// crop region's in a section: its start, its end, its bottom and its top).
+pub fn edge_grips([lo, hi]: [P2; 2]) -> [P2; 4] {
+    let mid = (lo + hi) * 0.5;
+    [P2(lo.0, mid.1), P2(hi.0, mid.1), P2(mid.0, lo.1), P2(mid.0, hi.1)]
+}
+
+/// The rectangle with edge `k` (as [`edge_grips`] orders them) moved to `p`, at least 100 mm across.
+pub fn move_edge([lo, hi]: [P2; 2], k: usize, p: P2) -> [P2; 2] {
+    match k {
+        0 => [P2(p.0.min(hi.0 - 100.0), lo.1), hi],
+        1 => [lo, P2(p.0.max(lo.0 + 100.0), hi.1)],
+        2 => [P2(lo.0, p.1.min(hi.1 - 100.0)), hi],
+        _ => [lo, P2(hi.0, p.1.max(lo.1 + 100.0))],
+    }
+}
+
 pub fn ring_edges(ring: &[P2]) -> impl Iterator<Item = (P2, P2)> + '_ {
     ring.iter().copied().zip(ring.iter().copied().cycle().skip(1))
 }

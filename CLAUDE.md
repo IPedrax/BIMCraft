@@ -93,7 +93,10 @@ lengths with `Units::parse`; files, JSON and every command stay in millimetres. 
 translate. The core's messages stay English, because agents read them.
 Levels have elevations, and each is a plane over its `extent` (`Model::level_extent`; without one, `Model::model_extent`):
 sections and elevations draw a level over as much of its extent as they see, and the 3D view outlines it, depth-tested and
-picked as the level.
+picked as the level; unselected, its two edges nearer the camera are left out. Its name goes on a `view3d::LevelHead`, an
+unseen vertical plane past the right end of its far edges, where an elevation marker family will stand. Selected alone, a
+level's ends in a section are grips (`Model::level_extent_along`) and so are its plane's edge middles in 3D
+(`geom::edge_grips`, `Camera::on_plane`); both run `modify {extent}`.
 A section or an elevation cropped shows its line's length and its crop's heights; uncropped, everything along its line
 (`render::crop_region` is none, and there are no grips).
 A level is also its plan: its view range (`Model::plan_range`)

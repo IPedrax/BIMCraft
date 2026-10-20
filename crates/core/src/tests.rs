@@ -3514,3 +3514,68 @@ fn a_section_uncropped_shows_all_there_is_along_its_line_and_cropped_only_its_re
     let r = run(&mut s, "crop", json!({"view": sec}));
     assert_eq!(r["crop"], json!([-600.0, 3600.0]));
 }
+
+#[test]
+fn a_levels_ends_in_a_section_drag_its_extent_and_its_edges_drag_in_3d() {
+    let mut s = Session::new();
+    house(&mut s);
+    let sec = run(&mut s, "section", json!({"start": [-1000, 3000], "end": [9000, 3000]}))["id"].as_u64().unwrap();
+    let mezz = run(&mut s, "level", json!({"elevation": 1500, "extent": [[0, 0], [4000, 6000]]}))["id"].as_u64().unwrap();
+    // Its ends in the section, along its line: where the extent's west and east edges cross it.
+    assert_eq!(crate::render::level_ends(&s.model, mezz, sec), Some((1000.0, 5000.0)));
+    // Its far end dragged to 7000 along: the east edge goes to 6000; its near end back to 0, the west to -1000.
+    assert_eq!(s.model.level_extent_along(mezz, sec, true, 7000.0), Some([P2(0.0, 0.0), P2(6000.0, 6000.0)]));
+    assert_eq!(s.model.level_extent_along(mezz, sec, false, 0.0), Some([P2(-1000.0, 0.0), P2(4000.0, 6000.0)]));
+    // Past its other end: no less than 100 mm across.
+    assert_eq!(s.model.level_extent_along(mezz, sec, true, -5000.0), Some([P2(0.0, 0.0), P2(100.0, 6000.0)]));
+    // A section drawn the other way: its far end is the extent's west edge.
+    let back = run(&mut s, "section", json!({"start": [9000, 3000], "end": [-1000, 3000]}))["id"].as_u64().unwrap();
+    assert_eq!(s.model.level_extent_along(mezz, back, true, 10000.0), Some([P2(-1000.0, 0.0), P2(4000.0, 6000.0)]));
+    // In 3D, a grip at the middle of each edge: west, east, south, north; one dragged moves its edge.
+    let extent = [P2(0.0, 0.0), P2(4000.0, 6000.0)];
+    assert_eq!(crate::geom::edge_grips(extent), [P2(0.0, 3000.0), P2(4000.0, 3000.0), P2(2000.0, 0.0), P2(2000.0, 6000.0)]);
+    assert_eq!(crate::geom::move_edge(extent, 1, P2(5000.0, 999.0)), [P2(0.0, 0.0), P2(5000.0, 6000.0)]);
+    // The camera finds where on the level's plane a pixel lies.
+    let cam = crate::view3d::Scene::new(&s.model).fit(crate::view3d::AZIMUTH, crate::view3d::ELEVATION, 800, 600);
+    let (x, y, _) = cam.project([2500.0, 1200.0, 1500.0]);
+    let p = cam.on_plane((x, y), 1500.0).unwrap();
+    assert!((p[0] - 2500.0).abs() < 1e-6 && (p[1] - 1200.0).abs() < 1e-6 && (p[2] - 1500.0).abs() < 1e-6, "{p:?}");
+}
+
+#[test]
+fn a_levels_plane_in_3d_hides_its_near_edges_until_selected_and_names_itself_on_a_head() {
+    use crate::view3d::{AZIMUTH, ELEVATION, Scene};
+    let mut s = Session::new();
+    house(&mut s);
+    let top = run(&mut s, "level", json!({"elevation": 9000, "name": "Top", "extent": [[0, 0], [8000, 6000]]}))["id"].as_u64().unwrap();
+    let scene = Scene::new(&s.model);
+    let cam = scene.fit(AZIMUTH, ELEVATION, 1600, 1000);
+    let near = |img: &crate::view3d::Image, p: [f64; 3]| {
+        let (x, y, _) = cam.project(p);
+        (-2..=2).flat_map(|dx| (-2..=2).map(move |dy| (dx, dy))).any(|(dx, dy)| img.pick(x + f64::from(dx), y + f64::from(dy)) == Some(top))
+    };
+    // From the south-east: the south and east edges are the nearer two, left out; the far two drawn.
+    let plain = scene.render(&cam, &[]);
+    assert!(!near(&plain, [4000.0, 0.0, 9000.0]) && !near(&plain, [8000.0, 3000.0, 9000.0]));
+    assert!(near(&plain, [4000.0, 6000.0, 9000.0]) && near(&plain, [0.0, 3000.0, 9000.0]));
+    // Selected, all four.
+    let picked = scene.render(&cam, &[(top, crate::render::Rgb(0, 120, 255))]);
+    assert!(near(&picked, [4000.0, 0.0, 9000.0]) && near(&picked, [8000.0, 3000.0, 9000.0]));
+    // Its head: a vertical plane past the right end of its far edges, on the north edge's line, its name written on it.
+    let heads = scene.level_heads(&cam);
+    let head = heads.iter().find(|h| h.level == top).unwrap();
+    assert_eq!(head.name, "Top");
+    assert!(head.corners.iter().all(|c| (c[1] - 6000.0).abs() < 1e-6 && c[0] > 8000.0), "{:?}", head.corners);
+    assert_eq!((head.corners[0][2], head.corners[1][2]), (9000.0, 9000.0));
+    assert!(head.corners[2][2] > 9000.0 && head.corners[3][2] > 9000.0);
+    // Clicking on it picks the level.
+    let mid = head.corners.iter().fold([0.0; 3], |a, c| [a[0] + c[0] / 4.0, a[1] + c[1] / 4.0, a[2] + c[2] / 4.0]);
+    let (x, y, _) = cam.project(mid);
+    assert_eq!(plain.pick(x, y), Some(top));
+    // Its name is drawn there: pixels in the level's colour inside the head.
+    let lettered = (-30..=30)
+        .flat_map(|dx| (-6..=6).map(move |dy| (dx, dy)))
+        .filter(|(dx, dy)| plain.color(x + f64::from(*dx), y + f64::from(*dy)) != crate::render::PAPER)
+        .count();
+    assert!(lettered > 10, "{lettered}");
+}

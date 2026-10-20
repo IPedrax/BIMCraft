@@ -515,6 +515,17 @@ fn span(m: &Model, v: &Section, look: &Look) -> (f64, f64) {
     solids.chain(levels).chain(grids).fold((0.0, len), |(lo, hi), x| (lo.min(x), hi.max(x)))
 }
 
+/// Where level `level` ends in section or elevation `view`, along its line from its start: its near
+/// end and its far one, as far as the view shows. None where it doesn't show it.
+pub fn level_ends(m: &Model, level: Id, view: Id) -> Option<(f64, f64)> {
+    let v = m.section(view)?;
+    let look = Look::of(m, view);
+    let (first, last) = span(m, v, &look);
+    let (_, a, b) = level_spans(m, v, &look).into_iter().find(|(id, ..)| *id == level)?;
+    let (a, b) = (a.max(first), b.min(last));
+    (a < b).then_some((a, b))
+}
+
 /// The levels section or elevation `v` sees, each from how far along its line to how far: where
 /// its extent lies, past its line (within its depth).
 fn level_spans(m: &Model, v: &Section, look: &Look) -> Vec<(Id, f64, f64)> {

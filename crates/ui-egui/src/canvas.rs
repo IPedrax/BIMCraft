@@ -72,6 +72,9 @@ pub struct Canvas {
     crop_drag: Option<(Id, usize)>,
     /// A selected wall's end being dragged: the wall, and whether it's its start.
     grip: Option<(Id, bool)>,
+    /// A selected level's end being dragged in a section or an elevation: the level, and whether
+    /// it's its far end.
+    level_grip: Option<(Id, bool)>,
     /// Where the primary button last went down on a view, and when.
     press: Option<(Pos2, f64)>,
     /// The primary button's release this frame: where it went down, and whether it came up within
@@ -96,6 +99,7 @@ impl Default for Canvas {
             cycle: 0,
             crop_drag: None,
             grip: None,
+            level_grip: None,
             press: None,
             lifted: None,
             prior: None,
@@ -531,23 +535,6 @@ fn box_shapes(rect: Rect, from: (f32, f32), q: (f32, f32)) -> Vec<Shape> {
     }
 }
 
-/// Where a crop region's edges have their grips: west, east, south and north (in a section: its
-/// start, its end, its bottom and its top).
-fn grips([lo, hi]: [P2; 2]) -> [P2; 4] {
-    let mid = (lo + hi) * 0.5;
-    [P2(lo.0, mid.1), P2(hi.0, mid.1), P2(mid.0, lo.1), P2(mid.0, hi.1)]
-}
-
-/// The region with edge `k` (as [`grips`] orders them) moved to `p`, at least 100 mm across.
-fn regrip([lo, hi]: [P2; 2], k: usize, p: P2) -> [P2; 2] {
-    match k {
-        0 => [P2(p.0.min(hi.0 - 100.0), lo.1), hi],
-        1 => [lo, P2(p.0.max(lo.0 + 100.0), hi.1)],
-        2 => [P2(lo.0, p.1.min(hi.1 - 100.0)), hi],
-        _ => [lo, P2(hi.0, p.1.max(lo.1 + 100.0))],
-    }
-}
-
 /// Of element `id`'s lines that a dimension of `kind` can take after `first` (for an aligned one,
 /// parallel to it; for an angular one, across it), the nearest `p`, if it's within `near` mm: a
 /// wall's far end isn't picked by a click on its middle.
@@ -875,6 +862,7 @@ impl BimApp {
         if response.drag_started_by(PointerButton::Primary)
             && self.tool == Tool::Modify
             && self.canvas.crop_drag.is_none()
+            && self.canvas.level_grip.is_none()
             && let Some(o) = ui.input(|i| i.pointer.press_origin()).map(local)
         {
             self.canvas.prior = None;
@@ -921,14 +909,14 @@ impl BimApp {
         if modify
             && response.drag_started_by(PointerButton::Primary)
             && let Some(o) = ui.input(|i| i.pointer.press_origin())
-            && let Some(k) = grips(region).iter().position(|g| at(*g).distance(o) <= 8.0)
+            && let Some(k) = geom::edge_grips(region).iter().position(|g| at(*g).distance(o) <= 8.0)
         {
             self.canvas.crop_drag = Some((id, k));
         }
         let held = self.canvas.crop_drag.filter(|(v, _)| *v == id).map(|(_, k)| k);
         let now = ui.input(|i| i.pointer.latest_pos()).map(|q| view.mm((q.x - rect.min.x, q.y - rect.min.y)));
         let shown = match (held, now) {
-            (Some(k), Some(p)) => regrip(region, k, round(p)),
+            (Some(k), Some(p)) => geom::move_edge(region, k, round(p)),
             _ => region,
         };
         if response.drag_stopped()
@@ -947,11 +935,60 @@ impl BimApp {
         let ring = [lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)].map(at).to_vec();
         let mut shapes = vec![Shape::closed_line(ring, Stroke::new(1.0, if held.is_some() { pal().accent } else { pal().muted }))];
         if modify {
-            for g in grips(shown) {
+            for g in geom::edge_grips(shown) {
                 let r = Rect::from_center_size(at(g), vec2(9.0, 9.0));
                 shapes.push(Shape::rect_filled(r, 1.0, pal().surface));
                 shapes.push(Shape::rect_stroke(r, 1.0, Stroke::new(1.5, pal().accent), StrokeKind::Middle));
             }
+        }
+        shapes
+    }
+
+    /// The level selected alone, with Modify, in section or elevation `id` in `rect` through `view`:
+    /// a grip at each end of its line. A drag from one moves that end along the line, and its extent
+    /// with it (`Model::level_extent_along`); on release, `modify`. What to paint over the view.
+    pub(crate) fn level_grips(&mut self, ui: &Ui, response: &Response, rect: Rect, view: &View, id: Id) -> Vec<Shape> {
+        let m = std::sync::Arc::clone(&self.session.model);
+        let level = match self.selection.as_slice() {
+            &[l] if self.tool == Tool::Modify => m.level(l).map(|lv| (l, lv.elevation)),
+            _ => None,
+        };
+        let Some(((level, z), (a, b))) = level.and_then(|(l, z)| Some(((l, z), render::level_ends(&m, l, id)?))) else {
+            self.canvas.level_grip = None;
+            return Vec::new();
+        };
+        let at = |along: f64| pos(rect.min, view.px(P2(along, z)));
+        if response.drag_started_by(PointerButton::Primary)
+            && let Some(o) = ui.input(|i| i.pointer.press_origin())
+            && let Some(far) = [(false, a), (true, b)].into_iter().find(|(_, e)| at(*e).distance(o) <= 8.0).map(|(far, _)| far)
+        {
+            self.canvas.level_grip = Some((level, far));
+        }
+        let held = self.canvas.level_grip.filter(|(l, _)| *l == level).map(|(_, far)| far);
+        let now = ui.input(|i| i.pointer.latest_pos()).map(|q| round(view.mm((q.x - rect.min.x, q.y - rect.min.y))).0);
+        let ends = match (held, now) {
+            (Some(true), Some(to)) => (a, to.max(a + 100.0)),
+            (Some(false), Some(to)) => (to.min(b - 100.0), b),
+            _ => (a, b),
+        };
+        if response.drag_stopped()
+            && let (Some(far), Some(to)) = (held, now)
+        {
+            self.canvas.level_grip = None;
+            if !self.canvas.quick()
+                && let Some([lo, hi]) = m.level_extent_along(level, id, far, to)
+            {
+                self.run("modify", json!({"id": level, "extent": [point(lo), point(hi)]}));
+            }
+        }
+        let mut shapes = Vec::new();
+        if held.is_some() {
+            shapes.push(Shape::line_segment([at(ends.0), at(ends.1)], Stroke::new(1.5, pal().accent)));
+        }
+        for e in [ends.0, ends.1] {
+            let r = Rect::from_center_size(at(e), vec2(9.0, 9.0));
+            shapes.push(Shape::rect_filled(r, 1.0, pal().surface));
+            shapes.push(Shape::rect_stroke(r, 1.0, Stroke::new(1.5, pal().accent), StrokeKind::Middle));
         }
         shapes
     }
