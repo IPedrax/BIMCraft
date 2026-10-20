@@ -1,7 +1,8 @@
 //! Sections and elevations: the core's picture of what the view sees past its line, its cut,
 //! levels, grids, notes and spot elevations drawn over it, panned and zoomed like a plan (its
 //! points run along its line and up). A click picks what it shows: a cut, a level, a grid, or what
-//! lies beyond; with Text or Spot Elevation, it places one. Its crop region's grips drag its edges.
+//! lies beyond; a drag, a selection box; with Text or Spot Elevation, a click places one. Its crop
+//! region's grips drag its edges.
 
 use std::sync::Arc;
 
@@ -77,6 +78,21 @@ impl BimApp {
         }
         paint(&p, Place::at(rect.min), &d, &self.selection, hovered, self.thin, &[]);
         p.extend(crop);
+        // A drag draws a selection box: it takes what the drawing over the picture has in it, and
+        // what the picture shows.
+        let held = self.cut.image.take();
+        let image = held.as_ref();
+        let inside = |a: (f32, f32), b: (f32, f32), crossing: bool| {
+            let scaled = |q: (f32, f32)| (f64::from(q.0) * ppp, f64::from(q.1) * ppp);
+            let mut found = d.in_box(a, b, crossing);
+            found.extend(image.map(|i| i.in_box(scaled(a), scaled(b), crossing)).unwrap_or_default());
+            found.sort_unstable();
+            found.dedup();
+            found
+        };
+        let boxed = self.drag_box(ui, &response, rect, inside);
+        self.cut.image = held;
+        p.extend(boxed);
         let clicked = self.clicked_at(&response).map(|at| (at.x - rect.min.x, at.y - rect.min.y));
         // Along the line and up, to the nearest 10 mm.
         let at = |q: (f32, f32)| {

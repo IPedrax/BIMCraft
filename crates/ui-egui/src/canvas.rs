@@ -516,6 +516,21 @@ fn start_of(tool: &Tool) -> &[P2] {
     }
 }
 
+/// A selection box from pixel `from` to `q` of a view in `rect`: Revit draws a crossing box (right
+/// to left) dashed, a window box solid.
+fn box_shapes(rect: Rect, from: (f32, f32), q: (f32, f32)) -> Vec<Shape> {
+    let r = Rect::from_two_pos(pos(rect.min, from), pos(rect.min, q));
+    let fill = Shape::rect_filled(r, 0.0, pal().accent.gamma_multiply(0.08));
+    if q.0 < from.0 {
+        let ring = [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom(), r.left_top()];
+        let mut out = vec![fill];
+        out.extend(Shape::dashed_line(&ring, Stroke::new(1.0, pal().accent), 6.0, 4.0));
+        out
+    } else {
+        vec![fill, Shape::rect_stroke(r, 0.0, Stroke::new(1.0, pal().accent), StrokeKind::Middle)]
+    }
+}
+
 /// Where a crop region's edges have their grips: west, east, south and north (in a section: its
 /// start, its end, its bottom and its top).
 fn grips([lo, hi]: [P2; 2]) -> [P2; 4] {
@@ -813,17 +828,7 @@ impl BimApp {
                 let (a, b) = (view.px(from), view.px(from + round(view.mm(q) - from)));
                 ghost(&p, rect.min, &d, &self.selection, &|q| q + vec2(b.0 - a.0, b.1 - a.1));
             }
-            (Some(Drag::Box(from)), Some(q)) => {
-                let r = Rect::from_two_pos(pos(rect.min, from), pos(rect.min, q));
-                p.rect_filled(r, 0.0, pal().accent.gamma_multiply(0.08));
-                // Revit draws a crossing box (right to left) dashed, a window box solid.
-                if q.0 < from.0 {
-                    let ring = [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom(), r.left_top()];
-                    p.extend(Shape::dashed_line(&ring, Stroke::new(1.0, pal().accent), 6.0, 4.0));
-                } else {
-                    p.rect_stroke(r, 0.0, Stroke::new(1.0, pal().accent), StrokeKind::Middle);
-                }
-            }
+            (Some(Drag::Box(from)), Some(q)) => p.extend(box_shapes(rect, from, q)),
             _ => {}
         }
         if let Some(q) = local {
@@ -853,6 +858,39 @@ impl BimApp {
         self.grip_overlay(ui, &model, &view, rect, level, &d);
         self.temporary_dimension(ui, &model, &view, rect);
         self.nav_bar(ui, rect, level);
+    }
+
+    /// A selection box in a section or an elevation, where nothing moves by dragging (in a plan, a
+    /// drag from an element moves it): any drag with Modify but a crop region's grip's; on release,
+    /// what `inside` finds between its corners (from the left, what's wholly inside; from the right,
+    /// what it crosses too) is picked up. What to paint while it's dragged.
+    pub(crate) fn drag_box(
+        &mut self,
+        ui: &Ui,
+        response: &Response,
+        rect: Rect,
+        inside: impl Fn((f32, f32), (f32, f32), bool) -> Vec<Id>,
+    ) -> Vec<Shape> {
+        let local = |p: Pos2| (p.x - rect.min.x, p.y - rect.min.y);
+        if response.drag_started_by(PointerButton::Primary)
+            && self.tool == Tool::Modify
+            && self.canvas.crop_drag.is_none()
+            && let Some(o) = ui.input(|i| i.pointer.press_origin()).map(local)
+        {
+            self.canvas.prior = None;
+            self.canvas.drag = Some(Drag::Box(o));
+        }
+        let at = ui.input(|i| i.pointer.latest_pos()).map(local);
+        if response.drag_stopped()
+            && let (Some(Drag::Box(from)), Some(q)) = (self.canvas.drag.take(), at)
+            && self.finish_drag()
+        {
+            self.pick_up(inside(from, q, q.0 < from.0), click_modifiers(ui));
+        }
+        match (self.canvas.drag, at) {
+            (Some(Drag::Box(from)), Some(q)) => box_shapes(rect, from, q),
+            _ => Vec::new(),
+        }
     }
 
     /// The navigation bar of view `id`, at its top right as in Revit: fit, zoom in, zoom out.
