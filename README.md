@@ -611,7 +611,7 @@ Copyright (c) 2026 IPedrax and the BIMCraft contributors.
 
 BIMCraft's logo, its icons, its stroke lettering and its sample house are original work, drawn or built in code. Its
 architecture, its rules and its MCP design follow [CADCraft](https://github.com/storytold/cadcraft) (MIT OR Apache-2.0) by
-the ArtCraft team, as its logo follows CADCraft's style.
+the ArtCraft team.
 
 <sub>Autodesk and Revit are trademarks or registered trademarks of Autodesk, Inc. in the United States and/or other countries. BIMCraft is an independent, open-source project and is not affiliated with, sponsored by or endorsed by Autodesk, Inc.; these names are used only to describe the workflow it follows. IFC is an open standard of buildingSMART International, published as ISO 16739.</sub>
 
