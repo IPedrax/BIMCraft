@@ -3448,6 +3448,49 @@ fn favorites_keep_materials_and_families_for_every_project() {
 }
 
 #[test]
+fn a_level_reaches_as_far_as_its_extent_in_sections_elevations_and_the_3d_view() {
+    use crate::view3d::{AZIMUTH, ELEVATION, Scene};
+    let mut s = Session::new();
+    house(&mut s);
+    let sec = run(&mut s, "section", json!({"start": [-1000, 3000], "end": [9000, 3000]}))["id"].as_u64().unwrap();
+    // A level stretches over a rectangle in plan: by default, the model's, a metre past it.
+    let mezz = run(&mut s, "level", json!({"elevation": 1500, "name": "Mezzanine"}))["id"].as_u64().unwrap();
+    assert_eq!(s.model.level_extent(mezz), Some([P2(-1100.0, -1100.0), P2(9100.0, 7100.0)]));
+    run(&mut s, "modify", json!({"id": mezz, "extent": [[0, 0], [4000, 6000]]}));
+    assert_eq!(s.model.level_extent(mezz), Some([P2(0.0, 0.0), P2(4000.0, 6000.0)]));
+    // The section draws it only over its extent: 1000 to 5000 along its line.
+    let at = |s: &Session, along: f64, z: f64| {
+        let view = crate::render::section_fit(&s.model, sec, 1600, 1000);
+        let d = crate::render::section(&s.model, sec, view);
+        d.pick(view.px(P2(along, z)), 2.0)
+    };
+    assert_eq!(at(&s, 3000.0, 1500.0), Some(mezz));
+    assert_ne!(at(&s, 7000.0, 1500.0), Some(mezz));
+    // An extent wholly behind the section's line: not in it at all.
+    run(&mut s, "modify", json!({"id": mezz, "extent": [[0, 0], [4000, 2000]]}));
+    assert_ne!(at(&s, 3000.0, 1500.0), Some(mezz));
+    // Hostile or back to front: refused, with what to fix.
+    for bad in [json!([[4000, 0], [0, 6000]]), json!([[0, 0], [1e300, 6000]])] {
+        let e = s.execute("modify", &json!({"id": mezz, "extent": bad})).unwrap_err();
+        assert!(e.contains("extent"), "{e}");
+    }
+    let e = s.execute("level", &json!({"elevation": 6000, "extent": [[0, 0], [0, 0]]})).unwrap_err();
+    assert!(e.contains("extent"), "{e}");
+    // In 3D, a plane: its outline is drawn, and clicking it picks the level.
+    let top = run(&mut s, "level", json!({"elevation": 9000, "name": "Top", "extent": [[0, 0], [8000, 6000]]}))["id"].as_u64().unwrap();
+    let scene = Scene::new(&s.model);
+    let cam = scene.fit(AZIMUTH, ELEVATION, 1600, 1000);
+    let image = scene.render(&cam, &[]);
+    // Its far north edge: the near ones show only when it is selected.
+    let (x, y, _) = cam.project([4000.0, 6000.0, 9000.0]);
+    let near: Vec<_> = (-2..=2)
+        .flat_map(|dx| (-2..=2).map(move |dy| (dx, dy)))
+        .filter_map(|(dx, dy)| image.pick(x + f64::from(dx), y + f64::from(dy)))
+        .collect();
+    assert!(near.contains(&top), "{near:?}");
+}
+
+#[test]
 fn a_section_uncropped_shows_all_there_is_along_its_line_and_cropped_only_its_region() {
     let mut s = Session::new();
     let w = house(&mut s);

@@ -56,9 +56,14 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
+/// How far past the model a level reaches without an extent of its own, mm.
+pub const LEVEL_PAST: f64 = 1000.0;
 
 /// A level, and its floor plan: what the plan sees (its view range), and the part of it the plan
-/// shows (its crop region, corners south-west then north-east; all of it without one).
+/// shows (its crop region, corners south-west then north-east; all of it without one). As a datum
+/// it is a horizontal plane over its `extent`, corners south-west then north-east (without one, the
+/// model's, [`LEVEL_PAST`] past it): sections and elevations draw it where they see that, and the 3D
+/// view its outline.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Level {
@@ -68,6 +73,8 @@ pub struct Level {
     pub view_range: ViewRange,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crop: Option<[P2; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extent: Option<[P2; 2]>,
     /// What its plan hides and how it draws the rest.
     #[serde(default, skip_serializing_if = "Graphics::is_default")]
     pub graphics: Graphics,
@@ -75,7 +82,7 @@ pub struct Level {
 
 impl Level {
     pub fn new(name: impl Into<String>, elevation: f64) -> Level {
-        Level { name: name.into(), elevation, view_range: ViewRange::default(), crop: None, graphics: Graphics::default() }
+        Level { name: name.into(), elevation, view_range: ViewRange::default(), crop: None, extent: None, graphics: Graphics::default() }
     }
 }
 
@@ -1399,6 +1406,34 @@ impl Model {
         }
     }
 
+    /// The rectangle level `id` stretches over in plan, south-west corner then north-east: its
+    /// extent, else [`Model::model_extent`].
+    pub fn level_extent(&self, id: Id) -> Option<[P2; 2]> {
+        Some(self.level(id)?.extent.unwrap_or_else(|| self.model_extent()))
+    }
+
+    /// What a level stretches over without an extent of its own: every solid and grid in plan,
+    /// [`LEVEL_PAST`] past them (10 m each way of the origin in an empty project).
+    pub fn model_extent(&self) -> [P2; 2] {
+        let pts = crate::view3d::solids(self)
+            .iter()
+            .flat_map(|s| s.corners())
+            .map(|p| P2(p[0], p[1]))
+            .chain(self.elements.values().flat_map(|e| match e {
+                Element::Grid(g) => vec![g.start, g.end],
+                _ => Vec::new(),
+            }))
+            .collect::<Vec<_>>();
+        match pts.first() {
+            Some(&first) => {
+                let (lo, hi) =
+                    pts.iter().fold((first, first), |(lo, hi), q| (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1))));
+                [crate::commands::micron(lo - P2(LEVEL_PAST, LEVEL_PAST)), crate::commands::micron(hi + P2(LEVEL_PAST, LEVEL_PAST))]
+            }
+            None => [P2(-10_000.0, -10_000.0), P2(10_000.0, 10_000.0)],
+        }
+    }
+
     /// Levels from lowest to highest.
     pub fn levels(&self) -> Vec<(Id, &Level)> {
         let mut v: Vec<(Id, &Level)> = self
@@ -2432,6 +2467,13 @@ impl Model {
                     range_ok(&who, &l.view_range)?;
                     if let Some([a, b]) = l.crop {
                         crop(&who, a, b)?;
+                    }
+                    if let Some([a, b]) = l.extent {
+                        point(&format!("{who} extent"), a)?;
+                        point(&format!("{who} extent"), b)?;
+                        if !(a.0 < b.0 - TOL && a.1 < b.1 - TOL) {
+                            return Err(format!("{who}: its extent runs from its south-west corner to its north-east one"));
+                        }
                     }
                     l.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
                 }

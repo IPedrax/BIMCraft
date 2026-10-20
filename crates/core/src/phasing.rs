@@ -963,7 +963,8 @@ mod tests {
         let drawn = |t: &mut Session| {
             run(t, "render", json!({"view": "{3D}", "width": 200, "height": 150, "path": path.to_str().unwrap()}));
             let pm = tiny_skia::Pixmap::load_png(&path).unwrap();
-            pm.pixels().iter().filter(|c| (c.red(), c.green(), c.blue()) != (255, 255, 255)).count()
+            // What isn't paper, nor the levels' planes.
+            pm.pixels().iter().filter(|c| ![(255, 255, 255), (60, 100, 150)].contains(&(c.red(), c.green(), c.blue()))).count()
         };
         assert!(drawn(&mut t) > 100);
         run(&mut t, "modify", json!({"id": wall, "params": {"Design Option": "Facade: Glass"}}));

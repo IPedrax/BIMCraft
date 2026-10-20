@@ -57,7 +57,15 @@ pub static ALL: &[Command] = &[
     ),
     other("undo", "Undo", "{}", undo),
     other("redo", "Redo", "{}", redo),
-    edit("level", "Level", &["LL"], "{elevation, name?} a level at an elevation in mm", level),
+    edit(
+        "level",
+        "Level",
+        &["LL"],
+        "{elevation, name?, extent?: [[x,y],[x,y]]} a level at an elevation in mm; `extent`, the rectangle in plan its \
+         plane stretches over (south-west corner, then north-east), where sections, elevations and the 3D view show it \
+         (without one, the model's, a metre past it)",
+        level,
+    ),
     edit("grid", "Grid", &["GR"], "{start: [x,y], end: [x,y], name?} names follow the last grid: 1, 2… or A, B…", grid),
     edit(
         "wall",
@@ -2140,7 +2148,14 @@ fn level(s: &mut Session, p: &Value) -> R {
             (taken.len() + 1..).map(|n| format!("{level} {n}")).find(|n| !taken.contains(n.as_str())).unwrap_or_default()
         }
     };
-    let id = s.model_mut().insert(Element::Level(Level::new(name.clone(), elevation)));
+    let extent = match p.get("extent") {
+        v if absent(v) => None,
+        _ => match points(c, p, "extent")?.as_slice() {
+            [a, b] => Some([*a, *b]),
+            _ => return Err(bad(c, "`extent` is two corners, [[x, y], [x, y]]: south-west, then north-east")),
+        },
+    };
+    let id = s.model_mut().insert(Element::Level(Level { extent, ..Level::new(name.clone(), elevation) }));
     Ok(json!({"id": id, "name": name}))
 }
 

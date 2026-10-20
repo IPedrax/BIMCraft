@@ -28,6 +28,8 @@ pub const ELEVATION: f64 = 30.0;
 pub const MAX_SIDE: u32 = 4096;
 /// Where faces meet.
 pub const EDGE: Rgb = Rgb(48, 48, 48);
+/// What a level's plane is outlined in.
+const DATUM: Rgb = Rgb(60, 100, 150);
 const WALL: Rgb = Rgb(236, 236, 232);
 const SLAB: Rgb = Rgb(214, 214, 210);
 const DOOR: Rgb = Rgb(198, 168, 128);
@@ -695,6 +697,8 @@ pub struct Scene {
     /// Each texture the scene uses, by id; and each textured triangle's way across and up its plane.
     skins: Vec<Option<Sampler>>,
     bases: Vec<Option<[P3; 2]>>,
+    /// Each level's plane: its name, and the corners of its extent at its elevation.
+    levels: Vec<(Id, String, [P3; 4])>,
 }
 
 /// How an element's triangles name their faces.
@@ -768,7 +772,17 @@ impl Scene {
         }
         let bases = tris.iter().map(|t| skins.get(t.tex as usize).is_some_and(Option::is_some).then(|| basis(t))).collect();
         let (planes, smooth) = (planes(&tris), corner_normals(&tris));
-        Scene { tris, planes, smooth, faces: Arc::new(faces), skins, bases }
+        let default = std::cell::OnceCell::new();
+        let levels = m
+            .levels()
+            .into_iter()
+            .map(|(id, l)| {
+                let [lo, hi] = l.extent.unwrap_or_else(|| *default.get_or_init(|| m.model_extent()));
+                let z = l.elevation;
+                (id, l.name.clone(), [[lo.0, lo.1, z], [hi.0, lo.1, z], [hi.0, hi.1, z], [lo.0, hi.1, z]])
+            })
+            .collect();
+        Scene { tris, planes, smooth, faces: Arc::new(faces), skins, bases, levels }
     }
 
     /// A view of the whole model from `azimuth` and `elevation` (degrees), fitted into the picture.
@@ -780,7 +794,9 @@ impl Scene {
     pub fn fit_in(&self, azimuth: f64, elevation: f64, width: u32, height: u32, look: &Look) -> Camera {
         let mut cam = Camera { azimuth, elevation: elevation.clamp(-89.0, 89.0), scale: 1.0, target: [0.0; 3], width, height };
         let room = |px: u32| (f64::from(px) - 2.0 * MARGIN).max(1.0);
-        let pts: Vec<P3> = self.tris.iter().filter(|t| look.shows(t.owner)).flat_map(|t| t.p).collect();
+        let solids = self.tris.iter().filter(|t| look.shows(t.owner)).flat_map(|t| t.p);
+        let levels = self.levels.iter().filter(|(id, ..)| look.shows(*id)).flat_map(|(.., c)| *c);
+        let pts: Vec<P3> = solids.chain(levels).collect();
         let Some((target, w, h)) = extent(&cam, &pts) else {
             cam.scale = room(width).min(room(height)) / 10_000.0;
             return cam;
@@ -991,13 +1007,58 @@ impl Scene {
         if through_any {
             hit = hit.iter().zip(&seen).map(|(h, s)| if *s == u32::MAX { *h } else { *s }).collect();
         }
-        Image {
-            width: w as u32,
-            height: h as u32,
-            rgba,
-            hit,
-            owners: self.tris.iter().map(|t| t.owner).collect(),
-            faces: Arc::clone(&self.faces),
+        let mut owners: Vec<Id> = self.tris.iter().map(|t| t.owner).collect();
+        // Over it, each level's plane outlined where nothing nearer hides it (not in a section's picture,
+        // which draws its own), picked as the level.
+        if clip.is_none() {
+            let slack = 1.5 / cam.scale.max(1e-9);
+            for (id, _, corners) in self.levels.iter().filter(|(id, ..)| plain || look.shows(*id)) {
+                let c = tints.get(id).copied().unwrap_or_else(|| look.edge(*id, DATUM));
+                let slot = owners.len() as u32;
+                owners.push(*id);
+                let mut paint = |k: usize| {
+                    if let (Some(px), Some(t)) = (rgba.get_mut(4 * k..4 * k + 3), hit.get_mut(k)) {
+                        px.copy_from_slice(&[c.0, c.1, c.2]);
+                        *t = slot;
+                    }
+                };
+                for (a, b) in corners.iter().zip(corners.iter().cycle().skip(1)) {
+                    outline((cam.project(*a), cam.project(*b)), (w, h), 2, slack, &depth, &mut paint);
+                }
+            }
+        }
+        Image { width: w as u32, height: h as u32, rgba, hit, owners, faces: Arc::clone(&self.faces) }
+    }
+}
+
+/// The pixels of a `w` x `h` picture a line from `a` to `b` (each a pixel and its nearness)
+/// covers, `wide` (1 or 2) px wide, where nothing in `depth` lies more than `slack` mm nearer: each to `paint`.
+fn outline(
+    (a, b): ((f64, f64, f64), (f64, f64, f64)),
+    (w, h): (usize, usize),
+    wide: u8,
+    slack: f64,
+    depth: &[f32],
+    mut paint: impl FnMut(usize),
+) {
+    let steps = (b.0 - a.0).abs().max((b.1 - a.1).abs()).ceil();
+    if !steps.is_finite() || steps > 4.0 * MAX_SIDE as f64 {
+        return;
+    }
+    let steps = steps.max(1.0) as usize;
+    for i in 0..=steps {
+        let t = i as f64 / steps as f64;
+        let (x, y, z) = (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t, a.2 + (b.2 - a.2) * t);
+        let offsets: &[(f64, f64)] = if wide > 1 { &[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)] } else { &[(0.5, 0.5)] };
+        for &(dx, dy) in offsets {
+            let (px, py) = ((x - 0.5 + dx).floor(), (y - 0.5 + dy).floor());
+            if px < 0.0 || py < 0.0 || px >= w as f64 || py >= h as f64 {
+                continue;
+            }
+            let k = py as usize * w + px as usize;
+            if depth.get(k).is_some_and(|d| f64::from(*d) <= z + slack) {
+                paint(k);
+            }
         }
     }
 }
@@ -1390,7 +1451,9 @@ mod tests {
     #[test]
     fn a_curve_shades_smoothly_across_its_facets_and_a_flat_face_in_one_shade() {
         let s = post();
-        let scene = Scene::new(&s.model);
+        let mut scene = Scene::new(&s.model);
+        // Its shading, not the levels' planes.
+        scene.levels.clear();
         let cam = scene.fit(AZIMUTH, ELEVATION, 800, 600);
         let img = scene.render(&cam, &[]);
         // Across its side, edge to edge: no step between neighbours bigger than a level, though it does change.
@@ -1424,7 +1487,8 @@ mod tests {
     fn a_curved_wall_shades_smoothly_along_its_face() {
         let mut s = Session::new();
         s.script(r#"wall {"points": [[0, 0], [4000, 0]], "arc": 180}"#).unwrap();
-        let scene = Scene::new(&s.model);
+        let mut scene = Scene::new(&s.model);
+        scene.levels.clear();
         let cam = scene.fit(AZIMUTH, ELEVATION, 800, 600);
         let img = scene.render(&cam, &[]);
         // Along its face at mid-height, between its ends: the row's pixels that show the wall.

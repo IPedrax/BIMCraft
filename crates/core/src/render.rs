@@ -497,7 +497,7 @@ pub(crate) fn section_heights(m: &Model, id: Id) -> [f64; 2] {
 }
 
 /// How far along its line, from its start, section or elevation `v` shows: cropped, from its start
-/// to its end; else as far as anything it shows reaches (what lies beyond its line and
+/// to its end; else as far as anything it shows reaches (what lies beyond its line, its levels and
 /// its grids), and its line.
 fn span(m: &Model, v: &Section, look: &Look) -> (f64, f64) {
     let len = v.start.dist(v.end);
@@ -507,11 +507,35 @@ fn span(m: &Model, v: &Section, look: &Look) -> (f64, f64) {
     let u = (v.end - v.start).unit();
     let along = |q: P2| (q - v.start).dot(u);
     let solids = view3d::solids(m).into_iter().filter(|s| look.shows(s.owner())).flat_map(|s| s.corners()).map(|p| along(P2(p[0], p[1])));
+    let levels = level_spans(m, v, look).into_iter().flat_map(|(_, a, b)| [a, b]);
     let grids = m.elements.iter().filter(|(id, _)| look.shows(**id)).filter_map(|(_, e)| match e {
         Element::Grid(g) => geom::line_intersection(v.start, v.end, g.start, g.end).map(along),
         _ => None,
     });
-    solids.chain(grids).fold((0.0, len), |(lo, hi), x| (lo.min(x), hi.max(x)))
+    solids.chain(levels).chain(grids).fold((0.0, len), |(lo, hi), x| (lo.min(x), hi.max(x)))
+}
+
+/// The levels section or elevation `v` sees, each from how far along its line to how far: where
+/// its extent lies, past its line (within its depth).
+fn level_spans(m: &Model, v: &Section, look: &Look) -> Vec<(Id, f64, f64)> {
+    let u = (v.end - v.start).unit();
+    let past = |q: P2| (q - v.start).dot(v.looking());
+    let default = std::cell::OnceCell::new();
+    m.levels()
+        .into_iter()
+        .filter(|(id, _)| look.shows(*id))
+        .filter_map(|(id, l)| {
+            let [lo, hi] = l.extent.unwrap_or_else(|| *default.get_or_init(|| m.model_extent()));
+            let corners = [lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)];
+            let (near, far) = corners.iter().fold((f64::MAX, f64::MIN), |(a, b), q| (a.min(past(*q)), b.max(past(*q))));
+            if far < -TOL || v.depth.is_some_and(|d| near > d) {
+                return None;
+            }
+            let (a, b) =
+                corners.iter().fold((f64::MAX, f64::MIN), |(a, b), q| (a.min((*q - v.start).dot(u)), b.max((*q - v.start).dot(u))));
+            Some((id, a, b))
+        })
+        .collect()
 }
 
 /// The heights a section or elevation shows: its crop's, else all of the model's.
@@ -721,9 +745,12 @@ pub fn section(m: &Model, id: Id, view: View) -> Drawing {
         let (a, b) = (d.view.px(P2(first, hi)), d.view.px(P2(last, lo)));
         d.crop(a, b, |_| false);
     }
-    for (level, l) in m.levels().into_iter().filter(|(id, l)| look.shows(*id) && ((lo..=hi).contains(&l.elevation) || v.crop.is_none())) {
+    // Each level over as much of its extent as the view sees, named past its end.
+    for (level, from, to) in level_spans(m, v, &look) {
+        let (from, to) = (from.max(first), to.min(last));
+        let Some(l) = m.level(level).filter(|l| from < to && ((lo..=hi).contains(&l.elevation) || v.crop.is_none())) else { continue };
         d.owner = Some(level);
-        let (a, b) = (d.view.px(P2(first, l.elevation)), d.view.px(P2(last, l.elevation)));
+        let (a, b) = (d.view.px(P2(from, l.elevation)), d.view.px(P2(to, l.elevation)));
         d.push(Prim::Line { pts: vec![a, b], width: 1.0, color: INK, dash: Some([12.0, 4.0]), closed: false });
         for (text, dy) in [(l.name.clone(), -8.0), (m.units.length(l.elevation), 8.0)] {
             d.text(&text, (b.0 + 8.0 + font::width(&text, 10.0) / 2.0, b.1 + dy), 10.0, INK);

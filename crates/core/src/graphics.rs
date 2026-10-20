@@ -883,7 +883,9 @@ mod tests {
         let red = |pm: &tiny_skia::Pixmap| painted(pm, |r, g, b| r > 120 && g < 40 && b < 40);
         assert!(red(&picture(&mut s, "{3D}", "b")) > 500, "walls in red");
         run(&mut s, "graphics", json!({"view": "{3D}", "hide": ["walls"]}));
-        assert_eq!(shown(&picture(&mut s, "{3D}", "c")), 0, "nothing else to see");
+        assert!(shown(&picture(&mut s, "{3D}", "c")) > 0, "the levels' planes");
+        run(&mut s, "graphics", json!({"view": "{3D}", "hide": ["walls", "levels"]}));
+        assert_eq!(shown(&picture(&mut s, "{3D}", "d")), 0, "nothing else to see");
         // The placed 3D view is that same view; the plan is its own.
         assert!(!owned(&plan(&s, 1), 3).is_empty());
     }
@@ -1572,7 +1574,7 @@ mod tests {
         run(&mut s, "graphics", json!({"view": 2, "template": null}));
         assert_eq!(cut(&s, 2), 4500.0);
         // A 3D view follows one as a plan does.
-        run(&mut s, "graphics", json!({"view": "{3D}", "hide": ["walls"]}));
+        run(&mut s, "graphics", json!({"view": "{3D}", "hide": ["walls", "levels"]}));
         run(&mut s, "template", json!({"name": "Walls out", "from": "{3D}"}));
         run(&mut s, "sheet", json!({"name": "Views"}));
         run(&mut s, "place", json!({"sheet": "A101", "view": "{3D}", "scale": 200}));
