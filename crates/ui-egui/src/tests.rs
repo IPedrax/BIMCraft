@@ -1657,6 +1657,23 @@ fn crop_view_and_its_grips_frame_plans_and_sections() {
 }
 
 #[test]
+fn a_box_dragged_in_a_section_selects_as_in_a_plan() {
+    let mut h = app(&format!("{BOX}\nsection {{\"start\": [-1000, 3000], \"end\": [9000, 3000]}}"));
+    browse(&mut h, "Section 1");
+    let west = find(&h, |e| matches!(e, Element::Wall(w) if w.start == P2(0.0, 6000.0)));
+    let north = find(&h, |e| matches!(e, Element::Wall(w) if w.start == P2(8000.0, 6000.0)));
+    // Left to right: what lies wholly inside, the west wall's cut and not the north wall seen past it.
+    drag(&mut h, P2(600.0, -300.0), P2(1400.0, 3300.0));
+    assert_eq!(h.state().selection, [west]);
+    // Right to left: what it crosses too.
+    key(&mut h, Key::Escape);
+    drag(&mut h, P2(1400.0, 1400.0), P2(600.0, 1600.0));
+    let mut both = vec![west, north];
+    both.sort();
+    assert_eq!(h.state().selection, both);
+}
+
+#[test]
 fn a_plans_view_range_is_in_its_properties() {
     let mut h = app(BOX);
     assert!(h.query_by_label("View Range").is_some());

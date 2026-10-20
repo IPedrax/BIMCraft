@@ -1226,6 +1226,22 @@ impl Image {
         self.faces.get(t as usize).copied().filter(|f| !f.is_empty())
     }
 
+    /// The elements the picture shows in the box from pixel `a` to `b`: those it shows only
+    /// inside it, or with `crossing`, any of.
+    pub fn in_box(&self, a: (f64, f64), b: (f64, f64), crossing: bool) -> Vec<Id> {
+        let (lo, hi) = ((a.0.min(b.0), a.1.min(b.1)), (a.0.max(b.0), a.1.max(b.1)));
+        // Each element: whether all of it is inside, and whether any of it is.
+        let mut seen: BTreeMap<Id, (bool, bool)> = BTreeMap::new();
+        for (k, t) in self.hit.iter().enumerate() {
+            let Some(&id) = self.owners.get(*t as usize) else { continue };
+            let (x, y) = ((k % self.width as usize) as f64 + 0.5, (k / self.width as usize) as f64 + 0.5);
+            let inside = (lo.0..=hi.0).contains(&x) && (lo.1..=hi.1).contains(&y);
+            let e = seen.entry(id).or_insert((true, false));
+            *e = (e.0 && inside, e.1 || inside);
+        }
+        seen.into_iter().filter(|(_, (all, any))| if crossing { *any } else { *all }).map(|(id, _)| id).collect()
+    }
+
     /// Every element the picture shows.
     pub fn shows(&self) -> BTreeSet<Id> {
         self.hit.iter().filter_map(|t| self.owners.get(*t as usize).copied()).collect()
