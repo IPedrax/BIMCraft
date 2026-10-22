@@ -1424,7 +1424,7 @@ fn the_palette_keeps_its_fields_and_apply_inside_it_whatever_their_labels() {
     let mut h = app(&format!("{BOX}\nfloor {{}}"));
     h.state_mut().selection = ids(&h, "floor");
     h.run();
-    let panel = egui::PanelState::load(&h.ctx, egui::Id::new("side")).map(|s| s.outer_rect).unwrap();
+    let panel = egui::PanelState::load(&h.ctx, egui::Id::new("dock-left")).map(|s| s.outer_rect).unwrap();
     assert_eq!(panel.width(), 290.0, "the palette at its default width");
     // Height Offset From Level is a long label.
     let fields = h.query_all(By::new().predicate(|n| matches!(n.role(), Role::TextInput | Role::ComboBox)));
@@ -2237,6 +2237,19 @@ mass {"boundary": [[1000, 1000], [3000, 1000], [3000, 2000], [1000, 2000]], "nam
         shortcut(&mut h, "KS");
         missed.extend(english(&h, l));
         press(&mut h, tr("Close"));
+        // Settings, every page; a palette's Dock menu.
+        press(&mut h, tr("Architecture"));
+        h.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
+        h.run();
+        missed.extend(english(&h, l));
+        for page in ["Performance", "Graphics", "Files", "Updates"] {
+            pick(&mut h, Role::Button, tr(page));
+            missed.extend(english(&h, l));
+        }
+        press(&mut h, tr("Close"));
+        press(&mut h, &tr("Dock {}").replace("{}", tr("Properties")));
+        missed.extend(english(&h, l));
+        key(&mut h, Key::Escape);
         // Snaps, and the Measure tool with its prompt.
         key(&mut h, Key::Escape);
         press(&mut h, tr("Manage"));
@@ -4561,6 +4574,8 @@ fn the_massing_tab_makes_floors_walls_a_floor_and_a_roof_from_the_selected_mass(
     assert_eq!(h.state().tool, Tool::Mass(Vec::new()));
 }
 
+mod browser;
+mod dock;
 mod mep;
 
 #[test]

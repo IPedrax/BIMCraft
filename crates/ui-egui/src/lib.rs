@@ -5,8 +5,10 @@
 //! selection, the Options Bar, Properties over the Project Browser on the left, views in tabs
 //! (plans, the 3D view, schedules), and the tool's prompt in the status bar.
 
+mod browser;
 mod canvas;
 mod context;
+mod dock;
 mod editor;
 mod favorites;
 mod footer;
@@ -19,6 +21,7 @@ mod paper;
 mod phasing;
 mod properties;
 mod section;
+pub mod settings;
 mod structure;
 mod style;
 #[cfg(test)]
@@ -37,9 +40,9 @@ use bimcraft_core::units::Units;
 use bimcraft_core::{element_json, render, schedule, stairs};
 use egui::containers::menu::{MenuButton, SubMenuButton};
 use egui::{
-    Align, Align2, Area, CentralPanel, CollapsingHeader, Color32, ComboBox, Context, CornerRadius, Event, FontId, Frame, Grid, Id as UiId,
-    Key, KeyboardShortcut, Layout, Margin, Modal, Modifiers, Order, Panel, Popup, Pos2, Rect, Response, RichText, ScrollArea, Sense,
-    Stroke, StrokeKind, TextEdit, Ui, ViewportCommand, WidgetInfo, WidgetType, pos2, vec2,
+    Align, Align2, Area, CentralPanel, Color32, ComboBox, Context, CornerRadius, Event, FontId, Frame, Grid, Id as UiId, Key,
+    KeyboardShortcut, Layout, Margin, Modal, Modifiers, Order, Panel, Popup, Pos2, Rect, Response, RichText, ScrollArea, Sense, Stroke,
+    StrokeKind, TextEdit, Ui, ViewportCommand, WidgetInfo, WidgetType, pos2, vec2,
 };
 use serde_json::{Value, json};
 
@@ -323,7 +326,7 @@ pub struct BimApp {
     pub session: Session,
     /// The system's requests since the last frame, read once a frame. None where it sends none.
     pub os_events: Option<Box<dyn FnMut() -> Vec<OsEvent>>>,
-    /// The active view; `views` holds every open one, as tabs.
+    /// The active view, which takes the tools: a tab of `views`, or one of `floating`.
     pub sheet: Sheet,
     pub tool: Tool,
     /// The selected elements, in the order they were picked.
@@ -331,7 +334,37 @@ pub struct BimApp {
     pub status: Status,
     /// The interface's language: English unless told otherwise (the app asks the environment).
     pub lang: Language,
+    /// The views docked as tabs, and the one of them the views' area shows: the active view, unless that floats.
     views: Vec<Sheet>,
+    front: Sheet,
+    /// Views floating in windows of their own.
+    floating: Vec<dock::FloatView>,
+    /// A view other than the active one is being drawn: it takes no clicks.
+    passive: bool,
+    /// Where the palettes are, and what is being dragged.
+    docking: dock::Docking,
+    dragging: Option<dock::Drag>,
+    /// What a drag may land on, as drawn this frame: each stack's title (the palette it shows, and whether it floats),
+    /// the views' tab bar and its tabs, and the docked view's drawing, along whose edges palettes dock; and the pointer, last
+    /// seen.
+    drop_headers: Vec<(dock::Palette, Rect, bool)>,
+    tab_bar: Rect,
+    tab_rects: Vec<(Sheet, Rect)>,
+    work: Rect,
+    pointer: Pos2,
+    /// Where a floating window's title was taken from, from its corner.
+    grab: egui::Vec2,
+    /// The ribbon folded to its tabs (a tab's name double-clicked), and its tools shown under them for now (one clicked
+    /// while folded); where its tabs end.
+    ribbon_min: bool,
+    ribbon_peek: bool,
+    ribbon_bottom: Pos2,
+    /// File > Settings, while open, at its page; the settings file, when the app was given one, and what it holds; the
+    /// theme it asks for, put in force on the next frame.
+    settings_page: Option<settings::Page>,
+    settings_path: Option<PathBuf>,
+    settings_kept: Option<settings::Settings>,
+    theme_wanted: Option<egui::ThemePreference>,
     tab: Tab,
     /// Where the ribbon goes back to when the contextual tab goes.
     back: Tab,
@@ -430,8 +463,6 @@ pub struct BimApp {
     tab_cycle: bool,
     /// What a window handed over that `pace` kept back for the frames after the one it came in.
     held: Vec<Event>,
-    show_properties: bool,
-    show_browser: bool,
     /// The Keyboard Shortcuts dialog is open (KS); the Manage tab drops its Project Units menu open
     /// the next time it shows (UN).
     show_shortcuts: bool,
@@ -483,6 +514,11 @@ pub struct BimApp {
     collapsed: BTreeSet<&'static str>,
     /// Where views show, last frame.
     view_rect: Rect,
+    /// Where the last view drawn showed, whether it was the active view or not.
+    pane: Rect,
+    /// What the Project Browser keeps to, and its search.
+    browser_tab: browser::Tab,
+    browser_find: String,
     /// Unsaved changes were dealt with: the window may close.
     closing: bool,
     title: String,
@@ -585,10 +621,15 @@ fn icon_button(ui: &mut Ui, icon: Icon, label: &str) -> Response {
 
 /// A tab, of the ribbon or of a view. Contextual tabs are green, as Revit's are.
 fn tab_button(ui: &mut Ui, label: &str, active: bool, contextual: bool) -> Response {
+    tab_button_with(ui, label, active, contextual, Sense::click())
+}
+
+/// A tab that senses what `sense` says: a view's drags too.
+fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sense: Sense) -> Response {
     let label = t(label);
     let font = FontId::proportional(13.0);
     let size = ui.painter().layout_no_wrap(label.to_string(), font.clone(), pal().text).size();
-    let (rect, r) = ui.allocate_exact_size(size + vec2(24.0, 10.0), Sense::click());
+    let (rect, r) = ui.allocate_exact_size(size + vec2(24.0, 10.0), sense);
     r.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, active, label));
     let (fill, ink) = match (contextual, active, r.hovered()) {
         (true, true, _) => (pal().surface, pal().context),
@@ -608,17 +649,6 @@ fn tab_button(ui: &mut Ui, label: &str, active: bool, contextual: bool) -> Respo
     }
     p.text(rect.center(), Align2::CENTER_CENTER, label, font, ink);
     r
-}
-
-/// A palette's title bar, across its width.
-fn title_bar(ui: &mut Ui, title: &str) {
-    let title = t(title);
-    let (r, response) = ui.allocate_exact_size(vec2(ui.available_width(), 26.0), Sense::hover());
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, title));
-    let p = ui.painter();
-    p.rect_filled(r, 0.0, pal().bar);
-    p.line_segment([r.left_bottom(), r.right_bottom()], Stroke::new(1.0, pal().border));
-    p.text(r.left_center() + vec2(10.0, 0.0), Align2::LEFT_CENTER, title, FontId::proportional(13.0), pal().text);
 }
 
 /// A ribbon panel: its buttons over its name, as Revit groups tools.
@@ -651,6 +681,24 @@ impl BimApp {
             selection: Vec::new(),
             status: Status::default(),
             views: vec![first],
+            front: first,
+            floating: Vec::new(),
+            passive: false,
+            docking: dock::Docking::default(),
+            dragging: None,
+            drop_headers: Vec::new(),
+            tab_bar: Rect::NOTHING,
+            tab_rects: Vec::new(),
+            work: Rect::ZERO,
+            pointer: Pos2::ZERO,
+            grab: egui::Vec2::ZERO,
+            ribbon_min: false,
+            ribbon_peek: false,
+            ribbon_bottom: Pos2::ZERO,
+            settings_page: None,
+            settings_path: None,
+            settings_kept: None,
+            theme_wanted: None,
             tab: Tab::Architecture,
             back: Tab::Architecture,
             types: BTreeMap::new(),
@@ -708,8 +756,6 @@ impl BimApp {
             shadow: None,
             tab_cycle: false,
             held: Vec::new(),
-            show_properties: true,
-            show_browser: true,
             show_shortcuts: false,
             angle_edit: None,
             snaps: Snaps::default(),
@@ -748,6 +794,9 @@ impl BimApp {
             component_angle: 0.0,
             collapsed: BTreeSet::new(),
             view_rect: Rect::ZERO,
+            pane: Rect::ZERO,
+            browser_tab: browser::Tab::All,
+            browser_find: String::new(),
             closing: false,
             title: String::new(),
             styled: false,
@@ -892,6 +941,9 @@ impl BimApp {
             style::apply(&ctx);
             self.styled = true;
         }
+        if let Some(theme) = self.theme_wanted.take() {
+            ctx.set_theme(theme);
+        }
         style::follow(&ctx);
         lang::set(self.lang);
         self.tidy();
@@ -919,22 +971,7 @@ impl BimApp {
             Panel::top("update").frame(Frame::NONE).show(ui, |ui| self.update_banner(ui));
         }
         Panel::bottom("status").frame(bar).show(ui, |ui| self.status_bar(ui));
-        if self.show_properties || self.show_browser {
-            let palette = Frame::new().fill(pal().panel).stroke(Stroke::new(1.0, pal().border));
-            Panel::left("side").frame(palette).resizable(true).default_size(290.0).show(ui, |ui| {
-                if self.show_properties && self.show_browser {
-                    Panel::top("properties").frame(palette).resizable(true).default_size(ui.available_height() * 0.55).show(ui, |ui| {
-                        ui.set_min_height(ui.available_height());
-                        self.properties_palette(ui);
-                    });
-                    self.browser_palette(ui);
-                } else if self.show_properties {
-                    self.properties_palette(ui);
-                } else {
-                    self.browser_palette(ui);
-                }
-            });
-        }
+        self.docks(ui);
         CentralPanel::default().frame(Frame::NONE).show(ui, |ui| {
             Panel::top("view-tabs").frame(Frame::new().fill(pal().bar).inner_margin(Margin { left: 6, right: 6, top: 4, bottom: 0 })).show(
                 ui,
@@ -942,24 +979,45 @@ impl BimApp {
                     self.view_tabs(ui);
                 },
             );
-            self.view_control_bar(ui);
-            self.view_rect = ui.available_rect_before_wrap();
-            // The plan sets the cursor each frame it shows.
-            self.canvas.cursor = None;
-            match self.sheet {
-                Sheet::Plan(level) | Sheet::Ceiling(level) if self.session.model.level(level).is_some() => self.canvas(ui, level),
-                Sheet::Plan(_) | Sheet::Ceiling(_) => {
-                    ui.centered_and_justified(|ui| ui.label(t("This project has no levels. Add one with the Level tool.")));
-                }
-                Sheet::View3D => self.view3d(ui),
-                Sheet::Section(id) => self.section_view(ui, id),
-                Sheet::Paper(id) => self.paper_view(ui, id),
-                Sheet::Schedule(_) | Sheet::Table(_) => self.schedule(ui),
-            }
-            self.temp_frame(ui);
+            let front = self.front;
+            self.view_pane(ui, front);
+            self.work = self.pane;
         });
+        if self.ribbon_min && self.ribbon_peek {
+            self.ribbon_peek(&ctx);
+        }
+        self.palette_windows(&ctx);
+        self.view_windows(&ctx);
+        self.drag_and_drop(&ctx);
         self.warning(&ctx);
         self.dialogs(&ctx);
+        self.keep_settings(&ctx);
+    }
+
+    /// A view under its view control bar, as the active view draws it.
+    fn view_body(&mut self, ui: &mut Ui) {
+        self.view_control_bar(ui);
+        self.view_rect = ui.available_rect_before_wrap();
+        self.pane = self.view_rect;
+        // The plan sets the cursor each frame it shows.
+        self.canvas.cursor = None;
+        match self.sheet {
+            Sheet::Plan(level) | Sheet::Ceiling(level) if self.session.model.level(level).is_some() => self.canvas(ui, level),
+            Sheet::Plan(_) | Sheet::Ceiling(_) => {
+                ui.centered_and_justified(|ui| ui.label(t("This project has no levels. Add one with the Level tool.")));
+            }
+            Sheet::View3D => self.view3d(ui),
+            Sheet::Section(id) => self.section_view(ui, id),
+            Sheet::Paper(id) => self.paper_view(ui, id),
+            Sheet::Schedule(_) | Sheet::Table(_) => self.schedule(ui),
+        }
+        self.temp_frame(ui);
+    }
+
+    /// Properties (PP): shown, or hidden.
+    fn toggle_properties(&mut self) {
+        let p = dock::Palette::Properties;
+        self.show_palette(p, !self.docking.shown(p));
     }
 
     /// Follow what the last command removed: the selection, views of levels that are gone, and
@@ -998,11 +1056,24 @@ impl BimApp {
             Sheet::Table(id) => matches!(m.elements.get(id), Some(Element::Schedule(_))),
         };
         self.views.retain(exists);
+        self.floating.retain(|f| exists(&f.sheet));
         if !exists(&self.sheet) {
-            self.sheet = self.views.last().copied().unwrap_or(Sheet::Plan(m.levels().first().map_or(0, |(id, _)| *id)));
+            let floated = self.floating.last().map(|f| f.sheet);
+            self.sheet = self.views.last().copied().or(floated).unwrap_or(Sheet::Plan(m.levels().first().map_or(0, |(id, _)| *id)));
         }
-        if !self.views.contains(&self.sheet) {
+        let floats = self.floating.iter().any(|f| f.sheet == self.sheet);
+        // The tab bar is never empty: the last view floating comes back to it.
+        if floats && self.views.is_empty() {
+            let sheet = self.sheet;
+            self.floating.retain(|f| f.sheet != sheet);
+        } else if !floats && !self.views.contains(&self.sheet) {
             self.views.push(self.sheet);
+        }
+        if !self.floating.iter().any(|f| f.sheet == self.sheet) {
+            self.front = self.sheet;
+        }
+        if !self.views.contains(&self.front) {
+            self.front = self.views.last().copied().unwrap_or(self.sheet);
         }
         if self.tab == Tab::Context && self.context().is_none() {
             self.tab = self.back;
@@ -1025,6 +1096,7 @@ impl BimApp {
             || self.options_dialog.is_some()
             || self.select_by_id.is_some()
             || self.ids_of_selection.is_some()
+            || self.settings_page.is_some()
             || self.new_schedule.is_some()
             || self.show_shortcuts
             || self.show_snaps
@@ -1046,6 +1118,9 @@ impl BimApp {
         }
         if pressed(Modifiers::COMMAND, Key::N) {
             self.guard(Pending::New, ctx);
+        }
+        if pressed(Modifiers::COMMAND, Key::Comma) {
+            self.settings_page = Some(settings::Page::Interface);
         }
         // The rest belongs to a text field while one has the keyboard.
         if ctx.egui_wants_keyboard_input() {
@@ -1138,7 +1213,7 @@ impl BimApp {
                 return true;
             }
             "PP" => {
-                self.show_properties = !self.show_properties;
+                self.toggle_properties();
                 return true;
             }
             "SA" => {
@@ -1547,6 +1622,7 @@ impl BimApp {
     /// selection.
     fn escape(&mut self) {
         self.typed.clear();
+        self.ribbon_peek = false;
         // A snap override waiting for its point goes first, leaving what's being drawn.
         if self.snap_once.take().is_some() {
             return;
@@ -1611,10 +1687,13 @@ impl BimApp {
 
     /// Open a view in a tab, or bring its tab forward.
     fn open_sheet(&mut self, sheet: Sheet) {
-        if !self.views.contains(&sheet) {
+        if !self.views.contains(&sheet) && !self.floats(sheet) {
             self.views.push(sheet);
         }
         self.sheet = sheet;
+        if !self.floats(sheet) {
+            self.front = sheet;
+        }
         // The selection is the model's, not the view's: it stays, whatever view comes up.
         self.typed_length.clear();
         self.snap_once = None;
@@ -1690,6 +1769,13 @@ impl BimApp {
 
     /// Close a view's tab; the last one stays open.
     fn close_view(&mut self, sheet: Sheet) {
+        if self.floats(sheet) {
+            self.floating.retain(|f| f.sheet != sheet);
+            if self.sheet == sheet {
+                self.open_sheet(self.front);
+            }
+            return;
+        }
         if self.views.len() < 2 {
             return;
         }
@@ -1773,8 +1859,9 @@ impl BimApp {
         let mut fresh = BimApp::new(std::mem::take(&mut self.session));
         fresh.status = std::mem::take(&mut self.status);
         fresh.os_events = self.os_events.take();
-        (fresh.thin, fresh.show_properties, fresh.show_browser, fresh.lang, fresh.snaps) =
-            (self.thin, self.show_properties, self.show_browser, self.lang, self.snaps);
+        (fresh.thin, fresh.lang, fresh.snaps, fresh.ribbon_min) = (self.thin, self.lang, self.snaps, self.ribbon_min);
+        fresh.docking = std::mem::take(&mut self.docking);
+        (fresh.settings_path, fresh.settings_kept) = (self.settings_path.take(), self.settings_kept.take());
         fresh.updates = self.updates.take();
         *self = fresh;
     }
@@ -1850,6 +1937,10 @@ impl BimApp {
                 if icon_button(ui, Icon::View3D, "Default 3D View").clicked() {
                     self.open_sheet(Sheet::View3D);
                 }
+                ui.separator();
+                if icon_button(ui, Icon::Settings, "Settings").clicked() {
+                    self.settings_page = Some(settings::Page::Interface);
+                }
             })
             .response
             .rect;
@@ -1887,18 +1978,65 @@ impl BimApp {
                     (Tab::Manage, "Manage"),
                     (Tab::Modify, "Modify"),
                 ] {
-                    if tab_button(ui, label, self.tab == tab, false).clicked() {
-                        self.tab = tab;
+                    let r = tab_button(ui, label, self.tab == tab, false);
+                    self.ribbon_tab(&r, tab);
+                }
+                if let Some(name) = self.context() {
+                    let r = tab_button(ui, &name, self.tab == Tab::Context, true);
+                    self.ribbon_tab(&r, Tab::Context);
+                }
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    let (icon, label) =
+                        if self.ribbon_min { (Icon::Expand, "Expand the Ribbon") } else { (Icon::Minimize, "Minimize the Ribbon") };
+                    if icon_button(ui, icon, label).clicked() {
+                        self.fold_ribbon(!self.ribbon_min);
                     }
-                }
-                if let Some(name) = self.context()
-                    && tab_button(ui, &name, self.tab == Tab::Context, true).clicked()
-                {
-                    self.tab = Tab::Context;
-                }
+                });
             });
         });
         ui.painter().line_segment([ui.min_rect().left_bottom(), ui.min_rect().right_bottom()], Stroke::new(1.0, pal().border));
+        self.ribbon_bottom = ui.min_rect().left_bottom();
+        if !self.ribbon_min {
+            self.ribbon_panels(ui);
+        }
+    }
+
+    /// A ribbon tab's clicks: one picks it (and, while the ribbon is folded, shows its tools under the tabs, or hides
+    /// them again), two fold the ribbon to its tabs or open it again, as Revit's do.
+    fn ribbon_tab(&mut self, r: &Response, tab: Tab) {
+        if r.double_clicked() {
+            self.fold_ribbon(!self.ribbon_min);
+        } else if r.clicked() {
+            self.ribbon_peek = self.ribbon_min && !(self.ribbon_peek && self.tab == tab);
+            self.tab = tab;
+        }
+    }
+
+    fn fold_ribbon(&mut self, folded: bool) {
+        self.ribbon_min = folded;
+        self.ribbon_peek = false;
+    }
+
+    /// The folded ribbon's tools, under its tabs over everything else, until one is picked or a click lands elsewhere.
+    fn ribbon_peek(&mut self, ctx: &Context) {
+        let tool = self.tool.clone();
+        let frame = Frame::popup(&ctx.global_style()).fill(pal().surface).inner_margin(0.0);
+        let shown = Area::new(UiId::new("ribbon-peek"))
+            .order(Order::Foreground)
+            .fixed_pos(self.ribbon_bottom)
+            .show(ctx, |ui| frame.show(ui, |ui| self.ribbon_panels(ui)).response.rect);
+        let rect = shown.inner;
+        let (released, at) = ctx.input(|i| (i.pointer.primary_released(), i.pointer.interact_pos()));
+        let inside = at.is_some_and(|p| rect.contains(p));
+        let on_tabs = at.is_some_and(|p| p.y < rect.top());
+        // A tool picked, a button done (one that opens a menu keeps it open), or a click elsewhere.
+        if self.tool != tool || (released && !Popup::is_any_open(ctx) && (inside || !on_tabs)) {
+            self.ribbon_peek = false;
+        }
+    }
+
+    /// The ribbon tab's panels of tools.
+    fn ribbon_panels(&mut self, ui: &mut Ui) {
         Frame::new().inner_margin(vec2(8.0, 6.0)).show(ui, |ui| {
             ui.horizontal(|ui| match self.tab {
                 Tab::Architecture => self.architecture_tab(ui),
@@ -1954,6 +2092,10 @@ impl BimApp {
             }
         });
         self.update_menu(ui);
+        ui.separator();
+        if item(ui, "Settings…", Some(KeyboardShortcut::new(Modifiers::COMMAND, Key::Comma))) {
+            self.settings_page = Some(settings::Page::Interface);
+        }
         ui.separator();
         if item(ui, "Exit", None) {
             ctx.send_viewport_cmd(ViewportCommand::Close);
@@ -2269,12 +2411,17 @@ impl BimApp {
             if big_button(ui, Icon::CloseInactive, "Close Inactive", false, "Close every view but this one").clicked() {
                 let active = self.sheet;
                 self.views.retain(|v| *v == active);
+                self.floating.retain(|f| f.sheet == active);
             }
             let tip = "Show or hide the palettes, and pick the interface's language";
             let r = big_button(ui, Icon::Interface, "User Interface", false, tip);
             Popup::menu(&r).show(|ui| {
-                ui.checkbox(&mut self.show_properties, t("Properties"));
-                ui.checkbox(&mut self.show_browser, t("Project Browser"));
+                for p in dock::Palette::ALL {
+                    let mut on = self.docking.shown(p);
+                    if ui.checkbox(&mut on, t(p.name())).changed() {
+                        self.show_palette(p, on);
+                    }
+                }
                 ui.separator();
                 ui.label(RichText::new(t("Language")).color(pal().muted));
                 for l in Language::ALL {
@@ -2380,8 +2527,9 @@ impl BimApp {
     fn modify_tab(&mut self, ui: &mut Ui) {
         self.tools(ui, "Select", &[(Icon::Modify, "Modify", "Modify (MD): select elements", Tool::Modify)]);
         panel(ui, "Properties", |ui| {
-            if big_button(ui, Icon::Properties, "Properties", self.show_properties, "Properties (PP): show or hide the palette").clicked() {
-                self.show_properties = !self.show_properties;
+            let shown = self.docking.shown(dock::Palette::Properties);
+            if big_button(ui, Icon::Properties, "Properties", shown, "Properties (PP): show or hide the palette").clicked() {
+                self.toggle_properties();
             }
             let typed = self.type_subject().is_some();
             if ui
@@ -2890,106 +3038,7 @@ impl BimApp {
         });
     }
 
-    // ---------- the left: Properties, Project Browser ----------
-
-    fn properties_palette(&mut self, ui: &mut Ui) {
-        title_bar(ui, "Properties");
-        ScrollArea::vertical().id_salt("properties").show(ui, |ui| Frame::new().inner_margin(8.0).show(ui, |ui| self.properties(ui)));
-    }
-
-    fn browser_palette(&mut self, ui: &mut Ui) {
-        title_bar(ui, &tf("Project Browser · {}", &[&self.session.model.name]));
-        ScrollArea::vertical().id_salt("browser").show(ui, |ui| Frame::new().inner_margin(8.0).show(ui, |ui| self.browser(ui)));
-    }
-
-    /// The Project Browser: views by kind, as Revit's tree has them.
-    fn browser(&mut self, ui: &mut Ui) {
-        let m = &self.session.model;
-        let levels: Vec<(Id, String)> = m.levels().iter().map(|(id, l)| (*id, l.name.clone())).collect();
-        // Sections and elevations, by name.
-        let views = |category: &str| {
-            let mut v: Vec<(Id, String)> = m
-                .elements
-                .iter()
-                .filter(|(_, e)| e.category() == category)
-                .filter_map(|(id, _)| Some((*id, m.section(*id)?.name.clone())))
-                .collect();
-            v.sort_by(|a, b| a.1.cmp(&b.1));
-            v
-        };
-        let (elevations, sections) = (views("elevation"), views("section"));
-        // Sheets, by number, as "A101 - Name".
-        let mut sheets: Vec<(Id, String)> =
-            m.elements.keys().filter_map(|id| m.sheet(*id).map(|s| (*id, format!("{} - {}", s.number, s.name)))).collect();
-        sheets.sort_by(|a, b| a.1.cmp(&b.1));
-        let mut open = None;
-        let active = self.sheet;
-        let item = |ui: &mut Ui, name: &str, sheet: Sheet| ui.selectable_label(active == sheet, name).clicked().then_some(sheet);
-        CollapsingHeader::new(t("Views (all)")).default_open(true).show(ui, |ui| {
-            CollapsingHeader::new(t("Floor Plans")).default_open(true).show(ui, |ui| {
-                for (id, name) in &levels {
-                    open = item(ui, name, Sheet::Plan(*id)).or(open);
-                }
-            });
-            CollapsingHeader::new(t("Ceiling Plans")).default_open(true).show(ui, |ui| {
-                for (id, name) in &levels {
-                    open = item(ui, name, Sheet::Ceiling(*id)).or(open);
-                }
-            });
-            CollapsingHeader::new(t("3D Views")).default_open(true).show(ui, |ui| {
-                open = item(ui, "{3D}", Sheet::View3D).or(open);
-            });
-            for (group, views) in [("Elevations (Building Elevation)", &elevations), ("Sections (Building Section)", &sections)] {
-                if !views.is_empty() {
-                    CollapsingHeader::new(t(group)).default_open(true).show(ui, |ui| {
-                        for (id, name) in views {
-                            open = item(ui, name, Sheet::Section(*id)).or(open);
-                        }
-                    });
-                }
-            }
-        });
-        CollapsingHeader::new(t("Schedules/Quantities (all)")).default_open(true).show(ui, |ui| {
-            for (cat, name) in SCHEDULES {
-                let name = match schedule::standard(m, cat) {
-                    (Some(_), sc) => sc.name,
-                    (None, _) => t(name).to_string(),
-                };
-                open = item(ui, &name, Sheet::Schedule(cat)).or(open);
-            }
-            for (id, name) in self.schedules() {
-                open = item(ui, name, Sheet::Table(id)).or(open);
-            }
-        });
-        if !sheets.is_empty() {
-            CollapsingHeader::new(t("Sheets (all)")).default_open(true).show(ui, |ui| {
-                for (id, name) in &sheets {
-                    open = item(ui, name, Sheet::Paper(*id)).or(open);
-                }
-            });
-        }
-        // Its families, each its types: one picked, the Component tool places it.
-        let mut place = None;
-        CollapsingHeader::new(t("Families")).default_open(false).show(ui, |ui| {
-            for (name, f) in &m.families {
-                CollapsingHeader::new(name).id_salt(("family", name)).default_open(false).show(ui, |ui| {
-                    for ty in f.types.keys() {
-                        let on = self.tool == Tool::Component && self.component.as_ref() == Some(&(name.clone(), ty.clone()));
-                        if ui.selectable_label(on, ty).clicked() {
-                            place = Some((name.clone(), ty.clone()));
-                        }
-                    }
-                });
-            }
-        });
-        if let Some(sheet) = open {
-            self.open_sheet(sheet);
-        }
-        if let Some(picked) = place {
-            self.component = Some(picked);
-            self.set_tool(Tool::Component);
-        }
-    }
+    // ---------- the palettes: Properties, Project Browser (`dock.rs` docks them) ----------
 
     /// The family and type the Component tool places: the one picked, while its family has it, else
     /// the first there is. A fixture tool's are of its kinds only.
@@ -3007,21 +3056,39 @@ impl BimApp {
 
     // ---------- the middle: view tabs, schedules ----------
 
+    /// The docked views' tabs: a click opens one, a drag moves it along the bar or, let go off it, floats it.
     fn view_tabs(&mut self, ui: &mut Ui) {
-        ui.horizontal(|ui| {
+        self.tab_rects.clear();
+        let bar = ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
             for sheet in self.views.clone() {
                 // A ceiling plan's tab says so: its level's plan has the level's name too.
                 let name = if matches!(sheet, Sheet::Ceiling(_)) { self.view_title(sheet) } else { self.view_name(sheet) };
-                if tab_button(ui, &name, sheet == self.sheet, false).clicked() {
+                let r = tab_button_with(ui, &name, sheet == self.front, false, Sense::click_and_drag());
+                self.tab_rects.push((sheet, r.rect));
+                if r.clicked() {
                     self.open_sheet(sheet);
                 }
-                if self.views.len() > 1 && icon_button(ui, Icon::Close, &tf("Close {}", &[&name])).clicked() {
+                if r.drag_started() {
+                    self.dragging = Some(dock::Drag::View(sheet));
+                }
+                let many = self.views.len() > 1;
+                r.context_menu(|ui| {
+                    if ui.add_enabled(many, egui::Button::new(t("Float"))).clicked() {
+                        let at = self.view_rect.left_top() + vec2(60.0, 60.0);
+                        self.float_view(sheet, at);
+                    }
+                    if ui.add_enabled(many, egui::Button::new(t("Close"))).clicked() {
+                        self.close_view(sheet);
+                    }
+                });
+                if many && icon_button(ui, Icon::Close, &tf("Close {}", &[&name])).clicked() {
                     self.close_view(sheet);
                 }
                 ui.add_space(6.0);
             }
         });
+        self.tab_bar = bar.response.rect.with_max_x(ui.max_rect().right());
     }
 
     /// The schedule on screen: the project's, by id, and as it is (one every project has may be
@@ -3135,6 +3202,7 @@ impl BimApp {
         self.select_by_id_window(ctx);
         self.ids_of_selection_window(ctx);
         self.shortcuts_window(ctx);
+        self.settings_window(ctx);
         self.installing_box(ctx);
         let Some(pending) = self.pending.clone() else { return };
         #[derive(PartialEq)]

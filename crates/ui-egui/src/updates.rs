@@ -22,7 +22,7 @@ enum Click {
     Page(String),
 }
 
-fn failed(text: String) -> Status {
+pub(crate) fn failed(text: String) -> Status {
     Status { text, error: true }
 }
 

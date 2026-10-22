@@ -154,7 +154,7 @@ The goal is that someone could run a real small project on it.
 | Item | Size |
 |---|---|
 | GPU renderer (wgpu) for 3D, and later plans: perspective cameras, a section box, walkthroughs, shadows and sun, silhouettes | XL |
-| View cube, steering and orbit around the selection; tiled windows | M |
+| A navigation gizmo, steering and orbit around the selection; tiled windows (views already float in windows of their own, and palettes dock and float). Not Revit's ViewCube, which is Autodesk's trademark and design: an original one in the manner of Blender's open-source navigation gizmo (axis balls to click to look along an axis, drag to orbit), drawn in code | M |
 | Editable keyboard shortcuts; project templates of BIMCraft's own on the start page | S |
 | Accessibility: keyboard reach for every dialog and screen-reader labels (egui's AccessKit) | M |
 | A file-format stability promise, with 1.x files opening in every later 1.x | S |

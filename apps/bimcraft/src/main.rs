@@ -27,7 +27,10 @@ fn main() -> ExitCode {
     if let Some(finish) = bimcraft_update::install::parse(std::env::args_os().skip(1)) {
         return bimcraft_update::install::run(&finish);
     }
-    let language = lang::from_env();
+    // The window's settings sit beside the favorites, in the folder the core finds for the user's own files: the theme,
+    // the language picked, the ribbon and where the palettes are.
+    let settings = bimcraft_core::favorites::default_path().map(|favorites| bimcraft_ui_egui::settings::beside(&favorites));
+    let language = settings.as_deref().and_then(bimcraft_ui_egui::settings::language_in).unwrap_or_else(lang::from_env);
     let mut session = Session::new();
     // A blank project starts in the interface's language: its levels named in it.
     if std::env::args().len() == 1 {
@@ -58,6 +61,9 @@ fn main() -> ExitCode {
     session.reset(model, path);
     let mut app = BimApp::new(session);
     app.lang = language;
+    if let Some(path) = settings {
+        app.use_settings(path);
+    }
     if let Some(text) = problem {
         app.status = Status { text, error: true };
     }

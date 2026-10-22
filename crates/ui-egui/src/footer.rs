@@ -297,7 +297,7 @@ impl BimApp {
         }
         let temp = self.temporary().cloned().unwrap_or_default();
         let bar = Frame::new().fill(pal().bar).inner_margin(Margin::symmetric(8, 2)).stroke(Stroke::new(1.0, pal().border));
-        egui::Panel::bottom("view-control").frame(bar).show(ui, |ui| {
+        egui::Panel::bottom(egui::Id::new(("view-control", self.sheet))).frame(bar).show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
                 match (self.graphic_view(), self.sheet == Sheet::View3D) {

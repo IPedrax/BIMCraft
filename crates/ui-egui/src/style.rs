@@ -244,6 +244,12 @@ pub enum Icon {
     FamilyEditor,
     TempHide,
     Reveal,
+    Settings,
+    Dock,
+    Minimize,
+    Expand,
+    Search,
+    Legend,
 }
 
 /// Points around `c` at radius `r` from angle `a0` to `a1` (radians, y down).
@@ -877,6 +883,35 @@ pub fn paint(p: &Painter, icon: Icon, r: Rect, color: Color32) {
             Shape::circle_stroke(at(12.0, 10.0), 6.0 * k, s),
             line(&[(9.5, 15.0), (9.5, 19.0), (14.5, 19.0), (14.5, 15.0)]),
             line(&[(10.0, 21.5), (14.0, 21.5)]),
+        ],
+        // A cog: eight teeth round a hub.
+        Icon::Settings => {
+            let c = at(12.0, 12.0);
+            let mut shapes = vec![Shape::circle_stroke(c, 6.5 * k, s), Shape::circle_stroke(c, 2.5 * k, s)];
+            for i in 0..8 {
+                let a = i as f32 * std::f32::consts::FRAC_PI_4;
+                let d = vec2(a.cos(), a.sin());
+                shapes.push(Shape::line_segment([c + d * 6.5 * k, c + d * 9.5 * k], Stroke::new(2.5, color)));
+            }
+            shapes
+        }
+        // A window with a palette docked down its left side.
+        Icon::Dock => vec![
+            ring(&[(3.0, 4.0), (21.0, 4.0), (21.0, 20.0), (3.0, 20.0)]),
+            Shape::rect_filled(Rect::from_min_max(at(3.0, 4.0), at(9.0, 20.0)), 0.0, color),
+        ],
+        // A chevron up: the ribbon folds to its tabs.
+        Icon::Minimize => vec![line(&[(6.0, 15.0), (12.0, 9.0), (18.0, 15.0)])],
+        // A chevron down: the ribbon opens again.
+        Icon::Expand => vec![line(&[(6.0, 9.0), (12.0, 15.0), (18.0, 9.0)])],
+        // A magnifying glass.
+        Icon::Search => vec![Shape::circle_stroke(at(10.0, 10.0), 6.0 * k, s), line(&[(14.5, 14.5), (20.5, 20.5)])],
+        // A key: swatches beside their lines.
+        Icon::Legend => vec![
+            ring(&[(3.0, 5.0), (8.0, 5.0), (8.0, 9.0), (3.0, 9.0)]),
+            line(&[(11.0, 7.0), (21.0, 7.0)]),
+            ring(&[(3.0, 15.0), (8.0, 15.0), (8.0, 19.0), (3.0, 19.0)]),
+            line(&[(11.0, 17.0), (21.0, 17.0)]),
         ],
         // Half light, half dark.
         Icon::Theme => {

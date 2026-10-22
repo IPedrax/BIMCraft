@@ -139,6 +139,12 @@ impl Canvas {
         self.lifted.filter(|(_, quick)| *quick).map(|(at, _)| at)
     }
 
+    /// A copy for a view drawn as it is, not the active one: its cameras, and nothing a hand is doing (a press, a
+    /// release, a drag, a grip), which is the active view's.
+    pub(crate) fn at_rest(&self) -> Canvas {
+        Canvas { cams: self.cams.clone(), rect: self.rect, level: self.level, under: self.under.clone(), ..Canvas::default() }
+    }
+
     /// Whether the primary button came up quickly this frame ([`Canvas::quick_press`]).
     pub(crate) fn quick(&self) -> bool {
         self.quick_press().is_some()
@@ -643,6 +649,10 @@ impl BimApp {
     /// every other tool, since fast drawing clicks on the move and no tool has a use for a drag,
     /// and for Modify when the button came up quickly ([`QUICK`]).
     pub(crate) fn clicked_at(&self, response: &Response) -> Option<Pos2> {
+        // A view drawn as it is takes no clicks: the first makes it the active view.
+        if self.passive {
+            return None;
+        }
         if response.clicked() {
             return response.interact_pointer_pos();
         }

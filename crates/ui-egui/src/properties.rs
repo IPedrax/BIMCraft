@@ -1334,6 +1334,7 @@ impl BimApp {
         {
             let was = self.sheet;
             self.views.iter_mut().filter(|v| **v == was).for_each(|v| *v = Sheet::Table(id));
+            self.floating.iter_mut().filter(|f| f.sheet == was).for_each(|f| f.sheet = Sheet::Table(id));
             self.sheet = Sheet::Table(id);
         }
         if let Some(tab) = open {

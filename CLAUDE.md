@@ -130,6 +130,17 @@ The selection is the model's, not a view's: opening any view (a plan, a section,
 highlight what's selected and pick what they list.
 Every view has the right-click menu of `context.rs`: an item is an `Action`, offered by `context_items` and done by
 `act`.
+The Project Browser (`browser.rs`) builds its tree as `Node`s and draws it through its tab (`browser::Tab`) and its search
+(`browser::spans`, wildcards and all, a pure function with its tests): a new kind of entry is a `Node` in `browser_tree`.
+Palettes dock and float (`dock.rs`): `Docking` is where they are (stacks of tabs down the left or right side or along the
+bottom, or floating windows), apart from its drawing, so tests and the settings file read it; a new palette is a row of
+`Palette` and its body in `palette_body`. A view's tab floats it in a window (`BimApp::floating`; `views` are the tabs and
+`front` the one the views' area shows): the active view (`BimApp::sheet`) takes the tools, any other on screen draws through
+`view_pane` as it is, with the canvas `at_rest` and `passive` set so it takes no clicks, and a click makes it active. Widget
+ids inside a view are per view (`push_id`), so two views on screen never clash. File > Settings is `settings.rs`, the user's
+`settings.json` beside the favorites (`BimApp::use_settings`, which the desktop's `main` calls; tests never write it unless
+they hand it a file): what it keeps is `Settings`, written when it changes, between drags; a setting still to come goes on
+its page greyed out (`later`).
 Levels have elevations, and each is a plane over its `extent` (`Model::level_extent`; without one, `Model::model_extent`):
 sections and elevations draw a level over as much of its extent as they see, and the 3D view outlines it, depth-tested and
 picked as the level; unselected, its two edges nearer the camera are left out. Its name goes on a `view3d::LevelHead`, an
