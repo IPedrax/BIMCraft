@@ -10,7 +10,8 @@ is in the root `CLAUDE.md`; the write-ups by area are in `docs/areas/`, which th
   written for agents, a JSON `run`, in `commands.rs` (`ALL`). Its test drives it through `Session::execute`, as the CLI, scripts
   and MCP do. A command that makes an element returns what it made; one that changes the project goes through `Session::model_mut`.
 - **A rule on the model** is a check in `Model::check` (`model.rs`), with an error that says what to fix. The engine rolls back
-  when it fails, so a command never needs its own undo.
+  when it fails, so a command never needs its own undo. Several commands that are one action go in `Session::transaction`: all or
+  nothing, and one undo step (`script_atomic` is a script in one).
 - **A new kind of element** is a variant of `Element` and its arms in the places that match on it (`category`, `params`,
   `level_of`, `element_json`, copy and delete, IFC, import, the schedules' `OWN` table): the compiler lists them.
 - **References hold GUIDs**, never ids (`ids.rs`, the root rules); library entries are named in memory and held by GUID in a file.

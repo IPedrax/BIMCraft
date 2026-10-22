@@ -536,6 +536,62 @@ fn scripts_run_line_by_line_and_name_the_line_that_fails() {
 }
 
 #[test]
+fn an_atomic_script_is_one_undo_step_and_leaves_nothing_done_when_a_line_fails() {
+    let mut s = Session::new();
+    run(&mut s, "level", json!({"elevation": 3000}));
+    let (history, levels) = (s.history(), count(&mut s, "level"));
+    let e = s.script_atomic("level {\"elevation\": 6000}\nphase {\"name\": \"Later\"}\nnope\n").unwrap_err();
+    assert!(e.contains("line 3"), "{e}");
+    assert_eq!(count(&mut s, "level"), levels, "the lines before the failure are undone too");
+    assert_eq!(s.history(), history, "and leave no undo step");
+    // One that goes through is one step: undo takes all of it back, redo puts it all again.
+    let out = s.script_atomic("# two levels\nlevel {\"elevation\": 6000}\nlevel {\"elevation\": 9000}\n").unwrap();
+    assert_eq!(out.len(), 2);
+    assert_eq!(count(&mut s, "level"), levels + 2);
+    assert_eq!(s.history().len(), history.len() + 1);
+    assert_eq!(s.history().last(), Some(&"Script"));
+    run(&mut s, "undo", json!({}));
+    assert_eq!(count(&mut s, "level"), levels);
+    run(&mut s, "redo", json!({}));
+    assert_eq!(count(&mut s, "level"), levels + 2);
+    // Nothing changed is no step at all.
+    let steps = s.history().len();
+    s.script_atomic("inspect\n").unwrap();
+    assert_eq!(s.history().len(), steps);
+}
+
+#[test]
+fn a_failed_transaction_puts_back_the_history_the_phase_and_the_path_too() {
+    let mut s = Session::new();
+    run(&mut s, "level", json!({"elevation": 3000}));
+    run(&mut s, "undo", json!({}));
+    let (model, history) = (Arc::clone(&s.model), s.history());
+    s.path = Some("kept.bimcraft".into());
+    let e = s
+        .transaction("Grouped", |s| {
+            // Undo inside reaches no further back than the transaction, and a new project inside is taken back with the rest.
+            assert!(s.execute("undo", &json!({})).is_err());
+            s.execute("redo", &json!({}))?;
+            s.execute("phase", &json!({"now": "Existing"}))?;
+            s.execute("new", &json!({}))?;
+            s.execute("level", &json!({"elevation": f64::NAN}))
+        })
+        .unwrap_err();
+    assert!(!e.is_empty());
+    assert!(Arc::ptr_eq(&s.model, &model), "the very model it started from");
+    assert_eq!(s.history(), history);
+    assert_eq!(s.phase, None);
+    assert_eq!(s.path.as_deref(), Some(std::path::Path::new("kept.bimcraft")));
+    // The redo that was there before is still there.
+    run(&mut s, "redo", json!({}));
+    assert_eq!(count(&mut s, "level"), 3);
+    // One that went through a new project leaves the old project's history behind, as `new` does.
+    s.script_atomic("new\nlevel {\"elevation\": 3000}\n").unwrap();
+    assert_eq!(s.history(), vec!["Level"]);
+    assert_eq!(count(&mut s, "level"), 3);
+}
+
+#[test]
 fn dimensions_measure_between_parallel_walls_and_grids_and_follow_them() {
     let mut s = Session::new();
     let ids = house(&mut s);

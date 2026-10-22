@@ -39,6 +39,8 @@ pub struct Session {
     pub option: Option<String>,
     undo: Vec<(&'static str, Arc<Model>)>,
     redo: Vec<(&'static str, Arc<Model>)>,
+    /// How many times the project was replaced, so a transaction knows its history went with it.
+    resets: usize,
 }
 
 impl Default for Session {
@@ -63,7 +65,15 @@ pub fn catalog() -> Value {
 
 impl Session {
     pub fn new() -> Session {
-        Session { model: Arc::new(Model::new("Project")), path: None, phase: None, option: None, undo: Vec::new(), redo: Vec::new() }
+        Session {
+            model: Arc::new(Model::new("Project")),
+            path: None,
+            phase: None,
+            option: None,
+            undo: Vec::new(),
+            redo: Vec::new(),
+            resets: 0,
+        }
     }
 
     /// The model to change, copied first when an undo step still shares it.
@@ -76,6 +86,7 @@ impl Session {
         self.model = Arc::new(model);
         self.path = path;
         (self.phase, self.option) = (None, None);
+        self.resets += 1;
         self.undo.clear();
         self.redo.clear();
     }
@@ -148,6 +159,46 @@ impl Session {
             out.push(self.execute(id, &params).map_err(|e| format!("line {} ({id}): {e}", n + 1))?);
         }
         Ok(out)
+    }
+
+    /// [`Session::script`] all or nothing: a line that fails takes back the lines before it, and one that goes through is
+    /// one undo step, `Script`.
+    pub fn script_atomic(&mut self, text: &str) -> Result<Vec<Value>, String> {
+        self.transaction("Script", |s| s.script(text))
+    }
+
+    /// Run `f` as one undo step named `label`, all or nothing: when it fails, the model, the path, the session's phase
+    /// and option and the undo and redo history are as they were before it. Inside, undo reaches back no further than
+    /// its start. Files a command wrote meanwhile (`save`, `export`) stay written, and one that replaced the project (`new`,
+    /// `open`) left the history it began, so what came after it stays the steps it was.
+    pub fn transaction<T>(&mut self, label: &'static str, f: impl FnOnce(&mut Session) -> Result<T, String>) -> Result<T, String> {
+        let before = Arc::clone(&self.model);
+        let (path, phase, option) = (self.path.clone(), self.phase.clone(), self.option.clone());
+        let (mut undo, redo, resets) = (std::mem::take(&mut self.undo), std::mem::take(&mut self.redo), self.resets);
+        let result = catch_unwind(AssertUnwindSafe(|| f(self)))
+            .unwrap_or_else(|p| Err(format!("internal error in `{label}`: {}", panic_text(p.as_ref()))));
+        match result {
+            Err(e) => {
+                (self.model, self.path, self.phase, self.option) = (before, path, phase, option);
+                (self.undo, self.redo) = (undo, redo);
+                Err(e)
+            }
+            Ok(v) if self.resets != resets => Ok(v),
+            Ok(v) => {
+                // Only an undoable command made a step; one that changed nothing, or only the view of it, makes none here either.
+                if self.undo.is_empty() {
+                    self.redo = redo;
+                } else {
+                    undo.push((label, before));
+                    if undo.len() > UNDO_LIMIT {
+                        undo.remove(0);
+                    }
+                    self.redo.clear();
+                }
+                self.undo = undo;
+                Ok(v)
+            }
+        }
     }
 
     /// What elements from id `first` on, which a command just made, are made in: the session's phase

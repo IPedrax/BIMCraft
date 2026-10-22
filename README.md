@@ -314,6 +314,9 @@ floor {}
 roof {}
 ```
 
+A script stops at its first failing line and names it. Through MCP, `script {"text": …, "atomic": true}` runs it all or nothing:
+a line that fails takes back the lines before it, and one that goes through is a single undo step.
+
 ```sh
 bimcraft-cli run --script house.txt --save house.ifc
 bimcraft-cli convert building.ifc building.bimcraft   # an IFC file from Revit or any BIM tool, as a project
@@ -427,7 +430,7 @@ or to any MCP client's configuration:
 | Tool | What it does |
 |---|---|
 | `execute {command, params}` | Any command with JSON parameters |
-| `script {text}` | Several commands, one per line |
+| `script {text, atomic?}` | Several commands, one per line; `atomic`: all or nothing, one undo step |
 | `list_commands {filter?}` | The catalog, with parameters and shortcuts |
 | `inspect_model` | Levels, counts, types, warnings and undo history |
 | `query_elements {category?, level?}` | Elements with derived values: wall length and height, room area, door position |

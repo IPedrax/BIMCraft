@@ -65,7 +65,7 @@ The goal is to make the file, the ids and the build trustworthy enough to build 
 | Autosave, crash recovery, recent files and a start page | S to M | Autosave and recovery done: background snapshots, adjacent project backups, temporary copies for untitled work, and Recover / Discard / Postpone on open ([design](docs/autosave.md)). Left: recent files and a start page |
 | Benchmark project and performance baseline | M | Baseline in place: an original 20-storey, 9,521-element tower, release-mode core/UI probes and local private IFC measurements ([details](docs/performance.md)). Left: broader command coverage and stable-runner timing regression gates |
 | Incremental validation and caching | L | Started: plan drawing and repeated-family geometry reuse, view-range filtering, vertical wall/host indexing, parallel scene construction/rasterization. Left: `check` only touched elements plus dependents, geometry by element revision, XY indexes for joins/shafts and picking/snapping |
-| Transactions: `script {atomic: true}` and grouped undo steps | S | A script stops at its first failing line and leaves the lines before it done; make it one undo step, all or nothing |
+| ~~Transactions: `script {atomic: true}` and grouped undo steps~~ | S | Done: `Session::transaction` runs commands all or nothing as one undo step (model, path, phase, option and history put back on failure); MCP's `script` takes `atomic` |
 
 **Exit criteria**: green CI on three operating systems; a 0.4 file opens in 0.5 and is migrated; the benchmark model
 edits at under 100 ms a command on a mid-range laptop.

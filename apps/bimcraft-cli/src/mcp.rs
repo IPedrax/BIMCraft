@@ -55,8 +55,9 @@ fn tools() -> Value {
         {"name": "execute", "description": "Run any BIMCraft command with JSON params, e.g. wall {points: [[0,0],[5000,0]]}, door {at: [2500, 0]}, \
             room {point: [x, y], name}, modify {id, …fields}, delete {ids}, undo. list_commands shows them all with their parameters.",
          "inputSchema": {"type": "object", "properties": {"command": {"type": "string"}, "params": {"type": "object"}}, "required": ["command"]}},
-        {"name": "script", "description": "Run several commands, one per line: `wall {\"points\": [[0,0],[4000,0]]}`. Stops at the first failing line and names it; the lines before it stay done.",
-         "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}},
+        {"name": "script", "description": "Run several commands, one per line: `wall {\"points\": [[0,0],[4000,0]]}`. Stops at the first failing line and names it; the lines before it stay done, each its own undo step. \
+            With `atomic`, all or nothing: a failing line takes back the lines before it, and a script that goes through is one undo step.",
+         "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}, "atomic": {"type": "boolean"}}, "required": ["text"]}},
         {"name": "list_commands", "description": "Every command with its id, label, Revit-style shortcut and parameters. `filter` matches part of an id, label or shortcut.",
          "inputSchema": {"type": "object", "properties": {"filter": {"type": "string"}}}},
         {"name": "inspect_model", "description": "The model at a glance: levels, element counts, types, warnings (such as rooms no longer enclosed) and undo history.",
@@ -174,7 +175,15 @@ impl Server {
                 let params = args.get("params").cloned().unwrap_or_else(|| json!({}));
                 s.execute(args["command"].as_str().unwrap_or_default(), &params)
             }
-            "script" => s.script(args["text"].as_str().unwrap_or_default()).map(|results| json!({ "results": results })),
+            "script" => {
+                let text = args["text"].as_str().unwrap_or_default();
+                let atomic = match args.get("atomic") {
+                    None | Some(Value::Null) => false,
+                    Some(Value::Bool(b)) => *b,
+                    Some(v) => return Err((INVALID_PARAMS, format!("`atomic` is true or false, not {v}"))),
+                };
+                if atomic { s.script_atomic(text) } else { s.script(text) }.map(|results| json!({ "results": results }))
+            }
             "list_commands" => {
                 let filter = args["filter"].as_str().map(str::to_ascii_lowercase).unwrap_or_default();
                 let has = |v: &Value| v.as_str().is_some_and(|t| t.to_ascii_lowercase().contains(&filter));
@@ -329,6 +338,27 @@ mod tests {
         assert_eq!(call(&mut s, 4, "tools/call", json!({"name": "script", "arguments": "x"}))["error"]["code"], -32602);
         assert!(s.handle_line("{not json").unwrap().contains("-32700"));
         assert!(s.handle_line("[]").unwrap().contains("-32600"));
+    }
+
+    #[test]
+    fn an_atomic_script_through_mcp_is_all_or_nothing_and_one_undo_step() {
+        let mut s = Server::new();
+        let levels = |s: &mut Server| tool(s, "inspect_model", json!({}))["counts"]["level"].clone();
+        let r = call(
+            &mut s,
+            1,
+            "tools/call",
+            json!({"name": "script", "arguments": {"text": "level {\"elevation\": 6000}\nnope", "atomic": true}}),
+        );
+        assert_eq!(r["result"]["isError"], true);
+        assert!(r["result"]["content"][0]["text"].as_str().unwrap().contains("line 2"));
+        assert_eq!(levels(&mut s), 2, "the first line is taken back");
+        tool(&mut s, "script", json!({"text": "level {\"elevation\": 6000}\nlevel {\"elevation\": 9000}", "atomic": true}));
+        assert_eq!(levels(&mut s), 4);
+        tool(&mut s, "execute", json!({"command": "undo"}));
+        assert_eq!(levels(&mut s), 2, "one undo takes back the whole script");
+        let r = call(&mut s, 2, "tools/call", json!({"name": "script", "arguments": {"text": "inspect", "atomic": "yes"}}));
+        assert_eq!(r["error"]["code"], -32602);
     }
 
     #[test]
