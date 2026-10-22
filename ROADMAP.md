@@ -57,7 +57,7 @@ The goal is to make the file, the ids and the build trustworthy enough to build 
 | Item | Size | Notes |
 |---|---|---|
 | File-format version and migrations | M | Mostly done: a `format` field, migrations on `open` (no format, 1 and 2 open as 3) and a clear message for a newer file. Left: tolerate unknown fields where it's safe, keeping `deny_unknown_fields` only on params input |
-| ~~Globally unique ids (GUIDs) beside the display id~~ | M | Done: every element, library entry and part, with Insert from File, Select by ID and IDs of Selection (PRs #17, #19 and the subparts PR). Prerequisite for linking, merging and worksharing |
+| ~~Globally unique ids (GUIDs) beside the display id~~ | M | Done: every element, library entry and part, with Insert from File, Select by ID and IDs of Selection (PRs #17, #19 and #21). Prerequisite for linking, merging and worksharing |
 | CI on every pull request: fmt, clippy and tests on Windows, Linux and macOS | S | Plus the IfcOpenShell validation as a job, and shellcheck and actionlint for `packaging/`. The release workflow already tests all three |
 | Autosave, crash recovery, recent files and a start page | S to M | Recover from an autosaved file after a caught panic or a killed process |
 | Benchmark project and performance baseline | M | A generated 20-storey, about 10k-element model; time each command, `check`, a plan render and a 3D frame; set budgets and fail CI on regressions |
