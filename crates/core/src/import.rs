@@ -16,6 +16,7 @@ use std::sync::Arc;
 use crate::commands::{micron, next_number, tidy};
 use crate::family::{Category, Expr, Family, Form, MAX_TRIANGLES, Parameter};
 use crate::geom::{self, P2};
+use crate::library::Kind;
 use crate::model::{
     Ceiling, CeilingType, Column, ColumnType, Component, Element, Extrusion, FIRST_ID, Floor, FloorType, Function, Grid, Guid, Id, Justify,
     Landing, Layer, Level, MAX_COORD, MAX_LAYERS, MAX_POINTS, MAX_PROJECT_PARAMETERS, MAX_TEXT, Mass, Model, Opening, OpeningType,
@@ -997,7 +998,12 @@ fn layers_of(r: &Reader, l: &Links, id: u64, t: f64) -> Vec<Layer> {
                 Some("Membrane") => Function::Membrane,
                 _ => Function::Substrate,
             };
-            Layer { function, material: r.at(x.args.first()).and_then(|m| text(m.args.first())).map(clip).unwrap_or_default(), thickness }
+            Layer {
+                function,
+                material: r.at(x.args.first()).and_then(|m| text(m.args.first())).map(clip).unwrap_or_default(),
+                thickness,
+                ..Layer::default()
+            }
         })
         .collect();
     let sum: f64 = layers.iter().map(|l| l.thickness).sum();
@@ -2549,8 +2555,11 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     m.resolve();
     // The library's GUIDs too, the file makes: the same file reads the same every time.
     m.library = crate::library::Library::default();
+    m.forget_parts();
     m.sync_library_with(&mut |_, kind, name| {
-        let n = format!("{kind}/{name}").bytes().fold(0xCBF2_9CE4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3));
+        let n = format!("{}/{name}", kind.map_or_else(|| "part".to_string(), Kind::to_string))
+            .bytes()
+            .fold(0xCBF2_9CE4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3));
         Guid::seeded(seed, n)
     });
     // What breaks a rule is left out, with the rule; a wall takes its doors and windows along.

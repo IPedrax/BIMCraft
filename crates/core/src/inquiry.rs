@@ -43,12 +43,12 @@ pub fn one(m: &Model, word: &str) -> Option<Id> {
     m.elements.id(guid_of(word)?)
 }
 
-/// The library entry `word` names: its id, its GUID, or that GUID as an IFC GlobalId.
+/// The library entry or part `word` names: its id, its GUID, or that GUID as an IFC GlobalId.
 pub fn library(m: &Model, word: &str) -> Option<Id> {
     let g = guid_of(word)?;
     match g.pending() {
-        Some(id) => m.library.get(id).map(|_| id),
-        None => m.library.by_guid(g).map(|(id, _)| id),
+        Some(id) => m.library.taken(id).then_some(id),
+        None => m.library.by_guid(g).map(|(id, _)| id).or_else(|| m.library.part_by_guid(g).map(|(id, _)| id)),
     }
 }
 
@@ -78,6 +78,10 @@ pub struct Names {
 }
 
 pub fn names(m: &Model, id: Id) -> Option<Names> {
+    if let Some(p) = m.library.part(id) {
+        let ifc = crate::ifc::compress(p.guid.as_u128());
+        return Some(Names { id, guid: p.guid, ifc, category: p.what.to_string(), name: p.name() });
+    }
     if let Some(e) = m.library.get(id) {
         let ifc = crate::ifc::compress(e.guid.as_u128());
         return Some(Names { id, guid: e.guid, ifc, category: e.kind.label(), name: e.name.clone() });

@@ -56,10 +56,12 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 2: the library has ids and GUIDs too
+/// The version of the project file this build writes, and the newest it reads. 3: a type's layers and a family's forms and
+/// symbols hold ids and GUIDs; a family's types and parameters are library entries, and what uses them names them by GUID.
+/// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 2;
+pub const FORMAT: u32 = 3;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -241,9 +243,14 @@ pub enum Function {
 
 /// A layer of a compound type: of a wall, from its exterior in; of a floor, a roof or a ceiling,
 /// from its top down. Its material is one of the project's library's, or none.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Layer {
+    /// Its id and GUID, as an element's: given when it's made, kept while it stays where it is in its list.
+    #[serde(default, skip_serializing_if = "crate::ids::unset")]
+    pub id: crate::ids::Id,
+    #[serde(default, skip_serializing_if = "crate::ids::Guid::is_nil")]
+    pub guid: crate::ids::Guid,
     #[serde(default)]
     pub function: Function,
     #[serde(default)]
@@ -1593,7 +1600,12 @@ impl Model {
             m.types.wall.insert(n.into(), WallType { thickness: t, layers: Vec::new() });
         }
         // An exterior wall's layers, outside in: brick, insulation, a block core, plaster.
-        let layer = |function, material: &str, thickness| Layer { function, material: language.word(material).into(), thickness };
+        let layer = |function, material: &str, thickness| Layer {
+            function,
+            material: language.word(material).into(),
+            thickness,
+            ..Layer::default()
+        };
         let layers = vec![
             layer(Function::Finish, "Brick", 100.0),
             layer(Function::Thermal, "Insulation", 50.0),
@@ -1957,7 +1969,7 @@ impl Model {
     pub fn fresh_id(&mut self) -> Id {
         let mut id = self.next_id.max(FIRST_ID).max(self.elements.keys().next_back().map_or(FIRST_ID, |k| k + 1));
         // The library counts down from the top: past an id of its, on.
-        while self.library.get(id).is_some() {
+        while self.library.taken(id) {
             id += 1;
         }
         self.next_id = id + 1;

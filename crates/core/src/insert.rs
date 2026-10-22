@@ -132,6 +132,15 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
         out.library.push(format!("{}: {}", e.kind.label(), e.name));
         copied.push((e.kind.clone(), e.name.clone()));
     }
+    // A family that came in brings its types and parameters, with their GUIDs.
+    let came: BTreeSet<String> = copied.iter().filter(|(k, _)| *k == Kind::Family).map(|(_, n)| n.clone()).collect();
+    for (_, e) in from.library.entries().filter(|(_, e)| matches!(e.kind, Kind::FamilyType | Kind::FamilyParameter)) {
+        let of = came.iter().any(|f| e.name.starts_with(&format!("{f}: ")));
+        if of && to.library.id(&e.kind, &e.name).is_none() && to.library.by_guid(e.guid).is_none() {
+            let id = to.fresh_library_id();
+            to.library.insert(id, Entry { kind: e.kind.clone(), name: e.name.clone(), guid: e.guid })?;
+        }
+    }
     // What came in names the materials and pictures it's made of as this project does.
     let here = |kind: &Kind, name: &mut String| {
         if let Some(n) = renames.get(&(kind.clone(), name.clone())) {
@@ -140,6 +149,11 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
     };
     for (kind, name) in copied {
         match kind {
+            Kind::Family => {
+                if let Some(f) = to.families.get_mut(&name) {
+                    f.material_refs_mut(&mut |m| here(&Kind::Material, m));
+                }
+            }
             Kind::Material => {
                 if let Some(t) = to.materials.get_mut(&name).and_then(|m| m.texture.as_mut()) {
                     here(&Kind::Picture, &mut t.image);

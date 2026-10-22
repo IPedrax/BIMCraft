@@ -25,8 +25,12 @@ and MCP server, and milestone 2, the egui desktop app, are done. What works and 
   id space; code names entries as it always has, and a file holds their GUIDs (`Model::to_json`, `names_from_file`). So a
   new name reference goes in `Element::lib_refs_mut` or `Model::lib_refs_mut`, a new kind of entry in `Kind` and
   `library_names` (and `copy_definition` for Insert from File), and a new rename calls `Library::renamed`;
-  `Model::sync_library` (after every command) gives new entries theirs. This is the standard for everything new; subparts
-  (layers, a family's types, parameters and forms) are next.
+  `Model::sync_library` (after every command) gives new entries theirs. Parts hold their own `id` and `guid` (`Layer`,
+  `Form`, `Symbol`; the `HasPart` trait, listed in `Library::parts` by `parts_now`): an edit that gives a list again keeps
+  them by place (`keep_parts`), the sync gives new ones (and a copy, which holds another's, its own; the one that held it
+  before keeps it). A family's types and parameters are entries (`family: name`), so a component's type and instance values
+  are GUIDs in a file; inside a family, its parts name its parameters as its formulas do. This is the standard for
+  everything new: a new kind of part implements `HasPart` and goes in `parts_now`, `sync_parts` and `forget_parts`.
 - **Validate in one place.** Commands build elements; `Model::check` validates the whole model after each command and the
   engine rolls back when it fails. New rules go there, with an error that says what to fix.
 - **Clean-room.** Never copy Autodesk content: no families (`.rfa`), templates, icons, help text, or anything from inside

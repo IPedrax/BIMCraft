@@ -2518,7 +2518,12 @@ fn compound_wall_types_are_as_thick_as_their_layers() {
     cavity(&mut s);
     let t = run(&mut s, "inspect", json!({}))["types"]["wall"]["Cavity 300"].clone();
     assert_eq!(t["thickness"], 300.0);
-    assert_eq!(t["layers"][0], json!({"function": "finish", "material": "Brick", "thickness": 100.0}));
+    // Each layer with its id and GUID, as an element has them.
+    let mut first = t["layers"][0].clone();
+    let (id, guid) = (first["id"].as_u64(), first["guid"].as_str().map(String::from));
+    assert!(id.is_some_and(|id| id >= 100_000) && guid.is_some_and(|g| crate::model::Guid::parse(&g).is_some()), "{first}");
+    first.as_object_mut().unwrap().retain(|k, _| k != "id" && k != "guid");
+    assert_eq!(first, json!({"function": "finish", "material": "Brick", "thickness": 100.0}));
     // A new thickness goes to its structure.
     let t = run(&mut s, "type", json!({"category": "wall", "name": "Cavity 300", "thickness": 320}))["type"].clone();
     assert_eq!((&t["thickness"], &t["layers"][2]["thickness"]), (&json!(320.0), &json!(160.0)));

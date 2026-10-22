@@ -2381,7 +2381,12 @@ fn duplicate_copies_a_types_layers() {
     press(&mut h, "Create");
     press(&mut h, "OK");
     let types = &h.state().session.model.types.wall;
-    assert_eq!(types["Exterior copy"].layers, types["Exterior - 300mm"].layers);
+    // The same layers, each a copy with an id and a GUID of its own.
+    let bare = |n: &str| {
+        types[n].layers.iter().map(|l| bimcraft_core::model::Layer { id: 0, guid: Default::default(), ..l.clone() }).collect::<Vec<_>>()
+    };
+    assert_eq!(bare("Exterior copy"), bare("Exterior - 300mm"));
+    assert!(types["Exterior copy"].layers.iter().zip(&types["Exterior - 300mm"].layers).all(|(a, b)| a.id != b.id && a.guid != b.guid));
 }
 
 #[test]

@@ -66,6 +66,11 @@ impl Guid {
         (self.0 >> 64 == 0).then_some(self.0 as u64)
     }
 
+    /// Whether it is the nil GUID: what a part not yet given one holds.
+    pub fn is_nil(&self) -> bool {
+        self.0 == 0
+    }
+
     pub const fn from_u128(n: u128) -> Guid {
         Guid(n)
     }
@@ -146,6 +151,11 @@ impl<'de> Deserialize<'de> for Guid {
         }
         d.deserialize_any(V)
     }
+}
+
+/// Whether `id` is none yet: what a part not yet given one holds.
+pub fn unset(id: &Id) -> bool {
+    *id == 0
 }
 
 /// What an element may be found by: its id or its GUID.

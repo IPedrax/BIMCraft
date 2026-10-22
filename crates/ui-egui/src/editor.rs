@@ -244,6 +244,8 @@ impl ParamText {
 /// A symbol as typed.
 #[derive(Clone)]
 struct SymbolText {
+    /// Its id and GUID, which it keeps wherever it's moved to in the list.
+    ident: (bimcraft_core::model::Id, bimcraft_core::model::Guid),
     arc: bool,
     line: String,
     centre: [String; 2],
@@ -260,6 +262,7 @@ impl SymbolText {
             |c| ([expr_text(&c.centre[0]), expr_text(&c.centre[1])], expr_text(&c.radius), expr_text(&c.from), expr_text(&c.to)),
         );
         SymbolText {
+            ident: (y.id, y.guid),
             arc: y.arc.is_some(),
             line: profile_text(&y.line),
             centre,
@@ -272,15 +275,18 @@ impl SymbolText {
 
     fn symbol(&self) -> Result<Symbol, String> {
         let visible = (!self.visible.trim().is_empty()).then(|| text_expr(&self.visible));
+        let (id, guid) = self.ident;
         Ok(if self.arc {
             let centre = [text_expr(&self.centre[0]), text_expr(&self.centre[1])];
             Symbol {
                 arc: Some(Curve { centre, radius: text_expr(&self.radius), from: text_expr(&self.from), to: text_expr(&self.to) }),
                 visible,
+                id,
+                guid,
                 ..Symbol::default()
             }
         } else {
-            Symbol { line: text_profile(&self.line)?, visible, ..Symbol::default() }
+            Symbol { line: text_profile(&self.line)?, visible, id, guid, ..Symbol::default() }
         })
     }
 }
@@ -837,6 +843,7 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
     ui.horizontal(|ui| {
         if ui.button(t("Add Line")).clicked() {
             ed.symbols.push(SymbolText {
+                ident: Default::default(),
                 arc: false,
                 line: "0, 0\n0, 900".into(),
                 centre: Default::default(),
@@ -848,6 +855,7 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
         }
         if ui.button(t("Add Arc")).clicked() {
             ed.symbols.push(SymbolText {
+                ident: Default::default(),
                 arc: true,
                 line: String::new(),
                 centre: ["0".into(), "0".into()],

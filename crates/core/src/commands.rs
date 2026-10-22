@@ -820,7 +820,10 @@ pub static ALL: &[Command] = &[
         "{kind?, name?} the project's library with its ids and GUIDs, as elements have them: each type (`kind` \
          `type:wall`, `type:door`, `type:beam`…), material, picture, family, parameter, view filter and template \
          (`view-filter`, `view-template`), phase, phase filter, design option set and design option (`option-set`, \
-         `design-option`, named `set: option`). Wherever a command takes one of them by name, its GUID does too",
+         `design-option`, named `set: option`), family type and family parameter (`family-type`, `family-parameter`, named \
+         `family: name`); and `parts`, what entries hold that has its own id and GUID: each type's layers and each family's \
+         forms and symbols (`kind` `layer`, `form`, `symbol`; `name` the type's or the family's). Wherever a command takes \
+         an entry by name, its GUID does too",
         library,
     ),
     other(
@@ -1443,7 +1446,16 @@ fn library(s: &mut Session, p: &Value) -> R {
         .filter(|(_, e)| name.as_ref().is_none_or(|n| e.name == *n))
         .map(|(id, e)| json!({"id": id, "guid": e.guid, "kind": e.kind, "name": e.name}))
         .collect();
-    Ok(json!({"count": rows.len(), "library": rows}))
+    // The parts: layers, a family's forms and symbols, each with its id and GUID.
+    let parts: Vec<Value> = s
+        .model
+        .library
+        .parts()
+        .filter(|(_, x)| kind.as_ref().is_none_or(|k| x.what == k.as_str()))
+        .filter(|(_, x)| name.as_ref().is_none_or(|n| x.owner == *n))
+        .map(|(id, x)| json!({"id": id, "guid": x.guid, "kind": x.what, "of": x.of, "index": x.index}))
+        .collect();
+    Ok(json!({"count": rows.len(), "library": rows, "parts": parts}))
 }
 
 fn ids_of(s: &mut Session, p: &Value) -> R {
@@ -4488,10 +4500,14 @@ fn family(s: &mut Session, p: &Value) -> R {
         }
     }
     if let Some(v) = p.get("forms").filter(|v| !v.is_null()) {
-        f.forms = serde_json::from_value(v.clone()).map_err(|e| field("forms", e))?;
+        let mut forms: Vec<crate::family::Form> = serde_json::from_value(v.clone()).map_err(|e| field("forms", e))?;
+        crate::library::keep_parts(&mut f.forms, &mut forms);
+        f.forms = forms;
     }
     if let Some(v) = p.get("symbols").filter(|v| !v.is_null()) {
-        f.symbols = serde_json::from_value(v.clone()).map_err(|e| field("symbols", e))?;
+        let mut symbols: Vec<crate::family::Symbol> = serde_json::from_value(v.clone()).map_err(|e| field("symbols", e))?;
+        crate::library::keep_parts(&mut f.symbols, &mut symbols);
+        f.symbols = symbols;
     }
     if let Some(v) = p.get("types").filter(|v| !v.is_null()) {
         let mut types = serde_json::to_value(&f.types).map_err(|e| bad(c, e))?;
@@ -4508,7 +4524,7 @@ fn family(s: &mut Session, p: &Value) -> R {
                 return Err(bad(c, format!("there's a family `{to}` already")));
             }
             m.families.remove(&name);
-            m.library.renamed(&LibKind::Family, &name, &to);
+            m.library.family_renamed(&name, &to);
             for e in m.elements.values_mut() {
                 if let Some(f) = e.family_mut()
                     && *f == name
@@ -4806,6 +4822,11 @@ fn layered(
         Some(_) => return Err(bad(c, format!("`layers` is a list of at most {} layers", crate::model::MAX_LAYERS))),
         None => None,
     };
+    // Each layer at a place it had keeps its id and GUID.
+    let layers = layers.map(|mut new| {
+        crate::library::keep_parts(&mut old.map(|(_, l)| l.to_vec()).unwrap_or_default(), &mut new);
+        new
+    });
     match (layers, thickness) {
         (Some(layers), given) if !layers.is_empty() => {
             let sum: f64 = layers.iter().map(|l| l.thickness).sum();

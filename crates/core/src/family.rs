@@ -230,6 +230,11 @@ pub struct Curve {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Symbol {
+    /// Its id and GUID, as an element's: given when it's made, kept while it stays where it is in its list.
+    #[serde(default, skip_serializing_if = "crate::ids::unset")]
+    pub id: crate::ids::Id,
+    #[serde(default, skip_serializing_if = "crate::ids::Guid::is_nil")]
+    pub guid: crate::ids::Guid,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub line: Vec<[Expr; 2]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -247,6 +252,11 @@ pub struct Symbol {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Form {
+    /// Its id and GUID, as an element's: given when it's made, kept while it stays where it is in its list.
+    #[serde(default, skip_serializing_if = "crate::ids::unset")]
+    pub id: crate::ids::Id,
+    #[serde(default, skip_serializing_if = "crate::ids::Guid::is_nil")]
+    pub guid: crate::ids::Guid,
     #[serde(default)]
     pub plane: Plane,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -689,6 +699,28 @@ pub(crate) fn read(p: &Parameter, v: &Value) -> Result<Val, String> {
 }
 
 impl Family {
+    /// Each material it names, given to `f`, which may put another in its place: its material parameters' values, its
+    /// types' values of them, and its forms' materials (a form made of a material parameter names that, which is no
+    /// material's name).
+    pub fn material_refs_mut(&mut self, f: &mut dyn FnMut(&mut String)) {
+        let params: BTreeSet<String> = self.parameters.iter().filter(|p| p.kind == Kind::Material).map(|p| p.name.clone()).collect();
+        for p in self.parameters.iter_mut().filter(|p| p.kind == Kind::Material) {
+            if let Value::String(m) = &mut p.value {
+                f(m);
+            }
+        }
+        for values in self.types.values_mut() {
+            for (k, v) in values.iter_mut() {
+                if let (true, Value::String(m)) = (params.contains(k), v) {
+                    f(m);
+                }
+            }
+        }
+        for form in self.forms.iter_mut().filter(|x| !x.material.is_empty() && !params.contains(&x.material)) {
+            f(&mut form.material);
+        }
+    }
+
     /// Whether `name` is one of its material parameters.
     pub fn material_parameter(&self, name: &str) -> bool {
         self.parameters.iter().any(|p| p.name == name && p.kind == Kind::Material)
