@@ -668,7 +668,7 @@ pub(crate) fn shaded(m: &Model) -> Vec<Solid> {
 }
 
 fn layered(m: &Model, s: Solid) -> Vec<Solid> {
-    let layers = match m.elements.get(&s.owner()) {
+    let layers = match m.elements.get(s.owner()) {
         Some(Element::Wall(w)) => m.type_layers("wall", &w.type_name),
         Some(Element::Floor(f)) => m.type_layers("floor", &f.type_name),
         Some(Element::Roof(r)) => m.type_layers("roof", &r.type_name),
@@ -1618,11 +1618,11 @@ mod tests {
             let (x, y) = at(&cam, p);
             img.pick(x, y)
         };
-        assert_eq!(pick([5000.0, -100.0, 1500.0]), Some(3), "the south wall's outer face");
-        assert_eq!(pick([2000.0, -25.0, 1000.0]), Some(7), "the door, seen through its opening");
-        assert_eq!(pick([8025.0, 3000.0, 1650.0]), Some(8), "the window's glass");
-        assert_eq!(pick([2000.0, 4500.0, 0.0]), Some(9), "the floor, seen over the walls");
-        assert_eq!(pick([4000.0, 1000.0, 0.0]), Some(3), "the floor behind the south wall: the wall hides it");
+        assert_eq!(pick([5000.0, -100.0, 1500.0]), Some(100002), "the south wall's outer face");
+        assert_eq!(pick([2000.0, -25.0, 1000.0]), Some(100006), "the door, seen through its opening");
+        assert_eq!(pick([8025.0, 3000.0, 1650.0]), Some(100007), "the window's glass");
+        assert_eq!(pick([2000.0, 4500.0, 0.0]), Some(100008), "the floor, seen over the walls");
+        assert_eq!(pick([4000.0, 1000.0, 0.0]), Some(100002), "the floor behind the south wall: the wall hides it");
         assert_eq!(img.pick(1.0, 1.0), None, "the background");
     }
 
@@ -1785,13 +1785,13 @@ mod tests {
     fn a_family_door_and_window_show_their_forms_in_the_wall_and_mirror_with_their_flips() {
         let mut s = house();
         s.script(
-            r#"delete {"ids": [7, 8]}
+            r#"delete {"ids": [100006, 100007]}
                door {"at": [2000, 0], "family": "Single Door", "type": "800 x 2100"}
                window {"at": [8000, 3000], "family": "Fixed Window", "type": "600 x 900"}"#,
         )
         .unwrap();
         // The door and the window are 10 and 11 now (9 is the floor).
-        let (door, window) = (10, 11);
+        let (door, window) = (100009, 100010);
         let scene = Scene::new(&s.model);
         let cam = scene.fit(AZIMUTH, ELEVATION, 1600, 1200);
         let pick_at = |cam: &Camera, img: &Image, p: P3| {
@@ -1809,7 +1809,7 @@ mod tests {
         assert_eq!(near([2250.0, -75.0, 1015.0]), Some(door), "the handle, 55 proud of the leaf");
         // The window's glass is 6 thick, in the middle of its wall, and not what a classic window's 50 mm panel is.
         assert_eq!(near([8003.0, 3000.0, 1550.0]), Some(window), "the glass");
-        assert_eq!(near([5000.0, -100.0, 1500.0]), Some(3), "the wall beside them");
+        assert_eq!(near([5000.0, -100.0, 1500.0]), Some(100002), "the wall beside them");
         // Its hinge side's jamb is still there, on the other jamb's side, once flipped.
         run_flip(&mut s);
         let scene = Scene::new(&s.model);
@@ -1820,7 +1820,7 @@ mod tests {
     }
 
     fn run_flip(s: &mut Session) {
-        s.execute("modify", &serde_json::json!({"id": 10, "flip_hand": true})).unwrap();
+        s.execute("modify", &serde_json::json!({"id": 100009, "flip_hand": true})).unwrap();
     }
 
     /// The house with its walls of two layers: brick on the left of each, and a block to its right.
@@ -1828,7 +1828,7 @@ mod tests {
         let mut s = house();
         s.script(
             r#"type {"category": "wall", "name": "Brick wall", "layers": [{"function": "finish", "material": "Brick", "thickness": 100}, {"function": "structure", "material": "Concrete block", "thickness": 100}]}
-               modify {"ids": [3, 4, 5, 6], "type": "Brick wall"}"#,
+               modify {"ids": [100002, 100003, 100004, 100005], "type": "Brick wall"}"#,
         )
         .unwrap();
         s
@@ -1903,7 +1903,7 @@ mod tests {
         s.script(&format!(
             r##"material {{"name": "Stripes", "color": "#808080", "texture": {{"kind": "image", "path": {path:?}, "size": [1000, 1000]}}}}
                type {{"category": "floor", "name": "Striped", "layers": [{{"material": "Stripes", "thickness": 200}}]}}
-               delete {{"ids": [9]}}
+               delete {{"ids": [100008]}}
                floor {{"type": "Striped"}}"##
         ))
         .unwrap();
@@ -1936,11 +1936,11 @@ mod tests {
         // Paint: the face of a wall toward the house (the exterior of these walls, drawn the way round they are) in a material
         // of its own; the face away from it, the other.
         let mut s = brick_house();
-        s.execute("paint", &serde_json::json!({"ids": [5], "face": "exterior", "material": "Timber"})).unwrap();
+        s.execute("paint", &serde_json::json!({"ids": [100004], "face": "exterior", "material": "Timber"})).unwrap();
         let (scene, close) = closeup(&s, [4000.0, 5900.0, COURSE], 0.8);
         let img = scene.render(&close, &[]);
         let (x, y) = at(&close, [4000.0, 5900.0, COURSE]);
-        assert_eq!((img.pick(x, y), img.face(x, y)), (Some(5), Some("exterior")));
+        assert_eq!((img.pick(x, y), img.face(x, y)), (Some(100004), Some("exterior")));
         let row: Vec<Rgb> = (0..60).map(|i| img.color(at(&close, [3200.0 + 25.0 * f64::from(i), 5900.0, COURSE]).0, y)).collect();
         // Timber's tan, in boards (a gap between two, a joint along one, darker): where brick was red.
         let tan = row.iter().filter(|c| i32::from(c.0) - i32::from(c.2) > 30 && u32::from(c.1) * 100 > u32::from(c.0) * 70).count();
@@ -1950,23 +1950,23 @@ mod tests {
         let far = scene.fit(AZIMUTH, ELEVATION, 1600, 1200);
         let seen = scene.render(&far, &[]);
         let (fx, fy) = at(&far, [4000.0, -100.0, 1500.0]);
-        assert_eq!((seen.pick(fx, fy), seen.face(fx, fy)), (Some(3), Some("interior")));
+        assert_eq!((seen.pick(fx, fy), seen.face(fx, fy)), (Some(100002), Some("interior")));
         assert_eq!(seen.face(1.0, 1.0), None, "the sky");
         let top = at(&far, [4000.0, 4500.0, 0.0]);
-        assert_eq!((seen.pick(top.0, top.1), seen.face(top.0, top.1)), (Some(9), Some("top")), "the floor's");
+        assert_eq!((seen.pick(top.0, top.1), seen.face(top.0, top.1)), (Some(100008), Some("top")), "the floor's");
     }
 
     #[test]
     fn paint_changes_only_the_face_it_names() {
         let mut s = brick_house();
         let before = Scene::new(&s.model);
-        s.execute("paint", &serde_json::json!({"ids": [5], "face": "exterior", "material": "Timber"})).unwrap();
+        s.execute("paint", &serde_json::json!({"ids": [100004], "face": "exterior", "material": "Timber"})).unwrap();
         let after = Scene::new(&s.model);
         let timber = s.model.materials["Timber"].color;
         assert_eq!(before.tris.len(), after.tris.len());
         let (mut painted, mut kept) = (0, 0);
         for (i, (a, b)) in before.tris.iter().zip(&after.tris).enumerate() {
-            if a.owner == 5 && after.faces[i] == "exterior" {
+            if a.owner == 100004 && after.faces[i] == "exterior" {
                 assert_eq!(b.color, Rgb(timber[0], timber[1], timber[2]), "triangle {i}");
                 painted += 1;
             } else {
@@ -1977,7 +1977,7 @@ mod tests {
                     after.faces[i],
                     a.owner
                 );
-                kept += usize::from(a.owner == 5);
+                kept += usize::from(a.owner == 100004);
             }
         }
         assert!(painted > 0 && kept > 0, "{painted} painted, {kept} left of the wall's others");
@@ -1990,7 +1990,7 @@ mod tests {
         // Red where x is under 500 from a metre's mark, laid on the south wall's outer face: its face looks south, so across is east.
         s.script(&format!(
             r##"material {{"name": "Stripes", "color": "#808080", "texture": {{"kind": "image", "path": {path:?}, "size": [1000, 1000]}}}}
-               paint {{"ids": [3], "face": "interior", "material": "Stripes"}}"##
+               paint {{"ids": [100002], "face": "interior", "material": "Stripes"}}"##
         ))
         .unwrap();
         let scene = Scene::new(&s.model);
@@ -2017,7 +2017,7 @@ mod tests {
         let cam = scene.fit(AZIMUTH, ELEVATION, 400, 300);
         let (x, y) = at(&cam, [5000.0, -100.0, 1500.0]);
         let plain = scene.render(&cam, &[]).color(x, y);
-        let tinted = scene.render(&cam, &[(3, Rgb(37, 99, 235))]).color(x, y);
+        let tinted = scene.render(&cam, &[(100002, Rgb(37, 99, 235))]).color(x, y);
         assert!(plain.2 <= plain.0 && tinted.2 > tinted.0 + 40, "{plain:?} {tinted:?}");
     }
 
@@ -2095,7 +2095,7 @@ mod tests {
         assert_eq!(wire.color(south.0, south.1), PAPER);
         assert!(inked(&wire) > 300 && inked(&wire) < inked(&hidden) * 2, "{}", inked(&wire));
         assert_eq!(wire.pick(south.0, south.1), None, "a face isn't there to pick");
-        assert_eq!(wire.pick(x, y), Some(3), "the top edge of the south wall");
+        assert_eq!(wire.pick(x, y), Some(100002), "the top edge of the south wall");
         // Back to shaded, the picture is as it was.
         let (_, again) = styled(&mut s, "shaded");
         assert_eq!(again.rgba, shaded.rgba);
@@ -2110,7 +2110,7 @@ mod tests {
         let look = Look::of_3d(&s.model);
         let plain = scene.render_in(&cam, &[], &look);
         assert!(inked(&plain) < inked(&all), "the door's edges are gone: {} of {}", inked(&plain), inked(&all));
-        let tinted = scene.render_in(&cam, &[(3, Rgb(255, 0, 0))], &look);
+        let tinted = scene.render_in(&cam, &[(100002, Rgb(255, 0, 0))], &look);
         let (x, y) = at(&cam, [5000.0, -100.0, 3000.0]);
         assert_eq!(tinted.color(x, y), Rgb(255, 0, 0), "a selected wall's edges in the selection's colour");
         let colours = plain.rgba.chunks(4).filter(|c| c[..3] != [255, 255, 255]).map(|c| (c[0], c[1], c[2])).collect::<BTreeSet<_>>();

@@ -104,14 +104,14 @@ impl BimApp {
             self.run("move", serde_json::json!({"ids": self.selection, "by": [by.0, by.1]}));
         }
         // A double click on a view opens it; a click selects.
-        let view_of = |id: Id| match model.elements.get(&id) {
-            Some(Element::Viewport(v)) => match model.elements.get(&v.view) {
-                Some(Element::Level(_)) => Some(Sheet::Plan(v.view)),
-                Some(Element::Section(_) | Element::Elevation(_)) => Some(Sheet::Section(v.view)),
+        let view_of = |id: Id| match model.elements.get(id) {
+            Some(Element::Viewport(v)) => match model.elements.get(v.view) {
+                Some(Element::Level(_)) => model.elements.id(v.view).map(Sheet::Plan),
+                Some(Element::Section(_) | Element::Elevation(_)) => model.elements.id(v.view).map(Sheet::Section),
                 Some(Element::View3D(_)) => Some(Sheet::View3D),
                 Some(Element::Schedule(sc)) => match bimcraft_core::schedule::builtin(Some(&sc.name), None) {
                     Some((cat, _)) => SCHEDULES.iter().find(|(c, _)| *c == cat).map(|(c, _)| Sheet::Schedule(c)),
-                    None => Some(Sheet::Table(v.view)),
+                    None => model.elements.id(v.view).map(Sheet::Table),
                 },
                 _ => None,
             },

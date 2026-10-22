@@ -15,7 +15,7 @@ use std::fmt::Write;
 use crate::geom::{self, P2};
 use serde_json::Value;
 
-use crate::model::{DEFAULT_HEIGHT, Element, Function, Id, Layer, Model, ParameterKind, Railing, heading, mix};
+use crate::model::{DEFAULT_HEIGHT, Element, Function, Guid, Id, Layer, Model, ParameterKind, Railing, heading, mix};
 use crate::phasing;
 use crate::stairs;
 use crate::view3d::P3;
@@ -71,11 +71,6 @@ pub const PHASING: &str = "BIMCraft_Phasing";
 /// What a `Phase Created` says of itself when the element holds none: it was made in the first phase.
 pub const IMPLIED: &str = "Implied: no phase is set for it, so it was made in the first phase";
 
-/// Part `i` of element `id`, for its GlobalId.
-fn part(id: Id, i: usize) -> u64 {
-    mix(id).wrapping_add(i as u64)
-}
-
 /// What a stair's or a ramp's IFC type is, by its landings: `kind` is STAIR or RAMP.
 fn shape_of(landings: &[crate::model::Landing], kind: &str) -> String {
     let turns: Vec<f64> = landings.iter().map(|l| l.turn).collect();
@@ -123,15 +118,41 @@ fn ratio(x: f64) -> String {
     format!("{x:.12}").trim_end_matches('0').to_string()
 }
 
+/// The digits of an IFC GlobalId, in order.
+const DIGITS: &[u8; 64] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
+
 /// A 22-character IFC GlobalId, the same for the same model, role and element on every export.
 fn guid(uid: u64, role: u64, id: u64) -> String {
-    const CHARS: &[u8; 64] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
     let hi = mix(uid ^ mix(role.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ id));
     let lo = mix(hi ^ id.rotate_left(17) ^ role);
-    let v = (u128::from(hi) << 64) | u128::from(lo);
-    // 128 bits as 22 base-64 digits: the first carries the top 2 bits.
-    let digit = |shift: u32| char::from(CHARS[((v >> shift) & 63) as usize]);
+    compress((u128::from(hi) << 64) | u128::from(lo))
+}
+
+/// 128 bits as an IFC GlobalId: 22 base-64 digits, the first carrying the top 2 bits. An element's GUID written so is its
+/// GlobalId, as IfcOpenShell's `guid.compress` writes a UUID.
+pub fn compress(v: u128) -> String {
+    let digit = |shift: u32| char::from(DIGITS[((v >> shift) & 63) as usize]);
     std::iter::once(digit(126)).chain((0..21).rev().map(|i| digit(6 * i))).collect()
+}
+
+/// The 128 bits an IFC GlobalId holds; none for one that isn't 22 of its digits, the first at most 3.
+pub fn expand(text: &str) -> Option<u128> {
+    let b = text.as_bytes();
+    if b.len() != 22 {
+        return None;
+    }
+    b.iter()
+        .try_fold(0u128, |v, c| {
+            let d = DIGITS.iter().position(|x| x == c)? as u128;
+            (v >> 122 == 0).then_some((v << 6) | d)
+        })
+        .filter(|_| DIGITS.iter().position(|x| *x == b[0]).is_some_and(|d| d < 4))
+}
+
+/// A GUID's 128 bits folded to 64, to seed what an element writes beside itself.
+fn fold(g: Guid) -> u64 {
+    let v = g.as_u128();
+    (v >> 64) as u64 ^ v as u64
 }
 
 /// UTC date and time of a Unix time, ISO 8601.
@@ -156,6 +177,8 @@ struct Step {
     out: String,
     next: u64,
     uid: u64,
+    /// Each element's GUID, by its id.
+    own: BTreeMap<Id, Guid>,
     /// Shared: the origin placement, +Z, the model's context and its body subcontext.
     world: u64,
     z: u64,
@@ -173,8 +196,19 @@ impl Step {
         self.next
     }
 
+    /// The GlobalId of what plays `role` for `id`: an element's or a storey's own is its GUID; what else an element writes
+    /// (its openings, its parts, its relations) is made from its GUID too, so a new id changes none of them.
     fn guid(&self, role: u64, id: u64) -> String {
-        s(&guid(self.uid, role, id))
+        match self.own.get(&id) {
+            Some(g) if role == ELEMENT || role == STOREY => s(&compress(g.as_u128())),
+            Some(g) => s(&guid(self.uid, role, fold(*g))),
+            None => s(&guid(self.uid, role, id)),
+        }
+    }
+
+    /// Part `i` of element `id`, for its GlobalId.
+    fn part(&self, id: Id, i: usize) -> u64 {
+        mix(self.own.get(&id).map_or(id, |g| fold(*g))).wrapping_add(i as u64)
     }
 
     /// A text property, `note` describing it.
@@ -369,7 +403,7 @@ impl Step {
                 let pat = self.place(Some(at), (0.0, 0.0, 0.0), None);
                 let profile = self.profile(&p.ring, &[]);
                 let shape = self.body(profile, 0.0, p.z - base, &[]);
-                self.add(format!("IFCSLAB({},$,'Landing',$,$,#{pat},#{shape},$,.LANDING.)", self.guid(LANDING, part(id, i))))
+                self.add(format!("IFCSLAB({},$,'Landing',$,$,#{pat},#{shape},$,.LANDING.)", self.guid(LANDING, self.part(id, i))))
             })
             .collect()
     }
@@ -423,7 +457,8 @@ impl Step {
 }
 
 pub fn export(m: &Model) -> String {
-    let mut w = Step { out: String::new(), next: 0, uid: m.uid, world: 0, z: 0, context: 0, body: 0, materials: BTreeMap::new() };
+    let own = m.elements.with_guids().map(|(id, g, _)| (id, g)).collect();
+    let mut w = Step { out: String::new(), next: 0, uid: m.uid, own, world: 0, z: 0, context: 0, body: 0, materials: BTreeMap::new() };
     let origin = w.add("IFCCARTESIANPOINT((0.,0.,0.))");
     w.z = w.add("IFCDIRECTION((0.,0.,1.))");
     w.world = w.add(format!("IFCAXIS2PLACEMENT3D(#{origin},$,$)"));
@@ -448,19 +483,19 @@ pub fn export(m: &Model) -> String {
     w.add(format!("IFCRELAGGREGATES({},$,$,$,#{site},(#{building}))", w.guid(AGGREGATES, SITE)));
 
     // Storeys: (entity, placement) by level.
-    let mut storeys: BTreeMap<Id, (u64, u64)> = BTreeMap::new();
+    let mut storeys: BTreeMap<Guid, (u64, u64)> = BTreeMap::new();
     for (id, l) in m.levels() {
         let at = w.place(Some(building_at), (0.0, 0.0, l.elevation), None);
         let st = w.add(format!("IFCBUILDINGSTOREY({},$,{},$,$,#{at},$,$,.ELEMENT.,{})", w.guid(STOREY, id), s(&l.name), real(l.elevation)));
-        storeys.insert(id, (st, at));
+        storeys.insert(m.guid(id), (st, at));
     }
     let all: Vec<u64> = storeys.values().map(|(st, _)| *st).collect();
     if !all.is_empty() {
         w.add(format!("IFCRELAGGREGATES({},$,$,$,#{building},({}))", w.guid(AGGREGATES, BUILDING), refs(&all)));
     }
 
-    let mut contained: BTreeMap<Id, Vec<u64>> = BTreeMap::new();
-    let mut spaces: BTreeMap<Id, Vec<u64>> = BTreeMap::new();
+    let mut contained: BTreeMap<Guid, Vec<u64>> = BTreeMap::new();
+    let mut spaces: BTreeMap<Guid, Vec<u64>> = BTreeMap::new();
     // Each element's own entity, for what it holds of the project's parameters.
     let mut products: BTreeMap<Id, u64> = BTreeMap::new();
     // Walls as (entity, placement), for the openings in them.
@@ -749,7 +784,7 @@ pub fn export(m: &Model) -> String {
                     let shape = w.bodies(&steps, &[]);
                     parts.push(w.add(format!(
                         "IFCSTAIRFLIGHT({},$,'Flight',$,$,#{fat},#{shape},$,{},{},{},{},.STRAIGHT.)",
-                        w.guid(FLIGHT, part(id, i)),
+                        w.guid(FLIGHT, w.part(id, i)),
                         run.risers,
                         run.risers.saturating_sub(1),
                         real(each),
@@ -774,8 +809,9 @@ pub fn export(m: &Model) -> String {
                     let brep = w.prism(&run.ring(r.width), &walls::Plane::flat(base), &top, base);
                     let shape = w.solid(&[brep], &[]);
                     let fat = w.place(Some(at), (0.0, 0.0, 0.0), None);
-                    parts
-                        .push(w.add(format!("IFCRAMPFLIGHT({},$,'Flight',$,$,#{fat},#{shape},$,.STRAIGHT.)", w.guid(FLIGHT, part(id, i)))));
+                    parts.push(
+                        w.add(format!("IFCRAMPFLIGHT({},$,'Flight',$,$,#{fat},#{shape},$,.STRAIGHT.)", w.guid(FLIGHT, w.part(id, i)))),
+                    );
                 }
                 parts.extend(w.landings(&l, at, base, id));
                 wholes.insert(id, (ent, at, base, parts));
@@ -814,11 +850,11 @@ pub fn export(m: &Model) -> String {
     // Railings along stairs and ramps join their parts; each stair and ramp is the sum of its parts.
     for (&id, e) in &m.elements {
         if let Element::Railing(rl) = e
-            && let Some((_, at, base, _)) = rl.host.and_then(|h| wholes.get(&h)).cloned()
+            && let Some((_, at, base, _)) = rl.host.and_then(|h| wholes.get(&m.elements.id(h)?)).cloned()
         {
             let ent = w.railing(m, id, rl, at, base, axis);
             products.insert(id, ent);
-            if let Some((_, _, _, parts)) = rl.host.and_then(|h| wholes.get_mut(&h)) {
+            if let Some((_, _, _, parts)) = rl.host.and_then(|h| wholes.get_mut(&m.elements.id(h)?)) {
                 parts.push(ent);
             }
         }
@@ -829,7 +865,7 @@ pub fn export(m: &Model) -> String {
     // A shaft voids each floor, ceiling and roof it passes through: an opening in each, its
     // outline swept up the shaft's whole height.
     for (&host, &(ent, at, z)) in &hosts {
-        let slabs = match m.elements.get(&host) {
+        let slabs = match m.elements.get(host) {
             Some(Element::Floor(f)) => m.floor_slabs(f),
             Some(Element::Ceiling(c)) => m.ceiling_slabs(c),
             Some(Element::Roof(r)) => m.roof_slabs(r),
@@ -839,7 +875,7 @@ pub fn export(m: &Model) -> String {
         shafts.sort_unstable();
         shafts.dedup();
         for id in shafts {
-            let Some(Element::Shaft(sh)) = m.elements.get(&id) else { continue };
+            let Some(Element::Shaft(sh)) = m.elements.get(id) else { continue };
             let (bottom, top) = m.span(sh.level, sh.base_offset, sh.top_level, sh.height);
             let key = mix(id) ^ host;
             let o_at = w.place(Some(at), (0.0, 0.0, bottom - z), None);
@@ -851,7 +887,11 @@ pub fn export(m: &Model) -> String {
     }
     for (&id, e) in &m.elements {
         let (Element::Door(o) | Element::Window(o)) = e else { continue };
-        let (Some(t), Some(wl), Some(&(wall, wall_at))) = (m.opening_type(e), m.wall(o.host), placed.get(&o.host)) else { continue };
+        let (Some(t), Some(wl), Some(&(wall, wall_at))) =
+            (m.opening_type(e), m.wall(o.host), m.elements.id(o.host).and_then(|h| placed.get(&h)))
+        else {
+            continue;
+        };
         // From its jamb toward the wall's start, square to the wall at its middle, in the wall's frame.
         let axis = Axis::of(wl);
         let (u, way) = (axis.tangent(0.0), axis.tangent(o.offset));
@@ -956,7 +996,7 @@ pub fn export(m: &Model) -> String {
     // level; a roof's or a ceiling's set as it is.
     let mut slab_uses: BTreeMap<(&str, &str, String), Vec<u64>> = BTreeMap::new();
     for (&id, &(ent, ..)) in &hosts {
-        let (cat, name, offset) = match m.elements.get(&id) {
+        let (cat, name, offset) = match m.elements.get(id) {
             Some(Element::Floor(f)) => (
                 "floor",
                 f.type_name.as_str(),
@@ -1002,16 +1042,24 @@ pub fn export(m: &Model) -> String {
     }
     for (level, (storey, _)) in &storeys {
         if let Some(items) = contained.get(level) {
-            w.add(format!("IFCRELCONTAINEDINSPATIALSTRUCTURE({},$,$,$,({}),#{storey})", w.guid(CONTAINS, *level), refs(items)));
+            w.add(format!(
+                "IFCRELCONTAINEDINSPATIALSTRUCTURE({},$,$,$,({}),#{storey})",
+                w.guid(CONTAINS, m.elements.id(*level).unwrap_or_default()),
+                refs(items)
+            ));
         }
         if let Some(items) = spaces.get(level) {
-            w.add(format!("IFCRELAGGREGATES({},$,$,$,#{storey},({}))", w.guid(SPACES, *level), refs(items)));
+            w.add(format!(
+                "IFCRELAGGREGATES({},$,$,$,#{storey},({}))",
+                w.guid(SPACES, m.elements.id(*level).unwrap_or_default()),
+                refs(items)
+            ));
         }
     }
     // Each element's values of the project's parameters: a property set of its own, `Project
     // Parameters`, lengths in the file's millimetres.
     for (&id, &ent) in &products {
-        let Some(e) = m.elements.get(&id) else { continue };
+        let Some(e) = m.elements.get(id) else { continue };
         let Some(params) = e.params() else { continue };
         let props: Vec<u64> = params
             .iter()
@@ -1036,7 +1084,7 @@ pub fn export(m: &Model) -> String {
     // model; here an element holding another value names it as its `Phase Created` (said to be implied), for
     // another tool to read. A door or a window holds only what it says: one with no phase follows its wall.
     for (&id, &ent) in &products {
-        let Some(e) = m.elements.get(&id) else { continue };
+        let Some(e) = m.elements.get(id) else { continue };
         let Some(params) = e.params() else { continue };
         let held = |key: &str| params.get(key).and_then(Value::as_str);
         let [created, demolished, option] = [phasing::CREATED, phasing::DEMOLISHED, phasing::OPTION].map(held);
@@ -1211,7 +1259,7 @@ mod tests {
                wall {"points": [[8000, 0], [0, 0]], "arc": -60, "type": "Cavity", "location": "interior-finish"}
                window {"at": [4000, -1100]}
                roof {"gable": true, "boundary": [[-600, -1800], [8600, -1800], [8600, 6600], [-600, 6600]]}
-               modify {"ids": [3, 5], "attach_top": 8}
+               modify {"ids": [100002, 100004], "attach_top": 100007}
                door {"at": [4000, 6000]}"#,
         )
         .unwrap();
@@ -1427,7 +1475,7 @@ mod tests {
         // A phase named, which is no new value, or a view that shows one, doesn't count as using them.
         let mut s = Session::new();
         house(&mut s);
-        run(&mut s, "graphics", json!({"view": 1, "phase": "Existing", "phase_filter": "Show New"}));
+        run(&mut s, "graphics", json!({"view": 100000, "phase": "Existing", "phase_filter": "Show New"}));
         assert!(!export(&s.model).contains(PHASING));
         // An option set does.
         run(&mut s, "option", json!({"set": "Facade", "options": ["Brick", "Glass"]}));

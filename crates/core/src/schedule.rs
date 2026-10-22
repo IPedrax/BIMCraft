@@ -147,7 +147,7 @@ pub fn named(m: &Model, name: &str) -> Option<Id> {
 /// as every project has it, named in its language.
 pub fn standard(m: &Model, cat: &str) -> (Option<Id>, Schedule) {
     let name = VIEWS.iter().find(|(c, _)| *c == cat).map_or("", |(_, n)| *n);
-    match named(m, name).and_then(|id| Some((id, m.elements.get(&id)?))) {
+    match named(m, name).and_then(|id| Some((id, m.elements.get(id)?))) {
         Some((id, Element::Schedule(sc))) => (Some(id), sc.clone()),
         _ => (None, Schedule { name: m.language.word(name).to_string(), of: cat.to_string(), ..Schedule::default() }),
     }
@@ -159,6 +159,8 @@ pub fn standard(m: &Model, cat: &str) -> (Option<Id>, Schedule) {
 #[derive(Clone, Copy)]
 enum From {
     Key(&'static str),
+    /// The id of the element it points at under a key (by GUID in its JSON).
+    Ref(&'static str),
     Level,
     Metres(&'static str),
     PathLength,
@@ -185,7 +187,7 @@ const SYSTEM: Own = ("System", Kind::Text, From::Key("system"));
 const OFFSET: Own = ("Offset", Kind::Length, From::Key("offset"));
 const MARK: Own = ("Mark", Kind::Text, From::Key("mark"));
 const NAME: Own = ("Name", Kind::Text, From::Key("name"));
-const HOST: Own = ("Wall", Kind::Number, From::Key("host"));
+const HOST: Own = ("Wall", Kind::Number, From::Ref("host"));
 const COUNT: Own = ("Count", Kind::Number, From::Count);
 const PHASE_CREATED: Own = ("Phase Created", Kind::Text, From::Param);
 const PHASE_DEMOLISHED: Own = ("Phase Demolished", Kind::Text, From::Param);
@@ -751,9 +753,15 @@ impl Row<'_> {
                     None => Value::Null,
                 },
                 From::Key(k) => serde_json::json!(number(j.get(k))),
-                From::Level => {
-                    j.get("level").and_then(Value::as_u64).and_then(|l| m.level(l)).map_or(Value::Null, |l| Value::String(l.name.clone()))
+                From::Ref(k) => {
+                    let to = j.get(k).and_then(|g| serde_json::from_value::<crate::model::Guid>(g.clone()).ok());
+                    serde_json::json!(to.and_then(|g| m.elements.id(g)).map_or(0.0, |id| id as f64))
                 }
+                From::Level => j
+                    .get("level")
+                    .and_then(|l| serde_json::from_value::<crate::model::Guid>(l.clone()).ok())
+                    .and_then(|l| m.level(l))
+                    .map_or(Value::Null, |l| Value::String(l.name.clone())),
                 From::Metres(k) => serde_json::json!(fine(number(j.get(k)) * 1000.0)),
                 From::PathLength => {
                     let path: Vec<crate::geom::P2> = j.get("path").and_then(|p| serde_json::from_value(p.clone()).ok()).unwrap_or_default();

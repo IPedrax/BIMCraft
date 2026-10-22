@@ -272,7 +272,7 @@ fn a_plan_sees_the_beams_hanging_under_its_level_the_ones_it_cuts_and_the_ones_o
     // Through the cut plane; and one far over the view range's top, which the plan doesn't see.
     let through = made(&mut s, "beam", json!({"points": [[0, 2000], [6000, 2000]], "offset": 1500}));
     let high = made(&mut s, "beam", json!({"points": [[0, 4000], [6000, 4000]], "offset": 6000}));
-    let d = render::draw(&s.model, 1, view());
+    let d = render::draw(&s.model, 100000, view());
     // Hung: one outline of its footprint, 200 wide, projected (thin, solid).
     let lines = of(&d, hung);
     assert!(
@@ -293,7 +293,7 @@ fn a_plan_sees_the_beams_hanging_under_its_level_the_ones_it_cuts_and_the_ones_o
     assert!(cut.iter().all(|p| !matches!(p, Prim::Line { dash: Some(_), .. })), "a beam that is cut is not also overhead");
     assert!(of(&d, high).is_empty());
     // The plan above sees none of them; the level above is at 3000.
-    let up = render::draw(&s.model, 2, view());
+    let up = render::draw(&s.model, 100001, view());
     for id in [hung, through] {
         assert!(of(&up, id).is_empty(), "{id} is under the plan above's view range");
     }
@@ -305,12 +305,12 @@ fn the_plan_above_sees_the_beams_hanging_under_it_but_not_the_walls_of_the_store
     // Walls up to Level 2, and a beam of Level 1 hung from it: its top flush with the plan above's bottom.
     let wall = ids(&run(&mut s, "wall", json!({"points": [[0, 0], [6000, 0]]})))[0];
     let beam = made(&mut s, "beam", json!({"points": [[0, 1000], [6000, 1000]], "offset": 3000}));
-    let d = render::draw(&s.model, 2, view());
+    let d = render::draw(&s.model, 100001, view());
     assert!(of(&d, wall).is_empty(), "a wall's top at the view's bottom is under the plan");
     assert!(!of(&d, beam).is_empty(), "a beam's is the level it hangs from");
     // Lower, its top is under the view's depth: not seen.
     run(&mut s, "modify", json!({"id": beam, "offset": 2900}));
-    assert!(of(&render::draw(&s.model, 2, view()), beam).is_empty());
+    assert!(of(&render::draw(&s.model, 100001, view()), beam).is_empty());
 }
 
 #[test]
@@ -319,7 +319,7 @@ fn a_plan_sees_footings_under_its_level_and_structural_columns_where_columns_are
     let footing = made(&mut s, "footing", json!({"at": [1000, 1000], "type": "Footing 1500 x 1500"}));
     let column = made(&mut s, "structural_column", json!({"at": [1000, 1000]}));
     let strip = made(&mut s, "strip_footing", json!({"points": [[3000, 0], [3000, 4000]]}));
-    let d = render::draw(&s.model, 1, view());
+    let d = render::draw(&s.model, 100000, view());
     assert_eq!(extent(&d, footing), (P2(250.0, 250.0), P2(1750.0, 1750.0)));
     assert_eq!(extent(&d, column), (P2(850.0, 850.0), P2(1150.0, 1150.0)));
     assert!(of(&d, column).iter().any(|p| matches!(p, Prim::Fill { color, .. } if *color == POCHE)), "a column is cut by the plane");
@@ -367,7 +367,7 @@ fn points_picked_snap_to_a_beams_ends_and_middle() {
     made(&mut s, "structural_column", json!({"at": [3000, 3000]}));
     let reach = Reach { point: 100.0, line: 60.0 };
     let at = |p: P2| {
-        let f = snap(&s.model, 1, p, reach, &[], false, &Snaps::default());
+        let f = snap(&s.model, 100000, p, reach, &[], false, &Snaps::default());
         (f.at, f.kind)
     };
     assert_eq!(at(P2(6040.0, 30.0)), (P2(6000.0, 0.0), Kind::Endpoint));
@@ -406,7 +406,7 @@ fn every_category_of_the_structure_has_a_schedule_and_hides_by_category() {
     assert_eq!(r["rows"][0][3], 6000.0);
     // Hide the category in the plan: the beams go; the footings stay.
     let view = view();
-    let shown = |s: &Session| render::draw(&s.model, 1, view).owners.iter().filter(|o| **o == Some(beam)).count();
+    let shown = |s: &Session| render::draw(&s.model, 100000, view).owners.iter().filter(|o| **o == Some(beam)).count();
     assert!(shown(&s) > 0);
     run(&mut s, "graphics", json!({"view": "Level 1", "hide": ["beam"]}));
     assert_eq!(shown(&s), 0);

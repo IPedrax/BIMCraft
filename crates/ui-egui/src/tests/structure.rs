@@ -133,7 +133,7 @@ fn structural_columns_and_footings_go_where_clicked() {
     assert!(h.query_by_label("Modify | Place Structural Column").is_some());
     click(&mut h, P2(4000.0, 3000.0));
     let col = ids(&h, "structuralcolumn");
-    assert_eq!((col.len(), field(&h, col[0], "type"), field(&h, col[0], "top_level")), (1, json!("Concrete 300 x 300"), json!(2)));
+    assert_eq!((col.len(), field(&h, col[0], "type"), field(&h, col[0], "top_level")), (1, json!("Concrete 300 x 300"), json!(100_001)));
     // The height, as the Column tool's: unconnected, typed.
     h.get_by_role_and_label(Role::ComboBox, "Height:").click();
     h.run();

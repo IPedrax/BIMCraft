@@ -154,6 +154,17 @@ impl Canvas {
         self.lifted = if released { self.press.take().map(|(at, began)| (at, now - began <= QUICK)) } else { None };
     }
 
+    /// Show the rectangle `lo` to `hi` (mm) of view `level`, with room round it, zoomed no closer than a 2 m square fills it.
+    pub fn show(&mut self, level: Id, lo: P2, hi: P2) {
+        let (w, h) = if self.rect.width() > 1.0 { (f64::from(self.rect.width()), f64::from(self.rect.height())) } else { (800.0, 600.0) };
+        let (dx, dy) = ((hi.0 - lo.0).max(2000.0), (hi.1 - lo.1).max(2000.0));
+        let scale = (0.7 * (w / dx).min(h / dy)).clamp(SCALE.0, SCALE.1);
+        let (cx, cy) = ((lo.0 + hi.0) / 2.0, (lo.1 + hi.1) / 2.0);
+        if scale.is_finite() && cx.is_finite() && cy.is_finite() {
+            self.cams.insert(level, Camera { scale, cx: cx.clamp(-MAX_COORD, MAX_COORD), cy: cy.clamp(-MAX_COORD, MAX_COORD) });
+        }
+    }
+
     /// Show all of `level` again, the next time it's drawn.
     pub fn fit(&mut self, level: Id) {
         self.cams.remove(&level);
@@ -787,9 +798,10 @@ impl BimApp {
                 .pick_all(q, PICK)
                 .into_iter()
                 .find(|id| reference_for(&model, DimKind::Angular, refs.first(), *id, view.mm(q), near).is_some()),
-            Tool::Radial(None) => {
-                d.pick_all(q, PICK).into_iter().find(|id| model.reference_arc(&Reference { id: *id, face: Face::Centre }).is_ok())
-            }
+            Tool::Radial(None) => d
+                .pick_all(q, PICK)
+                .into_iter()
+                .find(|id| model.reference_arc(&Reference { id: model.guid(*id), face: Face::Centre }).is_ok()),
             // What a spot elevation would read.
             Tool::Spot => model.spot_host(level, view.mm(q)),
             Tool::Tag => d.pick(q, PICK).filter(|id| matches!(model.elements.get(id), Some(Element::Door(_) | Element::Window(_)))),
@@ -870,7 +882,7 @@ impl BimApp {
         p.extend(crop);
         let rooms = hovered.iter().map(|id| (*id, pal().hover)).chain(self.selection.iter().map(|id| (*id, pal().accent)));
         for (id, accent) in rooms {
-            if let Some(Element::Room(r)) = model.elements.get(&id)
+            if let Some(Element::Room(r)) = model.elements.get(id)
                 && let Some(g) = model.room_region(r)
             {
                 p.add(Shape::closed_line(g.outer.iter().map(|q| pos(rect.min, view.px(*q))).collect(), Stroke::new(2.0, accent)));
@@ -1228,7 +1240,7 @@ impl BimApp {
                 }
             }
             &Tool::Radial(picked) => match (picked, hovered) {
-                (None, Some(id)) => self.tool = Tool::Radial(Some(Reference { id, face: Face::Centre })),
+                (None, Some(id)) => self.tool = Tool::Radial(Some(Reference { id: m.guid(id), face: Face::Centre })),
                 (Some(r), _) => {
                     if self.run("dimension", json!({"kind": "radial", "refs": [r], "at": point(round(v.mm(at))), "level": level})).is_some()
                     {
@@ -1334,7 +1346,7 @@ impl BimApp {
             // On the level above, over this plan's walls; once made, selected, as a finished sketch is.
             Tool::Roof => match (number(&self.roof_slope), m.units.parse(&self.roof_overhang)) {
                 (Some(slope), Some(overhang)) => {
-                    let on = m.level_above(level).unwrap_or(level);
+                    let on = m.level_above(level).unwrap_or(m.guid(level));
                     let p = self.typed("roof", json!({"level": on, "slope": slope, "overhang": overhang, "gable": self.roof_gable}));
                     if let Some(made) = self.run("roof", p) {
                         self.selection = made["id"].as_u64().into_iter().collect();
@@ -1399,7 +1411,7 @@ impl BimApp {
             // The roof edge picked stands upright, or slopes again.
             Tool::GableEdge => {
                 if let Some((id, i)) = m.roof_edge(level, v.mm(at), f64::from(PICK) / v.scale)
-                    && let Some(Element::Roof(r)) = m.elements.get(&id)
+                    && let Some(Element::Roof(r)) = m.elements.get(id)
                 {
                     match m.roof_uprights(r) {
                         Ok(mut up) => {
@@ -1484,7 +1496,7 @@ impl BimApp {
         let type_name = self.types.get("roof").cloned().or_else(|| m.default_type("roof").map(String::from)).unwrap_or_default();
         Ok(Roof {
             type_name,
-            level: m.level_above(level).unwrap_or(level),
+            level: m.level_above(level).unwrap_or(m.guid(level)),
             extrusion: Some(Extrusion { line: [a, b], profile, from: across.min(0.0), to: across.max(0.0) }),
             ..Roof::default()
         })
@@ -1517,17 +1529,30 @@ impl BimApp {
             let slope = number(&self.ramp_slope).ok_or_else(|| tf("ramp: `{}` is not a slope", &[&self.ramp_slope]))?;
             let width = m.units.parse(&self.ramp_width).ok_or_else(|| tf("ramp: `{}` is not a width", &[&self.ramp_width]))?;
             let top = top_params(m, level, self.ramp_top, &self.ramp_height).map_err(|e| tf("ramp: {}", &[&e]))?;
-            let (top_level, height) = (top["top_level"].as_u64(), top["height"].as_f64().unwrap_or(0.0));
+            let (top_level, height) = (top["top_level"].as_u64().map(|t| m.guid(t)), top["height"].as_f64().unwrap_or(0.0));
             let (bottom, top) = m.span(level, 0.0, top_level, height);
             let up = (run * slope / 100.0 * 1000.0).round() / 1000.0;
             let landings = if top - bottom - up > 1.0 { vec![Landing { at: up, turn }] } else { Vec::new() };
             let done = done(&landings);
-            Ok((Element::Ramp(Ramp { params: Default::default(), level, top_level, height, start, angle, width, slope, landings }), done))
+            Ok((
+                Element::Ramp(Ramp {
+                    params: Default::default(),
+                    level: m.guid(level),
+                    top_level,
+                    height,
+                    start,
+                    angle,
+                    width,
+                    slope,
+                    landings,
+                }),
+                done,
+            ))
         } else {
             let width = m.units.parse(&self.stair_width).ok_or_else(|| tf("stair: `{}` is not a width", &[&self.stair_width]))?;
             let mut st = Stair {
                 params: Default::default(),
-                level,
+                level: m.guid(level),
                 top_level: m.level_above(level),
                 height: DEFAULT_HEIGHT,
                 start,
@@ -1991,7 +2016,7 @@ impl BimApp {
         if self.tool != Tool::Modify || self.canvas.drag.is_some() || self.canvas.grip.is_some() {
             return;
         }
-        match m.elements.get(&id) {
+        match m.elements.get(id) {
             Some(Element::Door(o) | Element::Window(o)) => return self.opening_dimension(ui, m, v, rect, id, o),
             Some(e @ (Element::Column(_) | Element::StructuralColumn(_) | Element::Footing(_) | Element::Component(_))) => {
                 return self.standing_dimension(ui, m, v, rect, id, e);
@@ -2115,7 +2140,7 @@ impl BimApp {
             // The edge a click would stand up, or slope.
             Tool::GableEdge => {
                 if let Some((id, i)) = m.roof_edge(level, v.mm(q), f64::from(PICK) / v.scale)
-                    && let Some(Element::Roof(r)) = m.elements.get(&id)
+                    && let Some(Element::Roof(r)) = m.elements.get(id)
                     && let Some((a, b)) = r.edges().nth(i)
                 {
                     p.line_segment([sc.screen(a), sc.screen(b)], Stroke::new(4.0, pal().accent));
@@ -2244,13 +2269,18 @@ impl BimApp {
                     }
                 }
                 if candidate.is_none() && refs.len() >= 2 {
-                    sketched(&Element::Dimension(Dimension { level, kind: DimKind::Aligned, refs: refs.clone(), at: round(v.mm(q)) }));
+                    sketched(&Element::Dimension(Dimension {
+                        level: m.guid(level),
+                        kind: DimKind::Aligned,
+                        refs: refs.clone(),
+                        at: round(v.mm(q)),
+                    }));
                 }
                 return;
             }
             Tool::Tag => {
                 if let Some(id) = hovered {
-                    sketched(&Element::Tag(Tag { host: id, offset: m.tag_offset(id), leader: self.tag_leader }));
+                    sketched(&Element::Tag(Tag { host: m.guid(id), offset: m.tag_offset(id), leader: self.tag_leader }));
                 }
                 return;
             }
@@ -2264,22 +2294,27 @@ impl BimApp {
                     }
                 }
                 if refs.len() == 2 {
-                    sketched(&Element::Dimension(Dimension { level, kind: DimKind::Angular, refs: refs.clone(), at: round(v.mm(q)) }));
+                    sketched(&Element::Dimension(Dimension {
+                        level: m.guid(level),
+                        kind: DimKind::Angular,
+                        refs: refs.clone(),
+                        at: round(v.mm(q)),
+                    }));
                 }
                 return;
             }
             &Tool::Radial(Some(r)) => {
-                sketched(&Element::Dimension(Dimension { level, kind: DimKind::Radial, refs: vec![r], at: round(v.mm(q)) }));
+                sketched(&Element::Dimension(Dimension { level: m.guid(level), kind: DimKind::Radial, refs: vec![r], at: round(v.mm(q)) }));
                 return;
             }
             Tool::Text if !self.note_text.trim().is_empty() => {
                 let text = self.note_text.replace("\\n", "\n");
-                sketched(&Element::Text(Note { view: level, at: round(v.mm(q)), text, size: NOTE_SIZE, angle: 0.0, leader: None }));
+                sketched(&Element::Text(Note { view: m.guid(level), at: round(v.mm(q)), text, size: NOTE_SIZE, angle: 0.0, leader: None }));
                 return;
             }
             Tool::Spot => {
                 let at = round(v.mm(q));
-                sketched(&Element::Spot(Spot { view: level, at, host: m.spot_host(level, at) }));
+                sketched(&Element::Spot(Spot { view: m.guid(level), at, host: m.spot_host(level, at).map(|h| m.guid(h)) }));
                 return;
             }
             // The door or window a click would put in the wall, as the command makes it, and how far it stands from
@@ -2301,7 +2336,16 @@ impl BimApp {
                 if let Some((family, type_name)) = self.placing() {
                     let at = self.found(sc, q, &[], false);
                     let angle = self.component_angle;
-                    let c = Component { family, type_name, level, at, angle, offset: 0.0, mirrored: false, params: Default::default() };
+                    let c = Component {
+                        family,
+                        type_name,
+                        level: m.guid(level),
+                        at,
+                        angle,
+                        offset: 0.0,
+                        mirrored: false,
+                        params: Default::default(),
+                    };
                     let e = Element::Component(c);
                     sketched(&e);
                     for (_, at, text, _) in standing_dimensions(p, m, v, &e) {
@@ -2337,7 +2381,7 @@ impl BimApp {
                 let e = Element::Column(Column {
                     params: Default::default(),
                     type_name,
-                    level,
+                    level: m.guid(level),
                     at,
                     angle: 0.0,
                     top_level: None,
@@ -2393,7 +2437,7 @@ impl BimApp {
             }
             // The roof a click would make, with its ridge and hips.
             Tool::Roof => {
-                let on = m.level_above(level).unwrap_or(level);
+                let on = m.level_above(level).unwrap_or(m.guid(level));
                 if let (Some(slope), Some(overhang)) = (number(&self.roof_slope), m.units.parse(&self.roof_overhang))
                     && let Ok((boundary, courtyards)) = roof_footprint(m, on, overhang)
                 {
@@ -2437,7 +2481,7 @@ impl BimApp {
             let ring: Vec<P2> = chain.iter().copied().chain([next]).collect();
             sketched(&Element::Mass(Mass {
                 name: String::new(),
-                level,
+                level: m.guid(level),
                 boundary: ring.clone(),
                 top: None,
                 top_level: None,

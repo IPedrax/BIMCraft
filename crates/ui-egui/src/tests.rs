@@ -5,7 +5,7 @@
 use bimcraft_core::element_json;
 use bimcraft_core::engine::Session;
 use bimcraft_core::geom::P2;
-use bimcraft_core::model::{Element, Id};
+use bimcraft_core::model::{Element, Guid, Id};
 use bimcraft_core::sample::SAMPLE;
 use egui::accesskit::Role;
 use egui::{Event, Key, Modifiers, MouseWheelUnit, PointerButton, Pos2, TouchPhase, pos2, vec2};
@@ -186,6 +186,11 @@ fn drag(h: &mut Harness<BimApp>, from: P2, to: P2) {
 }
 
 /// The id of the element `f` picks out.
+/// Element `id`'s GUID: what views and other elements hold it by.
+fn gid(h: &Harness<BimApp>, id: Id) -> Guid {
+    h.state().session.model.guid(id)
+}
+
 fn find(h: &Harness<BimApp>, f: impl Fn(&Element) -> bool) -> Id {
     h.state().session.model.elements.iter().find(|(_, e)| f(e)).map(|(id, _)| *id).unwrap()
 }
@@ -235,8 +240,14 @@ fn walls(h: &Harness<BimApp>) -> Vec<(P2, P2)> {
         .collect()
 }
 
+/// Element `id`'s `key`, as its JSON has it; what it points at, as the id of that element.
 fn field(h: &Harness<BimApp>, id: Id, key: &str) -> serde_json::Value {
-    element_json(&h.state().session.model, id)[key].clone()
+    let m = &h.state().session.model;
+    let v = element_json(m, id)[key].clone();
+    match serde_json::from_value::<Guid>(v.clone()) {
+        Ok(g) if v.is_string() => m.elements.id(g).map_or(v, |id| json!(id)),
+        _ => v,
+    }
 }
 
 #[test]
@@ -476,12 +487,12 @@ fn a_flick_from_a_crop_regions_grip_leaves_the_crop_as_it_was() {
     press(&mut h, "View");
     h.get_by_role_and_label(Role::Button, "Crop View").click();
     h.run();
-    let crop = field(&h, 1, "crop");
+    let crop = field(&h, 100000, "crop");
     let (lo, hi) = (&crop[0], &crop[1]);
     let east = P2(hi[0].as_f64().unwrap(), (lo[1].as_f64().unwrap() + hi[1].as_f64().unwrap()) / 2.0);
     let grip = h.state().screen(east);
     flick(&mut h, grip, grip - vec2(120.0, 0.0), Modifiers::NONE);
-    assert_eq!(field(&h, 1, "crop"), crop);
+    assert_eq!(field(&h, 100000, "crop"), crop);
 }
 
 #[test]
@@ -610,7 +621,7 @@ fn the_browser_opens_level_plans_and_schedules() {
     }
     // Its floor plan, over its ceiling plan.
     topmost(&mut h, "Level 2");
-    assert_eq!(h.state().sheet, Sheet::Plan(2));
+    assert_eq!(h.state().sheet, Sheet::Plan(100001));
     // Below the browser's fold, past the elevations and sections: reached as screen readers do.
     h.get_by_label("Room Schedule").click_accesskit();
     h.run();
@@ -644,7 +655,7 @@ fn the_selection_stays_as_views_change_and_a_schedule_shows_and_picks_it() {
     h.run();
     assert_eq!(h.state().selection, [den, hall]);
     topmost(&mut h, "Level 1");
-    assert_eq!(h.state().sheet, Sheet::Plan(1));
+    assert_eq!(h.state().sheet, Sheet::Plan(100000));
     assert_eq!(h.state().selection, [den, hall], "and back in the plan");
 }
 
@@ -810,7 +821,7 @@ fn the_level_and_grid_tools_add_datums() {
     // Undoing the level leaves its plan open on nothing: the browser falls back to the lowest.
     h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     h.run();
-    assert_eq!(h.state().sheet, Sheet::Plan(1));
+    assert_eq!(h.state().sheet, Sheet::Plan(100000));
     tool(&mut h, "Grid");
     click(&mut h, P2(-3000.0, -3000.0));
     click(&mut h, P2(-3000.0, 3000.0));
@@ -944,14 +955,14 @@ fn views_open_in_tabs_that_switch_and_close() {
     browse(&mut h, "Room Schedule");
     assert_eq!(h.state().sheet, Sheet::Schedule("room"));
     topmost(&mut h, "Level 1");
-    assert_eq!(h.state().sheet, Sheet::Plan(1));
+    assert_eq!(h.state().sheet, Sheet::Plan(100000));
     press(&mut h, "Close Room Schedule");
     assert!(h.query_by_label("Close Room Schedule").is_none());
     press(&mut h, "View");
     press(&mut h, "Close Inactive");
     assert!(h.query_by_label("Close Level 2").is_none(), "only the active view stays open");
     assert!(h.query_by_label("Close Level 1").is_none(), "and the last view can't close");
-    assert_eq!(h.state().sheet, Sheet::Plan(1));
+    assert_eq!(h.state().sheet, Sheet::Plan(100000));
 }
 
 #[test]
@@ -981,7 +992,7 @@ fn dragging_across_empty_floor_selects_by_window_or_crossing() {
     let window = find(&h, |e| matches!(e, Element::Window(o) if o.type_name == "Fixed 600 x 900"));
     // The east wall: drawn clockwise, it runs south.
     let wall = find(&h, |e| matches!(e, Element::Wall(w) if w.start == P2(10000.0, 7000.0) && w.end == P2(10000.0, 0.0)));
-    let tag = find(&h, |e| matches!(e, Element::Tag(t) if t.host == window));
+    let tag = find(&h, |e| matches!(e, Element::Tag(t) if t.host == gid(&h, window)));
     // Left to right: what's wholly inside, the window and its tag. (From empty floor, clear of the
     // Bedroom's tag and the dimension at x = 10900.)
     drag(&mut h, P2(9400.0, 4200.0), P2(11400.0, 6000.0));
@@ -1149,34 +1160,34 @@ fn the_view_control_bar_sets_a_views_scale_and_detail_level() {
     assert!(shown.contains(&"Auto".to_string()) && shown.contains(&"Fine".to_string()), "{shown:?}");
     press(&mut h, "Scale");
     press(&mut h, "1 : 50");
-    assert_eq!(g(&h, 1).scale, Some(50.0));
+    assert_eq!(g(&h, 100000).scale, Some(50.0));
     assert!(painted_text(&h).contains(&"1 : 50".to_string()));
     assert_eq!(h.state().session.history().last(), Some(&"View Scale"));
     pick(&mut h, Role::Button, "Detail Level");
     press(&mut h, "Coarse");
-    assert_eq!(g(&h, 1).detail, Detail::Coarse);
+    assert_eq!(g(&h, 100000).detail, Detail::Coarse);
     assert!(painted_text(&h).contains(&"Coarse".to_string()));
     // Another scale, typed; what isn't one is said and changes nothing.
     press(&mut h, "Scale");
     type_into(&mut h, "Custom", "75");
     key(&mut h, Key::Enter);
-    assert_eq!(g(&h, 1).scale, Some(75.0));
+    assert_eq!(g(&h, 100000).scale, Some(75.0));
     assert!(painted_text(&h).contains(&"1 : 75".to_string()));
     press(&mut h, "Scale");
     type_into(&mut h, "Custom", "big");
     key(&mut h, Key::Enter);
     assert!(h.state().status.error);
-    assert_eq!(g(&h, 1).scale, Some(75.0));
+    assert_eq!(g(&h, 100000).scale, Some(75.0));
     // Auto takes it away again.
     press(&mut h, "Scale");
     press(&mut h, "Auto");
-    assert_eq!(g(&h, 1).scale, None);
+    assert_eq!(g(&h, 100000).scale, None);
     // The section has its own, and the bar shows the one of the view on screen.
     browse(&mut h, "Section 1");
     assert_eq!(h.state().sheet, Sheet::Section(section));
     pick(&mut h, Role::Button, "Detail Level");
     press(&mut h, "Medium");
-    assert_eq!((g(&h, section).detail, g(&h, 1).detail), (Detail::Medium, Detail::Coarse));
+    assert_eq!((g(&h, section).detail, g(&h, 100000).detail), (Detail::Medium, Detail::Coarse));
     assert!(painted_text(&h).contains(&"Medium".to_string()));
 }
 
@@ -1201,7 +1212,7 @@ fn the_view_control_bar_sets_the_3d_views_visual_style_and_wf_hl_and_sd_do_too()
         assert_eq!(style(&h), want, "{letters}");
     }
     // A plan has no visual style: the letters say so, and the 3D view keeps its own.
-    h.state_mut().open_sheet(Sheet::Plan(1));
+    h.state_mut().open_sheet(Sheet::Plan(100000));
     h.run();
     h.state_mut().status = crate::Status { text: String::new(), error: false };
     shortcut(&mut h, "HL");
@@ -1244,27 +1255,27 @@ fn properties_of_a_view_show_and_set_its_scale_detail_level_and_visual_style() {
     assert!(h.query_by_role_and_label(Role::ComboBox, "Visual Style").is_none());
     let before = steps(&h);
     choose(&mut h, "View Scale", "1 : 50");
-    assert_eq!((plan_graphics(&h, 1).scale, steps(&h)), (Some(50.0), before + 1), "one undo step");
+    assert_eq!((plan_graphics(&h, 100000).scale, steps(&h)), (Some(50.0), before + 1), "one undo step");
     assert_eq!(h.state().session.history().last(), Some(&"View Scale"));
     assert_eq!(combo_value(&h, "View Scale"), "1 : 50");
     choose(&mut h, "Detail Level", "Coarse");
-    assert_eq!((plan_graphics(&h, 1).detail, steps(&h)), (Detail::Coarse, before + 2));
+    assert_eq!((plan_graphics(&h, 100000).detail, steps(&h)), (Detail::Coarse, before + 2));
     assert_eq!(h.state().session.history().last(), Some(&"Detail Level"));
     assert_eq!(combo_value(&h, "Detail Level"), "Coarse");
     // The scale's value, typed: any number a scale may be; what isn't one is said and changes nothing.
     assert_eq!(field_text(&h, "Scale Value 1:"), "50");
     type_role(&mut h, Role::TextInput, "Scale Value 1:", "75");
-    assert_eq!((plan_graphics(&h, 1).scale, steps(&h)), (Some(75.0), before + 3));
+    assert_eq!((plan_graphics(&h, 100000).scale, steps(&h)), (Some(75.0), before + 3));
     assert_eq!(combo_value(&h, "View Scale"), "1 : 75");
     type_role(&mut h, Role::TextInput, "Scale Value 1:", "big");
     assert!(h.state().status.error);
-    assert_eq!((plan_graphics(&h, 1).scale, steps(&h)), (Some(75.0), before + 3));
+    assert_eq!((plan_graphics(&h, 100000).scale, steps(&h)), (Some(75.0), before + 3));
     // Emptied, it is Auto again.
     type_role(&mut h, Role::TextInput, "Scale Value 1:", "");
-    assert_eq!((plan_graphics(&h, 1).scale, steps(&h)), (None, before + 4));
+    assert_eq!((plan_graphics(&h, 100000).scale, steps(&h)), (None, before + 4));
     choose(&mut h, "View Scale", "1 : 20");
     choose(&mut h, "View Scale", "Auto");
-    assert_eq!(plan_graphics(&h, 1).scale, None);
+    assert_eq!(plan_graphics(&h, 100000).scale, None);
     assert_eq!(field_text(&h, "Scale Value 1:"), "");
     // A section has its own, and Properties shows the one on screen. Its palette is long: a tall window shows the foot of it.
     h.set_size(vec2(1280.0, 1600.0));
@@ -1275,7 +1286,7 @@ fn properties_of_a_view_show_and_set_its_scale_detail_level_and_visual_style() {
     choose(&mut h, "Detail Level", "Medium");
     let g = bimcraft_core::graphics::graphics_of(&h.state().session.model, section).unwrap();
     assert_eq!((g.scale, g.detail), (Some(200.0), Detail::Medium));
-    assert_eq!((plan_graphics(&h, 1).scale, plan_graphics(&h, 1).detail), (None, Detail::Coarse));
+    assert_eq!((plan_graphics(&h, 100000).scale, plan_graphics(&h, 100000).detail), (None, Detail::Coarse));
     // The 3D view: a visual style, no scale or detail level.
     press(&mut h, "Default 3D View");
     assert_eq!(h.state().sheet, Sheet::View3D);
@@ -1618,7 +1629,7 @@ fn the_section_tool_draws_a_section_whose_view_opens_from_the_browser_or_a_doubl
     assert_eq!(h.state().selection, [west]);
     // Back on the plan, a double click on the section's line opens it again.
     topmost(&mut h, "Level 1");
-    assert_eq!(h.state().sheet, Sheet::Plan(1));
+    assert_eq!(h.state().sheet, Sheet::Plan(100000));
     double_click(&mut h, P2(-500.0, 3000.0));
     assert_eq!(h.state().sheet, Sheet::Section(section[0]));
 }
@@ -1649,7 +1660,7 @@ fn sheets_take_views_from_the_view_tab_and_viewports_move_and_open() {
     press(&mut h, "Place View");
     press(&mut h, "Floor Plan: Level 1");
     let vp = ids(&h, "viewport");
-    assert_eq!((vp.len(), field(&h, vp[0], "view")), (1, json!(1)));
+    assert_eq!((vp.len(), field(&h, vp[0], "view")), (1, json!(100000)));
     // Points on a sheet are paper mm: the viewport, picked anywhere over it, drags 40 mm right.
     let at = field(&h, vp[0], "at");
     let (x, y) = (at[0].as_f64().unwrap(), at[1].as_f64().unwrap());
@@ -1658,7 +1669,7 @@ fn sheets_take_views_from_the_view_tab_and_viewports_move_and_open() {
     assert!(h.query_by_label("Modify | Viewports").is_some());
     // A double click on it opens its view.
     double_click(&mut h, P2(x + 40.0, y));
-    assert_eq!(h.state().sheet, Sheet::Plan(1));
+    assert_eq!(h.state().sheet, Sheet::Plan(100000));
 }
 
 #[test]
@@ -1668,7 +1679,7 @@ fn columns_go_where_clicked_up_to_the_options_bars_height() {
     assert!(h.query_by_label("Modify | Place Column").is_some());
     click(&mut h, P2(4000.0, 3000.0));
     let col = ids(&h, "column");
-    assert_eq!((col.len(), field(&h, col[0], "at"), field(&h, col[0], "top_level")), (1, json!([4000.0, 3000.0]), json!(2)));
+    assert_eq!((col.len(), field(&h, col[0], "at"), field(&h, col[0], "top_level")), (1, json!([4000.0, 3000.0]), json!(100001)));
     // Unconnected, at a height typed: its own Height, not the Wall tool's.
     h.get_by_role_and_label(Role::ComboBox, "Height:").click();
     h.run();
@@ -1705,7 +1716,7 @@ fn stairs_start_where_clicked_and_climb_toward_the_second_click() {
     assert_eq!((st.len(), field(&h, st[0], "angle"), field(&h, st[0], "width")), (1, json!(90.0), json!(1200.0)));
     assert_eq!(
         (field(&h, st[0], "risers"), field(&h, st[0], "top_level"), field(&h, st[0], "landings")),
-        (json!(17), json!(2), Value::Null),
+        (json!(17), json!(100001), Value::Null),
         "up to Level 2, in risers of 180 at most"
     );
     assert_eq!(ids(&h, "railing").len(), 2, "with its railings, as the Options Bar says");
@@ -1784,7 +1795,7 @@ fn the_roof_tool_roofs_the_walls_of_the_plan_on_the_level_above() {
     assert_eq!(roof.len(), 1);
     assert_eq!(
         (field(&h, roof[0], "level"), field(&h, roof[0], "slope"), field(&h, roof[0], "gable")),
-        (json!(2), json!(40.0), json!(true))
+        (json!(100001), json!(40.0), json!(true))
     );
     assert_eq!(field(&h, roof[0], "boundary")[0], json!([-600.0, -600.0]), "500 mm past the walls' faces");
     assert_eq!(h.state().selection, roof, "finished, the roof is selected");
@@ -1888,7 +1899,7 @@ fn text_notes_go_where_clicked_in_plans_sections_and_sheets() {
     let notes = ids(&h, "text");
     assert_eq!(
         (field(&h, notes[0], "text"), field(&h, notes[0], "at"), field(&h, notes[0], "view")),
-        (json!("Tiled floor"), json!([2000.0, 2000.0]), json!(1))
+        (json!("Tiled floor"), json!([2000.0, 2000.0]), json!(100000))
     );
     // The tool goes on working in a section, along it and up, and on a sheet, in paper mm.
     browse(&mut h, "Section 1");
@@ -1928,7 +1939,7 @@ fn angular_and_radial_dimensions_and_spot_elevations_from_the_annotate_tab() {
     press(&mut h, "Spot Elevation");
     click(&mut h, P2(5000.0, 2000.0));
     let spots = ids(&h, "spot");
-    assert_eq!((field(&h, spots[0], "host"), field(&h, spots[0], "elevation")), (json!(9), json!(0.0)));
+    assert_eq!((field(&h, spots[0], "host"), field(&h, spots[0], "elevation")), (json!(100008), json!(0.0)));
 }
 
 #[test]
@@ -1943,13 +1954,13 @@ fn crop_view_and_its_grips_frame_plans_and_sections() {
     press(&mut h, "View");
     crop_view(&mut h);
     // All the plan shows (the walls, the section's line), a metre past it.
-    assert_eq!(field(&h, 1, "crop"), json!([[-2000.0, -1100.0], [10000.0, 7100.0]]));
+    assert_eq!(field(&h, 100000, "crop"), json!([[-2000.0, -1100.0], [10000.0, 7100.0]]));
     // The east edge, by its grip, dragged west.
     drag(&mut h, P2(10000.0, 3000.0), P2(4000.0, 3000.0));
-    assert_eq!(field(&h, 1, "crop"), json!([[-2000.0, -1100.0], [4000.0, 7100.0]]));
+    assert_eq!(field(&h, 100000, "crop"), json!([[-2000.0, -1100.0], [4000.0, 7100.0]]));
     assert!(h.state().selection.is_empty(), "the grip took the drag, not a selection box");
     crop_view(&mut h);
-    assert_eq!(field(&h, 1, "crop"), Value::Null);
+    assert_eq!(field(&h, 100000, "crop"), Value::Null);
     // A section uncropped has no crop region to drag: it shows all there is along its line.
     browse(&mut h, "Section 1");
     assert_eq!(field(&h, section, "crop"), Value::Null);
@@ -2001,17 +2012,17 @@ fn a_plans_view_range_is_in_its_properties() {
     assert!(h.query_by_label("View Range").is_some());
     type_into(&mut h, "Cut Plane", "1500");
     key(&mut h, Key::Enter);
-    assert_eq!(field(&h, 1, "view_range"), json!({"top": null, "cut": 1500.0, "bottom": 0.0, "depth": 0.0}));
+    assert_eq!(field(&h, 100000, "view_range"), json!({"top": null, "cut": 1500.0, "bottom": 0.0, "depth": 0.0}));
     type_into(&mut h, "Top", "2600");
     key(&mut h, Key::Enter);
-    assert_eq!(field(&h, 1, "view_range")["top"], json!(2600.0));
+    assert_eq!(field(&h, 100000, "view_range")["top"], json!(2600.0));
     // Cleared, back to the level above.
     h.get_by_label("Top").focus();
     h.run();
     h.key_press_modifiers(Modifiers::COMMAND, Key::A);
     key(&mut h, Key::Backspace);
     key(&mut h, Key::Enter);
-    assert_eq!(field(&h, 1, "view_range")["top"], Value::Null);
+    assert_eq!(field(&h, 100000, "view_range")["top"], Value::Null);
 }
 
 #[test]
@@ -2490,7 +2501,7 @@ fn ceilings_go_in_the_room_clicked_and_show_in_its_ceiling_plan() {
     let lowest = h.get_all_by_label("Level 1").max_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).map(|n| n.accesskit_node().id());
     h.get_by(|n| Some(n.id()) == lowest).click_accesskit();
     h.run();
-    assert_eq!(h.state().sheet, Sheet::Ceiling(1));
+    assert_eq!(h.state().sheet, Sheet::Ceiling(100000));
     assert_eq!(h.get_all_by_label("Ceiling Plan: Level 1").count(), 2, "its tab and the palette name the view");
     click(&mut h, P2(4000.0, 1000.0));
     assert_eq!(h.state().selection, c, "a tile line through the ceiling's middle");
@@ -2529,14 +2540,14 @@ wall {"points": [[6000, 6000], [10000, 6000], [10000, 10000], [6000, 10000]], "c
 
 #[test]
 fn shaft_openings_take_two_corners_and_cut_the_floors_they_pass_through() {
-    let mut h = app(&format!("{BOX}\nfloor {{\"level\": 2, \"boundary\": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}}"));
+    let mut h = app(&format!("{BOX}\nfloor {{\"level\": 100001, \"boundary\": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}}"));
     tool(&mut h, "Shaft");
     assert!(h.query_by_label("Modify | Create Shaft Opening").is_some());
     click(&mut h, P2(3000.0, 2000.0));
     assert!(ids(&h, "shaft").is_empty(), "the first click is a corner");
     click(&mut h, P2(4000.0, 4000.0));
     let shaft = ids(&h, "shaft");
-    assert_eq!((shaft.len(), field(&h, shaft[0], "area_m2"), field(&h, shaft[0], "top_level")), (1, json!(2.0), json!(2)));
+    assert_eq!((shaft.len(), field(&h, shaft[0], "area_m2"), field(&h, shaft[0], "top_level")), (1, json!(2.0), json!(100001)));
     assert_eq!(field(&h, ids(&h, "floor")[0], "area_m2"), json!(46.0), "the floor above, less the hole");
     assert_eq!(h.state().tool, Tool::Shaft(None), "ready for the next one");
     // Selected by its cross, its palette.
@@ -2723,7 +2734,7 @@ room {"point": [2000, 3000], "name": "Living"}"#;
     press(&mut h, "OK");
     let sc = ids(&h, "schedule")[0];
     assert_eq!(h.state().sheet, Sheet::Table(sc));
-    let schedule = |h: &Harness<BimApp>| match h.state().session.model.elements.get(&sc) {
+    let schedule = |h: &Harness<BimApp>| match h.state().session.model.elements.get(sc) {
         Some(Element::Schedule(s)) => s.clone(),
         _ => panic!("schedule {sc} is gone"),
     };
@@ -2793,7 +2804,7 @@ fn changing_a_schedule_every_project_has_makes_it_the_projects() {
     let sc = ids(&h, "schedule");
     assert_eq!(sc.len(), 1);
     assert_eq!(h.state().sheet, Sheet::Schedule("door"), "the same view, the project's now");
-    match h.state().session.model.elements.get(&sc[0]) {
+    match h.state().session.model.elements.get(sc[0]) {
         Some(Element::Schedule(s)) => assert!(s.grouped && s.sort.len() == 1 && s.name == "Door Schedule"),
         e => panic!("{e:?}"),
     }
@@ -3186,31 +3197,31 @@ fn visibility_graphics_hides_and_overrides_by_category_in_the_active_view_alone(
     assert!(h.query_by_label("Visibility/Graphics Overrides for Floor Plan: Level 1").is_some());
     // Edited in the dialog, a draft: nothing is the model's until Apply or OK.
     pick(&mut h, Role::CheckBox, "Rooms");
-    assert!(plan_graphics(&h, 1).is_default());
+    assert!(plan_graphics(&h, 100000).is_default());
     // Walls drawn their own way: a cut line weight, overriding it with a box and its start.
     pick(&mut h, Role::Button, "Override Walls");
     pick(&mut h, Role::CheckBox, "Cut: Line weight");
     pick(&mut h, Role::CheckBox, "Projection: Line color");
     press(&mut h, "OK");
-    let g = plan_graphics(&h, 1);
+    let g = plan_graphics(&h, 100000);
     assert!(h.query_by_label("Visibility/Graphics Overrides for Floor Plan: Level 1").is_none(), "OK closes it");
     assert_eq!(g.categories["wall"].cut.weight, Some(4.0));
     assert_eq!(g.categories["wall"].projection.color, Some([40, 40, 40]));
     assert!(g.hides("room") && !g.hides("wall"));
     // Level 2's plan is its own view.
-    assert!(plan_graphics(&h, 2).is_default());
+    assert!(plan_graphics(&h, 100001).is_default());
     // Cancel throws a draft away; unticking a box again takes the override back.
     shortcut(&mut h, "VG");
     pick(&mut h, Role::CheckBox, "Rooms");
     press(&mut h, "Cancel");
-    assert!(plan_graphics(&h, 1).hides("room"));
+    assert!(plan_graphics(&h, 100000).hides("room"));
     shortcut(&mut h, "VV");
     pick(&mut h, Role::CheckBox, "Rooms");
     pick(&mut h, Role::Button, "Override Walls");
     pick(&mut h, Role::CheckBox, "Cut: Line weight");
     pick(&mut h, Role::CheckBox, "Projection: Line color");
     press(&mut h, "OK");
-    assert!(plan_graphics(&h, 1).is_default(), "{:?}", plan_graphics(&h, 1));
+    assert!(plan_graphics(&h, 100000).is_default(), "{:?}", plan_graphics(&h, 100000));
     // The annotation categories have a tab.
     shortcut(&mut h, "VV");
     press(&mut h, "Annotation Categories");
@@ -3221,7 +3232,7 @@ fn visibility_graphics_hides_and_overrides_by_category_in_the_active_view_alone(
 /// What Level 1's plan shows of the model it is drawn from, as the view control bar leaves it.
 fn plan_shows(h: &mut Harness<BimApp>, id: Id) -> bool {
     let model = h.state_mut().view_model();
-    bimcraft_core::graphics::Look::of(&model, 1).shows(id)
+    bimcraft_core::graphics::Look::of(&model, 100000).shows(id)
 }
 
 #[test]
@@ -3304,7 +3315,7 @@ fn isolating_leaves_out_the_annotation_the_selection_isnt_too() {
     let (walls, grid) = (ids(&h, "wall"), ids(&h, "grid")[0]);
     let seen = |h: &mut Harness<BimApp>, id: Id| {
         let model = h.state_mut().view_model();
-        bimcraft_core::graphics::Look::of(&model, 1).shows(id)
+        bimcraft_core::graphics::Look::of(&model, 100000).shows(id)
     };
     assert!(seen(&mut h, grid));
     // Isolate Category (IC) on a wall: the walls, and neither the grid nor anything else.
@@ -3323,8 +3334,8 @@ fn isolating_leaves_out_the_annotation_the_selection_isnt_too() {
 fn a_temporary_hide_the_views_template_forbids_is_dropped_and_says_why() {
     let mut h = app(BOX);
     let walls = ids(&h, "wall");
-    h.state_mut().session.execute("template", &json!({"name": "T", "from": 1})).unwrap();
-    h.state_mut().session.execute("graphics", &json!({"view": 1, "template": "T"})).unwrap();
+    h.state_mut().session.execute("template", &json!({"name": "T", "from": 100000})).unwrap();
+    h.state_mut().session.execute("graphics", &json!({"view": 100000, "template": "T"})).unwrap();
     h.run();
     // The template sets which categories the view hides; hiding one for now asks the same of it.
     click(&mut h, P2(5000.0, 0.0));
@@ -3346,7 +3357,7 @@ fn a_temporary_hide_the_views_template_forbids_is_dropped_and_says_why() {
     shortcut(&mut h, "RH");
     press(&mut h, "Temporary Hide/Isolate");
     press(&mut h, "Apply Hide/Isolate to View");
-    assert!(plan_graphics(&h, 1).elements[&walls[0]].hidden, "{}", h.state().status.text);
+    assert!(plan_graphics(&h, 100000).elements[&gid(&h, walls[0])].hidden, "{}", h.state().status.text);
 }
 
 #[test]
@@ -3369,7 +3380,7 @@ fn a_plan_and_a_section_draw_what_they_hide_for_now() {
     click(&mut h, P2(1000.0, 1500.0));
     let wall = h.state().selection.first().copied();
     assert!(
-        wall.is_some_and(|w| h.state().session.model.elements.get(&w).is_some_and(|e| e.category() == "wall")),
+        wall.is_some_and(|w| h.state().session.model.elements.get(w).is_some_and(|e| e.category() == "wall")),
         "{:?}",
         h.state().selection
     );
@@ -3449,7 +3460,7 @@ fn temporary_hide_and_isolate_want_a_selection_and_a_view_with_graphics_and_belo
     shortcut(&mut h, "HH");
     assert!(h.state().temporary().is_none() && h.state().status.error, "a sheet has no graphics to override");
     // A plan draws walls, not sheets: what it doesn't draw isn't there to hide.
-    h.state_mut().open_sheet(Sheet::Plan(1));
+    h.state_mut().open_sheet(Sheet::Plan(100000));
     h.run();
     h.state_mut().status = crate::Status { text: String::new(), error: false };
     h.state_mut().selection = vec![sheet];
@@ -3460,7 +3471,7 @@ fn temporary_hide_and_isolate_want_a_selection_and_a_view_with_graphics_and_belo
         let model = h.state_mut().view_model();
         bimcraft_core::graphics::Look::of(&model, level).shows(walls[0])
     };
-    for level in [1, 2] {
+    for level in [100_000, 100_001] {
         h.state_mut().open_sheet(Sheet::Plan(level));
         h.run();
         assert!(shows(&mut h, level), "level {level} shows it before");
@@ -3468,9 +3479,9 @@ fn temporary_hide_and_isolate_want_a_selection_and_a_view_with_graphics_and_belo
         shortcut(&mut h, "HH");
         assert!(!shows(&mut h, level), "level {level} hides it now");
     }
-    h.state_mut().open_sheet(Sheet::Plan(1));
+    h.state_mut().open_sheet(Sheet::Plan(100000));
     h.run();
-    assert!(!shows(&mut h, 1));
+    assert!(!shows(&mut h, 100_000));
 }
 
 #[test]
@@ -3500,19 +3511,26 @@ fn reveal_hidden_elements_shows_what_the_view_hides_for_good_and_apply_makes_a_h
     shortcut(&mut h, "RH");
     assert!(plan_shows(&mut h, walls[0]), "revealed");
     let model = h.state_mut().view_model();
-    let magenta = bimcraft_core::graphics::graphics_of(&model, 1).and_then(|g| g.elements.get(&walls[0])).cloned().unwrap_or_default();
+    let magenta =
+        bimcraft_core::graphics::graphics_of(&model, 100000).and_then(|g| g.elements.get(&gid(&h, walls[0]))).cloned().unwrap_or_default();
     assert_eq!((magenta.projection.color, magenta.cut.color), (Some([255, 0, 255]), Some([255, 0, 255])), "drawn in magenta, cut or seen");
-    assert!(!plan_graphics(&h, 1).elements.is_empty() && plan_graphics(&h, 1).elements[&walls[0]].hidden, "the project still hides it");
+    assert!(
+        !plan_graphics(&h, 100000).elements.is_empty() && plan_graphics(&h, 100000).elements[&gid(&h, walls[0])].hidden,
+        "the project still hides it"
+    );
     shortcut(&mut h, "RH");
     assert!(!plan_shows(&mut h, walls[0]), "hidden again");
     // A category the view hides for good is revealed too: every one of its members, in magenta.
     click(&mut h, P2(8000.0, 3000.0));
     shortcut(&mut h, "VH");
-    assert!(plan_graphics(&h, 1).hides("wall") && !plan_shows(&mut h, walls[2]));
+    assert!(plan_graphics(&h, 100000).hides("wall") && !plan_shows(&mut h, walls[2]));
     shortcut(&mut h, "RH");
     let model = h.state_mut().view_model();
     let colours = |id: &Id| {
-        let o = bimcraft_core::graphics::graphics_of(&model, 1).and_then(|g| g.elements.get(id)).cloned().unwrap_or_default();
+        let o = bimcraft_core::graphics::graphics_of(&model, 100000)
+            .and_then(|g| g.elements.get(&model.guid(*id)))
+            .cloned()
+            .unwrap_or_default();
         (o.projection.color, o.cut.color)
     };
     assert!(walls.iter().all(|w| plan_shows(&mut h, *w) && colours(w) == (Some([255, 0, 255]), Some([255, 0, 255]))));
@@ -3520,13 +3538,13 @@ fn reveal_hidden_elements_shows_what_the_view_hides_for_good_and_apply_makes_a_h
     shortcut(&mut h, "VV");
     pick(&mut h, Role::CheckBox, "Walls");
     press(&mut h, "OK");
-    assert!(!plan_graphics(&h, 1).hides("wall"));
+    assert!(!plan_graphics(&h, 100000).hides("wall"));
     // Apply Hide/Isolate to View: a temporary hide of another wall becomes the view's own.
     click(&mut h, P2(8000.0, 3000.0));
     shortcut(&mut h, "HH");
     press(&mut h, "Temporary Hide/Isolate");
     press(&mut h, "Apply Hide/Isolate to View");
-    assert!(plan_graphics(&h, 1).elements[&walls[1]].hidden);
+    assert!(plan_graphics(&h, 100000).elements[&gid(&h, walls[1])].hidden);
     assert!(h.state().temporary().is_none(), "nothing left to hide for now");
     assert!(h.state().dirty(), "it is a change to the project now");
     // A category hidden for now goes in with it.
@@ -3534,7 +3552,7 @@ fn reveal_hidden_elements_shows_what_the_view_hides_for_good_and_apply_makes_a_h
     shortcut(&mut h, "HC");
     press(&mut h, "Temporary Hide/Isolate");
     press(&mut h, "Apply Hide/Isolate to View");
-    assert!(plan_graphics(&h, 1).hides("wall") && h.state().temporary().is_none());
+    assert!(plan_graphics(&h, 100000).hides("wall") && h.state().temporary().is_none());
 }
 
 #[test]
@@ -3544,34 +3562,34 @@ fn hide_element_hide_category_and_the_elements_tab_work_on_the_selection() {
     click(&mut h, P2(4000.0, 0.0));
     shortcut(&mut h, "EH");
     assert!(h.state().selection.is_empty(), "what is hidden can't stay selected");
-    let g = plan_graphics(&h, 1);
-    assert_eq!(g.elements.keys().copied().collect::<Vec<_>>(), [walls[0]]);
-    assert!(g.elements[&walls[0]].hidden);
+    let g = plan_graphics(&h, 100000);
+    assert_eq!(g.elements.keys().copied().collect::<Vec<_>>(), [gid(&h, walls[0])]);
+    assert!(g.elements[&gid(&h, walls[0])].hidden);
     click(&mut h, P2(8000.0, 3000.0));
     assert_eq!(h.state().selection, [walls[1]]);
     shortcut(&mut h, "VH");
-    assert!(plan_graphics(&h, 1).hides("wall"));
+    assert!(plan_graphics(&h, 100000).hides("wall"));
     // Unhide Elements: the Elements tab lists the one hidden; a box brings it back.
     shortcut(&mut h, "EU");
-    assert!(h.query_by_role_and_label(Role::CheckBox, "Wall 3").is_some());
-    pick(&mut h, Role::CheckBox, "Wall 3");
+    assert!(h.query_by_role_and_label(Role::CheckBox, "Wall 100002").is_some());
+    pick(&mut h, Role::CheckBox, "Wall 100002");
     press(&mut h, "OK");
-    assert!(plan_graphics(&h, 1).elements.is_empty(), "no entry for what's visible and plain");
+    assert!(plan_graphics(&h, 100000).elements.is_empty(), "no entry for what's visible and plain");
     // The Modify tab's panel does the same, and Override Graphics adds the selection to the list.
     shortcut(&mut h, "VV");
     pick(&mut h, Role::CheckBox, "Walls");
     press(&mut h, "OK");
     click(&mut h, P2(0.0, 3000.0));
     press(&mut h, "Hide Element");
-    assert!(plan_graphics(&h, 1).elements[&walls[3]].hidden);
+    assert!(plan_graphics(&h, 100000).elements[&gid(&h, walls[3])].hidden);
     // Override Graphics by Element (EO): the selection goes on the Elements tab, picked, to be drawn its own way.
     click(&mut h, P2(8000.0, 3000.0));
     shortcut(&mut h, "EO");
-    assert!(h.query_by_role_and_label(Role::CheckBox, "Wall 4").is_some(), "listed, though it has no override yet");
-    assert!(h.query_by_label("Overrides for Wall 4").is_some(), "and picked");
+    assert!(h.query_by_role_and_label(Role::CheckBox, "Wall 100003").is_some(), "listed, though it has no override yet");
+    assert!(h.query_by_label("Overrides for Wall 100003").is_some(), "and picked");
     pick(&mut h, Role::CheckBox, "Cut: Fill color");
     press(&mut h, "OK");
-    assert_eq!(plan_graphics(&h, 1).elements[&walls[1]].cut.fill, Some([200, 200, 200]));
+    assert_eq!(plan_graphics(&h, 100000).elements[&gid(&h, walls[1])].cut.fill, Some([200, 200, 200]));
     key(&mut h, Key::Escape);
 }
 
@@ -3602,7 +3620,7 @@ fn filters_are_made_in_their_dialog_and_applied_by_a_view() {
     press(&mut h, "Filter 1");
     pick(&mut h, Role::CheckBox, "Cut: Line color");
     press(&mut h, "OK");
-    let g = plan_graphics(&h, 1);
+    let g = plan_graphics(&h, 100000);
     assert_eq!((g.filters.len(), g.filters[0].filter.as_str()), (1, "Filter 1"));
     assert_eq!(g.filters[0].over.cut.color, Some([40, 40, 40]));
     // Visible no more: unticked in the list.
@@ -3610,11 +3628,11 @@ fn filters_are_made_in_their_dialog_and_applied_by_a_view() {
     press(&mut h, "Filters");
     pick(&mut h, Role::CheckBox, "Filter 1");
     press(&mut h, "OK");
-    assert!(plan_graphics(&h, 1).filters[0].over.hidden);
+    assert!(plan_graphics(&h, 100000).filters[0].over.hidden);
     // Deleting the filter takes it from the view.
     shortcut(&mut h, "FT");
     press(&mut h, "Delete");
-    assert!(plan_graphics(&h, 1).filters.is_empty());
+    assert!(plan_graphics(&h, 100000).filters.is_empty());
     press(&mut h, "Close");
 }
 
@@ -3639,7 +3657,7 @@ fn view_templates_are_made_from_a_view_and_followed_from_properties() {
     h.get_by_role_and_label(Role::ComboBox, "View Template").click_accesskit();
     h.run();
     press(&mut h, "Presentation");
-    assert_eq!(plan_graphics(&h, 2).template.as_deref(), Some("Presentation"));
+    assert_eq!(plan_graphics(&h, 100001).template.as_deref(), Some("Presentation"));
     // Its dialog says where the categories are set, and shows them as the template has them.
     shortcut(&mut h, "VV");
     assert!(h.query_by_label("Categories, Filters, Design Options follow view template Presentation: change them there.").is_some());
@@ -3650,7 +3668,7 @@ fn view_templates_are_made_from_a_view_and_followed_from_properties() {
     // And Stop Following from the templates dialog.
     shortcut(&mut h, "VT");
     press(&mut h, "Stop Following in This View");
-    assert!(plan_graphics(&h, 2).template.is_none());
+    assert!(plan_graphics(&h, 100001).template.is_none());
     press(&mut h, "Close");
 }
 
@@ -3665,8 +3683,8 @@ fn view_templates_hold_show_and_hand_on_a_scale_detail_level_and_visual_style() 
     use bimcraft_core::graphics::{Detail, Group, VisualStyle};
     let mut h = app(BOX);
     let run = |h: &mut Harness<BimApp>, id: &str, p: serde_json::Value| h.state_mut().session.execute(id, &p).unwrap();
-    run(&mut h, "scale", json!({"view": 1, "scale": 50}));
-    run(&mut h, "detail", json!({"view": 1, "detail": "coarse"}));
+    run(&mut h, "scale", json!({"view": 100000, "scale": 50}));
+    run(&mut h, "detail", json!({"view": 100000, "detail": "coarse"}));
     let template = |h: &Harness<BimApp>| h.state().session.model.view_templates["Plans"].clone();
     // Made from a view, a template holds what the view has, and says so.
     shortcut(&mut h, "VT");
@@ -3701,12 +3719,12 @@ fn view_templates_hold_show_and_hand_on_a_scale_detail_level_and_visual_style() 
     press(&mut h, "Close");
     // Level 2 follows it: the bar and Properties show the template's, greyed, and say whose they are.
     topmost(&mut h, "Level 2");
-    assert_eq!(h.state().sheet, Sheet::Plan(2));
+    assert_eq!(h.state().sheet, Sheet::Plan(100001));
     assert_eq!(combo_value(&h, "View Scale"), "Auto");
     shortcut(&mut h, "VT");
     press(&mut h, "Follow in This View");
     press(&mut h, "Close");
-    assert_eq!(plan_graphics(&h, 2).template.as_deref(), Some("Plans"));
+    assert_eq!(plan_graphics(&h, 100001).template.as_deref(), Some("Plans"));
     assert_eq!((combo_value(&h, "View Scale"), combo_value(&h, "Detail Level")), ("1 : 20".into(), "Medium".into()));
     assert!(is_disabled(&h, Role::ComboBox, "View Scale") && is_disabled(&h, Role::ComboBox, "Detail Level"));
     assert!(is_disabled(&h, Role::TextInput, "Scale Value 1:"));
@@ -3742,7 +3760,7 @@ fn view_templates_hold_show_and_hand_on_a_scale_detail_level_and_visual_style() 
 fn a_templates_controls_are_ticked_and_unticked_one_at_a_time() {
     use bimcraft_core::graphics::Group;
     let mut h = app(BOX);
-    h.state_mut().session.execute("template", &json!({"name": "T", "from": 1, "controls": ["categories"]})).unwrap();
+    h.state_mut().session.execute("template", &json!({"name": "T", "from": 100000, "controls": ["categories"]})).unwrap();
     shortcut(&mut h, "VT");
     let controls = |h: &Harness<BimApp>| h.state().session.model.view_templates["T"].controls.iter().copied().collect::<Vec<_>>();
     assert_eq!(controls(&h), [Group::Categories]);
@@ -3800,7 +3818,7 @@ fn sheets_and_schedules_have_no_graphics_to_override() {
 
 /// The value of parameter `key` that element `id` holds, if it holds one.
 fn param(h: &Harness<BimApp>, id: Id, key: &str) -> Option<Value> {
-    h.state().session.model.elements.get(&id).and_then(Element::params).and_then(|p| p.get(key)).cloned()
+    h.state().session.model.elements.get(id).and_then(Element::params).and_then(|p| p.get(key)).cloned()
 }
 
 /// A wall drawn with the Wall tool from `a` to `b`, the tool left again: its id.
@@ -3903,7 +3921,7 @@ fn phase_filters_are_made_and_set_status_by_status_in_the_phasing_dialog() {
     // The ones a project starts with are listed, and a filter a view uses can't go.
     pick(&mut h, Role::ComboBox, "Phase filter:");
     press(&mut h, "Show New");
-    h.state_mut().session.execute("graphics", &json!({"view": 1, "phase_filter": "Show New"})).unwrap();
+    h.state_mut().session.execute("graphics", &json!({"view": 100000, "phase_filter": "Show New"})).unwrap();
     press(&mut h, "Delete");
     assert!(filter(&h, "Show New").is_some() && h.state().status.error, "{:?}", h.state().status.text);
     pick(&mut h, Role::ComboBox, "Phase filter:");
@@ -3959,7 +3977,7 @@ fn the_active_design_option_in_the_status_bar_is_what_new_walls_are_made_in() {
     pick(&mut h, Role::ComboBox, "Active design option:");
     press(&mut h, "Massing: Low");
     assert_eq!(h.state().active_option.as_deref(), Some("Massing: Low"));
-    assert_eq!(plan_graphics(&h, 1).options["Massing"], "Low");
+    assert_eq!(plan_graphics(&h, 100000).options["Massing"], "Low");
     let low = draw_wall(&mut h, P2(2000.0, 3000.0), P2(6000.0, 3000.0));
     assert_eq!(option(&h, low), Some(json!("Massing: Low")));
     let look = bimcraft_core::graphics::Look::of(&h.state().session.model, 1);
@@ -3983,23 +4001,23 @@ fn what_is_drawn_in_a_view_with_a_phase_of_its_own_is_made_in_that_phase() {
     // A phase filter makes it phased; it shows the project's last phase, and walls are made in it.
     open_combo(&mut h, "Phase Filter");
     press(&mut h, "Show New");
-    assert_eq!(plan_graphics(&h, 1).phase_filter.as_deref(), Some("Show New"));
+    assert_eq!(plan_graphics(&h, 100000).phase_filter.as_deref(), Some("Show New"));
     let new = draw_wall(&mut h, P2(2000.0, 3000.0), P2(6000.0, 3000.0));
     assert_eq!(made(&h, new), Some(json!("New Construction")));
     // The first phase picked for the view: what is drawn there is made in it, which leaves no value.
     open_combo(&mut h, "Phase");
     press(&mut h, "Existing");
-    assert_eq!(plan_graphics(&h, 1).phase.as_deref(), Some("Existing"));
+    assert_eq!(plan_graphics(&h, 100000).phase.as_deref(), Some("Existing"));
     let old = draw_wall(&mut h, P2(2000.0, 4500.0), P2(6000.0, 4500.0));
     assert_eq!(made(&h, old), None);
     // The last phase picked again is the view's own now, whatever the project gains after it.
     open_combo(&mut h, "Phase");
     press(&mut h, "New Construction");
-    assert_eq!(plan_graphics(&h, 1).phase.as_deref(), Some("New Construction"));
+    assert_eq!(plan_graphics(&h, 100000).phase.as_deref(), Some("New Construction"));
     // The filter takes the view back to no phasing; the phase stays its own.
     open_combo(&mut h, "Phase Filter");
     press(&mut h, "<None>");
-    assert!(plan_graphics(&h, 1).phase_filter.is_none());
+    assert!(plan_graphics(&h, 100000).phase_filter.is_none());
 }
 
 #[test]
@@ -4075,14 +4093,14 @@ fn the_design_options_dialog_makes_sets_and_options_and_edits_one() {
     pick(&mut h, Role::Button, "Tall");
     press(&mut h, "Edit Option");
     assert_eq!(h.state().active_option.as_deref(), Some("Massing: Tall"));
-    assert_eq!(plan_graphics(&h, 1).options["Massing"], "Tall");
+    assert_eq!(plan_graphics(&h, 100000).options["Massing"], "Tall");
     assert!(h.query_by_label("Active design option:").is_some(), "now there are options to pick from");
     // Accepting the primary keeps its elements, drops the others', and the set with them.
     press(&mut h, "Accept Primary");
     assert!(set(&h).is_none());
-    assert!(!h.state().session.model.elements.contains_key(&walls[0]), "the wall in Tall went");
+    assert!(!h.state().session.model.elements.contains_key(walls[0]), "the wall in Tall went");
     assert_eq!(h.state().active_option, None, "the active option went with its set");
-    assert!(plan_graphics(&h, 1).options.is_empty());
+    assert!(plan_graphics(&h, 100000).options.is_empty());
     press(&mut h, "Close");
 }
 
@@ -4095,19 +4113,19 @@ fn visibility_graphics_picks_the_option_a_view_shows_of_each_set_unless_a_templa
     pick(&mut h, Role::ComboBox, "Massing");
     press(&mut h, "Low");
     // A draft until OK, as every tab's.
-    assert!(plan_graphics(&h, 1).options.is_empty());
+    assert!(plan_graphics(&h, 100000).options.is_empty());
     press(&mut h, "OK");
-    assert_eq!(plan_graphics(&h, 1).options["Massing"], "Low");
+    assert_eq!(plan_graphics(&h, 100000).options["Massing"], "Low");
     // The primary again takes the choice away.
     shortcut(&mut h, "VV");
     press(&mut h, "Design Options");
     pick(&mut h, Role::ComboBox, "Massing");
     press(&mut h, "Primary (Tall)");
     press(&mut h, "OK");
-    assert!(plan_graphics(&h, 1).options.is_empty());
+    assert!(plan_graphics(&h, 100000).options.is_empty());
     // A template that controls the options holds them: the box is there, and can't be used.
-    h.state_mut().session.execute("template", &json!({"name": "T", "from": 1, "controls": ["options"]})).unwrap();
-    h.state_mut().session.execute("graphics", &json!({"view": 1, "template": "T"})).unwrap();
+    h.state_mut().session.execute("template", &json!({"name": "T", "from": 100000, "controls": ["options"]})).unwrap();
+    h.state_mut().session.execute("graphics", &json!({"view": 100000, "template": "T"})).unwrap();
     shortcut(&mut h, "VV");
     press(&mut h, "Design Options");
     assert!(h.get_by_role_and_label(Role::ComboBox, "Massing").accesskit_node().is_disabled());
@@ -4125,7 +4143,10 @@ fn a_templates_phase_and_options_are_ticked_like_its_other_controls_and_hold_a_v
     use bimcraft_core::graphics::Group;
     use egui_kittest::kittest::NodeT;
     let mut h = app(BOX);
-    h.state_mut().session.execute("template", &json!({"name": "T", "from": 1, "controls": ["categories"], "phase": "Existing"})).unwrap();
+    h.state_mut()
+        .session
+        .execute("template", &json!({"name": "T", "from": 100000, "controls": ["categories"], "phase": "Existing"}))
+        .unwrap();
     shortcut(&mut h, "VT");
     let controls = |h: &Harness<BimApp>| h.state().session.model.view_templates["T"].controls.iter().copied().collect::<Vec<_>>();
     pick(&mut h, Role::CheckBox, "Phase and Phase Filter");
@@ -4134,7 +4155,7 @@ fn a_templates_phase_and_options_are_ticked_like_its_other_controls_and_hold_a_v
     // Followed, the view shows the template's phase and can't change it.
     press(&mut h, "Follow in This View");
     press(&mut h, "Close");
-    assert_eq!(plan_graphics(&h, 1).template.as_deref(), Some("T"));
+    assert_eq!(plan_graphics(&h, 100000).template.as_deref(), Some("T"));
     let phase = h.get_by_role_and_label(Role::ComboBox, "Phase");
     assert_eq!(phase.accesskit_node().value().as_deref(), Some("Existing"));
     assert!(phase.accesskit_node().is_disabled());
@@ -4173,12 +4194,12 @@ fn a_view_that_does_not_show_the_active_option_says_so_and_picking_it_again_show
     assert!(!h.state().active_option_unseen(), "Level 1 shows it now");
     // Level 2's plan still shows the primary: what is made there in Low would not be seen.
     topmost(&mut h, "Level 2");
-    assert!(plan_graphics(&h, 2).options.is_empty());
+    assert!(plan_graphics(&h, 100001).options.is_empty());
     assert!(h.state().active_option_unseen());
     // The same pick again shows it in the view on screen.
     pick(&mut h, Role::ComboBox, "Active design option:");
     press(&mut h, "Massing: Low");
-    assert_eq!(plan_graphics(&h, 2).options["Massing"], "Low");
+    assert_eq!(plan_graphics(&h, 100001).options["Massing"], "Low");
     assert!(!h.state().active_option_unseen());
 }
 
@@ -4478,7 +4499,7 @@ fn masses_are_clicked_out_as_a_footprint_previewed_and_finished_with_enter_or_th
     assert_eq!(first.len(), 1);
     assert_eq!(
         (field(&h, first[0], "area_m2"), field(&h, first[0], "level"), field(&h, first[0], "top_level")),
-        (json!(12.0), json!(1), json!(2))
+        (json!(12.0), json!(100000), json!(100001))
     );
     assert_eq!(h.state().tool, Tool::Mass(Vec::new()), "ready for the next one");
     // Clicking back on the first point closes it too; two points make nothing.
@@ -4600,12 +4621,12 @@ fn show_mass_hides_and_shows_the_masses_in_the_view_on_screen() {
         bimcraft_core::graphics::graphics_of(&h.state().session.model, view)
             .is_some_and(|g| g.categories.get("mass").is_some_and(|o| o.hidden))
     };
-    assert!(!hidden(&h, 1));
+    assert!(!hidden(&h, 100_000));
     massing(&mut h, "Show Mass");
-    assert!(hidden(&h, 1) && !hidden(&h, 2), "Level 1's plan alone");
+    assert!(hidden(&h, 100_000) && !hidden(&h, 100_001), "Level 1's plan alone");
     // Its shortcut turns them back on; a click on the mass picks nothing while it is hidden.
     shortcut(&mut h, "MH");
-    assert!(!hidden(&h, 1));
+    assert!(!hidden(&h, 100_000));
     click(&mut h, P2(4000.0, 1500.0));
     assert_eq!(h.state().selection, ids(&h, "mass"));
     key(&mut h, Key::Escape);
@@ -5148,4 +5169,75 @@ fn a_selected_levels_plane_has_a_grip_on_each_edge_in_3d_that_drags_it() {
     assert!((extent[1][0].as_f64().unwrap() - 9000.0).abs() <= 10.0, "{extent}");
     assert_eq!((extent[0].clone(), extent[1][1].clone()), (json!([0.0, 0.0]), json!(6000.0)));
     assert_eq!(h.state().orbit.camera, before, "the grip took the drag, not the camera");
+}
+
+#[test]
+fn select_by_id_finds_elements_by_id_guid_or_ifc_globalid_says_what_it_missed_and_shows_them() {
+    let mut h = app(&format!("{BOX}\nwall {{\"points\": [[20000, 20000], [23000, 20000]], \"level\": \"Level 2\"}}"));
+    let walls = ids(&h, "wall");
+    let (high, low) = (walls[4], walls[1]);
+    let ifc = bimcraft_core::ifc::compress(gid(&h, low).as_u128());
+    press(&mut h, "Manage");
+    press(&mut h, "Select by ID");
+    // Live: what the list finds, and what it doesn't, as it is typed.
+    let list = format!("{} {ifc} 999999", gid(&h, high));
+    type_into(&mut h, "IDs, GUIDs or IFC GlobalIds, as many as you like:", &list);
+    assert!(h.query_by_label("Finds 2; nothing has these: 999999").is_some());
+    press(&mut h, "OK");
+    assert_eq!(h.state().selection, [high, low]);
+    assert!(!h.state().status.error && h.state().status.text.contains("999999"), "found some: a note of the rest, no error");
+    // Shown: the plan of the first one's level, zoomed in on them.
+    assert_eq!(h.state().sheet, Sheet::Plan(100_001));
+    h.run();
+    let at = h.state().screen(P2(21500.0, 20000.0));
+    assert!(h.ctx.content_rect().contains(at), "{at:?}");
+    // Added to the selection, unshown: the view stays.
+    press(&mut h, "Select by ID");
+    type_into(&mut h, "IDs, GUIDs or IFC GlobalIds, as many as you like:", &walls[0].to_string());
+    pick(&mut h, Role::CheckBox, "Add to the selection");
+    pick(&mut h, Role::CheckBox, "Show: open the plan they are in, zoomed to them");
+    press(&mut h, "OK");
+    assert_eq!(h.state().selection, [high, low, walls[0]]);
+    assert_eq!(h.state().sheet, Sheet::Plan(100_001));
+    assert!(!h.state().status.error);
+    // Nothing found: OK waits, and Cancel leaves the selection be.
+    press(&mut h, "Select by ID");
+    type_into(&mut h, "IDs, GUIDs or IFC GlobalIds, as many as you like:", "nowhere");
+    assert!(h.query_by_label("Finds 0; nothing has these: nowhere").is_some());
+    h.get_by_label("OK").click();
+    h.run();
+    press(&mut h, "Cancel");
+    assert_eq!(h.state().selection.len(), 3);
+}
+
+#[test]
+fn ids_of_selection_shows_each_ones_id_guid_and_ifc_globalid_and_copies_them() {
+    let mut h = app(BOX);
+    let walls = ids(&h, "wall");
+    press(&mut h, "Manage");
+    // Nothing selected: nothing to show.
+    press(&mut h, "IDs of Selection");
+    assert!(h.query_by_label("Copy All").is_none());
+    h.state_mut().selection = vec![walls[0], walls[2]];
+    h.run();
+    press(&mut h, "IDs of Selection");
+    let (a, b) = (gid(&h, walls[0]), gid(&h, walls[2]));
+    for text in [walls[0].to_string(), a.to_string(), bimcraft_core::ifc::compress(b.as_u128()), "2 selected.".to_string()] {
+        assert!(h.query_by_label(&text).is_some(), "{text}");
+    }
+    press(&mut h, "Copy GUIDs");
+    assert_eq!(h.state().copied.as_deref(), Some(format!("{a}\n{b}").as_str()));
+    press(&mut h, "Copy IDs");
+    assert_eq!(h.state().copied.as_deref(), Some(format!("{}\n{}", walls[0], walls[2]).as_str()));
+    press(&mut h, "Copy All");
+    let all = h.state().copied.clone().unwrap();
+    let lines: Vec<&str> = all.lines().collect();
+    assert_eq!(lines[0], "Category\tName\tID\tGUID\tIFC GlobalId");
+    assert!(lines[1].starts_with("wall\tGeneric - 200mm\t") && lines[1].contains(&a.to_string()) && lines.len() == 3, "{all}");
+    assert!(h.query_by_label("Copied 2 rows, tab-separated.").is_some());
+    h.get_all_by_label("Copy").next().unwrap().click();
+    h.run();
+    assert!(h.state().copied.as_deref().is_some_and(|c| c.starts_with(&format!("{}\t{a}\t", walls[0]))));
+    press(&mut h, "Close");
+    assert!(h.query_by_label("Copy All").is_none());
 }

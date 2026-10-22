@@ -308,7 +308,7 @@ fn a_plan_sees_a_run_through_its_cut_plane_overhead_and_under_the_level_and_the_
         let cut = made(&mut s, c.command, json!({"points": [[0, 0], [6000, 0]], "offset": 1200}));
         let over = made(&mut s, c.command, json!({"points": [[0, 1000], [6000, 1000]], "offset": 2800}));
         let high = made(&mut s, c.command, json!({"points": [[0, 4000], [6000, 4000]], "offset": 6000}));
-        let d = render::draw(&s.model, 1, view());
+        let d = render::draw(&s.model, 100000, view());
         let half = element_json(&s.model, cut)["width"].as_f64().unwrap() / 2.0;
         assert_eq!(extent(&d, cut), (P2(0.0, -half), P2(6000.0, half)), "{}", c.category);
         assert!(of(&d, cut).iter().any(|p| matches!(p, Prim::Fill { color, .. } if *color == POCHE)), "{} is cut", c.category);
@@ -370,7 +370,7 @@ fn points_picked_snap_to_the_ends_and_middle_of_a_run() {
         made(&mut s, c.command, json!({"points": [[0, 0], [6000, 0]], "offset": 2400}));
         let reach = Reach { point: 100.0, line: 60.0 };
         let at = |p: P2| {
-            let f = snap(&s.model, 1, p, reach, &[], false, &Snaps::default());
+            let f = snap(&s.model, 100000, p, reach, &[], false, &Snaps::default());
             (f.at, f.kind)
         };
         assert_eq!(at(P2(6040.0, 30.0)), (P2(6000.0, 0.0), Kind::Endpoint), "{}", c.category);
@@ -395,7 +395,7 @@ fn a_run_of_the_mep_has_a_schedule_by_system_hides_by_category_and_holds_project
         assert_eq!(r["rows"], json!([["Sistema A", 1.0, 6000.0], ["Sistema B", 1.0, 3000.0]]), "{}", c.category);
         assert_eq!(r["totals"], json!([null, null, 9000.0]));
         // Hidden by category in the plan.
-        let shown = |s: &Session| render::draw(&s.model, 1, view()).owners.iter().filter(|o| **o == Some(a)).count();
+        let shown = |s: &Session| render::draw(&s.model, 100000, view()).owners.iter().filter(|o| **o == Some(a)).count();
         assert!(shown(&s) > 0, "{}", c.category);
         run(&mut s, "graphics", json!({"view": "Level 1", "hide": [c.category]}));
         assert_eq!(shown(&s), 0, "{}", c.category);
@@ -766,7 +766,7 @@ fn a_starter_fixture_stands_as_it_is_and_every_type_of_it_has_a_body() {
         let types: Vec<String> = s.model.families[f.family].types.keys().cloned().collect();
         for ty in types {
             let id = made(&mut s, "component", json!({"family": f.family, "type": ty, "at": [1000, 1000]}));
-            let Some(crate::model::Element::Component(c)) = s.model.elements.get(&id) else { panic!("{} is a component", f.family) };
+            let Some(crate::model::Element::Component(c)) = s.model.elements.get(id) else { panic!("{} is a component", f.family) };
             let pieces = s.model.component_pieces(c);
             assert!(!pieces.is_empty(), "{} {ty}", f.family);
             let top = pieces.iter().map(|p| p.top).fold(f64::MIN, f64::max);

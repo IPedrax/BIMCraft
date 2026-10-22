@@ -328,7 +328,7 @@ pub(crate) fn pin_first(m: &mut Model) {
         .map(|(id, _)| *id)
         .collect();
     for id in loose {
-        if let Some(params) = m.elements.get_mut(&id).and_then(Element::params_mut) {
+        if let Some(params) = m.elements.get_mut(id).and_then(Element::params_mut) {
             params.insert(CREATED.into(), Value::String(first.clone()));
         }
     }
@@ -352,7 +352,7 @@ pub(crate) fn move_phase(m: &mut Model, from: &str, to: Option<&str>) {
     let Some(to) = to else { return };
     for key in [CREATED, DEMOLISHED] {
         for id in holders(m, key, from) {
-            if let Some(params) = m.elements.get_mut(&id).and_then(Element::params_mut) {
+            if let Some(params) = m.elements.get_mut(id).and_then(Element::params_mut) {
                 params.insert(key.into(), Value::String(to.into()));
             }
         }
@@ -381,7 +381,7 @@ pub(crate) fn move_phase(m: &mut Model, from: &str, to: Option<&str>) {
         })
         .collect();
     for (id, name) in early {
-        if let Some(params) = m.elements.get_mut(&id).and_then(Element::params_mut) {
+        if let Some(params) = m.elements.get_mut(id).and_then(Element::params_mut) {
             params.insert(DEMOLISHED.into(), Value::String(name));
         }
     }
@@ -424,7 +424,7 @@ pub(crate) fn rename_option(m: &mut Model, set: &str, old: &str, new: &str) {
         }
     }
     for id in holders(m, OPTION, &format!("{set}: {old}")) {
-        if let Some(params) = m.elements.get_mut(&id).and_then(Element::params_mut) {
+        if let Some(params) = m.elements.get_mut(id).and_then(Element::params_mut) {
             params.insert(OPTION.into(), Value::String(format!("{set}: {new}")));
         }
     }
@@ -443,7 +443,7 @@ pub(crate) fn rename_set(m: &mut Model, old: &str, new: &str) {
     let Some(s) = m.option_sets.remove(old) else { return };
     for o in &s.options {
         for id in holders(m, OPTION, &format!("{old}: {o}")) {
-            if let Some(params) = m.elements.get_mut(&id).and_then(Element::params_mut) {
+            if let Some(params) = m.elements.get_mut(id).and_then(Element::params_mut) {
                 params.insert(OPTION.into(), Value::String(format!("{new}: {o}")));
             }
         }
@@ -483,7 +483,7 @@ mod tests {
 
     /// The parameters an element holds, null when none.
     fn params(s: &Session, id: u64) -> Value {
-        s.model.elements.get(&id).and_then(Element::params).filter(|p| !p.is_empty()).map_or(Value::Null, |p| json!(p))
+        s.model.elements.get(id).and_then(Element::params).filter(|p| !p.is_empty()).map_or(Value::Null, |p| json!(p))
     }
 
     /// The walls of `house`: the first existing, the second new, the third demolished (made existing,
@@ -498,7 +498,7 @@ mod tests {
 
     /// Which of `walls` the plan of Level 1 draws.
     fn shown(s: &Session, walls: &[u64]) -> Vec<bool> {
-        let d = plan(s, 1);
+        let d = plan(s, 100000);
         walls.iter().map(|w| !owned(&d, *w).is_empty()).collect()
     }
 
@@ -540,7 +540,7 @@ mod tests {
         let mut s = Session::new();
         let walls = phased_house(&mut s);
         let both = |s: &mut Session, filter: Value| {
-            run(s, "graphics", json!({"view": 1, "phase_filter": filter}));
+            run(s, "graphics", json!({"view": 100000, "phase_filter": filter}));
             shown(s, &walls)
         };
         // The last phase, and every status as its category does, by default.
@@ -549,19 +549,19 @@ mod tests {
         assert_eq!(both(&mut s, json!("Show New")), [false, true, false, false]);
         assert_eq!(both(&mut s, json!("Show Previous + Demolished")), [true, false, true, false]);
         // Existing in halftone and demolished dashed in red, as the project's overrides say.
-        let d = plan(&s, 1);
+        let d = plan(&s, 100000);
         assert!(lines(&d, walls[2]).contains(&(4.0, Rgb(200, 40, 30), Some([10.0, 5.0]))), "{:?}", lines(&d, walls[2]));
         assert_eq!(both(&mut s, json!("Show Previous + New")), [true, true, false, true]);
-        let d = plan(&s, 1);
+        let d = plan(&s, 100000);
         assert!(lines(&d, walls[0]).contains(&(4.0, Rgb(140, 140, 140), None)), "{:?}", lines(&d, walls[0]));
         assert!(lines(&d, walls[1]).contains(&(4.0, Rgb(25, 25, 25), None)));
         // No filter again: as it was.
         assert_eq!(both(&mut s, Value::Null), [true, true, true, true]);
         // An earlier phase: what is made later isn't there, and what is taken down later still stands.
-        run(&mut s, "graphics", json!({"view": 1, "phase": "Existing"}));
+        run(&mut s, "graphics", json!({"view": 100000, "phase": "Existing"}));
         assert_eq!(shown(&s, &walls), [true, false, true, false]);
         // Another view's phase is its own; a section and the 3D view follow the same rules.
-        run(&mut s, "graphics", json!({"view": 2, "phase": "Existing", "phase_filter": "Show New"}));
+        run(&mut s, "graphics", json!({"view": 100001, "phase": "Existing", "phase_filter": "Show New"}));
         assert_eq!(shown(&s, &walls), [true, false, true, false], "Level 1 as it was");
     }
 
@@ -573,11 +573,11 @@ mod tests {
         run(&mut s, "modify", json!({"id": walls[0], "params": {"Phase Demolished": "Demolition"}}));
         // The default view's phase is the last: New Construction, after the demolition.
         assert_eq!(shown(&s, &walls), [false, true, true, true]);
-        run(&mut s, "graphics", json!({"view": 1, "phase": "Demolition"}));
+        run(&mut s, "graphics", json!({"view": 100000, "phase": "Demolition"}));
         assert_eq!(shown(&s, &walls), [true, true, true, true], "in the phase it comes down, it still stands");
-        run(&mut s, "graphics", json!({"view": 1, "phase": "Existing", "phase_filter": "Show New"}));
+        run(&mut s, "graphics", json!({"view": 100000, "phase": "Existing", "phase_filter": "Show New"}));
         assert_eq!(shown(&s, &walls), [true, true, true, true], "made in the first phase, they are new in it");
-        run(&mut s, "graphics", json!({"view": 1, "phase": "New Construction", "phase_filter": "Show New"}));
+        run(&mut s, "graphics", json!({"view": 100000, "phase": "New Construction", "phase_filter": "Show New"}));
         assert_eq!(shown(&s, &walls), [false, false, false, false], "and existing in the last, where the first came down");
     }
 
@@ -587,15 +587,15 @@ mod tests {
         let walls = house(&mut s);
         let door = run(&mut s, "door", json!({"at": [2000, 0]}))["id"].as_u64().unwrap();
         run(&mut s, "modify", json!({"id": walls[0], "params": {"Phase Demolished": "New Construction"}}));
-        run(&mut s, "graphics", json!({"view": 1, "phase_filter": "Show Complete"}));
-        let d = plan(&s, 1);
+        run(&mut s, "graphics", json!({"view": 100000, "phase_filter": "Show Complete"}));
+        let d = plan(&s, 100000);
         assert!(owned(&d, walls[0]).is_empty() && owned(&d, door).is_empty(), "taken down with its wall");
         assert_eq!(drawn_near(&d, P2(2000.0, 0.0), 100.0), 0, "and nothing of its opening is left where it was");
         // Its own say beats its wall's: made in the first phase, while its wall is made in the second.
         run(&mut s, "modify", json!({"id": walls[0], "params": {"Phase Created": "New Construction", "Phase Demolished": null}}));
         run(&mut s, "modify", json!({"id": door, "params": {"Phase Created": "Existing"}}));
-        run(&mut s, "graphics", json!({"view": 1, "phase": "Existing", "phase_filter": null}));
-        let d = plan(&s, 1);
+        run(&mut s, "graphics", json!({"view": 100000, "phase": "Existing", "phase_filter": null}));
+        let d = plan(&s, 100000);
         assert!(owned(&d, walls[0]).is_empty() && !owned(&d, door).is_empty(), "there before the wall it's in");
     }
 
@@ -613,15 +613,15 @@ mod tests {
             json!({"new": "overridden", "existing": "by-category", "demolished": "not-displayed", "temporary": "not-displayed"})
         );
         run(&mut s, "phase", json!({"overrides": {"new": {"cut": {"color": [0, 0, 200]}}}}));
-        run(&mut s, "graphics", json!({"view": 1, "phase_filter": "Renovation"}));
+        run(&mut s, "graphics", json!({"view": 100000, "phase_filter": "Renovation"}));
         assert_eq!(shown(&s, &walls), [true, true, false, false]);
-        assert!(lines(&plan(&s, 1), walls[1]).contains(&(4.0, Rgb(0, 0, 200), None)));
-        assert!(lines(&plan(&s, 1), walls[0]).contains(&(4.0, Rgb(25, 25, 25), None)));
+        assert!(lines(&plan(&s, 100000), walls[1]).contains(&(4.0, Rgb(0, 0, 200), None)));
+        assert!(lines(&plan(&s, 100000), walls[0]).contains(&(4.0, Rgb(25, 25, 25), None)));
         // The built-in ones can change too, and a filter in use can't go.
         run(&mut s, "phase_filter", json!({"name": "Show New", "existing": "overridden"}));
         let e = s.execute("phase_filter", &json!({"name": "Renovation", "delete": true})).unwrap_err();
         assert!(e.contains("Level 1"), "{e}");
-        run(&mut s, "graphics", json!({"view": 1, "phase_filter": null}));
+        run(&mut s, "graphics", json!({"view": 100000, "phase_filter": null}));
         run(&mut s, "phase_filter", json!({"name": "Renovation", "delete": true}));
         assert!(!s.model.phase_filters.contains_key("Renovation"));
         // Overrides don't hide: a phase filter does, by not displaying.
@@ -637,20 +637,20 @@ mod tests {
         run(&mut s, "phase", json!({"name": "Furniture"}));
         run(&mut s, "phase", json!({"name": "Landscape", "after": "Furniture"}));
         assert_eq!(s.model.phases, ["Existing", "Demolition", "New Construction", "Furniture", "Landscape"]);
-        run(&mut s, "graphics", json!({"view": 1, "phase": "New Construction"}));
+        run(&mut s, "graphics", json!({"view": 100000, "phase": "New Construction"}));
         run(&mut s, "phase", json!({"now": "New Construction"}));
         let r = run(&mut s, "phase", json!({"name": "New Construction", "rename": "Works"}));
         assert_eq!((r["now"].clone(), r["phases"][2].clone()), (json!("Works"), json!("Works")));
         assert_eq!(params(&s, walls[1]), json!({"Phase Created": "Works"}));
         assert_eq!(params(&s, walls[3]), json!({"Phase Created": "Works", "Phase Demolished": "Works"}));
-        let Some(Element::Level(l)) = s.model.elements.get(&1) else { panic!("level") };
+        let Some(Element::Level(l)) = s.model.elements.get(100000) else { panic!("level") };
         assert_eq!(l.graphics.phase.as_deref(), Some("Works"), "views follow it");
         // Taken out, into another: its elements are made, and taken down, in that one.
         run(&mut s, "phase", json!({"name": "Works", "delete": true, "into": "Demolition"}));
         assert_eq!(s.model.phases, ["Existing", "Demolition", "Furniture", "Landscape"]);
         assert_eq!(params(&s, walls[1]), json!({"Phase Created": "Demolition"}));
         assert_eq!(params(&s, walls[3]), json!({"Phase Created": "Demolition", "Phase Demolished": "Demolition"}));
-        let Some(Element::Level(l)) = s.model.elements.get(&1) else { panic!("level") };
+        let Some(Element::Level(l)) = s.model.elements.get(100000) else { panic!("level") };
         assert_eq!(l.graphics.phase.as_deref(), Some("Demolition"));
         assert_eq!(run(&mut s, "phase", json!({}))["now"], json!("Demolition"));
         // Mistakes say what's wrong, and change nothing.
@@ -730,7 +730,7 @@ mod tests {
         run(&mut s, "modify", json!({"id": room, "params": {"Phase Created": "New Construction"}}));
         // Saved with the project and read back.
         let path = std::env::temp_dir().join(format!("bimcraft-phase-{}.bimcraft", std::process::id()));
-        run(&mut s, "graphics", json!({"view": 1, "phase": "Existing", "phase_filter": "Show New"}));
+        run(&mut s, "graphics", json!({"view": 100000, "phase": "Existing", "phase_filter": "Show New"}));
         run(&mut s, "phase", json!({"name": "Demolition", "before": "New Construction"}));
         run(&mut s, "save", json!({"path": path.to_str().unwrap()}));
         let mut t = Session::new();
@@ -750,12 +750,12 @@ mod tests {
         run(&mut s, "modify", json!({"ids": [walls[2]], "params": {"Design Option": "Facade: Glass"}}));
         // The primary shows by default; what is in no option shows in all.
         assert_eq!(shown(&s, &walls), [true, true, false, true]);
-        run(&mut s, "graphics", json!({"view": 1, "options": {"Facade": "Glass"}}));
+        run(&mut s, "graphics", json!({"view": 100000, "options": {"Facade": "Glass"}}));
         assert_eq!(shown(&s, &walls), [false, true, true, true]);
         // Another view is its own, and null takes the choice back.
-        run(&mut s, "graphics", json!({"view": 2, "options": {"Facade": "Brick"}}));
+        run(&mut s, "graphics", json!({"view": 100001, "options": {"Facade": "Brick"}}));
         assert_eq!(shown(&s, &walls), [false, true, true, true]);
-        run(&mut s, "graphics", json!({"view": 1, "options": {"Facade": null}}));
+        run(&mut s, "graphics", json!({"view": 100000, "options": {"Facade": null}}));
         assert_eq!(shown(&s, &walls), [true, true, false, true]);
         // Changing the primary changes what views that don't choose show.
         run(&mut s, "option", json!({"set": "Facade", "primary": "Glass"}));
@@ -767,7 +767,7 @@ mod tests {
         let door = run(&mut s, "door", json!({"at": [2000, 0]}))["id"].as_u64().unwrap();
         run(&mut s, "option", json!({"now": null}));
         run(&mut s, "modify", json!({"id": door, "params": {"Design Option": null}}));
-        let d = plan(&s, 1);
+        let d = plan(&s, 100000);
         assert!(owned(&d, walls[0]).is_empty() && owned(&d, door).is_empty(), "a door follows its wall into its option");
         assert_eq!(drawn_near(&d, P2(2000.0, 0.0), 100.0), 0, "and leaves no opening behind");
     }
@@ -816,16 +816,16 @@ mod tests {
             r["deleted"].as_array().unwrap().contains(&json!(walls[0])) && r["deleted"].as_array().unwrap().contains(&json!(door)),
             "{r}"
         );
-        assert!(!s.model.elements.contains_key(&walls[0]), "the brick wall and its door went");
+        assert!(!s.model.elements.contains_key(walls[0]), "the brick wall and its door went");
         assert_eq!(params(&s, walls[2]), Value::Null, "the glass wall is in the model now");
         assert!(s.model.option_sets.is_empty());
         // Deleting a set takes its elements, undoably.
         run(&mut s, "option", json!({"set": "Roof", "options": ["Hip", "Gable"]}));
         run(&mut s, "modify", json!({"id": walls[1], "params": {"Design Option": "Roof: Gable"}}));
         run(&mut s, "option", json!({"set": "Roof", "delete": true}));
-        assert!(!s.model.elements.contains_key(&walls[1]));
+        assert!(!s.model.elements.contains_key(walls[1]));
         run(&mut s, "undo", json!({}));
-        assert!(s.model.elements.contains_key(&walls[1]) && s.model.option_sets.contains_key("Roof"));
+        assert!(s.model.elements.contains_key(walls[1]) && s.model.option_sets.contains_key("Roof"));
     }
 
     #[test]
@@ -834,21 +834,25 @@ mod tests {
         let walls = phased_house(&mut s);
         run(&mut s, "option", json!({"set": "Facade", "options": ["Brick", "Glass"]}));
         run(&mut s, "modify", json!({"id": walls[0], "params": {"Design Option": "Facade: Glass"}}));
-        run(&mut s, "graphics", json!({"view": 1, "phase": "Existing", "phase_filter": "Show Complete", "options": {"Facade": "Glass"}}));
-        let r = run(&mut s, "template", json!({"name": "Survey", "from": 1}));
+        run(
+            &mut s,
+            "graphics",
+            json!({"view": 100000, "phase": "Existing", "phase_filter": "Show Complete", "options": {"Facade": "Glass"}}),
+        );
+        let r = run(&mut s, "template", json!({"name": "Survey", "from": 100000}));
         assert_eq!(r["controls"], json!(["categories", "filters", "range", "phase", "options", "scale", "detail", "style"]));
         assert_eq!(
             (r["phase"].clone(), r["phase_filter"].clone(), r["options"].clone()),
             (json!("Existing"), json!("Show Complete"), json!({"Facade": "Glass"}))
         );
-        run(&mut s, "graphics", json!({"view": 2, "template": "Survey"}));
-        let g = run(&mut s, "graphics", json!({"view": 2}));
+        run(&mut s, "graphics", json!({"view": 100001, "template": "Survey"}));
+        let g = run(&mut s, "graphics", json!({"view": 100001}));
         assert_eq!((g["phase"].clone(), g["options"].clone()), (json!("Existing"), json!({"Facade": "Glass"})));
         // What it controls isn't the view's to change.
-        let e = s.execute("graphics", &json!({"view": 2, "phase": "New Construction"})).unwrap_err();
+        let e = s.execute("graphics", &json!({"view": 100001, "phase": "New Construction"})).unwrap_err();
         assert!(e.contains("Survey"), "{e}");
         run(&mut s, "template", json!({"name": "Survey", "controls": ["categories"]}));
-        run(&mut s, "graphics", json!({"view": 2, "phase": "New Construction"}));
+        run(&mut s, "graphics", json!({"view": 100001, "phase": "New Construction"}));
     }
 
     #[test]
@@ -885,15 +889,15 @@ mod tests {
             let e = s.execute("graphics", &p).unwrap_err();
             assert!(e.contains(says), "{p}: {e}");
         };
-        bad(json!({"view": 1, "phase": "Nowhere"}), "Nowhere");
-        bad(json!({"view": 1, "phase_filter": "Nope"}), "Nope");
-        bad(json!({"view": 1, "options": {"Nope": "x"}}), "Nope");
-        bad(json!({"view": 1, "phase": 5}), "phase");
-        bad(json!({"view": 1, "options": 5}), "options");
-        bad(json!({"view": 1, "options": {"Facade": 5}}), "Facade");
+        bad(json!({"view": 100000, "phase": "Nowhere"}), "Nowhere");
+        bad(json!({"view": 100000, "phase_filter": "Nope"}), "Nope");
+        bad(json!({"view": 100000, "options": {"Nope": "x"}}), "Nope");
+        bad(json!({"view": 100000, "phase": 5}), "phase");
+        bad(json!({"view": 100000, "options": 5}), "options");
+        bad(json!({"view": 100000, "options": {"Facade": 5}}), "Facade");
         let e = s.execute("option", &json!({"set": "Facade", "options": ["Brick"]})).map(|_| ());
         assert!(e.is_ok());
-        let e = s.execute("graphics", &json!({"view": 1, "options": {"Facade": "Nope"}})).unwrap_err();
+        let e = s.execute("graphics", &json!({"view": 100000, "options": {"Facade": "Nope"}})).unwrap_err();
         assert!(e.contains("Nope"), "{e}");
     }
 
@@ -914,7 +918,7 @@ mod tests {
         let walls = phased_house(&mut s);
         run(&mut s, "sheet", json!({"name": "Plans"}));
         run(&mut s, "place", json!({"sheet": "A101", "view": "Level 1"}));
-        let (sheet, vp) = (7, 8);
+        let (sheet, vp) = (100006, 100007);
         let colour = |s: &Session| {
             let d = crate::sheet::draw(&s.model, sheet).unwrap();
             let pm = tiny_skia::Pixmap::decode_png(&crate::render::png(&d).unwrap()).unwrap();
@@ -924,7 +928,7 @@ mod tests {
             Rgb(c.red(), c.green(), c.blue())
         };
         assert_ne!(colour(&s), PAPER, "the third wall stands");
-        run(&mut s, "graphics", json!({"view": 1, "phase_filter": "Show Complete"}));
+        run(&mut s, "graphics", json!({"view": 100000, "phase_filter": "Show Complete"}));
         assert_eq!(colour(&s), PAPER, "taken down in the new phase");
         let _ = walls;
     }
@@ -989,11 +993,11 @@ mod tests {
     fn a_phase_a_view_shows_is_in_use_and_goes_into_another() {
         let mut s = Session::new();
         house(&mut s);
-        run(&mut s, "graphics", json!({"view": 1, "phase": "New Construction"}));
+        run(&mut s, "graphics", json!({"view": 100000, "phase": "New Construction"}));
         let e = s.execute("phase", &json!({"name": "New Construction", "delete": true})).unwrap_err();
         assert!(e.contains("into"), "{e}");
         run(&mut s, "phase", json!({"name": "New Construction", "delete": true, "into": "Existing"}));
-        let Some(Element::Level(l)) = s.model.elements.get(&1) else { panic!("level") };
+        let Some(Element::Level(l)) = s.model.elements.get(100000) else { panic!("level") };
         assert_eq!(l.graphics.phase.as_deref(), Some("Existing"));
     }
 
@@ -1005,10 +1009,10 @@ mod tests {
         run(&mut s, "phase", json!({"name": "Survey", "before": "Existing"}));
         assert_eq!(s.model.phases, ["Survey", "Existing", "New Construction"]);
         assert_eq!(params(&s, walls[0]), json!({"Phase Created": "Existing"}), "what holds no value was in the first");
-        run(&mut s, "graphics", json!({"view": 1, "phase": "Existing", "phase_filter": "Show New"}));
+        run(&mut s, "graphics", json!({"view": 100000, "phase": "Existing", "phase_filter": "Show New"}));
         assert_eq!(shown(&s, &walls), [true, true, true, true], "made in Existing, they are new in it");
-        assert!(!owned(&plan(&s, 1), door).is_empty());
-        run(&mut s, "graphics", json!({"view": 1, "phase": "Survey", "phase_filter": null}));
+        assert!(!owned(&plan(&s, 100000), door).is_empty());
+        run(&mut s, "graphics", json!({"view": 100000, "phase": "Survey", "phase_filter": null}));
         assert_eq!(shown(&s, &walls), [false, false, false, false], "and not there before it was made");
     }
 
@@ -1099,10 +1103,10 @@ mod tests {
         let mut s = Session::new();
         house(&mut s);
         run(&mut s, "option", json!({"set": "Facade", "options": ["Brick", "Glass"]}));
-        run(&mut s, "graphics", json!({"view": 1, "options": {"Facade": "Glass"}}));
-        run(&mut s, "template", json!({"name": "T", "from": 1}));
+        run(&mut s, "graphics", json!({"view": 100000, "options": {"Facade": "Glass"}}));
+        run(&mut s, "template", json!({"name": "T", "from": 100000}));
         run(&mut s, "option", json!({"set": "Facade", "accept": true}));
-        let Some(Element::Level(l)) = s.model.elements.get(&1) else { panic!("level") };
+        let Some(Element::Level(l)) = s.model.elements.get(100000) else { panic!("level") };
         assert!(l.graphics.options.is_empty());
         assert!(s.model.view_templates["T"].graphics.options.is_empty());
     }
@@ -1232,8 +1236,8 @@ mod tests {
         assert_eq!(params(&s, walls[0]), json!({"Phase Created": "Existing"}));
         assert_eq!(params(&s, door), Value::Null, "it still follows its wall");
         run(&mut s, "modify", json!({"id": walls[0], "params": {"Phase Created": "New Construction"}}));
-        run(&mut s, "graphics", json!({"view": 1, "phase": "Existing"}));
-        let d = plan(&s, 1);
+        run(&mut s, "graphics", json!({"view": 100000, "phase": "Existing"}));
+        let d = plan(&s, 100000);
         assert!(owned(&d, walls[0]).is_empty(), "the wall isn't made yet");
         assert_eq!(drawn_near(&d, P2(2000.0, 0.0), 100.0), 0, "and nor is its door: nothing of either is drawn");
     }
@@ -1246,11 +1250,11 @@ mod tests {
         run(&mut s, "window", json!({"at": [8000, 3000]}));
         run(&mut s, "tag", json!({}));
         let (door_at, window_at) = (P2(2000.0, 0.0), P2(8000.0, 3000.0));
-        let d = plan(&s, 1);
+        let d = plan(&s, 100000);
         assert!(drawn_near(&d, door_at, 100.0) > 0 && drawn_near(&d, window_at, 100.0) > 0);
         run(&mut s, "modify", json!({"ids": [walls[0], walls[1]], "params": {"Phase Demolished": "New Construction"}}));
-        run(&mut s, "graphics", json!({"view": 1, "phase_filter": "Show Complete"}));
-        let d = plan(&s, 1);
+        run(&mut s, "graphics", json!({"view": 100000, "phase_filter": "Show Complete"}));
+        let d = plan(&s, 100000);
         assert_eq!(drawn_near(&d, door_at, 100.0), 0, "no gap, jambs or tag where the wall was");
         assert_eq!(drawn_near(&d, window_at, 100.0), 0);
     }
@@ -1292,10 +1296,10 @@ mod tests {
         let mut s = Session::new();
         house(&mut s);
         run(&mut s, "option", json!({"set": "S", "options": ["a", "b"]}));
-        run(&mut s, "graphics", json!({"view": 1, "options": {"S": "b"}}));
-        run(&mut s, "template", json!({"name": "T", "from": 1}));
+        run(&mut s, "graphics", json!({"view": 100000, "options": {"S": "b"}}));
+        run(&mut s, "template", json!({"name": "T", "from": 100000}));
         run(&mut s, "option", json!({"set": "S", "options": ["a"]}));
-        let Some(Element::Level(l)) = s.model.elements.get(&1) else { panic!("level") };
+        let Some(Element::Level(l)) = s.model.elements.get(100000) else { panic!("level") };
         assert!(l.graphics.options.is_empty());
         assert!(s.model.view_templates["T"].graphics.options.is_empty());
     }

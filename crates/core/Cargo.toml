@@ -15,3 +15,4 @@ serde_json = { workspace = true }
 tiny-skia = { workspace = true }
 flate2 = { workspace = true }
 zune-jpeg = { workspace = true }
+getrandom = { workspace = true }

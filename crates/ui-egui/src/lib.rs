@@ -11,6 +11,7 @@ mod editor;
 mod favorites;
 mod footer;
 mod graphics;
+mod inquiry;
 pub mod lang;
 mod mep;
 mod orbit;
@@ -466,6 +467,11 @@ pub struct BimApp {
     /// elements are made in: none is the main model.
     phasing_dialog: Option<phasing::PhasingDialog>,
     options_dialog: Option<phasing::OptionsDialog>,
+    /// Manage > Select by ID and IDs of Selection, while open.
+    select_by_id: Option<inquiry::SelectById>,
+    ids_of_selection: Option<inquiry::IdsOfSelection>,
+    /// What was last put on the clipboard.
+    pub copied: Option<String>,
     active_option: Option<String>,
     new_schedule: Option<properties::NewSchedule>,
     /// The material the Paint tool lays; the first of the library's while it isn't one it has.
@@ -512,7 +518,7 @@ fn height_options(ui: &mut Ui, m: &Model, level: Id, top: &mut Option<Option<Id>
 /// The params for the top an Options Bar set from the plan of `level`: up to a level, or
 /// unconnected at a height.
 fn top_params(m: &Model, level: Id, top: Option<Option<Id>>, height: &str) -> Result<Value, String> {
-    match top.unwrap_or_else(|| m.level_above(level)) {
+    match top.unwrap_or_else(|| m.level_above(level).and_then(|g| m.elements.id(g))) {
         Some(t) => Ok(json!({"top_level": t})),
         None => m.units.parse(height).map(|h| json!({"height": h})).ok_or_else(|| tf("`{}` is not a height", &[height])),
     }
@@ -733,6 +739,9 @@ impl BimApp {
             templates_dialog: None,
             phasing_dialog: None,
             options_dialog: None,
+            select_by_id: None,
+            ids_of_selection: None,
+            copied: None,
             active_option: None,
             new_schedule: None,
             component: None,
@@ -851,7 +860,7 @@ impl BimApp {
                 (Some(_), sc) => sc.name,
                 (None, _) => t(SCHEDULES.iter().find(|(c, _)| *c == cat).map_or(cat, |(_, name)| name)).to_string(),
             },
-            Sheet::Table(id) => match self.session.model.elements.get(&id) {
+            Sheet::Table(id) => match self.session.model.elements.get(id) {
                 Some(Element::Schedule(sc)) => sc.name.clone(),
                 _ => "Schedule".into(),
             },
@@ -864,7 +873,7 @@ impl BimApp {
             Sheet::Plan(_) => "Floor Plan",
             Sheet::Ceiling(_) => "Ceiling Plan",
             Sheet::View3D => "3D View",
-            Sheet::Section(id) if matches!(self.session.model.elements.get(&id), Some(Element::Elevation(_))) => "Elevation",
+            Sheet::Section(id) if matches!(self.session.model.elements.get(id), Some(Element::Elevation(_))) => "Elevation",
             Sheet::Section(_) => "Section",
             Sheet::Paper(_) => "Sheet",
             Sheet::Schedule(_) | Sheet::Table(_) => "Schedule",
@@ -1014,6 +1023,8 @@ impl BimApp {
             || self.templates_dialog.is_some()
             || self.phasing_dialog.is_some()
             || self.options_dialog.is_some()
+            || self.select_by_id.is_some()
+            || self.ids_of_selection.is_some()
             || self.new_schedule.is_some()
             || self.show_shortcuts
             || self.show_snaps
@@ -1285,7 +1296,7 @@ impl BimApp {
     fn create_similar(&mut self) {
         let m = Arc::clone(&self.session.model);
         let picked = match self.selection.as_slice() {
-            &[id] => m.elements.get(&id).map(|e| (id, e)),
+            &[id] => m.elements.get(id).map(|e| (id, e)),
             _ => None,
         };
         let tool = match picked.map(|(_, e)| e) {
@@ -1446,7 +1457,7 @@ impl BimApp {
     /// The roof selected, when one roof is all that is.
     pub(crate) fn selected_roof(&self) -> Option<Id> {
         match self.selection.as_slice() {
-            &[id] if matches!(self.session.model.elements.get(&id), Some(Element::Roof(_))) => Some(id),
+            &[id] if matches!(self.session.model.elements.get(id), Some(Element::Roof(_))) => Some(id),
             _ => None,
         }
     }
@@ -1454,7 +1465,7 @@ impl BimApp {
     /// The floor selected, when one floor is all that is.
     pub(crate) fn selected_floor(&self) -> Option<Id> {
         match self.selection.as_slice() {
-            &[id] if matches!(self.session.model.elements.get(&id), Some(Element::Floor(_))) => Some(id),
+            &[id] if matches!(self.session.model.elements.get(id), Some(Element::Floor(_))) => Some(id),
             _ => None,
         }
     }
@@ -2180,7 +2191,7 @@ impl BimApp {
                 Sheet::Plan(id) | Sheet::Section(id) => Some(id),
                 _ => None,
             };
-            let cropped = view.is_some_and(|id| match self.session.model.elements.get(&id) {
+            let cropped = view.is_some_and(|id| match self.session.model.elements.get(id) {
                 Some(Element::Level(l)) => l.crop.is_some(),
                 Some(Element::Section(v) | Element::Elevation(v)) => v.crop.is_some(),
                 _ => false,
@@ -2335,6 +2346,21 @@ impl BimApp {
                 && let Some(f) = family
             {
                 self.edit_family(&f);
+            }
+        });
+        panel(ui, "Inquiry", |ui| {
+            let tip = "Select by ID: select elements by their IDs, GUIDs or IFC GlobalIds, as many as you paste, and show them";
+            if big_button(ui, Icon::SelectById, "Select by ID", self.select_by_id.is_some(), tip).clicked() {
+                self.open_select_by_id();
+            }
+            let tip = self.selection_ids_tip();
+            let some = !self.selection.is_empty();
+            if ui
+                .add_enabled_ui(some, |ui| big_button(ui, Icon::IdsOfSelection, "IDs of Selection", self.ids_of_selection.is_some(), &tip))
+                .inner
+                .clicked()
+            {
+                self.open_ids_of_selection();
             }
         });
         panel(ui, "Phasing", |ui| {
@@ -3004,7 +3030,7 @@ impl BimApp {
         let m = &self.session.model;
         match self.sheet {
             Sheet::Schedule(cat) => Some(schedule::standard(m, cat)),
-            Sheet::Table(id) => match m.elements.get(&id) {
+            Sheet::Table(id) => match m.elements.get(id) {
                 Some(Element::Schedule(sc)) => Some((Some(id), sc.clone())),
                 _ => None,
             },
@@ -3106,6 +3132,8 @@ impl BimApp {
         self.templates_window(ctx);
         self.phasing_window(ctx);
         self.options_window(ctx);
+        self.select_by_id_window(ctx);
+        self.ids_of_selection_window(ctx);
         self.shortcuts_window(ctx);
         self.installing_box(ctx);
         let Some(pending) = self.pending.clone() else { return };

@@ -13,6 +13,15 @@ and MCP server, and milestone 2, the egui desktop app, are done. What works and 
 - **Everything is a command** (`ALL` in `crates/core/src/commands.rs`): an id after Revit's tool name, a Revit-style shortcut,
   a params doc written for agents, and a JSON `run`. The CLI, scripts and MCP all go through `Session::execute`, so new
   behaviour is a new command or parameter, with a test.
+- **Every element has an id and a GUID** (`ids.rs`), as Revit's ElementId and UniqueId: the id, six digits from `FIRST_ID`
+  (100000) up, is what people, agents and schedules use, and may be given anew when an element comes in from another file
+  (`insert`, `Elements::insert_as`); the GUID is made once and never changes. Anything that points at an element holds its
+  `Guid`, never its `Id`: a new element kind lists its references in `visit_refs!` (`Element::refs_mut`), and new code finds
+  elements by either (`Key`, `Model::same`, `Model::guid`). A command takes an element by id or GUID (`Guid` reads a number
+  as the id it names, `Model::resolve` swaps it for the GUID after the command, and `Model::check` refuses one left over).
+  A copy is a new element: a new id and a new GUID. IFC writes the GUID as the GlobalId and reads it back. This is the
+  standard for everything new; types, materials, families and the rest of the library are still keyed by name and get
+  ids and GUIDs next, then subparts (layers, family types and forms).
 - **Validate in one place.** Commands build elements; `Model::check` validates the whole model after each command and the
   engine rolls back when it fails. New rules go there, with an error that says what to fix.
 - **Clean-room.** Never copy Autodesk content: no families (`.rfa`), templates, icons, help text, or anything from inside

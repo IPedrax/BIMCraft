@@ -694,7 +694,7 @@ impl BimApp {
     pub(crate) fn type_subject(&self) -> Option<(&'static str, String, Vec<Id>)> {
         let m = &self.session.model;
         let category = match self.subject() {
-            Subject::Element(id) => m.elements.get(&id)?.category(),
+            Subject::Element(id) => m.elements.get(id)?.category(),
             Subject::Elements(category) | Subject::New(category) => category,
             Subject::Mixed(_) | Subject::Plan(_) | Subject::CeilingPlan | Subject::View3D | Subject::Schedule => return None,
         };
@@ -768,7 +768,7 @@ impl BimApp {
         let subject = self.subject();
         self.type_selector(ui, &model, subject);
         let (filter, ids, rows) = match subject {
-            Subject::Element(id) => match model.elements.get(&id) {
+            Subject::Element(id) => match model.elements.get(id) {
                 Some(e) => (format!("{} (1)", lang::category(e.category(), true)), vec![id], rows(e.category())),
                 None => return,
             },
@@ -800,10 +800,10 @@ impl BimApp {
         }
         // A 3D view on a sheet: where it looks from, too.
         if let Subject::Element(id) = subject
-            && let Some(bimcraft_core::model::Element::Viewport(vp)) = model.elements.get(&id)
-            && let Some(bimcraft_core::model::Element::View3D(_)) = model.elements.get(&vp.view)
+            && let Some(bimcraft_core::model::Element::Viewport(vp)) = model.elements.get(id)
+            && let Some(bimcraft_core::model::Element::View3D(_)) = model.elements.get(vp.view)
         {
-            self.parameters(ui, &model, &[vp.view], self::rows("view3d"));
+            self.parameters(ui, &model, &[model.elements.id(vp.view).unwrap_or_default()], self::rows("view3d"));
         }
         // A view's graphics: the template it follows, and its overrides.
         let view_shown = matches!(subject, Subject::Plan(_) | Subject::CeilingPlan | Subject::View3D)
@@ -823,7 +823,7 @@ impl BimApp {
     /// the category's types.
     fn type_selector(&mut self, ui: &mut Ui, model: &Model, subject: Subject) {
         let (category, current) = match subject {
-            Subject::Element(id) => match model.elements.get(&id) {
+            Subject::Element(id) => match model.elements.get(id) {
                 Some(e) => (e.category(), element_json(model, id)["type"].as_str().map(String::from)),
                 None => return,
             },
@@ -973,7 +973,7 @@ impl BimApp {
         let mut crop = None;
         let units = model.units;
         // A note on a sheet sits in paper mm.
-        let paper = matches!(model.elements.get(&id), Some(Element::Text(n)) if model.sheet(n.view).is_some());
+        let paper = matches!(model.elements.get(id), Some(Element::Text(n)) if model.sheet(n.view).is_some());
         for group in groups {
             let open = !self.collapsed.contains(group);
             if group_header(ui, t(group), open) && !self.collapsed.remove(group) {

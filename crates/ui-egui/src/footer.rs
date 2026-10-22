@@ -109,7 +109,8 @@ fn shadowed(base: &Arc<Model>, sheet: Sheet, temp: &Temp) -> Result<Arc<Model>, 
     {
         let g = own.resolved(base);
         let cats: Vec<&str> = g.categories.iter().filter(|(_, o)| o.hidden).map(|(c, _)| c.as_str()).collect();
-        let els: Vec<Id> = g.elements.iter().filter(|(i, o)| o.hidden && drawn(i)).map(|(i, _)| *i).collect();
+        let els: Vec<Id> =
+            g.elements.iter().filter(|(_, o)| o.hidden).filter_map(|(g, _)| base.elements.id(g)).filter(|i| drawn(i)).collect();
         // Each of them, and each element of a category hidden, in magenta.
         let paint = json!({"projection": {"color": REVEALED}, "cut": {"color": REVEALED}});
         let by_category = base.elements.iter().filter(|(_, e)| cats.contains(&e.category())).map(|(i, _)| *i);

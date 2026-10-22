@@ -125,7 +125,7 @@ mod tests {
     fn the_cross_reference_table_points_at_every_object() {
         let mut s = Session::new();
         s.script(r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}"#).unwrap();
-        let d = crate::render::plan(&s.model, 1, 400, 300);
+        let d = crate::render::plan(&s.model, 100000, 400, 300);
         let bytes = pdf(&[(&d, P2(80.0, 60.0)), (&d, P2(80.0, 60.0))]);
         let tail = String::from_utf8_lossy(&bytes[bytes.len() - 40..]).to_string();
         let start: usize = tail.split("startxref\n").nth(1).unwrap().lines().next().unwrap().parse().unwrap();

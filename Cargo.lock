@@ -448,6 +448,7 @@ name = "bimcraft-core"
 version = "0.6.1"
 dependencies = [
  "flate2",
+ "getrandom 0.3.4",
  "serde",
  "serde_json",
  "tiny-skia",

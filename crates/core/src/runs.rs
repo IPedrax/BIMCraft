@@ -194,13 +194,13 @@ impl Geom {
 mod tests {
     use super::*;
 
-    fn model() -> (Model, u64) {
+    fn model() -> (Model, crate::model::Guid) {
         let m = Model::new("t");
-        let level = m.levels()[0].0;
+        let level = m.guid(m.levels()[0].0);
         (m, level)
     }
 
-    fn run(level: u64, a: P2, b: P2, offset: f64, end_offset: Option<f64>, justify: Justify) -> Run {
+    fn run(level: crate::model::Guid, a: P2, b: P2, offset: f64, end_offset: Option<f64>, justify: Justify) -> Run {
         Run {
             type_name: "t".into(),
             level,

@@ -19,7 +19,7 @@ use crate::texture::{Kind, MAX_IMAGES, Picture, Texture};
 use crate::units::Units;
 use crate::walls;
 
-pub type Id = u64;
+pub use crate::ids::{Elements, FIRST_ID, Guid, Id, Key};
 
 /// A line in plan, through two points.
 pub type Line = (P2, P2);
@@ -56,6 +56,9 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
+/// The version of the project file this build writes, and the newest it reads. 1: elements have GUIDs, ids six digits,
+/// and what points at an element holds its GUID. None (0): a file from before.
+pub const FORMAT: u32 = 1;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -130,13 +133,13 @@ pub struct Wall {
     #[serde(rename = "type")]
     pub type_name: String,
     /// Base level.
-    pub level: Id,
+    pub level: Guid,
     /// Ends of the location line.
     pub start: P2,
     pub end: P2,
     /// Top constraint: a level, or none for an unconnected wall `height` tall.
     #[serde(default)]
-    pub top_level: Option<Id>,
+    pub top_level: Option<Guid>,
     #[serde(default)]
     pub height: f64,
     #[serde(default)]
@@ -150,9 +153,9 @@ pub struct Wall {
     /// The roof or floor its top follows, from below, instead of its top constraint; and the one its
     /// base stands on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub attach_top: Option<Id>,
+    pub attach_top: Option<Guid>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub attach_base: Option<Id>,
+    pub attach_base: Option<Guid>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -313,7 +316,7 @@ impl Pattern {
 pub struct Floor {
     #[serde(rename = "type")]
     pub type_name: String,
-    pub level: Id,
+    pub level: Guid,
     pub boundary: Vec<P2>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub openings: Vec<Vec<P2>>,
@@ -338,7 +341,7 @@ pub struct Floor {
 pub struct Ceiling {
     #[serde(rename = "type")]
     pub type_name: String,
-    pub level: Id,
+    pub level: Guid,
     pub boundary: Vec<P2>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub openings: Vec<Vec<P2>>,
@@ -353,10 +356,10 @@ pub struct Ceiling {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Shaft {
-    pub level: Id,
+    pub level: Guid,
     pub boundary: Vec<P2>,
     #[serde(default)]
-    pub top_level: Option<Id>,
+    pub top_level: Option<Guid>,
     #[serde(default)]
     pub height: f64,
     #[serde(default)]
@@ -371,10 +374,10 @@ pub struct Shaft {
 pub struct Mass {
     #[serde(default)]
     pub name: String,
-    pub level: Id,
+    pub level: Guid,
     pub boundary: Vec<P2>,
     #[serde(default)]
-    pub top_level: Option<Id>,
+    pub top_level: Option<Guid>,
     #[serde(default)]
     pub height: f64,
     #[serde(default)]
@@ -405,7 +408,7 @@ impl Mass {
     }
 
     /// Where its top face is: a level, and how far over it.
-    pub fn top_face(&self) -> (Id, f64) {
+    pub fn top_face(&self) -> (Guid, f64) {
         self.top_level.map_or((self.level, self.base_offset + self.height), |t| (t, 0.0))
     }
 
@@ -429,7 +432,7 @@ pub struct Opening {
     pub type_name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub family: Option<String>,
-    pub host: Id,
+    pub host: Guid,
     pub offset: f64,
     /// Height of its bottom above the wall's base (0 for doors).
     #[serde(default)]
@@ -450,7 +453,7 @@ pub struct Opening {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Room {
-    pub level: Id,
+    pub level: Guid,
     /// A point inside the room. The boundary is found from the walls around it, so it follows
     /// them when they move.
     pub point: P2,
@@ -512,7 +515,7 @@ impl Face {
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Reference {
-    pub id: Id,
+    pub id: Guid,
     #[serde(default)]
     pub face: Face,
 }
@@ -532,7 +535,7 @@ pub struct Clearance {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Dimension {
-    pub level: Id,
+    pub level: Guid,
     #[serde(default)]
     pub kind: DimKind,
     pub refs: Vec<Reference>,
@@ -554,7 +557,7 @@ pub enum DimKind {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Note {
-    pub view: Id,
+    pub view: Guid,
     pub at: P2,
     pub text: String,
     #[serde(default = "note_size")]
@@ -574,10 +577,10 @@ fn note_size() -> f64 {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Spot {
-    pub view: Id,
+    pub view: Guid,
     pub at: P2,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub host: Option<Id>,
+    pub host: Option<Guid>,
 }
 
 /// A schedule view: the elements of category `of` in rows, as the `schedule` command lists them:
@@ -623,7 +626,7 @@ pub struct View3D {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Tag {
-    pub host: Id,
+    pub host: Guid,
     pub offset: P2,
     /// A line from the tag to what it names.
     #[serde(default)]
@@ -637,12 +640,12 @@ pub struct Tag {
 pub struct Column {
     #[serde(rename = "type")]
     pub type_name: String,
-    pub level: Id,
+    pub level: Guid,
     pub at: P2,
     #[serde(default)]
     pub angle: f64,
     #[serde(default)]
-    pub top_level: Option<Id>,
+    pub top_level: Option<Guid>,
     #[serde(default)]
     pub height: f64,
     #[serde(default)]
@@ -695,7 +698,7 @@ impl Justify {
 pub struct Run {
     #[serde(rename = "type")]
     pub type_name: String,
-    pub level: Id,
+    pub level: Guid,
     pub start: P2,
     pub end: P2,
     #[serde(default)]
@@ -720,7 +723,7 @@ pub struct Component {
     pub family: String,
     #[serde(rename = "type")]
     pub type_name: String,
-    pub level: Id,
+    pub level: Guid,
     pub at: P2,
     #[serde(default)]
     pub angle: f64,
@@ -739,9 +742,9 @@ pub struct Component {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Stair {
-    pub level: Id,
+    pub level: Guid,
     #[serde(default)]
-    pub top_level: Option<Id>,
+    pub top_level: Option<Guid>,
     #[serde(default)]
     pub height: f64,
     pub start: P2,
@@ -773,9 +776,9 @@ pub struct Landing {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Ramp {
-    pub level: Id,
+    pub level: Guid,
     #[serde(default)]
-    pub top_level: Option<Id>,
+    pub top_level: Option<Guid>,
     #[serde(default)]
     pub height: f64,
     pub start: P2,
@@ -805,13 +808,13 @@ pub enum Side {
 pub struct Railing {
     #[serde(rename = "type")]
     pub type_name: String,
-    pub level: Id,
+    pub level: Guid,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub path: Vec<P2>,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub base_offset: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub host: Option<Id>,
+    pub host: Option<Guid>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub side: Option<Side>,
     /// Its values of the project's parameters, by name.
@@ -831,7 +834,7 @@ pub struct Railing {
 pub struct Roof {
     #[serde(rename = "type")]
     pub type_name: String,
-    pub level: Id,
+    pub level: Guid,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub boundary: Vec<P2>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -849,7 +852,7 @@ pub struct Roof {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub openings: Vec<Vec<P2>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub join: Option<Id>,
+    pub join: Option<Guid>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extrusion: Option<Extrusion>,
     /// Its values of the project's parameters, by name.
@@ -980,8 +983,8 @@ pub fn paper(size: &str) -> Option<P2> {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Viewport {
-    pub sheet: Id,
-    pub view: Id,
+    pub sheet: Guid,
+    pub view: Guid,
     pub at: P2,
     pub scale: f64,
 }
@@ -1002,6 +1005,62 @@ macro_rules! run_arm {
     };
 }
 pub(crate) use run_arm;
+
+/// The references of `$e` (an element, by `&` or `&mut` as `$($m)?` says), each given to `$f`.
+macro_rules! visit_refs {
+    ($e:expr, $f:expr, $($m:tt)?) => {{
+        let f: &mut dyn FnMut(& $($m)? Guid) = $f;
+        match $e {
+            // A view's graphics, as `views_graphics` gives them.
+            Element::Level(_) | Element::Section(_) | Element::Elevation(_) | Element::View3D(_) => {}
+            Element::Grid(_) | Element::Sheet(_) | Element::Schedule(_) => {}
+            Element::Wall(w) => {
+                f(& $($m)? w.level);
+                if let Some(g) = & $($m)? w.top_level { f(g) }
+                if let Some(g) = & $($m)? w.attach_top { f(g) }
+                if let Some(g) = & $($m)? w.attach_base { f(g) }
+            }
+            Element::Floor(Floor { level, .. }) | Element::Ceiling(Ceiling { level, .. }) | Element::Room(Room { level, .. }) => f(level),
+            Element::Shaft(Shaft { level, top_level, .. })
+            | Element::Mass(Mass { level, top_level, .. })
+            | Element::Column(Column { level, top_level, .. })
+            | Element::StructuralColumn(Column { level, top_level, .. })
+            | Element::Footing(Column { level, top_level, .. })
+            | Element::Stair(Stair { level, top_level, .. })
+            | Element::Ramp(Ramp { level, top_level, .. }) => {
+                f(level);
+                if let Some(g) = top_level { f(g) }
+            }
+            Element::Door(o) | Element::Window(o) => f(& $($m)? o.host),
+            Element::Dimension(d) => {
+                f(& $($m)? d.level);
+                for r in & $($m)? d.refs {
+                    f(& $($m)? r.id);
+                }
+            }
+            Element::Tag(t) => f(& $($m)? t.host),
+            Element::Viewport(v) => {
+                f(& $($m)? v.sheet);
+                f(& $($m)? v.view);
+            }
+            run_arm!(r) => f(& $($m)? r.level),
+            Element::Component(c) => f(& $($m)? c.level),
+            Element::Railing(r) => {
+                f(& $($m)? r.level);
+                if let Some(g) = & $($m)? r.host { f(g) }
+            }
+            Element::Roof(r) => {
+                f(& $($m)? r.level);
+                if let Some(g) = & $($m)? r.join { f(g) }
+            }
+            Element::Text(n) => f(& $($m)? n.view),
+            Element::Spot(s) => {
+                f(& $($m)? s.view);
+                if let Some(g) = & $($m)? s.host { f(g) }
+            }
+        }
+    }};
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "category", rename_all = "lowercase")]
@@ -1092,6 +1151,40 @@ impl Element {
             | Element::Railing(Railing { params, .. }) => Some(params),
             _ => None,
         }
+    }
+
+    /// Every element it points at, by GUID, each given to `f`, which may put another in its place: its levels, its
+    /// host, what it measures or is attached to, its view, its sheet, the elements its graphics override, and the mass a
+    /// mark in its `params` names.
+    pub fn refs_mut(&mut self, f: &mut dyn FnMut(&mut Guid)) {
+        visit_refs!(self, f, mut);
+        if let Some(params) = self.params_mut() {
+            crate::massing::refs_mut(params, f);
+        }
+        if let Some(g) = graphics::graphics_mut(self) {
+            // Its keys: taken out, each given to `f`, and put back.
+            g.elements = std::mem::take(&mut g.elements)
+                .into_iter()
+                .map(|(mut k, v)| {
+                    f(&mut k);
+                    (k, v)
+                })
+                .collect();
+        }
+    }
+
+    /// Every element it points at, by GUID, as [`Element::refs_mut`] gives them.
+    pub fn refs(&self) -> Vec<Guid> {
+        let mut out = Vec::new();
+        let mut f = |g: &Guid| out.push(*g);
+        visit_refs!(self, &mut f,);
+        if let Some(params) = self.params() {
+            out.extend(crate::massing::refs(params));
+        }
+        if let Some(g) = graphics::graphics_of_element(self) {
+            out.extend(g.elements.keys());
+        }
+        out
     }
 
     /// The family a component or a family's door or window is of, and its type.
@@ -1390,6 +1483,9 @@ impl ProjectParameter {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Model {
+    /// Which version of the file this is: [`FORMAT`] when written; none, a file from before GUIDs.
+    #[serde(default)]
+    pub format: u32,
     pub name: String,
     /// Seeds the IFC GlobalIds, so every export of this model keeps them.
     pub uid: u64,
@@ -1432,7 +1528,7 @@ pub struct Model {
     /// Its sets of design options, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub option_sets: BTreeMap<String, OptionSet>,
-    pub elements: BTreeMap<Id, Element>,
+    pub elements: Elements,
 }
 
 impl Model {
@@ -1444,11 +1540,12 @@ impl Model {
     /// An empty project in `language`: its two levels named in it.
     pub fn new_in(name: &str, language: Language) -> Model {
         let mut m = Model {
+            format: FORMAT,
             name: name.into(),
             uid: fresh_uid(),
             units: Units::default(),
             language,
-            next_id: 1,
+            next_id: FIRST_ID,
             types: Types::default(),
             materials: BTreeMap::new(),
             images: BTreeMap::new(),
@@ -1460,7 +1557,7 @@ impl Model {
             phase_filters: phasing::filters(language),
             phase_overrides: phasing::overrides(),
             option_sets: BTreeMap::new(),
-            elements: BTreeMap::new(),
+            elements: Elements::new(),
         };
         // A library to start from: each material its colour, its cut's pattern and its surface's, and the texture it has.
         for (name, color, cut, surface, texture) in [
@@ -1740,23 +1837,127 @@ impl Model {
     }
 
     /// Adds an element unchecked; the engine runs [`Model::check`] after every command.
+    /// It's given the next id and a new GUID.
     pub fn insert(&mut self, e: Element) -> Id {
-        // A hand-edited file can carry a stale `next_id`; never overwrite an element.
-        let id = self.next_id.max(self.elements.keys().next_back().map_or(1, |k| k + 1));
-        self.next_id = id + 1;
+        let id = self.fresh_id();
         self.elements.insert(id, e);
         id
     }
 
-    pub fn level(&self, id: Id) -> Option<&Level> {
-        match self.elements.get(&id) {
+    /// Every element's id has six digits or more, and what an element points at is an element of the project, by its GUID.
+    fn check_ids(&self) -> Result<(), String> {
+        for (id, e) in self.elements.iter() {
+            if *id < FIRST_ID {
+                return Err(format!("element {id}: ids start at {FIRST_ID}"));
+            }
+            for g in e.refs() {
+                match g.pending() {
+                    Some(n) if self.elements.contains_key(n) => {
+                        return Err(format!("{} {id} points at element {n} by its id, not its GUID", e.category()));
+                    }
+                    Some(n) => return Err(format!("{} {id} points at element {n}, which the project hasn't", e.category())),
+                    None if !self.elements.contains_key(g) => {
+                        return Err(format!("{} {id} points at {g}, which no element of the project is", e.category()));
+                    }
+                    None => {}
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// A project read from a file: from an older format, brought up to this one; from a newer, refused, saying so.
+    pub fn from_json(text: &str) -> Result<Model, String> {
+        let v: serde_json::Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        let format = v.get("format").map_or(Some(0), serde_json::Value::as_u64).ok_or("`format` must be a whole number")?;
+        if format > u64::from(FORMAT) {
+            return Err(format!(
+                "it was saved by a newer BIMCraft (file format {format}; this one reads up to {FORMAT}): update BIMCraft to open it"
+            ));
+        }
+        let mut m: Model = serde_json::from_value(v).map_err(|e| e.to_string())?;
+        m.migrate();
+        Ok(m)
+    }
+
+    /// Brought up to [`FORMAT`]. From before GUIDs: each element was given one as it was read, what points at an element
+    /// (its id, then) points at its GUID, and the ids move up to six digits, by as much as takes the first to [`FIRST_ID`]
+    /// (`1` is `100000`, `7` is `100006`).
+    pub fn migrate(&mut self) {
+        if self.format < 1 {
+            self.resolve();
+            if self.elements.keys().next().is_some_and(|&first| first < FIRST_ID) {
+                let shift = FIRST_ID - 1;
+                let low: Vec<Id> = self.elements.keys().copied().filter(|&id| id < FIRST_ID).collect();
+                match self.elements.renumbered(|id| if id < FIRST_ID { id + shift } else { id }) {
+                    Some(es) => {
+                        self.elements = es;
+                        self.next_id = self.next_id.saturating_add(shift);
+                    }
+                    // Some of the ids it would take are taken: those get new ones.
+                    None => {
+                        for old in low {
+                            if let (Some(e), Some(g)) = (self.elements.get(old).cloned(), self.elements.guid(old)) {
+                                self.elements.remove(old);
+                                let id = self.fresh_id();
+                                let _ = self.elements.insert_as(id, g, e);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        self.next_id = self.next_id.max(FIRST_ID);
+        self.format = FORMAT;
+    }
+
+    /// What points at an element by its id (as a command gives a reference, or a file from before GUIDs held it) points at
+    /// its GUID. An id no element has is left as it is, for [`Model::check`] to name.
+    pub fn resolve(&mut self) {
+        let pending = |e: &Element| e.refs().iter().any(|g| g.pending().is_some());
+        let ids: Vec<Id> = self.elements.iter().filter(|(_, e)| pending(e)).map(|(id, _)| *id).collect();
+        for id in ids {
+            let Some(mut e) = self.elements.get(id).cloned() else { continue };
+            e.refs_mut(&mut |g| {
+                if let Some(guid) = g.pending().and_then(|i| self.elements.guid(i)) {
+                    *g = guid;
+                }
+            });
+            self.elements.insert(id, e);
+        }
+    }
+
+    /// The next id, taken: past every element's, since a hand-edited file can carry a stale `next_id`.
+    pub fn fresh_id(&mut self) -> Id {
+        let id = self.next_id.max(FIRST_ID).max(self.elements.keys().next_back().map_or(FIRST_ID, |k| k + 1));
+        self.next_id = id + 1;
+        id
+    }
+
+    /// Element `k` as messages name it: its id, or, when the project hasn't it, what `k` is.
+    pub fn shown(&self, k: impl Key) -> String {
+        self.elements.id(k).map_or_else(|| k.to_string(), |id| id.to_string())
+    }
+
+    /// Whether `a` and `b`, ids or GUIDs, are the same element of the project.
+    pub fn same(&self, a: impl Key, b: impl Key) -> bool {
+        self.elements.id(a).is_some_and(|a| self.elements.id(b) == Some(a))
+    }
+
+    /// The GUID of the element `k` finds; the nil GUID, which is no element's, when there's none.
+    pub fn guid(&self, k: impl Key) -> Guid {
+        self.elements.guid(k).unwrap_or_default()
+    }
+
+    pub fn level(&self, id: impl Key) -> Option<&Level> {
+        match self.elements.get(id) {
             Some(Element::Level(l)) => Some(l),
             _ => None,
         }
     }
 
-    pub fn wall(&self, id: Id) -> Option<&Wall> {
-        match self.elements.get(&id) {
+    pub fn wall(&self, id: impl Key) -> Option<&Wall> {
+        match self.elements.get(id) {
             Some(Element::Wall(w)) => Some(w),
             _ => None,
         }
@@ -1764,7 +1965,7 @@ impl Model {
 
     /// The rectangle level `id` stretches over in plan, south-west corner then north-east: its
     /// extent, else [`Model::model_extent`].
-    pub fn level_extent(&self, id: Id) -> Option<[P2; 2]> {
+    pub fn level_extent(&self, id: impl Key) -> Option<[P2; 2]> {
         Some(self.level(id)?.extent.unwrap_or_else(|| self.model_extent()))
     }
 
@@ -1794,7 +1995,7 @@ impl Model {
     /// `to` along its line (its far end with `far`, else its near one): the edge of the extent that
     /// end lies on (across the axis nearest the line's) moves as far as takes it there, leaving it
     /// at least 100 mm across.
-    pub fn level_extent_along(&self, level: Id, view: Id, far: bool, to: f64) -> Option<[P2; 2]> {
+    pub fn level_extent_along(&self, level: impl Key, view: impl Key, far: bool, to: f64) -> Option<[P2; 2]> {
         let v = self.section(view)?;
         let extent @ [lo, hi] = self.level_extent(level)?;
         let u = (v.end - v.start).unit();
@@ -1835,14 +2036,14 @@ impl Model {
         v
     }
 
-    pub fn elevation(&self, level: Id) -> f64 {
+    pub fn elevation(&self, level: impl Key) -> f64 {
         self.level(level).map_or(0.0, |l| l.elevation)
     }
 
     /// The next level up from `level`.
-    pub fn level_above(&self, level: Id) -> Option<Id> {
+    pub fn level_above(&self, level: impl Key) -> Option<Guid> {
         let z = self.elevation(level);
-        self.levels().into_iter().find(|(_, l)| l.elevation > z + TOL).map(|(id, _)| id)
+        self.levels().into_iter().find(|(_, l)| l.elevation > z + TOL).map(|(id, _)| self.guid(id))
     }
 
     pub fn thickness(&self, w: &Wall) -> f64 {
@@ -1874,13 +2075,13 @@ impl Model {
     }
 
     /// Whether a plan of `level` cuts the wall: the wall spans the plan's cut plane.
-    pub fn cut_by(&self, w: &Wall, level: Id) -> bool {
+    pub fn cut_by(&self, w: &Wall, level: impl Key) -> bool {
         self.spans(w, self.plan_range(level).cut)
     }
 
     /// Whether the wall bounds the rooms of `level`: it spans the height rooms are found at,
     /// [`CUT_HEIGHT`] above the level, whatever the level's plan cuts at.
-    pub fn bounding(&self, w: &Wall, level: Id) -> bool {
+    pub fn bounding(&self, w: &Wall, level: impl Key) -> bool {
         self.spans(w, self.elevation(level) + CUT_HEIGHT)
     }
 
@@ -1890,7 +2091,7 @@ impl Model {
     }
 
     /// The view range `level`'s plan has: its own, unless a view template it follows controls it.
-    pub fn view_range_of(&self, level: Id) -> ViewRange {
+    pub fn view_range_of(&self, level: impl Key) -> ViewRange {
         let Some(l) = self.level(level) else { return ViewRange::default() };
         l.graphics
             .template
@@ -1903,7 +2104,7 @@ impl Model {
 
     /// The heights of the view range of `level`'s plan. A top that isn't set is the level above
     /// (none above: no limit), and never below the cut plane.
-    pub fn plan_range(&self, level: Id) -> PlanRange {
+    pub fn plan_range(&self, level: impl Key) -> PlanRange {
         let z = self.elevation(level);
         let r = self.view_range_of(level);
         let above = || self.level_above(level).map_or(f64::INFINITY, |a| self.elevation(a));
@@ -2078,7 +2279,7 @@ impl Model {
 
     /// The level an element stands on: a door's or window's is its wall's, a tag's its door's or
     /// window's. Levels and grids stand on none.
-    pub fn level_of(&self, e: &Element) -> Option<Id> {
+    pub fn level_of(&self, e: &Element) -> Option<Guid> {
         let wall_level = |o: &Opening| self.wall(o.host).map(|w| w.level);
         match e {
             Element::Wall(w) => Some(w.level),
@@ -2094,10 +2295,10 @@ impl Model {
             Element::Stair(st) => Some(st.level),
             Element::Ramp(r) => Some(r.level),
             // On a stair or a ramp, its host's.
-            Element::Railing(r) => r.host.and_then(|h| self.elements.get(&h)).and_then(|e| self.level_of(e)).or(Some(r.level)),
+            Element::Railing(r) => r.host.and_then(|h| self.elements.get(h)).and_then(|e| self.level_of(e)).or(Some(r.level)),
             Element::Roof(r) => Some(r.level),
             Element::Door(o) | Element::Window(o) => wall_level(o),
-            Element::Tag(t) => match self.elements.get(&t.host) {
+            Element::Tag(t) => match self.elements.get(t.host) {
                 Some(Element::Door(o) | Element::Window(o)) => wall_level(o),
                 _ => None,
             },
@@ -2115,7 +2316,7 @@ impl Model {
     }
 
     /// From a base level and offset up to a top level, or `height` above the base: bottom and top.
-    pub fn span(&self, level: Id, base_offset: f64, top_level: Option<Id>, height: f64) -> (f64, f64) {
+    pub fn span(&self, level: impl Key, base_offset: f64, top_level: Option<Guid>, height: f64) -> (f64, f64) {
         let base = self.elevation(level) + base_offset;
         (base, top_level.map_or(base + height, |t| self.elevation(t)))
     }
@@ -2242,7 +2443,7 @@ impl Model {
             }
         };
         let Some(h) = r.join else { return Ok(faces) };
-        let host = match self.elements.get(&h) {
+        let host = match self.elements.get(h) {
             Some(Element::Roof(host)) if host.join.is_none() => host,
             _ => return Err(format!("it joins element {h}, which isn't a roof that joins none")),
         };
@@ -2306,18 +2507,22 @@ impl Model {
     }
 
     /// The roof a plan of `level` shows over `p`, on it or on the level above: of two, the higher.
-    pub fn roof_at(&self, level: Id, p: P2) -> Option<Id> {
-        let shown = |id: &Id| matches!(self.elements.get(id), Some(Element::Roof(r)) if r.level == level || self.level_above(level) == Some(r.level));
+    pub fn roof_at(&self, level: impl Key, p: P2) -> Option<Id> {
+        let above = self.level_above(level);
+        let shown = |id: &Id| matches!(self.elements.get(id), Some(Element::Roof(r)) if self.same(r.level, level) || above.is_some_and(|a| self.same(r.level, a)));
         crate::view3d::tops_at(self, p).into_iter().filter(|(id, _)| shown(id)).max_by(|a, b| a.1.total_cmp(&b.1)).map(|(id, _)| id)
     }
 
     /// The footprint edge nearest `p`, within `within` mm, of the roofs a plan of `level` shows:
     /// the roof's and the edge's numbers.
-    pub fn roof_edge(&self, level: Id, p: P2, within: f64) -> Option<(Id, usize)> {
+    pub fn roof_edge(&self, level: impl Key, p: P2, within: f64) -> Option<(Id, usize)> {
         self.elements
             .iter()
             .filter_map(|(&id, e)| match e {
-                Element::Roof(r) if r.extrusion.is_none() && (r.level == level || self.level_above(level) == Some(r.level)) => {
+                Element::Roof(r)
+                    if r.extrusion.is_none()
+                        && (self.same(r.level, level) || self.level_above(level).is_some_and(|a| self.same(r.level, a))) =>
+                {
                     Some((id, r))
                 }
                 _ => None,
@@ -2435,8 +2640,8 @@ impl Model {
     }
 
     /// Sheet `id`.
-    pub fn sheet(&self, id: Id) -> Option<&Sheet> {
-        match self.elements.get(&id) {
+    pub fn sheet(&self, id: impl Key) -> Option<&Sheet> {
+        match self.elements.get(id) {
             Some(Element::Sheet(s)) => Some(s),
             _ => None,
         }
@@ -2449,8 +2654,8 @@ impl Model {
 
     /// The name of view `id`: a level's plan, a section, an elevation, a schedule or a 3D view;
     /// none for another element.
-    pub fn view_name(&self, id: Id) -> Option<&str> {
-        match self.elements.get(&id) {
+    pub fn view_name(&self, id: impl Key) -> Option<&str> {
+        match self.elements.get(id) {
             Some(Element::Level(l)) => Some(&l.name),
             Some(Element::Section(v) | Element::Elevation(v)) => Some(&v.name),
             Some(Element::Schedule(sc)) => Some(&sc.name),
@@ -2460,8 +2665,8 @@ impl Model {
     }
 
     /// Section or elevation `id`.
-    pub fn section(&self, id: Id) -> Option<&Section> {
-        match self.elements.get(&id) {
+    pub fn section(&self, id: impl Key) -> Option<&Section> {
+        match self.elements.get(id) {
             Some(Element::Section(v) | Element::Elevation(v)) => Some(v),
             _ => None,
         }
@@ -2513,8 +2718,8 @@ impl Model {
     }
 
     /// A door's or window's centre, on its wall's centre line.
-    pub fn anchor(&self, id: Id) -> Option<P2> {
-        match self.elements.get(&id) {
+    pub fn anchor(&self, id: impl Key) -> Option<P2> {
+        match self.elements.get(id) {
             Some(Element::Door(o) | Element::Window(o)) => self.wall(o.host).map(|w| walls::Axis::of(w).at(o.offset, 0.0)),
             _ => None,
         }
@@ -2523,8 +2728,8 @@ impl Model {
     /// Where a new tag of door or window `host` goes from its centre: beside the wall, 400 mm
     /// past its face, on the side the door doesn't swing to, or the window faces (its wall's
     /// exterior, unless flipped).
-    pub fn tag_offset(&self, host: Id) -> P2 {
-        let (Some(e @ (Element::Door(o) | Element::Window(o))), Some(w)) = (self.elements.get(&host), self.wall_of(host)) else {
+    pub fn tag_offset(&self, host: impl Key) -> P2 {
+        let (Some(e @ (Element::Door(o) | Element::Window(o))), Some(w)) = (self.elements.get(host), self.wall_of(host)) else {
             return P2(0.0, 0.0);
         };
         let (ext, int) = walls::faces(self, w);
@@ -2534,8 +2739,8 @@ impl Model {
         P2(p.0 + 0.0, p.1 + 0.0)
     }
 
-    fn wall_of(&self, opening: Id) -> Option<&Wall> {
-        match self.elements.get(&opening) {
+    fn wall_of(&self, opening: impl Key) -> Option<&Wall> {
+        match self.elements.get(opening) {
             Some(Element::Door(o) | Element::Window(o)) => self.wall(o.host),
             _ => None,
         }
@@ -2543,7 +2748,7 @@ impl Model {
 
     /// What a tag shows: its door's or window's mark, `?` while that has none.
     pub fn tag_text(&self, t: &Tag) -> String {
-        match self.elements.get(&t.host) {
+        match self.elements.get(t.host) {
             Some(Element::Door(o) | Element::Window(o)) if !o.mark.trim().is_empty() => o.mark.clone(),
             _ => "?".into(),
         }
@@ -2554,7 +2759,7 @@ impl Model {
     /// window's centre and jambs, run across it from face to face. Its centre is its centre line,
     /// wherever its location line is.
     pub fn reference_line(&self, r: &Reference) -> Result<Line, String> {
-        match (self.elements.get(&r.id), r.face) {
+        match (self.elements.get(r.id), r.face) {
             (Some(Element::Grid(g)), Face::Centre) => Ok((g.start, g.end)),
             (Some(Element::Grid(_)), _) => Err(format!("grid {} has no faces; measure to its line", r.id)),
             (Some(Element::Wall(w)), face) => {
@@ -2566,7 +2771,10 @@ impl Model {
                     }
                     Some(_) => (0.0, axis.length()),
                     None => {
-                        let along: Vec<f64> = walls::outline(self, r.id).iter().map(|p| (*p - w.start).dot(axis.tangent(0.0))).collect();
+                        let along: Vec<f64> = walls::outline(self, self.elements.id(r.id).unwrap_or_default())
+                            .iter()
+                            .map(|p| (*p - w.start).dot(axis.tangent(0.0)))
+                            .collect();
                         (along.iter().copied().fold(0.0, f64::min), along.iter().copied().fold(axis.length(), f64::max))
                     }
                 };
@@ -2601,8 +2809,9 @@ impl Model {
 
     /// The lines dimensions measure to on element `id`: a wall's centre line, faces and ends, a
     /// door's or a window's centre and jambs, a grid's line.
-    pub fn reference_lines(&self, id: Id) -> Vec<(Reference, Line)> {
-        let faces: &[Face] = match self.elements.get(&id) {
+    pub fn reference_lines(&self, id: impl Key) -> Vec<(Reference, Line)> {
+        let id = self.guid(id);
+        let faces: &[Face] = match self.elements.get(id) {
             Some(Element::Wall(_)) => &[Face::Centre, Face::Left, Face::Right, Face::Start, Face::End],
             Some(Element::Door(_) | Element::Window(_)) => &[Face::Centre, Face::Start, Face::End],
             Some(Element::Grid(_)) => &[Face::Centre],
@@ -2618,7 +2827,7 @@ impl Model {
     }
 
     /// Of element `id`'s reference lines that `keep` takes, the one nearest `p`, and how far it is.
-    pub fn reference_at(&self, id: Id, p: P2, keep: impl Fn(Line) -> bool) -> Option<(Reference, f64)> {
+    pub fn reference_at(&self, id: impl Key, p: P2, keep: impl Fn(Line) -> bool) -> Option<(Reference, f64)> {
         self.reference_lines(id)
             .into_iter()
             .filter(|(_, l)| keep(*l))
@@ -2629,11 +2838,11 @@ impl Model {
     /// How far a point standing on `level` at `at` is from the nearest wall centre line or grid east, north, west and south
     /// of it (a straight wall the level's plan cuts, as far as it runs; a grid as far as it is drawn): the temporary
     /// dimensions of a column or a component. A line it stands on is no distance away, so the next one counts.
-    pub fn clearances(&self, level: Id, at: P2) -> [Option<Clearance>; 4] {
+    pub fn clearances(&self, level: impl Key, at: P2) -> [Option<Clearance>; 4] {
         let lines: Vec<(Reference, Line)> = self
             .elements
-            .iter()
-            .filter_map(|(&id, e)| match e {
+            .with_guids()
+            .filter_map(|(_, id, e)| match e {
                 Element::Grid(g) => Some((Reference { id, face: Face::Centre }, (g.start, g.end))),
                 Element::Wall(w) if w.arc == 0.0 && self.cut_by(w, level) => {
                     let (axis, (ext, int)) = (walls::Axis::of(w), walls::faces(self, w));
@@ -2659,7 +2868,7 @@ impl Model {
     /// curved wall's, of its centre line or one of its faces.
     pub fn reference_arc(&self, r: &Reference) -> Result<(P2, f64), String> {
         let what = "a radial dimension measures round columns and curved walls";
-        match self.elements.get(&r.id) {
+        match self.elements.get(r.id) {
             Some(e) if e.column().is_some() => match (e.column(), self.column_type(e)) {
                 (Some(c), Some(t)) if t.round => Ok((c.at, t.width / 2.0)),
                 _ => Err(format!("{} {} isn't round; {what}", e.category(), r.id)),
@@ -2744,9 +2953,13 @@ impl Model {
 
     /// What a spot elevation placed in the plan of `level` at `p` reads: the highest top there of
     /// what stands on the level.
-    pub fn spot_host(&self, level: Id, p: P2) -> Option<Id> {
+    pub fn spot_host(&self, level: impl Key, p: P2) -> Option<Id> {
         // A floor plan looks down, under the ceilings.
-        let on = |id: &Id| self.elements.get(id).is_some_and(|e| self.level_of(e) == Some(level) && !matches!(e, Element::Ceiling(_)));
+        let on = |id: &Id| {
+            self.elements
+                .get(id)
+                .is_some_and(|e| self.level_of(e).is_some_and(|l| self.same(l, level)) && !matches!(e, Element::Ceiling(_)))
+        };
         crate::view3d::tops_at(self, p).into_iter().filter(|(id, _)| on(id)).max_by(|a, b| a.1.total_cmp(&b.1)).map(|(id, _)| id)
     }
 
@@ -2754,15 +2967,15 @@ impl Model {
     /// host isn't there); in a section or an elevation, its point's height.
     pub fn spot_value(&self, sp: &Spot) -> Option<f64> {
         // ponytail: builds every solid per spot, per drawing; share one set of solids if plans carry many spots.
-        match self.elements.get(&sp.view)? {
-            Element::Level(_) => crate::view3d::tops_at(self, sp.at).get(&sp.host?).copied(),
+        match self.elements.get(sp.view)? {
+            Element::Level(_) => crate::view3d::tops_at(self, sp.at).get(&self.elements.id(sp.host?)?).copied(),
             Element::Section(_) | Element::Elevation(_) => Some(sp.at.1),
             _ => None,
         }
     }
 
     /// Centre lines of the walls that bound the rooms of `level`, arcs as chords.
-    pub fn bounding_lines(&self, level: Id) -> Vec<(P2, P2)> {
+    pub fn bounding_lines(&self, level: impl Key) -> Vec<(P2, P2)> {
         self.elements
             .iter()
             .filter(|(_, e)| matches!(e, Element::Wall(w) if self.bounding(w, level)))
@@ -2774,7 +2987,7 @@ impl Model {
     }
 
     /// The faces of the walls that bound the rooms of `level`: the edges of their outlines.
-    pub fn face_lines(&self, level: Id) -> Vec<(P2, P2)> {
+    pub fn face_lines(&self, level: impl Key) -> Vec<(P2, P2)> {
         self.elements
             .iter()
             .filter(|(_, e)| matches!(e, Element::Wall(w) if self.bounding(w, level)))
@@ -2916,19 +3129,20 @@ impl Model {
         let mut twins = BTreeSet::new();
         let mut sheet_numbers = BTreeSet::new();
         // Each view on a sheet: the sheet.
-        let mut placed: BTreeMap<Id, Id> = BTreeMap::new();
+        let mut placed: BTreeMap<Guid, Guid> = BTreeMap::new();
         // Openings by host wall: (start, end, id) along it.
-        let mut spans: BTreeMap<Id, Vec<(f64, f64, Id)>> = BTreeMap::new();
+        let mut spans: BTreeMap<Guid, Vec<(f64, f64, Id)>> = BTreeMap::new();
         for (&id, e) in &self.elements {
             let who = format!("{} {id}", e.category());
-            let level_ok = |l: Id| self.level(l).map(|_| ()).ok_or(format!("{who}: level {l} doesn't exist"));
+            let level_ok = |l: Guid| self.level(l).map(|_| ()).ok_or(format!("{who}: level {} doesn't exist", self.shown(l)));
             // A view annotation is drawn in: a plan, a section or an elevation, or with `sheets`, a sheet.
-            let view_ok = |v: Id, sheets: bool| match self.elements.get(&v) {
+            let view_ok = |v: Guid, sheets: bool| match self.elements.get(v) {
                 Some(Element::Level(_) | Element::Section(_) | Element::Elevation(_)) => Ok(()),
                 Some(Element::Sheet(_)) if sheets => Ok(()),
                 Some(other) => Err(format!(
-                    "{who}: {} {v} isn't a plan, a section, an elevation{}",
+                    "{who}: {} {} isn't a plan, a section, an elevation{}",
                     other.category(),
+                    self.shown(v),
                     if sheets { " or a sheet" } else { "" }
                 )),
                 None => Err(format!("{who}: view {v} doesn't exist")),
@@ -3008,9 +3222,9 @@ impl Model {
                     }
                     for (what, at) in [("attach_top", w.attach_top), ("attach_base", w.attach_base)] {
                         if let Some(a) = at
-                            && !matches!(self.elements.get(&a), Some(Element::Roof(_) | Element::Floor(_)))
+                            && !matches!(self.elements.get(a), Some(Element::Roof(_) | Element::Floor(_)))
                         {
-                            return Err(format!("{who}: {what} {a} isn't a roof or a floor"));
+                            return Err(format!("{who}: {what} {} isn't a roof or a floor", self.shown(a)));
                         }
                     }
                     match w.top_level {
@@ -3084,7 +3298,7 @@ impl Model {
                     }
                 }
                 Element::Door(o) | Element::Window(o) => {
-                    let w = self.wall(o.host).ok_or(format!("{who}: host wall {} doesn't exist", o.host))?;
+                    let w = self.wall(o.host).ok_or(format!("{who}: host wall {} doesn't exist", self.shown(o.host)))?;
                     let t = self.opening_dims(e).map_err(|e| format!("{who}: {e}"))?;
                     if let Some(f) = o.family.as_ref().and_then(|n| self.families.get(n)) {
                         self.family_values_ok(&who, o.family.as_deref().unwrap_or_default(), f, &o.params)?;
@@ -3101,13 +3315,20 @@ impl Model {
                     if a < -TOL || b > length + TOL {
                         return Err(format!(
                             "{who}: {} mm wide at offset {} doesn't fit wall {}, {length} mm long",
-                            t.width, o.offset, o.host
+                            t.width,
+                            o.offset,
+                            self.shown(o.host)
                         ));
                     }
                     // Up to the wall's top over it, which a roof it's attached to may raise.
                     let top = [a, o.offset, b].map(|s| crate::walls::top_at(self, w, s)).into_iter().fold(f64::INFINITY, f64::min);
                     if o.sill < 0.0 || self.own_base(w) + o.sill + t.height > top + TOL {
-                        return Err(format!("{who}: sill {} + height {} doesn't fit wall {}'s height", o.sill, t.height, o.host));
+                        return Err(format!(
+                            "{who}: sill {} + height {} doesn't fit wall {}'s height",
+                            o.sill,
+                            t.height,
+                            self.shown(o.host)
+                        ));
                     }
                     spans.entry(o.host).or_default().push((a, b, id));
                 }
@@ -3134,7 +3355,7 @@ impl Model {
                             continue;
                         }
                         let line = self.reference_line(r).map_err(|e| format!("{who}: {e}"))?;
-                        let what = format!("{} {}", self.cat(r.id), r.id);
+                        let what = format!("{} {}", self.cat(r.id), self.shown(r.id));
                         if !seen.insert((r.id, r.face)) {
                             return Err(format!("{who}: it measures to {what}'s {} twice", r.face.name()));
                         }
@@ -3142,7 +3363,7 @@ impl Model {
                             None => first = Some((*r, line)),
                             Some((f, (a, b))) => {
                                 let parallel = geom::parallel(a, b, line.0, line.1);
-                                let other = format!("{} {}", self.cat(f.id), f.id);
+                                let other = format!("{} {}", self.cat(f.id), self.shown(f.id));
                                 if d.kind == DimKind::Aligned && !parallel {
                                     return Err(format!(
                                         "{who}: {what} isn't parallel to {other}; a dimension measures between parallel walls and grids"
@@ -3175,7 +3396,7 @@ impl Model {
                     point(&who, sp.at)?;
                     match (self.level(sp.view), sp.host) {
                         (Some(_), None) => return Err(format!("{who}: a spot elevation in a plan reads an element's top; give `host`")),
-                        (_, Some(h)) if !self.elements.contains_key(&h) => return Err(format!("{who}: element {h} doesn't exist")),
+                        (_, Some(h)) if !self.elements.contains_key(h) => return Err(format!("{who}: element {h} doesn't exist")),
                         _ => {}
                     }
                 }
@@ -3331,8 +3552,8 @@ impl Model {
                     coord(&format!("{who} base_offset"), rl.base_offset)?;
                     match (rl.host, rl.side) {
                         (Some(h), Some(_)) => {
-                            if !matches!(self.elements.get(&h), Some(Element::Stair(_) | Element::Ramp(_))) {
-                                return Err(format!("{who}: host {h} isn't a stair or a ramp"));
+                            if !matches!(self.elements.get(h), Some(Element::Stair(_) | Element::Ramp(_))) {
+                                return Err(format!("{who}: host {} isn't a stair or a ramp", self.shown(h)));
                             }
                         }
                         (Some(_), None) => {
@@ -3419,12 +3640,12 @@ impl Model {
                 }
                 Element::Viewport(v) => {
                     if self.sheet(v.sheet).is_none() {
-                        return Err(format!("{who}: {} {} isn't a sheet", self.cat(v.sheet), v.sheet));
+                        return Err(format!("{who}: {} {} isn't a sheet", self.cat(v.sheet), self.shown(v.sheet)));
                     }
                     let name = self.view_name(v.view).ok_or(format!(
                         "{who}: {} {} isn't a plan, a section, an elevation, a schedule or a 3D view",
                         self.cat(v.view),
-                        v.view
+                        self.shown(v.view)
                     ))?;
                     point(&who, v.at)?;
                     if !(v.scale.is_finite() && (1.0..=100_000.0).contains(&v.scale)) {
@@ -3436,7 +3657,7 @@ impl Model {
                     }
                 }
                 Element::Tag(t) => {
-                    match self.elements.get(&t.host) {
+                    match self.elements.get(t.host) {
                         Some(Element::Door(_) | Element::Window(_)) => {}
                         Some(h) => return Err(format!("{who}: tags name doors and windows, not {} {}", h.category(), t.host)),
                         None => return Err(format!("{who}: element {} doesn't exist", t.host)),
@@ -3458,11 +3679,12 @@ impl Model {
                 }
             }
         }
-        Ok(())
+        // Last, so what a rule above says of a reference comes first.
+        self.check_ids()
     }
 
-    fn cat(&self, id: Id) -> &'static str {
-        self.elements.get(&id).map_or("element", Element::category)
+    fn cat(&self, id: impl Key) -> &'static str {
+        self.elements.get(id).map_or("element", Element::category)
     }
 }
 
@@ -3648,7 +3870,7 @@ fn fresh_uid() -> u64 {
 mod tests {
     use super::*;
 
-    fn wall(level: Id, a: P2, b: P2) -> Element {
+    fn wall(level: Guid, a: P2, b: P2) -> Element {
         Element::Wall(Wall {
             params: Default::default(),
             type_name: "Generic - 200mm".into(),
@@ -3665,17 +3887,17 @@ mod tests {
         })
     }
 
-    /// A 6 x 4 m box of walls on Level 1 (id 1), returning the bottom wall's id.
+    /// A 6 x 4 m box of walls on Level 1 (id 100000), returning the bottom wall's id.
     fn boxed(m: &mut Model) -> Id {
         let (a, b, c, d) = (P2(0.0, 0.0), P2(6000.0, 0.0), P2(6000.0, 4000.0), P2(0.0, 4000.0));
-        let bottom = m.insert(wall(1, a, b));
+        let bottom = m.insert(wall(m.guid(100000), a, b));
         for (s, e) in [(b, c), (c, d), (d, a)] {
-            m.insert(wall(1, s, e));
+            m.insert(wall(m.guid(100000), s, e));
         }
         bottom
     }
 
-    fn door(host: Id, offset: f64) -> Element {
+    fn door(host: Guid, offset: f64) -> Element {
         Element::Door(Opening {
             params: Default::default(),
             family: None,
@@ -3700,9 +3922,10 @@ mod tests {
     #[test]
     fn walls_constrained_to_a_level_take_its_height() {
         let mut m = Model::new("t");
-        let id = m.insert(wall(1, P2(0.0, 0.0), P2(5000.0, 0.0)));
-        if let Some(Element::Wall(w)) = m.elements.get_mut(&id) {
-            w.top_level = Some(2);
+        let id = m.insert(wall(m.guid(100000), P2(0.0, 0.0), P2(5000.0, 0.0)));
+        let two = m.guid(100001);
+        if let Some(Element::Wall(w)) = m.elements.get_mut(id) {
+            w.top_level = Some(two);
             w.base_offset = 100.0;
         }
         let w = m.wall(id).unwrap();
@@ -3712,14 +3935,14 @@ mod tests {
     #[test]
     fn plans_cut_the_walls_that_span_their_cut_plane() {
         let mut m = Model::new("t");
-        let one = m.insert(wall(1, P2(0.0, 0.0), P2(5000.0, 0.0)));
-        let tall = m.insert(wall(1, P2(0.0, 1000.0), P2(5000.0, 1000.0)));
-        if let Some(Element::Wall(w)) = m.elements.get_mut(&tall) {
+        let one = m.insert(wall(m.guid(100000), P2(0.0, 0.0), P2(5000.0, 0.0)));
+        let tall = m.insert(wall(m.guid(100000), P2(0.0, 1000.0), P2(5000.0, 1000.0)));
+        if let Some(Element::Wall(w)) = m.elements.get_mut(tall) {
             w.height = 6000.0;
         }
         let (one, tall) = (m.wall(one).unwrap(), m.wall(tall).unwrap());
-        assert!(m.cut_by(one, 1) && !m.cut_by(one, 2));
-        assert!(m.cut_by(tall, 1) && m.cut_by(tall, 2));
+        assert!(m.cut_by(one, 100000) && !m.cut_by(one, 100001));
+        assert!(m.cut_by(tall, 100000) && m.cut_by(tall, 100001));
     }
 
     #[test]
@@ -3729,10 +3952,10 @@ mod tests {
         // Mitred at the corners: the outer corner where the outer faces cross.
         assert!(walls::cap(&m, bottom, false).contains(&P2(-100.0, -100.0)));
         // A partition ending mid-span on the bottom wall stops at its face.
-        let t = m.insert(wall(1, P2(3000.0, 0.0), P2(3000.0, 4000.0)));
+        let t = m.insert(wall(m.guid(100000), P2(3000.0, 0.0), P2(3000.0, 4000.0)));
         assert_eq!(walls::cap(&m, t, false), [P2(3100.0, 100.0), P2(2900.0, 100.0)]);
         // A wall upstairs meeting the same corner doesn't join walls downstairs.
-        let up = m.insert(wall(2, P2(0.0, 0.0), P2(0.0, -3000.0)));
+        let up = m.insert(wall(m.guid(100001), P2(0.0, 0.0), P2(0.0, -3000.0)));
         assert_eq!(walls::cap(&m, up, false), [P2(-100.0, 0.0), P2(100.0, 0.0)]);
     }
 
@@ -3740,17 +3963,18 @@ mod tests {
     fn rooms_are_bounded_by_the_walls_their_level_cuts() {
         let mut m = Model::new("t");
         boxed(&mut m);
-        let room = Room { params: Default::default(), level: 1, point: P2(3000.0, 2000.0), name: "Hall".into(), number: "1".into() };
+        let room =
+            Room { params: Default::default(), level: m.guid(100000), point: P2(3000.0, 2000.0), name: "Hall".into(), number: "1".into() };
         assert_eq!(m.room_region(&room).map(|r| r.area()), Some(24e6));
-        let upstairs = Room { level: 2, ..room };
+        let upstairs = Room { level: m.guid(100001), ..room };
         assert_eq!(m.room_region(&upstairs), None, "Level 2 has no walls");
     }
 
     #[test]
     fn check_names_unknown_types_and_lists_the_known_ones() {
         let mut m = Model::new("t");
-        let id = m.insert(wall(1, P2(0.0, 0.0), P2(5000.0, 0.0)));
-        if let Some(Element::Wall(w)) = m.elements.get_mut(&id) {
+        let id = m.insert(wall(m.guid(100000), P2(0.0, 0.0), P2(5000.0, 0.0)));
+        if let Some(Element::Wall(w)) = m.elements.get_mut(id) {
             w.type_name = "Brick".into();
         }
         let e = m.check().unwrap_err();
@@ -3760,8 +3984,8 @@ mod tests {
     #[test]
     fn check_refuses_doors_that_do_not_fit_their_wall() {
         let mut m = Model::new("t");
-        let host = m.insert(wall(1, P2(0.0, 0.0), P2(5000.0, 0.0)));
-        m.insert(door(host, 300.0));
+        let host = m.insert(wall(m.guid(100000), P2(0.0, 0.0), P2(5000.0, 0.0)));
+        m.insert(door(m.guid(host), 300.0));
         let e = m.check().unwrap_err();
         assert!(e.contains("fit"), "{e}");
     }
@@ -3769,11 +3993,11 @@ mod tests {
     #[test]
     fn check_refuses_overlapping_openings() {
         let mut m = Model::new("t");
-        let host = m.insert(wall(1, P2(0.0, 0.0), P2(5000.0, 0.0)));
-        m.insert(door(host, 1000.0));
-        m.insert(door(host, 2000.0));
+        let host = m.insert(wall(m.guid(100000), P2(0.0, 0.0), P2(5000.0, 0.0)));
+        m.insert(door(m.guid(host), 1000.0));
+        m.insert(door(m.guid(host), 2000.0));
         assert_eq!(m.check(), Ok(()));
-        m.insert(door(host, 2600.0));
+        m.insert(door(m.guid(host), 2600.0));
         let e = m.check().unwrap_err();
         assert!(e.contains("overlap"), "{e}");
     }
@@ -3781,13 +4005,23 @@ mod tests {
     #[test]
     fn check_refuses_dangling_references_and_bad_numbers() {
         let mut m = Model::new("t");
-        m.insert(wall(99, P2(0.0, 0.0), P2(5000.0, 0.0)));
-        assert!(m.check().unwrap_err().contains("level 99"));
+        m.insert(wall(Guid::of_id(99), P2(0.0, 0.0), P2(5000.0, 0.0)));
+        assert!(m.check().unwrap_err().contains("level 99 doesn't exist"));
         let mut m = Model::new("t");
-        m.insert(wall(1, P2(0.0, 0.0), P2(f64::NAN, 0.0)));
+        let nowhere = Guid::new();
+        m.insert(wall(nowhere, P2(0.0, 0.0), P2(5000.0, 0.0)));
+        assert!(m.check().unwrap_err().contains(&format!("level {nowhere} doesn't exist")));
+        // An element pointing at another by its id, not its GUID, is one a command forgot to resolve.
+        let mut m = Model::new("t");
+        m.insert(wall(Guid::of_id(100_000), P2(0.0, 0.0), P2(5000.0, 0.0)));
+        assert!(m.check().unwrap_err().contains("points at element 100000 by its id, not its GUID"));
+        m.resolve();
+        assert_eq!(m.check(), Ok(()));
+        let mut m = Model::new("t");
+        m.insert(wall(m.guid(100000), P2(0.0, 0.0), P2(f64::NAN, 0.0)));
         assert!(m.check().is_err());
         let mut m = Model::new("t");
-        m.insert(wall(1, P2(0.0, 0.0), P2(0.5, 0.0)));
+        m.insert(wall(m.guid(100000), P2(0.0, 0.0), P2(0.5, 0.0)));
         assert!(m.check().unwrap_err().contains("short"));
     }
 
@@ -3815,7 +4049,7 @@ mod tests {
     fn insert_never_reuses_an_id_from_a_stale_counter() {
         let mut m = Model::new("t");
         m.next_id = 1;
-        let id = m.insert(wall(1, P2(0.0, 0.0), P2(5000.0, 0.0)));
-        assert_eq!(id, 3);
+        let id = m.insert(wall(m.guid(100000), P2(0.0, 0.0), P2(5000.0, 0.0)));
+        assert_eq!(id, 100_002, "past the levels, and never under six digits");
     }
 }

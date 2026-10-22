@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use bimcraft_core::graphics::{ANNOTATION, Applied, Dash, Detail, Graphics, Group, MODEL, Override, Style, VisualStyle, WEIGHTS};
-use bimcraft_core::model::{Element, Id, Model};
+use bimcraft_core::model::{Element, Guid, Id, Model};
 use bimcraft_core::schedule;
 use egui::{
     Align, Button, Checkbox, ComboBox, Context, DragValue, Grid, Id as UiId, Layout, Modal, RichText, ScrollArea, Ui, WidgetInfo,
@@ -91,7 +91,7 @@ pub(crate) fn merge_patch(old: &Value, new: &Value) -> Value {
 
 /// An element as a list says it: `Wall 12`.
 fn element_name(m: &Model, id: Id) -> String {
-    let category = m.elements.get(&id).map_or("element", Element::category);
+    let category = m.elements.get(id).map_or("element", Element::category);
     format!("{} {id}", lang::category(category, false))
 }
 
@@ -186,7 +186,7 @@ impl BimApp {
             return;
         };
         let own = self.graphics_now();
-        let listed = own.elements.keys().copied().collect();
+        let listed = own.elements.keys().filter_map(|g| self.session.model.elements.id(g)).collect();
         self.vg_dialog = Some(VgDialog { view, title: self.view_title(self.sheet), draft: own.clone(), own, tab, pick: None, listed });
     }
 
@@ -770,7 +770,7 @@ fn elements(ui: &mut Ui, d: &mut VgDialog, model: &Model, selection: &[Id]) {
     ScrollArea::vertical().max_height(200.0).auto_shrink([false, true]).id_salt("vg-elements").show(ui, |ui| {
         Grid::new("vg-elements-grid").num_columns(3).striped(true).spacing(vec2(16.0, 4.0)).show(ui, |ui| {
             for id in &ids {
-                let o = d.draft.elements.get(id).cloned().unwrap_or_default();
+                let o = d.draft.elements.get(&model.guid(*id)).cloned().unwrap_or_default();
                 let mut visible = !o.hidden;
                 let name = element_name(model, *id);
                 let r = ui
@@ -782,7 +782,7 @@ fn elements(ui: &mut Ui, d: &mut VgDialog, model: &Model, selection: &[Id]) {
                 if r.changed() {
                     let mut o = o.clone();
                     o.hidden = !visible;
-                    put_element(d, *id, o);
+                    put_element(d, model.guid(*id), o);
                 }
                 let picked = d.pick == Some(Pick::Element(*id));
                 let label = tf("Override {}", &[&name]);
@@ -816,17 +816,17 @@ fn elements(ui: &mut Ui, d: &mut VgDialog, model: &Model, selection: &[Id]) {
         if ui.add_enabled(gone.is_some(), Button::new(t("Remove"))).clicked()
             && let Some(id) = gone
         {
-            d.draft.elements.remove(&id);
+            d.draft.elements.remove(&model.guid(id));
             d.listed.remove(&id);
             d.pick = None;
         }
     });
     if let Some(Pick::Element(id)) = d.pick.clone() {
-        let mut o = d.draft.elements.get(&id).cloned().unwrap_or_default();
+        let mut o = d.draft.elements.get(&model.guid(id)).cloned().unwrap_or_default();
         ui.separator();
         ui.label(RichText::new(tf("Overrides for {}", &[&element_name(model, id)])).strong());
         if editor(ui, &mut o, true, true) {
-            put_element(d, id, o);
+            put_element(d, model.guid(id), o);
         }
     }
 }
@@ -873,7 +873,7 @@ fn design_options(ui: &mut Ui, d: &mut VgDialog, model: &Model, shown: &Graphics
 }
 
 /// Put `o` back as element `id`'s override in the draft: none when it has nothing.
-fn put_element(d: &mut VgDialog, id: Id, o: Override) {
+fn put_element(d: &mut VgDialog, id: Guid, o: Override) {
     if o.is_empty() {
         d.draft.elements.remove(&id);
     } else {

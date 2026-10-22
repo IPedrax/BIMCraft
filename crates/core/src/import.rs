@@ -17,10 +17,10 @@ use crate::commands::{micron, next_number, tidy};
 use crate::family::{Category, Expr, Family, Form, MAX_TRIANGLES, Parameter};
 use crate::geom::{self, P2};
 use crate::model::{
-    Ceiling, CeilingType, Column, ColumnType, Component, Element, Extrusion, Floor, FloorType, Function, Grid, Id, Justify, Landing, Layer,
-    Level, MAX_COORD, MAX_LAYERS, MAX_POINTS, MAX_PROJECT_PARAMETERS, MAX_TEXT, Mass, Model, Opening, OpeningType, PARAMETER_CATEGORIES,
-    ParameterKind, ProjectParameter, Railing, RailingType, Ramp, Roof, RoofType, Room, Run, RunType, Shaft, Side, Stair, TOL, Wall,
-    WallType, culprit, heading,
+    Ceiling, CeilingType, Column, ColumnType, Component, Element, Extrusion, FIRST_ID, Floor, FloorType, Function, Grid, Guid, Id, Justify,
+    Landing, Layer, Level, MAX_COORD, MAX_LAYERS, MAX_POINTS, MAX_PROJECT_PARAMETERS, MAX_TEXT, Mass, Model, Opening, OpeningType,
+    PARAMETER_CATEGORIES, ParameterKind, ProjectParameter, Railing, RailingType, Ramp, Roof, RoofType, Room, Run, RunType, Shaft, Side,
+    Stair, TOL, Wall, WallType, culprit, heading,
 };
 use crate::phasing;
 use crate::stairs;
@@ -918,7 +918,7 @@ struct RawWall {
     z: (f64, f64),
     /// Where its body is highest, in plan.
     peak: P2,
-    level: Id,
+    level: Guid,
     type_name: String,
 }
 
@@ -1312,10 +1312,12 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     let title = project.and_then(|p| text(p.args.get(2)).or_else(|| text(p.args.get(5)))).unwrap_or(name);
     let mut m = Model::new(&clip(title));
     m.elements.clear();
-    m.next_id = 1;
+    m.next_id = FIRST_ID;
     let (mut skipped, mut seen): (Vec<String>, HashSet<u64>) = (Vec::new(), HashSet::new());
     // Each element made, and what it was in the file.
     let mut from: HashMap<Id, String> = HashMap::new();
+    // The first element made of each in the file, which takes its GlobalId for its GUID.
+    let mut origin: HashMap<u64, Id> = HashMap::new();
     // The elements made of each in the file.
     let mut elements_from: HashMap<u64, Vec<Id>> = HashMap::new();
 
@@ -1340,21 +1342,25 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     for (sid, n, z) in &storeys {
         let level = m.insert(Element::Level(Level::new(fresh(&mut taken, n), *z)));
         level_of.insert(*sid, level);
+        origin.insert(*sid, level);
         seen.insert(*sid);
     }
     let levels: Vec<(Id, f64)> = m.levels().into_iter().map(|(id, lv)| (id, lv.elevation)).collect();
-    let elevation = |level: Id| levels.iter().find(|(id, _)| *id == level).map_or(0.0, |(_, z)| *z);
+    // What's made points at a level, a wall, a stair by its id until the model is made: then at its GUID (`resolve`).
+    let elevation = |level: Guid| levels.iter().find(|(id, _)| Guid::of_id(*id) == level).map_or(0.0, |(_, z)| *z);
     // An element's level: its storey's, else the highest at or below `z`.
-    let level_for = |id: u64, z: f64| -> Id {
-        storey_of(id)
-            .and_then(|s| level_of.get(&s).copied())
-            .unwrap_or_else(|| levels.iter().rev().find(|(_, lz)| *lz <= z + 1.0).or(levels.first()).map_or(0, |(id, _)| *id))
+    let level_for = |id: u64, z: f64| -> Guid {
+        Guid::of_id(
+            storey_of(id)
+                .and_then(|s| level_of.get(&s).copied())
+                .unwrap_or_else(|| levels.iter().rev().find(|(_, lz)| *lz <= z + 1.0).or(levels.first()).map_or(0, |(id, _)| *id)),
+        )
     };
-    let level_near = |z: f64| levels.iter().find(|(_, lz)| (lz - z).abs() <= 1.0).map(|(id, _)| *id);
+    let level_near = |z: f64| levels.iter().find(|(_, lz)| (lz - z).abs() <= 1.0).map(|(id, _)| Guid::of_id(*id));
     // Up to a level at `top` above `base`, else `top - bottom` tall.
-    let topped = |base: Id, bottom: f64, top: f64| -> (Option<Id>, f64) {
-        match levels.iter().find(|(id, lz)| *id != base && *lz > elevation(base) + TOL && (lz - top).abs() <= 1.0) {
-            Some((id, _)) => (Some(*id), top - bottom),
+    let topped = |base: Guid, bottom: f64, top: f64| -> (Option<Guid>, f64) {
+        match levels.iter().find(|(id, lz)| Guid::of_id(*id) != base && *lz > elevation(base) + TOL && (lz - top).abs() <= 1.0) {
+            Some((id, _)) => (Some(Guid::of_id(*id)), top - bottom),
             None => (None, top - bottom),
         }
     };
@@ -1485,6 +1491,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         };
         let id = m.insert(Element::Wall(wall));
         from.insert(id, who(w.ifc));
+        origin.entry(w.ifc).or_insert(id);
         elements_from.entry(w.ifc).or_default().push(id);
         walls.insert(w.ifc, (id, w.start, w.end, w.z.0));
         peaks.push((id, w.peak, w.z.1));
@@ -1587,6 +1594,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         };
         let fid = m.insert(Element::Floor(floor));
         from.insert(fid, who(id));
+        origin.entry(id).or_insert(fid);
         elements_from.entry(id).or_default().push(fid);
         seen.insert(id);
     }
@@ -1625,6 +1633,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             offset,
         }));
         from.insert(cid, who(id));
+        origin.entry(id).or_insert(cid);
         elements_from.entry(id).or_default().push(cid);
         seen.insert(id);
     }
@@ -1676,6 +1685,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
                     Ok(_) => {
                         let rid = m.insert(Element::Roof(roof));
                         from.insert(rid, who(id));
+                        origin.entry(id).or_insert(rid);
                         elements_from.entry(id).or_default().push(rid);
                     }
                     Err(why) => leave(&mut skipped, &mut seen, id, &why),
@@ -1698,9 +1708,9 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
                 && along.iter().any(|p| walls::underside(&m, rid, *p).is_some_and(|z| z < top - 5.0))
         };
         if let Some(rid) = roofs.iter().copied().find(|rid| under(*rid))
-            && let Some(Element::Wall(w)) = m.elements.get_mut(&wid)
+            && let Some(Element::Wall(w)) = m.elements.get_mut(wid)
         {
-            w.attach_top = Some(rid);
+            w.attach_top = Some(Guid::of_id(rid));
         }
     }
 
@@ -1714,11 +1724,12 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         }
     }
     for (id, boundary, z0, z1) in shafts {
-        let level = levels.iter().rev().find(|(_, lz)| *lz <= z0 + 1.0).or(levels.first()).map_or(0, |(id, _)| *id);
+        let level = Guid::of_id(levels.iter().rev().find(|(_, lz)| *lz <= z0 + 1.0).or(levels.first()).map_or(0, |(id, _)| *id));
         let (top_level, height) = topped(level, z0, z1);
         let base_offset = ((z0 - elevation(level)) * 1000.0).round() / 1000.0 + 0.0;
         let sid = m.insert(Element::Shaft(Shaft { level, boundary, top_level, height: (height * 1000.0).round() / 1000.0, base_offset }));
         from.insert(sid, who(id));
+        origin.entry(id).or_insert(sid);
         elements_from.entry(id).or_default().push(sid);
     }
 
@@ -1789,6 +1800,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         };
         let mid = m.insert(Element::Mass(mass));
         from.insert(mid, who(id));
+        origin.entry(id).or_insert(mid);
         elements_from.entry(id).or_default().push(mid);
         seen.insert(id);
     }
@@ -1869,6 +1881,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         };
         let cid = m.insert(make(column));
         from.insert(cid, who(id));
+        origin.entry(id).or_insert(cid);
         elements_from.entry(id).or_default().push(cid);
         seen.insert(id);
     }
@@ -1942,6 +1955,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let Some(made) = Element::of_run(category, run) else { continue };
         let rid = m.insert(made);
         from.insert(rid, who(id));
+        origin.entry(id).or_insert(rid);
         elements_from.entry(id).or_default().push(rid);
         seen.insert(id);
     }
@@ -2068,6 +2082,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let c = Component { family, type_name, level, at: micron(at), angle, offset, mirrored, params: BTreeMap::new() };
         let cid = m.insert(Element::Component(c));
         from.insert(cid, who(id));
+        origin.entry(id).or_insert(cid);
         elements_from.entry(id).or_default().push(cid);
         seen.insert(id);
     }
@@ -2138,6 +2153,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         };
         let sid = m.insert(Element::Stair(stair));
         from.insert(sid, who(id));
+        origin.entry(id).or_insert(sid);
         elements_from.entry(id).or_default().push(sid);
         railings_on.extend(of("IFCRAILING").into_iter().map(|p| (p, sid)));
     }
@@ -2192,6 +2208,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         };
         let rid = m.insert(Element::Ramp(ramp));
         from.insert(rid, who(id));
+        origin.entry(id).or_insert(rid);
         elements_from.entry(id).or_default().push(rid);
         railings_on.extend(of("IFCRAILING").into_iter().map(|p| (p, rid)));
     }
@@ -2209,14 +2226,14 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let named = label(id);
         let railing = match railings_on.get(&id) {
             Some(&host) => {
-                let level = m.elements.get(&host).and_then(|h| m.level_of(h)).unwrap_or(0);
+                let level = m.elements.get(host).and_then(|h| m.level_of(h)).unwrap_or_default();
                 let on = |side| Railing {
                     params: Default::default(),
                     type_name: String::new(),
                     level,
                     path: Vec::new(),
                     base_offset: 0.0,
-                    host: Some(host),
+                    host: Some(Guid::of_id(host)),
                     side: Some(side),
                 };
                 let start = |side| stairs::railing(&m, &on(side)).first().copied();
@@ -2246,6 +2263,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         };
         let rid = m.insert(Element::Railing(railing));
         from.insert(rid, who(id));
+        origin.entry(id).or_insert(rid);
         elements_from.entry(id).or_default().push(rid);
     }
 
@@ -2288,7 +2306,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             params: Default::default(),
             family: None,
             type_name,
-            host,
+            host: Guid::of_id(host),
             offset: micron(P2((s0 + s1) / 2.0, 0.0)).0,
             sill,
             mark: count.to_string(),
@@ -2297,6 +2315,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         };
         let oid = m.insert(if is_door { Element::Door(op) } else { Element::Window(op) });
         from.insert(oid, who(id));
+        origin.entry(id).or_insert(oid);
         elements_from.entry(id).or_default().push(oid);
         seen.insert(id);
     }
@@ -2342,6 +2361,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             number: clip(&number),
         }));
         from.insert(rid, who(id));
+        origin.entry(id).or_insert(rid);
         elements_from.entry(id).or_default().push(rid);
         seen.insert(id);
     }
@@ -2362,6 +2382,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             let tag = text(axis.args.first()).map_or_else(|| next_number(grid_names.iter().map(String::as_str)), String::from);
             let gid = m.insert(Element::Grid(Grid { name: fresh(&mut grid_names, &tag), start, end }));
             from.insert(gid, who(id));
+            origin.entry(id).or_insert(gid);
             elements_from.entry(id).or_default().push(gid);
         }
     }
@@ -2495,8 +2516,8 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     touched.dedup();
     let mut early = 0;
     for id in touched {
-        if m.elements.get(&id).is_some_and(|x| phasing::check_order(&m, "", x).is_err()) {
-            if let Some(params) = m.elements.get_mut(&id).and_then(Element::params_mut) {
+        if m.elements.get(id).is_some_and(|x| phasing::check_order(&m, "", x).is_err()) {
+            if let Some(params) = m.elements.get_mut(id).and_then(Element::params_mut) {
                 params.remove(phasing::DEMOLISHED);
             }
             early += 1;
@@ -2516,24 +2537,35 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             x.color = colour;
         }
     }
+    // Each element's GUID is the GlobalId of what it was made of, where that's one; what points at an element points at it.
+    let mut globals: HashMap<Id, u128> =
+        origin.iter().filter_map(|(step, id)| Some((*id, crate::ifc::expand(text(e(*step)?.args.first())?)?))).collect();
+    // The rest, GUIDs the file makes: the same file reads the same every time.
+    let seed = bytes.iter().fold(0xCBF2_9CE4_8422_2325_u64, |h, b| (h ^ u64::from(*b)).wrapping_mul(0x0100_0000_01B3));
+    for id in m.elements.keys() {
+        globals.entry(*id).or_insert_with(|| Guid::seeded(seed, *id).as_u128());
+    }
+    m.elements = m.elements.regiven(&globals);
+    m.resolve();
     // What breaks a rule is left out, with the rule; a wall takes its doors and windows along.
     for _ in 0..=m.elements.len() {
         let Err(error) = m.check() else { break };
         let id = culprit(&error).filter(|id| from.contains_key(id)).ok_or_else(|| error.clone())?;
         let why = error.split_once(": ").map_or(error.as_str(), |(_, why)| why);
         skipped.push(format!("{}: {why}", from.get(&id).cloned().unwrap_or_default()));
-        m.elements.remove(&id);
+        let gone = m.guid(id);
+        m.elements.remove(id);
         let hosted: Vec<Id> = m
             .elements
             .iter()
             .filter_map(|(k, x)| match x {
-                Element::Door(o) | Element::Window(o) if o.host == id => Some(*k),
+                Element::Door(o) | Element::Window(o) if o.host == gone => Some(*k),
                 _ => None,
             })
             .collect();
         for h in hosted {
             skipped.push(format!("{}: its wall was left out", from.get(&h).cloned().unwrap_or_default()));
-            m.elements.remove(&h);
+            m.elements.remove(h);
         }
     }
     m.check()?;
@@ -3279,7 +3311,7 @@ ENDSEC;END-ISO-10303-21;",
             Element::Wall(w) => at((w.start + w.end) * 0.5),
             Element::Door(o) | Element::Window(o) => at(m.wall(o.host).map(|w| (w.start + w.end) * 0.5)?),
             Element::Component(c) => at(c.at),
-            Element::Railing(r) => (r.host.and_then(|h| m.elements.get(&h)).map_or(0, |h| h.category().len() as i64), 0),
+            Element::Railing(r) => (r.host.and_then(|h| m.elements.get(h)).map_or(0, |h| h.category().len() as i64), 0),
             _ => (0, 0),
         })
     }

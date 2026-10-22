@@ -152,6 +152,7 @@ impl Scene {
     /// each element's extent first, so a plan of thousands of walls costs a few microseconds a wall.
     fn of(m: &Model, level: Id, p: P2, window: f64, look: &Look) -> Scene {
         let mut s = Scene { points: Vec::new(), lines: Vec::new(), walls: Vec::new() };
+        let level = m.guid(level);
         let above = m.level_above(level);
         let cut = m.plan_range(level).cut;
         // Whether the box round `pts` lies within `window` of `p`.
@@ -446,7 +447,7 @@ mod tests {
     }
 
     fn at(m: &Model, p: P2, from: &[P2], o: &Snaps) -> Found {
-        snap(m, 1, p, REACH, from, false, o)
+        snap(m, 100000, p, REACH, from, false, o)
     }
 
     fn degrees(from: P2, to: P2) -> f64 {
@@ -460,7 +461,7 @@ mod tests {
         let f = at(&m, P2(5030.0, 4020.0), &[], &o);
         assert_eq!((f.at, f.kind), (P2(5000.0, 4000.0), Kind::Endpoint));
         // Level 2's plan cuts at 4200 mm, over its top at 2000: nothing there to snap to.
-        let f = snap(&m, 2, P2(5030.0, 4020.0), REACH, &[], false, &o);
+        let f = snap(&m, 100001, P2(5030.0, 4020.0), REACH, &[], false, &o);
         assert_eq!((f.at, f.kind), (P2(5030.0, 4020.0), Kind::Free));
     }
 
@@ -598,13 +599,13 @@ mod tests {
                     Snaps { angle: 1e9, ..Snaps::default() },
                 ] {
                     for square in [true, false] {
-                        let _ = snap(&m, 1, p, REACH, from, square, &o);
+                        let _ = snap(&m, 100000, p, REACH, from, square, &o);
                     }
                 }
             }
         }
         for reach in [Reach { point: 0.0, line: 0.0 }, Reach { point: nan, line: -1.0 }, Reach { point: inf, line: inf }] {
-            let _ = snap(&m, 1, P2(10.0, 10.0), reach, &[P2(0.0, 0.0)], false, &Snaps::default());
+            let _ = snap(&m, 100000, P2(10.0, 10.0), reach, &[P2(0.0, 0.0)], false, &Snaps::default());
         }
     }
 
@@ -657,9 +658,9 @@ mod tests {
     fn shift_keeps_a_step_square_from_a_point_off_the_grid() {
         let m = model("");
         let from = [P2(2501.5, 1000.25)];
-        let f = snap(&m, 1, P2(5000.0, 1003.0), REACH, &from, true, &Snaps::none());
+        let f = snap(&m, 100000, P2(5000.0, 1003.0), REACH, &from, true, &Snaps::none());
         assert_eq!(f.at, P2(5000.0, 1000.25));
-        let f = snap(&m, 1, P2(2503.0, 4000.0), REACH, &from, true, &Snaps::none());
+        let f = snap(&m, 100000, P2(2503.0, 4000.0), REACH, &from, true, &Snaps::none());
         assert_eq!(f.at, P2(2501.5, 4000.0));
     }
 

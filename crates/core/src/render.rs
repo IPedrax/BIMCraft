@@ -20,8 +20,8 @@ use tiny_skia::{Color, FillRule, IntSize, LineCap, LineJoin, Paint, PathBuilder,
 use crate::geom::{self, P2};
 use crate::graphics::{Detail, Look};
 use crate::model::{
-    CEILING_CUT, Ceiling, DimKind, Dimension, Element, Floor, Function, Id, Layer, Model, Note, Opening, Pattern, PlanRange, Railing, Ramp,
-    Roof, Section, Shaft, Stair, TOL, Tag, Wall,
+    CEILING_CUT, Ceiling, DimKind, Dimension, Element, Floor, Function, Id, Key, Layer, Model, Note, Opening, Pattern, PlanRange, Railing,
+    Ramp, Roof, Section, Shaft, Stair, TOL, Tag, Wall,
 };
 use crate::units::Units;
 use crate::view3d::{self, Camera, Clip, Image, Scene};
@@ -79,6 +79,15 @@ pub enum Prim {
 }
 
 impl Prim {
+    /// Its points, px: a fill's rings', a line's, a picture's corners.
+    pub fn points(&self) -> Vec<(f32, f32)> {
+        match self {
+            Prim::Fill { rings, .. } => rings.iter().flatten().copied().collect(),
+            Prim::Line { pts, .. } => pts.clone(),
+            Prim::Image { at, width, height, .. } => Prim::corners(*at, *width, *height),
+        }
+    }
+
     /// The same, `dx` px right and `dy` down.
     pub(crate) fn moved(self, dx: f32, dy: f32) -> Prim {
         let mv = |pts: Vec<(f32, f32)>| pts.into_iter().map(|(x, y)| (x + dx, y + dy)).collect();
@@ -434,13 +443,13 @@ fn cut_unions(look: &Look, outlines: impl Iterator<Item = (Id, Vec<P2>)>) -> Vec
 }
 
 /// The plan of `level` fitted into `width` x `height` px.
-pub fn plan(m: &Model, level: Id, width: u32, height: u32) -> Drawing {
+pub fn plan(m: &Model, level: impl Key, width: u32, height: u32) -> Drawing {
     draw(m, level, fit(&plan_extent(m, level), width, height, scale_of(m, level)))
 }
 
 /// What a plan of `level` takes on paper: all it shows, or cropped, its crop region and the grids'
 /// ends at its edges.
-pub(crate) fn plan_extent(m: &Model, level: Id) -> Vec<P2> {
+pub(crate) fn plan_extent(m: &Model, level: impl Key) -> Vec<P2> {
     match m.level(level).and_then(|l| l.crop) {
         None => plan_shows(m, level),
         Some([lo, hi]) => {
@@ -455,7 +464,8 @@ pub(crate) fn plan_extent(m: &Model, level: Id) -> Vec<P2> {
 
 /// Everything a plan of `level` shows, uncropped: its walls, floors, rooms, dimensions, tags,
 /// notes and spot elevations, the grids, and the marks of the sections and elevations.
-pub(crate) fn plan_shows(m: &Model, level: Id) -> Vec<P2> {
+pub(crate) fn plan_shows(m: &Model, level: impl Key) -> Vec<P2> {
+    let level = m.guid(level);
     let r = m.plan_range(level);
     let look = Look::of(m, level);
     let mut extent: Vec<P2> = cut_outlines(m, r.cut, &look).into_iter().flat_map(|(_, o)| o).collect();
@@ -557,8 +567,8 @@ fn heights(m: &Model, look: &Look) -> (f64, f64) {
 /// The crop region of view `id` as it shows: a cropped plan's corners; a cropped section's or
 /// elevation's line, along it, and its crop's heights. None for a view that isn't cropped, or
 /// another element.
-pub fn crop_region(m: &Model, id: Id) -> Option<[P2; 2]> {
-    match m.elements.get(&id)? {
+pub fn crop_region(m: &Model, id: impl Key) -> Option<[P2; 2]> {
+    match m.elements.get(id)? {
         Element::Level(l) => l.crop,
         Element::Section(v) | Element::Elevation(v) => v.crop.map(|[bottom, top]| [P2(0.0, bottom), P2(v.start.dist(v.end), top)]),
         _ => None,
@@ -567,7 +577,7 @@ pub fn crop_region(m: &Model, id: Id) -> Option<[P2; 2]> {
 
 /// The heights section or elevation `id` would crop to: all of the model's, as far as its grids
 /// reach past them.
-pub(crate) fn section_heights(m: &Model, id: Id) -> [f64; 2] {
+pub(crate) fn section_heights(m: &Model, id: impl Key) -> [f64; 2] {
     let (lo, hi) = heights(m, &Look::of(m, id));
     [lo - GRID_PAST, hi + GRID_PAST]
 }
@@ -593,10 +603,11 @@ fn span(m: &Model, v: &Section, look: &Look) -> (f64, f64) {
 
 /// Where level `level` ends in section or elevation `view`, along its line from its start: its near
 /// end and its far one, as far as the view shows. None where it doesn't show it.
-pub fn level_ends(m: &Model, level: Id, view: Id) -> Option<(f64, f64)> {
+pub fn level_ends(m: &Model, level: impl Key, view: impl Key) -> Option<(f64, f64)> {
     let v = m.section(view)?;
     let look = Look::of(m, view);
     let (first, last) = span(m, v, &look);
+    let level = m.elements.id(level)?;
     let (_, a, b) = level_spans(m, v, &look).into_iter().find(|(id, ..)| *id == level)?;
     let (a, b) = (a.max(first), b.min(last));
     (a < b).then_some((a, b))
@@ -633,7 +644,7 @@ fn shown_heights(m: &Model, v: &Section, look: &Look) -> (f64, f64) {
 /// The view section or elevation `id` fits into `width` x `height` px: along its line from its
 /// start, and up, with room for its levels' names and its grids' bubbles, which are as big as its
 /// scale makes them.
-pub fn section_fit(m: &Model, id: Id, width: u32, height: u32) -> View {
+pub fn section_fit(m: &Model, id: impl Key, width: u32, height: u32) -> View {
     let Some([lo, hi]) = section_bare(m, id) else { return fit(&[], width, height, None) };
     let (n, names) = (scale_of(m, id), level_names(m));
     fit_by(|scale| [lo, P2(hi.0 + f64::from(annotation_of(n, scale) * names) / scale, hi.1)], width, height, n)
@@ -642,14 +653,14 @@ pub fn section_fit(m: &Model, id: Id, width: u32, height: u32) -> View {
 /// What section or elevation `id` shows, along its line and up, at `scale` px per mm, its annotation `k` times the size it is
 /// laid out at: from its start to its end, past its lowest and highest heights, with room past the end for the widest
 /// level name.
-pub(crate) fn section_extent(m: &Model, id: Id, scale: f64, k: f32) -> Option<[P2; 2]> {
+pub(crate) fn section_extent(m: &Model, id: impl Key, scale: f64, k: f32) -> Option<[P2; 2]> {
     let [lo, hi] = section_bare(m, id)?;
     Some([lo, P2(hi.0 + f64::from(k * level_names(m)) / scale, hi.1)])
 }
 
 /// Section or elevation `id` along its line, past its lowest and highest heights: all it shows but the names of its levels.
 /// Cropped, from its start to its end; else as far as anything it shows reaches.
-fn section_bare(m: &Model, id: Id) -> Option<[P2; 2]> {
+fn section_bare(m: &Model, id: impl Key) -> Option<[P2; 2]> {
     let v = m.section(id)?;
     let look = Look::of(m, id);
     let ((lo, hi), (first, last)) = (shown_heights(m, v, &look), span(m, v, &look));
@@ -663,7 +674,7 @@ fn level_names(m: &Model) -> f32 {
 }
 
 /// The camera, and what it keeps, that show what section or elevation `id` sees through `view`.
-pub fn section_camera(m: &Model, id: Id, view: View) -> Option<(Camera, Clip)> {
+pub fn section_camera(m: &Model, id: impl Key, view: View) -> Option<(Camera, Clip)> {
     let v = m.section(id)?;
     let (u, back) = ((v.end - v.start).unit(), v.looking() * -1.0);
     let at = v.start + u * view.cx;
@@ -687,7 +698,7 @@ pub fn section_camera(m: &Model, id: Id, view: View) -> Option<(Camera, Clip)> {
 
 /// What section or elevation `id` sees past its line through `view`, in hidden line: the
 /// picture its cut, levels and grids ([`section`]) go over.
-pub fn section_image(m: &Model, scene: &Scene, id: Id, view: View, tints: &[(Id, Rgb)]) -> Option<Image> {
+pub fn section_image(m: &Model, scene: &Scene, id: impl Key, view: View, tints: &[(Id, Rgb)]) -> Option<Image> {
     let (cam, clip) = section_camera(m, id, view)?;
     Some(scene.cut_in(&cam, &clip, tints, &Look::of(m, id)))
 }
@@ -695,12 +706,12 @@ pub fn section_image(m: &Model, scene: &Scene, id: Id, view: View, tints: &[(Id,
 /// What section or elevation `id` draws over its picture through `view`: where its line cuts
 /// the solids, in poché; its levels, named past its end; the grids it crosses; its notes and spot
 /// elevations; and its name. Cropped, only what lies between its crop's heights.
-pub fn section(m: &Model, id: Id, view: View) -> Drawing {
+pub fn section(m: &Model, id: impl Key, view: View) -> Drawing {
     section_at(m, id, view, annotation(m, id, view))
 }
 
 /// Section or elevation `id` as `section` draws it, its annotation `k` times the size it is laid out at.
-pub fn section_at(m: &Model, id: Id, view: View, k: f32) -> Drawing {
+pub fn section_at(m: &Model, id: impl Key, view: View, k: f32) -> Drawing {
     let mut d = Drawing::new(view);
     (d.k, d.detail) = (k, detail_of(m, id));
     let Some(v) = m.section(id) else { return d };
@@ -713,7 +724,7 @@ pub fn section_at(m: &Model, id: Id, view: View, k: f32) -> Drawing {
     let solids: Vec<_> = view3d::solids(m).into_iter().filter(|s| look.shows(s.owner())).collect();
     d.part(Part::Cut);
     // A mass is outlined where the line cuts it, below, not filled.
-    for s in solids.iter().filter(|s| !matches!(m.elements.get(&s.owner()), Some(Element::Mass(_)))) {
+    for s in solids.iter().filter(|s| !matches!(m.elements.get(s.owner()), Some(Element::Mass(_)))) {
         // Cut from where the view begins, then back along the line from its start.
         for ring in s.cuts(v.start + u * first, u, last - first) {
             cuts.entry(s.owner()).or_default().push(ring.into_iter().map(|q| P2(q.0 + first, q.1)).collect());
@@ -811,7 +822,7 @@ pub fn section_at(m: &Model, id: Id, view: View, k: f32) -> Drawing {
     // line between each two, parallel to its faces.
     let coarse = d.detail == Detail::Coarse;
     for (&owner, rings) in cuts.iter().filter(|_| !coarse) {
-        let layers = match m.elements.get(&owner) {
+        let layers = match m.elements.get(owner) {
             Some(Element::Floor(f)) => m.type_layers("floor", &f.type_name),
             Some(Element::Roof(r)) => m.type_layers("roof", &r.type_name),
             Some(Element::Ceiling(c)) => m.type_layers("ceiling", &c.type_name),
@@ -897,8 +908,8 @@ pub fn section_at(m: &Model, id: Id, view: View, k: f32) -> Drawing {
     for (&nid, e) in m.elements.iter().filter(|(id, _)| look.shows(**id)) {
         d.owner = Some(nid);
         match e {
-            Element::Text(n) if n.view == id => note(&mut d, n),
-            Element::Spot(sp) if sp.view == id => {
+            Element::Text(n) if m.same(n.view, id) => note(&mut d, n),
+            Element::Spot(sp) if m.same(sp.view, id) => {
                 let z = m.spot_value(sp).unwrap_or(sp.at.1);
                 spot_mark(&mut d, view.px(P2(sp.at.0, z)), Some(z), m.units);
             }
@@ -913,7 +924,7 @@ pub fn section_at(m: &Model, id: Id, view: View, k: f32) -> Drawing {
 }
 
 /// Section or elevation `id` through `view`, as a PNG: its picture, and its drawing over it.
-pub fn section_png(m: &Model, id: Id, view: View) -> Result<Vec<u8>, String> {
+pub fn section_png(m: &Model, id: impl Key, view: View) -> Result<Vec<u8>, String> {
     let image = section_image(m, &Scene::new(m), id, view, &[]).ok_or_else(|| format!("{id} is not a section or an elevation"))?;
     let size = tiny_skia::IntSize::from_wh(image.width, image.height).ok_or("the image size is out of range")?;
     let mut pm = Pixmap::from_vec(image.rgba, size).ok_or("the image size is out of range")?;
@@ -922,19 +933,19 @@ pub fn section_png(m: &Model, id: Id, view: View) -> Result<Vec<u8>, String> {
 }
 
 /// The plan of `level` as `view` shows it: what a canvas that pans and zooms draws.
-pub fn draw(m: &Model, level: Id, view: View) -> Drawing {
+pub fn draw(m: &Model, level: impl Key, view: View) -> Drawing {
     draw_plan(m, level, view, false, annotation(m, level, view))
 }
 
 /// The reflected ceiling plan of `level` fitted into `width` x `height` px.
-pub fn ceiling_plan(m: &Model, level: Id, width: u32, height: u32) -> Drawing {
+pub fn ceiling_plan(m: &Model, level: impl Key, width: u32, height: u32) -> Drawing {
     draw_ceiling(m, level, fit(&plan_shows(m, level), width, height, scale_of(m, level)))
 }
 
 /// The reflected ceiling plan of `level` as `view` shows it: cut [`CEILING_CUT`] above the level
 /// (over the doors) and looking up, at the ceilings up to the level above, as a floor plan lies
 /// (not mirrored). Its grids and its sections' marks; no annotation of the floor plan's.
-pub fn draw_ceiling(m: &Model, level: Id, view: View) -> Drawing {
+pub fn draw_ceiling(m: &Model, level: impl Key, view: View) -> Drawing {
     draw_plan(m, level, view, true, annotation(m, level, view))
 }
 
@@ -944,7 +955,7 @@ pub fn draw_ceiling(m: &Model, level: Id, view: View) -> Drawing {
 /// a sheet, where the viewport sets the scale, it is 1. A view with none keeps annotation the size it has on screen.
 /// shortcut: clamped to a tenth and ten times, so a hostile scale or zoom can't draw lettering a screen tall; widen it
 /// if a plan at 1 : 10000 on screen wants more.
-pub fn annotation(m: &Model, id: Id, view: View) -> f32 {
+pub fn annotation(m: &Model, id: impl Key, view: View) -> f32 {
     annotation_of(scale_of(m, id), view.scale)
 }
 
@@ -954,22 +965,23 @@ fn annotation_of(n: Option<f64>, scale: f64) -> f32 {
 }
 
 /// The scale, 1 : n, view `id` is held at: its own, or its template's where that controls it.
-fn scale_of(m: &Model, id: Id) -> Option<f64> {
+fn scale_of(m: &Model, id: impl Key) -> Option<f64> {
     crate::graphics::graphics_of(m, id).and_then(|g| g.resolved(m).scale)
 }
 
 /// The level of detail view `id` draws at: its own, or its template's where that controls it.
-fn detail_of(m: &Model, id: Id) -> Detail {
+fn detail_of(m: &Model, id: impl Key) -> Detail {
     crate::graphics::graphics_of(m, id).map_or_else(Detail::default, |g| g.resolved(m).detail)
 }
 
 /// Plan `level` as `draw` draws it, its annotation `k` times the size it is laid out at: a sheet's, at paper size.
-pub fn draw_at(m: &Model, level: Id, view: View, k: f32) -> Drawing {
+pub fn draw_at(m: &Model, level: impl Key, view: View, k: f32) -> Drawing {
     draw_plan(m, level, view, false, k)
 }
 
 /// A floor plan of `level`, or `up`, its reflected ceiling plan.
-fn draw_plan(m: &Model, level: Id, view: View, up: bool, k: f32) -> Drawing {
+fn draw_plan(m: &Model, level: impl Key, view: View, up: bool, k: f32) -> Drawing {
+    let level = m.guid(level);
     let mut d = Drawing::new(view);
     (d.k, d.detail) = (k, detail_of(m, level));
     let look = Look::of(m, level);
@@ -1087,7 +1099,7 @@ fn draw_plan(m: &Model, level: Id, view: View, up: bool, k: f32) -> Drawing {
         if let Element::Door(o) | Element::Window(o) = e
             && let Some(w) = m.wall(o.host)
             && m.spans(w, range.cut)
-            && (shown(id) || shown(o.host))
+            && (shown(id) || m.elements.id(o.host).is_some_and(shown))
         {
             d.owner = Some(id);
             opening(&mut d, m, e, o, w, range.cut, shown(id));
@@ -1176,7 +1188,11 @@ fn draw_plan(m: &Model, level: Id, view: View, up: bool, k: f32) -> Drawing {
         match e {
             Element::Dimension(_) | Element::Tag(_) | Element::Text(_) | Element::Spot(_) if up => {}
             Element::Dimension(dm) if dm.level == level && inside(dm.at) => dimension(&mut d, m, dm),
-            Element::Tag(t) if m.level_of(e) == Some(level) && shown(t.host) && m.anchor(t.host).is_some_and(|a| inside(a + t.offset)) => {
+            Element::Tag(t)
+                if m.level_of(e) == Some(level)
+                    && m.elements.id(t.host).is_some_and(shown)
+                    && m.anchor(t.host).is_some_and(|a| inside(a + t.offset)) =>
+            {
                 tag(&mut d, m, t)
             }
             Element::Text(n) if n.view == level && inside(n.at) => note(&mut d, n),
@@ -1191,7 +1207,7 @@ fn draw_plan(m: &Model, level: Id, view: View, up: bool, k: f32) -> Drawing {
     if let Some([lo, hi]) = crop {
         let (a, b) = (d.view.px(lo), d.view.px(hi));
         d.crop((a.0.min(b.0), a.1.min(b.1)), (a.0.max(b.0), a.1.max(b.1)), |o| {
-            o.and_then(|id| m.elements.get(&id)).is_some_and(|e| {
+            o.and_then(|id| m.elements.get(id)).is_some_and(|e| {
                 matches!(
                     e,
                     Element::Grid(_)
@@ -1253,7 +1269,7 @@ fn component(d: &mut Drawing, pieces: &[crate::family::Piece]) {
 fn holes(d: &mut Drawing, m: &Model, slabs: &[(Vec<[f64; 3]>, f64)]) {
     let cut: std::collections::BTreeSet<Id> = slabs.iter().flat_map(|(face, rise)| m.less_shafts(face, *rise).1).collect();
     for id in cut {
-        if let Some(Element::Shaft(sh)) = m.elements.get(&id) {
+        if let Some(Element::Shaft(sh)) = m.elements.get(id) {
             d.line(&sh.boundary, 1.0, FAINT, true);
         }
     }
@@ -1626,7 +1642,8 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
 /// A stair in the plan of `level`. From its own level: its risers up to the cut plane, a cut line
 /// across the run there, the rest (and the landings over the cut plane) dashed, and its walk line
 /// marked UP. From the level it climbs to: all of it, and the walk line marked DN.
-fn stair(d: &mut Drawing, m: &Model, st: &Stair, level: Id) {
+fn stair(d: &mut Drawing, m: &Model, st: &Stair, level: impl Key) {
+    let level = m.guid(level);
     let up = st.level == level;
     if !up && st.top_level != Some(level) {
         return;
@@ -1671,7 +1688,8 @@ fn stair(d: &mut Drawing, m: &Model, st: &Stair, level: Id) {
 /// A ramp in the plan of `level`: from its own level, its runs' and landings' outlines, dashed
 /// where they're over the cut plane, and its walk line marked UP; from the level it climbs to, all
 /// of it, marked DN.
-fn ramp(d: &mut Drawing, m: &Model, r: &Ramp, level: Id) {
+fn ramp(d: &mut Drawing, m: &Model, r: &Ramp, level: impl Key) {
+    let level = m.guid(level);
     let up = r.level == level;
     if !up && r.top_level != Some(level) {
         return;
@@ -1930,7 +1948,7 @@ fn tag(d: &mut Drawing, m: &Model, t: &Tag) {
     let (x, y) = d.view.px(head);
     let from = d.prims.len();
     let (w, h) = ((font::width(&text, 10.0) / 2.0 + 5.0).max(8.0), 8.0);
-    let ring = if matches!(m.elements.get(&t.host), Some(Element::Window(_))) {
+    let ring = if matches!(m.elements.get(t.host), Some(Element::Window(_))) {
         vec![(x - w - 4.0, y), (x - w, y - h), (x + w, y - h), (x + w + 4.0, y), (x + w, y + h), (x - w, y + h)]
     } else {
         vec![(x - w, y - h), (x + w, y - h), (x + w, y + h), (x - w, y + h)]
@@ -2153,7 +2171,7 @@ mod tests {
     #[test]
     fn plans_fill_cut_walls_with_poche_and_open_them_at_doors() {
         let s = house();
-        let d = plan(&s.model, 1, 800, 600);
+        let d = plan(&s.model, 100000, 800, 600);
         let png = png(&d).unwrap();
         assert_eq!(pixel(&png, d.view.px(P2(6000.0, 0.0))), (POCHE.0, POCHE.1, POCHE.2), "solid wall");
         assert_eq!(pixel(&png, d.view.px(P2(2000.0, 0.0))), (255, 255, 255), "the door's gap");
@@ -2163,7 +2181,7 @@ mod tests {
     #[test]
     fn wall_corners_close_solid_without_a_notch() {
         let s = house();
-        let d = plan(&s.model, 1, 800, 600);
+        let d = plan(&s.model, 100000, 800, 600);
         let png = png(&d).unwrap();
         // Where the top and right walls overlap, and the square their ends stretch over.
         assert_eq!(pixel(&png, d.view.px(P2(8000.0, 6000.0))), (POCHE.0, POCHE.1, POCHE.2));
@@ -2179,7 +2197,7 @@ mod tests {
                wall {"points": [[6000, 0], [10000, 0]], "arc": 90}"#,
         )
         .unwrap();
-        let d = plan(&s.model, 1, 800, 600);
+        let d = plan(&s.model, 100000, 800, 600);
         let png = png(&d).unwrap();
         let at = |x: f64, y: f64| pixel(&png, d.view.px(P2(x, y)));
         // Where the two walls meet at 120°, solid: no seam down their mitre.
@@ -2194,7 +2212,7 @@ mod tests {
     #[test]
     fn a_plan_of_another_level_leaves_these_walls_out() {
         let s = house();
-        let d = plan(&s.model, 2, 800, 600);
+        let d = plan(&s.model, 100001, 800, 600);
         assert!(!d.prims.is_empty(), "the grid and the view title still show");
         assert!(!d.prims.iter().any(|p| matches!(p, Prim::Fill { color, .. } if *color == POCHE)));
     }
@@ -2202,11 +2220,11 @@ mod tests {
     #[test]
     fn a_plan_drawn_at_a_given_view_maps_the_model_through_it() {
         let s = house();
-        let fitted = plan(&s.model, 1, 800, 600);
-        assert_eq!(draw(&s.model, 1, fitted.view).prims.len(), fitted.prims.len(), "the same display list");
+        let fitted = plan(&s.model, 100000, 800, 600);
+        assert_eq!(draw(&s.model, 100000, fitted.view).prims.len(), fitted.prims.len(), "the same display list");
         // Zoomed in twice on the house's top right corner: the corner lands mid-image.
         let view = View { scale: fitted.view.scale * 2.0, cx: 8000.0, cy: 6000.0, ..fitted.view };
-        let png = png(&draw(&s.model, 1, view)).unwrap();
+        let png = png(&draw(&s.model, 100000, view)).unwrap();
         assert_eq!(pixel(&png, (400.0, 300.0)), (POCHE.0, POCHE.1, POCHE.2));
         let back = view.mm(view.px(P2(1234.0, -567.0)));
         assert!(back.dist(P2(1234.0, -567.0)) < 0.01, "{back:?}");
@@ -2215,10 +2233,10 @@ mod tests {
     #[test]
     fn every_primitive_names_the_element_it_draws() {
         let s = house();
-        let d = plan(&s.model, 1, 800, 600);
+        let d = plan(&s.model, 100000, 800, 600);
         assert_eq!(d.owners.len(), d.prims.len());
-        // Walls 3 to 6, then the door, the window, the room and the grid.
-        for id in 3..=10 {
+        // Walls 100002 to 100005, then the door, the window, the room and the grid.
+        for id in 100_002..=100_009 {
             assert!(d.owners.contains(&Some(id)), "element {id} draws nothing");
         }
         assert_eq!(d.owners.last(), Some(&None), "the view title belongs to no element");
@@ -2227,29 +2245,29 @@ mod tests {
     #[test]
     fn pick_finds_the_element_drawn_nearest_a_point() {
         let s = house();
-        let d = plan(&s.model, 1, 800, 600);
+        let d = plan(&s.model, 100000, 800, 600);
         let at = |x, y| d.view.px(P2(x, y));
-        assert_eq!(d.pick(at(2000.0, 0.0), 4.0), Some(7), "the door, drawn over its wall");
-        assert_eq!(d.pick(at(6000.0, 0.0), 4.0), Some(3), "the wall");
-        assert_eq!(d.pick(at(0.0, 3000.0), 4.0), Some(6), "the wall, under a grid line on its centre line");
+        assert_eq!(d.pick(at(2000.0, 0.0), 4.0), Some(100006), "the door, drawn over its wall");
+        assert_eq!(d.pick(at(6000.0, 0.0), 4.0), Some(100002), "the wall");
+        assert_eq!(d.pick(at(0.0, 3000.0), 4.0), Some(100005), "the wall, under a grid line on its centre line");
         let (x, y) = at(6000.0, -100.0);
-        assert_eq!(d.pick((x, y + 3.0), 4.0), Some(3), "just outside the wall's face");
-        assert_eq!(d.pick(at(8000.0, 3000.0), 4.0), Some(8), "the window");
-        assert_eq!(d.pick(at(4000.0, 3000.0), 10.0), Some(9), "the room, by its tag");
-        assert_eq!(d.pick(at(0.0, -1500.0), 4.0), Some(10), "the grid line");
+        assert_eq!(d.pick((x, y + 3.0), 4.0), Some(100002), "just outside the wall's face");
+        assert_eq!(d.pick(at(8000.0, 3000.0), 4.0), Some(100007), "the window");
+        assert_eq!(d.pick(at(4000.0, 3000.0), 10.0), Some(100008), "the room, by its tag");
+        assert_eq!(d.pick(at(0.0, -1500.0), 4.0), Some(100009), "the grid line");
         assert_eq!(d.pick(at(4000.0, 1200.0), 4.0), None, "the floor of the room, away from its tag");
     }
 
     #[test]
     fn pick_all_lists_what_is_near_and_boxes_select_inside_or_crossing() {
         let s = house();
-        let d = plan(&s.model, 1, 800, 600);
+        let d = plan(&s.model, 100000, 800, 600);
         let at = |x, y| d.view.px(P2(x, y));
-        assert_eq!(d.pick_all(at(2000.0, 0.0), 4.0), [7, 3], "the door, then its wall: Tab's order");
+        assert_eq!(d.pick_all(at(2000.0, 0.0), 4.0), [100006, 100002], "the door, then its wall: Tab's order");
         // A box around the window, across the wall it's in.
         let (a, b) = (at(7000.0, 2000.0), at(9000.0, 4000.0));
-        assert_eq!(d.in_box(a, b, false), [8], "a window selects what is all inside");
-        assert_eq!(d.in_box(b, a, true), [4, 8], "a crossing box also what it touches");
+        assert_eq!(d.in_box(a, b, false), [100007], "a window selects what is all inside");
+        assert_eq!(d.in_box(b, a, true), [100003, 100007], "a crossing box also what it touches");
     }
 
     #[test]
@@ -2257,7 +2275,7 @@ mod tests {
         let mut s = house();
         // The outer faces of the left and right walls, measured below the house; then every door and window tagged.
         s.script("dimension {\"refs\": [[-100, 3000], [8100, 3000]], \"at\": [4000, -1500]}\ntag {}").unwrap();
-        let d = plan(&s.model, 1, 800, 600);
+        let d = plan(&s.model, 100000, 800, 600);
         let png = png(&d).unwrap();
         let dark = |at: (f32, f32)| {
             let (r, g, b) = pixel(&png, at);
@@ -2265,13 +2283,13 @@ mod tests {
         };
         assert!(dark(d.view.px(P2(1000.0, -1500.0))), "the dimension line");
         assert!(dark(d.view.px(P2(-100.0, -1000.0))), "a witness line, down from the left wall's outer face");
-        assert_eq!(d.pick(d.view.px(P2(1000.0, -1500.0)), 4.0), Some(11));
+        assert_eq!(d.pick(d.view.px(P2(1000.0, -1500.0)), 4.0), Some(100010));
         // The door's tag, a box outside the wall (the door swings in). The window faces its wall's
         // exterior side, its left: this house is drawn counter-clockwise, so that's in, and so is its tag.
         let (x, y) = d.view.px(P2(2000.0, -500.0));
         assert!(dark((x, y - 8.0)), "the top of the door tag's box");
-        assert_eq!(d.pick((x, y), 2.0), Some(12));
-        assert_eq!(d.pick(d.view.px(P2(7500.0, 3000.0)), 2.0), Some(13));
+        assert_eq!(d.pick((x, y), 2.0), Some(100011));
+        assert_eq!(d.pick(d.view.px(P2(7500.0, 3000.0)), 2.0), Some(100012));
     }
 
     /// The house with a section (11) across it, west to east at y = 3000 so it looks north, and
@@ -2285,47 +2303,47 @@ mod tests {
     #[test]
     fn sections_cut_walls_in_poche_and_show_what_is_beyond() {
         let s = cut();
-        let view = section_fit(&s.model, 11, 800, 600);
-        let png = section_png(&s.model, 11, view).unwrap();
+        let view = section_fit(&s.model, 100010, 800, 600);
+        let png = section_png(&s.model, 100010, view).unwrap();
         // Along the section from its start at x = -1000; up from Level 1.
         let at = |x: f64, z: f64| view.px(P2(x + 1000.0, z));
         assert_eq!(pixel(&png, at(70.0, 1500.0)), (POCHE.0, POCHE.1, POCHE.2), "the west wall, cut (beside grid 1, on its centre line)");
         assert_eq!(pixel(&png, at(4000.0, 1500.0)), (255, 255, 255), "the north wall beyond, in hidden line");
-        let d = section(&s.model, 11, view);
-        assert_eq!(d.pick(at(0.0, 1500.0), 2.0), Some(6), "the cut is the wall's to pick");
-        assert_eq!(d.pick(at(4000.0, 3000.0), 3.0), Some(2), "Level 2's line");
-        assert_eq!(d.pick(at(0.0, 3700.0), 3.0), Some(10), "grid 1, where it crosses the section");
+        let d = section(&s.model, 100010, view);
+        assert_eq!(d.pick(at(0.0, 1500.0), 2.0), Some(100005), "the cut is the wall's to pick");
+        assert_eq!(d.pick(at(4000.0, 3000.0), 3.0), Some(100001), "Level 2's line");
+        assert_eq!(d.pick(at(0.0, 3700.0), 3.0), Some(100009), "grid 1, where it crosses the section");
     }
 
     #[test]
     fn elevations_show_the_walls_they_look_at_and_cut_nothing() {
         let s = cut();
-        let Some(Element::Elevation(e)) = s.model.elements.get(&12) else { panic!("no elevation") };
+        let Some(Element::Elevation(e)) = s.model.elements.get(100011) else { panic!("no elevation") };
         let start = e.start;
-        let view = section_fit(&s.model, 12, 800, 600);
-        let png = section_png(&s.model, 12, view).unwrap();
+        let view = section_fit(&s.model, 100011, 800, 600);
+        let png = section_png(&s.model, 100011, view).unwrap();
         // The south wall's face, between the door and the corner, from the south.
         let p = view.px(P2(6000.0 - start.0, 1500.0));
         assert_eq!(pixel(&png, p), (255, 255, 255));
-        let d = section(&s.model, 12, view);
+        let d = section(&s.model, 100011, view);
         assert!(d.prims.iter().all(|p| !matches!(p, Prim::Fill { color, .. } if *color == POCHE)), "no cut");
-        assert_eq!(d.pick(view.px(P2(0.0 - start.0, 3700.0)), 3.0), Some(10), "grid 1 runs into what it sees");
+        assert_eq!(d.pick(view.px(P2(0.0 - start.0, 3700.0)), 3.0), Some(100009), "grid 1 runs into what it sees");
         assert_eq!(
             view3d::Scene::new(&s.model)
-                .cut(&section_camera(&s.model, 12, view).unwrap().0, &section_camera(&s.model, 12, view).unwrap().1, &[])
+                .cut(&section_camera(&s.model, 100011, view).unwrap().0, &section_camera(&s.model, 100011, view).unwrap().1, &[])
                 .pick(f64::from(p.0), f64::from(p.1)),
-            Some(3)
+            Some(100_002)
         );
     }
 
     #[test]
     fn plans_mark_sections_and_elevations() {
         let s = cut();
-        let d = plan(&s.model, 1, 800, 600);
-        assert_eq!(d.pick(d.view.px(P2(-500.0, 3000.0)), 3.0), Some(11), "the section's line");
-        let Some(Element::Elevation(e)) = s.model.elements.get(&12) else { panic!("no elevation") };
+        let d = plan(&s.model, 100000, 800, 600);
+        assert_eq!(d.pick(d.view.px(P2(-500.0, 3000.0)), 3.0), Some(100010), "the section's line");
+        let Some(Element::Elevation(e)) = s.model.elements.get(100011) else { panic!("no elevation") };
         let mid = e.start + (e.end - e.start) * 0.5;
-        assert_eq!(d.pick(d.view.px(mid), 3.0), Some(12), "the elevation's marker");
+        assert_eq!(d.pick(d.view.px(mid), 3.0), Some(100011), "the elevation's marker");
     }
 
     #[test]
@@ -2333,17 +2351,17 @@ mod tests {
         let mut s = house();
         // Walls 3 to 6, door 7, window 8, room 9, grid 10; then a column 11, a stair 12 and a roof 13.
         s.script("column {\"at\": [6000, 4000]}\nstair {\"start\": [1000, 1500], \"end\": [1000, 2500]}\nroof {}").unwrap();
-        let d = plan(&s.model, 1, 800, 600);
+        let d = plan(&s.model, 100000, 800, 600);
         let png = png(&d).unwrap();
         assert_eq!(pixel(&png, d.view.px(P2(6000.0, 4000.0))), (POCHE.0, POCHE.1, POCHE.2), "the column, cut");
         // The stair: its first treads, and its arrow up the middle.
-        assert_eq!(d.pick(d.view.px(P2(1400.0, 1500.0 + 280.0)), 2.0), Some(12), "a tread");
+        assert_eq!(d.pick(d.view.px(P2(1400.0, 1500.0 + 280.0)), 2.0), Some(100011), "a tread");
         // The roof overhead, dashed, from below; seen from its own level, its hips run to the corners.
-        assert_eq!(d.pick(d.view.px(P2(4000.0, -600.0)), 2.0), Some(13), "the roof's edge, overhead");
-        let up = plan(&s.model, 2, 800, 600);
+        assert_eq!(d.pick(d.view.px(P2(4000.0, -600.0)), 2.0), Some(100012), "the roof's edge, overhead");
+        let up = plan(&s.model, 100001, 800, 600);
         let corner = up.view.px(P2(-600.0, -600.0));
         let hip = up.view.px(P2(-600.0 + 600.0, -600.0 + 600.0));
-        assert_eq!(up.pick(((corner.0 + hip.0) / 2.0, (corner.1 + hip.1) / 2.0), 2.0), Some(13), "a hip");
+        assert_eq!(up.pick(((corner.0 + hip.0) / 2.0, (corner.1 + hip.1) / 2.0), 2.0), Some(100012), "a hip");
     }
 
     #[test]
@@ -2351,12 +2369,12 @@ mod tests {
         let mut s = house();
         s.script("roof {}\nsection {\"start\": [4000, -2000], \"end\": [4000, 8000]}").unwrap();
         // The roof 11, the section 12 (running north, looking west): its cut of the roof at the ridge.
-        let view = section_fit(&s.model, 12, 800, 600);
-        let d = section(&s.model, 12, view);
+        let view = section_fit(&s.model, 100011, 800, 600);
+        let d = section(&s.model, 100011, view);
         let ridge = 3000.0 + 3100.0 * 30f64.to_radians().tan();
         let at = view.px(P2(2000.0 + 3000.0, ridge + 100.0));
-        assert_eq!(d.pick(at, 2.0), Some(11));
-        let png = section_png(&s.model, 12, view).unwrap();
+        assert_eq!(d.pick(at, 2.0), Some(100010));
+        let png = section_png(&s.model, 100011, view).unwrap();
         assert_eq!(pixel(&png, at), (POCHE.0, POCHE.1, POCHE.2));
     }
 
@@ -2365,24 +2383,24 @@ mod tests {
         let mut s = house();
         // A low wall across the room (11), 900 mm tall; a floor (12); the roof over it all (13).
         s.script("wall {\"points\": [[1000, 4500], [5000, 4500]], \"height\": 900}\nfloor {}\nroof {}").unwrap();
-        let d = plan(&s.model, 1, 800, 600);
+        let d = plan(&s.model, 100000, 800, 600);
         let png = png(&d).unwrap();
         // Cut at 1200: the window (900 to 2400 up) is open, and the low wall below the cut is seen from
         // above, its outline thin and no poché.
         assert_eq!(pixel(&png, d.view.px(P2(8050.0, 3000.0))), (255, 255, 255), "the window's opening");
-        assert_eq!(d.pick(d.view.px(P2(3000.0, 4600.0)), 2.0), Some(11));
+        assert_eq!(d.pick(d.view.px(P2(3000.0, 4600.0)), 2.0), Some(100010));
         assert_eq!(pixel(&png, d.view.px(P2(3000.0, 4500.0))), (255, 255, 255));
-        assert!(d.owners.contains(&Some(13)), "the roof overhead, under the level above");
+        assert!(d.owners.contains(&Some(100012)), "the roof overhead, under the level above");
         // Cut above the window's head, the wall runs solid past it; with the top under the roof's
         // eaves, the roof isn't seen.
-        s.execute("modify", &serde_json::json!({"id": 1, "view_range": {"cut": 2500, "top": 2600}})).unwrap();
-        let d = plan(&s.model, 1, 800, 600);
+        s.execute("modify", &serde_json::json!({"id": 100000, "view_range": {"cut": 2500, "top": 2600}})).unwrap();
+        let d = plan(&s.model, 100000, 800, 600);
         assert_eq!(pixel(&png_of(&d), d.view.px(P2(8050.0, 3000.0))), (POCHE.0, POCHE.1, POCHE.2));
-        assert!(!d.owners.contains(&Some(13)));
+        assert!(!d.owners.contains(&Some(100012)));
         // From Level 2, the floor below shows once the view depth reaches down to it.
-        assert!(!plan(&s.model, 2, 800, 600).owners.contains(&Some(12)));
-        s.execute("modify", &serde_json::json!({"id": 2, "view_range": {"depth": -3000}})).unwrap();
-        assert!(plan(&s.model, 2, 800, 600).owners.contains(&Some(12)));
+        assert!(!plan(&s.model, 100001, 800, 600).owners.contains(&Some(100011)));
+        s.execute("modify", &serde_json::json!({"id": 100001, "view_range": {"depth": -3000}})).unwrap();
+        assert!(plan(&s.model, 100001, 800, 600).owners.contains(&Some(100011)));
     }
 
     fn png_of(d: &Drawing) -> Vec<u8> {
@@ -2392,26 +2410,26 @@ mod tests {
     #[test]
     fn crop_regions_clip_plans_and_sections() {
         let mut s = house();
-        s.execute("crop", &serde_json::json!({"view": 1, "region": [[-1000, -1000], [4000, 4000]]})).unwrap();
-        let d = plan(&s.model, 1, 800, 600);
+        s.execute("crop", &serde_json::json!({"view": 100000, "region": [[-1000, -1000], [4000, 4000]]})).unwrap();
+        let d = plan(&s.model, 100000, 800, 600);
         assert!((d.view.cx - 1500.0).abs() < 1.0 && (d.view.cy - 1500.0).abs() < 1.0, "fitted to the crop: {:?}", d.view);
-        assert!(!d.owners.contains(&Some(4)), "the east wall lies outside");
-        assert_eq!(d.pick(d.view.px(P2(3000.0, 0.0)), 2.0), Some(3), "the south wall, up to the crop's edge");
+        assert!(!d.owners.contains(&Some(100003)), "the east wall lies outside");
+        assert_eq!(d.pick(d.view.px(P2(3000.0, 0.0)), 2.0), Some(100002), "the south wall, up to the crop's edge");
         assert_eq!(d.pick(d.view.px(P2(5000.0, 0.0)), 2.0), None);
         // Annotation is whole or not there: the room's tag, its point on the crop's edge, keeps its name whole.
-        assert!(d.owners.contains(&Some(9)));
+        assert!(d.owners.contains(&Some(100008)));
         let name = d.view.px(P2(4000.0 + 300.0, 3000.0));
-        assert!(d.pick((name.0, name.1 - 16.0), 3.0) == Some(9), "the name past the crop's edge");
+        assert!(d.pick((name.0, name.1 - 16.0), 3.0) == Some(100008), "the name past the crop's edge");
         // Grid 1 stops at the crop's edge, its bubble there.
         let (x, y) = d.view.px(P2(0.0, 4000.0));
-        assert_eq!(d.pick((x + 11.0, y - 11.0), 2.0), Some(10));
+        assert_eq!(d.pick((x + 11.0, y - 11.0), 2.0), Some(100009));
         // A section cropped to the ground floor's lower part: Level 2 isn't in it, and the cut wall stops.
         s.script("section {\"start\": [-1000, 3000], \"end\": [9000, 3000]}").unwrap();
-        s.execute("crop", &serde_json::json!({"view": 11, "region": [[0, -100], [5000, 2000]]})).unwrap();
-        let view = section_fit(&s.model, 11, 800, 600);
-        let d = section(&s.model, 11, view);
-        assert!(!d.owners.contains(&Some(2)) && d.owners.contains(&Some(1)), "only the levels inside");
-        let png = section_png(&s.model, 11, view).unwrap();
+        s.execute("crop", &serde_json::json!({"view": 100010, "region": [[0, -100], [5000, 2000]]})).unwrap();
+        let view = section_fit(&s.model, 100010, 800, 600);
+        let d = section(&s.model, 100010, view);
+        assert!(!d.owners.contains(&Some(100001)) && d.owners.contains(&Some(100000)), "only the levels inside");
+        let png = section_png(&s.model, 100010, view).unwrap();
         // (Beside grid 1, on the wall's centre line.)
         assert_eq!(pixel(&png, view.px(P2(950.0, 1500.0))), (POCHE.0, POCHE.1, POCHE.2), "the west wall, cut");
         assert_eq!(pixel(&png, view.px(P2(950.0, 2500.0))), (255, 255, 255), "above the crop");
@@ -2432,7 +2450,7 @@ mod tests {
                dimension {"kind": "radial", "refs": [[6150, 4000]], "at": [6800, 4800]}"#,
         )
         .unwrap();
-        let d = plan(&s.model, 1, 800, 600);
+        let d = plan(&s.model, 100000, 800, 600);
         let png = png(&d).unwrap();
         let dark = |at: (f32, f32)| {
             let (r, g, b) = pixel(&png, at);
@@ -2440,25 +2458,25 @@ mod tests {
         };
         // The note: its first letter's upright, just right of and below its top left corner.
         let (x, y) = d.view.px(P2(1000.0, 5000.0));
-        assert_eq!(d.pick((x + 1.0, y + 6.0), 2.0), Some(11));
+        assert_eq!(d.pick((x + 1.0, y + 6.0), 2.0), Some(100010));
         // The spot elevation's mark: a triangle standing on the point.
         let (x, y) = d.view.px(P2(2000.0, 2000.0));
         assert!(dark((x, y - 4.0)), "its triangle");
-        assert_eq!(d.pick((x, y - 3.0), 2.0), Some(13));
+        assert_eq!(d.pick((x, y - 3.0), 2.0), Some(100012));
         // The angular dimension's arc, 1000 mm out from the corner at 45° / 2 round from east.
         let r = P2(2500.0, 1000.0).length();
         let mid = P2(22.5f64.to_radians().cos(), 22.5f64.to_radians().sin()) * r;
-        assert_eq!(d.pick(d.view.px(mid), 2.0), Some(15));
+        assert_eq!(d.pick(d.view.px(mid), 2.0), Some(100014));
         // The radial one's line, from the column's centre toward `at`.
         let along = P2(6000.0, 4000.0) + (P2(6800.0, 4800.0) - P2(6000.0, 4000.0)) * 0.5;
-        assert_eq!(d.pick(d.view.px(along), 2.0), Some(17));
+        assert_eq!(d.pick(d.view.px(along), 2.0), Some(100016));
         // In a section: a spot elevation at its point, and a note.
-        s.script("section {\"start\": [-1000, 3000], \"end\": [9000, 3000]}\nspot {\"at\": [3000, 2000], \"view\": 18}\ntext {\"text\": \"N\", \"at\": [5000, 2500], \"view\": 18}").unwrap();
-        let view = section_fit(&s.model, 18, 800, 600);
-        let d = section(&s.model, 18, view);
+        s.script("section {\"start\": [-1000, 3000], \"end\": [9000, 3000]}\nspot {\"at\": [3000, 2000], \"view\": 100017}\ntext {\"text\": \"N\", \"at\": [5000, 2500], \"view\": 100017}").unwrap();
+        let view = section_fit(&s.model, 100017, 800, 600);
+        let d = section(&s.model, 100017, view);
         let (x, y) = view.px(P2(3000.0, 2000.0));
-        assert_eq!(d.pick((x, y - 3.0), 2.0), Some(19));
-        assert!(d.owners.contains(&Some(20)));
+        assert_eq!(d.pick((x, y - 3.0), 2.0), Some(100018));
+        assert!(d.owners.contains(&Some(100019)));
     }
 
     #[test]
@@ -2476,18 +2494,18 @@ mod tests {
         // A ramp (11) rising east; an upper floor (12); a shaft (13) from Level 1 up through it.
         s.script(
             r#"floor {"boundary": [[1000, 500], [7000, 500], [7000, 2000], [1000, 2000]], "slope": 5, "arrow": [[1000, 1250], [7000, 1250]]}
-               floor {"level": 2, "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}
+               floor {"level": 100001, "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}
                shaft {"boundary": [[3000, 3000], [4000, 3000], [4000, 5000], [3000, 5000]]}"#,
         )
         .unwrap();
-        let d = plan(&s.model, 1, 800, 600);
-        let ramp: Vec<&Prim> = d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(11)).map(|(p, _)| p).collect();
+        let d = plan(&s.model, 100000, 800, 600);
+        let ramp: Vec<&Prim> = d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(100010)).map(|(p, _)| p).collect();
         assert!(ramp.iter().any(|p| matches!(p, Prim::Fill { color, .. } if *color == INK)), "its slope arrow's head");
         // Cut by Level 1's plan, the shaft shows its outline and a cross; from Level 2, the hole in its floor.
-        assert_eq!(d.pick(d.view.px(P2(3500.0, 4000.0)), 2.0), Some(13), "where its cross crosses");
-        let up = plan(&s.model, 2, 800, 600);
-        assert!(!up.owners.contains(&Some(13)));
-        assert_eq!(up.pick(up.view.px(P2(3500.0, 3000.0)), 2.0), Some(12), "the hole's edge");
+        assert_eq!(d.pick(d.view.px(P2(3500.0, 4000.0)), 2.0), Some(100012), "where its cross crosses");
+        let up = plan(&s.model, 100001, 800, 600);
+        assert!(!up.owners.contains(&Some(100012)));
+        assert_eq!(up.pick(up.view.px(P2(3500.0, 3000.0)), 2.0), Some(100011), "the hole's edge");
     }
 
     #[test]
@@ -2495,19 +2513,19 @@ mod tests {
         let mut s = house();
         // A tiled ceiling (11) in the room, its grid through its middle: 600 mm squares from (4000, 3000).
         s.script(r#"ceiling {"point": [4000, 1500], "type": "Tile 600 x 600"}"#).unwrap();
-        let d = ceiling_plan(&s.model, 1, 800, 600);
+        let d = ceiling_plan(&s.model, 100000, 800, 600);
         let png = png(&d).unwrap();
         assert_eq!(pixel(&png, d.view.px(P2(2000.0, 0.0))), (POCHE.0, POCHE.1, POCHE.2), "cut at 2300 mm, over the door");
         assert_eq!(pixel(&png, d.view.px(P2(8050.0, 3000.0))), (255, 255, 255), "the window's opening, cut");
         let (r, g, b) = pixel(&png, d.view.px(P2(4000.0, 1500.0)));
         assert!(r < 200 && g < 200 && b < 200, "a grid line: {:?}", (r, g, b));
         assert_eq!(d.pick(d.view.px(P2(4300.0, 1500.0)), 2.0), None, "the middle of a tile");
-        assert!(d.owners.contains(&Some(11)) && !d.owners.contains(&Some(9)), "the ceiling; no room tag");
-        assert!(!plan(&s.model, 1, 800, 600).owners.contains(&Some(11)), "a floor plan looks down");
+        assert!(d.owners.contains(&Some(100010)) && !d.owners.contains(&Some(100008)), "the ceiling; no room tag");
+        assert!(!plan(&s.model, 100000, 800, 600).owners.contains(&Some(100010)), "a floor plan looks down");
         // A section cuts it.
         s.script("section {\"start\": [-1000, 3000], \"end\": [9000, 3000]}").unwrap();
-        let view = section_fit(&s.model, 12, 800, 600);
-        assert_eq!(section(&s.model, 12, view).pick(view.px(P2(5000.0, 2610.0)), 2.0), Some(11));
+        let view = section_fit(&s.model, 100011, 800, 600);
+        assert_eq!(section(&s.model, 100011, view).pick(view.px(P2(5000.0, 2610.0)), 2.0), Some(100010));
     }
 
     #[test]
@@ -2517,29 +2535,29 @@ mod tests {
         // at a landing; a railing (15) along a path.
         s.script(
             r#"stair {"start": [1000, 1000], "angle": 90, "landings": [{"at": 8, "turn": -90}]}
-               railing {"host": 11}
+               railing {"host": 100010}
                ramp {"start": [-6000, -3000], "angle": 0, "height": 600, "landings": [{"at": 300, "turn": 180}]}
                railing {"path": [[0, 7000], [4000, 7000]]}"#,
         )
         .unwrap();
-        let d = plan(&s.model, 1, 800, 600);
+        let d = plan(&s.model, 100000, 800, 600);
         let at = |x, y| d.view.px(P2(x, y));
-        assert_eq!(d.pick(at(2340.0, 3200.0), 2.0), Some(11), "a riser of the run past the landing");
-        assert_eq!(d.pick(at(550.0, 2000.0), 1.0), Some(12), "the left railing, in from the stair's edge");
-        assert_eq!(d.pick(at(-4200.0, -3600.0), 2.0), Some(14), "the ramp's edge");
-        assert_eq!(d.pick(at(2000.0, 7000.0), 2.0), Some(15));
+        assert_eq!(d.pick(at(2340.0, 3200.0), 2.0), Some(100010), "a riser of the run past the landing");
+        assert_eq!(d.pick(at(550.0, 2000.0), 1.0), Some(100011), "the left railing, in from the stair's edge");
+        assert_eq!(d.pick(at(-4200.0, -3600.0), 2.0), Some(100013), "the ramp's edge");
+        assert_eq!(d.pick(at(2000.0, 7000.0), 2.0), Some(100014));
         let drawn = |d: &Drawing, id, f: &dyn Fn(&Prim) -> bool| d.prims.iter().zip(&d.owners).any(|(p, o)| *o == Some(id) && f(p));
         let arrow = |p: &Prim| matches!(p, Prim::Fill { color, .. } if *color == INK);
-        assert!(drawn(&d, 11, &arrow) && drawn(&d, 14, &arrow), "walk lines ending in arrows");
-        assert!(drawn(&d, 11, &|p| matches!(p, Prim::Line { dash: Some(_), .. })), "above the cut plane, dashed");
-        let up = plan(&s.model, 2, 800, 600);
-        assert!(up.owners.contains(&Some(11)) && !up.owners.contains(&Some(14)), "from above: the stair, not the ramp");
+        assert!(drawn(&d, 100010, &arrow) && drawn(&d, 100013, &arrow), "walk lines ending in arrows");
+        assert!(drawn(&d, 100010, &|p| matches!(p, Prim::Line { dash: Some(_), .. })), "above the cut plane, dashed");
+        let up = plan(&s.model, 100001, 800, 600);
+        assert!(up.owners.contains(&Some(100010)) && !up.owners.contains(&Some(100013)), "from above: the stair, not the ramp");
     }
 
     #[test]
     fn svg_and_png_are_well_formed() {
         let s = house();
-        let d = plan(&s.model, 1, 640, 480);
+        let d = plan(&s.model, 100000, 640, 480);
         let svg = svg(&d);
         assert!(svg.starts_with("<svg") && svg.trim_end().ends_with("</svg>"), "{svg}");
         assert_eq!(svg.matches("<path").count(), d.prims.len());
@@ -2607,27 +2625,27 @@ mod tests {
         // 2 mm of paper, DENSITY px to the mm).
         let view = View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
         let grid = |s: &Session, view: View| {
-            let d = draw(&s.model, 1, view);
-            (lettering(&d, 10), bubble(&d, 10))
+            let d = draw(&s.model, 100000, view);
+            (lettering(&d, 100009), bubble(&d, 100009))
         };
         let (text, ring) = grid(&s, view);
         assert!((text - 10.0).abs() < 1.0 && (ring - 22.0).abs() < 1.0, "{text} {ring}");
         // The bubble stands where it did, its middle a bubble's radius, times k, past the grid's end.
         let ends = [view.px(P2(0.0, -2000.0)), view.px(P2(0.0, 8000.0))];
-        assert!((bubble_gap(&draw(&s.model, 1, view), 10, ends) - 11.0).abs() < 0.5);
+        assert!((bubble_gap(&draw(&s.model, 100000, view), 100009, ends) - 11.0).abs() < 0.5);
         for (n, k) in [(50, 1.0), (100, 2.0), (200, 4.0), (25, 0.5)] {
-            s.execute("scale", &serde_json::json!({"view": 1, "scale": n})).unwrap();
+            s.execute("scale", &serde_json::json!({"view": 100000, "scale": n})).unwrap();
             let (t, r) = grid(&s, view);
             assert!((t - text * k).abs() < 1.0 && (r - ring * k).abs() < 1.0, "1 : {n}: {t} {r}");
-            let gap = bubble_gap(&draw(&s.model, 1, view), 10, ends);
+            let gap = bubble_gap(&draw(&s.model, 100000, view), 100009, ends);
             assert!((gap - 11.0 * k).abs() < 0.5, "1 : {n}: the bubble grows about the grid's end: {gap}");
         }
         // Zoomed in twice, the same view's annotation is twice the size: a screen showing 1 mm as 0.2 px, at 1 : 100.
-        s.execute("scale", &serde_json::json!({"view": 1, "scale": 100})).unwrap();
+        s.execute("scale", &serde_json::json!({"view": 100000, "scale": 100})).unwrap();
         let (t, _) = grid(&s, View { scale: 0.2, ..view });
         assert!((t - text * 4.0).abs() < 2.0, "{t}");
         // Cleared, it is what it was.
-        s.execute("scale", &serde_json::json!({"view": 1, "scale": null})).unwrap();
+        s.execute("scale", &serde_json::json!({"view": 100000, "scale": null})).unwrap();
         assert_eq!(grid(&s, view), (text, ring));
     }
 
@@ -2637,17 +2655,17 @@ mod tests {
         s.script("section {\"start\": [-1000, 3000], \"end\": [9000, 3000]}").unwrap();
         // The section's own line, from its start, and up.
         let view = View { scale: 0.1, cx: 5000.0, cy: 1500.0, width: 1200, height: 800 };
-        let none = lettering(&section(&s.model, 11, view), 10);
+        let none = lettering(&section(&s.model, 100010, view), 100009);
         assert!((none - 10.0).abs() < 1.0, "{none}");
-        s.execute("scale", &serde_json::json!({"view": 11, "scale": 100})).unwrap();
-        let hundred = lettering(&section(&s.model, 11, view), 10);
+        s.execute("scale", &serde_json::json!({"view": 100010, "scale": 100})).unwrap();
+        let hundred = lettering(&section(&s.model, 100010, view), 100009);
         assert!((hundred - 2.0 * none).abs() < 1.0, "{hundred}");
         // On paper, at the viewport's scale, annotation is paper size whatever the view's own says.
-        s.script("sheet {\"name\": \"Plans\"}\nplace {\"sheet\": \"A101\", \"view\": 1, \"scale\": 100}").unwrap();
+        s.script("sheet {\"name\": \"Plans\"}\nplace {\"sheet\": \"A101\", \"view\": 100000, \"scale\": 100}").unwrap();
         // The sheet is 12, its viewport 13.
-        let before = png(&crate::sheet::draw(&s.model, 12).unwrap()).unwrap();
-        s.execute("scale", &serde_json::json!({"view": 1, "scale": 20})).unwrap();
-        assert_eq!(png(&crate::sheet::draw(&s.model, 12).unwrap()).unwrap(), before);
+        let before = png(&crate::sheet::draw(&s.model, 100011).unwrap()).unwrap();
+        s.execute("scale", &serde_json::json!({"view": 100000, "scale": 20})).unwrap();
+        assert_eq!(png(&crate::sheet::draw(&s.model, 100011).unwrap()).unwrap(), before);
     }
 
     /// How many of the hatching lines (thin), then of the lines between layers, element `id` draws.
@@ -2678,21 +2696,21 @@ mod tests {
         // Walls 3 to 6, the door 7, the window 8, the floor 9; layers 100 mm wide are 20 px, wide enough for their patterns.
         let view = View { scale: 0.2, cx: 4000.0, cy: 3000.0, width: 2000, height: 1400 };
         let all = |s: &Session| {
-            let d = draw(&s.model, 1, view);
-            (layer_detail(&d, 3), drawn_by(&d, 7), drawn_by(&d, 8), layer_detail(&d, 9).0)
+            let d = draw(&s.model, 100000, view);
+            (layer_detail(&d, 100002), drawn_by(&d, 100006), drawn_by(&d, 100007), layer_detail(&d, 100008).0)
         };
         let (fine, fine_door, fine_window, fine_floor) = all(&s);
         assert!(fine.0 > 0 && fine.1 > 0 && fine_floor > 0, "{fine:?} {fine_floor}: its patterns, and the lines between layers");
-        s.execute("detail", &serde_json::json!({"view": 1, "detail": "medium"})).unwrap();
+        s.execute("detail", &serde_json::json!({"view": 100000, "detail": "medium"})).unwrap();
         // The layers stay, the patterns go.
         assert_eq!(all(&s), ((0, fine.1), fine_door, fine_window, 0));
-        s.execute("detail", &serde_json::json!({"view": 1, "detail": "coarse"})).unwrap();
+        s.execute("detail", &serde_json::json!({"view": 100000, "detail": "coarse"})).unwrap();
         let (coarse, door, window, floor) = all(&s);
         assert_eq!((coarse, floor), ((0, 0), 0), "one poché");
         assert!(door < fine_door && window < fine_window, "an opening is its gap and jambs: {door} {window}");
         assert!(door >= 3 && window >= 3, "which are still there");
         // The ceiling plan is the same level's.
-        assert!(drawn_by(&ceiling_plan(&s.model, 1, 800, 600), 3) > 0);
+        assert!(drawn_by(&ceiling_plan(&s.model, 100000, 800, 600), 100002) > 0);
     }
 
     /// The extremes of what `d` draws, px: left, top, right, bottom.
@@ -2717,10 +2735,10 @@ mod tests {
         let (w, h) = (1000, 800);
         let mut reached = Vec::new();
         for n in [None, Some(20), Some(100), Some(500), Some(5000)] {
-            for view in [1, 11, 12] {
+            for view in [100000, 100010, 100011] {
                 s.execute("scale", &serde_json::json!({"view": view, "scale": n})).unwrap();
             }
-            let (flat, ceiling) = (plan(&s.model, 1, w, h), ceiling_plan(&s.model, 1, w, h));
+            let (flat, ceiling) = (plan(&s.model, 100000, w, h), ceiling_plan(&s.model, 100000, w, h));
             let cut = |id| section(&s.model, id, section_fit(&s.model, id, w, h));
             for (what, d) in [("plan", flat), ("ceiling plan", ceiling), ("section", cut(11)), ("elevation", cut(12))] {
                 let [l, t, r, b] = drawn_extent(&d);
@@ -2741,10 +2759,10 @@ mod tests {
     fn a_tools_sketch_of_annotation_is_the_size_its_view_would_draw_it() {
         let mut s = house();
         let view = View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
-        let spot = Element::Spot(crate::model::Spot { view: 1, at: P2(4000.0, 3000.0), host: None });
+        let spot = Element::Spot(crate::model::Spot { view: s.model.guid(100000), at: P2(4000.0, 3000.0), host: None });
         let text = |s: &Session| lettering(&sketch(&s.model, view, 99, &spot), 99);
         let none = text(&s);
-        s.execute("scale", &serde_json::json!({"view": 1, "scale": 100})).unwrap();
+        s.execute("scale", &serde_json::json!({"view": 100000, "scale": 100})).unwrap();
         assert!((text(&s) - 2.0 * none).abs() < 1.0, "{none} {}", text(&s));
     }
 
@@ -2753,14 +2771,14 @@ mod tests {
         let mut s = layered_house();
         s.script("section {\"start\": [-1000, 3000], \"end\": [9000, 3000]}").unwrap();
         // The section is 9.
-        let view = section_fit(&s.model, 9, 1600, 1000);
+        let view = section_fit(&s.model, 100008, 1600, 1000);
         // Walls 6 and 4 are cut, west and east.
-        let all = |s: &Session| layer_detail(&section(&s.model, 9, view), 6);
+        let all = |s: &Session| layer_detail(&section(&s.model, 100008, view), 100005);
         let fine = all(&s);
         assert!(fine.0 > 0 && fine.1 > 0, "{fine:?}");
         s.execute("detail", &serde_json::json!({"view": "Section 1", "detail": "medium"})).unwrap();
         assert_eq!(all(&s), (0, fine.1));
-        s.execute("detail", &serde_json::json!({"view": 9, "detail": "coarse"})).unwrap();
+        s.execute("detail", &serde_json::json!({"view": 100008, "detail": "coarse"})).unwrap();
         assert_eq!(all(&s), (0, 0));
     }
 }

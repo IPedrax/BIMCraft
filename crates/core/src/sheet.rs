@@ -8,7 +8,7 @@
 use crate::geom::P2;
 use crate::graphics::Look;
 use crate::language::Language;
-use crate::model::{Element, Id, Model, Schedule, Sheet, Viewport, paper};
+use crate::model::{Element, Id, Key, Model, Schedule, Sheet, Viewport, paper};
 use crate::render::{self, Drawing, PAPER, Prim, Rgb, View};
 use crate::{font, schedule, view3d};
 
@@ -40,9 +40,9 @@ fn page(paper: P2) -> View {
 
 /// View `view` at 1 : `scale` on paper: the frame its drawing gets, `ROOM` mm around what it shows
 /// (a 3D view's picture, as large as the model comes out); a schedule's, its table's.
-fn framing(m: &Model, view: Id, scale: f64) -> Option<View> {
+fn framing(m: &Model, view: impl Key, scale: f64) -> Option<View> {
     let k = DENSITY / scale;
-    let pts: Vec<P2> = match m.elements.get(&view)? {
+    let pts: Vec<P2> = match m.elements.get(view)? {
         Element::Level(_) => render::plan_extent(m, view),
         Element::Section(_) | Element::Elevation(_) => render::section_extent(m, view, k, 1.0)?.to_vec(),
         Element::Schedule(sc) => {
@@ -64,14 +64,14 @@ fn framing(m: &Model, view: Id, scale: f64) -> Option<View> {
 }
 
 /// How much paper view `view` takes at 1 : `scale`, mm.
-pub fn size(m: &Model, view: Id, scale: f64) -> Option<P2> {
+pub fn size(m: &Model, view: impl Key, scale: f64) -> Option<P2> {
     framing(m, view, scale).map(|v| P2(f64::from(v.width) / DENSITY, f64::from(v.height) / DENSITY))
 }
 
 /// Viewport `id`'s view frame, and where that frame's top left corner sits in its sheet's drawing,
 /// px: a point `p` of the view is at `frame.px(p)` plus that corner.
-pub fn frame(m: &Model, id: Id) -> Option<(View, (f32, f32))> {
-    let Some(Element::Viewport(vp)) = m.elements.get(&id) else { return None };
+pub fn frame(m: &Model, id: impl Key) -> Option<(View, (f32, f32))> {
+    let Some(Element::Viewport(vp)) = m.elements.get(id) else { return None };
     let view = framing(m, vp.view, vp.scale)?;
     let (x, y) = page(paper(&m.sheet(vp.sheet)?.size)?).px(vp.at);
     Some((view, (x - view.width as f32 / 2.0, y - view.height as f32 / 2.0)))
@@ -80,7 +80,8 @@ pub fn frame(m: &Model, id: Id) -> Option<(View, (f32, f32))> {
 /// Where view `view` at 1 : `scale` goes on sheet `sheet` by default: right of the views on it,
 /// else in the middle of the paper above the title box; when there's no room left on the right,
 /// in the paper's top right corner.
-pub fn spot(m: &Model, sheet: Id, view: Id, scale: f64) -> P2 {
+pub fn spot(m: &Model, sheet: impl Key, view: impl Key, scale: f64) -> P2 {
+    let sheet = m.guid(sheet);
     let paper = m.sheet(sheet).and_then(|s| paper(&s.size)).unwrap_or(P2(420.0, 297.0));
     let middle = P2((20.0 + paper.0 - 10.0) / 2.0, (10.0 + TITLE.1 + paper.1 - 10.0) / 2.0);
     let taken = size(m, view, scale).unwrap_or(P2(0.0, 0.0));
@@ -211,22 +212,23 @@ fn scale_note(views: &[&Viewport], language: Language) -> String {
 }
 
 /// Sheet `id` on its paper: its title block, then each view on it, at its scale and titled.
-pub fn draw(m: &Model, id: Id) -> Option<Drawing> {
+pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
     let sheet = m.sheet(id)?;
+    let guid = m.guid(id);
     let paper = paper(&sheet.size)?;
     let views: Vec<(Id, &Viewport)> = m
         .elements
         .iter()
         .filter_map(|(&vid, e)| match e {
-            Element::Viewport(v) if v.sheet == id => Some((vid, v)),
+            Element::Viewport(v) if v.sheet == guid => Some((vid, v)),
             _ => None,
         })
         .collect();
     let mut d = Drawing::new(page(paper));
-    d.own(Some(id));
+    d.own(m.elements.id(id));
     // Schedules keep their own size: no scale of theirs.
     let scaled: Vec<&Viewport> =
-        views.iter().filter(|(_, v)| !matches!(m.elements.get(&v.view), Some(Element::Schedule(_)))).map(|(_, v)| *v).collect();
+        views.iter().filter(|(_, v)| !matches!(m.elements.get(v.view), Some(Element::Schedule(_)))).map(|(_, v)| *v).collect();
     title_block(&mut d, &m.name, sheet, paper, &scale_note(&scaled, m.language));
     let mut scene = None;
     for (vid, vp) in views {
@@ -235,7 +237,7 @@ pub fn draw(m: &Model, id: Id) -> Option<Drawing> {
         // Paper under it, its own: a click anywhere over a view picks it.
         let (w, h) = (view.width as f32, view.height as f32);
         d.push(Prim::Fill { rings: vec![vec![(ox, oy), (ox + w, oy), (ox + w, oy + h), (ox, oy + h)]], color: PAPER });
-        let inner = match m.elements.get(&vp.view) {
+        let inner = match m.elements.get(vp.view) {
             Some(Element::Level(_)) => render::draw_at(m, vp.view, view, 1.0),
             Some(Element::Section(_) | Element::Elevation(_)) => {
                 let scene = scene.get_or_insert_with(|| view3d::Scene::new(m));
@@ -274,7 +276,7 @@ pub fn draw(m: &Model, id: Id) -> Option<Drawing> {
     }
     for (&nid, e) in &m.elements {
         if let Element::Text(n) = e
-            && n.view == id
+            && n.view == guid
         {
             d.own(Some(nid));
             render::note(&mut d, n);
@@ -303,11 +305,11 @@ mod tests {
         s.script(
             r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}
                sheet {"name": "Plans"}
-               place {"sheet": "A101", "view": 1}"#,
+               place {"sheet": "A101", "view": 100000}"#,
         )
         .unwrap();
         // Walls 3 to 6, the sheet 7, its viewport 8.
-        let d = draw(&s.model, 7).unwrap();
+        let d = draw(&s.model, 100006).unwrap();
         let png = png(&d).unwrap();
         let dark = |at: (f32, f32)| {
             let (r, g, b) = pixel(&png, at);
@@ -316,7 +318,7 @@ mod tests {
         assert!(dark(d.view.px(P2(20.0, 150.0))), "the border, 20 mm in from the left");
         assert!(dark(d.view.px(P2(415.0 - 5.0, 10.0))) || dark(d.view.px(P2(410.0, 10.0))), "the border's bottom right");
         // The plan at 1 : 100, where the viewport puts it: a wall in poché.
-        let (v, (ox, oy)) = frame(&s.model, 8).unwrap();
+        let (v, (ox, oy)) = frame(&s.model, 100007).unwrap();
         let at = |p: P2| {
             let (x, y) = v.px(p);
             (x + ox, y + oy)
@@ -324,8 +326,8 @@ mod tests {
         assert_eq!(pixel(&png, at(P2(4000.0, 0.0))), (POCHE.0, POCHE.1, POCHE.2));
         assert!((v.scale - DENSITY / 100.0).abs() < 1e-12, "1 : 100");
         // What a viewport draws is the viewport's to pick; the title block is the sheet's.
-        assert_eq!(d.pick(at(P2(4000.0, 0.0)), 2.0), Some(8));
-        assert_eq!(d.pick(d.view.px(P2(20.0, 150.0)), 2.0), Some(7));
+        assert_eq!(d.pick(at(P2(4000.0, 0.0)), 2.0), Some(100007));
+        assert_eq!(d.pick(d.view.px(P2(20.0, 150.0)), 2.0), Some(100006));
     }
 
     #[test]
@@ -367,19 +369,19 @@ mod tests {
         .unwrap();
         // Walls 3 to 6, the room 7, the sheet 8; the schedule 9 and its viewport 10; the 3D view 11
         // and its viewport 12; the note 13.
-        let d = draw(&s.model, 8).unwrap();
+        let d = draw(&s.model, 100007).unwrap();
         let png = png(&d).unwrap();
         let dark = |at: (f32, f32)| {
             let (r, g, b) = pixel(&png, at);
             r < 120 && g < 120 && b < 120
         };
         // The schedule's rules: its outline's top left corner, and the line under its headings.
-        let (table, (ox, oy)) = frame(&s.model, 10).unwrap();
+        let (table, (ox, oy)) = frame(&s.model, 100009).unwrap();
         assert!(table.width > 200 && table.height > 100, "{table:?}");
         assert!(dark((ox + 0.5, oy + 0.5)), "its outline");
-        assert_eq!(d.pick((ox + 4.0, oy + 4.0), 2.0), Some(10));
+        assert_eq!(d.pick((ox + 4.0, oy + 4.0), 2.0), Some(100009));
         // The 3D view's picture: shaded faces, not paper, somewhere in its frame.
-        let (picture, (x3, y3)) = frame(&s.model, 12).unwrap();
+        let (picture, (x3, y3)) = frame(&s.model, 100011).unwrap();
         let pm = tiny_skia::Pixmap::decode_png(&png).unwrap();
         let shaded = (0..picture.width)
             .flat_map(|x| (0..picture.height).map(move |y| (x, y)))
@@ -389,7 +391,7 @@ mod tests {
         assert!(shaded > 100, "{shaded}");
         // The note, on the paper.
         let at = d.view.px(P2(30.0, 40.0));
-        assert_eq!(d.pick((at.0 + 1.0, at.1 + 6.0), 2.0), Some(13));
+        assert_eq!(d.pick((at.0 + 1.0, at.1 + 6.0), 2.0), Some(100012));
     }
 
     #[test]
@@ -403,8 +405,8 @@ mod tests {
         .unwrap();
         // Walls 3 to 6, the sheet 7, the 3D view 8 and its viewport 9.
         let inked = |s: &Session| {
-            let d = draw(&s.model, 7).unwrap();
-            let (picture, (x, y)) = frame(&s.model, 9).unwrap();
+            let d = draw(&s.model, 100006).unwrap();
+            let (picture, (x, y)) = frame(&s.model, 100008).unwrap();
             let pm = tiny_skia::Pixmap::decode_png(&png(&d).unwrap()).unwrap();
             (0..picture.width)
                 .flat_map(|px| (0..picture.height).map(move |py| (px, py)))
@@ -413,7 +415,7 @@ mod tests {
                 .count()
         };
         let shaded = inked(&s);
-        s.execute("visual_style", &serde_json::json!({"view": 8, "style": "wireframe"})).unwrap();
+        s.execute("visual_style", &serde_json::json!({"view": 100007, "style": "wireframe"})).unwrap();
         let wire = inked(&s);
         assert!(wire > 50 && wire < shaded / 4, "{wire} of {shaded}");
     }

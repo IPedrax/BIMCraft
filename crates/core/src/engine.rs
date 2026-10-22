@@ -102,6 +102,8 @@ impl Session {
                 if cmd.undoable && cmd.id != "split" {
                     self.stamp(first_new, COPIES.contains(&cmd.id));
                 }
+                // What a command was given by id points at the element's GUID.
+                self.model_mut().resolve();
                 self.model.check().map(|()| v)
             });
         match result {

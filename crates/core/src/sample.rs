@@ -25,7 +25,7 @@ window {"at": [10000, 5250], "type": "Fixed 600 x 900"}
 window {"at": [8000, 0]}
 floor {}
 roof {}
-modify {"ids": [8, 9, 10, 11], "attach_top": 25}
+modify {"ids": [100007, 100008, 100009, 100010], "attach_top": 100024}
 room {"point": [3000, 2000], "name": "Living"}
 room {"point": [1500, 5000], "name": "Kitchen"}
 room {"point": [8400, 4200], "name": "Bedroom"}

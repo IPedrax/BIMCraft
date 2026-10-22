@@ -84,7 +84,7 @@ impl BimApp {
     /// with no phase of its own follows its wall, so only a note says so.
     pub(crate) fn demolish(&mut self, id: Id) {
         let m = Arc::clone(&self.session.model);
-        let Some(e) = m.elements.get(&id) else { return };
+        let Some(e) = m.elements.get(id) else { return };
         let what = category(e.category(), false);
         let Some(held) = e.params() else {
             let text = tf("{} holds no parameters, so it has no phase to demolish", &[&what]);

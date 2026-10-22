@@ -235,6 +235,8 @@ pub enum Icon {
     Template,
     Phasing,
     Options,
+    SelectById,
+    IdsOfSelection,
     Demolish,
     Paint,
     Unpaint,
@@ -795,6 +797,23 @@ pub fn paint(p: &Painter, icon: Icon, r: Rect, color: Color32) {
             line(&[(12.0, 12.0), (12.0, 22.0)]),
         ],
         // A fork: one design branching into its options.
+        // A magnifier over a number sign: an element found by what names it.
+        Icon::SelectById => vec![
+            Shape::circle_stroke(at(10.0, 10.0), 7.0 * k, s),
+            line(&[(15.0, 15.0), (22.0, 22.0)]),
+            line(&[(8.5, 6.5), (7.5, 13.5)]),
+            line(&[(12.5, 6.5), (11.5, 13.5)]),
+            line(&[(6.0, 8.5), (14.0, 8.5)]),
+            line(&[(6.0, 11.5), (14.0, 11.5)]),
+        ],
+        // A label on a string, its lines what it says: what names the selection.
+        Icon::IdsOfSelection => vec![
+            ring(&[(9.0, 4.0), (21.0, 4.0), (21.0, 20.0), (9.0, 20.0), (3.0, 12.0)]),
+            Shape::circle_stroke(at(8.0, 12.0), 1.5 * k, s),
+            line(&[(12.0, 9.0), (18.0, 9.0)]),
+            line(&[(12.0, 12.0), (18.0, 12.0)]),
+            line(&[(12.0, 15.0), (16.0, 15.0)]),
+        ],
         Icon::Options => vec![
             line(&[(3.0, 12.0), (10.0, 12.0)]),
             line(&[(10.0, 12.0), (16.0, 6.0)]),

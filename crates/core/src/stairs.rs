@@ -134,7 +134,7 @@ pub fn layout(m: &Model, e: &Element) -> Option<Layout> {
 /// stair or a ramp, its walk line moved out to the side, [`RAILING_INSET`] in from its edge; else
 /// its path, on its level and `base_offset` above it.
 pub fn railing(m: &Model, rl: &Railing) -> Vec<(P2, f64)> {
-    let host = rl.host.and_then(|h| m.elements.get(&h)).and_then(|e| layout(m, e));
+    let host = rl.host.and_then(|h| m.elements.get(h)).and_then(|e| layout(m, e));
     match (host, rl.side) {
         (Some(l), Some(side)) => {
             let d = (l.width / 2.0 - RAILING_INSET).max(0.0) * if side == Side::Left { 1.0 } else { -1.0 };

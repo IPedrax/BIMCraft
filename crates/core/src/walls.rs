@@ -8,7 +8,7 @@
 use std::f64::consts::{PI, TAU};
 
 use crate::geom::{self, P2};
-use crate::model::{Element, Function, Id, Layer, Location, Model, TOL, Wall};
+use crate::model::{Element, Function, Guid, Id, Layer, Location, Model, TOL, Wall};
 
 /// A wall's location line, from its start to its end: straight, or an arc.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -401,8 +401,8 @@ struct Bound {
 
 impl Bound {
     /// The roof or floor `id` from below (with `top`, from above), or `own` without one.
-    fn of(m: &Model, id: Option<Id>, top: bool, own: f64) -> Bound {
-        let regions = match id.and_then(|id| m.elements.get(&id)) {
+    fn of(m: &Model, id: Option<Guid>, top: bool, own: f64) -> Bound {
+        let regions = match id.and_then(|id| m.elements.get(id)) {
             Some(Element::Roof(r)) => m
                 .roof_pieces(r)
                 .unwrap_or_default()
@@ -493,7 +493,7 @@ pub(crate) fn minus(rings: &[Vec<P2>], hole: &[P2]) -> Vec<Vec<P2>> {
 
 /// The underside of roof or floor `id` over `q`, if it's over `q`.
 pub fn underside(m: &Model, id: Id, q: P2) -> Option<f64> {
-    Bound::of(m, Some(id), false, f64::NAN).over(q).map(|p| p.at(q))
+    Bound::of(m, Some(m.guid(id)), false, f64::NAN).over(q).map(|p| p.at(q))
 }
 
 /// A wall's base and top: what it's attached to, or a level plane.
@@ -536,6 +536,7 @@ pub struct Prism {
 /// top less the openings over it, cut where what it's attached to changes plane.
 pub fn prisms(m: &Model, id: Id, openings: bool) -> Vec<Prism> {
     let Some(w) = m.wall(id) else { return Vec::new() };
+    let guid = m.guid(id);
     let axis = Axis::of(w);
     let (ext, int) = faces(m, w);
     let len = axis.length();
@@ -546,7 +547,7 @@ pub fn prisms(m: &Model, id: Id, openings: bool) -> Vec<Prism> {
         .values()
         .filter(|_| openings)
         .filter_map(|e| match e {
-            Element::Door(o) | Element::Window(o) if o.host == id => {
+            Element::Door(o) | Element::Window(o) if o.host == guid => {
                 let t = m.opening_type(e)?;
                 Some(((o.offset - t.width / 2.0, o.offset + t.width / 2.0), (z0 + o.sill, z0 + o.sill + t.height)))
             }
@@ -646,7 +647,7 @@ mod tests {
     fn walls_meet_at_any_angle_in_a_mitre() {
         for degrees in [90.0, 60.0, 120.0, 150.0] {
             let s = corner(degrees);
-            let (a, b) = (outline(&s.model, 3), outline(&s.model, 4));
+            let (a, b) = (outline(&s.model, 100002), outline(&s.model, 100003));
             // The faces cross on the bisector, 100 / sin(half the angle) from the corner, both ways.
             let half = (degrees / 2.0f64).to_radians();
             let inner = P2(half.cos(), half.sin()) * (100.0 / half.sin());
@@ -661,7 +662,7 @@ mod tests {
     #[test]
     fn sharp_corners_square_off_rather_than_spike() {
         let s = corner(20.0);
-        let o = outline(&s.model, 4);
+        let o = outline(&s.model, 100003);
         // Outside the corner the faces would cross 5.7 thicknesses back: the end goes square there.
         assert!(o.iter().all(|p| p.length() < 700.0 || p.length() > 3000.0), "{o:?}");
         assert!(o.iter().any(|p| near(*p, P2(-20f64.to_radians().sin(), 20f64.to_radians().cos()) * 100.0)), "{o:?}");
@@ -673,11 +674,11 @@ mod tests {
             r#"wall {"points": [[-2000, 0], [2000, 0]], "type": "Exterior - 300mm"}
                wall {"points": [[0, 0], [1000, 3000]], "type": "Interior - 100mm"}"#,
         );
-        let t = outline(&s.model, 4);
+        let t = outline(&s.model, 100003);
         assert!(t.iter().filter(|p| p.1 < 1000.0).all(|p| (p.1 - 150.0).abs() < 1e-6), "{t:?}");
-        assert_eq!(cap(&s.model, 4, false).len(), 2, "the through wall fills the node");
+        assert_eq!(cap(&s.model, 100003, false).len(), 2, "the through wall fills the node");
         // The through wall goes on, square at its ends.
-        assert_eq!(outline(&s.model, 3).len(), 4);
+        assert_eq!(outline(&s.model, 100002).len(), 4);
     }
 
     #[test]
@@ -687,11 +688,11 @@ mod tests {
                wall {"points": [[0, 0], [-1500, 2598.0762]]}
                wall {"points": [[0, 0], [-1500, -2598.0762]]}"#,
         );
-        let total: f64 = [3, 4, 5].iter().map(|id| geom::area(&outline(&s.model, *id)).abs()).sum();
+        let total: f64 = [100_002, 100_003, 100_004].iter().map(|id| geom::area(&outline(&s.model, *id)).abs()).sum();
         // Three 3 m arms 200 mm thick, less the triangle they'd all three cover where they meet.
         let hub = 3f64.sqrt() / 4.0 * 200.0 * 200.0;
         assert!((total - (3.0 * 600_000.0 - hub)).abs() < 1.0, "{total}");
-        for id in [3, 4, 5] {
+        for id in [100_002, 100_003, 100_004] {
             assert!(cap(&s.model, id, false).iter().any(|p| near(*p, P2(0.0, 0.0))), "{id}");
         }
     }
@@ -703,11 +704,11 @@ mod tests {
                wall {"points": [[4000, 0], [4000, 3000]]}"#,
         );
         // Half a ring 2 m out, 200 mm thick: its length on the centre line times its thickness.
-        let o = outline(&s.model, 3);
+        let o = outline(&s.model, 100002);
         let ring = PI * 2000.0 * 200.0;
         assert!((geom::area(&o).abs() - ring).abs() < 0.005 * ring, "{}", geom::area(&o));
         // At its east end it runs north, on into the straight wall: their ends meet square.
-        let end = cap(&s.model, 3, true);
+        let end = cap(&s.model, 100002, true);
         assert!(end.iter().any(|p| near(*p, P2(3900.0, 0.0))) && end.iter().any(|p| near(*p, P2(4100.0, 0.0))), "{end:?}");
     }
 
@@ -718,11 +719,11 @@ mod tests {
                wall {"points": [[0, 0], [5000, 0]], "type": "C"}
                wall {"points": [[0, 2000], [5000, 2000]], "type": "C", "location": "core-centre"}"#,
         );
-        let (a, b) = (s.model.wall(3).unwrap(), s.model.wall(4).unwrap());
+        let (a, b) = (s.model.wall(100002).unwrap(), s.model.wall(100003).unwrap());
         assert_eq!(boundaries(&s.model, a), [150.0, 50.0, 0.0, -140.0, -150.0]);
         assert_eq!(boundaries(&s.model, b), [220.0, 120.0, 70.0, -70.0, -80.0]);
         assert_eq!((faces(&s.model, b), centre(&s.model, b)), ((220.0, -80.0), 70.0));
-        let lines = layer_lines(&s.model, 4);
+        let lines = layer_lines(&s.model, 100003);
         assert_eq!(lines.len(), 5);
         assert!(near(lines[2][0], P2(0.0, 2070.0)) && near(lines[2][1], P2(5000.0, 2070.0)));
     }
@@ -735,14 +736,15 @@ mod tests {
                roof {"gable": true}"#,
         );
         // Unattached: below and above the window, and either side of it.
-        assert_eq!(prisms(&s.model, 4, true).len(), 4);
-        assert_eq!(prisms(&s.model, 4, false).len(), 1);
+        assert_eq!(prisms(&s.model, 100003, true).len(), 4);
+        assert_eq!(prisms(&s.model, 100003, false).len(), 1);
         let mut m = (*s.model).clone();
-        if let Some(Element::Wall(w)) = m.elements.get_mut(&4) {
-            w.attach_top = Some(8);
+        let roof = m.guid(100007);
+        if let Some(Element::Wall(w)) = m.elements.get_mut(100003) {
+            w.attach_top = Some(roof);
         }
         // Attached under a gable: the parts either side of the ridge, under the two slopes.
-        let whole = prisms(&m, 4, false);
+        let whole = prisms(&m, 100003, false);
         assert_eq!(whole.len(), 2);
         let tan = 30f64.to_radians().tan();
         assert!(whole.iter().all(|p| (p.top.at(P2(8000.0, 3000.0)) - (3000.0 + 3100.0 * tan)).abs() < 1e-6));

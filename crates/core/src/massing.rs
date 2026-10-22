@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::Value;
 
 use crate::geom::{self, P2};
-use crate::model::{Element, Id, Mass, Model};
+use crate::model::{Element, Guid, Id, Mass, Model};
 use crate::view3d::P3;
 
 pub const FLOOR: &str = "Mass Floor";
@@ -19,21 +19,48 @@ pub fn reserved(name: &str) -> bool {
     matches!(name, FLOOR | FACE)
 }
 
+/// The GUID a mark holds under `key` (`mass` or `level`): written as one, or, given by a command, an id.
+pub fn mark(o: &serde_json::Map<String, Value>, key: &str) -> Option<Guid> {
+    serde_json::from_value(o.get(key)?.clone()).ok()
+}
+
+/// The masses and levels the marks in `params` name, each given to `f`, which may put another in its place.
+pub fn refs_mut(params: &mut BTreeMap<String, Value>, f: &mut dyn FnMut(&mut Guid)) {
+    for key in [FLOOR, FACE] {
+        let Some(o) = params.get_mut(key).and_then(Value::as_object_mut) else { continue };
+        for k in ["mass", "level"] {
+            if let Some(mut g) = mark(o, k) {
+                f(&mut g);
+                o.insert(k.into(), serde_json::json!(g));
+            }
+        }
+    }
+}
+
+/// The masses and levels the marks in `params` name.
+pub fn refs(params: &BTreeMap<String, Value>) -> Vec<Guid> {
+    [FLOOR, FACE]
+        .iter()
+        .filter_map(|key| params.get(*key)?.as_object())
+        .flat_map(|o| ["mass", "level"].into_iter().filter_map(|k| mark(o, k)))
+        .collect()
+}
+
 /// What an element's mark says, if `key` is where one is held: a mass of the project, and the level or the face of it.
 pub(crate) fn check_value(m: &Model, who: &str, key: &str, v: &Value, e: &Element) -> Option<Result<(), String>> {
     reserved(key).then(|| {
         let shape = if key == FLOOR { "{mass, level}" } else { "{mass, face}" };
         let wrong = || format!("{who}: `{key}` is {shape}, not {v}");
         let o = v.as_object().filter(|o| o.len() == 2).ok_or_else(wrong)?;
-        let mass = o.get("mass").and_then(Value::as_u64).ok_or_else(wrong)?;
-        if !matches!(m.elements.get(&mass), Some(Element::Mass(_))) {
+        let mass = mark(o, "mass").ok_or_else(wrong)?;
+        if !matches!(m.elements.get(mass), Some(Element::Mass(_))) {
             return Err(format!("{who}: `{key}` names {mass}, which isn't a mass"));
         }
         if key == FLOOR {
             if !matches!(e, Element::Floor(_)) {
                 return Err(format!("{who}: only a floor holds `{key}`"));
             }
-            let level = o.get("level").and_then(Value::as_u64).ok_or_else(wrong)?;
+            let level = mark(o, "level").ok_or_else(wrong)?;
             m.level(level).map(|_| ()).ok_or_else(|| format!("{who}: `{key}` names {level}, which isn't a level"))
         } else {
             match (e, o.get("face")) {
@@ -46,19 +73,19 @@ pub(crate) fn check_value(m: &Model, who: &str, key: &str, v: &Value, e: &Elemen
 }
 
 /// The mass and the face a by-face element was made on, if it holds a mark: a `Some` face is an edge number, `None` the top.
-pub fn face_of(e: &Element) -> Option<(Id, Option<usize>)> {
+pub fn face_of(e: &Element) -> Option<(Guid, Option<usize>)> {
     let o = e.params()?.get(FACE)?.as_object()?;
-    Some((o.get("mass")?.as_u64()?, o.get("face")?.as_u64().and_then(|f| usize::try_from(f).ok())))
+    Some((mark(o, "mass")?, o.get("face")?.as_u64().and_then(|f| usize::try_from(f).ok())))
 }
 
 /// The floors `mass_floors` made from `mass` that still lie on the level their mark names, with that level.
-pub fn floors_of(m: &Model, mass: Id) -> Vec<(Id, Id)> {
+pub fn floors_of(m: &Model, mass: Guid) -> Vec<(Id, Guid)> {
     m.elements
         .iter()
         .filter_map(|(id, e)| {
             let Element::Floor(f) = e else { return None };
             let o = f.params.get(FLOOR)?.as_object()?;
-            (o.get("mass")?.as_u64()? == mass && o.get("level")?.as_u64()? == f.level).then_some((*id, f.level))
+            (mark(o, "mass")? == mass && mark(o, "level")? == f.level).then_some((*id, f.level))
         })
         .collect()
 }
@@ -70,10 +97,10 @@ pub fn detach(params: &mut BTreeMap<String, Value>) {
 }
 
 /// The marks that name a mass in `gone` taken off, since it's deleted: what was made from it is ordinary from then on.
-pub fn forget(m: &mut Model, gone: &BTreeSet<Id>) {
+pub fn forget(m: &mut Model, gone: &BTreeSet<Guid>) {
     for params in m.elements.values_mut().filter_map(Element::params_mut) {
         for key in [FLOOR, FACE] {
-            if params.get(key).and_then(|v| v.get("mass")).and_then(Value::as_u64).is_some_and(|mass| gone.contains(&mass)) {
+            if params.get(key).and_then(Value::as_object).and_then(|o| mark(o, "mass")).is_some_and(|mass| gone.contains(&mass)) {
                 params.remove(key);
             }
         }
@@ -117,11 +144,11 @@ pub fn follow(e: &mut Element, ms: &Mass, mass: Id, face: Option<usize>) -> Resu
 /// A mass mirrored in place runs its outline round the other way, so its edge `f` of `n` is edge `n - 2 - f` (mod `n`) now:
 /// the faces its walls were made on, numbered again, so they follow the same edges.
 pub fn mirrored(m: &mut Model, mass: Id) {
-    let Some(Element::Mass(ms)) = m.elements.get(&mass) else { return };
+    let (Some(Element::Mass(ms)), Some(guid)) = (m.elements.get(mass), m.elements.guid(mass)) else { return };
     let n = ms.boundary.len();
     for params in m.elements.values_mut().filter_map(Element::params_mut) {
         if let Some(o) = params.get_mut(FACE).and_then(Value::as_object_mut)
-            && o.get("mass").and_then(Value::as_u64) == Some(mass)
+            && mark(o, "mass") == Some(guid)
             && let Some(f) = o.get("face").and_then(Value::as_u64).and_then(|f| usize::try_from(f).ok()).filter(|f| *f < n)
         {
             o.insert("face".into(), Value::from((2 * n - 2 - f) % n));
