@@ -1840,6 +1840,103 @@ fn files_the_system_opens_open_as_from_the_menu_and_quit_asks_first() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// File > Open Recent: a submenu's label reads out its arrow too, "Open Recent ⏵".
+fn open_recent(h: &mut Harness<BimApp>) {
+    h.get_by_label_contains("Open Recent").click();
+    h.run();
+}
+
+/// Where a test keeps its recent files, and a folder with two projects to open.
+fn recent_rig(tag: &str) -> (Harness<'static, BimApp>, std::path::PathBuf, std::path::PathBuf) {
+    let dir = std::env::temp_dir().join(format!("bimcraft-ui-recent-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut h = app(SAMPLE);
+    let file = dir.join("recent.json");
+    h.state_mut().keep_recent_in(file.clone());
+    (h, dir, file)
+}
+
+#[test]
+fn a_window_told_of_no_file_keeps_no_recent_files_and_offers_none() {
+    let mut h = app(SAMPLE);
+    let dir = std::env::temp_dir().join(format!("bimcraft-ui-recent-none-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    assert!(h.state_mut().save_to(&dir.join("a.bimcraft")));
+    assert!(h.state().recent.paths().is_empty(), "so no test writes the user's own list");
+    press(&mut h, "File");
+    assert!(h.query_by_label("Open Recent").is_some());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn saved_and_opened_projects_are_listed_in_open_recent_newest_first_and_exports_are_not() {
+    let (mut h, dir, file) = recent_rig("list");
+    for name in ["a.bimcraft", "b.bimcraft", "plan.png", "house.pdf", "house.ifc"] {
+        assert!(h.state_mut().save_to(&dir.join(name)), "{name}");
+    }
+    // An IFC export leaves the project unsaved and is not a file to come back to.
+    let names = |h: &Harness<BimApp>| h.state().recent.labels();
+    assert_eq!(names(&h), ["b.bimcraft", "a.bimcraft"]);
+    // Opening one moves it to the top; an IFC file that is opened (imported) is listed too.
+    assert!(h.state_mut().open_path(&dir.join("a.bimcraft")));
+    assert!(h.state_mut().open_path(&dir.join("house.ifc")));
+    assert!(h.state_mut().open_path(&dir.join("a.bimcraft")));
+    assert_eq!(names(&h), ["a.bimcraft", "house.ifc", "b.bimcraft"], "once each, though the window was started over each time");
+    // The list is in the file, for the next time the app starts.
+    let mut next = BimApp::new(Session::new());
+    next.keep_recent_in(file);
+    assert_eq!(next.recent.labels(), ["a.bimcraft", "house.ifc", "b.bimcraft"]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn choosing_a_recent_file_opens_it_after_asking_about_unsaved_changes() {
+    let (mut h, dir, _) = recent_rig("choose");
+    assert!(h.state_mut().save_to(&dir.join("sample.bimcraft")));
+    h.state_mut().session.execute("wall", &json!({"points": [[0, 0], [4000, 0]]})).unwrap();
+    let walls_now = walls(&h).len();
+    let choose = |h: &mut Harness<BimApp>| {
+        press(h, "File");
+        open_recent(h);
+        press(h, "sample.bimcraft");
+    };
+    choose(&mut h);
+    press(&mut h, "Cancel");
+    assert_eq!(walls(&h).len(), walls_now, "cancelled: nothing opened");
+    choose(&mut h);
+    press(&mut h, "Don't Save");
+    assert_eq!(walls(&h).len(), walls_now - 1, "the saved project, without the wall added since");
+    assert_eq!(h.state().session.path.as_deref(), Some(dir.join("sample.bimcraft").as_path()));
+    assert_eq!(h.state().recent.labels(), ["sample.bimcraft"], "the list survived starting the window over");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_recent_file_that_has_gone_is_said_and_dropped_and_clear_empties_the_list() {
+    let (mut h, dir, file) = recent_rig("gone");
+    for name in ["gone.bimcraft", "kept.bimcraft"] {
+        assert!(h.state_mut().save_to(&dir.join(name)));
+    }
+    std::fs::remove_file(dir.join("gone.bimcraft")).unwrap();
+    press(&mut h, "File");
+    open_recent(&mut h);
+    press(&mut h, "gone.bimcraft");
+    assert!(h.state().status.error, "{}", h.state().status.text);
+    assert_eq!(h.state().recent.labels(), ["kept.bimcraft"]);
+    assert_eq!(listed_in(&file), 1, "and the file says so");
+    press(&mut h, "File");
+    open_recent(&mut h);
+    press(&mut h, "Clear Recent Files");
+    assert!(h.state().recent.paths().is_empty());
+    assert_eq!(listed_in(&file), 0);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+fn listed_in(file: &std::path::Path) -> usize {
+    crate::recent::Recent::load(file).paths().len()
+}
+
 #[test]
 fn opening_an_ifc_file_imports_it_and_says_what_came_in() {
     let mut h = app(SAMPLE);

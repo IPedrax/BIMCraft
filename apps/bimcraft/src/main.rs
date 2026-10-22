@@ -3,6 +3,7 @@
 // A release build on Windows is a window, not a console program: no console opens behind it.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use bimcraft_core::engine::Session;
@@ -34,6 +35,7 @@ fn main() -> ExitCode {
         let _ = session.execute("new", &json!({"language": language.code()}));
     }
     let mut problem = None;
+    let mut opened = Vec::new();
     for arg in std::env::args().skip(1) {
         let done = match arg.as_str() {
             "-h" | "--help" => {
@@ -49,7 +51,13 @@ fn main() -> ExitCode {
                 eprintln!("bimcraft: unknown option `{flag}`\n\n{USAGE}");
                 return ExitCode::FAILURE;
             }
-            file => session.execute("open", &json!({ "path": file })).map(|_| ()),
+            file => {
+                let done = session.execute("open", &json!({ "path": file })).map(|_| ());
+                if done.is_ok() {
+                    opened.push(PathBuf::from(file));
+                }
+                done
+            }
         };
         problem = done.err().or(problem);
     }
@@ -58,6 +66,13 @@ fn main() -> ExitCode {
     session.reset(model, path);
     let mut app = BimApp::new(session);
     app.lang = language;
+    // The recent files sit beside the favorites too; the files the arguments opened are the newest.
+    if let Some(path) = bimcraft_core::favorites::default_path() {
+        app.keep_recent_in(bimcraft_ui_egui::recent::beside(&path));
+        for file in &opened {
+            app.note_recent(file);
+        }
+    }
     if let Some(text) = problem {
         app.status = Status { text, error: true };
     }

@@ -17,6 +17,7 @@ mod orbit;
 mod paper;
 mod phasing;
 mod properties;
+pub mod recent;
 mod section;
 mod structure;
 mod style;
@@ -456,6 +457,9 @@ pub struct BimApp {
     /// The Family Editor, while it's open.
     family_editor: Option<editor::FamilyEditor>,
     favorites_path: Option<std::path::PathBuf>,
+    /// The files File > Open Recent lists, and where they are kept (see [`BimApp::keep_recent_in`]; none until the app is told).
+    recent: recent::Recent,
+    recent_path: Option<std::path::PathBuf>,
     parameters_dialog: Option<properties::ParametersDialog>,
     schedule_dialog: Option<properties::ScheduleDialog>,
     /// Visibility/Graphics, Filters and View Templates, while they're open.
@@ -725,6 +729,8 @@ impl BimApp {
             favorites_dialog: None,
             family_editor: None,
             favorites_path: None,
+            recent: recent::Recent::default(),
+            recent_path: None,
             paint_material: String::new(),
             parameters_dialog: None,
             schedule_dialog: None,
@@ -1717,6 +1723,7 @@ impl BimApp {
         // Exports (IFC, the sheets' PDF) leave the project unsaved.
         if saved && !matches!(ext.as_str(), "ifc" | "pdf") {
             self.saved = Arc::clone(&self.session.model);
+            self.note_recent(path);
         }
         saved
     }
@@ -1747,8 +1754,12 @@ impl BimApp {
 
     /// Open a project, or import an IFC file and say what came in and what was left out.
     pub(crate) fn open_path(&mut self, path: &Path) -> bool {
-        let Some(reply) = self.run("open", json!({"path": path.to_string_lossy()})) else { return false };
+        let Some(reply) = self.run("open", json!({"path": path.to_string_lossy()})) else {
+            self.forget_recent_if_gone(path);
+            return false;
+        };
         self.reopened();
+        self.note_recent(path);
         if reply["format"].is_string() {
             let name = path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
             self.status = Status { text: import_note(&name, &reply), error: false };
@@ -1765,6 +1776,7 @@ impl BimApp {
         (fresh.thin, fresh.show_properties, fresh.show_browser, fresh.lang, fresh.snaps) =
             (self.thin, self.show_properties, self.show_browser, self.lang, self.snaps);
         fresh.updates = self.updates.take();
+        (fresh.recent, fresh.recent_path) = (std::mem::take(&mut self.recent), self.recent_path.take());
         *self = fresh;
     }
 
@@ -1922,6 +1934,7 @@ impl BimApp {
         if item(ui, "Open…", cmd(Key::O)) {
             self.guard(Pending::Open, ctx);
         }
+        self.recent_menu(ui, ctx);
         if item(ui, "Save", cmd(Key::S)) {
             self.save();
         }

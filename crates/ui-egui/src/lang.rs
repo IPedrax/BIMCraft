@@ -117,6 +117,8 @@ const WORDS: &[[&str; 3]] = &[
     ["Modify", "Modificar", "Modificar"],
     ["New", "Novo", "Nuevo"],
     ["Open…", "Abrir…", "Abrir…"],
+    ["Open Recent", "Abrir recente", "Abrir reciente"],
+    ["Clear Recent Files", "Limpar arquivos recentes", "Borrar archivos recientes"],
     ["Save", "Salvar", "Guardar"],
     ["Save As…", "Salvar como…", "Guardar como…"],
     ["Export", "Exportar", "Exportar"],
