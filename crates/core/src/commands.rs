@@ -1394,7 +1394,7 @@ fn open(s: &mut Session, p: &Value) -> R {
         return Ok(reply);
     }
     let text = std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
-    let mut m = Model::from_json(&text).map_err(|e| bad(c, format!("{} is not a BIMCraft project: {e}", path.display())))?;
+    let (mut m, left_out) = Model::read(&text).map_err(|e| bad(c, format!("{} is not a BIMCraft project: {e}", path.display())))?;
     m.adopt_materials();
     // A project parameter named as a phase or a design option is held under is from before they were: it keeps its values, renamed.
     let mut renamed = BTreeMap::new();
@@ -1420,6 +1420,9 @@ fn open(s: &mut Session, p: &Value) -> R {
     let mut reply = json!({"path": path, "name": name});
     if !renamed.is_empty() {
         reply["renamed"] = json!(renamed);
+    }
+    if !left_out.is_empty() {
+        reply["left_out"] = json!(left_out);
     }
     Ok(reply)
 }

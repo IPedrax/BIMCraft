@@ -4723,3 +4723,63 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
     let _ = std::fs::remove_file(&path);
     assert!(e.contains("newer BIMCraft"), "{e}");
 }
+
+#[test]
+fn a_file_with_fields_this_bimcraft_does_not_know_opens_without_them_and_says_which() {
+    let mut s = Session::new();
+    s.script(crate::sample::SAMPLE).unwrap();
+    let mut v = serde_json::to_value(&*s.model).unwrap();
+    let first = |cat: &str| v["elements"].as_object().unwrap().iter().find(|(_, e)| e["category"] == cat).unwrap().0.clone();
+    let (wall, level, schedule) = (first("wall"), first("level"), first("schedule"));
+    let family = v["families"].as_object().unwrap().keys().next().unwrap().clone();
+    // What a newer BIMCraft might add, at every depth: the project, an element, a struct inside one, a type's layer,
+    // a family's form, a material, and a key with a `/` in it.
+    let added = [
+        "/weather".to_string(),
+        format!("/elements/{wall}/finish_date"),
+        format!("/elements/{level}/view_range/glow"),
+        "/types/wall/Exterior - 300mm/layers/0/u_value".into(),
+        format!("/families/{}/forms/0/smoothing", family.replace('/', "~1")),
+        "/materials/Brick/roughness".into(),
+        format!("/elements/{schedule}/totals~1grand"),
+    ];
+    for p in &added {
+        let (parent, key) = p.rsplit_once('/').unwrap();
+        let parent = v.pointer_mut(parent).unwrap_or_else(|| panic!("{parent}"));
+        parent[key.replace("~1", "/")] = json!(42);
+    }
+    let path = std::env::temp_dir().join(format!("bimcraft-newer-fields-{}.bimcraft", std::process::id()));
+    std::fs::write(&path, v.to_string()).unwrap();
+    let mut t = Session::new();
+    let r = t.execute("open", &json!({"path": path.to_str().unwrap()}));
+    let _ = std::fs::remove_file(&path);
+    let r = r.unwrap();
+    let mut said: Vec<String> = serde_json::from_value(r["left_out"].clone()).unwrap();
+    let mut want = added.to_vec();
+    said.sort();
+    want.sort();
+    assert_eq!(said, want);
+    // The rest is the project as it was.
+    assert_eq!(t.model.elements, s.model.elements);
+    assert_eq!(t.model.types, s.model.types);
+    assert_eq!(t.model.families, s.model.families);
+    assert_eq!(t.model.materials, s.model.materials);
+    // Commands stay strict: a misspelled key is an error, not something quietly left out.
+    let e = t.execute("modify", &json!({"id": wall.parse::<u64>().unwrap(), "heigth": 2500})).unwrap_err();
+    assert!(e.contains("unknown field `heigth`"), "{e}");
+}
+
+#[test]
+fn a_project_as_written_reads_back_with_nothing_left_out() {
+    let mut s = Session::new();
+    s.script(crate::sample::SAMPLE).unwrap();
+    run(&mut s, "phase", json!({"name": "Demolition", "before": "New Construction"}));
+    run(&mut s, "option", json!({"set": "Entrance", "options": ["Canopy", "Porch"]}));
+    run(&mut s, "phase", json!({"overrides": {"new": {"cut": {"color": [0, 0, 200]}}}}));
+    let (m, left_out) = crate::model::Model::read(&s.model.to_json().unwrap()).unwrap();
+    assert_eq!(left_out, Vec::<String>::new());
+    assert_eq!(m, *s.model);
+    // And a file that isn't a project at all is still refused.
+    assert!(crate::model::Model::read("[1, 2]").is_err());
+    assert!(crate::model::Model::read(r#"{"name": "x"}"#).is_err());
+}

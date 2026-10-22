@@ -1906,9 +1906,16 @@ impl BimApp {
         self.reopened();
         self.note_recent(path);
         self.autosave_document();
+        let name = path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
         if reply["format"].is_string() {
-            let name = path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
             self.status = Status { text: import_note(&name, &reply), error: false };
+        } else if let Some(left_out) = reply["left_out"].as_array() {
+            // A newer BIMCraft's fields: what this one doesn't know, it can't keep.
+            let text = tf(
+                "{} opened without {} fields this version doesn't know; saving it leaves them out.",
+                &[&name, &left_out.len().to_string()],
+            );
+            self.status = Status { text, error: false };
         }
         true
     }

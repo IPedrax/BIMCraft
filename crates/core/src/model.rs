@@ -1920,17 +1920,51 @@ impl Model {
 
     /// A project read from a file: from an older format, brought up to this one; from a newer, refused, saying so.
     pub fn from_json(text: &str) -> Result<Model, String> {
-        let v: serde_json::Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
-        let format = v.get("format").map_or(Some(0), serde_json::Value::as_u64).ok_or("`format` must be a whole number")?;
+        Model::read(text).map(|(m, _)| m)
+    }
+
+    /// Read from a project file, with what this BIMCraft doesn't know of it left out: a field a newer one added, or a
+    /// misspelled one. The fields left out come back as JSON pointers into the file (`/elements/100004/finish`). A file
+    /// of a newer format is refused whole, since what changed may be more than a field.
+    pub fn read(text: &str) -> Result<(Model, Vec<String>), String> {
+        use crate::lenient;
+        use serde_json::Value;
+        let mut v: Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        let format = v.get("format").map_or(Some(0), Value::as_u64).ok_or("`format` must be a whole number")?;
         if format > u64::from(FORMAT) {
             return Err(format!(
                 "it was saved by a newer BIMCraft (file format {format}; this one reads up to {FORMAT}): update BIMCraft to open it"
             ));
         }
+        let mut left_out = Vec::new();
+        // An element is an internally tagged enum, which serde reads whole: each is looked into as its category's struct.
+        let mut elements = v.get_mut("elements").map_or(Value::Null, Value::take);
+        if let Value::Object(es) = &mut elements {
+            for (id, e) in es.iter_mut() {
+                let mut bare = e.clone();
+                let category = bare.as_object_mut().and_then(|o| {
+                    o.remove("guid");
+                    o.remove("category")
+                });
+                for p in lenient::element(category.as_ref().and_then(Value::as_str).unwrap_or(""), &bare) {
+                    lenient::remove(e, &p);
+                    left_out.push(format!("/elements/{id}{p}"));
+                }
+            }
+        }
+        if v.is_object() {
+            v["elements"] = Value::Object(serde_json::Map::new());
+            let found = lenient::unknown::<Model>(&v);
+            for p in found {
+                lenient::remove(&mut v, &p);
+                left_out.push(p);
+            }
+            v["elements"] = elements;
+        }
         let mut m: Model = serde_json::from_value(v).map_err(|e| e.to_string())?;
         m.migrate();
         m.names_from_file();
-        Ok(m)
+        Ok((m, left_out))
     }
 
     /// Brought up to [`FORMAT`]. From before GUIDs: each element was given one as it was read, what points at an element

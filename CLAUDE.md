@@ -31,6 +31,11 @@ and MCP server, and milestone 2, the egui desktop app, are done. What works and 
   before keeps it). A family's types and parameters are entries (`family: name`), so a component's type and instance values
   are GUIDs in a file; inside a family, its parts name its parameters as its formulas do. This is the standard for
   everything new: a new kind of part implements `HasPart` and goes in `parts_now`, `sync_parts` and `forget_parts`.
+- **A file is read kindly, a command strictly.** The model's types keep `deny_unknown_fields`, so a misspelled key in a
+  command's params is an error. `Model::read` leaves out of a file what this version doesn't know (`lenient.rs` walks it as
+  the types would read it) and `open` lists it as `left_out`; a file of a newer `format` is refused. A change to what a file
+  holds that an older version would misread (not just a field it can do without) bumps `FORMAT` and adds its step to
+  `Model::migrate`; a new element category goes in `lenient::element` too (a test names any missing).
 - **Validate in one place.** Commands build elements; `Model::check` validates the whole model after each command and the
   engine rolls back when it fails. New rules go there, with an error that says what to fix.
 - **Clean-room.** Never copy Autodesk content: no families (`.rfa`), templates, icons, help text, or anything from inside

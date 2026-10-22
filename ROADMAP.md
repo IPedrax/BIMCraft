@@ -19,7 +19,8 @@ The README lists what the engine, the desktop, the CLI and the MCP server do. Wh
   Editor), textures by material or from a picture, Paint, favorites kept for every project, and packages for Windows,
   Linux (AppImage, Flatpak, deb, rpm, Arch, tarball, riscv64) and macOS. Auto-update from GitHub releases is done for the Windows installer's copy, an AppImage and the macOS app, though none of it has run on a real system yet.
 - **The file** is `.bimcraft` JSON with a `format` version (3 now): an older file is migrated on open, and a newer one is
-  refused, saying so. Its types still refuse unknown fields.
+  refused, saying so. A field this version doesn't know (a newer one's, in the same format) is left out and named, and the
+  rest opens; commands still refuse a key they don't know.
 - **Ids and GUIDs**, as Revit's ElementId and UniqueId: every element, every library entry (types, materials, families,
   parameters, filters, templates, phases, design options) and every part (layers, a family's forms and symbols) has a
   six-digit id and a GUID that never changes. What points at an element, an entry or a part holds its GUID in a file;
@@ -59,7 +60,7 @@ The goal is to make the file, the ids and the build trustworthy enough to build 
 
 | Item | Size | Notes |
 |---|---|---|
-| File-format version and migrations | M | Mostly done: a `format` field, migrations on `open` (no format, 1 and 2 open as 3) and a clear message for a newer file. Left: tolerate unknown fields where it's safe, keeping `deny_unknown_fields` only on params input |
+| ~~File-format version and migrations~~ | M | Done: a `format` field, migrations on `open` (no format, 1 and 2 open as 3), a clear message for a newer file, and unknown fields left out of an open and listed (`left_out`, `lenient.rs`) while commands stay strict |
 | ~~Globally unique ids (GUIDs) beside the display id~~ | M | Done: every element, library entry and part, with Insert from File, Select by ID and IDs of Selection (PRs #17, #19 and #21). Prerequisite for linking, merging and worksharing |
 | CI on every pull request: fmt, clippy and tests on Windows, Linux and macOS | S | Plus the IfcOpenShell validation as a job, and shellcheck and actionlint for `packaging/`. The release workflow already tests all three |
 | Autosave, crash recovery, recent files and a start page | S to M | Autosave and recovery done: background snapshots, adjacent project backups, temporary copies for untitled work, and Recover / Discard / Postpone on open ([design](docs/autosave.md)). Left: recent files and a start page |

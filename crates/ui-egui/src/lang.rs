@@ -2201,6 +2201,11 @@ const WORDS: &[[&str; 3]] = &[
     ["Clear the Search", "Limpar a pesquisa", "Borrar la búsqueda"],
     ["Nothing here yet.", "Nada aqui ainda.", "Nada aquí todavía."],
     ["Nothing matches the search.", "Nada corresponde à pesquisa.", "Nada coincide con la búsqueda."],
+    [
+        "{} opened without {} fields this version doesn't know; saving it leaves them out.",
+        "{} foi aberto sem {} campos que esta versão não conhece; ao salvar, eles ficam de fora.",
+        "{} se abrió sin {} campos que esta versión no conoce; al guardarlo, quedan fuera.",
+    ],
     ["Legends are coming in a later version.", "As legendas virão em uma versão futura.", "Las leyendas llegarán en una versión futura."],
 ];
 
