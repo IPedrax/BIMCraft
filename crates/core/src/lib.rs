@@ -5,6 +5,7 @@
 pub mod autosave;
 #[cfg(test)]
 mod autosave_tests;
+pub mod cloud;
 mod commands;
 mod component_geometry;
 mod csg;
