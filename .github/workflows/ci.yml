@@ -56,3 +56,50 @@ jobs:
 
       - name: Test
         run: cargo test --workspace
+
+  # What CLAUDE.md asks after touching ifc.rs: IfcOpenShell validates what BIMCraft writes, with the EXPRESS rules, and builds every
+  # product's shape. The sample house, and ci/ifc-coverage.txt for what the sample doesn't reach (structure, runs, masses, phases).
+  ifc:
+    name: IFC (IfcOpenShell)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust
+        run: rustup update stable && rustup default stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # pytest: IfcOpenShell's EXPRESS rule checker runs through it.
+      - name: IfcOpenShell
+        run: pip install ifcopenshell==0.8.5 pytest
+
+      - name: Write IFC
+        run: |
+          cargo run -q -p bimcraft-cli -- run --sample --save house.ifc
+          cargo run -q -p bimcraft-cli -- run --script ci/ifc-coverage.txt --save coverage.ifc
+
+      - name: Validate
+        run: python ci/validate_ifc.py house.ifc coverage.ifc
+
+  # What CLAUDE.md asks after touching packaging/: shellcheck on the scripts and actionlint on the workflows (which runs shellcheck
+  # on their `run:` steps too). The runner image has shellcheck; actionlint is a pinned release, checked against its sum.
+  scripts:
+    name: Scripts and workflows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck
+        run: find packaging -name '*.sh' -print0 | xargs -0 shellcheck
+
+      - name: actionlint
+        run: |
+          curl -sSfL -o actionlint.tar.gz https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz
+          echo "023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757  actionlint.tar.gz" | sha256sum -c -
+          tar xzf actionlint.tar.gz actionlint
+          ./actionlint -color

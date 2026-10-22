@@ -34,7 +34,8 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   `pdftoppm -png`) when it's installed. `render {"view": "A101"}` draws one sheet as a PNG.
 - IFC: `bimcraft-cli run --sample --save /tmp/house.ifc`. After touching `ifc.rs`, validate with IfcOpenShell:
   `ifcopenshell.validate.validate(f, logger, express_rules=True)` (needs pytest installed), then build every product's shape
-  with `ifcopenshell.geom.create_shape` and compare wall and roof volumes with a hand calculation.
+  with `ifcopenshell.geom.create_shape` and compare wall and roof volumes with a hand calculation. `python ci/validate_ifc.py x.ifc`
+  does the first two, as CI's IFC job does on the sample and on `ci/ifc-coverage.txt` (add a line there for a new kind of element).
 - Structure: after touching `runs.rs` or how a run, a footing or a structural column goes to IFC, export beams (level, sloped, round), footings, a strip
   footing, columns and a structural floor, validate with IfcOpenShell (`express_rules=True`), and compare each product's volume and bounding box
   with a hand calculation (a round section is a polygon in IfcOpenShell's tessellation: a fraction of a percent short). Look at the plan, a

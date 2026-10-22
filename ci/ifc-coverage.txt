@@ -1,0 +1,25 @@
+# What CI writes to IFC beside the sample house, for IfcOpenShell to validate: what the sample doesn't reach.
+# Structure: beams (level, sloped, round), footings, a strip footing, structural columns and a structural floor.
+beam {"points": [[0,0],[6000,0]], "offset": 3000}
+beam {"points": [[0,4000],[6000,4000]], "offset": 2800, "end_offset": 3200}
+footing {"at": [0,0]}
+footing {"at": [6000,0]}
+strip_footing {"points": [[0,8000],[6000,8000]]}
+structural_column {"at": [0,0]}
+structural_column {"at": [6000,0]}
+floor {"boundary": [[0,0],[6000,0],[6000,4000],[0,4000]], "structural": true}
+# Discipline runs: sloped, upright, each justification, in a system.
+pipe {"points": [[0,6000],[6000,6000]], "offset": 500, "end_offset": 300, "system": "Cold water"}
+pipe {"points": [[1000,6500],[1000,6500]], "offset": 0, "end_offset": 3000}
+conduit {"points": [[0,7000],[6000,7000]], "offset": 2500, "justify": "top", "system": "Circuit 1"}
+cable_tray {"points": [[0,7500],[6000,7500]], "offset": 2700, "justify": "bottom"}
+# A straight mass, a lofted one, and phases with a design option.
+mass {"boundary": [[10000,0],[16000,0],[16000,5000],[10000,5000]], "height": 9000}
+mass {"boundary": [[20000,0],[26000,0],[26000,5000],[20000,5000]], "height": 9000, "lean": [1500, 0]}
+phase {"name": "Stage 2"}
+phase {"now": "Existing"}
+wall {"points": [[0,-3000],[6000,-3000]]}
+phase {"now": "Stage 2"}
+option {"set": "Entrance", "options": ["Glass", "Brick"]}
+option {"now": "Entrance: Brick"}
+wall {"points": [[0,-5000],[6000,-5000]]}
