@@ -17,6 +17,7 @@ pub mod import;
 pub mod inquiry;
 pub mod insert;
 pub mod language;
+pub mod library;
 pub mod massing;
 pub mod model;
 pub mod paint;

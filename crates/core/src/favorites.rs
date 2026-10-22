@@ -233,6 +233,7 @@ mod tests {
         entry.bring_into(&mut into, "Lawn").unwrap();
         entry.bring_into(&mut into, "Meadow").unwrap();
         assert_eq!((into.images.len(), into.materials["Lawn"] == into.materials["Meadow"]), (1, true));
+        into.sync_library();
         assert_eq!(into.check(), Ok(()));
         // No room for another picture, and it says so.
         let mut full = Model::new("c");

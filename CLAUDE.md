@@ -19,9 +19,14 @@ and MCP server, and milestone 2, the egui desktop app, are done. What works and 
   `Guid`, never its `Id`: a new element kind lists its references in `visit_refs!` (`Element::refs_mut`), and new code finds
   elements by either (`Key`, `Model::same`, `Model::guid`). A command takes an element by id or GUID (`Guid` reads a number
   as the id it names, `Model::resolve` swaps it for the GUID after the command, and `Model::check` refuses one left over).
-  A copy is a new element: a new id and a new GUID. IFC writes the GUID as the GlobalId and reads it back. This is the
-  standard for everything new; types, materials, families and the rest of the library are still keyed by name and get
-  ids and GUIDs next, then subparts (layers, family types and forms).
+  A copy is a new element: a new id and a new GUID. IFC writes the GUID as the GlobalId and reads it back. The library has
+  ids and GUIDs too (`library.rs`): each type, material, picture, family, parameter, view filter and template, phase, phase
+  filter, option set and option is an `Entry` of `Model::library`, its id counting down from `LAST_ID` (999999) in the same
+  id space; code names entries as it always has, and a file holds their GUIDs (`Model::to_json`, `names_from_file`). So a
+  new name reference goes in `Element::lib_refs_mut` or `Model::lib_refs_mut`, a new kind of entry in `Kind` and
+  `library_names` (and `copy_definition` for Insert from File), and a new rename calls `Library::renamed`;
+  `Model::sync_library` (after every command) gives new entries theirs. This is the standard for everything new; subparts
+  (layers, a family's types, parameters and forms) are next.
 - **Validate in one place.** Commands build elements; `Model::check` validates the whole model after each command and the
   engine rolls back when it fails. New rules go there, with an error that says what to fix.
 - **Clean-room.** Never copy Autodesk content: no families (`.rfa`), templates, icons, help text, or anything from inside

@@ -2547,6 +2547,12 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     }
     m.elements = m.elements.regiven(&globals);
     m.resolve();
+    // The library's GUIDs too, the file makes: the same file reads the same every time.
+    m.library = crate::library::Library::default();
+    m.sync_library_with(&mut |_, kind, name| {
+        let n = format!("{kind}/{name}").bytes().fold(0xCBF2_9CE4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3));
+        Guid::seeded(seed, n)
+    });
     // What breaks a rule is left out, with the rule; a wall takes its doors and windows along.
     for _ in 0..=m.elements.len() {
         let Err(error) = m.check() else { break };

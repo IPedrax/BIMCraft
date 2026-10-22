@@ -5180,12 +5180,12 @@ fn select_by_id_finds_elements_by_id_guid_or_ifc_globalid_says_what_it_missed_an
     press(&mut h, "Manage");
     press(&mut h, "Select by ID");
     // Live: what the list finds, and what it doesn't, as it is typed.
-    let list = format!("{} {ifc} 999999", gid(&h, high));
+    let list = format!("{} {ifc} 100099", gid(&h, high));
     type_into(&mut h, "IDs, GUIDs or IFC GlobalIds, as many as you like:", &list);
-    assert!(h.query_by_label("Finds 2; nothing has these: 999999").is_some());
+    assert!(h.query_by_label("Finds 2; nothing has these: 100099").is_some());
     press(&mut h, "OK");
     assert_eq!(h.state().selection, [high, low]);
-    assert!(!h.state().status.error && h.state().status.text.contains("999999"), "found some: a note of the rest, no error");
+    assert!(!h.state().status.error && h.state().status.text.contains("100099"), "found some: a note of the rest, no error");
     // Shown: the plan of the first one's level, zoomed in on them.
     assert_eq!(h.state().sheet, Sheet::Plan(100_001));
     h.run();
@@ -5200,6 +5200,14 @@ fn select_by_id_finds_elements_by_id_guid_or_ifc_globalid_says_what_it_missed_an
     assert_eq!(h.state().selection, [high, low, walls[0]]);
     assert_eq!(h.state().sheet, Sheet::Plan(100_001));
     assert!(!h.state().status.error);
+    // A material's id is the library's, not an element to select: it says so, and the selection stays.
+    let brick = h.state().session.model.library.id(&bimcraft_core::library::Kind::Material, "Brick").unwrap();
+    press(&mut h, "Select by ID");
+    type_into(&mut h, "IDs, GUIDs or IFC GlobalIds, as many as you like:", &brick.to_string());
+    assert!(h.query_by_label("Finds 1 in the library, not elements.").is_some());
+    press(&mut h, "OK");
+    assert!(h.state().status.text.contains(&format!("material Brick ({brick})")), "{}", h.state().status.text);
+    assert_eq!(h.state().selection.len(), 3);
     // Nothing found: OK waits, and Cancel leaves the selection be.
     press(&mut h, "Select by ID");
     type_into(&mut h, "IDs, GUIDs or IFC GlobalIds, as many as you like:", "nowhere");

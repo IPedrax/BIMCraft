@@ -13,6 +13,7 @@ use crate::favorites::{self, FamilyEntry, Favorites, MaterialEntry};
 use crate::geom::{self, P2};
 use crate::graphics::{self, Graphics, Group, Look, Override, ViewTemplate};
 use crate::language::Language;
+use crate::library::Kind as LibKind;
 use crate::massing;
 use crate::model::{
     CEILING_HEIGHT, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Element, Extrusion, Face,
@@ -814,6 +815,15 @@ pub static ALL: &[Command] = &[
         undoable: false,
     },
     other(
+        "library",
+        "Library",
+        "{kind?, name?} the project's library with its ids and GUIDs, as elements have them: each type (`kind` \
+         `type:wall`, `type:door`, `type:beam`…), material, picture, family, parameter, view filter and template \
+         (`view-filter`, `view-template`), phase, phase filter, design option set and design option (`option-set`, \
+         `design-option`, named `set: option`). Wherever a command takes one of them by name, its GUID does too",
+        library,
+    ),
+    other(
         "select_by_id",
         "Select by ID",
         "{text} the elements a list names, each by its id, its GUID (dashes and braces or not) or its IFC GlobalId, \
@@ -1134,6 +1144,17 @@ pub fn element_json(m: &Model, id: Id) -> Value {
     let mut extra = Map::new();
     extra.insert("id".into(), json!(id));
     extra.insert("guid".into(), json!(m.guid(id)));
+    // Its type's and its family's GUIDs, beside their names.
+    e.clone().lib_refs_mut(&mut |kind, name| {
+        let key = match kind {
+            LibKind::Type(_) => "type_guid",
+            LibKind::Family => "family_guid",
+            _ => return,
+        };
+        if let Some(g) = m.library.guid(kind, name) {
+            extra.insert(key.into(), json!(g));
+        }
+    });
     match e {
         Element::Wall(w) => {
             let axis = Axis::of(w);
@@ -1379,6 +1400,7 @@ fn open(s: &mut Session, p: &Value) -> R {
         }
         m = Arc::unwrap_or_clone(t.model);
     }
+    m.sync_library();
     m.check().map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
     let name = m.name.clone();
     s.reset(m, Some(path.clone()));
@@ -1402,14 +1424,45 @@ fn select_by_id(s: &mut Session, p: &Value) -> R {
     let shown = crate::inquiry::shown(&s.model, &found.ids);
     Ok(json!({
         "ids": found.ids,
+        "library": found.library,
         "missing": found.missing,
         "plan": shown.map(|(level, _)| level),
         "extent": shown.map(|(_, [lo, hi])| [micron(lo), micron(hi)]),
     }))
 }
 
+fn library(s: &mut Session, p: &Value) -> R {
+    let c = "library";
+    let kind = string(c, p, "kind")?;
+    let name = string(c, p, "name")?;
+    let rows: Vec<Value> = s
+        .model
+        .library
+        .entries()
+        .filter(|(_, e)| kind.as_ref().is_none_or(|k| e.kind.to_string() == *k))
+        .filter(|(_, e)| name.as_ref().is_none_or(|n| e.name == *n))
+        .map(|(id, e)| json!({"id": id, "guid": e.guid, "kind": e.kind, "name": e.name}))
+        .collect();
+    Ok(json!({"count": rows.len(), "library": rows}))
+}
+
 fn ids_of(s: &mut Session, p: &Value) -> R {
-    let ids = ids_param("ids_of", &s.model, p)?;
+    let c = "ids_of";
+    let m = &s.model;
+    let list = match (p.get("ids"), p.get("id")) {
+        (Some(Value::Array(a)), _) if a.len() <= MAX_POINTS => a.clone(),
+        (v, Some(one)) if absent(v) => vec![one.clone()],
+        _ => return Err(bad(c, "`ids` [id or GUID, …] is required")),
+    };
+    // An element or a library entry, by id or GUID; a library entry's GUID comes as its name (`Session::execute`).
+    let one = |v: &Value| {
+        let word = v.as_str().map_or_else(|| v.to_string(), String::from);
+        crate::inquiry::one(m, &word)
+            .or_else(|| crate::inquiry::library(m, &word))
+            .or_else(|| m.library.entries().find(|(_, e)| e.name == word).map(|(id, _)| id))
+    };
+    let ids =
+        list.iter().map(|v| one(v).ok_or_else(|| bad(c, format!("no element or library entry {v}")))).collect::<Result<Vec<_>, _>>()?;
     let rows: Vec<Value> = ids
         .iter()
         .filter_map(|id| crate::inquiry::names(&s.model, *id))
@@ -1468,7 +1521,7 @@ fn save(s: &mut Session, p: &Value) -> R {
         write_plan(&render::plan(&s.model, level, 1600, 1000), &path)?;
         return Ok(json!({"path": path, "format": format}));
     }
-    let text = serde_json::to_string_pretty(&*s.model).map_err(|e| bad(c, e))?;
+    let text = s.model.to_json().map_err(|e| bad(c, e))?;
     std::fs::write(&path, text).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
     s.path = Some(path.clone());
     Ok(json!({"path": path, "format": "bimcraft"}))
@@ -2200,6 +2253,7 @@ fn view_phases(s: &mut Session, p: &Value) -> R {
             if let Some(slot) = m.phases.iter_mut().find(|x| *x == name) {
                 *slot = to.clone();
             }
+            m.library.renamed(&LibKind::Phase, name, to);
             phasing::move_phase(m, name, Some(to));
             if s.phase.as_ref() == Some(name) {
                 s.phase = Some(to.clone());
@@ -4110,6 +4164,7 @@ fn material(s: &mut Session, p: &Value) -> R {
                 return Err(bad(c, format!("the library already has `{to}`")));
             }
             m.materials.remove(&name);
+            m.library.renamed(&LibKind::Material, &name, &to);
             m.layers_mut().filter(|l| l.material == name).for_each(|l| l.material.clone_from(&to));
             m.rename_material_in_families(&name, &to);
             to
@@ -4326,6 +4381,7 @@ fn parameter(s: &mut Session, p: &Value) -> R {
                 return Err(bad(c, format!("there's a parameter `{to}` already")));
             }
             m.parameters.remove(&name);
+            m.library.renamed(&LibKind::Parameter, &name, &to);
             for f in m.view_filters.values_mut().filter(|f| f.categories.iter().any(|k| param.categories.contains(k))) {
                 f.rules.iter_mut().filter(|r| r.field == name).for_each(|r| r.field = to.clone());
             }
@@ -4452,6 +4508,7 @@ fn family(s: &mut Session, p: &Value) -> R {
                 return Err(bad(c, format!("there's a family `{to}` already")));
             }
             m.families.remove(&name);
+            m.library.renamed(&LibKind::Family, &name, &to);
             for e in m.elements.values_mut() {
                 if let Some(f) = e.family_mut()
                     && *f == name

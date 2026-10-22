@@ -89,6 +89,9 @@ impl Session {
     /// the model failing [`Model::check`] changes nothing.
     pub fn execute(&mut self, name: &str, params: &Value) -> Result<Value, String> {
         let cmd = find(name).ok_or_else(|| format!("unknown command `{name}`; list_commands shows them"))?;
+        // A library entry's GUID, wherever a command takes a name, is that name.
+        let named = named(&self.model, params);
+        let params = named.as_ref().unwrap_or(params);
         let before = Arc::clone(&self.model);
         let (run, first_new, session) = (cmd.run, self.model.next_id, (self.phase.clone(), self.option.clone()));
         let result = catch_unwind(AssertUnwindSafe(|| run(self, params)))
@@ -102,8 +105,9 @@ impl Session {
                 if cmd.undoable && cmd.id != "split" {
                     self.stamp(first_new, COPIES.contains(&cmd.id));
                 }
-                // What a command was given by id points at the element's GUID.
+                // What a command was given by id points at the element's GUID; what it put in the library has an id and a GUID.
                 self.model_mut().resolve();
+                self.model_mut().sync_library();
                 self.model.check().map(|()| v)
             });
         match result {
@@ -188,6 +192,28 @@ impl Session {
         let key = if redo { "redone" } else { "undone" };
         Ok(json!({ key: label }))
     }
+}
+
+/// `params` with every string that is a library entry's GUID put as the entry's name; none when there's no such string.
+fn named(m: &Model, params: &Value) -> Option<Value> {
+    fn walk(m: &Model, v: &mut Value, changed: &mut bool) {
+        match v {
+            Value::String(s) => {
+                if let Some((_, e)) = crate::ids::Guid::parse(s).filter(|g| g.pending().is_none()).and_then(|g| m.library.by_guid(g)) {
+                    // A design option's name is `set: option` already.
+                    *s = e.name.clone();
+                    *changed = true;
+                }
+            }
+            Value::Array(a) => a.iter_mut().for_each(|x| walk(m, x, changed)),
+            Value::Object(o) => o.values_mut().for_each(|x| walk(m, x, changed)),
+            _ => {}
+        }
+    }
+    let mut v = params.clone();
+    let mut changed = false;
+    walk(m, &mut v, &mut changed);
+    changed.then_some(v)
 }
 
 fn panic_text(p: &(dyn std::any::Any + Send)) -> String {

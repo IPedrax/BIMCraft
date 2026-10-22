@@ -223,7 +223,7 @@ fn a_project_with_structure_saves_and_opens_again() {
     for gone in ["runs", "structural_column", "footing"] {
         types.remove(gone);
     }
-    let m: crate::model::Model = serde_json::from_value(old).unwrap();
+    let m = crate::model::Model::from_json(&old.to_string()).unwrap();
     assert!(m.types.runs.is_empty() && m.check().is_ok());
 }
 

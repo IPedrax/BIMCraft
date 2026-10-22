@@ -56,9 +56,10 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 1: elements have GUIDs, ids six digits,
-/// and what points at an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 1;
+/// The version of the project file this build writes, and the newest it reads. 2: the library has ids and GUIDs too
+/// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
+/// an element holds its GUID. None (0): a file from before.
+pub const FORMAT: u32 = 2;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -1529,6 +1530,10 @@ pub struct Model {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub option_sets: BTreeMap<String, OptionSet>,
     pub elements: Elements,
+    /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
+    /// templates, phases, phase filters and design options.
+    #[serde(default)]
+    pub library: crate::library::Library,
 }
 
 impl Model {
@@ -1558,6 +1563,7 @@ impl Model {
             phase_overrides: phasing::overrides(),
             option_sets: BTreeMap::new(),
             elements: Elements::new(),
+            library: crate::library::Library::default(),
         };
         // A library to start from: each material its colour, its cut's pattern and its surface's, and the texture it has.
         for (name, color, cut, surface, texture) in [
@@ -1691,6 +1697,7 @@ impl Model {
         let level = language.word("Level");
         m.insert(Element::Level(Level::new(format!("{level} 1"), 0.0)));
         m.insert(Element::Level(Level::new(format!("{level} 2"), 3000.0)));
+        m.sync_library();
         m
     }
 
@@ -1845,7 +1852,25 @@ impl Model {
     }
 
     /// Every element's id has six digits or more, and what an element points at is an element of the project, by its GUID.
+    /// The library's ids and GUIDs are those of what it has, no name is a GUID, and no id or GUID is two things'.
     fn check_ids(&self) -> Result<(), String> {
+        if !self.library_in_step() {
+            return Err("the library's ids and GUIDs are not those of what it has".into());
+        }
+        for (id, e) in self.library.entries() {
+            if id < FIRST_ID {
+                return Err(format!("{} `{}`: ids start at {FIRST_ID}", e.kind.label(), e.name));
+            }
+            if self.elements.contains_key(id) {
+                return Err(format!("{} `{}` and element {id} have the same id", e.kind.label(), e.name));
+            }
+            if self.elements.contains_key(e.guid) {
+                return Err(format!("{} `{}` has the GUID of element {}", e.kind.label(), e.name, self.shown(e.guid)));
+            }
+            if Guid::parse(&e.name).is_some_and(|g| g.pending().is_none()) {
+                return Err(format!("{} `{}`: a name isn't a GUID; name it otherwise", e.kind.label(), e.name));
+            }
+        }
         for (id, e) in self.elements.iter() {
             if *id < FIRST_ID {
                 return Err(format!("element {id}: ids start at {FIRST_ID}"));
@@ -1877,6 +1902,7 @@ impl Model {
         }
         let mut m: Model = serde_json::from_value(v).map_err(|e| e.to_string())?;
         m.migrate();
+        m.names_from_file();
         Ok(m)
     }
 
@@ -1929,7 +1955,11 @@ impl Model {
 
     /// The next id, taken: past every element's, since a hand-edited file can carry a stale `next_id`.
     pub fn fresh_id(&mut self) -> Id {
-        let id = self.next_id.max(FIRST_ID).max(self.elements.keys().next_back().map_or(FIRST_ID, |k| k + 1));
+        let mut id = self.next_id.max(FIRST_ID).max(self.elements.keys().next_back().map_or(FIRST_ID, |k| k + 1));
+        // The library counts down from the top: past an id of its, on.
+        while self.library.get(id).is_some() {
+            id += 1;
+        }
         self.next_id = id + 1;
         id
     }

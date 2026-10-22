@@ -415,6 +415,7 @@ pub(crate) fn forget_option(m: &mut Model, set: &str, option: &str) {
 
 /// Option `old` of set `set` is `new` now: in the set, in the elements in it and in the views that choose it.
 pub(crate) fn rename_option(m: &mut Model, set: &str, old: &str, new: &str) {
+    m.library.renamed(&crate::library::Kind::DesignOption, &format!("{set}: {old}"), &format!("{set}: {new}"));
     if let Some(s) = m.option_sets.get_mut(set) {
         for o in s.options.iter_mut().filter(|o| *o == old) {
             *o = new.into();
@@ -440,6 +441,7 @@ pub(crate) fn rename_option(m: &mut Model, set: &str, old: &str, new: &str) {
 
 /// Set `old` is `new` now: its options, the elements in them and the views that choose among them.
 pub(crate) fn rename_set(m: &mut Model, old: &str, new: &str) {
+    m.library.set_renamed(old, new);
     let Some(s) = m.option_sets.remove(old) else { return };
     for o in &s.options {
         for id in holders(m, OPTION, &format!("{old}: {o}")) {

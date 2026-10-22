@@ -12,10 +12,12 @@ use crate::model::{Element, Guid, Id, Model};
 pub const MAX_LIST: usize = 1 << 20;
 pub const MAX_NAMES: usize = 10_000;
 
-/// What a list found: the elements, each once, in the order named; and what named none.
+/// What a list found: the elements, each once, in the order named; the library's entries (types, materials…), which are
+/// no elements to select; and what named none.
 #[derive(Debug, Default, PartialEq)]
 pub struct Found {
     pub ids: Vec<Id>,
+    pub library: Vec<Id>,
     pub missing: Vec<String>,
 }
 
@@ -26,10 +28,11 @@ pub fn find(m: &Model, text: &str) -> Found {
     let mut out = Found::default();
     let mut seen = BTreeSet::new();
     for word in text.split(|c: char| c.is_whitespace() || matches!(c, ',' | ';')).filter(|w| !w.is_empty()).take(MAX_NAMES) {
-        match one(m, word) {
-            Some(id) if seen.insert(id) => out.ids.push(id),
-            Some(_) => {}
-            None => out.missing.push(word.to_string()),
+        match (one(m, word), library(m, word)) {
+            (Some(id), _) if seen.insert(id) => out.ids.push(id),
+            (None, Some(id)) if seen.insert(id) => out.library.push(id),
+            (Some(_), _) | (None, Some(_)) => {}
+            (None, None) => out.missing.push(word.to_string()),
         }
     }
     out
@@ -37,8 +40,22 @@ pub fn find(m: &Model, text: &str) -> Found {
 
 /// The element `word` names: an id, a GUID, or an IFC GlobalId.
 pub fn one(m: &Model, word: &str) -> Option<Id> {
+    m.elements.id(guid_of(word)?)
+}
+
+/// The library entry `word` names: its id, its GUID, or that GUID as an IFC GlobalId.
+pub fn library(m: &Model, word: &str) -> Option<Id> {
+    let g = guid_of(word)?;
+    match g.pending() {
+        Some(id) => m.library.get(id).map(|_| id),
+        None => m.library.by_guid(g).map(|(id, _)| id),
+    }
+}
+
+/// The GUID `word` is, however written, or the id it is (a pending GUID).
+fn guid_of(word: &str) -> Option<Guid> {
     let word = word.trim().trim_matches(|c| matches!(c, '"' | '\''));
-    let guid = Guid::parse(word)
+    Guid::parse(word)
         .or_else(|| {
             // A GUID without its dashes: 32 hex digits.
             (word.len() == 32 && word.bytes().all(|b| b.is_ascii_hexdigit()))
@@ -46,8 +63,7 @@ pub fn one(m: &Model, word: &str) -> Option<Id> {
                 .flatten()
                 .map(Guid::from_u128)
         })
-        .or_else(|| crate::ifc::expand(word).map(Guid::from_u128))?;
-    m.elements.id(guid)
+        .or_else(|| crate::ifc::expand(word).map(Guid::from_u128))
 }
 
 /// What names element `id`: its id, its GUID, its IFC GlobalId; and what it is, its category and what it is called.
@@ -56,16 +72,21 @@ pub struct Names {
     pub id: Id,
     pub guid: Guid,
     pub ifc: String,
-    pub category: &'static str,
+    /// The element's category, or what the library entry is (`material`, `wall type`).
+    pub category: String,
     pub name: String,
 }
 
 pub fn names(m: &Model, id: Id) -> Option<Names> {
+    if let Some(e) = m.library.get(id) {
+        let ifc = crate::ifc::compress(e.guid.as_u128());
+        return Some(Names { id, guid: e.guid, ifc, category: e.kind.label(), name: e.name.clone() });
+    }
     let e = m.elements.get(id)?;
     let guid = m.elements.guid(id)?;
     let j = crate::element_json(m, id);
     let name = ["name", "type", "number", "mark", "text"].iter().find_map(|k| j[*k].as_str().filter(|s| !s.is_empty())).unwrap_or_default();
-    Some(Names { id, guid, ifc: crate::ifc::compress(guid.as_u128()), category: e.category(), name: name.to_string() })
+    Some(Names { id, guid, ifc: crate::ifc::compress(guid.as_u128()), category: e.category().to_string(), name: name.to_string() })
 }
 
 /// The plan to show elements `ids` in, and the rectangle they take in it, south-west corner then north-east: the plan of the
@@ -127,7 +148,7 @@ mod tests {
         let text = format!("{}, {g};{}\n{}  nowhere 100099 {}", walls[3], walls[0], walls[3], walls[2]);
         assert_eq!(
             find(&s.model, &text),
-            Found { ids: vec![walls[3], walls[2], walls[0]], missing: vec!["nowhere".into(), "100099".into()] }
+            Found { ids: vec![walls[3], walls[2], walls[0]], library: Vec::new(), missing: vec!["nowhere".into(), "100099".into()] }
         );
         assert_eq!(find(&s.model, " \n,, ;"), Found::default());
         // A hostile list: long, and of many names, is cut short, never a hang or a panic.
@@ -142,7 +163,7 @@ mod tests {
     fn an_element_is_named_by_its_id_guid_and_ifc_globalid() {
         let (s, walls) = house();
         let n = names(&s.model, walls[0]).unwrap();
-        assert_eq!((n.id, n.guid, n.category, n.name.as_str()), (walls[0], s.model.guid(walls[0]), "wall", "Generic - 200mm"));
+        assert_eq!((n.id, n.guid, n.category.as_str(), n.name.as_str()), (walls[0], s.model.guid(walls[0]), "wall", "Generic - 200mm"));
         assert_eq!(n.ifc.len(), 22);
         assert_eq!(crate::ifc::expand(&n.ifc), Some(n.guid.as_u128()));
         assert_eq!(names(&s.model, 100_000).unwrap().name, "Level 1");

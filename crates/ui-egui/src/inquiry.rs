@@ -68,6 +68,17 @@ impl BimApp {
     /// to it. What it found, and what named nothing, in the status box.
     pub(crate) fn select_named(&mut self, text: &str, add: bool, show: bool) {
         let found = inquiry::find(&self.session.model, text);
+        // What the library has (a type, a material) is no element to select: said by what it is and its name.
+        let library: Vec<String> = found
+            .library
+            .iter()
+            .filter_map(|id| inquiry::names(&self.session.model, *id))
+            .map(|n| format!("{} {} ({})", t(&n.category), n.name, n.id))
+            .collect();
+        if found.ids.is_empty() && !library.is_empty() {
+            self.status = Status { text: tf("In the library, not elements to select: {}", &[&library.join(", ")]), error: false };
+            return;
+        }
         if found.ids.is_empty() {
             let text = if found.missing.is_empty() {
                 t("Type or paste an ID, a GUID or an IFC GlobalId.").to_string()
@@ -100,6 +111,7 @@ impl BimApp {
         let Some(d) = self.select_by_id.as_mut() else { return };
         let (mut ok, mut close) = (false, false);
         let found = inquiry::find(&self.session.model, &d.text);
+        let any = !found.ids.is_empty() || !found.library.is_empty();
         let r = Modal::new(UiId::new("select-by-id")).show(ctx, |ui| {
             ui.set_width(440.0);
             ui.label(RichText::new(t("Select by ID")).heading());
@@ -112,6 +124,7 @@ impl BimApp {
             edit.labelled_by(label.id);
             // What it finds as it's typed.
             let summary = match (found.ids.len(), found.missing.is_empty()) {
+                (0, true) if !found.library.is_empty() => tf("Finds {} in the library, not elements.", &[&found.library.len().to_string()]),
                 (0, true) => String::new(),
                 (n, true) => tf("Finds {}.", &[&n.to_string()]),
                 (n, false) => tf("Finds {}; nothing has these: {}", &[&n.to_string(), &found.missing.join(", ")]),
@@ -122,9 +135,9 @@ impl BimApp {
             ui.add_space(8.0);
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                 close = ui.button(t("Cancel")).clicked();
-                ok = ui.add_enabled(!found.ids.is_empty(), Button::new(t("OK"))).clicked();
+                ok = ui.add_enabled(any, Button::new(t("OK"))).clicked();
             });
-            ok |= !found.ids.is_empty() && ui.input(|i| i.key_pressed(egui::Key::Enter) && i.modifiers.command);
+            ok |= any && ui.input(|i| i.key_pressed(egui::Key::Enter) && i.modifiers.command);
         });
         if ok && let Some(d) = self.select_by_id.take() {
             self.select_named(&d.text, d.add, d.show);
@@ -148,7 +161,7 @@ impl BimApp {
                     }
                     ui.end_row();
                     for n in &d.rows {
-                        ui.label(category(n.category, false));
+                        ui.label(category(&n.category, false));
                         ui.label(&n.name);
                         // Each name selectable, to copy a part of it.
                         ui.add(Label::new(RichText::new(n.id.to_string()).monospace()).selectable(true));
@@ -156,7 +169,7 @@ impl BimApp {
                         ui.add(Label::new(RichText::new(&n.ifc).monospace()).selectable(true));
                         if ui.button(t("Copy")).on_hover_text(t("Copy its ID, GUID and IFC GlobalId")).clicked() {
                             let text = format!("{}\t{}\t{}", n.id, n.guid, n.ifc);
-                            copy = Some((text, tf("Copied the names of {} {}.", &[&category(n.category, false), &n.id.to_string()])));
+                            copy = Some((text, tf("Copied the names of {} {}.", &[&category(&n.category, false), &n.id.to_string()])));
                         }
                         ui.end_row();
                     }

@@ -2,11 +2,14 @@
 //! that this project hasn't. An element keeps its id where this project has none of it, else gets the next; it keeps its
 //! GUID, unless this project has an element of that GUID already (the same project inserted into itself, or a copy of it),
 //! when it is a copy, and a copy is a new element with a new GUID. What the inserted elements point at among themselves
-//! follows them; what they point at that this project has (by GUID, or a level of the same name) they point at here.
+//! follows them; what they point at that this project has (by GUID, or a level of the same name) they point at here. The
+//! library they use comes as they do: a type, a material, a family this project has by GUID is its own, whatever it's
+//! called here; one it has only by name is this project's; one it hasn't comes in, with its GUID.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::graphics;
+use crate::library::{Entry, Kind};
 use crate::model::{Element, Guid, Id, Model};
 use crate::phasing;
 
@@ -17,7 +20,7 @@ pub struct Inserted {
     pub ids: BTreeMap<Id, Id>,
     /// The elements here that are copies, with a GUID of their own, because this project had theirs.
     pub copies: Vec<Id>,
-    /// The types, families, materials, pictures and parameters brought in by name, as `category: name`.
+    /// The types, families, materials, pictures and parameters brought in, each with its GUID, as `what: name`.
     pub library: Vec<String>,
     /// What was left off an element, and why.
     pub left_out: Vec<String>,
@@ -64,7 +67,7 @@ pub fn insert(to: &mut Model, from: &Model, ids: &[Id]) -> Result<Inserted, Stri
             instead.insert(g, fresh);
         }
     }
-    bring_library(to, from, &take, &mut out);
+    let renames = bring_library(to, from, &take, &mut out)?;
     let mut names = Names::of(to);
     for &id in &take {
         let (Some(e), Some(g)) = (from.elements.get(id), from.elements.guid(id)) else { continue };
@@ -75,8 +78,14 @@ pub fn insert(to: &mut Model, from: &Model, ids: &[Id]) -> Result<Inserted, Stri
             }
         });
         names.free(&mut e);
+        e.lib_refs_mut(&mut |kind, name| {
+            if let Some(n) = renames.get(&(kind.clone(), name.clone())) {
+                *name = n.clone();
+            }
+        });
         let left = phasing_here(to, &mut e);
-        let new = if to.elements.contains_key(id) || id < crate::model::FIRST_ID { to.fresh_id() } else { id };
+        let taken = to.elements.contains_key(id) || to.library.get(id).is_some();
+        let new = if taken || id < crate::model::FIRST_ID { to.fresh_id() } else { id };
         let guid = instead.get(&g).copied().unwrap_or(g);
         to.elements.insert_as(new, guid, e)?;
         to.next_id = to.next_id.max(new + 1);
@@ -96,39 +105,94 @@ fn needs(e: &Element) -> Vec<Guid> {
     e.refs().into_iter().filter(|g| !overridden.contains(g)).collect()
 }
 
-/// The types, families, materials, pictures and project parameters `from` has that `to` hasn't, by name: those the elements
-/// `take` need come along. (Types and the rest are named, not numbered, so far: a name this project has is its own.)
-fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut Inserted) {
-    fn missing<T: Clone>(to: &mut BTreeMap<String, T>, from: &BTreeMap<String, T>, what: &str, out: &mut Inserted) {
-        for (n, v) in from {
-            if !to.contains_key(n) {
-                to.insert(n.clone(), v.clone());
-                out.library.push(format!("{what}: {n}"));
+/// The names each library entry `from` names goes by here, where they differ: `(kind, name there)` to the name here.
+type Renames = HashMap<(Kind, String), String>;
+
+/// The library entries of `from` that `to` hasn't: types, materials, pictures, families and project parameters come along,
+/// each with its GUID. An entry this project has by GUID is its own, under the name it has here (the names in what comes in
+/// follow); one it has by name, with another GUID, is this project's. What comes in names entries by the names returned.
+fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut Inserted) -> Result<Renames, String> {
+    let mut renames = Renames::new();
+    if take.is_empty() {
+        return Ok(renames);
+    }
+    let mut copied = Vec::new();
+    for (_, e) in from.library.entries() {
+        if let Some((_, here)) = to.library.by_guid(e.guid) {
+            if here.kind == e.kind && here.name != e.name {
+                renames.insert((e.kind.clone(), e.name.clone()), here.name.clone());
             }
+            continue;
+        }
+        if to.library.id(&e.kind, &e.name).is_some() || !copy_definition(to, from, &e.kind, &e.name) {
+            continue;
+        }
+        let id = to.fresh_library_id();
+        to.library.insert(id, Entry { kind: e.kind.clone(), name: e.name.clone(), guid: e.guid })?;
+        out.library.push(format!("{}: {}", e.kind.label(), e.name));
+        copied.push((e.kind.clone(), e.name.clone()));
+    }
+    // What came in names the materials and pictures it's made of as this project does.
+    let here = |kind: &Kind, name: &mut String| {
+        if let Some(n) = renames.get(&(kind.clone(), name.clone())) {
+            *name = n.clone();
+        }
+    };
+    for (kind, name) in copied {
+        match kind {
+            Kind::Material => {
+                if let Some(t) = to.materials.get_mut(&name).and_then(|m| m.texture.as_mut()) {
+                    here(&Kind::Picture, &mut t.image);
+                }
+            }
+            Kind::Type(c) => {
+                let t = &mut to.types;
+                let layers = match c.as_str() {
+                    "wall" => t.wall.get_mut(&name).map(|x| &mut x.layers),
+                    "floor" => t.floor.get_mut(&name).map(|x| &mut x.layers),
+                    "roof" => t.roof.get_mut(&name).map(|x| &mut x.layers),
+                    "ceiling" => t.ceiling.get_mut(&name).map(|x| &mut x.layers),
+                    _ => None,
+                };
+                for l in layers.into_iter().flatten() {
+                    here(&Kind::Material, &mut l.material);
+                }
+                if let Some(r) = t.runs.get_mut(&c).and_then(|r| r.get_mut(&name)) {
+                    here(&Kind::Material, &mut r.material);
+                }
+            }
+            _ => {}
         }
     }
-    if take.is_empty() {
-        return;
+    Ok(renames)
+}
+
+/// Entry `kind` `name` of `from`, put in `to` as it is there: whether it was one to put.
+fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> bool {
+    fn one<T: Clone>(to: &mut BTreeMap<String, T>, from: Option<&BTreeMap<String, T>>, name: &str) -> bool {
+        from.and_then(|f| f.get(name)).map(|v| to.insert(name.to_string(), v.clone())).is_some()
     }
-    let t = &mut to.types;
-    let f = &from.types;
-    missing(&mut t.wall, &f.wall, "wall type", out);
-    missing(&mut t.floor, &f.floor, "floor type", out);
-    missing(&mut t.ceiling, &f.ceiling, "ceiling type", out);
-    missing(&mut t.roof, &f.roof, "roof type", out);
-    missing(&mut t.door, &f.door, "door type", out);
-    missing(&mut t.window, &f.window, "window type", out);
-    missing(&mut t.column, &f.column, "column type", out);
-    missing(&mut t.structural_column, &f.structural_column, "structural column type", out);
-    missing(&mut t.footing, &f.footing, "footing type", out);
-    missing(&mut t.railing, &f.railing, "railing type", out);
-    for (cat, types) in &f.runs {
-        missing(t.runs.entry(cat.clone()).or_default(), types, &format!("{cat} type"), out);
+    let (t, f) = (&mut to.types, &from.types);
+    match kind {
+        Kind::Type(c) => match c.as_str() {
+            "wall" => one(&mut t.wall, Some(&f.wall), name),
+            "floor" => one(&mut t.floor, Some(&f.floor), name),
+            "ceiling" => one(&mut t.ceiling, Some(&f.ceiling), name),
+            "roof" => one(&mut t.roof, Some(&f.roof), name),
+            "door" => one(&mut t.door, Some(&f.door), name),
+            "window" => one(&mut t.window, Some(&f.window), name),
+            "column" => one(&mut t.column, Some(&f.column), name),
+            "structuralcolumn" => one(&mut t.structural_column, Some(&f.structural_column), name),
+            "footing" => one(&mut t.footing, Some(&f.footing), name),
+            "railing" => one(&mut t.railing, Some(&f.railing), name),
+            run => one(t.runs.entry(run.to_string()).or_default(), f.runs.get(run), name),
+        },
+        Kind::Material => one(&mut to.materials, Some(&from.materials), name),
+        Kind::Picture => one(&mut to.images, Some(&from.images), name),
+        Kind::Family => one(&mut to.families, Some(&from.families), name),
+        Kind::Parameter => one(&mut to.parameters, Some(&from.parameters), name),
+        _ => false,
     }
-    missing(&mut to.materials, &from.materials, "material", out);
-    missing(&mut to.images, &from.images, "picture", out);
-    missing(&mut to.families, &from.families, "family", out);
-    missing(&mut to.parameters, &from.parameters, "parameter", out);
 }
 
 /// The phases and the design option `e` holds that this project hasn't, taken off it: it is made in the first phase, in no

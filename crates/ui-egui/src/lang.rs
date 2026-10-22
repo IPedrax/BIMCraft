@@ -2061,6 +2061,22 @@ const WORDS: &[[&str; 3]] = &[
     ["Copied {} IDs.", "{} IDs copiados.", "{} ID copiados."],
     ["Copied {} GUIDs.", "{} GUIDs copiados.", "{} GUID copiados."],
     ["Copied {} IFC GlobalIds.", "{} GlobalIds IFC copiados.", "{} GlobalId IFC copiados."],
+    ["material", "material", "material"],
+    ["picture", "imagem", "imagen"],
+    ["family", "família", "familia"],
+    ["parameter", "parâmetro", "parámetro"],
+    ["view filter", "filtro de vista", "filtro de vista"],
+    ["view template", "modelo de vista", "plantilla de vista"],
+    ["phase", "fase", "fase"],
+    ["phase filter", "filtro de fase", "filtro de fase"],
+    ["design option set", "conjunto de opções de projeto", "conjunto de opciones de diseño"],
+    ["design option", "opção de projeto", "opción de diseño"],
+    [
+        "In the library, not elements to select: {}",
+        "Na biblioteca, não elementos a selecionar: {}",
+        "En la biblioteca, no elementos que seleccionar: {}",
+    ],
+    ["Finds {} in the library, not elements.", "Encontra {} na biblioteca, não elementos.", "Encuentra {} en la biblioteca, no elementos."],
     ["Copied {} rows, tab-separated.", "{} linhas copiadas, separadas por tabulação.", "{} filas copiadas, separadas por tabulación."],
 ];
 
