@@ -2249,6 +2249,10 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
                     .min_by(|a, b| a.1.0.dist(r.flat(first)).total_cmp(&b.1.0.dist(r.flat(first))));
                 let Some((side, (_, z))) = side else { continue };
                 let h = first[2] - z;
+                if !h.is_finite() || h <= 0.0 || h > MAX_COORD {
+                    leave(&mut skipped, &mut seen, id, "its railing height cannot be measured above its host");
+                    continue;
+                }
                 let base = named.clone().unwrap_or_else(|| format!("Imported - {}mm", num(h)));
                 Railing {
                     type_name: kind(&mut m.types.railing, &base, |t| (t.height - h).abs() < 0.5, RailingType { height: h, spacing: 0.0 }),
@@ -2259,6 +2263,10 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
                 let pts: Vec<P3> = r.body(x).into_iter().flatten().collect();
                 let span = span(pts.iter().map(|p| p[2])).map_or(0.0, |(lo, hi)| hi - lo);
                 let h = named.as_ref().and_then(|n| m.types.railing.get(n)).map_or(span, |t| t.height);
+                if !h.is_finite() || h <= 0.0 || h > MAX_COORD {
+                    leave(&mut skipped, &mut seen, id, "its railing height cannot be measured from its body");
+                    continue;
+                }
                 let base = named.clone().unwrap_or_else(|| format!("Imported - {}mm", num(h)));
                 let type_name = kind(&mut m.types.railing, &base, |t| (t.height - h).abs() < 0.5, RailingType { height: h, spacing: 0.0 });
                 let level = level_for(id, first[2] - h);
@@ -2949,6 +2957,19 @@ ENDSEC;END-ISO-10303-21;"
 
     fn only<'a>(m: &'a Model, cat: &str) -> Vec<&'a Element> {
         m.elements.values().filter(|e| e.category() == cat).collect()
+    }
+
+    #[test]
+    fn an_unmeasurable_railing_does_not_poison_the_whole_import() {
+        let original = meshes("0.,0.,0.");
+        let extra = "#70=IFCCARTESIANPOINT((0.,0.,0.));\n#71=IFCCARTESIANPOINT((5000.,0.,0.));\n#72=IFCPOLYLINE((#70,#71));\n#73=IFCSHAPEREPRESENTATION($,'Axis','Curve3D',(#72));\n#74=IFCPRODUCTDEFINITIONSHAPE($,$,(#73));\n#75=IFCRAILING('rail',$,'Unmeasurable rail',$,$,#6,#74,$,$);\n";
+        let text =
+            original.replace("(#19,#41)", "(#19,#41,#75)").replace("ENDSEC;END-ISO-10303-21;", &format!("{extra}ENDSEC;END-ISO-10303-21;"));
+        let imported = ifc(text.as_bytes(), "Synthetic").unwrap();
+        imported.model.check().unwrap();
+        assert_eq!(only(&imported.model, "wall").len(), 1);
+        assert_eq!(only(&imported.model, "railing").len(), 0);
+        assert!(imported.skipped.iter().any(|s| s.contains("railing height")), "{:?}", imported.skipped);
     }
 
     #[test]

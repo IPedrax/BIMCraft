@@ -5270,3 +5270,49 @@ fn ids_of_selection_shows_each_ones_id_guid_and_ifc_globalid_and_copies_them() {
     press(&mut h, "Close");
     assert!(h.query_by_label("Copy All").is_none());
 }
+
+#[test]
+fn plan_cache_reuses_drawings_and_invalidates_geometry_view_and_ceiling() {
+    let mut s = Session::new();
+    s.script(BOX).unwrap();
+    let level = s.model.levels()[0].0;
+    let view = bimcraft_core::render::plan(&s.model, level, 800, 600).view;
+    let mut cache = crate::canvas::PlanCache::default();
+    let first = cache.drawing(&s.model, level, view, false);
+    let again = cache.drawing(&s.model, level, view, false);
+    assert!(Arc::ptr_eq(&first, &again), "idle and pointer-only frames reuse geometry");
+    let zoom = cache.drawing(&s.model, level, bimcraft_core::render::View { scale: view.scale * 2.0, ..view }, false);
+    assert!(!Arc::ptr_eq(&first, &zoom));
+    let ceiling = cache.drawing(&s.model, level, view, true);
+    assert!(!Arc::ptr_eq(&first, &ceiling));
+    s.execute("wall", &json!({"points": [[2000, 0], [2000, 6000]]})).unwrap();
+    let changed = cache.drawing(&s.model, level, view, false);
+    assert!(!Arc::ptr_eq(&first, &changed));
+    assert_ne!(first.prims.len(), changed.prims.len());
+    s.execute("undo", &json!({})).unwrap();
+    let undone = cache.drawing(&s.model, level, view, false);
+    assert!(!Arc::ptr_eq(&changed, &undone));
+    assert_eq!(first.prims.len(), undone.prims.len());
+    let other = s.model.levels()[1].0;
+    let upper = cache.drawing(&s.model, other, view, false);
+    assert!(!Arc::ptr_eq(&undone, &upper));
+}
+
+#[test]
+fn experimental_gpu_is_opt_in_persists_and_survives_new_projects() {
+    let dir=tempfile::tempdir().unwrap(); let path=dir.path().join("settings.json");
+    let mut h=app(BOX); h.state_mut().use_settings(path.clone());
+    assert!(!h.state().gpu.enabled);
+    press(&mut h,"Settings"); press(&mut h,"Experimental");
+    assert!(h.query_by_label("GPU-accelerated 3D viewport").is_some());
+    press(&mut h,"GPU-accelerated 3D viewport");
+    assert!(h.state().gpu.enabled); press(&mut h,"Close");
+    let kept:Value=serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(kept["experimental_gpu"],true);
+    let mut again=app(BOX); again.state_mut().use_settings(path);
+    assert!(again.state().gpu.enabled);
+    again.state_mut().session.execute("new",&json!({})).unwrap(); again.state_mut().reopened();
+    assert!(again.state().gpu.enabled);
+    again.state_mut().sheet=Sheet::View3D; again.run();
+    assert!(again.state().orbit.camera.is_some(),"missing GPU context retains the CPU viewport");
+}

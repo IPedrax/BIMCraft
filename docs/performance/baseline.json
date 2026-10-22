@@ -1,0 +1,467 @@
+{
+  "recorded": "2026-10-22",
+  "hardware": {
+    "cpu": "AMD Ryzen 7 2700X",
+    "logical_cpus": 16,
+    "render_workers": 8,
+    "os": "Linux-7.2.9-201.fc44.x86_64-x86_64-with-glibc2.43",
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+  },
+  "fixture": {
+    "name": "original synthetic highrise",
+    "storeys": 20,
+    "elements": 9521,
+    "resolution": [
+      1280,
+      720
+    ]
+  },
+  "method": "Release builds; three alternating before/after runs after all compilation and correctness tests finished; nine changing-camera frames and nine edits per run; medians across runs.",
+  "before": {
+    "ms": {
+      "check": 87.468272,
+      "edit_median": 96.423347,
+      "frame_median": 328.363073,
+      "inspect_command": 0.5533899999999999,
+      "load": 2589.879832,
+      "native_serialize": 23.979339,
+      "plan_fit_draw": 612.275032,
+      "plan_png": 12.297908999999999,
+      "plan_redraw": 344.423305,
+      "scene_build": 1001.9919749999999
+    }
+  },
+  "after": {
+    "ms": {
+      "check": 87.662788,
+      "edit_median": 94.269378,
+      "frame_median": 137.390953,
+      "inspect_command": 0.537761,
+      "load": 2534.6439539999997,
+      "native_serialize": 25.005257999999998,
+      "plan_fit_draw": 13.735952,
+      "plan_png": 13.007022,
+      "plan_redraw": 6.746793,
+      "scene_build": 311.751775
+    }
+  },
+  "raw_runs": {
+    "before": [
+      {
+        "counts": {
+          "beam": 2200,
+          "ceiling": 20,
+          "component": 4800,
+          "floor": 20,
+          "level": 21,
+          "structuralcolumn": 1260,
+          "wall": 640,
+          "window": 560
+        },
+        "edit_samples_ms": [
+          93.896377,
+          95.764168,
+          96.04736,
+          96.205678,
+          96.423347,
+          96.508948,
+          96.845551,
+          97.104218,
+          102.286329
+        ],
+        "elements": 9521,
+        "fixture": "synthetic-highrise",
+        "frame_samples_ms": [
+          310.439809,
+          325.343898,
+          326.33149299999997,
+          327.927965,
+          328.363073,
+          329.017694,
+          336.265359,
+          336.324841,
+          351.284855
+        ],
+        "logical_cpus": 16,
+        "ms": {
+          "check": 95.120859,
+          "edit_median": 96.423347,
+          "frame_median": 328.363073,
+          "inspect_command": 0.5533899999999999,
+          "load": 2589.879832,
+          "native_serialize": 24.321031,
+          "plan_fit_draw": 612.275032,
+          "plan_png": 13.156363,
+          "plan_redraw": 344.423305,
+          "scene_build": 1011.3644340000001
+        },
+        "native_bytes": 3668778,
+        "plan_primitives": 3349,
+        "resolution": [
+          1280,
+          720
+        ],
+        "version": "0.6.1"
+      },
+      {
+        "counts": {
+          "beam": 2200,
+          "ceiling": 20,
+          "component": 4800,
+          "floor": 20,
+          "level": 21,
+          "structuralcolumn": 1260,
+          "wall": 640,
+          "window": 560
+        },
+        "edit_samples_ms": [
+          92.27035000000001,
+          92.288334,
+          92.853165,
+          92.988871,
+          93.77358600000001,
+          93.957392,
+          94.230555,
+          94.420322,
+          97.119596
+        ],
+        "elements": 9521,
+        "fixture": "synthetic-highrise",
+        "frame_samples_ms": [
+          312.061157,
+          328.555154,
+          329.11942500000004,
+          333.817968,
+          334.28537600000004,
+          334.49506099999996,
+          336.065634,
+          336.083097,
+          343.41507
+        ],
+        "logical_cpus": 16,
+        "ms": {
+          "check": 86.226508,
+          "edit_median": 93.77358600000001,
+          "frame_median": 334.28537600000004,
+          "inspect_command": 0.523394,
+          "load": 2523.2506049999997,
+          "native_serialize": 23.979339,
+          "plan_fit_draw": 616.835937,
+          "plan_png": 11.948813000000001,
+          "plan_redraw": 357.484619,
+          "scene_build": 992.077006
+        },
+        "native_bytes": 3668778,
+        "plan_primitives": 3349,
+        "resolution": [
+          1280,
+          720
+        ],
+        "version": "0.6.1"
+      },
+      {
+        "counts": {
+          "beam": 2200,
+          "ceiling": 20,
+          "component": 4800,
+          "floor": 20,
+          "level": 21,
+          "structuralcolumn": 1260,
+          "wall": 640,
+          "window": 560
+        },
+        "edit_samples_ms": [
+          93.120087,
+          94.303282,
+          95.143983,
+          96.65876,
+          96.687785,
+          97.16407000000001,
+          97.742547,
+          97.99567300000001,
+          104.226507
+        ],
+        "elements": 9521,
+        "fixture": "synthetic-highrise",
+        "frame_samples_ms": [
+          314.251465,
+          315.15594600000003,
+          318.09931800000004,
+          318.19248300000004,
+          320.966449,
+          321.179038,
+          322.269699,
+          329.93518900000004,
+          348.032349
+        ],
+        "logical_cpus": 16,
+        "ms": {
+          "check": 87.468272,
+          "edit_median": 96.687785,
+          "frame_median": 320.966449,
+          "inspect_command": 0.942893,
+          "load": 2629.1194290000003,
+          "native_serialize": 23.330419000000003,
+          "plan_fit_draw": 599.673783,
+          "plan_png": 12.297908999999999,
+          "plan_redraw": 343.000841,
+          "scene_build": 1001.9919749999999
+        },
+        "native_bytes": 3668777,
+        "plan_primitives": 3349,
+        "resolution": [
+          1280,
+          720
+        ],
+        "version": "0.6.1"
+      }
+    ],
+    "after": [
+      {
+        "counts": {
+          "beam": 2200,
+          "ceiling": 20,
+          "component": 4800,
+          "floor": 20,
+          "level": 21,
+          "structuralcolumn": 1260,
+          "wall": 640,
+          "window": 560
+        },
+        "edit_samples_ms": [
+          92.937995,
+          93.10518900000001,
+          93.329662,
+          94.022825,
+          94.099709,
+          94.213042,
+          94.67904800000001,
+          95.682113,
+          98.210206
+        ],
+        "elements": 9521,
+        "fixture": "synthetic-highrise",
+        "frame_samples_ms": [
+          132.815231,
+          133.284413,
+          134.476403,
+          135.451677,
+          136.840959,
+          140.674185,
+          143.541435,
+          143.78080500000002,
+          144.708429
+        ],
+        "logical_cpus": 16,
+        "ms": {
+          "check": 87.662788,
+          "edit_median": 94.099709,
+          "frame_median": 136.840959,
+          "inspect_command": 0.537761,
+          "load": 2534.6439539999997,
+          "native_serialize": 24.968768999999998,
+          "plan_fit_draw": 13.735952,
+          "plan_png": 12.174316,
+          "plan_redraw": 5.878692,
+          "scene_build": 311.751775
+        },
+        "native_bytes": 3668777,
+        "plan_primitives": 3349,
+        "resolution": [
+          1280,
+          720
+        ],
+        "version": "0.6.1"
+      },
+      {
+        "counts": {
+          "beam": 2200,
+          "ceiling": 20,
+          "component": 4800,
+          "floor": 20,
+          "level": 21,
+          "structuralcolumn": 1260,
+          "wall": 640,
+          "window": 560
+        },
+        "edit_samples_ms": [
+          92.473001,
+          92.855099,
+          93.23871,
+          94.183015,
+          94.269378,
+          95.191772,
+          95.212932,
+          96.89829,
+          97.761893
+        ],
+        "elements": 9521,
+        "fixture": "synthetic-highrise",
+        "frame_samples_ms": [
+          135.058768,
+          136.74337500000001,
+          138.795333,
+          142.524373,
+          142.820881,
+          142.91904499999998,
+          143.434194,
+          143.801454,
+          156.634248
+        ],
+        "logical_cpus": 16,
+        "ms": {
+          "check": 87.458985,
+          "edit_median": 94.269378,
+          "frame_median": 142.820881,
+          "inspect_command": 0.527983,
+          "load": 2527.961622,
+          "native_serialize": 25.168875,
+          "plan_fit_draw": 12.991283,
+          "plan_png": 13.701969,
+          "plan_redraw": 7.629843,
+          "scene_build": 313.618474
+        },
+        "native_bytes": 3668777,
+        "plan_primitives": 3349,
+        "resolution": [
+          1280,
+          720
+        ],
+        "version": "0.6.1"
+      },
+      {
+        "counts": {
+          "beam": 2200,
+          "ceiling": 20,
+          "component": 4800,
+          "floor": 20,
+          "level": 21,
+          "structuralcolumn": 1260,
+          "wall": 640,
+          "window": 560
+        },
+        "edit_samples_ms": [
+          94.247888,
+          94.35046,
+          95.048152,
+          95.477509,
+          97.668508,
+          98.692954,
+          101.952692,
+          102.04213,
+          104.15368
+        ],
+        "elements": 9521,
+        "fixture": "synthetic-highrise",
+        "frame_samples_ms": [
+          128.552968,
+          134.062074,
+          136.706666,
+          137.297106,
+          137.390953,
+          138.608352,
+          145.01264,
+          149.09053699999998,
+          153.692358
+        ],
+        "logical_cpus": 16,
+        "ms": {
+          "check": 89.834059,
+          "edit_median": 97.668508,
+          "frame_median": 137.390953,
+          "inspect_command": 0.5694899999999999,
+          "load": 2572.743168,
+          "native_serialize": 25.005257999999998,
+          "plan_fit_draw": 14.33513,
+          "plan_png": 13.007022,
+          "plan_redraw": 6.746793,
+          "scene_build": 309.793734
+        },
+        "native_bytes": 3668777,
+        "plan_primitives": 3349,
+        "resolution": [
+          1280,
+          720
+        ],
+        "version": "0.6.1"
+      }
+    ]
+  },
+  "verification": {
+    "workspace_tests": 850,
+    "ifc_express_validation_statements": 0,
+    "plan_png_sha256": "474f6f34255594689698e575b53772300905c6d5f15c35fe14b19fb20849aeca",
+    "view3d_png_sha256": "9ba9064ed9b2e4a6769a7529f384669bc2b2dc07ba0cb8f717732762b0824d3f",
+    "same_pngs_before_and_after": true
+  },
+  "ui_after": {
+    "fixture": "synthetic-highrise",
+    "ms": {
+      "3d_hover_max": 139.119352,
+      "3d_hover_median": 1.914099,
+      "3d_hover_p95": 129.353954,
+      "3d_idle_max": 2.255008,
+      "3d_idle_median": 1.432032,
+      "3d_idle_p95": 1.698864,
+      "plan_hover_max": 3.255491,
+      "plan_hover_median": 2.263424,
+      "plan_hover_p95": 2.794794,
+      "plan_idle_max": 2.45213,
+      "plan_idle_median": 1.9823169999999999,
+      "plan_idle_p95": 2.25523
+    },
+    "resolution": [
+      1280,
+      800
+    ]
+  },
+  "scaling_80_diagnostic": {
+    "counts": {
+      "beam": 8800,
+      "ceiling": 80,
+      "component": 19200,
+      "floor": 80,
+      "level": 81,
+      "structuralcolumn": 5040,
+      "wall": 2560,
+      "window": 2240
+    },
+    "edit_samples_ms": [
+      367.669867,
+      368.039822,
+      376.47634200000005,
+      413.617975,
+      431.874866
+    ],
+    "elements": 38081,
+    "fixture": "synthetic-highrise",
+    "frame_samples_ms": [
+      368.320559,
+      374.00215999999995,
+      380.064858,
+      392.67868,
+      407.19383799999997
+    ],
+    "logical_cpus": 16,
+    "ms": {
+      "check": 410.784899,
+      "edit_median": 376.47634200000005,
+      "frame_median": 380.064858,
+      "inspect_command": 4.9864239999999995,
+      "load": 3088.850693,
+      "native_serialize": 107.187653,
+      "plan_fit_draw": 43.754795,
+      "plan_png": 12.114754,
+      "plan_redraw": 26.855416,
+      "scene_build": 1233.970995
+    },
+    "native_bytes": 14239091,
+    "plan_primitives": 3349,
+    "resolution": [
+      1280,
+      720
+    ],
+    "version": "0.6.1"
+  },
+  "scaling_note": "80-storey probe ran during the correctness sweep; not an idle-machine baseline."
+}

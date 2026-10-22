@@ -1,6 +1,9 @@
 //! A small single-storey house built from commands: the demo (`bimcraft-cli run --sample`) and
 //! a test of the whole command set.
 
+mod highrise;
+pub use highrise::highrise;
+
 pub const SAMPLE: &str = r#"# Sample house: 10 x 7 m, four rooms under a hipped roof and their ceilings, furnished, dimensioned and tagged, with elevations, a section, and three sheets.
 new {"name": "Sample House"}
 grid {"start": [0, -1500], "end": [0, 8500]}
@@ -69,3 +72,37 @@ component {"family": "Wardrobe", "type": "1200 x 600", "at": [6050, 4200], "angl
 component {"family": "Desk", "type": "1400 x 700", "at": [9850, 1500], "angle": -90}
 component {"family": "Chair", "at": [8875, 1500], "angle": 90}
 "#;
+
+#[cfg(test)]
+mod tests {
+    use crate::engine::Session;
+    use serde_json::json;
+
+    #[test]
+    fn highrise_is_an_original_valid_twenty_storey_project() {
+        let mut s = Session::new();
+        s.execute("highrise", &json!({})).unwrap();
+        assert_eq!(s.model.levels().len(), 21);
+        assert!((9_000..11_000).contains(&s.model.elements.len()));
+        s.model.check().unwrap();
+        for category in ["wall", "window", "floor", "ceiling", "structuralcolumn", "beam", "component"] {
+            assert!(s.model.elements.values().any(|e| e.category() == category), "{category}");
+        }
+        let text = s.model.to_json().unwrap();
+        let reopened = crate::model::Model::from_json(&text).unwrap();
+        reopened.check().unwrap();
+        assert_eq!(reopened.elements.len(), s.model.elements.len());
+        assert!(s.path.is_none());
+        assert!(s.history().is_empty());
+    }
+
+    #[test]
+    fn highrise_rejects_unbounded_sizes_without_replacing_the_project() {
+        let mut s = Session::new();
+        let before = s.model.clone();
+        for size in [json!(0), json!(81), json!(-1), json!(1.5), json!("20")] {
+            assert!(s.execute("highrise", &json!({"storeys": size})).is_err());
+            assert!(std::sync::Arc::ptr_eq(&before, &s.model));
+        }
+    }
+}

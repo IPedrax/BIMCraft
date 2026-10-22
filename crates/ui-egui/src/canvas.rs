@@ -5,6 +5,7 @@
 
 use std::cell::Cell;
 use std::collections::BTreeMap;
+use std::sync::{Arc, Weak};
 
 use bimcraft_core::geom::{self, P2};
 use bimcraft_core::model::{
@@ -54,7 +55,33 @@ enum Drag {
     Box((f32, f32)),
 }
 
+/// Geometry does not change when the pointer, selection, tool or theme changes.
+/// Keep one drawing per canvas, bounded to its latest model and framing.
+#[derive(Default, Clone)]
+pub(crate) struct PlanCache {
+    shown: Option<PlanShot>,
+}
+
+type PlanShot = (Weak<Model>, Id, View, bool, Arc<Drawing>);
+
+impl PlanCache {
+    pub(crate) fn drawing(&mut self, model: &Arc<Model>, level: Id, view: View, ceiling: bool) -> Arc<Drawing> {
+        if let Some((m, id, v, up, drawing)) = &self.shown
+            && m.ptr_eq(&Arc::downgrade(model))
+            && *id == level
+            && *v == view
+            && *up == ceiling
+        {
+            return Arc::clone(drawing);
+        }
+        let drawing = Arc::new(if ceiling { render::draw_ceiling(model, level, view) } else { render::draw(model, level, view) });
+        self.shown = Some((Arc::downgrade(model), level, view, ceiling, Arc::clone(&drawing)));
+        drawing
+    }
+}
+
 pub struct Canvas {
+    drawing: PlanCache,
     cams: BTreeMap<Id, Camera>,
     /// Where the plan was last shown, in points.
     rect: Rect,
@@ -89,6 +116,7 @@ pub struct Canvas {
 impl Default for Canvas {
     fn default() -> Canvas {
         Canvas {
+            drawing: PlanCache::default(),
             cams: BTreeMap::new(),
             rect: Rect::ZERO,
             level: None,
@@ -142,7 +170,14 @@ impl Canvas {
     /// A copy for a view drawn as it is, not the active one: its cameras, and nothing a hand is doing (a press, a
     /// release, a drag, a grip), which is the active view's.
     pub(crate) fn at_rest(&self) -> Canvas {
-        Canvas { cams: self.cams.clone(), rect: self.rect, level: self.level, under: self.under.clone(), ..Canvas::default() }
+        Canvas {
+            drawing: self.drawing.clone(),
+            cams: self.cams.clone(),
+            rect: self.rect,
+            level: self.level,
+            under: self.under.clone(),
+            ..Canvas::default()
+        }
     }
 
     /// Whether the primary button came up quickly this frame ([`Canvas::quick_press`]).
@@ -762,8 +797,7 @@ impl BimApp {
         let mods = ui.input(|i| i.modifiers);
         let c = &mut self.canvas;
         c.cursor = local.map(|q| view.mm(q));
-        // ponytail: redraws the whole plan every frame; cache the drawing per model and view if plans grow slow.
-        let d = if up { render::draw_ceiling(&model, level, view) } else { render::draw(&model, level, view) };
+        let d = c.drawing.drawing(&model, level, view, up);
 
         // What's under the cursor; Tab steps through it. (Without the app's input hook, as in
         // tests, egui moved the keyboard to a widget on that Tab: give it back.)

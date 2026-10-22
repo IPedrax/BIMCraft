@@ -183,6 +183,14 @@ https://github.com/user-attachments/assets/46488109-fdc4-4ce5-a6bd-92b3b95af16c
   </tr>
 </table>
 
+## Performance sample
+
+Start an original 20-storey, 9,521-element tower with `bimcraft --highrise`, or generate a native
+file with `bimcraft-cli run --highrise --save highrise.bimcraft`. The script is
+[`samples/highrise.txt`](samples/highrise.txt). See the [performance baseline](docs/performance.md)
+for reproducible core/UI measurements and the remaining optimization work. Private local IFC
+fixtures and their results belong in the ignored `test_model/` folder.
+
 ## Why BIMCraft
 
 - **The workflow you know.** Revit's ribbon, the green contextual Modify tab, the Options Bar, Properties with the Type

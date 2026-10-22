@@ -7,6 +7,9 @@
 
 use std::f64::consts::{PI, TAU};
 
+mod index;
+pub(crate) use index::Index;
+
 use crate::geom::{self, P2};
 use crate::model::{Element, Function, Guid, Id, Layer, Location, Model, TOL, Wall};
 
@@ -221,14 +224,19 @@ fn arm(m: &Model, w: &Wall, at_end: bool, mine: bool) -> Arm {
 /// The walls at wall `id`'s start (or `at_end`, its end), round the node counter-clockwise, its own
 /// among them: those ending there, and a wall it ends on, both ways from where it does. Whether it
 /// ends on one, too.
-fn arms(m: &Model, id: Id, at_end: bool) -> (Vec<Arm>, bool) {
+fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> (Vec<Arm>, bool) {
     let Some(w) = m.wall(id) else { return (Vec::new(), false) };
     let node = if at_end { w.end } else { w.start };
     let mut arms = vec![arm(m, w, at_end, true)];
     let mut through = false;
-    // ponytail: scans every wall per end, O(n²) per drawing; index wall ends if models grow large.
-    for (&other, e) in &m.elements {
-        let Element::Wall(o) = e else { continue };
+    let candidates: Box<dyn Iterator<Item = (Id, &Wall)> + '_> = match index {
+        Some(index) => Box::new(index.neighbours(id).into_iter().filter_map(|id| Some((id, m.wall(id)?)))),
+        None => Box::new(m.elements.iter().filter_map(|(&id, e)| match e {
+            Element::Wall(w) => Some((id, w)),
+            _ => None,
+        })),
+    };
+    for (other, o) in candidates {
         if other == id || !stacked(m, w, o) {
             continue;
         }
@@ -259,8 +267,12 @@ fn arms(m: &Model, id: Id, at_end: bool) -> (Vec<Arm>, bool) {
 /// thickest is thick: past that, the end is square); a wall it ends on stops it at its face. Where
 /// three or more walls meet, the node itself fills between them.
 pub fn cap(m: &Model, id: Id, at_end: bool) -> Vec<P2> {
+    cap_in(m, id, at_end, None)
+}
+
+fn cap_in(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> Vec<P2> {
     let Some(w) = m.wall(id) else { return Vec::new() };
-    let (arms, through) = arms(m, id, at_end);
+    let (arms, through) = arms(m, id, at_end, index);
     let n = arms.len();
     let Some(i) = arms.iter().position(|a| a.mine) else { return Vec::new() };
     let (prev, me, next) = (&arms[(i + n - 1) % n], &arms[i], &arms[(i + 1) % n]);
@@ -286,7 +298,7 @@ pub fn centre_line(m: &Model, id: Id) -> Vec<P2> {
     let axis = Axis::of(w);
     let mut line = axis.points(0.0, axis.length(), centre(m, w));
     for at_end in [false, true] {
-        let (arms, _) = arms(m, id, at_end);
+        let (arms, _) = arms(m, id, at_end, None);
         let Some(me) = arms.iter().find(|a| a.mine) else { continue };
         let reach = 2.0 * arms.iter().map(|a| a.thick).fold(1.0, f64::max);
         let crossing = arms
@@ -304,6 +316,10 @@ pub fn centre_line(m: &Model, id: Id) -> Vec<P2> {
 
 /// Wall `id`'s outline in plan: its start cap, its exterior face, its end cap and its interior face.
 pub fn outline(m: &Model, id: Id) -> Vec<P2> {
+    outline_in(m, id, None)
+}
+
+pub(crate) fn outline_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<P2> {
     let Some(w) = m.wall(id) else { return Vec::new() };
     let axis = Axis::of(w);
     let (ext, int) = faces(m, w);
@@ -312,9 +328,9 @@ pub fn outline(m: &Model, id: Id) -> Vec<P2> {
         let n = pts.len();
         pts.into_iter().skip(1).take(n.saturating_sub(2))
     };
-    let mut ring = cap(m, id, false);
+    let mut ring = cap_in(m, id, false, index);
     ring.extend(between(axis.points(0.0, len, ext)));
-    ring.extend(cap(m, id, true));
+    ring.extend(cap_in(m, id, true, index));
     ring.extend(between(axis.points(len, 0.0, int)));
     ring.dedup_by(|a, b| a.dist(*b) < 1e-6);
     ring
@@ -337,10 +353,14 @@ fn on_cap(axis: &Axis, cap: &[P2], at_end: bool, off: f64) -> P2 {
 /// The lines of wall `id`'s faces and of the boundaries between its layers, exterior first, each
 /// from its start cap to its end cap.
 pub fn layer_lines(m: &Model, id: Id) -> Vec<Vec<P2>> {
+    layer_lines_in(m, id, None)
+}
+
+pub(crate) fn layer_lines_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<Vec<P2>> {
     let Some(w) = m.wall(id) else { return Vec::new() };
     let axis = Axis::of(w);
     let len = axis.length();
-    let (start, end) = (cap(m, id, false), cap(m, id, true));
+    let (start, end) = (cap_in(m, id, false, index), cap_in(m, id, true, index));
     boundaries(m, w)
         .into_iter()
         .map(|off| {
@@ -524,6 +544,7 @@ pub fn heights(m: &Model, w: &Wall) -> (f64, f64) {
 
 /// A part of a wall's solid: a ring in plan, from a bottom plane up to a top one; of a curved wall,
 /// with its centre and its centre line's radius.
+#[derive(Debug, PartialEq)]
 pub struct Prism {
     pub ring: Vec<P2>,
     pub bottom: Plane,
@@ -535,6 +556,10 @@ pub struct Prism {
 /// `openings`) and along an arc into short straight pieces, each piece from its base up to its
 /// top less the openings over it, cut where what it's attached to changes plane.
 pub fn prisms(m: &Model, id: Id, openings: bool) -> Vec<Prism> {
+    prisms_in(m, id, openings, None)
+}
+
+pub(crate) fn prisms_in(m: &Model, id: Id, openings: bool, index: Option<&Index>) -> Vec<Prism> {
     let Some(w) = m.wall(id) else { return Vec::new() };
     let guid = m.guid(id);
     let axis = Axis::of(w);
@@ -542,10 +567,15 @@ pub fn prisms(m: &Model, id: Id, openings: bool) -> Vec<Prism> {
     let len = axis.length();
     let z0 = m.own_base(w);
     // The openings: along the wall, and up it.
-    let holes: Vec<((f64, f64), (f64, f64))> = m
-        .elements
-        .values()
-        .filter(|_| openings)
+    let candidates: Box<dyn Iterator<Item = &Element> + '_> = if !openings {
+        Box::new(std::iter::empty())
+    } else {
+        match index {
+            Some(index) => Box::new(index.openings(guid).iter().filter_map(|id| m.elements.get(*id))),
+            None => Box::new(m.elements.values()),
+        }
+    };
+    let holes: Vec<((f64, f64), (f64, f64))> = candidates
         .filter_map(|e| match e {
             Element::Door(o) | Element::Window(o) if o.host == guid => {
                 let t = m.opening_type(e)?;
@@ -558,7 +588,7 @@ pub fn prisms(m: &Model, id: Id, openings: bool) -> Vec<Prism> {
     cuts.extend(holes.iter().flat_map(|((s0, s1), _)| [*s0, *s1]).filter(|s| *s > 0.0 && *s < len));
     cuts.sort_by(f64::total_cmp);
     cuts.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
-    let (start, end) = (cap(m, id, false), cap(m, id, true));
+    let (start, end) = (cap_in(m, id, false, index), cap_in(m, id, true, index));
     let (base, top) = bounds(m, w);
     let curve = axis.centre().map(|c| (c, axis.at(0.0, (ext + int) / 2.0).dist(c)));
     let mut out = Vec::new();

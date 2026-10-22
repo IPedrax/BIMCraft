@@ -1,0 +1,3 @@
+# Original synthetic office tower. No private project geometry or metadata.
+# 48 x 36 m, twenty 3.6 m storeys, 6 m structural bays; 9,521 elements.
+highrise {"storeys": 20}

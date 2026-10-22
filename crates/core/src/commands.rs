@@ -50,6 +50,7 @@ pub static ALL: &[Command] = &[
         new,
     ),
     other("open", "Open", "{path} a .bimcraft project", open),
+    other("highrise", "Synthetic Highrise", "{storeys?: 20} replace the project with an original 1–80 storey performance sample", highrise),
     other("autosave", "Autosave", "{path} atomically write a recovery snapshot, keeping the project path and undo history", autosave),
     other(
         "recover",
@@ -2574,6 +2575,21 @@ fn redo(s: &mut Session, _: &Value) -> R {
 }
 
 // ---------- modelling ----------
+
+fn highrise(s: &mut Session, p: &Value) -> R {
+    let params = p.as_object().ok_or_else(|| bad("highrise", "params must be an object"))?;
+    if let Some(key) = params.keys().find(|k| k.as_str() != "storeys") {
+        return Err(bad("highrise", format!("unknown parameter `{key}`")));
+    }
+    let storeys = count_opt("highrise", p, "storeys", 20)?;
+    if !(1..=80).contains(&storeys) {
+        return Err(bad("highrise", "`storeys` must be between 1 and 80"));
+    }
+    let model = crate::sample::highrise(storeys as u32)?;
+    let elements = model.elements.len();
+    s.reset(model, None);
+    Ok(json!({"storeys": storeys, "elements": elements}))
+}
 
 fn level(s: &mut Session, p: &Value) -> R {
     let c = "level";

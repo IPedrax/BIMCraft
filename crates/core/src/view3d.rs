@@ -6,6 +6,8 @@
 //! pixel shows, for picking. Sections and elevations use the same pictures, clipped at their
 //! line and in hidden line, and cut the same solids.
 
+pub mod gpu;
+
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
 
@@ -17,6 +19,16 @@ use crate::render::{PAPER, Rgb, clip};
 use crate::stairs;
 use crate::texture::Sampler;
 use crate::walls::{self, Axis, Plane};
+
+/// Shared CPU rendering workers, bounded so background work leaves input and I/O capacity.
+fn render_pool() -> Option<&'static rayon::ThreadPool> {
+    static POOL: OnceLock<Option<rayon::ThreadPool>> = OnceLock::new();
+    POOL.get_or_init(|| {
+        let n = std::thread::available_parallelism().map_or(1, usize::from).saturating_sub(1).clamp(1, 8);
+        rayon::ThreadPoolBuilder::new().num_threads(n).thread_name(|n| format!("bimcraft-render-{n}")).build().ok()
+    })
+    .as_ref()
+}
 
 /// A model point in mm: x east, y north, z up.
 pub type P3 = [f64; 3];
@@ -68,6 +80,7 @@ pub(crate) fn unit(a: P3) -> P3 {
 /// A triangle of an element's surface; on a curved one, which (its element's, and which of its
 /// curved surfaces: a wall's outside or inside, a component's by its first triangle's place in the
 /// scene), so the facets read as one.
+#[derive(Debug, PartialEq)]
 struct Tri {
     p: [P3; 3],
     owner: Id,
@@ -441,10 +454,27 @@ fn slabs(out: &mut Vec<Solid>, m: &Model, owner: Id, color: Rgb, face: Vec<P3>, 
 /// The model's solids: walls cut around their openings, door leaves and glass, floor slabs and
 /// ceilings, columns, stairs' steps and roofs' slopes.
 pub(crate) fn solids(m: &Model) -> Vec<Solid> {
+    let elements: Vec<_> = m.elements.iter().map(|(&id, e)| (id, e)).collect();
+    let index = walls::Index::new(m);
+    if let Some(pool) = (elements.len() >= 1000).then(render_pool).flatten() {
+        use rayon::prelude::*;
+        // Collect indexed chunks before flattening: triangle order, depth ties and
+        // picking are identical to the serial path. Each job owns its family cache.
+        return pool
+            .install(|| elements.par_chunks(128).map(|chunk| solids_in(m, chunk, Some(&index))).collect::<Vec<_>>())
+            .into_iter()
+            .flatten()
+            .collect();
+    }
+    solids_in(m, &elements, Some(&index))
+}
+
+fn solids_in(m: &Model, elements: &[(Id, &Element)], index: Option<&walls::Index>) -> Vec<Solid> {
     let mut out = Vec::new();
-    for (&id, e) in &m.elements {
+    let mut components = crate::component_geometry::Components::new(m);
+    for &(id, e) in elements {
         match e {
-            Element::Wall(_) => out.extend(walls::prisms(m, id, true).into_iter().map(|p| Solid::Prism {
+            Element::Wall(_) => out.extend(walls::prisms_in(m, id, true, index).into_iter().map(|p| Solid::Prism {
                 owner: id,
                 color: WALL,
                 tex: 0,
@@ -491,7 +521,7 @@ pub(crate) fn solids(m: &Model) -> Vec<Solid> {
             Element::Mass(ms) => out.push(slab(id, MASS, &ms.footprint(), m.span(ms.level, ms.base_offset, ms.top_level, ms.height))),
             // Each form in its material's colour; a curved one's facets one surface, as a curved wall's are.
             Element::Component(c) => {
-                for piece in m.component_pieces(c) {
+                for piece in components.pieces(c) {
                     let color = m.materials.get(&piece.material).map_or(COMPONENT, |x| Rgb(x.color[0], x.color[1], x.color[2]));
                     out.push(Solid::Mesh {
                         owner: id,
@@ -946,6 +976,116 @@ impl Scene {
         lights: &dyn Fn(usize) -> Option<[f64; 3]>,
         (depth, hit, lit): (&mut [f32], &mut [u32], &mut [f32]),
     ) {
+        // Project once, then bin in stable triangle order. Each job owns disjoint rows:
+        // no locks, atomic depth writes, duplicate framebuffers, or depth-tie races.
+        const ROWS: usize = 32;
+        struct Projected {
+            id: u32,
+            p: [(f64, f64, f64); 3],
+            area: f64,
+            x: (usize, usize),
+            y: (usize, usize),
+            corners: Option<[f64; 3]>,
+        }
+        let (back, right, up) = cam.axes();
+        let project = |p| {
+            let d = sub(p, cam.target);
+            (f64::from(cam.width) / 2.0 + dot(d, right) * cam.scale, f64::from(cam.height) / 2.0 - dot(d, up) * cam.scale, dot(d, back))
+        };
+        let mut tris = Vec::new();
+        let mut bins = vec![Vec::new(); h.div_ceil(ROWS)];
+        for (i, t) in self.tris.iter().enumerate() {
+            if !keep(t) {
+                continue;
+            }
+            let [a, b, c] = t.p.map(project);
+            let area = (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
+            if area.is_nan() || area.abs() <= 1e-12 {
+                continue;
+            }
+            let (x0, x1) = (a.0.min(b.0).min(c.0), a.0.max(b.0).max(c.0));
+            let (y0, y1) = (a.1.min(b.1).min(c.1), a.1.max(b.1).max(c.1));
+            if !(x1 >= 0.0 && x0 < w as f64 && y1 >= 0.0 && y0 < h as f64) {
+                continue;
+            }
+            let x = (x0.max(0.0) as usize, x1.min(w as f64 - 1.0) as usize);
+            let y = (y0.max(0.0) as usize, y1.min(h as f64 - 1.0) as usize);
+            let n = tris.len();
+            tris.push(Projected { id: i as u32, p: [a, b, c], area, x, y, corners: lights(i) });
+            for bin in bins.iter_mut().take(y.1 / ROWS + 1).skip(y.0 / ROWS) {
+                bin.push(n);
+            }
+        }
+        let stripe = |band: usize, (depth, hit, lit): (&mut [f32], &mut [u32], &mut [f32])| {
+            let first = band * ROWS;
+            let end = (first + ROWS).min(h);
+            for &i in &bins[band] {
+                let t = &tris[i];
+                let [a, b, c] = t.p;
+                for py in t.y.0.max(first)..=t.y.1.min(end - 1) {
+                    for px in t.x.0..=t.x.1 {
+                        let (x, y) = (px as f64 + 0.5, py as f64 + 0.5);
+                        let wa = ((b.0 - x) * (c.1 - y) - (b.1 - y) * (c.0 - x)) / t.area;
+                        let wb = ((c.0 - x) * (a.1 - y) - (c.1 - y) * (a.0 - x)) / t.area;
+                        let wc = 1.0 - wa - wb;
+                        if wa < -1e-9 || wb < -1e-9 || wc < -1e-9 {
+                            continue;
+                        }
+                        let z = wa * a.2 + wb * b.2 + wc * c.2;
+                        if clip.is_some_and(|k| {
+                            z > k.near || k.far.is_some_and(|f| z < k.near - f) || x < k.x.0 || x > k.x.1 || y < k.y.0 || y > k.y.1
+                        }) {
+                            continue;
+                        }
+                        let z = z as f32;
+                        let global = py * w + px;
+                        if front.is_some_and(|f| f.get(global).is_some_and(|d| z <= *d)) {
+                            continue;
+                        }
+                        let k = (py - first) * w + px;
+                        if let (Some(d), Some(s)) = (depth.get_mut(k), hit.get_mut(k))
+                            && z > *d
+                        {
+                            (*d, *s) = (z, t.id);
+                            if let (Some([ka, kb, kc]), Some(slot)) = (t.corners, lit.get_mut(k)) {
+                                *slot = (wa * ka + wb * kb + wc * kc) as f32;
+                            }
+                        }
+                    }
+                }
+            }
+        };
+        // A persistent bounded pool; keep CPU capacity for input, autosave and the OS.
+        // If threads cannot be created (including restricted targets), render sequentially.
+        let pool = (w * h >= 256 * 256 && tris.len() >= 128).then(render_pool).flatten();
+        let size = w * ROWS;
+        if let Some(pool) = pool {
+            use rayon::prelude::*;
+            pool.install(|| {
+                depth
+                    .par_chunks_mut(size)
+                    .zip(hit.par_chunks_mut(size))
+                    .zip(lit.par_chunks_mut(size))
+                    .enumerate()
+                    .for_each(|(i, ((d, h), l))| stripe(i, (d, h, l)))
+            });
+        } else {
+            for (i, ((d, h), l)) in depth.chunks_mut(size).zip(hit.chunks_mut(size)).zip(lit.chunks_mut(size)).enumerate() {
+                stripe(i, (d, h, l));
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn raster_reference(
+        &self,
+        (cam, clip): (&Camera, Option<&Clip>),
+        (w, h): (usize, usize),
+        keep: impl Fn(&Tri) -> bool,
+        front: Option<&[f32]>,
+        lights: &dyn Fn(usize) -> Option<[f64; 3]>,
+        (depth, hit, lit): (&mut [f32], &mut [u32], &mut [f32]),
+    ) {
         for (i, t) in self.tris.iter().enumerate() {
             if !keep(t) {
                 continue;
@@ -1168,34 +1308,45 @@ impl Scene {
         let tri = |k: usize| hit.get(k).map(|&t| t as usize).filter(|t| *t < self.tris.len());
         let through = |k: usize| seen.get(k).map(|&t| t as usize).filter(|t| *t < self.tris.len());
         let plane = |k: usize| tri(k).and_then(|t| self.planes.get(t)).copied();
-        let mut rgba = Vec::with_capacity(w * h * 4);
-        for py in 0..h {
-            for px in 0..w {
-                let k = py * w + px;
-                let here = plane(k);
-                let edge = (px + 1 < w && plane(k + 1) != here) || (py + 1 < h && plane(k + w) != here);
-                let owner_at = |k: usize| tri(k).and_then(|t| self.tris.get(t)).map(|t| t.owner);
-                let tint = owner_at(k).and_then(|o| tints.get(&o));
-                // An edge is drawn in the colour the view gives the edges of what it bounds.
-                let edge_of = || [k, k + 1, k + w].into_iter().find_map(owner_at).map_or(EDGE, |o| look.edge(o, EDGE));
-                let c = match (edge, tri(k).and_then(|t| shaded(t, k, &curve_lit, &depth))) {
-                    (true, _) => tint.copied().unwrap_or_else(edge_of),
-                    (false, Some(s)) => tint.map_or(s, |c| mix(s, *c)),
-                    (false, None) => PAPER,
-                };
-                // Over it, the nearest surface seen through, as much of it as the view lets show (and a
-                // tinted one always a little, or selecting it would show nothing).
-                let c = match through(k).and_then(|t| Some((shaded(t, k, &seen_lit, &near)?, self.tris.get(t)?.owner))) {
-                    Some((s, owner)) => {
-                        let tint = tints.get(&owner);
-                        let weight = 1.0 - f64::from(look.transparency(owner)) / 100.0;
-                        blend(c, tint.map_or(s, |c| mix(s, *c)), if tint.is_some() { weight.max(0.35) } else { weight })
-                    }
-                    None => c,
-                };
-                rgba.extend([c.0, c.1, c.2, 255]);
+        let pixel = |k: usize| {
+            let (px, py) = (k % w, k / w);
+            let here = plane(k);
+            let edge = (px + 1 < w && plane(k + 1) != here) || (py + 1 < h && plane(k + w) != here);
+            let owner_at = |k: usize| tri(k).and_then(|t| self.tris.get(t)).map(|t| t.owner);
+            let tint = owner_at(k).and_then(|o| tints.get(&o));
+            // An edge is drawn in the colour the view gives the edges of what it bounds.
+            let edge_of = || [k, k + 1, k + w].into_iter().find_map(owner_at).map_or(EDGE, |o| look.edge(o, EDGE));
+            let c = match (edge, tri(k).and_then(|t| shaded(t, k, &curve_lit, &depth))) {
+                (true, _) => tint.copied().unwrap_or_else(edge_of),
+                (false, Some(s)) => tint.map_or(s, |c| mix(s, *c)),
+                (false, None) => PAPER,
+            };
+            // Over it, the nearest surface seen through, as much of it as the view lets show (and a
+            // tinted one always a little, or selecting it would show nothing).
+            let c = match through(k).and_then(|t| Some((shaded(t, k, &seen_lit, &near)?, self.tris.get(t)?.owner))) {
+                Some((s, owner)) => {
+                    let tint = tints.get(&owner);
+                    let weight = 1.0 - f64::from(look.transparency(owner)) / 100.0;
+                    blend(c, tint.map_or(s, |c| mix(s, *c)), if tint.is_some() { weight.max(0.35) } else { weight })
+                }
+                None => c,
+            };
+            [c.0, c.1, c.2, 255]
+        };
+        let mut rgba = vec![0; w * h * 4];
+        let fill = |offset: usize, bytes: &mut [u8]| {
+            for (i, out) in bytes.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+                out.copy_from_slice(&pixel(offset + i));
             }
+        };
+        if let Some(pool) = (w * h >= 256 * 256).then(render_pool).flatten() {
+            use rayon::prelude::*;
+            const PIXELS: usize = 8192;
+            pool.install(|| rgba.par_chunks_mut(4 * PIXELS).enumerate().for_each(|(i, out)| fill(i * PIXELS, out)));
+        } else {
+            fill(0, &mut rgba);
         }
+
         // What a pixel shows, for picking: a surface seen through is the one in front.
         if through_any {
             hit = hit.iter().zip(&seen).map(|(h, s)| if *s == u32::MAX { *h } else { *s }).collect();
@@ -1508,6 +1659,48 @@ impl Image {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parallel_geometry_keeps_exact_triangle_order_and_ownership() {
+        let m = crate::sample::highrise(3).unwrap();
+        assert!(m.elements.len() >= 1000);
+        let elements: Vec<_> = m.elements.iter().map(|(&id, e)| (id, e)).collect();
+        let triangles = |solids: Vec<Solid>| {
+            let mut tris = Vec::new();
+            for solid in solids {
+                solid.tris(&mut tris);
+            }
+            tris
+        };
+        assert_eq!(triangles(solids(&m)), triangles(solids_in(&m, &elements, None)));
+    }
+
+    #[test]
+    fn tiled_raster_matches_serial_depth_picking_and_lighting_exactly() {
+        let mut s = crate::engine::Session::new();
+        s.script(crate::sample::SAMPLE).unwrap();
+        let scene = Scene::new(&s.model);
+        for (w, h) in [(1, 1), (513, 257), (800, 600)] {
+            let cam = scene.fit(AZIMUTH, ELEVATION, w as u32, h as u32);
+            let clip = Clip { near: 0.0, far: Some(5000.0), x: (10.0, w as f64 - 10.0), y: (10.0, h as f64 - 10.0) };
+            for clipping in [None, Some(&clip)] {
+                for transparent in [false, true] {
+                    let front = vec![-1000.0; w * h];
+                    let front = transparent.then_some(front.as_slice());
+                    let buffers = || (vec![f32::NEG_INFINITY; w * h], vec![u32::MAX; w * h], vec![0.0; w * h]);
+                    let (mut d, mut hit, mut l) = buffers();
+                    let (mut rd, mut rh, mut rl) = buffers();
+                    let keep = |t: &Tri| !t.owner.is_multiple_of(3);
+                    let light = |i| Some([0.65 + (i % 7) as f64 * 0.01, 0.75, 0.95]);
+                    scene.raster_reference((&cam, clipping), (w, h), keep, front, &light, (&mut rd, &mut rh, &mut rl));
+                    scene.raster((&cam, clipping), (w, h), keep, front, &light, (&mut d, &mut hit, &mut l));
+                    assert_eq!(d, rd, "depth {w}x{h}");
+                    assert_eq!(hit, rh, "picking {w}x{h}");
+                    assert_eq!(l, rl, "lighting {w}x{h}");
+                }
+            }
+        }
+    }
 
     #[test]
     fn coplanar_triangles_share_a_plane_and_degenerate_ones_each_their_own() {
