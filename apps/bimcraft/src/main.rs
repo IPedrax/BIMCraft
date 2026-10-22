@@ -88,6 +88,10 @@ fn main() -> ExitCode {
     session.reset(model, path);
     let mut app = BimApp::new(session);
     app.lang = language;
+    // Given nothing to open, the window opens on the start page.
+    if std::env::args().len() == 1 {
+        app.show_start_page();
+    }
     app.revit = revit_reader();
     if let Some(file) = later {
         app.open_later(file);

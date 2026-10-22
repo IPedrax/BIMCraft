@@ -77,6 +77,8 @@ pub struct Updater {
     prefs_path: Option<PathBuf>,
     state: State,
     checking: bool,
+    /// The last check found nothing newer than this version (or only a version the user skipped).
+    up_to_date: bool,
     target: Option<Target>,
     /// What an update replaces, when this copy can be updated in place.
     install: Option<Arc<Install>>,
@@ -107,6 +109,7 @@ impl Updater {
             prefs_path,
             state: State::Idle,
             checking: false,
+            up_to_date: false,
             target: None,
             install: None,
             temp: std::env::temp_dir(),
@@ -179,6 +182,16 @@ impl Updater {
         &self.state
     }
 
+    /// Whether a check is on its way.
+    pub fn checking(&self) -> bool {
+        self.checking
+    }
+
+    /// Whether the last check found this version the latest (the start page says so).
+    pub fn up_to_date(&self) -> bool {
+        self.up_to_date
+    }
+
     /// Whether BIMCraft looks for a newer version when it starts.
     pub fn checks_at_startup(&self) -> bool {
         self.prefs.check
@@ -241,9 +254,13 @@ impl Updater {
                 }
                 match result {
                     Err(e) => manual.then_some(Note::CheckFailed(e)),
-                    Ok(None) => manual.then_some(Note::UpToDate),
+                    Ok(None) => {
+                        self.up_to_date = true;
+                        manual.then_some(Note::UpToDate)
+                    }
                     Ok(Some(release)) => {
                         let skipped = self.prefs.skip.as_ref().is_some_and(|s| release.version <= *s);
+                        self.up_to_date = false;
                         self.state = if skipped && !manual { State::Idle } else { State::Available(release) };
                         None
                     }

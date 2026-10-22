@@ -115,7 +115,7 @@ impl BimApp {
     }
 
     /// Write the list down. A failure is said, unless the status already says something.
-    fn keep_recent(&mut self) {
+    pub(crate) fn keep_recent(&mut self) {
         let Some(path) = &self.recent_path else { return };
         if let Err(e) = self.recent.save(path)
             && self.status.text.is_empty()

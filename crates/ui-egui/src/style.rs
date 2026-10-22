@@ -250,6 +250,10 @@ pub enum Icon {
     Expand,
     Search,
     Legend,
+    Home,
+    NewFile,
+    Code,
+    Check,
 }
 
 /// Points around `c` at radius `r` from angle `a0` to `a1` (radians, y down).
@@ -913,6 +917,27 @@ pub fn paint(p: &Painter, icon: Icon, r: Rect, color: Color32) {
             ring(&[(3.0, 15.0), (8.0, 15.0), (8.0, 19.0), (3.0, 19.0)]),
             line(&[(11.0, 17.0), (21.0, 17.0)]),
         ],
+        // A house: the start page.
+        Icon::Home => vec![
+            line(&[(3.0, 11.5), (12.0, 3.5), (21.0, 11.5)]),
+            line(&[(5.5, 9.5), (5.5, 20.5), (18.5, 20.5), (18.5, 9.5)]),
+            line(&[(10.0, 20.5), (10.0, 14.5), (14.0, 14.5), (14.0, 20.5)]),
+        ],
+        // A page with its corner folded and a plus.
+        Icon::NewFile => vec![
+            ring(&[(5.0, 2.5), (14.0, 2.5), (19.0, 7.5), (19.0, 21.5), (5.0, 21.5)]),
+            line(&[(14.0, 2.5), (14.0, 7.5), (19.0, 7.5)]),
+            line(&[(12.0, 11.0), (12.0, 18.0)]),
+            line(&[(8.5, 14.5), (15.5, 14.5)]),
+        ],
+        // Angle brackets: the source code.
+        Icon::Code => vec![
+            line(&[(8.0, 6.0), (2.5, 12.0), (8.0, 18.0)]),
+            line(&[(16.0, 6.0), (21.5, 12.0), (16.0, 18.0)]),
+            line(&[(13.5, 4.5), (10.5, 19.5)]),
+        ],
+        // A tick in a circle.
+        Icon::Check => vec![Shape::circle_stroke(at(12.0, 12.0), 9.0 * k, s), line(&[(7.5, 12.5), (10.5, 15.5), (16.5, 9.0)])],
         // Half light, half dark.
         Icon::Theme => {
             let half: Vec<Pos2> = arc(at(12.0, 12.0), 8.0 * k, FRAC_PI_2, 3.0 * FRAC_PI_2);
