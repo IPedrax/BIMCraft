@@ -16,3 +16,4 @@ tiny-skia = { workspace = true }
 flate2 = { workspace = true }
 zune-jpeg = { workspace = true }
 getrandom = { workspace = true }
+tempfile = { workspace = true }

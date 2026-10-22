@@ -1,8 +1,8 @@
 //! File > Settings (Ctrl+,): the window's own settings, the user's and never a project's. They live in
 //! `settings.json` beside the favorites and the update settings ([`beside`]), which the desktop's `main` hands the app
 //! ([`BimApp::use_settings`]); a window that wasn't given the file (every test's) keeps them for as long as it's open.
-//! What it keeps: the theme, the interface's language, the ribbon folded to its tabs and where the palettes are.
-//! The pages for what is still to come (performance, graphics, files) show what they will hold, greyed out.
+//! What it keeps: the theme, interface language, ribbon, palettes, and the background autosave interval.
+//! The pages for what is still to come (performance and graphics) show what they will hold, greyed out.
 
 use std::path::{Path, PathBuf};
 
@@ -38,6 +38,7 @@ pub struct Settings {
     pub language: Language,
     pub ribbon_minimized: bool,
     pub docking: Docking,
+    pub autosave_minutes: u32,
 }
 
 impl Settings {
@@ -52,6 +53,7 @@ impl Settings {
             "language": self.language.code(),
             "ribbon_minimized": self.ribbon_minimized,
             "palettes": self.docking.to_json(),
+            "autosave_minutes": self.autosave_minutes,
         })
     }
 
@@ -69,6 +71,7 @@ impl Settings {
             language: v["language"].as_str().and_then(Language::from_code).unwrap_or(base.language),
             ribbon_minimized: v["ribbon_minimized"].as_bool().unwrap_or(base.ribbon_minimized),
             docking: if v["palettes"].is_object() { Docking::from_json(&v["palettes"]) } else { base.docking },
+            autosave_minutes: v["autosave_minutes"].as_u64().filter(|n| *n <= 120).map_or(base.autosave_minutes, |n| n as u32),
         }
     }
 }
@@ -127,12 +130,19 @@ impl BimApp {
         let kept = read(&path).map_or(now.clone(), |v| Settings::from_json(&v, now));
         (self.lang, self.ribbon_min, self.docking) = (kept.language, kept.ribbon_minimized, kept.docking.clone());
         self.theme_wanted = Some(kept.theme);
+        self.autosave.interval_minutes = kept.autosave_minutes;
         self.settings_kept = Some(kept);
         self.settings_path = Some(path);
     }
 
     fn settings_now(&self, theme: ThemePreference) -> Settings {
-        Settings { theme, language: self.lang, ribbon_minimized: self.ribbon_min, docking: self.docking.clone() }
+        Settings {
+            theme,
+            language: self.lang,
+            ribbon_minimized: self.ribbon_min,
+            docking: self.docking.clone(),
+            autosave_minutes: self.autosave.interval_minutes,
+        }
     }
 
     /// Writes the settings file when what it keeps has changed, between drags: once a frame.
@@ -175,7 +185,7 @@ impl BimApp {
                         Page::Interface => self.interface_page(ui, ctx),
                         Page::Performance => performance_page(ui),
                         Page::Graphics => graphics_page(ui),
-                        Page::Files => files_page(ui),
+                        Page::Files => self.files_page(ui),
                         Page::Updates => self.updates_page(ui),
                     });
                 });
@@ -275,22 +285,31 @@ fn graphics_page(ui: &mut Ui) {
     });
 }
 
-fn files_page(ui: &mut Ui) {
-    later(ui, |ui| {
-        let (mut every, mut backups, mut folder) = (10, 3, String::new());
-        ui.horizontal(|ui| {
-            ui.label(t("Save a recovery copy every"));
-            ui.add(egui::DragValue::new(&mut every).range(1..=120).suffix(" min"));
+impl BimApp {
+    fn files_page(&mut self, ui: &mut Ui) {
+        heading(ui, "Autosave");
+        let mut enabled = self.autosave.interval_minutes > 0;
+        if ui.checkbox(&mut enabled, t("Autosave in the background")).changed() {
+            self.autosave.interval_minutes = if enabled { 2 } else { 0 };
+        }
+        if enabled {
+            ui.horizontal(|ui| {
+                ui.label(t("Save a recovery copy every"));
+                if ui.add(egui::DragValue::new(&mut self.autosave.interval_minutes).range(1..=120).suffix(" min")).changed() {
+                    self.autosave.next_due =
+                        std::time::Instant::now() + std::time::Duration::from_secs(u64::from(self.autosave.interval_minutes) * 60);
+                }
+            });
+        }
+        ui.label(t("Recovery copies are kept beside saved projects; untitled projects use the temporary folder."));
+        later(ui, |ui| {
+            let mut folder = String::new();
+            ui.horizontal(|ui| {
+                ui.label(t("Folder for new projects"));
+                ui.add(egui::TextEdit::singleline(&mut folder).desired_width(220.0));
+            });
         });
-        ui.horizontal(|ui| {
-            ui.label(t("Backups kept"));
-            ui.add(egui::DragValue::new(&mut backups).range(0..=50));
-        });
-        ui.horizontal(|ui| {
-            ui.label(t("Folder for new projects"));
-            ui.add(egui::TextEdit::singleline(&mut folder).desired_width(220.0));
-        });
-    });
+    }
 }
 
 /// A group's heading on a page.

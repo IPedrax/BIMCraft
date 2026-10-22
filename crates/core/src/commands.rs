@@ -50,6 +50,13 @@ pub static ALL: &[Command] = &[
         new,
     ),
     other("open", "Open", "{path} a .bimcraft project", open),
+    other("autosave", "Autosave", "{path} atomically write a recovery snapshot, keeping the project path and undo history", autosave),
+    other(
+        "recover",
+        "Recover Autosave",
+        "{path, project?} open and validate a recovery snapshot; Save targets `project`, or asks for Save As without it",
+        recover,
+    ),
     edit(
         "insert",
         "Insert from File",
@@ -1534,9 +1541,30 @@ fn save(s: &mut Session, p: &Value) -> R {
         return Ok(json!({"path": path, "format": format}));
     }
     let text = s.model.to_json().map_err(|e| bad(c, e))?;
-    std::fs::write(&path, text).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+    crate::autosave::atomic_write(&path, &text).map_err(|e| bad(c, e))?;
     s.path = Some(path.clone());
     Ok(json!({"path": path, "format": "bimcraft"}))
+}
+
+fn autosave(s: &mut Session, p: &Value) -> R {
+    let path = PathBuf::from(string("autosave", p, "path")?.ok_or_else(|| bad("autosave", "`path` is required"))?);
+    if s.path.as_ref() == Some(&path) {
+        return Err(bad("autosave", "the recovery file must differ from the saved project"));
+    }
+    let text = s.model.to_json().map_err(|e| bad("autosave", e))?;
+    if text.len() as u64 >= MAX_FILE {
+        return Err(bad("autosave", "the recovery snapshot exceeds the project file size limit"));
+    }
+    crate::autosave::atomic_write(&path, &text).map_err(|e| bad("autosave", e))?;
+    Ok(json!({"path": path, "format": "bimcraft"}))
+}
+
+fn recover(s: &mut Session, p: &Value) -> R {
+    // Parse all params before open resets the session, so invalid input cannot partially recover.
+    let project = string("recover", p, "project")?.map(PathBuf::from);
+    let result = open(s, p)?;
+    s.path = project;
+    Ok(result)
 }
 
 /// Standard base64, for images in JSON replies.

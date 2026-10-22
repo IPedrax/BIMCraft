@@ -108,6 +108,25 @@ pub fn category(category: &str, several: bool) -> String {
 /// The interface's words in English, Brazilian Portuguese and Spanish; the core's words (schedule
 /// names and headings) besides.
 const WORDS: &[[&str; 3]] = &[
+    ["Autosave", "Salvamento automático", "Guardado automático"],
+    ["Autosave in the background", "Salvar automaticamente em segundo plano", "Guardar automáticamente en segundo plano"],
+    ["Recover Autosave…", "Recuperar salvamento automático…", "Recuperar guardado automático…"],
+    ["Recovery copy found", "Cópia de recuperação encontrada", "Copia de recuperación encontrada"],
+    ["Recovery copy: {}", "Cópia de recuperação: {}", "Copia de recuperación: {}"],
+    ["Untitled project", "Projeto sem título", "Proyecto sin título"],
+    ["Recover", "Recuperar", "Recuperar"],
+    ["Discard", "Descartar", "Descartar"],
+    ["Postpone", "Adiar", "Posponer"],
+    [
+        "Recover opens the backup as unsaved work. Discard deletes it. Postpone keeps it for later without replacing it.",
+        "Recuperar abre a cópia como trabalho não salvo. Descartar a exclui. Adiar a mantém para depois, sem substituí-la.",
+        "Recuperar abre la copia como trabajo sin guardar. Descartar la elimina. Posponer la conserva para después, sin reemplazarla.",
+    ],
+    [
+        "Recovery copies are kept beside saved projects; untitled projects use the temporary folder.",
+        "As cópias de recuperação ficam ao lado dos projetos salvos; projetos sem título usam a pasta temporária.",
+        "Las copias de recuperación se guardan junto a los proyectos guardados; los proyectos sin título usan la carpeta temporal.",
+    ],
     // The ribbon's tabs and the File menu.
     ["File", "Arquivo", "Archivo"],
     ["Architecture", "Arquitetura", "Arquitectura"],

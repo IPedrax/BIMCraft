@@ -37,6 +37,7 @@ fn main() -> ExitCode {
         let _ = session.execute("new", &json!({"language": language.code()}));
     }
     let mut problem = None;
+    let mut failed_project = None;
     for arg in std::env::args().skip(1) {
         let done = match arg.as_str() {
             "-h" | "--help" => {
@@ -54,6 +55,9 @@ fn main() -> ExitCode {
             }
             file => session.execute("open", &json!({ "path": file })).map(|_| ()),
         };
+        if done.is_err() && !arg.starts_with('-') && !arg.to_ascii_lowercase().ends_with(".ifc") {
+            failed_project = Some(std::path::PathBuf::from(&arg));
+        }
         problem = done.err().or(problem);
     }
     // What the arguments built is where the user starts: nothing to undo, nothing unsaved.
@@ -83,6 +87,10 @@ fn main() -> ExitCode {
     let (_registration, inbox) = fmv_macos_events::Registration::install();
     // The update check runs on a thread of its own, started once the window exists: it never delays the start.
     let start = move |cc: &eframe::CreationContext| -> Result<Box<dyn eframe::App>, _> {
+        app.enable_autosave(std::env::temp_dir().join("bimcraft-autosave"), &cc.egui_ctx);
+        if let Some(project) = failed_project {
+            app.inspect_recovery(project);
+        }
         #[cfg(target_os = "macos")]
         apple_events(&mut app, &cc.egui_ctx, inbox);
         let ctx = cc.egui_ctx.clone();

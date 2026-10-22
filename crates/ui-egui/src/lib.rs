@@ -47,6 +47,7 @@ use egui::{
 use serde_json::{Value, json};
 
 use bimcraft_core::language::Language;
+mod autosave;
 use lang::{t, tf};
 use style::{Icon, pal};
 
@@ -211,6 +212,7 @@ enum Tab {
 /// A step that would drop unsaved changes, waiting on the user.
 #[derive(Clone, Debug, PartialEq)]
 enum Pending {
+    Recover(bimcraft_core::autosave::Backup),
     New,
     Open,
     /// A file the system asked to open ([`OsEvent::Open`]).
@@ -473,6 +475,7 @@ pub struct BimApp {
     paper: paper::Papers,
     /// The model as last opened or saved: any other is unsaved.
     saved: Arc<Model>,
+    autosave: autosave::State,
     /// The palette field being typed in: element, field, text so far.
     edit: Option<(Id, String, String)>,
     /// The Level tool's elevation and name, as typed in the Options Bar.
@@ -674,6 +677,7 @@ impl BimApp {
         let units = session.model.units;
         BimApp {
             saved: Arc::clone(&session.model),
+            autosave: autosave::State::default(),
             session,
             os_events: None,
             sheet: first,
@@ -948,6 +952,7 @@ impl BimApp {
         lang::set(self.lang);
         self.tidy();
         self.poll_updates(&ctx);
+        self.poll_autosave(&ctx);
         self.keys(&ctx);
         self.os_requests(&ctx);
         let view = self.view_title(self.sheet);
@@ -962,6 +967,9 @@ impl BimApp {
             if !self.installing() {
                 self.pending = Some(Pending::Close);
             }
+        }
+        if ctx.input(|i| i.viewport().close_requested()) && !self.dirty() && !self.installing() {
+            self.retire_autosave();
         }
         let bar = Frame::new().fill(pal().bar).inner_margin(vec2(8.0, 4.0)).stroke(Stroke::new(1.0, pal().border));
         Panel::top("quick-access").frame(bar).show(ui, |ui| self.quick_access(ui, &view));
@@ -1101,6 +1109,7 @@ impl BimApp {
             || self.show_shortcuts
             || self.show_snaps
             || self.pending.is_some()
+            || self.autosave.show_recovery
             || self.installing()
             // An open menu takes the keys: Esc closes it, not the tool.
             || egui::Popup::is_any_open(ctx)
@@ -1814,6 +1823,7 @@ impl BimApp {
         // Exports (IFC, the sheets' PDF) leave the project unsaved.
         if saved && !matches!(ext.as_str(), "ifc" | "pdf") {
             self.saved = Arc::clone(&self.session.model);
+            self.autosave_saved();
         }
         saved
     }
@@ -1844,8 +1854,16 @@ impl BimApp {
 
     /// Open a project, or import an IFC file and say what came in and what was left out.
     pub(crate) fn open_path(&mut self, path: &Path) -> bool {
-        let Some(reply) = self.run("open", json!({"path": path.to_string_lossy()})) else { return false };
+        let Some(reply) = self.run("open", json!({"path": path.to_string_lossy()})) else {
+            // Even a damaged original can have a healthy recovery copy.
+            if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("ifc")) {
+                self.inspect_recovery(path.to_path_buf());
+            }
+            return false;
+        };
+        self.retire_autosave();
         self.reopened();
+        self.autosave_document();
         if reply["format"].is_string() {
             let name = path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
             self.status = Status { text: import_note(&name, &reply), error: false };
@@ -1863,6 +1881,7 @@ impl BimApp {
         fresh.docking = std::mem::take(&mut self.docking);
         (fresh.settings_path, fresh.settings_kept) = (self.settings_path.take(), self.settings_kept.take());
         fresh.updates = self.updates.take();
+        fresh.autosave = std::mem::take(&mut self.autosave);
         *self = fresh;
     }
 
@@ -1890,10 +1909,13 @@ impl BimApp {
 
     fn proceed(&mut self, p: Pending, ctx: &Context) {
         match p {
+            Pending::Recover(backup) => self.recover_backup(backup),
             Pending::New => {
                 // In the interface's language: its levels named in it.
                 if self.run("new", json!({"language": self.lang.code()})).is_some() {
+                    self.retire_autosave();
                     self.reopened();
+                    self.autosave_document();
                 }
             }
             Pending::OpenPath(path) => {
@@ -1907,10 +1929,14 @@ impl BimApp {
                 }
             }
             Pending::Close => {
+                self.retire_autosave();
                 self.closing = true;
                 ctx.send_viewport_cmd(ViewportCommand::Close);
             }
-            Pending::Update => self.install_update(),
+            Pending::Update => {
+                self.retire_autosave();
+                self.install_update();
+            }
         }
     }
 
@@ -2076,6 +2102,9 @@ impl BimApp {
         }
         if item(ui, "Save As…", Some(KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::S))) {
             self.save_as();
+        }
+        if !self.autosave.candidates.is_empty() && item(ui, "Recover Autosave…", None) {
+            self.autosave.show_recovery = true;
         }
         SubMenuButton::new(t("Export")).ui(ui, |ui| {
             if ui.button(t("IFC…")).clicked() {
@@ -3204,6 +3233,9 @@ impl BimApp {
         self.shortcuts_window(ctx);
         self.settings_window(ctx);
         self.installing_box(ctx);
+        if self.pending.is_none() {
+            self.recovery_window(ctx);
+        }
         let Some(pending) = self.pending.clone() else { return };
         #[derive(PartialEq)]
         enum Choice {

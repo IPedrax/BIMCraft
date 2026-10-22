@@ -20,5 +20,6 @@ rfd = { workspace = true }
 sys-locale = { workspace = true }
 
 [dev-dependencies]
+tempfile = { workspace = true }
 egui_kittest = { workspace = true }
 bimcraft-update = { workspace = true, features = ["testing"] }

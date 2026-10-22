@@ -451,6 +451,7 @@ dependencies = [
  "getrandom 0.3.4",
  "serde",
  "serde_json",
+ "tempfile",
  "tiny-skia",
  "zune-jpeg",
 ]
@@ -467,6 +468,7 @@ dependencies = [
  "rfd",
  "serde_json",
  "sys-locale",
+ "tempfile",
 ]
 
 [[package]]

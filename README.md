@@ -312,6 +312,13 @@ Properties over the Project Browser; views in tabs with a navigation bar; and th
 icons and colours are BIMCraft's own, in a light theme or a dark one: BIMCraft starts in your system's, and View > Dark Mode
 or File > Settings switches.
 
+Autosave runs in the background every two minutes while the model has unsaved changes (File > Settings > Files changes
+the interval or disables it). A saved project's recovery copy is `<project filename>.autosave.bimcraft` beside the project;
+an untitled project's copy is under the system temporary folder's `bimcraft-autosave` directory. Opening a project with a
+copy offers **Recover**, **Discard**, or **Postpone**. Recover opens unsaved work, Discard removes the copy, and Postpone
+protects it for later through File > Recover Autosave. Orphaned untitled copies are offered at startup. Successful Save
+or an explicit Don't Save removes the current recovery copy, except a postponed copy. See [autosave design](docs/autosave.md).
+
 | To | Do |
 |---|---|
 | Draw walls | Wall (WA), click points: each click builds a wall from the point before, one undo step each; Enter or Esc ends the chain, and a click back on its start closes it. Ends snap to wall ends and location lines; Shift keeps a segment square. The Draw panel draws a Line, or a Start-End-Radius Arc: its start, its end, then a point it passes through. The Options Bar sets the height (up to a level, or unconnected), the Location Line (the line of the wall you click along) and Chain. A wall's exterior is to your left as you go, so draw clockwise for walls that face out |
@@ -371,7 +378,7 @@ or File > Settings switches.
 | Arrange the palettes | Drag Properties or the Project Browser by its title: strips along the edges of the view show where it lands, docked down the left or right side or along the bottom (one over another there, or side by side along the bottom), onto another palette's title as a tab of it, or anywhere else to float in a window of its own, which its title moves. Its Dock menu (beside its close button) does the same by name; closed, View > User Interface or PP brings it back where it was |
 | Float a view | Drag a view's tab off the tab bar, or right-click it and Float: it opens in a window of its own, the active view, and the tools work in it. The views behind stay drawn; a click on one makes it the active view. Drag the window's title back onto the tab bar, or press its Dock button, to make it a tab again. The last tab can't float |
 | More room | Double-click a ribbon tab (or press the arrow at the right of the tabs) and the ribbon folds to its tabs; a click on a tab then shows its tools over the view until one is picked. Double-click again to open it |
-| Settings | File > Settings (Ctrl+, or the cog on the Quick Access Toolbar): the theme, the language, the ribbon folded or not, and the palettes shown or laid out afresh, under User Interface; whether to look for updates. Performance, Graphics and Files show the settings still to come, greyed out. They're kept in `settings.json` beside the favorites, with where the palettes are |
+| Settings | File > Settings (Ctrl+, or the cog on the Quick Access Toolbar): the theme, language, ribbon and palettes under User Interface; background autosave and its interval under Files; whether to look for updates. Performance and Graphics show settings still to come, greyed out. They're kept in `settings.json` beside the favorites, with where the palettes are |
 | Units | Manage > Project Units (UN): millimetres, centimetres, metres, inches, feet, or feet and inches. Dimensions, spot elevations, room areas, schedules, Properties and the Options Bar follow; fields read what's typed in those units, or in the unit typed with it, and so do lengths typed while drawing |
 | Language | View > User Interface > Language: English, Português (Brasil) or Español; the window starts in the system's language (on Windows and macOS, its display language). Manage > Project Language: the language the project's drawings print, and that new levels, views, sheets and rooms are named in. A new project takes the window's |
 | Select by ID, IDs of Selection | Manage > Inquiry, as Revit's, and more. Select by ID takes as many IDs, GUIDs or IFC GlobalIds as you paste (from a schedule, a clash report, an IFC viewer), says as you type what it finds and what nothing has, adds to the selection or replaces it, and opens the plan they are in, zoomed to them. IDs of Selection lists each selected element's category, name, ID, GUID and IFC GlobalId, each selectable, and copies one row, a column (IDs, GUIDs, GlobalIds) or all of it, tab-separated for a spreadsheet |
@@ -414,6 +421,8 @@ changes nothing.
 
 | Command | Shortcut | Parameters |
 |---|---|---|
+| `autosave` | | `path`: atomically write a native recovery snapshot without changing the project path or undo history |
+| `recover` | | `path`, `project?`: validate and open a recovery snapshot; later Save targets `project`, or asks for Save As without it |
 | `wall` | WA | `points`, `closed?`, `type?`, `level?`, `top_level?`, `height?`, `base_offset?`, `arc?` (degrees each turns, counter-clockwise), `location?` (`centre`, `core-centre`, `exterior-finish`, `interior-finish`, `exterior-core`, `interior-core`), `attach_top?`, `attach_base?` (a roof or a floor) |
 | `door` | DR | `at`, or `wall` and `offset?`; `type?`, `family?` (a door family's `type`, its first by default), `mark?`, `flip_facing?`, `flip_hand?` |
 | `window` | WN | as `door`, plus `sill?` (a family's `Sill Height` by default) |
