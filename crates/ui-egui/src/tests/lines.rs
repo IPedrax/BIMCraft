@@ -6,29 +6,58 @@ use bimcraft_core::lines::{LineStyle, Segment};
 use bimcraft_core::pen::Pen;
 
 #[test]
-fn detail_lines_are_clicked_out_in_the_options_bars_style_and_finished_with_enter_or_the_first_point() {
+fn detail_lines_are_made_a_line_a_click_as_walls_are_or_as_one_polyline() {
     let mut h = app(BOX);
     press(&mut h, "Annotate");
     press(&mut h, "Detail Line");
     assert!(h.query_by_label("Modify | Place Detail Lines").is_some());
     choose(&mut h, "Line Style", "Wide Lines");
+    // A line a click, each from the one before.
     click(&mut h, P2(1000.0, 1000.0));
+    assert!(ids(&h, "line").is_empty(), "one point is no line yet");
     click(&mut h, P2(5000.0, 1000.0));
     click(&mut h, P2(5000.0, 3000.0));
-    assert!(ids(&h, "line").is_empty(), "nothing is made until it is finished");
-    key(&mut h, Key::Enter);
     let first = ids(&h, "line");
-    assert_eq!(first.len(), 1);
-    assert_eq!((field(&h, first[0], "style"), field(&h, first[0], "closed")), (json!("Wide Lines"), json!(null)));
-    assert_eq!(field(&h, first[0], "points").as_array().map(Vec::len), Some(3));
+    assert_eq!(first.len(), 2);
+    for id in &first {
+        assert_eq!(field(&h, *id, "style"), json!("Wide Lines"));
+        assert_eq!(field(&h, *id, "points").as_array().map(Vec::len), Some(2));
+    }
+    assert_eq!(field(&h, first[1], "points"), json!([[5000.0, 1000.0], [5000.0, 3000.0]]));
+    // Enter ends the chain; the next click starts afresh.
+    key(&mut h, Key::Enter);
     assert_eq!(h.state().tool, Tool::DetailLine(Vec::new()), "ready for the next one");
-    // Back on the first point, it closes.
+    // Back on its first point, the chain closes and ends.
     for p in [P2(6000.0, 1000.0), P2(7000.0, 1000.0), P2(7000.0, 2000.0), P2(6000.0, 1000.0)] {
         click(&mut h, p);
     }
+    assert_eq!(ids(&h, "line").len(), 5);
+    assert_eq!(h.state().tool, Tool::DetailLine(Vec::new()));
+    // Without Chain, two clicks make one line.
+    press(&mut h, "Chain");
+    for p in [P2(1000.0, 4000.0), P2(2000.0, 4000.0), P2(3000.0, 4000.0)] {
+        click(&mut h, p);
+    }
+    assert_eq!(ids(&h, "line").len(), 6);
+    assert_eq!(h.state().tool, Tool::DetailLine(vec![P2(3000.0, 4000.0)]));
+    key(&mut h, Key::Escape);
+    // Polyline: one line through every point, made by Enter, or closed back on the first.
+    press(&mut h, "Polyline");
+    for p in [P2(1000.0, 5000.0), P2(2000.0, 5000.0), P2(2000.0, 6000.0)] {
+        click(&mut h, p);
+    }
+    assert_eq!(ids(&h, "line").len(), 6, "nothing is made until it is finished");
+    key(&mut h, Key::Enter);
     let lines = ids(&h, "line");
-    assert_eq!(lines.len(), 2);
-    assert_eq!(field(&h, lines[1], "closed"), json!(true));
+    assert_eq!(lines.len(), 7);
+    assert_eq!((field(&h, lines[6], "points").as_array().map(Vec::len), field(&h, lines[6], "closed")), (Some(3), json!(null)));
+    for p in [P2(6000.0, 5000.0), P2(7000.0, 5000.0), P2(7000.0, 6000.0), P2(6000.0, 5000.0)] {
+        click(&mut h, p);
+    }
+    let lines = ids(&h, "line");
+    assert_eq!(lines.len(), 8);
+    assert_eq!(field(&h, lines[7], "closed"), json!(true));
+    let first = vec![first[0]];
     // Picked by its line, its style changed in Properties.
     key(&mut h, Key::Escape);
     key(&mut h, Key::Escape);

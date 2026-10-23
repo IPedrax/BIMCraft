@@ -50,7 +50,8 @@ drawn in one view, as a text note is: a level's plan (not its ceiling plan), a s
 terms, and goes with it. `render::detail_line` draws it in its style's pen with the model's line weights, its colour and its
 pattern's dashes in pixels at the view's paper (`LinePattern::dash`); a repeat under two pixels draws solid. A primitive's dash is
 any list of on and off lengths (`Prim::Line::dash`), which SVG, PDF, the PNG and the canvas all take. The desktop has Annotate >
-Detail Line (DL; its Options Bar's Line Style, Enter or the first point again finishes it) and Manage > Line Styles
+Detail Line (DL; a line a click, as walls are, chained until Enter or the first point again, or with Polyline one line
+through every point; the Options Bar's Line Style, Chain and Polyline) and Manage > Line Styles
 (`linestyles.rs`: styles and patterns on two tabs of one draft, applied as one undo step). Next: sketches, then fill patterns and
 filled regions on them, then patterns made from lines drawn in a view.
 

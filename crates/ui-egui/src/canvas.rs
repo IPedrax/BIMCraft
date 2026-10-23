@@ -1446,16 +1446,9 @@ impl BimApp {
                     path.push(p);
                 }
             }
-            // The line's next point; back on the first, it's closed.
             Tool::DetailLine(path) => {
                 let p = self.snap(m, level, v, at, path, mods.shift).at;
-                if path.len() >= 2 && path.first().is_some_and(|f| f.dist(p) <= TOL) {
-                    self.finish_detail_line_closed(level, true);
-                } else if let Tool::DetailLine(path) = &mut self.tool
-                    && path.last().is_none_or(|l| l.dist(p) > TOL)
-                {
-                    path.push(p);
-                }
+                self.place_detail_line(level, p);
             }
             // On the level above, over this plan's walls; once made, selected, as a finished sketch is.
             Tool::Roof => match (number(&self.roof_slope), m.units.parse(&self.roof_overhang)) {
@@ -1700,9 +1693,48 @@ impl BimApp {
         }
     }
 
-    /// The Detail Line tool's Enter: a detail line through the points clicked, in the plan of `level`.
+    /// The Detail Line tool's next point. A line a click, as walls are: each click after the first makes a line from the
+    /// one before, and with Chain goes on from there until back on the first point. With Polyline, the points gather into
+    /// one line, closed when back on the first, else finished with Enter.
+    fn place_detail_line(&mut self, level: Id, p: P2) {
+        let Tool::DetailLine(path) = &mut self.tool else { return };
+        let (Some(first), Some(last)) = (path.first().copied(), path.last().copied()) else {
+            path.push(p);
+            return;
+        };
+        if last.dist(p) <= TOL {
+            return;
+        }
+        if self.polyline {
+            if path.len() >= 2 && first.dist(p) <= TOL {
+                self.finish_detail_line_closed(level, true);
+            } else {
+                path.push(p);
+            }
+            return;
+        }
+        let mut params = json!({"points": [point(last), point(p)], "view": level});
+        if !self.line_style.is_empty() {
+            params["style"] = json!(self.line_style);
+        }
+        if self.run("detail_line", params).is_some() {
+            let Tool::DetailLine(path) = &mut self.tool else { return };
+            if !self.line_chain || first.dist(p) <= TOL {
+                path.clear();
+            } else {
+                path.push(p);
+            }
+        }
+    }
+
+    /// The Detail Line tool's Enter: with Polyline, a detail line through the points clicked, in the plan of `level`;
+    /// else the chain ends, its lines made as it went.
     pub(crate) fn finish_detail_line(&mut self, level: Id) {
-        self.finish_detail_line_closed(level, false);
+        if self.polyline {
+            self.finish_detail_line_closed(level, false);
+        } else if let Tool::DetailLine(path) = &mut self.tool {
+            path.clear();
+        }
     }
 
     /// A detail line through the points clicked, round to the first again where `closed`, in the Options Bar's line
@@ -1828,6 +1860,9 @@ impl BimApp {
         }
         if matches!(self.tool, Tool::Run(..)) {
             return self.place_run(level, p);
+        }
+        if matches!(self.tool, Tool::DetailLine(_)) {
+            return self.place_detail_line(level, p);
         }
         match &mut self.tool {
             // A line: each click after the first builds the wall from the one before it.
@@ -2631,7 +2666,10 @@ impl BimApp {
             ghost(&|pt| pt + delta);
         }
         // A line's walls are built as it goes: only the next one is to come.
-        let built = if matches!(self.tool, Tool::Wall(_)) && !self.wall_arc { chain.len().saturating_sub(1) } else { 0 };
+        // Walls, and detail lines a click, are made as they go: only the next one is still a preview.
+        let one_by_one =
+            (matches!(self.tool, Tool::Wall(_)) && !self.wall_arc) || (matches!(self.tool, Tool::DetailLine(_)) && !self.polyline);
+        let built = if one_by_one { chain.len().saturating_sub(1) } else { 0 };
         let mut pts: Vec<Pos2> = chain.iter().skip(built).map(|pt| sc.screen(*pt)).collect();
         pts.push(sc.screen(next));
         // An arc waiting for its third point: the arc through the cursor.

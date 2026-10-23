@@ -100,7 +100,13 @@ The goal is a printable, coordinated drawing set.
 | Item | Size |
 |---|---|
 | Duplicate view (with or without detailing) and dependent views: done for plans (`duplicate_view`, DP); left: sections, elevations, 3D views, schedules and sheets | M |
-| Detail lines, filled regions, masking regions, line styles | M |
+| Detail lines, filled regions, masking regions, line styles: done (line patterns and styles, detail lines a line a click or as a polyline, the shared sketch solver, fill patterns, filled region types, filled and masking regions); left: the rows below | M |
+| Line draw tools for detail lines and sketches: rectangle (sketches have it), inscribed and circumscribed polygon, circle, arcs by centre and ends, tangent end and fillet (sketches have start-end-radius), spline, ellipse and partial ellipse, Pick Lines, and the Offset and Radius options | M |
+| A line style for each of a region's boundary lines (one for the whole boundary today) | S |
+| Split, Trim/Extend to Corner, Offset and Align for detail lines and sketch lines (walls only today; Move, Copy, Rotate and Mirror work) | M |
+| Fill patterns: `.pat` import and export, an editor for patterns of many line families, and model patterns aligned and rotated on a face | M |
+| Linework (a view's own line style on a model edge), repeating details, insulation and Detail Groups | M |
+| Better than Revit: line patterns and fill patterns made from lines drawn on a plan (select them, then Create Line Pattern or Create Fill Pattern), as Archicad and pyRevit's pattern maker do | M |
 | Drafting views, detail components (2D families), legends | L |
 | Annotation types: text, dimension and tag styles; room tags with fields and tag families that look like Revit's (`tag` names any element with a field of its schedule, drawn as plain text, a door's in a box and a window's in a hexagon) | M |
 | Area plans, area schemes (gross, rentable) and colour-fill legends by parameter | L |
@@ -129,7 +135,7 @@ and the content.
 | Visibility per view direction and detail level for a family's forms and symbols | M |
 | Sections that cut family forms (they show them beyond the cut today) | S |
 | A starter content library: original, openly licensed (CC0 or CC-BY) doors, windows, furniture, casework, fixtures and profiles (32 families ship today: furniture, casework, doors, windows, and the Plumbing, Electrical, SPDA and Data tabs' fixtures) | L (ongoing) |
-| A fill-pattern editor of the user's own, and material roughness for the 3D view (textures are done) | M |
+| Materials' surface and cut patterns as the project's fill patterns (the fill-pattern editor is done), and material roughness for the 3D view (textures are done) | M |
 
 **Exit criteria**: a user draws a parametric window in the family editor, places it, flexes its types, and it schedules
 and exports to IFC correctly.
@@ -162,6 +168,7 @@ The goal is that someone could run a real small project on it.
 |---|---|
 | GPU renderer (wgpu) for 3D: shaded views draw on the card since 0.7 (opt-in); still to come there are surfaces seen through, hidden line and wireframe, and then plans, perspective cameras, a section box, walkthroughs, shadows and sun, silhouettes | L |
 | A navigation gizmo, steering and orbit around the selection; tiled windows (views already float in windows of their own, and palettes dock and float). Not Revit's ViewCube, which is Autodesk's trademark and design: an original one in the manner of Blender's open-source navigation gizmo (axis balls to click to look along an axis, drag to orbit), drawn in code | M |
+| A dark theme with a white canvas: dark ribbon, palettes and browser around views drawn on white paper, as a choice beside the light and the dark theme (today the dark theme darkens the canvas too) | S |
 | Editable keyboard shortcuts; project templates of BIMCraft's own on the start page | S |
 | Accessibility: keyboard reach for every dialog and screen-reader labels (egui's AccessKit) | M |
 | A file-format stability promise, with 1.x files opening in every later 1.x | S |

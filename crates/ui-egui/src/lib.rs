@@ -468,6 +468,10 @@ pub struct BimApp {
     note_text: String,
     /// The line style the Detail Line tool draws in; blank for the project's Thin Lines.
     line_style: String,
+    /// The Detail Line tool's Chain: each click ends a line and starts the next; off, two clicks make one line.
+    line_chain: bool,
+    /// The Detail Line tool makes one line through every point clicked, finished with Enter, instead of a line a click.
+    polyline: bool,
     /// The project units the Options Bar's lengths were last written in.
     units: Units,
     /// A length typed while picking points: the listening dimension.
@@ -862,6 +866,8 @@ impl BimApp {
             tag_label: String::new(),
             note_text: String::new(),
             line_style: String::new(),
+            line_chain: true,
+            polyline: false,
             units,
             lang: Language::English,
             typed_length: String::new(),
@@ -2614,7 +2620,7 @@ impl BimApp {
             &[(
                 Icon::Line,
                 "Detail Line",
-                "Detail Line (DL): click its points in the plan, in the Options Bar's line style; Enter finishes it",
+                "Detail Line (DL): each click makes a line from the one before, in the Options Bar's line style; Polyline makes one line of them all",
                 Tool::DetailLine(Vec::new()),
             )],
         );

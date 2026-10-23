@@ -901,10 +901,11 @@ const WORDS: &[[&str; 3]] = &[
     ["{} at x {}, y {}", "{} em x {}, y {}", "{} en x {}, y {}"],
     ["{}; and {} more", "{}; e mais {}", "{}; y {} más"],
     [
-        "Detail Line (DL): click its points in the plan, in the Options Bar's line style; Enter finishes it",
-        "Linha de detalhe (DL): clique seus pontos na planta, no estilo de linha da Barra de opções; Enter a conclui",
-        "Línea de detalle (DL): haga clic en sus puntos en la planta, en el estilo de línea de la Barra de opciones; Intro la termina",
+        "Detail Line (DL): each click makes a line from the one before, in the Options Bar's line style; Polyline makes one line of them all",
+        "Linha de detalhe (DL): cada clique faz uma linha a partir do anterior, no estilo de linha da Barra de opções; Polilinha faz uma só linha de todos",
+        "Línea de detalle (DL): cada clic hace una línea desde el anterior, en el estilo de línea de la Barra de opciones; Polilínea hace una sola línea de todos",
     ],
+    ["Polyline", "Polilinha", "Polilínea"],
     ["Click where the detail line starts.", "Clique onde a linha de detalhe começa.", "Haga clic donde empieza la línea de detalle."],
     [
         "Click its next point; Enter finishes it, the first point again closes it. Esc cancels.",
