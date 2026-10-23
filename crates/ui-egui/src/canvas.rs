@@ -22,9 +22,10 @@ use egui::{
 };
 use serde_json::{Value, json};
 
+use crate::icons::Icon;
 use crate::lang::{t, tf};
 use crate::properties::number;
-use crate::style::{Icon, pal};
+use crate::style::pal;
 use crate::{BimApp, Sheet, Status, Tool, icon_button, top_params};
 
 /// How near the cursor an element is picked, in px.

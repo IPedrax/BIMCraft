@@ -16,8 +16,9 @@ use egui::{
 };
 use serde_json::{Value, json};
 
+use crate::icons::Icon;
 use crate::lang::{t, tf};
-use crate::style::{Icon, pal};
+use crate::style::pal;
 use crate::{BimApp, Sheet, icon_button};
 
 /// A palette that docks. A new one is a row here, its body in [`BimApp::palette_body`] and its name in `lang.rs`.

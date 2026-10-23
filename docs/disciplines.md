@@ -156,7 +156,7 @@ the four took a few lines in each of these places, and the tests are rows in two
    named through `language.rs`.
 3. **Desktop.** A `Tab` variant and a `fn xxx_tab` in `mep.rs`: buttons for `Tool::Run(category, None)` and for the `FIXTURES`
    rows (a `FixtureTool` is a key, the kinds of family it places, its shortcut, its words and its icon); the title in
-   `structure::title`; `properties.rs` (`icon`; the run rows and type rows already take any run category); icons in style.rs; the
+   `structure::title`; `properties.rs` (`icon`; the run rows and type rows already take any run category); icons in icons.rs; the
    family editor's labels in editor.rs; the Portuguese and Spanish rows in lang.rs (the words each standard uses).
 4. **Tests.** A row in `CASES` (the run categories) and `FIXTURES` (the families) of `mep_tests.rs`, which make, refuse, move,
    draw in plan, cut in a section, show in 3D, snap to, schedule, hide, save, write to IFC and read back every category in them;

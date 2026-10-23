@@ -10,8 +10,9 @@ use egui::{Align, CollapsingHeader, Layout, Rect, Sense, Stroke, StrokeKind, Tex
 use bimcraft_core::model::Id;
 use bimcraft_core::schedule;
 
+use crate::icons::{self, Icon};
 use crate::lang::{t, tf};
-use crate::style::{self, Icon, pal};
+use crate::style::pal;
 use crate::{BimApp, SCHEDULES, Sheet, Tool, icon_button};
 
 /// How long a search may be, in characters.
@@ -221,7 +222,7 @@ impl BimApp {
                     (false, false) => pal().muted.gamma_multiply(0.6),
                 };
                 let icon = Rect::from_center_size(rect.left_center() + vec2(13.0, 0.0), vec2(16.0, 16.0));
-                style::paint(p, tab.icon(), icon, ink);
+                icons::paint(p, tab.icon(), icon, ink);
                 if let Some(g) = text {
                     p.galley(rect.left_center() + vec2(24.0, -g.size().y / 2.0), g, pal().accent);
                 }
@@ -248,7 +249,7 @@ impl BimApp {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
                 let (r, _) = ui.allocate_exact_size(vec2(18.0, 22.0), Sense::hover());
-                style::paint(ui.painter(), Icon::Search, Rect::from_center_size(r.center(), vec2(15.0, 15.0)), pal().muted);
+                icons::paint(ui.painter(), Icon::Search, Rect::from_center_size(r.center(), vec2(15.0, 15.0)), pal().muted);
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if !self.browser_find.is_empty() && icon_button(ui, Icon::Close, "Clear the Search").clicked() {
                         self.browser_find.clear();

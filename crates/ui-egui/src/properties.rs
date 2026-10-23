@@ -20,8 +20,9 @@ use egui::{
 };
 use serde_json::{Value, json};
 
+use crate::icons::{self, Icon};
 use crate::lang::{self, t, tf};
-use crate::style::{self, Icon, pal};
+use crate::style::pal;
 use crate::{BimApp, Sheet, Status, Tool};
 
 #[derive(Clone, Copy, PartialEq)]
@@ -908,7 +909,7 @@ impl BimApp {
         );
         let swatch = Rect::from_min_size(rect.min + vec2(5.0, 5.0), vec2(40.0, 40.0));
         p.rect_filled(swatch, 2.0, pal().bar);
-        style::paint(p, icon(category), swatch.shrink(8.0), pal().icon);
+        icons::paint(p, icon(category), swatch.shrink(8.0), pal().icon);
         let x = swatch.right() + 10.0;
         let family = match subject {
             Subject::Plan(_) => t("Floor Plan").to_string(),

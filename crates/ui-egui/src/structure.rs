@@ -8,8 +8,8 @@ use bimcraft_core::{runs_of, stood_of};
 use egui::{ComboBox, TextEdit, Ui};
 use serde_json::{Value, json};
 
+use crate::icons::Icon;
 use crate::lang::{t, tf};
-use crate::style::Icon;
 use crate::{BimApp, Status, Tool, big_button, panel, top_params};
 
 /// The command that makes elements of `category`.

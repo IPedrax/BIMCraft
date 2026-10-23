@@ -17,9 +17,10 @@ use egui::{
 use serde_json::{Value, json};
 
 use crate::graphics::controlled_note;
+use crate::icons::Icon;
 use crate::lang::{t, tf};
 use crate::properties::number;
-use crate::style::{Icon, pal};
+use crate::style::pal;
 use crate::{BimApp, Sheet, Status, small_button};
 
 /// What Revit draws round a view that is hiding or isolating for now.

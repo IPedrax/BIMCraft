@@ -20,7 +20,8 @@ use egui::{
 use serde_json::json;
 
 use crate::canvas::{click_modifiers, color};
-use crate::style::{Icon, pal};
+use crate::icons::Icon;
+use crate::style::pal;
 use crate::{BimApp, Status, Tool, icon_button};
 
 /// What a picture is of: the model, the camera, the elements tinted, whether the theme is dark, and whether the card drew it.

@@ -16,8 +16,9 @@ use egui::{
     ScrollArea, Sense, Shape, Stroke, StrokeKind, TextureHandle, TextureOptions, Ui, UiBuilder, WidgetInfo, WidgetType, pos2, vec2,
 };
 
+use crate::icons::{self, Icon};
 use crate::lang::{t, tf};
-use crate::style::{self, Icon, pal};
+use crate::style::{self, pal};
 use crate::{BimApp, Pending};
 
 /// Where the source code is.
@@ -350,7 +351,7 @@ impl BimApp {
                 let icon = Rect::from_center_size(pic.center() - vec2(0.0, 6.0), vec2(40.0, 40.0));
                 let ext = path.extension().map(|e| e.to_string_lossy().to_uppercase()).unwrap_or_default();
                 let glyph = if ext == "BIMCRAFT" { Icon::Plan } else { Icon::Open };
-                style::paint(p, glyph, icon, pal().muted);
+                icons::paint(p, glyph, icon, pal().muted);
                 let note = if missing {
                     t("Not found").to_string()
                 } else if matches!(other, Some(Thumb::Drawing)) {
@@ -384,7 +385,7 @@ impl BimApp {
     fn start_footer(&self, ui: &mut Ui, click: &mut Option<Click>) {
         ui.horizontal(|ui| {
             let (rect, _) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::hover());
-            style::paint(ui.painter(), Icon::Code, rect, pal().muted);
+            icons::paint(ui.painter(), Icon::Code, rect, pal().muted);
             if ui.link(t("Source code on GitHub")).on_hover_text(SOURCE).clicked() {
                 *click = Some(Click::Page(SOURCE.into()));
             }
@@ -438,7 +439,7 @@ impl BimApp {
             State::Idle if u.up_to_date() => {
                 ui.label(RichText::new(tf("BIMCraft {} is up to date", &[&current])).color(pal().muted));
                 let (rect, _) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::hover());
-                style::paint(ui.painter(), Icon::Check, rect, pal().context);
+                icons::paint(ui.painter(), Icon::Check, rect, pal().context);
             }
             State::Idle => {
                 if ui.link(t("Check for updates")).clicked() {
@@ -469,7 +470,7 @@ fn action(ui: &mut Ui, icon: Icon, title: &str, hint: &str, keys: &str) -> Respo
     p.rect(rect, round, fill, Stroke::new(if hot { 1.5 } else { 1.0 }, if hot { pal().accent } else { pal().border }), StrokeKind::Inside);
     let disc = pos2(rect.left() + 36.0, rect.center().y);
     p.circle_filled(disc, 21.0, pal().accent.gamma_multiply(if hot { 1.0 } else { 0.14 }));
-    style::paint(p, icon, Rect::from_center_size(disc, vec2(22.0, 22.0)), if hot { Color32::WHITE } else { pal().accent });
+    icons::paint(p, icon, Rect::from_center_size(disc, vec2(22.0, 22.0)), if hot { Color32::WHITE } else { pal().accent });
     let at = pos2(rect.left() + 70.0, rect.center().y);
     let clip = Rect::from_min_max(pos2(at.x, rect.top()), pos2(rect.right() - 8.0, rect.bottom()));
     let p = p.with_clip_rect(clip);

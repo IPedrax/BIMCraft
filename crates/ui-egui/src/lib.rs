@@ -14,6 +14,7 @@ mod favorites;
 mod footer;
 mod gpu;
 mod graphics;
+pub mod icons;
 mod inquiry;
 pub mod lang;
 mod mep;
@@ -53,8 +54,9 @@ use serde_json::{Value, json};
 
 use bimcraft_core::language::Language;
 mod autosave;
+use icons::Icon;
 use lang::{t, tf};
-use style::{Icon, pal};
+use style::pal;
 
 /// A view: what the middle of the window shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -605,7 +607,7 @@ fn big_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> 
     let stroke = if r.has_focus() { Stroke::new(2.0, pal().accent) } else { stroke };
     let p = ui.painter();
     p.rect(rect, 4.0, fill, stroke, StrokeKind::Inside);
-    style::paint(p, icon, Rect::from_center_size(rect.center_top() + vec2(0.0, 19.0), vec2(24.0, 24.0)), ink);
+    icons::paint(p, icon, Rect::from_center_size(rect.center_top() + vec2(0.0, 19.0), vec2(24.0, 24.0)), ink);
     let text = match (active, enabled) {
         (true, _) => pal().accent,
         (false, true) => pal().text,
@@ -628,7 +630,7 @@ fn small_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -
     };
     let stroke = if r.has_focus() { Stroke::new(2.0, pal().accent) } else { stroke };
     ui.painter().rect(rect, 4.0, fill, stroke, StrokeKind::Inside);
-    style::paint(ui.painter(), icon, Rect::from_center_size(rect.center(), vec2(19.0, 19.0)), ink);
+    icons::paint(ui.painter(), icon, Rect::from_center_size(rect.center(), vec2(19.0, 19.0)), ink);
     r.on_hover_text(tip)
 }
 
@@ -643,7 +645,7 @@ fn icon_button(ui: &mut Ui, icon: Icon, label: &str) -> Response {
     if r.has_focus() {
         ui.painter().rect_stroke(rect, 4.0, Stroke::new(2.0, pal().accent), StrokeKind::Inside);
     }
-    style::paint(ui.painter(), icon, Rect::from_center_size(rect.center(), vec2(18.0, 18.0)), pal().icon);
+    icons::paint(ui.painter(), icon, Rect::from_center_size(rect.center(), vec2(18.0, 18.0)), pal().icon);
     r.on_hover_text(label)
 }
 
@@ -3175,7 +3177,7 @@ impl BimApp {
                 // How many elements are selected, by the selection filter, as Revit shows it.
                 ui.label(format!(":{}", self.selection.len()));
                 let (r, _) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::hover());
-                style::paint(ui.painter(), Icon::Filter, r, pal().icon);
+                icons::paint(ui.painter(), Icon::Filter, r, pal().icon);
                 if let Some(p) = self.canvas.cursor {
                     let u = self.session.model.units;
                     ui.monospace(format!("x {}  y {}", u.with_unit(p.0), u.with_unit(p.1)));

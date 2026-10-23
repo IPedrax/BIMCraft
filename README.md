@@ -588,7 +588,8 @@ crates/ui-egui         bimcraft-ui-egui: the desktop front end, a thin shell ove
   graphics.rs          Visibility/Graphics, Filters and View Templates, Hide in View
   phasing.rs           Phasing, Design Options, the active option and the Phasing groups of Properties
   lang.rs              the desktop's words in Portuguese and Spanish, and the language it starts in
-  style.rs             a light and a dark palette, spacing, and the icons, drawn in code
+  style.rs             a light and a dark palette and spacing
+  icons.rs             the icons, drawn in code on a 24 px grid, with fewer details at small sizes
   updates.rs           the update banner under the Options Bar, and the File menu's update items
 apps/bimcraft          the desktop app
 apps/bimcraft-cli      run, info, convert, commands, and the MCP server
