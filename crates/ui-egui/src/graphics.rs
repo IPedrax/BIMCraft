@@ -12,10 +12,12 @@ use bimcraft_core::graphics::{ANNOTATION, Applied, Dash, Detail, Graphics, Group
 use bimcraft_core::model::{Element, Guid, Id, Model};
 use bimcraft_core::pen::{MAX_PEN, Pen};
 use bimcraft_core::schedule;
+use bimcraft_core::styles::ObjectStyle;
 use bimcraft_core::units::Units;
 use egui::{
-    Align, Button, Checkbox, ComboBox, Context, DragValue, Grid, Id as UiId, Layout, Modal, RichText, ScrollArea, Ui, WidgetInfo,
-    WidgetType, vec2,
+    Align, Align2, Button, Checkbox, Color32, ComboBox, Context, DragValue, FontId, Grid, Id as UiId, Layout, Modal, Painter, Rect,
+    RichText, ScrollArea, Sense, Shape, Slider, Stroke, StrokeKind, TextEdit, TextStyle, TextWrapMode, Ui, UiBuilder, WidgetInfo,
+    WidgetType, pos2, vec2,
 };
 use serde_json::{Value, json};
 
@@ -35,8 +37,9 @@ enum Pick {
 }
 
 /// The Visibility/Graphics dialog: the view (as commands take it) and its name, its graphics as the
-/// project has them and as the dialog has edited them, the tab showing, what's picked to edit, and
-/// the elements the Elements tab lists (those with an override, and those added to give one).
+/// project has them and as the dialog has edited them, the tab showing, the row picked, the
+/// elements the Elements tab lists (those with an override, and those added to give one), the cell
+/// being edited, and the search for a category's name.
 pub(crate) struct VgDialog {
     view: Value,
     title: String,
@@ -45,10 +48,9 @@ pub(crate) struct VgDialog {
     tab: usize,
     pick: Option<Pick>,
     listed: BTreeSet<Id>,
+    cell: Option<CellEdit>,
+    search: String,
 }
-
-/// How wide the names in a list are at least, points.
-const LIST_NAME: f32 = 270.0;
 
 /// What the Filters dialog has picked: a filter, and the name typed for it.
 #[derive(Default)]
@@ -183,7 +185,17 @@ impl BimApp {
         };
         let own = self.graphics_now();
         let listed = own.elements.keys().filter_map(|g| self.session.model.elements.id(g)).collect();
-        self.vg_dialog = Some(VgDialog { view, title: self.view_title(self.sheet), draft: own.clone(), own, tab, pick: None, listed });
+        self.vg_dialog = Some(VgDialog {
+            view,
+            title: self.view_title(self.sheet),
+            draft: own.clone(),
+            own,
+            tab,
+            pick: None,
+            listed,
+            cell: None,
+            search: String::new(),
+        });
     }
 
     /// Override Graphics in View, By Element: the Elements tab, with what's selected on it.
@@ -259,13 +271,19 @@ impl BimApp {
 
     /// The Visibility/Graphics dialog, while it's open.
     pub(crate) fn graphics_window(&mut self, ctx: &Context) {
+        // Object Styles, opened from it, stands in its place until it closes; the draft waits.
+        if self.object_styles_dialog.is_some() {
+            return;
+        }
         let Some(mut d) = self.vg_dialog.take() else { return };
         let model = Arc::clone(&self.session.model);
         let followed = controls(&model, d.draft.template.as_ref());
-        let (mut ok, mut cancel, mut apply) = (false, false, false);
+        let (mut ok, mut cancel, mut apply, mut styles) = (false, false, false, false);
+        // A cell's dialog over it has its own OK and Cancel.
+        let over = d.cell.is_some();
         let r = Modal::new(UiId::new("visibility-graphics")).show(ctx, |ui| {
             // As large on every tab, so the dialog doesn't move about as the tabs change.
-            ui.set_width(700.0);
+            ui.set_width(800.0);
             ui.set_min_height(500.0);
             ui.label(RichText::new(tf("Visibility/Graphics Overrides for {}", &[&d.title])).heading());
             if let Some(name) = &d.draft.template {
@@ -294,19 +312,25 @@ impl BimApp {
             match d.tab {
                 0 | 1 => {
                     let names: &[&str] = if d.tab == 0 { &MODEL } else { &ANNOTATION };
-                    categories(ui, &mut d, &shown, names, !followed.contains(&Group::Categories));
+                    styles = categories(ui, &mut d, &model, &shown, names, !followed.contains(&Group::Categories));
                 }
                 2 => filters(ui, &mut d, &model, &shown, !followed.contains(&Group::Filters)),
                 3 => elements(ui, &mut d, &model, &self.selection),
                 _ => design_options(ui, &mut d, &model, &shown, !followed.contains(&Group::Options)),
             }
             ui.add_space(6.0);
-            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                apply = ui.button(t("Apply")).clicked();
-                cancel = ui.button(t("Cancel")).clicked();
-                ok = ui.button(t("OK")).clicked();
-            });
+            if !over {
+                ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                    apply = ui.button(t("Apply")).clicked();
+                    cancel = ui.button(t("Cancel")).clicked();
+                    ok = ui.button(t("OK")).clicked();
+                });
+            }
         });
+        cell_window(ctx, &mut d, &model);
+        if styles {
+            self.object_styles_dialog = Some(crate::objectstyles::ObjectStylesDialog::new(&model));
+        }
         // What's different from the project's, as one command; a refusal keeps the dialog open to fix it.
         let mut failed = false;
         if ok || apply {
@@ -321,7 +345,7 @@ impl BimApp {
                 d.own = now;
             }
         }
-        let done = (ok && !failed) || cancel || r.should_close();
+        let done = (ok && !failed) || cancel || (r.should_close() && !over);
         if !done {
             self.vg_dialog = Some(d);
         }
@@ -653,84 +677,379 @@ fn put_category(d: &mut VgDialog, cat: &str, o: Override) {
     }
 }
 
-/// The Model Categories and Annotation Categories tabs: each category visible or not, and
-/// Override… to edit how it draws; the override of the one picked below the list.
-fn categories(ui: &mut Ui, d: &mut VgDialog, shown: &Graphics, names: &[&str], enabled: bool) {
-    ScrollArea::vertical().max_height(240.0).auto_shrink([false, true]).id_salt(("vg-categories", d.tab)).show(ui, |ui| {
-        Grid::new(("vg-grid", d.tab)).num_columns(3).striped(true).spacing(vec2(16.0, 4.0)).show(ui, |ui| {
-            for cat in names {
-                let o = category_override(shown, cat);
-                let mut visible = !o.hidden;
-                let r = ui
-                    .scope(|ui| {
-                        ui.set_min_width(LIST_NAME);
-                        ui.add_enabled(enabled, Checkbox::new(&mut visible, lang::category(cat, true)))
-                    })
-                    .inner;
-                if r.changed() {
-                    let mut o = o.clone();
-                    o.hidden = !visible;
-                    put_category(d, cat, o);
-                }
-                let picked = d.pick == Some(Pick::Category((*cat).to_string()));
-                let name = tf("Override {}", &[&lang::category(cat, true)]);
-                let b = ui.add_enabled(enabled || picked, Button::new(t("Override…")).selected(picked));
-                b.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, name.clone()));
-                if b.clicked() {
-                    d.pick = Some(Pick::Category((*cat).to_string()));
-                }
-                ui.label(RichText::new(if o.is_empty() { "" } else { t("Overridden") }).color(pal().muted));
-                ui.end_row();
+/// Put `o` back as the override of the row `pick` is: a category's, a filter's or an element's.
+fn put(d: &mut VgDialog, model: &Model, pick: &Pick, o: Override) {
+    match pick {
+        Pick::Category(cat) => put_category(d, cat, o),
+        Pick::Filter(i) => {
+            if let Some(x) = d.draft.filters.get_mut(*i) {
+                x.over = o;
             }
-        });
-    });
-    if let Some(Pick::Category(cat)) = d.pick.clone().filter(|p| matches!(p, Pick::Category(c) if names.contains(&c.as_str()))) {
-        let mut o = category_override(shown, &cat);
-        ui.separator();
-        ui.label(RichText::new(tf("Overrides for {}", &[&lang::category(&cat, true)])).strong());
-        if editor(ui, &mut o, enabled, true) {
-            put_category(d, &cat, o);
+        }
+        Pick::Element(id) => put_element(d, model.guid(*id), o),
+    }
+}
+
+/// A column of the table that opens an editor, as Revit's: a style's lines or its patterns, in projection or where the
+/// view cuts, or the surface's transparency.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Cell {
+    ProjectionLines,
+    ProjectionPatterns,
+    Transparency,
+    CutLines,
+    CutPatterns,
+}
+
+impl Cell {
+    /// Every column, the projection's then the cut's.
+    const ALL: [Cell; 5] = [Cell::ProjectionLines, Cell::ProjectionPatterns, Cell::Transparency, Cell::CutLines, Cell::CutPatterns];
+
+    fn cut(self) -> bool {
+        matches!(self, Cell::CutLines | Cell::CutPatterns)
+    }
+
+    /// The column's heading, under its group's.
+    fn heading(self) -> &'static str {
+        match self {
+            Cell::ProjectionLines | Cell::CutLines => "Lines",
+            Cell::ProjectionPatterns | Cell::CutPatterns => "Patterns",
+            Cell::Transparency => "Transparency",
+        }
+    }
+
+    /// The column's name after a row's, for screen readers: "Walls: Cut Lines".
+    fn name(self) -> &'static str {
+        match self {
+            Cell::ProjectionLines => "Projection Lines",
+            Cell::ProjectionPatterns => "Projection Patterns",
+            Cell::Transparency => "Transparency",
+            Cell::CutLines => "Cut Lines",
+            Cell::CutPatterns => "Cut Patterns",
+        }
+    }
+
+    /// The small dialog that edits it.
+    fn title(self) -> &'static str {
+        match self {
+            Cell::ProjectionLines | Cell::CutLines => "Line Graphics",
+            Cell::ProjectionPatterns | Cell::CutPatterns => "Pattern Graphics",
+            Cell::Transparency => "Surface Transparency",
         }
     }
 }
 
-/// The Filters tab: the filters the view applies in order, each visible or not, with Override… to
-/// edit how it draws what it picks out, and Add, Remove, Up and Down.
+/// A cell's override being edited in its own small dialog, as Revit's Line Graphics: the row, its name, the column, the
+/// row's override as edited, and the pens a weight starts at, the row's object style.
+pub(crate) struct CellEdit {
+    pick: Pick,
+    name: String,
+    cell: Cell,
+    over: Override,
+    start: ObjectStyle,
+}
+
+/// A row of the table: what it is, its name, its override and the pens its object style gives.
+struct Row {
+    pick: Pick,
+    name: String,
+    over: Override,
+    start: ObjectStyle,
+}
+
+/// The table's columns, after Visibility: the cells that open an editor, Halftone, and Detail Level when it has one.
+struct Columns {
+    cells: &'static [Cell],
+    detail: bool,
+}
+
+/// The widths of the table's columns, points: the name, a cell, Halftone, Detail Level; and its rows' height.
+const NAME_W: f32 = 230.0;
+const CELL_W: f32 = 84.0;
+const HALFTONE_W: f32 = 64.0;
+const DETAIL_W: f32 = 80.0;
+const ROW_H: f32 = 22.0;
+
+/// A child of `ui` in `r`, laid out by `layout`, taking no room of `ui`'s.
+fn child(ui: &mut Ui, r: Rect, layout: Layout) -> Ui {
+    let mut c = ui.new_child(UiBuilder::new().max_rect(r).layout(layout));
+    c.style_mut().wrap_mode = Some(TextWrapMode::Truncate);
+    c
+}
+
+/// The table of Visibility/Graphics, as Revit's: a row for each of `rows`, its visibility, a cell for each of the
+/// columns that opens its editor and shows what it overrides, Halftone, and Detail Level. A click on a row picks it,
+/// and its cells read Override…. The rows whose visibility or halftone changed, with their override as it is now.
+fn table(ui: &mut Ui, d: &mut VgDialog, rows: &[Row], cols: &Columns, enabled: bool) -> Vec<(Pick, Override)> {
+    let total = NAME_W + cols.cells.len() as f32 * CELL_W + HALFTONE_W + if cols.detail { DETAIL_W } else { 0.0 };
+    let line = ui.visuals().widgets.noninteractive.bg_stroke;
+    let ink = ui.visuals().text_color();
+    let small = TextStyle::Small.resolve(ui.style());
+    let body = TextStyle::Body.resolve(ui.style());
+    // The heading: Visibility, the projection's columns and the cut's under their groups, Halftone and Detail Level.
+    let (head, _) = ui.allocate_exact_size(vec2(total, ROW_H * 2.0), Sense::hover());
+    let p = ui.painter();
+    p.rect_filled(head, 0.0, ui.visuals().faint_bg_color);
+    let text = |r: Rect, s: &str, font: &FontId| {
+        p.text(r.center(), Align2::CENTER_CENTER, s, font.clone(), ink);
+    };
+    let (top, mid) = (head.top(), head.top() + ROW_H);
+    text(Rect::from_min_size(pos2(head.left(), top), vec2(NAME_W, ROW_H * 2.0)), t("Visibility"), &body);
+    let mut x = head.left() + NAME_W;
+    for (group, cut) in [("Projection/Surface", false), ("Cut", true)] {
+        let cells: Vec<Cell> = cols.cells.iter().copied().filter(|c| c.cut() == cut).collect();
+        if cells.is_empty() {
+            continue;
+        }
+        let w = cells.len() as f32 * CELL_W;
+        p.vline(x, head.y_range(), line);
+        text(Rect::from_min_size(pos2(x, top), vec2(w, ROW_H)), t(group), &body);
+        p.hline(x..=x + w, mid, line);
+        for (i, c) in cells.iter().enumerate() {
+            let cx = x + i as f32 * CELL_W;
+            if i > 0 {
+                p.vline(cx, mid..=head.bottom(), line);
+            }
+            text(Rect::from_min_size(pos2(cx, mid), vec2(CELL_W, ROW_H)), t(c.heading()), &small);
+        }
+        x += w;
+    }
+    p.vline(x, head.y_range(), line);
+    text(Rect::from_min_size(pos2(x, top), vec2(HALFTONE_W, ROW_H * 2.0)), t("Halftone"), &small);
+    x += HALFTONE_W;
+    if cols.detail {
+        p.vline(x, head.y_range(), line);
+        text(Rect::from_min_size(pos2(x, top), vec2(DETAIL_W, ROW_H * 2.0)), t("Detail Level"), &small);
+    }
+    p.hline(head.x_range(), head.bottom(), line);
+    let mut edits = Vec::new();
+    ScrollArea::vertical().max_height(300.0).auto_shrink([false, true]).id_salt(("vg-table", d.tab)).show(ui, |ui| {
+        ui.spacing_mut().item_spacing.y = 0.0;
+        for (n, row) in rows.iter().enumerate() {
+            let (r, clicked) = ui.allocate_exact_size(vec2(total, ROW_H), Sense::click());
+            if clicked.clicked() {
+                d.pick = Some(row.pick.clone());
+            }
+            let picked = d.pick.as_ref() == Some(&row.pick);
+            let p = ui.painter().clone();
+            if picked {
+                p.rect_filled(r, 0.0, pal().select_fill);
+            } else if n % 2 == 1 {
+                p.rect_filled(r, 0.0, ui.visuals().faint_bg_color);
+            }
+            p.hline(r.x_range(), r.bottom(), line);
+            let cell = |x: f32, w: f32| Rect::from_min_size(pos2(x, r.top()), vec2(w, ROW_H));
+            // Visibility, ticked to show it.
+            let mut visible = !row.over.hidden;
+            let mut c = child(ui, cell(r.left(), NAME_W).shrink2(vec2(6.0, 0.0)), Layout::left_to_right(Align::Center));
+            if c.add_enabled(enabled, Checkbox::new(&mut visible, &row.name)).changed() {
+                edits.push((row.pick.clone(), Override { hidden: !visible, ..row.over.clone() }));
+            }
+            // The cells: Override… on the row picked, what each overrides on the rest.
+            let mut x = r.left() + NAME_W;
+            for k in cols.cells {
+                let at = cell(x, CELL_W);
+                p.vline(x, r.y_range(), line);
+                let name = format!("{}: {}", row.name, t(k.name()));
+                let mut c = child(ui, at.shrink(2.0), Layout::centered_and_justified(egui::Direction::LeftToRight));
+                let b = c.add_enabled(enabled, Button::new(if picked { t("Override…") } else { "" }).frame(picked));
+                b.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, name.clone()));
+                if b.clicked() {
+                    d.pick = Some(row.pick.clone());
+                    d.cell = Some(CellEdit {
+                        pick: row.pick.clone(),
+                        name: row.name.clone(),
+                        cell: *k,
+                        over: row.over.clone(),
+                        start: row.start,
+                    });
+                }
+                if !picked {
+                    paint_cell(&p, at, *k, &row.over, ink);
+                }
+                x += CELL_W;
+            }
+            // Halftone, a box of its own.
+            p.vline(x, r.y_range(), line);
+            let mut half = row.over.halftone;
+            let mut c = child(ui, cell(x, HALFTONE_W), Layout::centered_and_justified(egui::Direction::LeftToRight));
+            let name = format!("{}: {}", row.name, t("Halftone"));
+            let h = c.add_enabled(enabled, Checkbox::without_text(&mut half));
+            h.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, enabled, half, name.clone()));
+            if h.changed() {
+                edits.push((row.pick.clone(), Override { halftone: half, ..row.over.clone() }));
+            }
+            x += HALFTONE_W;
+            // Detail Level: each category drawn at the view's, until a category can have its own.
+            if cols.detail {
+                p.vline(x, r.y_range(), line);
+                p.text(cell(x, DETAIL_W).center(), Align2::CENTER_CENTER, t("By View"), small.clone(), pal().muted);
+            }
+        }
+    });
+    edits
+}
+
+/// What a cell of `o` overrides, drawn in it: a line as it would draw, a fill's colour, the transparency's percent; nothing
+/// where it overrides nothing.
+fn paint_cell(p: &Painter, r: Rect, cell: Cell, o: &Override, ink: Color32) {
+    let r = r.shrink2(vec2(12.0, 0.0));
+    let style = if cell.cut() { &o.cut } else { &o.projection };
+    let rgb = |c: [u8; 3]| Color32::from_rgb(c[0], c[1], c[2]);
+    match cell {
+        Cell::ProjectionLines | Cell::CutLines => {
+            if style.color.is_none() && style.weight.is_none() && style.dash.is_none() {
+                return;
+            }
+            let colour = style.color.map_or(ink, rgb);
+            let width = style.weight.map_or(1.0, |w| (w.mm() as f32 * 4.0).clamp(1.0, 6.0));
+            let ends = [r.left_center(), r.right_center()];
+            match style.dash {
+                Some(Dash::Dashed) => p.extend(Shape::dashed_line(&ends, Stroke::new(width, colour), 6.0, 3.0)),
+                Some(Dash::Dotted) => p.extend(Shape::dotted_line(&ends, colour, 4.0, width / 2.0 + 0.5)),
+                _ => {
+                    p.line_segment(ends, Stroke::new(width, colour));
+                }
+            }
+        }
+        Cell::ProjectionPatterns | Cell::CutPatterns => {
+            if let Some(fill) = style.fill {
+                p.rect(r.shrink2(vec2(0.0, 5.0)), 0.0, rgb(fill), Stroke::new(1.0, ink), StrokeKind::Inside);
+            }
+        }
+        Cell::Transparency => {
+            if o.transparency > 0 {
+                p.text(r.center(), Align2::CENTER_CENTER, format!("{}%", o.transparency), FontId::proportional(12.0), ink);
+            }
+        }
+    }
+}
+
+/// The small dialog a cell opens, over Visibility/Graphics: its lines' colour, weight and dash, its patterns' colour, or
+/// its transparency, each with a box to override it. OK puts the row's override in the draft; Cancel drops it.
+fn cell_window(ctx: &Context, d: &mut VgDialog, model: &Model) {
+    let Some(mut e) = d.cell.take() else { return };
+    let (mut ok, mut cancel) = (false, false);
+    let r = Modal::new(UiId::new("vg-cell")).show(ctx, |ui| {
+        ui.set_width(360.0);
+        ui.label(RichText::new(t(e.cell.title())).heading());
+        ui.label(RichText::new(&e.name).color(pal().muted));
+        ui.add_space(6.0);
+        let (section, start) = if e.cell.cut() { ("Cut", e.start.cut) } else { ("Projection", e.start.projection) };
+        let style = if e.cell.cut() { &mut e.over.cut } else { &mut e.over.projection };
+        Grid::new("vg-cell-grid").num_columns(2).spacing(vec2(16.0, 6.0)).show(ui, |ui| match e.cell {
+            Cell::ProjectionLines | Cell::CutLines => line_rows(ui, section, style, start),
+            Cell::ProjectionPatterns | Cell::CutPatterns => fill_row(ui, section, style),
+            Cell::Transparency => {
+                let l = ui.label(t("Transparency"));
+                let mut pct = f64::from(e.over.transparency);
+                ui.add(Slider::new(&mut pct, 0.0..=100.0).suffix("%")).labelled_by(l.id);
+                e.over.transparency = pct.round().clamp(0.0, 100.0) as u8;
+                ui.end_row();
+            }
+        });
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            if ui.button(t("Clear Overrides")).clicked() {
+                match e.cell {
+                    Cell::ProjectionLines | Cell::CutLines => {
+                        let s = if e.cell.cut() { &mut e.over.cut } else { &mut e.over.projection };
+                        (s.color, s.weight, s.dash) = (None, None, None);
+                    }
+                    Cell::ProjectionPatterns => e.over.projection.fill = None,
+                    Cell::CutPatterns => e.over.cut.fill = None,
+                    Cell::Transparency => e.over.transparency = 0,
+                }
+            }
+            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                cancel = ui.button(t("Cancel")).clicked();
+                ok = ui.button(t("OK")).clicked();
+            });
+        });
+    });
+    if ok {
+        let pick = e.pick.clone();
+        put(d, model, &pick, e.over);
+    } else if !(cancel || r.should_close()) {
+        d.cell = Some(e);
+    }
+}
+
+/// All, None and Invert: every row of `rows` shown, hidden, or the other way about.
+fn visibility_buttons(ui: &mut Ui, d: &mut VgDialog, model: &Model, rows: &[Row], enabled: bool) {
+    for label in ["All", "None", "Invert"] {
+        if ui.add_enabled(enabled && !rows.is_empty(), Button::new(t(label)).min_size(vec2(64.0, 0.0))).clicked() {
+            for row in rows {
+                let hidden = match label {
+                    "All" => false,
+                    "None" => true,
+                    _ => !row.over.hidden,
+                };
+                put(d, model, &row.pick, Override { hidden, ..row.over.clone() });
+            }
+        }
+    }
+}
+
+/// The Model Categories and Annotation Categories tabs: a row for each category the search finds, by its name. A model
+/// category's row has every column; an annotation's, its lines and halftone. Whether Object Styles… was pressed.
+fn categories(ui: &mut Ui, d: &mut VgDialog, model: &Model, shown: &Graphics, names: &[&str], enabled: bool) -> bool {
+    ui.horizontal(|ui| {
+        let l = ui.label(t("Category name search:"));
+        ui.add(TextEdit::singleline(&mut d.search).desired_width(200.0)).labelled_by(l.id);
+    });
+    ui.add_space(4.0);
+    let needle = d.search.trim().to_lowercase();
+    let rows: Vec<Row> = names
+        .iter()
+        .map(|cat| (cat, lang::category(cat, true)))
+        .filter(|(_, name)| name.to_lowercase().contains(&needle))
+        .map(|(cat, name)| Row {
+            pick: Pick::Category((*cat).to_string()),
+            name,
+            over: category_override(shown, cat),
+            start: model.object_style(cat),
+        })
+        .collect();
+    let model_tab = d.tab == 0;
+    let cols =
+        if model_tab { Columns { cells: &Cell::ALL, detail: true } } else { Columns { cells: &[Cell::ProjectionLines], detail: false } };
+    for (pick, o) in table(ui, d, &rows, &cols, enabled) {
+        put(d, model, &pick, o);
+    }
+    if rows.is_empty() {
+        ui.label(RichText::new(t("No category has that name.")).color(pal().muted));
+    }
+    ui.add_space(6.0);
+    let mut styles = false;
+    ui.horizontal(|ui| {
+        visibility_buttons(ui, d, model, &rows, enabled);
+        if model_tab {
+            ui.add_space(16.0);
+            ui.label(RichText::new(t("Categories not overridden are drawn as Object Styles sets them.")).color(pal().muted));
+            styles = ui.button(t("Object Styles…")).clicked();
+        }
+    });
+    styles
+}
+
+/// The Filters tab: the filters the view applies in order, each a row of the table, and Add, Remove, Up and Down.
 fn filters(ui: &mut Ui, d: &mut VgDialog, model: &Model, shown: &Graphics, enabled: bool) {
     if d.pick.as_ref().is_some_and(|p| !matches!(p, Pick::Filter(i) if *i < shown.filters.len())) {
         d.pick = None;
     }
     // A template's filters are only shown: editing them would go to the draft, which doesn't hold them.
-    let list: Vec<Applied> = shown.filters.clone();
-    Grid::new("vg-filters").num_columns(3).striped(true).spacing(vec2(16.0, 4.0)).show(ui, |ui| {
-        for (i, a) in list.iter().enumerate() {
-            let mut visible = !a.over.hidden;
-            let r = ui
-                .scope(|ui| {
-                    ui.set_min_width(LIST_NAME);
-                    ui.add_enabled(enabled, Checkbox::new(&mut visible, &a.filter))
-                })
-                .inner;
-            if r.changed()
-                && let Some(x) = d.draft.filters.get_mut(i)
-            {
-                x.over.hidden = !visible;
-            }
-            let picked = d.pick == Some(Pick::Filter(i));
-            let name = tf("Override {}", &[&a.filter]);
-            let b = ui.add(Button::new(t("Override…")).selected(picked));
-            b.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, name.clone()));
-            if b.clicked() {
-                d.pick = Some(Pick::Filter(i));
-            }
-            ui.label(RichText::new(if a.over.is_empty() { "" } else { t("Overridden") }).color(pal().muted));
-            ui.end_row();
-        }
-    });
-    if list.is_empty() {
+    let start = bimcraft_core::styles::default_of("");
+    let rows: Vec<Row> = (shown.filters.iter().enumerate())
+        .map(|(i, a)| Row { pick: Pick::Filter(i), name: a.filter.clone(), over: a.over.clone(), start })
+        .collect();
+    for (pick, o) in table(ui, d, &rows, &Columns { cells: &Cell::ALL, detail: false }, enabled) {
+        put(d, model, &pick, o);
+    }
+    if rows.is_empty() {
         ui.label(RichText::new(t("No filters applied.")).color(pal().muted));
     }
-    ui.add_space(4.0);
+    ui.add_space(6.0);
     ui.horizontal(|ui| {
         let applied: BTreeSet<&String> = d.draft.filters.iter().map(|a| &a.filter).collect();
         let others: Vec<String> = model.view_filters.keys().filter(|n| !applied.contains(n)).cloned().collect();
@@ -773,57 +1092,27 @@ fn filters(ui: &mut Ui, d: &mut VgDialog, model: &Model, shown: &Graphics, enabl
             d.pick = Some(Pick::Filter(i + 1));
         }
     });
-    if let Some(Pick::Filter(i)) = d.pick.clone()
-        && let Some(a) = shown.filters.get(i)
-    {
-        let mut o = a.over.clone();
-        ui.separator();
-        ui.label(RichText::new(tf("Overrides for {}", &[&a.filter])).strong());
-        if editor(ui, &mut o, enabled, true)
-            && let Some(x) = d.draft.filters.get_mut(i)
-        {
-            x.over = o;
-        }
-    }
 }
 
-/// The Elements tab: the elements hidden or overridden in this view, each visible or not, with
-/// Override…, and Add Selected for what's selected.
+/// The Elements tab: the elements hidden or overridden in this view, each a row of the table, and Add Selected for
+/// what's selected.
 fn elements(ui: &mut Ui, d: &mut VgDialog, model: &Model, selection: &[Id]) {
-    let ids: Vec<Id> = d.listed.iter().copied().filter(|id| model.elements.contains_key(id)).collect();
-    ScrollArea::vertical().max_height(200.0).auto_shrink([false, true]).id_salt("vg-elements").show(ui, |ui| {
-        Grid::new("vg-elements-grid").num_columns(3).striped(true).spacing(vec2(16.0, 4.0)).show(ui, |ui| {
-            for id in &ids {
-                let o = d.draft.elements.get(&model.guid(*id)).cloned().unwrap_or_default();
-                let mut visible = !o.hidden;
-                let name = element_name(model, *id);
-                let r = ui
-                    .scope(|ui| {
-                        ui.set_min_width(LIST_NAME);
-                        ui.add(Checkbox::new(&mut visible, &name))
-                    })
-                    .inner;
-                if r.changed() {
-                    let mut o = o.clone();
-                    o.hidden = !visible;
-                    put_element(d, model.guid(*id), o);
-                }
-                let picked = d.pick == Some(Pick::Element(*id));
-                let label = tf("Override {}", &[&name]);
-                let b = ui.add(Button::new(t("Override…")).selected(picked));
-                b.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label.clone()));
-                if b.clicked() {
-                    d.pick = Some(Pick::Element(*id));
-                }
-                ui.label(RichText::new(if o.is_empty() { "" } else { t("Overridden") }).color(pal().muted));
-                ui.end_row();
-            }
-        });
-    });
-    if ids.is_empty() {
+    let rows: Vec<Row> = (d.listed.iter())
+        .filter_map(|id| model.elements.get(id).map(|e| (*id, e.category())))
+        .map(|(id, cat)| Row {
+            pick: Pick::Element(id),
+            name: element_name(model, id),
+            over: d.draft.elements.get(&model.guid(id)).cloned().unwrap_or_default(),
+            start: model.object_style(cat),
+        })
+        .collect();
+    for (pick, o) in table(ui, d, &rows, &Columns { cells: &Cell::ALL, detail: false }, true) {
+        put(d, model, &pick, o);
+    }
+    if rows.is_empty() {
         ui.label(RichText::new(t("No element is hidden or overridden here: select some and Add Selected.")).color(pal().muted));
     }
-    ui.add_space(4.0);
+    ui.add_space(6.0);
     ui.horizontal(|ui| {
         let drawn: Vec<Id> = selection
             .iter()
@@ -845,14 +1134,6 @@ fn elements(ui: &mut Ui, d: &mut VgDialog, model: &Model, selection: &[Id]) {
             d.pick = None;
         }
     });
-    if let Some(Pick::Element(id)) = d.pick.clone() {
-        let mut o = d.draft.elements.get(&model.guid(id)).cloned().unwrap_or_default();
-        ui.separator();
-        ui.label(RichText::new(tf("Overrides for {}", &[&element_name(model, id)])).strong());
-        if editor(ui, &mut o, true, true) {
-            put_element(d, model.guid(id), o);
-        }
-    }
 }
 
 /// The Design Options tab: for each set of options, the one this view shows, the primary unless
@@ -945,65 +1226,76 @@ pub(crate) fn pen_name(p: Pen) -> String {
 fn style_rows(ui: &mut Ui, section: &str, s: &mut Style, weight: Pen) {
     ui.label(RichText::new(t(section)).strong());
     Grid::new(("vg-style", section)).num_columns(2).spacing(vec2(16.0, 4.0)).show(ui, |ui| {
-        let named = |what: &str| format!("{}: {}", t(section), t(what));
-        // A colour: a box that overrides it, and the colour once it does.
-        let colour = |ui: &mut Ui, what: &str, value: &mut Option<[u8; 3]>, start: [u8; 3]| {
-            let mut on = value.is_some();
-            let name = named(what);
-            let r = ui.checkbox(&mut on, t(what));
-            r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, name.clone()));
-            if r.changed() {
-                *value = on.then_some(start);
-            }
-            if let Some(rgb) = value {
-                let c = ui.color_edit_button_srgb(rgb);
-                c.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, name.clone()));
-            } else {
-                ui.label("");
-            }
-            ui.end_row();
-        };
-        colour(ui, "Line color", &mut s.color, [40, 40, 40]);
-        // The weight.
-        let mut on = s.weight.is_some();
-        let name = named("Line weight");
-        let r = ui.checkbox(&mut on, t("Line weight"));
-        r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, name.clone()));
-        if r.changed() {
-            s.weight = on.then_some(weight);
-        }
-        if let Some(w) = &mut s.weight {
-            let c = ComboBox::from_id_salt(("vg-weight", section)).selected_text(pen_name(*w)).width(110.0).show_ui(ui, |ui| {
-                for each in (0..=MAX_PEN).map(Pen) {
-                    ui.selectable_value(w, each, pen_name(each));
-                }
-            });
-            c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, name.clone()));
-        } else {
-            ui.label("");
-        }
-        ui.end_row();
-        // The dash.
-        let mut on = s.dash.is_some();
-        let name = named("Line dash");
-        let r = ui.checkbox(&mut on, t("Line dash"));
-        r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, name.clone()));
-        if r.changed() {
-            s.dash = on.then_some(Dash::Dashed);
-        }
-        if let Some(k) = &mut s.dash {
-            let c = ComboBox::from_id_salt(("vg-dash", section)).selected_text(t(dash_name(*k))).width(110.0).show_ui(ui, |ui| {
-                for each in [Dash::Solid, Dash::Dashed, Dash::Dotted] {
-                    ui.selectable_value(k, each, t(dash_name(each)));
-                }
-            });
-            c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, name.clone()));
-        } else {
-            ui.label("");
-        }
-        ui.end_row();
-        colour(ui, "Fill color", &mut s.fill, [200, 200, 200]);
+        line_rows(ui, section, s, weight);
+        fill_row(ui, section, s);
     });
+}
+
+/// A box that overrides one of a style's settings, named "Cut: Line weight" for screen readers; whether it's ticked.
+fn override_box(ui: &mut Ui, section: &str, what: &str, on: &mut bool) -> bool {
+    let name = format!("{}: {}", t(section), t(what));
+    let r = ui.checkbox(on, t(what));
+    let ticked = *on;
+    r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, ticked, name.clone()));
+    r.changed()
+}
+
+/// A colour, a grid row: its box, and the colour once it overrides.
+fn colour_row(ui: &mut Ui, section: &str, what: &str, value: &mut Option<[u8; 3]>, start: [u8; 3]) {
+    let mut on = value.is_some();
+    if override_box(ui, section, what, &mut on) {
+        *value = on.then_some(start);
+    }
+    if let Some(rgb) = value {
+        let name = format!("{}: {}", t(section), t(what));
+        let c = ui.color_edit_button_srgb(rgb);
+        c.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, name.clone()));
+    } else {
+        ui.label("");
+    }
+    ui.end_row();
+}
+
+/// A style's lines, grid rows: their colour, weight and dash. A weight starts at `weight`.
+fn line_rows(ui: &mut Ui, section: &str, s: &mut Style, weight: Pen) {
+    colour_row(ui, section, "Line color", &mut s.color, [40, 40, 40]);
+    let mut on = s.weight.is_some();
+    if override_box(ui, section, "Line weight", &mut on) {
+        s.weight = on.then_some(weight);
+    }
+    if let Some(w) = &mut s.weight {
+        let name = format!("{}: {}", t(section), t("Line weight"));
+        let c = ComboBox::from_id_salt(("vg-weight", section)).selected_text(pen_name(*w)).width(110.0).show_ui(ui, |ui| {
+            for each in (0..=MAX_PEN).map(Pen) {
+                ui.selectable_value(w, each, pen_name(each));
+            }
+        });
+        c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, name.clone()));
+    } else {
+        ui.label("");
+    }
+    ui.end_row();
+    let mut on = s.dash.is_some();
+    if override_box(ui, section, "Line dash", &mut on) {
+        s.dash = on.then_some(Dash::Dashed);
+    }
+    if let Some(k) = &mut s.dash {
+        let name = format!("{}: {}", t(section), t("Line dash"));
+        let c = ComboBox::from_id_salt(("vg-dash", section)).selected_text(t(dash_name(*k))).width(110.0).show_ui(ui, |ui| {
+            for each in [Dash::Solid, Dash::Dashed, Dash::Dotted] {
+                ui.selectable_value(k, each, t(dash_name(each)));
+            }
+        });
+        c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, name.clone()));
+    } else {
+        ui.label("");
+    }
+    ui.end_row();
+}
+
+/// A style's patterns, a grid row: the fill's colour.
+fn fill_row(ui: &mut Ui, section: &str, s: &mut Style) {
+    colour_row(ui, section, "Fill color", &mut s.fill, [200, 200, 200]);
 }
 
 fn dash_name(d: Dash) -> &'static str {

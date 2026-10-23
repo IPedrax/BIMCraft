@@ -94,6 +94,9 @@ impl BimApp {
         }
         if failed || !(ok || cancel || r.should_close()) {
             self.object_styles_dialog = Some(d);
+        } else if self.vg_dialog.is_some() {
+            // Visibility/Graphics, which opened it, comes back on the next frame.
+            ctx.request_repaint();
         }
     }
 }

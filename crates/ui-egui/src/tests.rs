@@ -1154,10 +1154,11 @@ fn the_column_and_component_tools_show_how_far_a_click_would_stand_from_the_wall
 fn a_line_weight_is_a_pen_picked_from_a_list_and_a_hairline_is_a_pixel_on_screen() {
     let mut h = app(BOX);
     shortcut(&mut h, "VV");
-    pick(&mut h, Role::Button, "Override Walls");
+    pick(&mut h, Role::Button, "Walls: Cut Lines");
     pick(&mut h, Role::CheckBox, "Cut: Line weight");
     assert_eq!(combo_value(&h, "Cut: Line weight"), "10 · 0.35 mm", "a cut wall's own pen to start with");
     choose(&mut h, "Cut: Line weight", "0 · Hairline");
+    press(&mut h, "OK");
     press(&mut h, "OK");
     assert_eq!(plan_graphics(&h, 100000).categories["wall"].cut.weight, Some(Pen(0)));
     // On screen a line is its pen's pixels at the zoom, at least one: a hairline is one at any zoom; Thin Lines makes all one.
@@ -2421,9 +2422,10 @@ mass {"boundary": [[1000, 1000], [3000, 1000], [3000, 2000], [1000, 2000]], "nam
         missed.extend(english(&h, l));
         shortcut(&mut h, "VV");
         missed.extend(english(&h, l));
-        let over = tr("Override {}").replace("{}", &crate::lang::category("wall", true));
+        let over = format!("{}: {}", crate::lang::category("wall", true), tr("Cut Lines"));
         pick(&mut h, Role::Button, &over);
         missed.extend(english(&h, l));
+        press(&mut h, tr("Cancel"));
         for tab in ["Annotation Categories", "Filters", "Elements", "Design Options"] {
             press(&mut h, tr(tab));
             missed.extend(english(&h, l));
@@ -3372,9 +3374,12 @@ fn visibility_graphics_hides_and_overrides_by_category_in_the_active_view_alone(
     pick(&mut h, Role::CheckBox, "Rooms");
     assert!(plan_graphics(&h, 100000).is_default());
     // Walls drawn their own way: a cut line weight, overriding it with a box and its start.
-    pick(&mut h, Role::Button, "Override Walls");
+    pick(&mut h, Role::Button, "Walls: Cut Lines");
     pick(&mut h, Role::CheckBox, "Cut: Line weight");
+    press(&mut h, "OK");
+    pick(&mut h, Role::Button, "Walls: Projection Lines");
     pick(&mut h, Role::CheckBox, "Projection: Line color");
+    press(&mut h, "OK");
     press(&mut h, "OK");
     let g = plan_graphics(&h, 100000);
     assert!(h.query_by_label("Visibility/Graphics Overrides for Floor Plan: Level 1").is_none(), "OK closes it");
@@ -3390,9 +3395,12 @@ fn visibility_graphics_hides_and_overrides_by_category_in_the_active_view_alone(
     assert!(plan_graphics(&h, 100000).hides("room"));
     shortcut(&mut h, "VV");
     pick(&mut h, Role::CheckBox, "Rooms");
-    pick(&mut h, Role::Button, "Override Walls");
+    pick(&mut h, Role::Button, "Walls: Cut Lines");
     pick(&mut h, Role::CheckBox, "Cut: Line weight");
+    press(&mut h, "OK");
+    pick(&mut h, Role::Button, "Walls: Projection Lines");
     pick(&mut h, Role::CheckBox, "Projection: Line color");
+    press(&mut h, "OK");
     press(&mut h, "OK");
     assert!(plan_graphics(&h, 100000).is_default(), "{:?}", plan_graphics(&h, 100000));
     // The annotation categories have a tab.
@@ -3400,6 +3408,55 @@ fn visibility_graphics_hides_and_overrides_by_category_in_the_active_view_alone(
     press(&mut h, "Annotation Categories");
     assert!(h.query_by_role_and_label(Role::CheckBox, "Grids").is_some() && h.query_by_role_and_label(Role::CheckBox, "Walls").is_none());
     press(&mut h, "Cancel");
+}
+
+#[test]
+fn visibility_graphics_is_a_table_each_cell_overriding_its_own_part() {
+    let mut h = app(BOX);
+    shortcut(&mut h, "VV");
+    // Each column is a cell to override, with Halftone a box in the row and Detail Level the view's, for now.
+    for cell in ["Projection Lines", "Projection Patterns", "Transparency", "Cut Lines", "Cut Patterns"] {
+        assert!(h.query_by_role_and_label(Role::Button, &format!("Floors: {cell}")).is_some(), "{cell}");
+    }
+    assert!(painted_text(&h).contains(&"By View".to_string()));
+    pick(&mut h, Role::CheckBox, "Floors: Halftone");
+    // A cell's dialog changes only its own part; Cancel drops it.
+    pick(&mut h, Role::Button, "Floors: Cut Patterns");
+    assert!(h.query_by_label("Pattern Graphics").is_some() && h.query_by_role_and_label(Role::CheckBox, "Cut: Line weight").is_none());
+    pick(&mut h, Role::CheckBox, "Cut: Fill color");
+    press(&mut h, "Cancel");
+    assert!(h.query_by_label("Pattern Graphics").is_none());
+    pick(&mut h, Role::Button, "Floors: Transparency");
+    assert!(h.query_by_label("Surface Transparency").is_some());
+    press(&mut h, "Cancel");
+    // The search narrows the rows; None hides what it found and no more.
+    type_role(&mut h, Role::TextInput, "Category name search:", "wal");
+    assert!(h.query_by_role_and_label(Role::CheckBox, "Floors").is_none());
+    press(&mut h, "None");
+    press(&mut h, "OK");
+    let g = plan_graphics(&h, 100000);
+    assert!(g.categories["floor"].halftone && g.categories["floor"].cut.fill.is_none());
+    assert!(g.hides("wall") && !g.hides("floor") && !g.hides("door"));
+    // Invert shows them again and hides the rest; All shows everything.
+    shortcut(&mut h, "VV");
+    press(&mut h, "Invert");
+    press(&mut h, "All");
+    press(&mut h, "OK");
+    assert!(!plan_graphics(&h, 100000).hides("wall"));
+    // Object Styles… stands in its place, for what isn't overridden, and gives it back as it was.
+    shortcut(&mut h, "VV");
+    pick(&mut h, Role::CheckBox, "Doors");
+    press(&mut h, "Object Styles…");
+    assert!(h.query_by_role_and_label(Role::ComboBox, "Walls: Cut").is_some());
+    // It settles over a few frames, as a window opened from another does.
+    for _ in 0..6 {
+        h.step();
+    }
+    press(&mut h, "Cancel");
+    assert!(h.state().object_styles_dialog.is_none());
+    press(&mut h, "OK");
+    assert!(h.state().vg_dialog.is_none());
+    assert!(plan_graphics(&h, 100000).hides("door"), "the draft waited");
 }
 
 /// What Level 1's plan shows of the model it is drawn from, as the view control bar leaves it.
@@ -3801,8 +3858,9 @@ fn hide_element_hide_category_and_the_elements_tab_work_on_the_selection() {
     click(&mut h, P2(8000.0, 3000.0));
     shortcut(&mut h, "EO");
     assert!(h.query_by_role_and_label(Role::CheckBox, "Wall 100003").is_some(), "listed, though it has no override yet");
-    assert!(h.query_by_label("Overrides for Wall 100003").is_some(), "and picked");
+    pick(&mut h, Role::Button, "Wall 100003: Cut Patterns");
     pick(&mut h, Role::CheckBox, "Cut: Fill color");
+    press(&mut h, "OK");
     press(&mut h, "OK");
     assert_eq!(plan_graphics(&h, 100000).elements[&gid(&h, walls[1])].cut.fill, Some([200, 200, 200]));
     key(&mut h, Key::Escape);
@@ -3833,7 +3891,9 @@ fn filters_are_made_in_their_dialog_and_applied_by_a_view() {
     press(&mut h, "Filters");
     pick(&mut h, Role::ComboBox, "Add filter:");
     press(&mut h, "Filter 1");
+    pick(&mut h, Role::Button, "Filter 1: Cut Lines");
     pick(&mut h, Role::CheckBox, "Cut: Line color");
+    press(&mut h, "OK");
     press(&mut h, "OK");
     let g = plan_graphics(&h, 100000);
     assert_eq!((g.filters.len(), g.filters[0].filter.as_str()), (1, "Filter 1"));
