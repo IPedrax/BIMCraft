@@ -7,8 +7,9 @@
 //! The boundary of a sketched element (a floor, a ceiling, a roof): its sketch lines, closed into loops.
 //!
 //! A floor is a sketch: boundary curves closing one outer loop and any number of inner loops. In a 2024 or later project
-//! each curve is a record of its own in the category `OST_SketchLines`, with its box and the sketched element's id as the last
-//! slot of its second reference list; the curve itself, a line or an arc, is the first curve record in its data. Before 2024
+//! each curve is a record of its own in the category `OST_SketchLines`, with its box and the sketch's owner among the ids of its
+//! second reference list; the curve itself, a line or an arc, is the first curve record in its data, and both readings come out of
+//! it, so the box says which the curve is. Before 2024
 //! only the box is read, and a segment parallel to an axis is its box: a diagonal leaves two candidate ends, which the loop
 //! itself settles when exactly one open pair fits.
 //!
@@ -71,21 +72,41 @@ fn in_box(p: [f64; 3], b: &[f64; 6]) -> bool {
     p[0] >= b[0] - BOX_EPS && p[0] <= b[3] + BOX_EPS && p[1] >= b[1] - BOX_EPS && p[1] <= b[4] + BOX_EPS
 }
 
-/// The curve of a sketch line whose box is `bbox`, from its data: the line reading where both ends are in the box, else the
-/// arc reading where all of it is.
+/// How far a curve's plan extent is from the box the file drew around it, on its worst side. A line record reads as an arc and an
+/// arc record as a line, and it is the box that says which it is: an arc record's line reading often lands inside the arc's box,
+/// so "the ends are inside the box" alone is no test.
+fn misfit<'a>(points: impl Iterator<Item = Pt> + 'a, b: &[f64; 6]) -> f64 {
+    let (mut lo, mut hi) = ((f64::MAX, f64::MAX), (f64::MIN, f64::MIN));
+    for p in points {
+        lo = (lo.0.min(p.0), lo.1.min(p.1));
+        hi = (hi.0.max(p.0), hi.1.max(p.1));
+    }
+    if lo.0 > hi.0 {
+        return f64::MAX;
+    }
+    (lo.0 - b[0]).abs().max((lo.1 - b[1]).abs()).max((hi.0 - b[3]).abs()).max((hi.1 - b[4]).abs())
+}
+
+/// The curve of a sketch line whose box is `bbox`, from its data: the line reading or the arc reading, whichever fits the box,
+/// and none where neither is inside it.
 pub fn edge_of(data: &[u8], bbox: &[f64; 6]) -> Option<Edge> {
     let (line, arc) = sketch_curve(data)?;
-    if let Some(l) = line.filter(|l| in_box(l.start(), bbox) && in_box(l.end(), bbox)) {
+    let straight = line.filter(|l| in_box(l.start(), bbox) && in_box(l.end(), bbox)).and_then(|l| {
         let (s, e) = (l.start(), l.end());
-        return ((s[0] - e[0]).hypot(s[1] - e[1]) > VERTEX_EPS).then(|| Edge { a: (s[0], s[1]), b: (e[0], e[1]), mid: Vec::new() });
+        ((s[0] - e[0]).hypot(s[1] - e[1]) > VERTEX_EPS).then(|| Edge { a: (s[0], s[1]), b: (e[0], e[1]), mid: Vec::new() })
+    });
+    let curved = arc.as_ref().and_then(arc_points).filter(|points| points.iter().all(|p| in_box(*p, bbox))).and_then(|points| {
+        let (first, last) = (points.first()?, points.last()?);
+        let mid = points[1..points.len() - 1].iter().map(|p| (p[0], p[1])).collect();
+        Some(Edge { a: (first[0], first[1]), b: (last[0], last[1]), mid })
+    });
+    match (straight, curved) {
+        (Some(s), Some(c)) => {
+            let ends = |e: &Edge| -> Vec<Pt> { std::iter::once(e.a).chain(e.mid.iter().copied()).chain(std::iter::once(e.b)).collect() };
+            Some(if misfit(ends(&c).into_iter(), bbox) < misfit(ends(&s).into_iter(), bbox) { c } else { s })
+        }
+        (straight, curved) => straight.or(curved),
     }
-    let points = arc_points(&arc?)?;
-    if !points.iter().all(|p| in_box(*p, bbox)) {
-        return None;
-    }
-    let (first, last) = (points.first()?, points.last()?);
-    let mid = points[1..points.len() - 1].iter().map(|p| (p[0], p[1])).collect();
-    Some(Edge { a: (first[0], first[1]), b: (last[0], last[1]), mid })
 }
 
 fn same(a: Pt, b: Pt) -> bool {

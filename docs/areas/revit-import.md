@@ -26,7 +26,8 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   host is the nearest wall below its own id in its reference list, else above, and its hole is its box along an axis-parallel wall;
   a column is its box's rectangle (a turned one: its symbol's size and the placement's angle); a floor, ceiling or roof is the loops
   of its `OST_SketchLines` (the owner of a curve is the one id among its second reference list's that is a floor, a ceiling or a
-  roof, first, middle or last); a roof by footprint only when flat, one by extrusion only where its box confirms it. A room tries the
+  roof, first, middle or last; a curve's record reads as both a line and an arc, and the box it carries says which it is);
+  a roof by footprint only when flat, one by extrusion only where its box confirms it. A room tries the
   middle of its box and then a grid of points over it, and making the arrangement of a level's walls is what costs (`geom::faces`
   splits and matches every segment), so the faces of a level are made once and every point of every room of that level is asked of
   them (`geom::region_in`): the Snowdon sample's import went from 133 s to 2.4 s in a release build when the rooms stopped remaking

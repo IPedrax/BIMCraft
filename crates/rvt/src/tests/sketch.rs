@@ -52,6 +52,24 @@ fn a_loop_may_hold_a_lens_of_two_curves_between_the_same_ends_but_not_a_curve_tw
 }
 
 #[test]
+fn an_arcs_record_is_read_as_its_arc_where_the_line_it_also_reads_as_falls_inside_its_box() {
+    // The Snowdon sample's curved floors: the record of a quarter arc about (0, 0) from (5, 0) to (0, 5) also reads as the line
+    // (1, 0) to (1, 1.5708), which is inside the box, so taking the line where its ends fit turns the curve into a stub that
+    // closes nothing. The box is the arc's own extent, and only the arc fills it.
+    let quarter = std::f64::consts::FRAC_PI_2;
+    let data = arc_bytes([0.0, quarter], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], 5.0, [0.0, 0.0, 0.0]);
+    let edge = edge_of(&data, &[0.0, 0.0, 0.0, 5.0, 5.0, 0.0]).expect("the arc");
+    for (got, want) in [(edge.a, (5.0, 0.0)), (edge.b, (0.0, 5.0))] {
+        assert!((got.0 - want.0).abs() < 1e-12 && (got.1 - want.1).abs() < 1e-12, "{got:?} against {want:?}");
+    }
+    assert!(!edge.mid.is_empty(), "the arc is drawn as chords");
+    // A line record whose box is the line's own stays a line.
+    let straight = crate::project_fixture::line_bytes(0.0, 2.0, [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]);
+    let edge = edge_of(&straight, &[1.0, 1.0, 0.0, 1.0, 3.0, 0.0]).expect("the line");
+    assert_eq!((edge.a, edge.b), ((1.0, 1.0), (1.0, 3.0)));
+}
+
+#[test]
 fn a_sketch_holds_up_to_the_most_curves_it_is_read_from() {
     let ring = |n: usize| -> Vec<(f64, f64)> {
         (0..n)
