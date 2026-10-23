@@ -10,7 +10,8 @@ use bimcraft_core::sketch::{self as solver, Line};
 use egui::{Color32, Modifiers, Painter, Pos2, Stroke, Ui};
 use serde_json::json;
 
-use crate::style::{Icon, pal};
+use crate::icons::Icon;
+use crate::style::pal;
 use crate::{BimApp, Status, Tool, big_button, panel};
 
 /// What Finish Edit Mode makes of the lines.
@@ -243,7 +244,7 @@ impl BimApp {
                 self.tool = Tool::SketchLine(Vec::new());
             }
             let rect = matches!(self.tool, Tool::SketchRect(_));
-            if big_button(ui, Icon::Shaft, "Rectangle", rect, "Rectangle: four boundary lines between two opposite corners").clicked()
+            if big_button(ui, Icon::Rectangle, "Rectangle", rect, "Rectangle: four boundary lines between two opposite corners").clicked()
                 && !rect
             {
                 self.tool = Tool::SketchRect(None);

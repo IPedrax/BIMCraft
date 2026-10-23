@@ -52,6 +52,10 @@ pub use commands::{command_of, element_json, floor_outline, opening_of, roof_foo
 #[cfg(test)]
 mod mep_tests;
 #[cfg(test)]
+mod plan_view_tests;
+#[cfg(test)]
+mod purge_tests;
+#[cfg(test)]
 mod structure_tests;
 #[cfg(test)]
 mod tests;

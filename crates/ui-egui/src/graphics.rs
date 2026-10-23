@@ -149,7 +149,10 @@ impl BimApp {
     /// ceiling plan is its plan's view.
     pub(crate) fn graphic_view(&self) -> Option<Value> {
         match self.sheet {
-            Sheet::Plan(level) | Sheet::Ceiling(level) => Some(json!(level)),
+            // A dependent view's graphics are its parent's: Visibility/Graphics is for that one.
+            Sheet::Plan(level) | Sheet::Ceiling(level) => {
+                self.session.model.plan_view(level).is_none_or(|v| v.parent.is_none()).then(|| json!(level))
+            }
             Sheet::Section(id) => Some(json!(id)),
             Sheet::View3D => Some(json!("{3D}")),
             Sheet::Paper(_) | Sheet::Schedule(_) | Sheet::Table(_) => None,

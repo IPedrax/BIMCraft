@@ -611,6 +611,9 @@ pub fn check_followed(m: &Model, old: &Element, new: &Element) -> Result<(), Str
     if let (Element::Level(x), Element::Level(y)) = (old, new) {
         follows(Group::Range, x.view_range == y.view_range, "view range")?;
     }
+    if let (Element::PlanView(x), Element::PlanView(y)) = (old, new) {
+        follows(Group::Range, x.view_range == y.view_range, "view range")?;
+    }
     Ok(())
 }
 
@@ -618,6 +621,7 @@ pub fn check_followed(m: &Model, old: &Element, new: &Element) -> Result<(), Str
 pub fn graphics_of_element(e: &Element) -> Option<&Graphics> {
     match e {
         Element::Level(l) => Some(&l.graphics),
+        Element::PlanView(v) => Some(&v.graphics),
         Element::Section(v) | Element::Elevation(v) => Some(&v.graphics),
         Element::View3D(v) => Some(&v.graphics),
         _ => None,
@@ -634,15 +638,17 @@ pub fn scale_of(m: &Model, id: impl Key) -> f64 {
 pub fn graphics_mut(e: &mut Element) -> Option<&mut Graphics> {
     match e {
         Element::Level(l) => Some(&mut l.graphics),
+        Element::PlanView(v) => Some(&mut v.graphics),
         Element::Section(v) | Element::Elevation(v) => Some(&mut v.graphics),
         Element::View3D(v) => Some(&mut v.graphics),
         _ => None,
     }
 }
 
-/// The graphics view `view` holds: a level's, a section's, an elevation's or a 3D view's.
+/// The graphics view `view` holds: a level's, a plan view's, a section's, an elevation's or a 3D view's. A dependent view has
+/// its parent's.
 pub fn graphics_of(m: &Model, view: impl Key) -> Option<&Graphics> {
-    graphics_of_element(m.elements.get(view)?)
+    graphics_of_element(m.elements.get(m.plan_source(view))?)
 }
 
 /// What a view's graphics come to for each element of the model.

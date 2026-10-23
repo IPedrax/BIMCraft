@@ -112,6 +112,8 @@ const WORDS: &[[&str; 3]] = &[
     ["Floor Schedule", "Tabela de pisos", "Tabla de pisos"],
     ["Level Schedule", "Tabela de níveis", "Tabla de niveles"],
     ["Ceiling Plan", "Planta de forro", "Plano de cielo raso"],
+    ["Copy", "Cópia", "Copia"],
+    ["Dependent", "Dependente", "Dependiente"],
     // The materials library a new project has.
     ["Brick", "Tijolo", "Ladrillo"],
     ["Insulation", "Isolamento", "Aislamiento"],

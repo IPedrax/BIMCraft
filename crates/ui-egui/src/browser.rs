@@ -10,8 +10,9 @@ use egui::{Align, CollapsingHeader, Layout, Rect, Sense, Stroke, StrokeKind, Tex
 use bimcraft_core::model::Id;
 use bimcraft_core::schedule;
 
+use crate::icons::{self, Icon};
 use crate::lang::{t, tf};
-use crate::style::{self, Icon, pal};
+use crate::style::pal;
 use crate::{BimApp, SCHEDULES, Sheet, Tool, icon_button};
 
 /// How long a search may be, in characters.
@@ -60,6 +61,10 @@ impl Tab {
     }
 }
 
+/// The categories of the system's families the browser lists, besides the runs': what Edit Type edits and the Type Selector picks.
+const SYSTEM_FAMILIES: [&str; 10] =
+    ["wall", "floor", "roof", "ceiling", "door", "window", "column", "railing", "structuralcolumn", "footing"];
+
 /// What a click on an entry does.
 #[derive(Clone, Debug, PartialEq)]
 enum Act {
@@ -68,6 +73,14 @@ enum Act {
     Open(Sheet),
     /// A family's type: the Component tool places it.
     Place(String, String),
+    /// A plan's right-click menu: a duplicate of it, in a mode of the command's.
+    Duplicate(Id, &'static str),
+    /// A right-click menu's Delete: the elements it names go, as Delete takes them.
+    Delete(Vec<Id>),
+    /// A right-click menu's command, with its parameters: Delete Type.
+    Do(&'static str, serde_json::Value),
+    /// A system family's type: the Type Selector's now, for what is placed next.
+    Pick(&'static str, String),
 }
 
 /// An entry of the tree, or a group of them.
@@ -80,15 +93,22 @@ struct Node {
     /// A group starts open.
     open: bool,
     kids: Vec<Node>,
+    /// Its right-click menu: each item's label and what it does.
+    menu: Vec<(&'static str, Act)>,
 }
 
 impl Node {
     fn group(label: &str, open: bool, kids: Vec<Node>) -> Node {
-        Node { label: label.to_string(), act: Act::Group, on: false, open, kids }
+        Node { label: label.to_string(), act: Act::Group, on: false, open, kids, menu: Vec::new() }
     }
 
     fn leaf(label: &str, act: Act, on: bool) -> Node {
-        Node { label: label.to_string(), act, on, open: false, kids: Vec::new() }
+        Node { label: label.to_string(), act, on, open: false, kids: Vec::new(), menu: Vec::new() }
+    }
+
+    fn with_menu(mut self, menu: Vec<(&'static str, Act)>) -> Node {
+        self.menu = menu;
+        self
     }
 
     /// Whether it shows for the words still to match (those its groups didn't): it matches all of them, or, a group,
@@ -202,7 +222,7 @@ impl BimApp {
                     (false, false) => pal().muted.gamma_multiply(0.6),
                 };
                 let icon = Rect::from_center_size(rect.left_center() + vec2(13.0, 0.0), vec2(16.0, 16.0));
-                style::paint(p, tab.icon(), icon, ink);
+                icons::paint(p, tab.icon(), icon, ink);
                 if let Some(g) = text {
                     p.galley(rect.left_center() + vec2(24.0, -g.size().y / 2.0), g, pal().accent);
                 }
@@ -229,7 +249,7 @@ impl BimApp {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
                 let (r, _) = ui.allocate_exact_size(vec2(18.0, 22.0), Sense::hover());
-                style::paint(ui.painter(), Icon::Search, Rect::from_center_size(r.center(), vec2(15.0, 15.0)), pal().muted);
+                icons::paint(ui.painter(), Icon::Search, Rect::from_center_size(r.center(), vec2(15.0, 15.0)), pal().muted);
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if !self.browser_find.is_empty() && icon_button(ui, Icon::Close, "Clear the Search").clicked() {
                         self.browser_find.clear();
@@ -271,6 +291,16 @@ impl BimApp {
                 self.component = Some((family, ty));
                 self.set_tool(Tool::Component);
             }
+            Some(Act::Duplicate(view, mode)) => self.duplicate_view_of(view, mode),
+            Some(Act::Delete(ids)) => {
+                self.run("delete", serde_json::json!({"ids": ids}));
+            }
+            Some(Act::Do(command, params)) => {
+                self.run(command, params);
+            }
+            Some(Act::Pick(category, name)) => {
+                self.types.insert(category, name);
+            }
             _ => {}
         }
     }
@@ -280,8 +310,19 @@ impl BimApp {
         let left: Vec<String> = words.iter().filter(|w| spans(&node.label, w).is_none()).cloned().collect();
         let text = marked(ui, &node.label, words);
         if node.act != Act::Group {
-            if ui.selectable_label(node.on, text).clicked() {
+            let r = ui.selectable_label(node.on, text);
+            if r.clicked() {
                 *act = Some(node.act.clone());
+            }
+            if !node.menu.is_empty() {
+                r.context_menu(|ui| {
+                    for (label, item) in &node.menu {
+                        if ui.button(t(label)).clicked() {
+                            *act = Some(item.clone());
+                            ui.close();
+                        }
+                    }
+                });
             }
             return;
         }
@@ -290,11 +331,21 @@ impl BimApp {
         if !words.is_empty() {
             header = header.open(Some(true));
         }
-        header.show(ui, |ui| {
+        let shown = header.show(ui, |ui| {
             for kid in node.kids.iter().filter(|k| k.shows(&left)) {
                 self.browser_node(ui, kid, &left, &path, act);
             }
         });
+        if !node.menu.is_empty() {
+            shown.header_response.context_menu(|ui| {
+                for (label, item) in &node.menu {
+                    if ui.button(t(label)).clicked() {
+                        *act = Some(item.clone());
+                        ui.close();
+                    }
+                }
+            });
+        }
     }
 
     /// What the browser lists under the tab in force.
@@ -341,8 +392,27 @@ impl BimApp {
             v.sort_by(|a, b| a.1.cmp(&b.1));
             v
         };
-        let plans = levels.iter().map(|(id, name)| self.view_leaf(name, Sheet::Plan(*id))).collect();
-        let ceilings = levels.iter().map(|(id, name)| self.view_leaf(name, Sheet::Ceiling(*id))).collect();
+        // Each level's own plan, then its plan views, which also have a right-click Delete.
+        let keyed: Vec<(Id, String, bool)> = levels
+            .iter()
+            .flat_map(|(id, name)| {
+                let views = m.plan_views(*id).into_iter().map(|(v, pv)| (v, pv.name.clone(), true));
+                std::iter::once((*id, name.clone(), false)).chain(views)
+            })
+            .collect();
+        let plan_leaf = |id: Id, name: &str, view: bool, sheet: Sheet| {
+            let mut menu = vec![
+                ("Duplicate", Act::Duplicate(id, "duplicate")),
+                ("Duplicate with Detailing", Act::Duplicate(id, "detailing")),
+                ("Duplicate as Dependent", Act::Duplicate(id, "dependent")),
+            ];
+            if view {
+                menu.push(("Delete", Act::Delete(vec![id])));
+            }
+            self.view_leaf(name, sheet).with_menu(menu)
+        };
+        let plans = keyed.iter().map(|(id, name, view)| plan_leaf(*id, name, *view, Sheet::Plan(*id))).collect();
+        let ceilings = keyed.iter().map(|(id, name, view)| plan_leaf(*id, name, *view, Sheet::Ceiling(*id))).collect();
         let mut kids = vec![
             Node::group(t("Floor Plans"), true, plans),
             Node::group(t("Ceiling Plans"), true, ceilings),
@@ -384,24 +454,36 @@ impl BimApp {
     }
 
     /// Families, each its types: one picked, the Component tool places it. Folded but on its own tab.
+    /// Families: each category of the system's (walls, floors, doors…) with its types, then the project's component families.
+    /// A right click on a type or a family has Delete, which the project refuses while something uses it.
     fn families_node(&self, open: bool) -> Node {
         let m = &self.session.model;
-        let kids = m
-            .families
-            .iter()
-            .map(|(name, f)| {
-                let types = f
-                    .types
-                    .keys()
-                    .map(|ty| {
-                        let on = self.tool == Tool::Component && self.component.as_ref() == Some(&(name.clone(), ty.clone()));
-                        Node::leaf(ty, Act::Place(name.clone(), ty.clone()), on)
-                    })
-                    .collect();
-                Node::group(name, false, types)
-            })
-            .collect();
-        Node::group(t("Families"), open, kids)
+        let delete = |params: serde_json::Value| vec![("Delete", Act::Do("delete_type", params))];
+        let system = SYSTEM_FAMILIES.iter().chain(&bimcraft_core::model::RUN_CATEGORIES).filter_map(|category| {
+            let names = m.type_names(category);
+            let leaves = names
+                .iter()
+                .map(|ty| {
+                    let on = self.types.get(category).is_some_and(|t| t == ty);
+                    Node::leaf(ty, Act::Pick(category, ty.to_string()), on)
+                        .with_menu(delete(serde_json::json!({"category": category, "type": ty})))
+                })
+                .collect();
+            (!names.is_empty()).then(|| Node::group(&crate::lang::category(category, true), false, leaves))
+        });
+        let components = m.families.iter().map(|(name, f)| {
+            let types = f
+                .types
+                .keys()
+                .map(|ty| {
+                    let on = self.tool == Tool::Component && self.component.as_ref() == Some(&(name.clone(), ty.clone()));
+                    Node::leaf(ty, Act::Place(name.clone(), ty.clone()), on)
+                        .with_menu(delete(serde_json::json!({"family": name, "type": ty})))
+                })
+                .collect();
+            Node::group(name, false, types).with_menu(delete(serde_json::json!({"family": name})))
+        });
+        Node::group(t("Families"), open, system.chain(components).collect())
     }
 }
 

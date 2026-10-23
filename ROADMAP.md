@@ -99,7 +99,7 @@ The goal is a printable, coordinated drawing set.
 
 | Item | Size |
 |---|---|
-| Duplicate view (with or without detailing) and dependent views | M |
+| Duplicate view (with or without detailing) and dependent views: done for plans (`duplicate_view`, DP); left: sections, elevations, 3D views, schedules and sheets | M |
 | Detail lines, filled regions, masking regions, line styles | M |
 | Drafting views, detail components (2D families), legends | L |
 | Annotation types: text, dimension and tag styles; room tags with fields and tag families that look like Revit's (`tag` names any element with a field of its schedule, drawn as plain text, a door's in a box and a window's in a hexagon) | M |

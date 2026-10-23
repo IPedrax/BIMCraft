@@ -22,9 +22,10 @@ use egui::{
 };
 use serde_json::{Value, json};
 
+use crate::icons::Icon;
 use crate::lang::{t, tf};
 use crate::properties::number;
-use crate::style::{Icon, pal};
+use crate::style::pal;
 use crate::{BimApp, Sheet, Status, Tool, icon_button, top_params};
 
 /// How near the cursor an element is picked, in px.
@@ -549,7 +550,9 @@ struct Scene<'a> {
     p: &'a Painter,
     m: &'a Model,
     d: &'a Drawing,
+    /// The level whose model the plan shows, and the plan's own key (the level's, or a plan view's): what annotation is in.
     level: Id,
+    key: Id,
     v: &'a View,
 }
 
@@ -804,18 +807,20 @@ impl BimApp {
         }
     }
 
-    /// The plan of `level`, filling `ui`.
-    pub(crate) fn canvas(&mut self, ui: &mut Ui, level: Id) {
+    /// The plan `key` names, filling `ui`: a level's own, or a plan view of one. What is built is on the plan's level; what is
+    /// dimensioned, tagged and noted is in the plan itself.
+    pub(crate) fn canvas(&mut self, ui: &mut Ui, key: Id) {
         // Clicks and drags; never the keyboard, which the shortcuts need.
         let (rect, response) = ui.allocate_exact_size(ui.available_size(), Sense::CLICK | Sense::DRAG);
         let model = self.view_model();
+        let level = model.plan_level(key).unwrap_or(key);
         let up = matches!(self.sheet, Sheet::Ceiling(_));
-        let fit = |w, h| if up { render::ceiling_plan(&model, level, w, h).view } else { render::plan(&model, level, w, h).view };
-        let Some((view, local)) = self.canvas.navigate(ui, &response, rect, level, fit) else { return };
+        let fit = |w, h| if up { render::ceiling_plan(&model, key, w, h).view } else { render::plan(&model, key, w, h).view };
+        let Some((view, local)) = self.canvas.navigate(ui, &response, rect, key, fit) else { return };
         let mods = ui.input(|i| i.modifiers);
         let c = &mut self.canvas;
         c.cursor = local.map(|q| view.mm(q));
-        let d = c.drawing.drawing(&model, level, view, up);
+        let d = c.drawing.drawing(&model, key, view, up);
 
         // What's under the cursor; Tab steps through it. (Without the app's input hook, as in
         // tests, egui moved the keyboard to a widget on that Tab: give it back.)
@@ -885,7 +890,7 @@ impl BimApp {
             _ => None,
         };
 
-        let crop = self.crop_grips(ui, &response, rect, &view, level);
+        let crop = self.crop_grips(ui, &response, rect, &view, key);
         self.canvas.found.set(None);
         self.grip_drag(ui, &response, rect, &view, level);
         // A drag from an element moves the selection; from empty floor, it draws a selection box.
@@ -932,7 +937,7 @@ impl BimApp {
             let q = (at.x - rect.min.x, at.y - rect.min.y);
             // What lay under the press, which the hand may have left by the time the button came up.
             let found = if Some(q) == local { hovered } else { under_at(q) };
-            self.click(&model, level, &view, q, found, click_modifiers(ui));
+            self.click(&model, (level, key), &view, q, found, click_modifiers(ui));
             // A snap override typed was for that point.
             self.snap_once = None;
         }
@@ -966,12 +971,12 @@ impl BimApp {
             _ => {}
         }
         if let Some(q) = local {
-            let scene = Scene { p: &p, m: &model, d: &d, level, v: &view };
+            let scene = Scene { p: &p, m: &model, d: &d, level, key, v: &view };
             self.preview(&scene, q, hovered, mods.shift);
         }
         // The Measure tool's ruler, as laid.
         if let (Tool::Measure(_), Some((a, b))) = (&self.tool, self.measured) {
-            let scene = Scene { p: &p, m: &model, d: &d, level, v: &view };
+            let scene = Scene { p: &p, m: &model, d: &d, level, key, v: &view };
             p.extend(ruler_shapes(&scene, a, b));
             let r = snap::ruler(a, b);
             let units = model.units;
@@ -992,7 +997,7 @@ impl BimApp {
         self.grip_overlay(ui, &model, &view, rect, level, &d);
         self.temporary_dimension(ui, &model, &view, rect);
         self.context_menu(&response);
-        self.nav_bar(ui, rect, level);
+        self.nav_bar(ui, rect, key);
     }
 
     /// A selection box in a section or an elevation, where nothing moves by dragging (in a plan, a
@@ -1176,7 +1181,7 @@ impl BimApp {
         p
     }
 
-    fn click(&mut self, m: &Model, level: Id, v: &View, at: (f32, f32), hovered: Option<Id>, mods: Modifiers) {
+    fn click(&mut self, m: &Model, (level, key): (Id, Id), v: &View, at: (f32, f32), hovered: Option<Id>, mods: Modifiers) {
         match &self.tool {
             Tool::Modify | Tool::SketchLine(_) | Tool::SketchRect(_) if self.sketch.is_some() => {
                 let from = match &self.tool {
@@ -1293,7 +1298,7 @@ impl BimApp {
                         self.tool = Tool::Dimension(refs);
                     }
                     None if refs.len() >= 2 => {
-                        let p = json!({"refs": refs, "at": point(round(v.mm(at))), "level": level});
+                        let p = json!({"refs": refs, "at": point(round(v.mm(at))), "level": key});
                         if self.run("dimension", p).is_some() {
                             self.tool = Tool::Dimension(Vec::new());
                         }
@@ -1311,7 +1316,7 @@ impl BimApp {
                         self.tool = Tool::Angular(refs);
                     }
                     _ if refs.len() == 2 => {
-                        let p = json!({"kind": "angular", "refs": refs, "at": point(round(v.mm(at))), "level": level});
+                        let p = json!({"kind": "angular", "refs": refs, "at": point(round(v.mm(at))), "level": key});
                         if self.run("dimension", p).is_some() {
                             self.tool = Tool::Angular(Vec::new());
                         }
@@ -1322,16 +1327,15 @@ impl BimApp {
             &Tool::Radial(picked) => match (picked, hovered) {
                 (None, Some(id)) => self.tool = Tool::Radial(Some(Reference { id: m.guid(id), face: Face::Centre })),
                 (Some(r), _) => {
-                    if self.run("dimension", json!({"kind": "radial", "refs": [r], "at": point(round(v.mm(at))), "level": level})).is_some()
-                    {
+                    if self.run("dimension", json!({"kind": "radial", "refs": [r], "at": point(round(v.mm(at))), "level": key})).is_some() {
                         self.tool = Tool::Radial(None);
                     }
                 }
                 (None, None) => {}
             },
-            Tool::Text => self.write_note(level, round(v.mm(at))),
+            Tool::Text => self.write_note(key, round(v.mm(at))),
             Tool::Spot => {
-                self.run("spot", json!({"at": point(round(v.mm(at))), "view": level}));
+                self.run("spot", json!({"at": point(round(v.mm(at))), "view": key}));
             }
             Tool::Tag => {
                 if let Some(id) = hovered {
@@ -1996,7 +2000,7 @@ impl BimApp {
             let (mods, q) = (ui.input(|i| i.modifiers), (q.x - rect.min.x, q.y - rect.min.y));
             let (found, to) = self.grip_target(m, level, v, (w, start), q, mods);
             let moved = Wall { start: if start { to } else { w.start }, end: if start { w.end } else { to }, ..w.clone() };
-            let sc = Scene { p: &p, m, d, level, v };
+            let sc = Scene { p: &p, m, d, level, key: level, v };
             // The wall as it would stand: its outline, and the ruler from the end that stays.
             // Its faces, where its location line puts them.
             let (ext, int) = walls::faces(m, &moved);
@@ -2227,7 +2231,7 @@ impl BimApp {
     /// What the tool would do at pixel `q`: a chain's next segment, the room a click would bound,
     /// where a move, turn or mirror puts the selection, the line Align or Offset would use.
     fn preview(&self, sc: &Scene, q: (f32, f32), hovered: Option<Id>, shift: bool) {
-        let (p, m, v, level) = (sc.p, sc.m, sc.v, sc.level);
+        let (p, m, v, level, key) = (sc.p, sc.m, sc.v, sc.level, sc.key);
         let origin = p.clip_rect().min;
         let cursor = pos(origin, q);
         let stroke = Stroke::new(2.0, pal().accent);
@@ -2235,6 +2239,8 @@ impl BimApp {
         let label = |at: Pos2, text: String| tag(p, at + vec2(12.0, -12.0), Align2::LEFT_BOTTOM, text);
         let dashed = |a: Pos2, b: Pos2| p.extend(Shape::dashed_line(&[a, b], thin, 8.0, 4.0));
         // An element a click would add, drawn as the plan would draw it.
+        // What a dimension or a tag made here says it is in: the plan view, when the plan on screen is one.
+        let in_view = || m.plan_view(key).map(|_| m.guid(key));
         let sketched = |e: &Element| ghost(p, origin, &render::sketch(m, *v, m.next_id, e), &[m.next_id], &|pt| pt);
         let ghost = |f: &dyn Fn(Pos2) -> Pos2| ghost(p, origin, sc.d, &self.selection, f);
         let chain = match &self.tool {
@@ -2393,6 +2399,7 @@ impl BimApp {
                 if candidate.is_none() && refs.len() >= 2 {
                     sketched(&Element::Dimension(Dimension {
                         level: m.guid(level),
+                        view: in_view(),
                         kind: DimKind::Aligned,
                         refs: refs.clone(),
                         at: round(v.mm(q)),
@@ -2403,7 +2410,13 @@ impl BimApp {
             Tool::Tag => {
                 if let Some(id) = hovered {
                     let label = Some(self.tag_label.trim().to_string()).filter(|l| !l.is_empty());
-                    sketched(&Element::Tag(Tag { host: m.guid(id), offset: m.tag_offset(id), leader: self.tag_leader, label }));
+                    sketched(&Element::Tag(Tag {
+                        host: m.guid(id),
+                        view: in_view(),
+                        offset: m.tag_offset(id),
+                        leader: self.tag_leader,
+                        label,
+                    }));
                 }
                 return;
             }
@@ -2419,6 +2432,7 @@ impl BimApp {
                 if refs.len() == 2 {
                     sketched(&Element::Dimension(Dimension {
                         level: m.guid(level),
+                        view: in_view(),
                         kind: DimKind::Angular,
                         refs: refs.clone(),
                         at: round(v.mm(q)),
@@ -2427,17 +2441,23 @@ impl BimApp {
                 return;
             }
             &Tool::Radial(Some(r)) => {
-                sketched(&Element::Dimension(Dimension { level: m.guid(level), kind: DimKind::Radial, refs: vec![r], at: round(v.mm(q)) }));
+                sketched(&Element::Dimension(Dimension {
+                    level: m.guid(level),
+                    view: in_view(),
+                    kind: DimKind::Radial,
+                    refs: vec![r],
+                    at: round(v.mm(q)),
+                }));
                 return;
             }
             Tool::Text if !self.note_text.trim().is_empty() => {
                 let text = self.note_text.replace("\\n", "\n");
-                sketched(&Element::Text(Note { view: m.guid(level), at: round(v.mm(q)), text, size: NOTE_SIZE, angle: 0.0, leader: None }));
+                sketched(&Element::Text(Note { view: m.guid(key), at: round(v.mm(q)), text, size: NOTE_SIZE, angle: 0.0, leader: None }));
                 return;
             }
             Tool::Spot => {
                 let at = round(v.mm(q));
-                sketched(&Element::Spot(Spot { view: m.guid(level), at, host: m.spot_host(level, at).map(|h| m.guid(h)) }));
+                sketched(&Element::Spot(Spot { view: m.guid(key), at, host: m.spot_host(level, at).map(|h| m.guid(h)) }));
                 return;
             }
             // The door or window a click would put in the wall, as the command makes it, and how far it stands from

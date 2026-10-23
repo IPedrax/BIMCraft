@@ -35,3 +35,12 @@ a project only through the `favorite` command (`load` never overwrites without `
 (`editor.rs`) edits text (`FormText`, `ParamText`, ...) and changes the project's family only through a `family` command; its
 preview is a scratch `Session` of its own, and it says what's wrong inside the window (the status box, over the view's corner, would lie on its
 buttons).
+
+A type or a family goes with `delete_type` (one entry, refused while an element uses it, and for the last type of a category or of a family: a
+tool needs one to place) and `purge` (every entry of the kinds asked that nothing uses). Use is what `Model::lib_refs_mut` visits, the one place
+that names every reference to a library entry: `Model::library_uses` counts them on a copy of the model, `Model::unused_entries` is one pass of
+what purge takes out (each category keeps its default's type, else its first; a family that goes takes its types), the command repeats it
+for what a pass frees (a family's material, a type's), at most 16 times, on a copy that becomes the model only when it isn't a `dry_run`.
+`Model::remove_entry` is the single place that knows where each kind lives. The desktop's Purge Unused window (`purge.rs`) lists a dry run
+for the kinds checked and runs the same; the Project Browser's Families lists the system types and has the right-click Delete.
+

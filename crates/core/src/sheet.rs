@@ -44,7 +44,7 @@ fn page(paper: P2) -> View {
 fn framing(m: &Model, view: impl Key, scale: f64) -> Option<View> {
     let k = DENSITY / scale;
     let pts: Vec<P2> = match m.elements.get(view)? {
-        Element::Level(_) => render::plan_extent(m, view),
+        Element::Level(_) | Element::PlanView(_) => render::plan_extent(m, view),
         Element::Section(_) | Element::Elevation(_) => render::section_extent(m, view, k, 1.0)?.to_vec(),
         Element::Schedule(sc) => {
             let (width, height) = table_size(&sc.name, &table_of(m, sc));
@@ -243,7 +243,7 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
         let (w, h) = (view.width as f32, view.height as f32);
         d.push(Prim::Fill { rings: vec![vec![(ox, oy), (ox + w, oy), (ox + w, oy + h), (ox, oy + h)]], color: PAPER });
         let inner = match m.elements.get(vp.view) {
-            Some(Element::Level(_)) => render::draw_at(m, vp.view, view, 1.0),
+            Some(Element::Level(_) | Element::PlanView(_)) => render::draw_at(m, vp.view, view, 1.0),
             Some(Element::Section(_) | Element::Elevation(_)) => {
                 let scene = scene.get_or_insert_with(|| view3d::Scene::new(m));
                 if let Some(img) = render::section_image(m, scene, vp.view, view, &[]) {

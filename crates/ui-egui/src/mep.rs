@@ -6,8 +6,8 @@
 use bimcraft_core::family::Category;
 use egui::Ui;
 
+use crate::icons::Icon;
 use crate::structure::same_tool;
-use crate::style::Icon;
 use crate::{BimApp, Tool, big_button, panel};
 
 /// A fixture tool: the families of `kinds` are what it places, listed in its Type Selector, turned by Space.

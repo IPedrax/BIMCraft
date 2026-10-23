@@ -547,6 +547,9 @@ pub struct Clearance {
 #[serde(deny_unknown_fields)]
 pub struct Dimension {
     pub level: Guid,
+    /// The plan view of `level` it is in, when not the level's own plan.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub view: Option<Guid>,
     #[serde(default)]
     pub kind: DimKind,
     pub refs: Vec<Reference>,
@@ -619,6 +622,26 @@ impl Schedule {
     }
 }
 
+/// A plan view of a level besides the level's own, as Revit's Duplicate View makes one: it looks at the same model through
+/// its own view range, crop and graphics, and holds annotation of its own (a dimension, a tag, a note or a spot elevation says
+/// which view it is in). A dependent view, `parent` set, follows its parent's view range and graphics (and so its scale and
+/// detail) and has a crop of its own; it shows its parent's annotation as well as its own.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanView {
+    pub level: Guid,
+    pub name: String,
+    #[serde(default)]
+    pub view_range: ViewRange,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crop: Option<[P2; 2]>,
+    /// What it hides and how it draws the rest.
+    #[serde(default, skip_serializing_if = "Graphics::is_default")]
+    pub graphics: Graphics,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<Guid>,
+}
+
 /// A 3D view, seen from `azimuth` degrees round from east (counter-clockwise) and `elevation`
 /// degrees up.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -638,6 +661,9 @@ pub struct View3D {
 #[serde(deny_unknown_fields)]
 pub struct Tag {
     pub host: Guid,
+    /// The plan view of its host's level it is in, when not the level's own plan.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub view: Option<Guid>,
     pub offset: P2,
     /// A line from the tag to what it names.
     #[serde(default)]
@@ -1040,6 +1066,10 @@ macro_rules! visit_refs {
             // A view's graphics, as `views_graphics` gives them.
             Element::Level(_) | Element::Section(_) | Element::Elevation(_) | Element::View3D(_) => {}
             Element::Grid(_) | Element::Sheet(_) | Element::Schedule(_) => {}
+            Element::PlanView(v) => {
+                f(& $($m)? v.level);
+                if let Some(g) = & $($m)? v.parent { f(g) }
+            }
             Element::Wall(w) => {
                 f(& $($m)? w.level);
                 if let Some(g) = & $($m)? w.top_level { f(g) }
@@ -1060,11 +1090,15 @@ macro_rules! visit_refs {
             Element::Door(o) | Element::Window(o) => f(& $($m)? o.host),
             Element::Dimension(d) => {
                 f(& $($m)? d.level);
+                if let Some(g) = & $($m)? d.view { f(g) }
                 for r in & $($m)? d.refs {
                     f(& $($m)? r.id);
                 }
             }
-            Element::Tag(t) => f(& $($m)? t.host),
+            Element::Tag(t) => {
+                f(& $($m)? t.host);
+                if let Some(g) = & $($m)? t.view { f(g) }
+            }
             Element::Viewport(v) => {
                 f(& $($m)? v.sheet);
                 f(& $($m)? v.view);
@@ -1134,6 +1168,7 @@ pub enum Element {
     Spot(Spot),
     Schedule(Schedule),
     View3D(View3D),
+    PlanView(PlanView),
 }
 
 impl Element {
@@ -1299,6 +1334,7 @@ impl Element {
             Element::Spot(_) => "spot",
             Element::Schedule(_) => "schedule",
             Element::View3D(_) => "view3d",
+            Element::PlanView(_) => "planview",
             Element::Level(_) => "level",
             Element::Grid(_) => "grid",
             Element::Wall(_) => "wall",
@@ -2218,25 +2254,104 @@ impl Model {
         self.base_z(w) <= z && z < self.top_z(w)
     }
 
-    /// The view range `level`'s plan has: its own, unless a view template it follows controls it.
-    pub fn view_range_of(&self, level: impl Key) -> ViewRange {
-        let Some(l) = self.level(level) else { return ViewRange::default() };
-        l.graphics
+    /// The view range plan `key` has (a level's own plan, or a plan view): its own, unless a view template it follows controls
+    /// it, or it is a dependent view, which has its parent's.
+    pub fn view_range_of(&self, key: impl Key) -> ViewRange {
+        let key = self.plan_source(key);
+        let (range, graphics) = match self.elements.get(key) {
+            Some(Element::Level(l)) => (l.view_range, &l.graphics),
+            Some(Element::PlanView(v)) => (v.view_range, &v.graphics),
+            _ => return ViewRange::default(),
+        };
+        graphics
             .template
             .as_ref()
             .and_then(|n| self.view_templates.get(n))
             .filter(|t| t.controls.contains(&graphics::Group::Range))
             .and_then(|t| t.view_range)
-            .unwrap_or(l.view_range)
+            .unwrap_or(range)
     }
 
-    /// The heights of the view range of `level`'s plan. A top that isn't set is the level above
+    /// The heights of the view range of plan `key`. A top that isn't set is the level above
     /// (none above: no limit), and never below the cut plane.
-    pub fn plan_range(&self, level: impl Key) -> PlanRange {
+    pub fn plan_range(&self, key: impl Key) -> PlanRange {
+        let level = self.plan_level(key).unwrap_or_default();
         let z = self.elevation(level);
-        let r = self.view_range_of(level);
+        let r = self.view_range_of(key);
         let above = || self.level_above(level).map_or(f64::INFINITY, |a| self.elevation(a));
         PlanRange { top: r.top.map_or_else(above, |t| z + t).max(z + r.cut), cut: z + r.cut, bottom: z + r.bottom, depth: z + r.depth }
+    }
+
+    /// The level plan `key` is of: a level itself, or the level of a plan view.
+    pub fn plan_level(&self, key: impl Key) -> Option<Id> {
+        match self.elements.get(key)? {
+            Element::Level(_) => self.elements.id(key),
+            Element::PlanView(v) => self.elements.id(v.level),
+            _ => None,
+        }
+    }
+
+    /// Element `id` if it is a plan view.
+    pub fn plan_view(&self, id: impl Key) -> Option<&PlanView> {
+        match self.elements.get(id) {
+            Some(Element::PlanView(v)) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// Plan view `view` if it is a plan view of `level`.
+    pub fn plan_view_of(&self, view: impl Key, level: impl Key) -> Option<&PlanView> {
+        match self.elements.get(view) {
+            Some(Element::PlanView(v)) if self.same(v.level, level) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// The plan views of `level`, in element order.
+    pub fn plan_views(&self, level: impl Key) -> Vec<(Id, &PlanView)> {
+        self.elements
+            .iter()
+            .filter_map(|(id, e)| match e {
+                Element::PlanView(v) if self.same(v.level, level) => Some((*id, v)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The plan whose view range, graphics (and so scale and detail) plan `key` follows: itself, or a dependent view's parent.
+    pub fn plan_source(&self, key: impl Key) -> Guid {
+        match self.elements.get(key) {
+            Some(Element::PlanView(PlanView { parent: Some(p), .. })) => *p,
+            _ => self.guid(key),
+        }
+    }
+
+    /// The crop region of plan `key`: its own, whichever kind of plan it is.
+    pub fn crop_of(&self, key: impl Key) -> Option<[P2; 2]> {
+        match self.elements.get(key)? {
+            Element::Level(l) => l.crop,
+            Element::PlanView(v) => v.crop,
+            _ => None,
+        }
+    }
+
+    /// The plan an annotation is in: a level's own, or a plan view; none for what isn't annotation of a plan.
+    pub fn annotation_plan(&self, e: &Element) -> Option<Guid> {
+        match e {
+            Element::Dimension(d) => Some(d.view.unwrap_or(d.level)),
+            Element::Tag(t) => t.view.or_else(|| self.level_of(e)),
+            Element::Text(Note { view, .. }) | Element::Spot(Spot { view, .. }) | Element::DetailLine(DetailLine { view, .. }) => {
+                Some(*view)
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether plan `key` draws annotation `e`: when it is in the plan, or in the parent of a dependent view.
+    pub fn annotation_in(&self, e: &Element, key: impl Key) -> bool {
+        let Some(at) = self.annotation_plan(e) else { return false };
+        let key = self.guid(key);
+        at == key || matches!(self.elements.get(key), Some(Element::PlanView(PlanView { parent: Some(p), .. })) if *p == at)
     }
 
     /// The names of a category's types (wall, floor, door or window, in any case, singular or
@@ -2429,8 +2544,10 @@ impl Model {
             Element::Tag(t) => self.elements.get(t.host).filter(|h| !matches!(h, Element::Tag(_))).and_then(|h| self.level_of(h)),
             // Notes and spot elevations in a level's plan.
             Element::Text(Note { view, .. }) | Element::Spot(Spot { view, .. }) | Element::DetailLine(DetailLine { view, .. }) => {
-                self.level(*view).map(|_| *view)
+                self.plan_level(*view).map(|l| self.guid(l))
             }
+            // A plan view stands on its level: it goes with it.
+            Element::PlanView(v) => Some(v.level),
             Element::Level(_)
             | Element::Grid(_)
             | Element::Section(_)
@@ -2787,6 +2904,7 @@ impl Model {
             Some(Element::Section(v) | Element::Elevation(v)) => Some(&v.name),
             Some(Element::Schedule(sc)) => Some(&sc.name),
             Some(Element::View3D(v)) => Some(&v.name),
+            Some(Element::PlanView(v)) => Some(&v.name),
             _ => None,
         }
     }
@@ -3111,7 +3229,7 @@ impl Model {
     pub fn spot_value(&self, sp: &Spot) -> Option<f64> {
         // ponytail: builds every solid per spot, per drawing; share one set of solids if plans carry many spots.
         match self.elements.get(sp.view)? {
-            Element::Level(_) => crate::view3d::tops_at(self, sp.at).get(&self.elements.id(sp.host?)?).copied(),
+            Element::Level(_) | Element::PlanView(_) => crate::view3d::tops_at(self, sp.at).get(&self.elements.id(sp.host?)?).copied(),
             Element::Section(_) | Element::Elevation(_) => Some(sp.at.1),
             _ => None,
         }
@@ -3296,7 +3414,7 @@ impl Model {
             let level_ok = |l: Guid| self.level(l).map(|_| ()).ok_or(format!("{who}: level {} doesn't exist", self.shown(l)));
             // A view annotation is drawn in: a plan, a section or an elevation, or with `sheets`, a sheet.
             let view_ok = |v: Guid, sheets: bool| match self.elements.get(v) {
-                Some(Element::Level(_) | Element::Section(_) | Element::Elevation(_)) => Ok(()),
+                Some(Element::Level(_) | Element::PlanView(_) | Element::Section(_) | Element::Elevation(_)) => Ok(()),
                 Some(Element::Sheet(_)) if sheets => Ok(()),
                 Some(other) => Err(format!(
                     "{who}: {} {} isn't a plan, a section, an elevation{}",
@@ -3499,6 +3617,10 @@ impl Model {
                 }
                 Element::Dimension(d) => {
                     level_ok(d.level)?;
+                    if let Some(v) = d.view {
+                        self.plan_view_of(v, d.level)
+                            .ok_or_else(|| format!("{who}: view {} isn't a plan view of its level", self.shown(v)))?;
+                    }
                     point(&who, d.at)?;
                     match (d.kind, d.refs.len()) {
                         (DimKind::Aligned, 2..=MAX_POINTS) | (DimKind::Angular, 2) | (DimKind::Radial, 1) => {}
@@ -3564,7 +3686,7 @@ impl Model {
                 Element::Spot(sp) => {
                     view_ok(sp.view, false)?;
                     point(&who, sp.at)?;
-                    match (self.level(sp.view), sp.host) {
+                    match (self.plan_level(sp.view), sp.host) {
                         (Some(_), None) => return Err(format!("{who}: a spot elevation in a plan reads an element's top; give `host`")),
                         (_, Some(h)) if !self.elements.contains_key(h) => return Err(format!("{who}: element {h} doesn't exist")),
                         _ => {}
@@ -3586,6 +3708,39 @@ impl Model {
                     }
                     if !view_names.insert(sc.name.as_str()) {
                         return Err(format!("{who}: another view is already named `{}`", sc.name));
+                    }
+                }
+                Element::PlanView(v) => {
+                    text(&who, "name", &v.name)?;
+                    if v.name.trim().is_empty() {
+                        return Err(format!("{who}: a view needs a name"));
+                    }
+                    level_ok(v.level)?;
+                    range_ok(&who, &v.view_range)?;
+                    if let Some([a, b]) = v.crop {
+                        crop(&who, a, b)?;
+                    }
+                    v.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
+                    // A level's name is its own plan's; a view of it takes another.
+                    if self.levels().iter().any(|(_, l)| l.name == v.name) {
+                        return Err(format!("{who}: a level is already named `{}`; a plan view of it needs another name", v.name));
+                    }
+                    if let Some(p) = v.parent {
+                        // Of a level's own plan, or of a plan view that is no dependent itself, on the same level.
+                        let primary = match self.elements.get(p) {
+                            Some(Element::Level(_)) => p == v.level,
+                            Some(Element::PlanView(o)) => o.parent.is_none() && o.level == v.level,
+                            _ => false,
+                        };
+                        if !primary {
+                            return Err(format!(
+                                "{who}: a dependent view hangs from a plan of its own level that is no dependent itself, not {}",
+                                self.shown(p)
+                            ));
+                        }
+                    }
+                    if !view_names.insert(v.name.as_str()) {
+                        return Err(format!("{who}: another view is already named `{}`", v.name));
                     }
                 }
                 Element::View3D(v) => {
@@ -3830,6 +3985,12 @@ impl Model {
                     let Some(host) = self.elements.get(t.host) else {
                         return Err(format!("{who}: element {} doesn't exist", t.host));
                     };
+                    if let Some(v) = t.view {
+                        let level = self.level_of(e);
+                        level
+                            .and_then(|l| self.plan_view_of(v, l))
+                            .ok_or_else(|| format!("{who}: view {} isn't a plan view of its host's level", self.shown(v)))?;
+                    }
                     // A door or window whose wall is gone is the wall's to complain of; anything else needs a place in a plan.
                     if !matches!(host, Element::Door(_) | Element::Window(_)) && self.anchor(t.host).is_none() {
                         return Err(format!(

@@ -20,8 +20,9 @@ use egui::{
 };
 use serde_json::{Value, json};
 
+use crate::icons::{self, Icon};
 use crate::lang::{self, t, tf};
-use crate::style::{self, Icon, pal};
+use crate::style::pal;
 use crate::{BimApp, Sheet, Status, Tool};
 
 #[derive(Clone, Copy, PartialEq)]
@@ -41,6 +42,8 @@ enum Kind {
     Level,
     /// A level, shown by name; read only.
     LevelName,
+    /// A view, shown by name; read only.
+    ViewName,
     /// A level, or none for a wall of unconnected height.
     TopLevel,
     /// A wall's height: typed when its top is unconnected, else what its levels make it.
@@ -290,6 +293,25 @@ const PLAN: &[Row] = &[
     ("View Range", "view_range.cut", "Cut Plane", Length),
     ("View Range", "view_range.bottom", "Bottom", Length),
     ("View Range", "view_range.depth", "View Depth", Length),
+];
+
+/// A plan view's parameters, read from and written to the plan view itself.
+const PLAN_VIEW: &[Row] = &[
+    ("Identity Data", "name", "View Name", Text),
+    ("Extents", "level", "Associated Level", LevelName),
+    ("Extents", "crop", "Crop View", Crop),
+    ("View Range", "view_range.top", "Top", Limit("Level Above")),
+    ("View Range", "view_range.cut", "Cut Plane", Length),
+    ("View Range", "view_range.bottom", "Bottom", Length),
+    ("View Range", "view_range.depth", "View Depth", Length),
+];
+
+/// A dependent view's: its view range and graphics are its parent's, so it shows the parent, and a crop of its own.
+const PLAN_DEPENDENT: &[Row] = &[
+    ("Identity Data", "name", "View Name", Text),
+    ("Extents", "level", "Associated Level", LevelName),
+    ("Extents", "parent", "Parent View", ViewName),
+    ("Extents", "crop", "Crop View", Crop),
 ];
 
 /// Type `name` of `category` as the project's JSON holds it: `types` is the project's `Types` as JSON.
@@ -782,7 +804,14 @@ impl BimApp {
             }
             Subject::Mixed(n) => (tf("Multiple Categories ({})", &[&n.to_string()]), Vec::new(), &[][..]),
             Subject::New(category) => (tf("New {}", &[&lang::category(category, true)]), Vec::new(), &[][..]),
-            Subject::Plan(level) => (self.view_title(Sheet::Plan(level)), vec![level], PLAN),
+            Subject::Plan(level) => {
+                let rows = match self.session.model.plan_view(level) {
+                    Some(v) if v.parent.is_some() => PLAN_DEPENDENT,
+                    Some(_) => PLAN_VIEW,
+                    None => PLAN,
+                };
+                (self.view_title(Sheet::Plan(level)), vec![level], rows)
+            }
             Subject::CeilingPlan | Subject::View3D | Subject::Schedule => (self.view_title(self.sheet), Vec::new(), &[][..]),
         };
         ui.horizontal(|ui| {
@@ -885,7 +914,7 @@ impl BimApp {
         );
         let swatch = Rect::from_min_size(rect.min + vec2(5.0, 5.0), vec2(40.0, 40.0));
         p.rect_filled(swatch, 2.0, pal().bar);
-        style::paint(p, icon(category), swatch.shrink(8.0), pal().icon);
+        icons::paint(p, icon(category), swatch.shrink(8.0), pal().icon);
         let x = swatch.right() + 10.0;
         let family = match subject {
             Subject::Plan(_) => t("Floor Plan").to_string(),
@@ -1018,6 +1047,10 @@ impl BimApp {
                             }
                             LevelName => {
                                 ui.label(RichText::new(level_name(val)).color(pal().muted));
+                            }
+                            ViewName => {
+                                let name = val.as_u64().and_then(|v| model.view_name(v)).unwrap_or_default();
+                                ui.label(RichText::new(name).color(pal().muted));
                             }
                             Crop => {
                                 let mut on = !val.is_null();

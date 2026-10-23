@@ -336,6 +336,115 @@ impl<'de> Deserialize<'de> for Library {
     }
 }
 
+/// What Purge Unused may take out, as a command names it: `type` (every kind of type, and a family's types), `family`, `material`,
+/// `picture`, `filter` and `template`.
+pub const PURGE_KINDS: [&str; 6] = ["type", "family", "material", "picture", "filter", "template"];
+
+impl Model {
+    /// How many times something names each library entry: an element its type or family, a type's layer its material, a material
+    /// its picture, a view its template and filters. An entry nothing names is unused.
+    /// ponytail: counted on a copy of the model (the visitor takes `&mut`); a read-only visitor if purging a huge project is slow.
+    pub fn library_uses(&self) -> BTreeMap<(Kind, String), usize> {
+        let mut uses = BTreeMap::new();
+        self.clone().lib_refs_mut(&mut |kind, name| *uses.entry((kind.clone(), name.clone())).or_insert(0) += 1);
+        uses
+    }
+
+    /// Takes entry `name` of `kind` out of the project: false where there is none, or where it isn't one a project can lose
+    /// (a phase, a parameter, an option: they have commands of their own).
+    pub fn remove_entry(&mut self, kind: &Kind, name: &str) -> bool {
+        use crate::model::RUN_CATEGORIES;
+        match kind {
+            Kind::Type(category) => match category.as_str() {
+                "wall" => self.types.wall.remove(name).is_some(),
+                "floor" => self.types.floor.remove(name).is_some(),
+                "door" => self.types.door.remove(name).is_some(),
+                "window" => self.types.window.remove(name).is_some(),
+                "column" => self.types.column.remove(name).is_some(),
+                "roof" => self.types.roof.remove(name).is_some(),
+                "ceiling" => self.types.ceiling.remove(name).is_some(),
+                "railing" => self.types.railing.remove(name).is_some(),
+                "structuralcolumn" => self.types.structural_column.remove(name).is_some(),
+                "footing" => self.types.footing.remove(name).is_some(),
+                run if RUN_CATEGORIES.contains(&run) => self.types.runs.get_mut(run).is_some_and(|t| t.remove(name).is_some()),
+                _ => false,
+            },
+            Kind::Family => self.families.remove(name).is_some(),
+            Kind::FamilyType => {
+                name.split_once(": ").is_some_and(|(f, t)| self.families.get_mut(f).is_some_and(|fam| fam.types.remove(t).is_some()))
+            }
+            Kind::Material => self.materials.remove(name).is_some(),
+            Kind::Picture => self.images.remove(name).is_some(),
+            Kind::ViewFilter => self.view_filters.remove(name).is_some(),
+            Kind::ViewTemplate => self.view_templates.remove(name).is_some(),
+            _ => false,
+        }
+    }
+
+    /// The entries of `kinds` (see [`PURGE_KINDS`]) nothing names, as one pass of Purge Unused would take them out. Each
+    /// category keeps a type (its default's, else its first) and each family a type, so that a tool still has one to place; a
+    /// family that goes takes its types with it. What a pass takes out may leave more unused, which the next pass finds.
+    pub fn unused_entries(&self, kinds: &[&str]) -> Vec<(Kind, String)> {
+        let uses = self.library_uses();
+        let has = |kind: &str| kinds.contains(&kind);
+        let unused = |k: &Kind, n: &str| !uses.contains_key(&(k.clone(), n.to_string()));
+        let mut out: Vec<(Kind, String)> = Vec::new();
+        let all = self.library_names();
+        // Types by category: all of a category's unused ones but one, when none of its types is used.
+        let mut categories: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+        for (kind, name) in &all {
+            if let Kind::Type(c) = kind {
+                categories.entry(c.as_str()).or_default().push(name);
+            }
+        }
+        if has("type") {
+            for (category, names) in categories {
+                let kind = Kind::Type(category.to_string());
+                let mut gone: Vec<&str> = names.iter().copied().filter(|n| unused(&kind, n)).collect();
+                if gone.len() == names.len() {
+                    let keep = self.default_type(category).filter(|d| gone.contains(d)).or(gone.first().copied());
+                    gone.retain(|n| Some(*n) != keep);
+                }
+                out.extend(gone.into_iter().map(|n| (kind.clone(), n.to_string())));
+            }
+        }
+        let families_gone: Vec<&str> = if has("family") {
+            self.families.keys().map(String::as_str).filter(|f| unused(&Kind::Family, f)).collect()
+        } else {
+            Vec::new()
+        };
+        out.extend(families_gone.iter().map(|f| (Kind::Family, f.to_string())));
+        if has("type") {
+            for (family, fam) in self.families.iter().filter(|(f, _)| !families_gone.contains(&f.as_str())) {
+                let full = |t: &str| format!("{family}: {t}");
+                let mut gone: Vec<&str> = fam.types.keys().map(String::as_str).filter(|t| unused(&Kind::FamilyType, &full(t))).collect();
+                if gone.len() == fam.types.len() {
+                    gone.pop();
+                }
+                out.extend(gone.into_iter().map(|t| (Kind::FamilyType, full(t))));
+            }
+        }
+        for (kind, name, wanted) in all.iter().filter_map(|(k, n)| {
+            Some((
+                k,
+                n,
+                match k {
+                    Kind::Material => "material",
+                    Kind::Picture => "picture",
+                    Kind::ViewFilter => "filter",
+                    Kind::ViewTemplate => "template",
+                    _ => return None,
+                },
+            ))
+        }) {
+            if has(wanted) && unused(kind, name) {
+                out.push((kind.clone(), name.clone()));
+            }
+        }
+        out
+    }
+}
+
 impl Model {
     /// Every entry the library has now, by what it is and its name.
     pub fn library_names(&self) -> Vec<(Kind, String)> {
