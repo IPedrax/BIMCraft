@@ -4832,6 +4832,7 @@ mod autosave;
 mod browser;
 mod dock;
 mod gpu;
+mod lines;
 mod lineweights;
 mod mep;
 mod objectstyles;

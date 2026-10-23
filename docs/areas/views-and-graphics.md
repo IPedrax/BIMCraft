@@ -39,7 +39,22 @@ seen (floors, walls and columns below, roofs, ceilings, runs, components, shafts
 door's or window's family forms and symbols, a door's leaf and swing. The rest keep their own pens, as Revit's subcategories
 would: a compound element's layer lines, an opening's jambs and glass, a stair's cut line and walk line, a floor's holes. A project
 holds only the categories set apart from `styles::default_of` (which draws as before: cut pen 10, seen pen 4). What's next on this
-foundation: annotation categories' object styles and subcategories, viewports as windows onto their views, and printing. `Drawing::detail` is the level the plan or the section is drawn at: coarse leaves out a compound element's layers and an opening's
+foundation: annotation categories' object styles and subcategories, viewports as windows onto their views, and printing.
+
+Detail lines and their line styles (`lines.rs`): a `LinePattern` is a dash or a dot then a space, again and again, each length mm
+on paper, so it reads the same at any scale (`Solid` is none, a name no pattern takes); a `LineStyle` is a pen, a colour and a
+pattern; both are library entries (`Kind::LinePattern`, `Kind::LineStyle`), so a style names its pattern and a detail line its style
+by GUID in a file, and a rename (`rename_entry`) follows everywhere. A project starts with ours, named in its language
+(`lines::patterns`, `lines::styles`); one in use can't be deleted. A `DetailLine` (category `line`, Lines in Visibility/Graphics) is
+drawn in one view, as a text note is: a level's plan (not its ceiling plan), a section or an elevation, or a sheet, in the view's own
+terms, and goes with it. `render::detail_line` draws it in its style's pen with the model's line weights, its colour and its
+pattern's dashes in pixels at the view's paper (`LinePattern::dash`); a repeat under two pixels draws solid. A primitive's dash is
+any list of on and off lengths (`Prim::Line::dash`), which SVG, PDF, the PNG and the canvas all take. The desktop has Annotate >
+Detail Line (DL; its Options Bar's Line Style, Enter or the first point again finishes it) and Manage > Line Styles
+(`linestyles.rs`: styles and patterns on two tabs of one draft, applied as one undo step). Next: sketches, then fill patterns and
+filled regions on them, then patterns made from lines drawn in a view.
+
+`Drawing::detail` is the level the plan or the section is drawn at: coarse leaves out a compound element's layers and an opening's
 symbols, medium its patterns (`cut_layer`, a floor's `surface`), fine draws as before. In the 3D view `Look::style` picks how
 `Scene::picture` draws: shaded as ever, hidden line as a section's picture is (paper faces, edges), wireframe by `Scene::edges` (where
 surfaces meet at an angle or end, found once) drawn through the faces; a pixel within two of a line picks its element.

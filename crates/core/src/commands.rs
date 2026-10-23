@@ -14,6 +14,7 @@ use crate::geom::{self, P2};
 use crate::graphics::{self, Graphics, Group, Look, Override, ViewTemplate};
 use crate::language::Language;
 use crate::library::Kind as LibKind;
+use crate::lines::{DetailLine, LineStyle};
 use crate::massing;
 use crate::model::{
     CEILING_HEIGHT, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Element, Extrusion, Face,
@@ -698,6 +699,38 @@ pub static ALL: &[Command] = &[
         object_styles,
     ),
     edit(
+        "line_pattern",
+        "Line Patterns",
+        &[],
+        "{name?, segments?: [{dash: mm} | {space: mm} | \"dot\", …], rename?, delete?: true} a line pattern of the project's: \
+         a dash or a dot then a space, again and again, each dash and space 0.05 to 100 mm long on paper, so it reads the \
+         same at any scale. A project starts with Dash, Long Dash, Dot, Dash Dot, Hidden and Centre; Solid is a line with \
+         none. `rename` renames it, the line styles using it following; `delete` takes it away, while no style uses it. \
+         Without `name`, it lists every pattern",
+        line_pattern,
+    ),
+    edit(
+        "line_style",
+        "Line Styles",
+        &[],
+        "{name?, pen?, color?: \"#rrggbb\" | [r, g, b], pattern?: name | \"Solid\", rename?, delete?: true} a line style of \
+         the project's, as Revit's: the pen (0, a hairline, to 16) its lines draw in, their colour (black unless told) and \
+         their line pattern. A new one needs `pen`; one changed keeps what it isn't given. A project starts with Hairline, \
+         Thin Lines, Medium Lines, Wide Lines, Hidden Lines, Centre Lines and Overhead Lines. `rename` renames it, the lines \
+         drawn in it following; `delete` takes it away, while no line is drawn in it. Without `name`, it lists every style",
+        line_style,
+    ),
+    edit(
+        "detail_line",
+        "Detail Line",
+        &["DL"],
+        "{points: [[x, y], …], view?, style?, closed?} a detail line in a view, by name or id, through `points` in the view's \
+         own terms: a level's plan (the lowest by default; plan mm), a section or an elevation (along its line from its start, \
+         and up) or a sheet by number (paper mm); round to its first point again when `closed`. It draws in line style \
+         `style` (Thin Lines unless told), only in its view, and goes with it",
+        detail_line,
+    ),
+    edit(
         "units",
         "Project Units",
         &["UN"],
@@ -1351,6 +1384,12 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             extra.insert("perimeter_m".into(), json!(region.as_ref().map_or(0.0, |g| (g.perimeter() / 10.0).round() / 100.0)));
         }
         Element::Text(_) => {
+            extra.insert("level".into(), json!(m.level_of(e)));
+        }
+        Element::DetailLine(l) => {
+            let ring = l.closed.then(|| l.points.last().copied().zip(l.points.first().copied())).flatten();
+            let length: f64 = l.points.windows(2).map(|w| w[0].dist(w[1])).chain(ring.map(|(a, b)| a.dist(b))).sum();
+            extra.insert("length".into(), json!(hundredth(length)));
             extra.insert("level".into(), json!(m.level_of(e)));
         }
         Element::Spot(sp) => {
@@ -5080,6 +5119,7 @@ fn transformed(c: &str, m: &Model, id: Id, mo: &Motion, with: &BTreeSet<Id>) -> 
             n.leader = n.leader.map(f);
         }
         Element::Spot(sp) => sp.at = f(sp.at),
+        Element::DetailLine(l) => l.points.iter_mut().for_each(|p| *p = micron(f(*p))),
         Element::Viewport(v) => v.at = f(v.at),
         Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => (col.at, col.angle) = turned(f, col.at, col.angle),
         // A run keeps its heights at its ends; its section is the same either way round.
@@ -5613,6 +5653,7 @@ fn delete(s: &mut Session, p: &Value) -> R {
                         Element::Viewport(v) => gone.contains(&v.sheet) || gone.contains(&v.view),
                         // Notes and spot elevations go with their view, spots with what they read.
                         Element::Text(n) => gone.contains(&n.view),
+                        Element::DetailLine(l) => gone.contains(&l.view),
                         Element::Spot(sp) => gone.contains(&sp.view) || sp.host.is_some_and(|h| gone.contains(&h)),
                         _ => false,
                     }
@@ -5681,6 +5722,153 @@ fn units(s: &mut Session, p: &Value) -> R {
         }
     }
     Ok(json!({"length": s.model.units.name()}))
+}
+
+/// `kind` `from` is called `to` now: its library entry, and everything that names it.
+fn rename_entry(m: &mut Model, kind: &LibKind, from: &str, to: &str) {
+    m.library.renamed(kind, from, to);
+    m.lib_refs_mut(&mut |k, n| {
+        if k == kind && n == from {
+            *n = to.to_string();
+        }
+    });
+}
+
+/// An error naming the first key of `p` that isn't one of `keys`, the ones command `c` takes.
+fn only(c: &str, p: &Value, keys: &[&str]) -> Result<(), String> {
+    match p.as_object().and_then(|o| o.keys().find(|k| !keys.contains(&k.as_str()))) {
+        Some(k) => Err(bad(c, format!("`{k}` isn't one of its parameters: {}", keys.join(", ")))),
+        None => Ok(()),
+    }
+}
+
+/// The name `p` gives under `key`, trimmed, unless it gives none or only spaces.
+fn name_param(c: &str, p: &Value, key: &str) -> Result<Option<String>, String> {
+    Ok(string(c, p, key)?.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()))
+}
+
+fn line_pattern(s: &mut Session, p: &Value) -> R {
+    let c = "line_pattern";
+    only(c, p, &["name", "segments", "rename", "delete"])?;
+    let Some(name) = name_param(c, p, "name")? else {
+        return Ok(json!({"patterns": s.model.line_patterns}));
+    };
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if m.line_patterns.remove(&name).is_none() {
+            return Err(bad(c, format!("there's no line pattern `{name}`")));
+        }
+        if let Some((user, _)) = m.line_styles.iter().find(|(_, st)| st.pattern.as_deref() == Some(&*name)) {
+            return Err(bad(c, format!("`{name}` is line style `{user}`'s pattern; give it another first")));
+        }
+        return Ok(json!({"deleted": name}));
+    }
+    let pattern = match (p.get("segments"), m.line_patterns.get(&name)) {
+        (v, Some(was)) if absent(v) => was.clone(),
+        (v, None) if absent(v) => {
+            let there: Vec<&str> = m.line_patterns.keys().map(String::as_str).collect();
+            return Err(bad(c, format!("there's no line pattern `{name}`; make one with `segments`{}", known_names(&there))));
+        }
+        (v, _) => serde_json::from_value(v.cloned().unwrap_or_default())
+            .map_err(|e| bad(c, format!("`segments` is [{{\"dash\": mm}} | {{\"space\": mm}} | \"dot\", …]: {e}")))?,
+    };
+    let name = match name_param(c, p, "rename")? {
+        Some(to) if to != name => {
+            if m.line_patterns.contains_key(&to) {
+                return Err(bad(c, format!("there's already a line pattern `{to}`")));
+            }
+            m.line_patterns.remove(&name);
+            rename_entry(m, &LibKind::LinePattern, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    if name.eq_ignore_ascii_case(crate::lines::SOLID) {
+        return Err(bad(c, format!("{} is a line with no pattern; name it another way", crate::lines::SOLID)));
+    }
+    pattern.check(&name).map_err(|e| bad(c, e))?;
+    if m.line_patterns.get(&name) != Some(&pattern) {
+        m.line_patterns.insert(name.clone(), pattern.clone());
+    }
+    Ok(json!({"name": name, "segments": pattern}))
+}
+
+fn line_style(s: &mut Session, p: &Value) -> R {
+    let c = "line_style";
+    only(c, p, &["name", "pen", "color", "pattern", "rename", "delete"])?;
+    let Some(name) = name_param(c, p, "name")? else {
+        return Ok(json!({"styles": s.model.line_styles}));
+    };
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if m.line_styles.remove(&name).is_none() {
+            return Err(bad(c, format!("there's no line style `{name}`")));
+        }
+        if let Some((id, _)) = m.elements.iter().find(|(_, e)| matches!(e, Element::DetailLine(l) if l.style == name)) {
+            return Err(bad(c, format!("detail line {id} is drawn in `{name}`; give it another style first")));
+        }
+        return Ok(json!({"deleted": name}));
+    }
+    let mut style = match (m.line_styles.get(&name), p.get("pen")) {
+        (Some(was), _) => was.clone(),
+        (None, Some(_)) => LineStyle { pen: crate::pen::Pen::FINE, color: [0, 0, 0], pattern: None },
+        (None, None) => return Err(bad(c, format!("there's no line style `{name}`; make one with `pen`"))),
+    };
+    if let Some(v) = p.get("pen").filter(|v| !v.is_null()) {
+        style.pen = serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`pen`: {e}")))?;
+    }
+    if let Some(v) = p.get("color").filter(|v| !v.is_null()) {
+        style.color = colour(v).ok_or_else(|| bad(c, format!("`color` is \"#rrggbb\" or [r, g, b], each 0 to 255, not {v}")))?;
+    }
+    if let Some(v) = p.get("pattern") {
+        style.pattern = match v {
+            Value::Null => None,
+            Value::String(n) if n.trim().eq_ignore_ascii_case(crate::lines::SOLID) => None,
+            Value::String(n) => Some(n.trim().to_string()),
+            v => return Err(bad(c, format!("`pattern` is a line pattern's name, or \"{}\", not {v}", crate::lines::SOLID))),
+        };
+    }
+    let name = match name_param(c, p, "rename")? {
+        Some(to) if to != name => {
+            if m.line_styles.contains_key(&to) {
+                return Err(bad(c, format!("there's already a line style `{to}`")));
+            }
+            m.line_styles.remove(&name);
+            rename_entry(m, &LibKind::LineStyle, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    style.check(&name, &m.line_patterns).map_err(|e| bad(c, e))?;
+    if m.line_styles.get(&name) != Some(&style) {
+        m.line_styles.insert(name.clone(), style.clone());
+    }
+    Ok(json!({"name": name, "style": style}))
+}
+
+fn detail_line(s: &mut Session, p: &Value) -> R {
+    let c = "detail_line";
+    only(c, p, &["points", "view", "level", "style", "closed"])?;
+    let m = &s.model;
+    let points = points(c, p, "points")?;
+    let view = view_param(c, m, p, true)?;
+    let style = match name_param(c, p, "style")? {
+        Some(n) => n,
+        // Thin Lines, in the project's language, or its first style.
+        None => {
+            let thin = m.language.word(crate::lines::THIN);
+            let first = m.line_styles.keys().next();
+            m.line_styles
+                .get_key_value(thin)
+                .map(|(k, _)| k)
+                .or(first)
+                .cloned()
+                .ok_or_else(|| bad(c, "the project has no line style; make one first"))?
+        }
+    };
+    let l = DetailLine { view: m.guid(view), points, closed: flag(c, p, "closed")?, style };
+    let id = s.model_mut().insert(Element::DetailLine(l));
+    Ok(json!({"id": id}))
 }
 
 fn line_weights(s: &mut Session, p: &Value) -> R {

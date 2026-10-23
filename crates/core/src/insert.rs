@@ -108,7 +108,8 @@ fn needs(e: &Element) -> Vec<Guid> {
 /// The names each library entry `from` names goes by here, where they differ: `(kind, name there)` to the name here.
 type Renames = HashMap<(Kind, String), String>;
 
-/// The library entries of `from` that `to` hasn't: types, materials, pictures, families and project parameters come along,
+/// The library entries of `from` that `to` hasn't: types, materials, pictures, families, project parameters, line patterns
+/// and line styles come along,
 /// each with its GUID. An entry this project has by GUID is its own, under the name it has here (the names in what comes in
 /// follow); one it has by name, with another GUID, is this project's. What comes in names entries by the names returned.
 fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut Inserted) -> Result<Renames, String> {
@@ -141,7 +142,7 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
             to.library.insert(id, Entry { kind: e.kind.clone(), name: e.name.clone(), guid: e.guid })?;
         }
     }
-    // What came in names the materials and pictures it's made of as this project does.
+    // What came in names the materials, pictures and line patterns it's made of as this project does.
     let here = |kind: &Kind, name: &mut String| {
         if let Some(n) = renames.get(&(kind.clone(), name.clone())) {
             *name = n.clone();
@@ -157,6 +158,11 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
             Kind::Material => {
                 if let Some(t) = to.materials.get_mut(&name).and_then(|m| m.texture.as_mut()) {
                     here(&Kind::Picture, &mut t.image);
+                }
+            }
+            Kind::LineStyle => {
+                if let Some(p) = to.line_styles.get_mut(&name).and_then(|s| s.pattern.as_mut()) {
+                    here(&Kind::LinePattern, p);
                 }
             }
             Kind::Type(c) => {
@@ -205,6 +211,8 @@ fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> boo
         Kind::Picture => one(&mut to.images, Some(&from.images), name),
         Kind::Family => one(&mut to.families, Some(&from.families), name),
         Kind::Parameter => one(&mut to.parameters, Some(&from.parameters), name),
+        Kind::LinePattern => one(&mut to.line_patterns, Some(&from.line_patterns), name),
+        Kind::LineStyle => one(&mut to.line_styles, Some(&from.line_styles), name),
         _ => false,
     }
 }

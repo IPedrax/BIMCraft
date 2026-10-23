@@ -288,6 +288,12 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
             d.own(Some(nid));
             render::note(&mut d, n);
         }
+        if let Element::DetailLine(l) = e
+            && l.view == guid
+        {
+            d.own(Some(nid));
+            render::detail_line(&mut d, m, l);
+        }
     }
     d.own(None);
     d.weigh(|_| true);

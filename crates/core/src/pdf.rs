@@ -43,7 +43,7 @@ pub(crate) fn contents(d: &Drawing, paper: P2) -> (String, Vec<(u32, u32, Vec<u8
                 s.push_str("f\n");
             }
             Prim::Line { pts, width, color: c, dash, closed } => {
-                let dash = dash.map_or_else(|| "[] 0 d".to_string(), |[a, b]| format!("[{a} {b}] 0 d"));
+                let dash = dash.as_ref().map_or_else(|| "[] 0 d".to_string(), |d| format!("[{}] 0 d", crate::render::spaced(d)));
                 let _ = write!(s, "{} RG {width} w {} j {dash} ", color(*c), if d.mitred(i) { 0 } else { 1 });
                 path(&mut s, pts, *closed);
                 s.push_str("S\n");

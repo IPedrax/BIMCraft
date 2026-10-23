@@ -384,12 +384,16 @@ pub(crate) fn paint(p: &Painter, at: Place, d: &Drawing, selected: &[Id], hovere
                 let stroke = Stroke::new(on_screen(*width, at.k, thin), accent.map_or(color(*c), |a| a.0));
                 let mut pts: Vec<Pos2> = pts.iter().map(|q| at.pos(*q)).collect();
                 match dash {
-                    Some([on, off]) => {
+                    Some(dash) => {
                         // A dashed ring: its closing side too.
                         if *closed {
                             pts.extend(pts.first().copied());
                         }
-                        p.extend(Shape::dashed_line(&pts, stroke, *on, *off));
+                        // Its on and off lengths, as big as its width is drawn.
+                        let k = at.k.max(f32::EPSILON);
+                        let on: Vec<f32> = dash.iter().step_by(2).map(|x| x * k).collect();
+                        let off: Vec<f32> = dash.iter().skip(1).step_by(2).map(|x| x * k).collect();
+                        p.extend(Shape::dashed_line_with_offset(&pts, stroke, &on, &off, 0.0));
                     }
                     None if *closed => {
                         p.add(Shape::closed_line(pts, stroke));
@@ -1394,6 +1398,17 @@ impl BimApp {
                     path.push(p);
                 }
             }
+            // The line's next point; back on the first, it's closed.
+            Tool::DetailLine(path) => {
+                let p = self.snap(m, level, v, at, path, mods.shift).at;
+                if path.len() >= 2 && path.first().is_some_and(|f| f.dist(p) <= TOL) {
+                    self.finish_detail_line_closed(level, true);
+                } else if let Tool::DetailLine(path) = &mut self.tool
+                    && path.last().is_none_or(|l| l.dist(p) > TOL)
+                {
+                    path.push(p);
+                }
+            }
             // On the level above, over this plan's walls; once made, selected, as a finished sketch is.
             Tool::Roof => match (number(&self.roof_slope), m.units.parse(&self.roof_overhang)) {
                 (Some(slope), Some(overhang)) => {
@@ -1635,6 +1650,26 @@ impl BimApp {
             }
             self.run("railing", p);
         }
+    }
+
+    /// The Detail Line tool's Enter: a detail line through the points clicked, in the plan of `level`.
+    pub(crate) fn finish_detail_line(&mut self, level: Id) {
+        self.finish_detail_line_closed(level, false);
+    }
+
+    /// A detail line through the points clicked, round to the first again where `closed`, in the Options Bar's line
+    /// style; fewer than two points make none.
+    fn finish_detail_line_closed(&mut self, level: Id, closed: bool) {
+        let Tool::DetailLine(path) = &mut self.tool else { return };
+        let path = std::mem::take(path);
+        if path.len() < 2 {
+            return;
+        }
+        let mut p = json!({"points": path.iter().map(|q| point(*q)).collect::<Vec<_>>(), "view": level, "closed": closed});
+        if !self.line_style.is_empty() {
+            p["style"] = json!(self.line_style);
+        }
+        self.run("detail_line", p);
     }
 
     /// The Mass tool's Enter, or its first corner clicked again: a mass over the footprint clicked, on the plan's level,
@@ -2177,7 +2212,7 @@ impl BimApp {
         let sketched = |e: &Element| ghost(p, origin, &render::sketch(m, *v, m.next_id, e), &[m.next_id], &|pt| pt);
         let ghost = |f: &dyn Fn(Pos2) -> Pos2| ghost(p, origin, sc.d, &self.selection, f);
         let chain = match &self.tool {
-            Tool::Wall(chain) | Tool::Railing(chain) | Tool::Mass(chain) => chain.as_slice(),
+            Tool::Wall(chain) | Tool::Railing(chain) | Tool::Mass(chain) | Tool::DetailLine(chain) => chain.as_slice(),
             Tool::ExtrusionRoof(pts) if pts.len() < 2 => pts.as_slice(),
             // The roof a click would make, swept across to the cursor.
             Tool::ExtrusionRoof(pts) => {

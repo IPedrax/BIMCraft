@@ -24,6 +24,7 @@ pub mod insert;
 pub mod language;
 pub mod lenient;
 pub mod library;
+pub mod lines;
 pub mod massing;
 pub mod model;
 pub mod paint;

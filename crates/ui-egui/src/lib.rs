@@ -16,6 +16,7 @@ mod gpu;
 mod graphics;
 mod inquiry;
 pub mod lang;
+mod linestyles;
 mod lineweights;
 mod mep;
 mod objectstyles;
@@ -179,6 +180,8 @@ pub enum Tool {
     Shaft(Option<P2>),
     /// A mass: the corners of its footprint, as clicked so far.
     Mass(Vec<P2>),
+    /// A detail line in the Options Bar's line style: its points, as clicked so far.
+    DetailLine(Vec<P2>),
     /// The selected floor's slope arrow: its tail, once clicked.
     SlopeArrow(Option<P2>),
 }
@@ -450,6 +453,8 @@ pub struct BimApp {
     tag_label: String,
     /// What the Text tool writes.
     note_text: String,
+    /// The line style the Detail Line tool draws in; blank for the project's Thin Lines.
+    line_style: String,
     /// The project units the Options Bar's lengths were last written in.
     units: Units,
     /// A length typed while picking points: the listening dimension.
@@ -520,6 +525,8 @@ pub struct BimApp {
     line_weights_dialog: Option<lineweights::LineWeightsDialog>,
     /// Manage > Object Styles, while open.
     object_styles_dialog: Option<objectstyles::ObjectStylesDialog>,
+    /// Manage > Line Styles, while open.
+    line_styles_dialog: Option<linestyles::LineStylesDialog>,
     options_dialog: Option<phasing::OptionsDialog>,
     /// Manage > Select by ID and IDs of Selection, while open.
     select_by_id: Option<inquiry::SelectById>,
@@ -813,6 +820,7 @@ impl BimApp {
             tag_leader: false,
             tag_label: String::new(),
             note_text: String::new(),
+            line_style: String::new(),
             units,
             lang: Language::English,
             typed_length: String::new(),
@@ -855,6 +863,7 @@ impl BimApp {
             phasing_dialog: None,
             line_weights_dialog: None,
             object_styles_dialog: None,
+            line_styles_dialog: None,
             options_dialog: None,
             select_by_id: None,
             ids_of_selection: None,
@@ -932,6 +941,7 @@ impl BimApp {
             Tool::Grid(_) => Some("Place Grid"),
             Tool::Dimension(_) | Tool::Angular(_) | Tool::Radial(_) => Some("Place Dimensions"),
             Tool::Text => Some("Place Text"),
+            Tool::DetailLine(_) => Some("Place Detail Lines"),
             Tool::Spot => Some("Spot Elevation"),
             Tool::Measure(_) => Some("Measure"),
             Tool::Tag => Some("Tag"),
@@ -1183,6 +1193,7 @@ impl BimApp {
             || self.phasing_dialog.is_some()
             || self.line_weights_dialog.is_some()
             || self.object_styles_dialog.is_some()
+            || self.line_styles_dialog.is_some()
             || self.options_dialog.is_some()
             || self.select_by_id.is_some()
             || self.ids_of_selection.is_some()
@@ -1237,6 +1248,7 @@ impl BimApp {
             match (&self.tool, self.typed_length.is_empty()) {
                 (Tool::Railing(_), true) => self.finish_railing(level),
                 (Tool::Mass(_), true) => self.finish_mass(level),
+                (Tool::DetailLine(_), true) => self.finish_detail_line(level),
                 (_, true) => self.finish_wall(),
                 (_, false) => self.place_typed(level),
             }
@@ -1416,6 +1428,7 @@ impl BimApp {
                 Some("split") => Tool::Split,
                 Some("dimension") => Tool::Dimension(Vec::new()),
                 Some("text") => Tool::Text,
+                Some("detail_line") => Tool::DetailLine(Vec::new()),
                 Some("spot") => Tool::Spot,
                 Some("tag") => Tool::Tag,
                 // Revit's CL is the structural column on its Structure tab, the architectural one elsewhere.
@@ -1509,6 +1522,10 @@ impl BimApp {
                 DimKind::Radial => Tool::Radial(None),
             },
             Some(Element::Text(_)) => Tool::Text,
+            Some(Element::DetailLine(l)) => {
+                self.line_style.clone_from(&l.style);
+                Tool::DetailLine(Vec::new())
+            }
             Some(Element::Spot(_)) => Tool::Spot,
             Some(Element::Tag(_)) => Tool::Tag,
             Some(Element::Section(_)) => Tool::Section(None),
@@ -1710,7 +1727,7 @@ impl BimApp {
             Tool::Wall(chain) => chain.last().copied(),
             Tool::Run(_, start) => *start,
             Tool::Grid(start) | Tool::Move(start) | Tool::Copy(start) | Tool::Section(start) | Tool::SlopeArrow(start) => *start,
-            Tool::Stair(pts) | Tool::Ramp(pts) | Tool::Railing(pts) | Tool::Mass(pts) => pts.last().copied(),
+            Tool::Stair(pts) | Tool::Ramp(pts) | Tool::Railing(pts) | Tool::Mass(pts) | Tool::DetailLine(pts) => pts.last().copied(),
             _ => None,
         }
     }
@@ -1752,6 +1769,7 @@ impl BimApp {
             Tool::Ramp(pts) if !pts.is_empty() => Tool::Ramp(Vec::new()),
             Tool::Railing(pts) if !pts.is_empty() => Tool::Railing(Vec::new()),
             Tool::Mass(pts) if !pts.is_empty() => Tool::Mass(Vec::new()),
+            Tool::DetailLine(pts) if !pts.is_empty() => Tool::DetailLine(Vec::new()),
             Tool::Shaft(Some(_)) => Tool::Shaft(None),
             Tool::SlopeArrow(Some(_)) => Tool::SlopeArrow(None),
             Tool::ExtrusionRoof(pts) if !pts.is_empty() => Tool::ExtrusionRoof(Vec::new()),
@@ -1822,7 +1840,12 @@ impl BimApp {
             Tool::Dimension(refs) | Tool::Angular(refs) => refs.clear(),
             Tool::Radial(r) => *r = None,
             Tool::Section(start) | Tool::Shaft(start) | Tool::Measure(start) => *start = None,
-            Tool::Stair(pts) | Tool::Ramp(pts) | Tool::Railing(pts) | Tool::ExtrusionRoof(pts) | Tool::Mass(pts) => pts.clear(),
+            Tool::Stair(pts)
+            | Tool::Ramp(pts)
+            | Tool::Railing(pts)
+            | Tool::ExtrusionRoof(pts)
+            | Tool::Mass(pts)
+            | Tool::DetailLine(pts) => pts.clear(),
             Tool::Move(_) | Tool::Copy(_) | Tool::SlopeArrow(_) | Tool::GableEdge => self.tool = Tool::Modify,
             _ => {}
         }
@@ -2498,6 +2521,16 @@ impl BimApp {
         );
         self.tools(
             ui,
+            "Detail",
+            &[(
+                Icon::Line,
+                "Detail Line",
+                "Detail Line (DL): click its points in the plan, in the Options Bar's line style; Enter finishes it",
+                Tool::DetailLine(Vec::new()),
+            )],
+        );
+        self.tools(
+            ui,
             "Text",
             &[(Icon::Text, "Text", "Text (TX): type the note in the Options Bar, then click where it goes", Tool::Text)],
         );
@@ -2683,6 +2716,10 @@ impl BimApp {
             let tip = "Object Styles: the pen each category draws in, seen and cut, in every view";
             if big_button(ui, Icon::ObjectStyles, "Object Styles", self.object_styles_dialog.is_some(), tip).clicked() {
                 self.object_styles_dialog = Some(objectstyles::ObjectStylesDialog::new(&self.session.model));
+            }
+            let tip = "Line Styles: the pen, colour and line pattern detail lines draw in, and the patterns' dashes, dots and spaces";
+            if big_button(ui, Icon::ThinLines, "Line Styles", self.line_styles_dialog.is_some(), tip).clicked() {
+                self.line_styles_dialog = Some(linestyles::LineStylesDialog::new(&self.session.model));
             }
             let tip = "Snaps: what a picked point sticks to (ends, middles, crossings, centres, perpendiculars), and the angles it steps by; SE, SM, SI, SC, SP and SN take one alone for the next point, SO none";
             if big_button(ui, Icon::Snaps, "Snaps", self.show_snaps, tip).clicked() {
@@ -3060,6 +3097,7 @@ impl BimApp {
                     ui.add(TextEdit::singleline(&mut self.tag_label).desired_width(160.0).hint_text(t("a field, such as Type or Height")))
                         .labelled_by(l.id);
                 }
+                Tool::DetailLine(_) => self.line_style_options(ui),
                 Tool::Text => {
                     let l = ui.label(t("Text:"));
                     ui.add(TextEdit::singleline(&mut self.note_text).desired_width(240.0).hint_text(t("what the note says")))
@@ -3240,6 +3278,8 @@ impl BimApp {
             Tool::Mass(pts) if pts.is_empty() => "Click the first corner of the mass's footprint.",
             Tool::Mass(pts) if pts.len() < 3 => "Click the footprint's next corner. Esc cancels.",
             Tool::Mass(_) => "Click the next corner; Enter, or the first corner again, finishes the mass. Esc cancels.",
+            Tool::DetailLine(pts) if pts.is_empty() => "Click where the detail line starts.",
+            Tool::DetailLine(_) => "Click its next point; Enter finishes it, the first point again closes it. Esc cancels.",
             Tool::SlopeArrow(None) => "Click the slope arrow's tail: where the floor's top stays at its height offset.",
             Tool::SlopeArrow(Some(_)) => "Click its head: the floor rises toward it at the Options Bar's slope. Esc cancels.",
         }
@@ -3476,6 +3516,7 @@ impl BimApp {
         self.phasing_window(ctx);
         self.line_weights_window(ctx);
         self.object_styles_window(ctx);
+        self.line_styles_window(ctx);
         self.options_window(ctx);
         self.select_by_id_window(ctx);
         self.ids_of_selection_window(ctx);

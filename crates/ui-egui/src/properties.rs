@@ -65,6 +65,8 @@ enum Kind {
     Values,
     /// A wall's location line: a drop-down.
     LocationLine,
+    /// A detail line's line style: a drop-down of the project's.
+    LineStyle,
     /// Which line of a run's section its heights are: a drop-down.
     Justification,
     /// Whether a roof or a floor is there (a wall's attachment); read only.
@@ -175,6 +177,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "angle", "Rotation (°)", Number),
             ("Other", "at", "Location", Point),
         ],
+        "line" => &[("Graphics", "style", "Line Style", LineStyle), ("Dimensions", "length", "Length", LengthShown)],
         "spot" => {
             &[("Dimensions", "elevation", "Elevation", LengthShown), ("Other", "host", "Host", Shown), ("Other", "at", "Location", Point)]
         }
@@ -352,6 +355,7 @@ fn icon(category: &str) -> Icon {
         "ramp" => Icon::Ramp,
         "railing" => Icon::Railing,
         "text" => Icon::Text,
+        "line" => Icon::Line,
         "spot" => Icon::Spot,
         "view3d" => Icon::View3D,
         _ => Icon::Plan,
@@ -639,6 +643,7 @@ impl BimApp {
             ([], Tool::Grid(_), _) => Subject::New("grid"),
             ([], Tool::Dimension(_) | Tool::Angular(_) | Tool::Radial(_), _) => Subject::New("dimension"),
             ([], Tool::Text, _) => Subject::New("text"),
+            ([], Tool::DetailLine(_), _) => Subject::New("line"),
             ([], Tool::Spot, _) => Subject::New("spot"),
             ([], Tool::Tag, _) => Subject::New("tag"),
             ([], Tool::Section(_), _) => Subject::New("section"),
@@ -1052,6 +1057,12 @@ impl BimApp {
                                     && let Some(loc) = Location::ALL.iter().find(|loc| t(loc.label()) == l)
                                 {
                                     change = Some((key, Ok(json!(loc.name()))));
+                                }
+                            }
+                            LineStyle => {
+                                let options: Vec<String> = model.line_styles.keys().cloned().collect();
+                                if let Some(s) = combo(ui, (id, key), name.id, val.as_str().unwrap_or_default(), &options) {
+                                    change = Some((key, Ok(json!(s))));
                                 }
                             }
                             Justification => {

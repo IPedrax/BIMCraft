@@ -14,6 +14,8 @@ use crate::family::{Family, Piece};
 use crate::geom::{self, P2, Region};
 use crate::graphics::{self, Graphics, ViewFilter, ViewTemplate};
 use crate::language::Language;
+pub use crate::lines::DetailLine;
+use crate::lines::{self, LinePattern, LineStyle};
 use crate::phasing::{self, OptionSet, PhaseFilter, Status};
 use crate::texture::{Kind, MAX_IMAGES, Picture, Texture};
 use crate::units::Units;
@@ -1078,6 +1080,7 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? r.join { f(g) }
             }
             Element::Text(n) => f(& $($m)? n.view),
+            Element::DetailLine(l) => f(& $($m)? l.view),
             Element::Spot(s) => {
                 f(& $($m)? s.view);
                 if let Some(g) = & $($m)? s.host { f(g) }
@@ -1125,6 +1128,9 @@ pub enum Element {
     Railing(Railing),
     Roof(Roof),
     Text(Note),
+    /// A detail line: drawn in one view, in a line style; of the Lines category, as Revit's.
+    #[serde(rename = "line")]
+    DetailLine(DetailLine),
     Spot(Spot),
     Schedule(Schedule),
     View3D(View3D),
@@ -1289,6 +1295,7 @@ impl Element {
     pub fn category(&self) -> &'static str {
         match self {
             Element::Text(_) => "text",
+            Element::DetailLine(_) => "line",
             Element::Spot(_) => "spot",
             Element::Schedule(_) => "schedule",
             Element::View3D(_) => "view3d",
@@ -1560,6 +1567,12 @@ pub struct Model {
     /// has set apart from what a project starts with ([`Model::object_style`]).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub object_styles: BTreeMap<String, crate::styles::ObjectStyle>,
+    /// Its line patterns, by name: dashes, dots and spaces, mm on paper.
+    #[serde(default = "lines::default_patterns", skip_serializing_if = "lines::is_default_patterns")]
+    pub line_patterns: BTreeMap<String, LinePattern>,
+    /// Its line styles, by name: a pen, a colour and a pattern, what detail lines draw in.
+    #[serde(default = "lines::default_styles", skip_serializing_if = "lines::is_default_styles")]
+    pub line_styles: BTreeMap<String, LineStyle>,
     pub elements: Elements,
     /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
     /// templates, phases, phase filters and design options.
@@ -1603,6 +1616,8 @@ impl Model {
             option_sets: BTreeMap::new(),
             line_weights: None,
             object_styles: BTreeMap::new(),
+            line_patterns: lines::patterns(language),
+            line_styles: lines::styles(language),
             elements: Elements::new(),
             library: crate::library::Library::default(),
         };
@@ -2413,7 +2428,9 @@ impl Model {
             Element::Door(o) | Element::Window(o) => wall_level(o),
             Element::Tag(t) => self.elements.get(t.host).filter(|h| !matches!(h, Element::Tag(_))).and_then(|h| self.level_of(h)),
             // Notes and spot elevations in a level's plan.
-            Element::Text(Note { view, .. }) | Element::Spot(Spot { view, .. }) => self.level(*view).map(|_| *view),
+            Element::Text(Note { view, .. }) | Element::Spot(Spot { view, .. }) | Element::DetailLine(DetailLine { view, .. }) => {
+                self.level(*view).map(|_| *view)
+            }
             Element::Level(_)
             | Element::Grid(_)
             | Element::Section(_)
@@ -3137,6 +3154,15 @@ impl Model {
             crate::styles::known(c)?;
             style.check(c)?;
         }
+        for (n, p) in &self.line_patterns {
+            if n.eq_ignore_ascii_case(lines::SOLID) {
+                return Err(format!("line pattern `{n}`: {} is a line with no pattern; name it another way", lines::SOLID));
+            }
+            p.check(n)?;
+        }
+        for (n, s) in &self.line_styles {
+            s.check(n, &self.line_patterns)?;
+        }
         for (cat, map) in [("door", &self.types.door), ("window", &self.types.window)] {
             for (n, t) in map {
                 size(&format!("{cat} type `{n}` width"), t.width)?;
@@ -3522,6 +3548,17 @@ impl Model {
                     coord(&format!("{who} angle"), n.angle)?;
                     if let Some(l) = n.leader {
                         point(&format!("{who} leader"), l)?;
+                    }
+                }
+                Element::DetailLine(l) => {
+                    view_ok(l.view, true)?;
+                    l.check(&who)?;
+                    for p in &l.points {
+                        point(&who, *p)?;
+                    }
+                    if !self.line_styles.contains_key(&l.style) {
+                        let there: Vec<&str> = self.line_styles.keys().map(String::as_str).collect();
+                        return Err(format!("{who}: there's no line style `{}` (there are: {})", l.style, there.join(", ")));
                     }
                 }
                 Element::Spot(sp) => {
