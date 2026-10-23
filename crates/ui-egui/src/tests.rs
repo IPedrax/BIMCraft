@@ -1156,7 +1156,7 @@ fn a_line_weight_is_a_pen_picked_from_a_list_and_a_hairline_is_a_pixel_on_screen
     shortcut(&mut h, "VV");
     pick(&mut h, Role::Button, "Override Walls");
     pick(&mut h, Role::CheckBox, "Cut: Line weight");
-    assert_eq!(combo_value(&h, "Cut: Line weight"), "10 · 0.80 mm", "a cut wall's own pen to start with");
+    assert_eq!(combo_value(&h, "Cut: Line weight"), "10 · 0.35 mm", "a cut wall's own pen to start with");
     choose(&mut h, "Cut: Line weight", "0 · Hairline");
     press(&mut h, "OK");
     assert_eq!(plan_graphics(&h, 100000).categories["wall"].cut.weight, Some(Pen(0)));

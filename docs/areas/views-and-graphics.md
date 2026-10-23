@@ -19,7 +19,7 @@ as n, 1 : n, or two lengths (`1/4" = 1'-0"`).
 Paper space and model space. A view's geometry is model millimetres; its annotation and its line weights are millimetres of the paper the
 view stands for, 1 : n of the model. A sheet is that paper ([`sheet::DENSITY`] px to the mm). On screen, or in an image of a view, `k`
 says how big the paper is at the zoom: a paper mm is `DENSITY * k` px. A line's weight is a pen (`pen.rs`): 1 to 16, each a width on
-paper from 0.10 to 4 mm (our own steps, not Revit's), and 0, a hairline, which every output draws as thin as it can whatever the scale
+paper at 1 : 100 from 0.10 to 2 mm (our own steps, not Revit's: what's seen, pen 4, 0.18 mm, and what's cut, pen 10, 0.35 mm), and 0, a hairline, which every output draws as thin as it can whatever the scale
 and the zoom (a width of 0 in the display list: tiny-skia's hairline, PDF's `0 w`, an SVG pixel with `vector-effect="non-scaling-stroke"`,
 a pixel on screen). What a pen draws is the project's line weights (`pen::LineWeights`, `Model::line_weights`, the `line_weights`
 command, Manage > Line Weights in the desktop, `lineweights.rs`): the model's pens 1 to 16 at each of a list of scales, a view taking

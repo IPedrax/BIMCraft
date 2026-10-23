@@ -680,7 +680,7 @@ pub static ALL: &[Command] = &[
          column of the scale nearest its own (by how many times finer or coarser; the finer of two as near). `annotation` \
          gives the 16 pens that dimensions, tags, text, grids, levels and marks draw in, at any scale. Each width is 0.01 to \
          20 mm; pen 0 is always a hairline. `reset` goes back to what a project in its units starts with (the model's pens \
-         wider at finer scales; at 1 : 100, pen 4 is 0.20 mm and pen 10 0.80 mm). Without any, it says what they are, each \
+         wider at finer scales; at 1 : 100, pen 4 is 0.18 mm and pen 10 0.35 mm). Without any, it says what they are, each \
          scale named as the project's units name it, and `own` whether the project has set them",
         line_weights,
     ),
@@ -758,7 +758,7 @@ pub static ALL: &[Command] = &[
          in any case, singular or plural) leaves all its elements out of that view, and `hide_elements` the elements given. An \
          override is {hidden?, projection?: style, cut?: style, halftone?, transparency?}, a style {color?, weight? (a pen, \
          0 to 16: 0 a hairline, the thinnest line the screen or printer draws at any scale; 1 to 16 widths on paper from 0.10 to \
-         4 mm, 4 being 0.20 mm and 10 0.80 mm, a cut wall's outline), dash? (solid, dashed, dotted), fill?}, a colour [r, g, b] or \"#rrggbb\". \
+         4 mm, 4 being 0.18 mm and 10 0.35 mm, a cut wall's outline), dash? (solid, dashed, dotted), fill?}, a colour [r, g, b] or \"#rrggbb\". \
          Projection is what a plan sees below its cut plane, a section beyond its line and the annotation; cut is what the view \
          cuts; `fill` is the cut's poché, or a 3D view's surface; in a 3D view, and in what a section sees beyond its line, a \
          projection's `color` is the colour of the edges (weight and dash draw lines, and those are vectors). Halftone draws it \

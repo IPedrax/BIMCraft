@@ -28,10 +28,11 @@ impl<'de> Deserialize<'de> for Pen {
 /// The widest pen.
 pub const MAX_PEN: u8 = 16;
 
-/// Each pen's width on paper, mm, from pen 0 (a hairline, no width of its own) up: our own steps, from a tenth of a
-/// millimetre to four.
+/// Each pen's width on paper at 1 : 100, mm, from pen 0 (a hairline, no width of its own) up: our own steps, fine where
+/// drawings mostly are, so what's seen ([`Pen::PROJECTION`]) is 0.18 mm and what's cut ([`Pen::CUT`]) 0.35 mm, then
+/// widening to two millimetres for the heaviest.
 const WIDTHS: [f64; MAX_PEN as usize + 1] =
-    [0.0, 0.10, 0.13, 0.16, 0.20, 0.25, 0.30, 0.40, 0.50, 0.60, 0.80, 1.00, 1.40, 2.00, 2.50, 3.00, 4.00];
+    [0.0, 0.10, 0.13, 0.15, 0.18, 0.20, 0.22, 0.25, 0.28, 0.30, 0.35, 0.40, 0.50, 0.70, 1.00, 1.40, 2.00];
 
 /// Which pen each kind of line draws with: one place for the weights the drawings use, the model's (until Object Styles
 /// gives each category its own) and the annotation's and the sheet's.
@@ -205,8 +206,8 @@ mod tests {
         assert!((1..=MAX_PEN).all(|p| Pen(p).mm() > Pen(p - 1).mm()), "each wider than the one before");
         assert!(Pen(MAX_PEN).is_valid() && !Pen(MAX_PEN + 1).is_valid());
         assert_eq!(Pen(MAX_PEN + 1).mm(), 0.0);
-        // A sheet's drawing has 5 px to the mm: the weights from before pens find theirs exactly.
-        for (px, pen) in [(0.5, 1), (0.8, 3), (1.0, 4), (1.5, 6), (2.0, 7), (2.5, 8), (3.0, 9), (4.0, 10), (20.0, 16)] {
+        // A sheet's drawing has 5 px to the mm: the weights from before pens find the pen nearest as wide.
+        for (px, pen) in [(0.5, 1), (0.75, 3), (0.9, 4), (1.0, 5), (1.5, 9), (2.0, 11), (2.5, 12), (3.5, 13), (5.0, 14), (20.0, 16)] {
             assert_eq!(Pen::nearest(px / 5.0), Pen(pen), "{px} px");
         }
         assert_eq!(Pen::nearest(0.0), Pen(1), "a width is never a hairline");
@@ -220,7 +221,7 @@ mod tests {
         // Asking says what they are, as the units name the scales, and changes nothing.
         let r = s.execute("line_weights", &json!({})).unwrap();
         assert_eq!(r["model"][3], json!({"scale": 100.0, "name": "1 : 100", "widths": WIDTHS[1..].to_vec()}));
-        assert_eq!((r["annotation"][9].clone(), r["own"].clone()), (json!(0.8), json!(false)));
+        assert_eq!((r["annotation"][9].clone(), r["own"].clone()), (json!(0.35), json!(false)));
         assert!(s.history().is_empty());
         // Given, whole, in one undo step; the scales kept finest first.
         let model = json!([{"scale": 200, "widths": vec![0.1; 16]}, {"scale": 20, "widths": vec![0.5; 16]}]);
@@ -306,8 +307,8 @@ mod tests {
         assert_eq!(lw.model.iter().map(|s| s.scale).collect::<Vec<_>>(), [10.0, 20.0, 50.0, 100.0, 200.0, 500.0]);
         assert_eq!(LineWeights::default_for(Units::FeetInches).model[3].scale, 96.0, "1/8\" = 1'-0\" among an imperial project's");
         assert_eq!(lw.at(100.0), Weights::default(), "at 1 : 100, model and annotation are the pens' own widths");
-        assert!(lw.at(50.0).mm(Pen(10), false) > 0.8 && lw.at(200.0).mm(Pen(10), false) < 0.8);
-        assert_eq!(lw.at(50.0).mm(Pen(10), true), 0.8, "annotation, whatever the scale");
+        assert!(lw.at(50.0).mm(Pen(10), false) > 0.35 && lw.at(200.0).mm(Pen(10), false) < 0.35);
+        assert_eq!(lw.at(50.0).mm(Pen(10), true), 0.35, "annotation, whatever the scale");
         assert_eq!((lw.at(50.0).mm(Pen(0), false), lw.at(50.0).mm(Pen(0), true)), (0.0, 0.0), "a hairline");
         // Between two, the nearer by how many times: 1 : 70 is nearer 1 : 50 (1.4 times) than 1 : 100 (1.43).
         assert_eq!(lw.at(70.0), lw.at(50.0));

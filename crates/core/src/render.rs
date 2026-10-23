@@ -3066,11 +3066,11 @@ mod tests {
         assert!((at_50 - mm * 5.0).abs() < 1e-4, "{at_50}");
         // At 1 : 100 the same screen stands for half the paper, so the pen is twice the pixels; zoomed in twice, twice again.
         s.execute("scale", &serde_json::json!({"view": 100000, "scale": 100})).unwrap();
-        assert!((widest(&s, view, wall) - 8.0).abs() < 1e-4);
-        assert!((widest(&s, View { scale: 0.2, ..view }, wall) - 16.0).abs() < 1e-4);
+        assert!((widest(&s, view, wall) - 3.5).abs() < 1e-4, "pen 10, 0.35 mm: {}", widest(&s, view, wall));
+        assert!((widest(&s, View { scale: 0.2, ..view }, wall) - 7.0).abs() < 1e-4);
         // A weight overridden is a pen too.
         s.execute("graphics", &serde_json::json!({"view": 100000, "categories": {"walls": {"cut": {"weight": 13}}}})).unwrap();
-        assert!((widest(&s, view, wall) - 2.0 * 5.0 * 2.0).abs() < 1e-4, "pen 13, 2 mm: {}", widest(&s, view, wall));
+        assert!((widest(&s, view, wall) - 0.7 * 5.0 * 2.0).abs() < 1e-4, "pen 13, 0.7 mm: {}", widest(&s, view, wall));
     }
 
     #[test]
@@ -3111,13 +3111,13 @@ mod tests {
     #[test]
     fn a_cut_walls_outline_is_inked_over_its_poche_and_not_across_its_joins() {
         let s = house();
-        // At 1 : 100 and a tenth of a pixel to the mm, a cut outline (pen 10, 0.8 mm) is 8 px wide.
-        let view = View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
+        // At 1 : 100 a cut outline (pen 10, 0.35 mm on paper) is 35 mm of the model wide; at a fifth of a pixel to the mm, 7 px.
+        let view = View { scale: 0.2, cx: 6000.0, cy: 1000.0, width: 1000, height: 800 };
         let d = draw(&s.model, 100000, view);
         let png = png(&d).unwrap();
         // Two pixels inside the south wall's outer face (its axis on y = 0, 200 mm thick): the outline, whole.
-        assert_eq!(pixel(&png, view.px(P2(6000.0, -80.0))), (INK.0, INK.1, INK.2), "the outline over the poché");
-        assert_eq!(pixel(&png, view.px(P2(6000.0, 80.0))), (INK.0, INK.1, INK.2), "and on its inner face");
+        assert_eq!(pixel(&png, view.px(P2(6000.0, -90.0))), (INK.0, INK.1, INK.2), "the outline over the poché");
+        assert_eq!(pixel(&png, view.px(P2(6000.0, 90.0))), (INK.0, INK.1, INK.2), "and on its inner face");
         // Where two walls meet at a corner, the mitre between them is poché, no line.
         assert_eq!(pixel(&png, view.px(P2(8000.0, 0.0))), (POCHE.0, POCHE.1, POCHE.2));
         assert_eq!(pixel(&png, view.px(P2(8040.0, 40.0))), (POCHE.0, POCHE.1, POCHE.2));
@@ -3127,13 +3127,13 @@ mod tests {
     fn where_two_walls_cut_outlines_meet_at_a_corner_they_join_square_with_no_notch() {
         let s = house();
         // The house's south-east corner: the south wall's axis on y = 0, the east's on x = 8000, both 200 mm thick, so the
-        // outer corner is at (8100, -100). The outline, 8 px wide, reaches 4 px past it each way, a square corner: 30 mm
-        // out along the diagonal is inside that square, outside a rounded one (3 px from the corner, past its 4 px radius
-        // only on the diagonal of the square, at 4.2 px).
-        let view = View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
+        // outer corner is at (8100, -100). The outline, 35 mm of the model wide at 1 : 100, reaches 17.5 mm past it each way,
+        // a square corner: 15 mm out each way is inside that square, outside a rounded one (21 mm from the corner, past its
+        // 17.5 mm radius). Half a pixel to the mm, to see it.
+        let view = View { scale: 0.5, cx: 8000.0, cy: 0.0, width: 1000, height: 800 };
         let d = draw(&s.model, 100000, view);
         let png = png(&d).unwrap();
-        assert_eq!(pixel(&png, view.px(P2(8130.0, -130.0))), (INK.0, INK.1, INK.2), "the outer corner, square");
+        assert_eq!(pixel(&png, view.px(P2(8115.0, -115.0))), (INK.0, INK.1, INK.2), "the outer corner, square");
         // Each wall's run goes on round the corner into the other's: one line, joined, not two ends meeting.
         let corner = view.px(P2(8100.0, -100.0));
         let through = d.prims.iter().zip(&d.parts).any(|(p, part)| match p {

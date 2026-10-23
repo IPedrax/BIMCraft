@@ -1532,9 +1532,9 @@ mod tests {
                 Value::Object(o) => {
                     for (k, v) in o.iter_mut() {
                         match (k.as_str(), v.as_u64()) {
-                            ("weight", Some(7)) => *v = json!(2.0),
-                            ("weight", Some(3)) => *v = json!(0.8),
-                            ("weight", Some(10)) => *v = json!(4),
+                            ("weight", Some(7)) => *v = json!(1.25),
+                            ("weight", Some(3)) => *v = json!(0.75),
+                            ("weight", Some(10)) => *v = json!(1.75),
                             _ => as_pixels(v),
                         }
                     }

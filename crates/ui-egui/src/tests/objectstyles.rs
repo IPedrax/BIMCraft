@@ -12,7 +12,7 @@ fn object_styles_set_each_categorys_pens_in_one_step() {
     assert!(h.state().object_styles_dialog.is_some());
     // A row for each model category, its pens as a project starts with them; nothing is the project's until OK.
     assert!(h.query_by_label("Walls: Cut").is_some() && h.query_by_label("Railings: Projection").is_some());
-    choose(&mut h, "Walls: Cut", "13 · 2.00 mm");
+    choose(&mut h, "Walls: Cut", "13 · 0.70 mm");
     choose(&mut h, "Doors: Projection", "0 · Hairline");
     assert!(h.state().session.model.object_styles.is_empty());
     let steps = h.state().session.history().len();
