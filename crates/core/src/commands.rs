@@ -78,8 +78,8 @@ pub static ALL: &[Command] = &[
          plan; .pdf prints every sheet, a page each",
         save,
     ),
-    other("undo", "Undo", "{}", undo),
-    other("redo", "Redo", "{}", redo),
+    other("undo", "Undo", "{count?} takes back the last `count` steps (1 by default)", undo),
+    other("redo", "Redo", "{count?} does again the last `count` steps undone (1 by default)", redo),
     edit(
         "level",
         "Level",
@@ -2606,12 +2606,20 @@ fn measure(_: &mut Session, p: &Value) -> R {
     Ok(json!({"length": to(r.length, 100.0), "dx": to(r.dx, 100.0), "dy": to(r.dy, 100.0), "angle": to(r.angle, 1e4)}))
 }
 
-fn undo(s: &mut Session, _: &Value) -> R {
-    s.step_back(false)
+fn undo(s: &mut Session, p: &Value) -> R {
+    s.step_back(false, steps("undo", p)?)
 }
 
-fn redo(s: &mut Session, _: &Value) -> R {
-    s.step_back(true)
+fn redo(s: &mut Session, p: &Value) -> R {
+    s.step_back(true, steps("redo", p)?)
+}
+
+/// How many steps undo or redo takes: `count`, 1 by default.
+fn steps(c: &str, p: &Value) -> Result<usize, String> {
+    if let Some(key) = p.as_object().and_then(|o| o.keys().find(|k| k.as_str() != "count")) {
+        return Err(bad(c, format!("unknown parameter `{key}`")));
+    }
+    count_opt(c, p, "count", 1)
 }
 
 // ---------- modelling ----------

@@ -253,6 +253,7 @@ pub enum Icon {
     Search,
     Legend,
     Home,
+    Back,
     NewFile,
     Code,
     Check,
@@ -935,6 +936,8 @@ pub fn paint(p: &Painter, icon: Icon, r: Rect, color: Color32) {
             line(&[(5.5, 9.5), (5.5, 20.5), (18.5, 20.5), (18.5, 9.5)]),
             line(&[(10.0, 20.5), (10.0, 14.5), (14.0, 14.5), (14.0, 20.5)]),
         ],
+        // An arrow pointing left: back where you were.
+        Icon::Back => vec![line(&[(20.0, 12.0), (4.5, 12.0)]), line(&[(10.5, 6.0), (4.5, 12.0), (10.5, 18.0)])],
         // A page with its corner folded and a plus.
         Icon::NewFile => vec![
             ring(&[(5.0, 2.5), (14.0, 2.5), (19.0, 7.5), (19.0, 21.5), (5.0, 21.5)]),

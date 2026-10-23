@@ -299,6 +299,10 @@ impl Elements {
         self.items.keys()
     }
 
+    pub fn range(&self, r: std::ops::RangeFrom<Id>) -> btree_map::Range<'_, Id, Element> {
+        self.items.range(r)
+    }
+
     pub fn range_mut(&mut self, r: std::ops::RangeFrom<Id>) -> btree_map::RangeMut<'_, Id, Element> {
         self.items.range_mut(r)
     }

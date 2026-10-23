@@ -41,6 +41,8 @@ enum Thumb {
 #[derive(Default)]
 pub struct Home {
     pub shown: bool,
+    /// Whether it was brought up over a project, which Back (and Ctrl+D, as in Revit) goes back to.
+    pub over: bool,
     thumbs: HashMap<PathBuf, Thumb>,
     drawn: Option<Receiver<(PathBuf, Option<ColorImage>)>>,
 }
@@ -54,7 +56,7 @@ impl Home {
 
     /// The page put away, keeping its pictures for when it comes back.
     pub(crate) fn put_away(&mut self) -> Home {
-        Home { shown: false, thumbs: std::mem::take(&mut self.thumbs), drawn: self.drawn.take() }
+        Home { shown: false, over: false, thumbs: std::mem::take(&mut self.thumbs), drawn: self.drawn.take() }
     }
 
     /// Whether `path`'s tile has a picture.
@@ -89,6 +91,22 @@ pub fn picture(path: &Path) -> Option<ColorImage> {
     .flatten()
 }
 
+/// The arrow back to the project, at the page's top left.
+fn back(ui: &mut Ui) -> Response {
+    let label = t("Back");
+    let font = FontId::proportional(14.0);
+    let text = ui.painter().layout_no_wrap(label.to_string(), font.clone(), pal().text).size();
+    let (rect, r) = ui.allocate_exact_size(vec2(text.x + 46.0, 32.0), Sense::click());
+    r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label));
+    let fill = if r.hovered() { pal().hover_fill } else { pal().surface };
+    ui.painter().rect(rect, 6.0, fill, Stroke::new(1.0, pal().border), StrokeKind::Inside);
+    let icon = Rect::from_center_size(pos2(rect.left() + 20.0, rect.center().y), vec2(18.0, 18.0));
+    style::paint(ui.painter(), Icon::Back, icon, pal().text);
+    ui.painter().text(pos2(rect.left() + 34.0, rect.center().y), Align2::LEFT_CENTER, label, font, pal().text);
+    let cmd = if cfg!(target_os = "macos") { "⌘" } else { "Ctrl+" };
+    r.on_hover_text(tf("Back to the project ({}D)", &[cmd]))
+}
+
 /// How long ago `when` was, in words.
 fn ago(when: SystemTime) -> String {
     let secs = SystemTime::now().duration_since(when).unwrap_or(Duration::ZERO).as_secs();
@@ -121,6 +139,15 @@ impl BimApp {
     /// Open on the start page (the desktop does when it's given no project).
     pub fn show_start_page(&mut self) {
         self.home.shown = true;
+    }
+
+    /// Home and Ctrl+D: the start page over the project, or, from it, back to the project (when there is one behind it).
+    pub(crate) fn toggle_home(&mut self) {
+        if !self.home.shown {
+            (self.home.shown, self.home.over) = (true, true);
+        } else if self.home.over {
+            self.home.shown = false;
+        }
     }
 
     /// Draws the pictures not drawn yet on a thread, one file after another; takes what it has finished.
@@ -189,6 +216,15 @@ impl BimApp {
                 let width = (full - 64.0).clamp(320.0, 1180.0);
                 let left = ((full - width) / 2.0).max(16.0);
                 ui.add_space(36.0);
+                if self.home.over {
+                    ui.horizontal(|ui| {
+                        ui.add_space(left);
+                        if back(ui).clicked() {
+                            click = Some(Click::Back);
+                        }
+                    });
+                    ui.add_space(14.0);
+                }
                 ui.horizontal(|ui| {
                     ui.add_space(left);
                     ui.vertical(|ui| {
@@ -267,11 +303,10 @@ impl BimApp {
         if action(ui, Icon::Open, "Open…", what, &format!("{cmd}O")).clicked() {
             *click = Some(Click::Open);
         }
-        let model = &self.session.model;
-        if self.session.path.is_some() || model.elements.len() > model.levels().len() {
+        if self.home.over {
             ui.add_space(10.0);
-            let back = tf("Back to {}", &[&model.name]);
-            if action(ui, Icon::Plan, &back, "The project stays as you left it.", "").clicked() {
+            let back = tf("Back to {}", &[&self.session.model.name]);
+            if action(ui, Icon::Back, &back, "The project stays as you left it.", &format!("{cmd}D")).clicked() {
                 *click = Some(Click::Back);
             }
         }

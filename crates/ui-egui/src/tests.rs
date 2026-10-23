@@ -5574,3 +5574,44 @@ fn opening_a_file_with_fields_a_newer_version_added_says_they_are_left_out() {
     let status = &h.state().status;
     assert!(!status.error && status.text.contains("newer.bimcraft opened without 2 fields"), "{}", status.text);
 }
+
+#[test]
+fn the_arrows_beside_undo_and_redo_list_the_steps_by_name_and_take_back_as_many_as_picked() {
+    let mut h = app("");
+    h.state_mut().run("wall", json!({"points": [[0, 0], [4000, 0], [4000, 3000]]}));
+    let first = h.state().session.model.elements.iter().find(|(_, e)| matches!(e, Element::Wall(_))).map(|(id, _)| *id).unwrap();
+    h.state_mut().run("door", json!({"wall": first, "offset": 1500}));
+    // The second wall: the first would take its door with it.
+    let first = first + 1;
+    h.state_mut().run("delete", json!({"ids": [first]}));
+    h.run();
+    press(&mut h, "Undo History");
+    // Newest first: what each step made or took away.
+    h.get_by_label("Delete Wall");
+    h.get_by_label("Create Door");
+    h.get_by_label("Create Walls");
+    // Hovering a step marks it and those above it, and a click undoes them all.
+    h.get_by_label("Create Door").hover();
+    h.run();
+    h.get_by_label("Undo 2 steps");
+    press(&mut h, "Create Door");
+    assert_eq!(walls(&h).len(), 2);
+    assert!(h.state().session.model.elements.values().all(|e| !matches!(e, Element::Door(_))));
+    press(&mut h, "Redo History");
+    h.get_by_label("Create Door");
+    press(&mut h, "Delete Wall");
+    assert_eq!(walls(&h).len(), 1, "redone both");
+    assert!(h.state().session.steps(true).is_empty());
+}
+
+#[test]
+fn a_view_tabs_close_button_is_part_of_its_tab() {
+    let mut h = app(BOX);
+    h.state_mut().open_sheet(Sheet::View3D);
+    h.run();
+    let tab = h.get_all_by_label("{3D}").min_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).unwrap().rect();
+    let close = h.get_by_label("Close {3D}").rect();
+    assert!(tab.contains_rect(close), "the × is inside the tab: {tab:?} {close:?}");
+    press(&mut h, "Close {3D}");
+    assert!(!h.state().views.contains(&Sheet::View3D));
+}

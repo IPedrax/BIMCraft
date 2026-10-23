@@ -24,7 +24,42 @@ pub struct Command {
     pub undoable: bool,
 }
 
-const UNDO_LIMIT: usize = 200;
+pub const UNDO_LIMIT: usize = 200;
+
+/// An undo (or redo) step: the command it was, and the elements it made and took away, by category, each category
+/// counted in the order of its first element's id, so a list can name it: Create Walls, Delete Door.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Step {
+    pub label: &'static str,
+    pub made: Vec<(&'static str, usize)>,
+    pub removed: Vec<(&'static str, usize)>,
+}
+
+impl Step {
+    /// Without a look at every element: what's new has an id past every one `before` had (ids only go up), and only when
+    /// the counts say something went is `before` searched for what.
+    fn new(label: &'static str, before: &Model, after: &Model) -> Step {
+        let tally = |elements: &mut dyn Iterator<Item = &Element>| {
+            let mut counts: Vec<(&'static str, usize)> = Vec::new();
+            for e in elements {
+                match counts.iter_mut().find(|(c, _)| *c == e.category()) {
+                    Some((_, n)) => *n += 1,
+                    None => counts.push((e.category(), 1)),
+                }
+            }
+            counts
+        };
+        let first_new = before.elements.keys().next_back().map_or(0, |id| id + 1).max(before.next_id);
+        let made = tally(&mut after.elements.range(first_new..).map(|(_, e)| e));
+        let kept = after.elements.len() - made.iter().map(|(_, n)| n).sum::<usize>();
+        let removed = if before.elements.len() > kept {
+            tally(&mut before.elements.iter().filter(|(id, _)| !after.elements.contains_key(**id)).map(|(_, e)| e))
+        } else {
+            Vec::new()
+        };
+        Step { label, made, removed }
+    }
+}
 
 /// The commands that copy what stands: a copy is made in the session's phase and isn't taken down with its original.
 const COPIES: [&str; 3] = ["copy", "mirror", "rotate"];
@@ -37,8 +72,8 @@ pub struct Session {
     /// project's first phase, and no option. Not the model's: set with `phase` and `option`.
     pub phase: Option<String>,
     pub option: Option<String>,
-    undo: Vec<(&'static str, Arc<Model>)>,
-    redo: Vec<(&'static str, Arc<Model>)>,
+    undo: Vec<(Step, Arc<Model>)>,
+    redo: Vec<(Step, Arc<Model>)>,
     /// How many times the project was replaced, so a transaction knows its history went with it.
     resets: usize,
 }
@@ -93,7 +128,13 @@ impl Session {
 
     /// Labels of the undo steps, oldest first.
     pub fn history(&self) -> Vec<&'static str> {
-        self.undo.iter().map(|(l, _)| *l).collect()
+        self.undo.iter().map(|(st, _)| st.label).collect()
+    }
+
+    /// The undo steps, or with `redo` the redo steps, the next to go first.
+    pub fn steps(&self, redo: bool) -> Vec<&Step> {
+        let from = if redo { &self.redo } else { &self.undo };
+        from.iter().rev().map(|(st, _)| st).collect()
     }
 
     /// Run a command by id or alias with JSON parameters. A command that fails, panics, or leaves
@@ -130,7 +171,7 @@ impl Session {
             }
             Ok(v) => {
                 if cmd.undoable && !Arc::ptr_eq(&before, &self.model) {
-                    self.undo.push((cmd.label, before));
+                    self.undo.push((Step::new(cmd.label, &before, &self.model), before));
                     if self.undo.len() > UNDO_LIMIT {
                         self.undo.remove(0);
                     }
@@ -189,7 +230,7 @@ impl Session {
                 if self.undo.is_empty() {
                     self.redo = redo;
                 } else {
-                    undo.push((label, before));
+                    undo.push((Step::new(label, &before, &self.model), before));
                     if undo.len() > UNDO_LIMIT {
                         undo.remove(0);
                     }
@@ -236,12 +277,23 @@ impl Session {
         }
     }
 
-    pub(crate) fn step_back(&mut self, redo: bool) -> Result<Value, String> {
+    /// Undo (or with `redo`, redo) `count` steps; the reply names the last of them.
+    pub(crate) fn step_back(&mut self, redo: bool, count: usize) -> Result<Value, String> {
         let (from, to) = if redo { (&mut self.redo, &mut self.undo) } else { (&mut self.undo, &mut self.redo) };
-        let (label, model) = from.pop().ok_or(if redo { "nothing to redo" } else { "nothing to undo" })?;
-        to.push((label, std::mem::replace(&mut self.model, model)));
-        let key = if redo { "redone" } else { "undone" };
-        Ok(json!({ key: label }))
+        let (key, what) = if redo { ("redone", "redo") } else { ("undone", "undo") };
+        if from.is_empty() {
+            return Err(format!("nothing to {what}"));
+        }
+        if count == 0 || count > from.len() {
+            return Err(format!("`count` must be from 1 to {}, the steps there are to {what}", from.len()));
+        }
+        let mut label = "";
+        for _ in 0..count {
+            let Some((step, model)) = from.pop() else { break };
+            label = step.label;
+            to.push((step, std::mem::replace(&mut self.model, model)));
+        }
+        Ok(json!({ key: label, "count": count }))
     }
 }
 

@@ -651,17 +651,31 @@ fn icon_button(ui: &mut Ui, icon: Icon, label: &str) -> Response {
     r.on_hover_text(label)
 }
 
-/// A tab, of the ribbon or of a view. Contextual tabs are green, as Revit's are.
-fn tab_button(ui: &mut Ui, label: &str, active: bool, contextual: bool) -> Response {
-    tab_button_with(ui, label, active, contextual, Sense::click())
+/// An undo step as Undo's list names it: what it made (Create Walls) or took away (Delete Door), or else its command.
+fn step_name(st: &engine::Step) -> String {
+    let one = |list: &[(&str, usize)]| match list {
+        [(c, n)] => Some(lang::category(c, *n > 1)),
+        _ => None,
+    };
+    let named = match (st.made.as_slice(), st.removed.as_slice()) {
+        (made, []) if !made.is_empty() => one(made).map(|c| tf("Create {}", &[&c])),
+        ([], removed) if !removed.is_empty() => one(removed).map(|c| tf("Delete {}", &[&c])),
+        _ => None,
+    };
+    named.unwrap_or_else(|| t(st.label).to_string())
 }
 
-/// A tab that senses what `sense` says: a view's drags too.
-fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sense: Sense) -> Response {
+/// A tab, of the ribbon or of a view. Contextual tabs are green, as Revit's are.
+fn tab_button(ui: &mut Ui, label: &str, active: bool, contextual: bool) -> Response {
+    tab_button_with(ui, label, active, contextual, Sense::click(), 0.0)
+}
+
+/// A tab that senses what `sense` says (a view's drags too), `room` px wider on its right for what's drawn in it (a view's ×).
+fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sense: Sense, room: f32) -> Response {
     let label = t(label);
     let font = FontId::proportional(13.0);
     let size = ui.painter().layout_no_wrap(label.to_string(), font.clone(), pal().text).size();
-    let (rect, r) = ui.allocate_exact_size(size + vec2(24.0, 10.0), sense);
+    let (rect, r) = ui.allocate_exact_size(size + vec2(24.0 + room, 10.0), sense);
     r.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, active, label));
     let (fill, ink) = match (contextual, active, r.hovered()) {
         (true, true, _) => (pal().surface, pal().context),
@@ -679,8 +693,25 @@ fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sen
     if r.has_focus() {
         p.rect_stroke(rect, radius, Stroke::new(2.0, pal().accent), StrokeKind::Inside);
     }
-    p.text(rect.center(), Align2::CENTER_CENTER, label, font, ink);
+    p.text(rect.center() - vec2(room / 2.0, 0.0), Align2::CENTER_CENTER, label, font, ink);
     r
+}
+
+/// The rule under a row of tabs, from `x` at `y`, but for the open tab, which moulds out of what it opens below: its sides run
+/// down into it and nothing parts them.
+fn rule_under_tabs(p: &egui::Painter, x: egui::Rangef, y: f32, open: Option<Rect>) {
+    let stroke = Stroke::new(1.0, pal().border);
+    let Some(tab) = open else {
+        p.hline(x, y, stroke);
+        return;
+    };
+    p.hline(x.min..=tab.left(), y, stroke);
+    p.hline(tab.right()..=x.max, y, stroke);
+    let top = tab.bottom() - 2.0;
+    p.rect_filled(Rect::from_x_y_ranges(tab.left() + 1.0..=tab.right() - 1.0, top..=y + 1.0), 0.0, pal().surface);
+    for side in [tab.left() + 0.5, tab.right() - 0.5] {
+        p.vline(side, top..=y, stroke);
+    }
 }
 
 /// A ribbon panel: its buttons over its name, as Revit groups tools.
@@ -1030,12 +1061,12 @@ impl BimApp {
         Panel::bottom("status").frame(bar).show(ui, |ui| self.status_bar(ui));
         self.docks(ui);
         CentralPanel::default().frame(Frame::NONE).show(ui, |ui| {
-            Panel::top("view-tabs").frame(Frame::new().fill(pal().bar).inner_margin(Margin { left: 6, right: 6, top: 4, bottom: 0 })).show(
-                ui,
-                |ui| {
+            Panel::top("view-tabs")
+                .frame(Frame::new().fill(pal().bar).inner_margin(Margin { left: 6, right: 6, top: 4, bottom: 0 }))
+                .show_separator_line(false)
+                .show(ui, |ui| {
                     self.view_tabs(ui);
-                },
-            );
+                });
             let front = self.front;
             self.view_pane(ui, front);
             self.work = self.pane;
@@ -1187,6 +1218,9 @@ impl BimApp {
         // The rest belongs to a text field while one has the keyboard.
         if ctx.egui_wants_keyboard_input() {
             return;
+        }
+        if pressed(Modifiers::COMMAND, Key::D) {
+            self.toggle_home();
         }
         if pressed(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z) || pressed(Modifiers::COMMAND, Key::Y) {
             self.run("redo", json!({}));
@@ -2032,7 +2066,7 @@ impl BimApp {
         let row = ui
             .horizontal(|ui| {
                 if icon_button(ui, Icon::Home, "Home").clicked() {
-                    self.home.shown = true;
+                    self.toggle_home();
                 }
                 if icon_button(ui, Icon::Open, "Open").clicked() {
                     self.guard(Pending::Open, &ctx);
@@ -2041,12 +2075,17 @@ impl BimApp {
                     self.save();
                 }
                 ui.separator();
+                ui.spacing_mut().item_spacing.x = 0.0;
                 if icon_button(ui, Icon::Undo, "Undo").clicked() {
                     self.run("undo", json!({}));
                 }
+                self.steps_list(ui, false);
+                ui.add_space(4.0);
                 if icon_button(ui, Icon::Redo, "Redo").clicked() {
                     self.run("redo", json!({}));
                 }
+                self.steps_list(ui, true);
+                ui.spacing_mut().item_spacing.x = 8.0;
                 ui.separator();
                 if icon_button(ui, Icon::View3D, "Default 3D View").clicked() {
                     self.open_sheet(Sheet::View3D);
@@ -2069,8 +2108,71 @@ impl BimApp {
         );
     }
 
+    /// The arrow beside Undo (or with `redo`, Redo): a list of the steps, the next first, as Revit's. Hovering one marks it
+    /// and every step before it, and a click undoes (or redoes) them all.
+    fn steps_list(&mut self, ui: &mut Ui, redo: bool) {
+        let what = if redo { "Redo" } else { "Undo" };
+        let names: Vec<String> = self.session.steps(redo).into_iter().map(step_name).collect();
+        let (rect, arrow) = ui.allocate_exact_size(vec2(12.0, 22.0), Sense::click());
+        let label = t(if redo { "Redo History" } else { "Undo History" });
+        arrow.widget_info(|| WidgetInfo::labeled(WidgetType::Button, !names.is_empty(), label));
+        if arrow.hovered() && !names.is_empty() {
+            ui.painter().rect_filled(rect, 3.0, pal().hover_fill);
+        }
+        let ink = if names.is_empty() { pal().muted.gamma_multiply(0.5) } else { pal().icon };
+        let c = rect.center();
+        ui.painter().add(egui::Shape::convex_polygon(
+            vec![c + vec2(-3.0, -1.5), c + vec2(3.0, -1.5), c + vec2(0.0, 2.0)],
+            ink,
+            Stroke::NONE,
+        ));
+        if names.is_empty() {
+            return;
+        }
+        let arrow = arrow.on_hover_text(label);
+        let mut chosen = None;
+        egui::Popup::menu(&arrow).width(240.0).show(|ui| {
+            ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                let rows: Vec<Response> = names
+                    .iter()
+                    .map(|name| {
+                        let (_, row) = ui.allocate_exact_size(vec2(ui.available_width(), 22.0), Sense::click());
+                        row.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, name));
+                        row
+                    })
+                    .collect();
+                let reach = rows.iter().position(Response::hovered);
+                for (i, (row, name)) in rows.iter().zip(&names).enumerate() {
+                    if reach.is_some_and(|h| i <= h) {
+                        ui.painter().rect_filled(row.rect, 0.0, pal().select_fill);
+                    }
+                    ui.painter().text(
+                        row.rect.left_center() + vec2(8.0, 0.0),
+                        Align2::LEFT_CENTER,
+                        name,
+                        FontId::proportional(13.0),
+                        pal().text,
+                    );
+                    if row.clicked() {
+                        chosen = Some(i + 1);
+                    }
+                }
+                ui.separator();
+                let n = reach.map_or(1, |h| h + 1);
+                let foot = tf(if redo { "Redo {} steps" } else { "Undo {} steps" }, &[&n.to_string()]);
+                let foot = if n == 1 { tf(if redo { "Redo {}" } else { "Undo {}" }, &[&names[0]]) } else { foot };
+                ui.label(RichText::new(foot).color(pal().muted));
+            });
+        });
+        if let Some(count) = chosen {
+            self.run(&what.to_lowercase(), json!({"count": count}));
+        }
+    }
+
     fn ribbon(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
+        let open = std::cell::Cell::new(None);
         Frame::new().fill(pal().bar).inner_margin(Margin { left: 8, right: 8, top: 4, bottom: 0 }).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
@@ -2093,10 +2195,16 @@ impl BimApp {
                     (Tab::Modify, "Modify"),
                 ] {
                     let r = tab_button(ui, label, self.tab == tab, false);
+                    if self.tab == tab {
+                        open.set(Some(r.rect));
+                    }
                     self.ribbon_tab(&r, tab);
                 }
                 if let Some(name) = self.context() {
                     let r = tab_button(ui, &name, self.tab == Tab::Context, true);
+                    if self.tab == Tab::Context {
+                        open.set(Some(r.rect));
+                    }
                     self.ribbon_tab(&r, Tab::Context);
                 }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -2108,7 +2216,8 @@ impl BimApp {
                 });
             });
         });
-        ui.painter().line_segment([ui.min_rect().left_bottom(), ui.min_rect().right_bottom()], Stroke::new(1.0, pal().border));
+        let base = ui.min_rect();
+        rule_under_tabs(ui.painter(), base.x_range(), base.bottom(), open.get());
         self.ribbon_bottom = ui.min_rect().left_bottom();
         if !self.ribbon_min {
             self.ribbon_panels(ui);
@@ -3203,20 +3312,42 @@ impl BimApp {
     /// The docked views' tabs: a click opens one, a drag moves it along the bar or, let go off it, floats it.
     fn view_tabs(&mut self, ui: &mut Ui) {
         self.tab_rects.clear();
+        let (mut open, mut closed) = (None, None);
         let bar = ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
             for sheet in self.views.clone() {
                 // A ceiling plan's tab says so: its level's plan has the level's name too.
                 let name = if matches!(sheet, Sheet::Ceiling(_)) { self.view_title(sheet) } else { self.view_name(sheet) };
-                let r = tab_button_with(ui, &name, sheet == self.front, false, Sense::click_and_drag());
+                let many = self.views.len() > 1;
+                let r = tab_button_with(ui, &name, sheet == self.front, false, Sense::click_and_drag(), if many { 18.0 } else { 0.0 });
                 self.tab_rects.push((sheet, r.rect));
+                if sheet == self.front {
+                    open = Some(r.rect);
+                }
+                // The × is part of the tab, at its right end.
+                if many {
+                    let x = Rect::from_center_size(pos2(r.rect.right() - 16.0, r.rect.center().y), vec2(16.0, 16.0));
+                    let label = tf("Close {}", &[&name]);
+                    let c = ui.interact(x, ui.id().with(("close view", sheet)), Sense::click());
+                    c.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &label));
+                    if c.hovered() {
+                        ui.painter().rect_filled(x, 3.0, pal().hover_fill);
+                    }
+                    let ink = if c.hovered() || sheet == self.front { pal().text } else { pal().muted };
+                    let d = 3.5;
+                    for (a, b) in [(vec2(-d, -d), vec2(d, d)), (vec2(-d, d), vec2(d, -d))] {
+                        ui.painter().line_segment([x.center() + a, x.center() + b], Stroke::new(1.2, ink));
+                    }
+                    if c.clicked() {
+                        closed = Some(sheet);
+                    }
+                }
                 if r.clicked() {
                     self.open_sheet(sheet);
                 }
                 if r.drag_started() {
                     self.dragging = Some(dock::Drag::View(sheet));
                 }
-                let many = self.views.len() > 1;
                 r.context_menu(|ui| {
                     if ui.add_enabled(many, egui::Button::new(t("Float"))).clicked() {
                         let at = self.view_rect.left_top() + vec2(60.0, 60.0);
@@ -3226,13 +3357,14 @@ impl BimApp {
                         self.close_view(sheet);
                     }
                 });
-                if many && icon_button(ui, Icon::Close, &tf("Close {}", &[&name])).clicked() {
-                    self.close_view(sheet);
-                }
-                ui.add_space(6.0);
+                ui.add_space(2.0);
             }
         });
+        if let Some(sheet) = closed {
+            self.close_view(sheet);
+        }
         self.tab_bar = bar.response.rect.with_max_x(ui.max_rect().right());
+        rule_under_tabs(ui.painter(), ui.max_rect().x_range(), ui.min_rect().bottom(), open);
     }
 
     /// The schedule on screen: the project's, by id, and as it is (one every project has may be

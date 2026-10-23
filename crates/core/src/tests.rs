@@ -4883,3 +4883,32 @@ fn a_project_as_written_reads_back_with_nothing_left_out() {
     assert!(crate::model::Model::read("[1, 2]").is_err());
     assert!(crate::model::Model::read(r#"{"name": "x"}"#).is_err());
 }
+
+#[test]
+fn each_undo_step_says_what_it_made_or_took_away_and_undo_and_redo_go_back_several_at_once() {
+    let mut s = Session::new();
+    let walls = house(&mut s);
+    run(&mut s, "door", json!({"wall": walls[0], "offset": 2000}));
+    run(&mut s, "delete", json!({"ids": [walls[0]]}));
+    run(&mut s, "move", json!({"ids": [walls[1]], "by": [0, 100]}));
+    // Newest first, as Undo's list shows them.
+    let steps = s.steps(false);
+    assert_eq!(steps.iter().map(|st| st.label).collect::<Vec<_>>(), ["Move", "Delete", "Door", "Wall"]);
+    assert!(steps[0].made.is_empty() && steps[0].removed.is_empty());
+    assert_eq!(steps[1].removed, [("wall", 1), ("door", 1)], "by the first of each, in id order");
+    assert_eq!((steps[2].made.as_slice(), steps[3].made.as_slice()), (&[("door", 1)][..], &[("wall", 4)][..]));
+    assert_eq!(run(&mut s, "undo", json!({"count": 3})), json!({"undone": "Door", "count": 3}));
+    assert_eq!((count(&mut s, "wall"), count(&mut s, "door")), (4, 0));
+    assert_eq!(s.steps(true).iter().map(|st| st.label).collect::<Vec<_>>(), ["Door", "Delete", "Move"]);
+    assert_eq!(run(&mut s, "redo", json!({"count": 2})), json!({"redone": "Delete", "count": 2}));
+    assert_eq!((count(&mut s, "wall"), count(&mut s, "door")), (3, 0));
+    assert_eq!(run(&mut s, "undo", json!({})), json!({"undone": "Delete", "count": 1}));
+    // More than there is, or none, is refused and changes nothing.
+    let before = s.model.clone();
+    for count in [json!(3), json!(0), json!(-1), json!("two")] {
+        assert!(s.execute("undo", &json!({"count": count})).is_err(), "{count}");
+    }
+    assert!(s.execute("undo", &json!({"steps": 1})).is_err(), "an unknown parameter");
+    assert_eq!(s.model, before);
+    assert_eq!(s.steps(false).len(), 2);
+}

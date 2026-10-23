@@ -58,6 +58,35 @@ fn the_start_page_offers_new_and_open_and_says_where_the_source_is() {
 }
 
 #[test]
+fn ctrl_d_and_the_back_arrow_go_between_the_start_page_and_the_project() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = home(dir.path(), &[]);
+    // Opened on no project, there is nothing behind it to go back to.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::D);
+    h.run();
+    assert!(h.state().home.shown);
+    assert!(h.query_by_label("Back").is_none());
+    press(&mut h, "New Project");
+    h.state_mut().run("wall", json!({"points": [[0, 0], [3000, 0]]}));
+    h.key_press_modifiers(Modifiers::COMMAND, Key::D);
+    h.run();
+    assert!(h.state().home.shown, "Ctrl+D brings it up over the project");
+    press(&mut h, "Back");
+    assert!(!h.state().home.shown, "the arrow at the top goes back");
+    press(&mut h, "Home");
+    h.key_press_modifiers(Modifiers::COMMAND, Key::D);
+    h.run();
+    assert!(!h.state().home.shown, "and so does Ctrl+D");
+    assert_eq!(walls(&h).len(), 1);
+    // In a field the keys are the field's: Ctrl+D there doesn't leave the project.
+    h.get_by_label("View Name").focus();
+    h.run();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::D);
+    h.run();
+    assert!(!h.state().home.shown, "typing, Ctrl+D stays in the field");
+}
+
+#[test]
 fn recent_files_are_tiles_with_a_picture_that_open_with_a_click() {
     let dir = tempfile::tempdir().unwrap();
     let (a, b) = (project(dir.path(), "office.bimcraft"), project(dir.path(), "school.bimcraft"));
