@@ -135,6 +135,7 @@ and the content.
 | Visibility per view direction and detail level for a family's forms and symbols | M |
 | Sections that cut family forms (they show them beyond the cut today) | S |
 | A starter content library: original, openly licensed (CC0 or CC-BY) doors, windows, furniture, casework, fixtures and profiles (32 families ship today: furniture, casework, doors, windows, and the Plumbing, Electrical, SPDA and Data tabs' fixtures) | L (ongoing) |
+| A curated GitHub repository of openly licensed families, browsed, previewed and loaded from inside BIMCraft (search, categories, thumbnails, versions). Clean-room content only, checked before it's accepted; the download goes through the same rules as the updater (capped, digest-checked, never run) | M |
 | Materials' surface and cut patterns as the project's fill patterns (the fill-pattern editor is done), and material roughness for the 3D view (textures are done) | M |
 
 **Exit criteria**: a user draws a parametric window in the family editor, places it, flexes its types, and it schedules
