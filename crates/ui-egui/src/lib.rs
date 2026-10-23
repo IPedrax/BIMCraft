@@ -28,6 +28,7 @@ pub mod recent;
 pub mod revit;
 mod section;
 pub mod settings;
+mod sketch;
 mod start;
 mod structure;
 mod style;
@@ -184,6 +185,10 @@ pub enum Tool {
     DetailLine(Vec<P2>),
     /// The selected floor's slope arrow: its tail, once clicked.
     SlopeArrow(Option<P2>),
+    /// Sketch mode's Line: the points clicked since the last loop closed, each joined to the one before by a line.
+    SketchLine(Vec<P2>),
+    /// Sketch mode's Rectangle: its first corner, once clicked.
+    SketchRect(Option<P2>),
 }
 
 /// Why the last command failed, shown in a box over the view.
@@ -527,6 +532,8 @@ pub struct BimApp {
     object_styles_dialog: Option<objectstyles::ObjectStylesDialog>,
     /// Manage > Line Styles, while open.
     line_styles_dialog: Option<linestyles::LineStylesDialog>,
+    /// Sketch mode: the lines of an outline being drawn, until Finish or Cancel.
+    pub sketch: Option<sketch::Sketch>,
     options_dialog: Option<phasing::OptionsDialog>,
     /// Manage > Select by ID and IDs of Selection, while open.
     select_by_id: Option<inquiry::SelectById>,
@@ -864,6 +871,7 @@ impl BimApp {
             line_weights_dialog: None,
             object_styles_dialog: None,
             line_styles_dialog: None,
+            sketch: None,
             options_dialog: None,
             select_by_id: None,
             ids_of_selection: None,
@@ -917,6 +925,9 @@ impl BimApp {
 
     /// The contextual tab's name while a tool is on or something is selected.
     fn context(&self) -> Option<String> {
+        if let Some(sk) = &self.sketch {
+            return Some(format!("{} | {}", t("Modify"), t(sk.title())));
+        }
         let place = match self.tool {
             Tool::Modify
             | Tool::Move(_)
@@ -930,7 +941,9 @@ impl BimApp {
             | Tool::Demolish
             | Tool::Attach
             | Tool::GableEdge
-            | Tool::SlopeArrow(_) => None,
+            | Tool::SlopeArrow(_)
+            | Tool::SketchLine(_)
+            | Tool::SketchRect(_) => None,
             Tool::Wall(_) => Some("Place Wall"),
             Tool::Paint => Some("Paint"),
             Tool::Unpaint => Some("Remove Paint"),
@@ -1233,7 +1246,12 @@ impl BimApp {
         if pressed(Modifiers::COMMAND, Key::D) {
             self.toggle_home();
         }
-        if pressed(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z) || pressed(Modifiers::COMMAND, Key::Y) {
+        if self.sketch.is_some() {
+            // While sketching, Ctrl+Z takes back a line; the model's steps wait until Finish or Cancel.
+            if pressed(Modifiers::COMMAND, Key::Z) {
+                self.unsketch();
+            }
+        } else if pressed(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z) || pressed(Modifiers::COMMAND, Key::Y) {
             self.run("redo", json!({}));
         } else if pressed(Modifiers::COMMAND, Key::Z) {
             self.run("undo", json!({}));
@@ -1773,8 +1791,13 @@ impl BimApp {
             Tool::Shaft(Some(_)) => Tool::Shaft(None),
             Tool::SlopeArrow(Some(_)) => Tool::SlopeArrow(None),
             Tool::ExtrusionRoof(pts) if !pts.is_empty() => Tool::ExtrusionRoof(Vec::new()),
+            Tool::SketchLine(pts) if !pts.is_empty() => Tool::SketchLine(Vec::new()),
+            Tool::SketchRect(Some(_)) => Tool::SketchRect(None),
             Tool::Modify => {
-                self.selection.clear();
+                match &mut self.sketch {
+                    Some(sk) => sk.picked.clear(),
+                    None => self.selection.clear(),
+                }
                 Tool::Modify
             }
             _ => Tool::Modify,
@@ -1782,6 +1805,10 @@ impl BimApp {
     }
 
     fn delete(&mut self) {
+        if self.sketch.is_some() {
+            self.delete_sketch_lines();
+            return;
+        }
         if !self.selection.is_empty() {
             self.run("delete", json!({"ids": self.selection}));
         }
@@ -2799,6 +2826,19 @@ impl BimApp {
 
     fn modify_tab(&mut self, ui: &mut Ui) {
         self.tools(ui, "Select", &[(Icon::Modify, "Modify", "Modify (MD): select elements", Tool::Modify)]);
+        if self.sketch.is_some() {
+            self.sketch_panels(ui);
+            return;
+        }
+        self.sketch_starters(ui);
+        if self.boundary_selected() && self.tool == Tool::Modify {
+            panel(ui, "Mode", |ui| {
+                let tip = "Edit Boundary: sketch its outline and holes again";
+                if big_button(ui, Icon::Line, "Edit Boundary", false, tip).clicked() {
+                    self.edit_boundary();
+                }
+            });
+        }
         panel(ui, "Properties", |ui| {
             let shown = self.docking.shown(dock::Palette::Properties);
             if big_button(ui, Icon::Properties, "Properties", shown, "Properties (PP): show or hide the palette").clicked() {
@@ -3182,6 +3222,9 @@ impl BimApp {
 
     /// What the tool wants next, in the status bar as Revit puts it.
     fn prompt(&self) -> &'static str {
+        if let Some(hint) = self.sketch_prompt() {
+            return hint;
+        }
         match (self.sheet, &self.tool) {
             (Sheet::View3D, Tool::Modify) => {
                 return "Click to select. Drag to orbit (or Shift and the middle button), the middle button pans, the wheel zooms.";
@@ -3282,6 +3325,7 @@ impl BimApp {
             Tool::DetailLine(_) => "Click its next point; Enter finishes it, the first point again closes it. Esc cancels.",
             Tool::SlopeArrow(None) => "Click the slope arrow's tail: where the floor's top stays at its height offset.",
             Tool::SlopeArrow(Some(_)) => "Click its head: the floor rises toward it at the Options Bar's slope. Esc cancels.",
+            Tool::SketchLine(_) | Tool::SketchRect(_) => "Click where the line starts.",
         }
     }
 

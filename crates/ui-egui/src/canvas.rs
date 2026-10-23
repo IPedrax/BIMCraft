@@ -732,7 +732,15 @@ impl BimApp {
     /// vertical.
     pub(crate) fn snap(&self, m: &Model, level: Id, v: &View, at: (f32, f32), from: &[P2], square: bool) -> Found {
         let reach = Reach { point: SNAP / v.scale, line: f64::from(PICK) / v.scale };
-        snap::snap(m, level, v.mm(at), reach, from, square, &self.snaps_now())
+        let found = snap::snap(m, level, v.mm(at), reach, from, square, &self.snaps_now());
+        // A sketch's own line ends, which the plan doesn't draw, as an end the plan has: loops close on them.
+        let p = v.mm(at);
+        match self.sketch.as_ref().and_then(|sk| sk.end_at(p, reach.point)) {
+            Some(end) if self.snaps_now().endpoint && (found.kind != Kind::Endpoint || end.dist(p) < found.at.dist(p)) => {
+                Found { at: end, kind: Kind::Endpoint, guide: None }
+            }
+            _ => found,
+        }
     }
 
     /// What a pick at pixel `q` would land on, shown: its marker and what it is, and the guide it
@@ -811,8 +819,9 @@ impl BimApp {
 
         // What's under the cursor; Tab steps through it. (Without the app's input hook, as in
         // tests, egui moved the keyboard to a widget on that Tab: give it back.)
+        let sketching = self.sketch.is_some();
         let under = match (&self.tool, local) {
-            (Tool::Modify, Some(q)) => d.pick_all(q, PICK),
+            (Tool::Modify, Some(q)) if !sketching => d.pick_all(q, PICK),
             _ => Vec::new(),
         };
         if under != c.under {
@@ -836,6 +845,7 @@ impl BimApp {
         // (Modify, here, is what is drawn nearest; Tab cycles through what is under the cursor.)
         let tool = self.tool.clone();
         let under_at = |q: (f32, f32)| match &tool {
+            Tool::Modify if sketching => None,
             Tool::Modify => d.pick(q, PICK),
             Tool::Door | Tool::Window | Tool::Trim(_) | Tool::Split | Tool::Offset => {
                 d.pick(q, PICK).filter(|id| model.wall(*id).is_some())
@@ -881,6 +891,7 @@ impl BimApp {
         // A drag from an element moves the selection; from empty floor, it draws a selection box.
         if response.drag_started_by(PointerButton::Primary)
             && self.tool == Tool::Modify
+            && !sketching
             && self.canvas.crop_drag.is_none()
             && self.canvas.grip.is_none()
             && let Some(o) = ui.input(|i| i.pointer.press_origin())
@@ -933,6 +944,10 @@ impl BimApp {
             marked.push(first);
         }
         paint(&p, Place::at(rect.min), &d, &marked, hovered, self.thin, &[]);
+        if let Some(sk) = &self.sketch {
+            let over = local.filter(|_| self.tool == Tool::Modify).and_then(|q| sk.line_at(view.mm(q), f64::from(PICK) / view.scale));
+            sk.paint(&p, |q| pos(rect.min, view.px(q)), over);
+        }
         p.extend(crop);
         let rooms = hovered.iter().map(|id| (*id, pal().hover)).chain(self.selection.iter().map(|id| (*id, pal().accent)));
         for (id, accent) in rooms {
@@ -1163,6 +1178,17 @@ impl BimApp {
 
     fn click(&mut self, m: &Model, level: Id, v: &View, at: (f32, f32), hovered: Option<Id>, mods: Modifiers) {
         match &self.tool {
+            Tool::Modify | Tool::SketchLine(_) | Tool::SketchRect(_) if self.sketch.is_some() => {
+                let from = match &self.tool {
+                    Tool::SketchLine(chain) => chain.clone(),
+                    Tool::SketchRect(start) => start.iter().copied().collect(),
+                    _ => Vec::new(),
+                };
+                let p = self.snap(m, level, v, at, &from, mods.shift).at;
+                self.sketch_click(p, v.mm(at), f64::from(PICK) / v.scale, mods);
+            }
+            // A sketch tool with the sketch gone: nothing to draw into.
+            Tool::SketchLine(_) | Tool::SketchRect(_) => self.tool = Tool::Modify,
             Tool::Modify => self.pick_up(hovered.into_iter().collect(), mods),
             Tool::Door | Tool::Window => {
                 let cat = if matches!(self.tool, Tool::Door) { "door" } else { "window" };
@@ -2212,7 +2238,17 @@ impl BimApp {
         let sketched = |e: &Element| ghost(p, origin, &render::sketch(m, *v, m.next_id, e), &[m.next_id], &|pt| pt);
         let ghost = |f: &dyn Fn(Pos2) -> Pos2| ghost(p, origin, sc.d, &self.selection, f);
         let chain = match &self.tool {
-            Tool::Wall(chain) | Tool::Railing(chain) | Tool::Mass(chain) | Tool::DetailLine(chain) => chain.as_slice(),
+            Tool::Wall(chain) | Tool::Railing(chain) | Tool::Mass(chain) | Tool::DetailLine(chain) | Tool::SketchLine(chain) => {
+                chain.as_slice()
+            }
+            Tool::SketchRect(None) => &[],
+            // The rectangle a click would draw.
+            &Tool::SketchRect(Some(a)) => {
+                let b = self.found(sc, q, &[a], shift);
+                let c = [a, P2(b.0, a.1), b, P2(a.0, b.1)].map(|pt| sc.screen(pt));
+                p.add(Shape::closed_line(c.to_vec(), stroke));
+                return;
+            }
             Tool::ExtrusionRoof(pts) if pts.len() < 2 => pts.as_slice(),
             // The roof a click would make, swept across to the cursor.
             Tool::ExtrusionRoof(pts) => {

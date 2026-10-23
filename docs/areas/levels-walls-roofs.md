@@ -43,3 +43,17 @@ is runs and landings laid out from its start (`stairs::stair`, `stairs::ramp`): 
 mm up), as deep as the runs are wide, the next run turning by its `turn`; a railing on one follows its walk line moved out to
 its side (`stairs::railing`), so it goes wherever its host goes. `modify` merges into fields that are objects (JSON Merge Patch), so `{"view_range": {"cut": 1500}}` keeps the rest; an element's own field can't be
 called `category`, the tag every element carries.
+
+Sketches (`sketch.rs`) are how an outline is drawn, the one solver everything with an outline and holes uses: floors,
+ceilings, roofs by footprint and shafts now, filled regions and topography next. A sketch is lines in any order, either way
+round; `sketch::solve` welds ends within `TOL`, then names every problem at once with the lines it's about (a line too short
+or out of range; two lines crossing, or one ending part way along another; two along each other; an end no other meets;
+three or more at a point; a loop with no area), and otherwise walks the loops and nests them by how many others each is
+inside: even, an outline (counter-clockwise), odd, a hole (clockwise) of the innermost loop round it, so an island in a
+hole is an outline again. `solve_one` wants one outline (a floor's, a roof's). Commands take `sketch` (lines) in place of
+`boundary` and its holes, `edit_boundary` redraws one (keeping a roof's gables on edges that stay), and the `sketch`
+command solves without making anything. A boundary given as points is judged as the sketch of its edges when a command is
+given it (a repeated point dropped first), but `Model::check` doesn't: a file, or an IFC import, with a keyhole outline
+still opens and stays editable. The desktop's sketch mode (`crates/ui-egui/src/sketch.rs`) holds the lines until Finish
+Edit Mode runs the command; when it fails, the lines the solver names draw in the error colour; Ctrl+Z takes back a
+line, and the plan's snaps take the sketch's own ends.

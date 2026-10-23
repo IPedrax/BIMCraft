@@ -4837,6 +4837,7 @@ mod lineweights;
 mod mep;
 mod objectstyles;
 mod revit;
+mod sketch;
 mod start;
 
 #[test]
