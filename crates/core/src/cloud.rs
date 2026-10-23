@@ -1,8 +1,15 @@
 //! Point clouds: what a laser scan brings in. A file's points are read from public specifications
 //! (PTS and XYZ text, PLY, ASPRS LAS 1.2 to 1.4), turned into millimetres, thinned to what a project
-//! may hold, and kept about their centre as `f32`, which holds a millimetre across `MAX_SPAN`.
+//! may hold, and kept about their centre as `f32`, which holds a millimetre across `MAX_SPAN`. A
+//! project holds each scan once, as a [`Cloud`]; a `PointCloud` element places it.
 
 use std::collections::HashSet;
+use std::io::{Read, Write};
+use std::sync::{Arc, OnceLock};
+
+use flate2::Compression;
+use flate2::read::ZlibDecoder;
+use flate2::write::ZlibEncoder;
 
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +21,8 @@ pub const MAX_BYTES: usize = 2 << 30;
 pub const MAX_FILE_COORD: f64 = 1e12;
 /// The widest a cloud may be along any axis, mm: `f32` about its centre holds a millimetre that far.
 pub const MAX_SPAN: f64 = 2e7;
+/// Scans one project may hold.
+pub const MAX_CLOUDS: usize = 16;
 
 /// What a file of points is written as.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,6 +102,195 @@ impl Scan {
     pub fn absolute(&self, i: usize) -> Option<[f64; 3]> {
         let p = self.points.get(i)?;
         Some([self.origin[0] + f64::from(p[0]), self.origin[1] + f64::from(p[1]), self.origin[2] + f64::from(p[2])])
+    }
+}
+
+/// A scan as a project holds it: its points about their middle, mm, their colours if the file had any, and where it came
+/// from. Cheap to clone: the points are shared.
+#[derive(Clone)]
+pub struct Cloud {
+    source: String,
+    origin: [f64; 3],
+    read: usize,
+    points: Arc<Vec<[f32; 3]>>,
+    colours: Option<Arc<Vec<[u8; 3]>>>,
+    lo: [f32; 3],
+    hi: [f32; 3],
+    /// What a project file holds of it, made the first time it's saved.
+    packed: Arc<OnceLock<CloudFile>>,
+}
+
+impl std::fmt::Debug for Cloud {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Cloud({:?}, {} points)", self.source, self.points.len())
+    }
+}
+
+impl PartialEq for Cloud {
+    fn eq(&self, other: &Cloud) -> bool {
+        self.source == other.source
+            && self.origin == other.origin
+            && self.read == other.read
+            && (Arc::ptr_eq(&self.points, &other.points) || self.points == other.points)
+            && self.colours == other.colours
+    }
+}
+
+impl Cloud {
+    /// A scan read from the file `source` (its name, for people to know it by), or why it can't be held.
+    pub fn new(source: &str, scan: Scan) -> Result<Cloud, String> {
+        let Scan { origin, points, colours, read } = scan;
+        Cloud::checked(source.chars().take(crate::model::MAX_TEXT).collect(), origin, read, points, colours)
+    }
+
+    fn checked(
+        source: String,
+        origin: [f64; 3],
+        read: usize,
+        points: Vec<[f32; 3]>,
+        colours: Option<Vec<[u8; 3]>>,
+    ) -> Result<Cloud, String> {
+        if points.is_empty() || points.len() > MAX_CLOUD_POINTS {
+            return Err(format!("a cloud holds 1 to {MAX_CLOUD_POINTS} points, not {}", points.len()));
+        }
+        if read < points.len() {
+            return Err(format!("a cloud read from {read} points can't keep {}", points.len()));
+        }
+        if !origin.iter().all(|v| v.is_finite() && v.abs() <= MAX_FILE_COORD) {
+            return Err(format!("a cloud's origin {origin:?} isn't one"));
+        }
+        if colours.as_ref().is_some_and(|c| c.len() != points.len()) {
+            return Err("a cloud has a colour for each point or none".into());
+        }
+        let (mut lo, mut hi) = ([f32::INFINITY; 3], [f32::NEG_INFINITY; 3]);
+        for p in &points {
+            for k in 0..3 {
+                let v = p[k];
+                if !(v.is_finite() && f64::from(v.abs()) <= MAX_SPAN) {
+                    return Err(format!("a cloud's point lies {v} mm from its middle, past {MAX_SPAN}"));
+                }
+                lo[k] = lo[k].min(v);
+                hi[k] = hi[k].max(v);
+            }
+        }
+        Ok(Cloud { source, origin, read, points: Arc::new(points), colours: colours.map(Arc::new), lo, hi, packed: Arc::default() })
+    }
+
+    /// The file it was read from.
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    /// Where its middle was in the file's coordinates, mm.
+    pub fn origin(&self) -> [f64; 3] {
+        self.origin
+    }
+
+    /// The points the file held, before thinning.
+    pub fn read(&self) -> usize {
+        self.read
+    }
+
+    pub fn len(&self) -> usize {
+        self.points.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.points.is_empty()
+    }
+
+    /// Each point from its middle, mm.
+    pub fn points(&self) -> &[[f32; 3]] {
+        &self.points
+    }
+
+    pub fn colours(&self) -> Option<&[[u8; 3]]> {
+        self.colours.as_deref().map(Vec::as_slice)
+    }
+
+    /// The box round its points, from its middle, mm.
+    pub fn bounds(&self) -> ([f64; 3], [f64; 3]) {
+        (self.lo.map(f64::from), self.hi.map(f64::from))
+    }
+
+    fn file(&self) -> &CloudFile {
+        self.packed.get_or_init(|| {
+            let points: Vec<u8> = self.points.iter().flatten().flat_map(|v| v.to_le_bytes()).collect();
+            let colours = self.colours.as_ref().map(|c| c.iter().flatten().copied().collect::<Vec<u8>>());
+            CloudFile {
+                source: self.source.clone(),
+                origin: self.origin,
+                read: self.read,
+                points: crate::commands::base64(&deflate(&points)),
+                colours: colours.map(|c| crate::commands::base64(&deflate(&c))),
+            }
+        })
+    }
+}
+
+/// How a cloud goes in a project file: its points as little-endian `f32` and its colours as bytes, each deflated (zlib)
+/// and in base64.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CloudFile {
+    source: String,
+    origin: [f64; 3],
+    read: usize,
+    points: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    colours: Option<String>,
+}
+
+fn deflate(bytes: &[u8]) -> Vec<u8> {
+    let mut z = ZlibEncoder::new(Vec::new(), Compression::fast());
+    // Writing to a Vec doesn't fail.
+    let _ = z.write_all(bytes);
+    z.finish().unwrap_or_default()
+}
+
+/// The bytes base64 and zlib hide, if they're no more than `most`.
+fn inflate(text: &str, most: usize) -> Result<Vec<u8>, String> {
+    let packed = crate::texture::unbase64(text).ok_or("a cloud's data isn't base64")?;
+    let mut out = Vec::new();
+    ZlibDecoder::new(packed.as_slice())
+        .take(most as u64 + 1)
+        .read_to_end(&mut out)
+        .map_err(|e| format!("a cloud's data isn't zlib: {e}"))?;
+    if out.len() > most {
+        return Err(format!("a cloud's data holds more than {most} bytes"));
+    }
+    Ok(out)
+}
+
+impl TryFrom<CloudFile> for Cloud {
+    type Error = String;
+
+    fn try_from(f: CloudFile) -> Result<Cloud, String> {
+        let bytes = inflate(&f.points, MAX_CLOUD_POINTS * 12)?;
+        if bytes.len() % 12 != 0 {
+            return Err("a cloud's points are cut short".into());
+        }
+        let points: Vec<[f32; 3]> =
+            bytes.as_chunks::<12>().0.iter().map(|c| [0, 4, 8].map(|i| f32::from_le_bytes([c[i], c[i + 1], c[i + 2], c[i + 3]]))).collect();
+        let colours = match &f.colours {
+            Some(text) => Some(inflate(text, MAX_CLOUD_POINTS * 3)?.as_chunks::<3>().0.to_vec()),
+            None => None,
+        };
+        let cloud = Cloud::checked(f.source.chars().take(crate::model::MAX_TEXT).collect(), f.origin, f.read, points, colours)?;
+        let _ = cloud.packed.set(f);
+        Ok(cloud)
+    }
+}
+
+impl Serialize for Cloud {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        self.file().serialize(s)
+    }
+}
+
+impl<'de> Deserialize<'de> for Cloud {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Cloud, D::Error> {
+        Cloud::try_from(CloudFile::deserialize(d)?).map_err(serde::de::Error::custom)
     }
 }
 
@@ -868,5 +1066,40 @@ mod tests {
                 let _ = read(&bytes, f, &o);
             }
         }
+    }
+
+    #[test]
+    fn a_scan_in_a_project_file_comes_back_as_it_went_and_a_broken_one_is_refused() {
+        let scan = read(b"0 0 0 255 0 0\n1 2 3 0 255 0\n", Format::Xyz, &Options::default()).unwrap();
+        let cloud = Cloud::new("two.xyz", scan).unwrap();
+        let text = serde_json::to_string(&cloud).unwrap();
+        let back: Cloud = serde_json::from_str(&text).unwrap();
+        assert_eq!(back, cloud);
+        assert_eq!((back.len(), back.read(), back.source(), back.colours().map(<[_]>::len)), (2, 2, "two.xyz", Some(2)));
+        let file: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let with = |key: &str, v: serde_json::Value| {
+            let mut f = file.clone();
+            f[key] = v;
+            serde_json::from_value::<Cloud>(f)
+        };
+        let packed = |bytes: &[u8]| serde_json::Value::from(crate::commands::base64(&deflate(bytes)));
+        for (key, v, says) in [
+            ("points", "!!!".into(), "base64"),
+            ("points", crate::commands::base64(b"not zlib").into(), "zlib"),
+            ("points", packed(&[0; 13]), "cut short"),
+            ("points", packed(&[]), "points"),
+            ("points", packed(&[f32::NAN.to_le_bytes(), [0; 4], [0; 4], [0; 4], [0; 4], [0; 4]].concat()), "past"),
+            ("points", packed(&[1e9f32.to_le_bytes(), [0; 4], [0; 4], [0; 4], [0; 4], [0; 4]].concat()), "past"),
+            ("colours", packed(&[1, 2, 3]), "colour"),
+            ("read", 1.into(), "read"),
+            ("origin", serde_json::json!([1e13, 0, 0]), "origin"),
+            ("extra", 1.into(), "unknown"),
+        ] {
+            let e = with(key, v).unwrap_err().to_string();
+            assert!(e.contains(says), "{key}: {e}");
+        }
+        // Data that unpacks past what a cloud may hold stops at it.
+        let e = inflate(&crate::commands::base64(&deflate(&vec![0; 1000])), 999).unwrap_err();
+        assert!(e.contains("more than 999"), "{e}");
     }
 }

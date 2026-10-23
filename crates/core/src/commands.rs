@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use serde_json::{Map, Value, json};
 
+use crate::cloud::{self, Cloud};
 use crate::engine::{Command, Run, Session};
 use crate::favorites::{self, FamilyEntry, Favorites, MaterialEntry};
 use crate::geom::{self, P2};
@@ -18,9 +19,9 @@ use crate::massing;
 use crate::model::{
     CEILING_HEIGHT, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Element, Extrusion, Face,
     Facing, Floor, FloorType, Grid, Guid, Id, Key, Landing, Layer, Level, Line, Location, MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass,
-    Model, NOTE_SIZE, Note, Opening, OpeningType, PARAMETER_CATEGORIES, ParameterKind, Pattern, PlanView, ProjectParameter, RAMP_SLOPE,
-    RAMP_WIDTH, RISER, Railing, RailingType, Ramp, Reference, Roof, RoofType, Room, STAIR_WIDTH, Schedule, Section, Shaft, Sheet, Side,
-    Spot, Stair, TOL, TREAD, Tag, View3D, Viewport, Wall, WallType, heading, paper,
+    Model, NOTE_SIZE, Note, Opening, OpeningType, PARAMETER_CATEGORIES, ParameterKind, Pattern, PlanView, PointCloud, ProjectParameter,
+    RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp, Reference, Roof, RoofType, Room, STAIR_WIDTH, Schedule, Section, Shaft,
+    Sheet, Side, Spot, Stair, TOL, TREAD, Tag, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
@@ -109,6 +110,13 @@ pub static ALL: &[Command] = &[
         level,
     ),
     edit("grid", "Grid", &["GR"], "{start: [x,y], end: [x,y], name?} names follow the last grid: 1, 2… or A, B…", grid),
+    edit(
+        "point_cloud",
+        "Point Cloud",
+        &[],
+        "{path | cloud, name?, level?, at?: [x, y], offset?, angle?, units?, spacing?, origin?} brings in a laser scan (`path`: PTS, XYZ,          PLY or LAS; `units` of its coordinates mm, cm, m (the default), in or ft; one point kept in each cube `spacing` mm wide) or          places one the project holds again (`cloud`, its name), as an element: its middle on `at` (the origin) and its foot on the          level, or with `origin: file` where its file's coordinates put it; `offset` raises its middle over the level, `angle` turns it.          Returns its id, the scan's name, the points kept and read, and where its middle was in the file",
+        point_cloud,
+    ),
     edit(
         "wall",
         "Wall",
@@ -1260,6 +1268,12 @@ pub fn element_json(m: &Model, id: Id) -> Value {
         }
     });
     match e {
+        Element::PointCloud(pc) => {
+            if let Some(cloud) = m.clouds.get(&pc.cloud) {
+                extra.insert("points".into(), json!(cloud.len()));
+                extra.insert("source".into(), json!(cloud.source()));
+            }
+        }
         Element::Wall(w) => {
             let axis = Axis::of(w);
             extra.insert("length".into(), json!(hundredth(axis.length() * 1e4) / 1e4));
@@ -2835,6 +2849,114 @@ fn level(s: &mut Session, p: &Value) -> R {
     };
     let id = s.model_mut().insert(Element::Level(Level { extent, ..Level::new(name.clone(), elevation) }));
     Ok(json!({"id": id, "name": name}))
+}
+
+/// A scan brought in from a file, or one the project holds, placed: its middle on `at` and its foot on the level, or where the
+/// file's coordinates put it.
+fn point_cloud(s: &mut Session, p: &Value) -> R {
+    let c = "point_cloud";
+    let m = &s.model;
+    let level = level_param(c, m, p, "level")?;
+    let (name, scan, new) = match (string(c, p, "path")?, string(c, p, "cloud")?) {
+        (Some(_), Some(_)) => return Err(bad(c, "give `path`, a scan file to bring in, or `cloud`, a scan the project holds; not both")),
+        (None, None) => {
+            return Err(bad(
+                c,
+                "give `path`, a scan file (PTS, XYZ, PLY or LAS) to bring in, or `cloud`, the name of a scan the project holds",
+            ));
+        }
+        (None, Some(n)) => {
+            let scan = m.clouds.get(&n).cloned().ok_or_else(|| {
+                let names: Vec<&str> = m.clouds.keys().map(String::as_str).collect();
+                bad(
+                    c,
+                    format!(
+                        "the project holds no scan named `{n}` (it holds: {})",
+                        if names.is_empty() { "none".into() } else { names.join(", ") }
+                    ),
+                )
+            })?;
+            (n, scan, false)
+        }
+        (Some(path), None) => {
+            let path = PathBuf::from(path);
+            let ext = path.extension().map(|e| e.to_string_lossy().into_owned()).unwrap_or_default();
+            let format = cloud::Format::from_extension(&ext).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+            let stem = path.file_stem().map_or_else(|| "scan".into(), |s| s.to_string_lossy().chars().take(MAX_TEXT).collect());
+            let name = string(c, p, "name")?.unwrap_or(stem);
+            if name.trim().is_empty() {
+                return Err(bad(c, "a scan needs a `name`"));
+            }
+            if m.clouds.contains_key(&name) {
+                return Err(bad(
+                    c,
+                    format!(
+                        "the project already holds a scan named `{name}`: place it again with `cloud`, or bring this file in under another `name`"
+                    ),
+                ));
+            }
+            if m.clouds.len() >= cloud::MAX_CLOUDS {
+                return Err(bad(c, format!("the project holds {} scans already; delete the point clouds of one first", cloud::MAX_CLOUDS)));
+            }
+            let scale = match string(c, p, "units")? {
+                None => 1000.0,
+                Some(u) => cloud::unit(&u).ok_or_else(|| bad(c, format!("`units` is one of mm, cm, m, in, ft, not {u}")))?,
+            };
+            let spacing = num(c, p, "spacing")?.unwrap_or(0.0);
+            // What the project's other scans leave of what it may hold.
+            let held: usize = m.clouds.values().map(Cloud::len).sum();
+            let cap = cloud::MAX_CLOUD_POINTS.saturating_sub(held);
+            if cap == 0 {
+                return Err(bad(c, format!("the project's scans hold {held} points, all it may; delete the point clouds of one first")));
+            }
+            let len = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
+            if len > cloud::MAX_BYTES as u64 {
+                return Err(bad(c, format!("{} is too large ({len} bytes; up to {})", path.display(), cloud::MAX_BYTES)));
+            }
+            let bytes = std::fs::read(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+            let options = cloud::Options { scale, spacing, cap };
+            let read = cloud::read(&bytes, format, &options).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+            let source = path.file_name().map_or_else(String::new, |s| s.to_string_lossy().into_owned());
+            (name, Cloud::new(&source, read).map_err(|e| bad(c, e))?, true)
+        }
+    };
+    let (lo, _) = scan.bounds();
+    let origin = scan.origin();
+    let (mut at, mut offset) = match string(c, p, "origin")?.as_deref() {
+        None | Some("centre" | "center") => (P2(0.0, 0.0), -lo[2]),
+        Some("file") => {
+            let z = origin[2] - m.elevation(level);
+            if !(origin[0].abs() <= MAX_COORD && origin[1].abs() <= MAX_COORD && z.abs() <= MAX_COORD) {
+                return Err(bad(
+                    c,
+                    format!(
+                        "the scan's middle lies at {origin:?} mm in its file, past the {MAX_COORD} mm a model reaches: place it by its `centre`"
+                    ),
+                ));
+            }
+            (P2(origin[0], origin[1]), z)
+        }
+        Some(o) => {
+            return Err(bad(
+                c,
+                format!("`origin` is centre (its middle on `at`, its foot on the level) or file (where its file puts it), not {o}"),
+            ));
+        }
+    };
+    if let Some(a) = point_opt(c, p, "at")? {
+        at = a;
+    }
+    if let Some(o) = num(c, p, "offset")? {
+        offset = o;
+    }
+    let angle = num(c, p, "angle")?.unwrap_or(0.0);
+    let (points, read) = (scan.len(), scan.read());
+    let m = s.model_mut();
+    if new {
+        m.clouds.insert(name.clone(), scan);
+    }
+    let id = m.insert(Element::PointCloud(PointCloud { cloud: name.clone(), level, at, offset, angle }));
+    Ok(json!({"id": id, "cloud": name, "points": points, "read": read, "origin": origin}))
 }
 
 fn grid(s: &mut Session, p: &Value) -> R {
@@ -5334,6 +5456,12 @@ pub(crate) fn transformed(c: &str, m: &Model, id: Id, mo: &Motion, with: &BTreeS
         Element::Sheet(_) => return Err(bad(c, format!("sheet {id} has no place in plan; move the views on it"))),
         Element::Schedule(_) | Element::View3D(_) | Element::PlanView(_) => {
             return Err(bad(c, format!("{category} {id} has no place in plan; move its viewport on its sheet")));
+        }
+        Element::PointCloud(pc) => {
+            if mo.mirror {
+                return Err(bad(c, format!("point cloud {id} can't be mirrored: a scan is what was measured; move it or turn it")));
+            }
+            (pc.at, pc.angle) = turned(f, pc.at, pc.angle);
         }
         Element::Text(n) => {
             let (at, angle) = turned(f, n.at, n.angle);
