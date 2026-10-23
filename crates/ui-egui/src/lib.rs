@@ -192,6 +192,10 @@ pub enum Tool {
     SketchLine(Vec<P2>),
     /// Sketch mode's Rectangle: its first corner, once clicked.
     SketchRect(Option<P2>),
+    /// Sketch mode's Start-End-Radius Arc: its start and end, as clicked; the next click, a point it passes through.
+    SketchArc(Vec<P2>),
+    /// Sketch mode's Pick Walls: a line along each wall clicked.
+    SketchPick,
 }
 
 /// Why the last command failed, shown in a box over the view.
@@ -537,6 +541,8 @@ pub struct BimApp {
     line_styles_dialog: Option<linestyles::LineStylesDialog>,
     /// Sketch mode: the lines of an outline being drawn, until Finish or Cancel.
     pub sketch: Option<sketch::Sketch>,
+    /// How wide the ribbon's Mode panel was last drawn, to stand it at the ribbon's right end.
+    mode_width: f32,
     options_dialog: Option<phasing::OptionsDialog>,
     purge_dialog: Option<purge::PurgeDialog>,
     /// Manage > Select by ID and IDs of Selection, while open.
@@ -651,6 +657,28 @@ fn small_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -
     let stroke = if r.has_focus() { Stroke::new(2.0, pal().accent) } else { stroke };
     ui.painter().rect(rect, 4.0, fill, stroke, StrokeKind::Inside);
     icons::paint(ui.painter(), icon, Rect::from_center_size(rect.center(), vec2(19.0, 19.0)), ink);
+    r.on_hover_text(tip)
+}
+
+/// A button stacked three high in a panel, as Revit's Settings panel stacks them: its icon and its name in a row.
+fn stacked_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
+    let (label, tip) = (t(label), t(tip));
+    let font = FontId::proportional(12.0);
+    let width = ui.painter().layout_no_wrap(label.to_string(), font.clone(), pal().text).size().x + 28.0;
+    let (rect, r) = ui.allocate_exact_size(vec2(width, 16.0), Sense::click());
+    let enabled = ui.is_enabled();
+    r.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, active, label));
+    let (fill, ink) = match (active, r.hovered() && enabled) {
+        (true, _) => (pal().select_fill, pal().accent),
+        (false, true) => (pal().hover_fill, pal().icon),
+        (false, false) => (Color32::TRANSPARENT, pal().icon),
+    };
+    ui.painter().rect_filled(rect, 3.0, fill);
+    if r.has_focus() {
+        ui.painter().rect_stroke(rect, 3.0, Stroke::new(2.0, pal().accent), StrokeKind::Inside);
+    }
+    icons::paint(ui.painter(), icon, Rect::from_center_size(rect.left_center() + vec2(10.0, 0.0), vec2(14.0, 14.0)), ink);
+    ui.painter().text(rect.left_center() + vec2(22.0, 0.0), Align2::LEFT_CENTER, label, font, pal().text);
     r.on_hover_text(tip)
 }
 
@@ -876,6 +904,7 @@ impl BimApp {
             object_styles_dialog: None,
             line_styles_dialog: None,
             sketch: None,
+            mode_width: 0.0,
             options_dialog: None,
             purge_dialog: None,
             select_by_id: None,
@@ -948,7 +977,9 @@ impl BimApp {
             | Tool::GableEdge
             | Tool::SlopeArrow(_)
             | Tool::SketchLine(_)
-            | Tool::SketchRect(_) => None,
+            | Tool::SketchRect(_)
+            | Tool::SketchArc(_)
+            | Tool::SketchPick => None,
             Tool::Wall(_) => Some("Place Wall"),
             Tool::Paint => Some("Paint"),
             Tool::Unpaint => Some("Remove Paint"),
@@ -1810,6 +1841,7 @@ impl BimApp {
             Tool::ExtrusionRoof(pts) if !pts.is_empty() => Tool::ExtrusionRoof(Vec::new()),
             Tool::SketchLine(pts) if !pts.is_empty() => Tool::SketchLine(Vec::new()),
             Tool::SketchRect(Some(_)) => Tool::SketchRect(None),
+            Tool::SketchArc(pts) if !pts.is_empty() => Tool::SketchArc(Vec::new()),
             Tool::Modify => {
                 match &mut self.sketch {
                     Some(sk) => sk.picked.clear(),
@@ -2783,18 +2815,22 @@ impl BimApp {
             if big_button(ui, Icon::Parameters, "Project Parameters", self.parameters_dialog.is_some(), tip).clicked() {
                 self.parameters_dialog = Some(properties::ParametersDialog::new(&self.session.model));
             }
-            let tip = "Line Weights: what each pen draws on paper, the model's at each scale and the annotation's at any";
-            if big_button(ui, Icon::LineWeights, "Line Weights", self.line_weights_dialog.is_some(), tip).clicked() {
-                self.line_weights_dialog = Some(lineweights::LineWeightsDialog::new(&self.session.model));
-            }
-            let tip = "Object Styles: the pen each category draws in, seen and cut, in every view";
-            if big_button(ui, Icon::ObjectStyles, "Object Styles", self.object_styles_dialog.is_some(), tip).clicked() {
-                self.object_styles_dialog = Some(objectstyles::ObjectStylesDialog::new(&self.session.model));
-            }
-            let tip = "Line Styles: the pen, colour and line pattern detail lines draw in, and the patterns' dashes, dots and spaces";
-            if big_button(ui, Icon::ThinLines, "Line Styles", self.line_styles_dialog.is_some(), tip).clicked() {
-                self.line_styles_dialog = Some(linestyles::LineStylesDialog::new(&self.session.model));
-            }
+            // Pens and lines, stacked: Line Weights, Object Styles, Line Styles.
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                let tip = "Line Weights: what each pen draws on paper, the model's at each scale and the annotation's at any";
+                if stacked_button(ui, Icon::LineWeights, "Line Weights", self.line_weights_dialog.is_some(), tip).clicked() {
+                    self.line_weights_dialog = Some(lineweights::LineWeightsDialog::new(&self.session.model));
+                }
+                let tip = "Object Styles: the pen each category draws in, seen and cut, in every view";
+                if stacked_button(ui, Icon::ObjectStyles, "Object Styles", self.object_styles_dialog.is_some(), tip).clicked() {
+                    self.object_styles_dialog = Some(objectstyles::ObjectStylesDialog::new(&self.session.model));
+                }
+                let tip = "Line Styles: the pen, colour and line pattern detail lines draw in, and the patterns' dashes, dots and spaces";
+                if stacked_button(ui, Icon::ThinLines, "Line Styles", self.line_styles_dialog.is_some(), tip).clicked() {
+                    self.line_styles_dialog = Some(linestyles::LineStylesDialog::new(&self.session.model));
+                }
+            });
             let tip =
                 "Purge Unused (PU): take out the types, families and the rest nothing in the project uses; each category keeps a type";
             if big_button(ui, Icon::Delete, "Purge Unused", self.purge_dialog.is_some(), tip).clicked() {
@@ -2879,18 +2915,11 @@ impl BimApp {
     fn modify_tab(&mut self, ui: &mut Ui) {
         self.tools(ui, "Select", &[(Icon::Modify, "Modify", "Modify (MD): select elements", Tool::Modify)]);
         if self.sketch.is_some() {
-            self.sketch_panels(ui);
+            self.sketch_draw(ui);
+            self.mode_panel(ui);
             return;
         }
         self.sketch_starters(ui);
-        if self.boundary_selected() && self.tool == Tool::Modify {
-            panel(ui, "Mode", |ui| {
-                let tip = "Edit Boundary: sketch its outline and holes again";
-                if big_button(ui, Icon::Line, "Edit Boundary", false, tip).clicked() {
-                    self.edit_boundary();
-                }
-            });
-        }
         panel(ui, "Properties", |ui| {
             let shown = self.docking.shown(dock::Palette::Properties);
             if big_button(ui, Icon::Properties, "Properties", shown, "Properties (PP): show or hide the palette").clicked() {
@@ -3081,6 +3110,7 @@ impl BimApp {
                 self.set_tool(Tool::Unpaint);
             }
         });
+        self.mode_panel(ui);
     }
 
     /// The Options Bar: the contextual tab's name, then the tool's options.
@@ -3377,7 +3407,7 @@ impl BimApp {
             Tool::DetailLine(_) => "Click its next point; Enter finishes it, the first point again closes it. Esc cancels.",
             Tool::SlopeArrow(None) => "Click the slope arrow's tail: where the floor's top stays at its height offset.",
             Tool::SlopeArrow(Some(_)) => "Click its head: the floor rises toward it at the Options Bar's slope. Esc cancels.",
-            Tool::SketchLine(_) | Tool::SketchRect(_) => "Click where the line starts.",
+            Tool::SketchLine(_) | Tool::SketchRect(_) | Tool::SketchArc(_) | Tool::SketchPick => "Click where the line starts.",
         }
     }
 

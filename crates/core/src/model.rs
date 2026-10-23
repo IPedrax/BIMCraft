@@ -340,6 +340,10 @@ pub struct Floor {
     /// Carries load: a structural floor, as Revit's Floor: Structural makes one.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub structural: bool,
+    /// The sketch it was drawn or last edited by: its lines, each a part with an id and a GUID of its own. Empty when it
+    /// was made another way (over the walls, from a file); Edit Boundary then starts from its outline.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sketch: Vec<crate::sketch::SketchLine>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -357,6 +361,10 @@ pub struct Ceiling {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub openings: Vec<Vec<P2>>,
     pub offset: f64,
+    /// The sketch it was drawn or last edited by: its lines, each a part with an id and a GUID of its own. Empty when it
+    /// was made another way (over the walls, from a file); Edit Boundary then starts from its outline.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sketch: Vec<crate::sketch::SketchLine>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -375,6 +383,10 @@ pub struct Shaft {
     pub height: f64,
     #[serde(default)]
     pub base_offset: f64,
+    /// The sketch it was drawn or last edited by: its lines, each a part with an id and a GUID of its own. Empty when it
+    /// was made another way (over the walls, from a file); Edit Boundary then starts from its outline.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sketch: Vec<crate::sketch::SketchLine>,
 }
 
 /// A mass, Revit's conceptual building volume: `boundary` (counter-clockwise) extruded from `base_offset` above `level`
@@ -907,9 +919,36 @@ pub struct Roof {
     pub join: Option<Guid>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extrusion: Option<Extrusion>,
+    /// The sketch it was drawn or last edited by: its lines, each a part with an id and a GUID of its own. Empty when it
+    /// was made another way (over the walls, from a file); Edit Boundary then starts from its outline.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sketch: Vec<crate::sketch::SketchLine>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+}
+
+impl Element {
+    /// The sketch it keeps, when it's of a kind drawn by one: a floor's, a ceiling's, a roof's, a shaft's.
+    pub fn sketch(&self) -> Option<&Vec<crate::sketch::SketchLine>> {
+        match self {
+            Element::Floor(f) => Some(&f.sketch),
+            Element::Ceiling(c) => Some(&c.sketch),
+            Element::Roof(r) => Some(&r.sketch),
+            Element::Shaft(sh) => Some(&sh.sketch),
+            _ => None,
+        }
+    }
+
+    pub fn sketch_mut(&mut self) -> Option<&mut Vec<crate::sketch::SketchLine>> {
+        match self {
+            Element::Floor(f) => Some(&mut f.sketch),
+            Element::Ceiling(c) => Some(&mut c.sketch),
+            Element::Roof(r) => Some(&mut r.sketch),
+            Element::Shaft(sh) => Some(&mut sh.sketch),
+            _ => None,
+        }
+    }
 }
 
 impl Roof {
@@ -3517,6 +3556,7 @@ impl Model {
                     level_ok(f.level)?;
                     boundary(&who, &f.boundary)?;
                     openings(&who, &f.boundary, &f.openings)?;
+                    crate::sketch::check(&who, e.sketch().map_or(&[][..], Vec::as_slice))?;
                     coord(&format!("{who} offset"), f.offset)?;
                     if !(f.slope.is_finite() && f.slope.abs() <= MAX_SLOPE) {
                         return Err(format!("{who}: slope {}° isn't between -{MAX_SLOPE}° and {MAX_SLOPE}°", f.slope));
@@ -3536,12 +3576,14 @@ impl Model {
                     level_ok(c.level)?;
                     boundary(&who, &c.boundary)?;
                     openings(&who, &c.boundary, &c.openings)?;
+                    crate::sketch::check(&who, e.sketch().map_or(&[][..], Vec::as_slice))?;
                     coord(&format!("{who} offset"), c.offset)?;
                 }
                 Element::Shaft(sh) => {
                     level_ok(sh.level)?;
                     boundary(&who, &sh.boundary)?;
                     coord(&format!("{who} base_offset"), sh.base_offset)?;
+                    crate::sketch::check(&who, e.sketch().map_or(&[][..], Vec::as_slice))?;
                     match sh.top_level {
                         Some(t) => level_ok(t)?,
                         None => size(&format!("{who} height"), sh.height)?,
@@ -3948,6 +3990,7 @@ impl Model {
                         boundary(&format!("{who} courtyard {i}"), c)?;
                     }
                     holes(&who, "courtyard", &r.boundary, &r.courtyards)?;
+                    crate::sketch::check(&who, &r.sketch)?;
                     self.roof_pieces(r).map_err(|e| format!("{who}: {e}"))?;
                 }
                 Element::Sheet(sh) => {

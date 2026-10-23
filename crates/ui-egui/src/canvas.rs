@@ -436,7 +436,7 @@ fn ghost(p: &Painter, origin: Pos2, d: &Drawing, selected: &[Id], f: &dyn Fn(Pos
 
 /// A short reading drawn where a tool previews, on a soft background so it stays legible over
 /// what's drawn: `text` anchored at `at` as `align` says.
-fn tag(p: &Painter, at: Pos2, align: Align2, text: impl Into<String>) {
+pub(crate) fn tag(p: &Painter, at: Pos2, align: Align2, text: impl Into<String>) {
     let galley = p.layout_no_wrap(text.into(), FontId::proportional(12.0), pal().accent);
     let rect = align.anchor_size(at, galley.size());
     p.rect_filled(rect.expand2(vec2(3.0, 1.0)), 2.0, pal().surface.gamma_multiply(0.85));
@@ -653,7 +653,7 @@ fn start_of(tool: &Tool) -> &[P2] {
 
 /// A selection box from pixel `from` to `q` of a view in `rect`: Revit draws a crossing box (right
 /// to left) dashed, a window box solid.
-fn box_shapes(rect: Rect, from: (f32, f32), q: (f32, f32)) -> Vec<Shape> {
+pub(crate) fn box_shapes(rect: Rect, from: (f32, f32), q: (f32, f32)) -> Vec<Shape> {
     let r = Rect::from_two_pos(pos(rect.min, from), pos(rect.min, q));
     let fill = Shape::rect_filled(r, 0.0, pal().accent.gamma_multiply(0.08));
     if q.0 < from.0 {
@@ -704,7 +704,7 @@ impl BimApp {
         if response.clicked() {
             return response.interact_pointer_pos();
         }
-        self.canvas.lifted.filter(|(_, quick)| *quick || self.tool != Tool::Modify).map(|(at, _)| at)
+        self.canvas.lifted.filter(|(_, quick)| *quick || self.tool != Tool::Modify || self.sketch.is_some()).map(|(at, _)| at)
     }
 
     /// A drag has begun on `id`: it is selected, and the selection it replaces is kept for
@@ -736,12 +736,22 @@ impl BimApp {
     pub(crate) fn snap(&self, m: &Model, level: Id, v: &View, at: (f32, f32), from: &[P2], square: bool) -> Found {
         let reach = Reach { point: SNAP / v.scale, line: f64::from(PICK) / v.scale };
         let found = snap::snap(m, level, v.mm(at), reach, from, square, &self.snaps_now());
-        // A sketch's own line ends, which the plan doesn't draw, as an end the plan has: loops close on them.
+        // A sketch's own ends, middles and crossings, which the plan doesn't draw, as the plan's are: loops close on them.
         let p = v.mm(at);
-        match self.sketch.as_ref().and_then(|sk| sk.end_at(p, reach.point)) {
-            Some(end) if self.snaps_now().endpoint && (found.kind != Kind::Endpoint || end.dist(p) < found.at.dist(p)) => {
-                Found { at: end, kind: Kind::Endpoint, guide: None }
-            }
+        let o = self.snaps_now();
+        let wanted = |k: Kind| match k {
+            Kind::Endpoint => o.endpoint,
+            Kind::Midpoint => o.midpoint,
+            Kind::Intersection => o.intersection,
+            _ => false,
+        };
+        let points = |k: Kind| matches!(k, Kind::Endpoint | Kind::Midpoint | Kind::Intersection | Kind::Centre);
+        let own = self
+            .sketch
+            .as_ref()
+            .and_then(|sk| bimcraft_core::sketch::snaps(&sk.lines, p, reach.point).into_iter().find(|(_, k)| wanted(*k)));
+        match own {
+            Some((q, kind)) if !points(found.kind) || q.dist(p) < found.at.dist(p) => Found { at: q, kind, guide: None },
             _ => found,
         }
     }
@@ -852,6 +862,7 @@ impl BimApp {
         let under_at = |q: (f32, f32)| match &tool {
             Tool::Modify if sketching => None,
             Tool::Modify => d.pick(q, PICK),
+            Tool::SketchPick => d.pick(q, PICK).filter(|id| model.wall(*id).is_some()),
             Tool::Door | Tool::Window | Tool::Trim(_) | Tool::Split | Tool::Offset => {
                 d.pick(q, PICK).filter(|id| model.wall(*id).is_some())
             }
@@ -891,6 +902,7 @@ impl BimApp {
         };
 
         let crop = self.crop_grips(ui, &response, rect, &view, key);
+        let dragged = self.sketch_drag(ui, &response, rect, &view, level);
         self.canvas.found.set(None);
         self.grip_drag(ui, &response, rect, &view, level);
         // A drag from an element moves the selection; from empty floor, it draws a selection box.
@@ -933,7 +945,7 @@ impl BimApp {
             self.open_sheet(Sheet::Section(id));
             return;
         }
-        if let Some(at) = self.clicked_at(&response) {
+        if let Some(at) = self.clicked_at(&response).filter(|_| !dragged) {
             let q = (at.x - rect.min.x, at.y - rect.min.y);
             // What lay under the press, which the hand may have left by the time the button came up.
             let found = if Some(q) == local { hovered } else { under_at(q) };
@@ -950,8 +962,14 @@ impl BimApp {
         }
         paint(&p, Place::at(rect.min), &d, &marked, hovered, self.thin, &[]);
         if let Some(sk) = &self.sketch {
-            let over = local.filter(|_| self.tool == Tool::Modify).and_then(|q| sk.line_at(view.mm(q), f64::from(PICK) / view.scale));
-            sk.paint(&p, |q| pos(rect.min, view.px(q)), over);
+            let over = local
+                .filter(|_| self.tool == Tool::Modify && sk.drag.is_none())
+                .and_then(|q| sk.line_at(view.mm(q), f64::from(PICK) / view.scale));
+            let cursor = local.map(|q| self.snap(&model, level, &view, q, &[], false).at);
+            sk.paint(&p, |q| pos(rect.min, view.px(q)), over, cursor);
+            if let (Some(q), Some(c)) = (local, cursor) {
+                self.sketch_preview(&p, &view, rect.min, q, c);
+            }
         }
         p.extend(crop);
         let rooms = hovered.iter().map(|id| (*id, pal().hover)).chain(self.selection.iter().map(|id| (*id, pal().accent)));
@@ -1183,17 +1201,17 @@ impl BimApp {
 
     fn click(&mut self, m: &Model, (level, key): (Id, Id), v: &View, at: (f32, f32), hovered: Option<Id>, mods: Modifiers) {
         match &self.tool {
-            Tool::Modify | Tool::SketchLine(_) | Tool::SketchRect(_) if self.sketch.is_some() => {
+            Tool::Modify | Tool::SketchLine(_) | Tool::SketchRect(_) | Tool::SketchArc(_) | Tool::SketchPick if self.sketch.is_some() => {
                 let from = match &self.tool {
-                    Tool::SketchLine(chain) => chain.clone(),
+                    Tool::SketchLine(chain) | Tool::SketchArc(chain) => chain.clone(),
                     Tool::SketchRect(start) => start.iter().copied().collect(),
                     _ => Vec::new(),
                 };
                 let p = self.snap(m, level, v, at, &from, mods.shift).at;
-                self.sketch_click(p, v.mm(at), f64::from(PICK) / v.scale, mods);
+                self.sketch_click(m, p, v.mm(at), f64::from(PICK) / v.scale, hovered, mods);
             }
             // A sketch tool with the sketch gone: nothing to draw into.
-            Tool::SketchLine(_) | Tool::SketchRect(_) => self.tool = Tool::Modify,
+            Tool::SketchLine(_) | Tool::SketchRect(_) | Tool::SketchArc(_) | Tool::SketchPick => self.tool = Tool::Modify,
             Tool::Modify => self.pick_up(hovered.into_iter().collect(), mods),
             Tool::Door | Tool::Window => {
                 let cat = if matches!(self.tool, Tool::Door) { "door" } else { "window" };
@@ -2247,14 +2265,17 @@ impl BimApp {
             Tool::Wall(chain) | Tool::Railing(chain) | Tool::Mass(chain) | Tool::DetailLine(chain) | Tool::SketchLine(chain) => {
                 chain.as_slice()
             }
-            Tool::SketchRect(None) => &[],
-            // The rectangle a click would draw.
-            &Tool::SketchRect(Some(a)) => {
-                let b = self.found(sc, q, &[a], shift);
-                let c = [a, P2(b.0, a.1), b, P2(a.0, b.1)].map(|pt| sc.screen(pt));
-                p.add(Shape::closed_line(c.to_vec(), stroke));
+            Tool::SketchRect(None) | Tool::SketchPick => &[],
+            // Sketch mode draws its own (`sketch_preview`), but where a click would land shows here.
+            Tool::SketchRect(Some(a)) => {
+                self.found(sc, q, &[*a], shift);
                 return;
             }
+            Tool::SketchArc(pts) if pts.len() == 2 => {
+                self.found(sc, q, pts, shift);
+                return;
+            }
+            Tool::SketchArc(pts) => pts.as_slice(),
             Tool::ExtrusionRoof(pts) if pts.len() < 2 => pts.as_slice(),
             // The roof a click would make, swept across to the cursor.
             Tool::ExtrusionRoof(pts) => {

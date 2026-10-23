@@ -45,15 +45,30 @@ its side (`stairs::railing`), so it goes wherever its host goes. `modify` merges
 called `category`, the tag every element carries.
 
 Sketches (`sketch.rs`) are how an outline is drawn, the one solver everything with an outline and holes uses: floors,
-ceilings, roofs by footprint and shafts now, filled regions and topography next. A sketch is lines in any order, either way
-round; `sketch::solve` welds ends within `TOL`, then names every problem at once with the lines it's about (a line too short
-or out of range; two lines crossing, or one ending part way along another; two along each other; an end no other meets;
-three or more at a point; a loop with no area), and otherwise walks the loops and nests them by how many others each is
-inside: even, an outline (counter-clockwise), odd, a hole (clockwise) of the innermost loop round it, so an island in a
-hole is an outline again. `solve_one` wants one outline (a floor's, a roof's). Commands take `sketch` (lines) in place of
-`boundary` and its holes, `edit_boundary` redraws one (keeping a roof's gables on edges that stay), and the `sketch`
-command solves without making anything. A boundary given as points is judged as the sketch of its edges when a command is
-given it (a repeated point dropped first), but `Model::check` doesn't: a file, or an IFC import, with a keyhole outline
-still opens and stays editable. The desktop's sketch mode (`crates/ui-egui/src/sketch.rs`) holds the lines until Finish
-Edit Mode runs the command; when it fails, the lines the solver names draw in the error colour; Ctrl+Z takes back a
-line, and the plan's snaps take the sketch's own ends.
+ceilings, roofs by footprint and shafts now, filled regions and topography next. A sketch is `SketchLine`s, straight or
+arcs (a point `through`), in any order, either way round; `sketch::solve` cuts arcs into chords no more than 5° round,
+welds ends within `TOL`, then names every problem at once with the lines it's about, what to fix first first
+(`Problem::rank`: a line too short or out of range; two lines crossing, or one ending part way along another; two along
+each other; three or more at a point; an end no other meets; a loop with no area), and otherwise walks the loops and nests
+them by how many others each is inside: even, an outline (counter-clockwise), odd, a hole (clockwise) of the innermost loop
+round it, so an island in a hole is an outline again. `solve_one` wants one outline (a floor's, a roof's). The element
+keeps the sketch it was drawn or last edited by (`sketch` on floors, ceilings, roofs and shafts; empty when it was made
+over the walls or read from a file): each line is a part with an id and a GUID of its own (`HasPart`, listed in
+`parts_now` by the element's GUID), going with the element when it moves and new on a copy; part ids are never given
+twice, even after a line is gone. Commands take `sketch` (lines `[[x,y],[x,y]]`, arcs `[[x,y],[x,y],[x,y]]`, or
+`{start, end, through?, id?}`) in place of `boundary` and its holes; `edit_boundary` without one gives the lines to edit
+(the kept sketch while it still draws the outline, `sketch::draws`, else the outline's edges as new lines) and with one
+redraws it, a line sent back with its `id` keeping it (keeping a roof's gables on edges that stay); the `sketch` command
+solves without making anything. Messages name a line by its id, or its place in the list while it has none. A boundary
+given as points is judged as the sketch of its edges when a command is given it (a repeated point dropped first), but
+`Model::check` doesn't: a file, or an IFC import, with a keyhole outline still opens and stays editable.
+
+The desktop's sketch mode (`crates/ui-egui/src/sketch.rs`) holds the lines until Finish Edit Mode, which solves them
+first and says what's wrong for whoever drew it (`sketch::friendly`: what to fix, kind by kind, where, in the project's
+units, and the lines by id) with those lines in the error colour; solved, it runs the command. Draw has Line, Rectangle,
+Start-End-Radius Arc and Pick Walls (a line along each wall's location line, an arc along an arc wall); Modify picks
+sketch lines (a click, a window box from the left, a crossing box from the right), a picked line's ends are grips that
+take every end joined there with them, and Delete removes them; Ctrl+Z takes back a line; the plan's snaps take the
+sketch's own ends, middles and crossings (`sketch::snaps`). Floor, Ceiling, Roof and Shaft each start a new one (Boundary
+Line, Sketch Ceiling); Edit Boundary redraws one selected. The Mode panel (Finish, Cancel; Edit Boundary) stands at the
+ribbon's right end.

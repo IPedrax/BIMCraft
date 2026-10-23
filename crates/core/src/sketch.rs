@@ -1,21 +1,121 @@
 //! Sketches: Revit's sketch mode, the one way an outline is drawn for a floor, a ceiling, a roof's footprint, a shaft, and
 //! what's built on them later (filled regions, topography).
 //!
-//! A sketch is lines, drawn in any order and either way round. [`solve`] joins them, end to end within [`TOL`], into closed
-//! loops and nests the loops: a loop inside no other is an outline, one inside an outline a hole in it, one inside a hole an
-//! island, an outline again. What can't be solved it names, every problem at once and the lines it's about, so the lines
-//! can be shown to whoever drew them: a line too short or out of range, two lines crossing or one ending on another, two
-//! lines along each other, an end no other line meets, three or more lines meeting at a point.
+//! A sketch is lines and arcs ([`SketchLine`]), drawn in any order and either way round; the element they draw keeps them,
+//! each line a part with an id and a GUID of its own. [`solve`] joins them, end to end within [`TOL`], into closed loops and
+//! nests the loops: a loop inside no other is an outline, one inside an outline a hole in it, one inside a hole an island,
+//! an outline again. What can't be solved it names, every problem at once and the lines it's about, so the lines can be
+//! shown to whoever drew them: a line too short or out of range, two lines crossing or one ending on another, two lines
+//! along each other, an end no other line meets, three or more lines meeting at a point.
 
 use std::fmt;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::geom::{self, P2, Region};
+use crate::ids::{Guid, Id};
 use crate::model::{MAX_COORD, MAX_POINTS, TOL};
 
-/// A sketch line, from one end to the other.
+/// A straight line, from one end to the other.
 pub type Line = [P2; 2];
+
+/// A sketch line: straight from `start` to `end`, or an arc between them through `through`. Its id and GUID are its own,
+/// given when what it draws is made or edited and kept while it stays in the sketch.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SketchLine {
+    #[serde(default, skip_serializing_if = "crate::ids::unset")]
+    pub id: Id,
+    #[serde(default, skip_serializing_if = "Guid::is_nil")]
+    pub guid: Guid,
+    pub start: P2,
+    pub end: P2,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub through: Option<P2>,
+}
+
+impl From<Line> for SketchLine {
+    fn from([start, end]: Line) -> SketchLine {
+        SketchLine::new(start, end)
+    }
+}
+
+impl SketchLine {
+    /// A straight line, with no id yet.
+    pub fn new(start: P2, end: P2) -> SketchLine {
+        SketchLine { id: 0, guid: Guid::default(), start, end, through: None }
+    }
+
+    /// An arc from `start` to `end` through `through`, with no id yet.
+    pub fn arc(start: P2, end: P2, through: P2) -> SketchLine {
+        SketchLine { through: Some(through), ..SketchLine::new(start, end) }
+    }
+
+    /// Its points from start to end: its two ends, or an arc's chords', no more than 5° round apart.
+    pub fn points(&self) -> Vec<P2> {
+        match self.through.and_then(|t| arc_points(self.start, self.end, t)) {
+            Some(pts) => pts,
+            None => vec![self.start, self.end],
+        }
+    }
+
+    /// Its middle: a straight line's half way, an arc's half way round.
+    pub fn middle(&self) -> P2 {
+        let pts = self.points();
+        match pts.len() {
+            n if n > 2 && n % 2 == 1 => pts[n / 2],
+            n if n > 2 => (pts[n / 2 - 1] + pts[n / 2]) * 0.5,
+            _ => (self.start + self.end) * 0.5,
+        }
+    }
+
+    /// How far `p` is from it.
+    pub fn dist(&self, p: P2) -> f64 {
+        self.points().windows(2).map(|w| geom::dist_to_segment(p, w[0], w[1])).fold(f64::INFINITY, f64::min)
+    }
+
+    /// Each point it holds, moved by `f`: its ends, and an arc's point through.
+    pub fn map(&self, f: impl Fn(P2) -> P2) -> SketchLine {
+        SketchLine { start: f(self.start), end: f(self.end), through: self.through.map(&f), ..self.clone() }
+    }
+
+    fn in_range(&self) -> bool {
+        let fine = |p: &P2| p.is_finite() && p.0.abs() <= MAX_COORD && p.1.abs() <= MAX_COORD;
+        fine(&self.start) && fine(&self.end) && self.through.as_ref().is_none_or(fine)
+    }
+}
+
+/// The points of the arc from `a` to `b` through `t`, `a` and `b` exact; None when `t` is no further than [`TOL`] off the
+/// straight line between them (it's straight), or the three make no circle.
+fn arc_points(a: P2, b: P2, t: P2) -> Option<Vec<P2>> {
+    if geom::dist_to_segment(t, a, b) <= TOL {
+        return None;
+    }
+    let d = 2.0 * (a.0 * (t.1 - b.1) + t.0 * (b.1 - a.1) + b.0 * (a.1 - t.1));
+    if d.abs() < 1e-9 {
+        return None;
+    }
+    let sq = |p: P2| p.0 * p.0 + p.1 * p.1;
+    let c = P2(
+        (sq(a) * (t.1 - b.1) + sq(t) * (b.1 - a.1) + sq(b) * (a.1 - t.1)) / d,
+        (sq(a) * (b.0 - t.0) + sq(t) * (a.0 - b.0) + sq(b) * (t.0 - a.0)) / d,
+    );
+    let r = c.dist(a);
+    let angle = |p: P2| (p.1 - c.1).atan2(p.0 - c.0);
+    let tau = std::f64::consts::TAU;
+    let (ab, at) = ((angle(b) - angle(a)).rem_euclid(tau), (angle(t) - angle(a)).rem_euclid(tau));
+    // Counter-clockwise from a to b when t lies on the way; else the other way round.
+    let sweep = if at < ab { ab } else { ab - tau };
+    if !(r.is_finite() && sweep.is_finite()) {
+        return None;
+    }
+    let n = ((sweep.abs() / 5f64.to_radians()).ceil() as usize).clamp(2, 72);
+    let a0 = angle(a);
+    let mut pts: Vec<P2> = (0..=n).map(|k| a0 + sweep * k as f64 / n as f64).map(|q| c + P2(q.cos(), q.sin()) * r).collect();
+    pts[0] = a;
+    pts[n] = b;
+    Some(pts)
+}
 
 /// The most lines a sketch may hold.
 pub const MAX_LINES: usize = MAX_POINTS;
@@ -59,40 +159,74 @@ impl Problem {
             Problem::Branch { lines, .. } | Problem::NoArea { lines } => lines.clone(),
         }
     }
-}
 
-impl Problem {
-    /// It said in a sentence, the lines called `noun` (`line`, or `edge` for a ring's).
-    pub fn said(&self, noun: &str) -> String {
-        let at = |p: &P2| format!("[{}, {}]", p.0.round(), p.1.round());
-        let list = |ls: &[usize]| ls.iter().map(usize::to_string).collect::<Vec<_>>().join(", ");
+    /// Where it is, when it's at a point.
+    pub fn at(&self) -> Option<P2> {
         match self {
-            Problem::Empty => format!("there are no {noun}s: draw the outline"),
-            Problem::TooMany { count } => format!("{count} {noun}s, more than {MAX_LINES}"),
-            Problem::OutOfRange { line } => format!("{noun} {line} has an end that isn't a number within {MAX_COORD} mm"),
-            Problem::TooShort { line } => format!("{noun} {line} is {TOL} mm long or less"),
-            Problem::Cross { lines: [a, b], at: p } => format!("{noun}s {a} and {b} intersect at {}", at(p)),
-            Problem::Overlap { lines: [a, b] } => format!("{noun}s {a} and {b} overlap"),
-            Problem::Open { line, at: p } => format!("{noun} {line} ends at {} without meeting another: the loop is open", at(p)),
-            Problem::Branch { lines, at: p } => format!("{noun}s {} meet at {}: a loop passes a point once", list(lines), at(p)),
-            Problem::NoArea { lines } => format!("the loop of {noun}s {} encloses no area", list(lines)),
-            Problem::Separate { count } => format!("the {noun}s make {count} separate outlines, where one is wanted"),
+            Problem::Cross { at, .. } | Problem::Open { at, .. } | Problem::Branch { at, .. } => Some(*at),
+            _ => None,
+        }
+    }
+
+    /// Which to fix first: what's wrong with a line itself, then lines that cross or lie along each other (which often
+    /// leave ends open too), then where loops branch or stay open.
+    pub fn rank(&self) -> u8 {
+        match self {
+            Problem::Empty | Problem::TooMany { .. } | Problem::OutOfRange { .. } | Problem::TooShort { .. } => 0,
+            Problem::Cross { .. } => 1,
+            Problem::Overlap { .. } => 2,
+            Problem::Branch { .. } => 3,
+            Problem::Open { .. } => 4,
+            Problem::NoArea { .. } => 5,
+            Problem::Separate { .. } => 6,
+        }
+    }
+
+    /// It said in a sentence, each line as `name` names it (`line 999812`, `edge 2`).
+    pub fn said(&self, name: &dyn Fn(usize) -> String) -> String {
+        let at = |p: &P2| format!("[{}, {}]", p.0.round(), p.1.round());
+        let list = |ls: &[usize]| {
+            let names: Vec<String> = ls.iter().map(|&i| name(i)).collect();
+            match names.split_last() {
+                Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+                _ => names.join(""),
+            }
+        };
+        match self {
+            Problem::Empty => "there are no lines: draw the outline".into(),
+            Problem::TooMany { count } => format!("{count} lines, more than {MAX_LINES}"),
+            Problem::OutOfRange { line } => format!("{} has a point that isn't a number within {MAX_COORD} mm", name(*line)),
+            Problem::TooShort { line } => format!("{} is {TOL} mm long or less", name(*line)),
+            Problem::Cross { lines, at: p } => format!("{} intersect at {}", list(lines), at(p)),
+            Problem::Overlap { lines } => format!("{} overlap", list(lines)),
+            Problem::Open { line, at: p } => format!("{} ends at {} without meeting another: the loop is open", name(*line), at(p)),
+            Problem::Branch { lines, at: p } => format!("{} meet at {}: a loop passes a point once", list(lines), at(p)),
+            Problem::NoArea { lines } => format!("the loop of {} encloses no area", list(lines)),
+            Problem::Separate { count } => format!("the lines make {count} separate outlines, where one is wanted"),
         }
     }
 }
 
 impl fmt::Display for Problem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.said("line"))
+        f.write_str(&self.said(&|i| format!("line {i}")))
     }
 }
 
-/// Problems said in one line, the first few named, the lines called `noun`.
-pub fn say(problems: &[Problem], noun: &str) -> String {
-    let shown: Vec<String> = problems.iter().take(5).map(|p| p.said(noun)).collect();
+/// Problems said in one line, the first few named, each line as `name` names it.
+pub fn say(problems: &[Problem], name: &dyn Fn(usize) -> String) -> String {
+    let shown: Vec<String> = problems.iter().take(5).map(|p| p.said(name)).collect();
     match problems.len() {
         n if n > shown.len() => format!("{}; and {} more", shown.join("; "), n - shown.len()),
         _ => shown.join("; "),
+    }
+}
+
+/// How a sketch's lines are named to whoever drew them: by id, or by place in the list (from 0) when one has none yet.
+pub fn namer(lines: &[SketchLine]) -> impl Fn(usize) -> String + '_ {
+    |i| match lines.get(i) {
+        Some(l) if !crate::ids::unset(&l.id) => format!("line {}", l.id),
+        _ => format!("line {i}"),
     }
 }
 
@@ -110,84 +244,103 @@ impl Profile {
     }
 }
 
-/// The lines solved into loops, nested into regions; or every problem found (up to [`MAX_PROBLEMS`]).
-pub fn solve(lines: &[Line]) -> Result<Profile, Vec<Problem>> {
+/// The lines solved into loops, nested into regions; or every problem found (up to [`MAX_PROBLEMS`]), what to fix first
+/// first ([`Problem::rank`]).
+pub fn solve(lines: &[SketchLine]) -> Result<Profile, Vec<Problem>> {
     if lines.is_empty() {
         return Err(vec![Problem::Empty]);
     }
     if lines.len() > MAX_LINES {
         return Err(vec![Problem::TooMany { count: lines.len() }]);
     }
-    // Each line on its own first: its ends are numbers, apart.
+    // Each line on its own first: its points are numbers, its ends apart.
     let mut problems: Vec<Problem> = Vec::new();
-    for (i, [a, b]) in lines.iter().enumerate() {
-        let fine = |p: &P2| p.is_finite() && p.0.abs() <= MAX_COORD && p.1.abs() <= MAX_COORD;
-        if !(fine(a) && fine(b)) {
+    for (i, l) in lines.iter().enumerate() {
+        if !l.in_range() {
             problems.push(Problem::OutOfRange { line: i });
-        } else if a.dist(*b) <= TOL {
+        } else if l.start.dist(l.end) <= TOL {
             problems.push(Problem::TooShort { line: i });
         }
     }
     if !problems.is_empty() {
         return Err(cap(problems));
     }
+    // Lines as straight pieces (an arc as its chords), each knowing its line.
+    let mut pieces: Vec<(Line, usize)> = Vec::new();
+    for (i, l) in lines.iter().enumerate() {
+        pieces.extend(l.points().windows(2).map(|w| ([w[0], w[1]], i)));
+    }
     // Ends within TOL of each other are one point.
     let mut points: Vec<P2> = Vec::new();
-    let ends: Vec<[usize; 2]> = lines.iter().map(|l| l.map(|p| weld(&mut points, p))).collect();
-    // Each pair of lines that could touch: sorted by where they start across, a line is checked against those starting
-    // before it ends.
+    let ends: Vec<[usize; 2]> = pieces.iter().map(|(l, _)| l.map(|p| weld(&mut points, p))).collect();
+    // Each pair of pieces of two lines that could touch: sorted by where they start across, a piece is checked against
+    // those starting before it ends.
     let lo = |l: &Line| l[0].0.min(l[1].0);
     let hi = |l: &Line| l[0].0.max(l[1].0);
-    let mut order: Vec<usize> = (0..lines.len()).collect();
-    order.sort_by(|&i, &j| lo(&lines[i]).total_cmp(&lo(&lines[j])).then(i.cmp(&j)));
+    let mut order: Vec<usize> = (0..pieces.len()).collect();
+    order.sort_by(|&i, &j| lo(&pieces[i].0).total_cmp(&lo(&pieces[j].0)).then(i.cmp(&j)));
+    let mut seen = std::collections::BTreeSet::new();
     for (k, &i) in order.iter().enumerate() {
         for &j in &order[k + 1..] {
-            if lo(&lines[j]) > hi(&lines[i]) + TOL {
+            if lo(&pieces[j].0) > hi(&pieces[i].0) + TOL {
                 break;
             }
-            let pair = [i.min(j), i.max(j)];
-            if let Some(p) = meet(lines[pair[0]], lines[pair[1]], ends[pair[0]], ends[pair[1]], pair) {
-                problems.push(p);
+            let (li, lj) = (pieces[i].1, pieces[j].1);
+            if li == lj {
+                continue;
+            }
+            let pair = [li.min(lj), li.max(lj)];
+            let (p, q) = if li < lj { (i, j) } else { (j, i) };
+            if let Some(found) = meet(pieces[p].0, pieces[q].0, ends[p], ends[q], pair)
+                && seen.insert((pair, found.rank()))
+            {
+                problems.push(found);
                 if problems.len() > MAX_PROBLEMS {
                     return Err(cap(problems));
                 }
             }
         }
     }
-    // Two lines at every point: one, it's open; three or more, it branches.
+    // Two pieces at every point: one, it's open; three or more, it branches.
     let mut at: Vec<Vec<usize>> = vec![Vec::new(); points.len()];
     for (i, e) in ends.iter().enumerate() {
         for &n in e {
             at[n].push(i);
         }
     }
-    for (n, ls) in at.iter().enumerate() {
-        match ls.as_slice() {
+    for (n, ps) in at.iter().enumerate() {
+        match ps.as_slice() {
             [_, _] => {}
-            &[line] => problems.push(Problem::Open { line, at: points[n] }),
-            _ => problems.push(Problem::Branch { lines: ls.clone(), at: points[n] }),
+            &[piece] => problems.push(Problem::Open { line: pieces[piece].1, at: points[n] }),
+            _ => {
+                let mut ls: Vec<usize> = ps.iter().map(|&p| pieces[p].1).collect();
+                ls.sort_unstable();
+                problems.push(Problem::Branch { lines: ls, at: points[n] });
+            }
         }
     }
     if !problems.is_empty() {
-        problems.sort_by_key(|p| p.lines().first().copied().unwrap_or(0));
+        problems.sort_by_key(|p| (p.rank(), p.lines().first().copied().unwrap_or(0)));
         return Err(cap(problems));
     }
-    // Every point has two lines: each piece of the sketch is one loop, walked from its first line the way it was drawn.
-    let mut used = vec![false; lines.len()];
+    // Every point has two pieces: each part of the sketch is one loop, walked from its first piece the way it was drawn.
+    let mut used = vec![false; pieces.len()];
     let mut loops: Vec<(Vec<P2>, Vec<usize>)> = Vec::new();
-    for first in 0..lines.len() {
+    for first in 0..pieces.len() {
         if used[first] {
             continue;
         }
         let (mut ring, mut members) = (Vec::new(), Vec::new());
-        let (mut line, mut from) = (first, ends[first][0]);
-        while !used[line] {
-            used[line] = true;
-            members.push(line);
+        let (mut piece, mut from) = (first, ends[first][0]);
+        while !used[piece] {
+            used[piece] = true;
+            if members.last() != Some(&pieces[piece].1) && !members.contains(&pieces[piece].1) {
+                members.push(pieces[piece].1);
+            }
             ring.push(points[from]);
-            let to = if ends[line][0] == from { ends[line][1] } else { ends[line][0] };
+            let to = if ends[piece][0] == from { ends[piece][1] } else { ends[piece][0] };
             from = to;
-            line = at[to].iter().copied().find(|&l| l != line).unwrap_or(line);
+            piece = at[to].iter().copied().find(|&p| p != piece).unwrap_or(piece);
         }
         if geom::area(&ring).abs() <= TOL * TOL {
             problems.push(Problem::NoArea { lines: members.clone() });
@@ -221,7 +374,7 @@ pub fn solve(lines: &[Line]) -> Result<Profile, Vec<Problem>> {
 }
 
 /// The lines solved into the one outline (with its holes) a floor, a ceiling or a roof takes.
-pub fn solve_one(lines: &[Line]) -> Result<Region, Vec<Problem>> {
+pub fn solve_one(lines: &[SketchLine]) -> Result<Region, Vec<Problem>> {
     let mut p = solve(lines)?;
     match p.regions.len() {
         1 => Ok(p.regions.remove(0)),
@@ -229,9 +382,66 @@ pub fn solve_one(lines: &[Line]) -> Result<Region, Vec<Problem>> {
     }
 }
 
-/// An outline and its holes as sketch lines, to edit: each ring's edges in order.
-pub fn lines_of(outline: &[P2], holes: &[Vec<P2>]) -> Vec<Line> {
-    std::iter::once(outline).chain(holes.iter().map(Vec::as_slice)).flat_map(|r| geom::ring_edges(r).map(|(a, b)| [a, b])).collect()
+/// An outline and its holes as sketch lines, to edit: each ring's edges in order, straight, with no ids yet.
+pub fn lines_of(outline: &[P2], holes: &[Vec<P2>]) -> Vec<SketchLine> {
+    std::iter::once(outline)
+        .chain(holes.iter().map(Vec::as_slice))
+        .flat_map(|r| geom::ring_edges(r).map(|(a, b)| SketchLine::new(a, b)))
+        .collect()
+}
+
+/// Whether `lines` solve to `outline` and `holes`, each ring the same points round in the same order from any start, either
+/// way round: a sketch kept with an element is still what it draws.
+pub fn draws(lines: &[SketchLine], outline: &[P2], holes: &[Vec<P2>]) -> bool {
+    let same = |a: &[P2], b: &[P2]| {
+        let n = a.len();
+        let close = |p: P2, q: P2| p.dist(q) <= TOL;
+        n == b.len()
+            && n > 0
+            && (0..n).any(|k| (0..n).all(|i| close(a[i], b[(i + k) % n])) || (0..n).all(|i| close(a[i], b[(k + n - i) % n])))
+    };
+    match solve_one(lines) {
+        Ok(r) => same(&r.outer, outline) && r.holes.len() == holes.len() && r.holes.iter().all(|h| holes.iter().any(|g| same(h, g))),
+        Err(_) => false,
+    }
+}
+
+/// A kept sketch's lines checked as [`crate::model::Model::check`] checks what a file holds: no more than [`MAX_LINES`],
+/// every point a number within range.
+pub fn check(who: &str, lines: &[SketchLine]) -> Result<(), String> {
+    if lines.len() > MAX_LINES {
+        return Err(format!("{who}: its sketch has {} lines, more than {MAX_LINES}", lines.len()));
+    }
+    match lines.iter().position(|l| !l.in_range()) {
+        Some(i) => Err(format!("{who}: sketch line {i} has a point that isn't a number within {MAX_COORD} mm")),
+        None => Ok(()),
+    }
+}
+
+/// What of `lines` a point picked near `p` (within `reach`) sticks to, nearest first: their ends, their middles, and where
+/// two of them cross; the sketch's own, which the plan doesn't draw.
+pub fn snaps(lines: &[SketchLine], p: P2, reach: f64) -> Vec<(P2, crate::snap::Kind)> {
+    use crate::snap::Kind;
+    let near: Vec<&SketchLine> = lines.iter().filter(|l| l.dist(p) <= reach).collect();
+    let mut out: Vec<(P2, Kind)> = Vec::new();
+    for l in lines {
+        out.extend([(l.start, Kind::Endpoint), (l.end, Kind::Endpoint), (l.middle(), Kind::Midpoint)]);
+    }
+    for (i, a) in near.iter().enumerate() {
+        for b in &near[i + 1..] {
+            let (pa, pb) = (a.points(), b.points());
+            for x in pa.windows(2) {
+                for y in pb.windows(2) {
+                    if let Some(t) = geom::crossing(x[0], x[1], y[0], y[1]) {
+                        out.push((x[0] + (x[1] - x[0]) * t, Kind::Intersection));
+                    }
+                }
+            }
+        }
+    }
+    out.retain(|(q, _)| q.dist(p) <= reach);
+    out.sort_by(|a, b| a.0.dist(p).total_cmp(&b.0.dist(p)));
+    out
 }
 
 /// The point among `points` within [`TOL`] of `p`, or `p` as a new one.
@@ -245,8 +455,8 @@ fn weld(points: &mut Vec<P2>, p: P2) -> usize {
     }
 }
 
-/// How two lines (`pair`, given in order) go wrong where they meet, if they do: along each other, crossing, or one ending
-/// part way along the other. Meeting end to end is right.
+/// How two straight pieces (of lines `pair`, given in order) go wrong where they meet, if they do: along each other,
+/// crossing, or one ending part way along the other. Meeting end to end is right.
 fn meet([a, b]: Line, [c, d]: Line, e: [usize; 2], f: [usize; 2], pair: [usize; 2]) -> Option<Problem> {
     if (e[0] == f[0] && e[1] == f[1]) || (e[0] == f[1] && e[1] == f[0]) {
         return Some(Problem::Overlap { lines: pair });
@@ -259,7 +469,7 @@ fn meet([a, b]: Line, [c, d]: Line, e: [usize; 2], f: [usize; 2], pair: [usize; 
         let shared = s.max(t).min(a.dist(b)) - s.min(t).max(0.0);
         return (shared > TOL).then_some(Problem::Overlap { lines: pair });
     }
-    // An end on the other line, away from its ends.
+    // An end on the other piece, away from its ends.
     let on = |p: P2, s: P2, t: P2| geom::dist_to_segment(p, s, t) <= TOL && p.dist(s) > TOL && p.dist(t) > TOL;
     if let Some(p) = [c, d].into_iter().find(|&p| on(p, a, b)).or_else(|| [a, b].into_iter().find(|&p| on(p, c, d))) {
         return Some(Problem::Cross { lines: pair, at: p });
@@ -285,12 +495,12 @@ fn cap(mut problems: Vec<Problem>) -> Vec<Problem> {
 mod tests {
     use super::*;
 
-    fn ring(pts: &[(f64, f64)]) -> Vec<Line> {
+    fn ring(pts: &[(f64, f64)]) -> Vec<SketchLine> {
         let p: Vec<P2> = pts.iter().map(|&(x, y)| P2(x, y)).collect();
-        geom::ring_edges(&p).map(|(a, b)| [a, b]).collect()
+        geom::ring_edges(&p).map(|(a, b)| SketchLine::new(a, b)).collect()
     }
 
-    fn square(x: f64, y: f64, s: f64) -> Vec<Line> {
+    fn square(x: f64, y: f64, s: f64) -> Vec<SketchLine> {
         ring(&[(x, y), (x + s, y), (x + s, y + s), (x, y + s)])
     }
 
@@ -305,10 +515,10 @@ mod tests {
     fn lines_in_any_order_either_way_round_close_into_one_outline_counter_clockwise() {
         let mut ls = square(0.0, 0.0, 4000.0);
         ls.swap(0, 2);
-        ls[1] = [ls[1][1], ls[1][0]];
-        ls[3] = [ls[3][1], ls[3][0]];
+        ls[1] = SketchLine::new(ls[1].end, ls[1].start);
+        ls[3] = SketchLine::new(ls[3].end, ls[3].start);
         // Ends a little apart still meet.
-        ls[0][0].0 += 0.4;
+        ls[0].start.0 += 0.4;
         let r = solve_one(&ls).unwrap();
         assert!(geom::area(&r.outer) > 0.0 && r.holes.is_empty());
         assert!((r.area() - 16e6).abs() < 2000.0, "{}", r.area());
@@ -341,7 +551,7 @@ mod tests {
         assert!(e[0].to_string().contains("open"), "{}", e[0]);
         // A gap wider than TOL is open too.
         let mut ls = square(0.0, 0.0, 4000.0);
-        ls[3][1].1 += 5.0;
+        ls[3].end.1 += 5.0;
         assert!(matches!(solve(&ls).unwrap_err()[..], [Problem::Open { line: 0, .. }, Problem::Open { line: 3, .. }]));
     }
 
@@ -353,7 +563,7 @@ mod tests {
         assert_eq!(e, vec![Problem::Cross { lines: [0, 2], at: P2(2000.0, 2000.0) }]);
         // A line ending part way along another: a T, which also leaves three lines at no point but an open end.
         let mut ls = square(0.0, 0.0, 4000.0);
-        ls.push([P2(2000.0, 0.0), P2(2000.0, 2000.0)]);
+        ls.push([P2(2000.0, 0.0), P2(2000.0, 2000.0)].into());
         let e = solve(&ls).unwrap_err();
         assert!(e.contains(&Problem::Cross { lines: [0, 4], at: P2(2000.0, 0.0) }), "{e:?}");
         assert!(e.contains(&Problem::Open { line: 4, at: P2(2000.0, 2000.0) }), "{e:?}");
@@ -368,10 +578,10 @@ mod tests {
     #[test]
     fn lines_along_each_other_overlap_and_a_line_drawn_twice_does_too() {
         let mut ls = square(0.0, 0.0, 4000.0);
-        ls.push([P2(1000.0, 0.0), P2(3000.0, 0.0)]);
+        ls.push([P2(1000.0, 0.0), P2(3000.0, 0.0)].into());
         assert!(solve(&ls).unwrap_err().contains(&Problem::Overlap { lines: [0, 4] }));
         let mut ls = square(0.0, 0.0, 4000.0);
-        ls.push([ls[2][1], ls[2][0]]);
+        ls.push(SketchLine::new(ls[2].end, ls[2].start));
         assert!(solve(&ls).unwrap_err().contains(&Problem::Overlap { lines: [2, 4] }));
         // A straight edge in two lines, end to end, is fine.
         let ls = ring(&[(0.0, 0.0), (2000.0, 0.0), (4000.0, 0.0), (4000.0, 4000.0), (0.0, 4000.0)]);
@@ -384,21 +594,21 @@ mod tests {
         ls.extend(square(4000.0, 4000.0, 4000.0));
         let e = solve(&ls).unwrap_err();
         assert_eq!(e, vec![Problem::Branch { lines: vec![1, 2, 4, 7], at: P2(4000.0, 4000.0) }]);
-        assert!(e[0].to_string().contains("1, 2, 4, 7"), "{}", e[0]);
+        assert!(e[0].to_string().contains("line 1, line 2, line 4 and line 7"), "{}", e[0]);
     }
 
     #[test]
     fn lines_too_short_or_out_of_range_are_named_before_anything_else() {
         let mut ls = square(0.0, 0.0, 4000.0);
-        ls.push([P2(9000.0, 0.0), P2(9000.5, 0.0)]);
-        ls.push([P2(f64::NAN, 0.0), P2(1.0, 1.0)]);
-        ls.push([P2(0.0, 0.0), P2(2e9, 0.0)]);
+        ls.push([P2(9000.0, 0.0), P2(9000.5, 0.0)].into());
+        ls.push([P2(f64::NAN, 0.0), P2(1.0, 1.0)].into());
+        ls.push([P2(0.0, 0.0), P2(2e9, 0.0)].into());
         assert_eq!(
             solve(&ls).unwrap_err(),
             vec![Problem::TooShort { line: 4 }, Problem::OutOfRange { line: 5 }, Problem::OutOfRange { line: 6 }]
         );
         assert_eq!(solve(&[]).unwrap_err(), vec![Problem::Empty]);
-        let many = vec![[P2(0.0, 0.0), P2(10.0, 0.0)]; MAX_LINES + 1];
+        let many = vec![SketchLine::new(P2(0.0, 0.0), P2(10.0, 0.0)); MAX_LINES + 1];
         assert_eq!(solve(&many).unwrap_err(), vec![Problem::TooMany { count: MAX_LINES + 1 }]);
     }
 
@@ -427,11 +637,12 @@ mod tests {
     #[test]
     fn many_problems_are_capped() {
         // A comb: every tooth crosses the spine.
-        let mut ls = vec![[P2(0.0, 0.0), P2(1e6, 0.0)]];
-        ls.extend((1..500).map(|i| [P2(i as f64 * 1000.0, -500.0), P2(i as f64 * 1000.0, 500.0)]));
+        let mut ls = vec![SketchLine::new(P2(0.0, 0.0), P2(1e6, 0.0))];
+        ls.extend((1..500).map(|i| SketchLine::new(P2(i as f64 * 1000.0, -500.0), P2(i as f64 * 1000.0, 500.0))));
         let e = solve(&ls).unwrap_err();
         assert_eq!(e.len(), MAX_PROBLEMS);
-        assert!(say(&e, "line").contains("more"), "{}", say(&e, "line"));
+        let name = |i: usize| format!("line {i}");
+        assert!(say(&e, &name).contains("more"), "{}", say(&e, &name));
     }
 
     #[test]
@@ -443,10 +654,10 @@ mod tests {
         };
         for _ in 0..400 {
             let n = 1 + (next() as usize) % 9;
-            let ls: Vec<Line> = (0..n).map(|_| [P2(next(), next()), P2(next(), next())]).collect();
+            let ls: Vec<SketchLine> = (0..n).map(|_| SketchLine::new(P2(next(), next()), P2(next(), next()))).collect();
             // Closed as a ring too, to make loops more often.
-            let pts: Vec<P2> = ls.iter().map(|l| l[0]).collect();
-            for sk in [ls, geom::ring_edges(&pts).map(|(a, b)| [a, b]).collect()] {
+            let pts: Vec<P2> = ls.iter().map(|l| l.start).collect();
+            for sk in [ls, geom::ring_edges(&pts).map(|(a, b)| SketchLine::new(a, b)).collect()] {
                 if let Ok(p) = solve(&sk) {
                     for r in &p.regions {
                         assert!(geom::area(&r.outer) > 0.0 && r.holes.iter().all(|h| geom::area(h) < 0.0));
@@ -455,6 +666,53 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn an_arc_closes_a_loop_and_is_one_line_however_many_chords_draw_it() {
+        // A half disc: its diameter, then the arc back round through the top.
+        let ls = vec![SketchLine::new(P2(0.0, 0.0), P2(4000.0, 0.0)), SketchLine::arc(P2(4000.0, 0.0), P2(0.0, 0.0), P2(2000.0, 2000.0))];
+        let r = solve_one(&ls).unwrap();
+        let half = std::f64::consts::PI * 2000.0 * 2000.0 / 2.0;
+        assert!((r.area() - half).abs() / half < 0.01, "{} vs {half}", r.area());
+        assert!(r.outer.len() > 20, "drawn by its chords");
+        assert!((ls[1].middle().dist(P2(2000.0, 2000.0))) < 1.0, "{:?}", ls[1].middle());
+        // A line across it hits the arc: one problem, naming the arc once.
+        let mut crossed = ls.clone();
+        crossed.push(SketchLine::new(P2(1000.0, 1000.0), P2(1000.0, 3000.0)));
+        let e = solve(&crossed).unwrap_err();
+        assert_eq!(e[0], Problem::Cross { lines: [1, 2], at: e[0].at().unwrap() }, "{e:?}");
+        assert_eq!(e.iter().filter(|p| matches!(p, Problem::Cross { .. })).count(), 1);
+        // A point through on the straight line between its ends is a straight line.
+        assert_eq!(SketchLine::arc(P2(0.0, 0.0), P2(4000.0, 0.0), P2(2000.0, 0.5)).points().len(), 2);
+    }
+
+    #[test]
+    fn crossings_come_before_the_open_ends_they_leave_and_lines_are_named_by_id() {
+        // Lines overshooting each other at a corner: they cross, and leave ends hanging past it.
+        let mut ls = ring(&[(0.0, 0.0), (4000.0, 0.0), (4000.0, 4000.0)]);
+        ls.truncate(2);
+        ls.push(SketchLine::new(P2(4000.0, 4500.0), P2(-500.0, 4500.0)));
+        ls.push(SketchLine::new(P2(0.0, 5000.0), P2(0.0, 0.0)));
+        let e = solve(&ls).unwrap_err();
+        assert!(matches!(e[0], Problem::Cross { .. }), "{e:?}");
+        assert!(e.iter().any(|p| matches!(p, Problem::Open { .. })));
+        ls[3].id = 999_812;
+        let name = namer(&ls);
+        let said = say(&e, &name);
+        assert!(said.contains("line 2 and line 999812 intersect at [0, 4500]"), "{said}");
+    }
+
+    #[test]
+    fn a_kept_sketch_draws_its_outline_from_any_start_either_way_round() {
+        let outline = vec![P2(0.0, 0.0), P2(6000.0, 0.0), P2(6000.0, 6000.0), P2(0.0, 6000.0)];
+        let ls = lines_of(&outline, &[]);
+        assert!(draws(&ls, &outline, &[]));
+        let turned: Vec<P2> = outline.iter().rev().copied().collect();
+        assert!(draws(&ls, &turned, &[]));
+        let moved: Vec<P2> = outline.iter().map(|p| *p + P2(10.0, 0.0)).collect();
+        assert!(!draws(&ls, &moved, &[]));
+        assert!(!draws(&ls, &outline, std::slice::from_ref(&outline)));
     }
 }
 
@@ -497,7 +755,7 @@ mod command_tests {
         ls.pop();
         ls.push(json!([[-1000, 2000], [1000, 2000]]));
         let e = s.execute("sketch", &json!({"lines": ls})).unwrap_err();
-        assert!(e.contains("lines 0 and 3 intersect at [0, 2000]"), "{e}");
+        assert!(e.contains("line 0 and line 3 intersect at [0, 2000]"), "{e}");
         assert!(e.contains("line 2 ends at [4000, 0] without meeting another"), "{e}");
         let e = s.execute("sketch", &json!({"lines": [[[0, 0], [1]]]})).unwrap_err();
         assert!(e.contains("`lines` is"), "{e}");
@@ -532,7 +790,7 @@ mod command_tests {
     fn a_boundary_given_as_points_is_judged_as_the_sketch_of_its_edges() {
         let mut s = Session::new();
         let e = s.execute("floor", &json!({"boundary": [[0, 0], [4000, 4000], [4000, 0], [0, 4000]]})).unwrap_err();
-        assert!(e.contains("edges 0 and 2 intersect at [2000, 2000]"), "{e}");
+        assert!(e.contains("edge 0 and edge 2 intersect at [2000, 2000]"), "{e}");
         let e = s.execute("floor", &json!({"boundary": [[0, 0], [4000, 0], [4000, 4000], [0, 4000]], "openings": [[[1000, 1000], [2000, 2000], [2000, 1000], [1000, 2000]]]}))
             .unwrap_err();
         assert!(e.contains("opening 0") && e.contains("intersect"), "{e}");
@@ -602,5 +860,66 @@ mod command_tests {
             .clone();
         let e = s.execute("edit_boundary", &json!({"id": x, "sketch": with_hole()})).unwrap_err();
         assert!(e.contains("extrusion"), "{e}");
+    }
+
+    /// A floor's sketch lines, as `elements` gives them.
+    fn lines(s: &mut Session, id: &Value) -> Vec<Value> {
+        let r = run(s, "elements", json!({"category": "floor"}));
+        let found = r["elements"].as_array().and_then(|es| es.iter().find(|e| e["id"] == *id).cloned()).unwrap_or_default();
+        found["sketch"].as_array().cloned().unwrap_or_default()
+    }
+
+    #[test]
+    fn each_sketch_line_has_an_id_and_a_guid_of_its_own_kept_through_edits_and_moves() {
+        let mut s = Session::new();
+        let f = run(&mut s, "floor", json!({"sketch": square(0.0, 0.0, 6000.0)}))["id"].clone();
+        let kept = lines(&mut s, &f);
+        assert_eq!(kept.len(), 4);
+        let ids: Vec<u64> = kept.iter().filter_map(|l| l["id"].as_u64()).collect();
+        assert_eq!(ids.len(), 4, "{kept:?}");
+        assert!(ids.iter().all(|&i| (100_000..=999_999).contains(&i)), "{ids:?}");
+        assert!(kept.iter().all(|l| l["guid"].is_string()));
+        // Edit Boundary gives them back; three sent again by id keep theirs, the fourth redrawn as two is new.
+        let now = run(&mut s, "edit_boundary", json!({"id": f}))["sketch"].clone();
+        assert_eq!(now.as_array().map(Vec::len), Some(4));
+        let mut again: Vec<Value> =
+            now.as_array().unwrap()[..3].iter().map(|l| json!({"id": l["id"], "start": l["start"], "end": l["end"]})).collect();
+        let last = &now[3];
+        let mid = json!([3000.0, 0.0]);
+        again.push(json!([last["start"], mid]));
+        again.push(json!([mid, last["end"]]));
+        run(&mut s, "edit_boundary", json!({"id": f, "sketch": again}));
+        let after = lines(&mut s, &f);
+        let after_ids: Vec<u64> = after.iter().filter_map(|l| l["id"].as_u64()).collect();
+        assert_eq!(after_ids[..3], ids[..3]);
+        assert!(after_ids[3..].iter().all(|i| !ids.contains(i)) && after_ids.len() == 5, "{after_ids:?}");
+        // An id that isn't one of its lines is refused.
+        let e = s.execute("edit_boundary", &json!({"id": f, "sketch": [{"id": 123_456, "start": [0, 0], "end": [1, 1]}]})).unwrap_err();
+        assert!(e.contains("123456 isn't a line of this sketch"), "{e}");
+        // Moved, the sketch goes with it and keeps its ids; copied, the copy's lines are new.
+        run(&mut s, "move", json!({"ids": [f], "by": [1000, 0]}));
+        let moved = lines(&mut s, &f);
+        assert_eq!(moved[0]["id"], after[0]["id"]);
+        assert_eq!(moved[0]["start"][0].as_f64(), after[0]["start"][0].as_f64().map(|x| x + 1000.0));
+        let copy = run(&mut s, "copy", json!({"ids": [f], "by": [0, 10_000]}))["ids"][0].clone();
+        let copied: Vec<u64> = lines(&mut s, &copy).iter().filter_map(|l| l["id"].as_u64()).collect();
+        assert_eq!(copied.len(), 5);
+        assert!(copied.iter().all(|i| !after_ids.contains(i)), "{copied:?}");
+        // A floor made over the walls keeps none until its boundary is edited; its lines then come as new ones.
+        run(&mut s, "wall", json!({"points": [[20000, 0], [26000, 0], [26000, 6000], [20000, 6000]], "closed": true}));
+        let w = run(&mut s, "floor", json!({}))["id"].clone();
+        assert!(lines(&mut s, &w).is_empty());
+        let fresh = run(&mut s, "edit_boundary", json!({"id": w}))["sketch"].clone();
+        assert!(fresh.as_array().unwrap().iter().all(|l| l.get("id").is_none()));
+    }
+
+    #[test]
+    fn an_arc_sketched_rounds_the_floor() {
+        let mut s = Session::new();
+        let half = json!([[[0, 0], [4000, 0]], [[4000, 0], [0, 0], [2000, 2000]]]);
+        let f = run(&mut s, "floor", json!({"sketch": half}));
+        let a = f["area_m2"].as_f64().unwrap();
+        assert!((a - std::f64::consts::TAU).abs() < 0.1, "{a}");
+        assert_eq!(lines(&mut s, &f["id"])[1]["through"], json!([2000.0, 2000.0]));
     }
 }

@@ -1,16 +1,22 @@
-//! Sketch mode: Revit's Edit Boundary, and a floor's Boundary Line or a ceiling's Sketch Ceiling. The outline is drawn as
-//! loose lines, held here until Finish Edit Mode hands them to the core, which solves them (`bimcraft_core::sketch`) or
-//! names what's wrong; the lines it names are drawn in the error colour until the sketch changes.
+//! Sketch mode: Revit's Edit Boundary, and the Boundary Line of a new floor, ceiling, roof or shaft. The outline is drawn as
+//! loose lines and arcs, held here until Finish Edit Mode hands them to the core, which solves them
+//! (`bimcraft_core::sketch`) or names what's wrong; the lines it names are drawn in the error colour until the sketch
+//! changes. A line the element kept from its last sketch keeps its id and GUID; a new one gets them at Finish.
 
 use std::collections::BTreeSet;
 
 use bimcraft_core::geom::{self, P2};
-use bimcraft_core::model::{Element, Id, TOL};
-use bimcraft_core::sketch::{self as solver, Line};
-use egui::{Color32, Modifiers, Painter, Pos2, Stroke, Ui};
+use bimcraft_core::model::{Element, Id, Model, TOL};
+use bimcraft_core::render::View;
+use bimcraft_core::sketch::{self as solver, Problem, SketchLine};
+use bimcraft_core::units::Units;
+use egui::{Align2, Color32, Modifiers, Painter, PointerButton, Pos2, Rect, Response, Shape, Stroke, StrokeKind, Ui, vec2};
 use serde_json::json;
 
+use crate::canvas::{box_shapes, tag};
 use crate::icons::Icon;
+use crate::lang::{t, tf};
+use crate::properties::number;
 use crate::style::pal;
 use crate::{BimApp, Status, Tool, big_button, panel};
 
@@ -21,21 +27,37 @@ pub enum Of {
     Floor(Id),
     /// A new ceiling on the level.
     Ceiling(Id),
+    /// A new roof by footprint, on the level above this one.
+    Roof(Id),
+    /// A new shaft opening from the level.
+    Shaft(Id),
     /// The element's outline and holes, redrawn.
     Edit(Id),
 }
 
-/// A sketch being drawn: its lines, those picked (Modify, for Delete), and those the last Finish found wrong.
+/// A drag with Modify while sketching: a grip at a line's end, or a selection box from a pixel.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Drag {
+    Grip(P2),
+    Box((f32, f32)),
+}
+
+/// A sketch being drawn: its lines, those picked (Modify, for Delete and the grips), those the last Finish found wrong, and
+/// the drag under way.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Sketch {
     pub of: Of,
-    pub lines: Vec<Line>,
+    pub lines: Vec<SketchLine>,
     pub picked: BTreeSet<usize>,
     pub wrong: Vec<usize>,
+    pub drag: Option<Drag>,
 }
 
 /// Sketch lines in the plan: Revit's magenta.
 const SKETCH: Color32 = Color32::from_rgb(0xC0, 0x26, 0xD3);
+
+/// How near a grip a press takes it, px.
+const GRIP: f32 = 8.0;
 
 impl Sketch {
     /// What the contextual tab calls it.
@@ -43,24 +65,74 @@ impl Sketch {
         match self.of {
             Of::Floor(_) => "Create Floor Boundary",
             Of::Ceiling(_) => "Create Ceiling Boundary",
+            Of::Roof(_) => "Create Roof Footprint",
+            Of::Shaft(_) => "Create Shaft Opening Sketch",
             Of::Edit(_) => "Edit Boundary",
         }
     }
 
     /// The line nearest `p`, within `reach` mm of it.
     pub fn line_at(&self, p: P2, reach: f64) -> Option<usize> {
-        let d = |l: &Line| geom::dist_to_segment(p, l[0], l[1]);
-        self.lines.iter().enumerate().filter(|(_, l)| d(l) <= reach).min_by(|a, b| d(a.1).total_cmp(&d(b.1))).map(|(i, _)| i)
+        self.lines
+            .iter()
+            .enumerate()
+            .map(|(i, l)| (i, l.dist(p)))
+            .filter(|(_, d)| *d <= reach)
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(i, _)| i)
     }
 
-    /// The end of a line nearest `p`, within `reach` mm of it: where the next line snaps.
-    pub fn end_at(&self, p: P2, reach: f64) -> Option<P2> {
-        self.lines.iter().flatten().copied().filter(|q| q.dist(p) <= reach).min_by(|a, b| a.dist(p).total_cmp(&b.dist(p)))
+    /// The end of a picked line within `reach` mm of `p`: a grip.
+    pub fn grip_at(&self, p: P2, reach: f64) -> Option<P2> {
+        self.picked
+            .iter()
+            .filter_map(|&i| self.lines.get(i))
+            .flat_map(|l| [l.start, l.end])
+            .filter(|q| q.dist(p) <= reach)
+            .min_by(|a, b| a.dist(p).total_cmp(&b.dist(p)))
+    }
+
+    /// Every line end at `from` moved to `to`: the lines joined there stay joined.
+    pub fn move_end(&mut self, from: P2, to: P2) {
+        for l in &mut self.lines {
+            if l.start.dist(from) <= TOL {
+                l.start = to;
+            }
+            if l.end.dist(from) <= TOL {
+                l.end = to;
+            }
+        }
+        self.wrong.clear();
+    }
+
+    /// The lines a box between pixels `a` and `b` of `view` picks: from the left, those wholly inside; from the right, those
+    /// it touches too.
+    pub fn in_box(&self, view: &View, a: (f32, f32), b: (f32, f32)) -> Vec<usize> {
+        let (lo, hi) = (view.mm((a.0.min(b.0), a.1.max(b.1))), view.mm((a.0.max(b.0), a.1.min(b.1))));
+        let inside = |p: P2| p.0 >= lo.0 && p.0 <= hi.0 && p.1 >= lo.1 && p.1 <= hi.1;
+        let crossing = b.0 < a.0;
+        let corners = [lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)];
+        let touches = |pts: &[P2]| {
+            pts.iter().any(|p| inside(*p))
+                || pts.windows(2).any(|w| {
+                    geom::ring_edges(&corners)
+                        .any(|(c, d)| geom::line_intersection(w[0], w[1], c, d).is_some_and(|x| on(x, w[0], w[1]) && on(x, c, d)))
+                })
+        };
+        self.lines
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| {
+                let pts = l.points();
+                if crossing { touches(&pts) } else { pts.iter().all(|p| inside(*p)) }
+            })
+            .map(|(i, _)| i)
+            .collect()
     }
 
     /// A line added, unless it's too short to be one.
-    fn add(&mut self, l: Line) {
-        if l[0].dist(l[1]) > TOL {
+    fn add(&mut self, l: SketchLine) {
+        if l.start.dist(l.end) > TOL {
             self.lines.push(l);
             self.changed();
         }
@@ -71,35 +143,112 @@ impl Sketch {
         self.wrong.clear();
     }
 
-    /// The lines, each in its colour: picked or under the cursor as a selection is, wrong in the error colour.
-    pub fn paint(&self, p: &Painter, at: impl Fn(P2) -> Pos2, hovered: Option<usize>) {
-        for (i, [a, b]) in self.lines.iter().enumerate() {
+    /// The lines, each in its colour: picked or under the cursor as a selection is, wrong in the error colour; a picked
+    /// line's grips at its ends; the line under the cursor named by its id. While a grip is dragged to `cursor`, the lines
+    /// joined there follow it.
+    pub fn paint(&self, p: &Painter, at: impl Fn(P2) -> Pos2, hovered: Option<usize>, cursor: Option<P2>) {
+        let moved = |q: P2| match (self.drag, cursor) {
+            (Some(Drag::Grip(from)), Some(to)) if q.dist(from) <= TOL => to,
+            _ => q,
+        };
+        for (i, l) in self.lines.iter().enumerate() {
             let (width, colour) = match () {
                 () if self.picked.contains(&i) => (3.0, pal().accent),
                 () if hovered == Some(i) => (3.0, pal().hover),
                 () if self.wrong.contains(&i) => (3.0, pal().error),
                 () => (2.0, SKETCH),
             };
-            p.line_segment([at(*a), at(*b)], Stroke::new(width, colour));
+            let shown = SketchLine { start: moved(l.start), end: moved(l.end), ..l.clone() };
+            p.add(Shape::line(shown.points().into_iter().map(&at).collect(), Stroke::new(width, colour)));
+        }
+        for l in self.picked.iter().filter_map(|&i| self.lines.get(i)) {
+            for q in [l.start, l.end] {
+                let r = Rect::from_center_size(at(moved(q)), vec2(8.0, 8.0));
+                p.rect_filled(r, 0.0, pal().surface);
+                p.rect_stroke(r, 0.0, Stroke::new(1.5, pal().accent), StrokeKind::Middle);
+            }
+        }
+        if let Some(l) = hovered.and_then(|i| self.lines.get(i).map(|l| (i, l))).map(|(i, l)| (name(l, i), l)) {
+            tag(p, at(l.1.middle()) + vec2(10.0, -10.0), Align2::LEFT_BOTTOM, l.0);
         }
     }
 }
 
+/// Whether `x`, on the line through `a` and `b`, lies between them.
+fn on(x: P2, a: P2, b: P2) -> bool {
+    geom::dist_to_segment(x, a, b) <= 1e-6 * a.dist(b).max(1.0)
+}
+
+/// What a line is called to whoever draws it: by its id once it has one, else new.
+fn name(l: &SketchLine, i: usize) -> String {
+    if l.id != 0 { tf("Line {}", &[&l.id.to_string()]) } else { tf("New line {}", &[&(i + 1).to_string()]) }
+}
+
+/// What's wrong with the lines, said for whoever drew them: what to fix, kind by kind, the first places it is, in the
+/// project's units, and the lines by name.
+pub fn friendly(problems: &[Problem], lines: &[SketchLine], units: Units) -> String {
+    let named = |ls: &[usize]| {
+        let names: Vec<String> = ls.iter().filter_map(|&i| lines.get(i).map(|l| name(l, i))).collect();
+        names.join(", ")
+    };
+    let place = |p: &Problem| match p.at() {
+        Some(q) => tf("{} at x {}, y {}", &[&named(&p.lines()), &units.with_unit(q.0), &units.with_unit(q.1)]),
+        None => named(&p.lines()),
+    };
+    let mut out: Vec<String> = Vec::new();
+    let mut kinds: Vec<u8> = problems.iter().map(Problem::rank).collect();
+    kinds.dedup();
+    for rank in kinds {
+        let these: Vec<&Problem> = problems.iter().filter(|p| p.rank() == rank).collect();
+        let Some(first) = these.first() else { continue };
+        let n = these.len().to_string();
+        let headline = match first {
+            Problem::Empty => t("There are no lines yet: draw the outline.").to_string(),
+            Problem::TooMany { .. } => t("The sketch has too many lines.").to_string(),
+            Problem::OutOfRange { .. } => t("A line has a point too far out to draw.").to_string(),
+            Problem::TooShort { .. } => t("A line is too short: its ends are 1 mm apart or less.").to_string(),
+            Problem::Cross { .. } => tf("Lines intersect ({}): a loop can't cross itself or another loop.", &[&n]),
+            Problem::Overlap { .. } => tf("Lines overlap ({}): one lies along another, or a line is drawn twice.", &[&n]),
+            Problem::Branch { .. } => tf("Three or more lines meet at a point ({}): a loop passes each point once.", &[&n]),
+            Problem::Open { .. } => tf("The loop is open: {} line ends don't meet another line.", &[&n]),
+            Problem::NoArea { .. } => t("A loop encloses no area.").to_string(),
+            Problem::Separate { count } => {
+                tf("Draw one outline, with any openings inside it: these lines make {} separate outlines.", &[&count.to_string()])
+            }
+        };
+        out.push(headline);
+        let places: Vec<String> = these.iter().take(3).map(|p| place(p)).filter(|s| !s.is_empty()).collect();
+        if !places.is_empty() {
+            let more = these.len().saturating_sub(places.len());
+            let mut line = places.join("; ");
+            if more > 0 {
+                line = tf("{}; and {} more", &[&line, &more.to_string()]);
+            }
+            out.push(format!("  {line}"));
+        }
+    }
+    if problems.iter().any(|p| !p.lines().is_empty()) {
+        out.push(t("The lines are shown in red.").to_string());
+    }
+    out.join("\n")
+}
+
 impl BimApp {
     /// Sketch mode on: the lines given (none for a new outline), drawing them with Line.
-    pub(crate) fn start_sketch(&mut self, of: Of, lines: Vec<Line>) {
-        self.sketch = Some(Sketch { of, lines, picked: BTreeSet::new(), wrong: Vec::new() });
+    pub(crate) fn start_sketch(&mut self, of: Of, lines: Vec<SketchLine>) {
+        self.sketch = Some(Sketch { of, lines, picked: BTreeSet::new(), wrong: Vec::new(), drag: None });
         self.selection.clear();
         self.status = Status::default();
         self.tool = Tool::SketchLine(Vec::new());
         self.raise_context();
     }
 
-    /// Revit's Edit Boundary on the floor, ceiling, roof or shaft selected: its outline and holes as lines to edit.
+    /// Revit's Edit Boundary on the floor, ceiling, roof or shaft selected: its outline and holes as lines to edit, those it
+    /// kept from its last sketch with their ids.
     pub(crate) fn edit_boundary(&mut self) {
         let &[id] = self.selection.as_slice() else { return };
         if let Some(r) = self.run("edit_boundary", json!({"id": id}))
-            && let Ok(lines) = serde_json::from_value::<Vec<Line>>(r["sketch"].clone())
+            && let Ok(lines) = serde_json::from_value::<Vec<SketchLine>>(r["sketch"].clone())
         {
             self.start_sketch(Of::Edit(id), lines);
         }
@@ -117,36 +266,41 @@ impl BimApp {
         }
     }
 
-    /// Finish Edit Mode: the lines made into what the sketch is for, selected; or, when the core can't solve them, why,
-    /// and the lines that are wrong marked, still sketching.
+    /// Finish Edit Mode: the lines solved and made into what the sketch is for, selected; or what's wrong said, the lines it
+    /// names marked, still sketching.
     pub(crate) fn finish_sketch(&mut self) {
-        let Some(sk) = &self.sketch else { return };
-        let lines = json!(sk.lines);
+        let Some(sk) = &mut self.sketch else { return };
+        if let Err(problems) = solver::solve_one(&sk.lines) {
+            sk.wrong = problems.iter().flat_map(Problem::lines).collect();
+            self.status = Status { text: friendly(&problems, &sk.lines, self.session.model.units), error: true };
+            return;
+        }
+        let lines = json!(sk.lines.iter().map(sent).collect::<Vec<_>>());
+        let m = &self.session.model;
         let (id, p) = match sk.of {
             Of::Floor(level) => {
                 ("floor", self.typed("floor", json!({"level": level, "structural": self.floor_structural, "sketch": lines})))
             }
             Of::Ceiling(level) => {
                 let mut p = self.typed("ceiling", json!({"level": level, "sketch": lines}));
-                if let Some(offset) = self.session.model.units.parse(&self.ceiling_height) {
+                if let Some(offset) = m.units.parse(&self.ceiling_height) {
                     p["offset"] = json!(offset);
                 }
                 ("ceiling", p)
             }
+            Of::Roof(level) => {
+                let on = m.level_above(level).unwrap_or(m.guid(level));
+                let slope = number(&self.roof_slope).unwrap_or(30.0);
+                ("roof", self.typed("roof", json!({"level": on, "slope": slope, "sketch": lines})))
+            }
+            Of::Shaft(level) => ("shaft", json!({"level": level, "sketch": lines})),
             Of::Edit(id) => ("edit_boundary", json!({"id": id, "sketch": lines})),
         };
-        match self.run(id, p) {
-            Some(made) => {
-                self.sketch = None;
-                self.tool = Tool::Modify;
-                self.selection = made["id"].as_u64().into_iter().collect();
-            }
-            None => {
-                if let Some(sk) = &mut self.sketch {
-                    let problems = solver::solve_one(&sk.lines).err().unwrap_or_default();
-                    sk.wrong = problems.iter().flat_map(solver::Problem::lines).collect();
-                }
-            }
+        // Solved, it may still be refused for what it makes (a shaft with a hole): the command says why.
+        if let Some(made) = self.run(id, p) {
+            self.sketch = None;
+            self.tool = Tool::Modify;
+            self.selection = made["id"].as_u64().into_iter().collect();
         }
     }
 
@@ -167,8 +321,10 @@ impl BimApp {
             sk.lines.pop();
             sk.changed();
         }
-        if let Tool::SketchLine(chain) = &mut self.tool {
-            chain.clear();
+        match &mut self.tool {
+            Tool::SketchLine(chain) | Tool::SketchArc(chain) => chain.clear(),
+            Tool::SketchRect(start) => *start = None,
+            _ => {}
         }
     }
 
@@ -186,8 +342,9 @@ impl BimApp {
     }
 
     /// A click while sketching, at `p` (snapped) or picking near `raw`, `reach` mm round it: Line's next point (back on
-    /// the first, the loop is closed and the next line starts anew), Rectangle's corner, or with Modify a line picked.
-    pub(crate) fn sketch_click(&mut self, p: P2, raw: P2, reach: f64, mods: Modifiers) {
+    /// the first, the loop is closed and the next line starts anew), Rectangle's corner, Arc's ends then the point it
+    /// passes through, Pick Walls' wall (`wall`), or with Modify a line picked.
+    pub(crate) fn sketch_click(&mut self, m: &Model, p: P2, raw: P2, reach: f64, wall: Option<Id>, mods: Modifiers) {
         let Some(sk) = &mut self.sketch else { return };
         match &mut self.tool {
             Tool::Modify => {
@@ -203,7 +360,7 @@ impl BimApp {
             }
             Tool::SketchLine(chain) => match chain.last().copied() {
                 Some(last) if last.dist(p) > TOL => {
-                    sk.add([last, p]);
+                    sk.add(SketchLine::new(last, p));
                     if chain.len() >= 2 && chain.first().is_some_and(|f| f.dist(p) <= TOL) {
                         chain.clear();
                     } else {
@@ -217,47 +374,177 @@ impl BimApp {
                 Some(a) if (a.0 - p.0).abs() > TOL && (a.1 - p.1).abs() > TOL => {
                     let c = [a, P2(p.0, a.1), p, P2(a.0, p.1)];
                     for k in 0..4 {
-                        sk.add([c[k], c[(k + 1) % 4]]);
+                        sk.add(SketchLine::new(c[k], c[(k + 1) % 4]));
                     }
                 }
                 Some(a) => *start = Some(a),
                 None => *start = Some(p),
             },
+            // Its start, its end, then a point it passes through; the next arc starts where it ended.
+            Tool::SketchArc(pts) => match pts.as_slice() {
+                &[a, b] => {
+                    sk.add(SketchLine::arc(a, b, p));
+                    *pts = vec![b];
+                }
+                &[a] if a.dist(p) > TOL => pts.push(p),
+                [] => pts.push(p),
+                _ => {}
+            },
+            // A line along the wall's location line, round with it where it's an arc.
+            Tool::SketchPick => {
+                if let Some(w) = wall.and_then(|id| m.wall(id)) {
+                    let axis = bimcraft_core::walls::Axis::of(w);
+                    let line = match w.arc {
+                        a if a != 0.0 => SketchLine::arc(w.start, w.end, axis.at(axis.length() / 2.0, 0.0)),
+                        _ => SketchLine::new(w.start, w.end),
+                    };
+                    sk.add(line);
+                }
+            }
             _ => {}
         }
     }
 
-    /// The contextual tab while sketching: Revit's Mode panel (Finish, Cancel) and Draw panel (Line, Rectangle).
-    pub(crate) fn sketch_panels(&mut self, ui: &mut Ui) {
-        panel(ui, "Mode", |ui| {
-            let tip = "Finish Edit Mode: the lines, closed into loops, become the outline and its holes";
-            if big_button(ui, Icon::Check, "Finish Edit Mode", false, tip).clicked() {
-                self.finish_sketch();
+    /// Sketch mode's drags with Modify: from a picked line's end, its grip, moving every line end there to where it's let
+    /// go (snapped); from anywhere else a box, picking the lines in it (from the left, wholly inside; from the right,
+    /// touching too), or a line where it began if it hardly moved. True when one ended this frame: that's no click.
+    pub(crate) fn sketch_drag(&mut self, ui: &Ui, response: &Response, rect: Rect, view: &View, level: Id) -> bool {
+        if self.tool != Tool::Modify || self.sketch.is_none() {
+            return false;
+        }
+        let local = |p: Pos2| (p.x - rect.min.x, p.y - rect.min.y);
+        if response.drag_started_by(PointerButton::Primary)
+            && let Some(o) = ui.input(|i| i.pointer.press_origin())
+            && let Some(sk) = &mut self.sketch
+        {
+            let q = local(o);
+            sk.drag = Some(match sk.grip_at(view.mm(q), f64::from(GRIP) / view.scale) {
+                Some(g) => Drag::Grip(g),
+                None => Drag::Box(q),
+            });
+        }
+        if !response.drag_stopped() {
+            return false;
+        }
+        let Some(drag) = self.sketch.as_mut().and_then(|sk| sk.drag.take()) else { return false };
+        let Some(at) = ui.input(|i| i.pointer.latest_pos()).map(local) else { return true };
+        let m = std::sync::Arc::clone(&self.session.model);
+        let to = self.snap(&m, level, view, at, &[], false).at;
+        let mods = ui.input(|i| i.modifiers);
+        let Some(sk) = &mut self.sketch else { return true };
+        match drag {
+            Drag::Grip(from) => sk.move_end(from, to),
+            Drag::Box(from) if (from.0 - at.0).abs().max((from.1 - at.1).abs()) < 6.0 => {
+                let reach = f64::from(crate::canvas::PICK) / view.scale;
+                let hit = sk.line_at(view.mm(from), reach);
+                if !(mods.shift || mods.command || mods.ctrl) {
+                    sk.picked.clear();
+                }
+                sk.picked.extend(hit);
             }
-            if big_button(ui, Icon::Close, "Cancel Edit Mode", false, "Cancel Edit Mode: drop the lines, keep it as it was").clicked() {
-                self.cancel_sketch();
+            Drag::Box(from) => {
+                if !(mods.shift || mods.command || mods.ctrl) {
+                    sk.picked.clear();
+                }
+                let found = sk.in_box(view, from, at);
+                sk.picked.extend(found);
             }
-        });
+        }
+        true
+    }
+
+    /// What a sketch tool or drag shows under the cursor at `q`: Rectangle's rectangle, Arc's arc, a selection box.
+    pub(crate) fn sketch_preview(&self, p: &Painter, view: &View, origin: Pos2, q: (f32, f32), cursor: P2) {
+        let stroke = Stroke::new(2.0, pal().accent);
+        let at = |pt: P2| {
+            let (x, y) = view.px(pt);
+            origin + vec2(x, y)
+        };
+        match (&self.tool, self.sketch.as_ref().and_then(|sk| sk.drag)) {
+            (Tool::SketchRect(Some(a)), _) => {
+                let c = [*a, P2(cursor.0, a.1), cursor, P2(a.0, cursor.1)].map(at);
+                p.add(Shape::closed_line(c.to_vec(), stroke));
+            }
+            (Tool::SketchArc(pts), _) if pts.len() == 2 => {
+                p.add(Shape::line(SketchLine::arc(pts[0], pts[1], cursor).points().into_iter().map(at).collect(), stroke));
+            }
+            (Tool::SketchArc(pts), _) if pts.len() == 1 => {
+                p.line_segment([at(pts[0]), at(cursor)], Stroke::new(1.0, pal().accent));
+            }
+            (Tool::Modify, Some(Drag::Box(from))) => p.extend(box_shapes(p.clip_rect(), from, q)),
+            _ => {}
+        }
+    }
+
+    /// The contextual tab's Draw panel while sketching: Line, Rectangle, Arc, Pick Walls.
+    pub(crate) fn sketch_draw(&mut self, ui: &mut Ui) {
         panel(ui, "Draw", |ui| {
-            let line = matches!(self.tool, Tool::SketchLine(_));
-            if big_button(ui, Icon::Line, "Line", line, "Line: a boundary line between each two points clicked").clicked() && !line {
-                self.tool = Tool::SketchLine(Vec::new());
-            }
-            let rect = matches!(self.tool, Tool::SketchRect(_));
-            if big_button(ui, Icon::Rectangle, "Rectangle", rect, "Rectangle: four boundary lines between two opposite corners").clicked()
-                && !rect
-            {
-                self.tool = Tool::SketchRect(None);
+            let tools: [(Icon, &str, &str, Tool); 4] = [
+                (Icon::Line, "Line", "Line: a boundary line between each two points clicked", Tool::SketchLine(Vec::new())),
+                (Icon::Rectangle, "Rectangle", "Rectangle: four boundary lines between two opposite corners", Tool::SketchRect(None)),
+                (
+                    Icon::Arc,
+                    "Start-End-Radius Arc",
+                    "Start-End-Radius Arc: click its start, its end, then a point it passes through",
+                    Tool::SketchArc(Vec::new()),
+                ),
+                (Icon::Wall, "Pick Walls", "Pick Walls: a boundary line along each wall clicked", Tool::SketchPick),
+            ];
+            for (icon, label, tip, tool) in tools {
+                let on = std::mem::discriminant(&self.tool) == std::mem::discriminant(&tool);
+                if big_button(ui, icon, label, on, tip).clicked() && !on {
+                    self.tool = tool;
+                }
             }
         });
     }
 
-    /// The Floor and Ceiling tools' Draw panel: their outline sketched instead of found from the walls.
+    /// The Mode panel at the ribbon's right end: Finish and Cancel while sketching, Edit Boundary when one floor, ceiling,
+    /// roof or shaft is selected.
+    pub(crate) fn mode_panel(&mut self, ui: &mut Ui) {
+        let sketching = self.sketch.is_some();
+        if !sketching && !(self.boundary_selected() && self.tool == Tool::Modify) {
+            return;
+        }
+        // Pushed to the right end by the room the rest leaves: its width as it was last drawn.
+        ui.add_space((ui.available_width() - self.mode_width).max(0.0));
+        let drawn = ui.scope(|ui| {
+            panel(ui, "Mode", |ui| {
+                if sketching {
+                    let tip = "Finish Edit Mode: the lines, closed into loops, become the outline and its holes";
+                    if big_button(ui, Icon::Check, "Finish Edit Mode", false, tip).clicked() {
+                        self.finish_sketch();
+                    }
+                    if big_button(ui, Icon::Close, "Cancel Edit Mode", false, "Cancel Edit Mode: drop the lines, keep it as it was")
+                        .clicked()
+                    {
+                        self.cancel_sketch();
+                    }
+                } else if big_button(ui, Icon::Line, "Edit Boundary", false, "Edit Boundary: sketch its outline and holes again").clicked()
+                {
+                    self.edit_boundary();
+                }
+            });
+        });
+        let width = drawn.response.rect.width() + ui.spacing().item_spacing.x;
+        if (width - self.mode_width).abs() > 0.5 {
+            self.mode_width = width;
+            ui.ctx().request_repaint();
+        }
+    }
+
+    /// The Floor, Ceiling, Roof and Shaft tools' Draw panel: their outline sketched instead of found from the walls.
     pub(crate) fn sketch_starters(&mut self, ui: &mut Ui) {
         let Some(level) = self.plan_level() else { return };
         let (of, label, tip) = match self.tool {
             Tool::Floor => (Of::Floor(level), "Boundary Line", "Boundary Line: sketch the floor's outline, and any openings in it"),
             Tool::Ceiling => (Of::Ceiling(level), "Sketch Ceiling", "Sketch Ceiling: sketch the ceiling's outline, and any openings in it"),
+            Tool::Roof => (
+                Of::Roof(level),
+                "Boundary Line",
+                "Boundary Line: sketch the roof's footprint, on the level above, and any courtyards in it",
+            ),
+            Tool::Shaft(_) => (Of::Shaft(level), "Boundary Line", "Boundary Line: sketch the shaft opening's outline"),
             _ => return,
         };
         panel(ui, "Draw", |ui| {
@@ -275,7 +562,25 @@ impl BimApp {
             Tool::SketchLine(_) => "Click the line's end; the next starts there. The first point again closes the loop; Esc stops.",
             Tool::SketchRect(None) => "Click a corner of the rectangle.",
             Tool::SketchRect(Some(_)) => "Click the opposite corner. Esc cancels.",
-            _ => "Pick sketch lines to delete; draw with Line or Rectangle. Finish Edit Mode when every loop is closed.",
+            Tool::SketchArc(pts) if pts.is_empty() => "Click where the arc starts.",
+            Tool::SketchArc(pts) if pts.len() == 1 => "Click where the arc ends.",
+            Tool::SketchArc(_) => "Click a point the arc passes through. Esc cancels.",
+            Tool::SketchPick => "Click a wall: a boundary line along it.",
+            _ => {
+                "Pick sketch lines (a box picks several); drag a picked line's end to move it; Delete removes them. Finish Edit Mode when every loop is closed."
+            }
         })
     }
+}
+
+/// A line as Finish sends it: with its id when it kept one, so it keeps it.
+fn sent(l: &SketchLine) -> serde_json::Value {
+    let mut v = json!({"start": l.start, "end": l.end});
+    if let Some(t) = l.through {
+        v["through"] = json!(t);
+    }
+    if l.id != 0 {
+        v["id"] = json!(l.id);
+    }
+    v
 }

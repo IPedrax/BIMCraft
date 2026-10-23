@@ -167,6 +167,12 @@ impl HasPart for crate::family::Form {
     }
 }
 
+impl HasPart for crate::sketch::SketchLine {
+    fn ident(&mut self) -> (&mut Id, &mut Guid) {
+        (&mut self.id, &mut self.guid)
+    }
+}
+
 impl HasPart for crate::family::Symbol {
     fn ident(&mut self) -> (&mut Id, &mut Guid) {
         (&mut self.id, &mut self.guid)
@@ -520,6 +526,12 @@ impl Model {
             add("form", "family", n, f.forms.iter().map(|x| (x.id, x.guid)).collect());
             add("symbol", "family", n, f.symbols.iter().map(|x| (x.id, x.guid)).collect());
         }
+        // An element's sketch lines, the element named by its GUID, which never changes.
+        for (id, e) in self.elements.iter() {
+            if let Some(lines) = e.sketch().filter(|l| !l.is_empty()) {
+                add("sketch line", e.category(), &self.guid(*id).to_string(), lines.iter().map(|l| (l.id, l.guid)).collect());
+            }
+        }
         out
     }
 
@@ -576,7 +588,8 @@ impl Model {
         }
         // New ones: ids down from the library's lowest, GUIDs made in order (a file read the same makes the same).
         let floor = self.elements.keys().next_back().map_or(crate::ids::FIRST_ID, |k| k + 1).max(self.next_id);
-        let mut below = self.library.first_id().unwrap_or(LAST_ID + 1);
+        // Below every entry's and every part's there was, so a part taken away leaves its id unused.
+        let mut below = self.library.first_id().into_iter().chain(self.library.parts.keys().next().copied()).min().unwrap_or(LAST_ID + 1);
         let given: Vec<(Id, Guid)> = now
             .iter()
             .zip(&keep)
@@ -633,6 +646,11 @@ impl Model {
             f.forms.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
             f.symbols.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
         }
+        for e in self.elements.values_mut() {
+            if let Some(lines) = e.sketch_mut() {
+                lines.iter_mut().for_each(|l| give(&mut l.id, &mut l.guid));
+            }
+        }
         self.library.parts = self.parts_now().into_iter().collect();
     }
 
@@ -687,6 +705,11 @@ impl Model {
         for f in self.families.values_mut() {
             f.forms.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
             f.symbols.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+        }
+        for e in self.elements.values_mut() {
+            if let Some(lines) = e.sketch_mut() {
+                lines.iter_mut().for_each(|l| (l.id, l.guid) = (0, Guid::default()));
+            }
         }
         self.library.parts.clear();
     }

@@ -1589,6 +1589,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let level = level_near(z).unwrap_or_else(|| level_for(id, z));
         let floor = Floor {
             params: Default::default(),
+            sketch: Vec::new(),
             type_name,
             level,
             boundary: ring.into_iter().map(flat).collect(),
@@ -1632,6 +1633,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let offset = ((z0 - elevation(level)) * 1000.0).round() / 1000.0 + 0.0;
         let cid = m.insert(Element::Ceiling(Ceiling {
             params: Default::default(),
+            sketch: Vec::new(),
             type_name,
             level,
             boundary,
@@ -1674,6 +1676,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
                 let offset = if pitched && below > 0.0 { 0.0 } else { -below };
                 let roof = Roof {
                     params: Default::default(),
+                    sketch: Vec::new(),
                     type_name,
                     level,
                     boundary: rd.boundary,
@@ -1733,7 +1736,14 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let level = Guid::of_id(levels.iter().rev().find(|(_, lz)| *lz <= z0 + 1.0).or(levels.first()).map_or(0, |(id, _)| *id));
         let (top_level, height) = topped(level, z0, z1);
         let base_offset = ((z0 - elevation(level)) * 1000.0).round() / 1000.0 + 0.0;
-        let sid = m.insert(Element::Shaft(Shaft { level, boundary, top_level, height: (height * 1000.0).round() / 1000.0, base_offset }));
+        let sid = m.insert(Element::Shaft(Shaft {
+            level,
+            boundary,
+            top_level,
+            height: (height * 1000.0).round() / 1000.0,
+            base_offset,
+            sketch: Vec::new(),
+        }));
         from.insert(sid, who(id));
         origin.entry(id).or_insert(sid);
         elements_from.entry(id).or_default().push(sid);

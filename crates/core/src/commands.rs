@@ -26,7 +26,7 @@ use crate::model::{
 use crate::paint;
 use crate::phasing;
 use crate::render::Drawing;
-use crate::sketch;
+use crate::sketch::{self, SketchLine};
 use crate::texture::{self, Kind, Picture, Texture};
 use crate::units::Units;
 use crate::walls::{self, Axis, stacked};
@@ -2977,15 +2977,15 @@ fn floor(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     let level = level_param(c, m, p, "level")?;
     let type_name = type_param(c, p, m, "floor")?;
-    let (mut boundary, openings) = match sketched(c, p, "openings")? {
-        Some(r) => (r.outer, r.holes),
+    let (mut boundary, openings, sketch) = match sketched(c, p, "openings", &[])? {
+        Some((r, lines)) => (r.outer, r.holes, lines),
         None => {
             let (boundary, found) = match absent(p.get("boundary")) {
                 true => floor_outline(m, level)
                     .ok_or_else(|| bad(c, format!("no walls enclose an area on {}; give `boundary`", level_name(m, level))))?,
                 false => (ring(c, "boundary", points(c, p, "boundary")?)?, Vec::new()),
             };
-            (boundary, rings(c, "opening", p, "openings")?.unwrap_or(found))
+            (boundary, rings(c, "opening", p, "openings")?.unwrap_or(found), Vec::new())
         }
     };
     if geom::area(&boundary) < 0.0 {
@@ -3012,6 +3012,7 @@ fn floor(s: &mut Session, p: &Value) -> R {
         slope,
         arrow,
         structural,
+        sketch,
     }));
     Ok(json!({"id": id, "area_m2": area}))
 }
@@ -3021,8 +3022,10 @@ fn ceiling(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     let level = level_param(c, m, p, "level")?;
     let type_name = type_param(c, p, m, "ceiling")?;
-    let (mut boundary, found) = match (sketched(c, p, "openings")?, absent(p.get("boundary")), point_opt(c, p, "point")?) {
-        (Some(r), ..) => (r.outer, r.holes),
+    let drawn = sketched(c, p, "openings", &[])?;
+    let sketch = drawn.as_ref().map(|(_, lines)| lines.clone()).unwrap_or_default();
+    let (mut boundary, found) = match (drawn, absent(p.get("boundary")), point_opt(c, p, "point")?) {
+        (Some((r, _)), ..) => (r.outer, r.holes),
         (None, false, _) => (ring(c, "boundary", points(c, p, "boundary")?)?, Vec::new()),
         // The room's free floor: what the walls' faces close around the point, and the walls standing
         // inside it, clockwise as a floor's openings are.
@@ -3041,7 +3044,15 @@ fn ceiling(s: &mut Session, p: &Value) -> R {
     let offset = num(c, p, "offset")?.unwrap_or(CEILING_HEIGHT);
     // Its openings lie inside it and apart, or the model refuses it.
     let area = m2(geom::area(&boundary) - openings.iter().map(|o| geom::area(o).abs()).sum::<f64>());
-    let id = s.model_mut().insert(Element::Ceiling(Ceiling { params: Default::default(), type_name, level, boundary, openings, offset }));
+    let id = s.model_mut().insert(Element::Ceiling(Ceiling {
+        params: Default::default(),
+        type_name,
+        level,
+        boundary,
+        openings,
+        offset,
+        sketch,
+    }));
     Ok(json!({"id": id, "area_m2": area}))
 }
 
@@ -3049,17 +3060,17 @@ fn shaft(s: &mut Session, p: &Value) -> R {
     let c = "shaft";
     let m = &s.model;
     let level = level_param(c, m, p, "level")?;
-    let mut boundary = match sketched(c, p, "")? {
-        Some(r) if r.holes.is_empty() => r.outer,
+    let (mut boundary, sketch) = match sketched(c, p, "", &[])? {
+        Some((r, lines)) if r.holes.is_empty() => (r.outer, lines),
         Some(_) => return Err(bad(c, "a shaft is one outline with no holes in it: sketch each hole as a shaft of its own")),
-        None => ring(c, "boundary", points(c, p, "boundary")?)?,
+        None => (ring(c, "boundary", points(c, p, "boundary")?)?, Vec::new()),
     };
     if geom::area(&boundary) < 0.0 {
         boundary.reverse();
     }
     let (top_level, height) = top_param(c, m, p, level)?;
     let base_offset = num(c, p, "base_offset")?.unwrap_or(0.0);
-    let id = s.model_mut().insert(Element::Shaft(Shaft { level, boundary, top_level, height, base_offset }));
+    let id = s.model_mut().insert(Element::Shaft(Shaft { level, boundary, top_level, height, base_offset, sketch }));
     Ok(json!({"id": id}))
 }
 
@@ -3822,11 +3833,12 @@ fn roof(s: &mut Session, p: &Value) -> R {
     };
     let type_name = type_param(c, p, m, "roof")?;
     let extrusion: Option<Extrusion> = shaped(c, p, "extrusion", "{line: [[x,y],[x,y]], profile: [[along, up],…], from?, to}")?;
-    let drawn = sketched(c, p, "courtyards")?;
+    let drawn = sketched(c, p, "courtyards", &[])?;
+    let sketch = drawn.as_ref().map(|(_, lines)| lines.clone()).unwrap_or_default();
     let given = !absent(p.get("boundary")) || drawn.is_some();
     let overhang = num(c, p, "overhang")?.unwrap_or(if given || extrusion.is_some() { 0.0 } else { 500.0 });
     let (boundary, found) = match (drawn, given, &extrusion) {
-        (Some(r), ..) => (r.outer, r.holes),
+        (Some((r, _)), ..) => (r.outer, r.holes),
         (None, true, _) => (ring(c, "boundary", points(c, p, "boundary")?)?, Vec::new()),
         (None, false, Some(_)) => (Vec::new(), Vec::new()),
         (None, false, None) => roof_footprint(m, level, overhang).map_err(|e| bad(c, e))?,
@@ -3845,6 +3857,7 @@ fn roof(s: &mut Session, p: &Value) -> R {
         openings: rings(c, "opening", p, "openings")?.unwrap_or_default(),
         join: id_opt(c, p, "join")?,
         extrusion,
+        sketch,
     };
     let id = s.model_mut().insert(Element::Roof(r));
     Ok(json!({"id": id}))
@@ -3912,6 +3925,7 @@ fn dormer(s: &mut Session, p: &Value) -> R {
         openings: Vec::new(),
         join: Some(host),
         extrusion: None,
+        sketch: Vec::new(),
     }));
     let roof_guid = model.guid(roof);
     let wall = |start: P2, end: P2| {
@@ -3946,15 +3960,66 @@ fn dormer(s: &mut Session, p: &Value) -> R {
 }
 
 /// `key` as JSON shaped like `T` (a list of at most `MAX_POINTS`), or none.
+/// A sketch line as a command takes it: `[[x,y],[x,y]]` straight, `[[x,y],[x,y],[x,y]]` an arc from the first to the
+/// second through the third, or `{start, end, through?, id?}`, `id` one of the sketch's lines it keeps.
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum Given {
+    Line([P2; 2]),
+    Arc([P2; 3]),
+    Full(Kept),
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Kept {
+    #[serde(default)]
+    id: Option<Id>,
+    start: P2,
+    end: P2,
+    #[serde(default)]
+    through: Option<P2>,
+}
+
+const SKETCH_SHAPE: &str = "a list of lines, each [[x,y],[x,y]], an arc [[x,y],[x,y],[x,y]] (its ends, then a point it passes \
+     through) or {start, end, through?, id?}";
+
+/// The lines given under `key`, a line given an `id` keeping that of the line of `old` (the sketch being edited) it names.
+fn sketch_param(c: &str, p: &Value, key: &str, old: &[SketchLine]) -> Result<Option<Vec<SketchLine>>, String> {
+    let Some(given) = shaped::<Vec<Given>>(c, p, key, SKETCH_SHAPE)? else { return Ok(None) };
+    given
+        .into_iter()
+        .enumerate()
+        .map(|(i, g)| match g {
+            Given::Line([a, b]) => Ok(SketchLine::new(a, b)),
+            Given::Arc([a, b, t]) => Ok(SketchLine::arc(a, b, t)),
+            Given::Full(k) => {
+                let mut l = SketchLine { through: k.through, ..SketchLine::new(k.start, k.end) };
+                if let Some(id) = k.id {
+                    let was = old.iter().find(|o| o.id == id).ok_or_else(|| {
+                        bad(c, format!("`{key}` line {i}: {id} isn't a line of this sketch; leave `id` out for a new one"))
+                    })?;
+                    (l.id, l.guid) = (was.id, was.guid);
+                }
+                Ok(l)
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(Some)
+}
+
 /// `sketch`: lines drawn in any order, solved into one outline (counter-clockwise) and its holes (clockwise), as
-/// `sketch.rs` solves them; None when it isn't given. Given with `boundary` or `holes` (the key the element's holes go by),
-/// it's refused.
-fn sketched(c: &str, p: &Value, holes: &str) -> Result<Option<geom::Region>, String> {
-    let Some(lines) = shaped::<Vec<sketch::Line>>(c, p, "sketch", "a list of lines [[[x,y],[x,y]],…]")? else { return Ok(None) };
+/// `sketch.rs` solves them, and the lines, to keep; None when it isn't given. Given with `boundary` or `holes` (the key the
+/// element's holes go by), it's refused. A line given an `id` keeps that of the line of `old` it names.
+fn sketched(c: &str, p: &Value, holes: &str, old: &[SketchLine]) -> Result<Option<(geom::Region, Vec<SketchLine>)>, String> {
+    let Some(lines) = sketch_param(c, p, "sketch", old)? else { return Ok(None) };
     if ["boundary", holes].iter().any(|k| !k.is_empty() && !absent(p.get(*k))) {
         return Err(bad(c, format!("give the outline as `sketch` or `boundary` (with `{holes}`), not both")));
     }
-    sketch::solve_one(&lines).map(Some).map_err(|e| bad(c, format!("the sketch isn't one outline: {}", sketch::say(&e, "line"))))
+    match sketch::solve_one(&lines) {
+        Ok(r) => Ok(Some((r, lines))),
+        Err(e) => Err(bad(c, format!("the sketch isn't one outline: {}", sketch::say(&e, &sketch::namer(&lines))))),
+    }
 }
 
 /// A ring given as points (`what`: a boundary, an opening), any point repeating the one before it (or at its end, the
@@ -3976,7 +4041,7 @@ fn ring(c: &str, what: &str, given: Vec<P2>) -> Result<Vec<P2>, String> {
     match sketch::solve(&sketch::lines_of(&r, &[])) {
         Ok(_) => Ok(r),
         Err(e) if e.iter().all(|p| matches!(p, sketch::Problem::NoArea { .. })) => Ok(r),
-        Err(e) => Err(bad(c, format!("{what} isn't a simple outline: {}", sketch::say(&e, "edge")))),
+        Err(e) => Err(bad(c, format!("{what} isn't a simple outline: {}", sketch::say(&e, &|i| format!("edge {i}"))))),
     }
 }
 
@@ -3988,12 +4053,25 @@ fn rings(c: &str, what: &str, p: &Value, key: &str) -> Result<Option<Vec<Vec<P2>
 
 fn sketch_lines(_: &mut Session, p: &Value) -> R {
     let c = "sketch";
-    let lines = shaped::<Vec<sketch::Line>>(c, p, "lines", "a list of lines [[[x,y],[x,y]],…]")?
-        .ok_or_else(|| bad(c, "`lines` [[[x,y],[x,y]],…] is required"))?;
-    let profile = sketch::solve(&lines).map_err(|e| bad(c, format!("the lines don't make closed loops: {}", sketch::say(&e, "line"))))?;
+    let lines = sketch_param(c, p, "lines", &[])?.ok_or_else(|| bad(c, "`lines` [[[x,y],[x,y]],…] is required"))?;
+    let profile = sketch::solve(&lines)
+        .map_err(|e| bad(c, format!("the lines don't make closed loops: {}", sketch::say(&e, &sketch::namer(&lines)))))?;
     let regions: Vec<Value> =
         profile.regions.iter().map(|r| json!({"outline": r.outer, "holes": r.holes, "area_m2": m2(r.area())})).collect();
     Ok(json!({"regions": regions, "area_m2": m2(profile.area())}))
+}
+
+/// An element's sketch: the one it keeps, while that still draws its outline and holes; else their edges, as new lines.
+fn boundary_now(e: &Element) -> Option<Vec<SketchLine>> {
+    let (outline, holes) = match e {
+        Element::Floor(f) => (f.boundary.clone(), f.openings.clone()),
+        Element::Ceiling(x) => (x.boundary.clone(), x.openings.clone()),
+        Element::Roof(r) if r.extrusion.is_none() => (r.boundary.clone(), r.courtyards.clone()),
+        Element::Shaft(sh) => (sh.boundary.clone(), Vec::new()),
+        _ => return None,
+    };
+    let kept = e.sketch().filter(|ls| sketch::draws(ls, &outline, &holes)).cloned();
+    Some(kept.unwrap_or_else(|| sketch::lines_of(&outline, &holes)))
 }
 
 /// Revit's Edit Boundary: an element's outline and its holes redrawn as one sketch.
@@ -4001,25 +4079,22 @@ fn edit_boundary(s: &mut Session, p: &Value) -> R {
     let c = "edit_boundary";
     let m = &s.model;
     let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, the floor, ceiling, roof or shaft to edit, is required"))?;
-    let (outline, holes): (&[P2], &[Vec<P2>]) = match m.elements.get(id) {
-        Some(Element::Floor(f)) => (&f.boundary, &f.openings),
-        Some(Element::Ceiling(x)) => (&x.boundary, &x.openings),
-        Some(Element::Roof(r)) if r.extrusion.is_none() => (&r.boundary, &r.courtyards),
-        Some(Element::Roof(_)) => return Err(bad(c, format!("{id} is an extrusion roof: change its profile, `modify` its `extrusion`"))),
-        Some(Element::Shaft(sh)) => (&sh.boundary, &[]),
-        _ => return Err(bad(c, format!("{id} isn't a floor, a ceiling, a roof's footprint or a shaft"))),
-    };
-    let Some(r) = sketched(c, p, "")? else {
-        return Ok(json!({"id": id, "sketch": sketch::lines_of(outline, holes)}));
+    let e = m.elements.get(id).cloned().ok_or_else(|| bad(c, format!("no element {id}")))?;
+    if let Element::Roof(Roof { extrusion: Some(_), .. }) = e {
+        return Err(bad(c, format!("{id} is an extrusion roof: change its profile, `modify` its `extrusion`")));
+    }
+    let now = boundary_now(&e).ok_or_else(|| bad(c, format!("{id} isn't a floor, a ceiling, a roof's footprint or a shaft")))?;
+    let Some((r, lines)) = sketched(c, p, "", &now)? else {
+        return Ok(json!({"id": id, "sketch": now}));
     };
     let area = m2(r.area());
-    let e = match m.elements.get(id).cloned() {
-        Some(Element::Floor(f)) => Element::Floor(Floor { boundary: r.outer, openings: r.holes, ..f }),
-        Some(Element::Ceiling(x)) => Element::Ceiling(Ceiling { boundary: r.outer, openings: r.holes, ..x }),
-        Some(Element::Shaft(_)) if !r.holes.is_empty() => return Err(bad(c, "a shaft is one outline with no holes in it")),
-        Some(Element::Shaft(sh)) => Element::Shaft(Shaft { boundary: r.outer, ..sh }),
-        Some(Element::Roof(old)) => {
-            let mut new = Roof { boundary: r.outer, courtyards: r.holes, gables: Vec::new(), ..old.clone() };
+    let e = match e {
+        Element::Floor(f) => Element::Floor(Floor { boundary: r.outer, openings: r.holes, sketch: lines, ..f }),
+        Element::Ceiling(x) => Element::Ceiling(Ceiling { boundary: r.outer, openings: r.holes, sketch: lines, ..x }),
+        Element::Shaft(_) if !r.holes.is_empty() => return Err(bad(c, "a shaft is one outline with no holes in it")),
+        Element::Shaft(sh) => Element::Shaft(Shaft { boundary: r.outer, sketch: lines, ..sh }),
+        Element::Roof(old) => {
+            let mut new = Roof { boundary: r.outer, courtyards: r.holes, gables: Vec::new(), sketch: lines, ..old.clone() };
             // A gable stays where its edge does, either way round.
             let same =
                 |(a, b): (P2, P2), (c, d): (P2, P2)| (a.dist(c) <= TOL && b.dist(d) <= TOL) || (a.dist(d) <= TOL && b.dist(c) <= TOL);
@@ -5363,6 +5438,10 @@ fn transformed(c: &str, m: &Model, id: Id, mo: &Motion, with: &BTreeSet<Id>) -> 
     let within = |g: Guid| m.elements.id(g).is_some_and(|i| with.contains(&i));
     let mut e = m.elements.get(id).cloned().ok_or_else(|| bad(c, format!("no element {id}")))?;
     let category = e.category();
+    // Its sketch goes with it, line for line.
+    if let Some(lines) = e.sketch_mut() {
+        lines.iter_mut().for_each(|l| *l = l.map(f));
+    }
     match &mut e {
         Element::Level(_) => return Err(bad(c, format!("level {id} has no place in plan; change its elevation, or add a level"))),
         Element::Sheet(_) => return Err(bad(c, format!("sheet {id} has no place in plan; move the views on it"))),
