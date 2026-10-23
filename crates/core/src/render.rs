@@ -522,8 +522,9 @@ fn annotates(m: &Model, owner: Option<Id>) -> bool {
 }
 
 /// What of each cut outline is the edge of what the view cuts, as runs of points: its edges, but for the stretches
-/// another outline lies against on their outer side, where two walls meet at a join or one runs into another.
-fn cut_edges(outlines: &[(Id, Vec<P2>)]) -> Vec<(Id, Vec<Vec<P2>>)> {
+/// another outline lies against on their outer side, where two walls meet at a join or one runs into another; where two
+/// runs meet, each carried on `reach` mm round the corner ([`turn_corners`]).
+fn cut_edges(outlines: &[(Id, Vec<P2>)], reach: f64) -> Vec<(Id, Vec<Vec<P2>>)> {
     // How far past an edge, outward, a point is looked for in another outline: mm.
     const PAST: f64 = 1.0;
     let boxes: Vec<(P2, P2)> = outlines
@@ -591,7 +592,43 @@ fn cut_edges(outlines: &[(Id, Vec<P2>)]) -> Vec<(Id, Vec<Vec<P2>>)> {
         }
         out.push((*id, runs));
     }
+    turn_corners(&mut out, reach);
     out
+}
+
+/// Each run that ends where another ends (two walls' outlines meeting at a corner) carried on `reach` mm (or the other's
+/// first edge, if shorter) along the other: so the corner is a join inside a line, mitred square, not two ends meeting with
+/// a notch between them. What's carried on draws over the other's line, in its place.
+fn turn_corners(runs: &mut [(Id, Vec<Vec<P2>>)], reach: f64) {
+    // Every end: its point, and the way its run goes from it.
+    let ends: Vec<(P2, P2)> = runs
+        .iter()
+        .flat_map(|(_, rs)| rs)
+        .filter(|r| r.len() >= 2 && r.first().zip(r.last()).is_some_and(|(a, b)| a.dist(*b) > 1e-9))
+        .flat_map(|r| {
+            let n = r.len();
+            [(r[0], r[1]), (r[n - 1], r[n - 2])]
+        })
+        .collect();
+    let on = |at: P2, from: P2| {
+        ends.iter().find(|(p, q)| p.dist(at) < 1e-6 && q.dist(from) > 1e-9).map(|(p, q)| {
+            let len = p.dist(*q);
+            *p + (*q - *p) * (reach.min(len) / len)
+        })
+    };
+    for r in runs.iter_mut().flat_map(|(_, rs)| rs.iter_mut()) {
+        let n = r.len();
+        if n < 2 || r[0].dist(r[n - 1]) <= 1e-9 {
+            continue;
+        }
+        let (head, tail) = (on(r[0], r[1]), on(r[n - 1], r[n - 2]));
+        if let Some(q) = tail {
+            r.push(q);
+        }
+        if let Some(q) = head {
+            r.insert(0, q);
+        }
+    }
 }
 
 /// The plan of `level` fitted into `width` x `height` px.
@@ -913,7 +950,7 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64) -> Drawing {
         d.fill(rings, POCHE);
     }
     let pieces: Vec<(Id, Vec<P2>)> = cuts.iter().flat_map(|(owner, rings)| rings.iter().map(|r| (*owner, r.clone()))).collect();
-    for (owner, runs) in cut_edges(&pieces) {
+    for (owner, runs) in cut_edges(&pieces, 1.0 / d.view.scale) {
         d.owner = Some(owner);
         for run in runs {
             d.line(&run, BY_CATEGORY, INK, false);
@@ -1230,7 +1267,7 @@ fn draw_plan(m: &Model, level: impl Key, view: View, up: bool, k: f32, n: f64) -
         d.owner = Some(*id);
         d.fill(std::slice::from_ref(o), POCHE);
     }
-    for (id, runs) in cut_edges(&outlines) {
+    for (id, runs) in cut_edges(&outlines, 1.0 / d.view.scale) {
         d.owner = Some(id);
         for run in runs {
             d.line(&run, BY_CATEGORY, INK, false);
@@ -2230,7 +2267,7 @@ pub fn svg(d: &Drawing) -> String {
                 let width = if *width > 0.0 { format!(r#"{width}""#) } else { r#"1" vector-effect="non-scaling-stroke""#.to_string() };
                 write!(
                     s,
-                    r#"<path d="{}" fill="none" stroke="{}" stroke-width="{width} stroke-linecap="round" stroke-linejoin="round"{dash}/>"#,
+                    r#"<path d="{}" fill="none" stroke="{}" stroke-width="{width} stroke-linecap="round" stroke-linejoin="miter"{dash}/>"#,
                     path_data(pts, *closed),
                     hex(*color)
                 )
@@ -2293,7 +2330,7 @@ fn paint(pm: &mut Pixmap, d: &Drawing) {
                 let stroke = Stroke {
                     width: *width,
                     line_cap: LineCap::Round,
-                    line_join: LineJoin::Round,
+                    line_join: LineJoin::Miter,
                     dash: dash.and_then(|[a, b]| StrokeDash::new(vec![a, b], 0.0)),
                     ..Stroke::default()
                 };
@@ -3084,5 +3121,27 @@ mod tests {
         // Where two walls meet at a corner, the mitre between them is poché, no line.
         assert_eq!(pixel(&png, view.px(P2(8000.0, 0.0))), (POCHE.0, POCHE.1, POCHE.2));
         assert_eq!(pixel(&png, view.px(P2(8040.0, 40.0))), (POCHE.0, POCHE.1, POCHE.2));
+    }
+
+    #[test]
+    fn where_two_walls_cut_outlines_meet_at_a_corner_they_join_square_with_no_notch() {
+        let s = house();
+        // The house's south-east corner: the south wall's axis on y = 0, the east's on x = 8000, both 200 mm thick, so the
+        // outer corner is at (8100, -100). The outline, 8 px wide, reaches 4 px past it each way, a square corner: 30 mm
+        // out along the diagonal is inside that square, outside a rounded one (3 px from the corner, past its 4 px radius
+        // only on the diagonal of the square, at 4.2 px).
+        let view = View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
+        let d = draw(&s.model, 100000, view);
+        let png = png(&d).unwrap();
+        assert_eq!(pixel(&png, view.px(P2(8130.0, -130.0))), (INK.0, INK.1, INK.2), "the outer corner, square");
+        // Each wall's run goes on round the corner into the other's: one line, joined, not two ends meeting.
+        let corner = view.px(P2(8100.0, -100.0));
+        let through = d.prims.iter().zip(&d.parts).any(|(p, part)| match p {
+            Prim::Line { pts, .. } if *part == Part::Cut => {
+                pts.len() > 2 && pts[1..pts.len() - 1].iter().any(|q| (q.0 - corner.0).abs() < 0.01 && (q.1 - corner.1).abs() < 0.01)
+            }
+            _ => false,
+        });
+        assert!(through, "a run turns the corner");
     }
 }

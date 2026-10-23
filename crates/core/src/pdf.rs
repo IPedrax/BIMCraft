@@ -21,7 +21,7 @@ fn deflate(bytes: &[u8]) -> Vec<u8> {
 /// pictures, RGB, in the order the stream names them (`/Im0`, `/Im1`…).
 pub(crate) fn contents(d: &Drawing, paper: P2) -> (String, Vec<(u32, u32, Vec<u8>)>) {
     let k = 72.0 / 25.4 / d.view.scale;
-    let mut s = format!("{k:.6} 0 0 {:.6} 0 {:.3} cm 1 J 1 j\n", -k, paper.1 * 72.0 / 25.4);
+    let mut s = format!("{k:.6} 0 0 {:.6} 0 {:.3} cm 1 J 0 j\n", -k, paper.1 * 72.0 / 25.4);
     let color =
         |c: crate::render::Rgb| format!("{:.3} {:.3} {:.3}", f32::from(c.0) / 255.0, f32::from(c.1) / 255.0, f32::from(c.2) / 255.0);
     let path = |s: &mut String, pts: &[(f32, f32)], closed: bool| {
