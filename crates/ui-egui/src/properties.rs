@@ -70,6 +70,10 @@ enum Kind {
     LocationLine,
     /// A detail line's line style: a drop-down of the project's.
     LineStyle,
+    /// A filled region's type: a drop-down of the project's.
+    RegionType,
+    /// A filled region's boundary: a line style, or invisible lines (none).
+    RegionLines,
     /// Which line of a run's section its heights are: a drop-down.
     Justification,
     /// Whether a roof or a floor is there (a wall's attachment); read only.
@@ -181,6 +185,11 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "at", "Location", Point),
         ],
         "line" => &[("Graphics", "style", "Line Style", LineStyle), ("Dimensions", "length", "Length", LengthShown)],
+        "region" => &[
+            ("Graphics", "type", "Region Type", RegionType),
+            ("Graphics", "line_style", "Line Style", RegionLines),
+            ("Dimensions", "area_m2", "Area", AreaShown),
+        ],
         "spot" => {
             &[("Dimensions", "elevation", "Elevation", LengthShown), ("Other", "host", "Host", Shown), ("Other", "at", "Location", Point)]
         }
@@ -378,6 +387,7 @@ fn icon(category: &str) -> Icon {
         "railing" => Icon::Railing,
         "text" => Icon::Text,
         "line" => Icon::Line,
+        "region" => Icon::FilledRegion,
         "spot" => Icon::Spot,
         "view3d" => Icon::View3D,
         _ => Icon::Plan,
@@ -1096,6 +1106,22 @@ impl BimApp {
                                 let options: Vec<String> = model.line_styles.keys().cloned().collect();
                                 if let Some(s) = combo(ui, (id, key), name.id, val.as_str().unwrap_or_default(), &options) {
                                     change = Some((key, Ok(json!(s))));
+                                }
+                            }
+                            RegionType => {
+                                let options: Vec<String> = model.region_types.keys().cloned().collect();
+                                if let Some(s) = combo(ui, (id, key), name.id, val.as_str().unwrap_or_default(), &options) {
+                                    change = Some((key, Ok(json!(s))));
+                                }
+                            }
+                            // Invisible lines first, then the styles; picked, none is null.
+                            RegionLines => {
+                                let invisible = t("<Invisible lines>").to_string();
+                                let options: Vec<String> =
+                                    std::iter::once(invisible.clone()).chain(model.line_styles.keys().cloned()).collect();
+                                let now = val.as_str().map_or(invisible.clone(), str::to_string);
+                                if let Some(s) = combo(ui, (id, key), name.id, &now, &options) {
+                                    change = Some((key, Ok(if s == invisible { Value::Null } else { json!(s) })));
                                 }
                             }
                             Justification => {

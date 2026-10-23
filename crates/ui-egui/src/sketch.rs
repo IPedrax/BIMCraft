@@ -31,6 +31,8 @@ pub enum Of {
     Roof(Id),
     /// A new shaft opening from the level.
     Shaft(Id),
+    /// A new filled region in the view (a plan's key), or a masking region: any number of outlines.
+    Region { view: Id, masking: bool },
     /// The element's outline and holes, redrawn.
     Edit(Id),
 }
@@ -51,6 +53,8 @@ pub struct Sketch {
     pub picked: BTreeSet<usize>,
     pub wrong: Vec<usize>,
     pub drag: Option<Drag>,
+    /// A new region's type and its boundary's line style (none, invisible), as the Options Bar sets them.
+    pub region: (String, Option<String>),
 }
 
 /// Sketch lines in the plan: Revit's magenta.
@@ -67,6 +71,8 @@ impl Sketch {
             Of::Ceiling(_) => "Create Ceiling Boundary",
             Of::Roof(_) => "Create Roof Footprint",
             Of::Shaft(_) => "Create Shaft Opening Sketch",
+            Of::Region { masking: false, .. } => "Create Filled Region Boundary",
+            Of::Region { masking: true, .. } => "Create Masking Region Boundary",
             Of::Edit(_) => "Edit Boundary",
         }
     }
@@ -236,7 +242,24 @@ pub fn friendly(problems: &[Problem], lines: &[SketchLine], units: Units) -> Str
 impl BimApp {
     /// Sketch mode on: the lines given (none for a new outline), drawing them with Line.
     pub(crate) fn start_sketch(&mut self, of: Of, lines: Vec<SketchLine>) {
-        self.sketch = Some(Sketch { of, lines, picked: BTreeSet::new(), wrong: Vec::new(), drag: None });
+        // A filled region in Solid Black and Thin Lines; a masking one in Masking, its lines unseen (or the first of each).
+        let m = &self.session.model;
+        let first = |want: &str, names: Vec<&String>| {
+            let w = m.language.word(want);
+            names.iter().find(|n| n.as_str() == w).or(names.first()).map(|n| n.to_string()).unwrap_or_default()
+        };
+        let region = match of {
+            Of::Region { masking: true, .. } => {
+                let masks: Vec<&String> = m.region_types.iter().filter(|(_, t)| t.masking).map(|(n, _)| n).collect();
+                let masks = if masks.is_empty() { m.region_types.keys().collect() } else { masks };
+                (first(bimcraft_core::fills::MASKING, masks), None)
+            }
+            _ => (
+                first(bimcraft_core::fills::SOLID_BLACK, m.region_types.keys().collect()),
+                Some(first(bimcraft_core::lines::THIN, m.line_styles.keys().collect())).filter(|s| !s.is_empty()),
+            ),
+        };
+        self.sketch = Some(Sketch { of, lines, picked: BTreeSet::new(), wrong: Vec::new(), drag: None, region });
         self.selection.clear();
         self.status = Status::default();
         self.tool = Tool::SketchLine(Vec::new());
@@ -258,7 +281,7 @@ impl BimApp {
     pub(crate) fn boundary_selected(&self) -> bool {
         match self.selection.as_slice() {
             [id] => match self.session.model.elements.get(*id) {
-                Some(Element::Floor(_) | Element::Ceiling(_) | Element::Shaft(_)) => true,
+                Some(Element::Floor(_) | Element::Ceiling(_) | Element::Shaft(_) | Element::FilledRegion(_)) => true,
                 Some(Element::Roof(r)) => r.extrusion.is_none(),
                 _ => false,
             },
@@ -270,7 +293,14 @@ impl BimApp {
     /// names marked, still sketching.
     pub(crate) fn finish_sketch(&mut self) {
         let Some(sk) = &mut self.sketch else { return };
-        if let Err(problems) = solver::solve_one(&sk.lines) {
+        // A region is any number of outlines; the rest, one.
+        let many = match sk.of {
+            Of::Region { .. } => true,
+            Of::Edit(id) => matches!(self.session.model.elements.get(id), Some(Element::FilledRegion(_))),
+            _ => false,
+        };
+        let solved = if many { solver::solve(&sk.lines).map(|_| ()) } else { solver::solve_one(&sk.lines).map(|_| ()) };
+        if let Err(problems) = solved {
             sk.wrong = problems.iter().flat_map(Problem::lines).collect();
             self.status = Status { text: friendly(&problems, &sk.lines, self.session.model.units), error: true };
             return;
@@ -294,6 +324,9 @@ impl BimApp {
                 ("roof", self.typed("roof", json!({"level": on, "slope": slope, "sketch": lines})))
             }
             Of::Shaft(level) => ("shaft", json!({"level": level, "sketch": lines})),
+            Of::Region { view, .. } => {
+                ("filled_region", json!({"view": view, "sketch": lines, "type": sk.region.0, "line_style": sk.region.1}))
+            }
             Of::Edit(id) => ("edit_boundary", json!({"id": id, "sketch": lines})),
         };
         // Solved, it may still be refused for what it makes (a shaft with a hole): the command says why.
@@ -550,6 +583,48 @@ impl BimApp {
         panel(ui, "Draw", |ui| {
             if big_button(ui, Icon::Line, label, false, tip).clicked() {
                 self.start_sketch(of, Vec::new());
+            }
+        });
+    }
+
+    /// The Options Bar while sketching a new region: its type, and its boundary's line style or invisible lines.
+    pub(crate) fn sketch_options(&mut self, ui: &mut Ui) {
+        let m = &self.session.model;
+        let Some(sk) = self.sketch.as_mut().filter(|sk| matches!(sk.of, Of::Region { .. })) else { return };
+        let l = ui.label(t("Type:"));
+        let c = egui::ComboBox::from_id_salt("region-type").selected_text(&sk.region.0).width(160.0).show_ui(ui, |ui| {
+            for n in m.region_types.keys() {
+                ui.selectable_value(&mut sk.region.0, n.clone(), n);
+            }
+        });
+        c.response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, t("Region Type")));
+        c.response.labelled_by(l.id);
+        let l = ui.label(t("Line Style:"));
+        let invisible = t("<Invisible lines>").to_string();
+        let shown = sk.region.1.clone().unwrap_or_else(|| invisible.clone());
+        let c = egui::ComboBox::from_id_salt("region-lines").selected_text(shown).width(160.0).show_ui(ui, |ui| {
+            ui.selectable_value(&mut sk.region.1, None, &invisible);
+            for n in m.line_styles.keys() {
+                ui.selectable_value(&mut sk.region.1, Some(n.clone()), n);
+            }
+        });
+        c.response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, t("Line Style")));
+        c.response.labelled_by(l.id);
+    }
+
+    /// Annotate's Region panel: Filled Region, Masking Region, sketched in the plan on screen.
+    pub(crate) fn region_panel(&mut self, ui: &mut Ui) {
+        panel(ui, "Region", |ui| {
+            for (icon, label, tip, masking) in [
+                (Icon::FilledRegion, "Filled Region", "Filled Region (FR): sketch an area filled with a pattern, in this view", false),
+                (Icon::MaskingRegion, "Masking Region", "Masking Region: sketch an area that hides what's under it, in this view", true),
+            ] {
+                let on = matches!(self.sketch.as_ref().map(|s| s.of), Some(Of::Region { masking: m, .. }) if m == masking);
+                if big_button(ui, icon, label, on, tip).clicked()
+                    && let Some(view) = self.plan_key()
+                {
+                    self.start_sketch(Of::Region { view, masking }, Vec::new());
+                }
             }
         });
     }

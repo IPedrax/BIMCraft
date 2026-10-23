@@ -826,7 +826,7 @@ mod command_tests {
         // A wall has no boundary.
         let w = run(&mut s, "wall", json!({"points": [[0, 0], [1000, 0]]}))["ids"][0].clone();
         let e = s.execute("edit_boundary", &json!({"id": w, "sketch": with_hole()})).unwrap_err();
-        assert!(e.contains("floor, a ceiling, a roof's footprint or a shaft"), "{e}");
+        assert!(e.contains("floor, a ceiling, a roof's footprint, a shaft or a filled region"), "{e}");
     }
 
     #[test]

@@ -12,6 +12,7 @@ mod csg;
 pub mod engine;
 pub mod family;
 pub mod favorites;
+pub mod fills;
 mod fixtures;
 mod font;
 pub mod geom;

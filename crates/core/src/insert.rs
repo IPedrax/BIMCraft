@@ -165,6 +165,13 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
                     here(&Kind::LinePattern, p);
                 }
             }
+            Kind::FilledRegionType => {
+                if let Some(t) = to.region_types.get_mut(&name) {
+                    for p in [&mut t.foreground, &mut t.background].into_iter().flatten() {
+                        here(&Kind::FillPattern, p);
+                    }
+                }
+            }
             Kind::Type(c) => {
                 let t = &mut to.types;
                 let layers = match c.as_str() {
@@ -213,6 +220,8 @@ fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> boo
         Kind::Parameter => one(&mut to.parameters, Some(&from.parameters), name),
         Kind::LinePattern => one(&mut to.line_patterns, Some(&from.line_patterns), name),
         Kind::LineStyle => one(&mut to.line_styles, Some(&from.line_styles), name),
+        Kind::FillPattern => one(&mut to.fill_patterns, Some(&from.fill_patterns), name),
+        Kind::FilledRegionType => one(&mut to.region_types, Some(&from.region_types), name),
         _ => false,
     }
 }

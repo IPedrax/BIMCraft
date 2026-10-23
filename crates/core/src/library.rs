@@ -42,6 +42,8 @@ pub enum Kind {
     FamilyParameter,
     LinePattern,
     LineStyle,
+    FillPattern,
+    FilledRegionType,
 }
 
 impl Kind {
@@ -63,6 +65,8 @@ impl Kind {
             Kind::FamilyParameter => "family parameter".into(),
             Kind::LinePattern => "line pattern".into(),
             Kind::LineStyle => "line style".into(),
+            Kind::FillPattern => "fill pattern".into(),
+            Kind::FilledRegionType => "filled region type".into(),
         }
     }
 
@@ -82,6 +86,8 @@ impl Kind {
             "family-parameter" => Kind::FamilyParameter,
             "line-pattern" => Kind::LinePattern,
             "line-style" => Kind::LineStyle,
+            "fill-pattern" => Kind::FillPattern,
+            "filled-region-type" => Kind::FilledRegionType,
             _ => Kind::Type(s.strip_prefix("type:")?.to_string()),
         })
     }
@@ -105,6 +111,8 @@ impl fmt::Display for Kind {
             Kind::FamilyParameter => f.write_str("family-parameter"),
             Kind::LinePattern => f.write_str("line-pattern"),
             Kind::LineStyle => f.write_str("line-style"),
+            Kind::FillPattern => f.write_str("fill-pattern"),
+            Kind::FilledRegionType => f.write_str("filled-region-type"),
         }
     }
 }
@@ -489,6 +497,8 @@ impl Model {
         add(Kind::FamilyParameter, &mut params.iter());
         add(Kind::LinePattern, &mut self.line_patterns.keys());
         add(Kind::LineStyle, &mut self.line_styles.keys());
+        add(Kind::FillPattern, &mut self.fill_patterns.keys());
+        add(Kind::FilledRegionType, &mut self.region_types.keys());
         out
     }
 
@@ -836,6 +846,12 @@ impl crate::model::Element {
             },
             Element::Component(c) => family_and_type(&mut c.family, &mut c.type_name, f),
             Element::DetailLine(l) => f(&Kind::LineStyle, &mut l.style),
+            Element::FilledRegion(r) => {
+                f(&Kind::FilledRegionType, &mut r.type_name);
+                if let Some(st) = &mut r.line_style {
+                    f(&Kind::LineStyle, st);
+                }
+            }
             Element::Schedule(sc) => {
                 let mut fields: Vec<&mut String> =
                     sc.fields.iter_mut().map(|x| &mut x.name).chain(sc.sort.iter_mut().map(|x| &mut x.field)).collect();
@@ -906,6 +922,11 @@ impl Model {
         }
         for fam in self.families.values_mut() {
             fam.material_refs_mut(&mut |m| f(&Kind::Material, m));
+        }
+        for t in self.region_types.values_mut() {
+            for p in [&mut t.foreground, &mut t.background].into_iter().flatten() {
+                f(&Kind::FillPattern, p);
+            }
         }
         for p in self.line_styles.values_mut().filter_map(|s| s.pattern.as_mut()) {
             f(&Kind::LinePattern, p);

@@ -10,6 +10,7 @@ use serde_json::{Map, Value, json};
 
 use crate::engine::{Command, Run, Session};
 use crate::favorites::{self, FamilyEntry, Favorites, MaterialEntry};
+use crate::fills::{FillPattern, FilledRegion, FilledRegionType, Target};
 use crate::geom::{self, P2};
 use crate::graphics::{self, Graphics, Group, Look, Override, ViewTemplate};
 use crate::language::Language;
@@ -757,6 +758,43 @@ pub static ALL: &[Command] = &[
         line_style,
     ),
     edit(
+        "fill_pattern",
+        "Fill Patterns",
+        &[],
+        "{name?, target?: drafting|model, lines?: [{angle, spacing, origin?: [x, y], shift?, dashes?: [mm, -mm, …]}, …], rename?, \
+         delete?: true} a fill pattern of the project's, as Revit's (and a PAT file's): families of parallel lines, each at \
+         `angle` degrees through `origin`, its lines `spacing` apart and each `shift` along from the last, whole or dashed \
+         (`dashes`: a dash's length, a space's as a negative one, 0 a dot); no lines, it fills solid. A drafting pattern's \
+         lengths are mm on paper, the same at any scale; a model pattern's mm in the building. A project starts with Solid \
+         fill, Diagonal Up and Down, Crosshatch, Diagonal Crosshatch, Horizontal, Vertical, Sand, Brick 225 x 75 and Tile 300. \
+         `rename` renames it, the region types filling with it following; `delete` takes it away while no type uses it. \
+         Without `name`, it lists every pattern",
+        fill_pattern,
+    ),
+    edit(
+        "filled_region_type",
+        "Filled Region Types",
+        &[],
+        "{name?, foreground?: pattern | null, foreground_color?, background?: pattern | null, background_color?, masking?, \
+         rename?, delete?: true} a filled region type of the project's: its foreground pattern over its background one, each \
+         in its colour (\"#rrggbb\" or [r, g, b], black unless told), over the paper when `masking` (it hides what's under \
+         it). A new one starts with none. A project starts with Solid Black, Diagonal Up, Crosshatch, Sand, Brick and Masking. \
+         `rename` renames it, its regions following; `delete` takes it away while no region is of it. Without `name`, it \
+         lists every type",
+        filled_region_type,
+    ),
+    edit(
+        "filled_region",
+        "Filled Region",
+        &["FR"],
+        "{sketch: [[[x,y],[x,y]],…], view?, type?, line_style?: name | null} a filled region in a view (a plan, a section, an \
+         elevation or a sheet, in its own terms; the lowest plan by default): the loops its sketch closes into (see \
+         `sketch`: any number of outlines, a loop inside one a hole, one inside that an island), filled as type `type` \
+         (Solid Black unless told) says, its boundary in line style `line_style` (Thin Lines unless told; null, unseen: a \
+         masking region's way). It draws over the model, under the annotation; edit its sketch with edit_boundary",
+        filled_region,
+    ),
+    edit(
         "detail_line",
         "Detail Line",
         &["DL"],
@@ -1449,6 +1487,11 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             extra.insert("perimeter_m".into(), json!(region.as_ref().map_or(0.0, |g| (g.perimeter() / 10.0).round() / 100.0)));
         }
         Element::Text(_) => {
+            extra.insert("level".into(), json!(m.level_of(e)));
+        }
+        Element::FilledRegion(r) => {
+            let area = sketch::solve(&r.sketch).map_or(0.0, |p| p.area());
+            extra.insert("area_m2".into(), json!(m2(area)));
             extra.insert("level".into(), json!(m.level_of(e)));
         }
         Element::DetailLine(l) => {
@@ -4083,7 +4126,17 @@ fn edit_boundary(s: &mut Session, p: &Value) -> R {
     if let Element::Roof(Roof { extrusion: Some(_), .. }) = e {
         return Err(bad(c, format!("{id} is an extrusion roof: change its profile, `modify` its `extrusion`")));
     }
-    let now = boundary_now(&e).ok_or_else(|| bad(c, format!("{id} isn't a floor, a ceiling, a roof's footprint or a shaft")))?;
+    // A filled region is its sketch, any number of outlines.
+    if let Element::FilledRegion(r) = e {
+        let Some(lines) = sketch_param(c, p, "sketch", &r.sketch)? else { return Ok(json!({"id": id, "sketch": r.sketch})) };
+        let profile = sketch::solve(&lines)
+            .map_err(|e| bad(c, format!("the sketch doesn't close into loops: {}", sketch::say(&e, &sketch::namer(&lines)))))?;
+        let id = m.elements.id(id).ok_or_else(|| bad(c, "no such element"))?;
+        s.model_mut().elements.insert(id, Element::FilledRegion(FilledRegion { sketch: lines, ..r }));
+        return Ok(json!({"id": id, "area_m2": m2(profile.area())}));
+    }
+    let now =
+        boundary_now(&e).ok_or_else(|| bad(c, format!("{id} isn't a floor, a ceiling, a roof's footprint, a shaft or a filled region")))?;
     let Some((r, lines)) = sketched(c, p, "", &now)? else {
         return Ok(json!({"id": id, "sketch": now}));
     };
@@ -5456,6 +5509,8 @@ fn transformed(c: &str, m: &Model, id: Id, mo: &Motion, with: &BTreeSet<Id>) -> 
         }
         Element::Spot(sp) => sp.at = f(sp.at),
         Element::DetailLine(l) => l.points.iter_mut().for_each(|p| *p = micron(f(*p))),
+        // Its sketch went with it, above.
+        Element::FilledRegion(_) => {}
         Element::Viewport(v) => v.at = f(v.at),
         Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => (col.at, col.angle) = turned(f, col.at, col.angle),
         // A run keeps its heights at its ends; its section is the same either way round.
@@ -6091,6 +6146,7 @@ fn delete(s: &mut Session, p: &Value) -> R {
                         // Notes and spot elevations go with their view, spots with what they read.
                         Element::Text(n) => gone.contains(&n.view),
                         Element::DetailLine(l) => gone.contains(&l.view),
+                        Element::FilledRegion(r) => gone.contains(&r.view),
                         Element::Spot(sp) => gone.contains(&sp.view) || sp.host.is_some_and(|h| gone.contains(&h)),
                         _ => false,
                     }
@@ -6306,6 +6362,149 @@ fn detail_line(s: &mut Session, p: &Value) -> R {
     let l = DetailLine { view: m.guid(view), points, closed: flag(c, p, "closed")?, style };
     let id = s.model_mut().insert(Element::DetailLine(l));
     Ok(json!({"id": id}))
+}
+
+fn fill_pattern(s: &mut Session, p: &Value) -> R {
+    let c = "fill_pattern";
+    only(c, p, &["name", "target", "lines", "rename", "delete"])?;
+    let Some(name) = name_param(c, p, "name")? else {
+        return Ok(json!({"patterns": s.model.fill_patterns}));
+    };
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if m.fill_patterns.remove(&name).is_none() {
+            return Err(bad(c, format!("there's no fill pattern `{name}`")));
+        }
+        let uses = |t: &FilledRegionType| [&t.foreground, &t.background].into_iter().flatten().any(|n| *n == name);
+        if let Some((user, _)) = m.region_types.iter().find(|(_, t)| uses(t)) {
+            return Err(bad(c, format!("filled region type `{user}` fills with `{name}`; give it another first")));
+        }
+        return Ok(json!({"deleted": name}));
+    }
+    let mut pattern = match (m.fill_patterns.get(&name), absent(p.get("lines")) && absent(p.get("target"))) {
+        (Some(was), _) => was.clone(),
+        (None, false) => FillPattern::default(),
+        (None, true) => {
+            let there: Vec<&str> = m.fill_patterns.keys().map(String::as_str).collect();
+            return Err(bad(c, format!("there's no fill pattern `{name}`; make one with `lines`{}", known_names(&there))));
+        }
+    };
+    if let Some(t) = shaped::<Target>(c, p, "target", "drafting or model")? {
+        pattern.target = t;
+    }
+    if let Some(lines) = shaped(c, p, "lines", "[{angle, spacing, origin?: [x, y], shift?, dashes?: [mm, -mm, …]}, …]")? {
+        pattern.lines = lines;
+    }
+    let name = match name_param(c, p, "rename")? {
+        Some(to) if to != name => {
+            if m.fill_patterns.contains_key(&to) {
+                return Err(bad(c, format!("there's already a fill pattern `{to}`")));
+            }
+            m.fill_patterns.remove(&name);
+            rename_entry(m, &LibKind::FillPattern, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    pattern.check(&name).map_err(|e| bad(c, e))?;
+    if m.fill_patterns.get(&name) != Some(&pattern) {
+        m.fill_patterns.insert(name.clone(), pattern.clone());
+    }
+    Ok(json!({"name": name, "pattern": pattern}))
+}
+
+fn filled_region_type(s: &mut Session, p: &Value) -> R {
+    let c = "filled_region_type";
+    only(c, p, &["name", "foreground", "foreground_color", "background", "background_color", "masking", "rename", "delete"])?;
+    let Some(name) = name_param(c, p, "name")? else {
+        return Ok(json!({"types": s.model.region_types}));
+    };
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if m.region_types.remove(&name).is_none() {
+            return Err(bad(c, format!("there's no filled region type `{name}`")));
+        }
+        if let Some((id, _)) = m.elements.iter().find(|(_, e)| matches!(e, Element::FilledRegion(r) if r.type_name == name)) {
+            return Err(bad(c, format!("filled region {id} is of `{name}`; give it another type first")));
+        }
+        return Ok(json!({"deleted": name}));
+    }
+    let mut t = m.region_types.get(&name).cloned().unwrap_or_default();
+    let pattern = |key: &str| -> Result<Option<Option<String>>, String> {
+        match p.get(key) {
+            None => Ok(None),
+            Some(Value::Null) => Ok(Some(None)),
+            Some(Value::String(n)) => Ok(Some(Some(n.trim().to_string()).filter(|n| !n.is_empty()))),
+            Some(v) => Err(bad(c, format!("`{key}` is a fill pattern's name, or null for none, not {v}"))),
+        }
+    };
+    if let Some(f) = pattern("foreground")? {
+        t.foreground = f;
+    }
+    if let Some(b) = pattern("background")? {
+        t.background = b;
+    }
+    for (key, slot) in [("foreground_color", &mut t.foreground_color), ("background_color", &mut t.background_color)] {
+        if let Some(v) = p.get(key).filter(|v| !v.is_null()) {
+            *slot = colour(v).ok_or_else(|| bad(c, format!("`{key}` is \"#rrggbb\" or [r, g, b], each 0 to 255, not {v}")))?;
+        }
+    }
+    if !absent(p.get("masking")) {
+        t.masking = flag(c, p, "masking")?;
+    }
+    let name = match name_param(c, p, "rename")? {
+        Some(to) if to != name => {
+            if m.region_types.contains_key(&to) {
+                return Err(bad(c, format!("there's already a filled region type `{to}`")));
+            }
+            m.region_types.remove(&name);
+            rename_entry(m, &LibKind::FilledRegionType, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    t.check(&name, &m.fill_patterns).map_err(|e| bad(c, e))?;
+    if m.region_types.get(&name) != Some(&t) {
+        m.region_types.insert(name.clone(), t.clone());
+    }
+    Ok(json!({"name": name, "type": t}))
+}
+
+fn filled_region(s: &mut Session, p: &Value) -> R {
+    let c = "filled_region";
+    only(c, p, &["sketch", "view", "level", "type", "line_style"])?;
+    let m = &s.model;
+    let lines = sketch_param(c, p, "sketch", &[])?.ok_or_else(|| bad(c, "`sketch`, its outlines' lines, is required"))?;
+    let profile = sketch::solve(&lines)
+        .map_err(|e| bad(c, format!("the sketch doesn't close into loops: {}", sketch::say(&e, &sketch::namer(&lines)))))?;
+    let view = view_param(c, m, p, true)?;
+    // Solid Black, in the project's language, or its first type.
+    let type_name = match name_param(c, p, "type")? {
+        Some(n) => n,
+        None => {
+            let solid = m.language.word(crate::fills::SOLID_BLACK);
+            m.region_types
+                .get_key_value(solid)
+                .map(|(k, _)| k)
+                .or(m.region_types.keys().next())
+                .cloned()
+                .ok_or_else(|| bad(c, "the project has no filled region type; make one first"))?
+        }
+    };
+    // Thin Lines unless told; null (or "Invisible") draws none.
+    let line_style = match p.get("line_style") {
+        None => {
+            let thin = m.language.word(crate::lines::THIN);
+            m.line_styles.get_key_value(thin).map(|(k, _)| k).or(m.line_styles.keys().next()).cloned()
+        }
+        Some(Value::Null) => None,
+        Some(Value::String(n)) if n.trim().eq_ignore_ascii_case("invisible") => None,
+        Some(Value::String(n)) => Some(n.trim().to_string()),
+        Some(v) => return Err(bad(c, format!("`line_style` is a line style's name, or null for invisible lines, not {v}"))),
+    };
+    let r = FilledRegion { view: m.guid(view), type_name, line_style, sketch: lines };
+    let id = s.model_mut().insert(Element::FilledRegion(r));
+    Ok(json!({"id": id, "area_m2": m2(profile.area())}))
 }
 
 fn line_weights(s: &mut Session, p: &Value) -> R {

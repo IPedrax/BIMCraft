@@ -100,3 +100,18 @@ of its own and draws its parent's annotation as well as its own. Deleting a view
 takes its plan views with it. A project that has none writes the same file as before. A plan's own name, lettered at its bottom left, is in the drawings that make an image (`plan`, `ceiling_plan`: `titled`), not in the window's (`draw`, `draw_ceiling`) or a sheet's (`draw_at`), where the tab and the viewport's title say it. The desktop: View > Duplicate View, DP, and the Project
 Browser's right-click, which also has Delete for a plan view; `Sheet::Plan` and `Sheet::Ceiling` hold the key.
 
+Fill patterns, filled region types and filled regions (`fills.rs`) follow line patterns and styles. A `FillPattern` is
+families of parallel lines as a PAT file has them (`HatchLine`: an angle, an origin, a spacing across, a shift along, and
+dashes, a space negative and a dot 0), drafting (mm on paper, so the same at any scale) or model (mm in the building); no
+lines, it fills solid. `fills::strokes` lays a pattern over any outlines with holes (inside an odd number of rings), within
+the view's window, and gives up rather than draw past a cap, too dense to read; `render::filled_region` draws a region's
+masking (paper), its background and its foreground pattern, then its boundary's sketch lines in their style, unless it has
+none (invisible lines). A plan draws its regions after the model and before the annotation, in a loop of their own (sections
+and sheets likewise), so a masking region hides the walls under it but not the note on it. A `FilledRegion` is annotation of
+its view (`Model::annotation_plan`, so a duplicated plan has its own) and its sketch is a `sketch::SketchLine` list, solved
+when drawn, any number of outlines; Edit Boundary edits it as any other. Patterns and region types are library entries,
+renamed with their references (a type follows its patterns, a region its type and line style) and refused deleted while
+used. The desktop has Annotate > Region (Filled Region, FR, and Masking Region, sketch mode with the type and the line style
+in the Options Bar), Properties (Region Type, Line Style with invisible lines), and Manage > Fill Patterns (`fillpatterns.rs`:
+region types and patterns as one draft, a simple pattern edited as an angle, a spacing and crosshatched or not). Materials'
+cut and surface patterns are still `model::Pattern`; moving them onto fill patterns is a later step.

@@ -40,7 +40,7 @@ pub fn element(category: &str, v: &Value) -> Vec<String> {
         "structuralcolumn" => Column, "footing" => Column, "beam" => Run, "stripfooting" => Run, "pipe" => Run,
         "conduit" => Run, "cabletray" => Run, "wire" => Run, "downconductor" => Run, "groundconductor" => Run,
         "cable" => Run, "component" => Component, "stair" => Stair, "ramp" => Ramp, "railing" => Railing, "roof" => Roof,
-        "text" => Note, "line" => DetailLine, "spot" => Spot, "schedule" => Schedule, "view3d" => View3D,
+        "text" => Note, "line" => DetailLine, "region" => FilledRegion, "spot" => Spot, "schedule" => Schedule, "view3d" => View3D,
         "planview" => PlanView,
     }
 }

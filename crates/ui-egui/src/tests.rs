@@ -4831,6 +4831,7 @@ fn the_massing_tab_makes_floors_walls_a_floor_and_a_roof_from_the_selected_mass(
 mod autosave;
 mod browser;
 mod dock;
+mod fills;
 mod gpu;
 mod lines;
 mod lineweights;

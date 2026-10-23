@@ -11,6 +11,8 @@ use std::f64::consts::{PI, TAU};
 use serde::{Deserialize, Serialize};
 
 use crate::family::{Family, Piece};
+pub use crate::fills::FilledRegion;
+use crate::fills::{self, FillPattern, FilledRegionType};
 use crate::geom::{self, P2, Region};
 use crate::graphics::{self, Graphics, ViewFilter, ViewTemplate};
 use crate::language::Language;
@@ -936,6 +938,7 @@ impl Element {
             Element::Ceiling(c) => Some(&c.sketch),
             Element::Roof(r) => Some(&r.sketch),
             Element::Shaft(sh) => Some(&sh.sketch),
+            Element::FilledRegion(r) => Some(&r.sketch),
             _ => None,
         }
     }
@@ -946,6 +949,7 @@ impl Element {
             Element::Ceiling(c) => Some(&mut c.sketch),
             Element::Roof(r) => Some(&mut r.sketch),
             Element::Shaft(sh) => Some(&mut sh.sketch),
+            Element::FilledRegion(r) => Some(&mut r.sketch),
             _ => None,
         }
     }
@@ -1154,6 +1158,7 @@ macro_rules! visit_refs {
             }
             Element::Text(n) => f(& $($m)? n.view),
             Element::DetailLine(l) => f(& $($m)? l.view),
+            Element::FilledRegion(r) => f(& $($m)? r.view),
             Element::Spot(s) => {
                 f(& $($m)? s.view);
                 if let Some(g) = & $($m)? s.host { f(g) }
@@ -1204,6 +1209,9 @@ pub enum Element {
     /// A detail line: drawn in one view, in a line style; of the Lines category, as Revit's.
     #[serde(rename = "line")]
     DetailLine(DetailLine),
+    /// A filled region: a sketch's outlines in one view, filled as its type says; of Revit's Filled Region.
+    #[serde(rename = "region")]
+    FilledRegion(FilledRegion),
     Spot(Spot),
     Schedule(Schedule),
     View3D(View3D),
@@ -1370,6 +1378,7 @@ impl Element {
         match self {
             Element::Text(_) => "text",
             Element::DetailLine(_) => "line",
+            Element::FilledRegion(_) => "region",
             Element::Spot(_) => "spot",
             Element::Schedule(_) => "schedule",
             Element::View3D(_) => "view3d",
@@ -1648,6 +1657,12 @@ pub struct Model {
     /// Its line styles, by name: a pen, a colour and a pattern, what detail lines draw in.
     #[serde(default = "lines::default_styles", skip_serializing_if = "lines::is_default_styles")]
     pub line_styles: BTreeMap<String, LineStyle>,
+    /// Its fill patterns, by name: families of lines, drafting (mm on paper) or model (mm in the building); none, solid.
+    #[serde(default = "fills::default_patterns", skip_serializing_if = "fills::is_default_patterns")]
+    pub fill_patterns: BTreeMap<String, FillPattern>,
+    /// Its filled region types, by name: a foreground and a background pattern and their colours, masking or not.
+    #[serde(default = "fills::default_region_types", skip_serializing_if = "fills::is_default_region_types")]
+    pub region_types: BTreeMap<String, FilledRegionType>,
     pub elements: Elements,
     /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
     /// templates, phases, phase filters and design options.
@@ -1693,6 +1708,8 @@ impl Model {
             object_styles: BTreeMap::new(),
             line_patterns: lines::patterns(language),
             line_styles: lines::styles(language),
+            fill_patterns: fills::patterns(language),
+            region_types: fills::region_types(language),
             elements: Elements::new(),
             library: crate::library::Library::default(),
         };
@@ -2379,9 +2396,10 @@ impl Model {
         match e {
             Element::Dimension(d) => Some(d.view.unwrap_or(d.level)),
             Element::Tag(t) => t.view.or_else(|| self.level_of(e)),
-            Element::Text(Note { view, .. }) | Element::Spot(Spot { view, .. }) | Element::DetailLine(DetailLine { view, .. }) => {
-                Some(*view)
-            }
+            Element::Text(Note { view, .. })
+            | Element::Spot(Spot { view, .. })
+            | Element::DetailLine(DetailLine { view, .. })
+            | Element::FilledRegion(FilledRegion { view, .. }) => Some(*view),
             _ => None,
         }
     }
@@ -2582,9 +2600,10 @@ impl Model {
             Element::Door(o) | Element::Window(o) => wall_level(o),
             Element::Tag(t) => self.elements.get(t.host).filter(|h| !matches!(h, Element::Tag(_))).and_then(|h| self.level_of(h)),
             // Notes and spot elevations in a level's plan.
-            Element::Text(Note { view, .. }) | Element::Spot(Spot { view, .. }) | Element::DetailLine(DetailLine { view, .. }) => {
-                self.plan_level(*view).map(|l| self.guid(l))
-            }
+            Element::Text(Note { view, .. })
+            | Element::Spot(Spot { view, .. })
+            | Element::DetailLine(DetailLine { view, .. })
+            | Element::FilledRegion(FilledRegion { view, .. }) => self.plan_level(*view).map(|l| self.guid(l)),
             // A plan view stands on its level: it goes with it.
             Element::PlanView(v) => Some(v.level),
             Element::Level(_)
@@ -3320,6 +3339,12 @@ impl Model {
         for (n, s) in &self.line_styles {
             s.check(n, &self.line_patterns)?;
         }
+        for (n, p) in &self.fill_patterns {
+            p.check(n)?;
+        }
+        for (n, t) in &self.region_types {
+            t.check(n, &self.fill_patterns)?;
+        }
         for (cat, map) in [("door", &self.types.door), ("window", &self.types.window)] {
             for (n, t) in map {
                 size(&format!("{cat} type `{n}` width"), t.width)?;
@@ -3723,6 +3748,22 @@ impl Model {
                     if !self.line_styles.contains_key(&l.style) {
                         let there: Vec<&str> = self.line_styles.keys().map(String::as_str).collect();
                         return Err(format!("{who}: there's no line style `{}` (there are: {})", l.style, there.join(", ")));
+                    }
+                }
+                Element::FilledRegion(r) => {
+                    view_ok(r.view, true)?;
+                    crate::sketch::check(&who, &r.sketch)?;
+                    if r.sketch.len() < 3 {
+                        return Err(format!("{who}: a region's sketch closes round with three lines or more"));
+                    }
+                    if !self.region_types.contains_key(&r.type_name) {
+                        let there: Vec<&str> = self.region_types.keys().map(String::as_str).collect();
+                        return Err(format!("{who}: there's no filled region type `{}` (there are: {})", r.type_name, there.join(", ")));
+                    }
+                    if let Some(st) = &r.line_style
+                        && !self.line_styles.contains_key(st)
+                    {
+                        return Err(format!("{who}: there's no line style `{st}`"));
                     }
                 }
                 Element::Spot(sp) => {

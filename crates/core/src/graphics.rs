@@ -45,7 +45,7 @@ pub const MODEL: [&str; 25] = [
     "railing",
     "roof",
 ];
-pub const ANNOTATION: [&str; 9] = ["dimension", "tag", "text", "line", "spot", "grid", "level", "section", "elevation"];
+pub const ANNOTATION: [&str; 10] = ["dimension", "tag", "text", "line", "region", "spot", "grid", "level", "section", "elevation"];
 
 /// Whether views draw elements of `category`.
 pub fn drawn(category: &str) -> bool {

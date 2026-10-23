@@ -145,6 +145,9 @@ icon_names! {
     LineWeights,
     ObjectStyles,
     Rectangle,
+    FilledRegion,
+    MaskingRegion,
+    FillPatterns,
 }
 
 /// A single unfilled contour in grid coordinates, shared by egui and the catalog.
@@ -1108,6 +1111,37 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
                 g.line(&[(5.0, 20.0), (10.0, 15.0)]);
             }
             g.closed(&[(14.0, 8.0), (21.0, 8.0), (21.0, 20.0), (14.0, 20.0)]);
+        }
+        Icon::FilledRegion => {
+            // An irregular sketched region, hatched inside its outline.
+            g.closed(&[(3.0, 6.0), (15.0, 3.0), (21.0, 10.0), (17.0, 21.0), (5.0, 18.0)]);
+            g.line(&[(4.2, 12.0), (10.5, 4.6)]);
+            g.line(&[(4.8, 17.0), (16.2, 4.3)]);
+            if !compact {
+                g.line(&[(9.0, 19.0), (19.4, 7.9)]);
+            }
+            g.line(&[(14.0, 20.3), (20.0, 13.5)]);
+        }
+        Icon::MaskingRegion => {
+            // A plain region over a hatch: what's under it hidden where it lies.
+            g.line(&[(3.0, 9.0), (9.0, 3.0)]);
+            g.line(&[(3.0, 15.0), (8.0, 10.0)]);
+            g.line(&[(3.0, 21.0), (8.0, 16.0)]);
+            g.line(&[(15.0, 3.0), (21.0, 3.0)]);
+            g.closed(&[(8.0, 8.0), (21.0, 8.0), (21.0, 21.0), (8.0, 21.0)]);
+        }
+        Icon::FillPatterns => {
+            // Three swatches: hatched, crosshatched, solid's outline.
+            g.closed(&[(3.0, 3.0), (11.0, 3.0), (11.0, 11.0), (3.0, 11.0)]);
+            g.line(&[(3.0, 7.0), (7.0, 3.0)]);
+            g.line(&[(7.0, 11.0), (11.0, 7.0)]);
+            g.closed(&[(13.0, 3.0), (21.0, 3.0), (21.0, 11.0), (13.0, 11.0)]);
+            g.line(&[(17.0, 3.0), (17.0, 11.0)]);
+            g.line(&[(13.0, 7.0), (21.0, 7.0)]);
+            g.closed(&[(3.0, 13.0), (21.0, 13.0), (21.0, 21.0), (3.0, 21.0)]);
+            if !compact {
+                g.line(&[(3.0, 17.0), (21.0, 17.0)]);
+            }
         }
         Icon::Rectangle => {
             // A sketched rectangle by its two opposite corners, each a grip; its sides stop at the grips.

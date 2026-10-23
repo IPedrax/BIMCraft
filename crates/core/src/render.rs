@@ -20,8 +20,8 @@ use tiny_skia::{Color, FillRule, IntSize, LineCap, LineJoin, Paint, PathBuilder,
 use crate::geom::{self, P2};
 use crate::graphics::{Detail, Look, scale_of};
 use crate::model::{
-    CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, Floor, Function, Id, Key, Layer, Model, Note, Opening, Pattern,
-    PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, Wall,
+    CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, FilledRegion, Floor, Function, Id, Key, Layer, Model, Note, Opening,
+    Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, Wall,
 };
 use crate::pen::{Pen, Weights};
 use crate::styles::{BY_CATEGORY, ObjectStyle};
@@ -721,6 +721,7 @@ pub(crate) fn plan_shows(m: &Model, plan: impl Key) -> Vec<P2> {
             Element::Roof(r) if r.level == level || m.level_above(level) == Some(r.level) => extent.extend(m.roof_outline(r)),
             Element::Text(n) if m.annotation_in(e, key) => extent.extend([Some(n.at), n.leader].into_iter().flatten()),
             Element::DetailLine(l) if m.annotation_in(e, key) => extent.extend(l.points.iter().copied()),
+            Element::FilledRegion(r) if m.annotation_in(e, key) => extent.extend(r.sketch.iter().flat_map(|l| [l.start, l.end])),
             Element::Spot(sp) if m.annotation_in(e, key) => extent.push(sp.at),
             _ => {}
         }
@@ -744,6 +745,7 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         Element::Tag(t) => tag(&mut d, m, t),
         Element::Text(n) => note(&mut d, n),
         Element::DetailLine(l) => detail_line(&mut d, m, l),
+        Element::FilledRegion(r) => filled_region(&mut d, m, r),
         Element::Spot(sp) => spot_mark(&mut d, view.px(sp.at), m.spot_value(sp), m.units),
         Element::Section(v) => section_mark(&mut d, v),
         Element::Elevation(v) => elevation_mark(&mut d, v),
@@ -1137,6 +1139,15 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64) -> Drawing {
             grid(&mut d, P2(along, lo - GRID_PAST), P2(along, hi + GRID_PAST), &g.name);
         }
     }
+    // Filled regions over the model, under the annotation.
+    for (&nid, e) in m.elements.iter().filter(|(id, _)| look.shows(**id)) {
+        if let Element::FilledRegion(r) = e
+            && m.same(r.view, id)
+        {
+            d.owner = Some(nid);
+            filled_region(&mut d, m, r);
+        }
+    }
     for (&nid, e) in m.elements.iter().filter(|(id, _)| look.shows(**id)) {
         d.owner = Some(nid);
         match e {
@@ -1424,6 +1435,15 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
                 }
             }
             _ => {}
+        }
+    }
+    // Filled regions over the model, under the annotation.
+    for (&id, e) in m.elements.iter().filter(|_| !up).filter(|(id, _)| shown(**id)) {
+        if let Element::FilledRegion(r) = e
+            && m.annotation_in(e, key)
+        {
+            d.owner = Some(id);
+            filled_region(&mut d, m, r);
         }
     }
     // Annotation last, over the model; sections and elevations show on every plan. A floor plan's
@@ -2112,6 +2132,55 @@ fn radial(d: &mut Drawing, m: &Model, dim: &Dimension) {
 /// arrow at its end.
 /// A detail line, in its style's pen, colour and pattern: its dashes as long on the paper the view stands for as the
 /// pattern says, solid where they'd be too small to see.
+/// A filled region: over the paper where its type masks, its background pattern, then its foreground, each in its colour
+/// (a solid one filled, a drafting one's lengths mm on the view's paper, a model one's mm), then its boundary's lines in
+/// their style, unless it has none. A sketch that doesn't close draws nothing.
+pub(crate) fn filled_region(d: &mut Drawing, m: &Model, r: &FilledRegion) {
+    let Some(t) = m.region_types.get(&r.type_name) else { return };
+    let Ok(profile) = crate::sketch::solve(&r.sketch) else { return };
+    let (w, h) = (d.view.width as f32, d.view.height as f32);
+    let window = (d.view.mm((0.0, h)), d.view.mm((w, 0.0)));
+    // Model mm to a mm of the view's paper.
+    let per_paper = (sheet::DENSITY as f32 * d.paper) as f64 / d.view.scale;
+    let part = std::mem::replace(&mut d.part, Part::Pattern);
+    for region in &profile.regions {
+        let rings: Vec<Vec<P2>> = std::iter::once(region.outer.clone()).chain(region.holes.iter().cloned()).collect();
+        let pieces = region.holes.iter().fold(vec![region.outer.clone()], |ps, hole| walls::minus(&ps, hole));
+        if t.masking {
+            d.fill(&pieces, PAPER);
+        }
+        for (name, [cr, cg, cb]) in [(&t.background, t.background_color), (&t.foreground, t.foreground_color)] {
+            let Some(p) = name.as_ref().and_then(|n| m.fill_patterns.get(n)) else { continue };
+            let color = Rgb(cr, cg, cb);
+            if p.is_solid() {
+                d.fill(&pieces, color);
+                continue;
+            }
+            let k = match p.target {
+                crate::fills::Target::Drafting => per_paper,
+                crate::fills::Target::Model => 1.0,
+            };
+            // Lines closer than a pixel are too dense to read: left out.
+            let closest = p.lines.iter().map(|l| l.spacing).fold(f64::INFINITY, f64::min) * k * d.view.scale;
+            if closest < 1.0 {
+                continue;
+            }
+            for [a, b] in crate::fills::strokes(p, &rings, k, window, 50_000).unwrap_or_default() {
+                d.line(&[a, b], Pen::FINE, color, false);
+            }
+        }
+    }
+    d.part = part;
+    if let Some(st) = r.line_style.as_ref().and_then(|n| m.line_styles.get(n)) {
+        let dash = st.pattern.as_ref().and_then(|p| m.line_patterns.get(p)).and_then(|p| p.dash(sheet::DENSITY as f32 * d.paper));
+        let [cr, cg, cb] = st.color;
+        for l in &r.sketch {
+            let pts = l.points().into_iter().map(|p| d.view.px(p)).collect();
+            d.stroke(pts, st.pen, Rgb(cr, cg, cb), dash.clone(), false);
+        }
+    }
+}
+
 pub(crate) fn detail_line(d: &mut Drawing, m: &Model, l: &DetailLine) {
     let Some(st) = m.line_styles.get(&l.style) else { return };
     let px_per_mm = sheet::DENSITY as f32 * d.paper;

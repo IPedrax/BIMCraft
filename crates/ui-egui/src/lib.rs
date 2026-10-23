@@ -11,6 +11,7 @@ mod context;
 mod dock;
 mod editor;
 mod favorites;
+mod fillpatterns;
 mod footer;
 mod gpu;
 mod graphics;
@@ -539,6 +540,7 @@ pub struct BimApp {
     object_styles_dialog: Option<objectstyles::ObjectStylesDialog>,
     /// Manage > Line Styles, while open.
     line_styles_dialog: Option<linestyles::LineStylesDialog>,
+    fill_patterns_dialog: Option<fillpatterns::FillPatternsDialog>,
     /// Sketch mode: the lines of an outline being drawn, until Finish or Cancel.
     pub sketch: Option<sketch::Sketch>,
     /// How wide the ribbon's Mode panel was last drawn, to stand it at the ribbon's right end.
@@ -903,6 +905,7 @@ impl BimApp {
             line_weights_dialog: None,
             object_styles_dialog: None,
             line_styles_dialog: None,
+            fill_patterns_dialog: None,
             sketch: None,
             mode_width: 0.0,
             options_dialog: None,
@@ -1241,6 +1244,7 @@ impl BimApp {
             || self.line_weights_dialog.is_some()
             || self.object_styles_dialog.is_some()
             || self.line_styles_dialog.is_some()
+            || self.fill_patterns_dialog.is_some()
             || self.options_dialog.is_some()
             || self.purge_dialog.is_some()
             || self.select_by_id.is_some()
@@ -1501,6 +1505,12 @@ impl BimApp {
                 Some("mass") => Tool::Mass(Vec::new()),
                 Some("show_mass") => {
                     self.show_mass();
+                    return true;
+                }
+                Some("filled_region") => {
+                    if let Some(view) = self.plan_key() {
+                        self.start_sketch(sketch::Of::Region { view, masking: false }, Vec::new());
+                    }
                     return true;
                 }
                 Some(c @ ("mass_floors" | "wall_by_face" | "floor_by_face" | "roof_by_face" | "update_by_face")) => {
@@ -2608,6 +2618,7 @@ impl BimApp {
                 Tool::DetailLine(Vec::new()),
             )],
         );
+        self.region_panel(ui);
         self.tools(
             ui,
             "Text",
@@ -2836,22 +2847,30 @@ impl BimApp {
             if big_button(ui, Icon::Delete, "Purge Unused", self.purge_dialog.is_some(), tip).clicked() {
                 self.open_purge();
             }
-            let tip = "Snaps: what a picked point sticks to (ends, middles, crossings, centres, perpendiculars), and the angles it steps by; SE, SM, SI, SC, SP and SN take one alone for the next point, SO none";
-            if big_button(ui, Icon::Snaps, "Snaps", self.show_snaps, tip).clicked() {
-                self.show_snaps = true;
-            }
-            let now = self.session.model.units;
-            let tip = tf("Project Units (UN): how lengths show and read; now {}", &[&t(now.label()).to_lowercase()]);
-            let r = big_button(ui, Icon::Units, "Project Units", false, &tip);
-            if std::mem::take(&mut self.open_units) {
-                Popup::open_id(ui.ctx(), Popup::default_response_id(&r));
-            }
-            Popup::menu(&r).show(|ui| {
-                for u in Units::ALL {
-                    if ui.selectable_label(u == now, t(u.label())).clicked() {
-                        self.run("units", json!({"length": u.name()}));
-                    }
+            // Fills, snaps and units, stacked.
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                let tip = "Fill Patterns: the patterns filled regions fill with, and the filled region types";
+                if stacked_button(ui, Icon::FillPatterns, "Fill Patterns", self.fill_patterns_dialog.is_some(), tip).clicked() {
+                    self.fill_patterns_dialog = Some(fillpatterns::FillPatternsDialog::new(&self.session.model));
                 }
+                let tip = "Snaps: what a picked point sticks to (ends, middles, crossings, centres, perpendiculars), and the angles it steps by; SE, SM, SI, SC, SP and SN take one alone for the next point, SO none";
+                if stacked_button(ui, Icon::Snaps, "Snaps", self.show_snaps, tip).clicked() {
+                    self.show_snaps = true;
+                }
+                let now = self.session.model.units;
+                let tip = tf("Project Units (UN): how lengths show and read; now {}", &[&t(now.label()).to_lowercase()]);
+                let r = stacked_button(ui, Icon::Units, "Project Units", false, &tip);
+                if std::mem::take(&mut self.open_units) {
+                    Popup::open_id(ui.ctx(), Popup::default_response_id(&r));
+                }
+                Popup::menu(&r).show(|ui| {
+                    for u in Units::ALL {
+                        if ui.selectable_label(u == now, t(u.label())).clicked() {
+                            self.run("units", json!({"length": u.name()}));
+                        }
+                    }
+                });
             });
             // What the drawings say, and how new things are named.
             let now = self.session.model.language;
@@ -3124,6 +3143,10 @@ impl BimApp {
                 let (r, _) = ui.allocate_exact_size(size, Sense::hover());
                 ui.painter().text(r.left_center(), Align2::LEFT_CENTER, name, font, pal().text);
                 ui.separator();
+            }
+            if self.sketch.is_some() {
+                self.sketch_options(ui);
+                return;
             }
             match self.tool {
                 Tool::Wall(_) => self.wall_options(ui),
@@ -3643,6 +3666,7 @@ impl BimApp {
         self.line_weights_window(ctx);
         self.object_styles_window(ctx);
         self.line_styles_window(ctx);
+        self.fill_patterns_window(ctx);
         self.options_window(ctx);
         self.purge_window(ctx);
         self.select_by_id_window(ctx);
