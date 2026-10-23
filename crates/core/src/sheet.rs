@@ -10,7 +10,7 @@ use crate::graphics::Look;
 use crate::language::Language;
 use crate::model::{Element, Id, Key, Model, Schedule, Sheet, Viewport, paper};
 use crate::pen::Pen;
-use crate::render::{self, Drawing, PAPER, Prim, Rgb, View};
+use crate::render::{self, Drawing, PAPER, Part, Prim, Rgb, View};
 use crate::{font, schedule, view3d};
 
 /// Paper px per mm in a sheet's drawing: plan lettering 10 px tall comes out 2 mm on paper.
@@ -265,11 +265,13 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
             _ => continue,
         };
         // Its own title, owned by no element, gives way to the viewport's.
-        for (prim, owner) in inner.prims.into_iter().zip(inner.owners) {
+        for ((prim, owner), part) in inner.prims.into_iter().zip(inner.owners).zip(inner.parts) {
             if owner.is_some() {
+                d.part(part);
                 d.push(prim.moved(ox, oy));
             }
         }
+        d.part(Part::Projection);
         // The title, under it: the view's name over a line, its scale under that.
         let name = m.view_name(vp.view).unwrap_or_default();
         let corner = d.view.mm((ox, oy + view.height as f32));

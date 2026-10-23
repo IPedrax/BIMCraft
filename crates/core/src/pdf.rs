@@ -33,7 +33,7 @@ pub(crate) fn contents(d: &Drawing, paper: P2) -> (String, Vec<(u32, u32, Vec<u8
         }
     };
     let mut images = Vec::new();
-    for p in &d.prims {
+    for (i, p) in d.prims.iter().enumerate() {
         match p {
             Prim::Fill { rings, color: c } => {
                 let _ = write!(s, "{} rg ", color(*c));
@@ -44,7 +44,7 @@ pub(crate) fn contents(d: &Drawing, paper: P2) -> (String, Vec<(u32, u32, Vec<u8
             }
             Prim::Line { pts, width, color: c, dash, closed } => {
                 let dash = dash.map_or_else(|| "[] 0 d".to_string(), |[a, b]| format!("[{a} {b}] 0 d"));
-                let _ = write!(s, "{} RG {width} w {dash} ", color(*c));
+                let _ = write!(s, "{} RG {width} w {} j {dash} ", color(*c), if d.mitred(i) { 0 } else { 1 });
                 path(&mut s, pts, *closed);
                 s.push_str("S\n");
             }

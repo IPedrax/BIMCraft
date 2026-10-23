@@ -59,6 +59,21 @@ pub enum Part {
     Pattern,
 }
 
+impl Part {
+    /// Whether this part's lines turn their corners mitred, square as a cut wall's corner: all but lettering, whose strokes
+    /// turn round, so a V's point doesn't stick out.
+    pub(crate) fn mitred(self) -> bool {
+        self != Part::Text
+    }
+}
+
+impl Drawing {
+    /// Whether primitive `i`'s corners are mitred ([`Part::mitred`]).
+    pub(crate) fn mitred(&self, i: usize) -> bool {
+        self.parts.get(i).is_none_or(|p| p.mitred())
+    }
+}
+
 pub enum Prim {
     Fill {
         rings: Vec<Vec<(f32, f32)>>,
@@ -198,9 +213,11 @@ pub struct Drawing {
     /// The element being drawn now, and the part of it.
     owner: Option<Id>,
     part: Part,
-    /// How big annotation is drawn, times the pixels it is drawn in: see [`annotation`]. A paper mm is
-    /// [`sheet::DENSITY`] times this many pixels, so it sizes the pens too.
+    /// How big annotation is drawn, times the pixels it is drawn in: see [`annotation`].
     pub(crate) k: f32,
+    /// How many times [`sheet::DENSITY`] pixels a mm of the paper the view stands for is, so the pens' size: `k`, not
+    /// clamped ([`paper_of`]).
+    paper: f32,
     /// How much of what the view cuts it draws.
     detail: Detail,
 }
@@ -218,6 +235,7 @@ impl Drawing {
             owner: None,
             part: Part::Projection,
             k: 1.0,
+            paper: 1.0,
             detail: Detail::Fine,
         }
     }
@@ -246,7 +264,7 @@ impl Drawing {
     /// Each line's width as its pen draws it in this view, as annotation where `annotation` says its owner is, else as
     /// the model: the last step of drawing a view, once its overrides have set their pens.
     pub(crate) fn weigh(&mut self, annotation: impl Fn(Option<Id>) -> bool) {
-        let (weights, k) = (self.weights, self.k);
+        let (weights, k) = (self.weights, self.paper);
         for ((prim, owner), pen) in self.prims.iter_mut().zip(&self.owners).zip(&self.pens) {
             if let (Prim::Line { width, .. }, Some(pen)) = (prim, pen) {
                 *width = (weights.mm(*pen, annotation(*owner)) * sheet::DENSITY) as f32 * k;
@@ -291,7 +309,7 @@ impl Drawing {
     /// How many pixels wide `pen` draws here as the model: 0 for a hairline, which every painter draws as thin as it
     /// can. [`Drawing::weigh`] sizes annotation's at the end.
     pub(crate) fn width(&self, pen: Pen) -> f32 {
-        (self.weights.mm(pen, false) * sheet::DENSITY) as f32 * self.k
+        (self.weights.mm(pen, false) * sheet::DENSITY) as f32 * self.paper
     }
     /// `px` pixels of annotation, as big as the view's scale makes them.
     fn px(&self, px: f32) -> f32 {
@@ -497,13 +515,13 @@ fn cut_unions(look: &Look, outlines: impl Iterator<Item = (Id, Vec<P2>)>) -> Vec
     unions
 }
 
-/// Whether what `owner` is draws in the annotation's pens: a dimension, a tag, text, a spot elevation, a grid, a level, a
-/// room's tag, the mark of a section or an elevation. The rest is the model's.
 /// The object style of `owner`'s category; with no owner, what a project's categories start with.
 fn style_of(m: &Model, owner: Option<Id>) -> ObjectStyle {
     m.object_style(owner.and_then(|id| m.elements.get(id)).map_or("", Element::category))
 }
 
+/// Whether what `owner` is draws in the annotation's pens: a dimension, a tag, text, a spot elevation, a grid, a level, a
+/// room's tag, the mark of a section or an elevation. The rest is the model's.
 fn annotates(m: &Model, owner: Option<Id>) -> bool {
     matches!(
         owner.and_then(|id| m.elements.get(id)),
@@ -594,6 +612,15 @@ fn cut_edges(outlines: &[(Id, Vec<P2>)], reach: f64) -> Vec<(Id, Vec<Vec<P2>>)> 
     }
     turn_corners(&mut out, reach);
     out
+}
+
+/// A run of [`cut_edges`] in its category's pen: one that comes back to where it starts (an outline nothing lies against)
+/// closed, so none of its corners is a line's round end.
+fn ink_cut(d: &mut Drawing, run: &[P2]) {
+    match run.split_last() {
+        Some((last, ring)) if ring.len() > 2 && ring[0].dist(*last) < 1e-9 => d.line(ring, BY_CATEGORY, INK, true),
+        _ => d.line(run, BY_CATEGORY, INK, false),
+    }
 }
 
 /// Each run that ends where another ends (two walls' outlines meeting at a corner) carried on `reach` mm (or the other's
@@ -710,7 +737,9 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         _ => None,
     };
     d.k = on.map_or(1.0, |v| annotation(m, v, view));
-    d.weights = on.map_or_else(|| m.line_weights().at(m.units.default_scale()), |v| m.line_weights().at(scale_of(m, v)));
+    // Its pens as the view it will be in draws them: annotation's, or the plan of its level's.
+    let n = on.or_else(|| m.level_of(e)).map_or_else(|| m.units.default_scale(), |v| scale_of(m, v));
+    (d.weights, d.paper) = (m.line_weights().at(n), paper_of(n, view.scale));
     match e {
         Element::Dimension(dm) => dimension(&mut d, m, dm),
         Element::Tag(t) => tag(&mut d, m, t),
@@ -914,7 +943,7 @@ pub fn section_at(m: &Model, id: impl Key, view: View, k: f32) -> Drawing {
 /// [`section_at`], its pens the line weights' at 1 : `n`.
 fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64) -> Drawing {
     let mut d = Drawing::new(view);
-    (d.k, d.detail, d.weights) = (k, detail_of(m, id), m.line_weights().at(n));
+    (d.k, d.paper, d.detail, d.weights) = (k, paper_of(n, view.scale), detail_of(m, id), m.line_weights().at(n));
     let Some(v) = m.section(id) else { return d };
     let look = Look::of(m, id);
     let u = (v.end - v.start).unit();
@@ -953,7 +982,7 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64) -> Drawing {
     for (owner, runs) in cut_edges(&pieces, 1.0 / d.view.scale) {
         d.owner = Some(owner);
         for run in runs {
-            d.line(&run, BY_CATEGORY, INK, false);
+            ink_cut(&mut d, &run);
         }
     }
     // A compound wall's layers where the line cuts it: each its material's cut pattern, between where
@@ -1156,10 +1185,10 @@ pub fn draw_ceiling(m: &Model, level: impl Key, view: View) -> Drawing {
 /// How big the annotation of view `id` is drawn through `view`, times the size it is laid out at. A view with a scale
 /// holds it as paper at that scale would: its lettering and marks a fixed size on paper, which `scale` mm of the model per
 /// mm of paper and `view` showing `view.scale` pixels to the mm make of it ([`sheet::DENSITY`] pixels to a mm of paper); on
-/// a sheet, where the viewport sets the scale, it is 1. A view with no scale of its own is at [`DEFAULT_SCALE`]. The
-/// pens are sized by it too ([`pen_width`]), so a line is as wide as on the paper the view stands for. A
-/// shortcut: clamped to a tenth and ten times, so a hostile scale or zoom can't draw lettering a screen tall; widen it
-/// if a plan at 1 : 10000 on screen wants more.
+/// a sheet, where the viewport sets the scale, it is 1. A view with no scale of its own is at the units' default
+/// ([`crate::units::Units::default_scale`]). A shortcut: clamped to a tenth and ten times, so a hostile scale or zoom
+/// can't draw lettering a screen tall; widen it if a plan at 1 : 10000 on screen wants more. The pens aren't clamped
+/// ([`paper_of`], [`Drawing::width`]): a line is as wide as on the paper the view stands for, however far in or out.
 pub fn annotation(m: &Model, id: impl Key, view: View) -> f32 {
     annotation_of(scale_of(m, id), view.scale)
 }
@@ -1167,6 +1196,13 @@ pub fn annotation(m: &Model, id: impl Key, view: View) -> f32 {
 /// [`annotation`] for a view at scale 1 : `n` shown at `scale` pixels to the mm.
 fn annotation_of(n: f64, scale: f64) -> f32 {
     (n * scale / sheet::DENSITY).clamp(0.1, 10.0) as f32
+}
+
+/// [`annotation_of`] unclamped, what sizes the pens: but for a hostile scale or zoom, 0 (a hairline) when it isn't a
+/// number and no more than a million.
+fn paper_of(n: f64, scale: f64) -> f32 {
+    let k = n * scale / sheet::DENSITY;
+    if k.is_finite() && k > 0.0 { k.min(1e6) as f32 } else { 0.0 }
 }
 
 /// The level of detail view `id` draws at: its own, or its template's where that controls it.
@@ -1185,7 +1221,7 @@ fn draw_plan(m: &Model, level: impl Key, view: View, up: bool, k: f32, n: f64) -
     let level = m.guid(level);
     let index = walls::Index::new(m);
     let mut d = Drawing::new(view);
-    (d.k, d.detail, d.weights) = (k, detail_of(m, level), m.line_weights().at(n));
+    (d.k, d.paper, d.detail, d.weights) = (k, paper_of(n, view.scale), detail_of(m, level), m.line_weights().at(n));
     let look = Look::of(m, level);
     let shown = |id: Id| look.shows(id);
     let mut range = m.plan_range(level);
@@ -1270,7 +1306,7 @@ fn draw_plan(m: &Model, level: impl Key, view: View, up: bool, k: f32, n: f64) -
     for (id, runs) in cut_edges(&outlines, 1.0 / d.view.scale) {
         d.owner = Some(id);
         for run in runs {
-            d.line(&run, BY_CATEGORY, INK, false);
+            ink_cut(&mut d, &run);
         }
     }
     // A compound wall's layers: each its material's cut pattern where it's wide enough to hold it,
@@ -2255,7 +2291,7 @@ pub fn svg(d: &Drawing) -> String {
         r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}"><rect width="{w}" height="{h}" fill="{}"/>"#,
         hex(PAPER)
     );
-    for p in &d.prims {
+    for (i, p) in d.prims.iter().enumerate() {
         let _ = match p {
             Prim::Fill { rings, color } => {
                 let data: Vec<String> = rings.iter().map(|r| path_data(r, true)).collect();
@@ -2267,9 +2303,10 @@ pub fn svg(d: &Drawing) -> String {
                 let width = if *width > 0.0 { format!(r#"{width}""#) } else { r#"1" vector-effect="non-scaling-stroke""#.to_string() };
                 write!(
                     s,
-                    r#"<path d="{}" fill="none" stroke="{}" stroke-width="{width} stroke-linecap="round" stroke-linejoin="miter"{dash}/>"#,
+                    r#"<path d="{}" fill="none" stroke="{}" stroke-width="{width} stroke-linecap="round" stroke-linejoin="{}"{dash}/>"#,
                     path_data(pts, *closed),
-                    hex(*color)
+                    hex(*color),
+                    if d.mitred(i) { "miter" } else { "round" }
                 )
             }
             Prim::Image { at, width, height, rgba } => match picture(*width, *height, rgba).and_then(|pm| pm.encode_png().ok()) {
@@ -2315,7 +2352,7 @@ fn picture(width: u32, height: u32, rgba: &[u8]) -> Option<Pixmap> {
 
 /// The display list drawn over what `pm` holds.
 fn paint(pm: &mut Pixmap, d: &Drawing) {
-    for p in &d.prims {
+    for (i, p) in d.prims.iter().enumerate() {
         let mut paint = Paint { anti_alias: true, ..Paint::default() };
         match p {
             Prim::Fill { rings, color } => {
@@ -2330,7 +2367,7 @@ fn paint(pm: &mut Pixmap, d: &Drawing) {
                 let stroke = Stroke {
                     width: *width,
                     line_cap: LineCap::Round,
-                    line_join: LineJoin::Miter,
+                    line_join: if d.mitred(i) { LineJoin::Miter } else { LineJoin::Round },
                     dash: dash.and_then(|[a, b]| StrokeDash::new(vec![a, b], 0.0)),
                     ..Stroke::default()
                 };
@@ -3068,6 +3105,9 @@ mod tests {
         s.execute("scale", &serde_json::json!({"view": 100000, "scale": 100})).unwrap();
         assert!((widest(&s, view, wall) - 3.5).abs() < 1e-4, "pen 10, 0.35 mm: {}", widest(&s, view, wall));
         assert!((widest(&s, View { scale: 0.2, ..view }, wall) - 7.0).abs() < 1e-4);
+        // However far in or out: a pixel to the mm is 20 times the paper (35 px), a 500th of one a 25th (0.07 px).
+        assert!((widest(&s, View { scale: 1.0, ..view }, wall) - 35.0).abs() < 1e-3, "{}", widest(&s, View { scale: 1.0, ..view }, wall));
+        assert!((widest(&s, View { scale: 0.002, ..view }, wall) - 0.07).abs() < 1e-5);
         // A weight overridden is a pen too.
         s.execute("graphics", &serde_json::json!({"view": 100000, "categories": {"walls": {"cut": {"weight": 13}}}})).unwrap();
         assert!((widest(&s, view, wall) - 0.7 * 5.0 * 2.0).abs() < 1e-4, "pen 13, 0.7 mm: {}", widest(&s, view, wall));
@@ -3121,6 +3161,44 @@ mod tests {
         // Where two walls meet at a corner, the mitre between them is poché, no line.
         assert_eq!(pixel(&png, view.px(P2(8000.0, 0.0))), (POCHE.0, POCHE.1, POCHE.2));
         assert_eq!(pixel(&png, view.px(P2(8040.0, 40.0))), (POCHE.0, POCHE.1, POCHE.2));
+    }
+
+    #[test]
+    fn lettering_turns_its_corners_round_while_a_pens_lines_turn_them_square() {
+        let view = View { scale: 1.0, cx: 0.0, cy: 0.0, width: 400, height: 200 };
+        let mut d = Drawing::new(view);
+        d.text("VW", (200.0, 100.0), 80.0, INK);
+        d.line(&[P2(-150.0, 0.0), P2(-100.0, 50.0), P2(-50.0, 0.0)], Pen::MEDIUM, INK, false);
+        let svg = svg(&d);
+        let joins: Vec<&str> = svg.split("stroke-linejoin=\"").skip(1).filter_map(|s| s.split('"').next()).collect();
+        assert_eq!(joins.last(), Some(&"miter"), "the pen's line");
+        assert!(joins.len() > 2 && joins[..joins.len() - 1].iter().all(|j| *j == "round"), "{joins:?}");
+        let (pdf, _) = crate::pdf::contents(&d, P2(100.0, 50.0));
+        assert!(pdf.contains(" 1 j ") && pdf.trim_end().rsplit('\n').next().is_some_and(|l| l.contains(" 0 j ")), "{pdf}");
+    }
+
+    #[test]
+    fn a_wall_on_its_own_is_inked_all_round_as_one_closed_line_square_at_every_corner() {
+        let mut s = Session::new();
+        s.script(r#"wall {"points": [[0, 0], [4000, 0]]}"#).unwrap();
+        // Half a pixel to the mm: the outline, 35 mm of the model wide at 1 : 100, reaches 17.5 mm past each corner, so 15 mm
+        // out each way is ink at a square corner and paper at a round one (21 mm from it).
+        let view = View { scale: 0.5, cx: 2000.0, cy: 0.0, width: 2400, height: 400 };
+        let d = draw(&s.model, 100000, view);
+        let cut: Vec<bool> = d
+            .prims
+            .iter()
+            .zip(&d.parts)
+            .filter_map(|(p, part)| match p {
+                Prim::Line { closed, .. } if *part == Part::Cut => Some(*closed),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(cut, [true], "one closed line, no ends");
+        let png = png(&d).unwrap();
+        for (x, y) in [(-15.0, -115.0), (4015.0, -115.0), (4015.0, 115.0), (-15.0, 115.0)] {
+            assert_eq!(pixel(&png, view.px(P2(x, y))), (INK.0, INK.1, INK.2), "the corner by ({x}, {y}), square");
+        }
     }
 
     #[test]

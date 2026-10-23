@@ -70,6 +70,21 @@ fn a_door_or_window_is_sketched_as_the_command_would_make_it() {
 }
 
 #[test]
+fn a_sketch_draws_its_pens_as_wide_as_the_plan_it_is_in_at_any_zoom() {
+    let mut s = Session::new();
+    house(&mut s);
+    let sketched = crate::opening_of(&s.model, &json!({"at": [2000, 30], "level": 100000}), true).unwrap();
+    let widest = |zoom: f64| {
+        let view = crate::render::View { scale: zoom, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
+        let d = crate::render::sketch(&s.model, view, 999, &sketched);
+        d.prims.iter().filter_map(|p| if let crate::render::Prim::Line { width, .. } = p { Some(*width) } else { None }).fold(0.0, f32::max)
+    };
+    // Zoomed in twice as far, the paper the plan stands for is twice the pixels, and so is every pen.
+    let (near, far) = (widest(0.2), widest(0.1));
+    assert!(far > 0.0 && (near - 2.0 * far).abs() < 1e-4, "{near} at 0.2 px to the mm, {far} at 0.1");
+}
+
+#[test]
 fn a_point_knows_how_far_it_stands_from_the_nearest_wall_centre_line_or_grid_each_way() {
     let mut s = Session::new();
     // Walls 100002 (south), 100003 (east), 100004 (north) and 100005 (west).
