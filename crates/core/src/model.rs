@@ -1556,6 +1556,10 @@ pub struct Model {
     /// ([`Model::line_weights`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub line_weights: Option<crate::pen::LineWeights>,
+    /// The pens each model category draws in, cut and in projection (Manage > Object Styles), by category: only those it
+    /// has set apart from what a project starts with ([`Model::object_style`]).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub object_styles: BTreeMap<String, crate::styles::ObjectStyle>,
     pub elements: Elements,
     /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
     /// templates, phases, phase filters and design options.
@@ -1598,6 +1602,7 @@ impl Model {
             phase_overrides: phasing::overrides(),
             option_sets: BTreeMap::new(),
             line_weights: None,
+            object_styles: BTreeMap::new(),
             elements: Elements::new(),
             library: crate::library::Library::default(),
         };
@@ -3127,6 +3132,10 @@ impl Model {
     pub fn check(&self) -> Result<(), String> {
         if let Some(lw) = &self.line_weights {
             lw.check()?;
+        }
+        for (c, style) in &self.object_styles {
+            crate::styles::known(c)?;
+            style.check(c)?;
         }
         for (cat, map) in [("door", &self.types.door), ("window", &self.types.window)] {
             for (n, t) in map {

@@ -933,7 +933,7 @@ pub(crate) fn editor(ui: &mut Ui, o: &mut Override, enabled: bool, see_through: 
 }
 
 /// A pen as the Line weight drop-down names it: its number, and its width on paper or that it is a hairline.
-fn pen_name(p: Pen) -> String {
+pub(crate) fn pen_name(p: Pen) -> String {
     match p.0 {
         0 => format!("0 · {}", t("Hairline")),
         n => format!("{n} · {:.2} mm", p.mm()),

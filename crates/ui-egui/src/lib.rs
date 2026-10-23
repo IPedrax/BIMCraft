@@ -18,6 +18,7 @@ mod inquiry;
 pub mod lang;
 mod lineweights;
 mod mep;
+mod objectstyles;
 mod orbit;
 mod paper;
 mod phasing;
@@ -517,6 +518,8 @@ pub struct BimApp {
     phasing_dialog: Option<phasing::PhasingDialog>,
     /// Manage > Line Weights, while open.
     line_weights_dialog: Option<lineweights::LineWeightsDialog>,
+    /// Manage > Object Styles, while open.
+    object_styles_dialog: Option<objectstyles::ObjectStylesDialog>,
     options_dialog: Option<phasing::OptionsDialog>,
     /// Manage > Select by ID and IDs of Selection, while open.
     select_by_id: Option<inquiry::SelectById>,
@@ -820,6 +823,7 @@ impl BimApp {
             templates_dialog: None,
             phasing_dialog: None,
             line_weights_dialog: None,
+            object_styles_dialog: None,
             options_dialog: None,
             select_by_id: None,
             ids_of_selection: None,
@@ -1147,6 +1151,7 @@ impl BimApp {
             || self.templates_dialog.is_some()
             || self.phasing_dialog.is_some()
             || self.line_weights_dialog.is_some()
+            || self.object_styles_dialog.is_some()
             || self.options_dialog.is_some()
             || self.select_by_id.is_some()
             || self.ids_of_selection.is_some()
@@ -2566,6 +2571,10 @@ impl BimApp {
             if big_button(ui, Icon::LineWeights, "Line Weights", self.line_weights_dialog.is_some(), tip).clicked() {
                 self.line_weights_dialog = Some(lineweights::LineWeightsDialog::new(&self.session.model));
             }
+            let tip = "Object Styles: the pen each category draws in, seen and cut, in every view";
+            if big_button(ui, Icon::ObjectStyles, "Object Styles", self.object_styles_dialog.is_some(), tip).clicked() {
+                self.object_styles_dialog = Some(objectstyles::ObjectStylesDialog::new(&self.session.model));
+            }
             let tip = "Snaps: what a picked point sticks to (ends, middles, crossings, centres, perpendiculars), and the angles it steps by; SE, SM, SI, SC, SP and SN take one alone for the next point, SO none";
             if big_button(ui, Icon::Snaps, "Snaps", self.show_snaps, tip).clicked() {
                 self.show_snaps = true;
@@ -3334,6 +3343,7 @@ impl BimApp {
         self.templates_window(ctx);
         self.phasing_window(ctx);
         self.line_weights_window(ctx);
+        self.object_styles_window(ctx);
         self.options_window(ctx);
         self.select_by_id_window(ctx);
         self.ids_of_selection_window(ctx);

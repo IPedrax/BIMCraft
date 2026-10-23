@@ -31,8 +31,15 @@ as annotation where its owner is a dimension, tag, text, spot elevation, grid, l
 a view on a sheet takes the line weights at its viewport's scale. Cut outlines are inked over the poché: `cut_edges` keeps of each
 outline what isn't against another's on its outer side, so joins stay clean. The desktop draws a line its pixels at the zoom, at least one (`canvas::on_screen`); Thin Lines draws every line one. A
 file from before pens (format 3) held weights in pixels of a sheet's drawing, and opens with each the nearest pen (`pens_from_pixels`).
-Which pen each kind of line draws with is named once, in `pen.rs` (`Pen::CUT`, `Pen::PROJECTION`, `Pen::HEAVY` and the rest), never a number at the draw site: a cut is `Pen::CUT` in plan and in section alike. What's next on this foundation: object styles (each category's pens for cut and projection), viewports as windows onto their views,
-and printing. `Drawing::detail` is the level the plan or the section is drawn at: coarse leaves out a compound element's layers and an opening's
+Which pen each kind of line draws with is named once, in `pen.rs` (`Pen::CUT`, `Pen::PROJECTION`, `Pen::HEAVY` and the rest), never a number at the draw site: a cut is `Pen::CUT` in plan and in section alike. A category's own lines are its Object Styles'
+(`styles.rs`, `Model::object_styles`, the `object_styles` command, Manage > Object Styles in the desktop, `objectstyles.rs`): the
+draw site marks them `BY_CATEGORY`, and `Drawing::by_category` gives each the cut or the projection pen of its owner's category, by
+its `Part`, before `Look::dress` puts a view's overrides over them. Marked: what's cut (`cut_edges`, plan and section), what's
+seen (floors, walls and columns below, roofs, ceilings, runs, components, shafts, masses, stairs' and ramps' edges, railings), a
+door's or window's family forms and symbols, a door's leaf and swing. The rest keep their own pens, as Revit's subcategories
+would: a compound element's layer lines, an opening's jambs and glass, a stair's cut line and walk line, a floor's holes. A project
+holds only the categories set apart from `styles::default_of` (which draws as before: cut pen 10, seen pen 4). What's next on this
+foundation: annotation categories' object styles and subcategories, viewports as windows onto their views, and printing. `Drawing::detail` is the level the plan or the section is drawn at: coarse leaves out a compound element's layers and an opening's
 symbols, medium its patterns (`cut_layer`, a floor's `surface`), fine draws as before. In the 3D view `Look::style` picks how
 `Scene::picture` draws: shaded as ever, hidden line as a section's picture is (paper faces, edges), wireframe by `Scene::edges` (where
 surfaces meet at an angle or end, found once) drawn through the faces; a pixel within two of a line picks its element.

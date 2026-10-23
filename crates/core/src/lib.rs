@@ -39,6 +39,7 @@ pub mod skeleton;
 pub mod snap;
 pub mod stairs;
 pub mod step;
+pub mod styles;
 pub mod texture;
 pub mod units;
 pub mod view3d;

@@ -688,6 +688,22 @@ const WORDS: &[[&str; 3]] = &[
         "Grosores de línea: lo que cada plumilla dibuja en el papel, las del modelo en cada escala y las de anotación en cualquiera",
     ],
     ["Model Line Weights", "Espessuras de linha do modelo", "Grosores de línea del modelo"],
+    ["Object Styles", "Estilos de objeto", "Estilos de objeto"],
+    [
+        "Object Styles: the pen each category draws in, seen and cut, in every view",
+        "Estilos de objeto: a pena com que cada categoria é desenhada, em vista e em corte, em todas as vistas",
+        "Estilos de objeto: la plumilla con la que se dibuja cada categoría, en proyección y en corte, en todas las vistas",
+    ],
+    [
+        "The pen each category draws its lines in, seen and cut, in every plan and section. A view's Visibility/Graphics overrides them.",
+        "A pena com que cada categoria desenha suas linhas, em vista e em corte, em todas as plantas e cortes. A Visibilidade/Gráficos de uma vista as substitui.",
+        "La plumilla con la que cada categoría dibuja sus líneas, en proyección y en corte, en todas las plantas y secciones. La Visibilidad/Gráficos de una vista las reemplaza.",
+    ],
+    [
+        "Back to the pens a project starts with",
+        "Voltar às penas com que um projeto começa",
+        "Volver a las plumillas con las que empieza un proyecto",
+    ],
     ["Annotation Line Weights", "Espessuras de linha de anotação", "Grosores de línea de anotación"],
     [
         "Each pen's width on paper, mm, in views at each scale: a view between two takes the nearer one's. Pen 0 is always a hairline.",

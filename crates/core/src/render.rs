@@ -24,6 +24,7 @@ use crate::model::{
     Ramp, Roof, Section, Shaft, Stair, TOL, Tag, Wall,
 };
 use crate::pen::{Pen, Weights};
+use crate::styles::{BY_CATEGORY, ObjectStyle};
 use crate::units::Units;
 use crate::view3d::{self, Camera, Clip, Image, Scene};
 use crate::walls::{self, Axis};
@@ -249,6 +250,16 @@ impl Drawing {
         for ((prim, owner), pen) in self.prims.iter_mut().zip(&self.owners).zip(&self.pens) {
             if let (Prim::Line { width, .. }, Some(pen)) = (prim, pen) {
                 *width = (weights.mm(*pen, annotation(*owner)) * sheet::DENSITY) as f32 * k;
+            }
+        }
+    }
+    /// Each line marked [`BY_CATEGORY`] in the pen its owner's object style gives, cut or in projection as its part is: before
+    /// a view's overrides set theirs.
+    pub(crate) fn by_category(&mut self, style: impl Fn(Option<Id>) -> ObjectStyle) {
+        for ((pen, owner), part) in self.pens.iter_mut().zip(&self.owners).zip(&self.parts) {
+            if *pen == Some(BY_CATEGORY) {
+                let st = style(*owner);
+                *pen = Some(if *part == Part::Cut { st.cut } else { st.projection });
             }
         }
     }
@@ -488,6 +499,11 @@ fn cut_unions(look: &Look, outlines: impl Iterator<Item = (Id, Vec<P2>)>) -> Vec
 
 /// Whether what `owner` is draws in the annotation's pens: a dimension, a tag, text, a spot elevation, a grid, a level, a
 /// room's tag, the mark of a section or an elevation. The rest is the model's.
+/// The object style of `owner`'s category; with no owner, what a project's categories start with.
+fn style_of(m: &Model, owner: Option<Id>) -> ObjectStyle {
+    m.object_style(owner.and_then(|id| m.elements.get(id)).map_or("", Element::category))
+}
+
 fn annotates(m: &Model, owner: Option<Id>) -> bool {
     matches!(
         owner.and_then(|id| m.elements.get(id)),
@@ -686,6 +702,8 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         _ => {}
     }
     let annotation = on.is_some() || matches!(e, Element::Section(_) | Element::Elevation(_));
+    let style = m.object_style(e.category());
+    d.by_category(|_| style);
     d.weigh(|_| annotation);
     d
 }
@@ -898,7 +916,7 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64) -> Drawing {
     for (owner, runs) in cut_edges(&pieces) {
         d.owner = Some(owner);
         for run in runs {
-            d.line(&run, Pen::CUT, INK, false);
+            d.line(&run, BY_CATEGORY, INK, false);
         }
     }
     // A compound wall's layers where the line cuts it: each its material's cut pattern, between where
@@ -1008,14 +1026,14 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64) -> Drawing {
                 massing::section_lines(&massing::tris(&ms.footprint(), &ms.top_ring(), (z0, z1)), v.start + u * first, u, last - first)
             {
                 let line: Vec<P2> = line.into_iter().map(|q| P2(q.0 + first, q.1)).collect();
-                d.dashed(&line, Pen::PROJECTION, MASS, false);
+                d.dashed(&line, BY_CATEGORY, MASS, false);
             }
             continue;
         }
         for (s0, s1) in view3d::crossings(&ms.boundary, v.start, u) {
             let (a, b) = (s0.max(first), s1.min(last));
             if b - a > 1e-6 {
-                d.dashed(&[P2(a, z0), P2(b, z0), P2(b, z1), P2(a, z1)], Pen::PROJECTION, MASS, true);
+                d.dashed(&[P2(a, z0), P2(b, z0), P2(b, z1), P2(a, z1)], BY_CATEGORY, MASS, true);
             }
         }
     }
@@ -1064,6 +1082,7 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64) -> Drawing {
         }
     }
     d.owner = None;
+    d.by_category(|o| style_of(m, o));
     look.dress(&mut d);
     d.weigh(|o| annotates(m, o));
     let at = (24.0 + font::width(&v.name, 16.0) / 2.0, view.height as f32 - 26.0);
@@ -1148,7 +1167,7 @@ fn draw_plan(m: &Model, level: impl Key, view: View, up: bool, k: f32, n: f64) -
         }
         d.owner = Some(id);
         for ring in std::iter::once(&f.boundary).chain(&f.openings) {
-            d.line(ring, Pen::PROJECTION, FAINT, true);
+            d.line(ring, BY_CATEGORY, FAINT, true);
         }
         holes(&mut d, m, &m.floor_slabs(f));
         // Its top layer's surface pattern, faint, in a fine view.
@@ -1183,7 +1202,7 @@ fn draw_plan(m: &Model, level: impl Key, view: View, up: bool, k: f32, n: f64) -
     // Walls and columns below the cut plane, as seen from it; past the bottom, faint.
     for (id, o, top) in seen_below(m, &range, &look, &index).into_iter().filter(|_| !up) {
         d.owner = Some(id);
-        d.line(&o, Pen::PROJECTION, if top > range.bottom - TOL { INK } else { FAINT }, true);
+        d.line(&o, BY_CATEGORY, if top > range.bottom - TOL { INK } else { FAINT }, true);
     }
     // A run's centre line, faint and dashed, where it is seen but not cut: Revit's mark of a beam, and where to pick it.
     for (&id, e) in m.elements.iter().filter(|_| !up).filter(|(id, _)| shown(**id)) {
@@ -1194,7 +1213,7 @@ fn draw_plan(m: &Model, level: impl Key, view: View, up: bool, k: f32, n: f64) -
         if seen || over {
             d.owner = Some(id);
             let pts = [P2(g.a[0], g.a[1]), P2(g.b[0], g.b[1])].iter().map(|p| d.view.px(*p)).collect();
-            d.stroke(pts, Pen::PROJECTION, FAINT, Some([14.0, 5.0]), false);
+            d.stroke(pts, BY_CATEGORY, FAINT, Some([14.0, 5.0]), false);
         }
     }
     d.part(Part::Cut);
@@ -1214,7 +1233,7 @@ fn draw_plan(m: &Model, level: impl Key, view: View, up: bool, k: f32, n: f64) -
     for (id, runs) in cut_edges(&outlines) {
         d.owner = Some(id);
         for run in runs {
-            d.line(&run, Pen::CUT, INK, false);
+            d.line(&run, BY_CATEGORY, INK, false);
         }
     }
     // A compound wall's layers: each its material's cut pattern where it's wide enough to hold it,
@@ -1297,7 +1316,7 @@ fn draw_plan(m: &Model, level: impl Key, view: View, up: bool, k: f32, n: f64) -
             }
             _ if up => {}
             // A mass the plane passes through: its outline, dashed.
-            Element::Mass(ms) if m.mass_cut_by(ms, range.cut) => d.dashed(&m.mass_outline(ms, range.cut), Pen::PROJECTION, MASS, true),
+            Element::Mass(ms) if m.mass_cut_by(ms, range.cut) => d.dashed(&m.mass_outline(ms, range.cut), BY_CATEGORY, MASS, true),
             Element::Stair(st) => stair(&mut d, m, st, level),
             Element::Ramp(r) => ramp(&mut d, m, r, level),
             Element::Railing(rl) if m.level_of(e) == Some(level) => railing(&mut d, m, rl, range.cut),
@@ -1314,7 +1333,7 @@ fn draw_plan(m: &Model, level: impl Key, view: View, up: bool, k: f32, n: f64) -
                 if range.cut < eave && eave <= range.top {
                     for ring in std::iter::once(&m.roof_outline(r)).chain(&r.courtyards) {
                         let pts = ring.iter().map(|p| d.view.px(*p)).collect();
-                        d.stroke(pts, Pen::PROJECTION, INK, Some([10.0, 5.0]), true);
+                        d.stroke(pts, BY_CATEGORY, INK, Some([10.0, 5.0]), true);
                     }
                 }
             }
@@ -1322,7 +1341,7 @@ fn draw_plan(m: &Model, level: impl Key, view: View, up: bool, k: f32, n: f64) -
             crate::model::run_arm!(_) => {
                 if let Some(g) = m.run_geom(e).filter(|g| range.cut < g.z_span().0 && g.z_span().0 <= range.top) {
                     let pts = g.footprint().iter().map(|p| d.view.px(*p)).collect();
-                    d.stroke(pts, Pen::PROJECTION, INK, Some([10.0, 5.0]), true);
+                    d.stroke(pts, BY_CATEGORY, INK, Some([10.0, 5.0]), true);
                 }
             }
             _ => {}
@@ -1369,6 +1388,7 @@ fn draw_plan(m: &Model, level: impl Key, view: View, up: bool, k: f32, n: f64) -
         });
     }
     d.owner = None;
+    d.by_category(|o| style_of(m, o));
     look.dress(&mut d);
     d.weigh(|o| annotates(m, o));
     let mut title = m.level(level).map_or_else(String::new, |l| l.name.clone());
@@ -1402,12 +1422,12 @@ fn component(d: &mut Drawing, pieces: &[crate::family::Piece]) {
             let mut at = 0.0;
             for (s0, s1) in hidden {
                 if s0 > at {
-                    d.line(&[a + u * at, a + u * s0], Pen::PROJECTION, INK, false);
+                    d.line(&[a + u * at, a + u * s0], BY_CATEGORY, INK, false);
                 }
                 at = f64::max(at, s1);
             }
             if at < len {
-                d.line(&[a + u * at, b], Pen::PROJECTION, INK, false);
+                d.line(&[a + u * at, b], BY_CATEGORY, INK, false);
             }
         }
     }
@@ -1436,7 +1456,7 @@ fn slope_arrow(d: &mut Drawing, tail: P2, head: P2, slope: f64) {
 
 /// A shaft cut in plan: its outline, and the diagonals of its box across it.
 fn shaft(d: &mut Drawing, ring: &[P2]) {
-    d.line(ring, Pen::PROJECTION, INK, true);
+    d.line(ring, BY_CATEGORY, INK, true);
     let Some((lo, hi)) = bounds(ring) else { return };
     for (from, to) in [(lo, hi), (P2(lo.0, hi.1), P2(hi.0, lo.1))] {
         let u = (to - from).unit();
@@ -1605,7 +1625,7 @@ fn hatching(d: &mut Drawing, ring: &[P2], pattern: Pattern, u: P2, color: Rgb, g
 /// it, and with a grid, its tiles: lines through its middle, a tile apart, stopping at the holes.
 fn ceiling(d: &mut Drawing, m: &Model, c: &Ceiling) {
     for ring in std::iter::once(&c.boundary).chain(&c.openings) {
-        d.line(ring, Pen::PROJECTION, INK, true);
+        d.line(ring, BY_CATEGORY, INK, true);
     }
     let slabs = m.ceiling_slabs(c);
     holes(d, m, &slabs);
@@ -1757,11 +1777,11 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
     // Of a family: the forms the cut plane passes through, outlined, and the lines of its symbols (a door's swing).
     if o.family.is_some() {
         for piece in m.opening_pieces(e).iter().filter(|p| p.bottom <= cut && cut < p.top) {
-            d.line(&piece.outline, Pen::MEDIUM, INK, true);
+            d.line(&piece.outline, BY_CATEGORY, INK, true);
         }
         d.part(Part::Projection);
         for stroke in m.opening_strokes(e) {
-            d.line(&stroke, Pen::PROJECTION, INK, false);
+            d.line(&stroke, BY_CATEGORY, INK, false);
         }
         d.part(Part::Cut);
         return;
@@ -1775,10 +1795,10 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
         let out = axis.tangent(hinge).perp() * if o.flip_facing { -1.0 } else { 1.0 };
         let shut = axis.at(free, side);
         let open = pivot + out * pivot.dist(shut);
-        d.line(&[pivot, open], Pen::MEDIUM, INK, false);
+        d.line(&[pivot, open], BY_CATEGORY, INK, false);
         // What the leaf sweeps is seen, not cut.
         d.part(Part::Projection);
-        d.line(&arc(pivot, open, shut, 24), Pen::PROJECTION, INK, false);
+        d.line(&arc(pivot, open, shut, 24), BY_CATEGORY, INK, false);
         d.part(Part::Cut);
     } else {
         for across in [int, (ext + int) / 2.0, ext] {
@@ -1866,7 +1886,7 @@ fn railing(d: &mut Drawing, m: &Model, rl: &Railing, cut: f64) {
         };
         for (p, q, over) in parts {
             let pts = vec![d.view.px(p), d.view.px(q)];
-            d.stroke(pts, Pen::MEDIUM, INK, over.then_some([6.0, 4.0]), false);
+            d.stroke(pts, BY_CATEGORY, INK, over.then_some([6.0, 4.0]), false);
         }
     }
 }
@@ -1874,7 +1894,7 @@ fn railing(d: &mut Drawing, m: &Model, rl: &Railing, cut: f64) {
 /// A line from `a` to `b`, one pixel wide; dashed, `over`.
 fn segment(d: &mut Drawing, a: P2, b: P2, over: bool) {
     let pts = vec![d.view.px(a), d.view.px(b)];
-    d.stroke(pts, Pen::PROJECTION, INK, over.then_some([6.0, 4.0]), false);
+    d.stroke(pts, BY_CATEGORY, INK, over.then_some([6.0, 4.0]), false);
 }
 
 /// A stair's or a ramp's walk line, its arrow at the top, marked UP at its foot; from above, the
@@ -1913,7 +1933,7 @@ fn arrow(d: &mut Drawing, a: (f32, f32), b: (f32, f32)) -> (f32, f32) {
 fn roof(d: &mut Drawing, m: &Model, r: &Roof) {
     let faces = m.roof_faces(r).map_or_else(|_| vec![m.roof_outline(r)], |f| f.into_iter().flat_map(|(loops, _)| loops).collect());
     for f in faces {
-        d.line(&f, Pen::PROJECTION, INK, true);
+        d.line(&f, BY_CATEGORY, INK, true);
     }
 }
 

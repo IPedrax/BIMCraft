@@ -685,6 +685,19 @@ pub static ALL: &[Command] = &[
         line_weights,
     ),
     edit(
+        "object_styles",
+        "Object Styles",
+        &[],
+        "{categories?: {category: {projection?: pen, cut?: pen}, …}, reset?: true} the project's object styles, as Revit's \
+         Manage > Object Styles: the pen (0, a hairline, to 16) each model category draws its lines in where it is seen \
+         (`projection`) and where a view cuts it (`cut`), in every plan and section; a view's Visibility/Graphics overrides \
+         them. A category given keeps the pen it isn't given. The rest of an element's lines keep their own: a compound \
+         wall's layers, a door's jambs, a stair's walk line. `reset` goes back to what a project starts with (cut pen 10 and \
+         seen pen 4; a door's and a window's cut 6, a railing seen 6, a mass 4 both). Without either, it says each model \
+         category's, `own` whether the project has set it apart",
+        object_styles,
+    ),
+    edit(
         "units",
         "Project Units",
         &["UN"],
@@ -5694,6 +5707,54 @@ fn line_weights(s: &mut Session, p: &Value) -> R {
     let model: Vec<Value> =
         lw.model.iter().map(|col| json!({"scale": col.scale, "name": m.units.scale(col.scale), "widths": col.widths})).collect();
     Ok(json!({"model": model, "annotation": lw.annotation, "own": m.line_weights.is_some()}))
+}
+
+fn object_styles(s: &mut Session, p: &Value) -> R {
+    let c = "object_styles";
+    let reset = match p.get("reset") {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(v) => return Err(bad(c, format!("`reset` is true or false, not {v}"))),
+    };
+    if reset {
+        if !s.model.object_styles.is_empty() {
+            s.model_mut().object_styles.clear();
+        }
+    } else if let Some(v) = p.get("categories").filter(|v| !v.is_null()) {
+        /// What a category is given: a pen or both.
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Given {
+            projection: Option<crate::pen::Pen>,
+            cut: Option<crate::pen::Pen>,
+        }
+        let given: BTreeMap<String, Given> = serde_json::from_value(v.clone())
+            .map_err(|e| bad(c, format!("`categories` is {{category: {{projection?: pen, cut?: pen}}, …}}: {e}")))?;
+        let mut styles = s.model.object_styles.clone();
+        for (cat, g) in given {
+            crate::styles::known(&cat).map_err(|e| bad(c, e))?;
+            let was = s.model.object_style(&cat);
+            let style = crate::styles::ObjectStyle { projection: g.projection.unwrap_or(was.projection), cut: g.cut.unwrap_or(was.cut) };
+            style.check(&cat).map_err(|e| bad(c, e))?;
+            if style == crate::styles::default_of(&cat) {
+                styles.remove(&cat);
+            } else {
+                styles.insert(cat, style);
+            }
+        }
+        if styles != s.model.object_styles {
+            s.model_mut().object_styles = styles;
+        }
+    }
+    let m = &s.model;
+    let all: Vec<Value> = crate::graphics::MODEL
+        .iter()
+        .map(|cat| {
+            let st = m.object_style(cat);
+            json!({"category": cat, "projection": st.projection, "cut": st.cut, "own": m.object_styles.contains_key(*cat)})
+        })
+        .collect();
+    Ok(json!({"categories": all}))
 }
 
 fn inspect(s: &mut Session, _: &Value) -> R {

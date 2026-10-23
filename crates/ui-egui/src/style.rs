@@ -152,6 +152,7 @@ pub enum Icon {
     ZoomOut,
     ThinLines,
     LineWeights,
+    ObjectStyles,
     Schedule,
     CloseInactive,
     Interface,
@@ -337,6 +338,11 @@ pub fn paint(p: &Painter, icon: Icon, r: Rect, color: Color32) {
             .iter()
             .map(|&(y, w)| Shape::line(vec![at(3.0, y), at(21.0, y)], Stroke::new(w, color)))
             .collect(),
+        // A wall cut, heavy, before a thin one seen beyond.
+        Icon::ObjectStyles => vec![
+            Shape::line(vec![at(4.0, 4.0), at(4.0, 20.0), at(10.0, 20.0), at(10.0, 4.0), at(4.0, 4.0)], Stroke::new(2.5, color)),
+            Shape::line(vec![at(14.0, 8.0), at(20.0, 8.0), at(20.0, 20.0), at(14.0, 20.0), at(14.0, 8.0)], Stroke::new(0.75, color)),
+        ],
         Icon::Schedule => vec![
             ring(&[(3.0, 4.0), (21.0, 4.0), (21.0, 20.0), (3.0, 20.0)]),
             line(&[(3.0, 9.0), (21.0, 9.0)]),

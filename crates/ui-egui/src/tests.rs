@@ -4774,6 +4774,7 @@ mod dock;
 mod gpu;
 mod lineweights;
 mod mep;
+mod objectstyles;
 mod revit;
 mod start;
 
