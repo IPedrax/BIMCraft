@@ -9,6 +9,7 @@ use crate::geom::P2;
 use crate::graphics::Look;
 use crate::language::Language;
 use crate::model::{Element, Id, Key, Model, Schedule, Sheet, Viewport, paper};
+use crate::pen::Pen;
 use crate::render::{self, Drawing, PAPER, Prim, Rgb, View};
 use crate::{font, schedule, view3d};
 
@@ -113,12 +114,12 @@ fn left(d: &mut Drawing, text: &str, at: P2, height: f64) {
 /// box in the bottom right corner: the project, the sheet's name, its scale, and its number.
 fn title_block(d: &mut Drawing, project: &str, sheet: &Sheet, paper: P2, scale: &str) {
     let rect = |a: P2, b: P2| vec![a, P2(b.0, a.1), b, P2(a.0, b.1)];
-    d.line(&rect(P2(20.0, 10.0), P2(paper.0 - 10.0, paper.1 - 10.0)), 2.5, INK, true);
+    d.line(&rect(P2(20.0, 10.0), P2(paper.0 - 10.0, paper.1 - 10.0)), Pen(8), INK, true);
     let width = TITLE.0.min(paper.0 - 30.0);
     let (x0, x1, y0, y1) = (paper.0 - 10.0 - width, paper.0 - 10.0, 10.0, 10.0 + TITLE.1);
-    d.line(&rect(P2(x0, y0), P2(x1, y1)), 2.5, INK, true);
-    d.line(&[P2(x0, y0 + 26.0), P2(x1, y0 + 26.0)], 1.0, INK, false);
-    d.line(&[P2(x1 - 50.0, y0), P2(x1 - 50.0, y0 + 26.0)], 1.0, INK, false);
+    d.line(&rect(P2(x0, y0), P2(x1, y1)), Pen(8), INK, true);
+    d.line(&[P2(x0, y0 + 26.0), P2(x1, y0 + 26.0)], Pen(4), INK, false);
+    d.line(&[P2(x1 - 50.0, y0), P2(x1 - 50.0, y0 + 26.0)], Pen(4), INK, false);
     left(d, project, P2(x0 + 4.0, y0 + 33.0), 5.0);
     left(d, &sheet.name, P2(x0 + 4.0, y0 + 17.0), 3.5);
     left(d, scale, P2(x0 + 4.0, y0 + 7.0), 2.0);
@@ -176,18 +177,18 @@ fn table(d: &mut Drawing, m: &Model, sc: &Schedule, (x, y): (f32, f32)) {
     let (w, h) = table_size(&sc.name, &t);
     // On whole pixels, so its rules come out crisp.
     let (x, y, w, h) = (x.round(), y.round(), w as f32, h as f32);
-    let rule = |d: &mut Drawing, a: (f32, f32), b: (f32, f32), width: f32| {
-        d.push(Prim::Line { pts: vec![a, b], width, color: INK, dash: None, closed: false });
+    let rule = |d: &mut Drawing, a: (f32, f32), b: (f32, f32), pen: Pen| {
+        d.stroke(vec![a, b], pen, INK, None, false);
     };
-    d.push(Prim::Line { pts: vec![(x, y), (x + w, y), (x + w, y + h), (x, y + h)], width: 2.0, color: INK, dash: None, closed: true });
+    d.stroke(vec![(x, y), (x + w, y), (x + w, y + h), (x, y + h)], Pen(7), INK, None, true);
     d.text(&sc.name, (x + w / 2.0, y + TITLE_ROW / 2.0), TITLE_TEXT, INK);
     let top = y + TITLE_ROW;
-    rule(d, (x, top), (x + w, top), 1.0);
+    rule(d, (x, top), (x + w, top), Pen(4));
     let last = t.rows.len();
     for (i, cells) in std::iter::once(&t.headings).chain(&t.rows).enumerate() {
         let row = top + ROW * i as f32;
         if i > 0 {
-            rule(d, (x, row), (x + w, row), if i == 1 || (t.totals && i == last) { 1.5 } else { 0.5 });
+            rule(d, (x, row), (x + w, row), if i == 1 || (t.totals && i == last) { Pen(6) } else { Pen(1) });
         }
         let mut left = x;
         for (text, width) in cells.iter().zip(&t.widths) {
@@ -198,15 +199,17 @@ fn table(d: &mut Drawing, m: &Model, sc: &Schedule, (x, y): (f32, f32)) {
     let mut left = x;
     for width in t.widths.iter().take(t.widths.len().saturating_sub(1)) {
         left += width;
-        rule(d, (left, top), (left, y + h), 0.5);
+        rule(d, (left, top), (left, y + h), Pen(1));
     }
 }
 
-/// The scale a sheet's title box gives, in `language`: its views', when they share one.
-fn scale_note(views: &[&Viewport], language: Language) -> String {
+/// The scale a sheet's title box gives, in `language` and named as `units` name it: its views', when they share one.
+fn scale_note(views: &[&Viewport], language: Language, units: crate::units::Units) -> String {
     match views.split_first() {
         None => String::new(),
-        Some((first, rest)) if rest.iter().all(|v| v.scale == first.scale) => format!("{} 1 : {}", language.word("SCALE"), first.scale),
+        Some((first, rest)) if rest.iter().all(|v| v.scale == first.scale) => {
+            format!("{} {}", language.word("SCALE"), units.scale(first.scale))
+        }
         Some(_) => language.word("SCALE AS INDICATED").into(),
     }
 }
@@ -225,11 +228,13 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
         })
         .collect();
     let mut d = Drawing::new(page(paper));
+    // The paper's own lines (the title block, the views' titles, schedules' rules) are annotation; its views come sized.
+    d.weights = m.line_weights().at(m.units.default_scale());
     d.own(m.elements.id(id));
     // Schedules keep their own size: no scale of theirs.
     let scaled: Vec<&Viewport> =
         views.iter().filter(|(_, v)| !matches!(m.elements.get(v.view), Some(Element::Schedule(_)))).map(|(_, v)| *v).collect();
-    title_block(&mut d, &m.name, sheet, paper, &scale_note(&scaled, m.language));
+    title_block(&mut d, &m.name, sheet, paper, &scale_note(&scaled, m.language, m.units));
     let mut scene = None;
     for (vid, vp) in views {
         let Some((view, (ox, oy))) = frame(m, vid) else { continue };
@@ -271,8 +276,8 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
         let x = corner.0 + ROOM;
         left(&mut d, name, P2(x, corner.1 - 5.0), 3.0);
         let line = f64::from(font::width(name, (3.0 * DENSITY) as f32)) / DENSITY + 10.0;
-        d.line(&[P2(x, corner.1 - 8.0), P2(x + line, corner.1 - 8.0)], 1.5, INK, false);
-        left(&mut d, &format!("1 : {}", vp.scale), P2(x, corner.1 - 11.0), 2.0);
+        d.line(&[P2(x, corner.1 - 8.0), P2(x + line, corner.1 - 8.0)], Pen(6), INK, false);
+        left(&mut d, &m.units.scale(vp.scale), P2(x, corner.1 - 11.0), 2.0);
     }
     for (&nid, e) in &m.elements {
         if let Element::Text(n) = e
@@ -283,6 +288,7 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
         }
     }
     d.own(None);
+    d.weigh(|_| true);
     Some(d)
 }
 

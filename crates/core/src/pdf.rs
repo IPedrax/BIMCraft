@@ -19,7 +19,7 @@ fn deflate(bytes: &[u8]) -> Vec<u8> {
 
 /// A page's content stream: the drawing's pixels mapped onto `paper` mm in points, y up; and its
 /// pictures, RGB, in the order the stream names them (`/Im0`, `/Im1`…).
-fn contents(d: &Drawing, paper: P2) -> (String, Vec<(u32, u32, Vec<u8>)>) {
+pub(crate) fn contents(d: &Drawing, paper: P2) -> (String, Vec<(u32, u32, Vec<u8>)>) {
     let k = 72.0 / 25.4 / d.view.scale;
     let mut s = format!("{k:.6} 0 0 {:.6} 0 {:.3} cm 1 J 1 j\n", -k, paper.1 * 72.0 / 25.4);
     let color =

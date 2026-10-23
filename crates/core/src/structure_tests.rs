@@ -276,7 +276,7 @@ fn a_plan_sees_the_beams_hanging_under_its_level_the_ones_it_cuts_and_the_ones_o
     // Hung: one outline of its footprint, 200 wide, projected (thin, solid).
     let lines = of(&d, hung);
     assert!(
-        matches!(lines.as_slice(), [Prim::Line { closed: true, dash: None, width, .. }, Prim::Line { closed: false, dash: Some(_), .. }] if *width < 2.0),
+        matches!(lines.as_slice(), [Prim::Line { closed: true, dash: None, width, .. }, Prim::Line { closed: false, dash: Some(_), .. }] if *width < d.width(crate::pen::Pen(7))),
         "{} prims",
         lines.len()
     );

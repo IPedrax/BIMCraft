@@ -28,6 +28,7 @@ pub mod massing;
 pub mod model;
 pub mod paint;
 pub mod pdf;
+pub mod pen;
 pub mod phasing;
 pub mod render;
 pub mod runs;

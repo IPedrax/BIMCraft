@@ -8,18 +8,18 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use bimcraft_core::graphics::{ANNOTATION, Applied, Dash, Detail, Graphics, Group, MODEL, Override, Style, VisualStyle, WEIGHTS};
+use bimcraft_core::graphics::{ANNOTATION, Applied, Dash, Detail, Graphics, Group, MODEL, Override, Style, VisualStyle};
 use bimcraft_core::model::{Element, Guid, Id, Model};
+use bimcraft_core::pen::{MAX_PEN, Pen};
 use bimcraft_core::schedule;
+use bimcraft_core::units::Units;
 use egui::{
     Align, Button, Checkbox, ComboBox, Context, DragValue, Grid, Id as UiId, Layout, Modal, RichText, ScrollArea, Ui, WidgetInfo,
     WidgetType, vec2,
 };
 use serde_json::{Value, json};
 
-use crate::footer::{SCALES, scale_label};
 use crate::lang::{self, t, tf};
-use crate::properties::number;
 use crate::style::pal;
 use crate::{BimApp, Sheet, Status};
 
@@ -115,16 +115,12 @@ fn group_name(g: Group) -> &'static str {
 }
 
 /// The scales a drop-down offers, each as the interface names it: none first, then 1 : n.
-fn scale_choices() -> Vec<(String, Option<u32>)> {
-    std::iter::once(None).chain(SCALES.map(Some)).map(|n| (t(&scale_label(n.map(f64::from))).to_string(), n)).collect()
-}
-
-/// A drop-down for a scale, named by `label`: the scale picked, `Some(None)` being Auto.
-fn scale_combo(ui: &mut Ui, salt: &'static str, label: UiId, now: Option<f64>) -> Option<Option<u32>> {
-    let choices = scale_choices();
-    let options: Vec<String> = choices.iter().map(|c| c.0.clone()).collect();
-    let picked = crate::properties::combo(ui, (0, salt), label, t(&scale_label(now)), &options)?;
-    choices.into_iter().find(|c| c.0 == picked).map(|c| c.1)
+/// A drop-down for a scale, named by `label`, of the scales a project in `units` offers, named as it names them: the
+/// scale picked.
+fn scale_combo(ui: &mut Ui, salt: &'static str, label: UiId, now: f64, units: Units) -> Option<f64> {
+    let options: Vec<String> = units.scales().iter().map(|n| units.scale(*n)).collect();
+    let picked = crate::properties::combo(ui, (0, salt), label, &units.scale(now), &options)?;
+    units.scales().iter().copied().find(|n| units.scale(*n) == picked)
 }
 
 /// A drop-down for a detail level, named by `label`: the level picked.
@@ -466,7 +462,7 @@ impl BimApp {
                 ui.add_space(4.0);
                 Grid::new("template-settings").num_columns(2).show(ui, |ui| {
                     let l = ui.label(t("View Scale:"));
-                    if let Some(n) = scale_combo(ui, "template-scale", l.id, tpl.graphics.scale) {
+                    if let Some(n) = scale_combo(ui, "template-scale", l.id, tpl.graphics.scale_n(model.units), model.units) {
                         run = Some(json!({"name": d.picked, "scale": n}));
                     }
                     ui.end_row();
@@ -559,7 +555,7 @@ impl BimApp {
                     let label = ui.label(t("View Scale"));
                     let label = if let Some(n) = &note { label.on_hover_text(n) } else { label };
                     ui.add_enabled_ui(note.is_none(), |ui| {
-                        if let Some(n) = scale_combo(ui, "view-scale", label.id, shown.scale) {
+                        if let Some(n) = scale_combo(ui, "view-scale", label.id, shown.scale_n(model.units), model.units) {
                             set = Some(("scale", json!({"view": view, "scale": n})));
                         }
                     });
@@ -567,10 +563,9 @@ impl BimApp {
                     let label = ui.label(t("Scale Value 1:"));
                     let label = if let Some(n) = &note { label.on_hover_text(n) } else { label };
                     ui.add_enabled_ui(note.is_none(), |ui| {
-                        let text = shown.scale.map_or_else(String::new, |n| n.to_string());
-                        if let Some(typed) = self.field(ui, id, "scale", text, label.id, t("Auto")) {
-                            match (typed.trim().is_empty(), number(&typed)) {
-                                (true, _) => set = Some(("scale", json!({"view": view, "scale": null}))),
+                        if let Some(typed) = self.field(ui, id, "scale", shown.scale_n(model.units).to_string(), label.id, "") {
+                            match (typed.trim().is_empty(), model.units.parse_scale(&typed)) {
+                                (true, _) => self.status = Status { text: t("A view always has a scale").into(), error: true },
                                 (_, Some(n)) => set = Some(("scale", json!({"view": view, "scale": n}))),
                                 _ => self.status = Status { text: tf("`{}` is not a scale", &[typed.trim()]), error: true },
                             }
@@ -917,8 +912,8 @@ pub(crate) fn editor(ui: &mut Ui, o: &mut Override, enabled: bool, see_through: 
     ui.add_enabled_ui(enabled, |ui| {
         // The projection's settings and the cut's side by side.
         ui.columns(2, |cols| {
-            style_rows(&mut cols[0], "Projection", &mut o.projection, 1.0);
-            style_rows(&mut cols[1], "Cut", &mut o.cut, 4.0);
+            style_rows(&mut cols[0], "Projection", &mut o.projection, Pen(4));
+            style_rows(&mut cols[1], "Cut", &mut o.cut, Pen(10));
         });
         ui.horizontal(|ui| {
             ui.checkbox(&mut o.halftone, t("Halftone"));
@@ -937,9 +932,17 @@ pub(crate) fn editor(ui: &mut Ui, o: &mut Override, enabled: bool, see_through: 
     *o != before
 }
 
+/// A pen as the Line weight drop-down names it: its number, and its width on paper or that it is a hairline.
+fn pen_name(p: Pen) -> String {
+    match p.0 {
+        0 => format!("0 · {}", t("Hairline")),
+        n => format!("{n} · {:.2} mm", p.mm()),
+    }
+}
+
 /// A style's four settings, each with a box to override it: the line's colour, weight and dash, and
 /// the fill's colour. `section` names which, `weight` is the weight a new override starts at.
-fn style_rows(ui: &mut Ui, section: &str, s: &mut Style, weight: f64) {
+fn style_rows(ui: &mut Ui, section: &str, s: &mut Style, weight: Pen) {
     ui.label(RichText::new(t(section)).strong());
     Grid::new(("vg-style", section)).num_columns(2).spacing(vec2(16.0, 4.0)).show(ui, |ui| {
         let named = |what: &str| format!("{}: {}", t(section), t(what));
@@ -970,8 +973,12 @@ fn style_rows(ui: &mut Ui, section: &str, s: &mut Style, weight: f64) {
             s.weight = on.then_some(weight);
         }
         if let Some(w) = &mut s.weight {
-            let d = ui.add(DragValue::new(w).range(WEIGHTS.0..=WEIGHTS.1).speed(0.1).suffix(" px"));
-            d.widget_info(|| WidgetInfo::labeled(WidgetType::DragValue, true, name.clone()));
+            let c = ComboBox::from_id_salt(("vg-weight", section)).selected_text(pen_name(*w)).width(110.0).show_ui(ui, |ui| {
+                for each in (0..=MAX_PEN).map(Pen) {
+                    ui.selectable_value(w, each, pen_name(each));
+                }
+            });
+            c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, name.clone()));
         } else {
             ui.label("");
         }

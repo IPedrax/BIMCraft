@@ -331,6 +331,12 @@ impl Place {
     }
 }
 
+/// How many screen pixels wide a line `width` px wide in a drawing shown `k` times its size draws: as wide as its pen
+/// on the paper the view stands for, at least a pixel, so a hairline (0) is one at any zoom; with Thin Lines, one.
+pub(crate) fn on_screen(width: f32, k: f32, thin: bool) -> f32 {
+    if thin { 1.0 } else { (width * k).max(1.0) }
+}
+
 /// The display list, with the selected and hovered elements in the accent colours; with `thin`,
 /// every line one pixel wide. Its pictures are `pictures`, in order.
 pub(crate) fn paint(p: &Painter, at: Place, d: &Drawing, selected: &[Id], hovered: Option<Id>, thin: bool, pictures: &[TextureId]) {
@@ -375,7 +381,7 @@ pub(crate) fn paint(p: &Painter, at: Place, d: &Drawing, selected: &[Id], hovere
                 }
             }
             Prim::Line { pts, width, color: c, dash, closed } => {
-                let stroke = Stroke::new(if thin { 1.0 } else { *width * at.k }, accent.map_or(color(*c), |a| a.0));
+                let stroke = Stroke::new(on_screen(*width, at.k, thin), accent.map_or(color(*c), |a| a.0));
                 let mut pts: Vec<Pos2> = pts.iter().map(|q| at.pos(*q)).collect();
                 match dash {
                     Some([on, off]) => {

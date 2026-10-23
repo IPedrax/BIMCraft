@@ -457,7 +457,7 @@ pub static ALL: &[Command] = &[
         "Place View",
         &[],
         "{sheet: number or id, view: a level's, section's, elevation's, schedule's or 3D view's name or id, at?: [x, y], \
-         scale?, azimuth?, elevation?} puts the view on the sheet at 1 : `scale` (by default the view's own, see `scale`, else 100; a schedule keeps its size), \
+         scale?, azimuth?, elevation?} puts the view on the sheet at 1 : `scale` (by default the view's own, see `scale`, 1 : 100 when it has none of its own; a schedule keeps its size), \
          its middle `at` mm from the paper's bottom left corner (by default right of the views there, or in the middle); a \
          view goes on one sheet. A schedule (Room Schedule, Door Schedule…) or the 3D view ({3D}, seen from `azimuth` and \
          `elevation` degrees) comes to be as it's first placed",
@@ -477,10 +477,11 @@ pub static ALL: &[Command] = &[
         "scale",
         "View Scale",
         &[],
-        "{view, scale?: 1 | … | 100000 | null} a plan's, section's or elevation's scale, 1 : `scale`, which sizes its annotation \
-         (its lettering, grid bubbles, tags, dimension ticks…) as paper would hold it, 1 mm of paper being `scale` mm of the model; \
-         null leaves it with none, so annotation keeps its size on screen. A view placed on a sheet takes it for the viewport's \
-         scale. Without `scale` it only says what the view has",
+        "{view, scale?: 1 | … | 100000} a plan's, section's or elevation's scale, 1 : `scale`: the paper the view stands for, \
+         1 mm of paper being `scale` mm of the model. Its annotation (lettering, grid bubbles, tags, dimension ticks…) and its \
+         line weights (pens) are that paper's, so a screen shows them as the paper would at its zoom. Every view has one: \
+         1 : 100 until it is given another, and null is refused. A view placed on a sheet takes it for the viewport's scale. \
+         Without `scale` it only says what the view has",
         view_scale,
     ),
     edit(
@@ -670,6 +671,20 @@ pub static ALL: &[Command] = &[
         delete,
     ),
     edit(
+        "line_weights",
+        "Line Weights",
+        &[],
+        "{model?: [{scale, widths}, …], annotation?: [16 widths], reset?: true} the project's line weights, as Revit's \
+         Manage > Line Weights: what each pen draws on paper, mm. `model` gives, whole, the model's pens 1 to 16 at each of \
+         its scales (1 to 32 of them, 1 : `scale`): a view draws its walls, doors, patterns and the rest of the model in the \
+         column of the scale nearest its own (by how many times finer or coarser; the finer of two as near). `annotation` \
+         gives the 16 pens that dimensions, tags, text, grids, levels and marks draw in, at any scale. Each width is 0.01 to \
+         20 mm; pen 0 is always a hairline. `reset` goes back to what a project in its units starts with (the model's pens \
+         wider at finer scales; at 1 : 100, pen 4 is 0.20 mm and pen 10 0.80 mm). Without any, it says what they are, each \
+         scale named as the project's units name it, and `own` whether the project has set them",
+        line_weights,
+    ),
+    edit(
         "units",
         "Project Units",
         &["UN"],
@@ -728,8 +743,9 @@ pub static ALL: &[Command] = &[
          | null, phase_filter?: name | null, options?: {set: option | null, …}, template?: name | null, reset?: true} what a view hides and how it draws the rest, as Revit's Visibility/Graphics does; with \
          none of those, the view's settings as they are. A category hidden (walls, floors, rooms, grids, dimensions, levels…, \
          in any case, singular or plural) leaves all its elements out of that view, and `hide_elements` the elements given. An \
-         override is {hidden?, projection?: style, cut?: style, halftone?, transparency?}, a style {color?, weight? (px, \
-         0.5 to 20; 1 px is 0.2 mm on a sheet), dash? (solid, dashed, dotted), fill?}, a colour [r, g, b] or \"#rrggbb\". \
+         override is {hidden?, projection?: style, cut?: style, halftone?, transparency?}, a style {color?, weight? (a pen, \
+         0 to 16: 0 a hairline, the thinnest line the screen or printer draws at any scale; 1 to 16 widths on paper from 0.10 to \
+         4 mm, 4 being 0.20 mm and 10 0.80 mm, a cut wall's outline), dash? (solid, dashed, dotted), fill?}, a colour [r, g, b] or \"#rrggbb\". \
          Projection is what a plan sees below its cut plane, a section beyond its line and the annotation; cut is what the view \
          cuts; `fill` is the cut's poché, or a 3D view's surface; in a 3D view, and in what a section sees beyond its line, a \
          projection's `color` is the colour of the edges (weight and dash draw lines, and those are vectors). Halftone draws it \
@@ -760,7 +776,7 @@ pub static ALL: &[Command] = &[
         &[],
         "{name, from?: a level's, section's, elevation's or 3D view's name or id, controls?: [categories, filters, range, \
          phase, options, scale, detail, style], view_range?: {top?, cut?, bottom?, depth?}, phase?, phase_filter?, options?, \
-         scale?: 1 | … | 100000 | null, detail?: coarse | medium | fine, visual_style?: shaded | hidden_line | wireframe, \
+         scale?: 1 | … | 100000, detail?: coarse | medium | fine, visual_style?: shaded | hidden_line | wireframe, \
          hide?, show?, categories?, filters?, reset?, delete?: true} a view template, as Revit's: settings under a name for \
          views to follow with `graphics {template}`. `from` takes a view's categories (hidden and overridden), filters and, a \
          plan's, view range, its phase and phase filter, its design options, its scale, detail level and visual style; \
@@ -2142,7 +2158,7 @@ fn view_template(s: &mut Session, p: &Value) -> R {
     }
     edit_graphics(c, m, p, &mut t.graphics, true)?;
     if let Some(scale) = scale_param(c, p)? {
-        t.graphics.scale = scale;
+        t.graphics.scale = Some(scale);
     }
     t.graphics.detail = detail_param(c, p)?.unwrap_or(t.graphics.detail);
     t.graphics.style = style_param(c, p, "visual_style")?.unwrap_or(t.graphics.style);
@@ -3996,16 +4012,20 @@ fn change_graphics(s: &mut Session, view: impl Key, f: impl Fn(&mut Graphics)) {
     }
 }
 
-/// The scale `p` asks for: none given, or 1 : n, or null for none.
-fn scale_param(c: &str, p: &Value) -> Result<Option<Option<f64>>, String> {
+/// The scale `p` asks for, 1 : n, if it does: a view always has one, so null is refused.
+fn scale_param(c: &str, p: &Value) -> Result<Option<f64>, String> {
     match p.get("scale") {
         None => Ok(None),
-        Some(Value::Null) => Ok(Some(None)),
         Some(v) => match v.as_f64() {
-            Some(n) if graphics::SCALES.contains(&n) => Ok(Some(Some(n))),
+            Some(n) if graphics::SCALES.contains(&n) => Ok(Some(n)),
             _ => {
                 let (lo, hi) = (graphics::SCALES.start(), graphics::SCALES.end());
-                Err(bad(c, format!("`scale` is the n of 1 : n, from {lo} to {hi}, or null for none, not {v}")))
+                let none = if v.is_null() {
+                    ": a view always has a scale (1 : 100, or 1/8\" = 1'-0\" in feet and inches, until it is given one)"
+                } else {
+                    ""
+                };
+                Err(bad(c, format!("`scale` is the n of 1 : n, from {lo} to {hi}, not {v}{none}")))
             }
         },
     }
@@ -4050,10 +4070,10 @@ fn view_scale(s: &mut Session, p: &Value) -> R {
     let view = scaled_view(c, &s.model, p)?;
     if let Some(scale) = scale_param(c, p)? {
         own_to_set(c, &s.model, view, Group::Scale, "scale")?;
-        change_graphics(s, view, |g| g.scale = scale);
+        change_graphics(s, view, |g| g.scale = Some(scale));
     }
     let m = &s.model;
-    let now = graphics::graphics_of(m, view).and_then(|g| g.resolved(m).scale);
+    let now = graphics::scale_of(m, view);
     Ok(json!({"view": view, "name": m.view_name(view), "scale": now}))
 }
 
@@ -4183,7 +4203,7 @@ fn place(s: &mut Session, p: &Value) -> R {
         None => return Err(bad(c, "`view`, a level's, section's, elevation's, schedule's or 3D view's name or id, is required")),
     };
     // The view's own scale, unless told another; 1 : 100 for a view with none.
-    let scale = scale.or_else(|| graphics::graphics_of(&s.model, view).and_then(|g| g.resolved(&s.model).scale)).unwrap_or(100.0);
+    let scale = scale.unwrap_or_else(|| graphics::scale_of(&s.model, view));
     let at = at.unwrap_or_else(|| sheet::spot(&s.model, sheet, view, scale));
     let (sheet, view) = (s.model.guid(sheet), s.model.guid(view));
     let id = s.model_mut().insert(Element::Viewport(Viewport { sheet, view, at, scale }));
@@ -5640,6 +5660,40 @@ fn units(s: &mut Session, p: &Value) -> R {
         }
     }
     Ok(json!({"length": s.model.units.name()}))
+}
+
+fn line_weights(s: &mut Session, p: &Value) -> R {
+    let c = "line_weights";
+    let reset = match p.get("reset") {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(v) => return Err(bad(c, format!("`reset` is true or false, not {v}"))),
+    };
+    if reset {
+        if s.model.line_weights.is_some() {
+            s.model_mut().line_weights = None;
+        }
+    } else if !absent(p.get("model")) || !absent(p.get("annotation")) {
+        let mut lw = s.model.line_weights().into_owned();
+        if let Some(v) = p.get("model").filter(|v| !v.is_null()) {
+            lw.model = serde_json::from_value(v.clone())
+                .map_err(|e| bad(c, format!("`model` is [{{scale, widths: [the 16 pens' widths, mm]}}, …]: {e}")))?;
+        }
+        if let Some(v) = p.get("annotation").filter(|v| !v.is_null()) {
+            lw.annotation =
+                serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`annotation` is the 16 pens' widths, mm: {e}")))?;
+        }
+        let lw = lw.sorted();
+        lw.check().map_err(|e| bad(c, e))?;
+        if s.model.line_weights.as_ref() != Some(&lw) {
+            s.model_mut().line_weights = Some(lw);
+        }
+    }
+    let m = &s.model;
+    let lw = m.line_weights();
+    let model: Vec<Value> =
+        lw.model.iter().map(|col| json!({"scale": col.scale, "name": m.units.scale(col.scale), "widths": col.widths})).collect();
+    Ok(json!({"model": model, "annotation": lw.annotation, "own": m.line_weights.is_some()}))
 }
 
 fn inspect(s: &mut Session, _: &Value) -> R {

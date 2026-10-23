@@ -18,7 +18,6 @@ use serde_json::{Value, json};
 
 use crate::graphics::controlled_note;
 use crate::lang::{t, tf};
-use crate::properties::number;
 use crate::style::{Icon, pal};
 use crate::{BimApp, Sheet, Status, small_button};
 
@@ -46,14 +45,6 @@ pub(crate) struct Shadow {
     sheet: Sheet,
     temp: Temp,
     model: Arc<Model>,
-}
-
-/// The scales the Scale menu and Properties list, 1 : n.
-pub(crate) const SCALES: [u32; 10] = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
-
-/// A view's scale as the Scale menu and Properties name it: `1 : 50`, or `Auto` for none.
-pub(crate) fn scale_label(n: Option<f64>) -> String {
-    n.map_or_else(|| "Auto".to_string(), |n| format!("1 : {n}"))
 }
 
 /// A button of the bar that opens a menu: named `label` for screen readers, and showing `shown`, the setting it holds. Greyed
@@ -232,20 +223,19 @@ impl BimApp {
     /// The Scale and Detail Level menus of a plan, a ceiling plan, a section or an elevation, `view`: what the view keeps.
     fn scale_and_detail(&mut self, ui: &mut Ui, view: &Value) {
         let now = self.graphics_shown();
-        let shown = scale_label(now.scale);
+        let units = self.session.model.units;
+        let n_now = now.scale_n(units);
+        let shown = units.scale(n_now);
         let (set_by, tip) = (
             self.controlled_by(Group::Scale),
-            "Scale: the scale this view's annotation is sized for, as paper at that scale would hold it; Auto keeps it the size it has on screen",
+            "Scale: the paper this view stands for, 1 : n of the model: its annotation and its line weights are that paper's",
         );
         let r = menu_button(ui, "Scale", &shown, tip, set_by.as_deref());
         Popup::menu(&r).show(|ui| {
             // Wide enough for the Custom row's field.
             ui.set_min_width(150.0);
-            if ui.selectable_label(now.scale.is_none(), t("Auto")).clicked() {
-                self.run("scale", json!({"view": view, "scale": null}));
-            }
-            for n in SCALES {
-                if ui.selectable_label(now.scale == Some(f64::from(n)), format!("1 : {n}")).clicked() {
+            for &n in units.scales() {
+                if ui.selectable_label(n_now == n, units.scale(n)).clicked() {
                     self.run("scale", json!({"view": view, "scale": n}));
                 }
             }
@@ -255,10 +245,9 @@ impl BimApp {
                 ui.visuals_mut().extreme_bg_color = pal().surface;
                 ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(1.0, pal().border);
                 let l = ui.label(t("Custom"));
-                ui.label("1 :");
-                let edit = ui.add(TextEdit::singleline(&mut self.scale_text).desired_width(56.0)).labelled_by(l.id);
+                let edit = ui.add(TextEdit::singleline(&mut self.scale_text).desired_width(96.0)).labelled_by(l.id);
                 if edit.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
-                    match number(&self.scale_text) {
+                    match units.parse_scale(&self.scale_text) {
                         Some(n) => {
                             self.run("scale", json!({"view": view, "scale": n}));
                         }

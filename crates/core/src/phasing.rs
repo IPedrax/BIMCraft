@@ -552,11 +552,11 @@ mod tests {
         assert_eq!(both(&mut s, json!("Show Previous + Demolished")), [true, false, true, false]);
         // Existing in halftone and demolished dashed in red, as the project's overrides say.
         let d = plan(&s, 100000);
-        assert!(lines(&d, walls[2]).contains(&(4.0, Rgb(200, 40, 30), Some([10.0, 5.0]))), "{:?}", lines(&d, walls[2]));
+        assert!(lines(&d, walls[2]).contains(&(10, Rgb(200, 40, 30), Some([10.0, 5.0]))), "{:?}", lines(&d, walls[2]));
         assert_eq!(both(&mut s, json!("Show Previous + New")), [true, true, false, true]);
         let d = plan(&s, 100000);
-        assert!(lines(&d, walls[0]).contains(&(4.0, Rgb(140, 140, 140), None)), "{:?}", lines(&d, walls[0]));
-        assert!(lines(&d, walls[1]).contains(&(4.0, Rgb(25, 25, 25), None)));
+        assert!(lines(&d, walls[0]).contains(&(10, Rgb(140, 140, 140), None)), "{:?}", lines(&d, walls[0]));
+        assert!(lines(&d, walls[1]).contains(&(10, Rgb(25, 25, 25), None)));
         // No filter again: as it was.
         assert_eq!(both(&mut s, Value::Null), [true, true, true, true]);
         // An earlier phase: what is made later isn't there, and what is taken down later still stands.
@@ -617,8 +617,8 @@ mod tests {
         run(&mut s, "phase", json!({"overrides": {"new": {"cut": {"color": [0, 0, 200]}}}}));
         run(&mut s, "graphics", json!({"view": 100000, "phase_filter": "Renovation"}));
         assert_eq!(shown(&s, &walls), [true, true, false, false]);
-        assert!(lines(&plan(&s, 100000), walls[1]).contains(&(4.0, Rgb(0, 0, 200), None)));
-        assert!(lines(&plan(&s, 100000), walls[0]).contains(&(4.0, Rgb(25, 25, 25), None)));
+        assert!(lines(&plan(&s, 100000), walls[1]).contains(&(10, Rgb(0, 0, 200), None)));
+        assert!(lines(&plan(&s, 100000), walls[0]).contains(&(10, Rgb(25, 25, 25), None)));
         // The built-in ones can change too, and a filter in use can't go.
         run(&mut s, "phase_filter", json!({"name": "Show New", "existing": "overridden"}));
         let e = s.execute("phase_filter", &json!({"name": "Renovation", "delete": true})).unwrap_err();

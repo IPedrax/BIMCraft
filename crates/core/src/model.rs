@@ -56,12 +56,13 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 3: a type's layers and a family's forms and
+/// The version of the project file this build writes, and the newest it reads. 4: a line weight is a pen (0 to 16), not
+/// pixels of a sheet's drawing. 3: a type's layers and a family's forms and
 /// symbols hold ids and GUIDs; a family's types and parameters are library entries, and what uses them names them by GUID.
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 3;
+pub const FORMAT: u32 = 4;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -1551,6 +1552,10 @@ pub struct Model {
     /// Its sets of design options, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub option_sets: BTreeMap<String, OptionSet>,
+    /// What its pens draw on paper (Manage > Line Weights), once set; until then, what a project in its units starts with
+    /// ([`Model::line_weights`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line_weights: Option<crate::pen::LineWeights>,
     pub elements: Elements,
     /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
     /// templates, phases, phase filters and design options.
@@ -1559,6 +1564,14 @@ pub struct Model {
 }
 
 impl Model {
+    /// What its pens draw on paper: its own line weights, or those a project in its units starts with.
+    pub fn line_weights(&self) -> std::borrow::Cow<'_, crate::pen::LineWeights> {
+        match &self.line_weights {
+            Some(lw) => std::borrow::Cow::Borrowed(lw),
+            None => std::borrow::Cow::Owned(crate::pen::LineWeights::default_for(self.units)),
+        }
+    }
+
     /// An empty project with two levels and a few types to start from.
     pub fn new(name: &str) -> Model {
         Model::new_in(name, Language::English)
@@ -1584,6 +1597,7 @@ impl Model {
             phase_filters: phasing::filters(language),
             phase_overrides: phasing::overrides(),
             option_sets: BTreeMap::new(),
+            line_weights: None,
             elements: Elements::new(),
             library: crate::library::Library::default(),
         };
@@ -1936,6 +1950,9 @@ impl Model {
                 "it was saved by a newer BIMCraft (file format {format}; this one reads up to {FORMAT}): update BIMCraft to open it"
             ));
         }
+        if format < 4 {
+            pens_from_pixels(&mut v);
+        }
         let mut left_out = Vec::new();
         // An element is an internally tagged enum, which serde reads whole: each is looked into as its category's struct.
         let mut elements = v.get_mut("elements").map_or(Value::Null, Value::take);
@@ -1967,7 +1984,7 @@ impl Model {
         Ok((m, left_out))
     }
 
-    /// Brought up to [`FORMAT`]. From before GUIDs: each element was given one as it was read, what points at an element
+    /// Brought up to [`FORMAT`]. From before pens, see [`pens_from_pixels`]. From before GUIDs: each element was given one as it was read, what points at an element
     /// (its id, then) points at its GUID, and the ids move up to six digits, by as much as takes the first to [`FIRST_ID`]
     /// (`1` is `100000`, `7` is `100006`).
     pub fn migrate(&mut self) {
@@ -3108,6 +3125,9 @@ impl Model {
     /// Everything that must hold between commands: references resolve, geometry is finite and
     /// not degenerate, doors and windows fit their walls and don't overlap.
     pub fn check(&self) -> Result<(), String> {
+        if let Some(lw) = &self.line_weights {
+            lw.check()?;
+        }
         for (cat, map) in [("door", &self.types.door), ("window", &self.types.window)] {
             for (n, t) in map {
                 size(&format!("{cat} type `{n}` width"), t.width)?;
@@ -3984,6 +4004,24 @@ fn fresh_uid() -> u64 {
     mix(nanos ^ u64::from(std::process::id()).rotate_left(32))
 }
 
+/// A file from before pens (format 3 and older) as one after: each line weight of a view's, a filter's or a phase's
+/// overrides (the `weight` of a `cut` or `projection` style) was pixels of a sheet's drawing, [`crate::sheet::DENSITY`] to
+/// the mm, and is the pen nearest that wide on paper. A weight that isn't a number is left for reading to refuse.
+fn pens_from_pixels(v: &mut serde_json::Value) {
+    use serde_json::Value;
+    match v {
+        Value::Object(o) => {
+            for (k, v) in o.iter_mut() {
+                if let ("cut" | "projection", Some(px)) = (k.as_str(), v.get("weight").and_then(Value::as_f64)) {
+                    v["weight"] = crate::pen::Pen::nearest(px / crate::sheet::DENSITY).0.into();
+                }
+                pens_from_pixels(v);
+            }
+        }
+        Value::Array(a) => a.iter_mut().for_each(pens_from_pixels),
+        _ => {}
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

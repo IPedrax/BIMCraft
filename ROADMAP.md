@@ -107,6 +107,7 @@ The goal is a printable, coordinated drawing set.
 | Plan regions (a local view range) and depth cueing in elevations | M |
 | Revisions, revision clouds, and a revision schedule on title blocks | M |
 | Editable title blocks (a 2D family with label fields), view titles under viewports, a sheet list | M |
+| Object Styles (each category's pens for cut and projection, as the line weights' pens), and viewports as windows onto their views (activate one to work through it, crop it, viewport types). Paper space and Line Weights are in: every view has a scale (named in feet and inches as architects and engineers do), lines are pens 1 to 16 whose widths the project's Line Weights give by scale, and 0 a hairline at any scale | M |
 | Print dialog: sheets to PDF or a printer, sizes, ranges, colour or monochrome | S |
 | The rest of Revit's view control bar: Show/Hide Crop Region and Crop View buttons, Sun Path and Shadows, Temporary View Properties, a visual style for plans and sections and a detail level for the 3D view (scale, detail level, visual style, Temporary Hide/Isolate and Reveal Hidden Elements are done, and view templates control the first three) | M |
 | Keynotes from a user-supplied keynote table (no bundled third-party data) | M |

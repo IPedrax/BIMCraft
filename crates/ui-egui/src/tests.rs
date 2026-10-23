@@ -6,6 +6,7 @@ use bimcraft_core::element_json;
 use bimcraft_core::engine::Session;
 use bimcraft_core::geom::P2;
 use bimcraft_core::model::{Element, Guid, Id};
+use bimcraft_core::pen::Pen;
 use bimcraft_core::sample::SAMPLE;
 use egui::accesskit::Role;
 use egui::{Event, Key, Modifiers, MouseWheelUnit, PointerButton, Pos2, TouchPhase, pos2, vec2};
@@ -1150,14 +1151,52 @@ fn the_column_and_component_tools_show_how_far_a_click_would_stand_from_the_wall
 }
 
 #[test]
+fn a_line_weight_is_a_pen_picked_from_a_list_and_a_hairline_is_a_pixel_on_screen() {
+    let mut h = app(BOX);
+    shortcut(&mut h, "VV");
+    pick(&mut h, Role::Button, "Override Walls");
+    pick(&mut h, Role::CheckBox, "Cut: Line weight");
+    assert_eq!(combo_value(&h, "Cut: Line weight"), "10 · 0.80 mm", "a cut wall's own pen to start with");
+    choose(&mut h, "Cut: Line weight", "0 · Hairline");
+    press(&mut h, "OK");
+    assert_eq!(plan_graphics(&h, 100000).categories["wall"].cut.weight, Some(Pen(0)));
+    // On screen a line is its pen's pixels at the zoom, at least one: a hairline is one at any zoom; Thin Lines makes all one.
+    use crate::canvas::on_screen;
+    assert_eq!((on_screen(2.0, 3.0, false), on_screen(0.0, 3.0, false), on_screen(0.2, 1.0, false)), (6.0, 1.0, 1.0));
+    assert_eq!(on_screen(2.0, 3.0, true), 1.0);
+}
+
+#[test]
+fn a_project_in_feet_and_inches_offers_the_architects_and_engineers_scales() {
+    let mut h = app(&format!("{BOX}\nunits {{\"length\": \"ft-in\"}}"));
+    // A view with none of its own is at an eighth of an inch to the foot, and says so.
+    assert!(painted_text(&h).contains(&"1/8\" = 1'-0\"".to_string()));
+    assert_eq!(combo_value(&h, "View Scale"), "1/8\" = 1'-0\"");
+    press(&mut h, "Scale");
+    assert!(h.query_by_label("1 : 100").is_none());
+    press(&mut h, "1\" = 20'-0\"");
+    assert_eq!(plan_graphics(&h, 100000).scale, Some(240.0));
+    choose(&mut h, "View Scale", "1/4\" = 1'-0\"");
+    assert_eq!(plan_graphics(&h, 100000).scale, Some(48.0));
+    // Typed as a drawing names it, or as 1 : n.
+    press(&mut h, "Scale");
+    type_into(&mut h, "Custom", "3/32\" = 1'-0\"");
+    key(&mut h, Key::Enter);
+    assert_eq!(plan_graphics(&h, 100000).scale, Some(128.0));
+    type_role(&mut h, Role::TextInput, "Scale Value 1:", "1 : 300");
+    assert_eq!(plan_graphics(&h, 100000).scale, Some(300.0));
+    assert_eq!(combo_value(&h, "View Scale"), "1\" = 25'-0\"");
+}
+
+#[test]
 fn the_view_control_bar_sets_a_views_scale_and_detail_level() {
     use bimcraft_core::graphics::Detail;
     let mut h = app(&format!("{BOX}\nsection {{\"start\": [-1000, 3000], \"end\": [9000, 3000]}}"));
     let section = ids(&h, "section")[0];
     let g = |h: &Harness<BimApp>, id| plan_graphics(h, id);
-    // A view with no scale says so (its annotation keeps its size on screen); every view starts at fine.
+    // A view with no scale of its own is at 1 : 100; every view starts at fine.
     let shown = painted_text(&h);
-    assert!(shown.contains(&"Auto".to_string()) && shown.contains(&"Fine".to_string()), "{shown:?}");
+    assert!(shown.contains(&"1 : 100".to_string()) && shown.contains(&"Fine".to_string()), "{shown:?}");
     press(&mut h, "Scale");
     press(&mut h, "1 : 50");
     assert_eq!(g(&h, 100000).scale, Some(50.0));
@@ -1178,10 +1217,11 @@ fn the_view_control_bar_sets_a_views_scale_and_detail_level() {
     key(&mut h, Key::Enter);
     assert!(h.state().status.error);
     assert_eq!(g(&h, 100000).scale, Some(75.0));
-    // Auto takes it away again.
+    // A view always has a scale: the menu has no Auto.
     press(&mut h, "Scale");
-    press(&mut h, "Auto");
-    assert_eq!(g(&h, 100000).scale, None);
+    assert!(h.query_by_label("Auto").is_none());
+    press(&mut h, "1 : 100");
+    assert_eq!(g(&h, 100000).scale, Some(100.0));
     // The section has its own, and the bar shows the one of the view on screen.
     browse(&mut h, "Section 1");
     assert_eq!(h.state().sheet, Sheet::Section(section));
@@ -1250,8 +1290,9 @@ fn properties_of_a_view_show_and_set_its_scale_detail_level_and_visual_style() {
     let mut h = app(&format!("{BOX}\nsection {{\"start\": [-1000, 3000], \"end\": [9000, 3000]}}"));
     let section = ids(&h, "section")[0];
     let steps = |h: &Harness<BimApp>| h.state().session.history().len();
-    // A plan: no scale (Auto) and fine detail, until set; a plan has no visual style.
-    assert_eq!((combo_value(&h, "View Scale"), combo_value(&h, "Detail Level")), ("Auto".into(), "Fine".into()));
+    // A plan: 1 : 100 and fine detail, until set; a plan has no visual style.
+    assert_eq!((combo_value(&h, "View Scale"), combo_value(&h, "Detail Level")), ("1 : 100".into(), "Fine".into()));
+    assert_eq!(field_text(&h, "Scale Value 1:"), "100");
     assert!(h.query_by_role_and_label(Role::ComboBox, "Visual Style").is_none());
     let before = steps(&h);
     choose(&mut h, "View Scale", "1 : 50");
@@ -1270,23 +1311,25 @@ fn properties_of_a_view_show_and_set_its_scale_detail_level_and_visual_style() {
     type_role(&mut h, Role::TextInput, "Scale Value 1:", "big");
     assert!(h.state().status.error);
     assert_eq!((plan_graphics(&h, 100000).scale, steps(&h)), (Some(75.0), before + 3));
-    // Emptied, it is Auto again.
+    // A view always has a scale: emptied, the field is refused as "big" is, and there's no Auto to choose.
     type_role(&mut h, Role::TextInput, "Scale Value 1:", "");
-    assert_eq!((plan_graphics(&h, 100000).scale, steps(&h)), (None, before + 4));
-    choose(&mut h, "View Scale", "1 : 20");
-    choose(&mut h, "View Scale", "Auto");
-    assert_eq!(plan_graphics(&h, 100000).scale, None);
-    assert_eq!(field_text(&h, "Scale Value 1:"), "");
+    assert!(h.state().status.error);
+    assert_eq!((plan_graphics(&h, 100000).scale, steps(&h)), (Some(75.0), before + 3));
+    h.get_by_role_and_label(Role::ComboBox, "View Scale").click_accesskit();
+    h.run();
+    assert!(h.query_by_label("1 : 20").is_some() && h.query_by_label("Auto").is_none());
+    h.get_by_role_and_label(Role::ComboBox, "View Scale").click_accesskit();
+    h.run();
     // A section has its own, and Properties shows the one on screen. Its palette is long: a tall window shows the foot of it.
     h.set_size(vec2(1280.0, 1600.0));
     browse(&mut h, "Section 1");
     assert_eq!(h.state().sheet, Sheet::Section(section));
-    assert_eq!((combo_value(&h, "View Scale"), combo_value(&h, "Detail Level")), ("Auto".into(), "Fine".into()));
+    assert_eq!((combo_value(&h, "View Scale"), combo_value(&h, "Detail Level")), ("1 : 100".into(), "Fine".into()));
     choose(&mut h, "View Scale", "1 : 200");
     choose(&mut h, "Detail Level", "Medium");
     let g = bimcraft_core::graphics::graphics_of(&h.state().session.model, section).unwrap();
     assert_eq!((g.scale, g.detail), (Some(200.0), Detail::Medium));
-    assert_eq!((plan_graphics(&h, 100000).scale, plan_graphics(&h, 100000).detail), (None, Detail::Coarse));
+    assert_eq!((plan_graphics(&h, 100000).scale, plan_graphics(&h, 100000).detail), (Some(75.0), Detail::Coarse));
     // The 3D view: a visual style, no scale or detail level.
     press(&mut h, "Default 3D View");
     assert_eq!(h.state().sheet, Sheet::View3D);
@@ -3335,7 +3378,7 @@ fn visibility_graphics_hides_and_overrides_by_category_in_the_active_view_alone(
     press(&mut h, "OK");
     let g = plan_graphics(&h, 100000);
     assert!(h.query_by_label("Visibility/Graphics Overrides for Floor Plan: Level 1").is_none(), "OK closes it");
-    assert_eq!(g.categories["wall"].cut.weight, Some(4.0));
+    assert_eq!(g.categories["wall"].cut.weight, Some(Pen(10)), "a cut wall's own pen");
     assert_eq!(g.categories["wall"].projection.color, Some([40, 40, 40]));
     assert!(g.hides("room") && !g.hides("wall"));
     // Level 2's plan is its own view.
@@ -3880,9 +3923,6 @@ fn view_templates_hold_show_and_hand_on_a_scale_detail_level_and_visual_style() 
     let t = template(&h);
     assert_eq!((t.graphics.scale, t.graphics.detail, t.graphics.style), (Some(20.0), Detail::Medium, VisualStyle::Wireframe));
     assert_eq!(h.state().session.history().len(), steps + 3);
-    choose(&mut h, "View Scale:", "Auto");
-    assert_eq!(template(&h).graphics.scale, None);
-    choose(&mut h, "View Scale:", "1 : 20");
     // What it controls, one at a time.
     pick(&mut h, Role::CheckBox, "Visual Style");
     assert!(!template(&h).controls.contains(&Group::Style) && template(&h).controls.contains(&Group::Scale));
@@ -3892,7 +3932,7 @@ fn view_templates_hold_show_and_hand_on_a_scale_detail_level_and_visual_style() 
     // Level 2 follows it: the bar and Properties show the template's, greyed, and say whose they are.
     topmost(&mut h, "Level 2");
     assert_eq!(h.state().sheet, Sheet::Plan(100001));
-    assert_eq!(combo_value(&h, "View Scale"), "Auto");
+    assert_eq!(combo_value(&h, "View Scale"), "1 : 100");
     shortcut(&mut h, "VT");
     press(&mut h, "Follow in This View");
     press(&mut h, "Close");
@@ -4117,7 +4157,7 @@ fn a_statuss_graphic_overrides_are_applied_as_one_command() {
     pick(&mut h, Role::CheckBox, "Cut: Line weight");
     assert_eq!(over(&h, Status::Demolished).cut.weight, None);
     press(&mut h, "Apply Overrides");
-    assert_eq!(over(&h, Status::Demolished).cut.weight, Some(4.0));
+    assert_eq!(over(&h, Status::Demolished).cut.weight, Some(Pen(10)));
     assert_eq!(over(&h, Status::Demolished).cut.dash, Some(bimcraft_core::graphics::Dash::Dashed), "the rest stays as it was");
     assert_eq!(h.state().session.history().len(), steps + 1, "one command");
     // Unticked again, the patch takes that one away and leaves the rest.
@@ -4732,6 +4772,7 @@ mod autosave;
 mod browser;
 mod dock;
 mod gpu;
+mod lineweights;
 mod mep;
 mod revit;
 mod start;

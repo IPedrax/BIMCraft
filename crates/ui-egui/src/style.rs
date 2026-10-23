@@ -151,6 +151,7 @@ pub enum Icon {
     ZoomIn,
     ZoomOut,
     ThinLines,
+    LineWeights,
     Schedule,
     CloseInactive,
     Interface,
@@ -331,6 +332,11 @@ pub fn paint(p: &Painter, icon: Icon, r: Rect, color: Color32) {
             v
         }
         Icon::ThinLines => vec![line(&[(3.0, 7.0), (21.0, 7.0)]), line(&[(3.0, 12.0), (21.0, 12.0)]), line(&[(3.0, 17.0), (21.0, 17.0)])],
+        // Three pens, each heavier than the one above.
+        Icon::LineWeights => [(6.0, 0.75), (12.0, 1.75), (18.0, 3.0)]
+            .iter()
+            .map(|&(y, w)| Shape::line(vec![at(3.0, y), at(21.0, y)], Stroke::new(w, color)))
+            .collect(),
         Icon::Schedule => vec![
             ring(&[(3.0, 4.0), (21.0, 4.0), (21.0, 20.0), (3.0, 20.0)]),
             line(&[(3.0, 9.0), (21.0, 9.0)]),

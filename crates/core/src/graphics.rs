@@ -12,6 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{Element, Guid, Id, Key, MAX_TEXT, Model, ViewRange};
+use crate::pen::{MAX_PEN, Pen};
 use crate::render::{Drawing, Part, Prim, Rgb};
 use crate::schedule;
 
@@ -60,8 +61,6 @@ pub const MAX_ENTRIES: usize = 100_000;
 pub const MAX_APPLIED: usize = 32;
 pub const MAX_FILTERS: usize = 64;
 pub const MAX_TEMPLATES: usize = 64;
-/// Line weights, px: 1 px is 0.2 mm on a sheet.
-pub const WEIGHTS: (f64, f64) = (0.5, 20.0);
 
 /// How much a view draws of what it cuts. Coarse: the cut in one poché, an opening only its gap and jambs. Medium: a
 /// compound element's layers, each a fill with a line between, and an opening's leaf, swing and glass. Fine: the layers'
@@ -176,7 +175,7 @@ pub struct Style {
     #[serde(with = "rgb", skip_serializing_if = "Option::is_none")]
     pub color: Option<[u8; 3]>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub weight: Option<f64>,
+    pub weight: Option<Pen>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dash: Option<Dash>,
     #[serde(with = "rgb", skip_serializing_if = "Option::is_none")]
@@ -200,9 +199,9 @@ impl Style {
 
     fn check(&self, who: &str) -> Result<(), String> {
         if let Some(w) = self.weight
-            && !(w.is_finite() && (WEIGHTS.0..=WEIGHTS.1).contains(&w))
+            && !w.is_valid()
         {
-            return Err(format!("{who}: a line weight is between {} and {} px, not {w}", WEIGHTS.0, WEIGHTS.1));
+            return Err(format!("{who}: a line weight is a pen, 0 (a hairline) to {MAX_PEN}, not {}", w.0));
         }
         Ok(())
     }
@@ -345,6 +344,13 @@ pub struct Graphics {
 impl Graphics {
     pub fn is_default(&self) -> bool {
         *self == Graphics::default()
+    }
+
+    /// The scale, 1 : n, these hold a view at in a project in `units`: their own, else the units' default (1 : 100, or
+    /// 1/8" = 1'-0"). Every plan, section and elevation has a scale, so what it draws is paper at that scale: its
+    /// lettering, marks and pens. Read it of [`Graphics::resolved`] for the one in force, as [`scale_of`] does.
+    pub fn scale_n(&self, units: crate::units::Units) -> f64 {
+        self.scale.unwrap_or_else(|| units.default_scale())
     }
 
     /// The settings in force: these, but for the groups the template followed controls, which are its.
@@ -618,6 +624,12 @@ pub fn graphics_of_element(e: &Element) -> Option<&Graphics> {
     }
 }
 
+/// The scale, 1 : n, view `id` is held at: its own, or its template's where that controls it, else its project units'
+/// default.
+pub fn scale_of(m: &Model, id: impl Key) -> f64 {
+    graphics_of(m, id).map_or_else(|| m.units.default_scale(), |g| g.resolved(m).scale_n(m.units))
+}
+
 /// The graphics view `view` holds, to change.
 pub fn graphics_mut(e: &mut Element) -> Option<&mut Graphics> {
     match e {
@@ -772,19 +784,19 @@ impl Look {
         if self.paint.is_empty() {
             return;
         }
-        for ((prim, owner), part) in d.prims.iter_mut().zip(&d.owners).zip(&d.parts) {
+        for (((prim, owner), part), pen) in d.prims.iter_mut().zip(&d.owners).zip(&d.parts).zip(d.pens.iter_mut()) {
             let Some(over) = owner.and_then(|id| self.paint.get(&id)) else { continue };
             let style = if *part == Part::Cut { &over.cut } else { &over.projection };
             match prim {
-                Prim::Line { width, color, dash, .. } => {
+                Prim::Line { color, dash, .. } => {
                     if *part != Part::Pattern
                         && let Some([r, g, b]) = style.color
                     {
                         *color = Rgb(r, g, b);
                     }
                     if !matches!(part, Part::Text | Part::Pattern) {
-                        if let Some(w) = style.weight {
-                            *width = w as f32;
+                        if let Some(p) = style.weight {
+                            *pen = Some(p);
                         }
                         if let Some(k) = style.dash {
                             *dash = k.pattern();
@@ -841,12 +853,11 @@ pub(crate) mod testing {
         d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(id)).map(|(p, _)| p).collect()
     }
 
-    /// Width, colour and dash of the lines `id` owns.
-    pub(crate) fn lines(d: &Drawing, id: u64) -> Vec<(f32, Rgb, Option<[f32; 2]>)> {
-        owned(d, id)
-            .into_iter()
-            .filter_map(|p| match p {
-                Prim::Line { width, color, dash, .. } => Some((*width, *color, *dash)),
+    /// Pen, colour and dash of the lines `id` owns: `u8::MAX` for a line no pen draws (lettering's).
+    pub(crate) fn lines(d: &Drawing, id: u64) -> Vec<(u8, Rgb, Option<[f32; 2]>)> {
+        (d.prims.iter().zip(&d.owners).zip(&d.pens))
+            .filter_map(|((p, o), pen)| match p {
+                Prim::Line { color, dash, .. } if *o == Some(id) => Some((pen.map_or(u8::MAX, |p| p.0), *color, *dash)),
                 _ => None,
             })
             .collect()
@@ -950,8 +961,8 @@ mod tests {
         let up =
             run(&mut s, "wall", json!({"points": [[0, 0], [2000, 0]], "level": "Level 2", "height": 2500}))["ids"][0].as_u64().unwrap();
         let d = plan(&s, 100000);
-        assert!(lines(&d, walls[0]).contains(&(4.0, Rgb(25, 25, 25), None)));
-        assert!(lines(&d, low).contains(&(1.0, Rgb(25, 25, 25), None)));
+        assert!(lines(&d, walls[0]).contains(&(10, Rgb(25, 25, 25), None)));
+        assert!(lines(&d, low).contains(&(4, Rgb(25, 25, 25), None)));
         run(
             &mut s,
             "graphics",
@@ -960,18 +971,18 @@ mod tests {
                 "projection": {"color": "#0000c8", "weight": 3, "dash": "dashed"}}}}),
         );
         let d = plan(&s, 100000);
-        assert!(lines(&d, walls[0]).contains(&(6.0, RED, None)), "{:?}", lines(&d, walls[0]));
-        assert!(lines(&d, low).contains(&(3.0, Rgb(0, 0, 200), Some([10.0, 5.0]))), "{:?}", lines(&d, low));
+        assert!(lines(&d, walls[0]).contains(&(6, RED, None)), "{:?}", lines(&d, walls[0]));
+        assert!(lines(&d, low).contains(&(3, Rgb(0, 0, 200), Some([10.0, 5.0]))), "{:?}", lines(&d, low));
         // Another view keeps its own look.
-        assert!(lines(&plan(&s, 100001), up).contains(&(4.0, Rgb(25, 25, 25), None)));
+        assert!(lines(&plan(&s, 100001), up).contains(&(10, Rgb(25, 25, 25), None)));
         // An override merges into the last, and null takes a field back.
         run(&mut s, "graphics", json!({"view": 100000, "categories": {"walls": {"cut": {"weight": 2}}}}));
-        assert!(lines(&plan(&s, 100000), walls[0]).contains(&(2.0, RED, None)), "the colour is kept");
+        assert!(lines(&plan(&s, 100000), walls[0]).contains(&(2, RED, None)), "the colour is kept");
         let r = run(&mut s, "graphics", json!({"view": 100000, "categories": {"walls": {"cut": {"color": null}}}}));
-        assert_eq!(r["categories"]["wall"]["cut"], json!({"weight": 2.0}));
-        assert!(lines(&plan(&s, 100000), walls[0]).contains(&(2.0, Rgb(25, 25, 25), None)));
+        assert_eq!(r["categories"]["wall"]["cut"], json!({"weight": 2}));
+        assert!(lines(&plan(&s, 100000), walls[0]).contains(&(2, Rgb(25, 25, 25), None)));
         run(&mut s, "graphics", json!({"view": 100000, "categories": {"walls": null}}));
-        assert!(lines(&plan(&s, 100000), walls[0]).contains(&(4.0, Rgb(25, 25, 25), None)));
+        assert!(lines(&plan(&s, 100000), walls[0]).contains(&(10, Rgb(25, 25, 25), None)));
     }
 
     #[test]
@@ -1007,7 +1018,7 @@ mod tests {
         let d = plan(&s, 100000);
         let half = |c: u8| c + (255 - c) / 2;
         assert_eq!(pixel(&d, P2(4000.0, 0.0)), Rgb(half(POCHE.0), half(POCHE.1), half(POCHE.2)));
-        assert!(lines(&d, walls[0]).contains(&(4.0, Rgb(half(25), half(25), half(25)), None)));
+        assert!(lines(&d, walls[0]).contains(&(10, Rgb(half(25), half(25), half(25)), None)));
     }
 
     #[test]
@@ -1122,8 +1133,8 @@ mod tests {
         );
         let l = lines(&plan(&s, 100000), door);
         let blue = Rgb(0, 0, 200);
-        assert!(l.iter().any(|x| x.1 == blue && x.0 == 1.0), "its swing: {l:?}");
-        assert!(l.iter().any(|x| x.1 == RED && x.0 == 2.0), "its jambs: {l:?}");
+        assert!(l.iter().any(|x| x.1 == blue && x.0 == 4), "its swing: {l:?}");
+        assert!(l.iter().any(|x| x.1 == RED && x.0 == 7), "its jambs: {l:?}");
         assert!(l.iter().all(|x| x.1 == blue || x.1 == RED));
     }
 
@@ -1218,13 +1229,13 @@ mod tests {
         let section = run(&mut s, "section", json!({"start": [-1000, 3000], "end": [9000, 3000]}))["id"].as_u64().unwrap();
         run(&mut s, "graphics", json!({"view": 100000, "categories": {"walls": {"cut": {"weight": 8, "dash": "dashed"}}}}));
         run(&mut s, "graphics", json!({"view": section, "categories": {"walls": {"cut": {"weight": 8}}}}));
-        let thin = (1.0, Rgb(25, 25, 25), None);
+        let thin = (4, Rgb(25, 25, 25), None);
         let d = plan(&s, 100000);
-        assert!(lines(&d, walls[0]).contains(&(8.0, Rgb(25, 25, 25), Some([10.0, 5.0]))), "the outline");
+        assert!(lines(&d, walls[0]).contains(&(8, Rgb(25, 25, 25), Some([10.0, 5.0]))), "the outline");
         assert!(lines(&d, walls[0]).contains(&thin), "the layers' lines");
         let view = render::section_fit(&s.model, section, 800, 600);
         let d = render::section(&s.model, section, view);
-        assert!(lines(&d, walls[1]).iter().any(|l| l.0 == 8.0));
+        assert!(lines(&d, walls[1]).iter().any(|l| l.0 == 8));
         assert!(lines(&d, walls[1]).contains(&thin), "the layers' lines, in a section");
     }
 
@@ -1476,7 +1487,7 @@ mod tests {
         // A cut line weight of its own.
         run(&mut s, "graphics", json!({"view": section, "show": ["walls"], "categories": {"walls": {"cut": {"weight": 7}}}}));
         let d = render::section(&s.model, section, view);
-        assert!(lines(&d, walls[1]).iter().any(|l| l.0 == 7.0));
+        assert!(lines(&d, walls[1]).iter().any(|l| l.0 == 7));
     }
 
     #[test]
@@ -1504,6 +1515,43 @@ mod tests {
     }
 
     #[test]
+    fn a_file_from_before_pens_opens_with_each_weight_the_nearest_pen() {
+        let mut s = Session::new();
+        house(&mut s);
+        run(&mut s, "filter", json!({"name": "Long", "categories": ["walls"]}));
+        run(
+            &mut s,
+            "graphics",
+            json!({"view": 100000, "categories": {"walls": {"cut": {"weight": 7}, "projection": {"weight": 3}}},
+                   "filters": [{"filter": "Long", "cut": {"weight": 10}}]}),
+        );
+        let now = s.model.to_json().unwrap();
+        // Saved before pens, the same weights were pixels of a sheet's drawing, 5 to the mm.
+        fn as_pixels(v: &mut Value) {
+            match v {
+                Value::Object(o) => {
+                    for (k, v) in o.iter_mut() {
+                        match (k.as_str(), v.as_u64()) {
+                            ("weight", Some(7)) => *v = json!(2.0),
+                            ("weight", Some(3)) => *v = json!(0.8),
+                            ("weight", Some(10)) => *v = json!(4),
+                            _ => as_pixels(v),
+                        }
+                    }
+                }
+                Value::Array(a) => a.iter_mut().for_each(as_pixels),
+                _ => {}
+            }
+        }
+        let mut old: Value = serde_json::from_str(&now).unwrap();
+        old["format"] = json!(3);
+        as_pixels(&mut old);
+        let (m, left_out) = crate::model::Model::read(&old.to_string()).unwrap();
+        assert!(left_out.is_empty(), "{left_out:?}");
+        assert_eq!(m.to_json().unwrap(), now);
+    }
+
+    #[test]
     fn graphics_that_make_no_sense_are_refused_saying_what_to_fix() {
         let mut s = Session::new();
         let walls = house(&mut s);
@@ -1517,8 +1565,9 @@ mod tests {
         bad(json!({"view": "nowhere"}), "nowhere");
         bad(json!({"hide_elements": [9999]}), "9999");
         bad(json!({"hide_elements": [100006]}), "sheet");
-        bad(json!({"categories": {"walls": {"cut": {"weight": 0}}}}), "weight");
-        bad(json!({"categories": {"walls": {"cut": {"weight": 99}}}}), "weight");
+        bad(json!({"categories": {"walls": {"cut": {"weight": 17}}}}), "a pen, a whole number from 0 (a hairline) to 16, not 17");
+        bad(json!({"categories": {"walls": {"cut": {"weight": 2.5}}}}), "weight");
+        bad(json!({"categories": {"walls": {"cut": {"weight": -1}}}}), "weight");
         bad(json!({"categories": {"walls": {"projection": {"weight": "heavy"}}}}), "heavy");
         bad(json!({"categories": {"walls": {"transparency": 101}}}), "transparency");
         bad(json!({"categories": {"walls": {"projection": {"dash": "wavy"}}}}), "wavy");
@@ -1601,15 +1650,15 @@ mod tests {
         let second = json!({"filter": "B", "cut": {"color": [0, 200, 0], "weight": 3}});
         run(&mut s, "graphics", json!({"view": 100000, "filters": [first, second]}));
         let d = plan(&s, 100000);
-        assert!(lines(&d, walls[0]).contains(&(3.0, RED, None)), "the first one's colour, the second's weight: {:?}", lines(&d, walls[0]));
+        assert!(lines(&d, walls[0]).contains(&(3, RED, None)), "the first one's colour, the second's weight: {:?}", lines(&d, walls[0]));
         run(&mut s, "graphics", json!({"view": 100000, "filters": [second, first]}));
-        assert!(lines(&plan(&s, 100000), walls[0]).contains(&(3.0, Rgb(0, 200, 0), None)));
+        assert!(lines(&plan(&s, 100000), walls[0]).contains(&(3, Rgb(0, 200, 0), None)));
         run(&mut s, "graphics", json!({"view": 100000, "elements": {walls[0].to_string(): {"cut": {"color": [0, 0, 200]}}}}));
-        assert!(lines(&plan(&s, 100000), walls[0]).contains(&(3.0, Rgb(0, 0, 200), None)), "its own colour, the filters' weight");
+        assert!(lines(&plan(&s, 100000), walls[0]).contains(&(3, Rgb(0, 0, 200), None)), "its own colour, the filters' weight");
         // The category's override is the weakest, and a filter that hides hides, whatever the others do.
         run(&mut s, "graphics", json!({"view": 100000, "categories": {"walls": {"cut": {"color": [9, 9, 9], "dash": "dotted"}}}}));
         let lines = lines(&plan(&s, 100000), walls[1]);
-        assert!(lines.contains(&(3.0, Rgb(0, 200, 0), Some([2.0, 4.0]))), "{lines:?}");
+        assert!(lines.contains(&(3, Rgb(0, 200, 0), Some([2.0, 4.0]))), "{lines:?}");
         run(&mut s, "graphics", json!({"view": 100000, "filters": [first, {"filter": "B", "hidden": true}]}));
         assert!(owned(&plan(&s, 100000), walls[1]).is_empty());
         // A filter applies once, and in a section as in a plan.
@@ -1738,21 +1787,23 @@ mod tests {
             assert!(r["controls"].as_array().unwrap().contains(&json!(group)), "{group}: {r}");
         }
         // Level 1 follows it: its annotation and its detail are the template's, its own settings stay as they were.
+        run(&mut s, "scale", json!({"view": 100000, "scale": 50}));
         let view = View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
         let k = |s: &Session| render::annotation(&s.model, 100000, view);
         let layered = |s: &Session| render::draw(&s.model, 100000, view).prims.len();
         let (alone, fine) = (k(&s), layered(&s));
         run(&mut s, "graphics", json!({"view": 100000, "template": "Plans"}));
-        assert_eq!((alone, k(&s)), (1.0, 2.0), "1 : 100 at a tenth of a pixel to the mm is twice what is on screen");
+        assert_eq!((alone, k(&s)), (1.0, 2.0), "1 : 100 at a tenth of a pixel to the mm is twice 1 : 50");
         assert!(layered(&s) < fine, "coarse draws less");
         let own = run(&mut s, "scale", json!({"view": 100000}));
         assert_eq!(own["scale"], 100.0, "it says what is in force");
-        assert!(matches!(&s.model.elements[&100000], Element::Level(l) if l.graphics.scale.is_none() && l.graphics.detail == Detail::Fine));
+        assert!(
+            matches!(&s.model.elements[&100000], Element::Level(l) if l.graphics.scale == Some(50.0) && l.graphics.detail == Detail::Fine)
+        );
         // It can't set what the template controls, and says so as the other groups do; nothing changes.
         let before = s.model.clone();
         for (id, p, says) in [
             ("scale", json!({"view": 100000, "scale": 20}), "scale"),
-            ("scale", json!({"view": 100000, "scale": null}), "scale"),
             ("detail", json!({"view": 100000, "detail": "medium"}), "detail level"),
             ("modify", json!({"id": 100000, "graphics": {"scale": 20}}), "scale"),
             ("modify", json!({"id": 100000, "graphics": {"detail": "medium"}}), "detail level"),
@@ -1770,9 +1821,10 @@ mod tests {
         // The template's own are set on it, and the views that follow it take the change at once.
         run(&mut s, "template", json!({"name": "Plans", "scale": 200, "detail": "fine", "visual_style": "wireframe"}));
         assert_eq!(k(&s), 4.0);
-        let r = run(&mut s, "template", json!({"name": "Plans", "scale": null}));
-        assert_eq!((r["scale"].clone(), k(&s)), (Value::Null, 1.0));
+        let r = run(&mut s, "template", json!({"name": "Plans", "scale": 50}));
+        assert_eq!((r["scale"].clone(), k(&s)), (json!(50.0), 1.0));
         for mut p in [
+            json!({"scale": null}),
             json!({"scale": 0}),
             json!({"scale": 1e9}),
             json!({"scale": "1:50"}),
@@ -1876,7 +1928,7 @@ mod tests {
         run(
             &mut s,
             "graphics",
-            json!({"view": 100000, "hide": ["rooms"], "hide_elements": [100002], "categories": {"walls": {"cut": {"fill": [1, 2, 3], "weight": 5.5}}}}),
+            json!({"view": 100000, "hide": ["rooms"], "hide_elements": [100002], "categories": {"walls": {"cut": {"fill": [1, 2, 3], "weight": 5}}}}),
         );
         let path = std::env::temp_dir().join(format!("bimcraft-gfx-{}.bimcraft", std::process::id()));
         run(&mut s, "save", json!({"path": path.to_str().unwrap()}));
@@ -1889,6 +1941,6 @@ mod tests {
         // Reading a view's settings changes nothing.
         let r = run(&mut t, "graphics", json!({"view": 100000}));
         assert_eq!(r["hidden"], json!(["room"]));
-        assert_eq!(r["categories"]["wall"]["cut"], json!({"fill": [1, 2, 3], "weight": 5.5}));
+        assert_eq!(r["categories"]["wall"]["cut"], json!({"fill": [1, 2, 3], "weight": 5}));
     }
 }

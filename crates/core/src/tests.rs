@@ -105,10 +105,10 @@ fn a_views_scale_and_detail_level_are_its_own_set_by_commands_and_kept_in_the_fi
     // The section is 7, looking north from the south.
     run(&mut s, "section", json!({"start": [-1000, 3000], "end": [9000, 3000]}));
     let g = |s: &Session, id| crate::graphics::graphics_of(&s.model, id).cloned().unwrap();
-    // Asking changes nothing, and is no undo step: a view has none until one is set, and draws as fine.
+    // Asking changes nothing, and is no undo step: a view is at 1 : 100 until one is set, and draws as fine.
     let steps = s.history().len();
     let r = run(&mut s, "scale", json!({"view": "Level 1"}));
-    assert_eq!((id_of(&s, &r["view"]), &r["scale"]), (Some(100000), &json!(null)));
+    assert_eq!((id_of(&s, &r["view"]), &r["scale"]), (Some(100000), &json!(100.0)));
     assert_eq!(run(&mut s, "detail", json!({"view": 100000}))["detail"], "fine");
     assert_eq!(s.history().len(), steps);
     // Set, on a plan and on a section, each one undo step; what the view hides stays hidden.
@@ -126,16 +126,14 @@ fn a_views_scale_and_detail_level_are_its_own_set_by_commands_and_kept_in_the_fi
     // A view with the scale it already has changes nothing.
     run(&mut s, "scale", json!({"view": 100000, "scale": 50}));
     assert_eq!(s.history().len(), steps + 5);
-    // Saved and opened again, the same; null takes a scale away.
+    // Saved and opened again, the same; a view always has a scale, so null is refused.
     let project = temp("view-settings.bimcraft");
     run(&mut s, "save", json!({"path": project}));
     let saved = s.model.clone();
     run(&mut s, "open", json!({"path": project}));
     assert_eq!(*s.model, *saved);
     let _ = std::fs::remove_file(project);
-    run(&mut s, "scale", json!({"view": 100000, "scale": null}));
-    assert_eq!(g(&s, 100000).scale, None);
-    run(&mut s, "undo", json!({}));
+    assert!(s.execute("scale", &json!({"view": 100000, "scale": null})).unwrap_err().contains("always has a scale"));
     assert_eq!(g(&s, 100000).scale, Some(50.0));
     // What isn't a scale or a level of detail, or a view that has one, is refused and changes nothing.
     let was = s.model.clone();
@@ -160,6 +158,21 @@ fn a_views_scale_and_detail_level_are_its_own_set_by_commands_and_kept_in_the_fi
         l.graphics.scale = Some(0.0);
     }
     assert!(m.check().unwrap_err().contains("scale"));
+}
+
+#[test]
+fn a_view_in_feet_and_inches_is_at_an_eighth_of_an_inch_to_the_foot_until_given_a_scale() {
+    let mut s = Session::new();
+    house(&mut s);
+    run(&mut s, "units", json!({"length": "ft-in"}));
+    assert_eq!(run(&mut s, "scale", json!({"view": 100000}))["scale"], 96.0);
+    run(&mut s, "sheet", json!({}));
+    let r = run(&mut s, "place", json!({"sheet": "A101", "view": 100000}));
+    assert!(matches!(&s.model.elements[&id_of(&s, &r["id"]).unwrap()], crate::model::Element::Viewport(v) if v.scale == 96.0));
+    // Set, it is the view's own, whatever the units.
+    run(&mut s, "scale", json!({"view": 100000, "scale": 48}));
+    run(&mut s, "units", json!({"length": "mm"}));
+    assert_eq!(run(&mut s, "scale", json!({"view": 100000}))["scale"], 48.0);
 }
 
 #[test]
@@ -3346,7 +3359,7 @@ fn floors_roofs_and_ceilings_are_built_of_layers_from_the_top_down() {
         d.prims.iter().zip(&d.owners).any(|(p, o)| {
             *o == Some(floor)
                 && matches!(p, crate::render::Prim::Line { pts, width, .. }
-                    if *width < 2.0 && pts.len() == 2 && pts.iter().all(|q| (q.1 - y).abs() < 0.5) && (pts[1].0 - pts[0].0).abs() > 50.0)
+                    if *width < d.width(crate::pen::Pen(7)) && pts.len() == 2 && pts.iter().all(|q| (q.1 - y).abs() < 0.5) && (pts[1].0 - pts[0].0).abs() > 50.0)
         })
     };
     assert!(thin(2990.0) && thin(2950.0), "between its layers");
@@ -3369,7 +3382,7 @@ fn cut_patterns_show_where_a_layer_is_wide_enough_to_hold_them() {
             .filter(|(p, o)| {
                 **o == Some(w)
                     && matches!(p, crate::render::Prim::Line { pts, width, .. }
-                        if *width < 1.0 && pts.iter().all(|q| q.1 >= north - 0.5 && q.1 <= south + 0.5))
+                        if *width < d.width(crate::pen::Pen(4)) && pts.iter().all(|q| q.1 >= north - 0.5 && q.1 <= south + 0.5))
             })
             .count()
     };
@@ -3392,7 +3405,7 @@ fn a_section_crossing_a_curved_wall_twice_shows_its_layers_at_both_cuts() {
     let hatched = |west: bool| {
         d.prims.iter().zip(&d.owners).any(|(p, o)| {
             *o == Some(w)
-                && matches!(p, crate::render::Prim::Line { pts, width, .. } if *width < 1.0 && pts.iter().all(|q| (q.0 < middle) == west))
+                && matches!(p, crate::render::Prim::Line { pts, width, .. } if *width < d.width(crate::pen::Pen(4)) && pts.iter().all(|q| (q.0 < middle) == west))
         })
     };
     assert!(hatched(true) && hatched(false), "west {}, east {}", hatched(true), hatched(false));
@@ -3416,7 +3429,7 @@ fn surface_patterns_keep_their_size_in_the_building() {
             .filter_map(|(p, o)| match p {
                 crate::render::Prim::Line { pts, width, .. }
                     if *o == Some(f)
-                        && *width < 1.0
+                        && *width < d.width(crate::pen::Pen(4))
                         && pts.len() == 2
                         && (pts[0].1 - pts[1].1).abs() < 1e-6
                         && (pts[1].0 - pts[0].0).abs() > 1.0 =>

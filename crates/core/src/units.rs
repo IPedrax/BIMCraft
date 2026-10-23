@@ -104,10 +104,60 @@ impl Units {
         if self.imperial() { (mm2 / (FOOT * FOOT), "ft²") } else { (mm2 / 1e6, "m²") }
     }
 
+    /// The scales, 1 : n, a view in these units is offered: the metric ones; in inches or feet, the architect's (an
+    /// inch, or a fraction of one, to the foot) and then the engineer's (an inch to tens of feet).
+    pub fn scales(self) -> &'static [f64] {
+        if self.imperial() { &IMPERIAL_SCALES } else { &METRIC_SCALES }
+    }
+
+    /// The scale a view in these units has until it is given one: 1 : 100, or 1/8" = 1'-0" (1 : 96).
+    pub fn default_scale(self) -> f64 {
+        if self.imperial() { 96.0 } else { 100.0 }
+    }
+
+    /// Scale 1 : `n` as these units name it: `1 : 50`; in inches or feet, the architect's `1/4" = 1'-0"` where an inch or
+    /// a fraction of one (to a sixty-fourth) is a foot, the engineer's `1" = 20'-0"` where an inch is ten feet or more,
+    /// and `1 : n` for any other.
+    pub fn scale(self, n: f64) -> String {
+        if self.imperial() {
+            let sixty_fourths = 12.0 * 64.0 / n;
+            if n <= 12.0 * 64.0 && (sixty_fourths - sixty_fourths.round()).abs() < 1e-9 {
+                return format!("{}\" = 1'-0\"", fraction(sixty_fourths.round() as u32));
+            }
+            let feet = n / 12.0;
+            if feet >= 10.0 && (feet - feet.round()).abs() < 1e-9 {
+                return format!("1\" = {}'-0\"", feet.round());
+            }
+        }
+        format!("1 : {n}")
+    }
+
+    /// A scale typed, the n of 1 : n: `100`, `1:100`, or two lengths, the paper's and the model's, `1/8" = 1'-0"`,
+    /// `1" = 20'`, `1 mm = 100 mm` (a length without its unit in these units).
+    pub fn parse_scale(self, text: &str) -> Option<f64> {
+        let t = text.trim();
+        let n = match t.split_once('=') {
+            Some((paper, model)) => self.parse_exact(model)? / self.parse_exact(paper)?,
+            None => match t.split_once(':') {
+                Some((one, n)) if number(one) == Some(1.0) => number(n)?,
+                Some(_) => return None,
+                None => number(t)?,
+            },
+        };
+        (n.is_finite() && n > 0.0).then_some((n * 1e6).round() / 1e6)
+    }
+
     /// A length typed, in mm: a number alone is in these units (feet, in feet and inches); one
     /// written with its unit (mm, cm, m, ft or ', in or ") is in that. Feet and inches can come
     /// together, and inches with a fraction: 10' 6 1/2", 10'-6", 6 1/2".
     pub fn parse(self, text: &str) -> Option<f64> {
+        // To the micron: what was typed exactly stays exact.
+        let mm = (self.parse_exact(text)? * 1e3).round() / 1e3;
+        mm.is_finite().then_some(mm + 0.0)
+    }
+
+    /// [`Units::parse`], not rounded.
+    fn parse_exact(self, text: &str) -> Option<f64> {
         let t = text.trim().to_ascii_lowercase();
         let mm = if let Some(n) = t.strip_suffix("mm") {
             number(n)?
@@ -132,9 +182,28 @@ impl Units {
                 Units::Feet | Units::FeetInches => number(&t)? * FOOT,
             }
         };
-        // To the micron: what was typed exactly stays exact.
-        let mm = (mm * 1e3).round() / 1e3;
-        mm.is_finite().then_some(mm + 0.0)
+        mm.is_finite().then_some(mm)
+    }
+}
+
+/// The scales a metric project offers, 1 : n.
+const METRIC_SCALES: [f64; 10] = [1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0];
+/// The scales a project in inches or feet offers: 12" to 1/32" to the foot, then 1" to 10' to 1" to 200'.
+const IMPERIAL_SCALES: [f64; 22] = [
+    1.0, 2.0, 4.0, 8.0, 12.0, 16.0, 24.0, 32.0, 48.0, 64.0, 96.0, 128.0, 192.0, 256.0, 384.0, 120.0, 240.0, 360.0, 480.0, 600.0, 1200.0,
+    2400.0,
+];
+
+/// `n` sixty-fourths of an inch as a drawing writes inches: `1/8`, `1 1/2`, `12`.
+fn fraction(n: u32) -> String {
+    let (whole, mut num, mut den) = (n / 64, n % 64, 64);
+    while num > 0 && num % 2 == 0 {
+        (num, den) = (num / 2, den / 2);
+    }
+    match (whole, num) {
+        (w, 0) => w.to_string(),
+        (0, _) => format!("{num}/{den}"),
+        (w, _) => format!("{w} {num}/{den}"),
     }
 }
 
@@ -160,6 +229,44 @@ fn inches(s: &str) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scales_are_named_and_read_as_the_units_draw_them() {
+        let (m, ft) = (Units::Millimetres, Units::FeetInches);
+        assert_eq!(m.scale(100.0), "1 : 100");
+        assert_eq!(m.scale(96.0), "1 : 96", "metric names every scale 1 : n");
+        for (n, name) in [
+            (1.0, "12\" = 1'-0\""),
+            (8.0, "1 1/2\" = 1'-0\""),
+            (12.0, "1\" = 1'-0\""),
+            (16.0, "3/4\" = 1'-0\""),
+            (48.0, "1/4\" = 1'-0\""),
+            (64.0, "3/16\" = 1'-0\""),
+            (96.0, "1/8\" = 1'-0\""),
+            (128.0, "3/32\" = 1'-0\""),
+            (384.0, "1/32\" = 1'-0\""),
+            (120.0, "1\" = 10'-0\""),
+            (240.0, "1\" = 20'-0\""),
+            (1200.0, "1\" = 100'-0\""),
+            (100.0, "1 : 100"),
+            (50.0, "1 : 50"),
+        ] {
+            assert_eq!(ft.scale(n), name, "1 : {n}");
+            assert_eq!(ft.parse_scale(name), Some(n), "{name}");
+        }
+        assert!(Units::Inches.scales().iter().all(|n| !Units::Inches.scale(*n).starts_with("1 :")), "every one offered is named");
+        assert_eq!(Units::Metres.scales(), &METRIC_SCALES);
+        assert_eq!((m.default_scale(), ft.default_scale()), (100.0, 96.0));
+        // Typed: n, 1 : n, or the paper's length to the model's.
+        assert_eq!(m.parse_scale("75"), Some(75.0));
+        assert_eq!(m.parse_scale(" 1 : 250 "), Some(250.0));
+        assert_eq!(m.parse_scale("1 mm = 2 m"), Some(2000.0));
+        assert_eq!(ft.parse_scale("1/4\" = 1'"), Some(48.0));
+        assert_eq!(ft.parse_scale("1\" = 30'"), Some(360.0));
+        for bad in ["", "big", "2 : 100", "0", "-5", "1/8\" = 0'", "1 : 0"] {
+            assert_eq!(m.parse_scale(bad), None, "{bad}");
+        }
+    }
 
     #[test]
     fn lengths_show_in_the_project_units() {
