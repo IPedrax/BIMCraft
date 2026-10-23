@@ -179,12 +179,15 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.arc((6.0, 16.0), 12.0, -90.0, 0.0);
         }
         Icon::Window => {
-            // A square outer frame and four separate, equally spaced pane boxes.
+            // Larger pane openings leave a slim frame and slim central mullions.
+            // Compact sizes retain slightly more space between parallel strokes.
             g.closed(&[(2.0, 2.0), (22.0, 2.0), (22.0, 22.0), (2.0, 22.0)]);
-            g.closed(&[(5.5, 5.5), (10.5, 5.5), (10.5, 10.5), (5.5, 10.5)]);
-            g.closed(&[(13.5, 5.5), (18.5, 5.5), (18.5, 10.5), (13.5, 10.5)]);
-            g.closed(&[(5.5, 13.5), (10.5, 13.5), (10.5, 18.5), (5.5, 18.5)]);
-            g.closed(&[(13.5, 13.5), (18.5, 13.5), (18.5, 18.5), (13.5, 18.5)]);
+            let panes = if compact { [(5.0, 10.5), (13.5, 19.0)] } else { [(4.5, 10.75), (13.25, 19.5)] };
+            for (left, right) in panes {
+                for (top, bottom) in panes {
+                    g.closed(&[(left, top), (right, top), (right, bottom), (left, bottom)]);
+                }
+            }
         }
         Icon::Room => {
             // A bounded room with a centered two-line room label.
