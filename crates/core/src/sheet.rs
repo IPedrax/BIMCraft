@@ -114,12 +114,12 @@ fn left(d: &mut Drawing, text: &str, at: P2, height: f64) {
 /// box in the bottom right corner: the project, the sheet's name, its scale, and its number.
 fn title_block(d: &mut Drawing, project: &str, sheet: &Sheet, paper: P2, scale: &str) {
     let rect = |a: P2, b: P2| vec![a, P2(b.0, a.1), b, P2(a.0, b.1)];
-    d.line(&rect(P2(20.0, 10.0), P2(paper.0 - 10.0, paper.1 - 10.0)), Pen(8), INK, true);
+    d.line(&rect(P2(20.0, 10.0), P2(paper.0 - 10.0, paper.1 - 10.0)), Pen::BORDER, INK, true);
     let width = TITLE.0.min(paper.0 - 30.0);
     let (x0, x1, y0, y1) = (paper.0 - 10.0 - width, paper.0 - 10.0, 10.0, 10.0 + TITLE.1);
-    d.line(&rect(P2(x0, y0), P2(x1, y1)), Pen(8), INK, true);
-    d.line(&[P2(x0, y0 + 26.0), P2(x1, y0 + 26.0)], Pen(4), INK, false);
-    d.line(&[P2(x1 - 50.0, y0), P2(x1 - 50.0, y0 + 26.0)], Pen(4), INK, false);
+    d.line(&rect(P2(x0, y0), P2(x1, y1)), Pen::BORDER, INK, true);
+    d.line(&[P2(x0, y0 + 26.0), P2(x1, y0 + 26.0)], Pen::PROJECTION, INK, false);
+    d.line(&[P2(x1 - 50.0, y0), P2(x1 - 50.0, y0 + 26.0)], Pen::PROJECTION, INK, false);
     left(d, project, P2(x0 + 4.0, y0 + 33.0), 5.0);
     left(d, &sheet.name, P2(x0 + 4.0, y0 + 17.0), 3.5);
     left(d, scale, P2(x0 + 4.0, y0 + 7.0), 2.0);
@@ -180,15 +180,15 @@ fn table(d: &mut Drawing, m: &Model, sc: &Schedule, (x, y): (f32, f32)) {
     let rule = |d: &mut Drawing, a: (f32, f32), b: (f32, f32), pen: Pen| {
         d.stroke(vec![a, b], pen, INK, None, false);
     };
-    d.stroke(vec![(x, y), (x + w, y), (x + w, y + h), (x, y + h)], Pen(7), INK, None, true);
+    d.stroke(vec![(x, y), (x + w, y), (x + w, y + h), (x, y + h)], Pen::HEAVY, INK, None, true);
     d.text(&sc.name, (x + w / 2.0, y + TITLE_ROW / 2.0), TITLE_TEXT, INK);
     let top = y + TITLE_ROW;
-    rule(d, (x, top), (x + w, top), Pen(4));
+    rule(d, (x, top), (x + w, top), Pen::PROJECTION);
     let last = t.rows.len();
     for (i, cells) in std::iter::once(&t.headings).chain(&t.rows).enumerate() {
         let row = top + ROW * i as f32;
         if i > 0 {
-            rule(d, (x, row), (x + w, row), if i == 1 || (t.totals && i == last) { Pen(6) } else { Pen(1) });
+            rule(d, (x, row), (x + w, row), if i == 1 || (t.totals && i == last) { Pen::MEDIUM } else { Pen::FINE });
         }
         let mut left = x;
         for (text, width) in cells.iter().zip(&t.widths) {
@@ -199,7 +199,7 @@ fn table(d: &mut Drawing, m: &Model, sc: &Schedule, (x, y): (f32, f32)) {
     let mut left = x;
     for width in t.widths.iter().take(t.widths.len().saturating_sub(1)) {
         left += width;
-        rule(d, (left, top), (left, y + h), Pen(1));
+        rule(d, (left, top), (left, y + h), Pen::FINE);
     }
 }
 
@@ -276,7 +276,7 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
         let x = corner.0 + ROOM;
         left(&mut d, name, P2(x, corner.1 - 5.0), 3.0);
         let line = f64::from(font::width(name, (3.0 * DENSITY) as f32)) / DENSITY + 10.0;
-        d.line(&[P2(x, corner.1 - 8.0), P2(x + line, corner.1 - 8.0)], Pen(6), INK, false);
+        d.line(&[P2(x, corner.1 - 8.0), P2(x + line, corner.1 - 8.0)], Pen::MEDIUM, INK, false);
         left(&mut d, &m.units.scale(vp.scale), P2(x, corner.1 - 11.0), 2.0);
     }
     for (&nid, e) in &m.elements {

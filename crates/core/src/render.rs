@@ -665,10 +665,10 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         Element::Spot(sp) => spot_mark(&mut d, view.px(sp.at), m.spot_value(sp), m.units),
         Element::Section(v) => section_mark(&mut d, v),
         Element::Elevation(v) => elevation_mark(&mut d, v),
-        Element::Column(_) | Element::StructuralColumn(_) | Element::Footing(_) => d.line(&m.column_outline(e), Pen(7), INK, true),
+        Element::Column(_) | Element::StructuralColumn(_) | Element::Footing(_) => d.line(&m.column_outline(e), Pen::HEAVY, INK, true),
         crate::model::run_arm!(_) => {
             if let Some(g) = m.run_geom(e) {
-                d.line(&g.footprint(), Pen(7), INK, true)
+                d.line(&g.footprint(), Pen::HEAVY, INK, true)
             }
         }
         Element::Component(c) => component(&mut d, &m.component_pieces(c)),
@@ -680,9 +680,9 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         }
         Element::Stair(st) => stair(&mut d, m, st, st.level),
         Element::Ramp(r) => ramp(&mut d, m, r, r.level),
-        Element::Railing(rl) => d.line(&stairs::railing(m, rl).into_iter().map(|(p, _)| p).collect::<Vec<_>>(), Pen(6), INK, false),
+        Element::Railing(rl) => d.line(&stairs::railing(m, rl).into_iter().map(|(p, _)| p).collect::<Vec<_>>(), Pen::MEDIUM, INK, false),
         Element::Roof(r) => roof(&mut d, m, r),
-        Element::Mass(ms) => d.dashed(&ms.boundary, Pen(6), MASS, true),
+        Element::Mass(ms) => d.dashed(&ms.boundary, Pen::MEDIUM, MASS, true),
         _ => {}
     }
     let annotation = on.is_some() || matches!(e, Element::Section(_) | Element::Elevation(_));
@@ -898,7 +898,7 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64) -> Drawing {
     for (owner, runs) in cut_edges(&pieces) {
         d.owner = Some(owner);
         for run in runs {
-            d.line(&run, Pen(9), INK, false);
+            d.line(&run, Pen::CUT, INK, false);
         }
     }
     // A compound wall's layers where the line cuts it: each its material's cut pattern, between where
@@ -959,7 +959,7 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64) -> Drawing {
                 for s in solids.iter().filter(|s| s.owner() == wall && s.over(x)) {
                     let (z0, z1) = s.z_at(x);
                     d.part(Part::Pattern);
-                    d.line(&[P2(along, z0), P2(along, z1)], Pen(4), INK, false);
+                    d.line(&[P2(along, z0), P2(along, z1)], Pen::PROJECTION, INK, false);
                     d.part(Part::Cut);
                 }
             }
@@ -991,7 +991,7 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64) -> Drawing {
                 cut_layer(&mut d, m, layer, &[p2, q2, q, p], (q - p).unit(), room);
                 if k > 0 {
                     d.part(Part::Pattern);
-                    d.line(&[p, q], Pen(4), INK, false);
+                    d.line(&[p, q], Pen::PROJECTION, INK, false);
                     d.part(Part::Cut);
                 }
                 above += layer.thickness;
@@ -1008,14 +1008,14 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64) -> Drawing {
                 massing::section_lines(&massing::tris(&ms.footprint(), &ms.top_ring(), (z0, z1)), v.start + u * first, u, last - first)
             {
                 let line: Vec<P2> = line.into_iter().map(|q| P2(q.0 + first, q.1)).collect();
-                d.dashed(&line, Pen(4), MASS, false);
+                d.dashed(&line, Pen::PROJECTION, MASS, false);
             }
             continue;
         }
         for (s0, s1) in view3d::crossings(&ms.boundary, v.start, u) {
             let (a, b) = (s0.max(first), s1.min(last));
             if b - a > 1e-6 {
-                d.dashed(&[P2(a, z0), P2(b, z0), P2(b, z1), P2(a, z1)], Pen(4), MASS, true);
+                d.dashed(&[P2(a, z0), P2(b, z0), P2(b, z1), P2(a, z1)], Pen::PROJECTION, MASS, true);
             }
         }
     }
@@ -1032,7 +1032,7 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64) -> Drawing {
         let Some(l) = m.level(level).filter(|l| from < to && ((lo..=hi).contains(&l.elevation) || v.crop.is_none())) else { continue };
         d.owner = Some(level);
         let (a, b) = (d.view.px(P2(from, l.elevation)), d.view.px(P2(to, l.elevation)));
-        d.stroke(vec![a, b], Pen(4), INK, Some([12.0, 4.0]), false);
+        d.stroke(vec![a, b], Pen::PROJECTION, INK, Some([12.0, 4.0]), false);
         for (text, dy) in [(l.name.clone(), -8.0), (m.units.length(l.elevation), 8.0)] {
             let h = d.px(10.0);
             d.text(&text, (b.0 + d.px(8.0) + font::width(&text, h) / 2.0, b.1 + d.px(dy)), h, INK);
@@ -1148,7 +1148,7 @@ fn draw_plan(m: &Model, level: impl Key, view: View, up: bool, k: f32, n: f64) -
         }
         d.owner = Some(id);
         for ring in std::iter::once(&f.boundary).chain(&f.openings) {
-            d.line(ring, Pen(4), FAINT, true);
+            d.line(ring, Pen::PROJECTION, FAINT, true);
         }
         holes(&mut d, m, &m.floor_slabs(f));
         // Its top layer's surface pattern, faint, in a fine view.
@@ -1183,7 +1183,7 @@ fn draw_plan(m: &Model, level: impl Key, view: View, up: bool, k: f32, n: f64) -
     // Walls and columns below the cut plane, as seen from it; past the bottom, faint.
     for (id, o, top) in seen_below(m, &range, &look, &index).into_iter().filter(|_| !up) {
         d.owner = Some(id);
-        d.line(&o, Pen(4), if top > range.bottom - TOL { INK } else { FAINT }, true);
+        d.line(&o, Pen::PROJECTION, if top > range.bottom - TOL { INK } else { FAINT }, true);
     }
     // A run's centre line, faint and dashed, where it is seen but not cut: Revit's mark of a beam, and where to pick it.
     for (&id, e) in m.elements.iter().filter(|_| !up).filter(|(id, _)| shown(**id)) {
@@ -1194,7 +1194,7 @@ fn draw_plan(m: &Model, level: impl Key, view: View, up: bool, k: f32, n: f64) -
         if seen || over {
             d.owner = Some(id);
             let pts = [P2(g.a[0], g.a[1]), P2(g.b[0], g.b[1])].iter().map(|p| d.view.px(*p)).collect();
-            d.stroke(pts, Pen(4), FAINT, Some([14.0, 5.0]), false);
+            d.stroke(pts, Pen::PROJECTION, FAINT, Some([14.0, 5.0]), false);
         }
     }
     d.part(Part::Cut);
@@ -1214,7 +1214,7 @@ fn draw_plan(m: &Model, level: impl Key, view: View, up: bool, k: f32, n: f64) -
     for (id, runs) in cut_edges(&outlines) {
         d.owner = Some(id);
         for run in runs {
-            d.line(&run, Pen(10), INK, false);
+            d.line(&run, Pen::CUT, INK, false);
         }
     }
     // A compound wall's layers: each its material's cut pattern where it's wide enough to hold it,
@@ -1237,7 +1237,7 @@ fn draw_plan(m: &Model, level: impl Key, view: View, up: bool, k: f32, n: f64) -
         // The lines between the layers are detail, as the hatching is: a cut's weight is its outline's.
         d.part(Part::Pattern);
         for line in lines.iter().skip(1).take(lines.len().saturating_sub(2)) {
-            d.line(line, Pen(4), INK, false);
+            d.line(line, Pen::PROJECTION, INK, false);
         }
         d.part(Part::Cut);
     }
@@ -1297,7 +1297,7 @@ fn draw_plan(m: &Model, level: impl Key, view: View, up: bool, k: f32, n: f64) -
             }
             _ if up => {}
             // A mass the plane passes through: its outline, dashed.
-            Element::Mass(ms) if m.mass_cut_by(ms, range.cut) => d.dashed(&m.mass_outline(ms, range.cut), Pen(4), MASS, true),
+            Element::Mass(ms) if m.mass_cut_by(ms, range.cut) => d.dashed(&m.mass_outline(ms, range.cut), Pen::PROJECTION, MASS, true),
             Element::Stair(st) => stair(&mut d, m, st, level),
             Element::Ramp(r) => ramp(&mut d, m, r, level),
             Element::Railing(rl) if m.level_of(e) == Some(level) => railing(&mut d, m, rl, range.cut),
@@ -1314,7 +1314,7 @@ fn draw_plan(m: &Model, level: impl Key, view: View, up: bool, k: f32, n: f64) -
                 if range.cut < eave && eave <= range.top {
                     for ring in std::iter::once(&m.roof_outline(r)).chain(&r.courtyards) {
                         let pts = ring.iter().map(|p| d.view.px(*p)).collect();
-                        d.stroke(pts, Pen(4), INK, Some([10.0, 5.0]), true);
+                        d.stroke(pts, Pen::PROJECTION, INK, Some([10.0, 5.0]), true);
                     }
                 }
             }
@@ -1322,7 +1322,7 @@ fn draw_plan(m: &Model, level: impl Key, view: View, up: bool, k: f32, n: f64) -
             crate::model::run_arm!(_) => {
                 if let Some(g) = m.run_geom(e).filter(|g| range.cut < g.z_span().0 && g.z_span().0 <= range.top) {
                     let pts = g.footprint().iter().map(|p| d.view.px(*p)).collect();
-                    d.stroke(pts, Pen(4), INK, Some([10.0, 5.0]), true);
+                    d.stroke(pts, Pen::PROJECTION, INK, Some([10.0, 5.0]), true);
                 }
             }
             _ => {}
@@ -1402,12 +1402,12 @@ fn component(d: &mut Drawing, pieces: &[crate::family::Piece]) {
             let mut at = 0.0;
             for (s0, s1) in hidden {
                 if s0 > at {
-                    d.line(&[a + u * at, a + u * s0], Pen(4), INK, false);
+                    d.line(&[a + u * at, a + u * s0], Pen::PROJECTION, INK, false);
                 }
                 at = f64::max(at, s1);
             }
             if at < len {
-                d.line(&[a + u * at, b], Pen(4), INK, false);
+                d.line(&[a + u * at, b], Pen::PROJECTION, INK, false);
             }
         }
     }
@@ -1418,14 +1418,14 @@ fn holes(d: &mut Drawing, m: &Model, slabs: &[(Vec<[f64; 3]>, f64)]) {
     let cut: std::collections::BTreeSet<Id> = slabs.iter().flat_map(|(face, rise)| m.less_shafts(face, *rise).1).collect();
     for id in cut {
         if let Some(Element::Shaft(sh)) = m.elements.get(id) {
-            d.line(&sh.boundary, Pen(4), FAINT, true);
+            d.line(&sh.boundary, Pen::PROJECTION, FAINT, true);
         }
     }
 }
 
 /// A slope arrow from `tail` up to `head`, and its slope beside its middle.
 fn slope_arrow(d: &mut Drawing, tail: P2, head: P2, slope: f64) {
-    d.line(&[tail, head], Pen(4), INK, false);
+    d.line(&[tail, head], Pen::PROJECTION, INK, false);
     let (a, b) = (d.view.px(tail), d.view.px(head));
     let (x, y) = arrow(d, a, b);
     let text = format!("{}°", figure(slope));
@@ -1436,12 +1436,12 @@ fn slope_arrow(d: &mut Drawing, tail: P2, head: P2, slope: f64) {
 
 /// A shaft cut in plan: its outline, and the diagonals of its box across it.
 fn shaft(d: &mut Drawing, ring: &[P2]) {
-    d.line(ring, Pen(4), INK, true);
+    d.line(ring, Pen::PROJECTION, INK, true);
     let Some((lo, hi)) = bounds(ring) else { return };
     for (from, to) in [(lo, hi), (P2(lo.0, hi.1), P2(hi.0, lo.1))] {
         let u = (to - from).unit();
         for (s0, s1) in view3d::crossings(ring, from - u, u) {
-            d.line(&[from - u + u * s0, from - u + u * s1], Pen(4), INK, false);
+            d.line(&[from - u + u * s0, from - u + u * s1], Pen::PROJECTION, INK, false);
         }
     }
 }
@@ -1503,7 +1503,7 @@ fn hatching(d: &mut Drawing, ring: &[P2], pattern: Pattern, u: P2, color: Rgb, g
         for (a, b) in view3d::crossings(&ring, from, dir) {
             let (a, b) = (a.max(s0), b.min(s1));
             if b > a {
-                d.line(&[from + dir * a, from + dir * b], Pen(1), color, false);
+                d.line(&[from + dir * a, from + dir * b], Pen::FINE, color, false);
             }
         }
     };
@@ -1571,7 +1571,7 @@ fn hatching(d: &mut Drawing, ring: &[P2], pattern: Pattern, u: P2, color: Rgb, g
                     let (x, y) = ((h & 0xffff) as f64 / 65535.0, ((h >> 16) & 0xffff) as f64 / 65535.0);
                     let at = u * ((j + x) * step) + n * ((k + y) * step);
                     if geom::contains(&ring, at) {
-                        d.line(&[at, at + u * dot], Pen(3), color, false);
+                        d.line(&[at, at + u * dot], Pen::STIPPLE, color, false);
                     }
                     j += 1.0;
                 }
@@ -1605,7 +1605,7 @@ fn hatching(d: &mut Drawing, ring: &[P2], pattern: Pattern, u: P2, color: Rgb, g
 /// it, and with a grid, its tiles: lines through its middle, a tile apart, stopping at the holes.
 fn ceiling(d: &mut Drawing, m: &Model, c: &Ceiling) {
     for ring in std::iter::once(&c.boundary).chain(&c.openings) {
-        d.line(ring, Pen(4), INK, true);
+        d.line(ring, Pen::PROJECTION, INK, true);
     }
     let slabs = m.ceiling_slabs(c);
     holes(d, m, &slabs);
@@ -1634,7 +1634,7 @@ fn ceiling(d: &mut Drawing, m: &Model, c: &Ceiling) {
             let from = mid + across * (k as f64 * t.grid + 1e-3) - u * (hi - lo).length();
             for piece in &pieces {
                 for (s0, s1) in view3d::crossings(piece, from, u) {
-                    d.line(&[from + u * s0, from + u * s1], Pen(4), INK, false);
+                    d.line(&[from + u * s0, from + u * s1], Pen::PROJECTION, INK, false);
                 }
             }
         }
@@ -1748,7 +1748,7 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
     }
     d.fill(&[gap], PAPER);
     for s in [s0, s1] {
-        d.line(&[axis.at(s, int), axis.at(s, ext)], Pen(7), INK, false);
+        d.line(&[axis.at(s, int), axis.at(s, ext)], Pen::HEAVY, INK, false);
     }
     d.own(owner);
     if !shown || d.detail == Detail::Coarse {
@@ -1757,11 +1757,11 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
     // Of a family: the forms the cut plane passes through, outlined, and the lines of its symbols (a door's swing).
     if o.family.is_some() {
         for piece in m.opening_pieces(e).iter().filter(|p| p.bottom <= cut && cut < p.top) {
-            d.line(&piece.outline, Pen(6), INK, true);
+            d.line(&piece.outline, Pen::MEDIUM, INK, true);
         }
         d.part(Part::Projection);
         for stroke in m.opening_strokes(e) {
-            d.line(&stroke, Pen(4), INK, false);
+            d.line(&stroke, Pen::PROJECTION, INK, false);
         }
         d.part(Part::Cut);
         return;
@@ -1775,14 +1775,14 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
         let out = axis.tangent(hinge).perp() * if o.flip_facing { -1.0 } else { 1.0 };
         let shut = axis.at(free, side);
         let open = pivot + out * pivot.dist(shut);
-        d.line(&[pivot, open], Pen(6), INK, false);
+        d.line(&[pivot, open], Pen::MEDIUM, INK, false);
         // What the leaf sweeps is seen, not cut.
         d.part(Part::Projection);
-        d.line(&arc(pivot, open, shut, 24), Pen(4), INK, false);
+        d.line(&arc(pivot, open, shut, 24), Pen::PROJECTION, INK, false);
         d.part(Part::Cut);
     } else {
         for across in [int, (ext + int) / 2.0, ext] {
-            d.line(&axis.points(s0, s1, across), Pen(4), INK, false);
+            d.line(&axis.points(s0, s1, across), Pen::PROJECTION, INK, false);
         }
     }
 }
@@ -1820,7 +1820,7 @@ fn stair(d: &mut Drawing, m: &Model, st: &Stair, level: impl Key) {
             }
         }
         if cut >= below && line < run.length {
-            d.line(&[at(line - 0.4 * st.tread, -half), at(line + 0.4 * st.tread, half)], Pen(4), INK, false);
+            d.line(&[at(line - 0.4 * st.tread, -half), at(line + 0.4 * st.tread, half)], Pen::PROJECTION, INK, false);
         }
         below += f64::from(run.risers);
     }
@@ -1866,7 +1866,7 @@ fn railing(d: &mut Drawing, m: &Model, rl: &Railing, cut: f64) {
         };
         for (p, q, over) in parts {
             let pts = vec![d.view.px(p), d.view.px(q)];
-            d.stroke(pts, Pen(6), INK, over.then_some([6.0, 4.0]), false);
+            d.stroke(pts, Pen::MEDIUM, INK, over.then_some([6.0, 4.0]), false);
         }
     }
 }
@@ -1874,7 +1874,7 @@ fn railing(d: &mut Drawing, m: &Model, rl: &Railing, cut: f64) {
 /// A line from `a` to `b`, one pixel wide; dashed, `over`.
 fn segment(d: &mut Drawing, a: P2, b: P2, over: bool) {
     let pts = vec![d.view.px(a), d.view.px(b)];
-    d.stroke(pts, Pen(4), INK, over.then_some([6.0, 4.0]), false);
+    d.stroke(pts, Pen::PROJECTION, INK, over.then_some([6.0, 4.0]), false);
 }
 
 /// A stair's or a ramp's walk line, its arrow at the top, marked UP at its foot; from above, the
@@ -1887,7 +1887,7 @@ fn walk(d: &mut Drawing, m: &Model, line: &[(P2, f64)], up: bool) {
     }
     let (Some(&first), Some(&second), [.., before, last]) = (pts.first(), pts.get(1), pts.as_slice()) else { return };
     let label = m.language.word(if up { "UP" } else { "DN" });
-    d.line(&pts, Pen(4), INK, false);
+    d.line(&pts, Pen::PROJECTION, INK, false);
     arrow(d, d.view.px(*before), d.view.px(*last));
     let (a, b) = (d.view.px(first), d.view.px(second));
     let len = (b.0 - a.0).hypot(b.1 - a.1).max(1e-3);
@@ -1913,7 +1913,7 @@ fn arrow(d: &mut Drawing, a: (f32, f32), b: (f32, f32)) -> (f32, f32) {
 fn roof(d: &mut Drawing, m: &Model, r: &Roof) {
     let faces = m.roof_faces(r).map_or_else(|_| vec![m.roof_outline(r)], |f| f.into_iter().flat_map(|(loops, _)| loops).collect());
     for f in faces {
-        d.line(&f, Pen(4), INK, true);
+        d.line(&f, Pen::PROJECTION, INK, true);
     }
 }
 
@@ -1961,7 +1961,7 @@ fn angular(d: &mut Drawing, m: &Model, dim: &Dimension) {
     let px = f64::from(d.k) / d.view.scale;
     let ray = |t: f64| P2(t.cos(), t.sin());
     let arc: Vec<P2> = (0..=48).map(|i| o + ray(from + sweep * f64::from(i) / 48.0) * r).collect();
-    d.line(&arc, Pen(4), INK, false);
+    d.line(&arc, Pen::PROJECTION, INK, false);
     let lines: Vec<(P2, P2)> = dim.refs.iter().filter_map(|x| m.reference_line(x).ok()).collect();
     for t in [from, from + sweep] {
         let u = ray(t);
@@ -1972,10 +1972,10 @@ fn angular(d: &mut Drawing, m: &Model, dim: &Dimension) {
             .flat_map(|(a, b)| [(*a - o).dot(u), (*b - o).dot(u)])
             .fold(0.0, f64::max);
         if r > reach + 3.0 * px {
-            d.line(&[o + u * (reach + 3.0 * px), o + u * (r + 4.0 * px)], Pen(4), INK, false);
+            d.line(&[o + u * (reach + 3.0 * px), o + u * (r + 4.0 * px)], Pen::PROJECTION, INK, false);
         }
         let (p, k) = (o + u * r, (u + u.perp()) * (3.0 * px));
-        d.line(&[p - k, p + k], Pen(7), INK, false);
+        d.line(&[p - k, p + k], Pen::HEAVY, INK, false);
     }
     // Outside the arc's middle, clear of it however the text sits across the ray.
     let (text, mid) = (format!("{}°", figure(sweep.to_degrees())), ray(from + sweep / 2.0));
@@ -1989,7 +1989,7 @@ fn radial(d: &mut Drawing, m: &Model, dim: &Dimension) {
     let Some(Ok((c, r))) = dim.refs.first().map(|x| m.reference_arc(x)) else { return };
     let u = if dim.at.dist(c) > 0.0 { (dim.at - c).unit() } else { P2(1.0, 0.0) };
     let (edge, end) = (c + u * r, if dim.at.dist(c) > r { dim.at } else { c + u * r });
-    d.line(&[c, end], Pen(4), INK, false);
+    d.line(&[c, end], Pen::PROJECTION, INK, false);
     let (a, b) = (d.view.px(c), d.view.px(edge));
     // Inside a circle too small for it, the arrow comes in from outside.
     if r * d.view.scale > f64::from(d.px(14.0)) || end == edge {
@@ -1998,7 +1998,7 @@ fn radial(d: &mut Drawing, m: &Model, dim: &Dimension) {
         arrow(d, d.view.px(end), b);
     }
     for (dx, dy) in [(d.px(4.0), 0.0), (0.0, d.px(4.0))] {
-        d.stroke(vec![(a.0 - dx, a.1 - dy), (a.0 + dx, a.1 + dy)], Pen(4), INK, None, false);
+        d.stroke(vec![(a.0 - dx, a.1 - dy), (a.0 + dx, a.1 + dy)], Pen::PROJECTION, INK, None, false);
     }
     let text = format!("R {}", m.units.length(r));
     let (x, y) = d.view.px(end);
@@ -2021,7 +2021,7 @@ pub(crate) fn note(d: &mut Drawing, n: &Note) {
     }
     if let Some(to) = n.leader {
         let (from, to) = (turn((-h * 0.4, h / 2.0)), d.view.px(to));
-        d.stroke(vec![from, to], Pen(4), INK, None, false);
+        d.stroke(vec![from, to], Pen::PROJECTION, INK, None, false);
         arrow(d, from, to);
     }
 }
@@ -2033,7 +2033,7 @@ fn spot_mark(d: &mut Drawing, (x, y): (f32, f32), z: Option<f64>, units: Units) 
     d.push(Prim::Fill { rings: vec![vec![(x, y), (x + 5.0, y - 8.0), (x - 5.0, y - 8.0)]], color: INK });
     let text = z.map_or_else(|| "?".into(), |z| height(units, z));
     let w = font::width(&text, 10.0);
-    d.stroke(vec![(x - 5.0, y - 8.0), (x + 9.0 + w, y - 8.0)], Pen(4), INK, None, false);
+    d.stroke(vec![(x - 5.0, y - 8.0), (x + 9.0 + w, y - 8.0)], Pen::PROJECTION, INK, None, false);
     d.text(&text, (x + 7.0 + w / 2.0, y - 16.0), 10.0, INK);
     d.grow(from, (x, y));
 }
@@ -2058,7 +2058,7 @@ fn aligned(d: &mut Drawing, m: &Model, dim: &Dimension) {
     let u = n.perp();
     let px = f64::from(d.k) / d.view.scale;
     let on = |s: f64| dim.at + n * s;
-    d.line(&[on(lo - 4.0 * px), on(hi + 4.0 * px)], Pen(4), INK, false);
+    d.line(&[on(lo - 4.0 * px), on(hi + 4.0 * px)], Pen::PROJECTION, INK, false);
     for &(s, (a, b)) in &cross {
         let c = on(s);
         // The reference's extent along it, from the dimension line: the witness line runs from
@@ -2069,8 +2069,8 @@ fn aligned(d: &mut Drawing, m: &Model, dim: &Dimension) {
             (_, near) if near < 0.0 => (near + 3.0 * px, 4.0 * px),
             _ => (-4.0 * px, 4.0 * px),
         };
-        d.line(&[c + u * from, c + u * to], Pen(4), INK, false);
-        d.line(&[c - (u + n) * (3.0 * px), c + (u + n) * (3.0 * px)], Pen(7), INK, false);
+        d.line(&[c + u * from, c + u * to], Pen::PROJECTION, INK, false);
+        d.line(&[c - (u + n) * (3.0 * px), c + (u + n) * (3.0 * px)], Pen::HEAVY, INK, false);
     }
     // The line's angle on screen (y down): it runs east or north, so the text reads from below
     // or from the right.
@@ -2090,7 +2090,7 @@ fn tag(d: &mut Drawing, m: &Model, t: &Tag) {
     let Some(anchor) = m.anchor(t.host) else { return };
     let head = anchor + t.offset;
     if t.leader {
-        d.line(&[anchor, head], Pen(4), INK, false);
+        d.line(&[anchor, head], Pen::PROJECTION, INK, false);
     }
     let text = m.tag_text(t);
     let (x, y) = d.view.px(head);
@@ -2104,7 +2104,7 @@ fn tag(d: &mut Drawing, m: &Model, t: &Tag) {
     d.push(Prim::Fill { rings: vec![ring.clone()], color: PAPER });
     // Openings' marks sit in a box or a hexagon; anything else's label is plain text.
     if matches!(m.elements.get(t.host), Some(Element::Door(_) | Element::Window(_))) {
-        d.stroke(ring, Pen(4), INK, None, true);
+        d.stroke(ring, Pen::PROJECTION, INK, None, true);
     }
     d.text(&text, (x, y), 10.0, INK);
     d.grow(from, (x, y));
@@ -2120,7 +2120,7 @@ fn looking_px(v: &Section) -> (f32, f32) {
 /// looks, its name behind it) and a tick at its end.
 fn section_mark(d: &mut Drawing, v: &Section) {
     let (a, b) = (d.view.px(v.start), d.view.px(v.end));
-    d.stroke(vec![a, b], Pen(6), INK, Some([18.0, 5.0]), false);
+    d.stroke(vec![a, b], Pen::MEDIUM, INK, Some([18.0, 5.0]), false);
     let (lx, ly) = looking_px(v);
     let len = (b.0 - a.0).hypot(b.1 - a.1).max(1e-3);
     let (ux, uy) = ((b.0 - a.0) / len, (b.1 - a.1) / len);
@@ -2130,7 +2130,7 @@ fn section_mark(d: &mut Drawing, v: &Section) {
     d.text(&v.name, (a.0 - ux * back, a.1 - uy * back), 10.0, INK);
     d.grow(from, a);
     let from = d.prims.len();
-    d.stroke(vec![b, (b.0 + lx * 9.0, b.1 + ly * 9.0)], Pen(6), INK, None, false);
+    d.stroke(vec![b, (b.0 + lx * 9.0, b.1 + ly * 9.0)], Pen::MEDIUM, INK, None, false);
     d.grow(from, b);
 }
 
@@ -2147,7 +2147,7 @@ fn elevation_mark(d: &mut Drawing, v: &Section) {
         })
         .collect();
     d.push(Prim::Fill { rings: vec![ring.clone()], color: PAPER });
-    d.stroke(ring, Pen(5), INK, None, true);
+    d.stroke(ring, Pen::BUBBLE, INK, None, true);
     let (lx, ly) = looking_px(v);
     let side = (-ly * R * 0.8, lx * R * 0.8);
     let flag = vec![(c.0 + side.0, c.1 + side.1), (c.0 + lx * (R + 7.0), c.1 + ly * (R + 7.0)), (c.0 - side.0, c.1 - side.1)];
@@ -2160,7 +2160,7 @@ fn elevation_mark(d: &mut Drawing, v: &Section) {
 /// A grid line, dashed, with a bubble holding its name beyond each end.
 fn grid(d: &mut Drawing, start: P2, end: P2, name: &str) {
     let (a, b) = (d.view.px(start), d.view.px(end));
-    d.stroke(vec![a, b], Pen(4), GRID, Some([14.0, 4.0]), false);
+    d.stroke(vec![a, b], Pen::PROJECTION, GRID, Some([14.0, 4.0]), false);
     let len = (b.0 - a.0).hypot(b.1 - a.1).max(1e-3);
     let dir = ((b.0 - a.0) / len, (b.1 - a.1) / len);
     for ((x, y), k) in [(a, -BUBBLE), (b, BUBBLE)] {
@@ -2170,7 +2170,7 @@ fn grid(d: &mut Drawing, start: P2, end: P2, name: &str) {
             let t = f64::from(i) * PI / 16.0;
             (c.0 + BUBBLE * t.cos() as f32, c.1 + BUBBLE * t.sin() as f32)
         });
-        d.stroke(ring.collect(), Pen(5), GRID, None, true);
+        d.stroke(ring.collect(), Pen::BUBBLE, GRID, None, true);
         d.text(name, c, 10.0, GRID);
         d.grow(from, (x, y));
     }
@@ -2496,6 +2496,20 @@ mod tests {
         assert_eq!(d.pick(at(0.0, 1500.0), 2.0), Some(100005), "the cut is the wall's to pick");
         assert_eq!(d.pick(at(4000.0, 3000.0), 3.0), Some(100001), "Level 2's line");
         assert_eq!(d.pick(at(0.0, 3700.0), 3.0), Some(100009), "grid 1, where it crosses the section");
+    }
+
+    #[test]
+    fn a_wall_cut_in_section_draws_the_pen_it_draws_cut_in_plan() {
+        let s = cut();
+        let view = section_fit(&s.model, 100010, 800, 600);
+        let d = section(&s.model, 100010, view);
+        let widest = (d.prims.iter().zip(&d.owners))
+            .filter_map(|(p, o)| match p {
+                Prim::Line { width, .. } if *o == Some(100005) => Some(*width),
+                _ => None,
+            })
+            .fold(0.0, f32::max);
+        assert!((widest - d.width(Pen::CUT)).abs() < 1e-4, "{widest} against {}", d.width(Pen::CUT));
     }
 
     #[test]
@@ -2857,7 +2871,7 @@ mod tests {
                 .filter(|((prim, o), p)| {
                     **o == Some(id)
                         && **p == Part::Pattern
-                        && matches!(prim, Prim::Line { width, .. } if (*width >= d.width(Pen(4)) - 1e-4) == wide)
+                        && matches!(prim, Prim::Line { width, .. } if (*width >= d.width(Pen::PROJECTION) - 1e-4) == wide)
                 })
                 .count()
         };
@@ -2991,7 +3005,7 @@ mod tests {
         let view = View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
         s.execute("scale", &serde_json::json!({"view": 100000, "scale": 50})).unwrap();
         let at_50 = widest(&s, view, wall);
-        let mm = s.model.line_weights().at(50.0).mm(Pen(10), false) as f32;
+        let mm = s.model.line_weights().at(50.0).mm(Pen::CUT, false) as f32;
         assert!((at_50 - mm * 5.0).abs() < 1e-4, "{at_50}");
         // At 1 : 100 the same screen stands for half the paper, so the pen is twice the pixels; zoomed in twice, twice again.
         s.execute("scale", &serde_json::json!({"view": 100000, "scale": 100})).unwrap();

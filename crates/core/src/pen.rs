@@ -33,8 +33,27 @@ pub const MAX_PEN: u8 = 16;
 const WIDTHS: [f64; MAX_PEN as usize + 1] =
     [0.0, 0.10, 0.13, 0.16, 0.20, 0.25, 0.30, 0.40, 0.50, 0.60, 0.80, 1.00, 1.40, 2.00, 2.50, 3.00, 4.00];
 
+/// Which pen each kind of line draws with: one place for the weights the drawings use, the model's (until Object Styles
+/// gives each category its own) and the annotation's and the sheet's.
 impl Pen {
     pub const HAIRLINE: Pen = Pen(0);
+    /// What a cut passes through, outlined: walls, floors and roofs, in plan and in section alike.
+    pub const CUT: Pen = Pen(10);
+    /// A sheet's border and its title block's frame.
+    pub const BORDER: Pen = Pen(8);
+    /// Heavy: columns cut, an opening's jambs, a dimension's ticks, a schedule's frame.
+    pub const HEAVY: Pen = Pen(7);
+    /// Medium: a family's forms cut, a door's leaf, railings, stairs above the cut, masses, section and elevation marks,
+    /// the rule under a schedule's headings.
+    pub const MEDIUM: Pen = Pen(6);
+    /// The bubbles of grids and elevation marks.
+    pub const BUBBLE: Pen = Pen(5);
+    /// What's seen beyond the cut, the lines between a cut's layers, and annotation's lines: dimensions, tags, levels, grids.
+    pub const PROJECTION: Pen = Pen(4);
+    /// A stipple's dots.
+    pub const STIPPLE: Pen = Pen(3);
+    /// The finest: hatching, a schedule's rows.
+    pub const FINE: Pen = Pen(1);
 
     /// How wide it draws on paper, mm: 0 for a hairline (and for a pen past [`MAX_PEN`], which `Style::check` refuses).
     pub fn mm(self) -> f64 {

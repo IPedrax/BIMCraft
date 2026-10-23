@@ -912,8 +912,8 @@ pub(crate) fn editor(ui: &mut Ui, o: &mut Override, enabled: bool, see_through: 
     ui.add_enabled_ui(enabled, |ui| {
         // The projection's settings and the cut's side by side.
         ui.columns(2, |cols| {
-            style_rows(&mut cols[0], "Projection", &mut o.projection, Pen(4));
-            style_rows(&mut cols[1], "Cut", &mut o.cut, Pen(10));
+            style_rows(&mut cols[0], "Projection", &mut o.projection, Pen::PROJECTION);
+            style_rows(&mut cols[1], "Cut", &mut o.cut, Pen::CUT);
         });
         ui.horizontal(|ui| {
             ui.checkbox(&mut o.halftone, t("Halftone"));
