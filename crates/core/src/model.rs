@@ -3404,8 +3404,8 @@ impl Model {
         let mut sheet_numbers = BTreeSet::new();
         // Each view on a sheet: the sheet.
         let mut placed: BTreeMap<Guid, Guid> = BTreeMap::new();
-        // Openings by host wall: (start, end, id) along it.
-        let mut spans: BTreeMap<Guid, Vec<(f64, f64, Id)>> = BTreeMap::new();
+        // Openings by host wall, in the order they start along it.
+        let mut spans: BTreeMap<Guid, Vec<OpeningSpan>> = BTreeMap::new();
         for (&id, e) in &self.elements {
             let who = format!("{} {id}", e.category());
             let level_ok = |l: Guid| self.level(l).map(|_| ()).ok_or(format!("{who}: level {} doesn't exist", self.shown(l)));
@@ -3604,7 +3604,10 @@ impl Model {
                             self.shown(o.host)
                         ));
                     }
-                    spans.entry(o.host).or_default().push((a, b, id));
+                    let span = OpeningSpan { start: a, end: b, sill: o.sill, head: o.sill + t.height, id };
+                    let list = spans.entry(o.host).or_default();
+                    let at = list.partition_point(|held| held.start <= a);
+                    list.insert(at, span);
                 }
                 Element::Room(r) => {
                     level_ok(r.level)?;
@@ -4013,13 +4016,17 @@ impl Model {
         if let Some(n) = view_names.intersection(&level_names).next() {
             return Err(format!("a view is named `{n}`, as a level is; name it otherwise"));
         }
-        for (host, mut v) in spans {
-            v.sort_by(|x, y| x.0.total_cmp(&y.0));
-            for pair in v.windows(2) {
-                if let [(_, end, a), (start, _, b)] = pair
-                    && *end > start + TOL
-                {
-                    return Err(format!("{} {a} and {} {b} overlap in wall {host}", self.cat(*a), self.cat(*b)));
+        for (host, v) in spans {
+            // Openings share a wall's place only where they share its height too: one over the other is not an overlap, and a
+            // storefront wall with a window a storey is a wall whose windows overlap in plan alone.
+            for (i, a) in v.iter().enumerate() {
+                for b in v.iter().skip(i + 1) {
+                    if b.start > a.end + TOL {
+                        break;
+                    }
+                    if a.end > b.start + TOL && a.head > b.sill + TOL && b.head > a.sill + TOL {
+                        return Err(format!("{} {} and {} {} overlap in wall {host}", self.cat(a.id), a.id, self.cat(b.id), b.id));
+                    }
                 }
             }
         }
@@ -4228,6 +4235,16 @@ fn pens_from_pixels(v: &mut serde_json::Value) {
         _ => {}
     }
 }
+/// A door's or a window's place in its wall: how far along it the opening runs, the sill and the head above
+/// the wall's own base, and which opening it is.
+struct OpeningSpan {
+    start: f64,
+    end: f64,
+    sill: f64,
+    head: f64,
+    id: Id,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4360,6 +4377,27 @@ mod tests {
         m.insert(door(m.guid(host), 2000.0));
         assert_eq!(m.check(), Ok(()));
         m.insert(door(m.guid(host), 2600.0));
+        let e = m.check().unwrap_err();
+        assert!(e.contains("overlap"), "{e}");
+    }
+
+    #[test]
+    fn check_allows_openings_stacked_in_one_wall_and_still_refuses_ones_side_by_side() {
+        // A wall six metres tall with a door and, over it, another: the Snowdon sample's storefront walls hold a window per
+        // storey at the same place along the wall.
+        let mut m = Model::new("t");
+        let host = m.insert(wall(m.guid(100000), P2(0.0, 0.0), P2(5000.0, 0.0)));
+        if let Some(Element::Wall(w)) = m.elements.get_mut(host) {
+            w.height = 6000.0;
+        }
+        m.insert(door(m.guid(host), 1000.0));
+        let mut above = door(m.guid(host), 1000.0);
+        if let Element::Door(o) = &mut above {
+            o.sill = 2500.0;
+        }
+        m.insert(above);
+        assert_eq!(m.check(), Ok(()), "openings that share their place but not their height do not overlap");
+        m.insert(door(m.guid(host), 1000.0));
         let e = m.check().unwrap_err();
         assert!(e.contains("overlap"), "{e}");
     }
