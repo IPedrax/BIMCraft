@@ -52,7 +52,7 @@ pub struct Copy {
 pub type Data = BTreeMap<u32, Vec<Copy>>;
 
 /// How far an element's data is read.
-pub const WINDOW: usize = 0x1_0000;
+pub const WINDOW: usize = 0x4_0000;
 
 /// The data of the `wanted` elements in a partition.
 pub(crate) fn element_data(buf: &[u8], tags: &Tags, wide: bool, wanted: &BTreeSet<u32>, partition: u32, out: &mut Data) {
