@@ -50,6 +50,36 @@ pub(crate) struct Report {
     pub(crate) counts: Vec<(String, usize)>,
     notes: Vec<String>,
     pub(crate) open: bool,
+    /// Copy Report was pressed: its button says so.
+    copied: bool,
+}
+
+impl Report {
+    /// The notes of what was left out, the others, and how many elements were left out in all.
+    fn split(&self) -> (Vec<&str>, Vec<&str>, usize) {
+        let (left, noted): (Vec<&str>, Vec<&str>) = self.notes.iter().map(String::as_str).partition(|n| count_left_out(n).is_some());
+        let left_out = left.iter().filter_map(|n| count_left_out(n)).sum();
+        (left, noted, left_out)
+    }
+
+    /// The report as the window shows it, in plain text: for pasting into an issue or a file, which the window's own text can't
+    /// be selected for past what is on screen.
+    pub(crate) fn text(&self) -> String {
+        let (left, noted, left_out) = self.split();
+        let came_in: usize = self.counts.iter().map(|(_, n)| n).sum();
+        let mut lines = vec![format!("{} · {}", self.file, self.schema), String::new(), tf("Came in: {}", &[&came_in.to_string()])];
+        lines.extend(self.counts.iter().map(|(cat, n)| format!("{n} {}", category(cat, *n != 1))));
+        lines.extend([String::new(), tf("Left out: {}", &[&left_out.to_string()])]);
+        if left.is_empty() {
+            lines.push(t("Nothing was left out.").to_string());
+        }
+        lines.extend(left.iter().map(|note| format!("• {note}")));
+        if !noted.is_empty() {
+            lines.extend([String::new(), t("Noted").to_string()]);
+            lines.extend(noted.iter().map(|note| format!("• {note}")));
+        }
+        lines.join("\n") + "\n"
+    }
 }
 
 /// A note with its element ids split off: `2 walls left out, why (ids 7, 9)` is the text and `ids 7, 9`.
@@ -150,8 +180,14 @@ impl BimApp {
         counts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         let schema = imported.schema;
         // The report comes up by itself when the import has something to say: nothing pops up over a clean one.
-        let report =
-            Report { file: file.to_string(), schema: schema.clone(), counts, open: !imported.skipped.is_empty(), notes: imported.skipped };
+        let report = Report {
+            file: file.to_string(),
+            schema: schema.clone(),
+            counts,
+            open: !imported.skipped.is_empty(),
+            notes: imported.skipped,
+            copied: false,
+        };
         self.session.reset(imported.model, None);
         // Its own recovery copy, as for any new project, and none left for the one it replaces.
         self.retire_autosave();
@@ -179,10 +215,9 @@ impl BimApp {
     /// The report of the last Revit import, while it is open: what came in, what was left out and why, with the element ids.
     pub(crate) fn report_window(&mut self, ctx: &Context) {
         let Some(report) = self.revit_report.as_ref().filter(|r| r.open) else { return };
-        let (left, noted): (Vec<&str>, Vec<&str>) = report.notes.iter().map(String::as_str).partition(|n| count_left_out(n).is_some());
+        let (left, noted, left_out) = report.split();
         let came_in: usize = report.counts.iter().map(|(_, n)| n).sum();
-        let left_out: usize = left.iter().filter_map(|n| count_left_out(n)).sum();
-        let mut close = false;
+        let (mut close, mut copy) = (false, false);
         // As tall as the window allows, so that a long list is read without scrolling where it can be.
         let height = (ctx.content_rect().height() * 0.65).max(200.0);
         let r = Modal::new(Id::new("revit-report")).show(ctx, |ui| {
@@ -212,12 +247,19 @@ impl BimApp {
                 }
             });
             ui.add_space(8.0);
-            ui.with_layout(Layout::right_to_left(Align::Min), |ui| close = ui.button(t("Close")).clicked());
+            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                close = ui.button(t("Close")).clicked();
+                copy = ui.button(t(if report.copied { "Copied" } else { "Copy Report" })).clicked();
+            });
         });
-        if (close || r.should_close())
-            && let Some(report) = self.revit_report.as_mut()
-        {
-            report.open = false;
+        if copy {
+            ctx.copy_text(report.text());
+            // The button says it was pressed in the next frame, which nothing else asks for.
+            ctx.request_repaint();
+        }
+        if let Some(report) = self.revit_report.as_mut() {
+            report.copied |= copy;
+            report.open &= !(close || r.should_close());
         }
     }
 

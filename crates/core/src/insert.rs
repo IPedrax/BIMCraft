@@ -9,6 +9,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::graphics;
+use crate::ids::LINKED;
 use crate::library::{Entry, Kind};
 use crate::model::{Element, Guid, Id, Model};
 use crate::phasing;
@@ -29,6 +30,15 @@ pub struct Inserted {
 /// Elements `ids` of `from` (all of them when none), and what they point at that `to` hasn't, brought into `to`. Unchecked:
 /// the engine checks the model after the command.
 pub fn insert(to: &mut Model, from: &Model, ids: &[Id]) -> Result<Inserted, String> {
+    insert_as(to, from, ids, false)
+}
+
+/// [`insert`], where with `linked` every element comes in under an id from [`LINKED`] up, which is how a view tells it from
+/// the project's own.
+pub(crate) fn insert_as(to: &mut Model, from: &Model, ids: &[Id], linked: bool) -> Result<Inserted, String> {
+    if linked {
+        to.next_id = to.next_id.max(LINKED);
+    }
     let asked: Vec<Id> = if ids.is_empty() { from.elements.keys().copied().collect() } else { ids.to_vec() };
     if let Some(missing) = asked.iter().find(|id| !from.elements.contains_key(**id)) {
         return Err(format!("the other project has no element {missing}"));
@@ -85,7 +95,7 @@ pub fn insert(to: &mut Model, from: &Model, ids: &[Id]) -> Result<Inserted, Stri
         });
         let left = phasing_here(to, &mut e);
         let taken = to.elements.contains_key(id) || to.library.get(id).is_some();
-        let new = if taken || id < crate::model::FIRST_ID { to.fresh_id() } else { id };
+        let new = if linked || taken || id < crate::model::FIRST_ID { to.fresh_id() } else { id };
         let guid = instead.get(&g).copied().unwrap_or(g);
         to.elements.insert_as(new, guid, e)?;
         to.next_id = to.next_id.max(new + 1);

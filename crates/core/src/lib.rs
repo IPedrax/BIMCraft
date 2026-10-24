@@ -5,6 +5,7 @@
 pub mod autosave;
 #[cfg(test)]
 mod autosave_tests;
+pub mod bridge;
 pub mod cloud;
 mod commands;
 mod component_geometry;
@@ -26,6 +27,7 @@ pub mod language;
 pub mod lenient;
 pub mod library;
 pub mod lines;
+pub mod link;
 pub mod massing;
 pub mod model;
 pub mod paint;

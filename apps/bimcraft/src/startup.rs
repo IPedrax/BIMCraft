@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use bimcraft_core::language::Language;
 use bimcraft_ui_egui::lang;
+use bimcraft_ui_egui::lang::Lang;
 use eframe::wgpu::Backends;
 use serde_json::{Value, json};
 
@@ -124,8 +124,8 @@ fn trimmed(path: &Path) {
 }
 
 /// What a start tells the user: a message box on Windows, where a release build has no console to print to.
-pub fn tell(language: Language, what: &str, files: Option<&Files>) {
-    let word = |s: &'static str| lang::translated(language, s).unwrap_or(s);
+pub fn tell(language: Lang, what: &str, files: Option<&Files>) {
+    let word = |s: &'static str| lang::translated_in(language, s).unwrap_or(s);
     let body = match files {
         Some(f) => word("{}\n\nThe details are in {}.").replacen("{}", what, 1).replacen("{}", &f.log.display().to_string(), 1),
         None => what.to_string(),
@@ -141,7 +141,7 @@ pub fn tell(language: Language, what: &str, files: Option<&Files>) {
 
 /// Begins a start: the log's first lines, the panic hook, and the graphics choice for this start, marked as not finished.
 /// Without a folder to keep them in, or with `WGPU_BACKEND` set, the choice is wgpu's own and nothing is kept.
-pub fn begin(files: Option<&Files>, language: Language) -> Mark {
+pub fn begin(files: Option<&Files>, language: Lang) -> Mark {
     let Some(files) = files else { return Mark::default() };
     trimmed(&files.log);
     let user_chose = std::env::var_os("WGPU_BACKEND").is_some();

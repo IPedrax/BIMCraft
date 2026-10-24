@@ -7,6 +7,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::f64::consts::{PI, TAU};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
@@ -611,6 +612,21 @@ pub struct Spot {
     pub host: Option<Guid>,
 }
 
+/// Another project shown in this one, a reference that can't be edited: Revit's linked model. The file stays where it is;
+/// what it holds is read when the link is made, and again by `reload`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Link {
+    pub name: String,
+    /// The `.bimcraft` or `.ifc` it reads, as it was given: a relative one is relative to this project's file.
+    pub path: String,
+    /// Where its origin stands in this project, and how far it is turned about it, degrees. Its levels stand at their own
+    /// elevations.
+    pub at: P2,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub angle: f64,
+}
+
 /// A schedule view: the elements of category `of` in rows, as the `schedule` command lists them:
 /// its `fields` (its category's unless it chooses), of the elements its `filters` keep, sorted by
 /// its `sort` fields (by its first unless it says) and, `grouped`, a row for each set of their values.
@@ -1108,7 +1124,7 @@ macro_rules! visit_refs {
         match $e {
             // A view's graphics, as `views_graphics` gives them.
             Element::Level(_) | Element::Section(_) | Element::Elevation(_) | Element::View3D(_) => {}
-            Element::Grid(_) | Element::Sheet(_) | Element::Schedule(_) => {}
+            Element::Grid(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) => {}
             Element::PlanView(v) => {
                 f(& $($m)? v.level);
                 if let Some(g) = & $($m)? v.parent { f(g) }
@@ -1216,6 +1232,7 @@ pub enum Element {
     Schedule(Schedule),
     View3D(View3D),
     PlanView(PlanView),
+    Link(Link),
 }
 
 impl Element {
@@ -1380,6 +1397,7 @@ impl Element {
             Element::DetailLine(_) => "line",
             Element::FilledRegion(_) => "region",
             Element::Spot(_) => "spot",
+            Element::Link(_) => "link",
             Element::Schedule(_) => "schedule",
             Element::View3D(_) => "view3d",
             Element::PlanView(_) => "planview",
@@ -1668,6 +1686,10 @@ pub struct Model {
     /// templates, phases, phase filters and design options.
     #[serde(default)]
     pub library: crate::library::Library,
+    /// What the links read, by their `path`: not in a file, which holds the path alone. A link with no entry here is
+    /// not loaded, and draws nothing.
+    #[serde(skip)]
+    pub loaded: BTreeMap<String, Arc<Model>>,
 }
 
 impl Model {
@@ -1712,6 +1734,7 @@ impl Model {
             region_types: fills::region_types(language),
             elements: Elements::new(),
             library: crate::library::Library::default(),
+            loaded: BTreeMap::new(),
         };
         // A library to start from: each material its colour, its cut's pattern and its surface's, and the texture it has.
         for (name, color, cut, surface, texture) in [
@@ -2613,6 +2636,7 @@ impl Model {
             | Element::Sheet(_)
             | Element::Viewport(_)
             | Element::Schedule(_)
+            | Element::Link(_)
             | Element::View3D(_) => None,
         }
     }
@@ -3465,6 +3489,7 @@ impl Model {
         }
         let mut level_names = BTreeSet::new();
         let mut grid_names = BTreeSet::new();
+        let mut link_names = BTreeSet::new();
         let mut view_names = BTreeSet::new();
         // The schedules every project has that the project has made its own: one each.
         let mut twins = BTreeSet::new();
@@ -3824,6 +3849,19 @@ impl Model {
                     }
                     if !view_names.insert(v.name.as_str()) {
                         return Err(format!("{who}: another view is already named `{}`", v.name));
+                    }
+                }
+                Element::Link(l) => {
+                    text(&who, "name", &l.name)?;
+                    if l.name.trim().is_empty() || l.path.trim().is_empty() || l.path.chars().count() > MAX_TEXT {
+                        return Err(format!("{who}: a link needs a name and the path of a file, up to {MAX_TEXT} characters"));
+                    }
+                    point(&format!("{who} at"), l.at)?;
+                    if !(l.angle.is_finite() && l.angle.abs() <= 360.0) {
+                        return Err(format!("{who}: its angle {}° isn't between -360° and 360°", l.angle));
+                    }
+                    if !link_names.insert(l.name.as_str()) {
+                        return Err(format!("{who}: another link is already named `{}`", l.name));
                     }
                 }
                 Element::View3D(v) => {

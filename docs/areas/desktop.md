@@ -14,6 +14,40 @@ ids inside a view are per view (`push_id`), so two views on screen never clash. 
 they hand it a file): what it keeps is `Settings`, written when it changes, between drags; a setting still to come goes on
 its page greyed out (`later`).
 
+The system's file dialogs (Open, Save As, the exports, Load Family, Link Model, a material's picture) are asked for through
+`BimApp::ask_file` (`dialog.rs`), never with a blocking `rfd::FileDialog`: a native dialog run inside the window's event
+handler nests a run loop in it, and on macOS a drag reaching the window meanwhile re-enters the handler and aborts the app
+(issue 43). The dialog (`rfd::AsyncFileDialog`) is begun on the window's thread, where AppKit wants it and where a sheet does not
+block, and waited for on a thread of its own; `ask_file` is given what to do with the path, and `BimApp::dialog_answered` does it in a later frame (a cancel does nothing; one dialog is open at a time). A step
+that goes on after a save (the unsaved-changes prompt's Save) is that `then`. A file dropped on the window is queued in
+`opens`, as one the system asked for. A test hands the app a `Dialog` whose answer it sends itself (`tests/dialog.rs`).
+
+The window's size (`window.rs`, issue 37) is `Settings::window` (its size in points and whether it was maximized, never its place:
+Wayland tells an app none, and the window starts centred): `BimApp::watch_window` notes it once a frame, keeps it once it has held
+still for half a second, and writes nothing for a window left as it started; `main` starts the window at the size the file holds
+(`settings::window_in`). A window too big for its screen (the default 1440 x 900 on a laptop's, or a kept size after the screen
+changed) is made smaller, once, in the first frame that knows the screen (`fitted`: 96% by 90% of it, never below the least a
+window can be), and centred when it has taken the size.
+
+The control port (`control.rs`, issue 41) is how an agent works on the project the window has open: `bimcraft --control PORT` binds
+only 127.0.0.1, makes a token of 128 random bits and writes both to `bridge.json` beside the favorites (for the user alone; the
+window takes it away when it closes), and `bimcraft-cli mcp --connect` runs its tools on the window's session. The protocol, and
+what an agent may not do (`bridge::REFUSED`: `new`, `open`, `recover`, `highrise`, by any name, and a script is read through before it
+runs), are `bimcraft_core::bridge`. A connection thread reads a line (at most 16 MB), checks the token, and hands the request to the
+window through a channel; `BimApp::answer_agents` runs it in the frame as `BimApp::run` runs a button's command (`made_in`, then
+`Session::execute`) and sends the reply back, up to sixteen a frame, and not while a file is being read or an update installed. A
+request wakes the window (`Context::request_repaint`, from the context the first frame left in a `OnceLock`). Eight connections at
+most; ten seconds, in all, to say the first line whole (a byte now and then does not count), and what is not a request, a web page's
+HTTP say, is answered with an error and closed. A test (`tests/control.rs`) plays the agent on a real connection while the harness runs frames.
+
+The interface's language is `lang::Lang`: a project's language, or Simplified Chinese (issue 38), which only the window speaks
+(a drawing's lettering, `font.rs`, is drawn in code and has no hanzi, so a project is never in Chinese and `Lang::project()` gives
+it English). Its words are `lang/zh.rs`, English keys with the Chinese, and the core's words (schedule headings) stay English there.
+egui's own fonts have no hanzi, so the window in Chinese needs a font the system has: `lang::use_chinese_font` puts one behind egui's
+(`lang/font.rs` tries each system's known places, then the Linux font folders, taking Noto Sans CJK's Simplified face) the first frame the
+language is Chinese. Where there is none, `set_lang` leaves the language as it was and the status says why, and a settings file that says
+Chinese on such a machine starts the window in English. The app holds the finder (`font_finder`) so a test can say there is none.
+
 What a view hides or reveals for now (Temporary Hide/Isolate, Reveal Hidden Elements; `footer.rs`) is the window's, per `Sheet`, never the
 project's: the plan, the section and the 3D view draw `BimApp::view_model`, a copy of the model whose view graphics went through the `graphics`
 command on a scratch `Session`, made once for each model and each setting. A tool that needs the view's real model (select all, commands)

@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use bimcraft_core::element_json;
 use bimcraft_core::family::{Kind as Holds, Val};
-use bimcraft_core::model::{Element, Function, Id, Layer, Location, Model, PARAMETER_CATEGORIES, ParameterKind, Pattern};
+use bimcraft_core::model::{Element, Function, Guid, Id, Layer, Location, Model, PARAMETER_CATEGORIES, ParameterKind, Pattern};
 use bimcraft_core::schedule::{self, Field, Filter, Op, Sort};
 use bimcraft_core::snap::Kind as Snap;
 use bimcraft_core::texture::{Kind as TextureKind, Texture};
@@ -287,6 +287,13 @@ fn rows(category: &str) -> &'static [Row] {
             ("Extents", "depth", "Far Clip Offset", Limit("No Clip")),
             ("Other", "start", "Start", Point),
             ("Other", "end", "End", Point),
+        ],
+        "link" => &[
+            ("Identity Data", "name", "Name", Text),
+            ("Identity Data", "path", "File", Shown),
+            ("Identity Data", "loaded", "Loaded", Shown),
+            ("Other", "at", "Origin", Point),
+            ("Other", "angle", "Angle", Number),
         ],
         _ => &[],
     }
@@ -1006,7 +1013,9 @@ impl BimApp {
             .collect();
         let v = Value::Object(v);
         let levels: Vec<String> = model.levels().iter().map(|(_, l)| l.name.clone()).collect();
-        let level_name = |v: &Value| v.as_u64().and_then(|l| model.level(l)).map_or_else(String::new, |l| l.name.clone());
+        // What an element points at is in its JSON as a GUID, or as an id for the one beside it.
+        let id_of = |v: &Value| v.as_u64().or_else(|| v.as_str().and_then(Guid::parse).and_then(|g| model.elements.id(g)));
+        let level_name = |v: &Value| id_of(v).and_then(|l| model.level(l)).map_or_else(String::new, |l| l.name.clone());
         let mut groups: Vec<&'static str> = Vec::new();
         for (g, ..) in rows {
             if !groups.contains(g) {
@@ -1059,7 +1068,7 @@ impl BimApp {
                                 ui.label(RichText::new(level_name(val)).color(pal().muted));
                             }
                             ViewName => {
-                                let name = val.as_u64().and_then(|v| model.view_name(v)).unwrap_or_default();
+                                let name = id_of(val).and_then(|v| model.view_name(v)).unwrap_or_default();
                                 ui.label(RichText::new(name).color(pal().muted));
                             }
                             Crop => {
@@ -1559,6 +1568,8 @@ impl BimApp {
         // Save the material to the Favorites (true), or open them (false), once the window is done.
         let mut favorite: Option<bool> = None;
         let mut typed_wrong: Option<String> = None;
+        // The material that asked for a picture for its texture.
+        let mut picture: Option<String> = None;
         let released = ctx.input(|i| !i.pointer.any_down());
         let r = Modal::new(UiId::new("materials")).show(ctx, |ui| {
             ui.set_width(440.0);
@@ -1634,11 +1645,8 @@ impl BimApp {
                                 run = Some(json!({"name": d.picked, "texture": {"kind": k}}));
                             }
                         }
-                        let clicked = ui.selectable_label(now == Some(TextureKind::Image), t("Picture…")).clicked();
-                        if let Some(path) =
-                            clicked.then(|| rfd::FileDialog::new().add_filter(t("Pictures"), &["png", "jpg", "jpeg"]).pick_file()).flatten()
-                        {
-                            run = Some(json!({"name": d.picked, "texture": {"kind": "image", "path": path.to_string_lossy()}}));
+                        if ui.selectable_label(now == Some(TextureKind::Image), t("Picture…")).clicked() {
+                            picture = Some(d.picked.clone());
                         }
                     });
                     c.response.labelled_by(l.id);
@@ -1721,6 +1729,12 @@ impl BimApp {
         }
         if let Some(p) = run {
             self.run("material", p);
+        }
+        if let Some(material) = picture {
+            let dialog = rfd::AsyncFileDialog::new().add_filter(t("Pictures"), &["png", "jpg", "jpeg"]);
+            self.ask_file(ctx, dialog, false, move |app, path| {
+                app.run("material", json!({"name": material, "texture": {"kind": "image", "path": path.to_string_lossy()}}));
+            });
         }
         if let Some(n) = picked {
             (d.name, d.picked, d.color) = (n.clone(), n, None);

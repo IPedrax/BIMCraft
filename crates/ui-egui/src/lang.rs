@@ -1,35 +1,152 @@
-//! The interface's language: English, as the code writes it, Brazilian Portuguese or Spanish. What
+//! The interface's language: English, as the code writes it, Brazilian Portuguese, Spanish or Simplified Chinese. What
 //! the window shows goes through [`t`], English being its own key; the widget helpers translate
 //! their labels and tips, so most call sites pass English and read it back translated. What a
 //! project holds (names, what its drawings say) follows the project's language instead, and the
 //! core's messages, which agents read too, stay English.
+//!
+//! Chinese is the window's alone ([`Lang`]): a drawing's lettering is drawn in code and has no hanzi, so a project is never
+//! in it, and the core's words (schedule headings and the like) stay English there. Its words are `zh.rs`, one row for each of
+//! this table's: a row it lacks shows in English. The window draws hanzi with a font the system has (`font.rs`).
+
+mod font;
+mod zh;
 
 use std::cell::Cell;
 
 use bimcraft_core::language::Language;
+use egui::epaint::text::{FontInsert, FontPriority, InsertFontFamily};
+use egui::{Context, FontData, FontFamily, Id};
+
+/// The interface's language: one of a project's languages, or Simplified Chinese.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Lang {
+    #[default]
+    English,
+    Portuguese,
+    Spanish,
+    Chinese,
+}
+
+impl Lang {
+    pub const ALL: [Lang; 4] = [Lang::English, Lang::Portuguese, Lang::Spanish, Lang::Chinese];
+
+    /// The project language that goes with it, which new projects are named in: Chinese has none, so English.
+    pub fn project(self) -> Language {
+        match self {
+            Lang::English | Lang::Chinese => Language::English,
+            Lang::Portuguese => Language::Portuguese,
+            Lang::Spanish => Language::Spanish,
+        }
+    }
+
+    /// Its code in the settings file: en, pt, es, zh.
+    pub fn code(self) -> &'static str {
+        match self {
+            Lang::Chinese => "zh",
+            other => other.project().code(),
+        }
+    }
+
+    /// Its name, in itself: Chinese in hanzi only once the window is drawn in it, which is when it can draw them.
+    pub fn label(self) -> &'static str {
+        match self {
+            Lang::Chinese if get() == Lang::Chinese => "简体中文",
+            Lang::Chinese => "Chinese (Simplified)",
+            other => other.project().label(),
+        }
+    }
+
+    /// A language by its code or name, or from a locale as systems give one: pt-BR, es_419.UTF-8, zh-CN. Only Simplified
+    /// Chinese is here: zh-TW, zh-HK and the other Traditional locales are none.
+    pub fn from_code(code: &str) -> Option<Lang> {
+        let lower = code.trim().to_lowercase();
+        let parts: Vec<&str> = lower.split(['-', '_', '.', '@']).collect();
+        if matches!(parts[0], "zh" | "chinese") || lower == "简体中文" {
+            let traditional = parts.iter().any(|p| matches!(*p, "tw" | "hk" | "mo" | "hant"));
+            return (!traditional).then_some(Lang::Chinese);
+        }
+        Language::from_code(code).map(Lang::from)
+    }
+}
+
+impl From<Language> for Lang {
+    fn from(language: Language) -> Lang {
+        match language {
+            Language::English => Lang::English,
+            Language::Portuguese => Lang::Portuguese,
+            Language::Spanish => Lang::Spanish,
+        }
+    }
+}
 
 thread_local! {
     /// The language this frame is drawn in: each window draws on its own thread.
-    static LANG: Cell<Language> = const { Cell::new(Language::English) };
+    static LANG: Cell<Lang> = const { Cell::new(Lang::English) };
 }
 
-pub fn set(language: Language) {
+pub fn set(language: Lang) {
     LANG.with(|l| l.set(language));
 }
 
-pub fn get() -> Language {
+pub fn get() -> Lang {
     LANG.with(Cell::get)
 }
 
 /// The language the system's settings ask for (on Linux, `LC_ALL`, `LC_MESSAGES` or `LANG`), when
 /// it's one there is; else English.
-pub fn from_env() -> Language {
-    sys_locale::get_locale().and_then(|l| Language::from_code(&l)).unwrap_or_default()
+pub fn from_env() -> Lang {
+    sys_locale::get_locale().and_then(|l| Lang::from_code(&l)).unwrap_or_default()
+}
+
+/// Said when the window cannot be put in Chinese.
+pub const NO_CHINESE_FONT: &str =
+    "No font with Chinese characters was found on this system: install one (such as Noto Sans CJK) and choose Chinese again.";
+
+/// Whether `ctx` has a font to draw Chinese with: [`use_chinese_font`] has put one there.
+fn has_chinese_font(ctx: &Context) -> bool {
+    ctx.data(|d| d.get_temp::<bool>(Id::new("chinese-font"))).unwrap_or(false)
+}
+
+/// Looks for a font with Chinese glyphs: its bytes and the face to use. The app holds one, so that a test can say there is none.
+pub type FontFinder = fn() -> Option<(Vec<u8>, u32)>;
+
+/// The font of the system's [`use_chinese_font`] looks for.
+pub fn chinese_font() -> Option<(Vec<u8>, u32)> {
+    font::find()
+}
+
+/// Puts a font that `find` finds, with Chinese glyphs, behind the window's own, once; false where there is none. egui's fonts have
+/// no hanzi, so a window in Chinese without one would be boxes.
+pub fn use_chinese_font(ctx: &Context, find: FontFinder) -> bool {
+    if has_chinese_font(ctx) {
+        return true;
+    }
+    let Some((bytes, index)) = find() else { return false };
+    let mut data = FontData::from_owned(bytes);
+    data.index = index;
+    let family = |family| InsertFontFamily { family, priority: FontPriority::Lowest };
+    ctx.add_font(FontInsert::new("chinese", data, vec![family(FontFamily::Proportional), family(FontFamily::Monospace)]));
+    ctx.data_mut(|d| d.insert_temp(Id::new("chinese-font"), true));
+    true
+}
+
+/// Tests have no say in which fonts a machine has: a window is told it has one.
+#[cfg(test)]
+pub(crate) fn assume_chinese_font(ctx: &Context) {
+    ctx.data_mut(|d| d.insert_temp(Id::new("chinese-font"), true));
 }
 
 /// `english` in the interface's language.
 pub fn t(english: &str) -> &str {
-    translated(get(), english).unwrap_or(english)
+    translated_in(get(), english).unwrap_or(english)
+}
+
+/// `english` in `lang`, when it isn't English and the interface's words, or for the project's languages the core's, have it.
+pub fn translated_in(lang: Lang, english: &str) -> Option<&'static str> {
+    match lang {
+        Lang::Chinese => zh::WORDS.iter().chain(zh::CORE).find(|w| w[0] == english).map(|w| w[1]),
+        other => translated(other.project(), english),
+    }
 }
 
 /// `english` in `language`, when it isn't English and the interface's words, or the core's, have it.
@@ -48,6 +165,9 @@ pub fn tf(template: &str, args: &[&str]) -> String {
 
 /// An element category's name, of one (`Wall`) or of several (`Walls`).
 pub fn category(category: &str, several: bool) -> String {
+    if get() == Lang::Chinese {
+        return zh::category(category).unwrap_or(category).to_string();
+    }
     let (one, many) = match category {
         "wall" => (["Wall", "Parede", "Muro"], ["Walls", "Paredes", "Muros"]),
         "door" => (["Door", "Porta", "Puerta"], ["Doors", "Portas", "Puertas"]),
@@ -104,15 +224,26 @@ pub fn category(category: &str, several: bool) -> String {
         "spot" => (["Spot Elevation", "Elevação de ponto", "Cota de nivel"], ["Spot Elevations", "Elevações de ponto", "Cotas de nivel"]),
         "schedule" => (["Schedule", "Tabela", "Tabla"], ["Schedules", "Tabelas", "Tablas"]),
         "view3d" => (["3D View", "Vista 3D", "Vista 3D"], ["3D Views", "Vistas 3D", "Vistas 3D"]),
+        "link" => (["Linked Model", "Modelo vinculado", "Modelo vinculado"], ["Linked Models", "Modelos vinculados", "Modelos vinculados"]),
         other => return other.to_string(),
     };
-    get().of(if several { many } else { one }).to_string()
+    get().project().of(if several { many } else { one }).to_string()
 }
 
 /// The interface's words in English, Brazilian Portuguese and Spanish; the core's words (schedule
 /// names and headings) besides.
 const WORDS: &[[&str; 3]] = &[
     ["Autosave", "Salvamento automático", "Guardado automático"],
+    [
+        "An agent can work on this project: bimcraft-cli mcp --connect {}",
+        "Um agente pode trabalhar neste projeto: bimcraft-cli mcp --connect {}",
+        "Un agente puede trabajar en este proyecto: bimcraft-cli mcp --connect {}",
+    ],
+    [
+        "No font with Chinese characters was found on this system: install one (such as Noto Sans CJK) and choose Chinese again.",
+        "Nenhuma fonte com caracteres chineses foi encontrada neste sistema: instale uma (como a Noto Sans CJK) e escolha o chinês de novo.",
+        "No se encontró en este sistema ninguna fuente con caracteres chinos: instale una (como Noto Sans CJK) y elija el chino otra vez.",
+    ],
     ["Autosave in the background", "Salvar automaticamente em segundo plano", "Guardar automáticamente en segundo plano"],
     ["Recover Autosave…", "Recuperar salvamento automático…", "Recuperar guardado automático…"],
     ["Recovery copy found", "Cópia de recuperação encontrada", "Copia de recuperación encontrada"],
@@ -272,6 +403,19 @@ const WORDS: &[[&str; 3]] = &[
     ],
     ["Duplicate View: open a plan first", "Duplicar vista: abra uma planta primeiro", "Duplicar vista: abre un plano primero"],
     ["Parent View", "Vista principal", "Vista principal"],
+    ["Linked Models", "Modelos vinculados", "Modelos vinculados"],
+    ["{} (not loaded)", "{} (não carregado)", "{} (no cargado)"],
+    ["Reload", "Recarregar", "Recargar"],
+    ["Links", "Vínculos", "Vínculos"],
+    ["Link Model", "Vincular modelo", "Vincular modelo"],
+    [
+        "Link Model (LK): another project, a BIMCraft file or an IFC, shown in this one as a reference that can't be edited: halftone in the plans, the sections and the 3D view, and snapped to",
+        "Vincular modelo (LK): outro projeto, um arquivo BIMCraft ou um IFC, mostrado neste como referência que não se edita: em meio-tom nas plantas, nos cortes e na vista 3D, e com snap nele",
+        "Vincular modelo (LK): otro proyecto, un archivo BIMCraft o un IFC, mostrado en este como referencia que no se edita: en medio tono en las plantas, los cortes y la vista 3D, y con snap a él",
+    ],
+    ["Reload All", "Recarregar todos", "Recargar todos"],
+    ["Origin", "Origem", "Origen"],
+    ["Loaded", "Carregado", "Cargado"],
     ["Purge Unused", "Limpar não usados", "Purgar no usados"],
     [
         "Purge Unused (PU): take out the types, families and the rest nothing in the project uses; each category keeps a type",
@@ -1086,6 +1230,8 @@ const WORDS: &[[&str; 3]] = &[
     ["Left out: {}", "Deixados de fora: {}", "Dejados fuera: {}"],
     ["Nothing was left out.", "Nada foi deixado de fora.", "No se dejó nada fuera."],
     ["Noted", "Anotações", "Observaciones"],
+    ["Copy Report", "Copiar relatório", "Copiar informe"],
+    ["Copied", "Copiado", "Copiado"],
     ["1 element", "1 elemento", "1 elemento"],
     ["{} elements", "{} elementos", "{} elementos"],
     ["Check for updates at startup", "Verificar atualizações ao iniciar", "Buscar actualizaciones al iniciar"],
@@ -2515,9 +2661,9 @@ const WORDS: &[[&str; 3]] = &[
     ["Draw the 3D view on the graphics card", "Desenhar a vista 3D na placa de vídeo", "Dibujar la vista 3D en la tarjeta gráfica"],
     ["Graphics card", "Placa de vídeo", "Tarjeta gráfica"],
     [
-        "Faster for large models. See-through surfaces, hidden line and wireframe are still drawn on the processor, and so is everything if the card fails",
-        "Mais rápido para modelos grandes. Superfícies transparentes, linhas ocultas e arame ainda são desenhados no processador, e tudo também se a placa falhar",
-        "Más rápido para modelos grandes. Las superficies transparentes, la línea oculta y el alambre se siguen dibujando en el procesador, y todo si la tarjeta falla",
+        "Faster for large models. Hidden line and wireframe are still drawn on the processor, and so is everything if the card fails",
+        "Mais rápido para modelos grandes. Linhas ocultas e arame ainda são desenhados no processador, e tudo também se a placa falhar",
+        "Más rápido para modelos grandes. La línea oculta y el alambre se siguen dibujando en el procesador, y todo si la tarjeta falla",
     ],
     [
         "This copy has no graphics card it can draw the 3D view on",
@@ -2617,18 +2763,75 @@ mod tests {
 
     #[test]
     fn english_is_its_own_key_and_the_others_fall_back_to_the_cores_words() {
-        set(Language::English);
+        set(Lang::English);
         assert_eq!((t("Wall Schedule"), t("Wall")), ("Wall Schedule", "Wall"));
-        set(Language::Portuguese);
+        set(Lang::Portuguese);
         assert_eq!((t("Wall Schedule"), t("Arquitetura"), t("Architecture")), ("Tabela de paredes", "Arquitetura", "Arquitetura"));
         assert_eq!(
             tf("roof: the slope `{}` and the overhang `{}` must be numbers", &["x", "y"]),
             "telhado: a inclinação `x` e o beiral `y` precisam ser números"
         );
         assert_eq!((category("wall", true), category("spot", false)), ("Paredes".to_string(), "Elevação de ponto".to_string()));
-        set(Language::Spanish);
+        set(Lang::Spanish);
         assert_eq!((t("Wall Schedule"), t("Save changes to {}?")), ("Tabla de muros", "¿Guardar los cambios en {}?"));
         assert_eq!((category("room", true), category("viewport", false)), ("Habitaciones".to_string(), "Vista en plano".to_string()));
-        set(Language::English);
+        set(Lang::English);
+    }
+
+    #[test]
+    fn chinese_has_its_own_words_and_what_it_lacks_is_english() {
+        set(Lang::Chinese);
+        assert_eq!(
+            (t("Architecture"), t("File"), t("Wall Schedule"), t("Copy")),
+            ("建筑", "文件", "墙明细表", "复制"),
+            "the window's words first, then the core's"
+        );
+        assert_eq!(tf("Save changes to {}?", &["house"]), "是否将更改保存到 house？");
+        assert_eq!((category("wall", true), category("wall", false), category("spot", false)), ("墙".into(), "墙".into(), "高程点".into()));
+        assert_eq!(category("airterminal", true), "airterminal", "a category without a name is its key, as in the other languages");
+        assert_eq!((Lang::Chinese.label(), Lang::Portuguese.label()), ("简体中文", "Português (Brasil)"));
+        set(Lang::English);
+        assert_eq!(
+            (t("Architecture"), Lang::Chinese.label()),
+            ("Architecture", "Chinese (Simplified)"),
+            "hanzi only once the window can draw them"
+        );
+    }
+
+    #[test]
+    fn every_chinese_row_is_a_row_of_the_table_with_its_placeholders_and_the_table_is_nearly_all_covered() {
+        for [english, chinese] in zh::WORDS {
+            assert!(WORDS.iter().any(|w| w[0] == *english), "`{english}` is not a row of the table");
+            assert_eq!(english.matches("{}").count(), chinese.matches("{}").count(), "`{english}`: the `{{}}`s of `{chinese}`");
+            assert!(!chinese.trim().is_empty(), "`{english}` is blank");
+        }
+        // A row without Chinese shows in English, so a new label need not wait for one; but a table that lets most go has lost it.
+        for [english, chinese] in zh::CORE {
+            assert!(Language::Portuguese.translated(english).is_some(), "`{english}` is not one of the core's words");
+            assert!(!chinese.trim().is_empty(), "`{english}` is blank");
+        }
+        let missing: Vec<&str> = WORDS.iter().map(|w| w[0]).filter(|e| !zh::WORDS.iter().any(|z| z[0] == *e)).collect();
+        assert!(
+            missing.len() * 20 <= WORDS.len(),
+            "{} rows have no Chinese, such as {:?}",
+            missing.len(),
+            &missing[..missing.len().min(5)]
+        );
+    }
+
+    #[test]
+    fn the_codes_and_locales_that_mean_simplified_chinese_and_the_ones_that_do_not() {
+        for code in ["zh", "zh-CN", "zh_CN.UTF-8", "zh-Hans", "zh_Hans_CN", "zh-SG", "ZH", "chinese", "简体中文"] {
+            assert_eq!(Lang::from_code(code), Some(Lang::Chinese), "{code}");
+        }
+        for code in ["zh-TW", "zh_HK.UTF-8", "zh-Hant", "zh-Hant-TW", "zh_MO"] {
+            assert_eq!(Lang::from_code(code), None, "{code}: Traditional is not what is here");
+        }
+        assert_eq!(
+            ["pt-BR", "es_419.UTF-8", "en-US", "de", ""].map(Lang::from_code),
+            [Some(Lang::Portuguese), Some(Lang::Spanish), Some(Lang::English), None, None]
+        );
+        assert_eq!((Lang::Chinese.code(), Lang::Chinese.project()), ("zh", Language::English), "a project is never in Chinese");
+        assert_eq!(Lang::ALL.map(|l| Lang::from_code(l.code())), Lang::ALL.map(Some));
     }
 }

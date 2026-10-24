@@ -4,8 +4,9 @@
 //! the nearest wall below the record's own id, else the nearest above (rvt-rs RE-23, RE-85); a curtain wall is not a host,
 //! and a door or window whose only candidates are curtain walls is set in none. Its **hole** is the instance's box along its
 //! wall: the box's extent along the wall is its width, its height is the box's, and its sill is how far the bottom of the box
-//! is above the wall's base; it is centred where the box is. That needs the wall to run along an axis, the only walls whose
-//! box gives a width, so a door or window in a wall at an angle or a curved one is left out and listed. Its **type** is the
+//! is above the wall's base; it is centred where the box is. In a wall along an axis the box's extent along it is the width; in one
+//! at an angle the width is solved from the box ([`turned`], plain geometry), except near 45° and where the box is no turned
+//! rectangle. A door or window in a curved wall, or one of those, is left out and listed. Its **type** is the
 //! one family symbol of its category its list names that has a name entry of the category, which names it. Which side a door
 //! swings to and its hand are drawn by the family and not read: every opening has its default flips.
 
@@ -30,8 +31,8 @@ fn candidates(r: &Record, walls: &BTreeSet<u32>) -> Vec<u32> {
     below.into_iter().rev().chain(above).collect()
 }
 
-/// Where a box lies along a wall that runs along an axis: its width and the distance of its middle from the wall's start, both
-/// in millimetres. None for a wall at an angle.
+/// Where a box lies along a wall: its width and the distance of its middle from the wall's start, both in millimetres. A wall that
+/// runs along an axis gives them by the box's extent in that axis; a wall at an angle, by [`turned`]. None where the box gives none.
 fn along(start: P2, end: P2, bbox: &[f64; 6]) -> Option<(f64, f64)> {
     let (dx, dy) = (end.0 - start.0, end.1 - start.1);
     let (lo, hi, from, to) = if dy.abs() <= 0.01 && dx.abs() > 0.01 {
@@ -39,10 +40,35 @@ fn along(start: P2, end: P2, bbox: &[f64; 6]) -> Option<(f64, f64)> {
     } else if dx.abs() <= 0.01 && dy.abs() > 0.01 {
         (bbox[1], bbox[4], start.1, end.1)
     } else {
-        return None;
+        return turned(start, end, bbox);
     };
     let middle = (mm(lo) + mm(hi)) / 2.0;
     Some((micron(mm(hi) - mm(lo)), micron((middle - from) * (to - from).signum())))
+}
+
+/// How near 45° a wall may run for [`turned`]: there the two equations are the same and the width is lost in the noise.
+const MIN_TURN: f64 = 0.1;
+
+/// [`along`] for a wall at an angle. The box is axis-aligned, so it is the extent of a rectangle turned to the wall: if the wall's
+/// direction is (cos, sin), its extents are width·|cos| + depth·|sin| in x and width·|sin| + depth·|cos| in y, two equations in
+/// the width and the depth across the wall. Near 45° (|cos² − sin²| below [`MIN_TURN`]) they are one equation, and a box that
+/// is no turned rectangle (a negative width or depth) gives none. The middle of the box is the middle of the opening.
+fn turned(start: P2, end: P2, bbox: &[f64; 6]) -> Option<(f64, f64)> {
+    let (dx, dy) = (end.0 - start.0, end.1 - start.1);
+    let length = dx.hypot(dy);
+    if length <= 0.01 {
+        return None;
+    }
+    let (cos, sin) = ((dx / length).abs(), (dy / length).abs());
+    let det = cos * cos - sin * sin;
+    if det.abs() < MIN_TURN {
+        return None;
+    }
+    let (ex, ey) = (mm(bbox[3]) - mm(bbox[0]), mm(bbox[4]) - mm(bbox[1]));
+    let (width, depth) = ((cos * ex - sin * ey) / det, (cos * ey - sin * ex) / det);
+    let (x, y) = ((mm(bbox[0]) + mm(bbox[3])) / 2.0, (mm(bbox[1]) + mm(bbox[4])) / 2.0);
+    let offset = ((x - start.0) * dx + (y - start.1) * dy) / length;
+    (width > 0.0 && depth > 0.0 && offset.is_finite()).then(|| (micron(width), micron(offset)))
 }
 
 pub(crate) fn wanted(f: &Facts, out: &mut BTreeSet<u32>) {

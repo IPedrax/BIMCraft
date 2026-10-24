@@ -132,7 +132,7 @@ impl BimApp {
     /// The model the active view draws: the project's, but for what it hides or reveals for now. A setting the project's
     /// graphics refuse (categories that follow a view template) ends it, and says why.
     pub(crate) fn view_model(&mut self) -> Arc<Model> {
-        let base = Arc::clone(&self.session.model);
+        let base = self.linked_model();
         let Some(temp) = self.temporary().filter(|t| t.hides() || t.reveal).cloned() else { return base };
         if let Some(s) = &self.shadow
             && s.sheet == self.sheet
@@ -152,6 +152,20 @@ impl BimApp {
                 base
             }
         }
+    }
+
+    /// The project with what its links build, which its views draw and snap to; the project itself where it links nothing.
+    /// Made again only when the project changes.
+    fn linked_model(&mut self) -> Arc<Model> {
+        let model = Arc::clone(&self.session.model);
+        if let Some((from, seen)) = &self.seen
+            && Arc::ptr_eq(from, &model)
+        {
+            return Arc::clone(seen);
+        }
+        let seen = bimcraft_core::link::seen(&model);
+        self.seen = Some((model, Arc::clone(&seen)));
+        seen
     }
 
     /// Temporary Hide Element (HH), or with `category`, Hide Category (HC), of what is selected.

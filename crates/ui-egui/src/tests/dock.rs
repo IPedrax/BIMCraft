@@ -287,7 +287,7 @@ fn the_settings_file_keeps_the_window_as_it_was_left() {
     again.run();
     assert_eq!(again.state().docking.docked(Palette::Properties), Some(Side::Right));
     assert!(again.state().ribbon_min && again.ctx.options(|o| o.theme_preference) == egui::ThemePreference::Dark);
-    assert_eq!(crate::settings::language_in(&file), Some(bimcraft_core::language::Language::English));
+    assert_eq!(crate::settings::language_in(&file), Some(crate::lang::Lang::English));
     let _ = std::fs::remove_dir_all(file.parent().unwrap());
 }
 

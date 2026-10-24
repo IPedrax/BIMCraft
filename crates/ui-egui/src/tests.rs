@@ -69,6 +69,18 @@ fn topmost(h: &mut Harness<BimApp>, name: &str) {
     h.run();
 }
 
+/// The ribbon's tab scrolled to its right end with the wheel, for a tab wider than the window.
+fn scroll_ribbon_right(h: &mut Harness<BimApp>) {
+    h.hover_at(pos2(400.0, 110.0));
+    h.event(Event::MouseWheel {
+        unit: MouseWheelUnit::Point,
+        delta: vec2(-3000.0, 0.0),
+        phase: TouchPhase::Move,
+        modifiers: Modifiers::NONE,
+    });
+    h.run();
+}
+
 /// A button named `name` beside the widget `beside`, when another window has one by that name too: the nearest.
 fn press_near(h: &mut Harness<BimApp>, name: &str, beside: &str) {
     let from = h.get_by_label(beside).rect().center();
@@ -802,10 +814,10 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
             assert_eq!(app.shortcut(), listed.contains(&format!("{a}{b}").as_str()), "{a}{b}");
         }
     }
-    use bimcraft_core::language::Language;
+    use crate::lang::Lang;
     for (_, name) in crate::shortcuts() {
-        for l in [Language::Portuguese, Language::Spanish] {
-            assert!(crate::lang::translated(l, name).is_some(), "{name} in {l:?}");
+        for l in [Lang::Portuguese, Lang::Spanish] {
+            assert!(crate::lang::translated_in(l, name).is_some(), "{name} in {l:?}");
         }
     }
 }
@@ -2293,14 +2305,14 @@ fn the_interface_speaks_spanish() {
 
 #[test]
 fn nothing_a_translated_interface_shows_is_left_in_english() {
-    use bimcraft_core::language::Language;
+    use crate::lang::Lang;
     use egui_kittest::kittest::{By, NodeT};
     // A label in English that the table translates is a string the window forgot to translate: a
     // widget's name, or a plain label's text, which egui gives screen readers as its value.
-    let english = |h: &Harness<BimApp>, l: Language| -> Vec<String> {
+    let english = |h: &Harness<BimApp>, l: Lang| -> Vec<String> {
         h.query_all(By::new())
             .filter_map(|n| n.accesskit_node().label().or_else(|| n.accesskit_node().value()))
-            .filter(|s| crate::lang::translated(l, s).is_some_and(|x| x != s))
+            .filter(|s| crate::lang::translated_in(l, s).is_some_and(|x| x != s))
             .collect()
     };
     let extra = r#"parameter {"name": "Finish Height", "kind": "length", "categories": ["wall"]}
@@ -2318,11 +2330,13 @@ mass {"boundary": [[1000, 1000], [3000, 1000], [3000, 2000], [1000, 2000]], "nam
     let mut h =
         app(&format!("{BOX}\ndoor {{\"at\": [2000, 0]}}\nroof {{}}\ncomponent {{\"family\": \"WC\", \"at\": [4000, 5850]}}\n{extra}"));
     // The probe finds what it looks for: in English, the same labels are all English.
-    assert!(english(&h, Language::Spanish).contains(&"Architecture".to_string()));
-    for l in [Language::Portuguese, Language::Spanish] {
+    assert!(english(&h, Lang::Spanish).contains(&"Architecture".to_string()));
+    for l in [Lang::Portuguese, Lang::Spanish, Lang::Chinese] {
+        // A machine has the fonts it has: a window is told it has one for Chinese.
+        crate::lang::assume_chinese_font(&h.ctx);
         h.state_mut().lang = l;
         h.run();
-        let tr = |en: &'static str| crate::lang::translated(l, en).unwrap_or(en);
+        let tr = |en: &'static str| crate::lang::translated_in(l, en).unwrap_or(en);
         let mut missed = Vec::new();
         for tab in ["Architecture", "Annotate", "Massing", "View", "Manage", "Modify"] {
             press(&mut h, tr(tab));
@@ -4121,8 +4135,10 @@ fn ph_and_do_open_phasing_and_design_options_and_so_do_the_manage_tabs_buttons()
     assert!(h.query_by_label("No design option sets yet: New Set makes one.").is_some());
     press(&mut h, "Close");
     assert!(h.query_by_label("Active design option:").is_none(), "no sets of options, no active one to pick");
-    // The Manage tab's buttons; the Properties palette has a Phasing group of its own, below.
+    // The Manage tab's buttons, past the window's edge until the tab is scrolled; the Properties palette has a Phasing group of
+    // its own, below.
     press(&mut h, "Manage");
+    scroll_ribbon_right(&mut h);
     topmost(&mut h, "Phasing");
     assert!(h.query_by_label("Phases, in order:").is_some());
     press(&mut h, "Close");
@@ -4130,6 +4146,23 @@ fn ph_and_do_open_phasing_and_design_options_and_so_do_the_manage_tabs_buttons()
     assert!(h.query_by_label("Option set:").is_some());
     press(&mut h, "Close");
     assert!(h.query_by_label("Option set:").is_none());
+}
+
+#[test]
+fn a_ribbon_tab_wider_than_the_window_scrolls_sideways_and_each_tab_keeps_its_place() {
+    let mut h = app(BOX);
+    let window = h.ctx.content_rect().right();
+    let ribbon =
+        |h: &Harness<BimApp>, name: &str| h.get_all_by_label(name).map(|n| n.rect()).min_by(|a, b| a.top().total_cmp(&b.top())).unwrap();
+    press(&mut h, "Manage");
+    assert!(ribbon(&h, "Design Options").right() > window, "the Manage tab is wider than a window of {window}");
+    scroll_ribbon_right(&mut h);
+    assert!(ribbon(&h, "Design Options").right() <= window, "at its end the last button is in the window");
+    assert!(ribbon(&h, "Materials").left() < 0.0, "and the first has gone out on the left");
+    press(&mut h, "Architecture");
+    assert!(ribbon(&h, "Wall").left() >= 0.0, "another tab starts at its left");
+    press(&mut h, "Manage");
+    assert!(ribbon(&h, "Design Options").right() <= window, "and Manage is where it was left");
 }
 
 #[test]
@@ -4573,7 +4606,7 @@ fn demolish_says_so_when_what_is_clicked_holds_no_parameters_and_changes_nothing
 
 #[test]
 fn demolish_speaks_portuguese_and_spanish() {
-    use bimcraft_core::language::Language;
+    use crate::lang::Lang;
     let mut h =
         app(&format!("{BOX}\ndoor {{\"at\": [2000, 0]}}\ndimension {{\"refs\": [[0, 3000], [8000, 3000]], \"at\": [4000, -1000]}}"));
     // The wall comes down, so that the door only follows it.
@@ -4582,14 +4615,14 @@ fn demolish_speaks_portuguese_and_spanish() {
     click(&mut h, P2(5000.0, 0.0));
     let cases = [
         (
-            Language::Portuguese,
+            Lang::Portuguese,
             "Demolir",
             "Clique num elemento para demoli-lo na fase da vista; clique de novo para desfazer.",
             "Porta acompanha a parede, que é demolida em New Construction: desfaça a demolição da parede",
             "Cota não tem parâmetros, então não tem fase a demolir",
         ),
         (
-            Language::Spanish,
+            Lang::Spanish,
             "Demoler",
             "Haga clic en un elemento para demolerlo en la fase de la vista; haga clic otra vez para deshacerlo.",
             "Puerta acompaña al muro, que se demuele en New Construction: deshaga la demolición del muro",
@@ -4830,11 +4863,15 @@ fn the_massing_tab_makes_floors_walls_a_floor_and_a_roof_from_the_selected_mass(
 
 mod autosave;
 mod browser;
+mod chinese;
+mod control;
+mod dialog;
 mod dock;
 mod fills;
 mod gpu;
 mod lines;
 mod lineweights;
+mod links;
 mod mep;
 mod objectstyles;
 mod planviews;
@@ -4842,6 +4879,7 @@ mod purge;
 mod revit;
 mod sketch;
 mod start;
+mod window;
 
 #[test]
 fn a_mass_edits_its_levels_and_its_top_outline_in_its_properties_which_lofts_it() {
@@ -5276,10 +5314,10 @@ mod updates {
 
     #[test]
     fn the_banner_and_the_menu_speak_portuguese_and_spanish() {
-        use bimcraft_core::language::Language;
+        use crate::lang::Lang;
         let cases = [
             (
-                Language::Portuguese,
+                Lang::Portuguese,
                 "O BIMCraft 0.5.0 está disponível. Você tem a versão 0.4.0.",
                 ["Atualizar agora", "Depois", "Ignorar esta versão", "O que há de novo"],
                 ["Verificar atualizações ao iniciar", "Verificar atualizações agora"],
@@ -5287,7 +5325,7 @@ mod updates {
                 "Reiniciar e instalar",
             ),
             (
-                Language::Spanish,
+                Lang::Spanish,
                 "BIMCraft 0.5.0 está disponible. Tienes la versión 0.4.0.",
                 ["Actualizar ahora", "Más tarde", "Omitir esta versión", "Novedades"],
                 ["Buscar actualizaciones al iniciar", "Buscar actualizaciones ahora"],
@@ -5306,7 +5344,7 @@ mod updates {
             press(&mut r.h, buttons[0]);
             assert!(r.h.query_by_label(ready).is_some(), "{language:?}: {ready}");
             assert!(r.h.query_by_label(restart).is_some(), "{language:?}: {restart}");
-            press(&mut r.h, crate::lang::translated(language, "File").unwrap());
+            press(&mut r.h, crate::lang::translated_in(language, "File").unwrap());
             for label in menu {
                 assert!(r.h.query_by_label(label).is_some(), "{language:?}: {label}");
             }
@@ -5334,9 +5372,9 @@ mod updates {
             "Opens the release page on GitHub. This copy can't update itself.",
             "Asks to save first if there are unsaved changes, then closes BIMCraft, installs the update and starts it again.",
         ];
-        for language in [Language::Portuguese, Language::Spanish] {
+        for language in [Lang::Portuguese, Lang::Spanish] {
             for word in words {
-                assert!(crate::lang::translated(language, word).is_some(), "{language:?} has no {word:?}");
+                assert!(crate::lang::translated_in(language, word).is_some(), "{language:?} has no {word:?}");
             }
         }
     }

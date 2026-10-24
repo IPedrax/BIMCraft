@@ -113,19 +113,55 @@ fn the_host_is_the_nearest_wall_below_an_openings_id_then_the_nearest_above_and_
     assert!(i.skipped.iter().any(|s| s.contains("curtain wall") && s.contains("410")), "{:?}", i.skipped);
 }
 
-#[test]
-fn an_opening_in_a_wall_at_an_angle_or_a_curved_one_or_with_no_wall_is_left_out_with_the_reason() {
-    let mut p = project(2024);
-    // A wall at an angle (3-4-5) and a door in it.
-    p.recs.push(Rec::new(150, WALLS).at([0.0, 5.0, 0.0, 12.0, 14.0, 10.0], &[10, 11, 500, 150]));
+/// A wall at an angle: from (0, 5) ft, 15 ft long along `direction`, 10 ft tall.
+fn angled_wall(p: &mut Project, id: u32, direction: [f64; 3]) {
+    let end = [15.0 * direction[0], 5.0 + 15.0 * direction[1]];
+    let (x, y) = ((0.0_f64.min(end[0]), 0.0_f64.max(end[0])), (5.0_f64.min(end[1]), 5.0_f64.max(end[1])));
+    p.recs.push(Rec::new(id, WALLS).at([x.0, y.0, 0.0, x.1, y.1, 10.0], &[10, 11, 500, u64::from(id)]));
     p.data.push(Block {
-        id: 150,
+        id,
         payload: {
-            let mut b = line_bytes(0.0, 15.0, [0.0, 5.0, 0.0], [0.8, 0.6, 0.0]);
+            let mut b = line_bytes(0.0, 15.0, [0.0, 5.0, 0.0], direction);
             b.extend(orientation_bytes(0, 1, false, true));
             b
         },
     });
+}
+
+#[test]
+fn an_opening_in_a_wall_at_an_angle_has_its_width_solved_from_its_box() {
+    // The 3-4-5 wall runs (0.8, 0.6). A window 4 ft wide and 1 ft deep with its middle 6 ft along it lies at (4.8, 8.6), and the
+    // box round it is 4·0.8 + 1·0.6 = 3.8 ft in x and 4·0.6 + 1·0.8 = 3.2 ft in y.
+    let mut p = project(2024);
+    angled_wall(&mut p, 150, [0.8, 0.6, 0.0]);
+    p.recs.push(Rec::new(210, WINDOWS).at([4.8 - 1.9, 8.6 - 1.6, 3.0, 4.8 + 1.9, 8.6 + 1.6, 7.0], &[150, 601, 210]));
+    let i = import(&p);
+    let [(_, false, w)] = openings(&i)[..] else { panic!("{:?}", i.skipped) };
+    let width = i.model.types.window[&w.type_name].width;
+    assert!((width - 4.0 * 304.8).abs() < 0.01 && (w.offset - 6.0 * 304.8).abs() < 0.01, "{width} wide at {}", w.offset);
+    // The same wall turned the other way round the compass, running (-0.6, 0.8) from the same start: the box is as wide the other way.
+    let mut q = project(2024);
+    angled_wall(&mut q, 150, [-0.6, 0.8, 0.0]);
+    // 5 ft along it: the middle is at (-3, 9), and a 3 ft wide, 0.5 ft deep door has extents 3·0.6 + 0.5·0.8 = 2.2 and 3·0.8 + 0.5·0.6 = 2.7.
+    q.recs.push(Rec::new(211, DOORS).at([-3.0 - 1.1, 9.0 - 1.35, 0.0, -3.0 + 1.1, 9.0 + 1.35, 7.0], &[150, 600, 211]));
+    let i = import(&q);
+    let [(_, true, d)] = openings(&i)[..] else { panic!("{:?}", i.skipped) };
+    let width = i.model.types.door[&d.type_name].width;
+    assert!((width - 3.0 * 304.8).abs() < 0.01 && (d.offset - 5.0 * 304.8).abs() < 0.01, "{width} wide at {}", d.offset);
+    // At 45° the two extents say the same thing and the width is lost: the opening is left out, and the import says why.
+    let half = std::f64::consts::FRAC_1_SQRT_2;
+    let mut r = project(2024);
+    angled_wall(&mut r, 150, [half, half, 0.0]);
+    r.recs.push(Rec::new(212, WINDOWS).at([2.0, 7.0, 3.0, 5.0, 10.0, 7.0], &[150, 601, 212]));
+    let i = import(&r);
+    assert!(openings(&i).is_empty() && i.skipped.iter().any(|s| s.contains("runs at an angle") && s.contains("212")), "{:?}", i.skipped);
+}
+
+#[test]
+fn an_opening_in_a_wall_at_an_angle_or_a_curved_one_or_with_no_wall_is_left_out_with_the_reason() {
+    let mut p = project(2024);
+    // A wall at an angle (3-4-5) and a door in it whose box is no rectangle turned to the wall.
+    angled_wall(&mut p, 150, [0.8, 0.6, 0.0]);
     p.recs.push(Rec::new(210, DOORS).at([4.0, 8.0, 0.0, 7.0, 10.0, 7.0], &[150, 600, 210]));
     // A door that names no wall, and one that names a wall that was left out (its type has no layers... here no data).
     p.recs.push(Rec::new(220, DOORS).at([4.0, -0.4, 0.0, 7.0, 0.4, 7.0], &[600, 220]));

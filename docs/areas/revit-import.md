@@ -39,6 +39,8 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   of its own behind `catch_unwind`; `poll_revit` takes the answer each frame (a refusal, a panic or a lost thread is a status message),
   `importing_box` holds the window still (keys stand down, `os_requests` queues the files that come meanwhile, the last wins, and Quit is
   still heard) and `install_revit` makes it a new unsaved project (`Session::reset(model, None)`, `reopened`; never in File > Open Recent)
-  with a `Report` that File > Revit import report shows until another project replaces it (`reopened` drops it). A file named on the
+  with a `Report` that File > Revit import report shows until another project replaces it (`reopened` drops it); its Copy Report button
+  puts `Report::text`, the whole report in plain text with every note and its ids, on the clipboard, since the window's labels select
+  one at a time (issue 45). A file named on the
   command line is `BimApp::open_later`: the window comes up first. Tests give the window a closure for a reader and block it at a gate
   (`tests/revit.rs`, with `step`, never `run`).

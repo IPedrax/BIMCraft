@@ -7,7 +7,7 @@
 use egui::text::{LayoutJob, TextFormat};
 use egui::{Align, CollapsingHeader, Layout, Rect, Sense, Stroke, StrokeKind, TextEdit, TextStyle, Ui, WidgetInfo, WidgetType, vec2};
 
-use bimcraft_core::model::Id;
+use bimcraft_core::model::{Element, Id};
 use bimcraft_core::schedule;
 
 use crate::icons::{self, Icon};
@@ -81,6 +81,8 @@ enum Act {
     Do(&'static str, serde_json::Value),
     /// A system family's type: the Type Selector's now, for what is placed next.
     Pick(&'static str, String),
+    /// A link: it is the selection, for Properties.
+    Select(Id),
 }
 
 /// An entry of the tree, or a group of them.
@@ -301,6 +303,7 @@ impl BimApp {
             Some(Act::Pick(category, name)) => {
                 self.types.insert(category, name);
             }
+            Some(Act::Select(id)) => self.selection = vec![id],
             _ => {}
         }
     }
@@ -365,6 +368,11 @@ impl BimApp {
         }
         if wants(Tab::Families) {
             out.push(self.families_node(tab == Tab::Families));
+        }
+        if tab == Tab::All
+            && let Some(links) = self.links_node()
+        {
+            out.push(links);
         }
         // Keeping to one kind, its group is all there is: what's in it, without it.
         if tab != Tab::All && out.len() == 1 {
@@ -442,6 +450,25 @@ impl BimApp {
             .collect();
         kids.extend(self.schedules().into_iter().map(|(id, name)| self.view_leaf(name, Sheet::Table(id))));
         Node::group(t("Schedules/Quantities (all)"), true, kids)
+    }
+
+    /// The linked models, each with a menu to read it again or take it out; none where the project links nothing.
+    fn links_node(&self) -> Option<Node> {
+        let m = &self.session.model;
+        let kids: Vec<Node> = m
+            .elements
+            .iter()
+            .filter_map(|(id, e)| match e {
+                Element::Link(l) => {
+                    let label = if m.loaded.contains_key(&l.path) { l.name.clone() } else { tf("{} (not loaded)", &[&l.name]) };
+                    let menu = vec![("Reload", Act::Do("reload", serde_json::json!({"id": id}))), ("Remove", Act::Delete(vec![*id]))];
+                    Some(Node::leaf(&label, Act::Select(*id), self.selection == [*id]).with_menu(menu))
+                }
+                _ => None,
+            })
+            .collect();
+        (!kids.is_empty())
+            .then(|| Node::group(t("Linked Models"), true, kids).with_menu(vec![("Reload All", Act::Do("reload", serde_json::json!({})))]))
     }
 
     /// The sheets, by number, as "A101 - Name".

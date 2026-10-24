@@ -1638,7 +1638,7 @@ impl Image {
     /// The element the pixel at `(x, y)` shows.
     pub fn pick(&self, x: f64, y: f64) -> Option<Id> {
         let t = *self.hit.get(self.index(x, y)?)?;
-        self.owners.get(t as usize).copied()
+        self.owners.get(t as usize).copied().filter(|id| !crate::link::is_linked(*id))
     }
 
     /// The face of the element the pixel at `(x, y)` shows, as paint names it: `exterior` or `interior` for a wall's, `top` or
@@ -1655,7 +1655,7 @@ impl Image {
         // Each element: whether all of it is inside, and whether any of it is.
         let mut seen: BTreeMap<Id, (bool, bool)> = BTreeMap::new();
         for (k, t) in self.hit.iter().enumerate() {
-            let Some(&id) = self.owners.get(*t as usize) else { continue };
+            let Some(&id) = self.owners.get(*t as usize).filter(|id| !crate::link::is_linked(**id)) else { continue };
             let (x, y) = ((k % self.width as usize) as f64 + 0.5, (k / self.width as usize) as f64 + 0.5);
             let inside = (lo.0..=hi.0).contains(&x) && (lo.1..=hi.1).contains(&y);
             let e = seen.entry(id).or_insert((true, false));
@@ -1666,7 +1666,7 @@ impl Image {
 
     /// Every element the picture shows.
     pub fn shows(&self) -> BTreeSet<Id> {
-        self.hit.iter().filter_map(|t| self.owners.get(*t as usize).copied()).collect()
+        self.hit.iter().filter_map(|t| self.owners.get(*t as usize).copied()).filter(|id| !crate::link::is_linked(*id)).collect()
     }
 
     /// The colour of the pixel at `(x, y)`; the paper's, off the picture.

@@ -77,14 +77,18 @@ The 3D view can be drawn on the graphics card (File > Settings > Performance; of
 `gpu_3d`). `view3d::gpu::Mesh` is the triangles a view shows as f32 vertices relative to the middle of what is drawn (millimetres far
 from the origin would overflow f32), each with its colour, normal, face normal, plane, element and texture; the textures' mip levels as
 words (`Skin`; `Mesh::lookups` gives the level a zoom looks up, as `Sampler::level_for` does); and a bounding volume hierarchy built on
-the first pick. `Mesh::new` refuses, with a reason, what the card doesn't draw (hidden line, wireframe, anything seen through, more than
-`MAX_TRIS`), and the processor draws those as before, and sections and sheets always. `Mesh::pick` is `Image::pick` without a picture: the
-same projection and barycentric test for triangles, and for levels the same `LevelMarks` that `Scene::picture` draws (`level_marks`: one
-definition of a level's lines and head). The desktop's `gpu.rs` and `gpu.wgsl` draw it in three passes into a texture egui shows like the
-processor's picture: the surfaces (lit as `picture` lights them, textured as `Sampler::at` looks up, tinted halfway), an edge wherever the
-plane changes between a pixel and the one to its right or below, and the levels' lines where nothing nearer hides them. A change to how
+the first pick. Surfaces seen through come after the opaque ones (`Mesh::clear_from`), each element's transparency in its `Owner`.
+`Mesh::new` refuses, with a reason, what the card doesn't draw (hidden line, wireframe, more than `MAX_TRIS`), and the processor draws those as before, and sections and sheets always. `Mesh::pick` is `Image::pick` without a picture: the
+same projection and barycentric test for triangles (the nearest seen through where it is nearer than the nearest opaque one), and for levels the same `LevelMarks` that `Scene::picture` draws (`level_marks`: one
+definition of a level's lines and head). The desktop's `gpu.rs` and `gpu.wgsl` draw it in passes into a texture egui shows like the
+processor's picture: the opaque surfaces (lit as `picture` lights them, textured as `Sampler::at` looks up), those seen through (the
+nearest in front of the opaque depth, in targets of their own), then an edge wherever the opaque plane changes between a pixel and the one
+to its right or below, else the surface tinted halfway where selected, with what is seen through blended over it, and the levels' lines
+where nothing opaque nearer hides them. What changes between pictures is the camera and the lines; the owners' tints and the textures'
+lookups are written again only when they change. A change to how
 the processor shades, draws an edge or marks a level goes in the shader too: `the_card_draws_what_the_processor_does` and the core's
-`picking_the_mesh_finds_what_the_cpu_picture_shows` compare them, and skip on a machine with no graphics adapter. The card is for Vulkan, Metal and DirectX 12: on OpenGL wgpu panics in the shader compiler for what the shaders read (a depth texture, so depth is kept in the id target; buffers in a vertex shader), so `Gpu::new` refuses it, and puts whatever else a compiler stops at under `catch_unwind`.
+`picking_the_mesh_finds_what_the_cpu_picture_shows` compare them (and, seen through,
+`the_card_draws_what_the_view_sees_through_as_the_processor_does` and `picking_through_what_the_view_sees_through_finds_what_the_cpu_picture_shows`), and skip on a machine with no graphics adapter. The card is for Vulkan, Metal and DirectX 12: on OpenGL wgpu panics in the shader compiler for what the shaders read (a depth texture; buffers in a vertex shader), so `Gpu::new` refuses it, and puts whatever else a compiler stops at under `catch_unwind`.
 The card is made the first time it is wanted (`Card::ready`: compiling its shaders is not a start's cost), and one that can't be made says why on the Performance page.
 A device error is caught
 in the card's own error scopes, never left to wgpu's handler (which ends the program), and hands the view to the processor for good.
@@ -116,3 +120,15 @@ used. The desktop has Annotate > Region (Filled Region, FR, and Masking Region, 
 in the Options Bar), Properties (Region Type, Line Style with invisible lines), and Manage > Fill Patterns (`fillpatterns.rs`:
 region types and patterns as one draft, a simple pattern edited as an angle, a spacing and crosshatched or not). Materials'
 cut and surface patterns are still `model::Pattern`; moving them onto fill patterns is a later step.
+## Linked models
+
+A `Link` element (`link.rs`; commands `link` and `reload`) is another project shown in this one as a reference. The file holds its name, its
+path, where its origin stands (`at`) and a turn (`angle`); what it read is `Model::loaded`, by path, outside the file (`serde(skip)`), filled by
+`link`, `reload` and `open` (`relink`, which doesn't follow the links of a linked file). The views draw `link::seen(model)`: the project with
+each loaded link's built elements (`built`: not its views, sheets, annotation, rooms, grids or links) moved and turned by `commands::transformed`
+and brought in with `insert::insert_as(.., linked: true)` under ids from `LINKED` up (`ids.rs`), so `link::is_linked(id)` tells them; a level of the
+link at the height of one of the project's (1 mm) is that level, another comes in named `link: level`. Everything that takes a `&Model` draws and snaps to
+them without knowing: `Look::with` makes a linked id halftone, and picking never answers one (`Drawing::pick_all`, `in_box`, `Image::pick`,
+`in_box`, `shows` and `Mesh::pick` leave them out). The commands that make an image (`render`, `save` to svg, png or pdf) draw `seen`; the desktop's
+`view_model` does, cached by the project's `Arc`. The schedules, `Model::check`, IFC and every command that edits work on the project itself.
+To do: shared coordinates, a link's graphics overrides and visibility per view, hosting on a linked wall, unloading.

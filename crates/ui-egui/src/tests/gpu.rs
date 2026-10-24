@@ -68,19 +68,39 @@ fn what_the_card_cant_draw_is_drawn_on_the_processor_and_the_page_says_why() {
     h.state_mut().card = Card::with(gpu);
     press(&mut h, "Default 3D View");
     assert!(h.state().orbit.on_card);
-    // Walls seen through: the processor draws the see-through surfaces.
-    h.state_mut().session.execute("graphics", &json!({"view": "{3D}", "categories": {"walls": {"transparency": 50}}})).unwrap();
+    // Wireframe: the processor draws every edge through the faces.
+    h.state_mut().session.execute("visual_style", &json!({"style": "wireframe"})).unwrap();
     h.run();
-    assert!(!h.state().orbit.on_card, "see-through surfaces are the processor's");
+    assert!(!h.state().orbit.on_card, "wireframe is the processor's");
     let why = h.state().card.note.clone().unwrap_or_default();
-    assert!(why.contains("see-through"), "{why}");
-    // And it can pick: the wall is there to click through its transparency.
-    let wall = find(&h, |e| matches!(e, Element::Wall(w) if w.start == P2(0.0, 0.0)));
-    let at = h.state().screen3([5000.0, -100.0, 1500.0]);
-    click_at(&mut h, at);
-    assert!(h.state().selection.contains(&wall));
+    assert!(why.contains("wireframe"), "{why}");
     // The page tells the user.
     press(&mut h, "Settings");
     press(&mut h, "Performance");
     assert!(h.query_by_label_contains("drawn on the processor").is_some());
+}
+
+#[test]
+fn what_the_view_sees_through_is_drawn_on_the_card_and_picked_through_its_mesh() {
+    let Some(gpu) = headless() else {
+        eprintln!("no graphics adapter here: the card's 3D view is not driven");
+        return;
+    };
+    let mut h = app(&format!("{BOX}\ndoor {{\"at\": [2000, 0]}}"));
+    h.state_mut().card = Card::with(gpu);
+    press(&mut h, "Default 3D View");
+    h.state_mut().session.execute("graphics", &json!({"view": "{3D}", "categories": {"walls": {"transparency": 50}}})).unwrap();
+    h.run();
+    assert!(h.state().orbit.on_card, "the card draws it: {:?}", h.state().card.note);
+    // The wall seen through is the one in front, as the processor's picture picks it.
+    let wall = find(&h, |e| matches!(e, Element::Wall(w) if w.start == P2(0.0, 0.0)));
+    let at = h.state().screen3([5000.0, -100.0, 1500.0]);
+    click_at(&mut h, at);
+    assert_eq!(h.state().selection, [wall], "the south wall, seen through");
+    // The door is opaque behind nothing: it picks as before.
+    let door = find(&h, |e| matches!(e, Element::Door(_)));
+    let at = h.state().screen3([2000.0, -25.0, 1000.0]);
+    click_at(&mut h, at);
+    assert_eq!(h.state().selection, [door]);
+    assert!(h.state().orbit.on_card);
 }

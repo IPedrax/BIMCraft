@@ -546,12 +546,12 @@ fn the_new_schedule_dialog_lists_the_categories_of_the_discipline_tabs_and_names
 
 #[test]
 fn the_discipline_tabs_speak_portuguese_and_spanish_and_leave_no_english() {
-    use bimcraft_core::language::Language;
+    use crate::lang::Lang;
     use egui_kittest::kittest::{By, NodeT};
-    let english = |h: &Harness<BimApp>, l: Language| -> Vec<String> {
+    let english = |h: &Harness<BimApp>, l: Lang| -> Vec<String> {
         h.query_all(By::new())
             .filter_map(|n| n.accesskit_node().label().or_else(|| n.accesskit_node().value()))
-            .filter(|s| crate::lang::translated(l, s).is_some_and(|x| x != s))
+            .filter(|s| crate::lang::translated_in(l, s).is_some_and(|x| x != s))
             .collect()
     };
     let script = format!(
@@ -563,10 +563,10 @@ fn the_discipline_tabs_speak_portuguese_and_spanish_and_leave_no_english() {
          cabling {{\"points\": [[500, 5000], [2000, 5000]], \"offset\": 2400}}"
     );
     let mut h = app(&script);
-    assert!(english(&h, Language::Spanish).contains(&"Plumbing".to_string()), "the probe finds what it looks for");
+    assert!(english(&h, Lang::Spanish).contains(&"Plumbing".to_string()), "the probe finds what it looks for");
     let expected = [
         (
-            Language::Portuguese,
+            Lang::Portuguese,
             [
                 ("Hidrossanitário", vec!["Tubulação", "Peça sanitária", "Conexão de tubulação", "Acessório de tubulação"]),
                 ("Elétrico", vec!["Equipamento elétrico", "Dispositivo", "Luminária", "Eletroduto", "Eletrocalha", "Fio"]),
@@ -575,7 +575,7 @@ fn the_discipline_tabs_speak_portuguese_and_spanish_and_leave_no_english() {
             ],
         ),
         (
-            Language::Spanish,
+            Lang::Spanish,
             [
                 ("Fontanería", vec!["Tubería", "Aparato sanitario", "Conexión de tubería", "Accesorio de tubería"]),
                 ("Eléctrico", vec!["Equipo eléctrico", "Dispositivo", "Luminaria", "Tubo conduit", "Bandeja portacables", "Cable"]),
@@ -627,19 +627,19 @@ fn the_discipline_tabs_speak_portuguese_and_spanish_and_leave_no_english() {
             key(&mut h, Key::Escape);
         }
         click(&mut h, P2(3000.0, 1000.0));
-        press(&mut h, crate::lang::translated(l, "Edit Type").unwrap_or("Edit Type"));
+        press(&mut h, crate::lang::translated_in(l, "Edit Type").unwrap_or("Edit Type"));
         missed.extend(english(&h, l));
-        press(&mut h, crate::lang::translated(l, "Cancel").unwrap_or("Cancel"));
+        press(&mut h, crate::lang::translated_in(l, "Cancel").unwrap_or("Cancel"));
         key(&mut h, Key::Escape);
         missed.sort();
         missed.dedup();
         assert!(missed.is_empty(), "{l:?}: {missed:?}");
     }
-    h.state_mut().lang = Language::English;
+    h.state_mut().lang = Lang::English;
     h.run();
     use crate::lang::category;
     assert_eq!([category("pipe", false), category("cabletray", true)], ["Pipe", "Cable Trays"]);
-    h.state_mut().lang = Language::Portuguese;
+    h.state_mut().lang = Lang::Portuguese;
     h.run();
     assert_eq!(
         [category("pipe", true), category("conduit", false), category("cabletray", false)],

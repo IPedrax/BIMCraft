@@ -59,8 +59,8 @@ body:
     id: version
     attributes:
       label: BIMCraft version
-      description: "Windows: Settings > Apps > Installed apps > BIMCraft, or the installer's file name (bimcraft-0.7.0-windows-x64.msi). Built from source: the tag, or the output of git rev-parse --short HEAD."
-      placeholder: "0.7.0"
+      description: "Windows: Settings > Apps > Installed apps > BIMCraft, or the installer's file name (bimcraft-0.8.0-windows-x64.msi). Built from source: the tag, or the output of git rev-parse --short HEAD."
+      placeholder: "0.8.0"
     validations:
       required: true
 

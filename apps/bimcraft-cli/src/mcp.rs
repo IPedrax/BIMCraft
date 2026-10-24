@@ -1,10 +1,13 @@
 //! BIMCraft's MCP server: JSON-RPC 2.0 over stdio, one message per line (MCP's stdio transport).
-//! Its tools run the same commands as the CLI and scripts, on a headless session.
+//! Its tools run the same commands as the CLI and scripts, on a headless session, or, with `--connect`, on the session of a window
+//! (`window.rs`): the project the user has open.
 
 use std::io::{BufRead, Write};
 
 use bimcraft_core::engine::{Session, catalog};
 use serde_json::{Value, json};
+
+use crate::window::Window;
 
 pub const PROTOCOL_VERSION: &str = "2025-06-18";
 const SUPPORTED: &[&str] = &[PROTOCOL_VERSION, "2025-03-26", "2024-11-05"];
@@ -28,8 +31,43 @@ parameters. Check your work with inspect_model and query_elements, look at it wi
 ceiling: true its reflected ceiling plan, of a section or elevation by name, or of the 3D view with view \"{3D}\"), and save \
 to .bimcraft or .ifc.";
 
+/// Where the tools run: on a session of the server's own, or on a window's.
+enum Backend {
+    Own(Session),
+    Window(Window),
+}
+
+impl Backend {
+    fn execute(&mut self, command: &str, params: &Value) -> Result<Value, String> {
+        match self {
+            Backend::Own(s) => s.execute(command, params),
+            Backend::Window(w) => w.ask(json!({"op": "execute", "command": command, "params": params})),
+        }
+    }
+
+    /// A script's results, as `{results: [...]}`.
+    fn script(&mut self, text: &str, atomic: bool) -> Result<Value, String> {
+        let results = match self {
+            Backend::Own(s) if atomic => s.script_atomic(text).map(Value::from),
+            Backend::Own(s) => s.script(text).map(Value::from),
+            Backend::Window(w) => w.ask(json!({"op": "script", "text": text, "atomic": atomic})),
+        };
+        results.map(|results| json!({ "results": results }))
+    }
+
+    /// The server's own session, for what replaces a project: a window's is the user's, and is started and opened in the window.
+    fn own(&mut self) -> Result<&mut Session, String> {
+        match self {
+            Backend::Own(s) => Ok(s),
+            Backend::Window(_) => {
+                Err("this is the window's project, which is the user's: start or open another in the window, not from here".into())
+            }
+        }
+    }
+}
+
 pub struct Server {
-    session: Session,
+    backend: Backend,
 }
 
 impl Default for Server {
@@ -79,7 +117,12 @@ fn tools() -> Value {
 
 impl Server {
     pub fn new() -> Self {
-        Server { session: Session::new() }
+        Server { backend: Backend::Own(Session::new()) }
+    }
+
+    /// A server whose tools work on the project `window` has open.
+    pub fn attached(window: Window) -> Self {
+        Server { backend: Backend::Window(window) }
     }
 
     /// Serve until `input` closes. Logs go to stderr: stdout carries only protocol messages.
@@ -138,7 +181,10 @@ impl Server {
                     "protocolVersion": version,
                     "capabilities": {"tools": {"listChanged": false}},
                     "serverInfo": {"name": "bimcraft", "title": "BIMCraft", "version": env!("CARGO_PKG_VERSION")},
-                    "instructions": INSTRUCTIONS,
+                    "instructions": match self.backend {
+                        Backend::Own(_) => INSTRUCTIONS.to_string(),
+                        Backend::Window(_) => format!("{INSTRUCTIONS} You are attached to the window the user has open: what you make is in their project, to see and to undo. new_model and open are not available; the user starts and opens projects in the window."),
+                    },
                 }))
             }
             "ping" => Ok(json!({})),
@@ -169,11 +215,11 @@ impl Server {
                 return Err((INVALID_PARAMS, format!("`{name}` needs `{key}`")));
             }
         }
-        let s = &mut self.session;
+        let b = &mut self.backend;
         let result = match name {
             "execute" => {
                 let params = args.get("params").cloned().unwrap_or_else(|| json!({}));
-                s.execute(args["command"].as_str().unwrap_or_default(), &params)
+                b.execute(args["command"].as_str().unwrap_or_default(), &params)
             }
             "script" => {
                 let text = args["text"].as_str().unwrap_or_default();
@@ -182,7 +228,7 @@ impl Server {
                     Some(Value::Bool(b)) => *b,
                     Some(v) => return Err((INVALID_PARAMS, format!("`atomic` is true or false, not {v}"))),
                 };
-                if atomic { s.script_atomic(text) } else { s.script(text) }.map(|results| json!({ "results": results }))
+                b.script(text, atomic)
             }
             "list_commands" => {
                 let filter = args["filter"].as_str().map(str::to_ascii_lowercase).unwrap_or_default();
@@ -198,19 +244,19 @@ impl Server {
                     })
                     .unwrap_or_default())
             }
-            "inspect_model" => s.execute("inspect", &json!({})),
-            "query_elements" => s.execute("elements", &args),
-            "schedule" => s.execute("schedule", &args),
-            "new_model" => s.execute("new", &args),
+            "inspect_model" => b.execute("inspect", &json!({})),
+            "query_elements" => b.execute("elements", &args),
+            "schedule" => b.execute("schedule", &args),
+            "new_model" => b.own().and_then(|s| s.execute("new", &args)),
             "open" if args["path"].as_str().is_some_and(crate::revit::is_revit) => {
-                crate::revit::open(s, args["path"].as_str().unwrap_or_default())
+                b.own().and_then(|s| crate::revit::open(s, args["path"].as_str().unwrap_or_default()))
             }
-            "open" => s.execute("open", &args),
-            "save" => s.execute("save", &args),
+            "open" => b.own().and_then(|s| s.execute("open", &args)),
+            "save" => b.execute("save", &args),
             "render" => {
                 let keys = ["view", "ceiling", "width", "height", "azimuth", "elevation"];
                 let view: serde_json::Map<String, Value> = keys.iter().map(|k| (k.to_string(), args[*k].clone())).collect();
-                return Ok(match s.execute("render", &Value::Object(view)) {
+                return Ok(match b.execute("render", &Value::Object(view)) {
                     Ok(v) => {
                         let name = v["view"].as_str().unwrap_or("");
                         let what = match v["kind"].as_str() {
@@ -359,6 +405,63 @@ mod tests {
         assert_eq!(levels(&mut s), 2, "one undo takes back the whole script");
         let r = call(&mut s, 2, "tools/call", json!({"name": "script", "arguments": {"text": "inspect", "atomic": "yes"}}));
         assert_eq!(r["error"]["code"], -32602);
+    }
+
+    #[test]
+    fn a_server_attached_to_a_window_works_on_its_project_and_leaves_starting_and_opening_to_it() {
+        let entry = crate::window::tests::stand_in(usize::MAX);
+        let mut s = Server::attached(Window::connect_to(&entry).unwrap());
+        let init = call(&mut s, 1, "initialize", json!({"protocolVersion": "2025-06-18"}));
+        assert!(init["result"]["instructions"].as_str().unwrap().contains("attached to the window"), "{init}");
+        tool(
+            &mut s,
+            "execute",
+            json!({"command": "wall", "params": {"points": [[0, 0], [6000, 0], [6000, 4000], [0, 4000]], "closed": true}}),
+        );
+        tool(
+            &mut s,
+            "script",
+            json!({"text": "door {\"at\": [3000, 0]}\nroom {\"point\": [3000, 2000], \"name\": \"Cabin\"}", "atomic": true}),
+        );
+        let m = tool(&mut s, "inspect_model", json!({}));
+        assert_eq!(m["counts"]["wall"], 4);
+        assert_eq!(m["counts"]["door"], 1, "what the agent made is in the window's project");
+        assert_eq!(tool(&mut s, "query_elements", json!({"category": "room"}))["elements"][0]["name"], "Cabin");
+        assert_eq!(tool(&mut s, "schedule", json!({"category": "rooms"}))["rows"][0][3], 24.0);
+        let img = tool(&mut s, "render", json!({"width": 400, "height": 300}));
+        assert_eq!((img["type"].as_str(), img["mimeType"].as_str()), (Some("image"), Some("image/png")));
+        // list_commands is the engine's catalog, with or without a window.
+        assert!(tool(&mut s, "list_commands", json!({"filter": "wall"})).as_array().is_some_and(|a| !a.is_empty()));
+        // The window's project is the user's: new_model and open are the window's to do, and the project stays.
+        for (name, args) in
+            [("new_model", json!({})), ("open", json!({"path": "/x/house.bimcraft"})), ("open", json!({"path": "/x/house.rvt"}))]
+        {
+            let r = call(&mut s, 5, "tools/call", json!({"name": name, "arguments": args}));
+            assert!(
+                r["result"]["isError"] == true && r["result"]["content"][0]["text"].as_str().unwrap().contains("the user's"),
+                "{name}: {r}"
+            );
+        }
+        assert_eq!(tool(&mut s, "inspect_model", json!({}))["counts"]["wall"], 4);
+        // What the window refuses by its own rules comes back as the tool's error, as the window says it.
+        let r = call(&mut s, 6, "tools/call", json!({"name": "execute", "arguments": {"command": "new"}}));
+        assert!(
+            r["result"]["isError"] == true && r["result"]["content"][0]["text"].as_str().unwrap().contains("would replace the project"),
+            "{r}"
+        );
+    }
+
+    #[test]
+    fn a_window_that_has_gone_is_a_tool_error_and_the_server_goes_on() {
+        let entry = crate::window::tests::stand_in(2);
+        let mut s = Server::attached(Window::connect_to(&entry).unwrap());
+        tool(&mut s, "inspect_model", json!({}));
+        let r = call(&mut s, 2, "tools/call", json!({"name": "inspect_model", "arguments": {}}));
+        assert!(
+            r["result"]["isError"] == true && r["result"]["content"][0]["text"].as_str().unwrap().contains("window closed the connection"),
+            "{r}"
+        );
+        assert_eq!(call(&mut s, 3, "ping", json!({}))["result"], json!({}), "the server answers still");
     }
 
     #[test]

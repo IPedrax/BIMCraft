@@ -3,6 +3,7 @@
 
 mod mcp;
 mod revit;
+mod window;
 
 use std::io::Write;
 use std::process::ExitCode;
@@ -21,7 +22,9 @@ const USAGE: &str = "USAGE:
                                  .rfa file, its release, last save, levels and element counts by category
   bimcraft-cli convert IN OUT    a project, an IFC file or a Revit .rvt file to .ifc, .svg, .png or .bimcraft
   bimcraft-cli commands          every command and its parameters
-  bimcraft-cli mcp               an MCP server on stdio, for agents
+  bimcraft-cli mcp [--connect [PORT]]
+                                 an MCP server on stdio, for agents: on a headless project of its own, or with --connect on the
+                                 project open in a window started with `bimcraft --control PORT` (without PORT, the last one)
   bimcraft-cli --version         the release";
 
 fn print(out: &mut impl Write, v: &Value) -> Result<(), String> {
@@ -79,10 +82,30 @@ fn cli(args: &[String], out: &mut impl Write) -> Result<(), String> {
     }
 }
 
+/// What follows `mcp`: nothing, or `--connect` with a port or without. The inner None is a window, whichever the bridge file names.
+fn connect_option(args: &[String]) -> Result<Option<Option<u16>>, String> {
+    match args {
+        [] => Ok(None),
+        [flag] if flag == "--connect" => Ok(Some(None)),
+        [flag, port] if flag == "--connect" => {
+            port.parse().map(|p| Some(Some(p))).map_err(|_| format!("`{port}` is not a port: a number up to 65535"))
+        }
+        _ => Err("usage: bimcraft-cli mcp [--connect [PORT]]".into()),
+    }
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|a| a == "mcp") {
-        return match mcp::Server::new().serve(std::io::stdin().lock(), std::io::stdout().lock()) {
+        let mut server = match connect_option(&args[1..]).and_then(|port| port.map(window::Window::connect).transpose()) {
+            Ok(Some(window)) => mcp::Server::attached(window),
+            Ok(None) => mcp::Server::new(),
+            Err(e) => {
+                eprintln!("bimcraft-cli mcp: {e}");
+                return ExitCode::FAILURE;
+            }
+        };
+        return match server.serve(std::io::stdin().lock(), std::io::stdout().lock()) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("bimcraft-cli mcp: {e}");
@@ -108,6 +131,17 @@ mod tests {
         let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
         let mut out = Vec::new();
         cli(&args, &mut out).map(|()| String::from_utf8(out).unwrap())
+    }
+
+    #[test]
+    fn mcp_is_headless_or_connects_to_a_window_with_a_port_or_without() {
+        let args = |text: &str| text.split_whitespace().map(String::from).collect::<Vec<_>>();
+        assert_eq!(connect_option(&args("")), Ok(None));
+        assert_eq!(connect_option(&args("--connect")), Ok(Some(None)));
+        assert_eq!(connect_option(&args("--connect 7000")), Ok(Some(Some(7000))));
+        for bad in ["--connect x", "--connect 70000", "--connect 1 2", "--attach", "7000"] {
+            assert!(connect_option(&args(bad)).is_err(), "{bad}");
+        }
     }
 
     #[test]

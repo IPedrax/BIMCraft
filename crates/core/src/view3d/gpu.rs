@@ -1,8 +1,9 @@
 //! What a graphics card needs to draw the 3D view, and what picking needs when there is no picture to read: the scene's triangles
 //! as vertices relative to the middle of what is drawn (millimetres far from the origin would overflow f32's resolution, so the
 //! shader never sees them), and a bounding volume hierarchy to pick through. No graphics API is in here, so the core stays free
-//! of one; the desktop's `gpu.rs` draws it. What a card can't draw (see-through surfaces, textures, hidden line and wireframe)
-//! is refused with a reason, and the CPU picture is drawn instead.
+//! of one; the desktop's `gpu.rs` draws it. What a card can't draw (hidden line and wireframe) is refused with a reason, and
+//! the CPU picture is drawn instead. Surfaces seen through come after the opaque ones (from [`Mesh::clear_from`]), as the
+//! processor draws them in a pass of their own.
 
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
@@ -13,13 +14,13 @@ use crate::graphics::{Look, VisualStyle};
 use crate::model::Id;
 use crate::render::Rgb;
 
-/// The most triangles a mesh holds: 52 bytes a vertex, so that is 250 MB, under the 256 MiB a buffer may be.
+/// The most triangles a mesh holds: the card takes 44 bytes a vertex, so that is 211 MB, under the 256 MiB a buffer may be.
 pub const MAX_TRIS: usize = 1_600_000;
 
 /// The most of the textures' pixels a mesh holds, bytes: a storage buffer may be 128 MiB.
 const MAX_TEXELS: usize = 64 << 20;
 
-/// One vertex as the card takes it: 52 bytes of 32-bit words.
+/// One vertex: 52 bytes of 32-bit words here, 44 on the card, which takes the normals as 16-bit fractions.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Vertex {
     /// From [`Mesh::origin`], in mm.
@@ -72,6 +73,16 @@ pub struct View {
 struct Tri {
     p: [P3; 3],
     hit: Hit,
+    /// Seen through: the nearest of these in front of what is opaque is what a pixel shows.
+    clear: bool,
+}
+
+/// An element a vertex belongs to: the colour its edges are drawn in, and how see-through the view makes it, percent.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Owner {
+    pub id: Id,
+    pub edge: Rgb,
+    pub transparency: u8,
 }
 
 struct Node {
@@ -83,20 +94,25 @@ struct Node {
     children: Option<[usize; 2]>,
 }
 
+/// How near a pixel's surface is, as the CPU keeps it (an f32), and what it shows.
+type Found = Option<(f32, Hit)>;
+
 struct Bvh {
     nodes: Vec<Node>,
     order: Vec<usize>,
 }
 
-/// A view's shaded, opaque surfaces as a card draws them, with the elements' edge colours, the levels it marks and what picks.
+/// A view's shaded surfaces as a card draws them, with the elements' edge colours, the levels it marks and what picks.
 pub struct Mesh {
     /// The middle of what is drawn, in the model, mm.
     pub origin: P3,
     /// From [`origin`](Self::origin) to the furthest of it, mm.
     pub radius: f64,
+    /// The opaque surfaces' vertices, then from [`clear_from`](Self::clear_from) on those seen through.
     pub vertices: Vec<Vertex>,
-    /// Each element a vertex belongs to, and the colour its edges are drawn in.
-    pub owners: Vec<(Id, Rgb)>,
+    pub clear_from: usize,
+    /// Each element a vertex belongs to.
+    pub owners: Vec<Owner>,
     /// The textures, by the number a vertex holds (the first, 0, is none), and their pixels: each a word of red, green and blue.
     pub skins: Vec<Skin>,
     pub texels: Vec<u32>,
@@ -124,9 +140,10 @@ impl Mesh {
         if shown.len() > MAX_TRIS {
             return Err(format!("{} triangles, more than the card is given", shown.len()));
         }
-        if !plain && shown.iter().any(|&i| look.transparency(scene.tris[i].owner) > 0) {
-            return Err("see-through surfaces".into());
-        }
+        // What the view sees through is drawn after what it doesn't, each in the order the processor draws it.
+        let clear = |i: usize| !plain && look.transparency(scene.tris[i].owner) > 0;
+        let shown: Vec<usize> = shown.iter().copied().filter(|&i| !clear(i)).chain(shown.iter().copied().filter(|&i| clear(i))).collect();
+        let clear_from = shown.iter().take_while(|&&i| !clear(i)).count() * 3;
         // A texture is looked up as the CPU does unless the view colours its surface another way.
         let colour = |t: &super::Tri| if plain { t.color } else { look.surface(t.owner, t.color) };
         let textured = |t: &super::Tri| scene.skins.get(t.tex as usize).is_some_and(Option::is_some) && colour(t) == t.color;
@@ -140,6 +157,7 @@ impl Mesh {
             origin,
             radius,
             vertices: Vec::with_capacity(shown.len() * 3),
+            clear_from,
             owners: Vec::new(),
             skins: vec![Skin::default(); scene.skins.len()],
             texels: Vec::new(),
@@ -152,7 +170,8 @@ impl Mesh {
         for i in shown {
             let t = &scene.tris[i];
             let owner = *owners.entry(t.owner).or_insert_with(|| {
-                mesh.owners.push((t.owner, look.edge(t.owner, EDGE)));
+                let transparency = if plain { 0 } else { look.transparency(t.owner).min(100) };
+                mesh.owners.push(Owner { id: t.owner, edge: look.edge(t.owner, EDGE), transparency });
                 mesh.owners.len() as u32
             });
             let Rgb(r, g, b) = colour(t);
@@ -167,7 +186,7 @@ impl Mesh {
                 mesh.vertices.push(Vertex { position, normal, face: face.map(|v| v as f32), color, owner, plane, tex });
             }
             let face = scene.faces.get(i).copied().filter(|f| !f.is_empty()).unwrap_or("");
-            mesh.tris.push(Tri { p: t.p, hit: Hit { id: t.owner, face } });
+            mesh.tris.push(Tri { p: t.p, hit: Hit { id: t.owner, face }, clear: clear(i) });
         }
         let used: std::collections::BTreeSet<u32> = mesh.vertices.iter().map(|v| v.tex).filter(|t| *t > 0).collect();
         for id in used {
@@ -253,10 +272,13 @@ impl Mesh {
             return None;
         }
         let centre = (x.floor() + 0.5, y.floor() + 0.5);
-        let found = self.nearest(cam, centre);
-        let behind = found.map_or(f64::NEG_INFINITY, |(z, _)| f64::from(z));
+        let (opaque, clear) = self.nearest(cam, centre);
+        // A level's mark is hidden by what is opaque only, as the processor's are.
+        let behind = opaque.map_or(f64::NEG_INFINITY, |(z, _)| f64::from(z));
         let slack = 1.5 / cam.scale.max(1e-9);
-        let mut hit = found.map(|(_, hit)| hit);
+        // A surface seen through shows where it is nearer than anything opaque.
+        let seen = clear.filter(|(z, _)| opaque.is_none_or(|(d, _)| *z > d)).or(opaque);
+        let mut hit = seen.map(|(_, hit)| hit);
         for marks in self.marks(cam, tints) {
             let at = P2(centre.0, centre.1);
             let on_line = marks.lines.iter().find_map(|([a, b], wide)| covers((cam.project(*a), cam.project(*b)), *wide, centre));
@@ -267,17 +289,18 @@ impl Mesh {
                 hit = Some(Hit { id: marks.id, face: "" });
             }
         }
-        hit
+        hit.filter(|h| !crate::link::is_linked(h.id))
     }
 
-    /// The nearest triangle covering the centre of a pixel, as the CPU's rasterizer finds it: how near, as an f32 as it keeps
-    /// it, and which. The first of triangles as near wins.
-    fn nearest(&self, cam: &Camera, (x, y): (f64, f64)) -> Option<(f32, Hit)> {
-        let bvh = self.bvh();
-        let mut found: Option<(f32, usize)> = None;
+    /// The nearest opaque triangle covering the centre of a pixel, and the nearest seen through, as the CPU's rasterizer finds
+    /// them: how near, as an f32 as it keeps it, and which. The first of triangles as near wins.
+    fn nearest(&self, cam: &Camera, (x, y): (f64, f64)) -> (Found, Found) {
+        let Some(bvh) = Some(self.bvh()).filter(|b| !b.nodes.is_empty()) else { return (None, None) };
+        // Opaque, then seen through.
+        let mut found: [Option<(f32, usize)>; 2] = [None, None];
         let mut stack = vec![0usize];
         while let Some(n) = stack.pop() {
-            let node = bvh.nodes.get(n)?;
+            let Some(node) = bvh.nodes.get(n) else { continue };
             // The box's picture is inside the rectangle its corners make.
             let corners = (0..8).map(|k| cam.project([0, 1, 2].map(|a| if k >> a & 1 == 0 { node.lo[a] } else { node.hi[a] })));
             let (lo, hi) = corners.fold((P2(f64::MAX, f64::MAX), P2(f64::MIN, f64::MIN)), |(lo, hi), (cx, cy, _)| {
@@ -290,8 +313,8 @@ impl Mesh {
                 stack.extend(children);
                 continue;
             }
-            for &i in bvh.order.get(node.first..node.first + node.count)? {
-                let t = self.tris.get(i)?;
+            for &i in bvh.order.get(node.first..node.first + node.count).unwrap_or_default() {
+                let Some(t) = self.tris.get(i) else { continue };
                 let [a, b, c] = t.p.map(|p| cam.project(p));
                 let area = (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
                 if area.is_nan() || area.abs() <= 1e-12 {
@@ -304,12 +327,14 @@ impl Mesh {
                     continue;
                 }
                 let z = (wa * a.2 + wb * b.2 + wc * c.2) as f32;
+                let found = &mut found[usize::from(t.clear)];
                 if found.is_none_or(|(d, j)| z > d || z == d && i < j) {
-                    found = Some((z, i));
+                    *found = Some((z, i));
                 }
             }
         }
-        found.and_then(|(z, i)| Some((z, self.tris.get(i)?.hit)))
+        let hit = |f: Option<(f32, usize)>| f.and_then(|(z, i)| Some((z, self.tris.get(i)?.hit)));
+        (hit(found[0]), hit(found[1]))
     }
 }
 
@@ -372,9 +397,8 @@ mod tests {
         s
     }
 
-    #[test]
-    fn picking_the_mesh_finds_what_the_cpu_picture_shows() {
-        let s = sample();
+    /// Whether picking `s`'s 3D view through its mesh finds what the processor's picture shows, at every third pixel.
+    fn picks_as_the_picture(s: &Session) {
         let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
         let mesh = Mesh::new(&scene, &look).unwrap();
         let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
@@ -394,6 +418,26 @@ mod tests {
     }
 
     #[test]
+    fn picking_the_mesh_finds_what_the_cpu_picture_shows() {
+        picks_as_the_picture(&sample());
+    }
+
+    #[test]
+    fn picking_through_what_the_view_sees_through_finds_what_the_cpu_picture_shows() {
+        let mut s = sample();
+        s.execute("graphics", &json!({"view": "{3D}", "categories": {"walls": {"transparency": 50}}})).unwrap();
+        let mesh = Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).unwrap();
+        assert!(mesh.clear_from > 0 && mesh.clear_from < mesh.vertices.len(), "opaque first, then the walls");
+        let wall = mesh.owners.iter().find(|o| s.model.elements.get(o.id).is_some_and(|e| e.category() == "wall")).unwrap();
+        assert_eq!(wall.transparency, 50);
+        picks_as_the_picture(&s);
+        // Everything seen through: nothing opaque to stand in front of.
+        s.execute("graphics", &json!({"view": "{3D}", "categories": {"floors": {"transparency": 80}, "roofs": {"transparency": 30}}}))
+            .unwrap();
+        picks_as_the_picture(&s);
+    }
+
+    #[test]
     fn a_mesh_is_refused_for_what_only_the_processor_draws() {
         let mut s = sample();
         let scene = Scene::new(&s.model);
@@ -404,8 +448,7 @@ mod tests {
         assert!(err.contains("wireframe"), "{err}");
         s.execute("visual_style", &json!({"style": "shaded"})).unwrap();
         s.execute("graphics", &json!({"view": "{3D}", "categories": {"walls": {"transparency": 50}}})).unwrap();
-        let err = Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).err().unwrap();
-        assert!(err.contains("see-through"), "{err}");
+        assert!(Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).is_ok(), "the card draws what is seen through");
     }
 
     #[test]
@@ -417,5 +460,6 @@ mod tests {
         let reach = mesh.radius as f32 * 1.001 + 1.0;
         assert!(mesh.vertices.iter().all(|v| v.position.iter().all(|c| c.abs() <= reach)));
         assert!(mesh.vertices.iter().all(|v| v.owner >= 1 && v.owner as usize <= mesh.owners.len() && v.plane >= 1));
+        assert_eq!(mesh.clear_from, mesh.vertices.len(), "nothing seen through");
     }
 }

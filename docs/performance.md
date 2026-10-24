@@ -121,7 +121,8 @@ This exposes the remaining cost of whole-model validation and processing every i
 ## 3D on the graphics card
 
 `view3d::gpu::Mesh` keeps a view's shown triangles for the card (retained geometry, uploaded once for each model), and
-`crates/ui-egui/src/gpu.rs` draws them in three passes: surfaces, edges and ground, then the levels' lines. It is opt-in
+`crates/ui-egui/src/gpu.rs` draws them in passes: the opaque surfaces, those seen through (only when the view sees through any),
+edges, ground and the blend, then the levels' lines. It is opt-in
 (File > Settings > Performance). Release build on Linux, an NVIDIA GeForce RTX 3060 over Vulkan, the 20-storey tower
 (427,280 triangles, 1,281,840 vertices) at 1920 × 1080 with the camera turning 3° a frame, median of nine:
 
@@ -137,7 +138,33 @@ A changed frame is 83 times faster, and a tint changed by hover or selection is 
 `cargo test -p bimcraft-ui-egui --release gpu_speed -- --ignored --nocapture` repeats it. On the sample house at 640 × 480 the card's
 picture differs from the processor's by more than six levels of a channel in 358 of 307,200 pixels (0.12%), all on the level lines,
 which the card draws as quads and the processor as stamped pixels. Picking through the mesh agrees with the processor's picture at every
-sampled pixel. Not measured: integrated cards, macOS and Windows, a model of several million triangles (the mesh holds up to 1.6
+sampled pixel.
+
+Then the card's own costs (2026-10-23, an NVIDIA GeForce RTX 2060 over Vulkan, Ryzen 7 2700X, same tower, 1920 × 1080, 3° a frame,
+55 frames timed back to back after five). The first measure timed each card frame straight after a processor's picture, which on this
+card is 24 ms: the card has gone idle and wakes for it, which a window turning the view doesn't make it do. Back to back it was 1.5 ms.
+
+| Frame, median | Before | After |
+|---|---:|---:|
+| Nothing selected | 1.47 ms | 1.15 ms |
+| Every wall selected (about 2,000 tints) | 2.87 ms | 1.12 ms |
+| Of it, the processor's part (nothing selected / every wall) | 0.31 / 1.80 ms | 0.19 / 0.19 ms |
+| Textured | 1.56 ms | 1.15 ms |
+| Windows seen through (60%) | processor, 224 ms | 1.20 ms |
+
+What changed: a vertex is 44 bytes, its two normals 16-bit fractions (52 before; 56 MB for the tower, not 67); the opaque pass writes
+a pixel's plane and element (8 bytes, not 16), the depth is read from the depth target itself, which OpenGL couldn't but the card no
+longer runs on; the tint is the picture's, applied once a pixel in the edge pass rather than at each surface drawn over it; the
+owners' tints (looked up in a map, not searched for each owner) and the textures' lookups are written again only when they change,
+and the buffers' bind group is kept. The p95 of the frames with nothing selected, 12 to 17 ms, is the card coming up to speed after
+the mesh is built: the frames after are as quick as the median.
+
+Surfaces seen through are a pass of their own after the opaque ones, into targets of their own: the nearest of them where it is nearer
+than the opaque depth, as `Scene::picture`'s second raster finds it; the edge pass blends it over what is behind it by how much the
+view lets show (a tinted one at least 35%). Edges and level lines stay the opaque surfaces', as the processor's do. The sample house
+with its walls 60% see-through differs from the processor's picture in 255 pixels of 307,200, with a mass in it 192.
+
+Not measured: integrated cards, macOS and Windows, a model of several million triangles (the mesh holds up to 1.6
 million and falls back to the processor above that).
 
 ## Verification
@@ -171,7 +198,7 @@ The measured next priorities are:
    latest-request queues and cancellation of obsolete views. The current parallel renderer still
    waits for its workers on the calling thread.
 4. Retained GPU geometry for orbit/pan/zoom is done for shaded, opaque views (above), with the processor as the
-   reference and the fallback. Still to do on the card: surfaces seen through, hidden line and wireframe, then viewport
+   reference and the fallback, and for surfaces seen through. Still to do on the card: hidden line and wireframe, then viewport
    culling, level of detail and instancing before pursuing full-size multi-million-triangle scenes.
 5. Profile IFC stages and reuse representation/placement decoding. Expand import coverage alongside
    speed work; never count skipped source geometry as a performance improvement.

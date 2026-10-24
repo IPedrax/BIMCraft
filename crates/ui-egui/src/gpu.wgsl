@@ -1,9 +1,11 @@
-// The 3D view on the graphics card: three passes that make the picture the processor's rasterizer makes (core `view3d.rs`).
-//   1. vs_scene / fs_scene: the surfaces into a colour target (shaded, textured, tinted) and an id target (the plane a pixel
-//      shows, its element and its depth as bits: a depth texture can't be read in GLSL).
-//   2. vs_full / fs_post: an edge wherever the plane changes between a pixel and the one to its right or below it, else the
-//      shaded colour, else the ground.
-//   3. vs_line / fs_line: each level's plane and name as lines, where nothing nearer hides them.
+// The 3D view on the graphics card: the passes that make the picture the processor's rasterizer makes (core `view3d.rs`).
+//   1. vs_scene / fs_scene: the opaque surfaces into a colour target (shaded and textured) and an id target (the plane a pixel
+//      shows and its element), with their depth.
+//   2. vs_scene / fs_clear: the surfaces seen through, the nearest of them where it is nearer than anything opaque, into a
+//      colour target and an element target of their own (only when the view sees through something).
+//   3. vs_full / fs_post: an edge wherever the opaque plane changes between a pixel and the one to its right or below it, else
+//      the shaded colour (tinted halfway where selected), else the ground; and over it what is seen through, blended.
+//   4. vs_line / fs_line: each level's plane and name as lines, where nothing opaque nearer hides them.
 // Lengths are mm. A colour is 0 to 255 in each channel, as the processor keeps it, and is divided down only on its way out.
 
 struct Globals {
@@ -19,10 +21,12 @@ struct Globals {
     // rgb: the ground the surfaces stand on.
     ground: vec4<f32>,
     // xy: the picture's size, px. z: how much nearer a surface may be than a line and still leave it showing, in depth.
+    // w: 1 where the view sees through something.
     size: vec4<f32>,
 }
 
 struct Owner {
+    // rgb: the edge colour; w: how much of the element shows over what is behind it, 1 for opaque.
     edge: vec4<f32>,
     // rgb: the tint; w: 1 where the element is tinted.
     tint: vec4<f32>,
@@ -52,6 +56,10 @@ struct Seg {
 
 @group(1) @binding(0) var scene_color: texture_2d<f32>;
 @group(1) @binding(1) var scene_ids: texture_2d<u32>;
+@group(1) @binding(2) var scene_depth: texture_depth_2d;
+
+@group(2) @binding(0) var clear_color: texture_2d<f32>;
+@group(2) @binding(1) var clear_ids: texture_2d<u32>;
 
 // Lit from over the viewer's left shoulder; a face turned away from the light keeps 62%.
 fn lit(n: vec3<f32>) -> f32 {
@@ -102,10 +110,11 @@ fn skin_color(id: u32, world: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
     return floor(clamp(mixed, vec3<f32>(0.0), vec3<f32>(255.0)));
 }
 
+// The normals come as 16-bit signed fractions.
 struct SceneIn {
     @location(0) position: vec3<f32>,
-    @location(1) normal: vec3<f32>,
-    @location(2) face: vec3<f32>,
+    @location(1) normal: vec4<f32>,
+    @location(2) face: vec4<f32>,
     @location(3) color: u32,
     @location(4) owner: u32,
     @location(5) plane: u32,
@@ -128,34 +137,52 @@ fn vs_scene(v: SceneIn) -> SceneOut {
     let d = v.position - g.aim.xyz;
     var o: SceneOut;
     o.clip = vec4<f32>(dot(d, g.right.xyz) * g.right.w, dot(d, g.up.xyz) * g.up.w, 0.5 + dot(d, g.back.xyz) * g.back.w, 1.0);
-    o.light = vec2<f32>(lit(v.normal), lit(-v.normal));
+    let n = normalize(v.normal.xyz);
+    o.light = vec2<f32>(lit(n), lit(-n));
     o.base = vec3<f32>(f32(v.color & 255u), f32((v.color >> 8u) & 255u), f32((v.color >> 16u) & 255u));
     o.ids = vec2<u32>(v.plane, v.owner);
     o.world = v.position;
-    o.face = v.face;
+    o.face = normalize(v.face.xyz);
     o.tex = v.tex;
     return o;
 }
 
 struct SceneTargets {
     @location(0) color: vec4<f32>,
-    @location(1) ids: vec4<u32>,
+    @location(1) ids: vec2<u32>,
 }
 
-@fragment
-fn fs_scene(in: SceneOut, @builtin(front_facing) front: bool) -> SceneTargets {
+// A surface's colour, lit (0 to 255), untinted: the tint is the picture's (fs_post), so a selection changes no surface.
+fn shaded(in: SceneOut, front: bool) -> vec3<f32> {
     var c = in.base;
     if in.tex != 0u {
         c = skin_color(in.tex, in.world, in.face);
     }
-    var shade = floor(c * select(in.light.y, in.light.x, front) + vec3<f32>(0.5));
-    let owner = owners[in.ids.y - 1u];
-    if owner.tint.w > 0.5 {
-        shade = floor((shade + owner.tint.xyz) / 2.0);
-    }
+    return floor(c * select(in.light.y, in.light.x, front) + vec3<f32>(0.5));
+}
+
+@fragment
+fn fs_scene(in: SceneOut, @builtin(front_facing) front: bool) -> SceneTargets {
     var out: SceneTargets;
-    out.color = vec4<f32>(shade / 255.0, 1.0);
-    out.ids = vec4<u32>(in.ids, bitcast<u32>(in.clip.z), 0u);
+    out.color = vec4<f32>(shaded(in, front) / 255.0, 1.0);
+    out.ids = in.ids;
+    return out;
+}
+
+struct ClearTargets {
+    @location(0) color: vec4<f32>,
+    @location(1) owner: u32,
+}
+
+// Only nearer than what is opaque there: as near is behind it.
+@fragment
+fn fs_clear(in: SceneOut, @builtin(front_facing) front: bool) -> ClearTargets {
+    if in.clip.z <= textureLoad(scene_depth, vec2<i32>(in.clip.xy), 0) {
+        discard;
+    }
+    var out: ClearTargets;
+    out.color = vec4<f32>(shaded(in, front) / 255.0, 1.0);
+    out.owner = in.ids.y;
     return out;
 }
 
@@ -173,6 +200,11 @@ fn ids_at(x: i32, y: i32) -> vec2<u32> {
     return textureLoad(scene_ids, vec2<i32>(x, y), 0).xy;
 }
 
+// A colour target's pixel as 0 to 255.
+fn bytes(c: vec4<f32>) -> vec3<f32> {
+    return floor(c.xyz * 255.0 + vec3<f32>(0.5));
+}
+
 @fragment
 fn fs_post(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let x = i32(frag.x);
@@ -182,7 +214,7 @@ fn fs_post(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let right = ids_at(x + 1, y);
     let below = ids_at(x, y + 1);
     let edge = (x + 1 < size.x && right.x != here.x) || (y + 1 < size.y && below.x != here.x);
-    var rgb = g.ground.xyz / 255.0;
+    var rgb = g.ground.xyz;
     if edge {
         // In the tint where the pixel's own element is tinted, else in the edge colour of the first element of it, the pixel
         // to its right and the one below it that shows one.
@@ -196,11 +228,29 @@ fn fs_post(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
         } else if below.y != 0u {
             color = owners[below.y - 1u].edge.xyz;
         }
-        rgb = color / 255.0;
+        rgb = color;
     } else if here.y != 0u {
-        rgb = textureLoad(scene_color, vec2<i32>(x, y), 0).xyz;
+        rgb = bytes(textureLoad(scene_color, vec2<i32>(x, y), 0));
+        if owners[here.y - 1u].tint.w > 0.5 {
+            rgb = floor((rgb + owners[here.y - 1u].tint.xyz) / 2.0);
+        }
     }
-    return vec4<f32>(rgb, 1.0);
+    // Over it, the nearest surface seen through, as much of it as the view lets show (and a tinted one always a little, or
+    // selecting it would show nothing).
+    if g.size.w > 0.5 {
+        let clear = textureLoad(clear_ids, vec2<i32>(x, y), 0).x;
+        if clear != 0u {
+            let owner = owners[clear - 1u];
+            var s = bytes(textureLoad(clear_color, vec2<i32>(x, y), 0));
+            var weight = owner.edge.w;
+            if owner.tint.w > 0.5 {
+                s = floor((s + owner.tint.xyz) / 2.0);
+                weight = max(weight, 0.35);
+            }
+            rgb = floor(rgb + (s - rgb) * weight + vec3<f32>(0.5));
+        }
+    }
+    return vec4<f32>(rgb / 255.0, 1.0);
 }
 
 struct LineOut {
@@ -245,7 +295,7 @@ fn vs_line(@builtin(vertex_index) i: u32, @builtin(instance_index) k: u32) -> Li
 
 @fragment
 fn fs_line(in: LineOut) -> @location(0) vec4<f32> {
-    let behind = bitcast<f32>(textureLoad(scene_ids, vec2<i32>(in.clip.xy), 0).z);
+    let behind = textureLoad(scene_depth, vec2<i32>(in.clip.xy), 0);
     if behind > 0.0 && behind > in.depth + g.size.z {
         discard;
     }

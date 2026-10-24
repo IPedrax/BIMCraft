@@ -684,7 +684,8 @@ impl Look {
         let g = own.resolved(m);
         let mut look = Look { style: g.style, ..Look::default() };
         // Nothing to look for: no graphics of its own, and nothing in the project phased or in an option.
-        if own.draws_as_is() && !crate::phasing::any(m) && !m.elements.values().any(|e| matches!(e, Element::Mass(_))) {
+        let linked = m.elements.keys().next_back().is_some_and(|id| crate::link::is_linked(*id));
+        if own.draws_as_is() && !linked && !crate::phasing::any(m) && !m.elements.values().any(|e| matches!(e, Element::Mass(_))) {
             return look;
         }
         // The phase it shows, as where it stands in the project's order, and how its phase filter shows each status.
@@ -713,6 +714,10 @@ impl Look {
             } else if e.params().is_some() {
                 look.hidden.insert(id);
                 continue;
+            }
+            // What a link builds is a reference: halftone, under whatever the view says.
+            if crate::link::is_linked(id) {
+                base.halftone = true;
             }
             // A mass is seen through in 3D unless the view says otherwise.
             if matches!(e, Element::Mass(_)) && base.transparency == 0 {

@@ -4,7 +4,8 @@ BIMCraft is a clean-room building information modeler in pure Rust. It follows t
 Revit among them, but it shares no content or text with any of them, and reads Revit's own files only under the fence in
 principle 5. This roadmap is based on what the
 code does today: what is missing, and the order that makes sense to build it in. What works now is in the
-[README](README.md), and the rules every change follows are in [CLAUDE.md](CLAUDE.md).
+[README](README.md), and the rules every change follows are in [CLAUDE.md](CLAUDE.md). Ideas not scheduled yet, from
+other BIM tools and users' wishes, are pooled in [IDEAS.md](IDEAS.md).
 
 Sizes are rough effort for one developer working with agents: **S** a few days, **M** one to two weeks, **L** a month,
 **XL** several months. There are no calendar dates. A release ships when its exit criteria are met.
@@ -149,7 +150,7 @@ The goal is that BIMCraft fits into a mixed-software office.
 |---|---|---|
 | DXF import (as a link or underlay in a view) and DXF export of views and sheets | L | Use the public DXF reference. Native DWG needs a licensed SDK or a GPL library, which conflicts with MIT or Apache, so DXF comes first and DWG is decided separately |
 | Revit `.rvt` reader, in three parts, all done: the container, metadata and element inventory (`bimcraft-cli info`); the elements into the model (levels, walls, floors, ceilings, doors, windows, columns, rooms and roofs, through `run`, `convert` and the MCP `open`); File > Open in the desktop (a thread of its own, a report of what was left out) | L | Read only under the fence in [docs/rvt-provenance.md](docs/rvt-provenance.md); `crates/rvt`, Apache-2.0 only. IFC stays the way out. Left in the import: curtain walls, sloped floors and roofs by footprint, roofs by extrusion that are not a straight-line profile, a column's section shape, stairs and railings, groups, door swings, the join lists, and names for the categories `info` prints as bare ids (no table of Autodesk's `BuiltInCategory` values to check against a file was found). The desktop cannot cancel an import in flight |
-| Linked models: other `.bimcraft` and IFC files as references, positioned shared or origin to origin | L | Built on the 0.5 GUIDs; groundwork for worksharing |
+| ~~Linked models: other `.bimcraft` and IFC files as references, positioned shared or origin to origin~~ | L | Done, origin to origin: `link` and `reload`, Manage > Link Model, a Linked Models group in the Project Browser. Shared coordinates, links in sections' cut poché by category, a link's own view overrides, hiding or unloading one in a view, and nested links are still to come (issue #36) |
 | IFC export completeness: `Pset_*Common`, `Qto_*BaseQuantities`, space boundaries, classification references, an IFC4x3 option | L | Keep validating with IfcOpenShell |
 | glTF 2.0 and OBJ export (for visualisation and the web) | M | |
 | gbXML export (rooms and spaces, surfaces, openings) for energy tools | M | |
@@ -167,7 +168,7 @@ The goal is that someone could run a real small project on it.
 
 | Item | Size |
 |---|---|
-| GPU renderer (wgpu) for 3D: shaded views draw on the card since 0.7 (opt-in); still to come there are surfaces seen through, hidden line and wireframe, and then plans, perspective cameras, a section box, walkthroughs, shadows and sun, silhouettes | L |
+| GPU renderer (wgpu) for 3D: shaded views draw on the card since 0.7 (opt-in), and surfaces seen through; still to come there are hidden line and wireframe, and then plans, perspective cameras, a section box, walkthroughs, shadows and sun, silhouettes | L |
 | A navigation gizmo, steering and orbit around the selection; tiled windows (views already float in windows of their own, and palettes dock and float). Not Revit's ViewCube, which is Autodesk's trademark and design: an original one in the manner of Blender's open-source navigation gizmo (axis balls to click to look along an axis, drag to orbit), drawn in code | M |
 | A dark theme with a white canvas: dark ribbon, palettes and browser around views drawn on white paper, as a choice beside the light and the dark theme (today the dark theme darkens the canvas too) | S |
 | Editable keyboard shortcuts; project templates of BIMCraft's own on the start page | S |

@@ -107,6 +107,30 @@ fn a_revit_file_the_system_opens_replaces_the_project_with_a_new_unsaved_one() {
     assert!(!status.error && status.text.starts_with("Opened from Revit 2024: "), "{status:?}");
 }
 
+/// A file dropped on the window, as the windowing layer hands it over.
+#[derive(Debug)]
+struct Dropped(PathBuf);
+
+impl egui::DroppedFile for Dropped {
+    fn path(&self) -> &Path {
+        &self.0
+    }
+
+    fn bytes(&self) -> Result<Vec<u8>, String> {
+        Err("a test's file is not read".into())
+    }
+}
+
+#[test]
+fn a_file_dropped_on_the_window_opens_like_one_the_system_asked_for() {
+    let mut r = rig(|| Ok(survey(&[])));
+    r.h.input_mut().dropped_files.push(Arc::new(Dropped("/projects/dropped.rvt".into())));
+    r.h.step();
+    r.done();
+    assert_eq!(r.project(), "Survey");
+    assert_eq!(*r.asked.lock().unwrap(), [PathBuf::from("/projects/dropped.rvt")]);
+}
+
 #[test]
 fn a_revit_file_named_on_the_command_line_is_opened_once_the_window_is_up() {
     let mut r = rig(|| Ok(survey(&[])));
@@ -316,7 +340,7 @@ fn an_import_that_left_nothing_out_opens_no_report_but_has_one_to_read() {
 #[test]
 fn the_report_speaks_the_interface_language_and_keeps_the_importers_notes_as_they_are() {
     let mut r = rig(|| Ok(survey(&NOTES)));
-    r.h.state_mut().lang = bimcraft_core::language::Language::Portuguese;
+    r.h.state_mut().lang = crate::lang::Lang::Portuguese;
     r.open("/projects/house.rvt");
     r.done();
     r.h.run();
@@ -357,6 +381,41 @@ fn what_came_in_is_listed_the_most_numerous_first() {
     let levels = r.h.state().session.model.levels().len();
     assert_eq!(counts.first(), Some(&("level".to_string(), levels)), "{counts:?}");
     assert!(counts.windows(2).all(|w| w[0].1 >= w[1].1), "{counts:?}");
+}
+
+#[test]
+fn the_report_as_text_has_everything_the_window_shows_however_long_it_is() {
+    let notes: Vec<String> =
+        (0..120).map(|k| format!("1 door left out, door {k} and door {} overlap in wall 34 (ids {})", k + 1, 1000 + k)).collect();
+    let all = notes.clone();
+    let mut r = rig(move || Ok(survey(&notes.iter().map(String::as_str).collect::<Vec<_>>())));
+    r.open("/projects/house.rvt");
+    r.done();
+    let copied = r.h.state().revit_report.as_ref().unwrap().text();
+    assert!(copied.starts_with("house.rvt · Revit 2024\n\nCame in: "), "{copied}");
+    assert!(copied.contains("\nLeft out: 120\n"), "{copied}");
+    for note in &all {
+        assert!(copied.contains(&format!("• {note}\n")), "the note `{note}` with its ids, on one line");
+    }
+}
+
+#[test]
+fn copy_report_says_it_was_pressed_with_a_long_list_under_it_too() {
+    let notes: Vec<String> =
+        (0..120).map(|k| format!("1 door left out, door {k} and door {} overlap in wall 34 (ids {})", k + 1, 1000 + k)).collect();
+    let mut r = rig(move || Ok(survey(&notes.iter().map(String::as_str).collect::<Vec<_>>())));
+    r.open("/projects/house.rvt");
+    r.done();
+    // The first frames of a window are laid out smaller.
+    r.h.run();
+    r.h.run();
+    assert!(r.h.query_by_label("Copy Report").is_some() && r.h.query_by_label("Copied").is_none());
+    // The accessibility click: a pointer click at the button's middle misses it in this harness once the list is this long.
+    r.h.get_by_label("Copy Report").click_accesskit();
+    r.h.run();
+    let (copied, report) = (r.h.query_by_label("Copied").is_some(), r.h.query_by_label("Copy Report").is_some());
+    assert!(copied && !report, "the button says it was pressed: Copied {copied}, Copy Report {report}");
+    assert!(r.h.state().report_open(), "and the report stays up");
 }
 
 #[test]

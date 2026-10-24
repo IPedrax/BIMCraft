@@ -1,7 +1,7 @@
 # The portable build: bimcraft.exe, bimcraft-cli.exe, the licences and the readme in one zip, to unzip anywhere and run, for a PC
 # whose user can't install software. Then it unzips the zip somewhere else and runs what is in it, as a user would.
 #
-#   packaging\windows\portable.ps1 -Version 0.7.0 -BinDir target\x86_64-pc-windows-msvc\release
+#   packaging\windows\portable.ps1 -Version 0.8.0 -BinDir target\x86_64-pc-windows-msvc\release
 #
 # The zip is bimcraft-<version>-windows-x64-portable.zip in the current folder (its name goes to PORTABLE in $GITHUB_ENV, in
 # Actions). It isn't one of the files the updater looks for (`Target::asset_name`). Its settings still go to %APPDATA%\BIMCraft,

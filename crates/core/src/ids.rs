@@ -21,6 +21,9 @@ pub type Id = u64;
 /// The first id a project gives: ids have six digits, and more once a project has made 900 000 elements.
 pub const FIRST_ID: Id = 100_000;
 
+/// Where the ids of linked elements begin, in the model the views draw ([`crate::link::seen`]): past any a project makes.
+pub const LINKED: Id = 100_000_000;
+
 /// An element's GUID: 128 bits, random (a version 4 UUID), written `xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx`. One whose top
 /// half is zero, which a random one never is, stands for the element with the id in its bottom half, until resolved.
 /// Its default, the nil GUID, points at nothing: [`Model::check`](crate::model::Model::check) says so.

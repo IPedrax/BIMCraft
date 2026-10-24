@@ -3,7 +3,7 @@
 # build of the same source, as an update does, and checks the folder is kept; then removes it. Needs an administrator
 # (the installer is for every user), and installs for real: use a CI runner or a throwaway machine.
 #
-#   packaging\windows\check-install.ps1 -Msi bimcraft-0.7.0-windows-x64.msi -Upgrade rebuilt.msi
+#   packaging\windows\check-install.ps1 -Msi bimcraft-0.8.0-windows-x64.msi -Upgrade rebuilt.msi
 #
 # A rebuild of the same version has a product code of its own and the same upgrade code, so Windows Installer takes it for
 # an upgrade (the installer allows same-version upgrades).

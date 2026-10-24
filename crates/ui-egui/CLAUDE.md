@@ -9,8 +9,9 @@ startup, tags) is [the desktop](../../docs/areas/desktop.md).
 
 - **A tool or a button runs a command.** A new one is a command first (core), then a ribbon button or a tool that passes its
   parameters; its Revit shortcut goes in `SHORTCUTS` (`lib.rs`) and so in Keyboard Shortcuts (KS).
-- **Every label has a row in `WORDS`** (`lang.rs`) with its Portuguese and its Spanish; `nothing_a_translated_interface_shows_is_left_in_english`
-  fails for a label the table knows that the window forgot to translate. The core's messages stay English, because agents read them.
+- **Every label has a row in `WORDS`** (`lang.rs`) with its Portuguese and its Spanish, and should have one in `lang/zh.rs` (Chinese, English key
+  and the Chinese: a row it lacks shows in English); `nothing_a_translated_interface_shows_is_left_in_english` fails for a label the
+  table knows that the window forgot to translate, in all three. The core's messages stay English, because agents read them.
 - **A palette or a window** that docks or floats goes through `dock.rs`; settings the user keeps go in `settings.rs`
   (`settings.json`), never in a project.
 - **The 3D view has two painters**: the core's software picture and the card's (`gpu.rs`, `gpu.wgsl`; the design is in

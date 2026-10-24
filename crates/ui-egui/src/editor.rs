@@ -989,14 +989,18 @@ impl BimApp {
                 });
             });
         });
-        if load && let Some(path) = rfd::FileDialog::new().add_filter(t("BIMCraft family"), &["json"]).pick_file() {
-            match read_family_file(&path) {
+        if load {
+            let dialog = rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]);
+            self.ask_file(ctx, dialog, false, |app, path| match read_family_file(&path) {
                 Ok((name, f)) => {
-                    ed = FamilyEditor::of(&name, &f);
-                    ed.original = None;
+                    // Closed meanwhile, the editor has nothing to load into.
+                    if let Some(open) = app.family_editor.as_mut() {
+                        *open = FamilyEditor::of(&name, &f);
+                        open.original = None;
+                    }
                 }
-                Err(text) => self.status = Status { text, error: true },
-            }
+                Err(text) => app.status = Status { text, error: true },
+            });
         }
         // Made the project's: Apply and OK do it, and so do saving to a file or to the Favorites, which keep what's in the project.
         let mut made = false;
@@ -1016,10 +1020,11 @@ impl BimApp {
         }
         let name = ed.name.trim().to_string();
         if made && save {
-            let file = format!("{name}.json");
-            if let Some(path) = rfd::FileDialog::new().add_filter(t("BIMCraft family"), &["json"]).set_file_name(file).save_file() {
-                self.run("family", json!({"name": name, "save": path.to_string_lossy()}));
-            }
+            let dialog = rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]).set_file_name(format!("{name}.json"));
+            let family = name.clone();
+            self.ask_file(ctx, dialog, true, move |app, path| {
+                app.run("family", json!({"name": family, "save": path.to_string_lossy()}));
+            });
         }
         if made && favorite {
             let p = self.favorite_params("save", "family", &name);

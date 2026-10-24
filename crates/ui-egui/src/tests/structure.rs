@@ -318,21 +318,21 @@ fn a_selected_structural_column_shows_its_distances_to_the_walls_and_can_be_dime
 
 #[test]
 fn the_structure_speaks_portuguese_and_spanish_and_leaves_no_english() {
-    use bimcraft_core::language::Language;
+    use crate::lang::Lang;
     use egui_kittest::kittest::{By, NodeT};
-    let english = |h: &Harness<BimApp>, l: Language| -> Vec<String> {
+    let english = |h: &Harness<BimApp>, l: Lang| -> Vec<String> {
         h.query_all(By::new())
             .filter_map(|n| n.accesskit_node().label().or_else(|| n.accesskit_node().value()))
-            .filter(|s| crate::lang::translated(l, s).is_some_and(|x| x != s))
+            .filter(|s| crate::lang::translated_in(l, s).is_some_and(|x| x != s))
             .collect()
     };
     let mut h = app(&format!(
         "{BOX}\nbeam {{\"points\": [[1000, 1000], [5000, 1000]], \"offset\": 2800}}\nfooting {{\"at\": [2000, 2000]}}\nstructural_column {{\"at\": [3000, 3000]}}\nstrip_footing {{\"points\": [[0, 0], [8000, 0]]}}"
     ));
-    assert!(english(&h, Language::Spanish).contains(&"Structure".to_string()), "the probe finds what it looks for");
+    assert!(english(&h, Lang::Spanish).contains(&"Structure".to_string()), "the probe finds what it looks for");
     let expected = [
-        (Language::Portuguese, "Estrutura", ["Pilar", "Viga", "Laje estrutural", "Sapata isolada", "Sapata corrida"]),
-        (Language::Spanish, "Estructura", ["Columna", "Viga", "Losa estructural", "Zapata aislada", "Zapata corrida"]),
+        (Lang::Portuguese, "Estrutura", ["Pilar", "Viga", "Laje estrutural", "Sapata isolada", "Sapata corrida"]),
+        (Lang::Spanish, "Estructura", ["Columna", "Viga", "Losa estructural", "Zapata aislada", "Zapata corrida"]),
     ];
     for (l, tab, labels) in expected {
         h.state_mut().lang = l;
@@ -354,9 +354,9 @@ fn the_structure_speaks_portuguese_and_spanish_and_leaves_no_english() {
             click(&mut h, point);
             missed.extend(english(&h, l));
             if edit_type {
-                press(&mut h, crate::lang::translated(l, "Edit Type").unwrap_or("Edit Type"));
+                press(&mut h, crate::lang::translated_in(l, "Edit Type").unwrap_or("Edit Type"));
                 missed.extend(english(&h, l));
-                press(&mut h, crate::lang::translated(l, "Cancel").unwrap_or("Cancel"));
+                press(&mut h, crate::lang::translated_in(l, "Cancel").unwrap_or("Cancel"));
             }
             key(&mut h, Key::Escape);
         }
@@ -364,14 +364,14 @@ fn the_structure_speaks_portuguese_and_spanish_and_leaves_no_english() {
         missed.dedup();
         assert!(missed.is_empty(), "{l:?}: {missed:?}");
     }
-    h.state_mut().lang = Language::English;
+    h.state_mut().lang = Lang::English;
     h.run();
     use crate::lang::category;
     assert_eq!(
         [category("beam", false), category("structuralcolumn", true), category("footing", true)],
         ["Beam", "Structural Columns", "Footings"]
     );
-    h.state_mut().lang = Language::Portuguese;
+    h.state_mut().lang = Lang::Portuguese;
     h.run();
     assert_eq!(
         [category("beam", true), category("structuralcolumn", false), category("stripfooting", false)],

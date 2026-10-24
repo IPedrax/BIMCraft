@@ -74,6 +74,25 @@ pub static ALL: &[Command] = &[
          `copies`, `library`, `left_out`",
         insert_from,
     ),
+    edit(
+        "link",
+        "Link Model",
+        &["LK"],
+        "{path, name?, at?: [x, y], angle?: degrees} another project (.bimcraft or .ifc) shown in this one as a reference that \
+         can't be edited, as Revit's Link Revit: its walls, floors, roofs, columns, stairs and the rest of what it builds are \
+         drawn in the plans, sections and 3D views, halftone, and snapped to; nothing of it is selected, scheduled, checked or \
+         exported. It stands with its origin at `at` (default [0, 0]) turned `angle` about it; its levels stand at their own \
+         elevations, on this project's levels at the same height. `path` is read now and again by `reload`, and kept as given: \
+         a relative one is relative to this project's file. `name` defaults to the file's. Returns `id`, `name`, `elements`",
+        link_model,
+    ),
+    other(
+        "reload",
+        "Reload Links",
+        "{id?} read the file of the link `id`, or of every link, again: for a project that changed on disk. Returns `reloaded` \
+         (the names) and `failed` ({name, error})",
+        reload,
+    ),
     other(
         "save",
         "Save",
@@ -824,6 +843,33 @@ pub static ALL: &[Command] = &[
         purge,
     ),
     edit(
+        "line_weights",
+        "Line Weights",
+        &[],
+        "{model?: [{scale, widths}, …], annotation?: [16 widths], reset?: true} the project's line weights, as Revit's \
+         Manage > Line Weights: what each pen draws on paper, mm. `model` gives, whole, the model's pens 1 to 16 at each of \
+         its scales (1 to 32 of them, 1 : `scale`): a view draws its walls, doors, patterns and the rest of the model in the \
+         column of the scale nearest its own (by how many times finer or coarser; the finer of two as near). `annotation` \
+         gives the 16 pens that dimensions, tags, text, grids, levels and marks draw in, at any scale. Each width is 0.01 to \
+         20 mm; pen 0 is always a hairline. `reset` goes back to what a project in its units starts with (the model's pens \
+         wider at finer scales; at 1 : 100, pen 4 is 0.18 mm and pen 10 0.35 mm). Without any, it says what they are, each \
+         scale named as the project's units name it, and `own` whether the project has set them",
+        line_weights,
+    ),
+    edit(
+        "object_styles",
+        "Object Styles",
+        &[],
+        "{categories?: {category: {projection?: pen, cut?: pen}, …}, reset?: true} the project's object styles, as Revit's \
+         Manage > Object Styles: the pen (0, a hairline, to 16) each model category draws its lines in where it is seen \
+         (`projection`) and where a view cuts it (`cut`), in every plan and section; a view's Visibility/Graphics overrides \
+         them. A category given keeps the pen it isn't given. The rest of an element's lines keep their own: a compound \
+         wall's layers, a door's jambs, a stair's walk line. `reset` goes back to what a project starts with (cut pen 10 and \
+         seen pen 4; a door's and a window's cut 6, a railing seen 6, a mass 4 both). Without either, it says each model \
+         category's, `own` whether the project has set it apart",
+        object_styles,
+    ),
+    edit(
         "units",
         "Project Units",
         &["UN"],
@@ -1504,6 +1550,10 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             extra.insert("elevation".into(), json!(m.spot_value(sp).map(hundredth)));
             extra.insert("level".into(), json!(m.level_of(e)));
         }
+        Element::Link(l) => {
+            extra.insert("loaded".into(), json!(m.loaded.contains_key(&l.path)));
+            extra.insert("elements".into(), json!(m.loaded.get(&l.path).map(|o| o.elements.len())));
+        }
         Element::Level(_) | Element::Grid(_) | Element::Schedule(_) | Element::View3D(_) | Element::PlanView(_) => {}
     }
     let mut v = serde_json::to_value(e).unwrap_or_default();
@@ -1553,6 +1603,21 @@ fn language(s: &mut Session, p: &Value) -> R {
 const MAX_LEFT_OUT: usize = 100;
 
 fn open(s: &mut Session, p: &Value) -> R {
+    let reply = open_file(s, p)?;
+    Ok(with_links(s, reply))
+}
+
+/// `reply` of an open, with the links that couldn't be read once the project is read.
+fn with_links(s: &mut Session, mut reply: Value) -> Value {
+    let failed = relink(s);
+    if !failed.is_empty() {
+        reply["links_not_loaded"] = json!(failed);
+    }
+    reply
+}
+
+/// `open`, but for what its links read.
+fn open_file(s: &mut Session, p: &Value) -> R {
     let c = "open";
     let path = PathBuf::from(string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required"))?);
     let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
@@ -1683,7 +1748,7 @@ fn insert_from(s: &mut Session, p: &Value) -> R {
     let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required"))?;
     // Read as `open` reads it, in a session of its own.
     let mut other = Session::new();
-    open(&mut other, &json!({"path": path})).map_err(|e| bad(c, e.trim_start_matches("open: ")))?;
+    open_file(&mut other, &json!({"path": path})).map_err(|e| bad(c, e.trim_start_matches("open: ")))?;
     let ids: Vec<Id> = match p.get("ids") {
         v if absent(v) => Vec::new(),
         Some(_) => ids_param(c, &other.model, p)?,
@@ -1692,6 +1757,92 @@ fn insert_from(s: &mut Session, p: &Value) -> R {
     let made = crate::insert::insert(s.model_mut(), &other.model, &ids).map_err(|e| bad(c, e))?;
     let there: BTreeMap<String, Id> = made.ids.iter().map(|(a, b)| (a.to_string(), *b)).collect();
     Ok(json!({"ids": there, "copies": made.copies, "library": made.library, "left_out": made.left_out}))
+}
+
+/// The project a link's `path` names, read as `open` reads it: its own links are not followed.
+fn read_link(s: &Session, path: &str) -> Result<Arc<Model>, String> {
+    let at = PathBuf::from(path);
+    let full = match (&s.path, at.is_relative()) {
+        (Some(project), true) => project.parent().map_or(at.clone(), |dir| dir.join(&at)),
+        _ => at,
+    };
+    let mut other = Session::new();
+    open_file(&mut other, &json!({"path": full})).map_err(|e| e.trim_start_matches("open: ").to_string())?;
+    Ok(other.model)
+}
+
+/// What every link of the project reads, again; the links that couldn't be read, as `{name, error}`.
+fn relink(s: &mut Session) -> Vec<Value> {
+    let links: Vec<(Id, String, String)> = s
+        .model
+        .elements
+        .iter()
+        .filter_map(|(id, e)| match e {
+            Element::Link(l) => Some((*id, l.name.clone(), l.path.clone())),
+            _ => None,
+        })
+        .collect();
+    let mut failed = Vec::new();
+    for (_, name, path) in links {
+        match read_link(s, &path) {
+            Ok(m) => {
+                Arc::make_mut(&mut s.model).loaded.insert(path, m);
+            }
+            Err(error) => {
+                Arc::make_mut(&mut s.model).loaded.remove(&path);
+                failed.push(json!({"name": name, "error": error}));
+            }
+        }
+    }
+    failed
+}
+
+fn link_model(s: &mut Session, p: &Value) -> R {
+    let c = "link";
+    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required"))?;
+    let other = read_link(s, &path).map_err(|e| bad(c, e))?;
+    let name = match string(c, p, "name")? {
+        Some(n) => n,
+        None => Path::new(&path).file_stem().map_or_else(|| "Link".into(), |f| f.to_string_lossy().into_owned()),
+    };
+    let at = point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0));
+    let angle = num(c, p, "angle")?.unwrap_or(0.0);
+    let elements = other.elements.len();
+    let m = s.model_mut();
+    let id = m.insert(Element::Link(crate::model::Link { name: name.clone(), path: path.clone(), at, angle }));
+    m.loaded.insert(path, other);
+    Ok(json!({"id": id, "name": name, "elements": elements}))
+}
+
+fn reload(s: &mut Session, p: &Value) -> R {
+    let c = "reload";
+    let only = id_opt(c, p, "id")?;
+    if let Some(id) = only
+        && !matches!(s.model.elements.get(id), Some(Element::Link(_)))
+    {
+        return Err(bad(c, format!("element {id} is not a link")));
+    }
+    let want: Vec<(String, String)> = s
+        .model
+        .elements
+        .iter()
+        .filter(|(id, _)| only.is_none_or(|o| s.model.same(**id, o)))
+        .filter_map(|(_, e)| match e {
+            Element::Link(l) => Some((l.name.clone(), l.path.clone())),
+            _ => None,
+        })
+        .collect();
+    let (mut reloaded, mut failed) = (Vec::new(), Vec::new());
+    for (name, path) in want {
+        match read_link(s, &path) {
+            Ok(m) => {
+                Arc::make_mut(&mut s.model).loaded.insert(path, m);
+                reloaded.push(name);
+            }
+            Err(error) => failed.push(json!({"name": name, "error": error})),
+        }
+    }
+    Ok(json!({"reloaded": reloaded, "failed": failed}))
 }
 
 fn save(s: &mut Session, p: &Value) -> R {
@@ -1706,7 +1857,8 @@ fn save(s: &mut Session, p: &Value) -> R {
         return Ok(json!({"path": path, "format": "IFC4"}));
     }
     if format == "pdf" {
-        let m = &s.model;
+        let seen = crate::link::seen(&s.model);
+        let m = &*seen;
         let mut sheets: Vec<(&str, Drawing, P2)> = m
             .elements
             .iter()
@@ -1725,7 +1877,7 @@ fn save(s: &mut Session, p: &Value) -> R {
     }
     if matches!(format.as_str(), "svg" | "png") {
         let level = level_param(c, &s.model, &json!({}), "view")?;
-        write_plan(&render::plan(&s.model, level, 1600, 1000), &path)?;
+        write_plan(&render::plan(&crate::link::seen(&s.model), level, 1600, 1000), &path)?;
         return Ok(json!({"path": path, "format": format}));
     }
     let text = s.model.to_json().map_err(|e| bad(c, e))?;
@@ -1750,9 +1902,10 @@ fn autosave(s: &mut Session, p: &Value) -> R {
 fn recover(s: &mut Session, p: &Value) -> R {
     // Parse all params before open resets the session, so invalid input cannot partially recover.
     let project = string("recover", p, "project")?.map(PathBuf::from);
-    let result = open(s, p)?;
+    let result = open_file(s, p)?;
+    // Its links are read from where the project lives, not from where the backup does.
     s.path = project;
-    Ok(result)
+    Ok(with_links(s, result))
 }
 
 /// Standard base64, for images in JSON replies.
@@ -1793,7 +1946,9 @@ fn png_reply(c: &str, p: &Value, png: Vec<u8>, mut info: Value) -> R {
 
 fn render_view(s: &mut Session, p: &Value) -> R {
     let c = "render";
-    let m = &s.model;
+    // What its links build is in the picture.
+    let seen = crate::link::seen(&s.model);
+    let m = &*seen;
     let side = |key: &str, default: usize| count_opt(c, p, key, default).map(|n| n.clamp(16, 8192) as u32);
     let (w, h) = (side("width", 1600)?, side("height", 1000)?);
     let (w3, h3) = (w.min(view3d::MAX_SIDE), h.min(view3d::MAX_SIDE));
@@ -5478,15 +5633,15 @@ pub(crate) fn micron(p: P2) -> P2 {
 /// How a command takes elements: through `map`, a translation, a turn or a mirror. A translation
 /// slides a door or window on its own along its wall by `slide`; a mirror flips the way doors and
 /// windows face, as a mirror image does.
-struct Motion<'a> {
-    map: &'a dyn Fn(P2) -> P2,
-    slide: Option<P2>,
-    mirror: bool,
+pub(crate) struct Motion<'a> {
+    pub(crate) map: &'a dyn Fn(P2) -> P2,
+    pub(crate) slide: Option<P2>,
+    pub(crate) mirror: bool,
 }
 
 /// The element taken by `mo`. Levels have no place in plan; a door or window on its own goes
 /// only along its wall, by a translation, else only with its wall.
-fn transformed(c: &str, m: &Model, id: Id, mo: &Motion, with: &BTreeSet<Id>) -> Result<Element, String> {
+pub(crate) fn transformed(c: &str, m: &Model, id: Id, mo: &Motion, with: &BTreeSet<Id>) -> Result<Element, String> {
     let f = mo.map;
     let within = |g: Guid| m.elements.id(g).is_some_and(|i| with.contains(&i));
     let mut e = m.elements.get(id).cloned().ok_or_else(|| bad(c, format!("no element {id}")))?;
@@ -5511,6 +5666,8 @@ fn transformed(c: &str, m: &Model, id: Id, mo: &Motion, with: &BTreeSet<Id>) -> 
         Element::DetailLine(l) => l.points.iter_mut().for_each(|p| *p = micron(f(*p))),
         // Its sketch went with it, above.
         Element::FilledRegion(_) => {}
+        // A link is moved and turned as a whole; its file stays as it is.
+        Element::Link(l) => (l.at, l.angle) = turned(f, l.at, l.angle),
         Element::Viewport(v) => v.at = f(v.at),
         Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => (col.at, col.angle) = turned(f, col.at, col.angle),
         // A run keeps its heights at its ends; its section is the same either way round.

@@ -1,9 +1,11 @@
-//! The 3D view drawn on the graphics card: the core's `view3d::gpu::Mesh` uploaded once for a model, and three passes for each
-//! picture (surfaces; edges and ground; the levels' lines), in `gpu.wgsl`, into a texture that egui shows as it shows the CPU
-//! picture. Opt-in (Settings > Performance); what the card can't draw (see-through surfaces, hidden line, wireframe) is the
-//! processor's, and so is everything when the card fails: a validation or out-of-memory error from the device is caught
+//! The 3D view drawn on the graphics card: the core's `view3d::gpu::Mesh` uploaded once for a model, and the passes for each
+//! picture (the opaque surfaces; those seen through; edges, ground and the blend; the levels' lines), in `gpu.wgsl`, into a
+//! texture that egui shows as it shows the CPU picture. What changes between pictures is small: the camera, the levels' lines,
+//! and, only when they change, the selection's tints and the textures' mip levels. Opt-in (Settings > Performance); what the
+//! card can't draw (hidden line, wireframe) is the processor's, and so is everything when the card fails: a validation or out-of-memory error from the device is caught
 //! here, not left to the device's handler, and the window carries on without the card (`BimApp::gpu_failed`).
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use bimcraft_core::model::Id;
@@ -14,10 +16,14 @@ use eframe::egui_wgpu::{RenderState, wgpu};
 use egui::TextureId;
 
 const COLOR: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
-const IDS: wgpu::TextureFormat = wgpu::TextureFormat::Rgba32Uint;
+/// The plane a pixel shows and its element.
+const IDS: wgpu::TextureFormat = wgpu::TextureFormat::Rg32Uint;
+/// The element seen through at a pixel.
+const CLEAR_IDS: wgpu::TextureFormat = wgpu::TextureFormat::R32Uint;
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
-/// A vertex is 13 32-bit words (see [`Vertex`]).
-const STRIDE: u64 = 52;
+/// A vertex (see [`Vertex`]) as the card takes it: its position as three floats, its two normals as four 16-bit signed fractions
+/// each (the fourth 0), and its four words. 44 bytes, not the 52 of floats.
+const STRIDE: u64 = 44;
 const GLOBALS: u64 = 7 * 16;
 /// An owner's edge and tint colours, a skin's parts and a segment's ends and colour: 2, 3 and 3 vec4s.
 const OWNER: u64 = 32;
@@ -70,27 +76,39 @@ impl Card {
     }
 }
 
-/// The surfaces' three targets, and the picture they are put together in.
+/// The opaque surfaces' three targets, those seen through's three, and the picture they are put together in.
 struct Targets {
     size: (u32, u32),
     color: wgpu::TextureView,
     ids: wgpu::TextureView,
     depth: wgpu::TextureView,
+    clear_color: wgpu::TextureView,
+    clear_ids: wgpu::TextureView,
+    clear_depth: wgpu::TextureView,
     // Kept for a test to read back.
     #[cfg_attr(not(test), allow(dead_code))]
     picture: wgpu::Texture,
     picture_view: wgpu::TextureView,
+    /// The opaque targets, as the later passes read them; and those seen through, as the picture's pass does.
     bind: wgpu::BindGroup,
+    clear_bind: wgpu::BindGroup,
 }
 
-/// A mesh on the card, and the buffers that change with each picture.
+/// A mesh on the card, the buffers that change with the pictures, and what they were last written with.
 struct Uploaded {
     mesh: Arc<Mesh>,
     vertices: wgpu::Buffer,
     count: u32,
+    /// Where the vertices seen through start.
+    clear_from: u32,
     owners: wgpu::Buffer,
     skins: wgpu::Buffer,
     texels: wgpu::Buffer,
+    /// The tints the owners were written with (none yet), and the textures' lookups.
+    tints: Option<Vec<(Id, Rgb)>>,
+    lookups: Vec<[u32; 12]>,
+    /// The buffers bound, made again when the segments' buffer is.
+    bind: Option<wgpu::BindGroup>,
 }
 
 /// The card, and what it keeps between pictures.
@@ -99,10 +117,12 @@ pub struct Gpu {
     queue: wgpu::Queue,
     state: Option<RenderState>,
     scene: wgpu::RenderPipeline,
+    clear: wgpu::RenderPipeline,
     post: wgpu::RenderPipeline,
     lines: wgpu::RenderPipeline,
     group0: wgpu::BindGroupLayout,
     group1: wgpu::BindGroupLayout,
+    group2: wgpu::BindGroupLayout,
     globals: wgpu::Buffer,
     segments: (wgpu::Buffer, u64),
     mesh: Option<Uploaded>,
@@ -124,6 +144,12 @@ fn put_words(into: &mut Words, words: &[u32]) {
 
 fn entry(binding: u32, buffer: &wgpu::Buffer) -> wgpu::BindGroupEntry<'_> {
     wgpu::BindGroupEntry { binding, resource: buffer.as_entire_binding() }
+}
+
+/// A unit vector as four 16-bit signed fractions, the last 0.
+fn put_unit(into: &mut Words, v: &[f32; 3]) {
+    let q = |x: f32| (x.clamp(-1.0, 1.0) * 32767.0).round() as i16;
+    into.extend([q(v[0]), q(v[1]), q(v[2]), 0].iter().flat_map(|q| q.to_ne_bytes()));
 }
 
 fn rgb(c: Rgb) -> [f32; 3] {
@@ -197,9 +223,14 @@ impl Gpu {
             ty: wgpu::BindingType::Texture { sample_type, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false },
             count: None,
         };
+        let (float, uint) = (wgpu::TextureSampleType::Float { filterable: false }, wgpu::TextureSampleType::Uint);
         let group1 = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("bimcraft-3d-targets"),
-            entries: &[texture(0, wgpu::TextureSampleType::Float { filterable: false }), texture(1, wgpu::TextureSampleType::Uint)],
+            entries: &[texture(0, float), texture(1, uint), texture(2, wgpu::TextureSampleType::Depth)],
+        });
+        let group2 = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("bimcraft-3d-clear-targets"),
+            entries: &[texture(0, float), texture(1, uint)],
         });
         let layout = |label, groups: &[Option<&wgpu::BindGroupLayout>]| {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -208,10 +239,11 @@ impl Gpu {
                 immediate_size: 0,
             })
         };
-        let (surface_layout, picture_layout) =
-            (layout("bimcraft-3d-scene", &[Some(&group0)]), layout("bimcraft-3d-picture", &[Some(&group0), Some(&group1)]));
+        let surface_layout = layout("bimcraft-3d-scene", &[Some(&group0)]);
+        let targets_layout = layout("bimcraft-3d-over", &[Some(&group0), Some(&group1)]);
+        let picture_layout = layout("bimcraft-3d-picture", &[Some(&group0), Some(&group1), Some(&group2)]);
         let attributes =
-            wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x3, 3 => Uint32, 4 => Uint32, 5 => Uint32, 6 => Uint32];
+            wgpu::vertex_attr_array![0 => Float32x3, 1 => Snorm16x4, 2 => Snorm16x4, 3 => Uint32, 4 => Uint32, 5 => Uint32, 6 => Uint32];
         let target = |format| Some(wgpu::ColorTargetState { format, blend: None, write_mask: wgpu::ColorWrites::ALL });
         let pipeline = |label,
                         layout: &wgpu::PipelineLayout,
@@ -252,12 +284,21 @@ impl Gpu {
             &surface_layout,
             "vs_scene",
             "fs_scene",
-            &[Some(vertex_layout)],
+            &[Some(vertex_layout.clone())],
             &[target(COLOR), target(IDS)],
             true,
         );
+        let clear = pipeline(
+            "bimcraft-3d-clear",
+            &targets_layout,
+            "vs_scene",
+            "fs_clear",
+            &[Some(vertex_layout)],
+            &[target(COLOR), target(CLEAR_IDS)],
+            true,
+        );
         let post = pipeline("bimcraft-3d-post", &picture_layout, "vs_full", "fs_post", &[], &[target(COLOR)], false);
-        let lines = pipeline("bimcraft-3d-lines", &picture_layout, "vs_line", "fs_line", &[], &[target(COLOR)], false);
+        let lines = pipeline("bimcraft-3d-lines", &targets_layout, "vs_line", "fs_line", &[], &[target(COLOR)], false);
         let globals = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("bimcraft-3d-globals"),
             size: GLOBALS,
@@ -271,10 +312,12 @@ impl Gpu {
             queue,
             state: None,
             scene,
+            clear,
             post,
             lines,
             group0,
             group1,
+            group2,
             globals,
             segments,
             mesh: None,
@@ -334,21 +377,36 @@ impl Gpu {
         }
         self.upload(mesh)?;
         self.size(w, h);
-        let (Some(up), Some(targets)) = (&self.mesh, &self.targets) else { return Err("nothing to draw on".into()) };
-        // Each owner's edge and tint, and each skin as the zoom looks it up.
-        let tint = |id: Id| tints.iter().find(|(t, _)| *t == id).map(|(_, c)| *c);
-        let mut owners = Words::new();
-        for (id, edge) in &mesh.owners {
-            let (e, t) = (rgb(*edge), tint(*id));
-            let c = t.map_or([0.0; 3], rgb);
-            put(&mut owners, &[e[0], e[1], e[2], 0.0, c[0], c[1], c[2], if t.is_some() { 1.0 } else { 0.0 }]);
+        let (device, queue) = (&self.device, &self.queue);
+        let write = |buffer: &wgpu::Buffer, bytes: &[u8]| {
+            if !bytes.is_empty() {
+                queue.write_buffer(buffer, 0, bytes);
+            }
+        };
+        let (Some(up), Some(targets)) = (&mut self.mesh, &self.targets) else { return Err("nothing to draw on".into()) };
+        // Each owner's edge, how much of it shows, and its tint: written again only when the tints change.
+        if up.tints.as_deref() != Some(tints) {
+            let tinted: BTreeMap<Id, Rgb> = tints.iter().copied().collect();
+            let mut owners = Words::with_capacity(mesh.owners.len() * OWNER as usize);
+            for o in &mesh.owners {
+                let (e, t) = (rgb(o.edge), tinted.get(&o.id));
+                let c = t.map_or([0.0; 3], |c| rgb(*c));
+                let shows = 1.0 - f32::from(o.transparency) / 100.0;
+                put(&mut owners, &[e[0], e[1], e[2], shows, c[0], c[1], c[2], if t.is_some() { 1.0 } else { 0.0 }]);
+            }
+            write(&up.owners, &owners);
+            up.tints = Some(tints.to_vec());
         }
-        self.write(&up.owners, &owners);
-        let mut skins = Words::new();
-        for words in mesh.lookups(cam) {
-            put_words(&mut skins, &words);
+        // Each skin as the zoom looks it up: written again only when a level changes.
+        let lookups = mesh.lookups(cam);
+        if lookups != up.lookups {
+            let mut skins = Words::new();
+            for words in &lookups {
+                put_words(&mut skins, words);
+            }
+            write(&up.skins, &skins);
+            up.lookups = lookups;
         }
-        self.write(&up.skins, &skins);
         // Each mark's lines, from the mesh's origin so that f32 holds them.
         let mut lines = Words::new();
         let mut count = 0u32;
@@ -362,12 +420,14 @@ impl Gpu {
             }
         }
         if lines.len() as u64 > self.segments.1 {
-            self.segments = (Gpu::storage(&self.device, lines.len() as u64), lines.len() as u64);
+            self.segments = (Gpu::storage(device, lines.len() as u64), lines.len() as u64);
+            up.bind = None;
         }
-        self.write(&self.segments.0, &lines);
+        write(&self.segments.0, &lines);
         // The view: scaled so that a mm is as many pixels in clip space as in the picture, and the mesh's depth is 0 to 1.
         let view = mesh.view(cam);
         let (width, height) = (w as f32, h as f32);
+        let through = up.clear_from < up.count;
         let mut globals = Words::new();
         put(&mut globals, &[view.right[0], view.right[1], view.right[2], 2.0 * view.scale / width]);
         put(&mut globals, &[view.up[0], view.up[1], view.up[2], 2.0 * view.scale / height]);
@@ -376,44 +436,66 @@ impl Gpu {
         put(&mut globals, &[mesh.origin[0] as f32, mesh.origin[1] as f32, mesh.origin[2] as f32, 0.0]);
         put(&mut globals, &[rgb(ground)[0], rgb(ground)[1], rgb(ground)[2], 0.0]);
         // 1.5 px, as the processor lets a line show through a surface that near.
-        put(&mut globals, &[width, height, 1.5 / view.scale * 0.5 / view.depth, 0.0]);
-        self.write(&self.globals, &globals);
-        let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("bimcraft-3d-buffers"),
-            layout: &self.group0,
-            entries: &[
-                entry(0, &self.globals),
-                entry(1, &up.owners),
-                entry(2, &self.segments.0),
-                entry(3, &up.skins),
-                entry(4, &up.texels),
-            ],
+        put(&mut globals, &[width, height, 1.5 / view.scale * 0.5 / view.depth, if through { 1.0 } else { 0.0 }]);
+        write(&self.globals, &globals);
+        let bind = up.bind.get_or_insert_with(|| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("bimcraft-3d-buffers"),
+                layout: &self.group0,
+                entries: &[
+                    entry(0, &self.globals),
+                    entry(1, &up.owners),
+                    entry(2, &self.segments.0),
+                    entry(3, &up.skins),
+                    entry(4, &up.texels),
+                ],
+            })
         });
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("bimcraft-3d") });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("bimcraft-3d") });
         let attachment = |view| wgpu::RenderPassColorAttachment {
             view,
             depth_slice: None,
             resolve_target: None,
             ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Store },
         };
-        {
+        let depth = |view| wgpu::RenderPassDepthStencilAttachment {
+            view,
+            depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0.0), store: wgpu::StoreOp::Store }),
+            stencil_ops: None,
+        };
+        // The opaque surfaces, then (when the view sees through any) those seen through, the nearest in front of them.
+        for (name, pipeline, color, ids, z, vertices) in [
+            ("bimcraft-3d-surfaces", &self.scene, &targets.color, &targets.ids, &targets.depth, 0..up.clear_from),
+            (
+                "bimcraft-3d-seen-through",
+                &self.clear,
+                &targets.clear_color,
+                &targets.clear_ids,
+                &targets.clear_depth,
+                up.clear_from..up.count,
+            ),
+        ] {
+            let through_pass = name == "bimcraft-3d-seen-through";
+            if through_pass && !through {
+                continue;
+            }
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("bimcraft-3d-surfaces"),
-                color_attachments: &[Some(attachment(&targets.color)), Some(attachment(&targets.ids))],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &targets.depth,
-                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0.0), store: wgpu::StoreOp::Store }),
-                    stencil_ops: None,
-                }),
+                label: Some(name),
+                color_attachments: &[Some(attachment(color)), Some(attachment(ids))],
+                depth_stencil_attachment: Some(depth(z)),
                 timestamp_writes: None,
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            if up.count > 0 {
-                pass.set_pipeline(&self.scene);
-                pass.set_bind_group(0, &bind, &[]);
+            if !vertices.is_empty() {
+                pass.set_pipeline(pipeline);
+                pass.set_bind_group(0, &*bind, &[]);
+                // What is seen through reads the opaque depth, which the opaque pass is writing.
+                if through_pass {
+                    pass.set_bind_group(1, &targets.bind, &[]);
+                }
                 pass.set_vertex_buffer(0, up.vertices.slice(..));
-                pass.draw(0..up.count, 0..1);
+                pass.draw(vertices, 0..1);
             }
         }
         for (name, pipeline, load, instances) in
@@ -436,8 +518,11 @@ impl Gpu {
                 multiview_mask: None,
             });
             pass.set_pipeline(pipeline);
-            pass.set_bind_group(0, &bind, &[]);
+            pass.set_bind_group(0, &*bind, &[]);
             pass.set_bind_group(1, &targets.bind, &[]);
+            if name == "edges" {
+                pass.set_bind_group(2, &targets.clear_bind, &[]);
+            }
             // The edges are one triangle over the whole picture; the levels' lines two to a segment.
             pass.draw(0..if name == "edges" { 3 } else { 6 }, 0..instances);
         }
@@ -458,8 +543,8 @@ impl Gpu {
         let mut bytes = Words::with_capacity(size as usize);
         for Vertex { position, normal, face, color, owner, plane, tex } in &mesh.vertices {
             put(&mut bytes, position);
-            put(&mut bytes, normal);
-            put(&mut bytes, face);
+            put_unit(&mut bytes, normal);
+            put_unit(&mut bytes, face);
             put_words(&mut bytes, &[*color, *owner, *plane, *tex]);
         }
         let make = |label: &str, size: u64, usage: wgpu::BufferUsages| {
@@ -475,6 +560,10 @@ impl Gpu {
             mesh: Arc::clone(mesh),
             vertices,
             count: mesh.vertices.len() as u32,
+            clear_from: mesh.clear_from.min(mesh.vertices.len()) as u32,
+            tints: None,
+            lookups: Vec::new(),
+            bind: None,
             // An array in a shader is at least one element long.
             owners: Gpu::storage(&self.device, mesh.owners.len().max(1) as u64 * OWNER),
             skins: Gpu::storage(&self.device, mesh.skins.len().max(1) as u64 * SKIN),
@@ -505,7 +594,12 @@ impl Gpu {
         let (color, ids, depth) = (
             view(&texture("bimcraft-3d-color", COLOR, render | sampled)),
             view(&texture("bimcraft-3d-ids", IDS, render | sampled)),
-            view(&texture("bimcraft-3d-depth", DEPTH, render)),
+            view(&texture("bimcraft-3d-depth", DEPTH, render | sampled)),
+        );
+        let (clear_color, clear_ids, clear_depth) = (
+            view(&texture("bimcraft-3d-clear-color", COLOR, render | sampled)),
+            view(&texture("bimcraft-3d-clear-ids", CLEAR_IDS, render | sampled)),
+            view(&texture("bimcraft-3d-clear-depth", DEPTH, render)),
         );
         let picture = texture("bimcraft-3d-picture", COLOR, render | sampled | wgpu::TextureUsages::COPY_SRC);
         let picture_view = view(&picture);
@@ -515,6 +609,15 @@ impl Gpu {
             entries: &[
                 wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&color) },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&ids) },
+                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&depth) },
+            ],
+        });
+        let clear_bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("bimcraft-3d-clear-targets"),
+            layout: &self.group2,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&clear_color) },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&clear_ids) },
             ],
         });
         if let Some(state) = &self.state {
@@ -524,7 +627,8 @@ impl Gpu {
                 None => self.texture = Some(renderer.register_native_texture(&self.device, &picture_view, wgpu::FilterMode::Nearest)),
             }
         }
-        self.targets = Some(Targets { size: (w, h), color, ids, depth, picture, picture_view, bind });
+        self.targets =
+            Some(Targets { size: (w, h), color, ids, depth, clear_color, clear_ids, clear_depth, picture, picture_view, bind, clear_bind });
     }
 }
 
@@ -582,23 +686,15 @@ mod tests {
         mapped.chunks_exact(row).flat_map(|r| r[..w * 4].to_vec()).collect()
     }
 
-    #[test]
-    fn the_card_draws_what_the_processor_does() {
-        let Some(mut gpu) = headless() else {
-            eprintln!("no graphics adapter here: the card's picture is not compared");
-            return;
-        };
-        let mut s = Session::new();
-        s.script(bimcraft_core::sample::SAMPLE).unwrap();
+    /// Whether the card's picture of `s`'s 3D view, with `tints`, is the processor's: no more than one pixel in 200 further
+    /// than six levels of a channel from it.
+    fn draws_as_the_processor(gpu: &mut Gpu, s: &Session, tints: &[(Id, Rgb)]) {
         let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
         let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
         let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
-        let level = s.model.levels().first().unwrap().0;
-        let wall = s.model.elements.iter().find(|(_, e)| e.category() == "wall").unwrap().0;
-        let tints = [(level, Rgb(0, 120, 215)), (*wall, Rgb(255, 160, 0))];
-        let cpu = scene.render_in(&cam, &tints, &look);
-        gpu.draw(&mesh, &cam, &tints, PAPER).unwrap();
-        let pixels = read(&gpu);
+        let cpu = scene.render_in(&cam, tints, &look);
+        gpu.draw(&mesh, &cam, tints, PAPER).unwrap();
+        let pixels = read(gpu);
         assert_eq!(pixels.len(), cpu.rgba.len());
         let far = |a: &[u8], b: &[u8]| a[..3].iter().zip(&b[..3]).any(|(x, y)| x.abs_diff(*y) > 6);
         let wrong: Vec<usize> = (0..pixels.len() / 4).filter(|&k| far(&pixels[4 * k..4 * k + 4], &cpu.rgba[4 * k..4 * k + 4])).collect();
@@ -616,6 +712,43 @@ mod tests {
         assert!(wrong.len() * 200 < pixels.len() / 4, "{} of {} pixels differ from the processor's picture", wrong.len(), pixels.len() / 4);
     }
 
+    fn sample() -> Session {
+        let mut s = Session::new();
+        s.script(bimcraft_core::sample::SAMPLE).unwrap();
+        s
+    }
+
+    #[test]
+    fn the_card_draws_what_the_processor_does() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        let s = sample();
+        let level = s.model.levels().first().unwrap().0;
+        let wall = s.model.elements.iter().find(|(_, e)| e.category() == "wall").unwrap().0;
+        draws_as_the_processor(&mut gpu, &s, &[(level, Rgb(0, 120, 215)), (*wall, Rgb(255, 160, 0))]);
+    }
+
+    #[test]
+    fn the_card_draws_what_the_view_sees_through_as_the_processor_does() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        let mut s = sample();
+        s.execute("graphics", &serde_json::json!({"view": "{3D}", "categories": {"walls": {"transparency": 60}}})).unwrap();
+        draws_as_the_processor(&mut gpu, &s, &[]);
+        // A wall seen through and selected shows its tint, however see-through it is.
+        let wall = *s.model.elements.iter().find(|(_, e)| e.category() == "wall").unwrap().0;
+        s.execute("graphics", &serde_json::json!({"view": "{3D}", "elements": {wall.to_string(): {"transparency": 90}}})).unwrap();
+        draws_as_the_processor(&mut gpu, &s, &[(wall, Rgb(255, 160, 0))]);
+        // A mass is seen through unless the view says otherwise.
+        s.execute("mass", &serde_json::json!({"level": "Level 1", "boundary": [[-3000, -3000], [3000, -3000], [3000, 3000], [-3000, 3000]], "height": 9000}))
+            .unwrap();
+        draws_as_the_processor(&mut gpu, &s, &[]);
+    }
+
     #[test]
     fn a_model_with_nothing_to_draw_draws_the_ground() {
         let Some(mut gpu) = headless() else { return };
@@ -631,44 +764,77 @@ mod tests {
     }
 
     /// `cargo test -p bimcraft-ui-egui --release gpu_speed -- --ignored --nocapture`: the 20-storey tower at 1920 x 1080, orbited.
+    /// The card's frames are timed back to back, apart from the processor's: timed straight after a processor's picture, a frame
+    /// waits for the card to wake from idle (24 ms on an RTX 2060 for a 1.5 ms frame), which a window turning the view never does.
     #[test]
     #[ignore]
     fn gpu_speed() {
         use std::time::Instant;
         let Some(mut gpu) = headless() else { return };
-        let model = Arc::new(bimcraft_core::sample::highrise(20).unwrap());
-        let (scene, look) = (Scene::new(&model), Look::of_3d(&model));
-        let start = Instant::now();
-        let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
-        eprintln!("mesh of {} vertices: {:?}", mesh.vertices.len(), start.elapsed());
-        let median = |mut v: Vec<f64>| {
+        let mut s = Session::new();
+        s.execute("highrise", &serde_json::json!({})).unwrap();
+        let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
+        let stats = |mut v: Vec<f64>| {
             v.sort_by(f64::total_cmp);
-            v[v.len() / 2]
+            format!("median {:.2} ms, p95 {:.2} ms", v[v.len() / 2], v[(v.len() * 95).div_ceil(100) - 1])
         };
-        let cams = |n: usize| (0..n).map(|i| scene.fit_in(AZIMUTH + i as f64 * 3.0, ELEVATION, 1920, 1080, &look)).collect::<Vec<_>>();
-        let (mut cpu, mut card) = (Vec::new(), Vec::new());
-        for cam in cams(9) {
-            let t = Instant::now();
-            let image = scene.render_in(&cam, &[], &look);
-            cpu.push(t.elapsed().as_secs_f64() * 1000.0);
-            std::hint::black_box(&image);
-            let t = Instant::now();
-            gpu.draw(&mesh, &cam, &[], PAPER).unwrap();
-            gpu.device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
-            card.push(t.elapsed().as_secs_f64() * 1000.0);
+        let walls: Vec<Id> = s.model.elements.iter().filter(|(_, e)| e.category() == "wall").map(|(id, _)| *id).collect();
+        let selected: Vec<(Id, Rgb)> = walls.iter().map(|id| (*id, Rgb(0, 120, 215))).collect();
+        let mut cases = vec![("textured", s.model.clone())];
+        let mut plain = Session::new();
+        plain.execute("highrise", &serde_json::json!({})).unwrap();
+        let names: Vec<String> = plain.model.materials.iter().filter(|(_, m)| m.texture.is_some()).map(|(n, _)| n.clone()).collect();
+        for name in names {
+            plain.execute("material", &serde_json::json!({"name": name, "texture": null})).unwrap();
         }
-        eprintln!(
-            "1920 x 1080 frame, median of 9: processor {:.1} ms, card {:.1} ms (first {:.1} ms)",
-            median(cpu),
-            median(card.clone()),
-            card[0]
-        );
-        let cam = cams(1)[0];
-        let t = Instant::now();
-        let hit = mesh.pick(&cam, &[], 960.0, 540.0);
-        eprintln!("first pick (builds the hierarchy): {:?} {hit:?}", t.elapsed());
-        let t = Instant::now();
-        mesh.pick(&cam, &[], 961.0, 541.0);
-        eprintln!("next pick: {:?}", t.elapsed());
+        cases.push(("untextured", plain.model.clone()));
+        let mut clear = plain;
+        clear.execute("graphics", &serde_json::json!({"view": "{3D}", "categories": {"windows": {"transparency": 60}}})).unwrap();
+        cases.push(("windows see-through", clear.model.clone()));
+        for (name, model) in cases {
+            let (scene, look) = (Scene::new(&model), Look::of_3d(&model));
+            let t = Instant::now();
+            let Ok(mesh) = Mesh::new(&scene, &look).map(Arc::new) else {
+                eprintln!("{name}: the card doesn't draw it");
+                continue;
+            };
+            eprintln!("{name}: mesh of {} vertices in {:.1} ms", mesh.vertices.len(), ms(t));
+            let cams: Vec<_> = (0..60).map(|i| scene.fit_in(AZIMUTH + f64::from(i) * 3.0, ELEVATION, 1920, 1080, &look)).collect();
+            let t = Instant::now();
+            gpu.draw(&mesh, &cams[0], &[], PAPER).unwrap();
+            gpu.device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+            eprintln!("  first frame (uploads the mesh): {:.1} ms", ms(t));
+            for (what, tints) in [("nothing selected", &[][..]), ("every wall selected", &selected[..])] {
+                let (mut submit, mut frame) = (Vec::new(), Vec::new());
+                for (i, cam) in cams.iter().enumerate() {
+                    let t = Instant::now();
+                    gpu.draw(&mesh, cam, tints, PAPER).unwrap();
+                    let sent = ms(t);
+                    gpu.device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+                    if i >= 5 {
+                        submit.push(sent);
+                        frame.push(ms(t));
+                    }
+                }
+                eprintln!("  {what}: frame {}; of it, sending {}", stats(frame), stats(submit));
+            }
+            let cpu: Vec<f64> = cams[..9]
+                .iter()
+                .map(|cam| {
+                    let t = Instant::now();
+                    std::hint::black_box(scene.render_in(cam, &[], &look));
+                    ms(t)
+                })
+                .collect();
+            eprintln!("  processor: {}", stats(cpu));
+            let t = Instant::now();
+            let hit = mesh.pick(&cams[0], &[], 960.0, 540.0);
+            eprintln!("  first pick (builds the hierarchy): {:.1} ms, {hit:?}", ms(t));
+            let t = Instant::now();
+            for i in 0..100 {
+                std::hint::black_box(mesh.pick(&cams[0], &[], 400.0 + f64::from(i) * 10.0, 540.0));
+            }
+            eprintln!("  next picks: {:.3} ms each", ms(t) / 100.0);
+        }
     }
 }

@@ -425,7 +425,7 @@ checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
 
 [[package]]
 name = "bimcraft"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "bimcraft-core",
  "bimcraft-rvt",
@@ -439,7 +439,7 @@ dependencies = [
 
 [[package]]
 name = "bimcraft-cli"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "bimcraft-core",
  "bimcraft-rvt",
@@ -448,7 +448,7 @@ dependencies = [
 
 [[package]]
 name = "bimcraft-core"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "flate2",
  "getrandom 0.3.4",
@@ -462,7 +462,7 @@ dependencies = [
 
 [[package]]
 name = "bimcraft-rvt"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "bimcraft-core",
  "cfb",
@@ -472,7 +472,7 @@ dependencies = [
 
 [[package]]
 name = "bimcraft-ui-egui"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "bimcraft-core",
  "bimcraft-update",
@@ -488,7 +488,7 @@ dependencies = [
 
 [[package]]
 name = "bimcraft-update"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "ring",
  "semver",
