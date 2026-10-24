@@ -136,6 +136,9 @@ impl Mesh {
             return Err("hidden line or wireframe".into());
         }
         let plain = look.is_plain();
+        if scene.scans.iter().any(|s| plain || look.shows(s.owner)) {
+            return Err("a point cloud, which only the processor draws yet".into());
+        }
         let shown: Vec<usize> = (0..scene.tris.len()).filter(|&i| plain || look.shows(scene.tris[i].owner)).collect();
         if shown.len() > MAX_TRIS {
             return Err(format!("{} triangles, more than the card is given", shown.len()));
