@@ -46,10 +46,13 @@ pub const MODEL: [&str; 25] = [
     "roof",
 ];
 pub const ANNOTATION: [&str; 8] = ["dimension", "tag", "text", "spot", "grid", "level", "section", "elevation"];
+/// The point clouds, which views hide and override as Revit's Visibility/Graphics does on a tab of their own: not a model
+/// category, so Object Styles has no row for them.
+pub const SCANS: [&str; 1] = ["pointcloud"];
 
 /// Whether views draw elements of `category`.
 pub fn drawn(category: &str) -> bool {
-    MODEL.contains(&category) || ANNOTATION.contains(&category)
+    MODEL.contains(&category) || ANNOTATION.contains(&category) || SCANS.contains(&category)
 }
 
 /// How much of a mass a 3D view sees through, percent, unless its graphics say otherwise.
@@ -415,7 +418,7 @@ impl Graphics {
             if !drawn(c) {
                 return Err(format!(
                     "`{c}` isn't a category views draw; there are: {}",
-                    MODEL.iter().chain(&ANNOTATION).copied().collect::<Vec<_>>().join(", ")
+                    MODEL.iter().chain(&ANNOTATION).chain(&SCANS).copied().collect::<Vec<_>>().join(", ")
                 ));
             }
             o.check(&format!("category `{c}`"))?;

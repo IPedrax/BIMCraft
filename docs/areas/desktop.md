@@ -58,7 +58,8 @@ line or grid east, north, west and south (`Model::clearances`, which finds them 
 `move` by the difference along that way.
 
 A point picked in a plan lands where `snap::snap` says, the core's so every front end agrees: on the end, middle or centre of
-what's drawn (`Scene::of`), where two straight lines (walls, grids; not arcs) cross, the foot of the perpendicular from the last point
+what's drawn (`Scene::of`), where two straight lines (walls, grids; not arcs) cross, else a scan's point where the cut plane cuts it
+([point clouds](point-clouds.md)), the foot of the perpendicular from the last point
 to one, a guide through that point at
 a multiple of `Snaps::angle` from east or from the line before it (where the guide crosses a wall or grid it lands there, and a
 grid point lying on it beats a rounded length), a wall's centre line, else the nearest 10 mm. The desktop's `BimApp::snap` gives

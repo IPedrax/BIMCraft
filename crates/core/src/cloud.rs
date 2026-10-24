@@ -1,8 +1,15 @@
 //! Point clouds: what a laser scan brings in. A file's points are read from public specifications
 //! (PTS and XYZ text, PLY, ASPRS LAS 1.2 to 1.4), turned into millimetres, thinned to what a project
-//! may hold, and kept about their centre as `f32`, which holds a millimetre across `MAX_SPAN`.
+//! may hold, and kept about their centre as `f32`, which holds a millimetre across `MAX_SPAN`. A
+//! project holds each scan once, as a [`Cloud`]; a `PointCloud` element places it.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::io::{Read, Write};
+use std::sync::{Arc, OnceLock};
+
+use flate2::Compression;
+use flate2::read::ZlibDecoder;
+use flate2::write::ZlibEncoder;
 
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +21,12 @@ pub const MAX_BYTES: usize = 2 << 30;
 pub const MAX_FILE_COORD: f64 = 1e12;
 /// The widest a cloud may be along any axis, mm: `f32` about its centre holds a millimetre that far.
 pub const MAX_SPAN: f64 = 2e7;
+/// Scans one project may hold.
+pub const MAX_CLOUDS: usize = 16;
+/// Files one scan may be brought in from: a survey's stations.
+pub const MAX_STATIONS: usize = 256;
+/// How wide a square of a cloud's [`Grid`] is, mm.
+const CELL: f64 = 250.0;
 
 /// What a file of points is written as.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,6 +106,352 @@ impl Scan {
     pub fn absolute(&self, i: usize) -> Option<[f64; 3]> {
         let p = self.points.get(i)?;
         Some([self.origin[0] + f64::from(p[0]), self.origin[1] + f64::from(p[1]), self.origin[2] + f64::from(p[2])])
+    }
+}
+
+/// One of the files a scan was brought in from: its name, and how many of the scan's points, following the stations before it,
+/// came from it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Station {
+    pub source: String,
+    pub points: usize,
+}
+
+/// Several files' scans as one, about the middle of them all, and a station for each. Where `spacing` is more than 0, one point
+/// is kept in each cube of it, so where the stations overlap they aren't kept twice. Among files with colours, one without is
+/// grey.
+pub fn merge(scans: Vec<(String, Scan)>, spacing: f64) -> Result<(Scan, Vec<Station>), String> {
+    if !(spacing.is_finite() && spacing >= 0.0) {
+        return Err(format!("a spacing of {spacing} mm isn't one"));
+    }
+    let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+    for (_, scan) in &scans {
+        for p in &scan.points {
+            for k in 0..3 {
+                let v = scan.origin[k] + f64::from(p[k]);
+                lo[k] = lo[k].min(v);
+                hi[k] = hi[k].max(v);
+            }
+        }
+    }
+    if !lo.iter().all(|v| v.is_finite()) {
+        return Err("the files hold no points".into());
+    }
+    for k in 0..3 {
+        if hi[k] - lo[k] > MAX_SPAN {
+            return Err(format!("together they're {:.0} mm wide along {}; up to {MAX_SPAN} mm", hi[k] - lo[k], ["x", "y", "z"][k]));
+        }
+    }
+    let origin = [0, 1, 2].map(|k| (lo[k] + hi[k]) / 2.0);
+    let coloured = scans.iter().any(|(_, scan)| scan.colours.is_some());
+    let mut cells = HashSet::new();
+    let (mut points, mut colours, mut stations, mut read) = (Vec::new(), Vec::new(), Vec::new(), 0_usize);
+    for (source, scan) in scans {
+        let before = points.len();
+        for (i, p) in scan.points.iter().enumerate() {
+            let a = [0, 1, 2].map(|k| scan.origin[k] + f64::from(p[k]));
+            if spacing > 0.0 && !cells.insert([0, 1, 2].map(|k| ((a[k] - lo[k]) / spacing).floor() as i64)) {
+                continue;
+            }
+            points.push([0, 1, 2].map(|k| (a[k] - origin[k]) as f32));
+            if coloured {
+                colours.push(scan.colours.as_ref().and_then(|c| c.get(i).copied()).unwrap_or([GREY; 3]));
+            }
+        }
+        read = read.saturating_add(scan.read);
+        stations.push(Station { source, points: points.len() - before });
+    }
+    Ok((Scan { origin, points, colours: coloured.then_some(colours), read }, stations))
+}
+
+/// A scan as a project holds it: its points about their middle, mm, their colours if the file had any, and where it came
+/// from. Cheap to clone: the points are shared.
+#[derive(Clone)]
+pub struct Cloud {
+    source: String,
+    /// The files it came from, when it came from more than one.
+    stations: Vec<Station>,
+    origin: [f64; 3],
+    read: usize,
+    points: Arc<Vec<[f32; 3]>>,
+    colours: Option<Arc<Vec<[u8; 3]>>>,
+    lo: [f32; 3],
+    hi: [f32; 3],
+    /// What a project file holds of it, made the first time it's saved.
+    packed: Arc<OnceLock<CloudFile>>,
+    /// Where its points are from above, made the first time something snaps to it.
+    grid: Arc<OnceLock<Grid>>,
+}
+
+/// A cloud's points by the square [`CELL`] mm wide they lie in, seen from above.
+struct Grid {
+    cells: HashMap<(i64, i64), Vec<u32>>,
+}
+
+fn cell(v: f64) -> i64 {
+    (v / CELL).floor() as i64
+}
+
+impl std::fmt::Debug for Cloud {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Cloud({:?}, {} points)", self.source, self.points.len())
+    }
+}
+
+impl PartialEq for Cloud {
+    fn eq(&self, other: &Cloud) -> bool {
+        self.source == other.source
+            && self.stations == other.stations
+            && self.origin == other.origin
+            && self.read == other.read
+            && (Arc::ptr_eq(&self.points, &other.points) || self.points == other.points)
+            && self.colours == other.colours
+    }
+}
+
+impl Cloud {
+    /// A scan read from the file `source` (its name, for people to know it by), or why it can't be held.
+    pub fn new(source: &str, scan: Scan) -> Result<Cloud, String> {
+        let Scan { origin, points, colours, read } = scan;
+        Cloud::checked(source.chars().take(crate::model::MAX_TEXT).collect(), Vec::new(), origin, read, points, colours)
+    }
+
+    /// A scan brought in from several files, `stations`, or why it can't be held. It's known by the first.
+    pub fn of_stations(scan: Scan, stations: Vec<Station>) -> Result<Cloud, String> {
+        let Scan { origin, points, colours, read } = scan;
+        let source = stations.first().map(|t| t.source.clone()).unwrap_or_default();
+        Cloud::checked(source, stations, origin, read, points, colours)
+    }
+
+    fn checked(
+        mut source: String,
+        mut stations: Vec<Station>,
+        origin: [f64; 3],
+        read: usize,
+        points: Vec<[f32; 3]>,
+        colours: Option<Vec<[u8; 3]>>,
+    ) -> Result<Cloud, String> {
+        if points.is_empty() || points.len() > MAX_CLOUD_POINTS {
+            return Err(format!("a cloud holds 1 to {MAX_CLOUD_POINTS} points, not {}", points.len()));
+        }
+        if read < points.len() {
+            return Err(format!("a cloud read from {read} points can't keep {}", points.len()));
+        }
+        if !origin.iter().all(|v| v.is_finite() && v.abs() <= MAX_FILE_COORD) {
+            return Err(format!("a cloud's origin {origin:?} isn't one"));
+        }
+        if colours.as_ref().is_some_and(|c| c.len() != points.len()) {
+            return Err("a cloud has a colour for each point or none".into());
+        }
+        if stations.len() == 1 {
+            stations.clear();
+        }
+        if stations.len() > MAX_STATIONS {
+            return Err(format!("a cloud comes from up to {MAX_STATIONS} files, not {}", stations.len()));
+        }
+        if !stations.is_empty() && stations.iter().map(|t| t.points).try_fold(0_usize, usize::checked_add) != Some(points.len()) {
+            return Err("a cloud's stations hold all its points between them".into());
+        }
+        for t in &mut stations {
+            t.source = t.source.chars().take(crate::model::MAX_TEXT).collect();
+        }
+        if let Some(first) = stations.first() {
+            source.clone_from(&first.source);
+        }
+        let (mut lo, mut hi) = ([f32::INFINITY; 3], [f32::NEG_INFINITY; 3]);
+        for p in &points {
+            for k in 0..3 {
+                let v = p[k];
+                if !(v.is_finite() && f64::from(v.abs()) <= MAX_SPAN) {
+                    return Err(format!("a cloud's point lies {v} mm from its middle, past {MAX_SPAN}"));
+                }
+                lo[k] = lo[k].min(v);
+                hi[k] = hi[k].max(v);
+            }
+        }
+        Ok(Cloud {
+            source,
+            stations,
+            origin,
+            read,
+            points: Arc::new(points),
+            colours: colours.map(Arc::new),
+            lo,
+            hi,
+            packed: Arc::default(),
+            grid: Arc::default(),
+        })
+    }
+
+    /// The file it was read from.
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    /// The files it came from, each with its share of the points, when it came from more than one.
+    pub fn stations(&self) -> &[Station] {
+        &self.stations
+    }
+
+    /// Where its middle was in the file's coordinates, mm.
+    pub fn origin(&self) -> [f64; 3] {
+        self.origin
+    }
+
+    /// The points the file held, before thinning.
+    pub fn read(&self) -> usize {
+        self.read
+    }
+
+    pub fn len(&self) -> usize {
+        self.points.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.points.is_empty()
+    }
+
+    /// Each point from its middle, mm.
+    pub fn points(&self) -> &[[f32; 3]] {
+        &self.points
+    }
+
+    pub fn colours(&self) -> Option<&[[u8; 3]]> {
+        self.colours.as_deref().map(Vec::as_slice)
+    }
+
+    /// Its points, shared: what a view keeps of it without copying them.
+    pub(crate) fn shared_points(&self) -> Arc<Vec<[f32; 3]>> {
+        Arc::clone(&self.points)
+    }
+
+    pub(crate) fn shared_colours(&self) -> Option<Arc<Vec<[u8; 3]>>> {
+        self.colours.clone()
+    }
+
+    /// Of its points whose height from its middle lies within `z`, the nearest to `at` (from its middle, mm) seen from above and
+    /// no farther than `reach`: what a plan snaps to. It looks only in the squares of its [`Grid`] that `reach` touches.
+    pub fn nearest(&self, at: [f64; 2], reach: f64, z: (f64, f64)) -> Option<[f32; 3]> {
+        if !(reach.is_finite() && reach >= 0.0 && at.iter().all(|v| v.is_finite() && v.abs() <= MAX_FILE_COORD)) {
+            return None;
+        }
+        // Only the squares it has: none when `at` is far from it.
+        let (lo, hi) = self.bounds();
+        let (x0, x1) = (cell((at[0] - reach).max(lo[0])), cell((at[0] + reach).min(hi[0])));
+        let (y0, y1) = (cell((at[1] - reach).max(lo[1])), cell((at[1] + reach).min(hi[1])));
+        if x0 > x1 || y0 > y1 {
+            return None;
+        }
+        let grid = self.grid.get_or_init(|| {
+            let mut cells: HashMap<(i64, i64), Vec<u32>> = HashMap::new();
+            for (i, p) in self.points.iter().enumerate() {
+                cells.entry((cell(f64::from(p[0])), cell(f64::from(p[1])))).or_default().push(i as u32);
+            }
+            Grid { cells }
+        });
+        let mut best: Option<(f64, [f32; 3])> = None;
+        for x in x0..=x1 {
+            for y in y0..=y1 {
+                for &i in grid.cells.get(&(x, y)).into_iter().flatten() {
+                    let Some(&p) = self.points.get(i as usize) else { continue };
+                    let d = (f64::from(p[0]) - at[0]).hypot(f64::from(p[1]) - at[1]);
+                    if d <= reach && (z.0..=z.1).contains(&f64::from(p[2])) && best.is_none_or(|(b, _)| d < b) {
+                        best = Some((d, p));
+                    }
+                }
+            }
+        }
+        best.map(|(_, p)| p)
+    }
+
+    /// The box round its points, from its middle, mm.
+    pub fn bounds(&self) -> ([f64; 3], [f64; 3]) {
+        (self.lo.map(f64::from), self.hi.map(f64::from))
+    }
+
+    fn file(&self) -> &CloudFile {
+        self.packed.get_or_init(|| {
+            let points: Vec<u8> = self.points.iter().flatten().flat_map(|v| v.to_le_bytes()).collect();
+            let colours = self.colours.as_ref().map(|c| c.iter().flatten().copied().collect::<Vec<u8>>());
+            CloudFile {
+                source: self.source.clone(),
+                stations: self.stations.clone(),
+                origin: self.origin,
+                read: self.read,
+                points: crate::commands::base64(&deflate(&points)),
+                colours: colours.map(|c| crate::commands::base64(&deflate(&c))),
+            }
+        })
+    }
+}
+
+/// How a cloud goes in a project file: its points as little-endian `f32` and its colours as bytes, each deflated (zlib)
+/// and in base64.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CloudFile {
+    source: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    stations: Vec<Station>,
+    origin: [f64; 3],
+    read: usize,
+    points: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    colours: Option<String>,
+}
+
+fn deflate(bytes: &[u8]) -> Vec<u8> {
+    let mut z = ZlibEncoder::new(Vec::new(), Compression::fast());
+    // Writing to a Vec doesn't fail.
+    let _ = z.write_all(bytes);
+    z.finish().unwrap_or_default()
+}
+
+/// The bytes base64 and zlib hide, if they're no more than `most`.
+fn inflate(text: &str, most: usize) -> Result<Vec<u8>, String> {
+    let packed = crate::texture::unbase64(text).ok_or("a cloud's data isn't base64")?;
+    let mut out = Vec::new();
+    ZlibDecoder::new(packed.as_slice())
+        .take(most as u64 + 1)
+        .read_to_end(&mut out)
+        .map_err(|e| format!("a cloud's data isn't zlib: {e}"))?;
+    if out.len() > most {
+        return Err(format!("a cloud's data holds more than {most} bytes"));
+    }
+    Ok(out)
+}
+
+impl TryFrom<CloudFile> for Cloud {
+    type Error = String;
+
+    fn try_from(f: CloudFile) -> Result<Cloud, String> {
+        let bytes = inflate(&f.points, MAX_CLOUD_POINTS * 12)?;
+        if bytes.len() % 12 != 0 {
+            return Err("a cloud's points are cut short".into());
+        }
+        let points: Vec<[f32; 3]> =
+            bytes.as_chunks::<12>().0.iter().map(|c| [0, 4, 8].map(|i| f32::from_le_bytes([c[i], c[i + 1], c[i + 2], c[i + 3]]))).collect();
+        let colours = match &f.colours {
+            Some(text) => Some(inflate(text, MAX_CLOUD_POINTS * 3)?.as_chunks::<3>().0.to_vec()),
+            None => None,
+        };
+        let cloud =
+            Cloud::checked(f.source.chars().take(crate::model::MAX_TEXT).collect(), f.stations.clone(), f.origin, f.read, points, colours)?;
+        let _ = cloud.packed.set(f);
+        Ok(cloud)
+    }
+}
+
+impl Serialize for Cloud {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        self.file().serialize(s)
+    }
+}
+
+impl<'de> Deserialize<'de> for Cloud {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Cloud, D::Error> {
+        Cloud::try_from(CloudFile::deserialize(d)?).map_err(serde::de::Error::custom)
     }
 }
 
@@ -222,8 +581,8 @@ struct Shade {
     intensity: (f64, f64),
 }
 
-/// The grey of a point with neither colour nor intensity in a file whose others have one.
-const GREY: u8 = 160;
+/// The grey of a point with neither colour nor intensity: in a file whose others have one, and in a view, of a scan with none.
+pub const GREY: u8 = 160;
 
 impl Shade {
     fn of(&self, raw: &Raw) -> [u8; 3] {
@@ -868,5 +1227,42 @@ mod tests {
                 let _ = read(&bytes, f, &o);
             }
         }
+    }
+
+    #[test]
+    fn a_scan_in_a_project_file_comes_back_as_it_went_and_a_broken_one_is_refused() {
+        let scan = read(b"0 0 0 255 0 0\n1 2 3 0 255 0\n", Format::Xyz, &Options::default()).unwrap();
+        let cloud = Cloud::new("two.xyz", scan).unwrap();
+        let text = serde_json::to_string(&cloud).unwrap();
+        let back: Cloud = serde_json::from_str(&text).unwrap();
+        assert_eq!(back, cloud);
+        assert_eq!((back.len(), back.read(), back.source(), back.colours().map(<[_]>::len)), (2, 2, "two.xyz", Some(2)));
+        let file: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let with = |key: &str, v: serde_json::Value| {
+            let mut f = file.clone();
+            f[key] = v;
+            serde_json::from_value::<Cloud>(f)
+        };
+        let packed = |bytes: &[u8]| serde_json::Value::from(crate::commands::base64(&deflate(bytes)));
+        for (key, v, says) in [
+            ("points", "!!!".into(), "base64"),
+            ("points", crate::commands::base64(b"not zlib").into(), "zlib"),
+            ("points", packed(&[0; 13]), "cut short"),
+            ("points", packed(&[]), "points"),
+            ("points", packed(&[f32::NAN.to_le_bytes(), [0; 4], [0; 4], [0; 4], [0; 4], [0; 4]].concat()), "past"),
+            ("points", packed(&[1e9f32.to_le_bytes(), [0; 4], [0; 4], [0; 4], [0; 4], [0; 4]].concat()), "past"),
+            ("colours", packed(&[1, 2, 3]), "colour"),
+            ("read", 1.into(), "read"),
+            ("origin", serde_json::json!([1e13, 0, 0]), "origin"),
+            ("extra", 1.into(), "unknown"),
+            ("stations", serde_json::json!([{"source": "a", "points": 1}, {"source": "b", "points": 2}]), "stations"),
+            ("stations", serde_json::json!([{"source": "a", "points": usize::MAX}, {"source": "b", "points": 3}]), "stations"),
+        ] {
+            let e = with(key, v).unwrap_err().to_string();
+            assert!(e.contains(says), "{key}: {e}");
+        }
+        // Data that unpacks past what a cloud may hold stops at it.
+        let e = inflate(&crate::commands::base64(&deflate(&vec![0; 1000])), 999).unwrap_err();
+        assert!(e.contains("more than 999"), "{e}");
     }
 }

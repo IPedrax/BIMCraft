@@ -337,7 +337,7 @@ fn decode(bytes: &[u8]) -> Result<Level, String> {
 }
 
 /// Bytes from standard base64, or none if it isn't.
-fn unbase64(text: &str) -> Option<Vec<u8>> {
+pub(crate) fn unbase64(text: &str) -> Option<Vec<u8>> {
     let mut out = Vec::with_capacity(text.len() / 4 * 3);
     let (mut held, mut bits) = (0_u32, 0_u32);
     for c in text.bytes() {

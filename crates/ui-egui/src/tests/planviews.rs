@@ -137,3 +137,41 @@ fn a_plan_in_the_window_carries_no_title_of_its_own_as_the_tab_names_it() {
         assert_ne!(d.owners.last(), Some(&None), "nothing is lettered at its bottom left (ceiling: {ceiling})");
     }
 }
+
+#[test]
+fn a_plan_paints_the_scan_it_sees() {
+    let dir = std::env::temp_dir().join(format!("bimcraft-ui-scan-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("floor.xyz");
+    let floor: String =
+        (0..=50).flat_map(|i| (0..=50).map(move |k| format!("{} {} 0.5 255 0 0\n", f64::from(i) * 0.04, f64::from(k) * 0.04))).collect();
+    std::fs::write(&path, floor).unwrap();
+    let mut h = app(&format!("{HOUSE}\npoint_cloud {}", json!({"path": path, "origin": "file"})));
+    h.run();
+    let loaded = h.state().canvas.drawing.pictures.as_ref().map(|(_, t)| t.len());
+    assert_eq!(loaded, Some(1), "the scan's picture is on the card");
+}
+
+#[test]
+fn a_wall_drawn_over_a_scan_snaps_to_where_the_plan_cuts_it_unless_manage_snaps_says_not() {
+    use bimcraft_core::snap::Kind;
+    let dir = std::env::temp_dir().join(format!("bimcraft-ui-snap-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("face.xyz");
+    // A scanned wall face a metre north of the house, along x from 2 m to 6 m and 2 m tall.
+    let face: String =
+        (0..=100).flat_map(|i| (0..=50).map(move |k| format!("{} 7 {}\n", 2.0 + f64::from(i) * 0.04, f64::from(k) * 0.04))).collect();
+    std::fs::write(&path, face).unwrap();
+    let mut h = app(&format!("{HOUSE}\npoint_cloud {}", json!({"path": path, "origin": "file"})));
+    tool(&mut h, "Wall");
+    let f = hover(&mut h, P2(4010.0, 7030.0)).unwrap();
+    assert_eq!((f.kind, f.at), (Kind::Point, P2(4000.0, 7000.0)));
+    key(&mut h, egui::Key::Escape);
+    press(&mut h, "Manage");
+    press(&mut h, "Snaps");
+    pick(&mut h, Role::CheckBox, "Point Cloud");
+    press(&mut h, "Close");
+    assert!(!h.state().snaps.cloud);
+    tool(&mut h, "Wall");
+    assert_ne!(hover(&mut h, P2(4010.0, 7030.0)).map(|f| f.kind), Some(Kind::Point));
+}

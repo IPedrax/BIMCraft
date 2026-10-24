@@ -19,6 +19,9 @@ const MAX_NEAR: usize = 64;
 /// How far past its centre line a wall's face may lie and still be taken for the cursor's, mm: a
 /// thicker wall isn't snapped to from farther than the reach plus this.
 const MAX_HALF_THICKNESS: f64 = 2500.0;
+/// How far over or under a plan's cut plane a scan's point may lie and still be snapped to, mm: where the plan cuts what
+/// was scanned.
+pub const CUT_BAND: f64 = 100.0;
 
 /// What a point snapped to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -30,6 +33,8 @@ pub enum Kind {
     Perpendicular,
     /// The nearest point of a wall's centre line.
     Nearest,
+    /// A point of a scan where the plan's cut plane cuts it.
+    Point,
     /// A point on an angle guide.
     Angle,
     /// Nothing to snap to: the nearest 10 mm.
@@ -46,6 +51,7 @@ impl Kind {
             Kind::Centre => "Centre",
             Kind::Perpendicular => "Perpendicular",
             Kind::Nearest => "Nearest",
+            Kind::Point => "Point Cloud",
             Kind::Angle => "Angle",
             Kind::Free => "",
         }
@@ -61,6 +67,8 @@ pub struct Snaps {
     pub centre: bool,
     pub perpendicular: bool,
     pub nearest: bool,
+    /// The points of a scan where the plan's cut plane cuts it.
+    pub cloud: bool,
     /// Degrees between the angles a direction snaps to, from east and from the line before it,
     /// from 1 to 180; anything else for none.
     pub angle: f64,
@@ -69,7 +77,16 @@ pub struct Snaps {
 impl Snaps {
     /// No snap at all, and no angle steps.
     pub fn none() -> Snaps {
-        Snaps { endpoint: false, midpoint: false, intersection: false, centre: false, perpendicular: false, nearest: false, angle: 0.0 }
+        Snaps {
+            endpoint: false,
+            midpoint: false,
+            intersection: false,
+            centre: false,
+            perpendicular: false,
+            nearest: false,
+            cloud: false,
+            angle: 0.0,
+        }
     }
 
     /// Just `kind` snapped to (a kind with no switch of its own is none), and no angle steps: what
@@ -83,6 +100,7 @@ impl Snaps {
             Kind::Centre => Snaps { centre: true, ..none },
             Kind::Perpendicular => Snaps { perpendicular: true, ..none },
             Kind::Nearest => Snaps { nearest: true, ..none },
+            Kind::Point => Snaps { cloud: true, ..none },
             Kind::Angle | Kind::Free => none,
         }
     }
@@ -90,7 +108,16 @@ impl Snaps {
 
 impl Default for Snaps {
     fn default() -> Snaps {
-        Snaps { endpoint: true, midpoint: true, intersection: true, centre: true, perpendicular: true, nearest: true, angle: 15.0 }
+        Snaps {
+            endpoint: true,
+            midpoint: true,
+            intersection: true,
+            centre: true,
+            perpendicular: true,
+            nearest: true,
+            cloud: true,
+            angle: 15.0,
+        }
     }
 }
 
@@ -222,6 +249,33 @@ impl Scene {
     }
 }
 
+/// Of the points of the scans `look` shows that lie within [`CUT_BAND`] of `level`'s cut plane, the nearest to `p` seen from
+/// above, within `reach`.
+fn cloud_point(m: &Model, level: Id, p: P2, reach: f64, look: &Look) -> Option<P2> {
+    if m.clouds.is_empty() {
+        return None;
+    }
+    let cut = m.plan_range(level).cut;
+    m.elements
+        .iter()
+        .filter_map(|(&id, e)| match e {
+            Element::PointCloud(pc) if look.shows(id) => Some(pc),
+            _ => None,
+        })
+        .filter_map(|pc| {
+            let cloud = m.clouds.get(&pc.cloud)?;
+            // The cursor in the scan's own terms: from its middle, turned back.
+            let base = m.elevation(pc.level) + pc.offset;
+            let (sin, cos) = pc.angle.to_radians().sin_cos();
+            let d = p - pc.at;
+            let local = [d.0 * cos + d.1 * sin, -d.0 * sin + d.1 * cos];
+            let q = cloud.nearest(local, reach, (cut - CUT_BAND - base, cut + CUT_BAND - base))?;
+            let [x, y, _] = m.cloud_place(pc)(q);
+            Some(P2(x, y))
+        })
+        .min_by(|a, b| a.dist(p).total_cmp(&b.dist(p)))
+}
+
 /// Where the segments `lines` cross each other.
 fn crossings(lines: &[(P2, P2)]) -> Vec<P2> {
     let on = |q: P2, (a, b): (P2, P2)| geom::dist_to_segment(q, a, b) <= TOL;
@@ -308,7 +362,8 @@ pub fn snap(m: &Model, level: Id, p: P2, reach: Reach, from: &[P2], square: bool
             (p.0, pinned) = (f.0, Some((false, f.0)));
         }
     }
-    let scene = Scene::of(m, level, p, reach.point.max(reach.line) + MAX_HALF_THICKNESS, &Look::of(m, level));
+    let look = Look::of(m, level);
+    let scene = Scene::of(m, level, p, reach.point.max(reach.line) + MAX_HALF_THICKNESS, &look);
     let by_distance = |a: &P2, b: &P2| a.dist(p).total_cmp(&b.dist(p));
     // The lines that pass near the cursor: what it can cross, or stand square to.
     let mut near: Vec<(P2, P2)> = scene.lines.iter().copied().filter(|(a, b)| geom::dist_to_segment(p, *a, *b) <= reach.point).collect();
@@ -333,6 +388,12 @@ pub fn snap(m: &Model, level: Id, p: P2, reach: Reach, from: &[P2], square: bool
         points.into_iter().filter(|(q, _)| q.dist(p) <= reach.point).min_by(|a, b| by_distance(&a.0, &b.0).then(rank(a.1).cmp(&rank(b.1))));
     if let Some((at, kind)) = hit {
         return Found { at, kind, guide: None };
+    }
+    // Else a scan's point where the cut plane cuts it.
+    if o.cloud
+        && let Some(at) = cloud_point(m, level, p, reach.point, &look)
+    {
+        return Found { at: micron(at), kind: Kind::Point, guide: None };
     }
 
     // The foot of the perpendicular from the last point.

@@ -1808,6 +1808,12 @@ const WORDS: &[[&str; 3]] = &[
     ["Centre", "Centro", "Centro"],
     ["Perpendicular", "Perpendicular", "Perpendicular"],
     ["Nearest", "Mais próximo", "Más cercano"],
+    ["Point Cloud", "Nuvem de pontos", "Nube de puntos"],
+    [
+        "A scan's points where the plan's cut plane cuts it, to trace what was measured",
+        "Os pontos de um escaneamento onde o plano de corte da planta o corta, para seguir o que foi medido",
+        "Los puntos de un escaneo donde el plano de corte de la planta lo corta, para seguir lo que se midió",
+    ],
     [
         "The ends of walls, grids and what else is drawn, and the points picked so far",
         "As extremidades de paredes, eixos e do que mais estiver desenhado, e os pontos já clicados",

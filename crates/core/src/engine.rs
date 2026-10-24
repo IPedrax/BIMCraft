@@ -157,6 +157,14 @@ impl Session {
                 if cmd.undoable && cmd.id != "split" {
                     self.stamp(first_new, COPIES.contains(&cmd.id));
                 }
+                // A scan goes with the last point cloud that placed it.
+                let unplaced = self.model.unplaced_clouds();
+                if !unplaced.is_empty() {
+                    let m = self.model_mut();
+                    for name in unplaced {
+                        m.clouds.remove(&name);
+                    }
+                }
                 // What a command was given by id points at the element's GUID; what it put in the library has an id and a GUID.
                 self.model_mut().resolve();
                 self.model_mut().sync_library();

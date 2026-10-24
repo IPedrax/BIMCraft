@@ -793,6 +793,38 @@ pub struct Scene {
     masses: BTreeSet<Id>,
     /// Each level's plane: its name, and the corners of its extent at its elevation.
     levels: Vec<(Id, String, [P3; 4])>,
+    /// The scans point clouds place, drawn as dots over the surfaces.
+    scans: Vec<Scan>,
+}
+
+/// A scan as a point cloud places it: its points and colours (shared with the model's), and where they go.
+struct Scan {
+    owner: Id,
+    points: Arc<Vec<[f32; 3]>>,
+    colours: Option<Arc<Vec<[u8; 3]>>>,
+    /// Its middle in the model, and the cosine and sine of its turn.
+    at: P3,
+    turn: (f64, f64),
+    /// The corners of the box round its points in the model, for fitting the view to it.
+    corners: [P3; 8],
+}
+
+impl Scan {
+    fn place(&self, p: [f32; 3]) -> P3 {
+        let (x, y, (cos, sin)) = (f64::from(p[0]), f64::from(p[1]), self.turn);
+        [self.at[0] + x * cos - y * sin, self.at[1] + x * sin + y * cos, self.at[2] + f64::from(p[2])]
+    }
+}
+
+/// The most points a picture draws, as Revit's density does: past it, every so many of each scan's.
+pub const DRAWN: usize = 2_000_000;
+
+/// How wide a point is drawn, px.
+pub(crate) const DOT: usize = 2;
+
+/// Which of `total` points a picture draws: every one of so many.
+pub(crate) fn every(total: usize) -> usize {
+    total.div_ceil(DRAWN).max(1)
 }
 
 /// How an element's triangles name their faces.
@@ -892,7 +924,21 @@ impl Scene {
                 (id, l.name.clone(), [[lo.0, lo.1, z], [hi.0, lo.1, z], [hi.0, hi.1, z], [lo.0, hi.1, z]])
             })
             .collect();
-        Scene { tris, planes, smooth, faces: Arc::new(faces), skins, bases, masses, levels, edges: OnceLock::new() }
+        let scans = m
+            .elements
+            .iter()
+            .filter_map(|(id, e)| {
+                let Element::PointCloud(pc) = e else { return None };
+                let cloud = m.clouds.get(&pc.cloud)?;
+                let (points, colours) = (cloud.shared_points(), cloud.shared_colours());
+                let (lo, hi) = m.cloud_box(*id)?;
+                let corners = std::array::from_fn(|k| std::array::from_fn(|axis| if k >> axis & 1 == 0 { lo[axis] } else { hi[axis] }));
+                let (sin, cos) = pc.angle.to_radians().sin_cos();
+                let at = [pc.at.0, pc.at.1, m.elevation(pc.level) + pc.offset];
+                Some(Scan { owner: *id, points, colours, at, turn: (cos, sin), corners })
+            })
+            .collect();
+        Scene { tris, planes, smooth, faces: Arc::new(faces), skins, bases, masses, levels, scans, edges: OnceLock::new() }
     }
 
     /// A view of the whole model from `azimuth` and `elevation` (degrees), fitted into the picture.
@@ -906,7 +952,8 @@ impl Scene {
         let room = |px: u32| (f64::from(px) - 2.0 * MARGIN).max(1.0);
         let solids = self.tris.iter().filter(|t| look.shows(t.owner)).flat_map(|t| t.p);
         let levels = self.levels.iter().filter(|(id, ..)| look.shows(*id)).flat_map(|(.., c)| *c);
-        let mut pts: Vec<P3> = solids.chain(levels).collect();
+        let scans = self.scans.iter().filter(|s| look.shows(s.owner)).flat_map(|s| s.corners);
+        let mut pts: Vec<P3> = solids.chain(levels).chain(scans).collect();
         let Some((target, w, h)) = extent(&cam, &pts) else {
             cam.scale = room(width).min(room(height)) / 10_000.0;
             return cam;
@@ -1201,6 +1248,57 @@ impl Scene {
         }
     }
 
+    /// The points of the scans `keep` takes that `clip` keeps, drawn into `depth` and `hit` as dots [`DOT`] wide where they are
+    /// nearer than what is there, no more than [`DRAWN`] of them; each pixel's colour, which is none where no scan is kept.
+    fn dots(
+        &self,
+        (cam, clip): (&Camera, Option<&Clip>),
+        (w, h): (usize, usize),
+        keep: impl Fn(&Scan) -> bool,
+        plain: bool,
+        look: &Look,
+        (depth, hit): (&mut [f32], &mut [u32]),
+    ) -> Vec<Rgb> {
+        let kept: Vec<(usize, &Scan)> = self.scans.iter().enumerate().filter(|(_, s)| keep(s)).collect();
+        if kept.is_empty() {
+            return Vec::new();
+        }
+        let mut dots = vec![PAPER; w * h];
+        let step = every(kept.iter().map(|(_, s)| s.points.len()).sum());
+        let grey = Rgb(crate::cloud::GREY, crate::cloud::GREY, crate::cloud::GREY);
+        let half = DOT as f64 / 2.0;
+        for (n, scan) in kept {
+            let slot = (self.tris.len() + n) as u32;
+            for (i, p) in scan.points.iter().enumerate().step_by(step) {
+                let (x, y, z) = cam.project(scan.place(*p));
+                if clip.is_some_and(|k| {
+                    z > k.near || k.far.is_some_and(|f| z < k.near - f) || x < k.x.0 || x > k.x.1 || y < k.y.0 || y > k.y.1
+                }) {
+                    continue;
+                }
+                let (x0, y0) = ((x - half).round(), (y - half).round());
+                if !(x0 > -(DOT as f64) && y0 > -(DOT as f64) && x0 < w as f64 && y0 < h as f64 && z.is_finite()) {
+                    continue;
+                }
+                let base = scan.colours.as_ref().and_then(|c| c.get(i)).map_or(grey, |c| Rgb(c[0], c[1], c[2]));
+                let colour = if plain { base } else { look.surface(scan.owner, base) };
+                let z = z as f32;
+                let (x0, y0) = (x0 as i64, y0 as i64);
+                for py in y0.max(0)..(y0 + DOT as i64).min(h as i64) {
+                    for px in x0.max(0)..(x0 + DOT as i64).min(w as i64) {
+                        let k = py as usize * w + px as usize;
+                        if let (Some(d), Some(s), Some(c)) = (depth.get_mut(k), hit.get_mut(k), dots.get_mut(k))
+                            && z > *d
+                        {
+                            (*d, *s, *c) = (z, slot, colour);
+                        }
+                    }
+                }
+            }
+        }
+        dots
+    }
+
     fn picture(&self, cam: &Camera, clip: Option<&Clip>, tints: &[(Id, Rgb)], look: &Look) -> Image {
         // A section's picture is hidden line, whatever the view says.
         let style = if clip.is_some() { VisualStyle::HiddenLine } else { look.style() };
@@ -1238,6 +1336,10 @@ impl Scene {
         let mut curve_lit = vec![0.0; w * h];
         let opaque = |t: &Tri| shown(t) && !see_through(t);
         self.raster((cam, clip), (w, h), opaque, None, &corner_light, (&mut depth, &mut hit, &mut curve_lit));
+        // The scans' points, each a dot in its colour where nothing opaque is nearer; in a section's picture, those between its
+        // line and its far clip. A pixel a point shows holds its scan's slot, after the triangles', and the point's colour.
+        let first = self.tris.len();
+        let dots = self.dots((cam, clip), (w, h), |s| plain || look.shows(s.owner), plain, look, (&mut depth, &mut hit));
         // Only a picture with something in it to see through needs the second pass, and its buffers.
         let through_any = !plain && self.tris.iter().any(|t| shown(t) && see_through(t));
         let (mut seen, mut seen_lit, mut near) = (Vec::new(), Vec::new(), Vec::new());
@@ -1292,18 +1394,26 @@ impl Scene {
         let tri = |k: usize| hit.get(k).map(|&t| t as usize).filter(|t| *t < self.tris.len());
         let through = |k: usize| seen.get(k).map(|&t| t as usize).filter(|t| *t < self.tris.len());
         let plane = |k: usize| tri(k).and_then(|t| self.planes.get(t)).copied();
+        // The scan a point at pixel `k` is of, and its colour.
+        let dot = |k: usize| {
+            let scan = self.scans.get((*hit.get(k)? as usize).checked_sub(first)?)?;
+            Some((scan.owner, *dots.get(k)?))
+        };
         let pixel = |k: usize| {
             let (px, py) = (k % w, k / w);
             let here = plane(k);
-            let edge = (px + 1 < w && plane(k + 1) != here) || (py + 1 < h && plane(k + w) != here);
+            // A surface's edge is where it meets another surface or nothing; a point is not one.
+            let differs = |n: usize| dot(n).is_none() && plane(n) != here;
+            let edge = dot(k).is_none() && ((px + 1 < w && differs(k + 1)) || (py + 1 < h && differs(k + w)));
             let owner_at = |k: usize| tri(k).and_then(|t| self.tris.get(t)).map(|t| t.owner);
             let tint = owner_at(k).and_then(|o| tints.get(&o));
             // An edge is drawn in the colour the view gives the edges of what it bounds.
             let edge_of = || [k, k + 1, k + w].into_iter().find_map(owner_at).map_or(EDGE, |o| look.edge(o, EDGE));
-            let c = match (edge, tri(k).and_then(|t| shaded(t, k, &curve_lit, &depth))) {
-                (true, _) => tint.copied().unwrap_or_else(edge_of),
-                (false, Some(s)) => tint.map_or(s, |c| mix(s, *c)),
-                (false, None) => PAPER,
+            let c = match (edge, dot(k), tri(k).and_then(|t| shaded(t, k, &curve_lit, &depth))) {
+                (_, Some((owner, c)), _) => tints.get(&owner).map_or(c, |t| mix(c, *t)),
+                (true, ..) => tint.copied().unwrap_or_else(edge_of),
+                (false, _, Some(s)) => tint.map_or(s, |c| mix(s, *c)),
+                (false, _, None) => PAPER,
             };
             // Over it, the nearest surface seen through, as much of it as the view lets show (and a
             // tinted one always a little, or selecting it would show nothing).
@@ -1335,7 +1445,7 @@ impl Scene {
         if through_any {
             hit = hit.iter().zip(&seen).map(|(h, s)| if *s == u32::MAX { *h } else { *s }).collect();
         }
-        let mut owners: Vec<Id> = self.tris.iter().map(|t| t.owner).collect();
+        let mut owners: Vec<Id> = self.tris.iter().map(|t| t.owner).chain(self.scans.iter().map(|s| s.owner)).collect();
         // Over it, each level's plane outlined where nothing nearer hides it (not in a section's picture,
         // which draws its own), picked as the level.
         // Unselected, the two edges nearer the camera are left out, as in Revit; selected, all four.
@@ -1687,6 +1797,13 @@ impl Image {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_picture_draws_every_point_up_to_its_budget_and_an_even_share_past_it() {
+        assert_eq!((every(0), every(1), every(DRAWN)), (1, 1, 1));
+        assert_eq!((every(DRAWN + 1), every(2 * DRAWN), every(5 * DRAWN - 1)), (2, 2, 5));
+        assert!((1..=6).all(|k| (k * DRAWN + 7).div_ceil(every(k * DRAWN + 7)) <= DRAWN));
+    }
 
     #[test]
     fn parallel_geometry_keeps_exact_triangle_order_and_ownership() {

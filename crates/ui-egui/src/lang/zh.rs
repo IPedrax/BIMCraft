@@ -1103,6 +1103,8 @@ pub(super) const WORDS: &[[&str; 2]] = &[
     ["Centre", "中心"],
     ["Perpendicular", "垂足"],
     ["Nearest", "最近点"],
+    ["Point Cloud", "点云"],
+    ["A scan's points where the plan's cut plane cuts it, to trace what was measured", "平面的剖切面切过扫描处的点，用于描绘测得的内容"],
     ["The ends of walls, grids and what else is drawn, and the points picked so far", "墙、轴网及其他已绘制对象的端点，以及迄今已拾取的点"],
     ["The middle of a wall, along its arc", "墙的中点，沿其弧线"],
     ["Where two walls or grids cross", "两面墙或两条轴网相交处"],

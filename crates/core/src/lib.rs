@@ -7,6 +7,8 @@ pub mod autosave;
 mod autosave_tests;
 pub mod bridge;
 pub mod cloud;
+#[cfg(test)]
+mod cloud_tests;
 mod commands;
 mod component_geometry;
 mod csg;

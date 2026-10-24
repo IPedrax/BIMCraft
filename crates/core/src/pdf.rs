@@ -17,9 +17,12 @@ fn deflate(bytes: &[u8]) -> Vec<u8> {
     z.finish().unwrap_or_default()
 }
 
+/// A picture as a page holds it: its width and height, its pixels' RGB, and their alpha if any isn't opaque.
+type Picture = (u32, u32, Vec<u8>, Option<Vec<u8>>);
+
 /// A page's content stream: the drawing's pixels mapped onto `paper` mm in points, y up; and its
-/// pictures, RGB, in the order the stream names them (`/Im0`, `/Im1`…).
-pub(crate) fn contents(d: &Drawing, paper: P2) -> (String, Vec<(u32, u32, Vec<u8>)>) {
+/// pictures, RGB and the alpha of one not all there, in the order the stream names them (`/Im0`, `/Im1`…).
+pub(crate) fn contents(d: &Drawing, paper: P2) -> (String, Vec<Picture>) {
     let k = 72.0 / 25.4 / d.view.scale;
     let mut s = format!("{k:.6} 0 0 {:.6} 0 {:.3} cm 1 J 0 j\n", -k, paper.1 * 72.0 / 25.4);
     let color =
@@ -51,7 +54,10 @@ pub(crate) fn contents(d: &Drawing, paper: P2) -> (String, Vec<(u32, u32, Vec<u8
             Prim::Image { at, width, height, rgba } => {
                 let (w, h) = (*width as f32, *height as f32);
                 let _ = writeln!(s, "q {w} 0 0 {} {} {} cm /Im{} Do Q", -h, at.0, at.1 + h, images.len());
-                images.push((*width, *height, rgba.as_chunks::<4>().0.iter().flat_map(|[r, g, b, _]| [*r, *g, *b]).collect()));
+                let pixels = rgba.as_chunks::<4>().0;
+                // What isn't all there (a scan's picture between its points) is masked by its alpha.
+                let alpha = pixels.iter().any(|[.., a]| *a < 255).then(|| pixels.iter().map(|[.., a]| *a).collect::<Vec<u8>>());
+                images.push((*width, *height, pixels.iter().flat_map(|[r, g, b, _]| [*r, *g, *b]).collect(), alpha));
             }
         }
     }
@@ -83,10 +89,15 @@ pub fn pdf(pages: &[(&Drawing, P2)]) -> Vec<u8> {
     for (d, paper) in pages {
         let (page, stream) = (next, next + 1);
         let (text, images) = contents(d, *paper);
-        let firsts = stream + 1;
-        next = firsts + images.len();
+        // Each image's object, and its mask's after it if it has one.
+        let mut numbers = Vec::with_capacity(images.len());
+        next = stream + 1;
+        for (.., alpha) in &images {
+            numbers.push(next);
+            next += if alpha.is_some() { 2 } else { 1 };
+        }
         kids.push(format!("{page} 0 R"));
-        let xobjects: String = (0..images.len()).map(|i| format!("/Im{i} {} 0 R ", firsts + i)).collect();
+        let xobjects: String = numbers.iter().enumerate().map(|(i, n)| format!("/Im{i} {n} 0 R ")).collect();
         let (w, h) = (paper.0 * 72.0 / 25.4, paper.1 * 72.0 / 25.4);
         let dict = format!(
             "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {w:.3} {h:.3}] /Resources << /XObject << {xobjects}>> >> /Contents {stream} 0 R >>"
@@ -94,13 +105,22 @@ pub fn pdf(pages: &[(&Drawing, P2)]) -> Vec<u8> {
         object(&mut out, &mut offsets, page, &dict, None);
         let body = deflate(text.as_bytes());
         object(&mut out, &mut offsets, stream, &format!("<< /Length {} /Filter /FlateDecode >>", body.len()), Some(&body));
-        for (i, (iw, ih, rgb)) in images.iter().enumerate() {
+        for ((iw, ih, rgb, alpha), n) in images.iter().zip(&numbers) {
             let body = deflate(rgb);
+            let mask = alpha.as_ref().map_or_else(String::new, |_| format!("/SMask {} 0 R ", n + 1));
             let dict = format!(
-                "<< /Type /XObject /Subtype /Image /Width {iw} /Height {ih} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length {} >>",
+                "<< /Type /XObject /Subtype /Image /Width {iw} /Height {ih} /ColorSpace /DeviceRGB /BitsPerComponent 8 {mask}/Filter /FlateDecode /Length {} >>",
                 body.len()
             );
-            object(&mut out, &mut offsets, firsts + i, &dict, Some(&body));
+            object(&mut out, &mut offsets, *n, &dict, Some(&body));
+            if let Some(alpha) = alpha {
+                let body = deflate(alpha);
+                let dict = format!(
+                    "<< /Type /XObject /Subtype /Image /Width {iw} /Height {ih} /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode /Length {} >>",
+                    body.len()
+                );
+                object(&mut out, &mut offsets, n + 1, &dict, Some(&body));
+            }
         }
     }
     object(&mut out, &mut offsets, 1, "<< /Type /Catalog /Pages 2 0 R >>", None);
