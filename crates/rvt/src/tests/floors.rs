@@ -77,6 +77,20 @@ fn floor_with_hole(release: u32, data: bool) -> Project {
 }
 
 #[test]
+fn a_sketch_line_names_its_floor_wherever_in_its_second_list_the_id_sits() {
+    // A real file names the owner among the ids of the second list: first, in the middle, last, and sometimes with what else the
+    // line touches after it. The Snowdon sample's floors were left out because only the last slot was looked at.
+    for slots in [vec![100u64], vec![30, 100], vec![30, 100, 999], vec![100, 30], vec![999, 100, 30]] {
+        let mut p = floor_with_hole(2024, true);
+        for r in p.recs.iter_mut().filter(|r| r.category == SKETCH) {
+            r.refs2 = slots.clone();
+        }
+        let i = import(&p);
+        assert_eq!(floors(&i).len(), 1, "{slots:?}: {:?}", i.skipped);
+    }
+}
+
+#[test]
 fn a_floor_comes_in_with_its_boundary_its_hole_its_type_level_and_offset() {
     // From the curves in the sketch lines' data (2024 and later) and from their boxes alone, as a file of 2023 or before has.
     for (release, data) in [(2024, true), (2026, true), (2024, false), (2023, false), (2019, true)] {

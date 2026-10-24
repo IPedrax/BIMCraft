@@ -331,7 +331,12 @@ impl Region {
 /// The region around `p`: the smallest loop of segments enclosing it, minus any separate pieces
 /// standing inside it (a shaft in an open office). `None` when nothing encloses `p`.
 pub fn region_at(segs: &[(P2, P2)], p: P2, tol: f64) -> Option<Region> {
-    let all = faces(segs, tol);
+    region_in(&faces(segs, tol), p, tol)
+}
+
+/// What [`region_at`] answers, among faces already made by [`faces`]: the arrangement of a plan's walls is the costly part,
+/// and a caller that asks about many points of one plan (the Revit import tries a grid of them per room) makes it once.
+pub fn region_in(all: &[Vec<P2>], p: P2, tol: f64) -> Option<Region> {
     let outer = all.iter().filter(|f| area(f) > tol * tol && contains(f, p)).min_by(|a, b| area(a).total_cmp(&area(b)))?;
     // Outlines of other pieces lying inside it; ours is the one around `p`.
     let islands: Vec<&Vec<P2>> = all.iter().filter(|f| area(f) < 0.0 && !contains(f, p) && f.iter().all(|q| contains(outer, *q))).collect();
@@ -461,6 +466,17 @@ mod tests {
         let shaft = region_at(&segs, P2(4200.0, 4200.0), 1.0).unwrap();
         assert_eq!(shaft.area(), 3e6);
         assert!(region_at(&segs, P2(-10.0, 5.0), 1.0).is_none());
+    }
+
+    #[test]
+    fn one_arrangement_answers_as_many_points_as_a_fresh_one_would() {
+        let mut segs = rect(0.0, 0.0, 10000.0, 10000.0);
+        segs.extend(rect(4000.0, 4000.0, 6000.0, 6000.0));
+        segs.push((P2(0.0, 5000.0), P2(3000.0, 5000.0)));
+        let all = faces(&segs, 1.0);
+        for p in [P2(1000.0, 1000.0), P2(7000.0, 2000.0), P2(4200.0, 4200.0), P2(-10.0, 5.0)] {
+            assert_eq!(region_in(&all, p, 1.0), region_at(&segs, p, 1.0), "at {p:?}");
+        }
     }
 
     #[test]

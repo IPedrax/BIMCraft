@@ -28,11 +28,16 @@ pub(crate) const OST_CEILINGS: i64 = -2_000_038;
 /// `OST_SketchLines`.
 pub(crate) const OST_SKETCH_LINES: i64 = -2_000_045;
 
-/// The sketch lines of each sketched element: the records that name it as the last slot of their second reference list.
+/// The sketch lines of each sketched element: the records that name it in their second reference list. A file puts that id first,
+/// in the middle or last, and may name what else the line meets after it, so the owner is the one id there that is a floor, a
+/// ceiling or a roof.
 pub(crate) fn sketch_lines(f: &Facts) -> BTreeMap<u32, Vec<&Record>> {
+    let sketched: BTreeSet<u32> =
+        [OST_FLOORS, OST_CEILINGS, crate::roofs::OST_ROOFS].into_iter().flat_map(|c| f.of_category(c).map(|r| r.id)).collect();
     let mut out: BTreeMap<u32, Vec<&Record>> = BTreeMap::new();
     for r in f.of_category(OST_SKETCH_LINES) {
-        if let Some(owner) = r.refs2.last().and_then(|&v| u32::try_from(v).ok()) {
+        let owner = r.refs2.iter().rev().find_map(|&v| u32::try_from(v).ok().filter(|id| sketched.contains(id)));
+        if let Some(owner) = owner {
             out.entry(owner).or_default().push(r);
         }
     }
