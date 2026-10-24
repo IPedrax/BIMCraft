@@ -1171,14 +1171,19 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             }
         }
         Icon::Inscribed => {
-            // A hexagon inside its circle, its corners on it.
-            g.circle((12.0, 12.0), 9.0);
+            // A hexagon about a grip at its centre, the radius out to a corner.
             g.closed(&hexagon(9.0));
+            g.closed(&[(10.5, 10.5), (13.5, 10.5), (13.5, 13.5), (10.5, 13.5)]);
+            g.line(&[(13.5, 12.0), (21.0, 12.0)]);
         }
         Icon::Circumscribed => {
-            // A hexagon round its circle, its sides touching it.
-            g.circle((12.0, 12.0), 7.6);
-            g.closed(&hexagon(7.6 / (TAU / 12.0).cos()));
+            // A hexagon about a grip at its centre, the radius square onto the middle of a side.
+            g.closed(&hexagon(8.0 / (TAU / 12.0).cos()));
+            g.closed(&[(10.5, 10.5), (13.5, 10.5), (13.5, 13.5), (10.5, 13.5)]);
+            g.line(&[(12.0, 13.5), (12.0, 20.0)]);
+            if !compact {
+                g.line(&[(12.0, 17.5), (14.5, 17.5), (14.5, 20.0)]);
+            }
         }
         Icon::CentreArc => {
             // A quarter arc round a grip at its centre, with the radius to its middle.
@@ -1198,24 +1203,22 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             }
         }
         Icon::Fillet => {
-            // Two lines rounded where they'd meet, the corner they'd make faint.
+            // Two lines rounded where they'd meet.
             g.line(&[(4.5, 21.0), (4.5, 12.5)]);
             g.arc((12.5, 12.5), 8.0, 180.0, 270.0);
             g.line(&[(12.5, 4.5), (21.0, 4.5)]);
             if !compact {
-                g.line(&[(4.5, 9.5), (4.5, 7.0)]);
-                g.line(&[(7.0, 4.5), (9.5, 4.5)]);
+                g.line(&[(12.5, 12.5), (8.0, 8.0)]);
             }
         }
         Icon::Spline => {
-            // A curve led by its control points, off it, each a grip; their frame in between.
-            g.cubic([(4.0, 18.0), (7.0, 4.0), (17.0, 20.0), (20.0, 6.0)]);
+            // A curve led by its control points: grips off it, where it bends toward them.
+            g.cubic([(4.0, 18.0), (7.0, 3.0), (17.0, 21.0), (20.0, 6.0)]);
             g.closed(&[(2.0, 18.0), (6.0, 18.0), (6.0, 22.0), (2.0, 22.0)]);
             g.closed(&[(18.0, 2.0), (22.0, 2.0), (22.0, 6.0), (18.0, 6.0)]);
             if !compact {
-                g.closed(&[(5.5, 2.5), (8.5, 2.5), (8.5, 5.5), (5.5, 5.5)]);
-                g.closed(&[(15.5, 18.5), (18.5, 18.5), (18.5, 21.5), (15.5, 21.5)]);
-                g.line(&[(8.5, 5.5), (15.5, 18.5)]);
+                g.closed(&[(8.0, 2.0), (11.0, 2.0), (11.0, 5.0), (8.0, 5.0)]);
+                g.closed(&[(13.0, 19.0), (16.0, 19.0), (16.0, 22.0), (13.0, 22.0)]);
             }
         }
         Icon::FitSpline => {
@@ -1241,7 +1244,10 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.ellipse((12.0, 16.0), (8.5, 0.0), (0.0, 8.5 * 0.8), false);
             g.closed(&[(1.5, 16.0), (5.5, 16.0), (5.5, 20.0), (1.5, 20.0)]);
             g.closed(&[(18.5, 16.0), (22.5, 16.0), (22.5, 20.0), (18.5, 20.0)]);
-            if !compact {
+            // Its axis, between the grips: dashed, or one line where dashes would blur.
+            if compact {
+                g.line(&[(5.5, 18.0), (18.5, 18.0)]);
+            } else {
                 g.line(&[(8.0, 18.0), (10.5, 18.0)]);
                 g.line(&[(13.5, 18.0), (16.0, 18.0)]);
             }
