@@ -17,9 +17,11 @@ use eframe::wgpu::Backends;
 use serde_json::{Value, json};
 
 /// What a start asks of the graphics, in the order starts that didn't finish try it: wgpu's own choice (every backend the system
-/// has, the fastest adapter first), then each backend alone.
+/// has, the fastest adapter first), then each backend alone. DirectX 12 comes before Vulkan: wgpu lists Vulkan's adapters first
+/// and keeps that order among adapters of the same kind, so on most Windows machines its own choice already was Vulkan, and
+/// a start that died on it (issue 14) learns nothing by trying Vulkan again.
 const LADDER: &[(&str, Option<Backends>)] =
-    &[("automatic", None), ("Vulkan", Some(Backends::VULKAN)), ("DirectX 12", Some(Backends::DX12)), ("OpenGL", Some(Backends::GL))];
+    &[("automatic", None), ("DirectX 12", Some(Backends::DX12)), ("Vulkan", Some(Backends::VULKAN)), ("OpenGL", Some(Backends::GL))];
 
 /// The choices this system has. Only Windows has the ladder: that is where starts died (issue 14), macOS has Metal alone, and
 /// OpenGL didn't get a surface on a Wayland desktop it was tried on, so a fallback there would only make a start fail.
@@ -219,6 +221,18 @@ mod tests {
         assert_eq!(kept.next_among(n), Mark { choice: n - 1, starting: true });
         // Where there is nothing to fall back to, every start is the first.
         assert_eq!(Mark { choice: 0, starting: true }.next_among(1), Mark { choice: 0, starting: true });
+    }
+
+    #[test]
+    fn after_an_automatic_start_that_died_the_next_tries_directx_12_before_vulkan() {
+        // Issue 14: on a laptop whose Intel graphics take the process down under Vulkan, wgpu's own choice is Vulkan too,
+        // so trying Vulkan alone next only died again; DirectX 12 came up on the third start.
+        let died = Mark { choice: 0, starting: true };
+        let next = died.next_among(LADDER.len());
+        assert_eq!(LADDER[next.choice].0, "DirectX 12");
+        assert_eq!(LADDER[next.choice].1, Some(Backends::DX12));
+        let names: Vec<&str> = LADDER.iter().map(|(name, _)| *name).collect();
+        assert_eq!(names, ["automatic", "DirectX 12", "Vulkan", "OpenGL"]);
     }
 
     #[test]
