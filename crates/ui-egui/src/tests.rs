@@ -2574,6 +2574,19 @@ fn duplicate_copies_a_types_layers() {
 }
 
 #[test]
+fn the_type_selectors_list_stays_in_the_window_and_scrolls() {
+    // Issue 64: a component's list holds every family's types, taller than the window; it went off
+    // the top and the bottom of it.
+    let mut h = app(BOX);
+    tool(&mut h, "Component");
+    press(&mut h, "Type Selector");
+    let list = h.ctx.memory(|m| m.areas().top_layer_id(egui::Order::Foreground).and_then(|l| m.area_rect(l.id)));
+    let list = list.expect("the list is open");
+    let window = h.ctx.content_rect();
+    assert!(window.contains_rect(list), "{list:?} in {window:?}");
+}
+
+#[test]
 fn the_component_tool_places_a_familys_type_that_space_turns() {
     let mut h = app(BOX);
     tool(&mut h, "Component");

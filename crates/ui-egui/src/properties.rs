@@ -942,12 +942,18 @@ impl BimApp {
             p.rect_stroke(rect, 3.0, Stroke::new(2.0, pal().accent), StrokeKind::Inside);
         }
         let mut picked = None;
+        // A component's list holds every family's types, more than a window has room for (issue 64): it scrolls, as tall as
+        // the room on the selector's roomier side.
+        let window = ui.ctx().content_rect();
+        let room = (window.bottom() - rect.bottom()).max(rect.top() - window.top()) - 16.0;
         Popup::menu(&r).width(rect.width()).show(|ui| {
-            for n in &names {
-                if ui.selectable_label(current.as_ref() == Some(n), n).clicked() {
-                    picked = Some(n.clone());
+            egui::ScrollArea::vertical().max_height(room.max(100.0)).show(ui, |ui| {
+                for n in &names {
+                    if ui.selectable_label(current.as_ref() == Some(n), n).clicked() {
+                        picked = Some(n.clone());
+                    }
                 }
-            }
+            });
         });
         let pair = picked.as_ref().and_then(|n| pairs.iter().find(|p| label(p) == *n)).cloned();
         match (picked, subject) {
