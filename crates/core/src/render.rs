@@ -743,8 +743,8 @@ pub(crate) fn plan_shows(m: &Model, plan: impl Key) -> Vec<P2> {
             }
             Element::Roof(r) if r.level == level || m.level_above(level) == Some(r.level) => extent.extend(m.roof_outline(r)),
             Element::Text(n) if m.annotation_in(e, key) => extent.extend([Some(n.at), n.leader].into_iter().flatten()),
-            Element::DetailLine(l) if m.annotation_in(e, key) => extent.extend(l.points.iter().copied()),
-            Element::FilledRegion(r) if m.annotation_in(e, key) => extent.extend(r.sketch.iter().flat_map(|l| [l.start, l.end])),
+            Element::DetailLine(l) if m.annotation_in(e, key) => extent.extend(l.curve.points()),
+            Element::FilledRegion(r) if m.annotation_in(e, key) => extent.extend(r.sketch.iter().flat_map(|l| l.points())),
             Element::Spot(sp) if m.annotation_in(e, key) => extent.push(sp.at),
             _ => {}
         }
@@ -2214,9 +2214,14 @@ pub(crate) fn detail_line(d: &mut Drawing, m: &Model, l: &DetailLine) {
     let Some(st) = m.line_styles.get(&l.style) else { return };
     let px_per_mm = sheet::DENSITY as f32 * d.paper;
     let dash = st.pattern.as_ref().and_then(|p| m.line_patterns.get(p)).and_then(|p| p.dash(px_per_mm));
-    let pts = l.points.iter().map(|p| d.view.px(*p)).collect();
+    // A closed one is stroked as a ring, so its dashes and its corner run on round its first point.
+    let closed = l.curve.is_closed();
+    let mut pts: Vec<(f32, f32)> = l.curve.points().into_iter().map(|p| d.view.px(p)).collect();
+    if closed && pts.len() > 2 {
+        pts.pop();
+    }
     let [r, g, b] = st.color;
-    d.stroke(pts, st.pen, Rgb(r, g, b), dash, l.closed);
+    d.stroke(pts, st.pen, Rgb(r, g, b), dash, closed);
 }
 
 pub(crate) fn note(d: &mut Drawing, n: &Note) {

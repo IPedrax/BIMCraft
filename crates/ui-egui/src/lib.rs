@@ -11,6 +11,7 @@ mod context;
 pub mod control;
 mod dialog;
 mod dock;
+mod draw;
 mod editor;
 mod favorites;
 mod fillpatterns;
@@ -193,12 +194,8 @@ pub enum Tool {
     DetailLine(Vec<P2>),
     /// The selected floor's slope arrow: its tail, once clicked.
     SlopeArrow(Option<P2>),
-    /// Sketch mode's Line: the points clicked since the last loop closed, each joined to the one before by a line.
+    /// Sketch mode's Draw panel: the points clicked so far of the shape it draws (Line: since the last loop closed).
     SketchLine(Vec<P2>),
-    /// Sketch mode's Rectangle: its first corner, once clicked.
-    SketchRect(Option<P2>),
-    /// Sketch mode's Start-End-Radius Arc: its start and end, as clicked; the next click, a point it passes through.
-    SketchArc(Vec<P2>),
     /// Sketch mode's Pick Walls: a line along each wall clicked.
     SketchPick,
 }
@@ -451,8 +448,7 @@ pub struct BimApp {
     mass_height: String,
     /// Each click ends a wall and starts the next; off, two clicks make one wall.
     chain: bool,
-    /// The Wall tool draws arcs, by their ends and a point on them; the line its walls stand on.
-    wall_arc: bool,
+    /// The line the Wall tool's walls stand on.
     wall_location: Location,
     /// Attach Top/Base attaches bases.
     attach_base: bool,
@@ -478,8 +474,8 @@ pub struct BimApp {
     line_style: String,
     /// The Detail Line tool's Chain: each click ends a line and starts the next; off, two clicks make one line.
     line_chain: bool,
-    /// The Detail Line tool makes one line through every point clicked, finished with Enter, instead of a line a click.
-    polyline: bool,
+    /// The shape each Draw panel draws, and the Options Bar's Sides, Radius and Offset.
+    pub(crate) drawing: draw::Drawing,
     /// The project units the Options Bar's lengths were last written in.
     units: Units,
     /// A length typed while picking points: the listening dimension.
@@ -868,7 +864,6 @@ impl BimApp {
             mass_top: None,
             mass_height: units.length(3000.0),
             chain: true,
-            wall_arc: false,
             wall_location: Location::Centre,
             attach_base: false,
             thin: false,
@@ -884,7 +879,7 @@ impl BimApp {
             note_text: String::new(),
             line_style: String::new(),
             line_chain: true,
-            polyline: false,
+            drawing: draw::Drawing::default(),
             units,
             lang: Lang::English,
             font_finder: lang::chinese_font,
@@ -1008,8 +1003,6 @@ impl BimApp {
             | Tool::GableEdge
             | Tool::SlopeArrow(_)
             | Tool::SketchLine(_)
-            | Tool::SketchRect(_)
-            | Tool::SketchArc(_)
             | Tool::SketchPick => None,
             Tool::Wall(_) => Some("Place Wall"),
             Tool::Paint => Some("Paint"),
@@ -1343,6 +1336,11 @@ impl BimApp {
                 (Tool::Railing(_), true) => self.finish_railing(level),
                 (Tool::Mass(_), true) => self.finish_mass(level),
                 (Tool::DetailLine(_), true) => self.finish_detail_line(level),
+                (Tool::SketchLine(_), true) if self.shape().open_ended() => {
+                    if let Some(made) = self.finish_shape() {
+                        self.add_sketch_lines(made);
+                    }
+                }
                 (_, true) => self.finish_wall(),
                 (_, false) => self.place_typed(level),
             }
@@ -1566,6 +1564,19 @@ impl BimApp {
                     self.delete();
                     return true;
                 }
+                Some("fillet") => {
+                    self.set_tool(Tool::DetailLine(Vec::new()));
+                    self.set_shape(draw::Target::Detail, draw::Shape::Fillet);
+                    return true;
+                }
+                Some("join_polyline") => {
+                    self.join_polyline();
+                    return true;
+                }
+                Some("explode") => {
+                    self.explode_polyline();
+                    return true;
+                }
                 // Revit's opens the Project Units dialog; BIMCraft's is the Manage tab's menu.
                 Some("units") => {
                     self.tab = Tab::Manage;
@@ -1787,23 +1798,6 @@ impl BimApp {
         }
     }
 
-    /// The Wall tool's Draw panel: lines, or arcs. The next wall starts where the last one ended
-    /// (an arc not finished yet, where it started).
-    fn draw_arc(&mut self, arc: bool) {
-        if arc == self.wall_arc {
-            return;
-        }
-        let keep = match &self.tool {
-            Tool::Wall(chain) if self.wall_arc => chain.first().copied(),
-            Tool::Wall(chain) => chain.last().copied(),
-            _ => None,
-        };
-        self.wall_arc = arc;
-        if let Tool::Wall(chain) = &mut self.tool {
-            *chain = keep.into_iter().collect();
-        }
-    }
-
     /// The middle of what's selected: where Rotate turns it about until told otherwise.
     fn middle(&self) -> Option<P2> {
         let m = &self.session.model;
@@ -1891,8 +1885,15 @@ impl BimApp {
             Tool::SlopeArrow(Some(_)) => Tool::SlopeArrow(None),
             Tool::ExtrusionRoof(pts) if !pts.is_empty() => Tool::ExtrusionRoof(Vec::new()),
             Tool::SketchLine(pts) if !pts.is_empty() => Tool::SketchLine(Vec::new()),
-            Tool::SketchRect(Some(_)) => Tool::SketchRect(None),
-            Tool::SketchArc(pts) if !pts.is_empty() => Tool::SketchArc(Vec::new()),
+            Tool::Wall(pts) | Tool::DetailLine(pts) | Tool::SketchLine(pts) if !self.drawing.fillet.is_empty() => {
+                let pts = pts.clone();
+                self.drawing.fillet.clear();
+                match self.tool {
+                    Tool::Wall(_) => Tool::Wall(pts),
+                    Tool::DetailLine(_) => Tool::DetailLine(pts),
+                    _ => Tool::SketchLine(pts),
+                }
+            }
             Tool::Modify => {
                 match &mut self.sketch {
                     Some(sk) => sk.picked.clear(),
@@ -3105,17 +3106,11 @@ impl BimApp {
                 (Icon::Delete, "Delete", "Delete (DE) the selection", None, some),
             ],
         ];
-        // The Wall tool's Draw panel: lines, or arcs by their ends and a point on them.
-        if matches!(self.tool, Tool::Wall(_)) {
-            panel(ui, "Draw", |ui| {
-                if big_button(ui, Icon::Line, "Line", !self.wall_arc, "Line: a wall along each step between the points clicked").clicked() {
-                    self.draw_arc(false);
-                }
-                let tip = "Start-End-Radius Arc: click its start, its end, then a point it passes through";
-                if big_button(ui, Icon::Arc, "Start-End-Radius Arc", self.wall_arc, tip).clicked() {
-                    self.draw_arc(true);
-                }
-            });
+        // The Wall tool's and the Detail Line tool's Draw panels: lines, rectangles, polygons, circles, arcs and the rest.
+        match self.tool {
+            Tool::Wall(_) => self.draw_panel(ui, draw::Target::Wall),
+            Tool::DetailLine(_) => self.draw_panel(ui, draw::Target::Detail),
+            _ => {}
         }
         // Placing a component: Revit's Mode panel, which loads a family from a file.
         if matches!(self.tool, Tool::Component | Tool::Fixture(_)) {
@@ -3130,6 +3125,21 @@ impl BimApp {
                             app.component = Some((name, first));
                         }
                     });
+                }
+            });
+        }
+        // Detail lines selected, or sketch lines picked: Join into Polyline and Explode Polyline.
+        let picked = self.sketch.as_ref().map(|sk| sk.picked.len());
+        if (self.lines_selected() && self.tool == Tool::Modify) || (picked.is_some() && self.tool == Tool::Modify) {
+            panel(ui, "Modify Lines", |ui| {
+                let two = picked.unwrap_or(self.selection.len()) >= 2;
+                let tip = "Join into Polyline (PJ): the lines selected, meeting end to end, become one polyline";
+                if ui.add_enabled_ui(two, |ui| big_button(ui, Icon::JoinPolyline, "Join into Polyline", false, tip)).inner.clicked() {
+                    self.join_polyline();
+                }
+                let tip = "Explode Polyline (PX): a polyline taken apart into a line or an arc for each segment";
+                if big_button(ui, Icon::ExplodePolyline, "Explode Polyline", false, tip).clicked() {
+                    self.explode_polyline();
                 }
             });
         }
@@ -3357,7 +3367,10 @@ impl BimApp {
             }
         });
         c.response.labelled_by(l.id);
-        ui.checkbox(&mut self.chain, t("Chain"));
+        if self.shape().chains() {
+            ui.checkbox(&mut self.chain, t("Chain"));
+        }
+        self.shape_options(ui);
     }
 
     /// Rotate's Options Bar: an angle to type (Enter turns by it), Place Centre, and Copy.
@@ -3428,11 +3441,14 @@ impl BimApp {
             }
             _ => {}
         }
+        if matches!(self.target(), Some(draw::Target::Detail | draw::Target::Wall))
+            && let Some(prompt) = self.shape_prompt()
+        {
+            return prompt;
+        }
         match &self.tool {
             Tool::Modify => "Click to select, Tab for what's underneath, Ctrl adds, Shift takes away; drag to box or to move.",
             Tool::Wall(chain) if chain.is_empty() => "Click to enter the wall's start point.",
-            Tool::Wall(chain) if self.wall_arc && chain.len() == 1 => "Click to enter the arc's end point.",
-            Tool::Wall(_) if self.wall_arc => "Click a point the arc passes through: it sets the radius. Esc cancels.",
             Tool::Wall(_) => "Click to build the wall to the next point. Enter or Esc ends the chain, Shift keeps it square.",
             Tool::Attach if self.attach_base => "Pick a roof or a floor: the selected walls' bases stand on it.",
             Tool::Attach => "Pick a roof or a floor: the selected walls' tops follow its underside.",
@@ -3506,7 +3522,7 @@ impl BimApp {
             Tool::DetailLine(_) => "Click its next point; Enter finishes it, the first point again closes it. Esc cancels.",
             Tool::SlopeArrow(None) => "Click the slope arrow's tail: where the floor's top stays at its height offset.",
             Tool::SlopeArrow(Some(_)) => "Click its head: the floor rises toward it at the Options Bar's slope. Esc cancels.",
-            Tool::SketchLine(_) | Tool::SketchRect(_) | Tool::SketchArc(_) | Tool::SketchPick => "Click where the line starts.",
+            Tool::SketchLine(_) | Tool::SketchPick => "Click where the line starts.",
         }
     }
 

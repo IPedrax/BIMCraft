@@ -50,10 +50,30 @@ drawn in one view, as a text note is: a level's plan (not its ceiling plan), a s
 terms, and goes with it. `render::detail_line` draws it in its style's pen with the model's line weights, its colour and its
 pattern's dashes in pixels at the view's paper (`LinePattern::dash`); a repeat under two pixels draws solid. A primitive's dash is
 any list of on and off lengths (`Prim::Line::dash`), which SVG, PDF, the PNG and the canvas all take. The desktop has Annotate >
-Detail Line (DL; a line a click, as walls are, chained until Enter or the first point again, or with Polyline one line
-through every point; the Options Bar's Line Style, Chain and Polyline) and Manage > Line Styles
-(`linestyles.rs`: styles and patterns on two tabs of one draft, applied as one undo step). Next: sketches, then fill patterns and
-filled regions on them, then patterns made from lines drawn in a view.
+Detail Line (DL; a line a click, as walls are, chained until Enter or the first point again; the Options Bar's Line Style and
+Chain; the Draw panel's other shapes, below) and Manage > Line Styles (`linestyles.rs`: styles and patterns on two tabs of one
+draft, applied as one undo step). Next: patterns made from lines drawn in a view.
+
+A detail line and a sketch line are any `curves::Curve`: a polyline (straight segments and arcs, each arc's turn in degrees
+counter-clockwise as a wall's; a line or an arc is one of two points), a circle, an ellipse whole or partial, a spline by its
+control points (a clamped cubic B-spline, uniform knots unless it holds its own), or a spline through points (a cubic by the
+distance along them, each end free or leaving along a tangent). In a file and in a command a curve is flat, the fields of its
+shape (`curves::Fields`; `curve_struct!` makes a type that holds one among its own fields, since serde's `flatten` won't take
+`deny_unknown_fields`), so an older file's `points` and `closed` read as they did. `Curve::points` draws it with chords no
+further than `FLAT` from it; `nearest`, `split`, `map` (a move, a turn or a mirror), `handles` and `moved` (grips) and
+`check` are the rest. Splitting is exact but for a spline through points: a polyline's segment or arc divides, an ellipse's
+span does, and a control-point spline gets the knot inserted to the degree's multiplicity (Boehm's algorithm) so its halves'
+control points are the original's; a spline through points becomes two through the original's points on each side and the
+cut, leaving it along the original's tangent, with points of the original added where it strays most until it is within
+`FIT_TOL` (QCAD turns the halves into control-point splines instead; Revit won't split a spline at all). A closed curve opens
+where it's cut. Commands: `split` (detail lines as walls), `join_polyline` (PJ), `explode` (PX) and `fillet` (FL).
+`draw.rs` is Revit's Draw panel as data: each `Shape` (Line, Rectangle, Inscribed and Circumscribed Polygon, Circle,
+Start-End-Radius, Center-ends and Tangent End Arc, Fillet Arc, Spline, Spline Through Points, Ellipse, Partial Ellipse,
+Polyline, Pick Lines), how many clicks it takes, what `make` builds from them with the Options Bar's Sides, Radius and Offset,
+and the `preview` with the cursor as the next point; `wall_segments` turns lines, arcs and circles into walls and
+`element_curve` is what Pick Lines copies. The desktop's `draw.rs` keeps each tool's shape (detail lines, sketches, walls; the
+walls' panel offers only lines and arcs), gathers the points in the tool, and makes the lines, sketch lines or walls as one undo
+step; Join into Polyline and Explode Polyline sit on Modify | Lines and work on picked sketch lines too.
 
 `Drawing::detail` is the level the plan or the section is drawn at: coarse leaves out a compound element's layers and an opening's
 symbols, medium its patterns (`cut_layer`, a floor's `surface`), fine draws as before. In the 3D view `Look::style` picks how

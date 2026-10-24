@@ -718,7 +718,40 @@ pub static ALL: &[Command] = &[
          point on the part of each to keep",
         corner,
     ),
-    edit("split", "Split", &["SL"], "{id, at: [x, y]} splits a wall in two at `at`; doors and windows go with their part", split),
+    edit(
+        "split",
+        "Split",
+        &["SL"],
+        "{id, at: [x, y]} splits a wall or a detail line in two at `at`: a wall's doors and windows go with their part; a \
+         detail line of any shape splits where it passes nearest `at` (a spline by its control points exactly, one through \
+         points into two through points within 0.05 mm of it), and a closed one (a circle, a whole ellipse, a closed \
+         polyline) opens there instead, into one that starts and ends at `at`",
+        split,
+    ),
+    edit(
+        "join_polyline",
+        "Join into Polyline",
+        &["PJ"],
+        "{ids: [id, …]} joins detail lines of one view, lines, arcs and polylines that meet end to end, into one polyline in \
+         the first's line style (closed when they come round); the first keeps its id, the rest are deleted",
+        join_polyline,
+    ),
+    edit(
+        "fillet",
+        "Fillet Arc",
+        &["FL"],
+        "{ids: [a, b], radius} rounds the corner where two straight detail lines meet (or would, extended) with an arc of \
+         `radius` mm in the first's line style: each line is cut back to the arc",
+        fillet,
+    ),
+    edit(
+        "explode",
+        "Explode Polyline",
+        &["PX"],
+        "{id} takes a detail line that is a polyline apart into a line or an arc for each segment, in its view and style; \
+         the first keeps its id",
+        explode,
+    ),
     edit(
         "delete",
         "Delete",
@@ -817,10 +850,14 @@ pub static ALL: &[Command] = &[
         "detail_line",
         "Detail Line",
         &["DL"],
-        "{points: [[x, y], …], view?, style?, closed?} a detail line in a view, by name or id, through `points` in the view's \
-         own terms: a level's plan (the lowest by default; plan mm), a section or an elevation (along its line from its start, \
-         and up) or a sheet by number (paper mm); round to its first point again when `closed`. It draws in line style \
-         `style` (Thin Lines unless told), only in its view, and goes with it",
+        "{view?, style?, and a curve: `points` [[x, y], …] (with `arcs`, each segment's turn in degrees counter-clockwise, \
+         and `closed`), `start` and `end` (with `arc` degrees or a `through` point), `centre` and `radius` (a circle), \
+         `centre` and `radii` [a, b] (an ellipse, with `angle` degrees and `span` [from, to] degrees for part of one), \
+         `control` [[x, y], …] (a spline by its control points, with `knots`), or `fit` [[x, y], …] (a spline through them, \
+         with `start_tangent` and `end_tangent`)} a detail line in a view, by name or id, in the view's own terms: a \
+         level's plan (the lowest by default; plan mm), a section or an elevation (along its line from its start, and up) \
+         or a sheet by number (paper mm). It draws in line style `style` (Thin Lines unless told), only in its view, and \
+         goes with it",
         detail_line,
     ),
     edit(
@@ -1541,8 +1578,8 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             extra.insert("level".into(), json!(m.level_of(e)));
         }
         Element::DetailLine(l) => {
-            let ring = l.closed.then(|| l.points.last().copied().zip(l.points.first().copied())).flatten();
-            let length: f64 = l.points.windows(2).map(|w| w[0].dist(w[1])).chain(ring.map(|(a, b)| a.dist(b))).sum();
+            let length = l.curve.length();
+            extra.insert("shape".into(), json!(l.curve.kind()));
             extra.insert("length".into(), json!(hundredth(length)));
             extra.insert("level".into(), json!(m.level_of(e)));
         }
@@ -4165,22 +4202,13 @@ fn dormer(s: &mut Session, p: &Value) -> R {
 enum Given {
     Line([P2; 2]),
     Arc([P2; 3]),
-    Full(Kept),
-}
-
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Kept {
-    #[serde(default)]
-    id: Option<Id>,
-    start: P2,
-    end: P2,
-    #[serde(default)]
-    through: Option<P2>,
+    Full(Box<sketch::RawSketchLine>),
 }
 
 const SKETCH_SHAPE: &str = "a list of lines, each [[x,y],[x,y]], an arc [[x,y],[x,y],[x,y]] (its ends, then a point it passes \
-     through) or {start, end, through?, id?}";
+     through) or an object: `id?` and a curve's fields, `start` and `end` (with `arc` degrees or a `through` point), \
+     `points` (with `arcs` and `closed`), `centre` and `radius`, `centre` and `radii` (with `angle` and `span`), `control` \
+     (with `knots`), or `fit` (with `start_tangent` and `end_tangent`)";
 
 /// The lines given under `key`, a line given an `id` keeping that of the line of `old` (the sketch being edited) it names.
 fn sketch_param(c: &str, p: &Value, key: &str, old: &[SketchLine]) -> Result<Option<Vec<SketchLine>>, String> {
@@ -4192,8 +4220,10 @@ fn sketch_param(c: &str, p: &Value, key: &str, old: &[SketchLine]) -> Result<Opt
             Given::Line([a, b]) => Ok(SketchLine::new(a, b)),
             Given::Arc([a, b, t]) => Ok(SketchLine::arc(a, b, t)),
             Given::Full(k) => {
-                let mut l = SketchLine { through: k.through, ..SketchLine::new(k.start, k.end) };
-                if let Some(id) = k.id {
+                let curve = k.fields().curve().map_err(|e| bad(c, format!("`{key}` line {i}: {e}")))?;
+                let mut l = SketchLine::from(curve);
+                if k.id != 0 {
+                    let id = k.id;
                     let was = old.iter().find(|o| o.id == id).ok_or_else(|| {
                         bad(c, format!("`{key}` line {i}: {id} isn't a line of this sketch; leave `id` out for a new one"))
                     })?;
@@ -5663,7 +5693,7 @@ pub(crate) fn transformed(c: &str, m: &Model, id: Id, mo: &Motion, with: &BTreeS
             n.leader = n.leader.map(f);
         }
         Element::Spot(sp) => sp.at = f(sp.at),
-        Element::DetailLine(l) => l.points.iter_mut().for_each(|p| *p = micron(f(*p))),
+        Element::DetailLine(l) => l.curve = l.curve.map(|p| micron(f(p))),
         // Its sketch went with it, above.
         Element::FilledRegion(_) => {}
         // A link is moved and turned as a whole; its file stays as it is.
@@ -6130,7 +6160,13 @@ fn corner(s: &mut Session, p: &Value) -> R {
 fn split(s: &mut Session, p: &Value) -> R {
     let c = "split";
     let m = &s.model;
-    let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, a wall, is required"))?;
+    let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, a wall or a detail line, is required"))?;
+    if let Some(lid) = m.elements.id(id)
+        && let Some(Element::DetailLine(l)) = m.elements.get(lid)
+    {
+        let (l, at) = (l.clone(), point_req(c, p, "at")?);
+        return split_line(s, lid, l, at);
+    }
     let w = m.wall(id).cloned().ok_or_else(|| bad(c, format!("{id} is not a wall")))?;
     let id = m.elements.id(id).unwrap_or_default();
     let at = point_req(c, p, "at")?;
@@ -6180,6 +6216,108 @@ fn split(s: &mut Session, p: &Value) -> R {
         }
     }
     Ok(json!({"ids": [id, new]}))
+}
+
+/// Detail line `id` split where it passes nearest `at`, or a closed one opened there.
+fn split_line(s: &mut Session, id: Id, l: DetailLine, at: P2) -> R {
+    let c = "split";
+    let (t, off) = l.curve.nearest(at);
+    if off > 100.0 {
+        return Err(bad(c, format!("[{}, {}] isn't on detail line {id}: it passes {} mm from it", at.0, at.1, hundredth(off))));
+    }
+    let (first, second) = l.curve.split(t).ok_or_else(|| bad(c, "split between the line's ends"))?;
+    let m = s.model_mut();
+    m.elements.insert(id, Element::DetailLine(DetailLine { curve: first, ..l.clone() }));
+    match second {
+        Some(curve) => {
+            let new = m.insert(Element::DetailLine(DetailLine { curve, ..l }));
+            Ok(json!({"ids": [id, new]}))
+        }
+        None => Ok(json!({"ids": [id], "opened": true})),
+    }
+}
+
+fn join_polyline(s: &mut Session, p: &Value) -> R {
+    let c = "join_polyline";
+    let m = &s.model;
+    let ids = ids_param(c, m, p)?;
+    if ids.len() < 2 {
+        return Err(bad(c, "give two detail lines or more to join"));
+    }
+    let mut lines: Vec<DetailLine> = Vec::new();
+    for &id in &ids {
+        match m.elements.get(id) {
+            Some(Element::DetailLine(l)) => lines.push(l.clone()),
+            _ => return Err(bad(c, format!("{id} is not a detail line"))),
+        }
+    }
+    let Some(first) = lines.first().cloned() else { return Err(bad(c, "give two detail lines or more to join")) };
+    if let Some((i, _)) = lines.iter().enumerate().find(|(_, l)| l.view != first.view) {
+        return Err(bad(c, format!("detail line {} is in another view than {}; join lines of one view", ids[i], ids[0])));
+    }
+    if let Some((i, l)) = lines.iter().enumerate().find(|(_, l)| !l.curve.is_poly() || l.curve.is_closed()) {
+        return Err(bad(c, format!("detail line {} is a {}; only open lines, arcs and polylines join", ids[i], l.curve.kind())));
+    }
+    let curves: Vec<crate::curves::Curve> = lines.iter().map(|l| l.curve.clone()).collect();
+    let curve =
+        crate::curves::join(&curves).ok_or_else(|| bad(c, "the lines don't make one chain, each end meeting the next within 1 mm"))?;
+    let m = s.model_mut();
+    for &id in &ids[1..] {
+        m.elements.remove(id);
+    }
+    m.elements.insert(ids[0], Element::DetailLine(DetailLine { curve, ..first }));
+    Ok(json!({"id": ids[0]}))
+}
+
+fn fillet(s: &mut Session, p: &Value) -> R {
+    let c = "fillet";
+    let m = &s.model;
+    let ids = ids_param(c, m, p)?;
+    let &[a, b] = ids.as_slice() else { return Err(bad(c, "`ids` is two detail lines")) };
+    let line = |id: Id| match m.elements.get(id) {
+        Some(Element::DetailLine(l)) => Ok(l.clone()),
+        _ => Err(bad(c, format!("{id} is not a detail line"))),
+    };
+    let (la, lb) = (line(a)?, line(b)?);
+    if la.view != lb.view {
+        return Err(bad(c, format!("detail lines {a} and {b} are in different views")));
+    }
+    let radius = num(c, p, "radius")?.ok_or_else(|| bad(c, "`radius`, mm, is required"))?;
+    if !(radius.is_finite() && radius > TOL && radius <= MAX_COORD) {
+        return Err(bad(c, format!("`radius` is more than {TOL} mm, not {radius}")));
+    }
+    let (ca, arc, cb) = crate::draw::fillet_lines(&la.curve, &lb.curve, radius).ok_or_else(|| {
+        bad(c, "the lines are straight, meet at an angle and are long enough for the arc; these aren't, or it doesn't fit")
+    })?;
+    let (ca, arc, cb) = (ca.map(micron), arc.map(micron), cb.map(micron));
+    let m = s.model_mut();
+    m.elements.insert(a, Element::DetailLine(DetailLine { curve: ca, ..la.clone() }));
+    m.elements.insert(b, Element::DetailLine(DetailLine { curve: cb, ..lb }));
+    let id = m.insert(Element::DetailLine(DetailLine { curve: arc, ..la }));
+    Ok(json!({"id": id, "ids": [a, b]}))
+}
+
+fn explode(s: &mut Session, p: &Value) -> R {
+    let c = "explode";
+    let m = &s.model;
+    let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, a detail line, is required"))?;
+    let lid = m.elements.id(id).ok_or_else(|| bad(c, "there's no such element"))?;
+    let Some(Element::DetailLine(l)) = m.elements.get(lid).cloned() else { return Err(bad(c, format!("{lid} is not a detail line"))) };
+    let parts = crate::curves::explode(&l.curve);
+    if parts.len() < 2 {
+        return Err(bad(c, format!("detail line {lid} is a {}, already one piece", l.curve.kind())));
+    }
+    let m = s.model_mut();
+    let mut ids = vec![lid];
+    for (i, curve) in parts.into_iter().enumerate() {
+        let part = Element::DetailLine(DetailLine { curve, ..l.clone() });
+        if i == 0 {
+            m.elements.insert(lid, part);
+        } else {
+            ids.push(m.insert(part));
+        }
+    }
+    Ok(json!({"ids": ids}))
 }
 
 /// How an entry reads in a message: `wall type`, `family`, `family type`; and the library entry it is.
@@ -6496,11 +6634,45 @@ fn line_style(s: &mut Session, p: &Value) -> R {
     Ok(json!({"name": name, "style": style}))
 }
 
+/// The keys of a curve's fields, as a command takes them.
+const CURVE_KEYS: &[&str] = &[
+    "start",
+    "end",
+    "through",
+    "arc",
+    "points",
+    "arcs",
+    "closed",
+    "centre",
+    "radius",
+    "radii",
+    "angle",
+    "span",
+    "control",
+    "knots",
+    "fit",
+    "start_tangent",
+    "end_tangent",
+];
+
+/// The curve `p`'s curve fields give, checked: an error says which shape's fields to give.
+fn curve_param(c: &str, p: &Value) -> Result<crate::curves::Curve, String> {
+    let fields: serde_json::Map<String, Value> = p
+        .as_object()
+        .map(|o| o.iter().filter(|(k, _)| CURVE_KEYS.contains(&k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect())
+        .unwrap_or_default();
+    let f: crate::curves::Fields =
+        serde_json::from_value(Value::Object(fields)).map_err(|e| bad(c, format!("{e}: a line is {}", crate::curves::FORMS)))?;
+    let curve = f.curve().map_err(|e| bad(c, e))?;
+    curve.check("the line").map_err(|e| bad(c, e))?;
+    Ok(curve)
+}
+
 fn detail_line(s: &mut Session, p: &Value) -> R {
     let c = "detail_line";
-    only(c, p, &["points", "view", "level", "style", "closed"])?;
+    only(c, p, &[&["view", "level", "style"], CURVE_KEYS].concat())?;
     let m = &s.model;
-    let points = points(c, p, "points")?;
+    let curve = curve_param(c, p)?;
     let view = view_param(c, m, p, true)?;
     let style = match name_param(c, p, "style")? {
         Some(n) => n,
@@ -6516,7 +6688,7 @@ fn detail_line(s: &mut Session, p: &Value) -> R {
                 .ok_or_else(|| bad(c, "the project has no line style; make one first"))?
         }
     };
-    let l = DetailLine { view: m.guid(view), points, closed: flag(c, p, "closed")?, style };
+    let l = DetailLine { view: m.guid(view), curve, style };
     let id = s.model_mut().insert(Element::DetailLine(l));
     Ok(json!({"id": id}))
 }

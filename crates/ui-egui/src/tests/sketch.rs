@@ -59,7 +59,7 @@ fn finish_names_what_is_wrong_on_the_lines_and_cancel_leaves_the_floor_as_it_was
     let sk = st.sketch.as_ref().expect("still sketching");
     let wrong: Vec<&SketchLine> = sk.wrong.iter().map(|&i| &sk.lines[i]).collect();
     assert_eq!(wrong.len(), 2, "the two lines left with a loose end");
-    assert!(wrong.iter().all(|l| [l.start, l.end].iter().any(|p| p.1 == 6000.0)), "{wrong:?}");
+    assert!(wrong.iter().all(|l| [l.start(), l.end()].iter().any(|p| p.1 == 6000.0)), "{wrong:?}");
     press(&mut h, "Cancel Edit Mode");
     assert!(h.state().sketch.is_none());
     assert_eq!(field(&h, f, "boundary"), before);
@@ -102,7 +102,7 @@ fn picked(h: &Harness<BimApp>) -> Vec<usize> {
 /// The one line of the sketch from `a` to `b`, either way round.
 fn line_of(h: &Harness<BimApp>, a: P2, b: P2) -> Option<usize> {
     let near = |p: P2, q: P2| p.dist(q) < 1.0;
-    lines(h).iter().position(|l| (near(l.start, a) && near(l.end, b)) || (near(l.start, b) && near(l.end, a)))
+    lines(h).iter().position(|l| (near(l.start(), a) && near(l.end(), b)) || (near(l.start(), b) && near(l.end(), a)))
 }
 
 #[test]
@@ -197,7 +197,7 @@ fn arcs_and_picked_walls_close_loops_too() {
     click(&mut h, P2(1000.0, 1000.0));
     click(&mut h, P2(3000.0, 3000.0));
     assert_eq!(lines(&h).len(), 2);
-    assert!(lines(&h)[1].through.is_some());
+    assert!(lines(&h)[1].curve.kind() == "arc");
     press(&mut h, "Finish Edit Mode");
     let half = ids(&h, "floor");
     assert_eq!(half.len(), 1, "{}", h.state().status.text);
@@ -226,7 +226,7 @@ fn a_line_snaps_to_the_middle_of_a_sketch_line() {
     key(&mut h, Key::Escape);
     click(&mut h, P2(3040.0, 1030.0));
     click(&mut h, P2(3000.0, 4000.0));
-    assert_eq!(lines(&h)[1].start, P2(3000.0, 1000.0), "{:?}", lines(&h));
+    assert_eq!(lines(&h)[1].start(), P2(3000.0, 1000.0), "{:?}", lines(&h));
 }
 
 #[test]

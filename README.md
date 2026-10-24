@@ -520,7 +520,10 @@ the window. The window answers between its frames, so a long command holds the w
 | `fill_pattern` | | `name?`, `target?` (drafting, mm on paper; model, mm in the building), `lines?` ([{`angle`, `spacing`, `origin?`, `shift?`, `dashes?`}, …]; none, solid), `rename?`, `delete?`: a fill pattern, families of lines as a PAT file has them; without `name`, every pattern |
 | `filled_region_type` | | `name?`, `foreground?`, `foreground_color?`, `background?`, `background_color?`, `masking?`, `rename?`, `delete?`: a filled region type; without `name`, every type |
 | `filled_region` | FR | `sketch` (lines, any number of loops), `view?`, `type?` (Solid Black), `line_style?` (Thin Lines; null, invisible): a filled or masking region in one view, over the model and under the annotation |
-| `detail_line` | DL | `points` ([[x, y], …]), `view?` (a level's plan, a section, an elevation or a sheet: in its own terms), `style?` (Thin Lines), `closed?`: a line drawn in one view only, in a line style |
+| `detail_line` | DL | a curve: `points` ([[x, y], …], with `arcs` and `closed`), `start` and `end` (with `arc` or `through`), `centre` and `radius`, `centre` and `radii` (with `angle` and `span`), `control` (with `knots`) or `fit` (with `start_tangent` and `end_tangent`); `view?` (a level's plan, a section, an elevation or a sheet: in its own terms), `style?` (Thin Lines): a line, arc, polyline, circle, ellipse or spline drawn in one view only, in a line style |
+| `join_polyline` | PJ | `ids`: detail lines meeting end to end joined into one polyline |
+| `explode` | PX | `id`: a polyline taken apart into lines and arcs |
+| `fillet` | FL | `ids` (two straight detail lines), `radius`: the corner rounded by an arc, the lines cut back to it |
 | `units` | UN | `length?` (`mm`, `cm`, `m`, `in`, `ft` or `ft-in`): how lengths show in drawings, schedules and the desktop; commands keep mm |
 | `language` | | `code?` (`en`, `pt` or `es`): the language the project's drawings print and new names come in; names already given stay |
 | `grid` | GR | `start`, `end`, `name?` |
@@ -539,7 +542,7 @@ the window. The window answers between its frames, so a long command holds the w
 | `rotate` | RO | `ids`, `about`, `angle` in degrees, `copy?` |
 | `mirror` | MM, DM | `ids`, `axis` (two points), `copy?` |
 | `corner` | TR | two wall `ids`, `keep?` (a point on the part of each to keep) |
-| `split` | SL | `id`, `at` |
+| `split` | SL | `id` (a wall or a detail line of any shape), `at` |
 | `delete` | DE | `ids` |
 | `undo`, `redo` | | `count`: how many steps (1 by default) |
 | `inspect`, `elements`, `render` | | read the model |

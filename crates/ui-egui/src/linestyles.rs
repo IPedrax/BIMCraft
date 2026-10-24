@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 
 use crate::graphics::pen_name;
 use crate::lang::{t, tf};
-use crate::{BimApp, Status, Tool};
+use crate::{BimApp, Status};
 
 /// The dialog's tabs.
 const TABS: [&str; 2] = ["Styles", "Patterns"];
@@ -390,14 +390,9 @@ impl BimApp {
         });
         c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, t("Line Style")));
         c.response.labelled_by(l.id);
-        // A line a click, or one through them all.
-        if ui.checkbox(&mut self.polyline, t("Polyline")).changed()
-            && let Tool::DetailLine(path) = &mut self.tool
-        {
-            path.clear();
-        }
-        if !self.polyline {
+        if self.shape().chains() {
             ui.checkbox(&mut self.line_chain, t("Chain"));
         }
+        self.shape_options(ui);
     }
 }

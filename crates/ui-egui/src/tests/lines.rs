@@ -21,9 +21,9 @@ fn detail_lines_are_made_a_line_a_click_as_walls_are_or_as_one_polyline() {
     assert_eq!(first.len(), 2);
     for id in &first {
         assert_eq!(field(&h, *id, "style"), json!("Wide Lines"));
-        assert_eq!(field(&h, *id, "points").as_array().map(Vec::len), Some(2));
+        assert!(field(&h, *id, "start").is_array() && field(&h, *id, "points").is_null(), "a line is its two ends");
     }
-    assert_eq!(field(&h, first[1], "points"), json!([[5000.0, 1000.0], [5000.0, 3000.0]]));
+    assert_eq!((field(&h, first[1], "start"), field(&h, first[1], "end")), (json!([5000.0, 1000.0]), json!([5000.0, 3000.0])));
     // Enter ends the chain; the next click starts afresh.
     key(&mut h, Key::Enter);
     assert_eq!(h.state().tool, Tool::DetailLine(Vec::new()), "ready for the next one");

@@ -3767,9 +3767,6 @@ impl Model {
                 Element::DetailLine(l) => {
                     view_ok(l.view, true)?;
                     l.check(&who)?;
-                    for p in &l.points {
-                        point(&who, *p)?;
-                    }
                     if !self.line_styles.contains_key(&l.style) {
                         let there: Vec<&str> = self.line_styles.keys().map(String::as_str).collect();
                         return Err(format!("{who}: there's no line style `{}` (there are: {})", l.style, there.join(", ")));

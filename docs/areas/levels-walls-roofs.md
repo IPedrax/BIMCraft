@@ -65,10 +65,12 @@ given as points is judged as the sketch of its edges when a command is given it 
 
 The desktop's sketch mode (`crates/ui-egui/src/sketch.rs`) holds the lines until Finish Edit Mode, which solves them
 first and says what's wrong for whoever drew it (`sketch::friendly`: what to fix, kind by kind, where, in the project's
-units, and the lines by id) with those lines in the error colour; solved, it runs the command. Draw has Line, Rectangle,
-Start-End-Radius Arc and Pick Walls (a line along each wall's location line, an arc along an arc wall); Modify picks
-sketch lines (a click, a window box from the left, a crossing box from the right), a picked line's ends are grips that
-take every end joined there with them, and Delete removes them; Ctrl+Z takes back a line; the plan's snaps take the
+units, and the lines by id) with those lines in the error colour; solved, it runs the command. Draw has every shape of
+the Draw panel (`draw.rs`; lines, rectangles, polygons, circles, the arcs, Fillet Arc on two sketch lines, splines, ellipses,
+polylines, Pick Lines: see [views and graphics](views-and-graphics.md)) and Pick Walls (a line along each wall's location
+line, an arc along an arc wall); a sketch line is any curve, so a circle or an ellipse is a loop of its own. Modify picks
+sketch lines (a click, a window box from the left, a crossing box from the right), a picked line's handles (its corners, a
+spline's points, a circle's centre) are grips that take every one joined there with them, and Delete removes them; Ctrl+Z takes back a line; the plan's snaps take the
 sketch's own ends, middles and crossings (`sketch::snaps`). Floor, Ceiling, Roof and Shaft each start a new one (Boundary
 Line, Sketch Ceiling); Edit Boundary redraws one selected. The Mode panel (Finish, Cancel; Edit Boundary) stands at the
 ribbon's right end.

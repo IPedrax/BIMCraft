@@ -10,6 +10,8 @@ pub mod cloud;
 mod commands;
 mod component_geometry;
 mod csg;
+pub mod curves;
+pub mod draw;
 pub mod engine;
 pub mod family;
 pub mod favorites;
@@ -52,6 +54,8 @@ pub mod walls;
 
 pub use commands::{command_of, element_json, floor_outline, opening_of, roof_footprint, run_category_of, runs_of, stood_of};
 
+#[cfg(test)]
+mod line_tests;
 #[cfg(test)]
 mod mep_tests;
 #[cfg(test)]

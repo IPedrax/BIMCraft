@@ -12,6 +12,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::curves::Curve;
 use crate::geom::{self, P2, Region};
 use crate::ids::{Guid, Id};
 use crate::model::{MAX_COORD, MAX_POINTS, TOL};
@@ -19,19 +20,40 @@ use crate::model::{MAX_COORD, MAX_POINTS, TOL};
 /// A straight line, from one end to the other.
 pub type Line = [P2; 2];
 
-/// A sketch line: straight from `start` to `end`, or an arc between them through `through`. Its id and GUID are its own,
-/// given when what it draws is made or edited and kept while it stays in the sketch.
+/// A sketch line: any [`Curve`], a line, an arc, a polyline, a circle, an ellipse or a spline. Its id and GUID are its
+/// own, given when what it draws is made or edited and kept while it stays in the sketch. In a file and a command it is
+/// one flat object: its `id` and `guid` and its curve's fields.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "RawSketchLine", into = "RawSketchLine")]
 pub struct SketchLine {
-    #[serde(default, skip_serializing_if = "crate::ids::unset")]
     pub id: Id,
-    #[serde(default, skip_serializing_if = "Guid::is_nil")]
     pub guid: Guid,
-    pub start: P2,
-    pub end: P2,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub through: Option<P2>,
+    pub curve: Curve,
+}
+
+crate::curve_struct! {
+    /// A sketch line as a file and a command hold it.
+    RawSketchLine {
+        #[serde(default, skip_serializing_if = "crate::ids::unset")]
+        id: Id,
+        #[serde(default, skip_serializing_if = "Guid::is_nil")]
+        guid: Guid,
+    }
+}
+
+impl TryFrom<RawSketchLine> for SketchLine {
+    type Error = String;
+    fn try_from(r: RawSketchLine) -> Result<SketchLine, String> {
+        Ok(SketchLine { id: r.id, guid: r.guid, curve: r.fields().curve()? })
+    }
+}
+
+impl From<SketchLine> for RawSketchLine {
+    fn from(l: SketchLine) -> RawSketchLine {
+        let mut r = RawSketchLine { id: l.id, guid: l.guid, ..RawSketchLine::default() };
+        r.set(&l.curve);
+        r
+    }
 }
 
 impl From<Line> for SketchLine {
@@ -40,81 +62,57 @@ impl From<Line> for SketchLine {
     }
 }
 
+impl From<Curve> for SketchLine {
+    fn from(curve: Curve) -> SketchLine {
+        SketchLine { id: 0, guid: Guid::default(), curve }
+    }
+}
+
 impl SketchLine {
     /// A straight line, with no id yet.
     pub fn new(start: P2, end: P2) -> SketchLine {
-        SketchLine { id: 0, guid: Guid::default(), start, end, through: None }
+        Curve::line(start, end).into()
     }
 
-    /// An arc from `start` to `end` through `through`, with no id yet.
+    /// An arc from `start` to `end` through `through`, with no id yet; straight when `through` is no further than
+    /// [`TOL`] off the line between them.
     pub fn arc(start: P2, end: P2, through: P2) -> SketchLine {
-        SketchLine { through: Some(through), ..SketchLine::new(start, end) }
+        Curve::arc_through(start, end, through).into()
     }
 
-    /// Its points from start to end: its two ends, or an arc's chords', no more than 5° round apart.
+    /// Where it starts.
+    pub fn start(&self) -> P2 {
+        self.curve.start()
+    }
+
+    /// Where it ends: where it starts, when it's closed.
+    pub fn end(&self) -> P2 {
+        self.curve.end()
+    }
+
+    /// Its points from start to end, as drawn: see [`Curve::points`].
     pub fn points(&self) -> Vec<P2> {
-        match self.through.and_then(|t| arc_points(self.start, self.end, t)) {
-            Some(pts) => pts,
-            None => vec![self.start, self.end],
-        }
+        self.curve.points()
     }
 
-    /// Its middle: a straight line's half way, an arc's half way round.
+    /// Its middle: half way along it.
     pub fn middle(&self) -> P2 {
-        let pts = self.points();
-        match pts.len() {
-            n if n > 2 && n % 2 == 1 => pts[n / 2],
-            n if n > 2 => (pts[n / 2 - 1] + pts[n / 2]) * 0.5,
-            _ => (self.start + self.end) * 0.5,
-        }
+        self.curve.middle()
     }
 
     /// How far `p` is from it.
     pub fn dist(&self, p: P2) -> f64 {
-        self.points().windows(2).map(|w| geom::dist_to_segment(p, w[0], w[1])).fold(f64::INFINITY, f64::min)
+        self.curve.dist(p)
     }
 
-    /// Each point it holds, moved by `f`: its ends, and an arc's point through.
+    /// Each point it holds, moved by `f`.
     pub fn map(&self, f: impl Fn(P2) -> P2) -> SketchLine {
-        SketchLine { start: f(self.start), end: f(self.end), through: self.through.map(&f), ..self.clone() }
+        SketchLine { curve: self.curve.map(f), ..self.clone() }
     }
 
     fn in_range(&self) -> bool {
-        let fine = |p: &P2| p.is_finite() && p.0.abs() <= MAX_COORD && p.1.abs() <= MAX_COORD;
-        fine(&self.start) && fine(&self.end) && self.through.as_ref().is_none_or(fine)
+        self.curve.in_range()
     }
-}
-
-/// The points of the arc from `a` to `b` through `t`, `a` and `b` exact; None when `t` is no further than [`TOL`] off the
-/// straight line between them (it's straight), or the three make no circle.
-fn arc_points(a: P2, b: P2, t: P2) -> Option<Vec<P2>> {
-    if geom::dist_to_segment(t, a, b) <= TOL {
-        return None;
-    }
-    let d = 2.0 * (a.0 * (t.1 - b.1) + t.0 * (b.1 - a.1) + b.0 * (a.1 - t.1));
-    if d.abs() < 1e-9 {
-        return None;
-    }
-    let sq = |p: P2| p.0 * p.0 + p.1 * p.1;
-    let c = P2(
-        (sq(a) * (t.1 - b.1) + sq(t) * (b.1 - a.1) + sq(b) * (a.1 - t.1)) / d,
-        (sq(a) * (b.0 - t.0) + sq(t) * (a.0 - b.0) + sq(b) * (t.0 - a.0)) / d,
-    );
-    let r = c.dist(a);
-    let angle = |p: P2| (p.1 - c.1).atan2(p.0 - c.0);
-    let tau = std::f64::consts::TAU;
-    let (ab, at) = ((angle(b) - angle(a)).rem_euclid(tau), (angle(t) - angle(a)).rem_euclid(tau));
-    // Counter-clockwise from a to b when t lies on the way; else the other way round.
-    let sweep = if at < ab { ab } else { ab - tau };
-    if !(r.is_finite() && sweep.is_finite()) {
-        return None;
-    }
-    let n = ((sweep.abs() / 5f64.to_radians()).ceil() as usize).clamp(2, 72);
-    let a0 = angle(a);
-    let mut pts: Vec<P2> = (0..=n).map(|k| a0 + sweep * k as f64 / n as f64).map(|q| c + P2(q.cos(), q.sin()) * r).collect();
-    pts[0] = a;
-    pts[n] = b;
-    Some(pts)
 }
 
 /// The most lines a sketch may hold.
@@ -135,6 +133,8 @@ pub enum Problem {
     OutOfRange { line: usize },
     /// A line [`TOL`] long or less.
     TooShort { line: usize },
+    /// A line that isn't one: points one on another, a spline's knots out of order, an arc turning a whole circle.
+    Malformed { line: usize, why: String },
     /// Two lines crossing, or one ending part way along the other, at `at`.
     Cross { lines: [usize; 2], at: P2 },
     /// Two lines lying along each other for more than [`TOL`].
@@ -154,7 +154,9 @@ impl Problem {
     pub fn lines(&self) -> Vec<usize> {
         match self {
             Problem::Empty | Problem::TooMany { .. } | Problem::Separate { .. } => Vec::new(),
-            Problem::OutOfRange { line } | Problem::TooShort { line } | Problem::Open { line, .. } => vec![*line],
+            Problem::OutOfRange { line } | Problem::TooShort { line } | Problem::Malformed { line, .. } | Problem::Open { line, .. } => {
+                vec![*line]
+            }
             Problem::Cross { lines, .. } | Problem::Overlap { lines } => lines.to_vec(),
             Problem::Branch { lines, .. } | Problem::NoArea { lines } => lines.clone(),
         }
@@ -172,7 +174,11 @@ impl Problem {
     /// leave ends open too), then where loops branch or stay open.
     pub fn rank(&self) -> u8 {
         match self {
-            Problem::Empty | Problem::TooMany { .. } | Problem::OutOfRange { .. } | Problem::TooShort { .. } => 0,
+            Problem::Empty
+            | Problem::TooMany { .. }
+            | Problem::OutOfRange { .. }
+            | Problem::TooShort { .. }
+            | Problem::Malformed { .. } => 0,
             Problem::Cross { .. } => 1,
             Problem::Overlap { .. } => 2,
             Problem::Branch { .. } => 3,
@@ -197,6 +203,7 @@ impl Problem {
             Problem::TooMany { count } => format!("{count} lines, more than {MAX_LINES}"),
             Problem::OutOfRange { line } => format!("{} has a point that isn't a number within {MAX_COORD} mm", name(*line)),
             Problem::TooShort { line } => format!("{} is {TOL} mm long or less", name(*line)),
+            Problem::Malformed { line, why } => format!("{} isn't a line it can draw: {why}", name(*line)),
             Problem::Cross { lines, at: p } => format!("{} intersect at {}", list(lines), at(p)),
             Problem::Overlap { lines } => format!("{} overlap", list(lines)),
             Problem::Open { line, at: p } => format!("{} ends at {} without meeting another: the loop is open", name(*line), at(p)),
@@ -258,7 +265,9 @@ pub fn solve(lines: &[SketchLine]) -> Result<Profile, Vec<Problem>> {
     for (i, l) in lines.iter().enumerate() {
         if !l.in_range() {
             problems.push(Problem::OutOfRange { line: i });
-        } else if l.start.dist(l.end) <= TOL {
+        } else if let Err(why) = l.curve.sound("it") {
+            problems.push(Problem::Malformed { line: i, why: why.trim_start_matches("it: ").to_string() });
+        } else if l.curve.length() <= TOL {
             problems.push(Problem::TooShort { line: i });
         }
     }
@@ -412,6 +421,9 @@ pub fn check(who: &str, lines: &[SketchLine]) -> Result<(), String> {
     if lines.len() > MAX_LINES {
         return Err(format!("{who}: its sketch has {} lines, more than {MAX_LINES}", lines.len()));
     }
+    if let Some(i) = lines.iter().position(|l| l.curve.count() > MAX_POINTS) {
+        return Err(format!("{who}: sketch line {i} has more than {MAX_POINTS} points"));
+    }
     match lines.iter().position(|l| !l.in_range()) {
         Some(i) => Err(format!("{who}: sketch line {i} has a point that isn't a number within {MAX_COORD} mm")),
         None => Ok(()),
@@ -425,7 +437,7 @@ pub fn snaps(lines: &[SketchLine], p: P2, reach: f64) -> Vec<(P2, crate::snap::K
     let near: Vec<&SketchLine> = lines.iter().filter(|l| l.dist(p) <= reach).collect();
     let mut out: Vec<(P2, Kind)> = Vec::new();
     for l in lines {
-        out.extend([(l.start, Kind::Endpoint), (l.end, Kind::Endpoint), (l.middle(), Kind::Midpoint)]);
+        out.extend([(l.start(), Kind::Endpoint), (l.end(), Kind::Endpoint), (l.middle(), Kind::Midpoint)]);
     }
     for (i, a) in near.iter().enumerate() {
         for b in &near[i + 1..] {
@@ -515,10 +527,10 @@ mod tests {
     fn lines_in_any_order_either_way_round_close_into_one_outline_counter_clockwise() {
         let mut ls = square(0.0, 0.0, 4000.0);
         ls.swap(0, 2);
-        ls[1] = SketchLine::new(ls[1].end, ls[1].start);
-        ls[3] = SketchLine::new(ls[3].end, ls[3].start);
+        ls[1] = SketchLine::new(ls[1].end(), ls[1].start());
+        ls[3] = SketchLine::new(ls[3].end(), ls[3].start());
         // Ends a little apart still meet.
-        ls[0].start.0 += 0.4;
+        ls[0] = SketchLine::new(ls[0].start() + P2(0.4, 0.0), ls[0].end());
         let r = solve_one(&ls).unwrap();
         assert!(geom::area(&r.outer) > 0.0 && r.holes.is_empty());
         assert!((r.area() - 16e6).abs() < 2000.0, "{}", r.area());
@@ -551,7 +563,7 @@ mod tests {
         assert!(e[0].to_string().contains("open"), "{}", e[0]);
         // A gap wider than TOL is open too.
         let mut ls = square(0.0, 0.0, 4000.0);
-        ls[3].end.1 += 5.0;
+        ls[3] = SketchLine::new(ls[3].start(), ls[3].end() + P2(0.0, 5.0));
         assert!(matches!(solve(&ls).unwrap_err()[..], [Problem::Open { line: 0, .. }, Problem::Open { line: 3, .. }]));
     }
 
@@ -581,7 +593,7 @@ mod tests {
         ls.push([P2(1000.0, 0.0), P2(3000.0, 0.0)].into());
         assert!(solve(&ls).unwrap_err().contains(&Problem::Overlap { lines: [0, 4] }));
         let mut ls = square(0.0, 0.0, 4000.0);
-        ls.push(SketchLine::new(ls[2].end, ls[2].start));
+        ls.push(SketchLine::new(ls[2].end(), ls[2].start()));
         assert!(solve(&ls).unwrap_err().contains(&Problem::Overlap { lines: [2, 4] }));
         // A straight edge in two lines, end to end, is fine.
         let ls = ring(&[(0.0, 0.0), (2000.0, 0.0), (4000.0, 0.0), (4000.0, 4000.0), (0.0, 4000.0)]);
@@ -656,7 +668,7 @@ mod tests {
             let n = 1 + (next() as usize) % 9;
             let ls: Vec<SketchLine> = (0..n).map(|_| SketchLine::new(P2(next(), next()), P2(next(), next()))).collect();
             // Closed as a ring too, to make loops more often.
-            let pts: Vec<P2> = ls.iter().map(|l| l.start).collect();
+            let pts: Vec<P2> = ls.iter().map(|l| l.start()).collect();
             for sk in [ls, geom::ring_edges(&pts).map(|(a, b)| SketchLine::new(a, b)).collect()] {
                 if let Ok(p) = solve(&sk) {
                     for r in &p.regions {
@@ -920,6 +932,8 @@ mod command_tests {
         let f = run(&mut s, "floor", json!({"sketch": half}));
         let a = f["area_m2"].as_f64().unwrap();
         assert!((a - std::f64::consts::TAU).abs() < 0.1, "{a}");
-        assert_eq!(lines(&mut s, &f["id"])[1]["through"], json!([2000.0, 2000.0]));
+        // Kept by how far it turns, counter-clockwise as a wall's arc: west from (4000, 0), bulging north to its right.
+        let turn = lines(&mut s, &f["id"])[1]["arc"].as_f64().unwrap_or_default();
+        assert!((turn - 180.0).abs() < 1e-6, "{turn}");
     }
 }

@@ -102,9 +102,9 @@ The goal is a printable, coordinated drawing set.
 |---|---|
 | Duplicate view (with or without detailing) and dependent views: done for plans (`duplicate_view`, DP); left: sections, elevations, 3D views, schedules and sheets | M |
 | Detail lines, filled regions, masking regions, line styles: done (line patterns and styles, detail lines a line a click or as a polyline, the shared sketch solver, fill patterns, filled region types, filled and masking regions); left: the rows below | M |
-| Line draw tools for detail lines and sketches: rectangle (sketches have it), inscribed and circumscribed polygon, circle, arcs by centre and ends, tangent end and fillet (sketches have start-end-radius), spline, ellipse and partial ellipse, Pick Lines, and the Offset and Radius options | M |
+| Line draw tools for detail lines, sketches and walls: done (rectangle, inscribed and circumscribed polygon, circle, start-end-radius, centre-ends, tangent end and fillet arcs, spline by control points and through points, ellipse and partial ellipse, polyline, Pick Lines, Sides, Radius and Offset; Join into Polyline and Explode Polyline); left: Fillet Arc and Pick Lines for walls by trimming the walls they round, Pick Faces | M |
 | A line style for each of a region's boundary lines (one for the whole boundary today) | S |
-| Split, Trim/Extend to Corner, Offset and Align for detail lines and sketch lines (walls only today; Move, Copy, Rotate and Mirror work) | M |
+| Split for detail lines of any shape, splines included (a spline through points within 0.05 mm): done; Trim/Extend to Corner, Offset and Align for detail lines and sketch lines (walls only today; Move, Copy, Rotate and Mirror work) | M |
 | Fill patterns: `.pat` import and export, an editor for patterns of many line families, and model patterns aligned and rotated on a face | M |
 | Linework (a view's own line style on a model edge), repeating details, insulation and Detail Groups | M |
 | Better than Revit: line patterns and fill patterns made from lines drawn on a plan (select them, then Create Line Pattern or Create Fill Pattern), as Archicad and pyRevit's pattern maker do | M |

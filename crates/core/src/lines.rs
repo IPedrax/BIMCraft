@@ -8,10 +8,9 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::geom::P2;
+use crate::curves::Curve;
 use crate::ids::Guid;
 use crate::language::Language;
-use crate::model::MAX_POINTS;
 use crate::pen::{MAX_PEN, Pen};
 
 /// A piece of a line pattern: a dash or a space, so many mm long on paper, or a dot.
@@ -168,35 +167,45 @@ pub fn is_default_styles(s: &BTreeMap<String, LineStyle>) -> bool {
     *s == default_styles()
 }
 
-/// A detail line: a line drawn in one view (a level's plan, a section, an elevation or a sheet), through `points` in the
-/// view's own terms (plan mm, along and up, or paper mm), round to the first again where `closed`, in line style `style`.
+/// A detail line: a line drawn in one view (a level's plan, a section, an elevation or a sheet), in the view's own terms
+/// (plan mm, along and up, or paper mm), in line style `style`. It is any [`Curve`]: a line, an arc, a polyline through
+/// points (round to the first again where closed), a circle, an ellipse or a spline. In a file it's one flat object: its
+/// view, its style and its curve's fields.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "RawDetailLine", into = "RawDetailLine")]
 pub struct DetailLine {
     pub view: Guid,
-    pub points: Vec<P2>,
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub closed: bool,
+    pub curve: Curve,
     pub style: String,
 }
 
+crate::curve_struct! {
+    /// A detail line as a file holds it.
+    RawDetailLine {
+        view: Guid,
+        style: String,
+    }
+}
+
+impl TryFrom<RawDetailLine> for DetailLine {
+    type Error = String;
+    fn try_from(r: RawDetailLine) -> Result<DetailLine, String> {
+        Ok(DetailLine { curve: r.fields().curve()?, view: r.view, style: r.style })
+    }
+}
+
+impl From<DetailLine> for RawDetailLine {
+    fn from(l: DetailLine) -> RawDetailLine {
+        let mut r = RawDetailLine { view: l.view, style: l.style, ..RawDetailLine::default() };
+        r.set(&l.curve);
+        r
+    }
+}
+
 impl DetailLine {
-    /// An error saying what to fix, unless it has two points or more, apart, and few enough.
+    /// An error saying what to fix, unless its curve is one: see [`Curve::check`].
     pub fn check(&self, who: &str) -> Result<(), String> {
-        let n = self.points.len();
-        if n < 2 {
-            return Err(format!("{who}: a line needs two points or more, not {n}"));
-        }
-        if n > MAX_POINTS {
-            return Err(format!("{who}: a line has at most {MAX_POINTS} points"));
-        }
-        if self.closed && n < 3 {
-            return Err(format!("{who}: a closed line needs three points or more"));
-        }
-        if self.points.windows(2).any(|w| w[0].dist(w[1]) < 1e-6) {
-            return Err(format!("{who}: two points one after another are the same; a line runs between points apart"));
-        }
-        Ok(())
+        self.curve.check(who)
     }
 }
 
@@ -204,6 +213,7 @@ impl DetailLine {
 mod tests {
     use super::*;
     use crate::engine::Session;
+    use crate::geom::P2;
     use crate::library::Kind;
     use crate::model::{Element, Id, Model};
     use crate::render::{Drawing, Prim, View};
@@ -348,7 +358,7 @@ mod tests {
         s.execute("move", &json!({"ids": [line], "by": [100, 200]})).unwrap();
         s.execute("rotate", &json!({"ids": [line], "about": [100, 200], "angle": 90})).unwrap();
         let Some(Element::DetailLine(l)) = s.model.elements.get(line) else { panic!("no line") };
-        assert!(l.points[0].dist(P2(100.0, 200.0)) < 1e-6 && l.points[1].dist(P2(100.0, 1200.0)) < 1e-6, "{:?}", l.points);
+        assert!(l.curve.start().dist(P2(100.0, 200.0)) < 1e-6 && l.curve.end().dist(P2(100.0, 1200.0)) < 1e-6, "{:?}", l.curve);
         let r = s.execute("copy", &json!({"ids": [line], "by": [0, 3000]})).unwrap();
         assert_eq!(r["ids"].as_array().map(Vec::len), Some(1));
     }

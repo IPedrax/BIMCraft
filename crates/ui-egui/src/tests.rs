@@ -4867,6 +4867,7 @@ mod chinese;
 mod control;
 mod dialog;
 mod dock;
+mod draw;
 mod fills;
 mod gpu;
 mod lines;

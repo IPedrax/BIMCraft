@@ -18,7 +18,7 @@ use crate::icons::Icon;
 use crate::lang::{t, tf};
 use crate::properties::number;
 use crate::style::pal;
-use crate::{BimApp, Status, Tool, big_button, panel};
+use crate::{BimApp, Status, Tool, big_button, draw, panel};
 
 /// What Finish Edit Mode makes of the lines.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -93,7 +93,7 @@ impl Sketch {
         self.picked
             .iter()
             .filter_map(|&i| self.lines.get(i))
-            .flat_map(|l| [l.start, l.end])
+            .flat_map(|l| l.curve.handles())
             .filter(|q| q.dist(p) <= reach)
             .min_by(|a, b| a.dist(p).total_cmp(&b.dist(p)))
     }
@@ -101,12 +101,7 @@ impl Sketch {
     /// Every line end at `from` moved to `to`: the lines joined there stay joined.
     pub fn move_end(&mut self, from: P2, to: P2) {
         for l in &mut self.lines {
-            if l.start.dist(from) <= TOL {
-                l.start = to;
-            }
-            if l.end.dist(from) <= TOL {
-                l.end = to;
-            }
+            l.curve = l.curve.moved(from, to);
         }
         self.wrong.clear();
     }
@@ -137,8 +132,8 @@ impl Sketch {
     }
 
     /// A line added, unless it's too short to be one.
-    fn add(&mut self, l: SketchLine) {
-        if l.start.dist(l.end) > TOL {
+    pub(crate) fn add(&mut self, l: SketchLine) {
+        if l.curve.check("").is_ok() {
             self.lines.push(l);
             self.changed();
         }
@@ -164,11 +159,14 @@ impl Sketch {
                 () if self.wrong.contains(&i) => (3.0, pal().error),
                 () => (2.0, SKETCH),
             };
-            let shown = SketchLine { start: moved(l.start), end: moved(l.end), ..l.clone() };
+            let shown = match (self.drag, cursor) {
+                (Some(Drag::Grip(from)), Some(to)) => SketchLine { curve: l.curve.moved(from, to), ..l.clone() },
+                _ => l.clone(),
+            };
             p.add(Shape::line(shown.points().into_iter().map(&at).collect(), Stroke::new(width, colour)));
         }
         for l in self.picked.iter().filter_map(|&i| self.lines.get(i)) {
-            for q in [l.start, l.end] {
+            for q in l.curve.handles() {
                 let r = Rect::from_center_size(at(moved(q)), vec2(8.0, 8.0));
                 p.rect_filled(r, 0.0, pal().surface);
                 p.rect_stroke(r, 0.0, Stroke::new(1.5, pal().accent), StrokeKind::Middle);
@@ -213,6 +211,7 @@ pub fn friendly(problems: &[Problem], lines: &[SketchLine], units: Units) -> Str
             Problem::TooMany { .. } => t("The sketch has too many lines.").to_string(),
             Problem::OutOfRange { .. } => t("A line has a point too far out to draw.").to_string(),
             Problem::TooShort { .. } => t("A line is too short: its ends are 1 mm apart or less.").to_string(),
+            Problem::Malformed { .. } => t("A line isn't one that can be drawn: two of its points lie on each other.").to_string(),
             Problem::Cross { .. } => tf("Lines intersect ({}): a loop can't cross itself or another loop.", &[&n]),
             Problem::Overlap { .. } => tf("Lines overlap ({}): one lies along another, or a line is drawn twice.", &[&n]),
             Problem::Branch { .. } => tf("Three or more lines meet at a point ({}): a loop passes each point once.", &[&n]),
@@ -354,10 +353,8 @@ impl BimApp {
             sk.lines.pop();
             sk.changed();
         }
-        match &mut self.tool {
-            Tool::SketchLine(chain) | Tool::SketchArc(chain) => chain.clear(),
-            Tool::SketchRect(start) => *start = None,
-            _ => {}
+        if let Tool::SketchLine(chain) = &mut self.tool {
+            chain.clear();
         }
     }
 
@@ -378,6 +375,30 @@ impl BimApp {
     /// the first, the loop is closed and the next line starts anew), Rectangle's corner, Arc's ends then the point it
     /// passes through, Pick Walls' wall (`wall`), or with Modify a line picked.
     pub(crate) fn sketch_click(&mut self, m: &Model, p: P2, raw: P2, reach: f64, wall: Option<Id>, mods: Modifiers) {
+        // The Draw panel's other shapes: Fillet Arc picks two of the sketch's lines, Pick Lines a line of the model's;
+        // the rest gather their points.
+        if matches!(self.tool, Tool::SketchLine(_)) {
+            match self.shape() {
+                draw::Shape::Line => {}
+                draw::Shape::Fillet => {
+                    let hit = self.sketch.as_ref().and_then(|sk| sk.line_at(raw, reach));
+                    self.fillet_pick(hit.map(draw::Picked::Sketch), raw);
+                    return;
+                }
+                draw::Shape::PickLines => {
+                    if let Some(c) = wall.and_then(|id| self.picked_curve(id, raw)) {
+                        self.add_sketch_lines(vec![c]);
+                    }
+                    return;
+                }
+                _ => {
+                    if let Some(made) = self.shape_click(p) {
+                        self.add_sketch_lines(made);
+                    }
+                    return;
+                }
+            }
+        }
         let Some(sk) = &mut self.sketch else { return };
         match &mut self.tool {
             Tool::Modify => {
@@ -402,26 +423,6 @@ impl BimApp {
                 }
                 Some(_) => {}
                 None => chain.push(p),
-            },
-            Tool::SketchRect(start) => match start.take() {
-                Some(a) if (a.0 - p.0).abs() > TOL && (a.1 - p.1).abs() > TOL => {
-                    let c = [a, P2(p.0, a.1), p, P2(a.0, p.1)];
-                    for k in 0..4 {
-                        sk.add(SketchLine::new(c[k], c[(k + 1) % 4]));
-                    }
-                }
-                Some(a) => *start = Some(a),
-                None => *start = Some(p),
-            },
-            // Its start, its end, then a point it passes through; the next arc starts where it ended.
-            Tool::SketchArc(pts) => match pts.as_slice() {
-                &[a, b] => {
-                    sk.add(SketchLine::arc(a, b, p));
-                    *pts = vec![b];
-                }
-                &[a] if a.dist(p) > TOL => pts.push(p),
-                [] => pts.push(p),
-                _ => {}
             },
             // A line along the wall's location line, round with it where it's an arc.
             Tool::SketchPick => {
@@ -494,42 +495,19 @@ impl BimApp {
             origin + vec2(x, y)
         };
         match (&self.tool, self.sketch.as_ref().and_then(|sk| sk.drag)) {
-            (Tool::SketchRect(Some(a)), _) => {
-                let c = [*a, P2(cursor.0, a.1), cursor, P2(a.0, cursor.1)].map(at);
-                p.add(Shape::closed_line(c.to_vec(), stroke));
-            }
-            (Tool::SketchArc(pts), _) if pts.len() == 2 => {
-                p.add(Shape::line(SketchLine::arc(pts[0], pts[1], cursor).points().into_iter().map(at).collect(), stroke));
-            }
-            (Tool::SketchArc(pts), _) if pts.len() == 1 => {
-                p.line_segment([at(pts[0]), at(cursor)], Stroke::new(1.0, pal().accent));
+            (Tool::SketchLine(_), _) => {
+                for c in self.shape_preview(cursor) {
+                    p.add(Shape::line(c.points().into_iter().map(at).collect(), stroke));
+                }
             }
             (Tool::Modify, Some(Drag::Box(from))) => p.extend(box_shapes(p.clip_rect(), from, q)),
             _ => {}
         }
     }
 
-    /// The contextual tab's Draw panel while sketching: Line, Rectangle, Arc, Pick Walls.
+    /// The contextual tab's Draw panel while sketching: every shape, and Pick Walls.
     pub(crate) fn sketch_draw(&mut self, ui: &mut Ui) {
-        panel(ui, "Draw", |ui| {
-            let tools: [(Icon, &str, &str, Tool); 4] = [
-                (Icon::Line, "Line", "Line: a boundary line between each two points clicked", Tool::SketchLine(Vec::new())),
-                (Icon::Rectangle, "Rectangle", "Rectangle: four boundary lines between two opposite corners", Tool::SketchRect(None)),
-                (
-                    Icon::Arc,
-                    "Start-End-Radius Arc",
-                    "Start-End-Radius Arc: click its start, its end, then a point it passes through",
-                    Tool::SketchArc(Vec::new()),
-                ),
-                (Icon::Wall, "Pick Walls", "Pick Walls: a boundary line along each wall clicked", Tool::SketchPick),
-            ];
-            for (icon, label, tip, tool) in tools {
-                let on = std::mem::discriminant(&self.tool) == std::mem::discriminant(&tool);
-                if big_button(ui, icon, label, on, tip).clicked() && !on {
-                    self.tool = tool;
-                }
-            }
-        });
+        self.draw_panel(ui, draw::Target::Sketch);
     }
 
     /// The Mode panel at the ribbon's right end: Finish and Cancel while sketching, Edit Boundary when one floor, ceiling,
@@ -633,13 +611,9 @@ impl BimApp {
     pub(crate) fn sketch_prompt(&self) -> Option<&'static str> {
         self.sketch.as_ref()?;
         Some(match &self.tool {
+            Tool::SketchLine(_) if self.shape() != draw::Shape::Line => return self.shape_prompt(),
             Tool::SketchLine(chain) if chain.is_empty() => "Click where the line starts.",
             Tool::SketchLine(_) => "Click the line's end; the next starts there. The first point again closes the loop; Esc stops.",
-            Tool::SketchRect(None) => "Click a corner of the rectangle.",
-            Tool::SketchRect(Some(_)) => "Click the opposite corner. Esc cancels.",
-            Tool::SketchArc(pts) if pts.is_empty() => "Click where the arc starts.",
-            Tool::SketchArc(pts) if pts.len() == 1 => "Click where the arc ends.",
-            Tool::SketchArc(_) => "Click a point the arc passes through. Esc cancels.",
             Tool::SketchPick => "Click a wall: a boundary line along it.",
             _ => {
                 "Pick sketch lines (a box picks several); drag a picked line's end to move it; Delete removes them. Finish Edit Mode when every loop is closed."
@@ -648,12 +622,9 @@ impl BimApp {
     }
 }
 
-/// A line as Finish sends it: with its id when it kept one, so it keeps it.
+/// A line as Finish sends it: its curve's fields, and its id when it kept one, so it keeps it.
 fn sent(l: &SketchLine) -> serde_json::Value {
-    let mut v = json!({"start": l.start, "end": l.end});
-    if let Some(t) = l.through {
-        v["through"] = json!(t);
-    }
+    let mut v = serde_json::to_value(bimcraft_core::curves::Fields::of(&l.curve)).unwrap_or_default();
     if l.id != 0 {
         v["id"] = json!(l.id);
     }

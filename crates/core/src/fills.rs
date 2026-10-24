@@ -524,7 +524,7 @@ mod tests {
         let id = run(&mut s, "filled_region", json!({"sketch": lines(0.0, 0.0, 1000.0)}))["id"].clone();
         let Some(Element::FilledRegion(r)) = s.model.elements.get(id.as_u64().unwrap()).cloned() else { panic!() };
         assert!(r.sketch.iter().all(|l| l.id != 0), "its lines are parts");
-        let mut again: Vec<Value> = r.sketch.iter().map(|l| json!({"id": l.id, "start": l.start, "end": l.end})).collect();
+        let mut again: Vec<Value> = r.sketch.iter().map(|l| json!({"id": l.id, "start": l.start(), "end": l.end()})).collect();
         again.extend(lines(3000.0, 0.0, 500.0));
         let r2 = run(&mut s, "edit_boundary", json!({"id": id, "sketch": again}));
         assert_eq!(r2["area_m2"], 1.25, "two loops");
