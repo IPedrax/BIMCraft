@@ -163,6 +163,8 @@ icon_names! {
     PickLines,
     JoinPolyline,
     ExplodePolyline,
+    TrimSingle,
+    TrimMultiple,
 }
 
 /// A single unfilled contour in grid coordinates, shared by egui and the catalog.
@@ -392,6 +394,22 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             // A clean right-angle join and a short leftover segment.
             g.line(&[(5.0, 21.0), (5.0, 5.0), (21.0, 5.0)]);
             g.line(&[(5.0, 5.0), (2.0, 2.0)]);
+        }
+        Icon::TrimSingle => {
+            // A boundary, and a line reaching to it.
+            g.line(&[(19.5, 3.0), (19.5, 21.0)]);
+            g.line(&[(3.0, 12.0), (16.5, 12.0)]);
+            g.line(&[(13.5, 9.0), (16.5, 12.0), (13.5, 15.0)]);
+        }
+        Icon::TrimMultiple => {
+            // A boundary, and two lines reaching to it.
+            g.line(&[(19.5, 3.0), (19.5, 21.0)]);
+            g.line(&[(3.0, 7.0), (16.5, 7.0)]);
+            g.line(&[(3.0, 17.0), (16.5, 17.0)]);
+            if !compact {
+                g.line(&[(13.5, 4.0), (16.5, 7.0), (13.5, 10.0)]);
+                g.line(&[(13.5, 14.0), (16.5, 17.0), (13.5, 20.0)]);
+            }
         }
         Icon::Split => {
             // Two separated segments with a narrow cut mark.

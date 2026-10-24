@@ -541,7 +541,9 @@ the window. The window answers between its frames, so a long command holds the w
 | `copy` | CO | `ids`, `by` |
 | `rotate` | RO | `ids`, `about`, `angle` in degrees, `copy?` |
 | `mirror` | MM, DM | `ids`, `axis` (two points), `copy?` |
-| `corner` | TR | two wall `ids`, `keep?` (a point on the part of each to keep) |
+| `corner` | TR | two `ids`, walls or detail lines (lines and arcs), `keep?` (a point on the part of each to keep) |
+| `trim_extend` | | `boundary` (a detail line, a wall or a grid), `ids` (detail lines), `keep` (a point on each): each trimmed or extended to the boundary |
+| `offset` | OF | `id` (a detail line), `distance`, `toward` (a point on the side), `copy?` (true): the line drawn again beside itself, arcs round the same centres |
 | `split` | SL | `id` (a wall or a detail line of any shape), `at` |
 | `delete` | DE | `ids` |
 | `undo`, `redo` | | `count`: how many steps (1 by default) |

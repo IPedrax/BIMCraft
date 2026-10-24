@@ -139,7 +139,7 @@ impl Sketch {
         }
     }
 
-    fn changed(&mut self) {
+    pub(crate) fn changed(&mut self) {
         self.picked.clear();
         self.wrong.clear();
     }

@@ -336,26 +336,103 @@ impl Curve {
         self.points().windows(2).map(|w| geom::dist_to_segment(p, w[0], w[1])).fold(f64::INFINITY, f64::min)
     }
 
-    /// The points a grip drags: a polyline's corners, a spline's control points or the points it passes through, a
-    /// circle's or an ellipse's centre.
+    /// The points a grip drags: a polyline's corners and the middle of each of its arcs, a spline's control points or the
+    /// points it passes through, a circle's centre and a point on it (due east), an ellipse's centre and the ends of its
+    /// axes (and a partial one's ends).
     pub fn handles(&self) -> Vec<P2> {
         match self {
-            Curve::Poly { points, .. } | Curve::Fit { points, .. } | Curve::Spline { control: points, .. } => points.clone(),
-            Curve::Circle { centre, .. } | Curve::Ellipse { centre, .. } => vec![*centre],
+            Curve::Poly { points, arcs, .. } => {
+                let mut v = points.clone();
+                v.extend(
+                    self.segments()
+                        .iter()
+                        .enumerate()
+                        .filter(|(i, _)| arcs.get(*i).is_some_and(|a| *a != 0.0))
+                        .map(|(_, s)| s.at(s.length() / 2.0, 0.0)),
+                );
+                v
+            }
+            Curve::Fit { points, .. } | Curve::Spline { control: points, .. } => points.clone(),
+            Curve::Circle { centre, radius } => vec![*centre, *centre + P2(*radius, 0.0)],
+            Curve::Ellipse { centre, radii, angle, span } => {
+                let a = angle.to_radians();
+                let (u, w) = (P2(a.cos(), a.sin()), P2(-a.sin(), a.cos()));
+                let mut v = vec![*centre, *centre + u * radii[0], *centre + w * radii[1]];
+                if span.is_some() {
+                    v.extend([self.start(), self.end()]);
+                }
+                v
+            }
         }
     }
 
-    /// Every handle within [`TOL`] of `from` moved to `to`: a corner, a control point, a point it passes through, or its
-    /// centre, which takes a circle or an ellipse with it.
+    /// The corners of a polyline, the points of a spline: what a line's ends and bends are, to snap to.
+    pub fn vertices(&self) -> Vec<P2> {
+        match self {
+            Curve::Poly { points, .. } | Curve::Fit { points, .. } | Curve::Spline { control: points, .. } => points.clone(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// The handle within [`TOL`] of `from` (see [`Curve::handles`]) moved to `to`: a corner, a control point or a point
+    /// it passes through goes there; an arc's middle bends the arc through it; a centre takes the circle or the ellipse
+    /// with it; a circle's point on it sets its radius, an ellipse's axis ends its radii and turn, a partial one's ends
+    /// where it starts and ends.
     pub fn moved(&self, from: P2, to: P2) -> Curve {
         let near = |p: &P2| p.dist(from) <= TOL;
         let mut c = self.clone();
         match &mut c {
-            Curve::Poly { points, .. } | Curve::Fit { points, .. } | Curve::Spline { control: points, .. } => {
+            Curve::Poly { points, arcs, closed } => {
+                if points.iter().any(near) {
+                    points.iter_mut().filter(|p| near(p)).for_each(|p| *p = to);
+                } else {
+                    // An arc's middle: the arc through it.
+                    let n = points.len();
+                    let segs = Curve::Poly { points: points.clone(), arcs: arcs.clone(), closed: *closed }.segments();
+                    for (i, seg) in segs.iter().enumerate() {
+                        if arcs.get(i).is_some_and(|a| *a != 0.0) && near(&seg.at(seg.length() / 2.0, 0.0)) {
+                            let (a, b) = (points[i], points[(i + 1) % n.max(1)]);
+                            if let Some(slot) = arcs.get_mut(i) {
+                                *slot = sweep_through(a, to, b);
+                            }
+                        }
+                    }
+                }
+            }
+            Curve::Fit { points, .. } | Curve::Spline { control: points, .. } => {
                 points.iter_mut().filter(|p| near(p)).for_each(|p| *p = to);
             }
-            Curve::Circle { centre, .. } | Curve::Ellipse { centre, .. } if near(centre) => *centre = to,
-            _ => {}
+            Curve::Circle { centre, radius } => {
+                if near(centre) {
+                    *centre = to;
+                } else if near(&(*centre + P2(*radius, 0.0))) {
+                    *radius = centre.dist(to);
+                }
+            }
+            Curve::Ellipse { centre, radii, angle, span } => {
+                let a = angle.to_radians();
+                let (u, w) = (P2(a.cos(), a.sin()), P2(-a.sin(), a.cos()));
+                let param = |q: P2, r: [f64; 2]| {
+                    let d = q - *centre;
+                    (d.dot(w) / r[1]).atan2(d.dot(u) / r[0]).to_degrees()
+                };
+                let ends = span.map(|_| (self.start(), self.end()));
+                if near(centre) {
+                    *centre = to;
+                } else if near(&(*centre + u * radii[0])) {
+                    let d = to - *centre;
+                    radii[0] = d.length();
+                    *angle = d.1.atan2(d.0).to_degrees();
+                } else if near(&(*centre + w * radii[1])) {
+                    radii[1] = (to - *centre).dot(w);
+                } else if let (Some((s0, s1)), Some([from_deg, to_deg])) = (ends, span.as_mut()) {
+                    if near(&s0) {
+                        *from_deg = param(to, *radii);
+                    } else if near(&s1) {
+                        *to_deg = param(to, *radii);
+                    }
+                }
+            }
         }
         c
     }
@@ -1072,6 +1149,27 @@ pub struct Fields {
     pub end_tangent: Option<P2>,
 }
 
+/// The name of every field a curve may hold, for a command that sets one shape's and takes away the rest.
+pub const FIELD_NAMES: &[&str] = &[
+    "start",
+    "end",
+    "through",
+    "arc",
+    "points",
+    "arcs",
+    "closed",
+    "centre",
+    "radius",
+    "radii",
+    "angle",
+    "span",
+    "control",
+    "knots",
+    "fit",
+    "start_tangent",
+    "end_tangent",
+];
+
 /// What a curve's fields may be, said when they're none of them.
 pub const FORMS: &str = "`start` and `end` (with `arc` degrees or a `through` point), `points` (with `arcs` and `closed`), `centre` and `radius`, `centre` and `radii` (with `angle` and `span`), `control` (with `knots`), or `fit` (with `start_tangent` and `end_tangent`)";
 
@@ -1415,6 +1513,29 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn grips_bend_an_arc_size_a_circle_and_turn_and_stretch_an_ellipse() {
+        let arc = Curve::arc(P2(0.0, 0.0), P2(2000.0, 0.0), 90.0);
+        let mid = arc.handles()[2];
+        let bent = arc.moved(mid, P2(1000.0, -1000.0));
+        assert!(
+            bent.middle().dist(P2(1000.0, -1000.0)) < 1.0 && (bent.length() - std::f64::consts::PI * 1000.0).abs() < 1e-6,
+            "a half circle now"
+        );
+        let c = Curve::Circle { centre: P2(0.0, 0.0), radius: 500.0 };
+        assert_eq!(c.moved(P2(500.0, 0.0), P2(0.0, 800.0)), Curve::Circle { centre: P2(0.0, 0.0), radius: 800.0 });
+        assert_eq!(c.moved(P2(0.0, 0.0), P2(10.0, 20.0)), Curve::Circle { centre: P2(10.0, 20.0), radius: 500.0 });
+        let e = Curve::Ellipse { centre: P2(0.0, 0.0), radii: [2000.0, 1000.0], angle: 0.0, span: Some([0.0, 180.0]) };
+        let turned = e.moved(P2(2000.0, 0.0), P2(0.0, 3000.0));
+        assert_eq!(turned, Curve::Ellipse { centre: P2(0.0, 0.0), radii: [3000.0, 1000.0], angle: 90.0, span: Some([0.0, 180.0]) });
+        let shorter = e.moved(P2(-2000.0, 0.0), P2(0.0, 1000.0));
+        assert!(shorter.end().dist(P2(0.0, 1000.0)) < 1e-6, "its end where it was dragged: {shorter:?}");
+        assert_eq!(
+            e.moved(P2(0.0, 1000.0), P2(0.0, 400.0)),
+            Curve::Ellipse { centre: P2(0.0, 0.0), radii: [2000.0, 400.0], angle: 0.0, span: Some([0.0, 180.0]) }
+        );
     }
 
     #[test]

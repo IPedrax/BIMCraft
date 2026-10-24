@@ -1799,6 +1799,53 @@ pub(super) const WORDS: &[[&str; 2]] = &[
         "The arc doesn't fit: pick two straight lines that meet at an angle, long enough for it.",
         "圆弧放不下：请拾取两条以一定角度相交、且足够长的直线。",
     ],
+    ["Pick the first wall or line, on the part to keep.", "拾取第一面墙或第一条线，在要保留的部分上。"],
+    ["Pick the second wall or line, on the part to keep.", "拾取第二面墙或第二条线，在要保留的部分上。"],
+    ["Pick the line to trim or extend to: a line, a wall or a grid.", "拾取要修剪或延伸到的线：一条线、一面墙或一条轴网。"],
+    ["Click the line to trim or extend to it, on the part to keep.", "单击要修剪或延伸到边界的线，在要保留的部分上。"],
+    [
+        "Click each line to trim or extend to it, on the part to keep; Esc picks another boundary.",
+        "逐一单击要修剪或延伸到边界的线，在要保留的部分上；按 Esc 重新拾取边界。",
+    ],
+    ["Click a wall or a line where to split it.", "在墙或线上单击要拆分的位置。"],
+    [
+        "Point to a wall or a line: the offset goes to the cursor's side. Click to place it.",
+        "指向一面墙或一条线：偏移在光标所在的一侧。单击放置。",
+    ],
+    ["Offset (OF): pick a wall or a line; a copy goes to the cursor's side", "偏移 (OF)：拾取一面墙或一条线；副本放在光标所在的一侧"],
+    ["Split Element (SL): click a wall or a line where to split it", "拆分图元 (SL)：在墙或线上单击要拆分的位置"],
+    [
+        "Trim/Extend to Corner (TR): pick two walls or two lines, on the parts to keep",
+        "修剪/延伸为角 (TR)：拾取两面墙或两条线，在要保留的部分上",
+    ],
+    ["Trim/Extend Single Element", "修剪/延伸单个图元"],
+    [
+        "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep",
+        "修剪/延伸单个图元：拾取边界线，然后在要保留的部分上拾取要更改的线",
+    ],
+    ["Trim/Extend Multiple Elements", "修剪/延伸多个图元"],
+    [
+        "Trim/Extend Multiple Elements: pick the line to trim or extend to, then each line to change, on the part to keep",
+        "修剪/延伸多个图元：拾取边界线，然后在要保留的部分上逐一拾取要更改的线",
+    ],
+    ["Split between the line's ends.", "请在线的两端之间拆分。"],
+    [
+        "The lines don't meet: they're parallel, or an arc's circle misses the other.",
+        "两条线不相交：它们平行，或圆弧所在的圆与另一条线不相交。",
+    ],
+    [
+        "It can't be offset: give a distance, and pick a line, an arc, a polyline or a circle.",
+        "无法偏移：请输入距离，并拾取直线、圆弧、多段线或圆。",
+    ],
+    ["Quadrant", "象限点"],
+    ["Tangent", "切点"],
+    ["Snap to Quadrants", "捕捉到象限点"],
+    ["Snap to Tangents", "捕捉到切点"],
+    [
+        "A circle's, an ellipse's or an arc's points along its axes: east, north, west and south",
+        "圆、椭圆或圆弧沿其轴线的点：东、北、西、南",
+    ],
+    ["Where a line from the last point touches a circle or an arc", "从上一点出发的直线与圆或圆弧相切的位置"],
 ];
 
 /// The core's words (`bimcraft_core::language`) that the window shows too, in English and Simplified Chinese: after [`WORDS`], which wins.

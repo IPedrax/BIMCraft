@@ -437,8 +437,8 @@ pub static ALL: &[Command] = &[
          parallel references, along a line through `at`; angular: the angle between two references that meet, on the side \
          of `at`; radial: a round column's radius, toward `at`. A ref is {id, face?}: a wall's centre (the default), left or \
          right face (of its start-to-end direction), start or end; a door's or window's centre, or its jamb toward its wall's \
-         start or end; a grid's line. Or a point [x, y] on one of those (for radial, on a round column's edge). It follows \
-         what it measures",
+         start or end; a grid's line; a straight detail line, or its start or end (radial: a circle or an arc of one). Or a \
+         point [x, y] on one of those (for radial, on a round column's edge). It follows what it measures",
         dimension,
     ),
     edit(
@@ -714,9 +714,26 @@ pub static ALL: &[Command] = &[
         "corner",
         "Trim/Extend to Corner",
         &["TR"],
-        "{ids: [wall, wall], keep?: [[x, y], [x, y]]} trims or extends two walls to meet where their lines cross; `keep` is a \
-         point on the part of each to keep",
+        "{ids: [a, b], keep?: [[x, y], [x, y]]} trims or extends two walls, or two detail lines (lines or arcs), to meet where \
+         their lines (or circles) cross; `keep` is a point on the part of each to keep",
         corner,
+    ),
+    edit(
+        "offset",
+        "Offset",
+        &["OF"],
+        "{id, distance, toward: [x, y], copy?} a detail line (a line, an arc, a polyline or a circle) drawn again `distance` mm \
+         beside itself on the side `toward` is, arcs round the same centres: a copy (the default), or with `copy` false moved",
+        offset,
+    ),
+    edit(
+        "trim_extend",
+        "Trim/Extend Single Element",
+        &[],
+        "{boundary, ids: [id, …], keep: [[x, y], …]} trims or extends each detail line of `ids` (lines and arcs) to where it \
+         meets `boundary` (a detail line, a wall's location line or a grid), keeping the part of each its `keep` point is on: \
+         Revit's Trim/Extend Single Element, and Multiple Elements with several",
+        trim_extend,
     ),
     edit(
         "split",
@@ -740,8 +757,8 @@ pub static ALL: &[Command] = &[
         "fillet",
         "Fillet Arc",
         &["FL"],
-        "{ids: [a, b], radius} rounds the corner where two straight detail lines meet (or would, extended) with an arc of \
-         `radius` mm in the first's line style: each line is cut back to the arc",
+        "{ids: [a, b], radius} rounds the corner where two straight detail lines, or two straight walls, meet (or would, \
+         extended) with an arc of `radius` mm, in the first's line style or of the first's type: each is cut back to the arc",
         fillet,
     ),
     edit(
@@ -6129,6 +6146,18 @@ fn corner(s: &mut Session, p: &Value) -> R {
     let ids = ids_param(c, &s.model, p)?;
     let m = &s.model;
     let [a, b] = ids.as_slice() else { return Err(bad(c, "`ids` takes two walls")) };
+    if let (Some(Element::DetailLine(la)), Some(Element::DetailLine(lb))) = (m.elements.get(*a), m.elements.get(*b)) {
+        let keep = points(c, p, "keep").ok().filter(|k| k.len() == 2).unwrap_or_else(|| vec![la.curve.middle(), lb.curve.middle()]);
+        let (ca, cb) = crate::draw::corner(&la.curve, keep[0], &lb.curve, keep[1]).ok_or_else(|| {
+            bad(c, "the lines don't meet, run on as far as need be: they're parallel, or an arc's circle misses the other")
+        })?;
+        let (ia, ib) = (*a, *b);
+        let (la, lb) = (la.clone(), lb.clone());
+        let m = s.model_mut();
+        m.elements.insert(ia, Element::DetailLine(DetailLine { curve: ca.map(micron), ..la }));
+        m.elements.insert(ib, Element::DetailLine(DetailLine { curve: cb.map(micron), ..lb }));
+        return Ok(json!({"ids": [ia, ib]}));
+    }
     let (Some(wa), Some(wb)) = (m.wall(*a), m.wall(*b)) else { return Err(bad(c, "`ids` takes two walls")) };
     if wa.arc != 0.0 || wb.arc != 0.0 {
         return Err(bad(c, "it trims and extends straight walls; a curved one changes by its ends or its `arc`"));
@@ -6269,11 +6298,93 @@ fn join_polyline(s: &mut Session, p: &Value) -> R {
     Ok(json!({"id": ids[0]}))
 }
 
+fn offset(s: &mut Session, p: &Value) -> R {
+    let c = "offset";
+    let m = &s.model;
+    let id = id_opt(c, p, "id")?.and_then(|g| m.elements.id(g)).ok_or_else(|| bad(c, "`id`, a detail line, is required"))?;
+    let Some(Element::DetailLine(l)) = m.elements.get(id).cloned() else { return Err(bad(c, format!("{id} is not a detail line"))) };
+    let d = num(c, p, "distance")?.ok_or_else(|| bad(c, "`distance`, mm, is required"))?;
+    if !(d.is_finite() && d > 0.0 && d <= MAX_COORD) {
+        return Err(bad(c, format!("`distance` is more than 0 mm, not {d}")));
+    }
+    let toward = point_req(c, p, "toward")?;
+    let curve = crate::draw::pick(&l.curve, toward, d)
+        .ok_or_else(|| {
+            bad(c, format!("a {} can't be offset by {d} mm (an ellipse or a spline can't, nor a round turned inside out)", l.curve.kind()))
+        })?
+        .map(micron);
+    let copy = absent(p.get("copy")) || flag(c, p, "copy")?;
+    let m = s.model_mut();
+    let out = DetailLine { curve, ..l };
+    if copy {
+        let new = m.insert(Element::DetailLine(out));
+        Ok(json!({"id": new}))
+    } else {
+        m.elements.insert(id, Element::DetailLine(out));
+        Ok(json!({"id": id}))
+    }
+}
+
+fn trim_extend(s: &mut Session, p: &Value) -> R {
+    let c = "trim_extend";
+    let m = &s.model;
+    let boundary = id_opt(c, p, "boundary")?
+        .and_then(|g| m.elements.id(g))
+        .ok_or_else(|| bad(c, "`boundary`, a line to trim or extend to, is required"))?;
+    let edge = crate::draw::element_curve(m, boundary).ok_or_else(|| bad(c, format!("{boundary} has no line to trim or extend to")))?;
+    let ids = ids_param(c, m, p)?;
+    let keep = points(c, p, "keep")?;
+    if keep.len() != ids.len() {
+        return Err(bad(c, format!("`keep` gives a point on each line to keep: {} for {} lines", keep.len(), ids.len())));
+    }
+    let mut done = Vec::new();
+    for (&id, &k) in ids.iter().zip(&keep) {
+        let Some(Element::DetailLine(l)) = m.elements.get(id) else { return Err(bad(c, format!("{id} is not a detail line"))) };
+        let x = crate::draw::meet(&l.curve, &edge, k).ok_or_else(|| bad(c, format!("detail line {id} never meets {boundary}")))?;
+        let curve = crate::draw::trim_to(&l.curve, k, x)
+            .ok_or_else(|| bad(c, format!("detail line {id} can't be cut there: nothing would be left")))?;
+        done.push((id, DetailLine { curve: curve.map(micron), ..l.clone() }));
+    }
+    let m = s.model_mut();
+    for (id, l) in done {
+        m.elements.insert(id, Element::DetailLine(l));
+    }
+    Ok(json!({"ids": ids}))
+}
+
 fn fillet(s: &mut Session, p: &Value) -> R {
     let c = "fillet";
     let m = &s.model;
     let ids = ids_param(c, m, p)?;
     let &[a, b] = ids.as_slice() else { return Err(bad(c, "`ids` is two detail lines")) };
+    // Two straight walls: cut back, and an arc wall like the first between them.
+    if let (Some(wa), Some(wb)) = (m.wall(a).cloned(), m.wall(b).cloned()) {
+        let radius = num(c, p, "radius")?.ok_or_else(|| bad(c, "`radius`, mm, is required"))?;
+        if !(radius.is_finite() && radius > TOL && radius <= MAX_COORD) {
+            return Err(bad(c, format!("`radius` is more than {TOL} mm, not {radius}")));
+        }
+        if wa.arc != 0.0 || wb.arc != 0.0 {
+            return Err(bad(c, "it rounds two straight walls; a curved one changes by its ends or its `arc`"));
+        }
+        let (ca, arc, cb) =
+            crate::draw::fillet_lines(&crate::curves::Curve::line(wa.start, wa.end), &crate::curves::Curve::line(wb.start, wb.end), radius)
+                .ok_or_else(|| {
+                    bad(c, "the walls are straight, meet at an angle and are long enough for the arc; these aren't, or it doesn't fit")
+                })?;
+        let sweep = match &arc {
+            crate::curves::Curve::Poly { arcs, .. } => arcs.first().copied().unwrap_or(0.0),
+            _ => 0.0,
+        };
+        let (pa, pb) = (ca.vertices(), cb.vertices());
+        let (&[a0, a1], &[b0, b1]) = (pa.as_slice(), pb.as_slice()) else { return Err(bad(c, "the walls can't be rounded")) };
+        let mut round = Wall { start: micron(arc.start()), end: micron(arc.end()), arc: degrees(sweep), ..wa.clone() };
+        massing::detach(&mut round.params);
+        let m = s.model_mut();
+        m.elements.insert(a, Element::Wall(Wall { start: micron(a0), end: micron(a1), ..wa }));
+        m.elements.insert(b, Element::Wall(Wall { start: micron(b0), end: micron(b1), ..wb }));
+        let id = m.insert(Element::Wall(round));
+        return Ok(json!({"id": id, "ids": [a, b]}));
+    }
     let line = |id: Id| match m.elements.get(id) {
         Some(Element::DetailLine(l)) => Ok(l.clone()),
         _ => Err(bad(c, format!("{id} is not a detail line"))),

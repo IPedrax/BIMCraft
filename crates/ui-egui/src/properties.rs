@@ -2007,12 +2007,14 @@ impl BimApp {
             ui.add_space(6.0);
             ui.label(RichText::new(t("Object Snaps")).strong());
             let s = &mut self.snaps;
-            let kinds: [(&mut bool, Snap, &str); 6] = [
+            let kinds: [(&mut bool, Snap, &str); 8] = [
                 (&mut s.endpoint, Snap::Endpoint, "The ends of walls, grids and what else is drawn, and the points picked so far"),
                 (&mut s.midpoint, Snap::Midpoint, "The middle of a wall, along its arc"),
                 (&mut s.intersection, Snap::Intersection, "Where two walls or grids cross"),
                 (&mut s.centre, Snap::Centre, "The centre of a curved wall, a column or a component"),
                 (&mut s.perpendicular, Snap::Perpendicular, "The foot of the perpendicular from the last point to a wall or grid"),
+                (&mut s.quadrant, Snap::Quadrant, "A circle's, an ellipse's or an arc's points along its axes: east, north, west and south"),
+                (&mut s.tangent, Snap::Tangent, "Where a line from the last point touches a circle or an arc"),
                 (&mut s.nearest, Snap::Nearest, "A wall's centre line, so a wall drawn on it meets it"),
             ];
             for (on, kind, tip) in kinds {

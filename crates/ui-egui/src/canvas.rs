@@ -806,6 +806,21 @@ impl BimApp {
                     stroke,
                 ));
             }
+            // A quarter of a round, its corner on the point.
+            Kind::Quadrant => {
+                let arc: Vec<Pos2> = (0..=8)
+                    .map(|k| f32::from(k as u8) * std::f32::consts::FRAC_PI_2 / 8.0)
+                    .map(|a| at + vec2(-9.0 + 12.0 * a.cos(), 6.0 - 12.0 * a.sin()))
+                    .collect();
+                p.add(Shape::line(arc, stroke));
+                p.line_segment([at + vec2(-9.0, 6.0), at + vec2(3.0, 6.0)], stroke);
+                p.line_segment([at + vec2(-9.0, 6.0), at + vec2(-9.0, -6.0)], stroke);
+            }
+            // A round, and the line touching it on top.
+            Kind::Tangent => {
+                p.circle_stroke(at + vec2(0.0, 5.0), 5.0, stroke);
+                p.line_segment([at + vec2(-8.0, 0.0), at + vec2(8.0, 0.0)], stroke);
+            }
             Kind::Angle => {
                 p.circle_filled(at, 3.0, pal().accent);
             }
@@ -869,13 +884,23 @@ impl BimApp {
             Tool::DetailLine(_) | Tool::Wall(_) | Tool::SketchLine(_) if shape == draw::Shape::PickLines => {
                 d.pick_all(q, PICK).into_iter().find(|id| draw::element_curve(&model, *id).is_some())
             }
+            Tool::Wall(_) if shape == draw::Shape::Fillet => {
+                d.pick_all(q, PICK).into_iter().find(|id| model.wall(*id).is_some_and(|w| w.arc == 0.0))
+            }
             Tool::DetailLine(_) if shape == draw::Shape::Fillet => {
                 d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::DetailLine(_))))
             }
             Tool::Split => {
                 d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Wall(_) | Element::DetailLine(_))))
             }
-            Tool::Door | Tool::Window | Tool::Trim(_) | Tool::Offset => d.pick(q, PICK).filter(|id| model.wall(*id).is_some()),
+            Tool::Trim(_) | Tool::Offset => {
+                d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Wall(_) | Element::DetailLine(_))))
+            }
+            Tool::TrimTo { boundary: None, .. } => d.pick_all(q, PICK).into_iter().find(|id| draw::element_curve(&model, *id).is_some()),
+            Tool::TrimTo { .. } => {
+                d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::DetailLine(_))))
+            }
+            Tool::Door | Tool::Window => d.pick(q, PICK).filter(|id| model.wall(*id).is_some()),
             Tool::Demolish => d.pick(q, PICK),
             Tool::Align(_) | Tool::Mirror { draw: false, .. } => d.pick(q, PICK).filter(|id| !model.reference_lines(*id).is_empty()),
             // Something to measure to: with a line parallel to the first one picked, or for an angle,
@@ -915,12 +940,14 @@ impl BimApp {
         let dragged = self.sketch_drag(ui, &response, rect, &view, level);
         self.canvas.found.set(None);
         self.grip_drag(ui, &response, rect, &view, level);
+        self.line_grip_drag(ui, &response, rect, &view, level);
         // A drag from an element moves the selection; from empty floor, it draws a selection box.
         if response.drag_started_by(PointerButton::Primary)
             && self.tool == Tool::Modify
             && !sketching
             && self.canvas.crop_drag.is_none()
             && self.canvas.grip.is_none()
+            && self.drawing.grip.is_none()
             && let Some(o) = ui.input(|i| i.pointer.press_origin())
         {
             let o = (o.x - rect.min.x, o.y - rect.min.y);
@@ -967,7 +994,7 @@ impl BimApp {
         let p = ui.painter_at(rect);
         p.rect_filled(rect, 0.0, color(render::PAPER));
         let mut marked = self.selection.clone();
-        if let Tool::Trim(Some((first, _))) = self.tool {
+        if let Tool::Trim(Some((first, _))) | Tool::TrimTo { boundary: Some(first), .. } = self.tool {
             marked.push(first);
         }
         paint(&p, Place::at(rect.min), &d, &marked, hovered, self.thin, &[]);
@@ -1023,6 +1050,10 @@ impl BimApp {
             }
         }
         self.grip_overlay(ui, &model, &view, rect, level, &d);
+        let cursor = ui
+            .input(|i| i.pointer.latest_pos())
+            .map(|q| self.snap(&model, level, &view, (q.x - rect.min.x, q.y - rect.min.y), &[], false).at);
+        self.line_grip_overlay(&ui.painter_at(rect), rect, &view, cursor.filter(|_| self.drawing.grip.is_some()));
         self.temporary_dimension(ui, &model, &view, rect);
         self.context_menu(&response);
         self.nav_bar(ui, rect, key);
@@ -1211,6 +1242,10 @@ impl BimApp {
 
     fn click(&mut self, m: &Model, (level, key): (Id, Id), v: &View, at: (f32, f32), hovered: Option<Id>, mods: Modifiers) {
         match &self.tool {
+            Tool::Split | Tool::Trim(_) | Tool::TrimTo { .. } | Tool::Offset if self.sketch.is_some() => {
+                let p = self.snap(m, level, v, at, &[], false).at;
+                self.sketch_modify(p, v.mm(at), f64::from(PICK) / v.scale);
+            }
             Tool::Modify | Tool::SketchLine(_) | Tool::SketchPick if self.sketch.is_some() => {
                 let from = match &self.tool {
                     Tool::SketchLine(chain) if self.shape() == draw::Shape::Line => chain.clone(),
@@ -1234,6 +1269,10 @@ impl BimApp {
             Tool::Level => {}
             Tool::Elevation => {
                 self.run("elevation", json!({"at": point(round(v.mm(at)))}));
+            }
+            Tool::Wall(_) if self.shape() == draw::Shape::Fillet => {
+                let picked = hovered.filter(|id| m.wall(*id).is_some());
+                self.fillet_pick(picked.map(draw::Picked::Element), v.mm(at));
             }
             Tool::Wall(_) if self.shape() == draw::Shape::PickLines => {
                 if let Some(c) = hovered.and_then(|id| self.picked_curve(id, v.mm(at))) {
@@ -1311,12 +1350,29 @@ impl BimApp {
                 }
             }
             Tool::Offset => {
-                if let Some(id) = hovered
+                if let Some(id) = hovered.filter(|id| matches!(m.elements.get(*id), Some(Element::DetailLine(_)))) {
+                    match m.units.parse(&self.offset).filter(|d| *d > 0.0) {
+                        Some(d) => {
+                            self.run("offset", json!({"id": id, "distance": d, "toward": point(v.mm(at)), "copy": self.offset_copy}));
+                        }
+                        None => self.status = Status { text: tf("offset: `{}` is not a distance", &[&self.offset]), error: true },
+                    }
+                } else if let Some(id) = hovered
                     && let Some(by) = self.offset_by(m, id, v.mm(at))
                 {
                     self.run(if self.offset_copy { "copy" } else { "move" }, json!({"ids": [id], "by": point(by)}));
                 }
             }
+            &Tool::TrimTo { boundary, many } => match (boundary, hovered) {
+                (None, Some(b)) => self.tool = Tool::TrimTo { boundary: Some(b), many },
+                (Some(b), Some(id)) if id != b => {
+                    self.run("trim_extend", json!({"boundary": b, "ids": [id], "keep": [point(v.mm(at))]}));
+                    if !many {
+                        self.tool = Tool::TrimTo { boundary: None, many };
+                    }
+                }
+                _ => {}
+            },
             Tool::Demolish => {
                 if let Some(id) = hovered {
                     self.demolish(id);
@@ -2232,7 +2288,7 @@ impl BimApp {
             self.dim_edit = None;
             return;
         };
-        if self.tool != Tool::Modify || self.canvas.drag.is_some() || self.canvas.grip.is_some() {
+        if self.tool != Tool::Modify || self.canvas.drag.is_some() || self.canvas.grip.is_some() || self.drawing.grip.is_some() {
             return;
         }
         match m.elements.get(id) {

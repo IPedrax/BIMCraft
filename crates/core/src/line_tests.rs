@@ -237,3 +237,105 @@ fn fillet_rounds_the_corner_of_two_detail_lines_and_cuts_them_back() {
         assert!(e.contains(says), "{p}: {e}");
     }
 }
+
+#[test]
+fn detail_lines_trim_and_extend_to_a_corner_or_to_a_boundary() {
+    let mut s = Session::new();
+    let a = line(&mut s, json!({"start": [0, 0], "end": [800, 0]}));
+    let b = line(&mut s, json!({"start": [1000, 200], "end": [1000, 1000]}));
+    run(&mut s, "corner", json!({"ids": [a, b], "keep": [[100, 0], [1000, 900]]}));
+    assert_eq!(
+        (curve(&s, a), curve(&s, b)),
+        (Curve::line(P2(0.0, 0.0), P2(1000.0, 0.0)), Curve::line(P2(1000.0, 0.0), P2(1000.0, 1000.0)))
+    );
+    // Several, to one boundary: a wall's location line.
+    let w = run(&mut s, "wall", json!({"points": [[0, 3000], [5000, 3000]]}))["ids"][0].as_u64().unwrap_or_default();
+    let c1 = line(&mut s, json!({"start": [2000, 1500], "end": [2000, 2500]}));
+    let c2 = line(&mut s, json!({"start": [3000, 4000], "end": [3000, 2000], "style": "Wide Lines"}));
+    run(&mut s, "trim_extend", json!({"boundary": w, "ids": [c1, c2], "keep": [[2000, 1600], [3000, 2100]]}));
+    assert_eq!(curve(&s, c1), Curve::line(P2(2000.0, 1500.0), P2(2000.0, 3000.0)), "extended to the wall");
+    assert_eq!(curve(&s, c2), Curve::line(P2(3000.0, 3000.0), P2(3000.0, 2000.0)), "trimmed back to it, keeping the part picked");
+    for (p, says) in [
+        (json!({"boundary": w, "ids": [c1], "keep": []}), "keep"),
+        (json!({"ids": [c1], "keep": [[0, 0]]}), "boundary"),
+        (json!({"boundary": w, "ids": [w], "keep": [[0, 0]]}), "not a detail line"),
+    ] {
+        let e = s.execute("trim_extend", &p).unwrap_err();
+        assert!(e.contains(says), "{p}: {e}");
+    }
+}
+
+#[test]
+fn offset_draws_a_detail_line_again_beside_itself_arcs_round_their_centres() {
+    let mut s = Session::new();
+    let a = line(&mut s, json!({"start": [0, 0], "end": [2000, 0], "arc": -180}));
+    let r = run(&mut s, "offset", json!({"id": a, "distance": 200, "toward": [1000, 0]}));
+    let copy = curve(&s, r["id"].as_u64().unwrap_or_default());
+    assert!(copy.points().iter().all(|p| (p.dist(P2(1000.0, 0.0)) - 800.0).abs() < 1e-3), "inside, round the same centre");
+    assert_eq!(curve(&s, a).kind(), "arc", "the original stays");
+    let l = line(&mut s, json!({"start": [0, 5000], "end": [1000, 5000]}));
+    run(&mut s, "offset", json!({"id": l, "distance": 300, "toward": [500, 4000], "copy": false}));
+    assert_eq!(curve(&s, l), Curve::line(P2(0.0, 4700.0), P2(1000.0, 4700.0)), "moved");
+    let e = line(&mut s, json!({"centre": [0, 0], "radii": [500, 300]}));
+    assert!(s.execute("offset", &json!({"id": e, "distance": 10, "toward": [0, 0]})).unwrap_err().contains("ellipse"));
+}
+
+#[test]
+fn points_snap_to_detail_lines_ends_centres_quadrants_tangents_and_their_nearest_point() {
+    use crate::snap::{Kind, Reach, Snaps, snap};
+    let mut s = Session::new();
+    line(&mut s, json!({"centre": [0, 0], "radius": 1000}));
+    line(&mut s, json!({"start": [3000, 0], "end": [5000, 0], "arc": 90}));
+    line(&mut s, json!({"fit": [[0, 3000], [1000, 3500], [2000, 3000]]}));
+    let level = s.model.levels().first().map(|(l, _)| *l).unwrap_or_default();
+    let reach = Reach { point: 150.0, line: 150.0 };
+    let at = |p: P2, from: &[P2], o: &Snaps| snap(&s.model, level, p, reach, from, false, o);
+    let all = Snaps::default();
+    assert_eq!((at(P2(40.0, -30.0), &[], &all).at, at(P2(40.0, -30.0), &[], &all).kind), (P2(0.0, 0.0), Kind::Centre));
+    assert_eq!(at(P2(20.0, 1060.0), &[], &all).kind, Kind::Quadrant);
+    assert_eq!(at(P2(20.0, 1060.0), &[], &all).at, P2(0.0, 1000.0));
+    assert_eq!((at(P2(3050.0, 20.0), &[], &all).at, at(P2(3050.0, 20.0), &[], &all).kind), (P2(3000.0, 0.0), Kind::Endpoint));
+    assert_eq!(at(P2(1990.0, 2950.0), &[], &all).at, P2(2000.0, 3000.0), "a spline's end");
+    // From (2000, 0), a line touches the circle at 60° either side of the way back to its centre.
+    let t = at(P2(500.0, 880.0), &[P2(2000.0, 0.0)], &all);
+    assert_eq!(t.kind, Kind::Tangent);
+    assert!(t.at.dist(P2(500.0, 866.025)) < 0.01, "{:?}", t.at);
+    // Nothing else near: the nearest point of the line.
+    let n = at(P2(707.0, -700.0), &[], &Snaps::only(Kind::Nearest));
+    assert_eq!(n.kind, Kind::Nearest);
+    assert!((n.at.dist(P2(0.0, 0.0)) - 1000.0).abs() < 0.01, "on the circle: {:?}", n.at);
+}
+
+#[test]
+fn fillet_rounds_two_walls_with_an_arc_wall_of_the_first_ones_type() {
+    let mut s = Session::new();
+    let a = run(&mut s, "wall", json!({"points": [[-4000, 0], [0, 0]]}))["ids"][0].as_u64().unwrap_or_default();
+    let b = run(&mut s, "wall", json!({"points": [[0, 0], [0, 4000]]}))["ids"][0].as_u64().unwrap_or_default();
+    let r = run(&mut s, "fillet", json!({"ids": [a, b], "radius": 1500}));
+    let round = r["id"].as_u64().unwrap_or_default();
+    let (wa, wb, wr) = (s.model.wall(a).cloned(), s.model.wall(b).cloned(), s.model.wall(round).cloned());
+    let (Some(wa), Some(wb), Some(wr)) = (wa, wb, wr) else { panic!("three walls") };
+    assert_eq!((wa.start, wa.end), (P2(-4000.0, 0.0), P2(-1500.0, 0.0)));
+    assert_eq!((wb.start, wb.end), (P2(0.0, 1500.0), P2(0.0, 4000.0)));
+    assert_eq!((wr.start, wr.end, wr.arc.abs(), wr.type_name.clone()), (P2(-1500.0, 0.0), P2(0.0, 1500.0), 90.0, wa.type_name));
+}
+
+#[test]
+fn dimensions_measure_to_straight_detail_lines_and_radial_ones_to_their_circles_and_arcs() {
+    let mut s = Session::new();
+    let a = line(&mut s, json!({"start": [0, 0], "end": [0, 3000]}));
+    let b = line(&mut s, json!({"start": [2500, 0], "end": [2500, 3000]}));
+    let d = run(&mut s, "dimension", json!({"refs": [{"id": a}, {"id": b}], "at": [1000, 4000]}));
+    let id = d["id"].as_u64().unwrap_or_default();
+    let shown = crate::commands::element_json(&s.model, id);
+    assert!(shown.to_string().contains("2500"), "{shown}");
+    // Its ends too: from the end of one to the end of the other, across.
+    let c = line(&mut s, json!({"start": [0, 5000], "end": [1000, 5000]}));
+    let e = line(&mut s, json!({"start": [4000, 5000], "end": [4000, 6000]}));
+    run(&mut s, "dimension", json!({"refs": [{"id": c, "face": "end"}, {"id": e}], "at": [2000, 5500]}));
+    let round = line(&mut s, json!({"centre": [8000, 0], "radius": 1200}));
+    run(&mut s, "dimension", json!({"refs": [{"id": round}], "at": [9500, 0], "kind": "radial"}));
+    let spline = line(&mut s, json!({"control": [[0, 9000], [1000, 9500], [2000, 9000]]}));
+    let err = s.execute("dimension", &json!({"refs": [{"id": spline}, {"id": a}], "at": [0, 0]})).unwrap_err();
+    assert!(err.contains("spline"), "{err}");
+}

@@ -438,6 +438,7 @@ pub fn snaps(lines: &[SketchLine], p: P2, reach: f64) -> Vec<(P2, crate::snap::K
     let mut out: Vec<(P2, Kind)> = Vec::new();
     for l in lines {
         out.extend([(l.start(), Kind::Endpoint), (l.end(), Kind::Endpoint), (l.middle(), Kind::Midpoint)]);
+        out.extend(crate::snap::rounds(&l.curve));
     }
     for (i, a) in near.iter().enumerate() {
         for b in &near[i + 1..] {

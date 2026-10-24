@@ -8,11 +8,12 @@ pub(crate) use bimcraft_core::draw::{Shape, element_curve};
 use bimcraft_core::geom::P2;
 use bimcraft_core::model::{Element, Id, TOL};
 use bimcraft_core::sketch::SketchLine;
-use egui::{TextEdit, Ui};
+use egui::{Painter, PointerButton, Pos2, Rect, Response, Shape as Paint, Stroke, StrokeKind, TextEdit, Ui, vec2};
 use serde_json::{Value, json};
 
 use crate::icons::Icon;
 use crate::lang::t;
+use crate::style::pal;
 use crate::{BimApp, Status, Tool, panel, small_button};
 
 /// What a Draw panel draws for.
@@ -48,6 +49,10 @@ pub struct Drawing {
     pub last: Option<(P2, P2)>,
     /// Fillet Arc's first line, then its second, each where it was picked.
     pub fillet: Vec<(Picked, P2)>,
+    /// The selected detail line's handle being dragged: the line, and where the handle was.
+    pub grip: Option<(Id, P2)>,
+    /// While sketching, Trim/Extend's first line (or boundary) picked, and where.
+    pub trim: Option<(usize, P2)>,
 }
 
 impl Default for Drawing {
@@ -62,6 +67,8 @@ impl Default for Drawing {
             offset: "0".into(),
             last: None,
             fillet: Vec::new(),
+            grip: None,
+            trim: None,
         }
     }
 }
@@ -495,7 +502,7 @@ impl BimApp {
     /// The radius of the arc rounding the two lines picked that passes nearest `at`.
     pub(crate) fn fillet_radius_at(&self, at: P2) -> Option<f64> {
         let (a, b) = self.fillet_curves()?;
-        let (pa, pb) = (a.handles(), b.handles());
+        let (pa, pb) = (a.vertices(), b.vertices());
         let (&[a0, a1], &[b0, b1]) = (pa.as_slice(), pb.as_slice()) else { return None };
         let corner = bimcraft_core::geom::line_intersection(a0, a1, b0, b1)?;
         let far = |p: P2, q: P2| if p.dist(corner) > q.dist(corner) { p } else { q };
@@ -588,6 +595,167 @@ impl BimApp {
             && let Some(r) = self.run("explode", json!({"id": id}))
         {
             self.selection = r["ids"].as_array().into_iter().flatten().filter_map(Value::as_u64).collect();
+        }
+    }
+
+    /// Modify's Split, Trim/Extend to Corner, Trim/Extend Single and Multiple Elements and Offset on the sketch's lines: a
+    /// click at `p` (snapped), picking the line nearest `raw` within `reach`.
+    pub(crate) fn sketch_modify(&mut self, p: P2, raw: P2, reach: f64) {
+        let offset = self.session.model.units.parse(&self.offset).filter(|d| *d > 0.0);
+        let copy = self.offset_copy;
+        let tool = self.tool.clone();
+        let Some(sk) = &mut self.sketch else { return };
+        let Some(i) = sk.line_at(raw, reach) else { return };
+        let Some(l) = sk.lines.get(i).cloned() else { return };
+        let mut status = None;
+        match tool {
+            Tool::Split => match l.curve.split_at(p) {
+                Some((a, b)) => {
+                    if let Some(line) = sk.lines.get_mut(i) {
+                        line.curve = a;
+                    }
+                    if let Some(b) = b {
+                        sk.lines.push(SketchLine::from(b));
+                    }
+                    sk.changed();
+                }
+                None => status = Some("Split between the line's ends."),
+            },
+            Tool::Trim(_) => match self.drawing.trim.take() {
+                Some((first, keep)) if first != i => match sk.lines.get(first).and_then(|f| draw::corner(&f.curve, keep, &l.curve, raw)) {
+                    Some((a, b)) => {
+                        if let Some(line) = sk.lines.get_mut(first) {
+                            line.curve = a;
+                        }
+                        if let Some(line) = sk.lines.get_mut(i) {
+                            line.curve = b;
+                        }
+                        sk.changed();
+                    }
+                    None => status = Some("The lines don't meet: they're parallel, or an arc's circle misses the other."),
+                },
+                _ => self.drawing.trim = Some((i, raw)),
+            },
+            Tool::TrimTo { many, .. } => match self.drawing.trim {
+                None => self.drawing.trim = Some((i, raw)),
+                Some((b, _)) if b != i => {
+                    let edge = sk.lines.get(b).map(|e| e.curve.clone());
+                    match edge.and_then(|e| draw::meet(&l.curve, &e, raw)).and_then(|x| draw::trim_to(&l.curve, raw, x)) {
+                        Some(c) => {
+                            if let Some(line) = sk.lines.get_mut(i) {
+                                line.curve = c;
+                            }
+                            sk.changed();
+                        }
+                        None => status = Some("The lines don't meet: they're parallel, or an arc's circle misses the other."),
+                    }
+                    if !many {
+                        self.drawing.trim = None;
+                    }
+                }
+                Some(_) => {}
+            },
+            Tool::Offset => match offset.and_then(|d| draw::pick(&l.curve, raw, d)) {
+                Some(c) => {
+                    if copy {
+                        sk.lines.push(SketchLine::from(c));
+                    } else if let Some(line) = sk.lines.get_mut(i) {
+                        line.curve = c;
+                    }
+                    sk.changed();
+                }
+                None => status = Some("It can't be offset: give a distance, and pick a line, an arc, a polyline or a circle."),
+            },
+            _ => {}
+        }
+        if let Some(text) = status {
+            self.status = Status { text: t(text).into(), error: true };
+        }
+    }
+
+    /// The detail line selected alone, with Modify: the one whose handles are grips.
+    pub(crate) fn line_gripped(&self) -> Option<Id> {
+        match (self.selection.as_slice(), &self.tool) {
+            (&[id], Tool::Modify) if matches!(self.session.model.elements.get(id), Some(Element::DetailLine(_))) => Some(id),
+            _ => None,
+        }
+    }
+
+    /// A drag from a handle of the selected detail line (a corner, a control point, a point it passes through, a centre)
+    /// moves it there, snapped; on release the line is redrawn so, as one step.
+    pub(crate) fn line_grip_drag(&mut self, ui: &Ui, response: &Response, rect: Rect, view: &bimcraft_core::render::View, level: Id) {
+        let Some(id) = self.line_gripped() else {
+            self.drawing.grip = None;
+            return;
+        };
+        let Some(c) = element_curve(&self.session.model, id) else { return };
+        let at = |p: P2| {
+            let (x, y) = view.px(p);
+            rect.min + vec2(x, y)
+        };
+        if response.drag_started_by(PointerButton::Primary)
+            && let Some(o) = ui.input(|i| i.pointer.press_origin())
+        {
+            let near = |p: P2| at(p).distance(o);
+            self.drawing.grip =
+                c.handles().into_iter().filter(|p| near(*p) <= 8.0).min_by(|a, b| near(*a).total_cmp(&near(*b))).map(|p| (id, p));
+        }
+        let Some((held, from)) = self.drawing.grip else { return };
+        if held != id {
+            self.drawing.grip = None;
+            return;
+        }
+        if response.drag_stopped() {
+            self.drawing.grip = None;
+            if let Some(q) = ui.input(|i| i.pointer.latest_pos()) {
+                let m = std::sync::Arc::clone(&self.session.model);
+                let to = self.snap(&m, level, view, (q.x - rect.min.x, q.y - rect.min.y), &[], false).at;
+                self.snap_once = None;
+                if to.dist(from) > 1e-6 {
+                    self.redraw_line(id, &c.moved(from, to));
+                }
+            }
+        }
+    }
+
+    /// Detail line `id` redrawn along `c`, whatever shape it was: its curve's fields set, the rest taken away.
+    pub(crate) fn redraw_line(&mut self, id: Id, c: &Curve) {
+        let mut p = json!({"id": id});
+        for k in curves::FIELD_NAMES {
+            p[*k] = if *k == "closed" { json!(false) } else { Value::Null };
+        }
+        if let Ok(Value::Object(f)) = serde_json::to_value(Fields::of(c)) {
+            for (k, v) in f {
+                p[k] = v;
+            }
+        }
+        self.run("modify", p);
+    }
+
+    /// The selected detail line's grips, and while one is dragged to the cursor, the line as it would be.
+    pub(crate) fn line_grip_overlay(&self, p: &Painter, rect: Rect, view: &bimcraft_core::render::View, cursor: Option<P2>) {
+        let Some(id) = self.line_gripped() else { return };
+        let Some(c) = element_curve(&self.session.model, id) else { return };
+        let at = |q: P2| -> Pos2 {
+            let (x, y) = view.px(q);
+            rect.min + vec2(x, y)
+        };
+        let (shown, live) = match (self.drawing.grip, cursor) {
+            (Some((g, from)), Some(to)) if g == id => (c.moved(from, to), Some(to)),
+            _ => (c.clone(), None),
+        };
+        if live.is_some() {
+            p.add(Paint::line(shown.points().into_iter().map(at).collect(), Stroke::new(1.5, pal().accent)));
+        }
+        // A spline's control points, joined as its frame.
+        if let Curve::Spline { control, .. } = &shown {
+            p.add(Paint::dashed_line(&control.iter().map(|q| at(*q)).collect::<Vec<_>>(), Stroke::new(1.0, pal().accent), 6.0, 4.0));
+        }
+        for h in shown.handles() {
+            let r = Rect::from_center_size(at(h), vec2(9.0, 9.0));
+            let held = live.is_some_and(|l| l.dist(h) < 1e-9);
+            p.rect_filled(r, 1.0, if held { pal().accent } else { pal().surface });
+            p.rect_stroke(r, 1.0, Stroke::new(1.5, pal().accent), StrokeKind::Middle);
         }
     }
 

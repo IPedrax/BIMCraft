@@ -66,14 +66,21 @@ span does, and a control-point spline gets the knot inserted to the degree's mul
 control points are the original's; a spline through points becomes two through the original's points on each side and the
 cut, leaving it along the original's tangent, with points of the original added where it strays most until it is within
 `FIT_TOL` (QCAD turns the halves into control-point splines instead; Revit won't split a spline at all). A closed curve opens
-where it's cut. Commands: `split` (detail lines as walls), `join_polyline` (PJ), `explode` (PX) and `fillet` (FL).
+where it's cut. Commands: `split` (detail lines as walls), `join_polyline` (PJ), `explode` (PX), `fillet` (FL), `corner`
+(TR, two detail lines as two walls), `trim_extend` (detail lines to a boundary: Revit's Trim/Extend Single and Multiple
+Elements) and `offset` (OF; `draw::offset` keeps arcs concentric and mitres a polyline's corners). `draw::meet` finds where two
+lines or arcs cross, run on along their lines or circles, and `draw::trim_to` brings one to it, keeping the part picked.
 `draw.rs` is Revit's Draw panel as data: each `Shape` (Line, Rectangle, Inscribed and Circumscribed Polygon, Circle,
 Start-End-Radius, Center-ends and Tangent End Arc, Fillet Arc, Spline, Spline Through Points, Ellipse, Partial Ellipse,
 Polyline, Pick Lines), how many clicks it takes, what `make` builds from them with the Options Bar's Sides, Radius and Offset,
 and the `preview` with the cursor as the next point; `wall_segments` turns lines, arcs and circles into walls and
 `element_curve` is what Pick Lines copies. The desktop's `draw.rs` keeps each tool's shape (detail lines, sketches, walls; the
 walls' panel offers only lines and arcs), gathers the points in the tool, and makes the lines, sketch lines or walls as one undo
-step; Join into Polyline and Explode Polyline sit on Modify | Lines and work on picked sketch lines too.
+step; Join into Polyline and Explode Polyline sit on Modify | Lines and work on picked sketch lines too. A detail line
+selected alone shows its handles as grips (corners, control points, points passed through, a circle's or an ellipse's centre;
+a spline's frame dashed), dragged and snapped, then `modify` with the moved curve's fields (the other shapes' set to null).
+Modify's Split, Trim/Extend to Corner, Trim/Extend Single and Multiple Elements and Offset take detail lines as they take
+walls, and while sketching they change the sketch's lines (`sketch_modify`).
 
 `Drawing::detail` is the level the plan or the section is drawn at: coarse leaves out a compound element's layers and an opening's
 symbols, medium its patterns (`cut_layer`, a floor's `surface`), fine draws as before. In the 3D view `Look::style` picks how

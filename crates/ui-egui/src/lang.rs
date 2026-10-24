@@ -2940,6 +2940,93 @@ const WORDS: &[[&str; 3]] = &[
         "O arco não cabe: escolha duas linhas retas que se encontram num ângulo, longas o bastante.",
         "El arco no cabe: elija dos líneas rectas que se encuentren en ángulo, lo bastante largas.",
     ],
+    [
+        "Pick the first wall or line, on the part to keep.",
+        "Escolha a primeira parede ou linha, na parte a manter.",
+        "Elija el primer muro o línea, en la parte que conservar.",
+    ],
+    [
+        "Pick the second wall or line, on the part to keep.",
+        "Escolha a segunda parede ou linha, na parte a manter.",
+        "Elija el segundo muro o línea, en la parte que conservar.",
+    ],
+    [
+        "Pick the line to trim or extend to: a line, a wall or a grid.",
+        "Escolha a linha até onde aparar ou estender: uma linha, parede ou eixo.",
+        "Elija la línea hasta la que recortar o alargar: una línea, un muro o una rejilla.",
+    ],
+    [
+        "Click the line to trim or extend to it, on the part to keep.",
+        "Clique na linha a aparar ou estender até ela, na parte a manter.",
+        "Haga clic en la línea que recortar o alargar hasta ella, en la parte que conservar.",
+    ],
+    [
+        "Click each line to trim or extend to it, on the part to keep; Esc picks another boundary.",
+        "Clique em cada linha a aparar ou estender até ela, na parte a manter; Esc escolhe outro limite.",
+        "Haga clic en cada línea que recortar o alargar hasta ella, en la parte que conservar; Esc elige otro límite.",
+    ],
+    [
+        "Click a wall or a line where to split it.",
+        "Clique numa parede ou linha onde dividi-la.",
+        "Haga clic en un muro o una línea donde dividirlo.",
+    ],
+    [
+        "Point to a wall or a line: the offset goes to the cursor's side. Click to place it.",
+        "Aponte para uma parede ou linha: o deslocamento vai para o lado do cursor. Clique para colocá-lo.",
+        "Señale un muro o una línea: el desfase va al lado del cursor. Haga clic para colocarlo.",
+    ],
+    [
+        "Offset (OF): pick a wall or a line; a copy goes to the cursor's side",
+        "Deslocamento (OF): escolha uma parede ou linha; uma cópia vai para o lado do cursor",
+        "Desfase (OF): elija un muro o una línea; una copia va al lado del cursor",
+    ],
+    [
+        "Split Element (SL): click a wall or a line where to split it",
+        "Dividir elemento (SL): clique numa parede ou linha onde dividi-la",
+        "Dividir elemento (SL): haga clic en un muro o una línea donde dividirlo",
+    ],
+    [
+        "Trim/Extend to Corner (TR): pick two walls or two lines, on the parts to keep",
+        "Aparar/Estender para canto (TR): escolha duas paredes ou duas linhas, nas partes a manter",
+        "Recortar/Alargar en esquina (TR): elija dos muros o dos líneas, en las partes que conservar",
+    ],
+    ["Trim/Extend Single Element", "Aparar/Estender elemento único", "Recortar/Alargar elemento único"],
+    [
+        "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep",
+        "Aparar/Estender elemento único: escolha a linha-limite e depois a linha a mudar, na parte a manter",
+        "Recortar/Alargar elemento único: elija la línea límite y luego la línea que cambiar, en la parte que conservar",
+    ],
+    ["Trim/Extend Multiple Elements", "Aparar/Estender vários elementos", "Recortar/Alargar varios elementos"],
+    [
+        "Trim/Extend Multiple Elements: pick the line to trim or extend to, then each line to change, on the part to keep",
+        "Aparar/Estender vários elementos: escolha a linha-limite e depois cada linha a mudar, na parte a manter",
+        "Recortar/Alargar varios elementos: elija la línea límite y luego cada línea que cambiar, en la parte que conservar",
+    ],
+    ["Split between the line's ends.", "Divida entre as extremidades da linha.", "Divida entre los extremos de la línea."],
+    [
+        "The lines don't meet: they're parallel, or an arc's circle misses the other.",
+        "As linhas não se encontram: são paralelas, ou o círculo de um arco não alcança a outra.",
+        "Las líneas no se encuentran: son paralelas, o el círculo de un arco no alcanza la otra.",
+    ],
+    [
+        "It can't be offset: give a distance, and pick a line, an arc, a polyline or a circle.",
+        "Não dá para deslocar: dê uma distância e escolha uma linha, arco, polilinha ou círculo.",
+        "No se puede desfasar: indique una distancia y elija una línea, un arco, una polilínea o un círculo.",
+    ],
+    ["Quadrant", "Quadrante", "Cuadrante"],
+    ["Tangent", "Tangente", "Tangente"],
+    ["Snap to Quadrants", "Atrair a quadrantes", "Forzar cursor a cuadrantes"],
+    ["Snap to Tangents", "Atrair a tangentes", "Forzar cursor a tangentes"],
+    [
+        "A circle's, an ellipse's or an arc's points along its axes: east, north, west and south",
+        "Os pontos de um círculo, elipse ou arco ao longo de seus eixos: leste, norte, oeste e sul",
+        "Los puntos de un círculo, una elipse o un arco a lo largo de sus ejes: este, norte, oeste y sur",
+    ],
+    [
+        "Where a line from the last point touches a circle or an arc",
+        "Onde uma linha a partir do último ponto toca um círculo ou arco",
+        "Donde una línea desde el último punto toca un círculo o un arco",
+    ],
 ];
 
 #[cfg(test)]

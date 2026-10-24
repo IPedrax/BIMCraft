@@ -4,6 +4,7 @@
 //! and from the line before it), to a wall's centre line, or to the nearest 10 mm. The ruler's
 //! numbers and graduations are here too, so every front end reads them alike.
 
+use crate::curves::Curve;
 use crate::geom::{self, P2};
 use crate::graphics::Look;
 use crate::model::{Element, Id, Model, TOL};
@@ -28,7 +29,11 @@ pub enum Kind {
     Intersection,
     Centre,
     Perpendicular,
-    /// The nearest point of a wall's centre line.
+    /// A circle's or an ellipse's (or an arc's) point due east, north, west or south of its centre, along its axes.
+    Quadrant,
+    /// Where a line from the last point picked touches a circle or an arc.
+    Tangent,
+    /// The nearest point of a wall's centre line, or of a line.
     Nearest,
     /// A point on an angle guide.
     Angle,
@@ -45,6 +50,8 @@ impl Kind {
             Kind::Intersection => "Intersection",
             Kind::Centre => "Centre",
             Kind::Perpendicular => "Perpendicular",
+            Kind::Quadrant => "Quadrant",
+            Kind::Tangent => "Tangent",
             Kind::Nearest => "Nearest",
             Kind::Angle => "Angle",
             Kind::Free => "",
@@ -60,6 +67,8 @@ pub struct Snaps {
     pub intersection: bool,
     pub centre: bool,
     pub perpendicular: bool,
+    pub quadrant: bool,
+    pub tangent: bool,
     pub nearest: bool,
     /// Degrees between the angles a direction snaps to, from east and from the line before it,
     /// from 1 to 180; anything else for none.
@@ -69,7 +78,17 @@ pub struct Snaps {
 impl Snaps {
     /// No snap at all, and no angle steps.
     pub fn none() -> Snaps {
-        Snaps { endpoint: false, midpoint: false, intersection: false, centre: false, perpendicular: false, nearest: false, angle: 0.0 }
+        Snaps {
+            endpoint: false,
+            midpoint: false,
+            intersection: false,
+            centre: false,
+            perpendicular: false,
+            quadrant: false,
+            tangent: false,
+            nearest: false,
+            angle: 0.0,
+        }
     }
 
     /// Just `kind` snapped to (a kind with no switch of its own is none), and no angle steps: what
@@ -82,6 +101,8 @@ impl Snaps {
             Kind::Intersection => Snaps { intersection: true, ..none },
             Kind::Centre => Snaps { centre: true, ..none },
             Kind::Perpendicular => Snaps { perpendicular: true, ..none },
+            Kind::Quadrant => Snaps { quadrant: true, ..none },
+            Kind::Tangent => Snaps { tangent: true, ..none },
             Kind::Nearest => Snaps { nearest: true, ..none },
             Kind::Angle | Kind::Free => none,
         }
@@ -90,7 +111,17 @@ impl Snaps {
 
 impl Default for Snaps {
     fn default() -> Snaps {
-        Snaps { endpoint: true, midpoint: true, intersection: true, centre: true, perpendicular: true, nearest: true, angle: 15.0 }
+        Snaps {
+            endpoint: true,
+            midpoint: true,
+            intersection: true,
+            centre: true,
+            perpendicular: true,
+            quadrant: true,
+            tangent: true,
+            nearest: true,
+            angle: 15.0,
+        }
     }
 }
 
@@ -145,13 +176,17 @@ struct Scene {
     lines: Vec<(P2, P2)>,
     /// The walls, with their thickness.
     walls: Vec<(Axis, f64)>,
+    /// The detail lines near, of any shape.
+    curves: Vec<Curve>,
+    /// Their chords near, each with its line's place in `curves`: crossed with other lines, never with their own.
+    chords: Vec<(P2, P2, usize)>,
 }
 
 impl Scene {
     /// What `level`'s plan has within `window` mm of `p`, but for what `look` hides: a cheap look at
     /// each element's extent first, so a plan of thousands of walls costs a few microseconds a wall.
     fn of(m: &Model, level: Id, p: P2, window: f64, look: &Look) -> Scene {
-        let mut s = Scene { points: Vec::new(), lines: Vec::new(), walls: Vec::new() };
+        let mut s = Scene { points: Vec::new(), lines: Vec::new(), walls: Vec::new(), curves: Vec::new(), chords: Vec::new() };
         let level = m.guid(level);
         let above = m.level_above(level);
         let cut = m.plan_range(level).cut;
@@ -215,11 +250,92 @@ impl Scene {
                 Element::Stair(st) if st.level == level && near(&[st.start]) => s.points.push((st.start, Kind::Endpoint)),
                 Element::Ramp(r) if r.level == level && near(&[r.start]) => s.points.push((r.start, Kind::Endpoint)),
                 Element::Railing(r) if r.level == level => s.points.extend(ring(&r.path)),
+                // A detail line of the plan: its ends, its middle, a round one's centre and quadrants, its chords to cross.
+                Element::DetailLine(l) if m.annotation_in(e, level) => {
+                    let pts = l.curve.points();
+                    if !near(&pts) {
+                        continue;
+                    }
+                    if !l.curve.is_closed() {
+                        s.points.extend([(l.curve.start(), Kind::Endpoint), (l.curve.end(), Kind::Endpoint)]);
+                    }
+                    s.points.extend(l.curve.vertices().into_iter().filter(|_| l.curve.is_poly()).map(|q| (q, Kind::Endpoint)));
+                    s.points.push((l.curve.middle(), Kind::Midpoint));
+                    s.points.extend(rounds(&l.curve));
+                    let n = s.curves.len();
+                    s.chords.extend(pts.windows(2).filter(|w| geom::dist_to_segment(p, w[0], w[1]) <= window).map(|w| (w[0], w[1], n)));
+                    s.curves.push(l.curve.clone());
+                }
                 _ => {}
             }
         }
         s
     }
+}
+
+/// A round curve's centre and its quadrants: a circle's or an ellipse's four points along its axes (those a partial one
+/// passes), an arc's centre and the quadrants it passes.
+pub(crate) fn rounds(c: &Curve) -> Vec<(P2, Kind)> {
+    let on = |q: P2| c.nearest(q).1 < 1e-6;
+    match c {
+        Curve::Circle { centre, radius } => {
+            let mut v = vec![(*centre, Kind::Centre)];
+            v.extend([P2(1.0, 0.0), P2(0.0, 1.0), P2(-1.0, 0.0), P2(0.0, -1.0)].map(|u| (*centre + u * *radius, Kind::Quadrant)));
+            v
+        }
+        Curve::Ellipse { centre, radii, angle, .. } => {
+            let a = angle.to_radians();
+            let (u, w) = (P2(a.cos(), a.sin()), P2(-a.sin(), a.cos()));
+            let mut v = vec![(*centre, Kind::Centre)];
+            let quads = [u * radii[0], w * radii[1], u * -radii[0], w * -radii[1]].map(|d| *centre + d);
+            v.extend(quads.into_iter().filter(|q| on(*q)).map(|q| (q, Kind::Quadrant)));
+            v
+        }
+        Curve::Poly { .. } => {
+            let mut v = Vec::new();
+            for seg in c.segments() {
+                if let (Some(o), Some(r)) = (seg.centre(), seg.radius()) {
+                    v.push((o, Kind::Centre));
+                    for u in [P2(1.0, 0.0), P2(0.0, 1.0), P2(-1.0, 0.0), P2(0.0, -1.0)] {
+                        let q = o + u * r;
+                        if seg.distance(q, 0.0) < 1e-6 {
+                            v.push((q, Kind::Quadrant));
+                        }
+                    }
+                }
+            }
+            v
+        }
+        Curve::Spline { .. } | Curve::Fit { .. } => Vec::new(),
+    }
+}
+
+/// Where lines from `from` touch the circles and arcs of `curves`: the tangent points.
+fn tangents(curves: &[Curve], from: P2) -> Vec<P2> {
+    let mut out = Vec::new();
+    for c in curves {
+        let rounds: Vec<(P2, f64)> = match c {
+            Curve::Circle { centre, radius } => vec![(*centre, *radius)],
+            Curve::Poly { .. } => c.segments().iter().filter_map(|s| Some((s.centre()?, s.radius()?))).collect(),
+            _ => Vec::new(),
+        };
+        for (o, r) in rounds {
+            let d = from.dist(o);
+            if d <= r {
+                continue;
+            }
+            // The angle at the centre between the line to `from` and the radius to the tangent point.
+            let a = (r / d).acos();
+            let base = (from.1 - o.1).atan2(from.0 - o.0);
+            for t in [base + a, base - a] {
+                let q = o + P2(t.cos(), t.sin()) * r;
+                if c.nearest(q).1 < 1e-3 {
+                    out.push(q);
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Where the segments `lines` cross each other.
@@ -314,12 +430,17 @@ pub fn snap(m: &Model, level: Id, p: P2, reach: Reach, from: &[P2], square: bool
     let mut near: Vec<(P2, P2)> = scene.lines.iter().copied().filter(|(a, b)| geom::dist_to_segment(p, *a, *b) <= reach.point).collect();
     near.sort_by(|x, y| geom::dist_to_segment(p, x.0, x.1).total_cmp(&geom::dist_to_segment(p, y.0, y.1)));
     near.truncate(MAX_NEAR);
+    // The detail lines' chords near it: crossed with the lines and with other detail lines' chords, and stood square to.
+    let mut chords: Vec<(P2, P2, usize)> =
+        scene.chords.iter().copied().filter(|(a, b, _)| geom::dist_to_segment(p, *a, *b) <= reach.point).collect();
+    chords.truncate(MAX_NEAR);
 
     // What the plan has here: its ends, middles and centres, the points picked so far, crossings.
     let wanted = |k: Kind| match k {
         Kind::Endpoint => o.endpoint,
         Kind::Midpoint => o.midpoint,
         Kind::Centre => o.centre,
+        Kind::Quadrant => o.quadrant,
         _ => true,
     };
     let mut points: Vec<(P2, Kind)> = scene.points.iter().copied().filter(|(_, k)| wanted(*k)).collect();
@@ -328,6 +449,24 @@ pub fn snap(m: &Model, level: Id, p: P2, reach: Reach, from: &[P2], square: bool
     }
     if o.intersection {
         points.extend(crossings(&near).into_iter().map(|q| (q, Kind::Intersection)));
+        let on = |q: P2, a: P2, b: P2| geom::dist_to_segment(q, a, b) <= TOL;
+        for (i, &(a, b, k)) in chords.iter().enumerate() {
+            let others = near.iter().map(|&(c, d)| (c, d)).chain(chords.iter().skip(i + 1).filter(|x| x.2 != k).map(|&(c, d, _)| (c, d)));
+            for (c, d) in others {
+                if let Some(q) = geom::line_intersection(a, b, c, d)
+                    && on(q, a, b)
+                    && on(q, c, d)
+                {
+                    points.push((q, Kind::Intersection));
+                }
+            }
+        }
+    }
+    near.extend(chords.iter().map(|&(a, b, _)| (a, b)));
+    if o.tangent
+        && let Some(l) = last
+    {
+        points.extend(tangents(&scene.curves, l).into_iter().map(|q| (micron(q), Kind::Tangent)));
     }
     let hit =
         points.into_iter().filter(|(q, _)| q.dist(p) <= reach.point).min_by(|a, b| by_distance(&a.0, &b.0).then(rank(a.1).cmp(&rank(b.1))));
@@ -394,6 +533,12 @@ pub fn snap(m: &Model, level: Id, p: P2, reach: Reach, from: &[P2], square: bool
             .min_by(|x, y| x.1.total_cmp(&y.1));
         if let Some((a, _)) = on {
             return Found { at: micron(a.at((a.project(p).0 / STEP).round() * STEP, 0.0)), kind: Kind::Nearest, guide: None };
+        }
+        // A line: the point of it nearest the cursor.
+        let on =
+            scene.curves.iter().map(|c| (c, c.nearest(p))).filter(|(_, (_, d))| *d <= reach.line).min_by(|x, y| x.1.1.total_cmp(&y.1.1));
+        if let Some((c, (t, _))) = on {
+            return Found { at: micron(c.at(t)), kind: Kind::Nearest, guide: None };
         }
     }
     // Rounded, but not off the line a square step keeps to.

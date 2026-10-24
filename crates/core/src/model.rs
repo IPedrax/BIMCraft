@@ -3145,7 +3145,25 @@ impl Model {
                 let (axis, (ext, int)) = (walls::Axis::of(w), walls::faces(self, w));
                 Ok((axis.at(along, int), axis.at(along, ext)))
             }
-            (Some(e), _) => Err(format!("{} {} isn't a wall, a door, a window or a grid", e.category(), r.id)),
+            // A straight detail line: its line, or a short line square to it at either end.
+            (Some(Element::DetailLine(l)), face) => {
+                if l.curve.kind() != "line" {
+                    return Err(format!(
+                        "detail line {} is a {}; dimensions measure to straight ones (and radial ones to circles and arcs)",
+                        r.id,
+                        l.curve.kind()
+                    ));
+                }
+                let (a, b) = (l.curve.start(), l.curve.end());
+                let n = (b - a).unit().perp() * 100.0;
+                match face {
+                    Face::Centre => Ok((a, b)),
+                    Face::Start => Ok((a - n, a + n)),
+                    Face::End => Ok((b - n, b + n)),
+                    Face::Left | Face::Right => Err(format!("detail line {} has a line and two ends; measure to one of those", r.id)),
+                }
+            }
+            (Some(e), _) => Err(format!("{} {} isn't a wall, a door, a window, a grid or a detail line", e.category(), r.id)),
             (None, _) => Err(format!("element {} doesn't exist", r.id)),
         }
     }
@@ -3158,6 +3176,7 @@ impl Model {
             Some(Element::Wall(_)) => &[Face::Centre, Face::Left, Face::Right, Face::Start, Face::End],
             Some(Element::Door(_) | Element::Window(_)) => &[Face::Centre, Face::Start, Face::End],
             Some(Element::Grid(_)) => &[Face::Centre],
+            Some(Element::DetailLine(_)) => &[Face::Centre, Face::Start, Face::End],
             _ => &[],
         };
         faces
@@ -3226,6 +3245,15 @@ impl Model {
                 let c = axis.centre().ok_or_else(|| format!("wall {} is straight; {what}", r.id))?;
                 Ok((c, axis.at(0.0, off).dist(c)))
             }
+            Some(Element::DetailLine(l)) => match &l.curve {
+                crate::curves::Curve::Circle { centre, radius } => Ok((*centre, *radius)),
+                c => c
+                    .segments()
+                    .first()
+                    .filter(|_| c.kind() == "arc")
+                    .and_then(|s| Some((s.centre()?, s.radius()?)))
+                    .ok_or_else(|| format!("detail line {} is a {}; {what}, circles and arcs", r.id, c.kind())),
+            },
             Some(e) => Err(format!("{} {} isn't round; {what}", e.category(), r.id)),
             None => Err(format!("element {} doesn't exist", r.id)),
         }

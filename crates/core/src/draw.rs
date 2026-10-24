@@ -349,6 +349,98 @@ pub fn fillet_lines(a: &Curve, b: &Curve, radius: f64) -> Option<(Curve, Curve, 
     (la.check("").is_ok() && lb.check("").is_ok()).then_some((la, arc, lb))
 }
 
+/// What a line or an arc runs along, out past its ends: a whole line, or a whole circle.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Along {
+    Line(P2, P2),
+    Circle(P2, f64),
+}
+
+fn along(c: &Curve) -> Option<Along> {
+    match c {
+        Curve::Poly { points, closed: false, .. } if points.len() == 2 => {
+            let segs = c.segments();
+            let s = segs.first()?;
+            match (s.centre(), s.radius()) {
+                (Some(o), Some(r)) => Some(Along::Circle(o, r)),
+                _ => Some(Along::Line(s.start, s.end)),
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Where two lines or arcs meet, run on past their ends: the crossing nearest `near`, or none (parallel, apart).
+pub fn meet(a: &Curve, b: &Curve, near: P2) -> Option<P2> {
+    let (ga, gb) = (along(a)?, along(b)?);
+    let line_circle = |p: P2, q: P2, o: P2, r: f64| -> Vec<P2> {
+        let u = (q - p).unit();
+        let f = p - o;
+        let (bb, cc) = (f.dot(u), f.dot(f) - r * r);
+        let disc = bb * bb - cc;
+        if disc < 0.0 {
+            return Vec::new();
+        }
+        let sq = disc.sqrt();
+        vec![p + u * (-bb - sq), p + u * (-bb + sq)]
+    };
+    let found: Vec<P2> = match (ga, gb) {
+        (Along::Line(p, q), Along::Line(r, t)) => crate::geom::line_intersection(p, q, r, t).into_iter().collect(),
+        (Along::Line(p, q), Along::Circle(o, r)) | (Along::Circle(o, r), Along::Line(p, q)) => line_circle(p, q, o, r),
+        (Along::Circle(o1, r1), Along::Circle(o2, r2)) => {
+            let d = o1.dist(o2);
+            if d < 1e-9 || d > r1 + r2 || d < (r1 - r2).abs() {
+                Vec::new()
+            } else {
+                let x = (d * d + r1 * r1 - r2 * r2) / (2.0 * d);
+                let h = (r1 * r1 - x * x).max(0.0).sqrt();
+                let u = (o2 - o1).unit();
+                let m = o1 + u * x;
+                vec![m + u.perp() * h, m - u.perp() * h]
+            }
+        }
+    };
+    found.into_iter().filter(|p| p.is_finite()).min_by(|x, y| x.dist(near).total_cmp(&y.dist(near)))
+}
+
+/// A line or an arc trimmed or extended to `x` (on it, or on its line or circle run on): the end on the far side of `keep`
+/// from `x` stays, the other goes to `x`. None when that leaves nothing.
+pub fn trim_to(c: &Curve, keep: P2, x: P2) -> Option<Curve> {
+    let s = c.segments().into_iter().next()?;
+    let made = match along(c)? {
+        Along::Line(p, q) => {
+            let u = (q - p).unit();
+            let t = |r: P2| (r - p).dot(u);
+            if t(keep) < t(x) { Curve::line(p, x) } else { Curve::line(x, q) }
+        }
+        Along::Circle(o, _) => {
+            // Angles round the centre the way it turns, from its start.
+            let sweep = s.length() / s.radius()?;
+            let turn = match c {
+                Curve::Poly { arcs, .. } => arcs.first().map_or(1.0, |a| a.signum()),
+                _ => 1.0,
+            };
+            let angle = |r: P2| (r.1 - o.1).atan2(r.0 - o.0);
+            let from = |r: P2| (turn * (angle(r) - angle(s.start))).rem_euclid(std::f64::consts::TAU);
+            let (tk, tx) = (from(keep).min(sweep), from(x));
+            // Ahead of the part kept, its end goes there; behind it, its start.
+            let ahead = (tx - tk + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU) - std::f64::consts::PI;
+            if ahead > 0.0 {
+                Curve::arc(s.start, x, turn * (tk + ahead).to_degrees())
+            } else {
+                Curve::arc(x, s.end, turn * (sweep - (tk + ahead)).to_degrees())
+            }
+        }
+    };
+    made.check("").is_ok().then_some(made)
+}
+
+/// Two lines or arcs trimmed or extended to where they meet, each keeping the part `keep` lies on: Trim/Extend to Corner.
+pub fn corner(a: &Curve, keep_a: P2, b: &Curve, keep_b: P2) -> Option<(Curve, Curve)> {
+    let x = meet(a, b, (keep_a + keep_b) * 0.5)?;
+    Some((trim_to(a, keep_a, x)?, trim_to(b, keep_b, x)?))
+}
+
 /// The points, none on the one before.
 fn distinct(points: &[P2]) -> Vec<P2> {
     let mut out: Vec<P2> = Vec::with_capacity(points.len());
@@ -443,6 +535,30 @@ mod tests {
         assert_eq!(spline[0].kind(), "spline");
         assert!(Shape::ALL.iter().all(|s| !s.label().is_empty()));
         assert_eq!(Shape::ALL.iter().filter(|s| s.for_walls()).count(), 10);
+    }
+
+    #[test]
+    fn trim_and_extend_bring_lines_and_arcs_to_where_they_meet() {
+        // Two lines short of their corner: both extended to it.
+        let (a, b) = (Curve::line(P2(0.0, 0.0), P2(800.0, 0.0)), Curve::line(P2(1000.0, 200.0), P2(1000.0, 1000.0)));
+        let (ta, tb) = corner(&a, P2(100.0, 0.0), &b, P2(1000.0, 900.0)).unwrap_or_else(|| panic!("corner"));
+        assert_eq!((ta, tb), (Curve::line(P2(0.0, 0.0), P2(1000.0, 0.0)), Curve::line(P2(1000.0, 0.0), P2(1000.0, 1000.0))));
+        // Two lines crossing: each trimmed back to the crossing, keeping the part picked.
+        let (a, b) = (Curve::line(P2(0.0, 0.0), P2(2000.0, 0.0)), Curve::line(P2(1000.0, -500.0), P2(1000.0, 1000.0)));
+        let (ta, tb) = corner(&a, P2(1500.0, 0.0), &b, P2(1000.0, 500.0)).unwrap_or_else(|| panic!("corner"));
+        assert_eq!((ta, tb), (Curve::line(P2(1000.0, 0.0), P2(2000.0, 0.0)), Curve::line(P2(1000.0, 0.0), P2(1000.0, 1000.0))));
+        // An arc extended along its circle to a line.
+        let arc = Curve::arc(P2(1000.0, 0.0), P2(0.0, 1000.0), 90.0);
+        let line = Curve::line(P2(-2000.0, 0.0), P2(-500.0, 0.0));
+        let x = meet(&arc, &line, P2(-1000.0, 0.0)).unwrap_or_else(|| panic!("meet"));
+        assert!(x.dist(P2(-1000.0, 0.0)) < 1e-6, "{x:?}");
+        let longer = trim_to(&arc, P2(700.0, 700.0), x).unwrap_or_else(|| panic!("trim"));
+        assert!(longer.end().dist(P2(-1000.0, 0.0)) < 1e-6 && longer.start().dist(P2(1000.0, 0.0)) < 1e-6);
+        assert!((longer.length() - std::f64::consts::PI * 1000.0).abs() < 1e-6, "a half circle now");
+        assert!(
+            meet(&Curve::line(P2(0.0, 0.0), P2(1.0e3, 0.0)), &Curve::line(P2(0.0, 5.0), P2(1.0e3, 5.0)), P2(0.0, 0.0)).is_none(),
+            "parallel"
+        );
     }
 
     #[test]

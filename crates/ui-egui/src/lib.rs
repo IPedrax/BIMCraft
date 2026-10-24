@@ -122,6 +122,12 @@ pub enum Tool {
     Align(Option<(P2, P2)>),
     /// Trim or extend two walls to a corner: the first wall, and where it was picked.
     Trim(Option<(Id, P2)>),
+    /// Trim/Extend Single or Multiple Elements: the boundary, once picked; then each line clicked goes to it (with `many`,
+    /// until Esc; else one, and the boundary is picked again).
+    TrimTo {
+        boundary: Option<Id>,
+        many: bool,
+    },
     /// Split the wall picked.
     Split,
     /// Copy (or move) the wall picked to the cursor's side, by the Options Bar's distance.
@@ -265,7 +271,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 43] = [
+const SHORTCUTS: [(&str, &str); 45] = [
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
     ("MM", "Mirror Pick Axis"),
@@ -285,6 +291,8 @@ const SHORTCUTS: [(&str, &str); 43] = [
     ("SI", "Snap to Intersections"),
     ("SC", "Snap to Centres"),
     ("SP", "Snap to Perpendiculars"),
+    ("SQ", "Snap to Quadrants"),
+    ("ST", "Snap to Tangents"),
     ("SN", "Snap to Nearest"),
     ("SO", "Snaps Off"),
     ("SS", "Turn Snap Override Off"),
@@ -996,6 +1004,7 @@ impl BimApp {
             | Tool::Mirror { .. }
             | Tool::Align(_)
             | Tool::Trim(_)
+            | Tool::TrimTo { .. }
             | Tool::Split
             | Tool::Offset
             | Tool::Demolish
@@ -1503,8 +1512,10 @@ impl BimApp {
                 return true;
             }
             // Revit's snap overrides: for the next point picked, that snap alone, or none.
-            "SE" | "SM" | "SI" | "SC" | "SP" | "SN" | "SO" | "SS" => {
+            "SE" | "SM" | "SI" | "SC" | "SP" | "SQ" | "ST" | "SN" | "SO" | "SS" => {
                 self.snap_once = match self.typed.as_str() {
+                    "SQ" => Some(Once::Only(Snap::Quadrant)),
+                    "ST" => Some(Once::Only(Snap::Tangent)),
                     "SE" => Some(Once::Only(Snap::Endpoint)),
                     "SM" => Some(Once::Only(Snap::Midpoint)),
                     "SI" => Some(Once::Only(Snap::Intersection)),
@@ -1727,7 +1738,7 @@ impl BimApp {
         }
         // Move, Copy, Rotate and Mirror take the selection; Align, Trim, Split and Offset pick walls, Demolish anything.
         let edits = matches!(tool, Tool::Move(_) | Tool::Copy(_) | Tool::Rotate { .. } | Tool::Mirror { .. });
-        let picks = matches!(tool, Tool::Align(_) | Tool::Trim(_) | Tool::Split | Tool::Offset | Tool::Demolish);
+        let picks = matches!(tool, Tool::Align(_) | Tool::Trim(_) | Tool::TrimTo { .. } | Tool::Split | Tool::Offset | Tool::Demolish);
         if edits && self.selection.is_empty() {
             self.status = Status { text: t("select what to move, copy, rotate or mirror first").into(), error: true };
             return;
@@ -1869,6 +1880,7 @@ impl BimApp {
             Tool::Mirror { draw, start: Some(_) } => Tool::Mirror { draw, start: None },
             Tool::Align(Some(_)) => Tool::Align(None),
             Tool::Trim(Some(_)) => Tool::Trim(None),
+            Tool::TrimTo { boundary: Some(_), many } => Tool::TrimTo { boundary: None, many },
             Tool::Dimension(refs) if !refs.is_empty() => Tool::Dimension(Vec::new()),
             Tool::Angular(refs) if !refs.is_empty() => Tool::Angular(Vec::new()),
             Tool::Radial(Some(_)) => Tool::Radial(None),
@@ -1885,14 +1897,19 @@ impl BimApp {
             Tool::SlopeArrow(Some(_)) => Tool::SlopeArrow(None),
             Tool::ExtrusionRoof(pts) if !pts.is_empty() => Tool::ExtrusionRoof(Vec::new()),
             Tool::SketchLine(pts) if !pts.is_empty() => Tool::SketchLine(Vec::new()),
-            Tool::Wall(pts) | Tool::DetailLine(pts) | Tool::SketchLine(pts) if !self.drawing.fillet.is_empty() => {
-                let pts = pts.clone();
+            // Fillet Arc's lines picked so far go first, then the tool.
+            Tool::DetailLine(pts) if !self.drawing.fillet.is_empty() => {
                 self.drawing.fillet.clear();
-                match self.tool {
-                    Tool::Wall(_) => Tool::Wall(pts),
-                    Tool::DetailLine(_) => Tool::DetailLine(pts),
-                    _ => Tool::SketchLine(pts),
-                }
+                Tool::DetailLine(pts)
+            }
+            Tool::SketchLine(pts) if !self.drawing.fillet.is_empty() => {
+                self.drawing.fillet.clear();
+                Tool::SketchLine(pts)
+            }
+            // While sketching, Trim/Extend's first pick likewise.
+            tool @ (Tool::Trim(_) | Tool::TrimTo { .. }) if self.drawing.trim.is_some() => {
+                self.drawing.trim = None;
+                tool
             }
             Tool::Modify => {
                 match &mut self.sketch {
@@ -3069,7 +3086,7 @@ impl BimApp {
         let rows: [Buttons; 2] = [
             &[
                 (Icon::Align, "Align", "Align (AL): pick a reference line, then what to line up with it", Some(Tool::Align(None)), true),
-                (Icon::Offset, "Offset", "Offset (OF): pick a wall; a copy goes to the cursor's side", Some(Tool::Offset), true),
+                (Icon::Offset, "Offset", "Offset (OF): pick a wall or a line; a copy goes to the cursor's side", Some(Tool::Offset), true),
                 (
                     Icon::MirrorPick,
                     "Mirror Pick Axis",
@@ -3084,7 +3101,14 @@ impl BimApp {
                     Some(Tool::Mirror { draw: true, start: None }),
                     some,
                 ),
-                (Icon::Split, "Split Element", "Split Element (SL): click a wall where to split it", Some(Tool::Split), true),
+                (Icon::Split, "Split Element", "Split Element (SL): click a wall or a line where to split it", Some(Tool::Split), true),
+                (
+                    Icon::TrimSingle,
+                    "Trim/Extend Single Element",
+                    "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep",
+                    Some(Tool::TrimTo { boundary: None, many: false }),
+                    true,
+                ),
             ],
             &[
                 (Icon::Move, "Move", "Move (MV): click a base point, then where it goes", Some(Tool::Move(None)), some),
@@ -3099,8 +3123,15 @@ impl BimApp {
                 (
                     Icon::Trim,
                     "Trim/Extend to Corner",
-                    "Trim/Extend to Corner (TR): pick two walls, on the parts to keep",
+                    "Trim/Extend to Corner (TR): pick two walls or two lines, on the parts to keep",
                     Some(Tool::Trim(None)),
+                    true,
+                ),
+                (
+                    Icon::TrimMultiple,
+                    "Trim/Extend Multiple Elements",
+                    "Trim/Extend Multiple Elements: pick the line to trim or extend to, then each line to change, on the part to keep",
+                    Some(Tool::TrimTo { boundary: None, many: true }),
                     true,
                 ),
                 (Icon::Delete, "Delete", "Delete (DE) the selection", None, some),
@@ -3232,6 +3263,11 @@ impl BimApp {
             }
             if self.sketch.is_some() {
                 self.sketch_options(ui);
+                match self.tool {
+                    Tool::SketchLine(_) => self.shape_options(ui),
+                    Tool::Offset => self.offset_options(ui),
+                    _ => {}
+                }
                 return;
             }
             match self.tool {
@@ -3343,15 +3379,18 @@ impl BimApp {
                         self.attach_base = true;
                     }
                 }
-                Tool::Offset => {
-                    let l = ui.label(t("Offset:"));
-                    let hint = self.session.model.units.name();
-                    ui.add(TextEdit::singleline(&mut self.offset).desired_width(70.0).hint_text(hint)).labelled_by(l.id);
-                    ui.checkbox(&mut self.offset_copy, t("Copy"));
-                }
+                Tool::Offset => self.offset_options(ui),
                 _ => {}
             }
         });
+    }
+
+    /// Offset's Options Bar: the distance, and Copy.
+    fn offset_options(&mut self, ui: &mut Ui) {
+        let l = ui.label(t("Offset:"));
+        let hint = self.session.model.units.name();
+        ui.add(TextEdit::singleline(&mut self.offset).desired_width(70.0).hint_text(hint)).labelled_by(l.id);
+        ui.checkbox(&mut self.offset_copy, t("Copy"));
     }
 
     fn wall_options(&mut self, ui: &mut Ui) {
@@ -3469,10 +3508,13 @@ impl BimApp {
             Tool::Mirror { draw: true, start: Some(_) } => "Click the end of the mirror axis.",
             Tool::Align(None) => "Pick a reference line: a grid, or a wall's face or centre line.",
             Tool::Align(Some(_)) => "Pick the wall or grid to line up with the reference.",
-            Tool::Trim(None) => "Pick the first wall, on the part to keep.",
-            Tool::Trim(Some(_)) => "Pick the second wall, on the part to keep.",
-            Tool::Split => "Click a wall where to split it.",
-            Tool::Offset => "Point to a wall: the offset goes to the cursor's side. Click to place it.",
+            Tool::Trim(None) => "Pick the first wall or line, on the part to keep.",
+            Tool::Trim(Some(_)) => "Pick the second wall or line, on the part to keep.",
+            Tool::TrimTo { boundary: None, .. } => "Pick the line to trim or extend to: a line, a wall or a grid.",
+            Tool::TrimTo { many: false, .. } => "Click the line to trim or extend to it, on the part to keep.",
+            Tool::TrimTo { many: true, .. } => "Click each line to trim or extend to it, on the part to keep; Esc picks another boundary.",
+            Tool::Split => "Click a wall or a line where to split it.",
+            Tool::Offset => "Point to a wall or a line: the offset goes to the cursor's side. Click to place it.",
             Tool::Demolish => "Click an element to take it down in the view's phase; click it again to take it back.",
             Tool::Paint => "Click a face to paint it with the material in the Options Bar; the 3D view orbits as ever.",
             Tool::Unpaint => "Click a painted face to take its paint off.",

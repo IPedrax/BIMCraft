@@ -30,7 +30,7 @@ fn each_shape_of_the_draw_panel_makes_its_detail_lines_from_its_clicks() {
     let cases: [(&str, &[P2], &[&str]); 9] = [
         ("Rectangle", &[P2(1000.0, 1000.0), P2(3000.0, 2000.0)], &["line"; 4]),
         ("Inscribed Polygon", &[P2(4000.0, 3000.0), P2(5000.0, 3000.0)], &["line"; 6]),
-        ("Circle", &[P2(4000.0, 3000.0), P2(4000.0, 3800.0)], &["circle"]),
+        ("Circle", &[P2(4000.0, 3000.0), P2(4000.0, 3500.0)], &["circle"]),
         ("Start-End-Radius Arc", &[P2(1000.0, 4000.0), P2(3000.0, 4000.0), P2(2000.0, 5000.0)], &["arc"]),
         ("Center-ends Arc", &[P2(6000.0, 1000.0), P2(7000.0, 1000.0), P2(6000.0, 1500.0)], &["arc"]),
         ("Ellipse", &[P2(4000.0, 3000.0), P2(5500.0, 3000.0), P2(4000.0, 3600.0)], &["ellipse"]),
@@ -54,7 +54,7 @@ fn each_shape_of_the_draw_panel_makes_its_detail_lines_from_its_clicks() {
     }
     // The circle went round its centre, through the point clicked.
     let circle = ids(&h, "line").into_iter().find(|id| curve(&h, *id).kind() == "circle").map(|id| curve(&h, id));
-    assert_eq!(circle, Some(Curve::Circle { centre: P2(4000.0, 3000.0), radius: 800.0 }));
+    assert_eq!(circle, Some(Curve::Circle { centre: P2(4000.0, 3000.0), radius: 500.0 }));
     // A rectangle is one undo step, though four lines.
     let n = ids(&h, "line").len();
     press(&mut h, "Rectangle");
@@ -223,4 +223,98 @@ fn detail_lines_join_into_a_polyline_explode_back_and_split_where_clicked() {
     shortcut(&mut h, "SL");
     click(&mut h, P2(2000.0, 1000.0));
     assert_eq!(kinds(&h), ["line", "line", "line"], "split in two where clicked");
+}
+
+#[test]
+fn a_selected_detail_lines_handles_are_grips_dragged_to_reshape_it() {
+    let mut h = app(&format!(
+        "{BOX}\ndetail_line {{\"start\": [1000, 1000], \"end\": [3000, 1000]}}\ndetail_line {{\"centre\": [5000, 3000], \"radius\": 800}}"
+    ));
+    let lines = ids(&h, "line");
+    click(&mut h, P2(2000.0, 1000.0));
+    assert_eq!(h.state().selection, vec![lines[0]]);
+    drag(&mut h, P2(3000.0, 1000.0), P2(3000.0, 2000.0));
+    assert_eq!(curve(&h, lines[0]), Curve::line(P2(1000.0, 1000.0), P2(3000.0, 2000.0)), "its end moved, its start stayed");
+    // A circle's grip is its centre: it moves whole.
+    click(&mut h, P2(5800.0, 3000.0));
+    assert_eq!(h.state().selection, vec![lines[1]]);
+    drag(&mut h, P2(5000.0, 3000.0), P2(4000.0, 3500.0));
+    assert_eq!(curve(&h, lines[1]), Curve::Circle { centre: P2(4000.0, 3500.0), radius: 800.0 });
+    // Each drag is one step back.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert_eq!(curve(&h, lines[1]), Curve::Circle { centre: P2(5000.0, 3000.0), radius: 800.0 });
+}
+
+#[test]
+fn trim_extend_and_offset_work_on_detail_lines_as_on_walls() {
+    let mut h = app(&format!(
+        "{BOX}\ndetail_line {{\"start\": [1000, 1000], \"end\": [2500, 1000]}}\ndetail_line {{\"start\": [3000, 1500], \"end\": [3000, 4000]}}\ndetail_line {{\"start\": [4000, 2000], \"end\": [4000, 3000]}}\ndetail_line {{\"start\": [5000, 2000], \"end\": [5000, 3000]}}"
+    ));
+    let l = ids(&h, "line");
+    topmost(&mut h, "Modify");
+    press(&mut h, "Trim/Extend to Corner");
+    click(&mut h, P2(1500.0, 1000.0));
+    click(&mut h, P2(3000.0, 3000.0));
+    assert_eq!(curve(&h, l[0]), Curve::line(P2(1000.0, 1000.0), P2(3000.0, 1000.0)), "both run on to the corner");
+    assert_eq!(curve(&h, l[1]), Curve::line(P2(3000.0, 1000.0), P2(3000.0, 4000.0)));
+    // Several to one boundary: the box's north wall.
+    press(&mut h, "Trim/Extend Multiple Elements");
+    click(&mut h, P2(6000.0, 6000.0));
+    click(&mut h, P2(4000.0, 2500.0));
+    click(&mut h, P2(5000.0, 2500.0));
+    assert!(curve(&h, l[2]).end().dist(P2(4000.0, 6000.0)) < 1e-3 && curve(&h, l[3]).end().dist(P2(5000.0, 6000.0)) < 1e-3);
+    // Offset: a copy beside the line, on the cursor's side.
+    key(&mut h, Key::Escape);
+    key(&mut h, Key::Escape);
+    shortcut(&mut h, "OF");
+    type_into(&mut h, "Offset:", "250");
+    let n = ids(&h, "line").len();
+    click(&mut h, P2(1500.0, 1100.0));
+    assert_eq!(ids(&h, "line").len(), n + 1);
+    assert_eq!(curve(&h, *ids(&h, "line").last().unwrap_or(&0)), Curve::line(P2(1000.0, 1250.0), P2(3000.0, 1250.0)));
+}
+
+#[test]
+fn modify_tools_change_the_sketch_lines_while_sketching() {
+    let mut h = app(BOX);
+    tool(&mut h, "Floor");
+    press(&mut h, "Boundary Line");
+    press(&mut h, "Line");
+    for (k, p) in [P2(1000.0, 1000.0), P2(3500.0, 1000.0), P2(4000.0, 1500.0), P2(4000.0, 4000.0)].into_iter().enumerate() {
+        click(&mut h, p);
+        // Two lines apart: Esc ends the first.
+        if k == 1 {
+            key(&mut h, Key::Escape);
+        }
+    }
+    let lines = |h: &Harness<BimApp>| {
+        h.state().sketch.as_ref().map(|s| s.lines.iter().map(|l| l.curve.clone()).collect::<Vec<_>>()).unwrap_or_default()
+    };
+    assert_eq!(lines(&h).len(), 2);
+    shortcut(&mut h, "TR");
+    click(&mut h, P2(2000.0, 1000.0));
+    click(&mut h, P2(4000.0, 3000.0));
+    assert_eq!(lines(&h), [Curve::line(P2(1000.0, 1000.0), P2(4000.0, 1000.0)), Curve::line(P2(4000.0, 1000.0), P2(4000.0, 4000.0))]);
+    shortcut(&mut h, "SL");
+    click(&mut h, P2(2000.0, 1000.0));
+    assert_eq!(lines(&h).len(), 3, "split in two");
+    shortcut(&mut h, "OF");
+    type_into(&mut h, "Offset:", "500");
+    click(&mut h, P2(4000.0, 2500.0));
+    assert_eq!(lines(&h).last(), Some(&Curve::line(P2(3500.0, 1000.0), P2(3500.0, 4000.0))), "a copy to the west, where the cursor is");
+}
+
+#[test]
+fn the_wall_tools_fillet_arc_rounds_two_walls() {
+    let mut h = app("wall {\"points\": [[0, 0], [4000, 0]]}\nwall {\"points\": [[4000, 0], [4000, 4000]]}");
+    tool(&mut h, "Wall");
+    press(&mut h, "Fillet Arc");
+    press(&mut h, "Radius:");
+    type_role(&mut h, Role::TextInput, "Radius", "1000");
+    click(&mut h, P2(2000.0, 0.0));
+    click(&mut h, P2(4000.0, 2000.0));
+    let w = walls(&h);
+    assert_eq!(w.len(), 3, "{w:?}");
+    assert!(w.contains(&(P2(0.0, 0.0), P2(3000.0, 0.0))) && w.contains(&(P2(4000.0, 1000.0), P2(4000.0, 4000.0))), "{w:?}");
 }
