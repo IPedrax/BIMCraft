@@ -145,6 +145,7 @@ icon_names! {
     NewFile,
     Code,
     Check,
+    Keyboard,
 }
 
 /// A single unfilled contour in grid coordinates, shared by egui and the catalog.
@@ -1109,6 +1110,18 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
         Icon::Check => {
             g.line(&[(7.0, 12.0), (10.5, 15.5), (17.0, 9.0)]);
             g.circle((12.0, 12.0), 9.0);
+        }
+        Icon::Keyboard => {
+            g.closed(&[(3.0, 6.0), (21.0, 6.0), (21.0, 18.0), (3.0, 18.0)]);
+            g.line(&[(5.0, 9.0), (7.0, 9.0)]);
+            g.line(&[(9.0, 9.0), (11.0, 9.0)]);
+            g.line(&[(13.0, 9.0), (15.0, 9.0)]);
+            g.line(&[(17.0, 9.0), (19.0, 9.0)]);
+            g.line(&[(5.0, 12.0), (7.0, 12.0)]);
+            g.line(&[(9.0, 12.0), (11.0, 12.0)]);
+            g.line(&[(13.0, 12.0), (15.0, 12.0)]);
+            g.line(&[(17.0, 12.0), (19.0, 12.0)]);
+            g.line(&[(7.0, 15.0), (17.0, 15.0)]);
         }
     }
     g.0

@@ -4,7 +4,7 @@
 //! command (`modify`, or `type` from the Type Properties dialog), so it is checked, rolled back
 //! when it breaks a rule, and undone like any other change.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use bimcraft_core::element_json;
@@ -2621,43 +2621,6 @@ impl BimApp {
         }
         if !(close || r.should_close()) {
             self.schedule_dialog = Some(d);
-        }
-    }
-
-    /// Keyboard Shortcuts (KS): each shortcut by what it does, as Revit's dialog lists them.
-    pub(crate) fn shortcuts_window(&mut self, ctx: &Context) {
-        if !self.show_shortcuts {
-            return;
-        }
-        let mut by_name: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
-        for (letters, name) in crate::shortcuts() {
-            by_name.entry(t(name)).or_default().push(letters);
-        }
-        let rows: Vec<(&str, Vec<&str>)> = by_name.into_iter().collect();
-        let mut close = false;
-        let r = Modal::new(UiId::new("shortcuts")).show(ctx, |ui| {
-            ui.label(RichText::new(t("Keyboard Shortcuts")).heading());
-            ui.add_space(6.0);
-            ScrollArea::vertical().max_height(480.0).show(ui, |ui| {
-                // In two columns, each running down, as a reference card.
-                ui.horizontal_top(|ui| {
-                    for (k, part) in rows.chunks(rows.len().div_ceil(2).max(1)).enumerate() {
-                        Grid::new(("shortcuts", k)).num_columns(2).striped(true).spacing(vec2(24.0, 4.0)).show(ui, |ui| {
-                            for (name, letters) in part {
-                                ui.label(*name);
-                                ui.monospace(letters.join(", "));
-                                ui.end_row();
-                            }
-                        });
-                        ui.add_space(24.0);
-                    }
-                });
-            });
-            ui.add_space(8.0);
-            ui.with_layout(Layout::right_to_left(Align::Min), |ui| close = ui.button(t("Close")).clicked());
-        });
-        if close || r.should_close() {
-            self.show_shortcuts = false;
         }
     }
 }

@@ -32,6 +32,7 @@ pub mod recent;
 pub mod revit;
 mod section;
 pub mod settings;
+pub mod shortcuts;
 mod start;
 mod structure;
 mod style;
@@ -255,7 +256,8 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 43] = [
+const SHORTCUTS: [(&str, &str); 60] = [
+    ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
     ("MM", "Mirror Pick Axis"),
@@ -269,6 +271,8 @@ const SHORTCUTS: [(&str, &str); 43] = [
     ("TL", "Thin Lines"),
     ("CS", "Create Similar"),
     ("PP", "Properties"),
+    ("VP", "Properties"),
+    ("NP", "Project Browser"),
     ("SA", "Select All Instances"),
     ("SE", "Snap to Endpoints"),
     ("SM", "Snap to Midpoints"),
@@ -289,6 +293,7 @@ const SHORTCUTS: [(&str, &str); 43] = [
     ("HR", "Reset Temporary Hide/Isolate"),
     ("RH", "Reveal Hidden Elements"),
     ("EU", "Unhide Elements"),
+    ("UE", "Unhide Elements"),
     ("VU", "Unhide Category"),
     ("EO", "Override Graphics by Element"),
     ("FT", "Filters"),
@@ -299,6 +304,19 @@ const SHORTCUTS: [(&str, &str); 43] = [
     ("HL", "Hidden Line"),
     ("SD", "Shaded"),
     ("KS", "Keyboard Shortcuts"),
+    ("SU", "Sun Settings"),
+    ("DL", "Detail Line"),
+    ("LI", "Model Line"),
+    ("SF", "Split Face"),
+    ("MA", "Match Properties"),
+    ("BR", "Brace"),
+    ("BS", "Beam System"),
+    ("RN", "Rebar Numbering"),
+    ("RP", "Reference Plane"),
+    ("CV", "Convert Duct"),
+    ("TF", "Cable Tray Fitting"),
+    ("DA", "Duct Accessory"),
+    ("FD", "Flex Duct"),
 ];
 
 /// Every two-letter shortcut and what it does: the desktop's own, then the commands' aliases.
@@ -492,6 +510,8 @@ pub struct BimApp {
     /// The Keyboard Shortcuts dialog is open (KS); the Manage tab drops its Project Units menu open
     /// the next time it shows (UN).
     show_shortcuts: bool,
+    pub custom_shortcuts: BTreeMap<String, String>,
+    pub shortcuts_dialog: shortcuts::ShortcutsDialog,
     open_units: bool,
     canvas: canvas::Canvas,
     orbit: orbit::Orbit,
@@ -846,6 +866,8 @@ impl BimApp {
             tab_cycle: false,
             held: Vec::new(),
             show_shortcuts: false,
+            custom_shortcuts: BTreeMap::new(),
+            shortcuts_dialog: shortcuts::ShortcutsDialog::default(),
             angle_edit: None,
             snaps: Snaps::default(),
             show_snaps: false,
@@ -1250,6 +1272,15 @@ impl BimApp {
         if pressed(Modifiers::COMMAND, Key::Comma) {
             self.settings_page = Some(settings::Page::Interface);
         }
+        if pressed(Modifiers::COMMAND, Key::Num1) {
+            self.toggle_properties();
+        }
+        if pressed(Modifiers::COMMAND, Key::P) {
+            self.export(ctx, "PDF", "pdf");
+        }
+        if pressed(Modifiers::NONE, Key::F1) {
+            self.show_shortcuts = true;
+        }
         // The rest belongs to a text field while one has the keyboard.
         if ctx.egui_wants_keyboard_input() {
             return;
@@ -1310,7 +1341,7 @@ impl BimApp {
                 shortcut.push(ch);
             }
         }
-        for ch in shortcut.chars().filter(char::is_ascii_alphabetic) {
+        for ch in shortcut.chars().filter(|c| c.is_ascii_alphanumeric()) {
             self.typed.push(ch.to_ascii_uppercase());
             if self.typed.len() > 2 {
                 self.typed.remove(0);
@@ -1324,7 +1355,16 @@ impl BimApp {
     /// Revit's two-letter shortcuts: the desktop's own ([`SHORTCUTS`]), then the commands' aliases
     /// (WA, DR, CR…). Whether `typed` is one.
     fn shortcut(&mut self) -> bool {
+        if let Some(action) = self.custom_shortcuts.get(&self.typed).cloned()
+            && self.execute_shortcut_action(&action)
+        {
+            return true;
+        }
         let tool = match self.typed.as_str() {
+            "3D" => {
+                self.open_sheet(Sheet::View3D);
+                return true;
+            }
             "MD" => Tool::Modify,
             "MM" => Tool::Mirror { draw: false, start: None },
             "DM" => Tool::Mirror { draw: true, start: None },
@@ -1343,8 +1383,69 @@ impl BimApp {
                 self.create_similar();
                 return true;
             }
-            "PP" => {
+            "PP" | "VP" => {
                 self.toggle_properties();
+                return true;
+            }
+            "NP" => {
+                self.toggle_browser();
+                return true;
+            }
+            "SU" => {
+                self.open_graphics(0);
+                return true;
+            }
+            "DL" => {
+                self.set_tool(Tool::Measure(None));
+                return true;
+            }
+            "LI" => {
+                self.set_tool(Tool::Run("wire", None));
+                return true;
+            }
+            "SF" => {
+                self.set_tool(Tool::Split);
+                return true;
+            }
+            "MA" => {
+                self.match_properties();
+                return true;
+            }
+            "BR" => {
+                self.tab = Tab::Structure;
+                self.set_tool(Tool::Run("beam", None));
+                return true;
+            }
+            "BS" => {
+                self.tab = Tab::Structure;
+                self.set_tool(Tool::Run("beam", None));
+                return true;
+            }
+            "RN" => {
+                self.open_ids_of_selection();
+                return true;
+            }
+            "RP" => {
+                self.set_tool(Tool::Grid(None));
+                return true;
+            }
+            "CV" => {
+                self.tab = Tab::Electrical;
+                self.set_tool(Tool::Run("conduit", None));
+                return true;
+            }
+            "TF" => {
+                self.tab = Tab::Electrical;
+                self.set_tool(Tool::Fixture("fitting"));
+                return true;
+            }
+            "DA" => {
+                self.set_tool(Tool::Fixture("accessory"));
+                return true;
+            }
+            "FD" => {
+                self.tab = Tab::Electrical;
+                self.set_tool(Tool::Run("conduit", None));
                 return true;
             }
             "SA" => {
@@ -1401,7 +1502,7 @@ impl BimApp {
                 self.duplicate_plan("duplicate");
                 return true;
             }
-            "EU" => {
+            "EU" | "UE" => {
                 if self.hidden_selection().0.is_empty() {
                     self.open_graphics(3);
                 } else {
@@ -1591,6 +1692,55 @@ impl BimApp {
         }
         let found = self.shown().into_iter().filter(|id| type_of(id).is_some_and(|k| types.contains(&k))).collect();
         self.pick_up(found, Modifiers::NONE);
+    }
+
+    /// Match Properties (MA): apply the type and family of the first selected element to all other
+    /// selected elements of the same category, or remember it as the template for subsequent picks.
+    pub(crate) fn match_properties(&mut self) {
+        if self.selection.is_empty() {
+            self.status = Status { text: t("Select an element first to match its properties").into(), error: true };
+            return;
+        }
+        let m = Arc::clone(&self.session.model);
+        let first_id = self.selection[0];
+        let Some(first_el) = m.elements.get(first_id) else { return };
+        let cat = first_el.category();
+        let src = element_json(&m, first_id);
+        let family = src["family"].as_str().map(String::from);
+        let typ = src["type"].as_str().unwrap_or_default().to_string();
+
+        if typ.is_empty() {
+            self.status = Status { text: t("The selected element has no type to match").into(), error: true };
+            return;
+        }
+
+        if self.selection.len() == 1 {
+            self.types.insert(cat, typ.clone());
+            if let Some(f) = &family {
+                self.component = Some((f.clone(), typ.clone()));
+            }
+            self.status = Status {
+                text: tf("Match Properties: source type '{}' selected. Select target elements and press MA again.", &[&typ]),
+                error: false,
+            };
+        } else {
+            let targets: Vec<Id> = self.selection[1..].to_vec();
+            let mut count = 0;
+            for id in targets {
+                let target = element_json(&self.session.model, id);
+                if target["category"].as_str().unwrap_or_default() == cat {
+                    let mut p = json!({"id": id, "type": typ});
+                    if let Some(f) = &family {
+                        p["family"] = json!(f);
+                    }
+                    if self.run("modify", p).is_some() {
+                        count += 1;
+                    }
+                }
+            }
+            self.status =
+                Status { text: tf("Matched properties: applied type '{}' to {} element(s)", &[&typ, &count.to_string()]), error: false };
+        }
     }
 
     /// What the open view shows: what a plan draws, in its view range and crop region; what a
@@ -2802,6 +2952,10 @@ impl BimApp {
             if big_button(ui, Icon::Snaps, "Snaps", self.show_snaps, tip).clicked() {
                 self.show_snaps = true;
             }
+            let tip = "Keyboard Shortcuts (KS): customize, edit, and load shortcut keys";
+            if big_button(ui, Icon::Keyboard, "Shortcuts", self.show_shortcuts, tip).clicked() {
+                self.show_shortcuts = true;
+            }
             let now = self.session.model.units;
             let tip = tf("Project Units (UN): how lengths show and read; now {}", &[&t(now.label()).to_lowercase()]);
             let r = big_button(ui, Icon::Units, "Project Units", false, &tip);
@@ -2818,7 +2972,7 @@ impl BimApp {
             // What the drawings say, and how new things are named.
             let now = self.session.model.language;
             let tip = tf("Project Language: what the drawings say and how new things are named; now {}", &[now.label()]);
-            let r = big_button(ui, Icon::Text, "Project Language", false, &tip);
+            let r = big_button(ui, Icon::Text, "Language", false, &tip);
             Popup::menu(&r).show(|ui| {
                 for l in Language::ALL {
                     if ui.selectable_label(l == now, l.label()).clicked() {

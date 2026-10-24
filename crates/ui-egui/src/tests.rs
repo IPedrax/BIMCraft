@@ -823,6 +823,32 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
 }
 
 #[test]
+fn manage_tab_opens_keyboard_shortcuts_dialog() {
+    let mut h = app(BOX);
+    press(&mut h, "Manage");
+    press(&mut h, "Shortcuts");
+    assert!(h.state().show_shortcuts);
+    assert!(h.query_by_label("Load File...").is_some());
+    assert!(h.query_by_label("Add Shortcut").is_some());
+    press(&mut h, "Close");
+    assert!(!h.state().show_shortcuts);
+}
+
+#[test]
+fn typed_3d_opens_3d_view_and_ma_matches_properties() {
+    let mut h = app(BOX);
+    assert_ne!(h.state().sheet, Sheet::View3D);
+    shortcut(&mut h, "3D");
+    assert_eq!(h.state().sheet, Sheet::View3D);
+
+    // Match Properties
+    let walls = ids(&h, "wall");
+    h.state_mut().selection = vec![walls[0], walls[1], walls[2]];
+    shortcut(&mut h, "MA");
+    assert!(h.state().status.text.contains("Matched properties"));
+}
+
+#[test]
 fn the_level_and_grid_tools_add_datums() {
     let mut h = app("");
     tool(&mut h, "Level");
