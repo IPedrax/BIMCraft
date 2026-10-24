@@ -2200,13 +2200,14 @@ pub(crate) fn filled_region(d: &mut Drawing, m: &Model, r: &FilledRegion) {
         }
     }
     d.part = part;
-    if let Some(st) = r.line_style.as_ref().and_then(|n| m.line_styles.get(n)) {
+    // Each boundary line in its own style, else the region's; an invisible one, or one of a region with invisible lines
+    // and no style of its own, not at all.
+    for l in r.sketch.iter().filter(|l| !l.invisible) {
+        let Some(st) = l.style.as_ref().or(r.line_style.as_ref()).and_then(|n| m.line_styles.get(n)) else { continue };
         let dash = st.pattern.as_ref().and_then(|p| m.line_patterns.get(p)).and_then(|p| p.dash(sheet::DENSITY as f32 * d.paper));
         let [cr, cg, cb] = st.color;
-        for l in &r.sketch {
-            let pts = l.points().into_iter().map(|p| d.view.px(p)).collect();
-            d.stroke(pts, st.pen, Rgb(cr, cg, cb), dash.clone(), false);
-        }
+        let pts = l.points().into_iter().map(|p| d.view.px(p)).collect();
+        d.stroke(pts, st.pen, Rgb(cr, cg, cb), dash, false);
     }
 }
 
@@ -2215,8 +2216,8 @@ pub(crate) fn detail_line(d: &mut Drawing, m: &Model, l: &DetailLine) {
     let px_per_mm = sheet::DENSITY as f32 * d.paper;
     let dash = st.pattern.as_ref().and_then(|p| m.line_patterns.get(p)).and_then(|p| p.dash(px_per_mm));
     // A closed one is stroked as a ring, so its dashes and its corner run on round its first point.
-    let closed = l.curve.is_closed();
-    let mut pts: Vec<(f32, f32)> = l.curve.points().into_iter().map(|p| d.view.px(p)).collect();
+    let closed = l.curve.is_closed() && l.insulation.is_none();
+    let mut pts: Vec<(f32, f32)> = l.drawn().into_iter().map(|p| d.view.px(p)).collect();
     if closed && pts.len() > 2 {
         pts.pop();
     }

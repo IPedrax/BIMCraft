@@ -55,6 +55,8 @@ pub struct Sketch {
     pub drag: Option<Drag>,
     /// A new region's type and its boundary's line style (none, invisible), as the Options Bar sets them.
     pub region: (String, Option<String>),
+    /// A region's sketch: each line drawn takes the Options Bar's line style.
+    pub styled: bool,
 }
 
 /// Sketch lines in the plan: Revit's magenta.
@@ -132,7 +134,11 @@ impl Sketch {
     }
 
     /// A line added, unless it's too short to be one.
-    pub(crate) fn add(&mut self, l: SketchLine) {
+    pub(crate) fn add(&mut self, mut l: SketchLine) {
+        if self.styled {
+            l.invisible = self.region.1.is_none();
+            l.style = self.region.1.clone();
+        }
         if l.curve.check("").is_ok() {
             self.lines.push(l);
             self.changed();
@@ -258,7 +264,12 @@ impl BimApp {
                 Some(first(bimcraft_core::lines::THIN, m.line_styles.keys().collect())).filter(|s| !s.is_empty()),
             ),
         };
-        self.sketch = Some(Sketch { of, lines, picked: BTreeSet::new(), wrong: Vec::new(), drag: None, region });
+        let styled = match of {
+            Of::Region { .. } => true,
+            Of::Edit(id) => matches!(m.elements.get(id), Some(Element::FilledRegion(_))),
+            _ => false,
+        };
+        self.sketch = Some(Sketch { of, lines, picked: BTreeSet::new(), wrong: Vec::new(), drag: None, region, styled });
         self.selection.clear();
         self.status = Status::default();
         self.tool = Tool::SketchLine(Vec::new());
@@ -565,21 +576,25 @@ impl BimApp {
         });
     }
 
-    /// The Options Bar while sketching a new region: its type, and its boundary's line style or invisible lines.
+    /// The Options Bar while sketching a region: a new one's type, and the line style the lines drawn take (or invisible
+    /// lines), which the lines picked take at once.
     pub(crate) fn sketch_options(&mut self, ui: &mut Ui) {
         let m = &self.session.model;
-        let Some(sk) = self.sketch.as_mut().filter(|sk| matches!(sk.of, Of::Region { .. })) else { return };
-        let l = ui.label(t("Type:"));
-        let c = egui::ComboBox::from_id_salt("region-type").selected_text(&sk.region.0).width(160.0).show_ui(ui, |ui| {
-            for n in m.region_types.keys() {
-                ui.selectable_value(&mut sk.region.0, n.clone(), n);
-            }
-        });
-        c.response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, t("Region Type")));
-        c.response.labelled_by(l.id);
+        let Some(sk) = self.sketch.as_mut().filter(|sk| sk.styled) else { return };
+        if matches!(sk.of, Of::Region { .. }) {
+            let l = ui.label(t("Type:"));
+            let c = egui::ComboBox::from_id_salt("region-type").selected_text(&sk.region.0).width(160.0).show_ui(ui, |ui| {
+                for n in m.region_types.keys() {
+                    ui.selectable_value(&mut sk.region.0, n.clone(), n);
+                }
+            });
+            c.response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, t("Region Type")));
+            c.response.labelled_by(l.id);
+        }
         let l = ui.label(t("Line Style:"));
         let invisible = t("<Invisible lines>").to_string();
         let shown = sk.region.1.clone().unwrap_or_else(|| invisible.clone());
+        let was = sk.region.1.clone();
         let c = egui::ComboBox::from_id_salt("region-lines").selected_text(shown).width(160.0).show_ui(ui, |ui| {
             ui.selectable_value(&mut sk.region.1, None, &invisible);
             for n in m.line_styles.keys() {
@@ -588,6 +603,16 @@ impl BimApp {
         });
         c.response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, t("Line Style")));
         c.response.labelled_by(l.id);
+        // A style picked restyles the lines picked.
+        if sk.region.1 != was {
+            let (style, picked) = (sk.region.1.clone(), sk.picked.clone());
+            for i in picked {
+                if let Some(line) = sk.lines.get_mut(i) {
+                    line.invisible = style.is_none();
+                    line.style = style.clone();
+                }
+            }
+        }
     }
 
     /// Annotate's Region panel: Filled Region, Masking Region, sketched in the plan on screen.
@@ -627,6 +652,12 @@ fn sent(l: &SketchLine) -> serde_json::Value {
     let mut v = serde_json::to_value(bimcraft_core::curves::Fields::of(&l.curve)).unwrap_or_default();
     if l.id != 0 {
         v["id"] = json!(l.id);
+    }
+    if let Some(st) = &l.style {
+        v["style"] = json!(st);
+    }
+    if l.invisible {
+        v["invisible"] = json!(true);
     }
     v
 }

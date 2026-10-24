@@ -51,6 +51,8 @@ pub struct Drawing {
     pub fillet: Vec<(Picked, P2)>,
     /// The selected detail line's handle being dragged: the line, and where the handle was.
     pub grip: Option<(Id, P2)>,
+    /// Revit's Insulation: the Detail Line tool draws batt insulation this wide, as typed, instead of lines.
+    pub insulation: Option<String>,
     /// While sketching, Trim/Extend's first line (or boundary) picked, and where.
     pub trim: Option<(usize, P2)>,
 }
@@ -69,6 +71,7 @@ impl Default for Drawing {
             fillet: Vec::new(),
             grip: None,
             trim: None,
+            insulation: None,
         }
     }
 }
@@ -394,17 +397,49 @@ impl BimApp {
         })
     }
 
+    /// What a new detail line takes from the Options Bar: its line style, and with Insulation its width.
+    pub(crate) fn line_extras(&self, p: &mut Value) {
+        if !self.line_style.is_empty() {
+            p["style"] = json!(self.line_style);
+        }
+        if let Some(w) = self.drawing.insulation.as_ref().and_then(|w| self.session.model.units.parse(w)) {
+            p["insulation"] = json!(w);
+        }
+    }
+
+    /// Annotate's Detail panel: Detail Line, and Insulation (detail lines drawn as batt insulation).
+    pub(crate) fn detail_panel(&mut self, ui: &mut Ui) {
+        let drawing = matches!(self.tool, Tool::DetailLine(_));
+        panel(ui, "Detail", |ui| {
+            let tip = "Detail Line (DL): each click makes a line from the one before, in the Options Bar's line style; the Draw panel has the other shapes";
+            if crate::big_button(ui, Icon::Line, "Detail Line", drawing && self.drawing.insulation.is_none(), tip).clicked() {
+                self.drawing.insulation = None;
+                self.set_tool(Tool::DetailLine(Vec::new()));
+            }
+            let tip = "Insulation: batt insulation drawn along each line, its width on the Options Bar";
+            if crate::big_button(ui, Icon::Insulation, "Insulation", drawing && self.drawing.insulation.is_some(), tip).clicked() {
+                self.set_tool(Tool::DetailLine(Vec::new()));
+                self.drawing.insulation = Some("100".into());
+            }
+        });
+    }
+
+    /// The Options Bar's Width while drawing insulation.
+    pub(crate) fn insulation_options(&mut self, ui: &mut Ui) {
+        if let Some(w) = &mut self.drawing.insulation {
+            let l = ui.label(t("Width:"));
+            ui.add(TextEdit::singleline(w).desired_width(70.0)).labelled_by(l.id);
+        }
+    }
+
     /// Detail lines along `curves`, in view `view` and the Options Bar's line style, as one step.
     pub(crate) fn make_detail_lines(&mut self, view: Id, curves: &[Curve]) -> Vec<Id> {
-        let style = (!self.line_style.is_empty()).then(|| self.line_style.clone());
         let params: Vec<Value> = curves
             .iter()
             .map(|c| {
                 let mut p = serde_json::to_value(Fields::of(c)).unwrap_or_default();
                 p["view"] = json!(view);
-                if let Some(s) = &style {
-                    p["style"] = json!(s);
-                }
+                self.line_extras(&mut p);
                 p
             })
             .collect();
@@ -670,6 +705,80 @@ impl BimApp {
         }
         if let Some(text) = status {
             self.status = Status { text: t(text).into(), error: true };
+        }
+    }
+
+    /// Modify | Lines' Add Vertex, Delete Vertex and Convert Spline (for one spline selected, or picked while sketching).
+    pub(crate) fn vertex_buttons(&mut self, ui: &mut Ui) {
+        for (icon, label, tip, delete) in [
+            (
+                Icon::AddVertex,
+                "Add Vertex",
+                "Add Vertex: click a polyline or a spline where a vertex goes; a spline keeps its shape",
+                false,
+            ),
+            (Icon::DeleteVertex, "Delete Vertex", "Delete Vertex: click a polyline's corner or a spline's point to take it out", true),
+        ] {
+            let on = self.tool == Tool::Vertex { delete };
+            if crate::big_button(ui, icon, label, on, tip).clicked() {
+                self.set_tool(Tool::Vertex { delete });
+            }
+        }
+        let spline = |c: Option<Curve>| matches!(c, Some(Curve::Spline { .. } | Curve::Fit { .. }));
+        let one = match (&self.sketch, self.selection.as_slice()) {
+            (Some(sk), _) => {
+                sk.picked.len() == 1 && spline(sk.picked.iter().next().and_then(|i| sk.lines.get(*i)).map(|l| l.curve.clone()))
+            }
+            (None, &[id]) => spline(element_curve(&self.session.model, id)),
+            _ => false,
+        };
+        let tip = "Convert Spline: a spline through points becomes the same curve by its control points, or one by its control points a spline through points";
+        if ui.add_enabled_ui(one, |ui| crate::big_button(ui, Icon::ConvertSpline, "Convert Spline", false, tip)).inner.clicked() {
+            self.convert_spline();
+        }
+    }
+
+    /// Convert Spline on the one spline selected, or picked while sketching.
+    pub(crate) fn convert_spline(&mut self) {
+        if let Some(sk) = &mut self.sketch {
+            if let Some(&i) = sk.picked.iter().next()
+                && let Some(l) = sk.lines.get_mut(i)
+                && let Some(c) = l.curve.converted()
+            {
+                l.curve = c;
+                sk.wrong.clear();
+            }
+            return;
+        }
+        if let &[id] = self.selection.as_slice() {
+            self.run("convert_spline", json!({"id": id}));
+        }
+    }
+
+    /// Add or Delete Vertex's click at `at` on detail line `id`, or while sketching on the sketch line nearest `at`.
+    pub(crate) fn vertex_click(&mut self, id: Option<Id>, at: P2, reach: f64, delete: bool) {
+        if let Some(sk) = &mut self.sketch {
+            if let Some(i) = sk.line_at(at, reach)
+                && let Some(l) = sk.lines.get_mut(i)
+            {
+                let c = if delete { l.curve.without_vertex(at) } else { l.curve.with_vertex(at) };
+                match c {
+                    Some(c) => {
+                        l.curve = c;
+                        sk.wrong.clear();
+                    }
+                    None => {
+                        self.status = Status {
+                            text: t("Only a polyline or a spline takes a vertex, and a line keeps its two ends.").into(),
+                            error: true,
+                        }
+                    }
+                }
+            }
+            return;
+        }
+        if let Some(id) = id {
+            self.run("vertex", json!({"id": id, "at": [at.0, at.1], "delete": delete}));
         }
     }
 

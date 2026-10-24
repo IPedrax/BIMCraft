@@ -3027,6 +3027,59 @@ const WORDS: &[[&str; 3]] = &[
         "Onde uma linha a partir do último ponto toca um círculo ou arco",
         "Donde una línea desde el último punto toca un círculo o un arco",
     ],
+    ["line", "linha", "línea"],
+    ["arc", "arco", "arco"],
+    ["polyline", "polilinha", "polilínea"],
+    ["circle", "círculo", "círculo"],
+    ["ellipse", "elipse", "elipse"],
+    ["partial ellipse", "elipse parcial", "elipse parcial"],
+    ["spline", "spline", "spline"],
+    ["fitted spline", "spline por pontos", "spline por puntos"],
+    [
+        "Insulation: batt insulation drawn along each line, its width on the Options Bar",
+        "Isolamento: isolamento em manta desenhado ao longo de cada linha, com a largura na Barra de Opções",
+        "Aislamiento: aislamiento de manta dibujado a lo largo de cada línea, con el ancho en la barra de opciones",
+    ],
+    [
+        "Detail Line (DL): each click makes a line from the one before, in the Options Bar's line style; the Draw panel has the other shapes",
+        "Linha de detalhe (DL): cada clique faz uma linha a partir da anterior, no estilo de linha da Barra de Opções; o painel Desenhar tem as outras formas",
+        "Línea de detalle (DL): cada clic crea una línea desde la anterior, con el estilo de línea de la barra de opciones; el panel Dibujar tiene las otras formas",
+    ],
+    ["Place Insulation", "Inserir isolamento", "Colocar aislamiento"],
+    ["Insulation Width", "Largura do isolamento", "Ancho del aislamiento"],
+    ["Add Vertex", "Adicionar vértice", "Añadir vértice"],
+    ["Delete Vertex", "Excluir vértice", "Suprimir vértice"],
+    ["Convert Spline", "Converter spline", "Convertir spline"],
+    [
+        "Add Vertex: click a polyline or a spline where a vertex goes; a spline keeps its shape",
+        "Adicionar vértice: clique numa polilinha ou spline onde vai o vértice; a spline mantém a forma",
+        "Añadir vértice: haga clic en una polilínea o una spline donde va el vértice; la spline conserva su forma",
+    ],
+    [
+        "Delete Vertex: click a polyline's corner or a spline's point to take it out",
+        "Excluir vértice: clique num vértice de polilinha ou ponto de spline para tirá-lo",
+        "Suprimir vértice: haga clic en un vértice de polilínea o un punto de spline para quitarlo",
+    ],
+    [
+        "Convert Spline: a spline through points becomes the same curve by its control points, or one by its control points a spline through points",
+        "Converter spline: uma spline por pontos vira a mesma curva por pontos de controle, ou uma por pontos de controle vira spline por pontos",
+        "Convertir spline: una spline por puntos pasa a ser la misma curva por puntos de control, o una por puntos de control pasa a ser spline por puntos",
+    ],
+    [
+        "Click a polyline or a spline where a vertex goes.",
+        "Clique numa polilinha ou spline onde vai o vértice.",
+        "Haga clic en una polilínea o una spline donde va el vértice.",
+    ],
+    [
+        "Click a polyline's corner or a spline's point to take it out.",
+        "Clique num vértice de polilinha ou ponto de spline para tirá-lo.",
+        "Haga clic en un vértice de polilínea o un punto de spline para quitarlo.",
+    ],
+    [
+        "Only a polyline or a spline takes a vertex, and a line keeps its two ends.",
+        "Só polilinhas e splines aceitam vértices, e uma linha mantém suas duas extremidades.",
+        "Solo las polilíneas y las splines admiten vértices, y una línea conserva sus dos extremos.",
+    ],
 ];
 
 #[cfg(test)]

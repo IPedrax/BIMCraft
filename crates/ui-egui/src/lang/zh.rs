@@ -1846,6 +1846,42 @@ pub(super) const WORDS: &[[&str; 2]] = &[
         "圆、椭圆或圆弧沿其轴线的点：东、北、西、南",
     ],
     ["Where a line from the last point touches a circle or an arc", "从上一点出发的直线与圆或圆弧相切的位置"],
+    ["line", "直线"],
+    ["arc", "圆弧"],
+    ["polyline", "多段线"],
+    ["circle", "圆"],
+    ["ellipse", "椭圆"],
+    ["partial ellipse", "半椭圆"],
+    ["spline", "样条曲线"],
+    ["fitted spline", "通过点的样条曲线"],
+    [
+        "Insulation: batt insulation drawn along each line, its width on the Options Bar",
+        "隔热层：沿每条线绘制的毡状隔热层，宽度在选项栏中设置",
+    ],
+    [
+        "Detail Line (DL): each click makes a line from the one before, in the Options Bar's line style; the Draw panel has the other shapes",
+        "详图线 (DL)：每次单击都从上一点画一条线，使用选项栏中的线样式；绘制面板中有其他形状",
+    ],
+    ["Place Insulation", "放置隔热层"],
+    ["Insulation Width", "隔热层宽度"],
+    ["Add Vertex", "添加顶点"],
+    ["Delete Vertex", "删除顶点"],
+    ["Convert Spline", "转换样条曲线"],
+    [
+        "Add Vertex: click a polyline or a spline where a vertex goes; a spline keeps its shape",
+        "添加顶点：在多段线或样条曲线上单击要添加顶点的位置；样条曲线形状不变",
+    ],
+    ["Delete Vertex: click a polyline's corner or a spline's point to take it out", "删除顶点：单击多段线的角点或样条曲线的点将其删除"],
+    [
+        "Convert Spline: a spline through points becomes the same curve by its control points, or one by its control points a spline through points",
+        "转换样条曲线：通过点的样条曲线变为相同的控制点样条曲线，或控制点样条曲线变为通过点的样条曲线",
+    ],
+    ["Click a polyline or a spline where a vertex goes.", "在多段线或样条曲线上单击要添加顶点的位置。"],
+    ["Click a polyline's corner or a spline's point to take it out.", "单击多段线的角点或样条曲线的点将其删除。"],
+    [
+        "Only a polyline or a spline takes a vertex, and a line keeps its two ends.",
+        "只有多段线和样条曲线可以添加顶点，直线保留其两个端点。",
+    ],
 ];
 
 /// The core's words (`bimcraft_core::language`) that the window shows too, in English and Simplified Chinese: after [`WORDS`], which wins.
@@ -2009,6 +2045,8 @@ pub(super) fn category(category: &str) -> Option<&'static str> {
         "downconductor" => "引下线",
         "groundconductor" => "接地线",
         "text" => "文字注释",
+        "line" => "详图线",
+        "region" => "填充区域",
         "spot" => "高程点",
         "schedule" => "明细表",
         "view3d" => "三维视图",

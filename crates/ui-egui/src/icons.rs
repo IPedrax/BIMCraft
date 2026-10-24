@@ -165,6 +165,10 @@ icon_names! {
     ExplodePolyline,
     TrimSingle,
     TrimMultiple,
+    Insulation,
+    AddVertex,
+    DeleteVertex,
+    ConvertSpline,
 }
 
 /// A single unfilled contour in grid coordinates, shared by egui and the catalog.
@@ -394,6 +398,45 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             // A clean right-angle join and a short leftover segment.
             g.line(&[(5.0, 21.0), (5.0, 5.0), (21.0, 5.0)]);
             g.line(&[(5.0, 5.0), (2.0, 2.0)]);
+        }
+        Icon::Insulation => {
+            // Batt insulation: loops across, between its two faces.
+            g.line(&[(2.0, 4.0), (22.0, 4.0)]);
+            g.line(&[(2.0, 20.0), (22.0, 20.0)]);
+            let steps = if compact { 2 } else { 3 };
+            let pitch = 16.0 / steps as f32;
+            let loops: Vec<(f32, f32)> = (0..=steps * 24)
+                .map(|k| {
+                    let th = TAU * k as f32 / 24.0;
+                    (4.0 + pitch * th / TAU - pitch * 0.6 * th.sin(), 12.0 + 6.0 * th.cos())
+                })
+                .map(|(x, y)| (x.clamp(2.0, 22.0), y))
+                .collect();
+            g.line(&loops);
+        }
+        Icon::AddVertex => {
+            // A polyline, and a grip with a plus where a corner goes.
+            g.line(&[(3.0, 19.0), (10.0, 9.0), (21.0, 15.0)]);
+            g.closed(&[(8.0, 7.0), (12.0, 7.0), (12.0, 11.0), (8.0, 11.0)]);
+            g.line(&[(17.0, 3.0), (17.0, 9.0)]);
+            g.line(&[(14.0, 6.0), (20.0, 6.0)]);
+        }
+        Icon::DeleteVertex => {
+            // A polyline straightened where a corner was, and a minus.
+            g.line(&[(3.0, 19.0), (21.0, 15.0)]);
+            g.closed(&[(8.0, 15.0), (12.0, 15.0), (12.0, 19.0), (8.0, 19.0)]);
+            g.line(&[(14.0, 6.0), (20.0, 6.0)]);
+            if !compact {
+                g.line(&[(5.5, 15.0), (10.0, 9.0), (13.0, 10.5)]);
+            }
+        }
+        Icon::ConvertSpline => {
+            // A spline, and arrows turning one way and back: from points on it to points off it.
+            g.cubic([(3.0, 15.0), (7.0, 6.0), (11.0, 22.0), (15.0, 13.0)]);
+            g.circle((3.0, 15.0), 1.5);
+            g.closed(&[(13.5, 11.5), (16.5, 11.5), (16.5, 14.5), (13.5, 14.5)]);
+            g.arc((18.0, 7.0), 3.5, 180.0, 450.0);
+            g.line(&[(14.5, 4.5), (14.5, 7.0), (17.0, 7.0)]);
         }
         Icon::TrimSingle => {
             // A boundary, and a line reaching to it.

@@ -762,6 +762,23 @@ pub static ALL: &[Command] = &[
         fillet,
     ),
     edit(
+        "vertex",
+        "Add/Delete Vertex",
+        &[],
+        "{id, at: [x, y], delete?} a detail line (a polyline, or a spline of either kind) with a vertex more where it passes \
+         nearest `at` (a spline by its control points gains a control point and keeps its shape exactly), or with `delete` \
+         one fewer: the corner, control point or point passed through nearest `at`",
+        vertex,
+    ),
+    edit(
+        "convert_spline",
+        "Convert Spline",
+        &[],
+        "{id} a detail line that is a spline through points becomes the same curve by its control points, exactly; one by \
+         its control points becomes a spline through points within 0.05 mm of it",
+        convert_spline,
+    ),
+    edit(
         "explode",
         "Explode Polyline",
         &["PX"],
@@ -874,7 +891,7 @@ pub static ALL: &[Command] = &[
          with `start_tangent` and `end_tangent`)} a detail line in a view, by name or id, in the view's own terms: a \
          level's plan (the lowest by default; plan mm), a section or an elevation (along its line from its start, and up) \
          or a sheet by number (paper mm). It draws in line style `style` (Thin Lines unless told), only in its view, and \
-         goes with it",
+         goes with it; with `insulation`, a width in mm, it draws as batt insulation along its curve, as Revit's Insulation",
         detail_line,
     ),
     edit(
@@ -4238,7 +4255,7 @@ fn sketch_param(c: &str, p: &Value, key: &str, old: &[SketchLine]) -> Result<Opt
             Given::Arc([a, b, t]) => Ok(SketchLine::arc(a, b, t)),
             Given::Full(k) => {
                 let curve = k.fields().curve().map_err(|e| bad(c, format!("`{key}` line {i}: {e}")))?;
-                let mut l = SketchLine::from(curve);
+                let mut l = SketchLine { style: k.style.clone(), invisible: k.invisible, ..SketchLine::from(curve) };
                 if k.id != 0 {
                     let id = k.id;
                     let was = old.iter().find(|o| o.id == id).ok_or_else(|| {
@@ -6408,6 +6425,42 @@ fn fillet(s: &mut Session, p: &Value) -> R {
     Ok(json!({"id": id, "ids": [a, b]}))
 }
 
+/// Detail line `id`, as `p` names it, for a command `c` that changes its curve.
+fn line_of(c: &str, m: &Model, p: &Value) -> Result<(Id, DetailLine), String> {
+    let id = id_opt(c, p, "id")?.and_then(|g| m.elements.id(g)).ok_or_else(|| bad(c, "`id`, a detail line, is required"))?;
+    match m.elements.get(id) {
+        Some(Element::DetailLine(l)) => Ok((id, l.clone())),
+        _ => Err(bad(c, format!("{id} is not a detail line"))),
+    }
+}
+
+fn vertex(s: &mut Session, p: &Value) -> R {
+    let c = "vertex";
+    let (id, l) = line_of(c, &s.model, p)?;
+    let at = point_req(c, p, "at")?;
+    let delete = flag(c, p, "delete")?;
+    let curve = if delete { l.curve.without_vertex(at) } else { l.curve.with_vertex(at) }.ok_or_else(|| {
+        bad(
+            c,
+            match delete {
+                true => format!("detail line {id} is a {}: it has no vertex to spare", l.curve.kind()),
+                false => format!("detail line {id} is a {}: only polylines and splines take a vertex, between their ends", l.curve.kind()),
+            },
+        )
+    })?;
+    s.model_mut().elements.insert(id, Element::DetailLine(DetailLine { curve, ..l }));
+    Ok(json!({"id": id}))
+}
+
+fn convert_spline(s: &mut Session, p: &Value) -> R {
+    let c = "convert_spline";
+    let (id, l) = line_of(c, &s.model, p)?;
+    let curve = l.curve.converted().ok_or_else(|| bad(c, format!("detail line {id} is a {}, not a spline", l.curve.kind())))?;
+    let kind = curve.kind();
+    s.model_mut().elements.insert(id, Element::DetailLine(DetailLine { curve, ..l }));
+    Ok(json!({"id": id, "shape": kind}))
+}
+
 fn explode(s: &mut Session, p: &Value) -> R {
     let c = "explode";
     let m = &s.model;
@@ -6781,9 +6834,10 @@ fn curve_param(c: &str, p: &Value) -> Result<crate::curves::Curve, String> {
 
 fn detail_line(s: &mut Session, p: &Value) -> R {
     let c = "detail_line";
-    only(c, p, &[&["view", "level", "style"], CURVE_KEYS].concat())?;
+    only(c, p, &[&["view", "level", "style", "insulation"], CURVE_KEYS].concat())?;
     let m = &s.model;
     let curve = curve_param(c, p)?;
+    let insulation = num(c, p, "insulation")?;
     let view = view_param(c, m, p, true)?;
     let style = match name_param(c, p, "style")? {
         Some(n) => n,
@@ -6799,7 +6853,7 @@ fn detail_line(s: &mut Session, p: &Value) -> R {
                 .ok_or_else(|| bad(c, "the project has no line style; make one first"))?
         }
     };
-    let l = DetailLine { view: m.guid(view), curve, style };
+    let l = DetailLine { view: m.guid(view), curve, style, insulation };
     let id = s.model_mut().insert(Element::DetailLine(l));
     Ok(json!({"id": id}))
 }

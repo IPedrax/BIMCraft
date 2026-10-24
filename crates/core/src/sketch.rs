@@ -29,6 +29,10 @@ pub struct SketchLine {
     pub id: Id,
     pub guid: Guid,
     pub curve: Curve,
+    /// A filled region's boundary line drawn in a line style of its own, else in the region's.
+    pub style: Option<String>,
+    /// A filled region's boundary line not drawn at all: Revit's Invisible lines, for this one.
+    pub invisible: bool,
 }
 
 crate::curve_struct! {
@@ -38,19 +42,23 @@ crate::curve_struct! {
         id: Id,
         #[serde(default, skip_serializing_if = "Guid::is_nil")]
         guid: Guid,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        style: Option<String>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        invisible: bool,
     }
 }
 
 impl TryFrom<RawSketchLine> for SketchLine {
     type Error = String;
     fn try_from(r: RawSketchLine) -> Result<SketchLine, String> {
-        Ok(SketchLine { id: r.id, guid: r.guid, curve: r.fields().curve()? })
+        Ok(SketchLine { id: r.id, guid: r.guid, curve: r.fields().curve()?, style: r.style, invisible: r.invisible })
     }
 }
 
 impl From<SketchLine> for RawSketchLine {
     fn from(l: SketchLine) -> RawSketchLine {
-        let mut r = RawSketchLine { id: l.id, guid: l.guid, ..RawSketchLine::default() };
+        let mut r = RawSketchLine { id: l.id, guid: l.guid, style: l.style, invisible: l.invisible, ..RawSketchLine::default() };
         r.set(&l.curve);
         r
     }
@@ -64,7 +72,7 @@ impl From<Line> for SketchLine {
 
 impl From<Curve> for SketchLine {
     fn from(curve: Curve) -> SketchLine {
-        SketchLine { id: 0, guid: Guid::default(), curve }
+        SketchLine { id: 0, guid: Guid::default(), curve, style: None, invisible: false }
     }
 }
 

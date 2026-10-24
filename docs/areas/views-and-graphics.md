@@ -82,6 +82,18 @@ a spline's frame dashed), dragged and snapped, then `modify` with the moved curv
 Modify's Split, Trim/Extend to Corner, Trim/Extend Single and Multiple Elements and Offset take detail lines as they take
 walls, and while sketching they change the sketch's lines (`sketch_modify`).
 
+Vertices come and go (`vertex`; Modify | Lines' Add Vertex and Delete Vertex, on sketch lines too): `Curve::with_vertex`
+cuts a polyline's segment, inserts a knot in a control-point spline (one control point more, the curve exactly as it was)
+or a point in a spline through points; `without_vertex` takes a corner, a control point or a point out. `convert_spline`
+(Convert Spline) turns a spline through points into the same curve by control points, exactly (`fit_to_control`: knots at
+the points' distances along, a tridiagonal system for the control points with the fitted spline's end conditions), and
+one by control points into one through points within `FIT_TOL` (`refit_with`); Revit converts neither way.
+
+Revit's Insulation is a detail line with an `insulation` width: `DetailLine::drawn` gives `lines::batt`, a prolate cycloid
+along its curve (loops the whole width across, `BULGE` times it apart), so it splits, offsets, joins and takes grips as any
+line does, and follows arcs and splines, which Revit's doesn't. Annotate > Detail > Insulation draws it, its Width on the
+Options Bar; Properties shows Insulation Width.
+
 `Drawing::detail` is the level the plan or the section is drawn at: coarse leaves out a compound element's layers and an opening's
 symbols, medium its patterns (`cut_layer`, a floor's `surface`), fine draws as before. In the 3D view `Look::style` picks how
 `Scene::picture` draws: shaded as ever, hidden line as a section's picture is (paper faces, edges), wireframe by `Scene::edges` (where
@@ -137,8 +149,10 @@ families of parallel lines as a PAT file has them (`HatchLine`: an angle, an ori
 dashes, a space negative and a dot 0), drafting (mm on paper, so the same at any scale) or model (mm in the building); no
 lines, it fills solid. `fills::strokes` lays a pattern over any outlines with holes (inside an odd number of rings), within
 the view's window, and gives up rather than draw past a cap, too dense to read; `render::filled_region` draws a region's
-masking (paper), its background and its foreground pattern, then its boundary's sketch lines in their style, unless it has
-none (invisible lines). A plan draws its regions after the model and before the annotation, in a loop of their own (sections
+masking (paper), its background and its foreground pattern, then its boundary's sketch lines, each in its own line style
+(`SketchLine::style`, a library reference as the region's is) else the region's, or not at all (`invisible`, or a region
+of invisible lines with none of its own); in sketch mode the Options Bar's Line Style is what the lines drawn take, and the
+lines picked take it at once. A plan draws its regions after the model and before the annotation, in a loop of their own (sections
 and sheets likewise), so a masking region hides the walls under it but not the note on it. A `FilledRegion` is annotation of
 its view (`Model::annotation_plan`, so a duplicated plan has its own) and its sketch is a `sketch::SketchLine` list, solved
 when drawn, any number of outlines; Edit Boundary edits it as any other. Patterns and region types are library entries,

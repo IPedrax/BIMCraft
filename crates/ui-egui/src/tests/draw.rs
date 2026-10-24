@@ -318,3 +318,72 @@ fn the_wall_tools_fillet_arc_rounds_two_walls() {
     assert_eq!(w.len(), 3, "{w:?}");
     assert!(w.contains(&(P2(0.0, 0.0), P2(3000.0, 0.0))) && w.contains(&(P2(4000.0, 1000.0), P2(4000.0, 4000.0))), "{w:?}");
 }
+
+#[test]
+fn insulation_draws_detail_lines_as_batt_insulation_of_the_width_on_the_options_bar() {
+    let mut h = app(BOX);
+    press(&mut h, "Annotate");
+    press(&mut h, "Insulation");
+    assert!(h.query_by_label("Modify | Place Insulation").is_some());
+    type_into(&mut h, "Width:", "150");
+    click(&mut h, P2(1000.0, 3000.0));
+    click(&mut h, P2(6000.0, 3000.0));
+    let l = ids(&h, "line");
+    assert_eq!(l.len(), 1);
+    assert_eq!(field(&h, l[0], "insulation"), json!(150.0));
+    // Detail Line again: plain lines.
+    key(&mut h, Key::Escape);
+    press(&mut h, "Annotate");
+    press(&mut h, "Detail Line");
+    click(&mut h, P2(1000.0, 4000.0));
+    click(&mut h, P2(6000.0, 4000.0));
+    assert!(field(&h, *ids(&h, "line").last().unwrap_or(&0), "insulation").is_null());
+}
+
+#[test]
+fn a_filled_regions_lines_take_the_line_style_picked_each_its_own() {
+    let mut h = app(BOX);
+    press(&mut h, "Annotate");
+    press(&mut h, "Filled Region");
+    choose(&mut h, "Line Style", "Wide Lines");
+    press(&mut h, "Rectangle");
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(3000.0, 2000.0));
+    // The bottom line picked and made invisible; the rest stay wide.
+    key(&mut h, Key::Escape);
+    assert_eq!(h.state().tool, Tool::Modify);
+    click(&mut h, P2(2000.0, 1000.0));
+    choose(&mut h, "Line Style", "<Invisible lines>");
+    press(&mut h, "Finish Edit Mode");
+    let r = ids(&h, "region");
+    let Some(Element::FilledRegion(fr)) = h.state().session.model.elements.get(r[0]).cloned() else { panic!("a region") };
+    let styles: Vec<(Option<String>, bool)> = fr.sketch.iter().map(|l| (l.style.clone(), l.invisible)).collect();
+    assert_eq!(styles.iter().filter(|s| s.1).count(), 1, "{styles:?}");
+    assert_eq!(styles.iter().filter(|s| s.0.as_deref() == Some("Wide Lines")).count(), 3, "{styles:?}");
+}
+
+#[test]
+fn add_and_delete_vertex_and_convert_spline_on_modify_lines() {
+    let mut h = app(&format!(
+        "{BOX}\ndetail_line {{\"points\": [[1000, 1000], [4000, 1000], [4000, 4000]]}}\ndetail_line {{\"fit\": [[1000, 5000], [2500, 5500], [4000, 5000]]}}"
+    ));
+    let l = ids(&h, "line");
+    click(&mut h, P2(2500.0, 1000.0));
+    press(&mut h, "Modify | Lines");
+    press(&mut h, "Add Vertex");
+    click(&mut h, P2(2500.0, 1000.0));
+    assert_eq!(curve(&h, l[0]).vertices().len(), 4);
+    key(&mut h, Key::Escape);
+    click(&mut h, P2(2500.0, 1000.0));
+    press(&mut h, "Modify | Lines");
+    press(&mut h, "Delete Vertex");
+    click(&mut h, P2(4000.0, 1000.0));
+    assert_eq!(curve(&h, l[0]).vertices(), vec![P2(1000.0, 1000.0), P2(2500.0, 1000.0), P2(4000.0, 4000.0)]);
+    key(&mut h, Key::Escape);
+    key(&mut h, Key::Escape);
+    h.state_mut().selection = vec![l[1]];
+    h.run();
+    press(&mut h, "Modify | Lines");
+    press(&mut h, "Convert Spline");
+    assert_eq!(curve(&h, l[1]).kind(), "spline");
+}

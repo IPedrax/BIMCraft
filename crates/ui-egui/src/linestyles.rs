@@ -390,6 +390,7 @@ impl BimApp {
         });
         c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, t("Line Style")));
         c.response.labelled_by(l.id);
+        self.insulation_options(ui);
         if self.shape().chains() {
             ui.checkbox(&mut self.line_chain, t("Chain"));
         }

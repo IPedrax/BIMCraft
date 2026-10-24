@@ -128,6 +128,10 @@ pub enum Tool {
         boundary: Option<Id>,
         many: bool,
     },
+    /// Add Vertex, or with `delete` Delete Vertex: on each line clicked, where it was clicked.
+    Vertex {
+        delete: bool,
+    },
     /// Split the wall picked.
     Split,
     /// Copy (or move) the wall picked to the cursor's side, by the Options Bar's distance.
@@ -1005,6 +1009,7 @@ impl BimApp {
             | Tool::Align(_)
             | Tool::Trim(_)
             | Tool::TrimTo { .. }
+            | Tool::Vertex { .. }
             | Tool::Split
             | Tool::Offset
             | Tool::Demolish
@@ -1023,6 +1028,7 @@ impl BimApp {
             Tool::Grid(_) => Some("Place Grid"),
             Tool::Dimension(_) | Tool::Angular(_) | Tool::Radial(_) => Some("Place Dimensions"),
             Tool::Text => Some("Place Text"),
+            Tool::DetailLine(_) if self.drawing.insulation.is_some() => Some("Place Insulation"),
             Tool::DetailLine(_) => Some("Place Detail Lines"),
             Tool::Spot => Some("Spot Elevation"),
             Tool::Measure(_) => Some("Measure"),
@@ -1543,7 +1549,10 @@ impl BimApp {
                 Some("split") => Tool::Split,
                 Some("dimension") => Tool::Dimension(Vec::new()),
                 Some("text") => Tool::Text,
-                Some("detail_line") => Tool::DetailLine(Vec::new()),
+                Some("detail_line") => {
+                    self.drawing.insulation = None;
+                    Tool::DetailLine(Vec::new())
+                }
                 Some("spot") => Tool::Spot,
                 Some("tag") => Tool::Tag,
                 // Revit's CL is the structural column on its Structure tab, the architectural one elsewhere.
@@ -1738,7 +1747,10 @@ impl BimApp {
         }
         // Move, Copy, Rotate and Mirror take the selection; Align, Trim, Split and Offset pick walls, Demolish anything.
         let edits = matches!(tool, Tool::Move(_) | Tool::Copy(_) | Tool::Rotate { .. } | Tool::Mirror { .. });
-        let picks = matches!(tool, Tool::Align(_) | Tool::Trim(_) | Tool::TrimTo { .. } | Tool::Split | Tool::Offset | Tool::Demolish);
+        let picks = matches!(
+            tool,
+            Tool::Align(_) | Tool::Trim(_) | Tool::TrimTo { .. } | Tool::Vertex { .. } | Tool::Split | Tool::Offset | Tool::Demolish
+        );
         if edits && self.selection.is_empty() {
             self.status = Status { text: t("select what to move, copy, rotate or mirror first").into(), error: true };
             return;
@@ -2694,16 +2706,7 @@ impl BimApp {
                 (Icon::Spot, "Spot Elevation", "Spot Elevation (EL): click a floor, a roof or a stair; in a section, a point", Tool::Spot),
             ],
         );
-        self.tools(
-            ui,
-            "Detail",
-            &[(
-                Icon::Line,
-                "Detail Line",
-                "Detail Line (DL): each click makes a line from the one before, in the Options Bar's line style; Polyline makes one line of them all",
-                Tool::DetailLine(Vec::new()),
-            )],
-        );
+        self.detail_panel(ui);
         self.region_panel(ui);
         self.tools(
             ui,
@@ -3172,6 +3175,7 @@ impl BimApp {
                 if big_button(ui, Icon::ExplodePolyline, "Explode Polyline", false, tip).clicked() {
                     self.explode_polyline();
                 }
+                self.vertex_buttons(ui);
             });
         }
         // Walls selected: Revit's Modify Wall panel.
@@ -3513,6 +3517,8 @@ impl BimApp {
             Tool::TrimTo { boundary: None, .. } => "Pick the line to trim or extend to: a line, a wall or a grid.",
             Tool::TrimTo { many: false, .. } => "Click the line to trim or extend to it, on the part to keep.",
             Tool::TrimTo { many: true, .. } => "Click each line to trim or extend to it, on the part to keep; Esc picks another boundary.",
+            Tool::Vertex { delete: false } => "Click a polyline or a spline where a vertex goes.",
+            Tool::Vertex { delete: true } => "Click a polyline's corner or a spline's point to take it out.",
             Tool::Split => "Click a wall or a line where to split it.",
             Tool::Offset => "Point to a wall or a line: the offset goes to the cursor's side. Click to place it.",
             Tool::Demolish => "Click an element to take it down in the view's phase; click it again to take it back.",

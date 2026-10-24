@@ -613,6 +613,143 @@ impl Curve {
         }
     }
 
+    /// With a vertex where it passes nearest `at`: a polyline's segment cut there (an arc's turn shared out); a control
+    /// point added by inserting a knot there, the curve exactly as it was; a point to pass through added there. None for a
+    /// circle or an ellipse, or at an end.
+    pub fn with_vertex(&self, at: P2) -> Option<Curve> {
+        let (t, _) = self.nearest(at);
+        let (t0, t1) = self.domain();
+        if t <= t0 || t >= t1 {
+            return None;
+        }
+        match self {
+            Curve::Poly { closed, .. } => {
+                let (a, b) = self.split(t)?;
+                // The two halves joined again at the cut: one more corner. A closed one opens at the cut, so close it back.
+                match (b, closed) {
+                    (Some(b), false) => join(&[a, b]),
+                    (None, true) => {
+                        let Curve::Poly { mut points, arcs, .. } = a else { return None };
+                        points.pop();
+                        Some(Curve::Poly { points, arcs, closed: true })
+                    }
+                    _ => None,
+                }
+            }
+            Curve::Spline { control, knots } => {
+                let (q, v) = insert_knot(control, &knot_vector(control.len(), knots.as_deref()), t);
+                Some(Curve::Spline { control: q, knots: Some(v) })
+            }
+            Curve::Fit { points, tangents } => {
+                let c = Cubic::through(points, *tangents)?;
+                let p = c.at(t);
+                let i = c.t.iter().position(|&s| s >= t).unwrap_or(points.len());
+                if points.get(i).is_some_and(|q| q.dist(p) <= TOL)
+                    || i.checked_sub(1).and_then(|j| points.get(j)).is_some_and(|q| q.dist(p) <= TOL)
+                {
+                    return None;
+                }
+                let mut pts = points.clone();
+                pts.insert(i, p);
+                Some(Curve::Fit { points: pts, tangents: *tangents })
+            }
+            Curve::Circle { .. } | Curve::Ellipse { .. } => None,
+        }
+    }
+
+    /// Without the vertex nearest `at`: a polyline's corner (the segments either side made one, straight unless both were
+    /// arcs, when it turns as much as both did), a control point, a point it passed through. None when it would have too
+    /// few to be a line.
+    pub fn without_vertex(&self, at: P2) -> Option<Curve> {
+        let near = |pts: &[P2]| pts.iter().enumerate().min_by(|a, b| a.1.dist(at).total_cmp(&b.1.dist(at))).map(|(i, _)| i);
+        match self {
+            Curve::Poly { points, arcs, closed } => {
+                let n = points.len();
+                if n <= if *closed { 3 } else { 2 } {
+                    return None;
+                }
+                let i = near(points)?;
+                // Each new segment's turn: the old one's, or where it spans the corner taken out, both of those turns
+                // added (straight unless both were arcs).
+                let turn = |k: usize| arcs.get(k).copied().unwrap_or(0.0);
+                let kept: Vec<usize> = (0..n).filter(|&k| k != i).collect();
+                let m = kept.len();
+                let segs = if *closed { m } else { m - 1 };
+                let turns: Vec<f64> = (0..segs)
+                    .map(|j| {
+                        let (a, b) = (kept[j], kept[(j + 1) % m]);
+                        if (a + 1) % n == b {
+                            turn(a)
+                        } else {
+                            let (s1, s2) = (turn(a), turn((a + 1) % n));
+                            if s1 != 0.0 && s2 != 0.0 { s1 + s2 } else { 0.0 }
+                        }
+                    })
+                    .collect();
+                let pts: Vec<P2> = kept.iter().map(|&k| points[k]).collect();
+                let c = Curve::Poly { points: pts, arcs: tidy(turns), closed: *closed };
+                c.check("").is_ok().then_some(c)
+            }
+            Curve::Spline { control, knots } => {
+                if control.len() <= 2 {
+                    return None;
+                }
+                let i = near(control)?;
+                let mut q = control.clone();
+                q.remove(i);
+                // Its own knots lose one inside, near where the point led it; uniform ones stay uniform.
+                let knots = knots.as_ref().and_then(|u| {
+                    let p = degree_of(control.len(), u);
+                    let inner = p + 1..u.len().saturating_sub(p + 1);
+                    if inner.is_empty() {
+                        return None;
+                    }
+                    let k = (i + 1).clamp(inner.start, inner.end - 1);
+                    let mut v = u.clone();
+                    v.remove(k);
+                    Some(v)
+                });
+                let c = Curve::Spline { control: q, knots };
+                c.check("").is_ok().then_some(c)
+            }
+            Curve::Fit { points, tangents } => {
+                if points.len() <= 2 {
+                    return None;
+                }
+                let i = near(points)?;
+                let mut pts = points.clone();
+                pts.remove(i);
+                Some(Curve::Fit { points: pts, tangents: *tangents })
+            }
+            Curve::Circle { .. } | Curve::Ellipse { .. } => None,
+        }
+    }
+
+    /// A spline through points as one by its control points, exactly the same curve (a cubic B-spline with a knot at each
+    /// point it passed through); or a spline by its control points as one through points, within [`FIT_TOL`] of it. None
+    /// for any other shape.
+    pub fn converted(&self) -> Option<Curve> {
+        match self {
+            Curve::Fit { points, tangents } => fit_to_control(points, *tangents),
+            Curve::Spline { .. } => {
+                let (t0, t1) = self.domain();
+                // Its ends, and a point at each knot between, then whatever more it takes to lie within the tolerance.
+                let u = match self {
+                    Curve::Spline { control, knots } => knot_vector(control.len(), knots.as_deref()),
+                    _ => Vec::new(),
+                };
+                let mut ts: Vec<f64> = u.iter().copied().filter(|k| *k > t0 && *k < t1).collect();
+                ts.dedup();
+                ts.insert(0, t0);
+                ts.push(t1);
+                let pts: Vec<P2> = ts.iter().map(|t| self.at(*t)).collect();
+                let tangents = [Some(self.tangent(t0)), Some(self.tangent(t1))];
+                Some(refit_to(self, pts, ts, tangents))
+            }
+            _ => None,
+        }
+    }
+
     /// Cut in two where it passes nearest `p`: see [`Curve::split`].
     pub fn split_at(&self, p: P2) -> Option<(Curve, Option<Curve>)> {
         self.split(self.nearest(p).0)
@@ -982,20 +1119,30 @@ impl Cubic {
 }
 
 /// The part of `original` from `range.0` to `range.1` as a fitted spline through `points` with its ends' `tangents`:
-/// points of the original added, one at a time, where the fit strays furthest, until none of it lies further than
-/// [`FIT_TOL`] from the original (or it has as many as it may).
-fn refit(original: &Cubic, range: (f64, f64), mut points: Vec<P2>, tangents: [Option<P2>; 2]) -> Curve {
+/// see [`refit_with`].
+fn refit(original: &Cubic, range: (f64, f64), points: Vec<P2>, tangents: [Option<P2>; 2]) -> Curve {
+    let truth = |s: f64| original.at(s);
+    // Where each point lies along the original, to keep them in order as more go in.
+    let k = 256;
+    let samples: Vec<(f64, P2)> =
+        (0..=k).map(|i| range.0 + (range.1 - range.0) * i as f64 / k as f64).map(|s| (s, original.at(s))).collect();
+    let along: Vec<f64> =
+        points.iter().map(|p| samples.iter().min_by(|a, b| a.1.dist(*p).total_cmp(&b.1.dist(*p))).map_or(range.0, |(s, _)| *s)).collect();
+    refit_with(&truth, range, points, along, tangents)
+}
+
+/// The curve `truth` gives from `range.0` to `range.1` as a fitted spline through `points` (lying `along` it) with its
+/// ends' `tangents`: points of it added, one at a time, where the fit strays furthest, until none of it lies further than
+/// [`FIT_TOL`] from it (or it has as many as it may).
+fn refit_with(truth: &dyn Fn(f64) -> P2, range: (f64, f64), mut points: Vec<P2>, mut along: Vec<f64>, tangents: [Option<P2>; 2]) -> Curve {
     let (lo, hi) = range;
     let k = 256;
-    let truth: Vec<(f64, P2)> = (0..=k).map(|i| lo + (hi - lo) * i as f64 / k as f64).map(|s| (s, original.at(s))).collect();
-    // Where each point lies along the original, to keep them in order as more go in.
-    let mut along: Vec<f64> =
-        points.iter().map(|p| truth.iter().min_by(|a, b| a.1.dist(*p).total_cmp(&b.1.dist(*p))).map_or(lo, |(s, _)| *s)).collect();
+    let samples: Vec<(f64, P2)> = (0..=k).map(|i| lo + (hi - lo) * i as f64 / k as f64).map(|s| (s, truth(s))).collect();
     for _ in 0..64 {
         let fit = Curve::Fit { points: points.clone(), tangents };
         let drawn = fit.points();
         let off = |q: P2| drawn.windows(2).map(|w| geom::dist_to_segment(q, w[0], w[1])).fold(f64::INFINITY, f64::min);
-        let Some((s, q, d)) = truth.iter().map(|(s, q)| (*s, *q, off(*q))).max_by(|a, b| a.2.total_cmp(&b.2)) else { break };
+        let Some((s, q, d)) = samples.iter().map(|(s, q)| (*s, *q, off(*q))).max_by(|a, b| a.2.total_cmp(&b.2)) else { break };
         if d <= FIT_TOL || points.len() >= MAX_POINTS {
             break;
         }
@@ -1007,6 +1154,98 @@ fn refit(original: &Cubic, range: (f64, f64), mut points: Vec<P2>, tangents: [Op
         along.insert(at, s);
     }
     Curve::Fit { points, tangents }
+}
+
+/// A spline by its control points `c` as one through points, within [`FIT_TOL`] of it: through its ends and its knots,
+/// leaving and arriving as it does, and through more of it where need be.
+fn refit_to(c: &Curve, points: Vec<P2>, along: Vec<f64>, tangents: [Option<P2>; 2]) -> Curve {
+    let truth = |t: f64| c.at(t);
+    refit_with(&truth, c.domain(), points, along, tangents)
+}
+
+/// The spline through `points` (with its ends' `tangents`) as a cubic B-spline by its control points, exactly: a knot at
+/// each point's distance along them, as the fitted spline's own parameters, and the control points that make it pass
+/// through each and leave and arrive as it does (Piegl and Tiller, *The NURBS Book*, 9.2.2): a tridiagonal system.
+fn fit_to_control(points: &[P2], tangents: [Option<P2>; 2]) -> Option<Curve> {
+    let n = points.len();
+    if n < 2 {
+        return None;
+    }
+    let t = chords(points);
+    // Knots: the ends four times, each point between once.
+    let mut u = vec![t[0]; 4];
+    u.extend(t[1..n - 1].iter().copied());
+    u.extend(std::iter::repeat_n(t[n - 1], 4));
+    // Unknowns Q1..Q(m-2): row 0 the start, rows 1..n-2 the points between, row n-1 the end.
+    let (mut a, mut b, mut c, mut d) = (vec![0.0; n], vec![0.0; n], vec![0.0; n], vec![P2(0.0, 0.0); n]);
+    let (q0, ql) = (points[0], points[n - 1]);
+    let h0 = t[1] - t[0];
+    let hl = t[n - 1] - t[n - 2];
+    if h0 <= 0.0 || hl <= 0.0 {
+        return None;
+    }
+    match tangents[0] {
+        // Q1 = Q0 + h0/3 · the way it leaves.
+        Some(s) => {
+            b[0] = 1.0;
+            d[0] = q0 + s.unit() * (h0 / 3.0);
+        }
+        // Straight at its start: (Q2 − Q1)/(t2 − t0) = (Q1 − Q0)/h0.
+        None => {
+            let w = t.get(2).copied().unwrap_or(t[n - 1]) - t[0];
+            let r = w / h0;
+            b[0] = -(1.0 + r);
+            c[0] = 1.0;
+            d[0] = q0 * -r;
+        }
+    }
+    for k in 1..n - 1 {
+        // At the knot u[3 + k], the three B-splines that aren't nought there.
+        let j = 3 + k;
+        let n0 = (u[j + 1] - u[j]).powi(2) / ((u[j + 1] - u[j - 2]) * (u[j + 1] - u[j - 1]));
+        let n2 = (u[j] - u[j - 1]).powi(2) / ((u[j + 2] - u[j - 1]) * (u[j + 1] - u[j - 1]));
+        let n1 = 1.0 - n0 - n2;
+        // Q_k, Q_k+1, Q_k+2: unknowns k-1, k, k+1 (the first and last control points, known, are never among them).
+        a[k] = n0;
+        b[k] = n1;
+        c[k] = n2;
+        d[k] = points[k];
+    }
+    let last = n - 1;
+    match tangents[1] {
+        Some(e) => {
+            b[last] = 1.0;
+            a[last] = 0.0;
+            d[last] = ql - e.unit() * (hl / 3.0);
+        }
+        // Straight at its end: (Q(m−1) − Q(m−2))/hl = (Q(m−2) − Q(m−3))/(t(n−1) − t(n−3)).
+        None => {
+            let w = t[n - 1] - t.get(n.wrapping_sub(3)).copied().filter(|_| n >= 3).unwrap_or(t[0]);
+            let r = w / hl;
+            if last == 0 {
+                return None;
+            }
+            a[last] = 1.0;
+            b[last] = -(1.0 + r);
+            d[last] = ql * -r;
+        }
+    }
+    // Thomas: forward then back.
+    for i in 1..n {
+        if b[i - 1].abs() < 1e-300 {
+            return None;
+        }
+        let w = a[i] / b[i - 1];
+        b[i] -= w * c[i - 1];
+        d[i] = d[i] - d[i - 1] * w;
+    }
+    let mut q = vec![P2(0.0, 0.0); n];
+    q[n - 1] = d[n - 1] * (1.0 / b[n - 1]);
+    for i in (0..n - 1).rev() {
+        q[i] = (d[i] - q[i + 1] * c[i]) * (1.0 / b[i]);
+    }
+    let control: Vec<P2> = std::iter::once(q0).chain(q).chain(std::iter::once(ql)).collect();
+    control.iter().all(|p| p.is_finite()).then_some(Curve::Spline { control, knots: Some(u) })
 }
 
 /// Lines and arcs joined end to end into one polyline, in the order they meet, each turned round as it must be: Join
@@ -1536,6 +1775,58 @@ mod tests {
             e.moved(P2(0.0, 1000.0), P2(0.0, 400.0)),
             Curve::Ellipse { centre: P2(0.0, 0.0), radii: [2000.0, 400.0], angle: 0.0, span: Some([0.0, 180.0]) }
         );
+    }
+
+    #[test]
+    fn vertices_come_and_go_a_spline_keeping_its_shape_when_one_is_added() {
+        let poly = Curve::Poly { points: vec![P2(0.0, 0.0), P2(2000.0, 0.0), P2(2000.0, 2000.0)], arcs: vec![], closed: false };
+        let more = poly.with_vertex(P2(1000.0, 10.0)).unwrap_or_else(|| panic!("added"));
+        assert_eq!(more.vertices().len(), 4);
+        assert!((more.length() - poly.length()).abs() < 1e-6);
+        let fewer = more.without_vertex(P2(2000.0, 0.0)).unwrap_or_else(|| panic!("taken"));
+        assert_eq!(fewer.vertices(), vec![P2(0.0, 0.0), P2(1000.0, 0.0), P2(2000.0, 2000.0)]);
+        let ring =
+            Curve::Poly { points: vec![P2(0.0, 0.0), P2(1000.0, 0.0), P2(1000.0, 1000.0), P2(0.0, 1000.0)], arcs: vec![], closed: true };
+        let five = ring.with_vertex(P2(500.0, 1000.0)).unwrap_or_else(|| panic!("ring"));
+        assert!(five.is_closed() && five.vertices().len() == 5 && (five.length() - 4000.0).abs() < 1e-6, "{five:?}");
+        assert_eq!(ring.without_vertex(P2(1000.0, 1000.0)).map(|c| c.vertices().len()), Some(3));
+        let spline = Curve::Spline {
+            control: vec![P2(0.0, 0.0), P2(1000.0, 2000.0), P2(2500.0, -1000.0), P2(4000.0, 1500.0), P2(5000.0, 0.0)],
+            knots: None,
+        };
+        let denser = spline.with_vertex(spline.at(0.4)).unwrap_or_else(|| panic!("knot"));
+        assert_eq!(denser.vertices().len(), 6);
+        for k in 0..=20 {
+            let t = k as f64 / 20.0;
+            assert!(denser.at(t).dist(spline.at(t)) < 1e-9, "the same curve at {t}");
+        }
+        assert!(spline.without_vertex(P2(2500.0, -1000.0)).is_some_and(|c| c.vertices().len() == 4));
+        assert!(Curve::line(P2(0.0, 0.0), P2(10.0, 0.0)).without_vertex(P2(0.0, 0.0)).is_none(), "a line keeps its two ends");
+    }
+
+    #[test]
+    fn splines_convert_both_ways_through_points_to_control_points_exactly() {
+        let pts = vec![P2(0.0, 0.0), P2(1500.0, 1200.0), P2(3000.0, -800.0), P2(4200.0, 900.0), P2(6000.0, 0.0)];
+        for tangents in [[None, None], [Some(P2(0.0, 1.0)), Some(P2(1.0, -1.0))], [Some(P2(1.0, 0.0)), None]] {
+            let fit = Curve::Fit { points: pts.clone(), tangents };
+            let ctrl = fit.converted().unwrap_or_else(|| panic!("converted"));
+            assert_eq!(ctrl.kind(), "spline");
+            assert_eq!(ctrl.domain(), fit.domain(), "the same parameters");
+            let (t0, t1) = fit.domain();
+            for k in 0..=50 {
+                let t = t0 + (t1 - t0) * k as f64 / 50.0;
+                assert!(ctrl.at(t).dist(fit.at(t)) < 1e-6, "{tangents:?} at {t}: {:?} vs {:?}", ctrl.at(t), fit.at(t));
+            }
+            assert!(ctrl.check("c").is_ok(), "{:?}", ctrl.check("c"));
+            // And back: through points again, within the tolerance.
+            let back = ctrl.converted().unwrap_or_else(|| panic!("back"));
+            assert_eq!(back.kind(), "fitted spline");
+            let off = back.points().iter().map(|p| ctrl.nearest(*p).1).fold(0.0, f64::max);
+            assert!(off <= FIT_TOL + FLAT, "{off}");
+        }
+        let two = Curve::Fit { points: vec![P2(0.0, 0.0), P2(1000.0, 0.0)], tangents: [None, None] }.converted();
+        assert!(two.is_some_and(|c| c.at(0.5 * 1000.0).dist(P2(500.0, 0.0)) < 1e-6), "two points: straight");
+        assert!(Curve::Circle { centre: P2(0.0, 0.0), radius: 5.0 }.converted().is_none());
     }
 
     #[test]

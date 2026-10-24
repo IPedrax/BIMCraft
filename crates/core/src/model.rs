@@ -3803,8 +3803,8 @@ impl Model {
                 Element::FilledRegion(r) => {
                     view_ok(r.view, true)?;
                     crate::sketch::check(&who, &r.sketch)?;
-                    if r.sketch.len() < 3 {
-                        return Err(format!("{who}: a region's sketch closes round with three lines or more"));
+                    if r.sketch.is_empty() {
+                        return Err(format!("{who}: a region's sketch has no lines; it needs a loop of them (a circle is one)"));
                     }
                     if !self.region_types.contains_key(&r.type_name) {
                         let there: Vec<&str> = self.region_types.keys().map(String::as_str).collect();
@@ -3814,6 +3814,14 @@ impl Model {
                         && !self.line_styles.contains_key(st)
                     {
                         return Err(format!("{who}: there's no line style `{st}`"));
+                    }
+                    if let Some((i, st)) = r
+                        .sketch
+                        .iter()
+                        .enumerate()
+                        .find_map(|(i, l)| l.style.as_ref().filter(|st| !self.line_styles.contains_key(*st)).map(|st| (i, st)))
+                    {
+                        return Err(format!("{who}: boundary line {i} is drawn in `{st}`, and there's no such line style"));
                     }
                 }
                 Element::Spot(sp) => {

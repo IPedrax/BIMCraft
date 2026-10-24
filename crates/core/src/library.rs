@@ -851,6 +851,9 @@ impl crate::model::Element {
                 if let Some(st) = &mut r.line_style {
                     f(&Kind::LineStyle, st);
                 }
+                for st in r.sketch.iter_mut().filter_map(|l| l.style.as_mut()) {
+                    f(&Kind::LineStyle, st);
+                }
             }
             Element::Schedule(sc) => {
                 let mut fields: Vec<&mut String> =

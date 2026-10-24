@@ -184,7 +184,12 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "angle", "Rotation (°)", Number),
             ("Other", "at", "Location", Point),
         ],
-        "line" => &[("Graphics", "style", "Line Style", LineStyle), ("Dimensions", "length", "Length", LengthShown)],
+        "line" => &[
+            ("Graphics", "style", "Line Style", LineStyle),
+            ("Dimensions", "length", "Length", LengthShown),
+            ("Dimensions", "insulation", "Insulation Width", LengthIf),
+            ("Other", "shape", "Shape", Shown),
+        ],
         "region" => &[
             ("Graphics", "type", "Region Type", RegionType),
             ("Graphics", "line_style", "Line Style", RegionLines),
@@ -1055,7 +1060,8 @@ impl BimApp {
                         let name = ui.label(label);
                         match kind {
                             Shown => {
-                                ui.label(RichText::new(text(val)).color(pal().muted));
+                                let said = text(val);
+                                ui.label(RichText::new(t(&said)).color(pal().muted));
                             }
                             // An angle's degrees; else lengths.
                             Values if v["kind"] == "angular" => {

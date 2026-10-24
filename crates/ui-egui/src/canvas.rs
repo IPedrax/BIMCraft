@@ -896,6 +896,9 @@ impl BimApp {
             Tool::Trim(_) | Tool::Offset => {
                 d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Wall(_) | Element::DetailLine(_))))
             }
+            Tool::Vertex { .. } => {
+                d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::DetailLine(_))))
+            }
             Tool::TrimTo { boundary: None, .. } => d.pick_all(q, PICK).into_iter().find(|id| draw::element_curve(&model, *id).is_some()),
             Tool::TrimTo { .. } => {
                 d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::DetailLine(_))))
@@ -1242,6 +1245,7 @@ impl BimApp {
 
     fn click(&mut self, m: &Model, (level, key): (Id, Id), v: &View, at: (f32, f32), hovered: Option<Id>, mods: Modifiers) {
         match &self.tool {
+            &Tool::Vertex { delete } if self.sketch.is_some() => self.vertex_click(None, v.mm(at), f64::from(PICK) / v.scale, delete),
             Tool::Split | Tool::Trim(_) | Tool::TrimTo { .. } | Tool::Offset if self.sketch.is_some() => {
                 let p = self.snap(m, level, v, at, &[], false).at;
                 self.sketch_modify(p, v.mm(at), f64::from(PICK) / v.scale);
@@ -1362,6 +1366,10 @@ impl BimApp {
                 {
                     self.run(if self.offset_copy { "copy" } else { "move" }, json!({"ids": [id], "by": point(by)}));
                 }
+            }
+            &Tool::Vertex { delete } => {
+                let p = self.snap(m, level, v, at, &[], false).at;
+                self.vertex_click(hovered, if delete { v.mm(at) } else { p }, f64::from(PICK) / v.scale, delete);
             }
             &Tool::TrimTo { boundary, many } => match (boundary, hovered) {
                 (None, Some(b)) => self.tool = Tool::TrimTo { boundary: Some(b), many },
@@ -1815,9 +1823,7 @@ impl BimApp {
         // Beside the points clicked, by the Options Bar's Offset.
         let line = draw::offset_line(last, p, self.draw_options().offset);
         let mut params = json!({"start": point(line[0]), "end": point(line[1]), "view": level});
-        if !self.line_style.is_empty() {
-            params["style"] = json!(self.line_style);
-        }
+        self.line_extras(&mut params);
         if self.run("detail_line", params).is_some() {
             let Tool::DetailLine(path) = &mut self.tool else { return };
             if !self.line_chain || first.dist(p) <= TOL {
@@ -1851,9 +1857,7 @@ impl BimApp {
             return;
         }
         let mut p = json!({"points": path.iter().map(|q| point(*q)).collect::<Vec<_>>(), "view": level, "closed": closed});
-        if !self.line_style.is_empty() {
-            p["style"] = json!(self.line_style);
-        }
+        self.line_extras(&mut p);
         self.run("detail_line", p);
     }
 

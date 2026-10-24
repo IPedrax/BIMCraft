@@ -339,3 +339,91 @@ fn dimensions_measure_to_straight_detail_lines_and_radial_ones_to_their_circles_
     let err = s.execute("dimension", &json!({"refs": [{"id": spline}, {"id": a}], "at": [0, 0]})).unwrap_err();
     assert!(err.contains("spline"), "{err}");
 }
+
+#[test]
+fn insulation_is_a_detail_line_drawn_as_batt_insulation_its_width_across() {
+    let mut s = Session::new();
+    let id = line(&mut s, json!({"start": [0, 0], "end": [3000, 0], "insulation": 200}));
+    let Some(Element::DetailLine(l)) = s.model.elements.get(id).cloned() else { panic!("a line") };
+    let drawn = l.drawn();
+    let (lo, hi) = drawn.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p.1), hi.max(p.1)));
+    assert!((lo + 100.0).abs() < 1.0 && (hi - 100.0).abs() < 1.0, "the whole width across: {lo}..{hi}");
+    assert!(drawn.len() > 100, "loop after loop");
+    // Drawn in the plan as its loops, not its line.
+    assert!(drawn_px_rows(&s.model, id) > 3);
+    let (back, _) = Model::read(&s.model.to_json().unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(back.elements, s.model.elements, "saved with its width");
+    for w in [0.0, -5.0, 1.0e9] {
+        assert!(s.execute("detail_line", &json!({"start": [0, 0], "end": [1000, 0], "insulation": w})).is_err(), "{w}");
+    }
+}
+
+/// How many pixel rows the lines of `id` reach in a plan of the lowest level.
+fn drawn_px_rows(m: &Model, id: Id) -> usize {
+    let mut rows: Vec<i64> = drawn(m, id).iter().map(|p| p.1.round() as i64).collect();
+    rows.sort_unstable();
+    rows.dedup();
+    rows.len()
+}
+
+#[test]
+fn a_filled_regions_boundary_lines_each_take_a_line_style_or_none() {
+    let mut s = Session::new();
+    let r = run(
+        &mut s,
+        "filled_region",
+        json!({"sketch": [
+            {"start": [0, 0], "end": [2000, 0], "style": "Wide Lines"},
+            {"start": [2000, 0], "end": [2000, 2000], "invisible": true},
+            {"start": [2000, 2000], "end": [0, 2000]},
+            {"start": [0, 2000], "end": [0, 0]},
+        ], "line_style": "Thin Lines"}),
+    );
+    let id = r["id"].as_u64().unwrap_or_default();
+    // Its lines' pens: one Wide, two Thin, and none for the invisible one.
+    let level = s.model.levels().first().map(|(l, _)| *l).unwrap_or_default();
+    let d = crate::render::draw(&s.model, level, View { scale: 0.1, cx: 1000.0, cy: 1000.0, width: 800, height: 800 });
+    let pens: Vec<u8> = (d.prims.iter().zip(&d.owners).zip(&d.pens))
+        .filter(|((p, o), _)| **o == Some(id) && matches!(p, Prim::Line { .. }))
+        .filter_map(|(_, pen)| pen.map(|p| p.0))
+        .collect();
+    let wide = s.model.line_styles.get("Wide Lines").map(|st| st.pen.0).unwrap_or_default();
+    assert_eq!(pens.iter().filter(|p| **p == wide).count(), 1, "{pens:?}");
+    assert_eq!(pens.len(), 3, "the invisible one isn't drawn: {pens:?}");
+    // A rename follows into the line that names it, and a file holds it by GUID.
+    run(&mut s, "line_style", json!({"name": "Wide Lines", "rename": "Heavy"}));
+    let file = s.model.to_json().unwrap_or_default();
+    assert!(!file.contains("\"style\": \"Heavy\""), "by GUID");
+    let (back, _) = Model::read(&file).unwrap_or_else(|e| panic!("{e}"));
+    let Some(Element::FilledRegion(fr)) = back.elements.get(id) else { panic!("region") };
+    assert_eq!((fr.sketch[0].style.as_deref(), fr.sketch[1].invisible), (Some("Heavy"), true));
+    let e = s.execute("filled_region", &json!({"sketch": [{"centre": [0, 0], "radius": 500, "style": "Nope"}]})).unwrap_err();
+    assert!(e.contains("Nope"), "{e}");
+}
+
+#[test]
+fn vertices_are_added_and_deleted_and_splines_converted_by_command() {
+    let mut s = Session::new();
+    let pl = line(&mut s, json!({"points": [[0, 0], [2000, 0], [2000, 2000]]}));
+    run(&mut s, "vertex", json!({"id": pl, "at": [1000, 20]}));
+    assert_eq!(curve(&s, pl).vertices().len(), 4);
+    run(&mut s, "vertex", json!({"id": pl, "at": [2000, 0], "delete": true}));
+    assert_eq!(curve(&s, pl).vertices(), vec![P2(0.0, 0.0), P2(1000.0, 0.0), P2(2000.0, 2000.0)]);
+    let fit = line(&mut s, json!({"fit": [[0, 0], [1000, 800], [2500, -300], [4000, 500]]}));
+    let before = curve(&s, fit);
+    let r = run(&mut s, "convert_spline", json!({"id": fit}));
+    assert_eq!(r["shape"], json!("spline"));
+    let after = curve(&s, fit);
+    assert!(before.points().iter().all(|p| after.nearest(*p).1 < 1e-3), "the same curve");
+    let circle = line(&mut s, json!({"centre": [0, 0], "radius": 500}));
+    for (cmd, p, says) in [
+        ("vertex", json!({"id": circle, "at": [500, 0]}), "only polylines and splines"),
+        ("convert_spline", json!({"id": circle}), "not a spline"),
+        ("vertex", json!({"id": pl, "at": [0, 0], "delete": true}), ""),
+    ] {
+        let e = s.execute(cmd, &p);
+        if !says.is_empty() {
+            assert!(e.unwrap_err().contains(says));
+        }
+    }
+}
