@@ -423,10 +423,7 @@ impl Drawing {
                     }
                 }
                 Prim::Line { pts, width, closed, .. } => (edges(&ring(pts), *closed) - f64::from(*width) / 2.0).max(0.0),
-                Prim::Image { at, width, height, .. } => {
-                    let r = ring(&Prim::corners(*at, *width, *height));
-                    if geom::contains(&r, p) { -1.0 } else { edges(&r, true) }
-                }
+                Prim::Image { at, width, height, rgba } => drawn_near(p, (*at, *width, *height), rgba, tol),
             };
             if d <= f64::from(tol) && near.get(&id).is_none_or(|&(b, _)| d <= b) {
                 near.insert(id, (d, order));
@@ -469,6 +466,30 @@ impl Drawing {
         }
         seen.into_iter().filter(|(_, (all, any))| if crossing { *any } else { *all }).map(|(id, _)| id).collect()
     }
+}
+
+/// How far pixel point `p` is from the nearest pixel a picture (its corner, width and height) draws, of those within `tol`: -1
+/// on one, and none where all within it are clear. A picture picks where it isn't clear: a scan's where its points are.
+fn drawn_near(p: P2, (at, width, height): ((f32, f32), u32, u32), rgba: &[u8], tol: f32) -> f64 {
+    let (x, y) = (p.0 - f64::from(at.0), p.1 - f64::from(at.1));
+    let r = f64::from(tol).ceil() + 1.0;
+    let span = |v: f64, n: u32| ((v - r).floor().max(0.0) as u32, (v + r).ceil().clamp(0.0, f64::from(n)) as u32);
+    let ((x0, x1), (y0, y1)) = (span(x, width), span(y, height));
+    let mut best = f64::INFINITY;
+    for py in y0..y1 {
+        for px in x0..x1 {
+            let alpha = (py as usize * width as usize + px as usize) * 4 + 3;
+            if rgba.get(alpha).is_none_or(|a| *a == 0) {
+                continue;
+            }
+            let (dx, dy) = ((x - f64::from(px) - 0.5).abs() - 0.5, (y - f64::from(py) - 0.5).abs() - 0.5);
+            if dx <= 0.0 && dy <= 0.0 {
+                return -1.0;
+            }
+            best = best.min(dx.max(0.0).hypot(dy.max(0.0)));
+        }
+    }
+    best
 }
 
 /// The outlines of the walls and columns a plan cutting at height `z` cuts, but for those `look` hides.
@@ -1238,6 +1259,70 @@ pub fn draw_at(m: &Model, level: impl Key, view: View, k: f32) -> Drawing {
     draw_plan(m, level, view, false, k, f64::from(k) * sheet::DENSITY / view.scale, false)
 }
 
+/// The points of the scans a plan sees, from its cut plane down to its view depth, as Revit draws a point cloud in plan: from
+/// above, each a dot [`view3d::DOT`] pixels wide in its colour (or the view's), the highest at each pixel on top, no more than
+/// [`view3d::DRAWN`] of them among the scans. Each scan is one picture, no bigger than its dots and clear where it has none, so
+/// it picks where its points are.
+fn scans(d: &mut Drawing, m: &Model, range: &PlanRange, look: &Look) {
+    let placed: Vec<(Id, &crate::model::PointCloud, &crate::cloud::Cloud)> = m
+        .elements
+        .iter()
+        .filter_map(|(&id, e)| match e {
+            Element::PointCloud(pc) if look.shows(id) => Some((id, pc, m.clouds.get(&pc.cloud)?)),
+            _ => None,
+        })
+        .collect();
+    let step = view3d::every(placed.iter().map(|(_, _, c)| c.len()).sum());
+    let (w, h) = (i64::from(d.view.width), i64::from(d.view.height));
+    let (dot, half) = (view3d::DOT as i64, view3d::DOT as f64 / 2.0);
+    let grey = Rgb(crate::cloud::GREY, crate::cloud::GREY, crate::cloud::GREY);
+    for (id, pc, cloud) in placed {
+        let place = m.cloud_place(pc);
+        let colours = cloud.colours();
+        // Each point it sees: its dot's corner, px, its height and its colour.
+        let mut seen: Vec<(i64, i64, f64, Rgb)> = Vec::new();
+        for (i, p) in cloud.points().iter().enumerate().step_by(step) {
+            let [x, y, z] = place(*p);
+            if !(range.depth - TOL..=range.cut).contains(&z) {
+                continue;
+            }
+            let (px, py) = d.view.px(P2(x, y));
+            let (x0, y0) = ((f64::from(px) - half).round(), (f64::from(py) - half).round());
+            if !(x0 > -(dot as f64) && y0 > -(dot as f64) && x0 < w as f64 && y0 < h as f64) {
+                continue;
+            }
+            let base = colours.and_then(|c| c.get(i)).map_or(grey, |c| Rgb(c[0], c[1], c[2]));
+            seen.push((x0 as i64, y0 as i64, z, look.surface(id, base)));
+        }
+        let Some((lo, hi)) = seen.iter().fold(None, |b: Option<((i64, i64), (i64, i64))>, &(x, y, ..)| {
+            let ((x0, y0), (x1, y1)) = b.unwrap_or(((x, y), (x, y)));
+            Some(((x0.min(x), y0.min(y)), (x1.max(x), y1.max(y))))
+        }) else {
+            continue;
+        };
+        let (lo, hi) = ((lo.0.max(0), lo.1.max(0)), ((hi.0 + dot).min(w), (hi.1 + dot).min(h)));
+        let (pw, ph) = ((hi.0 - lo.0).max(0) as usize, (hi.1 - lo.1).max(0) as usize);
+        let mut top = vec![f64::NEG_INFINITY; pw * ph];
+        let mut rgba = vec![0; pw * ph * 4];
+        for (x0, y0, z, c) in seen {
+            for py in y0.max(lo.1)..(y0 + dot).min(hi.1) {
+                for px in x0.max(lo.0)..(x0 + dot).min(hi.0) {
+                    let k = (py - lo.1) as usize * pw + (px - lo.0) as usize;
+                    if let (Some(t), Some(out)) = (top.get_mut(k), rgba.get_mut(4 * k..4 * k + 4))
+                        && z > *t
+                    {
+                        *t = z;
+                        out.copy_from_slice(&[c.0, c.1, c.2, 255]);
+                    }
+                }
+            }
+        }
+        d.own(Some(id));
+        d.push(Prim::Image { at: (lo.0 as f32, lo.1 as f32), width: pw as u32, height: ph as u32, rgba });
+    }
+    d.own(None);
+}
+
 /// A floor plan of `plan`, or `up`, its reflected ceiling plan; `titled`, with its name lettered at its bottom left (an image of
 /// it has it; a window shows the name in the view's tab, and a sheet under its viewport). Its annotation `k` times the size it
 /// is laid out at, its pens the line weights' at 1 : `n`.
@@ -1254,6 +1339,10 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     if up {
         range.cut = m.elevation(level) + CEILING_CUT;
         range.top = range.top.max(range.cut);
+    }
+    // The scans it sees, under all the rest.
+    if !up {
+        scans(&mut d, m, &range, &look);
     }
     // Floors whose tops it sees, from the cut plane down to the view depth: their outlines and their
     // openings', the holes shafts cut in them, and a sloped one's slope arrow.

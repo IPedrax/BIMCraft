@@ -17,8 +17,8 @@ use bimcraft_core::snap::{self, Found, Kind, Reach};
 use bimcraft_core::walls::{self, Axis};
 use bimcraft_core::{floor_outline, opening_of, roof_footprint};
 use egui::{
-    Align, Align2, Color32, Event, FontId, Key, Layout, Mesh, Modifiers, Painter, PointerButton, Pos2, Rect, Response, Sense, Shape,
-    Stroke, StrokeKind, TextEdit, TextureId, Ui, UiBuilder, Vec2, WidgetInfo, WidgetType, pos2, vec2,
+    Align, Align2, Color32, ColorImage, Event, FontId, Key, Layout, Mesh, Modifiers, Painter, PointerButton, Pos2, Rect, Response, Sense,
+    Shape, Stroke, StrokeKind, TextEdit, TextureHandle, TextureId, TextureOptions, Ui, UiBuilder, Vec2, WidgetInfo, WidgetType, pos2, vec2,
 };
 use serde_json::{Value, json};
 
@@ -61,6 +61,8 @@ enum Drag {
 #[derive(Default, Clone)]
 pub(crate) struct PlanCache {
     shown: Option<PlanShot>,
+    /// The pictures (a scan's) of the drawing shown, on the graphics card.
+    pub(crate) pictures: Option<(Weak<Drawing>, Vec<TextureHandle>)>,
 }
 
 type PlanShot = (Weak<Model>, Id, View, bool, Arc<Drawing>);
@@ -79,10 +81,29 @@ impl PlanCache {
         self.shown = Some((Arc::downgrade(model), level, view, ceiling, Arc::clone(&drawing)));
         drawing
     }
+
+    /// The pictures drawing `d` holds, in order, loaded once for as long as it is the one shown.
+    pub(crate) fn pictures(&mut self, ctx: &egui::Context, d: &Arc<Drawing>) -> Vec<TextureId> {
+        if !matches!(&self.pictures, Some((shown, _)) if shown.ptr_eq(&Arc::downgrade(d))) {
+            let loaded = d
+                .prims
+                .iter()
+                .filter_map(|p| match p {
+                    Prim::Image { width, height, rgba, .. } => {
+                        let pixels = ColorImage::from_rgba_unmultiplied([*width as usize, *height as usize], rgba);
+                        Some(ctx.load_texture("plan picture", pixels, TextureOptions::NEAREST))
+                    }
+                    _ => None,
+                })
+                .collect();
+            self.pictures = Some((Arc::downgrade(d), loaded));
+        }
+        self.pictures.as_ref().map(|(_, t)| t.iter().map(TextureHandle::id).collect()).unwrap_or_default()
+    }
 }
 
 pub struct Canvas {
-    drawing: PlanCache,
+    pub(crate) drawing: PlanCache,
     cams: BTreeMap<Id, Camera>,
     /// Where the plan was last shown, in points.
     rect: Rect,
@@ -377,7 +398,10 @@ pub(crate) fn paint(p: &Painter, at: Place, d: &Drawing, selected: &[Id], hovere
             Prim::Image { at: corner, width, height, .. } => {
                 if let Some(texture) = pictures.next() {
                     let rect = Rect::from_min_size(at.pos(*corner), vec2(*width as f32, *height as f32) * at.k);
-                    let tint = accent.map_or(Color32::WHITE, |a| a.1);
+                    // On a dark canvas a plan's picture (a scan's) is dimmed, so the ink lightened over it still reads; a sheet's
+                    // paper stays white.
+                    let plain = if !at.paper && crate::style::dark() { Color32::from_gray(120) } else { Color32::WHITE };
+                    let tint = accent.map_or(plain, |a| a.1);
                     p.image(*texture, rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), tint);
                 }
             }
@@ -933,7 +957,8 @@ impl BimApp {
         if let Tool::Trim(Some((first, _))) = self.tool {
             marked.push(first);
         }
-        paint(&p, Place::at(rect.min), &d, &marked, hovered, self.thin, &[]);
+        let pictures = self.canvas.drawing.pictures(ui.ctx(), &d);
+        paint(&p, Place::at(rect.min), &d, &marked, hovered, self.thin, &pictures);
         p.extend(crop);
         let rooms = hovered.iter().map(|id| (*id, pal().hover)).chain(self.selection.iter().map(|id| (*id, pal().accent)));
         for (id, accent) in rooms {

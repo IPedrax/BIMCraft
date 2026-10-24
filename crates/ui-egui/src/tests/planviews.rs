@@ -137,3 +137,17 @@ fn a_plan_in_the_window_carries_no_title_of_its_own_as_the_tab_names_it() {
         assert_ne!(d.owners.last(), Some(&None), "nothing is lettered at its bottom left (ceiling: {ceiling})");
     }
 }
+
+#[test]
+fn a_plan_paints_the_scan_it_sees() {
+    let dir = std::env::temp_dir().join(format!("bimcraft-ui-scan-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("floor.xyz");
+    let floor: String =
+        (0..=50).flat_map(|i| (0..=50).map(move |k| format!("{} {} 0.5 255 0 0\n", f64::from(i) * 0.04, f64::from(k) * 0.04))).collect();
+    std::fs::write(&path, floor).unwrap();
+    let mut h = app(&format!("{HOUSE}\npoint_cloud {}", json!({"path": path, "origin": "file"})));
+    h.run();
+    let loaded = h.state().canvas.drawing.pictures.as_ref().map(|(_, t)| t.len());
+    assert_eq!(loaded, Some(1), "the scan's picture is on the card");
+}
