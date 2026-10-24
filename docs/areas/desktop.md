@@ -58,10 +58,13 @@ line or grid east, north, west and south (`Model::clearances`, which finds them 
 `move` by the difference along that way.
 
 A point picked in a plan lands where `snap::snap` says, the core's so every front end agrees: on the end, middle or centre of
-what's drawn (`Scene::of`), where two straight lines (walls, grids; not arcs) cross, the foot of the perpendicular from the last point
+what's drawn (`Scene::of`), a round detail line's quadrants (`rounds`: a circle's, an ellipse's or an arc's points along its axes),
+where two straight lines (walls, grids; not arcs) or a detail line's chords cross (never a line's chords with each other), where a
+line from the last point touches a circle or an arc (`tangents`), the foot of the perpendicular from the last point
 to one, a guide through that point at
 a multiple of `Snaps::angle` from east or from the line before it (where the guide crosses a wall or grid it lands there, and a
-grid point lying on it beats a rounded length), a wall's centre line, else the nearest 10 mm. The desktop's `BimApp::snap` gives
+grid point lying on it beats a rounded length), a wall's centre line or the nearest point of a detail line, else the nearest 10 mm.
+Revit's Quadrants (SQ) and Tangents (ST) are snaps of their own, in Manage > Snaps with the rest. The desktop's `BimApp::snap` gives
 it the reach in px (`SNAP`, `PICK`) and the snaps in force (Manage > Snaps, kept while the window is open, or for one point
 a shortcut's override: `snap_once`, `Snaps::only`, `Snaps::none`); `found` and
 `show_snap` draw what a pick would land on, and a point that moves with the cursor goes through them. A selected wall's ends are

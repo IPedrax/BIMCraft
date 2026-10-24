@@ -282,11 +282,25 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
         left(&mut d, &m.units.scale(vp.scale), P2(x, corner.1 - 11.0), 2.0);
     }
     for (&nid, e) in &m.elements {
+        if let Element::FilledRegion(r) = e
+            && r.view == guid
+        {
+            d.own(Some(nid));
+            render::filled_region(&mut d, m, r);
+        }
+    }
+    for (&nid, e) in &m.elements {
         if let Element::Text(n) = e
             && n.view == guid
         {
             d.own(Some(nid));
             render::note(&mut d, n);
+        }
+        if let Element::DetailLine(l) = e
+            && l.view == guid
+        {
+            d.own(Some(nid));
+            render::detail_line(&mut d, m, l);
         }
     }
     d.own(None);

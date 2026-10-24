@@ -45,7 +45,7 @@ pub const MODEL: [&str; 25] = [
     "railing",
     "roof",
 ];
-pub const ANNOTATION: [&str; 8] = ["dimension", "tag", "text", "spot", "grid", "level", "section", "elevation"];
+pub const ANNOTATION: [&str; 10] = ["dimension", "tag", "text", "line", "region", "spot", "grid", "level", "section", "elevation"];
 
 /// Whether views draw elements of `category`.
 pub fn drawn(category: &str) -> bool {
@@ -136,11 +136,11 @@ pub enum Dash {
 
 impl Dash {
     /// The on and off lengths a line is drawn with, px.
-    fn pattern(self) -> Option<[f32; 2]> {
+    fn pattern(self) -> Option<Vec<f32>> {
         match self {
             Dash::Solid => None,
-            Dash::Dashed => Some([10.0, 5.0]),
-            Dash::Dotted => Some([2.0, 4.0]),
+            Dash::Dashed => Some(vec![10.0, 5.0]),
+            Dash::Dotted => Some(vec![2.0, 4.0]),
         }
     }
 }
@@ -865,10 +865,10 @@ pub(crate) mod testing {
     }
 
     /// Pen, colour and dash of the lines `id` owns: `u8::MAX` for a line no pen draws (lettering's).
-    pub(crate) fn lines(d: &Drawing, id: u64) -> Vec<(u8, Rgb, Option<[f32; 2]>)> {
+    pub(crate) fn lines(d: &Drawing, id: u64) -> Vec<(u8, Rgb, Option<Vec<f32>>)> {
         (d.prims.iter().zip(&d.owners).zip(&d.pens))
             .filter_map(|((p, o), pen)| match p {
-                Prim::Line { color, dash, .. } if *o == Some(id) => Some((pen.map_or(u8::MAX, |p| p.0), *color, *dash)),
+                Prim::Line { color, dash, .. } if *o == Some(id) => Some((pen.map_or(u8::MAX, |p| p.0), *color, dash.clone())),
                 _ => None,
             })
             .collect()
@@ -983,7 +983,7 @@ mod tests {
         );
         let d = plan(&s, 100000);
         assert!(lines(&d, walls[0]).contains(&(6, RED, None)), "{:?}", lines(&d, walls[0]));
-        assert!(lines(&d, low).contains(&(3, Rgb(0, 0, 200), Some([10.0, 5.0]))), "{:?}", lines(&d, low));
+        assert!(lines(&d, low).contains(&(3, Rgb(0, 0, 200), Some(vec![10.0, 5.0]))), "{:?}", lines(&d, low));
         // Another view keeps its own look.
         assert!(lines(&plan(&s, 100001), up).contains(&(10, Rgb(25, 25, 25), None)));
         // An override merges into the last, and null takes a field back.
@@ -1242,7 +1242,7 @@ mod tests {
         run(&mut s, "graphics", json!({"view": section, "categories": {"walls": {"cut": {"weight": 8}}}}));
         let thin = (4, Rgb(25, 25, 25), None);
         let d = plan(&s, 100000);
-        assert!(lines(&d, walls[0]).contains(&(8, Rgb(25, 25, 25), Some([10.0, 5.0]))), "the outline");
+        assert!(lines(&d, walls[0]).contains(&(8, Rgb(25, 25, 25), Some(vec![10.0, 5.0]))), "the outline");
         assert!(lines(&d, walls[0]).contains(&thin), "the layers' lines");
         let view = render::section_fit(&s.model, section, 800, 600);
         let d = render::section(&s.model, section, view);
@@ -1669,7 +1669,7 @@ mod tests {
         // The category's override is the weakest, and a filter that hides hides, whatever the others do.
         run(&mut s, "graphics", json!({"view": 100000, "categories": {"walls": {"cut": {"color": [9, 9, 9], "dash": "dotted"}}}}));
         let lines = lines(&plan(&s, 100000), walls[1]);
-        assert!(lines.contains(&(3, Rgb(0, 200, 0), Some([2.0, 4.0]))), "{lines:?}");
+        assert!(lines.contains(&(3, Rgb(0, 200, 0), Some(vec![2.0, 4.0]))), "{lines:?}");
         run(&mut s, "graphics", json!({"view": 100000, "filters": [first, {"filter": "B", "hidden": true}]}));
         assert!(owned(&plan(&s, 100000), walls[1]).is_empty());
         // A filter applies once, and in a section as in a plan.

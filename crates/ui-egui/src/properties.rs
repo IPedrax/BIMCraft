@@ -68,6 +68,12 @@ enum Kind {
     Values,
     /// A wall's location line: a drop-down.
     LocationLine,
+    /// A detail line's line style: a drop-down of the project's.
+    LineStyle,
+    /// A filled region's type: a drop-down of the project's.
+    RegionType,
+    /// A filled region's boundary: a line style, or invisible lines (none).
+    RegionLines,
     /// Which line of a run's section its heights are: a drop-down.
     Justification,
     /// Whether a roof or a floor is there (a wall's attachment); read only.
@@ -177,6 +183,17 @@ fn rows(category: &str) -> &'static [Row] {
             ("Graphics", "size", "Text Size (mm)", Number),
             ("Other", "angle", "Rotation (°)", Number),
             ("Other", "at", "Location", Point),
+        ],
+        "line" => &[
+            ("Graphics", "style", "Line Style", LineStyle),
+            ("Dimensions", "length", "Length", LengthShown),
+            ("Dimensions", "insulation", "Insulation Width", LengthIf),
+            ("Other", "shape", "Shape", Shown),
+        ],
+        "region" => &[
+            ("Graphics", "type", "Region Type", RegionType),
+            ("Graphics", "line_style", "Line Style", RegionLines),
+            ("Dimensions", "area_m2", "Area", AreaShown),
         ],
         "spot" => {
             &[("Dimensions", "elevation", "Elevation", LengthShown), ("Other", "host", "Host", Shown), ("Other", "at", "Location", Point)]
@@ -381,6 +398,8 @@ fn icon(category: &str) -> Icon {
         "ramp" => Icon::Ramp,
         "railing" => Icon::Railing,
         "text" => Icon::Text,
+        "line" => Icon::Line,
+        "region" => Icon::FilledRegion,
         "spot" => Icon::Spot,
         "view3d" => Icon::View3D,
         _ => Icon::Plan,
@@ -668,6 +687,7 @@ impl BimApp {
             ([], Tool::Grid(_), _) => Subject::New("grid"),
             ([], Tool::Dimension(_) | Tool::Angular(_) | Tool::Radial(_), _) => Subject::New("dimension"),
             ([], Tool::Text, _) => Subject::New("text"),
+            ([], Tool::DetailLine(_), _) => Subject::New("line"),
             ([], Tool::Spot, _) => Subject::New("spot"),
             ([], Tool::Tag, _) => Subject::New("tag"),
             ([], Tool::Section(_), _) => Subject::New("section"),
@@ -1040,7 +1060,8 @@ impl BimApp {
                         let name = ui.label(label);
                         match kind {
                             Shown => {
-                                ui.label(RichText::new(text(val)).color(pal().muted));
+                                let said = text(val);
+                                ui.label(RichText::new(t(&said)).color(pal().muted));
                             }
                             // An angle's degrees; else lengths.
                             Values if v["kind"] == "angular" => {
@@ -1094,6 +1115,28 @@ impl BimApp {
                                     && let Some(loc) = Location::ALL.iter().find(|loc| t(loc.label()) == l)
                                 {
                                     change = Some((key, Ok(json!(loc.name()))));
+                                }
+                            }
+                            LineStyle => {
+                                let options: Vec<String> = model.line_styles.keys().cloned().collect();
+                                if let Some(s) = combo(ui, (id, key), name.id, val.as_str().unwrap_or_default(), &options) {
+                                    change = Some((key, Ok(json!(s))));
+                                }
+                            }
+                            RegionType => {
+                                let options: Vec<String> = model.region_types.keys().cloned().collect();
+                                if let Some(s) = combo(ui, (id, key), name.id, val.as_str().unwrap_or_default(), &options) {
+                                    change = Some((key, Ok(json!(s))));
+                                }
+                            }
+                            // Invisible lines first, then the styles; picked, none is null.
+                            RegionLines => {
+                                let invisible = t("<Invisible lines>").to_string();
+                                let options: Vec<String> =
+                                    std::iter::once(invisible.clone()).chain(model.line_styles.keys().cloned()).collect();
+                                let now = val.as_str().map_or(invisible.clone(), str::to_string);
+                                if let Some(s) = combo(ui, (id, key), name.id, &now, &options) {
+                                    change = Some((key, Ok(if s == invisible { Value::Null } else { json!(s) })));
                                 }
                             }
                             Justification => {
@@ -1970,12 +2013,14 @@ impl BimApp {
             ui.add_space(6.0);
             ui.label(RichText::new(t("Object Snaps")).strong());
             let s = &mut self.snaps;
-            let kinds: [(&mut bool, Snap, &str); 6] = [
+            let kinds: [(&mut bool, Snap, &str); 8] = [
                 (&mut s.endpoint, Snap::Endpoint, "The ends of walls, grids and what else is drawn, and the points picked so far"),
                 (&mut s.midpoint, Snap::Midpoint, "The middle of a wall, along its arc"),
                 (&mut s.intersection, Snap::Intersection, "Where two walls or grids cross"),
                 (&mut s.centre, Snap::Centre, "The centre of a curved wall, a column or a component"),
                 (&mut s.perpendicular, Snap::Perpendicular, "The foot of the perpendicular from the last point to a wall or grid"),
+                (&mut s.quadrant, Snap::Quadrant, "A circle's, an ellipse's or an arc's points along its axes: east, north, west and south"),
+                (&mut s.tangent, Snap::Tangent, "Where a line from the last point touches a circle or an arc"),
                 (&mut s.nearest, Snap::Nearest, "A wall's centre line, so a wall drawn on it meets it"),
             ];
             for (on, kind, tip) in kinds {

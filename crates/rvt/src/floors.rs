@@ -181,6 +181,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                         arrow: None,
                         structural: false,
                         params: Default::default(),
+                        sketch: Vec::new(),
                     };
                     let id = cx.model.insert(Element::Floor(floor));
                     cx.from.insert(id, format!("Floor {}", r.id));
@@ -217,6 +218,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                         openings: p.holes.iter().map(|h| ring(h)).collect(),
                         offset: s.offset,
                         params: Default::default(),
+                        sketch: Vec::new(),
                     };
                     let id = cx.model.insert(Element::Ceiling(ceiling));
                     cx.from.insert(id, format!("Ceiling {}", r.id));

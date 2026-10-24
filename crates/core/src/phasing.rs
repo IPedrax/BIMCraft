@@ -552,7 +552,7 @@ mod tests {
         assert_eq!(both(&mut s, json!("Show Previous + Demolished")), [true, false, true, false]);
         // Existing in halftone and demolished dashed in red, as the project's overrides say.
         let d = plan(&s, 100000);
-        assert!(lines(&d, walls[2]).contains(&(10, Rgb(200, 40, 30), Some([10.0, 5.0]))), "{:?}", lines(&d, walls[2]));
+        assert!(lines(&d, walls[2]).contains(&(10, Rgb(200, 40, 30), Some(vec![10.0, 5.0]))), "{:?}", lines(&d, walls[2]));
         assert_eq!(both(&mut s, json!("Show Previous + New")), [true, true, false, true]);
         let d = plan(&s, 100000);
         assert!(lines(&d, walls[0]).contains(&(10, Rgb(140, 140, 140), None)), "{:?}", lines(&d, walls[0]));

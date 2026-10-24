@@ -40,6 +40,10 @@ pub enum Kind {
     FamilyType,
     /// A family's parameter, named `family: parameter`.
     FamilyParameter,
+    LinePattern,
+    LineStyle,
+    FillPattern,
+    FilledRegionType,
 }
 
 impl Kind {
@@ -59,6 +63,10 @@ impl Kind {
             Kind::DesignOption => "design option".into(),
             Kind::FamilyType => "family type".into(),
             Kind::FamilyParameter => "family parameter".into(),
+            Kind::LinePattern => "line pattern".into(),
+            Kind::LineStyle => "line style".into(),
+            Kind::FillPattern => "fill pattern".into(),
+            Kind::FilledRegionType => "filled region type".into(),
         }
     }
 
@@ -76,6 +84,10 @@ impl Kind {
             "design-option" => Kind::DesignOption,
             "family-type" => Kind::FamilyType,
             "family-parameter" => Kind::FamilyParameter,
+            "line-pattern" => Kind::LinePattern,
+            "line-style" => Kind::LineStyle,
+            "fill-pattern" => Kind::FillPattern,
+            "filled-region-type" => Kind::FilledRegionType,
             _ => Kind::Type(s.strip_prefix("type:")?.to_string()),
         })
     }
@@ -97,6 +109,10 @@ impl fmt::Display for Kind {
             Kind::DesignOption => f.write_str("design-option"),
             Kind::FamilyType => f.write_str("family-type"),
             Kind::FamilyParameter => f.write_str("family-parameter"),
+            Kind::LinePattern => f.write_str("line-pattern"),
+            Kind::LineStyle => f.write_str("line-style"),
+            Kind::FillPattern => f.write_str("fill-pattern"),
+            Kind::FilledRegionType => f.write_str("filled-region-type"),
         }
     }
 }
@@ -154,6 +170,12 @@ impl HasPart for crate::model::Layer {
 }
 
 impl HasPart for crate::family::Form {
+    fn ident(&mut self) -> (&mut Id, &mut Guid) {
+        (&mut self.id, &mut self.guid)
+    }
+}
+
+impl HasPart for crate::sketch::SketchLine {
     fn ident(&mut self) -> (&mut Id, &mut Guid) {
         (&mut self.id, &mut self.guid)
     }
@@ -473,6 +495,10 @@ impl Model {
         let params: Vec<String> =
             self.families.iter().flat_map(|(f, fam)| fam.parameters.iter().map(move |p| format!("{f}: {}", p.name))).collect();
         add(Kind::FamilyParameter, &mut params.iter());
+        add(Kind::LinePattern, &mut self.line_patterns.keys());
+        add(Kind::LineStyle, &mut self.line_styles.keys());
+        add(Kind::FillPattern, &mut self.fill_patterns.keys());
+        add(Kind::FilledRegionType, &mut self.region_types.keys());
         out
     }
 
@@ -509,6 +535,12 @@ impl Model {
         for (n, f) in &self.families {
             add("form", "family", n, f.forms.iter().map(|x| (x.id, x.guid)).collect());
             add("symbol", "family", n, f.symbols.iter().map(|x| (x.id, x.guid)).collect());
+        }
+        // An element's sketch lines, the element named by its GUID, which never changes.
+        for (id, e) in self.elements.iter() {
+            if let Some(lines) = e.sketch().filter(|l| !l.is_empty()) {
+                add("sketch line", e.category(), &self.guid(*id).to_string(), lines.iter().map(|l| (l.id, l.guid)).collect());
+            }
         }
         out
     }
@@ -566,7 +598,8 @@ impl Model {
         }
         // New ones: ids down from the library's lowest, GUIDs made in order (a file read the same makes the same).
         let floor = self.elements.keys().next_back().map_or(crate::ids::FIRST_ID, |k| k + 1).max(self.next_id);
-        let mut below = self.library.first_id().unwrap_or(LAST_ID + 1);
+        // Below every entry's and every part's there was, so a part taken away leaves its id unused.
+        let mut below = self.library.first_id().into_iter().chain(self.library.parts.keys().next().copied()).min().unwrap_or(LAST_ID + 1);
         let given: Vec<(Id, Guid)> = now
             .iter()
             .zip(&keep)
@@ -623,6 +656,11 @@ impl Model {
             f.forms.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
             f.symbols.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
         }
+        for e in self.elements.values_mut() {
+            if let Some(lines) = e.sketch_mut() {
+                lines.iter_mut().for_each(|l| give(&mut l.id, &mut l.guid));
+            }
+        }
         self.library.parts = self.parts_now().into_iter().collect();
     }
 
@@ -677,6 +715,11 @@ impl Model {
         for f in self.families.values_mut() {
             f.forms.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
             f.symbols.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+        }
+        for e in self.elements.values_mut() {
+            if let Some(lines) = e.sketch_mut() {
+                lines.iter_mut().for_each(|l| (l.id, l.guid) = (0, Guid::default()));
+            }
         }
         self.library.parts.clear();
     }
@@ -802,6 +845,16 @@ impl crate::model::Element {
                 None => f(&Kind::Type(category), &mut o.type_name),
             },
             Element::Component(c) => family_and_type(&mut c.family, &mut c.type_name, f),
+            Element::DetailLine(l) => f(&Kind::LineStyle, &mut l.style),
+            Element::FilledRegion(r) => {
+                f(&Kind::FilledRegionType, &mut r.type_name);
+                if let Some(st) = &mut r.line_style {
+                    f(&Kind::LineStyle, st);
+                }
+                for st in r.sketch.iter_mut().filter_map(|l| l.style.as_mut()) {
+                    f(&Kind::LineStyle, st);
+                }
+            }
             Element::Schedule(sc) => {
                 let mut fields: Vec<&mut String> =
                     sc.fields.iter_mut().map(|x| &mut x.name).chain(sc.sort.iter_mut().map(|x| &mut x.field)).collect();
@@ -872,6 +925,14 @@ impl Model {
         }
         for fam in self.families.values_mut() {
             fam.material_refs_mut(&mut |m| f(&Kind::Material, m));
+        }
+        for t in self.region_types.values_mut() {
+            for p in [&mut t.foreground, &mut t.background].into_iter().flatten() {
+                f(&Kind::FillPattern, p);
+            }
+        }
+        for p in self.line_styles.values_mut().filter_map(|s| s.pattern.as_mut()) {
+            f(&Kind::LinePattern, p);
         }
     }
 

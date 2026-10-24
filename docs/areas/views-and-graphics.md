@@ -39,7 +39,62 @@ seen (floors, walls and columns below, roofs, ceilings, runs, components, shafts
 door's or window's family forms and symbols, a door's leaf and swing. The rest keep their own pens, as Revit's subcategories
 would: a compound element's layer lines, an opening's jambs and glass, a stair's cut line and walk line, a floor's holes. A project
 holds only the categories set apart from `styles::default_of` (which draws as before: cut pen 10, seen pen 4). What's next on this
-foundation: annotation categories' object styles and subcategories, viewports as windows onto their views, and printing. `Drawing::detail` is the level the plan or the section is drawn at: coarse leaves out a compound element's layers and an opening's
+foundation: annotation categories' object styles and subcategories, viewports as windows onto their views, and printing.
+
+Detail lines and their line styles (`lines.rs`): a `LinePattern` is a dash or a dot then a space, again and again, each length mm
+on paper, so it reads the same at any scale (`Solid` is none, a name no pattern takes); a `LineStyle` is a pen, a colour and a
+pattern; both are library entries (`Kind::LinePattern`, `Kind::LineStyle`), so a style names its pattern and a detail line its style
+by GUID in a file, and a rename (`rename_entry`) follows everywhere. A project starts with ours, named in its language
+(`lines::patterns`, `lines::styles`); one in use can't be deleted. A `DetailLine` (category `line`, Lines in Visibility/Graphics) is
+drawn in one view, as a text note is: a level's plan (not its ceiling plan), a section or an elevation, or a sheet, in the view's own
+terms, and goes with it. `render::detail_line` draws it in its style's pen with the model's line weights, its colour and its
+pattern's dashes in pixels at the view's paper (`LinePattern::dash`); a repeat under two pixels draws solid. A primitive's dash is
+any list of on and off lengths (`Prim::Line::dash`), which SVG, PDF, the PNG and the canvas all take. The desktop has Annotate >
+Detail Line (DL; a line a click, as walls are, chained until Enter or the first point again; the Options Bar's Line Style and
+Chain; the Draw panel's other shapes, below) and Manage > Line Styles (`linestyles.rs`: styles and patterns on two tabs of one
+draft, applied as one undo step). Next: patterns made from lines drawn in a view.
+
+A detail line and a sketch line are any `curves::Curve`: a polyline (straight segments and arcs, each arc's turn in degrees
+counter-clockwise as a wall's; a line or an arc is one of two points), a circle, an ellipse whole or partial, a spline by its
+control points (a clamped cubic B-spline, uniform knots unless it holds its own), or a spline through points (a cubic by the
+distance along them, each end free or leaving along a tangent). In a file and in a command a curve is flat, the fields of its
+shape (`curves::Fields`; `curve_struct!` makes a type that holds one among its own fields, since serde's `flatten` won't take
+`deny_unknown_fields`), so an older file's `points` and `closed` read as they did. `Curve::points` draws it with chords no
+further than `FLAT` from it; `nearest`, `split`, `map` (a move, a turn or a mirror), `handles` and `moved` (grips) and
+`check` are the rest. Splitting is exact but for a spline through points: a polyline's segment or arc divides, an ellipse's
+span does, and a control-point spline gets the knot inserted to the degree's multiplicity (Boehm's algorithm) so its halves'
+control points are the original's; a spline through points becomes two through the original's points on each side and the
+cut, leaving it along the original's tangent, with points of the original added where it strays most until it is within
+`FIT_TOL` (QCAD turns the halves into control-point splines instead; Revit won't split a spline at all). A closed curve opens
+where it's cut. Commands: `split` (detail lines as walls), `join_polyline` (PJ), `explode` (PX), `fillet` (FL), `corner`
+(TR, two detail lines as two walls), `trim_extend` (detail lines to a boundary: Revit's Trim/Extend Single and Multiple
+Elements) and `offset` (OF; `draw::offset` keeps arcs concentric and mitres a polyline's corners). `draw::meet` finds where two
+lines or arcs cross, run on along their lines or circles, and `draw::trim_to` brings one to it, keeping the part picked.
+`draw.rs` is Revit's Draw panel as data: each `Shape` (Line, Rectangle, Inscribed and Circumscribed Polygon, Circle,
+Start-End-Radius, Center-ends and Tangent End Arc, Fillet Arc, Spline, Spline Through Points, Ellipse, Partial Ellipse,
+Polyline, Pick Lines), how many clicks it takes, what `make` builds from them with the Options Bar's Sides, Radius and Offset,
+and the `preview` with the cursor as the next point; `wall_segments` turns lines, arcs and circles into walls and
+`element_curve` is what Pick Lines copies. The desktop's `draw.rs` keeps each tool's shape (detail lines, sketches, walls; the
+walls' panel offers only lines and arcs), gathers the points in the tool, and makes the lines, sketch lines or walls as one undo
+step; Join into Polyline and Explode Polyline sit on Modify | Lines and work on picked sketch lines too. A detail line
+selected alone shows its handles as grips (corners, control points, points passed through, a circle's or an ellipse's centre;
+a spline's frame dashed), dragged and snapped, then `modify` with the moved curve's fields (the other shapes' set to null).
+Modify's Split, Trim/Extend to Corner, Trim/Extend Single and Multiple Elements and Offset take detail lines as they take
+walls, and while sketching they change the sketch's lines (`sketch_modify`).
+
+Vertices come and go (`vertex`; Modify | Lines' Add Vertex and Delete Vertex, on sketch lines too): `Curve::with_vertex`
+cuts a polyline's segment, inserts a knot in a control-point spline (one control point more, the curve exactly as it was)
+or a point in a spline through points; `without_vertex` takes a corner, a control point or a point out. `convert_spline`
+(Convert Spline) turns a spline through points into the same curve by control points, exactly (`fit_to_control`: knots at
+the points' distances along, a tridiagonal system for the control points with the fitted spline's end conditions), and
+one by control points into one through points within `FIT_TOL` (`refit_with`); Revit converts neither way.
+
+Revit's Insulation is a detail line with an `insulation` width: `DetailLine::drawn` gives `lines::batt`, a prolate cycloid
+along its curve (loops the whole width across, `BULGE` times it apart), so it splits, offsets, joins and takes grips as any
+line does, and follows arcs and splines, which Revit's doesn't. Annotate > Detail > Insulation draws it, its Width on the
+Options Bar; Properties shows Insulation Width.
+
+`Drawing::detail` is the level the plan or the section is drawn at: coarse leaves out a compound element's layers and an opening's
 symbols, medium its patterns (`cut_layer`, a floor's `surface`), fine draws as before. In the 3D view `Look::style` picks how
 `Scene::picture` draws: shaded as ever, hidden line as a section's picture is (paper faces, edges), wireframe by `Scene::edges` (where
 surfaces meet at an angle or end, found once) drawn through the faces; a pixel within two of a line picks its element.
@@ -89,6 +144,23 @@ of its own and draws its parent's annotation as well as its own. Deleting a view
 takes its plan views with it. A project that has none writes the same file as before. A plan's own name, lettered at its bottom left, is in the drawings that make an image (`plan`, `ceiling_plan`: `titled`), not in the window's (`draw`, `draw_ceiling`) or a sheet's (`draw_at`), where the tab and the viewport's title say it. The desktop: View > Duplicate View, DP, and the Project
 Browser's right-click, which also has Delete for a plan view; `Sheet::Plan` and `Sheet::Ceiling` hold the key.
 
+Fill patterns, filled region types and filled regions (`fills.rs`) follow line patterns and styles. A `FillPattern` is
+families of parallel lines as a PAT file has them (`HatchLine`: an angle, an origin, a spacing across, a shift along, and
+dashes, a space negative and a dot 0), drafting (mm on paper, so the same at any scale) or model (mm in the building); no
+lines, it fills solid. `fills::strokes` lays a pattern over any outlines with holes (inside an odd number of rings), within
+the view's window, and gives up rather than draw past a cap, too dense to read; `render::filled_region` draws a region's
+masking (paper), its background and its foreground pattern, then its boundary's sketch lines, each in its own line style
+(`SketchLine::style`, a library reference as the region's is) else the region's, or not at all (`invisible`, or a region
+of invisible lines with none of its own); in sketch mode the Options Bar's Line Style is what the lines drawn take, and the
+lines picked take it at once. A plan draws its regions after the model and before the annotation, in a loop of their own (sections
+and sheets likewise), so a masking region hides the walls under it but not the note on it. A `FilledRegion` is annotation of
+its view (`Model::annotation_plan`, so a duplicated plan has its own) and its sketch is a `sketch::SketchLine` list, solved
+when drawn, any number of outlines; Edit Boundary edits it as any other. Patterns and region types are library entries,
+renamed with their references (a type follows its patterns, a region its type and line style) and refused deleted while
+used. The desktop has Annotate > Region (Filled Region, FR, and Masking Region, sketch mode with the type and the line style
+in the Options Bar), Properties (Region Type, Line Style with invisible lines), and Manage > Fill Patterns (`fillpatterns.rs`:
+region types and patterns as one draft, a simple pattern edited as an angle, a spacing and crosshatched or not). Materials'
+cut and surface patterns are still `model::Pattern`; moving them onto fill patterns is a later step.
 ## Linked models
 
 A `Link` element (`link.rs`; commands `link` and `reload`) is another project shown in this one as a reference. The file holds its name, its

@@ -4867,7 +4867,10 @@ mod chinese;
 mod control;
 mod dialog;
 mod dock;
+mod draw;
+mod fills;
 mod gpu;
+mod lines;
 mod lineweights;
 mod links;
 mod mep;
@@ -4875,6 +4878,7 @@ mod objectstyles;
 mod planviews;
 mod purge;
 mod revit;
+mod sketch;
 mod start;
 mod window;
 

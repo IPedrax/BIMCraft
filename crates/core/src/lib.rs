@@ -10,9 +10,12 @@ pub mod cloud;
 mod commands;
 mod component_geometry;
 mod csg;
+pub mod curves;
+pub mod draw;
 pub mod engine;
 pub mod family;
 pub mod favorites;
+pub mod fills;
 mod fixtures;
 mod font;
 pub mod geom;
@@ -25,6 +28,7 @@ pub mod insert;
 pub mod language;
 pub mod lenient;
 pub mod library;
+pub mod lines;
 pub mod link;
 pub mod massing;
 pub mod model;
@@ -38,6 +42,7 @@ pub mod sample;
 pub mod schedule;
 pub mod sheet;
 pub mod skeleton;
+pub mod sketch;
 pub mod snap;
 pub mod stairs;
 pub mod step;
@@ -49,6 +54,8 @@ pub mod walls;
 
 pub use commands::{command_of, element_json, floor_outline, opening_of, roof_footprint, run_category_of, runs_of, stood_of};
 
+#[cfg(test)]
+mod line_tests;
 #[cfg(test)]
 mod mep_tests;
 #[cfg(test)]

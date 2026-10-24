@@ -71,6 +71,32 @@ impl Language {
 
 /// The core's words in English, Brazilian Portuguese and Spanish.
 const WORDS: &[[&str; 3]] = &[
+    // The line patterns and line styles a project starts with.
+    ["Dash", "Tracejado", "Trazos"],
+    ["Long Dash", "Traço longo", "Trazo largo"],
+    ["Dot", "Pontilhado", "Puntos"],
+    ["Dash Dot", "Traço e ponto", "Trazo y punto"],
+    ["Hidden", "Oculta", "Oculta"],
+    ["Centre", "Eixo", "Eje"],
+    ["Hairline", "Linha capilar", "Línea capilar"],
+    ["Thin Lines", "Linhas finas", "Líneas finas"],
+    ["Medium Lines", "Linhas médias", "Líneas medias"],
+    ["Wide Lines", "Linhas grossas", "Líneas gruesas"],
+    ["Hidden Lines", "Linhas ocultas", "Líneas ocultas"],
+    ["Solid fill", "Preenchimento sólido", "Relleno sólido"],
+    ["Diagonal Up", "Diagonal para cima", "Diagonal ascendente"],
+    ["Diagonal Down", "Diagonal para baixo", "Diagonal descendente"],
+    ["Diagonal Crosshatch", "Hachura cruzada diagonal", "Sombreado cruzado diagonal"],
+    ["Crosshatch", "Hachura cruzada", "Sombreado cruzado"],
+    ["Horizontal", "Horizontal", "Horizontal"],
+    ["Vertical", "Vertical", "Vertical"],
+    ["Sand", "Areia", "Arena"],
+    ["Brick 225 x 75", "Tijolo 225 x 75", "Ladrillo 225 x 75"],
+    ["Tile 300", "Ladrilho 300", "Baldosa 300"],
+    ["Solid Black", "Preto sólido", "Negro sólido"],
+    ["Masking", "Máscara", "Máscara"],
+    ["Centre Lines", "Linhas de eixo", "Líneas de eje"],
+    ["Overhead Lines", "Linhas superiores", "Líneas superiores"],
     // Phases and the phase filters a project starts with.
     ["Existing", "Existente", "Existente"],
     ["New Construction", "Nova construção", "Nueva construcción"],
