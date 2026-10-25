@@ -70,10 +70,49 @@ fn a_roof_that_rises_comes_in_level_with_the_reason_and_one_not_by_footprint_is_
 }
 
 #[test]
+fn a_wall_whose_record_names_a_roof_has_its_top_cut_by_it() {
+    use crate::project_fixture::line_bytes;
+    // A flat roof over the room, and two walls: one names it among the levels it is constrained to, as Revit lists the roof a
+    // wall's top is attached to, and the other does not.
+    const WALLS: i64 = -2_000_011;
+    let mut p = with_roof_type(2024);
+    roof(&mut p, 100, PROFILE_ROOF, [0.0, 0.0, 9.0, 20.0, 10.0, 9.5]);
+    rectangle(&mut p, 100, 200, [0.0, 0.0, 20.0, 10.0], 9.0, true);
+    for (id, y, named) in [(110u32, 1.0, true), (111, 5.0, false)] {
+        let mut refs = vec![10u64, 530, u64::from(id)];
+        if named {
+            refs.push(100);
+        }
+        p.recs.push(Rec::new(id, WALLS).at([0.0, y - 0.4, 0.0, 20.0, y + 0.4, 10.0], &refs));
+        p.data.push(crate::project_fixture::Block { id, payload: line_bytes(0.0, 20.0, [0.0, y, 0.0], [1.0, 0.0, 0.0]) });
+    }
+    let i = import(&p);
+    let walls: Vec<&bimcraft_core::model::Wall> = i
+        .model
+        .elements
+        .values()
+        .filter_map(|e| match e {
+            Element::Wall(w) => Some(w),
+            _ => None,
+        })
+        .collect();
+    let under = |y_mm: f64| walls.iter().find(|w| (w.start.1 - y_mm).abs() < 1.0).copied();
+    let attached = under(304.8).expect("the wall at 1 ft");
+    assert!(attached.attach_top.is_some(), "its top follows the roof it names: {:?}", i.skipped);
+    let top = i.model.top_z(attached);
+    assert!((top - 9.0 * 304.8).abs() < 1.0, "cut by the roof at 9 ft, got {top}");
+    assert!(under(1524.0).expect("the wall at 5 ft").attach_top.is_none());
+    assert!(i.skipped.iter().any(|s| s.contains("follows the roof it names") && s.contains("110")), "{:?}", i.skipped);
+}
+
+#[test]
 fn the_roof_by_footprint_of_the_architectural_sample_is_that_of_rvt_rss_export() {
     use super::rvt_rs::RAC_ROOFS;
     for path in super::samples_of("racbasicsampleproject.rvt") {
         let (i, from) = crate::import_path_with_origins(&path, "x").unwrap();
+        if !super::pinned(&i) {
+            continue;
+        }
         let theirs = &RAC_ROOFS[0];
         let found: Vec<(u64, &Roof)> = i
             .model

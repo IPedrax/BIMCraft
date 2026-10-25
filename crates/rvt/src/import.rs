@@ -92,6 +92,8 @@ pub(crate) struct Import {
     /// The model's wall for each Revit wall made, and the walls left out for having no layers (curtain walls): hosts of doors.
     pub walls: HashMap<u32, Id>,
     pub curtain: BTreeSet<u32>,
+    /// The model's roof for each Revit roof made: the walls whose tops follow one name it.
+    pub roofs: HashMap<u32, Id>,
     /// What was left out or noted, by (left out, kind, reason): the ids it concerned. Told as one line each in the end.
     groups: BTreeMap<(bool, String, String), Vec<u32>>,
 }
@@ -246,6 +248,7 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
         levels: HashMap::new(),
         walls: HashMap::new(),
         curtain: BTreeSet::new(),
+        roofs: HashMap::new(),
         groups: BTreeMap::new(),
     };
     let release = survey.release;
@@ -262,11 +265,30 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     walls::import(&mut cx, &facts, &gathered);
     floors::import(&mut cx, &facts, &gathered);
     roofs::import(&mut cx, &facts, &gathered);
+    attached(&mut cx, &facts);
     openings::import(&mut cx, &facts, &gathered);
     columns::import(&mut cx, &facts, &gathered);
     rooms::import(&mut cx, &facts, &gathered);
     let from = cx.from.clone();
     finish(cx, format!("Revit {release}")).map(|i| (i, from))
+}
+
+/// Walls whose tops follow a roof: a wall's record names the roof it is attached to with the levels it is constrained to, so its top
+/// is cut by the roof's underside instead of running up to the top of its own box, which a wall under a ridge does.
+fn attached(cx: &mut Import, facts: &Facts) {
+    if cx.roofs.is_empty() {
+        return;
+    }
+    for r in facts.of_category(crate::walls::OST_WALLS) {
+        let Some(id) = cx.walls.get(&r.id).copied() else { continue };
+        let roof = r.refs.iter().filter_map(|v| u32::try_from(*v).ok()).find_map(|n| cx.roofs.get(&n).copied());
+        let Some(roof) = roof else { continue };
+        let guid = cx.model.guid(roof);
+        if let Some(bimcraft_core::model::Element::Wall(w)) = cx.model.elements.get_mut(id) {
+            w.attach_top = Some(guid);
+            cx.note("wall", r.id, "its top follows the roof it names: it comes in cut by the roof's underside");
+        }
+    }
 }
 
 /// The project's levels, lowest first. A level of a name another has takes `(2)`; none at all gives the project one at zero.

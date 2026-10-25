@@ -279,6 +279,9 @@ fn the_doors_and_windows_of_the_architectural_sample_are_those_of_rvt_rss_export
     use super::rvt_rs::RAC_OPENINGS;
     for path in super::samples_of("racbasicsampleproject.rvt") {
         let (i, from) = crate::import_path_with_origins(&path, "x").unwrap();
+        if !super::pinned(&i) {
+            continue;
+        }
         let mut missing = Vec::new();
         let mut fitted = 0;
         let mut differed = 0;

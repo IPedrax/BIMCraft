@@ -97,6 +97,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                     };
                     let id = cx.model.insert(Element::Roof(roof));
                     cx.from.insert(id, format!("Roof {}", r.id));
+                    cx.roofs.insert(r.id, id);
                 }
             }
             Err(why) => cx.left_out(
@@ -135,6 +136,7 @@ fn boxed(
     let roof = Roof { type_name, level: model_level, boundary: ring(&[(x0, y0), (x1, y0), (x1, y1), (x0, y1)]), offset, ..Roof::default() };
     let id = cx.model.insert(Element::Roof(roof));
     cx.from.insert(id, format!("Roof {}", r.id));
+    cx.roofs.insert(r.id, id);
     Ok(())
 }
 
@@ -217,6 +219,7 @@ fn extruded(
     };
     let id = cx.model.insert(Element::Roof(roof));
     cx.from.insert(id, format!("Roof {}", r.id));
+    cx.roofs.insert(r.id, id);
     Ok(())
 }
 

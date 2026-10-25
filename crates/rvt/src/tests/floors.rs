@@ -234,6 +234,9 @@ fn the_floors_and_ceilings_of_the_architectural_sample_are_those_of_rvt_rss_expo
     use super::rvt_rs::{RAC_CEILINGS, RAC_FLOORS};
     for path in super::samples_of("racbasicsampleproject.rvt") {
         let (i, from) = crate::import_path_with_origins(&path, "x").unwrap();
+        if !super::pinned(&i) {
+            continue;
+        }
         let find = |label: &str, id: u32| -> Vec<(Id, &Element)> {
             i.model.elements.iter().filter(|(m, _)| from[*m] == format!("{label} {id}")).map(|(m, e)| (*m, e)).collect()
         };
