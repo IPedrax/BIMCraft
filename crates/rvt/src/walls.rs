@@ -155,6 +155,9 @@ pub(crate) fn layered_type(f: &Facts, g: &Gathered, id: u32, category: i64) -> O
 pub(crate) fn layered(name: Option<String>, layers: &[CompoundLayer], g: &Gathered, category: i64) -> LayeredType {
     let layers: Vec<Layer> = layers
         .iter()
+        // A structural deck may take its thickness from the layer above it and write none of its own; a layer of no thickness
+        // that is not a membrane is not a layer BIMCraft's model can hold, and it adds nothing to the type.
+        .filter(|l| l.width_feet > 0.0 || l.function == 100)
         .map(|l| Layer {
             function: function(l.function),
             // A layer with no material of its own takes its category's, where the document's object styles give one.

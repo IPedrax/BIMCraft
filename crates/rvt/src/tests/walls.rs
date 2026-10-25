@@ -574,6 +574,27 @@ fn a_type_whose_layers_have_no_width_is_no_wall_type_and_a_layer_whose_material_
 }
 
 #[test]
+fn a_structural_deck_with_no_width_of_its_own_is_left_out_of_the_layers_it_carries_nothing_of() {
+    // Revit lets a structural deck take its thickness from the layer above it and write none of its own: a floor of the
+    // structural sample is NW Concrete on Metal Deck with such a layer, and the model refuses a layer of no thickness that is
+    // not a membrane, so the import refused the whole file.
+    for release in [2024, 2026] {
+        let mut p = base(release);
+        p.types.push(TypeRec::new(503, WALLS));
+        let mut payload = name_bytes("Deck");
+        payload.extend(layers_bytes(&[(0.5, Some(701), 1), (0.0, None, 200)], release));
+        p.data.push(Block { id: 503, payload });
+        let line = line_bytes(0.0, 20.0, [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]);
+        wall_of(&mut p, 100, [0.0, -0.4, 0.0, 20.0, 0.4, 10.0], &[10, 11, 503, 100], line);
+        let i = import(&p);
+        let [(_, w)] = walls(&i)[..] else { panic!("Revit {release}: {:?}", i.skipped) };
+        let t = &i.model.types.wall[&w.type_name];
+        assert_eq!(t.layers.len(), 1, "{:?}", t.layers);
+        assert_eq!(t.thickness, 152.4);
+    }
+}
+
+#[test]
 fn a_layer_list_is_a_types_only_when_it_is_framed() {
     // `ff ff ff ff` and another tag, or the right tag with no `ff ff ff ff` before it, frame nothing.
     for damage in [|l: &mut Vec<u8>| l[4] ^= 0x55, |l: &mut Vec<u8>| l[0..4].fill(0x11)] {
