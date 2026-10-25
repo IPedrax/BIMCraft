@@ -263,8 +263,9 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> (Vec<Arm>, bo
 
 /// The corner points that close wall `id`'s start, or with `at_end`, its end: from its face on the
 /// clockwise side of the way it leaves the node round to the other. Walls ending where it ends meet
-/// it at any angle, their faces running on until they cross (no farther behind the node than the
-/// thickest is thick: past that, the end is square); a wall it ends on stops it at its face. Where
+/// it at any angle, their faces running on until they cross (no farther from the node than the
+/// thickest is thick, either way: past that, the end is square); a wall it ends on stops it at its
+/// face. Where
 /// three or more walls meet, the node itself fills between them.
 pub fn cap(m: &Model, id: Id, at_end: bool) -> Vec<P2> {
     cap_in(m, id, at_end, None)
@@ -280,11 +281,12 @@ fn cap_in(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> Vec<P2> {
         return vec![me.cw, me.ccw];
     }
     let node = if at_end { w.end } else { w.start };
-    let (len, limit) = (Axis::of(w).length(), arms.iter().map(|a| a.thick).fold(0.0, f64::max));
-    // Where a face of this wall crosses a neighbour's facing face, near enough; else its own end.
+    let limit = arms.iter().map(|a| a.thick).fold(0.0, f64::max);
+    // Where a face of this wall crosses a neighbour's facing face, near enough to the node either way; else its own
+    // end. A crossing far along the wall is no corner at all: two walls meeting at a shallow angle cross metres in.
     let meet = |face: P2, other: P2, other_way: P2| {
         geom::line_intersection(face, face + me.way, other, other + other_way)
-            .filter(|c| (-limit..=len).contains(&(*c - node).dot(me.way)))
+            .filter(|c| (-limit..=limit).contains(&(*c - node).dot(me.way)))
             .unwrap_or(face)
     };
     let (cw, ccw) = (meet(me.cw, prev.ccw, prev.way), meet(me.ccw, next.cw, next.way));
@@ -696,6 +698,17 @@ mod tests {
         // Outside the corner the faces would cross 5.7 thicknesses back: the end goes square there.
         assert!(o.iter().all(|p| p.length() < 700.0 || p.length() > 3000.0), "{o:?}");
         assert!(o.iter().any(|p| near(*p, P2(-20f64.to_radians().sin(), 20f64.to_radians().cos()) * 100.0)), "{o:?}");
+    }
+
+    #[test]
+    fn walls_meeting_at_a_shallow_angle_square_off_rather_than_run_on_metres() {
+        // 7.5° apart: their faces would cross 1.5 m along each wall, which is no corner but a wedge. A wall's end goes
+        // square instead, no farther from the node than the thickest wall there is thick.
+        let s = corner(7.5);
+        for id in [100002, 100003] {
+            let o = outline(&s.model, id);
+            assert!(o.iter().all(|p| p.length() < 300.0 || p.length() > 3000.0), "{id}: {o:?}");
+        }
     }
 
     #[test]
