@@ -184,10 +184,73 @@ fn no_layers(f: &Facts, g: &Gathered, tid: u32) -> String {
     }
 }
 
+/// How thick a wall's own box says its body is, in millimetres: the record box is the rectangle of the wall's line and its
+/// thickness, so the side across the line gives the thickness back. None for an arc, whose box is not that rectangle. A type with
+/// no compound structure (a curtain wall, a storefront) is read this way from the file rather than given a thickness of our own.
+fn box_thickness(c: Curve, bbox: &[f64; 6]) -> Option<f64> {
+    let Curve::Line(l) = c else { return None };
+    let (a, b) = (l.start(), l.end());
+    let len = (b[0] - a[0]).hypot(b[1] - a[1]);
+    if len <= 1e-6 {
+        return None;
+    }
+    let (u, v) = ((b[0] - a[0]) / len, (b[1] - a[1]) / len);
+    let (across_x, across_y) = (u.abs(), v.abs());
+    let (box_x, box_y) = (bbox[3] - bbox[0], bbox[4] - bbox[1]);
+    let t = if across_y > 1e-3 {
+        (box_x - len * across_x) / across_y
+    } else if across_x > 1e-3 {
+        (box_y - len * across_y) / across_x
+    } else {
+        return None;
+    };
+    let t = mm(t);
+    (t.is_finite() && t > 0.0).then_some(micron(t))
+}
+
+/// The name a type's own data gives it, where it has one.
+fn type_name(f: &Facts, g: &Gathered, tid: u32) -> Option<String> {
+    let header = f.tags.data_header();
+    g.data.get(&tid).and_then(|copies| newest(copies, |b| first_name(b, &header, f.release))).map(|(n, _)| n)
+}
+
 pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
     let types = f.types.get(&OST_WALLS).cloned().unwrap_or_default();
     let mut read: BTreeMap<u32, Option<LayeredType>> = BTreeMap::new();
     let mut made: BTreeMap<u32, String> = BTreeMap::new();
+    // The types with no compound structure at all (curtain walls, storefronts), and the thickness their own walls' boxes agree
+    // on: a type whose walls disagree is not read as one plane, since that thickness would be our guessing.
+    let mut panel: BTreeMap<u32, f64> = BTreeMap::new();
+    {
+        let bare: Vec<u32> =
+            types.iter().copied().filter(|tid| read.entry(*tid).or_insert_with(|| layered_type(f, g, *tid, OST_WALLS)).is_none()).collect();
+        let mut seen: BTreeMap<u32, Vec<f64>> = BTreeMap::new();
+        if !bare.is_empty() {
+            for r in f.of_category(OST_WALLS) {
+                let Some(tid) = unique_type(&r.refs, &types).filter(|tid| bare.contains(tid)) else { continue };
+                let copies = g.data.get(&r.id).map(Vec::as_slice).unwrap_or_default();
+                if let Some((t, _)) = newest(copies, |b| box_thickness(curve(b)?, &r.bbox)) {
+                    seen.entry(tid).or_default().push(t);
+                }
+            }
+        }
+        for (tid, ts) in seen {
+            // The thickness most of the type's walls agree on, within a millimetre: a type has one thickness, and a wall whose
+            // box says otherwise (a join, a corner) does not make the type two kinds of plane.
+            let mut buckets: BTreeMap<i64, Vec<f64>> = BTreeMap::new();
+            for t in &ts {
+                buckets.entry((t * 1000.0).round() as i64 / 1000).or_default().push(*t);
+            }
+            if let Some((_, agreed)) = buckets.iter().max_by_key(|(_, v)| v.len())
+                && agreed.len() * 10 >= ts.len() * 7
+            {
+                let t = agreed.iter().sum::<f64>() / agreed.len() as f64;
+                if t >= 25.0 {
+                    panel.insert(tid, micron(t));
+                }
+            }
+        }
+    }
     for r in f.of_category(OST_WALLS) {
         let who = |why: &str| (r.id, why.to_string());
         let wall = (|| -> Result<(Wall, String), (u32, String)> {
@@ -197,6 +260,15 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
             let flip = newest(copies, |b| wall_orientation(b, f.release)).map(|(o, _)| o.flip);
             let tid = unique_type(&r.refs, &types).ok_or_else(|| who("its record does not name one wall type"))?;
             let typ = read.entry(tid).or_insert_with(|| layered_type(f, g, tid, OST_WALLS));
+            // A curtain wall or a storefront has no compound structure: it comes in as the plane its own box gives, and the note
+            // below says what of it is not read.
+            if typ.is_none()
+                && let Some(t) = panel.get(&tid)
+            {
+                // The name the file gives the type, or the one the importer gives a type it cannot name, as a floor's is.
+                let name = type_name(f, g, tid).unwrap_or_else(|| format!("Imported - {t}mm"));
+                *typ = Some(LayeredType { name: Some(name), layers: vec![Layer { thickness: *t, ..Layer::default() }], thickness: *t });
+            }
             let typ = typ.as_ref().filter(|t| t.thickness > 0.0).ok_or_else(|| who(&no_layers(f, g, tid)))?;
             let (base, top) = constraints(r, &f.elevations);
             let level = base.and_then(|b| cx.levels.get(&b).copied()).ok_or_else(|| who("it stands on no level"))?;
@@ -235,6 +307,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 attach_base: None,
             };
             let note = if flip.is_none() { "side".to_string() } else { String::new() };
+            let note = if panel.contains_key(&tid) { "panels".to_string() } else { note };
             Ok((wall, note))
         })();
         match wall {
@@ -242,8 +315,14 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 let id: Id = cx.model.insert(Element::Wall(wall));
                 cx.from.insert(id, format!("Wall {}", r.id));
                 cx.walls.insert(r.id, id);
-                if !note.is_empty() {
-                    cx.note("wall", r.id, "the data does not say which side is the exterior: kept as drawn");
+                match note.as_str() {
+                    "side" => cx.note("wall", r.id, "the data does not say which side is the exterior: kept as drawn"),
+                    "panels" => cx.note(
+                        "wall",
+                        r.id,
+                        "its type has no layers (a curtain wall or a storefront): it comes in as the plane its own box gives, and the panels and mullions are not read",
+                    ),
+                    _ => {}
                 }
             }
             Err((id, why)) => {

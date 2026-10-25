@@ -80,7 +80,7 @@ fn an_opening_is_measured_from_the_start_of_a_wall_whichever_way_it_runs() {
 }
 
 #[test]
-fn the_host_is_the_nearest_wall_below_an_openings_id_then_the_nearest_above_and_never_a_curtain_wall() {
+fn the_host_is_the_nearest_wall_below_an_openings_id_then_the_nearest_above_and_a_storefront_is_a_wall_too() {
     let wall_at = |p: &mut Project, id: u32, y: f64, type_id: u64| {
         p.recs.push(Rec::new(id, WALLS).at([0.0, y - 0.4, 0.0, 20.0, y + 0.4, 10.0], &[10, 11, type_id, u64::from(id)]));
         let mut b = line_bytes(0.0, 20.0, [0.0, y, 0.0], [1.0, 0.0, 0.0]);
@@ -90,13 +90,15 @@ fn the_host_is_the_nearest_wall_below_an_openings_id_then_the_nearest_above_and_
     let mut p = project(2024);
     wall_at(&mut p, 80, 20.0, 500);
     wall_at(&mut p, 300, 30.0, 500);
-    // A curtain wall: its type has no layers.
+    // A curtain wall: its type has no layers, and the name it has is the one it comes in under.
     p.types.push(crate::project_fixture::TypeRec::new(502, WALLS));
+    p.data.push(Block { id: 502, payload: crate::project_fixture::name_bytes("Storefront") });
     wall_at(&mut p, 90, 40.0, 502);
     // Door 200 names walls 80 and 100, both below it: the nearest below is 100. Door 250 names only wall 300, above it.
     door(&mut p, 200, 5.0, &[80, 100]);
     p.recs.push(Rec::new(250, DOORS).at([3.5, 29.6, 0.0, 6.5, 31.2, 7.0], &[300, 600, 250]));
-    // Door 95 names the curtain wall 90 (below it) and wall 100 (above it): the curtain wall is no host. Door 410 names only it.
+    // Door 95 names the curtain wall 90 (below it) and wall 100 (above it): the nearest below it is the curtain wall, which comes in
+    // as the plane its box gives, so it is the host. Door 410 names only it.
     door(&mut p, 95, 9.0, &[90, 100]);
     p.recs.push(Rec::new(410, DOORS).at([3.5, 40.0, 0.0, 6.5, 41.2, 7.0], &[90, 600, 410]));
     let (i, from) = super::walls::import_with_origins(&p);
@@ -108,9 +110,8 @@ fn the_host_is_the_nearest_wall_below_an_openings_id_then_the_nearest_above_and_
     };
     assert_eq!(host(200).as_deref(), Some("Wall 100"), "{:?}", i.skipped);
     assert_eq!(host(250).as_deref(), Some("Wall 300"));
-    assert_eq!(host(95).as_deref(), Some("Wall 100"));
-    assert_eq!(host(410), None);
-    assert!(i.skipped.iter().any(|s| s.contains("curtain wall") && s.contains("410")), "{:?}", i.skipped);
+    assert_eq!(host(95).as_deref(), Some("Wall 90"));
+    assert_eq!(host(410).as_deref(), Some("Wall 90"), "{:?}", i.skipped);
 }
 
 /// A wall at an angle: from (0, 5) ft, 15 ft long along `direction`, 10 ft tall.

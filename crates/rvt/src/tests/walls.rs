@@ -236,7 +236,7 @@ fn a_wall_the_reader_cannot_describe_is_left_out_with_the_reason_and_the_others_
     p.recs.push(Rec::new(106, WALLS).at([0.0, 0.0, 0.0, 5.0, 0.3, 0.0], &[10, 11, 500, 106]));
     p.recs.push(Rec { placed: false, ..Rec::new(107, WALLS).at([0.0, 0.0, 0.0, 5.0, 0.3, 10.0], &[10, 11, 500, 107]) });
     let i = import(&p);
-    assert_eq!(walls(&i).len(), 1, "{:?}", i.skipped);
+    assert_eq!(walls(&i).len(), 2, "{:?}", i.skipped);
     let said = |what: &str| i.skipped.iter().find(|s| s.contains(what)).cloned().unwrap_or_default();
     assert!(
         said("no location line the reader can read").contains("1 wall left out") && said("no location line").contains("101"),
@@ -245,7 +245,8 @@ fn a_wall_the_reader_cannot_describe_is_left_out_with_the_reason_and_the_others_
     );
     assert!(said("not level").contains("102"));
     assert!(said("does not name one wall type").contains("2 walls") && said("does not name one wall type").contains("103, 104"));
-    assert!(said("no layers the reader can read").contains("105"));
+    // A type with no layers at all is a curtain wall or a storefront: it comes in as the plane its own box gives.
+    assert!(said("comes in as the plane").contains("105"), "{:?}", i.skipped);
     assert!(
         !i.skipped.iter().any(|s| s.contains("106") || s.contains("107")),
         "a symbol is not a wall and an unplaced record is not an instance"
@@ -273,7 +274,7 @@ fn types_with_one_name_and_different_layers_are_told_apart() {
 }
 
 #[test]
-fn walls_left_out_for_their_types_having_no_layers_are_grouped_by_the_type_named() {
+fn walls_whose_types_have_no_layers_come_in_as_the_plane_their_own_boxes_give() {
     let mut p = base(2024);
     straight(&mut p, 100, false);
     // A type that holds a name and no layers (a storefront), under two walls, and one that holds nothing at all.
@@ -285,10 +286,16 @@ fn walls_left_out_for_their_types_having_no_layers_are_grouped_by_the_type_named
         p.data.push(Block { id, payload: line_bytes(0.0, 10.0, [0.0, y, 0.0], [1.0, 0.0, 0.0]) });
     }
     let i = import(&p);
-    assert_eq!(walls(&i).len(), 1, "{:?}", i.skipped);
+    // A type with no compound structure is a curtain wall or a storefront: each of its walls comes in as the plane its own box
+    // gives, and the note says what of it is not read. A type whose data says nothing at all is named by its thickness, as a
+    // floor's is.
+    assert_eq!(walls(&i).len(), 4, "{:?}", i.skipped);
     let said = |what: &str| i.skipped.iter().find(|s| s.contains(what)).cloned().unwrap_or_default();
-    assert_eq!(said("Storefront"), "2 walls left out, its type 'Storefront' has no layers the reader can read (ids 101, 102)");
-    assert!(i.skipped.contains(&"1 wall left out, its type has no layers the reader can read (ids 103)".to_string()), "{:?}", i.skipped);
+    assert!(said("comes in as the plane").contains("3 walls"), "{:?}", i.skipped);
+    for id in ["101", "102", "103"] {
+        assert!(said("comes in as the plane").contains(id), "{id}: {:?}", i.skipped);
+    }
+    assert!(i.model.types.wall["Storefront"].layers.len() == 1, "one layer, of the box's thickness");
 }
 
 #[test]
@@ -297,9 +304,9 @@ fn the_walls_of_the_architectural_sample_are_those_of_rvt_rss_export_of_the_same
     for path in super::samples_of("racbasicsampleproject.rvt") {
         let (i, from) = crate::import_path_with_origins(&path, "x").unwrap();
         let at = |id: u32| walls(&i).into_iter().find(|(m, _)| from[m] == format!("Wall {id}"));
-        // 47 of the file's 56 walls; the other nine are curtain walls, whose types have no layers.
-        assert_eq!(walls(&i).len(), 47, "{}: {:?}", path.display(), i.skipped);
-        assert!(i.skipped.iter().any(|s| s.contains("9 walls left out") && s.contains("no layers")), "{:?}", i.skipped);
+        // All 56: the nine curtain walls come in as the plane their own boxes give, and the note says what of them is not read.
+        assert_eq!(walls(&i).len(), 56, "{}: {:?}", path.display(), i.skipped);
+        assert!(i.skipped.iter().any(|s| s.contains("9 walls") && s.contains("curtain wall")), "{:?}", i.skipped);
         for theirs in &RAC_WALLS {
             let id = theirs.id;
             let (m, w) = at(id).unwrap_or_else(|| panic!("{}: wall {id} is missing", path.display()));
@@ -566,10 +573,11 @@ fn a_type_whose_layers_have_no_width_is_no_wall_type_and_a_layer_whose_material_
             wall_of(&mut p, id, [0.0, -0.4, 0.0, 20.0, 0.4, 10.0], &[10, 11, tid, u64::from(id)], line);
         }
         let i = import(&p);
-        assert!(walls(&i).is_empty(), "Revit {release}: {:?}", i.skipped);
-        for (name, id) in [("Membrane", "ids 100"), ("Damaged", "ids 101")] {
-            assert!(i.skipped.iter().any(|s| s.contains("no layers") && s.contains(name) && s.contains(id)), "{:?}", i.skipped);
-        }
+        // A membrane has no width, so its type is no wall and the wall is left out; a layer list that is not framed reads as no
+        // list, so its type is read as a curtain wall's — the plane its box gives — and the note says so.
+        assert_eq!(walls(&i).len(), 1, "Revit {release}: {:?}", i.skipped);
+        assert!(i.skipped.iter().any(|s| s.contains("no layers") && s.contains("Membrane") && s.contains("ids 100")), "{:?}", i.skipped);
+        assert!(i.skipped.iter().any(|s| s.contains("comes in as the plane") && s.contains("101")), "{:?}", i.skipped);
     }
 }
 
@@ -606,7 +614,10 @@ fn a_layer_list_is_a_types_only_when_it_is_framed() {
         p.data[0].payload = payload;
         straight(&mut p, 100, false);
         let i = import(&p);
-        assert!(walls(&i).is_empty() && i.skipped.iter().any(|s| s.contains("no layers")), "{:?}", i.skipped);
+        // A layer list that is not framed is no layer list: the type reads as a curtain wall's, and its wall comes in as the plane
+        // its own box gives, which is what the note says.
+        assert_eq!(walls(&i).len(), 1, "{:?}", i.skipped);
+        assert!(i.skipped.iter().any(|s| s.contains("no layers") && s.contains("comes in as the plane")), "{:?}", i.skipped);
     }
 }
 
