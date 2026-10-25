@@ -11,7 +11,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use bimcraft_core::geom::P2;
-use bimcraft_core::model::{Ceiling, CeilingType, Element, Floor, FloorType};
+use bimcraft_core::model::{Ceiling, CeilingType, Element, Floor, FloorType, Layer};
 
 use crate::data::newest;
 use crate::import::{Facts, Import, kind, micron, mm, point};
@@ -19,7 +19,7 @@ use crate::inventory::Gathered;
 use crate::records::Record;
 use crate::sketch::{Piece, edge_of, from_boxes, from_edges, from_edges_open, from_edges_snapped};
 use crate::types::unique_type;
-use crate::walls::{layered_type, level_at_or_below, named_levels};
+use crate::walls::{LayeredType, layered_type, level_at_or_below, named_levels};
 
 /// `OST_Floors`.
 pub(crate) const OST_FLOORS: i64 = -2_000_032;
@@ -157,13 +157,25 @@ pub(crate) fn sketched(
         cx.note(what, r.id, &format!("{} sketch {plural} close nothing and are left out (ids {})", ids.len(), ids.join(", ")));
     }
     let tid = unique_type(&r.refs, &types).ok_or_else(|| format!("its record does not name one {what} type"))?;
-    let typ = layered_type(f, g, tid, category).filter(|t| t.thickness > 0.0).ok_or("its type has no layers the reader can read")?;
     let tall = mm(r.extent()[2]);
+    let typ = match layered_type(f, g, tid, category).filter(|t| t.thickness > 0.0) {
+        Some(t) => t,
+        // A type with no compound structure says nothing of its thickness; its own box does, a flat one being its thickness.
+        None => {
+            cx.note(what, r.id, "its type has no layers the reader can read: it comes in as thick as its own box");
+            LayeredType { name: None, layers: vec![Layer { thickness: tall, ..Layer::default() }], thickness: tall }
+        }
+    };
     if (tall - typ.thickness).abs() > 1.0 {
-        return Err(format!(
-            "its box is {tall} mm tall and its type {} mm thick: a sloped or stepped {what}, which is not described",
-            typ.thickness
-        ));
+        // A sloped or stepped one: it comes in level, as thick as its type, at the box's bottom, and the note says so.
+        cx.note(
+            what,
+            r.id,
+            &format!(
+                "its box is {tall} mm tall and its type {} mm thick: it is sloped or stepped, and its slopes are not read: it comes in level",
+                typ.thickness
+            ),
+        );
     }
     let z = if at_top { r.bbox[5] } else { r.bbox[2] };
     let level = level_of(r, &f.elevations, z).ok_or("it stands on no level")?;

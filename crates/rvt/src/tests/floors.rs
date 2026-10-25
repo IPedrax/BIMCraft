@@ -172,7 +172,7 @@ fn a_diagonal_sketch_line_known_only_by_its_box_is_placed_where_one_pair_fits() 
 }
 
 #[test]
-fn a_floor_the_reader_cannot_describe_is_left_out_with_the_reason() {
+fn a_floor_the_reader_cannot_describe_comes_in_flat_with_the_reason_or_is_left_out_with_it() {
     let mut p = floor_with_hole(2024, true);
     // Sloped or stepped: its box is taller than its type is thick.
     p.recs.push(Rec::new(101, FLOORS).at([0.0, 0.0, -1.5, 20.0, 10.0, 0.0], &[10, 510, 101]));
@@ -190,13 +190,15 @@ fn a_floor_the_reader_cannot_describe_is_left_out_with_the_reason() {
     p.recs.push(Rec::new(105, FLOORS).at([0.0, 0.0, -0.5, 20.0, 10.0, 0.0], &[10, 511, 105]));
     rectangle(&mut p, 105, 330, [0.0, 0.0, 20.0, 10.0], 0.0, true);
     let i = import(&p);
-    assert_eq!(floors(&i).len(), 1, "{:?}", i.skipped);
+    // A floor the reader cannot describe still comes in where the file says enough: level, sloped or stepped, and as thick as its
+    // own box; what it cannot read at all is left out with the reason.
+    assert_eq!(floors(&i).len(), 3, "{:?}", i.skipped);
     let said = |what: &str| i.skipped.iter().find(|s| s.contains(what)).cloned().unwrap_or_default();
-    assert!(said("sloped or stepped").contains("101"), "{:?}", i.skipped);
+    assert!(said("sloped or stepped").contains("101") && said("comes in level").contains("101"), "{:?}", i.skipped);
     assert!(said("do not close").contains("102"));
     assert!(said("no sketch lines").contains("103"));
     assert!(said("does not name one floor type").contains("104"));
-    assert!(said("no layers").contains("105"));
+    assert!(said("no layers").contains("105") && said("as thick as its own box").contains("105"));
 }
 
 #[test]
@@ -355,7 +357,7 @@ fn floor_and_ceiling_types_of_one_name_are_one_type_when_their_layers_match_and_
 }
 
 #[test]
-fn a_floor_is_as_thick_as_its_type_to_within_a_millimetre_and_a_type_of_no_width_is_no_floor_type() {
+fn a_floor_is_as_thick_as_its_type_to_within_a_millimetre_and_a_type_of_no_width_is_read_as_its_box() {
     let mut p = project(2024);
     // Thicker than 152.4 mm by 0.88 mm: a floor; by 1.13 mm: a sloped or stepped one.
     p.recs.push(Rec::new(100, FLOORS).at([0.0, 0.0, -0.5029, 20.0, 10.0, 0.0], &[10, 510, 100]));
@@ -370,8 +372,9 @@ fn a_floor_is_as_thick_as_its_type_to_within_a_millimetre_and_a_type_of_no_width
     p.recs.push(Rec::new(102, FLOORS).at([0.0, 0.0, -0.5, 20.0, 10.0, 0.0], &[10, 511, 102]));
     rectangle(&mut p, 102, 220, [0.0, 0.0, 20.0, 10.0], 0.0, true);
     let i = import(&p);
-    assert_eq!(floors(&i).len(), 1, "{:?}", i.skipped);
+    assert_eq!(floors(&i).len(), 3, "{:?}", i.skipped);
     let said = |what: &str| i.skipped.iter().find(|s| s.contains(what)).cloned().unwrap_or_default();
     assert!(said("sloped or stepped").contains("101") && !said("sloped or stepped").contains("100"), "{:?}", i.skipped);
     assert!(said("no layers").contains("102"), "{:?}", i.skipped);
+    assert_eq!(i.model.types.floor.values().find(|t| t.thickness == 152.4).map(|t| t.thickness), Some(152.4));
 }

@@ -222,36 +222,32 @@ fn neighbours_that_overlap_a_little_are_narrowed_to_fit_and_ones_that_overlap_mu
 }
 
 #[test]
-fn an_opening_that_does_not_fit_its_wall_is_dropped_by_the_models_rules_and_the_others_stay() {
+fn an_opening_whose_box_overruns_its_wall_comes_in_as_far_as_the_wall_goes() {
     let mut p = project(2024);
     door(&mut p, 200, 5.0, &[100]);
     door(&mut p, 201, -0.5, &[100]); // half of it before the wall starts
     p.recs.push(Rec::new(202, WINDOWS).at([10.0, -0.4, 9.0, 12.0, 0.4, 12.0], &[100, 601, 202])); // above its wall's top
     let i = import(&p);
-    assert_eq!(openings(&i).len(), 1, "{:?}", i.skipped);
-    assert!(
-        i.skipped.iter().any(|s| s.starts_with("1 door left out") && s.contains("doesn't fit wall") && s.contains("ids 201")),
-        "{:?}",
-        i.skipped
-    );
-    assert!(
-        i.skipped.iter().any(|s| s.starts_with("1 window left out") && s.contains("height") && s.contains("ids 202")),
-        "{:?}",
-        i.skipped
-    );
+    // Revit draws these with their frames a little past the wall's box: each comes in as far as the wall goes, and says so.
+    assert_eq!(openings(&i).len(), 3, "{:?}", i.skipped);
+    let said = i.skipped.iter().find(|s| s.contains("overruns its wall")).cloned().unwrap_or_default();
+    assert!(said.contains("2 openings") && said.contains("ids 201, 202"), "{:?}", i.skipped);
+    let window = openings(&i).into_iter().find(|(_, door, _)| !door).map(|(_, _, o)| o).expect("the window");
+    assert!(i.model.types.window[&window.type_name].height <= 3048.0, "no taller than its wall");
 }
 
 #[test]
-fn what_the_models_rules_drop_is_told_as_a_count_of_its_kind_with_the_ids_and_alike_ones_group() {
-    // Two doors that do not fit their wall, the same way, and a window that is too tall: one group of doors, one note of the window.
+fn what_the_reader_cuts_down_to_fit_is_told_as_a_count_of_its_kind_with_the_ids() {
+    // Two doors whose boxes overrun their wall the same way: one note, both ids.
     let mut p = project(2024);
     door(&mut p, 200, 5.0, &[100]);
     door(&mut p, 201, -0.5, &[100]);
-    door(&mut p, 203, -0.5, &[100]);
+    p.recs.push(Rec::new(203, WINDOWS).at([10.0, -0.4, 9.0, 12.0, 0.4, 12.0], &[100, 601, 203]));
     let i = import(&p);
-    let doors: Vec<&String> = i.skipped.iter().filter(|s| s.contains("door") && s.contains("fit wall")).collect();
-    assert_eq!(doors.len(), 1, "{:?}", i.skipped);
-    assert!(doors[0].starts_with("2 doors left out, ") && doors[0].ends_with("(ids 201, 203)"), "{doors:?}");
+    let said: Vec<&String> = i.skipped.iter().filter(|s| s.contains("overruns its wall")).collect();
+    assert_eq!(said.len(), 1, "{:?}", i.skipped);
+    assert!(said[0].starts_with("2 openings: ") && said[0].ends_with("(ids 201, 203)"), "{said:?}");
+    assert_eq!(openings(&i).len(), 3);
 }
 
 #[test]

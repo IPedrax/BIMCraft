@@ -110,6 +110,8 @@ struct Pending {
     span: (f64, f64),
     height: f64,
     sill: f64,
+    /// Whether the hole was cut down to what its wall gives, its box overrunning it.
+    clamped: bool,
 }
 
 /// The most two neighbouring holes may overlap and be fitted, as a share of the narrower one: Revit lets windows overlap, BIMCraft
@@ -161,7 +163,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                         break;
                     }
                 }
-                let (host, host_id, width, offset, height, sill) = match fits.or(first) {
+                let (host, host_id, width, mut offset, mut height, sill) = match fits.or(first) {
                     Some(c) => c,
                     None => {
                         if let Some(why) = unreadable {
@@ -174,7 +176,25 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                         });
                     }
                 };
-                let _ = (host, cx.model.wall(host_id));
+                let _ = host;
+                let wall = cx.model.wall(host_id).ok_or("its host wall is gone")?;
+                // A box that overruns its wall — a door taller than the wall's box, a window past its end — comes in as far as
+                // the wall goes, and the note says so.
+                let (long, tall) = (wall.start.dist(wall.end), cx.model.top_z(wall) - cx.model.own_base(wall));
+                let width = if width > long { width.min(long) } else { width };
+                let overruns = (offset - width / 2.0) < -1.0 || (offset + width / 2.0) > long + 1.0 || sill + height > tall + 1.0;
+                if (offset - width / 2.0) < 0.0 {
+                    offset = width / 2.0;
+                }
+                if offset + width / 2.0 > long {
+                    offset = long - width / 2.0;
+                }
+                if sill + height > tall {
+                    height = tall - sill;
+                }
+                if width <= 0.0 || height <= 0.0 {
+                    return Err("its wall leaves no room for it".into());
+                }
                 let name = symbol_name(r, &symbols, g, category).unwrap_or_else(|| format!("Imported {label}"));
                 Ok(Pending {
                     id: r.id,
@@ -184,6 +204,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                     span: (offset - width / 2.0, offset + width / 2.0),
                     height,
                     sill,
+                    clamped: overruns,
                 })
             })();
             match read {
@@ -237,6 +258,9 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
             flip_hand: false,
             params: Default::default(),
         };
+        if p.clamped {
+            cx.note("opening", p.id, "its box overruns its wall, and it comes in as far as the wall goes");
+        }
         let (element, label) = if p.door { (Element::Door(opening), "Door") } else { (Element::Window(opening), "Window") };
         let id = cx.model.insert(element);
         cx.from.insert(id, format!("{label} {}", p.id));

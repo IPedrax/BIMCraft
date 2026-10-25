@@ -53,7 +53,7 @@ fn a_flat_roof_by_footprint_comes_in_with_its_courtyard_type_level_and_underside
 }
 
 #[test]
-fn a_roof_that_rises_or_is_not_by_footprint_is_left_out_with_the_reason() {
+fn a_roof_that_rises_comes_in_level_with_the_reason_and_one_not_by_footprint_is_left_out_with_it() {
     let mut p = with_roof_type(2024);
     // Taller than its type is thick: it rises.
     roof(&mut p, 100, PROFILE_ROOF, [0.0, 0.0, 12.0, 20.0, 10.0, 15.0]);
@@ -62,7 +62,8 @@ fn a_roof_that_rises_or_is_not_by_footprint_is_left_out_with_the_reason() {
     roof(&mut p, 101, 100, [0.0, 0.0, 12.0, 20.0, 10.0, 12.25]);
     rectangle(&mut p, 101, 210, [0.0, 0.0, 20.0, 10.0], 3.0, true);
     let i = import(&p);
-    assert!(roofs(&i).is_empty());
+    // A roof that rises comes in level, and the note says that its slopes are not read; one of another class is left out.
+    assert_eq!(roofs(&i).len(), 1, "{:?}", i.skipped);
     let said = |what: &str| i.skipped.iter().find(|s| s.contains(what)).cloned().unwrap_or_default();
     assert!(said("slopes are not read").contains("100"), "{:?}", i.skipped);
     assert!(said("not a roof by footprint").contains("101"));

@@ -217,7 +217,7 @@ fn type_name(f: &Facts, g: &Gathered, tid: u32) -> Option<String> {
 pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
     let types = f.types.get(&OST_WALLS).cloned().unwrap_or_default();
     let mut read: BTreeMap<u32, Option<LayeredType>> = BTreeMap::new();
-    let mut made: BTreeMap<u32, String> = BTreeMap::new();
+    let mut made: BTreeMap<(u32, i64), String> = BTreeMap::new();
     // The types with no compound structure at all (curtain walls, storefronts), and the thickness their own walls' boxes agree
     // on: a type whose walls disagree is not read as one plane, since that thickness would be our guessing.
     let mut panel: BTreeMap<u32, f64> = BTreeMap::new();
@@ -256,27 +256,34 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
         let wall = (|| -> Result<(Wall, String), (u32, String)> {
             let copies = g.data.get(&r.id).map(Vec::as_slice).unwrap_or_default();
             let (curve, _) = newest(copies, curve).ok_or_else(|| who("no location line the reader can read"))?;
+            let own_thickness = box_thickness(curve, &r.bbox).map(micron).filter(|t| *t >= 25.0);
             let (start, end, arc) = plan(curve).map_err(who)?;
             let flip = newest(copies, |b| wall_orientation(b, f.release)).map(|(o, _)| o.flip);
             let tid = unique_type(&r.refs, &types).ok_or_else(|| who("its record does not name one wall type"))?;
-            let typ = read.entry(tid).or_insert_with(|| layered_type(f, g, tid, OST_WALLS));
+            let read_type = read.entry(tid).or_insert_with(|| layered_type(f, g, tid, OST_WALLS));
             // A curtain wall or a storefront has no compound structure: it comes in as the plane its own box gives, and the note
-            // below says what of it is not read.
-            if typ.is_none()
-                && let Some(t) = panel.get(&tid)
-            {
-                // The name the file gives the type, or the one the importer gives a type it cannot name, as a floor's is.
-                let name = type_name(f, g, tid).unwrap_or_else(|| format!("Imported - {t}mm"));
-                *typ = Some(LayeredType { name: Some(name), layers: vec![Layer { thickness: *t, ..Layer::default() }], thickness: *t });
+            // below says what of it is not read. Whose walls agree on a thickness take that one; a type whose walls disagree (a
+            // roof's tilted panels) has each wall come in with its own, as its box gives it.
+            let agreed = panel.get(&tid).copied();
+            let mut local = None;
+            if read_type.is_none() {
+                let t = agreed.or(own_thickness);
+                if let Some(t) = t {
+                    // The name the file gives the type, or the one the importer gives a type it cannot name, as a floor's is.
+                    let name = type_name(f, g, tid).unwrap_or_else(|| "Imported".to_string());
+                    let name = if agreed.is_some() { name } else { format!("{name} - {t}mm") };
+                    local = Some(LayeredType { name: Some(name), layers: vec![Layer { thickness: t, ..Layer::default() }], thickness: t });
+                }
             }
-            let typ = typ.as_ref().filter(|t| t.thickness > 0.0).ok_or_else(|| who(&no_layers(f, g, tid)))?;
+            let typ = local.as_ref().or(read_type.as_ref()).filter(|t| t.thickness > 0.0).ok_or_else(|| who(&no_layers(f, g, tid)))?;
             let (base, top) = constraints(r, &f.elevations);
             let level = base.and_then(|b| cx.levels.get(&b).copied()).ok_or_else(|| who("it stands on no level"))?;
             let elevation = base.and_then(|b| f.elevations.get(&b).copied()).unwrap_or(0.0);
             let top_level = top
                 .filter(|t| f.elevations.get(t).is_some_and(|e| (e - r.bbox[5]).abs() * 304.8 <= 1.0 && *e > r.bbox[2]))
                 .and_then(|t| cx.levels.get(&t).copied());
-            let type_name = match made.get(&tid) {
+            let key = (tid, (typ.thickness * 1000.0).round() as i64);
+            let type_name = match made.get(&key) {
                 Some(n) => n.clone(),
                 None => {
                     let base = typ.name.clone().unwrap_or_else(|| format!("Imported - {}mm", typ.thickness));
@@ -286,7 +293,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                         |k| (k.thickness - typ.thickness).abs() < 0.05 && k.layers == typ.layers,
                         WallType { thickness: typ.thickness, layers: typ.layers.clone() },
                     );
-                    made.insert(tid, n.clone());
+                    made.insert(key, n.clone());
                     n
                 }
             };
@@ -307,7 +314,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 attach_base: None,
             };
             let note = if flip.is_none() { "side".to_string() } else { String::new() };
-            let note = if panel.contains_key(&tid) { "panels".to_string() } else { note };
+            let note = if agreed.is_some() || local.is_some() { "panels".to_string() } else { note };
             Ok((wall, note))
         })();
         match wall {
