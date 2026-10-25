@@ -1,7 +1,7 @@
 //! A sketch's curves closed into regions: what makes a boundary, and what is refused.
 
 use crate::project_fixture::arc_bytes;
-use crate::sketch::{Edge, MAX_EDGES, edge_of, from_edges, from_edges_open, from_edges_snapped};
+use crate::sketch::{Edge, MAX_EDGES, edge_of, from_edges, from_edges_closed, from_edges_open, from_edges_snapped};
 
 fn edge(a: (f64, f64), b: (f64, f64)) -> Edge {
     Edge { a, b, mid: Vec::new() }
@@ -87,6 +87,33 @@ fn a_curve_that_closes_nothing_is_left_out_and_the_loops_it_stands_in_still_clos
     assert_eq!((pieces.len(), dropped), (1, vec![4]));
     // Nothing closed at all: no floor.
     assert!(from_edges_open(&[edge((0.0, 0.0), (10.0, 0.0)), edge((10.0, 0.0), (10.0, 10.0))]).is_none());
+}
+
+#[test]
+fn a_sketch_left_open_closes_along_a_straight_line_between_its_ends() {
+    // A floor drawn with a side that stops short, as a hand-drawn sketch does: no snap closes it, and the closing line does.
+    let mut edges = polygon(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]);
+    edges[3].b = (0.0, 0.6);
+    assert!(from_edges(&edges).is_none() && from_edges_snapped(&edges).is_none() && from_edges_open(&edges).is_none());
+    let pieces = from_edges_closed(&edges).expect("the loop, closed by a straight line");
+    assert_eq!(pieces.len(), 1);
+    assert_eq!(pieces[0].outer.len(), 4, "the corner the closing line makes: {:?}", pieces[0].outer);
+    // A room's outline left open at one corner: the two ends are joined by a straight line, which is what the sketch means.
+    let edges = vec![
+        edge((0.0, 0.0), (10.0, 0.0)),
+        edge((10.0, 0.0), (10.0, 10.0)),
+        edge((10.0, 10.0), (2.0, 10.0)),
+        edge((2.0, 10.0), (0.0, 6.0)),
+    ];
+    let pieces = from_edges_closed(&edges).expect("closed");
+    assert_eq!(pieces.len(), 1);
+    assert!(pieces[0].outer.len() >= 5, "{:?}", pieces[0].outer);
+    // More ends open than a sketch has: damage, and nothing is guessed.
+    let mut edges = polygon(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]);
+    for k in 0..5 {
+        edges.push(edge((f64::from(k), -5.0), (f64::from(k), -4.0)));
+    }
+    assert!(from_edges_closed(&edges).is_none());
 }
 
 #[test]

@@ -49,13 +49,13 @@ fn what_the_inventory_cannot_make_a_level_of_is_listed() {
     let i = import(&p);
     assert_eq!(level_list(&i).iter().map(|l| l.0.as_str()).collect::<Vec<_>>(), ["Level 1"]);
     let says = |what: &str| i.skipped.iter().any(|s| s.contains(what));
-    assert!(says("inside other elements") && says("ids 11"), "{:?}", i.skipped);
+    assert!(says("it sits inside another element") && says("ids 11"), "{:?}", i.skipped);
     assert!(says("1 level") && says("no name"), "{:?}", i.skipped);
     assert!(says("Far away"), "a level past the model's limits is left out with the rule: {:?}", i.skipped);
     assert!(i.model.check().is_ok());
     // Each is a note that counts: `N kinds left out, why`, which the desktop adds up for its status line.
     let counted = |kind: &str, what: &str| i.skipped.iter().any(|s| s.starts_with(&format!("1 {kind} left out, ")) && s.contains(what));
-    assert!(counted("level", "inside other elements") && counted("level", "no name") && counted("level", "Far away"), "{:?}", i.skipped);
+    assert!(says("ids 11") && counted("level", "no name") && counted("level", "Far away"), "{:?}", i.skipped);
 }
 
 #[test]
@@ -71,7 +71,8 @@ fn a_file_that_is_not_a_project_is_refused_with_the_reason() {
     p.recs = vec![Rec::new(100, -2_000_011)];
     p.levels = vec![Lev::new(10, "Level 1", 0.0)];
     let i = import(&p);
-    assert!(i.model.elements.values().all(|e| matches!(e, Element::Level(_))), "a wall record with no data is not made into a wall");
+    // A wall record with no data comes in along its own box: it is a wall of the file, and the report says what was not read of it.
+    assert!(i.model.elements.values().any(|e| matches!(e, Element::Wall(_))), "a wall record with no data is still a wall");
 }
 
 #[test]

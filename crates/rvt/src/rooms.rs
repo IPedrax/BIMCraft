@@ -4,8 +4,8 @@
 //! is, from the levels its reference list names. BIMCraft finds a room's boundary from the walls round a point of it, so a room's
 //! **point** is a point of its record's box that the imported walls enclose: the middle of the box if they do, else the nearest
 //! point of a grid over the box that they do. The walls must enclose a region whose box is the room's box to within the walls'
-//! thickness (600 mm), or the room is left out and listed: a room that is open, or whose walls were not imported, has no region
-//! in BIMCraft, and nothing here draws its outline for it. Making the regions of a level is what costs, and a room tries a grid
+//! thickness (600 mm); a room no walls enclose (Revit's own not-enclosed room, or one bounded by room separation lines, which
+//! BIMCraft has none of) comes in at the middle of its box, and the report says so. Making the regions of a level is what costs, and a room tries a grid
 //! of points, so a level's faces are made once for all its rooms.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -66,8 +66,23 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
             let (base, _) = constraints(r, &f.elevations);
             let level = base.and_then(|b| cx.levels.get(&b).copied()).ok_or("it stands on no level")?;
             let all = faces.entry(level).or_insert_with(|| geom::faces(&cx.model.bounding_lines(level), TOL));
-            let point = point_in(all, r)
-                .ok_or("the walls imported do not enclose its box (curtain walls and room separation lines are not imported)")?;
+            // A room no walls enclose — Revit's own "not enclosed" room, or one whose sides are room separation lines, which BIMCraft
+            // has none of — comes in at the middle of its box: it is a room in the file, with a name and a number, and the plan
+            // draws whatever boundary the walls there make. The note says that.
+            let (point, enclosed) = match point_in(all, r) {
+                Some(p) => (p, true),
+                None => {
+                    let (lo, hi) = (point(r.bbox[0], r.bbox[1]), point(r.bbox[3], r.bbox[4]));
+                    (P2((lo.0 + hi.0) / 2.0, (lo.1 + hi.1) / 2.0), false)
+                }
+            };
+            if !enclosed {
+                cx.note(
+                    "room",
+                    r.id,
+                    "no walls enclose its box (Revit's own not-enclosed room, or one bounded by room separation lines, which BIMCraft has none of): it comes in at the middle of its box",
+                );
+            }
             let (number, name) = g.rooms.get(&r.id).cloned().unwrap_or_default();
             let name = if name.trim().is_empty() { "Room".to_string() } else { clip(&name) };
             Ok(Room { level, point, name, number: clip(&number), params: Default::default() })
@@ -77,7 +92,16 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 let id = cx.model.insert(Element::Room(room));
                 cx.from.insert(id, format!("Room {}", r.id));
             }
-            Err(why) => cx.left_out("room", r.id, &why),
+            Err(why) => {
+                if std::env::var("BIMCRAFT_DIAG_ROOMS").is_ok() {
+                    let (base, _) = constraints(r, &f.elevations);
+                    let level = base.and_then(|b| cx.levels.get(&b).copied());
+                    let walls = level.map(|l| cx.model.bounding_lines(l).len()).unwrap_or(0);
+                    let boxed = (point(r.bbox[0], r.bbox[1]), point(r.bbox[3], r.bbox[4]));
+                    eprintln!("room {} level {:?} walls {} box {:?}", r.id, level, walls, boxed);
+                }
+                cx.left_out("room", r.id, &why)
+            }
         }
     }
 }

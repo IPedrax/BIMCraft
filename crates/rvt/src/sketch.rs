@@ -293,6 +293,49 @@ pub fn from_edges_open(edges: &[Edge]) -> Option<(Vec<Piece>, Vec<usize>)> {
     Some((pieces(loops)?, dropped.into_iter().map(|i| g.source[i]).collect()))
 }
 
+/// The regions the curves close with the ends that do not meet joined by a straight line, or none where more than
+/// MAX_CLOSING ends are open (that is no sketch but damage), or where the lines they make still close nothing.
+pub fn from_edges_closed(edges: &[Edge]) -> Option<Vec<Piece>> {
+    if edges.len() < 3 {
+        return None;
+    }
+    let mut ends: Vec<(Pt, usize)> = Vec::new();
+    for e in edges {
+        for p in [e.a, e.b] {
+            match ends.iter_mut().find(|(q, _)| same(*q, p)) {
+                Some((_, n)) => *n += 1,
+                None => ends.push((p, 1)),
+            }
+        }
+    }
+    let dangling: Vec<Pt> = ends.iter().filter(|(_, n)| *n != 2).map(|(p, _)| *p).collect();
+    if dangling.is_empty() || dangling.len() > MAX_CLOSING || !dangling.len().is_multiple_of(2) {
+        return None;
+    }
+    // Nearest first, each end taken once: a sketch left open by a drawing's slip closes the short way.
+    let mut pairs: Vec<(f64, usize, usize)> = Vec::new();
+    for (i, a) in dangling.iter().enumerate() {
+        for (j, b) in dangling.iter().enumerate().skip(i + 1) {
+            pairs.push(((a.0 - b.0).hypot(a.1 - b.1), i, j));
+        }
+    }
+    pairs.sort_by(|x, y| x.0.total_cmp(&y.0));
+    let mut taken = vec![false; dangling.len()];
+    let mut all: Vec<Edge> = edges.to_vec();
+    for (_, i, j) in pairs {
+        if taken[i] || taken[j] {
+            continue;
+        }
+        taken[i] = true;
+        taken[j] = true;
+        all.push(Edge { a: dangling[i], b: dangling[j], mid: Vec::new() });
+    }
+    from_edges(&all)
+}
+
+/// The most ends a sketch may leave open for from_edges_closed to join: a floor or a roof has a handful, a hostile file more.
+const MAX_CLOSING: usize = 8;
+
 /// The regions the curves close, the ends that miss one another by less than [`SNAP_EPS`] taken for the one vertex they are, or
 /// none unless they close with no choice left.
 pub fn from_edges_snapped(edges: &[Edge]) -> Option<Vec<Piece>> {

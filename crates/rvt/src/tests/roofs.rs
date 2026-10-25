@@ -62,11 +62,11 @@ fn a_roof_that_rises_comes_in_level_with_the_reason_and_one_not_by_footprint_is_
     roof(&mut p, 101, 100, [0.0, 0.0, 12.0, 20.0, 10.0, 12.25]);
     rectangle(&mut p, 101, 210, [0.0, 0.0, 20.0, 10.0], 3.0, true);
     let i = import(&p);
-    // A roof that rises comes in level, and the note says that its slopes are not read; one of another class is left out.
-    assert_eq!(roofs(&i).len(), 1, "{:?}", i.skipped);
+    // A roof that rises comes in level, and one of another class as the footprint of its box: each says what of it is not read.
+    assert_eq!(roofs(&i).len(), 2, "{:?}", i.skipped);
     let said = |what: &str| i.skipped.iter().find(|s| s.contains(what)).cloned().unwrap_or_default();
     assert!(said("slopes are not read").contains("100"), "{:?}", i.skipped);
-    assert!(said("not a roof by footprint").contains("101"));
+    assert!(said("roof by face").contains("101"), "{:?}", i.skipped);
 }
 
 #[test]

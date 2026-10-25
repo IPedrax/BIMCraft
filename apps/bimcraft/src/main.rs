@@ -264,7 +264,8 @@ mod tests {
     fn what_the_reader_leaves_out_is_what_the_window_counts_as_left_out() {
         use bimcraft_rvt::project_fixture::{Lev, Project};
         let mut p = Project::new(2024);
-        // One level the reader keeps, one inside a family and one with no name: two left out.
+        // One level the reader keeps and one with no name: one left out. A level inside a family is named in the report as no
+        // project level, which is not the same as left out.
         p.levels = vec![
             Lev::new(10, "Level 1", 0.0),
             Lev { owner: Some(4321), ..Lev::new(11, "Inside", 5.0) },
@@ -272,7 +273,7 @@ mod tests {
         ];
         let imported = bimcraft_rvt::import(&p.file(), "house").unwrap();
         let left: usize = imported.skipped.iter().filter_map(|n| bimcraft_ui_egui::revit::count_left_out(n)).sum();
-        assert_eq!(left, 2, "{:?}", imported.skipped);
+        assert_eq!(left, 1, "{:?}", imported.skipped);
     }
 }
 

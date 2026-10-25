@@ -38,7 +38,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
     for (category, structural) in [(OST_COLUMNS, false), (OST_STRUCTURAL_COLUMNS, true)] {
         let symbols = f.symbols.get(&category).cloned().unwrap_or_default();
         for r in f.of_category(category) {
-            let made = (|| -> Result<Column, String> {
+            let made = (|| -> Result<(Column, bool), String> {
                 // A box that begins at the ground while the column starts higher: the geometry node has the truer bottom.
                 let mut r = r.clone();
                 if let Some(&bottom) = g.column_bottoms.get(&r.id) {
@@ -52,15 +52,25 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                     .filter(|t| f.elevations.get(t).is_some_and(|e| (e - r.bbox[5]).abs() * 304.8 <= 1.0 && *e > r.bbox[2]))
                     .and_then(|t| cx.levels.get(&t).copied());
                 // Turned by an angle that is no right angle: the symbol's envelope, which is the section before it is turned.
+                let mut fell_back = false;
                 let placed = g.data.get(&r.id).and_then(|c| newest(c, transform)).map(|(t, _)| t);
                 let angle = placed.and_then(|t| t.plan_angle()).map(f64::to_degrees).unwrap_or(0.0);
                 let quarter = (angle / 90.0 - (angle / 90.0).round()).abs() < 1e-6;
                 let (width, depth, at, angle) = match placed.filter(|_| !quarter) {
                     Some(t) => {
-                        let sym = symbol_of(r, &symbols, g, category)
-                            .and_then(|(id, _)| f.symbol_boxes.get(&id))
-                            .ok_or("it is turned and its family symbol's size is not known")?;
-                        (mm(sym[3] - sym[0]), mm(sym[4] - sym[1]), point(t.origin[0], t.origin[1]), micron(angle))
+                        // A turned column's box is the one round it, so a symbol whose size the file does not give comes in as its box.
+                        match symbol_of(r, &symbols, g, category).and_then(|(id, _)| f.symbol_boxes.get(&id)) {
+                            Some(sym) => (mm(sym[3] - sym[0]), mm(sym[4] - sym[1]), point(t.origin[0], t.origin[1]), micron(angle)),
+                            None => {
+                                fell_back = true;
+                                (
+                                    mm(r.bbox[3] - r.bbox[0]),
+                                    mm(r.bbox[4] - r.bbox[1]),
+                                    point((r.bbox[0] + r.bbox[3]) / 2.0, (r.bbox[1] + r.bbox[4]) / 2.0),
+                                    micron(angle),
+                                )
+                            }
+                        }
                     }
                     None => (
                         mm(r.bbox[3] - r.bbox[0]),
@@ -77,19 +87,22 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                     |t| (t.width - width).abs() < 0.05 && (t.depth - depth).abs() < 0.05 && !t.round,
                     ColumnType { width, depth, round: false },
                 );
-                Ok(Column {
-                    type_name,
-                    level,
-                    at,
-                    angle,
-                    top_level,
-                    height: mm(r.bbox[5] - r.bbox[2]),
-                    base_offset: micron(mm(r.bbox[2]) - mm(elevation)),
-                    params: Default::default(),
-                })
+                Ok((
+                    Column {
+                        type_name,
+                        level,
+                        at,
+                        angle,
+                        top_level,
+                        height: mm(r.bbox[5] - r.bbox[2]),
+                        base_offset: micron(mm(r.bbox[2]) - mm(elevation)),
+                        params: Default::default(),
+                    },
+                    fell_back,
+                ))
             })();
             match made {
-                Ok(column) => {
+                Ok((column, fell_back)) => {
                     let (element, label) = if structural {
                         (Element::StructuralColumn(column), "Structural column")
                     } else {
@@ -98,6 +111,9 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                     let id = cx.model.insert(element);
                     cx.from.insert(id, format!("{label} {}", r.id));
                     cx.note("column", r.id, "comes in as the rectangle of its box: the shape of its section is not read");
+                    if fell_back {
+                        cx.note("column", r.id, "it is turned, and its family symbol's size is not known: it comes in as its box, turned");
+                    }
                 }
                 Err(why) => cx.left_out("column", r.id, &why),
             }

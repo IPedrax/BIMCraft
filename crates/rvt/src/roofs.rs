@@ -1,22 +1,22 @@
 //! Roofs: by footprint, a sketched boundary, flat, at a level, of a type; and by extrusion, a profile swept across.
 //!
 //! A footprint roof (class `ProfileRoof`) is read as a floor or a ceiling is: the loops its sketch lines close, the one roof type
-//! its reference list names, the level it stands on and its underside, which is the bottom of its box. It comes in only where it
-//! is flat: its box is as tall as its type is thick. A roof that rises, whether its edges set a slope, its type is thick across a
-//! slope or it is sloped some other way, is left out and listed: the slope blocks of the edges (rvt-rs RE-56) are not read, since no
-//! roof of the samples this crate was checked against sets one.
+//! its reference list names, the level it stands on and its underside, which is the bottom of its box. A roof that rises, whether
+//! its edges set a slope, its type is thick across a slope or it is sloped some other way, comes in level at the bottom of its box,
+//! and the report says that its slopes are not read: the slope blocks of the edges (rvt-rs RE-56) are not read, since no roof of the
+//! samples this crate was checked against sets one.
 //!
 //! A roof by extrusion (class `Roof`) is its sketch's lines, which are the profile of its top: each line's data holds its two ends
 //! in model space (the bounded line of RE-49), so a profile in an upright plane square to an axis is read whole, and the box says how
 //! far it is swept. Its type is as thick as the type says square to each slope, cut plumb at the ends, which the box checks: a roof
 //! comes in only where the box its profile and its type make is the box the record holds (to a millimetre). Nothing of this is in
 //! rvt-rs (its notes list the roof by extrusion as not read); it is read from the bytes of Autodesk's sample, and the check is its
-//! record box. A roof of another class (by face) is left out and listed.
+//! record box. A roof of another class (by face, over a mass) comes in as the footprint of its own box, and the report says so.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use bimcraft_core::geom::P2;
-use bimcraft_core::model::{Element, Extrusion, Roof, RoofType};
+use bimcraft_core::model::{Element, Extrusion, Layer, Roof, RoofType};
 
 use crate::curves::first_line;
 use crate::data::newest;
@@ -68,7 +68,16 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                     cx.left_out("roof", r.id, &why);
                 }
             } else {
-                cx.left_out("roof", r.id, "it is not a roof by footprint or by extrusion (by face), which is not described");
+                // A roof by face - over a mass, say - has no sketch of floor-plan lines to close and no profile to sweep. It comes
+                // in as the footprint of its own box, and the note says that its face is not read.
+                match boxed(cx, f, g, r, name) {
+                    Ok(()) => cx.note(
+                        "roof",
+                        r.id,
+                        "it is a roof by face (over a mass, say), whose face is not read: it comes in as the footprint of its own box",
+                    ),
+                    Err(why) => cx.left_out("roof", r.id, &why),
+                }
             }
             continue;
         }
@@ -97,6 +106,36 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
             ),
         }
     }
+}
+
+/// A roof of `r` whose face is not read, as the footprint of its box: at the level its underside stands on, as
+/// thick as its type.
+fn boxed(
+    cx: &mut Import,
+    f: &Facts,
+    g: &Gathered,
+    r: &Record,
+    type_named: impl FnOnce(&mut Import, u32, &LayeredType) -> String,
+) -> Result<(), String> {
+    let types = f.types.get(&OST_ROOFS).cloned().unwrap_or_default();
+    let tid = unique_type(&r.refs, &types).unwrap_or(0);
+    let tall = mm(r.extent()[2]);
+    let typ = match layered_type(f, g, tid, OST_ROOFS).filter(|t| t.thickness > 0.0) {
+        Some(t) => t,
+        None => LayeredType { name: None, layers: vec![Layer { thickness: tall, ..Layer::default() }], thickness: tall },
+    };
+    let level = level_of(r, &f.elevations, r.bbox[2]).ok_or("it stands on no level")?;
+    let model_level = *cx.levels.get(&level).ok_or("it stands on no level")?;
+    let offset = micron(mm(r.bbox[2]) - mm(f.elevations.get(&level).copied().unwrap_or(0.0)));
+    let type_name = type_named(cx, tid, &typ);
+    let (x0, y0, x1, y1) = (r.bbox[0], r.bbox[1], r.bbox[3], r.bbox[4]);
+    if !(x1 - x0 > 0.0 && y1 - y0 > 0.0) {
+        return Err("its box has no footprint".into());
+    }
+    let roof = Roof { type_name, level: model_level, boundary: ring(&[(x0, y0), (x1, y0), (x1, y1), (x0, y1)]), offset, ..Roof::default() };
+    let id = cx.model.insert(Element::Roof(roof));
+    cx.from.insert(id, format!("Roof {}", r.id));
+    Ok(())
 }
 
 /// A roof by extrusion `r`: the chain of its sketch's lines is the profile of its top, swept across the box's width, as thick as its

@@ -187,6 +187,23 @@ fn no_layers(f: &Facts, g: &Gathered, tid: u32) -> String {
 /// How thick a wall's own box says its body is, in millimetres: the record box is the rectangle of the wall's line and its
 /// thickness, so the side across the line gives the thickness back. None for an arc, whose box is not that rectangle. A type with
 /// no compound structure (a curtain wall, a storefront) is read this way from the file rather than given a thickness of our own.
+/// A wall's line where its record holds none: the long side of its own box, through its middle, with the box's shorter side as its
+/// thickness. A box square in plan (or bigger in the other way) gives no line.
+fn box_line(bbox: &[f64; 6]) -> Option<Curve> {
+    let (dx, dy) = (bbox[3] - bbox[0], bbox[4] - bbox[1]);
+    if !dx.is_finite() || !dy.is_finite() || dx.abs().min(dy.abs()) <= 1e-6 {
+        return None;
+    }
+    let (cx, cy) = ((bbox[0] + bbox[3]) / 2.0, (bbox[1] + bbox[4]) / 2.0);
+    let z = (bbox[2] + bbox[5]) / 2.0;
+    let line = if dx >= dy {
+        BoundedLine { start_parameter: -dx / 2.0, end_parameter: dx / 2.0, origin: [cx, cy, z], direction: [1.0, 0.0, 0.0] }
+    } else {
+        BoundedLine { start_parameter: -dy / 2.0, end_parameter: dy / 2.0, origin: [cx, cy, z], direction: [0.0, 1.0, 0.0] }
+    };
+    Some(Curve::Line(line))
+}
+
 fn box_thickness(c: Curve, bbox: &[f64; 6]) -> Option<f64> {
     let Curve::Line(l) = c else { return None };
     let (a, b) = (l.start(), l.end());
@@ -255,11 +272,18 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
         let who = |why: &str| (r.id, why.to_string());
         let wall = (|| -> Result<(Wall, String), (u32, String)> {
             let copies = g.data.get(&r.id).map(Vec::as_slice).unwrap_or_default();
-            let (curve, _) = newest(copies, curve).ok_or_else(|| who("no location line the reader can read"))?;
+            // A wall whose record holds no location line — a family instance of the category, a trellis member — comes in along the
+            // long side of its own box, as a column comes in as the rectangle of its box, and the note says so.
+            let (curve, from_box) = match newest(copies, curve) {
+                Some((read, _)) => (read, false),
+                None => (box_line(&r.bbox).ok_or_else(|| who("no location line the reader can read, and no box to read one from"))?, true),
+            };
             let own_thickness = box_thickness(curve, &r.bbox).map(micron).filter(|t| *t >= 25.0);
             let (start, end, arc) = plan(curve).map_err(who)?;
             let flip = newest(copies, |b| wall_orientation(b, f.release)).map(|(o, _)| o.flip);
-            let tid = unique_type(&r.refs, &types).ok_or_else(|| who("its record does not name one wall type"))?;
+            // A wall that names no type of the wall category (a family instance, an imported object of the category) comes in with a
+            // type of its own, as thick as its box says; the note below says so.
+            let tid = unique_type(&r.refs, &types).unwrap_or(0);
             let read_type = read.entry(tid).or_insert_with(|| layered_type(f, g, tid, OST_WALLS));
             // A curtain wall or a storefront has no compound structure: it comes in as the plane its own box gives, and the note
             // below says what of it is not read. Whose walls agree on a thickness take that one; a type whose walls disagree (a
@@ -313,7 +337,15 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 attach_top: None,
                 attach_base: None,
             };
-            let note = if flip.is_none() { "side".to_string() } else { String::new() };
+            let note = if tid == 0 {
+                "no_type".to_string()
+            } else if from_box {
+                "from_box".to_string()
+            } else if flip.is_none() {
+                "side".to_string()
+            } else {
+                String::new()
+            };
             let note = if agreed.is_some() || local.is_some() { "panels".to_string() } else { note };
             Ok((wall, note))
         })();
@@ -324,6 +356,16 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 cx.walls.insert(r.id, id);
                 match note.as_str() {
                     "side" => cx.note("wall", r.id, "the data does not say which side is the exterior: kept as drawn"),
+                    "no_type" => cx.note(
+                        "wall",
+                        r.id,
+                        "its record names no type of the wall category: it comes in with a type of its own, as thick as its own box says",
+                    ),
+                    "from_box" => cx.note(
+                        "wall",
+                        r.id,
+                        "its record holds no location line (a family instance of the wall category): it comes in along the long side of its own box, as a column comes in as the rectangle of its box",
+                    ),
                     "panels" => cx.note(
                         "wall",
                         r.id,

@@ -4,9 +4,11 @@
 //! outer loop and the voids in it. Its **type** is the one floor type its reference list names, its layers from the top down
 //! and its thickness the layers' sum. Its **level** is the one level the list names, else the highest level at or below the
 //! top of its box, and its **offset** is how far the top of its box is above that level. A floor is flat only where its box is
-//! as tall as its type is thick: a taller box is a sloped or a stepped floor, which the reader does not describe, so it is
-//! left out and listed. A sketch of several separate loops makes several floors. A ceiling is read the same way, its level and
-//! its offset those of the bottom of its box, its underside.
+//! as tall as its type is thick: a taller box is a sloped or a stepped floor, whose slopes are not read, so it comes in level at
+//! the bottom of its box, and the report says so. A sketch of several separate loops makes several floors. A sketch whose ends do
+//! not meet, or whose loops cross, still makes a floor — its ends joined by a straight line, or else the footprint of its own box
+//! — and the report says which. A type with no layers has no thickness of its own: the box's height is taken for it. A ceiling is
+//! read the same way, its level and its offset those of the bottom of its box, its underside.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -17,7 +19,7 @@ use crate::data::newest;
 use crate::import::{Facts, Import, kind, micron, mm, point};
 use crate::inventory::Gathered;
 use crate::records::Record;
-use crate::sketch::{Piece, edge_of, from_boxes, from_edges, from_edges_open, from_edges_snapped};
+use crate::sketch::{Edge, Piece, edge_of, from_boxes, from_edges, from_edges_closed, from_edges_open, from_edges_snapped};
 use crate::types::unique_type;
 use crate::walls::{LayeredType, layered_type, level_at_or_below, named_levels};
 
@@ -64,23 +66,48 @@ pub(crate) struct Regions {
     pub pieces: Vec<Piece>,
     /// The sketch lines that close nothing and are left out: a line floating inside a floor's outline, as the samples have.
     pub dangling: Vec<u32>,
+    /// Whether the sketch was left open and its ends joined by a straight line.
+    pub closed: bool,
+    /// Whether its lines close no boundary at all, so that it comes in as the footprint of its own box.
+    pub boxed: bool,
 }
 
-/// The regions a sketched element's lines close, read from their data where every line has a curve and else from their boxes.
-pub(crate) fn regions(lines: &[&Record], g: &Gathered) -> Option<Regions> {
-    let edges: Option<Vec<_>> =
-        lines.iter().map(|l| g.data.get(&l.id).and_then(|c| newest(c, |b| edge_of(b, &l.bbox))).map(|(e, _)| e)).collect();
-    if let Some(pieces) = edges.as_ref().and_then(|e| from_edges(e)).or_else(|| edges.as_ref().and_then(|e| from_edges_snapped(e))) {
-        return Some(Regions { pieces, dangling: Vec::new() });
+/// The regions a sketched element's lines close, read from their data, and where a line's data holds no curve, from the lines
+/// that do: a line the reader cannot read bounds nothing, and the loops its neighbours make still close.
+pub(crate) fn regions(lines: &[&Record], g: &Gathered, bbox: &[f64; 6]) -> Option<Regions> {
+    let mut edges: Vec<Edge> = Vec::with_capacity(lines.len());
+    let mut unread: Vec<u32> = Vec::new();
+    for l in lines {
+        match g.data.get(&l.id).and_then(|c| newest(c, |b| edge_of(b, &l.bbox))) {
+            Some((e, _)) => edges.push(e),
+            None => unread.push(l.id),
+        }
     }
+    if let Some(pieces) = from_edges(&edges).or_else(|| from_edges_snapped(&edges)) {
+        return Some(Regions { pieces, dangling: unread, closed: false, boxed: false });
+    }
+    // The boxes of the lines make the boundary where their data does not: nothing of them is left out then.
     let boxes: Vec<[f64; 4]> = lines.iter().map(|l| [l.bbox[0], l.bbox[1], l.bbox[3], l.bbox[4]]).collect();
     if let Some(pieces) = from_boxes(&boxes) {
-        return Some(Regions { pieces, dangling: Vec::new() });
+        return Some(Regions { pieces, dangling: Vec::new(), closed: false, boxed: false });
     }
     // A curve that closes nothing is not a boundary: the loops it stands in still close.
-    let (pieces, dropped) = from_edges_open(edges.as_ref()?)?;
-    let dangling = dropped.iter().filter_map(|i| lines.get(*i).map(|l| l.id)).collect();
-    Some(Regions { pieces, dangling })
+    if let Some((pieces, dropped)) = from_edges_open(&edges) {
+        let mut dangling = unread;
+        dangling.extend(dropped.iter().filter_map(|i| lines.get(*i).map(|l| l.id)));
+        return Some(Regions { pieces, dangling, closed: false, boxed: false });
+    }
+    // A sketch left open (a gap no snap closes): its ends are joined by a straight line, and the note says so.
+    if let Some(pieces) = from_edges_closed(&edges) {
+        return Some(Regions { pieces, dangling: unread, closed: true, boxed: false });
+    }
+    // No boundary at all: the footprint of the element's own box, which is what the file says of it and all that is left to read.
+    let (lo, hi) = ((bbox[0], bbox[1]), (bbox[3], bbox[4]));
+    if !(hi.0 > lo.0 && hi.1 > lo.1) {
+        return None;
+    }
+    let outer = vec![(lo.0, lo.1), (hi.0, lo.1), (hi.0, hi.1), (lo.0, hi.1)];
+    Some(Regions { pieces: vec![Piece { outer, holes: Vec::new() }], dangling: unread, closed: false, boxed: true })
 }
 
 /// A loop of feet as millimetres, to the micron, with the points that fall together dropped.
@@ -150,11 +177,17 @@ pub(crate) fn sketched(
         _ => "roof",
     };
     let lines = sketches.get(&r.id).ok_or("it has no sketch lines")?;
-    let Regions { pieces, dangling } = regions(lines, g).ok_or("its sketch lines do not close into a boundary")?;
+    let Regions { pieces, dangling, closed, boxed } = regions(lines, g, &r.bbox).ok_or("its sketch lines do not close into a boundary")?;
     if !dangling.is_empty() {
         let ids: Vec<String> = dangling.iter().map(u32::to_string).collect();
         let plural = if ids.len() == 1 { "line" } else { "lines" };
         cx.note(what, r.id, &format!("{} sketch {plural} close nothing and are left out (ids {})", ids.len(), ids.join(", ")));
+    }
+    if boxed {
+        cx.note(what, r.id, "its sketch lines close no boundary the reader can follow: it comes in as the footprint of its own box");
+    }
+    if closed {
+        cx.note(what, r.id, "its sketch lines do not close: the ends that do not meet are joined by a straight line");
     }
     let tid = unique_type(&r.refs, &types).ok_or_else(|| format!("its record does not name one {what} type"))?;
     let tall = mm(r.extent()[2]);

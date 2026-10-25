@@ -124,13 +124,25 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
     for (category, label) in [(OST_DOORS, "door"), (OST_WINDOWS, "window")] {
         let symbols = f.symbols.get(&category).cloned().unwrap_or_default();
         for r in f.of_category(category) {
-            let read = (|| -> Result<Pending, String> {
+            let read = (|| -> Result<Option<Pending>, String> {
                 let named = candidates(r, &walls);
                 if named.is_empty() {
+                    // A window set in a roof or a floor is a skylight: BIMCraft's windows stand in walls, and it has no opening
+                    // for another plane. It is named in the report, not left out of it.
+                    let planes = [crate::roofs::OST_ROOFS, crate::floors::OST_FLOORS, crate::floors::OST_CEILINGS];
+                    if planes.iter().any(|c| f.of_category(*c).any(|o| r.refs.contains(&u64::from(o.id)))) {
+                        cx.note(
+                            label,
+                            r.id,
+                            "it is set in a roof or a floor (a skylight), and BIMCraft's windows stand in walls: what of it is there is not read",
+                        );
+                        return Ok(None);
+                    }
                     return Err("its record names no wall".into());
                 }
-                // The host is the nearest wall the list names that the opening fits in; failing that, the nearest it names at
-                // all, so that the model's rule says why (a door that hangs off the end of its wall, say).
+                // The host is the nearest wall the list names (rvt-rs RE-23, RE-85) that the opening fits in; failing one, the
+                // nearest it names, and then the hole is cut down to what that wall gives. A wall whose box cuts the opening
+                // short is the file's own inconsistency: Revit draws the frame a little past the wall's box.
                 let mut first: Option<(u32, bimcraft_core::model::Id, f64, f64, f64, f64)> = None;
                 let mut fits = None;
                 let mut unreadable: Option<String> = None;
@@ -150,20 +162,17 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                     let height = micron(mm(r.bbox[5]) - mm(r.bbox[2]));
                     let sill = micron(mm(r.bbox[2]) - cx.model.own_base(wall));
                     let sill = if (-2.0..2.0).contains(&sill) { 0.0 } else { sill };
-                    let fits_here = offset - width / 2.0 >= -1.0
-                        && offset + width / 2.0 <= wall.start.dist(wall.end) + 1.0
-                        && sill >= 0.0
-                        && cx.model.own_base(wall) + sill + height <= cx.model.top_z(wall) + 1.0;
+                    let (long, tall) = (wall.start.dist(wall.end), cx.model.top_z(wall) - cx.model.own_base(wall));
+                    let fits_here =
+                        offset - width / 2.0 >= -1.0 && offset + width / 2.0 <= long + 1.0 && sill >= 0.0 && sill + height <= tall + 1.0;
                     let candidate = (*host, host_id, width, offset, height, sill);
-                    if first.is_none() {
-                        first = Some(candidate);
-                    }
+                    first.get_or_insert(candidate);
                     if fits_here {
                         fits = Some(candidate);
                         break;
                     }
                 }
-                let (host, host_id, width, mut offset, mut height, sill) = match fits.or(first) {
+                let (host, host_id, width, mut offset, height, sill) = match fits.or(first) {
                     Some(c) => c,
                     None => {
                         if let Some(why) = unreadable {
@@ -178,25 +187,22 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 };
                 let _ = host;
                 let wall = cx.model.wall(host_id).ok_or("its host wall is gone")?;
-                // A box that overruns its wall — a door taller than the wall's box, a window past its end — comes in as far as
-                // the wall goes, and the note says so.
                 let (long, tall) = (wall.start.dist(wall.end), cx.model.top_z(wall) - cx.model.own_base(wall));
-                let width = if width > long { width.min(long) } else { width };
+                let sill = sill.max(0.0);
                 let overruns = (offset - width / 2.0) < -1.0 || (offset + width / 2.0) > long + 1.0 || sill + height > tall + 1.0;
-                if (offset - width / 2.0) < 0.0 {
+                let width = width.min(long);
+                if offset - width / 2.0 < 0.0 {
                     offset = width / 2.0;
                 }
                 if offset + width / 2.0 > long {
                     offset = long - width / 2.0;
                 }
-                if sill + height > tall {
-                    height = tall - sill;
-                }
+                let height = height.min((tall - sill).max(0.0));
                 if width <= 0.0 || height <= 0.0 {
-                    return Err("its wall leaves no room for it".into());
+                    return Err(format!("its host wall {host} leaves no room for it"));
                 }
                 let name = symbol_name(r, &symbols, g, category).unwrap_or_else(|| format!("Imported {label}"));
-                Ok(Pending {
+                Ok(Some(Pending {
                     id: r.id,
                     door: label == "door",
                     host: host_id,
@@ -205,10 +211,11 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                     height,
                     sill,
                     clamped: overruns,
-                })
+                }))
             })();
             match read {
-                Ok(p) => pending.push(p),
+                Ok(Some(p)) => pending.push(p),
+                Ok(None) => {}
                 Err(why) => cx.left_out(label, r.id, &why),
             }
         }

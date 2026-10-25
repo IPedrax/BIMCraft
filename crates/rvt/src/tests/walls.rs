@@ -236,15 +236,13 @@ fn a_wall_the_reader_cannot_describe_is_left_out_with_the_reason_and_the_others_
     p.recs.push(Rec::new(106, WALLS).at([0.0, 0.0, 0.0, 5.0, 0.3, 0.0], &[10, 11, 500, 106]));
     p.recs.push(Rec { placed: false, ..Rec::new(107, WALLS).at([0.0, 0.0, 0.0, 5.0, 0.3, 10.0], &[10, 11, 500, 107]) });
     let i = import(&p);
-    assert_eq!(walls(&i).len(), 2, "{:?}", i.skipped);
+    assert_eq!(walls(&i).len(), 5, "{:?}", i.skipped);
     let said = |what: &str| i.skipped.iter().find(|s| s.contains(what)).cloned().unwrap_or_default();
-    assert!(
-        said("no location line the reader can read").contains("1 wall left out") && said("no location line").contains("101"),
-        "{:?}",
-        i.skipped
-    );
+    // A wall with no location line comes in along its own box; one whose line is not level is left out.
+    assert!(said("no location line").contains("101") && said("long side of its own box").contains("101"), "{:?}", i.skipped);
     assert!(said("not level").contains("102"));
-    assert!(said("does not name one wall type").contains("2 walls") && said("does not name one wall type").contains("103, 104"));
+    // Its type holds a name and no layers: a curtain wall or a storefront, which comes in as the plane its own box gives.
+    assert!(said("its type has no layers").contains("103, 104"), "{:?}", i.skipped);
     // A type with no layers at all is a curtain wall or a storefront: it comes in as the plane its own box gives.
     assert!(said("comes in as the plane").contains("105"), "{:?}", i.skipped);
     assert!(

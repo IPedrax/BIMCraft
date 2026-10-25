@@ -90,13 +90,14 @@ fn a_column_turned_off_the_axes_takes_its_symbols_size_and_its_placements_angle_
     let [(_, c)] = columns(&i)[..] else { panic!("{:?}", i.skipped) };
     assert_eq!(c.angle, 0.0);
     assert_eq!(i.model.types.structural_column["Concrete"].width, 609.6);
-    // Turned, with a symbol whose size is not known: left out.
+    // Turned, with a symbol whose size is not known: it comes in as its box, turned, and says so.
     let mut r = project(2024, STRUCTURAL);
     r.names.clear();
     column(&mut r, STRUCTURAL, 100);
     r.data.push(Block { id: 100, payload: transform_bytes(0.5, [10.0, 5.0, 0.0]) });
     let i = import(&r);
-    assert!(columns(&i).is_empty() && i.skipped.iter().any(|s| s.contains("family symbol's size is not known")), "{:?}", i.skipped);
+    let [(_, c)] = columns(&i)[..] else { panic!("{:?}", i.skipped) };
+    assert!(c.angle != 0.0 && i.skipped.iter().any(|s| s.contains("family symbol's size is not known")), "{:?}", i.skipped);
 }
 
 #[test]

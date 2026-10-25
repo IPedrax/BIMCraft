@@ -192,10 +192,10 @@ fn a_floor_the_reader_cannot_describe_comes_in_flat_with_the_reason_or_is_left_o
     let i = import(&p);
     // A floor the reader cannot describe still comes in where the file says enough: level, sloped or stepped, and as thick as its
     // own box; what it cannot read at all is left out with the reason.
-    assert_eq!(floors(&i).len(), 3, "{:?}", i.skipped);
+    assert_eq!(floors(&i).len(), 4, "{:?}", i.skipped);
     let said = |what: &str| i.skipped.iter().find(|s| s.contains(what)).cloned().unwrap_or_default();
     assert!(said("sloped or stepped").contains("101") && said("comes in level").contains("101"), "{:?}", i.skipped);
-    assert!(said("do not close").contains("102"));
+    assert!(said("do not close").contains("102") && said("joined by a straight line").contains("102"));
     assert!(said("no sketch lines").contains("103"));
     assert!(said("does not name one floor type").contains("104"));
     assert!(said("no layers").contains("105") && said("as thick as its own box").contains("105"));
@@ -209,10 +209,12 @@ fn a_sketch_of_separate_loops_makes_a_floor_for_each() {
     let i = import(&p);
     assert_eq!(floors(&i).len(), 2, "{:?}", i.skipped);
     assert!(i.skipped.iter().any(|s| s.contains("separate loops") && s.contains("100")));
-    // A loop that crosses another is no region.
+    // A loop that crosses another is no region the reader can follow: the floor comes in as the footprint of its box, and says so.
     let mut q = floor_with_hole(2024, true);
     rectangle(&mut q, 100, 220, [8.0, 5.0, 12.0, 8.0], 0.0, true);
-    assert!(floors(&import(&q)).is_empty());
+    let i = import(&q);
+    assert_eq!(floors(&i).len(), 1, "{:?}", i.skipped);
+    assert!(i.skipped.iter().any(|s| s.contains("footprint of its own box") && s.contains("100")), "{:?}", i.skipped);
 }
 
 #[test]
@@ -247,7 +249,11 @@ fn the_floors_and_ceilings_of_the_architectural_sample_are_those_of_rvt_rss_expo
                 theirs.id
             );
             let net = area(&fl.boundary).abs() - fl.openings.iter().map(|o| area(o).abs()).sum::<f64>();
-            assert!((net / 1e6 - theirs.area).abs() < 0.005, "floor {}: {} m2 against {}", theirs.id, net / 1e6, theirs.area);
+            // A floor whose sketch does not close comes in as the footprint of its box, which is not the area another reader has
+            // of it: it is compared to within its own outline's error, and the report says what of it is not read.
+            let boxed = i.skipped.iter().any(|s| s.contains("footprint of its own box") && s.contains(&theirs.id.to_string()));
+            let slack = if boxed { 0.1 * theirs.area } else { 0.005 };
+            assert!((net / 1e6 - theirs.area).abs() < slack, "floor {}: {} m2 against {}", theirs.id, net / 1e6, theirs.area);
         }
         for theirs in &RAC_CEILINGS {
             let found = find("Ceiling", theirs.id);
@@ -269,7 +275,9 @@ fn the_structural_samples_five_floors_come_in_at_every_release() {
     use super::rvt_rs::RST_FLOORS;
     for path in super::samples() {
         let (i, from) = crate::import_path_with_origins(&path, "x").unwrap();
-        assert_eq!(floors(&i).len(), 5, "{}: {:?}", path.display(), i.skipped);
+        // Five floors of the file are the ones a second reader writes (rvt-rs); a floor whose sketch does not close comes in too,
+        // as the footprint of its box, and the report says so, so the count is five or more.
+        assert!(floors(&i).len() >= 5, "{}: {:?}", path.display(), i.skipped);
         for theirs in &RST_FLOORS {
             let (m, fl) = floors(&i)
                 .into_iter()
@@ -280,7 +288,11 @@ fn the_structural_samples_five_floors_come_in_at_every_release() {
             let bottom = top - i.model.types.floor[&fl.type_name].thickness;
             assert!((top - theirs.top).abs() < 0.11 && (bottom - theirs.bottom).abs() < 0.11, "floor {} of {}", theirs.id, path.display());
             let net = area(&fl.boundary).abs() - fl.openings.iter().map(|o| area(o).abs()).sum::<f64>();
-            assert!((net / 1e6 - theirs.area).abs() < 0.005, "floor {}: {} m2 against {}", theirs.id, net / 1e6, theirs.area);
+            // A floor whose sketch does not close comes in as the footprint of its box, which is not the area another reader has
+            // of it: it is compared to within its own outline's error, and the report says what of it is not read.
+            let boxed = i.skipped.iter().any(|s| s.contains("footprint of its own box") && s.contains(&theirs.id.to_string()));
+            let slack = if boxed { 0.1 * theirs.area } else { 0.005 };
+            assert!((net / 1e6 - theirs.area).abs() < slack, "floor {}: {} m2 against {}", theirs.id, net / 1e6, theirs.area);
         }
     }
 }
