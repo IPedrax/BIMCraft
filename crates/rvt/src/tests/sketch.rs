@@ -1,7 +1,7 @@
 //! A sketch's curves closed into regions: what makes a boundary, and what is refused.
 
 use crate::project_fixture::arc_bytes;
-use crate::sketch::{Edge, MAX_EDGES, edge_of, from_edges};
+use crate::sketch::{Edge, MAX_EDGES, edge_of, from_edges, from_edges_open, from_edges_snapped};
 
 fn edge(a: (f64, f64), b: (f64, f64)) -> Edge {
     Edge { a, b, mid: Vec::new() }
@@ -67,6 +67,41 @@ fn an_arcs_record_is_read_as_its_arc_where_the_line_it_also_reads_as_falls_insid
     let straight = crate::project_fixture::line_bytes(0.0, 2.0, [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]);
     let edge = edge_of(&straight, &[1.0, 1.0, 0.0, 1.0, 3.0, 0.0]).expect("the line");
     assert_eq!((edge.a, edge.b), ((1.0, 1.0), (1.0, 3.0)));
+}
+
+#[test]
+fn a_curve_that_closes_nothing_is_left_out_and_the_loops_it_stands_in_still_close() {
+    // The structural sample's floors have a line floating inside their rectangle (a sketch line that bounds nothing).
+    let mut edges = polygon(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]);
+    assert!(from_edges(&edges).is_some());
+    edges.push(edge((2.0, 2.0), (2.0, 8.0)));
+    assert!(from_edges(&edges).is_none(), "a curve that closes nothing is no boundary");
+    let (pieces, dropped) = from_edges_open(&edges).expect("the rectangle");
+    assert_eq!(dropped, vec![4]);
+    assert_eq!(pieces.len(), 1);
+    assert_eq!(pieces[0].outer.len(), 4);
+    // A ring and a stray line beside it: the ring, and the line dropped.
+    let mut edges = polygon(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]);
+    edges.push(edge((30.0, 30.0), (30.0, 40.0)));
+    let (pieces, dropped) = from_edges_open(&edges).expect("the rectangle");
+    assert_eq!((pieces.len(), dropped), (1, vec![4]));
+    // Nothing closed at all: no floor.
+    assert!(from_edges_open(&[edge((0.0, 0.0), (10.0, 0.0)), edge((10.0, 0.0), (10.0, 10.0))]).is_none());
+}
+
+#[test]
+fn ends_that_miss_by_a_fraction_of_a_millimetre_still_close_the_loop() {
+    // The Snowdon sample has a floor whose two ends miss by 0.06 mm (0.0002 ft): a drawing's rounding, not a gap.
+    let mut edges = polygon(&[(0.0, 0.0), (30.0, 0.0), (30.0, 40.0), (0.0, 40.0)]);
+    edges[3].b = (0.0002, -0.0001);
+    assert!(from_edges(&edges).is_none(), "a miss is not a vertex");
+    let pieces = from_edges_snapped(&edges).expect("the loop, its ends snapped");
+    assert_eq!(pieces.len(), 1);
+    assert_eq!(pieces[0].outer.len(), 4);
+    // A gap of a centimetre is a gap.
+    let mut edges = polygon(&[(0.0, 0.0), (30.0, 0.0), (30.0, 40.0), (0.0, 40.0)]);
+    edges[3].b = (0.03, 0.0);
+    assert!(from_edges_snapped(&edges).is_none());
 }
 
 #[test]

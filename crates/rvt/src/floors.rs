@@ -17,7 +17,7 @@ use crate::data::newest;
 use crate::import::{Facts, Import, kind, micron, mm, point};
 use crate::inventory::Gathered;
 use crate::records::Record;
-use crate::sketch::{Piece, edge_of, from_boxes, from_edges};
+use crate::sketch::{Piece, edge_of, from_boxes, from_edges, from_edges_open, from_edges_snapped};
 use crate::types::unique_type;
 use crate::walls::{layered_type, level_at_or_below, named_levels};
 
@@ -59,13 +59,28 @@ pub(crate) fn wanted(f: &Facts, out: &mut BTreeSet<u32>) {
     out.extend(f.types.get(&OST_CEILINGS).into_iter().flatten());
 }
 
+/// What a sketched element's lines close.
+pub(crate) struct Regions {
+    pub pieces: Vec<Piece>,
+    /// The sketch lines that close nothing and are left out: a line floating inside a floor's outline, as the samples have.
+    pub dangling: Vec<u32>,
+}
+
 /// The regions a sketched element's lines close, read from their data where every line has a curve and else from their boxes.
-pub(crate) fn regions(lines: &[&Record], g: &Gathered) -> Option<Vec<Piece>> {
+pub(crate) fn regions(lines: &[&Record], g: &Gathered) -> Option<Regions> {
     let edges: Option<Vec<_>> =
         lines.iter().map(|l| g.data.get(&l.id).and_then(|c| newest(c, |b| edge_of(b, &l.bbox))).map(|(e, _)| e)).collect();
-    edges
-        .and_then(|e| from_edges(&e))
-        .or_else(|| from_boxes(&lines.iter().map(|l| [l.bbox[0], l.bbox[1], l.bbox[3], l.bbox[4]]).collect::<Vec<_>>()))
+    if let Some(pieces) = edges.as_ref().and_then(|e| from_edges(e)).or_else(|| edges.as_ref().and_then(|e| from_edges_snapped(e))) {
+        return Some(Regions { pieces, dangling: Vec::new() });
+    }
+    let boxes: Vec<[f64; 4]> = lines.iter().map(|l| [l.bbox[0], l.bbox[1], l.bbox[3], l.bbox[4]]).collect();
+    if let Some(pieces) = from_boxes(&boxes) {
+        return Some(Regions { pieces, dangling: Vec::new() });
+    }
+    // A curve that closes nothing is not a boundary: the loops it stands in still close.
+    let (pieces, dropped) = from_edges_open(edges.as_ref()?)?;
+    let dangling = dropped.iter().filter_map(|i| lines.get(*i).map(|l| l.id)).collect();
+    Some(Regions { pieces, dangling })
 }
 
 /// A loop of feet as millimetres, to the micron, with the points that fall together dropped.
@@ -135,7 +150,12 @@ pub(crate) fn sketched(
         _ => "roof",
     };
     let lines = sketches.get(&r.id).ok_or("it has no sketch lines")?;
-    let pieces = regions(lines, g).ok_or("its sketch lines do not close into a boundary")?;
+    let Regions { pieces, dangling } = regions(lines, g).ok_or("its sketch lines do not close into a boundary")?;
+    if !dangling.is_empty() {
+        let ids: Vec<String> = dangling.iter().map(u32::to_string).collect();
+        let plural = if ids.len() == 1 { "line" } else { "lines" };
+        cx.note(what, r.id, &format!("{} sketch {plural} close nothing and are left out (ids {})", ids.len(), ids.join(", ")));
+    }
     let tid = unique_type(&r.refs, &types).ok_or_else(|| format!("its record does not name one {what} type"))?;
     let typ = layered_type(f, g, tid, category).filter(|t| t.thickness > 0.0).ok_or("its type has no layers the reader can read")?;
     let tall = mm(r.extent()[2]);
