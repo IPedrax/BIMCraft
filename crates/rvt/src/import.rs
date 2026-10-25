@@ -284,6 +284,15 @@ fn attached(cx: &mut Import, facts: &Facts) {
         let roof = r.refs.iter().filter_map(|v| u32::try_from(*v).ok()).find_map(|n| cx.roofs.get(&n).copied());
         let Some(roof) = roof else { continue };
         let guid = cx.model.guid(roof);
+        // The roof must leave it something: one whose underside over the wall's middle is below its base cuts it away, and such a
+        // wall keeps its own box.
+        let Some(bimcraft_core::model::Element::Wall(w)) = cx.model.elements.get(id) else { continue };
+        let axis = bimcraft_core::walls::Axis::of(w);
+        let room = bimcraft_core::walls::underside(&cx.model, roof, axis.at(axis.length() / 2.0, 0.0)).unwrap_or(cx.model.own_top(w));
+        if room <= cx.model.own_base(w) + 1.0 {
+            cx.note("wall", r.id, "the roof it names leaves it no height: it comes in as its own box");
+            continue;
+        }
         if let Some(bimcraft_core::model::Element::Wall(w)) = cx.model.elements.get_mut(id) {
             w.attach_top = Some(guid);
             cx.note("wall", r.id, "its top follows the roof it names: it comes in cut by the roof's underside");
