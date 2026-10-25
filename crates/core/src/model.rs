@@ -3597,8 +3597,9 @@ impl Model {
                     // Up to the wall's top over it, which a roof it's attached to may raise.
                     let top = [a, o.offset, b].map(|s| crate::walls::top_at(self, w, s)).into_iter().fold(f64::INFINITY, f64::min);
                     if o.sill < 0.0 || self.own_base(w) + o.sill + t.height > top + TOL {
+                        let room = top - self.own_base(w);
                         return Err(format!(
-                            "{who}: sill {} + height {} doesn't fit wall {}'s height",
+                            "{who}: sill {} + height {} doesn't fit wall {}'s height, {room} mm",
                             o.sill,
                             t.height,
                             self.shown(o.host)

@@ -127,21 +127,54 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 if named.is_empty() {
                     return Err("its record names no wall".into());
                 }
-                let host = *named
-                    .iter()
-                    .find(|w| !cx.curtain.contains(w))
-                    .ok_or("its host is a curtain wall, which BIMCraft has no element for")?;
-                let host_id = *cx.walls.get(&host).ok_or_else(|| format!("its host wall {host} was left out"))?;
-                let wall = cx.model.wall(host_id).ok_or("its host wall is gone")?.clone();
-                if wall.arc != 0.0 {
-                    return Err(format!("its host wall {host} is curved, and a curved wall's box gives no width"));
+                // The host is the nearest wall the list names that the opening fits in; failing that, the nearest it names at
+                // all, so that the model's rule says why (a door that hangs off the end of its wall, say).
+                let mut first: Option<(u32, bimcraft_core::model::Id, f64, f64, f64, f64)> = None;
+                let mut fits = None;
+                let mut unreadable: Option<String> = None;
+                for host in named.iter().filter(|w| !cx.curtain.contains(w)) {
+                    let Some(host_id) = cx.walls.get(host).copied() else { continue };
+                    let Some(wall) = cx.model.wall(host_id) else { continue };
+                    if wall.arc != 0.0 {
+                        unreadable.get_or_insert(format!("its host wall {host} is curved, and a curved wall's box gives no width"));
+                        continue;
+                    }
+                    let Some((width, offset)) = along(wall.start, wall.end, &r.bbox) else {
+                        unreadable.get_or_insert(format!(
+                            "its host wall {host} runs at an angle, and the box of a door or window in it gives no width"
+                        ));
+                        continue;
+                    };
+                    let height = micron(mm(r.bbox[5]) - mm(r.bbox[2]));
+                    let sill = micron(mm(r.bbox[2]) - cx.model.own_base(wall));
+                    let sill = if (-2.0..2.0).contains(&sill) { 0.0 } else { sill };
+                    let fits_here = offset - width / 2.0 >= -1.0
+                        && offset + width / 2.0 <= wall.start.dist(wall.end) + 1.0
+                        && sill >= 0.0
+                        && cx.model.own_base(wall) + sill + height <= cx.model.top_z(wall) + 1.0;
+                    let candidate = (*host, host_id, width, offset, height, sill);
+                    if first.is_none() {
+                        first = Some(candidate);
+                    }
+                    if fits_here {
+                        fits = Some(candidate);
+                        break;
+                    }
                 }
-                let (width, offset) = along(wall.start, wall.end, &r.bbox).ok_or_else(|| {
-                    format!("its host wall {host} runs at an angle, and the box of a door or window in it gives no width")
-                })?;
-                let height = micron(mm(r.bbox[5]) - mm(r.bbox[2]));
-                let sill = micron(mm(r.bbox[2]) - cx.model.own_base(&wall));
-                let sill = if (-1.0..0.0).contains(&sill) { 0.0 } else { sill };
+                let (host, host_id, width, offset, height, sill) = match fits.or(first) {
+                    Some(c) => c,
+                    None => {
+                        if let Some(why) = unreadable {
+                            return Err(why);
+                        }
+                        return Err(if named.iter().any(|w| !cx.curtain.contains(w)) {
+                            format!("its host wall {} was left out", named[0])
+                        } else {
+                            "its host is a curtain wall, which BIMCraft has no element for".to_string()
+                        });
+                    }
+                };
+                let _ = (host, cx.model.wall(host_id));
                 let name = symbol_name(r, &symbols, g, category).unwrap_or_else(|| format!("Imported {label}"));
                 Ok(Pending {
                     id: r.id,
