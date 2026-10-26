@@ -16,6 +16,7 @@ pub use crate::fills::FilledRegion;
 use crate::fills::{self, FillPattern, FilledRegionType};
 use crate::geom::{self, P2, Region};
 use crate::graphics::{self, Graphics, ViewFilter, ViewTemplate};
+pub use crate::groups::{DetailGroup, RepeatingDetail};
 use crate::language::Language;
 pub use crate::lines::DetailLine;
 use crate::lines::{self, LinePattern, LineStyle};
@@ -278,6 +279,12 @@ pub struct Material {
     pub cut: Pattern,
     #[serde(default)]
     pub surface: Pattern,
+    /// The project's fill patterns its cut and its surfaces show, by name, as Revit's materials: over `cut` and `surface`
+    /// when given.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cut_pattern: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface_pattern: Option<String>,
     /// What its surfaces look like in the 3D view, over its colour.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub texture: Option<Texture>,
@@ -285,7 +292,14 @@ pub struct Material {
 
 impl Default for Material {
     fn default() -> Material {
-        Material { color: [200, 200, 200], cut: Pattern::None, surface: Pattern::None, texture: None }
+        Material {
+            color: [200, 200, 200],
+            cut: Pattern::None,
+            surface: Pattern::None,
+            cut_pattern: None,
+            surface_pattern: None,
+            texture: None,
+        }
     }
 }
 
@@ -343,6 +357,11 @@ pub struct Floor {
     /// Carries load: a structural floor, as Revit's Floor: Structural makes one.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub structural: bool,
+    /// Where its top's model pattern starts, and how far it's turned, degrees: Revit's aligned and rotated pattern.
+    #[serde(default, skip_serializing_if = "crate::fills::at_origin")]
+    pub pattern_origin: P2,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub pattern_angle: f64,
     /// The sketch it was drawn or last edited by: its lines, each a part with an id and a GUID of its own. Empty when it
     /// was made another way (over the walls, from a file); Edit Boundary then starts from its outline.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1175,6 +1194,8 @@ macro_rules! visit_refs {
             Element::Text(n) => f(& $($m)? n.view),
             Element::DetailLine(l) => f(& $($m)? l.view),
             Element::FilledRegion(r) => f(& $($m)? r.view),
+            Element::DetailGroup(g) => f(& $($m)? g.view),
+            Element::RepeatingDetail(r) => f(& $($m)? r.view),
             Element::Spot(s) => {
                 f(& $($m)? s.view);
                 if let Some(g) = & $($m)? s.host { f(g) }
@@ -1228,6 +1249,12 @@ pub enum Element {
     /// A filled region: a sketch's outlines in one view, filled as its type says; of Revit's Filled Region.
     #[serde(rename = "region")]
     FilledRegion(FilledRegion),
+    /// A detail group placed in one view: its type's lines, regions and notes, moved and turned; of Revit's Detail Groups.
+    #[serde(rename = "detailgroup")]
+    DetailGroup(DetailGroup),
+    /// A detail group repeated along a line in one view; of Revit's Repeating Detail.
+    #[serde(rename = "repeatingdetail")]
+    RepeatingDetail(RepeatingDetail),
     Spot(Spot),
     Schedule(Schedule),
     View3D(View3D),
@@ -1396,6 +1423,8 @@ impl Element {
             Element::Text(_) => "text",
             Element::DetailLine(_) => "line",
             Element::FilledRegion(_) => "region",
+            Element::DetailGroup(_) => "detailgroup",
+            Element::RepeatingDetail(_) => "repeatingdetail",
             Element::Spot(_) => "spot",
             Element::Link(_) => "link",
             Element::Schedule(_) => "schedule",
@@ -1681,6 +1710,9 @@ pub struct Model {
     /// Its filled region types, by name: a foreground and a background pattern and their colours, masking or not.
     #[serde(default = "fills::default_region_types", skip_serializing_if = "fills::is_default_region_types")]
     pub region_types: BTreeMap<String, FilledRegionType>,
+    /// Its detail group types, by name: the members each one placed draws.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub detail_groups: BTreeMap<String, crate::groups::GroupType>,
     pub elements: Elements,
     /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
     /// templates, phases, phase filters and design options.
@@ -1732,6 +1764,7 @@ impl Model {
             line_styles: lines::styles(language),
             fill_patterns: fills::patterns(language),
             region_types: fills::region_types(language),
+            detail_groups: BTreeMap::new(),
             elements: Elements::new(),
             library: crate::library::Library::default(),
             loaded: BTreeMap::new(),
@@ -1757,7 +1790,7 @@ impl Model {
             ("Copper", [184, 115, 51], Pattern::Solid, Pattern::None, Some(Kind::Metal)),
         ] {
             let texture = texture.map(Texture::new);
-            m.materials.insert(language.word(name).into(), Material { color, cut, surface, texture });
+            m.materials.insert(language.word(name).into(), Material { color, cut, surface, texture, ..Material::default() });
         }
         m.families = crate::family::library(language);
         for (n, t) in [("Generic - 200mm", 200.0), ("Interior - 100mm", 100.0)] {
@@ -2422,7 +2455,9 @@ impl Model {
             Element::Text(Note { view, .. })
             | Element::Spot(Spot { view, .. })
             | Element::DetailLine(DetailLine { view, .. })
-            | Element::FilledRegion(FilledRegion { view, .. }) => Some(*view),
+            | Element::FilledRegion(FilledRegion { view, .. })
+            | Element::DetailGroup(DetailGroup { view, .. })
+            | Element::RepeatingDetail(RepeatingDetail { view, .. }) => Some(*view),
             _ => None,
         }
     }
@@ -2626,7 +2661,9 @@ impl Model {
             Element::Text(Note { view, .. })
             | Element::Spot(Spot { view, .. })
             | Element::DetailLine(DetailLine { view, .. })
-            | Element::FilledRegion(FilledRegion { view, .. }) => self.plan_level(*view).map(|l| self.guid(l)),
+            | Element::FilledRegion(FilledRegion { view, .. })
+            | Element::DetailGroup(DetailGroup { view, .. })
+            | Element::RepeatingDetail(RepeatingDetail { view, .. }) => self.plan_level(*view).map(|l| self.guid(l)),
             // A plan view stands on its level: it goes with it.
             Element::PlanView(v) => Some(v.level),
             Element::Level(_)
@@ -3372,6 +3409,60 @@ impl Model {
         geom::region_at(&self.bounding_lines(r.level), r.point, TOL)
     }
 
+    /// What a detail line, a filled region or a text note must be, wherever it is: in a view or in a detail group.
+    fn annotation_ok(&self, who: &str, e: &Element) -> Result<(), String> {
+        match e {
+            Element::Text(n) => {
+                point(who, n.at)?;
+                text(who, "text", &n.text)?;
+                if n.text.trim().is_empty() {
+                    return Err(format!("{who}: a text note needs text"));
+                }
+                if !(n.size > 0.0 && n.size <= 100.0) {
+                    return Err(format!("{who}: size {} mm isn't above 0 and at most 100", n.size));
+                }
+                coord(&format!("{who} angle"), n.angle)?;
+                if let Some(l) = n.leader {
+                    point(&format!("{who} leader"), l)?;
+                }
+            }
+            Element::DetailLine(l) => {
+                l.check(who)?;
+                if !self.line_styles.contains_key(&l.style) {
+                    let there: Vec<&str> = self.line_styles.keys().map(String::as_str).collect();
+                    return Err(format!("{who}: there's no line style `{}` (there are: {})", l.style, there.join(", ")));
+                }
+            }
+            Element::FilledRegion(r) => {
+                point(&format!("{who} pattern origin"), r.pattern_origin)?;
+                coord(&format!("{who} pattern angle"), r.pattern_angle)?;
+                crate::sketch::check(who, &r.sketch)?;
+                if r.sketch.is_empty() {
+                    return Err(format!("{who}: a region's sketch has no lines; it needs a loop of them (a circle is one)"));
+                }
+                if !self.region_types.contains_key(&r.type_name) {
+                    let there: Vec<&str> = self.region_types.keys().map(String::as_str).collect();
+                    return Err(format!("{who}: there's no filled region type `{}` (there are: {})", r.type_name, there.join(", ")));
+                }
+                if let Some(st) = &r.line_style
+                    && !self.line_styles.contains_key(st)
+                {
+                    return Err(format!("{who}: there's no line style `{st}`"));
+                }
+                if let Some((i, st)) = r
+                    .sketch
+                    .iter()
+                    .enumerate()
+                    .find_map(|(i, l)| l.style.as_ref().filter(|st| !self.line_styles.contains_key(*st)).map(|st| (i, st)))
+                {
+                    return Err(format!("{who}: boundary line {i} is drawn in `{st}`, and there's no such line style"));
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     /// Everything that must hold between commands: references resolve, geometry is finite and
     /// not degenerate, doors and windows fit their walls and don't overlap.
     pub fn check(&self) -> Result<(), String> {
@@ -3396,6 +3487,33 @@ impl Model {
         }
         for (n, t) in &self.region_types {
             t.check(n, &self.fill_patterns)?;
+        }
+        for (n, x) in &self.materials {
+            for p in [&x.cut_pattern, &x.surface_pattern].into_iter().flatten() {
+                if !self.fill_patterns.contains_key(p) {
+                    return Err(format!("material `{n}`: there's no fill pattern `{p}`"));
+                }
+            }
+        }
+        for (n, g) in &self.detail_groups {
+            text(&format!("detail group `{n}`"), "name", n)?;
+            if g.members.is_empty() || g.members.len() > crate::groups::MAX_MEMBERS {
+                return Err(format!(
+                    "detail group `{n}`: it holds {} members; it holds 1 to {}",
+                    g.members.len(),
+                    crate::groups::MAX_MEMBERS
+                ));
+            }
+            for (i, m) in g.members.iter().enumerate() {
+                let who = format!("detail group `{n}` member {i}");
+                if !crate::groups::holds(&m.element) {
+                    return Err(format!(
+                        "{who}: a {} can't be in a detail group; it holds detail lines, filled regions and text",
+                        m.element.category()
+                    ));
+                }
+                self.annotation_ok(&who, &m.element)?;
+            }
         }
         for (cat, map) in [("door", &self.types.door), ("window", &self.types.window)] {
             for (n, t) in map {
@@ -3630,6 +3748,8 @@ impl Model {
                     }
                 }
                 Element::Floor(f) => {
+                    point(&format!("{who} pattern origin"), f.pattern_origin)?;
+                    coord(&format!("{who} pattern angle"), f.pattern_angle)?;
                     known(&who, &f.type_name, &self.types.floor)?;
                     level_ok(f.level)?;
                     boundary(&who, &f.boundary)?;
@@ -3777,51 +3897,37 @@ impl Model {
                         }
                     }
                 }
-                Element::Text(n) => {
-                    view_ok(n.view, true)?;
-                    point(&who, n.at)?;
-                    text(&who, "text", &n.text)?;
-                    if n.text.trim().is_empty() {
-                        return Err(format!("{who}: a text note needs text"));
-                    }
-                    if !(n.size > 0.0 && n.size <= 100.0) {
-                        return Err(format!("{who}: size {} mm isn't above 0 and at most 100", n.size));
-                    }
-                    coord(&format!("{who} angle"), n.angle)?;
-                    if let Some(l) = n.leader {
-                        point(&format!("{who} leader"), l)?;
+                Element::Text(Note { view, .. })
+                | Element::DetailLine(DetailLine { view, .. })
+                | Element::FilledRegion(FilledRegion { view, .. }) => {
+                    view_ok(*view, true)?;
+                    self.annotation_ok(&who, e)?;
+                }
+                Element::DetailGroup(g) => {
+                    view_ok(g.view, true)?;
+                    point(&who, g.at)?;
+                    coord(&format!("{who} angle"), g.angle)?;
+                    if !self.detail_groups.contains_key(&g.type_name) {
+                        let there: Vec<&str> = self.detail_groups.keys().map(String::as_str).collect();
+                        return Err(format!("{who}: there's no detail group `{}` (there are: {})", g.type_name, there.join(", ")));
                     }
                 }
-                Element::DetailLine(l) => {
-                    view_ok(l.view, true)?;
-                    l.check(&who)?;
-                    if !self.line_styles.contains_key(&l.style) {
-                        let there: Vec<&str> = self.line_styles.keys().map(String::as_str).collect();
-                        return Err(format!("{who}: there's no line style `{}` (there are: {})", l.style, there.join(", ")));
-                    }
-                }
-                Element::FilledRegion(r) => {
+                Element::RepeatingDetail(r) => {
                     view_ok(r.view, true)?;
-                    crate::sketch::check(&who, &r.sketch)?;
-                    if r.sketch.is_empty() {
-                        return Err(format!("{who}: a region's sketch has no lines; it needs a loop of them (a circle is one)"));
+                    point(&who, r.start)?;
+                    point(&who, r.end)?;
+                    if !(r.spacing.is_finite() && r.spacing >= 1.0 && r.spacing <= MAX_COORD) {
+                        return Err(format!("{who}: spacing {} mm isn't from 1 mm to {MAX_COORD}", r.spacing));
                     }
-                    if !self.region_types.contains_key(&r.type_name) {
-                        let there: Vec<&str> = self.region_types.keys().map(String::as_str).collect();
-                        return Err(format!("{who}: there's no filled region type `{}` (there are: {})", r.type_name, there.join(", ")));
+                    if r.places().is_none() {
+                        return Err(format!(
+                            "{who}: it would repeat more than {} times; space it wider or draw it shorter",
+                            crate::groups::MAX_REPEATS
+                        ));
                     }
-                    if let Some(st) = &r.line_style
-                        && !self.line_styles.contains_key(st)
-                    {
-                        return Err(format!("{who}: there's no line style `{st}`"));
-                    }
-                    if let Some((i, st)) = r
-                        .sketch
-                        .iter()
-                        .enumerate()
-                        .find_map(|(i, l)| l.style.as_ref().filter(|st| !self.line_styles.contains_key(*st)).map(|st| (i, st)))
-                    {
-                        return Err(format!("{who}: boundary line {i} is drawn in `{st}`, and there's no such line style"));
+                    if !self.detail_groups.contains_key(&r.type_name) {
+                        let there: Vec<&str> = self.detail_groups.keys().map(String::as_str).collect();
+                        return Err(format!("{who}: there's no detail group `{}` (there are: {})", r.type_name, there.join(", ")));
                     }
                 }
                 Element::Spot(sp) => {

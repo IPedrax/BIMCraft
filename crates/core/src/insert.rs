@@ -169,10 +169,18 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
                 if let Some(t) = to.materials.get_mut(&name).and_then(|m| m.texture.as_mut()) {
                     here(&Kind::Picture, &mut t.image);
                 }
+                for p in to.materials.get_mut(&name).into_iter().flat_map(|x| [&mut x.cut_pattern, &mut x.surface_pattern]).flatten() {
+                    here(&Kind::FillPattern, p);
+                }
             }
             Kind::LineStyle => {
                 if let Some(p) = to.line_styles.get_mut(&name).and_then(|s| s.pattern.as_mut()) {
                     here(&Kind::LinePattern, p);
+                }
+            }
+            Kind::DetailGroup => {
+                for m in to.detail_groups.get_mut(&name).into_iter().flat_map(|g| g.members.iter_mut()) {
+                    m.element.lib_refs_mut(&mut |k: &Kind, n: &mut String| here(k, n));
                 }
             }
             Kind::FilledRegionType => {
@@ -232,6 +240,7 @@ fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> boo
         Kind::LineStyle => one(&mut to.line_styles, Some(&from.line_styles), name),
         Kind::FillPattern => one(&mut to.fill_patterns, Some(&from.fill_patterns), name),
         Kind::FilledRegionType => one(&mut to.region_types, Some(&from.region_types), name),
+        Kind::DetailGroup => one(&mut to.detail_groups, Some(&from.detail_groups), name),
         _ => false,
     }
 }
@@ -300,6 +309,7 @@ fn tidy_graphics(m: &mut Model) {
     let known: BTreeSet<Guid> = m.elements.with_guids().map(|(_, g, _)| g).collect();
     for g in m.elements.values_mut().filter_map(graphics::graphics_mut) {
         g.elements.retain(|k, _| known.contains(k));
+        g.linework.retain(|l| known.contains(&l.element));
     }
 }
 

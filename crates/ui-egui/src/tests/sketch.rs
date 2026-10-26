@@ -240,3 +240,28 @@ fn finish_cancel_and_edit_boundary_stand_at_the_ribbons_right_end() {
     assert!(fx > width * 0.75 && cx > width * 0.75, "{fx} {cx} of {width}");
     assert!(x(&h, "Line") < width * 0.5);
 }
+
+#[test]
+fn with_an_offset_left_on_the_options_bar_a_rectangle_stays_joined_and_a_spline_is_still_drawn() {
+    let mut h = app(BOX);
+    press(&mut h, "Annotate");
+    press(&mut h, "Filled Region");
+    type_into(&mut h, "Offset:", "200");
+    press(&mut h, "Rectangle");
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(3000.0, 3000.0));
+    press(&mut h, "Spline");
+    for p in [P2(5000.0, 1000.0), P2(6000.0, 2000.0), P2(5000.0, 3000.0)] {
+        click(&mut h, p);
+    }
+    key(&mut h, Key::Enter);
+    assert_eq!(lines(&h).last().map(|l| l.curve.kind()), Some("spline"), "{:?}", lines(&h));
+    press(&mut h, "Line");
+    type_into(&mut h, "Offset:", "0");
+    click(&mut h, P2(5000.0, 3000.0));
+    click(&mut h, P2(5000.0, 1000.0));
+    key(&mut h, Key::Escape);
+    press(&mut h, "Finish Edit Mode");
+    let r = ids(&h, "region");
+    assert_eq!(r.len(), 1, "{}", h.state().status.text);
+}

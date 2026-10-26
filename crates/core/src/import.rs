@@ -1598,6 +1598,8 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             slope: if arrow.is_some() { (tan.atan().to_degrees() * 1e6).round() / 1e6 } else { 0.0 },
             arrow,
             structural: bearing.contains(&id),
+            pattern_origin: P2(0.0, 0.0),
+            pattern_angle: 0.0,
         };
         let fid = m.insert(Element::Floor(floor));
         from.insert(fid, who(id));

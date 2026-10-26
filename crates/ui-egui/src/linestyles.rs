@@ -373,7 +373,29 @@ impl BimApp {
     }
 }
 
+/// The Linework tool's choices besides the line styles: hide the edge, or put it back as its category draws it.
+pub(crate) const INVISIBLE: &str = "<Invisible lines>";
+pub(crate) const BY_CATEGORY: &str = "<By Category>";
+
 impl BimApp {
+    /// The Linework tool's Options Bar: the style the edge clicked takes, hidden, or back by category.
+    pub(crate) fn linework_options(&mut self, ui: &mut Ui) {
+        let m = &self.session.model;
+        let options: Vec<String> = [INVISIBLE, BY_CATEGORY].into_iter().map(str::to_string).chain(m.line_styles.keys().cloned()).collect();
+        if !options.contains(&self.linework_style) {
+            let wide = m.language.word("Wide Lines").to_string();
+            self.linework_style = if m.line_styles.contains_key(&wide) { wide } else { INVISIBLE.to_string() };
+        }
+        let l = ui.label(t("Line Style:"));
+        let c = ComboBox::from_id_salt("linework-style").selected_text(t(&self.linework_style)).width(160.0).show_ui(ui, |ui| {
+            for n in &options {
+                ui.selectable_value(&mut self.linework_style, n.clone(), t(n));
+            }
+        });
+        c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, t("Line Style")));
+        c.response.labelled_by(l.id);
+    }
+
     /// The Detail Line tool's Options Bar: the line style it draws in.
     pub(crate) fn line_style_options(&mut self, ui: &mut Ui) {
         let m = &self.session.model;

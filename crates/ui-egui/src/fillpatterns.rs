@@ -1,7 +1,8 @@
 //! Manage > Fill Patterns, as Revit's dialogs: the project's filled region types (a foreground and a background pattern,
 //! their colours, masking or not) and its fill patterns (families of lines, drafting or model), on two tabs of one draft,
 //! applied as one undo step (OK and Apply), or dropped (Cancel). A pattern of one family, or two square to each other, is
-//! edited as Revit's simple pattern: its angle, its spacing, crosshatched or not; the rest show as they are.
+//! edited as Revit's simple pattern: its angle, its spacing, crosshatched or not; any pattern's families, one by one, with
+//! Edit Lines (Revit's custom patterns, which it only imports). Patterns come in from a PAT file and go out to one.
 
 use bimcraft_core::engine::Session;
 use bimcraft_core::fills::{self, FillPattern, FilledRegionType, HatchLine, MAX_SPACING, MIN_SPACING, Target};
@@ -44,6 +45,15 @@ pub(crate) struct FillPatternsDialog {
     patterns: Vec<PatternRow>,
     /// Patterns deleted: their rows stay, so the types' indices do, and are skipped.
     gone: Vec<bool>,
+    /// The pattern whose families Edit Lines shows, and each family's dashes as typed.
+    editing: Option<(usize, Vec<String>)>,
+}
+
+/// What the Patterns tab's buttons ask of the app: a file to import from, or to export to.
+#[derive(Clone, Copy, PartialEq)]
+enum FileAsk {
+    Import,
+    Export,
 }
 
 impl FillPatternsDialog {
@@ -64,7 +74,27 @@ impl FillPatternsDialog {
             })
             .collect();
         let gone = vec![false; patterns.len()];
-        FillPatternsDialog { tab: 0, types, patterns, gone }
+        FillPatternsDialog { tab: 0, types, patterns, gone, editing: None }
+    }
+
+    /// The patterns a PAT file held, added to the draft (one of a name it has already takes its place): how many came.
+    pub(crate) fn import(&mut self, read: bimcraft_core::pat::Read) -> usize {
+        let n = read.patterns.len();
+        for (name, pattern) in read.patterns {
+            match self.patterns.iter().enumerate().position(|(i, r)| !self.gone[i] && r.name == name) {
+                Some(i) => self.patterns[i].pattern = pattern,
+                None => {
+                    self.patterns.push(PatternRow { was: None, name, pattern });
+                    self.gone.push(false);
+                }
+            }
+        }
+        n
+    }
+
+    /// The patterns as they are in the draft, for a PAT file.
+    fn drafted(&self) -> Vec<(String, FillPattern)> {
+        self.live().map(|(_, r)| (r.name.clone(), r.pattern.clone())).collect()
     }
 
     /// The patterns not deleted, with their rows.
@@ -200,16 +230,84 @@ fn types_tab(ui: &mut Ui, d: &mut FillPatternsDialog) {
     }
 }
 
+/// A family's dashes as typed: lengths, a space's negative, 0 a dot, between commas.
+fn dashes_text(d: &[f64]) -> String {
+    d.iter().map(|x| format!("{}", x + 0.0)).collect::<Vec<_>>().join(", ")
+}
+
+/// The families of pattern `i`, one a row: its angle, origin, shift along, spacing across and dashes; Delete; Add
+/// Family. Dashes that don't read as lengths are left as they were until they do.
+fn families(ui: &mut Ui, d: &mut FillPatternsDialog) {
+    let Some((i, texts)) = &mut d.editing else { return };
+    let Some(r) = d.patterns.get_mut(*i) else { return };
+    let who = r.name.clone();
+    ui.add_space(6.0);
+    ui.label(RichText::new(tf("Line families of {}", &[&who])).strong());
+    texts.resize(r.pattern.lines.len(), String::new());
+    let mut delete = None;
+    Grid::new("pattern-families").striped(true).num_columns(8).show(ui, |ui| {
+        for h in ["", "Angle", "X", "Y", "Shift", "Spacing", "Dashes", ""] {
+            ui.label(RichText::new(t(h)).strong());
+        }
+        ui.end_row();
+        for (k, (l, text)) in r.pattern.lines.iter_mut().zip(texts.iter_mut()).enumerate() {
+            let n = (k + 1).to_string();
+            ui.label(&n);
+            let name = |what: &str| tf("{} family {}: {}", &[&who, &n, t(what)]);
+            for (what, v, range) in [
+                ("Angle", &mut l.angle, -360.0..=360.0),
+                ("X", &mut l.origin.0, -MAX_SPACING..=MAX_SPACING),
+                ("Y", &mut l.origin.1, -MAX_SPACING..=MAX_SPACING),
+                ("Shift", &mut l.shift, -MAX_SPACING..=MAX_SPACING),
+                ("Spacing", &mut l.spacing, MIN_SPACING..=MAX_SPACING),
+            ] {
+                let label = name(what);
+                let r = ui.add(DragValue::new(v).range(range).speed(0.1).max_decimals(3));
+                r.widget_info(|| WidgetInfo::labeled(WidgetType::DragValue, true, label.clone()));
+            }
+            let label = name("Dashes");
+            let e = ui.add_sized(vec2(160.0, 20.0), TextEdit::singleline(text).hint_text(t("whole")));
+            e.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, label.clone()));
+            if e.changed() {
+                let read: Result<Vec<f64>, _> =
+                    text.split(',').map(str::trim).filter(|x| !x.is_empty()).map(|x| x.parse::<f64>()).collect();
+                if let Ok(dashes) = read.map(|v| v.into_iter().filter(|x| x.is_finite()).collect::<Vec<_>>()) {
+                    l.dashes = dashes;
+                }
+            }
+            if named_button(ui, t("Delete"), name("Delete")) {
+                delete = Some(k);
+            }
+            ui.end_row();
+        }
+    });
+    if let Some(k) = delete {
+        r.pattern.lines.remove(k);
+        texts.remove(k);
+    }
+    let mut done = false;
+    ui.horizontal(|ui| {
+        if ui.button(t("Add Family")).clicked() && r.pattern.lines.len() < fills::MAX_FAMILIES {
+            r.pattern.lines.push(HatchLine::simple(0.0, if r.pattern.target == Target::Model { 100.0 } else { 2.0 }));
+            texts.push(String::new());
+        }
+        done = ui.button(t("Done")).clicked();
+    });
+    if done {
+        d.editing = None;
+    }
+}
+
 /// The patterns: a row each, its name, drafting or model, a swatch, and (a simple one) its angle, spacing and crosshatch,
-/// else how many line families it has; Delete; New Pattern.
-fn patterns_tab(ui: &mut Ui, d: &mut FillPatternsDialog) {
+/// else how many line families it has; Edit Lines; Delete; New Pattern, Import and Export (what's asked of the app).
+fn patterns_tab(ui: &mut Ui, d: &mut FillPatternsDialog) -> Option<FileAsk> {
     ui.label(t("Families of parallel lines: drafting ones mm on paper, the same at any scale; model ones mm in the building."));
     ui.add_space(4.0);
     let ink = ui.visuals().text_color();
     let mut delete = None;
     ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
-        Grid::new("fill-patterns").striped(true).num_columns(7).show(ui, |ui| {
-            for h in ["Name", "Type", "Sample", "Angle", "Spacing", "Crosshatch", ""] {
+        Grid::new("fill-patterns").striped(true).num_columns(8).show(ui, |ui| {
+            for h in ["Name", "Type", "Sample", "Angle", "Spacing", "Crosshatch", "", ""] {
                 ui.label(RichText::new(t(h)).strong());
             }
             ui.end_row();
@@ -250,6 +348,9 @@ fn patterns_tab(ui: &mut Ui, d: &mut FillPatternsDialog) {
                         ui.label("");
                     }
                 }
+                if named_button(ui, t("Edit Lines"), tf("{}: Edit Lines", &[&who])) {
+                    d.editing = Some((i, r.pattern.lines.iter().map(|l| dashes_text(&l.dashes)).collect()));
+                }
                 if named_button(ui, t("Delete"), tf("{}: Delete", &[&who])) {
                     delete = Some(i);
                 }
@@ -257,8 +358,12 @@ fn patterns_tab(ui: &mut Ui, d: &mut FillPatternsDialog) {
             }
         });
     });
+    families(ui, d);
     if let Some(i) = delete {
         d.gone[i] = true;
+        if d.editing.as_ref().is_some_and(|(e, _)| *e == i) {
+            d.editing = None;
+        }
         for r in &mut d.types {
             for row in [&mut r.foreground, &mut r.background] {
                 if *row == Some(i) {
@@ -267,13 +372,23 @@ fn patterns_tab(ui: &mut Ui, d: &mut FillPatternsDialog) {
             }
         }
     }
-    if ui.button(t("New Pattern")).clicked() {
-        let taken: Vec<&str> = d.live().map(|(_, p)| p.name.as_str()).collect();
-        let name = fresh(t("Pattern"), &taken);
-        let pattern = FillPattern { target: Target::Drafting, lines: vec![HatchLine::simple(45.0, 2.0)] };
-        d.patterns.push(PatternRow { was: None, name, pattern });
-        d.gone.push(false);
-    }
+    let mut ask = None;
+    ui.horizontal(|ui| {
+        if ui.button(t("New Pattern")).clicked() {
+            let taken: Vec<&str> = d.live().map(|(_, p)| p.name.as_str()).collect();
+            let name = fresh(t("Pattern"), &taken);
+            let pattern = FillPattern { target: Target::Drafting, lines: vec![HatchLine::simple(45.0, 2.0)] };
+            d.patterns.push(PatternRow { was: None, name, pattern });
+            d.gone.push(false);
+        }
+        if ui.button(t("Import...")).on_hover_text(t("Patterns from a PAT file, AutoCAD's and Revit's")).clicked() {
+            ask = Some(FileAsk::Import);
+        }
+        if ui.button(t("Export...")).on_hover_text(t("These patterns to a PAT file, but the solid ones")).clicked() {
+            ask = Some(FileAsk::Export);
+        }
+    });
+    ask
 }
 
 impl FillPatternsDialog {
@@ -334,7 +449,7 @@ impl BimApp {
     /// The Fill Patterns dialog, while it's open.
     pub(crate) fn fill_patterns_window(&mut self, ctx: &Context) {
         let Some(mut d) = self.fill_patterns_dialog.take() else { return };
-        let (mut ok, mut apply, mut cancel) = (false, false, false);
+        let (mut ok, mut apply, mut cancel, mut ask) = (false, false, false, None);
         let r = Modal::new(UiId::new("fill-patterns")).show(ctx, |ui| {
             ui.set_width(860.0);
             ui.label(RichText::new(t("Fill Patterns")).heading());
@@ -350,7 +465,7 @@ impl BimApp {
             if d.tab == 0 {
                 types_tab(ui, &mut d);
             } else {
-                patterns_tab(ui, &mut d);
+                ask = patterns_tab(ui, &mut d);
             }
             ui.add_space(8.0);
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
@@ -381,8 +496,48 @@ impl BimApp {
                 d.tab = tab;
             }
         }
+        let drafted = d.drafted();
         if failed || !(ok || cancel || r.should_close()) {
             self.fill_patterns_dialog = Some(d);
         }
+        match ask {
+            Some(FileAsk::Import) => {
+                let dialog = rfd::AsyncFileDialog::new().add_filter(t("Fill patterns"), &["pat", "PAT"]);
+                self.ask_file(ctx, dialog, false, |app, path| app.import_patterns(&path));
+            }
+            Some(FileAsk::Export) => {
+                let dialog = rfd::AsyncFileDialog::new().add_filter(t("Fill patterns"), &["pat"]).set_file_name("patterns.pat");
+                self.ask_file(ctx, dialog, true, move |app, path| app.export_patterns(&path, &drafted));
+            }
+            None => {}
+        }
+    }
+
+    /// The patterns of the PAT file at `path`, into the Fill Patterns dialog's draft; what came and what didn't, said.
+    pub(crate) fn import_patterns(&mut self, path: &std::path::Path) {
+        let Some(d) = &mut self.fill_patterns_dialog else { return };
+        match bimcraft_core::pat::read_file(path) {
+            Ok(read) => {
+                let out: Vec<String> = read.left_out.iter().map(|(n, why)| format!("{n} ({why})")).collect();
+                let n = d.import(read).to_string();
+                let text = match out.is_empty() {
+                    true => tf("{} patterns imported.", &[&n]),
+                    false => tf("{} patterns imported; left out: {}", &[&n, &out.join("; ")]),
+                };
+                self.status = Status { text, error: !out.is_empty() };
+            }
+            Err(e) => self.status = Status { text: e, error: true },
+        }
+    }
+
+    /// `patterns` written to the PAT file at `path`, ending in `.pat`.
+    pub(crate) fn export_patterns(&mut self, path: &std::path::Path, patterns: &[(String, FillPattern)]) {
+        let path =
+            if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("pat")) { path.to_path_buf() } else { path.with_extension("pat") };
+        let text = bimcraft_core::pat::write(patterns.iter().map(|(n, p)| (n, p)));
+        self.status = match bimcraft_core::autosave::atomic_write(&path, &text) {
+            Ok(()) => Status { text: tf("Fill patterns exported to {}", &[&path.display().to_string()]), error: false },
+            Err(e) => Status { text: e, error: true },
+        };
     }
 }

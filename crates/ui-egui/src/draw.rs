@@ -53,8 +53,15 @@ pub struct Drawing {
     pub grip: Option<(Id, P2)>,
     /// Revit's Insulation: the Detail Line tool draws batt insulation this wide, as typed, instead of lines.
     pub insulation: Option<String>,
+    /// Revit's Revision Cloud: the Detail Line tool draws clouds of scallops this long, of this revision, as typed.
+    pub cloud: Option<(String, String)>,
     /// While sketching, Trim/Extend's first line (or boundary) picked, and where.
     pub trim: Option<(usize, P2)>,
+    /// The Options Bar's Show Centre: new detail arcs and circles take a centre mark.
+    pub centre_mark: bool,
+    /// Which of a shape's numbers is being typed (a rectangle's width, 0, or height, 1), and what's typed in the other.
+    pub field: usize,
+    pub other: String,
 }
 
 impl Default for Drawing {
@@ -72,6 +79,10 @@ impl Default for Drawing {
             grip: None,
             trim: None,
             insulation: None,
+            cloud: None,
+            centre_mark: false,
+            field: 0,
+            other: String::new(),
         }
     }
 }
@@ -100,6 +111,7 @@ pub fn icon(s: Shape) -> Icon {
         Shape::PartialEllipse => Icon::PartialEllipse,
         Shape::Polyline => Icon::Polyline,
         Shape::PickLines => Icon::PickLines,
+        Shape::PickFaces => Icon::PickFaces,
     }
 }
 
@@ -121,6 +133,7 @@ pub fn tip(s: Shape) -> &'static str {
         Shape::PartialEllipse => "Partial Ellipse: click the ends of its axis, then how far it bulges",
         Shape::Polyline => "Polyline: one line through every point clicked; Enter finishes it, the first point again closes it",
         Shape::PickLines => "Pick Lines: click a line, a wall or a grid to draw along it (beside it, with Offset)",
+        Shape::PickFaces => "Pick Faces: click a face of a mass for a wall on it, as tall as the mass",
     }
 }
 
@@ -196,7 +209,7 @@ impl BimApp {
             .into_iter()
             .filter(|s| match target {
                 Target::Wall => s.for_walls(),
-                Target::Detail | Target::Sketch => true,
+                Target::Detail | Target::Sketch => s.for_lines(),
             })
             .collect();
         let now = match target {
@@ -241,6 +254,11 @@ impl BimApp {
             ui.checkbox(&mut self.drawing.radius_on, t("Radius:"));
             let r = ui.add_enabled(self.drawing.radius_on, TextEdit::singleline(&mut self.drawing.radius).desired_width(70.0));
             r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, t("Radius")));
+        }
+        // A detail arc or circle can mark its centre, as Revit's Center Mark Visible.
+        let round = matches!(shape, Shape::Circle | Shape::Arc | Shape::CentreArc | Shape::TangentArc);
+        if round && self.target() == Some(Target::Detail) {
+            ui.checkbox(&mut self.drawing.centre_mark, t("Show Centre"));
         }
         if !matches!(shape, Shape::Spline | Shape::FitSpline | Shape::Ellipse | Shape::PartialEllipse | Shape::Fillet) {
             let l = ui.label(t("Offset:"));
@@ -343,11 +361,105 @@ impl BimApp {
         made
     }
 
+    /// Whether a spline or a polyline has points enough to be made now: what Enter, a double click and the right-click
+    /// menu's Finish Drawing do.
+    pub(crate) fn finishable(&self) -> bool {
+        (self.shape().open_ended() || self.one_line()) && self.points().is_some_and(|p| p.len() >= 2)
+    }
+
+    /// The spline or polyline of the points clicked, made: detail lines in the plan on screen, or sketch lines.
+    pub(crate) fn finish_open_shape(&mut self) {
+        match self.tool {
+            Tool::DetailLine(_) => {
+                if let Some(level) = self.plan_level() {
+                    self.finish_detail_line(level);
+                }
+            }
+            Tool::SketchLine(_) => {
+                if let Some(made) = self.finish_shape() {
+                    self.add_sketch_lines(made);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// How many numbers can be typed for the shape in hand now (see [`draw::numbers`]): none when what's typed is a
+    /// length toward the cursor.
+    pub(crate) fn typed_fields(&self) -> usize {
+        if self.target().is_none() {
+            return 0;
+        }
+        draw::numbers(self.shape(), self.points().map_or(0, Vec::len)).len()
+    }
+
+    /// What's typed dropped: a length, or a shape's numbers.
+    pub(crate) fn clear_typed(&mut self) {
+        self.typed_length.clear();
+        self.drawing.other.clear();
+        self.drawing.field = 0;
+    }
+
+    /// Enter with a shape's numbers typed: its next point where they say, toward the cursor at `cursor`. False when
+    /// the shape takes no numbers now (what's typed is a length).
+    pub(crate) fn place_numbers(&mut self, level: Id, cursor: P2) -> bool {
+        let (shape, n) = (self.shape(), self.points().map_or(0, Vec::len));
+        let names = draw::numbers(shape, n);
+        if self.target().is_none() || names.is_empty() {
+            return false;
+        }
+        let (typed, other, field) = (std::mem::take(&mut self.typed_length), std::mem::take(&mut self.drawing.other), self.drawing.field);
+        self.drawing.field = 0;
+        let units = self.session.model.units;
+        let mut values = vec![None; names.len()];
+        for (i, text) in [(field, typed), (1 - field.min(1), other)] {
+            let Some(name) = names.get(i) else { continue };
+            if text.trim().is_empty() {
+                continue;
+            }
+            let value = if *name == "Angle" { text.trim().trim_end_matches('°').parse::<f64>().ok() } else { units.parse(&text) };
+            match value.filter(|v| v.is_finite() && *v > 0.0 && *v <= bimcraft_core::model::MAX_COORD) {
+                Some(v) => values[i] = Some(v),
+                None => {
+                    let what = if *name == "Angle" { "`{}` is not an angle" } else { "`{}` is not a length" };
+                    self.status = Status { text: crate::lang::tf(what, &[text.trim()]), error: true };
+                    return true;
+                }
+            }
+        }
+        let points = self.points().cloned().unwrap_or_default();
+        match draw::typed(shape, &points, cursor, &values) {
+            Some(p) => self.put(level, p),
+            None => {
+                self.status = Status {
+                    text: t("That can't be drawn: an arc's radius is at least half the distance between its ends, and a centre-ends arc turns less than 180°.").into(),
+                    error: true,
+                }
+            }
+        }
+        true
+    }
+
+    /// The tool's next point put at `p`, as a click there would (a sketch's line or shape, else [`BimApp::place`]).
+    pub(crate) fn put(&mut self, level: Id, p: P2) {
+        if matches!(self.tool, Tool::SketchLine(_)) {
+            let m = std::sync::Arc::clone(&self.session.model);
+            self.sketch_click(&m, p, p, 0.0, None, egui::Modifiers::NONE);
+        } else {
+            self.place(level, p);
+        }
+    }
+
     /// What the shape in hand shows with the cursor at `cursor`.
     pub(crate) fn shape_preview(&self, cursor: P2) -> Vec<Curve> {
         let (shape, o) = (self.shape(), self.draw_options());
         let Some(points) = self.points() else { return Vec::new() };
-        if matches!(shape, Shape::Line | Shape::Fillet | Shape::PickLines) || (points.is_empty() && shape.clicks(&o) > 1) {
+        // Fillet Arc, its two lines picked: the arc that passes nearest the cursor, and the lines cut back to it.
+        if shape == Shape::Fillet {
+            let made = self.fillet_curves().zip(self.fillet_radius_at(cursor)).and_then(|((a, b), r)| draw::fillet_lines(&a, &b, r));
+            return made.map(|(a, arc, b)| vec![a, arc, b]).unwrap_or_default();
+        }
+        if matches!(shape, Shape::Line | Shape::PickLines) || (points.is_empty() && shape.clicks(&o) > 1) {
             return Vec::new();
         }
         let tangent = points.first().copied().and_then(|s| self.tangent_at(s));
@@ -394,6 +506,7 @@ impl BimApp {
             (Shape::Polyline, 0) => "Click where the polyline starts.",
             (Shape::Polyline, _) => "Click its next point; Enter finishes it, the first point again closes it. Esc cancels.",
             (Shape::PickLines, _) => "Click a line, a wall or a grid to draw along it.",
+            (Shape::PickFaces, _) => "Click a face of a mass: a wall stands on it.",
         })
     }
 
@@ -405,22 +518,63 @@ impl BimApp {
         if let Some(w) = self.drawing.insulation.as_ref().and_then(|w| self.session.model.units.parse(w)) {
             p["insulation"] = json!(w);
         }
+        let round = matches!(self.shape(), Shape::Circle | Shape::Arc | Shape::CentreArc | Shape::TangentArc);
+        if self.drawing.centre_mark && round {
+            p["centre_mark"] = json!(true);
+        }
+        if let Some((arc, revision)) = &self.drawing.cloud {
+            p["cloud"] = json!(self.session.model.units.parse(arc).unwrap_or(500.0));
+            if !revision.trim().is_empty() {
+                p["revision"] = json!(revision.trim());
+            }
+        }
     }
 
-    /// Annotate's Detail panel: Detail Line, and Insulation (detail lines drawn as batt insulation).
+    /// Whether the Detail Line tool's clicks make one line through every point: with Polyline, or a cloud's Line (a cloud
+    /// is one line round, as Revit's is one sketch).
+    pub(crate) fn one_line(&self) -> bool {
+        self.shape() == Shape::Polyline || (self.drawing.cloud.is_some() && self.shape() == Shape::Line)
+    }
+
+    /// Annotate's Detail panel: Detail Line, Insulation (detail lines drawn as batt insulation), Revision Cloud, and detail
+    /// groups.
     pub(crate) fn detail_panel(&mut self, ui: &mut Ui) {
         let drawing = matches!(self.tool, Tool::DetailLine(_));
         panel(ui, "Detail", |ui| {
             let tip = "Detail Line (DL): each click makes a line from the one before, in the Options Bar's line style; the Draw panel has the other shapes";
-            if crate::big_button(ui, Icon::Line, "Detail Line", drawing && self.drawing.insulation.is_none(), tip).clicked() {
-                self.drawing.insulation = None;
+            let plain = self.drawing.insulation.is_none() && self.drawing.cloud.is_none();
+            if crate::big_button(ui, Icon::Line, "Detail Line", drawing && plain, tip).clicked() {
                 self.set_tool(Tool::DetailLine(Vec::new()));
+                (self.drawing.insulation, self.drawing.cloud) = (None, None);
             }
             let tip = "Insulation: batt insulation drawn along each line, its width on the Options Bar";
             if crate::big_button(ui, Icon::Insulation, "Insulation", drawing && self.drawing.insulation.is_some(), tip).clicked() {
                 self.set_tool(Tool::DetailLine(Vec::new()));
-                self.drawing.insulation = Some("100".into());
+                (self.drawing.insulation, self.drawing.cloud) = (Some("100".into()), None);
             }
+            let tip = "Revision Cloud: a cloud round what changed, of the revision on the Options Bar; a rectangle by default, any shape from the Draw panel";
+            if crate::big_button(ui, Icon::RevisionCloud, "Revision Cloud", drawing && self.drawing.cloud.is_some(), tip).clicked() {
+                self.set_tool(Tool::DetailLine(Vec::new()));
+                (self.drawing.insulation, self.drawing.cloud) = (None, Some(("500".into(), String::new())));
+                self.drawing.detail = Shape::Rectangle;
+            }
+            // Groups, stacked three high as Revit's small buttons are.
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                let tip = "Detail Group: click to place the group on the Options Bar";
+                if crate::stacked_button(ui, Icon::DetailGroup, "Detail Group", self.tool == Tool::DetailGroup, tip).clicked() {
+                    self.set_tool(Tool::DetailGroup);
+                }
+                let tip = "Repeating Detail: click its start and end; the group on the Options Bar repeats along it every spacing";
+                let on = matches!(self.tool, Tool::RepeatingDetail(_));
+                if crate::stacked_button(ui, Icon::RepeatingDetail, "Repeating Detail", on, tip).clicked() {
+                    self.set_tool(Tool::RepeatingDetail(None));
+                }
+                let tip = "Create Group (GP): the selected detail lines, filled regions and text made one detail group";
+                if crate::stacked_button(ui, Icon::CreateGroup, "Create Group", false, tip).clicked() {
+                    self.create_group();
+                }
+            });
         });
     }
 
@@ -430,11 +584,24 @@ impl BimApp {
             let l = ui.label(t("Width:"));
             ui.add(TextEdit::singleline(w).desired_width(70.0)).labelled_by(l.id);
         }
+        if let Some((arc, revision)) = &mut self.drawing.cloud {
+            let l = ui.label(t("Arc Length:"));
+            ui.add(TextEdit::singleline(arc).desired_width(70.0)).labelled_by(l.id);
+            let l = ui.label(t("Revision:"));
+            ui.add(TextEdit::singleline(revision).desired_width(90.0)).labelled_by(l.id);
+        }
     }
 
     /// Detail lines along `curves`, in view `view` and the Options Bar's line style, as one step.
     pub(crate) fn make_detail_lines(&mut self, view: Id, curves: &[Curve]) -> Vec<Id> {
-        let params: Vec<Value> = curves
+        // A cloud's rectangle or polygon is one cloud round, its sides joined.
+        let joined = match curves {
+            [_, _, ..] if self.drawing.cloud.is_some() => curves::join(curves).map(|c| vec![c]),
+            _ => None,
+        };
+        let params: Vec<Value> = joined
+            .as_deref()
+            .unwrap_or(curves)
             .iter()
             .map(|c| {
                 let mut p = serde_json::to_value(Fields::of(c)).unwrap_or_default();
@@ -706,6 +873,43 @@ impl BimApp {
         if let Some(text) = status {
             self.status = Status { text: t(text).into(), error: true };
         }
+    }
+
+    /// Trim/Extend to Corner on the two detail lines or walls selected, or the two sketch lines picked: true when it
+    /// joined them (or tried, and said why not).
+    pub(crate) fn corner_selected(&mut self) -> bool {
+        if let Some(sk) = &mut self.sketch {
+            let &[a, b] = sk.picked.iter().copied().collect::<Vec<_>>().as_slice() else { return false };
+            let (Some(la), Some(lb)) = (sk.lines.get(a).cloned(), sk.lines.get(b).cloned()) else { return false };
+            match draw::corner(&la.curve, la.curve.middle(), &lb.curve, lb.curve.middle()) {
+                Some((ca, cb)) => {
+                    if let Some(l) = sk.lines.get_mut(a) {
+                        l.curve = ca;
+                    }
+                    if let Some(l) = sk.lines.get_mut(b) {
+                        l.curve = cb;
+                    }
+                    sk.wrong.clear();
+                    self.status = Status::default();
+                }
+                None => {
+                    self.status = Status {
+                        text: t("The lines don't meet: they're parallel, or an arc's circle misses the other.").into(),
+                        error: true,
+                    }
+                }
+            }
+            return true;
+        }
+        let m = &self.session.model;
+        let lines = |id: &Id| matches!(m.elements.get(*id), Some(Element::DetailLine(_)));
+        let both = self.selection.len() == 2 && (self.selection.iter().all(lines) || self.selection.iter().all(|id| m.wall(*id).is_some()));
+        if !both {
+            return false;
+        }
+        let ids = self.selection.clone();
+        self.run("corner", json!({"ids": ids}));
+        true
     }
 
     /// Modify | Lines' Add Vertex, Delete Vertex and Convert Spline (for one spline selected, or picked while sketching).

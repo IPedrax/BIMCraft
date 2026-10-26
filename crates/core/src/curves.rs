@@ -283,6 +283,24 @@ impl Curve {
         }
     }
 
+    /// The centres of its round parts: a circle's or an ellipse's, each arc's of a polyline (each once). What a centre
+    /// mark marks.
+    pub fn centres(&self) -> Vec<P2> {
+        let mut out: Vec<P2> = Vec::new();
+        match self {
+            Curve::Circle { centre, .. } | Curve::Ellipse { centre, .. } => out.push(*centre),
+            Curve::Poly { .. } => {
+                for c in self.segments().iter().filter_map(Axis::centre) {
+                    if out.iter().all(|q| q.dist(c) > TOL) {
+                        out.push(c);
+                    }
+                }
+            }
+            Curve::Spline { .. } | Curve::Fit { .. } => {}
+        }
+        out
+    }
+
     /// Its middle: half way along it.
     pub fn middle(&self) -> P2 {
         let pts = self.points();
@@ -1154,6 +1172,28 @@ fn refit_with(truth: &dyn Fn(f64) -> P2, range: (f64, f64), mut points: Vec<P2>,
         along.insert(at, s);
     }
     Curve::Fit { points, tangents }
+}
+
+/// A copy of an ellipse or a spline `by` mm to its left (to its right when negative), as a spline through points lying
+/// within [`FIT_TOL`] of the true offset: Revit's Offset can't do these. None where it would fold over itself, or isn't a
+/// curve that can be drawn.
+pub fn offset_fit(c: &Curve, by: f64) -> Option<Curve> {
+    let (t0, t1) = c.domain();
+    if !by.is_finite() || t1.partial_cmp(&t0) != Some(std::cmp::Ordering::Greater) {
+        return None;
+    }
+    let truth = |t: f64| c.at(t) + c.tangent(t).perp() * by;
+    let n = 8;
+    let along: Vec<f64> = (0..=n).map(|i| t0 + (t1 - t0) * f64::from(i) / f64::from(n)).collect();
+    let points: Vec<P2> = along.iter().map(|t| truth(*t)).collect();
+    let out = refit_with(&truth, (t0, t1), points, along, [Some(c.tangent(t0)), Some(c.tangent(t1))]);
+    // Folded over itself, the offset runs back against the curve somewhere.
+    let k = 64;
+    let folds = (0..k).any(|i| {
+        let (a, b) = (t0 + (t1 - t0) * f64::from(i) / f64::from(k), t0 + (t1 - t0) * f64::from(i + 1) / f64::from(k));
+        (truth(b) - truth(a)).dot(c.at(b) - c.at(a)) < 0.0
+    });
+    (!folds && out.check("").is_ok()).then_some(out)
 }
 
 /// A spline by its control points `c` as one through points, within [`FIT_TOL`] of it: through its ends and its knots,

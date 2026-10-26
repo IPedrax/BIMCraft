@@ -92,7 +92,44 @@ one by control points into one through points within `FIT_TOL` (`refit_with`); R
 Revit's Insulation is a detail line with an `insulation` width: `DetailLine::drawn` gives `lines::batt`, a prolate cycloid
 along its curve (loops the whole width across, `BULGE` times it apart), so it splits, offsets, joins and takes grips as any
 line does, and follows arcs and splines, which Revit's doesn't. Annotate > Detail > Insulation draws it, its Width on the
-Options Bar; Properties shows Insulation Width.
+Options Bar; Properties shows Insulation Width. A revision cloud is the same idea: a detail line with a `cloud` arc length (and
+a `revision`, any text) that `drawn` turns into scallops (`lines::cloud`, arcs of `SCALLOP` degrees bulging out of a loop
+whichever way round it was drawn, to the left of an open line). Annotate > Detail > Revision Cloud draws one, a rectangle by
+default; with it a rectangle or a polygon is one cloud round (`curves::join`), and Line is one cloud through the points
+(`one_line`). `centre_mark` is Revit's Center Mark Visible: a 3 mm cross at each of `Curve::centres`, the Options Bar's Show
+Centre for new arcs and circles.
+
+Linework (`linework`, LW) is Revit's: an edge of a model element drawn in a line style in one plan, or hidden there. The
+plan's `Graphics::linework` holds each as the element's GUID, the edge's two ends and a style (`None` hidden).
+`render::edge_at` finds the edge picked: the plan drawn again around the point without its linework, the nearest
+segment of the element's lines within `LINEWORK_REACH`. `render::linework` restyles, after `Look::dress`, the parts of the
+element's lines that lie along that edge (collinear within a pixel, over its length), so one face of a wall changes and the
+rest of its outline doesn't. Picked again, an edge's entry is replaced; `remove` takes it out (the desktop's `<By Category>`).
+A line style a view's linework uses can't be deleted, and an element's entries go with it.
+
+Detail groups (`groups.rs`) are Revit's: `create_group` (GP) makes the detail lines, filled regions and text notes given,
+all of one view, into a group type (`Model::detail_groups`) holding them as `Member`s about the middle of them, in no
+view, and puts one `DetailGroup` element in their place. Members are parts (`HasPart`, `parts_now`): each has its own id
+and GUID, and their line styles and region types are library references like an element's (`lib_refs_mut`), so renames
+reach them; `Model::check` holds each to what the same element in a view must be (`annotation_ok`). A placed group is an
+origin, an angle and `mirrored`; `groups::placed` gives its members as elements of its view (through
+`commands::transform`, as Move and Rotate take elements), which `render::detail_group` draws, regions under lines and notes,
+all owned by the group, so it picks, moves, rotates and mirrors as one. `ungroup` (UG) puts those elements back in the view;
+`group_type` renames a type (its groups follow) or deletes it while nothing is of it. A `RepeatingDetail` places a group
+along a line every `spacing` from its start, each turned along it (at most `MAX_REPEATS`), as Revit's Repeating Detail
+Component does with a detail component. On the desktop, Annotate > Detail has Detail Group, Repeating Detail and Create
+Group, and the right-click menu has Create Group and Ungroup.
+
+The Options Bar's Offset puts a line, an arc or a polyline beside the points clicked; a rectangle, a polygon or a circle grows
+by it as a whole (`grown`, its corners joined), and a spline or an ellipse takes none (`Shape::offsets`). Modify's Offset takes
+ellipses and splines too, as a spline through points within `FIT_TOL` of the true offset (`curves::offset_fit`), refused where
+it would fold over itself. While a shape is drawn its numbers can be typed (`draw::numbers`, `reading`, `typed`): a rectangle's
+width and height (Tab between them, the canvas taking the Tab from egui's focus), a circle's or a polygon's radius, the third
+point's radius, angle or reach; anything else typed is a length toward the cursor, as a line's, in sketch mode too. The canvas
+labels them as they read (`shape_dimensions`). A spline or a polyline finishes with Enter, a double click or the right-click
+menu's Finish Drawing; Fillet Arc previews the arc nearest the cursor and its radius, Offset a dashed ghost of the copy, and
+Trim/Extend and Fillet's picks so far show in the selection's colour. Trim/Extend to Corner with two lines or walls selected (or
+two sketch lines picked) joins them at once, each keeping the part toward its middle.
 
 `Drawing::detail` is the level the plan or the section is drawn at: coarse leaves out a compound element's layers and an opening's
 symbols, medium its patterns (`cut_layer`, a floor's `surface`), fine draws as before. In the 3D view `Look::style` picks how
@@ -159,8 +196,20 @@ when drawn, any number of outlines; Edit Boundary edits it as any other. Pattern
 renamed with their references (a type follows its patterns, a region its type and line style) and refused deleted while
 used. The desktop has Annotate > Region (Filled Region, FR, and Masking Region, sketch mode with the type and the line style
 in the Options Bar), Properties (Region Type, Line Style with invisible lines), and Manage > Fill Patterns (`fillpatterns.rs`:
-region types and patterns as one draft, a simple pattern edited as an angle, a spacing and crosshatched or not). Materials'
-cut and surface patterns are still `model::Pattern`; moving them onto fill patterns is a later step.
+region types and patterns as one draft, a simple pattern edited as an angle, a spacing and crosshatched or not, any pattern's
+families one by one with Edit Lines, and Import and Export of PAT files). `pat.rs` reads and writes PAT files (`;%UNITS`,
+`;%TYPE`, a negative offset stepping the other way; a pattern that can't be one left out with why) for the dialog and for the
+`import_fill_patterns` and `export_fill_patterns` commands.
+
+A material's cut and surface may be one of the project's fill patterns (`Material::cut_pattern`, `surface_pattern`, a
+library reference like a region type's), over the patterns drawn in code (`model::Pattern`), which stay for the materials
+that name them: `material` takes either name for `cut` and `surface`, and the desktop's material editor lists both. A fill
+pattern a material shows can't be deleted, and is renamed with it. `render::fill_pattern` draws a fill pattern for a
+region, a cut layer (its courses along the layer) and a floor's or a ceiling's surface. A model pattern is aligned and
+rotated as Revit's: a filled region and a floor hold `pattern_origin` and `pattern_angle` (`fills::strokes_placed`), which
+Move, Rotate and Mirror carry with the element; Align with a pattern line picked second (`render::pattern_line_at`) moves the
+origin so that line lies on the reference, and Properties shows Pattern Angle.
+
 ## Linked models
 
 A `Link` element (`link.rs`; commands `link` and `reload`) is another project shown in this one as a reference. The file holds its name, its

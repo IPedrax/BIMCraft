@@ -130,6 +130,35 @@ const DOT: f64 = 0.15;
 /// of them), each as a straight piece in model mm, `k` model mm to each of the pattern's (the view's scale for a drafting
 /// pattern, 1 for a model one); within `window` (its lowest and its highest corner), and no more than `max` of them. None
 /// when it would take more, too dense to draw.
+/// As [`strokes`], the pattern started at `origin` and turned `angle` degrees counter-clockwise.
+pub fn strokes_placed(
+    p: &FillPattern,
+    rings: &[Vec<P2>],
+    k: f64,
+    window: (P2, P2),
+    max: usize,
+    (origin, angle): (P2, f64),
+) -> Option<Vec<[P2; 2]>> {
+    if at_origin(&origin) && angle == 0.0 {
+        return strokes(p, rings, k, window, max);
+    }
+    let (sin, cos) = angle.to_radians().sin_cos();
+    let into = |q: P2| {
+        let d = q - origin;
+        P2(d.0 * cos + d.1 * sin, d.1 * cos - d.0 * sin)
+    };
+    let back = |q: P2| origin + P2(q.0 * cos - q.1 * sin, q.0 * sin + q.1 * cos);
+    let rings: Vec<Vec<P2>> = rings.iter().map(|r| r.iter().map(|q| into(*q)).collect()).collect();
+    let (lo, hi) = window;
+    let corners = [lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)].map(into);
+    let fold = |f: fn(f64, f64) -> f64, start: f64, of: fn(&P2) -> f64| corners.iter().map(of).fold(start, f);
+    let w = (
+        P2(fold(f64::min, f64::INFINITY, |q| q.0), fold(f64::min, f64::INFINITY, |q| q.1)),
+        P2(fold(f64::max, f64::NEG_INFINITY, |q| q.0), fold(f64::max, f64::NEG_INFINITY, |q| q.1)),
+    );
+    Some(strokes(p, &rings, k, w, max)?.into_iter().map(|[a, b]| [back(a), back(b)]).collect())
+}
+
 pub fn strokes(p: &FillPattern, rings: &[Vec<P2>], k: f64, window: (P2, P2), max: usize) -> Option<Vec<[P2; 2]>> {
     let mut out = Vec::new();
     let pts = rings.iter().flatten();
@@ -249,6 +278,15 @@ pub struct FilledRegion {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub line_style: Option<String>,
     pub sketch: Vec<SketchLine>,
+    /// Where its patterns start, and how far they're turned, degrees: Revit's aligned and rotated model pattern.
+    #[serde(default, skip_serializing_if = "at_origin")]
+    pub pattern_origin: P2,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub pattern_angle: f64,
+}
+
+pub fn at_origin(p: &P2) -> bool {
+    *p == P2(0.0, 0.0)
 }
 
 /// The fill pattern every project has, which fills solid: in English.
@@ -431,6 +469,31 @@ mod tests {
     }
 
     #[test]
+    fn fill_patterns_come_in_from_a_pat_file_and_go_out_to_one_undone_in_one_step() {
+        let mut s = Session::new();
+        let text = "*Herringbone, a test\n;%TYPE=MODEL\n45, 0,0, 0,100, 200,-200\n*Crosshatch\n0, 0,0, 0,3\n*Bad\n0, 0,0, 0,0\n";
+        let r = run(&mut s, "import_fill_patterns", json!({"text": text}));
+        assert_eq!(r["imported"], json!(["Herringbone"]));
+        let why: Vec<&str> = r["left_out"].as_array().into_iter().flatten().filter_map(|v| v["name"].as_str()).collect();
+        assert_eq!(why, ["Crosshatch", "Bad"], "the project's own Crosshatch stays, Bad can't be one");
+        assert_eq!(s.model.fill_patterns["Herringbone"].target, Target::Model);
+        let r = run(&mut s, "import_fill_patterns", json!({"text": text, "replace": true}));
+        assert_eq!(r["imported"], json!(["Herringbone", "Crosshatch"]));
+        assert_eq!(s.model.fill_patterns["Crosshatch"].lines, vec![HatchLine::simple(0.0, 3.0)]);
+        // Out again: every pattern but Solid fill, read back the same.
+        let out = run(&mut s, "export_fill_patterns", json!({}));
+        let back = crate::pat::read(out["text"].as_str().unwrap_or_default()).unwrap_or_default();
+        assert_eq!(back.patterns.len(), s.model.fill_patterns.len() - 1);
+        assert!(back.patterns.iter().all(|(n, p)| s.model.fill_patterns.get(n) == Some(p)));
+        let one = run(&mut s, "export_fill_patterns", json!({"names": ["Herringbone"]}));
+        assert!(one["text"].as_str().is_some_and(|t| t.contains("*Herringbone\n;%TYPE=MODEL\n45,0,0,0,100,200,-200")), "{one}");
+        assert!(s.execute("export_fill_patterns", &json!({"names": ["Nope"]})).is_err());
+        run(&mut s, "undo", json!({}));
+        assert!(!s.model.fill_patterns["Crosshatch"].simple().is_some_and(|x| x.1 == 3.0), "the replace undone");
+        assert!(s.execute("import_fill_patterns", &json!({})).is_err());
+    }
+
+    #[test]
     fn fill_patterns_and_region_types_are_the_projects_named_in_its_language_and_kept_while_used() {
         let mut s = Session::new();
         let r = run(&mut s, "fill_pattern", json!({}));
@@ -530,5 +593,58 @@ mod tests {
         assert_eq!(r2["area_m2"], 1.25, "two loops");
         let Some(Element::FilledRegion(after)) = s.model.elements.get(id.as_u64().unwrap()) else { panic!() };
         assert_eq!(after.sketch[..4].iter().map(|l| l.id).collect::<Vec<_>>(), r.sketch.iter().map(|l| l.id).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn a_materials_patterns_are_the_projects_fill_patterns_and_a_regions_pattern_moves_and_turns() {
+        let mut s = Session::new();
+        // A material's cut and surface may be fill patterns: kept while used, renamed with it.
+        run(&mut s, "material", json!({"name": "Stone", "cut": "Diagonal Up", "surface": "Tile 300"}));
+        assert_eq!(s.model.materials["Stone"].cut_pattern.as_deref(), Some("Diagonal Up"));
+        assert!(s.execute("fill_pattern", &json!({"name": "Tile 300", "delete": true})).is_err(), "Stone's surface");
+        run(&mut s, "fill_pattern", json!({"name": "Tile 300", "rename": "Tile"}));
+        assert_eq!(s.model.materials["Stone"].surface_pattern.as_deref(), Some("Tile"));
+        assert!(s.execute("material", &json!({"name": "Stone", "cut": "No such"})).is_err());
+        run(&mut s, "material", json!({"name": "Stone", "cut": "brick"}));
+        assert_eq!(
+            (s.model.materials["Stone"].cut, s.model.materials["Stone"].cut_pattern.as_deref()),
+            (crate::model::Pattern::Brick, None)
+        );
+        // A region of a model pattern: its lines through the pattern's origin, square, until moved and turned.
+        run(&mut s, "filled_region_type", json!({"name": "Tiles", "foreground": "Tile"}));
+        let id = run(&mut s, "filled_region", json!({"sketch": lines(0.0, 0.0, 3000.0), "type": "Tiles", "line_style": null}))["id"]
+            .as_u64()
+            .unwrap();
+        let angles = |s: &Session| -> Vec<i64> {
+            let d = plan(s);
+            let mut a: Vec<i64> = of(&d, id)
+                .into_iter()
+                .filter_map(|(_, p)| match p {
+                    Prim::Line { pts, .. } if pts.len() == 2 => {
+                        let (dx, dy) = (pts[1].0 - pts[0].0, pts[0].1 - pts[1].1);
+                        Some((f64::from(dy).atan2(f64::from(dx)).to_degrees().rem_euclid(180.0).round() as i64) % 180)
+                    }
+                    _ => None,
+                })
+                .collect();
+            a.sort();
+            a.dedup();
+            a
+        };
+        assert_eq!(angles(&s), [0, 90]);
+        let column = |s: &Session, x: f64| {
+            let d = plan(s);
+            let px = d.view.px(P2(x, 1500.0)).0;
+            of(&d, id).into_iter().any(|(_, p)| matches!(p, Prim::Line { pts, .. } if pts.iter().all(|q| (q.0 - px).abs() < 0.5)))
+        };
+        assert!(column(&s, 600.0) && !column(&s, 700.0));
+        run(&mut s, "modify", json!({"id": id, "pattern_origin": [100, 0]}));
+        assert!(column(&s, 700.0) && !column(&s, 600.0), "the origin moved 100 mm east");
+        run(&mut s, "modify", json!({"id": id, "pattern_angle": 30}));
+        assert_eq!(angles(&s), [30, 120]);
+        // Rotating the region turns its pattern with it.
+        run(&mut s, "rotate", json!({"ids": [id], "about": [1500, 1500], "angle": 15}));
+        assert_eq!(angles(&s), [45, 135]);
+        assert!(s.execute("modify", &json!({"id": id, "pattern_angle": f64::MAX})).is_err());
     }
 }

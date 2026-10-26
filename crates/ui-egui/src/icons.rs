@@ -166,6 +166,12 @@ icon_names! {
     TrimSingle,
     TrimMultiple,
     Insulation,
+    RevisionCloud,
+    Linework,
+    DetailGroup,
+    CreateGroup,
+    RepeatingDetail,
+    PickFaces,
     AddVertex,
     DeleteVertex,
     ConvertSpline,
@@ -398,6 +404,57 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             // A clean right-angle join and a short leftover segment.
             g.line(&[(5.0, 21.0), (5.0, 5.0), (21.0, 5.0)]);
             g.line(&[(5.0, 5.0), (2.0, 2.0)]);
+        }
+        Icon::RevisionCloud => {
+            // A cloud: scallops bulging out round a rectangle, each arc from one corner of the last.
+            for x in [6.0, 10.0, 14.0, 18.0] {
+                g.arc((x, 6.0), 2.0, 180.0, 360.0);
+                g.arc((x, 18.0), 2.0, 0.0, 180.0);
+            }
+            for y in [8.0, 12.0, 16.0] {
+                g.arc((20.0, y), 2.0, -90.0, 90.0);
+                g.arc((4.0, y), 2.0, 90.0, 270.0);
+            }
+        }
+        Icon::DetailGroup | Icon::CreateGroup => {
+            // Lines and a note, held in a dashed frame; to create one, a plus at its corner.
+            for (a, b) in [((3.0, 3.0), (21.0, 3.0)), ((21.0, 3.0), (21.0, 21.0)), ((21.0, 21.0), (3.0, 21.0)), ((3.0, 21.0), (3.0, 3.0))] {
+                let (dx, dy) = ((b.0 - a.0) / 7.0, (b.1 - a.1) / 7.0);
+                for k in [0.0, 2.0, 4.0, 6.0] {
+                    g.line(&[(a.0 + dx * k, a.1 + dy * k), (a.0 + dx * (k + 1.0), a.1 + dy * (k + 1.0))]);
+                }
+            }
+            g.line(&[(7.0, 16.0), (13.0, 8.0)]);
+            g.line(&[(7.0, 8.0), (13.0, 8.0)]);
+            if icon == Icon::CreateGroup {
+                g.line(&[(17.0, 13.0), (17.0, 21.0)]);
+                g.line(&[(13.0, 17.0), (21.0, 17.0)]);
+            } else {
+                g.line(&[(15.0, 16.0), (18.0, 16.0)]);
+            }
+        }
+        Icon::PickFaces => {
+            // A mass in plan, one of its faces picked: a wall standing on it, its two faces along the edge.
+            g.closed(&[(4.0, 8.0), (20.0, 8.0), (20.0, 20.0), (4.0, 20.0)]);
+            g.closed(&[(4.0, 3.0), (20.0, 3.0), (20.0, 6.0), (4.0, 6.0)]);
+            g.line(&[(12.0, 11.0), (12.0, 17.0)]);
+            g.line(&[(9.0, 14.0), (15.0, 14.0)]);
+        }
+        Icon::RepeatingDetail => {
+            // A brick course: the same block again and again along a line.
+            g.line(&[(2.0, 19.0), (22.0, 19.0)]);
+            for x in [3.0, 10.0, 17.0] {
+                g.closed(&[(x, 9.0), (x + 4.5, 9.0), (x + 4.5, 16.0), (x, 16.0)]);
+            }
+        }
+        Icon::Linework => {
+            // A wall in plan, its top edge drawn heavy and its bottom one dashed: each edge in a style of the view's own.
+            g.closed(&[(3.0, 6.0), (21.0, 6.0), (21.0, 9.0), (3.0, 9.0)]);
+            g.line(&[(3.0, 9.0), (3.0, 18.0)]);
+            g.line(&[(21.0, 9.0), (21.0, 18.0)]);
+            for x in [3.0, 10.0, 17.0] {
+                g.line(&[(x, 18.0), (x + 4.0, 18.0)]);
+            }
         }
         Icon::Insulation => {
             // Batt insulation: loops across, between its two faces.
@@ -816,9 +873,8 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(3.0, 15.0), (7.0, 15.0), (7.0, 19.0), (3.0, 19.0)]);
             g.closed(&[(17.0, 15.0), (21.0, 15.0), (21.0, 19.0), (17.0, 19.0)]);
             g.cubic([(5.0, 15.0), (5.0, 3.0), (19.0, 3.0), (19.0, 15.0)]);
-            if !compact {
-                g.line(&[(10.0, 6.0), (14.0, 6.0)]);
-            }
+            // The third click: a smaller grip at its apex, where the arc passes through.
+            g.closed(&[(10.0, 4.0), (14.0, 4.0), (14.0, 8.0), (10.0, 8.0)]);
         }
         Icon::Flip => {
             // Opposed arrows on either side of the wall centerline.
@@ -1288,9 +1344,9 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.cubic([(12.0, 12.0), (14.5, 16.5), (18.0, 17.0), (19.4, 8.4)]);
             g.circle((3.5, 18.0), 2.0);
             g.circle((20.5, 6.0), 2.0);
-            if !compact {
-                g.circle((12.0, 12.0), 2.0);
-            }
+            // The points it passes through at the top and the bottom of its waves.
+            g.circle((7.9, 8.9), 2.0);
+            g.circle((16.1, 15.1), 2.0);
         }
         Icon::Ellipse => {
             // An ellipse about its centre.

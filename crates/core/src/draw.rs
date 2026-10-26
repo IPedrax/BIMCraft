@@ -50,6 +50,8 @@ pub enum Shape {
     Polyline,
     /// A copy of a line, an edge or a wall's location line, picked.
     PickLines,
+    /// A wall on the face of a mass, picked: Revit's Pick Faces, for walls only.
+    PickFaces,
 }
 
 /// The Options Bar's settings a shape draws with.
@@ -74,7 +76,7 @@ pub const MAX_SIDES: usize = 360;
 
 impl Shape {
     /// Every shape, in the Draw panel's order.
-    pub const ALL: [Shape; 15] = [
+    pub const ALL: [Shape; 16] = [
         Shape::Line,
         Shape::Rectangle,
         Shape::Inscribed,
@@ -90,6 +92,7 @@ impl Shape {
         Shape::PartialEllipse,
         Shape::Polyline,
         Shape::PickLines,
+        Shape::PickFaces,
     ];
 
     /// What it's called, as the Draw panel names it.
@@ -110,17 +113,29 @@ impl Shape {
             Shape::PartialEllipse => "Partial Ellipse",
             Shape::Polyline => "Polyline",
             Shape::PickLines => "Pick Lines",
+            Shape::PickFaces => "Pick Faces",
         }
     }
 
-    /// Whether walls draw it: walls are lines and arcs.
+    /// Whether walls draw it: walls are lines and arcs, and stand on a mass's faces.
     pub fn for_walls(self) -> bool {
         !matches!(self, Shape::Spline | Shape::FitSpline | Shape::Ellipse | Shape::PartialEllipse | Shape::Polyline)
+    }
+
+    /// Whether lines draw it: all but Pick Faces.
+    pub fn for_lines(self) -> bool {
+        self != Shape::PickFaces
     }
 
     /// Whether it takes any number of points, until the tool finishes it.
     pub fn open_ended(self) -> bool {
         matches!(self, Shape::Spline | Shape::FitSpline | Shape::Polyline)
+    }
+
+    /// Whether the Options Bar's Offset puts what it draws beside the points clicked. A closed shape grows by it instead;
+    /// a spline, an ellipse and a fillet take none.
+    pub fn offsets(self) -> bool {
+        matches!(self, Shape::Line | Shape::Arc | Shape::CentreArc | Shape::TangentArc | Shape::Polyline)
     }
 
     /// Whether, chained, the next starts where it ended.
@@ -136,7 +151,7 @@ impl Shape {
             Shape::Line | Shape::Rectangle | Shape::TangentArc | Shape::Spline | Shape::FitSpline | Shape::Polyline => 2,
             Shape::Inscribed | Shape::Circumscribed | Shape::Circle => 1 + sized,
             Shape::Arc | Shape::CentreArc | Shape::Ellipse | Shape::PartialEllipse => 3,
-            Shape::Fillet | Shape::PickLines => 0,
+            Shape::Fillet | Shape::PickLines | Shape::PickFaces => 0,
         }
     }
 }
@@ -157,8 +172,8 @@ pub fn make(shape: Shape, points: &[P2], o: &Options, tangent: Option<P2>) -> Op
     let made: Vec<Curve> = match (shape, points) {
         (Shape::Line, &[a, b]) if apart(a, b) => vec![Curve::line(a, b)],
         (Shape::Rectangle, &[a, b]) if (a.0 - b.0).abs() > TOL && (a.1 - b.1).abs() > TOL => {
-            let c = [a, P2(b.0, a.1), b, P2(a.0, b.1)];
-            (0..4).map(|k| Curve::line(c[k], c[(k + 1) % 4])).collect()
+            let ring = Curve::Poly { points: vec![a, P2(b.0, a.1), b, P2(a.0, b.1)], arcs: Vec::new(), closed: true };
+            curves::explode(&grown(&ring, o.offset)?)
         }
         (Shape::Inscribed | Shape::Circumscribed, pts) => {
             let centre = *pts.first()?;
@@ -168,7 +183,7 @@ pub fn make(shape: Shape, points: &[P2], o: &Options, tangent: Option<P2>) -> Op
                 _ => return None,
             };
             let sides = o.sides.clamp(3, MAX_SIDES);
-            curves::explode(&curves::polygon(centre, at, sides, shape == Shape::Inscribed)?)
+            curves::explode(&grown(&curves::polygon(centre, at, sides, shape == Shape::Inscribed)?, o.offset)?)
         }
         (Shape::Circle, pts) => {
             let centre = *pts.first()?;
@@ -180,7 +195,7 @@ pub fn make(shape: Shape, points: &[P2], o: &Options, tangent: Option<P2>) -> Op
             if r <= TOL {
                 return None;
             }
-            vec![Curve::Circle { centre, radius: r }]
+            vec![grown(&Curve::Circle { centre, radius: r }, o.offset)?]
         }
         (Shape::Arc, &[a, b, t]) if apart(a, b) => vec![Curve::arc_through(a, b, t)],
         (Shape::CentreArc, &[c, a, b]) if apart(c, a) && apart(c, b) => {
@@ -224,12 +239,104 @@ pub fn make(shape: Shape, points: &[P2], o: &Options, tangent: Option<P2>) -> Op
         }
         _ => return None,
     };
-    let made: Vec<Curve> = if o.offset != 0.0 && o.offset.is_finite() {
-        made.iter().map(|c| offset(c, o.offset)).collect::<Option<Vec<Curve>>>()?
-    } else {
-        made
-    };
+    // A closed shape grew by the offset as a whole, above; a spline or an ellipse takes none (the Options Bar hides it).
+    let beside = o.offset != 0.0 && o.offset.is_finite() && shape.offsets();
+    let made: Vec<Curve> = if beside { made.iter().map(|c| offset(c, o.offset)).collect::<Option<Vec<Curve>>>()? } else { made };
     made.iter().all(|c| c.check("").is_ok()).then_some(made)
+}
+
+/// A closed shape grown `by` mm all round (shrunk when negative), whichever way round it was drawn: its corners stay
+/// joined.
+fn grown(c: &Curve, by: f64) -> Option<Curve> {
+    if by == 0.0 || !by.is_finite() {
+        return Some(c.clone());
+    }
+    // Offset goes to the left: outside of a ring drawn clockwise, inside of one drawn the other way.
+    let ccw = match c {
+        Curve::Poly { points, .. } => crate::geom::area(points) > 0.0,
+        _ => true,
+    };
+    offset(c, if ccw { -by } else { by })
+}
+
+/// What the numbers typed while `shape` has `n` points set, as the dimensions it shows name them: a rectangle's width
+/// and height, a circle's or a polygon's radius, a third point's radius, angle or reach. None when what's typed is a
+/// length from the last point toward the cursor, as a line's is.
+pub fn numbers(shape: Shape, n: usize) -> &'static [&'static str] {
+    match (shape, n) {
+        (Shape::Rectangle, 1) => &["Width", "Height"],
+        (Shape::Inscribed | Shape::Circumscribed | Shape::Circle, 1) => &["Radius"],
+        (Shape::Arc, 2) => &["Radius"],
+        (Shape::CentreArc, 2) => &["Angle"],
+        (Shape::Ellipse | Shape::PartialEllipse, 2) => &["Radius"],
+        _ => &[],
+    }
+}
+
+/// The numbers [`numbers`] names as they are with the cursor at `cursor`: what the dimensions read.
+pub fn reading(shape: Shape, points: &[P2], cursor: P2) -> Vec<f64> {
+    match (shape, points) {
+        (Shape::Rectangle, &[a]) => vec![(cursor.0 - a.0).abs(), (cursor.1 - a.1).abs()],
+        (Shape::Inscribed | Shape::Circumscribed | Shape::Circle, &[c]) => vec![c.dist(cursor)],
+        (Shape::Arc, &[a, b]) => {
+            let arc = Curve::arc_through(a, b, cursor);
+            arc.segments().first().and_then(|s| s.radius()).into_iter().collect()
+        }
+        (Shape::CentreArc, &[c, a]) => {
+            let (u, v) = (a - c, cursor - c);
+            vec![v.cross(u).abs().atan2(u.dot(v)).to_degrees()]
+        }
+        (Shape::Ellipse, &[c, a]) => vec![(cursor - c).cross((a - c).unit()).abs()],
+        (Shape::PartialEllipse, &[a, b]) => vec![(cursor - (a + b) * 0.5).cross((b - a).unit()).abs()],
+        _ => Vec::new(),
+    }
+}
+
+/// The next point that makes `shape` what the numbers typed say (one for each of [`numbers`], None where the cursor's
+/// is kept), on the cursor's side of what's drawn: None when they can't (an arc's radius shorter than half its chord,
+/// an angle past 180°) or there's nothing to type.
+pub fn typed(shape: Shape, points: &[P2], cursor: P2, values: &[Option<f64>]) -> Option<P2> {
+    let now = reading(shape, points, cursor);
+    let value = |i: usize| values.get(i).copied().flatten().or(now.get(i).copied()).filter(|v| v.is_finite() && *v > 0.0);
+    let side = |u: P2, from: P2| if u.cross(cursor - from) >= 0.0 { 1.0 } else { -1.0 };
+    let toward = |from: P2| if cursor.dist(from) > TOL { (cursor - from).unit() } else { P2(1.0, 0.0) };
+    let sign = |d: f64| if d < 0.0 { -1.0 } else { 1.0 };
+    let p = match (shape, points) {
+        (Shape::Rectangle, &[a]) => a + P2(sign(cursor.0 - a.0) * value(0)?, sign(cursor.1 - a.1) * value(1)?),
+        (Shape::Inscribed | Shape::Circumscribed | Shape::Circle, &[c]) => c + toward(c) * value(0)?,
+        (Shape::Arc, &[a, b]) => {
+            let (r, half) = (value(0)?, a.dist(b) / 2.0);
+            if r < half - TOL {
+                return None;
+            }
+            // The shorter way round, unless the cursor has it the longer.
+            let rise = (r * r - half * half).max(0.0).sqrt();
+            let long = Curve::arc_through(a, b, cursor)
+                .segments()
+                .first()
+                .is_some_and(|s| s.radius().is_some_and(|rad| s.length() / rad > std::f64::consts::PI));
+            let u = (b - a).unit();
+            (a + b) * 0.5 + u.perp() * (side(u, a) * if long { r + rise } else { r - rise })
+        }
+        (Shape::CentreArc, &[c, a]) => {
+            let angle = value(0)?;
+            if angle >= 180.0 {
+                return None;
+            }
+            let t = (a.1 - c.1).atan2(a.0 - c.0) + side(a - c, c) * angle.to_radians();
+            c + P2(t.cos(), t.sin()) * c.dist(a)
+        }
+        (Shape::Ellipse, &[c, a]) => {
+            let u = (a - c).unit();
+            c + u.perp() * (side(u, c) * value(0)?)
+        }
+        (Shape::PartialEllipse, &[a, b]) => {
+            let u = (b - a).unit();
+            (a + b) * 0.5 + u.perp() * (side(u, a) * value(0)?)
+        }
+        _ => return None,
+    };
+    p.is_finite().then_some(p)
 }
 
 /// What a front end shows while the points are clicked and the cursor is at `cursor`: what they'd make with the cursor
@@ -283,7 +390,7 @@ pub fn offset(c: &Curve, by: f64) -> Option<Curve> {
             let out = Curve::Poly { points: pts, arcs: arcs.clone(), closed: *closed };
             out.check("").is_ok().then_some(out)
         }
-        Curve::Ellipse { .. } | Curve::Spline { .. } | Curve::Fit { .. } => None,
+        Curve::Ellipse { .. } | Curve::Spline { .. } | Curve::Fit { .. } => curves::offset_fit(c, by),
     }
 }
 
@@ -507,7 +614,9 @@ mod tests {
         let r = make(Shape::Rectangle, &[P2(0.0, 0.0), P2(2000.0, 1000.0)], &Options { offset: -100.0, ..Options::default() }, None)
             .unwrap_or_default();
         assert_eq!(r.len(), 4);
-        assert!(make(Shape::Spline, &[P2(0.0, 0.0), P2(1.0e3, 1.0e3), P2(2.0e3, 0.0)], &off, None).is_none(), "a spline has no offset");
+        let control = vec![P2(0.0, 0.0), P2(1.0e3, 1.0e3), P2(2.0e3, 0.0)];
+        let spline = make(Shape::Spline, &control, &off, None);
+        assert_eq!(spline, Some(vec![Curve::Spline { control, knots: None }]), "a spline takes no offset: the Options Bar hides it");
     }
 
     #[test]
@@ -534,7 +643,8 @@ mod tests {
         let spline = preview(Shape::Spline, &[P2(0.0, 0.0), P2(1000.0, 1000.0)], P2(2000.0, 0.0), &o, None);
         assert_eq!(spline[0].kind(), "spline");
         assert!(Shape::ALL.iter().all(|s| !s.label().is_empty()));
-        assert_eq!(Shape::ALL.iter().filter(|s| s.for_walls()).count(), 10);
+        assert_eq!(Shape::ALL.iter().filter(|s| s.for_walls()).count(), 11);
+        assert_eq!(Shape::ALL.iter().filter(|s| !s.for_lines()).collect::<Vec<_>>(), [&Shape::PickFaces]);
     }
 
     #[test]
@@ -580,5 +690,67 @@ mod tests {
             ]
         );
         assert!(wall_segments(&[Curve::Spline { control: vec![P2(0.0, 0.0), P2(1.0e3, 0.0)], knots: None }]).is_empty());
+    }
+
+    #[test]
+    fn a_closed_shape_grows_by_the_offset_with_its_corners_joined_and_a_spline_takes_none() {
+        use crate::sketch::{SketchLine, solve};
+        let o = Options { offset: 200.0, ..Options::default() };
+        // Drawn either way round, a rectangle grows outwards; its sides still meet.
+        for (a, b) in [(P2(0.0, 0.0), P2(2000.0, 1000.0)), (P2(2000.0, 0.0), P2(0.0, 1000.0))] {
+            let made = make(Shape::Rectangle, &[a, b], &o, None).unwrap_or_default();
+            let lines: Vec<SketchLine> = made.into_iter().map(SketchLine::from).collect();
+            let solved = solve(&lines).unwrap_or_else(|e| panic!("{e:?}"));
+            assert!((solved.regions[0].area() - 2400.0 * 1400.0).abs() < 1e-3, "{}", solved.regions[0].area());
+        }
+        let hex = make(Shape::Inscribed, &[P2(0.0, 0.0), P2(1000.0, 0.0)], &Options { offset: -100.0, ..o }, None).unwrap_or_default();
+        assert!(solve(&hex.into_iter().map(SketchLine::from).collect::<Vec<_>>()).is_ok(), "shrunk, it doesn't cross itself");
+        let circle = make(Shape::Circle, &[P2(0.0, 0.0), P2(500.0, 0.0)], &o, None);
+        assert_eq!(circle, Some(vec![Curve::Circle { centre: P2(0.0, 0.0), radius: 700.0 }]));
+        let pts = [P2(0.0, 0.0), P2(1000.0, 800.0), P2(2000.0, 0.0)];
+        let spline = make(Shape::FitSpline, &pts, &o, None).unwrap_or_default();
+        assert_eq!(spline, vec![Curve::Fit { points: pts.to_vec(), tangents: [None, None] }], "through the points clicked");
+    }
+
+    #[test]
+    fn numbers_typed_set_a_rectangles_sides_a_radius_or_an_angle_on_the_cursors_side() {
+        let a = P2(1000.0, 1000.0);
+        assert_eq!(numbers(Shape::Rectangle, 1), ["Width", "Height"]);
+        assert_eq!(reading(Shape::Rectangle, &[a], P2(0.0, 1500.0)), [1000.0, 500.0]);
+        // Down and to the left, as the cursor is: the width typed, the height the cursor's.
+        assert_eq!(typed(Shape::Rectangle, &[a], P2(0.0, 1500.0), &[Some(2400.0), None]), Some(P2(-1400.0, 1500.0)));
+        assert_eq!(typed(Shape::Circle, &[a], P2(1000.0, 3000.0), &[Some(500.0)]), Some(P2(1000.0, 1500.0)));
+        // An arc of radius 1000 across a 1600 chord rises 400, toward the cursor; the longer way round when it's there.
+        let (s, e) = (P2(0.0, 0.0), P2(1600.0, 0.0));
+        let near = |p: Option<P2>, q: P2| p.is_some_and(|p| p.dist(q) < 1e-6);
+        assert!(near(typed(Shape::Arc, &[s, e], P2(800.0, -100.0), &[Some(1000.0)]), P2(800.0, -400.0)));
+        assert!(near(typed(Shape::Arc, &[s, e], P2(800.0, 2000.0), &[Some(1000.0)]), P2(800.0, 1600.0)));
+        assert!(typed(Shape::Arc, &[s, e], P2(800.0, 100.0), &[Some(700.0)]).is_none(), "shorter than half the chord");
+        let r = reading(Shape::Arc, &[s, e], P2(800.0, 400.0));
+        assert!((r[0] - 1000.0).abs() < 1e-6, "{r:?}");
+        // A centre-ends arc 90° round, the way the cursor is.
+        assert!(near(typed(Shape::CentreArc, &[s, e], P2(-100.0, -1000.0), &[Some(90.0)]), P2(0.0, -1600.0)));
+        assert!(typed(Shape::CentreArc, &[s, e], P2(0.0, 1000.0), &[Some(200.0)]).is_none());
+        assert!(near(typed(Shape::Ellipse, &[s, e], P2(300.0, 50.0), &[Some(700.0)]), P2(0.0, 700.0)));
+        assert!(numbers(Shape::Line, 1).is_empty() && typed(Shape::Line, &[s], e, &[Some(1.0)]).is_none());
+    }
+
+    #[test]
+    fn a_spline_and_an_ellipse_offset_as_splines_lying_on_the_true_offset() {
+        let spline =
+            Curve::Fit { points: vec![P2(0.0, 0.0), P2(1000.0, 800.0), P2(2000.0, 0.0), P2(3000.0, 500.0)], tangents: [None, None] };
+        let ellipse = Curve::Ellipse { centre: P2(0.0, 0.0), radii: [2000.0, 1000.0], angle: 30.0, span: Some([0.0, 180.0]) };
+        for c in [spline, ellipse] {
+            let o = offset(&c, -150.0).unwrap_or_else(|| panic!("{c:?}"));
+            let (t0, t1) = c.domain();
+            for i in 0..=100 {
+                let t = t0 + (t1 - t0) * f64::from(i) / 100.0;
+                let want = c.at(t) - c.tangent(t).perp() * 150.0;
+                assert!(o.nearest(want).1 < 2.0 * curves::FIT_TOL, "{} off at {t}", o.nearest(want).1);
+            }
+        }
+        // Further in than it bends, it would fold: none.
+        let tight = Curve::Ellipse { centre: P2(0.0, 0.0), radii: [2000.0, 200.0], angle: 0.0, span: None };
+        assert!(offset(&tight, 500.0).is_none());
     }
 }

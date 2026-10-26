@@ -387,3 +387,215 @@ fn add_and_delete_vertex_and_convert_spline_on_modify_lines() {
     press(&mut h, "Convert Spline");
     assert_eq!(curve(&h, l[1]).kind(), "spline");
 }
+
+#[test]
+fn a_spline_finishes_with_a_double_click_and_a_sketched_one_from_the_right_click_menu() {
+    // Short frames, for the clicks to come quick enough to be a double click.
+    let mut h = app_at(BOX, 0.05);
+    press(&mut h, "Annotate");
+    press(&mut h, "Detail Line");
+    press(&mut h, "Spline Through Points");
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(2000.0, 2500.0));
+    double_click(&mut h, P2(3500.0, 1500.0));
+    assert_eq!(kinds(&h), ["fitted spline"]);
+    let fit = curve(&h, ids(&h, "line")[0]);
+    assert_eq!(fit.end(), P2(3500.0, 1500.0), "it ends where the double click was");
+    assert!(h.state().points().is_some_and(Vec::is_empty));
+    // While sketching, right click > Finish Drawing; Enter would have done the same.
+    key(&mut h, Key::Escape);
+    press(&mut h, "Annotate");
+    press(&mut h, "Filled Region");
+    press(&mut h, "Spline");
+    for p in [P2(1000.0, 4000.0), P2(2000.0, 5000.0), P2(3000.0, 4000.0)] {
+        click(&mut h, p);
+    }
+    let pos = h.state().screen(P2(3000.0, 3000.0));
+    right_click_at(&mut h, pos);
+    choose_item(&mut h, "Finish Drawing");
+    let sk = h.state().sketch.as_ref().map(|s| s.lines.iter().map(|l| l.curve.kind()).collect::<Vec<_>>());
+    assert_eq!(sk, Some(vec!["spline"]));
+}
+
+#[test]
+fn a_rectangles_width_and_height_a_radius_and_a_sketchs_lengths_are_typed() {
+    let mut h = detailing();
+    press(&mut h, "Rectangle");
+    click(&mut h, P2(1000.0, 1000.0));
+    hover(&mut h, P2(2000.0, 1500.0));
+    h.event(Event::Text("2400".into()));
+    h.run();
+    key(&mut h, Key::Tab);
+    h.event(Event::Text("1200".into()));
+    h.run();
+    key(&mut h, Key::Enter);
+    let corners: Vec<P2> = ids(&h, "line").into_iter().map(|id| curve(&h, id).start()).collect();
+    assert_eq!(corners, [P2(1000.0, 1000.0), P2(3400.0, 1000.0), P2(3400.0, 2200.0), P2(1000.0, 2200.0)]);
+    // Only the height typed: the width is the cursor's.
+    click(&mut h, P2(5000.0, 1000.0));
+    hover(&mut h, P2(5800.0, 500.0));
+    key(&mut h, Key::Tab);
+    h.event(Event::Text("300".into()));
+    h.run();
+    key(&mut h, Key::Enter);
+    assert_eq!(curve(&h, *ids(&h, "line").last().unwrap_or(&0)).start(), P2(5000.0, 700.0), "down, as the cursor was");
+    // A circle's radius.
+    press(&mut h, "Circle");
+    click(&mut h, P2(3000.0, 4000.0));
+    hover(&mut h, P2(3500.0, 4000.0));
+    h.event(Event::Text("750".into()));
+    h.run();
+    key(&mut h, Key::Enter);
+    assert_eq!(curve(&h, *ids(&h, "line").last().unwrap_or(&0)), Curve::Circle { centre: P2(3000.0, 4000.0), radius: 750.0 });
+    // In a sketch, a line's length typed as a detail line's is; an arc's radius after its ends.
+    key(&mut h, Key::Escape);
+    key(&mut h, Key::Escape);
+    press(&mut h, "Filled Region");
+    press(&mut h, "Line");
+    click(&mut h, P2(1000.0, 1000.0));
+    hover(&mut h, P2(2000.0, 1000.0));
+    h.event(Event::Text("1600".into()));
+    h.run();
+    key(&mut h, Key::Enter);
+    let sketched = |h: &Harness<BimApp>| h.state().sketch.as_ref().map(|s| s.lines.clone()).unwrap_or_default();
+    assert_eq!(sketched(&h).first().map(|l| l.end()), Some(P2(2600.0, 1000.0)));
+    key(&mut h, Key::Escape);
+    press(&mut h, "Start-End-Radius Arc");
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(2600.0, 1000.0));
+    hover(&mut h, P2(1800.0, 1100.0));
+    h.event(Event::Text("1000".into()));
+    h.run();
+    key(&mut h, Key::Enter);
+    let arc = sketched(&h).last().map(|l| l.curve.clone());
+    assert!(arc.as_ref().is_some_and(|a| a.nearest(P2(1800.0, 1400.0)).1 < 1e-3), "rising 400 mm toward the cursor: {arc:?}");
+}
+
+#[test]
+fn trim_extend_to_corner_joins_two_selected_lines_at_once_and_asks_for_picks_otherwise() {
+    let mut h = app(&format!(
+        "{BOX}\ndetail_line {{\"start\": [1000, 1000], \"end\": [2500, 1000]}}\ndetail_line {{\"start\": [3000, 1500], \"end\": [3000, 4000]}}"
+    ));
+    let l = ids(&h, "line");
+    h.state_mut().selection = l.clone();
+    h.run();
+    shortcut(&mut h, "TR");
+    assert_eq!(curve(&h, l[0]), Curve::line(P2(1000.0, 1000.0), P2(3000.0, 1000.0)), "run on to the corner");
+    assert_eq!(curve(&h, l[1]), Curve::line(P2(3000.0, 1000.0), P2(3000.0, 4000.0)));
+    assert_eq!(h.state().tool, Tool::Modify, "done: no picks asked for");
+    // One selected: the picks.
+    h.state_mut().selection = vec![l[0]];
+    h.run();
+    shortcut(&mut h, "TR");
+    assert_eq!(h.state().tool, Tool::Trim(None));
+    // While sketching, the two lines picked.
+    key(&mut h, Key::Escape);
+    tool(&mut h, "Floor");
+    press(&mut h, "Boundary Line");
+    for (a, b) in [(P2(1000.0, 1000.0), P2(3500.0, 1000.0)), (P2(4000.0, 1500.0), P2(4000.0, 4000.0))] {
+        click(&mut h, a);
+        click(&mut h, b);
+        key(&mut h, Key::Escape);
+    }
+    key(&mut h, Key::Escape);
+    if let Some(sk) = &mut h.state_mut().sketch {
+        sk.picked = [0, 1].into_iter().collect();
+    }
+    shortcut(&mut h, "TR");
+    let ends: Vec<P2> = h.state().sketch.as_ref().map(|s| s.lines.iter().map(|l| l.curve.end()).collect()).unwrap_or_default();
+    assert_eq!(ends, [P2(4000.0, 1000.0), P2(4000.0, 4000.0)]);
+}
+
+#[test]
+fn fillet_previews_its_arc_and_offset_its_copy_before_the_click() {
+    let mut h = app(&format!(
+        "{BOX}\ndetail_line {{\"start\": [1000, 1000], \"end\": [4000, 1000]}}\ndetail_line {{\"start\": [5000, 2000], \"end\": [5000, 5000]}}"
+    ));
+    let l = ids(&h, "line");
+    press(&mut h, "Annotate");
+    press(&mut h, "Detail Line");
+    press(&mut h, "Fillet Arc");
+    click(&mut h, P2(2000.0, 1000.0));
+    // The first pick is held, lit as the selection is, until the second.
+    assert_eq!(h.state().drawing.fillet.len(), 1);
+    click(&mut h, P2(5000.0, 4000.0));
+    let shown = h.state().shape_preview(P2(4500.0, 1500.0));
+    assert_eq!(shown.iter().map(Curve::kind).collect::<Vec<_>>(), ["line", "arc", "line"], "the arc nearest the cursor");
+    let r = h.state().fillet_radius_at(P2(4500.0, 1500.0)).unwrap_or_default();
+    assert!(r > 100.0 && r < 2000.0, "{r}");
+    assert_eq!(ids(&h, "line"), l, "nothing made yet");
+    key(&mut h, Key::Escape);
+    key(&mut h, Key::Escape);
+    key(&mut h, Key::Escape);
+    // Offset's ghost: Modify > Offset shows where the copy goes; then the click makes it there.
+    shortcut(&mut h, "OF");
+    type_into(&mut h, "Offset:", "300");
+    hover(&mut h, P2(2000.0, 900.0));
+    click(&mut h, P2(2000.0, 900.0));
+    assert_eq!(curve(&h, *ids(&h, "line").last().unwrap_or(&0)), Curve::line(P2(1000.0, 700.0), P2(4000.0, 700.0)));
+}
+
+#[test]
+fn show_centre_marks_new_arcs_and_circles_and_properties_turns_it_off() {
+    let mut h = detailing();
+    press(&mut h, "Circle");
+    press(&mut h, "Show Centre");
+    click(&mut h, P2(3000.0, 3000.0));
+    click(&mut h, P2(3500.0, 3000.0));
+    let c = ids(&h, "line")[0];
+    assert_eq!(field(&h, c, "centre_mark"), json!(true));
+    key(&mut h, Key::Escape);
+    key(&mut h, Key::Escape);
+    h.state_mut().selection = vec![c];
+    h.run();
+    press(&mut h, "Center Mark Visible");
+    assert_eq!(field(&h, c, "centre_mark"), json!(null), "off, and so not written");
+}
+
+#[test]
+fn a_revision_cloud_is_one_cloud_round_a_rectangle_or_the_points_clicked_of_the_revision_typed() {
+    let mut h = app(BOX);
+    press(&mut h, "Annotate");
+    press(&mut h, "Revision Cloud");
+    type_into(&mut h, "Revision:", "Rev 3");
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(3000.0, 2500.0));
+    let c = ids(&h, "line");
+    assert_eq!(c.len(), 1, "one cloud round the rectangle");
+    assert_eq!(
+        (field(&h, c[0], "cloud"), field(&h, c[0], "revision"), field(&h, c[0], "closed")),
+        (json!(500.0), json!("Rev 3"), json!(true))
+    );
+    // With Line, one cloud through the points, closed on the first.
+    press(&mut h, "Line");
+    for p in [P2(4000.0, 1000.0), P2(6000.0, 1000.0), P2(5000.0, 3000.0), P2(4000.0, 1000.0)] {
+        click(&mut h, p);
+    }
+    assert_eq!(ids(&h, "line").len(), 2);
+    let second = curve(&h, ids(&h, "line")[1]);
+    assert!(second.is_closed() && second.vertices().len() == 3, "{second:?}");
+    // The Detail Line button draws plain lines again.
+    key(&mut h, Key::Escape);
+    press(&mut h, "Annotate");
+    press(&mut h, "Detail Line");
+    click(&mut h, P2(1000.0, 5000.0));
+    click(&mut h, P2(2000.0, 5000.0));
+    assert_eq!(field(&h, *ids(&h, "line").last().unwrap_or(&0), "cloud"), json!(null));
+}
+
+#[test]
+fn pick_faces_stands_a_wall_on_the_face_of_a_mass_clicked() {
+    let mut h = app(r#"mass {"boundary": [[0,0],[6000,0],[6000,4000],[0,4000]], "height": 3000}"#);
+    shortcut(&mut h, "WA");
+    press(&mut h, "Pick Faces");
+    assert!(h.query_by_label("Pick Lines").is_some(), "beside Pick Lines");
+    click(&mut h, P2(3000.0, 0.0));
+    let w = walls(&h);
+    assert_eq!(w.len(), 1, "{w:?}");
+    let (a, b) = w[0];
+    assert!(a.1.abs() < 300.0 && b.1.abs() < 300.0 && (a.0 - b.0).abs() > 5000.0, "along the south face: {w:?}");
+    // Away from any face, nothing, and a word why.
+    click(&mut h, P2(3000.0, 2000.0));
+    assert_eq!(walls(&h).len(), 1);
+    assert!(h.state().status.error);
+}

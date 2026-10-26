@@ -277,7 +277,11 @@ fn offset_draws_a_detail_line_again_beside_itself_arcs_round_their_centres() {
     run(&mut s, "offset", json!({"id": l, "distance": 300, "toward": [500, 4000], "copy": false}));
     assert_eq!(curve(&s, l), Curve::line(P2(0.0, 4700.0), P2(1000.0, 4700.0)), "moved");
     let e = line(&mut s, json!({"centre": [0, 0], "radii": [500, 300]}));
-    assert!(s.execute("offset", &json!({"id": e, "distance": 10, "toward": [0, 0]})).unwrap_err().contains("ellipse"));
+    let r = run(&mut s, "offset", json!({"id": e, "distance": 10, "toward": [0, 0]}));
+    let inside = curve(&s, r["id"].as_u64().unwrap_or_default());
+    assert_eq!(inside.kind(), "fitted spline", "an ellipse, offset, is a spline through points");
+    assert!((inside.nearest(P2(490.0, 0.0)).1) < 2.0 * FIT_TOL && (inside.nearest(P2(0.0, 290.0)).1) < 2.0 * FIT_TOL);
+    assert!(s.execute("offset", &json!({"id": e, "distance": 400, "toward": [0, 0]})).is_err(), "folded over itself");
 }
 
 #[test]
@@ -358,6 +362,50 @@ fn insulation_is_a_detail_line_drawn_as_batt_insulation_its_width_across() {
     }
 }
 
+#[test]
+fn a_centre_mark_crosses_the_centre_of_an_arc_or_a_circle_when_asked() {
+    let mut s = Session::new();
+    let arc = line(&mut s, json!({"start": [-1000, 0], "end": [1000, 0], "through": [0, 1000], "centre_mark": true}));
+    let plain = line(&mut s, json!({"centre": [3000, 0], "radius": 500}));
+    let at_centre = |m: &Model, id: Id| {
+        let view = View { scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 800 };
+        let c = view.px(P2(0.0, 0.0));
+        drawn(m, id).iter().any(|p| (p.0 - c.0).abs() < 20.0 && (p.1 - c.1).abs() < 20.0)
+    };
+    assert!(at_centre(&s.model, arc), "a cross at the arc's centre, though the arc is 100 px away");
+    assert!(!drawn(&s.model, plain).is_empty());
+    let (back, _) = Model::read(&s.model.to_json().unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(back.elements, s.model.elements, "saved with it");
+    run(&mut s, "modify", json!({"id": arc, "centre_mark": false}));
+    assert!(!at_centre(&s.model, arc), "taken off");
+    assert_eq!(Curve::Circle { centre: P2(1.0, 2.0), radius: 3.0 }.centres(), [P2(1.0, 2.0)]);
+}
+
+#[test]
+fn a_revision_cloud_is_a_detail_line_drawn_as_scallops_bulging_out_of_its_loop() {
+    let mut s = Session::new();
+    let square = json!({"points": [[0, 0], [4000, 0], [4000, 2000], [0, 2000]], "closed": true, "cloud": 500, "revision": "Rev 2"});
+    let id = line(&mut s, square);
+    let Some(Element::DetailLine(l)) = s.model.elements.get(id).cloned() else { panic!("a line") };
+    let drawn = l.drawn();
+    // Every point is on or outside the square, the furthest about a scallop's rise out.
+    let out = |p: &P2| (-p.0).max(p.0 - 4000.0).max(-p.1).max(p.1 - 2000.0);
+    assert!(drawn.iter().all(|p| out(p) > -1e-6), "none inside");
+    let rise = drawn.iter().map(out).fold(0.0, f64::max);
+    assert!(rise > 100.0 && rise < 400.0, "{rise}");
+    assert!(drawn.first().zip(drawn.last()).is_some_and(|(a, b)| a.dist(*b) < 1e-6), "round to where it began");
+    // The same drawn the other way round still bulges out.
+    let back = line(&mut s, json!({"points": [[0, 0], [0, 2000], [4000, 2000], [4000, 0]], "closed": true, "cloud": 500}));
+    let Some(Element::DetailLine(b)) = s.model.elements.get(back).cloned() else { panic!("a line") };
+    assert!(b.drawn().iter().all(|p| out(p) > -1e-6));
+    assert!(drawn_px_rows(&s.model, id) > 3);
+    let (again, _) = Model::read(&s.model.to_json().unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(again.elements, s.model.elements, "saved with its arcs and revision");
+    for a in [0.0, -1.0] {
+        assert!(s.execute("detail_line", &json!({"start": [0, 0], "end": [1000, 0], "cloud": a})).is_err(), "{a}");
+    }
+}
+
 /// How many pixel rows the lines of `id` reach in a plan of the lowest level.
 fn drawn_px_rows(m: &Model, id: Id) -> usize {
     let mut rows: Vec<i64> = drawn(m, id).iter().map(|p| p.1.round() as i64).collect();
@@ -426,4 +474,127 @@ fn vertices_are_added_and_deleted_and_splines_converted_by_command() {
             assert!(e.unwrap_err().contains(says));
         }
     }
+}
+
+#[test]
+fn linework_draws_one_edge_of_a_wall_in_a_style_of_the_views_own_or_hides_it() {
+    let mut s = Session::new();
+    let w = run(&mut s, "wall", json!({"points": [[0, 0], [4000, 0]]}))["ids"][0].as_u64().unwrap_or_default();
+    let level = s.model.levels().first().map(|(l, _)| *l).unwrap_or_default();
+    let view = View { scale: 0.1, cx: 2000.0, cy: 0.0, width: 800, height: 400 };
+    // The wall's lines through the middle of its length, at each height on screen, with their pens.
+    let crossing = |m: &Model| {
+        let d = crate::render::draw(m, level, view);
+        let x = view.px(P2(2000.0, 0.0)).0;
+        let mut ys: Vec<(i64, Option<crate::pen::Pen>)> = (d.prims.iter().zip(&d.owners).zip(&d.pens))
+            .filter(|((_, o), _)| **o == Some(w))
+            .flat_map(|((p, _), pen)| match p {
+                Prim::Line { pts, closed, .. } => {
+                    let mut segs: Vec<((f32, f32), (f32, f32))> = pts.windows(2).map(|q| (q[0], q[1])).collect();
+                    if *closed {
+                        segs.extend(pts.last().copied().zip(pts.first().copied()));
+                    }
+                    segs.into_iter()
+                        .filter(|(a, b)| (a.1 - b.1).abs() < 0.5 && a.0.min(b.0) < x && a.0.max(b.0) > x)
+                        .map(|(a, _)| (a.1.round() as i64, *pen))
+                        .collect::<Vec<_>>()
+                }
+                _ => Vec::new(),
+            })
+            .collect();
+        ys.sort();
+        ys
+    };
+    let before = crossing(&s.model);
+    assert_eq!(before.len(), 2, "its two faces: {before:?}");
+    let (top, bottom) = (before[0], before[1]);
+    // Its north face, picked at x 1000, in Wide Lines in this view only.
+    let r = run(&mut s, "linework", json!({"view": level, "id": w, "at": [1000, 150], "style": "Wide Lines"}));
+    assert!(r["from"][1].as_f64().is_some_and(|y| y > 0.0), "{r}");
+    let wide = s.model.line_styles["Wide Lines"].pen;
+    let now = crossing(&s.model);
+    assert!(now.contains(&(top.0, Some(wide))) && now.contains(&bottom), "{now:?}");
+    assert!(s.execute("line_style", &json!({"name": "Wide Lines", "delete": true})).is_err(), "a view's linework uses it");
+    // Invisible: that face isn't drawn; picked again, though unseen, it can be put back.
+    run(&mut s, "linework", json!({"view": level, "id": w, "at": [1000, 150], "invisible": true}));
+    assert_eq!(crossing(&s.model), [bottom]);
+    let (again, _) = Model::read(&s.model.to_json().unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(crossing(&again), [bottom], "saved with the view");
+    run(&mut s, "linework", json!({"view": level, "id": w, "at": [1000, 150], "remove": true}));
+    assert_eq!(crossing(&s.model), before);
+    assert!(s.execute("linework", &json!({"view": level, "id": w, "at": [1000, 3000], "invisible": true})).is_err(), "no edge there");
+    // Deleted with its element.
+    run(&mut s, "linework", json!({"view": level, "id": w, "at": [1000, 150], "invisible": true}));
+    run(&mut s, "delete", json!({"ids": [w]}));
+    assert!(crate::graphics::graphics_of(&s.model, level).is_none_or(|g| g.linework.is_empty()));
+}
+
+#[test]
+fn a_detail_group_draws_its_members_wherever_it_is_placed_and_turned_and_comes_apart_again() {
+    let mut s = Session::new();
+    let a = line(&mut s, json!({"start": [0, 0], "end": [1000, 0], "style": "Wide Lines"}));
+    let b = line(&mut s, json!({"start": [0, 0], "end": [0, 500]}));
+    let lines = |s: &Session| s.model.elements.values().filter(|e| matches!(e, Element::DetailLine(_))).count();
+    // Grouped: the lines become the group's, one element about the middle of them.
+    let r = run(&mut s, "create_group", json!({"ids": [a, b], "name": "Angle"}));
+    let g = r["id"].as_u64().unwrap_or_default();
+    assert_eq!((lines(&s), field(&s, g, "type"), field(&s, g, "at")), (0, json!("Angle"), json!([500.0, 250.0])));
+    let near = |pts: &[(f32, f32)], at: (f32, f32)| pts.iter().any(|p| (p.0 - at.0).abs() < 1.5 && (p.1 - at.1).abs() < 1.5);
+    let view = View { scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 800 };
+    assert!(near(&drawn(&s.model, g), view.px(P2(1000.0, 0.0))), "drawn where its lines were");
+    // Another, turned a quarter, picks as itself.
+    let g2 = run(&mut s, "detail_group", json!({"type": "Angle", "at": [2000, 0], "angle": 90}))["id"].as_u64().unwrap_or_default();
+    // Its long line, from the middle (-500, -250) to (500, -250), turned: (250, -500) to (250, 500) about (2000, 0).
+    let pts = drawn(&s.model, g2);
+    assert!(near(&pts, view.px(P2(2250.0, -500.0))) && near(&pts, view.px(P2(2250.0, 500.0))), "{pts:?}");
+    run(&mut s, "move", json!({"ids": [g2], "by": [1000, 0]}));
+    assert_eq!(field(&s, g2, "at"), json!([3000.0, 0.0]));
+    // A type is placed while one is: kept; Ungroup gives the lines back, where they're drawn, in their style.
+    assert!(s.execute("group_type", &json!({"name": "Angle", "delete": true})).is_err(), "it's placed");
+    let back = run(&mut s, "ungroup", json!({"id": g2}))["ids"].clone();
+    let back: Vec<Id> = back.as_array().into_iter().flatten().filter_map(Value::as_u64).collect();
+    assert_eq!(back.len(), 2);
+    let long = curve(&s, back[0]);
+    assert!(long.points().iter().all(|p| (p.0 - 3250.0).abs() < 1e-6), "{long:?}");
+    assert_eq!(field(&s, back[0], "style"), json!("Wide Lines"));
+    assert!(s.model.elements.get(g2).is_none());
+    // Saved and read back; renamed, its instance follows.
+    let (again, _) = Model::read(&s.model.to_json().unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(drawn(&again, g), drawn(&s.model, g));
+    run(&mut s, "group_type", json!({"name": "Angle", "rename": "Corner"}));
+    assert_eq!(field(&s, g, "type"), json!("Corner"));
+    // What a group can't hold: a wall.
+    let w = run(&mut s, "wall", json!({"points": [[0, 3000], [5000, 3000]]}))["ids"][0].as_u64().unwrap_or_default();
+    let c = line(&mut s, json!({"start": [0, 0], "end": [1000, 0]}));
+    assert!(s.execute("create_group", &json!({"ids": [w, c]})).is_err());
+    // A group nests no further, and a name is given when none is.
+    let named = run(&mut s, "create_group", json!({"ids": [c]}));
+    assert_eq!(named["name"], json!("Group 1"));
+    run(&mut s, "delete", json!({"ids": [g]}));
+    run(&mut s, "group_type", json!({"name": "Corner", "delete": true}));
+}
+
+#[test]
+fn a_repeating_detail_places_a_group_along_its_line_every_spacing() {
+    let mut s = Session::new();
+    let tick = line(&mut s, json!({"start": [0, 0], "end": [0, 100]}));
+    let g = run(&mut s, "create_group", json!({"ids": [tick], "name": "Tick"}))["id"].as_u64().unwrap_or_default();
+    run(&mut s, "delete", json!({"ids": [g]}));
+    let r = run(&mut s, "repeating_detail", json!({"type": "Tick", "start": [0, 0], "end": [1000, 0], "spacing": 250}));
+    assert_eq!(r["count"], json!(5));
+    let id = r["id"].as_u64().unwrap_or_default();
+    let view = View { scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 800 };
+    let pts = drawn(&s.model, id);
+    for x in [0.0, 250.0, 500.0, 750.0, 1000.0] {
+        let (a, b) = (view.px(P2(x, -50.0)), view.px(P2(x, 50.0)));
+        assert!(pts.contains(&a) && pts.contains(&b), "a tick at {x}: {pts:?}");
+    }
+    // Along a line north, each turned to it.
+    run(&mut s, "rotate", json!({"ids": [id], "about": [0, 0], "angle": 90}));
+    assert!(drawn(&s.model, id).contains(&view.px(P2(50.0, 1000.0))));
+    // Too close, too many, or of no group: refused.
+    assert!(s.execute("repeating_detail", &json!({"type": "Tick", "start": [0, 0], "end": [1000, 0], "spacing": 0.5})).is_err());
+    assert!(s.execute("repeating_detail", &json!({"type": "Tick", "start": [0, 0], "end": [100000, 0], "spacing": 1})).is_err());
+    assert!(s.execute("repeating_detail", &json!({"type": "None", "start": [0, 0], "end": [1000, 0], "spacing": 100})).is_err());
+    assert!(s.execute("group_type", &json!({"name": "Tick", "delete": true})).is_err(), "a repeating detail is of it");
 }

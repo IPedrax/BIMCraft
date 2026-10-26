@@ -44,6 +44,7 @@ pub enum Kind {
     LineStyle,
     FillPattern,
     FilledRegionType,
+    DetailGroup,
 }
 
 impl Kind {
@@ -67,6 +68,7 @@ impl Kind {
             Kind::LineStyle => "line style".into(),
             Kind::FillPattern => "fill pattern".into(),
             Kind::FilledRegionType => "filled region type".into(),
+            Kind::DetailGroup => "detail group".into(),
         }
     }
 
@@ -88,6 +90,7 @@ impl Kind {
             "line-style" => Kind::LineStyle,
             "fill-pattern" => Kind::FillPattern,
             "filled-region-type" => Kind::FilledRegionType,
+            "detail-group" => Kind::DetailGroup,
             _ => Kind::Type(s.strip_prefix("type:")?.to_string()),
         })
     }
@@ -113,6 +116,7 @@ impl fmt::Display for Kind {
             Kind::LineStyle => f.write_str("line-style"),
             Kind::FillPattern => f.write_str("fill-pattern"),
             Kind::FilledRegionType => f.write_str("filled-region-type"),
+            Kind::DetailGroup => f.write_str("detail-group"),
         }
     }
 }
@@ -499,6 +503,7 @@ impl Model {
         add(Kind::LineStyle, &mut self.line_styles.keys());
         add(Kind::FillPattern, &mut self.fill_patterns.keys());
         add(Kind::FilledRegionType, &mut self.region_types.keys());
+        add(Kind::DetailGroup, &mut self.detail_groups.keys());
         out
     }
 
@@ -535,6 +540,9 @@ impl Model {
         for (n, f) in &self.families {
             add("form", "family", n, f.forms.iter().map(|x| (x.id, x.guid)).collect());
             add("symbol", "family", n, f.symbols.iter().map(|x| (x.id, x.guid)).collect());
+        }
+        for (n, g) in &self.detail_groups {
+            add("member", "detail group", n, g.members.iter().map(|x| (x.id, x.guid)).collect());
         }
         // An element's sketch lines, the element named by its GUID, which never changes.
         for (id, e) in self.elements.iter() {
@@ -656,6 +664,9 @@ impl Model {
             f.forms.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
             f.symbols.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
         }
+        for g in self.detail_groups.values_mut() {
+            g.members.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
+        }
         for e in self.elements.values_mut() {
             if let Some(lines) = e.sketch_mut() {
                 lines.iter_mut().for_each(|l| give(&mut l.id, &mut l.guid));
@@ -716,6 +727,9 @@ impl Model {
             f.forms.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
             f.symbols.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
         }
+        for g in self.detail_groups.values_mut() {
+            g.members.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+        }
         for e in self.elements.values_mut() {
             if let Some(lines) = e.sketch_mut() {
                 lines.iter_mut().for_each(|l| (l.id, l.guid) = (0, Guid::default()));
@@ -752,7 +766,7 @@ impl Model {
 }
 
 /// Each name `g` holds of a library entry, given to `f` with what it names, which may put another in its place: a view's
-/// template, filters, phase, phase filter and design options.
+/// template, filters, phase, phase filter, design options and its linework's line styles.
 fn graphics_refs(g: &mut crate::graphics::Graphics, f: &mut dyn FnMut(&Kind, &mut String)) {
     if let Some(t) = &mut g.template {
         f(&Kind::ViewTemplate, t);
@@ -765,6 +779,11 @@ fn graphics_refs(g: &mut crate::graphics::Graphics, f: &mut dyn FnMut(&Kind, &mu
     }
     if let Some(p) = &mut g.phase_filter {
         f(&Kind::PhaseFilter, p);
+    }
+    for l in &mut g.linework {
+        if let Some(s) = &mut l.style {
+            f(&Kind::LineStyle, s);
+        }
     }
     g.options = std::mem::take(&mut g.options)
         .into_iter()
@@ -846,6 +865,8 @@ impl crate::model::Element {
             },
             Element::Component(c) => family_and_type(&mut c.family, &mut c.type_name, f),
             Element::DetailLine(l) => f(&Kind::LineStyle, &mut l.style),
+            Element::DetailGroup(g) => f(&Kind::DetailGroup, &mut g.type_name),
+            Element::RepeatingDetail(r) => f(&Kind::DetailGroup, &mut r.type_name),
             Element::FilledRegion(r) => {
                 f(&Kind::FilledRegionType, &mut r.type_name);
                 if let Some(st) = &mut r.line_style {
@@ -933,6 +954,14 @@ impl Model {
         }
         for p in self.line_styles.values_mut().filter_map(|s| s.pattern.as_mut()) {
             f(&Kind::LinePattern, p);
+        }
+        for m in self.detail_groups.values_mut().flat_map(|g| g.members.iter_mut()) {
+            m.element.lib_refs_mut(f);
+        }
+        for x in self.materials.values_mut() {
+            for p in [&mut x.cut_pattern, &mut x.surface_pattern].into_iter().flatten() {
+                f(&Kind::FillPattern, p);
+            }
         }
     }
 

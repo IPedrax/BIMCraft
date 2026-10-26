@@ -179,6 +179,12 @@ pub struct DetailLine {
     pub style: String,
     /// Revit's Insulation: drawn as batt insulation this wide (mm in the view's terms) along its curve, instead of a line.
     pub insulation: Option<f64>,
+    /// Revit's Center Mark Visible: a small cross drawn at the centre of each of its arcs, its circle or its ellipse.
+    pub centre_mark: bool,
+    /// Revit's Revision Cloud: drawn as scallops this long (mm in the view's terms) along its curve, outward round a loop.
+    pub cloud: Option<f64>,
+    /// A revision cloud's revision, as it's issued: "Rev 2", "B".
+    pub revision: Option<String>,
 }
 
 crate::curve_struct! {
@@ -188,19 +194,41 @@ crate::curve_struct! {
         style: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         insulation: Option<f64>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        centre_mark: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cloud: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        revision: Option<String>,
     }
 }
 
 impl TryFrom<RawDetailLine> for DetailLine {
     type Error = String;
     fn try_from(r: RawDetailLine) -> Result<DetailLine, String> {
-        Ok(DetailLine { curve: r.fields().curve()?, view: r.view, style: r.style, insulation: r.insulation })
+        Ok(DetailLine {
+            curve: r.fields().curve()?,
+            view: r.view,
+            style: r.style,
+            insulation: r.insulation,
+            centre_mark: r.centre_mark,
+            cloud: r.cloud,
+            revision: r.revision,
+        })
     }
 }
 
 impl From<DetailLine> for RawDetailLine {
     fn from(l: DetailLine) -> RawDetailLine {
-        let mut r = RawDetailLine { view: l.view, style: l.style, insulation: l.insulation, ..RawDetailLine::default() };
+        let mut r = RawDetailLine {
+            view: l.view,
+            style: l.style,
+            insulation: l.insulation,
+            centre_mark: l.centre_mark,
+            cloud: l.cloud,
+            revision: l.revision,
+            ..RawDetailLine::default()
+        };
         r.set(&l.curve);
         r
     }
@@ -221,15 +249,87 @@ impl DetailLine {
                 Err(format!("{who}: its insulation is {w} mm wide; it's more than 1 mm and at most {MAX_INSULATION}"))
             }
             _ => Ok(()),
+        }?;
+        match self.cloud {
+            Some(a) if !(a.is_finite() && a > crate::model::TOL && a <= MAX_INSULATION) => {
+                Err(format!("{who}: its cloud's arcs are {a} mm long; they're more than 1 mm and at most {MAX_INSULATION}"))
+            }
+            _ => Ok(()),
+        }?;
+        match &self.revision {
+            Some(r) if r.chars().count() > crate::model::MAX_TEXT => {
+                Err(format!("{who}: its revision is longer than {} letters", crate::model::MAX_TEXT))
+            }
+            _ => Ok(()),
         }
     }
 
-    /// The points it's drawn through: its curve's, or batt insulation's loops along it, `width` across.
+    /// The points it's drawn through: its curve's, batt insulation's loops along it, `width` across, or a revision
+    /// cloud's scallops.
     pub fn drawn(&self) -> Vec<crate::geom::P2> {
-        match self.insulation {
-            Some(w) => batt(&self.curve, w),
-            None => self.curve.points(),
+        match (self.insulation, self.cloud) {
+            (Some(w), _) => batt(&self.curve, w),
+            (None, Some(a)) => cloud(&self.curve, a),
+            (None, None) => self.curve.points(),
         }
+    }
+}
+
+/// How far each scallop of a cloud turns, degrees.
+const SCALLOP: f64 = 150.0;
+
+/// A revision cloud along `c`: arcs about `arc` long end to end, each bulging out (round a loop, away from inside it; along
+/// an open line, to its left), as Revit draws one.
+pub fn cloud(c: &Curve, arc: f64) -> Vec<crate::geom::P2> {
+    let Some(walk) = Walk::of(c) else { return c.points() };
+    if arc.is_nan() || arc <= 0.0 {
+        return walk.pts;
+    }
+    let closed = c.is_closed();
+    // Round a loop drawn counter-clockwise, outside is to the right: an arc turning left from one point to the next bulges
+    // that way.
+    let sweep = match closed {
+        true if crate::geom::area(&walk.pts) < 0.0 => -SCALLOP,
+        true => SCALLOP,
+        false => -SCALLOP,
+    };
+    let n = (walk.total / arc).round().clamp(if closed { 3.0 } else { 1.0 }, (crate::curves::MAX_DRAWN / 8) as f64) as usize;
+    let mut out = Vec::new();
+    for k in 0..n {
+        let (a, b) = (walk.at(walk.total * k as f64 / n as f64).0, walk.at(walk.total * (k + 1) as f64 / n as f64).0);
+        let pts = Curve::arc(a, b, sweep).points();
+        out.extend(pts.into_iter().skip(usize::from(k > 0)));
+    }
+    out
+}
+
+/// A curve's drawn points with how far along it each lies, to find a point and its way at any distance.
+struct Walk {
+    pts: Vec<crate::geom::P2>,
+    along: Vec<f64>,
+    total: f64,
+}
+
+impl Walk {
+    fn of(c: &Curve) -> Option<Walk> {
+        let pts = c.points();
+        let mut along = vec![0.0];
+        for w in pts.windows(2) {
+            let last = along.last().copied().unwrap_or(0.0);
+            along.push(last + w[0].dist(w[1]));
+        }
+        let total = along.last().copied().unwrap_or(0.0);
+        (total > 0.0 && pts.len() >= 2).then_some(Walk { pts, along, total })
+    }
+
+    /// The point `s` along, and the way it runs there.
+    fn at(&self, s: f64) -> (crate::geom::P2, crate::geom::P2) {
+        let s = s.clamp(0.0, self.total);
+        let i = self.along.iter().position(|a| *a >= s).unwrap_or(self.along.len() - 1).max(1);
+        let (a, b) = (self.pts[i - 1], self.pts[i]);
+        let span = (self.along[i] - self.along[i - 1]).max(f64::MIN_POSITIVE);
+        let k = ((s - self.along[i - 1]) / span).clamp(0.0, 1.0);
+        (a + (b - a) * k, (b - a).unit())
     }
 }
 
@@ -237,26 +337,12 @@ impl DetailLine {
 /// `BULGE` times it on from the last, as a section through a roll of it is drawn.
 pub fn batt(c: &Curve, width: f64) -> Vec<crate::geom::P2> {
     use crate::geom::P2;
-    // The curve's points with how far along it each lies, to find a point and its way at any distance.
-    let pts = c.points();
-    let mut along = vec![0.0];
-    for w in pts.windows(2) {
-        let last = along.last().copied().unwrap_or(0.0);
-        along.push(last + w[0].dist(w[1]));
+    let Some(walk) = Walk::of(c) else { return c.points() };
+    let (total, pitch) = (walk.total, width * BULGE);
+    if pitch.is_nan() || pitch <= 0.0 {
+        return walk.pts;
     }
-    let total = along.last().copied().unwrap_or(0.0);
-    let pitch = width * BULGE;
-    if !(total > 0.0 && pitch > 0.0) {
-        return pts;
-    }
-    let at = |s: f64| -> (P2, P2) {
-        let s = s.clamp(0.0, total);
-        let i = along.iter().position(|a| *a >= s).unwrap_or(along.len() - 1).max(1);
-        let (a, b) = (pts[i - 1], pts[i]);
-        let span = (along[i] - along[i - 1]).max(f64::MIN_POSITIVE);
-        let k = ((s - along[i - 1]) / span).clamp(0.0, 1.0);
-        (a + (b - a) * k, (b - a).unit())
-    };
+    let at = |s: f64| -> (P2, P2) { walk.at(s) };
     // A prolate cycloid: across by the cosine, along by the steady run less a sine, running back over the top: a loop.
     let loops = (total / pitch).round().max(1.0);
     let pitch = total / loops;

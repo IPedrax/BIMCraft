@@ -122,3 +122,109 @@ fn line_styles_and_patterns_are_made_changed_and_deleted_in_one_step() {
     let m = &h.state().session.model;
     assert!(m.line_styles.contains_key("Boundary") && !m.line_styles.contains_key("Fence Line"));
 }
+
+#[test]
+fn linework_draws_the_edge_clicked_in_the_style_chosen_hides_it_or_puts_it_back() {
+    let mut h = app(BOX);
+    let wall = find(&h, |e| matches!(e, Element::Wall(w) if w.start == P2(0.0, 0.0)));
+    // What the view's graphics hold: each edge's style, `None` hidden.
+    let marked = |h: &Harness<BimApp>| -> Vec<Option<String>> {
+        let m = &h.state().session.model;
+        let all = m.elements.values().filter_map(bimcraft_core::graphics::graphics_of_element);
+        all.flat_map(|g| g.linework.iter().map(|l| l.style.clone())).collect()
+    };
+    // LW, as Revit's shortcut; the Options Bar starts on Wide Lines.
+    shortcut(&mut h, "LW");
+    assert_eq!(h.state().tool, Tool::Linework);
+    click(&mut h, P2(4000.0, -60.0));
+    assert_eq!(marked(&h), [Some("Wide Lines".to_string())]);
+    let m = Arc::clone(&h.state().session.model);
+    let edge = m.elements.values().filter_map(bimcraft_core::graphics::graphics_of_element).flat_map(|g| g.linework.clone()).next();
+    assert!(edge.is_some_and(|l| l.element == gid(&h, wall) && l.from.1 < 0.0 && l.to.1 < 0.0), "the south face");
+    // The same edge again, hidden; then back by category.
+    choose(&mut h, "Line Style", "<Invisible lines>");
+    click(&mut h, P2(4000.0, -60.0));
+    assert_eq!(marked(&h), [None]);
+    choose(&mut h, "Line Style", "<By Category>");
+    click(&mut h, P2(4000.0, -60.0));
+    assert!(marked(&h).is_empty());
+    // On the Modify tab, beside Split Element.
+    key(&mut h, Key::Escape);
+    topmost(&mut h, "Modify");
+    press(&mut h, "Linework");
+    assert_eq!(h.state().tool, Tool::Linework);
+}
+
+#[test]
+fn align_lines_a_detail_line_up_with_another_or_with_a_wall() {
+    let mut h = app(&format!(
+        "{BOX}\ndetail_line {{\"start\": [1000, 1000], \"end\": [5000, 1000]}}\ndetail_line {{\"start\": [2000, 2500], \"end\": [6000, 2500]}}"
+    ));
+    let lines = ids(&h, "line");
+    shortcut(&mut h, "AL");
+    // The first line as the reference, then the second goes onto it.
+    click(&mut h, P2(3000.0, 1000.0));
+    click(&mut h, P2(4000.0, 2500.0));
+    assert_eq!((field(&h, lines[1], "start"), field(&h, lines[1], "end")), (json!([2000.0, 1000.0]), json!([6000.0, 1000.0])));
+    // A wall as the reference: the line goes onto the face or the centre line picked, its length unchanged.
+    click(&mut h, P2(4000.0, 0.0));
+    click(&mut h, P2(1500.0, 1000.0));
+    let (start, end) = (field(&h, lines[0], "start"), field(&h, lines[0], "end"));
+    let (y, y2) = (start[1].as_f64().unwrap_or(f64::NAN), end[1].as_f64().unwrap_or(f64::NAN));
+    assert!(y == y2 && y.abs() <= 200.0 && y != 1000.0, "{start} {end}");
+    assert_eq!((start[0].clone(), end[0].clone()), (json!(1000.0), json!(5000.0)));
+}
+
+#[test]
+fn detail_lines_selected_become_a_group_placed_again_from_the_detail_panel_and_ungrouped_from_the_menu() {
+    let mut h = app(&format!(
+        "{BOX}\ndetail_line {{\"start\": [1000, 1000], \"end\": [3000, 1000]}}\ndetail_line {{\"start\": [1000, 1000], \"end\": [1000, 2000]}}"
+    ));
+    let groups = |h: &Harness<BimApp>| ids(h, "detailgroup");
+    // Selected, then GP: one group where they were, selected.
+    click(&mut h, P2(2000.0, 1000.0));
+    click_with(&mut h, P2(1000.0, 1600.0), Modifiers::COMMAND);
+    assert_eq!(h.state().selection.len(), 2);
+    shortcut(&mut h, "GP");
+    assert_eq!((ids(&h, "line").len(), groups(&h).len()), (0, 1));
+    assert_eq!(h.state().selection, groups(&h));
+    assert!(h.state().session.model.detail_groups.contains_key("Group 1"));
+    // Annotate > Detail Group places another where clicked, the Options Bar naming it.
+    key(&mut h, Key::Escape);
+    press(&mut h, "Annotate");
+    press(&mut h, "Detail Group");
+    assert_eq!(h.state().tool, Tool::DetailGroup);
+    assert!(h.query_by_label("Group").is_some());
+    click(&mut h, P2(5000.0, 3000.0));
+    let all = groups(&h);
+    assert_eq!(all.len(), 2);
+    assert_eq!(field(&h, all[1], "at"), json!([5000.0, 3000.0]));
+    // Picked as one, and the right-click menu takes it apart.
+    key(&mut h, Key::Escape);
+    key(&mut h, Key::Escape);
+    click(&mut h, P2(5500.0, 2500.0));
+    assert_eq!(h.state().selection, [all[1]]);
+    let at = h.state().screen(P2(5500.0, 2500.0));
+    right_click_at(&mut h, at);
+    choose_item(&mut h, "Ungroup");
+    assert_eq!((groups(&h).len(), ids(&h, "line").len()), (1, 2));
+    assert_eq!(h.state().selection.len(), 2, "its lines, selected");
+}
+
+#[test]
+fn repeating_detail_lays_the_group_on_the_options_bar_along_two_clicks_every_spacing() {
+    let mut h = app(&format!("{BOX}\ndetail_line {{\"start\": [1000, 1000], \"end\": [1000, 1200]}}"));
+    click(&mut h, P2(1000.0, 1100.0));
+    shortcut(&mut h, "GP");
+    key(&mut h, Key::Escape);
+    press(&mut h, "Annotate");
+    press(&mut h, "Repeating Detail");
+    assert_eq!(h.state().tool, Tool::RepeatingDetail(None));
+    type_into(&mut h, "Spacing:", "500");
+    click(&mut h, P2(1000.0, 3000.0));
+    click(&mut h, P2(3000.0, 3000.0));
+    let made = ids(&h, "repeatingdetail");
+    assert_eq!(made.len(), 1);
+    assert_eq!((field(&h, made[0], "type"), field(&h, made[0], "spacing")), (json!("Group 1"), json!(500.0)));
+    assert_eq!(h.state().tool, Tool::RepeatingDetail(None), "ready for the next");
+}

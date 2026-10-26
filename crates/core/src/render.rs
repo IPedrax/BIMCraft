@@ -745,6 +745,8 @@ pub(crate) fn plan_shows(m: &Model, plan: impl Key) -> Vec<P2> {
             Element::Text(n) if m.annotation_in(e, key) => extent.extend([Some(n.at), n.leader].into_iter().flatten()),
             Element::DetailLine(l) if m.annotation_in(e, key) => extent.extend(l.curve.points()),
             Element::FilledRegion(r) if m.annotation_in(e, key) => extent.extend(r.sketch.iter().flat_map(|l| l.points())),
+            Element::DetailGroup(g) if m.annotation_in(e, key) => extent.push(g.at),
+            Element::RepeatingDetail(r) if m.annotation_in(e, key) => extent.extend([r.start, r.end]),
             Element::Spot(sp) if m.annotation_in(e, key) => extent.push(sp.at),
             _ => {}
         }
@@ -769,6 +771,8 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         Element::Text(n) => note(&mut d, n),
         Element::DetailLine(l) => detail_line(&mut d, m, l),
         Element::FilledRegion(r) => filled_region(&mut d, m, r),
+        Element::DetailGroup(g) => detail_group(&mut d, m, g),
+        Element::RepeatingDetail(r) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
         Element::Spot(sp) => spot_mark(&mut d, view.px(sp.at), m.spot_value(sp), m.units),
         Element::Section(v) => section_mark(&mut d, v),
         Element::Elevation(v) => elevation_mark(&mut d, v),
@@ -1176,6 +1180,8 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64) -> Drawing {
         match e {
             Element::Text(n) if m.same(n.view, id) => note(&mut d, n),
             Element::DetailLine(l) if m.same(l.view, id) => detail_line(&mut d, m, l),
+            Element::DetailGroup(g) if m.same(g.view, id) => detail_group(&mut d, m, g),
+            Element::RepeatingDetail(r) if m.same(r.view, id) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
             Element::Spot(sp) if m.same(sp.view, id) => {
                 let z = m.spot_value(sp).unwrap_or(sp.at.1);
                 spot_mark(&mut d, view.px(P2(sp.at.0, z)), Some(z), m.units);
@@ -1285,16 +1291,23 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         }
         holes(&mut d, m, &m.floor_slabs(f));
         // Its top layer's surface pattern, faint, in a fine view.
-        if let Some(pattern) = m
-            .type_layers("floor", &f.type_name)
-            .first()
-            .and_then(|l| m.materials.get(&l.material))
-            .map(|x| x.surface)
-            .filter(|_| d.detail == Detail::Fine)
+        if let Some(x) =
+            m.type_layers("floor", &f.type_name).first().and_then(|l| m.materials.get(&l.material)).filter(|_| d.detail == Detail::Fine)
         {
+            let fill = x.surface_pattern.as_ref().and_then(|n| m.fill_patterns.get(n));
             for (face, rise) in m.floor_slabs(f) {
                 for piece in m.less_shafts(&face, rise).0 {
-                    surface(&mut d, &piece, pattern, FAINT);
+                    match fill {
+                        Some(p) => fill_pattern(
+                            &mut d,
+                            p,
+                            std::slice::from_ref(&piece),
+                            std::slice::from_ref(&piece),
+                            FAINT,
+                            (f.pattern_origin, f.pattern_angle),
+                        ),
+                        None => surface(&mut d, &piece, x.surface, FAINT),
+                    }
                 }
             }
         }
@@ -1479,7 +1492,14 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     for (&id, e) in m.elements.iter().filter(|(id, _)| shown(**id)) {
         d.owner = Some(id);
         match e {
-            Element::Dimension(_) | Element::Tag(_) | Element::Text(_) | Element::Spot(_) | Element::DetailLine(_) if up => {}
+            Element::Dimension(_)
+            | Element::Tag(_)
+            | Element::Text(_)
+            | Element::Spot(_)
+            | Element::DetailLine(_)
+            | Element::DetailGroup(_)
+            | Element::RepeatingDetail(_)
+                if up => {}
             Element::Dimension(dm) if m.annotation_in(e, key) && inside(dm.at) => dimension(&mut d, m, dm),
             Element::Tag(t)
                 if m.annotation_in(e, key)
@@ -1490,6 +1510,8 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
             }
             Element::Text(n) if m.annotation_in(e, key) && inside(n.at) => note(&mut d, n),
             Element::DetailLine(l) if m.annotation_in(e, key) => detail_line(&mut d, m, l),
+            Element::DetailGroup(g) if m.annotation_in(e, key) => detail_group(&mut d, m, g),
+            Element::RepeatingDetail(r) if m.annotation_in(e, key) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
             Element::Spot(sp) if m.annotation_in(e, key) && inside(sp.at) => spot_mark(&mut d, view.px(sp.at), m.spot_value(sp), m.units),
             // A section's line is cropped as a line is.
             Element::Section(v) => section_mark(&mut d, v),
@@ -1518,6 +1540,9 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     d.owner = None;
     d.by_category(|o| style_of(m, o));
     look.dress(&mut d);
+    if let Some(g) = crate::graphics::graphics_of(m, key) {
+        linework(&mut d, m, &g.linework);
+    }
     d.linked_under();
     d.weigh(|o| annotates(m, o));
     if titled {
@@ -1610,8 +1635,14 @@ const PATTERN_ROOM: f64 = 10.0;
 /// pattern over the paper, its courses along unit `u`; else, unless it's its element's structure
 /// (which stays poché), lighter.
 fn cut_layer(d: &mut Drawing, m: &Model, layer: &Layer, ring: &[P2], u: P2, room: f64) {
-    let pattern = m.materials.get(&layer.material).map_or(Pattern::None, |x| x.cut);
-    if pattern != Pattern::None && room >= PATTERN_ROOM && d.detail == Detail::Fine {
+    let material = m.materials.get(&layer.material);
+    let pattern = material.map_or(Pattern::None, |x| x.cut);
+    let fill = material.and_then(|x| x.cut_pattern.as_ref()).and_then(|n| m.fill_patterns.get(n));
+    if let Some(p) = fill.filter(|_| room >= PATTERN_ROOM && d.detail == Detail::Fine) {
+        // A fill pattern of the project's, its courses along the layer.
+        d.fill(&[ring.to_vec()], PAPER);
+        fill_pattern(d, p, &[ring.to_vec()], &[ring.to_vec()], INK, (P2(0.0, 0.0), u.1.atan2(u.0).to_degrees()));
+    } else if pattern != Pattern::None && room >= PATTERN_ROOM && d.detail == Detail::Fine {
         d.fill(&[ring.to_vec()], PAPER);
         let gap = GAP / d.view.scale;
         hatch(d, ring, pattern, u, INK, gap);
@@ -1761,10 +1792,14 @@ fn ceiling(d: &mut Drawing, m: &Model, c: &Ceiling) {
     let slabs = m.ceiling_slabs(c);
     holes(d, m, &slabs);
     // Its bottom layer's surface pattern.
-    if let Some(pattern) = m.type_layers("ceiling", &c.type_name).last().and_then(|l| m.materials.get(&l.material)).map(|x| x.surface) {
+    if let Some(x) = m.type_layers("ceiling", &c.type_name).last().and_then(|l| m.materials.get(&l.material)) {
+        let fill = x.surface_pattern.as_ref().and_then(|n| m.fill_patterns.get(n));
         for (face, rise) in &slabs {
             for piece in m.less_shafts(face, *rise).0 {
-                surface(d, &piece, pattern, INK);
+                match fill {
+                    Some(p) => fill_pattern(d, p, std::slice::from_ref(&piece), std::slice::from_ref(&piece), INK, (P2(0.0, 0.0), 0.0)),
+                    None => surface(d, &piece, x.surface, INK),
+                }
             }
         }
     }
@@ -2164,13 +2199,34 @@ fn radial(d: &mut Drawing, m: &Model, dim: &Dimension) {
 /// A filled region: over the paper where its type masks, its background pattern, then its foreground, each in its colour
 /// (a solid one filled, a drafting one's lengths mm on the view's paper, a model one's mm), then its boundary's lines in
 /// their style, unless it has none. A sketch that doesn't close draws nothing.
+/// Fill pattern `p` over `rings` (model mm; `pieces`, the same with their holes cut out, for a solid one) in `color`, its
+/// lines thin, started at `placed`'s origin and turned its angle. Lines closer than a pixel are too dense to read: left out.
+fn fill_pattern(d: &mut Drawing, p: &crate::fills::FillPattern, rings: &[Vec<P2>], pieces: &[Vec<P2>], color: Rgb, placed: (P2, f64)) {
+    let part = std::mem::replace(&mut d.part, Part::Pattern);
+    if p.is_solid() {
+        d.fill(pieces, color);
+        d.part = part;
+        return;
+    }
+    let (w, h) = (d.view.width as f32, d.view.height as f32);
+    let window = (d.view.mm((0.0, h)), d.view.mm((w, 0.0)));
+    // A drafting pattern's mm are the view's paper's.
+    let k = match p.target {
+        crate::fills::Target::Drafting => (sheet::DENSITY as f32 * d.paper) as f64 / d.view.scale,
+        crate::fills::Target::Model => 1.0,
+    };
+    let closest = p.lines.iter().map(|l| l.spacing).fold(f64::INFINITY, f64::min) * k * d.view.scale;
+    if closest >= 1.0 {
+        for [a, b] in crate::fills::strokes_placed(p, rings, k, window, 50_000, placed).unwrap_or_default() {
+            d.line(&[a, b], Pen::FINE, color, false);
+        }
+    }
+    d.part = part;
+}
+
 pub(crate) fn filled_region(d: &mut Drawing, m: &Model, r: &FilledRegion) {
     let Some(t) = m.region_types.get(&r.type_name) else { return };
     let Ok(profile) = crate::sketch::solve(&r.sketch) else { return };
-    let (w, h) = (d.view.width as f32, d.view.height as f32);
-    let window = (d.view.mm((0.0, h)), d.view.mm((w, 0.0)));
-    // Model mm to a mm of the view's paper.
-    let per_paper = (sheet::DENSITY as f32 * d.paper) as f64 / d.view.scale;
     let part = std::mem::replace(&mut d.part, Part::Pattern);
     for region in &profile.regions {
         let rings: Vec<Vec<P2>> = std::iter::once(region.outer.clone()).chain(region.holes.iter().cloned()).collect();
@@ -2180,23 +2236,7 @@ pub(crate) fn filled_region(d: &mut Drawing, m: &Model, r: &FilledRegion) {
         }
         for (name, [cr, cg, cb]) in [(&t.background, t.background_color), (&t.foreground, t.foreground_color)] {
             let Some(p) = name.as_ref().and_then(|n| m.fill_patterns.get(n)) else { continue };
-            let color = Rgb(cr, cg, cb);
-            if p.is_solid() {
-                d.fill(&pieces, color);
-                continue;
-            }
-            let k = match p.target {
-                crate::fills::Target::Drafting => per_paper,
-                crate::fills::Target::Model => 1.0,
-            };
-            // Lines closer than a pixel are too dense to read: left out.
-            let closest = p.lines.iter().map(|l| l.spacing).fold(f64::INFINITY, f64::min) * k * d.view.scale;
-            if closest < 1.0 {
-                continue;
-            }
-            for [a, b] in crate::fills::strokes(p, &rings, k, window, 50_000).unwrap_or_default() {
-                d.line(&[a, b], Pen::FINE, color, false);
-            }
+            fill_pattern(d, p, &rings, &pieces, Rgb(cr, cg, cb), (r.pattern_origin, r.pattern_angle));
         }
     }
     d.part = part;
@@ -2223,6 +2263,173 @@ pub(crate) fn detail_line(d: &mut Drawing, m: &Model, l: &DetailLine) {
     }
     let [r, g, b] = st.color;
     d.stroke(pts, st.pen, Rgb(r, g, b), dash, closed);
+    // Its centre marks: a cross 3 mm across on paper, solid.
+    if l.centre_mark {
+        let arm = d.px((1.5 * sheet::DENSITY) as f32);
+        for c in l.curve.centres() {
+            let (x, y) = d.view.px(c);
+            d.stroke(vec![(x - arm, y), (x + arm, y)], st.pen, Rgb(r, g, b), None, false);
+            d.stroke(vec![(x, y - arm), (x, y + arm)], st.pen, Rgb(r, g, b), None, false);
+        }
+    }
+}
+
+/// The edge element `id` draws in plan `key` nearest `at`, within `reach` mm: a straight piece of one of its lines, its
+/// ends in plan mm. What Linework picks.
+pub fn edge_at(m: &Model, key: Id, id: Id, at: P2, reach: f64) -> Option<(P2, P2)> {
+    line_at(m, key, id, at, reach, false)
+}
+
+/// The line of element `id`'s fill pattern in plan `key` nearest `at`, within `reach` mm, its ends in plan mm: what Align
+/// moves a region's or a floor's model pattern by.
+pub fn pattern_line_at(m: &Model, key: Id, id: Id, at: P2, reach: f64) -> Option<(P2, P2)> {
+    line_at(m, key, id, at, reach, true)
+}
+
+fn line_at(m: &Model, key: Id, id: Id, at: P2, reach: f64, pattern: bool) -> Option<(P2, P2)> {
+    // A window round the point, 10 px to `reach`, drawn without the view's own linework (an edge drawn unseen is still one).
+    let scale = 10.0 / reach.max(1.0);
+    let view = View { scale, cx: at.0, cy: at.1, width: 1000, height: 1000 };
+    let bare;
+    let m = match crate::graphics::graphics_of(m, key).filter(|g| !g.linework.is_empty()) {
+        Some(_) => {
+            let mut c = m.clone();
+            if let Some(g) = c.elements.get_mut(c.plan_source(key)).and_then(crate::graphics::graphics_mut) {
+                g.linework.clear();
+            }
+            bare = c;
+            &bare
+        }
+        None => m,
+    };
+    let d = draw(m, key, view);
+    let q = view.px(at);
+    let near = |a: (f32, f32), b: (f32, f32)| geom::dist_to_segment(P2(f64::from(q.0), f64::from(q.1)), pt(a), pt(b));
+    (d.prims.iter().zip(&d.owners).zip(&d.parts))
+        .filter(|((_, o), part)| {
+            **o == Some(id) && if pattern { **part == Part::Pattern } else { !matches!(part, Part::Text | Part::Pattern) }
+        })
+        .flat_map(|((p, _), _)| match p {
+            Prim::Line { pts, closed, .. } => segments(pts, *closed),
+            _ => Vec::new(),
+        })
+        .map(|(a, b)| (near(a, b), a, b))
+        .filter(|(dist, ..)| *dist <= 10.0)
+        .min_by(|x, y| x.0.total_cmp(&y.0))
+        .map(|(_, a, b)| (view.mm(a), view.mm(b)))
+}
+
+fn pt((x, y): (f32, f32)) -> P2 {
+    P2(f64::from(x), f64::from(y))
+}
+
+/// A line's straight pieces, round to its first point again where it's closed.
+fn segments(pts: &[(f32, f32)], closed: bool) -> Vec<((f32, f32), (f32, f32))> {
+    let mut out: Vec<_> = pts.windows(2).map(|w| (w[0], w[1])).collect();
+    if closed && pts.len() > 2 {
+        out.extend(pts.last().copied().zip(pts.first().copied()));
+    }
+    out
+}
+
+/// The view's Linework: each edge it lists drawn in its line style, or not at all, where its element draws a line along it
+/// (within a pixel of it, as far as the two overlap); the rest of the element's lines as they were.
+fn linework(d: &mut Drawing, m: &Model, items: &[crate::graphics::Linework]) {
+    let px_per_mm = sheet::DENSITY as f32 * d.paper;
+    for l in items {
+        let Some(id) = m.elements.id(l.element) else { continue };
+        let style = l.style.as_ref().and_then(|n| m.line_styles.get(n)).map(|st| {
+            let dash = st.pattern.as_ref().and_then(|p| m.line_patterns.get(p)).and_then(|p| p.dash(px_per_mm));
+            (st.pen, Rgb(st.color[0], st.color[1], st.color[2]), dash)
+        });
+        if l.style.is_some() && style.is_none() {
+            continue;
+        }
+        let (a, b) = (pt(d.view.px(l.from)), pt(d.view.px(l.to)));
+        let len = a.dist(b);
+        if len < 1e-3 {
+            continue;
+        }
+        let u = (b - a) * (1.0 / len);
+        let prims = std::mem::take(&mut d.prims);
+        let (owners, parts, pens) = (std::mem::take(&mut d.owners), std::mem::take(&mut d.parts), std::mem::take(&mut d.pens));
+        for (((prim, owner), part), pen) in prims.into_iter().zip(owners).zip(parts).zip(pens) {
+            let mine = owner == Some(id) && !matches!(part, Part::Text | Part::Pattern);
+            let Prim::Line { pts, width, color, dash, closed } = &prim else {
+                keep(d, prim, owner, part, pen);
+                continue;
+            };
+            // Each piece of the line, split where the edge begins and ends along it, marked when it lies on the edge.
+            let mut runs: Vec<(bool, Vec<(f32, f32)>)> = Vec::new();
+            let mut put = |on: bool, p: P2, q: P2| {
+                let (p, q) = ((p.0 as f32, p.1 as f32), (q.0 as f32, q.1 as f32));
+                match runs.last_mut() {
+                    Some((was, run)) if *was == on && run.last() == Some(&p) => run.push(q),
+                    _ => runs.push((on, vec![p, q])),
+                }
+            };
+            for (p, q) in segments(pts, *closed) {
+                let (p, q) = (pt(p), pt(q));
+                let across = |r: P2| (r - a).cross(u).abs();
+                let (sp, sq) = ((p - a).dot(u), (q - a).dot(u));
+                let (lo, hi) = (sp.min(sq).max(0.0), sp.max(sq).min(len));
+                if !mine || across(p) > 1.0 || across(q) > 1.0 || hi - lo < 0.5 {
+                    put(false, p, q);
+                    continue;
+                }
+                // Along from p: before the edge, on it, after it.
+                let at = |s: f64| p + (q - p) * ((s - sp) / (sq - sp));
+                let (s0, s1) = if sp <= sq { (lo, hi) } else { (hi, lo) };
+                let (x0, x1) = (at(s0), at(s1));
+                if p.dist(x0) > 0.01 {
+                    put(false, p, x0);
+                }
+                put(true, x0, x1);
+                if x1.dist(q) > 0.01 {
+                    put(false, x1, q);
+                }
+            }
+            if !runs.iter().any(|(on, _)| *on) {
+                keep(d, prim, owner, part, pen);
+                continue;
+            }
+            for (on, run) in runs {
+                let line = match (on, &style) {
+                    (false, _) => (Prim::Line { pts: run, width: *width, color: *color, dash: dash.clone(), closed: false }, pen),
+                    (true, Some((p, c, k))) => {
+                        (Prim::Line { pts: run, width: *width, color: *c, dash: k.clone(), closed: false }, Some(*p))
+                    }
+                    (true, None) => continue,
+                };
+                keep(d, line.0, owner, part, line.1);
+            }
+        }
+    }
+}
+
+/// `prim` back in the drawing, with its owner, part and pen.
+fn keep(d: &mut Drawing, prim: Prim, owner: Option<Id>, part: Part, pen: Option<Pen>) {
+    d.prims.push(prim);
+    d.owners.push(owner);
+    d.parts.push(part);
+    d.pens.push(pen);
+}
+
+/// A detail group's members where it puts them: its regions under its lines and notes.
+pub(crate) fn detail_group(d: &mut Drawing, m: &Model, g: &crate::groups::DetailGroup) {
+    let members = crate::groups::placed(m, g);
+    for e in &members {
+        if let Element::FilledRegion(r) = e {
+            filled_region(d, m, r);
+        }
+    }
+    for e in &members {
+        match e {
+            Element::DetailLine(l) => detail_line(d, m, l),
+            Element::Text(n) => note(d, n),
+            _ => {}
+        }
+    }
 }
 
 pub(crate) fn note(d: &mut Drawing, n: &Note) {

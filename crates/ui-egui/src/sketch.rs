@@ -150,17 +150,17 @@ impl Sketch {
         self.wrong.clear();
     }
 
-    /// The lines, each in its colour: picked or under the cursor as a selection is, wrong in the error colour; a picked
+    /// The lines, each in its colour: picked (or `lit`, a tool's picks) or under the cursor as a selection is, wrong in the error colour; a picked
     /// line's grips at its ends; the line under the cursor named by its id. While a grip is dragged to `cursor`, the lines
     /// joined there follow it.
-    pub fn paint(&self, p: &Painter, at: impl Fn(P2) -> Pos2, hovered: Option<usize>, cursor: Option<P2>) {
+    pub fn paint(&self, p: &Painter, at: impl Fn(P2) -> Pos2, hovered: Option<usize>, cursor: Option<P2>, lit: &[usize]) {
         let moved = |q: P2| match (self.drag, cursor) {
             (Some(Drag::Grip(from)), Some(to)) if q.dist(from) <= TOL => to,
             _ => q,
         };
         for (i, l) in self.lines.iter().enumerate() {
             let (width, colour) = match () {
-                () if self.picked.contains(&i) => (3.0, pal().accent),
+                () if self.picked.contains(&i) || lit.contains(&i) => (3.0, pal().accent),
                 () if hovered == Some(i) => (3.0, pal().hover),
                 () if self.wrong.contains(&i) => (3.0, pal().error),
                 () => (2.0, SKETCH),

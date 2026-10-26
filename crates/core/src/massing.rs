@@ -14,6 +14,24 @@ use crate::view3d::P3;
 pub const FLOOR: &str = "Mass Floor";
 pub const FACE: &str = "Mass Face";
 
+/// The face of a mass whose footprint edge lies nearest `p` in plan, within `reach` mm: the mass, and the edge's number
+/// from its footprint's first point, as `wall_by_face` takes it. What Pick Faces picks.
+pub fn face_at(m: &Model, p: P2, reach: f64) -> Option<(Id, usize)> {
+    let mut best: Option<(f64, Id, usize)> = None;
+    for (id, e) in m.elements.iter() {
+        let Element::Mass(ms) = e else { continue };
+        let ring = ms.footprint();
+        for (i, a) in ring.iter().enumerate() {
+            let b = ring[(i + 1) % ring.len()];
+            let d = geom::dist_to_segment(p, *a, b);
+            if d <= reach && best.is_none_or(|(was, ..)| d < was) {
+                best = Some((d, *id, i));
+            }
+        }
+    }
+    best.map(|(_, id, i)| (id, i))
+}
+
 /// Whether `name` is one of the parameters a mass's elements hold their mark in: no project or family parameter may take it.
 pub fn reserved(name: &str) -> bool {
     matches!(name, FLOOR | FACE)

@@ -14,6 +14,8 @@ use crate::{BimApp, Sheet, Tool};
 pub(crate) enum Action {
     /// Esc: the tool's points, else the tool, else the selection.
     Cancel,
+    /// Enter: a spline or a polyline made of the points clicked so far.
+    Finish,
     ZoomToFit,
     ZoomIn,
     ZoomOut,
@@ -24,6 +26,8 @@ pub(crate) enum Action {
     HideElement,
     HideCategory,
     OverrideGraphics,
+    CreateGroup,
+    Ungroup,
     Delete,
 }
 
@@ -32,6 +36,7 @@ impl Action {
     pub(crate) fn label(self) -> &'static str {
         match self {
             Action::Cancel => "Cancel",
+            Action::Finish => "Finish Drawing",
             Action::ZoomToFit => "Zoom to Fit",
             Action::ZoomIn => "Zoom In",
             Action::ZoomOut => "Zoom Out",
@@ -41,6 +46,8 @@ impl Action {
             Action::HideElement => "Hide Element",
             Action::HideCategory => "Hide Category",
             Action::OverrideGraphics => "Override Graphics",
+            Action::CreateGroup => "Create Group",
+            Action::Ungroup => "Ungroup",
             Action::Delete => "Delete",
         }
     }
@@ -49,10 +56,13 @@ impl Action {
     pub(crate) fn shortcut(self) -> Option<&'static str> {
         match self {
             Action::Cancel => Some("Esc"),
+            Action::Finish => Some("Enter"),
             Action::ZoomToFit => Some("ZF"),
             Action::SelectAllInstances => Some("SA"),
             Action::HideElement => Some("EH"),
             Action::HideCategory => Some("VH"),
+            Action::CreateGroup => Some("GP"),
+            Action::Ungroup => Some("UG"),
             Action::Delete => Some("Del"),
             _ => None,
         }
@@ -99,13 +109,23 @@ impl BimApp {
     /// can (zooming, but not in a schedule).
     pub(crate) fn context_items(&self) -> Vec<Vec<Item>> {
         let some = !self.selection.is_empty();
-        let mut groups = vec![vec![Item::new(Action::Cancel, some || self.tool != Tool::Modify)]];
+        let mut first = vec![Item::new(Action::Cancel, some || self.tool != Tool::Modify)];
+        if self.finishable() {
+            first.insert(0, Item::new(Action::Finish, true));
+        }
+        let mut groups = vec![first];
         if some {
             groups.push(vec![
                 Item::new(Action::EditType, self.type_subject().is_some()),
                 Item::new(Action::SelectAllInstances, true),
                 Item::new(Action::Delete, true),
             ]);
+            // Detail lines, regions and notes group; a group comes apart.
+            let m = &self.session.model;
+            let groupable = self.selection.iter().all(|id| m.elements.get(*id).is_some_and(bimcraft_core::groups::holds));
+            if groupable || self.group_selected() {
+                groups.push(vec![Item::new(Action::CreateGroup, groupable), Item::new(Action::Ungroup, self.group_selected())]);
+            }
             // What the view on screen hides and paints.
             if self.graphic_view().is_some() {
                 groups.push(vec![
@@ -128,6 +148,7 @@ impl BimApp {
     pub(crate) fn act(&mut self, action: Action) {
         match action {
             Action::Cancel => self.escape(),
+            Action::Finish => self.finish_open_shape(),
             Action::ZoomToFit => self.fit(),
             Action::ZoomIn => self.zoom_view(1.25),
             Action::ZoomOut => self.zoom_view(0.8),
@@ -137,6 +158,8 @@ impl BimApp {
             Action::HideElement => self.hide_selection(false),
             Action::HideCategory => self.hide_selection(true),
             Action::OverrideGraphics => self.override_selection(),
+            Action::CreateGroup => self.create_group(),
+            Action::Ungroup => self.ungroup(),
             Action::Delete => self.delete(),
         }
     }

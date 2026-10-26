@@ -339,6 +339,21 @@ pub struct Graphics {
     /// How a 3D view draws its surfaces.
     #[serde(skip_serializing_if = "is_shaded")]
     pub style: VisualStyle,
+    /// Revit's Linework: an edge of an element drawn in a line style of the view's own, or not at all.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub linework: Vec<Linework>,
+}
+
+/// An edge of `element` as the view draws it, from `from` to `to` (mm in the view's terms), in line style `style` instead
+/// of its own; none, it isn't drawn (Revit's `<Invisible lines>`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Linework {
+    pub element: Guid,
+    pub from: crate::geom::P2,
+    pub to: crate::geom::P2,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<String>,
 }
 
 impl Graphics {

@@ -18,6 +18,7 @@ mod fillpatterns;
 mod footer;
 mod gpu;
 mod graphics;
+mod groups;
 pub mod icons;
 mod inquiry;
 pub mod lang;
@@ -138,6 +139,12 @@ pub enum Tool {
     Offset,
     /// Take the element picked down in the phase of the view on screen, or, if it comes down in it already, back up.
     Demolish,
+    /// Draw the edge clicked in the Options Bar's line style, in this view only, as Revit's Linework does.
+    Linework,
+    /// Place Detail Group: the Options Bar's group type where clicked.
+    DetailGroup,
+    /// Repeating Detail: the Options Bar's group along a line, its start once clicked.
+    RepeatingDetail(Option<P2>),
     /// Lay the material in the Options Bar over the face clicked in the 3D view, as Revit's Paint does.
     Paint,
     /// Take the paint off the face clicked in the 3D view.
@@ -484,6 +491,12 @@ pub struct BimApp {
     note_text: String,
     /// The line style the Detail Line tool draws in; blank for the project's Thin Lines.
     line_style: String,
+    /// The Linework tool's line style: a style's name, or `<Invisible lines>` or `<By Category>` (in English).
+    linework_style: String,
+    /// The detail group type Place Detail Group places.
+    group_type: String,
+    /// The Repeating Detail tool's spacing, as typed.
+    repeat_spacing: String,
     /// The Detail Line tool's Chain: each click ends a line and starts the next; off, two clicks make one line.
     line_chain: bool,
     /// The shape each Draw panel draws, and the Options Bar's Sides, Radius and Offset.
@@ -491,7 +504,7 @@ pub struct BimApp {
     /// The project units the Options Bar's lengths were last written in.
     units: Units,
     /// A length typed while picking points: the listening dimension.
-    typed_length: String,
+    pub(crate) typed_length: String,
     /// What each view hides or reveals for now (not the project's), and the model it is drawn from.
     temporary: HashMap<Sheet, footer::Temp>,
     shadow: Option<footer::Shadow>,
@@ -691,7 +704,7 @@ fn small_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -
 }
 
 /// A button stacked three high in a panel, as Revit's Settings panel stacks them: its icon and its name in a row.
-fn stacked_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
+pub(crate) fn stacked_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
     let (label, tip) = (t(label), t(tip));
     let font = FontId::proportional(12.0);
     let width = ui.painter().layout_no_wrap(label.to_string(), font.clone(), pal().text).size().x + 28.0;
@@ -890,6 +903,9 @@ impl BimApp {
             tag_label: String::new(),
             note_text: String::new(),
             line_style: String::new(),
+            linework_style: String::new(),
+            group_type: String::new(),
+            repeat_spacing: "200".into(),
             line_chain: true,
             drawing: draw::Drawing::default(),
             units,
@@ -1013,6 +1029,7 @@ impl BimApp {
             | Tool::Split
             | Tool::Offset
             | Tool::Demolish
+            | Tool::Linework
             | Tool::Attach
             | Tool::GableEdge
             | Tool::SlopeArrow(_)
@@ -1028,7 +1045,10 @@ impl BimApp {
             Tool::Grid(_) => Some("Place Grid"),
             Tool::Dimension(_) | Tool::Angular(_) | Tool::Radial(_) => Some("Place Dimensions"),
             Tool::Text => Some("Place Text"),
+            Tool::DetailGroup => Some("Place Detail Group"),
+            Tool::RepeatingDetail(_) => Some("Place Repeating Detail"),
             Tool::DetailLine(_) if self.drawing.insulation.is_some() => Some("Place Insulation"),
+            Tool::DetailLine(_) if self.drawing.cloud.is_some() => Some("Place Revision Cloud"),
             Tool::DetailLine(_) => Some("Place Detail Lines"),
             Tool::Spot => Some("Spot Elevation"),
             Tool::Measure(_) => Some("Measure"),
@@ -1347,15 +1367,11 @@ impl BimApp {
         if pressed(Modifiers::NONE, Key::Enter)
             && let Some(level) = self.plan_level()
         {
-            match (&self.tool, self.typed_length.is_empty()) {
+            match (&self.tool, self.typed_length.is_empty() && self.drawing.other.is_empty()) {
                 (Tool::Railing(_), true) => self.finish_railing(level),
                 (Tool::Mass(_), true) => self.finish_mass(level),
                 (Tool::DetailLine(_), true) => self.finish_detail_line(level),
-                (Tool::SketchLine(_), true) if self.shape().open_ended() => {
-                    if let Some(made) = self.finish_shape() {
-                        self.add_sketch_lines(made);
-                    }
-                }
+                (Tool::SketchLine(_), true) if self.shape().open_ended() => self.finish_open_shape(),
                 (_, true) => self.finish_wall(),
                 (_, false) => self.place_typed(level),
             }
@@ -1415,6 +1431,7 @@ impl BimApp {
             "AL" => Tool::Align(None),
             "OF" => Tool::Offset,
             "DW" => Tool::Demolish,
+            "LW" => Tool::Linework,
             "ZF" | "ZE" | "ZA" => {
                 self.fit();
                 return true;
@@ -1547,10 +1564,21 @@ impl BimApp {
                 Some("rotate") => Tool::Rotate { centre: P2(0.0, 0.0), start: None, place: false },
                 Some("corner") => Tool::Trim(None),
                 Some("split") => Tool::Split,
+                Some("linework") => Tool::Linework,
+                Some("detail_group") => Tool::DetailGroup,
+                Some("repeating_detail") => Tool::RepeatingDetail(None),
+                Some("create_group") => {
+                    self.create_group();
+                    return true;
+                }
+                Some("ungroup") => {
+                    self.ungroup();
+                    return true;
+                }
                 Some("dimension") => Tool::Dimension(Vec::new()),
                 Some("text") => Tool::Text,
                 Some("detail_line") => {
-                    self.drawing.insulation = None;
+                    (self.drawing.insulation, self.drawing.cloud) = (None, None);
                     Tool::DetailLine(Vec::new())
                 }
                 Some("spot") => Tool::Spot,
@@ -1741,6 +1769,11 @@ impl BimApp {
     }
 
     fn set_tool(&mut self, mut tool: Tool) {
+        // Trim/Extend to Corner with two lines or walls selected (or picked, sketching) joins them at once, keeping the
+        // parts toward their middles; with any other selection it asks for the picks.
+        if tool == Tool::Trim(None) && self.corner_selected() {
+            return;
+        }
         // Paint works in the 3D view: open it, as the tool asks.
         if matches!(tool, Tool::Paint | Tool::Unpaint) && self.sheet != Sheet::View3D {
             self.open_sheet(Sheet::View3D);
@@ -1749,7 +1782,14 @@ impl BimApp {
         let edits = matches!(tool, Tool::Move(_) | Tool::Copy(_) | Tool::Rotate { .. } | Tool::Mirror { .. });
         let picks = matches!(
             tool,
-            Tool::Align(_) | Tool::Trim(_) | Tool::TrimTo { .. } | Tool::Vertex { .. } | Tool::Split | Tool::Offset | Tool::Demolish
+            Tool::Align(_)
+                | Tool::Trim(_)
+                | Tool::TrimTo { .. }
+                | Tool::Vertex { .. }
+                | Tool::Split
+                | Tool::Offset
+                | Tool::Demolish
+                | Tool::Linework
         );
         if edits && self.selection.is_empty() {
             self.status = Status { text: t("select what to move, copy, rotate or mirror first").into(), error: true };
@@ -1779,7 +1819,7 @@ impl BimApp {
             self.raise_context();
         }
         self.typed.clear();
-        self.typed_length.clear();
+        self.clear_typed();
         // The Floor tool makes structural floors only when the Structure tab asks (`structural_floor`).
         self.floor_structural = false;
         if let Tool::Run(category, _) = &tool {
@@ -1856,7 +1896,9 @@ impl BimApp {
             Tool::Wall(chain) => chain.last().copied(),
             Tool::Run(_, start) => *start,
             Tool::Grid(start) | Tool::Move(start) | Tool::Copy(start) | Tool::Section(start) | Tool::SlopeArrow(start) => *start,
-            Tool::Stair(pts) | Tool::Ramp(pts) | Tool::Railing(pts) | Tool::Mass(pts) | Tool::DetailLine(pts) => pts.last().copied(),
+            Tool::Stair(pts) | Tool::Ramp(pts) | Tool::Railing(pts) | Tool::Mass(pts) | Tool::DetailLine(pts) | Tool::SketchLine(pts) => {
+                pts.last().copied()
+            }
             _ => None,
         }
     }
@@ -1883,7 +1925,7 @@ impl BimApp {
         if self.snap_once.take().is_some() {
             return;
         }
-        self.typed_length.clear();
+        self.clear_typed();
         self.status = Status::default();
         self.tool = match std::mem::replace(&mut self.tool, Tool::Modify) {
             Tool::Wall(chain) if !chain.is_empty() => Tool::Wall(Vec::new()),
@@ -1975,7 +2017,7 @@ impl BimApp {
             self.front = sheet;
         }
         // The selection is the model's, not the view's: it stays, whatever view comes up.
-        self.typed_length.clear();
+        self.clear_typed();
         self.snap_once = None;
         // A ruler belongs to the view it was laid in.
         self.measured = None;
@@ -3106,6 +3148,13 @@ impl BimApp {
                 ),
                 (Icon::Split, "Split Element", "Split Element (SL): click a wall or a line where to split it", Some(Tool::Split), true),
                 (
+                    Icon::Linework,
+                    "Linework",
+                    "Linework (LW): click an edge to draw it in another line style, or hide it, in this view only",
+                    Some(Tool::Linework),
+                    true,
+                ),
+                (
                     Icon::TrimSingle,
                     "Trim/Extend Single Element",
                     "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep",
@@ -3276,6 +3325,13 @@ impl BimApp {
             }
             match self.tool {
                 Tool::Wall(_) => self.wall_options(ui),
+                Tool::Linework => self.linework_options(ui),
+                Tool::DetailGroup => self.group_options(ui),
+                Tool::RepeatingDetail(_) => {
+                    self.group_options(ui);
+                    let l = ui.label(t("Spacing:"));
+                    ui.add(egui::TextEdit::singleline(&mut self.repeat_spacing).desired_width(70.0)).labelled_by(l.id);
+                }
                 Tool::Paint => {
                     let label = ui.label(t("Material:"));
                     let names: Vec<String> = self.session.model.materials.keys().cloned().collect();
@@ -3522,6 +3578,10 @@ impl BimApp {
             Tool::Split => "Click a wall or a line where to split it.",
             Tool::Offset => "Point to a wall or a line: the offset goes to the cursor's side. Click to place it.",
             Tool::Demolish => "Click an element to take it down in the view's phase; click it again to take it back.",
+            Tool::Linework => "Click an edge to draw it in the line style in the Options Bar; <By Category> puts it back.",
+            Tool::DetailGroup => "Click where the group's origin goes.",
+            Tool::RepeatingDetail(None) => "Click where the repeating detail starts.",
+            Tool::RepeatingDetail(Some(_)) => "Click where it ends: the group repeats along the line every spacing.",
             Tool::Paint => "Click a face to paint it with the material in the Options Bar; the 3D view orbits as ever.",
             Tool::Unpaint => "Click a painted face to take its paint off.",
             Tool::Dimension(refs) if refs.is_empty() => "Pick a wall face, centre line or end, a door, a window or a grid to measure from.",
@@ -3876,8 +3936,8 @@ impl eframe::App for BimApp {
         self.show(ui);
     }
 
-    /// Tab over the plan cycles through what's under the cursor, as in Revit, rather than moving
-    /// the keyboard between widgets.
+    /// Tab over the plan cycles through what's under the cursor, as in Revit (or moves between a shape's numbers),
+    /// rather than moving the keyboard between widgets.
     fn raw_input_hook(&mut self, ctx: &Context, raw: &mut egui::RawInput) {
         self.pace(&mut raw.events);
         if self.canvas.hovering() && !ctx.egui_wants_keyboard_input() {

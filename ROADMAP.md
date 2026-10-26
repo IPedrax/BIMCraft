@@ -104,19 +104,16 @@ The goal is a printable, coordinated drawing set.
 | Detail lines, filled regions, masking regions, line styles: done (line patterns and styles, detail lines a line a click or as a polyline, the shared sketch solver, fill patterns, filled region types, filled and masking regions); left: the rows below | M |
 | Line draw tools for detail lines, sketches and walls: done (rectangle, inscribed and circumscribed polygon, circle, start-end-radius, centre-ends, tangent end and fillet arcs, spline by control points and through points, ellipse and partial ellipse, polyline, Pick Lines, Sides, Radius and Offset; Join into Polyline and Explode Polyline); Fillet Arc and Pick Lines for walls too; left: Pick Faces | M |
 | A line style for each of a region's boundary lines, or invisible: done | S |
-| Split, Trim/Extend to Corner, Trim/Extend Single and Multiple Elements and Offset for detail lines and sketch lines: done (Split takes splines, a spline through points within 0.05 mm; grips on a detail line's handles; snaps to their ends, centres, quadrants, tangents and nearest points); left: Align for detail lines | M |
-| Draw tools, from trying them: a live dimension while drawing a rectangle, circle or arc, as a line has; Tab moves between a rectangle's two numbers and a typed number sets any of them; a Show Centre option for arcs and circles; Fillet highlights each picked line in the selection colour and previews the arc and its radius as the mouse moves; Offset shows a ghost on the side it will go; Trim/Extend highlights its picks in blue; a spline finishes by double click or right click > Finish, not only Enter | M |
-| Draw tool bugs: a rectangle drawn in a filled region's sketch doesn't join its corners; a polygon makes lines that cross; in sketch mode an arc drawn between two points comes out shorter, its ends short of the points it was drawn to; Spline and Pick Lines don't work in sketch mode | S |
-| Trim/Extend to Corner on the selection: with two lines selected that can meet, it trims or extends at once, keeping the ends nearer each other; with none, it asks for the picks | S |
-| Icons: Start-End-Radius Arc with a third small square at its apex; Spline Through Points with two more points on the tops of its curve | S |
-| Fill patterns: `.pat` import and export, an editor for patterns of many line families, and model patterns aligned and rotated on a face | M |
-| Linework (a view's own line style on a model edge), repeating details and Detail Groups (insulation: done, along any curve) | M |
+| Split, Trim/Extend to Corner, Trim/Extend Single and Multiple Elements and Offset for detail lines and sketch lines: done (Split takes splines, a spline through points within 0.05 mm; grips on a detail line's handles; snaps to their ends, centres, quadrants, tangents and nearest points; Align, to another line or a wall) | M |
+| Draw tools, from trying them: done (typed numbers for shapes with Tab, Show Centre, Fillet and Offset previews, picks lit, Trim/Extend to Corner on the selection, double click and right-click Finish Drawing, the Offset bugs in sketches, icons) | S |
+| Fill patterns: `.pat` import and export, an editor for patterns of many line families, and model patterns aligned and rotated on regions and floors (Align, Pattern Angle): done; left: aligning them on walls' faces in sections and elevations | M |
+| Detail annotation: done (insulation along any curve; Linework in plans; Detail Groups, placed, turned, mirrored and ungrouped; repeating details along a line); left: Edit Group in place, model groups | M |
 | Better than Revit: line patterns and fill patterns made from lines drawn on a plan (select them, then Create Line Pattern or Create Fill Pattern), as Archicad and pyRevit's pattern maker do | M |
 | Drafting views, detail components (2D families), legends | L |
 | Annotation types: text, dimension and tag styles; room tags with fields and tag families that look like Revit's (`tag` names any element with a field of its schedule, drawn as plain text, a door's in a box and a window's in a hexagon) | M |
 | Area plans, area schemes (gross, rentable) and colour-fill legends by parameter | L |
 | Plan regions (a local view range) and depth cueing in elevations | M |
-| Revisions, revision clouds, and a revision schedule on title blocks | M |
+| Revisions and a revision schedule on title blocks (revision clouds: done, as a detail line drawn as scallops, with its revision as text) | M |
 | Editable title blocks (a 2D family with label fields), view titles under viewports, a sheet list | M |
 | Viewports as windows onto their views (activate one to work through it, crop it, viewport types), and Object Styles' annotation categories, subcategories, colours and patterns. Paper space, Line Weights and Object Styles (each model category's pens, cut and seen) are in: every view has a scale (named in feet and inches as architects and engineers do), lines are pens 1 to 16 whose widths the project's Line Weights give by scale, and 0 a hairline at any scale | M |
 | Print dialog: sheets to PDF or a printer, sizes, ranges, colour or monochrome | S |
@@ -141,7 +138,7 @@ and the content.
 | Sections that cut family forms (they show them beyond the cut today) | S |
 | A starter content library: original, openly licensed (CC0 or CC-BY) doors, windows, furniture, casework, fixtures and profiles (32 families ship today: furniture, casework, doors, windows, and the Plumbing, Electrical, SPDA and Data tabs' fixtures) | L (ongoing) |
 | A curated GitHub repository of openly licensed families, browsed, previewed and loaded from inside BIMCraft (search, categories, thumbnails, versions). Clean-room content only, checked before it's accepted; the download goes through the same rules as the updater (capped, digest-checked, never run) | M |
-| Materials' surface and cut patterns as the project's fill patterns (the fill-pattern editor is done), and material roughness for the 3D view (textures are done) | M |
+| Material roughness for the 3D view (textures are done; materials' surface and cut patterns as the project's fill patterns: done) | M |
 
 **Exit criteria**: a user draws a parametric window in the family editor, places it, flexes its types, and it schedules
 and exports to IFC correctly.

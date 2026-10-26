@@ -148,6 +148,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Dimensions", "area_m2", "Area", AreaShown),
             ("Dimensions", "thickness", "Thickness", LengthShown),
             ("Structural", "structural", "Structural", Flag),
+            ("Graphics", "pattern_angle", "Pattern Angle (°)", Number),
         ],
         "ceiling" => &[
             ("Constraints", "level", "Level", Level),
@@ -187,13 +188,30 @@ fn rows(category: &str) -> &'static [Row] {
         "line" => &[
             ("Graphics", "style", "Line Style", LineStyle),
             ("Dimensions", "length", "Length", LengthShown),
+            ("Graphics", "centre_mark", "Center Mark Visible", Flag),
             ("Dimensions", "insulation", "Insulation Width", LengthIf),
+            ("Dimensions", "cloud", "Arc Length", LengthIf),
+            ("Identity Data", "revision", "Revision", Text),
             ("Other", "shape", "Shape", Shown),
         ],
         "region" => &[
             ("Graphics", "type", "Region Type", RegionType),
             ("Graphics", "line_style", "Line Style", RegionLines),
+            ("Graphics", "pattern_angle", "Pattern Angle (°)", Number),
             ("Dimensions", "area_m2", "Area", AreaShown),
+        ],
+        "detailgroup" => &[
+            ("Identity Data", "type", "Group", Shown),
+            ("Other", "angle", "Rotation (°)", Number),
+            ("Other", "mirrored", "Mirrored", Flag),
+            ("Other", "at", "Origin", Point),
+        ],
+        "repeatingdetail" => &[
+            ("Identity Data", "type", "Group", Shown),
+            ("Dimensions", "spacing", "Spacing", Length),
+            ("Dimensions", "count", "Number", Shown),
+            ("Other", "start", "Start", Point),
+            ("Other", "end", "End", Point),
         ],
         "spot" => {
             &[("Dimensions", "elevation", "Elevation", LengthShown), ("Other", "host", "Host", Shown), ("Other", "at", "Location", Point)]
@@ -1622,18 +1640,25 @@ impl BimApp {
                         run = Some(json!({"name": d.picked, "color": *colour}));
                     }
                     ui.end_row();
-                    for (key, label, now) in [("cut", "Cut Pattern", m.cut), ("surface", "Surface Pattern", m.surface)] {
+                    // The patterns drawn in code, then the project's fill patterns.
+                    let cut =
+                        [("cut", "Cut Pattern", m.cut, &m.cut_pattern), ("surface", "Surface Pattern", m.surface, &m.surface_pattern)];
+                    for (key, label, now, fill) in cut {
                         let l = ui.label(t(label));
-                        let c = ComboBox::from_id_salt(("material-pattern", key)).selected_text(t(pattern_name(now))).width(160.0).show_ui(
-                            ui,
-                            |ui| {
-                                for (p, name) in PATTERNS {
-                                    if ui.selectable_label(p == now, t(name)).clicked() {
-                                        run = Some(json!({"name": d.picked, key: p}));
-                                    }
+                        let shown = fill.clone().unwrap_or_else(|| t(pattern_name(now)).to_string());
+                        let c = ComboBox::from_id_salt(("material-pattern", key)).selected_text(shown).width(160.0).show_ui(ui, |ui| {
+                            for (p, name) in PATTERNS {
+                                if ui.selectable_label(fill.is_none() && p == now, t(name)).clicked() {
+                                    run = Some(json!({"name": d.picked, key: p}));
                                 }
-                            },
-                        );
+                            }
+                            ui.separator();
+                            for n in model.fill_patterns.keys() {
+                                if ui.selectable_label(fill.as_ref() == Some(n), n).clicked() {
+                                    run = Some(json!({"name": d.picked, key: n}));
+                                }
+                            }
+                        });
                         c.response.labelled_by(l.id);
                         ui.end_row();
                     }

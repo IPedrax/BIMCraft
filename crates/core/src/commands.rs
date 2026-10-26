@@ -585,7 +585,8 @@ pub static ALL: &[Command] = &[
          image?} | null, rename?, delete?: true} a material of the project's library, created or changed: its colour in shaded 3D \
          views, the pattern its cut shows in plans and sections (where a layer is wide enough to hold it), and the one its \
          surfaces show at its size in the building (a floor's top in plan, a ceiling's underside in its ceiling plan). Patterns: \
-         none, solid, diagonal, crosshatch, horizontal, vertical, grid, brick, concrete, insulation. Its `texture` is what its \
+         none, solid, diagonal, crosshatch, horizontal, vertical, grid, brick, concrete, insulation, or the name of one of the \
+         project's fill patterns (see `fill_pattern`), kept while the material shows it and renamed with it. Its `texture` is what its \
          surfaces look like in the 3D view, over its colour, a tile of it `size` mm across and up, turned `angle` degrees and \
          moved `offset` mm: a pattern drawn in code, `kind` brick, block, boards, concrete, plaster, tile, roof, fabric, metal \
          or insulation (at its natural size unless `size` says); or `image`, a picture: the PNG or JPEG file at `path`, taken \
@@ -722,8 +723,9 @@ pub static ALL: &[Command] = &[
         "offset",
         "Offset",
         &["OF"],
-        "{id, distance, toward: [x, y], copy?} a detail line (a line, an arc, a polyline or a circle) drawn again `distance` mm \
-         beside itself on the side `toward` is, arcs round the same centres: a copy (the default), or with `copy` false moved",
+        "{id, distance, toward: [x, y], copy?} a detail line drawn again `distance` mm beside itself on the side `toward` is, \
+         arcs round the same centres, an ellipse or a spline as a spline through points within 0.05 mm of the true offset \
+         (which Revit can't): a copy (the default), or with `copy` false moved",
         offset,
     ),
     edit(
@@ -858,6 +860,34 @@ pub static ALL: &[Command] = &[
         fill_pattern,
     ),
     edit(
+        "linework",
+        "Linework",
+        &["LW"],
+        "{view?, id, at: [x, y], style? | invisible?: true, remove?: true} Revit's Linework: the edge of element `id` that a \
+         plan (`view`, a level's or a plan view; the lowest level's by default) draws nearest `at` (within 200 mm), drawn in \
+         that view only in line style `style`, or not at all with `invisible`; `remove` takes it off that edge again. It \
+         returns the edge, `from` and `to`",
+        linework,
+    ),
+    edit(
+        "import_fill_patterns",
+        "Import Fill Patterns",
+        &[],
+        "{path | text, replace?: false} the fill patterns of a PAT file (AutoCAD's and Revit's), from the file at `path` or \
+         as `text`: each `*Name` and its families of lines, in mm unless the file says `;%UNITS=INCH`, drafting unless a \
+         pattern says `;%TYPE=MODEL`. A pattern the project already has is left as it is unless `replace`; one that can't \
+         be a pattern (no lines, an offset of 0, too many families) is left out. It returns those `imported` and those \
+         `left_out`, each with why",
+        import_fill_patterns,
+    ),
+    other(
+        "export_fill_patterns",
+        "Export Fill Patterns",
+        "{path?, names?: [name, …]} the project's fill patterns (those `names` says, else all but the solid ones, which a PAT \
+         file can't hold) as a PAT file in mm, written to `path`, or returned as `text` without it",
+        export_fill_patterns,
+    ),
+    edit(
         "filled_region_type",
         "Filled Region Types",
         &[],
@@ -881,6 +911,49 @@ pub static ALL: &[Command] = &[
         filled_region,
     ),
     edit(
+        "create_group",
+        "Create Group",
+        &["GP"],
+        "{ids, name?} a detail group made of detail lines, filled regions and text notes of one view, as Revit's Create \
+         Group: they become type `name`'s members (Group 1, 2… unless told), and one group of it takes their place, its \
+         origin the middle of them. Place it again with detail_group; ungroup gives its members back. Returns {id, name}",
+        create_group,
+    ),
+    edit(
+        "detail_group",
+        "Place Detail Group",
+        &[],
+        "{type, at: [x,y], angle?, mirrored?, view?} a detail group of type `type` placed in a view (the lowest plan by \
+         default): its members drawn with their origin at `at`, turned `angle` degrees counter-clockwise, mirrored across \
+         their x axis first when `mirrored`. Move, copy, rotate and mirror take it whole",
+        detail_group,
+    ),
+    edit(
+        "repeating_detail",
+        "Repeating Detail",
+        &[],
+        "{type, start: [x,y], end: [x,y], spacing, mirrored?, view?} detail group `type` repeated along the line from \
+         `start` to `end`, every `spacing` mm from `start` (at most 2000 of them), each turned along the line, as Revit's \
+         Repeating Detail Component: brick coursing, blocking, batt ties. Returns {id, count}",
+        repeating_detail,
+    ),
+    edit(
+        "ungroup",
+        "Ungroup",
+        &["UG"],
+        "{id} the members of detail group `id` as detail lines, filled regions and text notes of its view again, where it \
+         drew them; the group goes, its type stays. Returns {ids}",
+        ungroup,
+    ),
+    edit(
+        "group_type",
+        "Detail Groups",
+        &[],
+        "{name?, rename?, delete?: true} a detail group type: `rename` renames it, its groups following; `delete` takes it \
+         away while none of it is placed. Without `name`, it lists each with its members and how many are placed",
+        group_type,
+    ),
+    edit(
         "detail_line",
         "Detail Line",
         &["DL"],
@@ -891,7 +964,9 @@ pub static ALL: &[Command] = &[
          with `start_tangent` and `end_tangent`)} a detail line in a view, by name or id, in the view's own terms: a \
          level's plan (the lowest by default; plan mm), a section or an elevation (along its line from its start, and up) \
          or a sheet by number (paper mm). It draws in line style `style` (Thin Lines unless told), only in its view, and \
-         goes with it; with `insulation`, a width in mm, it draws as batt insulation along its curve, as Revit's Insulation",
+         goes with it; with `insulation`, a width in mm, it draws as batt insulation along its curve, as Revit's Insulation; \
+         with `centre_mark` true, a small cross marks the centre of its arcs, circle or ellipse; with `cloud`, an arc length \
+         in mm, it draws as a revision cloud's scallops along it (outward round a loop), of `revision` (any text)",
         detail_line,
     ),
     edit(
@@ -1604,6 +1679,14 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             extra.insert("perimeter_m".into(), json!(region.as_ref().map_or(0.0, |g| (g.perimeter() / 10.0).round() / 100.0)));
         }
         Element::Text(_) => {
+            extra.insert("level".into(), json!(m.level_of(e)));
+        }
+        Element::DetailGroup(g) => {
+            extra.insert("members".into(), json!(m.detail_groups.get(&g.type_name).map_or(0, |t| t.members.len())));
+            extra.insert("level".into(), json!(m.level_of(e)));
+        }
+        Element::RepeatingDetail(r) => {
+            extra.insert("count".into(), json!(r.places().map_or(0, |v| v.len())));
             extra.insert("level".into(), json!(m.level_of(e)));
         }
         Element::FilledRegion(r) => {
@@ -3282,6 +3365,8 @@ fn floor(s: &mut Session, p: &Value) -> R {
         arrow,
         structural,
         sketch,
+        pattern_origin: P2(0.0, 0.0),
+        pattern_angle: 0.0,
     }));
     Ok(json!({"id": id, "area_m2": area}))
 }
@@ -4902,12 +4987,20 @@ fn material(s: &mut Session, p: &Value) -> R {
     if let Some(v) = p.get("color").filter(|v| !v.is_null()) {
         mat.color = colour(v).ok_or_else(|| bad(c, format!("`color` is \"#rrggbb\" or [r, g, b], each 0 to 255, not {v}")))?;
     }
-    for (key, slot) in [("cut", &mut mat.cut), ("surface", &mut mat.surface)] {
+    // A pattern drawn in code by its name, or one of the project's fill patterns.
+    for (key, slot, fill) in [("cut", &mut mat.cut, &mut mat.cut_pattern), ("surface", &mut mat.surface, &mut mat.surface_pattern)] {
         if let Some(v) = p.get(key).filter(|v| !v.is_null()) {
-            *slot = serde_json::from_value(v.clone()).map_err(|_| {
+            if let Ok(pattern) = serde_json::from_value::<Pattern>(v.clone()) {
+                (*slot, *fill) = (pattern, None);
+            } else if let Some(n) = v.as_str().map(str::trim).filter(|n| m.fill_patterns.contains_key(*n)) {
+                (*slot, *fill) = (Pattern::None, Some(n.to_string()));
+            } else {
                 let names: Vec<String> = Pattern::ALL.iter().map(|p| json!(p).as_str().unwrap_or_default().to_string()).collect();
-                bad(c, format!("`{key}`: {v} isn't a pattern; one of {}", names.join(", ")))
-            })?;
+                return Err(bad(
+                    c,
+                    format!("`{key}`: {v} isn't a pattern: one of {}, or a fill pattern of the project's", names.join(", ")),
+                ));
+            }
         }
     }
     let name = match string(c, p, "rename")? {
@@ -5706,9 +5799,14 @@ pub(crate) struct Motion<'a> {
 /// The element taken by `mo`. Levels have no place in plan; a door or window on its own goes
 /// only along its wall, by a translation, else only with its wall.
 pub(crate) fn transformed(c: &str, m: &Model, id: Id, mo: &Motion, with: &BTreeSet<Id>) -> Result<Element, String> {
+    let e = m.elements.get(id).cloned().ok_or_else(|| bad(c, format!("no element {id}")))?;
+    transform(c, m, e, id, mo, with)
+}
+
+/// Element `e`, element `id` of `m` or a detail group's member, taken by `mo`, as [`transformed`].
+pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion, with: &BTreeSet<Id>) -> Result<Element, String> {
     let f = mo.map;
     let within = |g: Guid| m.elements.id(g).is_some_and(|i| with.contains(&i));
-    let mut e = m.elements.get(id).cloned().ok_or_else(|| bad(c, format!("no element {id}")))?;
     let category = e.category();
     // Its sketch goes with it, line for line.
     if let Some(lines) = e.sketch_mut() {
@@ -5728,8 +5826,17 @@ pub(crate) fn transformed(c: &str, m: &Model, id: Id, mo: &Motion, with: &BTreeS
         }
         Element::Spot(sp) => sp.at = f(sp.at),
         Element::DetailLine(l) => l.curve = l.curve.map(|p| micron(f(p))),
-        // Its sketch went with it, above.
-        Element::FilledRegion(_) => {}
+        // Its sketch went with it, above; its pattern goes too.
+        Element::FilledRegion(r) => (r.pattern_origin, r.pattern_angle) = turned(f, r.pattern_origin, r.pattern_angle),
+        // Its members go with it; a mirror image is its type's, flipped.
+        Element::DetailGroup(g) => {
+            (g.at, g.angle) = turned(f, g.at, g.angle);
+            g.mirrored ^= mo.mirror;
+        }
+        Element::RepeatingDetail(r) => {
+            (r.start, r.end) = (f(r.start), f(r.end));
+            r.mirrored ^= mo.mirror;
+        }
         // A link is moved and turned as a whole; its file stays as it is.
         Element::Link(l) => (l.at, l.angle) = turned(f, l.at, l.angle),
         Element::Viewport(v) => v.at = f(v.at),
@@ -5778,6 +5885,7 @@ pub(crate) fn transformed(c: &str, m: &Model, id: Id, mo: &Motion, with: &BTreeS
                 fl.boundary.reverse();
             }
             fl.arrow = fl.arrow.map(|a| a.map(f));
+            (fl.pattern_origin, fl.pattern_angle) = turned(f, fl.pattern_origin, fl.pattern_angle);
         }
         Element::Ceiling(cl) => {
             cl.boundary.iter_mut().chain(cl.openings.iter_mut().flatten()).for_each(|q| *q = f(*q));
@@ -6326,9 +6434,7 @@ fn offset(s: &mut Session, p: &Value) -> R {
     }
     let toward = point_req(c, p, "toward")?;
     let curve = crate::draw::pick(&l.curve, toward, d)
-        .ok_or_else(|| {
-            bad(c, format!("a {} can't be offset by {d} mm (an ellipse or a spline can't, nor a round turned inside out)", l.curve.kind()))
-        })?
+        .ok_or_else(|| bad(c, format!("a {} can't be offset by {d} mm (it would turn inside out, or fold over itself)", l.curve.kind())))?
         .map(micron);
     let copy = absent(p.get("copy")) || flag(c, p, "copy")?;
     let m = s.model_mut();
@@ -6606,6 +6712,8 @@ fn delete(s: &mut Session, p: &Value) -> R {
                         Element::Text(n) => gone.contains(&n.view),
                         Element::DetailLine(l) => gone.contains(&l.view),
                         Element::FilledRegion(r) => gone.contains(&r.view),
+                        Element::DetailGroup(g) => gone.contains(&g.view),
+                        Element::RepeatingDetail(r) => gone.contains(&r.view),
                         Element::Spot(sp) => gone.contains(&sp.view) || sp.host.is_some_and(|h| gone.contains(&h)),
                         _ => false,
                     }
@@ -6643,6 +6751,7 @@ fn delete(s: &mut Session, p: &Value) -> R {
     // No view keeps an override for what isn't there.
     for g in m.elements.values_mut().filter_map(graphics::graphics_mut) {
         g.elements.retain(|id, _| !gone.contains(id));
+        g.linework.retain(|l| !gone.contains(&l.element));
     }
     for (id, d) in kept {
         m.elements.insert(id, Element::Dimension(d));
@@ -6759,6 +6868,12 @@ fn line_style(s: &mut Session, p: &Value) -> R {
         if let Some((id, _)) = m.elements.iter().find(|(_, e)| matches!(e, Element::DetailLine(l) if l.style == name)) {
             return Err(bad(c, format!("detail line {id} is drawn in `{name}`; give it another style first")));
         }
+        let lineworked = |e: &Element| {
+            graphics::graphics_of_element(e).is_some_and(|g| g.linework.iter().any(|l| l.style.as_deref() == Some(name.as_str())))
+        };
+        if let Some((id, _)) = m.elements.iter().find(|(_, e)| lineworked(e)) {
+            return Err(bad(c, format!("view {id} draws an edge in `{name}` with Linework; take it off first")));
+        }
         return Ok(json!({"deleted": name}));
     }
     let mut style = match (m.line_styles.get(&name), p.get("pen")) {
@@ -6834,10 +6949,13 @@ fn curve_param(c: &str, p: &Value) -> Result<crate::curves::Curve, String> {
 
 fn detail_line(s: &mut Session, p: &Value) -> R {
     let c = "detail_line";
-    only(c, p, &[&["view", "level", "style", "insulation"], CURVE_KEYS].concat())?;
+    only(c, p, &[&["view", "level", "style", "insulation", "centre_mark", "cloud", "revision"], CURVE_KEYS].concat())?;
     let m = &s.model;
     let curve = curve_param(c, p)?;
     let insulation = num(c, p, "insulation")?;
+    let centre_mark = flag(c, p, "centre_mark")?;
+    let cloud = num(c, p, "cloud")?;
+    let revision = string(c, p, "revision")?;
     let view = view_param(c, m, p, true)?;
     let style = match name_param(c, p, "style")? {
         Some(n) => n,
@@ -6853,9 +6971,95 @@ fn detail_line(s: &mut Session, p: &Value) -> R {
                 .ok_or_else(|| bad(c, "the project has no line style; make one first"))?
         }
     };
-    let l = DetailLine { view: m.guid(view), curve, style, insulation };
+    let l = DetailLine { view: m.guid(view), curve, style, insulation, centre_mark, cloud, revision };
     let id = s.model_mut().insert(Element::DetailLine(l));
     Ok(json!({"id": id}))
+}
+
+fn linework(s: &mut Session, p: &Value) -> R {
+    let c = "linework";
+    only(c, p, &["view", "level", "id", "at", "style", "invisible", "remove"])?;
+    let m = &s.model;
+    let key = view_param(c, m, p, false)?;
+    if m.plan_level(key).is_none() {
+        return Err(bad(c, "Linework works in plans: give a level's plan or a plan view as `view`"));
+    }
+    let id = element_id(c, m, p.get("id").unwrap_or(&Value::Null))?;
+    let at = point_req(c, p, "at")?;
+    let (remove, invisible) = (flag(c, p, "remove")?, flag(c, p, "invisible")?);
+    let style = name_param(c, p, "style")?;
+    if let Some(st) = &style
+        && !m.line_styles.contains_key(st)
+    {
+        let there: Vec<&str> = m.line_styles.keys().map(String::as_str).collect();
+        return Err(bad(c, format!("there's no line style `{st}`{}", known_names(&there))));
+    }
+    if !remove && style.is_none() && !invisible {
+        return Err(bad(c, "give `style`, a line style, or `invisible: true`; `remove: true` takes Linework off"));
+    }
+    let guid = m.guid(id);
+    let source = m.plan_source(key);
+    if remove {
+        let g =
+            s.model_mut().elements.get_mut(source).and_then(graphics::graphics_mut).ok_or_else(|| bad(c, "that view has no graphics"))?;
+        let before = g.linework.len();
+        g.linework.retain(|l| l.element != guid || geom::dist_to_segment(at, l.from, l.to) > LINEWORK_REACH);
+        return Ok(json!({"removed": before - g.linework.len()}));
+    }
+    let (from, to) = render::edge_at(m, key, id, at, LINEWORK_REACH).ok_or_else(|| {
+        bad(c, format!("element {} draws no edge within {LINEWORK_REACH} mm of [{}, {}] in that view", m.shown(id), at.0, at.1))
+    })?;
+    let g = s.model_mut().elements.get_mut(source).and_then(graphics::graphics_mut).ok_or_else(|| bad(c, "that view has no graphics"))?;
+    // The same edge again takes the newer style.
+    g.linework.retain(|l| !(l.element == guid && l.from.dist(from) < 1e-3 && l.to.dist(to) < 1e-3));
+    g.linework.push(graphics::Linework { element: guid, from: micron(from), to: micron(to), style: if invisible { None } else { style } });
+    Ok(json!({"from": [from.0, from.1], "to": [to.0, to.1]}))
+}
+
+/// How near an edge a Linework pick is taken, mm.
+const LINEWORK_REACH: f64 = 200.0;
+
+fn import_fill_patterns(s: &mut Session, p: &Value) -> R {
+    let c = "import_fill_patterns";
+    only(c, p, &["path", "text", "replace"])?;
+    let replace = flag(c, p, "replace")?;
+    let read = match (string(c, p, "path")?, string(c, p, "text")?) {
+        (Some(path), None) => crate::pat::read_file(&PathBuf::from(path)),
+        (None, Some(text)) => crate::pat::read(&text),
+        _ => return Err(bad(c, "give `path`, a PAT file, or its `text`")),
+    }
+    .map_err(|e| bad(c, e))?;
+    let m = s.model_mut();
+    let (mut imported, mut left_out) = (Vec::new(), Vec::new());
+    for (name, pattern) in read.patterns {
+        if m.fill_patterns.contains_key(&name) && !replace {
+            left_out.push(json!({"name": name, "why": "the project has a pattern of that name"}));
+            continue;
+        }
+        m.fill_patterns.insert(name.clone(), pattern);
+        imported.push(name);
+    }
+    left_out.extend(read.left_out.into_iter().map(|(name, why)| json!({"name": name, "why": why})));
+    Ok(json!({"imported": imported, "left_out": left_out}))
+}
+
+fn export_fill_patterns(s: &mut Session, p: &Value) -> R {
+    let c = "export_fill_patterns";
+    only(c, p, &["path", "names"])?;
+    let m = &s.model;
+    let names: Option<Vec<String>> = shaped(c, p, "names", "[name, …]")?;
+    if let Some(missing) = names.iter().flatten().find(|n| !m.fill_patterns.contains_key(*n)) {
+        return Err(bad(c, format!("there's no fill pattern `{missing}`")));
+    }
+    let chosen = m.fill_patterns.iter().filter(|(n, _)| names.as_ref().is_none_or(|w| w.contains(n)));
+    let text = crate::pat::write(chosen);
+    match string(c, p, "path")? {
+        Some(path) => {
+            crate::autosave::atomic_write(&PathBuf::from(&path), &text).map_err(|e| bad(c, e))?;
+            Ok(json!({"path": path}))
+        }
+        None => Ok(json!({"text": text})),
+    }
 }
 
 fn fill_pattern(s: &mut Session, p: &Value) -> R {
@@ -6872,6 +7076,10 @@ fn fill_pattern(s: &mut Session, p: &Value) -> R {
         let uses = |t: &FilledRegionType| [&t.foreground, &t.background].into_iter().flatten().any(|n| *n == name);
         if let Some((user, _)) = m.region_types.iter().find(|(_, t)| uses(t)) {
             return Err(bad(c, format!("filled region type `{user}` fills with `{name}`; give it another first")));
+        }
+        let shows = |x: &crate::model::Material| [&x.cut_pattern, &x.surface_pattern].into_iter().flatten().any(|n| *n == name);
+        if let Some((user, _)) = m.materials.iter().find(|(_, x)| shows(x)) {
+            return Err(bad(c, format!("material `{user}` shows `{name}`; give it another first")));
         }
         return Ok(json!({"deleted": name}));
     }
@@ -6905,6 +7113,164 @@ fn fill_pattern(s: &mut Session, p: &Value) -> R {
         m.fill_patterns.insert(name.clone(), pattern.clone());
     }
     Ok(json!({"name": name, "pattern": pattern}))
+}
+
+fn create_group(s: &mut Session, p: &Value) -> R {
+    let c = "create_group";
+    only(c, p, &["ids", "name"])?;
+    let m = &s.model;
+    let ids = ids_param(c, m, p)?;
+    if ids.is_empty() {
+        return Err(bad(c, "`ids`: the detail lines, filled regions and text notes to group"));
+    }
+    if ids.len() > crate::groups::MAX_MEMBERS {
+        return Err(bad(c, format!("{} elements; a group holds at most {}", ids.len(), crate::groups::MAX_MEMBERS)));
+    }
+    let mut view = None;
+    let mut members = Vec::new();
+    let mut extent: Vec<P2> = Vec::new();
+    for &id in &ids {
+        let e = m.elements.get(id).ok_or_else(|| bad(c, format!("no element {id}")))?;
+        if !crate::groups::holds(e) {
+            return Err(bad(
+                c,
+                format!("{} {id} can't be in a detail group: it holds detail lines, filled regions and text notes", e.category()),
+            ));
+        }
+        let v = m.annotation_plan(e);
+        if view.is_some_and(|w| Some(w) != v) {
+            return Err(bad(c, "the elements are in different views; a group's members are all in one"));
+        }
+        view = v;
+        match e {
+            Element::DetailLine(l) => extent.extend(l.curve.points()),
+            Element::FilledRegion(r) => extent.extend(r.sketch.iter().flat_map(|l| l.points())),
+            Element::Text(n) => extent.push(n.at),
+            _ => {}
+        }
+        members.push(e.clone());
+    }
+    let view = view.ok_or_else(|| bad(c, "the elements are in no view"))?;
+    let (lo, hi) = extent.iter().fold((P2(f64::INFINITY, f64::INFINITY), P2(f64::NEG_INFINITY, f64::NEG_INFINITY)), |(lo, hi), q| {
+        (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1)))
+    });
+    if extent.is_empty() {
+        return Err(bad(c, "the elements have no extent"));
+    }
+    let origin = micron((lo + hi) * 0.5);
+    let name = match name_param(c, p, "name")? {
+        Some(n) if m.detail_groups.contains_key(&n) => return Err(bad(c, format!("there's already a detail group `{n}`"))),
+        Some(n) => n,
+        None => (1..).map(|k| format!("Group {k}")).find(|n| !m.detail_groups.contains_key(n)).unwrap_or_default(),
+    };
+    // About the origin, in no view; a region's boundary lines get ids of their own again when they're elements' once more.
+    let back = move |q: P2| q - origin;
+    let mo = Motion { map: &back, slide: None, mirror: false };
+    let mut held = Vec::new();
+    for (e, id) in members.into_iter().zip(&ids) {
+        let mut e = transform(c, m, e, *id, &mo, &BTreeSet::new())?;
+        crate::groups::set_view(&mut e, Guid::default());
+        if let Some(lines) = e.sketch_mut() {
+            lines.iter_mut().for_each(|l| (l.id, l.guid) = (0, Guid::default()));
+        }
+        held.push(crate::groups::Member { id: 0, guid: Guid::default(), element: e });
+    }
+    delete(s, &json!({"ids": ids}))?;
+    let m = s.model_mut();
+    m.detail_groups.insert(name.clone(), crate::groups::GroupType { members: held });
+    let g = crate::groups::DetailGroup { view, type_name: name.clone(), at: origin, angle: 0.0, mirrored: false };
+    let id = m.insert(Element::DetailGroup(g));
+    Ok(json!({"id": id, "name": name}))
+}
+
+fn detail_group(s: &mut Session, p: &Value) -> R {
+    let c = "detail_group";
+    only(c, p, &["type", "at", "angle", "mirrored", "view", "level"])?;
+    let m = &s.model;
+    let type_name = name_param(c, p, "type")?.ok_or_else(|| bad(c, "`type`, the detail group to place, is required"))?;
+    if !m.detail_groups.contains_key(&type_name) {
+        let there: Vec<&str> = m.detail_groups.keys().map(String::as_str).collect();
+        return Err(bad(c, format!("there's no detail group `{type_name}` (there are: {})", there.join(", "))));
+    }
+    let at = point_req(c, p, "at")?;
+    let angle = degrees(num(c, p, "angle")?.unwrap_or(0.0));
+    let view = m.guid(view_param(c, m, p, true)?);
+    let g = crate::groups::DetailGroup { view, type_name, at, angle, mirrored: flag(c, p, "mirrored")? };
+    let id = s.model_mut().insert(Element::DetailGroup(g));
+    Ok(json!({"id": id}))
+}
+
+fn repeating_detail(s: &mut Session, p: &Value) -> R {
+    let c = "repeating_detail";
+    only(c, p, &["type", "start", "end", "spacing", "mirrored", "view", "level"])?;
+    let m = &s.model;
+    let type_name = name_param(c, p, "type")?.ok_or_else(|| bad(c, "`type`, the detail group to repeat, is required"))?;
+    let (start, end) = (point_req(c, p, "start")?, point_req(c, p, "end")?);
+    let spacing = num(c, p, "spacing")?.ok_or_else(|| bad(c, "`spacing`, mm from one group to the next, is required"))?;
+    let view = m.guid(view_param(c, m, p, true)?);
+    let r = crate::groups::RepeatingDetail { view, type_name, start, end, spacing, mirrored: flag(c, p, "mirrored")? };
+    let count = r.places().map_or(0, |v| v.len());
+    let id = s.model_mut().insert(Element::RepeatingDetail(r));
+    Ok(json!({"id": id, "count": count}))
+}
+
+fn ungroup(s: &mut Session, p: &Value) -> R {
+    let c = "ungroup";
+    only(c, p, &["id"])?;
+    let m = &s.model;
+    let id = element_id(c, m, p.get("id").unwrap_or(&Value::Null))?;
+    let Some(Element::DetailGroup(g)) = m.elements.get(id) else {
+        return Err(bad(c, format!("element {id} isn't a detail group")));
+    };
+    let members = crate::groups::placed(m, g);
+    delete(s, &json!({"ids": [id]}))?;
+    let m = s.model_mut();
+    let ids: Vec<Id> = members.into_iter().map(|e| m.insert(e)).collect();
+    Ok(json!({"ids": ids}))
+}
+
+fn group_type(s: &mut Session, p: &Value) -> R {
+    let c = "group_type";
+    only(c, p, &["name", "rename", "delete"])?;
+    let placed = |m: &Model, name: &str| -> Vec<Id> {
+        let of = |e: &Element| match e {
+            Element::DetailGroup(g) => g.type_name == name,
+            Element::RepeatingDetail(r) => r.type_name == name,
+            _ => false,
+        };
+        m.elements.iter().filter(|(_, e)| of(e)).map(|(id, _)| *id).collect()
+    };
+    let Some(name) = name_param(c, p, "name")? else {
+        let m = &s.model;
+        let all: Map<String, Value> =
+            m.detail_groups.iter().map(|(n, g)| (n.clone(), json!({"members": g.members.len(), "placed": placed(m, n).len()}))).collect();
+        return Ok(json!({"groups": all}));
+    };
+    if !s.model.detail_groups.contains_key(&name) {
+        return Err(bad(c, format!("there's no detail group `{name}`")));
+    }
+    if flag(c, p, "delete")? {
+        if let Some(id) = placed(&s.model, &name).first() {
+            return Err(bad(c, format!("detail group {id} is of `{name}`; delete or ungroup it first")));
+        }
+        s.model_mut().detail_groups.remove(&name);
+        return Ok(json!({"deleted": name}));
+    }
+    let name = match name_param(c, p, "rename")? {
+        Some(to) if to != name => {
+            let m = s.model_mut();
+            if m.detail_groups.contains_key(&to) {
+                return Err(bad(c, format!("there's already a detail group `{to}`")));
+            }
+            if let Some(g) = m.detail_groups.remove(&name) {
+                m.detail_groups.insert(to.clone(), g);
+            }
+            rename_entry(m, &LibKind::DetailGroup, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    Ok(json!({"name": name}))
 }
 
 fn filled_region_type(s: &mut Session, p: &Value) -> R {
@@ -6996,7 +7362,7 @@ fn filled_region(s: &mut Session, p: &Value) -> R {
         Some(Value::String(n)) => Some(n.trim().to_string()),
         Some(v) => return Err(bad(c, format!("`line_style` is a line style's name, or null for invisible lines, not {v}"))),
     };
-    let r = FilledRegion { view: m.guid(view), type_name, line_style, sketch: lines };
+    let r = FilledRegion { view: m.guid(view), type_name, line_style, sketch: lines, pattern_origin: P2(0.0, 0.0), pattern_angle: 0.0 };
     let id = s.model_mut().insert(Element::FilledRegion(r));
     Ok(json!({"id": id, "area_m2": m2(profile.area())}))
 }

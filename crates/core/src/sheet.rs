@@ -290,6 +290,18 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
         }
     }
     for (&nid, e) in &m.elements {
+        if let Element::DetailGroup(g) = e
+            && g.view == guid
+        {
+            d.own(Some(nid));
+            render::detail_group(&mut d, m, g);
+        }
+        if let Element::RepeatingDetail(r) = e
+            && r.view == guid
+        {
+            d.own(Some(nid));
+            r.groups().iter().for_each(|g| render::detail_group(&mut d, m, g));
+        }
         if let Element::Text(n) = e
             && n.view == guid
         {
