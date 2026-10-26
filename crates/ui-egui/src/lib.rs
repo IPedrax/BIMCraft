@@ -1404,7 +1404,8 @@ impl BimApp {
         // one are shortcuts.
         let mut shortcut = String::new();
         for ch in typed.chars() {
-            if self.base().is_some() && (ch.is_ascii_digit() || ch == '.' || !self.typed_length.is_empty()) {
+            let listening = self.base().is_some() || self.filleting();
+            if listening && (ch.is_ascii_digit() || ch == '.' || !self.typed_length.is_empty()) {
                 self.typed_length.push(ch);
             } else {
                 shortcut.push(ch);

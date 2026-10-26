@@ -2122,6 +2122,10 @@ impl BimApp {
     /// The typed length, from the tool's base point toward the cursor: along the guide the cursor
     /// snapped to, else onto the nearest snap angle when close. Enter while a length is typed.
     pub(crate) fn place_typed(&mut self, level: Id) {
+        if self.filleting() {
+            self.fillet_typed();
+            return;
+        }
         let Some(cursor) = self.canvas.cursor else { return };
         if self.place_numbers(level, self.canvas.found.get().map_or(cursor, |f| f.at)) {
             return;
@@ -2452,8 +2456,11 @@ impl BimApp {
         let shape = self.shape();
         let names = bimcraft_core::draw::numbers(shape, chain.len());
         let label = |at: P2, text: String| tag(sc.p, sc.screen(at) + vec2(12.0, -12.0), Align2::LEFT_BOTTOM, text);
+        // The radius by the cursor, or as typed.
         if shape == draw::Shape::Fillet {
-            if let Some(r) = self.fillet_radius_at(next).filter(|_| self.drawing.fillet.len() == 2) {
+            if !self.typed_length.is_empty() && self.filleting() {
+                label(next, format!("R {} (Enter)", self.typed_length.trim()));
+            } else if let Some(r) = self.fillet_radius_at(next).filter(|_| self.filleting()) {
                 label(next, format!("R {}", m.units.with_unit(r)));
             }
             return;

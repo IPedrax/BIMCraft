@@ -670,6 +670,21 @@ impl BimApp {
 
     /// Fillet Arc's pick of `line` at `at`: the first line, the second (made at once with Radius), or with both picked
     /// the click that sizes the arc.
+    /// Whether Fillet Arc has its two lines and waits for its radius: a click, or a number typed.
+    pub(crate) fn filleting(&self) -> bool {
+        self.shape() == Shape::Fillet && self.drawing.fillet.len() == 2
+    }
+
+    /// Enter with a radius typed for Fillet Arc: the fillet of that radius.
+    pub(crate) fn fillet_typed(&mut self) {
+        let typed = std::mem::take(&mut self.typed_length);
+        self.drawing.other.clear();
+        match self.session.model.units.parse(&typed).filter(|r| r.is_finite() && *r > 0.0 && *r <= bimcraft_core::model::MAX_COORD) {
+            Some(r) => self.fillet_now(r),
+            None => self.status = Status { text: crate::lang::tf("`{}` is not a length", &[typed.trim()]), error: true },
+        }
+    }
+
     pub(crate) fn fillet_pick(&mut self, line: Option<Picked>, at: P2) {
         let radius = self.draw_options().radius;
         match (self.drawing.fillet.as_slice(), line) {

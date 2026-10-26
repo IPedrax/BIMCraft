@@ -599,3 +599,26 @@ fn pick_faces_stands_a_wall_on_the_face_of_a_mass_clicked() {
     assert_eq!(walls(&h).len(), 1);
     assert!(h.state().status.error);
 }
+
+#[test]
+fn a_fillets_radius_is_typed_once_its_two_lines_are_picked() {
+    let mut h = app(&format!(
+        "{BOX}\ndetail_line {{\"start\": [1000, 1000], \"end\": [4000, 1000]}}\ndetail_line {{\"start\": [5000, 2000], \"end\": [5000, 5000]}}"
+    ));
+    let lines = ids(&h, "line");
+    press(&mut h, "Annotate");
+    press(&mut h, "Detail Line");
+    press(&mut h, "Fillet Arc");
+    click(&mut h, P2(2000.0, 1000.0));
+    click(&mut h, P2(5000.0, 4000.0));
+    hover(&mut h, P2(4500.0, 1500.0));
+    // Digits are the radius, not a shortcut; Enter makes the fillet of that radius.
+    h.event(Event::Text("500".into()));
+    h.run();
+    assert_eq!(h.state().typed_length, "500");
+    key(&mut h, Key::Enter);
+    assert_eq!(kinds(&h), ["line", "line", "arc"]);
+    assert!(curve(&h, lines[0]).end().dist(P2(4500.0, 1000.0)) < 1e-3, "{:?}", curve(&h, lines[0]));
+    assert!(curve(&h, lines[1]).start().dist(P2(5000.0, 1500.0)) < 1e-3, "{:?}", curve(&h, lines[1]));
+    assert!(h.state().drawing.fillet.is_empty() && h.state().typed_length.is_empty(), "ready for the next");
+}
