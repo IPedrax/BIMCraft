@@ -15,6 +15,31 @@ is in the root `CLAUDE.md`; the write-ups by area are in `docs/areas/`, which th
 - **A new kind of element** is a variant of `Element` and its arms in the places that match on it (`category`, `params`,
   `level_of`, `element_json`, copy and delete, IFC, import, the schedules' `OWN` table): the compiler lists them.
 - **References hold GUIDs**, never ids (`ids.rs`, the root rules); library entries are named in memory and held by GUID in a file.
+  The detail is below.
+- **A change to what a file holds** that an older version would misread (not just a field it can do without) bumps `FORMAT` and
+  adds its step to `Model::migrate`; a new element category goes in `lenient::element` too (a test names any missing).
+
+## Ids and GUIDs
+
+As Revit's ElementId and UniqueId. The id, six digits from `FIRST_ID` (100000) up, is what people, agents and schedules use, and
+may be given anew when an element comes in from another file (`insert`, `Elements::insert_as`); the GUID is made once and never
+changes. A copy is a new element: a new id and a new GUID. IFC writes the GUID as the GlobalId and reads it back.
+
+- **Elements.** Anything that points at an element holds its `Guid`, never its `Id`: a new element kind lists its references in
+  `visit_refs!` (`Element::refs_mut`), and new code finds elements by either (`Key`, `Model::same`, `Model::guid`). A command
+  takes an element by id or GUID: `Guid` reads a number as the id it names, `Model::resolve` swaps it for the GUID after the
+  command, and `Model::check` refuses one left over.
+- **The library** (`library.rs`): each type, material, picture, family, parameter, view filter and template, phase, phase
+  filter, option set and option is an `Entry` of `Model::library`, its id counting down from `LAST_ID` (999999) in the same id
+  space. Code names entries as it always has; a file holds their GUIDs (`Model::to_json`, `names_from_file`). A new name
+  reference goes in `Element::lib_refs_mut` or `Model::lib_refs_mut`; a new kind of entry in `Kind` and `library_names` (and
+  `copy_definition` for Insert from File); a new rename calls `Library::renamed`. `Model::sync_library` (after every command)
+  gives new entries theirs. A family's types and parameters are entries (`family: name`), so a component's type and instance
+  values are GUIDs in a file; inside a family, its parts name its parameters as its formulas do.
+- **Parts** hold their own `id` and `guid` (`Layer`, `Form`, `Symbol`; the `HasPart` trait, listed in `Library::parts` by
+  `parts_now`). An edit that gives a list again keeps them by place (`keep_parts`); the sync gives new ones (and a copy, which
+  holds another's, its own; the one that held it before keeps it). A new kind of part implements `HasPart` and goes in
+  `parts_now`, `sync_parts` and `forget_parts`.
 
 ## Read by task
 

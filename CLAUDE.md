@@ -13,55 +13,45 @@ and MCP server, and milestone 2, the egui desktop app, are done. What works and 
 - **Everything is a command** (`ALL` in `crates/core/src/commands.rs`): an id after Revit's tool name, a Revit-style shortcut,
   a params doc written for agents, and a JSON `run`. The CLI, scripts and MCP all go through `Session::execute`, so new
   behaviour is a new command or parameter, with a test.
-- **Every element has an id and a GUID** (`ids.rs`), as Revit's ElementId and UniqueId: the id, six digits from `FIRST_ID`
-  (100000) up, is what people, agents and schedules use, and may be given anew when an element comes in from another file
-  (`insert`, `Elements::insert_as`); the GUID is made once and never changes. Anything that points at an element holds its
-  `Guid`, never its `Id`: a new element kind lists its references in `visit_refs!` (`Element::refs_mut`), and new code finds
-  elements by either (`Key`, `Model::same`, `Model::guid`). A command takes an element by id or GUID (`Guid` reads a number
-  as the id it names, `Model::resolve` swaps it for the GUID after the command, and `Model::check` refuses one left over).
-  A copy is a new element: a new id and a new GUID. IFC writes the GUID as the GlobalId and reads it back. The library has
-  ids and GUIDs too (`library.rs`): each type, material, picture, family, parameter, view filter and template, phase, phase
-  filter, option set and option is an `Entry` of `Model::library`, its id counting down from `LAST_ID` (999999) in the same
-  id space; code names entries as it always has, and a file holds their GUIDs (`Model::to_json`, `names_from_file`). So a
-  new name reference goes in `Element::lib_refs_mut` or `Model::lib_refs_mut`, a new kind of entry in `Kind` and
-  `library_names` (and `copy_definition` for Insert from File), and a new rename calls `Library::renamed`;
-  `Model::sync_library` (after every command) gives new entries theirs. Parts hold their own `id` and `guid` (`Layer`,
-  `Form`, `Symbol`; the `HasPart` trait, listed in `Library::parts` by `parts_now`): an edit that gives a list again keeps
-  them by place (`keep_parts`), the sync gives new ones (and a copy, which holds another's, its own; the one that held it
-  before keeps it). A family's types and parameters are entries (`family: name`), so a component's type and instance values
-  are GUIDs in a file; inside a family, its parts name its parameters as its formulas do. This is the standard for
-  everything new: a new kind of part implements `HasPart` and goes in `parts_now`, `sync_parts` and `forget_parts`.
+- **Every element has an id and a GUID** (`ids.rs`), as Revit's ElementId and UniqueId: the id (six digits from 100000) is for
+  people and may change when an element comes in from another file; the GUID never changes, and anything that points at an
+  element holds it. Library entries (`library.rs`: types, materials, families, phases, …; ids down from 999999) and parts
+  (`HasPart`) have both too. Everything new follows this standard: what to register where is in
+  [crates/core/CLAUDE.md](crates/core/CLAUDE.md#ids-and-guids).
 - **A file is read kindly, a command strictly.** The model's types keep `deny_unknown_fields`, so a misspelled key in a
-  command's params is an error. `Model::read` leaves out of a file what this version doesn't know (`lenient.rs` walks it as
-  the types would read it) and `open` lists it as `left_out`; a file of a newer `format` is refused. A change to what a file
-  holds that an older version would misread (not just a field it can do without) bumps `FORMAT` and adds its step to
-  `Model::migrate`; a new element category goes in `lenient::element` too (a test names any missing).
+  command's params is an error. `Model::read` leaves out of a file what this version doesn't know (`lenient.rs`) and `open`
+  lists it as `left_out`; a file of a newer `format` is refused. A change an older version would misread bumps `FORMAT` and
+  adds a step to `Model::migrate`.
 - **Validate in one place.** Commands build elements; `Model::check` validates the whole model after each command and the
   engine rolls back when it fails. New rules go there, with an error that says what to fix.
 - **Clean-room.** Never copy Autodesk content: no families (`.rfa`), templates, icons, help text, or anything from inside
-  `.rvt` files; a reader may read a user's file, it never bundles or extracts assets for the project. Formats come from
-  public specifications (IFC4 is ISO 16739). A format with no public specification (Revit's `.rvt` and `.rfa`) may be read
-  only under the fence in [docs/rvt-provenance.md](docs/rvt-provenance.md): the code is `crates/rvt`, Apache-2.0 only
-  because it holds code ported from rvt-rs, `bimcraft-core` never depends on it, and every module and format finding
-  there names its source. Assets are original or openly licensed; the lettering of drawings is drawn in code (`font.rs`), the one exception being the
-  interface font, IBM Plex under the OFL (`assets/fonts`; `NOTICE` and each OFL.txt go in every package).
+  `.rvt` files. Formats come from public specifications (IFC4 is ISO 16739); one with no public specification (`.rvt`, `.rfa`)
+  is read only under the fence in [docs/rvt-provenance.md](docs/rvt-provenance.md), in `crates/rvt` (Apache-2.0, which
+  `bimcraft-core` never depends on). Assets are original or openly licensed; the lettering of drawings is drawn in code
+  (`font.rs`), and the interface font is IBM Plex under the OFL (`assets/fonts`; `NOTICE` and each OFL.txt go in every package).
 - **The core has no UI.** `bimcraft-core` must not depend on a UI toolkit, so front ends stay swappable.
-- **The UI is thin.** `crates/ui-egui` reads `session.model` and changes it only through `Session::execute`, never by editing
-  the model. Logic any front end needs (what a plan shows, what's under the cursor) belongs in the core: the canvas draws
-  `render::draw` and picks with `Drawing::pick`. UI behaviour is tested with egui_kittest: clicks at model points
-  (`BimApp::screen`), buttons by label, keys (`crates/ui-egui/src/tests.rs`).
-- **Only the desktop app phones home, and only through `crates/update`.** The core, the CLI and the MCP server don't depend on it
-  (a test reads their manifests), and a `BimApp` starts with `updates: None`, so no UI test reaches the network; `apps/bimcraft`'s
-  `main` attaches the updater and starts the check on a thread. What comes from the network is hostile: the reply and the download
-  are capped, the installer's address is built from the release's tag and never read from the reply, an asset is taken only if it is
-  named exactly for the version and the kind of install (`Target::asset_name`), uploaded, with a `sha256:` digest, and nothing runs that
-  failed a check. A new
-  check is a pure function with a test, and the network stays behind `Net` (`testing::Fake` in tests; `net::Ureq` is tested against
-  a server on this machine, never GitHub).
+- **The UI is thin.** `crates/ui-egui` reads `session.model` and changes it only through `Session::execute`. Logic any front
+  end needs belongs in the core: the canvas draws `render::draw` and picks with `Drawing::pick`. UI behaviour is tested with
+  egui_kittest (`crates/ui-egui/src/tests.rs`).
+- **Only the desktop app phones home, and only through `crates/update`**; what comes from the network is hostile. A `BimApp`
+  starts with `updates: None`, so no test reaches the network. The checks are in
+  [crates/update/CLAUDE.md](crates/update/CLAUDE.md).
 - **Test first.** Write the failing test, watch it fail, then write the code. Drawings and IFC are tested through their output:
   pixels of the PNG, entity references in the STEP file.
 - **Keep the agent docs layered.** This file stays short: the rules, the checks, the conventions and a map of the modules. A
   feature's detail lives in `docs/areas/<area>.md` or the nearest crate's `CLAUDE.md`, never here (see the end of this file).
+
+## Working economically
+
+Let the tools do the reading and checking; read only what you will change.
+
+- **Find before you read.** Locate a definition with `rg -n "(fn|struct|enum|trait|type) NAME" crates apps`, outline a file with
+  `rg -n "^\s*(pub.*)?(fn|struct|enum|trait|impl|mod) " FILE`, then read the line range around the hit. Never read a whole file
+  over ~300 lines (`commands.rs`, `model.rs` and the `tests.rs` files are thousands). Don't open `target/` or `Cargo.lock`.
+- **Keep output short.** `cargo check -q -p <crate> --message-format=short 2>&1 | head -40`, the same for clippy; fix from the
+  top and rerun. Tests: `cargo test -q -p <crate> <filter> 2>&1 | tail -40`. Bound every command's output with `head`/`tail`.
+- **Test narrowly, then once broadly**: the filtered crate while working, the checks below once at the end. Don't re-read a file
+  you just edited; `cargo check` it. No `--release` builds unless asked.
 
 ## Before you finish
 
@@ -84,13 +74,10 @@ IFC with IfcOpenShell, structure and the discipline tabs, IFC import. For Revit 
 
 Millimetres; x east, y north, z up. A project's units (`Model::units`, `units.rs`) change only what's shown and typed:
 drawings, schedules and the desktop format lengths with `Units::length` and areas with `Units::area`, and read typed
-lengths with `Units::parse`; files, JSON and every command stay in millimetres. A project's language (`Model::language`,
-`language.rs`) is what its drawings print and what new names come in: the core passes the English word through
-`Language::word`. The desktop's own words go through `lang::t` and `lang::tf`, so a new label needs a row in `WORDS` in
-`crates/ui-egui/src/lang.rs`, with its Portuguese and its Spanish (and its Chinese in `lang/zh.rs`, which may wait: the window shows English
-until it has one; the core's words are rows in `language.rs`);
-`nothing_a_translated_interface_shows_is_left_in_english` catches a label the table knows that the window forgot to
-translate. The core's messages stay English, because agents read them.
+lengths with `Units::parse`; files, JSON and every command stay in millimetres. Words a person reads are translated:
+`Language::word` (`language.rs`) for what a project's drawings print and the names it makes, `lang::t` and `lang::tf` with a row
+in `WORDS` for the desktop (how: [crates/ui-egui/CLAUDE.md](crates/ui-egui/CLAUDE.md)). The core's messages stay English,
+because agents read them.
 The selection is the model's, not a view's: opening any view (a plan, a section, the 3D view, a sheet, a schedule) keeps it
 (`BimApp::open_sheet`), each view shows it, and a schedule's rows (`schedule::Table::ids`, `elements` in the command's output)
 highlight what's selected and pick what they list.
