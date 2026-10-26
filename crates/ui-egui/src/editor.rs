@@ -2,6 +2,8 @@
 //! preview as they're typed, then made the project's, saved to a file or kept in the Favorites.
 //! Every change to the project is a `family` command, so it's checked, and undone, like any other.
 
+use bimcraft_i18n::msg;
+
 use std::collections::BTreeMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
@@ -189,7 +191,7 @@ fn kind_name(k: Holds) -> &'static str {
         Holds::Length => "Length",
         Holds::Number => "Number",
         Holds::Angle => "Angle",
-        Holds::YesNo => "Yes/No",
+        Holds::YesNo => msg!("Yes/No"),
         Holds::Material => "Material",
     }
 }
@@ -506,24 +508,24 @@ pub(crate) const CATEGORIES: [Category; 20] = [
 
 pub(crate) fn category_label(c: Category) -> String {
     t(match c {
-        Category::Furniture => "Furniture",
-        Category::Casework => "Casework",
-        Category::Plumbing => "Plumbing Fixtures",
+        Category::Furniture => msg!("Furniture"),
+        Category::Casework => msg!("Casework"),
+        Category::Plumbing => msg!("Plumbing Fixtures"),
         Category::Drain => "Drains",
         Category::PipeFitting => "Pipe Fittings",
         Category::PipeAccessory => "Pipe Accessories",
-        Category::Equipment => "Electrical Equipment",
-        Category::Outlet => "Outlets",
-        Category::Switch => "Switches",
-        Category::AirTerminal => "Air Terminals",
-        Category::Earthing => "Earthing Electrodes",
-        Category::InspectionBox => "Inspection Boxes",
-        Category::DataOutlet => "Data Outlets",
-        Category::VoiceOutlet => "Voice Outlets",
-        Category::PatchPanel => "Patch Panels",
-        Category::Rack => "Racks",
-        Category::Lighting => "Lighting",
-        Category::Generic => "Generic",
+        Category::Equipment => msg!("Electrical Equipment"),
+        Category::Outlet => msg!("Outlets"),
+        Category::Switch => msg!("Switches"),
+        Category::AirTerminal => msg!("Air Terminals"),
+        Category::Earthing => msg!("Earthing Electrodes"),
+        Category::InspectionBox => msg!("Inspection Boxes"),
+        Category::DataOutlet => msg!("Data Outlets"),
+        Category::VoiceOutlet => msg!("Voice Outlets"),
+        Category::PatchPanel => msg!("Patch Panels"),
+        Category::Rack => msg!("Racks"),
+        Category::Lighting => msg!("Lighting"),
+        Category::Generic => msg!("Generic"),
         Category::Door => "Door",
         Category::Window => "Window",
     })
@@ -559,7 +561,7 @@ fn parameters_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
     }
     let mut remove = None;
     Grid::new("fe-params").num_columns(6).striped(true).spacing(vec2(8.0, 4.0)).show(ui, |ui| {
-        for h in ["Name", "Kind", "Instance", "Value", "Formula", ""] {
+        for h in ["Name", msg!("Kind"), msg!("Instance"), "Value", "Formula", ""] {
             ui.label(RichText::new(t(h)).color(pal().muted));
         }
         ui.end_row();
@@ -672,7 +674,7 @@ fn types_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
 /// One form's fields.
 fn form_fields(ui: &mut Ui, f: &mut FormText, i: usize, options: &[String]) {
     let n = i + 1;
-    let planes = [(Plane::Xy, "Plane XY"), (Plane::Xz, "Plane XZ"), (Plane::Yz, "Plane YZ")];
+    let planes = [(Plane::Xy, msg!("Plane XY")), (Plane::Xz, msg!("Plane XZ")), (Plane::Yz, msg!("Plane YZ"))];
     Grid::new(("fe-form-grid", i)).num_columns(2).spacing(vec2(12.0, 5.0)).show(ui, |ui| {
         if f.mesh() {
             ui.label(t("Mesh"));
@@ -705,7 +707,7 @@ fn form_fields(ui: &mut Ui, f: &mut FormText, i: usize, options: &[String]) {
             } else {
                 ui.label(t("Circle centre and radius"));
                 ui.horizontal(|ui| {
-                    for (k, what) in ["Form Circle X", "Form Circle Y", "Form Circle Radius"].into_iter().enumerate() {
+                    for (k, what) in [msg!("Form Circle X"), msg!("Form Circle Y"), msg!("Form Circle Radius")].into_iter().enumerate() {
                         field(ui, format!("{} {n}", t(what)), &mut f.circle[k], 80.0);
                     }
                 });
@@ -717,7 +719,9 @@ fn form_fields(ui: &mut Ui, f: &mut FormText, i: usize, options: &[String]) {
             if f.revolve {
                 ui.label(t("Axis"));
                 ui.horizontal(|ui| {
-                    for (k, what) in ["Form Axis X1", "Form Axis Y1", "Form Axis X2", "Form Axis Y2"].into_iter().enumerate() {
+                    for (k, what) in
+                        [msg!("Form Axis X1"), msg!("Form Axis Y1"), msg!("Form Axis X2"), msg!("Form Axis Y2")].into_iter().enumerate()
+                    {
                         field(ui, format!("{} {n}", t(what)), &mut f.axis[k], 60.0);
                     }
                 });
@@ -808,15 +812,15 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
                 if y.arc {
                     ui.label(t("Centre"));
                     ui.horizontal(|ui| {
-                        for (k, what) in ["Symbol Centre X", "Symbol Centre Y"].into_iter().enumerate() {
+                        for (k, what) in [msg!("Symbol Centre X"), msg!("Symbol Centre Y")].into_iter().enumerate() {
                             field(ui, format!("{} {n}", t(what)), &mut y.centre[k], 170.0);
                         }
                     });
                     ui.end_row();
                     for (label, what, text) in [
-                        ("Radius", "Symbol Radius", &mut y.radius),
-                        ("From (degrees)", "Symbol From", &mut y.from),
-                        ("To (degrees)", "Symbol To", &mut y.to),
+                        (msg!("Radius"), msg!("Symbol Radius"), &mut y.radius),
+                        ("From (degrees)", msg!("Symbol From"), &mut y.from),
+                        ("To (degrees)", msg!("Symbol To"), &mut y.to),
                     ] {
                         ui.label(t(label));
                         field(ui, format!("{} {n}", t(what)), text, 200.0);
@@ -930,9 +934,12 @@ impl BimApp {
                 ui.vertical(|ui| {
                     ui.set_width(620.0);
                     ui.horizontal(|ui| {
-                        for (tab, label) in
-                            [(Tab::Parameters, "Parameters"), (Tab::Types, "Types"), (Tab::Forms, "Forms"), (Tab::Symbols, "Symbols")]
-                        {
+                        for (tab, label) in [
+                            (Tab::Parameters, msg!("Parameters")),
+                            (Tab::Types, msg!("Types")),
+                            (Tab::Forms, msg!("Forms")),
+                            (Tab::Symbols, msg!("Symbols")),
+                        ] {
                             if ui.selectable_label(ed.tab == tab, t(label)).clicked() {
                                 ed.tab = tab;
                             }

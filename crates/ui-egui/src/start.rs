@@ -2,6 +2,8 @@
 //! each (its 3D view, drawn on a thread of its own), and along the bottom the source code's page and whether an update is out. The
 //! quick access bar's Home brings it back over a project, which it leaves as it was.
 
+use bimcraft_i18n::msg;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
@@ -296,18 +298,22 @@ impl BimApp {
     fn start_actions(&self, ui: &mut Ui, click: &mut Option<Click>) {
         heading(ui, "Start");
         let cmd = if cfg!(target_os = "macos") { "⌘" } else { "Ctrl+" };
-        if action(ui, Icon::NewFile, "New Project", "An empty project to model in.", &format!("{cmd}N")).clicked() {
+        if action(ui, Icon::NewFile, msg!("New Project"), msg!("An empty project to model in."), &format!("{cmd}N")).clicked() {
             *click = Some(Click::New);
         }
         ui.add_space(10.0);
-        let what = if self.revit.is_some() { "A BIMCraft project, an IFC or a Revit file." } else { "A BIMCraft project or an IFC file." };
+        let what = if self.revit.is_some() {
+            msg!("A BIMCraft project, an IFC or a Revit file.")
+        } else {
+            msg!("A BIMCraft project or an IFC file.")
+        };
         if action(ui, Icon::Open, "Open…", what, &format!("{cmd}O")).clicked() {
             *click = Some(Click::Open);
         }
         if self.home.over {
             ui.add_space(10.0);
             let back = tf("Back to {}", &[&self.session.model.name]);
-            if action(ui, Icon::Back, &back, "The project stays as you left it.", &format!("{cmd}D")).clicked() {
+            if action(ui, Icon::Back, &back, msg!("The project stays as you left it."), &format!("{cmd}D")).clicked() {
                 *click = Some(Click::Back);
             }
         }
@@ -315,7 +321,7 @@ impl BimApp {
 
     /// The recent files, as tiles.
     fn start_recent(&self, ui: &mut Ui, click: &mut Option<Click>) {
-        heading(ui, "Recent");
+        heading(ui, msg!("Recent"));
         let files: Vec<(String, PathBuf)> = self.recent.labels().into_iter().zip(self.recent.paths().iter().cloned()).collect();
         if files.is_empty() {
             let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 150.0), Sense::hover());

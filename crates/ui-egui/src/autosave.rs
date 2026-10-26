@@ -1,5 +1,7 @@
 //! Desktop policy over the core's background writer. Tests opt in with their own temp directory;
 //! constructing a BimApp by itself never touches recovery files.
+use bimcraft_i18n::msg;
+
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
@@ -297,7 +299,7 @@ impl BimApp {
             ui.add_space(8.0);
             ui.add_enabled_ui(self.autosave.deleting.is_none(), |ui| {
                 ui.horizontal(|ui| {
-                    for label in ["Recover", "Discard", "Postpone"] {
+                    for label in [msg!("Recover"), msg!("Discard"), msg!("Postpone")] {
                         if ui.button(t(label)).clicked() {
                             choice = Some(label);
                         }

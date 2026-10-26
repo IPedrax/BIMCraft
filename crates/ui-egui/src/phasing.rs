@@ -5,6 +5,8 @@
 //! (`phase`, `phase_filter`, `option`, `modify` or `graphics`) as it goes, as Project Parameters
 //! does; the one thing edited as a draft is a status's graphic overrides, applied as one command.
 
+use bimcraft_i18n::msg;
+
 use std::sync::Arc;
 
 use bimcraft_core::graphics::{Group, Override};
@@ -20,7 +22,7 @@ use crate::properties::{combo, group_header};
 use crate::style::pal;
 
 /// The Phasing dialog's tabs.
-const TABS: [&str; 3] = ["Project Phasing", "Phase Filters", "Graphic Overrides"];
+const TABS: [&str; 3] = [msg!("Project Phasing"), "Phase Filters", msg!("Graphic Overrides")];
 
 /// How a phase filter shows a status.
 const PRESENTATIONS: [Presentation; 3] = [Presentation::ByCategory, Presentation::Overridden, Presentation::NotDisplayed];
@@ -53,16 +55,16 @@ fn status_name(s: Status) -> &'static str {
     match s {
         Status::New => "New",
         Status::Existing => "Existing",
-        Status::Demolished => "Demolished",
-        Status::Temporary => "Temporary",
+        Status::Demolished => msg!("Demolished"),
+        Status::Temporary => msg!("Temporary"),
     }
 }
 
 fn presentation_name(p: Presentation) -> &'static str {
     match p {
-        Presentation::ByCategory => "By Category",
-        Presentation::Overridden => "Overridden",
-        Presentation::NotDisplayed => "Not Displayed",
+        Presentation::ByCategory => msg!("By Category"),
+        Presentation::Overridden => msg!("Overridden"),
+        Presentation::NotDisplayed => msg!("Not Displayed"),
     }
 }
 
@@ -491,7 +493,7 @@ fn project_phasing(ui: &mut Ui, d: &mut PhasingDialog, m: &Model, run: &mut Pend
     let after = at.and_then(|i| m.phases.get(i + 1));
     ui.horizontal(|ui| {
         let tip = t("Combine: what was made, taken down and shown in this phase goes to the neighbouring one, and this one goes");
-        for (label, into) in [("Combine with Previous", before), ("Combine with Next", after)] {
+        for (label, into) in [(msg!("Combine with Previous"), before), (msg!("Combine with Next"), after)] {
             if ui.add_enabled(into.is_some(), Button::new(t(label))).on_hover_text(tip).clicked()
                 && let Some(into) = into
             {

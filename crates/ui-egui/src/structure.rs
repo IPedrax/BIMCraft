@@ -2,6 +2,8 @@
 //! structural floors. A tool that makes a run takes its category (`Tool::Run`), and one that makes a column or a footing
 //! takes its (`Tool::Stand`), so a tab that draws pipes or conduits adds a button and a row to the tables here, not a tool.
 
+use bimcraft_i18n::msg;
+
 use bimcraft_core::geom::P2;
 use bimcraft_core::model::{Element, Id, Justify, Model, TOL};
 use bimcraft_core::{runs_of, stood_of};
@@ -20,17 +22,17 @@ pub(crate) fn command(category: &str) -> &'static str {
 /// The title of the contextual tab while the tool is on.
 pub(crate) fn title(tool: &Tool) -> Option<&'static str> {
     match tool {
-        Tool::Run("beam", _) => Some("Place Beam"),
-        Tool::Run("pipe", _) => Some("Place Pipe"),
-        Tool::Run("conduit", _) => Some("Place Conduit"),
-        Tool::Run("cabletray", _) => Some("Place Cable Tray"),
-        Tool::Run("wire", _) => Some("Place Wire"),
-        Tool::Run("downconductor", _) => Some("Place Down Conductor"),
-        Tool::Run("groundconductor", _) => Some("Place Earthing Conductor"),
-        Tool::Run("cable", _) => Some("Place Cabling"),
-        Tool::Run(_, _) => Some("Place Wall Footing"),
-        Tool::Stand("structuralcolumn") => Some("Place Structural Column"),
-        Tool::Stand(_) => Some("Place Isolated Footing"),
+        Tool::Run("beam", _) => Some(msg!("Place Beam")),
+        Tool::Run("pipe", _) => Some(msg!("Place Pipe")),
+        Tool::Run("conduit", _) => Some(msg!("Place Conduit")),
+        Tool::Run("cabletray", _) => Some(msg!("Place Cable Tray")),
+        Tool::Run("wire", _) => Some(msg!("Place Wire")),
+        Tool::Run("downconductor", _) => Some(msg!("Place Down Conductor")),
+        Tool::Run("groundconductor", _) => Some(msg!("Place Earthing Conductor")),
+        Tool::Run("cable", _) => Some(msg!("Place Cabling")),
+        Tool::Run(_, _) => Some(msg!("Place Wall Footing")),
+        Tool::Stand("structuralcolumn") => Some(msg!("Place Structural Column")),
+        Tool::Stand(_) => Some(msg!("Place Isolated Footing")),
         _ => None,
     }
 }
@@ -38,10 +40,10 @@ pub(crate) fn title(tool: &Tool) -> Option<&'static str> {
 /// What the status bar says to do next with a structure tool on.
 pub(crate) fn hint(tool: &Tool) -> Option<&'static str> {
     match tool {
-        Tool::Run(_, None) => Some("Click the start of the run: a chain of clicks makes one for each step, Esc ends it."),
-        Tool::Run(_, Some(_)) => Some("Click the end of the run. Esc stops the chain."),
-        Tool::Stand("structuralcolumn") => Some("Click to place a structural column, as high as the Options Bar says."),
-        Tool::Stand(_) => Some("Click to place an isolated footing: its top at the Options Bar's offset, as thick as it says."),
+        Tool::Run(_, None) => Some(msg!("Click the start of the run: a chain of clicks makes one for each step, Esc ends it.")),
+        Tool::Run(_, Some(_)) => Some(msg!("Click the end of the run. Esc stops the chain.")),
+        Tool::Stand("structuralcolumn") => Some(msg!("Click to place a structural column, as high as the Options Bar says.")),
+        Tool::Stand(_) => Some(msg!("Click to place an isolated footing: its top at the Options Bar's offset, as thick as it says.")),
         _ => None,
     }
 }
@@ -74,11 +76,11 @@ impl BimApp {
         self.tools(ui, "Select", &[(Icon::Modify, "Modify", "Modify (MD): select elements", Tool::Modify)]);
         panel(ui, "Structure", |ui| {
             let tools: [(Icon, &str, &str, Tool); 2] = [
-                (Icon::Column, "Column", "Structural Column (CL): click where it stands", Tool::Stand("structuralcolumn")),
+                (Icon::Column, "Column", msg!("Structural Column (CL): click where it stands"), Tool::Stand("structuralcolumn")),
                 (
                     Icon::Beam,
                     "Beam",
-                    "Beam (BM): click its start and its end; a chain of clicks makes a beam for each step",
+                    msg!("Beam (BM): click its start and its end; a chain of clicks makes a beam for each step"),
                     Tool::Run("beam", None),
                 ),
             ];
@@ -87,18 +89,18 @@ impl BimApp {
                     self.set_tool(tool);
                 }
             }
-            let tip = "Floor: Structural (SB): click inside the walls to floor them with a slab that carries load";
+            let tip = msg!("Floor: Structural (SB): click inside the walls to floor them with a slab that carries load");
             if big_button(ui, Icon::Floor, "Floor: Structural", self.tool == Tool::Floor && self.floor_structural, tip).clicked() {
                 self.structural_floor();
             }
         });
-        panel(ui, "Foundation", |ui| {
+        panel(ui, msg!("Foundation"), |ui| {
             let tools: [(Icon, &str, &str, Tool); 2] = [
-                (Icon::Footing, "Isolated Footing", "Isolated Footing (FI): click where the footing goes", Tool::Stand("footing")),
+                (Icon::Footing, "Isolated Footing", msg!("Isolated Footing (FI): click where the footing goes"), Tool::Stand("footing")),
                 (
                     Icon::WallFooting,
                     "Wall Footing",
-                    "Wall Footing (FW): click its start and its end, or a chain of clicks, under a wall",
+                    msg!("Wall Footing (FW): click its start and its end, or a chain of clicks, under a wall"),
                     Tool::Run("stripfooting", None),
                 ),
             ];

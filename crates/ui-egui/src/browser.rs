@@ -4,6 +4,8 @@
 //! case aside) must match an entry's name or the name of a group it is in, so `ceiling 2` finds Level 2's ceiling plan,
 //! and what matched is marked.
 
+use bimcraft_i18n::msg;
+
 use egui::text::{LayoutJob, TextFormat};
 use egui::{Align, CollapsingHeader, Layout, Rect, Sense, Stroke, StrokeKind, TextEdit, TextStyle, Ui, WidgetInfo, WidgetType, vec2};
 
@@ -36,12 +38,12 @@ impl Tab {
 
     pub fn name(self) -> &'static str {
         match self {
-            Tab::All => "All",
-            Tab::Views => "Views",
+            Tab::All => msg!("All"),
+            Tab::Views => msg!("Views"),
             Tab::Schedules => "Schedules",
-            Tab::Sheets => "Sheets",
+            Tab::Sheets => msg!("Sheets"),
             Tab::Families => "Families",
-            Tab::Legends => "Legends",
+            Tab::Legends => msg!("Legends"),
         }
     }
 
@@ -410,9 +412,9 @@ impl BimApp {
             .collect();
         let plan_leaf = |id: Id, name: &str, view: bool, sheet: Sheet| {
             let mut menu = vec![
-                ("Duplicate", Act::Duplicate(id, "duplicate")),
-                ("Duplicate with Detailing", Act::Duplicate(id, "detailing")),
-                ("Duplicate as Dependent", Act::Duplicate(id, "dependent")),
+                (msg!("Duplicate"), Act::Duplicate(id, "duplicate")),
+                (msg!("Duplicate with Detailing"), Act::Duplicate(id, "detailing")),
+                (msg!("Duplicate as Dependent"), Act::Duplicate(id, "dependent")),
             ];
             if view {
                 menu.push(("Delete", Act::Delete(vec![id])));
@@ -426,7 +428,8 @@ impl BimApp {
             Node::group(t("Ceiling Plans"), true, ceilings),
             Node::group(t("3D Views"), true, vec![self.view_leaf("{3D}", Sheet::View3D)]),
         ];
-        for (group, category) in [("Elevations (Building Elevation)", "elevation"), ("Sections (Building Section)", "section")] {
+        for (group, category) in [(msg!("Elevations (Building Elevation)"), "elevation"), (msg!("Sections (Building Section)"), "section")]
+        {
             let views = views(category);
             if !views.is_empty() {
                 kids.push(Node::group(t(group), true, views.iter().map(|(id, name)| self.view_leaf(name, Sheet::Section(*id))).collect()));
@@ -461,14 +464,15 @@ impl BimApp {
             .filter_map(|(id, e)| match e {
                 Element::Link(l) => {
                     let label = if m.loaded.contains_key(&l.path) { l.name.clone() } else { tf("{} (not loaded)", &[&l.name]) };
-                    let menu = vec![("Reload", Act::Do("reload", serde_json::json!({"id": id}))), ("Remove", Act::Delete(vec![*id]))];
+                    let menu = vec![(msg!("Reload"), Act::Do("reload", serde_json::json!({"id": id}))), ("Remove", Act::Delete(vec![*id]))];
                     Some(Node::leaf(&label, Act::Select(*id), self.selection == [*id]).with_menu(menu))
                 }
                 _ => None,
             })
             .collect();
-        (!kids.is_empty())
-            .then(|| Node::group(t("Linked Models"), true, kids).with_menu(vec![("Reload All", Act::Do("reload", serde_json::json!({})))]))
+        (!kids.is_empty()).then(|| {
+            Node::group(t("Linked Models"), true, kids).with_menu(vec![(msg!("Reload All"), Act::Do("reload", serde_json::json!({})))])
+        })
     }
 
     /// The sheets, by number, as "A101 - Name".

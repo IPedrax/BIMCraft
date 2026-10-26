@@ -4,6 +4,8 @@
 //! changed ([`BimApp::view_model`]), made once for each model and each setting, through the same `graphics` command the
 //! project's own changes go through; Apply to View makes the same change for good.
 
+use bimcraft_i18n::msg;
+
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
@@ -247,9 +249,9 @@ impl BimApp {
         let shown = units.scale(n_now);
         let (set_by, tip) = (
             self.controlled_by(Group::Scale),
-            "Scale: the paper this view stands for, 1 : n of the model: its annotation and its line weights are that paper's",
+            msg!("Scale: the paper this view stands for, 1 : n of the model: its annotation and its line weights are that paper's"),
         );
-        let r = menu_button(ui, "Scale", &shown, tip, set_by.as_deref());
+        let r = menu_button(ui, msg!("Scale"), &shown, tip, set_by.as_deref());
         Popup::menu(&r).show(|ui| {
             // Wide enough for the Custom row's field.
             ui.set_min_width(150.0);
@@ -276,8 +278,9 @@ impl BimApp {
                 }
             });
         });
-        let tip =
-            "Detail Level: Coarse draws what is cut in one poché, Medium adds the layers and the symbols of openings, Fine the patterns";
+        let tip = msg!(
+            "Detail Level: Coarse draws what is cut in one poché, Medium adds the layers and the symbols of openings, Fine the patterns"
+        );
         let r = menu_button(ui, "Detail Level", now.detail.name(), tip, self.controlled_by(Group::Detail).as_deref());
         Popup::menu(&r).show(|ui| {
             for d in Detail::ALL {
@@ -312,7 +315,8 @@ impl BimApp {
                     (Some(view), false) => self.scale_and_detail(ui, &view),
                     (_, true) => {
                         let now = self.graphics_shown().style;
-                        let tip = "Visual Style: how the 3D view draws surfaces: Shaded, Hidden Line (WF, HL and SD set them) or Wireframe";
+                        let tip =
+                            msg!("Visual Style: how the 3D view draws surfaces: Shaded, Hidden Line (WF, HL and SD set them) or Wireframe");
                         let r = menu_button(ui, "Visual Style", now.name(), tip, self.controlled_by(Group::Style).as_deref());
                         Popup::menu(&r).show(|ui| {
                             for v in VisualStyle::ALL {
@@ -325,16 +329,17 @@ impl BimApp {
                     }
                     _ => {}
                 }
-                let tip = "Temporary Hide/Isolate: hide or isolate what is selected, or its categories, in this view until you reset it";
+                let tip =
+                    msg!("Temporary Hide/Isolate: hide or isolate what is selected, or its categories, in this view until you reset it");
                 let r = small_button(ui, Icon::TempHide, "Temporary Hide/Isolate", temp.hides(), tip);
                 // Revit greys out what needs a selection until there is one.
                 let picked = !self.drawn_selection(&self.session.model).is_empty();
                 Popup::menu(&r).show(|ui| {
                     for (label, hide, category) in [
-                        ("Hide Element (HH)", true, false),
-                        ("Hide Category (HC)", true, true),
-                        ("Isolate Element (HI)", false, false),
-                        ("Isolate Category (IC)", false, true),
+                        (msg!("Hide Element (HH)"), true, false),
+                        (msg!("Hide Category (HC)"), true, true),
+                        (msg!("Isolate Element (HI)"), false, false),
+                        (msg!("Isolate Category (IC)"), false, true),
                     ] {
                         if ui.add_enabled(picked, egui::Button::new(t(label))).clicked() {
                             match hide {
@@ -351,13 +356,13 @@ impl BimApp {
                         self.temp_reset();
                     }
                 });
-                let tip = "Reveal Hidden Elements (RH): draw what this view hides in magenta; again to hide it";
+                let tip = msg!("Reveal Hidden Elements (RH): draw what this view hides in magenta; again to hide it");
                 if small_button(ui, Icon::Reveal, "Reveal Hidden Elements", temp.reveal, tip).clicked() {
                     self.temp_reveal();
                 }
                 if temp.hides() || temp.reveal {
                     ui.add_space(8.0);
-                    let note = if temp.reveal && !temp.hides() { "Revealing hidden elements" } else { "Temporary Hide/Isolate" };
+                    let note = if temp.reveal && !temp.hides() { msg!("Revealing hidden elements") } else { "Temporary Hide/Isolate" };
                     ui.label(RichText::new(tf("{} (HR resets)", &[t(note)])).color(FRAME));
                 }
             });

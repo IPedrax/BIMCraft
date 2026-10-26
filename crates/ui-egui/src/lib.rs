@@ -5,6 +5,8 @@
 //! selection, the Options Bar, Properties over the Project Browser on the left, views in tabs
 //! (plans, the 3D view, schedules), and the tool's prompt in the status bar.
 
+use bimcraft_i18n::msg;
+
 mod browser;
 mod canvas;
 mod clouds;
@@ -262,42 +264,42 @@ const SHORTCUTS: [(&str, &str); 47] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
-    ("MM", "Mirror Pick Axis"),
-    ("DM", "Mirror Draw Axis"),
-    ("AL", "Align"),
+    ("MM", msg!("Mirror Pick Axis")),
+    ("DM", msg!("Mirror Draw Axis")),
+    ("AL", msg!("Align")),
     ("OF", "Offset"),
     ("DW", "Demolish"),
     ("ZF", "Zoom to Fit"),
     ("ZE", "Zoom to Fit"),
     ("ZA", "Zoom to Fit"),
     ("TL", "Thin Lines"),
-    ("CS", "Create Similar"),
+    ("CS", msg!("Create Similar")),
     ("PP", "Properties"),
     ("VP", "Properties"),
     ("NP", "Project Browser"),
     ("SA", "Select All Instances"),
-    ("SE", "Snap to Endpoints"),
-    ("SM", "Snap to Midpoints"),
-    ("SI", "Snap to Intersections"),
-    ("SC", "Snap to Centres"),
-    ("SP", "Snap to Perpendiculars"),
-    ("SN", "Snap to Nearest"),
-    ("SO", "Snaps Off"),
-    ("SS", "Turn Snap Override Off"),
+    ("SE", msg!("Snap to Endpoints")),
+    ("SM", msg!("Snap to Midpoints")),
+    ("SI", msg!("Snap to Intersections")),
+    ("SC", msg!("Snap to Centres")),
+    ("SP", msg!("Snap to Perpendiculars")),
+    ("SN", msg!("Snap to Nearest")),
+    ("SO", msg!("Snaps Off")),
+    ("SS", msg!("Turn Snap Override Off")),
     ("VV", "Visibility/Graphics"),
     ("VG", "Visibility/Graphics"),
     ("EH", "Hide Element"),
     ("VH", "Hide Category"),
-    ("HH", "Temporary Hide Element"),
-    ("HC", "Temporary Hide Category"),
-    ("HI", "Temporary Isolate Element"),
-    ("IC", "Temporary Isolate Category"),
-    ("HR", "Reset Temporary Hide/Isolate"),
+    ("HH", msg!("Temporary Hide Element")),
+    ("HC", msg!("Temporary Hide Category")),
+    ("HI", msg!("Temporary Isolate Element")),
+    ("IC", msg!("Temporary Isolate Category")),
+    ("HR", msg!("Reset Temporary Hide/Isolate")),
     ("RH", "Reveal Hidden Elements"),
-    ("EU", "Unhide Elements"),
+    ("EU", msg!("Unhide Elements")),
     ("UE", "Unhide Elements"),
     ("VU", "Unhide Category"),
-    ("EO", "Override Graphics by Element"),
+    ("EO", msg!("Override Graphics by Element")),
     ("FT", "Filters"),
     ("VT", "View Templates"),
     ("PH", "Phasing"),
@@ -966,35 +968,35 @@ impl BimApp {
             | Tool::Attach
             | Tool::GableEdge
             | Tool::SlopeArrow(_) => None,
-            Tool::Wall(_) => Some("Place Wall"),
+            Tool::Wall(_) => Some(msg!("Place Wall")),
             Tool::Paint => Some("Paint"),
             Tool::Unpaint => Some("Remove Paint"),
-            Tool::Door => Some("Place Door"),
-            Tool::Window => Some("Place Window"),
-            Tool::Room => Some("Place Room"),
-            Tool::Level => Some("Place Level"),
-            Tool::Grid(_) => Some("Place Grid"),
-            Tool::Dimension(_) | Tool::Angular(_) | Tool::Radial(_) => Some("Place Dimensions"),
-            Tool::Text => Some("Place Text"),
+            Tool::Door => Some(msg!("Place Door")),
+            Tool::Window => Some(msg!("Place Window")),
+            Tool::Room => Some(msg!("Place Room")),
+            Tool::Level => Some(msg!("Place Level")),
+            Tool::Grid(_) => Some(msg!("Place Grid")),
+            Tool::Dimension(_) | Tool::Angular(_) | Tool::Radial(_) => Some(msg!("Place Dimensions")),
+            Tool::Text => Some(msg!("Place Text")),
             Tool::Spot => Some("Spot Elevation"),
             Tool::Measure(_) => Some("Measure"),
             Tool::Tag => Some("Tag"),
             Tool::Section(_) => Some("Section"),
             Tool::Elevation => Some("Elevation"),
-            Tool::Column => Some("Place Column"),
+            Tool::Column => Some(msg!("Place Column")),
             Tool::Run(..) | Tool::Stand(_) => structure::title(&self.tool),
-            Tool::Component => Some("Place Component"),
+            Tool::Component => Some(msg!("Place Component")),
             Tool::Fixture(key) => mep::fixture(key).map(|f| f.title),
-            Tool::Stair(_) => Some("Create Stair"),
-            Tool::Ramp(_) => Some("Create Ramp"),
-            Tool::Railing(_) => Some("Create Railing Path"),
-            Tool::Roof => Some("Create Roof Footprint"),
-            Tool::ExtrusionRoof(_) => Some("Create Extrusion Roof"),
+            Tool::Stair(_) => Some(msg!("Create Stair")),
+            Tool::Ramp(_) => Some(msg!("Create Ramp")),
+            Tool::Railing(_) => Some(msg!("Create Railing Path")),
+            Tool::Roof => Some(msg!("Create Roof Footprint")),
+            Tool::ExtrusionRoof(_) => Some(msg!("Create Extrusion Roof")),
             Tool::Dormer => Some("Dormer"),
-            Tool::Floor => Some("Create Floor"),
-            Tool::Ceiling => Some("Place Ceiling"),
-            Tool::Shaft(_) => Some("Create Shaft Opening"),
-            Tool::Mass(_) => Some("Create Mass"),
+            Tool::Floor => Some(msg!("Create Floor")),
+            Tool::Ceiling => Some(msg!("Place Ceiling")),
+            Tool::Shaft(_) => Some(msg!("Create Shaft Opening")),
+            Tool::Mass(_) => Some(msg!("Create Mass")),
         };
         if let Some(what) = place {
             return Some(format!("{} | {}", t("Modify"), t(what)));
@@ -2067,7 +2069,7 @@ impl BimApp {
 
     fn save_as(&mut self, ctx: &Context, then: Option<Pending>) {
         let later = ctx.clone();
-        self.ask_path(ctx, "BIMCraft project", "bimcraft", move |app, p| {
+        self.ask_path(ctx, msg!("BIMCraft project"), "bimcraft", move |app, p| {
             if app.save_to(&p)
                 && let Some(then) = then
             {
@@ -2191,7 +2193,7 @@ impl BimApp {
             }
             Pending::Open => {
                 let revit = self.revit.is_some();
-                let name = t(if revit { "BIMCraft project, IFC or Revit" } else { "BIMCraft project or IFC" });
+                let name = t(if revit { msg!("BIMCraft project, IFC or Revit") } else { "BIMCraft project or IFC" });
                 let dialog = rfd::AsyncFileDialog::new().add_filter(name, &revit::open_extensions(revit));
                 self.ask_file(ctx, dialog, false, |app, path| {
                     app.open_path(&path);
@@ -2264,7 +2266,7 @@ impl BimApp {
         let what = if redo { "Redo" } else { "Undo" };
         let names: Vec<String> = self.session.steps(redo).into_iter().map(step_name).collect();
         let (rect, arrow) = ui.allocate_exact_size(vec2(12.0, 22.0), Sense::click());
-        let label = t(if redo { "Redo History" } else { "Undo History" });
+        let label = t(if redo { msg!("Redo History") } else { msg!("Undo History") });
         arrow.widget_info(|| WidgetInfo::labeled(WidgetType::Button, !names.is_empty(), label));
         if arrow.hovered() && !names.is_empty() {
             ui.painter().rect_filled(rect, 3.0, pal().hover_fill);
@@ -2310,8 +2312,8 @@ impl BimApp {
                 }
                 ui.separator();
                 let n = reach.map_or(1, |h| h + 1);
-                let foot = tf(if redo { "Redo {} steps" } else { "Undo {} steps" }, &[&n.to_string()]);
-                let foot = if n == 1 { tf(if redo { "Redo {}" } else { "Undo {}" }, &[&names[0]]) } else { foot };
+                let foot = tf(if redo { msg!("Redo {} steps") } else { msg!("Undo {} steps") }, &[&n.to_string()]);
+                let foot = if n == 1 { tf(if redo { msg!("Redo {}") } else { msg!("Undo {}") }, &[&names[0]]) } else { foot };
                 ui.label(RichText::new(foot).color(pal().muted));
             });
         });
@@ -2332,17 +2334,17 @@ impl BimApp {
                     .min_size(vec2(58.0, 26.0));
                 MenuButton::from_button(file).ui(ui, |ui| self.file_menu(ui, &ctx));
                 for (tab, label) in [
-                    (Tab::Architecture, "Architecture"),
-                    (Tab::Structure, "Structure"),
-                    (Tab::Plumbing, "Plumbing"),
-                    (Tab::Electrical, "Electrical"),
-                    (Tab::Lightning, "Lightning Protection"),
-                    (Tab::Data, "Data"),
-                    (Tab::Insert, "Insert"),
-                    (Tab::Annotate, "Annotate"),
-                    (Tab::Massing, "Massing"),
-                    (Tab::View, "View"),
-                    (Tab::Manage, "Manage"),
+                    (Tab::Architecture, msg!("Architecture")),
+                    (Tab::Structure, msg!("Structure")),
+                    (Tab::Plumbing, msg!("Plumbing")),
+                    (Tab::Electrical, msg!("Electrical")),
+                    (Tab::Lightning, msg!("Lightning Protection")),
+                    (Tab::Data, msg!("Data")),
+                    (Tab::Insert, msg!("Insert")),
+                    (Tab::Annotate, msg!("Annotate")),
+                    (Tab::Massing, msg!("Massing")),
+                    (Tab::View, msg!("View")),
+                    (Tab::Manage, msg!("Manage")),
                     (Tab::Modify, "Modify"),
                 ] {
                     let r = tab_button(ui, label, self.tab == tab, false);
@@ -2359,8 +2361,11 @@ impl BimApp {
                     self.ribbon_tab(&r, Tab::Context);
                 }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let (icon, label) =
-                        if self.ribbon_min { (Icon::Expand, "Expand the Ribbon") } else { (Icon::Minimize, "Minimize the Ribbon") };
+                    let (icon, label) = if self.ribbon_min {
+                        (Icon::Expand, msg!("Expand the Ribbon"))
+                    } else {
+                        (Icon::Minimize, msg!("Minimize the Ribbon"))
+                    };
                     if icon_button(ui, icon, label).clicked() {
                         self.fold_ribbon(!self.ribbon_min);
                     }
@@ -2446,17 +2451,17 @@ impl BimApp {
         if item(ui, "New", cmd(Key::N)) {
             self.guard(Pending::New, ctx);
         }
-        if item(ui, "Open…", cmd(Key::O)) {
+        if item(ui, msg!("Open…"), cmd(Key::O)) {
             self.guard(Pending::Open, ctx);
         }
         self.recent_menu(ui, ctx);
         if item(ui, "Save", cmd(Key::S)) {
             self.save(ctx, None);
         }
-        if item(ui, "Save As…", Some(KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::S))) {
+        if item(ui, msg!("Save As…"), Some(KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::S))) {
             self.save_as(ctx, None);
         }
-        if !self.autosave.candidates.is_empty() && item(ui, "Recover Autosave…", None) {
+        if !self.autosave.candidates.is_empty() && item(ui, msg!("Recover Autosave…"), None) {
             self.autosave.show_recovery = true;
         }
         SubMenuButton::new(t("Export")).ui(ui, |ui| {
@@ -2464,10 +2469,10 @@ impl BimApp {
                 self.export(ctx, "IFC4", "ifc");
             }
             if ui.button(t("View as PNG…")).clicked() {
-                self.export(ctx, "PNG image", "png");
+                self.export(ctx, msg!("PNG image"), "png");
             }
             if ui.button(t("Plan as SVG…")).clicked() {
-                self.export(ctx, "SVG drawing", "svg");
+                self.export(ctx, msg!("SVG drawing"), "svg");
             }
             if ui.button(t("Sheets as PDF…")).clicked() {
                 self.export(ctx, "PDF", "pdf");
@@ -2476,11 +2481,11 @@ impl BimApp {
         self.report_menu(ui);
         self.update_menu(ui);
         ui.separator();
-        if item(ui, "Settings…", Some(KeyboardShortcut::new(Modifiers::COMMAND, Key::Comma))) {
+        if item(ui, msg!("Settings…"), Some(KeyboardShortcut::new(Modifiers::COMMAND, Key::Comma))) {
             self.settings_page = Some(settings::Page::Interface);
         }
         ui.separator();
-        if item(ui, "Exit", None) {
+        if item(ui, msg!("Exit"), None) {
             ctx.send_viewport_cmd(ViewportCommand::Close);
         }
     }
@@ -2498,34 +2503,34 @@ impl BimApp {
     }
 
     fn massing_tab(&mut self, ui: &mut Ui) {
-        let tip = "Mass (MS): click the corners of the footprint; Enter, or the first corner again, finishes; Esc cancels";
+        let tip = msg!("Mass (MS): click the corners of the footprint; Enter, or the first corner again, finishes; Esc cancels");
         let shown = !self.graphics_now().resolved(&self.session.model).categories.get("mass").is_some_and(|o| o.hidden);
-        panel(ui, "Conceptual Mass", |ui| {
+        panel(ui, msg!("Conceptual Mass"), |ui| {
             if big_button(ui, Icon::Mass, "Mass", structure::same_tool(&self.tool, &Tool::Mass(Vec::new())), tip).clicked() {
                 self.set_tool(Tool::Mass(Vec::new()));
             }
-            let tip = "Show Mass (MH): hides the masses in this view, or shows them again";
+            let tip = msg!("Show Mass (MH): hides the masses in this view, or shows them again");
             if big_button(ui, Icon::Visibility, "Show Mass", shown, tip).clicked() {
                 self.show_mass();
             }
         });
         let selected = !self.selected_masses().is_empty();
-        panel(ui, "Model by Face", |ui| {
+        panel(ui, msg!("Model by Face"), |ui| {
             ui.add_enabled_ui(selected, |ui| {
                 for (icon, label, tip, command) in [
-                    (Icon::Floor, "Mass Floors", "Mass Floors (MF): a floor at each level the selected masses cross", "mass_floors"),
+                    (Icon::Floor, "Mass Floors", msg!("Mass Floors (MF): a floor at each level the selected masses cross"), "mass_floors"),
                     (
                         Icon::Wall,
                         "Wall by Face",
-                        "Wall by Face (WB): a wall on each edge of the selected masses' footprints",
+                        msg!("Wall by Face (WB): a wall on each edge of the selected masses' footprints"),
                         "wall_by_face",
                     ),
-                    (Icon::Floor, "Floor by Face", "Floor by Face (FB): a floor on the selected masses' top faces", "floor_by_face"),
-                    (Icon::Roof, "Roof by Face", "Roof by Face (RB): a roof on the selected masses' top faces", "roof_by_face"),
+                    (Icon::Floor, "Floor by Face", msg!("Floor by Face (FB): a floor on the selected masses' top faces"), "floor_by_face"),
+                    (Icon::Roof, "Roof by Face", msg!("Roof by Face (RB): a roof on the selected masses' top faces"), "roof_by_face"),
                     (
                         Icon::Align,
                         "Update to Face",
-                        "Update to Face (UF): the walls, floors and roofs made by face from the selected masses follow them again",
+                        msg!("Update to Face (UF): the walls, floors and roofs made by face from the selected masses follow them again"),
                         "update_by_face",
                     ),
                 ] {
@@ -2564,66 +2569,78 @@ impl BimApp {
     }
 
     fn architecture_tab(&mut self, ui: &mut Ui) {
-        self.tools(ui, "Select", &[(Icon::Modify, "Modify", "Modify (MD): select elements", Tool::Modify)]);
+        self.tools(ui, msg!("Select"), &[(Icon::Modify, "Modify", msg!("Modify (MD): select elements"), Tool::Modify)]);
         self.tools(
             ui,
-            "Build",
+            msg!("Build"),
             &[
-                (Icon::Wall, "Wall", "Wall (WA): each click builds a wall; Enter or Esc ends the chain", Tool::Wall(Vec::new())),
-                (Icon::Door, "Door", "Door (DR): click a wall", Tool::Door),
-                (Icon::Window, "Window", "Window (WN): click a wall", Tool::Window),
-                (Icon::Column, "Column", "Column (CL): click where it stands", Tool::Column),
-                (Icon::Component, "Component", "Component (CM): a family's type, where you click; Space turns it", Tool::Component),
-                (Icon::Roof, "Roof", "Roof by Footprint: click inside the walls to roof them, on the level above", Tool::Roof),
+                (Icon::Wall, "Wall", msg!("Wall (WA): each click builds a wall; Enter or Esc ends the chain"), Tool::Wall(Vec::new())),
+                (Icon::Door, "Door", msg!("Door (DR): click a wall"), Tool::Door),
+                (Icon::Window, "Window", msg!("Window (WN): click a wall"), Tool::Window),
+                (Icon::Column, "Column", msg!("Column (CL): click where it stands"), Tool::Column),
+                (Icon::Component, "Component", msg!("Component (CM): a family's type, where you click; Space turns it"), Tool::Component),
+                (Icon::Roof, "Roof", msg!("Roof by Footprint: click inside the walls to roof them, on the level above"), Tool::Roof),
                 (
                     Icon::ExtrusionRoof,
-                    "Roof by Extrusion",
-                    "Roof by Extrusion: click a line's start and end, then how far across it's swept; its profile rises from the line",
+                    msg!("Roof by Extrusion"),
+                    msg!(
+                        "Roof by Extrusion: click a line's start and end, then how far across it's swept; its profile rises from the line"
+                    ),
                     Tool::ExtrusionRoof(Vec::new()),
                 ),
-                (Icon::Floor, "Floor", "Floor: click inside the walls to floor them", Tool::Floor),
-                (Icon::Ceiling, "Ceiling", "Ceiling: click inside a room for a ceiling out to its walls", Tool::Ceiling),
+                (Icon::Floor, "Floor", msg!("Floor: click inside the walls to floor them"), Tool::Floor),
+                (Icon::Ceiling, "Ceiling", msg!("Ceiling: click inside a room for a ceiling out to its walls"), Tool::Ceiling),
             ],
         );
         self.tools(
             ui,
-            "Circulation",
+            msg!("Circulation"),
             &[
                 (
                     Icon::Stair,
                     "Stair",
-                    "Stair: click where it starts, then where its run ends; a landing turns it",
+                    msg!("Stair: click where it starts, then where its run ends; a landing turns it"),
                     Tool::Stair(Vec::new()),
                 ),
-                (Icon::Ramp, "Ramp", "Ramp: click where it starts, then where its run ends; a landing turns it", Tool::Ramp(Vec::new())),
+                (
+                    Icon::Ramp,
+                    "Ramp",
+                    msg!("Ramp: click where it starts, then where its run ends; a landing turns it"),
+                    Tool::Ramp(Vec::new()),
+                ),
                 (
                     Icon::Railing,
                     "Railing",
-                    "Railing: click a stair or a ramp for one down each side, or click a path and press Enter",
+                    msg!("Railing: click a stair or a ramp for one down each side, or click a path and press Enter"),
                     Tool::Railing(Vec::new()),
                 ),
             ],
         );
-        self.tools(ui, "Room & Area", &[(Icon::Room, "Room", "Room (RM): click inside walls", Tool::Room)]);
+        self.tools(ui, msg!("Room & Area"), &[(Icon::Room, "Room", msg!("Room (RM): click inside walls"), Tool::Room)]);
         self.tools(
             ui,
-            "Opening",
+            msg!("Opening"),
             &[
                 (
                     Icon::Shaft,
-                    "Shaft",
-                    "Shaft Opening: click two opposite corners; it cuts the floors, ceilings and roofs it passes through",
+                    msg!("Shaft"),
+                    msg!("Shaft Opening: click two opposite corners; it cuts the floors, ceilings and roofs it passes through"),
                     Tool::Shaft(None),
                 ),
-                (Icon::Dormer, "Dormer", "Dormer: click a roof's slope where its front wall goes; the roof opens under it", Tool::Dormer),
+                (
+                    Icon::Dormer,
+                    "Dormer",
+                    msg!("Dormer: click a roof's slope where its front wall goes; the roof opens under it"),
+                    Tool::Dormer,
+                ),
             ],
         );
         self.tools(
             ui,
-            "Datum",
+            msg!("Datum"),
             &[
-                (Icon::Level, "Level", "Level (LL): a new level at an elevation", Tool::Level),
-                (Icon::Grid, "Grid", "Grid (GR): click its two ends", Tool::Grid(None)),
+                (Icon::Level, "Level", msg!("Level (LL): a new level at an elevation"), Tool::Level),
+                (Icon::Grid, "Grid", msg!("Grid (GR): click its two ends"), Tool::Grid(None)),
             ],
         );
     }
@@ -2636,25 +2653,37 @@ impl BimApp {
             &[
                 (
                     Icon::Dimension,
-                    "Aligned",
-                    "Aligned Dimension (DI): pick parallel wall faces, wall ends, doors, windows or grids, then click where the \
-                     dimension line goes",
+                    msg!("Aligned"),
+                    msg!(
+                        "Aligned Dimension (DI): pick parallel wall faces, wall ends, doors, windows or grids, then click where the \
+                     dimension line goes"
+                    ),
                     Tool::Dimension(Vec::new()),
                 ),
                 (
                     Icon::Angular,
-                    "Angular",
-                    "Angular Dimension: pick two lines that meet, then click where the arc goes",
+                    msg!("Angular"),
+                    msg!("Angular Dimension: pick two lines that meet, then click where the arc goes"),
                     Tool::Angular(Vec::new()),
                 ),
-                (Icon::Radial, "Radial", "Radial Dimension: pick a round column, then click where the radius goes", Tool::Radial(None)),
-                (Icon::Spot, "Spot Elevation", "Spot Elevation (EL): click a floor, a roof or a stair; in a section, a point", Tool::Spot),
+                (
+                    Icon::Radial,
+                    msg!("Radial"),
+                    msg!("Radial Dimension: pick a round column, then click where the radius goes"),
+                    Tool::Radial(None),
+                ),
+                (
+                    Icon::Spot,
+                    "Spot Elevation",
+                    msg!("Spot Elevation (EL): click a floor, a roof or a stair; in a section, a point"),
+                    Tool::Spot,
+                ),
             ],
         );
         self.tools(
             ui,
             "Text",
-            &[(Icon::Text, "Text", "Text (TX): type the note in the Options Bar, then click where it goes", Tool::Text)],
+            &[(Icon::Text, "Text", msg!("Text (TX): type the note in the Options Bar, then click where it goes"), Tool::Text)],
         );
         self.tools(
             ui,
@@ -2662,12 +2691,13 @@ impl BimApp {
             &[(
                 Icon::Measure,
                 "Measure",
-                "Measure (ME): click two points; their length and angle read beside the ruler between them",
+                msg!("Measure (ME): click two points; their length and angle read beside the ruler between them"),
                 Tool::Measure(None),
             )],
         );
         panel(ui, "Tag", |ui| {
-            let tip = "Tag by Category (TG): click an element to tag it with its type, a door's or window's mark, or the field in Label";
+            let tip =
+                msg!("Tag by Category (TG): click an element to tag it with its type, a door's or window's mark, or the field in Label");
             if big_button(ui, Icon::Tag, "Tag by Category", self.tool == Tool::Tag, tip).clicked() {
                 self.set_tool(Tool::Tag);
             }
@@ -2702,7 +2732,7 @@ impl BimApp {
 
     fn view_tab(&mut self, ui: &mut Ui) {
         panel(ui, "Graphics", |ui| {
-            let tip = "Visibility/Graphics (VV): what this view hides, and how it draws the rest, by category, filter and element";
+            let tip = msg!("Visibility/Graphics (VV): what this view hides, and how it draws the rest, by category, filter and element");
             let on = self.graphic_view().is_some();
             if ui
                 .add_enabled_ui(on, |ui| big_button(ui, Icon::Visibility, "Visibility/Graphics", self.vg_dialog.is_some(), tip))
@@ -2711,11 +2741,11 @@ impl BimApp {
             {
                 self.open_graphics(0);
             }
-            let tip = "Filters (FT): rules that pick out elements for a view to hide or draw another way";
+            let tip = msg!("Filters (FT): rules that pick out elements for a view to hide or draw another way");
             if big_button(ui, Icon::Filter, "Filters", self.filters_dialog.is_some(), tip).clicked() {
                 self.filters_dialog = Some(graphics::FiltersDialog::default());
             }
-            let tip = "View Templates (VT): a view's settings under a name, for other views to follow";
+            let tip = msg!("View Templates (VT): a view's settings under a name, for other views to follow");
             if big_button(ui, Icon::Template, "View Templates", self.templates_dialog.is_some(), tip).clicked() {
                 self.templates_dialog = Some(graphics::TemplatesDialog::default());
             }
@@ -2723,7 +2753,7 @@ impl BimApp {
                 self.thin = !self.thin;
             }
             let dark = style::dark();
-            let tip = "Dark Mode: the window and the views light on dark; sheets stay paper. It starts as your system's theme";
+            let tip = msg!("Dark Mode: the window and the views light on dark; sheets stay paper. It starts as your system's theme");
             if big_button(ui, Icon::Theme, "Dark Mode", dark, tip).clicked() {
                 ui.ctx().set_theme(if dark { egui::Theme::Light } else { egui::Theme::Dark });
             }
@@ -2737,7 +2767,7 @@ impl BimApp {
                 Some(Element::Section(v) | Element::Elevation(v)) => v.crop.is_some(),
                 _ => false,
             });
-            let tip = "Crop View: show only the crop region; drag its edges by their grips";
+            let tip = msg!("Crop View: show only the crop region; drag its edges by their grips");
             if ui.add_enabled_ui(view.is_some(), |ui| big_button(ui, Icon::Crop, "Crop View", cropped, tip)).inner.clicked()
                 && let Some(id) = view
             {
@@ -2748,7 +2778,9 @@ impl BimApp {
             if big_button(ui, Icon::View3D, "3D View", self.sheet == Sheet::View3D, "Open the default 3D view").clicked() {
                 self.open_sheet(Sheet::View3D);
             }
-            let tip = "Duplicate View (DP): a new plan of this level with its own annotation; with detailing, it starts with this plan's; as a dependent, it follows this plan's range and graphics";
+            let tip = msg!(
+                "Duplicate View (DP): a new plan of this level with its own annotation; with detailing, it starts with this plan's; as a dependent, it follows this plan's range and graphics"
+            );
             let r = ui.add_enabled_ui(self.plan_key().is_some(), |ui| big_button(ui, Icon::Copy, "Duplicate View", false, tip)).inner;
             Popup::menu(&r).show(|ui| {
                 for (label, mode) in
@@ -2759,11 +2791,11 @@ impl BimApp {
                     }
                 }
             });
-            let tip = "Section (CR): click its start, then its end; it looks to the left of the line";
+            let tip = msg!("Section (CR): click its start, then its end; it looks to the left of the line");
             if big_button(ui, Icon::Section, "Section", matches!(self.tool, Tool::Section(_)), tip).clicked() {
                 self.set_tool(Tool::Section(None));
             }
-            let tip = "Elevation: click beside the building, on the side to look at";
+            let tip = msg!("Elevation: click beside the building, on the side to look at");
             if big_button(ui, Icon::Elevation, "Elevation", self.tool == Tool::Elevation, tip).clicked() {
                 self.set_tool(Tool::Elevation);
             }
@@ -2786,7 +2818,7 @@ impl BimApp {
                 }
             });
         });
-        panel(ui, "Sheet Composition", |ui| {
+        panel(ui, msg!("Sheet Composition"), |ui| {
             if big_button(ui, Icon::Sheet, "Sheet", false, "A new sheet, with a title block").clicked()
                 && let Some(id) = self.run("sheet", json!({})).and_then(|made| made["id"].as_u64())
             {
@@ -2796,7 +2828,7 @@ impl BimApp {
                 Sheet::Paper(id) => Some(id),
                 _ => None,
             };
-            let tip = "Put a view on this sheet: one not on a sheet yet";
+            let tip = msg!("Put a view on this sheet: one not on a sheet yet");
             let r = ui.add_enabled_ui(sheet.is_some(), |ui| big_button(ui, Icon::PlaceView, "Place View", false, tip)).inner;
             if let Some(sheet) = sheet {
                 let views = self.unplaced_views();
@@ -2823,7 +2855,7 @@ impl BimApp {
                 self.views.retain(|v| *v == active);
                 self.floating.retain(|f| f.sheet == active);
             }
-            let tip = "Show or hide the palettes, and pick the interface's language";
+            let tip = msg!("Show or hide the palettes, and pick the interface's language");
             let r = big_button(ui, Icon::Interface, "User Interface", false, tip);
             Popup::menu(&r).show(|ui| {
                 for p in dock::Palette::ALL {
@@ -2846,12 +2878,16 @@ impl BimApp {
     /// Manage: the project's settings, as Revit's tab has them.
     /// Insert: what comes into the project from other files, as Revit's tab. Link: other projects, and laser scans.
     fn insert_tab(&mut self, ui: &mut Ui) {
-        panel(ui, "Link", |ui| {
-            let tip = "Link Model (LK): another project, a BIMCraft file or an IFC, shown in this one as a reference that can't be edited: halftone in the plans, the sections and the 3D view, and snapped to";
+        panel(ui, msg!("Link"), |ui| {
+            let tip = msg!(
+                "Link Model (LK): another project, a BIMCraft file or an IFC, shown in this one as a reference that can't be edited: halftone in the plans, the sections and the 3D view, and snapped to"
+            );
             if big_button(ui, Icon::Link, "Link Model", false, tip).clicked() {
                 self.link_dialog = true;
             }
-            let tip = "Point Cloud: laser scans (PTS, XYZ, PLY, LAS or E57) brought into the project, one file or a survey's stations as one scan, drawn in the 3D view, plans and sections and snapped to";
+            let tip = msg!(
+                "Point Cloud: laser scans (PTS, XYZ, PLY, LAS or E57) brought into the project, one file or a survey's stations as one scan, drawn in the 3D view, plans and sections and snapped to"
+            );
             if big_button(ui, Icon::PointCloud, "Point Cloud", self.cloud_box.is_some(), tip).clicked() {
                 self.cloud_dialog = true;
             }
@@ -2860,36 +2896,39 @@ impl BimApp {
 
     fn manage_tab(&mut self, ui: &mut Ui) {
         panel(ui, "Settings", |ui| {
-            let tip = "Materials: the project's library, each material's colour in 3D and the patterns its cut and its surfaces show";
+            let tip = msg!("Materials: the project's library, each material's colour in 3D and the patterns its cut and its surfaces show");
             if big_button(ui, Icon::Materials, "Materials", self.materials_dialog.is_some(), tip).clicked() {
                 self.materials_dialog = Some(properties::MaterialsDialog::new(&self.session.model));
             }
-            let tip = "Favorites: the materials and families you keep for every project; add one to this project with a click";
+            let tip = msg!("Favorites: the materials and families you keep for every project; add one to this project with a click");
             if big_button(ui, Icon::Favorite, "Favorites", self.favorites_dialog.is_some(), tip).clicked() {
                 self.open_favorites();
             }
-            let tip = "Project Parameters: values of your own each element of their categories holds, for schedules and IFC";
+            let tip = msg!("Project Parameters: values of your own each element of their categories holds, for schedules and IFC");
             if big_button(ui, Icon::Parameters, "Project Parameters", self.parameters_dialog.is_some(), tip).clicked() {
                 self.parameters_dialog = Some(properties::ParametersDialog::new(&self.session.model));
             }
-            let tip =
-                "Purge Unused (PU): take out the types, families and the rest nothing in the project uses; each category keeps a type";
+            let tip = msg!(
+                "Purge Unused (PU): take out the types, families and the rest nothing in the project uses; each category keeps a type"
+            );
             if big_button(ui, Icon::Delete, "Purge Unused", self.purge_dialog.is_some(), tip).clicked() {
                 self.open_purge();
             }
-            let tip = "Line Weights: what each pen draws on paper, the model's at each scale and the annotation's at any";
+            let tip = msg!("Line Weights: what each pen draws on paper, the model's at each scale and the annotation's at any");
             if big_button(ui, Icon::LineWeights, "Line Weights", self.line_weights_dialog.is_some(), tip).clicked() {
                 self.line_weights_dialog = Some(lineweights::LineWeightsDialog::new(&self.session.model));
             }
-            let tip = "Object Styles: the pen each category draws in, seen and cut, in every view";
+            let tip = msg!("Object Styles: the pen each category draws in, seen and cut, in every view");
             if big_button(ui, Icon::ObjectStyles, "Object Styles", self.object_styles_dialog.is_some(), tip).clicked() {
                 self.object_styles_dialog = Some(objectstyles::ObjectStylesDialog::new(&self.session.model));
             }
-            let tip = "Snaps: what a picked point sticks to (ends, middles, crossings, centres, perpendiculars), and the angles it steps by; SE, SM, SI, SC, SP and SN take one alone for the next point, SO none";
+            let tip = msg!(
+                "Snaps: what a picked point sticks to (ends, middles, crossings, centres, perpendiculars), and the angles it steps by; SE, SM, SI, SC, SP and SN take one alone for the next point, SO none"
+            );
             if big_button(ui, Icon::Snaps, "Snaps", self.show_snaps, tip).clicked() {
                 self.show_snaps = true;
             }
-            let tip = "Keyboard Shortcuts (KS): customize, edit, and load shortcut keys";
+            let tip = msg!("Keyboard Shortcuts (KS): customize, edit, and load shortcut keys");
             if big_button(ui, Icon::Keyboard, "Shortcuts", self.show_shortcuts, tip).clicked() {
                 self.show_shortcuts = true;
             }
@@ -2918,14 +2957,14 @@ impl BimApp {
                 }
             });
         });
-        panel(ui, "Links", |ui| {
+        panel(ui, msg!("Links"), |ui| {
             let tip = "Link Model (LK): another project, a BIMCraft file or an IFC, shown in this one as a reference that can't be edited: halftone in the plans, the sections and the 3D view, and snapped to";
             if big_button(ui, Icon::Link, "Link Model", false, tip).clicked() {
                 self.link_dialog = true;
             }
         });
         panel(ui, "Family Editor", |ui| {
-            let tip = "New Family: start a family of your own, of a category, to edit its parameters, types and forms";
+            let tip = msg!("New Family: start a family of your own, of a category, to edit its parameters, types and forms");
             let r = big_button(ui, Icon::FamilyEditor, "New Family", false, tip);
             Popup::menu(&r).show(|ui| {
                 for c in editor::CATEGORIES {
@@ -2934,7 +2973,7 @@ impl BimApp {
                     }
                 }
             });
-            let tip = "Edit Family: the family of what is selected, or of the component being placed";
+            let tip = msg!("Edit Family: the family of what is selected, or of the component being placed");
             let family = self.family_in_hand();
             if ui.add_enabled_ui(family.is_some(), |ui| big_button(ui, Icon::FamilyEditor, "Edit Family", false, tip)).inner.clicked()
                 && let Some(f) = family
@@ -2942,8 +2981,8 @@ impl BimApp {
                 self.edit_family(&f);
             }
         });
-        panel(ui, "Inquiry", |ui| {
-            let tip = "Select by ID: select elements by their IDs, GUIDs or IFC GlobalIds, as many as you paste, and show them";
+        panel(ui, msg!("Inquiry"), |ui| {
+            let tip = msg!("Select by ID: select elements by their IDs, GUIDs or IFC GlobalIds, as many as you paste, and show them");
             if big_button(ui, Icon::SelectById, "Select by ID", self.select_by_id.is_some(), tip).clicked() {
                 self.open_select_by_id();
             }
@@ -2958,13 +2997,13 @@ impl BimApp {
             }
         });
         panel(ui, "Phasing", |ui| {
-            let tip = "Phasing (PH): the project's phases in order, the phase filters that show them, and how a filter draws each";
+            let tip = msg!("Phasing (PH): the project's phases in order, the phase filters that show them, and how a filter draws each");
             if big_button(ui, Icon::Phasing, "Phasing", self.phasing_dialog.is_some(), tip).clicked() {
                 self.phasing_dialog = Some(phasing::PhasingDialog::default());
             }
         });
         panel(ui, "Design Options", |ui| {
-            let tip = "Design Options (DO): sets of options for a part of the design, and the one new elements are made in";
+            let tip = msg!("Design Options (DO): sets of options for a part of the design, and the one new elements are made in");
             if big_button(ui, Icon::Options, "Design Options", self.options_dialog.is_some(), tip).clicked() {
                 self.options_dialog = Some(phasing::OptionsDialog::default());
             }
@@ -2990,28 +3029,28 @@ impl BimApp {
         // Hide in View, and Override Graphics: what the selection does in the view on screen.
         if !self.selection.is_empty() && self.graphic_view().is_some() {
             panel(ui, "View", |ui| {
-                let tip = "Hide Element (EH): leave the selected elements out of this view";
+                let tip = msg!("Hide Element (EH): leave the selected elements out of this view");
                 if big_button(ui, Icon::Visibility, "Hide Element", false, tip).clicked() {
                     self.hide_selection(false);
                 }
-                let tip = "Hide Category (VH): leave every category the selection is of out of this view";
+                let tip = msg!("Hide Category (VH): leave every category the selection is of out of this view");
                 if big_button(ui, Icon::Visibility, "Hide Category", false, tip).clicked() {
                     self.hide_selection(true);
                 }
-                let tip = "Override Graphics by Element (EO): draw the selected elements their own way in this view";
+                let tip = msg!("Override Graphics by Element (EO): draw the selected elements their own way in this view");
                 if big_button(ui, Icon::Visibility, "Override Graphics", false, tip).clicked() {
                     self.override_selection();
                 }
                 // What can be picked while hidden is what Reveal Hidden Elements draws: its selection can be brought back.
                 let (elements, categories) = self.hidden_selection();
                 if !elements.is_empty() {
-                    let tip = "Unhide Element (EU): bring back the selected elements this view hides";
+                    let tip = msg!("Unhide Element (EU): bring back the selected elements this view hides");
                     if big_button(ui, Icon::Visibility, "Unhide Element", false, tip).clicked() {
                         self.unhide_selection(false);
                     }
                 }
                 if !categories.is_empty() {
-                    let tip = "Unhide Category (VU): bring back every category the selection is of that this view hides";
+                    let tip = msg!("Unhide Category (VU): bring back every category the selection is of that this view hides");
                     if big_button(ui, Icon::Visibility, "Unhide Category", false, tip).clicked() {
                         self.unhide_selection(true);
                     }
@@ -3027,51 +3066,57 @@ impl BimApp {
         };
         let rows: [Buttons; 2] = [
             &[
-                (Icon::Align, "Align", "Align (AL): pick a reference line, then what to line up with it", Some(Tool::Align(None)), true),
-                (Icon::Offset, "Offset", "Offset (OF): pick a wall; a copy goes to the cursor's side", Some(Tool::Offset), true),
+                (
+                    Icon::Align,
+                    "Align",
+                    msg!("Align (AL): pick a reference line, then what to line up with it"),
+                    Some(Tool::Align(None)),
+                    true,
+                ),
+                (Icon::Offset, "Offset", msg!("Offset (OF): pick a wall; a copy goes to the cursor's side"), Some(Tool::Offset), true),
                 (
                     Icon::MirrorPick,
                     "Mirror Pick Axis",
-                    "Mirror, Pick Axis (MM): pick a wall or grid to mirror across",
+                    msg!("Mirror, Pick Axis (MM): pick a wall or grid to mirror across"),
                     Some(Tool::Mirror { draw: false, start: None }),
                     some,
                 ),
                 (
                     Icon::MirrorDraw,
                     "Mirror Draw Axis",
-                    "Mirror, Draw Axis (DM): click the axis's two ends",
+                    msg!("Mirror, Draw Axis (DM): click the axis's two ends"),
                     Some(Tool::Mirror { draw: true, start: None }),
                     some,
                 ),
-                (Icon::Split, "Split Element", "Split Element (SL): click a wall where to split it", Some(Tool::Split), true),
+                (Icon::Split, msg!("Split Element"), msg!("Split Element (SL): click a wall where to split it"), Some(Tool::Split), true),
             ],
             &[
-                (Icon::Move, "Move", "Move (MV): click a base point, then where it goes", Some(Tool::Move(None)), some),
-                (Icon::Copy, "Copy", "Copy (CO): click a base point, then where the copy goes", Some(Tool::Copy(None)), some),
+                (Icon::Move, "Move", msg!("Move (MV): click a base point, then where it goes"), Some(Tool::Move(None)), some),
+                (Icon::Copy, "Copy", msg!("Copy (CO): click a base point, then where the copy goes"), Some(Tool::Copy(None)), some),
                 (
                     Icon::Rotate,
                     "Rotate",
-                    "Rotate (RO): click the angle's start, then its end",
+                    msg!("Rotate (RO): click the angle's start, then its end"),
                     Some(Tool::Rotate { centre: P2(0.0, 0.0), start: None, place: false }),
                     some,
                 ),
                 (
                     Icon::Trim,
                     "Trim/Extend to Corner",
-                    "Trim/Extend to Corner (TR): pick two walls, on the parts to keep",
+                    msg!("Trim/Extend to Corner (TR): pick two walls, on the parts to keep"),
                     Some(Tool::Trim(None)),
                     true,
                 ),
-                (Icon::Delete, "Delete", "Delete (DE) the selection", None, some),
+                (Icon::Delete, "Delete", msg!("Delete (DE) the selection"), None, some),
             ],
         ];
         // The Wall tool's Draw panel: lines, or arcs by their ends and a point on them.
         if matches!(self.tool, Tool::Wall(_)) {
-            panel(ui, "Draw", |ui| {
+            panel(ui, msg!("Draw"), |ui| {
                 if big_button(ui, Icon::Line, "Line", !self.wall_arc, "Line: a wall along each step between the points clicked").clicked() {
                     self.draw_arc(false);
                 }
-                let tip = "Start-End-Radius Arc: click its start, its end, then a point it passes through";
+                let tip = msg!("Start-End-Radius Arc: click its start, its end, then a point it passes through");
                 if big_button(ui, Icon::Arc, "Start-End-Radius Arc", self.wall_arc, tip).clicked() {
                     self.draw_arc(true);
                 }
@@ -3079,8 +3124,8 @@ impl BimApp {
         }
         // Placing a component: Revit's Mode panel, which loads a family from a file.
         if matches!(self.tool, Tool::Component | Tool::Fixture(_)) {
-            panel(ui, "Mode", |ui| {
-                let tip = "Load Family: a family saved as a .json file, BIMCraft's own";
+            panel(ui, msg!("Mode"), |ui| {
+                let tip = msg!("Load Family: a family saved as a .json file, BIMCraft's own");
                 if big_button(ui, Icon::LoadFamily, "Load Family", false, tip).clicked() {
                     let dialog = rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]);
                     self.ask_file(ui.ctx(), dialog, false, |app, path| {
@@ -3096,12 +3141,12 @@ impl BimApp {
         // Walls selected: Revit's Modify Wall panel.
         let walls = self.selected_walls();
         if !walls.is_empty() && matches!(self.tool, Tool::Modify | Tool::Attach) {
-            panel(ui, "Modify Wall", |ui| {
-                let tip = "Flip (Space): the walls' exterior sides go to the other side of their location lines";
+            panel(ui, msg!("Modify Wall"), |ui| {
+                let tip = msg!("Flip (Space): the walls' exterior sides go to the other side of their location lines");
                 if big_button(ui, Icon::Flip, "Flip", false, tip).clicked() {
                     self.flip();
                 }
-                let tip = "Attach Top/Base: pick a roof or a floor for the walls' tops, or bases, to follow";
+                let tip = msg!("Attach Top/Base: pick a roof or a floor for the walls' tops, or bases, to follow");
                 if big_button(ui, Icon::Attach, "Attach Top/Base", self.tool == Tool::Attach, tip).clicked() {
                     self.set_tool(Tool::Attach);
                 }
@@ -3114,8 +3159,8 @@ impl BimApp {
         }
         // A roof selected: which of its edges stand upright.
         if self.selected_roof().is_some() && matches!(self.tool, Tool::Modify | Tool::GableEdge) {
-            panel(ui, "Shape Editing", |ui| {
-                let tip = "Gable Edge: click an edge of a roof's footprint to stand it upright, a gable end; click again to slope it";
+            panel(ui, msg!("Shape Editing"), |ui| {
+                let tip = msg!("Gable Edge: click an edge of a roof's footprint to stand it upright, a gable end; click again to slope it");
                 if big_button(ui, Icon::GableEdge, "Gable Edge", self.tool == Tool::GableEdge, tip).clicked() {
                     self.set_tool(Tool::GableEdge);
                 }
@@ -3124,7 +3169,7 @@ impl BimApp {
         // A floor selected: its slope arrow.
         if self.selected_floor().is_some() && matches!(self.tool, Tool::Modify | Tool::SlopeArrow(_)) {
             panel(ui, "Shape Editing", |ui| {
-                let tip = "Slope Arrow: click its tail, then its head; the floor rises toward the head at the Options Bar's slope";
+                let tip = msg!("Slope Arrow: click its tail, then its head; the floor rises toward the head at the Options Bar's slope");
                 if big_button(ui, Icon::SlopeArrow, "Slope Arrow", matches!(self.tool, Tool::SlopeArrow(_)), tip).clicked() {
                     self.set_tool(Tool::SlopeArrow(None));
                 }
@@ -3149,18 +3194,18 @@ impl BimApp {
             });
         });
         panel(ui, "Phasing", |ui| {
-            let tip = "Demolish (DW): click an element to take it down in the view's phase; click it again to take it back";
+            let tip = msg!("Demolish (DW): click an element to take it down in the view's phase; click it again to take it back");
             let on = self.graphic_view().is_some();
             if ui.add_enabled_ui(on, |ui| big_button(ui, Icon::Demolish, "Demolish", self.tool == Tool::Demolish, tip)).inner.clicked() {
                 self.set_tool(Tool::Demolish);
             }
         });
-        panel(ui, "Geometry", |ui| {
-            let tip = "Paint (PT): lay a material, and its texture, over the face you click in the 3D view";
+        panel(ui, msg!("Geometry"), |ui| {
+            let tip = msg!("Paint (PT): lay a material, and its texture, over the face you click in the 3D view");
             if big_button(ui, Icon::Paint, "Paint", self.tool == Tool::Paint, tip).clicked() {
                 self.set_tool(Tool::Paint);
             }
-            let tip = "Remove Paint: take the paint off the face you click in the 3D view";
+            let tip = msg!("Remove Paint: take the paint off the face you click in the 3D view");
             if big_button(ui, Icon::Unpaint, "Remove Paint", self.tool == Tool::Unpaint, tip).clicked() {
                 self.set_tool(Tool::Unpaint);
             }
@@ -3359,102 +3404,114 @@ impl BimApp {
     fn prompt(&self) -> &'static str {
         match (self.sheet, &self.tool) {
             (Sheet::View3D, Tool::Modify) => {
-                return "Click to select. Drag to orbit (or Shift and the middle button), the middle button pans, the wheel zooms.";
+                return msg!("Click to select. Drag to orbit (or Shift and the middle button), the middle button pans, the wheel zooms.");
             }
             (Sheet::Paper(_), Tool::Modify) => {
-                return "Click a view on the sheet to select it, drag it to move it, double-click it to open it.";
+                return msg!("Click a view on the sheet to select it, drag it to move it, double-click it to open it.");
             }
             (Sheet::Section(_), Tool::Modify) => {
-                return "Click to select what the view cuts or sees; the middle button pans, the wheel zooms.";
+                return msg!("Click to select what the view cuts or sees; the middle button pans, the wheel zooms.");
             }
             (Sheet::View3D | Sheet::Section(_) | Sheet::Paper(_), Tool::Level) => {
-                return "Type the new level's elevation in the Options Bar, then Create.";
+                return msg!("Type the new level's elevation in the Options Bar, then Create.");
             }
-            (Sheet::Section(_) | Sheet::Paper(_), Tool::Text) => return "Type the note in the Options Bar, then click where it goes.",
-            (Sheet::Section(_), Tool::Spot) => return "Click a point to mark its height.",
+            (Sheet::Section(_) | Sheet::Paper(_), Tool::Text) => {
+                return msg!("Type the note in the Options Bar, then click where it goes.");
+            }
+            (Sheet::Section(_), Tool::Spot) => return msg!("Click a point to mark its height."),
             // Demolish picks in these views as it does in a plan; Paint in the 3D view alone.
             (Sheet::View3D | Sheet::Section(_), Tool::Demolish) | (Sheet::View3D, Tool::Paint | Tool::Unpaint) => {}
             (Sheet::View3D | Sheet::Section(_) | Sheet::Paper(_), _) => {
-                return "This tool works in plan views: open one from the Project Browser.";
+                return msg!("This tool works in plan views: open one from the Project Browser.");
             }
             _ => {}
         }
         match &self.tool {
-            Tool::Modify => "Click to select, Tab for what's underneath, Ctrl adds, Shift takes away; drag to box or to move.",
-            Tool::Wall(chain) if chain.is_empty() => "Click to enter the wall's start point.",
-            Tool::Wall(chain) if self.wall_arc && chain.len() == 1 => "Click to enter the arc's end point.",
-            Tool::Wall(_) if self.wall_arc => "Click a point the arc passes through: it sets the radius. Esc cancels.",
-            Tool::Wall(_) => "Click to build the wall to the next point. Enter or Esc ends the chain, Shift keeps it square.",
-            Tool::Attach if self.attach_base => "Pick a roof or a floor: the selected walls' bases stand on it.",
-            Tool::Attach => "Pick a roof or a floor: the selected walls' tops follow its underside.",
-            Tool::Door => "Click a wall to place the door.",
-            Tool::Window => "Click a wall to place the window.",
-            Tool::Room => "Click inside walls to place a room; the outline shows the room you'd get.",
+            Tool::Modify => msg!("Click to select, Tab for what's underneath, Ctrl adds, Shift takes away; drag to box or to move."),
+            Tool::Wall(chain) if chain.is_empty() => msg!("Click to enter the wall's start point."),
+            Tool::Wall(chain) if self.wall_arc && chain.len() == 1 => msg!("Click to enter the arc's end point."),
+            Tool::Wall(_) if self.wall_arc => msg!("Click a point the arc passes through: it sets the radius. Esc cancels."),
+            Tool::Wall(_) => msg!("Click to build the wall to the next point. Enter or Esc ends the chain, Shift keeps it square."),
+            Tool::Attach if self.attach_base => msg!("Pick a roof or a floor: the selected walls' bases stand on it."),
+            Tool::Attach => msg!("Pick a roof or a floor: the selected walls' tops follow its underside."),
+            Tool::Door => msg!("Click a wall to place the door."),
+            Tool::Window => msg!("Click a wall to place the window."),
+            Tool::Room => msg!("Click inside walls to place a room; the outline shows the room you'd get."),
             Tool::Level => "Type the new level's elevation in the Options Bar, then Create.",
-            Tool::Grid(None) => "Click to enter the grid's start point.",
-            Tool::Grid(Some(_)) => "Click to enter the grid's end point.",
-            Tool::Move(None) | Tool::Copy(None) => "Click a base point to measure from.",
-            Tool::Move(Some(_)) => "Click where the base point goes, or type a distance and press Enter. Esc cancels.",
-            Tool::Copy(Some(_)) => "Click where the copy's base point goes, or type a distance and press Enter. Esc cancels.",
-            Tool::Rotate { place: true, .. } => "Click the centre of rotation.",
-            Tool::Rotate { start: None, .. } => "Click the start of the angle, or type an angle in the Options Bar.",
-            Tool::Rotate { start: Some(_), .. } => "Click the end of the angle. Esc cancels.",
-            Tool::Mirror { draw: false, .. } => "Pick a wall or grid to mirror across.",
-            Tool::Mirror { draw: true, start: None } => "Click the start of the mirror axis.",
-            Tool::Mirror { draw: true, start: Some(_) } => "Click the end of the mirror axis.",
-            Tool::Align(None) => "Pick a reference line: a grid, or a wall's face or centre line.",
-            Tool::Align(Some(_)) => "Pick the wall or grid to line up with the reference.",
-            Tool::Trim(None) => "Pick the first wall, on the part to keep.",
-            Tool::Trim(Some(_)) => "Pick the second wall, on the part to keep.",
-            Tool::Split => "Click a wall where to split it.",
-            Tool::Offset => "Point to a wall: the offset goes to the cursor's side. Click to place it.",
-            Tool::Demolish => "Click an element to take it down in the view's phase; click it again to take it back.",
-            Tool::Paint => "Click a face to paint it with the material in the Options Bar; the 3D view orbits as ever.",
-            Tool::Unpaint => "Click a painted face to take its paint off.",
-            Tool::Dimension(refs) if refs.is_empty() => "Pick a wall face, centre line or end, a door, a window or a grid to measure from.",
-            Tool::Dimension(refs) if refs.len() == 1 => "Pick the next reference, parallel to the first.",
-            Tool::Dimension(_) => "Pick more references, or click away from them where the dimension line goes. Esc cancels.",
-            Tool::Measure(None) => "Click the ruler's start: points snap as they do drawing.",
-            Tool::Measure(Some(_)) => "Click its end: its length and angle read beside it. Esc cancels.",
-            Tool::Tag => "Click an element to tag it with its type, a door's or window's with its mark, or with the field in Label.",
-            Tool::Angular(refs) if refs.len() < 2 => "Pick a wall, a grid or another line; then one that meets it.",
-            Tool::Angular(_) => "Click where the arc goes: the angle on that side. Esc cancels.",
-            Tool::Radial(None) => "Pick a round column.",
-            Tool::Radial(Some(_)) => "Click where the radius goes. Esc cancels.",
-            Tool::Text => "Type the note in the Options Bar, then click where it goes: its top left corner.",
-            Tool::Spot => "Click a floor, a roof, a stair or a wall: the spot elevation reads the height of its top there.",
-            Tool::Section(None) => "Click the section's start: it looks to the left of the line you draw.",
-            Tool::Section(Some(_)) => "Click the section's end.",
-            Tool::Elevation => "Click beside the building: the elevation looks at the side you click by.",
-            Tool::Column => "Click to place a column, as high as the Options Bar says.",
+            Tool::Grid(None) => msg!("Click to enter the grid's start point."),
+            Tool::Grid(Some(_)) => msg!("Click to enter the grid's end point."),
+            Tool::Move(None) | Tool::Copy(None) => msg!("Click a base point to measure from."),
+            Tool::Move(Some(_)) => msg!("Click where the base point goes, or type a distance and press Enter. Esc cancels."),
+            Tool::Copy(Some(_)) => msg!("Click where the copy's base point goes, or type a distance and press Enter. Esc cancels."),
+            Tool::Rotate { place: true, .. } => msg!("Click the centre of rotation."),
+            Tool::Rotate { start: None, .. } => msg!("Click the start of the angle, or type an angle in the Options Bar."),
+            Tool::Rotate { start: Some(_), .. } => msg!("Click the end of the angle. Esc cancels."),
+            Tool::Mirror { draw: false, .. } => msg!("Pick a wall or grid to mirror across."),
+            Tool::Mirror { draw: true, start: None } => msg!("Click the start of the mirror axis."),
+            Tool::Mirror { draw: true, start: Some(_) } => msg!("Click the end of the mirror axis."),
+            Tool::Align(None) => msg!("Pick a reference line: a grid, or a wall's face or centre line."),
+            Tool::Align(Some(_)) => msg!("Pick the wall or grid to line up with the reference."),
+            Tool::Trim(None) => msg!("Pick the first wall, on the part to keep."),
+            Tool::Trim(Some(_)) => msg!("Pick the second wall, on the part to keep."),
+            Tool::Split => msg!("Click a wall where to split it."),
+            Tool::Offset => msg!("Point to a wall: the offset goes to the cursor's side. Click to place it."),
+            Tool::Demolish => msg!("Click an element to take it down in the view's phase; click it again to take it back."),
+            Tool::Paint => msg!("Click a face to paint it with the material in the Options Bar; the 3D view orbits as ever."),
+            Tool::Unpaint => msg!("Click a painted face to take its paint off."),
+            Tool::Dimension(refs) if refs.is_empty() => {
+                msg!("Pick a wall face, centre line or end, a door, a window or a grid to measure from.")
+            }
+            Tool::Dimension(refs) if refs.len() == 1 => msg!("Pick the next reference, parallel to the first."),
+            Tool::Dimension(_) => msg!("Pick more references, or click away from them where the dimension line goes. Esc cancels."),
+            Tool::Measure(None) => msg!("Click the ruler's start: points snap as they do drawing."),
+            Tool::Measure(Some(_)) => msg!("Click its end: its length and angle read beside it. Esc cancels."),
+            Tool::Tag => msg!("Click an element to tag it with its type, a door's or window's with its mark, or with the field in Label."),
+            Tool::Angular(refs) if refs.len() < 2 => msg!("Pick a wall, a grid or another line; then one that meets it."),
+            Tool::Angular(_) => msg!("Click where the arc goes: the angle on that side. Esc cancels."),
+            Tool::Radial(None) => msg!("Pick a round column."),
+            Tool::Radial(Some(_)) => msg!("Click where the radius goes. Esc cancels."),
+            Tool::Text => msg!("Type the note in the Options Bar, then click where it goes: its top left corner."),
+            Tool::Spot => msg!("Click a floor, a roof, a stair or a wall: the spot elevation reads the height of its top there."),
+            Tool::Section(None) => msg!("Click the section's start: it looks to the left of the line you draw."),
+            Tool::Section(Some(_)) => msg!("Click the section's end."),
+            Tool::Elevation => msg!("Click beside the building: the elevation looks at the side you click by."),
+            Tool::Column => msg!("Click to place a column, as high as the Options Bar says."),
             Tool::Run(..) | Tool::Stand(_) => structure::hint(&self.tool).unwrap_or_default(),
-            Tool::Component | Tool::Fixture(_) => "Click where the component goes; Space turns it a quarter turn.",
-            Tool::Stair(pts) if pts.is_empty() => "Click where the stair starts: the middle of its first riser.",
+            Tool::Component | Tool::Fixture(_) => msg!("Click where the component goes; Space turns it a quarter turn."),
+            Tool::Stair(pts) if pts.is_empty() => msg!("Click where the stair starts: the middle of its first riser."),
             Tool::Stair(pts) if pts.len() == 1 => {
-                "Click where its run ends: past its last riser, one run to the level above; short of it, a landing. Esc cancels."
+                msg!("Click where its run ends: past its last riser, one run to the level above; short of it, a landing. Esc cancels.")
             }
-            Tool::Ramp(pts) if pts.is_empty() => "Click where the ramp starts: the middle of its foot.",
+            Tool::Ramp(pts) if pts.is_empty() => msg!("Click where the ramp starts: the middle of its foot."),
             Tool::Ramp(pts) if pts.len() == 1 => {
-                "Click where its run ends: past its top, one run, as high as the Options Bar says; short of it, a landing. Esc cancels."
+                msg!(
+                    "Click where its run ends: past its top, one run, as high as the Options Bar says; short of it, a landing. Esc cancels."
+                )
             }
-            Tool::Stair(_) | Tool::Ramp(_) => "Click which way the next run goes from the landing: on, left, right, or back beside it.",
-            Tool::Railing(pts) if pts.is_empty() => "Click a stair or a ramp for a railing down each side, or the start of a path.",
-            Tool::Railing(_) => "Click the path's next point. Enter finishes, Esc cancels.",
-            Tool::Roof => "Click inside the walls to roof them, on the level above: the overhang runs past their faces.",
-            Tool::ExtrusionRoof(pts) if pts.is_empty() => "Click the start of the line the roof's profile runs along.",
-            Tool::ExtrusionRoof(pts) if pts.len() == 1 => "Click the line's end: the profile rises from it at the Options Bar's slope.",
-            Tool::ExtrusionRoof(_) => "Click how far across the roof is swept, to either side of the line. Esc cancels.",
-            Tool::Dormer => "Click a roof's slope where the dormer's front wall goes, across the slope.",
-            Tool::GableEdge => "Click an edge of a roof's footprint: it stands upright, a gable end; click it again to slope it.",
-            Tool::Floor => "Click inside the walls to floor them: the slab runs under their outline, its top at the level.",
-            Tool::Ceiling => "Click inside a room: a ceiling out to its walls' faces, as high as the Options Bar says.",
-            Tool::Shaft(None) => "Click a corner of the shaft opening.",
-            Tool::Shaft(Some(_)) => "Click the opposite corner: the shaft cuts the floors, ceilings and roofs up to its top. Esc cancels.",
-            Tool::Mass(pts) if pts.is_empty() => "Click the first corner of the mass's footprint.",
-            Tool::Mass(pts) if pts.len() < 3 => "Click the footprint's next corner. Esc cancels.",
-            Tool::Mass(_) => "Click the next corner; Enter, or the first corner again, finishes the mass. Esc cancels.",
-            Tool::SlopeArrow(None) => "Click the slope arrow's tail: where the floor's top stays at its height offset.",
-            Tool::SlopeArrow(Some(_)) => "Click its head: the floor rises toward it at the Options Bar's slope. Esc cancels.",
+            Tool::Stair(_) | Tool::Ramp(_) => {
+                msg!("Click which way the next run goes from the landing: on, left, right, or back beside it.")
+            }
+            Tool::Railing(pts) if pts.is_empty() => msg!("Click a stair or a ramp for a railing down each side, or the start of a path."),
+            Tool::Railing(_) => msg!("Click the path's next point. Enter finishes, Esc cancels."),
+            Tool::Roof => msg!("Click inside the walls to roof them, on the level above: the overhang runs past their faces."),
+            Tool::ExtrusionRoof(pts) if pts.is_empty() => msg!("Click the start of the line the roof's profile runs along."),
+            Tool::ExtrusionRoof(pts) if pts.len() == 1 => {
+                msg!("Click the line's end: the profile rises from it at the Options Bar's slope.")
+            }
+            Tool::ExtrusionRoof(_) => msg!("Click how far across the roof is swept, to either side of the line. Esc cancels."),
+            Tool::Dormer => msg!("Click a roof's slope where the dormer's front wall goes, across the slope."),
+            Tool::GableEdge => msg!("Click an edge of a roof's footprint: it stands upright, a gable end; click it again to slope it."),
+            Tool::Floor => msg!("Click inside the walls to floor them: the slab runs under their outline, its top at the level."),
+            Tool::Ceiling => msg!("Click inside a room: a ceiling out to its walls' faces, as high as the Options Bar says."),
+            Tool::Shaft(None) => msg!("Click a corner of the shaft opening."),
+            Tool::Shaft(Some(_)) => {
+                msg!("Click the opposite corner: the shaft cuts the floors, ceilings and roofs up to its top. Esc cancels.")
+            }
+            Tool::Mass(pts) if pts.is_empty() => msg!("Click the first corner of the mass's footprint."),
+            Tool::Mass(pts) if pts.len() < 3 => msg!("Click the footprint's next corner. Esc cancels."),
+            Tool::Mass(_) => msg!("Click the next corner; Enter, or the first corner again, finishes the mass. Esc cancels."),
+            Tool::SlopeArrow(None) => msg!("Click the slope arrow's tail: where the floor's top stays at its height offset."),
+            Tool::SlopeArrow(Some(_)) => msg!("Click its head: the floor rises toward it at the Options Bar's slope. Esc cancels."),
         }
     }
 
@@ -3722,7 +3779,7 @@ impl BimApp {
             ui.label(t("If you don't, the changes since it was last saved are lost."));
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                for (label, c) in [("Save", Choice::Save), ("Don't Save", Choice::Discard), ("Cancel", Choice::Cancel)] {
+                for (label, c) in [("Save", Choice::Save), (msg!("Don't Save"), Choice::Discard), ("Cancel", Choice::Cancel)] {
                     if ui.button(t(label)).clicked() {
                         choice = Some(c);
                     }

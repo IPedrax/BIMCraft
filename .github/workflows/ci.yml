@@ -51,6 +51,10 @@ jobs:
         if: runner.os == 'Linux'
         run: cargo fmt --check
 
+      - name: Translation catalogs
+        if: runner.os == 'Linux'
+        run: cargo i18n check
+
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 

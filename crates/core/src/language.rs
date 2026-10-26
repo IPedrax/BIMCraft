@@ -5,6 +5,8 @@
 
 use serde::{Deserialize, Serialize};
 
+include!(concat!(env!("OUT_DIR"), "/catalogs.rs"));
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Language {
     #[default]
@@ -59,7 +61,7 @@ impl Language {
         if self == Language::English {
             return None;
         }
-        WORDS.iter().find(|w| w[0] == english).map(|&w| self.of(w))
+        bimcraft_i18n::translated(CATALOGS, self.code(), "", english)
     }
 
     /// Which of `options` (English words) `name` is, in English or in this language.
@@ -68,136 +70,6 @@ impl Language {
         options.iter().copied().find(|o| o.eq_ignore_ascii_case(name) || self.word(o).to_lowercase() == name.to_lowercase())
     }
 }
-
-/// The core's words in English, Brazilian Portuguese and Spanish.
-const WORDS: &[[&str; 3]] = &[
-    // Phases and the phase filters a project starts with.
-    ["Existing", "Existente", "Existente"],
-    ["New Construction", "Nova construção", "Nueva construcción"],
-    ["Show All", "Mostrar tudo", "Mostrar todo"],
-    ["Show Complete", "Mostrar completo", "Mostrar completo"],
-    ["Show New", "Mostrar novo", "Mostrar nuevo"],
-    ["Show Previous + Demolished", "Mostrar anterior + demolido", "Mostrar anterior + demolido"],
-    ["Show Previous + New", "Mostrar anterior + novo", "Mostrar anterior + nuevo"],
-    // Names commands give.
-    ["Project", "Projeto", "Proyecto"],
-    ["Level", "Nível", "Nivel"],
-    ["Section", "Corte", "Sección"],
-    ["Elevation", "Elevação", "Elevación"],
-    ["North", "Norte", "Norte"],
-    ["South", "Sul", "Sur"],
-    ["East", "Leste", "Este"],
-    ["West", "Oeste", "Oeste"],
-    ["Unnamed", "Sem nome", "Sin nombre"],
-    ["Room", "Ambiente", "Habitación"],
-    ["Mass", "Massa", "Masa"],
-    ["Room Schedule", "Tabela de ambientes", "Tabla de habitaciones"],
-    ["Door Schedule", "Tabela de portas", "Tabla de puertas"],
-    ["Window Schedule", "Tabela de janelas", "Tabla de ventanas"],
-    ["Wall Schedule", "Tabela de paredes", "Tabla de muros"],
-    ["Floor Schedule", "Tabela de pisos", "Tabla de pisos"],
-    ["Level Schedule", "Tabela de níveis", "Tabla de niveles"],
-    ["Ceiling Plan", "Planta de forro", "Plano de cielo raso"],
-    ["Copy", "Cópia", "Copia"],
-    ["Dependent", "Dependente", "Dependiente"],
-    // The materials library a new project has.
-    ["Brick", "Tijolo", "Ladrillo"],
-    ["Insulation", "Isolamento", "Aislamiento"],
-    ["Concrete block", "Bloco de concreto", "Bloque de hormigón"],
-    ["Plaster", "Reboco", "Enlucido"],
-    ["Concrete", "Concreto", "Hormigón"],
-    ["Screed", "Contrapiso", "Recrecido"],
-    ["Timber", "Madeira", "Madera"],
-    ["Gypsum board", "Placa de gesso", "Placa de yeso"],
-    ["Ceramic tile", "Cerâmica", "Baldosa cerámica"],
-    ["Roof tiles", "Telhas", "Tejas"],
-    ["Membrane", "Manta impermeável", "Lámina impermeable"],
-    ["Fabric", "Tecido", "Tela"],
-    ["Porcelain", "Porcelana", "Porcelana"],
-    // The families a project starts with, and their parameters.
-    ["Table", "Mesa", "Mesa"],
-    ["Chair", "Cadeira", "Silla"],
-    ["Bed", "Cama", "Cama"],
-    ["Sofa", "Sofá", "Sofá"],
-    ["Desk", "Escrivaninha", "Escritorio"],
-    ["Wardrobe", "Guarda-roupa", "Armario"],
-    ["Base Cabinet", "Armário inferior", "Mueble bajo"],
-    ["WC", "Vaso sanitário", "Inodoro"],
-    ["Washbasin", "Lavatório", "Lavabo"],
-    ["Bathtub", "Banheira", "Bañera"],
-    // The fixtures of the discipline tabs.
-    ["Kitchen Sink", "Pia de cozinha", "Fregadero de cocina"],
-    ["Shower", "Chuveiro", "Ducha"],
-    ["Floor Drain", "Ralo", "Sumidero de piso"],
-    ["Elbow 90", "Joelho 90", "Codo 90"],
-    ["Tee", "Tê", "Te"],
-    ["Gate Valve", "Registro de gaveta", "Válvula de compuerta"],
-    ["Diameter", "Diâmetro", "Diámetro"],
-    ["Distribution Board", "Quadro de distribuição", "Cuadro de distribución"],
-    ["Ceiling Luminaire", "Luminária de teto", "Luminaria de techo"],
-    ["Recessed Luminaire", "Luminária embutida", "Luminaria empotrada"],
-    ["Outlet", "Tomada", "Tomacorriente"],
-    ["Switch", "Interruptor", "Interruptor"],
-    ["Mounting Height", "Altura de instalação", "Altura de montaje"],
-    ["Air Terminal", "Captor", "Terminal aéreo"],
-    ["Earthing Electrode", "Haste de aterramento", "Electrodo de puesta a tierra"],
-    ["Inspection Box", "Caixa de inspeção", "Caja de inspección"],
-    ["Data Outlet", "Ponto de dados", "Punto de datos"],
-    ["Voice Outlet", "Ponto de voz", "Punto de voz"],
-    ["Patch Panel", "Patch panel", "Panel de parcheo"],
-    ["Rack", "Rack", "Rack"],
-    ["Single Door", "Porta simples", "Puerta simple"],
-    ["Double Door", "Porta dupla", "Puerta doble"],
-    ["Fixed Window", "Janela fixa", "Ventana fija"],
-    ["Casement Window", "Janela de abrir", "Ventana abatible"],
-    ["Frame Width", "Largura do batente", "Ancho del marco"],
-    ["Frame Depth", "Profundidade do batente", "Profundidad del marco"],
-    ["Frame Material", "Material do batente", "Material del marco"],
-    ["Leaf Material", "Material da folha", "Material de la hoja"],
-    ["Leaf Thickness", "Espessura da folha", "Espesor de la hoja"],
-    ["Glass", "Vidro", "Vidrio"],
-    ["Metal", "Metal", "Metal"],
-    ["PVC", "PVC", "PVC"],
-    ["Copper", "Cobre", "Cobre"],
-    ["Depth", "Profundidade", "Profundidad"],
-    ["Seat Height", "Altura do assento", "Altura del asiento"],
-    ["Leg Width", "Largura da perna", "Ancho de la pata"],
-    ["Arm Width", "Largura do braço", "Ancho del brazo"],
-    ["Headboard Height", "Altura da cabeceira", "Altura del cabecero"],
-    ["Worktop", "Bancada", "Encimera"],
-    // What drawings print.
-    ["UP", "SOBE", "SUBE"],
-    ["DN", "DESCE", "BAJA"],
-    ["NOT ENCLOSED", "NÃO DELIMITADO", "NO DELIMITADA"],
-    ["SCALE", "ESCALA", "ESCALA"],
-    ["SCALE AS INDICATED", "ESCALA CONFORME INDICADO", "ESCALA SEGÚN SE INDICA"],
-    // Schedule headings.
-    ["Number", "Número", "Número"],
-    ["Name", "Nome", "Nombre"],
-    ["Mark", "Marca", "Marca"],
-    ["Type", "Tipo", "Tipo"],
-    ["Width", "Largura", "Ancho"],
-    ["Height", "Altura", "Altura"],
-    ["Sill", "Peitoril", "Antepecho"],
-    ["Wall", "Parede", "Muro"],
-    ["Length", "Comprimento", "Longitud"],
-    ["Thickness", "Espessura", "Espesor"],
-    ["Area", "Área", "Área"],
-    ["Perimeter", "Perímetro", "Perímetro"],
-    ["Volume", "Volume", "Volumen"],
-    ["Gross Floor Area", "Área bruta de piso", "Superficie bruta de planta"],
-    ["Count", "Contagem", "Recuento"],
-    ["Family", "Família", "Familia"],
-    ["Offset", "Deslocamento", "Desfase"],
-    ["Slope", "Inclinação", "Pendiente"],
-    ["Plan Area", "Área em planta", "Área en planta"],
-    ["Risers", "Espelhos", "Contrahuellas"],
-    ["Riser Height", "Altura do espelho", "Altura de contrahuella"],
-    ["Tread", "Piso", "Huella"],
-    ["Total", "Total", "Total"],
-    ["Yes", "Sim", "Sí"],
-    ["No", "Não", "No"],
-];
 
 #[cfg(test)]
 mod tests {

@@ -9,6 +9,8 @@
 //! What BIMCraft has no element for, or what breaks one of its rules, is left out and listed.
 //! Phases and design options come back from the property sets BIMCraft writes them in, `ifc::PHASING`.
 
+use bimcraft_i18n::{msg, ui_msg};
+
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::f64::consts::PI;
 use std::sync::Arc;
@@ -992,10 +994,10 @@ fn layers_of(r: &Reader, l: &Links, id: u64, t: f64) -> Vec<Layer> {
             let function = match text(x.args.get(5)) {
                 _ if thickness == 0.0 => Function::Membrane,
                 Some("LoadBearing") => Function::Structure,
-                Some("Insulation") => Function::Thermal,
-                Some("Finish") => Function::Finish,
-                Some("Substrate") => Function::Substrate,
-                Some("Membrane") => Function::Membrane,
+                Some(msg!("Insulation")) => Function::Thermal,
+                Some(ui_msg!("Finish")) => Function::Finish,
+                Some(ui_msg!("Substrate")) => Function::Substrate,
+                Some(msg!("Membrane")) => Function::Membrane,
                 _ => Function::Substrate,
             };
             Layer {

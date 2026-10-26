@@ -1,6 +1,8 @@
 //! Manage > Purge Unused: what nothing in the project uses, listed by what it is, to take out together; the commands are
 //! `purge` and `delete_type`. A checked kind's unused entries are listed as a dry run finds them, and Purge runs the same.
 
+use bimcraft_i18n::msg;
+
 use bimcraft_core::library::PURGE_KINDS;
 use egui::{Context, Id as UiId, Modal, RichText, ScrollArea};
 use serde_json::{Value, json};
@@ -10,7 +12,7 @@ use crate::lang::{t, tf};
 use crate::style::pal;
 
 /// What the window names each kind it can purge.
-const LABELS: [&str; 6] = ["Types", "Families", "Materials", "Pictures", "View Filters", "View Templates"];
+const LABELS: [&str; 6] = ["Types", "Families", "Materials", "Pictures", msg!("View Filters"), "View Templates"];
 
 /// The Purge Unused window: which kinds are checked, and what that would take out (kind and name).
 pub struct PurgeDialog {

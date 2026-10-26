@@ -3,6 +3,8 @@
 // A release build on Windows is a window, not a console program: no console opens behind it.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+use bimcraft_i18n::ui_msg;
+
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -210,7 +212,7 @@ fn main() -> ExitCode {
 #[cfg(feature = "rvt")]
 fn revit_reader() -> Option<Importer> {
     Some(std::sync::Arc::new(|path: &Path| {
-        let stem = path.file_stem().map_or_else(|| "Project".into(), |s| s.to_string_lossy().into_owned());
+        let stem = path.file_stem().map_or_else(|| ui_msg!("Project").into(), |s| s.to_string_lossy().into_owned());
         bimcraft_rvt::import_path(path, &stem).map_err(|e| e.to_string())
     }))
 }

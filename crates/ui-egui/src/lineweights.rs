@@ -1,6 +1,8 @@
 //! Manage > Line Weights, as Revit's dialog: what each pen draws on paper, the model's at each of a list of scales and the
 //! annotation's at any, edited as a draft and applied as one `line_weights` command (OK and Apply), or dropped (Cancel).
 
+use bimcraft_i18n::msg;
+
 use bimcraft_core::model::Model;
 use bimcraft_core::pen::{LineWeights, MAX_PEN, MAX_SCALES, ScalePens, WIDTH_RANGE};
 use bimcraft_core::units::Units;
@@ -11,7 +13,7 @@ use crate::BimApp;
 use crate::lang::{t, tf};
 
 /// The dialog's tabs.
-const TABS: [&str; 2] = ["Model Line Weights", "Annotation Line Weights"];
+const TABS: [&str; 2] = [msg!("Model Line Weights"), msg!("Annotation Line Weights")];
 
 /// The Line Weights dialog: its tab, and the line weights as edited and not yet applied.
 pub(crate) struct LineWeightsDialog {

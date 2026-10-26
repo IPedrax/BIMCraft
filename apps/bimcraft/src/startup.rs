@@ -4,6 +4,8 @@
 //! tries another graphics backend; the one that keeps a window up for [`SURVIVE`] is kept for the starts after it.
 //! `WGPU_BACKEND` (`vulkan`, `dx12`, `opengl`) is the user's own choice, and nothing here overrides it.
 
+use bimcraft_i18n::ui_msg;
+
 use std::backtrace::Backtrace;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -138,13 +140,13 @@ fn trimmed(path: &Path) {
 pub fn tell(language: Lang, what: &str, files: Option<&Files>) {
     let word = |s: &'static str| lang::translated_in(language, s).unwrap_or(s);
     let body = match files {
-        Some(f) => word("{}\n\nThe details are in {}.").replacen("{}", what, 1).replacen("{}", &f.log.display().to_string(), 1),
+        Some(f) => word(ui_msg!("{}\n\nThe details are in {}.")).replacen("{}", what, 1).replacen("{}", &f.log.display().to_string(), 1),
         None => what.to_string(),
     };
     if cfg!(windows) {
         rfd::MessageDialog::new()
             .set_level(rfd::MessageLevel::Error)
-            .set_title(word("BIMCraft couldn't start"))
+            .set_title(word(ui_msg!("BIMCraft couldn't start")))
             .set_description(body)
             .show();
     }

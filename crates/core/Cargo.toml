@@ -10,6 +10,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+bimcraft-i18n = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tiny-skia = { workspace = true }
@@ -18,3 +19,6 @@ zune-jpeg = { workspace = true }
 getrandom = { workspace = true }
 tempfile = { workspace = true }
 rayon = { workspace = true }
+
+[build-dependencies]
+bimcraft-i18n = { workspace = true, features = ["catalog"] }

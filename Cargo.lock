@@ -428,6 +428,7 @@ name = "bimcraft"
 version = "0.8.0"
 dependencies = [
  "bimcraft-core",
+ "bimcraft-i18n",
  "bimcraft-rvt",
  "bimcraft-ui-egui",
  "bimcraft-update",
@@ -450,6 +451,7 @@ dependencies = [
 name = "bimcraft-core"
 version = "0.8.0"
 dependencies = [
+ "bimcraft-i18n",
  "flate2",
  "getrandom 0.3.4",
  "rayon",
@@ -458,6 +460,15 @@ dependencies = [
  "tempfile",
  "tiny-skia",
  "zune-jpeg",
+]
+
+[[package]]
+name = "bimcraft-i18n"
+version = "0.8.0"
+dependencies = [
+ "proc-macro2",
+ "syn 2.0.119",
+ "tempfile",
 ]
 
 [[package]]
@@ -475,6 +486,7 @@ name = "bimcraft-ui-egui"
 version = "0.8.0"
 dependencies = [
  "bimcraft-core",
+ "bimcraft-i18n",
  "bimcraft-update",
  "eframe",
  "egui",

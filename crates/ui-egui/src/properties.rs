@@ -4,6 +4,8 @@
 //! command (`modify`, or `type` from the Type Properties dialog), so it is checked, rolled back
 //! when it breaks a rule, and undone like any other change.
 
+use bimcraft_i18n::msg;
+
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
@@ -99,25 +101,25 @@ fn nested(key: &str, val: Value) -> Value {
 fn rows(category: &str) -> &'static [Row] {
     match category {
         "wall" => &[
-            ("Constraints", "location", "Location Line", LocationLine),
-            ("Constraints", "level", "Base Constraint", Level),
-            ("Constraints", "base_offset", "Base Offset", Length),
-            ("Constraints", "attach_base", "Base is Attached", Attached),
-            ("Constraints", "top_level", "Top Constraint", TopLevel),
-            ("Constraints", "height", "Unconnected Height", Height),
-            ("Constraints", "attach_top", "Top is Attached", Attached),
+            (msg!("Constraints"), "location", msg!("Location Line"), LocationLine),
+            ("Constraints", "level", msg!("Base Constraint"), Level),
+            ("Constraints", "base_offset", msg!("Base Offset"), Length),
+            ("Constraints", "attach_base", msg!("Base is Attached"), Attached),
+            ("Constraints", "top_level", msg!("Top Constraint"), TopLevel),
+            ("Constraints", "height", msg!("Unconnected Height"), Height),
+            ("Constraints", "attach_top", msg!("Top is Attached"), Attached),
             ("Dimensions", "length", "Length", LengthShown),
             ("Dimensions", "radius", "Radius", LengthShown),
-            ("Other", "start", "Start", Point),
-            ("Other", "end", "End", Point),
+            (msg!("Other"), "start", msg!("Start"), Point),
+            ("Other", "end", msg!("End"), Point),
         ],
         "door" => &[
             ("Constraints", "level", "Level", LevelName),
-            ("Identity Data", "mark", "Mark", Text),
-            ("Other", "host", "Host Wall", Shown),
+            (msg!("Identity Data"), "mark", "Mark", Text),
+            ("Other", "host", msg!("Host Wall"), Shown),
             ("Other", "offset", "Offset", Length),
-            ("Other", "flip_facing", "Flip Facing", Flag),
-            ("Other", "flip_hand", "Flip Hand", Flag),
+            ("Other", "flip_facing", msg!("Flip Facing"), Flag),
+            ("Other", "flip_hand", msg!("Flip Hand"), Flag),
         ],
         "window" => &[
             ("Constraints", "level", "Level", LevelName),
@@ -133,12 +135,12 @@ fn rows(category: &str) -> &'static [Row] {
             ("Dimensions", "perimeter_m", "Perimeter", MetresShown),
             ("Identity Data", "number", "Number", Text),
             ("Identity Data", "name", "Name", Text),
-            ("Other", "point", "Location", Point),
+            ("Other", "point", msg!("Location"), Point),
         ],
         "floor" => &[
             ("Constraints", "level", "Level", Level),
-            ("Constraints", "offset", "Height Offset From Level", Length),
-            ("Dimensions", "slope", "Slope (°)", Number),
+            ("Constraints", "offset", msg!("Height Offset From Level"), Length),
+            ("Dimensions", "slope", msg!("Slope (°)"), Number),
             ("Dimensions", "area_m2", "Area", AreaShown),
             ("Dimensions", "thickness", "Thickness", LengthShown),
             ("Structural", "structural", "Structural", Flag),
@@ -161,43 +163,47 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "base_offset", "Base Offset", Length),
             ("Constraints", "top_level", "Top Constraint", TopLevel),
             ("Constraints", "height", "Unconnected Height", Height),
-            ("Dimensions", "top", "Top Outline", Outline),
+            ("Dimensions", "top", msg!("Top Outline"), Outline),
             ("Dimensions", "area_m2", "Area", AreaShown),
-            ("Dimensions", "volume_m3", "Volume (m³)", Shown),
+            ("Dimensions", "volume_m3", msg!("Volume (m³)"), Shown),
             ("Dimensions", "gross_floor_area_m2", "Gross Floor Area", AreaShown),
             ("Identity Data", "name", "Name", Text),
         ],
         "level" => &[("Constraints", "elevation", "Elevation", Length), ("Identity Data", "name", "Name", Text)],
         "grid" => &[("Identity Data", "name", "Name", Text), ("Other", "start", "Start", Point), ("Other", "end", "End", Point)],
         "dimension" => {
-            &[("Dimensions", "values", "Value", Values), ("Other", "kind", "Kind", Shown), ("Other", "at", "Line Through", Point)]
+            &[("Dimensions", "values", "Value", Values), ("Other", "kind", "Kind", Shown), ("Other", "at", msg!("Line Through"), Point)]
         }
         "text" => &[
             ("Text", "text", "Text", Text),
-            ("Graphics", "size", "Text Size (mm)", Number),
-            ("Other", "angle", "Rotation (°)", Number),
+            ("Graphics", "size", msg!("Text Size (mm)"), Number),
+            ("Other", "angle", msg!("Rotation (°)"), Number),
             ("Other", "at", "Location", Point),
         ],
-        "spot" => {
-            &[("Dimensions", "elevation", "Elevation", LengthShown), ("Other", "host", "Host", Shown), ("Other", "at", "Location", Point)]
-        }
+        "spot" => &[
+            ("Dimensions", "elevation", "Elevation", LengthShown),
+            ("Other", "host", msg!("Host"), Shown),
+            ("Other", "at", "Location", Point),
+        ],
         "schedule" => &[("Identity Data", "name", "View Name", Text), ("Other", "of", "Category", Shown)],
         "view3d" => &[
             ("Identity Data", "name", "View Name", Text),
-            ("Camera", "azimuth", "Azimuth (°)", Number),
-            ("Camera", "elevation", "Elevation (°)", Number),
+            (msg!("Camera"), "azimuth", msg!("Azimuth (°)"), Number),
+            ("Camera", "elevation", msg!("Elevation (°)"), Number),
         ],
-        "tag" => {
-            &[("Graphics", "leader", "Leader Line", Flag), ("Other", "host", "Tagged Element", Shown), ("Other", "offset", "Offset", Point)]
-        }
+        "tag" => &[
+            ("Graphics", "leader", msg!("Leader Line"), Flag),
+            ("Other", "host", msg!("Tagged Element"), Shown),
+            ("Other", "offset", "Offset", Point),
+        ],
         "sheet" => &[
-            ("Identity Data", "number", "Sheet Number", Text),
-            ("Identity Data", "name", "Sheet Name", Text),
-            ("Other", "size", "Size", Text),
+            ("Identity Data", "number", msg!("Sheet Number"), Text),
+            ("Identity Data", "name", msg!("Sheet Name"), Text),
+            ("Other", "size", msg!("Size"), Text),
         ],
         "viewport" => &[
             ("Identity Data", "title", "View Name", Shown),
-            ("Graphics", "scale", "View Scale (1 : n)", Number),
+            ("Graphics", "scale", msg!("View Scale (1 : n)"), Number),
             ("Other", "at", "Location", PaperPoint),
         ],
         "component" => &[
@@ -207,9 +213,9 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "angle", "Rotation (°)", Number),
         ],
         "column" => &[
-            ("Constraints", "level", "Base Level", Level),
+            ("Constraints", "level", msg!("Base Level"), Level),
             ("Constraints", "base_offset", "Base Offset", Length),
-            ("Constraints", "top_level", "Top Level", TopLevel),
+            ("Constraints", "top_level", msg!("Top Level"), TopLevel),
             ("Constraints", "height", "Unconnected Height", Height),
             ("Other", "at", "Location", Point),
             ("Other", "angle", "Rotation (°)", Number),
@@ -223,10 +229,10 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "angle", "Rotation (°)", Number),
         ],
         run if bimcraft_core::model::RUN_CATEGORIES.contains(&run) => &[
-            ("Constraints", "level", "Reference Level", Level),
-            ("Constraints", "offset", "Start Level Offset", Length),
-            ("Constraints", "end_offset", "End Level Offset", Limit("Same as start")),
-            ("Constraints", "justify", "Z Justification", Justification),
+            ("Constraints", "level", msg!("Reference Level"), Level),
+            ("Constraints", "offset", msg!("Start Level Offset"), Length),
+            ("Constraints", "end_offset", msg!("End Level Offset"), Limit(msg!("Same as start"))),
+            ("Constraints", "justify", msg!("Z Justification"), Justification),
             ("Dimensions", "length", "Length", LengthShown),
             ("Identity Data", "system", "System", Text),
             ("Other", "start", "Start", Point),
@@ -236,11 +242,11 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "level", "Base Level", Level),
             ("Constraints", "top_level", "Top Level", TopLevel),
             ("Constraints", "height", "Unconnected Height", Height),
-            ("Dimensions", "width", "Actual Run Width", Length),
-            ("Dimensions", "riser", "Maximum Riser Height", Length),
-            ("Dimensions", "tread", "Actual Tread Depth", Length),
-            ("Dimensions", "risers", "Actual Number of Risers", Shown),
-            ("Dimensions", "riser_height", "Actual Riser Height", LengthShown),
+            ("Dimensions", "width", msg!("Actual Run Width"), Length),
+            ("Dimensions", "riser", msg!("Maximum Riser Height"), Length),
+            ("Dimensions", "tread", msg!("Actual Tread Depth"), Length),
+            ("Dimensions", "risers", msg!("Actual Number of Risers"), Shown),
+            ("Dimensions", "riser_height", msg!("Actual Riser Height"), LengthShown),
             ("Other", "start", "Start", Point),
         ],
         "ramp" => &[
@@ -248,7 +254,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "top_level", "Top Level", TopLevel),
             ("Constraints", "height", "Unconnected Height", Height),
             ("Dimensions", "width", "Width", Length),
-            ("Dimensions", "slope", "Max Slope (%)", Number),
+            ("Dimensions", "slope", msg!("Max Slope (%)"), Number),
             ("Dimensions", "length", "Length", LengthShown),
             ("Other", "start", "Start", Point),
         ],
@@ -256,39 +262,39 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "level", "Level", Level),
             ("Constraints", "base_offset", "Base Offset", Length),
             ("Constraints", "host", "Host", Shown),
-            ("Constraints", "side", "Side", Shown),
+            ("Constraints", "side", msg!("Side"), Shown),
             ("Dimensions", "height", "Height", LengthShown),
         ],
         "roof" => &[
             ("Constraints", "level", "Base Level", Level),
             ("Constraints", "offset", "Base Offset", Length),
-            ("Constraints", "extrusion.from", "Extrusion Start", LengthIf),
-            ("Constraints", "extrusion.to", "Extrusion End", LengthIf),
+            ("Constraints", "extrusion.from", msg!("Extrusion Start"), LengthIf),
+            ("Constraints", "extrusion.to", msg!("Extrusion End"), LengthIf),
             ("Dimensions", "slope", "Slope (°)", Number),
-            ("Dimensions", "ridge", "Max Ridge Height", LengthShown),
+            ("Dimensions", "ridge", msg!("Max Ridge Height"), LengthShown),
             ("Dimensions", "area_m2", "Area", AreaShown),
-            ("Other", "gable", "Gable Ends", Flag),
+            ("Other", "gable", msg!("Gable Ends"), Flag),
         ],
         "section" | "elevation" => &[
             ("Identity Data", "name", "View Name", Text),
-            ("Extents", "crop", "Crop View", Crop),
-            ("Extents", "depth", "Far Clip Offset", Limit("No Clip")),
+            (msg!("Extents"), "crop", "Crop View", Crop),
+            ("Extents", "depth", msg!("Far Clip Offset"), Limit(msg!("No Clip"))),
             ("Other", "start", "Start", Point),
             ("Other", "end", "End", Point),
         ],
         "pointcloud" => &[
             ("Constraints", "level", "Level", Level),
             ("Constraints", "offset", "Offset", Length),
-            ("Identity Data", "cloud", "Scan", Shown),
+            ("Identity Data", "cloud", msg!("Scan"), Shown),
             ("Identity Data", "source", "File", Shown),
             ("Identity Data", "points", "Points", Shown),
-            ("Other", "at", "Origin", Point),
+            ("Other", "at", msg!("Origin"), Point),
             ("Other", "angle", "Angle", Number),
         ],
         "link" => &[
             ("Identity Data", "name", "Name", Text),
             ("Identity Data", "path", "File", Shown),
-            ("Identity Data", "loaded", "Loaded", Shown),
+            ("Identity Data", "loaded", msg!("Loaded"), Shown),
             ("Other", "at", "Origin", Point),
             ("Other", "angle", "Angle", Number),
         ],
@@ -299,13 +305,13 @@ fn rows(category: &str) -> &'static [Row] {
 /// A floor plan's parameters, read from and written to its level.
 const PLAN: &[Row] = &[
     ("Identity Data", "name", "View Name", Text),
-    ("Extents", "id", "Associated Level", LevelName),
-    ("Extents", "elevation", "Level Elevation", Length),
+    ("Extents", "id", msg!("Associated Level"), LevelName),
+    ("Extents", "elevation", msg!("Level Elevation"), Length),
     ("Extents", "crop", "Crop View", Crop),
-    ("View Range", "view_range.top", "Top", Limit("Level Above")),
-    ("View Range", "view_range.cut", "Cut Plane", Length),
-    ("View Range", "view_range.bottom", "Bottom", Length),
-    ("View Range", "view_range.depth", "View Depth", Length),
+    ("View Range", "view_range.top", "Top", Limit(msg!("Level Above"))),
+    ("View Range", "view_range.cut", msg!("Cut Plane"), Length),
+    ("View Range", "view_range.bottom", msg!("Bottom"), Length),
+    ("View Range", "view_range.depth", msg!("View Depth"), Length),
 ];
 
 /// A plan view's parameters, read from and written to the plan view itself.
@@ -323,7 +329,7 @@ const PLAN_VIEW: &[Row] = &[
 const PLAN_DEPENDENT: &[Row] = &[
     ("Identity Data", "name", "View Name", Text),
     ("Extents", "level", "Associated Level", LevelName),
-    ("Extents", "parent", "Parent View", ViewName),
+    ("Extents", "parent", msg!("Parent View"), ViewName),
     ("Extents", "crop", "Crop View", Crop),
 ];
 
@@ -341,14 +347,14 @@ fn type_json<'a>(types: &'a Value, category: &str, name: &str) -> &'a Value {
 fn type_rows(category: &str) -> &'static [(&'static str, &'static str)] {
     match category {
         "wall" => &[("thickness", "Width")],
-        "floor" => &[("thickness", "Default Thickness")],
+        "floor" => &[("thickness", msg!("Default Thickness"))],
         "door" => &[("width", "Width"), ("height", "Height")],
-        "window" => &[("width", "Width"), ("height", "Height"), ("sill", "Default Sill Height")],
+        "window" => &[("width", "Width"), ("height", "Height"), ("sill", msg!("Default Sill Height"))],
         "column" | "structuralcolumn" | "footing" => &[("width", "Width"), ("depth", "Depth")],
         run if bimcraft_core::model::RUN_CATEGORIES.contains(&run) => &[("width", "Width"), ("depth", "Depth")],
         "roof" => &[("thickness", "Thickness")],
-        "ceiling" => &[("thickness", "Thickness"), ("grid", "Tile Size")],
-        "railing" => &[("height", "Height"), ("spacing", "Baluster Spacing")],
+        "ceiling" => &[("thickness", "Thickness"), ("grid", msg!("Tile Size"))],
+        "railing" => &[("height", "Height"), ("spacing", msg!("Baluster Spacing"))],
         _ => &[],
     }
 }
@@ -518,12 +524,12 @@ const LAYERED: [&str; 4] = ["wall", "floor", "roof", "ceiling"];
 /// Each pattern as the Materials window names it.
 const PATTERNS: [(Pattern, &str); 10] = [
     (Pattern::None, "None"),
-    (Pattern::Solid, "Solid Fill"),
-    (Pattern::Diagonal, "Diagonal"),
-    (Pattern::Crosshatch, "Crosshatch"),
-    (Pattern::Horizontal, "Horizontal"),
-    (Pattern::Vertical, "Vertical"),
-    (Pattern::Grid, "Square Grid"),
+    (Pattern::Solid, msg!("Solid Fill")),
+    (Pattern::Diagonal, msg!("Diagonal")),
+    (Pattern::Crosshatch, msg!("Crosshatch")),
+    (Pattern::Horizontal, msg!("Horizontal")),
+    (Pattern::Vertical, msg!("Vertical")),
+    (Pattern::Grid, msg!("Square Grid")),
     (Pattern::Brick, "Brick"),
     (Pattern::Concrete, "Concrete"),
     (Pattern::Insulation, "Insulation"),
@@ -534,16 +540,16 @@ pub(crate) fn texture_name(k: bimcraft_core::texture::Kind) -> &'static str {
     use bimcraft_core::texture::Kind::*;
     match k {
         Brick => "Brick",
-        Block => "Block",
-        Boards => "Boards",
+        Block => msg!("Block"),
+        Boards => msg!("Boards"),
         Concrete => "Concrete",
         Plaster => "Plaster",
-        Tile => "Tile",
+        Tile => msg!("Tile"),
         Roof => "Roof Tiles",
         Fabric => "Fabric",
         Metal => "Metal",
         Insulation => "Insulation",
-        Image => "Picture",
+        Image => msg!("Picture"),
     }
 }
 
@@ -575,7 +581,7 @@ impl MaterialsDialog {
 const FUNCTIONS: [(Function, &str); 5] = [
     (Function::Structure, "Structure"),
     (Function::Substrate, "Substrate"),
-    (Function::Thermal, "Thermal"),
+    (Function::Thermal, msg!("Thermal")),
     (Function::Membrane, "Membrane"),
     (Function::Finish, "Finish"),
 ];
@@ -1206,7 +1212,7 @@ impl BimApp {
         let mut change: Option<(String, Result<Value, String>)> = None;
         for (group, kinds) in [
             ("Dimensions", &[Holds::Length, Holds::Number, Holds::Angle][..]),
-            ("Materials and Finishes", &[Holds::Material][..]),
+            (msg!("Materials and Finishes"), &[Holds::Material][..]),
             ("Other", &[Holds::YesNo][..]),
         ] {
             let params: Vec<_> = f.parameters.iter().filter(|p| p.instance && kinds.contains(&p.kind)).collect();
@@ -1471,7 +1477,7 @@ impl BimApp {
             if LAYERED.contains(&d.category) {
                 ui.add_space(6.0);
                 let materials: Vec<String> = model.materials.keys().cloned().collect();
-                let (out, inward) = if d.category == "wall" { ("Out", "In") } else { ("Up", "Down") };
+                let (out, inward) = if d.category == "wall" { (msg!("Out"), msg!("In")) } else { ("Up", "Down") };
                 layer_editor(ui, &mut d.layers, model.units, &materials, (out, inward));
             }
             ui.add_space(8.0);
@@ -1595,7 +1601,7 @@ impl BimApp {
                         run = Some(json!({"name": d.picked, "color": *colour}));
                     }
                     ui.end_row();
-                    for (key, label, now) in [("cut", "Cut Pattern", m.cut), ("surface", "Surface Pattern", m.surface)] {
+                    for (key, label, now) in [("cut", msg!("Cut Pattern"), m.cut), ("surface", msg!("Surface Pattern"), m.surface)] {
                         let l = ui.label(t(label));
                         let c = ComboBox::from_id_salt(("material-pattern", key)).selected_text(t(pattern_name(now))).width(160.0).show_ui(
                             ui,
@@ -1644,11 +1650,11 @@ impl BimApp {
                         }
                         if let Some((_, _, typed)) = &mut d.texture {
                             let rows = [
-                                ("Tile Width", 0),
-                                ("Tile Height", 1),
-                                ("Texture Angle", 2),
-                                ("Texture Offset Across", 3),
-                                ("Texture Offset Up", 4),
+                                (msg!("Tile Width"), 0),
+                                (msg!("Tile Height"), 1),
+                                (msg!("Texture Angle"), 2),
+                                (msg!("Texture Offset Across"), 3),
+                                (msg!("Texture Offset Up"), 4),
                             ];
                             for (label, k) in rows {
                                 let l = ui.label(t(label));
@@ -1987,13 +1993,13 @@ impl BimApp {
             ui.label(RichText::new(t("Object Snaps")).strong());
             let s = &mut self.snaps;
             let kinds: [(&mut bool, Snap, &str); 7] = [
-                (&mut s.endpoint, Snap::Endpoint, "The ends of walls, grids and what else is drawn, and the points picked so far"),
-                (&mut s.midpoint, Snap::Midpoint, "The middle of a wall, along its arc"),
-                (&mut s.intersection, Snap::Intersection, "Where two walls or grids cross"),
-                (&mut s.centre, Snap::Centre, "The centre of a curved wall, a column or a component"),
-                (&mut s.perpendicular, Snap::Perpendicular, "The foot of the perpendicular from the last point to a wall or grid"),
-                (&mut s.nearest, Snap::Nearest, "A wall's centre line, so a wall drawn on it meets it"),
-                (&mut s.cloud, Snap::Point, "A scan's points where the plan's cut plane cuts it, to trace what was measured"),
+                (&mut s.endpoint, Snap::Endpoint, msg!("The ends of walls, grids and what else is drawn, and the points picked so far")),
+                (&mut s.midpoint, Snap::Midpoint, msg!("The middle of a wall, along its arc")),
+                (&mut s.intersection, Snap::Intersection, msg!("Where two walls or grids cross")),
+                (&mut s.centre, Snap::Centre, msg!("The centre of a curved wall, a column or a component")),
+                (&mut s.perpendicular, Snap::Perpendicular, msg!("The foot of the perpendicular from the last point to a wall or grid")),
+                (&mut s.nearest, Snap::Nearest, msg!("A wall's centre line, so a wall drawn on it meets it")),
+                (&mut s.cloud, Snap::Point, msg!("A scan's points where the plan's cut plane cuts it, to trace what was measured")),
             ];
             for (on, kind, tip) in kinds {
                 ui.checkbox(on, t(kind.name())).on_hover_text(t(tip));
@@ -2041,7 +2047,7 @@ impl BimApp {
             for (i, f) in filters.iter_mut().enumerate() {
                 let kind = kind_of(&f.field);
                 // Each row's caption names its field, its comparison and its value.
-                let caption = ui.label(t(if i == 0 { "Filter by:" } else { "And:" }));
+                let caption = ui.label(t(if i == 0 { msg!("Filter by:") } else { msg!("And:") }));
                 let c = ComboBox::from_id_salt(("filter-field", i)).selected_text(t(&f.field)).width(170.0).show_ui(ui, |ui| {
                     for n in names {
                         if ui.selectable_label(*n == f.field, t(n)).clicked() && *n != f.field {
@@ -2051,7 +2057,7 @@ impl BimApp {
                     }
                 });
                 c.response.labelled_by(caption.id);
-                let now = OPS.iter().find(|(op, _)| *op == f.op).map_or("equals", |(_, n)| n);
+                let now = OPS.iter().find(|(op, _)| *op == f.op).map_or(msg!("equals"), |(_, n)| n);
                 let c = ComboBox::from_id_salt(("filter-op", i)).selected_text(t(now)).width(190.0).show_ui(ui, |ui| {
                     for (op, label) in ops(kind) {
                         if ui.selectable_label(op == f.op, t(label)).clicked() && op != f.op {
@@ -2153,7 +2159,7 @@ pub(crate) struct NewSchedule {
 }
 
 /// Schedule Properties' tabs.
-const SCHEDULE_TABS: [&str; 3] = ["Fields", "Filter", "Sorting/Grouping"];
+const SCHEDULE_TABS: [&str; 3] = [msg!("Fields"), "Filter", msg!("Sorting/Grouping")];
 
 /// Schedule Properties, for the schedule on screen: the tab showing, the field picked in each list
 /// of the Fields tab, and a calculated field being made (its name, kind and formula).
@@ -2176,19 +2182,19 @@ const RESULTS: [(schedule::Kind, &str); 4] = [
 /// A filter's comparisons, as Schedule Properties says them.
 const OPS: [(Op, &str); 14] = [
     (Op::Equals, "equals"),
-    (Op::NotEquals, "does not equal"),
-    (Op::Greater, "is greater than"),
-    (Op::GreaterOrEqual, "is greater than or equal to"),
-    (Op::Less, "is less than"),
-    (Op::LessOrEqual, "is less than or equal to"),
-    (Op::Contains, "contains"),
-    (Op::NotContains, "does not contain"),
-    (Op::BeginsWith, "begins with"),
-    (Op::NotBeginsWith, "does not begin with"),
-    (Op::EndsWith, "ends with"),
-    (Op::NotEndsWith, "does not end with"),
-    (Op::HasValue, "has a value"),
-    (Op::HasNoValue, "has no value"),
+    (Op::NotEquals, msg!("does not equal")),
+    (Op::Greater, msg!("is greater than")),
+    (Op::GreaterOrEqual, msg!("is greater than or equal to")),
+    (Op::Less, msg!("is less than")),
+    (Op::LessOrEqual, msg!("is less than or equal to")),
+    (Op::Contains, msg!("contains")),
+    (Op::NotContains, msg!("does not contain")),
+    (Op::BeginsWith, msg!("begins with")),
+    (Op::NotBeginsWith, msg!("does not begin with")),
+    (Op::EndsWith, msg!("ends with")),
+    (Op::NotEndsWith, msg!("does not end with")),
+    (Op::HasValue, msg!("has a value")),
+    (Op::HasNoValue, msg!("has no value")),
 ];
 
 /// The comparisons a field holding `kind` takes: text all of them, numbers by size, yes or no
@@ -2580,7 +2586,7 @@ impl BimApp {
                     Grid::new("schedule-sort").num_columns(4).spacing(vec2(8.0, 6.0)).show(ui, |ui| {
                         let mut gone = None;
                         for (i, s) in sort.iter_mut().enumerate() {
-                            let caption = ui.label(t(if i == 0 { "Sort by:" } else { "Then by:" }));
+                            let caption = ui.label(t(if i == 0 { msg!("Sort by:") } else { msg!("Then by:") }));
                             let c = ComboBox::from_id_salt(("sort-field", i)).selected_text(t(&s.field)).width(170.0).show_ui(ui, |ui| {
                                 for n in &names {
                                     if ui.selectable_label(*n == s.field, t(n)).clicked() && *n != s.field {
@@ -2590,7 +2596,7 @@ impl BimApp {
                                 }
                             });
                             c.response.labelled_by(caption.id);
-                            let now = if s.descending { "Descending" } else { "Ascending" };
+                            let now = if s.descending { msg!("Descending") } else { msg!("Ascending") };
                             let c = ComboBox::from_id_salt(("sort-way", i)).selected_text(t(now)).width(120.0).show_ui(ui, |ui| {
                                 for (down, label) in [(false, "Ascending"), (true, "Descending")] {
                                     if ui.selectable_label(s.descending == down, t(label)).clicked() && s.descending != down {

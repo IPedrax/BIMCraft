@@ -3,6 +3,8 @@
 //! sketch plane and sized by the parameters; a component places one of its types. Formulas read
 //! as Revit's do: `Width / 2`, `if(Depth > 600, 4, 2)`.
 
+use bimcraft_i18n::{msg, ui_msg};
+
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
@@ -96,7 +98,7 @@ impl Category {
             Category::DataOutlet => ("IFCOUTLET", ".DATAOUTLET.", None),
             Category::VoiceOutlet => ("IFCOUTLET", ".TELEPHONEOUTLET.", None),
             Category::PatchPanel => ("IFCCOMMUNICATIONSAPPLIANCE", ".NETWORKAPPLIANCE.", None),
-            Category::Rack => ("IFCBUILDINGELEMENTPROXY", ".USERDEFINED.", Some("Rack")),
+            Category::Rack => ("IFCBUILDINGELEMENTPROXY", ".USERDEFINED.", Some(msg!("Rack"))),
             Category::AirTerminal => ("IFCBUILDINGELEMENTPROXY", ".USERDEFINED.", Some("LightningTerminal")),
             Category::Earthing => ("IFCBUILDINGELEMENTPROXY", ".USERDEFINED.", Some("EarthingRod")),
             Category::InspectionBox => ("IFCBUILDINGELEMENTPROXY", ".USERDEFINED.", Some("InspectionBox")),
@@ -148,9 +150,9 @@ pub const WALL: &str = "Wall Thickness";
 /// A wall as thick as this is assumed where a hosted family is built without one: 200 mm.
 pub const DEFAULT_WALL: f64 = 200.0;
 /// The parameters that open a hosted family's wall: its width and its height, and the height of its sill.
-pub const WIDTH: &str = "Width";
-pub const HEIGHT: &str = "Height";
-pub const SILL: &str = "Sill Height";
+pub const WIDTH: &str = msg!("Width");
+pub const HEIGHT: &str = msg!("Height");
+pub const SILL: &str = ui_msg!("Sill Height");
 
 /// What a parameter holds.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -1249,9 +1251,9 @@ fn mesh(tris: &[[P3; 3]], material: String) -> Result<Piece, String> {
 pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> {
     use serde_json::json;
     let w = |s: &str| language.word(s).to_string();
-    let (width, depth, height, length) = (w("Width"), w("Depth"), w("Height"), w("Length"));
-    let (thick, leg, seat, mat) = (w("Thickness"), w("Leg Width"), w("Seat Height"), w("Material"));
-    let (timber, fabric, porcelain, concrete) = (w("Timber"), w("Fabric"), w("Porcelain"), w("Concrete"));
+    let (width, depth, height, length) = (w("Width"), w(msg!("Depth")), w("Height"), w(msg!("Length")));
+    let (thick, leg, seat, mat) = (w(msg!("Thickness")), w(msg!("Leg Width")), w(msg!("Seat Height")), w("Material"));
+    let (timber, fabric, porcelain, concrete) = (w(msg!("Timber")), w(msg!("Fabric")), w(msg!("Porcelain")), w(msg!("Concrete")));
     // A box: x from `x0` to `x1`, y from `y0` to `y1`, up from `z0` to `z1`, of `m`.
     let block = |[x0, y0, x1, y1]: [Value; 4], z0: Value, z1: Value, m: &str| json!({"profile": [[x0, y0], [x1.clone(), y0], [x1, y1.clone()], [x0, y1]], "from": z0, "to": z1, "material": m});
     let f = |e: String| Value::String(e);
@@ -1291,7 +1293,7 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
     )];
     forms.extend(legs(&width, &depth, &top));
     families.push((
-        w("Table"),
+        w(msg!("Table")),
         json!({
             "parameters": [size(&width, 1600.0), size(&depth, 900.0), size(&height, 750.0), size(&thick, 40.0), size(&leg, 60.0), material(&mat, &timber)],
             "types": {"1600 x 900": {}, "1200 x 800": {&width: 1200, &depth: 800}, "2000 x 1000": {&width: 2000, &depth: 1000}},
@@ -1312,7 +1314,7 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
     ];
     forms.extend(legs(&format!("{width} + 100"), &format!("{depth} + 100"), &under));
     families.push((
-        w("Chair"),
+        w(msg!("Chair")),
         json!({
             "parameters": [size(&width, 450.0), size(&depth, 450.0), size(&seat, 450.0), size(&height, 850.0), size(&thick, 40.0), size(&leg, 40.0), material(&mat, &timber)],
             "types": {"450 x 450": {}},
@@ -1320,14 +1322,14 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
         }),
     ));
     // A bed against a wall: its base, its mattress, its headboard, and a pillow, two on a double.
-    let head = w("Headboard Height");
+    let head = w(msg!("Headboard Height"));
     let pillow = |x0: String, x1: String, shown: &str| {
         let mut b = block([f(x0), n(-500.0), f(x1), n(-100.0)], f(height.clone()), f(format!("{height} + 120")), &fabric);
         b["visible"] = json!(shown);
         b
     };
     families.push((
-        w("Bed"),
+        w(msg!("Bed")),
         json!({
             "parameters": [size(&width, 1600.0), size(&length, 2000.0), size(&height, 450.0), size(&head, 900.0), material(&mat, &timber)],
             "types": {"1600 x 2000": {}, "900 x 2000": {&width: 900}, "1800 x 2000": {&width: 1800}},
@@ -1342,9 +1344,9 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
         }),
     ));
     // A sofa: its seat between its arms, its back.
-    let arm = w("Arm Width");
+    let arm = w(msg!("Arm Width"));
     families.push((
-        w("Sofa"),
+        w(msg!("Sofa")),
         json!({
             "parameters": [size(&width, 2000.0), size(&depth, 900.0), size(&seat, 420.0), size(&height, 800.0), size(&arm, 180.0), material(&mat, &fabric)],
             "types": {"2000 x 900": {}, "1600 x 900": {&width: 1600}},
@@ -1358,7 +1360,7 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
     ));
     // A desk: its top on two side panels, a modesty panel between them.
     families.push((
-        w("Desk"),
+        w(msg!("Desk")),
         json!({
             "parameters": [size(&width, 1400.0), size(&depth, 700.0), size(&height, 740.0), size(&thick, 30.0), material(&mat, &timber)],
             "types": {"1400 x 700": {}, "1200 x 600": {&width: 1200, &depth: 600}},
@@ -1372,7 +1374,7 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
     ));
     // A wardrobe on its plinth.
     families.push((
-        w("Wardrobe"),
+        w(msg!("Wardrobe")),
         json!({
             "category": "casework",
             "parameters": [size(&width, 1200.0), size(&depth, 600.0), size(&height, 2100.0), material(&mat, &timber)],
@@ -1384,9 +1386,9 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
         }),
     ));
     // A base cabinet: its plinth, set back for toes; its carcass; its worktop over the front.
-    let worktop = w("Worktop");
+    let worktop = w(msg!("Worktop"));
     families.push((
-        w("Base Cabinet"),
+        w(msg!("Base Cabinet")),
         json!({
             "category": "casework",
             "parameters": [size(&width, 1800.0), size(&depth, 600.0), size(&height, 900.0), material(&mat, &timber), material(&worktop, &concrete)],
@@ -1400,7 +1402,7 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
     ));
     // A WC: its cistern against the wall, its bowl.
     families.push((
-        w("WC"),
+        w(msg!("WC")),
         json!({
             "category": "plumbing",
             "types": {"400 x 650": {}},
@@ -1413,7 +1415,7 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
     ));
     // A washbasin on its pedestal.
     families.push((
-        w("Washbasin"),
+        w(msg!("Washbasin")),
         json!({
             "category": "plumbing",
             "parameters": [size(&width, 600.0), size(&depth, 450.0), size(&height, 850.0)],
@@ -1428,7 +1430,7 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
     let rim = height.clone();
     let inner = format!("-({width}) + 60");
     families.push((
-        w("Bathtub"),
+        w(msg!("Bathtub")),
         json!({
             "category": "plumbing",
             "parameters": [size(&length, 1700.0), size(&width, 750.0), size(&height, 560.0)],
@@ -1454,8 +1456,9 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
 fn hosted_library(language: crate::language::Language) -> Vec<(String, Value)> {
     use serde_json::json;
     let w = |s: &str| language.word(s).to_string();
-    let (frame, depth, leaf) = (w("Frame Width"), w("Frame Depth"), w("Leaf Thickness"));
-    let (frame_mat, leaf_mat, glass, metal, timber) = (w("Frame Material"), w("Leaf Material"), w("Glass"), w("Metal"), w("Timber"));
+    let (frame, depth, leaf) = (w(msg!("Frame Width")), w(msg!("Frame Depth")), w(msg!("Leaf Thickness")));
+    let (frame_mat, leaf_mat, glass, metal, timber) =
+        (w(msg!("Frame Material")), w(msg!("Leaf Material")), w(msg!("Glass")), w(msg!("Metal")), w("Timber"));
     let (width, height, wall, sill) = (WIDTH, HEIGHT, WALL, SILL);
     let size = |name: &str, value: f64| json!({"name": name, "value": value});
     let material = |name: &str, value: &str| json!({"name": name, "kind": "material", "value": value});
@@ -1491,7 +1494,7 @@ fn hosted_library(language: crate::language::Language) -> Vec<(String, Value)> {
     forms.push(block([&left, &right], [&leaf_y[0], &leaf_y[1]], ["0", &under_head], &leaf_mat));
     forms.extend(handle([&format!("{width} / 2 - {frame} - 120"), &format!("{width} / 2 - {frame} - 40")], &block));
     out.push((
-        w("Single Door"),
+        w(msg!("Single Door")),
         json!({
             "category": "door",
             "parameters": [size(width, 900.0), size(height, 2100.0), size(&frame, 50.0), size(&leaf, 40.0), material(&frame_mat, &timber), material(&leaf_mat, &timber)],
@@ -1512,7 +1515,7 @@ fn hosted_library(language: crate::language::Language) -> Vec<(String, Value)> {
     forms.extend(handle(["-120", "-40"], &block));
     forms.extend(handle(["40", "120"], &block));
     out.push((
-        w("Double Door"),
+        w(msg!("Double Door")),
         json!({
             "category": "door",
             "parameters": [size(width, 1500.0), size(height, 2100.0), size(&frame, 50.0), size(&leaf, 40.0), material(&frame_mat, &timber), material(&leaf_mat, &timber)],
@@ -1554,7 +1557,7 @@ fn hosted_library(language: crate::language::Language) -> Vec<(String, Value)> {
     let mut forms = window_frame(&block);
     forms.push(pane([&inner_l, &inner_r], [&inner_b, &inner_t]));
     out.push((
-        w("Fixed Window"),
+        w(msg!("Fixed Window")),
         json!({
             "category": "window",
             "parameters": [size(width, 1200.0), size(height, 1500.0), size(sill, 900.0), size(&frame, 50.0), size(&depth, 90.0), material(&frame_mat, &timber)],
@@ -1576,7 +1579,7 @@ fn hosted_library(language: crate::language::Language) -> Vec<(String, Value)> {
     forms.extend(sash([&inner_l, "-1"], [40, 20]));
     forms.extend(sash(["1", &inner_r], [20, 40]));
     out.push((
-        w("Casement Window"),
+        w(msg!("Casement Window")),
         json!({
             "category": "window",
             "parameters": [size(width, 1200.0), size(height, 1500.0), size(sill, 900.0), size(&frame, 50.0), size(&depth, 90.0), material(&frame_mat, &timber)],

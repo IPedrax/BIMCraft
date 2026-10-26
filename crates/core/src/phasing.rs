@@ -8,6 +8,8 @@
 //! values elements hold among their parameters, under names no project parameter may take, so
 //! copies, `modify`, schedules and view filters reach them as they reach any other.
 
+use bimcraft_i18n::msg;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
@@ -112,7 +114,7 @@ pub struct OptionSet {
 
 /// A project's phases to start from, in `language`.
 pub fn phases(language: Language) -> Vec<String> {
-    ["Existing", "New Construction"].map(|w| language.word(w).to_string()).to_vec()
+    [msg!("Existing"), msg!("New Construction")].map(|w| language.word(w).to_string()).to_vec()
 }
 
 pub fn default_phases() -> Vec<String> {
@@ -124,11 +126,11 @@ pub fn filters(language: Language) -> BTreeMap<String, PhaseFilter> {
     use Presentation::{ByCategory as B, NotDisplayed as N, Overridden as O};
     let f = |new, existing, demolished, temporary| PhaseFilter { new, existing, demolished, temporary };
     [
-        ("Show All", f(B, B, B, B)),
-        ("Show Complete", f(B, B, N, B)),
-        ("Show New", f(B, N, N, N)),
-        ("Show Previous + Demolished", f(N, B, O, N)),
-        ("Show Previous + New", f(B, O, N, B)),
+        (msg!("Show All"), f(B, B, B, B)),
+        (msg!("Show Complete"), f(B, B, N, B)),
+        (msg!("Show New"), f(B, N, N, N)),
+        (msg!("Show Previous + Demolished"), f(N, B, O, N)),
+        (msg!("Show Previous + New"), f(B, O, N, B)),
     ]
     .into_iter()
     .map(|(n, f)| (language.word(n).to_string(), f))

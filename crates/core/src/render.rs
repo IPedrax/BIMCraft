@@ -12,6 +12,8 @@
 //! same way along their line and up: the cut in poché, levels and grids, notes and spot
 //! elevations, over the 3D view's hidden-line picture of what lies beyond.
 
+use bimcraft_i18n::msg;
+
 use std::f64::consts::PI;
 use std::fmt::Write;
 
@@ -1479,7 +1481,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
             }
             Element::Room(r) if r.level == level && inside(r.point) && !up => {
                 let area = m.room_region(r).map_or_else(
-                    || m.language.word("NOT ENCLOSED").to_string(),
+                    || m.language.word(msg!("NOT ENCLOSED")).to_string(),
                     |g| {
                         let (area, unit) = m.units.area(g.area());
                         format!("{area:.2} {unit}")
@@ -2101,7 +2103,7 @@ fn walk(d: &mut Drawing, m: &Model, line: &[(P2, f64)], up: bool) {
         pts.reverse();
     }
     let (Some(&first), Some(&second), [.., before, last]) = (pts.first(), pts.get(1), pts.as_slice()) else { return };
-    let label = m.language.word(if up { "UP" } else { "DN" });
+    let label = m.language.word(if up { msg!("UP") } else { msg!("DN") });
     d.line(&pts, Pen::PROJECTION, INK, false);
     arrow(d, d.view.px(*before), d.view.px(*last));
     let (a, b) = (d.view.px(first), d.view.px(second));

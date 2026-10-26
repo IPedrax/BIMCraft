@@ -85,11 +85,10 @@ Millimetres; x east, y north, z up. A project's units (`Model::units`, `units.rs
 drawings, schedules and the desktop format lengths with `Units::length` and areas with `Units::area`, and read typed
 lengths with `Units::parse`; files, JSON and every command stay in millimetres. A project's language (`Model::language`,
 `language.rs`) is what its drawings print and what new names come in: the core passes the English word through
-`Language::word`. The desktop's own words go through `lang::t` and `lang::tf`, so a new label needs a row in `WORDS` in
-`crates/ui-egui/src/lang.rs`, with its Portuguese and its Spanish (and its Chinese in `lang/zh.rs`, which may wait: the window shows English
-until it has one; the core's words are rows in `language.rs`);
-`nothing_a_translated_interface_shows_is_left_in_english` catches a label the table knows that the window forgot to
-translate. The core's messages stay English, because agents read them.
+`Language::word`. The desktop's words go through `lang::t`, `lang::tf` and `lang::tc`. Translations live in
+`translations/project/*.po` and `translations/ui/*.po`, compiled into the app with English fallback. Mark indirectly
+selected English messages with `bimcraft_i18n::msg!` (`ui_msg!` for core-owned interface labels), and run `cargo i18n update`;
+see [translations](docs/areas/translations.md). The core's messages stay English, because agents read them.
 The selection is the model's, not a view's: opening any view (a plan, a section, the 3D view, a sheet, a schedule) keeps it
 (`BimApp::open_sheet`), each view shows it, and a schedule's rows (`schedule::Table::ids`, `elements` in the command's output)
 highlight what's selected and pick what they list.
@@ -116,7 +115,10 @@ One line per module: what it owns. Read the module's file and, for the areas it 
 
 - `lib.rs`: the app: ribbon, menus, tools, tabs, files. `canvas.rs`: the plan canvas (picks, tools, grips). `orbit.rs`: the 3D view; `gpu.rs` and `gpu.wgsl`: drawing it on the graphics card. `section.rs`, `paper.rs`: sections and sheets. `properties.rs`: the Properties palette. `browser.rs`: the Project Browser. `dock.rs`: docking palettes and floating views. `settings.rs`: File > Settings. `lineweights.rs`, `objectstyles.rs`: Manage > Line Weights and Object Styles. `start.rs`: the start page. `context.rs`: the right-click menu. `dialog.rs`: the file dialogs, on a thread of their own. `window.rs`: the window's size, kept and fitted to its screen. `control.rs`: the control port, agents working on the window's project.
 - `graphics.rs`, `footer.rs`, `phasing.rs`: Visibility/Graphics, the view control bar, Phasing. `inquiry.rs`, `recent.rs`, `autosave.rs`, `updates.rs`, `revit.rs`: Manage > Inquiry, Open Recent, autosave and recovery, the update banner, Revit files.
-- `links.rs`: Link Model. `clouds.rs`: Insert > Point Cloud. `structure.rs`, `mep.rs`: the Structure tab and the discipline tabs. `editor.rs`, `favorites.rs`: the Family Editor and Favorites. `style.rs`: look and feel, light and dark. `icons.rs`: the icons, drawn in code (`--example icon_catalog` exports them). `lang.rs`: every label's Portuguese and Spanish (`WORDS`), `lang/zh.rs` its Chinese. `tests.rs`, `tests/`: the app driven as a user does.
+- `links.rs`: Link Model. `clouds.rs`: Insert > Point Cloud. `structure.rs`, `mep.rs`: the Structure tab and the discipline tabs. `editor.rs`, `favorites.rs`: the Family Editor and Favorites. `style.rs`: look and feel, light and dark. `icons.rs`: the icons, drawn in code (`--example icon_catalog` exports them). `lang.rs`: language selection and the interface PO catalogs; `lang/font.rs`: Chinese font support. `tests.rs`, `tests/`: the app driven as a user does.
+
+`crates/i18n` (`bimcraft-i18n`; [notes](crates/i18n/CLAUDE.md)): embedded lookup, build-time PO compilation and the
+`cargo i18n` extraction, merge and validation tools. Area: [translations](docs/areas/translations.md).
 
 `crates/update` (the updater, the only code that phones home; notes: [crates/update/CLAUDE.md](crates/update/CLAUDE.md); area: [updates](docs/areas/updates.md)): `updater.rs` the state the banner draws; `net.rs` HTTPS to GitHub; `detect.rs` which install this is; `install.rs` Windows, `appimage.rs` Linux, `macos.rs` macOS; `exec.rs`, `prefs.rs`, `testing.rs`.
 

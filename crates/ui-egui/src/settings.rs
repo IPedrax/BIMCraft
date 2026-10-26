@@ -4,6 +4,8 @@
 //! What it keeps: the theme, interface language, ribbon, palettes, the window's size, and the background autosave interval.
 //! The pages for what is still to come (performance and graphics) show what they will hold, greyed out.
 
+use bimcraft_i18n::msg;
+
 use std::path::{Path, PathBuf};
 
 use egui::{Align, ComboBox, Context, Id as UiId, Layout, Modal, RichText, ScrollArea, ThemePreference, Ui, vec2};
@@ -155,10 +157,10 @@ impl Page {
     pub fn name(self) -> &'static str {
         match self {
             Page::Interface => "User Interface",
-            Page::Performance => "Performance",
+            Page::Performance => msg!("Performance"),
             Page::Graphics => "Graphics",
-            Page::Files => "Files",
-            Page::Updates => "Updates",
+            Page::Files => msg!("Files"),
+            Page::Updates => msg!("Updates"),
         }
     }
 }
@@ -256,7 +258,7 @@ impl BimApp {
     }
 
     fn interface_page(&mut self, ui: &mut Ui, ctx: &Context) {
-        heading(ui, "Theme");
+        heading(ui, msg!("Theme"));
         let mut theme = ctx.options(|o| o.theme_preference);
         let before = theme;
         ui.horizontal(|ui| {
@@ -275,10 +277,10 @@ impl BimApp {
                 }
             }
         });
-        heading(ui, "Ribbon");
+        heading(ui, msg!("Ribbon"));
         ui.checkbox(&mut self.ribbon_min, t("Minimize the ribbon to its tabs"))
             .on_hover_text(t("Double-clicking a tab's name does the same; a click on a tab then shows its tools until one is picked"));
-        heading(ui, "Palettes");
+        heading(ui, msg!("Palettes"));
         for p in Palette::ALL {
             let mut on = self.docking.shown(p);
             if ui.checkbox(&mut on, t(p.name())).changed() {
@@ -312,7 +314,7 @@ impl BimApp {
 
 impl BimApp {
     fn performance_page(&mut self, ui: &mut Ui) {
-        heading(ui, "Graphics card");
+        heading(ui, msg!("Graphics card"));
         let found = self.card.available();
         ui.add_enabled(found, egui::Checkbox::new(&mut self.card.wanted, t("Draw the 3D view on the graphics card"))).on_hover_text(t(
             "Faster for large models. Hidden line and wireframe are still drawn on the processor, and so is everything if the card fails",

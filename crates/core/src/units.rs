@@ -2,6 +2,8 @@
 //! millimetres, and so does every command; units change only what drawings, schedules and the
 //! desktop show. Feet and inches round to the nearest sixteenth of an inch.
 
+use bimcraft_i18n::ui_msg;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -45,12 +47,12 @@ impl Units {
     /// As a menu names it.
     pub fn label(self) -> &'static str {
         match self {
-            Units::Millimetres => "Millimetres",
-            Units::Centimetres => "Centimetres",
-            Units::Metres => "Metres",
-            Units::Inches => "Inches",
-            Units::Feet => "Feet",
-            Units::FeetInches => "Feet and inches",
+            Units::Millimetres => ui_msg!("Millimetres"),
+            Units::Centimetres => ui_msg!("Centimetres"),
+            Units::Metres => ui_msg!("Metres"),
+            Units::Inches => ui_msg!("Inches"),
+            Units::Feet => ui_msg!("Feet"),
+            Units::FeetInches => ui_msg!("Feet and inches"),
         }
     }
 

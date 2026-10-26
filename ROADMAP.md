@@ -168,7 +168,8 @@ The goal is that someone could run a real small project on it.
 | A file-format stability promise, with 1.x files opening in every later 1.x | S |
 | Signed installers on all three operating systems (macOS signing is wired up and waits for a Developer ID) | M |
 | A documentation site: user guide, command reference generated from `catalog()`, API guide | M |
-| More interface and project languages, through community translation of `lang.rs` and `language.rs` | S each |
+| ~~Move interface and project translations into separate `.po` catalogs with English fallback~~ | S |
+| More interface and project languages, through community translation of the `.po` catalogs ([workflow](docs/areas/translations.md)) | S each |
 
 **Exit criteria**: performance budgets met on a 50k-element model; no data-loss bugs open; the release passes a scripted
 end-to-end project (model, document, print, IFC) on all three operating systems.

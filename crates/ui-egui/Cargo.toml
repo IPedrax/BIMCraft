@@ -11,6 +11,7 @@ rust-version = "1.95"
 workspace = true
 
 [dependencies]
+bimcraft-i18n = { workspace = true }
 bimcraft-core = { workspace = true }
 bimcraft-update = { workspace = true }
 serde_json = { workspace = true }
@@ -24,3 +25,6 @@ sys-locale = { workspace = true }
 tempfile = { workspace = true }
 egui_kittest = { workspace = true }
 bimcraft-update = { workspace = true, features = ["testing"] }
+
+[build-dependencies]
+bimcraft-i18n = { workspace = true, features = ["catalog"] }

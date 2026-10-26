@@ -7,6 +7,8 @@
 //! so it can be tested and kept in the settings file; the view that takes the tools is the active one
 //! ([`BimApp::sheet`]): any other on screen draws as it is, and a click on it makes it the active one.
 
+use bimcraft_i18n::msg;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::f32::consts::FRAC_PI_2;
 
@@ -35,7 +37,7 @@ impl Palette {
     pub fn name(self) -> &'static str {
         match self {
             Palette::Properties => "Properties",
-            Palette::Browser => "Project Browser",
+            Palette::Browser => msg!("Project Browser"),
         }
     }
 

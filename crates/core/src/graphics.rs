@@ -7,6 +7,8 @@
 //! what a view's graphics come to for each element: the drawing code asks it what to leave out and
 //! how to draw the rest, and it dresses the finished drawing.
 
+use bimcraft_i18n::ui_msg;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
@@ -83,9 +85,9 @@ impl Detail {
     /// What it is called, in English.
     pub fn name(self) -> &'static str {
         match self {
-            Detail::Coarse => "Coarse",
-            Detail::Medium => "Medium",
-            Detail::Fine => "Fine",
+            Detail::Coarse => ui_msg!("Coarse"),
+            Detail::Medium => ui_msg!("Medium"),
+            Detail::Fine => ui_msg!("Fine"),
         }
     }
 
@@ -112,9 +114,9 @@ impl VisualStyle {
     /// What it is called, in English.
     pub fn name(self) -> &'static str {
         match self {
-            VisualStyle::Shaded => "Shaded",
-            VisualStyle::HiddenLine => "Hidden Line",
-            VisualStyle::Wireframe => "Wireframe",
+            VisualStyle::Shaded => ui_msg!("Shaded"),
+            VisualStyle::HiddenLine => ui_msg!("Hidden Line"),
+            VisualStyle::Wireframe => ui_msg!("Wireframe"),
         }
     }
 
@@ -582,11 +584,11 @@ pub(crate) fn check_project(m: &Model) -> Result<(), String> {
         }
     };
     for (n, f) in &m.view_filters {
-        named("view filter", n)?;
+        named(ui_msg!("view filter"), n)?;
         f.check(m).map_err(|e| format!("view filter `{n}`: {e}"))?;
     }
     for (n, t) in &m.view_templates {
-        named("view template", n)?;
+        named(ui_msg!("view template"), n)?;
         t.check(m).map_err(|e| format!("view template `{n}`: {e}"))?;
     }
     Ok(())

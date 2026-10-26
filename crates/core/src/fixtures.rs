@@ -3,6 +3,8 @@
 //! back on its x axis and its front toward -y, as the furniture does; a pipe fitting or a valve is centred on its pipe, so
 //! placing it at a pipe's height lines them up.
 
+use bimcraft_i18n::msg;
+
 use serde_json::{Value, json};
 
 use crate::language::Language;
@@ -110,7 +112,7 @@ fn plumbing(language: Language) -> Vec<(String, Value)> {
         &metal,
     ));
     out.push((
-        w("Kitchen Sink"),
+        w(msg!("Kitchen Sink")),
         json!({
             "category": "plumbing",
             "parameters": [size(&width, 1200.0), size(&depth, 550.0), size(&height, 900.0), material(&mat, &metal)],
@@ -127,7 +129,7 @@ fn plumbing(language: Language) -> Vec<(String, Value)> {
         "",
     ));
     out.push((
-        w("Shower"),
+        w(msg!("Shower")),
         json!({
             "category": "plumbing",
             "parameters": [size(&width, 900.0), size(&depth, 900.0)],
@@ -149,7 +151,7 @@ fn plumbing(language: Language) -> Vec<(String, Value)> {
         block([f(format!("-({side}) / 2 + 20")), n(at - 4.0), f(format!("{side} / 2 - 20")), n(at + 4.0)], n(-10.0), n(0.0), &metal)
     };
     out.push((
-        w("Floor Drain"),
+        w(msg!("Floor Drain")),
         json!({
             "category": "drain",
             "parameters": [size(&width, 150.0)],
@@ -168,8 +170,8 @@ fn plumbing(language: Language) -> Vec<(String, Value)> {
 /// they are components until fittings have connectors.
 pub fn pipework(language: Language) -> Vec<(String, Value)> {
     let w = |s: &str| language.word(s).to_string();
-    let (diameter, mat) = (w("Diameter"), w("Material"));
-    let (pvc, metal) = (w("PVC"), w("Metal"));
+    let (diameter, mat) = (w(msg!("Diameter")), w("Material"));
+    let (pvc, metal) = (w(msg!("PVC")), w("Metal"));
     let r = format!("{diameter} / 2");
     // A hub's length past the pipe's axis: a pipe's diameter and a half, and 30 mm.
     let hub = format!("{diameter} * 1.5 + 30");
@@ -188,7 +190,7 @@ pub fn pipework(language: Language) -> Vec<(String, Value)> {
     let neg = |e: &str| format!("-({e})");
     vec![
         (
-            w("Elbow 90"),
+            w(msg!("Elbow 90")),
             json!({
                 "category": "pipefitting",
                 "parameters": [size(&diameter, 50.0), material(&mat, &pvc)],
@@ -197,7 +199,7 @@ pub fn pipework(language: Language) -> Vec<(String, Value)> {
             }),
         ),
         (
-            w("Tee"),
+            w(msg!("Tee")),
             json!({
                 "category": "pipefitting",
                 "parameters": [size(&diameter, 50.0), material(&mat, &pvc)],
@@ -206,7 +208,7 @@ pub fn pipework(language: Language) -> Vec<(String, Value)> {
             }),
         ),
         (
-            w("Gate Valve"),
+            w(msg!("Gate Valve")),
             json!({
                 "category": "pipeaccessory",
                 "parameters": [size(&diameter, 50.0), material(&mat, &metal)],
@@ -227,8 +229,8 @@ pub fn pipework(language: Language) -> Vec<(String, Value)> {
 /// bottom, a device's centre); a luminaire hangs from the height it is given, the underside of the slab by default.
 fn electrical(language: Language) -> Vec<(String, Value)> {
     let w = |s: &str| language.word(s).to_string();
-    let (width, depth, height, mounting) = (w("Width"), w("Depth"), w("Height"), w("Mounting Height"));
-    let (diameter, mat, metal, plaster, glass) = (w("Diameter"), w("Material"), w("Metal"), w("Plaster"), w("Glass"));
+    let (width, depth, height, mounting) = (w("Width"), w("Depth"), w("Height"), w(msg!("Mounting Height")));
+    let (diameter, mat, metal, plaster, glass) = (w("Diameter"), w("Material"), w("Metal"), w(msg!("Plaster")), w("Glass"));
     let n = |x: f64| json!(x);
     let (half_w, minus_half_w) = (format!("{width} / 2"), format!("-({width}) / 2"));
     // The mounting height, and `d` mm over it.
@@ -237,7 +239,7 @@ fn electrical(language: Language) -> Vec<(String, Value)> {
 
     // A distribution board: a box on the wall, its door a little proud of it.
     out.push((
-        w("Distribution Board"),
+        w(msg!("Distribution Board")),
         json!({
             "category": "equipment",
             "parameters": [size(&width, 400.0), size(&height, 500.0), size(&depth, 120.0), size(&mounting, 1300.0), material(&mat, &metal)],
@@ -257,7 +259,7 @@ fn electrical(language: Language) -> Vec<(String, Value)> {
     // A ceiling luminaire, round: its body against the slab and its lens under it.
     let r = format!("{diameter} / 2");
     out.push((
-        w("Ceiling Luminaire"),
+        w(msg!("Ceiling Luminaire")),
         json!({
             "category": "lighting",
             "parameters": [size(&diameter, 300.0), size(&mounting, 3000.0)],
@@ -271,7 +273,7 @@ fn electrical(language: Language) -> Vec<(String, Value)> {
 
     // A recessed luminaire, square, flush with the ceiling's underside.
     out.push((
-        w("Recessed Luminaire"),
+        w(msg!("Recessed Luminaire")),
         json!({
             "category": "lighting",
             "parameters": [size(&width, 600.0), size(&depth, 600.0), size(&mounting, 3000.0)],
@@ -293,7 +295,7 @@ fn electrical(language: Language) -> Vec<(String, Value)> {
     let plate = block([n(-50.0), n(-12.0), n(50.0), n(0.0)], up(-50.0), up(50.0), &plaster);
     let socket = void(json!({"plane": "xz", "circle": {"centre": [0, mounting.clone()], "radius": 25}, "from": -12, "to": -6}));
     out.push((
-        w("Outlet"),
+        w(msg!("Outlet")),
         json!({
             "category": "outlet",
             "parameters": [size(&mounting, 300.0)],
@@ -302,7 +304,7 @@ fn electrical(language: Language) -> Vec<(String, Value)> {
         }),
     ));
     out.push((
-        w("Switch"),
+        w(msg!("Switch")),
         json!({
             "category": "switch",
             "parameters": [size(&mounting, 1100.0)],
@@ -326,7 +328,7 @@ fn lightning(language: Language) -> Vec<(String, Value)> {
     vec![
         // A Franklin air terminal: a rod on a round base, as tall as `Height`.
         (
-            w("Air Terminal"),
+            w(msg!("Air Terminal")),
             json!({
                 "category": "airterminal",
                 "parameters": [size(&height, 500.0), size(&diameter, 10.0), material(&mat, &metal)],
@@ -339,7 +341,7 @@ fn lightning(language: Language) -> Vec<(String, Value)> {
         ),
         // An earthing electrode: a rod driven into the ground, its head at the level.
         (
-            w("Earthing Electrode"),
+            w(msg!("Earthing Electrode")),
             json!({
                 "category": "earthing",
                 "parameters": [size(&height, 2400.0), size(&diameter, 16.0), material(&mat, &metal)],
@@ -349,7 +351,7 @@ fn lightning(language: Language) -> Vec<(String, Value)> {
         ),
         // An inspection box: a round box in the ground, open at the top, its rim flush with the level.
         (
-            w("Inspection Box"),
+            w(msg!("Inspection Box")),
             json!({
                 "category": "inspectionbox",
                 "parameters": [size(&diameter, 300.0), size(&height, 300.0), material(&mat, &concrete)],
@@ -384,7 +386,7 @@ fn telecom(language: Language) -> Vec<(String, Value)> {
     };
     vec![
         (
-            w("Data Outlet"),
+            w(msg!("Data Outlet")),
             json!({
                 "category": "dataoutlet",
                 "parameters": [size(&mounting, 300.0)],
@@ -393,7 +395,7 @@ fn telecom(language: Language) -> Vec<(String, Value)> {
             }),
         ),
         (
-            w("Voice Outlet"),
+            w(msg!("Voice Outlet")),
             json!({
                 "category": "voiceoutlet",
                 "parameters": [size(&mounting, 300.0)],
@@ -403,7 +405,7 @@ fn telecom(language: Language) -> Vec<(String, Value)> {
         ),
         // A patch panel, 19 inches wide and one unit high, on the wall.
         (
-            w("Patch Panel"),
+            w(msg!("Patch Panel")),
             json!({
                 "category": "patchpanel",
                 "parameters": [size(&mounting, 1500.0), material(&mat, &metal)],

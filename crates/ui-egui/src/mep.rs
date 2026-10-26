@@ -3,6 +3,8 @@
 //! place besides is a fixture or a device, one tool (`Tool::Fixture`) that places the families of the kinds it names. A tab adds
 //! a ribbon panel and rows to the tables here, not a tool.
 
+use bimcraft_i18n::msg;
+
 use bimcraft_core::family::Category;
 use egui::Ui;
 
@@ -33,27 +35,27 @@ pub(crate) const FIXTURES: &[FixtureTool] = &[
         key: "plumbing",
         kinds: &[Category::Plumbing, Category::Drain],
         letters: "PX",
-        label: "Plumbing Fixture",
-        title: "Place Plumbing Fixture",
-        tip: "Plumbing Fixture (PX): a basin, a WC, a sink, a shower or a drain, where you click; Space turns it",
+        label: msg!("Plumbing Fixture"),
+        title: msg!("Place Plumbing Fixture"),
+        tip: msg!("Plumbing Fixture (PX): a basin, a WC, a sink, a shower or a drain, where you click; Space turns it"),
         icon: Icon::Fixture,
     },
     FixtureTool {
         key: "fitting",
         kinds: &[Category::PipeFitting],
         letters: "PF",
-        label: "Pipe Fitting",
-        title: "Place Pipe Fitting",
-        tip: "Pipe Fitting (PF): an elbow or a tee, where you click on a pipe's height; Space turns it",
+        label: msg!("Pipe Fitting"),
+        title: msg!("Place Pipe Fitting"),
+        tip: msg!("Pipe Fitting (PF): an elbow or a tee, where you click on a pipe's height; Space turns it"),
         icon: Icon::Fitting,
     },
     FixtureTool {
         key: "accessory",
         kinds: &[Category::PipeAccessory],
         letters: "PA",
-        label: "Pipe Accessory",
-        title: "Place Pipe Accessory",
-        tip: "Pipe Accessory (PA): a valve, where you click on a pipe's height; Space turns it",
+        label: msg!("Pipe Accessory"),
+        title: msg!("Place Pipe Accessory"),
+        tip: msg!("Pipe Accessory (PA): a valve, where you click on a pipe's height; Space turns it"),
         icon: Icon::Accessory,
     },
     FixtureTool {
@@ -61,26 +63,26 @@ pub(crate) const FIXTURES: &[FixtureTool] = &[
         kinds: &[Category::Equipment],
         letters: "EE",
         label: "Electrical Equipment",
-        title: "Place Electrical Equipment",
-        tip: "Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it",
+        title: msg!("Place Electrical Equipment"),
+        tip: msg!("Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it"),
         icon: Icon::Equipment,
     },
     FixtureTool {
         key: "device",
         kinds: &[Category::Outlet, Category::Switch],
         letters: "DV",
-        label: "Device",
-        title: "Place Device",
-        tip: "Device (DV): an outlet or a switch, where you click on the wall; Space turns it",
+        label: msg!("Device"),
+        title: msg!("Place Device"),
+        tip: msg!("Device (DV): an outlet or a switch, where you click on the wall; Space turns it"),
         icon: Icon::Device,
     },
     FixtureTool {
         key: "lighting",
         kinds: &[Category::Lighting],
         letters: "LF",
-        label: "Lighting Fixture",
-        title: "Place Lighting Fixture",
-        tip: "Lighting Fixture (LF): a luminaire, where you click, hung from the slab; Space turns it",
+        label: msg!("Lighting Fixture"),
+        title: msg!("Place Lighting Fixture"),
+        tip: msg!("Lighting Fixture (LF): a luminaire, where you click, hung from the slab; Space turns it"),
         icon: Icon::Luminaire,
     },
     FixtureTool {
@@ -88,8 +90,8 @@ pub(crate) const FIXTURES: &[FixtureTool] = &[
         kinds: &[Category::AirTerminal],
         letters: "AT",
         label: "Air Terminal",
-        title: "Place Air Terminal",
-        tip: "Air Terminal (AT): a captor, where you click on the roof; Space turns it",
+        title: msg!("Place Air Terminal"),
+        tip: msg!("Air Terminal (AT): a captor, where you click on the roof; Space turns it"),
         icon: Icon::AirTerminal,
     },
     FixtureTool {
@@ -97,8 +99,8 @@ pub(crate) const FIXTURES: &[FixtureTool] = &[
         kinds: &[Category::Earthing],
         letters: "EG",
         label: "Earthing Electrode",
-        title: "Place Earthing Electrode",
-        tip: "Earthing Electrode (EG): a rod driven down from the level, where you click; Space turns it",
+        title: msg!("Place Earthing Electrode"),
+        tip: msg!("Earthing Electrode (EG): a rod driven down from the level, where you click; Space turns it"),
         icon: Icon::Electrode,
     },
     FixtureTool {
@@ -106,8 +108,8 @@ pub(crate) const FIXTURES: &[FixtureTool] = &[
         kinds: &[Category::InspectionBox],
         letters: "IB",
         label: "Inspection Box",
-        title: "Place Inspection Box",
-        tip: "Inspection Box (IB): over an electrode, flush with the level, where you click; Space turns it",
+        title: msg!("Place Inspection Box"),
+        tip: msg!("Inspection Box (IB): over an electrode, flush with the level, where you click; Space turns it"),
         icon: Icon::InspectionBox,
     },
     FixtureTool {
@@ -115,8 +117,8 @@ pub(crate) const FIXTURES: &[FixtureTool] = &[
         kinds: &[Category::DataOutlet],
         letters: "DT",
         label: "Data Outlet",
-        title: "Place Data Outlet",
-        tip: "Data Outlet (DT): a data point, where you click on the wall; Space turns it",
+        title: msg!("Place Data Outlet"),
+        tip: msg!("Data Outlet (DT): a data point, where you click on the wall; Space turns it"),
         icon: Icon::DataOutlet,
     },
     FixtureTool {
@@ -124,8 +126,8 @@ pub(crate) const FIXTURES: &[FixtureTool] = &[
         kinds: &[Category::VoiceOutlet],
         letters: "VO",
         label: "Voice Outlet",
-        title: "Place Voice Outlet",
-        tip: "Voice Outlet (VO): a telephone point, where you click on the wall; Space turns it",
+        title: msg!("Place Voice Outlet"),
+        tip: msg!("Voice Outlet (VO): a telephone point, where you click on the wall; Space turns it"),
         icon: Icon::VoiceOutlet,
     },
     FixtureTool {
@@ -133,8 +135,8 @@ pub(crate) const FIXTURES: &[FixtureTool] = &[
         kinds: &[Category::Rack],
         letters: "RK",
         label: "Rack",
-        title: "Place Rack",
-        tip: "Rack (RK): a floor rack, where you click; Space turns it",
+        title: msg!("Place Rack"),
+        tip: msg!("Rack (RK): a floor rack, where you click; Space turns it"),
         icon: Icon::Rack,
     },
     FixtureTool {
@@ -142,8 +144,8 @@ pub(crate) const FIXTURES: &[FixtureTool] = &[
         kinds: &[Category::PatchPanel],
         letters: "PN",
         label: "Patch Panel",
-        title: "Place Patch Panel",
-        tip: "Patch Panel (PN): a panel on the wall, where you click; Space turns it",
+        title: msg!("Place Patch Panel"),
+        tip: msg!("Patch Panel (PN): a panel on the wall, where you click; Space turns it"),
         icon: Icon::PatchPanel,
     },
 ];
@@ -184,23 +186,23 @@ impl BimApp {
         panel(ui, "Electrical", |ui| {
             self.buttons(ui, &[Self::fixture_button("equipment"), Self::fixture_button("device"), Self::fixture_button("lighting")]);
         });
-        panel(ui, "Conduit & Wire", |ui| {
+        panel(ui, msg!("Conduit & Wire"), |ui| {
             let conduit = (
                 Icon::Conduit,
                 "Conduit",
-                "Conduit (CN): click its start and its end; a chain of clicks makes a conduit for each step",
+                msg!("Conduit (CN): click its start and its end; a chain of clicks makes a conduit for each step"),
                 Tool::Run("conduit", None),
             );
             let tray = (
                 Icon::CableTray,
                 "Cable Tray",
-                "Cable Tray (CT): click its start and its end; a chain of clicks makes a tray for each step",
+                msg!("Cable Tray (CT): click its start and its end; a chain of clicks makes a tray for each step"),
                 Tool::Run("cabletray", None),
             );
             let wire = (
                 Icon::Wire,
                 "Wire",
-                "Wire (EW): click its start and its end; a chain of clicks makes a wire for each step",
+                msg!("Wire (EW): click its start and its end; a chain of clicks makes a wire for each step"),
                 Tool::Run("wire", None),
             );
             self.buttons(ui, &[conduit, tray, wire]);
@@ -210,7 +212,7 @@ impl BimApp {
     /// The Data tab (lógica, dados e voz, NBR 14565): its outlets, its rack and panels, and the trays and cabling between.
     pub(crate) fn data_tab(&mut self, ui: &mut Ui) {
         self.tools(ui, "Select", &[(Icon::Modify, "Modify", "Modify (MD): select elements", Tool::Modify)]);
-        panel(ui, "Outlets & Equipment", |ui| {
+        panel(ui, msg!("Outlets & Equipment"), |ui| {
             self.buttons(
                 ui,
                 &[
@@ -231,7 +233,7 @@ impl BimApp {
             let cabling = (
                 Icon::Cabling,
                 "Cabling",
-                "Cabling (CB): click its start and its end; a chain of clicks makes a cable for each step",
+                msg!("Cabling (CB): click its start and its end; a chain of clicks makes a cable for each step"),
                 Tool::Run("cable", None),
             );
             self.buttons(ui, &[tray, cabling]);
@@ -242,20 +244,20 @@ impl BimApp {
     /// has none, so these are BIMCraft's own, on the same runs and fixtures.
     pub(crate) fn lightning_tab(&mut self, ui: &mut Ui) {
         self.tools(ui, "Select", &[(Icon::Modify, "Modify", "Modify (MD): select elements", Tool::Modify)]);
-        panel(ui, "Capture & Descent", |ui| {
+        panel(ui, msg!("Capture & Descent"), |ui| {
             let down = (
                 Icon::DownConductor,
                 "Down Conductor",
-                "Down Conductor (DC): click its start and its end; the same point twice and two heights stand it up a wall",
+                msg!("Down Conductor (DC): click its start and its end; the same point twice and two heights stand it up a wall"),
                 Tool::Run("downconductor", None),
             );
             self.buttons(ui, &[Self::fixture_button("airterminal"), down]);
         });
-        panel(ui, "Earthing", |ui| {
+        panel(ui, msg!("Earthing"), |ui| {
             let ground = (
                 Icon::GroundConductor,
                 "Earthing Conductor",
-                "Earthing Conductor (GC): click its start and its end; a chain of clicks makes the ring or the mesh, under the level",
+                msg!("Earthing Conductor (GC): click its start and its end; a chain of clicks makes the ring or the mesh, under the level"),
                 Tool::Run("groundconductor", None),
             );
             self.buttons(ui, &[Self::fixture_button("earthing"), Self::fixture_button("inspection"), ground]);
@@ -265,11 +267,11 @@ impl BimApp {
     /// The Plumbing tab: Revit's Plumbing & Piping panel, a pipe, the fixtures that go on it and what joins and stops it.
     pub(crate) fn plumbing_tab(&mut self, ui: &mut Ui) {
         self.tools(ui, "Select", &[(Icon::Modify, "Modify", "Modify (MD): select elements", Tool::Modify)]);
-        panel(ui, "Plumbing & Piping", |ui| {
+        panel(ui, msg!("Plumbing & Piping"), |ui| {
             let pipe = (
                 Icon::Pipe,
                 "Pipe",
-                "Pipe (PI): click its start and its end; a chain of clicks makes a pipe for each step",
+                msg!("Pipe (PI): click its start and its end; a chain of clicks makes a pipe for each step"),
                 Tool::Run("pipe", None),
             );
             self.buttons(ui, &[pipe, Self::fixture_button("plumbing"), Self::fixture_button("fitting"), Self::fixture_button("accessory")]);

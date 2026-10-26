@@ -4,6 +4,8 @@
 //! says so and holds the window still; what comes back replaces the project as a new unsaved one, and a refusal, a panic or a
 //! lost thread is said in the status box.
 
+use bimcraft_i18n::msg;
+
 use std::any::Any;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -128,7 +130,9 @@ impl BimApp {
     pub(crate) fn open_revit(&mut self, path: &Path) -> bool {
         let file = file_name(path);
         let Some(reader) = self.revit.clone() else {
-            let template = "{}: this build of BIMCraft was made without Revit support (`--no-default-features`); build with the default `rvt` feature to read Revit files";
+            let template = msg!(
+                "{}: this build of BIMCraft was made without Revit support (`--no-default-features`); build with the default `rvt` feature to read Revit files"
+            );
             self.status = Status { text: tf(template, &[&file]), error: true };
             return false;
         };
@@ -249,7 +253,7 @@ impl BimApp {
             ui.add_space(8.0);
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                 close = ui.button(t("Close")).clicked();
-                copy = ui.button(t(if report.copied { "Copied" } else { "Copy Report" })).clicked();
+                copy = ui.button(t(if report.copied { msg!("Copied") } else { msg!("Copy Report") })).clicked();
             });
         });
         if copy {

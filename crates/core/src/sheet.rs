@@ -5,6 +5,8 @@
 //! beyond, and the 3D view's, go in as images. A schedule is a ruled table under its title, the
 //! size its lettering makes it. Text notes go on the paper itself.
 
+use bimcraft_i18n::msg;
+
 use crate::geom::P2;
 use crate::graphics::Look;
 use crate::language::Language;
@@ -208,9 +210,9 @@ fn scale_note(views: &[&Viewport], language: Language, units: crate::units::Unit
     match views.split_first() {
         None => String::new(),
         Some((first, rest)) if rest.iter().all(|v| v.scale == first.scale) => {
-            format!("{} {}", language.word("SCALE"), units.scale(first.scale))
+            format!("{} {}", language.word(msg!("SCALE")), units.scale(first.scale))
         }
-        Some(_) => language.word("SCALE AS INDICATED").into(),
+        Some(_) => language.word(msg!("SCALE AS INDICATED")).into(),
     }
 }
 

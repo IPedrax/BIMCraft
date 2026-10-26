@@ -1,0 +1,29 @@
+[package]
+name = "bimcraft-i18n"
+description = "Embedded translation catalogs and PO maintenance tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+catalog = []
+tooling = ["catalog", "dep:syn", "dep:proc-macro2"]
+
+[dependencies]
+syn = { version = "2", features = ["full", "visit"], optional = true }
+proc-macro2 = { version = "1", features = ["span-locations"], optional = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+syn = { version = "2", features = ["full", "visit"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+
+[[bin]]
+name = "bimcraft-i18n"
+path = "src/main.rs"
+required-features = ["tooling"]

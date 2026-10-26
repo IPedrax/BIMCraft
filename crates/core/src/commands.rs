@@ -2,6 +2,8 @@
 //! millimetres. Commands build elements; [`Model::check`] then validates the whole model, so a
 //! command only has to read its parameters carefully.
 
+use bimcraft_i18n::{msg, ui_msg};
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -52,7 +54,12 @@ pub static ALL: &[Command] = &[
     ),
     other("open", "Open", "{path} a .bimcraft project", open),
     other("highrise", "Synthetic Highrise", "{storeys?: 20} replace the project with an original 1–80 storey performance sample", highrise),
-    other("autosave", "Autosave", "{path} atomically write a recovery snapshot, keeping the project path and undo history", autosave),
+    other(
+        "autosave",
+        ui_msg!("Autosave"),
+        "{path} atomically write a recovery snapshot, keeping the project path and undo history",
+        autosave,
+    ),
     other(
         "recover",
         "Recover Autosave",
@@ -102,14 +109,14 @@ pub static ALL: &[Command] = &[
     other("redo", "Redo", "{count?} does again the last `count` steps undone (1 by default)", redo),
     edit(
         "level",
-        "Level",
+        ui_msg!("Level"),
         &["LL"],
         "{elevation, name?, extent?: [[x,y],[x,y]]} a level at an elevation in mm; `extent`, the rectangle in plan its \
          plane stretches over (south-west corner, then north-east), where sections, elevations and the 3D view show it \
          (without one, the model's, a metre past it)",
         level,
     ),
-    edit("grid", "Grid", &["GR"], "{start: [x,y], end: [x,y], name?} names follow the last grid: 1, 2… or A, B…", grid),
+    edit("grid", ui_msg!("Grid"), &["GR"], "{start: [x,y], end: [x,y], name?} names follow the last grid: 1, 2… or A, B…", grid),
     edit(
         "point_cloud",
         "Point Cloud",
@@ -124,7 +131,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "wall",
-        "Wall",
+        msg!("Wall"),
         &["WA"],
         "{points: [[x,y],…], closed?, type?, level?, top_level?, height?, base_offset?, arc?, location?, attach_top?, \
          attach_base?} one wall per segment of its location line; up to the next level, or `height` mm tall (unconnected), or up \
@@ -137,7 +144,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "door",
-        "Door",
+        ui_msg!("Door"),
         &["DR"],
         "{at: [x,y] | wall: id, offset?, type?, family?, level?, mark?, flip_facing?, flip_hand?} in the wall under `at`, \
          or in `wall` centred `offset` mm from its start; with `family`, a door family's `type` (its first by default), \
@@ -154,7 +161,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "floor",
-        "Floor",
+        ui_msg!("Floor"),
         &[],
         "{boundary?: [[x,y],…], openings?: [[[x,y],…],…], level?, type?, offset?, slope?, arrow?: [[x,y],[x,y]], structural?} a \
          slab (a structural one with `structural`, as Revit's Floor: Structural), its top at the level, or `offset` mm above it, open through `openings` (holes inside it, apart); no boundary = the outline \
@@ -165,7 +172,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "ceiling",
-        "Ceiling",
+        ui_msg!("Ceiling"),
         &[],
         "{point: [x,y] | boundary: [[x,y],…], openings?: [[[x,y],…],…], level?, type?, offset?} a ceiling, its underside \
          `offset` mm (2600) above the level, open through `openings` (holes inside it, apart): in the room around `point`, out \
@@ -197,7 +204,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "mass_floors",
-        "Mass Floors",
+        ui_msg!("Mass Floors"),
         &["MF"],
         "{mass?, type?, prune?} a floor of the footprint at each level the mass crosses, from the one at its base up to, not \
          including, the one at its top; every mass when no `mass`. The floors it makes hold their mass and level (`Mass Floor`), \
@@ -209,7 +216,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "wall_by_face",
-        "Wall by Face",
+        ui_msg!("Wall by Face"),
         &["WB"],
         "{mass, faces?: [edge, …], type?, location?} a wall on each edge of the mass's footprint (numbered from its first \
          point), or the `faces` given, as tall as the mass; its exterior finish on the edge, facing out (`location` changes \
@@ -218,7 +225,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "floor_by_face",
-        "Floor by Face",
+        ui_msg!("Floor by Face"),
         &["FB"],
         "{mass, type?} a floor on the mass's top face: its top at the mass's top level, or `height` over its base. An ordinary \
          floor from then on",
@@ -226,7 +233,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "roof_by_face",
-        "Roof by Face",
+        ui_msg!("Roof by Face"),
         &["RB"],
         "{mass, type?, slope?, overhang?} a roof on the mass's top face, flat unless it has a `slope` (degrees), over the mass's \
          top level or `height` over its base. An ordinary roof from then on",
@@ -234,7 +241,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "update_by_face",
-        "Update to Face",
+        ui_msg!("Update to Face"),
         &["UF"],
         "{mass?, ids?} rebuilds what `wall_by_face`, `floor_by_face` and `roof_by_face` made from the mass as it is now (Revit's \
          Update to Face): the walls on its edges, as tall as it is, a floor and a roof on its top face. The ones of `mass`, or the \
@@ -252,10 +259,10 @@ pub static ALL: &[Command] = &[
          the view hides. Revit's Show Mass has no default shortcut; MH is BIMCraft's",
         show_mass,
     ),
-    edit("room", "Room", &["RM"], "{point: [x,y], level?, name?, number?} bounded by the walls around the point", room),
+    edit("room", ui_msg!("Room"), &["RM"], "{point: [x,y], level?, name?, number?} bounded by the walls around the point", room),
     edit(
         "column",
-        "Column",
+        ui_msg!("Column"),
         &["CL"],
         "{at: [x,y], type?, angle?, level?, top_level?, height?, base_offset?} a column, its width along `angle` degrees; up to \
          the next level, or `height` mm tall, or up to `top_level`",
@@ -263,7 +270,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "structural_column",
-        "Structural Column",
+        ui_msg!("Structural Column"),
         &["CL"],
         "{at: [x,y], type?, angle?, level?, top_level?, height?, base_offset?} a column of the structure, as `column` makes one but \
          in its own category with its own types (`type` with category structural column): up to the next level, or `height` mm \
@@ -272,7 +279,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "footing",
-        "Isolated Footing",
+        ui_msg!("Isolated Footing"),
         &["FI"],
         "{at: [x,y], type?, thickness?, offset?, angle?, level?} an isolated (pad) footing, its plan the type's (category \
          footing), `thickness` mm thick (400) with its top `offset` mm over the level (0: at it), so it hangs below",
@@ -280,7 +287,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "beam",
-        "Beam",
+        ui_msg!("Beam"),
         &["BM"],
         "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a beam for each \
          segment of the points: its section the type's (category beam: `width` across, `depth` deep, or round), its `justify` \
@@ -290,7 +297,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "strip_footing",
-        "Wall Footing",
+        ui_msg!("Wall Footing"),
         &["FW"],
         "{points: [[x,y],…], closed?, type?, level?, offset?, system?} a continuous footing under a wall for each segment of the \
          points, its section the type's (category stripfooting), its top `offset` mm over the level (0: at it)",
@@ -298,7 +305,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "pipe",
-        "Pipe",
+        ui_msg!("Pipe"),
         &["PI"],
         "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a pipe for each \
          segment of the points: its section the type's (category pipe: round, `width` the outside diameter), its `justify` line \
@@ -309,7 +316,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "conduit",
-        "Conduit",
+        ui_msg!("Conduit"),
         &["CN"],
         "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a conduit (eletroduto) \
          for each segment of the points, as `pipe` lays them: round, `width` its outside diameter; `system` names its circuit",
@@ -317,7 +324,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "cable_tray",
-        "Cable Tray",
+        ui_msg!("Cable Tray"),
         &["CT"],
         "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a cable tray (eletrocalha) \
          for each segment of the points, as `pipe` lays them: its section the type's `width` across by `depth` deep",
@@ -325,7 +332,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "wire",
-        "Wire",
+        ui_msg!("Wire"),
         &["EW"],
         "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a wire (condutor) for \
          each segment of the points, as `pipe` lays them: round, `width` its outside diameter; `system` names its circuit",
@@ -333,7 +340,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "down_conductor",
-        "Down Conductor",
+        ui_msg!("Down Conductor"),
         &["DC"],
         "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a down conductor \
          (condutor de descida, NBR 5419) for each segment of the points, as `pipe` lays them: round, or a flat strip; the same point \
@@ -342,7 +349,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "ground_conductor",
-        "Earthing Conductor",
+        ui_msg!("Earthing Conductor"),
         &["GC"],
         "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} an earthing conductor \
          (condutor de aterramento, the ring or mesh of NBR 5419) for each segment of the points, as `pipe` lays them, usually under \
@@ -351,7 +358,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "cabling",
-        "Cabling",
+        ui_msg!("Cabling"),
         &["CB"],
         "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} structured cabling \
          (cabeamento estruturado, NBR 14565) for each segment of the points, as `pipe` lays them: round, `width` the cable's outside \
@@ -360,7 +367,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "stair",
-        "Stair",
+        ui_msg!("Stair"),
         &[],
         "{start: [x,y], end?: [x,y] | angle?, level?, top_level?, height?, width?, riser?, tread?, landings?: [{at, turn?}, …], \
          railings?} a stair from the middle of its first riser at `start`, climbing toward `end` (or `angle` degrees) up to the next level: \
@@ -372,7 +379,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "ramp",
-        "Ramp",
+        ui_msg!("Ramp"),
         &[],
         "{start: [x,y], end?: [x,y] | angle?, level?, top_level?, height?, width?, slope?, landings?: [{at, turn?}, …], railings?} a ramp \
          from the middle of its foot at `start`, climbing toward `end` (or `angle` degrees) up to the next level, or `height` mm, \
@@ -382,7 +389,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "railing",
-        "Railing",
+        ui_msg!("Railing"),
         &[],
         "{host: a stair or a ramp, side?: left|right, type?} | {path: [[x,y],…], level?, base_offset?, type?} a railing along \
          the stair's or the ramp's sides (both, or the one going up it on `side`), 50 mm in from its edges and climbing with it, \
@@ -392,7 +399,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "roof",
-        "Roof",
+        ui_msg!("Roof"),
         &[],
         "{level?, boundary?: [[x,y],…], courtyards?: [[[x,y],…],…], slope?, overhang?, gables?: [edge, …], gable?, offset?, \
          extrusion?, openings?: [[[x,y],…],…], join?, type?} a roof on `level` (by default the one above the lowest), its \
@@ -409,7 +416,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "dormer",
-        "Dormer",
+        ui_msg!("Dormer"),
         &[],
         "{host, at: [x, y], width?, height?, slope?, window?, type?} a dormer on roof `host`, its front wall across the \
          slope through `at`: walls of `type` `width` mm (1600) apart, standing on the roof and `height` mm (1200) tall at \
@@ -419,7 +426,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "dimension",
-        "Aligned Dimension",
+        ui_msg!("Aligned Dimension"),
         &["DI"],
         "{refs: [ref, …], at: [x, y], level?, kind?: aligned|angular|radial} aligned (the default): the distances between \
          parallel references, along a line through `at`; angular: the angle between two references that meet, on the side \
@@ -431,7 +438,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "text",
-        "Text",
+        ui_msg!("Text"),
         &["TX"],
         "{text, at: [x, y], view?, size?, angle?, leader?: [x, y]} a text note, its first line's top left at `at`, in a view \
          by name or id: a level's plan (the lowest by default; `at` in plan mm), a section or an elevation (`at` along its \
@@ -441,7 +448,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "spot",
-        "Spot Elevation",
+        ui_msg!("Spot Elevation"),
         &["EL"],
         "{at: [x, y], view?, host?} a spot elevation: in a level's plan (the lowest by default), the height of the top of \
          what stands on the level at `at` (or of `host`), following it; in a section or an elevation, of its point `at`, \
@@ -644,7 +651,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "component",
-        "Component",
+        ui_msg!("Component"),
         &["CM"],
         "{family, type?, at: [x,y], level?, angle?, offset?, mirrored?, params?: {parameter: value}} a family's type placed, its \
          first by default: at a point on a level, turned `angle` degrees counter-clockwise, `offset` mm up from the level, and \
@@ -669,7 +676,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "match_properties",
-        "Match Properties",
+        ui_msg!("Match Properties"),
         &["MA"],
         "{from: id, ids: [id,…]} gives the elements in `ids` the type of `from` (and, for components, its family), as Revit's Match \
          Properties does; only elements of `from`'s category take it, the rest come back in `skipped`. Returns {modified, skipped}",
@@ -677,7 +684,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "move",
-        "Move",
+        ui_msg!("Move"),
         &["MV"],
         "{ids: [id,…], by: [dx, dy], end?: start|end} moves elements in plan; walls joined to a moved wall stretch to stay \
          joined, and doors and windows slide along their walls. With `end`, only that end of one wall moves",
@@ -685,14 +692,14 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "copy",
-        "Copy",
+        msg!("Copy"),
         &["CO"],
         "{ids: [id,…], by: [dx, dy]} copies elements, with the doors and windows of copied walls; returns the copies' ids",
         copy,
     ),
     edit(
         "rotate",
-        "Rotate",
+        ui_msg!("Rotate"),
         &["RO"],
         "{ids: [id,…], about: [x, y], angle, copy?} turns elements about a point by `angle` degrees, counter-clockwise; walls \
          joined to them stay joined, and doors and windows turn with their walls",
@@ -708,13 +715,13 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "corner",
-        "Trim/Extend to Corner",
+        ui_msg!("Trim/Extend to Corner"),
         &["TR"],
         "{ids: [wall, wall], keep?: [[x, y], [x, y]]} trims or extends two walls to meet where their lines cross; `keep` is a \
          point on the part of each to keep",
         corner,
     ),
-    edit("split", "Split", &["SL"], "{id, at: [x, y]} splits a wall in two at `at`; doors and windows go with their part", split),
+    edit("split", ui_msg!("Split"), &["SL"], "{id, at: [x, y]} splits a wall in two at `at`; doors and windows go with their part", split),
     edit(
         "delete",
         "Delete",
@@ -799,7 +806,7 @@ pub static ALL: &[Command] = &[
     ),
     edit(
         "schedule",
-        "Schedule",
+        ui_msg!("Schedule"),
         &[],
         "{name?, category?, fields?, filters?, sort?, grouped?, path?} a schedule view, as Revit's View > Schedules makes one, \
          and its table: columns, rows, the `elements` each row lists, and totals (and a .csv file with a path). A new one needs `name` and `category`: rooms, \
@@ -919,7 +926,7 @@ pub static ALL: &[Command] = &[
     ),
     Command {
         id: "measure",
-        label: "Measure",
+        label: ui_msg!("Measure"),
         aliases: &["ME"],
         params: "{from: [x, y], to: [x, y]} what a ruler laid between two points reads (mm): its `length`, its parts `dx` and `dy`, \
                  and its `angle` in degrees from east, counter-clockwise; it changes nothing",
@@ -956,7 +963,7 @@ pub static ALL: &[Command] = &[
     ),
     other(
         "elements",
-        "Elements",
+        ui_msg!("Elements"),
         "{category?, level?, limit?, offset?} elements with their `id` (six digits, what commands take) and `guid` (made once, \
          never changed), fields and derived values (length, height, area_m2…); what an element points at (its level, host, \
          view…) it holds by GUID. Wherever a command takes an element, its id or its GUID will do",
@@ -4459,7 +4466,7 @@ fn duplicate_view(s: &mut Session, p: &Value) -> R {
     let name = match string(c, p, "name")? {
         Some(n) => n,
         None => {
-            let word = m.language.word(if mode == "dependent" { "Dependent" } else { "Copy" });
+            let word = m.language.word(if mode == "dependent" { msg!("Dependent") } else { "Copy" });
             m.free_view_name(&format!("{} {word}", view_title(m, view)), true)
         }
     };
@@ -4602,7 +4609,7 @@ fn new_sheet(s: &mut Session, p: &Value) -> R {
             (101..).map(|n| format!("A{n}")).find(|n| !taken.contains(n.as_str())).unwrap_or_default()
         }
     };
-    let name = string(c, p, "name")?.unwrap_or_else(|| m.language.word("Unnamed").into());
+    let name = string(c, p, "name")?.unwrap_or_else(|| m.language.word(msg!("Unnamed")).into());
     let size = string(c, p, "size")?.map_or_else(|| "A3".into(), |z| z.trim().to_ascii_uppercase());
     let id = s.model_mut().insert(Element::Sheet(Sheet { number: number.clone(), name, size }));
     Ok(json!({"id": id, "number": number}))

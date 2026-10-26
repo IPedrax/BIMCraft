@@ -17,6 +17,7 @@ default = ["rvt"]
 rvt = ["dep:bimcraft-rvt"]
 
 [dependencies]
+bimcraft-i18n = { workspace = true }
 bimcraft-core = { workspace = true }
 bimcraft-rvt = { workspace = true, optional = true }
 bimcraft-ui-egui = { workspace = true }

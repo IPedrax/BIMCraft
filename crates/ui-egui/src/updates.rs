@@ -3,6 +3,8 @@
 //! this draws what it says and passes the user's clicks on. A window starts with no updater, so a test never phones home: the
 //! desktop's `main` attaches one.
 
+use bimcraft_i18n::msg;
+
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
@@ -88,10 +90,10 @@ impl BimApp {
                         RichText::new(tf("BIMCraft {} is available. You have {}.", &[&release.version.to_string(), &current])).strong(),
                     );
                     if release.installer.is_some() {
-                        if primary(ui, "Update now", "Downloads and checks the update; BIMCraft then closes, updates and starts again.") {
+                        if primary(ui, "Update now", msg!("Downloads and checks the update; BIMCraft then closes, updates and starts again.")) {
                             click = Some(Click::Update);
                         }
-                    } else if primary(ui, "Download", "Opens the release page on GitHub. This copy can't update itself.") {
+                    } else if primary(ui, "Download", msg!("Opens the release page on GitHub. This copy can't update itself.")) {
                         click = Some(Click::Page(release.page.clone()));
                     }
                     if ui.button(t("Later")).clicked() {
@@ -119,7 +121,7 @@ impl BimApp {
                     if primary(
                         ui,
                         "Restart and install",
-                        "Asks to save first if there are unsaved changes, then closes BIMCraft, installs the update and starts it again.",
+                        msg!("Asks to save first if there are unsaved changes, then closes BIMCraft, installs the update and starts it again."),
                     ) {
                         click = Some(Click::Restart);
                     }

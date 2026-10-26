@@ -7,6 +7,8 @@
 //! element's values of project parameters are keyed by theirs: renaming changes nothing a file holds but the name. A name
 //! that is a GUID is refused, so the two never mix.
 
+use bimcraft_i18n::ui_msg;
+
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 
@@ -49,17 +51,17 @@ impl Kind {
     pub fn label(&self) -> String {
         match self {
             Kind::Type(c) => format!("{c} type"),
-            Kind::Material => "material".into(),
-            Kind::Picture => "picture".into(),
+            Kind::Material => ui_msg!("material").into(),
+            Kind::Picture => ui_msg!("picture").into(),
             Kind::Cloud => "scan".into(),
-            Kind::Family => "family".into(),
-            Kind::Parameter => "parameter".into(),
+            Kind::Family => ui_msg!("family").into(),
+            Kind::Parameter => ui_msg!("parameter").into(),
             Kind::ViewFilter => "view filter".into(),
             Kind::ViewTemplate => "view template".into(),
-            Kind::Phase => "phase".into(),
-            Kind::PhaseFilter => "phase filter".into(),
-            Kind::OptionSet => "design option set".into(),
-            Kind::DesignOption => "design option".into(),
+            Kind::Phase => ui_msg!("phase").into(),
+            Kind::PhaseFilter => ui_msg!("phase filter").into(),
+            Kind::OptionSet => ui_msg!("design option set").into(),
+            Kind::DesignOption => ui_msg!("design option").into(),
             Kind::FamilyType => "family type".into(),
             Kind::FamilyParameter => "family parameter".into(),
         }

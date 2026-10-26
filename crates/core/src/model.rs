@@ -5,6 +5,8 @@
 //! a section or an elevation, millimetres along its line from its start, and up; on a sheet,
 //! millimetres of paper from its bottom left corner.
 
+use bimcraft_i18n::{msg, ui_msg};
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::f64::consts::{PI, TAU};
 use std::sync::Arc;
@@ -218,12 +220,12 @@ impl Location {
     /// As a menu names it.
     pub fn label(self) -> &'static str {
         match self {
-            Location::Centre => "Wall Centreline",
-            Location::CoreCentre => "Core Centreline",
-            Location::ExteriorFinish => "Finish Face: Exterior",
-            Location::InteriorFinish => "Finish Face: Interior",
-            Location::ExteriorCore => "Core Face: Exterior",
-            Location::InteriorCore => "Core Face: Interior",
+            Location::Centre => ui_msg!("Wall Centreline"),
+            Location::CoreCentre => ui_msg!("Core Centreline"),
+            Location::ExteriorFinish => ui_msg!("Finish Face: Exterior"),
+            Location::InteriorFinish => ui_msg!("Finish Face: Interior"),
+            Location::ExteriorCore => ui_msg!("Core Face: Exterior"),
+            Location::InteriorCore => ui_msg!("Core Face: Interior"),
         }
     }
 
@@ -709,9 +711,9 @@ impl Tag {
     /// The field a tag of category `cat` shows unless it names one: a door's or window's mark, a room's name, else the type.
     pub fn usual(cat: &str) -> &'static str {
         match cat {
-            "door" | "window" => "Mark",
-            "room" => "Name",
-            _ => "Type",
+            "door" | "window" => msg!("Mark"),
+            "room" => msg!("Name"),
+            _ => msg!("Type"),
         }
     }
 }
@@ -1016,10 +1018,10 @@ impl Facing {
 
     pub fn name(self) -> &'static str {
         match self {
-            Facing::North => "North",
-            Facing::South => "South",
-            Facing::East => "East",
-            Facing::West => "West",
+            Facing::North => msg!("North"),
+            Facing::South => msg!("South"),
+            Facing::East => msg!("East"),
+            Facing::West => msg!("West"),
         }
     }
 
@@ -1692,23 +1694,23 @@ impl Model {
         };
         // A library to start from: each material its colour, its cut's pattern and its surface's, and the texture it has.
         for (name, color, cut, surface, texture) in [
-            ("Brick", [178, 92, 70], Pattern::Brick, Pattern::Brick, Some(Kind::Brick)),
+            (msg!("Brick"), [178, 92, 70], Pattern::Brick, Pattern::Brick, Some(Kind::Brick)),
             ("Insulation", [232, 214, 140], Pattern::Insulation, Pattern::None, Some(Kind::Insulation)),
-            ("Concrete block", [176, 176, 170], Pattern::Crosshatch, Pattern::None, Some(Kind::Block)),
+            (msg!("Concrete block"), [176, 176, 170], Pattern::Crosshatch, Pattern::None, Some(Kind::Block)),
             ("Plaster", [238, 234, 224], Pattern::None, Pattern::None, Some(Kind::Plaster)),
             ("Concrete", [188, 188, 182], Pattern::Concrete, Pattern::None, Some(Kind::Concrete)),
-            ("Screed", [206, 200, 188], Pattern::Concrete, Pattern::None, Some(Kind::Concrete)),
+            (msg!("Screed"), [206, 200, 188], Pattern::Concrete, Pattern::None, Some(Kind::Concrete)),
             ("Timber", [196, 154, 102], Pattern::Diagonal, Pattern::Horizontal, Some(Kind::Boards)),
-            ("Gypsum board", [242, 242, 238], Pattern::None, Pattern::None, None),
-            ("Ceramic tile", [222, 220, 210], Pattern::Solid, Pattern::Grid, Some(Kind::Tile)),
-            ("Roof tiles", [170, 86, 64], Pattern::Solid, Pattern::Horizontal, Some(Kind::Roof)),
+            (msg!("Gypsum board"), [242, 242, 238], Pattern::None, Pattern::None, None),
+            (msg!("Ceramic tile"), [222, 220, 210], Pattern::Solid, Pattern::Grid, Some(Kind::Tile)),
+            (msg!("Roof tiles"), [170, 86, 64], Pattern::Solid, Pattern::Horizontal, Some(Kind::Roof)),
             ("Membrane", [70, 70, 74], Pattern::Solid, Pattern::None, None),
             ("Fabric", [176, 160, 136], Pattern::None, Pattern::None, Some(Kind::Fabric)),
             ("Porcelain", [244, 244, 240], Pattern::None, Pattern::None, None),
             ("Glass", [166, 200, 228], Pattern::None, Pattern::None, None),
             ("Metal", [150, 152, 158], Pattern::Solid, Pattern::None, Some(Kind::Metal)),
             ("PVC", [226, 226, 214], Pattern::Solid, Pattern::None, None),
-            ("Copper", [184, 115, 51], Pattern::Solid, Pattern::None, Some(Kind::Metal)),
+            (msg!("Copper"), [184, 115, 51], Pattern::Solid, Pattern::None, Some(Kind::Metal)),
         ] {
             let texture = texture.map(Texture::new);
             m.materials.insert(language.word(name).into(), Material { color, cut, surface, texture });

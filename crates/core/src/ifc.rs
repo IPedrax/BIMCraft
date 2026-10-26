@@ -9,6 +9,8 @@
 //! of the project's parameters, and of its phase and design option, goes in property sets of its own;
 //! the project's phases and design option sets in one on the project.
 
+use bimcraft_i18n::ui_msg;
+
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
@@ -1108,7 +1110,7 @@ pub fn export(m: &Model) -> String {
     // phases and filters a project in another language starts with are nothing it uses.
     // ponytail: JSON inside an IfcText, which only BIMCraft reads; IfcComplexProperty records if another tool needs them.
     let changed = [
-        ("Phase Filters", !phasing::is_default_filters(&m.phase_filters), serde_json::to_string(&m.phase_filters)),
+        (ui_msg!("Phase Filters"), !phasing::is_default_filters(&m.phase_filters), serde_json::to_string(&m.phase_filters)),
         ("Phase Overrides", !phasing::is_default_overrides(&m.phase_overrides), serde_json::to_string(&m.phase_overrides)),
         ("Design Option Sets", !m.option_sets.is_empty(), serde_json::to_string(&m.option_sets)),
     ];

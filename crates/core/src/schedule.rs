@@ -5,6 +5,8 @@
 //! (a phase by its place in the project's order, not its name) and, grouped, come together into one
 //! row for each set of their values.
 
+use bimcraft_i18n::{msg, ui_msg};
+
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -111,12 +113,12 @@ pub struct Table {
 /// The schedules every project has, as views: each one's category, and its name. Each is the
 /// project's own once it's placed on a sheet or changed.
 pub const VIEWS: [(&str, &str); 6] = [
-    ("room", "Room Schedule"),
-    ("door", "Door Schedule"),
-    ("window", "Window Schedule"),
-    ("wall", "Wall Schedule"),
-    ("floor", "Floor Schedule"),
-    ("level", "Level Schedule"),
+    ("room", msg!("Room Schedule")),
+    ("door", msg!("Door Schedule")),
+    ("window", msg!("Window Schedule")),
+    ("wall", msg!("Wall Schedule")),
+    ("floor", msg!("Floor Schedule")),
+    ("level", msg!("Level Schedule")),
 ];
 
 /// One of the schedules every project has, by its name (in any of the languages, in any case) or,
@@ -175,24 +177,24 @@ type Own = (&'static str, Kind, From);
 
 const ID: Own = ("Id", Kind::Number, From::Key("id"));
 const TYPE: Own = ("Type", Kind::Text, From::Key("type"));
-const FAMILY: Own = ("Family", Kind::Text, From::Key("family"));
+const FAMILY: Own = (msg!("Family"), Kind::Text, From::Key("family"));
 const LEVEL: Own = ("Level", Kind::Text, From::Level);
-const AREA: Own = ("Area", Kind::Area, From::Key("area_m2"));
+const AREA: Own = (msg!("Area"), Kind::Area, From::Key("area_m2"));
 const WIDTH: Own = ("Width", Kind::Length, From::Key("width"));
 const HEIGHT: Own = ("Height", Kind::Length, From::Key("height"));
 const LENGTH: Own = ("Length", Kind::Length, From::Key("length"));
 const THICKNESS: Own = ("Thickness", Kind::Length, From::Key("thickness"));
 const DEPTH: Own = ("Depth", Kind::Length, From::Key("depth"));
-const SYSTEM: Own = ("System", Kind::Text, From::Key("system"));
-const OFFSET: Own = ("Offset", Kind::Length, From::Key("offset"));
+const SYSTEM: Own = (ui_msg!("System"), Kind::Text, From::Key("system"));
+const OFFSET: Own = (msg!("Offset"), Kind::Length, From::Key("offset"));
 const MARK: Own = ("Mark", Kind::Text, From::Key("mark"));
 const NAME: Own = ("Name", Kind::Text, From::Key("name"));
 const HOST: Own = ("Wall", Kind::Number, From::Ref("host"));
-const COUNT: Own = ("Count", Kind::Number, From::Count);
+const COUNT: Own = (msg!("Count"), Kind::Number, From::Count);
 const PHASE_CREATED: Own = ("Phase Created", Kind::Text, From::Param);
 const PHASE_DEMOLISHED: Own = ("Phase Demolished", Kind::Text, From::Param);
 const DESIGN_OPTION: Own = ("Design Option", Kind::Text, From::Param);
-const VOLUME: Own = ("Volume", Kind::Number, From::Key("volume_m3"));
+const VOLUME: Own = (msg!("Volume"), Kind::Number, From::Key("volume_m3"));
 
 /// Each category's own fields, and how many of them, from the first, its schedule shows unless it
 /// chooses.
@@ -201,11 +203,11 @@ const OWN: &[(&str, usize, &[Own])] = &[
         "room",
         5,
         &[
-            ("Number", Kind::Text, From::Key("number")),
+            (msg!("Number"), Kind::Text, From::Key("number")),
             NAME,
             LEVEL,
             AREA,
-            ("Perimeter", Kind::Length, From::Metres("perimeter_m")),
+            (msg!("Perimeter"), Kind::Length, From::Metres("perimeter_m")),
             COUNT,
             PHASE_CREATED,
             PHASE_DEMOLISHED,
@@ -221,7 +223,7 @@ const OWN: &[(&str, usize, &[Own])] = &[
             TYPE,
             WIDTH,
             HEIGHT,
-            ("Sill", Kind::Length, From::Key("sill")),
+            (msg!("Sill"), Kind::Length, From::Key("sill")),
             LEVEL,
             HOST,
             FAMILY,
@@ -243,7 +245,7 @@ const OWN: &[(&str, usize, &[Own])] = &[
             THICKNESS,
             OFFSET,
             COUNT,
-            ("Structural", Kind::YesNo, From::Flag("structural")),
+            (ui_msg!("Structural"), Kind::YesNo, From::Flag("structural")),
             PHASE_CREATED,
             PHASE_DEMOLISHED,
             DESIGN_OPTION,
@@ -257,8 +259,8 @@ const OWN: &[(&str, usize, &[Own])] = &[
             ID,
             TYPE,
             LEVEL,
-            ("Slope", Kind::Number, From::Key("slope")),
-            ("Plan Area", Kind::Area, From::Key("area_m2")),
+            (msg!("Slope"), Kind::Number, From::Key("slope")),
+            (msg!("Plan Area"), Kind::Area, From::Key("area_m2")),
             OFFSET,
             COUNT,
             PHASE_CREATED,
@@ -377,9 +379,9 @@ const OWN: &[(&str, usize, &[Own])] = &[
             LEVEL,
             WIDTH,
             HEIGHT,
-            ("Risers", Kind::Number, From::Key("risers")),
-            ("Riser Height", Kind::Length, From::Key("riser_height")),
-            ("Tread", Kind::Length, From::Key("tread")),
+            (msg!("Risers"), Kind::Number, From::Key("risers")),
+            (msg!("Riser Height"), Kind::Length, From::Key("riser_height")),
+            (msg!("Tread"), Kind::Length, From::Key("tread")),
             LENGTH,
             COUNT,
             PHASE_CREATED,
@@ -417,7 +419,7 @@ const OWN: &[(&str, usize, &[Own])] = &[
             HEIGHT,
             AREA,
             VOLUME,
-            ("Gross Floor Area", Kind::Area, From::Key("gross_floor_area_m2")),
+            (msg!("Gross Floor Area"), Kind::Area, From::Key("gross_floor_area_m2")),
             COUNT,
             PHASE_CREATED,
             PHASE_DEMOLISHED,
@@ -989,7 +991,7 @@ fn keeps(f: &Filter, v: &Value, kind: Option<Kind>, units: Units) -> bool {
 /// A column's heading as a schedule shows it in `units`: an area's says m² or ft².
 pub fn heading(units: Units, column: &Column) -> String {
     match column.kind {
-        Kind::Area => format!("{} ({})", column.heading, units.area(0.0).1),
+        Kind::Area => format!(ui_msg!("{} ({})"), column.heading, units.area(0.0).1),
         _ => column.heading.clone(),
     }
 }
@@ -999,7 +1001,7 @@ pub fn heading(units: Units, column: &Column) -> String {
 /// for the caller to say in its language); text as it is.
 pub fn shown(units: Units, kind: Kind, v: &Value) -> String {
     match (v, kind) {
-        (Value::Bool(b), _) => (if *b { "Yes" } else { "No" }).into(),
+        (Value::Bool(b), _) => (if *b { msg!("Yes") } else { msg!("No") }).into(),
         (v, Kind::Length) if v.is_number() => units.length(v.as_f64().unwrap_or(0.0)),
         (v, Kind::Area) if v.is_number() => format!("{:.2}", units.area(v.as_f64().unwrap_or(0.0) * 1e6).0),
         (Value::Number(x), _) => format!("{}", (x.as_f64().unwrap_or(0.0) * 100.0).round() / 100.0 + 0.0),

@@ -2,6 +2,8 @@
 //! IFC GlobalId, as many as are pasted at once, and what isn't found is said; the plan that shows them opens, zoomed to them.
 //! What names the selection is each element's id, GUID and IFC GlobalId, to read or copy one, a column, or all.
 
+use bimcraft_i18n::msg;
+
 use bimcraft_core::inquiry::{self, Names};
 use egui::{Align, Button, Context, Grid, Id as UiId, Label, Layout, Modal, RichText, ScrollArea, TextEdit};
 
@@ -156,7 +158,7 @@ impl BimApp {
             ui.add_space(6.0);
             ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
                 Grid::new("ids-of-selection-grid").num_columns(6).striped(true).spacing([14.0, 4.0]).show(ui, |ui| {
-                    for h in ["Category", "Name", "ID", "GUID", "IFC GlobalId", ""] {
+                    for h in ["Category", "Name", msg!("ID"), msg!("GUID"), msg!("IFC GlobalId"), ""] {
                         ui.label(RichText::new(t(h)).strong());
                     }
                     ui.end_row();
@@ -184,10 +186,10 @@ impl BimApp {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 for (label, column, what) in [
-                    ("Copy IDs", Some(Column::Id), "Copied {} IDs."),
-                    ("Copy GUIDs", Some(Column::Guid), "Copied {} GUIDs."),
-                    ("Copy IFC GlobalIds", Some(Column::Ifc), "Copied {} IFC GlobalIds."),
-                    ("Copy All", None, "Copied {} rows, tab-separated."),
+                    (msg!("Copy IDs"), Some(Column::Id), msg!("Copied {} IDs.")),
+                    (msg!("Copy GUIDs"), Some(Column::Guid), msg!("Copied {} GUIDs.")),
+                    (msg!("Copy IFC GlobalIds"), Some(Column::Ifc), msg!("Copied {} IFC GlobalIds.")),
+                    (msg!("Copy All"), None, msg!("Copied {} rows, tab-separated.")),
                 ] {
                     if ui.add_enabled(!d.rows.is_empty(), Button::new(t(label))).clicked() {
                         copy = Some((copied(&d.rows, column), tf(what, &[&count])));
