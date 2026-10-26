@@ -774,6 +774,11 @@ impl Look {
         if o.halftone { halftone(c) } else { c }
     }
 
+    /// Whether the view fills element `id`'s surfaces with a colour of its own (its projection's fill), whatever theirs are.
+    pub fn filled(&self, id: Id) -> bool {
+        self.paint.get(&id).is_some_and(|o| o.projection.fill.is_some())
+    }
+
     /// The colour of the edges of element `id`'s surfaces in a 3D view, and of what a section sees
     /// beyond its line: `base` unless a projection's line colour says otherwise, lighter in halftone.
     pub fn edge(&self, id: Id, base: Rgb) -> Rgb {

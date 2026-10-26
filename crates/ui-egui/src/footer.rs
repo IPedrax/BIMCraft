@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use bimcraft_core::engine::Session;
 use bimcraft_core::graphics::{self, ANNOTATION, Detail, Group, MODEL, VisualStyle};
-use bimcraft_core::model::{Id, Model};
+use bimcraft_core::model::{Element, Id, Model};
 use egui::{
     Color32, FontId, Frame, Key, Margin, Popup, Response, RichText, Sense, Shape, Stroke, StrokeKind, TextEdit, Ui, WidgetInfo, WidgetType,
     pos2, vec2,
@@ -78,6 +78,10 @@ fn menu_button(ui: &mut Ui, label: &str, shown: &str, tip: &str, set_by: Option<
 
 /// What Reveal Hidden Elements draws what a view hides in.
 const REVEALED: &str = "#FF00FF";
+
+/// What High Contrast fills a view's point clouds with: a crimson that reads on white paper and on the dark canvas, and apart
+/// from the model's black lines.
+pub(crate) const HIGH_CONTRAST: [u8; 3] = [220, 20, 60];
 
 /// `base` with the graphics of the view `sheet` changed as `temp` says.
 fn shadowed(base: &Arc<Model>, sheet: Sheet, temp: &Temp) -> Result<Arc<Model>, String> {
@@ -239,6 +243,16 @@ impl BimApp {
         }
     }
 
+    /// High Contrast Point Clouds: the view fills its point clouds with [`HIGH_CONTRAST`], or, when it fills them with any
+    /// colour, gives them their own back; the rest of the category's override stays. One `graphics` command, one undo step.
+    pub(crate) fn scan_contrast(&mut self) {
+        let Some(view) = self.graphic_view() else { return };
+        let filled = self.graphics_shown().categories.get(graphics::SCANS[0]).is_some_and(|o| o.projection.fill.is_some());
+        // The command merges what it's given into the override: a null fill takes it away.
+        let fill = if filled { Value::Null } else { json!(HIGH_CONTRAST) };
+        self.run("graphics", json!({"view": view, "categories": {graphics::SCANS[0]: {"projection": {"fill": fill}}}}));
+    }
+
     /// The Scale and Detail Level menus of a plan, a ceiling plan, a section or an elevation, `view`: what the view keeps.
     fn scale_and_detail(&mut self, ui: &mut Ui, view: &Value) {
         let now = self.graphics_shown();
@@ -354,6 +368,20 @@ impl BimApp {
                 let tip = "Reveal Hidden Elements (RH): draw what this view hides in magenta; again to hide it";
                 if small_button(ui, Icon::Reveal, "Reveal Hidden Elements", temp.reveal, tip).clicked() {
                     self.temp_reveal();
+                }
+                // Only where the project has a scan to show.
+                if self.session.model.elements.values().any(|e| matches!(e, Element::PointCloud(_))) {
+                    let filled = self.graphics_shown().categories.get(graphics::SCANS[0]).is_some_and(|o| o.projection.fill.is_some());
+                    let set_by = self.controlled_by(Group::Categories);
+                    let tip = "High Contrast Point Clouds: draw this view's scans in one strong colour, so what they show reads; again for their own colours";
+                    let r = ui.add_enabled_ui(set_by.is_none(), |ui| small_button(ui, Icon::PointCloud, "High Contrast Point Clouds", filled, tip)).inner;
+                    let r = match set_by {
+                        Some(template) => r.on_disabled_hover_text(controlled_note(&template)),
+                        None => r,
+                    };
+                    if r.clicked() {
+                        self.scan_contrast();
+                    }
                 }
                 if temp.hides() || temp.reveal {
                     ui.add_space(8.0);

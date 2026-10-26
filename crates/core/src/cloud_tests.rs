@@ -419,6 +419,25 @@ fn a_plan_shows_what_of_a_scan_lies_in_its_view_range_and_picks_it_where_its_poi
 }
 
 #[test]
+fn a_scan_the_view_fills_with_one_colour_is_drawn_as_ink() {
+    let mut s = Session::new();
+    run(&mut s, "point_cloud", json!({"path": scan("ink", "floors.xyz", &floors()), "origin": "file"}));
+    let level = s.model.levels()[0].0;
+    let inked = |s: &Session| -> Vec<bool> {
+        let d = render::plan(&s.model, level, 600, 600);
+        d.prims.iter().filter_map(|p| if let render::Prim::Image { ink, .. } = p { Some(*ink) } else { None }).collect()
+    };
+    // Its own colours are no ink: a dark canvas dims them.
+    assert_eq!(inked(&s), [false]);
+    // Halftone alone keeps them its own.
+    run(&mut s, "graphics", json!({"view": "Level 1", "categories": {"pointcloud": {"halftone": true}}}));
+    assert_eq!(inked(&s), [false]);
+    // A colour the view gives every point is: the canvas shows it as it is.
+    run(&mut s, "graphics", json!({"view": "Level 1", "categories": {"pointcloud": {"projection": {"fill": [220, 20, 60]}}}}));
+    assert_eq!(inked(&s), [true]);
+}
+
+#[test]
 fn a_section_shows_a_scan_between_its_line_and_its_far_clip() {
     let mut s = Session::new();
     let id =

@@ -51,7 +51,7 @@ pub(crate) fn contents(d: &Drawing, paper: P2) -> (String, Vec<Picture>) {
                 path(&mut s, pts, *closed);
                 s.push_str("S\n");
             }
-            Prim::Image { at, width, height, rgba } => {
+            Prim::Image { at, width, height, rgba, .. } => {
                 let (w, h) = (*width as f32, *height as f32);
                 let _ = writeln!(s, "q {w} 0 0 {} {} {} cm /Im{} Do Q", -h, at.0, at.1 + h, images.len());
                 let pixels = rgba.as_chunks::<4>().0;

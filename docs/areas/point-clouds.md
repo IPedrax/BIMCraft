@@ -64,7 +64,14 @@ element, no bigger than its dots and clear between them; a picture picks where i
 so a click between a scan's points finds what is there, and a sheet's opaque pictures pick as they did. A PDF masks a picture
 that isn't all there with its alpha (`/SMask`), and an SVG holds it as a PNG. A reflected ceiling plan leaves scans out. The
 desktop's plan canvas loads a drawing's pictures as textures once for as long as it is shown (`PlanCache::pictures`) and, on a
-dark canvas, dims them so the lightened ink over them still reads.
+dark canvas, dims them so the lightened ink over them still reads. A scan the view fills with one colour (its projection's fill,
+`Look::filled`) is ink itself: its picture is marked `ink` and the dark canvas leaves it undimmed.
+
+A scan's own colours are mid-tones that read poorly over paper or the dark canvas, so the view control bar (`footer.rs`) has
+High Contrast Point Clouds wherever the project has a scan: it fills the view's `pointcloud` category with `HIGH_CONTRAST`, a
+crimson that reads on both and apart from the model's black lines, through the `graphics` command (merged into the category's
+override, so its halftone or lines stay), and again takes the fill away. It is lit whenever the category has a fill, whoever set
+it, and greyed out when a view template controls the categories.
 
 A plan snaps to a scan where its cut plane cuts it, to trace what was measured: of the points within `snap::CUT_BAND` of the cut,
 the nearest to the cursor seen from above (`Kind::Point`, "Point Cloud", switched by `Snaps::cloud` in Manage > Snaps). It comes

@@ -836,6 +836,12 @@ const WORDS: &[[&str; 3]] = &[
         "Revelar elementos ocultos (RH): dibuja en magenta lo que esta vista oculta; otra vez para ocultarlo",
     ],
     ["Revealing hidden elements", "Revelando elementos ocultos", "Revelando elementos ocultos"],
+    ["High Contrast Point Clouds", "Nuvens de pontos em alto contraste", "Nubes de puntos en alto contraste"],
+    [
+        "High Contrast Point Clouds: draw this view's scans in one strong colour, so what they show reads; again for their own colours",
+        "Nuvens de pontos em alto contraste: desenha as nuvens desta vista em uma só cor forte, para que se leia o que mostram; de novo para as suas próprias cores",
+        "Nubes de puntos en alto contraste: dibuja las nubes de esta vista en un solo color intenso, para que se lea lo que muestran; otra vez para sus propios colores",
+    ],
     ["Temporary Hide Element", "Ocultar Elemento Temporariamente", "Ocultar elemento temporalmente"],
     ["Temporary Hide Category", "Ocultar Categoria Temporariamente", "Ocultar categoría temporalmente"],
     ["Temporary Isolate Element", "Isolar Elemento Temporariamente", "Aislar elemento temporalmente"],

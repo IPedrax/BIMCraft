@@ -86,12 +86,14 @@ pub enum Prim {
         dash: Option<[f32; 2]>,
         closed: bool,
     },
-    /// A picture, its top left corner `at`, a pixel to a pixel: a section's on a sheet.
+    /// A picture, its top left corner `at`, a pixel to a pixel: a section's on a sheet. `ink` when all of it is one colour
+    /// the view gives (a scan the view fills), not colours of its own: a dark canvas shows it as it is rather than dimmed.
     Image {
         at: (f32, f32),
         width: u32,
         height: u32,
         rgba: Vec<u8>,
+        ink: bool,
     },
 }
 
@@ -111,7 +113,7 @@ impl Prim {
         match self {
             Prim::Fill { rings, color } => Prim::Fill { rings: rings.into_iter().map(mv).collect(), color },
             Prim::Line { pts, width, color, dash, closed } => Prim::Line { pts: mv(pts), width, color, dash, closed },
-            Prim::Image { at, width, height, rgba } => Prim::Image { at: (at.0 + dx, at.1 + dy), width, height, rgba },
+            Prim::Image { at, width, height, rgba, ink } => Prim::Image { at: (at.0 + dx, at.1 + dy), width, height, rgba, ink },
         }
     }
 
@@ -148,7 +150,7 @@ impl Prim {
                 }
                 runs.into_iter().map(|pts| Prim::Line { pts, width, color, dash, closed: false }).collect()
             }
-            Prim::Image { at, width, height, rgba } => {
+            Prim::Image { at, width, height, rgba, ink } => {
                 let side = |lo: f32, hi: f32, from: f32, n: u32| {
                     let first = (lo - from).ceil().clamp(0.0, n as f32) as u32;
                     (first, ((hi - from).floor().clamp(0.0, n as f32) as u32).max(first))
@@ -163,7 +165,7 @@ impl Prim {
                     let from = (y as usize * width as usize + x0 as usize) * 4;
                     kept.extend_from_slice(rgba.get(from..from + row).unwrap_or_default());
                 }
-                vec![Prim::Image { at: (at.0 + x0 as f32, at.1 + y0 as f32), width: x1 - x0, height: y1 - y0, rgba: kept }]
+                vec![Prim::Image { at: (at.0 + x0 as f32, at.1 + y0 as f32), width: x1 - x0, height: y1 - y0, rgba: kept, ink }]
             }
         }
     }
@@ -423,7 +425,7 @@ impl Drawing {
                     }
                 }
                 Prim::Line { pts, width, closed, .. } => (edges(&ring(pts), *closed) - f64::from(*width) / 2.0).max(0.0),
-                Prim::Image { at, width, height, rgba } => drawn_near(p, (*at, *width, *height), rgba, tol),
+                Prim::Image { at, width, height, rgba, .. } => drawn_near(p, (*at, *width, *height), rgba, tol),
             };
             if d <= f64::from(tol) && near.get(&id).is_none_or(|&(b, _)| d <= b) {
                 near.insert(id, (d, order));
@@ -1318,7 +1320,7 @@ fn scans(d: &mut Drawing, m: &Model, range: &PlanRange, look: &Look) {
             }
         }
         d.own(Some(id));
-        d.push(Prim::Image { at: (lo.0 as f32, lo.1 as f32), width: pw as u32, height: ph as u32, rgba });
+        d.push(Prim::Image { at: (lo.0 as f32, lo.1 as f32), width: pw as u32, height: ph as u32, rgba, ink: look.filled(id) });
     }
     d.own(None);
 }
@@ -2431,7 +2433,7 @@ pub fn svg(d: &Drawing) -> String {
                     if d.mitred(i) { "miter" } else { "round" }
                 )
             }
-            Prim::Image { at, width, height, rgba } => match picture(*width, *height, rgba).and_then(|pm| pm.encode_png().ok()) {
+            Prim::Image { at, width, height, rgba, .. } => match picture(*width, *height, rgba).and_then(|pm| pm.encode_png().ok()) {
                 Some(png) => write!(
                     s,
                     r#"<image x="{}" y="{}" width="{width}" height="{height}" href="data:image/png;base64,{}"/>"#,
@@ -2497,7 +2499,7 @@ fn paint(pm: &mut Pixmap, d: &Drawing) {
                     pm.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
                 }
             }
-            Prim::Image { at, width, height, rgba } => {
+            Prim::Image { at, width, height, rgba, .. } => {
                 if let Some(img) = picture(*width, *height, rgba) {
                     pm.draw_pixmap(
                         at.0.round() as i32,

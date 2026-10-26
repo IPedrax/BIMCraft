@@ -426,6 +426,11 @@ pub(super) const WORDS: &[[&str; 2]] = &[
         "显示隐藏的图元 (RH)：以洋红色绘制此视图中隐藏的内容；再次点击可将其隐藏",
     ],
     ["Revealing hidden elements", "正在显示隐藏的图元"],
+    ["High Contrast Point Clouds", "高对比度点云"],
+    [
+        "High Contrast Point Clouds: draw this view's scans in one strong colour, so what they show reads; again for their own colours",
+        "高对比度点云：以一种醒目的颜色绘制此视图中的扫描，使其内容清晰可读；再次点击恢复其原有颜色",
+    ],
     ["Temporary Hide Element", "临时隐藏图元"],
     ["Temporary Hide Category", "临时隐藏类别"],
     ["Temporary Isolate Element", "临时隔离图元"],

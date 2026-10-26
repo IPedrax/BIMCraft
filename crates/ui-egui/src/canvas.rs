@@ -395,12 +395,12 @@ pub(crate) fn paint(p: &Painter, at: Place, d: &Drawing, selected: &[Id], hovere
                     }
                 }
             }
-            Prim::Image { at: corner, width, height, .. } => {
+            Prim::Image { at: corner, width, height, ink, .. } => {
                 if let Some(texture) = pictures.next() {
                     let rect = Rect::from_min_size(at.pos(*corner), vec2(*width as f32, *height as f32) * at.k);
                     // On a dark canvas a plan's picture (a scan's) is dimmed, so the ink lightened over it still reads; a sheet's
-                    // paper stays white.
-                    let plain = if !at.paper && crate::style::dark() { Color32::from_gray(120) } else { Color32::WHITE };
+                    // paper stays white, and so does a scan the view fills with a colour of its own, which is ink itself.
+                    let plain = if !at.paper && !*ink && crate::style::dark() { Color32::from_gray(120) } else { Color32::WHITE };
                     let tint = accent.map_or(plain, |a| a.1);
                     p.image(*texture, rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), tint);
                 }

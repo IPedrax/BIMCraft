@@ -247,7 +247,7 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
             Some(Element::Section(_) | Element::Elevation(_)) => {
                 let scene = scene.get_or_insert_with(|| view3d::Scene::new(m));
                 if let Some(img) = render::section_image(m, scene, vp.view, view, &[]) {
-                    d.push(Prim::Image { at: (ox, oy), width: img.width, height: img.height, rgba: img.rgba });
+                    d.push(Prim::Image { at: (ox, oy), width: img.width, height: img.height, rgba: img.rgba, ink: false });
                 }
                 render::section_at(m, vp.view, view, 1.0)
             }
@@ -259,7 +259,7 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
             Some(Element::View3D(v)) => {
                 let cam = view3d::camera_in(m, v.azimuth, v.elevation, view.scale, ROOM * DENSITY, &Look::of(m, vp.view));
                 let img = scene.get_or_insert_with(|| view3d::Scene::new(m)).render_in(&cam, &[], &Look::of(m, vp.view));
-                d.push(Prim::Image { at: (ox, oy), width: img.width, height: img.height, rgba: img.rgba });
+                d.push(Prim::Image { at: (ox, oy), width: img.width, height: img.height, rgba: img.rgba, ink: false });
                 Drawing::new(view)
             }
             _ => continue,

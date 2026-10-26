@@ -79,6 +79,54 @@ fn properties_show_a_scan_and_move_it() {
     assert_eq!(pc.offset, 500.0);
 }
 
+/// The fill the active plan's graphics give point clouds, and whether they halftone them.
+fn scan_fill(h: &Harness<BimApp>) -> (Option<[u8; 3]>, bool) {
+    let g = h.state().graphics_shown();
+    g.categories.get("pointcloud").map_or((None, false), |o| (o.projection.fill, o.halftone))
+}
+
+#[test]
+fn high_contrast_on_the_view_control_bar_fills_the_views_point_clouds_with_one_colour_and_takes_it_off_again() {
+    // With no scan there is nothing to set.
+    let h = app(BOX);
+    assert!(h.query_by_label("High Contrast Point Clouds").is_none());
+    let path = face("contrast", "face.xyz", 0.0);
+    let mut h = app(&format!("point_cloud {}", json!({"path": path})));
+    // What the category has besides stays: here, halftone.
+    h.state_mut().run("graphics", json!({"categories": {"pointcloud": {"halftone": true}}}));
+    h.run();
+    assert!(!lit(&h, "High Contrast Point Clouds"));
+    press(&mut h, "High Contrast Point Clouds");
+    assert_eq!(scan_fill(&h), (Some(crate::footer::HIGH_CONTRAST), true));
+    assert!(lit(&h, "High Contrast Point Clouds"));
+    // The plan draws the scan as ink, which a dark canvas doesn't dim.
+    let m = &h.state().session.model;
+    let d = bimcraft_core::render::plan(m, m.levels()[0].0, 600, 600);
+    assert!(d.prims.iter().any(|p| matches!(p, bimcraft_core::render::Prim::Image { ink: true, .. })));
+    // Again, and the scans have their own colours back, with the rest of the override kept.
+    press(&mut h, "High Contrast Point Clouds");
+    assert_eq!(scan_fill(&h), (None, true));
+    assert!(!lit(&h, "High Contrast Point Clouds"));
+    // One step each: undo puts the colour back.
+    h.state_mut().run("undo", json!({}));
+    h.run();
+    assert_eq!(scan_fill(&h).0, Some(crate::footer::HIGH_CONTRAST));
+}
+
+#[test]
+fn high_contrast_is_lit_whenever_the_view_fills_its_point_clouds_and_off_takes_any_fill_away() {
+    let path = face("contrast-vv", "face.xyz", 0.0);
+    let mut h = app(&format!("point_cloud {}", json!({"path": path})));
+    // A colour of the user's own, given in Visibility/Graphics.
+    h.state_mut().run("graphics", json!({"categories": {"pointcloud": {"projection": {"fill": [0, 0, 255]}}}}));
+    h.run();
+    assert!(lit(&h, "High Contrast Point Clouds"));
+    press(&mut h, "High Contrast Point Clouds");
+    assert_eq!(scan_fill(&h), (None, false));
+    let g = h.state().graphics_shown();
+    assert!(!g.categories.contains_key("pointcloud"), "nothing is left to override: {:?}", g.categories);
+}
+
 #[test]
 fn visibility_graphics_lists_point_clouds_with_the_model_categories() {
     let path = face("vg", "face.xyz", 0.0);
