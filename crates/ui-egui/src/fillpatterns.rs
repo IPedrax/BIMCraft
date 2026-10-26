@@ -28,6 +28,7 @@ struct PatternRow {
 }
 
 /// A type as edited: the name it had, the name it has, its patterns as their rows (none, none), its colours, masking.
+#[derive(Clone)]
 struct TypeRow {
     was: Option<String>,
     name: String,
@@ -47,6 +48,9 @@ pub(crate) struct FillPatternsDialog {
     gone: Vec<bool>,
     /// The pattern whose families Edit Lines shows, and each family's dashes as typed.
     editing: Option<(usize, Vec<String>)>,
+    /// Edit Type's current row and the instances to assign it to; None opens Manage's table.
+    subject: Option<(usize, Vec<bimcraft_core::model::Id>)>,
+    error: Option<String>,
 }
 
 /// What the Patterns tab's buttons ask of the app: a file to import from, or to export to.
@@ -74,7 +78,7 @@ impl FillPatternsDialog {
             })
             .collect();
         let gone = vec![false; patterns.len()];
-        FillPatternsDialog { tab: 0, types, patterns, gone, editing: None }
+        FillPatternsDialog { tab: 0, types, patterns, gone, editing: None, subject: None, error: None }
     }
 
     /// The patterns a PAT file held, added to the draft (one of a name it has already takes its place): how many came.
@@ -95,6 +99,30 @@ impl FillPatternsDialog {
     /// The patterns as they are in the draft, for a PAT file.
     fn drafted(&self) -> Vec<(String, FillPattern)> {
         self.live().map(|(_, r)| (r.name.clone(), r.pattern.clone())).collect()
+    }
+
+    /// Open Edit Type for a region being placed or selected.
+    pub(crate) fn edit(m: &Model, name: &str, elements: Vec<bimcraft_core::model::Id>) -> Self {
+        let mut d = Self::new(m);
+        let row = d.types.iter().position(|r| r.name == name).unwrap_or(0);
+        d.subject = Some((row, elements));
+        d
+    }
+
+    /// Refuse name collisions before commands can accidentally update an existing definition.
+    fn validate_names(&self) -> Result<(), String> {
+        for names in [self.types.iter().map(|r| r.name.trim()).collect::<Vec<_>>(), self.live().map(|(_, r)| r.name.trim()).collect()] {
+            let mut seen = std::collections::BTreeSet::new();
+            for n in names {
+                if n.is_empty() {
+                    return Err(t("Enter a name for every type and pattern.").to_string());
+                }
+                if !seen.insert(n) {
+                    return Err(tf("The name `{}` is already in use.", &[n]));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// The patterns not deleted, with their rows.
@@ -144,11 +172,15 @@ fn colour_field(ui: &mut Ui, rgb: &mut [u8; 3], name: String) {
 /// A swatch of `p`, `width` x 22 px, in `colour`: a drafting pattern at 5 px to its mm, a model one at a tenth of a px.
 pub(crate) fn swatch(ui: &mut Ui, p: Option<&FillPattern>, width: f32, colour: Color32) {
     let (rect, _) = ui.allocate_exact_size(vec2(width, 22.0), Sense::hover());
+    paint_pattern(ui, rect, p, colour);
+    ui.painter().rect_stroke(rect, 2.0, Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color), egui::StrokeKind::Inside);
+}
+
+fn paint_pattern(ui: &Ui, rect: egui::Rect, p: Option<&FillPattern>, colour: Color32) {
     let painter = ui.painter_at(rect);
-    painter.rect_stroke(rect, 2.0, Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color), egui::StrokeKind::Inside);
     let Some(p) = p else { return };
     if p.is_solid() {
-        painter.rect_filled(rect.shrink(1.0), 2.0, colour);
+        painter.rect_filled(rect, 0.0, colour);
         return;
     }
     let px = if p.target == Target::Model { 0.1 } else { 5.0 };
@@ -296,6 +328,86 @@ fn families(ui: &mut Ui, d: &mut FillPatternsDialog) {
     if done {
         d.editing = None;
     }
+}
+
+/// Edit one region type, as in Revit's Type Properties; all edits stay in the draft until Apply or OK.
+fn edit_type(ui: &mut Ui, d: &mut FillPatternsDialog) {
+    let Some((mut picked, _)) = d.subject.clone() else { return };
+    ui.horizontal(|ui| {
+        ui.label(t("Type:"));
+        let c = ComboBox::from_id_salt("region-edit-type")
+            .selected_text(d.types.get(picked).map_or("", |r| r.name.as_str()))
+            .width(230.0)
+            .show_ui(ui, |ui| {
+                for (i, r) in d.types.iter().enumerate() {
+                    ui.selectable_value(&mut picked, i, &r.name);
+                }
+            });
+        c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, t("Region Type")));
+        if ui.button(t("Duplicate…")).clicked()
+            && let Some(r) = d.types.get(picked)
+        {
+            let mut copy = r.clone();
+            copy.was = None;
+            copy.name = fresh(&r.name, &d.types.iter().map(|r| r.name.as_str()).collect::<Vec<_>>());
+            picked = d.types.len();
+            d.types.push(copy);
+        }
+        if ui.button(t("New Type")).clicked() {
+            let name = fresh(t("Region Type"), &d.types.iter().map(|r| r.name.as_str()).collect::<Vec<_>>());
+            picked = d.types.len();
+            d.types.push(TypeRow {
+                was: None,
+                name,
+                foreground: None,
+                foreground_color: [0, 0, 0],
+                background: None,
+                background_color: [255, 255, 255],
+                masking: false,
+            });
+        }
+    });
+    if let Some((row, _)) = &mut d.subject {
+        *row = picked;
+    }
+    let names: Vec<(usize, String)> = d.live().map(|(i, p)| (i, p.name.clone())).collect();
+    let Some(r) = d.types.get_mut(picked) else { return };
+    ui.add_space(6.0);
+    Grid::new("region-type-properties").num_columns(2).spacing(vec2(16.0, 8.0)).show(ui, |ui| {
+        ui.label(t("Name"));
+        name_field(ui, &mut r.name, t("Type Name").to_string());
+        ui.end_row();
+        for (row, rgb, label, colour) in [
+            (&mut r.foreground, &mut r.foreground_color, "Foreground Pattern", "Foreground Color"),
+            (&mut r.background, &mut r.background_color, "Background Pattern", "Background Color"),
+        ] {
+            ui.label(t(label));
+            pattern_pick(ui, row, &names, t(label).to_string());
+            ui.end_row();
+            ui.label(t(colour));
+            colour_field(ui, rgb, t(colour).to_string());
+            ui.end_row();
+        }
+        ui.label("");
+        ui.checkbox(&mut r.masking, t("Masking"));
+        ui.end_row();
+    });
+    ui.add_space(8.0);
+    ui.label(t("Preview"));
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 100.0), Sense::hover());
+    ui.painter().rect_filled(rect, 0.0, Color32::WHITE);
+    // A sample model line makes the masking setting visible as well as the two fill layers.
+    let inner = rect.shrink(12.0);
+    ui.painter().line_segment([rect.left_center(), rect.right_center()], Stroke::new(2.0, Color32::LIGHT_GRAY));
+    if r.masking {
+        ui.painter().rect_filled(inner, 0.0, Color32::WHITE);
+    }
+    for (row, rgb) in [(r.background, r.background_color), (r.foreground, r.foreground_color)] {
+        let p = row.and_then(|i| d.patterns.get(i));
+        paint_pattern(ui, inner, p.map(|p| &p.pattern), Color32::from_rgb(rgb[0], rgb[1], rgb[2]));
+    }
+    ui.painter().rect_stroke(inner, 0.0, Stroke::new(1.0, Color32::GRAY), egui::StrokeKind::Inside);
+    ui.label(t("Changes to a type affect every filled region of that type."));
 }
 
 /// The patterns: a row each, its name, drafting or model, a swatch, and (a simple one) its angle, spacing and crosshatch,
@@ -449,10 +561,11 @@ impl BimApp {
     /// The Fill Patterns dialog, while it's open.
     pub(crate) fn fill_patterns_window(&mut self, ctx: &Context) {
         let Some(mut d) = self.fill_patterns_dialog.take() else { return };
+        let editing = d.subject.is_some();
         let (mut ok, mut apply, mut cancel, mut ask) = (false, false, false, None);
         let r = Modal::new(UiId::new("fill-patterns")).show(ctx, |ui| {
-            ui.set_width(860.0);
-            ui.label(RichText::new(t("Fill Patterns")).heading());
+            ui.set_width(if editing && d.tab == 0 { 520.0 } else { 860.0 });
+            ui.label(RichText::new(t(if editing { "Type Properties" } else { "Fill Patterns" })).heading());
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 for (i, tab) in TABS.iter().enumerate() {
@@ -462,10 +575,15 @@ impl BimApp {
                 }
             });
             ui.separator();
-            if d.tab == 0 {
-                types_tab(ui, &mut d);
-            } else {
+            if d.tab == 1 {
                 ask = patterns_tab(ui, &mut d);
+            } else if editing {
+                edit_type(ui, &mut d);
+            } else {
+                types_tab(ui, &mut d);
+            }
+            if let Some(error) = &d.error {
+                ui.colored_label(crate::style::pal().error, error);
             }
             ui.add_space(8.0);
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
@@ -474,26 +592,61 @@ impl BimApp {
                 ok = ui.button(t("OK")).clicked();
             });
         });
-        // What changed, as one undo step, all or nothing: a refusal keeps the dialog open to fix it, saying why.
         let mut failed = false;
         if ok || apply {
-            let commands = d.commands(&self.session.model);
-            if !commands.is_empty() {
-                let done = self
-                    .session
-                    .transaction("Fill Patterns", |s: &mut Session| commands.iter().try_for_each(|(c, p)| s.execute(c, p).map(|_| ())));
-                match done {
-                    Ok(()) => self.status = Status::default(),
-                    Err(e) => {
-                        self.status = Status { text: e, error: true };
-                        failed = true;
+            // Normalize names before validation and assignment, as the commands do.
+            for r in &mut d.types {
+                r.name = r.name.trim().to_string();
+            }
+            for r in &mut d.patterns {
+                r.name = r.name.trim().to_string();
+            }
+            let mut commands = d.commands(&self.session.model);
+            let selected = d.subject.as_ref().and_then(|(i, ids)| d.types.get(*i).map(|r| (r.name.clone(), ids.clone())));
+            if let Some((name, ids)) = &selected
+                && !ids.is_empty()
+            {
+                commands.push(("modify", json!({"ids": ids, "type": name})));
+            }
+            let done = d.validate_names().and_then(|()| {
+                if commands.is_empty() {
+                    return Ok(());
+                }
+                self.session.transaction(if editing { "Type Properties" } else { "Fill Patterns" }, |s: &mut Session| {
+                    commands.iter().try_for_each(|(c, p)| s.execute(c, p).map(|_| ()))
+                })
+            });
+            match done {
+                Ok(()) => {
+                    self.status = Status::default();
+                    // The sketch is a draft too: keep its type reference in step with applied renames.
+                    if let Some(sk) = &mut self.sketch {
+                        if let Some(row) = d.types.iter().find(|r| r.was.as_ref() == Some(&sk.region.0)) {
+                            sk.region.0 = row.name.clone();
+                        }
+                        if let Some((name, ids)) = &selected
+                            && ids.is_empty()
+                        {
+                            sk.region.0 = name.clone();
+                        }
+                    }
+                    if let Some((name, _)) = &selected {
+                        self.types.insert("region", name.clone());
+                    }
+                    if apply {
+                        let tab = d.tab;
+                        d = match selected {
+                            Some((name, ids)) => FillPatternsDialog::edit(&self.session.model, &name, ids),
+                            None => FillPatternsDialog::new(&self.session.model),
+                        };
+                        d.tab = tab;
                     }
                 }
-            }
-            if apply && !failed {
-                let tab = d.tab;
-                d = FillPatternsDialog::new(&self.session.model);
-                d.tab = tab;
+                Err(e) => {
+                    d.error = Some(e.clone());
+                    self.status = Status { text: e, error: true };
+                    failed = true;
+                }
             }
         }
         let drafted = d.drafted();

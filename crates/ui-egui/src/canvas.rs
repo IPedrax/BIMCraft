@@ -736,24 +736,16 @@ impl BimApp {
     /// vertical.
     pub(crate) fn snap(&self, m: &Model, level: Id, v: &View, at: (f32, f32), from: &[P2], square: bool) -> Found {
         let reach = Reach { point: SNAP / v.scale, line: f64::from(PICK) / v.scale };
-        let found = snap::snap(m, level, v.mm(at), reach, from, square, &self.snaps_now());
-        // A sketch's own ends, middles and crossings, which the plan doesn't draw, as the plan's are: loops close on them.
-        let p = v.mm(at);
-        let o = self.snaps_now();
-        let wanted = |k: Kind| match k {
-            Kind::Endpoint => o.endpoint,
-            Kind::Midpoint => o.midpoint,
-            Kind::Intersection => o.intersection,
-            _ => false,
-        };
-        let points = |k: Kind| matches!(k, Kind::Endpoint | Kind::Midpoint | Kind::Intersection | Kind::Centre);
-        let own = self
-            .sketch
-            .as_ref()
-            .and_then(|sk| bimcraft_core::sketch::snaps(&sk.lines, p, reach.point).into_iter().find(|(_, k)| wanted(*k)));
-        match own {
-            Some((q, kind)) if !points(found.kind) || q.dist(p) < found.at.dist(p) => Found { at: q, kind, guide: None },
-            _ => found,
+        let view = self.plan_key().unwrap_or(level);
+        match &self.sketch {
+            Some(sk) => {
+                let editing = match sk.of {
+                    crate::sketch::Of::Edit(id) => Some(id),
+                    _ => None,
+                };
+                snap::in_sketch(m, snap::Sketch { view, lines: &sk.lines, editing }, v.mm(at), reach, from, square, &self.snaps_now())
+            }
+            None => snap::snap(m, view, v.mm(at), reach, from, square, &self.snaps_now()),
         }
     }
 
@@ -1026,7 +1018,12 @@ impl BimApp {
             let over = local
                 .filter(|_| self.tool == Tool::Modify && sk.drag.is_none())
                 .and_then(|q| sk.line_at(view.mm(q), f64::from(PICK) / view.scale));
-            let cursor = local.map(|q| self.snap(&model, level, &view, q, &[], false).at);
+            let from: &[P2] = match &self.tool {
+                Tool::SketchLine(chain) if self.shape() == draw::Shape::Line || chain.len() < 2 => chain,
+                _ => &[],
+            };
+            let shift = ui.input(|i| i.modifiers.shift);
+            let cursor = local.map(|q| self.snap(&model, level, &view, q, from, shift).at);
             // Trim/Extend's and Fillet Arc's picks so far, lit as the lines picked are.
             let lit: Vec<usize> = self
                 .drawing

@@ -2476,6 +2476,7 @@ impl Model {
             m.keys().map(String::as_str).collect()
         }
         match crate::commands::category(category).as_str() {
+            "region" => names(&self.region_types),
             "wall" => names(&self.types.wall),
             "floor" => names(&self.types.floor),
             "door" => names(&self.types.door),
@@ -2495,6 +2496,7 @@ impl Model {
     /// with, else the first by name.
     pub fn default_type(&self, category: &str) -> Option<&str> {
         let preferred = match crate::commands::category(category).as_str() {
+            "region" => self.language.word(fills::SOLID_BLACK),
             "wall" | "floor" => "Generic - 200mm",
             "door" => "Single 900 x 2100",
             "column" => "Rectangular 400 x 400",

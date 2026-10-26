@@ -233,6 +233,21 @@ pub fn category(category: &str, several: bool) -> String {
 /// The interface's words in English, Brazilian Portuguese and Spanish; the core's words (schedule
 /// names and headings) besides.
 const WORDS: &[[&str; 3]] = &[
+    ["Foreground Pattern", "Padrão de primeiro plano", "Patrón de primer plano"],
+    ["Background Pattern", "Padrão de fundo", "Patrón de fondo"],
+    ["Foreground Color", "Cor de primeiro plano", "Color de primer plano"],
+    ["Background Color", "Cor de fundo", "Color de fondo"],
+    [
+        "Changes to a type affect every filled region of that type.",
+        "Alterações em um tipo afetam todas as regiões preenchidas desse tipo.",
+        "Los cambios en un tipo afectan a todas las regiones rellenas de ese tipo.",
+    ],
+    [
+        "Enter a name for every type and pattern.",
+        "Insira um nome para cada tipo e padrão.",
+        "Introduzca un nombre para cada tipo y patrón.",
+    ],
+    ["The name `{}` is already in use.", "O nome `{}` já está em uso.", "El nombre `{}` ya está en uso."],
     ["Autosave", "Salvamento automático", "Guardado automático"],
     [
         "An agent can work on this project: bimcraft-cli mcp --connect {}",

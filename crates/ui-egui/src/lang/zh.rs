@@ -2,6 +2,13 @@
 
 /// The interface's words in English and Simplified Chinese.
 pub(super) const WORDS: &[[&str; 2]] = &[
+    ["Foreground Pattern", "前景填充图案"],
+    ["Background Pattern", "背景填充图案"],
+    ["Foreground Color", "前景颜色"],
+    ["Background Color", "背景颜色"],
+    ["Changes to a type affect every filled region of that type.", "修改类型会影响使用该类型的所有填充区域。"],
+    ["Enter a name for every type and pattern.", "请为每个类型和图案输入名称。"],
+    ["The name `{}` is already in use.", "名称“{}”已被使用。"],
     ["A view always has a scale", "视图始终有比例"],
     ["Hairline", "发丝线"],
     ["Line Weights", "线宽"],

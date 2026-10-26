@@ -45,7 +45,7 @@ its side (`stairs::railing`), so it goes wherever its host goes. `modify` merges
 called `category`, the tag every element carries.
 
 Sketches (`sketch.rs`) are how an outline is drawn, the one solver everything with an outline and holes uses: floors,
-ceilings, roofs by footprint and shafts now, filled regions and topography next. A sketch is `SketchLine`s, straight or
+ceilings, roofs by footprint, shafts and filled regions now, topography next. A sketch is `SketchLine`s, straight or
 arcs (a point `through`), in any order, either way round; `sketch::solve` cuts arcs into chords no more than 5° round,
 welds ends within `TOL`, then names every problem at once with the lines it's about, what to fix first first
 (`Problem::rank`: a line too short or out of range; two lines crossing, or one ending part way along another; two along
@@ -71,6 +71,6 @@ polylines, Pick Lines: see [views and graphics](views-and-graphics.md)) and Pick
 line, an arc along an arc wall); a sketch line is any curve, so a circle or an ellipse is a loop of its own. Modify picks
 sketch lines (a click, a window box from the left, a crossing box from the right), a picked line's handles (its corners, a
 spline's points, a circle's centre) are grips that take every one joined there with them, and Delete removes them; Ctrl+Z takes back a line; the plan's snaps take the
-sketch's own ends, middles and crossings (`sketch::snaps`). Floor, Ceiling, Roof and Shaft each start a new one (Boundary
+sketch's own ends, middles, crossings and curves as well as visible view-specific detail (`snap::in_sketch`). Floor, Ceiling, Roof and Shaft each start a new one (Boundary
 Line, Sketch Ceiling); Edit Boundary redraws one selected. The Mode panel (Finish, Cancel; Edit Boundary) stands at the
 ribbon's right end.

@@ -566,6 +566,142 @@ mod tests {
     }
 
     #[test]
+    fn foreground_and_background_colors_render_separately_and_leave_holes_open() {
+        let mut s = Session::new();
+        run(
+            &mut s,
+            "filled_region_type",
+            json!({"name": "Two layers", "foreground": "Crosshatch", "foreground_color": [180, 20, 30],
+            "background": SOLID_FILL, "background_color": [220, 230, 240], "masking": true}),
+        );
+        run(&mut s, "filled_region", json!({"sketch": holed(), "type": "Two layers", "line_style": null}));
+        let drawing = plan(&s);
+        let pixels = tiny_skia::Pixmap::decode_png(&crate::render::png(&drawing).unwrap()).unwrap();
+        let has = |rgb: [u8; 3]| pixels.pixels().iter().any(|p| [p.red(), p.green(), p.blue()] == rgb);
+        // A thin hatch can straddle pixels: its ink blends with the background through antialiasing.
+        assert!(
+            pixels.pixels().iter().any(|p| p.red() > p.green().saturating_add(5) && p.red() > p.blue().saturating_add(5)),
+            "red foreground lines remain distinguishable over the blue-gray background"
+        );
+        assert!(has([220, 230, 240]), "background remains visible between the foreground lines");
+        let (x, y) = drawing.view.px(P2(2000.0, 2000.0));
+        let hole = pixels.pixel(x as u32, y as u32).unwrap();
+        assert_eq!([hole.red(), hole.green(), hole.blue()], [255, 255, 255]);
+        let saved = crate::model::Model::from_json(&s.model.to_json().unwrap()).unwrap();
+        assert_eq!(saved.region_types["Two layers"], s.model.region_types["Two layers"]);
+    }
+
+    #[test]
+    fn non_masking_regions_replace_model_backgrounds_but_keep_visible_cut_and_projection_ink() {
+        let mut s = Session::new();
+        run(&mut s, "material", json!({"name": "Hatched", "cut": "diagonal"}));
+        run(&mut s, "type", json!({"category": "wall", "name": "Hatched Wall", "layers": [{"material": "Hatched", "thickness": 500}]}));
+        run(&mut s, "wall", json!({"points": [[0,0], [4000,4000]], "type": "Hatched Wall"}));
+        let low = run(&mut s, "wall", json!({"points": [[0,1500], [4000,1500]], "height": 500, "type": "Hatched Wall"}))["ids"][0].clone();
+        run(&mut s, "graphics", json!({"elements": {low.to_string(): {"projection": {"color": [255,0,0]}}}}));
+        run(
+            &mut s,
+            "filled_region_type",
+            json!({"name": "Blue", "foreground": SOLID_FILL, "foreground_color": [0,0,255], "masking": false}),
+        );
+        run(&mut s, "filled_region", json!({"sketch": lines(1000.0, 1000.0, 2000.0), "type": "Blue", "line_style": null}));
+        let render = |s: &Session| {
+            let d = plan(s);
+            let pm = tiny_skia::Pixmap::decode_png(&crate::render::png(&d).unwrap()).unwrap();
+            (d.view, pm)
+        };
+        let count = |v: View, pm: &tiny_skia::Pixmap, p: P2, predicate: fn([u8; 3]) -> bool| {
+            let (x, y) = v.px(p);
+            (-5..=5)
+                .flat_map(|dx| (-5..=5).map(move |dy| (dx, dy)))
+                .filter_map(|(dx, dy)| pm.pixel((x as i32 + dx) as u32, (y as i32 + dy) as u32))
+                .filter(|c| predicate([c.red(), c.green(), c.blue()]))
+                .count()
+        };
+        // A one-pixel hatch centered on a pixel boundary blends its ink with the blue behind it.
+        let dark = |c: [u8; 3]| c[0] < 80 && c[1] < 80 && c[2] < 200;
+        let red = |c: [u8; 3]| c[0] > 150 && c[1] < 80 && c[2] < 80;
+        let (v, pm) = render(&s);
+        assert!(count(v, &pm, P2(2500.0, 2500.0), dark) > 0, "cut hatch above the region");
+        assert!(count(v, &pm, P2(2500.0, 1750.0), red) > 0, "projected outline above the region");
+        assert_eq!(count(v, &pm, P2(1750.0, 1750.0), red), 0, "a cut wall still occludes the low wall behind it");
+        assert!(pm.pixels().iter().any(|c| [c.red(), c.green(), c.blue()] == [0, 0, 255]), "region replaces the cut background");
+        run(&mut s, "material", json!({"name": "Hatched", "cut": "solid"}));
+        let (v, solid) = render(&s);
+        let (x, y) = v.px(P2(2500.0, 2500.0));
+        let c = solid.pixel(x as u32, y as u32).unwrap();
+        assert_eq!([c.red(), c.green(), c.blue()], [25, 25, 25], "solid model foreground also stays above a non-masking fill");
+        run(&mut s, "material", json!({"name": "Hatched", "cut": "diagonal"}));
+        run(&mut s, "filled_region_type", json!({"name": "Blue", "masking": true}));
+        let (v, pm) = render(&s);
+        assert_eq!(count(v, &pm, P2(2500.0, 2500.0), dark), 0, "masking covers cut patterns");
+        assert_eq!(count(v, &pm, P2(2500.0, 1750.0), red), 0, "masking covers projected lines");
+    }
+
+    #[test]
+    fn non_masking_regions_in_sections_retain_cut_edges_and_projected_model_lines() {
+        let mut s = Session::new();
+        run(&mut s, "material", json!({"name": "Plain", "cut": "none"}));
+        run(&mut s, "type", json!({"category": "wall", "name": "Plain Wall", "layers": [{"material": "Plain", "thickness": 200}]}));
+        run(&mut s, "wall", json!({"points": [[3000,0],[3000,6000]], "type": "Plain Wall"}));
+        run(&mut s, "column", json!({"at": [6000,4500]}));
+        let section = run(&mut s, "section", json!({"start": [-1000,3000], "end": [9000,3000]}))["id"].as_u64().unwrap();
+        run(&mut s, "filled_region_type", json!({"name": "Blue", "foreground": SOLID_FILL, "foreground_color": [0,0,255]}));
+        run(
+            &mut s,
+            "filled_region",
+            json!({"view": section, "type": "Blue", "line_style": null,
+            "sketch": [[[3000,1000],[8000,1000]],[[8000,1000],[8000,2000]],[[8000,2000],[3000,2000]],[[3000,2000],[3000,1000]]]}),
+        );
+        let v = View { scale: 0.08, cx: 5000.0, cy: 1500.0, width: 800, height: 400 };
+        let sample = |pm: &tiny_skia::Pixmap, p: P2| {
+            let (x, y) = v.px(p);
+            (-3..=3)
+                .flat_map(|dx| (-3..=3).map(move |dy| (dx, dy)))
+                .filter_map(|(dx, dy)| pm.pixel((x as i32 + dx) as u32, (y as i32 + dy) as u32))
+                .filter(|c| c.red() < 100 && c.green() < 100 && c.blue() < 100)
+                .count()
+        };
+        let pm = tiny_skia::Pixmap::decode_png(&crate::render::section_png(&s.model, section, v).unwrap()).unwrap();
+        assert!(sample(&pm, P2(3900.0, 1500.0)) > 0, "the cut wall edge stays in front");
+        assert!(sample(&pm, P2(6800.0, 1500.0)) > 0, "the projected column stays visible");
+        let (x, y) = v.px(P2(4000.0, 1500.0));
+        let c = pm.pixel(x as u32, y as u32).unwrap();
+        assert_eq!([c.red(), c.green(), c.blue()], [0, 0, 255], "cut background replaced");
+        run(&mut s, "filled_region_type", json!({"name": "Blue", "masking": true}));
+        let pm = tiny_skia::Pixmap::decode_png(&crate::render::section_png(&s.model, section, v).unwrap()).unwrap();
+        assert_eq!(sample(&pm, P2(3900.0, 1500.0)), 0);
+        assert_eq!(sample(&pm, P2(6800.0, 1500.0)), 0);
+    }
+
+    #[test]
+    fn non_masking_regions_keep_their_holes_and_do_not_reveal_model_ink_through_a_mask() {
+        let mut s = Session::new();
+        run(&mut s, "material", json!({"name": "Plain", "cut": "none"}));
+        run(&mut s, "type", json!({"category": "wall", "name": "Plain Wall", "layers": [{"material": "Plain", "thickness": 400}]}));
+        run(&mut s, "wall", json!({"points": [[0,2000],[4000,2000]], "type": "Plain Wall"}));
+        run(&mut s, "filled_region_type", json!({"name": "Blue", "foreground": SOLID_FILL, "foreground_color": [0,0,255]}));
+        let mut sketch = lines(1000.0, 1000.0, 2000.0);
+        sketch.extend(lines(1750.0, 1750.0, 500.0));
+        run(&mut s, "filled_region", json!({"sketch": sketch, "type": "Blue", "line_style": null}));
+        let d = plan(&s);
+        let pm = tiny_skia::Pixmap::decode_png(&crate::render::png(&d).unwrap()).unwrap();
+        let at = |pm: &tiny_skia::Pixmap, p: P2| {
+            let (x, y) = d.view.px(p);
+            let c = pm.pixel(x as u32, y as u32).unwrap();
+            [c.red(), c.green(), c.blue()]
+        };
+        assert_eq!(at(&pm, P2(1500.0, 2000.0)), [0, 0, 255]);
+        assert_eq!(at(&pm, P2(2000.0, 2000.0)), [168, 168, 168], "the hole leaves the model background alone");
+        run(&mut s, "filled_region", json!({"sketch": lines(1250.0,1800.0,500.0), "type": "Masking", "line_style": null}));
+        run(&mut s, "filled_region", json!({"sketch": lines(1000.0,1000.0,2000.0), "type": "Blue", "line_style": null}));
+        let pm = tiny_skia::Pixmap::decode_png(&crate::render::png(&plan(&s)).unwrap()).unwrap();
+        assert_eq!(at(&pm, P2(1500.0, 2200.0)), [0, 0, 255], "a later non-masking region cannot restore model ink through a mask");
+        let c = at(&pm, P2(2500.0, 2200.0));
+        assert!(c[2] < 150, "the model edge outside the mask is still visible: {c:?}");
+    }
+
+    #[test]
     fn a_masking_region_covers_the_model_and_the_annotation_stays_over_it() {
         let mut s = Session::new();
         let w = run(&mut s, "wall", json!({"points": [[0, 2000], [4000, 2000]]}))["ids"][0].as_u64().unwrap();

@@ -70,8 +70,6 @@ enum Kind {
     LocationLine,
     /// A detail line's line style: a drop-down of the project's.
     LineStyle,
-    /// A filled region's type: a drop-down of the project's.
-    RegionType,
     /// A filled region's boundary: a line style, or invisible lines (none).
     RegionLines,
     /// Which line of a run's section its heights are: a drop-down.
@@ -195,7 +193,6 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "shape", "Shape", Shown),
         ],
         "region" => &[
-            ("Graphics", "type", "Region Type", RegionType),
             ("Graphics", "line_style", "Line Style", RegionLines),
             ("Graphics", "pattern_angle", "Pattern Angle (°)", Number),
             ("Dimensions", "area_m2", "Area", AreaShown),
@@ -687,6 +684,9 @@ impl TypeDialog {
 impl BimApp {
     fn subject(&self) -> Subject {
         let m = &self.session.model;
+        if matches!(self.sketch.as_ref().map(|sk| sk.of), Some(crate::sketch::Of::Region { .. })) {
+            return Subject::New("region");
+        }
         match (self.selection.as_slice(), &self.tool, self.sheet) {
             (&[id], _, _) => Subject::Element(id),
             ([_, _, ..], _, _) => {
@@ -760,6 +760,17 @@ impl BimApp {
     /// The type Edit Type opens: its category, its name, and the selected elements on it.
     pub(crate) fn type_subject(&self) -> Option<(&'static str, String, Vec<Id>)> {
         let m = &self.session.model;
+        if let Some(sk) = &self.sketch {
+            match sk.of {
+                crate::sketch::Of::Region { .. } => return Some(("region", sk.region.0.clone(), Vec::new())),
+                crate::sketch::Of::Edit(id) => {
+                    if let Some(Element::FilledRegion(r)) = m.elements.get(id) {
+                        return Some(("region", r.type_name.clone(), vec![id]));
+                    }
+                }
+                _ => {}
+            }
+        }
         let category = match self.subject() {
             Subject::Element(id) => m.elements.get(id)?.category(),
             Subject::Elements(category) | Subject::New(category) => category,
@@ -818,6 +829,10 @@ impl BimApp {
 
     pub(crate) fn edit_type(&mut self) {
         if let Some((category, name, elements)) = self.type_subject() {
+            if category == "region" {
+                self.fill_patterns_dialog = Some(crate::fillpatterns::FillPatternsDialog::edit(&self.session.model, &name, elements));
+                return;
+            }
             let pair = if category == "component" {
                 self.component_type()
             } else {
@@ -896,7 +911,7 @@ impl BimApp {
     /// The Type Selector: the category and the type of what the palette shows, a drop-down of
     /// the category's types.
     fn type_selector(&mut self, ui: &mut Ui, model: &Model, subject: Subject) {
-        let (category, current) = match subject {
+        let (category, mut current) = match subject {
             Subject::Element(id) => match model.elements.get(id) {
                 Some(e) => (e.category(), element_json(model, id)["type"].as_str().map(String::from)),
                 None => return,
@@ -911,6 +926,11 @@ impl BimApp {
             Subject::View3D => ("3d view", None),
             Subject::Schedule => ("schedule", None),
         };
+        if category == "region"
+            && let Some(sk) = &self.sketch
+        {
+            current = Some(sk.region.0.clone());
+        }
         // A component's: its family over its type; every family's types to pick from. A door's or a window's: the project's own
         // types, then those of its families, each as `Family: Type`.
         let hosted = match category {
@@ -1008,6 +1028,12 @@ impl BimApp {
                     p["family"] = Value::Null;
                 }
                 self.run("modify", p);
+            }
+            (Some(n), Subject::New("region")) => {
+                if let Some(sk) = &mut self.sketch {
+                    sk.region.0 = n.clone();
+                }
+                self.types.insert("region", n);
             }
             (Some(n), Subject::New(category)) => {
                 self.opening_families.remove(category);
@@ -1137,12 +1163,6 @@ impl BimApp {
                             }
                             LineStyle => {
                                 let options: Vec<String> = model.line_styles.keys().cloned().collect();
-                                if let Some(s) = combo(ui, (id, key), name.id, val.as_str().unwrap_or_default(), &options) {
-                                    change = Some((key, Ok(json!(s))));
-                                }
-                            }
-                            RegionType => {
-                                let options: Vec<String> = model.region_types.keys().cloned().collect();
                                 if let Some(s) = combo(ui, (id, key), name.id, val.as_str().unwrap_or_default(), &options) {
                                     change = Some((key, Ok(json!(s))));
                                 }

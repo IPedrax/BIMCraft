@@ -259,8 +259,16 @@ impl BimApp {
                 let masks = if masks.is_empty() { m.region_types.keys().collect() } else { masks };
                 (first(bimcraft_core::fills::MASKING, masks), None)
             }
+            Of::Edit(id) if matches!(m.elements.get(id), Some(Element::FilledRegion(_))) => {
+                let Some(Element::FilledRegion(r)) = m.elements.get(id) else { return };
+                (r.type_name.clone(), r.line_style.clone())
+            }
             _ => (
-                first(bimcraft_core::fills::SOLID_BLACK, m.region_types.keys().collect()),
+                self.types
+                    .get("region")
+                    .filter(|n| m.region_types.contains_key(*n))
+                    .cloned()
+                    .unwrap_or_else(|| first(bimcraft_core::fills::SOLID_BLACK, m.region_types.keys().collect())),
                 Some(first(bimcraft_core::lines::THIN, m.line_styles.keys().collect())).filter(|s| !s.is_empty()),
             ),
         };

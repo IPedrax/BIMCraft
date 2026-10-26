@@ -27,9 +27,11 @@ fn a_filled_region_is_sketched_in_the_options_bars_type_and_line_style_any_numbe
     assert_eq!((field(&h, r, "type"), field(&h, r, "line_style")), (json!("Crosshatch"), json!(null)));
     assert_eq!(field(&h, r, "area_m2"), json!(6.0), "two loops, one region");
     assert_eq!(h.state().selection, vec![r]);
-    // Its type and lines in Properties; its sketch with Edit Boundary.
+    // Its type only in the Type Selector, its lines in Properties; its sketch with Edit Boundary.
     press(&mut h, "Modify | Filled Regions");
-    choose(&mut h, "Region Type", "Sand");
+    assert!(h.query_by_role_and_label(Role::ComboBox, "Region Type").is_none(), "type is only in the Type Selector");
+    press(&mut h, "Type Selector");
+    press(&mut h, "Sand");
     choose(&mut h, "Line Style", "Wide Lines");
     assert_eq!((field(&h, r, "type"), field(&h, r, "line_style")), (json!("Sand"), json!("Wide Lines")));
     press(&mut h, "Edit Boundary");
@@ -153,4 +155,142 @@ fn align_moves_a_regions_model_pattern_onto_the_line_picked_first() {
     click(&mut h, P2(2100.0, 2500.0));
     assert_eq!(field(&h, region, "pattern_origin"), json!([-1600.0, 0.0]));
     assert_eq!(h.state().tool, Tool::Align(None));
+}
+
+#[test]
+fn edit_type_during_a_region_sketch_creates_a_type_with_independent_fill_layers() {
+    let mut h = app(BOX);
+    shortcut(&mut h, "FR");
+    press(&mut h, "Edit Type");
+    assert!(h.query_by_label("Type Properties").is_some());
+    press(&mut h, "Duplicate…");
+    type_into(&mut h, "Type Name", "Earth on gray");
+    choose(&mut h, "Foreground Pattern", "Diagonal Up");
+    choose(&mut h, "Background Pattern", "Solid fill");
+    press(&mut h, "Masking");
+    let steps = h.state().session.history().len();
+    press(&mut h, "OK");
+    let ty = &h.state().session.model.region_types["Earth on gray"];
+    assert_eq!(ty.foreground.as_deref(), Some("Diagonal Up"));
+    assert_eq!(ty.background.as_deref(), Some("Solid fill"));
+    assert!(ty.masking);
+    assert_eq!(h.state().session.history().len(), steps + 1);
+    assert_eq!(h.state().sketch.as_ref().unwrap().region.0, "Earth on gray");
+    rectangle(&mut h, P2(1000.0, 1000.0), P2(3000.0, 3000.0));
+    press(&mut h, "Finish Edit Mode");
+    assert_eq!(field(&h, ids(&h, "region")[0], "type"), json!("Earth on gray"));
+}
+
+#[test]
+fn region_edit_type_changes_all_instances_renames_and_cancels_a_duplicate() {
+    let mut h = app(&format!(
+        r#"{BOX}
+filled_region {{"sketch": [[[1000,1000],[3000,1000]],[[3000,1000],[3000,3000]],[[3000,3000],[1000,3000]],[[1000,3000],[1000,1000]]]}}
+filled_region {{"sketch": [[[4000,1000],[5000,1000]],[[5000,1000],[5000,2000]],[[5000,2000],[4000,2000]],[[4000,2000],[4000,1000]]]}}"#
+    ));
+    let regions = ids(&h, "region");
+    h.state_mut().selection = vec![regions[0]];
+    h.run();
+    press(&mut h, "Edit Type");
+    type_into(&mut h, "Type Name", "Shared fill");
+    choose(&mut h, "Foreground Pattern", "<None>");
+    choose(&mut h, "Background Pattern", "Crosshatch");
+    h.get_all_by_label("Apply").max_by(|a, b| a.rect().left().total_cmp(&b.rect().left())).unwrap().click_accesskit();
+    h.run();
+    assert!(h.query_by_label("Type Properties").is_some());
+    for r in &regions {
+        assert_eq!(field(&h, *r, "type"), json!("Shared fill"));
+    }
+    assert_eq!(h.state().session.model.region_types["Shared fill"].background.as_deref(), Some("Crosshatch"));
+    let before = h.state().session.model.to_json().unwrap();
+    press(&mut h, "Duplicate…");
+    type_into(&mut h, "Type Name", "Discard me");
+    press(&mut h, "Cancel");
+    assert_eq!(h.state().session.model.to_json().unwrap(), before);
+    key(&mut h, Key::Escape);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert!(!h.state().session.model.region_types.contains_key("Shared fill"));
+}
+
+#[test]
+fn region_sketch_snaps_to_detail_lines_and_existing_region_boundaries() {
+    use bimcraft_core::snap::Kind;
+    let mut h = app(&format!(
+        r#"{BOX}
+detail_line {{"points": [[1000,1000],[5000,1000]]}}
+filled_region {{"sketch": [[[2000,3000],[6000,3000]],[[6000,3000],[6000,5000]],[[6000,5000],[2000,5000]],[[2000,5000],[2000,3000]]]}}"#
+    ));
+    shortcut(&mut h, "FR");
+    let f = hover(&mut h, P2(1030.0, 1020.0)).unwrap();
+    assert_eq!((f.kind, f.at), (Kind::Endpoint, P2(1000.0, 1000.0)));
+    click(&mut h, P2(1030.0, 1020.0));
+    let f = hover(&mut h, P2(4020.0, 3030.0)).unwrap();
+    assert_eq!((f.kind, f.at), (Kind::Midpoint, P2(4000.0, 3000.0)));
+    click(&mut h, P2(4020.0, 3030.0));
+    let line = &h.state().sketch.as_ref().unwrap().lines[0];
+    assert_eq!((line.start(), line.end()), (P2(1000.0, 1000.0), P2(4000.0, 3000.0)));
+}
+
+#[test]
+fn new_region_types_reject_duplicate_names_without_overwriting_existing_types() {
+    let mut h = app(BOX);
+    shortcut(&mut h, "FR");
+    press(&mut h, "Edit Type");
+    let before = h.state().session.model.to_json().unwrap();
+    press(&mut h, "New Type");
+    type_into(&mut h, "Type Name", "Crosshatch");
+    press(&mut h, "OK");
+    assert!(h.state().fill_patterns_dialog.is_some());
+    assert!(h.state().status.text.contains("already in use"));
+    assert_eq!(h.state().session.model.to_json().unwrap(), before);
+    type_into(&mut h, "Type Name", "My new region");
+    choose(&mut h, "Foreground Pattern", "Sand");
+    press(&mut h, "OK");
+    assert!(h.state().fill_patterns_dialog.is_none(), "{}", h.state().status.text);
+    assert_eq!(h.state().session.model.region_types["My new region"].foreground.as_deref(), Some("Sand"));
+}
+
+#[test]
+fn edit_type_keeps_annotation_boundary_styles_and_pattern_placement_and_imports_pat_patterns() {
+    let mut h = app(BOX);
+    shortcut(&mut h, "FR");
+    choose(&mut h, "Line Style", "Wide Lines");
+    rectangle(&mut h, P2(1000.0, 1000.0), P2(4000.0, 3000.0));
+    key(&mut h, Key::Escape);
+    click(&mut h, P2(2000.0, 1000.0));
+    choose(&mut h, "Line Style", "<Invisible lines>");
+    press(&mut h, "Finish Edit Mode");
+    let id = ids(&h, "region")[0];
+    h.state_mut().session.execute("move", &json!({"ids": [id], "by": [150, 75]})).unwrap();
+    h.state_mut().session.execute("rotate", &json!({"ids": [id], "about": [0, 0], "angle": 30})).unwrap();
+    h.run();
+    let Some(Element::FilledRegion(before)) = h.state().session.model.elements.get(id).cloned() else { panic!("region") };
+    assert!(before.sketch.iter().any(|l| l.invisible));
+    assert!(before.sketch.iter().any(|l| l.style.as_deref() == Some("Wide Lines")));
+    press(&mut h, "Edit Type");
+    press(&mut h, "Duplicate…");
+    type_into(&mut h, "Type Name", "Annotation Hatch");
+    press(&mut h, "Patterns");
+    let dir = tempfile::tempdir().unwrap();
+    let pat = dir.path().join("annotation.pat");
+    std::fs::write(&pat, ";%UNITS=MM\n*Annotation Pattern\n;%TYPE=MODEL\n45,0,0,0,100\n").unwrap();
+    h.state_mut().import_patterns(&pat);
+    h.run();
+    press(&mut h, "Annotation Pattern: Edit Lines");
+    press(&mut h, "Add Family");
+    type_into(&mut h, "Annotation Pattern family 2: Spacing", "200");
+    press(&mut h, "Region Types");
+    choose(&mut h, "Foreground Pattern", "Annotation Pattern");
+    press(&mut h, "OK");
+    assert!(h.state().fill_patterns_dialog.is_none(), "{}", h.state().status.text);
+    let Some(Element::FilledRegion(after)) = h.state().session.model.elements.get(id) else { panic!("region") };
+    assert_eq!(after.type_name, "Annotation Hatch");
+    assert_eq!(
+        (&after.sketch, after.pattern_origin, after.pattern_angle, &after.line_style),
+        (&before.sketch, before.pattern_origin, before.pattern_angle, &before.line_style)
+    );
+    let p = &h.state().session.model.fill_patterns["Annotation Pattern"];
+    assert_eq!((p.target, p.lines.len()), (Target::Model, 2));
+    assert_eq!(p.lines[1].spacing, 200.0);
 }

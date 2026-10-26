@@ -30,6 +30,8 @@ use crate::view3d::{self, Camera, Clip, Image, Scene};
 use crate::walls::{self, Axis};
 use crate::{font, massing, sheet, stairs};
 
+mod regions;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Rgb(pub u8, pub u8, pub u8);
 
@@ -74,6 +76,7 @@ impl Drawing {
     }
 }
 
+#[derive(Clone)]
 pub enum Prim {
     Fill {
         rings: Vec<Vec<(f32, f32)>>,
@@ -209,6 +212,7 @@ pub struct Drawing {
     /// The pen each line is drawn in, for [`Drawing::weigh`] to size; none for a fill, a picture, lettering's strokes and
     /// what is sized already (a view's lines on a sheet).
     pub pens: Vec<Option<Pen>>,
+    regions: regions::Layers,
     /// What the pens draw in this view, mm on paper: the project's line weights at its scale.
     pub(crate) weights: Weights,
     /// The element being drawn now, and the part of it.
@@ -232,6 +236,7 @@ impl Drawing {
             owners: Vec::new(),
             parts: Vec::new(),
             pens: Vec::new(),
+            regions: regions::Layers::default(),
             weights: Weights::default(),
             owner: None,
             part: Part::Projection,
@@ -240,6 +245,12 @@ impl Drawing {
             detail: Detail::Fine,
         }
     }
+    /// Finish the model layer before view-specific regions and annotation are drawn.
+    pub(crate) fn model_under_regions(&mut self, section: Option<Id>) {
+        self.linked_under();
+        self.regions = regions::Layers::new(self.prims.len(), section);
+    }
+
     /// What the primitives pushed next draw.
     pub(crate) fn own(&mut self, owner: Option<Id>) {
         self.owner = owner;
@@ -1140,6 +1151,7 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64) -> Drawing {
         let (a, b) = (d.view.px(P2(first, hi)), d.view.px(P2(last, lo)));
         d.crop(a, b, |_| false);
     }
+    d.model_under_regions(m.elements.id(id));
     // Each level over as much of its extent as the view sees, named past its end.
     for (level, from, to) in level_spans(m, v, &look) {
         let (from, to) = (from.max(first), to.min(last));
@@ -1192,7 +1204,6 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64) -> Drawing {
     d.owner = None;
     d.by_category(|o| style_of(m, o));
     look.dress(&mut d);
-    d.linked_under();
     d.weigh(|o| annotates(m, o));
     let at = (24.0 + font::width(&v.name, 16.0) / 2.0, view.height as f32 - 26.0);
     d.text_turned(&v.name, at, 16.0, 0.0, INK);
@@ -1478,7 +1489,8 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
             _ => {}
         }
     }
-    // Filled regions over the model, under the annotation.
+    d.model_under_regions(None);
+    // Regions replace model backgrounds; non-masking ones retain the visible model foreground.
     for (&id, e) in m.elements.iter().filter(|_| !up).filter(|(id, _)| shown(**id)) {
         if let Element::FilledRegion(r) = e
             && m.annotation_in(e, key)
@@ -1543,7 +1555,6 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     if let Some(g) = crate::graphics::graphics_of(m, key) {
         linework(&mut d, m, &g.linework);
     }
-    d.linked_under();
     d.weigh(|o| annotates(m, o));
     if titled {
         let mut title = m.view_name(key).map_or_else(String::new, str::to_string);
@@ -2233,10 +2244,15 @@ pub(crate) fn filled_region(d: &mut Drawing, m: &Model, r: &FilledRegion) {
         let pieces = region.holes.iter().fold(vec![region.outer.clone()], |ps, hole| walls::minus(&ps, hole));
         if t.masking {
             d.fill(&pieces, PAPER);
+            regions::mask(d, &pieces);
         }
+        let before_patterns = d.prims.len();
         for (name, [cr, cg, cb]) in [(&t.background, t.background_color), (&t.foreground, t.foreground_color)] {
             let Some(p) = name.as_ref().and_then(|n| m.fill_patterns.get(n)) else { continue };
             fill_pattern(d, p, &rings, &pieces, Rgb(cr, cg, cb), (r.pattern_origin, r.pattern_angle));
+        }
+        if !t.masking && d.prims.len() > before_patterns {
+            regions::foreground(d, m, &pieces);
         }
     }
     d.part = part;

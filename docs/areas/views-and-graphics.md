@@ -195,11 +195,40 @@ its view (`Model::annotation_plan`, so a duplicated plan has its own) and its sk
 when drawn, any number of outlines; Edit Boundary edits it as any other. Patterns and region types are library entries,
 renamed with their references (a type follows its patterns, a region its type and line style) and refused deleted while
 used. The desktop has Annotate > Region (Filled Region, FR, and Masking Region, sketch mode with the type and the line style
-in the Options Bar), Properties (Region Type, Line Style with invisible lines), and Manage > Fill Patterns (`fillpatterns.rs`:
+in the Options Bar), Properties (the Type Selector above the instance fields, Line Style with invisible lines), and Manage > Fill Patterns (`fillpatterns.rs`:
 region types and patterns as one draft, a simple pattern edited as an angle, a spacing and crosshatched or not, any pattern's
 families one by one with Edit Lines, and Import and Export of PAT files). `pat.rs` reads and writes PAT files (`;%UNITS`,
 `;%TYPE`, a negative offset stepping the other way; a pattern that can't be one left out with why) for the dialog and for the
 `import_fill_patterns` and `export_fill_patterns` commands.
+
+Edit Type opens a region's Type Properties from either a selected region or an active sketch: select a type, create a
+new one, duplicate one with its settings, or rename it. Foreground and background each have their own pattern (including
+None) and color; masking controls whether paper hides geometry underneath. The combined preview shows both layers and
+a sample line behind them, so masking can be checked before applying. The Patterns tab edits and creates patterns in
+the same draft. Apply and OK update definitions and the selected instances in one transaction; a type edit affects every
+region of that type, a duplicate is assigned only to the selected instances or the active sketch, and Cancel discards
+unapplied work. Duplicate or blank names are refused without replacing another definition. Renames preserve library
+identity and update the active sketch's type reference. The palette's Type Selector and Edit Type use the same region
+types as the Options Bar.
+
+The instance parameter grid has no second Region Type field: the Type Selector is the type control. Non-masking regions
+replace model backgrounds while retaining visible cut outlines, cut foreground patterns (including solid foregrounds),
+and projected model lines. `render/regions.rs` clips restored model ink to the region's filled area, honors holes and
+masking regions, and preserves model occlusion so a low wall hidden by a cut wall does not reappear. Sections retain the
+visible hidden-line projection as well as vector cut graphics. Masking still hides the model; detail annotation remains
+above the region. The same display list feeds the desktop, PNG, SVG and sheet viewports.
+
+Sketch snapping (`snap::in_sketch`) combines the visible model's wall faces and slab edges, detail lines and existing
+region boundaries in the active view, and the draft's own lines. It supports endpoints, midpoints, intersections,
+perpendiculars, nearest points and angle guides, honoring Manage > Snaps and one-point overrides. An element being edited
+is omitted as a model snap target; its draft supplies the boundary instead. Rectangle and arc previews use the same
+origin points and Shift constraint as a click. Annotation in another independent view, or hidden by Visibility/Graphics,
+is excluded.
+
+The reference workflows are Autodesk's [fill layers](https://help.autodesk.com/cloudhelp/2024/ENU/Revit-GetStarted/files/GUID-8A38ADC8-98A6-4A30-BD21-1886F044F6ED.htm),
+[region editing](https://help.autodesk.com/cloudhelp/2026/ENU/Revit-DocumentPresent/files/GUID-183D9B1E-6554-4C19-9EA9-B32C8D2A5C9D.htm),
+and [sketch snaps](https://help.autodesk.com/cloudhelp/2022/ENU/Revit-Customize/files/GUID-A3947840-1F30-41D7-AF75-B61687952A07.htm).
+Boundary weights follow each boundary line's style. See also Autodesk's [region masking behavior](https://www.autodesk.com/support/technical/article/caas/sfdcarticles/sfdcarticles/Filled-Region-with-solid-fill-does-not-cover-all-elements-in-Revit.html).
 
 A material's cut and surface may be one of the project's fill patterns (`Material::cut_pattern`, `surface_pattern`, a
 library reference like a region type's), over the patterns drawn in code (`model::Pattern`), which stay for the materials
