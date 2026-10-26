@@ -31,6 +31,7 @@ mod properties;
 mod purge;
 pub mod recent;
 pub mod revit;
+mod ribbon;
 mod section;
 pub mod settings;
 pub mod shortcuts;
@@ -39,6 +40,7 @@ mod structure;
 mod style;
 #[cfg(test)]
 mod tests;
+mod titlebar;
 mod updates;
 pub mod window;
 
@@ -64,6 +66,7 @@ use bimcraft_core::language::Language;
 mod autosave;
 use icons::Icon;
 use lang::{Lang, t, tf};
+use ribbon::panel;
 use style::pal;
 
 /// A view: what the middle of the window shows.
@@ -349,6 +352,10 @@ pub struct BimApp {
     pub session: Session,
     /// The system's requests since the last frame, read once a frame. None where it sends none.
     pub os_events: Option<Box<dyn FnMut() -> Vec<OsEvent>>>,
+    /// The window draws its own title bar (`titlebar.rs`): the desktop's `main` says so where the system lets it (Windows and
+    /// Linux), unless `system_title_bar`, the user's ask for the system's (Settings > User Interface, kept in `settings.json`).
+    pub own_title_bar: bool,
+    pub system_title_bar: bool,
     /// The active view, which takes the tools: a tab of `views`, or one of `floating`.
     pub sheet: Sheet,
     pub tool: Tool,
@@ -384,6 +391,8 @@ pub struct BimApp {
     ribbon_min: bool,
     ribbon_peek: bool,
     ribbon_bottom: Pos2,
+    /// The Compact layout (File > Settings): the bars and palettes flush to the edges, not floating cards.
+    compact: bool,
     /// File > Settings, while open, at its page; the settings file, when the app was given one, and what it holds; the
     /// theme it asks for, put in force on the next frame.
     settings_page: Option<settings::Page>,
@@ -625,12 +634,27 @@ fn top_params(m: &Model, level: Id, top: Option<Option<Id>>, height: &str) -> Re
     }
 }
 
-/// A ribbon button: an icon over its label, tinted while its tool is on; as wide as its label.
+/// A ribbon button: an icon over its label, tinted while its tool is on; as wide as its label, which breaks over two lines
+/// when one would make it wider than `WIDE`.
 fn big_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
+    const WIDE: f32 = 78.0;
+    if ribbon::listing() {
+        return list_row(ui, icon, label, active, tip);
+    }
+    if let Some(r) = ribbon::handed_over(ui) {
+        return r;
+    }
     let (label, tip) = (t(label), t(tip));
     let font = FontId::proportional(12.0);
-    let width = ui.painter().layout_no_wrap(label.to_string(), font.clone(), pal().text).size().x + 14.0;
-    let (rect, r) = ui.allocate_exact_size(vec2(width.max(58.0), 52.0), Sense::click());
+    let wide = |s: &str| ui.painter().layout_no_wrap(s.to_string(), font.clone(), pal().text).size().x;
+    let one = wide(label);
+    // The space nearest the middle, for a label too wide for one line.
+    let lines: Vec<String> = match label.char_indices().filter(|(_, c)| *c == ' ').min_by_key(|(i, _)| i.abs_diff(label.len() / 2)) {
+        Some((at, _)) if one + 12.0 > WIDE => vec![label[..at].to_string(), label[at + 1..].to_string()],
+        _ => vec![label.to_string()],
+    };
+    let width = lines.iter().map(|l| wide(l)).fold(0.0, f32::max) + 12.0;
+    let (rect, r) = ui.allocate_exact_size(vec2(width.max(54.0), 60.0), Sense::click());
     let enabled = ui.is_enabled();
     r.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, active, label));
     let (fill, stroke, ink) = match (active, r.hovered() && enabled) {
@@ -641,19 +665,27 @@ fn big_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> 
     // Keyboard focus shows as a ring, whatever else the button shows.
     let stroke = if r.has_focus() { Stroke::new(2.0, pal().accent) } else { stroke };
     let p = ui.painter();
-    p.rect(rect, 4.0, fill, stroke, StrokeKind::Inside);
-    icons::paint(p, icon, Rect::from_center_size(rect.center_top() + vec2(0.0, 19.0), vec2(24.0, 24.0)), ink);
+    p.rect(rect, 6.0, fill, stroke, StrokeKind::Inside);
+    icons::paint(p, icon, Rect::from_center_size(rect.center_top() + vec2(0.0, 18.0), vec2(26.0, 26.0)), ink);
     let text = match (active, enabled) {
         (true, _) => pal().accent,
         (false, true) => pal().text,
         (false, false) => pal().muted.gamma_multiply(0.6),
     };
-    p.text(rect.center_bottom() - vec2(0.0, 10.0), Align2::CENTER_CENTER, label, font, text);
+    for (i, line) in lines.iter().enumerate() {
+        p.text(rect.center_top() + vec2(0.0, 40.0 + 13.0 * i as f32), Align2::CENTER_CENTER, line, font.clone(), text);
+    }
     r.on_hover_text(tip)
 }
 
 /// A small ribbon button: an icon alone, as in Revit's Modify panel; its name in its tooltip.
 fn small_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
+    if ribbon::listing() {
+        return list_row(ui, icon, label, active, tip);
+    }
+    if let Some(r) = ribbon::handed_over(ui) {
+        return r;
+    }
     let (label, tip) = (t(label), t(tip));
     let (rect, r) = ui.allocate_exact_size(vec2(30.0, 25.0), Sense::click());
     let enabled = ui.is_enabled();
@@ -664,23 +696,48 @@ fn small_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -
         (false, false) => (Color32::TRANSPARENT, Stroke::NONE, if enabled { pal().icon } else { pal().icon.gamma_multiply(0.35) }),
     };
     let stroke = if r.has_focus() { Stroke::new(2.0, pal().accent) } else { stroke };
-    ui.painter().rect(rect, 4.0, fill, stroke, StrokeKind::Inside);
+    ui.painter().rect(rect, 6.0, fill, stroke, StrokeKind::Inside);
     icons::paint(ui.painter(), icon, Rect::from_center_size(rect.center(), vec2(19.0, 19.0)), ink);
+    r.on_hover_text(tip)
+}
+
+/// A ribbon button in its panel's list: a row of its icon and its name.
+fn list_row(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
+    let (label, tip) = (t(label), t(tip));
+    let (rect, r) = ui.allocate_exact_size(vec2(ui.available_width().max(200.0), 30.0), Sense::click());
+    let enabled = ui.is_enabled();
+    r.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, active, label));
+    let fill = match (active, r.hovered() && enabled) {
+        (true, _) => pal().select_fill,
+        (false, true) => pal().hover_fill,
+        (false, false) => Color32::TRANSPARENT,
+    };
+    let p = ui.painter();
+    p.rect_filled(rect, 6.0, fill);
+    if r.has_focus() {
+        p.rect_stroke(rect, 6.0, Stroke::new(2.0, pal().accent), StrokeKind::Inside);
+    }
+    let dim = |c: Color32| if enabled { c } else { c.gamma_multiply(0.4) };
+    let ink = if active { pal().accent } else { pal().icon };
+    icons::paint(p, icon, Rect::from_center_size(rect.left_center() + vec2(18.0, 0.0), vec2(20.0, 20.0)), dim(ink));
+    let text = if active { pal().accent } else { pal().text };
+    p.text(rect.left_center() + vec2(38.0, 0.0), Align2::LEFT_CENTER, label, FontId::proportional(13.0), dim(text));
     r.on_hover_text(tip)
 }
 
 /// A small icon button, named for screen readers and tests.
 fn icon_button(ui: &mut Ui, icon: Icon, label: &str) -> Response {
     let label = t(label);
-    let (rect, r) = ui.allocate_exact_size(vec2(26.0, 22.0), Sense::click());
+    let (rect, r) = ui.allocate_exact_size(vec2(26.0, 24.0), Sense::click());
     r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label));
+    let (ink, hover) = style::icon_inks();
     if r.hovered() {
-        ui.painter().rect_filled(rect, 4.0, pal().hover_fill);
+        ui.painter().rect_filled(rect, 6.0, hover);
     }
     if r.has_focus() {
-        ui.painter().rect_stroke(rect, 4.0, Stroke::new(2.0, pal().accent), StrokeKind::Inside);
+        ui.painter().rect_stroke(rect, 6.0, Stroke::new(2.0, pal().accent), StrokeKind::Inside);
     }
-    icons::paint(ui.painter(), icon, Rect::from_center_size(rect.center(), vec2(18.0, 18.0)), pal().icon);
+    icons::paint(ui.painter(), icon, Rect::from_center_size(rect.center(), vec2(18.0, 18.0)), ink);
     r.on_hover_text(label)
 }
 
@@ -706,62 +763,26 @@ fn tab_button(ui: &mut Ui, label: &str, active: bool, contextual: bool) -> Respo
 /// A tab that senses what `sense` says (a view's drags too), `room` px wider on its right for what's drawn in it (a view's ×).
 fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sense: Sense, room: f32) -> Response {
     let label = t(label);
-    let font = FontId::proportional(13.0);
+    let font = if active { style::semibold(13.0) } else { FontId::proportional(13.0) };
     let size = ui.painter().layout_no_wrap(label.to_string(), font.clone(), pal().text).size();
-    let (rect, r) = ui.allocate_exact_size(size + vec2(24.0 + room, 10.0), sense);
+    let (rect, r) = ui.allocate_exact_size(vec2(size.x + 24.0 + room, 24.0), sense);
     r.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, active, label));
-    let (fill, ink) = match (contextual, active, r.hovered()) {
-        (true, true, _) => (pal().surface, pal().context),
-        (true, false, _) => (pal().context_fill, pal().context),
-        (false, true, _) => (pal().surface, pal().text),
-        (false, false, true) => (pal().hover_fill, pal().text),
-        (false, false, false) => (Color32::TRANSPARENT, pal().muted),
+    // A pill: the open tab in the accent's soft tint, a contextual one solid green when open and tinted green when not.
+    let (fill, stroke, ink) = match (contextual, active, r.hovered()) {
+        (true, true, _) => (pal().context, Stroke::NONE, Color32::WHITE),
+        (true, false, _) => (pal().context_fill, Stroke::new(1.0, pal().context.gamma_multiply(0.5)), pal().context),
+        (false, true, _) => (pal().select_fill, Stroke::NONE, pal().accent),
+        (false, false, true) => (pal().hover_fill, Stroke::NONE, pal().text),
+        (false, false, false) => (Color32::TRANSPARENT, Stroke::NONE, pal().text),
     };
     let p = ui.painter();
-    let radius = CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 };
-    p.rect(rect, radius, fill, if active { Stroke::new(1.0, pal().border) } else { Stroke::NONE }, StrokeKind::Inside);
-    if contextual {
-        p.line_segment([rect.left_top() + vec2(2.0, 1.0), rect.right_top() + vec2(-2.0, 1.0)], Stroke::new(3.0, pal().context));
-    }
+    let radius = CornerRadius::same(6);
+    p.rect(rect, radius, fill, stroke, StrokeKind::Inside);
     if r.has_focus() {
         p.rect_stroke(rect, radius, Stroke::new(2.0, pal().accent), StrokeKind::Inside);
     }
     p.text(rect.center() - vec2(room / 2.0, 0.0), Align2::CENTER_CENTER, label, font, ink);
     r
-}
-
-/// The rule under a row of tabs, from `x` at `y`, but for the open tab, which moulds out of what it opens below: its sides run
-/// down into it and nothing parts them.
-fn rule_under_tabs(p: &egui::Painter, x: egui::Rangef, y: f32, open: Option<Rect>) {
-    let stroke = Stroke::new(1.0, pal().border);
-    let Some(tab) = open else {
-        p.hline(x, y, stroke);
-        return;
-    };
-    p.hline(x.min..=tab.left(), y, stroke);
-    p.hline(tab.right()..=x.max, y, stroke);
-    let top = tab.bottom() - 2.0;
-    p.rect_filled(Rect::from_x_y_ranges(tab.left() + 1.0..=tab.right() - 1.0, top..=y + 1.0), 0.0, pal().surface);
-    for side in [tab.left() + 0.5, tab.right() - 0.5] {
-        p.vline(side, top..=y, stroke);
-    }
-}
-
-/// A ribbon panel: its buttons over its name, as Revit groups tools.
-fn panel(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui)) {
-    let title = t(title);
-    ui.vertical(|ui| {
-        let row = ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 2.0;
-            add(ui);
-        });
-        let font = FontId::proportional(11.0);
-        let width = ui.painter().layout_no_wrap(title.to_string(), font.clone(), pal().muted).size().x + 16.0;
-        let (r, _) = ui.allocate_exact_size(vec2(row.response.rect.width().max(width), 16.0), Sense::hover());
-        ui.painter().rect_filled(r, 2.0, pal().bar);
-        ui.painter().text(r.center(), Align2::CENTER_CENTER, title, font, pal().muted);
-    });
-    ui.separator();
 }
 
 impl BimApp {
@@ -773,6 +794,8 @@ impl BimApp {
             autosave: autosave::State::default(),
             session,
             os_events: None,
+            own_title_bar: false,
+            system_title_bar: false,
             sheet: first,
             tool: Tool::Modify,
             selection: Vec::new(),
@@ -790,6 +813,7 @@ impl BimApp {
             pointer: Pos2::ZERO,
             grab: egui::Vec2::ZERO,
             ribbon_min: false,
+            compact: false,
             ribbon_peek: false,
             ribbon_bottom: Pos2::ZERO,
             settings_page: None,
@@ -1061,7 +1085,7 @@ impl BimApp {
         if let Some(theme) = self.theme_wanted.take() {
             ctx.set_theme(theme);
         }
-        style::follow(&ctx);
+        style::follow(&ctx, self.compact);
         // Chinese needs a font with its glyphs, which the system may not have: then the window stays in English and says why.
         if self.lang == Lang::Chinese && !lang::use_chinese_font(&ctx, self.font_finder) {
             self.lang = Lang::English;
@@ -1095,25 +1119,46 @@ impl BimApp {
             self.retire_autosave();
         }
         if self.home.shown {
+            if self.own_bar() {
+                self.start_title_bar(ui);
+            }
             self.start_page(ui);
             self.drag_and_drop(&ctx);
             self.warning(&ctx);
             self.dialogs(&ctx);
             self.keep_settings(&ctx);
+            if self.own_bar() {
+                titlebar::frame(ui);
+            }
             return;
         }
-        let bar = Frame::new().fill(pal().bar).inner_margin(vec2(8.0, 4.0)).stroke(Stroke::new(1.0, pal().border));
-        Panel::top("quick-access").frame(bar).show(ui, |ui| self.quick_access(ui, &view));
-        Panel::top("ribbon").frame(Frame::new().fill(pal().surface)).show(ui, |ui| self.ribbon(ui));
-        Panel::top("options").frame(bar).show(ui, |ui| self.options(ui));
+        // The view's ground under the cards: what shows in the gaps round them is the view going on beneath.
+        ui.painter().rect_filled(ui.max_rect(), 0.0, self.backdrop());
+        let app_bar = Frame::new().fill(pal().app_bar).inner_margin(Margin::symmetric(8, 5));
+        Panel::top("quick-access").frame(app_bar).show_separator_line(false).show(ui, |ui| {
+            // Where the window draws its own title bar, this is it: its ground moves the window, its corner closes it.
+            let bar = ui.max_rect().expand2(vec2(8.0, 5.0));
+            let own = self.own_bar();
+            if own {
+                titlebar::drag_area(ui, bar);
+            }
+            style::on_app_bar(|| self.quick_access(ui, &view));
+            if own {
+                titlebar::caption_buttons(ui, bar);
+            }
+        });
+        let card = style::card([true, true, true, false]);
+        Panel::top("ribbon").frame(card).show_separator_line(false).show(ui, |ui| self.ribbon(ui));
         if self.has_update_banner() {
-            Panel::top("update").frame(Frame::NONE).show(ui, |ui| self.update_banner(ui));
+            Panel::top("update").frame(Frame::NONE).show_separator_line(false).show(ui, |ui| self.update_banner(ui));
         }
-        Panel::bottom("status").frame(bar).show(ui, |ui| self.status_bar(ui));
+        let status = style::card([true, true, false, true]).inner_margin(Margin::symmetric(10, 2));
+        Panel::bottom("status").frame(status).show_separator_line(false).show(ui, |ui| self.status_bar(ui));
         self.docks(ui);
         CentralPanel::default().frame(Frame::NONE).show(ui, |ui| {
+            let g = style::gap().max(4);
             Panel::top("view-tabs")
-                .frame(Frame::new().fill(pal().bar).inner_margin(Margin { left: 6, right: 6, top: 4, bottom: 0 }))
+                .frame(Frame::new().inner_margin(Margin { left: g, right: g, top: g, bottom: 4 }))
                 .show_separator_line(false)
                 .show(ui, |ui| {
                     self.view_tabs(ui);
@@ -1122,6 +1167,7 @@ impl BimApp {
             self.view_pane(ui, front);
             self.work = self.pane;
         });
+        self.options_bar(&ctx);
         if self.ribbon_min && self.ribbon_peek {
             self.ribbon_peek(&ctx);
         }
@@ -1131,6 +1177,34 @@ impl BimApp {
         self.warning(&ctx);
         self.dialogs(&ctx);
         self.keep_settings(&ctx);
+        if self.own_bar() {
+            titlebar::frame(ui);
+        }
+    }
+
+    /// The start page's title bar, where the window draws its own: the app bar's colour, the app's name, and the caption buttons.
+    fn start_title_bar(&mut self, ui: &mut Ui) {
+        Panel::top("start-title-bar").frame(Frame::new().fill(pal().app_bar)).exact_size(34.0).show_separator_line(false).show(ui, |ui| {
+            let bar = ui.max_rect();
+            titlebar::drag_area(ui, bar);
+            ui.painter().text(
+                bar.left_center() + vec2(14.0, 0.0),
+                Align2::LEFT_CENTER,
+                "BIMCraft",
+                FontId::proportional(12.5),
+                pal().app_bar_muted,
+            );
+            titlebar::caption_buttons(ui, bar);
+        });
+    }
+
+    /// What the active view is drawn on: paper for a drawing, the desk round a sheet, a schedule's ground.
+    fn backdrop(&self) -> Color32 {
+        match self.sheet {
+            Sheet::Paper(_) => pal().desk,
+            Sheet::Schedule(_) | Sheet::Table(_) => pal().surface,
+            _ => canvas::color(render::PAPER),
+        }
     }
 
     /// A view under its view control bar, as the active view draws it.
@@ -2128,7 +2202,9 @@ impl BimApp {
         let mut fresh = BimApp::new(std::mem::take(&mut self.session));
         fresh.status = std::mem::take(&mut self.status);
         fresh.os_events = self.os_events.take();
+        (fresh.own_title_bar, fresh.system_title_bar) = (self.own_title_bar, self.system_title_bar);
         (fresh.thin, fresh.lang, fresh.snaps, fresh.ribbon_min) = (self.thin, self.lang, self.snaps, self.ribbon_min);
+        fresh.compact = self.compact;
         fresh.font_finder = self.font_finder;
         fresh.docking = std::mem::take(&mut self.docking);
         (fresh.settings_path, fresh.settings_kept) = (self.settings_path.take(), self.settings_kept.take());
@@ -2218,6 +2294,8 @@ impl BimApp {
                 if icon_button(ui, Icon::Home, "Home").clicked() {
                     self.toggle_home();
                 }
+                let file = egui::Button::new(RichText::new(t("File")).color(pal().app_bar_text)).frame(false).min_size(vec2(44.0, 24.0));
+                MenuButton::from_button(file).ui(ui, |ui| self.file_menu(ui, &ctx));
                 if icon_button(ui, Icon::Open, "Open").clicked() {
                     self.guard(Pending::Open, &ctx);
                 }
@@ -2254,7 +2332,7 @@ impl BimApp {
             Align2::CENTER_CENTER,
             format!("{} · {view}", self.session.model.name),
             FontId::proportional(12.5),
-            pal().muted,
+            pal().app_bar_muted,
         );
     }
 
@@ -2266,10 +2344,11 @@ impl BimApp {
         let (rect, arrow) = ui.allocate_exact_size(vec2(12.0, 22.0), Sense::click());
         let label = t(if redo { "Redo History" } else { "Undo History" });
         arrow.widget_info(|| WidgetInfo::labeled(WidgetType::Button, !names.is_empty(), label));
+        let (icon, hover) = style::icon_inks();
         if arrow.hovered() && !names.is_empty() {
-            ui.painter().rect_filled(rect, 3.0, pal().hover_fill);
+            ui.painter().rect_filled(rect, 3.0, hover);
         }
-        let ink = if names.is_empty() { pal().muted.gamma_multiply(0.5) } else { pal().icon };
+        let ink = if names.is_empty() { icon.gamma_multiply(0.4) } else { icon };
         let c = rect.center();
         ui.painter().add(egui::Shape::convex_polygon(
             vec![c + vec2(-3.0, -1.5), c + vec2(3.0, -1.5), c + vec2(0.0, 2.0)],
@@ -2321,43 +2400,41 @@ impl BimApp {
     }
 
     fn ribbon(&mut self, ui: &mut Ui) {
-        let ctx = ui.ctx().clone();
-        let open = std::cell::Cell::new(None);
-        Frame::new().fill(pal().bar).inner_margin(Margin { left: 8, right: 8, top: 4, bottom: 0 }).show(ui, |ui| {
+        Frame::new().inner_margin(Margin { left: 6, right: 6, top: 5, bottom: 5 }).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 2.0;
-                let file = egui::Button::new(RichText::new(t("File")).color(Color32::WHITE).strong())
-                    .fill(pal().accent)
-                    .min_size(vec2(58.0, 26.0));
-                MenuButton::from_button(file).ui(ui, |ui| self.file_menu(ui, &ctx));
-                for (tab, label) in [
-                    (Tab::Architecture, "Architecture"),
-                    (Tab::Structure, "Structure"),
-                    (Tab::Plumbing, "Plumbing"),
-                    (Tab::Electrical, "Electrical"),
-                    (Tab::Lightning, "Lightning Protection"),
-                    (Tab::Data, "Data"),
-                    (Tab::Insert, "Insert"),
-                    (Tab::Annotate, "Annotate"),
-                    (Tab::Massing, "Massing"),
-                    (Tab::View, "View"),
-                    (Tab::Manage, "Manage"),
-                    (Tab::Modify, "Modify"),
-                ] {
-                    let r = tab_button(ui, label, self.tab == tab, false);
-                    if self.tab == tab {
-                        open.set(Some(r.rect));
-                    }
-                    self.ribbon_tab(&r, tab);
-                }
-                if let Some(name) = self.context() {
-                    let r = tab_button(ui, &name, self.tab == Tab::Context, true);
-                    if self.tab == Tab::Context {
-                        open.set(Some(r.rect));
-                    }
-                    self.ribbon_tab(&r, Tab::Context);
-                }
+                // The tabs, scrolling sideways (with the wheel) in a window too narrow for them; the fold button at the end.
+                let room = ui.available_width() - 32.0;
+                ScrollArea::horizontal()
+                    .id_salt("ribbon-tabs")
+                    .max_width(room)
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 2.0;
+                            for (tab, label) in [
+                                (Tab::Architecture, "Architecture"),
+                                (Tab::Structure, "Structure"),
+                                (Tab::Plumbing, "Plumbing"),
+                                (Tab::Electrical, "Electrical"),
+                                (Tab::Lightning, "Lightning Protection"),
+                                (Tab::Data, "Data"),
+                                (Tab::Insert, "Insert"),
+                                (Tab::Annotate, "Annotate"),
+                                (Tab::Massing, "Massing"),
+                                (Tab::View, "View"),
+                                (Tab::Manage, "Manage"),
+                                (Tab::Modify, "Modify"),
+                            ] {
+                                let r = tab_button(ui, label, self.tab == tab, false);
+                                self.ribbon_tab(&r, tab);
+                            }
+                            if let Some(name) = self.context() {
+                                let r = tab_button(ui, &name, self.tab == Tab::Context, true);
+                                self.ribbon_tab(&r, Tab::Context);
+                            }
+                        });
+                    });
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     let (icon, label) =
                         if self.ribbon_min { (Icon::Expand, "Expand the Ribbon") } else { (Icon::Minimize, "Minimize the Ribbon") };
@@ -2368,7 +2445,9 @@ impl BimApp {
             });
         });
         let base = ui.min_rect();
-        rule_under_tabs(ui.painter(), base.x_range(), base.bottom(), open.get());
+        if !self.ribbon_min {
+            ui.painter().hline(base.x_range(), base.bottom(), Stroke::new(1.0, pal().border));
+        }
         self.ribbon_bottom = ui.min_rect().left_bottom();
         if !self.ribbon_min {
             self.ribbon_panels(ui);
@@ -2411,22 +2490,27 @@ impl BimApp {
 
     /// The ribbon tab's panels of tools.
     fn ribbon_panels(&mut self, ui: &mut Ui) {
-        Frame::new().inner_margin(vec2(8.0, 6.0)).show(ui, |ui| {
-            // A tab wider than the window (Manage is, at 1280) scrolls sideways, each tab where it was left.
+        Frame::new().inner_margin(Margin { left: 6, right: 6, top: 4, bottom: 4 }).show(ui, |ui| {
+            // A tab wider than the window folds its last panels; one still too wide scrolls sideways, each tab where it was
+            // left.
+            let key = UiId::new(("ribbon-widths", self.tab as u8));
+            let room = ui.available_width();
             egui::ScrollArea::horizontal().id_salt(self.tab as u8).auto_shrink([false, true]).show(ui, |ui| {
-                ui.horizontal(|ui| match self.tab {
-                    Tab::Architecture => self.architecture_tab(ui),
-                    Tab::Structure => self.structure_tab(ui),
-                    Tab::Plumbing => self.plumbing_tab(ui),
-                    Tab::Electrical => self.electrical_tab(ui),
-                    Tab::Lightning => self.lightning_tab(ui),
-                    Tab::Data => self.data_tab(ui),
-                    Tab::Insert => self.insert_tab(ui),
-                    Tab::Annotate => self.annotate_tab(ui),
-                    Tab::Massing => self.massing_tab(ui),
-                    Tab::View => self.view_tab(ui),
-                    Tab::Manage => self.manage_tab(ui),
-                    Tab::Modify | Tab::Context => self.modify_tab(ui),
+                ribbon::tab(ui, key, room, |ui| {
+                    ui.horizontal(|ui| match self.tab {
+                        Tab::Architecture => self.architecture_tab(ui),
+                        Tab::Structure => self.structure_tab(ui),
+                        Tab::Plumbing => self.plumbing_tab(ui),
+                        Tab::Electrical => self.electrical_tab(ui),
+                        Tab::Lightning => self.lightning_tab(ui),
+                        Tab::Data => self.data_tab(ui),
+                        Tab::Insert => self.insert_tab(ui),
+                        Tab::Annotate => self.annotate_tab(ui),
+                        Tab::Massing => self.massing_tab(ui),
+                        Tab::View => self.view_tab(ui),
+                        Tab::Manage => self.manage_tab(ui),
+                        Tab::Modify | Tab::Context => self.modify_tab(ui),
+                    });
                 });
             });
         });
@@ -3168,6 +3252,22 @@ impl BimApp {
     }
 
     /// The Options Bar: the contextual tab's name, then the tool's options.
+    /// The Options Bar, while there's something on it (a contextual tab's name, a tool's options): a card floating over the
+    /// view's top left, so the view never moves when it comes and goes, and taking the clicks that land on it.
+    fn options_bar(&mut self, ctx: &Context) {
+        if self.context().is_none() && matches!(self.tool, Tool::Modify) {
+            return;
+        }
+        let g = f32::from(style::gap());
+        let view = self.view_rect;
+        let frame = style::card([false; 4]).inner_margin(Margin::symmetric(10, 3));
+        Area::new(UiId::new("options-bar")).order(Order::Middle).fixed_pos(view.left_top() + vec2(g, g)).show(ctx, |ui| {
+            // Clear of the view's zoom buttons on the right.
+            ui.set_max_width((view.width() - 2.0 * g - 60.0).max(200.0));
+            frame.show(ui, |ui| self.options(ui));
+        });
+    }
+
     fn options(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.set_min_height(24.0);
@@ -3525,7 +3625,7 @@ impl BimApp {
     /// The docked views' tabs: a click opens one, a drag moves it along the bar or, let go off it, floats it.
     fn view_tabs(&mut self, ui: &mut Ui) {
         self.tab_rects.clear();
-        let (mut open, mut closed) = (None, None);
+        let mut closed = None;
         let bar = ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
             for sheet in self.views.clone() {
@@ -3534,9 +3634,6 @@ impl BimApp {
                 let many = self.views.len() > 1;
                 let r = tab_button_with(ui, &name, sheet == self.front, false, Sense::click_and_drag(), if many { 18.0 } else { 0.0 });
                 self.tab_rects.push((sheet, r.rect));
-                if sheet == self.front {
-                    open = Some(r.rect);
-                }
                 // The × is part of the tab, at its right end.
                 if many {
                     let x = Rect::from_center_size(pos2(r.rect.right() - 16.0, r.rect.center().y), vec2(16.0, 16.0));
@@ -3577,7 +3674,6 @@ impl BimApp {
             self.close_view(sheet);
         }
         self.tab_bar = bar.response.rect.with_max_x(ui.max_rect().right());
-        rule_under_tabs(ui.painter(), ui.max_rect().x_range(), ui.min_rect().bottom(), open);
     }
 
     /// The schedule on screen: the project's, by id, and as it is (one every project has may be

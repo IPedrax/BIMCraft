@@ -811,7 +811,9 @@ feature, `rvt`, which is on by default, so **a build that includes it is distrib
 `--no-default-features` is MIT OR Apache-2.0 as before. How the reader is sourced, and what it may and may not use, is in
 [docs/rvt-provenance.md](docs/rvt-provenance.md).
 
-BIMCraft's logo, its icons, its stroke lettering and its sample house are original work, drawn or built in code. Its
+BIMCraft's logo, its icons, its stroke lettering and its sample house are original work, drawn or built in code. The desktop's
+interface is lettered in [IBM Plex](https://github.com/IBM/plex) Sans and Mono (Copyright 2017 IBM Corp.), under the SIL Open Font
+License 1.1: see [assets/fonts](assets/fonts). Its
 architecture, its rules and its MCP design follow [CADCraft](https://github.com/storytold/cadcraft) (MIT OR Apache-2.0) by
 the ArtCraft team, as its logo follows CADCraft's style.
 

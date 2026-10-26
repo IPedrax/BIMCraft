@@ -386,7 +386,8 @@ impl BimApp {
     /// The docked palettes, round the views; call between the bars and the views.
     pub(crate) fn docks(&mut self, ui: &mut Ui) {
         self.drop_headers.clear();
-        let frame = Frame::new().fill(pal().panel).stroke(Stroke::new(1.0, pal().border));
+        // The side holds the stacks' cards; between them and round them, the view's ground.
+        let frame = Frame::NONE;
         for side in Side::ALL {
             if self.docking.side(side).is_empty() {
                 continue;
@@ -396,7 +397,7 @@ impl BimApp {
                 Side::Right => Panel::right("dock-right").default_size(290.0),
                 Side::Bottom => Panel::bottom("dock-bottom").default_size(240.0),
             };
-            panel.frame(frame).resizable(true).min_size(140.0).show(ui, |ui| self.dock_side(ui, side));
+            panel.frame(frame).show_separator_line(false).resizable(true).min_size(140.0).show(ui, |ui| self.dock_side(ui, side));
         }
     }
 
@@ -404,10 +405,19 @@ impl BimApp {
     fn dock_side(&mut self, ui: &mut Ui, side: Side) {
         let stacks = self.docking.side(side).to_vec();
         let n = stacks.len();
-        let frame = Frame::new().fill(pal().panel).stroke(Stroke::new(1.0, pal().border));
         for (i, stack) in stacks.iter().enumerate() {
-            if i + 1 == n {
-                self.stack_ui(ui, stack, false);
+            // Each stack a card, standing off the window's edges and the next card: the last one off the bottom (or, along
+            // the bottom, off the right) too.
+            let last = i + 1 == n;
+            let frame = match side {
+                Side::Bottom => crate::style::card([true, last, true, true]),
+                _ => crate::style::card([true, true, true, last]),
+            };
+            if last {
+                frame.show(ui, |ui| {
+                    ui.set_min_size(ui.available_size());
+                    self.stack_ui(ui, stack, false);
+                });
                 continue;
             }
             // Named for the palette it holds, so a stack keeps its size while the others come and go.
@@ -419,7 +429,7 @@ impl BimApp {
                 Side::Bottom => Panel::left(id).default_size(ui.available_width() * share),
                 _ => Panel::top(id).default_size(ui.available_height() * share),
             };
-            panel.frame(frame).resizable(true).min_size(80.0).show(ui, |ui| {
+            panel.frame(frame).show_separator_line(false).resizable(true).min_size(80.0).show(ui, |ui| {
                 ui.set_min_size(ui.available_size());
                 self.stack_ui(ui, stack, false);
             });
@@ -456,17 +466,16 @@ impl BimApp {
     /// A stack: its title (or its tabs), its Dock menu and its close button, then the palette it shows.
     fn stack_ui(&mut self, ui: &mut Ui, stack: &Stack, floating: bool) {
         let Some(shown) = stack.shown() else { return };
-        let (rect, back) = ui.allocate_exact_size(vec2(ui.available_width(), 26.0), Sense::click_and_drag());
+        let (rect, back) = ui.allocate_exact_size(vec2(ui.available_width(), 32.0), Sense::click_and_drag());
         let p = ui.painter();
-        p.rect_filled(rect, 0.0, pal().bar);
         p.line_segment([rect.left_bottom(), rect.right_bottom()], Stroke::new(1.0, pal().border));
         self.drop_headers.push((shown, rect, floating));
         let lone = stack.tabs.len() == 1;
         if lone {
             let title = self.palette_title(shown);
             back.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, &title));
-            let at = rect.left_center() + vec2(10.0, 0.0);
-            ui.painter().text(at, Align2::LEFT_CENTER, title, FontId::proportional(13.0), pal().text);
+            let at = rect.left_center() + vec2(12.0, 0.0);
+            ui.painter().text(at, Align2::LEFT_CENTER, title, crate::style::semibold(13.0), pal().text);
         }
         if back.drag_started() {
             self.dragging = Some(if floating { Drag::Window(shown) } else { Drag::Palette(shown) });
@@ -502,7 +511,7 @@ impl BimApp {
                 Popup::menu(&r).show(|ui| self.dock_menu(ui, shown, rect));
             });
         });
-        let body = Frame::new().fill(pal().panel);
+        let body = Frame::NONE;
         body.show(ui, |ui| {
             ui.set_min_size(ui.available_size());
             self.palette_body(ui, shown);

@@ -109,8 +109,37 @@ Undo's list. The arrows beside Undo and Redo (`BimApp::steps_list`) list `Sessio
 undo snapshot: the command's label and the elements it made and took away, by category, which `step_name` turns into Create Walls
 or Delete Door (else the label). A click runs `undo` or `redo` with `count`.
 
-Tabs. The open ribbon tab and the open view tab mould out of what they open: `rule_under_tabs` draws the rule under a row of tabs
-but for the open one, whose sides run down into the surface below. A view's × is part of its tab (`tab_button_with`'s `room`).
+Tabs. Ribbon and view tabs are pills (`tab_button_with`): the open one in the accent's soft tint, a contextual one solid green
+when open and tinted green when not. A view's × is part of its tab (`tab_button_with`'s `room`). The ribbon's tab row scrolls
+sideways with the wheel in a window too narrow for it.
+
+The look. `style.rs` holds the tokens: the palettes, light and dark, with a dark app bar; the
+card frame (`style::card`: 8 px corners, a hairline border and a soft shadow, standing `GAP` off the edges it's told to); IBM Plex Sans
+and Mono (`assets/fonts`, SIL OFL 1.1), with `style::semibold` for titles and tabs (the body's face until the window has loaded it, a
+frame after `apply`). `BimApp::show` paints the active view's ground (`backdrop`) under everything, then the app bar (Home, File, the
+Quick Access Toolbar and the title, light on dark, `style::on_app_bar`), and the ribbon, the Options Bar, the status bar and each docked
+palette stack as cards, so the gaps between them read as the view going on beneath; the view control bar is a small card in the view's
+corner. The Options Bar (`BimApp::options_bar`) floats over the view's top left, an `Area` above it, while there's something on it (a
+contextual tab's name, a tool's options): coming and going it takes no room, so the view never moves under a drag when a selection
+fills it, and a click on it never reaches the view. File > Settings > Layout picks Floating (the cards) or Compact (`BimApp::compact`, kept in `settings.json` as
+`layout`): the same pieces flush to the edges and square, `style::gap` and `style::card` reading it each frame (`style::follow`).
+
+The title bar (`titlebar.rs`). On Windows and Linux the window draws its own (`BimApp::own_title_bar`, set by `main`, which opens
+the window without the system's decorations): the app bar is the title bar. Its bare ground moves the window and a double-click
+there maximizes or restores it (`titlebar::drag_area`, laid out before the bar's buttons so they keep their presses), Minimize,
+Maximize (Restore Down when maximized) and Close sit flush in its right end (`caption_buttons`, 46 points each, Close red under the
+pointer), and `titlebar::frame`, over everything, resizes the window from 8-point zones along its edges (corners twice as long,
+winning where they meet) and draws a hairline round it; a maximized or full-screen window has neither. Moving and resizing are the
+system's (`StartDrag`, `BeginResize`), so Windows' snapping works, and Close is the system's Close, so unsaved work is asked about.
+The start page has a slim bar of its own (`start_title_bar`). Settings > User Interface > Title bar asks for the system's instead
+(`system_title_bar`, kept in `settings.json`, read by `main` before the window opens and switched at once with `Decorations`);
+macOS keeps its own.
+
+The ribbon's panels (`ribbon.rs`). A panel's name, under its tools, is a button (named `Build ▾` for screen readers) whose list
+(`ribbon::list`) draws the same tools again as rows: `ribbon::listing` turns `big_button` and `small_button` into `list_row`. A tab too
+wide for the window makes room from the right, on the last frame's widths (`ribbon::tab`, `ribbon::fits`): a panel hands its last tools
+over to its list (`ribbon::handed_over`: counted, not drawn), and when one tool left isn't room enough it folds to one button that lists
+them all, and the panel before it is asked; what still doesn't fit scrolls sideways.
 
 Keyboard Shortcuts. Manage > Shortcuts (or KS) opens `shortcuts_window` (`shortcuts.rs`): every shortcut by what it does, from `shortcuts()`
 (`SHORTCUTS`, the fixtures' letters, the commands' aliases), with Add, Edit and Load File. A shortcut is two letters or digits, all that `typed` holds,

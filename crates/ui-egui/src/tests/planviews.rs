@@ -158,14 +158,15 @@ fn a_wall_drawn_over_a_scan_snaps_to_where_the_plan_cuts_it_unless_manage_snaps_
     let dir = std::env::temp_dir().join(format!("bimcraft-ui-snap-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("face.xyz");
-    // A scanned wall face a metre north of the house, along x from 2 m to 6 m and 2 m tall.
+    // A scanned wall face a metre south of the house (clear of the Options Bar floating over the view's top), along x from
+    // 2 m to 6 m and 2 m tall.
     let face: String =
-        (0..=100).flat_map(|i| (0..=50).map(move |k| format!("{} 7 {}\n", 2.0 + f64::from(i) * 0.04, f64::from(k) * 0.04))).collect();
+        (0..=100).flat_map(|i| (0..=50).map(move |k| format!("{} -1 {}\n", 2.0 + f64::from(i) * 0.04, f64::from(k) * 0.04))).collect();
     std::fs::write(&path, face).unwrap();
     let mut h = app(&format!("{HOUSE}\npoint_cloud {}", json!({"path": path, "origin": "file"})));
     tool(&mut h, "Wall");
-    let f = hover(&mut h, P2(4010.0, 7030.0)).unwrap();
-    assert_eq!((f.kind, f.at), (Kind::Point, P2(4000.0, 7000.0)));
+    let f = hover(&mut h, P2(4010.0, -970.0)).unwrap();
+    assert_eq!((f.kind, f.at), (Kind::Point, P2(4000.0, -1000.0)));
     key(&mut h, egui::Key::Escape);
     press(&mut h, "Manage");
     press(&mut h, "Snaps");
@@ -173,5 +174,5 @@ fn a_wall_drawn_over_a_scan_snaps_to_where_the_plan_cuts_it_unless_manage_snaps_
     press(&mut h, "Close");
     assert!(!h.state().snaps.cloud);
     tool(&mut h, "Wall");
-    assert_ne!(hover(&mut h, P2(4010.0, 7030.0)).map(|f| f.kind), Some(Kind::Point));
+    assert_ne!(hover(&mut h, P2(4010.0, -970.0)).map(|f| f.kind), Some(Kind::Point));
 }

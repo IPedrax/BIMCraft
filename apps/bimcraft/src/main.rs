@@ -142,8 +142,12 @@ fn main() -> ExitCode {
     if let Some(text) = problem {
         app.status = Status { text, error: true };
     }
+    // On Windows and Linux the window draws its own title bar (the app bar), unless the settings ask for the system's; macOS
+    // keeps its own.
+    app.own_title_bar = !cfg!(target_os = "macos");
     let mut viewport = eframe::egui::ViewportBuilder::default()
         .with_title("BIMCraft")
+        .with_decorations(!app.own_title_bar || app.system_title_bar)
         .with_app_id(APP_ID)
         .with_inner_size(window.size.unwrap_or([1440.0, 900.0]))
         .with_maximized(window.maximized)
