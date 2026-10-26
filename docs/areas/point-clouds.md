@@ -69,7 +69,8 @@ dark canvas, dims them so the lightened ink over them still reads. A scan the vi
 
 A scan's own colours are mid-tones that read poorly over paper or the dark canvas, so the view control bar (`footer.rs`) has
 High Contrast Point Clouds wherever the project has a scan: it fills the view's `pointcloud` category with `HIGH_CONTRAST`, a
-crimson that reads on both and apart from the model's black lines, through the `graphics` command (merged into the category's
+crimson that reads on both and apart from the model's black lines (or the colour the user picks in Settings > Graphics, kept
+as `high_contrast` in `settings.json` and read back only when it is `[r, g, b]`), through the `graphics` command (merged into the category's
 override, so its halftone or lines stay), and again takes the fill away. It is lit whenever the category has a fill, whoever set
 it, and greyed out when a view template controls the categories.
 

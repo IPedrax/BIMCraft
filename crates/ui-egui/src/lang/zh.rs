@@ -1543,6 +1543,12 @@ pub(super) const WORDS: &[[&str; 2]] = &[
     ["The 3D view is drawn on the processor: {}", "三维视图由处理器绘制：{}"],
     ["The graphics card couldn't draw the 3D view ({}): it is drawn on the processor", "显卡无法绘制三维视图（{}）：改由处理器绘制"],
     ["Selection colour", "选择颜色"],
+    ["High contrast colour", "高对比度颜色"],
+    ["Reset Colour", "重置颜色"],
+    [
+        "What High Contrast Point Clouds, on the view control bar, draws a view's scans in",
+        "视图控制栏上的“高对比度点云”用来绘制视图中扫描的颜色",
+    ],
     ["Highlight what's under the cursor", "高亮显示光标下的对象"],
     ["Background of the 3D view", "三维视图背景"],
     ["Plain", "纯色"],

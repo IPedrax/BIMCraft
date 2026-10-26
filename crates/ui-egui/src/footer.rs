@@ -79,8 +79,8 @@ fn menu_button(ui: &mut Ui, label: &str, shown: &str, tip: &str, set_by: Option<
 /// What Reveal Hidden Elements draws what a view hides in.
 const REVEALED: &str = "#FF00FF";
 
-/// What High Contrast fills a view's point clouds with: a crimson that reads on white paper and on the dark canvas, and apart
-/// from the model's black lines.
+/// What High Contrast fills a view's point clouds with until the user picks another (Settings > Graphics): a crimson that reads
+/// on white paper and on the dark canvas, and apart from the model's black lines.
 pub(crate) const HIGH_CONTRAST: [u8; 3] = [220, 20, 60];
 
 /// `base` with the graphics of the view `sheet` changed as `temp` says.
@@ -243,13 +243,14 @@ impl BimApp {
         }
     }
 
-    /// High Contrast Point Clouds: the view fills its point clouds with [`HIGH_CONTRAST`], or, when it fills them with any
-    /// colour, gives them their own back; the rest of the category's override stays. One `graphics` command, one undo step.
-    pub(crate) fn scan_contrast(&mut self) {
+    /// High Contrast Point Clouds: the view fills its point clouds with the user's colour ([`HIGH_CONTRAST`] at first), or,
+    /// when it fills them with any colour, gives them their own back; the rest of the category's override stays. One `graphics`
+    /// command, one undo step.
+    pub(crate) fn toggle_scan_contrast(&mut self) {
         let Some(view) = self.graphic_view() else { return };
         let filled = self.graphics_shown().categories.get(graphics::SCANS[0]).is_some_and(|o| o.projection.fill.is_some());
         // The command merges what it's given into the override: a null fill takes it away.
-        let fill = if filled { Value::Null } else { json!(HIGH_CONTRAST) };
+        let fill = if filled { Value::Null } else { json!(self.scan_contrast) };
         self.run("graphics", json!({"view": view, "categories": {graphics::SCANS[0]: {"projection": {"fill": fill}}}}));
     }
 
@@ -380,7 +381,7 @@ impl BimApp {
                         None => r,
                     };
                     if r.clicked() {
-                        self.scan_contrast();
+                        self.toggle_scan_contrast();
                     }
                 }
                 if temp.hides() || temp.reveal {

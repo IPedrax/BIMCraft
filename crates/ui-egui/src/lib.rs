@@ -378,6 +378,8 @@ pub struct BimApp {
     /// while folded); where its tabs end.
     ribbon_min: bool,
     ribbon_peek: bool,
+    /// What High Contrast Point Clouds fills a view's scans with: the user's (Settings > Graphics), crimson at first.
+    scan_contrast: [u8; 3],
     ribbon_bottom: Pos2,
     /// File > Settings, while open, at its page; the settings file, when the app was given one, and what it holds; the
     /// theme it asks for, put in force on the next frame.
@@ -784,6 +786,7 @@ impl BimApp {
             grab: egui::Vec2::ZERO,
             ribbon_min: false,
             ribbon_peek: false,
+            scan_contrast: footer::HIGH_CONTRAST,
             ribbon_bottom: Pos2::ZERO,
             settings_page: None,
             settings_path: None,
@@ -2067,6 +2070,7 @@ impl BimApp {
         fresh.os_events = self.os_events.take();
         (fresh.thin, fresh.lang, fresh.snaps, fresh.ribbon_min) = (self.thin, self.lang, self.snaps, self.ribbon_min);
         fresh.font_finder = self.font_finder;
+        fresh.scan_contrast = self.scan_contrast;
         fresh.docking = std::mem::take(&mut self.docking);
         (fresh.settings_path, fresh.settings_kept) = (self.settings_path.take(), self.settings_kept.take());
         fresh.window = std::mem::take(&mut self.window);

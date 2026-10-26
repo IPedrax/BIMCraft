@@ -128,6 +128,46 @@ fn high_contrast_is_lit_whenever_the_view_fills_its_point_clouds_and_off_takes_a
 }
 
 #[test]
+fn the_high_contrast_colour_is_the_users_kept_in_settings_and_the_toggle_uses_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("settings.json");
+    let path = face("contrast-settings", "face.xyz", 0.0);
+    let mut h = app(&format!("point_cloud {}", json!({"path": path})));
+    h.state_mut().use_settings(file.clone());
+    assert_eq!(h.state().scan_contrast, crate::footer::HIGH_CONTRAST, "crimson until the user picks another");
+    press(&mut h, "Settings");
+    // (Properties has a Graphics group too.)
+    h.state_mut().settings_page = Some(crate::settings::Page::Graphics);
+    h.run();
+    assert!(h.query_by_label("High contrast colour").is_some());
+    // The picker sets it, as a test does here.
+    h.state_mut().scan_contrast = [0, 90, 255];
+    press(&mut h, "Close");
+    let kept: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    assert_eq!(kept["high_contrast"], json!([0, 90, 255]));
+    press(&mut h, "High Contrast Point Clouds");
+    assert_eq!(scan_fill(&h).0, Some([0, 90, 255]));
+    // Another window starts with it.
+    let mut again = app("");
+    again.state_mut().use_settings(file.clone());
+    assert_eq!(again.state().scan_contrast, [0, 90, 255]);
+    // Reset Colour puts crimson back.
+    press(&mut again, "Settings");
+    // (Properties has a Graphics group too.)
+    again.state_mut().settings_page = Some(crate::settings::Page::Graphics);
+    again.run();
+    press(&mut again, "Reset Colour");
+    assert_eq!(again.state().scan_contrast, crate::footer::HIGH_CONTRAST);
+    // What isn't a colour keeps the default.
+    for bad in [r#"{"high_contrast": [300, 0, 0]}"#, r#"{"high_contrast": [1, 2]}"#, r#"{"high_contrast": "red"}"#] {
+        std::fs::write(&file, bad).unwrap();
+        let mut fresh = app("");
+        fresh.state_mut().use_settings(file.clone());
+        assert_eq!(fresh.state().scan_contrast, crate::footer::HIGH_CONTRAST, "{bad}");
+    }
+}
+
+#[test]
 fn visibility_graphics_lists_point_clouds_with_the_model_categories() {
     let path = face("vg", "face.xyz", 0.0);
     let mut h = app(&format!("point_cloud {}", json!({"path": path})));

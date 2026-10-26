@@ -2488,6 +2488,13 @@ const WORDS: &[[&str; 3]] = &[
         "La tarjeta gráfica no pudo dibujar la vista 3D ({}): se dibuja en el procesador",
     ],
     ["Selection colour", "Cor da seleção", "Color de la selección"],
+    ["High contrast colour", "Cor de alto contraste", "Color de alto contraste"],
+    ["Reset Colour", "Redefinir cor", "Restablecer color"],
+    [
+        "What High Contrast Point Clouds, on the view control bar, draws a view's scans in",
+        "A cor em que Nuvens de pontos em alto contraste, na barra de controle da vista, desenha as nuvens de uma vista",
+        "El color en que Nubes de puntos en alto contraste, en la barra de control de vista, dibuja las nubes de una vista",
+    ],
     ["Highlight what's under the cursor", "Destacar o que está sob o cursor", "Resaltar lo que está bajo el cursor"],
     ["Background of the 3D view", "Fundo da vista 3D", "Fondo de la vista 3D"],
     ["Plain", "Liso", "Liso"],

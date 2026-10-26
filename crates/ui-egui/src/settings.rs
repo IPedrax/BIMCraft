@@ -1,7 +1,8 @@
 //! File > Settings (Ctrl+,): the window's own settings, the user's and never a project's. They live in
 //! `settings.json` beside the favorites and the update settings ([`beside`]), which the desktop's `main` hands the app
 //! ([`BimApp::use_settings`]); a window that wasn't given the file (every test's) keeps them for as long as it's open.
-//! What it keeps: the theme, interface language, ribbon, palettes, the window's size, and the background autosave interval.
+//! What it keeps: the theme, interface language, ribbon, palettes, the window's size, the background autosave interval, and
+//! the colour High Contrast Point Clouds draws scans in.
 //! The pages for what is still to come (performance and graphics) show what they will hold, greyed out.
 
 use std::path::{Path, PathBuf};
@@ -75,6 +76,8 @@ pub struct Settings {
     /// Draw the 3D view on the graphics card, when there is one.
     pub gpu_3d: bool,
     pub window: Window,
+    /// What High Contrast Point Clouds fills a view's scans with.
+    pub high_contrast: [u8; 3],
 }
 
 impl Settings {
@@ -92,6 +95,7 @@ impl Settings {
             "autosave_minutes": self.autosave_minutes,
             "gpu_3d": self.gpu_3d,
             "window": self.window.to_json(),
+            "high_contrast": self.high_contrast,
         })
     }
 
@@ -112,8 +116,15 @@ impl Settings {
             autosave_minutes: v["autosave_minutes"].as_u64().filter(|n| *n <= 120).map_or(base.autosave_minutes, |n| n as u32),
             gpu_3d: v["gpu_3d"].as_bool().unwrap_or(base.gpu_3d),
             window: Window::from_json(&v["window"], base.window),
+            high_contrast: colour(&v["high_contrast"]).unwrap_or(base.high_contrast),
         }
     }
+}
+
+/// `[r, g, b]`, each 0 to 255: a colour; anything else, none.
+fn colour(v: &Value) -> Option<[u8; 3]> {
+    let parts: Vec<u8> = v.as_array()?.iter().map(|c| c.as_u64().and_then(|c| u8::try_from(c).ok())).collect::<Option<_>>()?;
+    parts.try_into().ok()
 }
 
 /// The settings file as JSON: none if it isn't there, is too big or isn't JSON.
@@ -183,6 +194,7 @@ impl BimApp {
         self.autosave.interval_minutes = kept.autosave_minutes;
         self.card.wanted = kept.gpu_3d;
         self.window.kept = kept.window;
+        self.scan_contrast = kept.high_contrast;
         self.settings_kept = Some(kept);
         self.settings_path = Some(path);
     }
@@ -201,6 +213,7 @@ impl BimApp {
             autosave_minutes: self.autosave.interval_minutes,
             gpu_3d: self.card.wanted,
             window: self.window.kept,
+            high_contrast: self.scan_contrast,
         }
     }
 
@@ -243,7 +256,7 @@ impl BimApp {
                     ScrollArea::vertical().id_salt("settings-page").auto_shrink([false, false]).show(ui, |ui| match page {
                         Page::Interface => self.interface_page(ui, ctx),
                         Page::Performance => self.performance_page(ui),
-                        Page::Graphics => graphics_page(ui),
+                        Page::Graphics => self.graphics_page(ui),
                         Page::Files => self.files_page(ui),
                         Page::Updates => self.updates_page(ui),
                     });
@@ -342,20 +355,35 @@ impl BimApp {
     }
 }
 
-fn graphics_page(ui: &mut Ui) {
-    later(ui, |ui| {
-        let (mut color, mut hover, mut ground) = (pal().accent, true, 0);
+impl BimApp {
+    fn graphics_page(&mut self, ui: &mut Ui) {
+        heading(ui, "Point clouds");
         ui.horizontal(|ui| {
-            ui.label(t("Selection colour"));
-            ui.color_edit_button_srgba(&mut color);
+            let l = ui.label(t("High contrast colour"));
+            ui.color_edit_button_srgb(&mut self.scan_contrast)
+                .labelled_by(l.id)
+                .on_hover_text(t("What High Contrast Point Clouds, on the view control bar, draws a view's scans in"));
+            if ui.button(t("Reset Colour")).clicked() {
+                self.scan_contrast = crate::footer::HIGH_CONTRAST;
+            }
         });
-        ui.checkbox(&mut hover, t("Highlight what's under the cursor"));
-        ui.horizontal(|ui| {
-            ui.label(t("Background of the 3D view"));
-            ComboBox::from_id_salt("settings-ground")
-                .selected_text(t("Plain"))
-                .show_index(ui, &mut ground, 2, |i| if i == 0 { t("Plain") } else { t("Sky") }.to_string());
-        });
+        later(ui, graphics_later);
+    }
+}
+
+/// The Graphics page's settings still to come.
+fn graphics_later(ui: &mut Ui) {
+    let (mut color, mut hover, mut ground) = (pal().accent, true, 0);
+    ui.horizontal(|ui| {
+        ui.label(t("Selection colour"));
+        ui.color_edit_button_srgba(&mut color);
+    });
+    ui.checkbox(&mut hover, t("Highlight what's under the cursor"));
+    ui.horizontal(|ui| {
+        ui.label(t("Background of the 3D view"));
+        ComboBox::from_id_salt("settings-ground")
+            .selected_text(t("Plain"))
+            .show_index(ui, &mut ground, 2, |i| if i == 0 { t("Plain") } else { t("Sky") }.to_string());
     });
 }
 
