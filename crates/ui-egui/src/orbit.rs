@@ -261,7 +261,7 @@ impl BimApp {
             .map(|id| (*id, rgb(pal().accent)))
             .chain(hovered.filter(|id| !selection.contains(id)).map(|id| (id, rgb(pal().hover))))
             .collect();
-        let dark = crate::style::dark();
+        let dark = crate::style::canvas_dark();
         if !matches!(&o.shown, Some((m, c, t, k, g)) if Arc::ptr_eq(m, &model) && *c == cam && *t == tints && *k == dark && *g == mesh.is_some())
         {
             // The card's picture, if it makes one; the processor's if not, and if the card fails it for good.

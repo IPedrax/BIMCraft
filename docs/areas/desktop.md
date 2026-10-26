@@ -14,6 +14,13 @@ ids inside a view are per view (`push_id`), so two views on screen never clash. 
 they hand it a file): what it keeps is `Settings`, written when it changes, between drags; a setting still to come goes on
 its page greyed out (`later`).
 
+View > Dark Mode opens a small theme menu: As the System, Light, Dark, or Dark UI, Light Canvas. The same choices are in
+Settings > User Interface. The last choice keeps plans, ceiling plans, sections, elevations and 3D views on a light background
+while the interface stays dark; sheets stay white paper in every mode. `Settings::light_canvas` is saved alongside `theme`
+in `settings.json`, defaults to false for older files, and survives New/Open. `style::dark` chooses interface colours;
+`style::canvas_dark` controls canvas ink, fill and background conversion, and the section/3D image cache keys. Both software
+and GPU 3D painters use the canvas background.
+
 The system's file dialogs (Open, Save As, the exports, Load Family, Link Model, a material's picture) are asked for through
 `BimApp::ask_file` (`dialog.rs`), never with a blocking `rfd::FileDialog`: a native dialog run inside the window's event
 handler nests a run loop in it, and on macOS a drag reaching the window meanwhile re-enters the handler and aborts the app

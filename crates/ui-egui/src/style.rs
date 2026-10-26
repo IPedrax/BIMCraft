@@ -1,6 +1,7 @@
 //! Look and feel: a dense desktop tool, light or dark (the system's theme until one is picked on
 //! the View tab). Slate chrome around the drawing, one blue accent for the active tool, selection
 //! and focus, an 8 px rhythm; the icons are drawn in `icons.rs`.
+//! A dark interface may keep the drawing canvas light; canvas painters use `canvas_dark`, chrome uses `dark`.
 
 use std::cell::Cell;
 
@@ -72,6 +73,8 @@ pub const DARK: Palette = Palette {
 thread_local! {
     /// Whether this frame is drawn dark: each window draws on its own thread.
     static DARK_ON: Cell<bool> = const { Cell::new(false) };
+    /// Canvas darkness is independent of the surrounding interface.
+    static CANVAS_DARK: Cell<bool> = const { Cell::new(false) };
 }
 
 /// The colours of the theme this frame is drawn in.
@@ -83,9 +86,14 @@ pub fn dark() -> bool {
     DARK_ON.with(Cell::get)
 }
 
+pub fn canvas_dark() -> bool {
+    CANVAS_DARK.with(Cell::get)
+}
+
 /// Draw this frame in the theme egui shows: the system's, unless the user picked one.
-pub fn follow(ctx: &Context) {
+pub fn follow(ctx: &Context, light_canvas: bool) {
     DARK_ON.with(|d| d.set(ctx.theme() == Theme::Dark));
+    CANVAS_DARK.with(|d| d.set(dark() && !light_canvas));
 }
 
 pub fn apply(ctx: &Context) {

@@ -334,8 +334,8 @@ bimcraft-cli commands                                 # every command and its pa
 is Revit's, so it should feel familiar: the Quick Access Toolbar; the ribbon's File, Architecture, Annotate, View and Modify
 tabs, with a green contextual tab (Modify | Place Wall, Modify | Walls) for the tool or the selection; the Options Bar;
 Properties over the Project Browser; views in tabs with a navigation bar; and the tool's prompt in the status bar. The
-icons and colours are BIMCraft's own, in a light theme or a dark one: BIMCraft starts in your system's, and View > Dark Mode
-or File > Settings switches.
+icons and colours are BIMCraft's own: BIMCraft starts in your system's theme. View > Dark Mode opens a menu for Light, Dark,
+Dark UI, Light Canvas, or As the System; File > Settings offers the same choices. The choice is saved between sessions.
 
 Autosave runs in the background every two minutes while the model has unsaved changes (File > Settings > Files changes
 the interval or disables it). A saved project's recovery copy is `<project filename>.autosave.bimcraft` beside the project;
@@ -399,7 +399,7 @@ or an explicit Don't Save removes the current recovery copy, except a postponed 
 | Look in 3D | The cube on the Quick Access Toolbar (or View > 3D View, or {3D} in the browser) opens the 3D view. Shift and the middle button orbit, as in Revit, and so does a drag; the middle button pans, the wheel zooms; Home in the navigation bar goes back to the south-east view. Click to select, as in plan |
 | Move around | The wheel zooms at the cursor, the middle button pans, the navigation bar or ZF (ZE, ZA) zooms to fit; TL toggles Thin Lines |
 | Shortcuts | Type a tool's two letters over a view, as in Revit (WA, DR, CR…). CS (Create Similar) starts the tool of the one element selected, with its type picked; SA selects every element of the selected ones' types that the view shows; PP shows or hides Properties; UN opens Project Units; VV (VG) opens Visibility/Graphics, FT Filters and VT View Templates; EH, VH and EU hide an element, a category, or list what's hidden (with Reveal Hidden Elements on, picking a hidden element brings an Unhide Element button, EU too, and VU or Unhide Category its category back); HH, HC, HI, IC, HR and RH hide, isolate, reset and reveal for now; WF, HL and SD set the 3D view's visual style; PH opens Phasing, DO Design Options and DW picks the Demolish tool. KS lists them all |
-| Go dark | View > Dark Mode: the window, plans, sections and the 3D view go dark; sheets stay white paper |
+| Change theme | View > Dark Mode: choose light, dark, system, or a dark UI with a light canvas; sheets stay white paper |
 | Arrange the palettes | Drag Properties or the Project Browser by its title: strips along the edges of the view show where it lands, docked down the left or right side or along the bottom (one over another there, or side by side along the bottom), onto another palette's title as a tab of it, or anywhere else to float in a window of its own, which its title moves. Its Dock menu (beside its close button) does the same by name; closed, View > User Interface or PP brings it back where it was |
 | Float a view | Drag a view's tab off the tab bar, or right-click it and Float: it opens in a window of its own, the active view, and the tools work in it. The views behind stay drawn; a click on one makes it the active view. Drag the window's title back onto the tab bar, or press its Dock button, to make it a tab again. The last tab can't float |
 | More room | Double-click a ribbon tab (or press the arrow at the right of the tabs) and the ribbon folds to its tabs; a click on a tab then shows its tools over the view until one is picked. Double-click again to open it |

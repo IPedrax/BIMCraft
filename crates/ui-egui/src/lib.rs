@@ -394,6 +394,8 @@ pub struct BimApp {
     /// The window's size, kept and brought within its screen (`window.rs`).
     window: window::Tracker,
     theme_wanted: Option<egui::ThemePreference>,
+    /// Keep drawing backgrounds light even when the interface is dark.
+    light_canvas: bool,
     tab: Tab,
     /// Where the ribbon goes back to when the contextual tab goes.
     back: Tab,
@@ -799,6 +801,7 @@ impl BimApp {
             settings_kept: None,
             window: window::Tracker::default(),
             theme_wanted: None,
+            light_canvas: false,
             tab: Tab::Architecture,
             back: Tab::Architecture,
             types: BTreeMap::new(),
@@ -1063,7 +1066,7 @@ impl BimApp {
         if let Some(theme) = self.theme_wanted.take() {
             ctx.set_theme(theme);
         }
-        style::follow(&ctx);
+        style::follow(&ctx, self.light_canvas);
         // Chinese needs a font with its glyphs, which the system may not have: then the window stays in English and says why.
         if self.lang == Lang::Chinese && !lang::use_chinese_font(&ctx, self.font_finder) {
             self.lang = Lang::English;
@@ -2132,6 +2135,9 @@ impl BimApp {
         fresh.os_events = self.os_events.take();
         (fresh.thin, fresh.lang, fresh.snaps, fresh.ribbon_min) = (self.thin, self.lang, self.snaps, self.ribbon_min);
         fresh.font_finder = self.font_finder;
+        fresh.light_canvas = self.light_canvas;
+        fresh.styled = self.styled;
+        fresh.theme_wanted = self.theme_wanted.take();
         fresh.docking = std::mem::take(&mut self.docking);
         (fresh.settings_path, fresh.settings_kept) = (self.settings_path.take(), self.settings_kept.take());
         fresh.window = std::mem::take(&mut self.window);
@@ -2753,10 +2759,15 @@ impl BimApp {
                 self.thin = !self.thin;
             }
             let dark = style::dark();
-            let tip = msg!("Dark Mode: the window and the views light on dark; sheets stay paper. It starts as your system's theme");
-            if big_button(ui, Icon::Theme, "Dark Mode", dark, tip).clicked() {
-                ui.ctx().set_theme(if dark { egui::Theme::Light } else { egui::Theme::Dark });
-            }
+            let tip = msg!("Choose a theme, including a dark interface with a light canvas");
+            let r = big_button(ui, Icon::Theme, "Dark Mode", dark, tip);
+            let at = r.rect.right_top() + vec2(-8.0, 9.0);
+            ui.painter().add(egui::Shape::convex_polygon(
+                vec![at + vec2(-3.0, -2.0), at + vec2(3.0, -2.0), at + vec2(0.0, 2.0)],
+                pal().icon,
+                Stroke::NONE,
+            ));
+            Popup::menu(&r).show(|ui| self.theme_choices(ui, true));
             // A plan's or a section's crop region: on to what it shows, or off.
             let view = match self.sheet {
                 Sheet::Plan(id) | Sheet::Section(id) => Some(id),

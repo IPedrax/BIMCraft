@@ -2097,13 +2097,49 @@ fn dark_mode_turns_the_window_and_the_drawing_dark() {
     assert!(!crate::style::dark(), "light, as the system's theme is here");
     press(&mut h, "View");
     press(&mut h, "Dark Mode");
+    assert!(!crate::style::dark(), "opening the menu leaves the current theme in place");
+    pick(&mut h, Role::RadioButton, "Dark");
     assert!(crate::style::dark() && h.ctx.theme() == egui::Theme::Dark);
     // Ink light on a dark ground, the grid still blue.
     let (ground, ink, grid) = (crate::canvas::color(PAPER), crate::canvas::color(Rgb(25, 25, 25)), crate::canvas::color(Rgb(60, 100, 150)));
     assert!(ground.r() < 40 && ink.r() > 200 && grid.b() > grid.r() + 40, "{ground:?} {ink:?} {grid:?}");
     assert_eq!(crate::style::pal().surface, crate::style::DARK.surface);
     press(&mut h, "Dark Mode");
+    pick(&mut h, Role::RadioButton, "Light");
     assert!(!crate::style::dark() && crate::canvas::color(PAPER) == egui::Color32::WHITE);
+}
+
+#[test]
+fn dark_ui_with_light_canvas_is_shared_with_settings_and_survives_new_projects() {
+    use bimcraft_core::render::{PAPER, Rgb};
+    use egui_kittest::kittest::NodeT;
+    let mut h = app(BOX);
+    press(&mut h, "View");
+    press(&mut h, "Dark Mode");
+    pick(&mut h, Role::RadioButton, "Dark UI, Light Canvas");
+    assert!(crate::style::dark() && h.ctx.theme() == egui::Theme::Dark);
+    assert_eq!(crate::style::pal().surface, crate::style::DARK.surface);
+    assert_eq!(crate::canvas::color(PAPER), egui::Color32::WHITE);
+    assert_eq!(crate::canvas::color(Rgb(25, 25, 25)), egui::Color32::from_gray(25));
+    assert!(h.query_by_label("Dark UI, Light Canvas").is_none(), "menu closes after choosing");
+    press(&mut h, "Settings");
+    assert_eq!(
+        h.get_by_role_and_label(Role::RadioButton, "Dark UI, Light Canvas").accesskit_node().toggled(),
+        Some(egui::accesskit::Toggled::True)
+    );
+    pick(&mut h, Role::RadioButton, "Dark");
+    assert!(crate::canvas::color(PAPER).r() < 40);
+    pick(&mut h, Role::RadioButton, "Dark UI, Light Canvas");
+    press(&mut h, "Close");
+    h.state_mut().reopened();
+    h.run();
+    assert!(crate::style::dark());
+    assert_eq!(crate::canvas::color(PAPER), egui::Color32::WHITE);
+    press(&mut h, "View");
+    press(&mut h, "Dark Mode");
+    pick(&mut h, Role::RadioButton, "As the System");
+    assert_eq!(h.ctx.options(|o| o.theme_preference), egui::ThemePreference::System);
+    assert!(!crate::style::dark());
 }
 
 #[test]

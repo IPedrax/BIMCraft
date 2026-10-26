@@ -1,7 +1,7 @@
 //! File > Settings (Ctrl+,): the window's own settings, the user's and never a project's. They live in
 //! `settings.json` beside the favorites and the update settings ([`beside`]), which the desktop's `main` hands the app
 //! ([`BimApp::use_settings`]); a window that wasn't given the file (every test's) keeps them for as long as it's open.
-//! What it keeps: the theme, interface language, ribbon, palettes, the window's size, and the background autosave interval.
+//! What it keeps: the UI theme and light-canvas choice, interface language, ribbon, palettes, window size, autosave and 3D renderer.
 //! The pages for what is still to come (performance and graphics) show what they will hold, greyed out.
 
 use bimcraft_i18n::msg;
@@ -70,6 +70,7 @@ pub fn window_in(path: &Path) -> Option<Window> {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Settings {
     pub theme: ThemePreference,
+    pub light_canvas: bool,
     pub language: Lang,
     pub ribbon_minimized: bool,
     pub docking: Docking,
@@ -88,6 +89,7 @@ impl Settings {
         };
         json!({
             "theme": theme,
+            "light_canvas": self.light_canvas,
             "language": self.language.code(),
             "ribbon_minimized": self.ribbon_minimized,
             "palettes": self.docking.to_json(),
@@ -108,6 +110,7 @@ impl Settings {
         };
         Settings {
             theme,
+            light_canvas: v["light_canvas"].as_bool().unwrap_or(base.light_canvas),
             language: v["language"].as_str().and_then(Lang::from_code).unwrap_or(base.language),
             ribbon_minimized: v["ribbon_minimized"].as_bool().unwrap_or(base.ribbon_minimized),
             docking: if v["palettes"].is_object() { Docking::from_json(&v["palettes"]) } else { base.docking },
@@ -182,6 +185,7 @@ impl BimApp {
         let kept = read(&path).map_or(now.clone(), |v| Settings::from_json(&v, now));
         (self.lang, self.ribbon_min, self.docking) = (kept.language, kept.ribbon_minimized, kept.docking.clone());
         self.theme_wanted = Some(kept.theme);
+        self.light_canvas = kept.light_canvas;
         self.autosave.interval_minutes = kept.autosave_minutes;
         self.card.wanted = kept.gpu_3d;
         self.window.kept = kept.window;
@@ -197,6 +201,7 @@ impl BimApp {
     fn settings_now(&self, theme: ThemePreference) -> Settings {
         Settings {
             theme,
+            light_canvas: self.light_canvas,
             language: self.lang,
             ribbon_minimized: self.ribbon_min,
             docking: self.docking.clone(),
@@ -257,18 +262,29 @@ impl BimApp {
         self.settings_page = if close || r.should_close() { None } else { Some(page) };
     }
 
+    /// The same choices in the ribbon's popup and File > Settings.
+    pub(crate) fn theme_choices(&mut self, ui: &mut Ui, menu: bool) {
+        let current = (ui.ctx().options(|o| o.theme_preference), self.light_canvas);
+        for (label, theme, light_canvas) in [
+            (msg!("As the System"), ThemePreference::System, false),
+            (msg!("Light"), ThemePreference::Light, false),
+            (msg!("Dark"), ThemePreference::Dark, false),
+            (msg!("Dark UI, Light Canvas"), ThemePreference::Dark, true),
+        ] {
+            if ui.radio(current == (theme, light_canvas), t(label)).clicked() {
+                self.light_canvas = light_canvas;
+                ui.ctx().set_theme(theme);
+                ui.ctx().request_repaint();
+                if menu {
+                    ui.close();
+                }
+            }
+        }
+    }
+
     fn interface_page(&mut self, ui: &mut Ui, ctx: &Context) {
         heading(ui, msg!("Theme"));
-        let mut theme = ctx.options(|o| o.theme_preference);
-        let before = theme;
-        ui.horizontal(|ui| {
-            ui.radio_value(&mut theme, ThemePreference::System, t("As the System"));
-            ui.radio_value(&mut theme, ThemePreference::Light, t("Light"));
-            ui.radio_value(&mut theme, ThemePreference::Dark, t("Dark"));
-        });
-        if theme != before {
-            ctx.set_theme(theme);
-        }
+        self.theme_choices(ui, false);
         heading(ui, "Language");
         ComboBox::from_id_salt("settings-language").selected_text(self.lang.label()).width(200.0).show_ui(ui, |ui| {
             for l in Lang::ALL {

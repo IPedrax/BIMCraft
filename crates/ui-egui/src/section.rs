@@ -57,7 +57,7 @@ impl BimApp {
             .collect();
         let scene = scene_of(&mut self.orbit.scene, &model);
         let cut = &mut self.cut;
-        let dark = crate::style::dark();
+        let dark = crate::style::canvas_dark();
         if !matches!(&cut.shown, Some((m, v, f, t, k)) if Arc::ptr_eq(m, &model) && *v == id && *f == pixels && *t == tints && *k == dark) {
             if let Some(image) = render::section_image(&model, scene, id, pixels, &tints) {
                 // A hidden-line picture, so dark as the drawing over it is.

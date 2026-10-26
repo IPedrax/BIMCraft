@@ -292,6 +292,35 @@ fn the_settings_file_keeps_the_window_as_it_was_left() {
 }
 
 #[test]
+fn dark_ui_with_light_canvas_is_saved_and_old_settings_keep_their_canvas() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("settings.json");
+    // Existing settings have no canvas preference, so dark still means a dark drawing.
+    std::fs::write(&file, r#"{"theme":"dark"}"#).unwrap();
+    let mut h = app(BOX);
+    h.state_mut().use_settings(file.clone());
+    h.run();
+    assert!(crate::canvas::color(bimcraft_core::render::PAPER).r() < 40);
+    press(&mut h, "View");
+    press(&mut h, "Dark Mode");
+    pick(&mut h, Role::RadioButton, "Dark UI, Light Canvas");
+    let kept: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    assert_eq!(kept["theme"], "dark");
+    assert_eq!(kept["light_canvas"], true);
+    let mut again = app(BOX);
+    again.state_mut().use_settings(file.clone());
+    again.run();
+    assert!(crate::style::dark());
+    assert_eq!(crate::canvas::color(bimcraft_core::render::PAPER), egui::Color32::WHITE);
+    press(&mut again, "View");
+    press(&mut again, "Dark Mode");
+    pick(&mut again, Role::RadioButton, "Dark");
+    assert!(crate::canvas::color(bimcraft_core::render::PAPER).r() < 40);
+    let kept: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    assert_eq!(kept["light_canvas"], false);
+}
+
+#[test]
 fn a_layout_reads_back_as_written_and_a_hostile_one_reads_as_sense() {
     let mut d = Docking::default();
     d.put(Palette::Browser, Target::With(Palette::Properties));

@@ -308,7 +308,7 @@ impl Canvas {
 /// A drawing's colour on screen: as drawn, or in the dark theme with its lightness turned over,
 /// so ink reads light on a dark ground and the grid stays blue.
 pub(crate) fn color(c: Rgb) -> Color32 {
-    if !crate::style::dark() {
+    if !crate::style::canvas_dark() {
         return Color32::from_rgb(c.0, c.1, c.2);
     }
     let (r, g, b) = (i32::from(c.0), i32::from(c.1), i32::from(c.2));
@@ -400,7 +400,7 @@ pub(crate) fn paint(p: &Painter, at: Place, d: &Drawing, selected: &[Id], hovere
                     let rect = Rect::from_min_size(at.pos(*corner), vec2(*width as f32, *height as f32) * at.k);
                     // On a dark canvas a plan's picture (a scan's) is dimmed, so the ink lightened over it still reads; a sheet's
                     // paper stays white.
-                    let plain = if !at.paper && crate::style::dark() { Color32::from_gray(120) } else { Color32::WHITE };
+                    let plain = if !at.paper && crate::style::canvas_dark() { Color32::from_gray(120) } else { Color32::WHITE };
                     let tint = accent.map_or(plain, |a| a.1);
                     p.image(*texture, rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), tint);
                 }
