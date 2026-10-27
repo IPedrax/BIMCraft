@@ -1,19 +1,24 @@
 //! The file dialogs in a browser, which has no file system. Opening picks a file with the browser's own chooser and puts its
 //! bytes in the page (`bimcraft_core::disk::put`) under its name, so the command that reads it finds it by that path as on a
-//! computer. Saving asks nothing: the path is the name the window offers, the command writes the file into the page, and once a
-//! frame each file commands wrote is handed to the browser as a download. Same names as the desktop's `dialog.rs`.
+//! computer; once the command has read it, it is taken out again, so the page holds no more than it needs. Saving asks nothing:
+//! the path is the name the window offers, the command writes the file into the page, and each file commands wrote is handed
+//! to the browser as a download (the page wakes the window when one is written). Same names as the desktop's `dialog.rs`.
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, TryRecvError, channel};
 
 use egui::Context;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen_futures::JsFuture;
 
 use crate::lang::tf;
 use crate::{BimApp, Status};
 
 /// The largest file the page takes in: what the core opens.
 const MAX_PICK: f64 = (256u64 << 20) as f64;
+/// How long a download's address is kept before it is let go, ms: some browsers start the download only after the click returns.
+const KEEP_DOWNLOAD_MS: i32 = 60_000;
 
 /// What is done with the paths a dialog gives.
 pub(crate) type Then = Box<dyn FnOnce(&mut BimApp, Vec<PathBuf>)>;
@@ -22,6 +27,8 @@ pub(crate) type Then = Box<dyn FnOnce(&mut BimApp, Vec<PathBuf>)>;
 pub(crate) struct Dialog {
     pub(crate) answer: Receiver<Result<Vec<PathBuf>, String>>,
     pub(crate) then: Then,
+    /// Whether its paths are files put in the page, let go once `then` has read them (a save's path is to be written).
+    picked: bool,
 }
 
 /// `then` for the first path of those given.
@@ -49,15 +56,19 @@ impl BimApp {
         then: impl FnOnce(&mut BimApp, PathBuf) + 'static,
     ) {
         if save {
+            if self.dialog.is_some() {
+                return;
+            }
             // The browser's handle to save to comes at once, carrying the name the window offered; the browser asks where
             // when the file is downloaded.
             let (tx, answer) = channel();
+            let ctx = ctx.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let path = dialog.save_file().await.map(|f| in_page(&f.file_name()));
                 let _ = tx.send(Ok(path.into_iter().collect()));
+                ctx.request_repaint();
             });
-            self.dialog = Some(Dialog { answer, then: first(then) });
-            self.dialog_answered();
+            self.dialog = Some(Dialog { answer, then: first(then), picked: false });
             return;
         }
         self.begin(ctx, dialog, false, first(then));
@@ -85,12 +96,22 @@ impl BimApp {
             for file in picked.unwrap_or_default() {
                 let name = file.file_name();
                 if file.inner().size() > MAX_PICK {
+                    for path in paths {
+                        bimcraft_core::disk::take(path);
+                    }
                     let _ = tx.send(Err(tf("{} is too large to open here", &[&name])));
+                    ctx.request_repaint();
                     return;
                 }
                 let path = in_page(&name);
-                if let Err(e) = bimcraft_core::disk::put(&path, &file.read().await) {
-                    let _ = tx.send(Err(format!("{name}: {e}")));
+                let put = read(file.inner()).await.and_then(|bytes| bimcraft_core::disk::put(&path, bytes).map_err(|e| e.to_string()));
+                if let Err(e) = put {
+                    // What was put in before this one won't be read: it goes.
+                    for path in paths {
+                        bimcraft_core::disk::take(path);
+                    }
+                    let _ = tx.send(Err(tf("Couldn't open {}: {}", &[&name, &e])));
+                    ctx.request_repaint();
                     return;
                 }
                 paths.push(path);
@@ -98,11 +119,12 @@ impl BimApp {
             let _ = tx.send(Ok(paths));
             ctx.request_repaint();
         });
-        self.dialog = Some(Dialog { answer, then });
+        self.dialog = Some(Dialog { answer, then, picked: true });
     }
 
-    /// Once a frame: acts on the files a chooser put in the page, and hands the browser what commands wrote.
+    /// Once a frame: acts on the files a chooser put in the page, then hands the browser what commands wrote.
     pub(crate) fn dialog_answered(&mut self) {
+        self.chooser_answered();
         for path in bimcraft_core::disk::written() {
             if let Some(bytes) = bimcraft_core::disk::take(&path) {
                 let name = path.file_name().map_or_else(|| "file".into(), |n| n.to_string_lossy().into_owned());
@@ -111,19 +133,31 @@ impl BimApp {
                 }
             }
         }
+    }
+
+    fn chooser_answered(&mut self) {
         let Some(open) = &self.dialog else { return };
-        match open.answer.try_recv() {
-            Ok(answer) => {
-                if let Some(Dialog { then, .. }) = self.dialog.take() {
-                    match answer {
-                        Ok(paths) if !paths.is_empty() => then(self, paths),
-                        Ok(_) => {}
-                        Err(text) => self.status = Status { text, error: true },
+        let answer = match open.answer.try_recv() {
+            Ok(answer) => answer,
+            Err(TryRecvError::Empty) => return,
+            Err(TryRecvError::Disconnected) => {
+                self.dialog = None;
+                return;
+            }
+        };
+        let Some(Dialog { then, picked, .. }) = self.dialog.take() else { return };
+        match answer {
+            Ok(paths) if !paths.is_empty() => {
+                then(self, paths.clone());
+                // The command has read what was picked by now: the page lets it go.
+                if picked {
+                    for path in paths {
+                        bimcraft_core::disk::take(path);
                     }
                 }
             }
-            Err(TryRecvError::Empty) => {}
-            Err(TryRecvError::Disconnected) => self.dialog = None,
+            Ok(_) => {}
+            Err(text) => self.status = Status { text, error: true },
         }
     }
 }
@@ -139,6 +173,21 @@ fn download(name: &str, bytes: &[u8]) -> Result<(), String> {
     let link: web_sys::HtmlAnchorElement = document.create_element("a").map_err(js)?.dyn_into().map_err(|_| "not a link")?;
     link.set_href(&url);
     link.set_download(name);
+    // In the page while it is clicked, which some browsers want of a link they download from.
+    let body = document.body().ok_or("no body")?;
+    body.append_child(&link).map_err(js)?;
     link.click();
-    web_sys::Url::revoke_object_url(&url).map_err(js)
+    link.remove();
+    let let_go = Closure::once_into_js(move || {
+        let _ = web_sys::Url::revoke_object_url(&url);
+    });
+    window.set_timeout_with_callback_and_timeout_and_arguments_0(let_go.unchecked_ref(), KEEP_DOWNLOAD_MS).map_err(js)?;
+    Ok(())
+}
+
+/// The bytes of a file the user picked. The browser's promise fails if it can't be read (a file in the cloud not on this
+/// computer, one taken away meanwhile), where rfd's own read would wait for ever.
+async fn read(file: &web_sys::File) -> Result<Vec<u8>, String> {
+    let buffer = JsFuture::from(file.array_buffer()).await.map_err(|e| e.as_string().unwrap_or_else(|| format!("{e:?}")))?;
+    Ok(js_sys::Uint8Array::new(&buffer).to_vec())
 }

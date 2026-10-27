@@ -39,7 +39,6 @@ rfd = { workspace = true, features = ["file-handle-inner"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = ["Blob", "Document", "Element", "File", "HtmlAnchorElement", "HtmlElement", "Node", "Url", "Window"] }
-
 # The 3D mouse (`spacemouse.rs`), read from its HID reports through hidapi's own Windows backend: pure Rust, MIT.
 [target.'cfg(windows)'.dependencies]
 hidapi = { version = "2.6.7", default-features = false, features = ["windows-native"] }

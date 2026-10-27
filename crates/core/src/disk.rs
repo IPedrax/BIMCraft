@@ -7,8 +7,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Error, ErrorKind, Result};
 use std::path::{Path, PathBuf};
 
-/// The most the page's files may hold in all: four of the largest project the core opens.
-pub const MAX_HELD: usize = 1 << 30;
+/// The most the page's files may hold at once: twice the largest project the core opens. A page's memory is 4 GB at most, and
+/// a file read is a second copy of it; the front end takes out what was picked once it is read, and what was written once it
+/// is handed over, so this is reached only by files that size in flight together.
+pub const MAX_HELD: usize = 512 << 20;
 
 /// Files held in memory, by path: what a browser has in place of a disk.
 #[derive(Default)]
@@ -16,6 +18,8 @@ pub struct Memory {
     files: BTreeMap<PathBuf, Vec<u8>>,
     /// What commands wrote and the front end hasn't taken yet.
     written: BTreeSet<PathBuf>,
+    /// Called when a command writes, so the front end hands it over without waiting for the next input.
+    wake: Option<Box<dyn Fn()>>,
 }
 
 impl Memory {
@@ -25,19 +29,30 @@ impl Memory {
 
     /// What a command writes: kept, and noted for the front end to hand over.
     pub fn write(&mut self, path: &Path, bytes: &[u8]) -> Result<()> {
-        self.put(path, bytes)?;
+        self.put(path, bytes.to_vec())?;
         self.written.insert(path.to_path_buf());
+        if let Some(wake) = &self.wake {
+            wake();
+        }
         Ok(())
     }
 
-    /// Keeps `bytes` at `path`, in place of what was there. Refused when the page would hold more than [`MAX_HELD`].
-    pub fn put(&mut self, path: &Path, bytes: &[u8]) -> Result<()> {
+    /// Keeps `bytes` at `path`, in place of what was there, and no longer to be handed over if a command wrote it. Refused
+    /// when the page would hold more than [`MAX_HELD`].
+    pub fn put(&mut self, path: &Path, bytes: Vec<u8>) -> Result<()> {
         let before = self.files.get(path).map_or(0, Vec::len);
-        if self.held() - before + bytes.len() > MAX_HELD {
-            return Err(Error::new(ErrorKind::OutOfMemory, "the page holds as many files as it can: reload it to start afresh"));
+        if (self.held() - before).checked_add(bytes.len()).is_none_or(|held| held > MAX_HELD) {
+            let most = MAX_HELD >> 20;
+            return Err(Error::new(ErrorKind::OutOfMemory, format!("the page holds at most {most} MB of files at once")));
         }
-        self.files.insert(path.to_path_buf(), bytes.to_vec());
+        self.written.remove(path);
+        self.files.insert(path.to_path_buf(), bytes);
         Ok(())
+    }
+
+    /// Calls `wake` each time a command writes a file.
+    pub fn when_written(&mut self, wake: Box<dyn Fn()>) {
+        self.wake = Some(wake);
     }
 
     pub fn read(&self, path: &Path) -> Result<Vec<u8>> {
@@ -76,8 +91,13 @@ mod place {
         std::fs::read(path)
     }
 
+    /// A folder, a pipe or a device is no file to read: a pipe says it holds nothing and then never ends.
     pub fn len(path: &Path) -> Result<u64> {
-        Ok(std::fs::metadata(path)?.len())
+        let meta = std::fs::metadata(path)?;
+        if !meta.is_file() {
+            return Err(Error::new(ErrorKind::InvalidInput, format!("{} is not a file", path.display())));
+        }
+        Ok(meta.len())
     }
 
     pub fn write(path: &Path, bytes: &[u8]) -> Result<()> {
@@ -106,8 +126,12 @@ mod place {
         PAGE.with_borrow_mut(|m| m.write(path, bytes))
     }
 
-    pub fn put(path: &Path, bytes: &[u8]) -> Result<()> {
+    pub fn put(path: &Path, bytes: Vec<u8>) -> Result<()> {
         PAGE.with_borrow_mut(|m| m.put(path, bytes))
+    }
+
+    pub fn when_written(wake: Box<dyn Fn()>) {
+        PAGE.with_borrow_mut(|m| m.when_written(wake));
     }
 
     pub fn take(path: &Path) -> Option<Vec<u8>> {
@@ -151,8 +175,14 @@ pub fn replace(path: impl AsRef<Path>, text: &str) -> std::result::Result<(), St
 
 /// In a browser: puts a file the user picked in the page, at `path`, for a command to read.
 #[cfg(target_arch = "wasm32")]
-pub fn put(path: impl AsRef<Path>, bytes: &[u8]) -> Result<()> {
+pub fn put(path: impl AsRef<Path>, bytes: Vec<u8>) -> Result<()> {
     place::put(path.as_ref(), bytes)
+}
+
+/// In a browser: calls `wake` each time a command writes a file, for the front end to hand it over at once.
+#[cfg(target_arch = "wasm32")]
+pub fn when_written(wake: impl Fn() + 'static) {
+    place::when_written(Box::new(wake));
 }
 
 /// In a browser: the files commands wrote since this was last asked, to [`take`] and hand to the user.
@@ -161,7 +191,7 @@ pub fn written() -> Vec<PathBuf> {
     place::written()
 }
 
-/// In a browser: takes out the file a command wrote at `path`, to hand to the user.
+/// In a browser: takes out the file at `path`, one a command wrote to hand to the user or one picked that has been read.
 #[cfg(target_arch = "wasm32")]
 pub fn take(path: impl AsRef<Path>) -> Option<Vec<u8>> {
     place::take(path.as_ref())
@@ -187,7 +217,7 @@ mod tests {
     #[test]
     fn memory_lists_what_commands_wrote_not_what_was_put_in() {
         let mut m = Memory::default();
-        m.put(Path::new("/picked.ifc"), b"ISO-10303-21;").unwrap();
+        m.put(Path::new("/picked.ifc"), b"ISO-10303-21;".to_vec()).unwrap();
         m.write(Path::new("/b.pdf"), b"%PDF").unwrap();
         m.write(Path::new("/a.png"), b"png").unwrap();
         m.write(Path::new("/taken.svg"), b"svg").unwrap();
@@ -207,6 +237,42 @@ mod tests {
         // Writing over a file counts what it held as given back.
         m.write(Path::new("b"), b"small").unwrap();
         m.write(Path::new("c"), b"x").unwrap();
+    }
+
+    #[test]
+    fn memory_wakes_the_front_end_when_a_command_writes_not_when_a_file_is_put_in() {
+        let woken = std::rc::Rc::new(std::cell::Cell::new(0));
+        let mut m = Memory::default();
+        let count = woken.clone();
+        m.when_written(Box::new(move || count.set(count.get() + 1)));
+        m.put(Path::new("/picked.ifc"), b"x".to_vec()).unwrap();
+        assert_eq!(woken.get(), 0);
+        m.write(Path::new("/house.bimcraft"), b"{}").unwrap();
+        assert_eq!(woken.get(), 1);
+    }
+
+    #[test]
+    fn a_file_put_in_is_not_handed_over_as_one_written() {
+        let mut m = Memory::default();
+        m.write(Path::new("/house.ifc"), b"written").unwrap();
+        m.put(Path::new("/house.ifc"), b"picked".to_vec()).unwrap();
+        assert!(m.written().is_empty());
+        assert_eq!(m.read(Path::new("/house.ifc")).unwrap(), b"picked");
+    }
+
+    #[test]
+    fn memory_full_says_so_without_asking_for_a_reload() {
+        let mut m = Memory::default();
+        m.put(Path::new("a"), vec![0; MAX_HELD]).unwrap();
+        let e = m.write(Path::new("b"), b"x").unwrap_err();
+        assert_eq!(e.kind(), ErrorKind::OutOfMemory);
+        assert!(!e.to_string().contains("reload"), "{e}");
+    }
+
+    #[test]
+    fn a_computer_s_folder_or_device_is_not_a_file() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(len(dir.path()).map_err(|e| e.kind()), Err(ErrorKind::InvalidInput));
     }
 
     #[test]

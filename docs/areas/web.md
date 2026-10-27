@@ -26,12 +26,15 @@ the moment it opens, so to try Open, make the page's `HTMLInputElement.prototype
 ## What is different in a browser
 
 - **Files** (`bimcraft_core::disk`). A page has no file system, so every file a command reads or writes goes through `disk`: the
-  computer's files on a computer, and in a browser files held in the page's memory (`disk::Memory`, at most `MAX_HELD` in all).
-  Commands still name files by path. Opening goes through rfd's chooser: the picked file is read into the page under its name
-  (`/house.ifc`, `disk::put`) and the window gets that path, as it would a path on a computer (`ui-egui/src/web/dialog.rs`). Saving
-  asks nothing: the path is the name the window offers, the command writes it into the page, and once a frame each file commands
-  wrote (`disk::written`) is taken out and handed to the browser as a download. A project saved once is saved again to the same
-  name with Ctrl+S, and downloads again. A new command that reads or writes a file goes through `disk`, never `std::fs`, or it
+  computer's files on a computer (only regular files: a folder, pipe or device is refused), and in a browser files held in the
+  page's memory (`disk::Memory`, at most `MAX_HELD`, 512 MB, at once). Commands still name files by path. Opening goes through
+  rfd's chooser: the picked file is read with the browser's `arrayBuffer()` (rfd's own read never ends if the file can't be read),
+  put into the page under its name (`/house.ifc`, `disk::put`), the window gets that path as it would a path on a computer, and
+  once the command has read it the page lets it go (`ui-egui/src/web/dialog.rs`). So a linked model isn't read
+  again from the page after it came in: pick it again. Saving asks nothing: the path is the name the window offers, the command
+  writes it into the page, and each file commands wrote (`disk::written`) is taken out and handed to the browser as a download;
+  `disk::when_written` wakes the window when one is written, so a Ctrl+S downloads at once. A project saved once is saved again
+  to the same name, and downloads again. A new command that reads or writes a file goes through `disk`, never `std::fs`, or it
   works on a computer only.
 - **No updater.** Only the desktop phones home: `bimcraft-update` is not a dependency on wasm, `BimApp::updates` is an
   `Option<Infallible>` there, and `ui-egui/src/web/updates.rs` gives the window the updater's names, doing nothing. The page's
@@ -45,6 +48,8 @@ the moment it opens, so to try Open, make the page's `HTMLInputElement.prototype
   `std::thread::spawn` (which panics) on wasm: the desktop's `dialog.rs` does, and is not compiled there.
 - **Panics** abort a wasm module rather than unwind, so `Session::execute`'s `catch_unwind` can't roll a command back from one in
   a browser; a command that returns an error still rolls back. The rules against `unwrap` and `panic!` matter all the more.
+- **Chinese** needs a system font with its characters, which a page can't read, so a browser in Chinese shows the window in
+  English (and says why).
 - **Not in the page yet:** autosave and recovery, recent files, the settings file and favorites (none of them has anywhere to live
   without a file system; the browser's storage would be the place), the control port for agents, and point clouds big enough to
   need threads to read quickly.
