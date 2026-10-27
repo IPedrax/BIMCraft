@@ -24,9 +24,14 @@ encoding_rs = { workspace = true }
 getrandom = { workspace = true }
 tempfile = { workspace = true }
 rayon = { workspace = true }
+web-time = { workspace = true }
 ttf-parser = { workspace = true }
 proj4rs = { workspace = true }
 crs-definitions = { workspace = true }
+
+# In a browser the random numbers are the page's (with `--cfg getrandom_backend="wasm_js"`, in .cargo/config.toml).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { workspace = true, features = ["wasm_js"] }
 
 [build-dependencies]
 bimcraft-i18n = { workspace = true, features = ["catalog"] }

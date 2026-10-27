@@ -392,7 +392,7 @@ fn document_with(pages: &[Page], settings: &Settings, compress: bool) -> Result<
         metadata = metadata.keywords(keywords);
     }
     // An archive is dated (PDF/A-1 needs it): now, unless the settings say when.
-    let now = || std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs());
+    let now = || web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).ok().map(|d| d.as_secs());
     let created = settings.created.or_else(|| (settings.archive != Archive::None).then(now).flatten());
     if let Some(d) = created.and_then(date) {
         metadata = metadata.creation_date(d);

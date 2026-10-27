@@ -2,7 +2,7 @@
 //! within the screen when it doesn't fit (the default size on a small one, or a kept one after the screen changed). Only the
 //! size is kept, never the place: Wayland tells an app none, and a window starts in the middle of its screen.
 
-use std::time::Duration;
+use web_time::Duration;
 
 use egui::{Context, Vec2, ViewportCommand, vec2};
 

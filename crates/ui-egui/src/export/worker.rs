@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, TryRecvError, channel};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use web_time::Duration;
 
 use bimcraft_core::export::{self, Ctx, Job, Report};
 use bimcraft_i18n::msg;

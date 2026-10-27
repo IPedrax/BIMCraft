@@ -537,6 +537,7 @@ dependencies = [
  "tempfile",
  "tiny-skia",
  "ttf-parser",
+ "web-time",
  "zune-core",
  "zune-jpeg",
  "zune-jpegxl",
@@ -615,6 +616,7 @@ dependencies = [
  "egui_kittest",
  "hidapi",
  "image",
+ "js-sys",
  "pollster 1.0.1",
  "quick-xml",
  "rayon",
@@ -623,6 +625,10 @@ dependencies = [
  "serde_json",
  "sys-locale",
  "tempfile",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "web-time",
 ]
 
 [[package]]
@@ -633,6 +639,19 @@ dependencies = [
  "semver",
  "serde_json",
  "ureq",
+]
+
+[[package]]
+name = "bimcraft-web"
+version = "0.11.0"
+dependencies = [
+ "bimcraft-core",
+ "bimcraft-ui-egui",
+ "eframe",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]
@@ -1564,9 +1583,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "r-efi 5.3.0",
  "wasip2",
+ "wasm-bindgen",
 ]
 
 [[package]]

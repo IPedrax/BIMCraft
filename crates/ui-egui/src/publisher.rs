@@ -205,7 +205,7 @@ fn sample(m: &Model, format: &dyn Format, set: &str, publishing: &str, template:
     let first = publish::items(m, set, format).first().and_then(|i| i.view).and_then(|g| m.elements.id(g));
     let extra: BTreeMap<String, String> =
         [("PrintSet".to_string(), set.to_string()), ("PublishSet".to_string(), publishing.to_string())].into();
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    let now = web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
     let kind = export::kind_of(m, first).unwrap_or(export::Kind::Sheet);
     let template = if template.trim().is_empty() { export::default_name(kind) } else { template };
     // One file of them all is no view's: only the project's tokens mean anything there.

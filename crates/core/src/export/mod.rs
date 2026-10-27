@@ -623,7 +623,7 @@ pub fn run(model: &Arc<Model>, registry: &Registry, job: &Job, ctx: &Ctx) -> Res
     }
     std::fs::create_dir_all(&job.folder).map_err(|e| format!("{}: {e}", job.folder.display()))?;
     let m = crate::link::seen(model);
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    let now = web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
     // Each item as a format and a source, checked before anything is written.
     let mut work: Vec<(Arc<dyn Format>, Option<Id>)> = Vec::new();
     for item in &job.items {

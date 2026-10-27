@@ -785,11 +785,11 @@ mod tests {
         let mut outputs: Vec<_> = (0..6).map(|i| step(&mut app, &ctx, i)).collect();
         // The layout settles over the first frames, which moves the plan's view: on the card the frame shows the last drawing moved,
         // which may round a pixel otherwise, until a worker brings the one for where it settled.
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        let deadline = web_time::Instant::now() + web_time::Duration::from_secs(30);
         let mut i = 6;
         while app.canvas.drawing.shown_drawing().map(|d| d.view) != app.canvas.current_view(level) {
-            assert!(std::time::Instant::now() < deadline, "the worker published nothing");
-            std::thread::sleep(std::time::Duration::from_millis(5));
+            assert!(web_time::Instant::now() < deadline, "the worker published nothing");
+            std::thread::sleep(web_time::Duration::from_millis(5));
             outputs.push(step(&mut app, &ctx, i));
             i += 1;
         }
@@ -946,11 +946,11 @@ mod tests {
         }
         assert_eq!(app.canvas.drawing.retained.built, 1, "the plan's first drawing is made in the frame");
         // The window's layout settles over its first frames, which is a view that moved too.
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        let deadline = web_time::Instant::now() + web_time::Duration::from_secs(30);
         let mut i = 4;
         while app.canvas.drawing.shown_drawing().unwrap().view != app.canvas.current_view(level).unwrap() {
-            assert!(std::time::Instant::now() < deadline, "the worker published nothing");
-            std::thread::sleep(std::time::Duration::from_millis(5));
+            assert!(web_time::Instant::now() < deadline, "the worker published nothing");
+            std::thread::sleep(web_time::Duration::from_millis(5));
             outputs.push(step(&mut app, &ctx, i));
             i += 1;
         }
@@ -960,10 +960,10 @@ mod tests {
         i += 1;
         assert!(Arc::ptr_eq(&first, &app.canvas.drawing.shown_drawing().unwrap()), "the frame that moved doesn't wait for a drawing");
         let wanted = app.canvas.current_view(level).unwrap();
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        let deadline = web_time::Instant::now() + web_time::Duration::from_secs(30);
         while app.canvas.drawing.shown_drawing().unwrap().view != wanted {
-            assert!(std::time::Instant::now() < deadline, "the worker published nothing");
-            std::thread::sleep(std::time::Duration::from_millis(5));
+            assert!(web_time::Instant::now() < deadline, "the worker published nothing");
+            std::thread::sleep(web_time::Duration::from_millis(5));
             outputs.push(step(&mut app, &ctx, i));
             i += 1;
         }
@@ -1015,7 +1015,7 @@ mod tests {
         assert_ne!(edited.prims.len(), before, "and it holds the edit");
         for i in 6..40 {
             outputs.push(step(&mut app, &ctx, i));
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            std::thread::sleep(web_time::Duration::from_millis(10));
             assert!(
                 Arc::ptr_eq(&edited, &app.canvas.drawing.shown_drawing().unwrap()),
                 "what the worker made of the model before never shows"

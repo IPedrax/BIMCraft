@@ -1956,7 +1956,7 @@ mod command_tests {
 /// test that asserts a time fails on a busy machine. The bounds are about twice what each took when they were written.)
 #[cfg(test)]
 mod hostile_tests {
-    use std::time::Instant;
+    use web_time::Instant;
 
     use serde_json::{Value, json};
 

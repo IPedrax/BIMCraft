@@ -3,7 +3,7 @@
 //! and that a window with no network (every test's, until it is given a fake) says so. No test reaches a provider.
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use bimcraft_assistant::net::Net;
 use bimcraft_assistant::testing::Fake;
