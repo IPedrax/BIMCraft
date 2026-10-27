@@ -557,7 +557,7 @@ fn hostile_files_are_refused_or_read_as_far_as_they_go() {
     // Thousands of rows of one name are planned no further than a project's parameters go, and it says so.
     let path = file("many.csv");
     std::fs::write(&path, format!("Name,Categories\n{}", "Same,Walls\n".repeat(5000))).unwrap();
-    let started = std::time::Instant::now();
+    let started = web_time::Instant::now();
     let r = run(&mut s, "parameter_import", json!({"path": path, "dry_run": true}));
     assert!(started.elapsed().as_secs() < 30, "planned in {:?}", started.elapsed());
     assert!(r.to_string().contains("parameters a project holds"), "{r}");

@@ -261,7 +261,7 @@ impl BimApp {
             let (held, now) = ctx.input(|i| (i.modifiers.command, i.time));
             let left = crate::CTRL_WAIT - (now - self.typed_at);
             if held && left > 0.0 {
-                ctx.request_repaint_after(std::time::Duration::from_secs_f64(left));
+                ctx.request_repaint_after(web_time::Duration::from_secs_f64(left));
             } else {
                 let letter = self.typed.remove(0);
                 self.family_ctrl_key(letter);

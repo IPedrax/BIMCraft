@@ -15,4 +15,6 @@ tools run the same commands. Neither adds behaviour of its own: a feature is a c
 - Both count what they allocate (`cap`, the global allocator) and read what the machine has free (`sysinfo`), and install that as
   the core's meter first thing in `main`, so a file opened is held to the memory there is (`bimcraft_core::memory`).
 - A release build on Windows has no console: a start that fails says so through `startup::note`, not `eprintln!` alone.
-- `cargo test -p bimcraft -p bimcraft-cli` runs in a few seconds.
+- `bimcraft-web` is the desktop's window in a browser page (`index.html`, built with `trunk build --release`): no updater, no Revit
+  reader, no control port, and files in the page's memory. What it can't do and how to look at it: [the browser build](../docs/areas/web.md).
+- `cargo test -p bimcraft -p bimcraft-cli -p bimcraft-web` runs in a few seconds.

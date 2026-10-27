@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, TryRecvError, channel};
-use std::time::Duration;
+use web_time::Duration;
 
 use bimcraft_core::export::page::{self, Anchor, Colour, Orientation, PageSetup, Pages, Scale};
 use bimcraft_core::export::{self, Content, Family, Format, Item, Job, Kind, Options, Paged, Status as Ready, Takes};

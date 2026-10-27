@@ -6435,7 +6435,7 @@ mod updates {
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
-    use std::time::Duration;
+    use web_time::Duration;
 
     use bimcraft_update::testing::{Fake, Scratch, release_json};
     use bimcraft_update::{Handover, LATEST_URL, State, Target, Updater, Version};

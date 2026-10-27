@@ -194,7 +194,7 @@ impl<I: Send + 'static, O: Send + 'static> Drop for Latest<I, O> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
+    use web_time::Duration;
 
     #[test]
     fn superseded_work_is_cancelled_and_only_the_latest_input_is_rendered_next() {

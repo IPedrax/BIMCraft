@@ -1,6 +1,6 @@
 //! Recovery must never replace the user's saved project or advance their undo history.
 use std::sync::Arc;
-use std::time::Duration;
+use web_time::Duration;
 
 use serde_json::json;
 
@@ -14,12 +14,12 @@ fn dir() -> std::path::PathBuf {
 }
 
 fn notice(worker: &mut Worker) -> Notice {
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let deadline = web_time::Instant::now() + Duration::from_secs(10);
     loop {
         if let Some(note) = worker.poll() {
             return note;
         }
-        assert!(std::time::Instant::now() < deadline, "worker did not reply");
+        assert!(web_time::Instant::now() < deadline, "worker did not reply");
         std::thread::sleep(Duration::from_millis(1));
     }
 }
@@ -95,7 +95,7 @@ fn startup_finds_orphaned_untitled_backups_but_skips_live_sessions() {
     }
     // Drop is nonblocking. The worker drains its queue, then releases its file locks.
     drop(active);
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let deadline = web_time::Instant::now() + Duration::from_secs(10);
     loop {
         other.discover(None, 2).unwrap();
         if let Notice::Discovered { result, .. } = notice(&mut other)
@@ -103,7 +103,7 @@ fn startup_finds_orphaned_untitled_backups_but_skips_live_sessions() {
         {
             break;
         }
-        assert!(std::time::Instant::now() < deadline);
+        assert!(web_time::Instant::now() < deadline);
         std::thread::sleep(Duration::from_millis(1));
     }
     other.remove(backup.clone()).unwrap();
@@ -133,9 +133,9 @@ fn a_killed_process_leaves_a_recoverable_snapshot_and_releases_its_lock() {
         .env(CHILD, &dir)
         .spawn()
         .unwrap();
-    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    let deadline = web_time::Instant::now() + Duration::from_secs(15);
     while !dir.join("ready").exists() {
-        if std::time::Instant::now() >= deadline {
+        if web_time::Instant::now() >= deadline {
             let _ = child.kill();
             let _ = child.wait();
             panic!("child failed to autosave before being killed");

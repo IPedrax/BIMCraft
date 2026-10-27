@@ -1235,7 +1235,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         owner: 0,
         mapped: Vec::new(),
     };
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    let now = web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
     // IFC2x3 requires an owner history of every rooted entity: one for the file, by the project's author with BIMCraft.
     if schema == Schema::Ifc2x3 {
         let info = m.project_info().map(|(_, i)| i);

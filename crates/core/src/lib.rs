@@ -43,6 +43,7 @@ pub mod demand;
 pub mod derived;
 pub mod dims;
 pub mod dims3d;
+pub mod disk;
 mod doors;
 pub mod dps;
 pub mod dr;

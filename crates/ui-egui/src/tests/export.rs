@@ -4,7 +4,7 @@
 use super::*;
 use egui_kittest::kittest::NodeT;
 use std::sync::Arc;
-use std::time::Duration;
+use web_time::Duration;
 
 /// Frames until `done` says so, a few seconds at most: the preview and the export are made on threads of their own.
 fn until(h: &mut Harness<BimApp>, done: impl Fn(&BimApp) -> bool) {

@@ -1,0 +1,24 @@
+[package]
+name = "bimcraft-web"
+description = "BIMCraft in a browser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version = "1.95"
+publish = false
+
+[lints]
+workspace = true
+
+# Built for a browser with Trunk (`trunk build --release` here, which reads index.html). Without the Revit reader, which
+# reads from a file system and is Apache-2.0 only, and without the updater: only the desktop phones home.
+[dependencies]
+bimcraft-core = { workspace = true }
+bimcraft-ui-egui = { workspace = true }
+eframe = { workspace = true }
+serde_json = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["Document", "Element", "HtmlCanvasElement", "Location", "Window"] }

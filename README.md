@@ -298,6 +298,13 @@ cd bimcraft
 cargo run --release -p bimcraft -- --sample       # opens the sample house
 ```
 
+In a browser, nothing to install (the same window, built for WebAssembly; details in [docs/areas/web.md](docs/areas/web.md)):
+
+```sh
+rustup target add wasm32-unknown-unknown && cargo install trunk
+cd apps/bimcraft-web && trunk serve --release              # http://127.0.0.1:8080/#sample
+```
+
 Without a window:
 
 ```sh
@@ -722,6 +729,7 @@ crates/ui-egui         bimcraft-ui-egui: the desktop front end, a thin shell ove
   updates.rs           the update banner under the Options Bar, and the File menu's update items
   assistant.rs         the Assistant palette (AI): provider, model, key and the chat, over crates/assistant
 apps/bimcraft          the desktop app
+apps/bimcraft-web      the same window in a browser page (WebAssembly, built with Trunk)
 apps/bimcraft-cli      run, info, convert, commands, and the MCP server
 ```
 

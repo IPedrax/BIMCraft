@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, channel};
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use bimcraft_core::cowork::{Look, MAX_SELECTION, On, Presence};
 use bimcraft_core::geom::P2;

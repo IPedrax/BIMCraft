@@ -84,7 +84,7 @@ impl Format for Bcf {
         let view_guid = id.map_or(u128::from(seen.uid) << 64 | 0x3d, |id| seen.guid(id).as_u128());
         let topic = uuid(view_guid ^ 0x5bcf_0001);
         let viewpoint = uuid(view_guid ^ 0x5bcf_0002);
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+        let now = web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
         let markup = markup(&seen, &v.name, &topic, &viewpoint, &crate::ifc::utc(now));
         let viewpoint_xml = viewpoint_xml(&viewpoint, &cam, &selected, &hidden);
         let folder = |name: &str| format!("{topic}/{name}");

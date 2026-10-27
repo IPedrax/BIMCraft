@@ -173,15 +173,15 @@ fn a_view_being_made_keeps_the_last_picture_quietly_then_faded_with_its_bar_and_
     // real time had passed, which 32 frames on a fast machine don't take.
     h.run_steps(2);
     assert!(matches!(h.state().orbit.waiting, Some(Waiting::Quiet | Waiting::Faded)), "the last picture stays");
-    let moment = std::time::Duration::from_millis(50);
-    let long = std::time::Duration::from_secs(1);
+    let moment = web_time::Duration::from_millis(50);
+    let long = web_time::Duration::from_secs(1);
     assert_eq!(Waiting::after(moment, true, false), Waiting::Quiet, "a moment: as it was");
     assert_eq!(Waiting::after(long, true, false), Waiting::Faded);
     assert_eq!(Waiting::after(moment, true, true), Waiting::Faded, "something wrong is said at once");
     assert_eq!(Waiting::after(moment, false, false), Waiting::Bare, "with no picture, the words at once");
     assert!(h.query_by_label("Zoom to Fit").is_some(), "its bar stays");
     // Longer: faded, and it says so.
-    h.state_mut().orbit.waiting_since = std::time::Instant::now().checked_sub(long);
+    h.state_mut().orbit.waiting_since = web_time::Instant::now().checked_sub(long);
     h.run();
     assert_eq!(h.state().orbit.waiting, Some(Waiting::Faded));
     assert!(h.query_by_label("Zoom to Fit").is_some());
