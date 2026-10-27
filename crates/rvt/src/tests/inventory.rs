@@ -292,7 +292,8 @@ fn the_element_table_is_read_in_both_layouts_and_what_does_not_fit_is_refused() 
     }
     let table = project(2024).element_table();
     let mut falling = table.clone();
-    falling[6 + 20..6 + 24].copy_from_slice(&u32::MAX.to_le_bytes()); // the first id above the second
+    falling[6 + 20..6 + 24].copy_from_slice(&u32::MAX.to_le_bytes()); // the first record's ids above the second's, in both columns
+    falling[6..6 + 4].copy_from_slice(&u32::MAX.to_le_bytes());
     let mut huge = table.clone();
     huge[2..6].copy_from_slice(&u32::MAX.to_le_bytes()); // a count the table cannot hold
     let mut zero = table.clone();
@@ -301,6 +302,27 @@ fn the_element_table_is_read_in_both_layouts_and_what_does_not_fit_is_refused() 
         [(falling, "rise"), (huge, "rise"), (zero, "no elements"), (table[..4].to_vec(), "too short"), (Vec::new(), "too short")]
     {
         assert!(crate::elem_table::parse(&bad).unwrap_err().to_string().contains(says), "{says}");
+    }
+}
+
+#[test]
+fn a_workshared_table_whose_second_ids_do_not_rise_is_read_by_its_first_ids() {
+    // A workshared table: its second ids repeat and fall in places, its first ids rise all the way.
+    for release in [2023, 2024] {
+        let table = project(release).element_table();
+        let (size, id_at) = if release >= 2024 { (40, 20) } else { (28, 4) };
+        let expected = crate::elem_table::parse(&table).unwrap();
+        let mut worked = table.clone();
+        let set = |bytes: &mut Vec<u8>, record: usize, at: usize, id: u32| {
+            bytes[6 + record * size + at..6 + record * size + at + 4].copy_from_slice(&id.to_le_bytes());
+        };
+        set(&mut worked, 1, id_at, expected[0]); // a repeat
+        set(&mut worked, 3, id_at, 1); // a fall
+        assert_eq!(crate::elem_table::parse(&worked).unwrap(), expected, "Revit {release}");
+        // Where both columns rise the second is the ElementId, as before.
+        let mut apart = table.clone();
+        set(&mut apart, 0, 0, 0);
+        assert_eq!(crate::elem_table::parse(&apart).unwrap(), expected, "Revit {release}");
     }
 }
 

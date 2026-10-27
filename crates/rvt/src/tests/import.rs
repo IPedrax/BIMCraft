@@ -108,6 +108,26 @@ fn the_levels_of_real_files_come_in_as_the_storeys_of_rvt_rss_ifc_export() {
 }
 
 #[test]
+fn autodesks_2018_samples_come_in_through_the_readers_made_for_2023() {
+    // Not workshared: the levels, walls, floors and columns of the structural sample, the levels and walls of the architectural one.
+    for path in super::samples_of("rst_basic_sample_project.rvt") {
+        let i = crate::import_path(&path, "x").unwrap();
+        let count = |category: &str| i.model.elements.values().filter(|e| e.category() == category).count();
+        assert_eq!([count("level"), count("wall"), count("floor"), count("structuralcolumn")], [9, 9, 4, 30], "{}", path.display());
+    }
+    for path in super::samples_of("rac_basic_sample_project.rvt") {
+        let i = crate::import_path(&path, "x").unwrap();
+        let count = |category: &str| i.model.elements.values().filter(|e| e.category() == category).count();
+        assert_eq!([count("level"), count("wall")], [6, 56], "{}", path.display());
+    }
+    for path in super::samples_of("rac_advanced_sample_project.rvt") {
+        let i = crate::import_path(&path, "x").unwrap();
+        let count = |category: &str| i.model.elements.values().filter(|e| e.category() == category).count();
+        assert_eq!([count("level"), count("wall")], [5, 180], "{}", path.display());
+    }
+}
+
+#[test]
 fn a_note_lists_the_first_eight_ids_and_says_there_are_more_only_when_there_are() {
     let said = |count: u32| {
         let mut p = base(2024);
