@@ -45,6 +45,13 @@ fn main() {
     wasm_bindgen_futures::spawn_local(async move {
         let start = Box::new(move |cc: &eframe::CreationContext| -> Result<Box<dyn eframe::App>, _> {
             let mut app = app(sample);
+            // A file a command writes is handed over as a download in the next frame: the page asks for one at once, once this
+            // frame is done (a command may run while egui holds its context).
+            let ctx = cc.egui_ctx.clone();
+            bimcraft_core::disk::when_written(move || {
+                let ctx = ctx.clone();
+                wasm_bindgen_futures::spawn_local(async move { ctx.request_repaint() });
+            });
             // The 3D view may be drawn on the card egui draws on (WebGPU, or WebGL where the browser has no WebGPU).
             if let Some(state) = cc.wgpu_render_state.as_ref() {
                 app.use_graphics_card(state);
