@@ -34,6 +34,13 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   them (`geom::region_in`): the Snowdon sample's import went from 133 s to 2.4 s in a release build when the rooms stopped remaking
   their level's plan for each point. The notes are part of the product: a change that leaves something out says so.
 
+  A workshared (central) file up to 2023 differs in two ways the survey allows for. A record's header tag is followed by a counted
+  list of 14-byte items, empty in a file that is not workshared, so `records::id_before` finds a record's id back from its category
+  (14 bytes, and 14 more for each item) instead of at a fixed distance from the marker; and the element table's two id columns differ in
+  many records, an element's record carrying either, so `elem_table::parse` lists both. A real 128 MB central model inflates its one
+  partition to 664 MiB, which is why `Limits::max_inflated` is 2 GiB. Such a file imports what the importer has a reader for (its
+  levels, walls and floors); its pipes, ducts, fittings and the other categories have none, and the notes do not list them.
+
   Every note of an element left out reads `N kinds left out, why (ids …)` (`Import::left_out`; an element the model's rules drop
   after it was made goes through `Import::dropped`), because the desktop adds those numbers up for its status line
   (`revit::count_left_out`); a note about something that came in reads `N kinds: why (ids …)`. A roof by extrusion (class `Roof`) is its

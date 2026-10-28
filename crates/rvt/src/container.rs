@@ -38,9 +38,10 @@ pub struct Limits {
 
 impl Default for Limits {
     /// Above anything seen in Autodesk's samples (a 6 MB file, streams of a few MB) by a wide margin, and low enough that a
-    /// hostile file cannot make a desktop run out of memory: the worst case is one stored stream and its inflated form.
+    /// hostile file cannot make a desktop run out of memory: the worst case is one stored stream and its inflated form. A
+    /// workshared model of 128 MB, a real one, inflates its one big partition to 664 MiB, so the inflated limit is 2 GiB.
     fn default() -> Self {
-        Self { max_file: 2 << 30, max_streams: 1024, max_stream: 512 << 20, max_inflated: 512 << 20 }
+        Self { max_file: 2 << 30, max_streams: 1024, max_stream: 512 << 20, max_inflated: 2 << 30 }
     }
 }
 
