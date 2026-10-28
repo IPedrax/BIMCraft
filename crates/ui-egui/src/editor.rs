@@ -870,7 +870,7 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
 
 /// The family in the file at `path`: its name (its own, else the file's), and what it holds.
 fn read_family_file(path: &std::path::Path) -> Result<(String, Family), String> {
-    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let text = bimcraft_core::disk::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut v: Value = serde_json::from_str(&text).map_err(|e| format!("{} isn't a family: {e}", path.display()))?;
     let name = v.as_object_mut().and_then(|o| o.remove("name")).and_then(|n| n.as_str().map(String::from));
     let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();

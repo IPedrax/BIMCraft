@@ -223,9 +223,9 @@ impl BimApp {
 
     /// Loads keyboard shortcuts from a file on disk (markdown, txt, json, xml).
     pub(crate) fn load_shortcuts_from_file(&mut self, path: &Path) {
-        let read = match std::fs::metadata(path) {
-            Ok(m) if m.is_file() && m.len() <= MAX_FILE => {
-                std::fs::read_to_string(path).map_err(|e| tf("Failed to read file: {}", &[&e.to_string()]))
+        let read = match bimcraft_core::disk::len(path) {
+            Ok(len) if len <= MAX_FILE => {
+                bimcraft_core::disk::read_to_string(path).map_err(|e| tf("Failed to read file: {}", &[&e.to_string()]))
             }
             Ok(_) => Err(t("That is too big to be a shortcuts file.").to_string()),
             Err(e) => Err(tf("Failed to read file: {}", &[&e.to_string()])),

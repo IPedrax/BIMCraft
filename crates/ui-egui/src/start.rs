@@ -9,6 +9,7 @@ use std::time::{Duration, SystemTime};
 
 use bimcraft_core::model::Model;
 use bimcraft_core::view3d::{AZIMUTH, ELEVATION, Scene};
+#[cfg(not(target_arch = "wasm32"))]
 use bimcraft_update::State;
 use egui::epaint::{Mesh, PathShape, Shadow};
 use egui::{
@@ -110,7 +111,9 @@ fn back(ui: &mut Ui) -> Response {
 
 /// How long ago `when` was, in words.
 fn ago(when: SystemTime) -> String {
-    let secs = SystemTime::now().duration_since(when).unwrap_or(Duration::ZERO).as_secs();
+    // The file's time is std's; the clock is read through web_time, which a browser can read too.
+    let now = web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).unwrap_or(Duration::ZERO);
+    let secs = now.saturating_sub(when.duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::ZERO)).as_secs();
     let (minutes, hours, days) = (secs / 60, secs / 3600, secs / 86_400);
     match () {
         _ if minutes < 1 => t("Just now").to_string(),
@@ -124,6 +127,8 @@ fn ago(when: SystemTime) -> String {
 }
 
 /// What a click on the page asks for, done once it's drawn.
+// In a browser there is no updater to answer.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 enum Click {
     New,
     Open,
@@ -264,11 +269,15 @@ impl BimApp {
             }
             Click::Back => self.home.shown = false,
             Click::Page(url) => ctx.open_url(OpenUrl::new_tab(url)),
+            #[cfg(target_arch = "wasm32")]
+            Click::Update | Click::Check => {}
+            #[cfg(not(target_arch = "wasm32"))]
             Click::Update => {
                 if let Some(u) = self.updates.as_mut() {
                     u.update_now();
                 }
             }
+            #[cfg(not(target_arch = "wasm32"))]
             Click::Check => {
                 if let Some(u) = self.updates.as_mut() {
                     u.check_now();
@@ -441,45 +450,57 @@ impl BimApp {
             ui.label(RichText::new(t("This copy doesn't look for updates.")).color(pal().muted));
             return;
         };
-        let current = u.current().to_string();
-        match u.state() {
-            State::Available(release) => {
-                let version = release.version.to_string();
-                if release.installer.is_some() {
-                    if ui.button(RichText::new(t("Update now")).strong()).clicked() {
-                        *click = Some(Click::Update);
-                    }
-                } else if ui.button(t("Download")).clicked() {
-                    *click = Some(Click::Page(release.page.clone()));
+        updater_status(ui, u, click);
+    }
+}
+
+/// In a browser there is never an updater to say anything.
+#[cfg(target_arch = "wasm32")]
+fn updater_status(_: &mut Ui, u: &std::convert::Infallible, _: &mut Option<Click>) {
+    match *u {}
+}
+
+/// What the updater says, right to left.
+#[cfg(not(target_arch = "wasm32"))]
+fn updater_status(ui: &mut Ui, u: &bimcraft_update::Updater, click: &mut Option<Click>) {
+    let current = u.current().to_string();
+    match u.state() {
+        State::Available(release) => {
+            let version = release.version.to_string();
+            if release.installer.is_some() {
+                if ui.button(RichText::new(t("Update now")).strong()).clicked() {
+                    *click = Some(Click::Update);
                 }
-                pill(ui, &tf("BIMCraft {} is available", &[&version]), pal().accent);
+            } else if ui.button(t("Download")).clicked() {
+                *click = Some(Click::Page(release.page.clone()));
             }
-            State::Downloading { release, .. } => {
-                ui.spinner();
-                ui.label(tf("Downloading BIMCraft {}…", &[&release.version.to_string()]));
+            pill(ui, &tf("BIMCraft {} is available", &[&version]), pal().accent);
+        }
+        State::Downloading { release, .. } => {
+            ui.spinner();
+            ui.label(tf("Downloading BIMCraft {}…", &[&release.version.to_string()]));
+        }
+        State::Ready { release, .. } => {
+            if ui.button(RichText::new(t("Restart and install")).strong()).clicked() {
+                *click = Some(Click::Restart);
             }
-            State::Ready { release, .. } => {
-                if ui.button(RichText::new(t("Restart and install")).strong()).clicked() {
-                    *click = Some(Click::Restart);
-                }
-                pill(ui, &tf("BIMCraft {} is ready to install", &[&release.version.to_string()]), pal().accent);
-            }
-            State::Installing { .. } => {
-                ui.spinner();
-            }
-            State::Idle if u.checking() => {
-                ui.spinner();
-                ui.label(RichText::new(t("Checking for updates…")).color(pal().muted));
-            }
-            State::Idle if u.up_to_date() => {
-                ui.label(RichText::new(tf("BIMCraft {} is up to date", &[&current])).color(pal().muted));
-                let (rect, _) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::hover());
-                icons::paint(ui.painter(), Icon::Check, rect, pal().context);
-            }
-            State::Idle => {
-                if ui.link(t("Check for updates")).clicked() {
-                    *click = Some(Click::Check);
-                }
+            pill(ui, &tf("BIMCraft {} is ready to install", &[&release.version.to_string()]), pal().accent);
+        }
+        State::Installing { .. } => {
+            ui.spinner();
+        }
+        State::Idle if u.checking() => {
+            ui.spinner();
+            ui.label(RichText::new(t("Checking for updates…")).color(pal().muted));
+        }
+        State::Idle if u.up_to_date() => {
+            ui.label(RichText::new(tf("BIMCraft {} is up to date", &[&current])).color(pal().muted));
+            let (rect, _) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::hover());
+            icons::paint(ui.painter(), Icon::Check, rect, pal().context);
+        }
+        State::Idle => {
+            if ui.link(t("Check for updates")).clicked() {
+                *click = Some(Click::Check);
             }
         }
     }
@@ -518,6 +539,8 @@ fn action(ui: &mut Ui, icon: Icon, title: &str, hint: &str, keys: &str) -> Respo
 }
 
 /// A rounded label, tinted.
+// In a browser there is no updater to answer.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 fn pill(ui: &mut Ui, text: &str, color: Color32) {
     Frame::new()
         .fill(color.gamma_multiply(0.14))

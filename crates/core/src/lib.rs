@@ -13,6 +13,7 @@ mod commands;
 mod component_geometry;
 mod csg;
 pub mod curves;
+pub mod disk;
 pub mod draw;
 pub mod engine;
 pub mod family;

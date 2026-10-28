@@ -12,13 +12,26 @@ workspace = true
 
 [dependencies]
 bimcraft-core = { workspace = true }
-bimcraft-update = { workspace = true }
 serde_json = { workspace = true }
 egui = { workspace = true }
 eframe = { workspace = true }
 pollster = "1"
 rfd = { workspace = true }
 sys-locale = { workspace = true }
+web-time = { workspace = true }
+
+# Only the desktop phones home: a browser build has no updater.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+bimcraft-update = { workspace = true }
+
+# The browser's file chooser and downloads (`web/dialog.rs`).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
+# The picked file's size, to refuse one too large before reading it.
+rfd = { workspace = true, features = ["file-handle-inner"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["Blob", "Document", "Element", "File", "HtmlAnchorElement", "HtmlElement", "Node", "Url", "Window"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

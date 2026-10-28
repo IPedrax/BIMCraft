@@ -10,6 +10,10 @@ mod canvas;
 mod clouds;
 mod context;
 pub mod control;
+#[cfg(not(target_arch = "wasm32"))]
+mod dialog;
+#[cfg(target_arch = "wasm32")]
+#[path = "web/dialog.rs"]
 mod dialog;
 mod dock;
 mod draw;
@@ -48,6 +52,10 @@ mod style;
 #[cfg(test)]
 mod tests;
 mod titlebar;
+#[cfg(not(target_arch = "wasm32"))]
+mod updates;
+#[cfg(target_arch = "wasm32")]
+#[path = "web/updates.rs"]
 mod updates;
 pub mod window;
 
@@ -644,7 +652,11 @@ pub struct BimApp {
     title: String,
     styled: bool,
     /// The updater, which the desktop app attaches: a window starts without one, and so never phones home.
+    #[cfg(not(target_arch = "wasm32"))]
     pub updates: Option<bimcraft_update::Updater>,
+    /// In a browser there is no updater: the page is the version the site serves.
+    #[cfg(target_arch = "wasm32")]
+    pub updates: Option<std::convert::Infallible>,
     /// The reader of Revit files, which the desktop app attaches (`bimcraft-rvt` is Apache-2.0 only, so this crate never depends on
     /// it): a window starts without one, so it offers no `.rvt` and a test never reads a real one.
     pub revit: Option<revit::Importer>,

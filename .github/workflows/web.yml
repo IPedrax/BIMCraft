@@ -1,0 +1,55 @@
+# The browser build, published on GitHub Pages from main: the page is apps/bimcraft-web made by Trunk (docs/areas/web.md). Pages has
+# to be switched on once, with "GitHub Actions" as its source (Settings > Pages); until it is, the deploy step fails and nothing else does.
+name: Web
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time; a newer push waits rather than cancelling one half done.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust
+        run: rustup update stable && rustup default stable && rustup target add wasm32-unknown-unknown
+
+      # The same pinned Trunk as CI, checked against its sum.
+      - name: Trunk
+        run: |
+          curl -sSfL -o trunk.tar.gz https://github.com/trunk-rs/trunk/releases/download/v0.22.1/trunk-x86_64-unknown-linux-gnu.tar.gz
+          echo "2ab8d548fd5ed9cda50906f61fd8654204e7893bd52ebbfd90533862b7d71ee1  trunk.tar.gz" | sha256sum -c -
+          tar xzf trunk.tar.gz trunk
+
+      # A project's Pages are served under its name: https://<owner>.github.io/<repository>/.
+      - name: Page
+        working-directory: apps/bimcraft-web
+        run: ../../trunk build --release --public-url "/${{ github.event.repository.name }}/"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/bimcraft-web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

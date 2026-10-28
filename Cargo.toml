@@ -11,6 +11,8 @@ rust-version = "1.90"
 [workspace.dependencies]
 # GUIDs: the system's random numbers.
 getrandom = "0.3"
+# The clock, which std has no way to read in a browser; on a computer it is std's.
+web-time = "1"
 tempfile = "3"
 rayon = "1.12"
 bimcraft-core = { path = "crates/core" }

@@ -515,6 +515,8 @@ pub(super) const WORDS: &[[&str; 2]] = &[
     ["Couldn't download the update: {}", "无法下载更新：{}"],
     ["Couldn't install the update: {}", "无法安装更新：{}"],
     ["Couldn't save the setting: {}", "无法保存设置：{}"],
+    ["Couldn't download {}: {}", "无法下载 {}：{}"],
+    ["{} is too large to open here", "{} 太大，无法在此打开"],
     ["BIMCraft couldn't start", "BIMCraft 无法启动"],
     ["{}\n\nThe details are in {}.", "{}\n\n详细信息见 {}。"],
     ["Floor Plan", "楼层平面"],

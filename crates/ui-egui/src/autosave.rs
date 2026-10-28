@@ -2,7 +2,7 @@
 //! constructing a BimApp by itself never touches recovery files.
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use bimcraft_core::autosave::{Backup, Notice, Worker, backup_path};
 use bimcraft_core::ids::Guid;

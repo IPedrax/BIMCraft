@@ -1822,13 +1822,13 @@ fn with_links(s: &mut Session, mut reply: Value) -> Value {
 fn open_file(s: &mut Session, p: &Value) -> R {
     let c = "open";
     let path = PathBuf::from(string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required"))?);
-    let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
+    let size = crate::disk::len(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
     if size >= MAX_FILE {
         return Err(bad(c, format!("{} is too large ({size} bytes)", path.display())));
     }
     // IFC comes in as a new project: saving it asks where.
     if ext(&path) == "ifc" {
-        let bytes = std::fs::read(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        let bytes = crate::disk::read(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         let stem = path.file_stem().map_or_else(|| "Project".into(), |s| s.to_string_lossy().into_owned());
         let i = crate::import::ifc(&bytes, &stem).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
@@ -1840,7 +1840,7 @@ fn open_file(s: &mut Session, p: &Value) -> R {
         s.reset(i.model, None);
         return Ok(reply);
     }
-    let text = std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+    let text = crate::disk::read_to_string(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
     let (mut m, left_out) = Model::read(&text).map_err(|e| bad(c, format!("{} is not a BIMCraft project: {e}", path.display())))?;
     m.adopt_materials();
     // A project parameter named as a phase or a design option is held under is from before they were: it keeps its values, renamed.
@@ -2055,7 +2055,7 @@ fn save(s: &mut Session, p: &Value) -> R {
     };
     let format = ext(&path);
     if format == "ifc" {
-        std::fs::write(&path, crate::ifc::export(&s.model)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        crate::disk::write(&path, crate::ifc::export(&s.model)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         return Ok(json!({"path": path, "format": "IFC4"}));
     }
     if format == "pdf" {
@@ -2074,7 +2074,7 @@ fn save(s: &mut Session, p: &Value) -> R {
         }
         sheets.sort_by(|a, b| a.0.cmp(b.0));
         let pages: Vec<(&Drawing, P2)> = sheets.iter().map(|(_, d, p)| (d, *p)).collect();
-        std::fs::write(&path, pdf::pdf(&pages)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        crate::disk::write(&path, pdf::pdf(&pages)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         return Ok(json!({"path": path, "format": "PDF", "pages": pages.len()}));
     }
     if matches!(format.as_str(), "svg" | "png") {
@@ -2083,7 +2083,7 @@ fn save(s: &mut Session, p: &Value) -> R {
         return Ok(json!({"path": path, "format": format}));
     }
     let text = s.model.to_json().map_err(|e| bad(c, e))?;
-    crate::autosave::atomic_write(&path, &text).map_err(|e| bad(c, e))?;
+    crate::disk::replace(&path, &text).map_err(|e| bad(c, e))?;
     s.path = Some(path.clone());
     Ok(json!({"path": path, "format": "bimcraft"}))
 }
@@ -2129,7 +2129,7 @@ fn write_plan(d: &render::Drawing, path: &Path) -> Result<(), String> {
         "png" => render::png(d)?,
         other => return Err(format!("render: write a .png or .svg, not `.{other}`")),
     };
-    std::fs::write(path, bytes).map_err(|e| format!("{}: {e}", path.display()))
+    crate::disk::write(path, bytes).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 /// A picture that only comes as PNG (the 3D view, a section): written to `path`, a .png, when
@@ -2137,7 +2137,7 @@ fn write_plan(d: &render::Drawing, path: &Path) -> Result<(), String> {
 fn png_reply(c: &str, p: &Value, png: Vec<u8>, mut info: Value) -> R {
     match string(c, p, "path")? {
         Some(path) if ext(Path::new(&path)) == "png" => {
-            std::fs::write(&path, png).map_err(|e| bad(c, format!("{path}: {e}")))?;
+            crate::disk::write(&path, png).map_err(|e| bad(c, format!("{path}: {e}")))?;
             info["path"] = json!(path);
         }
         Some(path) => return Err(bad(c, format!("only plans make SVGs; save this view as .png, not as {path}"))),
@@ -2194,7 +2194,7 @@ fn render_view(s: &mut Session, p: &Value) -> R {
         let d = sheet::draw(m, id).ok_or_else(|| bad(c, format!("sheet {number} can't be drawn")))?;
         let info = with_notes(json!({"width": d.view.width, "height": d.view.height, "view": number, "kind": "sheet"}), &d.notes);
         if let Some(path) = string(c, p, "path")?.filter(|path| ext(Path::new(path)) == "pdf") {
-            std::fs::write(&path, pdf::pdf(&[(&d, size)])).map_err(|e| bad(c, format!("{path}: {e}")))?;
+            crate::disk::write(&path, pdf::pdf(&[(&d, size)])).map_err(|e| bad(c, format!("{path}: {e}")))?;
             return Ok(with_notes(json!({"path": path, "view": info["view"], "kind": "sheet"}), &d.notes));
         }
         return png_reply(c, p, render::png(&d)?, info);
@@ -2296,7 +2296,7 @@ fn schedule(s: &mut Session, p: &Value) -> R {
         if changed {
             m.check().map_err(|e| bad(c, e))?;
         }
-        std::fs::write(&path, crate::schedule::to_csv(&t)).map_err(|e| bad(c, format!("{path}: {e}")))?;
+        crate::disk::write(&path, crate::schedule::to_csv(&t)).map_err(|e| bad(c, format!("{path}: {e}")))?;
     }
     let columns: Vec<String> = t.columns.iter().map(|col| crate::schedule::heading(Units::Millimetres, col)).collect();
     let available: Vec<String> = crate::schedule::fields(m, &category(&sc.of)).into_iter().map(|(n, _)| n).collect();
@@ -3319,11 +3319,11 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
             let options = cloud::Options { scale, spacing, cap: (cap / paths.len()).max(1) };
             let mut scans = Vec::with_capacity(paths.len());
             for (path, format) in paths.iter().zip(formats) {
-                let len = std::fs::metadata(path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
+                let len = crate::disk::len(path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
                 if len > cloud::MAX_BYTES as u64 {
                     return Err(bad(c, format!("{} is too large ({len} bytes; up to {})", path.display(), cloud::MAX_BYTES)));
                 }
-                let bytes = std::fs::read(path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+                let bytes = crate::disk::read(path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
                 let read = cloud::read(&bytes, format, &options).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
                 let source = path.file_name().map_or_else(String::new, |s| s.to_string_lossy().into_owned());
                 scans.push((source, read));
@@ -5317,11 +5317,11 @@ fn texture_param(c: &str, m: &mut Model, p: &Map<String, Value>, old: Option<Tex
     match (kind, p.get("path").filter(|v| !v.is_null()), p.get("image").filter(|v| !v.is_null())) {
         (Kind::Image, Some(path), _) => {
             let path = PathBuf::from(path.as_str().ok_or_else(|| bad(c, format!("texture `path` is a file's path, not {path}")))?);
-            let len = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
+            let len = crate::disk::len(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
             if len > texture::MAX_BYTES as u64 {
                 return Err(bad(c, format!("{} is too large ({len} bytes)", path.display())));
             }
-            let bytes = std::fs::read(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+            let bytes = crate::disk::read(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
             let stem = path.file_stem().map_or_else(|| "picture".into(), |s| s.to_string_lossy().into_owned());
             let picture = Picture::import(&stem, &bytes).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
             let (id, (w, h)) = (picture.id(), picture.size());
@@ -5518,11 +5518,11 @@ fn family(s: &mut Session, p: &Value) -> R {
     let mut p = p.clone();
     if let Some(path) = string(c, &p, "path")? {
         let path = PathBuf::from(path);
-        let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
+        let size = crate::disk::len(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         if size >= MAX_FILE {
             return Err(bad(c, format!("{} is too large ({size} bytes)", path.display())));
         }
-        let text = std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        let text = crate::disk::read_to_string(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         let loaded: Value = serde_json::from_str(&text).map_err(|e| bad(c, format!("{} is not a family: {e}", path.display())))?;
         let Value::Object(mut fields) = loaded else {
             return Err(bad(c, format!("{} is not a family: it isn't an object", path.display())));
@@ -5545,7 +5545,7 @@ fn family(s: &mut Session, p: &Value) -> R {
         let mut v = serde_json::to_value(f).map_err(|e| bad(c, e))?;
         v["name"] = json!(name);
         let text = serde_json::to_string_pretty(&v).map_err(|e| bad(c, e))?;
-        std::fs::write(&file, text).map_err(|e| bad(c, format!("{file}: {e}")))?;
+        crate::disk::write(&file, text).map_err(|e| bad(c, format!("{file}: {e}")))?;
         return Ok(json!({"saved": name, "path": file}));
     }
     let m = s.model_mut();

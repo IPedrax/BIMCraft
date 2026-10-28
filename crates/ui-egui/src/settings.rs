@@ -456,7 +456,7 @@ impl BimApp {
                 ui.label(t("Save a recovery copy every"));
                 if ui.add(egui::DragValue::new(&mut self.autosave.interval_minutes).range(1..=120).suffix(" min")).changed() {
                     self.autosave.next_due =
-                        std::time::Instant::now() + std::time::Duration::from_secs(u64::from(self.autosave.interval_minutes) * 60);
+                        web_time::Instant::now() + web_time::Duration::from_secs(u64::from(self.autosave.interval_minutes) * 60);
                 }
             });
         }

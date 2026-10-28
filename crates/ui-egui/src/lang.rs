@@ -1342,6 +1342,8 @@ const WORDS: &[[&str; 3]] = &[
     ["Couldn't download the update: {}", "Não foi possível baixar a atualização: {}", "No se pudo descargar la actualización: {}"],
     ["Couldn't install the update: {}", "Não foi possível instalar a atualização: {}", "No se pudo instalar la actualización: {}"],
     ["Couldn't save the setting: {}", "Não foi possível salvar a configuração: {}", "No se pudo guardar el ajuste: {}"],
+    ["Couldn't download {}: {}", "Não foi possível baixar {}: {}", "No se pudo descargar {}: {}"],
+    ["{} is too large to open here", "{} é grande demais para abrir aqui", "{} es demasiado grande para abrirlo aquí"],
     // The message box a start that failed shows (apps/bimcraft/src/startup.rs).
     ["BIMCraft couldn't start", "O BIMCraft não conseguiu iniciar", "BIMCraft no pudo iniciar"],
     ["{}\n\nThe details are in {}.", "{}\n\nOs detalhes estão em {}.", "{}\n\nLos detalles están en {}."],

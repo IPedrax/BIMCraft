@@ -57,6 +57,32 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+  # The browser build (apps/bimcraft-web, docs/areas/web.md): what the page runs has to build and pass clippy for wasm32, where code
+  # behind `cfg(target_arch = "wasm32")` is compiled at all, and Trunk has to make the page. Trunk is a pinned release, checked
+  # against its sum; it fetches the wasm-bindgen that matches Cargo.lock.
+  web:
+    name: Web (wasm32)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust
+        run: rustup update stable && rustup default stable && rustup component add clippy && rustup target add wasm32-unknown-unknown
+
+      - name: Clippy
+        run: cargo clippy -p bimcraft-core -p bimcraft-ui-egui -p bimcraft-web --target wasm32-unknown-unknown -- -D warnings
+
+      - name: Trunk
+        run: |
+          curl -sSfL -o trunk.tar.gz https://github.com/trunk-rs/trunk/releases/download/v0.22.1/trunk-x86_64-unknown-linux-gnu.tar.gz
+          echo "2ab8d548fd5ed9cda50906f61fd8654204e7893bd52ebbfd90533862b7d71ee1  trunk.tar.gz" | sha256sum -c -
+          tar xzf trunk.tar.gz trunk
+
+      - name: Page
+        working-directory: apps/bimcraft-web
+        run: ../../trunk build --release
+
   # What CLAUDE.md asks after touching ifc.rs: IfcOpenShell validates what BIMCraft writes, with the EXPRESS rules, and builds every
   # product's shape. The sample house, and ci/ifc-coverage.txt for what the sample doesn't reach (structure, runs, masses, phases).
   ifc:

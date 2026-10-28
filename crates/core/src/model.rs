@@ -4797,8 +4797,7 @@ pub fn mix(mut z: u64) -> u64 {
 }
 
 fn fresh_uid() -> u64 {
-    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
-    mix(nanos ^ u64::from(std::process::id()).rotate_left(32))
+    crate::ids::seed()
 }
 
 /// A file from before pens (format 3 and older) as one after: each line weight of a view's, a filter's or a phase's

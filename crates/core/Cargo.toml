@@ -18,3 +18,8 @@ zune-jpeg = { workspace = true }
 getrandom = { workspace = true }
 tempfile = { workspace = true }
 rayon = { workspace = true }
+web-time = { workspace = true }
+
+# In a browser the random numbers are the page's (with `--cfg getrandom_backend="wasm_js"`, in .cargo/config.toml).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { workspace = true, features = ["wasm_js"] }
