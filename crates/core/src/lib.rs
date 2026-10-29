@@ -28,6 +28,9 @@ pub mod draw;
 pub mod dxf;
 #[cfg(test)]
 mod eberick_tests;
+pub mod electrical;
+#[cfg(test)]
+mod electrical_tests;
 pub mod engine;
 pub mod family;
 pub mod favorites;

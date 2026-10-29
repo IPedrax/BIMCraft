@@ -398,6 +398,37 @@ pub static ALL: &[Command] = &[
         reinforcement_preset,
     ),
     edit(
+        "voltage",
+        "Voltage Definitions",
+        &[],
+        "{name?, nominal?, min?, max?, rename?, delete?: true} a voltage of the project's electrical settings, in volts: `nominal`, and the \
+         band a device may read within, `min` to `max` (10 per cent either way unless given). Without `name`, lists them. A voltage a \
+         distribution system names cannot be deleted; renamed, the systems follow",
+        voltage,
+    ),
+    edit(
+        "distribution_system",
+        "Distribution Systems",
+        &[],
+        "{name?, phases?: 1|2|3, wires?, l_l?, l_n?, l_g?, ground?, rename?, delete?: true} a distribution system of the project's \
+         electrical settings. `wires` counts the line conductors and the neutral, not the protective one (3 phases: 3 or 4). `l_l`, `l_n` \
+         and `l_g` name the voltages between two lines, a line and the neutral, and a line and earth (at least one; `l_l` from 2 phases; with 3 \
+         phases `l_l` is about 1.73 times `l_n`), each a `voltage` of the project; \"\" takes one away. `ground` is the earthing: TN-S, TN-C, \
+         TN-C-S, TT or IT. A voltage the project lacks is refused, and the refusal lists the ones it has. Without `name`, lists them",
+        distribution_system,
+    ),
+    edit(
+        "wire_type",
+        "Wire Types",
+        &[],
+        "{name?, material?: copper|aluminium, temperature?, insulation?, note?, sizes?: [{section, ampacity, label?}], rename?, delete?: true} \
+         a wire type of the project's electrical settings: a conductor's `material`, working `temperature` (°C) and `insulation`, and \
+         its table, `sizes`: the `section` of each row in mm² (smallest first, never less than the row before) and the `ampacity` it \
+         carries in amperes, with a `label` for how its standard names it (12 AWG). Giving `sizes` replaces the table. `note` says where the \
+         ampacities come from. Without `name`, lists them",
+        wire_type,
+    ),
+    edit(
         "column",
         ui_msg!("Column"),
         &["CL"],
@@ -5041,6 +5072,200 @@ fn reinforcement_preset(s: &mut Session, p: &Value) -> R {
     }
     m.reinforcement.insert(name.clone(), preset.clone());
     Ok(json!({"name": name, "preset": preset}))
+}
+
+/// A number of `unit` under `key`, finite and of any size: the setting's own check says how large it may be.
+fn amount(c: &str, p: &Value, key: &str, unit: &str) -> Result<Option<f64>, String> {
+    match p.get(key) {
+        v if absent(v) => Ok(None),
+        Some(v) => {
+            v.as_f64().filter(|x| x.is_finite()).map(Some).ok_or_else(|| bad(c, format!("`{key}` must be a number of {unit}, got {v}")))
+        }
+        None => Ok(None),
+    }
+}
+
+/// A whole number under `key`, from 0 to 255.
+fn small(c: &str, p: &Value, key: &str) -> Result<Option<u8>, String> {
+    match p.get(key) {
+        v if absent(v) => Ok(None),
+        Some(v) => v
+            .as_u64()
+            .and_then(|n| u8::try_from(n).ok())
+            .map(Some)
+            .ok_or_else(|| bad(c, format!("`{key}` must be a whole number from 0 to 255, got {v}"))),
+        None => Ok(None),
+    }
+}
+
+/// The text under `key` to set: none when it isn't given (what it was stays), none inside when it is "" (taken away).
+fn clearable(c: &str, p: &Value, key: &str) -> Result<Option<Option<String>>, String> {
+    Ok(string(c, p, key)?.map(|t| Some(t.trim().to_string()).filter(|t| !t.is_empty())))
+}
+
+fn voltage(s: &mut Session, p: &Value) -> R {
+    use crate::electrical::{MAX_VOLTAGES, Voltage};
+    let c = "voltage";
+    only(c, p, &["name", "nominal", "min", "max", "rename", "delete"])?;
+    let Some(name) = name_param(c, p, "name")? else {
+        return Ok(json!({"voltages": s.model.voltages}));
+    };
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if !m.voltages.contains_key(&name) {
+            return Err(bad(c, format!("there's no voltage `{name}`")));
+        }
+        if let Some((system, _)) = m.distribution_systems.iter().find(|(_, d)| d.voltage_names().any(|v| *v == name)) {
+            return Err(bad(c, format!("voltage `{name}` is one distribution system `{system}` supplies: change or delete that first")));
+        }
+        m.voltages.remove(&name);
+        return Ok(json!({"deleted": name}));
+    }
+    let was = m.voltages.get(&name).cloned();
+    let rename = name_param(c, p, "rename")?;
+    if was.is_none() && rename.is_some() {
+        return Err(bad(c, format!("there's no voltage `{name}` to rename")));
+    }
+    let nominal = match (amount(c, p, "nominal", "volts")?, &was) {
+        (Some(n), _) => n,
+        (None, Some(w)) => w.nominal,
+        (None, None) => return Err(bad(c, "`nominal` (volts) is required for a new voltage")),
+    };
+    let band = Voltage::around(nominal);
+    let v = Voltage {
+        nominal,
+        min: amount(c, p, "min", "volts")?.or(was.as_ref().map(|w| w.min)).unwrap_or(band.min),
+        max: amount(c, p, "max", "volts")?.or(was.as_ref().map(|w| w.max)).unwrap_or(band.max),
+    };
+    let name = match rename {
+        Some(to) if to != name => {
+            if m.voltages.contains_key(&to) {
+                return Err(bad(c, format!("there's already a voltage `{to}`")));
+            }
+            m.voltages.remove(&name);
+            rename_entry(m, &LibKind::Voltage, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    v.check(&name).map_err(|e| bad(c, e))?;
+    if !m.voltages.contains_key(&name) && m.voltages.len() >= MAX_VOLTAGES {
+        return Err(bad(c, format!("the project holds up to {MAX_VOLTAGES} voltages")));
+    }
+    m.voltages.insert(name.clone(), v.clone());
+    Ok(json!({"name": name, "voltage": v}))
+}
+
+fn distribution_system(s: &mut Session, p: &Value) -> R {
+    use crate::electrical::{DistributionSystem, MAX_SYSTEMS};
+    let c = "distribution_system";
+    only(c, p, &["name", "phases", "wires", "l_l", "l_n", "l_g", "ground", "rename", "delete"])?;
+    let Some(name) = name_param(c, p, "name")? else {
+        return Ok(json!({"distribution_systems": s.model.distribution_systems}));
+    };
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if m.distribution_systems.remove(&name).is_none() {
+            return Err(bad(c, format!("there's no distribution system `{name}`")));
+        }
+        return Ok(json!({"deleted": name}));
+    }
+    let was = m.distribution_systems.get(&name).cloned();
+    let rename = name_param(c, p, "rename")?;
+    if was.is_none() && rename.is_some() {
+        return Err(bad(c, format!("there's no distribution system `{name}` to rename")));
+    }
+    let phases = small(c, p, "phases")?
+        .or(was.as_ref().map(|w| w.phases))
+        .ok_or_else(|| bad(c, "`phases` (1, 2 or 3) is required for a new distribution system"))?;
+    let wires = small(c, p, "wires")?
+        .or(was.as_ref().map(|w| w.wires))
+        .ok_or_else(|| bad(c, "`wires` (the line conductors and the neutral) is required for a new distribution system"))?;
+    let (l_l, l_n, l_g, ground) = was.map(|w| (w.l_l, w.l_n, w.l_g, w.ground)).unwrap_or_default();
+    let d = DistributionSystem {
+        phases,
+        wires,
+        l_l: clearable(c, p, "l_l")?.unwrap_or(l_l),
+        l_n: clearable(c, p, "l_n")?.unwrap_or(l_n),
+        l_g: clearable(c, p, "l_g")?.unwrap_or(l_g),
+        ground: clearable(c, p, "ground")?.unwrap_or(ground),
+    };
+    let name = match rename {
+        Some(to) if to != name => {
+            if m.distribution_systems.contains_key(&to) {
+                return Err(bad(c, format!("there's already a distribution system `{to}`")));
+            }
+            m.distribution_systems.remove(&name);
+            rename_entry(m, &LibKind::DistributionSystem, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    d.check(&name, &m.voltages).map_err(|e| bad(c, e))?;
+    if !m.distribution_systems.contains_key(&name) && m.distribution_systems.len() >= MAX_SYSTEMS {
+        return Err(bad(c, format!("the project holds up to {MAX_SYSTEMS} distribution systems")));
+    }
+    m.distribution_systems.insert(name.clone(), d.clone());
+    Ok(json!({"name": name, "distribution_system": d}))
+}
+
+fn wire_type(s: &mut Session, p: &Value) -> R {
+    use crate::electrical::{MATERIALS, MAX_SIZES, MAX_WIRE_TYPES, WireSize, WireType};
+    let c = "wire_type";
+    only(c, p, &["name", "material", "temperature", "insulation", "note", "sizes", "rename", "delete"])?;
+    let Some(name) = name_param(c, p, "name")? else {
+        return Ok(json!({"wire_types": s.model.wire_types}));
+    };
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if m.wire_types.remove(&name).is_none() {
+            return Err(bad(c, format!("there's no wire type `{name}`")));
+        }
+        return Ok(json!({"deleted": name}));
+    }
+    let was = m.wire_types.get(&name).cloned();
+    let rename = name_param(c, p, "rename")?;
+    if was.is_none() && rename.is_some() {
+        return Err(bad(c, format!("there's no wire type `{name}` to rename")));
+    }
+    let material = string(c, p, "material")?
+        .or(was.as_ref().map(|w| w.material.clone()))
+        .ok_or_else(|| bad(c, format!("`material` ({}) is required for a new wire type", MATERIALS.join(", "))))?;
+    let temperature = amount(c, p, "temperature", "°C")?
+        .or(was.as_ref().map(|w| w.temperature))
+        .ok_or_else(|| bad(c, "`temperature` (°C) is required for a new wire type"))?;
+    let insulation = string(c, p, "insulation")?
+        .or(was.as_ref().map(|w| w.insulation.clone()))
+        .ok_or_else(|| bad(c, "`insulation` is required for a new wire type"))?;
+    let note = string(c, p, "note")?.or(was.as_ref().map(|w| w.note.clone())).unwrap_or_default();
+    let sizes: Vec<WireSize> = match p.get("sizes") {
+        Some(v) if !absent(Some(v)) => {
+            if v.as_array().is_some_and(|rows| rows.len() > MAX_SIZES) {
+                return Err(bad(c, format!("`sizes` holds up to {MAX_SIZES} rows")));
+            }
+            serde_json::from_value(v.clone())
+                .map_err(|e| bad(c, format!("`sizes` must be a list of {{section, ampacity, label?}}: {e}")))?
+        }
+        _ => was.map(|w| w.sizes).ok_or_else(|| bad(c, "`sizes` [{section, ampacity}, …] is required for a new wire type"))?,
+    };
+    let w = WireType { material, temperature, insulation, note, sizes };
+    let name = match rename {
+        Some(to) if to != name => {
+            if m.wire_types.contains_key(&to) {
+                return Err(bad(c, format!("there's already a wire type `{to}`")));
+            }
+            m.wire_types.remove(&name);
+            rename_entry(m, &LibKind::WireType, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    w.check(&name).map_err(|e| bad(c, e))?;
+    if !m.wire_types.contains_key(&name) && m.wire_types.len() >= MAX_WIRE_TYPES {
+        return Err(bad(c, format!("the project holds up to {MAX_WIRE_TYPES} wire types")));
+    }
+    m.wire_types.insert(name.clone(), w.clone());
+    Ok(json!({"name": name, "wire_type": w}))
 }
 
 fn wall(s: &mut Session, p: &Value) -> R {
@@ -10081,6 +10306,7 @@ fn inspect(s: &mut Session, _: &Value) -> R {
         "types": m.types, "materials": m.materials, "images": images(m), "families": families(m), "parameters": m.parameters,
         "view_filters": m.view_filters, "view_templates": m.view_templates, "phases": m.phases, "phase_filters": m.phase_filters,
         "phase_overrides": m.phase_overrides, "option_sets": m.option_sets, "warnings": warnings,
+        "voltages": m.voltages, "distribution_systems": m.distribution_systems, "wire_types": m.wire_types,
         "history": s.history(),
     }))
 }
