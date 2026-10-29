@@ -61,6 +61,8 @@ pub struct Sketch {
     pub styled: bool,
     /// The plan it began in: the sketch belongs to it, and Finish Edit Mode makes its element there.
     pub plan: Sheet,
+    /// The work plane a new one begun in the 3D view lies on (`workplane.rs`): what it makes stands on the level below it.
+    pub surface: Option<bimcraft_core::walls::Plane>,
     /// The lines as they were before each change, oldest first, and as the last frame saw them: Ctrl+Z takes back one change
     /// (a line drawn, a trim, a fillet, a grip moved), not one line.
     history: Vec<Vec<SketchLine>>,
@@ -334,6 +336,7 @@ impl BimApp {
             region,
             styled,
             plan,
+            surface: None,
             history: Vec::new(),
             seen,
         });
@@ -385,6 +388,30 @@ impl BimApp {
         }
         let lines = json!(sk.lines.iter().map(sent).collect::<Vec<_>>());
         let m = &self.session.model;
+        // Begun on the 3D view's (level) work plane: it stands on the level below the plane, as high above it as the plane is.
+        if let Some(surface) = sk.surface {
+            let Some((level, offset)) = bimcraft_core::workplane::host(m, surface, P2(0.0, 0.0)) else { return };
+            let (id, p) = match sk.of {
+                Of::Floor(_) => (
+                    "floor",
+                    self.typed("floor", json!({"level": level, "offset": offset, "structural": self.floor_structural, "sketch": lines})),
+                ),
+                Of::Ceiling(_) => ("ceiling", self.typed("ceiling", json!({"level": level, "offset": offset, "sketch": lines}))),
+                Of::Roof(_) => {
+                    let slope = number(&self.roof_slope).unwrap_or(30.0);
+                    ("roof", self.typed("roof", json!({"level": level, "offset": offset, "slope": slope, "sketch": lines})))
+                }
+                Of::Shaft(_) => ("shaft", json!({"level": level, "base_offset": offset, "sketch": lines})),
+                _ => return,
+            };
+            if let Some(made) = self.run(id, p) {
+                self.sketch = None;
+                self.tool = Tool::Modify;
+                self.forget_picks();
+                self.selection = made["id"].as_u64().into_iter().collect();
+            }
+            return;
+        }
         let (id, p) = match sk.of {
             Of::Floor(level) => {
                 ("floor", self.typed("floor", json!({"level": level, "structural": self.floor_structural, "sketch": lines})))
@@ -462,7 +489,7 @@ impl BimApp {
         let plan = self.sketch.as_ref()?.plan;
         let there = match plan {
             Sheet::Plan(key) | Sheet::Ceiling(key) => self.session.model.plan_level(key).is_some(),
-            Sheet::View3D => self.sketch_z().is_some(),
+            Sheet::View3D => self.sketch_surface().is_some(),
             _ => false,
         };
         there.then_some(plan)
@@ -851,7 +878,7 @@ impl BimApp {
             Tool::SketchLine(chain) if chain.is_empty() => "Click where the line starts.",
             Tool::SketchLine(_) => msg!("Click the line's end; the next starts there. The first point again closes the loop; Esc stops."),
             Tool::SketchPick => msg!("Click a wall: a boundary line along it."),
-            Tool::Modify if self.sketch_z().is_some() => {
+            Tool::Modify if self.sketch_surface().is_some() => {
                 msg!(
                     "Pick sketch lines; drag a picked line's end over its plane to move it, anywhere else to turn the view; Delete removes them. Finish Edit Mode when every loop is closed."
                 )

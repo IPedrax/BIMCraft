@@ -69,6 +69,9 @@ pub mod texture;
 pub mod units;
 pub mod view3d;
 pub mod walls;
+pub mod workplane;
+#[cfg(test)]
+mod workplane_tests;
 pub mod xlsx;
 
 pub use commands::{command_of, element_json, floor_outline, opening_of, roof_footprint, run_category_of, runs_of, stood_of};

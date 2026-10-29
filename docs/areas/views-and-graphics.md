@@ -223,6 +223,16 @@ new drawing of what a view cuts sets `Part::Cut`; a hidden door's opening is dra
 Instances and the framing of sections and 3D views take what `Look` shows too. A level's ceiling plan is its plan's view;
 transparency shows in 3D only.
 
+A 3D view sketches on its work plane (`workplane.rs`), as Revit's Work Plane > Set and more: `View3D::work_plane`, a `WorkPlane` on a
+`level` (a GUID, in `visit_refs!`) raised `offset` mm, or through three `points`; with none, the lowest level (`Model::work_plane`).
+`WorkPlane::resolve` gives it as a `walls::Plane` over the plan, as a floor's top is, so a sketch on it stays plan lines raised onto it:
+three points along a line, standing upright or sloping past `MAX_SLOPE` are refused (`workplane::through`), and `Model::check` resolves
+it. The `work_plane` command sets it (making the default 3D view, as `section_box` does) or, given nothing, clears it; deleting its level
+clears it too. `workplane::host` is the level what is made on it stands on: the highest at or below the plane, else the lowest; a
+floor, a ceiling, a roof or a shaft is made only on a level one (`workplane::is_level`).
+`Camera::on_slope` finds the point of such a plane under a pixel, `Camera::at_depth` a pixel's point at a depth, and the 3D pictures
+say what point of the model a pixel shows (`Image::point`, from the depth the processor's picture now keeps; `gpu::Mesh::point`).
+
 A 3D view may be cut to a section box (fork issue 1), as Revit's Section Box: `View3D::section_box`, a `SectionBox` of six planes
 square to the axes from `min` to `max`, `on` or off (off, it keeps its extents), set by the `section_box` command (which makes the
 default 3D view, as `graphics` does, and with no extents fits the box round `Model::model_box`, `SECTION_BOX_ROOM` clear of it), and

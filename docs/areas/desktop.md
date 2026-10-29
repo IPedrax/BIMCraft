@@ -165,17 +165,29 @@ runs `section_box` when the drag ends. The grip takes the drag, not the camera, 
 plan's (and a plan view's) Properties have Section Box under Extents too, a `Flag` row: ticked, the plan shows what the box keeps.
 
 Sketching in 3D (`sketch3d.rs`). Edit Boundary on a floor, ceiling, roof by footprint or shaft selected in the 3D view keeps the
-sketch there, as Revit does: the lines are drawn over the picture on the element's own plane, `Model::sketch_height` (a floor's
-top at its level and offset, a sloped one's too; a ceiling's underside; a roof's base; a shaft's bottom), and `Sketch::plan` is
+sketch there, as Revit does: the lines are drawn over the picture on the element's own plane, `Model::sketch_plane` (a floor's
+top, sloped with it; a ceiling's underside; a roof's base; a shaft's bottom), and `Sketch::plan` is
 `Sheet::View3D`, so the window comes back to the 3D view until Finish or Cancel as it does to a plan (`BimApp::sketch_plan`,
 while the element still has a plane). The view turns, pans and zooms as ever, and its clicks pick no elements: `sketch3d::Plane`
-takes a point on screen to the plane (`Camera::on_plane`) and back. Modify picks a line where it shows (within `PICK` points of it
+takes a point on screen to the plane (`Camera::on_slope`) and back. Modify picks a line where it shows (within `PICK` points of it
 on screen, so a foreshortened line is as easy to hit as any), and a primary drag from a picked line's end holds that grip, not the
 camera (`BimApp::sketch3d_grab`, before the camera moves), the ends there moved where it is let go; a drag from anywhere else
 orbits, so there is no selection box. The Draw panel's shapes, Pick Walls and Pick Lines (the element the picture shows under the
 click), Split, Trim/Extend, Offset and Vertex take the plane's point as the plan takes its own, through `sketch_click`,
 `sketch_modify` and `vertex_click`, snapped by `snap::in_sketch` in the element's level with reaches from the view's scale.
 Align, which lines up with what a plan shows, says so. A view edge-on to the plane picks nothing on it, and says to turn it.
+
+Work planes in 3D (`workplane.rs`; the core's in [views and graphics](views-and-graphics.md)). The 3D view's control bar has Work
+Plane, a `footer::menu_button` showing the plane (a level's name, `+ offset` when raised, or `Three points, 14.0°`), which opens its
+dialog (`workplane::Draft`): On a level, a level and an Offset; or Through three points, nine lengths typed (`Point 1 X`…), or Pick in
+View, which closes the dialog while three clicks on the model take points of its surface (`Picker::point`: the processor picture's
+depth, `Image::point`, or the card's mesh, `Mesh::point`), drawn as dots, and brings it back with them, Esc going back without them.
+OK runs `work_plane`; what it refuses is said in the dialog. The plane is drawn as a grid over the model's extent while the dialog is
+up and while a new outline is sketched on it (`workplane::draw_plane`). Floor, Ceiling, Roof and Shaft picked in the 3D view sketch a new
+one on the work plane at once (`set_tool`, `sketch_on_work_plane`): `Sketch::surface` holds the plane, `sketch_surface` gives it to
+`sketch3d.rs`, and Finish makes it on the level below the plane (`workplane::host`), as high above it as the plane is. Each of the
+four lies level, so on a sloped plane (`workplane::is_level`) its tool says the work plane must be horizontal and makes nothing; a
+sloped plane can still be set, for what comes to sketch on one later.
 
 Unhide. Only Reveal Hidden Elements lets what a view hides be picked, so the Modify tab's View panel offers Unhide Element and Unhide Category (EU, VU) for a selection
 `BimApp::hidden_selection` finds the active view hiding: the elements hidden one by one, and the categories hidden whole. They run `graphics` with `show_elements` or `show`

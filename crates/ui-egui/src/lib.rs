@@ -57,6 +57,7 @@ mod titlebar;
 mod typeprops;
 mod updates;
 pub mod window;
+mod workplane;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
@@ -635,6 +636,8 @@ pub struct BimApp {
     purge_dialog: Option<purge::PurgeDialog>,
     /// Manage > Select by ID and IDs of Selection, while open.
     select_by_id: Option<inquiry::SelectById>,
+    /// The Work Plane dialog's draft, while it's open or picking its points in the 3D view.
+    work_plane: Option<workplane::Draft>,
     ids_of_selection: Option<inquiry::IdsOfSelection>,
     selection_filter: Option<filter::SelectionFilter>,
     /// What was last put on the clipboard.
@@ -1055,6 +1058,7 @@ impl BimApp {
             options_dialog: None,
             purge_dialog: None,
             select_by_id: None,
+            work_plane: None,
             ids_of_selection: None,
             selection_filter: None,
             copied: None,
@@ -1477,6 +1481,7 @@ impl BimApp {
             || self.options_dialog.is_some()
             || self.purge_dialog.is_some()
             || self.select_by_id.is_some()
+            || self.work_plane.as_ref().is_some_and(|d| d.picking.is_none())
             || self.ids_of_selection.is_some()
             || self.selection_filter.is_some()
             || self.settings_page.is_some()
@@ -2060,6 +2065,13 @@ impl BimApp {
         }
         self.snap_once = None;
         self.tool = tool;
+        // In the 3D view the tools that sketch an outline sketch it on the work plane at once.
+        if self.sheet == Sheet::View3D
+            && self.sketch.is_none()
+            && matches!(self.tool, Tool::Floor | Tool::Ceiling | Tool::Roof | Tool::Shaft(_))
+        {
+            self.sketch_on_work_plane();
+        }
     }
 
     /// The walls among the selection.
@@ -2149,6 +2161,10 @@ impl BimApp {
     /// Escape: dismiss the error, drop the chain being drawn, else leave the tool, else clear the
     /// selection.
     fn escape(&mut self) {
+        // Pick in View goes back to its dialog.
+        if self.stop_work_plane_pick() {
+            return;
+        }
         self.typed.clear();
         self.ribbon_peek = false;
         // A snap override waiting for its point goes first, leaving what's being drawn.
@@ -4310,6 +4326,7 @@ impl BimApp {
         }
         self.import_cad_window(ctx);
         self.select_by_id_window(ctx);
+        self.work_plane_window(ctx);
         self.ids_of_selection_window(ctx);
         self.selection_filter_window(ctx);
         self.shortcuts_window(ctx);

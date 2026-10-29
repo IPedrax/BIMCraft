@@ -5209,6 +5209,7 @@ mod tools;
 mod trim;
 mod typeprops;
 mod window;
+mod workplane;
 
 #[test]
 fn a_mass_edits_its_levels_and_its_top_outline_in_its_properties_which_lofts_it() {

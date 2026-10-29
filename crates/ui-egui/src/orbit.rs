@@ -48,6 +48,14 @@ impl Picker {
             Picker::Mesh(m, tints) => m.pick(cam, tints, x, y),
         }
     }
+
+    /// The point of the model's surface the picture shows at pixel `(x, y)`.
+    fn point(&self, cam: &Camera, x: f64, y: f64) -> Option<P3> {
+        match self {
+            Picker::Image(i) => i.point(cam, x, y),
+            Picker::Mesh(m, _) => m.point(cam, x, y),
+        }
+    }
 }
 
 /// The 3D view between frames.
@@ -175,9 +183,11 @@ impl BimApp {
         });
         let model = self.view_model();
         // An Edit Boundary begun here: its lines on the element's plane, a drag from a picked one's end holding its grip.
-        let sketch_z = self.sketch_z();
+        let sketch_z = self.sketch_surface();
         let last = self.orbit.camera.map(|c| Camera { width: w, height: h, ..c });
-        let held = self.sketch3d_grab(ui, &response, sketch_z.zip(last).map(|(z, cam)| Plane { cam, rect, ppp, z }));
+        let held = self.sketch3d_grab(ui, &response, sketch_z.zip(last).map(|(surface, cam)| Plane { cam, rect, ppp, surface }));
+        // Pick in View, taking the work plane's points: clicks are its, not the selection's.
+        let picking = self.work_plane_picks().is_some();
         let (modify, demolish, selection) = (self.tool == Tool::Modify, self.tool == Tool::Demolish, self.selection.clone());
         let (paint, unpaint) = (self.tool == Tool::Paint, self.tool == Tool::Unpaint);
         let o = &mut self.orbit;
@@ -382,7 +392,7 @@ impl BimApp {
         let click = click.filter(|at| !boxed.is_some_and(|b| modify && crate::section_box::grip_at(b, *at, screen).is_some()));
         // While sketching here a click is the sketch's, with what's under it for Pick Walls and Pick Lines.
         let under = click.filter(|_| sketch_z.is_some()).and_then(|at| pick(&o.picker, at)).map(|h| h.id);
-        let clicked = click.filter(|_| sketch_z.is_none()).map(|at| pick(&o.picker, at).map(|h| h.id));
+        let clicked = click.filter(|_| sketch_z.is_none() && !picking).map(|at| pick(&o.picker, at).map(|h| h.id));
         // The face of what's clicked, as paint names the faces of an element.
         let face = click.and_then(|at| pick(&o.picker, at).map(|h| h.face).filter(|f| !f.is_empty()));
         match clicked {
@@ -397,8 +407,28 @@ impl BimApp {
             }
             None => {}
         }
-        if let Some(z) = sketch_z {
-            self.sketch3d(ui, &response, &p, Plane { cam, rect, ppp, z }, click, under);
+        if let Some(surface) = sketch_z {
+            self.sketch3d(ui, &response, &p, Plane { cam, rect, ppp, surface }, click, under);
+        }
+        // The work plane, drawn while it's being set or a new outline is sketched on it; and the points picked for it.
+        let m = &self.session.model;
+        let new_sketch = self.sketch.as_ref().is_some_and(|sk| sk.surface.is_some() && sk.plan == crate::Sheet::View3D);
+        if (self.work_plane.is_some() || new_sketch)
+            && let Some((lo, hi)) = m.model_box()
+            && let Ok(surface) = m.work_plane(m.default_3d()).resolve(m)
+        {
+            let room = 2000.0;
+            let extent = [P2(lo[0] - room, lo[1] - room), P2(hi[0] + room, hi[1] + room)];
+            let surface = self.sketch.as_ref().and_then(|sk| sk.surface).unwrap_or(surface);
+            crate::workplane::draw_plane(&p, surface, extent, screen);
+        }
+        for q in self.work_plane_picks().unwrap_or_default() {
+            p.circle_filled(screen(*q), 4.0, pal().accent);
+        }
+        if picking && let Some(at) = click {
+            let (x, y) = px(at);
+            let point = self.orbit.picker.as_ref().and_then(|pk| pk.point(&cam, x, y));
+            self.work_plane_pick(point);
         }
         self.context_menu(&response);
         if let Some((id, [lo, hi])) = moved {
