@@ -52,7 +52,7 @@ pub(crate) struct Shadow {
 
 /// A button of the bar that opens a menu: named `label` for screen readers, and showing `shown`, the setting it holds. Greyed
 /// out, and saying so, when view template `set_by` sets it.
-fn menu_button(ui: &mut Ui, label: &str, shown: &str, tip: &str, set_by: Option<&str>) -> Response {
+pub(crate) fn menu_button(ui: &mut Ui, label: &str, shown: &str, tip: &str, set_by: Option<&str>) -> Response {
     let (label, tip) = (t(label), t(tip));
     let galley = ui.painter().layout_no_wrap(t(shown).to_string(), FontId::proportional(12.0), pal().text);
     ui.add_enabled_ui(set_by.is_none(), |ui| {
@@ -354,6 +354,7 @@ impl BimApp {
                                     }
                                 }
                             });
+                            self.work_plane_button(ui);
                             ui.separator();
                         }
                         _ => {}

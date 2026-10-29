@@ -1775,25 +1775,27 @@ fn a_click_made_on_the_move_in_3d_picks_what_was_under_the_press_and_leaves_the_
 }
 
 #[test]
-fn in_3d_a_drag_orbits_the_middle_button_pans_and_the_wheel_zooms() {
+fn in_3d_a_drag_boxes_shift_and_the_middle_button_orbit_the_middle_button_pans_and_the_wheel_zooms() {
     let mut h = app(BOX);
     press(&mut h, "Default 3D View");
     let cam = |h: &Harness<BimApp>| h.state().orbit.camera.unwrap();
     let (start, mid) = (cam(&h), h.state().orbit.rect.center());
-    // 100 px to the right: the model turns 40° with it.
+    // A primary drag is a selection box, as in a plan: the view stays.
     drag_screen(&mut h, mid, mid + vec2(100.0, 0.0), PointerButton::Primary);
-    let turned = cam(&h);
-    assert!((turned.azimuth - (start.azimuth - 40.0)).abs() < 0.5 && turned.elevation == start.elevation, "{turned:?}");
+    assert_eq!(cam(&h), start, "the primary button doesn't turn the view");
     drag_screen(&mut h, mid, mid + vec2(0.0, 50.0), PointerButton::Middle);
     let panned = cam(&h);
-    assert!(panned.target != turned.target && panned.azimuth == turned.azimuth, "{panned:?}");
-    // Shift and the middle button orbit too, as in Revit: dragging down looks from higher up.
+    assert!(panned.target != start.target && panned.azimuth == start.azimuth, "{panned:?}");
+    // Shift and the middle button orbit, as in Revit: 100 px to the right turns the model 40°; dragging down looks from higher up.
     h.event(Event::ModifiersChanged(Modifiers::SHIFT));
+    drag_screen(&mut h, mid, mid + vec2(100.0, 0.0), PointerButton::Middle);
+    let turned = cam(&h);
+    assert!((turned.azimuth - (start.azimuth - 40.0)).abs() < 0.5 && turned.elevation == start.elevation, "{turned:?}");
     drag_screen(&mut h, mid, mid + vec2(0.0, 50.0), PointerButton::Middle);
     h.event(Event::ModifiersChanged(Modifiers::NONE));
     h.run();
     let raised = cam(&h);
-    assert!(raised.elevation > panned.elevation + 15.0, "{raised:?}");
+    assert!(raised.elevation > turned.elevation + 15.0, "{raised:?}");
     h.hover_at(mid);
     h.event(Event::MouseWheel {
         unit: MouseWheelUnit::Point,
@@ -1807,6 +1809,26 @@ fn in_3d_a_drag_orbits_the_middle_button_pans_and_the_wheel_zooms() {
     // Zoom to Fit: the whole model again, from where the camera is now.
     press(&mut h, "Zoom to Fit");
     assert!(cam(&h).scale < zoomed.scale && cam(&h).azimuth == zoomed.azimuth);
+}
+
+#[test]
+fn in_3d_a_box_from_the_left_picks_what_lies_wholly_inside_and_from_the_right_what_it_touches() {
+    let mut h = app(BOX);
+    press(&mut h, "Default 3D View");
+    let south = find(&h, |e| matches!(e, Element::Wall(w) if w.start == P2(0.0, 0.0)));
+    // Round the south wall, its ends and height and all, from the left: it, and nothing else.
+    let corners = [[-300.0, -300.0, -100.0], [8300.0, 300.0, 3300.0], [-300.0, 300.0, 3300.0], [8300.0, -300.0, -100.0]];
+    let on: Vec<Pos2> = corners.iter().map(|p| h.state().screen3(*p)).collect();
+    let (lo, hi) = on.iter().fold((on[0], on[0]), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
+    let before = h.state().orbit.camera;
+    drag_screen(&mut h, lo, hi, PointerButton::Primary);
+    assert_eq!(h.state().selection, [south], "window: wholly inside");
+    assert_eq!(h.state().orbit.camera, before);
+    key(&mut h, Key::Escape);
+    // From the right, a box over the south wall's middle only: the walls it touches, no more.
+    let (a, b) = (h.state().screen3([4500.0, 0.0, 1500.0]), h.state().screen3([3500.0, 0.0, 1500.0]));
+    drag_screen(&mut h, a + vec2(0.0, -10.0), b + vec2(0.0, 10.0), PointerButton::Primary);
+    assert_eq!(h.state().selection, [south], "crossing: what it touches");
 }
 
 #[test]
@@ -2541,6 +2563,10 @@ mass {"boundary": [[1000, 1000], [3000, 1000], [3000, 2000], [1000, 2000]], "nam
                 click(&mut h, at);
             }
             missed.extend(english(&h, l));
+            // Floor sketches at once, and a sketch holds the window in its plan: cancelled before the next.
+            if h.state().sketch.is_some() {
+                press(&mut h, tr("Cancel Edit Mode"));
+            }
         }
         // The Mass tool with its Options Bar and prompts, and the Massing tab with a mass selected.
         key(&mut h, Key::Escape);
@@ -2867,8 +2893,8 @@ component {"family": "Stool", "at": [3000, 2000]}"#;
 fn floors_go_under_the_walls_and_a_slope_arrow_slopes_them() {
     let mut h = app(BOX);
     tool(&mut h, "Floor");
-    assert!(h.query_by_label("Modify | Create Floor").is_some());
-    click(&mut h, P2(4000.0, 3000.0));
+    press(&mut h, "Walls' Outline");
+    press(&mut h, "Finish Edit Mode");
     let floor = ids(&h, "floor");
     assert_eq!((floor.len(), field(&h, floor[0], "area_m2")), (1, json!(48.0)));
     assert_eq!(h.state().selection, floor, "finished, the floor is selected");
@@ -2887,7 +2913,8 @@ fn the_floor_tool_leaves_a_courtyard_open_inside_a_loop_of_walls_standing_free()
     let mut h = app(r#"wall {"points": [[0, 0], [16000, 0], [16000, 16000], [0, 16000]], "closed": true}
 wall {"points": [[6000, 6000], [10000, 6000], [10000, 10000], [6000, 10000]], "closed": true}"#);
     tool(&mut h, "Floor");
-    click(&mut h, P2(3000.0, 8000.0));
+    press(&mut h, "Walls' Outline");
+    press(&mut h, "Finish Edit Mode");
     let floor = ids(&h, "floor");
     assert_eq!(floor.len(), 1);
     let courtyard = json!([[[6000.0, 6000.0], [6000.0, 10000.0], [10000.0, 10000.0], [10000.0, 6000.0]]]);
@@ -3066,7 +3093,8 @@ fn a_floor_types_layers_go_from_its_top_down() {
     use egui_kittest::kittest::{By, NodeT};
     let mut h = app(BOX);
     tool(&mut h, "Floor");
-    click(&mut h, P2(4000.0, 3000.0));
+    press(&mut h, "Walls' Outline");
+    press(&mut h, "Finish Edit Mode");
     press(&mut h, "Edit Type");
     // A layer on top of its structure: tiles, 10 mm.
     press(&mut h, "Insert Layer");
@@ -5202,6 +5230,7 @@ mod reinforce;
 mod revit;
 mod section_box;
 mod sketch;
+mod sketch3d;
 mod smallest;
 mod start;
 mod titlebar;
@@ -5209,6 +5238,7 @@ mod tools;
 mod trim;
 mod typeprops;
 mod window;
+mod workplane;
 
 #[test]
 fn a_mass_edits_its_levels_and_its_top_outline_in_its_properties_which_lofts_it() {

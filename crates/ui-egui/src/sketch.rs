@@ -61,6 +61,8 @@ pub struct Sketch {
     pub styled: bool,
     /// The plan it began in: the sketch belongs to it, and Finish Edit Mode makes its element there.
     pub plan: Sheet,
+    /// The work plane a new one begun in the 3D view lies on (`workplane.rs`): what it makes stands on the level below it.
+    pub surface: Option<bimcraft_core::walls::Plane>,
     /// The lines as they were before each change, oldest first, and as the last frame saw them: Ctrl+Z takes back one change
     /// (a line drawn, a trim, a fillet, a grip moved), not one line.
     history: Vec<Vec<SketchLine>>,
@@ -334,6 +336,7 @@ impl BimApp {
             region,
             styled,
             plan,
+            surface: None,
             history: Vec::new(),
             seen,
         });
@@ -385,6 +388,30 @@ impl BimApp {
         }
         let lines = json!(sk.lines.iter().map(sent).collect::<Vec<_>>());
         let m = &self.session.model;
+        // Begun on the 3D view's (level) work plane: it stands on the level below the plane, as high above it as the plane is.
+        if let Some(surface) = sk.surface {
+            let Some((level, offset)) = bimcraft_core::workplane::host(m, surface, P2(0.0, 0.0)) else { return };
+            let (id, p) = match sk.of {
+                Of::Floor(_) => (
+                    "floor",
+                    self.typed("floor", json!({"level": level, "offset": offset, "structural": self.floor_structural, "sketch": lines})),
+                ),
+                Of::Ceiling(_) => ("ceiling", self.typed("ceiling", json!({"level": level, "offset": offset, "sketch": lines}))),
+                Of::Roof(_) => {
+                    let slope = number(&self.roof_slope).unwrap_or(30.0);
+                    ("roof", self.typed("roof", json!({"level": level, "offset": offset, "slope": slope, "sketch": lines})))
+                }
+                Of::Shaft(_) => ("shaft", json!({"level": level, "base_offset": offset, "sketch": lines})),
+                _ => return,
+            };
+            if let Some(made) = self.run(id, p) {
+                self.sketch = None;
+                self.tool = Tool::Modify;
+                self.forget_picks();
+                self.selection = made["id"].as_u64().into_iter().collect();
+            }
+            return;
+        }
         let (id, p) = match sk.of {
             Of::Floor(level) => {
                 ("floor", self.typed("floor", json!({"level": level, "structural": self.floor_structural, "sketch": lines})))
@@ -456,11 +483,29 @@ impl BimApp {
         }
     }
 
-    /// The plan the sketch began in, while it is there to go back to (a plan whose level was deleted is nowhere, and holds neither the
-    /// window nor its tool).
+    /// The view the sketch began in, while it is there to go back to: a plan (one whose level was deleted is nowhere, and holds
+    /// neither the window nor its tool), or the 3D view while what it edits has a plane there (`sketch3d.rs`).
     pub(crate) fn sketch_plan(&self) -> Option<Sheet> {
         let plan = self.sketch.as_ref()?.plan;
-        matches!(plan, Sheet::Plan(key) | Sheet::Ceiling(key) if self.session.model.plan_level(key).is_some()).then_some(plan)
+        let there = match plan {
+            Sheet::Plan(key) | Sheet::Ceiling(key) => self.session.model.plan_level(key).is_some(),
+            Sheet::View3D => self.sketch_surface().is_some(),
+            _ => false,
+        };
+        there.then_some(plan)
+    }
+
+    /// Trim/Extend's and Fillet Arc's picks so far, lit as the lines picked are.
+    pub(crate) fn sketch_lit(&self) -> Vec<usize> {
+        self.drawing
+            .trim
+            .map(|(i, _)| i)
+            .into_iter()
+            .chain(self.drawing.fillet.iter().filter_map(|(l, _)| match l {
+                draw::Picked::Sketch(i) => Some(*i),
+                draw::Picked::Element(_) => None,
+            }))
+            .collect()
     }
 
     /// Ctrl+Z while sketching: the last change to the lines taken back (a line drawn, a trim, a fillet, a grip moved).
@@ -737,6 +782,34 @@ impl BimApp {
         }
     }
 
+    /// A new floor's sketch: Walls' Outline, the outline the walls of its level enclose (and the courtyards in it) put in the
+    /// sketch as lines, to edit before Finish: what the Floor tool's one click made before it sketched.
+    pub(crate) fn walls_outline_panel(&mut self, ui: &mut Ui) {
+        let Some(Of::Floor(level)) = self.sketch.as_ref().map(|sk| sk.of) else { return };
+        panel(ui, msg!("Walls"), |ui| {
+            let tip = msg!("Walls' Outline: the outline the level's walls enclose, along their centre lines, as sketch lines to edit");
+            if big_button(ui, Icon::Wall, msg!("Walls' Outline"), false, tip).clicked() {
+                self.walls_outline(level);
+            }
+        });
+    }
+
+    /// The outline level `level`'s walls enclose, and its courtyards, added to the sketch as lines; or why there's none.
+    pub(crate) fn walls_outline(&mut self, level: Id) {
+        let Some((outline, courtyards)) = bimcraft_core::floor_outline(&self.session.model, level) else {
+            self.status = Status { text: t("No walls on this level enclose an area: sketch the outline.").into(), error: true };
+            return;
+        };
+        let Some(sk) = &mut self.sketch else { return };
+        for ring in std::iter::once(&outline).chain(&courtyards) {
+            for (a, b) in geom::ring_edges(ring) {
+                sk.lines.push(SketchLine::new(a, b));
+            }
+        }
+        sk.changed();
+        self.status = Status::default();
+    }
+
     /// The Floor, Ceiling, Roof and Shaft tools' Draw panel: their outline sketched instead of found from the walls.
     pub(crate) fn sketch_starters(&mut self, ui: &mut Ui) {
         let Some(level) = self.plan_level() else { return };
@@ -833,6 +906,11 @@ impl BimApp {
             Tool::SketchLine(chain) if chain.is_empty() => "Click where the line starts.",
             Tool::SketchLine(_) => msg!("Click the line's end; the next starts there. The first point again closes the loop; Esc stops."),
             Tool::SketchPick => msg!("Click a wall: a boundary line along it."),
+            Tool::Modify if self.sketch_surface().is_some() => {
+                msg!(
+                    "Pick sketch lines (a box picks several); drag a picked line's end over its plane to move it; Shift and the middle button orbit; Delete removes them. Finish Edit Mode when every loop is closed."
+                )
+            }
             _ => {
                 msg!(
                     "Pick sketch lines (a box picks several); drag a picked line's end to move it; Delete removes them. Finish Edit Mode when every loop is closed."

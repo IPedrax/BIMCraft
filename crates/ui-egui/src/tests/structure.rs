@@ -183,11 +183,13 @@ fn wall_footings_run_under_a_wall_between_two_clicks() {
 fn the_structure_tabs_floor_is_a_structural_one_and_the_architecture_tabs_is_not() {
     let mut h = app(BOX);
     structural(&mut h, "Floor: Structural");
-    click(&mut h, P2(4000.0, 3000.0));
+    press(&mut h, "Walls' Outline");
+    press(&mut h, "Finish Edit Mode");
     let floors = ids(&h, "floor");
     assert_eq!(field(&h, floors[0], "structural"), json!(true));
     tool(&mut h, "Floor");
-    click(&mut h, P2(4000.0, 3000.0));
+    press(&mut h, "Walls' Outline");
+    press(&mut h, "Finish Edit Mode");
     let floors = ids(&h, "floor");
     assert_eq!(floors.len(), 2);
     assert!(field(&h, floors[1], "structural").is_null(), "an architectural floor says nothing of load");
@@ -203,8 +205,9 @@ fn revits_shortcuts_pick_the_structure_tools() {
     }
     // SB is the structural floor; CL the architectural column, but on the Structure tab the structural one, as in Revit.
     shortcut(&mut h, "SB");
-    assert_eq!(h.state().tool, Tool::Floor);
-    click(&mut h, P2(4000.0, 3000.0));
+    assert!(matches!(h.state().sketch.as_ref().map(|s| s.of), Some(crate::sketch::Of::Floor(_))), "a floor's sketch");
+    press(&mut h, "Walls' Outline");
+    press(&mut h, "Finish Edit Mode");
     assert_eq!(field(&h, ids(&h, "floor")[0], "structural"), json!(true));
     shortcut(&mut h, "CL");
     assert_eq!(h.state().tool, Tool::Column);
@@ -348,6 +351,10 @@ fn the_structure_speaks_portuguese_and_spanish_and_leaves_no_english() {
             missed.extend(english(&h, l));
             key(&mut h, Key::Escape);
             key(&mut h, Key::Escape);
+            // The structural floor sketches at once: its sketch cancelled before the next.
+            if h.state().sketch.is_some() {
+                press(&mut h, crate::lang::translated_in(l, "Cancel Edit Mode").unwrap_or("Cancel Edit Mode"));
+            }
         }
         // What they made, selected: the palette, the contextual tab and the type dialog.
         for (point, edit_type) in [(P2(3000.0, 1000.0), true), (P2(2000.0, 2000.0), false), (P2(3000.0, 3000.0), false)] {

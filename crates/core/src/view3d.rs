@@ -11,7 +11,7 @@ use std::sync::{Arc, OnceLock};
 
 use crate::geom::{self, P2};
 use crate::graphics::{Look, VisualStyle};
-use crate::model::{Element, Id, Layer, Model};
+use crate::model::{Element, Id, Layer, Model, TOL};
 use crate::paint;
 use crate::render::{PAPER, Rgb, clip};
 use crate::stairs;
@@ -878,6 +878,20 @@ fn basis(t: &Tri) -> [P3; 2] {
     [across, unit(cross(n, across))]
 }
 
+/// Whether `p` is inside `look`'s section box, or there is none.
+fn kept(look: &Look, p: P3) -> bool {
+    look.section_box().is_none_or(|(lo, hi)| (0..3).all(|k| p[k] >= lo[k] - TOL && p[k] <= hi[k] + TOL))
+}
+
+/// A face of the model under a pixel ([`Scene::face_at`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Face {
+    pub at: P3,
+    pub normal: P3,
+    pub owner: Id,
+    pub tris: Vec<[P3; 3]>,
+}
+
 /// Where a level's name goes in a 3D view: a vertical plane, unseen, past the right end of its
 /// plane's far edges and in line with the one that ends there, lettered with the name. It is where an
 /// elevation marker (an annotation family, later) will stand.
@@ -980,6 +994,104 @@ impl Scene {
     }
 
     /// Each level's head as `cam` sees it: see [`LevelHead`].
+    /// The elements a selection box between pixels `a` and `b` of the picture through `cam` picks, of those `look` shows: from
+    /// the left (`crossing` false) those wholly inside it, from the right those it touches too. As Revit's, it goes by where
+    /// the model is, not what's in front: what lies behind something else is boxed as well.
+    pub fn in_box(&self, cam: &Camera, a: (f64, f64), b: (f64, f64), crossing: bool, look: &Look) -> Vec<Id> {
+        let (lo, hi) = (P2(a.0.min(b.0), a.1.min(b.1)), P2(a.0.max(b.0), a.1.max(b.1)));
+        let inside = |q: P2| q.0 >= lo.0 && q.0 <= hi.0 && q.1 >= lo.1 && q.1 <= hi.1;
+        let corners = [lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)];
+        // Whether triangle `t`, on screen, overlaps the box: a corner of either in the other, or an edge of each across.
+        let touches = |t: &[P2; 3]| {
+            t.iter().any(|q| inside(*q))
+                || corners.iter().any(|c| geom::contains(t, *c))
+                || geom::ring_edges(t).any(|(p, q)| {
+                    geom::ring_edges(&corners).any(|(c, d)| {
+                        geom::line_intersection(p, q, c, d).is_some_and(|x| {
+                            let on = |a: P2, b: P2| geom::dist_to_segment(x, a, b) <= 1e-9 * a.dist(b).max(1.0);
+                            on(p, q) && on(c, d)
+                        })
+                    })
+                })
+        };
+        // Each element: whether all of it is inside, and whether any of it is.
+        let mut seen: BTreeMap<Id, (bool, bool)> = BTreeMap::new();
+        for t in self.tris.iter().filter(|t| look.shows(t.owner) && !crate::link::is_linked(t.owner)) {
+            let on = t.p.map(|p| {
+                let (x, y, _) = cam.project(p);
+                P2(x, y)
+            });
+            if on.iter().any(|q| !(q.0.is_finite() && q.1.is_finite())) {
+                continue;
+            }
+            let e = seen.entry(t.owner).or_insert((true, false));
+            *e = (e.0 && on.iter().all(|q| inside(*q)), e.1 || (crossing && touches(&on)) || on.iter().any(|q| inside(*q)));
+        }
+        seen.into_iter().filter(|(_, (all, any))| if crossing { *any } else { *all }).map(|(id, _)| id).collect()
+    }
+
+    /// The triangle of what `look` shows nearest the camera at pixel `at`, and how near (as `project` says): none where
+    /// nothing is, or only what the section box cuts away.
+    fn hit(&self, cam: &Camera, at: (f64, f64), look: &Look) -> Option<(f64, usize)> {
+        let mut best: Option<(f64, usize)> = None;
+        for (i, t) in self.tris.iter().enumerate().filter(|(_, t)| look.shows(t.owner) && !crate::link::is_linked(t.owner)) {
+            let [a, b, c] = t.p.map(|p| cam.project(p));
+            let area = (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
+            if area.is_nan() || area.abs() <= 1e-12 {
+                continue;
+            }
+            // Its share of each corner at the pixel: all three at least none, it's inside.
+            let wa = ((b.0 - at.0) * (c.1 - at.1) - (b.1 - at.1) * (c.0 - at.0)) / area;
+            let wb = ((c.0 - at.0) * (a.1 - at.1) - (c.1 - at.1) * (a.0 - at.0)) / area;
+            let wc = 1.0 - wa - wb;
+            if wa < -1e-9 || wb < -1e-9 || wc < -1e-9 {
+                continue;
+            }
+            let z = wa * a.2 + wb * b.2 + wc * c.2;
+            if z.is_finite() && best.is_none_or(|(d, _)| z > d) && kept(look, cam.at_depth(at, z)) {
+                best = Some((z, i));
+            }
+        }
+        best
+    }
+
+    /// The face of the model at pixel `at` through `cam`, of what `look` shows: where on it, which way it faces (toward the
+    /// camera), whose it is, and its triangles: those of the element lying in its plane. As a work plane is set on a surface.
+    pub fn face_at(&self, cam: &Camera, at: (f64, f64), look: &Look) -> Option<Face> {
+        let (z, i) = self.hit(cam, at, look)?;
+        let t = self.tris.get(i)?;
+        let n = unit(cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0])));
+        let (back, ..) = cam.axes();
+        let normal = if dot(n, back) < 0.0 { mul(n, -1.0) } else { n };
+        let plane = self.planes.get(i).copied();
+        let tris = self.tris.iter().zip(&self.planes).filter(|(o, k)| o.owner == t.owner && Some(**k) == plane).map(|(o, _)| o.p).collect();
+        Some(Face { at: cam.at_depth(at, z), normal, owner: t.owner, tris })
+    }
+
+    /// The corner of what `look` shows nearest pixel `at`, within `reach` pixels, that the camera sees (nothing nearer hides
+    /// it): what a picked point snaps to, as a dimension's ends snap to corners in plan.
+    pub fn corner_near(&self, cam: &Camera, at: (f64, f64), reach: f64, look: &Look) -> Option<P3> {
+        let mut near: Vec<(f64, P3)> = self
+            .tris
+            .iter()
+            .filter(|t| look.shows(t.owner) && !crate::link::is_linked(t.owner))
+            .flat_map(|t| t.p)
+            .filter_map(|p| {
+                let (x, y, _) = cam.project(p);
+                let d = ((x - at.0).powi(2) + (y - at.1).powi(2)).sqrt();
+                (d <= reach).then_some((d, p))
+            })
+            .collect();
+        near.sort_by(|a, b| a.0.total_cmp(&b.0));
+        near.dedup_by(|a, b| sub(a.1, b.1).iter().all(|v| v.abs() < TOL));
+        // Seen where what's in front at its pixel is it, or no nearer than it: to a millimetre, and a little more for
+        // the pixel's slant across a face seen edge on.
+        near.into_iter().take(16).map(|(_, p)| p).find(|p| {
+            let (x, y, z) = cam.project(*p);
+            kept(look, *p) && self.hit(cam, (x, y), look).is_none_or(|(d, _)| d <= z + 1.0 + 2.0 / cam.scale.max(1e-9))
+        })
+    }
+
     pub fn level_heads(&self, cam: &Camera) -> Vec<LevelHead> {
         heads(&self.levels, cam)
     }
@@ -1256,6 +1368,7 @@ impl Scene {
             height: h as u32,
             rgba,
             hit,
+            depth: Vec::new(),
             owners: self.tris.iter().map(|t| t.owner).collect(),
             faces: Arc::clone(&self.faces),
         }
@@ -1516,7 +1629,7 @@ impl Scene {
                 }
             }
         }
-        Image { width: w as u32, height: h as u32, rgba, hit, owners, faces: Arc::clone(&self.faces) }
+        Image { width: w as u32, height: h as u32, rgba, hit, depth, owners, faces: Arc::clone(&self.faces) }
     }
 }
 
@@ -1816,6 +1929,22 @@ impl Camera {
         (back[2].abs() > 1e-9 && t.is_finite()).then(|| add(p, mul(back, t)))
     }
 
+    /// The point on the plane `p` over the plan under pixel `at`; none where the view is edge-on to it.
+    pub fn on_slope(&self, at: (f64, f64), p: crate::walls::Plane) -> Option<P3> {
+        let (back, ..) = self.axes();
+        let q = self.unproject(at);
+        // Along the ray `q + t · back`: its height and the plane's under it meet.
+        let across = back[2] - p.g.0 * back[0] - p.g.1 * back[1];
+        let t = (p.z + p.g.0 * q[0] + p.g.1 * q[1] - q[2]) / across;
+        (across.abs() > 1e-9 && t.is_finite()).then(|| add(q, mul(back, t)))
+    }
+
+    /// The model point at pixel `at`, `z` toward the camera from the plane through the target (as `project` says it).
+    pub fn at_depth(&self, at: (f64, f64), z: f64) -> P3 {
+        let (back, ..) = self.axes();
+        add(self.unproject(at), mul(back, z))
+    }
+
     /// The model point at pixel `(x, y)` on the plane through the target, square to the view.
     pub fn unproject(&self, (x, y): (f64, f64)) -> P3 {
         let (_, right, up) = self.axes();
@@ -1865,8 +1994,10 @@ pub struct Image {
     pub height: u32,
     /// Row by row: red, green, blue and alpha.
     pub rgba: Vec<u8>,
-    /// Each pixel's triangle (`u32::MAX` for none), and each triangle's element.
+    /// Each pixel's triangle (`u32::MAX` for none), how near the camera the opaque surface there is (none in a wireframe),
+    /// and each triangle's element.
     hit: Vec<u32>,
+    depth: Vec<f32>,
     owners: Vec<Id>,
     faces: Arc<Vec<&'static str>>,
 }
@@ -1875,6 +2006,13 @@ impl Image {
     fn index(&self, x: f64, y: f64) -> Option<usize> {
         let (w, h) = (f64::from(self.width), f64::from(self.height));
         (x >= 0.0 && y >= 0.0 && x < w && y < h).then(|| y as usize * self.width as usize + x as usize)
+    }
+
+    /// The point of the model's surface the pixel at `(x, y)` shows, through `cam`, the camera it was taken through: the
+    /// nearest opaque surface there. None where nothing is, and in a wireframe, which has no surfaces.
+    pub fn point(&self, cam: &Camera, x: f64, y: f64) -> Option<P3> {
+        let z = *self.depth.get(self.index(x, y)?)?;
+        (z.is_finite()).then(|| cam.at_depth((x.floor() + 0.5, y.floor() + 0.5), f64::from(z)))
     }
 
     /// The element the pixel at `(x, y)` shows.

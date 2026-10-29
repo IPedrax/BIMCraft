@@ -841,6 +841,9 @@ pub struct View3D {
     /// The box it is cut to, as Revit's Section Box: kept, with its extents, when it's turned off.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub section_box: Option<SectionBox>,
+    /// What it sketches on (`workplane.rs`): the lowest level when it has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_plane: Option<crate::workplane::WorkPlane>,
 }
 
 impl View3D {
@@ -852,6 +855,7 @@ impl View3D {
             elevation: crate::view3d::ELEVATION,
             graphics: Graphics::default(),
             section_box: None,
+            work_plane: None,
         }
     }
 }
@@ -1309,7 +1313,14 @@ macro_rules! visit_refs {
         let f: &mut dyn FnMut(& $($m)? Guid) = $f;
         match $e {
             // A view's graphics, as `views_graphics` gives them.
-            Element::Level(_) | Element::Section(_) | Element::Elevation(_) | Element::View3D(_) => {}
+            Element::Level(_) | Element::Section(_) | Element::Elevation(_) => {}
+            Element::View3D(v) => {
+                if let Some(wp) = & $($m)? v.work_plane
+                    && let Some(g) = & $($m)? wp.level
+                {
+                    f(g)
+                }
+            }
             Element::Grid(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) => {}
             Element::PlanView(v) => {
                 f(& $($m)? v.level);
@@ -3455,6 +3466,20 @@ impl Model {
         }
     }
 
+    /// The plane an element's sketch lies on in a model view, where Edit Boundary draws its lines in 3D: a floor's top (a
+    /// sloped one's slope with it), a ceiling's underside, a roof's base, a shaft's bottom. None for anything else: a filled
+    /// region is a view's, and an extruded roof is sketched in elevation.
+    pub fn sketch_plane(&self, id: impl Key) -> Option<walls::Plane> {
+        let p = match self.elements.get(id)? {
+            Element::Floor(f) => self.floor_top(f),
+            Element::Ceiling(c) => walls::Plane::flat(self.elevation(c.level) + c.offset),
+            Element::Roof(r) if r.extrusion.is_none() => walls::Plane::flat(self.elevation(r.level) + r.offset),
+            Element::Shaft(s) => walls::Plane::flat(self.elevation(s.level) + s.base_offset),
+            _ => return None,
+        };
+        (p.z.is_finite() && p.g.0.is_finite() && p.g.1.is_finite()).then_some(p)
+    }
+
     /// How far a floor's underside lies below its top, plumb: its type's thickness across its slope.
     pub fn floor_depth(&self, f: &Floor) -> f64 {
         self.types.floor.get(&f.type_name).map_or(0.0, |t| t.thickness) / f.slope.to_radians().cos()
@@ -3548,6 +3573,18 @@ impl Model {
             Some(Element::View3D(View3D { section_box: Some(b), .. })) if b.on => Some((b.min, b.max)),
             _ => None,
         }
+    }
+
+    /// What 3D view `view` sketches on: its own work plane, else the lowest level's (none in a project without levels).
+    pub fn work_plane(&self, view: Option<Id>) -> crate::workplane::WorkPlane {
+        let own = view.and_then(|v| match self.elements.get(v) {
+            Some(Element::View3D(v3)) => v3.work_plane.clone(),
+            _ => None,
+        });
+        own.unwrap_or_else(|| {
+            let lowest = self.levels().first().map(|(id, _)| self.guid(*id));
+            crate::workplane::WorkPlane { level: lowest, ..Default::default() }
+        })
     }
 
     /// The default 3D view, `{3D}`: the 3D view of that name, once something has made it.
@@ -4786,6 +4823,12 @@ impl Model {
                     v.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
                     if let Some(b) = &v.section_box {
                         section_box_ok(&who, b)?;
+                    }
+                    if let Some(wp) = &v.work_plane {
+                        if !wp.offset.is_finite() || wp.offset.abs() > MAX_COORD {
+                            return Err(format!("{who}: its work plane's offset {} isn't a length", wp.offset));
+                        }
+                        wp.resolve(self).map_err(|e| format!("{who}: {e}"))?;
                     }
                     if !view_names.insert(v.name.as_str()) {
                         return Err(format!("{who}: another view is already named `{}`", v.name));
