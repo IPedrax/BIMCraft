@@ -1,12 +1,45 @@
-//! Work planes in the 3D view: the view control bar's Work Plane sets what the view sketches on (a level with an offset, or
-//! three points typed or picked on the model), and the Floor, Ceiling, Roof and Shaft tools sketch a new one there.
+//! Work planes in the 3D view: the view control bar's Work Plane sets what the view sketches on (a level from the list, a
+//! surface or three points picked on the model, each with an offset), and the Floor, Ceiling, Roof and Shaft tools sketch a
+//! new one there when it lies level.
 
 use super::*;
 use bimcraft_core::walls::Plane;
 
-fn plane(h: &Harness<BimApp>) -> Plane {
+fn frame(h: &Harness<BimApp>) -> bimcraft_core::workplane::Frame {
     let m = &h.state().session.model;
     m.work_plane(m.default_3d()).resolve(m).unwrap()
+}
+
+fn plane(h: &Harness<BimApp>) -> Plane {
+    frame(h).over_plan().unwrap()
+}
+
+/// The box's walls: half their thickness, and how high their tops are.
+fn walls(h: &Harness<BimApp>) -> (f64, f64) {
+    let m = &h.state().session.model;
+    let w = m.wall(ids(h, "wall")[0]).unwrap();
+    (m.thickness(w) / 2.0, m.top_z(w))
+}
+
+/// Pick Points, clicking a few points off each of `points` on the model: each snaps to the corner there.
+fn pick_points(h: &mut Harness<BimApp>, points: [[f64; 3]; 3]) {
+    press(h, "Pick Points");
+    assert!(h.state().work_plane.as_ref().is_some_and(|d| d.picking.is_some()), "the dialog makes way for the picks");
+    for p in points {
+        let at = h.state().screen3(p) + vec2(3.0, -2.0);
+        click_at(h, at);
+    }
+    assert!(h.state().work_plane.as_ref().is_some_and(|d| d.picking.is_none()), "back, with the points in it");
+}
+
+/// Each sketched-flat tool refused on a plane that isn't level, saying it must be horizontal, and nothing sketched.
+fn refused_off_level(h: &mut Harness<BimApp>) {
+    for name in ["Floor", "Ceiling"] {
+        tool(h, name);
+        assert!(h.state().sketch.is_none(), "{name}");
+        assert_eq!(h.state().tool, Tool::Modify);
+        assert!(h.state().status.error && h.state().status.text.contains("must be horizontal"), "{}", h.state().status.text);
+    }
 }
 
 /// Where a point of the work plane shows in the 3D view.
@@ -47,61 +80,55 @@ fn in_3d_the_floor_tool_sketches_a_new_floor_on_the_work_plane_set_to_a_level_an
 }
 
 #[test]
-fn a_work_plane_through_three_typed_points_may_slope_but_floors_and_ceilings_need_it_horizontal() {
+fn three_points_picked_snap_to_corners_and_a_sloped_plane_is_set_though_floors_and_ceilings_need_a_level_one() {
     let mut h = app(BOX);
     press(&mut h, "Default 3D View");
+    let (half, top) = walls(&h);
+    let (w, e, s, n) = (-half, 8000.0 + half, -half, 6000.0 + half);
+    // The south wall's foot and the north-east corner's top: a plane sloping up to the north-east.
     press(&mut h, "Work Plane");
-    pick(&mut h, Role::RadioButton, "Through three points");
-    // Rising 1000 mm over 4000 mm toward the north.
-    for (k, p) in [[0, 0, 300], [4000, 0, 300], [0, 4000, 1300]].iter().enumerate() {
-        for (axis, v) in ["X", "Y", "Z"].iter().zip(p) {
-            type_into(&mut h, &format!("Point {} {axis}", k + 1), &v.to_string());
-        }
-    }
+    pick_points(&mut h, [[w, s, 0.0], [e, s, 0.0], [e, n, top]]);
+    assert!(h.state().selection.is_empty(), "a pick is no selection");
     press(&mut h, "OK");
-    assert!((plane(&h).at(P2(2000.0, 2000.0)) - 800.0).abs() < 1e-6, "{}", h.state().status.text);
-    // Each refused, saying the plane must be horizontal, and nothing sketched.
-    for name in ["Floor", "Ceiling"] {
-        tool(&mut h, name);
-        assert!(h.state().sketch.is_none(), "{name}");
-        assert_eq!(h.state().tool, Tool::Modify);
-        assert!(h.state().status.error && h.state().status.text.contains("must be horizontal"), "{}", h.state().status.text);
-    }
-    // Three points at one height are a level plane: a floor is sketched on it.
+    let p = plane(&h);
+    assert!((p.at(P2(e, n)) - top).abs() < 1e-6 && p.at(P2(w, s)).abs() < 1e-6, "on the corners themselves: {p:?}");
+    refused_off_level(&mut h);
+    // The tops of three corners: level, at their height; a floor is sketched on it.
     press(&mut h, "Work Plane");
-    for (k, p) in [[0, 0, 750], [4000, 0, 750], [0, 4000, 750]].iter().enumerate() {
-        for (axis, v) in ["X", "Y", "Z"].iter().zip(p) {
-            type_into(&mut h, &format!("Point {} {axis}", k + 1), &v.to_string());
-        }
-    }
+    pick_points(&mut h, [[w, s, top], [e, s, top], [e, n, top]]);
     press(&mut h, "OK");
+    assert_eq!(plane(&h), Plane::flat(top), "{}", h.state().status.text);
     tool(&mut h, "Floor");
     rectangle(&mut h, P2(1000.0, 1000.0), P2(3000.0, 3000.0));
     let f = ids(&h, "floor")[0];
-    assert_eq!(field(&h, f, "offset"), json!(750.0));
-    assert_eq!(field(&h, f, "slope").as_f64().unwrap_or(0.0), 0.0, "level");
+    assert_eq!(h.state().session.model.sketch_plane(f), Some(Plane::flat(top)), "its top on the plane, level");
 }
 
 #[test]
-fn a_work_plane_picked_on_the_model_lies_through_the_three_points_clicked() {
+fn a_work_plane_on_a_picked_wall_face_stands_upright_offset_out_from_it_and_floors_refuse_it() {
     let mut h = app(BOX);
     press(&mut h, "Default 3D View");
-    let m = &h.state().session.model;
-    let top = m.wall(ids(&h, "wall")[0]).map(|w| m.top_z(w)).unwrap();
+    let (half, _) = walls(&h);
     press(&mut h, "Work Plane");
-    press(&mut h, "Pick in View");
-    assert!(h.state().work_plane.as_ref().is_some_and(|d| d.picking.is_some()), "the dialog makes way for the picks");
-    // The tops of the south, east and north walls.
-    for p in [[4000.0, 0.0, top], [8000.0, 3000.0, top], [4000.0, 6000.0, top]] {
-        let at = h.state().screen3(p);
-        click_at(&mut h, at);
-    }
-    assert!(h.state().selection.is_empty(), "a pick is no selection");
-    assert!(h.state().work_plane.as_ref().is_some_and(|d| d.picking.is_none() && d.by_points), "back, with the points in it");
+    pick(&mut h, Role::RadioButton, "Pick a surface");
     press(&mut h, "OK");
-    let p = plane(&h);
-    assert!(h.state().session.model.work_plane(h.state().session.model.default_3d()).points.is_some());
-    assert!((p.at(P2(4000.0, 3000.0)) - top).abs() < 30.0 && p.g.0.abs() < 0.02 && p.g.1.abs() < 0.02, "{p:?} at {top}");
+    assert!(h.state().work_plane.as_ref().and_then(|d| d.error.as_ref()).is_some_and(|e| e.contains("surface")), "nothing picked yet");
+    press(&mut h, "Pick Surface");
+    // The south wall's outside face, its middle.
+    let at = h.state().screen3([4000.0, -half, 1500.0]);
+    click_at(&mut h, at);
+    assert!(h.state().work_plane.as_ref().is_some_and(|d| d.picking.is_none() && d.surface.is_some()), "back, with the face");
+    type_into(&mut h, "Offset", "200");
+    press(&mut h, "OK");
+    let f = frame(&h);
+    assert!(f.normal[1] < -1.0 + 1e-9, "facing south, out of the wall: {f:?}");
+    assert!((f.origin[1] - (-half - 200.0)).abs() < 1e-6, "200 mm out from the face: {f:?}");
+    assert!(h.state().work_plane_name().contains("90°"), "{}", h.state().work_plane_name());
+    refused_off_level(&mut h);
+    // Its patch is on it, where it was picked: a click opens the dialog, on the surface.
+    let patch = h.state().work_plane_patch().expect("drawn in the 3D view");
+    click_at(&mut h, patch);
+    assert_eq!(h.state().work_plane.as_ref().map(|d| d.by), Some(crate::workplane::By::Surface));
 }
 
 #[test]

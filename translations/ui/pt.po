@@ -733,7 +733,7 @@ msgstr "Câmera"
 #: crates/ui-egui/src/shortcuts.rs:398
 #: crates/ui-egui/src/shortcuts.rs:524
 #: crates/ui-egui/src/typeprops.rs:314
-#: crates/ui-egui/src/workplane.rs:173
+#: crates/ui-egui/src/workplane.rs:252
 msgid "Cancel"
 msgstr "Cancelar"
 
@@ -936,6 +936,10 @@ msgstr "Clique em um canto da abertura de shaft."
 msgid "Click a face of a mass: a wall stands on it."
 msgstr "Clique uma face de um volume: uma parede fica sobre ela."
 
+#: crates/ui-egui/src/workplane.rs:408
+msgid "Click a face of the model for the work plane. Esc goes back to the dialog."
+msgstr "Clique em uma face do modelo para o plano de trabalho. Esc volta à caixa de diálogo."
+
 #: crates/ui-egui/src/lib.rs:4036
 msgid "Click a face to paint it with the material in the Options Bar; the 3D view orbits as ever."
 msgstr "Clique numa face para pintá-la com o material da Barra de Opções; a vista 3D orbita como sempre."
@@ -1068,7 +1072,7 @@ msgstr "Clique no próximo ponto de controle; Enter conclui. Esc cancela."
 msgid "Click its next point; Enter finishes it, the first point again closes it. Esc cancels."
 msgstr "Clique o próximo ponto; Enter a conclui, o primeiro ponto de novo a fecha. Esc cancela."
 
-#: crates/ui-egui/src/workplane.rs:230
+#: crates/ui-egui/src/workplane.rs:311
 msgid "Click on the model: a point of its surface."
 msgstr "Clique no modelo: um ponto da sua superfície."
 
@@ -1196,15 +1200,15 @@ msgstr "Clique no início do eixo de espelhamento."
 msgid "Click the start of the run: a chain of clicks makes one for each step, Esc ends it."
 msgstr "Clique no início do trecho: uma sequência de cliques faz um para cada passo; Esc encerra."
 
-#: crates/ui-egui/src/workplane.rs:302
-msgid "Click the work plane's first point on the model. Esc goes back to the dialog."
-msgstr "Clique no primeiro ponto do plano de trabalho no modelo. Esc volta à caixa de diálogo."
+#: crates/ui-egui/src/workplane.rs:410
+msgid "Click the work plane's first point on the model; it snaps to a corner near the pointer. Esc goes back to the dialog."
+msgstr "Clique no primeiro ponto do plano de trabalho no modelo; ele se ajusta a um canto próximo ao ponteiro. Esc volta à caixa de diálogo."
 
-#: crates/ui-egui/src/workplane.rs:303
+#: crates/ui-egui/src/workplane.rs:411
 msgid "Click the work plane's second point."
 msgstr "Clique no segundo ponto do plano de trabalho."
 
-#: crates/ui-egui/src/workplane.rs:304
+#: crates/ui-egui/src/workplane.rs:412
 msgid "Click the work plane's third point."
 msgstr "Clique no terceiro ponto do plano de trabalho."
 
@@ -1848,7 +1852,7 @@ msgstr "Demolir (DW): clique num elemento para demoli-lo na fase da vista; cliqu
 msgid "Demolished"
 msgstr "Demolido"
 
-#: crates/core/src/commands.rs:5904
+#: crates/core/src/commands.rs:5911
 msgid "Dependent"
 msgstr "Dependente"
 
@@ -2228,7 +2232,7 @@ msgstr "Equipamento elétrico"
 msgid "Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it"
 msgstr "Equipamento elétrico (EE): um quadro de distribuição, onde você clicar na parede; Espaço gira"
 
-#: crates/core/src/commands.rs:1397
+#: crates/core/src/commands.rs:1399
 msgid "Elements"
 msgstr "Elementos"
 
@@ -2916,7 +2920,7 @@ msgstr "Destacar o que está sob o cursor"
 msgid "Home"
 msgstr "Início"
 
-#: crates/ui-egui/src/orbit.rs:490
+#: crates/ui-egui/src/orbit.rs:489
 msgid "Home View"
 msgstr "Vista inicial"
 
@@ -3248,7 +3252,7 @@ msgid "Lengths and sizes are mm on paper. The centerline defines geometry and di
 msgstr "Comprimentos e tamanhos em mm no papel. O eixo define a geometria e as cotas."
 
 #: crates/core/src/commands.rs:120
-#: crates/ui-egui/src/workplane.rs:135
+#: crates/ui-egui/src/workplane.rs:205
 msgid "Level"
 msgstr "Nível"
 
@@ -3566,7 +3570,7 @@ msgstr "Maximizar"
 msgid "Maximum Riser Height"
 msgstr "Altura máxima do espelho"
 
-#: crates/core/src/commands.rs:1350
+#: crates/core/src/commands.rs:1352
 msgid "Measure"
 msgstr "Medir"
 
@@ -3960,7 +3964,7 @@ msgstr "Número"
 #: crates/ui-egui/src/properties.rs:2475
 #: crates/ui-egui/src/properties.rs:2668
 #: crates/ui-egui/src/typeprops.rs:315
-#: crates/ui-egui/src/workplane.rs:174
+#: crates/ui-egui/src/workplane.rs:253
 msgid "OK"
 msgstr "OK"
 
@@ -3988,7 +3992,7 @@ msgstr "Desligado"
 #: crates/core/src/schedule.rs:191
 #: crates/ui-egui/src/linestyles/creator.rs:74
 #: crates/ui-egui/src/sketch.rs:729
-#: crates/ui-egui/src/workplane.rs:146
+#: crates/ui-egui/src/workplane.rs:242
 msgid "Offset"
 msgstr "Deslocamento"
 
@@ -4002,10 +4006,6 @@ msgstr "Deslocamento (OF): escolha uma parede ou linha; uma cópia vai para o la
 #: crates/ui-egui/src/structure.rs:135
 msgid "Offset:"
 msgstr "Deslocamento:"
-
-#: crates/ui-egui/src/workplane.rs:131
-msgid "On a level"
-msgstr "Num nível"
 
 #: crates/ui-egui/src/draw.rs:1115
 msgid "Only a polyline or a spline takes a vertex, and a line keeps its two ends."
@@ -4318,6 +4318,22 @@ msgstr "Selecionar linhas"
 msgid "Pick Lines: click a line, a wall or a grid to draw along it (beside it, with Offset)"
 msgstr "Selecionar linhas: clique numa linha, parede ou eixo para desenhar ao longo dela (ao lado, com Deslocamento)"
 
+#: crates/ui-egui/src/workplane.rs:234
+msgid "Pick Points"
+msgstr "Selecionar pontos"
+
+#: crates/ui-egui/src/workplane.rs:232
+msgid "Pick Points: click three points on the model in the 3D view, each snapping to a corner near the pointer; the dialog comes back with them"
+msgstr "Selecionar pontos: clique em três pontos do modelo na vista 3D, cada um ajustado a um canto próximo ao ponteiro; a caixa de diálogo volta com eles"
+
+#: crates/ui-egui/src/workplane.rs:222
+msgid "Pick Surface"
+msgstr "Selecionar superfície"
+
+#: crates/ui-egui/src/workplane.rs:221
+msgid "Pick Surface: click a face of the model in the 3D view, a wall's or a roof's; the dialog comes back with it"
+msgstr "Selecionar superfície: clique em uma face do modelo na vista 3D, de uma parede ou de um telhado; a caixa de diálogo volta com ela"
+
 #: crates/ui-egui/src/draw.rs:308
 msgid "Pick Walls"
 msgstr "Selecionar paredes"
@@ -4354,6 +4370,14 @@ msgstr ""
 msgid "Pick a sketch line to trim or extend, on the part to keep. Esc clears the boundary."
 msgstr ""
 
+#: crates/ui-egui/src/workplane.rs:218
+msgid "Pick a surface"
+msgstr "Selecionar uma superfície"
+
+#: crates/ui-egui/src/workplane.rs:413
+msgid "Pick a surface first: Pick Surface, then a click on a face of the model."
+msgstr "Selecione primeiro uma superfície: Selecionar superfície e depois um clique em uma face do modelo."
+
 #: crates/ui-egui/src/lib.rs:4039
 msgid "Pick a wall face, centre line or end, a door, a window or a grid to measure from."
 msgstr "Selecione a face, a linha de centro ou a extremidade de uma parede, uma porta, uma janela ou um eixo para medir."
@@ -4366,13 +4390,9 @@ msgstr "Selecione uma parede ou um eixo como espelho."
 msgid "Pick a wall, a grid or another line; then one that meets it."
 msgstr "Selecione uma parede, um eixo ou outra linha; depois uma que a encontre."
 
-#: crates/ui-egui/src/workplane.rs:166
-msgid "Pick in View"
-msgstr "Escolher na vista"
-
-#: crates/ui-egui/src/workplane.rs:165
-msgid "Pick in View: click three points on the model in the 3D view; the dialog comes back with them"
-msgstr "Escolher na vista: clique em três pontos do modelo na vista 3D; a caixa de diálogo volta com eles"
+#: crates/ui-egui/src/workplane.rs:201
+msgid "Pick from list"
+msgstr "Escolher da lista"
 
 #: crates/ui-egui/src/lib.rs:4042
 msgid "Pick more references, or click away from them where the dimension line goes. Esc cancels."
@@ -4425,6 +4445,14 @@ msgstr ""
 #: crates/ui-egui/src/lib.rs:4021
 msgid "Pick the second wall or line, on the part to keep."
 msgstr "Escolha a segunda parede ou linha, na parte a manter."
+
+#: crates/ui-egui/src/workplane.rs:228
+msgid "Pick three points"
+msgstr "Selecionar três pontos"
+
+#: crates/ui-egui/src/workplane.rs:414
+msgid "Pick three points first: Pick Points, then three clicks on the model."
+msgstr "Selecione primeiro três pontos: Selecionar pontos e depois três cliques no modelo."
 
 #: crates/ui-egui/src/properties.rs:617
 msgid "Picture"
@@ -4699,14 +4727,6 @@ msgstr "Nuvens de pontos"
 #: crates/ui-egui/src/lib.rs:4030
 msgid "Point to a wall or a line: the offset goes to the cursor's side. Click to place it."
 msgstr "Aponte para uma parede ou linha: o deslocamento vai para o lado do cursor. Clique para colocá-lo."
-
-#: crates/ui-egui/src/workplane.rs:154
-msgid "Point {}"
-msgstr "Ponto {}"
-
-#: crates/ui-egui/src/workplane.rs:156
-msgid "Point {} {}"
-msgstr "Ponto {} {}"
 
 #: crates/ui-egui/src/editor.rs:836
 msgid "Points"
@@ -5435,13 +5455,13 @@ msgstr "{} selecionados; nada tem estes: {}"
 msgid "Selection colour"
 msgstr "Cor da seleção"
 
-#: crates/ui-egui/src/workplane.rs:96
+#: crates/ui-egui/src/workplane.rs:162
 msgid "Set"
 msgstr "Definir"
 
-#: crates/ui-egui/src/workplane.rs:94
-msgid "Set Work Plane: the plane the 3D view sketches on, a level raised by an offset or three points; its patch in the view sets it too"
-msgstr "Definir plano de trabalho: o plano sobre o qual a vista 3D esboça, um nível elevado por um deslocamento ou três pontos; o seu marcador na vista também o define"
+#: crates/ui-egui/src/workplane.rs:160
+msgid "Set Work Plane: the plane the 3D view sketches on, a level, a surface or three points, with an offset; its patch in the view sets it too"
+msgstr "Definir plano de trabalho: o plano em que a vista 3D desenha, um nível, uma superfície ou três pontos, com um deslocamento; sua marca na vista também o define"
 
 #: crates/ui-egui/src/context.rs:59
 msgid "Set Work Plane…"
@@ -5890,6 +5910,10 @@ msgstr "Padrão de superfície"
 msgid "Surface Transparency"
 msgstr "Transparência da superfície"
 
+#: crates/ui-egui/src/workplane.rs:111
+msgid "Surface, {}°"
+msgstr "Superfície, {}°"
+
 #: crates/core/src/model.rs:1795
 msgid "Swing"
 msgstr "De abrir"
@@ -6109,7 +6133,7 @@ msgstr "As extremidades de paredes, eixos e do que mais estiver desenhado, e os 
 msgid "The foot of the perpendicular from the last point to a wall or grid"
 msgstr "O pé da perpendicular do último ponto até uma parede ou eixo"
 
-#: crates/ui-egui/src/orbit.rs:352
+#: crates/ui-egui/src/orbit.rs:345
 msgid "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor"
 msgstr "A placa de vídeo não conseguiu desenhar a vista 3D ({}): ela é desenhada no processador"
 
@@ -6194,9 +6218,9 @@ msgstr "A vista está de perfil em relação ao plano do esboço: gire-a para es
 msgid "The views following it get from it:"
 msgstr "O que as vistas que o seguem recebem dele:"
 
-#: crates/ui-egui/src/workplane.rs:306
-msgid "The work plane must be horizontal: a floor, a ceiling, a roof or a shaft is sketched on a level plane. Set the Work Plane (the 3D view's control bar) on a level, or through three points at one height."
-msgstr "O plano de trabalho deve ser horizontal: um piso, um forro, uma cobertura ou um shaft é esboçado num plano horizontal. Defina o plano de trabalho (barra de controle da vista 3D) num nível, ou por três pontos à mesma altura."
+#: crates/ui-egui/src/workplane.rs:416
+msgid "The work plane must be horizontal: a floor, a ceiling, a roof or a shaft is sketched on a level plane. Set the Work Plane (the 3D view's control bar) on a level, a level surface or three points at one height."
+msgstr "O plano de trabalho deve ser horizontal: um piso, um forro, um telhado ou um shaft é desenhado em um plano horizontal. Defina o plano de trabalho (na barra de controle da vista 3D) em um nível, uma superfície horizontal ou três pontos na mesma altura."
 
 #: crates/ui-egui/src/settings.rs:322
 msgid "Theme"
@@ -6269,13 +6293,9 @@ msgstr "Esta vista mostra outra opção desse conjunto: escolha-a de novo para m
 msgid "Three or more lines meet at a point ({}): a loop passes each point once."
 msgstr "Três ou mais linhas se encontram num ponto ({}): um contorno passa por cada ponto uma vez."
 
-#: crates/ui-egui/src/workplane.rs:52
+#: crates/ui-egui/src/workplane.rs:112
 msgid "Three points, {}°"
 msgstr "Três pontos, {}°"
-
-#: crates/ui-egui/src/workplane.rs:150
-msgid "Through three points"
-msgstr "Por três pontos"
 
 #: crates/ui-egui/src/properties.rs:612
 msgid "Tile"
@@ -6533,7 +6553,7 @@ msgstr "Reexibir elementos"
 msgid "Units"
 msgstr "Unidades"
 
-#: crates/core/src/commands.rs:6045
+#: crates/core/src/commands.rs:6052
 msgid "Unnamed"
 msgstr "Sem nome"
 
@@ -6790,7 +6810,7 @@ msgstr "Em que as linhas de detalhe são desenhadas: uma pena, uma cor e um padr
 msgid "What filled regions are filled with: a foreground pattern over a background one, over the paper when it masks."
 msgstr "Com que as regiões preenchidas são preenchidas: um padrão de primeiro plano sobre um de fundo, sobre o papel quando é máscara."
 
-#: crates/ui-egui/src/workplane.rs:129
+#: crates/ui-egui/src/workplane.rs:199
 msgid "What the 3D view sketches on."
 msgstr "Sobre o que a vista 3D esboça."
 
@@ -6859,15 +6879,15 @@ msgstr "Fio (EW): clique no início e no fim; uma sequência de cliques faz um f
 msgid "Wireframe"
 msgstr "Estrutura de arame"
 
-#: crates/ui-egui/src/workplane.rs:128
+#: crates/ui-egui/src/workplane.rs:198
 msgid "Work Plane"
 msgstr "Plano de trabalho"
 
-#: crates/ui-egui/src/workplane.rs:84
-msgid "Work Plane: what the 3D view sketches floors, ceilings, roofs and shafts on: a level, raised by an offset, or three points"
-msgstr "Plano de trabalho: sobre o que a vista 3D esboça pisos, forros, coberturas e shafts: um nível, elevado por um deslocamento, ou três pontos"
+#: crates/ui-egui/src/workplane.rs:151
+msgid "Work Plane: what the 3D view sketches on: a level, a surface of the model or three points, each with an offset"
+msgstr "Plano de trabalho: onde a vista 3D desenha: um nível, uma superfície do modelo ou três pontos, cada um com um deslocamento"
 
-#: crates/ui-egui/src/workplane.rs:321
+#: crates/ui-egui/src/workplane.rs:431
 msgid "Work Plane: {}"
 msgstr "Plano de trabalho: {}"
 
@@ -6916,7 +6936,7 @@ msgid "Zoom Out"
 msgstr "Afastar"
 
 #: crates/ui-egui/src/canvas.rs:1277
-#: crates/ui-egui/src/orbit.rs:493
+#: crates/ui-egui/src/orbit.rs:492
 msgid "Zoom to Fit"
 msgstr "Zoom para ajustar"
 
@@ -6936,7 +6956,7 @@ msgstr "`{}` não é uma altura"
 #: crates/ui-egui/src/properties.rs:513
 #: crates/ui-egui/src/properties.rs:2324
 #: crates/ui-egui/src/section_box.rs:85
-#: crates/ui-egui/src/workplane.rs:195
+#: crates/ui-egui/src/workplane.rs:278
 msgid "`{}` is not a length"
 msgstr "`{}` não é um comprimento"
 
@@ -6991,6 +7011,10 @@ msgstr "um campo, como Type ou Height"
 #: crates/ui-egui/src/clouds.rs:70
 msgid "all the points"
 msgstr "todos os pontos"
+
+#: crates/ui-egui/src/workplane.rs:244
+msgid "along its normal: up from a level, out from a surface"
+msgstr "ao longo de sua normal: para cima a partir de um nível, para fora a partir de uma superfície"
 
 #: crates/core/src/curves.rs:125
 msgid "arc"
@@ -7060,6 +7084,10 @@ msgstr "não é igual a"
 msgid "dormer: the width `{}`, the height `{}` and the slope `{}` must be numbers"
 msgstr "água-furtada: a largura `{}`, a altura `{}` e a inclinação `{}` precisam ser números"
 
+#: crates/ui-egui/src/workplane.rs:394
+msgid "east"
+msgstr "leste"
+
 #: crates/core/src/curves.rs:132
 msgid "ellipse"
 msgstr "elipse"
@@ -7075,6 +7103,18 @@ msgstr "termina com"
 #: crates/ui-egui/src/properties.rs:2169
 msgid "equals"
 msgstr "é igual a"
+
+#: crates/ui-egui/src/workplane.rs:391
+msgid "facing down"
+msgstr "voltada para baixo"
+
+#: crates/ui-egui/src/workplane.rs:391
+msgid "facing up"
+msgstr "voltada para cima"
+
+#: crates/ui-egui/src/workplane.rs:405
+msgid "facing {}, {}° from level"
+msgstr "voltada para {}, {}° em relação à horizontal"
 
 #: crates/core/src/library.rs:66
 msgid "family"
@@ -7123,6 +7163,23 @@ msgstr "massa: {}"
 #: crates/core/src/library.rs:62
 msgid "material"
 msgstr "material"
+
+#: crates/ui-egui/src/workplane.rs:226
+#: crates/ui-egui/src/workplane.rs:238
+msgid "none picked yet"
+msgstr "nada selecionado ainda"
+
+#: crates/ui-egui/src/workplane.rs:396
+msgid "north"
+msgstr "norte"
+
+#: crates/ui-egui/src/workplane.rs:395
+msgid "north-east"
+msgstr "nordeste"
+
+#: crates/ui-egui/src/workplane.rs:397
+msgid "north-west"
+msgstr "noroeste"
 
 #: crates/ui-egui/src/canvas.rs:1567
 #: crates/ui-egui/src/canvas.rs:2186
@@ -7221,6 +7278,18 @@ msgstr "shaft: {}"
 msgid "slope arrow: `{}` is not a slope"
 msgstr "seta de inclinação: `{}` não é uma inclinação"
 
+#: crates/ui-egui/src/workplane.rs:400
+msgid "south"
+msgstr "sul"
+
+#: crates/ui-egui/src/workplane.rs:401
+msgid "south-east"
+msgstr "sudeste"
+
+#: crates/ui-egui/src/workplane.rs:399
+msgid "south-west"
+msgstr "sudoeste"
+
 #: crates/core/src/curves.rs:134
 msgid "spline"
 msgstr "spline"
@@ -7233,7 +7302,7 @@ msgstr "escada: `{}` não é uma largura"
 msgid "start"
 msgstr "início"
 
-#: crates/ui-egui/src/workplane.rs:279
+#: crates/ui-egui/src/workplane.rs:368
 msgid "the model has no levels"
 msgstr "o modelo não tem níveis"
 
@@ -7250,7 +7319,7 @@ msgstr "a abertura tem de ficar na parede"
 msgid "there's no detail group yet: select detail lines and Create Group"
 msgstr "ainda não há grupo de detalhes: selecione linhas de detalhe e Criar grupo"
 
-#: crates/ui-egui/src/orbit.rs:164
+#: crates/ui-egui/src/orbit.rs:158
 msgid "there's no face to paint there"
 msgstr "não há face para pintar ali"
 
@@ -7258,7 +7327,7 @@ msgstr "não há face para pintar ali"
 msgid "there's no folder to keep favorites in here"
 msgstr "não há pasta para guardar favoritos aqui"
 
-#: crates/ui-egui/src/orbit.rs:432
+#: crates/ui-egui/src/orbit.rs:425
 #: crates/ui-egui/src/paper.rs:151
 #: crates/ui-egui/src/section.rs:166
 msgid "this tool works in plan views: open one from the Project Browser"
@@ -7291,6 +7360,10 @@ msgstr "vazio"
 #: crates/ui-egui/src/canvas.rs:2330
 msgid "wall: {}"
 msgstr "parede: {}"
+
+#: crates/ui-egui/src/workplane.rs:398
+msgid "west"
+msgstr "oeste"
 
 #: crates/ui-egui/src/lib.rs:3875
 msgid "what the note says"
@@ -7515,6 +7588,10 @@ msgstr "{}: Cor de {}"
 #: crates/ui-egui/src/sketch.rs:284
 msgid "{}; and {} more"
 msgstr "{}; e mais {}"
+
+#: crates/ui-egui/src/workplane.rs:237
+msgid "{}° from level"
+msgstr "{}° em relação à horizontal"
 
 #: crates/ui-egui/src/fillpatterns.rs:705
 msgid "‹ Back"
@@ -8026,3 +8103,33 @@ msgstr "Fios"
 #: crates/ui-egui/src/sketch.rs:883
 #~ msgid "Pick sketch lines; drag a picked line's end over its plane to move it, anywhere else to turn the view; Delete removes them. Finish Edit Mode when every loop is closed."
 #~ msgstr "Escolha linhas de esboço; arraste a extremidade de uma linha escolhida sobre o seu plano para movê-la, ou em qualquer outro lugar para girar a vista; Delete remove-as. Conclua o modo de edição quando todos os contornos estiverem fechados."
+#: crates/ui-egui/src/workplane.rs:302
+#~ msgid "Click the work plane's first point on the model. Esc goes back to the dialog."
+#~ msgstr "Clique no primeiro ponto do plano de trabalho no modelo. Esc volta à caixa de diálogo."
+#: crates/ui-egui/src/workplane.rs:131
+#~ msgid "On a level"
+#~ msgstr "Num nível"
+#: crates/ui-egui/src/workplane.rs:166
+#~ msgid "Pick in View"
+#~ msgstr "Escolher na vista"
+#: crates/ui-egui/src/workplane.rs:165
+#~ msgid "Pick in View: click three points on the model in the 3D view; the dialog comes back with them"
+#~ msgstr "Escolher na vista: clique em três pontos do modelo na vista 3D; a caixa de diálogo volta com eles"
+#: crates/ui-egui/src/workplane.rs:154
+#~ msgid "Point {}"
+#~ msgstr "Ponto {}"
+#: crates/ui-egui/src/workplane.rs:156
+#~ msgid "Point {} {}"
+#~ msgstr "Ponto {} {}"
+#: crates/ui-egui/src/workplane.rs:94
+#~ msgid "Set Work Plane: the plane the 3D view sketches on, a level raised by an offset or three points; its patch in the view sets it too"
+#~ msgstr "Definir plano de trabalho: o plano sobre o qual a vista 3D esboça, um nível elevado por um deslocamento ou três pontos; o seu marcador na vista também o define"
+#: crates/ui-egui/src/workplane.rs:306
+#~ msgid "The work plane must be horizontal: a floor, a ceiling, a roof or a shaft is sketched on a level plane. Set the Work Plane (the 3D view's control bar) on a level, or through three points at one height."
+#~ msgstr "O plano de trabalho deve ser horizontal: um piso, um forro, uma cobertura ou um shaft é esboçado num plano horizontal. Defina o plano de trabalho (barra de controle da vista 3D) num nível, ou por três pontos à mesma altura."
+#: crates/ui-egui/src/workplane.rs:150
+#~ msgid "Through three points"
+#~ msgstr "Por três pontos"
+#: crates/ui-egui/src/workplane.rs:84
+#~ msgid "Work Plane: what the 3D view sketches floors, ceilings, roofs and shafts on: a level, raised by an offset, or three points"
+#~ msgstr "Plano de trabalho: sobre o que a vista 3D esboça pisos, forros, coberturas e shafts: um nível, elevado por um deslocamento, ou três pontos"

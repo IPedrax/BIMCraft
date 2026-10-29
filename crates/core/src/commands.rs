@@ -37,7 +37,7 @@ use crate::sketch::{self, SketchLine};
 use crate::texture::{self, Kind, Picture, Texture};
 use crate::units::Units;
 use crate::walls::{self, Axis, stacked};
-use crate::workplane::WorkPlane;
+use crate::workplane::{Surface, WorkPlane};
 use crate::{pdf, render, schedule, sheet, snap, stairs, view3d};
 
 type R = Result<Value, String>;
@@ -1261,13 +1261,15 @@ pub static ALL: &[Command] = &[
         "work_plane",
         "Work Plane",
         &[],
-        "{view?: a 3D view's name or id ({3D} unless given), level?: a level's name or id, offset?: mm, points?: [[x, y, z], \
-         [x, y, z], [x, y, z]]} what a 3D view sketches on, as Revit's Work Plane > Set: a level, `offset` mm above it (0 \
-         unless given), or the plane through three `points`, which may slope (up to 75°, as a floor may) but not stand upright \
-         or lie along a line. Given neither, it's the lowest level again, as it is until set. Sketches stay lines over the \
-         plan, raised onto the plane; a floor made on a sloped one slopes with it, and anything made on it stands on the \
-         highest level at or below it. A level deleted takes its work plane with it. Says the plane's height at the origin \
-         (`z`) and its `slope` in degrees",
+        "{view?: a 3D view's name or id ({3D} unless given), level?: a level's name or id, points?: [[x, y, z], [x, y, z], \
+         [x, y, z]], surface?: {point: [x, y, z], normal: [x, y, z]}, offset?: mm} what a 3D view sketches on, as Revit's \
+         Work Plane > Set: a level; the plane through three `points` (not along a line), facing up unless upright; or a \
+         surface of the model, a point of it and the way it faces (a wall's face, picked). Any of them may be moved `offset` mm \
+         along its normal (up, for a level; 0 unless given), and may lie at any angle, upright too: what a tool may sketch on \
+         it is up to the tool (a floor, a ceiling, a roof and a shaft need a level plane, and stand on the highest level at or \
+         below it). Given only `offset`, the plane as it is is moved by that instead. Given nothing, it's the lowest level \
+         again, as it is until set. A level deleted takes its work plane with it. Says the plane: a point of it (`origin`), its \
+         `normal`, its height at the origin where it isn't upright (`z`) and its `slope` in degrees from level",
         work_plane,
     ),
     edit(
@@ -2967,7 +2969,7 @@ fn section_box(s: &mut Session, p: &Value) -> R {
 
 fn work_plane(s: &mut Session, p: &Value) -> R {
     let c = "work_plane";
-    only(c, p, &["view", "level", "offset", "points"])?;
+    only(c, p, &["view", "level", "offset", "points", "surface"])?;
     let m = &s.model;
     let default = absent(p.get("view"))
         || matches!(p.get("view"), Some(Value::String(n)) if n.eq_ignore_ascii_case("{3D}") || n.eq_ignore_ascii_case("3D"));
@@ -2989,18 +2991,19 @@ fn work_plane(s: &mut Session, p: &Value) -> R {
         ),
         None => None,
     };
+    let surface = match p.get("surface") {
+        v if absent(v) => None,
+        Some(v) => Some(serde_json::from_value::<Surface>(v.clone()).map_err(|e| {
+            bad(c, format!("`surface` is {{point: [x, y, z], normal: [x, y, z]}}, a point of it in mm and the way it faces: {e}"))
+        })?),
+        None => None,
+    };
     let level = if absent(p.get("level")) { None } else { Some(level_param(c, m, p, "level")?) };
-    let plane = match (level, points) {
-        (Some(_), Some(_)) => {
-            return Err(bad(c, "a work plane is either on a `level` (with an `offset`) or through three `points`, not both"));
-        }
-        (None, Some(_)) if offset.is_some() => return Err(bad(c, "`offset` raises a level's work plane: give a `level` with it")),
-        (Some(level), None) => Some(WorkPlane::on(level, offset.unwrap_or(0.0))),
-        (None, Some(points)) => Some(WorkPlane { points: Some(points), ..WorkPlane::default() }),
-        (None, None) if offset.is_some() => {
-            Some(WorkPlane::on(m.work_plane(view).level.ok_or_else(|| bad(c, "the model has no levels"))?, offset.unwrap_or(0.0)))
-        }
-        (None, None) => None,
+    let given = WorkPlane { level, offset: offset.unwrap_or(0.0), points, surface };
+    let plane = if level.is_some() || points.is_some() || surface.is_some() {
+        Some(given)
+    } else {
+        offset.map(|offset| WorkPlane { offset, ..m.work_plane(view) })
     };
     let resolved = plane.as_ref().map_or_else(|| m.work_plane(view).resolve(m), |wp| wp.resolve(m)).map_err(|e| bad(c, e))?;
     let v = match view {
@@ -3012,9 +3015,11 @@ fn work_plane(s: &mut Session, p: &Value) -> R {
     }
     let wp = s.model.work_plane(Some(v));
     let level = wp.level.and_then(|g| s.model.elements.id(g));
-    Ok(
-        json!({"view": v, "level": level, "offset": wp.offset, "points": wp.points, "z": resolved.z, "slope": crate::workplane::slope(&resolved)}),
-    )
+    let z = resolved.over_plan().map(|p| p.z);
+    Ok(json!({
+        "view": v, "level": level, "offset": wp.offset, "points": wp.points, "surface": wp.surface,
+        "origin": resolved.origin, "normal": resolved.normal, "z": z, "slope": resolved.slope(),
+    }))
 }
 
 fn set_graphics(m: &mut Model, view: impl Key, g: Graphics) {

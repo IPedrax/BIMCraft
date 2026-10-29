@@ -15,6 +15,7 @@ use bimcraft_core::model::{Id, Model};
 use bimcraft_core::render::{self, Rgb};
 use bimcraft_core::view3d::gpu::{Hit, Mesh};
 use bimcraft_core::view3d::{AZIMUTH, Camera, ELEVATION, Image, MAX_SIDE, P3, Scene, move_box_face};
+use bimcraft_core::workplane::Frame;
 use egui::{
     Align, Color32, ColorImage, Layout, PointerButton, Pos2, Rect, Sense, Stroke, StrokeKind, TextureHandle, TextureOptions, Ui, UiBuilder,
     pos2, vec2,
@@ -25,6 +26,7 @@ use crate::canvas::{click_modifiers, color};
 use crate::icons::Icon;
 use crate::sketch3d::Plane;
 use crate::style::{canvas_pal, pal};
+use crate::workplane::Picking;
 use crate::{BimApp, Status, Tool, icon_button};
 
 /// What a picture is of: the model, the camera, the elements tinted, whether the theme is dark, whether the card drew it, and
@@ -46,14 +48,6 @@ impl Picker {
         match self {
             Picker::Image(i) => Some(Hit { id: i.pick(x, y)?, face: i.face(x, y).unwrap_or("") }),
             Picker::Mesh(m, tints) => m.pick(cam, tints, x, y),
-        }
-    }
-
-    /// The point of the model's surface the picture shows at pixel `(x, y)`.
-    fn point(&self, cam: &Camera, x: f64, y: f64) -> Option<P3> {
-        match self {
-            Picker::Image(i) => i.point(cam, x, y),
-            Picker::Mesh(m, _) => m.point(cam, x, y),
         }
     }
 }
@@ -189,8 +183,8 @@ impl BimApp {
         let sketch_z = self.sketch_surface();
         let last = self.orbit.camera.map(|c| Camera { width: w, height: h, ..c });
         let held = self.sketch3d_grab(ui, &response, sketch_z.zip(last).map(|(surface, cam)| Plane { cam, rect, ppp, surface }));
-        // Pick in View, taking the work plane's points: clicks are its, not the selection's.
-        let picking = self.work_plane_picks().is_some();
+        // Pick in View, taking the work plane's surface or points: clicks are its, not the selection's.
+        let picking = self.work_plane_picking().is_some();
         // The work plane's patch, in Modify while nothing is sketched: a click on it opens the Work Plane dialog.
         let patch =
             (self.tool == Tool::Modify && self.sketch.is_none() && !picking).then(|| self.work_plane_ring(last, rect, ppp)).flatten();
@@ -327,7 +321,7 @@ impl BimApp {
             picker.as_ref().and_then(|p| p.at(&cam, x, y))
         };
         let hovered = hover
-            .filter(|_| (modify || demolish || paint || unpaint) && o.drag.is_none() && sketch_z.is_none())
+            .filter(|_| (modify || demolish || paint || unpaint) && o.drag.is_none() && sketch_z.is_none() && !picking)
             .and_then(|at| pick(&o.picker, at))
             .map(|h| h.id);
         let tints: Vec<(Id, Rgb)> = selection
@@ -454,25 +448,31 @@ impl BimApp {
         if patched {
             self.open_work_plane();
         }
-        // The work plane, drawn while it's being set or a new outline is sketched on it; and the points picked for it.
+        // The work plane, drawn while it's being set or a new outline is sketched on it; and what Pick in View would take.
         let m = &self.session.model;
-        let new_sketch = self.sketch.as_ref().is_some_and(|sk| sk.surface.is_some() && sk.plan == crate::Sheet::View3D);
-        if (self.work_plane.is_some() || new_sketch)
-            && let Some((lo, hi)) = m.model_box()
-            && let Ok(surface) = m.work_plane(m.default_3d()).resolve(m)
+        let new_sketch = self.sketch.as_ref().and_then(|sk| sk.surface.filter(|_| sk.plan == crate::Sheet::View3D));
+        if (self.work_plane.is_some() || new_sketch.is_some())
+            && let Some(extent) = m.model_box()
+            && let Ok(plane) = m.work_plane(m.default_3d()).resolve(m)
         {
-            let room = 2000.0;
-            let extent = [P2(lo[0] - room, lo[1] - room), P2(hi[0] + room, hi[1] + room)];
-            let surface = self.sketch.as_ref().and_then(|sk| sk.surface).unwrap_or(surface);
-            crate::workplane::draw_plane(&p, surface, extent, screen);
+            let plane = new_sketch.map_or(plane, Frame::from);
+            crate::workplane::draw_plane(&p, plane, extent, 2000.0, screen);
         }
-        for q in self.work_plane_picks().unwrap_or_default() {
-            p.circle_filled(screen(*q), 4.0, pal().accent);
-        }
-        if picking && let Some(at) = click {
-            let (x, y) = px(at);
-            let point = self.orbit.picker.as_ref().and_then(|pk| pk.point(&cam, x, y));
-            self.work_plane_pick(point);
+        if let (Some(picking), Some((_, scene))) = (self.work_plane_picking(), &self.orbit.scene) {
+            let look = Look::of_3d(m);
+            let aim = |at: Pos2| crate::workplane::aim(scene, &cam, px(at), picking, &look, ppp);
+            if let Picking::Points(picked) = picking {
+                for q in picked {
+                    p.circle_filled(screen(*q), 4.0, pal().accent);
+                }
+            }
+            if let Some(a) = hover.and_then(aim) {
+                crate::workplane::draw_aim(&p, &a, screen);
+            }
+            if let Some(at) = click {
+                let aimed = aim(at);
+                self.work_plane_pick(aimed);
+            }
         }
         self.context_menu(&response);
         if let Some((id, [lo, hi])) = moved {
