@@ -456,11 +456,29 @@ impl BimApp {
         }
     }
 
-    /// The plan the sketch began in, while it is there to go back to (a plan whose level was deleted is nowhere, and holds neither the
-    /// window nor its tool).
+    /// The view the sketch began in, while it is there to go back to: a plan (one whose level was deleted is nowhere, and holds
+    /// neither the window nor its tool), or the 3D view while what it edits has a plane there (`sketch3d.rs`).
     pub(crate) fn sketch_plan(&self) -> Option<Sheet> {
         let plan = self.sketch.as_ref()?.plan;
-        matches!(plan, Sheet::Plan(key) | Sheet::Ceiling(key) if self.session.model.plan_level(key).is_some()).then_some(plan)
+        let there = match plan {
+            Sheet::Plan(key) | Sheet::Ceiling(key) => self.session.model.plan_level(key).is_some(),
+            Sheet::View3D => self.sketch_z().is_some(),
+            _ => false,
+        };
+        there.then_some(plan)
+    }
+
+    /// Trim/Extend's and Fillet Arc's picks so far, lit as the lines picked are.
+    pub(crate) fn sketch_lit(&self) -> Vec<usize> {
+        self.drawing
+            .trim
+            .map(|(i, _)| i)
+            .into_iter()
+            .chain(self.drawing.fillet.iter().filter_map(|(l, _)| match l {
+                draw::Picked::Sketch(i) => Some(*i),
+                draw::Picked::Element(_) => None,
+            }))
+            .collect()
     }
 
     /// Ctrl+Z while sketching: the last change to the lines taken back (a line drawn, a trim, a fillet, a grip moved).
@@ -833,6 +851,11 @@ impl BimApp {
             Tool::SketchLine(chain) if chain.is_empty() => "Click where the line starts.",
             Tool::SketchLine(_) => msg!("Click the line's end; the next starts there. The first point again closes the loop; Esc stops."),
             Tool::SketchPick => msg!("Click a wall: a boundary line along it."),
+            Tool::Modify if self.sketch_z().is_some() => {
+                msg!(
+                    "Pick sketch lines; drag a picked line's end over its plane to move it, anywhere else to turn the view; Delete removes them. Finish Edit Mode when every loop is closed."
+                )
+            }
             _ => {
                 msg!(
                     "Pick sketch lines (a box picks several); drag a picked line's end to move it; Delete removes them. Finish Edit Mode when every loop is closed."

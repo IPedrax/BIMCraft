@@ -164,6 +164,19 @@ for a face square to the screen); a primary drag from one (`section_box::grip_at
 runs `section_box` when the drag ends. The grip takes the drag, not the camera, and a click on a grip picks nothing behind it. A
 plan's (and a plan view's) Properties have Section Box under Extents too, a `Flag` row: ticked, the plan shows what the box keeps.
 
+Sketching in 3D (`sketch3d.rs`). Edit Boundary on a floor, ceiling, roof by footprint or shaft selected in the 3D view keeps the
+sketch there, as Revit does: the lines are drawn over the picture on the element's own plane, `Model::sketch_height` (a floor's
+top at its level and offset, a sloped one's too; a ceiling's underside; a roof's base; a shaft's bottom), and `Sketch::plan` is
+`Sheet::View3D`, so the window comes back to the 3D view until Finish or Cancel as it does to a plan (`BimApp::sketch_plan`,
+while the element still has a plane). The view turns, pans and zooms as ever, and its clicks pick no elements: `sketch3d::Plane`
+takes a point on screen to the plane (`Camera::on_plane`) and back. Modify picks a line where it shows (within `PICK` points of it
+on screen, so a foreshortened line is as easy to hit as any), and a primary drag from a picked line's end holds that grip, not the
+camera (`BimApp::sketch3d_grab`, before the camera moves), the ends there moved where it is let go; a drag from anywhere else
+orbits, so there is no selection box. The Draw panel's shapes, Pick Walls and Pick Lines (the element the picture shows under the
+click), Split, Trim/Extend, Offset and Vertex take the plane's point as the plan takes its own, through `sketch_click`,
+`sketch_modify` and `vertex_click`, snapped by `snap::in_sketch` in the element's level with reaches from the view's scale.
+Align, which lines up with what a plan shows, says so. A view edge-on to the plane picks nothing on it, and says to turn it.
+
 Unhide. Only Reveal Hidden Elements lets what a view hides be picked, so the Modify tab's View panel offers Unhide Element and Unhide Category (EU, VU) for a selection
 `BimApp::hidden_selection` finds the active view hiding: the elements hidden one by one, and the categories hidden whole. They run `graphics` with `show_elements` or `show`
 (`unhide_selection`), the selection stays, and with nothing of it hidden EU opens the Elements tab as before and VU says so.

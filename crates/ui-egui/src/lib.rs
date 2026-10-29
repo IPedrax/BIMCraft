@@ -47,6 +47,7 @@ mod section_box;
 pub mod settings;
 pub mod shortcuts;
 mod sketch;
+mod sketch3d;
 mod start;
 mod structure;
 mod style;

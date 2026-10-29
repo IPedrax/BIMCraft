@@ -3447,6 +3447,20 @@ impl Model {
         }
     }
 
+    /// The height, mm, an element's sketch lies at in a model view, where Edit Boundary draws its lines in 3D: a floor's top
+    /// at its level and offset (a sloped one's too, as Revit sketches it), a ceiling's underside, a roof's base, a shaft's
+    /// bottom. None for anything else: a filled region is a view's, and an extruded roof is sketched in elevation.
+    pub fn sketch_height(&self, id: impl Key) -> Option<f64> {
+        let z = match self.elements.get(id)? {
+            Element::Floor(f) => self.elevation(f.level) + f.offset,
+            Element::Ceiling(c) => self.elevation(c.level) + c.offset,
+            Element::Roof(r) if r.extrusion.is_none() => self.elevation(r.level) + r.offset,
+            Element::Shaft(s) => self.elevation(s.level) + s.base_offset,
+            _ => return None,
+        };
+        z.is_finite().then_some(z)
+    }
+
     /// How far a floor's underside lies below its top, plumb: its type's thickness across its slope.
     pub fn floor_depth(&self, f: &Floor) -> f64 {
         self.types.floor.get(&f.type_name).map_or(0.0, |t| t.thickness) / f.slope.to_radians().cos()
