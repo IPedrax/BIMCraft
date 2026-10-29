@@ -5201,6 +5201,7 @@ mod purge;
 mod revit;
 mod section_box;
 mod sketch;
+mod sketch3d;
 mod smallest;
 mod start;
 mod titlebar;

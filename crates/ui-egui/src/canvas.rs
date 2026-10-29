@@ -32,7 +32,7 @@ use crate::{BimApp, Sheet, Status, Tool, icon_button, top_params};
 /// How near the cursor an element is picked, in px.
 pub(crate) const PICK: f32 = 6.0;
 /// How near the cursor a click snaps to a wall's end or a point of the chain, in px.
-const SNAP: f64 = 10.0;
+pub(crate) const SNAP: f64 = 10.0;
 /// Zoom limits, px per mm: from 1000 km to 2 cm across 1000 px.
 const SCALE: (f64, f64) = (1e-6, 50.0);
 /// How long a press may last and still be a click, wherever the hand went meanwhile, in seconds: a
@@ -1175,18 +1175,7 @@ impl BimApp {
             // The snapped cursor is for a grip being dragged and for what a sketch tool shows; Modify's idle frames need none.
             let wanted = sk.drag.is_some() || matches!(self.tool, Tool::SketchLine(_));
             let cursor = local.filter(|_| wanted).map(|q| self.snap(&model, level, &view, q, from, shift).at);
-            // Trim/Extend's and Fillet Arc's picks so far, lit as the lines picked are.
-            let lit: Vec<usize> = self
-                .drawing
-                .trim
-                .map(|(i, _)| i)
-                .into_iter()
-                .chain(self.drawing.fillet.iter().filter_map(|(l, _)| match l {
-                    draw::Picked::Sketch(i) => Some(*i),
-                    draw::Picked::Element(_) => None,
-                }))
-                .collect();
-            sk.paint(&p, |q| pos(rect.min, view.px(q)), over, cursor, &lit);
+            sk.paint(&p, |q| pos(rect.min, view.px(q)), over, cursor, &self.sketch_lit());
             if let (Some(q), Some(c)) = (local, cursor) {
                 self.sketch_preview(&p, &view, rect.min, q, c);
             }

@@ -4,7 +4,8 @@
 //! click picks the element the picture shows there, and so does a press let go quickly, however
 //! far the hand went with it (`Canvas::quick_press`): the camera it turned goes back. A level
 //! selected alone has a grip at the middle of each edge of its plane, which a drag moves over it. A section box is drawn
-//! round what it keeps, with a grip on each face in Modify that a drag moves along its axis (`section_box.rs`).
+//! round what it keeps, with a grip on each face in Modify that a drag moves along its axis (`section_box.rs`). An Edit
+//! Boundary begun here is sketched here, on the element's plane (`sketch3d.rs`): its clicks are the sketch's.
 
 use std::sync::Arc;
 
@@ -22,6 +23,7 @@ use serde_json::json;
 
 use crate::canvas::{click_modifiers, color};
 use crate::icons::Icon;
+use crate::sketch3d::Plane;
 use crate::style::{canvas_pal, pal};
 use crate::{BimApp, Status, Tool, icon_button};
 
@@ -172,6 +174,10 @@ impl BimApp {
             (hover, i.smooth_scroll_delta.y, i.zoom_delta(), i.modifiers.shift, i.pointer.latest_pos())
         });
         let model = self.view_model();
+        // An Edit Boundary begun here: its lines on the element's plane, a drag from a picked one's end holding its grip.
+        let sketch_z = self.sketch_z();
+        let last = self.orbit.camera.map(|c| Camera { width: w, height: h, ..c });
+        let held = self.sketch3d_grab(ui, &response, sketch_z.zip(last).map(|(z, cam)| Plane { cam, rect, ppp, z }));
         let (modify, demolish, selection) = (self.tool == Tool::Modify, self.tool == Tool::Demolish, self.selection.clone());
         let (paint, unpaint) = (self.tool == Tool::Paint, self.tool == Tool::Unpaint);
         let o = &mut self.orbit;
@@ -225,6 +231,7 @@ impl BimApp {
         if let Some(b) = boxed
             && modify
             && o.grip.is_none()
+            && !held
             && response.drag_started_by(PointerButton::Primary)
             && let Some(origin) = ui.input(|i| i.pointer.press_origin())
             && let Some(k) = crate::section_box::grip_at(b, origin, |p| on_screen(&cam, rect, ppp, p))
@@ -250,6 +257,7 @@ impl BimApp {
         if response.drag_started()
             && o.grip.is_none()
             && o.boxing.is_none()
+            && !held
             && let Some(origin) = ui.input(|i| i.pointer.press_origin())
         {
             o.drag = Some((response.dragged_by(PointerButton::Primary) || shift, origin));
@@ -286,8 +294,10 @@ impl BimApp {
             let (x, y) = px(at);
             picker.as_ref().and_then(|p| p.at(&cam, x, y))
         };
-        let hovered =
-            hover.filter(|_| (modify || demolish || paint || unpaint) && o.drag.is_none()).and_then(|at| pick(&o.picker, at)).map(|h| h.id);
+        let hovered = hover
+            .filter(|_| (modify || demolish || paint || unpaint) && o.drag.is_none() && sketch_z.is_none())
+            .and_then(|at| pick(&o.picker, at))
+            .map(|h| h.id);
         let tints: Vec<(Id, Rgb)> = selection
             .iter()
             .map(|id| (*id, rgb(canvas_pal().accent)))
@@ -370,7 +380,9 @@ impl BimApp {
         // A click on a grip picks nothing behind it.
         let click = response.clicked().then(|| response.interact_pointer_pos()).flatten().or(self.canvas.quick_press());
         let click = click.filter(|at| !boxed.is_some_and(|b| modify && crate::section_box::grip_at(b, *at, screen).is_some()));
-        let clicked = click.map(|at| pick(&o.picker, at).map(|h| h.id));
+        // While sketching here a click is the sketch's, with what's under it for Pick Walls and Pick Lines.
+        let under = click.filter(|_| sketch_z.is_some()).and_then(|at| pick(&o.picker, at)).map(|h| h.id);
+        let clicked = click.filter(|_| sketch_z.is_none()).map(|at| pick(&o.picker, at).map(|h| h.id));
         // The face of what's clicked, as paint names the faces of an element.
         let face = click.and_then(|at| pick(&o.picker, at).map(|h| h.face).filter(|f| !f.is_empty()));
         match clicked {
@@ -384,6 +396,9 @@ impl BimApp {
                     Status { text: crate::lang::t("this tool works in plan views: open one from the Project Browser").into(), error: true }
             }
             None => {}
+        }
+        if let Some(z) = sketch_z {
+            self.sketch3d(ui, &response, &p, Plane { cam, rect, ppp, z }, click, under);
         }
         self.context_menu(&response);
         if let Some((id, [lo, hi])) = moved {
