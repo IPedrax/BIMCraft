@@ -896,6 +896,32 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
     d
 }
 
+/// A reinforcing bar seen from above: its line, with each point once after another, thin; a bar that stands, a dot as thick as it
+/// is. `seen` keeps what was drawn, so what lies on it is not drawn again.
+fn bar_in_plan(d: &mut Drawing, rb: &crate::model::Rebar, dashed: bool, seen: &mut std::collections::HashSet<Vec<(i64, i64)>>) {
+    let mut pts: Vec<P2> = Vec::new();
+    for p in &rb.path {
+        let q = P2(p[0], p[1]);
+        if pts.last().is_none_or(|last| last.dist(q) > TOL) {
+            pts.push(q);
+        }
+    }
+    let px: Vec<(f32, f32)> = pts.iter().map(|p| d.view.px(*p)).collect();
+    if !seen.insert(px.iter().map(|(x, y)| ((x * 10.0).round() as i64, (y * 10.0).round() as i64)).collect()) {
+        return;
+    }
+    match pts.as_slice() {
+        [] => {}
+        [at] => {
+            // At least a pixel across, so a thin bar seen end on is there.
+            let r = (rb.diameter / 2.0).max(1.0 / d.view.scale);
+            let ring: Vec<P2> = (0..12).map(|i| *at + crate::model::heading(f64::from(i) * 30.0) * r).collect();
+            d.fill(&[ring], INK);
+        }
+        _ => d.stroke(px, BY_CATEGORY, INK, dashed.then(|| vec![10.0, 5.0]), false),
+    }
+}
+
 /// How far past the lowest and highest heights a section's grids run, mm.
 const GRID_PAST: f64 = 600.0;
 
@@ -1695,6 +1721,8 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     let inside = |p: P2| crop.is_none_or(|[lo, hi]| (lo.0..=hi.0).contains(&p.0) && (lo.1..=hi.1).contains(&p.1));
     // Every room of the level is found among the same lines, which take each wall's joins and heights to find.
     let bounding = std::cell::OnceCell::new();
+    // Bars seen from above that lie where another was drawn (a column's stirrups, up its height) are drawn once.
+    let mut bars_seen: std::collections::HashSet<Vec<(i64, i64)>> = std::collections::HashSet::new();
     for (&id, e) in m.elements.iter().filter(|(id, _)| shown(**id)) {
         d.owner = Some(id);
         match e {
@@ -1760,6 +1788,17 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
                         let pts = ring.iter().map(|p| d.view.px(*p)).collect();
                         d.stroke(pts, BY_CATEGORY, INK, Some(vec![10.0, 5.0]), true);
                     }
+                }
+            }
+            // A reinforcing bar of this level: solid where the cut plane is over its lowest point, dashed over the plane and under
+            // the view range's top.
+            Element::Rebar(rb) if m.level_of(e) == Some(level) => {
+                let base = m.elevation(level);
+                let lo = rb.path.iter().map(|p| base + p[2]).fold(f64::INFINITY, f64::min);
+                if lo <= range.cut {
+                    bar_in_plan(&mut d, rb, false, &mut bars_seen);
+                } else if lo <= range.top {
+                    bar_in_plan(&mut d, rb, true, &mut bars_seen);
                 }
             }
             // Overhead too: a run over the cut plane and under the view range's top, dashed.

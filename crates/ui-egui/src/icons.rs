@@ -66,6 +66,7 @@ icon_names! {
     PlaceView,
     Column,
     Beam,
+    Rebar,
     Footing,
     WallFooting,
     Pipe,
@@ -623,6 +624,13 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
                 (10.0, 7.0),
                 (4.0, 7.0),
             ]);
+        }
+        Icon::Rebar => {
+            // A stirrup round four bars.
+            g.closed(&[(5.0, 5.0), (19.0, 5.0), (19.0, 19.0), (5.0, 19.0)]);
+            for (x, y) in [(8.5, 8.5), (15.5, 8.5), (8.5, 15.5), (15.5, 15.5)] {
+                g.circle((x, y), 1.8);
+            }
         }
         Icon::Footing => {
             // A centered column on an isolated pad, with a single joined silhouette.

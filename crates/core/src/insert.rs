@@ -244,6 +244,7 @@ fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> boo
         Kind::FilledRegionType => one(&mut to.region_types, Some(&from.region_types), name),
         Kind::DetailGroup => one(&mut to.detail_groups, Some(&from.detail_groups), name),
         Kind::TextType => one(&mut to.text_types, Some(&from.text_types), name),
+        Kind::ReinforcementPreset => one(&mut to.reinforcement, Some(&from.reinforcement), name),
         _ => false,
     }
 }

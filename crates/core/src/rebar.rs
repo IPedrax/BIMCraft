@@ -11,8 +11,11 @@ pub const STEEL: f64 = 7850.0;
 pub const DIAMETERS: (f64, f64) = (3.0, 100.0);
 /// The steel a bar is of unless told: Brazil's CA-50.
 pub const GRADE: &str = "CA-50";
-/// The most bars one command makes.
+/// The most bars one command makes for one host.
 pub const MAX_BARS: usize = 1000;
+/// The most bars one command makes in all, and the most hosts it arms.
+pub const MAX_BARS_ALL: usize = 20_000;
+pub const MAX_HOSTS: usize = 1000;
 
 /// The length of the bar along its points, unbent: what it is cut from.
 pub fn length(path: &[P3]) -> f64 {

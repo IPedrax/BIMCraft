@@ -186,6 +186,10 @@ pub struct Rebar {
     pub diameter: f64,
     #[serde(default = "default_grade")]
     pub grade: String,
+    /// The part of the host's reinforcement it belongs to (`bottom`, `stirrup`, `mesh x`): what `reinforce` made it for, and
+    /// replaces when it reinforces the host again. Empty for a bar drawn by hand.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub layer: String,
 }
 
 fn default_grade() -> String {
@@ -2048,6 +2052,9 @@ pub struct Model {
     /// Its detail group types, by name: the members each one placed draws.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub detail_groups: BTreeMap<String, crate::groups::GroupType>,
+    /// Its reinforcement presets, by name: the parameters `reinforce` takes for a kind of host, kept to arm others alike.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub reinforcement: BTreeMap<String, crate::reinforce::Preset>,
     pub elements: Elements,
     /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
     /// templates, phases, phase filters and design options.
@@ -2104,6 +2111,7 @@ impl Model {
             region_types: fills::region_types(language),
             text_types: crate::text::types(language),
             detail_groups: BTreeMap::new(),
+            reinforcement: BTreeMap::new(),
             elements: Elements::new(),
             library: crate::library::Library::default(),
             loaded: BTreeMap::new(),
@@ -4154,6 +4162,16 @@ impl Model {
         for (n, t) in &self.text_types {
             t.check(n)?;
         }
+        if self.reinforcement.len() > crate::reinforce::MAX_PRESETS {
+            return Err(format!(
+                "the project has {} reinforcement presets; it holds up to {}",
+                self.reinforcement.len(),
+                crate::reinforce::MAX_PRESETS
+            ));
+        }
+        for (n, p) in &self.reinforcement {
+            p.check(n)?;
+        }
         for (n, x) in &self.materials {
             for p in [&x.cut_pattern, &x.surface_pattern].into_iter().flatten() {
                 if !self.fill_patterns.contains_key(p) {
@@ -4416,6 +4434,7 @@ impl Model {
                 Element::Rebar(rb) => {
                     level_ok(rb.level)?;
                     text(&who, "grade", &rb.grade)?;
+                    text(&who, "layer", &rb.layer)?;
                     if rb.grade.trim().is_empty() {
                         return Err(format!("{who}: a bar needs a steel grade"));
                     }
