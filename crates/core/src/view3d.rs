@@ -11,7 +11,7 @@ use std::sync::{Arc, OnceLock};
 
 use crate::geom::{self, P2};
 use crate::graphics::{Look, VisualStyle};
-use crate::model::{Element, Id, Layer, Model};
+use crate::model::{Element, Id, Layer, Model, TOL};
 use crate::paint;
 use crate::render::{PAPER, Rgb, clip};
 use crate::stairs;
@@ -878,6 +878,20 @@ fn basis(t: &Tri) -> [P3; 2] {
     [across, unit(cross(n, across))]
 }
 
+/// Whether `p` is inside `look`'s section box, or there is none.
+fn kept(look: &Look, p: P3) -> bool {
+    look.section_box().is_none_or(|(lo, hi)| (0..3).all(|k| p[k] >= lo[k] - TOL && p[k] <= hi[k] + TOL))
+}
+
+/// A face of the model under a pixel ([`Scene::face_at`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Face {
+    pub at: P3,
+    pub normal: P3,
+    pub owner: Id,
+    pub tris: Vec<[P3; 3]>,
+}
+
 /// Where a level's name goes in a 3D view: a vertical plane, unseen, past the right end of its
 /// plane's far edges and in line with the one that ends there, lettered with the name. It is where an
 /// elevation marker (an annotation family, later) will stand.
@@ -1014,6 +1028,68 @@ impl Scene {
             *e = (e.0 && on.iter().all(|q| inside(*q)), e.1 || (crossing && touches(&on)) || on.iter().any(|q| inside(*q)));
         }
         seen.into_iter().filter(|(_, (all, any))| if crossing { *any } else { *all }).map(|(id, _)| id).collect()
+    }
+
+    /// The triangle of what `look` shows nearest the camera at pixel `at`, and how near (as `project` says): none where
+    /// nothing is, or only what the section box cuts away.
+    fn hit(&self, cam: &Camera, at: (f64, f64), look: &Look) -> Option<(f64, usize)> {
+        let mut best: Option<(f64, usize)> = None;
+        for (i, t) in self.tris.iter().enumerate().filter(|(_, t)| look.shows(t.owner) && !crate::link::is_linked(t.owner)) {
+            let [a, b, c] = t.p.map(|p| cam.project(p));
+            let area = (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
+            if area.is_nan() || area.abs() <= 1e-12 {
+                continue;
+            }
+            // Its share of each corner at the pixel: all three at least none, it's inside.
+            let wa = ((b.0 - at.0) * (c.1 - at.1) - (b.1 - at.1) * (c.0 - at.0)) / area;
+            let wb = ((c.0 - at.0) * (a.1 - at.1) - (c.1 - at.1) * (a.0 - at.0)) / area;
+            let wc = 1.0 - wa - wb;
+            if wa < -1e-9 || wb < -1e-9 || wc < -1e-9 {
+                continue;
+            }
+            let z = wa * a.2 + wb * b.2 + wc * c.2;
+            if z.is_finite() && best.is_none_or(|(d, _)| z > d) && kept(look, cam.at_depth(at, z)) {
+                best = Some((z, i));
+            }
+        }
+        best
+    }
+
+    /// The face of the model at pixel `at` through `cam`, of what `look` shows: where on it, which way it faces (toward the
+    /// camera), whose it is, and its triangles: those of the element lying in its plane. As a work plane is set on a surface.
+    pub fn face_at(&self, cam: &Camera, at: (f64, f64), look: &Look) -> Option<Face> {
+        let (z, i) = self.hit(cam, at, look)?;
+        let t = self.tris.get(i)?;
+        let n = unit(cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0])));
+        let (back, ..) = cam.axes();
+        let normal = if dot(n, back) < 0.0 { mul(n, -1.0) } else { n };
+        let plane = self.planes.get(i).copied();
+        let tris = self.tris.iter().zip(&self.planes).filter(|(o, k)| o.owner == t.owner && Some(**k) == plane).map(|(o, _)| o.p).collect();
+        Some(Face { at: cam.at_depth(at, z), normal, owner: t.owner, tris })
+    }
+
+    /// The corner of what `look` shows nearest pixel `at`, within `reach` pixels, that the camera sees (nothing nearer hides
+    /// it): what a picked point snaps to, as a dimension's ends snap to corners in plan.
+    pub fn corner_near(&self, cam: &Camera, at: (f64, f64), reach: f64, look: &Look) -> Option<P3> {
+        let mut near: Vec<(f64, P3)> = self
+            .tris
+            .iter()
+            .filter(|t| look.shows(t.owner) && !crate::link::is_linked(t.owner))
+            .flat_map(|t| t.p)
+            .filter_map(|p| {
+                let (x, y, _) = cam.project(p);
+                let d = ((x - at.0).powi(2) + (y - at.1).powi(2)).sqrt();
+                (d <= reach).then_some((d, p))
+            })
+            .collect();
+        near.sort_by(|a, b| a.0.total_cmp(&b.0));
+        near.dedup_by(|a, b| sub(a.1, b.1).iter().all(|v| v.abs() < TOL));
+        // Seen where what's in front at its pixel is it, or no nearer than it: to a millimetre, and a little more for
+        // the pixel's slant across a face seen edge on.
+        near.into_iter().take(16).map(|(_, p)| p).find(|p| {
+            let (x, y, z) = cam.project(*p);
+            kept(look, *p) && self.hit(cam, (x, y), look).is_none_or(|(d, _)| d <= z + 1.0 + 2.0 / cam.scale.max(1e-9))
+        })
     }
 
     pub fn level_heads(&self, cam: &Camera) -> Vec<LevelHead> {

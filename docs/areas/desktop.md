@@ -180,19 +180,24 @@ click), Split, Trim/Extend, Offset and Vertex take the plane's point as the plan
 Align, which lines up with what a plan shows, says so. A view edge-on to the plane picks nothing on it, and says to turn it.
 
 Work planes in 3D (`workplane.rs`; the core's in [views and graphics](views-and-graphics.md)). The plane has a patch of its own in
-the view, as ArchiCAD's: a small square of it by the model's south-west corner (`work_plane_ring`, the same size on screen at any
-zoom), lit with the plane's name under the cursor, that a click in Modify opens the dialog from; so do the 3D view's right-click
-menu (Set Work Plane…, `Action::WorkPlane`) and the Architecture tab's Set, in its Datum panel. The 3D view's control bar has Work
-Plane, a `footer::menu_button` showing the plane (a level's name, `+ offset` when raised, or `Three points, 14.0°`), which opens its
-dialog (`workplane::Draft`): On a level, a level and an Offset; or Through three points, nine lengths typed (`Point 1 X`…), or Pick in
-View, which closes the dialog while three clicks on the model take points of its surface (`Picker::point`: the processor picture's
-depth, `Image::point`, or the card's mesh, `Mesh::point`), drawn as dots, and brings it back with them, Esc going back without them.
-OK runs `work_plane`; what it refuses is said in the dialog. The plane is drawn as a grid over the model's extent while the dialog is
-up and while a new outline is sketched on it (`workplane::draw_plane`). Floor, Ceiling, Roof and Shaft picked in the 3D view sketch a new
-one on the work plane at once (`set_tool`, `sketch_on_work_plane`): `Sketch::surface` holds the plane, `sketch_surface` gives it to
-`sketch3d.rs`, and Finish makes it on the level below the plane (`workplane::host`), as high above it as the plane is. Each of the
-four lies level, so on a sloped plane (`workplane::is_level`) its tool says the work plane must be horizontal and makes nothing; a
-sloped plane can still be set, for what comes to sketch on one later. A Line or Polyline sketched in 3D shows the line to come,
+the view, as ArchiCAD's: a small square of it (`work_plane_ring`, the same size on screen at any zoom), by the model's south-west corner
+on a level plane and about the point it was set through on another, lit with the plane's name under the cursor, that a click in Modify
+opens the dialog from; so do the 3D view's right-click menu (Set Work Plane…, `Action::WorkPlane`) and the Architecture tab's Set, in
+its Datum panel. The 3D view's control bar has Work Plane, a `footer::menu_button` showing the plane (a level's name, `Surface, 90°` or
+`Three points, 14°`, and `+ offset` when moved), which opens its dialog (`workplane::Draft`). It sets the plane three ways (`By`): Pick
+from list, a level; Pick a surface, with Pick Surface; Pick three points, with Pick Points; and one Offset for each, along the plane's
+normal (up from a level, out from a surface). Nothing is typed but the offset. A pick closes the dialog while it's made (`Picking`) and
+brings it back with what it took, Esc going back without it: Pick Surface lights the face under the pointer (`Scene::face_at`, the
+element's triangles in the plane of the one hit) and a click takes it, a point of it and the way it faces; Pick Points takes three
+clicks, each snapping to the corner seen nearest the pointer within the snap's reach (`Scene::corner_near`, a square marking it, as a
+dimension's ends snap in plan), else the surface's point there (a circle), the points taken drawn as dots (`workplane::aim`,
+`draw_aim`). OK runs `work_plane`; what it refuses is said in the dialog. The plane is drawn as a grid over as much of it as the model
+spans while the dialog is up and while a new outline is sketched on it (`workplane::draw_plane`, along the plane's own axes). Floor,
+Ceiling, Roof and Shaft picked in the 3D view sketch a new one on the work plane at once (`set_tool`, `sketch_on_work_plane`):
+`Sketch::surface` holds the plane, `sketch_surface` gives it to `sketch3d.rs`, and Finish makes it on the level below the plane
+(`workplane::host`), as high above it as the plane is. Each of the four lies level, so on a plane that doesn't (`workplane::is_level`:
+sloped, or upright as a wall's face) its tool says the work plane must be horizontal and makes nothing; the plane itself may lie at any
+angle, for what comes to sketch on one later (an opening on a wall). A Line or Polyline sketched in 3D shows the line to come,
 from the last point to the cursor, with its length (`sketch3d_preview`; the other shapes' previews are `shape_preview`'s).
 
 Floor goes into sketch mode at once, in a plan as in 3D, as Revit's does (`set_tool`); its sketch's ribbon has Walls' Outline
