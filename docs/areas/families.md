@@ -19,7 +19,7 @@ partitions, built and walked with a worklist rather than recursion and bounded b
 a cut piece keeps its uncut outline in plan). A family of category `door` or `window` is hosted: its `Width` and `Height` (English
 names, whatever the project's language) size the wall's opening, `Sill Height` is a window's default sill, its forms are drawn in
 the opening's axes (x along the wall from the middle of the opening, y across it from the wall's middle plane and + toward its
-exterior, z up from the sill) and its formulas read `Wall Thickness`; its `symbols` are the plan lines (a door's swing). An
+exterior, z up from the sill) and its formulas read `Wall Thickness`; its `symbols` are the plan lines (a door's swing). Its `connectors` say what an electrical device draws ([structure and MEP](structure-and-mep.md)); a family file keeps them. An
 `Opening` holds a `family`, or none (one of the project's own types): `Model::opening_dims` gives its size either way
 (`opening_type` returns it by value), its flips are mirrors (`opening_local`), and `Element::family()` is the one way to ask what
 family a component or an opening is of. Sections show a family opening's forms beyond their line and never cut them.
