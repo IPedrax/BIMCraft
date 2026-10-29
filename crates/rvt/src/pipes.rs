@@ -15,7 +15,7 @@ use std::collections::BTreeSet;
 use bimcraft_core::model::{Element, Justify, Run, RunType};
 
 use crate::data::newest;
-use crate::import::{Facts, Import, kind, micron, mm, point};
+use crate::import::{Facts, Import, kind, level_at, micron, mm, point};
 use crate::inventory::Gathered;
 use crate::records::{MAX_FEET, f64_at, u32_at};
 
@@ -68,16 +68,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
             let copies = g.data.get(&r.id).ok_or("its two connectors are not in the record")?;
             let (a, b) = newest(copies, connectors).map(|(c, _)| c).ok_or("its two connectors are not in the record")?;
             let width = diameter(a, b, &r.bbox).ok_or("its diameter cannot be worked out from its box")?;
-            // The highest level at or below its start (a millimetre of slack), else the lowest.
-            let (level, elevation) = f
-                .elevations
-                .iter()
-                .filter(|&(_, &e)| e <= a[2] + 1.0 / 304.8)
-                .max_by(|x, y| x.1.total_cmp(y.1))
-                .or_else(|| f.elevations.iter().min_by(|x, y| x.1.total_cmp(y.1)))
-                .map(|(&id, &e)| (id, e))
-                .ok_or("it stands on no level")?;
-            let level = cx.levels.get(&level).copied().ok_or("it stands on no level")?;
+            let (level, elevation) = level_at(cx, f, a[2])?;
             let width = micron(mm(width));
             let types = cx.model.types.runs.entry("pipe".to_string()).or_default();
             let type_name = kind(

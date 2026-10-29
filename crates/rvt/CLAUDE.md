@@ -12,7 +12,7 @@ the crate is Apache-2.0 only, ported in part from rvt-rs and fenced by [docs/rvt
   its box) the element comes in as that stand-in and a note says what was not read: that is an approximation, never counted as
   read whole, and never a way to bring the "left out" count down.
 - **A module for each part of a file** (`container`, `gzip`, `records`, `schema`, `inventory`, `elem_table`, `atom`...) and **for
-  each element kind** it imports (`walls`, `floors`, `roofs`, `columns`, `openings`, `rooms`, `pipes`), joined by `import.rs`. A new kind
+  each element kind** it imports (`walls`, `floors`, `roofs`, `columns`, `openings`, `rooms`, `pipes`, `ducts`, `generic`), joined by `import.rs`. A new kind
   is a module with its own tests, a line in `import.rs`, and its place in the write-up
   [Revit files and the Revit import](../../docs/areas/revit-import.md).
 - Lengths and counts a file claims are bounded before anything is allocated (`Limits`), and the sweep of hostile files is part of

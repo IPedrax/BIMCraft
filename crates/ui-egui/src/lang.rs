@@ -260,6 +260,7 @@ pub fn category(category: &str, several: bool) -> String {
         "footing" => (msg!("category", "Footing"), msg!("category-plural", "Footings")),
         "stripfooting" => (msg!("category", "Strip Footing"), msg!("category-plural", "Strip Footings")),
         "pipe" => (msg!("category", "Pipe"), msg!("category-plural", "Pipes")),
+        "duct" => (msg!("category", "Duct"), msg!("category-plural", "Ducts")),
         "conduit" => (msg!("category", "Conduit"), msg!("category-plural", "Conduits")),
         "cabletray" => (msg!("category", "Cable Tray"), msg!("category-plural", "Cable Trays")),
         "wire" => (msg!("category", "Wire"), msg!("category-plural", "Wires")),

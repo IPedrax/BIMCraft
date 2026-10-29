@@ -43,7 +43,7 @@ where a class has several; `LoadBearing` makes a column or a floor structural.
 
 The discipline tabs after Structure add data to this, no engine code of their own. Plumbing: `pipe` (PI), types in PVC and copper
 (`Types::runs["pipe"]`, outside diameters, so a pipe's `width` is its diameter and its schedule says Diameter). Electrical: `conduit`
-(CN), `cabletray` (CT, `cable_tray`: the one rectangular run) and `wire` (EW), by their outside size. Lightning protection (NBR 5419):
+(CN), `duct` (DU: a rectangular or round duct, written as `IfcDuctSegment`; only a Revit import makes them in practice) `cabletray` (CT, `cable_tray`: the one rectangular run) and `wire` (EW), by their outside size. Lightning protection (NBR 5419):
 `downconductor` (DC, may stand: a riser down a wall) and `groundconductor` (GC), two runs of one IFC class that `BIMCraft_Run`'s `Category`
 tells apart; an air terminal, an earthing electrode and an inspection box are components of their own family categories, written as
 `IfcBuildingElementProxy` of the object type `Category::ifc` names, so the product's name (not its object type) holds `Family:Type` and

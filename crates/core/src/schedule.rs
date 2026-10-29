@@ -357,6 +357,7 @@ const OWN: &[(&str, usize, &[Own])] = &[
         ],
     ),
     ("cabletray", 7, &[ID, TYPE, LEVEL, SYSTEM, LENGTH, WIDTH, DEPTH, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    ("duct", 7, &[ID, TYPE, LEVEL, SYSTEM, LENGTH, WIDTH, DEPTH, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
     (
         "cable",
         6,

@@ -471,6 +471,7 @@ fn icon(category: &str) -> Icon {
         "footing" => Icon::Footing,
         "stripfooting" => Icon::WallFooting,
         "pipe" => Icon::Pipe,
+        "duct" => Icon::CableTray,
         "conduit" => Icon::Conduit,
         "cabletray" => Icon::CableTray,
         "wire" => Icon::Wire,

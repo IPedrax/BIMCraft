@@ -503,6 +503,17 @@ pub static ALL: &[Command] = &[
         pipe,
     ),
     edit(
+        "duct",
+        ui_msg!("Duct"),
+        &["DU"],
+        "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a duct for each \
+         segment of the points: its section the type's (category duct: `width` across by `depth` deep, or round, `width` the \
+         diameter), its `justify` line (centre by default) `offset` mm over the level at its start (0: at the level) and \
+         `end_offset` at its end (the same: level), for a single segment; the same point twice and two heights make one stand \
+         upright. `system` names the system it belongs to (\"Supply air\", \"Exhaust\")",
+        duct,
+    ),
+    edit(
         "conduit",
         ui_msg!("Conduit"),
         &["CN"],
@@ -822,7 +833,7 @@ pub static ALL: &[Command] = &[
         "type",
         "Edit Type",
         &[],
-        "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|beam|stripfooting|pipe|conduit|\
+        "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|beam|stripfooting|pipe|duct|conduit|\
          cabletray|wire|downconductor|groundconductor|cable, name, thickness? | width?, height?, sill?, operation? | width?, depth?, round?, \
          material? | height?, spacing?} creates the type, or changes it everywhere it's used. A column's, a structural column's or \
          a footing's type is a `width` by `depth`, or `round` (`width` across); a run's (a beam's, a pipe's, a cable tray's…) too, \
@@ -7037,6 +7048,10 @@ fn pipe(s: &mut Session, p: &Value) -> R {
     chain(s, p, "pipe")
 }
 
+fn duct(s: &mut Session, p: &Value) -> R {
+    chain(s, p, "duct")
+}
+
 fn conduit(s: &mut Session, p: &Value) -> R {
     chain(s, p, "conduit")
 }
@@ -7080,6 +7095,7 @@ pub fn command_of(category: &str) -> &'static str {
         "stripfooting" => "strip_footing",
         "beam" => "beam",
         "pipe" => "pipe",
+        "duct" => "duct",
         "conduit" => "conduit",
         "cabletray" => "cable_tray",
         "wire" => "wire",

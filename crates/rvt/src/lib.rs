@@ -10,11 +10,13 @@ mod columns;
 mod container;
 pub mod curves;
 pub mod data;
+mod ducts;
 pub mod elem_table;
 mod error;
 #[cfg(any(test, feature = "testing"))]
 pub mod fixture;
 mod floors;
+mod generic;
 pub mod gzip;
 mod import;
 pub mod info;

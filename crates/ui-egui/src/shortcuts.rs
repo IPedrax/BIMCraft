@@ -353,6 +353,7 @@ impl BimApp {
             "Match Properties" => self.match_properties(),
             "Beam" => self.set_tool(Tool::Run("beam", None)),
             "Pipe" => self.set_tool(Tool::Run("pipe", None)),
+            "Duct" => self.set_tool(Tool::Run("duct", None)),
             "Conduit" => self.set_tool(Tool::Run("conduit", None)),
             "Cable Tray" => self.set_tool(Tool::Run("cabletray", None)),
             "Wire" => self.set_tool(Tool::Run("wire", None)),

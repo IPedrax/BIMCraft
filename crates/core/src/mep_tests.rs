@@ -40,6 +40,17 @@ const CASES: &[Case] = &[
         predefined: ".RIGIDSEGMENT.",
     },
     Case {
+        category: "duct",
+        command: "duct",
+        alias: "DU",
+        default_type: "Rectangular 400 x 300",
+        round: false,
+        columns: &["System", "Length", "Width", "Depth"],
+        alone: true,
+        class: "IFCDUCTSEGMENT",
+        predefined: ".RIGIDSEGMENT.",
+    },
+    Case {
         category: "conduit",
         command: "conduit",
         alias: "CN",

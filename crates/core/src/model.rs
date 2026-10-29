@@ -1655,6 +1655,7 @@ macro_rules! run_arm {
         Element::Beam($r)
             | Element::StripFooting($r)
             | Element::Pipe($r)
+            | Element::Duct($r)
             | Element::Conduit($r)
             | Element::CableTray($r)
             | Element::Wire($r)
@@ -1777,6 +1778,7 @@ pub enum Element {
     Beam(Run),
     StripFooting(Run),
     Pipe(Run),
+    Duct(Run),
     Conduit(Run),
     CableTray(Run),
     Wire(Run),
@@ -1918,6 +1920,7 @@ impl Element {
             "beam" => Some(Element::Beam(r)),
             "stripfooting" => Some(Element::StripFooting(r)),
             "pipe" => Some(Element::Pipe(r)),
+            "duct" => Some(Element::Duct(r)),
             "conduit" => Some(Element::Conduit(r)),
             "cabletray" => Some(Element::CableTray(r)),
             "wire" => Some(Element::Wire(r)),
@@ -2008,6 +2011,7 @@ impl Element {
             Element::Beam(_) => "beam",
             Element::StripFooting(_) => "stripfooting",
             Element::Pipe(_) => "pipe",
+            Element::Duct(_) => "duct",
             Element::Conduit(_) => "conduit",
             Element::CableTray(_) => "cabletray",
             Element::Wire(_) => "wire",
@@ -2088,8 +2092,8 @@ pub struct RunType {
 }
 
 /// The categories whose elements are runs, as `Element::run` returns them.
-pub const RUN_CATEGORIES: [&str; 9] =
-    ["beam", "stripfooting", "pipe", "conduit", "cabletray", "wire", "downconductor", "groundconductor", "cable"];
+pub const RUN_CATEGORIES: [&str; 10] =
+    ["beam", "stripfooting", "pipe", "duct", "conduit", "cabletray", "wire", "downconductor", "groundconductor", "cable"];
 
 /// A roof type: how thick its roofs are across their slope and, a compound one, its layers from
 /// the top down.
@@ -2256,7 +2260,7 @@ pub struct ProjectParameter {
 pub const MAX_PROJECT_PARAMETERS: usize = 256;
 
 /// The categories project parameters are for.
-pub const PARAMETER_CATEGORIES: [&str; 24] = [
+pub const PARAMETER_CATEGORIES: [&str; 25] = [
     "wall",
     "floor",
     "ceiling",
@@ -2275,6 +2279,7 @@ pub const PARAMETER_CATEGORIES: [&str; 24] = [
     "beam",
     "stripfooting",
     "pipe",
+    "duct",
     "conduit",
     "cabletray",
     "wire",
@@ -2623,6 +2628,12 @@ impl Model {
             ("Perforated 300 x 100", run(300.0, 100.0, false, "Metal")),
         ];
         m.types.runs.insert("cabletray".into(), trays.into_iter().map(|(n, t)| (n.to_string(), t)).collect());
+        let ducts = [
+            ("Rectangular 400 x 300", run(400.0, 300.0, false, "Metal")),
+            ("Rectangular 600 x 400", run(600.0, 400.0, false, "Metal")),
+            ("Round 300", run(300.0, 300.0, true, "Metal")),
+        ];
+        m.types.runs.insert("duct".into(), ducts.into_iter().map(|(n, t)| (n.to_string(), t)).collect());
         let wires = [
             ("Wire 2.5", run(4.0, 4.0, true, "Copper")),
             ("Wire 4", run(5.0, 5.0, true, "Copper")),
@@ -2656,6 +2667,12 @@ impl Model {
             ("Perforated 300 x 100", run(300.0, 100.0, false, "Metal")),
         ];
         m.types.runs.insert("cabletray".into(), trays.into_iter().map(|(n, t)| (n.to_string(), t)).collect());
+        let ducts = [
+            ("Rectangular 400 x 300", run(400.0, 300.0, false, "Metal")),
+            ("Rectangular 600 x 400", run(600.0, 400.0, false, "Metal")),
+            ("Round 300", run(300.0, 300.0, true, "Metal")),
+        ];
+        m.types.runs.insert("duct".into(), ducts.into_iter().map(|(n, t)| (n.to_string(), t)).collect());
         let wires = [
             ("Wire 2.5", run(4.0, 4.0, true, "Copper")),
             ("Wire 4", run(5.0, 5.0, true, "Copper")),
@@ -3528,6 +3545,7 @@ impl Model {
             "beam" => "Beam 200 x 500",
             "stripfooting" => "Strip 600 x 300",
             "pipe" => "PVC 50",
+            "duct" => "Rectangular 400 x 300",
             "conduit" => "PVC 25",
             "cabletray" => "Perforated 100 x 50",
             "wire" => "Wire 2.5",

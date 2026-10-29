@@ -13,7 +13,7 @@ Look at what each tab draws and there are three shapes, and BIMCraft has two of 
 | Shape | Examples | What builds it |
 |---|---|---|
 | A vertical or point thing with a type and a size | columns, footings; sanitary fixtures, panels, luminaires, outlets, racks, air terminals | `Column` (vertical members) and the families with `Component` (devices and fixtures) |
-| A straight thing between two points | beams, strip footings; pipes, conduits, cable trays, down conductors, data cabling | **`Run`**, new |
+| A straight thing between two points | beams, strip footings; pipes, ducts, conduits, cable trays, down conductors, data cabling | **`Run`**, new |
 | A slab or a region | structural floors, foundation slabs | `Floor`, with a `structural` flag |
 
 So the new element is one: the run. Everything else is a category added to something that exists.
@@ -51,7 +51,7 @@ section, and the 3D view draws it as a sloped prism, or a round one as a tube.
 
 A run is one Rust type serialized under several categories, as `Door` and `Window` share `Opening`. The category is the
 `Element` variant, so Visibility/Graphics, schedules, project parameters, phases, view filters and the IFC class all
-work per category without a line of per-category machinery. Today: `beam`, `stripfooting`, `pipe`, `conduit`, `cabletray`, `wire`, `downconductor`, `groundconductor` and `cable`. A tab adds a variant, a name
+work per category without a line of per-category machinery. Today: `beam`, `stripfooting`, `pipe`, `duct`, `conduit`, `cabletray`, `wire`, `downconductor`, `groundconductor` and `cable`. A tab adds a variant, a name
 in `model::run_arm!` and a row to each table below:
 
 | Category | Tab | Revit's name |

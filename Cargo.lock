@@ -520,6 +520,7 @@ dependencies = [
  "cfb",
  "flate2",
  "memchr",
+ "serde_json",
 ]
 
 [[package]]
