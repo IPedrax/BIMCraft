@@ -43,8 +43,8 @@ fn known(c: char) -> Option<Glyph> {
         'X' => &[&[(0, 0), (8, 12)], &[(0, 12), (8, 0)]],
         'Y' => &[&[(0, 12), (4, 6), (8, 12)], &[(4, 6), (4, 0)]],
         'Z' => &[&[(0, 12), (8, 12), (0, 0), (8, 0)]],
-        // Norwegian and Danish: an A grown into an E (its crossbar meets the stem).
-        'Æ' => &[&[(0, 0), (4, 12), (8, 12)], &[(4, 12), (4, 0), (8, 0)], &[(4, 6), (7, 6)], &[(1, 4), (4, 4)]],
+        // Norwegian and Danish: an A grown into an E, its crossbar running on through the stem as the E's middle bar.
+        'Æ' => &[&[(0, 0), (4, 12), (8, 12)], &[(4, 12), (4, 0), (8, 0)], &[(2, 6), (7, 6)]],
         '0' => &[&[(2, 0), (1, 2), (1, 10), (2, 12), (6, 12), (7, 10), (7, 2), (6, 0), (2, 0)]],
         '1' => &[&[(2, 10), (4, 12), (4, 0)], &[(2, 0), (6, 0)]],
         '2' => &[&[(0, 10), (2, 12), (6, 12), (8, 10), (8, 8), (0, 0), (8, 0)]],
@@ -305,6 +305,28 @@ mod tests {
         assert_eq!(strokes("æ", 0.0, 0.0, 12.0), ae);
         assert!(ae.len() > strokes("E", 0.0, 0.0, 12.0).len(), "an A grown into an E has more strokes than an E");
         assert!(has('Æ'));
+    }
+
+    #[test]
+    fn ae_is_an_a_grown_into_an_e_that_a_small_tag_still_reads() {
+        let ae = strokes("Æ", 0.0, 0.0, 12.0);
+        for other in ["A", "E"] {
+            assert_ne!(strokes(other, 0.0, 0.0, 12.0), ae, "{other}");
+        }
+        // In its own cell, clear of the letters either side.
+        assert!(ae.iter().flatten().all(|&(x, y)| (0.0..=8.0).contains(&x) && (-12.0..=0.0).contains(&y)), "{ae:?}");
+        // One bar between the baseline and the top, the A's crossbar running on through the stem as the E's middle bar:
+        // two bars at different heights run together into one smudge in a tag a few millimetres high.
+        let segments: Vec<_> = ae.iter().flat_map(|line| line.windows(2).map(|w| (w[0], w[1]))).collect();
+        let bars: Vec<_> = segments.iter().filter(|(a, b)| a.1 == b.1 && a.1 < 0.0 && a.1 > -12.0).collect();
+        assert_eq!(bars.len(), 1, "{bars:?}");
+        let stem = 4.0;
+        assert!(bars.iter().all(|(a, b)| a.0.min(b.0) < stem && a.0.max(b.0) > stem), "{bars:?}");
+        // Its left leg slopes up from the baseline as an A's does; the E's top and bottom bars run right from the stem.
+        assert!(segments.iter().any(|&(a, b)| (a, b) == ((0.0, 0.0), (stem, -12.0))), "{segments:?}");
+        for y in [0.0, -12.0] {
+            assert!(segments.iter().any(|&(a, b)| a.1 == y && b.1 == y && a.0.min(b.0) == stem && a.0.max(b.0) == 8.0), "{y}");
+        }
     }
 
     #[test]
