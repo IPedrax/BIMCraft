@@ -732,14 +732,17 @@ pub fn export(m: &Model) -> String {
                     s(&r.name)
                 ));
                 // Its areas both ways: gross at the walls' centre lines, net at their faces.
-                if let (Some(gross), Some(net)) = (m.room_region_at(r, RoomArea::Centre), m.room_region_at(r, RoomArea::Finish)) {
-                    let values = [
-                        ("Height", "LENGTH", height),
-                        ("GrossPerimeter", "LENGTH", gross.perimeter()),
-                        ("NetPerimeter", "LENGTH", net.perimeter()),
-                        ("GrossFloorArea", "AREA", gross.area() / 1e6),
-                        ("NetFloorArea", "AREA", net.area() / 1e6),
-                    ];
+                // Each where it is a room: a point in a wall's inner half is the room at the centre lines and the wall's body at
+                // the faces.
+                let (gross, net) = (m.room_region_at(r, RoomArea::Centre), m.room_region_at(r, RoomArea::Finish));
+                if gross.is_some() || net.is_some() {
+                    let mut values = vec![("Height", "LENGTH", height)];
+                    if let Some(g) = &gross {
+                        values.extend([("GrossPerimeter", "LENGTH", g.perimeter()), ("GrossFloorArea", "AREA", g.area() / 1e6)]);
+                    }
+                    if let Some(n) = &net {
+                        values.extend([("NetPerimeter", "LENGTH", n.perimeter()), ("NetFloorArea", "AREA", n.area() / 1e6)]);
+                    }
                     w.quantities(ent, "Qto_SpaceBaseQuantities", &values, id);
                 }
                 spaces.entry(r.level).or_default().push(ent);

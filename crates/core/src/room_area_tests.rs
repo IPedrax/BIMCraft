@@ -191,3 +191,46 @@ fn the_area_at_the_finish_faces_is_the_same_wherever_the_wall_is_located() {
     let inner = finish("interior-finish", json!([[150, 150], [150, 2850], [3850, 2850], [3850, 150]]));
     near(inner, centre);
 }
+
+/// A 4000 x 3000 box of 300 mm walls on their centre lines, with no room in it.
+fn box_of_walls(s: &mut Session) {
+    wall(s, json!([[0, 0], [4000, 0], [4000, 3000], [0, 3000]]), true);
+}
+
+/// A room placed at the centre lines with its point in a wall's inner half is, measured at the faces, inside the wall: its
+/// faces close round the point, but the wall is no room. Everything that measures it says so, the same way.
+#[test]
+fn a_room_left_inside_a_wall_by_measuring_at_the_faces_is_not_enclosed_everywhere() {
+    let mut s = Session::new();
+    box_of_walls(&mut s);
+    let room = run(&mut s, "room", json!({"point": [2000, 100], "name": "TEST", "number": "1"}))["id"].as_u64().unwrap();
+    assert_eq!(areas(&mut s), vec![12.0], "at the centre lines it is the box");
+    run(&mut s, "room_area", json!({"at": "finish"}));
+    let e = &run(&mut s, "elements", json!({"category": "room"}))["elements"][0];
+    assert_eq!((e["enclosed"].clone(), e["area_m2"].clone()), (json!(false), json!(0.0)), "not the wall's body: {e}");
+    // Inspect says why, not that the walls stopped closing.
+    let warnings = run(&mut s, "inspect", json!({}))["warnings"].to_string();
+    assert!(warnings.contains(&format!("room {room} (1 TEST) lies inside wall")), "{warnings}");
+    // The plan's tag says NOT ENCLOSED under its name and number, rather than the wall's area.
+    let level = s.model.levels()[0].0;
+    let d = crate::render::plan(&s.model, level, 800, 600);
+    let tag = d.owners.iter().filter(|o| **o == Some(room)).count();
+    let strokes = |t: &str| crate::font::strokes(t, 0.0, 0.0, 12.0).len();
+    assert_eq!(tag, strokes("TEST") + strokes("1") + strokes("NOT ENCLOSED"));
+    // IFC gives the space no shape, as it does a room whose walls don't close.
+    let ifc = crate::ifc::export(&s.model);
+    assert!(ifc.contains(",$,'TEST',.ELEMENT.,.SPACE.,$)"), "{ifc}");
+}
+
+/// The same room in a project measured at the centre lines is the box, so IFC gives its gross quantities; at the faces it
+/// is no room, so there are no net ones.
+#[test]
+fn ifc_keeps_the_gross_quantities_of_a_room_with_no_net_ones() {
+    let mut s = Session::new();
+    box_of_walls(&mut s);
+    run(&mut s, "room", json!({"point": [2000, 100]}));
+    let ifc = crate::ifc::export(&s.model);
+    assert!(ifc.contains("IFCQUANTITYAREA('GrossFloorArea',$,$,12."), "{ifc}");
+    assert!(ifc.contains("'GrossPerimeter'"), "{ifc}");
+    assert!(!ifc.contains("'NetFloorArea'") && !ifc.contains("'NetPerimeter'"), "not the wall's body: {ifc}");
+}

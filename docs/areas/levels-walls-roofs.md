@@ -27,8 +27,11 @@ would and nothing else: it is no edge of a floor, a ceiling or a roof (`Model::b
 `face_lines` don't; an end drawn to a wall's face runs on to its centre line there, so the line splits rooms measured at
 the centre lines too), it is drawn in plan only, and it goes to IFC as an `IfcVirtualElement` of `ObjectType` `RoomSeparation`
 with an `Axis` polyline on its storey, which the import reads back. With `room_area {at: "finish"}` (`Model::room_area`, Revit's Area and
-Volume Computations) room areas are measured at the walls' faces instead (`face_lines` and the separators), the floor inside them; the IFC space
-takes that outline, and its `Qto_SpaceBaseQuantities` give both whichever is set: `GrossFloorArea` and `GrossPerimeter` at
+Volume Computations) room areas are measured at the walls' faces instead (`face_lines` and the separators), the floor inside them. There a
+wall's own faces close round its body, so a point inside a bounding wall is no room (`Model::wall_holding`): `Model::room_around` is the one
+place that says so, for `room_region`, the plan's tag (NOT ENCLOSED) and the Room tool's preview; `room` refuses such a point, and `inspect`
+names the wall a room left there lies in. The IFC space
+takes that outline, and its `Qto_SpaceBaseQuantities` give both whichever is set, each where it is a room: `GrossFloorArea` and `GrossPerimeter` at
 the centre lines, `NetFloorArea` and `NetPerimeter` at the faces, and `Height` up to the level above. Walls, slabs, doors and windows
 carry theirs too (`ifc::wall_quantities`): a wall its `Length` on its axis, `Width`, `Height` and side and volume, gross and less the
 doors and windows in it (each cut to its height; joins aside), or only `Length` and `Width` when attached, as its height then varies;

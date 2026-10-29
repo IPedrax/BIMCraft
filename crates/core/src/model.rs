@@ -4530,23 +4530,39 @@ impl Model {
     /// A room's boundary measured at `at`: the walls' centre lines (Revit's "At wall centerline") or their faces ("At wall
     /// finish": the area inside the walls, which Brazilian codes call área útil).
     pub fn room_region_at(&self, r: &Room, at: RoomArea) -> Option<Region> {
-        if self.wall_holding(r, at).is_some() {
-            return None;
-        }
-        geom::region_at(&self.room_lines(r.level, at), r.point, TOL)
+        self.room_around(r.level, r.point, at, &self.room_lines(r.level, at))
     }
 
-    /// The room-bounding wall whose body a room's point lies in, when rooms are measured at `at` the finish faces. There the
-    /// faces of a wall close its body into a loop of its own, so a point inside a wall would make a room of the wall. At the
-    /// centre lines nothing closes a wall's body, so there is nothing to refuse.
-    pub fn wall_holding(&self, r: &Room, at: RoomArea) -> Option<Id> {
+    /// The room a point on `level` is in, measured at `at`, found among `lines` (`room_lines(level, at)`, which a plan of
+    /// many rooms finds once). `None` when no loop of them closes round it, or, at the finish faces, when it lies inside a
+    /// wall: what the plan's tag, the Room tool and `room_region` all say.
+    pub fn room_around(&self, level: impl Key, point: P2, at: RoomArea, lines: &[(P2, P2)]) -> Option<Region> {
+        if self.wall_holding(level, point, at).is_some() {
+            return None;
+        }
+        geom::region_at(lines, point, TOL)
+    }
+
+    /// The room-bounding wall on `level` whose body `point` lies in, when rooms are measured at `at` the finish faces. There
+    /// the faces of a wall close its body into a loop of its own, so a point inside a wall would make a room of the wall. At
+    /// the centre lines nothing closes a wall's body, so there is nothing to refuse.
+    pub fn wall_holding(&self, level: impl Key, point: P2, at: RoomArea) -> Option<Id> {
         if at != RoomArea::Finish {
             return None;
         }
         self.elements
             .iter()
-            .filter(|(_, e)| matches!(e, Element::Wall(w) if self.bounding(w, r.level)))
-            .find(|&(&id, _)| geom::contains(&walls::outline(self, id), r.point))
+            .find(|&(&id, e)| match e {
+                Element::Wall(w) if self.bounding(w, level) => {
+                    // A straight wall's outline lies between the lines of its faces, so only a wall that has the point
+                    // between them needs its outline (with its joins) built.
+                    let axis = walls::Axis::of(w);
+                    let (ext, int) = walls::faces(self, w);
+                    let between = (int - TOL..=ext + TOL).contains(&axis.project(point).1);
+                    (axis.arc().is_some() || between) && geom::contains(&walls::outline(self, id), point)
+                }
+                _ => false,
+            })
             .map(|(&id, _)| id)
     }
 

@@ -3052,7 +3052,7 @@ impl BimApp {
                 return;
             }
             Tool::Room => {
-                if let Some(g) = geom::region_at(&m.room_lines(level, m.room_area), v.mm(q), TOL) {
+                if let Some(g) = m.room_around(level, v.mm(q), m.room_area, &m.room_lines(level, m.room_area)) {
                     p.add(Shape::closed_line(g.outer.iter().map(|pt| sc.screen(*pt)).collect(), stroke));
                     let (area, unit) = m.units.area(g.area());
                     label(cursor, format!("{area:.2} {unit}"));

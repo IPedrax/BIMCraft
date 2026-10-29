@@ -5602,7 +5602,7 @@ fn room(s: &mut Session, p: &Value) -> R {
         })),
     };
     let r = Room { params: Default::default(), level, point, name, number: number.clone() };
-    if let Some(wall) = m.wall_holding(&r, m.room_area) {
+    if let Some(wall) = m.wall_holding(level, point, m.room_area) {
         return Err(bad(
             c,
             format!(
@@ -10069,9 +10069,15 @@ fn inspect(s: &mut Session, _: &Value) -> R {
         .elements
         .iter()
         .filter_map(|(id, e)| match e {
-            Element::Room(r) if m.room_region(r).is_none() => {
-                Some(format!("room {id} ({} {}) is not enclosed: the walls around it no longer close", r.number, r.name))
-            }
+            Element::Room(r) if m.room_region(r).is_none() => Some(match m.wall_holding(r.level, r.point, m.room_area) {
+                Some(wall) => format!(
+                    "room {id} ({} {}) lies inside wall {}, and rooms are measured at the walls' finish faces: move it into the                      space between walls",
+                    r.number,
+                    r.name,
+                    m.shown(wall)
+                ),
+                None => format!("room {id} ({} {}) is not enclosed: the walls around it no longer close", r.number, r.name),
+            }),
             _ => None,
         })
         .collect();
