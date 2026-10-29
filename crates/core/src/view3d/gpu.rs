@@ -300,6 +300,19 @@ impl Mesh {
 
     /// The nearest opaque triangle covering the centre of a pixel, and the nearest seen through, as the CPU's rasterizer finds
     /// them: how near, as an f32 as it keeps it, and which. The first of triangles as near wins.
+    /// The point of the model's surface the picture through `cam` shows at pixel `(x, y)`: the nearest surface there, seen
+    /// through as `pick` sees it. None where there's nothing.
+    pub fn point(&self, cam: &Camera, x: f64, y: f64) -> Option<P3> {
+        let (w, h) = (f64::from(cam.width), f64::from(cam.height));
+        if !(x >= 0.0 && y >= 0.0 && x < w && y < h) {
+            return None;
+        }
+        let centre = (x.floor() + 0.5, y.floor() + 0.5);
+        let (opaque, clear) = self.nearest(cam, centre);
+        let seen = clear.filter(|(z, _)| opaque.is_none_or(|(d, _)| *z > d)).or(opaque);
+        seen.map(|(z, _)| cam.at_depth(centre, f64::from(z)))
+    }
+
     fn nearest(&self, cam: &Camera, (x, y): (f64, f64)) -> (Found, Found) {
         let Some(bvh) = Some(self.bvh()).filter(|b| !b.nodes.is_empty()) else { return (None, None) };
         // Opaque, then seen through.

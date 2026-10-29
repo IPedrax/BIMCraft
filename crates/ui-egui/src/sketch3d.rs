@@ -1,5 +1,6 @@
 //! Sketch mode in the 3D view, as Revit's Edit Boundary there: a floor, ceiling, roof or shaft selected in 3D is sketched
-//! where it is, its lines drawn over the picture on the element's own plane (`Model::sketch_height`). Modify picks a line
+//! where it is, its lines drawn over the picture on the element's own plane (`Model::sketch_plane`); a new one is sketched on the
+//! view's work plane (`workplane.rs`). Modify picks a line
 //! where it shows and drags a picked line's end over the plane; the Draw panel's shapes, Pick Walls and the sketch's Modify
 //! tools click points on it, snapped as in its level's plan. Any other drag still turns the view. The sketch belongs to the
 //! 3D view as one begun in a plan belongs to the plan (`BimApp::sketch_plan`).
@@ -10,6 +11,7 @@ use bimcraft_core::geom::P2;
 use bimcraft_core::model::{Id, Model};
 use bimcraft_core::snap::{self, Reach};
 use bimcraft_core::view3d::Camera;
+use bimcraft_core::walls;
 use egui::{PointerButton, Pos2, Rect, Response, Shape, Stroke, Ui, vec2};
 
 use crate::canvas::{PICK, SNAP, click_modifiers};
@@ -21,26 +23,26 @@ use crate::{BimApp, Sheet, Status, Tool, draw};
 const GRIP: f32 = 8.0;
 
 /// The sketch's plane as the 3D view shows it: the camera, where the view is on screen and the pixels a point holds, and the
-/// plane's height.
+/// plane over the plan the lines lie on.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Plane {
     pub cam: Camera,
     pub rect: Rect,
     pub ppp: f32,
-    pub z: f64,
+    pub surface: walls::Plane,
 }
 
 impl Plane {
     /// Where point `q` of the plane shows on screen.
     pub fn screen(&self, q: P2) -> Pos2 {
-        let (x, y, _) = self.cam.project([q.0, q.1, self.z]);
+        let (x, y, _) = self.cam.project([q.0, q.1, self.surface.at(q)]);
         self.rect.min + vec2(x as f32 / self.ppp, y as f32 / self.ppp)
     }
 
     /// The plane's point under `at` on screen; none where the view is edge-on to it.
     pub fn at(&self, at: Pos2) -> Option<P2> {
         let px = (f64::from((at.x - self.rect.min.x) * self.ppp), f64::from((at.y - self.rect.min.y) * self.ppp));
-        self.cam.on_plane(px, self.z).map(|p| P2(p[0], p[1])).filter(|p| p.0.is_finite() && p.1.is_finite())
+        self.cam.on_slope(px, self.surface).map(|p| P2(p[0], p[1])).filter(|p| p.0.is_finite() && p.1.is_finite())
     }
 
     /// The mm `points` on screen span, as the view is scaled: a reach on the plane, foreshortening aside.
@@ -83,13 +85,13 @@ fn to_segment(p: Pos2, a: Pos2, b: Pos2) -> f32 {
 }
 
 impl BimApp {
-    /// The height of the sketch's plane while it is sketched in the 3D view: an Edit Boundary begun there, of what still has
-    /// a plane.
-    pub(crate) fn sketch_z(&self) -> Option<f64> {
-        let sk = self.sketch.as_ref()?;
+    /// The plane the sketch lies on while it is sketched in the 3D view: an Edit Boundary begun there, of what still has a
+    /// plane, or a new one on the work plane it began on.
+    pub(crate) fn sketch_surface(&self) -> Option<walls::Plane> {
+        let sk = self.sketch.as_ref().filter(|sk| sk.plan == Sheet::View3D)?;
         match sk.of {
-            Of::Edit(id) if sk.plan == Sheet::View3D => self.session.model.sketch_height(id),
-            _ => None,
+            Of::Edit(id) => self.session.model.sketch_plane(id),
+            _ => sk.surface,
         }
     }
 
@@ -98,10 +100,14 @@ impl BimApp {
     /// vertical.
     fn snap3(&self, m: &Model, plane: &Plane, raw: P2, from: &[P2], square: bool) -> P2 {
         let Some(sk) = &self.sketch else { return raw };
-        let Of::Edit(id) = sk.of else { return raw };
-        let Some(level) = m.elements.get(id).and_then(|e| m.level_of(e)).and_then(|g| m.elements.id(g)) else { return raw };
+        let (level, editing) = match sk.of {
+            Of::Edit(id) => (m.elements.get(id).and_then(|e| m.level_of(e)).and_then(|g| m.elements.id(g)), Some(id)),
+            Of::Floor(level) | Of::Ceiling(level) | Of::Roof(level) | Of::Shaft(level) => (Some(level), None),
+            Of::Region { .. } => (None, None),
+        };
+        let Some(level) = level else { return raw };
         let reach = Reach { point: plane.mm(SNAP), line: plane.mm(f64::from(PICK)) };
-        let sketch = snap::Sketch { view: level, lines: &sk.lines, editing: Some(id) };
+        let sketch = snap::Sketch { view: level, lines: &sk.lines, editing };
         snap::in_sketch(m, sketch, raw, reach, from, square, &self.snaps_now()).at
     }
 

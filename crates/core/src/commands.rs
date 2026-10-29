@@ -37,6 +37,7 @@ use crate::sketch::{self, SketchLine};
 use crate::texture::{self, Kind, Picture, Texture};
 use crate::units::Units;
 use crate::walls::{self, Axis, stacked};
+use crate::workplane::WorkPlane;
 use crate::{pdf, render, schedule, sheet, snap, stairs, view3d};
 
 type R = Result<Value, String>;
@@ -1255,6 +1256,19 @@ pub static ALL: &[Command] = &[
          picked. A corner not given stays where it was; turned on with none, it's fitted round the model, 300 mm clear of \
          it. `on: false` turns it off and keeps its extents for when it's turned on again",
         section_box,
+    ),
+    edit(
+        "work_plane",
+        "Work Plane",
+        &[],
+        "{view?: a 3D view's name or id ({3D} unless given), level?: a level's name or id, offset?: mm, points?: [[x, y, z], \
+         [x, y, z], [x, y, z]]} what a 3D view sketches on, as Revit's Work Plane > Set: a level, `offset` mm above it (0 \
+         unless given), or the plane through three `points`, which may slope (up to 75°, as a floor may) but not stand upright \
+         or lie along a line. Given neither, it's the lowest level again, as it is until set. Sketches stay lines over the \
+         plan, raised onto the plane; a floor made on a sloped one slopes with it, and anything made on it stands on the \
+         highest level at or below it. A level deleted takes its work plane with it. Says the plane's height at the origin \
+         (`z`) and its `slope` in degrees",
+        work_plane,
     ),
     edit(
         "filter",
@@ -2949,6 +2963,58 @@ fn section_box(s: &mut Session, p: &Value) -> R {
         v3.section_box = Some(b);
     }
     Ok(json!({"view": v, "on": b.on, "min": b.min, "max": b.max}))
+}
+
+fn work_plane(s: &mut Session, p: &Value) -> R {
+    let c = "work_plane";
+    only(c, p, &["view", "level", "offset", "points"])?;
+    let m = &s.model;
+    let default = absent(p.get("view"))
+        || matches!(p.get("view"), Some(Value::String(n)) if n.eq_ignore_ascii_case("{3D}") || n.eq_ignore_ascii_case("3D"));
+    let view = if default {
+        m.default_3d()
+    } else {
+        let v = view_param(c, m, p, false)?;
+        if !matches!(m.elements.get(v), Some(Element::View3D(_))) {
+            return Err(bad(c, format!("{} isn't a 3D view; only a 3D view has a work plane to set", view_title(m, v))));
+        }
+        Some(v)
+    };
+    let offset = num(c, p, "offset")?;
+    let points = match p.get("points") {
+        v if absent(v) => None,
+        Some(v) => Some(
+            serde_json::from_value::<[[f64; 3]; 3]>(v.clone())
+                .map_err(|_| bad(c, format!("`points` are three points [[x, y, z], [x, y, z], [x, y, z]] in mm, not {v}")))?,
+        ),
+        None => None,
+    };
+    let level = if absent(p.get("level")) { None } else { Some(level_param(c, m, p, "level")?) };
+    let plane = match (level, points) {
+        (Some(_), Some(_)) => {
+            return Err(bad(c, "a work plane is either on a `level` (with an `offset`) or through three `points`, not both"));
+        }
+        (None, Some(_)) if offset.is_some() => return Err(bad(c, "`offset` raises a level's work plane: give a `level` with it")),
+        (Some(level), None) => Some(WorkPlane::on(level, offset.unwrap_or(0.0))),
+        (None, Some(points)) => Some(WorkPlane { points: Some(points), ..WorkPlane::default() }),
+        (None, None) if offset.is_some() => {
+            Some(WorkPlane::on(m.work_plane(view).level.ok_or_else(|| bad(c, "the model has no levels"))?, offset.unwrap_or(0.0)))
+        }
+        (None, None) => None,
+    };
+    let resolved = plane.as_ref().map_or_else(|| m.work_plane(view).resolve(m), |wp| wp.resolve(m)).map_err(|e| bad(c, e))?;
+    let v = match view {
+        Some(v) => v,
+        None => s.model_mut().insert(Element::View3D(View3D::default_view())),
+    };
+    if let Some(Element::View3D(v3)) = s.model_mut().elements.get_mut(v) {
+        v3.work_plane = plane;
+    }
+    let wp = s.model.work_plane(Some(v));
+    let level = wp.level.and_then(|g| s.model.elements.id(g));
+    Ok(
+        json!({"view": v, "level": level, "offset": wp.offset, "points": wp.points, "z": resolved.z, "slope": crate::workplane::slope(&resolved)}),
+    )
 }
 
 fn set_graphics(m: &mut Model, view: impl Key, g: Graphics) {
@@ -8016,6 +8082,14 @@ fn delete(s: &mut Session, p: &Value) -> R {
     }
     let deleted: Vec<Id> = m.elements.with_guids().filter(|(_, g, _)| gone.contains(g)).map(|(id, ..)| id).collect();
     let m = s.model_mut();
+    // A 3D view whose work plane's level goes sketches on the lowest level again.
+    for e in m.elements.values_mut() {
+        if let Element::View3D(v) = e
+            && v.work_plane.as_ref().is_some_and(|wp| wp.level.is_some_and(|l| gone.contains(&l)))
+        {
+            v.work_plane = None;
+        }
+    }
     for id in &gone {
         m.elements.remove(id);
     }

@@ -1256,6 +1256,7 @@ impl Scene {
             height: h as u32,
             rgba,
             hit,
+            depth: Vec::new(),
             owners: self.tris.iter().map(|t| t.owner).collect(),
             faces: Arc::clone(&self.faces),
         }
@@ -1516,7 +1517,7 @@ impl Scene {
                 }
             }
         }
-        Image { width: w as u32, height: h as u32, rgba, hit, owners, faces: Arc::clone(&self.faces) }
+        Image { width: w as u32, height: h as u32, rgba, hit, depth, owners, faces: Arc::clone(&self.faces) }
     }
 }
 
@@ -1816,6 +1817,22 @@ impl Camera {
         (back[2].abs() > 1e-9 && t.is_finite()).then(|| add(p, mul(back, t)))
     }
 
+    /// The point on the plane `p` over the plan under pixel `at`; none where the view is edge-on to it.
+    pub fn on_slope(&self, at: (f64, f64), p: crate::walls::Plane) -> Option<P3> {
+        let (back, ..) = self.axes();
+        let q = self.unproject(at);
+        // Along the ray `q + t · back`: its height and the plane's under it meet.
+        let across = back[2] - p.g.0 * back[0] - p.g.1 * back[1];
+        let t = (p.z + p.g.0 * q[0] + p.g.1 * q[1] - q[2]) / across;
+        (across.abs() > 1e-9 && t.is_finite()).then(|| add(q, mul(back, t)))
+    }
+
+    /// The model point at pixel `at`, `z` toward the camera from the plane through the target (as `project` says it).
+    pub fn at_depth(&self, at: (f64, f64), z: f64) -> P3 {
+        let (back, ..) = self.axes();
+        add(self.unproject(at), mul(back, z))
+    }
+
     /// The model point at pixel `(x, y)` on the plane through the target, square to the view.
     pub fn unproject(&self, (x, y): (f64, f64)) -> P3 {
         let (_, right, up) = self.axes();
@@ -1865,8 +1882,10 @@ pub struct Image {
     pub height: u32,
     /// Row by row: red, green, blue and alpha.
     pub rgba: Vec<u8>,
-    /// Each pixel's triangle (`u32::MAX` for none), and each triangle's element.
+    /// Each pixel's triangle (`u32::MAX` for none), how near the camera the opaque surface there is (none in a wireframe),
+    /// and each triangle's element.
     hit: Vec<u32>,
+    depth: Vec<f32>,
     owners: Vec<Id>,
     faces: Arc<Vec<&'static str>>,
 }
@@ -1875,6 +1894,13 @@ impl Image {
     fn index(&self, x: f64, y: f64) -> Option<usize> {
         let (w, h) = (f64::from(self.width), f64::from(self.height));
         (x >= 0.0 && y >= 0.0 && x < w && y < h).then(|| y as usize * self.width as usize + x as usize)
+    }
+
+    /// The point of the model's surface the pixel at `(x, y)` shows, through `cam`, the camera it was taken through: the
+    /// nearest opaque surface there. None where nothing is, and in a wireframe, which has no surfaces.
+    pub fn point(&self, cam: &Camera, x: f64, y: f64) -> Option<P3> {
+        let z = *self.depth.get(self.index(x, y)?)?;
+        (z.is_finite()).then(|| cam.at_depth((x.floor() + 0.5, y.floor() + 0.5), f64::from(z)))
     }
 
     /// The element the pixel at `(x, y)` shows.

@@ -357,7 +357,7 @@ fn floors_default_to_the_outline_of_the_walls() {
 fn a_sketched_elements_boundary_lies_at_its_own_height_in_3d() {
     let mut s = Session::new();
     house(&mut s);
-    let at = |s: &Session, v: &Value| id_of(s, &json!(v["id"])).and_then(|id| s.model.sketch_height(id));
+    let at = |s: &Session, v: &Value| id_of(s, &json!(v["id"])).and_then(|id| s.model.sketch_plane(id).map(|p| p.z));
     let floor = run(&mut s, "floor", json!({"offset": 150}));
     assert_eq!(at(&s, &floor), Some(150.0), "a floor's top");
     let ceiling = run(&mut s, "ceiling", json!({"point": [4000, 3000], "offset": 2600}));
@@ -369,7 +369,7 @@ fn a_sketched_elements_boundary_lies_at_its_own_height_in_3d() {
     let shaft = run(&mut s, "shaft", json!({"boundary": sketch, "base_offset": 300}));
     assert_eq!(at(&s, &shaft), Some(300.0), "a shaft's bottom");
     let wall = s.model.elements.iter().find(|(_, e)| matches!(e, crate::model::Element::Wall(_))).map(|(id, _)| *id);
-    assert_eq!(wall.and_then(|id| s.model.sketch_height(id)), None, "a wall has no sketch");
+    assert_eq!(wall.and_then(|id| s.model.sketch_plane(id)), None, "a wall has no sketch");
 }
 
 #[test]
