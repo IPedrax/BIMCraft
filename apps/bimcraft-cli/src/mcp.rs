@@ -5,8 +5,10 @@
 
 use std::io::{BufRead, Write};
 
+use bimcraft_core::bridge::{self, Request};
 use bimcraft_core::engine::Session;
 use bimcraft_plugin::Plugins;
+use bimcraft_pyaddins::{Store, run};
 use serde_json::{Value, json};
 
 use crate::window::Window;
@@ -99,11 +101,36 @@ impl Backend {
     }
 }
 
+impl crate::pyaddins::Target for Backend {
+    fn as_one(&mut self, f: &mut dyn FnMut(&mut run::Ask) -> run::Outcome) -> run::Outcome {
+        match self {
+            Backend::Own(s) => {
+                let mark = s.mark();
+                // A read-only server's session refuses the edits itself.
+                let out = f(&mut |r: &Request| bridge::run(s, r, bridge::Access::Edit));
+                s.squash(&mark, "PyAddin");
+                out
+            }
+            Backend::Window(w) => f(&mut |r: &Request| match r {
+                Request::Hello => w.ask(json!({"op": "hello"})),
+                Request::Context => w.ask(json!({"op": "context"})),
+                Request::Catalog => w.ask(json!({"op": "catalog"})),
+                Request::Execute { command, params, .. } => w.ask(json!({"op": "execute", "command": command, "params": params})),
+                Request::Script { text, atomic, dry_run, .. } => {
+                    w.ask(json!({"op": "script", "text": text, "atomic": atomic, "dry_run": dry_run}))
+                }
+            }),
+        }
+    }
+}
+
 pub struct Server {
     backend: Backend,
     /// The plugins of a headless server's own session, and how much of their log has been said.
     plugins: Option<Plugins>,
     seen: usize,
+    /// The user's PyAddins folder, which the window's Player shows.
+    pyaddins: Option<Store>,
 }
 
 impl Default for Server {
@@ -125,6 +152,14 @@ fn tool_error(e: &str) -> Value {
 }
 
 fn tools() -> Value {
+    let mut all = core_tools();
+    if let Some(a) = all.as_array_mut() {
+        a.extend(crate::pyaddins::tools());
+    }
+    all
+}
+
+fn core_tools() -> Value {
     json!([
         {"name": "desktop_context", "description": "Read the connected desktop's current selection (element IDs, GUIDs and categories) and active view (kind, name, ID and GUID). Empty selection is []; Home has no active view (null). Built-in views without model elements have null IDs/GUIDs. Read-only; requires mcp --connect and never changes selection or navigation.",
          "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false}, "annotations": {"readOnlyHint": true}},
@@ -166,12 +201,12 @@ impl Server {
         crate::dwg_writer(&mut session);
         let plugins = crate::load_plugins(&mut session);
         let seen = plugins.log().len();
-        Server { backend: Backend::Own(session), plugins: Some(plugins), seen }
+        Server { backend: Backend::Own(session), plugins: Some(plugins), seen, pyaddins: Store::default_store() }
     }
 
     /// A server whose tools work on the project `window` has open.
     pub fn attached(window: Window) -> Self {
-        Server { backend: Backend::Window(window), plugins: None, seen: 0 }
+        Server { backend: Backend::Window(window), plugins: None, seen: 0, pyaddins: Store::default_store() }
     }
 
     /// Opens `path` as the server's own project (before it answers: `bimcraft-cli mcp FILE`), a Revit file as `open` imports one.
@@ -293,6 +328,12 @@ impl Server {
             }
         }
         let b = &mut self.backend;
+        if let Some(result) = crate::pyaddins::call(name, &args, self.pyaddins.as_ref(), b) {
+            return Ok(match result {
+                Ok(v) => text(&v),
+                Err(e) => tool_error(&e),
+            });
+        }
         let result = match name {
             "desktop_context" => {
                 if args.as_object().is_some_and(|o| !o.is_empty()) {
@@ -403,6 +444,73 @@ mod tests {
         let content = &r["result"]["content"][0];
         assert_ne!(r["result"]["isError"], json!(true), "{name} failed: {content}");
         if content["type"] == "text" { serde_json::from_str(content["text"].as_str().unwrap()).unwrap() } else { content.clone() }
+    }
+
+    /// A tool that fails: its text.
+    fn tool_err(s: &mut Server, name: &str, args: Value) -> String {
+        let r = call(s, 9, "tools/call", json!({"name": name, "arguments": args}));
+        assert_eq!(r["result"]["isError"], json!(true), "{name} should have failed: {r}");
+        r["result"]["content"][0]["text"].as_str().unwrap_or_default().to_string()
+    }
+
+    #[test]
+    fn an_agent_writes_a_pyaddin_makes_it_a_button_and_runs_it_as_one_undo_step() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Server::new();
+        s.pyaddins = Some(Store::new(dir.path()));
+        let python = Store::new(dir.path()).python();
+        let code = r#""""Walls in a row."""
+__title__ = "Row of walls"
+from typing import Annotated
+import bimcraft as bc
+
+def main(count: Annotated[int, bc.Range(1, 20)], length: bc.Length = 4000):
+    """Walls, one above the other.
+
+    count: how many
+    """
+    for i in range(count):
+        bc.wall(points=[[0, i * 2000], [length, i * 2000]])
+    print("made", count)
+    return "%d walls" % count
+"#;
+        let saved = tool(&mut s, "pyaddin_save", json!({"name": "Row", "code": code}));
+        assert_eq!(saved["saved"], "Row");
+        let listed = tool(&mut s, "pyaddin_list", json!({}));
+        assert_eq!(listed["scripts"][0]["name"], "Row");
+        assert!(tool_err(&mut s, "pyaddin_save", json!({"name": "../x", "code": ""})).contains("can't name"));
+        if let Err(e) = python {
+            eprintln!("skipped the rest, no Python here: {e}");
+            return;
+        }
+        assert_eq!(saved["description"]["title"], "Row of walls");
+        assert_eq!(saved["description"]["inputs"][0], json!({"name": "count", "type": "int", "min": 1.0, "max": 20.0, "hint": "how many"}));
+        // A script Python can't read is saved, and the reply says why the Player can't show it.
+        let broken = tool(&mut s, "pyaddin_save", json!({"name": "Broken", "code": "def main(:\n"}));
+        assert!(broken["problem"].as_str().unwrap().contains("line 1"), "{broken}");
+        // A button keeps values the script takes.
+        assert!(tool_err(&mut s, "pyaddin_button", json!({"label": "Three", "script": "Row"})).contains("`count` needs a value"));
+        assert!(
+            tool_err(&mut s, "pyaddin_button", json!({"label": "Three", "script": "Row", "inputs": {"count": 99}})).contains("at most 20")
+        );
+        assert!(tool_err(&mut s, "pyaddin_button", json!({"label": "x", "script": "Gone"})).contains("save it first"));
+        tool(&mut s, "pyaddin_button", json!({"label": "Three", "script": "Row", "inputs": {"count": 3}, "panel": "Walls"}));
+        assert_eq!(tool(&mut s, "pyaddin_list", json!({}))["buttons"][0]["panel"], "Walls");
+        // Run: what it made, printed and returned, and one undo step takes it all back.
+        let out = tool(&mut s, "pyaddin_run", json!({"name": "Row", "inputs": {"count": 3, "length": 5000}}));
+        assert_eq!((out["ok"].clone(), out["message"].clone(), out["log"].clone()), (json!(true), json!("3 walls"), json!(["made 3"])));
+        let walls = || json!({"category": "wall"});
+        assert_eq!(tool(&mut s, "query_elements", walls())["elements"].as_array().map(Vec::len), Some(3));
+        tool(&mut s, "execute", json!({"command": "undo"}));
+        assert_eq!(tool(&mut s, "query_elements", walls())["elements"].as_array().map(Vec::len), Some(0));
+        assert!(tool_err(&mut s, "pyaddin_run", json!({"name": "Row"})).contains("`count` needs a value"));
+        assert!(tool_err(&mut s, "pyaddin_run", json!({"name": "Nope"})).contains("no script"));
+        let failed = tool(&mut s, "pyaddin_run", json!({"name": "Row", "inputs": {"count": 1, "length": 0}}));
+        assert_eq!(failed["ok"], json!(false));
+        assert!(failed["error"].as_str().unwrap().contains("CommandError"), "{failed}");
+        // Deleting the script takes its button.
+        tool(&mut s, "pyaddin_delete", json!({"name": "Row"}));
+        assert_eq!(tool(&mut s, "pyaddin_list", json!({}))["buttons"], json!([]));
     }
 
     #[test]

@@ -6314,6 +6314,7 @@ mod profile;
 mod projectinfo;
 mod publisher;
 mod purge;
+mod pyaddins;
 mod qol;
 mod reinforce;
 mod revit;

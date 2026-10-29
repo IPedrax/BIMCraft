@@ -68,6 +68,7 @@ mod presets;
 mod projectinfo;
 mod properties;
 mod purge;
+mod pyaddins;
 pub mod recent;
 mod reinforce;
 mod renames;
@@ -347,6 +348,8 @@ enum Tab {
     Collaborate,
     View,
     Manage,
+    /// The user's Python scripts: the Player, and the buttons made of them.
+    PyAddins,
     Modify,
     Context,
     /// A tab a plugin declared, by its place in [`BimApp::plugin_tabs`].
@@ -370,6 +373,7 @@ fn tab_key(tab: Tab) -> u64 {
         Tab::Modify => 11,
         Tab::Context => 12,
         Tab::Collaborate => 13,
+        Tab::PyAddins => 14,
         Tab::Plugin(i) => 100 + i as u64,
     }
 }
@@ -997,6 +1001,8 @@ pub struct BimApp {
     cowork_ai: cowork::Ai,
     /// A host with guests in that was asked to close: asking whether to end the session (false), or told to (true).
     cowork_quit: Option<bool>,
+    /// The user's Python scripts: the folder, the Player's forms, the run going on.
+    pub(crate) pyaddins: pyaddins::PyAddins,
     /// The Revit file being read, on a thread of its own.
     revit_job: Option<revit::Job>,
     /// A big project being read on a thread of its own (`opening.rs`).
@@ -1411,7 +1417,7 @@ fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sen
 const FLOATING_CARD: f32 = 30.0;
 
 /// The ribbon's tabs, in order, with the icon the Tools palette's rail gives each (the contextual tab comes after them).
-const TABS: [(Tab, &str, Icon); 13] = [
+const TABS: [(Tab, &str, Icon); 14] = [
     (Tab::Architecture, msg!("Architecture"), Icon::Wall),
     (Tab::Structure, msg!("Structure"), Icon::Beam),
     (Tab::Plumbing, msg!("Plumbing"), Icon::Pipe),
@@ -1424,6 +1430,7 @@ const TABS: [(Tab, &str, Icon); 13] = [
     (Tab::Collaborate, msg!("Collaborate"), Icon::Cowork),
     (Tab::View, msg!("View"), Icon::View3D),
     (Tab::Manage, msg!("Manage"), Icon::Settings),
+    (Tab::PyAddins, "PyAddins", Icon::Script),
     (Tab::Modify, "Modify", Icon::Modify),
 ];
 
@@ -1714,6 +1721,7 @@ impl BimApp {
             cowork_seen: cowork::Seen::default(),
             cowork_ai: cowork::Ai::default(),
             cowork_quit: None,
+            pyaddins: pyaddins::PyAddins::default(),
             revit_job: None,
             opening: None,
             swapping: swap::Swapping::default(),
@@ -1750,6 +1758,7 @@ impl BimApp {
     pub(crate) fn pump(&mut self, ctx: &Context) {
         // What agents asked of the project comes before the tidying, which puts right what a command left stale.
         self.answer_agents(ctx);
+        self.poll_pyaddins(ctx);
         self.pump_cowork(ctx);
         // A project put in the session's place under the window (the control port turns an agent's New and Open away, but a
         // script or an embedder may do them, and joining a Co-Work session puts the host's there) starts it over, as File > New
@@ -3827,6 +3836,7 @@ impl BimApp {
         (fresh.recent, fresh.recent_path) = (std::mem::take(&mut self.recent), self.recent_path.take());
         fresh.autosave = std::mem::take(&mut self.autosave);
         fresh.card = std::mem::take(&mut self.card);
+        fresh.pyaddins = self.pyaddins.carried();
         fresh.home = self.home.put_away();
         // A new or opened project keeps the plugins and their tabs: they are the user's folder, not the project's, and the
         // session's external commands were already registered. Re-registering puts them back if the project replaced them.
@@ -4198,6 +4208,7 @@ impl BimApp {
             Tab::View => self.view_tab(ui),
             Tab::Collaborate => self.collaborate_tab(ui),
             Tab::Manage => self.manage_tab(ui),
+            Tab::PyAddins => self.pyaddins_tab(ui),
             Tab::Modify | Tab::Context => self.modify_tab(ui),
             Tab::Plugin(i) => self.plugin_tab(ui, i),
         }
@@ -6339,6 +6350,7 @@ impl BimApp {
         self.lend_window(ctx);
         self.quit_window(ctx);
         self.knock_window(ctx);
+        self.pyaddins_windows(ctx);
         if std::mem::take(&mut self.link_dialog) {
             self.link_model_dialog(ctx);
         }

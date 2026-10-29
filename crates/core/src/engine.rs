@@ -154,6 +154,13 @@ pub const REPLACES: &[&str] = &["new", "open", "recover", "highrise", "tower"];
 
 /// What a refusal of a session that may only read says, after what the command would do and before what would let it edit.
 pub const READ_ONLY: &str = "which is read-only for agents";
+/// A place in the undo history, which [`Session::squash`] joins the steps after.
+#[derive(Clone, Debug)]
+pub struct Mark {
+    steps: usize,
+    dropped: usize,
+    resets: usize,
+}
 
 /// The commands that copy what stands: a copy is made in the session's phase and isn't taken down with its original.
 const COPIES: [&str; 3] = ["copy", "mirror", "rotate"];
@@ -174,6 +181,8 @@ pub struct Session {
     pub(crate) checks: usize,
     /// How many times the project was replaced, so a transaction knows its history went with it.
     resets: usize,
+    /// How many of the oldest undo steps were dropped past [`UNDO_LIMIT`], so a [`Mark`] still finds its place.
+    dropped: usize,
     /// What reads a DWG drawing, when the app has one (`cad::DwgReader`); none says to save it as DXF.
     pub dwg: Option<crate::cad::DwgReader>,
     /// The formats it exports to (`export`): the core's, and any the app registers (the DWG writer, from the DWG bridge).
@@ -268,6 +277,7 @@ impl Session {
             #[cfg(test)]
             checks: 0,
             resets: 0,
+            dropped: 0,
             dwg: None,
             exports: crate::export::Registry::default(),
             external: Vec::new(),
@@ -603,6 +613,7 @@ impl Session {
                     self.undo.push((step, before));
                     if self.undo.len() > UNDO_LIMIT {
                         self.undo.remove(0);
+                        self.dropped += 1;
                     }
                     self.redo.clear();
                 }
@@ -787,6 +798,7 @@ impl Session {
                     undo.push((step, before));
                     if undo.len() > UNDO_LIMIT {
                         undo.remove(0);
+                        self.dropped += 1;
                     }
                     self.redo.clear();
                 }
@@ -813,6 +825,27 @@ impl Session {
     fn stamped(&mut self, step: Step) -> Step {
         self.steps_made += 1;
         Step { by: self.author.clone(), n: self.steps_made, ..step }
+    }
+
+    /// Where the history stands, for [`Session::squash`].
+    pub fn mark(&self) -> Mark {
+        Mark { steps: self.undo.len(), dropped: self.dropped, resets: self.resets }
+    }
+
+    /// The undo steps made since `mark`, as one named `label`: a run of commands that came one at a time (a PyAddin's,
+    /// a frame at a time in the window) and is taken back as one. Fewer than two, or a project replaced since, is left.
+    pub fn squash(&mut self, mark: &Mark, label: &'static str) {
+        if self.resets != mark.resets {
+            return;
+        }
+        let at = mark.steps.saturating_sub(self.dropped - mark.dropped);
+        if self.undo.len() < at + 2 {
+            return;
+        }
+        let mut squashed = self.undo.split_off(at);
+        let (first, before) = squashed.swap_remove(0);
+        let step = Step { checked: first.checked, by: first.by, ..self.stamped(Step::new(label, &before, &self.model)) };
+        self.undo.push((step, before));
     }
 
     /// What elements from id `first` on, which a command just made, are made in: the session's phase
