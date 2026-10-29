@@ -55,6 +55,12 @@ pub enum Kind {
     /// A named set of parameters for `reinforce`, for one kind of host.
     ReinforcementPreset,
     DimensionType,
+    /// A voltage the electrical settings define, with the band a device may read within.
+    Voltage,
+    /// A distribution system, which names the voltages it supplies.
+    DistributionSystem,
+    /// A wire type, with the ampacity of each section.
+    WireType,
 }
 
 impl Kind {
@@ -84,6 +90,9 @@ impl Kind {
             Kind::TextType => "text type".into(),
             Kind::ReinforcementPreset => "reinforcement preset".into(),
             Kind::DimensionType => "dimension type".into(),
+            Kind::Voltage => "voltage".into(),
+            Kind::DistributionSystem => "distribution system".into(),
+            Kind::WireType => "wire type".into(),
         }
     }
 
@@ -111,6 +120,9 @@ impl Kind {
             "text-type" => Kind::TextType,
             "reinforcement-preset" => Kind::ReinforcementPreset,
             "dimension-type" => Kind::DimensionType,
+            "voltage" => Kind::Voltage,
+            "distribution-system" => Kind::DistributionSystem,
+            "wire-type" => Kind::WireType,
             _ => Kind::Type(s.strip_prefix("type:")?.to_string()),
         })
     }
@@ -142,6 +154,9 @@ impl fmt::Display for Kind {
             Kind::TextType => f.write_str("text-type"),
             Kind::ReinforcementPreset => f.write_str("reinforcement-preset"),
             Kind::DimensionType => f.write_str("dimension-type"),
+            Kind::Voltage => f.write_str("voltage"),
+            Kind::DistributionSystem => f.write_str("distribution-system"),
+            Kind::WireType => f.write_str("wire-type"),
         }
     }
 }
@@ -586,6 +601,9 @@ impl Model {
         add(Kind::TextType, &mut self.text_types.keys());
         add(Kind::ReinforcementPreset, &mut self.reinforcement.keys());
         add(Kind::DimensionType, &mut self.dimension_types.keys());
+        add(Kind::Voltage, &mut self.voltages.keys());
+        add(Kind::DistributionSystem, &mut self.distribution_systems.keys());
+        add(Kind::WireType, &mut self.wire_types.keys());
         out
     }
 
@@ -1014,7 +1032,7 @@ impl Model {
     /// Each name the model holds of a library entry, given to `f` with what it names, which may put another in its place:
     /// its elements' ([`Element::lib_refs_mut`](crate::model::Element::lib_refs_mut)), its types' layers' and runs'
     /// materials, its materials' pictures, its view filters' rules, its view templates' graphics, its option sets'
-    /// primaries. (A family's forms name their materials themselves.)
+    /// primaries, its distribution systems' voltages. (A family's forms name their materials themselves.)
     pub fn lib_refs_mut(&mut self, f: &mut dyn FnMut(&Kind, &mut String)) {
         for e in self.elements.values_mut() {
             e.lib_refs_mut(f);
@@ -1069,6 +1087,11 @@ impl Model {
         for x in self.materials.values_mut() {
             for p in [&mut x.cut_pattern, &mut x.surface_pattern].into_iter().flatten() {
                 f(&Kind::FillPattern, p);
+            }
+        }
+        for d in self.distribution_systems.values_mut() {
+            for v in d.voltages_mut() {
+                f(&Kind::Voltage, v);
             }
         }
     }
