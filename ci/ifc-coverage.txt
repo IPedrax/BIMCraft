@@ -8,6 +8,18 @@ strip_footing {"points": [[0,8000],[6000,8000]]}
 structural_column {"at": [0,0]}
 structural_column {"at": [6000,0]}
 floor {"boundary": [[0,0],[6000,0],[6000,4000],[0,4000]], "structural": true}
+# A round column and a sloped floor, for the bars by rules below: 100010 and 100011.
+structural_column {"at": [9000, 0], "type": "Concrete Round 400", "height": 3000}
+floor {"boundary": [[0, 12000], [4000, 12000], [4000, 15000], [0, 15000]], "slope": 5, "arrow": [[0, 12000], [4000, 12000]]}
+# Bars by rules (hosts by their ids in this script: the two levels are 100000 and 100001, the beams 100002 and 100003, the footings
+# 100004 and 100005, the strip footing 100006, the columns 100007 and 100008, the floor 100009): a beam with stirrups hooked at their ends,
+# a column with ties, a footing with its ends turned up, a floor with two meshes, a round column and a sloped floor with hooks.
+reinforce {"host": 100010, "cover": 25, "bars": {"diameter": 16, "count": 8, "hook": {"below": 100}}, "stirrup": {"diameter": 5, "spacing": 150, "hook": 50}}
+reinforce {"host": 100011, "cover": 20, "bottom": {"x": {"diameter": 8, "spacing": 150}, "y": {"diameter": 8, "spacing": 200}, "hook": 80}, "top": {"x": {"diameter": 8, "spacing": 200}}}
+reinforce {"host": 100002, "cover": 25, "bottom": {"count": 3, "diameter": 16, "hook": 150}, "top": {"count": 2, "diameter": 12.5, "hook": {"start": 100}}, "stirrup": {"diameter": 5, "spacing": 150, "ends": {"length": 600, "spacing": 100}, "hook": 50}, "skin": {"diameter": 8, "spacing": 150}}
+reinforce {"host": 100007, "cover": 25, "bars": {"diameter": 16, "x": 3, "y": 3, "hook": {"below": 200}}, "stirrup": {"diameter": 5, "spacing": 150, "hook": 50}, "ties": {"diameter": 5, "hook": 50}, "anchor": {"below": 300}}
+reinforce {"host": 100004, "cover": 50, "mesh": {"x": {"diameter": 10, "spacing": 150}, "y": {"diameter": 10, "spacing": 150}, "hook": 100}}
+reinforce {"host": 100009, "cover": 20, "bottom": {"x": {"diameter": 8, "spacing": 150}, "y": {"diameter": 8, "spacing": 200}}, "top": {"x": {"diameter": 8, "spacing": 200}}}
 # Reinforcement: a layer of bars along a beam and a hoop, in a level (the host is another element's id).
 rebar {"points": [[50,2900,-450],[5950,2900,-450]], "diameter": 12.5, "count": 3, "step": [0,40,0]}
 rebar {"points": [[100,2830,-30],[100,2970,-30],[100,2970,-470],[100,2830,-470]], "closed": true, "diameter": 8, "grade": "CA-60"}

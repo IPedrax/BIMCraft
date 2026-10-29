@@ -94,6 +94,12 @@ impl BimApp {
                 self.structural_floor();
             }
         });
+        panel(ui, msg!("Reinforcement"), |ui| {
+            let tip = msg!("Reinforce (RF): bars by rules for the selected beam, column, footing or floor");
+            if big_button(ui, Icon::Rebar, "Reinforce", self.reinforce_dialog.is_some(), tip).clicked() {
+                self.open_reinforce();
+            }
+        });
         panel(ui, msg!("Foundation"), |ui| {
             let tools: [(Icon, &str, &str, Tool); 2] = [
                 (Icon::Footing, "Isolated Footing", msg!("Isolated Footing (FI): click where the footing goes"), Tool::Stand("footing")),

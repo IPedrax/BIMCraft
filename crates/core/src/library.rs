@@ -52,6 +52,8 @@ pub enum Kind {
     FilledRegionType,
     DetailGroup,
     TextType,
+    /// A named set of parameters for `reinforce`, for one kind of host.
+    ReinforcementPreset,
 }
 
 impl Kind {
@@ -79,6 +81,7 @@ impl Kind {
             Kind::FilledRegionType => "filled region type".into(),
             Kind::DetailGroup => "detail group".into(),
             Kind::TextType => "text type".into(),
+            Kind::ReinforcementPreset => "reinforcement preset".into(),
         }
     }
 
@@ -104,6 +107,7 @@ impl Kind {
             "filled-region-type" => Kind::FilledRegionType,
             "detail-group" => Kind::DetailGroup,
             "text-type" => Kind::TextType,
+            "reinforcement-preset" => Kind::ReinforcementPreset,
             _ => Kind::Type(s.strip_prefix("type:")?.to_string()),
         })
     }
@@ -133,6 +137,7 @@ impl fmt::Display for Kind {
             Kind::FilledRegionType => f.write_str("filled-region-type"),
             Kind::DetailGroup => f.write_str("detail-group"),
             Kind::TextType => f.write_str("text-type"),
+            Kind::ReinforcementPreset => f.write_str("reinforcement-preset"),
         }
     }
 }
@@ -575,6 +580,7 @@ impl Model {
         add(Kind::FilledRegionType, &mut self.region_types.keys());
         add(Kind::DetailGroup, &mut self.detail_groups.keys());
         add(Kind::TextType, &mut self.text_types.keys());
+        add(Kind::ReinforcementPreset, &mut self.reinforcement.keys());
         out
     }
 

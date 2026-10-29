@@ -5226,6 +5226,7 @@ mod objectstyles;
 mod patterns;
 mod planviews;
 mod purge;
+mod reinforce;
 mod revit;
 mod section_box;
 mod sketch;

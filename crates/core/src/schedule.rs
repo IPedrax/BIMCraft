@@ -318,6 +318,7 @@ const OWN: &[(&str, usize, &[Own])] = &[
             COUNT,
             (msg!("Weight"), Kind::Number, From::Key("weight_kg")),
             ("Host", Kind::Number, From::Ref("host")),
+            ("Layer", Kind::Text, From::Key("layer")),
         ],
     ),
     ("stripfooting", 6, &[ID, TYPE, LEVEL, LENGTH, WIDTH, DEPTH, SYSTEM, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
