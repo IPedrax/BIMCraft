@@ -5414,6 +5414,42 @@ fn a_separator_drawn_to_the_wall_faces_splits_rooms_measured_at_the_centre_lines
 }
 
 #[test]
+fn a_wall_that_is_not_room_bounding_lets_rooms_run_past_it() {
+    let mut s = Session::new();
+    house(&mut s);
+    // A partition at x = 5000 splits the house in two.
+    let partition = run(&mut s, "wall", json!({"points": [[5000, 0], [5000, 6000]]}))["ids"][0].as_u64().unwrap();
+    run(&mut s, "room", json!({"point": [2000, 3000], "name": "Living"}));
+    let areas = |s: &mut Session| -> Vec<f64> {
+        run(s, "elements", json!({"category": "room"}))["elements"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|r| r["area_m2"].as_f64())
+            .collect()
+    };
+    assert_eq!(areas(&mut s), vec![30.0]);
+    // Turned off, as a low wall: the room runs past it, and the wall itself stays.
+    let w = run(&mut s, "modify", json!({"id": partition, "room_bounding": false}));
+    assert_eq!(w["room_bounding"], false);
+    assert_eq!(areas(&mut s), vec![48.0]);
+    run(&mut s, "room_area", json!({"at": "finish"}));
+    let t = run(&mut s, "elements", json!({"category": "wall"}))["elements"][0]["thickness"].as_f64().unwrap();
+    assert!((areas(&mut s)[0] - (8000.0 - t) * (6000.0 - t) / 1e6).abs() < 1e-6, "at the faces too: {:?}", areas(&mut s));
+    run(&mut s, "room_area", json!({"at": "centre"}));
+    assert_eq!(run(&mut s, "elements", json!({"category": "wall"}))["count"], 5);
+    // Saved only when off; on again, the room is split again.
+    let file = serde_json::to_string(&s.model).unwrap();
+    assert_eq!(file.matches("room_bounding").count(), 1);
+    run(&mut s, "modify", json!({"id": partition, "room_bounding": true}));
+    assert_eq!(areas(&mut s), vec![30.0]);
+    // A wall made off from the start; a value that isn't true or false is an error.
+    run(&mut s, "wall", json!({"points": [[0, 3000], [5000, 3000]], "room_bounding": false}));
+    assert_eq!(areas(&mut s), vec![30.0]);
+    assert!(s.execute("wall", &json!({"points": [[0, 1000], [5000, 1000]], "room_bounding": "no"})).is_err());
+}
+
+#[test]
 fn rooms_measure_at_the_wall_centre_lines_or_at_their_faces() {
     let mut s = Session::new();
     house(&mut s);

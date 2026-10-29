@@ -230,9 +230,17 @@ pub struct Wall {
     pub attach_top: Option<Guid>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attach_base: Option<Guid>,
+    /// Whether it bounds rooms (Revit's Room Bounding): on unless turned off, as for a low wall or a balustrade a room
+    /// runs past.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub room_bounding: bool,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+}
+
+fn is_yes(b: &bool) -> bool {
+    *b
 }
 
 fn is_zero(x: &f64) -> bool {
@@ -3135,10 +3143,10 @@ impl Model {
         self.spans(w, self.plan_range(level).cut)
     }
 
-    /// Whether the wall bounds the rooms of `level`: it spans the height rooms are found at,
+    /// Whether the wall bounds the rooms of `level`: it is room bounding, and it spans the height rooms are found at,
     /// [`CUT_HEIGHT`] above the level, whatever the level's plan cuts at.
     pub fn bounding(&self, w: &Wall, level: impl Key) -> bool {
-        self.spans(w, self.elevation(level) + CUT_HEIGHT)
+        w.room_bounding && self.spans(w, self.elevation(level) + CUT_HEIGHT)
     }
 
     /// Whether the wall spans height `z`.
@@ -5970,6 +5978,7 @@ mod tests {
             location: Location::Centre,
             attach_top: None,
             attach_base: None,
+            room_bounding: true,
         })
     }
 
