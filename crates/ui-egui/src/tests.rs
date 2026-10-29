@@ -6083,6 +6083,8 @@ fn a_view_tabs_close_button_is_part_of_its_tab() {
 fn room_area_computation_is_set_from_manage_and_undone() {
     use bimcraft_core::model::RoomArea;
     let mut h = app(BOX);
+    // Manage grew with Electrical Settings: the ribbon folds Room Area Computation away in a narrower window.
+    h.set_size(vec2(1800.0, 900.0));
     h.state_mut().tab = Tab::Manage;
     h.run();
     assert_eq!(h.state().session.model.room_area, RoomArea::Centre);
