@@ -1855,6 +1855,48 @@ fn hostile_params_never_panic_or_break_the_model() {
             draw_plans(&s.model);
         }
     }
+    // A family's connectors, each field of one given every hostile value, on a starter family (placed in the base, if the
+    // house has any) and on a new one; and far more connectors than a family may hold.
+    let values = [
+        json!(1e300),
+        json!(-1e300),
+        json!(f64::MAX),
+        json!(u64::MAX),
+        json!(-1),
+        json!(0),
+        json!(1.5),
+        json!(null),
+        json!(true),
+        json!([]),
+        json!([1, 2, 3, 4]),
+        json!([1e300, "Nope", null]),
+        json!({}),
+        json!("Nope"),
+        json!("1 / 0"),
+        json!("(".repeat(10_000)),
+        json!("x".repeat(100_000)),
+    ];
+    for name in ["Ceiling Luminaire", "Outlet", "Hostile"] {
+        for field in ["kind", "system", "poles", "voltage", "load_va", "power_factor", "classification", "id", "guid"] {
+            for v in &values {
+                let mut connector = json!({"kind": "power", "system": "power-balanced", "voltage": 127, "load_va": 10});
+                connector[field] = v.clone();
+                let p = json!({"name": name, "category": "lighting", "types": {"A": {}}, "connectors": [connector]});
+                let mut s = base.clone();
+                let _ = s.execute("component", &json!({"family": "Outlet", "at": [500, 500]}));
+                let made = s.execute("family", &p).is_ok();
+                assert_eq!(s.model.check(), Ok(()), "family {p} left a broken model");
+                if made {
+                    draw_plans(&s.model);
+                    let _ = s.execute("inspect", &json!({}));
+                }
+            }
+        }
+    }
+    let many: Vec<Value> = (0..100_000).map(|_| json!({"kind": "switch", "system": "switch"})).collect();
+    let mut s = base.clone();
+    assert!(s.execute("family", &json!({"name": "Hostile", "types": {"A": {}}, "connectors": many})).is_err());
+    assert_eq!(s.model.check(), Ok(()));
 }
 
 /// Draws every level's plan and ceiling plan, and every section and elevation, at the smallest size, which builds all that
@@ -5170,7 +5212,7 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
 }
 
 #[test]
-fn a_project_is_saved_as_format_11_and_one_of_format_4_to_10_opens_as_it_is_and_one_of_format_12_is_refused() {
+fn a_project_is_saved_as_format_12_and_one_of_format_4_to_11_opens_as_it_is_and_one_of_format_13_is_refused() {
     use crate::model::Model;
     // 5 added the scans a project holds and the point clouds that place them; 6 added detailing (lines, regions, groups,
     // repeating details, line and fill styles); 7 its CAD drawings and the imports that place them; 8 text types; 9 graphic line patterns; 10 dimensions to points and linear ones. Nothing in a file of 4
@@ -5181,32 +5223,32 @@ fn a_project_is_saved_as_format_11_and_one_of_format_4_to_10_opens_as_it_is_and_
     run(&mut s, "detail_line", json!({"start": [0, 0], "end": [1000, 0]}));
     let full = serde_json::to_value(&*s.model).unwrap();
     for v in [&empty, &full] {
-        assert_eq!(v["format"], 11, "a project is saved as format 11");
-        for old in [4, 5, 6, 7, 8, 9, 10] {
+        assert_eq!(v["format"], 12, "a project is saved as format 12");
+        for old in [4, 5, 6, 7, 8, 9, 10, 11] {
             let mut was = v.clone();
             was["format"] = json!(old);
             let (m, left_out) = Model::read(&was.to_string()).unwrap();
-            assert_eq!((m.format, left_out.len(), m.elements.len()), (11, 0, v["elements"].as_object().unwrap().len()));
+            assert_eq!((m.format, left_out.len(), m.elements.len()), (12, 0, v["elements"].as_object().unwrap().len()));
         }
     }
     assert!(full["elements"].as_object().unwrap().len() > 5);
     // A newer file says what it is and what to do, even when nothing else in it is wrong.
     let mut newer = empty.clone();
-    newer["format"] = json!(12);
+    newer["format"] = json!(13);
     let e = Model::read(&newer.to_string()).unwrap_err();
     assert!(
-        e.contains("newer BIMCraft") && e.contains("file format 12") && e.contains("reads up to 11") && e.contains("update BIMCraft"),
+        e.contains("newer BIMCraft") && e.contains("file format 13") && e.contains("reads up to 12") && e.contains("update BIMCraft"),
         "{e}"
     );
     // A file of this format with a field it doesn't know is read without it, and says which.
     let mut odd = full.clone();
     odd["something_new"] = json!(true);
     let (m, left_out) = Model::read(&odd.to_string()).unwrap();
-    assert_eq!((m.format, left_out), (11, vec!["/something_new".to_string()]));
+    assert_eq!((m.format, left_out), (12, vec!["/something_new".to_string()]));
 }
 
 #[test]
-fn a_format_5_file_that_holds_elements_and_scans_migrates_to_11_and_keeps_both() {
+fn a_format_5_file_that_holds_elements_and_scans_migrates_to_12_and_keeps_both() {
     use crate::model::Model;
     let mut s = Session::new();
     house(&mut s);
@@ -5218,13 +5260,13 @@ fn a_format_5_file_that_holds_elements_and_scans_migrates_to_11_and_keeps_both()
     let mut file: serde_json::Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
     file["format"] = json!(5);
     let (m, left_out) = Model::read(&file.to_string()).unwrap();
-    assert_eq!((m.format, m.clouds.len(), left_out.len(), m.elements.len()), (11, 1, 0, s.model.elements.len()));
+    assert_eq!((m.format, m.clouds.len(), left_out.len(), m.elements.len()), (12, 1, 0, s.model.elements.len()));
     // Written again, it says 11.
-    assert_eq!(serde_json::from_str::<serde_json::Value>(&m.to_json().unwrap()).unwrap()["format"], 11);
+    assert_eq!(serde_json::from_str::<serde_json::Value>(&m.to_json().unwrap()).unwrap()["format"], 12);
     // A file of 6 (detailing, no CAD drawings) opens as 10 likewise.
     file["format"] = json!(6);
     let (m, left_out) = Model::read(&file.to_string()).unwrap();
-    assert_eq!((m.format, left_out.len(), m.elements.len()), (11, 0, s.model.elements.len()));
+    assert_eq!((m.format, left_out.len(), m.elements.len()), (12, 0, s.model.elements.len()));
 }
 
 #[test]

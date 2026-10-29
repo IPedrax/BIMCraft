@@ -69,9 +69,12 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 11: a project's language may be Swedish,
-/// Czech or French (`sv`, `cs`, `fr`); nothing in a file of 10 changes, but a build that reads up to 10 would answer one of
-/// 11 with a serde error ("unknown variant"), not "saved by a newer BIMCraft". 8: text types (`text_types`, library
+/// The version of the project file this build writes, and the newest it reads. 12: a family holds `connectors` (an
+/// electrical device's load, a switch), each a part with an id and a GUID; nothing in a file of 11 changes, but a build that
+/// reads up to 11 would drop them as it does what it doesn't know, and place the device as a load of zero. 11: a project's
+/// language may be Swedish, Czech or French (`sv`, `cs`, `fr`); nothing in a file of 10 changes, but a build that reads up to
+/// 10 would answer one of 11 with a serde error ("unknown variant"), not "saved by a newer BIMCraft". 8: text types
+/// (`text_types`, library
 /// entries of kind `text-type`); a note names its type, which holds its size, and may override parts of its formatting
 /// (`override_format`, `runs`): a note of 7 has a `size`, which reading it gives a type of. 7: a project holds CAD drawings (`cads`,
 /// library entries of kind `Cad`) and imports place them; nothing in a file of 6 changes, but a build that reads up to 6 would
@@ -87,7 +90,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 11;
+pub const FORMAT: u32 = 12;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -2812,6 +2815,7 @@ impl Model {
         // dimension type; one of 10 read by 9 would measure its points as lines. A dimension of 9 gets its kind's type.
         self.typed_dimensions();
         // 10 to 11 (Swedish, Czech and French as a project's language) has no step: a file of 10 holds none of them.
+        // 11 to 12 (a family's connectors) has no step: a file of 11 holds none, so a family of it has no connector.
         self.format = FORMAT;
     }
 
@@ -4626,6 +4630,40 @@ impl Model {
             _ => {}
         }
         Ok(())
+    }
+
+    /// What is amiss in the model but doesn't make it wrong: soft issues, said so they can be fixed. `check` refuses a model;
+    /// these it accepts. A room the walls no longer close; a family of lighting, outlets or switches in use that holds no
+    /// connector, so its devices count as a load of zero.
+    pub fn warnings(&self) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .elements
+            .iter()
+            .filter_map(|(id, e)| match e {
+                Element::Room(r) if self.room_region(r).is_none() => {
+                    Some(format!("room {id} ({} {}) is not enclosed: the walls around it no longer close", r.number, r.name))
+                }
+                _ => None,
+            })
+            .collect();
+        let mut bare: BTreeMap<&str, usize> = BTreeMap::new();
+        for e in self.elements.values() {
+            if let Element::Component(c) = e
+                && let Some(f) = self.families.get(&c.family)
+                && f.category.electrical_device()
+                && f.connectors.is_empty()
+            {
+                *bare.entry(c.family.as_str()).or_default() += 1;
+            }
+        }
+        out.extend(bare.into_iter().map(|(n, k)| {
+            format!(
+                "family `{n}` has no connector, so its {k} placed device{} count{} as a load of zero: give it one with `family` `connectors`",
+                if k == 1 { "" } else { "s" },
+                if k == 1 { "s" } else { "" }
+            )
+        }));
+        out
     }
 
     /// Everything that must hold between commands: references resolve, geometry is finite and
