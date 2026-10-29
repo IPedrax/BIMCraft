@@ -77,6 +77,19 @@ impl Plane {
     }
 }
 
+/// Whether the segment from `a` to `b` crosses an edge of `r`.
+fn crosses(r: Rect, a: Pos2, b: Pos2) -> bool {
+    let p2 = |q: Pos2| P2(f64::from(q.x), f64::from(q.y));
+    let corners = [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom()].map(p2);
+    let (a, b) = (p2(a), p2(b));
+    bimcraft_core::geom::ring_edges(&corners).any(|(c, d)| {
+        bimcraft_core::geom::line_intersection(a, b, c, d).is_some_and(|x| {
+            let on = |p: P2, q: P2| bimcraft_core::geom::dist_to_segment(x, p, q) <= 1e-6 * p.dist(q).max(1.0);
+            on(a, b) && on(c, d)
+        })
+    })
+}
+
 /// How far `p` is from the segment from `a` to `b`, on screen.
 fn to_segment(p: Pos2, a: Pos2, b: Pos2) -> f32 {
     let ab = b - a;
@@ -172,12 +185,57 @@ impl BimApp {
         let cursor =
             hover.filter(|_| wanted).and_then(|at| plane.at(at)).map(|raw| self.snap3(&m, &plane, raw, &self.sketch_from(), shift));
         sk.paint(p, |q| plane.screen(q), over, cursor, &self.sketch_lit());
-        if let (Tool::SketchLine(_), Some(c)) = (&self.tool, cursor) {
+        if let (Tool::SketchLine(chain), Some(c)) = (&self.tool, cursor) {
             let stroke = Stroke::new(2.0, pal().accent);
-            for curve in self.shape_preview(c) {
-                p.add(Shape::line(curve.points().into_iter().map(|q| plane.screen(q)).collect(), stroke));
+            for line in self.sketch3d_preview(c) {
+                p.add(Shape::line(line.into_iter().map(|q| plane.screen(q)).collect(), stroke));
             }
             p.circle_stroke(plane.screen(c), 4.0, Stroke::new(1.5, pal().accent));
+            // How long the line to come is, as the plan says it.
+            if let (Some(last), draw::Shape::Line | draw::Shape::Polyline) = (chain.last(), self.shape()) {
+                let text = m.units.with_unit(last.dist(c));
+                crate::canvas::tag(p, plane.screen(c) + vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM, text);
+            }
+        }
+    }
+
+    /// A selection box from `a` to `b` on screen while sketching: the lines it picks, wholly inside it from the left, touching
+    /// it too from the right. Ctrl adds them, Shift takes them away.
+    pub(crate) fn sketch3d_box(&mut self, plane: &Plane, a: Pos2, b: Pos2, mods: egui::Modifiers) {
+        let Some(sk) = &mut self.sketch else { return };
+        let r = Rect::from_two_pos(a, b);
+        let crossing = b.x < a.x;
+        let found: Vec<usize> = sk
+            .lines
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| {
+                let shown: Vec<Pos2> = l.points().into_iter().map(|q| plane.screen(q)).collect();
+                match crossing {
+                    false => shown.iter().all(|q| r.contains(*q)),
+                    true => shown.iter().any(|q| r.contains(*q)) || shown.windows(2).any(|w| crosses(r, w[0], w[1])),
+                }
+            })
+            .map(|(i, _)| i)
+            .collect();
+        if mods.shift {
+            sk.picked.retain(|i| !found.contains(i));
+        } else {
+            if !(mods.command || mods.ctrl) {
+                sk.picked.clear();
+            }
+            sk.picked.extend(found);
+        }
+    }
+
+    /// What the shape in hand would draw with its next point at `cursor`, as lines over the plan: Line's and Polyline's from
+    /// the points clicked so far (the plan draws those itself), the other shapes' as `shape_preview` has them.
+    pub(crate) fn sketch3d_preview(&self, cursor: P2) -> Vec<Vec<P2>> {
+        let Tool::SketchLine(chain) = &self.tool else { return Vec::new() };
+        match self.shape() {
+            draw::Shape::Line => chain.last().map(|last| vec![vec![*last, cursor]]).unwrap_or_default(),
+            draw::Shape::Polyline if !chain.is_empty() => vec![chain.iter().copied().chain([cursor]).collect()],
+            _ => self.shape_preview(cursor).iter().map(|c| c.points()).collect(),
         }
     }
 

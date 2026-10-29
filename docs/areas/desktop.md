@@ -124,9 +124,11 @@ makes, so for every tool but Modify that is a click where the button went down (
 sheets take their clicks), and what lay under it is read there (`under_at`), not where the hand has got to. In Modify a drag is its
 move and its box, so only a press let go within `QUICK` (0.2 s) is a click wherever the hand went: the drag it began is not
 finished (`Canvas::quick`, `BimApp::finish_drag`: grips, crop regions, a sheet's views, the plan's move and box) and the selection
-that drag's start replaced comes back (`BimApp::grab`) for the click to pick from. A slower press is the drag it is. In the 3D view,
-where every drag orbits, a quick press is a click whatever the tool, and the camera the hand turned meanwhile goes back
-(`Orbit::before`).
+that drag's start replaced comes back (`BimApp::grab`) for the click to pick from. A slower press is the drag it is. In the 3D view
+a quick press is a click whatever the tool, and a camera the hand turned meanwhile goes back (`Orbit::before`). There, as in
+Revit, Shift and the middle button orbit and the middle button alone pans; the primary button's drag is a selection box, as in a
+plan (`Orbit::select`, drawn by `canvas::box_shapes`), which picks what `Scene::in_box` finds: from the left what lies wholly
+inside, from the right what it touches, by where the model is rather than what's in front, so what's behind is boxed too.
 
 Startup (`apps/bimcraft/src/startup.rs`). A release build on Windows has no console, so a start that fails must say itself: `bimcraft.log`
 and `graphics.json` sit beside the favorites (`startup::Files::beside`). `startup::begin` runs once the arguments are read (never for
@@ -172,12 +174,15 @@ while the element still has a plane). The view turns, pans and zooms as ever, an
 takes a point on screen to the plane (`Camera::on_slope`) and back. Modify picks a line where it shows (within `PICK` points of it
 on screen, so a foreshortened line is as easy to hit as any), and a primary drag from a picked line's end holds that grip, not the
 camera (`BimApp::sketch3d_grab`, before the camera moves), the ends there moved where it is let go; a drag from anywhere else
-orbits, so there is no selection box. The Draw panel's shapes, Pick Walls and Pick Lines (the element the picture shows under the
+is a box picking the sketch's lines (`sketch3d_box`: wholly inside from the left, touching from the right). The Draw panel's shapes, Pick Walls and Pick Lines (the element the picture shows under the
 click), Split, Trim/Extend, Offset and Vertex take the plane's point as the plan takes its own, through `sketch_click`,
 `sketch_modify` and `vertex_click`, snapped by `snap::in_sketch` in the element's level with reaches from the view's scale.
 Align, which lines up with what a plan shows, says so. A view edge-on to the plane picks nothing on it, and says to turn it.
 
-Work planes in 3D (`workplane.rs`; the core's in [views and graphics](views-and-graphics.md)). The 3D view's control bar has Work
+Work planes in 3D (`workplane.rs`; the core's in [views and graphics](views-and-graphics.md)). The plane has a patch of its own in
+the view, as ArchiCAD's: a small square of it by the model's south-west corner (`work_plane_ring`, the same size on screen at any
+zoom), lit with the plane's name under the cursor, that a click in Modify opens the dialog from; so do the 3D view's right-click
+menu (Set Work Plane…, `Action::WorkPlane`) and the Architecture tab's Set, in its Datum panel. The 3D view's control bar has Work
 Plane, a `footer::menu_button` showing the plane (a level's name, `+ offset` when raised, or `Three points, 14.0°`), which opens its
 dialog (`workplane::Draft`): On a level, a level and an Offset; or Through three points, nine lengths typed (`Point 1 X`…), or Pick in
 View, which closes the dialog while three clicks on the model take points of its surface (`Picker::point`: the processor picture's
@@ -187,7 +192,12 @@ up and while a new outline is sketched on it (`workplane::draw_plane`). Floor, C
 one on the work plane at once (`set_tool`, `sketch_on_work_plane`): `Sketch::surface` holds the plane, `sketch_surface` gives it to
 `sketch3d.rs`, and Finish makes it on the level below the plane (`workplane::host`), as high above it as the plane is. Each of the
 four lies level, so on a sloped plane (`workplane::is_level`) its tool says the work plane must be horizontal and makes nothing; a
-sloped plane can still be set, for what comes to sketch on one later.
+sloped plane can still be set, for what comes to sketch on one later. A Line or Polyline sketched in 3D shows the line to come,
+from the last point to the cursor, with its length (`sketch3d_preview`; the other shapes' previews are `shape_preview`'s).
+
+Floor goes into sketch mode at once, in a plan as in 3D, as Revit's does (`set_tool`); its sketch's ribbon has Walls' Outline
+(`walls_outline_panel`), which puts the outline the level's walls enclose, and its courtyards, in the sketch as lines to edit
+(`floor_outline`): what the tool's one click inside the walls made before.
 
 Unhide. Only Reveal Hidden Elements lets what a view hides be picked, so the Modify tab's View panel offers Unhide Element and Unhide Category (EU, VU) for a selection
 `BimApp::hidden_selection` finds the active view hiding: the elements hidden one by one, and the categories hidden whole. They run `graphics` with `show_elements` or `show`

@@ -1,8 +1,8 @@
 //! The 3D view: the core's picture of the model (`view3d::Scene`), orbited, panned and zoomed as
-//! in Revit. Shift and the middle button orbit, and so does a drag with the primary button (for
-//! a hand without a middle button); the middle button pans; the wheel zooms about the cursor. A
-//! click picks the element the picture shows there, and so does a press let go quickly, however
-//! far the hand went with it (`Canvas::quick_press`): the camera it turned goes back. A level
+//! in Revit. Shift and the middle button orbit; the middle button pans; the wheel zooms about the
+//! cursor. A primary drag is a selection box, as in a plan (`Scene::in_box`: from the left what lies
+//! wholly inside, from the right what it touches). A click picks the element the picture shows there,
+//! and so does a press let go quickly, however far the hand went with it (`Canvas::quick_press`). A level
 //! selected alone has a grip at the middle of each edge of its plane, which a drag moves over it. A section box is drawn
 //! round what it keeps, with a grip on each face in Modify that a drag moves along its axis (`section_box.rs`). An Edit
 //! Boundary begun here is sketched here, on the element's plane (`sketch3d.rs`): its clicks are the sketch's.
@@ -64,7 +64,7 @@ pub struct Orbit {
     pub(crate) camera: Option<Camera>,
     /// Where the view showed last, in points, and the pixels a point holds.
     pub(crate) rect: Rect,
-    ppp: f32,
+    pub(crate) ppp: f32,
     /// The scene of the model shown last, in the 3D view or a section's.
     pub(crate) scene: Option<(Arc<Model>, Scene)>,
     /// What picks in the picture on screen, and what the picture is of.
@@ -77,6 +77,8 @@ pub struct Orbit {
     mesh: Option<Meshed>,
     /// A drag under way: whether it orbits (else it pans), and where the pointer was last.
     drag: Option<(bool, Pos2)>,
+    /// A selection box being dragged with the primary button: where it began.
+    select: Option<Pos2>,
     /// The camera as that drag found it, for a drag that turns out a click.
     before: Option<Camera>,
     /// A selected level's grip being dragged: the level, and which edge of its plane (as
@@ -99,6 +101,7 @@ impl Default for Orbit {
             on_card: false,
             mesh: None,
             drag: None,
+            select: None,
             before: None,
             grip: None,
             boxing: None,
@@ -188,6 +191,9 @@ impl BimApp {
         let held = self.sketch3d_grab(ui, &response, sketch_z.zip(last).map(|(surface, cam)| Plane { cam, rect, ppp, surface }));
         // Pick in View, taking the work plane's points: clicks are its, not the selection's.
         let picking = self.work_plane_picks().is_some();
+        // The work plane's patch, in Modify while nothing is sketched: a click on it opens the Work Plane dialog.
+        let patch =
+            (self.tool == Tool::Modify && self.sketch.is_none() && !picking).then(|| self.work_plane_ring(last, rect, ppp)).flatten();
         let (modify, demolish, selection) = (self.tool == Tool::Modify, self.tool == Tool::Demolish, self.selection.clone());
         let (paint, unpaint) = (self.tool == Tool::Paint, self.tool == Tool::Unpaint);
         let o = &mut self.orbit;
@@ -262,16 +268,28 @@ impl BimApp {
         {
             boxed_to = Some(to);
         }
-        // The primary button, or Shift and the middle button, orbit, 0.4° a point; the middle
-        // button alone pans.
+        // Shift and the middle button orbit, 0.4° a point; the middle button alone pans. The primary button boxes, in
+        // Modify (the sketch's lines while sketching).
         if response.drag_started()
             && o.grip.is_none()
             && o.boxing.is_none()
             && !held
             && let Some(origin) = ui.input(|i| i.pointer.press_origin())
         {
-            o.drag = Some((response.dragged_by(PointerButton::Primary) || shift, origin));
-            o.before = Some(cam);
+            if response.dragged_by(PointerButton::Primary) {
+                o.select = modify.then_some(origin);
+            } else if response.dragged_by(PointerButton::Middle) {
+                o.drag = Some((shift, origin));
+                o.before = Some(cam);
+            }
+        }
+        let mut selected_box = None;
+        if response.drag_stopped()
+            && let Some(from) = o.select.take()
+            && !self.canvas.quick()
+            && let Some(to) = latest
+        {
+            selected_box = Some((from, to));
         }
         if let (Some((orbit, last)), Some(now)) = (o.drag, latest)
             && response.dragged()
@@ -288,6 +306,10 @@ impl BimApp {
             }
         }
         o.camera = Some(cam);
+        // A box let go: what it picks, as the picture is now.
+        let boxed_ids = selected_box
+            .filter(|_| sketch_z.is_none())
+            .map(|(from, to)| scene.in_box(&cam, px(from), px(to), to.x < from.x, &Look::of_3d(&model)));
         // On the card when the user asked for it and it can draw what the view shows; else on the processor.
         let mesh = match self.card.ready().is_some().then(|| mesh_of(&mut o.mesh, &model, scene)) {
             Some(Ok(mesh)) => Some(Arc::clone(mesh)),
@@ -390,6 +412,9 @@ impl BimApp {
         // A click on a grip picks nothing behind it.
         let click = response.clicked().then(|| response.interact_pointer_pos()).flatten().or(self.canvas.quick_press());
         let click = click.filter(|at| !boxed.is_some_and(|b| modify && crate::section_box::grip_at(b, *at, screen).is_some()));
+        let on_patch = |at: Pos2| patch.is_some_and(|ring| crate::workplane::on_patch(&ring, at));
+        let patched = click.is_some_and(on_patch);
+        let click = click.filter(|_| !patched);
         // While sketching here a click is the sketch's, with what's under it for Pick Walls and Pick Lines.
         let under = click.filter(|_| sketch_z.is_some()).and_then(|at| pick(&o.picker, at)).map(|h| h.id);
         let clicked = click.filter(|_| sketch_z.is_none() && !picking).map(|at| pick(&o.picker, at).map(|h| h.id));
@@ -407,8 +432,27 @@ impl BimApp {
             }
             None => {}
         }
+        // The selection box being dragged, and what one let go picks.
+        if let (Some(from), Some(now)) = (self.orbit.select, latest) {
+            let local = |q: Pos2| (q.x - rect.min.x, q.y - rect.min.y);
+            p.extend(crate::canvas::box_shapes(rect, local(from), local(now)));
+        }
+        if let Some(found) = boxed_ids {
+            self.pick_up(found, click_modifiers(ui));
+        }
         if let Some(surface) = sketch_z {
-            self.sketch3d(ui, &response, &p, Plane { cam, rect, ppp, surface }, click, under);
+            let plane = Plane { cam, rect, ppp, surface };
+            if let Some((from, to)) = selected_box {
+                self.sketch3d_box(&plane, from, to, click_modifiers(ui));
+            }
+            self.sketch3d(ui, &response, &p, plane, click, under);
+        }
+        if let Some(ring) = patch {
+            let name = self.work_plane_name();
+            crate::workplane::draw_patch(&p, ring, hover.is_some_and(on_patch), &name);
+        }
+        if patched {
+            self.open_work_plane();
         }
         // The work plane, drawn while it's being set or a new outline is sketched on it; and the points picked for it.
         let m = &self.session.model;

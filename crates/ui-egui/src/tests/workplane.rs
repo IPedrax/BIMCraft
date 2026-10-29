@@ -103,3 +103,51 @@ fn a_work_plane_picked_on_the_model_lies_through_the_three_points_clicked() {
     assert!(h.state().session.model.work_plane(h.state().session.model.default_3d()).points.is_some());
     assert!((p.at(P2(4000.0, 3000.0)) - top).abs() < 30.0 && p.g.0.abs() < 0.02 && p.g.1.abs() < 0.02, "{p:?} at {top}");
 }
+
+#[test]
+fn a_line_sketched_in_3d_shows_where_it_goes_from_the_last_point_before_the_click() {
+    let mut h = app(BOX);
+    press(&mut h, "Default 3D View");
+    tool(&mut h, "Floor");
+    let at = on_plane(&h, P2(1000.0, 1000.0));
+    click_at(&mut h, at);
+    let shown = h.state().sketch3d_preview(P2(3000.0, 1000.0));
+    assert_eq!(shown, vec![vec![P2(1000.0, 1000.0), P2(3000.0, 1000.0)]], "the line to come, from the point clicked");
+}
+
+#[test]
+fn the_work_plane_is_set_from_its_patch_in_the_view_the_right_click_menu_and_the_ribbon() {
+    let mut h = app(BOX);
+    press(&mut h, "Default 3D View");
+    // The patch on the plane itself, as ArchiCAD's: a click on it opens the dialog.
+    let patch = h.state().work_plane_patch().expect("drawn in the 3D view");
+    click_at(&mut h, patch);
+    assert!(h.state().work_plane.is_some(), "the patch opens the dialog");
+    assert!(h.state().selection.is_empty());
+    press(&mut h, "Cancel");
+    assert!(h.state().work_plane.is_none());
+    // The right-click menu.
+    let at = h.state().orbit.rect.min + vec2(40.0, 40.0);
+    right_click_at(&mut h, at);
+    choose_item(&mut h, "Set Work Plane");
+    assert!(h.state().work_plane.is_some(), "the menu opens the dialog");
+    press(&mut h, "Cancel");
+    // The Architecture tab's Set, beside the levels and grids (in the Datum panel's list where the window folds it).
+    press(&mut h, "Architecture");
+    from_list(&mut h, "Datum", "Set");
+    assert!(h.state().work_plane.is_some(), "the ribbon opens the dialog");
+}
+
+#[test]
+fn in_a_plan_the_floor_tool_sketches_at_once_and_walls_outline_puts_the_walls_outline_in_the_sketch() {
+    let mut h = app(BOX);
+    tool(&mut h, "Floor");
+    assert!(matches!(h.state().sketch.as_ref().map(|s| s.of), Some(crate::sketch::Of::Floor(_))), "straight into sketch mode");
+    assert!(h.query_by_label("Modify | Create Floor Boundary").is_some());
+    press(&mut h, "Walls' Outline");
+    assert_eq!(h.state().sketch.as_ref().map(|s| s.lines.len()), Some(4), "the box's four sides, to edit before Finish");
+    press(&mut h, "Finish Edit Mode");
+    let floors = ids(&h, "floor");
+    assert_eq!(floors.len(), 1, "{}", h.state().status.text);
+    assert_eq!(field(&h, floors[0], "area_m2"), json!(48.0));
+}
