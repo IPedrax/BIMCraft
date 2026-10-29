@@ -782,6 +782,34 @@ impl BimApp {
         }
     }
 
+    /// A new floor's sketch: Walls' Outline, the outline the walls of its level enclose (and the courtyards in it) put in the
+    /// sketch as lines, to edit before Finish: what the Floor tool's one click made before it sketched.
+    pub(crate) fn walls_outline_panel(&mut self, ui: &mut Ui) {
+        let Some(Of::Floor(level)) = self.sketch.as_ref().map(|sk| sk.of) else { return };
+        panel(ui, msg!("Walls"), |ui| {
+            let tip = msg!("Walls' Outline: the outline the level's walls enclose, along their centre lines, as sketch lines to edit");
+            if big_button(ui, Icon::Wall, msg!("Walls' Outline"), false, tip).clicked() {
+                self.walls_outline(level);
+            }
+        });
+    }
+
+    /// The outline level `level`'s walls enclose, and its courtyards, added to the sketch as lines; or why there's none.
+    pub(crate) fn walls_outline(&mut self, level: Id) {
+        let Some((outline, courtyards)) = bimcraft_core::floor_outline(&self.session.model, level) else {
+            self.status = Status { text: t("No walls on this level enclose an area: sketch the outline.").into(), error: true };
+            return;
+        };
+        let Some(sk) = &mut self.sketch else { return };
+        for ring in std::iter::once(&outline).chain(&courtyards) {
+            for (a, b) in geom::ring_edges(ring) {
+                sk.lines.push(SketchLine::new(a, b));
+            }
+        }
+        sk.changed();
+        self.status = Status::default();
+    }
+
     /// The Floor, Ceiling, Roof and Shaft tools' Draw panel: their outline sketched instead of found from the walls.
     pub(crate) fn sketch_starters(&mut self, ui: &mut Ui) {
         let Some(level) = self.plan_level() else { return };
@@ -880,7 +908,7 @@ impl BimApp {
             Tool::SketchPick => msg!("Click a wall: a boundary line along it."),
             Tool::Modify if self.sketch_surface().is_some() => {
                 msg!(
-                    "Pick sketch lines; drag a picked line's end over its plane to move it, anywhere else to turn the view; Delete removes them. Finish Edit Mode when every loop is closed."
+                    "Pick sketch lines (a box picks several); drag a picked line's end over its plane to move it; Shift and the middle button orbit; Delete removes them. Finish Edit Mode when every loop is closed."
                 )
             }
             _ => {

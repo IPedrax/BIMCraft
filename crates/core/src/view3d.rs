@@ -980,6 +980,42 @@ impl Scene {
     }
 
     /// Each level's head as `cam` sees it: see [`LevelHead`].
+    /// The elements a selection box between pixels `a` and `b` of the picture through `cam` picks, of those `look` shows: from
+    /// the left (`crossing` false) those wholly inside it, from the right those it touches too. As Revit's, it goes by where
+    /// the model is, not what's in front: what lies behind something else is boxed as well.
+    pub fn in_box(&self, cam: &Camera, a: (f64, f64), b: (f64, f64), crossing: bool, look: &Look) -> Vec<Id> {
+        let (lo, hi) = (P2(a.0.min(b.0), a.1.min(b.1)), P2(a.0.max(b.0), a.1.max(b.1)));
+        let inside = |q: P2| q.0 >= lo.0 && q.0 <= hi.0 && q.1 >= lo.1 && q.1 <= hi.1;
+        let corners = [lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)];
+        // Whether triangle `t`, on screen, overlaps the box: a corner of either in the other, or an edge of each across.
+        let touches = |t: &[P2; 3]| {
+            t.iter().any(|q| inside(*q))
+                || corners.iter().any(|c| geom::contains(t, *c))
+                || geom::ring_edges(t).any(|(p, q)| {
+                    geom::ring_edges(&corners).any(|(c, d)| {
+                        geom::line_intersection(p, q, c, d).is_some_and(|x| {
+                            let on = |a: P2, b: P2| geom::dist_to_segment(x, a, b) <= 1e-9 * a.dist(b).max(1.0);
+                            on(p, q) && on(c, d)
+                        })
+                    })
+                })
+        };
+        // Each element: whether all of it is inside, and whether any of it is.
+        let mut seen: BTreeMap<Id, (bool, bool)> = BTreeMap::new();
+        for t in self.tris.iter().filter(|t| look.shows(t.owner) && !crate::link::is_linked(t.owner)) {
+            let on = t.p.map(|p| {
+                let (x, y, _) = cam.project(p);
+                P2(x, y)
+            });
+            if on.iter().any(|q| !(q.0.is_finite() && q.1.is_finite())) {
+                continue;
+            }
+            let e = seen.entry(t.owner).or_insert((true, false));
+            *e = (e.0 && on.iter().all(|q| inside(*q)), e.1 || (crossing && touches(&on)) || on.iter().any(|q| inside(*q)));
+        }
+        seen.into_iter().filter(|(_, (all, any))| if crossing { *any } else { *all }).map(|(id, _)| id).collect()
+    }
+
     pub fn level_heads(&self, cam: &Camera) -> Vec<LevelHead> {
         heads(&self.levels, cam)
     }

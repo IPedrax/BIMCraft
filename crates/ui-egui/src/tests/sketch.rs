@@ -69,7 +69,6 @@ fn finish_names_what_is_wrong_on_the_lines_and_cancel_leaves_the_floor_as_it_was
 fn a_floor_is_sketched_line_by_line_closed_on_its_first_point_and_ctrl_z_takes_back_a_line() {
     let mut h = app(BOX);
     press(&mut h, "Floor");
-    press(&mut h, "Boundary Line");
     assert!(h.query_by_label("Modify | Create Floor Boundary").is_some());
     for p in [P2(1000.0, 1000.0), P2(5000.0, 1000.0), P2(5000.0, 4000.0), P2(1000.0, 4000.0), P2(1000.0, 1000.0)] {
         click(&mut h, p);
@@ -109,7 +108,6 @@ fn line_of(h: &Harness<BimApp>, a: P2, b: P2) -> Option<usize> {
 fn a_finished_sketchs_lines_have_ids_that_edit_boundary_brings_back() {
     let mut h = app(BOX);
     press(&mut h, "Floor");
-    press(&mut h, "Boundary Line");
     press(&mut h, "Rectangle");
     click(&mut h, P2(1000.0, 1000.0));
     click(&mut h, P2(5000.0, 4000.0));
@@ -136,7 +134,6 @@ fn a_finished_sketchs_lines_have_ids_that_edit_boundary_brings_back() {
 fn intersecting_lines_say_so_first() {
     let mut h = app(BOX);
     press(&mut h, "Floor");
-    press(&mut h, "Boundary Line");
     // A bow tie.
     for p in [P2(1000.0, 1000.0), P2(5000.0, 4000.0), P2(5000.0, 1000.0), P2(1000.0, 4000.0), P2(1000.0, 1000.0)] {
         click(&mut h, p);
@@ -189,7 +186,6 @@ fn a_picked_lines_end_is_a_grip_that_takes_the_lines_joined_there_with_it() {
 fn arcs_and_picked_walls_close_loops_too() {
     let mut h = app(BOX);
     press(&mut h, "Floor");
-    press(&mut h, "Boundary Line");
     click(&mut h, P2(1000.0, 1000.0));
     click(&mut h, P2(5000.0, 1000.0));
     press(&mut h, "Start-End-Radius Arc");
@@ -206,7 +202,6 @@ fn arcs_and_picked_walls_close_loops_too() {
     // Pick Walls: a line along each wall clicked.
     press(&mut h, "Architecture");
     press(&mut h, "Floor");
-    press(&mut h, "Boundary Line");
     press(&mut h, "Pick Walls");
     for p in [P2(4000.0, 0.0), P2(8000.0, 3000.0), P2(4000.0, 6000.0), P2(0.0, 3000.0)] {
         click(&mut h, p);
@@ -220,7 +215,6 @@ fn arcs_and_picked_walls_close_loops_too() {
 fn a_line_snaps_to_the_middle_of_a_sketch_line() {
     let mut h = app(BOX);
     press(&mut h, "Floor");
-    press(&mut h, "Boundary Line");
     click(&mut h, P2(1000.0, 1000.0));
     click(&mut h, P2(5000.0, 1000.0));
     key(&mut h, Key::Escape);

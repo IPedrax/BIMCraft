@@ -2065,6 +2065,15 @@ impl BimApp {
         }
         self.snap_once = None;
         self.tool = tool;
+        // Floor sketches its outline at once, as Revit's does (Walls' Outline puts the walls' in the sketch).
+        if self.tool == Tool::Floor
+            && self.sketch.is_none()
+            && matches!(self.sheet, Sheet::Plan(_) | Sheet::Ceiling(_))
+            && let Some(level) = self.plan_level()
+        {
+            self.start_sketch(crate::sketch::Of::Floor(level), Vec::new());
+            return;
+        }
         // In the 3D view the tools that sketch an outline sketch it on the work plane at once.
         if self.sheet == Sheet::View3D
             && self.sketch.is_none()
@@ -3033,14 +3042,20 @@ impl BimApp {
                 ),
             ],
         );
-        self.tools(
-            ui,
-            msg!("Datum"),
-            &[
-                (Icon::Level, "Level", msg!("Level (LL): a new level at an elevation"), Tool::Level),
-                (Icon::Grid, "Grid", msg!("Grid (GR): click its two ends"), Tool::Grid(None)),
-            ],
-        );
+        // Datum, and the Work Plane's Set beside its levels and grids.
+        let datum: Tools = &[
+            (Icon::Level, "Level", msg!("Level (LL): a new level at an elevation"), Tool::Level),
+            (Icon::Grid, "Grid", msg!("Grid (GR): click its two ends"), Tool::Grid(None)),
+        ];
+        panel(ui, msg!("Datum"), |ui| {
+            for (icon, label, tip, tool) in datum {
+                let active = structure::same_tool(&self.tool, tool);
+                if big_button(ui, *icon, label, active, tip).clicked() {
+                    self.set_tool(tool.clone());
+                }
+            }
+            self.work_plane_set(ui);
+        });
     }
 
     fn annotate_tab(&mut self, ui: &mut Ui) {
@@ -3447,6 +3462,7 @@ impl BimApp {
         self.select_panel(ui);
         if self.sketch.is_some() {
             self.sketch_draw(ui);
+            self.walls_outline_panel(ui);
             self.sketch_modify_panel(ui);
             self.mode_panel(ui);
             return;
@@ -3949,7 +3965,9 @@ impl BimApp {
         }
         match (self.sheet, &self.tool) {
             (Sheet::View3D, Tool::Modify) => {
-                return msg!("Click to select. Drag to orbit (or Shift and the middle button), the middle button pans, the wheel zooms.");
+                return msg!(
+                    "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms."
+                );
             }
             (Sheet::Paper(_), Tool::Modify) => {
                 return msg!("Click a view on the sheet to select it, drag it to move it, double-click it to open it.");
