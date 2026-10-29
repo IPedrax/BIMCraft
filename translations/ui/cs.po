@@ -512,11 +512,11 @@ msgstr "Při neuložených změnách se nejprve zeptá na uložení, poté ukon�
 msgid "Associated Level"
 msgstr "Přidružené podlaží"
 
-#: crates/core/src/model.rs:2171
+#: crates/core/src/model.rs:2179
 msgid "At wall centre line"
 msgstr ""
 
-#: crates/core/src/model.rs:2172
+#: crates/core/src/model.rs:2180
 msgid "At wall finish"
 msgstr ""
 
@@ -793,7 +793,7 @@ msgstr "Čára hranice: načrtněte půdorysnou stopu střechy na podlaží vý�
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "Čára hranice: načrtněte obrys šachtového otvoru"
 
-#: crates/core/src/model.rs:2369
+#: crates/core/src/model.rs:2377
 msgid "Brick"
 msgstr "Cihla"
 
@@ -991,7 +991,7 @@ msgstr "Osa"
 msgid "Centre Lines"
 msgstr "Osové čáry"
 
-#: crates/core/src/model.rs:2377
+#: crates/core/src/model.rs:2385
 msgid "Ceramic tile"
 msgstr "Keramická dlažba"
 
@@ -1605,7 +1605,7 @@ msgstr "Koncepční objem"
 msgid "Concrete"
 msgstr "Beton"
 
-#: crates/core/src/model.rs:2371
+#: crates/core/src/model.rs:2379
 msgid "Concrete block"
 msgstr "Betonová tvárnice"
 
@@ -1670,7 +1670,7 @@ msgstr "Zkopírováno {} globálních ID IFC."
 msgid "Copied {} rows, tab-separated."
 msgstr "Zkopírováno {} řádků oddělených tabulátory."
 
-#: crates/core/src/model.rs:2385
+#: crates/core/src/model.rs:2393
 msgid "Copper"
 msgstr "Měď"
 
@@ -1710,15 +1710,15 @@ msgstr "Kopírovat zprávu"
 msgid "Copy its ID, GUID and IFC GlobalId"
 msgstr "Kopírovat jeho ID, GUID a globální ID IFC"
 
-#: crates/core/src/model.rs:296
+#: crates/core/src/model.rs:304
 msgid "Core Centreline"
 msgstr "Osa nosné části"
 
-#: crates/core/src/model.rs:299
+#: crates/core/src/model.rs:307
 msgid "Core Face: Exterior"
 msgstr "Nosná vrstva: vnější"
 
-#: crates/core/src/model.rs:300
+#: crates/core/src/model.rs:308
 msgid "Core Face: Interior"
 msgstr "Nosná vrstva: vnitřní"
 
@@ -2039,7 +2039,7 @@ msgstr "Zbourat (DW): klikněte na prvek, který chcete zbourat ve fázi pohledu
 msgid "Demolished"
 msgstr "Zbourané"
 
-#: crates/core/src/commands.rs:7049
+#: crates/core/src/commands.rs:7056
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -2267,11 +2267,11 @@ msgstr "Tečkovaná"
 msgid "Double Door"
 msgstr "Dvoukřídlé dveře"
 
-#: crates/core/src/model.rs:2003
+#: crates/core/src/model.rs:2011
 msgid "Double Sliding"
 msgstr "Dvoukřídlé posuvné"
 
-#: crates/core/src/model.rs:2001
+#: crates/core/src/model.rs:2009
 msgid "Double Swing"
 msgstr "Dvoukřídlé otočné"
 
@@ -2397,7 +2397,7 @@ msgstr "Zemnič (EG): zemnicí tyč zaražená pod úroveň v místě kliknutí;
 msgid "Earthing Electrodes"
 msgstr "Zemniče"
 
-#: crates/core/src/model.rs:1434
+#: crates/core/src/model.rs:1442
 msgid "East"
 msgstr "Východ"
 
@@ -2796,11 +2796,11 @@ msgstr "Dokončit režim úprav"
 msgid "Finish Edit Mode: the lines, closed into loops, become the outline and its holes"
 msgstr "Dokončit režim úprav: čáry uzavřené do smyček vytvoří obrys a jeho otvory"
 
-#: crates/core/src/model.rs:297
+#: crates/core/src/model.rs:305
 msgid "Finish Face: Exterior"
 msgstr "Líc povrchové úpravy: Exteriér"
 
-#: crates/core/src/model.rs:298
+#: crates/core/src/model.rs:306
 msgid "Finish Face: Interior"
 msgstr "Líc povrchové úpravy: Interiér"
 
@@ -2808,7 +2808,7 @@ msgstr "Líc povrchové úpravy: Interiér"
 msgid "Finish or cancel the sketch before leaving its plan."
 msgstr "Před opuštěním půdorysu dokončete nebo zrušte náčrt."
 
-#: crates/core/src/model.rs:2005
+#: crates/core/src/model.rs:2013
 msgid "Fixed"
 msgstr "Pevné"
 
@@ -2899,7 +2899,7 @@ msgstr ""
 msgid "Folder for new projects"
 msgstr "Složka pro nové projekty"
 
-#: crates/core/src/model.rs:2004
+#: crates/core/src/model.rs:2012
 msgid "Folding"
 msgstr "Skládací"
 
@@ -3113,7 +3113,7 @@ msgstr "Skupina"
 msgid "Group:"
 msgstr "Skupina:"
 
-#: crates/core/src/model.rs:2376
+#: crates/core/src/model.rs:2384
 msgid "Gypsum board"
 msgstr "Sádrokarton"
 
@@ -3829,7 +3829,7 @@ msgstr "Vytvořte výkaz nebo nějaký otevřete"
 msgid "Manage"
 msgstr "Spravovat"
 
-#: crates/core/src/model.rs:1096
+#: crates/core/src/model.rs:1104
 msgid "Mark"
 msgstr "Označení"
 
@@ -4112,7 +4112,7 @@ msgstr ""
 msgid "NOT ENCLOSED"
 msgstr "NEUZAVŘENÝ OBVOD"
 
-#: crates/core/src/model.rs:1097
+#: crates/core/src/model.rs:1105
 #: crates/ui-egui/src/cad.rs:85
 #: crates/ui-egui/src/clouds.rs:59
 #: crates/ui-egui/src/lib.rs:4072
@@ -4280,7 +4280,7 @@ msgstr ""
 msgid "None"
 msgstr "Žádný"
 
-#: crates/core/src/model.rs:1432
+#: crates/core/src/model.rs:1440
 msgid "North"
 msgstr "Sever"
 
@@ -5670,7 +5670,7 @@ msgstr "Střecha podle plochy (RB): střecha na horních plochách vybraných ob
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Střecha půdorysem: klikněte uvnitř stěn pro jejich zastřešení v podlaží nad nimi"
 
-#: crates/core/src/model.rs:2378
+#: crates/core/src/model.rs:2386
 msgid "Roof tiles"
 msgstr "Střešní tašky"
 
@@ -5826,7 +5826,7 @@ msgstr "Výkazy"
 msgid "Schedules/Quantities (all)"
 msgstr "Výkazy/množství (vše)"
 
-#: crates/core/src/model.rs:2374
+#: crates/core/src/model.rs:2382
 msgid "Screed"
 msgstr "Potěr"
 
@@ -6161,7 +6161,7 @@ msgstr "Přeskočit tuto verzi"
 msgid "Sky"
 msgstr "Obloha"
 
-#: crates/core/src/model.rs:2002
+#: crates/core/src/model.rs:2010
 msgid "Sliding"
 msgstr "Posuvné"
 
@@ -6290,7 +6290,7 @@ msgstr "Řazení/seskupování"
 msgid "Source code on GitHub"
 msgstr "Zdrojový kód na GitHubu"
 
-#: crates/core/src/model.rs:1433
+#: crates/core/src/model.rs:1441
 msgid "South"
 msgstr "Jih"
 
@@ -6487,7 +6487,7 @@ msgstr "Vzor povrchu"
 msgid "Surface Transparency"
 msgstr "Průhlednost povrchu"
 
-#: crates/core/src/model.rs:2000
+#: crates/core/src/model.rs:2008
 msgid "Swing"
 msgstr "Otočné"
 
@@ -7044,7 +7044,7 @@ msgstr "Vypnout přepsání přichycení"
 msgid "Turn the wall about its {}: {}"
 msgstr "Otočit stěnu kolem jejího {}: {}"
 
-#: crates/core/src/model.rs:1098
+#: crates/core/src/model.rs:1106
 #: crates/ui-egui/src/editor.rs:624
 #: crates/ui-egui/src/editor.rs:630
 #: crates/ui-egui/src/properties.rs:2707
@@ -7192,7 +7192,7 @@ msgstr "Jednotky"
 msgid "Units Format"
 msgstr ""
 
-#: crates/core/src/commands.rs:7190
+#: crates/core/src/commands.rs:7197
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 
@@ -7395,7 +7395,7 @@ msgstr "Stěna"
 msgid "Wall (WA): each click builds a wall; Enter or Esc ends the chain"
 msgstr "Stěna (WA): každé kliknutí vytvoří stěnu; klávesa Enter nebo Esc ukončí řetězec"
 
-#: crates/core/src/model.rs:295
+#: crates/core/src/model.rs:303
 msgid "Wall Centreline"
 msgstr "Osa stěny"
 
@@ -7435,7 +7435,7 @@ msgstr "Vlna"
 msgid "Weight"
 msgstr "Hmotnost"
 
-#: crates/core/src/model.rs:1435
+#: crates/core/src/model.rs:1443
 msgid "West"
 msgstr "Západ"
 

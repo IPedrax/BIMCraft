@@ -1575,6 +1575,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             location: Default::default(),
             attach_top: None,
             attach_base: None,
+            room_bounding: true,
         };
         let id = m.insert(Element::Wall(wall));
         from.insert(id, who(w.ifc));
