@@ -21,6 +21,7 @@ pub mod info;
 pub mod inventory;
 mod names;
 mod openings;
+mod pipes;
 mod placement;
 pub mod preview;
 #[cfg(any(test, feature = "testing"))]

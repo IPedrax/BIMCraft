@@ -143,6 +143,7 @@ mod import;
 mod inventory;
 mod metadata;
 mod openings;
+mod pipes;
 mod records;
 mod roofs;
 mod rooms;

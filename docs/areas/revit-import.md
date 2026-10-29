@@ -39,7 +39,7 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   (14 bytes, and 14 more for each item) instead of at a fixed distance from the marker; and the element table's two id columns differ in
   many records, an element's record carrying either, so `elem_table::parse` lists both. A real 128 MB central model inflates its one
   partition to 664 MiB, which is why `Limits::max_inflated` is 2 GiB. Such a file imports what the importer has a reader for (its
-  levels, walls and floors); its pipes, ducts, fittings and the other categories have none, and the notes do not list them.
+  levels, walls, floors and pipes); its ducts, fittings and the other categories have no reader, and the notes list them with how many there are.
 
   Every note of an element left out reads `N kinds left out, why (ids …)` (`Import::left_out`; an element the model's rules drop
   after it was made goes through `Import::dropped`), because the desktop adds those numbers up for its status line
