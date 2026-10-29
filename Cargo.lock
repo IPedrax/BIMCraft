@@ -459,6 +459,7 @@ dependencies = [
  "bimcraft-core",
  "bimcraft-dwg",
  "bimcraft-i18n",
+ "bimcraft-pyaddins",
  "bimcraft-rvt",
  "bimcraft-ui-egui",
  "bimcraft-update",
@@ -474,8 +475,10 @@ version = "0.9.0"
 dependencies = [
  "bimcraft-core",
  "bimcraft-dwg",
+ "bimcraft-pyaddins",
  "bimcraft-rvt",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -512,6 +515,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bimcraft-pyaddins"
+version = "0.9.0"
+dependencies = [
+ "bimcraft-core",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "bimcraft-rvt"
 version = "0.9.0"
 dependencies = [
@@ -527,6 +539,7 @@ version = "0.9.0"
 dependencies = [
  "bimcraft-core",
  "bimcraft-i18n",
+ "bimcraft-pyaddins",
  "bimcraft-update",
  "eframe",
  "egui",

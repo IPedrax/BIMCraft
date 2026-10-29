@@ -14,6 +14,8 @@ workspace = true
 bimcraft-i18n = { workspace = true }
 bimcraft-core = { workspace = true }
 bimcraft-update = { workspace = true }
+# The user's Python scripts (PyAddins): their folder, their forms and their runs.
+bimcraft-pyaddins = { workspace = true }
 serde_json = { workspace = true }
 egui = { workspace = true }
 eframe = { workspace = true }

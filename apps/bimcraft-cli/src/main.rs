@@ -2,6 +2,7 @@
 //! agents, all through the same commands.
 
 mod mcp;
+mod pyaddins;
 mod revit;
 mod window;
 
@@ -11,6 +12,7 @@ use std::process::ExitCode;
 use bimcraft_core::cad::DwgReader;
 use bimcraft_core::engine::{Session, catalog};
 use bimcraft_core::sample::SAMPLE;
+use bimcraft_pyaddins::skill;
 use serde_json::{Value, json};
 
 const USAGE: &str = "USAGE:
@@ -26,6 +28,10 @@ const USAGE: &str = "USAGE:
   bimcraft-cli mcp [--connect [PORT]]
                                  an MCP server on stdio, for agents: on a headless project of its own, or with --connect on the
                                  project open in a window started with `bimcraft --control PORT` (without PORT, the last one)
+  bimcraft-cli skill install [DIR]
+                                 the skill agents follow to write PyAddins, for Claude Code (~/.claude/skills) and Codex
+                                 (~/.agents/skills), or under DIR; then how to give each the MCP server
+  bimcraft-cli skill             the skill itself
   bimcraft-cli --version         the release";
 
 fn print(out: &mut impl Write, v: &Value) -> Result<(), String> {
@@ -77,6 +83,26 @@ fn cli(args: &[String], out: &mut impl Write) -> Result<(), String> {
             print(out, &s.execute("save", &json!({ "path": to }))?)
         }
         [cmd] if cmd == "commands" => print_pretty(out, &catalog()),
+        [cmd] if cmd == "skill" => write!(out, "{}", skill::SKILL).map_err(|e| format!("stdout: {e}")),
+        [cmd, sub, dir @ ..] if cmd == "skill" && sub == "install" && dir.len() <= 1 => {
+            let home = match dir {
+                [d] => std::path::PathBuf::from(d),
+                _ => skill::home().ok_or("no home folder: give the folder to install under")?,
+            };
+            let line = |out: &mut dyn Write, text: String| writeln!(out, "{text}").map_err(|e| format!("stdout: {e}"));
+            for (agent, file) in skill::install(&home)? {
+                line(out, format!("{agent}: {}", file.display()))?;
+            }
+            line(
+                out,
+                "\nGive the agent BIMCraft's tools (--connect: the project open in the window, started with `bimcraft --control 0`):"
+                    .into(),
+            )?;
+            for c in skill::mcp_commands(&skill::cli_beside()) {
+                line(out, format!("  {c}"))?;
+            }
+            Ok(())
+        }
         [flag] if flag == "--version" || flag == "-V" => {
             writeln!(out, "bimcraft-cli {}", env!("CARGO_PKG_VERSION")).map_err(|e| format!("stdout: {e}"))
         }
@@ -159,6 +185,17 @@ mod tests {
         let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
         let mut out = Vec::new();
         cli(&args, &mut out).map(|()| String::from_utf8(out).unwrap())
+    }
+
+    #[test]
+    fn skill_install_writes_the_skill_for_both_agents_and_says_how_to_connect_them() {
+        let home = tempfile::tempdir().unwrap();
+        let out = cli_out(&["skill", "install", &home.path().display().to_string()]).unwrap();
+        assert!(skill::installed(home.path()), "{out}");
+        assert!(out.contains("Claude Code: ") && out.contains("Codex: "), "{out}");
+        assert!(out.contains("claude mcp add bimcraft -- ") && out.contains("codex mcp add bimcraft -- "), "{out}");
+        assert_eq!(cli_out(&["skill"]).unwrap(), skill::SKILL);
+        assert!(cli_out(&["skill", "uninstall"]).is_err());
     }
 
     #[test]

@@ -28,16 +28,29 @@ use crate::{BimApp, Sheet, icon_button};
 pub enum Palette {
     Properties,
     Browser,
+    /// PyAddins > Player: the user's Python scripts, each to run with a form of its inputs.
+    Scripts,
 }
 
 impl Palette {
-    pub const ALL: [Palette; 2] = [Palette::Properties, Palette::Browser];
+    pub const ALL: [Palette; 3] = [Palette::Properties, Palette::Browser, Palette::Scripts];
+
+    /// Whether it is open in a window that starts afresh (and in one whose settings are from before it came).
+    fn opens_at_start(self) -> bool {
+        self != Palette::Scripts
+    }
+
+    /// The side it docks on when it is first opened.
+    fn first_side(self) -> Side {
+        if self == Palette::Scripts { Side::Right } else { Side::Left }
+    }
 
     /// Its name: what its tab says (in the interface's language) and what the settings file keeps it as.
     pub fn name(self) -> &'static str {
         match self {
             Palette::Properties => "Properties",
             Palette::Browser => msg!("Project Browser"),
+            Palette::Scripts => msg!("Script Automation"),
         }
     }
 
@@ -274,7 +287,7 @@ impl Docking {
     pub fn show(&mut self, p: Palette, on: bool) {
         match (on, self.shown(p)) {
             (true, false) => {
-                let side = self.home.get(&p).copied().unwrap_or(Side::Left);
+                let side = self.home.get(&p).copied().unwrap_or(p.first_side());
                 self.put(p, Target::Side(side));
             }
             (false, true) => self.take(p),
@@ -315,7 +328,7 @@ impl Docking {
 
     /// Reads back what [`to_json`](Self::to_json) wrote, as hostile as any file: a palette it doesn't know or names
     /// twice is left out, numbers are finite and in range, and a palette it neither places nor closes (one added since)
-    /// docks on the left. Anything but an object is the default layout.
+    /// docks on the left, unless it is one that starts closed (Script Automation). Anything but an object is the default layout.
     pub fn from_json(v: &Value) -> Docking {
         if !v.is_object() {
             return Docking::default();
@@ -351,7 +364,7 @@ impl Docking {
         }
         let closed: BTreeSet<Palette> = v["closed"].as_array().into_iter().flatten().filter_map(|n| Palette::named(n.as_str()?)).collect();
         for p in Palette::ALL {
-            if !d.shown(p) && !closed.contains(&p) {
+            if !d.shown(p) && !closed.contains(&p) && p.opens_at_start() {
                 d.put(p, Target::Side(Side::Left));
             }
         }
@@ -553,6 +566,7 @@ impl BimApp {
         match p {
             Palette::Properties => t(p.name()).to_string(),
             Palette::Browser => tf("Project Browser · {}", &[&self.session.model.name]),
+            Palette::Scripts => t(p.name()).to_string(),
         }
     }
 
@@ -564,6 +578,7 @@ impl BimApp {
                 scroll.id_salt("properties").show(ui, |ui| Frame::new().inner_margin(8.0).show(ui, |ui| self.properties(ui)));
             }
             Palette::Browser => self.browser_palette(ui),
+            Palette::Scripts => self.scripts_palette(ui),
         }
     }
 
