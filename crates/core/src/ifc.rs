@@ -58,12 +58,22 @@ const LOFTED: u64 = 47;
 const LOFTED_DEFINES: u64 = 48;
 const QUANTITIES: u64 = 49;
 const QUANTITY_DEFINES: u64 = 50;
+const PANEL_PROPERTIES: u64 = 51;
+const PANEL_DEFINES: u64 = 52;
+const DISTRIBUTION: u64 = 53;
+const DISTRIBUTION_MEMBERS: u64 = 54;
+const DISTRIBUTION_SERVES: u64 = 55;
 
 /// The property set an element's values of the project's parameters go in.
 pub const PARAMETERS: &str = "Project Parameters";
 
 /// The property set a run's justification and category go in (its system is an IfcSystem it is assigned to).
 pub const RUN: &str = "BIMCraft_Run";
+
+/// The property set a distribution board's data goes in: `Mains` (amperes), `Slots`, `DistributionSystem` (its name) and `SupplyFrom`
+/// (the GlobalId of the board that supplies it). The system is also an IfcDistributionSystem the board is assigned to, which is
+/// what another tool reads it from.
+pub const PANEL: &str = "BIMCraft_Panel";
 
 /// The property set a lofted mass records how its footprint and its top outline pair up in, corner for corner (the body is
 /// a closed face set that doesn't say): `Loft`, JSON `{bottom, top}`.
@@ -597,6 +607,8 @@ pub fn export(m: &Model) -> String {
     let mut bars: Vec<(Guid, Option<Id>, u64)> = Vec::new();
     // The runs in each system, by its name, for the IfcSystem they are assigned to.
     let mut systems: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
+    // The boards on each distribution system, by its name, for the IfcDistributionSystem they are assigned to.
+    let mut distribution: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
     // The doors and windows in each wall as (width, height, sill), for what its sides measure less them.
     let mut holes: BTreeMap<Id, Vec<(f64, f64, f64)>> = BTreeMap::new();
     for e in m.elements.values() {
@@ -889,6 +901,30 @@ pub fn export(m: &Model) -> String {
                 };
                 if let Some(r) = relating {
                     w.add(format!("IFCRELASSOCIATESMATERIAL({},$,$,$,(#{ent}),#{r})", w.guid(COMPONENT_MATERIALS, id)));
+                }
+                // A board's own data: in a property set of BIMCraft's, and its system an IfcDistributionSystem it is assigned to.
+                if let Some(panel) = &cp.panel {
+                    let mut props = Vec::new();
+                    if let Some(amps) = panel.mains {
+                        props.push(w.add(format!("IFCPROPERTYSINGLEVALUE('Mains',$,IFCELECTRICCURRENTMEASURE({}),$)", real(amps))));
+                    }
+                    if let Some(n) = panel.slots {
+                        props.push(w.add(format!("IFCPROPERTYSINGLEVALUE('Slots',$,IFCINTEGER({n}),$)")));
+                    }
+                    if let Some(name) = &panel.distribution {
+                        props.push(w.text_property("DistributionSystem", None, name));
+                        distribution.entry(name).or_default().push(ent);
+                    }
+                    if let Some(up) = panel.supply_from {
+                        props.push(w.text_property(
+                            "SupplyFrom",
+                            Some("The GlobalId of the board that supplies this one"),
+                            &compress(up.as_u128()),
+                        ));
+                    }
+                    if !props.is_empty() {
+                        w.define(ent, PANEL, &props, (PANEL_PROPERTIES, PANEL_DEFINES), id);
+                    }
                 }
             }
             Element::Stair(st) => {
@@ -1238,6 +1274,13 @@ pub fn export(m: &Model) -> String {
         let key = name.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3));
         let system = w.add(format!("IFCSYSTEM({},$,{},$,$)", w.guid(SYSTEMS, key), s(name)));
         w.add(format!("IFCRELASSIGNSTOGROUP({},$,$,$,({}),$,#{system})", w.guid(SYSTEM_MEMBERS, key), refs(members)));
+    }
+    // A distribution system is an IfcDistributionSystem, electrical, its boards assigned to it and the building it serves.
+    for (name, members) in &distribution {
+        let key = name.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3));
+        let system = w.add(format!("IFCDISTRIBUTIONSYSTEM({},$,{},$,$,$,.ELECTRICAL.)", w.guid(DISTRIBUTION, key), s(name)));
+        w.add(format!("IFCRELASSIGNSTOGROUP({},$,$,$,({}),$,#{system})", w.guid(DISTRIBUTION_MEMBERS, key), refs(members)));
+        w.add(format!("IFCRELSERVICESBUILDINGS({},$,$,$,#{system},(#{building}))", w.guid(DISTRIBUTION_SERVES, key)));
     }
     for (level, (storey, _)) in &storeys {
         if let Some(items) = contained.get(level) {

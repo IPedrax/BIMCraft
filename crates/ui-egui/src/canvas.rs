@@ -3247,6 +3247,7 @@ impl BimApp {
                         offset: 0.0,
                         mirrored: false,
                         params: Default::default(),
+                        panel: None,
                     };
                     let e = Element::Component(c);
                     sketched(&e);

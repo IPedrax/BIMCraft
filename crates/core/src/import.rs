@@ -2175,7 +2175,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         }
         let level = level_for(id, z);
         let offset = ((z - elevation(level)) * 1000.0).round() / 1000.0 + 0.0;
-        let c = Component { family, type_name, level, at: micron(at), angle, offset, mirrored, params: BTreeMap::new() };
+        let c = Component { family, type_name, level, at: micron(at), angle, offset, mirrored, params: BTreeMap::new(), panel: None };
         let cid = m.insert(Element::Component(c));
         from.insert(cid, who(id));
         origin.entry(id).or_insert(cid);
@@ -2184,6 +2184,80 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     }
     for (name, f) in families.into_iter().filter(|(n, _)| !unsound.contains_key(n)) {
         m.families.insert(name, f);
+    }
+
+    // A distribution board's data: what BIMCraft's property set says of it, else the IfcDistributionSystem it is assigned to for
+    // its system; the board that supplies it by the GlobalId it names, which is that board's GUID. What the project cannot hold is
+    // left out, with why, and the board stays.
+    {
+        use crate::electrical::{MAX_MAINS, MAX_SLOTS, Panel};
+        let mut sets: HashMap<u64, Vec<&crate::step::Entity>> = HashMap::new();
+        for rel in named(&["IFCRELDEFINESBYPROPERTIES"]).into_iter().filter_map(e) {
+            let Some(set) = reference(rel.args.get(5))
+                .and_then(e)
+                .filter(|x| x.name == "IFCPROPERTYSET" && text(x.args.get(2)) == Some(crate::ifc::PANEL))
+            else {
+                continue;
+            };
+            let props: Vec<&crate::step::Entity> = refs(set.args.get(4)).into_iter().filter_map(e).collect();
+            for product in refs(rel.args.get(4)) {
+                sets.insert(product, props.clone());
+            }
+        }
+        let by_global: HashMap<&str, u64> =
+            ids.iter().filter_map(|id| Some((text(e(*id)?.args.first())?, *id))).filter(|(g, _)| g.len() == 22).collect();
+        let boards: Vec<(u64, Id)> = elements_from
+            .iter()
+            .flat_map(|(product, made)| made.iter().map(move |cid| (*product, *cid)))
+            .filter(|(_, cid)| crate::electrical::board(&m, *cid).is_some())
+            .collect();
+        let mut boards = boards;
+        boards.sort_by_key(|(_, cid)| *cid);
+        for (product, cid) in &boards {
+            let props = sets.get(product).cloned().unwrap_or_default();
+            let said = |name: &str| {
+                props.iter().find(|p| p.name == "IFCPROPERTYSINGLEVALUE" && text(p.args.first()) == Some(name)).and_then(|p| p.args.get(2))
+            };
+            let at = from.get(cid).cloned().unwrap_or_default();
+            let mut data = Panel {
+                mains: real(said("Mains")).filter(|a| *a > 0.0 && *a <= MAX_MAINS),
+                slots: real(said("Slots")).filter(|n| n.fract() == 0.0 && *n >= 1.0 && *n <= f64::from(MAX_SLOTS)).map(|n| n as u32),
+                ..Panel::default()
+            };
+            let assigned =
+                l.group.get(product).and_then(|g| e(*g)).filter(|g| g.name == "IFCDISTRIBUTIONSYSTEM").and_then(|g| text(g.args.get(2)));
+            if let Some(name) = text(said("DistributionSystem")).or(assigned).map(clip) {
+                if m.distribution_systems.contains_key(&name) {
+                    data.distribution = Some(name);
+                } else {
+                    skipped.push(format!("{at}: distribution system `{name}`: the project has no such system"));
+                }
+            }
+            if let Some(gid) = text(said("SupplyFrom")) {
+                match by_global.get(gid).and_then(|step| origin.get(step)).filter(|up| crate::electrical::board(&m, **up).is_some()) {
+                    Some(up) => data.supply_from = Some(Guid::of_id(*up)),
+                    None => skipped.push(format!("{at}: supply from {gid}: the file has no such board")),
+                }
+            }
+            if let Some(Element::Component(c)) = m.elements.get_mut(*cid) {
+                c.panel = Some(data).filter(|d| !d.is_empty());
+            }
+        }
+        // A supply that comes back to the board it feeds is broken at the first board of it, so that the rest of the tree stays.
+        for (_, cid) in &boards {
+            if crate::electrical::supply_loop(&m, *cid).is_some() {
+                if let Some(Element::Component(c)) = m.elements.get_mut(*cid)
+                    && let Some(p) = &mut c.panel
+                {
+                    p.supply_from = None;
+                    c.panel = Some(std::mem::take(p)).filter(|d| !d.is_empty());
+                }
+                skipped.push(format!(
+                    "{}: its supply comes back to it: a board is never supplied from one it feeds",
+                    from.get(cid).cloned().unwrap_or_default()
+                ));
+            }
+        }
     }
 
     // Stairs: each flight measured from its treads, a landing between each two and the way the next

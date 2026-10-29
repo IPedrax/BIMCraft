@@ -669,3 +669,62 @@ fn the_discipline_tabs_speak_portuguese_and_spanish_and_leave_no_english() {
         ["Tubulações", "Eletroduto", "Eletrocalha"]
     );
 }
+
+/// A distribution board placed by command, and selected.
+fn board_selected(h: &mut Harness<BimApp>, at: [i32; 2]) -> Id {
+    let r = h.state_mut().session.execute("component", &json!({"family": "Distribution Board", "type": "12 circuits", "at": at}));
+    let id = r.expect("a board")["id"].as_u64().expect("its id");
+    h.state_mut().selection = vec![id];
+    h.run();
+    id
+}
+
+fn panel_of(h: &Harness<BimApp>, id: Id) -> Option<bimcraft_core::electrical::Panel> {
+    match h.state().session.model.elements.get(id) {
+        Some(Element::Component(c)) => c.panel.clone(),
+        _ => None,
+    }
+}
+
+#[test]
+fn a_distribution_boards_electrical_data_is_set_in_its_properties_and_undone() {
+    let mut h = app(BOX);
+    let main = board_selected(&mut h, [1000, 1000]);
+    let sub = board_selected(&mut h, [3000, 1000]);
+    assert!(h.query_by_label("Distribution System").is_some(), "the group is there for a board");
+    let steps = h.state().session.history().len();
+    choose(&mut h, "Distribution System", "230/400 V");
+    type_role(&mut h, Role::TextInput, "Mains", "63");
+    type_role(&mut h, Role::TextInput, "Max #1 Pole Breakers", "24");
+    let p = panel_of(&h, sub).expect("it has data now");
+    assert_eq!((p.distribution.as_deref(), p.mains, p.slots), (Some("230/400 V"), Some(63.0), Some(24)));
+    assert_eq!(h.state().session.history().len(), steps + 3, "a step for each edit");
+    // Supply From lists the other boards, by id and type.
+    choose(&mut h, "Supply From", &format!("{main} 12 circuits"));
+    assert_eq!(panel_of(&h, sub).unwrap().supply_from, Some(h.state().session.model.guid(main)));
+    // The one it feeds says so.
+    h.state_mut().selection = vec![main];
+    h.run();
+    assert!(h.query_by_label(&sub.to_string()).is_some(), "Supplies lists the board it feeds");
+    // Undone, a step at a time.
+    h.state_mut().selection = vec![sub];
+    h.run();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert_eq!(panel_of(&h, sub).unwrap().supply_from, None);
+    // A field emptied takes the value away; one that is no number is said, and changes nothing.
+    type_role(&mut h, Role::TextInput, "Mains", "");
+    assert_eq!(panel_of(&h, sub).unwrap().mains, None);
+    type_role(&mut h, Role::TextInput, "Mains", "lots");
+    assert!(h.state().status.error, "{}", h.state().status.text);
+    assert_eq!(panel_of(&h, sub).unwrap().mains, None);
+}
+
+#[test]
+fn only_a_distribution_board_has_the_electrical_group() {
+    let mut h = app(BOX);
+    let r = h.state_mut().session.execute("component", &json!({"family": "Ceiling Luminaire", "at": [1000, 1000]}));
+    h.state_mut().selection = vec![r.expect("a luminaire")["id"].as_u64().expect("its id")];
+    h.run();
+    assert!(h.query_by_label("Distribution System").is_none());
+}

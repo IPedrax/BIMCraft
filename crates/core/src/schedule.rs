@@ -389,7 +389,24 @@ const OWN: &[(&str, usize, &[Own])] = &[
             DESIGN_OPTION,
         ],
     ),
-    ("component", 4, &[FAMILY, TYPE, LEVEL, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "component",
+        4,
+        &[
+            FAMILY,
+            TYPE,
+            LEVEL,
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+            // A distribution board's, by the names of Revit's parameters.
+            ("Distribution System", Kind::Text, From::Key("distribution_system")),
+            ("Mains", Kind::Number, From::Key("mains")),
+            ("Max #1 Pole Breakers", Kind::Number, From::Key("slots")),
+            ("Supply From", Kind::Number, From::Ref("supply_from")),
+        ],
+    ),
     (
         "stair",
         7,
