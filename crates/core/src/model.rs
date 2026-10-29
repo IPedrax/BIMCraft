@@ -69,15 +69,12 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-<<<<<<< HEAD
-/// The version of the project file this build writes, and the newest it reads. 11: a project's language may be Swedish,
-/// Czech or French (`sv`, `cs`, `fr`); nothing in a file of 10 changes, but a build that reads up to 10 would answer one of
-/// 11 with a serde error ("unknown variant"), not "saved by a newer BIMCraft". 8: text types (`text_types`, library
-=======
-/// The version of the project file this build writes, and the newest it reads. 10: a family holds `connectors` (an
-/// electrical device's load, a switch), each a part with an id and a GUID; nothing in a file of 9 changes, but a build that
-/// reads up to 9 would drop them as it does what it doesn't know, and place the device as a load of zero. 8: text types (`text_types`, library
->>>>>>> e8a3e06 (Add electrical connectors to families)
+/// The version of the project file this build writes, and the newest it reads. 12: a family holds `connectors` (an
+/// electrical device's load, a switch), each a part with an id and a GUID; nothing in a file of 11 changes, but a build that
+/// reads up to 11 would drop them as it does what it doesn't know, and place the device as a load of zero. 11: a project's
+/// language may be Swedish, Czech or French (`sv`, `cs`, `fr`); nothing in a file of 10 changes, but a build that reads up to
+/// 10 would answer one of 11 with a serde error ("unknown variant"), not "saved by a newer BIMCraft". 8: text types
+/// (`text_types`, library
 /// entries of kind `text-type`); a note names its type, which holds its size, and may override parts of its formatting
 /// (`override_format`, `runs`): a note of 7 has a `size`, which reading it gives a type of. 7: a project holds CAD drawings (`cads`,
 /// library entries of kind `Cad`) and imports place them; nothing in a file of 6 changes, but a build that reads up to 6 would
@@ -93,11 +90,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-<<<<<<< HEAD
-pub const FORMAT: u32 = 11;
-=======
-pub const FORMAT: u32 = 10;
->>>>>>> e8a3e06 (Add electrical connectors to families)
+pub const FORMAT: u32 = 12;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -2818,14 +2811,11 @@ impl Model {
         // 7 to 8: a note's size is its text type's. A note of a size gets a type of it.
         self.typed_notes();
         // 8 to 9: freely ordered graphic line segments; existing dash/space/dot patterns need no conversion.
-<<<<<<< HEAD
         // 9 to 10: a dimension may measure to a line's end (`point`) and run horizontal or vertical (`linear`), and has a
         // dimension type; one of 10 read by 9 would measure its points as lines. A dimension of 9 gets its kind's type.
         self.typed_dimensions();
         // 10 to 11 (Swedish, Czech and French as a project's language) has no step: a file of 10 holds none of them.
-=======
-        // 9 to 10 (a family's connectors) has no step: a file of 9 holds none, so a family of it has no connector.
->>>>>>> e8a3e06 (Add electrical connectors to families)
+        // 11 to 12 (a family's connectors) has no step: a file of 11 holds none, so a family of it has no connector.
         self.format = FORMAT;
     }
 

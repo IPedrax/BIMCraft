@@ -145,7 +145,7 @@ fn a_file_keeps_a_dimension_s_points_and_orientation() {
     let (m, left_out) = Model::read(&text).unwrap_or_else(|e| panic!("{e}"));
     assert!(left_out.is_empty(), "{left_out:?}");
     assert_eq!(m.elements.get(d), s.model.elements.get(d));
-    assert!(text.contains("\"format\": 11"), "points need format 10, and a save is the current format");
+    assert!(text.contains("\"format\": 12"), "points need format 10, and a save is the current format");
 }
 
 #[test]
