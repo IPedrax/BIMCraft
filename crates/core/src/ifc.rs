@@ -511,6 +511,24 @@ fn perimeter(ring: &[P2]) -> f64 {
     ring.iter().zip(ring.iter().cycle().skip(1)).map(|(a, b)| a.dist(*b)).sum()
 }
 
+/// The base quantities of a beam or a column, a section `width` by `depth` (`round`: `width` across) swept `length`:
+/// its `Length`, `CrossSectionArea`, `OuterSurfaceArea` (its sides, not its ends), `GrossSurfaceArea` (with its ends) and
+/// `GrossVolume`. Net values would take off where it joins others, which isn't worked out, so they're left out.
+fn member_quantities(round: bool, width: f64, depth: f64, length: f64) -> Vec<(&'static str, &'static str, f64)> {
+    let (section, perimeter) = if round {
+        (std::f64::consts::PI * width * width / 4.0, std::f64::consts::PI * width)
+    } else {
+        (width * depth, 2.0 * (width + depth))
+    };
+    vec![
+        ("Length", "LENGTH", length),
+        ("CrossSectionArea", "AREA", section / 1e6),
+        ("OuterSurfaceArea", "AREA", perimeter * length / 1e6),
+        ("GrossSurfaceArea", "AREA", (perimeter * length + 2.0 * section) / 1e6),
+        ("GrossVolume", "VOLUME", section * length / 1e9),
+    ]
+}
+
 /// What a wall measures, for its `Qto_WallBaseQuantities`: its length along its axis, its thickness and height, its side
 /// (length by height, m²) and that less the doors and windows in it (`holes`, as (width, height, sill), each cut to the
 /// wall's height), and both through its thickness (m³), its joins aside. A wall attached to a roof or a floor has no single
@@ -801,6 +819,10 @@ pub fn export(m: &Model) -> String {
                     Element::Footing(_) => w.load_bearing(ent, "Pset_FootingCommon", id),
                     _ => {}
                 }
+                if !matches!(e, Element::Footing(_)) {
+                    let values = member_quantities(t.round, t.width, t.depth, top - bottom);
+                    w.quantities(ent, "Qto_ColumnBaseQuantities", &values, id);
+                }
             }
             // A run: its section swept along its axis, in its material, a member of the system it is in.
             crate::model::run_arm!(r) => {
@@ -830,6 +852,10 @@ pub fn export(m: &Model) -> String {
                 ));
                 contained.entry(r.level).or_default().push(ent);
                 products.insert(id, ent);
+                if matches!(e, Element::Beam(_)) {
+                    let values = member_quantities(g.round, g.width, g.depth, g.length());
+                    w.quantities(ent, "Qto_BeamBaseQuantities", &values, id);
+                }
                 match e {
                     Element::Beam(_) => w.load_bearing(ent, "Pset_BeamCommon", id),
                     Element::StripFooting(_) => w.load_bearing(ent, "Pset_FootingCommon", id),
@@ -1790,6 +1816,37 @@ mod tests {
                 .collect();
         }
         BTreeMap::new()
+    }
+
+    #[test]
+    fn beams_and_columns_carry_their_base_quantities() {
+        use crate::graphics::testing::{house, run};
+        let mut s = Session::new();
+        house(&mut s);
+        run(&mut s, "structural_column", json!({"at": [0, 0]}));
+        run(&mut s, "column", json!({"at": [4000, 3000]}));
+        run(&mut s, "beam", json!({"points": [[0, 0], [8000, 0]], "offset": 2700}));
+        let f = export(&s.model);
+        let near = |a: f64, b: f64| (a - b).abs() < 1e-6 * b.abs().max(1.0);
+        let m = &s.model;
+        // Each column: its height, its section and what that sweeps.
+        for (e, ent) in m.elements.values().filter(|e| e.column().is_some()).zip(of_kind(&f, "IFCCOLUMN")) {
+            let (col, t) = (e.column().unwrap(), m.column_type(e).unwrap());
+            let (bottom, top) = m.span(col.level, col.base_offset, col.top_level, col.height);
+            let (len, section) = (top - bottom, if t.round { std::f64::consts::PI * t.width * t.width / 4.0 } else { t.width * t.depth });
+            let q = quantities_of(&f, ent, "Qto_ColumnBaseQuantities");
+            assert!(near(q["Length"], len) && near(q["CrossSectionArea"], section / 1e6), "{q:?}");
+            assert!(near(q["GrossVolume"], section * len / 1e9), "{q:?}");
+            assert!(near(q["GrossSurfaceArea"] - q["OuterSurfaceArea"], 2.0 * section / 1e6), "its two ends: {q:?}");
+        }
+        // The beam, 8 m long.
+        let beam = m.elements.values().find(|e| matches!(e, Element::Beam(_))).unwrap();
+        let g = m.run_geom(beam).unwrap();
+        let q = quantities_of(&f, of_kind(&f, "IFCBEAM")[0], "Qto_BeamBaseQuantities");
+        assert!(near(q["Length"], 8000.0) && near(q["CrossSectionArea"], g.width * g.depth / 1e6), "{q:?}");
+        assert!(near(q["OuterSurfaceArea"], 2.0 * (g.width + g.depth) * 8000.0 / 1e6), "{q:?}");
+        assert!(near(q["GrossVolume"], g.width * g.depth * 8000.0 / 1e9), "{q:?}");
+        assert!(!q.contains_key("NetVolume"), "no net values: joins aren't worked out");
     }
 
     #[test]
