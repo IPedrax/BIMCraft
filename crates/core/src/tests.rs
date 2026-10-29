@@ -1855,6 +1855,48 @@ fn hostile_params_never_panic_or_break_the_model() {
             draw_plans(&s.model);
         }
     }
+    // A family's connectors, each field of one given every hostile value, on a starter family (placed in the base, if the
+    // house has any) and on a new one; and far more connectors than a family may hold.
+    let values = [
+        json!(1e300),
+        json!(-1e300),
+        json!(f64::MAX),
+        json!(u64::MAX),
+        json!(-1),
+        json!(0),
+        json!(1.5),
+        json!(null),
+        json!(true),
+        json!([]),
+        json!([1, 2, 3, 4]),
+        json!([1e300, "Nope", null]),
+        json!({}),
+        json!("Nope"),
+        json!("1 / 0"),
+        json!("(".repeat(10_000)),
+        json!("x".repeat(100_000)),
+    ];
+    for name in ["Ceiling Luminaire", "Outlet", "Hostile"] {
+        for field in ["kind", "system", "poles", "voltage", "load_va", "power_factor", "classification", "id", "guid"] {
+            for v in &values {
+                let mut connector = json!({"kind": "power", "system": "power-balanced", "voltage": 127, "load_va": 10});
+                connector[field] = v.clone();
+                let p = json!({"name": name, "category": "lighting", "types": {"A": {}}, "connectors": [connector]});
+                let mut s = base.clone();
+                let _ = s.execute("component", &json!({"family": "Outlet", "at": [500, 500]}));
+                let made = s.execute("family", &p).is_ok();
+                assert_eq!(s.model.check(), Ok(()), "family {p} left a broken model");
+                if made {
+                    draw_plans(&s.model);
+                    let _ = s.execute("inspect", &json!({}));
+                }
+            }
+        }
+    }
+    let many: Vec<Value> = (0..100_000).map(|_| json!({"kind": "switch", "system": "switch"})).collect();
+    let mut s = base.clone();
+    assert!(s.execute("family", &json!({"name": "Hostile", "types": {"A": {}}, "connectors": many})).is_err());
+    assert_eq!(s.model.check(), Ok(()));
 }
 
 /// Draws every level's plan and ceiling plan, and every section and elevation, at the smallest size, which builds all that

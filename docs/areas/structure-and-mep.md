@@ -59,6 +59,7 @@ kinds its `FixtureTool` names, listed in its Type Selector and placed as the Com
 kinds), and the tabs' ribbon panels; a fixture's two-letter shortcut is in `mep::FIXTURES`, not `SHORTCUTS`, since no command makes
 one. Edit Type of a run type also sets whether it is round (a diameter, no depth) and its material.
 
+<<<<<<< HEAD
 Reinforcement (`rebar.rs`, `model::Rebar`, `Element::Rebar`, category `rebar`, the `rebar` command; tests in `rebar_tests.rs`). A bar is one
 element: a round bar of `diameter` mm (3 to 100) bent along `path` (points in mm, `z` over its level), of steel `grade` (CA-50 unless
 told), with the `host` it reinforces (a beam, a column, a footing or a floor, held as a `Guid`, and it goes when its host does). A hoop
@@ -129,3 +130,19 @@ named before the command is asked. It takes any number of elements selected, of 
 when the element has bars the command made (those with a layer), deletes them and leaves the ones drawn by hand. The fields' accessible names are
 "Group: Field" (`Bottom bars: Count`), and the cover's is `Cover`, its label having a colon so that no two nodes carry the name.
 
+=======
+**Connectors.** A family's `connectors` (`family::Connector`, a list for any discipline; today the electrical device's) say what
+a placed device draws: `kind` `power` or `switch`, `system` `power-balanced`, `power-unbalanced` or `switch`, `poles` (1 to 3),
+`voltage`, `load_va`, `power_factor` and a `classification`. The numbers are numbers or formulas over the family's parameters, so a
+type sets its load (the starter luminaires' `Load` parameter) and an instance parameter lets one component set its own; a
+`power-unbalanced` connector's `load_va` may be a list, one load for each pole, and a single number is shared out evenly.
+`Family::check` refuses a family of two `power` connectors, a kind and system that don't go together, poles, voltage, power factor
+or load out of range for any type, and a load on a switch. A connector is a part (`HasPart`: an id and a GUID, kept by place
+while the family is edited), and a family without any reads and places as it always did. A component's `element_json` carries
+`connectors` worked out for its type (`Family::connector_values`: `load_va` in all, `load_va_by_phase`), which a circuit will sum;
+there are no circuits, panels or fitting-to-pipe joins yet, and the connector holds no position. `Model::warnings` (shown by
+`inspect`; `Model::check` stays an error only) says which lighting, outlet or switch family in use holds no connector, so its devices
+count as zero load. IFC writes each device with a connector `Pset_ElectricalDeviceCommon` (`NumberOfPoles`, and for a power
+connector `PowerFactor` and `RatedVoltage`) and `BIMCraft_Connector` (`System`, `Classification`, `LoadVA`, `LoadVAPhase1`…); IFC
+import doesn't read them back.
+>>>>>>> e8a3e06 (Add electrical connectors to families)
