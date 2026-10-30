@@ -59,6 +59,34 @@ pub enum Category {
 }
 
 impl Category {
+    /// The name views know it by in Visibility/Graphics and Object Styles: its serialised name.
+    pub fn key(self) -> &'static str {
+        match self {
+            Category::Furniture => "furniture",
+            Category::Casework => "casework",
+            Category::Plumbing => "plumbing",
+            Category::Drain => "drain",
+            Category::PipeFitting => "pipefitting",
+            Category::PipeAccessory => "pipeaccessory",
+            Category::Equipment => "equipment",
+            Category::Outlet => "outlet",
+            Category::Switch => "switch",
+            Category::AirTerminal => "airterminal",
+            Category::Earthing => "earthing",
+            Category::InspectionBox => "inspectionbox",
+            Category::Lighting => "lighting",
+            Category::Generic => "generic",
+            Category::DataOutlet => "dataoutlet",
+            Category::VoiceOutlet => "voiceoutlet",
+            Category::PatchPanel => "patchpanel",
+            Category::Rack => "rack",
+            Category::Door => "door",
+            Category::Window => "window",
+        }
+    }
+}
+
+impl Category {
     /// The categories a component may be of (a door's or a window's family is placed in a wall), in the order an import reads
     /// them.
     pub const PLACED: [Category; 17] = [

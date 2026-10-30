@@ -1209,7 +1209,8 @@ impl BimApp {
             return Some(format!("{} | {}", t("Modify"), t(what)));
         }
         let m = &self.session.model;
-        let categories: BTreeSet<&str> = self.selection.iter().filter_map(|id| m.elements.get(id)).map(|e| e.category()).collect();
+        let categories: BTreeSet<&str> =
+            self.selection.iter().filter_map(|id| m.elements.get(id)).map(|e| m.graphics_category(e)).collect();
         match categories.len() {
             0 => None,
             1 => categories.first().map(|c| format!("{} | {}", t("Modify"), lang::category(c, true))),

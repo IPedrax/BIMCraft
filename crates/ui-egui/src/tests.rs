@@ -2848,7 +2848,7 @@ component {"family": "Stool", "at": [3000, 2000]}"#;
     // Picked by its outline.
     click(&mut h, P2(3200.0, 2000.0));
     assert_eq!(h.state().selection, [c]);
-    assert!(h.query_by_label("Modify | Components").is_some());
+    assert!(h.query_by_label("Modify | Furniture").is_some());
     // Its instance parameter, in Properties.
     type_into(&mut h, "Seat", "500");
     key(&mut h, Key::Enter);
@@ -4240,7 +4240,8 @@ fn view_templates_are_made_from_a_view_and_followed_from_properties() {
     pick(&mut h, Role::CheckBox, "Rooms");
     press(&mut h, "OK");
     shortcut(&mut h, "VT");
-    assert!(h.query_by_label("No view templates yet: Create from This View makes one.").is_some());
+    // The electrical ones come with a new project.
+    assert!(h.state().session.model.view_templates.contains_key("Electrical – Power"));
     type_into(&mut h, "New template:", "Presentation");
     press(&mut h, "Create from This View");
     assert!(h.state().session.model.view_templates["Presentation"].graphics.hides("room"));
@@ -4264,6 +4265,7 @@ fn view_templates_are_made_from_a_view_and_followed_from_properties() {
     press(&mut h, "Cancel");
     // And Stop Following from the templates dialog.
     shortcut(&mut h, "VT");
+    choose(&mut h, "Template:", "Presentation");
     press(&mut h, "Stop Following in This View");
     assert!(plan_graphics(&h, 100001).template.is_none());
     press(&mut h, "Close");
@@ -4316,6 +4318,7 @@ fn view_templates_hold_show_and_hand_on_a_scale_detail_level_and_visual_style() 
     assert_eq!(h.state().sheet, Sheet::Plan(100001));
     assert_eq!(combo_value(&h, "View Scale"), "1 : 100");
     shortcut(&mut h, "VT");
+    choose(&mut h, "Template:", "Plans");
     press(&mut h, "Follow in This View");
     press(&mut h, "Close");
     assert_eq!(plan_graphics(&h, 100001).template.as_deref(), Some("Plans"));
@@ -4344,6 +4347,7 @@ fn view_templates_hold_show_and_hand_on_a_scale_detail_level_and_visual_style() 
     assert!(!is_disabled(&h, Role::Button, "Scale") && is_disabled(&h, Role::Button, "Detail Level"), "the bar too");
     // Stop following: its own again.
     shortcut(&mut h, "VT");
+    choose(&mut h, "Template:", "Plans");
     press(&mut h, "Stop Following in This View");
     press(&mut h, "Close");
     assert!(!is_disabled(&h, Role::ComboBox, "Detail Level"));
@@ -4356,6 +4360,7 @@ fn a_templates_controls_are_ticked_and_unticked_one_at_a_time() {
     let mut h = app(BOX);
     h.state_mut().session.execute("template", &json!({"name": "T", "from": 100000, "controls": ["categories"]})).unwrap();
     shortcut(&mut h, "VT");
+    choose(&mut h, "Template:", "T");
     let controls = |h: &Harness<BimApp>| h.state().session.model.view_templates["T"].controls.iter().copied().collect::<Vec<_>>();
     assert_eq!(controls(&h), [Group::Categories]);
     pick(&mut h, Role::CheckBox, "Filters");
@@ -4844,6 +4849,7 @@ fn a_templates_phase_and_options_are_ticked_like_its_other_controls_and_hold_a_v
         .execute("template", &json!({"name": "T", "from": 100000, "controls": ["categories"], "phase": "Existing"}))
         .unwrap();
     shortcut(&mut h, "VT");
+    choose(&mut h, "Template:", "T");
     let controls = |h: &Harness<BimApp>| h.state().session.model.view_templates["T"].controls.iter().copied().collect::<Vec<_>>();
     pick(&mut h, Role::CheckBox, "Phase and Phase Filter");
     pick(&mut h, Role::CheckBox, "Design Options");
@@ -4857,6 +4863,7 @@ fn a_templates_phase_and_options_are_ticked_like_its_other_controls_and_hold_a_v
     assert!(phase.accesskit_node().is_disabled());
     // The view's own, if it follows nothing.
     shortcut(&mut h, "VT");
+    choose(&mut h, "Template:", "T");
     press(&mut h, "Stop Following in This View");
     press(&mut h, "Close");
     assert!(!h.get_by_role_and_label(Role::ComboBox, "Phase").accesskit_node().is_disabled());

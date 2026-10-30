@@ -905,3 +905,83 @@ fn the_panel_schedule_edits_its_circuits_in_place_and_marks_slots_as_spares_and_
     h.run();
     assert_eq!(circuit_of(&h, circuit).map(|c| c.number), Some(1));
 }
+
+const FIXTURE_ROWS: [&str; 18] = [
+    "Electrical Equipment",
+    "Outlets",
+    "Switches",
+    "Lighting Fixtures",
+    "Data Outlets",
+    "Voice Outlets",
+    "Patch Panels",
+    "Racks",
+    "Air Terminals",
+    "Earthing Electrodes",
+    "Inspection Boxes",
+    "Plumbing Fixtures",
+    "Drains",
+    "Pipe Fittings",
+    "Pipe Accessories",
+    "Furniture",
+    "Casework",
+    "Generic Models",
+];
+
+/// Whether view `id` of the project shows element `e`.
+fn view_shows(h: &Harness<BimApp>, id: Id, e: Id) -> bool {
+    bimcraft_core::graphics::Look::of(&h.state().session.model, id).shows(e)
+}
+
+#[test]
+fn each_fixture_category_is_a_row_of_visibility_graphics_and_of_object_styles() {
+    let mut h = app(BOX);
+    let r = h.state_mut().session.execute("component", &json!({"family": "Ceiling Luminaire", "at": [1000, 1000]}));
+    let lamp = r.expect("a luminaire")["id"].as_u64().expect("its id");
+    let r = h.state_mut().session.execute("component", &json!({"family": "Outlet", "at": [2000, 1000]}));
+    let outlet = r.expect("an outlet")["id"].as_u64().expect("its id");
+    shortcut(&mut h, "VV");
+    for row in FIXTURE_ROWS {
+        assert!(h.query_by_role_and_label(Role::CheckBox, row).is_some(), "{row} has a row in Visibility/Graphics");
+    }
+    assert!(h.query_by_role_and_label(Role::CheckBox, "Components").is_none(), "the one row is gone");
+    // Lighting off hides the luminaires, and nothing else.
+    pick(&mut h, Role::CheckBox, "Lighting Fixtures");
+    press(&mut h, "OK");
+    assert!(plan_graphics(&h, 100000).hides("lighting") && !plan_graphics(&h, 100000).hides("outlet"));
+    assert!(!view_shows(&h, 100000, lamp) && view_shows(&h, 100000, outlet));
+    // The same rows in Object Styles, to set a pen once for a whole category.
+    press(&mut h, "Manage");
+    press(&mut h, "Object Styles");
+    for row in FIXTURE_ROWS {
+        assert!(h.query_by_label(&format!("{row}: Projection")).is_some(), "{row} has a row in Object Styles");
+    }
+    choose(&mut h, "Outlets: Projection", "13 · 0.70 mm");
+    press(&mut h, "OK");
+    let m = &h.state().session.model;
+    assert_eq!((m.object_style("outlet").projection.0, m.object_style("lighting").projection.0), (13, 4));
+}
+
+#[test]
+fn the_electrical_templates_are_there_in_a_new_project_and_a_view_follows_one() {
+    let mut h = app(BOX);
+    let r = h.state_mut().session.execute("component", &json!({"family": "Ceiling Luminaire", "at": [1000, 1000]}));
+    let lamp = r.expect("a luminaire")["id"].as_u64().expect("its id");
+    let r = h.state_mut().session.execute("component", &json!({"family": "Outlet", "at": [2000, 1000]}));
+    let outlet = r.expect("an outlet")["id"].as_u64().expect("its id");
+    for name in ["Electrical – Power", "Electrical – Lighting", "Electrical – Ceiling"] {
+        assert!(h.state().session.model.view_templates.contains_key(name), "{name}");
+    }
+    // Followed from the View Templates dialog, the lighting plan has no receptacles.
+    shortcut(&mut h, "VT");
+    choose(&mut h, "Template:", "Electrical – Lighting");
+    press(&mut h, "Follow in This View");
+    assert_eq!(plan_graphics(&h, 100000).template.as_deref(), Some("Electrical – Lighting"));
+    assert!(view_shows(&h, 100000, lamp) && !view_shows(&h, 100000, outlet));
+    press(&mut h, "Close");
+    // Its rows say so in Visibility/Graphics, where the outlets' box is off and the luminaires' on.
+    shortcut(&mut h, "VV");
+    use egui_kittest::kittest::NodeT;
+    let on = |h: &Harness<BimApp>, row: &str| h.get_by_role_and_label(Role::CheckBox, row).accesskit_node().toggled();
+    assert_eq!(on(&h, "Outlets"), Some(egui::accesskit::Toggled::False));
+    assert_eq!(on(&h, "Lighting Fixtures"), Some(egui::accesskit::Toggled::True));
+}

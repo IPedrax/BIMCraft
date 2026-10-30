@@ -631,7 +631,7 @@ fn cut_unions(look: &Look, outlines: impl Iterator<Item = (Id, Vec<P2>)>) -> Vec
 
 /// The object style of `owner`'s category; with no owner, what a project's categories start with.
 fn style_of(m: &Model, owner: Option<Id>) -> ObjectStyle {
-    m.object_style(owner.and_then(|id| m.elements.get(id)).map_or("", Element::category))
+    m.object_style(owner.and_then(|id| m.elements.get(id)).map_or("", |e| m.graphics_category(e)))
 }
 
 /// Whether what `owner` is draws in the annotation's pens: a dimension, a tag, text, a spot elevation, a grid, a level, a
@@ -892,7 +892,7 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         _ => {}
     }
     let annotation = on.is_some() || matches!(e, Element::Section(_) | Element::Elevation(_));
-    let style = m.object_style(e.category());
+    let style = m.object_style(m.graphics_category(e));
     d.by_category(|_| style);
     d.weigh(|_| annotation);
     d
@@ -1794,6 +1794,17 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
                 let z = m.elevation(c.level) + c.offset;
                 if range.cut < z && z <= range.top {
                     ceiling(&mut d, m, c);
+                }
+            }
+            // What hangs under the ceiling that the view asks to see in its ceiling plan (`Graphics::ceiling`: luminaires, cable
+            // trays), seen from below as the floor plan draws it.
+            Element::Component(c) if up && m.level_of(e) == Some(level) && look.in_ceiling(m.graphics_category(e)) => {
+                component(&mut d, m, &components.pieces(c));
+            }
+            crate::model::run_arm!(_) if up && m.level_of(e) == Some(level) && look.in_ceiling(e.category()) => {
+                if let Some(g) = m.run_geom(e) {
+                    let pts = g.footprint().iter().map(|p| d.view.px(*p)).collect();
+                    d.stroke(pts, BY_CATEGORY, INK, None, true);
                 }
             }
             _ if up => {}

@@ -1414,7 +1414,11 @@ pub static ALL: &[Command] = &[
          `template` follows a view template; `reset` takes away all of the view's own settings. `phase` is the phase the view \
          shows (the project's last unless it says) and `phase_filter` how it shows each status of what's in it (see `phase`); \
          `options` chooses the design option it shows of a set (the set's primary unless it says; see `option`); `layers` the \
-         layers of each CAD drawing it hides, by the drawing's name (null shows them all again)",
+         layers of each CAD drawing it hides, by the drawing's name (null shows them all again). A component is on the row of its \
+         family's category (equipment, outlet, switch, lighting, dataoutlet, voiceoutlet, patchpanel, rack, airterminal, earthing, \
+         inspectionbox, plumbing, drain, pipefitting, pipeaccessory, furniture, casework, generic), so hiding `lighting` hides the \
+         luminaires and nothing else; `component` still hides, or overrides, all of them (under what a row of its own says). A \
+         reflected ceiling plan draws no components or runs unless `ceiling: [category, …]` names them (lighting, cabletray…)",
         view_graphics,
     ),
     edit(
@@ -1460,11 +1464,11 @@ pub static ALL: &[Command] = &[
         "{name, from?: a level's, section's, elevation's or 3D view's name or id, controls?: [categories, filters, range, \
          phase, options, scale, detail, style], view_range?: {top?, cut?, bottom?, depth?}, phase?, phase_filter?, options?, \
          scale?: 1 | … | 100000, detail?: coarse | medium | fine, visual_style?: shaded | hidden_line | wireframe, \
-         hide?, show?, categories?, filters?, reset?, delete?: true} a view template, as Revit's: settings under a name for \
+         hide?, show?, categories?, ceiling?, filters?, reset?, delete?: true} a view template, as Revit's: settings under a name for \
          views to follow with `graphics {template}`. `from` takes a view's categories (hidden and overridden), filters and, a \
          plan's, view range, its phase and phase filter, its design options, its scale, detail level and visual style; \
          `controls` is what views following it get from it (all eight unless it says) and cannot change for themselves: its \
-         categories, its filters, a plan's view range, its phase with its phase filter, its design options, its scale (`scale` \
+         categories (and the ones its reflected ceiling plan draws, `ceiling`), its filters, a plan's view range, its phase with its phase filter, its design options, its scale (`scale` \
          command), its detail level (`detail`), its visual style (`visual_style`). `hide`, `show`, `categories`, `filters`, \
          `phase`, `phase_filter`, `options`, `scale`, `detail`, `visual_style` and `reset` change it as they change a view; \
          `view_range` merges into its range. Changed, every view following it follows. Gone, they keep their own settings. \
@@ -3029,7 +3033,7 @@ fn edit_graphics(c: &str, m: &Model, p: &Value, g: &mut Graphics, of_template: b
     };
     let controlled = template_then.as_ref().and_then(|n| m.view_templates.get(n));
     let follows = |group: Group| controlled.filter(|t| t.controls.contains(&group)).map(|_| template_then.clone().unwrap_or_default());
-    let touches_categories = ["hide", "show", "categories"].iter().any(|k| given(k));
+    let touches_categories = ["hide", "show", "categories", "ceiling"].iter().any(|k| given(k));
     let touches_filters = given("filters");
     let touches_phase = p.get("phase").is_some() || p.get("phase_filter").is_some();
     let touches_options = given("options");
@@ -3087,6 +3091,26 @@ fn edit_graphics(c: &str, m: &Model, p: &Value, g: &mut Graphics, of_template: b
             }
         }
         Some(v) => return Err(bad(c, format!("`categories` is {{category: override}}, not {v}"))),
+        None => {}
+    }
+    match p.get("ceiling") {
+        v if absent(v) => {}
+        Some(Value::Array(a)) if a.len() <= graphics::MODEL.len() => {
+            g.ceiling = a
+                .iter()
+                .map(|v| {
+                    v.as_str().ok_or_else(|| bad(c, format!("`ceiling`: {v} is not a category"))).and_then(|n| {
+                        let name = drawn_category(c, n)?;
+                        if graphics::MODEL.contains(&name.as_str()) {
+                            Ok(name)
+                        } else {
+                            Err(bad(c, format!("`ceiling`: `{n}` isn't a model category a ceiling plan can draw")))
+                        }
+                    })
+                })
+                .collect::<Result<_, _>>()?;
+        }
+        Some(v) => return Err(bad(c, format!("`ceiling` is a list of categories, not {v}"))),
         None => {}
     }
     match p.get("layers") {
@@ -3198,7 +3222,7 @@ fn edit_graphics(c: &str, m: &Model, p: &Value, g: &mut Graphics, of_template: b
 fn graphics_reply(g: &Graphics) -> Value {
     let hidden: Vec<&String> = g.categories.iter().filter(|(_, o)| o.hidden).map(|(k, _)| k).collect();
     json!({
-        "hidden": hidden, "categories": g.categories, "filters": g.filters, "layers": g.layers,
+        "hidden": hidden, "categories": g.categories, "ceiling": g.ceiling, "filters": g.filters, "layers": g.layers,
         "phase": g.phase, "phase_filter": g.phase_filter, "options": g.options,
         "scale": g.scale, "detail": g.detail, "visual_style": g.style,
     })
@@ -3382,6 +3406,7 @@ fn view_template(s: &mut Session, p: &Value) -> R {
         "hide",
         "show",
         "categories",
+        "ceiling",
         "filters",
         "reset",
         "hide_elements",
@@ -3412,6 +3437,7 @@ fn view_template(s: &mut Session, p: &Value) -> R {
         let resolved = own.resolved(m);
         t.graphics = Graphics {
             categories: resolved.categories.clone(),
+            ceiling: resolved.ceiling.clone(),
             filters: resolved.filters.clone(),
             phase: resolved.phase.clone(),
             phase_filter: resolved.phase_filter.clone(),
@@ -6708,7 +6734,7 @@ fn tag(s: &mut Session, p: &Value) -> R {
             .elements
             .iter()
             .filter(|(id, e)| {
-                of.as_deref().map_or(matches!(e, Element::Door(_) | Element::Window(_)), |cat| e.category() == cat)
+                of.as_deref().map_or(matches!(e, Element::Door(_) | Element::Window(_)), |cat| s.model.in_category(e, cat))
                     && !tagged.contains(&m.guid(*id))
                     && m.level_of(e) == Some(level)
                     && look.shows(**id)
@@ -11034,7 +11060,7 @@ fn elements(s: &mut Session, p: &Value) -> R {
     let hits: Vec<Id> = m
         .elements
         .iter()
-        .filter(|(_, e)| cat.as_deref().is_none_or(|k| e.category() == k))
+        .filter(|(_, e)| cat.as_deref().is_none_or(|k| m.in_category(e, k)))
         .filter(|(_, e)| level.is_none_or(|l| m.level_of(e) == Some(l)))
         .map(|(id, _)| *id)
         .collect();

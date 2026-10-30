@@ -248,7 +248,7 @@ fn visible(d: &Drawing, m: &Model, picture: Option<(Vec<Prim>, bool)>) -> (Vec<I
         out.extend(parts.into_iter().map(|prim| Ink { prim, owner: None, part: Part::Projection, pen: None }));
     }
     for (i, (((prim, owner), part), pen)) in d.prims.iter().zip(&d.owners).zip(&d.parts).zip(&d.pens).take(end).enumerate() {
-        let model = owner.and_then(|id| m.elements.get(id)).is_some_and(|e| crate::graphics::MODEL.contains(&e.category()));
+        let model = owner.and_then(|id| m.elements.get(id)).is_some_and(|e| crate::graphics::MODEL.contains(&m.graphics_category(e)));
         if !model || !matches!(prim, Prim::Line { .. } | Prim::Fill { .. }) || *part == Part::Text {
             continue;
         }

@@ -262,8 +262,11 @@ impl BimApp {
             if g.elements.get(&m.guid(id)).is_some_and(|o| o.hidden) {
                 elements.push(id);
             }
-            if g.hides(e.category()) {
-                categories.insert(e.category());
+            // The row of its family's category, or `component`, which every family's is on while a file from before has it hidden.
+            for row in [m.graphics_category(e), e.category()] {
+                if g.hides(row) {
+                    categories.insert(row);
+                }
             }
         }
         (elements, categories.into_iter().collect())

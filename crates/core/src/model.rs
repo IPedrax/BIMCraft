@@ -69,7 +69,10 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 14: a project holds panel schedules (an element of
+/// The version of the project file this build writes, and the newest it reads. 15: a view hides and overrides the categories of
+/// the families a project places (`lighting`, `outlet`…), as Object Styles has them, and a view holds `ceiling`; nothing in a file
+/// of 14 changes (`component` is still read, as every family's), but a build that reads up to 14 would refuse a view that hides
+/// `lighting` as one of a category it doesn't draw. 14: a project holds panel schedules (an element of
 /// the `panelschedule` category) and `demand_factors`; nothing in a file of 13 changes, but a build that reads up to 13 would
 /// answer one of 14 with a serde error, not "saved by a newer BIMCraft". 13: a project holds circuits (an element of the
 /// `circuit` category); nothing in a file of 12 changes, but a build that reads up to 12 would answer one of 13 with a serde
@@ -94,7 +97,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 14;
+pub const FORMAT: u32 = 15;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -2387,7 +2390,7 @@ impl Model {
             families: BTreeMap::new(),
             parameters: BTreeMap::new(),
             view_filters: BTreeMap::new(),
-            view_templates: BTreeMap::new(),
+            view_templates: crate::graphics::starter_templates(language),
             phases: phasing::phases(language),
             phase_filters: phasing::filters(language),
             phase_overrides: phasing::overrides(),
@@ -2861,6 +2864,8 @@ impl Model {
         // 10 to 11 (Swedish, Czech and French as a project's language) has no step: a file of 10 holds none of them.
         // 11 to 12 (a family's connectors) has no step: a file of 11 holds none, so a family of it has no connector.
         // 12 to 13 (circuits) has no step: a file of 12 holds none.
+        // 14 to 15 (the families' categories as rows of their own, `ceiling`) has no step: a file of 14 keeps its `component` rows,
+        // which are every family's.
         // 13 to 14 (panel schedules and `demand_factors`) has no step: a file of 13 holds none, and a circuit's slots are its number as ever.
         // The electrical settings (voltages, distribution systems, wire types) and a board's panel data have none within 11 or 12:
         // a file without them reads with the starter set and no board data, and one that has them is read by an older version with
@@ -3899,6 +3904,20 @@ impl Model {
     /// The default 3D view, `{3D}`: the 3D view of that name, once something has made it.
     pub fn default_3d(&self) -> Option<Id> {
         self.elements.iter().find_map(|(id, e)| matches!(e, Element::View3D(v) if v.name == "{3D}").then_some(*id))
+    }
+
+    /// The row of Visibility/Graphics and Object Styles element `e` is on: a component's is its family's category, any other's its
+    /// own (`Element::category`). A component whose family the project lacks is `generic`.
+    pub fn graphics_category(&self, e: &Element) -> &'static str {
+        match e {
+            Element::Component(c) => self.families.get(&c.family).map_or("generic", |f| f.category.key()),
+            e => e.category(),
+        }
+    }
+
+    /// Whether `e` is of category `name`, as `tag` and `elements` take it: the one of its element (`component`) or its row.
+    pub fn in_category(&self, e: &Element, name: &str) -> bool {
+        e.category() == name || self.graphics_category(e) == name
     }
 
     /// The name of view `id`: a level's plan, a section, an elevation, a schedule or a 3D view;

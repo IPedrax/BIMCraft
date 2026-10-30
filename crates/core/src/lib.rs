@@ -101,6 +101,8 @@ mod detail_tests;
 #[cfg(test)]
 mod dimension_tests;
 #[cfg(test)]
+mod graphics_family_tests;
+#[cfg(test)]
 mod line_tests;
 #[cfg(test)]
 mod mep_tests;
