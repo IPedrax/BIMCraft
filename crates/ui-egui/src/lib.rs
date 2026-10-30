@@ -21,6 +21,7 @@ mod dimtypes;
 mod dock;
 mod draw;
 mod editor;
+mod electrical;
 mod favorites;
 mod fillpatterns;
 mod filter;
@@ -38,6 +39,7 @@ mod mep;
 mod notes;
 mod objectstyles;
 mod orbit;
+mod panelsched;
 mod paper;
 mod phasing;
 mod popup;
@@ -637,6 +639,8 @@ pub struct BimApp {
     /// Structure > Reinforce, while open, and what was typed in it for each kind of host.
     reinforce_dialog: Option<reinforce::ReinforceDialog>,
     reinforce_kept: BTreeMap<reinforce::Form, BTreeMap<&'static str, String>>,
+    /// The slot picked in the panel schedule on screen.
+    panel_slot: Option<u32>,
     /// Manage > Line Weights, while open.
     line_weights_dialog: Option<lineweights::LineWeightsDialog>,
     /// Manage > Object Styles, while open.
@@ -653,6 +657,8 @@ pub struct BimApp {
     mode_width: f32,
     /// Manage > Technical Standards, while open.
     standards_dialog: Option<standards::StandardsDialog>,
+    /// Manage > Electrical Settings, while open.
+    electrical_dialog: Option<electrical::ElectricalDialog>,
     options_dialog: Option<phasing::OptionsDialog>,
     purge_dialog: Option<purge::PurgeDialog>,
     /// Manage > Select by ID and IDs of Selection, while open.
@@ -1076,6 +1082,7 @@ impl BimApp {
             phasing_dialog: None,
             reinforce_dialog: None,
             reinforce_kept: BTreeMap::new(),
+            panel_slot: None,
             line_weights_dialog: None,
             object_styles_dialog: None,
             line_styles_dialog: None,
@@ -1083,6 +1090,7 @@ impl BimApp {
             sketch: None,
             mode_width: 0.0,
             standards_dialog: None,
+            electrical_dialog: None,
             options_dialog: None,
             purge_dialog: None,
             select_by_id: None,
@@ -1201,7 +1209,8 @@ impl BimApp {
             return Some(format!("{} | {}", t("Modify"), t(what)));
         }
         let m = &self.session.model;
-        let categories: BTreeSet<&str> = self.selection.iter().filter_map(|id| m.elements.get(id)).map(|e| e.category()).collect();
+        let categories: BTreeSet<&str> =
+            self.selection.iter().filter_map(|id| m.elements.get(id)).map(|e| m.graphics_category(e)).collect();
         match categories.len() {
             0 => None,
             1 => categories.first().map(|c| format!("{} | {}", t("Modify"), lang::category(c, true))),
@@ -1229,6 +1238,7 @@ impl BimApp {
             },
             Sheet::Table(id) => match self.session.model.elements.get(id) {
                 Some(Element::Schedule(sc)) => sc.name.clone(),
+                Some(Element::PanelSchedule(ps)) => ps.name.clone(),
                 _ => "Schedule".into(),
             },
         }
@@ -1243,6 +1253,7 @@ impl BimApp {
             Sheet::Section(id) if matches!(self.session.model.elements.get(id), Some(Element::Elevation(_))) => "Elevation",
             Sheet::Section(_) => "Section",
             Sheet::Paper(_) => "Sheet",
+            Sheet::Table(id) if matches!(self.session.model.elements.get(id), Some(Element::PanelSchedule(_))) => "Panel Schedule",
             Sheet::Schedule(_) | Sheet::Table(_) => "Schedule",
         };
         format!("{}: {}", t(kind), self.view_name(sheet))
@@ -1480,7 +1491,7 @@ impl BimApp {
             Sheet::Section(id) => m.section(*id).is_some(),
             Sheet::Paper(id) => m.sheet(*id).is_some(),
             Sheet::View3D | Sheet::Schedule(_) => true,
-            Sheet::Table(id) => matches!(m.elements.get(id), Some(Element::Schedule(_))),
+            Sheet::Table(id) => matches!(m.elements.get(id), Some(Element::Schedule(_) | Element::PanelSchedule(_))),
         };
         self.views.retain(exists);
         self.floating.retain(|f| exists(&f.sheet));
@@ -1534,6 +1545,7 @@ impl BimApp {
             || self.phasing_dialog.is_some()
             || self.reinforce_dialog.is_some()
             || self.line_weights_dialog.is_some()
+            || self.electrical_dialog.is_some()
             || self.object_styles_dialog.is_some()
             || self.line_styles_dialog.is_some()
             || self.fill_patterns_dialog.is_some()
@@ -2397,7 +2409,8 @@ impl BimApp {
             (None, _) => (json!(name), tf("Schedule: {}", &[t(name)]), *name),
         });
         let made = self.schedules().into_iter().map(|(id, name)| (json!(id), tf("Schedule: {}", &[name]), name));
-        let others = std::iter::once((json!("{3D}"), t("3D View: {3D}").to_string(), "{3D}")).chain(builtin).chain(made);
+        let boards = self.panel_schedules().into_iter().map(|(id, name)| (json!(id), tf("Panel Schedule: {}", &[name]), name));
+        let others = std::iter::once((json!("{3D}"), t("3D View: {3D}").to_string(), "{3D}")).chain(builtin).chain(made).chain(boards);
         plans.chain(cuts).chain(others).filter(|(_, _, name)| !placed.contains(name)).map(|(v, label, _)| (v, label)).collect()
     }
 
@@ -3328,7 +3341,8 @@ impl BimApp {
                         self.open_sheet(Sheet::Schedule(cat));
                     }
                 }
-                let made: Vec<(Id, String)> = self.schedules().into_iter().map(|(id, n)| (id, n.to_string())).collect();
+                let made: Vec<(Id, String)> =
+                    self.schedules().into_iter().chain(self.panel_schedules()).map(|(id, n)| (id, n.to_string())).collect();
                 for (id, name) in made {
                     if ui.button(name).clicked() {
                         self.open_sheet(Sheet::Table(id));
@@ -3466,6 +3480,12 @@ impl BimApp {
             let tip = tf("Technical Standards: configure drawing standards (NBR, ISO, ANSI, EU); now {}", &[t(now_std.short_name())]);
             if big_button(ui, Icon::Settings, "Technical Standards", self.standards_dialog.is_some(), &tip).clicked() {
                 self.standards_dialog = Some(standards::StandardsDialog::new(&self.session.model));
+            }
+            let tip = msg!(
+                "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
+            );
+            if big_button(ui, Icon::Wire, "Electrical Settings", self.electrical_dialog.is_some(), tip).clicked() {
+                self.electrical_dialog = Some(electrical::ElectricalDialog::new(&self.session.model));
             }
             // Fills, snaps and units, stacked.
             stacked(ui, |ui| {
@@ -4372,6 +4392,9 @@ impl BimApp {
 
     /// The schedule on screen as a table: its headings, its rows, its totals under a rule.
     fn schedule(&mut self, ui: &mut Ui) {
+        if let Some(id) = self.showing_panel_schedule() {
+            return self.panel_schedule_view(ui, id);
+        }
         let Some((_, sc)) = self.shown_schedule() else { return };
         // The right-click menu, on the schedule and on each of its cells.
         let groups = self.context_items();
@@ -4472,6 +4495,7 @@ impl BimApp {
         self.dimension_type_window(ctx);
         self.dimension_text_window(ctx);
         self.standards_window(ctx);
+        self.electrical_window(ctx);
         self.options_window(ctx);
         self.purge_window(ctx);
         if std::mem::take(&mut self.link_dialog) {

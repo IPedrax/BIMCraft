@@ -455,7 +455,7 @@ fn icon(category: &str) -> Icon {
         "pipe" => Icon::Pipe,
         "conduit" => Icon::Conduit,
         "cabletray" => Icon::CableTray,
-        "wire" => Icon::Wire,
+        "wire" | "circuit" => Icon::Wire,
         "downconductor" => Icon::DownConductor,
         "groundconductor" => Icon::GroundConductor,
         "cable" => Icon::Cabling,
@@ -956,6 +956,8 @@ impl BimApp {
         if !ids.is_empty() {
             self.parameters(ui, &model, &ids, rows);
             self.component_parameters(ui, &model, &ids);
+            self.panel_parameters(ui, &model, &ids);
+            self.circuit_parameters(ui, &model, &ids);
             self.project_parameters(ui, &model, &ids);
             self.element_phasing(ui, &model, &ids);
         }
@@ -1423,6 +1425,191 @@ impl BimApp {
             }
             Some((key, Err(e))) => self.status = Status { text: format!("{key}: {e}"), error: true },
             None => {}
+        }
+    }
+
+    /// A distribution board's electrical data, in a group of its own: its distribution system, its mains and the single-pole
+    /// breakers it takes, the board that supplies it and the ones it feeds. An edit goes through `panel`; a field emptied takes
+    /// its value away.
+    fn panel_parameters(&mut self, ui: &mut Ui, model: &Model, ids: &[Id]) {
+        let [id] = ids else { return };
+        let Some((id, board)) = bimcraft_core::electrical::board(model, *id) else { return };
+        let data = board.panel.clone().unwrap_or_default();
+        let group = "Electrical";
+        let open = !self.collapsed.contains(group);
+        if group_header(ui, t(group), open) && !self.collapsed.remove(group) {
+            self.collapsed.insert(group);
+        }
+        if !open {
+            return;
+        }
+        const NONE: &str = "—";
+        let systems: Vec<String> = std::iter::once(NONE.to_string()).chain(model.distribution_systems.keys().cloned()).collect();
+        // The other boards, each by what names it: its id and its type.
+        let boards: Vec<(Id, String)> = model
+            .elements
+            .iter()
+            .filter_map(|(i, _)| bimcraft_core::electrical::board(model, *i))
+            .filter(|(i, _)| *i != id)
+            .map(|(i, c)| (i, format!("{i} {}", c.type_name)))
+            .collect();
+        let upstream = data.supply_from.and_then(|g| model.elements.id(g));
+        let supplier = upstream.and_then(|u| boards.iter().find(|(i, _)| *i == u)).map_or_else(|| NONE.to_string(), |(_, n)| n.clone());
+        let supplies: Vec<String> = std::iter::once(NONE.to_string()).chain(boards.iter().map(|(_, n)| n.clone())).collect();
+        let feeds: Vec<String> = model.panel_feeds(id).iter().map(Id::to_string).collect();
+        let mut change: Option<(&str, Value)> = None;
+        Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
+            let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
+            Grid::new(("panel-parameters", id)).num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(ui, |ui| {
+                let label = ui.label(t("Distribution System"));
+                let now = data.distribution.clone().unwrap_or_else(|| NONE.to_string());
+                if let Some(picked) = combo(ui, (id, "distribution"), label.id, &now, &systems) {
+                    change = Some(("distribution", json!(if picked == NONE { String::new() } else { picked })));
+                }
+                ui.end_row();
+                let label = ui.label(t("Mains"));
+                let now = data.mains.map_or_else(String::new, |a| format!("{a}"));
+                if let Some(typed) = self.field(ui, id, "mains", now, label.id, "A") {
+                    match typed.trim().replace(',', ".").parse::<f64>() {
+                        _ if typed.trim().is_empty() => change = Some(("mains", json!(""))),
+                        Ok(a) => change = Some(("mains", json!(a))),
+                        Err(_) => {
+                            self.status = Status { text: tf("{}: `{}` is not a number of amperes", &[t("Mains"), &typed]), error: true }
+                        }
+                    }
+                }
+                ui.end_row();
+                let label = ui.label(t("Max #1 Pole Breakers"));
+                let now = data.slots.map_or_else(String::new, |n| n.to_string());
+                if let Some(typed) = self.field(ui, id, "slots", now, label.id, "") {
+                    match typed.trim().parse::<u32>() {
+                        _ if typed.trim().is_empty() => change = Some(("slots", json!(""))),
+                        Ok(n) => change = Some(("slots", json!(n))),
+                        Err(_) => {
+                            self.status =
+                                Status { text: tf("{}: `{}` is not a whole number", &[t("Max #1 Pole Breakers"), &typed]), error: true }
+                        }
+                    }
+                }
+                ui.end_row();
+                let label = ui.label(t("Supply From"));
+                if let Some(picked) = combo(ui, (id, "supply_from"), label.id, &supplier, &supplies) {
+                    let id_of = boards.iter().find(|(_, n)| *n == picked).map(|(i, _)| json!(i));
+                    change = Some(("supply_from", id_of.unwrap_or_else(|| json!(""))));
+                }
+                ui.end_row();
+                if !feeds.is_empty() {
+                    ui.label(t("Supplies"));
+                    ui.label(feeds.join(", "));
+                    ui.end_row();
+                }
+            });
+        });
+        if let Some((key, value)) = change {
+            self.run("panel", json!({"id": id, key: value}));
+        }
+    }
+
+    /// A selected circuit's parameters, edited through `circuit`: its number, breaker, poles, voltage and demand factor, with what
+    /// it loads (worked out from its devices) shown.
+    fn circuit_parameters(&mut self, ui: &mut Ui, model: &Model, ids: &[Id]) {
+        let [id] = ids else { return };
+        let Some(Element::Circuit(c)) = model.elements.get(id) else { return };
+        let group = "Electrical";
+        let open = !self.collapsed.contains(group);
+        if group_header(ui, t(group), open) && !self.collapsed.remove(group) {
+            self.collapsed.insert(group);
+        }
+        if !open {
+            return;
+        }
+        const NONE: &str = "—";
+        let id = *id;
+        let panel = model.elements.id(c.panel);
+        let board = panel.map_or_else(String::new, |b| b.to_string());
+        let there: Vec<String> = panel
+            .and_then(|b| bimcraft_core::electrical::board(model, b))
+            .and_then(|(_, b)| b.panel.as_ref()?.distribution.as_ref().and_then(|n| model.distribution_systems.get(n)))
+            .map(|s| s.voltage_names().cloned().collect())
+            .unwrap_or_default();
+        let voltages: Vec<String> = std::iter::once(NONE.to_string()).chain(there).collect();
+        let totals = bimcraft_core::electrical::circuit_totals(model, c);
+        let load = totals.as_ref().map_or_else(String::new, |x| format!("{} VA", text(&json!(x.installed_va))));
+        let current = totals.as_ref().map_or_else(String::new, |x| format!("{} A", text(&json!(x.current_a))));
+        let devices: Vec<String> = c.devices.iter().filter_map(|g| model.elements.id(*g)).map(|d| d.to_string()).collect();
+        let mut change: Option<(&str, Value)> = None;
+        Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
+            let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
+            Grid::new(("circuit-parameters", id)).num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(ui, |ui| {
+                let label = ui.label(t("Circuit Number"));
+                if let Some(typed) = self.field(ui, id, "number", c.number.to_string(), label.id, "") {
+                    match typed.trim().parse::<u32>() {
+                        Ok(n) => change = Some(("number", json!(n))),
+                        Err(_) => {
+                            self.status = Status { text: tf("{}: `{}` is not a whole number", &[t("Circuit Number"), &typed]), error: true }
+                        }
+                    }
+                }
+                ui.end_row();
+                let label = ui.label(t("Name"));
+                if let Some(typed) = self.field(ui, id, "name", c.name.clone(), label.id, "") {
+                    change = Some(("name", json!(typed.trim())));
+                }
+                ui.end_row();
+                let label = ui.label(t("Rating"));
+                if let Some(typed) = self.field(ui, id, "rating", text(&json!(c.rating_a)), label.id, "A") {
+                    match number(&typed.replace(',', ".")) {
+                        Some(a) => change = Some(("rating", json!(a))),
+                        None => {
+                            self.status = Status { text: tf("{}: `{}` is not a number of amperes", &[t("Rating"), &typed]), error: true }
+                        }
+                    }
+                }
+                ui.end_row();
+                let label = ui.label(t("Number of Poles"));
+                if let Some(typed) = self.field(ui, id, "poles", c.poles.to_string(), label.id, "") {
+                    match typed.trim().parse::<u8>() {
+                        Ok(n) => change = Some(("poles", json!(n))),
+                        Err(_) => {
+                            self.status =
+                                Status { text: tf("{}: `{}` is not a whole number", &[t("Number of Poles"), &typed]), error: true }
+                        }
+                    }
+                }
+                ui.end_row();
+                let label = ui.label(t("Voltage"));
+                let now = c.voltage.clone().unwrap_or_else(|| NONE.to_string());
+                if let Some(picked) = combo(ui, (id, "voltage"), label.id, &now, &voltages) {
+                    change = Some(("voltage", json!(if picked == NONE { String::new() } else { picked })));
+                }
+                ui.end_row();
+                let label = ui.label(t("Classification"));
+                if let Some(typed) = self.field(ui, id, "classification", c.classification.clone(), label.id, "") {
+                    change = Some(("classification", json!(typed.trim())));
+                }
+                ui.end_row();
+                let label = ui.label(t("Demand Factor"));
+                if let Some(typed) = self.field(ui, id, "demand_factor", text(&json!(c.demand_factor)), label.id, "") {
+                    match number(&typed.replace(',', ".")) {
+                        Some(f) => change = Some(("demand_factor", json!(f))),
+                        None => self.status = Status { text: tf("{}: `{}` is not a number", &[t("Demand Factor"), &typed]), error: true },
+                    }
+                }
+                ui.end_row();
+                for (name, value) in [
+                    (t("Panel"), board),
+                    (t("Load"), load),
+                    (t("Current"), current),
+                    (t("Devices"), if devices.is_empty() { t("None").to_string() } else { devices.join(", ") }),
+                ] {
+                    ui.label(name);
+                    ui.label(value);
+                    ui.end_row();
+                }
+            });
+        });
+        if let Some((key, value)) = change {
+            self.run("circuit", json!({"id": id, key: value}));
         }
     }
 

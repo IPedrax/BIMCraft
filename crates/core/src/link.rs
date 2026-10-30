@@ -50,6 +50,7 @@ fn built(e: &Element) -> bool {
             | Element::View3D(_)
             | Element::PlanView(_)
             | Element::Link(_)
+            | Element::Circuit(_)
     )
 }
 

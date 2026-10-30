@@ -16,7 +16,7 @@ use std::f64::consts::PI;
 use std::sync::Arc;
 
 use crate::commands::{micron, next_number, tidy};
-use crate::family::{Category, Expr, Family, Form, MAX_TRIANGLES, Parameter};
+use crate::family::{Category, Connector, ConnectorKind, ConnectorSystem, Expr, Family, Form, Load, MAX_TRIANGLES, Parameter};
 use crate::geom::{self, P2};
 use crate::library::Kind;
 use crate::model::{
@@ -2067,9 +2067,63 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     struct Made {
         category: Category,
         types: Vec<(String, Vec<Form>, u64)>,
+        /// What the product of each type drew, where BIMCraft wrote its connector: the same order as `types`.
+        draws: Vec<Option<Draw>>,
         named: HashMap<String, Vec<usize>>,
         names: HashSet<String>,
         forms: usize,
+    }
+    // What a device's connector says, as BIMCraft writes it (`Pset_ElectricalDeviceCommon` and `BIMCraft_Connector`): a family
+    // gets a connector of it, its type's load a parameter of the type. A device another tool wrote has no such set, and no connector.
+    #[derive(Clone)]
+    struct Draw {
+        system: String,
+        poles: u8,
+        voltage: f64,
+        power_factor: f64,
+        classification: String,
+        by_phase: Vec<f64>,
+    }
+    let mut draws: HashMap<u64, Draw> = HashMap::new();
+    {
+        let mut by_product: HashMap<u64, Vec<&crate::step::Entity>> = HashMap::new();
+        for rel in named(&["IFCRELDEFINESBYPROPERTIES"]).into_iter().filter_map(e) {
+            let Some(set) = reference(rel.args.get(5)).and_then(e).filter(|x| {
+                x.name == "IFCPROPERTYSET"
+                    && matches!(text(x.args.get(2)), Some("Pset_ElectricalDeviceCommon") | Some(crate::ifc::CONNECTOR_SET))
+            }) else {
+                continue;
+            };
+            let props: Vec<&crate::step::Entity> = refs(set.args.get(4)).into_iter().filter_map(e).collect();
+            for product in refs(rel.args.get(4)) {
+                by_product.entry(product).or_default().extend(props.iter().copied());
+            }
+        }
+        for (product, props) in by_product {
+            let find = |name: &str| props.iter().find(|p| text(p.args.first()) == Some(name));
+            let value = |name: &str| find(name).and_then(|p| p.args.get(2));
+            // A property with a bounded value says its own in the set point.
+            let voltage = find("RatedVoltage")
+                .and_then(|p| if p.name == "IFCPROPERTYBOUNDEDVALUE" { real(p.args.get(5)) } else { real(p.args.get(2)) });
+            let (Some(system), Some(poles), Some(voltage)) = (text(value("System")), real(value("NumberOfPoles")), voltage) else {
+                continue;
+            };
+            let by_phase: Vec<f64> = (1..=3).map_while(|k| real(value(&format!("LoadVAPhase{k}")))).collect();
+            if !(1.0..=3.0).contains(&poles) || !(system == "switch" || by_phase.len() == poles as usize) {
+                continue;
+            }
+            draws.insert(
+                product,
+                Draw {
+                    system: system.to_string(),
+                    poles: poles as u8,
+                    voltage,
+                    power_factor: real(value("PowerFactor")).unwrap_or(1.0),
+                    classification: text(value("Classification")).map(clip).unwrap_or_default(),
+                    by_phase,
+                },
+            );
+        }
     }
     let mut made: BTreeMap<String, Made> = BTreeMap::new();
     let mut placed: Vec<(u64, String, String, bool, P2, f64, f64)> = Vec::new();
@@ -2144,6 +2198,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
                     fam.names.insert(t.clone());
                     fam.named.entry(base.clone()).or_default().push(fam.types.len());
                     fam.types.push((t.clone(), forms, key));
+                    fam.draws.push(draws.get(&id).cloned());
                     (t, false)
                 }
             };
@@ -2152,15 +2207,68 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         }
     }
     let mut families: BTreeMap<String, Family> = BTreeMap::new();
-    for (name, Made { category, types, .. }) in made {
+    for (name, Made { category, types, draws, .. }) in made {
         // Several types: each its own forms, shown by a parameter only its type sets.
         let several = types.len() > 1;
         let mut family = Family { category, ..Family::default() };
         if several {
             family.parameters.push(Parameter { name: "Variant".into(), kind: crate::family::Kind::Number, ..Parameter::default() });
         }
+        // Its connector: the first type's, with the load of each type a parameter of it, as the starter families do.
+        let connector = draws.iter().flatten().next().cloned();
+        let load_names: Vec<String> = match &connector {
+            Some(c) if c.system == "power-unbalanced" => (1..=c.by_phase.len()).map(|k| format!("Load L{k}")).collect(),
+            Some(c) if c.system == "power-balanced" => vec!["Load".to_string()],
+            _ => Vec::new(),
+        };
+        for n in &load_names {
+            family.parameters.push(Parameter {
+                name: n.clone(),
+                kind: crate::family::Kind::Number,
+                value: serde_json::json!(0),
+                ..Parameter::default()
+            });
+        }
+        if let Some(c) = &connector {
+            let (kind, system) = match c.system.as_str() {
+                "power-balanced" => (ConnectorKind::Power, ConnectorSystem::PowerBalanced),
+                "power-unbalanced" => (ConnectorKind::Power, ConnectorSystem::PowerUnbalanced),
+                _ => (ConnectorKind::Switch, ConnectorSystem::Switch),
+            };
+            let load_va = match (system, load_names.as_slice()) {
+                (ConnectorSystem::PowerUnbalanced, names) => Load::PerPhase(names.iter().map(|n| Expr::Formula(n.clone())).collect()),
+                (ConnectorSystem::PowerBalanced, [n]) => Load::One(Expr::Formula(n.clone())),
+                _ => Load::One(Expr::default()),
+            };
+            family.connectors.push(Connector {
+                id: 0,
+                guid: Guid::default(),
+                kind,
+                system,
+                poles: c.poles,
+                voltage: Expr::Number(c.voltage),
+                load_va,
+                power_factor: Expr::Number(c.power_factor),
+                classification: c.classification.clone(),
+            });
+        }
         for (k, (t, forms, _)) in (1..).zip(types) {
-            let set = if several { BTreeMap::from([("Variant".to_string(), serde_json::json!(k))]) } else { BTreeMap::new() };
+            let mut set: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+            if several {
+                set.insert("Variant".to_string(), serde_json::json!(k));
+            }
+            if let Some(Some(d)) = draws.get(k - 1) {
+                match load_names.as_slice() {
+                    [one] => {
+                        set.insert(one.clone(), serde_json::json!(d.by_phase.iter().sum::<f64>()));
+                    }
+                    many => {
+                        for (n, va) in many.iter().zip(&d.by_phase) {
+                            set.insert(n.clone(), serde_json::json!(va));
+                        }
+                    }
+                }
+            }
             family.types.insert(t, set);
             family.forms.extend(forms.into_iter().map(|f| Form { visible: several.then(|| Expr::Formula(format!("Variant = {k}"))), ..f }));
         }
@@ -2175,7 +2283,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         }
         let level = level_for(id, z);
         let offset = ((z - elevation(level)) * 1000.0).round() / 1000.0 + 0.0;
-        let c = Component { family, type_name, level, at: micron(at), angle, offset, mirrored, params: BTreeMap::new() };
+        let c = Component { family, type_name, level, at: micron(at), angle, offset, mirrored, params: BTreeMap::new(), panel: None };
         let cid = m.insert(Element::Component(c));
         from.insert(cid, who(id));
         origin.entry(id).or_insert(cid);
@@ -2184,6 +2292,167 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     }
     for (name, f) in families.into_iter().filter(|(n, _)| !unsound.contains_key(n)) {
         m.families.insert(name, f);
+    }
+
+    // A distribution board's data: what BIMCraft's property set says of it, else the IfcDistributionSystem it is assigned to for
+    // its system; the board that supplies it by the GlobalId it names, which is that board's GUID. What the project cannot hold is
+    // left out, with why, and the board stays.
+    {
+        use crate::electrical::{MAX_MAINS, MAX_SLOTS, Panel};
+        let mut sets: HashMap<u64, Vec<&crate::step::Entity>> = HashMap::new();
+        for rel in named(&["IFCRELDEFINESBYPROPERTIES"]).into_iter().filter_map(e) {
+            let Some(set) = reference(rel.args.get(5))
+                .and_then(e)
+                .filter(|x| x.name == "IFCPROPERTYSET" && text(x.args.get(2)) == Some(crate::ifc::PANEL))
+            else {
+                continue;
+            };
+            let props: Vec<&crate::step::Entity> = refs(set.args.get(4)).into_iter().filter_map(e).collect();
+            for product in refs(rel.args.get(4)) {
+                sets.insert(product, props.clone());
+            }
+        }
+        let by_global: HashMap<&str, u64> =
+            ids.iter().filter_map(|id| Some((text(e(*id)?.args.first())?, *id))).filter(|(g, _)| g.len() == 22).collect();
+        let boards: Vec<(u64, Id)> = elements_from
+            .iter()
+            .flat_map(|(product, made)| made.iter().map(move |cid| (*product, *cid)))
+            .filter(|(_, cid)| crate::electrical::board(&m, *cid).is_some())
+            .collect();
+        let mut boards = boards;
+        boards.sort_by_key(|(_, cid)| *cid);
+        for (product, cid) in &boards {
+            let props = sets.get(product).cloned().unwrap_or_default();
+            let said = |name: &str| {
+                props.iter().find(|p| p.name == "IFCPROPERTYSINGLEVALUE" && text(p.args.first()) == Some(name)).and_then(|p| p.args.get(2))
+            };
+            let at = from.get(cid).cloned().unwrap_or_default();
+            let mut data = Panel {
+                mains: real(said("Mains")).filter(|a| *a > 0.0 && *a <= MAX_MAINS),
+                slots: real(said("Slots")).filter(|n| n.fract() == 0.0 && *n >= 1.0 && *n <= f64::from(MAX_SLOTS)).map(|n| n as u32),
+                ..Panel::default()
+            };
+            let assigned =
+                l.group.get(product).and_then(|g| e(*g)).filter(|g| g.name == "IFCDISTRIBUTIONSYSTEM").and_then(|g| text(g.args.get(2)));
+            if let Some(name) = text(said("DistributionSystem")).or(assigned).map(clip) {
+                if m.distribution_systems.contains_key(&name) {
+                    data.distribution = Some(name);
+                } else {
+                    skipped.push(format!("{at}: distribution system `{name}`: the project has no such system"));
+                }
+            }
+            if let Some(gid) = text(said("SupplyFrom")) {
+                match by_global.get(gid).and_then(|step| origin.get(step)).filter(|up| crate::electrical::board(&m, **up).is_some()) {
+                    Some(up) => data.supply_from = Some(Guid::of_id(*up)),
+                    None => skipped.push(format!("{at}: supply from {gid}: the file has no such board")),
+                }
+            }
+            if let Some(Element::Component(c)) = m.elements.get_mut(*cid) {
+                c.panel = Some(data).filter(|d| !d.is_empty());
+            }
+        }
+        // A supply that comes back to the board it feeds is broken at the first board of it, so that the rest of the tree stays.
+        for (_, cid) in &boards {
+            if crate::electrical::supply_loop(&m, *cid).is_some() {
+                if let Some(Element::Component(c)) = m.elements.get_mut(*cid)
+                    && let Some(p) = &mut c.panel
+                {
+                    p.supply_from = None;
+                    c.panel = Some(std::mem::take(p)).filter(|d| !d.is_empty());
+                }
+                skipped.push(format!(
+                    "{}: its supply comes back to it: a board is never supplied from one it feeds",
+                    from.get(cid).cloned().unwrap_or_default()
+                ));
+            }
+        }
+    }
+
+    // Circuits: an IfcDistributionCircuit with BIMCraft's property set, its devices the members of its group and its board the
+    // one whose GlobalId the set names (a board's GUID). One that names no board the file has is left out, with why; what the
+    // project cannot hold of the rest (a wire type it lacks, a voltage, a device its board does not take) is left out with the rule.
+    {
+        use crate::electrical::{Circuit, Wires};
+        let mut sets: HashMap<u64, Vec<&crate::step::Entity>> = HashMap::new();
+        for rel in named(&["IFCRELDEFINESBYPROPERTIES"]).into_iter().filter_map(e) {
+            let Some(set) = reference(rel.args.get(5))
+                .and_then(e)
+                .filter(|x| x.name == "IFCPROPERTYSET" && text(x.args.get(2)) == Some(crate::ifc::CIRCUIT_SET))
+            else {
+                continue;
+            };
+            let props: Vec<&crate::step::Entity> = refs(set.args.get(4)).into_iter().filter_map(e).collect();
+            for product in refs(rel.args.get(4)) {
+                sets.insert(product, props.clone());
+            }
+        }
+        let by_global: HashMap<&str, u64> =
+            ids.iter().filter_map(|id| Some((text(e(*id)?.args.first())?, *id))).filter(|(g, _)| g.len() == 22).collect();
+        for step in named(&["IFCDISTRIBUTIONCIRCUIT"]) {
+            seen.insert(step);
+            let at = who(step);
+            let Some(props) = sets.get(&step) else {
+                skipped.push(format!("{at}: it has no {} set, so BIMCraft cannot tell which board it is on", crate::ifc::CIRCUIT_SET));
+                continue;
+            };
+            let said = |name: &str| {
+                props.iter().find(|p| p.name == "IFCPROPERTYSINGLEVALUE" && text(p.args.first()) == Some(name)).and_then(|p| p.args.get(2))
+            };
+            let Some(board) = text(said("Panel"))
+                .and_then(|gid| by_global.get(gid))
+                .and_then(|st| origin.get(st))
+                .copied()
+                .filter(|b| crate::electrical::board(&m, *b).is_some())
+            else {
+                skipped.push(format!("{at}: the file has no distribution board for it"));
+                continue;
+            };
+            let (Some(number), Some(rating), Some(poles)) = (real(said("Number")), real(said("Rating")), real(said("Poles"))) else {
+                skipped.push(format!("{at}: its set lacks the number, the rating or the poles"));
+                continue;
+            };
+            let voltage = text(said("Voltage")).map(clip).filter(|v| m.voltages.contains_key(v));
+            if let Some(v) = text(said("Voltage")).map(clip).filter(|v| !m.voltages.contains_key(v)) {
+                skipped.push(format!("{at}: voltage `{v}`: the project has no such voltage"));
+            }
+            let mut wires: Option<Wires> = text(said("Wires")).and_then(|j| serde_json::from_str(j).ok());
+            let unknown: Option<String> = wires.as_ref().and_then(|w| {
+                [Some(&w.hot), w.neutral.as_ref(), w.ground.as_ref()]
+                    .into_iter()
+                    .flatten()
+                    .map(|x| &x.wire_type)
+                    .find(|t| !m.wire_types.contains_key(*t))
+                    .cloned()
+            });
+            if let Some(t) = unknown {
+                skipped.push(format!("{at}: wire type `{t}`: the project has no such wire type, so the circuit has no wires"));
+                wires = None;
+            }
+            let mut devices: Vec<Id> = l
+                .group
+                .iter()
+                .filter(|(_, g)| **g == step)
+                .filter_map(|(member, _)| origin.get(member).copied())
+                .filter(|d| matches!(m.elements.get(*d), Some(Element::Component(_))))
+                .collect();
+            devices.sort_unstable();
+            let circuit = Circuit {
+                // By id until the elements are given the GUIDs the file names: `resolve` swaps them then.
+                panel: Guid::of_id(board),
+                number: number as u32,
+                name: text(e(step).and_then(|x| x.args.get(2))).map(clip).unwrap_or_default(),
+                rating_a: rating,
+                poles: poles as u8,
+                voltage,
+                classification: text(said("Classification")).map(clip).unwrap_or_default(),
+                demand_factor: real(said("DemandFactor")).unwrap_or(1.0),
+                devices: devices.iter().map(|d| Guid::of_id(*d)).collect(),
+                wires,
+            };
+            let cid = m.insert(Element::Circuit(circuit));
+            from.insert(cid, at);
+            origin.entry(step).or_insert(cid);
+        }
     }
 
     // Stairs: each flight measured from its treads, a landing between each two and the way the next

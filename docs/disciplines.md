@@ -34,11 +34,14 @@ Run { type, level, start, end, offset, end_offset?, justify, system, params }
 - **Section.** The type's `RunType { width, depth, round, material }`: a rectangle `width` across by `depth` deep, or
   round, `width` across. It is square to the run's axis, as a pipe's or a member's is.
 - **Chains.** The command takes `points` and makes one run for each segment, as `wall` does. A fitting, an elbow or a
-  tee is not a run: runs that meet butt against each other until the MEP slice adds connectors (ROADMAP 2.x).
+  tee is not a run: runs that meet butt against each other until the MEP slice joins them (ROADMAP 2.x). A family has
+  connectors (`Family::connectors`) for what an electrical device draws; a run and a fitting have none yet.
 - **System.** `system` is a name ("Água fria", "Circuito 3", "SPDA 1"). Nothing else about a system is stored: a
   schedule groups and filters by it like any field, and a fixture carries its system as a project parameter named
   `System`, which exists already. Systems are a name, not a registry, because a registry would need rules for renaming,
-  deleting and merging that no tab has asked for.
+  deleting and merging that no tab has asked for. (What a system *supplies* is another matter: the project's electrical
+  settings keep voltages, distribution systems and wire types as tables, `electrical.rs`, which circuits and panels will
+  name; a run's `system` stays a name.)
 
 In plan, a run or a footing is drawn from the level it hangs under: its top is flush with that level, so a beam placed at
 the level is seen by that level's plan, which an element whose top is that low would not otherwise be (a plan sees down to
@@ -136,7 +139,8 @@ no Autodesk shortcut, and take free letters.
 
 ## Not in this design, on purpose
 
-Connectors and fittings, auto-routing, sizing, flow and load calculations, circuits and panel schedules, analytical
+Pipe connectors and fittings, auto-routing, sizing, flow and load calculations, panel schedules (the electrical
+settings, a board's data, a family's electrical connectors and circuits are in), analytical
 models, rebar, beam systems and trusses. Each is large, none changes the model above, and they come after the five
 tabs can draw and schedule their systems (ROADMAP 2.x).
 
@@ -165,7 +169,7 @@ the four took a few lines in each of these places, and the tests are rows in two
 
 ## Honest limits
 
-- Runs that meet butt against each other: no mitre, elbow or tee, and no connectors, so a pipe network cannot yet be
+- Runs that meet butt against each other: no mitre, elbow or tee, and no connectors on them or on a fitting, so a pipe network cannot yet be
   checked for continuity or sized. A fitting or a valve is a component of a family, placed by hand on a pipe's height; nothing
   says a pipe ends on it.
 - A run's `system` is a name and an `IfcSystem`, with no rules: nothing checks that a pipe of "Esgoto" meets only pipes of it.

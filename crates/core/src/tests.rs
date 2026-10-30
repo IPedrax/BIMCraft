@@ -1593,6 +1593,24 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"name": "D", "like": "nope", "witness": 5, "line_pen": 99, "color": "x", "font": "", "string": []}),
         json!({"name": "Diagonal - 2.5mm Arial", "rename": "Arrow - 2.5mm Arial", "delete": "x", "unknown": 1}),
         json!({"name": "Arrow - 2.5mm Arial", "delete": true}),
+        json!({"name": "V", "nominal": 1e300, "min": -1, "max": "x", "rename": "", "delete": 1}),
+        json!({"name": "230 V", "nominal": 230, "min": 5e-324, "max": f64::MAX}),
+        json!({"name": "230 V", "rename": "400 V", "nominal": [], "volts": 1}),
+        json!({"name": "230 V", "delete": true}),
+        json!({"name": "S", "phases": 300, "wires": -1, "l_l": [], "l_n": 5, "ground": {}}),
+        json!({"name": "S", "phases": 255, "wires": 255, "l_l": "400 V"}),
+        json!({"name": "230/400 V", "phases": 3, "wires": 4, "l_l": "nope", "ground": "PE"}),
+        json!({"name": "230/400 V", "l_l": "", "l_n": "", "l_g": "", "rename": "127/220 V"}),
+        json!({"name": "W", "material": "copper", "temperature": 1e300, "insulation": "x", "sizes": "x"}),
+        json!({"name": "W", "material": 5, "sizes": [{"section": -1, "ampacity": 1e300}, null, 5]}),
+        json!({"name": "W", "material": "copper", "temperature": 70, "insulation": "x", "sizes": [{"section": 1e-300, "ampacity": 5e-324, "label": 5}]}),
+        json!({"name": "Cu PVC 70 °C", "sizes": [{"section": 1, "ampacity": 1}], "rename": "Cu THW 75 °C"}),
+        json!({"name": "Cu PVC 70 °C", "delete": true}),
+        json!({"id": 100002, "distribution": "230/400 V", "mains": 1e300, "slots": u64::MAX, "supply_from": 100002}),
+        json!({"id": 100002, "distribution": ["x"], "mains": "", "slots": -1, "supply_from": {"a": 1}}),
+        json!({"id": 100002, "supply_from": u64::MAX, "mains": f64::MAX}),
+        json!({"id": u64::MAX, "distribution": "", "mains": 0, "slots": 0}),
+        json!({"id": 100002, "distribution": "nope", "volts": 230}),
         json!({"id": 100007, "segment": 1e300, "prefix": "x", "below": 5}),
         json!({"id": 100007, "segment": -1, "replace": "a\nb", "nope": 1}),
         json!({"id": 100007, "equal": "x", "locked": [1e300, -1, "a"]}),
@@ -1812,7 +1830,104 @@ fn hostile_params_never_panic_or_break_the_model() {
         m.elements.values().filter(|e| matches!(e, crate::model::Element::Section(_) | crate::model::Element::Elevation(_))).count()
     };
     assert_eq!(views(&base.model), 2, "the sweep's base has a section and an elevation to draw");
-    let hostile: Vec<Value> = hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).collect();
+    // A distribution board with a circuit of a luminaire, and a second luminaire and an outlet out of it, which the circuit payloads
+    // name: made after the views, so that no id the other payloads use moves.
+    let place = |s: &mut Session, family: &str| {
+        s.execute("component", &json!({"family": family, "at": [1500, 1500]})).ok().and_then(|r| r["id"].as_u64())
+    };
+    let ids = [
+        place(&mut base, "Distribution Board"),
+        place(&mut base, "Ceiling Luminaire"),
+        place(&mut base, "Ceiling Luminaire"),
+        place(&mut base, "Outlet"),
+    ];
+    let mut circuits: Vec<Value> = Vec::new();
+    if let [Some(b), Some(a), Some(l), Some(o)] = ids {
+        let _ = base.execute("panel", &json!({"id": b, "distribution": "127/220 V", "mains": 63, "slots": 24}));
+        if let Some(c) = base.execute("circuit", &json!({"devices": [a], "panel": b})).ok().and_then(|r| r["id"].as_u64()) {
+            circuits = vec![
+                json!({"id": c, "add": [a]}),
+                json!({"id": c, "add": [l]}),
+                json!({"id": c, "add": [b]}),
+                json!({"id": c, "remove": [l, o]}),
+                json!({"id": c, "rating": 1e300}),
+                json!({"id": c, "rating": 5e-324, "poles": 3}),
+                json!({"id": c, "panel": l}),
+                json!({"id": c, "voltage": "220 V", "demand_factor": 0}),
+                json!({"id": c, "wires": {"hot": {"wire_type": "Cu PVC 70 °C", "section": 1e-9}}}),
+                json!({"id": c, "wires": {"hot": {"wire_type": "Nope", "section": -1}, "neutral": 5}}),
+                json!({"id": c, "delete": true, "add": [l]}),
+                json!({"id": c, "delete": true}),
+                json!({"devices": [a, l, o, b], "panel": b}),
+                json!({"devices": [l], "panel": b, "voltage": "220 V", "poles": 3, "number": u32::MAX}),
+                json!({"devices": [l, l], "panel": b, "name": "x".repeat(300)}),
+                json!({"panel": b}),
+                json!({"list": true}),
+                json!({"id": b, "distribution": "nope"}),
+                json!({"ids": [c], "by": [1000, 0]}),
+            ];
+        }
+    }
+    // A panel schedule of that board, after the circuit, and what is thrown at it and at the demand factors.
+    let mut schedules: Vec<Value> = vec![
+        json!({"class": "lighting", "factor": 1e300}),
+        json!({"class": "lighting", "factor": 0}),
+        json!({"class": "", "factor": 0.5}),
+        json!({"class": "x".repeat(300), "factor": 0.5}),
+        json!({"class": "lighting", "delete": true}),
+    ];
+    if let Some(b) = ids[0] {
+        let v = base.execute("panel_schedule", &json!({"panel": b})).ok().and_then(|r| r["id"].as_u64());
+        schedules.extend([
+            json!({"panel": b, "template": "nope"}),
+            json!({"panel": b, "scale": 1e300}),
+            json!({"panel": b, "scale": 0}),
+            json!({"panel": b, "notes": "x".repeat(5000)}),
+            json!({"panel": b, "name": ""}),
+            json!({"panel": ids[1], "name": "x"}),
+            json!({"circuit": b, "description": "x"}),
+        ]);
+        if let Some(v) = v {
+            let c = circuits.first().and_then(|c| c["id"].as_u64());
+            schedules.extend([
+                json!({"id": v, "slot": u32::MAX, "mark": "spare"}),
+                json!({"id": v, "slot": 0, "mark": "space"}),
+                json!({"id": v, "slot": 1, "mark": "spare", "poles": 255}),
+                json!({"id": v, "slot": 1, "mark": 5}),
+                json!({"id": v, "template": "list", "show_spare": "yes"}),
+                json!({"id": v, "scale": 4, "phase_columns": false, "show_space": false}),
+                json!({"id": v, "panel": ids[1]}),
+                json!({"id": v, "circuit": c, "slot": u32::MAX}),
+                json!({"id": v, "circuit": c, "phase": "Z"}),
+                json!({"id": v, "circuit": c, "phase": 1e300}),
+                json!({"id": v, "circuit": c, "breaker": 1e300}),
+                json!({"id": v, "circuit": c, "demand_factor": -1}),
+                json!({"id": v, "circuit": c, "description": "x".repeat(300)}),
+                json!({"id": v, "circuit": b}),
+                json!({"id": v, "circuit": c, "slot": 2, "mark": "space"}),
+                json!({"id": b}),
+                json!({"id": v}),
+            ]);
+        }
+    }
+    // The rows of the families' categories, the old `component` one and a ceiling plan's opt-in, for `graphics`, `template`,
+    // `object_styles`, `tag` and `elements`.
+    let rows: Vec<Value> = vec![
+        json!({"hide": ["lighting"]}),
+        json!({"hide": ["component", "lighting", "outlet"], "ceiling": ["lighting", "cabletray"]}),
+        json!({"ceiling": ["grid"]}),
+        json!({"ceiling": 5}),
+        json!({"ceiling": [5]}),
+        json!({"ceiling": vec!["lighting"; 100]}),
+        json!({"categories": {"lighting": {"halftone": true, "transparency": 200}}}),
+        json!({"template": "Electrical – Ceiling"}),
+        json!({"name": "Electrical – Power", "ceiling": ["lighting"], "controls": ["categories"]}),
+        json!({"categories": {"lamp": {"cut": 3}}}),
+        json!({"categories": {"lighting": {"projection": 99}, "component": {"cut": 2}}}),
+        json!({"category": "lighting"}),
+    ];
+    let hostile: Vec<Value> =
+        hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(circuits).chain(schedules).chain(rows).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
@@ -1855,6 +1970,48 @@ fn hostile_params_never_panic_or_break_the_model() {
             draw_plans(&s.model);
         }
     }
+    // A family's connectors, each field of one given every hostile value, on a starter family (placed in the base, if the
+    // house has any) and on a new one; and far more connectors than a family may hold.
+    let values = [
+        json!(1e300),
+        json!(-1e300),
+        json!(f64::MAX),
+        json!(u64::MAX),
+        json!(-1),
+        json!(0),
+        json!(1.5),
+        json!(null),
+        json!(true),
+        json!([]),
+        json!([1, 2, 3, 4]),
+        json!([1e300, "Nope", null]),
+        json!({}),
+        json!("Nope"),
+        json!("1 / 0"),
+        json!("(".repeat(10_000)),
+        json!("x".repeat(100_000)),
+    ];
+    for name in ["Ceiling Luminaire", "Outlet", "Hostile"] {
+        for field in ["kind", "system", "poles", "voltage", "load_va", "power_factor", "classification", "id", "guid"] {
+            for v in &values {
+                let mut connector = json!({"kind": "power", "system": "power-balanced", "voltage": 127, "load_va": 10});
+                connector[field] = v.clone();
+                let p = json!({"name": name, "category": "lighting", "types": {"A": {}}, "connectors": [connector]});
+                let mut s = base.clone();
+                let _ = s.execute("component", &json!({"family": "Outlet", "at": [500, 500]}));
+                let made = s.execute("family", &p).is_ok();
+                assert_eq!(s.model.check(), Ok(()), "family {p} left a broken model");
+                if made {
+                    draw_plans(&s.model);
+                    let _ = s.execute("inspect", &json!({}));
+                }
+            }
+        }
+    }
+    let many: Vec<Value> = (0..100_000).map(|_| json!({"kind": "switch", "system": "switch"})).collect();
+    let mut s = base.clone();
+    assert!(s.execute("family", &json!({"name": "Hostile", "types": {"A": {}}, "connectors": many})).is_err());
+    assert_eq!(s.model.check(), Ok(()));
 }
 
 /// Draws every level's plan and ceiling plan, and every section and elevation, at the smallest size, which builds all that
@@ -5170,7 +5327,7 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
 }
 
 #[test]
-fn a_project_is_saved_as_format_11_and_one_of_format_4_to_10_opens_as_it_is_and_one_of_format_12_is_refused() {
+fn a_project_is_saved_as_format_15_and_one_of_format_4_to_14_opens_as_it_is_and_one_of_format_16_is_refused() {
     use crate::model::Model;
     // 5 added the scans a project holds and the point clouds that place them; 6 added detailing (lines, regions, groups,
     // repeating details, line and fill styles); 7 its CAD drawings and the imports that place them; 8 text types; 9 graphic line patterns; 10 dimensions to points and linear ones. Nothing in a file of 4
@@ -5181,32 +5338,32 @@ fn a_project_is_saved_as_format_11_and_one_of_format_4_to_10_opens_as_it_is_and_
     run(&mut s, "detail_line", json!({"start": [0, 0], "end": [1000, 0]}));
     let full = serde_json::to_value(&*s.model).unwrap();
     for v in [&empty, &full] {
-        assert_eq!(v["format"], 11, "a project is saved as format 11");
-        for old in [4, 5, 6, 7, 8, 9, 10] {
+        assert_eq!(v["format"], 15, "a project is saved as format 15");
+        for old in [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] {
             let mut was = v.clone();
             was["format"] = json!(old);
             let (m, left_out) = Model::read(&was.to_string()).unwrap();
-            assert_eq!((m.format, left_out.len(), m.elements.len()), (11, 0, v["elements"].as_object().unwrap().len()));
+            assert_eq!((m.format, left_out.len(), m.elements.len()), (15, 0, v["elements"].as_object().unwrap().len()));
         }
     }
     assert!(full["elements"].as_object().unwrap().len() > 5);
     // A newer file says what it is and what to do, even when nothing else in it is wrong.
     let mut newer = empty.clone();
-    newer["format"] = json!(12);
+    newer["format"] = json!(16);
     let e = Model::read(&newer.to_string()).unwrap_err();
     assert!(
-        e.contains("newer BIMCraft") && e.contains("file format 12") && e.contains("reads up to 11") && e.contains("update BIMCraft"),
+        e.contains("newer BIMCraft") && e.contains("file format 16") && e.contains("reads up to 15") && e.contains("update BIMCraft"),
         "{e}"
     );
     // A file of this format with a field it doesn't know is read without it, and says which.
     let mut odd = full.clone();
     odd["something_new"] = json!(true);
     let (m, left_out) = Model::read(&odd.to_string()).unwrap();
-    assert_eq!((m.format, left_out), (11, vec!["/something_new".to_string()]));
+    assert_eq!((m.format, left_out), (15, vec!["/something_new".to_string()]));
 }
 
 #[test]
-fn a_format_5_file_that_holds_elements_and_scans_migrates_to_11_and_keeps_both() {
+fn a_format_5_file_that_holds_elements_and_scans_migrates_to_15_and_keeps_both() {
     use crate::model::Model;
     let mut s = Session::new();
     house(&mut s);
@@ -5218,13 +5375,13 @@ fn a_format_5_file_that_holds_elements_and_scans_migrates_to_11_and_keeps_both()
     let mut file: serde_json::Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
     file["format"] = json!(5);
     let (m, left_out) = Model::read(&file.to_string()).unwrap();
-    assert_eq!((m.format, m.clouds.len(), left_out.len(), m.elements.len()), (11, 1, 0, s.model.elements.len()));
-    // Written again, it says 11.
-    assert_eq!(serde_json::from_str::<serde_json::Value>(&m.to_json().unwrap()).unwrap()["format"], 11);
+    assert_eq!((m.format, m.clouds.len(), left_out.len(), m.elements.len()), (15, 1, 0, s.model.elements.len()));
+    // Written again, it says 15.
+    assert_eq!(serde_json::from_str::<serde_json::Value>(&m.to_json().unwrap()).unwrap()["format"], 15);
     // A file of 6 (detailing, no CAD drawings) opens as 10 likewise.
     file["format"] = json!(6);
     let (m, left_out) = Model::read(&file.to_string()).unwrap();
-    assert_eq!((m.format, left_out.len(), m.elements.len()), (11, 0, s.model.elements.len()));
+    assert_eq!((m.format, left_out.len(), m.elements.len()), (15, 0, s.model.elements.len()));
 }
 
 #[test]

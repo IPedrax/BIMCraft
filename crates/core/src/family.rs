@@ -59,6 +59,34 @@ pub enum Category {
 }
 
 impl Category {
+    /// The name views know it by in Visibility/Graphics and Object Styles: its serialised name.
+    pub fn key(self) -> &'static str {
+        match self {
+            Category::Furniture => "furniture",
+            Category::Casework => "casework",
+            Category::Plumbing => "plumbing",
+            Category::Drain => "drain",
+            Category::PipeFitting => "pipefitting",
+            Category::PipeAccessory => "pipeaccessory",
+            Category::Equipment => "equipment",
+            Category::Outlet => "outlet",
+            Category::Switch => "switch",
+            Category::AirTerminal => "airterminal",
+            Category::Earthing => "earthing",
+            Category::InspectionBox => "inspectionbox",
+            Category::Lighting => "lighting",
+            Category::Generic => "generic",
+            Category::DataOutlet => "dataoutlet",
+            Category::VoiceOutlet => "voiceoutlet",
+            Category::PatchPanel => "patchpanel",
+            Category::Rack => "rack",
+            Category::Door => "door",
+            Category::Window => "window",
+        }
+    }
+}
+
+impl Category {
     /// The categories a component may be of (a door's or a window's family is placed in a wall), in the order an import reads
     /// them.
     pub const PLACED: [Category; 17] = [
@@ -105,6 +133,11 @@ impl Category {
             Category::Lighting => ("IFCLIGHTFIXTURE", OPEN, None),
             Category::Generic | Category::Door | Category::Window => ("IFCBUILDINGELEMENTPROXY", OPEN, None),
         }
+    }
+
+    /// Whether a device of it draws or switches a load, so its family should hold a connector that says how much.
+    pub fn electrical_device(self) -> bool {
+        matches!(self, Category::Lighting | Category::Outlet | Category::Switch)
     }
 
     /// The classes other tools write a product of it as, besides the one BIMCraft does.
@@ -245,6 +278,93 @@ pub struct Symbol {
     pub visible: Option<Expr>,
 }
 
+/// What a connector joins: `power` carries a load, `switch` only switches one.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ConnectorKind {
+    #[default]
+    Power,
+    Switch,
+}
+
+/// How a connector's load is shared among its poles: the same on each (`power-balanced`), or each its own
+/// (`power-unbalanced`); a `switch` has none.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConnectorSystem {
+    #[default]
+    PowerBalanced,
+    PowerUnbalanced,
+    Switch,
+}
+
+/// A connector's load in volt-amperes: one number (shared evenly among the poles), or, for an unbalanced connector,
+/// one for each pole.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Load {
+    One(Expr),
+    PerPhase(Vec<Expr>),
+}
+
+impl Default for Load {
+    fn default() -> Load {
+        Load::One(Expr::default())
+    }
+}
+
+/// Where a family joins a system, as Revit's connector does: what an electrical device draws, what a switch controls.
+/// `voltage`, `load_va` and `power_factor` are numbers or formulas over the family's parameters, so a type or a
+/// component can set them.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Connector {
+    /// Its id and GUID, as an element's: given when it's made, kept while it stays where it is in its list.
+    #[serde(default, skip_serializing_if = "crate::ids::unset")]
+    pub id: crate::ids::Id,
+    #[serde(default, skip_serializing_if = "crate::ids::Guid::is_nil")]
+    pub guid: crate::ids::Guid,
+    pub kind: ConnectorKind,
+    pub system: ConnectorSystem,
+    #[serde(default = "one_pole")]
+    pub poles: u8,
+    /// Volts.
+    #[serde(default)]
+    pub voltage: Expr,
+    #[serde(default)]
+    pub load_va: Load,
+    #[serde(default = "unity")]
+    pub power_factor: Expr,
+    /// What the device is for: `lighting`, `receptacle`…, as a schedule would group it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub classification: String,
+}
+
+fn one_pole() -> u8 {
+    1
+}
+
+fn unity() -> Expr {
+    Expr::Number(1.0)
+}
+
+/// A connector, worked out for one type and one component's values.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ConnectorValues {
+    pub id: crate::ids::Id,
+    pub guid: crate::ids::Guid,
+    pub kind: ConnectorKind,
+    pub system: ConnectorSystem,
+    pub poles: u8,
+    pub voltage: f64,
+    /// The whole load, VA: the phases' sum.
+    pub load_va: f64,
+    /// Each phase's load, VA; none for a switch.
+    pub load_va_by_phase: Vec<f64>,
+    pub power_factor: f64,
+    pub classification: String,
+}
+
 /// A solid of a family, in its own axes (x along the component's angle, y to its left, z up from
 /// its base): a profile drawn in `plane` and swept across it from `from` to `to`; or, with an
 /// `axis`, turned about it from `from` to `to` degrees; or triangles, as a file brings them. A
@@ -307,6 +427,9 @@ pub struct Family {
     /// How a door's or a window's leaves open, which IFC and schedules say; none, a door swings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub operation: Option<crate::model::Operation>,
+    /// Where it joins a system: an electrical device's load, a switch. At most one is `power`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub connectors: Vec<Connector>,
 }
 
 /// A parameter's value, worked out: a number (yes/no, 1 or 0), or a material's name.
@@ -348,6 +471,10 @@ pub const MAX_TRIANGLES: usize = 100_000;
 pub const MAX_PARAMETERS: usize = 64;
 pub const MAX_FORMS: usize = 256;
 pub const MAX_SYMBOLS: usize = 64;
+pub const MAX_CONNECTORS: usize = 8;
+/// The highest voltage and load a connector may hold: far past any real device, short of overflow.
+pub const MAX_VOLTAGE: f64 = 1.0e5;
+pub const MAX_LOAD_VA: f64 = 1.0e9;
 pub const MAX_TYPES: usize = 1000;
 /// The longest formula, in characters.
 pub const MAX_FORMULA: usize = 1024;
@@ -822,6 +949,7 @@ impl Family {
             ("parameters", self.parameters.len(), MAX_PARAMETERS),
             ("forms", self.forms.len(), MAX_FORMS),
             ("symbols", self.symbols.len(), MAX_SYMBOLS),
+            ("connectors", self.connectors.len(), MAX_CONNECTORS),
             ("types", self.types.len(), MAX_TYPES),
         ] {
             if n > most {
@@ -918,6 +1046,7 @@ impl Family {
         if symbol_exprs.into_iter().any(|e| matches!(e, Expr::Formula(f) if long(f))) {
             return Err(format!("a formula of a symbol is longer than {MAX_FORMULA} characters"));
         }
+        self.check_connectors()?;
         // Each formula read once across the types; past what a family may build, refused.
         let (mut read, mut built, mut cuts) = (HashMap::new(), 0, csg::Meter::default());
         for t in self.types.keys() {
@@ -934,6 +1063,109 @@ impl Family {
             }
         }
         Ok(())
+    }
+
+    /// Whether its connectors are sound: at most one `power`; each kind with its system, its poles and its numbers
+    /// in range, for every type.
+    fn check_connectors(&self) -> Result<(), String> {
+        if self.connectors.iter().filter(|c| c.kind == ConnectorKind::Power).count() > 1 {
+            return Err("it has two power connectors: keep one, a device draws its load through one".into());
+        }
+        let long = |e: &Expr| matches!(e, Expr::Formula(f) if f.chars().count() > MAX_FORMULA);
+        for (i, c) in self.connectors.iter().enumerate() {
+            let who = format!("connector {}", i + 1);
+            if c.classification.chars().count() > MAX_TEXT {
+                return Err(format!("{who}: its classification is longer than {MAX_TEXT} characters"));
+            }
+            let loads: &[Expr] = match &c.load_va {
+                Load::One(e) => std::slice::from_ref(e),
+                Load::PerPhase(v) => v,
+            };
+            if [&c.voltage, &c.power_factor].into_iter().chain(loads).any(long) {
+                return Err(format!("{who}: a formula of it is longer than {MAX_FORMULA} characters"));
+            }
+            match (c.kind, c.system) {
+                (ConnectorKind::Power, ConnectorSystem::PowerBalanced | ConnectorSystem::PowerUnbalanced)
+                | (ConnectorKind::Switch, ConnectorSystem::Switch) => {}
+                (ConnectorKind::Power, _) => {
+                    return Err(format!("{who}: a power connector's system is `power-balanced` or `power-unbalanced`, not `switch`"));
+                }
+                (ConnectorKind::Switch, _) => {
+                    return Err(format!("{who}: a switch connector's system is `switch`"));
+                }
+            }
+            if !(1..=3).contains(&c.poles) {
+                return Err(format!("{who}: poles are 1, 2 or 3, not {}", c.poles));
+            }
+            if let Load::PerPhase(v) = &c.load_va
+                && (c.system != ConnectorSystem::PowerUnbalanced || v.len() != usize::from(c.poles))
+            {
+                return Err(format!(
+                    "{who}: a load per phase is a list of one for each pole ({}) on a `power-unbalanced` connector; a balanced one takes a single load",
+                    c.poles
+                ));
+            }
+        }
+        for t in self.types.keys() {
+            self.connector_values(t, &BTreeMap::new()).map_err(|e| format!("type `{t}`: {e}"))?;
+        }
+        Ok(())
+    }
+
+    /// Its connectors, worked out for type `type_name` and a component's `instance` values.
+    pub fn connector_values(&self, type_name: &str, instance: &BTreeMap<String, Value>) -> Result<Vec<ConnectorValues>, String> {
+        if self.connectors.is_empty() {
+            return Ok(Vec::new());
+        }
+        let values = self.values(type_name, instance)?;
+        let mut read = HashMap::new();
+        let mut out = Vec::new();
+        for (i, c) in self.connectors.iter().enumerate() {
+            let who = format!("connector {}", i + 1);
+            let said = |what: &str, e: String| format!("{who}: its {what}: {e}");
+            let voltage = number(&c.voltage, &values, &mut read).map_err(|e| said("voltage", e))?;
+            let power_factor = number(&c.power_factor, &values, &mut read).map_err(|e| said("power factor", e))?;
+            let by_phase = match &c.load_va {
+                Load::One(e) => {
+                    let all = number(e, &values, &mut read).map_err(|e| said("load", e))?;
+                    if c.kind == ConnectorKind::Switch {
+                        if all != 0.0 {
+                            return Err(format!("{who}: a switch carries no load; leave `load_va` out"));
+                        }
+                        Vec::new()
+                    } else {
+                        vec![all / f64::from(c.poles.max(1)); usize::from(c.poles)]
+                    }
+                }
+                Load::PerPhase(v) => {
+                    v.iter().map(|e| number(e, &values, &mut read).map_err(|e| said("load", e))).collect::<Result<_, _>>()?
+                }
+            };
+            if c.kind == ConnectorKind::Power {
+                if voltage <= 0.0 || voltage > MAX_VOLTAGE {
+                    return Err(format!("{who}: its voltage is {voltage} V; it takes more than 0 and up to {MAX_VOLTAGE}"));
+                }
+                if power_factor <= 0.0 || power_factor > 1.0 {
+                    return Err(format!("{who}: its power factor is {power_factor}; it takes more than 0 and up to 1"));
+                }
+                if let Some(x) = by_phase.iter().find(|x| !(0.0..=MAX_LOAD_VA).contains(*x)) {
+                    return Err(format!("{who}: its load is {x} VA; it takes 0 up to {MAX_LOAD_VA}"));
+                }
+            }
+            out.push(ConnectorValues {
+                id: c.id,
+                guid: c.guid,
+                kind: c.kind,
+                system: c.system,
+                poles: c.poles,
+                voltage,
+                load_va: by_phase.iter().sum(),
+                load_va_by_phase: by_phase,
+                power_factor,
+                classification: c.classification.clone(),
+            });
+        }
+        Ok(out)
     }
 
     /// Its visible forms' solids, sized by `values`, less what its voids cut.
@@ -1998,5 +2230,104 @@ mod tests {
         let (pieces, took) = worked;
         let pieces = pieces.unwrap();
         assert!(volume(&pieces[0].tris) > 0.0 && took.as_secs_f64() < 10.0, "{took:?}: a hang, not a slow machine");
+    }
+    /// A one-type lighting family holding `connectors`.
+    fn lamp(connectors: Value) -> Family {
+        serde_json::from_value(json!({
+            "category": "lighting",
+            "parameters": [{"name": "Load", "kind": "number", "value": 0}],
+            "types": {"9 W": {"Load": 9}, "18 W": {"Load": 18}},
+            "connectors": connectors
+        }))
+        .unwrap()
+    }
+
+    fn power() -> Value {
+        json!({"kind": "power", "system": "power-balanced", "poles": 1, "voltage": 127, "load_va": "Load", "power_factor": 0.9,
+               "classification": "lighting"})
+    }
+
+    #[test]
+    fn a_family_holds_connectors_and_a_connector_reads_its_load_from_the_type() {
+        let f = lamp(json!([power()]));
+        assert_eq!(f.check(&|_| true), Ok(()));
+        for (t, load) in [("9 W", 9.0), ("18 W", 18.0)] {
+            let c = f.connector_values(t, &BTreeMap::new()).unwrap();
+            assert_eq!(c.len(), 1);
+            assert_eq!((c[0].kind, c[0].system, c[0].poles), (ConnectorKind::Power, ConnectorSystem::PowerBalanced, 1));
+            assert_eq!((c[0].voltage, c[0].load_va, c[0].power_factor), (127.0, load, 0.9));
+            assert_eq!((c[0].load_va_by_phase.clone(), c[0].classification.as_str()), (vec![load], "lighting"));
+        }
+        // Written back as it was read, so a loaded family file keeps them.
+        let back: Family = serde_json::from_value(serde_json::to_value(&f).unwrap()).unwrap();
+        assert_eq!(back, f);
+    }
+
+    #[test]
+    fn a_family_without_connectors_is_as_it_was() {
+        let f: Family = serde_json::from_value(json!({"types": {"A": {}}})).unwrap();
+        assert!(f.connectors.is_empty());
+        assert_eq!(f.check(&|_| true), Ok(()));
+        assert!(serde_json::to_value(&f).unwrap().get("connectors").is_none(), "an empty list isn't written");
+        assert!(f.connector_values("A", &BTreeMap::new()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn two_power_connectors_are_refused_and_the_message_says_so() {
+        let e = lamp(json!([power(), power()])).check(&|_| true).unwrap_err();
+        assert!(e.contains("two power connectors") && e.contains("keep one"), "{e}");
+        // A switch beside a power connector is no second power connector.
+        let sw = json!({"kind": "switch", "system": "switch"});
+        assert_eq!(lamp(json!([power(), sw])).check(&|_| true), Ok(()));
+    }
+
+    #[test]
+    fn a_connector_is_checked_for_what_it_says() {
+        let bad = |change: Value, says: &str| {
+            let mut c = power();
+            c.as_object_mut().unwrap().extend(change.as_object().unwrap().clone());
+            let e = lamp(json!([c])).check(&|_| true).unwrap_err();
+            assert!(e.contains(says), "{change}: {e}");
+        };
+        bad(json!({"system": "switch"}), "system");
+        bad(json!({"poles": 0}), "poles");
+        bad(json!({"poles": 4}), "poles");
+        bad(json!({"voltage": 0}), "voltage");
+        bad(json!({"voltage": -127}), "voltage");
+        bad(json!({"voltage": 1e12}), "voltage");
+        bad(json!({"power_factor": 0}), "power factor");
+        bad(json!({"power_factor": 1.5}), "power factor");
+        bad(json!({"load_va": -1}), "load");
+        bad(json!({"load_va": 1e300}), "load");
+        bad(json!({"load_va": "Nope"}), "Nope");
+        bad(json!({"load_va": [1, 2]}), "per phase");
+        bad(json!({"classification": "x".repeat(MAX_TEXT + 1)}), "classification");
+        let sw = |extra: Value| {
+            let mut c = json!({"kind": "switch", "system": "switch"});
+            c.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+            lamp(json!([c])).check(&|_| true)
+        };
+        assert_eq!(sw(json!({})), Ok(()));
+        assert!(sw(json!({"load_va": 10})).unwrap_err().contains("switch"));
+        assert!(sw(json!({"system": "power-balanced"})).unwrap_err().contains("system"));
+        let many: Vec<Value> = (0..=MAX_CONNECTORS).map(|_| json!({"kind": "switch", "system": "switch"})).collect();
+        assert!(lamp(json!(many)).check(&|_| true).unwrap_err().contains("connectors"));
+    }
+
+    #[test]
+    fn an_unbalanced_connector_may_load_each_phase_differently() {
+        let f = lamp(json!([{"kind": "power", "system": "power-unbalanced", "poles": 3, "voltage": 220,
+                              "load_va": [1000, 2000, "Load"], "power_factor": 0.8}]));
+        assert_eq!(f.check(&|_| true), Ok(()));
+        let c = &f.connector_values("9 W", &BTreeMap::new()).unwrap()[0];
+        assert_eq!(c.load_va_by_phase, vec![1000.0, 2000.0, 9.0]);
+        assert_eq!(c.load_va, 3009.0);
+        // A single number is shared out evenly; a balanced connector takes no list.
+        let shared = lamp(json!([{"kind": "power", "system": "power-unbalanced", "poles": 3, "voltage": 220, "load_va": 3000}]));
+        assert_eq!(shared.connector_values("9 W", &BTreeMap::new()).unwrap()[0].load_va_by_phase, vec![1000.0; 3]);
+        let e = lamp(json!([{"kind": "power", "system": "power-balanced", "poles": 3, "voltage": 220, "load_va": [1, 2, 3]}]))
+            .check(&|_| true)
+            .unwrap_err();
+        assert!(e.contains("balanced"), "{e}");
     }
 }

@@ -55,6 +55,12 @@ pub enum Kind {
     /// A named set of parameters for `reinforce`, for one kind of host.
     ReinforcementPreset,
     DimensionType,
+    /// A voltage the electrical settings define, with the band a device may read within.
+    Voltage,
+    /// A distribution system, which names the voltages it supplies.
+    DistributionSystem,
+    /// A wire type, with the ampacity of each section.
+    WireType,
 }
 
 impl Kind {
@@ -84,6 +90,9 @@ impl Kind {
             Kind::TextType => "text type".into(),
             Kind::ReinforcementPreset => "reinforcement preset".into(),
             Kind::DimensionType => "dimension type".into(),
+            Kind::Voltage => "voltage".into(),
+            Kind::DistributionSystem => "distribution system".into(),
+            Kind::WireType => "wire type".into(),
         }
     }
 
@@ -111,6 +120,9 @@ impl Kind {
             "text-type" => Kind::TextType,
             "reinforcement-preset" => Kind::ReinforcementPreset,
             "dimension-type" => Kind::DimensionType,
+            "voltage" => Kind::Voltage,
+            "distribution-system" => Kind::DistributionSystem,
+            "wire-type" => Kind::WireType,
             _ => Kind::Type(s.strip_prefix("type:")?.to_string()),
         })
     }
@@ -142,6 +154,9 @@ impl fmt::Display for Kind {
             Kind::TextType => f.write_str("text-type"),
             Kind::ReinforcementPreset => f.write_str("reinforcement-preset"),
             Kind::DimensionType => f.write_str("dimension-type"),
+            Kind::Voltage => f.write_str("voltage"),
+            Kind::DistributionSystem => f.write_str("distribution-system"),
+            Kind::WireType => f.write_str("wire-type"),
         }
     }
 }
@@ -169,7 +184,7 @@ pub struct Entry {
 }
 
 /// A part of a library entry, with an id and a GUID of its own that it holds itself, kept while it stays where it is
-/// in its list: a type's layer, a family's form or plan symbol. `what` it is, what it's `of` and its place there.
+/// in its list: a type's layer, a family's form, plan symbol or connector. `what` it is, what it's `of` and its place there.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Part {
     pub what: &'static str,
@@ -199,6 +214,12 @@ impl HasPart for crate::model::Layer {
 }
 
 impl HasPart for crate::family::Form {
+    fn ident(&mut self) -> (&mut Id, &mut Guid) {
+        (&mut self.id, &mut self.guid)
+    }
+}
+
+impl HasPart for crate::family::Connector {
     fn ident(&mut self) -> (&mut Id, &mut Guid) {
         (&mut self.id, &mut self.guid)
     }
@@ -586,6 +607,9 @@ impl Model {
         add(Kind::TextType, &mut self.text_types.keys());
         add(Kind::ReinforcementPreset, &mut self.reinforcement.keys());
         add(Kind::DimensionType, &mut self.dimension_types.keys());
+        add(Kind::Voltage, &mut self.voltages.keys());
+        add(Kind::DistributionSystem, &mut self.distribution_systems.keys());
+        add(Kind::WireType, &mut self.wire_types.keys());
         out
     }
 
@@ -622,6 +646,7 @@ impl Model {
         for (n, f) in &self.families {
             add("form", "family", n, f.forms.iter().map(|x| (x.id, x.guid)).collect());
             add("symbol", "family", n, f.symbols.iter().map(|x| (x.id, x.guid)).collect());
+            add("connector", "family", n, f.connectors.iter().map(|x| (x.id, x.guid)).collect());
         }
         for (n, g) in &self.detail_groups {
             add("member", "detail group", n, g.members.iter().map(|x| (x.id, x.guid)).collect());
@@ -745,6 +770,7 @@ impl Model {
         for f in self.families.values_mut() {
             f.forms.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
             f.symbols.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
+            f.connectors.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
         }
         for g in self.detail_groups.values_mut() {
             g.members.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
@@ -814,6 +840,7 @@ impl Model {
         for f in self.families.values_mut() {
             f.forms.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
             f.symbols.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+            f.connectors.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
         }
         for g in self.detail_groups.values_mut() {
             g.members.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
@@ -962,7 +989,22 @@ impl crate::model::Element {
                 Some(family) => family_and_type(family, &mut o.type_name, f),
                 None => f(&Kind::Type(category), &mut o.type_name),
             },
-            Element::Component(c) => family_and_type(&mut c.family, &mut c.type_name, f),
+            Element::Circuit(c) => {
+                for v in c.voltages_mut() {
+                    f(&Kind::Voltage, v);
+                }
+                if let Some(w) = &mut c.wires {
+                    for t in w.wire_types_mut() {
+                        f(&Kind::WireType, t);
+                    }
+                }
+            }
+            Element::Component(c) => {
+                family_and_type(&mut c.family, &mut c.type_name, f);
+                if let Some(d) = c.panel.as_mut().and_then(|p| p.distribution.as_mut()) {
+                    f(&Kind::DistributionSystem, d);
+                }
+            }
             Element::PointCloud(pc) => f(&Kind::Cloud, &mut pc.cloud),
             Element::DetailLine(l) => f(&Kind::LineStyle, &mut l.style),
             Element::DetailGroup(g) => f(&Kind::DetailGroup, &mut g.type_name),
@@ -1014,7 +1056,7 @@ impl Model {
     /// Each name the model holds of a library entry, given to `f` with what it names, which may put another in its place:
     /// its elements' ([`Element::lib_refs_mut`](crate::model::Element::lib_refs_mut)), its types' layers' and runs'
     /// materials, its materials' pictures, its view filters' rules, its view templates' graphics, its option sets'
-    /// primaries. (A family's forms name their materials themselves.)
+    /// primaries, its distribution systems' voltages. (A family's forms name their materials themselves.)
     pub fn lib_refs_mut(&mut self, f: &mut dyn FnMut(&Kind, &mut String)) {
         for e in self.elements.values_mut() {
             e.lib_refs_mut(f);
@@ -1069,6 +1111,11 @@ impl Model {
         for x in self.materials.values_mut() {
             for p in [&mut x.cut_pattern, &mut x.surface_pattern].into_iter().flatten() {
                 f(&Kind::FillPattern, p);
+            }
+        }
+        for d in self.distribution_systems.values_mut() {
+            for v in d.voltages_mut() {
+                f(&Kind::Voltage, v);
             }
         }
     }

@@ -236,6 +236,25 @@ pub fn category(category: &str, several: bool) -> String {
         "link" => (msg!("category", "Linked Model"), msg!("category-plural", "Linked Models")),
         "pointcloud" => (msg!("category", "Point Cloud"), msg!("category-plural", "Point Clouds")),
         "cadimport" => (msg!("category", "CAD Import"), msg!("category-plural", "CAD Imports")),
+        "equipment" => (msg!("category", "Electrical Equipment"), msg!("category-plural", "Electrical Equipment")),
+        "outlet" => (msg!("category", "Outlet"), msg!("category-plural", "Outlets")),
+        "switch" => (msg!("category", "Switch"), msg!("category-plural", "Switches")),
+        "lighting" => (msg!("category", "Lighting Fixture"), msg!("category-plural", "Lighting Fixtures")),
+        "dataoutlet" => (msg!("category", "Data Outlet"), msg!("category-plural", "Data Outlets")),
+        "voiceoutlet" => (msg!("category", "Voice Outlet"), msg!("category-plural", "Voice Outlets")),
+        "patchpanel" => (msg!("category", "Patch Panel"), msg!("category-plural", "Patch Panels")),
+        "rack" => (msg!("category", "Rack"), msg!("category-plural", "Racks")),
+        "airterminal" => (msg!("category", "Air Terminal"), msg!("category-plural", "Air Terminals")),
+        "earthing" => (msg!("category", "Earthing Electrode"), msg!("category-plural", "Earthing Electrodes")),
+        "inspectionbox" => (msg!("category", "Inspection Box"), msg!("category-plural", "Inspection Boxes")),
+        "plumbing" => (msg!("category", "Plumbing Fixture"), msg!("category-plural", "Plumbing Fixtures")),
+        "drain" => (msg!("category", "Drain"), msg!("category-plural", "Drains")),
+        "pipefitting" => (msg!("category", "Pipe Fitting"), msg!("category-plural", "Pipe Fittings")),
+        "pipeaccessory" => (msg!("category", "Pipe Accessory"), msg!("category-plural", "Pipe Accessories")),
+        "furniture" => (msg!("category", "Furniture"), msg!("category-plural", "Furniture")),
+        "casework" => (msg!("category", "Casework"), msg!("category-plural", "Casework")),
+        "generic" => (msg!("category", "Generic Model"), msg!("category-plural", "Generic Models")),
+        "circuit" => (msg!("category", "Circuit"), msg!("category-plural", "Circuits")),
         other => return other.to_string(),
     };
     tc(if several { "category-plural" } else { "category" }, if several { many } else { one }).to_string()
@@ -272,7 +291,8 @@ mod tests {
         );
         assert_eq!(tf("Save changes to {}?", &["house"]), "是否将更改保存到 house？");
         assert_eq!((category("wall", true), category("wall", false), category("spot", false)), ("墙".into(), "墙".into(), "高程点".into()));
-        assert_eq!(category("airterminal", true), "airterminal", "a category without a name is its key, as in the other languages");
+        assert_eq!(category("bogus", true), "bogus", "a category without a name is its key, as in the other languages");
+        assert_eq!(category("airterminal", true), "接闪器", "and a new row has its own");
         assert_eq!((Lang::Chinese.label(), Lang::Portuguese.label()), ("简体中文", "Português (Brasil)"));
         set(Lang::English);
         assert_eq!(

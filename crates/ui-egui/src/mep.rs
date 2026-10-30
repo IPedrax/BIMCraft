@@ -10,7 +10,7 @@ use egui::Ui;
 
 use crate::icons::Icon;
 use crate::structure::same_tool;
-use crate::{BimApp, Tool, big_button, panel};
+use crate::{BimApp, Status, Tool, big_button, lang::t, panel};
 
 /// A fixture tool: the families of `kinds` are what it places, listed in its Type Selector, turned by Space.
 pub(crate) struct FixtureTool {
@@ -180,11 +180,37 @@ impl BimApp {
         (f.map_or(Icon::Component, |f| f.icon), f.map_or("", |f| f.label), f.map_or("", |f| f.tip), Tool::Fixture(key))
     }
 
+    /// A circuit of the selected devices on the selected distribution board (one board and at least one device).
+    pub(crate) fn create_circuit(&mut self) {
+        let m = &self.session.model;
+        let (boards, devices): (Vec<_>, Vec<_>) =
+            self.selection.iter().copied().partition(|id| bimcraft_core::electrical::board(m, *id).is_some());
+        let [board] = boards[..] else {
+            self.status = Status { text: t("Select one distribution board and the devices on its circuit.").into(), error: true };
+            return;
+        };
+        if devices.is_empty() {
+            self.status = Status { text: t("Select the devices of the circuit along with its board.").into(), error: true };
+            return;
+        }
+        if let Some(made) = self.run("circuit", serde_json::json!({"panel": board, "devices": devices})) {
+            self.selection = made["id"].as_u64().into_iter().collect();
+        }
+    }
+
     /// The Electrical tab: Revit's Electrical panel, a board, a device and a luminaire, and the conduit, tray and wire between.
     pub(crate) fn electrical_tab(&mut self, ui: &mut Ui) {
         self.tools(ui, "Select", &[(Icon::Modify, "Modify", "Modify (MD): select elements", Tool::Modify)]);
         panel(ui, "Electrical", |ui| {
             self.buttons(ui, &[Self::fixture_button("equipment"), Self::fixture_button("device"), Self::fixture_button("lighting")]);
+            let tip = msg!("Create Circuit: the selected devices on the selected distribution board, behind one breaker");
+            if big_button(ui, Icon::Wire, "Create Circuit", false, tip).clicked() {
+                self.create_circuit();
+            }
+            let tip = msg!("Panel Schedule: the load schedule of the selected distribution board, a view that goes on a sheet");
+            if big_button(ui, Icon::Schedule, "Panel Schedule", false, tip).clicked() {
+                self.make_panel_schedule();
+            }
         });
         panel(ui, msg!("Conduit & Wire"), |ui| {
             let conduit = (

@@ -49,7 +49,7 @@ impl ObjectStyle {
 
 /// An error saying what to fix, unless `category` is one Object Styles has: a model category views draw.
 pub fn known(category: &str) -> Result<(), String> {
-    if MODEL.contains(&category) {
+    if MODEL.contains(&category) || crate::graphics::ALIAS.contains(&category) {
         Ok(())
     } else {
         Err(format!("`{category}` isn't a model category; Object Styles has: {}", MODEL.join(", ")))
@@ -57,9 +57,11 @@ pub fn known(category: &str) -> Result<(), String> {
 }
 
 impl Model {
-    /// The pens `category` draws in: the project's own, or what it starts with.
+    /// The pens `category` draws in: the project's own, or what it starts with. A family's category with none of its own has
+    /// the `component` ones a file from before the families' rows may hold.
     pub fn object_style(&self, category: &str) -> ObjectStyle {
-        self.object_styles.get(category).copied().unwrap_or_else(|| default_of(category))
+        let old = crate::graphics::FAMILY.contains(&category).then(|| self.object_styles.get("component").copied()).flatten();
+        self.object_styles.get(category).copied().or(old).unwrap_or_else(|| default_of(category))
     }
 }
 

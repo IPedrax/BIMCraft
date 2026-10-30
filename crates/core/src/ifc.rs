@@ -14,6 +14,7 @@ use bimcraft_i18n::ui_msg;
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
+use crate::family::ConnectorKind;
 use crate::geom::{self, P2};
 use serde_json::Value;
 
@@ -58,6 +59,22 @@ const LOFTED: u64 = 47;
 const LOFTED_DEFINES: u64 = 48;
 const QUANTITIES: u64 = 49;
 const QUANTITY_DEFINES: u64 = 50;
+const DEVICE: u64 = 51;
+const DEVICE_DEFINES: u64 = 52;
+const CONNECTOR: u64 = 53;
+const CONNECTOR_DEFINES: u64 = 54;
+const PANEL_PROPERTIES: u64 = 55;
+const PANEL_DEFINES: u64 = 56;
+const DISTRIBUTION: u64 = 57;
+const DISTRIBUTION_MEMBERS: u64 = 58;
+const DISTRIBUTION_SERVES: u64 = 59;
+const CIRCUIT_MEMBERS: u64 = 61;
+const CIRCUIT_PARTS: u64 = 62;
+const CIRCUIT_PROPERTIES: u64 = 63;
+const CIRCUIT_DEFINES: u64 = 64;
+const BREAKER: u64 = 65;
+const BREAKER_PROPERTIES: u64 = 66;
+const BREAKER_DEFINES: u64 = 67;
 
 /// The property set an element's values of the project's parameters go in.
 pub const PARAMETERS: &str = "Project Parameters";
@@ -65,12 +82,26 @@ pub const PARAMETERS: &str = "Project Parameters";
 /// The property set a run's justification and category go in (its system is an IfcSystem it is assigned to).
 pub const RUN: &str = "BIMCraft_Run";
 
+/// The property set a distribution board's data goes in: `Mains` (amperes), `Slots`, `DistributionSystem` (its name) and `SupplyFrom`
+/// (the GlobalId of the board that supplies it). The system is also an IfcDistributionSystem the board is assigned to, which is
+/// what another tool reads it from.
+pub const PANEL: &str = "BIMCraft_Panel";
+
+/// The property set a circuit's own data goes in, on its `IfcDistributionCircuit`: `Number`, `Rating` (the breaker, amperes), `Poles`,
+/// `Voltage` (the name, when it names one), `Classification`, `DemandFactor`, `Panel` (the GlobalId of its board, which is the
+/// board's GUID) and `Wires` (JSON). Its devices are what is assigned to it, with its breaker, an `IfcProtectiveDevice`.
+pub const CIRCUIT_SET: &str = "BIMCraft_Circuit";
+
 /// The property set a lofted mass records how its footprint and its top outline pair up in, corner for corner (the body is
 /// a closed face set that doesn't say): `Loft`, JSON `{bottom, top}`.
 pub const LOFT: &str = "BIMCraft_Mass";
 
 /// The object type a room separation line's virtual element carries, which the import reads it back by.
 pub const SEPARATION: &str = "RoomSeparation";
+
+/// The property set what a placed device's connector says that IFC's `Pset_ElectricalDeviceCommon` has no property for goes
+/// in: its load in VA (in all, and `LoadVAPhase1`… for each phase), its system and its classification.
+pub const CONNECTOR_SET: &str = "BIMCraft_Connector";
 
 /// The property set an element's phase and design option go in; on the project, its phases and design option sets.
 pub const PHASING: &str = "BIMCraft_Phasing";
@@ -597,6 +628,8 @@ pub fn export(m: &Model) -> String {
     let mut bars: Vec<(Guid, Option<Id>, u64)> = Vec::new();
     // The runs in each system, by its name, for the IfcSystem they are assigned to.
     let mut systems: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
+    // The boards on each distribution system, by its name, for the IfcDistributionSystem they are assigned to.
+    let mut distribution: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
     // The doors and windows in each wall as (width, height, sill), for what its sides measure less them.
     let mut holes: BTreeMap<Id, Vec<(f64, f64, f64)>> = BTreeMap::new();
     for e in m.elements.values() {
@@ -889,6 +922,30 @@ pub fn export(m: &Model) -> String {
                 };
                 if let Some(r) = relating {
                     w.add(format!("IFCRELASSOCIATESMATERIAL({},$,$,$,(#{ent}),#{r})", w.guid(COMPONENT_MATERIALS, id)));
+                }
+                // A board's own data: in a property set of BIMCraft's, and its system an IfcDistributionSystem it is assigned to.
+                if let Some(panel) = &cp.panel {
+                    let mut props = Vec::new();
+                    if let Some(amps) = panel.mains {
+                        props.push(w.add(format!("IFCPROPERTYSINGLEVALUE('Mains',$,IFCELECTRICCURRENTMEASURE({}),$)", real(amps))));
+                    }
+                    if let Some(n) = panel.slots {
+                        props.push(w.add(format!("IFCPROPERTYSINGLEVALUE('Slots',$,IFCINTEGER({n}),$)")));
+                    }
+                    if let Some(name) = &panel.distribution {
+                        props.push(w.text_property("DistributionSystem", None, name));
+                        distribution.entry(name).or_default().push(ent);
+                    }
+                    if let Some(up) = panel.supply_from {
+                        props.push(w.text_property(
+                            "SupplyFrom",
+                            Some("The GlobalId of the board that supplies this one"),
+                            &compress(up.as_u128()),
+                        ));
+                    }
+                    if !props.is_empty() {
+                        w.define(ent, PANEL, &props, (PANEL_PROPERTIES, PANEL_DEFINES), id);
+                    }
                 }
             }
             Element::Stair(st) => {
@@ -1239,6 +1296,62 @@ pub fn export(m: &Model) -> String {
         let system = w.add(format!("IFCSYSTEM({},$,{},$,$)", w.guid(SYSTEMS, key), s(name)));
         w.add(format!("IFCRELASSIGNSTOGROUP({},$,$,$,({}),$,#{system})", w.guid(SYSTEM_MEMBERS, key), refs(members)));
     }
+    // A distribution system is an IfcDistributionSystem, electrical, its boards assigned to it and the building it serves.
+    let mut distribution_entity: BTreeMap<&str, u64> = BTreeMap::new();
+    for (name, members) in &distribution {
+        let key = name.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3));
+        let system = w.add(format!("IFCDISTRIBUTIONSYSTEM({},$,{},$,$,$,.ELECTRICAL.)", w.guid(DISTRIBUTION, key), s(name)));
+        distribution_entity.insert(name, system);
+        w.add(format!("IFCRELASSIGNSTOGROUP({},$,$,$,({}),$,#{system})", w.guid(DISTRIBUTION_MEMBERS, key), refs(members)));
+        w.add(format!("IFCRELSERVICESBUILDINGS({},$,$,$,#{system},(#{building}))", w.guid(DISTRIBUTION_SERVES, key)));
+    }
+    // A circuit is an IfcDistributionCircuit in the system of its board: its devices assigned to it with its breaker (an
+    // IfcProtectiveDevice, which has no place of its own), and the rest of what it holds in a property set of BIMCraft's.
+    for (&id, e) in m.elements.iter() {
+        let Element::Circuit(c) = e else { continue };
+        let Some(board) = m.elements.id(c.panel) else { continue };
+        let name = if c.name.trim().is_empty() { format!("Circuit {}", c.number) } else { c.name.clone() };
+        let circuit = w.add(format!("IFCDISTRIBUTIONCIRCUIT({},$,{},$,$,$,.ELECTRICAL.)", w.guid(ELEMENT, id), s(&name)));
+        let breaker = w.add(format!(
+            "IFCPROTECTIVEDEVICE({},$,{},$,$,$,$,$,.CIRCUITBREAKER.)",
+            w.guid(BREAKER, id),
+            s(&format!("Breaker {}", c.number))
+        ));
+        let device = [
+            w.add(format!("IFCPROPERTYSINGLEVALUE('NumberOfPoles',$,IFCINTEGER({}),$)", c.poles)),
+            w.add(format!("IFCPROPERTYSINGLEVALUE('RatedCurrent',$,IFCELECTRICCURRENTMEASURE({}),$)", real(c.rating_a))),
+        ];
+        w.define(breaker, "Pset_ElectricalDeviceCommon", &device, (BREAKER_PROPERTIES, BREAKER_DEFINES), id);
+        let mut members: Vec<u64> = c.devices.iter().filter_map(|g| products.get(&m.elements.id(*g)?).copied()).collect();
+        members.push(breaker);
+        w.add(format!("IFCRELASSIGNSTOGROUP({},$,$,$,({}),$,#{circuit})", w.guid(CIRCUIT_MEMBERS, id), refs(&members)));
+        let system = match m.elements.get(board) {
+            Some(Element::Component(b)) => {
+                b.panel.as_ref().and_then(|p| p.distribution.as_deref()).and_then(|d| distribution_entity.get(d))
+            }
+            _ => None,
+        };
+        if let Some(system) = system {
+            w.add(format!("IFCRELAGGREGATES({},$,$,$,#{system},(#{circuit}))", w.guid(CIRCUIT_PARTS, id)));
+        }
+        let mut props = vec![
+            w.add(format!("IFCPROPERTYSINGLEVALUE('Number',$,IFCINTEGER({}),$)", c.number)),
+            w.add(format!("IFCPROPERTYSINGLEVALUE('Rating',$,IFCELECTRICCURRENTMEASURE({}),$)", real(c.rating_a))),
+            w.add(format!("IFCPROPERTYSINGLEVALUE('Poles',$,IFCINTEGER({}),$)", c.poles)),
+            w.add(format!("IFCPROPERTYSINGLEVALUE('DemandFactor',$,IFCREAL({}),$)", real(c.demand_factor))),
+            w.text_property("Panel", Some("The GlobalId of the board it is on"), &compress(c.panel.as_u128())),
+        ];
+        if let Some(v) = &c.voltage {
+            props.push(w.text_property("Voltage", None, v));
+        }
+        if !c.classification.is_empty() {
+            props.push(w.text_property("Classification", None, &c.classification));
+        }
+        if let Some(wires) = c.wires.as_ref().and_then(|x| serde_json::to_string(x).ok()) {
+            props.push(w.text_property("Wires", Some("JSON: the section of each conductor, mm², in a wire type of the project"), &wires));
+        }
+        w.define(circuit, CIRCUIT_SET, &props, (CIRCUIT_PROPERTIES, CIRCUIT_DEFINES), id);
+    }
     for (level, (storey, _)) in &storeys {
         if let Some(items) = contained.get(level) {
             w.add(format!(
@@ -1278,6 +1391,34 @@ pub fn export(m: &Model) -> String {
         if !props.is_empty() {
             w.define(ent, PARAMETERS, &props, (PROPERTIES, DEFINES), id);
         }
+    }
+    // A placed device's connector (the power one, else the first): `Pset_ElectricalDeviceCommon`, with the poles, and for a power
+    // connector the power factor and the voltage (IFC4's types: a ratio, and a bounded value with its set point), and `BIMCraft_Connector` with what IFC has no property for.
+    for (&id, &ent) in &products {
+        let Some(Element::Component(cp)) = m.elements.get(id) else { continue };
+        let Some(connectors) = m.families.get(&cp.family).and_then(|f| f.connector_values(&cp.type_name, &cp.params).ok()) else {
+            continue;
+        };
+        let Some(c) = connectors.iter().find(|c| c.kind == ConnectorKind::Power).or(connectors.first()) else { continue };
+        let power = c.kind == ConnectorKind::Power;
+        let mut device = vec![w.add(format!("IFCPROPERTYSINGLEVALUE('NumberOfPoles',$,IFCINTEGER({}),$)", c.poles))];
+        if power {
+            device.push(w.add(format!("IFCPROPERTYSINGLEVALUE('PowerFactor',$,IFCNORMALISEDRATIOMEASURE({}),$)", real(c.power_factor))));
+            device.push(w.add(format!("IFCPROPERTYBOUNDEDVALUE('RatedVoltage',$,$,$,$,IFCELECTRICVOLTAGEMEASURE({}))", real(c.voltage))));
+        }
+        w.define(ent, "Pset_ElectricalDeviceCommon", &device, (DEVICE, DEVICE_DEFINES), id);
+        let system = serde_json::to_value(c.system).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
+        let mut own = vec![w.text_property("System", None, &system)];
+        if !c.classification.is_empty() {
+            own.push(w.text_property("Classification", None, &c.classification));
+        }
+        if power {
+            own.push(w.add(format!("IFCPROPERTYSINGLEVALUE('LoadVA',$,IFCREAL({}),$)", real(c.load_va))));
+            for (k, va) in c.load_va_by_phase.iter().enumerate() {
+                own.push(w.add(format!("IFCPROPERTYSINGLEVALUE('LoadVAPhase{}',$,IFCREAL({}),$)", k + 1, real(*va))));
+            }
+        }
+        w.define(ent, CONNECTOR_SET, &own, (CONNECTOR, CONNECTOR_DEFINES), id);
     }
     // A phased project's elements say what the work does to them, as IFC's `Status` (PEnum_ElementStatus) in their `Pset_*Common`: taken down in
     // any phase, DEMOLISH (TEMPORARY when made in that phase too); made in the first phase, EXISTING; else NEW. A door or a

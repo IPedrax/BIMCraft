@@ -7,12 +7,13 @@
 //! what a view's graphics come to for each element: the drawing code asks it what to leave out and
 //! how to draw the rest, and it dresses the finished drawing.
 
-use bimcraft_i18n::ui_msg;
+use bimcraft_i18n::{msg, ui_msg};
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
+use crate::language::Language;
 use crate::model::{Element, Guid, Id, Key, MAX_TEXT, Model, ViewRange};
 use crate::pen::{MAX_PEN, Pen};
 use crate::render::{Drawing, Part, Prim, Rgb};
@@ -23,7 +24,7 @@ mod fill_tests;
 
 /// The categories a plan, a section or a 3D view draws, and so may hide and override: those of the
 /// model, then those of the annotation.
-pub const MODEL: [&str; 27] = [
+pub const MODEL: [&str; 44] = [
     "wall",
     "floor",
     "ceiling",
@@ -46,22 +47,72 @@ pub const MODEL: [&str; 27] = [
     "groundconductor",
     "cable",
     "rebar",
-    "component",
+    // The categories of the families the project places, a row each: a plan of power hides the luminaires, one of lighting
+    // the outlets.
+    "equipment",
+    "outlet",
+    "switch",
+    "lighting",
+    "dataoutlet",
+    "voiceoutlet",
+    "patchpanel",
+    "rack",
+    "airterminal",
+    "earthing",
+    "inspectionbox",
+    "plumbing",
+    "drain",
+    "pipefitting",
+    "pipeaccessory",
+    "furniture",
+    "casework",
+    "generic",
     "stair",
     "ramp",
     "railing",
     "roof",
 ];
-pub const ANNOTATION: [&str; 10] = ["dimension", "tag", "text", "line", "region", "spot", "grid", "level", "section", "elevation"];
+pub const ANNOTATION: [&str; 11] =
+    ["dimension", "tag", "text", "line", "region", "spot", "grid", "level", "section", "elevation", "circuit"];
 /// The point clouds, which views hide and override as Revit's Visibility/Graphics does on a tab of their own: not a model
 /// category, so Object Styles has no row for them.
 pub const SCANS: [&str; 1] = ["pointcloud"];
 /// The CAD imports, which views hide and override on a tab of their own too, as Revit's Imported Categories.
 pub const IMPORTED: [&str; 1] = ["cadimport"];
 
+/// The rows of the families' categories, which a component is on as its family's.
+pub const FAMILY: [&str; 18] = [
+    "equipment",
+    "outlet",
+    "switch",
+    "lighting",
+    "dataoutlet",
+    "voiceoutlet",
+    "patchpanel",
+    "rack",
+    "airterminal",
+    "earthing",
+    "inspectionbox",
+    "plumbing",
+    "drain",
+    "pipefitting",
+    "pipeaccessory",
+    "furniture",
+    "casework",
+    "generic",
+];
+
+/// What a file from before the family categories had a row each holds for them: `component`, every family's. Views and Object
+/// Styles still take it, applied to every component under what its own category says; it has no row of its own.
+pub const ALIAS: [&str; 1] = ["component"];
+
 /// Whether views draw elements of `category`.
 pub fn drawn(category: &str) -> bool {
-    MODEL.contains(&category) || ANNOTATION.contains(&category) || SCANS.contains(&category) || IMPORTED.contains(&category)
+    MODEL.contains(&category)
+        || ALIAS.contains(&category)
+        || ANNOTATION.contains(&category)
+        || SCANS.contains(&category)
+        || IMPORTED.contains(&category)
 }
 
 /// How much of a mass a 3D view sees through, percent, unless its graphics say otherwise.
@@ -392,6 +443,10 @@ pub struct Graphics {
     /// The layers of each CAD drawing it hides, by the drawing's name: Revit's Imported Categories, layer by layer.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub layers: BTreeMap<String, BTreeSet<String>>,
+    /// The categories its reflected ceiling plan draws of what hangs under the ceiling (luminaires, cable trays), which it
+    /// doesn't draw otherwise.
+    #[serde(skip_serializing_if = "BTreeSet::is_empty")]
+    pub ceiling: BTreeSet<String>,
 }
 
 /// An edge of `element` as the view draws it, from `from` to `to` (mm in the view's terms), in line style `style` instead
@@ -424,6 +479,7 @@ impl Graphics {
         let mut g = self.clone();
         if t.controls.contains(&Group::Categories) {
             g.categories = t.graphics.categories.clone();
+            g.ceiling = t.graphics.ceiling.clone();
         }
         if t.controls.contains(&Group::Filters) {
             g.filters = t.graphics.filters.clone();
@@ -487,6 +543,9 @@ impl Graphics {
         }
         for (id, o) in &self.elements {
             o.check(&format!("element {id}"))?;
+        }
+        if let Some(c) = self.ceiling.iter().find(|c| !MODEL.contains(&c.as_str())) {
+            return Err(format!("`{c}` isn't a model category a ceiling plan can draw"));
         }
         if self.linework.len() > MAX_LINEWORK {
             return Err(format!(
@@ -646,6 +705,30 @@ pub struct ViewTemplate {
     pub view_range: Option<ViewRange>,
 }
 
+/// The view templates a new project starts with, for the electrical plans (each follows the categories of a view and nothing else,
+/// so a view keeps its own scale, range and phase): a plan of **power** shows the outlets and the equipment and the luminaires in
+/// half-tone; one of **lighting** the luminaires and the switches, with every receptacle hidden; the **ceiling** one draws the
+/// luminaires and the cable trays in the reflected ceiling plan. Named in the project's language. Files that already exist keep
+/// the templates they have.
+pub fn starter_templates(language: Language) -> BTreeMap<String, ViewTemplate> {
+    let by = |hidden: &[&str], halftone: &[&str], ceiling: &[&str]| {
+        let mut g = Graphics::default();
+        for c in hidden {
+            g.categories.entry((*c).to_string()).or_default().hidden = true;
+        }
+        for c in halftone {
+            g.categories.entry((*c).to_string()).or_default().halftone = true;
+        }
+        g.ceiling = ceiling.iter().map(|c| (*c).to_string()).collect();
+        ViewTemplate { controls: BTreeSet::from([Group::Categories]), graphics: g, view_range: None }
+    };
+    BTreeMap::from([
+        (language.word(msg!("Electrical – Power")).to_string(), by(&[], &["lighting"], &[])),
+        (language.word(msg!("Electrical – Lighting")).to_string(), by(&["outlet", "dataoutlet", "voiceoutlet"], &[], &[])),
+        (language.word(msg!("Electrical – Ceiling")).to_string(), by(&[], &[], &["lighting", "cabletray"])),
+    ])
+}
+
 impl ViewTemplate {
     /// Whether it is sound: its graphics are a view's, without the parts that are a view's own.
     pub fn check(&self, m: &Model) -> Result<(), String> {
@@ -756,6 +839,8 @@ pub struct Look {
     layers: BTreeMap<String, BTreeSet<String>>,
     paint: BTreeMap<Id, Override>,
     style: VisualStyle,
+    /// The categories its reflected ceiling plan draws of what hangs under the ceiling.
+    ceiling: BTreeSet<String>,
     /// The section box a 3D view is cut to, its min and max corners, while it's on.
     section: Option<([f64; 3], [f64; 3])>,
 }
@@ -809,7 +894,7 @@ impl Look {
     /// (a room's area) makes redraws slow.
     pub fn with(m: &Model, own: &Graphics) -> Look {
         let g = own.resolved(m);
-        let mut look = Look { style: g.style, layers: own.layers.clone(), ..Look::default() };
+        let mut look = Look { style: g.style, layers: own.layers.clone(), ceiling: g.ceiling.clone(), ..Look::default() };
         // Nothing to look for: no graphics of its own, and nothing in the project phased or in an option.
         let linked = m.elements.keys().next_back().is_some_and(|id| crate::link::is_linked(*id));
         if own.draws_as_is() && !linked && !crate::phasing::any(m) && !m.elements.values().any(|e| matches!(e, Element::Mass(_))) {
@@ -822,7 +907,8 @@ impl Look {
         let applied: Vec<(&Applied, BTreeSet<Id>)> =
             g.filters.iter().filter_map(|a| Some((a, m.view_filters.get(&a.filter)?.matching(m)))).collect();
         for (&id, e) in &m.elements {
-            let cat = e.category();
+            // A component is of its family's category; the old `component` row (`ALIAS`) is under that.
+            let (cat, family) = (m.graphics_category(e), matches!(e, Element::Component(_)));
             if !drawn(cat) {
                 continue;
             }
@@ -856,7 +942,12 @@ impl Look {
                 continue;
             }
             // The category's, then each filter's from the last to the first, then the element's own.
-            let mut over = g.categories.get(cat).map_or_else(|| base.clone(), |c| c.over(&base));
+            let mut over = base.clone();
+            for row in family.then_some(ALIAS[0]).into_iter().chain(std::iter::once(cat)) {
+                if let Some(c) = g.categories.get(row) {
+                    over = c.over(&over);
+                }
+            }
             for (a, picked) in applied.iter().rev().filter(|(_, picked)| picked.contains(&id)) {
                 let _ = picked;
                 over = a.over.over(&over);
@@ -881,6 +972,11 @@ impl Look {
     /// The layers of the CAD drawing `cad` the view hides.
     pub fn hidden_layers(&self, cad: &str) -> Option<&BTreeSet<String>> {
         self.layers.get(cad)
+    }
+
+    /// Whether the reflected ceiling plan draws what hangs under the ceiling in category `category`.
+    pub fn in_ceiling(&self, category: &str) -> bool {
+        self.ceiling.contains(category)
     }
 
     /// Whether the view draws element `id`.

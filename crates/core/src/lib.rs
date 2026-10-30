@@ -13,6 +13,8 @@ pub mod bridge;
 pub mod cad;
 #[cfg(test)]
 mod cad_tests;
+#[cfg(test)]
+mod circuit_tests;
 pub mod cloud;
 #[cfg(test)]
 mod cloud_tests;
@@ -28,6 +30,9 @@ pub mod draw;
 pub mod dxf;
 #[cfg(test)]
 mod eberick_tests;
+pub mod electrical;
+#[cfg(test)]
+mod electrical_tests;
 pub mod engine;
 pub mod family;
 pub mod favorites;
@@ -52,6 +57,7 @@ pub mod massing;
 pub mod model;
 pub mod nbr5410;
 pub mod paint;
+pub mod panel_schedule;
 pub mod pat;
 pub mod pdf;
 pub mod pen;
@@ -95,9 +101,15 @@ mod detail_tests;
 #[cfg(test)]
 mod dimension_tests;
 #[cfg(test)]
+mod graphics_family_tests;
+#[cfg(test)]
 mod line_tests;
 #[cfg(test)]
 mod mep_tests;
+#[cfg(test)]
+mod panel_schedule_tests;
+#[cfg(test)]
+mod panel_tests;
 #[cfg(test)]
 mod plan_view_tests;
 #[cfg(test)]

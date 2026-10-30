@@ -190,6 +190,11 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
                     }
                 }
             }
+            Kind::DistributionSystem => {
+                for v in to.distribution_systems.get_mut(&name).into_iter().flat_map(|d| d.voltages_mut()) {
+                    here(&Kind::Voltage, v);
+                }
+            }
             Kind::Type(c) => {
                 let t = &mut to.types;
                 let layers = match c.as_str() {
@@ -246,6 +251,9 @@ fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> boo
         Kind::TextType => one(&mut to.text_types, Some(&from.text_types), name),
         Kind::ReinforcementPreset => one(&mut to.reinforcement, Some(&from.reinforcement), name),
         Kind::DimensionType => one(&mut to.dimension_types, Some(&from.dimension_types), name),
+        Kind::Voltage => one(&mut to.voltages, Some(&from.voltages), name),
+        Kind::DistributionSystem => one(&mut to.distribution_systems, Some(&from.distribution_systems), name),
+        Kind::WireType => one(&mut to.wire_types, Some(&from.wire_types), name),
         _ => false,
     }
 }
@@ -297,6 +305,7 @@ impl Names {
             Element::Section(v) | Element::Elevation(v) => (&mut v.name, &mut self.views),
             Element::View3D(v) => (&mut v.name, &mut self.views),
             Element::Schedule(sc) => (&mut sc.name, &mut self.views),
+            Element::PanelSchedule(v) => (&mut v.name, &mut self.views),
             Element::Grid(g) => (&mut g.name, &mut self.grids),
             Element::Sheet(sh) => (&mut sh.number, &mut self.sheets),
             _ => return,

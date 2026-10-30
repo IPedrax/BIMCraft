@@ -69,9 +69,19 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 11: a project's language may be Swedish,
-/// Czech or French (`sv`, `cs`, `fr`); nothing in a file of 10 changes, but a build that reads up to 10 would answer one of
-/// 11 with a serde error ("unknown variant"), not "saved by a newer BIMCraft". 8: text types (`text_types`, library
+/// The version of the project file this build writes, and the newest it reads. 15: a view hides and overrides the categories of
+/// the families a project places (`lighting`, `outlet`…), as Object Styles has them, and a view holds `ceiling`; nothing in a file
+/// of 14 changes (`component` is still read, as every family's), but a build that reads up to 14 would refuse a view that hides
+/// `lighting` as one of a category it doesn't draw. 14: a project holds panel schedules (an element of
+/// the `panelschedule` category) and `demand_factors`; nothing in a file of 13 changes, but a build that reads up to 13 would
+/// answer one of 14 with a serde error, not "saved by a newer BIMCraft". 13: a project holds circuits (an element of the
+/// `circuit` category); nothing in a file of 12 changes, but a build that reads up to 12 would answer one of 13 with a serde
+/// error ("unknown variant"), not "saved by a newer BIMCraft". 12: a family holds `connectors` (an
+/// electrical device's load, a switch), each a part with an id and a GUID; nothing in a file of 11 changes, but a build that
+/// reads up to 11 would drop them as it does what it doesn't know, and place the device as a load of zero. 11: a project's
+/// language may be Swedish, Czech or French (`sv`, `cs`, `fr`); nothing in a file of 10 changes, but a build that reads up to
+/// 10 would answer one of 11 with a serde error ("unknown variant"), not "saved by a newer BIMCraft". 8: text types
+/// (`text_types`, library
 /// entries of kind `text-type`); a note names its type, which holds its size, and may override parts of its formatting
 /// (`override_format`, `runs`): a note of 7 has a `size`, which reading it gives a type of. 7: a project holds CAD drawings (`cads`,
 /// library entries of kind `Cad`) and imports place them; nothing in a file of 6 changes, but a build that reads up to 6 would
@@ -87,7 +97,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 11;
+pub const FORMAT: u32 = 15;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -1200,6 +1210,9 @@ pub struct Component {
     pub mirrored: bool,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// A distribution board's electrical data: its distribution system, its mains and slots and the board that supplies it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub panel: Option<crate::electrical::Panel>,
 }
 
 /// A stair from `level` up to `top_level` (or `height` mm), climbing from the middle of its first
@@ -1523,6 +1536,7 @@ macro_rules! visit_refs {
             // A view's graphics, as `views_graphics` gives them.
             Element::Level(_) | Element::Section(_) | Element::Elevation(_) | Element::View3D(_) => {}
             Element::Grid(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) => {}
+            Element::PanelSchedule(ps) => f(& $($m)? ps.panel),
             Element::PlanView(v) => {
                 f(& $($m)? v.level);
                 if let Some(g) = & $($m)? v.parent { f(g) }
@@ -1561,7 +1575,14 @@ macro_rules! visit_refs {
                 f(& $($m)? v.view);
             }
             run_arm!(r) => f(& $($m)? r.level),
-            Element::Component(c) => f(& $($m)? c.level),
+            Element::Component(c) => {
+                f(& $($m)? c.level);
+                if let Some(p) = & $($m)? c.panel
+                    && let Some(g) = & $($m)? p.supply_from
+                {
+                    f(g)
+                }
+            }
             Element::Railing(r) => {
                 f(& $($m)? r.level);
                 if let Some(g) = & $($m)? r.host { f(g) }
@@ -1585,6 +1606,12 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? ci.view { f(g) }
             }
             Element::RoomSeparator(rs) => f(& $($m)? rs.level),
+            Element::Circuit(c) => {
+                f(& $($m)? c.panel);
+                for g in & $($m)? c.devices {
+                    f(g)
+                }
+            }
             Element::Rebar(rb) => {
                 f(& $($m)? rb.level);
                 if let Some(g) = & $($m)? rb.host { f(g) }
@@ -1658,6 +1685,10 @@ pub enum Element {
     PointCloud(PointCloud),
     /// A CAD drawing placed in the model.
     CadImport(CadImport),
+    /// An electrical circuit: devices on a distribution board, behind one breaker.
+    Circuit(crate::electrical::Circuit),
+    /// A distribution board's load schedule, a view of its own.
+    PanelSchedule(crate::panel_schedule::PanelSchedule),
 }
 
 impl Element {
@@ -1844,6 +1875,8 @@ impl Element {
             Element::Rebar(_) => "rebar",
             Element::Dimension(_) => "dimension",
             Element::Tag(_) => "tag",
+            Element::Circuit(_) => "circuit",
+            Element::PanelSchedule(_) => "panelschedule",
             Element::Section(_) => "section",
             Element::Elevation(_) => "elevation",
             Element::Sheet(_) => "sheet",
@@ -2270,6 +2303,19 @@ pub struct Model {
     /// Its reinforcement presets, by name: the parameters `reinforce` takes for a kind of host, kept to arm others alike.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub reinforcement: BTreeMap<String, crate::reinforce::Preset>,
+    /// Its electrical voltages, by name, each with the band a device may read within.
+    #[serde(default = "crate::electrical::voltages")]
+    pub voltages: BTreeMap<String, crate::electrical::Voltage>,
+    /// Its distribution systems, by name: phases, wires and the voltages each supplies.
+    #[serde(default = "crate::electrical::distribution_systems")]
+    pub distribution_systems: BTreeMap<String, crate::electrical::DistributionSystem>,
+    /// Its wire types, by name: material, insulation, temperature and the ampacity of each section, mm².
+    #[serde(default = "crate::electrical::wire_types")]
+    pub wire_types: BTreeMap<String, crate::electrical::WireType>,
+    /// The factor that counts of the load of the circuits of a classification (above 0 up to 1), applied in a board's totals and
+    /// its panel schedule on top of each circuit's own; a classification with none counts whole.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub demand_factors: BTreeMap<String, f64>,
     pub elements: Elements,
     /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
     /// templates, phases, phase filters and design options.
@@ -2344,7 +2390,7 @@ impl Model {
             families: BTreeMap::new(),
             parameters: BTreeMap::new(),
             view_filters: BTreeMap::new(),
-            view_templates: BTreeMap::new(),
+            view_templates: crate::graphics::starter_templates(language),
             phases: phasing::phases(language),
             phase_filters: phasing::filters(language),
             phase_overrides: phasing::overrides(),
@@ -2360,6 +2406,10 @@ impl Model {
             dimension_types: crate::dims::types(),
             detail_groups: BTreeMap::new(),
             reinforcement: BTreeMap::new(),
+            voltages: crate::electrical::voltages(),
+            distribution_systems: crate::electrical::distribution_systems(),
+            wire_types: crate::electrical::wire_types(),
+            demand_factors: BTreeMap::new(),
             elements: Elements::new(),
             library: crate::library::Library::default(),
             loaded: BTreeMap::new(),
@@ -2812,6 +2862,14 @@ impl Model {
         // dimension type; one of 10 read by 9 would measure its points as lines. A dimension of 9 gets its kind's type.
         self.typed_dimensions();
         // 10 to 11 (Swedish, Czech and French as a project's language) has no step: a file of 10 holds none of them.
+        // 11 to 12 (a family's connectors) has no step: a file of 11 holds none, so a family of it has no connector.
+        // 12 to 13 (circuits) has no step: a file of 12 holds none.
+        // 14 to 15 (the families' categories as rows of their own, `ceiling`) has no step: a file of 14 keeps its `component` rows,
+        // which are every family's.
+        // 13 to 14 (panel schedules and `demand_factors`) has no step: a file of 13 holds none, and a circuit's slots are its number as ever.
+        // The electrical settings (voltages, distribution systems, wire types) and a board's panel data have none within 11 or 12:
+        // a file without them reads with the starter set and no board data, and one that has them is read by an older version with
+        // them left out.
         self.format = FORMAT;
     }
 
@@ -3479,6 +3537,8 @@ impl Model {
             Element::Roof(r) => Some(r.level),
             Element::Door(o) | Element::Window(o) => wall_level(o),
             Element::Tag(t) => self.elements.get(t.host).filter(|h| !matches!(h, Element::Tag(_))).and_then(|h| self.level_of(h)),
+            // On the board's level: its plan is where it is drawn.
+            Element::Circuit(c) => self.elements.get(c.panel).filter(|h| matches!(h, Element::Component(_))).and_then(|h| self.level_of(h)),
             // Notes and spot elevations in a level's plan.
             Element::Text(Note { view, .. })
             | Element::Spot(Spot { view, .. })
@@ -3495,6 +3555,7 @@ impl Model {
             | Element::Sheet(_)
             | Element::Viewport(_)
             | Element::Schedule(_)
+            | Element::PanelSchedule(_)
             | Element::Link(_)
             | Element::View3D(_) => None,
         }
@@ -3845,6 +3906,20 @@ impl Model {
         self.elements.iter().find_map(|(id, e)| matches!(e, Element::View3D(v) if v.name == "{3D}").then_some(*id))
     }
 
+    /// The row of Visibility/Graphics and Object Styles element `e` is on: a component's is its family's category, any other's its
+    /// own (`Element::category`). A component whose family the project lacks is `generic`.
+    pub fn graphics_category(&self, e: &Element) -> &'static str {
+        match e {
+            Element::Component(c) => self.families.get(&c.family).map_or("generic", |f| f.category.key()),
+            e => e.category(),
+        }
+    }
+
+    /// Whether `e` is of category `name`, as `tag` and `elements` take it: the one of its element (`component`) or its row.
+    pub fn in_category(&self, e: &Element, name: &str) -> bool {
+        e.category() == name || self.graphics_category(e) == name
+    }
+
     /// The name of view `id`: a level's plan, a section, an elevation, a schedule or a 3D view;
     /// none for another element.
     pub fn view_name(&self, id: impl Key) -> Option<&str> {
@@ -3852,6 +3927,7 @@ impl Model {
             Some(Element::Level(l)) => Some(&l.name),
             Some(Element::Section(v) | Element::Elevation(v)) => Some(&v.name),
             Some(Element::Schedule(sc)) => Some(&sc.name),
+            Some(Element::PanelSchedule(ps)) => Some(&ps.name),
             Some(Element::View3D(v)) => Some(&v.name),
             Some(Element::PlanView(v)) => Some(&v.name),
             _ => None,
@@ -4628,6 +4704,41 @@ impl Model {
         Ok(())
     }
 
+    /// What is amiss in the model but doesn't make it wrong: soft issues, said so they can be fixed. `check` refuses a model;
+    /// these it accepts. A room the walls no longer close; a family of lighting, outlets or switches in use that holds no
+    /// connector, so its devices count as a load of zero.
+    pub fn warnings(&self) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .elements
+            .iter()
+            .filter_map(|(id, e)| match e {
+                Element::Room(r) if self.room_region(r).is_none() => {
+                    Some(format!("room {id} ({} {}) is not enclosed: the walls around it no longer close", r.number, r.name))
+                }
+                _ => None,
+            })
+            .collect();
+        let mut bare: BTreeMap<&str, usize> = BTreeMap::new();
+        for e in self.elements.values() {
+            if let Element::Component(c) = e
+                && let Some(f) = self.families.get(&c.family)
+                && f.category.electrical_device()
+                && f.connectors.is_empty()
+            {
+                *bare.entry(c.family.as_str()).or_default() += 1;
+            }
+        }
+        out.extend(bare.into_iter().map(|(n, k)| {
+            format!(
+                "family `{n}` has no connector, so its {k} placed device{} count{} as a load of zero: give it one with `family` `connectors`",
+                if k == 1 { "" } else { "s" },
+                if k == 1 { "s" } else { "" }
+            )
+        }));
+        out.extend(crate::electrical::circuit_warnings(self));
+        out
+    }
+
     /// Everything that must hold between commands: references resolve, geometry is finite and
     /// not degenerate, doors and windows fit their walls and don't overlap.
     pub fn check(&self) -> Result<(), String> {
@@ -4669,6 +4780,7 @@ impl Model {
         for (n, t) in &self.dimension_types {
             t.check(n)?;
         }
+        crate::electrical::check(self)?;
         for (n, x) in &self.materials {
             for p in [&x.cut_pattern, &x.surface_pattern].into_iter().flatten() {
                 if !self.fill_patterns.contains_key(p) {
@@ -4901,6 +5013,14 @@ impl Model {
             }
             phasing::check_order(self, &who, e)?;
             match e {
+                // Its rules are held between circuits and boards, in one place: `electrical::check_circuits`.
+                Element::Circuit(_) => {}
+                Element::PanelSchedule(ps) => {
+                    crate::panel_schedule::check(self, &who, ps)?;
+                    if !view_names.insert(ps.name.as_str()) {
+                        return Err(format!("{who}: another view is already named `{}`", ps.name));
+                    }
+                }
                 Element::Level(l) => {
                     text(&who, "name", &l.name)?;
                     coord(&format!("{who} elevation"), l.elevation)?;
