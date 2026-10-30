@@ -533,7 +533,7 @@ fn perimeter(ring: &[P2]) -> f64 {
 
 /// What a beam or a column measures, for its `Qto_BeamBaseQuantities` or `Qto_ColumnBaseQuantities`: its length (a column's
 /// height), the area of its section (m²), its surface (the sides and the two ends, m²) and its volume (m³). Nothing is
-/// subtracted from it, so gross and net are the same.
+/// subtracted from it, so it has no net values: nothing is taken off where a beam meets a column or a slab yet.
 fn member_quantities(width: f64, depth: f64, round: bool, length: f64) -> Vec<(&'static str, &'static str, f64)> {
     let (area, perimeter) = if round {
         (std::f64::consts::PI * width * width / 4.0, std::f64::consts::PI * width)
@@ -547,9 +547,7 @@ fn member_quantities(width: f64, depth: f64, round: bool, length: f64) -> Vec<(&
         ("CrossSectionArea", "AREA", area / 1e6),
         ("OuterSurfaceArea", "AREA", surface),
         ("GrossSurfaceArea", "AREA", surface),
-        ("NetSurfaceArea", "AREA", surface),
         ("GrossVolume", "VOLUME", volume),
-        ("NetVolume", "VOLUME", volume),
     ]
 }
 
@@ -1727,14 +1725,14 @@ mod tests {
         assert!(f.contains("IFCBEAMTYPE(") && f.contains("'B 150x600',$,$,$,$,$,$,.BEAM.)"));
         assert_eq!(occurrences_of(&f, kinds[0]), beams);
         let q = quantities_of(&f, beams[0], "Qto_BeamBaseQuantities");
-        assert!(near(q["Length"], 5000.0) && near(q["CrossSectionArea"], 0.09) && near(q["NetVolume"], 0.45), "{q:?}");
+        assert!(near(q["Length"], 5000.0) && near(q["CrossSectionArea"], 0.09) && !q.contains_key("NetVolume"), "{q:?}");
         assert!(near(q["GrossVolume"], 0.45) && near(q["OuterSurfaceArea"], 2.0 * (0.15 + 0.6) * 5.0 + 2.0 * 0.09), "{q:?}");
         let columns = of_kind(&f, "IFCCOLUMN");
         let types = of_kind(&f, "IFCCOLUMNTYPE");
         assert_eq!((columns.len(), types.len()), (1, 1));
         assert_eq!(occurrences_of(&f, types[0]), columns);
         let q = quantities_of(&f, columns[0], "Qto_ColumnBaseQuantities");
-        assert!(near(q["CrossSectionArea"], 0.09) && near(q["NetVolume"], 0.09 * q["Length"] / 1e3), "{q:?}");
+        assert!(near(q["CrossSectionArea"], 0.09) && near(q["GrossVolume"], 0.09 * q["Length"] / 1e3), "{q:?}");
         // Walls and slabs have theirs, one for each type used.
         let walls: BTreeSet<String> =
             s.model.elements.iter().filter_map(|(_, e)| if let Element::Wall(w) = e { Some(w.type_name.clone()) } else { None }).collect();
