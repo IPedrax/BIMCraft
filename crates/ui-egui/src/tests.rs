@@ -2512,7 +2512,7 @@ mass {"boundary": [[1000, 1000], [3000, 1000], [3000, 2000], [1000, 2000]], "nam
     assert!(english(&h, Lang::Spanish).contains(&"Architecture".to_string()));
     for l in [Lang::Portuguese, Lang::Spanish, Lang::French, Lang::Chinese] {
         // A machine has the fonts it has: a window is told it has one for Chinese.
-        crate::lang::assume_chinese_font(&h.ctx);
+        crate::lang::assume_cjk_font(&h.ctx);
         h.state_mut().lang = l;
         h.run();
         let tr = |en: &'static str| crate::lang::translated_in(l, en).unwrap_or(en);
@@ -5270,6 +5270,7 @@ mod fonts;
 mod gpu;
 mod graphics;
 mod groups;
+mod korean;
 mod light_canvas;
 mod lines;
 mod lineweights;

@@ -358,7 +358,7 @@ fn a_solid_fill_is_told_solid_in_portuguese_and_spanish_not_as_a_continuous_line
     use crate::lang::{Lang, translated_in};
     for l in [Lang::Portuguese, Lang::Spanish, Lang::Chinese] {
         let mut h = app(BOX);
-        crate::lang::assume_chinese_font(&h.ctx);
+        crate::lang::assume_cjk_font(&h.ctx);
         h.state_mut().lang = l;
         h.run();
         let model = h.state().session.model.clone();

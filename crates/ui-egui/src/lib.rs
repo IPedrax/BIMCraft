@@ -1026,7 +1026,7 @@ impl BimApp {
             drawing: draw::Drawing::default(),
             units,
             lang: Lang::English,
-            font_finder: lang::chinese_font,
+            font_finder: lang::cjk_fonts,
             typed_length: String::new(),
             dim_edit: None,
             temporary: HashMap::new(),
@@ -1263,8 +1263,11 @@ impl BimApp {
             ctx.set_theme(theme);
         }
         style::follow(&ctx, style::Look { light_canvas: self.light_canvas, compact: self.compact });
-        // Chinese needs a font with its glyphs, which the system may not have: then the window stays in English and says why.
-        if self.lang == Lang::Chinese && !lang::use_chinese_font(&ctx, self.font_finder) {
+        // The fonts with the hanzi and the Hangul go behind the window's own whatever language it speaks: content — a floor's
+        // name from a Korean file — is not the interface's. Chinese needs its glyphs, which the system may not have: then the
+        // window stays in English and says why.
+        let hanzi = lang::use_cjk_font(&ctx, self.font_finder);
+        if self.lang == Lang::Chinese && !hanzi {
             self.lang = Lang::English;
             self.status = updates::failed(t(lang::NO_CHINESE_FONT).to_string());
         }
