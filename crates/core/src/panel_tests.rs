@@ -387,3 +387,24 @@ fn a_supply_loop_in_a_file_is_broken_with_why_and_every_board_stays() {
     assert!(r["skipped"].to_string().contains("supply"), "{r}");
     assert_eq!(t.model.check(), Ok(()));
 }
+
+/// Each GlobalId role is a number of its own: two relationships of one element given the same role would be written with the
+/// same GlobalId. (Two branches once numbered theirs from 51; a merge keeps both, and the compiler says nothing.)
+#[test]
+fn every_ifc_globalid_role_is_a_number_of_its_own() {
+    let source = include_str!("ifc.rs");
+    let mut roles: Vec<(&str, u64)> = Vec::new();
+    for line in source.lines() {
+        let Some(rest) = line.strip_prefix("const ") else { continue };
+        let Some((name, value)) = rest.split_once(": u64 = ") else { continue };
+        if let Ok(n) = value.trim_end_matches(';').trim().parse::<u64>() {
+            roles.push((name, n));
+        }
+    }
+    assert!(roles.len() > 40, "the roles were found: {}", roles.len());
+    for (i, (a, n)) in roles.iter().enumerate() {
+        if let Some((b, _)) = roles[..i].iter().find(|(_, m)| m == n) {
+            panic!("`{a}` and `{b}` are both role {n}");
+        }
+    }
+}

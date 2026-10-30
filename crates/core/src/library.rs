@@ -184,7 +184,7 @@ pub struct Entry {
 }
 
 /// A part of a library entry, with an id and a GUID of its own that it holds itself, kept while it stays where it is
-/// in its list: a type's layer, a family's form or plan symbol. `what` it is, what it's `of` and its place there.
+/// in its list: a type's layer, a family's form, plan symbol or connector. `what` it is, what it's `of` and its place there.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Part {
     pub what: &'static str,
@@ -214,6 +214,12 @@ impl HasPart for crate::model::Layer {
 }
 
 impl HasPart for crate::family::Form {
+    fn ident(&mut self) -> (&mut Id, &mut Guid) {
+        (&mut self.id, &mut self.guid)
+    }
+}
+
+impl HasPart for crate::family::Connector {
     fn ident(&mut self) -> (&mut Id, &mut Guid) {
         (&mut self.id, &mut self.guid)
     }
@@ -640,6 +646,7 @@ impl Model {
         for (n, f) in &self.families {
             add("form", "family", n, f.forms.iter().map(|x| (x.id, x.guid)).collect());
             add("symbol", "family", n, f.symbols.iter().map(|x| (x.id, x.guid)).collect());
+            add("connector", "family", n, f.connectors.iter().map(|x| (x.id, x.guid)).collect());
         }
         for (n, g) in &self.detail_groups {
             add("member", "detail group", n, g.members.iter().map(|x| (x.id, x.guid)).collect());
@@ -763,6 +770,7 @@ impl Model {
         for f in self.families.values_mut() {
             f.forms.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
             f.symbols.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
+            f.connectors.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
         }
         for g in self.detail_groups.values_mut() {
             g.members.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
@@ -832,6 +840,7 @@ impl Model {
         for f in self.families.values_mut() {
             f.forms.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
             f.symbols.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+            f.connectors.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
         }
         for g in self.detail_groups.values_mut() {
             g.members.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
