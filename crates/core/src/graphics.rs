@@ -654,10 +654,54 @@ impl Group {
     ];
 }
 
-/// A view template: settings under a name for views to follow, the groups in `controls`.
+/// The kind of view a template is for, as Revit's are: plans (floor and ceiling), elevations and sections, or 3D views.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ViewKind {
+    #[serde(rename = "plan")]
+    Plan,
+    #[serde(rename = "section")]
+    Section,
+    #[serde(rename = "3d")]
+    ThreeD,
+}
+
+impl ViewKind {
+    pub const ALL: [ViewKind; 3] = [ViewKind::Plan, ViewKind::Section, ViewKind::ThreeD];
+
+    /// The kind view element `e` is, if it is a view a template can be for.
+    pub fn of(e: &Element) -> Option<ViewKind> {
+        match e {
+            Element::Level(_) | Element::PlanView(_) => Some(ViewKind::Plan),
+            Element::Section(_) | Element::Elevation(_) => Some(ViewKind::Section),
+            Element::View3D(_) => Some(ViewKind::ThreeD),
+            _ => None,
+        }
+    }
+
+    /// The groups a template for this kind of view holds: a plan's view range, a 3D view's visual style, the scale, detail
+    /// level and background grids of the others.
+    pub fn groups(self) -> Vec<Group> {
+        Group::ALL
+            .into_iter()
+            .filter(|g| {
+                !matches!(
+                    (self, g),
+                    (ViewKind::Plan, Group::Style)
+                        | (ViewKind::Section, Group::Range | Group::Style)
+                        | (ViewKind::ThreeD, Group::Range | Group::Scale | Group::Detail | Group::BackgroundGrid)
+                )
+            })
+            .collect()
+    }
+}
+
+/// A view template: settings under a name for views to follow, the groups in `controls`, for views of `kind` (any, when it
+/// says none).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ViewTemplate {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<ViewKind>,
     pub controls: BTreeSet<Group>,
     #[serde(default, skip_serializing_if = "Graphics::is_default")]
     pub graphics: Graphics,
@@ -1928,6 +1972,38 @@ mod tests {
         run(&mut s, "template", json!({"name": "Presentation", "controls": ["categories"]}));
         assert!(run(&mut s, "graphics", json!({"view": 100001, "template": null}))["template"].is_null());
         assert_eq!(run(&mut s, "graphics", json!({"view": 100001}))["hidden"], json!(["room"]));
+    }
+
+    #[test]
+    fn a_template_is_for_a_kind_of_view_and_is_copied_and_renamed_as_revits_are() {
+        let mut s = Session::new();
+        house(&mut s);
+        // Made from a view, it is for views of its kind; made from nothing, for the kind it says, or any.
+        assert_eq!(run(&mut s, "template", json!({"name": "Plans", "from": "Level 1"}))["kind"], "plan");
+        run(&mut s, "graphics", json!({"view": "{3D}", "hide": ["levels"]}));
+        assert_eq!(run(&mut s, "template", json!({"name": "Shaded", "from": "{3D}"}))["kind"], "3d");
+        assert_eq!(run(&mut s, "template", json!({"name": "Cuts", "kind": "section", "detail": "fine"}))["kind"], "section");
+        assert!(run(&mut s, "template", json!({"name": "Any", "controls": ["scale"]}))["kind"].is_null());
+        let e = s.execute("template", &json!({"name": "Cuts", "kind": "sheet"})).unwrap_err();
+        assert!(e.contains("plan, section or 3d"), "{e}");
+        // Duplicate: a new one like another, everything it holds, under its own name.
+        run(&mut s, "graphics", json!({"view": "Level 2", "template": "Plans"}));
+        let copy = run(&mut s, "template", json!({"name": "Plans 2", "like": "Plans", "detail": "coarse"}));
+        assert_eq!((copy["kind"].clone(), copy["detail"].clone(), copy["views"].clone()), (json!("plan"), json!("coarse"), json!([])));
+        assert_eq!(s.model.view_templates["Plans 2"].controls, s.model.view_templates["Plans"].controls);
+        let e = s.execute("template", &json!({"name": "Plans 3", "like": "Nope"})).unwrap_err();
+        assert!(e.contains("Nope"), "{e}");
+        // Rename: the views following it follow it under its new name.
+        let r = run(&mut s, "template", json!({"name": "Plans", "rename": "Working Plans"}));
+        assert_eq!((r["name"].clone(), r["views"].clone()), (json!("Working Plans"), json!([100001])));
+        assert!(!s.model.view_templates.contains_key("Plans"));
+        assert_eq!(run(&mut s, "graphics", json!({"view": "Level 2"}))["template"], "Working Plans");
+        let e = s.execute("template", &json!({"name": "Working Plans", "rename": "Shaded"})).unwrap_err();
+        assert!(e.contains("already"), "{e}");
+        // It survives a file.
+        let (back, left_out) = crate::model::Model::read(&s.model.to_json().unwrap()).unwrap();
+        assert!(left_out.is_empty(), "{left_out:?}");
+        assert_eq!(back.view_templates["Shaded"].kind, Some(super::ViewKind::ThreeD));
     }
 
     #[test]

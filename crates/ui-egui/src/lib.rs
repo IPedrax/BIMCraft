@@ -58,6 +58,7 @@ mod standards;
 mod start;
 mod structure;
 mod style;
+mod templates;
 #[cfg(test)]
 mod tests;
 mod titlebar;
@@ -634,7 +635,7 @@ pub struct BimApp {
     /// Visibility/Graphics, Filters and View Templates, while they're open.
     vg_dialog: Option<graphics::VgDialog>,
     filters_dialog: Option<graphics::FiltersDialog>,
-    templates_dialog: Option<graphics::TemplatesDialog>,
+    templates_dialog: Option<templates::TemplatesDialog>,
     /// Phasing and Design Options, while they're open, and the design option (`set: option`) new
     /// elements are made in: none is the main model.
     phasing_dialog: Option<phasing::PhasingDialog>,
@@ -1799,7 +1800,7 @@ impl BimApp {
                 return true;
             }
             "VT" => {
-                self.templates_dialog = Some(graphics::TemplatesDialog::default());
+                self.open_templates();
                 return true;
             }
             "PH" => {
@@ -3267,7 +3268,7 @@ impl BimApp {
             }
             let tip = msg!("View Templates (VT): a view's settings under a name, for other views to follow");
             if big_button(ui, Icon::Template, "View Templates", self.templates_dialog.is_some(), tip).clicked() {
-                self.templates_dialog = Some(graphics::TemplatesDialog::default());
+                self.open_templates();
             }
             if big_button(ui, Icon::ThinLines, "Thin Lines", self.thin, "Thin Lines (TL): every line one pixel wide").clicked() {
                 self.thin = !self.thin;

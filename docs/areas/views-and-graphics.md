@@ -225,7 +225,8 @@ view to what it hides and how it paints the rest; the drawing code asks `look.sh
 sections, `cut_outlines`, `seen_below`, `view3d::Scene::picture`) and `look.dress` recolours the finished `Drawing` by owner and
 by `Part` (`Drawing::part` marks what is drawn as projection, cut, lettering or hatching (and the lines between layers), so a
 new drawing of what a view cuts sets `Part::Cut`; a hidden door's opening is drawn owned by none, the wall's; the cut walls' union fill has no owner and takes its colour at the draw site, `cut_unions`). A view template
-(`Model::view_templates`) controls groups of the views that follow it (categories, filters, a plan's view range through
+(`Model::view_templates`), for a kind of view (`ViewKind`: plans, elevations and sections, or 3D views; `from` sets it, none is any),
+controls groups of the views that follow it (categories, filters, a plan's view range through
 `Model::view_range_of`, a phase with its phase filter, design options, scale, detail level, visual style), and they can't change those
 (`graphics`, `scale`, `detail`, `visual_style` and `modify` refuse). Snaps, Tag All, the desktop's Select All
 Instances and the framing of sections and 3D views take what `Look` shows too. A level's ceiling plan is its plan's view;

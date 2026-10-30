@@ -79,6 +79,10 @@ fn background_grid_templates_disable_view_parameters_and_bottom_menu() {
     type_into(&mut h, "Main spacing X", "2 m");
     key(&mut h, Key::Enter);
     press(&mut h, "OK");
+    // Its OK puts them in the View Templates dialog's draft, which its own OK sends.
+    assert_eq!(h.state().background_grid().spacing[0], 1000.0);
+    assert!(h.state().templates_dialog.is_some());
+    press(&mut h, "OK");
     assert_eq!(h.state().background_grid().spacing[0], 2000.0);
 }
 
