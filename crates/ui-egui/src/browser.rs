@@ -73,6 +73,8 @@ enum Act {
     /// A group: it folds.
     Group,
     Open(Sheet),
+    /// A 3D view: open it in the 3D tab, none for the default `{3D}`.
+    Open3D(Option<Id>),
     /// A family's type: the Component tool places it.
     Place(String, String),
     /// A plan's right-click menu: a duplicate of it, in a mode of the command's.
@@ -291,6 +293,7 @@ impl BimApp {
         }
         match act {
             Some(Act::Open(sheet)) => self.open_sheet(sheet),
+            Some(Act::Open3D(id)) => self.open_3d(id),
             Some(Act::Place(family, ty)) => {
                 self.component = Some((family, ty));
                 self.set_tool(Tool::Component);
@@ -426,7 +429,23 @@ impl BimApp {
         let mut kids = vec![
             Node::group(t("Floor Plans"), true, plans),
             Node::group(t("Ceiling Plans"), true, ceilings),
-            Node::group(t("3D Views"), true, vec![self.view_leaf("{3D}", Sheet::View3D)]),
+            Node::group(t("3D Views"), true, {
+                // Every 3D view: the default `{3D}` (made when first changed; shown even before it exists), then each
+                // camera view. Opening one stands the 3D tab where its camera looks from.
+                let active = self.active_3d();
+                let mut three: Vec<Node> = vec![match m.default_3d() {
+                    Some(id) => Node::leaf("{3D}", Act::Open3D(Some(id)), active == Some(id)),
+                    None => Node::leaf("{3D}", Act::Open3D(None), active.is_none()),
+                }];
+                three.extend(m.elements.iter().filter_map(|(id, e)| match e {
+                    Element::View3D(v) if v.name != "{3D}" => {
+                        let leaf = Node::leaf(&v.name, Act::Open3D(Some(*id)), active == Some(*id));
+                        Some(leaf.with_menu(vec![("Delete", Act::Delete(vec![*id]))]))
+                    }
+                    _ => None,
+                }));
+                three
+            }),
         ];
         for (group, category) in [(msg!("Elevations (Building Elevation)"), "elevation"), (msg!("Sections (Building Section)"), "section")]
         {

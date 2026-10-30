@@ -190,6 +190,9 @@ pub enum Tool {
     Section(Option<P2>),
     /// An elevation, looking at the side of the building clicked beside.
     Elevation,
+    /// A camera: the point its eye stands at, once clicked; then its target. The eye and target heights
+    /// are the Options Bar's over the plan's level (Revit's Camera tool).
+    Camera(Option<P2>),
     /// A column where clicked.
     Column,
     /// A run (a beam, a pipe, a conduit…, by category, as `beam` and `pipe` name them): its first point, once clicked.
@@ -510,6 +513,10 @@ pub struct BimApp {
     /// The Mass tool's top, as the Shaft tool's.
     mass_top: Option<Option<Id>>,
     mass_height: String,
+    /// The Camera tool's eye and target heights over the plan's level, and its lens, as typed.
+    camera_eye_height: String,
+    camera_target_height: String,
+    camera_lens: String,
     /// Each click ends a wall and starts the next; off, two clicks make one wall.
     chain: bool,
     /// The line the Wall tool's walls stand on.
@@ -598,6 +605,9 @@ pub struct BimApp {
     options_rect: Rect,
     canvas: canvas::Canvas,
     orbit: orbit::Orbit,
+    /// Which 3D view the 3D tab shows: a view's id, or none for the default `{3D}` (made when it is first changed). Set by
+    /// opening a camera view (`open_3d`), as Revit's 3D views each have their own tab.
+    active_3d: Option<Id>,
     /// The graphics card the 3D view may be drawn on (Settings > Performance).
     card: gpu::Card,
     cut: section::Cut,
@@ -1000,6 +1010,9 @@ impl BimApp {
             shaft_height: units.length(3000.0),
             mass_top: None,
             mass_height: units.length(3000.0),
+            camera_eye_height: units.length(1600.0),
+            camera_target_height: units.length(1200.0),
+            camera_lens: "35".into(),
             chain: true,
             wall_location: Location::Centre,
             attach_base: false,
@@ -1051,6 +1064,7 @@ impl BimApp {
             options_rect: Rect::NOTHING,
             canvas: canvas::Canvas::default(),
             orbit: orbit::Orbit::default(),
+            active_3d: None,
             card: gpu::Card::default(),
             cut: section::Cut::default(),
             paper: paper::Papers::default(),
@@ -1182,6 +1196,7 @@ impl BimApp {
             Tool::Tag => Some("Tag"),
             Tool::Section(_) => Some("Section"),
             Tool::Elevation => Some("Elevation"),
+            Tool::Camera(_) => Some("Camera"),
             Tool::Column => Some(msg!("Place Column")),
             Tool::Run(..) | Tool::Stand(_) => structure::title(&self.tool),
             Tool::Component => Some(msg!("Place Component")),
@@ -1220,7 +1235,9 @@ impl BimApp {
     fn view_name(&self, sheet: Sheet) -> String {
         match sheet {
             Sheet::Plan(key) | Sheet::Ceiling(key) => self.session.model.view_name(key).map_or_else(|| "Floor Plan".into(), String::from),
-            Sheet::View3D => "{3D}".into(),
+            Sheet::View3D => {
+                self.active_3d().and_then(|id| self.session.model.view_name(id).map(String::from)).unwrap_or_else(|| "{3D}".into())
+            }
             Sheet::Section(id) => self.session.model.section(id).map_or_else(|| "Section".into(), |v| v.name.clone()),
             Sheet::Paper(id) => self.session.model.sheet(id).map_or_else(|| "Sheet".into(), |s| format!("{} - {}", s.number, s.name)),
             Sheet::Schedule(cat) => match schedule::standard(&self.session.model, cat) {
@@ -1675,7 +1692,7 @@ impl BimApp {
         }
         let tool = match self.typed.as_str() {
             "3D" => {
-                self.open_sheet(Sheet::View3D);
+                self.open_3d(None);
                 return true;
             }
             "MD" => Tool::Modify,
@@ -2325,6 +2342,22 @@ impl BimApp {
         }
     }
 
+    /// The 3D view the 3D tab shows: one opened on it (a camera view, or `{3D}` itself), else the default `{3D}` — none
+    /// while the project has neither.
+    pub(crate) fn active_3d(&self) -> Option<Id> {
+        let m = &self.session.model;
+        self.active_3d.filter(|id| matches!(m.elements.get(id), Some(Element::View3D(_)))).or_else(|| m.default_3d())
+    }
+
+    /// Open a 3D view in the 3D tab: the default `{3D}` (none), or a camera view by id. Its camera stands the view where
+    /// it looks from the next time it is drawn.
+    pub(crate) fn open_3d(&mut self, id: Option<Id>) {
+        self.active_3d = id;
+        self.orbit.camera = None;
+        self.orbit.built = None;
+        self.open_sheet(Sheet::View3D);
+    }
+
     /// Open a view in a tab, or bring its tab forward.
     fn open_sheet(&mut self, sheet: Sheet) {
         if !self.views.contains(&sheet) && !self.floats(sheet) {
@@ -2357,7 +2390,7 @@ impl BimApp {
             Tool::Grid(start) | Tool::Run(_, start) => *start = None,
             Tool::Dimension(_, refs) | Tool::Angular(refs) => refs.clear(),
             Tool::Round(_, picked) => picked.clear(),
-            Tool::Section(start) | Tool::Shaft(start) | Tool::Measure(start) => *start = None,
+            Tool::Section(start) | Tool::Shaft(start) | Tool::Measure(start) | Tool::Camera(start) => *start = None,
             Tool::Stair(pts)
             | Tool::Ramp(pts)
             | Tool::Railing(pts)
@@ -2664,7 +2697,7 @@ impl BimApp {
                 ui.spacing_mut().item_spacing.x = 8.0;
                 ui.separator();
                 if icon_button(ui, Icon::View3D, "Default 3D View").clicked() {
-                    self.open_sheet(Sheet::View3D);
+                    self.open_3d(None);
                 }
                 ui.separator();
                 if icon_button(ui, Icon::Settings, "Settings").clicked() {
@@ -3294,7 +3327,7 @@ impl BimApp {
         });
         panel(ui, "Create", |ui| {
             if big_button(ui, Icon::View3D, "3D View", self.sheet == Sheet::View3D, "Open the default 3D view").clicked() {
-                self.open_sheet(Sheet::View3D);
+                self.open_3d(None);
             }
             let tip = msg!(
                 "Duplicate View (DP): a new plan of this level with its own annotation; with detailing, it starts with this plan's; as a dependent, it follows this plan's range and graphics"
@@ -3316,6 +3349,10 @@ impl BimApp {
             let tip = msg!("Elevation: click beside the building, on the side to look at");
             if big_button(ui, Icon::Elevation, "Elevation", self.tool == Tool::Elevation, tip).clicked() {
                 self.set_tool(Tool::Elevation);
+            }
+            let tip = msg!("Camera: click where its eye stands, then what it looks at: a 3D view in perspective from there");
+            if big_button(ui, Icon::Camera, "Camera", matches!(self.tool, Tool::Camera(_)), tip).clicked() {
+                self.set_tool(Tool::Camera(None));
             }
             let r = big_button(ui, Icon::Schedule, "Schedules", false, "Make a schedule, or open one");
             ribbon::choices(ui, &r, false, |ui| {
@@ -3922,6 +3959,15 @@ impl BimApp {
                     let hint = self.session.model.units.name();
                     ui.add(TextEdit::singleline(&mut self.ceiling_height).desired_width(64.0).hint_text(hint)).labelled_by(l.id);
                 }
+                Tool::Camera(_) => {
+                    let hint = self.session.model.units.name();
+                    let l = ui.label(t("Eye Height:"));
+                    ui.add(TextEdit::singleline(&mut self.camera_eye_height).desired_width(64.0).hint_text(hint)).labelled_by(l.id);
+                    let l = ui.label(t("Target Height:"));
+                    ui.add(TextEdit::singleline(&mut self.camera_target_height).desired_width(64.0).hint_text(hint)).labelled_by(l.id);
+                    let l = ui.label(t("Lens:"));
+                    ui.add(TextEdit::singleline(&mut self.camera_lens).desired_width(48.0).hint_text("mm")).labelled_by(l.id);
+                }
                 Tool::SlopeArrow(_) => {
                     let l = ui.label(t("Slope:"));
                     ui.add(TextEdit::singleline(&mut self.floor_slope).desired_width(48.0).hint_text("°")).labelled_by(l.id);
@@ -4190,6 +4236,8 @@ impl BimApp {
             Tool::Section(None) => msg!("Click the section's start: it looks to the left of the line you draw."),
             Tool::Section(Some(_)) => msg!("Click the section's end."),
             Tool::Elevation => msg!("Click beside the building: the elevation looks at the side you click by."),
+            Tool::Camera(None) => msg!("Click where the camera's eye stands: it looks at the point you click next."),
+            Tool::Camera(Some(_)) => msg!("Click what the camera looks at; its eye and target heights are the Options Bar's."),
             Tool::Column => msg!("Click to place a column, as high as the Options Bar says."),
             Tool::Run(..) | Tool::Stand(_) => structure::hint(&self.tool).unwrap_or_default(),
             Tool::Component | Tool::Fixture(_) => msg!("Click where the component goes; Space turns it a quarter turn."),

@@ -62,6 +62,7 @@ icon_names! {
     View3D,
     Section,
     Elevation,
+    Camera,
     Sheet,
     PlaceView,
     Column,
@@ -575,6 +576,12 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             // An elevation direction marker, with the triangle above the circular head.
             g.closed(&[(7.0, 10.0), (12.0, 3.0), (17.0, 10.0)]);
             g.circle((12.0, 16.0), 5.0);
+        }
+        Icon::Camera => {
+            // A camera body with its lens, and the viewfinder hump on top.
+            g.closed(&[(3.0, 8.0), (7.5, 8.0), (9.5, 4.5), (14.5, 4.5), (16.5, 8.0), (21.0, 8.0), (21.0, 19.0), (3.0, 19.0)]);
+            g.circle((12.0, 13.75), 3.6);
+            g.circle((12.0, 13.75), 1.6);
         }
         Icon::Sheet => {
             // A drawing sheet and title block; shared edges are drawn once.

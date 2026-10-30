@@ -1247,6 +1247,13 @@ impl BimApp {
             self.open_sheet(Sheet::Section(id));
             return;
         }
+        // A double click on a camera's mark opens its 3D view.
+        if response.double_clicked()
+            && let Some(id) = hovered.filter(|id| matches!(model.elements.get(*id), Some(Element::View3D(_))))
+        {
+            self.open_3d(Some(id));
+            return;
+        }
         if response.double_clicked()
             && !writing
             && let Some(id) = hovered.filter(|id| crate::notes::is_note(&model, *id))
@@ -1623,12 +1630,15 @@ impl BimApp {
                     None => self.status = Status { text: t("Pick Faces: click a face of a mass").into(), error: true },
                 }
             }
-            Tool::Wall(_) | Tool::Grid(_) | Tool::Move(_) | Tool::Copy(_) | Tool::Section(_) | Tool::Run(..) => {
+            Tool::Wall(_) | Tool::Grid(_) | Tool::Move(_) | Tool::Copy(_) | Tool::Section(_) | Tool::Camera(_) | Tool::Run(..) => {
                 let chain: Vec<P2> = match &self.tool {
                     Tool::Wall(chain) => chain.clone(),
-                    Tool::Grid(start) | Tool::Move(start) | Tool::Copy(start) | Tool::Section(start) | Tool::Run(_, start) => {
-                        start.iter().copied().collect()
-                    }
+                    Tool::Grid(start)
+                    | Tool::Move(start)
+                    | Tool::Copy(start)
+                    | Tool::Section(start)
+                    | Tool::Camera(start)
+                    | Tool::Run(_, start) => start.iter().copied().collect(),
                     _ => Vec::new(),
                 };
                 // A shape's points past its second follow no guide from the points before.
@@ -2413,6 +2423,22 @@ impl BimApp {
                 None => *start = Some(p),
                 Some(a) if a.dist(p) > TOL => {
                     self.run("section", json!({"start": point(a), "end": point(p)}));
+                }
+                Some(a) => *start = Some(a),
+            },
+            Tool::Camera(start) => match start.take() {
+                None => *start = Some(p),
+                Some(a) if a.dist(p) > TOL => {
+                    // The eye stands at the first point, the camera looks at the second: the Options Bar's heights over the
+                    // plan's level, and its lens.
+                    let z0 = self.session.model.elevation(level);
+                    let eye = z0 + self.units.parse(&self.camera_eye_height).unwrap_or(1600.0);
+                    let target = z0 + self.units.parse(&self.camera_target_height).unwrap_or(1200.0);
+                    let lens = self.camera_lens.trim().parse::<f64>().unwrap_or(35.0);
+                    let params = json!({"eye": [a.0, a.1, eye], "target": [p.0, p.1, target], "lens": lens});
+                    if let Some(made) = self.run("camera", params) {
+                        self.open_3d(made["id"].as_u64());
+                    }
                 }
                 Some(a) => *start = Some(a),
             },

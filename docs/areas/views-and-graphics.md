@@ -276,6 +276,36 @@ precise far off as near), with the same `NEAR` cut by the card's clipping; `Mesh
 `the_card_draws_in_perspective_what_the_processor_does_from_afar_and_from_among_the_walls` compare them, from outside and with the eye
 inside the house (`view3d::inside`).
 
+A 3D view may have a **camera of its own**, as Revit's Camera tool makes one: `View3D::camera`, a `ViewCamera` holding the model
+point its `eye` stands at and the `target` it looks at (both `[x, y, z]` mm), with the view's `perspective` on. The `camera` command
+makes a new named view from an eye and a target (the eye never on the target, checked in `Model::check`), gives one to an existing
+view (the default `{3D}` among them, made by name as `perspective` makes it), or, with a `view` and none of `eye`, `target` or
+`lens`, reads one back (`null` eye and target for a view with no camera yet — reading makes nothing). A view that already has a
+camera keeps the point a change leaves out, so `lens` alone or one point alone changes just that; a view without one needs both.
+`view3d::Camera::at` builds the render camera from the
+eye, target and lens, its azimuth and elevation the direction from the eye to the target and `scale` the focal length over the
+distance, so `Camera::eye` is exactly the eye given; `view3d::camera_of` does the same for a view and a scale, for a sheet's 3D
+viewport. On the desktop the Camera tool (View tab) clicks an eye then a target in a plan, each at a height over it from the Options
+Bar, and opens the new view: `BimApp::active_3d` is the 3D view the 3D tab shows (a camera view by id, or none for the default),
+`BimApp::open_3d` sets it (and resets the on-screen camera, so the view stands from its own camera), the Project Browser lists every
+3D view under 3D Views. Properties (`camera.rs`, `BimApp::camera_properties`) is one panel bound to a view: the 3D tab passes the
+view it shows, and a camera view picked on a plan passes the picked one, so both show the same Name, Eye, Target and Focal Length
+and edit it the same way (`camera` for the camera, `modify` for the name). Graphics, phasing and the section box stay with the view
+on screen (`graphic_view`), not with a camera view picked on a plan: its mark shows its camera, its project parameters and its
+phase. A camera view shows no Azimuth or Elevation: those
+(`View3D::azimuth`, `View3D::elevation`) only frame a 3D view **without** a camera on a sheet (`sheet::framing`, `camera_of`), so a
+view on a sheet whose view has a camera shows its name alone. A camera edit while its view is on screen drops the on-screen
+camera (`Orbit::camera`), so the next frame stands the view from the model and the settled hand has nothing old to write back. A
+camera view's mark is drawn on its level's plan
+(`render::camera_mark`, the level from `Model::camera_level`): a symbol at its eye, a dashed line to what it looks at, pickable so a right
+click opens the view (`Action::OpenView`) or a double click does. Orbiting, panning or zooming a camera view writes its eye and target back
+once the hand and the wheel have let it be (`view3d` reads the on-screen `Camera::eye` back into the view), so leaving it and returning comes
+back to where it was left. A camera moved elsewhere — its mark dragged on a plan, a command, undo — moves the view already showing
+it: `Orbit::built` holds the camera the picture was built from, and a difference with the model's means the picture stands from the
+model anew instead of its old camera being written back over the move; a floating window, drawn while the hand works in another
+view, writes nothing.
+
+
 The 3D view can be drawn on the graphics card (File > Settings > Performance; off until asked for: `BimApp::card`, `settings.json`'s
 `gpu_3d`). `view3d::gpu::Mesh` is the triangles a view shows as f32 vertices relative to the middle of what is drawn (millimetres far
 from the origin would overflow f32), each with its colour, normal, face normal, plane, element and texture; the textures' mip levels as

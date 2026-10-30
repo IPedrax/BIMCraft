@@ -85,8 +85,9 @@ const REVEALED: &str = "#FF00FF";
 /// on white paper and on the dark canvas, and apart from the model's black lines.
 pub(crate) const HIGH_CONTRAST: [u8; 3] = [220, 20, 60];
 
-/// `base` with the graphics of the view `sheet` changed as `temp` says.
-fn shadowed(base: &Arc<Model>, sheet: Sheet, temp: &Temp) -> Result<Arc<Model>, String> {
+/// `base` with the graphics of the view `sheet` changed as `temp` says. `three_d` is the 3D view on screen (a camera view
+/// by id, or none for the default `{3D}`).
+fn shadowed(base: &Arc<Model>, sheet: Sheet, three_d: Option<Id>, temp: &Temp) -> Result<Arc<Model>, String> {
     let (view, id) = match sheet {
         // A dependent view hides what its parent does.
         Sheet::Plan(l) | Sheet::Ceiling(l) => {
@@ -94,7 +95,7 @@ fn shadowed(base: &Arc<Model>, sheet: Sheet, temp: &Temp) -> Result<Arc<Model>, 
             (json!(source), Some(source))
         }
         Sheet::Section(s) => (json!(s), Some(s)),
-        Sheet::View3D => (json!("{3D}"), base.default_3d()),
+        Sheet::View3D => (three_d.map_or_else(|| json!("{3D}"), |id| json!(id)), three_d.or_else(|| base.default_3d())),
         Sheet::Paper(_) | Sheet::Schedule(_) | Sheet::Table(_) => return Ok(Arc::clone(base)),
     };
     let drawn = |id: &Id| base.elements.get(id).is_some_and(|e| graphics::drawn(e.category()));
@@ -147,7 +148,7 @@ impl BimApp {
         {
             return Arc::clone(&s.model);
         }
-        match shadowed(&base, self.sheet, &temp) {
+        match shadowed(&base, self.sheet, self.active_3d(), &temp) {
             Ok(model) => {
                 self.shadow = Some(Shadow { base, sheet: self.sheet, temp, model: Arc::clone(&model) });
                 model
@@ -316,7 +317,8 @@ impl BimApp {
     /// Visual Style (WF, HL, SD): how the 3D view draws its surfaces; in another view, says there is none to set.
     pub(crate) fn set_visual_style(&mut self, style: VisualStyle) {
         if self.sheet == Sheet::View3D {
-            self.run("visual_style", json!({"style": style.name()}));
+            let view = self.active_3d().map_or_else(|| json!("{3D}"), |id| json!(id));
+            self.run("visual_style", json!({"view": view, "style": style.name()}));
         } else {
             self.status = Status { text: t("visual styles are for the 3D view: open it from the Project Browser").into(), error: true };
         }

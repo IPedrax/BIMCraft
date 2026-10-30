@@ -1024,6 +1024,21 @@ pub struct View3D {
     /// Seen in perspective, as through a camera, rather than parallel (axonometric): kept, with its lens, when it's turned off.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub perspective: Option<Perspective>,
+    /// Where the view's camera stands and what it looks at, when it was placed as Revit's Camera tool does (an eye and a
+    /// target in the model). None for a view that is fitted over the model rather than through a camera of its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub camera: Option<ViewCamera>,
+}
+
+/// A 3D view's camera: the model point its eye stands at, and the model point it looks at, in mm. The view is seen in
+/// perspective through its lens, from `eye` toward `target`.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ViewCamera {
+    /// Where the camera's eye stands, [x, y, z] mm.
+    pub eye: [f64; 3],
+    /// What the camera looks at, [x, y, z] mm; never the eye itself.
+    pub target: [f64; 3],
 }
 
 /// A 3D view's perspective: the focal length of the lens it is seen through, mm on a 35 mm camera (whose film is the
@@ -1051,6 +1066,7 @@ impl View3D {
             graphics: Graphics::default(),
             section_box: None,
             perspective: None,
+            camera: None,
         }
     }
 }
@@ -3845,6 +3861,13 @@ impl Model {
         self.elements.iter().find_map(|(id, e)| matches!(e, Element::View3D(v) if v.name == "{3D}").then_some(*id))
     }
 
+    /// The level a point at height `z` stands on: the highest level at or below it, else the lowest. A camera stands on the
+    /// plan of that level.
+    pub fn camera_level(&self, z: f64) -> Option<Id> {
+        let levels = self.levels();
+        levels.iter().rev().find(|(_, l)| l.elevation <= z + TOL).or_else(|| levels.first()).map(|(id, _)| *id)
+    }
+
     /// The name of view `id`: a level's plan, a section, an elevation, a schedule or a 3D view;
     /// none for another element.
     pub fn view_name(&self, id: impl Key) -> Option<&str> {
@@ -5413,6 +5436,9 @@ impl Model {
                         let (lo, hi) = (crate::view3d::MIN_LENS, crate::view3d::MAX_LENS);
                         return Err(format!("{who}: a {} mm lens is no camera's; a perspective's lens is {lo} to {hi} mm", p.lens));
                     }
+                    if let Some(cam) = &v.camera {
+                        camera_ok(&who, cam)?;
+                    }
                     if !view_names.insert(v.name.as_str()) {
                         return Err(format!("{who}: another view is already named `{}`", v.name));
                     }
@@ -5720,6 +5746,21 @@ fn section_box_ok(who: &str, b: &SectionBox) -> Result<(), String> {
                 "{who}: its section box runs from {lo} to {hi} mm in {axis}; its max is at least {MIN_SECTION_BOX} mm past its min on each axis"
             ));
         }
+    }
+    Ok(())
+}
+
+/// Whether `cam` is a camera a view can stand at: an eye and a target that are usable numbers, apart, so the view has a
+/// direction to look in.
+fn camera_ok(who: &str, cam: &ViewCamera) -> Result<(), String> {
+    for (what, p) in [("eye", cam.eye), ("target", cam.target)] {
+        for (axis, v) in ["x", "y", "z"].into_iter().zip(p) {
+            coord(&format!("{who} camera {what} {axis}"), v)?;
+        }
+    }
+    let across = |a: [f64; 3], b: [f64; 3]| (0..3).map(|k| a[k] - b[k]).fold(0.0, |s, d| s + d * d).sqrt();
+    if across(cam.eye, cam.target) <= TOL {
+        return Err(format!("{who}: its camera's eye is on its target, so it has nothing to look at; give them two points a little apart"));
     }
     Ok(())
 }

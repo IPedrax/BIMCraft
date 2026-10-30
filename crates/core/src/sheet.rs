@@ -302,8 +302,9 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
                 continue;
             }
             Some(Element::View3D(v)) => {
-                let cam = view3d::camera_in(m, v.azimuth, v.elevation, view.scale, ROOM * DENSITY, &Look::of(m, vp.view));
-                let img = scene.get_or_insert_with(|| view3d::Scene::new(m)).render_in(&cam, &[], &Look::of(m, vp.view));
+                let look = Look::of(m, vp.view);
+                let cam = view3d::camera_of(m, v, view.scale, ROOM * DENSITY, &look);
+                let img = scene.get_or_insert_with(|| view3d::Scene::new(m)).render_in(&cam, &[], &look);
                 d.push(Prim::Image { at: (ox, oy), width: img.width, height: img.height, rgba: img.rgba, ink: false });
                 Drawing::new(view)
             }

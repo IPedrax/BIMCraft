@@ -371,6 +371,10 @@ fn rows(category: &str) -> &'static [Row] {
     }
 }
 
+/// A 3D view's rows when it has a camera: the azimuth and elevation mean nothing to a camera (it looks from its eye at its
+/// target), so a viewport on a sheet shows just the view's name.
+const VIEW3D_CAMERA: &[Row] = &[("Identity Data", "name", "View Name", Text)];
+
 /// A floor plan's parameters, read from and written to its level.
 const PLAN: &[Row] = &[
     ("Identity Data", "name", "View Name", Text),
@@ -777,6 +781,7 @@ impl BimApp {
             ([], Tool::Tag, _) => Subject::New("tag"),
             ([], Tool::Section(_), _) => Subject::New("section"),
             ([], Tool::Elevation, _) => Subject::New("elevation"),
+            ([], Tool::Camera(_), _) => Subject::View3D,
             ([], Tool::Column, _) => Subject::New("column"),
             ([], Tool::Run(category, _) | Tool::Stand(category), _) => Subject::New(category),
             ([], Tool::Component | Tool::Fixture(_), _) => Subject::New("component"),
@@ -923,10 +928,20 @@ impl BimApp {
     pub(crate) fn properties(&mut self, ui: &mut Ui) {
         let model = Arc::clone(&self.session.model);
         let subject = self.subject();
+        // A camera view picked on a plan: its Properties are its camera's, the same panel the 3D tab shows for it.
+        let camera_view = match subject {
+            Subject::Element(id) => matches!(model.elements.get(id), Some(Element::View3D(v)) if v.camera.is_some()),
+            _ => false,
+        };
+        let active_3d = self.active_3d();
         self.type_selector(ui, &model, subject);
         let (filter, ids, rows) = match subject {
             Subject::Element(id) => match model.elements.get(id) {
-                Some(e) => (format!("{} (1)", lang::category(e.category(), true)), vec![id], rows(e.category())),
+                Some(e) => (
+                    format!("{} (1)", lang::category(e.category(), true)),
+                    vec![id],
+                    if camera_view { &[][..] } else { rows(e.category()) },
+                ),
                 None => return,
             },
             Subject::Elements(category) => {
@@ -962,18 +977,23 @@ impl BimApp {
         if subject == Subject::Schedule {
             self.schedule_parameters(ui);
         }
-        // A 3D view on a sheet: where it looks from, too.
+        // A camera view picked on a plan: its camera's properties, bound to it rather than to the 3D tab's view.
+        if camera_view && let Subject::Element(id) = subject {
+            self.camera_properties(ui, Some(id));
+        }
+        // A 3D view on a sheet: where it looks from, too; a camera view's azimuth and elevation mean nothing, so its name only.
         if let Subject::Element(id) = subject
             && let Some(bimcraft_core::model::Element::Viewport(vp)) = model.elements.get(id)
-            && let Some(bimcraft_core::model::Element::View3D(_)) = model.elements.get(vp.view)
+            && let Some(bimcraft_core::model::Element::View3D(v)) = model.elements.get(vp.view)
         {
-            self.parameters(ui, &model, &[model.elements.id(vp.view).unwrap_or_default()], self::rows("view3d"));
+            let view_rows = if v.camera.is_some() { VIEW3D_CAMERA } else { self::rows("view3d") };
+            self.parameters(ui, &model, &[model.elements.id(vp.view).unwrap_or_default()], view_rows);
         }
         // A view's graphics: the template it follows, and its overrides.
         let view_shown = matches!(subject, Subject::Plan(_) | Subject::CeilingPlan | Subject::View3D)
             || (matches!(subject, Subject::Element(_)) && self.selection.is_empty() && matches!(self.sheet, Sheet::Section(_)));
         if subject == Subject::View3D {
-            self.camera_properties(ui);
+            self.camera_properties(ui, active_3d);
             self.section_box_properties(ui);
         }
         if view_shown {

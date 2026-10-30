@@ -1796,6 +1796,15 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"id": 100006, "boundary": [[0, 0], [1e300, 1e300], [0, 1]]}),
         json!({"id": 100006, "level": 1e300, "base_offset": f64::MAX}),
         json!({"id": 100006, "params": {"Phase Created": "Existing"}}),
+        // The camera command: an eye on the target, bad coordinates, a lens no camera has, a view that isn't 3D.
+        json!({"eye": [0, 0, 0], "target": [0, 0, 0]}),
+        json!({"eye": [1e300, 0, 0], "target": [0, 0, 0]}),
+        json!({"eye": [0, 0], "target": [1, 1, 1]}),
+        json!({"eye": [0, 0, 0], "target": [1000, 0, 0], "lens": 1e300}),
+        json!({"eye": [0, 0, 0], "target": [1000, 0, 0], "lens": -5}),
+        json!({"view": "{3D}", "eye": [0, 0, 0], "target": [1000, 0, 0]}),
+        json!({"view": "Level 1", "eye": [0, 0, 0], "target": [1000, 0, 0]}),
+        json!({"view": "Camera 1"}),
     ];
     let mut base = Session::new();
     house(&mut base);

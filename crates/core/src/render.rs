@@ -23,7 +23,7 @@ use crate::geom::{self, P2};
 use crate::graphics::{Detail, Look, scale_of};
 use crate::model::{
     CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, FilledRegion, Floor, Function, Id, Key, Layer, Model, Note, Opening,
-    Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, Wall,
+    Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, View3D, Wall,
 };
 use crate::pen::{Pen, Weights};
 use crate::styles::{BY_CATEGORY, ObjectStyle};
@@ -1884,6 +1884,10 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
             // A section's line is cropped as a line is.
             Element::Section(v) => section_mark(&mut d, v),
             Element::Elevation(v) if inside(v.start + (v.end - v.start) * 0.5) => elevation_mark(&mut d, v),
+            // A camera stands on its level's plan: a symbol at its eye, and a line to what it looks at.
+            Element::View3D(v) if !up && v.camera.is_some_and(|c| m.camera_level(c.eye[2]) == m.elements.id(level)) => {
+                camera_mark(&mut d, v)
+            }
             _ => {}
         }
     }
@@ -3082,6 +3086,42 @@ fn grid(d: &mut Drawing, start: P2, end: P2, name: &str) {
         d.text(name, c, 10.0, GRID);
         d.grow(from, (x, y));
     }
+}
+
+/// A camera's symbol in plan, at its eye: a little body pointing the way it looks, a line to what it looks at, and its name
+/// behind it. Drawn as a section's or an elevation's mark is (the symbol grows with the view's annotation).
+fn camera_mark(d: &mut Drawing, v: &View3D) {
+    let Some(cam) = v.camera else { return };
+    let a = d.view.px(P2(cam.eye[0], cam.eye[1]));
+    let b = d.view.px(P2(cam.target[0], cam.target[1]));
+    // The line to what it looks at, dashed, at the model's size.
+    d.stroke(vec![a, b], Pen::PROJECTION, INK, Some(vec![12.0, 6.0]), false);
+    // The symbol, drawn at its own size then grown as the view's annotation is.
+    let len = (b.0 - a.0).hypot(b.1 - a.1).max(1e-3);
+    let (ux, uy) = ((b.0 - a.0) / len, (b.1 - a.1) / len);
+    let (px, py) = (-uy, ux);
+    let from = d.prims.len();
+    // The body: a small box square to the line, centred a little behind the eye.
+    let (back, half, depth) = (-7.0f32, 9.0f32, 8.0f32);
+    let c = (a.0 + ux * back, a.1 + uy * back);
+    let body = vec![
+        (c.0 - ux * depth + px * half, c.1 - uy * depth + py * half),
+        (c.0 + ux * depth + px * half, c.1 + uy * depth + py * half),
+        (c.0 + ux * depth - px * half, c.1 + uy * depth - py * half),
+        (c.0 - ux * depth - px * half, c.1 - uy * depth - py * half),
+    ];
+    d.push(Prim::Fill { rings: vec![body.clone()], color: PAPER });
+    d.stroke(body, Pen::BUBBLE, INK, None, true);
+    // The lens: a small dark circle at the front, toward the target.
+    let lc = (c.0 + ux * (depth + 3.0), c.1 + uy * (depth + 3.0));
+    let ring: Vec<(f32, f32)> = (0..16)
+        .map(|i| (lc.0 + 3.5 * (f64::from(i) * PI / 8.0).cos() as f32, lc.1 + 3.5 * (f64::from(i) * PI / 8.0).sin() as f32))
+        .collect();
+    d.push(Prim::Fill { rings: vec![ring], color: INK });
+    // Its name behind the eye, against the way it looks.
+    let name_at = (a.0 - ux * (14.0 + font::width(&v.name, 10.0) / 2.0), a.1 - uy * (14.0 + font::width(&v.name, 10.0) / 2.0));
+    d.text(&v.name, name_at, 10.0, INK);
+    d.grow(from, a);
 }
 
 fn hex(c: Rgb) -> String {

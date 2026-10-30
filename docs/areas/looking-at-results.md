@@ -23,6 +23,10 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   reflected ceiling plan: `render {"view": "Level 1", "ceiling": true, "path": "/tmp/rcp.png"}`.
 - 3D: `bimcraft-cli run --sample --cmd 'render {"view": "{3D}", "path": "/tmp/3d.png"}'` (`azimuth` and `elevation`
   turn it). After touching `view3d.rs`, look at it. Sections and elevations render by name the same way: `"view": "Section 1"`.
+- A camera: `bimcraft-cli run --sample --cmd 'camera {"eye": [-5000, -4000, 1600], "target": [4000, 3000, 1200]}'
+  --cmd 'camera {"view": "Camera 1", "lens": 50}' --cmd 'render {"view": "Camera 1", "path": "/tmp/camera.png"}'` makes,
+  changes and looks through one (a `view` alone reads it back). In the window, make a camera, pick its mark on the plan and
+  change Name, Eye, Target and Focal Length in Properties: the mark moves and the 3D tab, open on it, follows at once.
 - Scale, detail level and style: `bimcraft-cli run --sample --cmd 'scale {"view": "Level 1", "scale": 100}' --cmd 'render {"view": "Level 1",
   "path": "/tmp/plan.png"}'` (annotation follows the scale at that picture's zoom, so the one that fits is not the one a sheet prints; a fit leaves room for it, `fit_by`,
   which finds the largest scale whose view and annotation both fit: render at 1 : 20 and 1 : 500 and look for what's cut at the edge),
