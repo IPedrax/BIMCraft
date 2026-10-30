@@ -203,7 +203,8 @@ card frame (`style::card`: 8 px corners, a hairline border and a soft shadow, st
 and Mono (`assets/fonts`, SIL OFL 1.1; built into the executable, so `NOTICE` names them with their versions and sha256 and every package
 carries it and both OFL.txt, as `copy_docs` in `packaging/env.sh`, `bimcraft.wxs` and `portable.ps1` do: `tests/fonts.rs` checks), with
 `style::semibold` for titles and tabs (the body's face until the window has loaded it, a frame after `apply`). The semibold face is a
-family of its own, and egui does not fall back across families, so the Chinese font joins every family in `style::families` (`lang::use_chinese_font`). `BimApp::show` paints the active view's ground (`backdrop`) under everything, then the app bar (Home, File, the
+family of its own, and egui does not fall back across families, so the fonts with the hanzi and the Hangul join every family in
+`style::families` (`lang::use_cjk_font`), whatever language the window speaks. `BimApp::show` paints the active view's ground (`backdrop`) under everything, then the app bar (Home, File, the
 Quick Access Toolbar and the title, light on dark, `style::on_app_bar`), and the ribbon, the Options Bar, the status bar and each docked
 palette stack as cards, so the gaps between them read as the view going on beneath. A drawn view (a plan, a section, the 3D view, a
 sheet) fills its pane from the top of the pane to its foot: its tabs float over its top left on a card of their own and the view control

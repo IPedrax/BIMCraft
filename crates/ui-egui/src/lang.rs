@@ -11,6 +11,9 @@
 use bimcraft_i18n::msg;
 
 mod font;
+#[cfg(test)]
+pub(crate) use font::no_fonts;
+pub use font::{Fonts, Script};
 include!(concat!(env!("OUT_DIR"), "/catalogs.rs"));
 
 // English keys retained for compatibility with text selected indirectly or stored by older versions.
@@ -124,38 +127,47 @@ pub fn from_env() -> Lang {
 pub const NO_CHINESE_FONT: &str =
     msg!("No font with Chinese characters was found on this system: install one (such as Noto Sans CJK) and choose Chinese again.");
 
-/// Whether `ctx` has a font to draw Chinese with: [`use_chinese_font`] has put one there.
-fn has_chinese_font(ctx: &Context) -> bool {
-    ctx.data(|d| d.get_temp::<bool>(Id::new("chinese-font"))).unwrap_or(false)
+/// Whether `ctx` has had the CJK fonts put behind its own: [`use_cjk_font`] has looked once, and whether a font with the hanzi
+/// was among them.
+fn cjk_font_tried(ctx: &Context) -> Option<bool> {
+    ctx.data(|d| d.get_temp::<Option<bool>>(Id::new("cjk-font"))).flatten()
 }
 
-/// Looks for a font with Chinese glyphs: its bytes and the face to use. The app holds one, so that a test can say there is none.
-pub type FontFinder = fn() -> Option<(Vec<u8>, u32)>;
+/// Looks for fonts with the hanzi and the Hangul. The app holds one, so that a test can say there is none.
+pub type FontFinder = fn() -> Fonts;
 
-/// The font of the system's [`use_chinese_font`] looks for.
-pub fn chinese_font() -> Option<(Vec<u8>, u32)> {
+/// The fonts of the system's [`use_cjk_font`] looks for.
+pub fn cjk_fonts() -> Fonts {
     font::find()
 }
 
-/// Puts a font that `find` finds, with Chinese glyphs, behind the window's own, once; false where there is none. egui's fonts have
-/// no hanzi, so a window in Chinese without one would be boxes.
-pub fn use_chinese_font(ctx: &Context, find: FontFinder) -> bool {
-    if has_chinese_font(ctx) {
-        return true;
+/// Puts the fonts that `find` finds, with the hanzi and the Hangul, behind the window's own, once, whatever language the window
+/// speaks: content — a floor's name from a Korean file, a note on a sheet — is not the interface's. True when a font with the
+/// hanzi was among them, for the Chinese choice to warn without one.
+pub fn use_cjk_font(ctx: &Context, find: FontFinder) -> bool {
+    if let Some(hanzi) = cjk_font_tried(ctx) {
+        return hanzi;
     }
-    let Some((bytes, index)) = find() else { return false };
-    let mut data = FontData::from_owned(bytes);
-    data.index = index;
-    let families = crate::style::families().map(|family| InsertFontFamily { family, priority: FontPriority::Lowest });
-    ctx.add_font(FontInsert::new("chinese", data, families.into()));
-    ctx.data_mut(|d| d.insert_temp(Id::new("chinese-font"), true));
-    true
+    let fonts = find();
+    for (bytes, index, script) in fonts.fonts {
+        let mut data = FontData::from_owned(bytes);
+        data.index = index;
+        let name = match script {
+            Script::Han => "cjk-han",
+            Script::Hangul => "cjk-hangul",
+            Script::Both => "cjk",
+        };
+        let families = crate::style::families().map(|family| InsertFontFamily { family, priority: FontPriority::Lowest });
+        ctx.add_font(FontInsert::new(name, data, families.into()));
+    }
+    ctx.data_mut(|d| d.insert_temp(Id::new("cjk-font"), Some(fonts.hanzi)));
+    fonts.hanzi
 }
 
 /// Tests have no say in which fonts a machine has: a window is told it has one.
 #[cfg(test)]
-pub(crate) fn assume_chinese_font(ctx: &Context) {
-    ctx.data_mut(|d| d.insert_temp(Id::new("chinese-font"), true));
+pub(crate) fn assume_cjk_font(ctx: &Context) {
+    ctx.data_mut(|d| d.insert_temp(Id::new("cjk-font"), Some(true)));
 }
 
 /// `english` in the interface's language.
