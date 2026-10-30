@@ -43,7 +43,7 @@ msgstr "Ventana abatible"
 msgid "Ceiling Luminaire"
 msgstr "Luminaria de techo"
 
-#: crates/core/src/render.rs:1948
+#: crates/core/src/render.rs:1950
 msgid "Ceiling Plan"
 msgstr "Plano de cielo raso"
 
@@ -87,7 +87,7 @@ msgstr "Recuento"
 msgid "Crosshatch"
 msgstr "Sombreado cruzado"
 
-#: crates/core/src/render.rs:2491
+#: crates/core/src/render.rs:2493
 msgid "DN"
 msgstr "BAJA"
 
@@ -103,7 +103,7 @@ msgstr "Trazo y punto"
 msgid "Data Outlet"
 msgstr "Punto de datos"
 
-#: crates/core/src/commands.rs:7166
+#: crates/core/src/commands.rs:7169
 msgid "Dependent"
 msgstr "Dependiente"
 
@@ -167,8 +167,8 @@ msgstr "Este"
 msgid "Elbow 90"
 msgstr "Codo 90"
 
-#: crates/core/src/commands.rs:6950
-#: crates/core/src/commands.rs:8623
+#: crates/core/src/commands.rs:6953
+#: crates/core/src/commands.rs:8626
 msgid "Elevation"
 msgstr "Elevación"
 
@@ -285,7 +285,7 @@ msgstr "Ancho de la pata"
 msgid "Length"
 msgstr "Longitud"
 
-#: crates/core/src/commands.rs:4420
+#: crates/core/src/commands.rs:4423
 #: crates/core/src/model.rs:2636
 msgid "Level"
 msgstr "Nivel"
@@ -306,7 +306,7 @@ msgstr "Marca"
 msgid "Masking"
 msgstr "Máscara"
 
-#: crates/core/src/commands.rs:5458
+#: crates/core/src/commands.rs:5461
 msgid "Mass"
 msgstr "Masa"
 
@@ -326,7 +326,7 @@ msgstr "Metal"
 msgid "Mounting Height"
 msgstr "Altura de montaje"
 
-#: crates/core/src/render.rs:1784
+#: crates/core/src/render.rs:1786
 msgid "NOT ENCLOSED"
 msgstr "NO DELIMITADA"
 
@@ -390,11 +390,11 @@ msgstr "Enlucido"
 msgid "Porcelain"
 msgstr "Porcelana"
 
-#: crates/core/src/commands.rs:2254
+#: crates/core/src/commands.rs:2257
 msgid "Project"
 msgstr "Proyecto"
 
-#: crates/core/src/render.rs:1784
+#: crates/core/src/render.rs:1786
 msgid "REDUNDANT"
 msgstr "REDUNDANTE"
 
@@ -418,7 +418,7 @@ msgstr "Contrahuellas"
 msgid "Roof tiles"
 msgstr "Tejas"
 
-#: crates/core/src/commands.rs:5683
+#: crates/core/src/commands.rs:5686
 msgid "Room"
 msgstr "Habitación"
 
@@ -446,8 +446,8 @@ msgstr "Recrecido"
 msgid "Seat Height"
 msgstr "Altura del asiento"
 
-#: crates/core/src/commands.rs:6927
-#: crates/core/src/commands.rs:8622
+#: crates/core/src/commands.rs:6930
+#: crates/core/src/commands.rs:8625
 msgid "Section"
 msgstr "Sección"
 
@@ -559,7 +559,7 @@ msgstr "Huella"
 msgid "Type"
 msgstr "Tipo"
 
-#: crates/core/src/render.rs:2491
+#: crates/core/src/render.rs:2493
 msgid "UP"
 msgstr "SUBE"
 
@@ -567,7 +567,7 @@ msgstr "SUBE"
 msgid "Unbounded Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:7307
+#: crates/core/src/commands.rs:7310
 msgid "Unnamed"
 msgstr "Sin nombre"
 
