@@ -2039,7 +2039,7 @@ msgstr "Zbourat (DW): klikněte na prvek, který chcete zbourat ve fázi pohledu
 msgid "Demolished"
 msgstr "Zbourané"
 
-#: crates/core/src/commands.rs:7049
+#: crates/core/src/commands.rs:7161
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -2468,7 +2468,7 @@ msgstr "Elektrická zařízení"
 msgid "Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it"
 msgstr "Elektrické zařízení (EE): rozvaděč v místě kliknutí na stěnu; Mezerník prvek otočí"
 
-#: crates/core/src/commands.rs:1590
+#: crates/core/src/commands.rs:1608
 msgid "Elements"
 msgstr "Prvky"
 
@@ -7192,7 +7192,7 @@ msgstr "Jednotky"
 msgid "Units Format"
 msgstr ""
 
-#: crates/core/src/commands.rs:7190
+#: crates/core/src/commands.rs:7302
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 

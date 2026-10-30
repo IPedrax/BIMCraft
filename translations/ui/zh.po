@@ -2040,7 +2040,7 @@ msgstr "拆除 (DW)：单击图元，在视图阶段中将其拆除；再次单�
 msgid "Demolished"
 msgstr "已拆除"
 
-#: crates/core/src/commands.rs:7049
+#: crates/core/src/commands.rs:7161
 msgid "Dependent"
 msgstr "相关"
 
@@ -2469,7 +2469,7 @@ msgstr "电气设备"
 msgid "Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it"
 msgstr "电气设备 (EE)：在墙上单击处放置配电箱；按空格键旋转"
 
-#: crates/core/src/commands.rs:1590
+#: crates/core/src/commands.rs:1608
 msgid "Elements"
 msgstr "图元"
 
@@ -7193,7 +7193,7 @@ msgstr "单位"
 msgid "Units Format"
 msgstr "单位格式"
 
-#: crates/core/src/commands.rs:7190
+#: crates/core/src/commands.rs:7302
 msgid "Unnamed"
 msgstr "未命名"
 
