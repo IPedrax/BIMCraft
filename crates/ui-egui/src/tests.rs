@@ -6093,3 +6093,5 @@ fn room_area_computation_is_set_from_manage_and_undone() {
     h.run();
     assert_eq!(h.state().session.model.room_area, RoomArea::Centre);
 }
+
+mod background_grid;

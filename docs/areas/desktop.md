@@ -318,3 +318,35 @@ Dimension Type Properties (`dimtypes.rs`), and Properties edits its prefix, suff
 A double click on one of its numbers opens Dimension Text for that segment (`DimensionTextDialog`). Selected, an aligned or linear one shows
 a padlock under each segment and, over a string of two or more, EQ past its end (`dimension_constraints`): a click locks or unlocks, or makes
 it equal or not.
+
+## Background grids
+
+Each plan, section and elevation keeps its canvas grid in its `Graphics::background_grid`, saved with the project, copied
+with independent view duplicates, and edited through the undoable `graphics` command. Reflected ceiling plans use their
+plan key's graphics, like their scale and other view settings; dependent plans follow their parent's graphics.
+The Graphics group in a view's instance properties has a Background Grids Edit… button. The grid menu beside Temporary
+Hide/Isolate (the glasses) keeps Show grids, independent Main grid and Subgrid checkboxes, Grid snapping and Grid settings….
+The editor uses a draft: Apply/OK save one undo step, Cancel discards unapplied changes. File > Settings has no grid page;
+application settings files from the earlier global implementation no longer affect views.
+
+View templates can control Background Grids as a group (`Group::BackgroundGrid`, JSON `background_grid`). Create from This
+View copies the effective grid. View Templates offers its own Edit… button to change the template's grid. Followers use the
+template's values and gray out their instance Edit button, bottom menu grid settings and any open editor; removing template
+control restores each view's own grid. The engine rejects bypasses through `graphics` and `modify` too.
+
+`core::background_grid` owns the lattice geometry, shared by painting and snapping. Both lattices start at the fixed view
+origin (0, 0), with one counter-clockwise rotation in degrees. Main spacing X/Y is entered in the project's actual units;
+subgrid divisions X/Y divide that spacing independently. Each grid has its own colour and pen (0–16), with default colours [230,230,230] for main and [245,245,245] for subgrid,
+following the project's line weights and the Thin Lines display toggle. Main lines take precedence over coincident subgrid lines.
+Dense subgrids disappear below four screen pixels; main grids thin by whole multiples without moving the origin. Drawing
+is bounded to 4096 lines. Section/elevation textures expose empty paper behind the model while retaining opaque model faces.
+Grids are canvas aids; they do not create elements or appear in sheet/export drawings.
+
+Grid snapping is a global application preference (`BimApp::grid_snapping`, saved as `Settings::grid_snapping`), available
+in Manage > Snaps and the bottom grid menu. It is not part of view graphics or view templates: the checkbox stays editable
+when a template controls the active view's grid, and changing it creates no project undo step. New/Open retain the setting.
+It uses intersections of the active view's enabled subgrid, or main grid when the subgrid is disabled; with neither enabled,
+there is nothing to snap to. Show grids only controls display: snapping can remain on while the grid is hidden. Object snaps, one-point snap overrides and Shift
+constraints keep priority; grid snapping replaces the free-point fallback and automatic angle guides. Sections and
+elevations snap annotation placement in their local horizontal/height coordinates. Model validation rejects invalid
+spacing, divisions, pens or rotation, and commands roll back the whole edit.
