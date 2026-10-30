@@ -852,7 +852,7 @@ fn table(ui: &mut Ui, d: &mut VgDialog, model: &Model, rows: &[Row], cols: &Colu
             if let (Some(open), Pick::Category(cat)) = (row.fold, &row.pick) {
                 let arrow = c.add(Button::new("").frame(false).min_size(vec2(14.0, 14.0)));
                 let openness = c.ctx().animate_bool(c.id().with(("folding", cat)), open);
-                egui::collapsing_header::paint_default_icon(&mut c, openness, &arrow);
+                fold_arrow(c.painter(), arrow.rect.center(), openness);
                 let what = if open { t("Fold") } else { t("Unfold") };
                 arrow.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, format!("{}: {what}", row.name)));
                 if arrow.clicked() && !d.unfolded.remove(cat) {
@@ -907,6 +907,15 @@ fn table(ui: &mut Ui, d: &mut VgDialog, model: &Model, rows: &[Row], cols: &Colu
         }
     });
     edits
+}
+
+/// A fold arrow: a small dark grey triangle centred on `at`, pointing right while folded and turned 90° down as `openness`
+/// goes from 0 to 1.
+fn fold_arrow(p: &Painter, at: egui::Pos2, openness: f32) {
+    const HALF: f32 = 3.5;
+    let turn = egui::emath::Rot2::from_angle(openness * std::f32::consts::FRAC_PI_2);
+    let corners = [vec2(-HALF * 0.6, -HALF), vec2(HALF * 0.9, 0.0), vec2(-HALF * 0.6, HALF)].map(|v| at + turn * v);
+    p.add(Shape::convex_polygon(corners.to_vec(), Color32::from_rgb(66, 66, 66), Stroke::NONE));
 }
 
 /// What a cell of `o` overrides, drawn in it: a line as it would draw, a fill's colour, the transparency's percent; nothing
