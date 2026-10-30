@@ -69,7 +69,9 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 12: a family holds `connectors` (an
+/// The version of the project file this build writes, and the newest it reads. 13: a project holds circuits (an element of the
+/// `circuit` category); nothing in a file of 12 changes, but a build that reads up to 12 would answer one of 13 with a serde
+/// error ("unknown variant"), not "saved by a newer BIMCraft". 12: a family holds `connectors` (an
 /// electrical device's load, a switch), each a part with an id and a GUID; nothing in a file of 11 changes, but a build that
 /// reads up to 11 would drop them as it does what it doesn't know, and place the device as a load of zero. 11: a project's
 /// language may be Swedish, Czech or French (`sv`, `cs`, `fr`); nothing in a file of 10 changes, but a build that reads up to
@@ -90,7 +92,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 12;
+pub const FORMAT: u32 = 13;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -1598,6 +1600,12 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? ci.view { f(g) }
             }
             Element::RoomSeparator(rs) => f(& $($m)? rs.level),
+            Element::Circuit(c) => {
+                f(& $($m)? c.panel);
+                for g in & $($m)? c.devices {
+                    f(g)
+                }
+            }
             Element::Rebar(rb) => {
                 f(& $($m)? rb.level);
                 if let Some(g) = & $($m)? rb.host { f(g) }
@@ -1671,6 +1679,8 @@ pub enum Element {
     PointCloud(PointCloud),
     /// A CAD drawing placed in the model.
     CadImport(CadImport),
+    /// An electrical circuit: devices on a distribution board, behind one breaker.
+    Circuit(crate::electrical::Circuit),
 }
 
 impl Element {
@@ -1857,6 +1867,7 @@ impl Element {
             Element::Rebar(_) => "rebar",
             Element::Dimension(_) => "dimension",
             Element::Tag(_) => "tag",
+            Element::Circuit(_) => "circuit",
             Element::Section(_) => "section",
             Element::Elevation(_) => "elevation",
             Element::Sheet(_) => "sheet",
@@ -2838,6 +2849,7 @@ impl Model {
         self.typed_dimensions();
         // 10 to 11 (Swedish, Czech and French as a project's language) has no step: a file of 10 holds none of them.
         // 11 to 12 (a family's connectors) has no step: a file of 11 holds none, so a family of it has no connector.
+        // 12 to 13 (circuits) has no step: a file of 12 holds none.
         // The electrical settings (voltages, distribution systems, wire types) and a board's panel data have none within 11 or 12:
         // a file without them reads with the starter set and no board data, and one that has them is read by an older version with
         // them left out.
@@ -3508,6 +3520,8 @@ impl Model {
             Element::Roof(r) => Some(r.level),
             Element::Door(o) | Element::Window(o) => wall_level(o),
             Element::Tag(t) => self.elements.get(t.host).filter(|h| !matches!(h, Element::Tag(_))).and_then(|h| self.level_of(h)),
+            // On the board's level: its plan is where it is drawn.
+            Element::Circuit(c) => self.elements.get(c.panel).filter(|h| matches!(h, Element::Component(_))).and_then(|h| self.level_of(h)),
             // Notes and spot elevations in a level's plan.
             Element::Text(Note { view, .. })
             | Element::Spot(Spot { view, .. })
@@ -4688,6 +4702,7 @@ impl Model {
                 if k == 1 { "s" } else { "" }
             )
         }));
+        out.extend(crate::electrical::circuit_warnings(self));
         out
     }
 
@@ -4965,6 +4980,8 @@ impl Model {
             }
             phasing::check_order(self, &who, e)?;
             match e {
+                // Its rules are held between circuits and boards, in one place: `electrical::check_circuits`.
+                Element::Circuit(_) => {}
                 Element::Level(l) => {
                     text(&who, "name", &l.name)?;
                     coord(&format!("{who} elevation"), l.elevation)?;

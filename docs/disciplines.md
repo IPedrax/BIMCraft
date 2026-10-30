@@ -139,8 +139,8 @@ no Autodesk shortcut, and take free letters.
 
 ## Not in this design, on purpose
 
-Pipe connectors and fittings, auto-routing, sizing, flow and load calculations, circuits and panel schedules (the electrical
-settings, a board's data and a family's electrical connectors are in, and give a device its load), analytical
+Pipe connectors and fittings, auto-routing, sizing, flow and load calculations, panel schedules (the electrical
+settings, a board's data, a family's electrical connectors and circuits are in), analytical
 models, rebar, beam systems and trusses. Each is large, none changes the model above, and they come after the five
 tabs can draw and schedule their systems (ROADMAP 2.x).
 

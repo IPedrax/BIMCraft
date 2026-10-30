@@ -1494,10 +1494,22 @@ pub static ALL: &[Command] = &[
         run: measure,
         undoable: false,
     },
-    other(
+    edit(
         "circuit",
-        "Size a Circuit",
-        "{load, apparent?, demand?, power_factor?, phases?: FN|FF|3F|3FN, system?: 127/220|220/380|230/400, use?: lighting|power, length?, \
+        "Circuit",
+        &[],
+        concat!(
+            "Two commands in one id. (1) A circuit of the model: {devices: [ids], panel: id, name?, number?, rating?, poles?, voltage?, \
+             classification?, demand_factor?, wires?} makes one: the devices (components of a family with a power connector, each in one \
+             circuit) on a distribution board, behind a breaker of `rating` amperes (a standard one for the load unless given) and `poles` \
+             (the devices'), at the `voltage` its board's system supplies (a voltage of the project; unset, the system's line-to-neutral \
+             for one pole, line-to-line for more), `number` on the board (the next free unless given), `classification` (its devices'), \
+             `demand_factor` (above 0 up to 1, 1) and `wires` {hot: {wire_type, section}, neutral?, ground?} (sections of the wire type's \
+             table, in mm²). {id, ...} changes one, merging fields; {id, add?: [ids], remove?: [ids]} its devices; {id, delete: true} \
+             takes it away; {list: true} or {panel: id} lists the circuits, all or a board's, each with its devices, installed and \
+             demand VA, current and the load of each pole. A device draws at its connector's voltage, within the band of the circuit's \
+             voltage, on as many poles as the circuit has, and a refusal names both voltages. Circuits are not copied. (2) The sizing: ",
+            "{load, apparent?, demand?, power_factor?, phases?: FN|FF|3F|3FN, system?: 127/220|220/380|230/400, use?: lighting|power, length?, \
          method?, insulation?: pvc|epr, conductor?: flexible|rigid, ambient?, grouped?, bundle?, spacing?, soil?, section?, breaker?, \
          drop_limit?, reduced_neutral?} one electrical circuit sized as NBR 5410:2004 asks, for copper: `load` in W (or VA with \
          `apparent`), `demand` (0 to 1, 1) and `power_factor` (over 0 to 1, 1; a first value, not a claim about the load), `phases` \
@@ -1510,6 +1522,7 @@ pub static ALL: &[Command] = &[
          I_B ≤ I_n ≤ I_Z (which gives I_2 = 1.45 I_n ≤ 1.45 I_Z for the breakers of NBR NM 60898) with the drop within `drop_limit` (4 %), the current the section carries, the drop, \
          the conductors (phases, neutral, protective), the factors, and what the chosen section and breaker give. It changes nothing; \
          aluminium, trays, several layers, short circuit and harmonics are not checked. It has no shortcut: Revit has no tool for it",
+        ),
         circuit,
     ),
     other(
@@ -2018,6 +2031,14 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             extra.insert(key.into(), json!(g));
         }
     });
+    // What a board's circuits load: worked out from them, never saved.
+    if let Some(t) = crate::electrical::board_totals(m, id) {
+        extra.insert("installed_va".into(), json!(t.installed_va));
+        extra.insert("demand_va".into(), json!(t.demand_va));
+        if let Some(a) = t.current_a {
+            extra.insert("current_a".into(), json!(a));
+        }
+    }
     // A distribution board's data, by the names of Revit's parameters, which schedules and agents read it by.
     if let Element::Component(Component { panel: Some(p), .. }) = e {
         if let Some(d) = &p.distribution {
@@ -2261,6 +2282,22 @@ pub fn element_json(m: &Model, id: Id) -> Value {
         Element::Link(l) => {
             extra.insert("loaded".into(), json!(m.loaded.contains_key(&l.path)));
             extra.insert("elements".into(), json!(m.loaded.get(&l.path).map(|o| o.elements.len())));
+        }
+        Element::Circuit(c) => {
+            extra.insert("panel_id".into(), json!(m.elements.id(c.panel)));
+            extra.insert("device_ids".into(), json!(c.devices.iter().filter_map(|g| m.elements.id(*g)).collect::<Vec<Id>>()));
+            extra.insert("level".into(), json!(m.level_of(e)));
+            extra.insert("demand_factor".into(), json!(c.demand_factor));
+            if let Ok((name, v)) = crate::electrical::circuit_voltage(m, c) {
+                extra.insert("voltage_name".into(), json!(name));
+                extra.insert("voltage_v".into(), json!(v.nominal));
+            }
+            if let Some(t) = crate::electrical::circuit_totals(m, c) {
+                extra.insert("installed_va".into(), json!(t.installed_va));
+                extra.insert("demand_va".into(), json!(t.demand_va));
+                extra.insert("current_a".into(), json!(t.current_a));
+                extra.insert("pole_va".into(), json!(t.pole_va));
+            }
         }
         Element::Level(_) | Element::Grid(_) | Element::Schedule(_) | Element::View3D(_) | Element::PlanView(_) => {}
     }
@@ -3837,32 +3874,234 @@ fn choice<'a>(c: &str, p: &'a Value, key: &str, names: &[&str], default: &'a str
     }
 }
 
-fn circuit(_: &mut Session, p: &Value) -> R {
+/// The keys of `circuit` as the sizing of NBR 5410 takes them.
+const SIZING_KEYS: &[&str] = &[
+    "load",
+    "apparent",
+    "demand",
+    "power_factor",
+    "phases",
+    "system",
+    "use",
+    "length",
+    "method",
+    "insulation",
+    "conductor",
+    "ambient",
+    "grouped",
+    "bundle",
+    "spacing",
+    "soil",
+    "section",
+    "breaker",
+    "drop_limit",
+    "reduced_neutral",
+];
+
+/// The keys of `circuit` as a circuit of the model takes them.
+const CIRCUIT_KEYS: &[&str] = &[
+    "devices",
+    "panel",
+    "id",
+    "add",
+    "remove",
+    "name",
+    "number",
+    "rating",
+    "poles",
+    "voltage",
+    "classification",
+    "demand_factor",
+    "wires",
+    "delete",
+    "list",
+];
+
+/// `circuit`: a circuit of the model when it is given any of that circuit's keys, the NBR 5410 sizing otherwise (and when it is
+/// given none, which is what it always did); the keys of both are refused.
+fn circuit(s: &mut Session, p: &Value) -> R {
+    let c = "circuit";
+    let found = |list: &[&str]| -> Vec<String> {
+        p.as_object().map(|o| o.keys().filter(|k| list.contains(&k.as_str())).map(|k| format!("`{k}`")).collect()).unwrap_or_default()
+    };
+    let (own, sizing) = (found(CIRCUIT_KEYS), found(SIZING_KEYS));
+    match (own.is_empty(), sizing.is_empty()) {
+        (false, false) => Err(bad(
+            c,
+            format!(
+                "{} belong to a circuit of the model (devices, panel…) and {} to the sizing of one (load, section…): give one or the other",
+                own.join(", "),
+                sizing.join(", ")
+            ),
+        )),
+        (false, true) => circuit_of_model(s, p),
+        _ => circuit_size(s, p),
+    }
+}
+
+/// The elements `key` of `p` lists, each by id or GUID, if it is given.
+fn element_list(c: &str, m: &Model, p: &Value, key: &str) -> Result<Option<Vec<Id>>, String> {
+    use crate::electrical::MAX_DEVICES;
+    match p.get(key) {
+        v if absent(v) => Ok(None),
+        Some(Value::Array(a)) if a.len() <= MAX_DEVICES => a.iter().map(|v| element_id(c, m, v)).collect::<Result<_, _>>().map(Some),
+        Some(Value::Array(_)) => Err(bad(c, format!("`{key}` lists more than {MAX_DEVICES} elements"))),
+        Some(v) => Err(bad(c, format!("`{key}` must be a list of element ids, got {v}"))),
+        None => Ok(None),
+    }
+}
+
+/// A circuit of the model: made, changed, its devices added or taken out, taken away, or listed.
+fn circuit_of_model(s: &mut Session, p: &Value) -> R {
+    use crate::electrical::{self, Circuit, Wires};
+    let c = "circuit";
+    only(c, p, CIRCUIT_KEYS)?;
+    let m = &s.model;
+    let given = |k: &str| p.get(k).is_some_and(|v| !v.is_null());
+    let id = match p.get("id") {
+        v if absent(v) => None,
+        Some(v) => Some(element_id(c, m, v)?),
+        None => None,
+    };
+    if let Some(id) = id
+        && !matches!(m.elements.get(id), Some(Element::Circuit(_)))
+    {
+        return Err(bad(c, format!("element {id} is not a circuit")));
+    }
+    let panel = match p.get("panel") {
+        v if absent(v) => None,
+        Some(v) => {
+            let pid = element_id(c, m, v)?;
+            electrical::board(m, pid).ok_or_else(|| bad(c, format!("element {pid} is not a distribution board")))?;
+            Some(pid)
+        }
+        None => None,
+    };
+    // Listing: every circuit, or those of one board.
+    if flag(c, p, "list")? || (id.is_none() && panel.is_some() && CIRCUIT_KEYS.iter().filter(|k| given(k)).all(|k| *k == "panel")) {
+        let guid = panel.map(|b| m.guid(b));
+        let all: Vec<Value> = m
+            .elements
+            .iter()
+            .filter(|(_, e)| matches!(e, Element::Circuit(x) if guid.is_none_or(|g| x.panel == g)))
+            .map(|(i, _)| element_json(m, *i))
+            .collect();
+        return Ok(json!({"circuits": all}));
+    }
+    if flag(c, p, "delete")? {
+        let id = id.ok_or_else(|| bad(c, "`id` is required: the circuit to delete"))?;
+        s.model_mut().elements.remove(id);
+        return Ok(json!({"deleted": id}));
+    }
+    // What it is asked to be.
+    let name = string(c, p, "name")?;
+    let classification = string(c, p, "classification")?;
+    let rating = amount(c, p, "rating", "amperes")?;
+    let demand = amount(c, p, "demand_factor", "a share of its load")?;
+    let poles = small(c, p, "poles")?;
+    let number = match p.get("number") {
+        v if absent(v) => None,
+        Some(v) => Some(
+            v.as_u64().and_then(|n| u32::try_from(n).ok()).ok_or_else(|| bad(c, format!("`number` must be a whole number, got {v}")))?,
+        ),
+        None => None,
+    };
+    let voltage = clearable(c, p, "voltage")?;
+    let wires: Option<Option<Wires>> =
+        match p.get("wires") {
+            v if absent(v) => None,
+            Some(Value::String(t)) if t.trim().is_empty() => Some(None),
+            Some(v) => Some(Some(serde_json::from_value(v.clone()).map_err(|e| {
+                bad(c, format!("`wires` must be {{hot: {{wire_type, section}}, neutral?, ground?}} (sections in mm²): {e}"))
+            })?)),
+            None => None,
+        };
+    let (devices, add, remove) = (element_list(c, m, p, "devices")?, element_list(c, m, p, "add")?, element_list(c, m, p, "remove")?);
+    // Changed.
+    if let Some(id) = id {
+        let Some(Element::Circuit(old)) = m.elements.get(id) else { return Err(bad(c, format!("element {id} is not a circuit"))) };
+        let mut x: Circuit = old.clone();
+        if let Some(b) = panel {
+            x.panel = m.guid(b);
+        }
+        if let Some(list) = &devices {
+            x.devices = list.iter().map(|i| m.guid(*i)).collect();
+        }
+        for r in remove.iter().flatten() {
+            let g = m.guid(*r);
+            let before = x.devices.len();
+            x.devices.retain(|d| *d != g);
+            if x.devices.len() == before {
+                return Err(bad(c, format!("device {r} isn't in circuit {id}")));
+            }
+        }
+        x.devices.extend(add.iter().flatten().map(|i| m.guid(*i)));
+        if let Some(n) = name {
+            x.name = n;
+        }
+        if let Some(k) = classification {
+            x.classification = k;
+        }
+        if let Some(a) = rating {
+            x.rating_a = a;
+        }
+        if let Some(d) = demand {
+            x.demand_factor = d;
+        }
+        if let Some(n) = poles {
+            x.poles = n;
+        }
+        if let Some(n) = number {
+            x.number = n;
+        }
+        if let Some(v) = voltage {
+            x.voltage = v;
+        }
+        if let Some(w) = wires {
+            x.wires = w;
+        }
+        s.model_mut().elements.insert(id, Element::Circuit(x));
+        return Ok(json!({"id": id, "circuit": element_json(&s.model, id)}));
+    }
+    // Made.
+    let Some(pid) = panel else { return Err(bad(c, "`panel` is required: the distribution board the circuit is on")) };
+    let devices = devices.ok_or_else(|| bad(c, "`devices` [id, …] is required: what the circuit holds (an empty list makes a spare)"))?;
+    if add.is_some() || remove.is_some() {
+        return Err(bad(c, "`add` and `remove` change a circuit that is there: give its `id`"));
+    }
+    let powers: Vec<crate::family::ConnectorValues> = devices.iter().filter_map(|i| electrical::device_power(m, *i).ok()).collect();
+    let on_board = electrical::circuits_of(m, pid);
+    let taken = on_board.iter().filter_map(|i| if let Some(Element::Circuit(x)) = m.elements.get(*i) { Some(x.number) } else { None });
+    let mut x = Circuit {
+        panel: m.guid(pid),
+        number: number.unwrap_or_else(|| taken.max().unwrap_or(0).saturating_add(1)),
+        name: name.unwrap_or_default(),
+        rating_a: rating.unwrap_or(16.0),
+        poles: poles.or_else(|| powers.first().map(|p| p.poles)).unwrap_or(1),
+        voltage: voltage.flatten(),
+        classification: classification
+            .unwrap_or_else(|| powers.iter().map(|p| p.classification.clone()).find(|k| !k.is_empty()).unwrap_or_default()),
+        demand_factor: demand.unwrap_or(1.0),
+        devices: devices.iter().map(|i| m.guid(*i)).collect(),
+        wires: wires.flatten(),
+    };
+    // A breaker for the load, the next standard one up, when none is asked for.
+    if rating.is_none()
+        && let Some(t) = electrical::circuit_totals(m, &x)
+        && t.installed_va > 0.0
+    {
+        let need = t.current_a.max(10.0);
+        x.rating_a = crate::nbr5410::BREAKERS.iter().copied().find(|b| *b >= need).unwrap_or(16.0);
+    }
+    let id = s.model_mut().insert(Element::Circuit(x));
+    Ok(json!({"id": id, "circuit": element_json(&s.model, id)}))
+}
+
+fn circuit_size(_: &mut Session, p: &Value) -> R {
     use crate::nbr5410::{self as e, Circuit, Insulation, Phases, Use};
     let c = "circuit";
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
-    const KEYS: &[&str] = &[
-        "load",
-        "apparent",
-        "demand",
-        "power_factor",
-        "phases",
-        "system",
-        "use",
-        "length",
-        "method",
-        "insulation",
-        "conductor",
-        "ambient",
-        "grouped",
-        "bundle",
-        "spacing",
-        "soil",
-        "section",
-        "breaker",
-        "drop_limit",
-        "reduced_neutral",
-    ];
+    const KEYS: &[&str] = SIZING_KEYS;
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
         return Err(bad(c, format!("unknown parameter `{key}`")));
     }
@@ -5383,10 +5622,14 @@ fn panel(s: &mut Session, p: &Value) -> R {
 fn board_json(m: &Model, id: Id) -> Value {
     let Some((_, comp)) = crate::electrical::board(m, id) else { return Value::Null };
     let data = comp.panel.clone().unwrap_or_default();
+    let totals = crate::electrical::board_totals(m, id);
     json!({
         "id": id, "family": comp.family, "type": comp.type_name,
         "distribution": data.distribution, "mains": data.mains, "slots": data.slots,
         "supply_from": data.supply_from.and_then(|g| m.elements.id(g)), "feeds": m.panel_feeds(id),
+        "circuits": crate::electrical::circuits_of(m, id),
+        "installed_va": totals.as_ref().map(|t| t.installed_va), "demand_va": totals.as_ref().map(|t| t.demand_va),
+        "current_a": totals.as_ref().and_then(|t| t.current_a),
     })
 }
 
@@ -8639,6 +8882,8 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         Element::Dimension(d) => d.at = f(d.at),
         // A tag's place hangs on its door or window's: see `relocate` and `duplicate`.
         Element::Tag(_) => {}
+        // A circuit has no place: it follows its board and its devices.
+        Element::Circuit(_) => {}
         Element::Section(v) | Element::Elevation(v) => {
             (v.start, v.end) = (f(v.start), f(v.end));
             // A mirror image of it looks the mirrored way round: to the left of its line again.
@@ -8819,6 +9064,12 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
 /// Copied dimensions and tags go onto the copies of what they measure and name, where there are.
 fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
     let m = &s.model;
+    // A circuit is of its devices and its board, which a copy of them is not on: copy those, and make a circuit of the copies.
+    let kept: Vec<Id> = ids.iter().copied().filter(|id| !matches!(m.elements.get(id), Some(Element::Circuit(_)))).collect();
+    if kept.is_empty() && !ids.is_empty() {
+        return Err(bad(c, "a circuit is not copied: copy its devices, and make a circuit of the copies with `circuit`"));
+    }
+    let ids = kept.as_slice();
     let copying: BTreeSet<Id> = ids.iter().copied().collect();
     let copying_guids: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
     let heads: BTreeMap<Id, P2> = tag_heads(m, ids, mo).into_iter().collect();
@@ -9566,6 +9817,8 @@ fn delete(s: &mut Session, p: &Value) -> R {
                         Element::Door(o) | Element::Window(o) => gone.contains(&o.host),
                         Element::Railing(r) => r.host.is_some_and(|h| gone.contains(&h)),
                         Element::Rebar(rb) => rb.host.is_some_and(|h| gone.contains(&h)),
+                        // A circuit hangs on its board.
+                        Element::Circuit(x) => gone.contains(&x.panel),
                         // A plan view goes with its level and its parent; what is annotated in a view goes with it.
                         Element::PlanView(v) => gone.contains(&v.level) || v.parent.is_some_and(|p| gone.contains(&p)),
                         Element::Tag(t) => gone.contains(&t.host) || t.view.is_some_and(|v| gone.contains(&v)),
@@ -9606,6 +9859,18 @@ fn delete(s: &mut Session, p: &Value) -> R {
             }
         }
     }
+    // A circuit loses the devices that go, and stays, a spare, when none is left.
+    let mut emptied = Vec::new();
+    for (id, guid, e) in m.elements.with_guids() {
+        if let Element::Circuit(x) = e
+            && !gone.contains(&guid)
+            && x.devices.iter().any(|d| gone.contains(d))
+        {
+            let mut x = x.clone();
+            x.devices.retain(|d| !gone.contains(d));
+            emptied.push((id, x));
+        }
+    }
     // A board that was supplied by one that goes is left without a supply, with the rest of its data.
     let mut unfed = Vec::new();
     for (id, guid, e) in m.elements.with_guids() {
@@ -9627,6 +9892,9 @@ fn delete(s: &mut Session, p: &Value) -> R {
     }
     for (id, c) in unfed {
         m.elements.insert(id, Element::Component(c));
+    }
+    for (id, x) in emptied {
+        m.elements.insert(id, Element::Circuit(x));
     }
     // What was made from a mass that goes is ordinary from then on.
     massing::forget(m, &gone);
@@ -10451,6 +10719,8 @@ fn inspect(s: &mut Session, _: &Value) -> R {
     }
     let levels: Vec<Value> = m.levels().iter().map(|(id, l)| json!({"id": id, "name": l.name, "elevation": l.elevation})).collect();
     let warnings = m.warnings();
+    let circuits: Vec<Value> =
+        m.elements.iter().filter(|(_, e)| matches!(e, Element::Circuit(_))).map(|(id, _)| element_json(m, *id)).collect();
     Ok(json!({
         "name": m.name, "units": "mm", "project_units": m.units.name(), "room_area": m.room_area.name(), "language": m.language.code(), "standard": m.standard().code(), "path": s.path, "levels": levels,
         "counts": counts,
@@ -10458,6 +10728,7 @@ fn inspect(s: &mut Session, _: &Value) -> R {
         "view_filters": m.view_filters, "view_templates": m.view_templates, "phases": m.phases, "phase_filters": m.phase_filters,
         "phase_overrides": m.phase_overrides, "option_sets": m.option_sets, "warnings": warnings,
         "voltages": m.voltages, "distribution_systems": m.distribution_systems, "wire_types": m.wire_types,
+        "circuits": circuits,
         "history": s.history(),
     }))
 }

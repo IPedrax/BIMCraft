@@ -989,6 +989,16 @@ impl crate::model::Element {
                 Some(family) => family_and_type(family, &mut o.type_name, f),
                 None => f(&Kind::Type(category), &mut o.type_name),
             },
+            Element::Circuit(c) => {
+                for v in c.voltages_mut() {
+                    f(&Kind::Voltage, v);
+                }
+                if let Some(w) = &mut c.wires {
+                    for t in w.wire_types_mut() {
+                        f(&Kind::WireType, t);
+                    }
+                }
+            }
             Element::Component(c) => {
                 family_and_type(&mut c.family, &mut c.type_name, f);
                 if let Some(d) = c.panel.as_mut().and_then(|p| p.distribution.as_mut()) {

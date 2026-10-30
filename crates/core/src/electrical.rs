@@ -15,7 +15,7 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
-use crate::family::Category;
+use crate::family::{Category, ConnectorKind, ConnectorValues};
 use crate::model::{Component, Element, Guid, Id, MAX_TEXT, Model};
 use crate::units::Units;
 
@@ -310,7 +310,8 @@ pub(crate) fn check(m: &Model) -> Result<(), String> {
     for (n, w) in &m.wire_types {
         w.check(n)?;
     }
-    check_panels(m)
+    check_panels(m)?;
+    check_circuits(m)
 }
 
 impl Model {
@@ -459,4 +460,380 @@ fn check_panels(m: &Model) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+// ---------- circuits ----------
+
+/// The devices a circuit holds, at most, and the highest number a circuit has.
+pub const MAX_DEVICES: usize = 1_000;
+pub const MAX_NUMBER: u32 = 9_999;
+
+fn unity() -> f64 {
+    1.0
+}
+
+fn is_unity(x: &f64) -> bool {
+    *x == 1.0
+}
+
+/// A conductor: a section (mm²) of a wire type of the project.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WireRef {
+    pub wire_type: String,
+    pub section: f64,
+}
+
+/// The conductors of a circuit: the hot ones, the neutral and the protective one, each a section of a wire type.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Wires {
+    pub hot: WireRef,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub neutral: Option<WireRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ground: Option<WireRef>,
+}
+
+impl Wires {
+    fn each(&self) -> [(&'static str, Option<&WireRef>); 3] {
+        [("hot", Some(&self.hot)), ("neutral", self.neutral.as_ref()), ("ground", self.ground.as_ref())]
+    }
+
+    /// The names of the wire types it holds, for what renames them.
+    pub(crate) fn wire_types_mut(&mut self) -> impl Iterator<Item = &mut String> {
+        std::iter::once(&mut self.hot.wire_type)
+            .chain(self.neutral.iter_mut().map(|w| &mut w.wire_type))
+            .chain(self.ground.iter_mut().map(|w| &mut w.wire_type))
+    }
+}
+
+/// An electrical circuit: devices assigned to a distribution board, behind one breaker. The devices' voltage, poles and load are
+/// their families' connectors'; what it loads is worked out from them ([`circuit_totals`]) and never saved.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Circuit {
+    /// The board it is on, by GUID.
+    pub panel: Guid,
+    /// Its number on that board.
+    pub number: u32,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    /// The breaker, in amperes.
+    pub rating_a: f64,
+    pub poles: u8,
+    /// A voltage of the project that its board's system supplies; none, the one its poles imply there.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voltage: Option<String>,
+    /// What it is for: `lighting`, `receptacle`…, as its devices' connectors say.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub classification: String,
+    /// The share of its load that counts (above 0 up to 1).
+    #[serde(default = "unity", skip_serializing_if = "is_unity")]
+    pub demand_factor: f64,
+    /// Its devices, by GUID.
+    #[serde(default)]
+    pub devices: Vec<Guid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wires: Option<Wires>,
+}
+
+impl Circuit {
+    /// The names of the library entries it holds, for what renames them: its voltage and its wire types.
+    pub(crate) fn voltages_mut(&mut self) -> impl Iterator<Item = &mut String> {
+        self.voltage.iter_mut()
+    }
+}
+
+/// The distribution board `panel` names, and the distribution system it is on.
+fn board_system(m: &Model, panel: Guid) -> Result<(Id, &DistributionSystem, &str), String> {
+    let id = m.elements.id(panel).ok_or_else(|| "its panel is not an element of the project".to_string())?;
+    let (_, b) = board(m, id).ok_or_else(|| format!("its panel, element {id}, is not a distribution board"))?;
+    let name = b
+        .panel
+        .as_ref()
+        .and_then(|p| p.distribution.as_deref())
+        .ok_or_else(|| format!("board {id} has no distribution system: give it one with `panel`"))?;
+    let system = m
+        .distribution_systems
+        .get(name)
+        .ok_or_else(|| format!("board {id}: distribution system `{}` isn't one of the project's", shown(name)))?;
+    Ok((id, system, name))
+}
+
+/// The voltage a circuit is at, by its name and as the project defines it: the one it names, which its board's system supplies,
+/// else the one its poles imply there (one pole: line to neutral; two or three: line to line).
+pub fn circuit_voltage(m: &Model, c: &Circuit) -> Result<(String, Voltage), String> {
+    let (id, system, sname) = board_system(m, c.panel)?;
+    let name = match &c.voltage {
+        Some(v) => {
+            if !system.voltage_names().any(|n| n == v) {
+                let there: Vec<&str> = system.voltage_names().map(String::as_str).collect();
+                return Err(format!(
+                    "voltage `{}` isn't one system `{sname}` of board {id} supplies (it supplies {})",
+                    shown(v),
+                    there.join(", ")
+                ));
+            }
+            v.clone()
+        }
+        None => {
+            let pick = if c.poles <= 1 { system.l_n.as_ref().or(system.l_g.as_ref()) } else { system.l_l.as_ref() };
+            pick.cloned().ok_or_else(|| {
+                format!(
+                    "system `{sname}` of board {id} has no {} voltage for a circuit of {} pole(s): name one with `voltage`",
+                    if c.poles <= 1 { "line-to-neutral" } else { "line-to-line" },
+                    c.poles
+                )
+            })?
+        }
+    };
+    let v = m.voltages.get(&name).ok_or_else(|| format!("voltage `{}` isn't one of the project's", shown(&name)))?.clone();
+    Ok((name, v))
+}
+
+/// What the device `id` draws, as its family's power connector says for its type: a component of a family that has one.
+pub fn device_power(m: &Model, id: Id) -> Result<ConnectorValues, String> {
+    let Some(Element::Component(c)) = m.elements.get(id) else {
+        return Err(format!("element {id} is not a device: a circuit takes components of a family with a power connector"));
+    };
+    let none = || format!("device {id} ({}) has no power connector: give its family one with `family` `connectors`", shown(&c.family));
+    let family = m.families.get(&c.family).ok_or_else(none)?;
+    let values = family.connector_values(&c.type_name, &c.params).map_err(|e| format!("device {id}: {e}"))?;
+    values.into_iter().find(|v| v.kind == ConnectorKind::Power).ok_or_else(none)
+}
+
+/// A circuit's load, worked out from its devices: all of it, what counts of it, the current and each pole's.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Totals {
+    pub installed_va: f64,
+    pub demand_va: f64,
+    pub current_a: f64,
+    /// Each pole's load, VA.
+    pub pole_va: Vec<f64>,
+    /// The volts the current is at.
+    pub volts: f64,
+}
+
+fn thousandth(x: f64) -> f64 {
+    (x * 1000.0).round() / 1000.0 + 0.0
+}
+
+/// The line current of `va` volt-amperes on `poles` poles at `volts`: through one or two poles it is `va / volts` (the voltage
+/// between the two), through three, balanced, `va / (√3 · volts)`.
+fn line_current(va: f64, poles: u8, volts: f64) -> f64 {
+    if volts <= 0.0 {
+        0.0
+    } else if poles >= 3 {
+        va / (3f64.sqrt() * volts)
+    } else {
+        va / volts
+    }
+}
+
+/// What circuit `c` loads: none when its board or its voltage is not there to say it.
+pub fn circuit_totals(m: &Model, c: &Circuit) -> Option<Totals> {
+    let (_, v) = circuit_voltage(m, c).ok()?;
+    let mut pole_va = vec![0.0; usize::from(c.poles)];
+    let mut installed = 0.0;
+    for g in &c.devices {
+        let Some(p) = m.elements.id(*g).and_then(|id| device_power(m, id).ok()) else { continue };
+        installed += p.load_va;
+        for (slot, va) in pole_va.iter_mut().zip(&p.load_va_by_phase) {
+            *slot += va;
+        }
+    }
+    let demand = installed * c.demand_factor;
+    Some(Totals {
+        installed_va: thousandth(installed),
+        demand_va: thousandth(demand),
+        current_a: thousandth(line_current(installed, c.poles, v.nominal)),
+        pole_va: pole_va.into_iter().map(thousandth).collect(),
+        volts: v.nominal,
+    })
+}
+
+/// What a board's circuits load: all of it, what counts of it and the current of what counts, balanced over the system's phases
+/// (an unbalanced one waits for each circuit to say its phase). The circuits it has, by id.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BoardTotals {
+    pub installed_va: f64,
+    pub demand_va: f64,
+    pub current_a: Option<f64>,
+    pub circuits: Vec<Id>,
+}
+
+/// The circuits of board `id`, by id.
+pub fn circuits_of(m: &Model, id: Id) -> Vec<Id> {
+    let g = m.guid(id);
+    m.elements.iter().filter(|(_, e)| matches!(e, Element::Circuit(c) if c.panel == g)).map(|(i, _)| *i).collect()
+}
+
+/// A board's totals; none for what is no board.
+pub fn board_totals(m: &Model, id: Id) -> Option<BoardTotals> {
+    let (_, b) = board(m, id)?;
+    let circuits = circuits_of(m, id);
+    let (mut installed, mut demand) = (0.0, 0.0);
+    for cid in &circuits {
+        if let Some(Element::Circuit(c)) = m.elements.get(*cid)
+            && let Some(t) = circuit_totals(m, c)
+        {
+            installed += t.installed_va;
+            demand += t.demand_va;
+        }
+    }
+    let current = b.panel.as_ref().and_then(|p| p.distribution.as_deref()).and_then(|n| m.distribution_systems.get(n)).and_then(|sys| {
+        let (volts, poles) = match sys.phases {
+            3 => (sys.l_l.as_ref(), 3),
+            2 => (sys.l_l.as_ref(), 2),
+            _ => (sys.l_l.as_ref().or(sys.l_n.as_ref()).or(sys.l_g.as_ref()), 1),
+        };
+        Some(thousandth(line_current(demand, poles, m.voltages.get(volts?)?.nominal)))
+    });
+    Some(BoardTotals { installed_va: thousandth(installed), demand_va: thousandth(demand), current_a: current, circuits })
+}
+
+/// What a project's circuits must hold: each on a distribution board that has a system, its breaker and poles in range and
+/// within what the board and its system have, its voltage one the system supplies, each device one that draws power at that
+/// voltage on that many poles and in no other circuit, the numbers of a board distinct and its poles within its slots, and each
+/// conductor a section its wire type has.
+fn check_circuits(m: &Model) -> Result<(), String> {
+    let mut owner: BTreeMap<Guid, Id> = BTreeMap::new();
+    let mut numbers: BTreeMap<(Id, u32), Id> = BTreeMap::new();
+    let mut poles_on: BTreeMap<Id, u32> = BTreeMap::new();
+    for (&id, e) in m.elements.iter() {
+        let Element::Circuit(c) = e else { continue };
+        let who = format!("circuit {id}");
+        if c.name.chars().count() > MAX_TEXT {
+            return Err(format!("{who}: its name is longer than {MAX_TEXT} characters"));
+        }
+        if c.classification.chars().count() > MAX_TEXT {
+            return Err(format!("{who}: its classification is longer than {MAX_TEXT} characters"));
+        }
+        if !(1..=MAX_NUMBER).contains(&c.number) {
+            return Err(format!("{who}: `number` is 1 to {MAX_NUMBER}, not {}", c.number));
+        }
+        if !(c.rating_a.is_finite() && c.rating_a > 0.0 && c.rating_a <= MAX_MAINS) {
+            return Err(format!("{who}: `rating`, its breaker, is amperes above 0 and up to {MAX_MAINS}, not {}", c.rating_a));
+        }
+        if !(1..=3).contains(&c.poles) {
+            return Err(format!("{who}: `poles` is 1, 2 or 3, not {}", c.poles));
+        }
+        if !(c.demand_factor.is_finite() && c.demand_factor > 0.0 && c.demand_factor <= 1.0) {
+            return Err(format!("{who}: `demand_factor` is above 0 and up to 1, not {}", c.demand_factor));
+        }
+        if c.devices.len() > MAX_DEVICES {
+            return Err(format!("{who}: it holds {} devices; it holds up to {MAX_DEVICES}", c.devices.len()));
+        }
+        let (pid, system, sname) = board_system(m, c.panel).map_err(|e| format!("{who}: {e}"))?;
+        if let Some(mains) = board(m, pid).and_then(|(_, b)| b.panel.as_ref()).and_then(|p| p.mains)
+            && c.rating_a > mains
+        {
+            return Err(format!("{who}: its breaker, {} A, is more than the {mains} A mains of board {pid}", c.rating_a));
+        }
+        if c.poles > system.phases {
+            return Err(format!(
+                "{who}: it has {} pole(s), but system `{sname}` of board {pid} has {} phase{}",
+                c.poles,
+                system.phases,
+                if system.phases == 1 { "" } else { "s" }
+            ));
+        }
+        let (vname, volts) = circuit_voltage(m, c).map_err(|e| format!("{who}: {e}"))?;
+        let mut here: Vec<Guid> = Vec::new();
+        for g in &c.devices {
+            let Some(did) = m.elements.id(*g) else {
+                return Err(format!("{who}: a device it holds is not an element of the project"));
+            };
+            if here.contains(g) {
+                return Err(format!("{who}: device {did} is in it twice"));
+            }
+            here.push(*g);
+            if let Some(other) = owner.insert(*g, id) {
+                return Err(format!("{who}: device {did} is in circuit {other} already: a device is in one circuit"));
+            }
+            let draws = device_power(m, did).map_err(|e| format!("{who}: {e}"))?;
+            let family = match m.elements.get(did) {
+                Some(Element::Component(d)) => d.family.as_str(),
+                _ => "",
+            };
+            if draws.poles != c.poles {
+                return Err(format!(
+                    "{who}: device {did} ({}) has {} pole(s) and the circuit {}: they go on a circuit of as many",
+                    shown(family),
+                    draws.poles,
+                    c.poles
+                ));
+            }
+            if draws.voltage < volts.min || draws.voltage > volts.max {
+                return Err(format!(
+                    "{who}: device {did} ({}) draws {} V, but the circuit is at {vname} ({} V, {} to {} V) on system `{sname}` of board {pid}",
+                    shown(family),
+                    draws.voltage,
+                    volts.nominal,
+                    volts.min,
+                    volts.max
+                ));
+            }
+        }
+        if let Some(other) = numbers.insert((pid, c.number), id) {
+            return Err(format!("{who}: number {} is circuit {other}'s on board {pid} already", c.number));
+        }
+        let used = poles_on.entry(pid).or_default();
+        *used += u32::from(c.poles);
+        if let Some(slots) = board(m, pid).and_then(|(_, b)| b.panel.as_ref()).and_then(|p| p.slots)
+            && *used > slots
+        {
+            return Err(format!("{who}: board {pid} takes {slots} single-pole breakers; its circuits need {used}"));
+        }
+        if let Some(w) = &c.wires {
+            for (role, r) in w.each() {
+                let Some(r) = r else { continue };
+                let Some(t) = m.wire_types.get(&r.wire_type) else {
+                    let there: Vec<&str> = m.wire_types.keys().map(String::as_str).collect();
+                    return Err(format!(
+                        "{who}: its {role} wire type `{}` isn't one of the project's (there are: {})",
+                        shown(&r.wire_type),
+                        there.join(", ")
+                    ));
+                };
+                if m.wire_ampacity(&r.wire_type, r.section).is_none() {
+                    let mut sections: Vec<String> = t.sizes.iter().take(12).map(|s| s.section.to_string()).collect();
+                    if t.sizes.len() > 12 {
+                        sections.push("…".into());
+                    }
+                    return Err(format!(
+                        "{who}: its {role} wire: wire type `{}` has no {} mm² row; its sections are {} mm²",
+                        shown(&r.wire_type),
+                        r.section,
+                        sections.join(", ")
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// What is amiss in the circuits without making the model wrong: a circuit with no device (a spare), and a breaker that its
+/// hot wire cannot carry.
+pub(crate) fn circuit_warnings(m: &Model) -> Vec<String> {
+    let mut out = Vec::new();
+    for (&id, e) in m.elements.iter() {
+        let Element::Circuit(c) = e else { continue };
+        let on = m.elements.id(c.panel).map(|p| format!(" of board {p}")).unwrap_or_default();
+        if c.devices.is_empty() {
+            out.push(format!("circuit {id} (no. {}){on} has no devices: it is a spare", c.number));
+        }
+        if let Some(w) = &c.wires
+            && let Some(carries) = m.wire_ampacity(&w.hot.wire_type, w.hot.section)
+            && c.rating_a > carries
+        {
+            out.push(format!(
+                "circuit {id} (no. {}){on}: its {} A breaker is more than the {carries} A its {} mm² {} hot wire carries",
+                c.number, c.rating_a, w.hot.section, w.hot.wire_type
+            ));
+        }
+    }
+    out
 }

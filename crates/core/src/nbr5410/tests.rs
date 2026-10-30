@@ -276,7 +276,8 @@ mod command {
         assert_eq!(r["drop_percent"], json!(3.3), "25 m of flexible 4 mm2 at 14.2 A in 127 V");
         assert_eq!(r["grew"], json!(true));
         assert_eq!(s.execute("inspect", &json!({})).map(|v| v["history"].clone()).unwrap_or_default(), before, "no undo step");
-        assert_eq!(crate::engine::find("circuit").map(|c| c.undoable), Some(false));
+        // `circuit` is also a circuit of the model, an undo step: the sizing of it never changes the model, so it makes none.
+        assert_eq!(crate::engine::find("circuit").map(|c| c.undoable), Some(true));
     }
 
     #[test]

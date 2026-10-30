@@ -13,6 +13,8 @@ pub mod bridge;
 pub mod cad;
 #[cfg(test)]
 mod cad_tests;
+#[cfg(test)]
+mod circuit_tests;
 pub mod cloud;
 #[cfg(test)]
 mod cloud_tests;

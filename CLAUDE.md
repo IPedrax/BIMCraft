@@ -118,7 +118,7 @@ One line per module: what it owns. Read the module's file and, for the areas it 
 - `storm.rs`: the `storm_size` command, storm drains by NBR 10844 (Manning, the downpipe abacuses).
 - `drainage.rs`: the `drain_size` and `vent_size` commands, sanitary drains and vents by NBR 8160's tables.
 - `conduit.rs`: the `conduit_fill` command, a conduit's fill by NBR 5410 (makers' catalogues in `conduit/tables.rs`).
-- `electrical.rs`: the electrical settings, the project's voltages, distribution systems and wire types (the `voltage`, `distribution_system` and `wire_type` commands), and a distribution board's `Panel` data (the `panel` command); starter set in `data/electrical.json`; [structure and MEP](docs/areas/structure-and-mep.md)).
+- `electrical.rs`: the electrical settings, the project's voltages, distribution systems and wire types (the `voltage`, `distribution_system` and `wire_type` commands), a distribution board's `Panel` data (the `panel` command) and the circuits on it (`Element::Circuit`, the `circuit` command's model mode); starter set in `data/electrical.json`; [structure and MEP](docs/areas/structure-and-mep.md)).
 - `nbr5410.rs`: the `circuit` command's sizing of a circuit by NBR 5410 (tables in `nbr5410/tables.rs`; [structure and MEP](docs/areas/structure-and-mep.md)).
 - `tests.rs`, `mep_tests.rs`, `structure_tests.rs`, `eberick_tests.rs`, `reinforce_tests.rs`, `autosave_tests.rs`: the engine driven through commands, as a front end drives it.
 

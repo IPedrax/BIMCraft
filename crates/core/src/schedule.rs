@@ -390,6 +390,23 @@ const OWN: &[(&str, usize, &[Own])] = &[
         ],
     ),
     (
+        "circuit",
+        6,
+        &[
+            ("Number", Kind::Number, From::Key("number")),
+            NAME,
+            ("Panel", Kind::Number, From::Ref("panel")),
+            ("Rating", Kind::Number, From::Key("rating_a")),
+            ("Poles", Kind::Number, From::Key("poles")),
+            ("Load", Kind::Number, From::Key("installed_va")),
+            ("Demand Load", Kind::Number, From::Key("demand_va")),
+            ("Current", Kind::Number, From::Key("current_a")),
+            ("Voltage", Kind::Number, From::Key("voltage_v")),
+            ("Classification", Kind::Text, From::Key("classification")),
+            COUNT,
+        ],
+    ),
+    (
         "component",
         4,
         &[
