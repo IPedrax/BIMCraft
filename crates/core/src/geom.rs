@@ -76,6 +76,24 @@ pub fn ring_edges(ring: &[P2]) -> impl Iterator<Item = (P2, P2)> + '_ {
     ring.iter().copied().zip(ring.iter().copied().cycle().skip(1))
 }
 
+/// Where the ray from `p` along `dir` first meets one of `edges`, past `p`: none when it meets none.
+pub fn ray_hit(p: P2, dir: P2, edges: impl Iterator<Item = (P2, P2)>) -> Option<P2> {
+    edges
+        .filter_map(|(a, b)| {
+            let e = b - a;
+            let den = dir.cross(e);
+            if den.abs() < 1e-12 {
+                return None;
+            }
+            // p + dir t = a + e u
+            let t = (a - p).cross(e) / den;
+            let u = (a - p).cross(dir) / den;
+            (t > 1e-9 && (-1e-9..=1.0 + 1e-9).contains(&u)).then_some(t)
+        })
+        .min_by(f64::total_cmp)
+        .map(|t| p + dir * t)
+}
+
 /// Signed area of a ring (counter-clockwise positive).
 pub fn area(ring: &[P2]) -> f64 {
     ring_edges(ring).map(|(a, b)| a.cross(b)).sum::<f64>() / 2.0
@@ -313,7 +331,8 @@ pub fn faces(segs: &[(P2, P2)], tol: f64) -> Vec<Vec<P2>> {
 }
 
 /// A room-shaped region: an outer ring (counter-clockwise) and the islands standing inside it.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Region {
     pub outer: Vec<P2>,
     pub holes: Vec<Vec<P2>>,

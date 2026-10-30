@@ -59,9 +59,52 @@ pub const SCANS: [&str; 1] = ["pointcloud"];
 /// The CAD imports, which views hide and override on a tab of their own too, as Revit's Imported Categories.
 pub const IMPORTED: [&str; 1] = ["cadimport"];
 
-/// Whether views draw elements of `category`.
+/// A subcategory: a part of a category a view hides, shows and overrides apart from the rest, as Revit's (Rooms >
+/// Reference). It is held in a view's graphics by its `key`, as a category is; `off` ones are hidden unless the view shows
+/// them. A category hidden hides its subcategories. Some are a kind of element of their own (`roomseparator`), others a
+/// part of their category's elements that the drawing code asks after (`roomreference`, the cross at a room's point).
+#[derive(Clone, Copy, Debug)]
+pub struct Sub {
+    pub key: &'static str,
+    pub parent: &'static str,
+    /// Its name, in English, as Visibility/Graphics lists it under its category.
+    pub name: &'static str,
+    pub off: bool,
+}
+
+/// Every subcategory, under its category. A new one is a row here, and its drawing code asks [`Graphics::hides`] (or the
+/// view's [`Look`], for a kind of element).
+pub const SUBCATEGORIES: &[Sub] = &[
+    Sub { key: "roomreference", parent: "room", name: ui_msg!("Reference"), off: true },
+    Sub { key: "roomseparator", parent: "room", name: ui_msg!("Room Separation Lines"), off: false },
+];
+
+/// The subcategory `key` is, if it is one.
+pub fn sub(key: &str) -> Option<&'static Sub> {
+    SUBCATEGORIES.iter().find(|s| s.key == key)
+}
+
+/// The subcategories of category `parent`, in order.
+pub fn subcategories(parent: &str) -> impl Iterator<Item = &'static Sub> + '_ {
+    SUBCATEGORIES.iter().filter(move |s| s.parent == parent)
+}
+
+/// The categories a 3D view hides unless it shows them: rooms, which a 3D view draws, once shown, as see-through solids in
+/// the selection's colour (and a selected one whatever it says). Every new 3D view starts with them hidden.
+pub const OFF_IN_3D: [&str; 1] = ["room"];
+
+/// Whether `key` is hidden unless a view shows it.
+pub fn off_unless_shown(key: &str) -> bool {
+    sub(key).is_some_and(|s| s.off)
+}
+
+/// Whether views draw elements of `category`, or hide and show it (a subcategory).
 pub fn drawn(category: &str) -> bool {
-    MODEL.contains(&category) || ANNOTATION.contains(&category) || SCANS.contains(&category) || IMPORTED.contains(&category)
+    MODEL.contains(&category)
+        || ANNOTATION.contains(&category)
+        || SCANS.contains(&category)
+        || IMPORTED.contains(&category)
+        || sub(category).is_some()
 }
 
 /// How much of a mass a 3D view sees through, percent, unless its graphics say otherwise.
@@ -267,6 +310,9 @@ pub struct Override {
     pub halftone: bool,
     #[serde(skip_serializing_if = "is_zero")]
     pub transparency: u8,
+    /// Shown, a subcategory hidden unless a view shows it ([`Sub::off`]).
+    #[serde(skip_serializing_if = "is_false")]
+    pub shown: bool,
 }
 
 impl Override {
@@ -301,6 +347,7 @@ impl Override {
             cut: self.cut.over(&base.cut),
             halftone: self.halftone || base.halftone,
             transparency: if self.transparency > 0 { self.transparency } else { base.transparency },
+            shown: self.shown || base.shown,
         }
     }
 
@@ -342,14 +389,21 @@ struct AppliedJson {
 
 impl From<AppliedJson> for Applied {
     fn from(a: AppliedJson) -> Applied {
-        let over = Override { hidden: a.hidden, projection: a.projection, cut: a.cut, halftone: a.halftone, transparency: a.transparency };
+        let over = Override {
+            hidden: a.hidden,
+            projection: a.projection,
+            cut: a.cut,
+            halftone: a.halftone,
+            transparency: a.transparency,
+            shown: false,
+        };
         Applied { filter: a.filter, over }
     }
 }
 
 impl From<Applied> for AppliedJson {
     fn from(a: Applied) -> AppliedJson {
-        let Override { hidden, projection, cut, halftone, transparency } = a.over;
+        let Override { hidden, projection, cut, halftone, transparency, .. } = a.over;
         AppliedJson { filter: a.filter, hidden, projection, cut, halftone, transparency }
     }
 }
@@ -468,9 +522,19 @@ impl Graphics {
             && self.options.is_empty()
     }
 
-    /// Whether category `c` is hidden.
+    /// Whether a 3D view with these graphics draws category `c`: as [`Graphics::hides`] says, and one of [`OFF_IN_3D`] only
+    /// where the view shows it.
+    pub fn shows_in_3d(&self, c: &str) -> bool {
+        !self.hides(c) && (!OFF_IN_3D.contains(&c) || self.categories.get(c).is_some_and(|o| o.shown))
+    }
+
+    /// Whether category or subcategory `c` is hidden: hidden itself, off and not shown, or its category hidden.
     pub fn hides(&self, c: &str) -> bool {
-        self.categories.get(c).is_some_and(|o| o.hidden)
+        let own = match self.categories.get(c) {
+            Some(o) => o.hidden || (off_unless_shown(c) && !o.shown),
+            None => off_unless_shown(c),
+        };
+        own || sub(c).is_some_and(|s| self.hides(s.parent))
     }
 
     /// Whether it is sound in `m`: known categories, overrides in range, filters and the template
@@ -928,7 +992,8 @@ impl Look {
             if let Some(own) = m.elements.guid(id).and_then(|k| g.elements.get(&k)) {
                 over = own.over(&over);
             }
-            if over.hidden {
+            // A subcategory's elements go with their category, hidden.
+            if over.hidden || sub(cat).is_some_and(|s| g.hides(s.parent)) {
                 look.hidden.insert(id);
             } else if !over.is_empty() {
                 look.paint.insert(id, over);

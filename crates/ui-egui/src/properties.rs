@@ -51,6 +51,8 @@ enum Kind {
     ViewName,
     /// A level, or none for a wall of unconnected height.
     TopLevel,
+    /// A room's Upper Limit: a level, or Not Bounded (none), its Limit Offset then its height over its own level.
+    UpperLimit,
     /// A wall's height: typed when its top is unconnected, else what its levels make it.
     Height,
     /// A length, or nothing, which its hint names when blank (a plan's top at the level above, a
@@ -127,6 +129,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "top_level", msg!("Top Constraint"), TopLevel),
             ("Constraints", "height", msg!("Unconnected Height"), Height),
             ("Constraints", "attach_top", msg!("Top is Attached"), Attached),
+            ("Constraints", "room_bounding", msg!("Room Bounding"), Flag),
             ("Dimensions", "length", "Length", LengthShown),
             ("Dimensions", "radius", "Radius", LengthShown),
             (msg!("Other"), "start", msg!("Start"), Point),
@@ -150,11 +153,17 @@ fn rows(category: &str) -> &'static [Row] {
         ],
         "room" => &[
             ("Constraints", "level", "Level", Level),
+            ("Constraints", "top_level", msg!("Upper Limit"), UpperLimit),
+            ("Constraints", "limit_offset", msg!("Limit Offset"), Length),
+            ("Constraints", "base_offset", "Base Offset", Length),
             ("Dimensions", "area_m2", "Area", AreaShown),
             ("Dimensions", "perimeter_m", "Perimeter", MetresShown),
+            ("Dimensions", "unbounded_height", msg!("Unbounded Height"), LengthShown),
+            ("Dimensions", "volume_m3", "Volume (m³)", Shown),
             ("Identity Data", "number", "Number", Text),
             ("Identity Data", "name", "Name", Text),
             ("Other", "point", msg!("Location"), Point),
+            ("Other", "frozen", msg!("Frozen"), Flag),
         ],
         "floor" => &[
             ("Constraints", "level", "Level", Level),
@@ -189,7 +198,11 @@ fn rows(category: &str) -> &'static [Row] {
             ("Dimensions", "gross_floor_area_m2", "Gross Floor Area", AreaShown),
             ("Identity Data", "name", "Name", Text),
         ],
-        "level" => &[("Constraints", "elevation", "Elevation", Length), ("Identity Data", "name", "Name", Text)],
+        "level" => &[
+            ("Constraints", "elevation", "Elevation", Length),
+            ("Dimensions", "computation_height", msg!("Computation Height"), Length),
+            ("Identity Data", "name", "Name", Text),
+        ],
         "grid" => &[("Identity Data", "name", "Name", Text), ("Other", "start", "Start", Point), ("Other", "end", "End", Point)],
         "dimension" => &[
             ("Dimensions", "values", "Value", Values),
@@ -268,15 +281,16 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "at", "Location", Point),
             ("Other", "angle", "Rotation (°)", Number),
         ],
-        "column" => &[
+        "column" | "structuralcolumn" => &[
             ("Constraints", "level", msg!("Base Level"), Level),
             ("Constraints", "base_offset", "Base Offset", Length),
             ("Constraints", "top_level", msg!("Top Level"), TopLevel),
             ("Constraints", "height", "Unconnected Height", Height),
+            ("Constraints", "room_bounding", msg!("Room Bounding"), Flag),
             ("Other", "at", "Location", Point),
             ("Other", "angle", "Rotation (°)", Number),
         ],
-        "structuralcolumn" | "footing" => &[
+        "footing" => &[
             ("Constraints", "level", "Base Level", Level),
             ("Constraints", "base_offset", "Base Offset", Length),
             ("Constraints", "top_level", "Top Level", TopLevel),
@@ -1163,6 +1177,8 @@ impl BimApp {
             }
         }
         let mut change: Option<(&str, Result<Value, String>)> = None;
+        // A second field the change sets with it: a room's Limit Offset, kept where its top is as its Upper Limit changes.
+        let mut also: Option<(&str, Value)> = None;
         let mut crop = None;
         let units = model.units;
         // A note on a sheet sits in paper mm.
@@ -1235,6 +1251,22 @@ impl BimApp {
                             Level => {
                                 if let Some(l) = combo(ui, (id, key), name.id, &level_name(val), &levels) {
                                     change = Some((key, Ok(json!(l))));
+                                }
+                            }
+                            UpperLimit => {
+                                let none = t("Not Bounded");
+                                let options: Vec<String> = std::iter::once(none.to_string()).chain(levels.iter().cloned()).collect();
+                                let now = if val.is_null() { none.to_string() } else { level_name(val) };
+                                if let Some(l) = combo(ui, (id, key), name.id, &now, &options) {
+                                    let upper =
+                                        levels.iter().position(|n| *n == l).and_then(|i| model.levels().get(i).map(|(lid, _)| *lid));
+                                    // One room: its top stays where it is, its Limit Offset now measured from the new limit.
+                                    if let ([_], Some(Element::Room(r))) = (ids, model.elements.get(id)) {
+                                        let (_, top) = model.room_span(r);
+                                        let from = upper.map_or_else(|| model.elevation(r.level), |u| model.elevation(u));
+                                        also = Some(("limit_offset", json!(top - from)));
+                                    }
+                                    change = Some((key, Ok(if l == none { Value::Null } else { json!(l) })));
                                 }
                             }
                             TopLevel => {
@@ -1323,6 +1355,9 @@ impl BimApp {
         match change {
             Some((key, Ok(val))) => {
                 let mut p = nested(key, val);
+                if let Some((k, v)) = also {
+                    p[k] = v;
+                }
                 p["ids"] = json!(ids);
                 self.run("modify", p);
             }

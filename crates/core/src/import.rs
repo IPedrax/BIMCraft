@@ -1563,6 +1563,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     for w in raw {
         let (top_level, height) = topped(w.level, w.z.0, w.z.1);
         let wall = Wall {
+            room_bounding: true,
             params: Default::default(),
             type_name: w.type_name,
             level: w.level,
@@ -1963,6 +1964,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let (top_level, height) = if footing { (None, z1 - z0) } else { topped(level, z0, z1) };
         let angle = if round { 0.0 } else { (u.1.atan2(u.0).to_degrees() * 1e6).round() / 1e6 };
         let column = Column {
+            room_bounding: true,
             params: Default::default(),
             type_name,
             level,
@@ -2564,13 +2566,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             }
         };
         let level = level_for(id, floor.unwrap_or(0.0));
-        let rid = m.insert(Element::Room(Room {
-            params: Default::default(),
-            level,
-            point: micron(point),
-            name: clip(&room_name),
-            number: clip(&number),
-        }));
+        let rid = m.insert(Element::Room(Room::new(level, micron(point), clip(&room_name), clip(&number))));
         from.insert(rid, who(id));
         origin.entry(id).or_insert(rid);
         elements_from.entry(id).or_default().push(rid);

@@ -64,6 +64,8 @@ pub(crate) struct VgDialog {
     listed: BTreeSet<Id>,
     cell: Option<CellEdit>,
     search: String,
+    /// The categories whose subcategories are unfolded.
+    unfolded: BTreeSet<String>,
 }
 
 /// What the Filters dialog has picked: a filter, and the name typed for it.
@@ -166,6 +168,7 @@ impl VgDialog {
             listed: BTreeSet::new(),
             cell: None,
             search: String::new(),
+            unfolded: BTreeSet::new(),
         }
     }
 
@@ -230,6 +233,7 @@ impl BimApp {
             listed,
             cell: None,
             search: String::new(),
+            unfolded: BTreeSet::new(),
         });
     }
 
@@ -741,6 +745,10 @@ struct Row {
     name: String,
     over: Override,
     start: ObjectStyle,
+    /// A subcategory's row, under its category's.
+    sub: bool,
+    /// A category with subcategories: whether they are unfolded.
+    fold: Option<bool>,
 }
 
 /// The table's columns, after Visibility: the cells that open an editor, Halftone, and Detail Level when it has one.
@@ -767,6 +775,12 @@ fn child(ui: &mut Ui, r: Rect, layout: Layout) -> Ui {
 /// columns that opens its editor and shows what it overrides, Halftone, and Detail Level. A click on a row picks it,
 /// and its cells read Override…. The rows whose visibility or halftone changed, with their override as it is now.
 fn table(ui: &mut Ui, d: &mut VgDialog, model: &Model, rows: &[Row], cols: &Columns, enabled: bool) -> Vec<(Pick, Override)> {
+    // A 3D view's (or a 3D template's): rooms are off there unless shown.
+    let three_d = d.view == json!("{3D}")
+        || d.template
+            .as_ref()
+            .and_then(|n| model.view_templates.get(n))
+            .is_some_and(|t| t.kind == Some(bimcraft_core::graphics::ViewKind::ThreeD));
     let total = NAME_W + cols.cells.len() as f32 * CELL_W + HALFTONE_W + if cols.detail { DETAIL_W } else { 0.0 };
     let line = ui.visuals().widgets.noninteractive.bg_stroke;
     let ink = ui.visuals().text_color();
@@ -825,11 +839,30 @@ fn table(ui: &mut Ui, d: &mut VgDialog, model: &Model, rows: &[Row], cols: &Colu
             }
             p.hline(r.x_range(), r.bottom(), line);
             let cell = |x: f32, w: f32| Rect::from_min_size(pos2(x, r.top()), vec2(w, ROW_H));
-            // Visibility, ticked to show it.
-            let mut visible = !row.over.hidden;
-            let mut c = child(ui, cell(r.left(), NAME_W).shrink2(vec2(6.0, 0.0)), Layout::left_to_right(Align::Center));
+            // Visibility, ticked to show it: a subcategory off unless shown (Rooms > Reference) is shown only by saying so.
+            let off = matches!(&row.pick, Pick::Category(c) if bimcraft_core::graphics::off_unless_shown(c)
+                || (three_d && bimcraft_core::graphics::OFF_IN_3D.contains(&c.as_str())));
+            let mut visible = !row.over.hidden && (!off || row.over.shown);
+            // A subcategory's box well in from its category's, which stands after the fold arrow.
+            let indent = if row.sub { 14.0 + ui.spacing().item_spacing.x + 24.0 } else { 0.0 };
+            let at = cell(r.left(), NAME_W).shrink2(vec2(6.0, 0.0));
+            let mut c = child(ui, Rect::from_min_max(pos2(at.left() + indent, at.top()), at.max), Layout::left_to_right(Align::Center));
+            // A category with subcategories folds them away, as Revit's tree.
+            // A small triangle, pointing right while folded, turning 90° down as it opens.
+            if let (Some(open), Pick::Category(cat)) = (row.fold, &row.pick) {
+                let arrow = c.add(Button::new("").frame(false).min_size(vec2(14.0, 14.0)));
+                let openness = c.ctx().animate_bool(c.id().with(("folding", cat)), open);
+                egui::collapsing_header::paint_default_icon(&mut c, openness, &arrow);
+                let what = if open { t("Fold") } else { t("Unfold") };
+                arrow.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, format!("{}: {what}", row.name)));
+                if arrow.clicked() && !d.unfolded.remove(cat) {
+                    d.unfolded.insert(cat.clone());
+                }
+            } else if !row.sub && rows.iter().any(|r| r.fold.is_some()) {
+                c.add_space(14.0 + c.spacing().item_spacing.x);
+            }
             if c.add_enabled(enabled, Checkbox::new(&mut visible, &row.name)).changed() {
-                edits.push((row.pick.clone(), Override { hidden: !visible, ..row.over.clone() }));
+                edits.push((row.pick.clone(), Override { hidden: !visible, shown: visible && off, ..row.over.clone() }));
             }
             // The cells: Override… on the row picked, what each overrides on the rest.
             let mut x = r.left() + NAME_W;
@@ -1002,18 +1035,33 @@ fn categories(ui: &mut Ui, d: &mut VgDialog, model: &Model, shown: &Graphics, na
     });
     ui.add_space(4.0);
     let needle = d.search.trim().to_lowercase();
-    let mut rows: Vec<Row> = names
-        .iter()
-        .map(|cat| (cat, lang::category(cat, true)))
-        .filter(|(_, name)| name.to_lowercase().contains(&needle))
-        .map(|(cat, name)| Row {
-            pick: Pick::Category((*cat).to_string()),
-            name,
-            over: category_override(shown, cat),
-            start: model.object_style(cat),
-        })
-        .collect();
-    rows.sort_by_cached_key(|r| r.name.to_lowercase());
+    let row = |cat: &str, name: String, sub: bool, fold: Option<bool>| Row {
+        pick: Pick::Category(cat.to_string()),
+        name,
+        over: category_override(shown, cat),
+        start: model.object_style(cat),
+        sub,
+        fold,
+    };
+    // The categories, each with its subcategories under it while unfolded (or while the search finds one of them).
+    let mut tops: Vec<(&str, String)> =
+        names.iter().filter(|c| bimcraft_core::graphics::sub(c).is_none()).map(|c| (*c, lang::category(c, true))).collect();
+    tops.sort_by_cached_key(|(_, name)| name.to_lowercase());
+    let mut rows: Vec<Row> = Vec::new();
+    for (cat, name) in tops {
+        let subs: Vec<(&str, String)> = bimcraft_core::graphics::subcategories(cat).map(|s| (s.key, t(s.name).to_string())).collect();
+        let found: Vec<&(&str, String)> = subs.iter().filter(|(_, n)| n.to_lowercase().contains(&needle)).collect();
+        let matched = name.to_lowercase().contains(&needle);
+        if !matched && (needle.is_empty() || found.is_empty()) {
+            continue;
+        }
+        let open = d.unfolded.contains(cat) || (!needle.is_empty() && !found.is_empty());
+        rows.push(row(cat, name, false, (!subs.is_empty()).then_some(open)));
+        if open {
+            let shown_subs: Vec<&(&str, String)> = if matched { subs.iter().collect() } else { found };
+            rows.extend(shown_subs.into_iter().map(|(key, n)| row(key, n.clone(), true, None)));
+        }
+    }
     let model_tab = d.tab == 0;
     let cols = if model_tab {
         Columns { cells: &Cell::ALL, detail: true }
@@ -1047,7 +1095,7 @@ fn filters(ui: &mut Ui, d: &mut VgDialog, model: &Model, shown: &Graphics, enabl
     // A template's filters are only shown: editing them would go to the draft, which doesn't hold them.
     let start = bimcraft_core::styles::default_of("");
     let rows: Vec<Row> = (shown.filters.iter().enumerate())
-        .map(|(i, a)| Row { pick: Pick::Filter(i), name: a.filter.clone(), over: a.over.clone(), start })
+        .map(|(i, a)| Row { pick: Pick::Filter(i), name: a.filter.clone(), over: a.over.clone(), start, sub: false, fold: None })
         .collect();
     for (pick, o) in table(ui, d, model, &rows, &Columns { cells: &Cell::ALL, detail: false }, enabled) {
         put(d, model, &pick, o);
@@ -1110,6 +1158,8 @@ fn elements(ui: &mut Ui, d: &mut VgDialog, model: &Model, selection: &[Id]) {
             name: element_name(model, id),
             over: d.draft.elements.get(&model.guid(id)).cloned().unwrap_or_default(),
             start: model.object_style(cat),
+            sub: false,
+            fold: None,
         })
         .collect();
     for (pick, o) in table(ui, d, model, &rows, &Columns { cells: &Cell::ALL, detail: false }, true) {

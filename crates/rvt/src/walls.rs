@@ -324,6 +324,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
             // The exterior is to the left of a BIMCraft wall; to the right of a Revit wall whose flip is set.
             let (start, end, arc) = if flip == Some(true) { (end, start, -arc) } else { (start, end, arc) };
             let wall = Wall {
+                room_bounding: true,
                 params: Default::default(),
                 type_name,
                 level,
