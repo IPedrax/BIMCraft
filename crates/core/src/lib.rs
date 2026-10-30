@@ -57,6 +57,7 @@ pub mod massing;
 pub mod model;
 pub mod nbr5410;
 pub mod paint;
+pub mod panel_schedule;
 pub mod pat;
 pub mod pdf;
 pub mod pen;
@@ -103,6 +104,8 @@ mod dimension_tests;
 mod line_tests;
 #[cfg(test)]
 mod mep_tests;
+#[cfg(test)]
+mod panel_schedule_tests;
 #[cfg(test)]
 mod panel_tests;
 #[cfg(test)]

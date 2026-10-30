@@ -813,3 +813,95 @@ fn a_circuits_properties_edit_it_through_the_circuit_command_and_say_what_it_loa
     assert!(h.state().status.error, "two poles against one-pole luminaires: {}", h.state().status.text);
     assert_eq!(circuit_of(&h, id).map(|c| c.poles), Some(1));
 }
+
+/// A board on 127/220 V with a circuit of two luminaires, selected, and its panel schedule made by the command.
+fn board_with_a_circuit(h: &mut Harness<BimApp>) -> (Id, Id, Id) {
+    let (board, lamps) = board_and_lamps(h, 2);
+    let s = &mut h.state_mut().session;
+    let circuit = s.execute("circuit", &json!({"devices": lamps, "panel": board})).expect("a circuit")["id"].as_u64().expect("its id");
+    let view =
+        s.execute("panel_schedule", &json!({"panel": board, "name": "QD-1"})).expect("a panel schedule")["id"].as_u64().expect("its id");
+    h.state_mut().selection = vec![board];
+    h.run();
+    (board, circuit, view)
+}
+
+#[test]
+fn electrical_panel_schedule_makes_the_selected_boards_schedule_and_opens_it() {
+    let mut h = app(BOX);
+    press(&mut h, "Electrical");
+    let board = board_selected(&mut h, [1000, 1000]);
+    press(&mut h, "Panel Schedule");
+    let [view] = ids(&h, "panelschedule")[..] else { panic!("one panel schedule: {:?}", ids(&h, "panelschedule")) };
+    assert_eq!(h.state().sheet, Sheet::Table(view), "it is open");
+    assert_eq!(field(&h, view, "panel_id"), json!(board));
+    // Its bar and its summary are there.
+    for label in ["Mark as Spare", "Mark as Space", "Load Summary by Phase", "Load Summary by Classification"] {
+        assert!(h.query_by_label(label).is_some(), "{label}");
+    }
+    // Nothing selected that is a board is said, and makes nothing.
+    h.state_mut().selection.clear();
+    h.run();
+    h.state_mut().sheet = Sheet::Plan(100000);
+    h.run();
+    press(&mut h, "Panel Schedule");
+    assert!(h.state().status.error, "{}", h.state().status.text);
+    assert_eq!(ids(&h, "panelschedule").len(), 1);
+}
+
+#[test]
+fn a_panel_schedule_is_in_the_browser_and_place_view_puts_it_on_a_sheet() {
+    let mut h = app_at(BOX, 0.05);
+    let (_, _, view) = board_with_a_circuit(&mut h);
+    assert!(h.query_by_label("QD-1").is_some(), "the project browser lists it");
+    assert!(h.query_by_label("Panel Schedules").is_some());
+    press(&mut h, "View");
+    press(&mut h, "Sheet");
+    press(&mut h, "View");
+    press(&mut h, "Place View");
+    press(&mut h, "Panel Schedule: QD-1");
+    let [vp] = ids(&h, "viewport")[..] else { panic!("one viewport") };
+    assert_eq!(field(&h, vp, "view"), json!(view));
+    // Placed, it is no longer offered; a double click on it opens it.
+    press(&mut h, "View");
+    press(&mut h, "Place View");
+    assert!(h.query_by_label("Panel Schedule: QD-1").is_none());
+    key(&mut h, Key::Escape);
+    let at = field(&h, vp, "at");
+    double_click(&mut h, P2(at[0].as_f64().unwrap(), at[1].as_f64().unwrap()));
+    assert_eq!(h.state().sheet, Sheet::Table(view));
+}
+
+#[test]
+fn the_panel_schedule_edits_its_circuits_in_place_and_marks_slots_as_spares_and_spaces() {
+    let mut h = app(BOX);
+    let (board, circuit, view) = board_with_a_circuit(&mut h);
+    h.state_mut().open_sheet(Sheet::Table(view));
+    h.run();
+    // A cell typed in changes the circuit and the totals.
+    type_role(&mut h, Role::TextInput, "Description", "Iluminação");
+    type_role(&mut h, Role::TextInput, "Trip", "10");
+    let c = circuit_of(&h, circuit).expect("a circuit");
+    assert_eq!((c.name.as_str(), c.rating_a), ("Iluminação", 10.0));
+    type_role(&mut h, Role::TextInput, "Trip", "lots");
+    assert!(h.state().status.error, "{}", h.state().status.text);
+    assert_eq!(circuit_of(&h, circuit).map(|c| c.rating_a), Some(10.0));
+    // A slot picked is marked a spare, then a space again.
+    press(&mut h, "5");
+    press(&mut h, "Mark as Spare");
+    let spare = h.state().session.model.elements.iter().find_map(|(i, e)| matches!(e, Element::Circuit(c) if c.number == 5).then_some(*i));
+    let spare = spare.expect("a spare on slot 5");
+    assert!(circuit_of(&h, spare).is_some_and(|c| c.devices.is_empty()));
+    press(&mut h, "Mark as Space");
+    assert!(circuit_of(&h, spare).is_none(), "a space has no breaker");
+    // A circuit is moved to a phase by the bar: slot 3 is on B.
+    h.state_mut().panel_slot = Some(1);
+    h.run();
+    press(&mut h, "Phase B");
+    assert_eq!(circuit_of(&h, circuit).map(|c| c.number), Some(3));
+    assert_eq!(h.state().session.model.panel_feeds(board).len(), 0);
+    // Undone like any edit.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert_eq!(circuit_of(&h, circuit).map(|c| c.number), Some(1));
+}

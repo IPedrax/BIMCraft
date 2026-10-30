@@ -69,7 +69,9 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 13: a project holds circuits (an element of the
+/// The version of the project file this build writes, and the newest it reads. 14: a project holds panel schedules (an element of
+/// the `panelschedule` category) and `demand_factors`; nothing in a file of 13 changes, but a build that reads up to 13 would
+/// answer one of 14 with a serde error, not "saved by a newer BIMCraft". 13: a project holds circuits (an element of the
 /// `circuit` category); nothing in a file of 12 changes, but a build that reads up to 12 would answer one of 13 with a serde
 /// error ("unknown variant"), not "saved by a newer BIMCraft". 12: a family holds `connectors` (an
 /// electrical device's load, a switch), each a part with an id and a GUID; nothing in a file of 11 changes, but a build that
@@ -92,7 +94,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 13;
+pub const FORMAT: u32 = 14;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -1531,6 +1533,7 @@ macro_rules! visit_refs {
             // A view's graphics, as `views_graphics` gives them.
             Element::Level(_) | Element::Section(_) | Element::Elevation(_) | Element::View3D(_) => {}
             Element::Grid(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) => {}
+            Element::PanelSchedule(ps) => f(& $($m)? ps.panel),
             Element::PlanView(v) => {
                 f(& $($m)? v.level);
                 if let Some(g) = & $($m)? v.parent { f(g) }
@@ -1681,6 +1684,8 @@ pub enum Element {
     CadImport(CadImport),
     /// An electrical circuit: devices on a distribution board, behind one breaker.
     Circuit(crate::electrical::Circuit),
+    /// A distribution board's load schedule, a view of its own.
+    PanelSchedule(crate::panel_schedule::PanelSchedule),
 }
 
 impl Element {
@@ -1868,6 +1873,7 @@ impl Element {
             Element::Dimension(_) => "dimension",
             Element::Tag(_) => "tag",
             Element::Circuit(_) => "circuit",
+            Element::PanelSchedule(_) => "panelschedule",
             Element::Section(_) => "section",
             Element::Elevation(_) => "elevation",
             Element::Sheet(_) => "sheet",
@@ -2303,6 +2309,10 @@ pub struct Model {
     /// Its wire types, by name: material, insulation, temperature and the ampacity of each section, mm².
     #[serde(default = "crate::electrical::wire_types")]
     pub wire_types: BTreeMap<String, crate::electrical::WireType>,
+    /// The factor that counts of the load of the circuits of a classification (above 0 up to 1), applied in a board's totals and
+    /// its panel schedule on top of each circuit's own; a classification with none counts whole.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub demand_factors: BTreeMap<String, f64>,
     pub elements: Elements,
     /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
     /// templates, phases, phase filters and design options.
@@ -2396,6 +2406,7 @@ impl Model {
             voltages: crate::electrical::voltages(),
             distribution_systems: crate::electrical::distribution_systems(),
             wire_types: crate::electrical::wire_types(),
+            demand_factors: BTreeMap::new(),
             elements: Elements::new(),
             library: crate::library::Library::default(),
             loaded: BTreeMap::new(),
@@ -2850,6 +2861,7 @@ impl Model {
         // 10 to 11 (Swedish, Czech and French as a project's language) has no step: a file of 10 holds none of them.
         // 11 to 12 (a family's connectors) has no step: a file of 11 holds none, so a family of it has no connector.
         // 12 to 13 (circuits) has no step: a file of 12 holds none.
+        // 13 to 14 (panel schedules and `demand_factors`) has no step: a file of 13 holds none, and a circuit's slots are its number as ever.
         // The electrical settings (voltages, distribution systems, wire types) and a board's panel data have none within 11 or 12:
         // a file without them reads with the starter set and no board data, and one that has them is read by an older version with
         // them left out.
@@ -3538,6 +3550,7 @@ impl Model {
             | Element::Sheet(_)
             | Element::Viewport(_)
             | Element::Schedule(_)
+            | Element::PanelSchedule(_)
             | Element::Link(_)
             | Element::View3D(_) => None,
         }
@@ -3895,6 +3908,7 @@ impl Model {
             Some(Element::Level(l)) => Some(&l.name),
             Some(Element::Section(v) | Element::Elevation(v)) => Some(&v.name),
             Some(Element::Schedule(sc)) => Some(&sc.name),
+            Some(Element::PanelSchedule(ps)) => Some(&ps.name),
             Some(Element::View3D(v)) => Some(&v.name),
             Some(Element::PlanView(v)) => Some(&v.name),
             _ => None,
@@ -4982,6 +4996,12 @@ impl Model {
             match e {
                 // Its rules are held between circuits and boards, in one place: `electrical::check_circuits`.
                 Element::Circuit(_) => {}
+                Element::PanelSchedule(ps) => {
+                    crate::panel_schedule::check(self, &who, ps)?;
+                    if !view_names.insert(ps.name.as_str()) {
+                        return Err(format!("{who}: another view is already named `{}`", ps.name));
+                    }
+                }
                 Element::Level(l) => {
                     text(&who, "name", &l.name)?;
                     coord(&format!("{who} elevation"), l.elevation)?;

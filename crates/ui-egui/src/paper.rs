@@ -118,6 +118,7 @@ impl BimApp {
                 Some(Element::Level(_) | Element::PlanView(_)) => model.elements.id(v.view).map(Sheet::Plan),
                 Some(Element::Section(_) | Element::Elevation(_)) => model.elements.id(v.view).map(Sheet::Section),
                 Some(Element::View3D(_)) => Some(Sheet::View3D),
+                Some(Element::PanelSchedule(_)) => model.elements.id(v.view).map(Sheet::Table),
                 Some(Element::Schedule(sc)) => match bimcraft_core::schedule::builtin(Some(&sc.name), None) {
                     Some((cat, _)) => SCHEDULES.iter().find(|(c, _)| *c == cat).map(|(c, _)| Sheet::Schedule(c)),
                     None => model.elements.id(v.view).map(Sheet::Table),

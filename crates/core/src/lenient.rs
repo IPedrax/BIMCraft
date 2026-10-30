@@ -44,6 +44,7 @@ pub fn element(category: &str, v: &Value) -> Vec<String> {
         "text" => Note, "line" => DetailLine, "region" => FilledRegion, "detailgroup" => DetailGroup, "repeatingdetail" => RepeatingDetail, "spot" => Spot, "schedule" => Schedule, "view3d" => View3D,
         "planview" => PlanView, "link" => Link, "pointcloud" => PointCloud, "cadimport" => CadImport,
         "circuit" => crate::electrical::Circuit,
+        "panelschedule" => crate::panel_schedule::PanelSchedule,
     }
 }
 

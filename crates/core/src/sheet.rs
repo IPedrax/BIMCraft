@@ -15,6 +15,8 @@ use crate::pen::Pen;
 use crate::render::{self, Drawing, PAPER, Part, Prim, Rgb, View};
 use crate::{font, schedule, view3d};
 
+mod panel;
+
 /// Paper px per mm in a sheet's drawing: plan lettering 10 px tall comes out 2 mm on paper.
 pub const DENSITY: f64 = 5.0;
 /// Room around what a view shows, on paper, for grid bubbles and the like: mm.
@@ -48,6 +50,10 @@ fn framing(m: &Model, view: impl Key, scale: f64) -> Option<View> {
         Element::Section(_) | Element::Elevation(_) => render::section_extent(m, view, k, 1.0)?.to_vec(),
         Element::Schedule(sc) => {
             let (width, height) = table_size(&sc.name, &table_of(m, sc));
+            return Some(View { scale: 1.0, cx: 0.0, cy: 0.0, width, height });
+        }
+        Element::PanelSchedule(ps) => {
+            let (width, height) = panel::size(m, ps)?;
             return Some(View { scale: 1.0, cx: 0.0, cy: 0.0, width, height });
         }
         Element::View3D(v) => {
@@ -271,8 +277,11 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
     d.weights = m.line_weights().at(m.units.default_scale());
     d.own(m.elements.id(id));
     // Schedules keep their own size: no scale of theirs.
-    let scaled: Vec<&Viewport> =
-        views.iter().filter(|(_, v)| !matches!(m.elements.get(v.view), Some(Element::Schedule(_)))).map(|(_, v)| *v).collect();
+    let scaled: Vec<&Viewport> = views
+        .iter()
+        .filter(|(_, v)| !matches!(m.elements.get(v.view), Some(Element::Schedule(_) | Element::PanelSchedule(_))))
+        .map(|(_, v)| *v)
+        .collect();
     title_block(&mut d, &m.name, sheet, paper, &scale_note(&scaled, m.language, m.units), m.standard());
     let mut scene = None;
     for (vid, vp) in views {
@@ -299,6 +308,10 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
             // Its title is its first row; it has no view title under it.
             Some(Element::Schedule(sc)) => {
                 table(&mut d, m, sc, (ox, oy));
+                continue;
+            }
+            Some(Element::PanelSchedule(ps)) => {
+                panel::draw(&mut d, m, ps, (ox, oy));
                 continue;
             }
             Some(Element::View3D(v)) => {

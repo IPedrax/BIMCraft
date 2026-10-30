@@ -398,6 +398,36 @@ pub static ALL: &[Command] = &[
         reinforcement_preset,
     ),
     edit(
+        "demand_factors",
+        "Demand Factors",
+        &[],
+        "{class?, factor?, delete?: true} the project's demand factors by classification: the share (above 0 up to 1) of the load of the \
+         circuits of a `class` (lighting, receptacle…, as their devices' connectors name it) that counts in a board's demand load and \
+         its panel schedule, on top of each circuit's own `demand_factor`. A class with none counts whole. Without `class`, lists them",
+        demand_factors,
+    ),
+    edit(
+        "panel_schedule",
+        "Panel Schedule",
+        &[],
+        concat!(
+            "{panel: id, name?, template?: branch|list, show_spare?, show_space?, phase_columns?, scale?, notes?} makes the panel schedule \
+             (quadro de cargas) of a distribution board: a view that goes on a sheet with `place` and prints with it, listed in the Project \
+             Browser and by `inspect`. It has the board's header (system, voltage, phases, mains, level), a row for each of its slots (`Max \
+             #1 Pole Breakers`; a circuit takes the slots `number`, `number`+2… for as many poles, each on a phase, A B C repeating every two \
+             slots), a spare (a breaker with no device) and a space (a slot no circuit takes) drawn differently, the load by classification \
+             (the project's `demand_factors` applied) and by phase (the phases add up to the board's load, the current of a phase its \
+             demand over the phase voltage), and `notes`. `template` is the branch panel's two columns or a list; `show_spare` and \
+             `show_space` (true) show the rows; `phase_columns` (true) a column for each phase; `scale` (1) how large it comes out. ",
+            "{id, ...the same} changes it; {id} alone returns what it says. Edited in the view: {id, circuit: id, description?, breaker?, \
+             phase?: A|B|C, demand_factor?, slot?} changes the circuit (`description` its name, `breaker` its rating, `phase` moves it to the \
+             first free slots that start on that phase, `slot` to that number) and the totals follow; {id, slot, mark: spare|space, poles?} \
+             makes a slot a spare (a breaker with no device) or a space (an empty breaker taken away); one with devices on it is refused. \
+             A refusal changes nothing"
+        ),
+        panel_schedule,
+    ),
+    edit(
         "voltage",
         "Voltage Definitions",
         &[],
@@ -2299,6 +2329,12 @@ pub fn element_json(m: &Model, id: Id) -> Value {
                 extra.insert("pole_va".into(), json!(t.pole_va));
             }
         }
+        Element::PanelSchedule(ps) => {
+            if let Some(b) = m.elements.id(ps.panel) {
+                extra.insert("panel_id".into(), json!(b));
+                extra.insert("slots".into(), json!(crate::electrical::slot_count(m, b)));
+            }
+        }
         Element::Level(_) | Element::Grid(_) | Element::Schedule(_) | Element::View3D(_) | Element::PlanView(_) => {}
     }
     let mut v = serde_json::to_value(e).unwrap_or_default();
@@ -4070,14 +4106,16 @@ fn circuit_of_model(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, "`add` and `remove` change a circuit that is there: give its `id`"));
     }
     let powers: Vec<crate::family::ConnectorValues> = devices.iter().filter_map(|i| electrical::device_power(m, *i).ok()).collect();
-    let on_board = electrical::circuits_of(m, pid);
-    let taken = on_board.iter().filter_map(|i| if let Some(Element::Circuit(x)) = m.elements.get(*i) { Some(x.number) } else { None });
+    let poles = poles.or_else(|| powers.first().map(|p| p.poles)).unwrap_or(1);
     let mut x = Circuit {
         panel: m.guid(pid),
-        number: number.unwrap_or_else(|| taken.max().unwrap_or(0).saturating_add(1)),
+        // The first slots it fits in; with none left, past the last, which `Model::check` refuses by saying the board is full.
+        number: number.or_else(|| electrical::free_number(m, pid, poles, None, None)).unwrap_or_else(|| {
+            electrical::occupied(m, pid).keys().next_back().map_or(1, |last| last.saturating_add(1)).min(electrical::MAX_NUMBER)
+        }),
         name: name.unwrap_or_default(),
         rating_a: rating.unwrap_or(16.0),
-        poles: poles.or_else(|| powers.first().map(|p| p.poles)).unwrap_or(1),
+        poles,
         voltage: voltage.flatten(),
         classification: classification
             .unwrap_or_else(|| powers.iter().map(|p| p.classification.clone()).find(|k| !k.is_empty()).unwrap_or_default()),
@@ -5576,6 +5614,255 @@ fn change<T>(c: &str, p: &Value, key: &str, what: &str, parse: impl FnOnce(&Valu
         Some(v) => parse(v).map(Change::Set).ok_or_else(|| bad(c, format!("`{key}` must be {what}, or \"\" to take it away, got {v}"))),
         None => Ok(Change::Keep),
     }
+}
+
+/// `demand_factors`: the share of the load of the circuits of a classification that counts.
+fn demand_factors(s: &mut Session, p: &Value) -> R {
+    const MAX_CLASSES: usize = 256;
+    let c = "demand_factors";
+    only(c, p, &["class", "factor", "delete"])?;
+    let Some(class) = name_param(c, p, "class")? else {
+        return Ok(json!({"demand_factors": s.model.demand_factors}));
+    };
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if m.demand_factors.remove(&class).is_none() {
+            return Err(bad(c, format!("there's no demand factor for `{class}`")));
+        }
+        return Ok(json!({"deleted": class}));
+    }
+    let was = m.demand_factors.get(&class).copied();
+    let factor = amount(c, p, "factor", "a share of the load")?
+        .or(was)
+        .ok_or_else(|| bad(c, "`factor` (above 0 up to 1) is required for a class that has none"))?;
+    if !m.demand_factors.contains_key(&class) && m.demand_factors.len() >= MAX_CLASSES {
+        return Err(bad(c, format!("the project holds demand factors for up to {MAX_CLASSES} classes")));
+    }
+    m.demand_factors.insert(class.clone(), factor);
+    Ok(json!({"class": class, "factor": factor}))
+}
+
+/// What a panel schedule says, as the commands return it.
+fn panel_schedule_json(m: &Model, id: Id) -> R {
+    use crate::panel_schedule as ps;
+    let Some(Element::PanelSchedule(v)) = m.elements.get(id) else {
+        return Err(format!("panel_schedule: element {id} is not a panel schedule"));
+    };
+    let l = ps::layout(m, v).map_err(|e| format!("panel_schedule: {e}"))?;
+    let kind = |k: ps::Kind| match k {
+        ps::Kind::Circuit => "circuit",
+        ps::Kind::Continues => "continues",
+        ps::Kind::Spare => "spare",
+        ps::Kind::Space => "space",
+    };
+    let rows: Vec<Value> =
+        l.rows.iter().map(|r| json!({"slot": r.slot, "kind": kind(r.kind), "circuit": r.circuit, "cells": r.cells})).collect();
+    let s = &l.summary;
+    Ok(json!({
+        "id": id,
+        "name": v.name,
+        "panel": m.elements.id(v.panel),
+        "template": v.template,
+        "header": l.header,
+        "columns": l.columns,
+        "rows": rows,
+        "summary": {
+            "classes": s.classes.iter().map(|k| json!({"class": k.class, "installed_va": k.installed_va, "factor": k.factor, "demand_va": k.demand_va})).collect::<Vec<_>>(),
+            "phases": s.phases.iter().map(|k| json!({"phase": k.phase.to_string(), "installed_va": k.installed_va, "demand_va": k.demand_va, "current_a": k.current_a})).collect::<Vec<_>>(),
+            "installed_va": s.installed_va,
+            "demand_va": s.demand_va,
+            "current_a": s.current_a,
+        },
+        "notes": l.notes,
+    }))
+}
+
+const PANEL_SCHEDULE_OPTIONS: &[&str] = &["name", "template", "show_spare", "show_space", "phase_columns", "scale", "notes"];
+const PANEL_SCHEDULE_EDITS: &[&str] = &["circuit", "description", "breaker", "phase", "demand_factor", "slot", "mark", "poles"];
+
+fn panel_schedule(s: &mut Session, p: &Value) -> R {
+    use crate::electrical;
+    use crate::panel_schedule::{self as ps, PanelSchedule};
+    let c = "panel_schedule";
+    let mut keys = vec!["id", "panel"];
+    keys.extend(PANEL_SCHEDULE_OPTIONS);
+    keys.extend(PANEL_SCHEDULE_EDITS);
+    only(c, p, &keys)?;
+    let given = |k: &str| !absent(p.get(k));
+    let m = &s.model;
+    // The options it is asked to have.
+    let optional_flag = |key: &str| -> Result<Option<bool>, String> {
+        match p.get(key) {
+            v if absent(v) => Ok(None),
+            Some(Value::Bool(b)) => Ok(Some(*b)),
+            Some(v) => Err(bad(c, format!("`{key}` must be true or false, got {v}"))),
+            None => Ok(None),
+        }
+    };
+    let (name, template, notes) = (name_param(c, p, "name")?, string(c, p, "template")?, string(c, p, "notes")?);
+    let (spare, space, phases, scale) = (
+        optional_flag("show_spare")?,
+        optional_flag("show_space")?,
+        optional_flag("phase_columns")?,
+        amount(c, p, "scale", "times its size")?,
+    );
+    let apply = |v: &mut PanelSchedule| {
+        if let Some(n) = &name {
+            v.name = n.clone();
+        }
+        if let Some(t) = &template {
+            v.template = t.trim().to_lowercase();
+        }
+        if let Some(b) = spare {
+            v.show_spare = b;
+        }
+        if let Some(b) = space {
+            v.show_space = b;
+        }
+        if let Some(b) = phases {
+            v.phase_columns = b;
+        }
+        if let Some(x) = scale {
+            v.scale = x;
+        }
+        if let Some(n) = &notes {
+            v.notes = n.clone();
+        }
+    };
+    let Some(idv) = p.get("id").filter(|v| !v.is_null()) else {
+        // Made.
+        if PANEL_SCHEDULE_EDITS.iter().any(|k| given(k)) {
+            return Err(bad(
+                c,
+                "`circuit`, `slot` and the keys that change a circuit need the `id` of the panel schedule they are edited in",
+            ));
+        }
+        let board = match p.get("panel") {
+            v if absent(v) => return Err(bad(c, "`panel` (a distribution board) is required, or the `id` of a panel schedule")),
+            Some(v) => element_id(c, m, v)?,
+            None => return Err(bad(c, "`panel` is required")),
+        };
+        electrical::board(m, board).ok_or_else(|| bad(c, format!("element {board} is not a distribution board")))?;
+        let mut v = PanelSchedule::new(String::new(), m.guid(board));
+        apply(&mut v);
+        if name.is_none() {
+            v.name = m.free_view_name(&format!("Panel Schedule {board}"), false);
+        }
+        let id = s.model_mut().insert(Element::PanelSchedule(v));
+        return panel_schedule_json(&s.model, id);
+    };
+    let id = element_id(c, m, idv)?;
+    let Some(Element::PanelSchedule(old)) = m.elements.get(id) else { return Err(bad(c, format!("element {id} is not a panel schedule"))) };
+    let board = m.elements.id(old.panel).ok_or_else(|| bad(c, "its board is gone"))?;
+    let editing = PANEL_SCHEDULE_EDITS.iter().any(|k| given(k));
+    let options = PANEL_SCHEDULE_OPTIONS.iter().any(|k| given(k)) || given("panel");
+    if editing && options {
+        return Err(bad(c, "change the schedule's options, or edit a circuit in it, in separate calls"));
+    }
+    if options {
+        let mut v = old.clone();
+        if let Some(b) = p.get("panel").filter(|v| !v.is_null()) {
+            let nb = element_id(c, m, b)?;
+            electrical::board(m, nb).ok_or_else(|| bad(c, format!("element {nb} is not a distribution board")))?;
+            v.panel = m.guid(nb);
+        }
+        apply(&mut v);
+        s.model_mut().elements.insert(id, Element::PanelSchedule(v));
+        return panel_schedule_json(&s.model, id);
+    }
+    if !editing {
+        return panel_schedule_json(m, id);
+    }
+    // A slot made a spare or a space.
+    if given("mark") {
+        let slot = match p.get("slot") {
+            Some(v) => v.as_u64().and_then(|n| u32::try_from(n).ok()).filter(|n| *n >= 1),
+            None => None,
+        }
+        .ok_or_else(|| bad(c, "`slot` (a whole number from 1) is required to mark"))?;
+        let by_slot = electrical::occupied(m, board);
+        let held = by_slot.get(&slot).copied();
+        let holds_devices = |cid: Id| matches!(m.elements.get(cid), Some(Element::Circuit(x)) if !x.devices.is_empty());
+        match (p.get("mark").and_then(Value::as_str), held) {
+            (Some("spare"), None) => {
+                let mut q = json!({"panel": board, "devices": [], "number": slot});
+                if let Some(n) = small(c, p, "poles")? {
+                    q["poles"] = json!(n);
+                }
+                circuit_of_model(s, &q)?;
+            }
+            (Some("spare"), Some(cid)) if !holds_devices(cid) => {}
+            (Some("space"), None) => {}
+            (Some("space"), Some(cid)) if !holds_devices(cid) => {
+                s.model_mut().elements.remove(cid);
+            }
+            (Some("spare" | "space"), Some(cid)) => {
+                return Err(bad(
+                    c,
+                    format!(
+                        "slot {slot} is circuit {cid}'s, which holds devices: take them out first (`circuit` `remove`), or move the circuit"
+                    ),
+                ));
+            }
+            _ => return Err(bad(c, "`mark` is `spare` or `space`")),
+        }
+        return panel_schedule_json(&s.model, id);
+    }
+    // A circuit edited in the view.
+    if given("poles") {
+        return Err(bad(c, "`poles` only goes with `mark: spare`; change a circuit's poles with `circuit`"));
+    }
+    let target = match p.get("circuit") {
+        v if absent(v) => return Err(bad(c, "`circuit` (the circuit to edit) is required")),
+        Some(v) => element_id(c, m, v)?,
+        None => return Err(bad(c, "`circuit` is required")),
+    };
+    let Some(Element::Circuit(x)) = m.elements.get(target) else { return Err(bad(c, format!("element {target} is not a circuit"))) };
+    if x.panel != old.panel {
+        return Err(bad(c, format!("circuit {target} is not on board {board}")));
+    }
+    let mut q = json!({"id": target});
+    for (from, to) in [("description", "name"), ("breaker", "rating"), ("demand_factor", "demand_factor")] {
+        if let Some(v) = p.get(from).filter(|v| !v.is_null()) {
+            q[to] = v.clone();
+        }
+    }
+    if given("slot") && given("phase") {
+        return Err(bad(c, "give a `slot` or a `phase`, not both: a phase picks the slot"));
+    }
+    if let Some(v) = p.get("slot").filter(|v| !v.is_null()) {
+        q["number"] = v.clone();
+    }
+    if let Some(v) = p.get("phase").filter(|v| !v.is_null()) {
+        let phases =
+            electrical::board_phases(m, board).ok_or_else(|| bad(c, format!("board {board} has no distribution system, so no phases")))?;
+        let letter = v.as_str().map(|t| t.trim().to_uppercase());
+        let want = (0..phases).find(|k| letter.as_deref() == Some(electrical::phase_letter(*k).to_string().as_str())).ok_or_else(|| {
+            bad(
+                c,
+                format!(
+                    "`phase` is one of {}, not {v}",
+                    (0..phases).map(|k| electrical::phase_letter(k).to_string()).collect::<Vec<_>>().join(", ")
+                ),
+            )
+        })?;
+        if electrical::slot_phase(x.number, phases) != want {
+            let n = electrical::free_number(m, board, x.poles, Some(want), Some(target)).ok_or_else(|| {
+                bad(
+                    c,
+                    format!(
+                        "board {board} has no free slots for a circuit of {} pole(s) that start on phase {}",
+                        x.poles,
+                        electrical::phase_letter(want)
+                    ),
+                )
+            })?;
+            q["number"] = json!(n);
+        }
+    }
+    circuit_of_model(s, &q)?;
+    let _ = ps::TEMPLATES;
+    panel_schedule_json(&s.model, id)
 }
 
 fn panel(s: &mut Session, p: &Value) -> R {
@@ -8758,7 +9045,7 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
     match &mut e {
         Element::Level(_) => return Err(bad(c, format!("level {id} has no place in plan; change its elevation, or add a level"))),
         Element::Sheet(_) => return Err(bad(c, format!("sheet {id} has no place in plan; move the views on it"))),
-        Element::Schedule(_) | Element::View3D(_) | Element::PlanView(_) => {
+        Element::Schedule(_) | Element::PanelSchedule(_) | Element::View3D(_) | Element::PlanView(_) => {
             return Err(bad(c, format!("{category} {id} has no place in plan; move its viewport on its sheet")));
         }
         Element::CadImport(ci) => {
@@ -9065,7 +9352,8 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
 fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
     let m = &s.model;
     // A circuit is of its devices and its board, which a copy of them is not on: copy those, and make a circuit of the copies.
-    let kept: Vec<Id> = ids.iter().copied().filter(|id| !matches!(m.elements.get(id), Some(Element::Circuit(_)))).collect();
+    let kept: Vec<Id> =
+        ids.iter().copied().filter(|id| !matches!(m.elements.get(id), Some(Element::Circuit(_) | Element::PanelSchedule(_)))).collect();
     if kept.is_empty() && !ids.is_empty() {
         return Err(bad(c, "a circuit is not copied: copy its devices, and make a circuit of the copies with `circuit`"));
     }
@@ -9819,6 +10107,8 @@ fn delete(s: &mut Session, p: &Value) -> R {
                         Element::Rebar(rb) => rb.host.is_some_and(|h| gone.contains(&h)),
                         // A circuit hangs on its board.
                         Element::Circuit(x) => gone.contains(&x.panel),
+                        // A panel schedule hangs on its board, as its viewports hang on it.
+                        Element::PanelSchedule(v) => gone.contains(&v.panel),
                         // A plan view goes with its level and its parent; what is annotated in a view goes with it.
                         Element::PlanView(v) => gone.contains(&v.level) || v.parent.is_some_and(|p| gone.contains(&p)),
                         Element::Tag(t) => gone.contains(&t.host) || t.view.is_some_and(|v| gone.contains(&v)),
@@ -10721,6 +11011,8 @@ fn inspect(s: &mut Session, _: &Value) -> R {
     let warnings = m.warnings();
     let circuits: Vec<Value> =
         m.elements.iter().filter(|(_, e)| matches!(e, Element::Circuit(_))).map(|(id, _)| element_json(m, *id)).collect();
+    let panel_schedules: Vec<Value> =
+        m.elements.iter().filter(|(_, e)| matches!(e, Element::PanelSchedule(_))).map(|(id, _)| element_json(m, *id)).collect();
     Ok(json!({
         "name": m.name, "units": "mm", "project_units": m.units.name(), "room_area": m.room_area.name(), "language": m.language.code(), "standard": m.standard().code(), "path": s.path, "levels": levels,
         "counts": counts,
@@ -10728,7 +11020,7 @@ fn inspect(s: &mut Session, _: &Value) -> R {
         "view_filters": m.view_filters, "view_templates": m.view_templates, "phases": m.phases, "phase_filters": m.phase_filters,
         "phase_overrides": m.phase_overrides, "option_sets": m.option_sets, "warnings": warnings,
         "voltages": m.voltages, "distribution_systems": m.distribution_systems, "wire_types": m.wire_types,
-        "circuits": circuits,
+        "circuits": circuits, "demand_factors": m.demand_factors, "panel_schedules": panel_schedules,
         "history": s.history(),
     }))
 }

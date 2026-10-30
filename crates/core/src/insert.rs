@@ -305,6 +305,7 @@ impl Names {
             Element::Section(v) | Element::Elevation(v) => (&mut v.name, &mut self.views),
             Element::View3D(v) => (&mut v.name, &mut self.views),
             Element::Schedule(sc) => (&mut sc.name, &mut self.views),
+            Element::PanelSchedule(v) => (&mut v.name, &mut self.views),
             Element::Grid(g) => (&mut g.name, &mut self.grids),
             Element::Sheet(sh) => (&mut sh.number, &mut self.sheets),
             _ => return,

@@ -1868,7 +1868,49 @@ fn hostile_params_never_panic_or_break_the_model() {
             ];
         }
     }
-    let hostile: Vec<Value> = hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(circuits).collect();
+    // A panel schedule of that board, after the circuit, and what is thrown at it and at the demand factors.
+    let mut schedules: Vec<Value> = vec![
+        json!({"class": "lighting", "factor": 1e300}),
+        json!({"class": "lighting", "factor": 0}),
+        json!({"class": "", "factor": 0.5}),
+        json!({"class": "x".repeat(300), "factor": 0.5}),
+        json!({"class": "lighting", "delete": true}),
+    ];
+    if let Some(b) = ids[0] {
+        let v = base.execute("panel_schedule", &json!({"panel": b})).ok().and_then(|r| r["id"].as_u64());
+        schedules.extend([
+            json!({"panel": b, "template": "nope"}),
+            json!({"panel": b, "scale": 1e300}),
+            json!({"panel": b, "scale": 0}),
+            json!({"panel": b, "notes": "x".repeat(5000)}),
+            json!({"panel": b, "name": ""}),
+            json!({"panel": ids[1], "name": "x"}),
+            json!({"circuit": b, "description": "x"}),
+        ]);
+        if let Some(v) = v {
+            let c = circuits.first().and_then(|c| c["id"].as_u64());
+            schedules.extend([
+                json!({"id": v, "slot": u32::MAX, "mark": "spare"}),
+                json!({"id": v, "slot": 0, "mark": "space"}),
+                json!({"id": v, "slot": 1, "mark": "spare", "poles": 255}),
+                json!({"id": v, "slot": 1, "mark": 5}),
+                json!({"id": v, "template": "list", "show_spare": "yes"}),
+                json!({"id": v, "scale": 4, "phase_columns": false, "show_space": false}),
+                json!({"id": v, "panel": ids[1]}),
+                json!({"id": v, "circuit": c, "slot": u32::MAX}),
+                json!({"id": v, "circuit": c, "phase": "Z"}),
+                json!({"id": v, "circuit": c, "phase": 1e300}),
+                json!({"id": v, "circuit": c, "breaker": 1e300}),
+                json!({"id": v, "circuit": c, "demand_factor": -1}),
+                json!({"id": v, "circuit": c, "description": "x".repeat(300)}),
+                json!({"id": v, "circuit": b}),
+                json!({"id": v, "circuit": c, "slot": 2, "mark": "space"}),
+                json!({"id": b}),
+                json!({"id": v}),
+            ]);
+        }
+    }
+    let hostile: Vec<Value> = hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(circuits).chain(schedules).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
@@ -5268,7 +5310,7 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
 }
 
 #[test]
-fn a_project_is_saved_as_format_13_and_one_of_format_4_to_12_opens_as_it_is_and_one_of_format_14_is_refused() {
+fn a_project_is_saved_as_format_14_and_one_of_format_4_to_13_opens_as_it_is_and_one_of_format_15_is_refused() {
     use crate::model::Model;
     // 5 added the scans a project holds and the point clouds that place them; 6 added detailing (lines, regions, groups,
     // repeating details, line and fill styles); 7 its CAD drawings and the imports that place them; 8 text types; 9 graphic line patterns; 10 dimensions to points and linear ones. Nothing in a file of 4
@@ -5279,32 +5321,32 @@ fn a_project_is_saved_as_format_13_and_one_of_format_4_to_12_opens_as_it_is_and_
     run(&mut s, "detail_line", json!({"start": [0, 0], "end": [1000, 0]}));
     let full = serde_json::to_value(&*s.model).unwrap();
     for v in [&empty, &full] {
-        assert_eq!(v["format"], 13, "a project is saved as format 13");
-        for old in [4, 5, 6, 7, 8, 9, 10, 11, 12] {
+        assert_eq!(v["format"], 14, "a project is saved as format 14");
+        for old in [4, 5, 6, 7, 8, 9, 10, 11, 12, 13] {
             let mut was = v.clone();
             was["format"] = json!(old);
             let (m, left_out) = Model::read(&was.to_string()).unwrap();
-            assert_eq!((m.format, left_out.len(), m.elements.len()), (13, 0, v["elements"].as_object().unwrap().len()));
+            assert_eq!((m.format, left_out.len(), m.elements.len()), (14, 0, v["elements"].as_object().unwrap().len()));
         }
     }
     assert!(full["elements"].as_object().unwrap().len() > 5);
     // A newer file says what it is and what to do, even when nothing else in it is wrong.
     let mut newer = empty.clone();
-    newer["format"] = json!(14);
+    newer["format"] = json!(15);
     let e = Model::read(&newer.to_string()).unwrap_err();
     assert!(
-        e.contains("newer BIMCraft") && e.contains("file format 14") && e.contains("reads up to 13") && e.contains("update BIMCraft"),
+        e.contains("newer BIMCraft") && e.contains("file format 15") && e.contains("reads up to 14") && e.contains("update BIMCraft"),
         "{e}"
     );
     // A file of this format with a field it doesn't know is read without it, and says which.
     let mut odd = full.clone();
     odd["something_new"] = json!(true);
     let (m, left_out) = Model::read(&odd.to_string()).unwrap();
-    assert_eq!((m.format, left_out), (13, vec!["/something_new".to_string()]));
+    assert_eq!((m.format, left_out), (14, vec!["/something_new".to_string()]));
 }
 
 #[test]
-fn a_format_5_file_that_holds_elements_and_scans_migrates_to_13_and_keeps_both() {
+fn a_format_5_file_that_holds_elements_and_scans_migrates_to_14_and_keeps_both() {
     use crate::model::Model;
     let mut s = Session::new();
     house(&mut s);
@@ -5316,13 +5358,13 @@ fn a_format_5_file_that_holds_elements_and_scans_migrates_to_13_and_keeps_both()
     let mut file: serde_json::Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
     file["format"] = json!(5);
     let (m, left_out) = Model::read(&file.to_string()).unwrap();
-    assert_eq!((m.format, m.clouds.len(), left_out.len(), m.elements.len()), (13, 1, 0, s.model.elements.len()));
-    // Written again, it says 13.
-    assert_eq!(serde_json::from_str::<serde_json::Value>(&m.to_json().unwrap()).unwrap()["format"], 13);
+    assert_eq!((m.format, m.clouds.len(), left_out.len(), m.elements.len()), (14, 1, 0, s.model.elements.len()));
+    // Written again, it says 14.
+    assert_eq!(serde_json::from_str::<serde_json::Value>(&m.to_json().unwrap()).unwrap()["format"], 14);
     // A file of 6 (detailing, no CAD drawings) opens as 10 likewise.
     file["format"] = json!(6);
     let (m, left_out) = Model::read(&file.to_string()).unwrap();
-    assert_eq!((m.format, left_out.len(), m.elements.len()), (13, 0, s.model.elements.len()));
+    assert_eq!((m.format, left_out.len(), m.elements.len()), (14, 0, s.model.elements.len()));
 }
 
 #[test]

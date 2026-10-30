@@ -311,7 +311,16 @@ pub(crate) fn check(m: &Model) -> Result<(), String> {
         w.check(n)?;
     }
     check_panels(m)?;
-    check_circuits(m)
+    check_circuits(m)?;
+    for (class, factor) in &m.demand_factors {
+        if class.trim().is_empty() || class.chars().count() > MAX_TEXT {
+            return Err(format!("demand factors: a classification is 1 to {MAX_TEXT} characters, not `{}`", shown(class)));
+        }
+        if !(factor.is_finite() && *factor > 0.0 && *factor <= 1.0) {
+            return Err(format!("demand factors: `{}` is above 0 and up to 1, not {factor}", shown(class)));
+        }
+    }
+    Ok(())
 }
 
 impl Model {
@@ -669,6 +678,89 @@ pub fn circuits_of(m: &Model, id: Id) -> Vec<Id> {
     m.elements.iter().filter(|(_, e)| matches!(e, Element::Circuit(c) if c.panel == g)).map(|(i, _)| *i).collect()
 }
 
+/// The factor the project's table gives a classification, applied to the demand of the circuits of it (1 when it has none).
+pub fn class_factor(m: &Model, class: &str) -> f64 {
+    m.demand_factors.get(class).copied().unwrap_or(1.0)
+}
+
+/// The slots a circuit of `poles` poles that starts at slot `number` takes: Revit's boards have odd slots on the left and even
+/// on the right, so a second pole is the next slot down the same side.
+pub fn slots_of(number: u32, poles: u8) -> impl Iterator<Item = u32> + Clone {
+    (0..u32::from(poles)).map(move |k| number.saturating_add(2 * k))
+}
+
+/// The phase (0 for A, 1 for B, 2 for C) slot `slot` is on in a system of `phases` phases: a row of two slots is one phase.
+pub fn slot_phase(slot: u32, phases: u8) -> u8 {
+    u8::try_from((slot.saturating_sub(1) / 2) % u32::from(phases.clamp(1, 3))).unwrap_or(0)
+}
+
+/// A phase's letter.
+pub fn phase_letter(phase: u8) -> char {
+    char::from(b'A' + phase.min(25))
+}
+
+/// A board's phases: its system's, none when it has none.
+pub fn board_phases(m: &Model, id: Id) -> Option<u8> {
+    let (_, b) = board(m, id)?;
+    let name = b.panel.as_ref()?.distribution.as_deref()?;
+    m.distribution_systems.get(name).map(|s| s.phases)
+}
+
+/// Board `id`'s slots that circuits take, each by the circuit.
+pub fn occupied(m: &Model, id: Id) -> BTreeMap<u32, Id> {
+    let mut slots = BTreeMap::new();
+    for cid in circuits_of(m, id) {
+        if let Some(Element::Circuit(c)) = m.elements.get(cid) {
+            for s in slots_of(c.number, c.poles) {
+                slots.entry(s).or_insert(cid);
+            }
+        }
+    }
+    slots
+}
+
+/// How many slots board `id` shows: its `Max #1 Pole Breakers`, else up to the last slot a circuit takes, made even.
+pub fn slot_count(m: &Model, id: Id) -> u32 {
+    let set = board(m, id).and_then(|(_, b)| b.panel.as_ref()).and_then(|p| p.slots);
+    set.unwrap_or_else(|| occupied(m, id).keys().next_back().map_or(0, |last| last + last % 2))
+}
+
+/// The first number a circuit of `poles` poles can have on board `id`: every slot it takes free (those of circuit `except`
+/// count as free) and none past the board's slots, on a run that starts in phase `phase` when that is given.
+pub fn free_number(m: &Model, id: Id, poles: u8, phase: Option<u8>, except: Option<Id>) -> Option<u32> {
+    let taken: BTreeMap<u32, Id> = occupied(m, id).into_iter().filter(|(_, c)| Some(*c) != except).collect();
+    let set = board(m, id).and_then(|(_, b)| b.panel.as_ref()).and_then(|p| p.slots);
+    let phases = board_phases(m, id).unwrap_or(1);
+    let last = set.unwrap_or(MAX_NUMBER).min(MAX_NUMBER);
+    (1..=last)
+        .find(|n| slots_of(*n, poles).all(|s| s <= last && !taken.contains_key(&s)) && phase.is_none_or(|p| slot_phase(*n, phases) == p))
+}
+
+/// What a board's phases carry, volt-amperes: all of the load on each, and what counts of it (the circuits' demand factors, then
+/// their classifications'). Each circuit's pole loads fall on the phases of the slots they take.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PhaseLoads {
+    pub installed: Vec<f64>,
+    pub demand: Vec<f64>,
+}
+
+/// A board's loads by phase; none for what is no board or has no system.
+pub fn phase_loads(m: &Model, id: Id) -> Option<PhaseLoads> {
+    let phases = board_phases(m, id)?;
+    let (mut installed, mut demand) = (vec![0.0; usize::from(phases)], vec![0.0; usize::from(phases)]);
+    for cid in circuits_of(m, id) {
+        let Some(Element::Circuit(c)) = m.elements.get(cid) else { continue };
+        let Some(t) = circuit_totals(m, c) else { continue };
+        let factor = c.demand_factor * class_factor(m, &c.classification);
+        for (k, va) in t.pole_va.iter().enumerate() {
+            let p = usize::from(slot_phase(c.number.saturating_add(2 * u32::try_from(k).unwrap_or(0)), phases));
+            installed[p] += va;
+            demand[p] += va * factor;
+        }
+    }
+    Some(PhaseLoads { installed: installed.into_iter().map(thousandth).collect(), demand: demand.into_iter().map(thousandth).collect() })
+}
+
 /// A board's totals; none for what is no board.
 pub fn board_totals(m: &Model, id: Id) -> Option<BoardTotals> {
     let (_, b) = board(m, id)?;
@@ -679,7 +771,7 @@ pub fn board_totals(m: &Model, id: Id) -> Option<BoardTotals> {
             && let Some(t) = circuit_totals(m, c)
         {
             installed += t.installed_va;
-            demand += t.demand_va;
+            demand += t.demand_va * class_factor(m, &c.classification);
         }
     }
     let current = b.panel.as_ref().and_then(|p| p.distribution.as_deref()).and_then(|n| m.distribution_systems.get(n)).and_then(|sys| {
@@ -695,7 +787,7 @@ pub fn board_totals(m: &Model, id: Id) -> Option<BoardTotals> {
 
 /// What a project's circuits must hold: each on a distribution board that has a system, its breaker and poles in range and
 /// within what the board and its system have, its voltage one the system supplies, each device one that draws power at that
-/// voltage on that many poles and in no other circuit, the numbers of a board distinct and its poles within its slots, and each
+/// voltage on that many poles and in no other circuit, the slots of a board's circuits distinct and within the board's slots, and each
 /// conductor a section its wire type has.
 fn check_circuits(m: &Model) -> Result<(), String> {
     let mut owner: BTreeMap<Guid, Id> = BTreeMap::new();
@@ -776,8 +868,25 @@ fn check_circuits(m: &Model) -> Result<(), String> {
                 ));
             }
         }
-        if let Some(other) = numbers.insert((pid, c.number), id) {
-            return Err(format!("{who}: number {} is circuit {other}'s on board {pid} already", c.number));
+        for slot in slots_of(c.number, c.poles) {
+            if let Some(other) = numbers.insert((pid, slot), id) {
+                return Err(format!(
+                    "{who}: slot {slot} is circuit {other}'s on board {pid} already (a circuit of {} pole(s) at number {} takes slots {}; \
+                     give it another `number`)",
+                    c.poles,
+                    c.number,
+                    slots_of(c.number, c.poles).map(|s| s.to_string()).collect::<Vec<_>>().join(", ")
+                ));
+            }
+        }
+        if let Some(last) = slots_of(c.number, c.poles).last()
+            && let Some(slots) = board(m, pid).and_then(|(_, b)| b.panel.as_ref()).and_then(|p| p.slots)
+            && last > slots
+        {
+            return Err(format!(
+                "{who}: a circuit of {} pole(s) at number {} takes slot {last}, but board {pid} has {slots} slot(s) (`Max #1 Pole Breakers`)",
+                c.poles, c.number
+            ));
         }
         let used = poles_on.entry(pid).or_default();
         *used += u32::from(c.poles);

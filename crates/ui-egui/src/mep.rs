@@ -207,6 +207,10 @@ impl BimApp {
             if big_button(ui, Icon::Wire, "Create Circuit", false, tip).clicked() {
                 self.create_circuit();
             }
+            let tip = msg!("Panel Schedule: the load schedule of the selected distribution board, a view that goes on a sheet");
+            if big_button(ui, Icon::Schedule, "Panel Schedule", false, tip).clicked() {
+                self.make_panel_schedule();
+            }
         });
         panel(ui, msg!("Conduit & Wire"), |ui| {
             let conduit = (
