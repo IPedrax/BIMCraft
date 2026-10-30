@@ -2040,7 +2040,7 @@ msgstr "Demolir (DW): clique num elemento para demoli-lo na fase da vista; cliqu
 msgid "Demolished"
 msgstr "Demolido"
 
-#: crates/core/src/commands.rs:7049
+#: crates/core/src/commands.rs:7161
 msgid "Dependent"
 msgstr "Dependente"
 
@@ -2469,7 +2469,7 @@ msgstr "Equipamento elétrico"
 msgid "Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it"
 msgstr "Equipamento elétrico (EE): um quadro de distribuição, onde você clicar na parede; Espaço gira"
 
-#: crates/core/src/commands.rs:1590
+#: crates/core/src/commands.rs:1608
 msgid "Elements"
 msgstr "Elementos"
 
@@ -7193,7 +7193,7 @@ msgstr "Unidades"
 msgid "Units Format"
 msgstr "Formato de unidades"
 
-#: crates/core/src/commands.rs:7190
+#: crates/core/src/commands.rs:7302
 msgid "Unnamed"
 msgstr "Sem nome"
 

@@ -103,7 +103,7 @@ msgstr "Traço e ponto"
 msgid "Data Outlet"
 msgstr "Ponto de dados"
 
-#: crates/core/src/commands.rs:7049
+#: crates/core/src/commands.rs:7161
 msgid "Dependent"
 msgstr "Dependente"
 
@@ -167,8 +167,8 @@ msgstr "Leste"
 msgid "Elbow 90"
 msgstr "Joelho 90"
 
-#: crates/core/src/commands.rs:6833
-#: crates/core/src/commands.rs:8500
+#: crates/core/src/commands.rs:6945
+#: crates/core/src/commands.rs:8612
 msgid "Elevation"
 msgstr "Elevação"
 
@@ -285,7 +285,7 @@ msgstr "Largura da perna"
 msgid "Length"
 msgstr "Comprimento"
 
-#: crates/core/src/commands.rs:4334
+#: crates/core/src/commands.rs:4446
 #: crates/core/src/model.rs:2503
 msgid "Level"
 msgstr "Nível"
@@ -306,7 +306,7 @@ msgstr "Marca"
 msgid "Masking"
 msgstr "Máscara"
 
-#: crates/core/src/commands.rs:5371
+#: crates/core/src/commands.rs:5483
 msgid "Mass"
 msgstr "Massa"
 
@@ -390,7 +390,7 @@ msgstr "Reboco"
 msgid "Porcelain"
 msgstr "Porcelana"
 
-#: crates/core/src/commands.rs:2220
+#: crates/core/src/commands.rs:2238
 msgid "Project"
 msgstr "Projeto"
 
@@ -414,7 +414,7 @@ msgstr "Espelhos"
 msgid "Roof tiles"
 msgstr "Telhas"
 
-#: crates/core/src/commands.rs:5596
+#: crates/core/src/commands.rs:5708
 msgid "Room"
 msgstr "Ambiente"
 
@@ -442,8 +442,8 @@ msgstr "Contrapiso"
 msgid "Seat Height"
 msgstr "Altura do assento"
 
-#: crates/core/src/commands.rs:6810
-#: crates/core/src/commands.rs:8499
+#: crates/core/src/commands.rs:6922
+#: crates/core/src/commands.rs:8611
 msgid "Section"
 msgstr "Corte"
 
@@ -559,7 +559,7 @@ msgstr "Tipo"
 msgid "UP"
 msgstr "SOBE"
 
-#: crates/core/src/commands.rs:7190
+#: crates/core/src/commands.rs:7302
 msgid "Unnamed"
 msgstr "Sem nome"
 
@@ -622,4 +622,16 @@ msgstr "Bancada"
 #: crates/core/src/schedule.rs:1045
 msgid "Yes"
 msgstr "Sim"
+
+#: crates/core/src/loads.rs:78
+msgid "bath"
+msgstr ""
+
+#: crates/core/src/loads.rs:78
+msgid "bwc"
+msgstr ""
+
+#: crates/core/src/loads.rs:78
+msgid "wc"
+msgstr ""
 
