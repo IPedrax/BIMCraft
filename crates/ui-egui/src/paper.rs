@@ -135,7 +135,14 @@ impl BimApp {
         if response.double_clicked()
             && let Some(open) = hovered.and_then(view_of)
         {
-            self.open_sheet(open);
+            // A 3D view opens in the 3D tab from its own camera; another view opens as its own tab.
+            match hovered.and_then(|id| match model.elements.get(id) {
+                Some(Element::Viewport(v)) if matches!(model.elements.get(v.view), Some(Element::View3D(_))) => model.elements.id(v.view),
+                _ => None,
+            }) {
+                Some(view) => self.open_3d(Some(view)),
+                None => self.open_sheet(open),
+            }
             return;
         }
         if let Some(q) = self.clicked_at(&response) {

@@ -164,7 +164,7 @@ impl BimApp {
                 self.session.model.plan_view(level).is_none_or(|v| v.parent.is_none()).then(|| json!(level))
             }
             Sheet::Section(id) => Some(json!(id)),
-            Sheet::View3D => Some(json!("{3D}")),
+            Sheet::View3D => Some(self.active_3d().map_or_else(|| json!("{3D}"), |id| json!(id))),
             Sheet::Paper(_) | Sheet::Schedule(_) | Sheet::Table(_) => None,
         }
     }
@@ -174,7 +174,7 @@ impl BimApp {
         let m = &self.session.model;
         let id = match self.sheet {
             Sheet::Plan(id) | Sheet::Ceiling(id) | Sheet::Section(id) => Some(id),
-            Sheet::View3D => m.default_3d(),
+            Sheet::View3D => self.active_3d(),
             _ => None,
         };
         id.and_then(|id| bimcraft_core::graphics::graphics_of(m, id)).cloned().unwrap_or_default()
@@ -644,7 +644,7 @@ impl BimApp {
                     let label = if let Some(n) = &note { label.on_hover_text(n) } else { label };
                     ui.add_enabled_ui(note.is_none(), |ui| {
                         if let Some(v) = style_combo(ui, "visual-style", label.id, shown.style) {
-                            set = Some(("visual_style", json!({"style": v.name()})));
+                            set = Some(("visual_style", json!({"view": view, "style": v.name()})));
                         }
                     });
                     ui.end_row();

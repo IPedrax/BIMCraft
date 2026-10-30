@@ -33,6 +33,8 @@ pub(crate) enum Action {
     Delete,
     /// The linked CAD drawings selected, read again from their files.
     ReloadCad,
+    /// The camera selected in a plan: open its 3D view.
+    OpenView,
 }
 
 impl Action {
@@ -54,6 +56,7 @@ impl Action {
             Action::Ungroup => msg!("Ungroup"),
             Action::Delete => "Delete",
             Action::ReloadCad => msg!("Reload CAD"),
+            Action::OpenView => msg!("Open Camera View"),
         }
     }
 
@@ -120,22 +123,29 @@ impl BimApp {
         }
         let mut groups = vec![first];
         if some {
-            groups.push(vec![
-                Item::new(Action::EditType, self.type_subject().is_some()),
-                Item::new(Action::SelectAllInstances, true),
-                Item::new(Action::Delete, true),
-            ]);
-            // Detail lines, regions and notes group; a group comes apart.
             let m = &self.session.model;
-            let groupable = self.selection.iter().all(|id| m.elements.get(*id).is_some_and(bimcraft_core::groups::holds));
-            if groupable || self.group_selected() {
-                groups.push(vec![Item::new(Action::CreateGroup, groupable), Item::new(Action::Ungroup, self.group_selected())]);
+            // A camera picked in a plan: open its 3D view, or delete it.
+            let camera =
+                matches!(self.selection.as_slice(), [id] if matches!(m.elements.get(id), Some(bimcraft_core::model::Element::View3D(_))));
+            if camera {
+                groups.push(vec![Item::new(Action::OpenView, true), Item::new(Action::Delete, true)]);
+            } else {
+                groups.push(vec![
+                    Item::new(Action::EditType, self.type_subject().is_some()),
+                    Item::new(Action::SelectAllInstances, true),
+                    Item::new(Action::Delete, true),
+                ]);
+                // Detail lines, regions and notes group; a group comes apart.
+                let groupable = self.selection.iter().all(|id| m.elements.get(*id).is_some_and(bimcraft_core::groups::holds));
+                if groupable || self.group_selected() {
+                    groups.push(vec![Item::new(Action::CreateGroup, groupable), Item::new(Action::Ungroup, self.group_selected())]);
+                }
             }
             if !self.linked_cads().is_empty() {
                 groups.push(vec![Item::new(Action::ReloadCad, true)]);
             }
             // What the view on screen hides and paints.
-            if self.graphic_view().is_some() {
+            if self.graphic_view().is_some() && !camera {
                 groups.push(vec![
                     Item::new(Action::HideElement, true),
                     Item::new(Action::HideCategory, true),
@@ -172,6 +182,11 @@ impl BimApp {
             Action::ReloadCad => {
                 for cad in self.linked_cads() {
                     self.run("reload_cad", serde_json::json!({"cad": cad}));
+                }
+            }
+            Action::OpenView => {
+                if let Some(&id) = self.selection.first() {
+                    self.open_3d(Some(id));
                 }
             }
         }

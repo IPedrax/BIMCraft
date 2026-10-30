@@ -16,6 +16,7 @@ use egui_kittest::kittest::Queryable;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
+use crate::context::Action;
 use crate::{BimApp, Sheet, Tab, Tool};
 
 const BOX: &str = r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}"#;
@@ -285,6 +286,22 @@ fn field(h: &Harness<BimApp>, id: Id, key: &str) -> serde_json::Value {
         Ok(g) if v.is_string() => m.elements.id(g).map_or(v, |id| json!(id)),
         _ => v,
     }
+}
+
+/// The eye of a camera as its JSON has it, mm; a point that isn't three numbers reads as far off.
+fn eye_of(camera: &serde_json::Value) -> [f64; 3] {
+    let mut out = [f64::NAN; 3];
+    if let Some(a) = camera["eye"].as_array() {
+        for (slot, v) in out.iter_mut().zip(a) {
+            *slot = v.as_f64().unwrap_or(f64::NAN);
+        }
+    }
+    out
+}
+
+/// Whether two points are the same to a tenth of a millimetre, as the camera commands leave them.
+fn same_point(a: [f64; 3], b: [f64; 3]) -> bool {
+    a.iter().zip(b).all(|(x, y)| (x - y).abs() < 0.1)
 }
 
 #[test]
@@ -1847,6 +1864,199 @@ fn the_elevation_tool_looks_at_the_building_from_where_it_is_clicked() {
     let made = ids(&h, "elevation");
     assert_eq!((field(&h, made[0], "name"), field(&h, made[0], "looking")), (json!("North"), json!([0.0, -1.0])));
     assert!(h.query_by_label("Elevations (Building Elevation)").is_some());
+}
+
+#[test]
+fn the_camera_tool_makes_a_perspective_3d_view_from_an_eye_and_a_target() {
+    let mut h = app_at(BOX, 0.05);
+    press(&mut h, "View");
+    press(&mut h, "Camera");
+    assert!(h.query_by_label("Modify | Camera").is_some());
+    // The eye west of the box, at a person's height; the target inside it.
+    click(&mut h, P2(-1000.0, 3000.0));
+    click(&mut h, P2(4000.0, 3000.0));
+    let made = ids(&h, "view3d");
+    assert_eq!(made.len(), 1);
+    assert_eq!(field(&h, made[0], "name"), json!("Camera 1"));
+    // The eye and target stand where they were clicked, at the Options Bar's heights over Level 1.
+    assert_eq!(field(&h, made[0], "camera"), json!({"eye": [-1000.0, 3000.0, 1600.0], "target": [4000.0, 3000.0, 1200.0]}));
+    assert_eq!(field(&h, made[0], "perspective"), json!({"lens": 35.0, "on": true}));
+    // It opens in the 3D tab, which now shows that camera view.
+    assert_eq!(h.state().sheet, Sheet::View3D);
+    assert_eq!(h.state().active_3d(), Some(made[0]));
+    // The browser lists it under 3D Views; its entry opens it again.
+    topmost(&mut h, "Level 1");
+    assert_eq!(h.state().sheet, Sheet::Plan(100000));
+    assert!(h.query_by_label("3D Views").is_some());
+    browse_entry(&mut h, "Camera 1");
+    assert_eq!((h.state().sheet, h.state().active_3d()), (Sheet::View3D, Some(made[0])));
+    // Properties shows the camera's Focal Length (its angle of view); typing a new one changes the lens, keeping the view.
+    assert!(h.query_by_label("Focal Length").is_some());
+    type_into(&mut h, "Focal Length", "50");
+    h.key_press(Key::Enter);
+    h.run();
+    assert_eq!(field(&h, made[0], "perspective")["lens"], json!(50.0));
+    assert_eq!(ids(&h, "view3d"), made, "the same view, relensed");
+    // The camera shows on its level's plan: clicking its mark selects it, and the menu opens its view.
+    topmost(&mut h, "Level 1");
+    click(&mut h, P2(-1000.0, 3000.0));
+    assert_eq!(h.state().selection, vec![made[0]], "its mark is picked on the plan");
+    // Dragging the mark on the plan moves the camera as a whole, each point keeping its height.
+    let from = h.state().screen(P2(-1000.0, 3000.0));
+    drag_screen(&mut h, from, from + vec2(60.0, 0.0), PointerButton::Primary);
+    h.run();
+    let dragged = field(&h, made[0], "camera");
+    assert_eq!(dragged["eye"][2], json!(1600.0), "its height stays");
+    assert_ne!(dragged["eye"], json!([-1000.0, 3000.0, 1600.0]), "the mark drags the camera with it");
+    assert_eq!(h.state().selection, vec![made[0]], "the camera stays selected");
+    let items: Vec<_> = h.state().context_items().into_iter().flatten().collect();
+    assert!(items.iter().any(|i| i.action == Action::OpenView && i.enabled), "the menu offers Open Camera View");
+    h.state_mut().act(Action::OpenView);
+    h.run();
+    assert_eq!((h.state().sheet, h.state().active_3d()), (Sheet::View3D, Some(made[0])));
+    // Orbiting writes the camera's eye and target back, so leaving and returning stands it where it was left.
+    let before = field(&h, made[0], "camera");
+    let mid = h.state().orbit.rect.center();
+    drag_screen(&mut h, mid, mid + vec2(90.0, 0.0), PointerButton::Primary);
+    h.run();
+    let after = field(&h, made[0], "camera");
+    assert_ne!(after, before, "the orbit moved the camera's eye and target");
+    topmost(&mut h, "Level 1");
+    browse_entry(&mut h, "Camera 1");
+    assert_eq!((h.state().sheet, h.state().active_3d()), (Sheet::View3D, Some(made[0])));
+    let eye = h.state().orbit.camera.unwrap().eye().unwrap();
+    let stored: Vec<f64> = after["eye"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
+    assert!(eye.iter().zip(&stored).all(|(a, b)| (a - b).abs() < 0.1), "it comes back to where it was left: {eye:?} vs {stored:?}");
+}
+
+#[test]
+fn a_camera_views_mark_on_the_plan_edits_its_camera_in_properties() {
+    let mut h = app_at(BOX, 0.05);
+    press(&mut h, "View");
+    press(&mut h, "Camera");
+    click(&mut h, P2(-1000.0, 3000.0));
+    click(&mut h, P2(4000.0, 3000.0));
+    let made = ids(&h, "view3d");
+    assert_eq!(made.len(), 1);
+    let id = made[0];
+    // On its level's plan its mark picks the view, and Properties shows the camera itself, not a dead azimuth or elevation.
+    topmost(&mut h, "Level 1");
+    click(&mut h, P2(-1000.0, 3000.0));
+    assert_eq!(h.state().selection, vec![id]);
+    for label in ["View Name", "Eye", "Target", "Focal Length"] {
+        assert!(h.query_by_label(label).is_some(), "Properties shows {label}");
+    }
+    assert!(h.query_by_label("Azimuth (°)").is_none(), "a camera view has no azimuth to edit");
+    assert!(h.query_by_label("Elevation (°)").is_none(), "a camera view has no elevation to edit");
+    // Focal Length is its lens, changed with its points kept.
+    type_into(&mut h, "Focal Length", "50");
+    h.key_press(Key::Enter);
+    h.run();
+    assert_eq!(field(&h, id, "perspective")["lens"], json!(50.0));
+    assert_eq!(field(&h, id, "camera")["eye"], json!([-1000.0, 3000.0, 1600.0]));
+    // Eye and Target are points in the project's units (mm here).
+    type_into(&mut h, "Eye", "-2000, 3000, 2500");
+    h.key_press(Key::Enter);
+    h.run();
+    assert_eq!(field(&h, id, "camera")["eye"], json!([-2000.0, 3000.0, 2500.0]));
+    assert_eq!(field(&h, id, "camera")["target"], json!([4000.0, 3000.0, 1200.0]));
+    type_into(&mut h, "Target", "4000, 2000, 1500");
+    h.key_press(Key::Enter);
+    h.run();
+    assert_eq!(field(&h, id, "camera")["target"], json!([4000.0, 2000.0, 1500.0]));
+    // Its name: the view keeps its id, and the old name is gone.
+    type_into(&mut h, "View Name", "Camera West");
+    h.key_press(Key::Enter);
+    h.run();
+    assert_eq!((field(&h, id, "name"), ids(&h, "view3d")), (json!("Camera West"), made));
+    // The mark stood where its eye was: it has moved with it, and picks there.
+    click(&mut h, P2(-2000.0, 3000.0));
+    assert_eq!(h.state().selection, vec![id]);
+    // Opened, the same panel shows the same values; changing one there updates the camera on screen and is not written back
+    // over by the settled hand.
+    let items: Vec<_> = h.state().context_items().into_iter().flatten().collect();
+    assert!(items.iter().any(|i| i.action == Action::OpenView && i.enabled));
+    h.state_mut().act(Action::OpenView);
+    h.run();
+    assert_eq!((h.state().sheet, h.state().active_3d()), (Sheet::View3D, Some(id)));
+    assert!(h.query_by_label("Eye").is_some() && h.query_by_label("Target").is_some());
+    type_into(&mut h, "Eye", "-3000, 3000, 2400");
+    h.key_press(Key::Enter);
+    h.run();
+    h.run();
+    h.run();
+    assert_eq!(field(&h, id, "camera")["eye"], json!([-3000.0, 3000.0, 2400.0]), "the settled hand didn't write the old eye back");
+    assert_eq!(field(&h, id, "camera")["target"], json!([4000.0, 2000.0, 1500.0]));
+    let eye = h.state().orbit.camera.unwrap().eye().unwrap();
+    assert!(eye.iter().zip([-3000.0, 3000.0, 2400.0]).all(|(a, b)| (a - b).abs() < 0.1), "the picture stands at the new eye: {eye:?}");
+    type_into(&mut h, "Focal Length", "80");
+    h.key_press(Key::Enter);
+    h.run();
+    h.run();
+    assert_eq!(field(&h, id, "perspective")["lens"], json!(80.0));
+    assert_eq!(h.state().orbit.camera.unwrap().lens, Some(80.0), "the picture is seen through the new lens");
+}
+
+#[test]
+fn a_camera_view_follows_its_mark_dragged_on_the_plan() {
+    let mut h = app_at(BOX, 0.05);
+    press(&mut h, "View");
+    press(&mut h, "Camera");
+    click(&mut h, P2(-1000.0, 3000.0));
+    click(&mut h, P2(4000.0, 3000.0));
+    let made = ids(&h, "view3d");
+    assert_eq!(made.len(), 1);
+    let id = made[0];
+    // The 3D view is open; back on the plan its mark is dragged.
+    topmost(&mut h, "Level 1");
+    assert_eq!(h.state().sheet, Sheet::Plan(100000));
+    assert_eq!(h.state().active_3d(), Some(id), "the camera view is still the one the 3D tab holds");
+    click(&mut h, P2(-1000.0, 3000.0));
+    assert_eq!(h.state().selection, vec![id]);
+    let from = h.state().screen(P2(-1000.0, 3000.0));
+    drag_screen(&mut h, from, from + vec2(80.0, 0.0), PointerButton::Primary);
+    h.run();
+    let dragged = field(&h, id, "camera");
+    let old = [-1000.0, 3000.0, 1600.0];
+    assert!(!same_point(eye_of(&dragged), old), "the mark moves the camera");
+    // Back in the 3D tab: it stands where the camera now is, and the old position it showed isn't written back over the drag.
+    topmost(&mut h, "Camera 1");
+    h.run();
+    h.run();
+    assert_eq!(h.state().sheet, Sheet::View3D);
+    assert_eq!(field(&h, id, "camera"), dragged, "the dragged camera stays");
+    let eye = h.state().orbit.camera.unwrap().eye().unwrap();
+    assert!(same_point(eye, eye_of(&dragged)), "the picture stands at the dragged camera: {eye:?} vs {:?}", eye_of(&dragged));
+}
+
+#[test]
+fn a_camera_view_in_a_window_of_its_own_follows_its_mark_dragged_on_the_plan() {
+    let mut h = app_at(BOX, 0.05);
+    press(&mut h, "View");
+    press(&mut h, "Camera");
+    click(&mut h, P2(-1000.0, 3000.0));
+    click(&mut h, P2(4000.0, 3000.0));
+    let made = ids(&h, "view3d");
+    let id = made[0];
+    // The 3D view floats over the plan, which is then the active view.
+    assert!(h.state().views.len() >= 2 && h.state().views.contains(&Sheet::View3D));
+    h.state_mut().float_view(Sheet::View3D, pos2(900.0, 300.0));
+    h.run();
+    topmost(&mut h, "Level 1");
+    assert_eq!(h.state().sheet, Sheet::Plan(100000));
+    click(&mut h, P2(-1000.0, 3000.0));
+    let from = h.state().screen(P2(-1000.0, 3000.0));
+    drag_screen(&mut h, from, from + vec2(80.0, 0.0), PointerButton::Primary);
+    h.run();
+    let dragged = field(&h, id, "camera");
+    let old = [-1000.0, 3000.0, 1600.0];
+    assert!(!same_point(eye_of(&dragged), old), "the mark moves the camera");
+    // The window of its own follows at once, and writes nothing of its own back over the drag.
+    h.run();
+    h.run();
+    assert_eq!(field(&h, id, "camera"), dragged, "the floating view didn't put the old camera back");
+    let eye = h.state().orbit.camera.unwrap().eye().unwrap();
+    assert!(same_point(eye, eye_of(&dragged)), "the floating picture stands at the dragged camera: {eye:?} vs {:?}", eye_of(&dragged));
 }
 
 #[test]

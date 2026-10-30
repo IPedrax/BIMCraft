@@ -1831,6 +1831,17 @@ pub fn camera_in(m: &Model, azimuth: f64, elevation: f64, scale: f64, room: f64,
     cam
 }
 
+/// The camera view `v` is drawn through, as large as [`camera_in`] fits it at `scale` and `room` px clear: from the view's
+/// own eye and target through its lens when it has a camera (Revit's Camera tool), else fitted over the model as the default
+/// 3D view is. A camera view on a sheet keeps the picture the fit gives, so it fills its frame the same way.
+pub fn camera_of(m: &Model, v: &crate::model::View3D, scale: f64, room: f64, look: &Look) -> Camera {
+    let fitted = camera_in(m, v.azimuth, v.elevation, scale, room, look);
+    match (v.camera, v.lens()) {
+        (Some(cam), Some(lens)) => Camera::at(cam.eye, cam.target, lens, fitted.width, fitted.height),
+        _ => fitted,
+    }
+}
+
 /// Each element's top over plan point `p`: the highest top of its solids standing over it.
 pub(crate) fn tops_at(m: &Model, p: P2) -> BTreeMap<Id, f64> {
     let mut tops = BTreeMap::new();
@@ -2016,6 +2027,23 @@ impl Camera {
             (Some(d), Some(f)) => Camera { scale: (f / d).clamp(1e-6, 50.0), ..next },
             _ => next,
         }
+    }
+
+    /// The camera that stands at `eye`, looking at `target`, through `lens`, into a picture `width` by `height` px: the
+    /// exact view of [`ViewCamera`](crate::model::ViewCamera) (its eye and target), so `eye()` is `eye` and `target` is
+    /// `target` — the render path for a camera view. Its azimuth and elevation are the direction from the eye to the
+    /// target, as [`axes`](Self::axes) reads them.
+    pub fn at(eye: P3, target: P3, lens: f64, width: u32, height: u32) -> Camera {
+        let lens = lens.clamp(MIN_LENS, MAX_LENS);
+        let back = sub(eye, target);
+        let d = dot(back, back).sqrt().max(1e-9);
+        let back = mul(back, 1.0 / d);
+        // The angle of `back`, as axes() rebuilds it: up within ±89°, and round from east.
+        let elevation = back[2].clamp(-1.0, 1.0).asin().to_degrees().clamp(-89.0, 89.0);
+        let azimuth = back[1].atan2(back[0]).to_degrees();
+        let f = f64::from(width.max(1)) * lens / FILM;
+        let scale = (f / d).clamp(1e-6, 50.0);
+        Camera { azimuth, elevation, scale, target, width, height, lens: Some(lens) }
     }
 
     /// The pixel `p` shows at, and how near the camera it is (larger is nearer): mm toward the camera from the target in a
@@ -2948,6 +2976,196 @@ mod tests {
 
     fn dist(a: P3, b: P3) -> f64 {
         dot(sub(a, b), sub(a, b)).sqrt()
+    }
+
+    /// The `camera` command: it creates a named perspective 3D view from an eye and a target, changes an
+    /// existing one, and reads a camera back, as MCP and the desktop use it.
+    #[test]
+    fn a_camera_command_makes_and_reads_a_camera_view_from_an_eye_and_a_target() {
+        use serde_json::json;
+        let mut s = house();
+        // The camera and the lit lens of the view named `name`, if it is a 3D view with one.
+        let camera = |s: &Session, name: &str| -> Option<(crate::model::ViewCamera, Option<f64>)> {
+            s.model.elements.iter().find_map(|(_, e)| match e {
+                Element::View3D(v) if v.name == name => Some((v.camera?, v.perspective.filter(|p| p.on).map(|p| p.lens))),
+                _ => None,
+            })
+        };
+        // Creation: a new view stands where the eye looks at the target, in perspective, named by number.
+        let eye = [-5000.0, -4000.0, 1600.0];
+        let target = [4000.0, 3000.0, 1200.0];
+        let r = s.execute("camera", &json!({"eye": eye, "target": target})).unwrap();
+        let id = r["id"].as_u64().unwrap();
+        assert_eq!(r["name"].as_str(), Some("Camera 1"));
+        assert_eq!((r["eye"].clone(), r["target"].clone()), (json!(eye), json!(target)));
+        assert_eq!((r["lens"].as_f64(), r["perspective"].as_bool()), (Some(LENS), Some(true)));
+        assert_eq!(camera(&s, "Camera 1").map(|(_, l)| l), Some(Some(LENS)));
+        assert!(matches!(s.model.elements.get(id), Some(Element::View3D(v)) if v.name == "Camera 1"));
+        // A second camera is named after the first's.
+        let r2 = s.execute("camera", &json!({"eye": [0.0, -8000.0, 1700.0], "target": [4000.0, 3000.0, 1000.0], "lens": 24})).unwrap();
+        assert_eq!(r2["name"].as_str(), Some("Camera 2"));
+        assert_eq!(r2["lens"].as_f64(), Some(24.0));
+        // Changing a view's camera keeps its id and its number.
+        let moved = s.execute("camera", &json!({"view": "Camera 1", "eye": [-6000.0, -5000.0, 2000.0], "target": target})).unwrap();
+        assert_eq!(moved["view"].as_u64(), Some(id));
+        assert_eq!(camera(&s, "Camera 1").map(|(c, _)| c.eye), Some([-6000.0, -5000.0, 2000.0]));
+        // Its lens (its angle of view) changes on the same view, keeping its id and its points.
+        let relensed =
+            s.execute("camera", &json!({"view": "Camera 1", "eye": [-6000.0, -5000.0, 2000.0], "target": target, "lens": 50})).unwrap();
+        assert_eq!((relensed["view"].as_u64(), relensed["lens"].as_f64()), (Some(id), Some(50.0)));
+        assert_eq!(camera(&s, "Camera 1").map(|(c, l)| (c.eye, l)), Some(([-6000.0, -5000.0, 2000.0], Some(50.0))));
+        // Reading the default `{3D}` before it was ever made: no camera, not in perspective, and reading made nothing.
+        let before = s.execute("camera", &json!({"view": "{3D}"})).unwrap();
+        assert_eq!(
+            (before["eye"].clone(), before["target"].clone(), before["perspective"].clone()),
+            (json!(null), json!(null), json!(false))
+        );
+        assert!(s.model.default_3d().is_none(), "reading made nothing");
+        // A lens alone on a view with no camera yet has no points to keep: refused, and it makes nothing.
+        assert!(s.execute("camera", &json!({"view": "{3D}", "lens": 50})).is_err());
+        assert!(s.model.default_3d().is_none(), "a refused change made nothing");
+        // The default 3D view can be given a camera too, by name.
+        s.execute("camera", &json!({"view": "{3D}", "eye": [0.0, -12000.0, 9000.0], "target": [4000.0, 3000.0, 1500.0]})).unwrap();
+        assert!(matches!(s.model.default_3d().and_then(|v| s.model.elements.get(v)), Some(Element::View3D(v)) if v.camera.is_some()));
+        // Reading: the camera comes back with its lens; a view without one says so.
+        let read = s.execute("camera", &json!({"view": "Camera 1"})).unwrap();
+        assert_eq!((read["eye"].clone(), read["target"].clone()), (json!([-6000.0, -5000.0, 2000.0]), json!(target)));
+        assert_eq!((read["lens"].as_f64(), read["perspective"].as_bool()), (Some(50.0), Some(true)));
+        // A lens alone is a change, not a read: it keeps the eye and the target.
+        let relensed_only = s.execute("camera", &json!({"view": "Camera 1", "lens": 80})).unwrap();
+        assert_eq!(
+            (relensed_only["eye"].clone(), relensed_only["target"].clone(), relensed_only["lens"].as_f64()),
+            (json!([-6000.0, -5000.0, 2000.0]), json!(target), Some(80.0))
+        );
+        // A point alone moves just that point; the other stays where the camera had it.
+        let eyed_only = s.execute("camera", &json!({"view": "Camera 1", "eye": [-7000.0, -4000.0, 2100.0]})).unwrap();
+        assert_eq!(eyed_only["target"], json!(target));
+        assert_eq!(camera(&s, "Camera 1").map(|(c, l)| (c.eye, l)), Some(([-7000.0, -4000.0, 2100.0], Some(80.0))));
+        // Changed camera, still read back.
+        let plain = s.execute("camera", &json!({"view": "Camera 2"})).unwrap();
+        assert_eq!(plain["eye"], json!([0.0, -8000.0, 1700.0]));
+        // The built camera's eye and target are the ones given (the render path uses them).
+        let built = Camera::at(eye, target, LENS, 400, 300);
+        assert!((built.eye().unwrap()[0] - eye[0]).abs() < 1e-6 && dist(built.eye().unwrap(), eye) < 1e-6, "{:?}", built.eye());
+        assert_eq!(built.target, target);
+        assert_eq!(built.lens, Some(LENS));
+        // It is saved with the project and read back.
+        let reopened = crate::model::Model::read(&s.model.to_json().unwrap()).unwrap().0;
+        let again = reopened.elements.iter().find(|(_, e)| matches!(e, Element::View3D(v) if v.name == "Camera 1"));
+        assert!(again.is_some_and(|(_, e)| matches!(e, Element::View3D(v) if v.camera.is_some())), "the camera is saved");
+    }
+
+    /// What the `camera` command refuses: an eye at the target, bad coordinates, a lens no camera has, a view that
+    /// isn't 3D, and a missing eye or target when one is asked for.
+    #[test]
+    fn the_camera_command_refuses_what_no_camera_would_be() {
+        use serde_json::json;
+        let mut s = house();
+        let eye = [0.0, -8000.0, 1600.0];
+        let target = [4000.0, 3000.0, 1200.0];
+        for bad in [
+            json!({"eye": eye, "target": eye}),
+            json!({"eye": eye}),
+            json!({"target": target}),
+            json!({"eye": [f64::MAX, 0.0, 0.0], "target": target}),
+            json!({"eye": "far", "target": target}),
+            json!({"eye": [0.0, -8000.0], "target": target}),
+            json!({"eye": eye, "target": target, "lens": 2}),
+            json!({"eye": eye, "target": target, "lens": 5000}),
+            json!({"view": "Level 1", "eye": eye, "target": target}),
+            json!({"view": "nowhere", "eye": eye, "target": target}),
+        ] {
+            assert!(s.execute("camera", &bad).is_err(), "{bad}");
+        }
+        // A changed view stays as it was after a refused change.
+        s.execute("camera", &json!({"eye": eye, "target": target})).unwrap();
+        s.execute("camera", &json!({"view": "Camera 1", "eye": [1000.0, -9000.0, 1700.0], "target": target})).unwrap();
+        assert!(s.execute("camera", &json!({"view": "Camera 1", "eye": eye, "target": eye})).is_err());
+        assert!(
+            matches!(
+                s.model.elements.iter().find(|(_, e)| matches!(e, Element::View3D(v) if v.name == "Camera 1")),
+                Some((_, Element::View3D(v))) if v.camera == Some(crate::model::ViewCamera { eye: [1000.0, -9000.0, 1700.0], target })
+            ),
+            "the refused change left the camera alone"
+        );
+    }
+
+    /// A camera view renders from its own eye through its lens, and its picture differs from the default's.
+    #[test]
+    fn a_camera_view_renders_from_where_its_camera_stands() {
+        use serde_json::json;
+        let mut s = house();
+        s.execute("camera", &json!({"eye": [-5000.0, -4000.0, 1600.0], "target": [4000.0, 3000.0, 1200.0]})).unwrap();
+        let png = |r: &serde_json::Value| r["pngBase64"].as_str().map(str::len);
+        let named = s.execute("render", &json!({"view": "Camera 1", "width": 300, "height": 200})).unwrap();
+        assert_eq!(named["kind"].as_str(), Some("3D view"));
+        assert_eq!(named["eye"], json!([-5000.0, -4000.0, 1600.0]));
+        assert_eq!(named["lens"].as_f64(), Some(LENS));
+        assert!(png(&named).is_some());
+        // The default 3D view, fitted over the model, looks different.
+        let flat = s.execute("render", &json!({"view": "{3D}", "width": 300, "height": 200})).unwrap();
+        assert_ne!(png(&named), png(&flat));
+        // Rendering the camera again is stable.
+        let again = s.execute("render", &json!({"view": "Camera 1", "width": 300, "height": 200})).unwrap();
+        assert_eq!(png(&named), png(&again));
+        // A camera view renders through its lens, and asks for a usable picture.
+        assert!(s.execute("render", &json!({"view": "Camera 1", "width": 5})).is_ok());
+    }
+
+    /// A camera stands on its level's plan: its mark is drawn there and picks as the view; another level's plan doesn't show it.
+    #[test]
+    fn a_camera_shows_on_its_levels_plan_and_a_pick_there_finds_it() {
+        use serde_json::json;
+        let mut s = house();
+        let r = s.execute("camera", &json!({"eye": [12000.0, 3000.0, 1600.0], "target": [4000.0, 3000.0, 1200.0]})).unwrap();
+        let id = r["id"].as_u64().unwrap();
+        let d = crate::render::plan(&s.model, 100000, 900, 700);
+        assert!(d.owners.iter().flatten().any(|o| *o == id), "its mark is on Level 1's plan");
+        assert_eq!(d.pick(d.view.px(P2(12000.0, 3000.0)), 8.0), Some(id), "a pick at its eye finds the view");
+        // Level 2's plan doesn't show it: the camera stands on Level 1.
+        let up = crate::render::plan(&s.model, 100001, 900, 700);
+        assert!(!up.owners.iter().flatten().any(|o| *o == id), "not on another level's plan");
+        // Raised through Level 2's mark, it stands on Level 2's plan at once: the level follows the eye.
+        s.execute("camera", &json!({"view": "Camera 1", "eye": [12000.0, 3000.0, 4000.0]})).unwrap();
+        assert!(!crate::render::plan(&s.model, 100000, 900, 700).owners.iter().flatten().any(|o| *o == id), "gone from Level 1");
+        assert!(
+            crate::render::plan(&s.model, 100001, 900, 700).owners.iter().flatten().any(|o| *o == id),
+            "its mark follows its eye to Level 2"
+        );
+    }
+
+    /// Moving or mirroring a camera's mark on the plan takes the camera as a whole (each point keeping its height); a view
+    /// with no camera of its own still has no place in plan.
+    #[test]
+    fn a_camera_view_moves_on_the_plan_as_a_whole() {
+        use serde_json::json;
+        let mut s = house();
+        let r = s.execute("camera", &json!({"eye": [1500.0, -2200.0, 1600.0], "target": [5000.0, 3000.0, 1200.0]})).unwrap();
+        let id = r["id"].as_u64().unwrap();
+        let cam = |s: &Session| match s.model.elements.get(id) {
+            Some(Element::View3D(v)) => v.camera,
+            _ => None,
+        };
+        // Dragged east and north: both points go, each keeping its height.
+        s.execute("move", &json!({"ids": [id], "by": [2000.0, 500.0]})).unwrap();
+        assert_eq!(
+            cam(&s),
+            Some(crate::model::ViewCamera { eye: [3500.0, -1700.0, 1600.0], target: [7000.0, 3500.0, 1200.0] }),
+            "the mark drags the camera with it"
+        );
+        assert_eq!(s.model.check(), Ok(()));
+        // Mirrored over the east-west line: it looks back the other way, still at its heights.
+        s.execute("mirror", &json!({"ids": [id], "axis": [[0.0, 0.0], [1000.0, 0.0]]})).unwrap();
+        assert_eq!(
+            cam(&s),
+            Some(crate::model::ViewCamera { eye: [3500.0, 1700.0, 1600.0], target: [7000.0, -3500.0, 1200.0] }),
+            "a mirror image flips it in plan, keeping its heights"
+        );
+        // The default `{3D}`, with no camera of its own, still has nothing to move.
+        s.execute("perspective", &json!({})).unwrap();
+        let flat = s.model.default_3d().unwrap_or_default();
+        let e = s.execute("move", &json!({"ids": [flat], "by": [100.0, 0.0]})).unwrap_err();
+        assert!(e.contains("has no place in plan"), "{e}");
     }
 
     #[test]

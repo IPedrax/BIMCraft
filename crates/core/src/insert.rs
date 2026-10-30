@@ -425,4 +425,26 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         assert!(e.contains("no element 5"), "{e}");
     }
+
+    #[test]
+    fn a_camera_view_comes_in_with_its_camera_and_its_own_name() {
+        let mut other = Session::new();
+        run(&mut other, "wall", json!({"points": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "closed": true}));
+        let made = run(&mut other, "camera", json!({"eye": [-5000.0, -4000.0, 1600.0], "target": [4000.0, 3000.0, 1200.0], "lens": 24}));
+        let camera_there = made["id"].as_u64().unwrap();
+        let path = std::env::temp_dir().join(format!("bimcraft-insert-camera-{}.bimcraft", std::process::id()));
+        let path = path.to_string_lossy().into_owned();
+        run(&mut other, "save", json!({"path": path}));
+        // This project already has a Camera 1, so the inserted one is named apart.
+        let mut s = Session::new();
+        run(&mut s, "camera", json!({"eye": [0.0, -9000.0, 1700.0], "target": [4000.0, 3000.0, 1000.0]}));
+        let r = run(&mut s, "insert", json!({"path": path, "ids": [camera_there]}));
+        let _ = std::fs::remove_file(&path);
+        let here = r["ids"][camera_there.to_string()].as_u64().unwrap();
+        let Some(Element::View3D(v)) = s.model.elements.get(here) else { panic!("the camera view came in") };
+        assert_eq!(v.camera, Some(crate::model::ViewCamera { eye: [-5000.0, -4000.0, 1600.0], target: [4000.0, 3000.0, 1200.0] }));
+        assert_eq!(v.perspective.filter(|p| p.on).map(|p| p.lens), Some(24.0));
+        assert!(v.name.starts_with("Camera 1") && v.name != "Camera 1", "named apart from this project's: {}", v.name);
+        assert_eq!(s.model.check(), Ok(()));
+    }
 }
