@@ -60,11 +60,14 @@ impl BimApp {
         }
     }
 
-    pub(crate) fn open_template_background_grid(&mut self, name: String) {
-        if let Some(template) = self.session.model.view_templates.get(&name) {
-            let own = template.graphics.background_grid;
-            self.background_grid_dialog = Some(GridDialog { target: Target::Template(name), own, draft: own, error: None });
-        }
+    /// The dialog on template `name`'s grids as the View Templates dialog has them; OK hands them back to its draft.
+    pub(crate) fn open_template_background_grid(&mut self, name: String, own: BackgroundGrid) {
+        self.background_grid_dialog = Some(GridDialog { target: Target::Template(name), own, draft: own, error: None });
+    }
+
+    /// Whether the dialog is open on a view template, standing in the View Templates dialog's place.
+    pub(crate) fn template_grid_open(&self) -> bool {
+        self.background_grid_dialog.as_ref().is_some_and(|d| matches!(d.target, Target::Template(_)))
     }
 
     pub(crate) fn paint_background_grid(&self, painter: &Painter, rect: Rect, view: View) {
@@ -113,8 +116,13 @@ impl BimApp {
         });
         if (ok || apply) && dialog.draft != dialog.own {
             let result = match &dialog.target {
-                Target::View(view) => self.run("graphics", json!({"view": view, "background_grid": dialog.draft})),
-                Target::Template(name) => self.run("template", json!({"name": name, "background_grid": dialog.draft})),
+                Target::View(view) => self.run("graphics", json!({"view": view, "background_grid": dialog.draft})).map(|_| ()),
+                // A template's: back to the View Templates dialog's draft, sent with its OK.
+                Target::Template(name) => {
+                    let model = std::sync::Arc::clone(&self.session.model);
+                    let slot = self.templates_dialog.as_mut().and_then(|td| td.draft(&model, name));
+                    slot.map(|slot| slot.graphics.background_grid = dialog.draft)
+                }
             };
             if result.is_some() {
                 dialog.own = dialog.draft;
