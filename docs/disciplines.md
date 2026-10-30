@@ -38,7 +38,9 @@ Run { type, level, start, end, offset, end_offset?, justify, system, params }
 - **System.** `system` is a name ("Água fria", "Circuito 3", "SPDA 1"). Nothing else about a system is stored: a
   schedule groups and filters by it like any field, and a fixture carries its system as a project parameter named
   `System`, which exists already. Systems are a name, not a registry, because a registry would need rules for renaming,
-  deleting and merging that no tab has asked for.
+  deleting and merging that no tab has asked for. (What a system *supplies* is another matter: the project's electrical
+  settings keep voltages, distribution systems and wire types as tables, `electrical.rs`, which circuits and panels will
+  name; a run's `system` stays a name.)
 
 In plan, a run or a footing is drawn from the level it hangs under: its top is flush with that level, so a beam placed at
 the level is seen by that level's plan, which an element whose top is that low would not otherwise be (a plan sees down to
@@ -136,7 +138,8 @@ no Autodesk shortcut, and take free letters.
 
 ## Not in this design, on purpose
 
-Connectors and fittings, auto-routing, sizing, flow and load calculations, circuits and panel schedules, analytical
+Connectors and fittings, auto-routing, sizing, flow and load calculations, circuits and panel schedules (their settings
+are in: voltages, distribution systems and wire types), analytical
 models, rebar, beam systems and trusses. Each is large, none changes the model above, and they come after the five
 tabs can draw and schedule their systems (ROADMAP 2.x).
 
