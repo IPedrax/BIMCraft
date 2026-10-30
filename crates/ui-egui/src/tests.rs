@@ -2644,7 +2644,7 @@ mass {"boundary": [[1000, 1000], [3000, 1000], [3000, 2000], [1000, 2000]], "nam
         press(&mut h, tr("Close"));
         shortcut(&mut h, "VT");
         missed.extend(english(&h, l));
-        press(&mut h, tr("Close"));
+        press(&mut h, tr("Cancel"));
         // The detail tools' Options Bars, with a group to place; Linework with its choices.
         for tool in ["Detail Group", "Repeating Detail", "Revision Cloud", "Insulation"] {
             key(&mut h, Key::Escape);
@@ -4233,121 +4233,10 @@ fn filters_are_made_in_their_dialog_and_applied_by_a_view() {
     press(&mut h, "Close");
 }
 
-#[test]
-fn view_templates_are_made_from_a_view_and_followed_from_properties() {
-    let mut h = app(&format!("{BOX}\nroom {{\"point\": [4000, 3000], \"name\": \"Living\"}}"));
-    shortcut(&mut h, "VV");
-    pick(&mut h, Role::CheckBox, "Rooms");
-    press(&mut h, "OK");
-    shortcut(&mut h, "VT");
-    assert!(h.query_by_label("No view templates yet: Create from This View makes one.").is_some());
-    type_into(&mut h, "New template:", "Presentation");
-    press(&mut h, "Create from This View");
-    assert!(h.state().session.model.view_templates["Presentation"].graphics.hides("room"));
-    // What it controls, ticked and unticked.
-    pick(&mut h, Role::CheckBox, "View Range");
-    assert!(!h.state().session.model.view_templates["Presentation"].controls.contains(&bimcraft_core::graphics::Group::Range));
-    press(&mut h, "Close");
-    // Level 2 follows it from its Properties.
-    topmost(&mut h, "Level 2");
-    // It lies at the palette's foot, below where a pointer can reach.
-    h.get_by_role_and_label(Role::ComboBox, "View Template").click_accesskit();
-    h.run();
-    press(&mut h, "Presentation");
-    assert_eq!(plan_graphics(&h, 100001).template.as_deref(), Some("Presentation"));
-    // Its dialog says where the categories are set, and shows them as the template has them.
-    shortcut(&mut h, "VV");
-    assert!(h.query_by_label("Categories, Filters, Design Options follow view template Presentation: change them there.").is_some());
-    use egui_kittest::kittest::NodeT;
-    let rooms = h.get_by_role_and_label(Role::CheckBox, "Rooms").accesskit_node().toggled();
-    assert_eq!(rooms, Some(egui::accesskit::Toggled::False), "hidden, by the template");
-    press(&mut h, "Cancel");
-    // And Stop Following from the templates dialog.
-    shortcut(&mut h, "VT");
-    press(&mut h, "Stop Following in This View");
-    assert!(plan_graphics(&h, 100001).template.is_none());
-    press(&mut h, "Close");
-}
-
 /// Whether the widget of `role` named `label` is greyed out.
 fn is_disabled(h: &Harness<BimApp>, role: Role, label: &str) -> bool {
     use egui_kittest::kittest::NodeT;
     h.get_by_role_and_label(role, label).accesskit_node().is_disabled()
-}
-
-#[test]
-fn view_templates_hold_show_and_hand_on_a_scale_detail_level_and_visual_style() {
-    use bimcraft_core::graphics::{Detail, Group, VisualStyle};
-    let mut h = app(BOX);
-    let run = |h: &mut Harness<BimApp>, id: &str, p: serde_json::Value| h.state_mut().session.execute(id, &p).unwrap();
-    run(&mut h, "scale", json!({"view": 100000, "scale": 50}));
-    run(&mut h, "detail", json!({"view": 100000, "detail": "coarse"}));
-    let template = |h: &Harness<BimApp>| h.state().session.model.view_templates["Plans"].clone();
-    // Made from a view, a template holds what the view has, and says so.
-    shortcut(&mut h, "VT");
-    type_into(&mut h, "New template:", "Plans");
-    press(&mut h, "Create from This View");
-    assert_eq!((template(&h).graphics.scale, template(&h).graphics.detail), (Some(50.0), Detail::Coarse));
-    assert_eq!(
-        (combo_value(&h, "View Scale:"), combo_value(&h, "Detail Level:"), combo_value(&h, "Visual Style:")),
-        ("1 : 50".into(), "Coarse".into(), "Shaded".into())
-    );
-    use egui_kittest::kittest::NodeT;
-    for group in ["View Scale", "Detail Level", "Visual Style"] {
-        let on = h.get_by_role_and_label(Role::CheckBox, group).accesskit_node().toggled();
-        assert_eq!(on, Some(egui::accesskit::Toggled::True), "{group}: it controls them all to start with");
-    }
-    // Set in the dialog, each is one command on the template.
-    let steps = h.state().session.history().len();
-    choose(&mut h, "View Scale:", "1 : 20");
-    choose(&mut h, "Detail Level:", "Medium");
-    choose(&mut h, "Visual Style:", "Wireframe");
-    let t = template(&h);
-    assert_eq!((t.graphics.scale, t.graphics.detail, t.graphics.style), (Some(20.0), Detail::Medium, VisualStyle::Wireframe));
-    assert_eq!(h.state().session.history().len(), steps + 3);
-    // What it controls, one at a time.
-    pick(&mut h, Role::CheckBox, "Visual Style");
-    assert!(!template(&h).controls.contains(&Group::Style) && template(&h).controls.contains(&Group::Scale));
-    pick(&mut h, Role::CheckBox, "Visual Style");
-    assert!(template(&h).controls.contains(&Group::Style));
-    press(&mut h, "Close");
-    // Level 2 follows it: the bar and Properties show the template's, greyed, and say whose they are.
-    topmost(&mut h, "Level 2");
-    assert_eq!(h.state().sheet, Sheet::Plan(100001));
-    assert_eq!(combo_value(&h, "View Scale"), "1 : 100");
-    shortcut(&mut h, "VT");
-    press(&mut h, "Follow in This View");
-    press(&mut h, "Close");
-    assert_eq!(plan_graphics(&h, 100001).template.as_deref(), Some("Plans"));
-    assert_eq!((combo_value(&h, "View Scale"), combo_value(&h, "Detail Level")), ("1 : 20".into(), "Medium".into()));
-    assert!(is_disabled(&h, Role::ComboBox, "View Scale") && is_disabled(&h, Role::ComboBox, "Detail Level"));
-    assert!(is_disabled(&h, Role::TextInput, "Scale Value 1:"));
-    let shown = painted_text(&h);
-    assert!(shown.contains(&"1 : 20".to_string()) && shown.contains(&"Medium".to_string()), "{shown:?}");
-    assert!(is_disabled(&h, Role::Button, "Scale") && is_disabled(&h, Role::Button, "Detail Level"));
-    // Hovering over one says whose it is.
-    let at = h.get_by_role_and_label(Role::Button, "Scale").rect().center();
-    h.hover_at(at);
-    for _ in 0..4 {
-        h.run();
-    }
-    let note = "Set by view template Plans: change the template, or stop following it.";
-    assert!(painted_text(&h).contains(&note.to_string()), "{:?}", painted_text(&h));
-    // Level 1 follows nothing, and keeps its own.
-    topmost(&mut h, "Level 1");
-    assert!(!is_disabled(&h, Role::Button, "Scale"));
-    assert_eq!(combo_value(&h, "View Scale"), "1 : 50");
-    // A template that leaves the scale be leaves it to the view.
-    run(&mut h, "template", json!({"name": "Plans", "controls": ["detail"]}));
-    topmost(&mut h, "Level 2");
-    assert!(!is_disabled(&h, Role::ComboBox, "View Scale") && is_disabled(&h, Role::ComboBox, "Detail Level"));
-    assert!(!is_disabled(&h, Role::Button, "Scale") && is_disabled(&h, Role::Button, "Detail Level"), "the bar too");
-    // Stop following: its own again.
-    shortcut(&mut h, "VT");
-    press(&mut h, "Stop Following in This View");
-    press(&mut h, "Close");
-    assert!(!is_disabled(&h, Role::ComboBox, "Detail Level"));
-    assert_eq!(combo_value(&h, "Detail Level"), "Fine");
 }
 
 #[test]
@@ -4358,15 +4247,21 @@ fn a_templates_controls_are_ticked_and_unticked_one_at_a_time() {
     shortcut(&mut h, "VT");
     let controls = |h: &Harness<BimApp>| h.state().session.model.view_templates["T"].controls.iter().copied().collect::<Vec<_>>();
     assert_eq!(controls(&h), [Group::Categories]);
+    // Each is ticked on its own, the others staying as they were; Apply (the dialog's, over the palette's) sends them.
+    let apply = |h: &mut Harness<BimApp>| {
+        h.get_all_by(|n| n.role() == Role::Button && n.label().as_deref() == Some("Apply")).last().unwrap().click();
+        h.run();
+    };
     pick(&mut h, Role::CheckBox, "Filters");
+    apply(&mut h);
     assert_eq!(controls(&h), [Group::Categories, Group::Filters]);
     pick(&mut h, Role::CheckBox, "Categories");
+    apply(&mut h);
     assert_eq!(controls(&h), [Group::Filters], "the others stay as they were");
     pick(&mut h, Role::CheckBox, "Filters");
-    assert!(controls(&h).is_empty());
     pick(&mut h, Role::CheckBox, "View Range");
+    press(&mut h, "OK");
     assert_eq!(controls(&h), [Group::Range]);
-    press(&mut h, "Close");
 }
 
 #[test]
@@ -4835,34 +4730,6 @@ fn visibility_graphics_picks_the_option_a_view_shows_of_each_set_unless_a_templa
 }
 
 #[test]
-fn a_templates_phase_and_options_are_ticked_like_its_other_controls_and_hold_a_views_phase() {
-    use bimcraft_core::graphics::Group;
-    use egui_kittest::kittest::NodeT;
-    let mut h = app(BOX);
-    h.state_mut()
-        .session
-        .execute("template", &json!({"name": "T", "from": 100000, "controls": ["categories"], "phase": "Existing"}))
-        .unwrap();
-    shortcut(&mut h, "VT");
-    let controls = |h: &Harness<BimApp>| h.state().session.model.view_templates["T"].controls.iter().copied().collect::<Vec<_>>();
-    pick(&mut h, Role::CheckBox, "Phase and Phase Filter");
-    pick(&mut h, Role::CheckBox, "Design Options");
-    assert_eq!(controls(&h), [Group::Categories, Group::Phase, Group::Options]);
-    // Followed, the view shows the template's phase and can't change it.
-    press(&mut h, "Follow in This View");
-    press(&mut h, "Close");
-    assert_eq!(plan_graphics(&h, 100000).template.as_deref(), Some("T"));
-    let phase = h.get_by_role_and_label(Role::ComboBox, "Phase");
-    assert_eq!(phase.accesskit_node().value().as_deref(), Some("Existing"));
-    assert!(phase.accesskit_node().is_disabled());
-    // The view's own, if it follows nothing.
-    shortcut(&mut h, "VT");
-    press(&mut h, "Stop Following in This View");
-    press(&mut h, "Close");
-    assert!(!h.get_by_role_and_label(Role::ComboBox, "Phase").accesskit_node().is_disabled());
-}
-
-#[test]
 fn an_active_option_the_project_no_longer_has_is_dropped() {
     let mut h = app(&format!("{BOX}\n{MASSING}"));
     pick(&mut h, Role::ComboBox, "Active design option:");
@@ -5290,6 +5157,7 @@ mod sketch;
 mod smallest;
 mod standards;
 mod start;
+mod templates;
 mod titlebar;
 mod tools;
 mod trim;
@@ -6093,3 +5961,5 @@ fn room_area_computation_is_set_from_manage_and_undone() {
     h.run();
     assert_eq!(h.state().session.model.room_area, RoomArea::Centre);
 }
+
+mod background_grid;

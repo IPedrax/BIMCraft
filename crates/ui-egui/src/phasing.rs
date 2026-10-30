@@ -365,7 +365,7 @@ impl BimApp {
         let mut set = None::<Value>;
         Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
             let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-            Grid::new("phasing-properties").num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(ui, |ui| {
+            Grid::new("phasing-properties").num_columns(2).min_col_width(half).max_col_width(half).show(ui, |ui| {
                 let label = ui.label(t("Phase Filter"));
                 let none = t("<None>").to_string();
                 let now = g.phase_filter.clone().unwrap_or_else(|| none.clone());
@@ -425,7 +425,7 @@ impl BimApp {
         let mut change: Option<(&str, Value)> = None;
         Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
             let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-            Grid::new(("phasing-parameters", id)).num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(ui, |ui| {
+            Grid::new(("phasing-parameters", id)).num_columns(2).min_col_width(half).max_col_width(half).show(ui, |ui| {
                 let label = ui.label(t("Phase Created"));
                 // Written out even for the first phase: a door with none follows its wall.
                 if let Some(p) = combo(ui, (id, "phase-created"), label.id, &created, &model.phases) {

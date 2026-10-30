@@ -1318,6 +1318,8 @@ pub static ALL: &[Command] = &[
          …], show?: […], hide_elements?: [id, …], show_elements?: […], categories?: {category: override | null, …}, elements?: \
          {id: override | null, …}, filters?: [{filter, hidden?, projection?, cut?, halftone?, transparency?}, …], phase?: name \
          | null, phase_filter?: name | null, options?: {set: option | null, …}, layers?: {drawing: [layer, …] | null, …}, template?: name | null, \
+         background_grid?: {visible?, main?: {enabled?, color?: [r,g,b], pen?: 0..16}, sub?: {enabled?, color?, pen?}, \
+         spacing?: [X,Y] (mm), divisions?: [X,Y] (1..1000), rotation?: degrees (-360..360)} | null, \
          reset?: true} what a view hides and how it draws the rest, as Revit's Visibility/Graphics does; with \
          none of those, the view's settings as they are. A category hidden (walls, floors, rooms, grids, dimensions, levels…, \
          in any case, singular or plural) leaves all its elements out of that view, and `hide_elements` the elements given. An \
@@ -1379,16 +1381,19 @@ pub static ALL: &[Command] = &[
         "template",
         "View Template",
         &[],
-        "{name, from?: a level's, section's, elevation's or 3D view's name or id, controls?: [categories, filters, range, \
-         phase, options, scale, detail, style], view_range?: {top?, cut?, bottom?, depth?}, phase?, phase_filter?, options?, \
+        "{name, from?: a level's, section's, elevation's or 3D view's name or id, like?: another template's name, \
+         kind?: plan | section | 3d | null, rename?, controls?: [categories, filters, range, \
+         phase, options, scale, detail, style, background_grid], view_range?: {top?, cut?, bottom?, depth?}, phase?, phase_filter?, options?, \
          scale?: 1 | … | 100000, detail?: coarse | medium | fine, visual_style?: shaded | hidden_line | wireframe, \
-         hide?, show?, categories?, filters?, reset?, delete?: true} a view template, as Revit's: settings under a name for \
-         views to follow with `graphics {template}`. `from` takes a view's categories (hidden and overridden), filters and, a \
+         background_grid?: grid settings as in graphics, hide?, show?, categories?, filters?, reset?, delete?: true} a view template, as Revit's: settings under a name for \
+         views to follow with `graphics {template}`. `kind` is the views it is for (plans, elevations and sections, or 3D \
+         views; null, any), which `from` sets; `like` makes a new one a copy of another (Duplicate); `rename` names it anew, \
+         and its views follow it under that name. `from` takes a view's categories (hidden and overridden), filters and, a \
          plan's, view range, its phase and phase filter, its design options, its scale, detail level and visual style; \
-         `controls` is what views following it get from it (all eight unless it says) and cannot change for themselves: its \
+         `controls` is what views following it get from it (all nine unless it says) and cannot change for themselves: its \
          categories, its filters, a plan's view range, its phase with its phase filter, its design options, its scale (`scale` \
          command), its detail level (`detail`), its visual style (`visual_style`). `hide`, `show`, `categories`, `filters`, \
-         `phase`, `phase_filter`, `options`, `scale`, `detail`, `visual_style` and `reset` change it as they change a view; \
+         `phase`, `phase_filter`, `options`, `scale`, `detail`, `visual_style`, `background_grid` and `reset` change it as they change a view; \
          `view_range` merges into its range. Changed, every view following it follows. Gone, they keep their own settings. \
          `name` alone reads one",
         view_template,
@@ -2897,6 +2902,7 @@ fn edit_graphics(c: &str, m: &Model, p: &Value, g: &mut Graphics, of_template: b
             (touches_filters, Group::Filters, "filters"),
             (touches_phase, Group::Phase, "phase and phase filter"),
             (touches_options, Group::Options, "design options"),
+            (p.get("background_grid").is_some(), Group::BackgroundGrid, "background grids"),
         ] {
             if touches && let Some(t) = follows(group) {
                 return Err(bad(
@@ -2908,6 +2914,17 @@ fn edit_graphics(c: &str, m: &Model, p: &Value, g: &mut Graphics, of_template: b
     }
     if flag(c, p, "reset")? {
         *g = Graphics::default();
+    }
+    if let Some(patch) = p.get("background_grid") {
+        if patch.is_null() {
+            g.background_grid = Default::default();
+        } else if patch.is_object() {
+            let mut now = serde_json::to_value(g.background_grid).map_err(|e| bad(c, e))?;
+            merge(&mut now, patch);
+            g.background_grid = serde_json::from_value(now).map_err(|e| bad(c, format!("background grid: {e}")))?;
+        } else {
+            return Err(bad(c, "`background_grid` is an object, or null to restore defaults"));
+        }
     }
     for name in drawn_categories(c, p, "hide")? {
         g.categories.entry(name).or_default().hidden = true;
@@ -3059,6 +3076,7 @@ fn graphics_reply(g: &Graphics) -> Value {
         "hidden": hidden, "categories": g.categories, "filters": g.filters, "layers": g.layers,
         "phase": g.phase, "phase_filter": g.phase_filter, "options": g.options,
         "scale": g.scale, "detail": g.detail, "visual_style": g.style,
+        "background_grid": g.background_grid,
     })
 }
 
@@ -3235,6 +3253,8 @@ fn view_template(s: &mut Session, p: &Value) -> R {
     let was = m.view_templates.get(&name).cloned();
     let keys = [
         "from",
+        "like",
+        "kind",
         "controls",
         "view_range",
         "hide",
@@ -3251,6 +3271,7 @@ fn view_template(s: &mut Session, p: &Value) -> R {
         "scale",
         "detail",
         "visual_style",
+        "background_grid",
     ];
     let makes = keys.iter().any(|k| !absent(p.get(k))) || p.get("template").is_some();
     if was.is_none() && !makes {
@@ -3260,7 +3281,24 @@ fn view_template(s: &mut Session, p: &Value) -> R {
             format!("there's no view template `{name}`; make one with `from` (a view), or `controls`{}", known_names(&there)),
         ));
     }
-    let mut t = was.clone().unwrap_or_else(|| ViewTemplate { controls: Group::ALL.into_iter().collect(), ..ViewTemplate::default() });
+    let mut t = match (&was, name_param(c, p, "like")?) {
+        (Some(t), _) => t.clone(),
+        (None, Some(like)) => m.view_templates.get(&like).cloned().ok_or_else(|| {
+            let there: Vec<&str> = m.view_templates.keys().map(String::as_str).collect();
+            bad(c, format!("there's no view template `{like}` to start from{}", known_names(&there)))
+        })?,
+        (None, None) => ViewTemplate { controls: Group::ALL.into_iter().collect(), ..ViewTemplate::default() },
+    };
+    match p.get("kind") {
+        None => {}
+        Some(Value::Null) => t.kind = None,
+        Some(v) => {
+            t.kind = Some(
+                serde_json::from_value(v.clone())
+                    .map_err(|_| bad(c, format!("`kind` is plan, section or 3d, or null for any, not {v}")))?,
+            );
+        }
+    }
     // Made from a view: what its graphics and its plan's view range are now.
     if !absent(p.get("from")) {
         let view = view_param(c, m, &json!({"view": p["from"]}), false)?;
@@ -3277,12 +3315,14 @@ fn view_template(s: &mut Session, p: &Value) -> R {
             scale: resolved.scale,
             detail: resolved.detail,
             style: resolved.style,
+            background_grid: resolved.background_grid,
             ..Graphics::default()
         };
         t.view_range = match m.elements.get(view) {
             Some(Element::Level(_) | Element::PlanView(_)) => Some(m.view_range_of(view)),
             _ => None,
         };
+        t.kind = m.elements.get(view).and_then(graphics::ViewKind::of);
     }
     match p.get("controls") {
         v if absent(v) => {}
@@ -3292,7 +3332,7 @@ fn view_template(s: &mut Session, p: &Value) -> R {
                     c,
                     format!(
                         "`controls` is a list of what it controls: {}: {e}",
-                        Group::ALL.map(|g| format!("{g:?}").to_lowercase()).join(", ")
+                        Group::ALL.map(|g| serde_json::to_string(&g).unwrap_or_default()).join(", ")
                     ),
                 )
             })?;
@@ -3319,9 +3359,23 @@ fn view_template(s: &mut Session, p: &Value) -> R {
         s.model_mut().view_templates.insert(name.clone(), t.clone());
         t.check(&s.model).map_err(|e| bad(c, e))?;
     }
+    let name = match name_param(c, p, "rename")? {
+        Some(to) if to != name => {
+            let m = s.model_mut();
+            if m.view_templates.contains_key(&to) {
+                return Err(bad(c, format!("there's already a view template `{to}`")));
+            }
+            m.view_templates.remove(&name);
+            m.view_templates.insert(to.clone(), t.clone());
+            rename_entry(m, &LibKind::ViewTemplate, &name, &to);
+            to
+        }
+        _ => name,
+    };
     let m = &s.model;
     let mut reply = graphics_reply(&t.graphics);
     reply["name"] = json!(name);
+    reply["kind"] = json!(t.kind);
     reply["controls"] = json!(t.controls);
     reply["view_range"] = json!(t.view_range);
     reply["views"] = json!(

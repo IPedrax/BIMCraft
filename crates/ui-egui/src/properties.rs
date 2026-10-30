@@ -556,6 +556,11 @@ pub(crate) fn combo(ui: &mut Ui, salt: (Id, &str), label: UiId, current: &str, o
     picked
 }
 
+/// A button across a value cell, as wide as the drop-downs beside it, its text centred: Edit…, a view template's name.
+pub(crate) fn wide_button(ui: &mut Ui, text: impl Into<egui::WidgetText>) -> egui::Response {
+    ui.add_sized([ui.available_width(), ui.spacing().interact_size.y], Button::new(text).truncate())
+}
+
 /// A parameter group's header: a bar across the palette that folds the group, as Revit's do.
 /// Whether it was clicked.
 pub(crate) fn group_header(ui: &mut Ui, group: &str, open: bool) -> bool {
@@ -1174,7 +1179,7 @@ impl BimApp {
                 // Half the palette each, as Revit's columns: a long label wraps rather than pushing
                 // its field past the palette's edge.
                 let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-                Grid::new(("properties", id, group)).num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(ui, |ui| {
+                Grid::new(("properties", id, group)).num_columns(2).min_col_width(half).max_col_width(half).show(ui, |ui| {
                     for &(_, key, label, kind) in rows.iter().filter(|r| r.0 == group) {
                         let val = &v[key];
                         // A length one element hasn't got (a straight wall's radius): no row.
@@ -1384,7 +1389,7 @@ impl BimApp {
                 continue;
             }
             Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
-                Grid::new(("component", id, group)).num_columns(2).striped(true).min_col_width(124.0).show(ui, |ui| {
+                Grid::new(("component", id, group)).num_columns(2).min_col_width(124.0).show(ui, |ui| {
                     for p in params {
                         let val = shared(&p.name);
                         let name = ui.label(&p.name);
@@ -1459,7 +1464,7 @@ impl BimApp {
         let mut change: Option<(String, Result<Value, String>)> = None;
         Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
             let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-            Grid::new(("project-parameters", id)).num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(ui, |ui| {
+            Grid::new(("project-parameters", id)).num_columns(2).min_col_width(half).max_col_width(half).show(ui, |ui| {
                 for (name, kind) in &params {
                     let val = value(name);
                     let label = ui.label(name.as_str());
@@ -1511,40 +1516,37 @@ impl BimApp {
             }
             Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
                 let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-                Grid::new(("schedule-properties", group)).num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(
-                    ui,
-                    |ui| {
-                        if group == "Identity Data" {
-                            let label = ui.label(t("View Name"));
-                            match made {
-                                Some(id) => {
-                                    if let Some(typed) = self.field(ui, id, "name", sc.name.clone(), label.id, "") {
-                                        rename = Some((id, typed));
-                                    }
-                                }
-                                // Every project's, as it is: named as the project's once it's changed.
-                                None => {
-                                    ui.label(RichText::new(&sc.name).color(pal().muted));
+                Grid::new(("schedule-properties", group)).num_columns(2).min_col_width(half).max_col_width(half).show(ui, |ui| {
+                    if group == "Identity Data" {
+                        let label = ui.label(t("View Name"));
+                        match made {
+                            Some(id) => {
+                                if let Some(typed) = self.field(ui, id, "name", sc.name.clone(), label.id, "") {
+                                    rename = Some((id, typed));
                                 }
                             }
-                            ui.end_row();
-                            return;
+                            // Every project's, as it is: named as the project's once it's changed.
+                            None => {
+                                ui.label(RichText::new(&sc.name).color(pal().muted));
+                            }
                         }
-                        ui.label(t("Category"));
-                        ui.label(RichText::new(lang::category(&sc.of, true)).color(pal().muted));
                         ui.end_row();
-                        for (tab, label) in SCHEDULE_TABS.iter().enumerate() {
-                            ui.label(t(label));
-                            let r = ui.button(t("Edit…"));
-                            // Named for what it edits, for screen readers.
-                            r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf("Edit {}", &[t(label)])));
-                            if r.clicked() {
-                                open = Some(tab);
-                            }
-                            ui.end_row();
+                        return;
+                    }
+                    ui.label(t("Category"));
+                    ui.label(RichText::new(lang::category(&sc.of, true)).color(pal().muted));
+                    ui.end_row();
+                    for (tab, label) in SCHEDULE_TABS.iter().enumerate() {
+                        ui.label(t(label));
+                        let r = wide_button(ui, t("Edit…"));
+                        // Named for what it edits, for screen readers.
+                        r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf("Edit {}", &[t(label)])));
+                        if r.clicked() {
+                            open = Some(tab);
                         }
-                    },
-                );
+                        ui.end_row();
+                    }
+                });
             });
         }
         // Named otherwise, one every project has is just the project's: its tab follows it.
@@ -2177,6 +2179,9 @@ impl BimApp {
                     ui.add(egui::Slider::new(&mut s.alignment_tolerance, 2.0..=32.0).suffix(" px"));
                 });
                 }
+                ui.separator();
+                ui.checkbox(&mut self.grid_snapping, t("Grid snapping"))
+                    .on_hover_text(t("Applies to all views; snaps to the active view's enabled main grid or subgrid, even when hidden"));
             });
             crate::popup::footer(ui, |ui| {
                 ui.with_layout(Layout::right_to_left(Align::Min), |ui| close = ui.button(t("Close")).clicked());

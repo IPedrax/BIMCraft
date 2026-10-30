@@ -9,6 +9,7 @@ use crate::popup::Modal;
 
 use bimcraft_i18n::msg;
 
+mod background_grid;
 mod browser;
 mod cad;
 mod camera;
@@ -57,6 +58,7 @@ mod standards;
 mod start;
 mod structure;
 mod style;
+mod templates;
 #[cfg(test)]
 mod tests;
 mod titlebar;
@@ -446,6 +448,9 @@ pub struct BimApp {
     ribbon_peek: bool,
     /// What High Contrast Point Clouds fills a view's scans with: the user's (Settings > Graphics), crimson at first.
     scan_contrast: [u8; 3],
+    background_grid_dialog: Option<background_grid::GridDialog>,
+    /// Global grid snapping preference, independent of view graphics and templates.
+    grid_snapping: bool,
     ribbon_bottom: Pos2,
     /// The Compact layout (File > Settings): the bars and palettes flush to the edges, not floating cards.
     compact: bool,
@@ -630,7 +635,7 @@ pub struct BimApp {
     /// Visibility/Graphics, Filters and View Templates, while they're open.
     vg_dialog: Option<graphics::VgDialog>,
     filters_dialog: Option<graphics::FiltersDialog>,
-    templates_dialog: Option<graphics::TemplatesDialog>,
+    templates_dialog: Option<templates::TemplatesDialog>,
     /// Phasing and Design Options, while they're open, and the design option (`set: option`) new
     /// elements are made in: none is the main model.
     phasing_dialog: Option<phasing::PhasingDialog>,
@@ -958,6 +963,8 @@ impl BimApp {
             compact: false,
             ribbon_peek: false,
             scan_contrast: footer::HIGH_CONTRAST,
+            background_grid_dialog: None,
+            grid_snapping: false,
             ribbon_bottom: Pos2::ZERO,
             settings_page: None,
             settings_path: None,
@@ -1793,7 +1800,7 @@ impl BimApp {
                 return true;
             }
             "VT" => {
-                self.templates_dialog = Some(graphics::TemplatesDialog::default());
+                self.open_templates();
                 return true;
             }
             "PH" => {
@@ -2551,6 +2558,7 @@ impl BimApp {
         fresh.compact = self.compact;
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
+        fresh.grid_snapping = self.grid_snapping;
         fresh.light_canvas = self.light_canvas;
         fresh.styled = self.styled;
         fresh.theme_wanted = self.theme_wanted.take();
@@ -3260,7 +3268,7 @@ impl BimApp {
             }
             let tip = msg!("View Templates (VT): a view's settings under a name, for other views to follow");
             if big_button(ui, Icon::Template, "View Templates", self.templates_dialog.is_some(), tip).clicked() {
-                self.templates_dialog = Some(graphics::TemplatesDialog::default());
+                self.open_templates();
             }
             if big_button(ui, Icon::ThinLines, "Thin Lines", self.thin, "Thin Lines (TL): every line one pixel wide").clicked() {
                 self.thin = !self.thin;
@@ -4490,6 +4498,7 @@ impl BimApp {
         self.selection_filter_window(ctx);
         self.shortcuts_window(ctx);
         self.settings_window(ctx);
+        self.background_grid_window(ctx);
         self.installing_box(ctx);
         self.importing_box(ctx);
         self.report_window(ctx);

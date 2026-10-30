@@ -162,6 +162,20 @@ state and its commands: the project's own types and a family's in `properties.rs
 pattern's … opens the Patterns tab. The dialogs are one width, and the table's body one height where the window has room, known from the first frame:
 a body that fitted its rows grew over a few frames, and a click meant for one row landed on the next. A refusal is said in the dialog.
 
+View Templates (`templates.rs`). VT and View > View Templates open it as Revit's does, in the look Type Properties has: on the left a tab for each
+kind of view (`ViewKind`: Plan, Elevation/Section, 3D; a template of no kind is on every tab), the templates of the one showing, and Duplicate…,
+Rename… and Delete, with New from This View… (enabled on the tab of the active view's kind) under them, each opening a Name row; they run at once
+(`template` with `like`, `rename`, `delete`, `from`). On the right the template picked: a table of Parameter, Value and Include, its rows the groups
+its kind holds (`ViewKind::groups`), each group's Include box named for the group. Its settings edit a draft (`TemplatesDialog::drafts`, one per
+template, kept through Duplicate and Rename); OK and Apply send each template's difference as one `template` command, Cancel drops them.
+V/G Overrides, V/G Filters and Design Options open Visibility/Graphics on the template's draft (`VgDialog::for_template`: no Elements tab nor a
+drawing's layers, which are a view's own; its OK puts the categories, filters and options back in the draft), View Range a small dialog of
+its four offsets, and Background Grids the grid editor. A view's Properties name its template on a button (`properties::wide_button`, as wide as the drop-downs, as Edit… is), which
+opens the same dialog as Assign View Template: <None> first, the view's kind's tab showing, and OK also sets the template the view follows.
+
+The palette's rows are not striped: a stripe is `bar`, the group headers' colour. Buttons and drop-downs fill with `Palette::control`, a step past
+`bar` (darker on light, lighter on dark), so a control never reads as a heading beside it.
+
 The camera (`camera.rs`). The 3D view's Properties have a Camera group: Projection, a drop-down of Axonometric and Perspective that runs
 `perspective` (off or on), and in perspective the Focal Length (a camera's mm, whatever the project's units) and the Eye Elevation, a length in the project's units. Focal
 Length runs `perspective` with its `lens`; Eye Elevation is the camera's on screen, not the project's, and moves `Orbit::camera` by
@@ -318,3 +332,36 @@ Dimension Type Properties (`dimtypes.rs`), and Properties edits its prefix, suff
 A double click on one of its numbers opens Dimension Text for that segment (`DimensionTextDialog`). Selected, an aligned or linear one shows
 a padlock under each segment and, over a string of two or more, EQ past its end (`dimension_constraints`): a click locks or unlocks, or makes
 it equal or not.
+
+## Background grids
+
+Each plan, section and elevation keeps its canvas grid in its `Graphics::background_grid`, saved with the project, copied
+with independent view duplicates, and edited through the undoable `graphics` command. Reflected ceiling plans use their
+plan key's graphics, like their scale and other view settings; dependent plans follow their parent's graphics.
+The Graphics group in a view's instance properties has a Background Grids Edit… button. The grid menu beside Temporary
+Hide/Isolate (the glasses) keeps Show grids, independent Main grid and Subgrid checkboxes, Grid snapping and Grid settings….
+The editor uses a draft: Apply/OK save one undo step, Cancel discards unapplied changes. File > Settings has no grid page;
+application settings files from the earlier global implementation no longer affect views.
+
+View templates can control Background Grids as a group (`Group::BackgroundGrid`, JSON `background_grid`), for plans and
+elevations and sections. New from This View copies the effective grid. View Templates has a Background Grids row whose Edit… opens
+the grid editor on the template's draft (`open_template_background_grid`; its OK hands the grid back, the templates' OK sends it). Followers use the
+template's values and gray out their instance Edit button, bottom menu grid settings and any open editor; removing template
+control restores each view's own grid. The engine rejects bypasses through `graphics` and `modify` too.
+
+`core::background_grid` owns the lattice geometry, shared by painting and snapping. Both lattices start at the fixed view
+origin (0, 0), with one counter-clockwise rotation in degrees. Main spacing X/Y is entered in the project's actual units;
+subgrid divisions X/Y divide that spacing independently. Each grid has its own colour and pen (0–16), with default colours [230,230,230] for main and [245,245,245] for subgrid,
+following the project's line weights and the Thin Lines display toggle. Main lines take precedence over coincident subgrid lines.
+Dense subgrids disappear below four screen pixels; main grids thin by whole multiples without moving the origin. Drawing
+is bounded to 4096 lines. Section/elevation textures expose empty paper behind the model while retaining opaque model faces.
+Grids are canvas aids; they do not create elements or appear in sheet/export drawings.
+
+Grid snapping is a global application preference (`BimApp::grid_snapping`, saved as `Settings::grid_snapping`), available
+in Manage > Snaps and the bottom grid menu. It is not part of view graphics or view templates: the checkbox stays editable
+when a template controls the active view's grid, and changing it creates no project undo step. New/Open retain the setting.
+It uses intersections of the active view's enabled subgrid, or main grid when the subgrid is disabled; with neither enabled,
+there is nothing to snap to. Show grids only controls display: snapping can remain on while the grid is hidden. Object snaps, one-point snap overrides and Shift
+constraints keep priority; grid snapping replaces the free-point fallback and automatic angle guides. Sections and
+elevations snap annotation placement in their local horizontal/height coordinates. Model validation rejects invalid
+spacing, divisions, pens or rotation, and commands roll back the whole edit.

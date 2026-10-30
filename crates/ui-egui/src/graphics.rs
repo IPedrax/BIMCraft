@@ -35,8 +35,10 @@ use crate::{BimApp, Sheet, Status};
 const TABS: [&str; 6] =
     [msg!("Model Categories"), msg!("Annotation Categories"), msg!("Imported Categories"), "Filters", "Elements", "Design Options"];
 
-/// The Elements tab's place in [`TABS`].
+/// The Elements tab's place in [`TABS`], the Filters' and the Design Options'.
 pub(crate) const ELEMENTS_TAB: usize = 4;
+pub(crate) const FILTERS_TAB: usize = 3;
+pub(crate) const OPTIONS_TAB: usize = 5;
 
 /// What a list of the dialog has picked, to edit its override.
 #[derive(Clone, Debug, PartialEq)]
@@ -49,9 +51,11 @@ enum Pick {
 /// The Visibility/Graphics dialog: the view (as commands take it) and its name, its graphics as the
 /// project has them and as the dialog has edited them, the tab showing, the row picked, the
 /// elements the Elements tab lists (those with an override, and those added to give one), the cell
-/// being edited, and the search for a category's name.
+/// being edited, and the search for a category's name. Opened on a view template (`template`), it edits the View Templates
+/// dialog's draft of it: no Elements tab, and OK hands the draft back rather than running a command.
 pub(crate) struct VgDialog {
     view: Value,
+    template: Option<String>,
     title: String,
     own: Graphics,
     draft: Graphics,
@@ -65,13 +69,6 @@ pub(crate) struct VgDialog {
 /// What the Filters dialog has picked: a filter, and the name typed for it.
 #[derive(Default)]
 pub(crate) struct FiltersDialog {
-    picked: String,
-    name: String,
-}
-
-/// The View Templates dialog: the template picked, and the name typed for a new one.
-#[derive(Default)]
-pub(crate) struct TemplatesDialog {
     picked: String,
     name: String,
 }
@@ -113,7 +110,7 @@ pub(crate) fn controls(m: &Model, name: Option<&String>) -> BTreeSet<Group> {
 }
 
 /// A group of a template's settings, as the dialogs name it.
-fn group_name(g: Group) -> &'static str {
+pub(crate) fn group_name(g: Group) -> &'static str {
     match g {
         Group::Categories => "Categories",
         Group::Filters => "Filters",
@@ -123,27 +120,28 @@ fn group_name(g: Group) -> &'static str {
         Group::Scale => "View Scale",
         Group::Detail => "Detail Level",
         Group::Style => "Visual Style",
+        Group::BackgroundGrid => msg!("Background Grids"),
     }
 }
 
 /// The scales a drop-down offers, each as the interface names it: none first, then 1 : n.
 /// A drop-down for a scale, named by `label`, of the scales a project in `units` offers, named as it names them: the
 /// scale picked.
-fn scale_combo(ui: &mut Ui, salt: &'static str, label: UiId, now: f64, units: Units) -> Option<f64> {
+pub(crate) fn scale_combo(ui: &mut Ui, salt: &'static str, label: UiId, now: f64, units: Units) -> Option<f64> {
     let options: Vec<String> = units.scales().iter().map(|n| units.scale(*n)).collect();
     let picked = crate::properties::combo(ui, (0, salt), label, &units.scale(now), &options)?;
     units.scales().iter().copied().find(|n| units.scale(*n) == picked)
 }
 
 /// A drop-down for a detail level, named by `label`: the level picked.
-fn detail_combo(ui: &mut Ui, salt: &'static str, label: UiId, now: Detail) -> Option<Detail> {
+pub(crate) fn detail_combo(ui: &mut Ui, salt: &'static str, label: UiId, now: Detail) -> Option<Detail> {
     let options: Vec<String> = Detail::ALL.iter().map(|d| t(d.name()).to_string()).collect();
     let picked = crate::properties::combo(ui, (0, salt), label, t(now.name()), &options)?;
     Detail::ALL.into_iter().find(|d| t(d.name()) == picked)
 }
 
 /// A drop-down for a visual style, named by `label`: the style picked.
-fn style_combo(ui: &mut Ui, salt: &'static str, label: UiId, now: VisualStyle) -> Option<VisualStyle> {
+pub(crate) fn style_combo(ui: &mut Ui, salt: &'static str, label: UiId, now: VisualStyle) -> Option<VisualStyle> {
     let options: Vec<String> = VisualStyle::ALL.iter().map(|v| t(v.name()).to_string()).collect();
     let picked = crate::properties::combo(ui, (0, salt), label, t(now.name()), &options)?;
     VisualStyle::ALL.into_iter().find(|v| t(v.name()) == picked)
@@ -152,6 +150,29 @@ fn style_combo(ui: &mut Ui, salt: &'static str, label: UiId, now: VisualStyle) -
 /// Why a setting a view template controls can't be changed in the view following it, for a tooltip.
 pub(crate) fn controlled_note(template: &str) -> String {
     tf("Set by view template {}: change the template, or stop following it.", &[template])
+}
+
+impl VgDialog {
+    /// The dialog on template `name`'s graphics as the View Templates dialog has them, on a tab.
+    pub(crate) fn for_template(name: String, graphics: Graphics, tab: usize) -> VgDialog {
+        VgDialog {
+            view: Value::Null,
+            title: tf("View Template: {}", &[&name]),
+            template: Some(name),
+            own: graphics.clone(),
+            draft: graphics,
+            tab,
+            pick: None,
+            listed: BTreeSet::new(),
+            cell: None,
+            search: String::new(),
+        }
+    }
+
+    /// Whether it is open on a view template.
+    pub(crate) fn of_template(&self) -> bool {
+        self.template.is_some()
+    }
 }
 
 impl BimApp {
@@ -200,6 +221,7 @@ impl BimApp {
         let listed = own.elements.keys().filter_map(|g| self.session.model.elements.id(g)).collect();
         self.vg_dialog = Some(VgDialog {
             view,
+            template: None,
             title: self.view_title(self.sheet),
             draft: own.clone(),
             own,
@@ -304,7 +326,12 @@ impl BimApp {
                     if let Some(name) = &d.draft.template {
                         let what: Vec<&str> = followed
                             .iter()
-                            .filter(|g| !matches!(g, Group::Range | Group::Phase | Group::Scale | Group::Detail | Group::Style))
+                            .filter(|g| {
+                                !matches!(
+                                    g,
+                                    Group::Range | Group::Phase | Group::Scale | Group::Detail | Group::Style | Group::BackgroundGrid
+                                )
+                            })
                             .map(|g| t(group_name(*g)))
                             .collect();
                         if !what.is_empty() {
@@ -316,7 +343,7 @@ impl BimApp {
                     }
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
-                        for (i, label) in TABS.iter().enumerate() {
+                        for (i, label) in TABS.iter().enumerate().filter(|(i, _)| d.template.is_none() || *i != ELEMENTS_TAB) {
                             if ui.selectable_label(d.tab == i, t(label)).clicked() {
                                 d.tab = i;
                                 d.pick = None;
@@ -334,8 +361,11 @@ impl BimApp {
                         }
                         2 => {
                             styles = categories(ui, &mut d, &model, &shown, &IMPORTED, !followed.contains(&Group::Categories));
-                            ui.add_space(6.0);
-                            imported_layers(ui, &mut d, &model);
+                            // A drawing's layers are a view's own.
+                            if d.template.is_none() {
+                                ui.add_space(6.0);
+                                imported_layers(ui, &mut d, &model);
+                            }
                         }
                         3 => filters(ui, &mut d, &model, &shown, !followed.contains(&Group::Filters)),
                         ELEMENTS_TAB => elements(ui, &mut d, &model, &self.selection),
@@ -360,7 +390,17 @@ impl BimApp {
         }
         // What's different from the project's, as one command; a refusal keeps the dialog open to fix it.
         let mut failed = false;
-        if ok || apply {
+        if (ok || apply)
+            && let Some(name) = &d.template
+        {
+            // A template's: back to the View Templates dialog's draft, sent with its OK.
+            if let Some(slot) = self.templates_dialog.as_mut().and_then(|td| td.draft(&model, name)) {
+                slot.graphics.categories = d.draft.categories.clone();
+                slot.graphics.filters = d.draft.filters.clone();
+                slot.graphics.options = d.draft.options.clone();
+            }
+            d.own = d.draft.clone();
+        } else if ok || apply {
             if let Some(p) = patch(&d, &followed) {
                 match self.run("graphics", p) {
                     Some(_) => d.own = d.draft.clone(),
@@ -475,113 +515,6 @@ impl BimApp {
         }
     }
 
-    /// The View Templates dialog, while it's open: the project's templates, what each controls, one
-    /// made from the active view, and the active view's template.
-    pub(crate) fn templates_window(&mut self, ctx: &Context) {
-        let Some(mut d) = self.templates_dialog.take() else { return };
-        let model = Arc::clone(&self.session.model);
-        let view = self.graphic_view();
-        let own = self.graphics_now();
-        let (mut close, mut run, mut assign, mut picked) = (false, None::<Value>, None::<Value>, None::<String>);
-        let r = Modal::new(UiId::new("view-templates"), t("View Templates")).width(520.0).show(ctx, |ui| {
-            crate::popup::body(ui, |ui| {
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    let l = ui.label(t("Template:"));
-                    let c = ComboBox::from_id_salt("view-template-name").selected_text(&d.picked).width(220.0).show_ui(ui, |ui| {
-                        for name in model.view_templates.keys() {
-                            if ui.selectable_label(*name == d.picked, name).clicked() {
-                                picked = Some(name.clone());
-                            }
-                        }
-                    });
-                    c.response.labelled_by(l.id);
-                    if ui.add_enabled(model.view_templates.contains_key(&d.picked), Button::new(t("Delete"))).clicked() {
-                        run = Some(json!({"name": d.picked, "delete": true}));
-                        picked = model.view_templates.keys().find(|n| **n != d.picked).cloned().or_else(|| Some(String::new()));
-                    }
-                });
-                if let Some(tpl) = model.view_templates.get(&d.picked) {
-                    ui.add_space(6.0);
-                    ui.label(RichText::new(t("The views following it get from it:")).strong());
-                    for g in Group::ALL {
-                        let mut on = tpl.controls.contains(&g);
-                        if ui.checkbox(&mut on, t(group_name(g))).changed() {
-                            // This one as ticked, the others as they were.
-                            let list: Vec<Group> =
-                                Group::ALL.into_iter().filter(|h| if *h == g { on } else { tpl.controls.contains(h) }).collect();
-                            run = Some(json!({"name": d.picked, "controls": list}));
-                        }
-                    }
-                    // What it holds of scale, detail level and visual style, to set.
-                    ui.add_space(4.0);
-                    Grid::new("template-settings").num_columns(2).show(ui, |ui| {
-                        let l = ui.label(t("View Scale:"));
-                        if let Some(n) = scale_combo(ui, "template-scale", l.id, tpl.graphics.scale_n(model.units), model.units) {
-                            run = Some(json!({"name": d.picked, "scale": n}));
-                        }
-                        ui.end_row();
-                        let l = ui.label(t("Detail Level:"));
-                        if let Some(level) = detail_combo(ui, "template-detail", l.id, tpl.graphics.detail) {
-                            run = Some(json!({"name": d.picked, "detail": level.name()}));
-                        }
-                        ui.end_row();
-                        let l = ui.label(t("Visual Style:"));
-                        if let Some(v) = style_combo(ui, "template-style", l.id, tpl.graphics.style) {
-                            run = Some(json!({"name": d.picked, "visual_style": v.name()}));
-                        }
-                        ui.end_row();
-                    });
-                    if let Some(view) = &view {
-                        let now = own.template.as_ref() == Some(&d.picked);
-                        ui.add_space(4.0);
-                        let label = if now { t("Stop Following in This View") } else { t("Follow in This View") };
-                        if ui.button(label).clicked() {
-                            assign = Some(json!({"view": view, "template": if now { Value::Null } else { json!(d.picked) }}));
-                        }
-                    }
-                } else {
-                    ui.add_space(6.0);
-                    ui.label(RichText::new(t("No view templates yet: Create from This View makes one.")).color(pal().muted));
-                }
-                ui.add_space(8.0);
-                ui.separator();
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    let l = ui.label(t("New template:"));
-                    ui.add(egui::TextEdit::singleline(&mut d.name).desired_width(180.0)).labelled_by(l.id);
-                    let from = view.clone().filter(|_| !d.name.trim().is_empty());
-                    let r = ui.add_enabled(from.is_some(), Button::new(t("Create from This View")));
-                    if r.clicked()
-                        && let Some(from) = from
-                    {
-                        run = Some(json!({"name": d.name.trim(), "from": from}));
-                        picked = Some(d.name.trim().to_string());
-                    }
-                });
-            });
-            crate::popup::footer(ui, |ui| {
-                ui.with_layout(Layout::right_to_left(Align::Min), |ui| close = ui.button(t("Close")).clicked());
-            });
-        });
-        if let Some(p) = run
-            && self.run("template", p).is_none()
-        {
-            picked = None;
-        }
-        if let Some(p) = assign {
-            self.run("graphics", p);
-        }
-        if let Some(n) = picked {
-            d.picked = n;
-        } else if !self.session.model.view_templates.contains_key(&d.picked) {
-            d.picked = self.session.model.view_templates.keys().next().cloned().unwrap_or_default();
-        }
-        if !(close || r.should_close()) {
-            self.templates_dialog = Some(d);
-        }
-    }
-
     /// Properties' Graphics group for the active view: its view template, and Edit… for its
     /// Visibility/Graphics Overrides.
     pub(crate) fn graphics_properties(&mut self, ui: &mut Ui) {
@@ -597,7 +530,7 @@ impl BimApp {
         if !open {
             return;
         }
-        let (mut edit, mut set) = (false, None::<(&str, Value)>);
+        let (mut edit, mut assign, mut set) = (false, false, None::<(&str, Value)>);
         // The id the scale's field edits under: the view's own, which the 3D view's has no field for.
         let own_id = match self.sheet {
             Sheet::Plan(id) | Sheet::Ceiling(id) | Sheet::Section(id) => Some(id),
@@ -605,7 +538,7 @@ impl BimApp {
         };
         egui::Frame::new().inner_margin(egui::Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
             let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-            Grid::new("graphics-properties").num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(ui, |ui| {
+            Grid::new("graphics-properties").num_columns(2).min_col_width(half).max_col_width(half).show(ui, |ui| {
                 let controlled = |g: Group| own.controlled_by(&model, g).map(controlled_note);
                 if let Some(id) = own_id {
                     let note = controlled(Group::Scale);
@@ -649,16 +582,32 @@ impl BimApp {
                     });
                     ui.end_row();
                 }
-                let label = ui.label(t("View Template"));
-                let none = t("<None>").to_string();
-                let now = own.template.clone().unwrap_or_else(|| none.clone());
-                let options: Vec<String> = std::iter::once(none.clone()).chain(model.view_templates.keys().cloned()).collect();
-                if let Some(picked) = crate::properties::combo(ui, (0, "view-template"), label.id, &now, &options) {
-                    set = Some(("graphics", json!({"view": view, "template": if picked == none { Value::Null } else { json!(picked) }})));
+                if let Some(id) = own_id {
+                    let note = self.grid_controlled(id);
+                    ui.add_enabled(note.is_none(), egui::Label::new(t("Background Grids")));
+                    let r = ui.add_enabled_ui(note.is_none(), |ui| crate::properties::wide_button(ui, t("Edit…"))).inner;
+                    r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, note.is_none(), t("Edit Background Grids")));
+                    if r.clicked() {
+                        self.open_background_grid();
+                    }
+                    if let Some(note) = note {
+                        r.on_disabled_hover_text(note);
+                    }
+                    ui.end_row();
                 }
+                // A button naming the template, as Revit's: it opens the dialog to pick another, or none.
+                ui.label(t("View Template"));
+                let now = own.template.clone().unwrap_or_else(|| t("<None>").to_string());
+                let r = crate::properties::wide_button(ui, &now);
+                r.widget_info(|| {
+                    let mut info = WidgetInfo::labeled(WidgetType::Button, true, t("View Template"));
+                    info.current_text_value = Some(now.clone());
+                    info
+                });
+                assign |= r.clicked();
                 ui.end_row();
                 ui.label(t("Visibility/Graphics Overrides"));
-                let r = ui.button(t("Edit…"));
+                let r = crate::properties::wide_button(ui, t("Edit…"));
                 r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf("Edit {}", &[t("Visibility/Graphics Overrides")])));
                 edit |= r.clicked();
                 ui.end_row();
@@ -669,6 +618,9 @@ impl BimApp {
         }
         if edit {
             self.open_graphics(0);
+        }
+        if assign {
+            self.assign_template();
         }
     }
 }

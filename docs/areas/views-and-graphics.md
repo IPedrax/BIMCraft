@@ -16,6 +16,14 @@ placed with no scale takes the view's. The units name the scales and list the on
 1" = 200'-0"), and 1 : n for any other. The Scale menu, Properties, templates and sheets' titles name them so, and a scale is typed
 as n, 1 : n, or two lengths (`1/4" = 1'-0"`).
 
+Background grids are view-owned graphics (`Graphics::background_grid`), controlled by a view template through the
+`background_grid` group. `graphics` and `template` accept a grid patch (spacing in millimetres, divisions, rotation, two
+styles and visibility), or null to reset it. `Graphics::resolved` supplies the effective grid, and both the
+commands and `check_followed` protect template-controlled values. Instance Properties and the bottom view control bar
+open the view's grid editor; View Templates edits the template's grid. The controls are disabled in a follower, with the
+template named on hover. Grid snapping is a separate global preference in Manage > Snaps and the bottom grid menu,
+and is never controlled by a view template. Details: [background grids](desktop.md#background-grids).
+
 The view control bar's High Contrast Point Clouds (`footer.rs`, wherever the project or a link holds a scan, in a plan, a section, an elevation
 and the 3D view) fills the view's `pointcloud` category with one colour, the user's, in one `graphics` command; how it behaves is in
 [point clouds](point-clouds.md).
@@ -217,7 +225,8 @@ view to what it hides and how it paints the rest; the drawing code asks `look.sh
 sections, `cut_outlines`, `seen_below`, `view3d::Scene::picture`) and `look.dress` recolours the finished `Drawing` by owner and
 by `Part` (`Drawing::part` marks what is drawn as projection, cut, lettering or hatching (and the lines between layers), so a
 new drawing of what a view cuts sets `Part::Cut`; a hidden door's opening is drawn owned by none, the wall's; the cut walls' union fill has no owner and takes its colour at the draw site, `cut_unions`). A view template
-(`Model::view_templates`) controls groups of the views that follow it (categories, filters, a plan's view range through
+(`Model::view_templates`), for a kind of view (`ViewKind`: plans, elevations and sections, or 3D views; `from` sets it, none is any),
+controls groups of the views that follow it (categories, filters, a plan's view range through
 `Model::view_range_of`, a phase with its phase filter, design options, scale, detail level, visual style), and they can't change those
 (`graphics`, `scale`, `detail`, `visual_style` and `modify` refuse). Snaps, Tag All, the desktop's Select All
 Instances and the framing of sections and 3D views take what `Look` shows too. A level's ceiling plan is its plan's view;
