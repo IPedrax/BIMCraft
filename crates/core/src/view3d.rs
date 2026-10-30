@@ -2167,6 +2167,12 @@ impl Image {
         (x >= 0.0 && y >= 0.0 && x < w && y < h).then(|| y as usize * self.width as usize + x as usize)
     }
 
+    /// Whether a pixel is covered by model geometry, including linked elements and meshes
+    /// without named faces. Canvas backgrounds may show through only where this is false.
+    pub fn covered(&self, x: f64, y: f64) -> bool {
+        self.index(x, y).and_then(|i| self.hit.get(i)).is_some_and(|t| *t != u32::MAX)
+    }
+
     /// The element the pixel at `(x, y)` shows.
     pub fn pick(&self, x: f64, y: f64) -> Option<Id> {
         let t = *self.hit.get(self.index(x, y)?)?;
@@ -2219,6 +2225,18 @@ impl Image {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn background_coverage_includes_geometry_without_a_named_face() {
+        let image =
+            Image { width: 2, height: 1, rgba: vec![255; 8], hit: vec![0, u32::MAX], owners: vec![Id::MAX], faces: Arc::new(vec![""]) };
+        assert!(image.covered(0.0, 0.0));
+        assert_eq!(image.face(0.0, 0.0), None);
+        assert_eq!(image.pick(0.0, 0.0), None, "linked geometry is covered even though it cannot be picked");
+        assert!(!image.covered(1.0, 0.0));
+        assert!(!image.covered(-1.0, 0.0));
+        assert!(!image.covered(2.0, 0.0));
+    }
 
     #[test]
     fn a_picture_draws_every_point_up_to_its_budget_and_an_even_share_past_it() {

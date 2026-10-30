@@ -59,9 +59,52 @@ pub const SCANS: [&str; 1] = ["pointcloud"];
 /// The CAD imports, which views hide and override on a tab of their own too, as Revit's Imported Categories.
 pub const IMPORTED: [&str; 1] = ["cadimport"];
 
-/// Whether views draw elements of `category`.
+/// A subcategory: a part of a category a view hides, shows and overrides apart from the rest, as Revit's (Rooms >
+/// Reference). It is held in a view's graphics by its `key`, as a category is; `off` ones are hidden unless the view shows
+/// them. A category hidden hides its subcategories. Some are a kind of element of their own (`roomseparator`), others a
+/// part of their category's elements that the drawing code asks after (`roomreference`, the cross at a room's point).
+#[derive(Clone, Copy, Debug)]
+pub struct Sub {
+    pub key: &'static str,
+    pub parent: &'static str,
+    /// Its name, in English, as Visibility/Graphics lists it under its category.
+    pub name: &'static str,
+    pub off: bool,
+}
+
+/// Every subcategory, under its category. A new one is a row here, and its drawing code asks [`Graphics::hides`] (or the
+/// view's [`Look`], for a kind of element).
+pub const SUBCATEGORIES: &[Sub] = &[
+    Sub { key: "roomreference", parent: "room", name: ui_msg!("Reference"), off: true },
+    Sub { key: "roomseparator", parent: "room", name: ui_msg!("Room Separation Lines"), off: false },
+];
+
+/// The subcategory `key` is, if it is one.
+pub fn sub(key: &str) -> Option<&'static Sub> {
+    SUBCATEGORIES.iter().find(|s| s.key == key)
+}
+
+/// The subcategories of category `parent`, in order.
+pub fn subcategories(parent: &str) -> impl Iterator<Item = &'static Sub> + '_ {
+    SUBCATEGORIES.iter().filter(move |s| s.parent == parent)
+}
+
+/// The categories a 3D view hides unless it shows them: rooms, which a 3D view draws, once shown, as see-through solids in
+/// the selection's colour (and a selected one whatever it says). Every new 3D view starts with them hidden.
+pub const OFF_IN_3D: [&str; 1] = ["room"];
+
+/// Whether `key` is hidden unless a view shows it.
+pub fn off_unless_shown(key: &str) -> bool {
+    sub(key).is_some_and(|s| s.off)
+}
+
+/// Whether views draw elements of `category`, or hide and show it (a subcategory).
 pub fn drawn(category: &str) -> bool {
-    MODEL.contains(&category) || ANNOTATION.contains(&category) || SCANS.contains(&category) || IMPORTED.contains(&category)
+    MODEL.contains(&category)
+        || ANNOTATION.contains(&category)
+        || SCANS.contains(&category)
+        || IMPORTED.contains(&category)
+        || sub(category).is_some()
 }
 
 /// How much of a mass a 3D view sees through, percent, unless its graphics say otherwise.
@@ -267,6 +310,9 @@ pub struct Override {
     pub halftone: bool,
     #[serde(skip_serializing_if = "is_zero")]
     pub transparency: u8,
+    /// Shown, a subcategory hidden unless a view shows it ([`Sub::off`]).
+    #[serde(skip_serializing_if = "is_false")]
+    pub shown: bool,
 }
 
 impl Override {
@@ -301,6 +347,7 @@ impl Override {
             cut: self.cut.over(&base.cut),
             halftone: self.halftone || base.halftone,
             transparency: if self.transparency > 0 { self.transparency } else { base.transparency },
+            shown: self.shown || base.shown,
         }
     }
 
@@ -342,14 +389,21 @@ struct AppliedJson {
 
 impl From<AppliedJson> for Applied {
     fn from(a: AppliedJson) -> Applied {
-        let over = Override { hidden: a.hidden, projection: a.projection, cut: a.cut, halftone: a.halftone, transparency: a.transparency };
+        let over = Override {
+            hidden: a.hidden,
+            projection: a.projection,
+            cut: a.cut,
+            halftone: a.halftone,
+            transparency: a.transparency,
+            shown: false,
+        };
         Applied { filter: a.filter, over }
     }
 }
 
 impl From<Applied> for AppliedJson {
     fn from(a: Applied) -> AppliedJson {
-        let Override { hidden, projection, cut, halftone, transparency } = a.over;
+        let Override { hidden, projection, cut, halftone, transparency, .. } = a.over;
         AppliedJson { filter: a.filter, hidden, projection, cut, halftone, transparency }
     }
 }
@@ -386,6 +440,9 @@ pub struct Graphics {
     /// How a 3D view draws its surfaces.
     #[serde(skip_serializing_if = "is_shaded")]
     pub style: VisualStyle,
+    /// Canvas grid owned by this view, or supplied by its view template.
+    #[serde(skip_serializing_if = "crate::background_grid::BackgroundGrid::is_default")]
+    pub background_grid: crate::background_grid::BackgroundGrid,
     /// Revit's Linework: an edge of an element drawn in a line style of the view's own, or not at all.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub linework: Vec<Linework>,
@@ -443,6 +500,9 @@ impl Graphics {
         if t.controls.contains(&Group::Style) {
             g.style = t.graphics.style;
         }
+        if t.controls.contains(&Group::BackgroundGrid) {
+            g.background_grid = t.graphics.background_grid;
+        }
         std::borrow::Cow::Owned(g)
     }
 
@@ -462,14 +522,25 @@ impl Graphics {
             && self.options.is_empty()
     }
 
-    /// Whether category `c` is hidden.
+    /// Whether a 3D view with these graphics draws category `c`: as [`Graphics::hides`] says, and one of [`OFF_IN_3D`] only
+    /// where the view shows it.
+    pub fn shows_in_3d(&self, c: &str) -> bool {
+        !self.hides(c) && (!OFF_IN_3D.contains(&c) || self.categories.get(c).is_some_and(|o| o.shown))
+    }
+
+    /// Whether category or subcategory `c` is hidden: hidden itself, off and not shown, or its category hidden.
     pub fn hides(&self, c: &str) -> bool {
-        self.categories.get(c).is_some_and(|o| o.hidden)
+        let own = match self.categories.get(c) {
+            Some(o) => o.hidden || (off_unless_shown(c) && !o.shown),
+            None => off_unless_shown(c),
+        };
+        own || sub(c).is_some_and(|s| self.hides(s.parent))
     }
 
     /// Whether it is sound in `m`: known categories, overrides in range, filters and the template
     /// there are.
     pub fn check(&self, m: &Model) -> Result<(), String> {
+        self.background_grid.check()?;
         if self.categories.len() > MAX_ENTRIES || self.elements.len() > MAX_ENTRIES {
             return Err(format!("it has more than {MAX_ENTRIES} overrides"));
         }
@@ -628,17 +699,73 @@ pub enum Group {
     Detail,
     /// A 3D view's visual style.
     Style,
+    /// The canvas background grid display settings.
+    #[serde(rename = "background_grid")]
+    BackgroundGrid,
 }
 
 impl Group {
-    pub const ALL: [Group; 8] =
-        [Group::Categories, Group::Filters, Group::Range, Group::Phase, Group::Options, Group::Scale, Group::Detail, Group::Style];
+    pub const ALL: [Group; 9] = [
+        Group::Categories,
+        Group::Filters,
+        Group::Range,
+        Group::Phase,
+        Group::Options,
+        Group::Scale,
+        Group::Detail,
+        Group::Style,
+        Group::BackgroundGrid,
+    ];
 }
 
-/// A view template: settings under a name for views to follow, the groups in `controls`.
+/// The kind of view a template is for, as Revit's are: plans (floor and ceiling), elevations and sections, or 3D views.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ViewKind {
+    #[serde(rename = "plan")]
+    Plan,
+    #[serde(rename = "section")]
+    Section,
+    #[serde(rename = "3d")]
+    ThreeD,
+}
+
+impl ViewKind {
+    pub const ALL: [ViewKind; 3] = [ViewKind::Plan, ViewKind::Section, ViewKind::ThreeD];
+
+    /// The kind view element `e` is, if it is a view a template can be for.
+    pub fn of(e: &Element) -> Option<ViewKind> {
+        match e {
+            Element::Level(_) | Element::PlanView(_) => Some(ViewKind::Plan),
+            Element::Section(_) | Element::Elevation(_) => Some(ViewKind::Section),
+            Element::View3D(_) => Some(ViewKind::ThreeD),
+            _ => None,
+        }
+    }
+
+    /// The groups a template for this kind of view holds: a plan's view range, a 3D view's visual style, the scale, detail
+    /// level and background grids of the others.
+    pub fn groups(self) -> Vec<Group> {
+        Group::ALL
+            .into_iter()
+            .filter(|g| {
+                !matches!(
+                    (self, g),
+                    (ViewKind::Plan, Group::Style)
+                        | (ViewKind::Section, Group::Range | Group::Style)
+                        | (ViewKind::ThreeD, Group::Range | Group::Scale | Group::Detail | Group::BackgroundGrid)
+                )
+            })
+            .collect()
+    }
+}
+
+/// A view template: settings under a name for views to follow, the groups in `controls`, for views of `kind` (any, when it
+/// says none).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ViewTemplate {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<ViewKind>,
     pub controls: BTreeSet<Group>,
     #[serde(default, skip_serializing_if = "Graphics::is_default")]
     pub graphics: Graphics,
@@ -705,6 +832,7 @@ pub fn check_followed(m: &Model, old: &Element, new: &Element) -> Result<(), Str
     follows(Group::Scale, a.scale == b.scale, "scale")?;
     follows(Group::Detail, a.detail == b.detail, "detail level")?;
     follows(Group::Style, a.style == b.style, "visual style")?;
+    follows(Group::BackgroundGrid, a.background_grid == b.background_grid, "background grids")?;
     if let (Element::Level(x), Element::Level(y)) = (old, new) {
         follows(Group::Range, x.view_range == y.view_range, "view range")?;
     }
@@ -864,7 +992,8 @@ impl Look {
             if let Some(own) = m.elements.guid(id).and_then(|k| g.elements.get(&k)) {
                 over = own.over(&over);
             }
-            if over.hidden {
+            // A subcategory's elements go with their category, hidden.
+            if over.hidden || sub(cat).is_some_and(|s| g.hides(s.parent)) {
                 look.hidden.insert(id);
             } else if !over.is_empty() {
                 look.paint.insert(id, over);
@@ -1873,7 +2002,10 @@ mod tests {
         let grid = run(&mut s, "grid", json!({"start": [-1000, 3000], "end": [9000, 3000]}))["id"].as_u64().unwrap();
         run(&mut s, "graphics", json!({"view": 100000, "hide": ["grids"], "categories": {"walls": {"cut": {"color": [200, 0, 0]}}}}));
         let r = run(&mut s, "template", json!({"name": "Presentation", "from": "Level 1"}));
-        assert_eq!(r["controls"], json!(["categories", "filters", "range", "phase", "options", "scale", "detail", "style"]));
+        assert_eq!(
+            r["controls"],
+            json!(["categories", "filters", "range", "phase", "options", "scale", "detail", "style", "background_grid"])
+        );
         assert_eq!((r["hidden"].clone(), r["categories"]["wall"]["cut"]["color"].clone()), (json!(["grid"]), json!([200, 0, 0])));
         assert!(!owned(&plan(&s, 100001), grid).is_empty() && lines(&plan(&s, 100001), up).iter().all(|l| l.1 != RED));
         run(&mut s, "graphics", json!({"view": "Level 2", "template": "Presentation"}));
@@ -1886,7 +2018,7 @@ mod tests {
             (
                 json!("Presentation"),
                 json!(["grid"]),
-                json!(["categories", "filters", "range", "phase", "options", "scale", "detail", "style"])
+                json!(["categories", "filters", "range", "phase", "options", "scale", "detail", "style", "background_grid"])
             )
         );
         // Change the template, and its views follow; the view it came from doesn't.
@@ -1905,6 +2037,38 @@ mod tests {
         run(&mut s, "template", json!({"name": "Presentation", "controls": ["categories"]}));
         assert!(run(&mut s, "graphics", json!({"view": 100001, "template": null}))["template"].is_null());
         assert_eq!(run(&mut s, "graphics", json!({"view": 100001}))["hidden"], json!(["room"]));
+    }
+
+    #[test]
+    fn a_template_is_for_a_kind_of_view_and_is_copied_and_renamed_as_revits_are() {
+        let mut s = Session::new();
+        house(&mut s);
+        // Made from a view, it is for views of its kind; made from nothing, for the kind it says, or any.
+        assert_eq!(run(&mut s, "template", json!({"name": "Plans", "from": "Level 1"}))["kind"], "plan");
+        run(&mut s, "graphics", json!({"view": "{3D}", "hide": ["levels"]}));
+        assert_eq!(run(&mut s, "template", json!({"name": "Shaded", "from": "{3D}"}))["kind"], "3d");
+        assert_eq!(run(&mut s, "template", json!({"name": "Cuts", "kind": "section", "detail": "fine"}))["kind"], "section");
+        assert!(run(&mut s, "template", json!({"name": "Any", "controls": ["scale"]}))["kind"].is_null());
+        let e = s.execute("template", &json!({"name": "Cuts", "kind": "sheet"})).unwrap_err();
+        assert!(e.contains("plan, section or 3d"), "{e}");
+        // Duplicate: a new one like another, everything it holds, under its own name.
+        run(&mut s, "graphics", json!({"view": "Level 2", "template": "Plans"}));
+        let copy = run(&mut s, "template", json!({"name": "Plans 2", "like": "Plans", "detail": "coarse"}));
+        assert_eq!((copy["kind"].clone(), copy["detail"].clone(), copy["views"].clone()), (json!("plan"), json!("coarse"), json!([])));
+        assert_eq!(s.model.view_templates["Plans 2"].controls, s.model.view_templates["Plans"].controls);
+        let e = s.execute("template", &json!({"name": "Plans 3", "like": "Nope"})).unwrap_err();
+        assert!(e.contains("Nope"), "{e}");
+        // Rename: the views following it follow it under its new name.
+        let r = run(&mut s, "template", json!({"name": "Plans", "rename": "Working Plans"}));
+        assert_eq!((r["name"].clone(), r["views"].clone()), (json!("Working Plans"), json!([100001])));
+        assert!(!s.model.view_templates.contains_key("Plans"));
+        assert_eq!(run(&mut s, "graphics", json!({"view": "Level 2"}))["template"], "Working Plans");
+        let e = s.execute("template", &json!({"name": "Working Plans", "rename": "Shaded"})).unwrap_err();
+        assert!(e.contains("already"), "{e}");
+        // It survives a file.
+        let (back, left_out) = crate::model::Model::read(&s.model.to_json().unwrap()).unwrap();
+        assert!(left_out.is_empty(), "{left_out:?}");
+        assert_eq!(back.view_templates["Shaded"].kind, Some(super::ViewKind::ThreeD));
     }
 
     #[test]

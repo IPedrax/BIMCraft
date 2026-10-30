@@ -9,6 +9,7 @@ pub mod alignment;
 pub mod autosave;
 #[cfg(test)]
 mod autosave_tests;
+pub mod background_grid;
 pub mod bridge;
 pub mod cad;
 #[cfg(test)]
@@ -65,6 +66,12 @@ mod reinforce_tests;
 pub mod render;
 #[cfg(test)]
 mod room_area_tests;
+#[cfg(test)]
+mod room_bounds_tests;
+#[cfg(test)]
+mod room_freeze_tests;
+#[cfg(test)]
+mod room_height_tests;
 pub mod runs;
 pub mod sample;
 pub mod schedule;

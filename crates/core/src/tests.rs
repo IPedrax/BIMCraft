@@ -334,8 +334,10 @@ fn undo_and_redo_step_through_commands() {
 fn rooms_need_walls_around_them_and_follow_the_walls() {
     let mut s = Session::new();
     house(&mut s);
-    let e = s.execute("room", &json!({"point": [9000, 1000]})).unwrap_err();
-    assert!(e.contains("enclosed"), "{e}");
+    // Outside the walls it is placed unbounded, with a warning; taken back.
+    let made = run(&mut s, "room", json!({"point": [9000, 1000]}));
+    assert!(made["warning"].as_str().is_some_and(|w| w.contains("enclosed")), "{made}");
+    run(&mut s, "undo", json!({}));
     let r = run(&mut s, "RM", json!({"point": [4000, 3000], "name": "Living"}));
     assert_eq!((r["number"].as_str(), r["area_m2"].as_f64()), (Some("1"), Some(48.0)));
     // A partition splits the box; the room keeps the part around its point.
@@ -1514,6 +1516,9 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"id": u64::MAX}),
         json!({"ids": [99999, 100000, 100001, 100002, 100002]}),
         json!({"point": [f64::MAX, 0]}),
+        json!({"point": [2000, 2000], "frozen": "x", "top_level": [], "limit_offset": 1e308, "base_offset": -1e308}),
+        json!({"point": [2000, 2000], "frozen": true, "limit_offset": -2500}),
+        json!({"view": 100000, "show": ["roomreference"], "categories": {"roomreference": {"shown": 5}}}),
         json!({"elevation": "high"}),
         json!({"elevation": 1e300}),
         json!({"category": "wall", "name": "", "thickness": -5}),

@@ -40,7 +40,8 @@ fn a_room_separation_line_bounds_a_room_at_the_finish_faces_too() {
     let mut s = Session::new();
     box_with_room(&mut s);
     run(&mut s, "room_separator", json!({"points": [[2000, 0], [2000, 3000]]}));
-    run(&mut s, "room", json!({"point": [3000, 1500]}));
+    // The box's room, its point on the line, has one half; this one the other.
+    run(&mut s, "room", json!({"point": [1000, 1500]}));
     run(&mut s, "room_area", json!({"at": "finish"}));
     let rooms = run(&mut s, "elements", json!({"category": "room"}));
     let mut areas: Vec<f64> = rooms["elements"].as_array().unwrap().iter().filter_map(|e| e["area_m2"].as_f64()).collect();
@@ -105,11 +106,18 @@ fn a_room_cannot_lie_inside_a_wall() {
     for at in ["centre", "finish"] {
         run(&mut s, "room_area", json!({"at": at}));
         for point in [[2000, 0], [2000, 100]] {
-            let e = s.execute("room", &json!({"point": point})).unwrap_err();
+            // At the faces a point in the wall is refused; at the centre lines nothing encloses it, so it is placed
+            // unbounded, and taken back.
             if at == "finish" {
+                let e = s.execute("room", &json!({"point": point})).unwrap_err();
                 assert!(e.contains("inside wall"), "{at} {point:?}: {e}");
+                assert!(areas(&mut s).is_empty(), "{at} {point:?}: no room was made");
+            } else {
+                let made = run(&mut s, "room", json!({"point": point}));
+                assert!(made["warning"].as_str().is_some_and(|w| w.contains("isn't enclosed")), "{made}");
+                assert_eq!(areas(&mut s), [0.0]);
+                run(&mut s, "undo", json!({}));
             }
-            assert!(areas(&mut s).is_empty(), "{at} {point:?}: no room was made");
         }
     }
 }
@@ -117,7 +125,9 @@ fn a_room_cannot_lie_inside_a_wall() {
 #[test]
 fn a_room_in_the_clear_next_to_a_wall_is_still_a_room_at_the_finish_faces() {
     let mut s = Session::new();
-    box_with_room(&mut s);
+    // The box alone: two rooms can't share it.
+    let first = box_with_room(&mut s);
+    run(&mut s, "delete", json!({"ids": [first]}));
     run(&mut s, "room_area", json!({"at": "finish"}));
     // In the box, 20 mm from the inner face of the south wall.
     let made = run(&mut s, "room", json!({"point": [2000, 170]}));

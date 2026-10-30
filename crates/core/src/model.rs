@@ -114,6 +114,18 @@ pub struct Level {
     /// range and its sides as its crop.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub section_box: bool,
+    /// Revit's Computation Height: how far above it (mm) its rooms find the walls that bound them. Room separation lines
+    /// bound them whatever it is.
+    #[serde(default = "computation_height", skip_serializing_if = "is_computation_height")]
+    pub computation_height: f64,
+}
+
+fn computation_height() -> f64 {
+    CUT_HEIGHT
+}
+
+fn is_computation_height(x: &f64) -> bool {
+    *x == CUT_HEIGHT
 }
 
 impl Level {
@@ -126,6 +138,7 @@ impl Level {
             extent: None,
             graphics: Graphics::default(),
             section_box: false,
+            computation_height: CUT_HEIGHT,
         }
     }
 }
@@ -233,6 +246,48 @@ pub struct Wall {
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// Revit's Room Bounding: whether it bounds rooms. Off, rooms are found as though it weren't there.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub room_bounding: bool,
+}
+
+/// A room's Limit Offset unless it says: its top 2500 mm over its own level.
+pub const ROOM_LIMIT_OFFSET: f64 = 2500.0;
+/// Where the level above bounds a new room: its top this far over it (under it, being negative).
+pub const ROOM_BELOW_ABOVE: f64 = -300.0;
+/// The side of the square an unbounded room covers round its point, mm.
+pub const UNBOUNDED_ROOM: f64 = 1000.0;
+
+/// Why a room has no boundary: no loop of walls and separation lines closes round its point, or a room placed before it
+/// (this one) has the space it is in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Unbound {
+    NotEnclosed,
+    Shared(Id),
+}
+
+/// The square an unbounded room covers round its point `p`, [`UNBOUNDED_ROOM`] mm a side, counter-clockwise.
+pub fn unbounded_square(p: P2) -> Vec<P2> {
+    let h = UNBOUNDED_ROOM / 2.0;
+    let P2(x, y) = p;
+    vec![P2(x - h, y - h), P2(x + h, y - h), P2(x + h, y + h), P2(x - h, y + h)]
+}
+
+/// Whether `p` lies in region `g`: inside its outer ring, in none of its islands.
+pub fn region_holds(g: &Region, p: P2) -> bool {
+    geom::contains(&g.outer, p) && !g.holes.iter().any(|h| geom::contains(h, p))
+}
+
+fn room_limit_offset() -> f64 {
+    ROOM_LIMIT_OFFSET
+}
+
+fn is_room_limit_offset(x: &f64) -> bool {
+    *x == ROOM_LIMIT_OFFSET
+}
+
+fn is_yes(b: &bool) -> bool {
+    *b
 }
 
 fn is_zero(x: &f64) -> bool {
@@ -590,6 +645,76 @@ pub struct Room {
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// Revit's Base Offset: its bottom, this far above its level (mm).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub base_offset: f64,
+    /// Revit's Upper Limit: the level its top is measured from; none, its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_level: Option<Guid>,
+    /// Revit's Limit Offset: its top, this far above its upper limit (mm).
+    #[serde(default = "room_limit_offset", skip_serializing_if = "is_room_limit_offset")]
+    pub limit_offset: f64,
+    /// Frozen, it keeps the boundary it had when frozen (`kept`) and the walls are never searched for it again: it keeps its
+    /// size whatever the walls do, and a project of many rooms is drawn and scheduled without finding each one.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub frozen: bool,
+    /// What a frozen room keeps, given it after the command that froze it (`Model::keep_rooms`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kept: Option<Kept>,
+}
+
+impl Room {
+    /// A room at `point` on `level`, its height Revit's unless it says (up to [`ROOM_LIMIT_OFFSET`] over its level), not
+    /// frozen.
+    pub fn new(level: Guid, point: P2, name: impl Into<String>, number: impl Into<String>) -> Room {
+        Room {
+            level,
+            point,
+            name: name.into(),
+            number: number.into(),
+            params: BTreeMap::new(),
+            base_offset: 0.0,
+            top_level: None,
+            limit_offset: ROOM_LIMIT_OFFSET,
+            frozen: false,
+            kept: None,
+        }
+    }
+}
+
+/// A frozen room's boundary, measured both ways the project may measure rooms (`room_area`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Kept {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub centre: Option<Region>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finish: Option<Region>,
+}
+
+impl Kept {
+    pub fn at(&self, at: RoomArea) -> Option<&Region> {
+        match at {
+            RoomArea::Centre => self.centre.as_ref(),
+            RoomArea::Finish => self.finish.as_ref(),
+        }
+    }
+
+    /// Each of its rings moved by `f`; a mirror image turned back counter-clockwise, its holes clockwise.
+    pub fn map(&mut self, f: impl Fn(P2) -> P2) {
+        for g in self.centre.iter_mut().chain(self.finish.iter_mut()) {
+            g.outer.iter_mut().for_each(|q| *q = f(*q));
+            if geom::area(&g.outer) < 0.0 {
+                g.outer.reverse();
+            }
+            for h in &mut g.holes {
+                h.iter_mut().for_each(|q| *q = f(*q));
+                if geom::area(h) > 0.0 {
+                    h.reverse();
+                }
+            }
+        }
+    }
 }
 
 /// Which of an element's lines a dimension measures to: a wall's centre line, its face on the
@@ -1120,6 +1245,10 @@ pub struct Column {
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// Revit's Room Bounding: whether it bounds rooms (where it stands at its level's Computation Height). Off, rooms
+    /// run through it.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub room_bounding: bool,
 }
 
 /// Which line of a run's section its heights are: the top of it, its middle, or its bottom.
@@ -1533,7 +1662,11 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? w.attach_top { f(g) }
                 if let Some(g) = & $($m)? w.attach_base { f(g) }
             }
-            Element::Floor(Floor { level, .. }) | Element::Ceiling(Ceiling { level, .. }) | Element::Room(Room { level, .. }) => f(level),
+            Element::Floor(Floor { level, .. }) | Element::Ceiling(Ceiling { level, .. }) => f(level),
+            Element::Room(Room { level, top_level, .. }) => {
+                f(level);
+                if let Some(g) = top_level { f(g) }
+            }
             Element::Shaft(Shaft { level, top_level, .. })
             | Element::Mass(Mass { level, top_level, .. })
             | Element::Column(Column { level, top_level, .. })
@@ -3135,10 +3268,33 @@ impl Model {
         self.spans(w, self.plan_range(level).cut)
     }
 
-    /// Whether the wall bounds the rooms of `level`: it spans the height rooms are found at,
-    /// [`CUT_HEIGHT`] above the level, whatever the level's plan cuts at.
+    /// Whether the wall bounds the rooms of `level`: it spans the height rooms are found at, the level's Computation Height
+    /// ([`CUT_HEIGHT`] unless set) above it, whatever the level's plan cuts at.
     pub fn bounding(&self, w: &Wall, level: impl Key) -> bool {
-        self.spans(w, self.elevation(level) + CUT_HEIGHT)
+        let up = self.level(level).map_or(CUT_HEIGHT, |l| l.computation_height);
+        self.spans(w, self.elevation(level) + up)
+    }
+
+    /// Whether the wall bounds the rooms of `level`: [`Model::bounding`], and its Room Bounding on.
+    pub fn room_bounding(&self, w: &Wall, level: impl Key) -> bool {
+        w.room_bounding && self.bounding(w, level)
+    }
+
+    /// The outlines of the columns (and structural columns) that bound the rooms of `level`: Room Bounding on, standing at
+    /// the level's Computation Height.
+    pub fn bounding_columns(&self, level: impl Key) -> Vec<Vec<P2>> {
+        let z = self.elevation(level) + self.level(level).map_or(CUT_HEIGHT, |l| l.computation_height);
+        self.elements
+            .values()
+            .filter(|e| {
+                matches!(e, Element::Column(c) | Element::StructuralColumn(c) if c.room_bounding && {
+                    let (bottom, top) = self.span(c.level, c.base_offset, c.top_level, c.height);
+                    bottom <= z && z < top
+                })
+            })
+            .map(|e| self.column_outline(e))
+            .filter(|o| o.len() >= 3)
+            .collect()
     }
 
     /// Whether the wall spans height `z`.
@@ -4474,7 +4630,7 @@ impl Model {
     /// separation line drawn to a wall's face, as one drawn on a plan usually is, runs on to the wall's centre line, so it
     /// splits rooms measured there too.
     pub fn bounding_lines(&self, level: impl Key) -> Vec<(P2, P2)> {
-        let walls = self.wall_segments(level);
+        let walls = self.wall_segments(level, true);
         let mut lines: Vec<(P2, P2)> = walls.iter().map(|&(a, b, _)| (a, b)).collect();
         lines.extend(self.separators(level).into_iter().map(|(a, b)| (to_centre(b, a, &walls), to_centre(a, b, &walls))));
         lines
@@ -4482,15 +4638,16 @@ impl Model {
 
     /// Centre lines of the walls that bound the rooms of `level`, arcs as chords.
     pub fn wall_lines(&self, level: impl Key) -> Vec<(P2, P2)> {
-        self.wall_segments(level).into_iter().map(|(a, b, _)| (a, b)).collect()
+        self.wall_segments(level, false).into_iter().map(|(a, b, _)| (a, b)).collect()
     }
 
     /// The segments of [`Model::wall_lines`], each with half its wall's thickness.
-    fn wall_segments(&self, level: impl Key) -> Vec<(P2, P2, f64)> {
+    /// With `rooms`, of the walls whose Room Bounding is on.
+    fn wall_segments(&self, level: impl Key, rooms: bool) -> Vec<(P2, P2, f64)> {
         self.elements
             .iter()
             .filter_map(|(&id, e)| match e {
-                Element::Wall(w) if self.bounding(w, level) => Some((id, self.thickness(w) / 2.0)),
+                Element::Wall(w) if self.bounding(w, level) && (!rooms || w.room_bounding) => Some((id, self.thickness(w) / 2.0)),
                 _ => None,
             })
             .flat_map(|(id, half)| {
@@ -4530,10 +4687,41 @@ impl Model {
     /// A room's boundary measured at `at`: the walls' centre lines (Revit's "At wall centerline") or their faces ("At wall
     /// finish": the area inside the walls, which Brazilian codes call área útil).
     pub fn room_region_at(&self, r: &Room, at: RoomArea) -> Option<Region> {
-        if self.wall_holding(r, at).is_some() {
-            return None;
+        self.room_bound(r, at).ok()
+    }
+
+    /// A room's boundary measured at `at`, or why it has none. A frozen room's is the one it keeps, found from nothing; else
+    /// the loop round its point, unless a room placed before it already has its point in that loop: two rooms can't share a
+    /// space, so the later is left unbounded, as Revit's redundant room.
+    pub fn room_bound(&self, r: &Room, at: RoomArea) -> Result<Region, Unbound> {
+        if let Some(k) = &r.kept {
+            return k.at(at).cloned().ok_or(Unbound::NotEnclosed);
         }
-        geom::region_at(&self.room_lines(r.level, at), r.point, TOL)
+        if self.wall_holding(r, at).is_some() {
+            return Err(Unbound::NotEnclosed);
+        }
+        let g = geom::region_at(&self.room_lines(r.level, at), r.point, TOL).ok_or(Unbound::NotEnclosed)?;
+        self.room_before(r, &g).map_or(Ok(g), |id| Err(Unbound::Shared(id)))
+    }
+
+    /// The room on `r`'s level, placed before it (of a lower id; any, for a room not yet in the model), whose point lies in
+    /// `g`: the room that has the space `g` is.
+    pub fn room_before(&self, r: &Room, g: &Region) -> Option<Id> {
+        let me = self.elements.iter().find(|(_, e)| matches!(e, Element::Room(o) if std::ptr::eq(o, r))).map(|(id, _)| *id);
+        self.elements
+            .iter()
+            .take_while(|(id, _)| me.is_none_or(|m| **id < m))
+            .find(|(_, e)| matches!(e, Element::Room(o) if self.same(o.level, r.level) && region_holds(g, o.point)))
+            .map(|(id, _)| *id)
+    }
+
+    /// What a room covers in plan: its boundary's outer ring where the project measures rooms, or, unbounded, a square
+    /// [`UNBOUNDED_ROOM`] mm a side round its point, as Revit shows a room in no enclosed region. Whether it is bounded.
+    pub fn room_outline(&self, r: &Room) -> (Vec<P2>, bool) {
+        match self.room_region(r) {
+            Some(g) => (g.outer, true),
+            None => (unbounded_square(r.point), false),
+        }
     }
 
     /// The room-bounding wall whose body a room's point lies in, when rooms are measured at `at` the finish faces. There the
@@ -4545,21 +4733,66 @@ impl Model {
         }
         self.elements
             .iter()
-            .filter(|(_, e)| matches!(e, Element::Wall(w) if self.bounding(w, r.level)))
+            .filter(|(_, e)| matches!(e, Element::Wall(w) if self.room_bounding(w, r.level)))
             .find(|&(&id, _)| geom::contains(&walls::outline(self, id), r.point))
             .map(|(&id, _)| id)
     }
 
+    /// A room's bottom and top: its level's elevation plus its base offset, and its upper limit's (its level's, when it
+    /// has none) plus its limit offset.
+    pub fn room_span(&self, r: &Room) -> (f64, f64) {
+        (self.elevation(r.level) + r.base_offset, self.elevation(r.top_level.unwrap_or(r.level)) + r.limit_offset)
+    }
+
+    /// A room's Unbounded Height: from its bottom up to its top (`room_span`).
+    pub fn room_height(&self, r: &Room) -> f64 {
+        let (bottom, top) = self.room_span(r);
+        top - bottom
+    }
+
+    /// Frozen rooms that keep no boundary yet are given the one they have now; rooms no longer frozen let theirs go. The
+    /// engine calls it after every command, so freezing is a field like any other (`modify {frozen: true}`).
+    pub fn keep_rooms(&mut self) {
+        let changed: Vec<(Id, Option<Kept>)> = self
+            .elements
+            .iter()
+            .filter_map(|(&id, e)| match e {
+                Element::Room(r) if r.frozen && r.kept.is_none() => Some((
+                    id,
+                    Some(Kept { centre: self.room_region_at(r, RoomArea::Centre), finish: self.room_region_at(r, RoomArea::Finish) }),
+                )),
+                Element::Room(r) if !r.frozen && r.kept.is_some() => Some((id, None)),
+                _ => None,
+            })
+            .collect();
+        for (id, kept) in changed {
+            if let Some(Element::Room(r)) = self.elements.get_mut(id) {
+                r.kept = kept;
+            }
+        }
+    }
+
     /// The lines rooms on `level` are found among, measured at `at`.
+    /// Room-bounding walls (their centre lines, or their faces) and separation lines, and the faces of room-bounding
+    /// columns either way, a column having no centre line to measure to.
     pub fn room_lines(&self, level: impl Key, at: RoomArea) -> Vec<(P2, P2)> {
-        match at {
+        let mut lines = match at {
             RoomArea::Centre => self.bounding_lines(level),
             RoomArea::Finish => {
-                let mut lines = self.face_lines(level);
+                let mut lines: Vec<(P2, P2)> = self
+                    .elements
+                    .iter()
+                    .filter(|(_, e)| matches!(e, Element::Wall(w) if self.room_bounding(w, level)))
+                    .flat_map(|(&id, _)| geom::ring_edges(&walls::outline(self, id)).collect::<Vec<_>>())
+                    .collect();
                 lines.extend(self.separators(level));
                 lines
             }
+        };
+        for o in self.bounding_columns(level) {
+            lines.extend(geom::ring_edges(&o));
         }
+        lines
     }
 
     /// What a detail line, a filled region or a text note must be, wherever it is: in a view or in a detail group.
@@ -4904,6 +5137,7 @@ impl Model {
                 Element::Level(l) => {
                     text(&who, "name", &l.name)?;
                     coord(&format!("{who} elevation"), l.elevation)?;
+                    coord(&format!("{who} computation height"), l.computation_height)?;
                     if !level_names.insert(l.name.as_str()) {
                         return Err(format!("{who}: another level is already named `{}`", l.name));
                     }
@@ -5108,6 +5342,23 @@ impl Model {
                     point(&who, r.point)?;
                     text(&who, "name", &r.name)?;
                     text(&who, "number", &r.number)?;
+                    kept(&who, r)?;
+                    if let Some(t) = r.top_level {
+                        level_ok(t)?;
+                    }
+                    coord(&format!("{who} base offset"), r.base_offset)?;
+                    coord(&format!("{who} limit offset"), r.limit_offset)?;
+                    let (bottom, top) = self.room_span(r);
+                    if top <= bottom + TOL {
+                        return Err(format!(
+                            "{who}: the room's top (its upper limit {} + limit offset {}) must be above its bottom (its level {} + \
+                             base offset {}); raise the limit offset or lower the base offset",
+                            self.elevation(r.top_level.unwrap_or(r.level)),
+                            r.limit_offset,
+                            self.elevation(r.level),
+                            r.base_offset
+                        ));
+                    }
                 }
                 Element::Dimension(d) => {
                     level_ok(d.level)?;
@@ -5827,6 +6078,29 @@ fn solid(loops: &[Vec<P2>], holes: &[Vec<P2>]) -> Vec<Vec<P2>> {
 }
 
 /// An outline: 3 to [`MAX_POINTS`] points around some area.
+/// A frozen room's kept boundary: rings of usable points, and some boundary to keep.
+fn kept(who: &str, r: &Room) -> Result<(), String> {
+    let Some(k) = &r.kept else { return Ok(()) };
+    if k.centre.is_none() && k.finish.is_none() {
+        return Err(format!(
+            "{who}: the room is frozen but unbounded (not enclosed, or in a space another room has); a room is frozen with \
+             the boundary it has, so give it one first (walls or room separation lines round it, the other room deleted or \
+             parted from it), or leave it unfrozen"
+        ));
+    }
+    for (at, g) in [("centre", &k.centre), ("finish", &k.finish)] {
+        let Some(g) = g else { continue };
+        if g.holes.iter().map(Vec::len).sum::<usize>().saturating_add(g.outer.len()) > MAX_POINTS {
+            return Err(format!("{who}: its kept {at} boundary has more than {MAX_POINTS} points"));
+        }
+        boundary(&format!("{who} (room) kept {at} boundary"), &g.outer)?;
+        for h in &g.holes {
+            boundary(&format!("{who} (room) kept {at} island"), h)?;
+        }
+    }
+    Ok(())
+}
+
 fn boundary(who: &str, ring: &[P2]) -> Result<(), String> {
     if ring.len() < 3 || ring.len() > MAX_POINTS {
         return Err(format!("{who}: a boundary needs 3 to {MAX_POINTS} points"));
@@ -5958,6 +6232,7 @@ mod tests {
 
     fn wall(level: Guid, a: P2, b: P2) -> Element {
         Element::Wall(Wall {
+            room_bounding: true,
             params: Default::default(),
             type_name: "Generic - 200mm".into(),
             level,
@@ -6049,8 +6324,14 @@ mod tests {
     fn rooms_are_bounded_by_the_walls_their_level_cuts() {
         let mut m = Model::new("t");
         boxed(&mut m);
-        let room =
-            Room { params: Default::default(), level: m.guid(100000), point: P2(3000.0, 2000.0), name: "Hall".into(), number: "1".into() };
+        let room = Room {
+            params: Default::default(),
+            level: m.guid(100000),
+            point: P2(3000.0, 2000.0),
+            name: "Hall".into(),
+            number: "1".into(),
+            ..Room::new(m.guid(100000), P2(0.0, 0.0), "", "")
+        };
         assert_eq!(m.room_region(&room).map(|r| r.area()), Some(24e6));
         let upstairs = Room { level: m.guid(100001), ..room };
         assert_eq!(m.room_region(&upstairs), None, "Level 2 has no walls");

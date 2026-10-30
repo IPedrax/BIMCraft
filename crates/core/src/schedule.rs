@@ -212,6 +212,8 @@ const OWN: &[(&str, usize, &[Own])] = &[
             AREA,
             (msg!("Perimeter"), Kind::Length, From::Metres("perimeter_m")),
             COUNT,
+            (msg!("Unbounded Height"), Kind::Length, From::Key("unbounded_height")),
+            VOLUME,
             PHASE_CREATED,
             PHASE_DEMOLISHED,
             DESIGN_OPTION,

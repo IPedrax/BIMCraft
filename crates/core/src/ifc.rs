@@ -17,7 +17,7 @@ use std::fmt::Write;
 use crate::geom::{self, P2};
 use serde_json::Value;
 
-use crate::model::{DEFAULT_HEIGHT, Element, Function, Guid, Id, Layer, Model, Operation, ParameterKind, Railing, RoomArea, heading, mix};
+use crate::model::{Element, Function, Guid, Id, Layer, Model, Operation, ParameterKind, Railing, RoomArea, heading, mix};
 use crate::phasing;
 use crate::stairs;
 use crate::view3d::P3;
@@ -717,11 +717,12 @@ pub fn export(m: &Model) -> String {
                 let Some(&(_, storey)) = storeys.get(&r.level) else { continue };
                 let at = w.place(Some(storey), (0.0, 0.0, 0.0), None);
                 // A room that isn't enclosed has no shape to give.
-                let height = m.level_above(r.level).map_or(DEFAULT_HEIGHT, |up| m.elevation(up) - m.elevation(r.level));
+                // As tall as its upper limit and offsets make it, from its base offset.
+                let height = m.room_height(r);
                 let shape = match m.room_region(r) {
                     Some(region) => {
                         let profile = w.profile(&region.outer, &region.holes);
-                        format!("#{}", w.body(profile, 0.0, height, &[]))
+                        format!("#{}", w.body(profile, r.base_offset, height, &[]))
                     }
                     None => "$".into(),
                 };
@@ -739,6 +740,8 @@ pub fn export(m: &Model) -> String {
                         ("NetPerimeter", "LENGTH", net.perimeter()),
                         ("GrossFloorArea", "AREA", gross.area() / 1e6),
                         ("NetFloorArea", "AREA", net.area() / 1e6),
+                        ("GrossVolume", "VOLUME", gross.area() * height / 1e9),
+                        ("NetVolume", "VOLUME", net.area() * height / 1e9),
                     ];
                     w.quantities(ent, "Qto_SpaceBaseQuantities", &values, id);
                 }

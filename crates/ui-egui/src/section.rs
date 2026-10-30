@@ -32,12 +32,23 @@ pub struct Cut {
     image: Option<Image>,
     texture: Option<TextureHandle>,
     shown: Option<Shot>,
+    grid_background: bool,
 }
 
 impl Cut {
     /// The picture of section `id` through `pixels` with `tints` on the elements they name, into the texture, of `model`.
     #[allow(clippy::too_many_arguments)]
-    fn draw(&mut self, ctx: &Context, model: &Arc<Model>, scene: &Scene, id: Id, pixels: View, tints: Vec<(Id, Rgb)>, dark: bool) {
+    fn draw(
+        &mut self,
+        ctx: &Context,
+        model: &Arc<Model>,
+        scene: &Scene,
+        id: Id,
+        pixels: View,
+        tints: Vec<(Id, Rgb)>,
+        dark: bool,
+        grid_background: bool,
+    ) {
         #[cfg(test)]
         {
             self.pictures += 1;
@@ -45,7 +56,18 @@ impl Cut {
         if let Some(image) = render::section_image(model, scene, id, pixels, &tints) {
             // A hidden-line picture, so dark as the drawing over it is.
             let (rgba, _) = image.rgba.as_chunks::<4>();
-            let pixels: Vec<Color32> = rgba.iter().map(|[r, g, b, _]| color(Rgb(*r, *g, *b))).collect();
+            let pixels: Vec<Color32> = rgba
+                .iter()
+                .enumerate()
+                .map(|(i, [r, g, b, _])| {
+                    let (x, y) = (i % image.width as usize, i / image.width as usize);
+                    if grid_background && Rgb(*r, *g, *b) == render::PAPER && !image.covered(x as f64, y as f64) {
+                        Color32::TRANSPARENT
+                    } else {
+                        color(Rgb(*r, *g, *b))
+                    }
+                })
+                .collect();
             let colors = ColorImage { size: [image.width as usize, image.height as usize], pixels, source_size: Default::default() };
             match &mut self.texture {
                 Some(t) => t.set(colors, TextureOptions::NEAREST),
@@ -53,6 +75,7 @@ impl Cut {
             }
             self.image = Some(image);
         }
+        self.grid_background = grid_background;
         self.shown = Some((Arc::clone(model), id, pixels, tints, dark));
     }
 }
@@ -74,10 +97,14 @@ impl BimApp {
         // The picture on screen is this model's, in this view and size (and, tints given, tinted so): a pan or a zoom, a new
         // model or another tab is not. A picture costs a frame, and the drawing over it keeps its regions' ink from it: so it is
         // drawn first and once, with the tints it had, and again only if the hover changed along with the view.
-        let current = |cut: &Cut, tints: Option<&[(Id, Rgb)]>| matches!(&cut.shown, Some((m, v, f, t, k)) if Arc::ptr_eq(m, &model) && *v == id && *f == pixels && *k == dark && tints.is_none_or(|x| x == t));
+        let grid_background = self.background_grid().shown();
+        let current = |cut: &Cut, tints: Option<&[(Id, Rgb)]>| {
+            cut.grid_background == grid_background
+                && matches!(&cut.shown, Some((m, v, f, t, k)) if Arc::ptr_eq(m, &model) && *v == id && *f == pixels && *k == dark && tints.is_none_or(|x| x == t))
+        };
         if !current(&self.cut, None) {
             let tints = self.cut.shown.as_ref().map(|s| s.3.clone()).unwrap_or_default();
-            self.cut.draw(ui.ctx(), &model, scene_of(&mut self.orbit.scene, &model), id, pixels, tints, dark);
+            self.cut.draw(ui.ctx(), &model, scene_of(&mut self.orbit.scene, &model), id, pixels, tints, dark, grid_background);
         }
         let d = match &self.cut.image {
             Some(image) => render::section_over(&model, id, view, image),
@@ -101,10 +128,11 @@ impl BimApp {
             .chain(hovered.filter(|h| !self.selection.contains(h)).map(|h| (h, rgb(canvas_pal().hover))))
             .collect();
         if !current(&self.cut, Some(&tints)) {
-            self.cut.draw(ui.ctx(), &model, scene_of(&mut self.orbit.scene, &model), id, pixels, tints, dark);
+            self.cut.draw(ui.ctx(), &model, scene_of(&mut self.orbit.scene, &model), id, pixels, tints, dark, grid_background);
         }
         let p = ui.painter_at(rect);
         p.rect_filled(rect, 0.0, color(render::PAPER));
+        self.paint_background_grid(&p, rect, view);
         if let Some(t) = &self.cut.texture {
             p.image(t.id(), rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
         }
@@ -136,8 +164,13 @@ impl BimApp {
         p.extend(datum);
         let clicked = self.clicked_at(&response).map(|at| (at.x - rect.min.x, at.y - rect.min.y));
         // Along the line and up, to the nearest 10 mm.
+        let grid = self.background_grid();
+        let snapping = self.grid_snapping;
         let at = |q: (f32, f32)| {
             let p = view.mm(q);
+            if snapping && let Some(at) = grid.nearest(p) {
+                return at;
+            }
             P2((p.0 / 10.0).round() * 10.0, (p.1 / 10.0).round() * 10.0)
         };
         // A double click on a note writes in it.
