@@ -19,11 +19,14 @@ dwg = ["dep:bimcraft-dwg"]
 
 [dependencies]
 bimcraft-core = { workspace = true }
+# PyAddins: the user's Python scripts, which the MCP server writes and runs for agents.
+bimcraft-pyaddins = { workspace = true }
 bimcraft-rvt = { workspace = true, optional = true }
 bimcraft-dwg = { workspace = true, optional = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
+tempfile = { workspace = true }
 # DWG files made from DXF text, for the test of the child that reads them.
 bimcraft-dwg = { workspace = true, features = ["testing"] }
 # Synthetic Revit-shaped files for the tests of `info`.

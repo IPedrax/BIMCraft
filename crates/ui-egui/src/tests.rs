@@ -5283,6 +5283,7 @@ mod perspective;
 mod planviews;
 mod popup;
 mod purge;
+mod pyaddins;
 mod reinforce;
 mod revit;
 mod section_box;

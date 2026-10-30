@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 
-use crate::engine::{Session, commands};
+use crate::engine::{Session, UNDO_LIMIT, commands};
 use crate::geom::P2;
 use crate::model::{Facing, Model};
 
@@ -648,6 +648,57 @@ fn an_atomic_script_is_one_undo_step_and_leaves_nothing_done_when_a_line_fails()
     let steps = s.history().len();
     s.script_atomic("inspect\n").unwrap();
     assert_eq!(s.history().len(), steps);
+}
+
+#[test]
+fn steps_since_a_mark_squash_into_one_and_a_new_project_or_nothing_done_leaves_them() {
+    let mut s = Session::new();
+    run(&mut s, "level", json!({"elevation": 3000}));
+    let (history, levels) = (s.history(), count(&mut s, "level"));
+    // A run that spans many calls (a PyAddin's, a frame at a time) is one step when it is over.
+    let mark = s.mark();
+    run(&mut s, "level", json!({"elevation": 6000}));
+    run(&mut s, "inspect", json!({}));
+    run(&mut s, "level", json!({"elevation": 9000}));
+    assert_eq!(s.history().len(), history.len() + 2);
+    s.squash(&mark, "PyAddin");
+    assert_eq!(s.history().len(), history.len() + 1);
+    assert_eq!(s.history().last(), Some(&"PyAddin"));
+    run(&mut s, "undo", json!({}));
+    assert_eq!(count(&mut s, "level"), levels, "one undo takes it all back");
+    run(&mut s, "redo", json!({}));
+    assert_eq!(count(&mut s, "level"), levels + 2);
+    // One step, or none, is left as it is.
+    let mark = s.mark();
+    run(&mut s, "level", json!({"elevation": 12000}));
+    s.squash(&mark, "PyAddin");
+    assert_eq!(s.history().last(), Some(&"Level"));
+    let (mark, steps) = (s.mark(), s.history().len());
+    s.squash(&mark, "PyAddin");
+    assert_eq!(s.history().len(), steps);
+    // A new project since the mark: its history is its own.
+    let mark = s.mark();
+    run(&mut s, "level", json!({"elevation": 15000}));
+    run(&mut s, "new", json!({}));
+    run(&mut s, "level", json!({"elevation": 6000}));
+    run(&mut s, "level", json!({"elevation": 9000}));
+    s.squash(&mark, "PyAddin");
+    assert_eq!(s.history(), vec!["Level", "Level"]);
+    // A full history, its oldest steps dropped meanwhile, still squashes just what came after the mark.
+    let mut s = Session::new();
+    for i in 0..UNDO_LIMIT {
+        run(&mut s, "level", json!({"elevation": 3000.0 * (i as f64 + 2.0)}));
+    }
+    let mark = s.mark();
+    for i in 0..3 {
+        run(&mut s, "level", json!({"elevation": -3000.0 * (i as f64 + 1.0)}));
+    }
+    s.squash(&mark, "PyAddin");
+    assert_eq!(s.history().len(), UNDO_LIMIT - 2);
+    assert_eq!(s.history().last(), Some(&"PyAddin"));
+    let before = count(&mut s, "level");
+    run(&mut s, "undo", json!({}));
+    assert_eq!(count(&mut s, "level"), before - 3);
 }
 
 #[test]

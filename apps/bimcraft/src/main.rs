@@ -124,6 +124,10 @@ fn main() -> ExitCode {
         app.show_start_page();
     }
     app.revit = revit_reader();
+    // The user's PyAddins folder, beside the favorites: the Player's scripts and the PyAddins tab's buttons.
+    if let Some(store) = bimcraft_pyaddins::Store::default_store() {
+        app.use_pyaddins(store);
+    }
     if let Some(file) = later {
         app.open_later(file);
     }

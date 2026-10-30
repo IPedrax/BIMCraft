@@ -43,6 +43,7 @@ mod phasing;
 mod popup;
 mod properties;
 mod purge;
+mod pyaddins;
 pub mod recent;
 mod reinforce;
 mod renames;
@@ -269,6 +270,8 @@ enum Tab {
     Massing,
     View,
     Manage,
+    /// The user's Python scripts: the Player, and the buttons made of them.
+    PyAddins,
     Modify,
     Context,
 }
@@ -688,6 +691,8 @@ pub struct BimApp {
     pub revit: Option<revit::Importer>,
     /// The control port, when the window was started with one: agents work on this project through it.
     control: Option<control::Control>,
+    /// The user's Python scripts: the folder, the Player's forms, the run going on.
+    pub(crate) pyaddins: pyaddins::PyAddins,
     /// The Revit file being read, on a thread of its own.
     revit_job: Option<revit::Job>,
     /// Files to open at the next frame: the command line's, and what the system asked for while a Revit file was being read.
@@ -1104,6 +1109,7 @@ impl BimApp {
             updates: None,
             revit: None,
             control: None,
+            pyaddins: pyaddins::PyAddins::default(),
             revit_job: None,
             opens: Vec::new(),
             dialog: None,
@@ -1271,6 +1277,7 @@ impl BimApp {
         lang::set(self.lang);
         // What agents asked of the project comes before the tidying, which puts right what a command left stale.
         self.answer_agents(&ctx);
+        self.poll_pyaddins(&ctx);
         // A project put in the session's place under the window (the control port turns an agent's New and Open away, but a
         // script or an embedder may do them) starts it over, as File > New does: its sketch and dialogs were of the old one, and
         // it gets a recovery copy of its own. (The old one's stays until that is written: nobody was asked about its changes.)
@@ -2563,6 +2570,7 @@ impl BimApp {
         (fresh.recent, fresh.recent_path) = (std::mem::take(&mut self.recent), self.recent_path.take());
         fresh.autosave = std::mem::take(&mut self.autosave);
         fresh.card = std::mem::take(&mut self.card);
+        fresh.pyaddins = self.pyaddins.carried();
         fresh.home = self.home.put_away();
         *self = fresh;
     }
@@ -2785,6 +2793,7 @@ impl BimApp {
                                 (Tab::Massing, msg!("Massing")),
                                 (Tab::View, msg!("View")),
                                 (Tab::Manage, msg!("Manage")),
+                                (Tab::PyAddins, "PyAddins"),
                                 (Tab::Modify, "Modify"),
                             ] {
                                 let r = tab_button(ui, label, self.tab == tab, false);
@@ -2879,6 +2888,7 @@ impl BimApp {
                         Tab::Massing => self.massing_tab(ui),
                         Tab::View => self.view_tab(ui),
                         Tab::Manage => self.manage_tab(ui),
+                        Tab::PyAddins => self.pyaddins_tab(ui),
                         Tab::Modify | Tab::Context => self.modify_tab(ui),
                     });
                 });
@@ -4474,6 +4484,7 @@ impl BimApp {
         self.standards_window(ctx);
         self.options_window(ctx);
         self.purge_window(ctx);
+        self.pyaddins_windows(ctx);
         if std::mem::take(&mut self.link_dialog) {
             self.link_model_dialog(ctx);
         }

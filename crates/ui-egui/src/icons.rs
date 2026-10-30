@@ -183,6 +183,10 @@ icon_names! {
     AddVertex,
     DeleteVertex,
     ConvertSpline,
+    Script,
+    Player,
+    Reload,
+    Stop,
 }
 
 /// A single unfilled contour in grid coordinates, shared by egui and the catalog.
@@ -196,6 +200,28 @@ pub struct Outline {
 pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
     let mut g = Glyph::default();
     match icon {
+        Icon::Script => {
+            // A page with a folded corner and code's angle brackets on it.
+            g.closed(&[(5.0, 3.0), (15.0, 3.0), (19.0, 7.0), (19.0, 21.0), (5.0, 21.0)]);
+            if !compact {
+                g.line(&[(15.0, 3.0), (15.0, 7.0), (19.0, 7.0)]);
+            }
+            g.line(&[(10.0, 11.0), (8.0, 14.0), (10.0, 17.0)]);
+            g.line(&[(14.0, 11.0), (16.0, 14.0), (14.0, 17.0)]);
+        }
+        Icon::Player => {
+            // A panel with a play triangle: run what is in it.
+            g.closed(&[(3.0, 4.5), (21.0, 4.5), (21.0, 19.5), (3.0, 19.5)]);
+            g.closed(&[(10.0, 8.5), (16.0, 12.0), (10.0, 15.5)]);
+        }
+        Icon::Reload => {
+            // A circle that comes back round on itself, its arrow at the open end.
+            g.arc((12.0, 12.0), 7.5, 30.0, 330.0);
+            g.line(&[(18.2, 3.9), (18.5, 8.25), (14.2, 8.0)]);
+        }
+        Icon::Stop => {
+            g.closed(&[(6.0, 6.0), (18.0, 6.0), (18.0, 18.0), (6.0, 18.0)]);
+        }
         Icon::Modify => {
             // A pointer with a clear tip, one diagonal axis and an attached tail.
             g.closed(&[(5.0, 3.0), (5.0, 20.0), (10.0, 15.0), (13.0, 21.0), (16.0, 19.5), (13.0, 13.5), (20.0, 13.5)]);

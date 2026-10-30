@@ -25,6 +25,7 @@ bimcraft-rvt = { workspace = true, optional = true }
 bimcraft-dwg = { workspace = true, optional = true }
 bimcraft-ui-egui = { workspace = true }
 bimcraft-update = { workspace = true }
+bimcraft-pyaddins = { workspace = true }
 eframe = { workspace = true }
 rfd = { workspace = true }
 serde_json = { workspace = true }

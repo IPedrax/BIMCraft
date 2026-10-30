@@ -24,6 +24,7 @@ flate2 = "1"
 zune-jpeg = "0.5"
 bimcraft-ui-egui = { path = "crates/ui-egui" }
 bimcraft-update = { path = "crates/update" }
+bimcraft-pyaddins = { path = "crates/pyaddins" }
 # The Revit reader: Apache-2.0 only, so the command line and the desktop take it through an optional feature.
 bimcraft-rvt = { path = "crates/rvt" }
 # The DWG bridge: MIT OR Apache-2.0 itself, over acadrust (MPL-2.0, unmodified); the core never depends on it.
