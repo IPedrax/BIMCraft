@@ -147,11 +147,9 @@ mod tests {
         assert_eq!(desktop_file("no-such-app-anywhere.desktop"), None);
     }
 
+    #[cfg(unix)]
     #[test]
     fn the_editor_set_is_started_with_the_file_and_one_that_fails_says_so() {
-        if !cfg!(unix) {
-            return;
-        }
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("x.py");
         std::fs::write(&file, "print(1)\n").unwrap();
