@@ -728,3 +728,88 @@ fn only_a_distribution_board_has_the_electrical_group() {
     h.run();
     assert!(h.query_by_label("Distribution System").is_none());
 }
+
+/// A board on 127/220 V and `n` luminaires (127 V, 12 VA), by command; the board and the luminaires selected.
+fn board_and_lamps(h: &mut Harness<BimApp>, n: i32) -> (Id, Vec<Id>) {
+    let board = board_selected(h, [1000, 1000]);
+    let s = &mut h.state_mut().session;
+    s.execute("panel", &json!({"id": board, "distribution": "127/220 V", "mains": 63, "slots": 24})).expect("the board's system");
+    let lamps: Vec<Id> = (0..n)
+        .map(|i| {
+            let r = s.execute("component", &json!({"family": "Ceiling Luminaire", "at": [1000 + 1000 * i, 2000]}));
+            r.expect("a luminaire")["id"].as_u64().expect("its id")
+        })
+        .collect();
+    h.state_mut().selection = std::iter::once(board).chain(lamps.iter().copied()).collect();
+    h.run();
+    (board, lamps)
+}
+
+fn circuit_of(h: &Harness<BimApp>, id: Id) -> Option<bimcraft_core::electrical::Circuit> {
+    match h.state().session.model.elements.get(id) {
+        Some(Element::Circuit(c)) => Some(c.clone()),
+        _ => None,
+    }
+}
+
+#[test]
+fn create_circuit_puts_the_selected_devices_on_the_selected_board_and_selects_it() {
+    let mut h = app(BOX);
+    let (board, lamps) = board_and_lamps(&mut h, 3);
+    from_tab(&mut h, "Electrical", "Create Circuit");
+    let made = h.state().selection.clone();
+    let [id] = made[..] else { panic!("the circuit is selected: {made:?}") };
+    let c = circuit_of(&h, id).expect("a circuit");
+    let m = &h.state().session.model;
+    assert_eq!(c.panel, m.guid(board));
+    assert_eq!(c.devices, lamps.iter().map(|l| m.guid(*l)).collect::<Vec<_>>());
+    assert_eq!((c.number, c.poles), (1, 1));
+    // Its palette shows what it loads, and the group is the circuit's.
+    assert!(h.query_by_label("Circuit Number").is_some());
+    assert!(h.query_by_label("Distribution System").is_none());
+    // Undone, it is gone.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert!(circuit_of(&h, id).is_none());
+}
+
+#[test]
+fn create_circuit_says_what_is_missing_and_makes_nothing() {
+    let mut h = app(BOX);
+    // The tab first: a selected board's palette has a group of the same name.
+    press(&mut h, "Electrical");
+    let board = board_selected(&mut h, [1000, 1000]);
+    press(&mut h, "Create Circuit");
+    assert!(h.state().status.error, "a board with no devices: {}", h.state().status.text);
+    let r = h.state_mut().session.execute("component", &json!({"family": "Ceiling Luminaire", "at": [1000, 2000]}));
+    h.state_mut().selection = vec![r.expect("a luminaire")["id"].as_u64().expect("its id")];
+    h.run();
+    press(&mut h, "Create Circuit");
+    assert!(h.state().status.error, "devices with no board: {}", h.state().status.text);
+    let n = h.state().session.model.elements.iter().filter(|(_, e)| matches!(e, Element::Circuit(_))).count();
+    assert_eq!((n, board > 0), (0, true));
+}
+
+#[test]
+fn a_circuits_properties_edit_it_through_the_circuit_command_and_say_what_it_loads() {
+    let mut h = app(BOX);
+    let (_, lamps) = board_and_lamps(&mut h, 2);
+    from_tab(&mut h, "Electrical", "Create Circuit");
+    let id = h.state().selection[0];
+    // Two 12 VA luminaires at 127 V.
+    assert!(h.query_by_label("24 VA").is_some(), "its load is shown");
+    type_role(&mut h, Role::TextInput, "Circuit Number", "7");
+    type_role(&mut h, Role::TextInput, "Rating", "10");
+    type_role(&mut h, Role::TextInput, "Name", "Sala");
+    let c = circuit_of(&h, id).expect("a circuit");
+    assert_eq!((c.number, c.rating_a, c.name.as_str()), (7, 10.0, "Sala"));
+    assert_eq!(c.devices.len(), lamps.len());
+    // A number it is not is said, and changes nothing.
+    type_role(&mut h, Role::TextInput, "Rating", "lots");
+    assert!(h.state().status.error, "{}", h.state().status.text);
+    assert_eq!(circuit_of(&h, id).map(|c| c.rating_a), Some(10.0));
+    // A value the core refuses is said too, and the circuit stays.
+    type_role(&mut h, Role::TextInput, "Number of Poles", "2");
+    assert!(h.state().status.error, "two poles against one-pole luminaires: {}", h.state().status.text);
+    assert_eq!(circuit_of(&h, id).map(|c| c.poles), Some(1));
+}

@@ -434,3 +434,224 @@ fn every_circuit_payload_is_safe() {
         assert_eq!(s.model.check(), Ok(()), "{p}");
     }
 }
+
+// ---------- IFC ----------
+
+fn ifc_path(tag: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("bimcraft-circuit-{tag}-{}.ifc", std::process::id()))
+}
+
+/// The IFC file the project is written as.
+fn written(s: &mut Session, tag: &str) -> String {
+    let path = ifc_path(tag);
+    run(s, "save", json!({"path": path}));
+    let text = std::fs::read_to_string(&path).unwrap();
+    let _ = std::fs::remove_file(&path);
+    text
+}
+
+fn entities<'a>(file: &'a str, name: &str) -> Vec<&'a str> {
+    let head = format!("={name}(");
+    file.lines().filter(|l| l.contains(&head)).collect()
+}
+
+/// `text` opened as a project, and what the opening said.
+fn read(text: &str, tag: &str) -> (Session, Value) {
+    let path = ifc_path(tag);
+    std::fs::write(&path, text).unwrap();
+    let mut t = Session::new();
+    let r = run(&mut t, "open", json!({"path": path}));
+    let _ = std::fs::remove_file(&path);
+    (t, r)
+}
+
+/// A board on 127/220 V, two luminaires in circuit 3 of it, with wires, and one luminaire in none.
+fn wired() -> (Session, Id, Vec<Id>, Id) {
+    let mut s = Session::new();
+    let (b, d) = (board(&mut s), lamps(&mut s, 3));
+    let wires = json!({"hot": {"wire_type": "Cu PVC 70 °C", "section": 1.5}, "neutral": {"wire_type": "Cu PVC 70 °C", "section": 1.5},
+                       "ground": {"wire_type": "Cu PVC 70 °C", "section": 1.5}});
+    let c = make(
+        &mut s,
+        json!({"devices": [d[0], d[1]], "panel": b, "name": "Iluminação sala", "number": 3, "rating": 10, "wires": wires, "demand_factor": 0.8}),
+    );
+    (s, b, d, c)
+}
+
+#[test]
+fn a_circuit_is_an_ifc_distribution_circuit_with_its_devices_and_a_breaker_in_the_boards_system() {
+    let (mut s, _, d, _) = wired();
+    let file = written(&mut s, "export");
+    let circuits = entities(&file, "IFCDISTRIBUTIONCIRCUIT");
+    assert_eq!(circuits.len(), 1, "{circuits:?}");
+    assert!(circuits[0].contains("'Iluminação sala'") || circuits[0].contains("Ilumina"), "{}", circuits[0]);
+    assert!(circuits[0].ends_with(".ELECTRICAL.);"), "{}", circuits[0]);
+    // The two devices of it, assigned to it, and the breaker with them; the third luminaire is in no circuit.
+    let groups: Vec<&str> = entities(&file, "IFCRELASSIGNSTOGROUP")
+        .into_iter()
+        .filter(|l| l.ends_with(&format!("#{});", circuits[0].split('=').next().unwrap().trim_start_matches('#'))))
+        .collect();
+    assert_eq!(groups.len(), 1, "{groups:?}");
+    assert_eq!(groups[0].matches('#').count(), 4 + 1 - 1 + 1, "two devices, the breaker and the circuit: {}", groups[0]);
+    let breakers = entities(&file, "IFCPROTECTIVEDEVICE");
+    assert_eq!(breakers.len(), 1);
+    assert!(breakers[0].contains(".CIRCUITBREAKER.") && breakers[0].contains('3'), "{}", breakers[0]);
+    // Nested in the system of its board: an aggregate of the system.
+    assert!(!entities(&file, "IFCRELAGGREGATES").is_empty());
+    assert_eq!(entities(&file, "IFCDISTRIBUTIONSYSTEM").len(), 1);
+    // Its numbers, in the set BIMCraft reads them back from, and the breaker's in the standard device set.
+    let sets: Vec<&str> = entities(&file, "IFCPROPERTYSET").into_iter().filter(|l| l.contains("'BIMCraft_Circuit'")).collect();
+    assert_eq!(sets.len(), 1, "{sets:?}");
+    assert!(file.contains("IFCELECTRICCURRENTMEASURE(10.)"), "the breaker's rating");
+    assert!(file.contains("'Pset_ElectricalDeviceCommon'"));
+    let _ = d;
+}
+
+#[test]
+fn a_project_without_circuits_adds_nothing_of_them_to_the_file() {
+    let mut s = Session::new();
+    board(&mut s);
+    let file = written(&mut s, "none");
+    assert!(entities(&file, "IFCDISTRIBUTIONCIRCUIT").is_empty() && entities(&file, "IFCPROTECTIVEDEVICE").is_empty());
+    assert!(!file.contains("BIMCraft_Circuit"));
+}
+
+#[test]
+fn a_circuit_comes_back_from_ifc_with_its_board_devices_breaker_voltage_and_wires() {
+    let (mut s, b, d, c) = wired();
+    let file = written(&mut s, "round");
+    let (t, r) = read(&file, "round");
+    assert_eq!(r["skipped"], json!([]), "{r}");
+    // A GlobalId is the GUID, so each is the element it was.
+    let there = t.model.elements.id(s.model.guid(c)).expect("the circuit came back");
+    let (a, z) = (element_json(&s.model, c), element_json(&t.model, there));
+    for k in ["name", "number", "rating_a", "poles", "classification", "demand_factor", "voltage_name", "installed_va", "wires"] {
+        assert_eq!(a[k], z[k], "{k}");
+    }
+    let id_of = |m: &crate::model::Model, g: crate::model::Guid| m.elements.id(g).unwrap();
+    assert_eq!(z["panel_id"], json!(id_of(&t.model, s.model.guid(b))));
+    let members: Vec<u64> = d[..2].iter().map(|x| id_of(&t.model, s.model.guid(*x))).collect();
+    assert_eq!(z["device_ids"], json!(members));
+    assert_eq!(t.model.check(), Ok(()));
+    // The number, name and breaker of every circuit survive another trip.
+    let mut t = t;
+    let again = written(&mut t, "again");
+    let (u, r) = read(&again, "again");
+    assert_eq!(r["skipped"], json!([]), "{r}");
+    assert_eq!(element_json(&u.model, u.model.elements.id(s.model.guid(c)).unwrap())["rating_a"], json!(10.0));
+}
+
+#[test]
+fn what_a_file_says_that_the_project_cannot_hold_is_left_out_with_why_and_the_rest_stays() {
+    let (mut s, _, _, c) = wired();
+    // (A name without a degree sign, which a STEP file writes as an escape.)
+    run(&mut s, "wire_type", json!({"name": "Cu PVC 70 °C", "rename": "PVC70"}));
+    let file = written(&mut s, "hostile");
+    // A wire type the project has no table for: the circuit stays, without its wires, and says why.
+    let (t, r) = read(&file.replace("PVC70", "Mystery"), "wire");
+    let there = t.model.elements.id(s.model.guid(c)).expect("the circuit stays");
+    assert!(element_json(&t.model, there).get("wires").is_none_or(Value::is_null));
+    assert!(r["skipped"].to_string().contains("Mystery"), "{r}");
+    // A circuit whose property set names no board has no board to be on: left out, its devices stay.
+    let blind = file.replace("'Panel'", "'Elsewhere'");
+    let (t, r) = read(&blind, "blind");
+    assert!(t.model.elements.id(s.model.guid(c)).is_none(), "no circuit without a board");
+    assert!(r["skipped"].to_string().contains("board"), "{r}");
+    assert_eq!(t.model.elements.values().filter(|e| matches!(e, Element::Component(_))).count(), 4, "board and three devices");
+    // A device the board's voltage does not take is the circuit's to lose, not the project's.
+    let other = file.replace("127/220 V", "230/400 V");
+    let (t, _) = read(&other, "voltage");
+    assert_eq!(t.model.check(), Ok(()));
+}
+
+#[test]
+fn a_devices_connector_comes_back_from_ifc_with_the_load_of_its_type_in_each_pole() {
+    let mut s = Session::new();
+    let lamp = lamps(&mut s, 1)[0];
+    let outlet = run(&mut s, "component", json!({"family": "Three-Phase Outlet", "type": "Unbalanced 1100", "at": [4000, 2000]}))["id"]
+        .as_u64()
+        .unwrap();
+    let file = written(&mut s, "connectors");
+    let (t, r) = read(&file, "connectors");
+    assert_eq!(r["skipped"], json!([]), "{r}");
+    let there = |id: Id| t.model.elements.id(s.model.guid(id)).expect("it came back");
+    let (a, b) = (element_json(&t.model, there(lamp)), element_json(&t.model, there(outlet)));
+    let (x, y) = (&a["connectors"][0], &b["connectors"][0]);
+    assert_eq!(
+        (x["kind"].as_str(), x["system"].as_str(), x["poles"].as_u64(), x["voltage"].as_f64()),
+        (Some("power"), Some("power-balanced"), Some(1), Some(127.0))
+    );
+    assert_eq!(
+        (x["load_va"].as_f64(), x["power_factor"].as_f64(), x["classification"].as_str()),
+        (Some(12.0), Some(0.95), Some("lighting"))
+    );
+    assert_eq!((y["system"].as_str(), y["poles"].as_u64(), y["voltage"].as_f64()), (Some("power-unbalanced"), Some(3), Some(220.0)));
+    assert_eq!(y["load_va_by_phase"], json!([3000.0, 2000.0, 1000.0]));
+    // A device that was no connector's (a board) has none, and the project is as sound as before.
+    assert_eq!(t.model.check(), Ok(()));
+}
+
+// ---------- plans ----------
+
+fn plan_view() -> crate::render::View {
+    crate::render::View { scale: 0.1, cx: 3000.0, cy: 1000.0, width: 1000, height: 800 }
+}
+
+/// The primitives of the plan of Level 1 that `id` draws.
+fn drawn(s: &Session, id: Id) -> usize {
+    let d = crate::render::draw(&s.model, 100000, plan_view());
+    d.owners.iter().filter(|o| **o == Some(id)).count()
+}
+
+#[test]
+fn a_plan_draws_a_circuits_home_run_marker_and_a_tag_with_its_number() {
+    let mut s = Session::new();
+    let (b, d) = (board(&mut s), lamps(&mut s, 2));
+    let c = make(&mut s, json!({"devices": d, "panel": b, "number": 7}));
+    assert!(drawn(&s, c) >= 3, "a line to the board, its head and its number: {}", drawn(&s, c));
+    // The number is lettered with the code's own font, so a longer number is more points.
+    let points = |n: u32| {
+        let mut t = Session::new();
+        let (bb, dd) = (board(&mut t), lamps(&mut t, 2));
+        let cc = make(&mut t, json!({"devices": dd, "panel": bb, "number": n}));
+        let d = crate::render::draw(&t.model, 100000, plan_view());
+        d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(cc)).map(|(p, _)| p.points().len()).sum::<usize>()
+    };
+    assert!(points(88) > points(1), "a tag lettered {} vs {}", points(88), points(1));
+    // It is picked where it is drawn: a click on its line is on the circuit.
+    let drawing = crate::render::draw(&s.model, 100000, plan_view());
+    let on = drawing
+        .prims
+        .iter()
+        .zip(&drawing.owners)
+        .find_map(|(p, o)| (*o == Some(c)).then(|| p.points()).and_then(|pts| pts.first().copied()));
+    let at = on.expect("it draws something");
+    assert_eq!(drawing.pick(at, 6.0), Some(c));
+    // A spare is not drawn: it has no device to run from.
+    let spare = make(&mut s, json!({"devices": [], "panel": b}));
+    assert_eq!(drawn(&s, spare), 0);
+    // A circuit is drawn in the plan of its board's level only, and not in a ceiling plan.
+    let ceiling = crate::render::ceiling_plan(&s.model, 100000, 1000, 800);
+    assert!(!ceiling.owners.contains(&Some(c)));
+}
+
+#[test]
+fn a_view_hides_circuits_by_their_category() {
+    let mut s = Session::new();
+    let (b, d) = (board(&mut s), lamps(&mut s, 2));
+    let c = make(&mut s, json!({"devices": d, "panel": b}));
+    assert!(drawn(&s, c) > 0);
+    run(&mut s, "graphics", json!({"view": "Level 1", "hide": ["circuit"]}));
+    assert_eq!(drawn(&s, c), 0, "hidden by its category, as annotation is");
+    run(&mut s, "graphics", json!({"view": "Level 1", "show": ["circuit"]}));
+    assert!(drawn(&s, c) > 0);
+}
+
+#[test]
+fn a_circuit_in_the_plan_of_another_level_is_not_drawn_there() {
+    let mut s = Session::new();
+    let (b, d) = (board(&mut s), lamps(&mut s, 1));
+    let c = make(&mut s, json!({"devices": d, "panel": b}));
+    let upper = crate::render::draw(&s.model, 100001, plan_view());
+    assert!(!upper.owners.contains(&Some(c)), "Level 2's plan does not show Level 1's circuit");
+}

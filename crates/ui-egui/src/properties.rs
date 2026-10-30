@@ -455,7 +455,7 @@ fn icon(category: &str) -> Icon {
         "pipe" => Icon::Pipe,
         "conduit" => Icon::Conduit,
         "cabletray" => Icon::CableTray,
-        "wire" => Icon::Wire,
+        "wire" | "circuit" => Icon::Wire,
         "downconductor" => Icon::DownConductor,
         "groundconductor" => Icon::GroundConductor,
         "cable" => Icon::Cabling,
@@ -957,6 +957,7 @@ impl BimApp {
             self.parameters(ui, &model, &ids, rows);
             self.component_parameters(ui, &model, &ids);
             self.panel_parameters(ui, &model, &ids);
+            self.circuit_parameters(ui, &model, &ids);
             self.project_parameters(ui, &model, &ids);
             self.element_phasing(ui, &model, &ids);
         }
@@ -1506,6 +1507,109 @@ impl BimApp {
         });
         if let Some((key, value)) = change {
             self.run("panel", json!({"id": id, key: value}));
+        }
+    }
+
+    /// A selected circuit's parameters, edited through `circuit`: its number, breaker, poles, voltage and demand factor, with what
+    /// it loads (worked out from its devices) shown.
+    fn circuit_parameters(&mut self, ui: &mut Ui, model: &Model, ids: &[Id]) {
+        let [id] = ids else { return };
+        let Some(Element::Circuit(c)) = model.elements.get(id) else { return };
+        let group = "Electrical";
+        let open = !self.collapsed.contains(group);
+        if group_header(ui, t(group), open) && !self.collapsed.remove(group) {
+            self.collapsed.insert(group);
+        }
+        if !open {
+            return;
+        }
+        const NONE: &str = "—";
+        let id = *id;
+        let panel = model.elements.id(c.panel);
+        let board = panel.map_or_else(String::new, |b| b.to_string());
+        let there: Vec<String> = panel
+            .and_then(|b| bimcraft_core::electrical::board(model, b))
+            .and_then(|(_, b)| b.panel.as_ref()?.distribution.as_ref().and_then(|n| model.distribution_systems.get(n)))
+            .map(|s| s.voltage_names().cloned().collect())
+            .unwrap_or_default();
+        let voltages: Vec<String> = std::iter::once(NONE.to_string()).chain(there).collect();
+        let totals = bimcraft_core::electrical::circuit_totals(model, c);
+        let load = totals.as_ref().map_or_else(String::new, |x| format!("{} VA", text(&json!(x.installed_va))));
+        let current = totals.as_ref().map_or_else(String::new, |x| format!("{} A", text(&json!(x.current_a))));
+        let devices: Vec<String> = c.devices.iter().filter_map(|g| model.elements.id(*g)).map(|d| d.to_string()).collect();
+        let mut change: Option<(&str, Value)> = None;
+        Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
+            let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
+            Grid::new(("circuit-parameters", id)).num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(ui, |ui| {
+                let label = ui.label(t("Circuit Number"));
+                if let Some(typed) = self.field(ui, id, "number", c.number.to_string(), label.id, "") {
+                    match typed.trim().parse::<u32>() {
+                        Ok(n) => change = Some(("number", json!(n))),
+                        Err(_) => {
+                            self.status = Status { text: tf("{}: `{}` is not a whole number", &[t("Circuit Number"), &typed]), error: true }
+                        }
+                    }
+                }
+                ui.end_row();
+                let label = ui.label(t("Name"));
+                if let Some(typed) = self.field(ui, id, "name", c.name.clone(), label.id, "") {
+                    change = Some(("name", json!(typed.trim())));
+                }
+                ui.end_row();
+                let label = ui.label(t("Rating"));
+                if let Some(typed) = self.field(ui, id, "rating", text(&json!(c.rating_a)), label.id, "A") {
+                    match number(&typed.replace(',', ".")) {
+                        Some(a) => change = Some(("rating", json!(a))),
+                        None => {
+                            self.status = Status { text: tf("{}: `{}` is not a number of amperes", &[t("Rating"), &typed]), error: true }
+                        }
+                    }
+                }
+                ui.end_row();
+                let label = ui.label(t("Number of Poles"));
+                if let Some(typed) = self.field(ui, id, "poles", c.poles.to_string(), label.id, "") {
+                    match typed.trim().parse::<u8>() {
+                        Ok(n) => change = Some(("poles", json!(n))),
+                        Err(_) => {
+                            self.status =
+                                Status { text: tf("{}: `{}` is not a whole number", &[t("Number of Poles"), &typed]), error: true }
+                        }
+                    }
+                }
+                ui.end_row();
+                let label = ui.label(t("Voltage"));
+                let now = c.voltage.clone().unwrap_or_else(|| NONE.to_string());
+                if let Some(picked) = combo(ui, (id, "voltage"), label.id, &now, &voltages) {
+                    change = Some(("voltage", json!(if picked == NONE { String::new() } else { picked })));
+                }
+                ui.end_row();
+                let label = ui.label(t("Classification"));
+                if let Some(typed) = self.field(ui, id, "classification", c.classification.clone(), label.id, "") {
+                    change = Some(("classification", json!(typed.trim())));
+                }
+                ui.end_row();
+                let label = ui.label(t("Demand Factor"));
+                if let Some(typed) = self.field(ui, id, "demand_factor", text(&json!(c.demand_factor)), label.id, "") {
+                    match number(&typed.replace(',', ".")) {
+                        Some(f) => change = Some(("demand_factor", json!(f))),
+                        None => self.status = Status { text: tf("{}: `{}` is not a number", &[t("Demand Factor"), &typed]), error: true },
+                    }
+                }
+                ui.end_row();
+                for (name, value) in [
+                    (t("Panel"), board),
+                    (t("Load"), load),
+                    (t("Current"), current),
+                    (t("Devices"), if devices.is_empty() { t("None").to_string() } else { devices.join(", ") }),
+                ] {
+                    ui.label(name);
+                    ui.label(value);
+                    ui.end_row();
+                }
+            });
+        });
+        if let Some((key, value)) = change {
+            self.run("circuit", json!({"id": id, key: value}));
         }
     }
 

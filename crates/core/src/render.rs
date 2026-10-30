@@ -1876,6 +1876,8 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
             {
                 tag(&mut d, m, t)
             }
+            // A circuit, on the plan of its board's level, which is none of an annotation's own views.
+            Element::Circuit(c) if !up && m.level_of(e) == Some(level) => circuit_mark(&mut d, m, c),
             Element::Text(n) if m.annotation_in(e, key) && inside(n.at) => note(&mut d, m, n),
             Element::DetailLine(l) if m.annotation_in(e, key) => detail_line(&mut d, m, l),
             Element::DetailGroup(g) if m.annotation_in(e, key) => detail_group(&mut d, m, g),
@@ -1898,6 +1900,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
                         | Element::Room(_)
                         | Element::Dimension(_)
                         | Element::Tag(_)
+                        | Element::Circuit(_)
                         | Element::Text(_)
                         | Element::Spot(_)
                         | Element::Elevation(_)
@@ -3016,6 +3019,30 @@ fn tag(d: &mut Drawing, m: &Model, t: &Tag) {
     }
     d.text(&text, (x, y), 10.0, INK);
     d.grow(from, (x, y));
+}
+
+/// A circuit in the plan of its board's level: its home run, a dashed line from its first device toward the board (up to 800 mm,
+/// never past the middle) with an arrowhead, and its number in a tag past the head. A circuit with no device, or whose board has no
+/// place, is not drawn.
+fn circuit_mark(d: &mut Drawing, m: &Model, c: &crate::electrical::Circuit) {
+    let Some(from) = c.devices.iter().find_map(|g| m.anchor(*g)) else { return };
+    let Some(to) = m.anchor(c.panel) else { return };
+    let length = from.dist(to);
+    if length < 1.0 {
+        return;
+    }
+    let head = from + (to - from).unit() * (length / 2.0).min(800.0);
+    d.dashed(&[from, head], Pen::PROJECTION, INK, false);
+    let (a, b) = (d.view.px(from), d.view.px(head));
+    let from_prim = d.prims.len();
+    let (ux, uy) = arrow(d, a, b);
+    // The number, in a tag past the arrowhead.
+    let text = c.number.to_string();
+    let (x, y) = (b.0 + ux * 16.0, b.1 + uy * 16.0);
+    let (w, h) = ((font::width(&text, 10.0) / 2.0 + 5.0).max(8.0), 8.0);
+    d.push(Prim::Fill { rings: vec![vec![(x - w, y - h), (x + w, y - h), (x + w, y + h), (x - w, y + h)]], color: PAPER });
+    d.text(&text, (x, y), 10.0, INK);
+    d.grow(from_prim, (x, y));
 }
 
 /// The way a section or elevation looks, on screen (y down).
