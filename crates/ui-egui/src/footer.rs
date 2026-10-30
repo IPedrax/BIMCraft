@@ -389,6 +389,39 @@ impl BimApp {
                             self.temp_reset();
                         }
                     });
+                    if let Some(view) = self.grid_view() {
+                        let mut grid = self.background_grid();
+                        let before = grid;
+                        let controlled = self.grid_controlled(view);
+                        let r = small_button(
+                            ui,
+                            Icon::BackgroundGrid,
+                            "Background Grids",
+                            grid.shown() || self.grid_snapping,
+                            msg!("Show background grids, change their settings, or toggle grid snapping"),
+                        );
+                        Popup::menu(&r).show(|ui| {
+                            if let Some(note) = &controlled {
+                                ui.label(note);
+                            }
+                            ui.add_enabled_ui(controlled.is_none(), |ui| {
+                                ui.checkbox(&mut grid.visible, t("Show grids"));
+                                ui.checkbox(&mut grid.main.enabled, t("Main grid"));
+                                ui.checkbox(&mut grid.sub.enabled, t("Subgrid"));
+                                if ui.button(t("Grid settings…")).clicked() {
+                                    self.open_background_grid();
+                                    ui.close();
+                                }
+                            });
+                            ui.separator();
+                            ui.checkbox(&mut self.grid_snapping, t("Grid snapping")).on_hover_text(t(
+                                "Applies to all views; snaps to the active view's enabled main grid or subgrid, even when hidden",
+                            ));
+                        });
+                        if grid != before {
+                            self.set_background_grid(grid);
+                        }
+                    }
                     let tip = msg!("Reveal Hidden Elements (RH): draw what this view hides in magenta; again to hide it");
                     if small_button(ui, Icon::Reveal, "Reveal Hidden Elements", temp.reveal, tip).clicked() {
                         self.temp_reveal();
