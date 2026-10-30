@@ -1753,8 +1753,12 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     let crop = m.shown_crop(key).filter(|_| !up);
     // Cropped, annotation shows whole while its anchor is inside the crop, and not at all outside it.
     let inside = |p: P2| crop.is_none_or(|[lo, hi]| (lo.0..=hi.0).contains(&p.0) && (lo.1..=hi.1).contains(&p.1));
-    // Every room of the level is found among the same lines, which take each wall's joins and heights to find.
+    // Every room of the level is found among the same faces of the same lines, which take each wall's joins and heights to
+    // find, and the arrangement of them is the costly part: made once, for the first room that isn't frozen.
     let bounding = std::cell::OnceCell::new();
+    // Rooms > Reference: off unless the view shows it.
+    let reference =
+        !crate::graphics::graphics_of(m, key).map_or_else(Default::default, |g| g.resolved(m).into_owned()).hides("roomreference");
     // Bars seen from above that lie where another was drawn (a column's stirrups, up its height) are drawn once.
     let mut bars_seen: std::collections::HashSet<Vec<(i64, i64)>> = std::collections::HashSet::new();
     for (&id, e) in m.elements.iter().filter(|(id, _)| shown(**id)) {
@@ -1767,14 +1771,42 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
                 }
             }
             Element::Room(r) if r.level == level && inside(r.point) && !up => {
-                let lines = bounding.get_or_init(|| m.room_lines(level, m.room_area));
-                let area = geom::region_at(lines, r.point, TOL).map_or_else(
-                    || m.language.word(msg!("NOT ENCLOSED")).to_string(),
+                // A frozen room has its boundary: the level's lines are found only for those that don't.
+                let (region, redundant) = match &r.kept {
+                    Some(k) => (k.at(m.room_area).cloned(), false),
+                    // Two rooms can't share a space: the one placed later is left unbounded, Revit's redundant room.
+                    None => {
+                        match geom::region_in(bounding.get_or_init(|| geom::faces(&m.room_lines(level, m.room_area), TOL)), r.point, TOL) {
+                            Some(g) if m.room_before(r, &g).is_some() => (None, true),
+                            g => (g, false),
+                        }
+                    }
+                };
+                let area = region.as_ref().map_or_else(
+                    || m.language.word(if redundant { msg!("REDUNDANT") } else { msg!("NOT ENCLOSED") }).to_string(),
                     |g| {
                         let (area, unit) = m.units.area(g.area());
                         format!("{area:.2} {unit}")
                     },
                 );
+                // Its reference, as Revit's: a cross from the point it was placed at, out along the diagonals to its boundary
+                // (the square an unbounded room covers), the room's own lines, so a click on it picks the room.
+                if reference {
+                    let square;
+                    let (outer, holes): (&[P2], &[Vec<P2>]) = match &region {
+                        Some(g) => (&g.outer, &g.holes),
+                        None => {
+                            square = crate::model::unbounded_square(r.point);
+                            (&square, &[])
+                        }
+                    };
+                    let edges = || geom::ring_edges(outer).chain(holes.iter().flat_map(|h| geom::ring_edges(h)));
+                    for dir in [P2(1.0, 1.0), P2(-1.0, 1.0), P2(-1.0, -1.0), P2(1.0, -1.0)] {
+                        if let Some(end) = geom::ray_hit(r.point, dir, edges()) {
+                            d.stroke(vec![d.view.px(r.point), d.view.px(end)], BY_CATEGORY, INK, None, false);
+                        }
+                    }
+                }
                 let (x, y) = d.view.px(r.point);
                 let from = d.prims.len();
                 d.text(&r.name, (x, y - 16.0), 13.0, INK);

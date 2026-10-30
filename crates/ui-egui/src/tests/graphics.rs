@@ -25,7 +25,9 @@ fn visibility_graphics_sorts_categories_in_each_interface_language() {
         {
             let tr = |en| lang::translated_in(language, en).unwrap_or(en);
             press(&mut h, tr(tab));
-            let mut names: Vec<_> = cats.into_iter().map(|c| lang::category(c, true)).collect();
+            // A subcategory sits folded under its category, not among them.
+            let mut names: Vec<_> =
+                cats.into_iter().filter(|c| bimcraft_core::graphics::sub(c).is_none()).map(|c| lang::category(c, true)).collect();
             names.sort_by_key(|n| n.to_lowercase());
             // Equal translated names may belong to different categories, so inspect all their positions.
             let positions: Vec<_> = names

@@ -122,6 +122,8 @@ pub enum Tool {
     Door,
     Window,
     Room,
+    /// Room separation lines, one a click from the point before: the last point clicked, while the chain goes on.
+    RoomSeparator(Option<P2>),
     /// The Options Bar asks for the new level's elevation.
     Level,
     /// The grid's start, once clicked.
@@ -1175,6 +1177,7 @@ impl BimApp {
             Tool::Door => Some(msg!("Place Door")),
             Tool::Window => Some(msg!("Place Window")),
             Tool::Room => Some(msg!("Place Room")),
+            Tool::RoomSeparator(_) => Some(msg!("Place Room Separation")),
             Tool::Level => Some(msg!("Place Level")),
             Tool::Grid(_) => Some(msg!("Place Grid")),
             Tool::Dimension(..) | Tool::Angular(_) | Tool::Round(..) => Some(msg!("Place Dimensions")),
@@ -1834,6 +1837,7 @@ impl BimApp {
                 Some("door") => Tool::Door,
                 Some("window") => Tool::Window,
                 Some("room") => Tool::Room,
+                Some("room_separator") => Tool::RoomSeparator(None),
                 Some("level") => Tool::Level,
                 Some("grid") => Tool::Grid(None),
                 Some("move") => Tool::Move(None),
@@ -1966,6 +1970,7 @@ impl BimApp {
             Some(Element::Ramp(_)) => Tool::Ramp(Vec::new()),
             Some(Element::Railing(_)) => Tool::Railing(Vec::new()),
             Some(Element::Room(_)) => Tool::Room,
+            Some(Element::RoomSeparator(_)) => Tool::RoomSeparator(None),
             Some(Element::Level(_)) => Tool::Level,
             Some(Element::Grid(_)) => Tool::Grid(None),
             Some(Element::Dimension(d)) => match d.kind {
@@ -2217,7 +2222,12 @@ impl BimApp {
         match &self.tool {
             Tool::Wall(chain) => chain.last().copied(),
             Tool::Run(_, start) => *start,
-            Tool::Grid(start) | Tool::Move(start) | Tool::Copy(start) | Tool::Section(start) | Tool::SlopeArrow(start) => *start,
+            Tool::Grid(start)
+            | Tool::RoomSeparator(start)
+            | Tool::Move(start)
+            | Tool::Copy(start)
+            | Tool::Section(start)
+            | Tool::SlopeArrow(start) => *start,
             Tool::Stair(pts) | Tool::Ramp(pts) | Tool::Railing(pts) | Tool::Mass(pts) | Tool::DetailLine(pts) | Tool::SketchLine(pts) => {
                 pts.last().copied()
             }
@@ -2252,6 +2262,7 @@ impl BimApp {
         self.tool = match std::mem::replace(&mut self.tool, Tool::Modify) {
             Tool::Wall(chain) if !chain.is_empty() => Tool::Wall(Vec::new()),
             Tool::Grid(Some(_)) => Tool::Grid(None),
+            Tool::RoomSeparator(Some(_)) => Tool::RoomSeparator(None),
             Tool::Run(c, Some(_)) => Tool::Run(c, None),
             Tool::Mirror { draw, start: Some(_) } => Tool::Mirror { draw, start: None },
             Tool::Align(Some(_)) => {
@@ -2361,7 +2372,7 @@ impl BimApp {
         }
         match &mut self.tool {
             Tool::Wall(chain) => chain.clear(),
-            Tool::Grid(start) | Tool::Run(_, start) => *start = None,
+            Tool::Grid(start) | Tool::RoomSeparator(start) | Tool::Run(_, start) => *start = None,
             Tool::Dimension(_, refs) | Tool::Angular(refs) => refs.clear(),
             Tool::Round(_, picked) => picked.clear(),
             Tool::Section(start) | Tool::Shaft(start) | Tool::Measure(start) => *start = None,
@@ -3091,7 +3102,19 @@ impl BimApp {
                 ),
             ],
         );
-        self.tools(ui, msg!("Room & Area"), &[(Icon::Room, "Room", msg!("Room (RM): click inside walls"), Tool::Room)]);
+        self.tools(
+            ui,
+            msg!("Room & Area"),
+            &[
+                (Icon::Room, "Room", msg!("Room (RM): click inside walls"), Tool::Room),
+                (
+                    Icon::RoomSeparator,
+                    "Room Separator",
+                    msg!("Room Separator: lines that bound rooms as walls do, to split an open space; click from point to point"),
+                    Tool::RoomSeparator(None),
+                ),
+            ],
+        );
         self.tools(
             ui,
             msg!("Opening"),
@@ -4140,6 +4163,8 @@ impl BimApp {
             Tool::Door => msg!("Click a wall to place the door."),
             Tool::Window => msg!("Click a wall to place the window."),
             Tool::Room => msg!("Click inside walls to place a room; the outline shows the room you'd get."),
+            Tool::RoomSeparator(None) => msg!("Click the separation line's start."),
+            Tool::RoomSeparator(Some(_)) => msg!("Click the line's next point; each click places a line. Esc ends the chain."),
             Tool::Level => "Type the new level's elevation in the Options Bar, then Create.",
             Tool::Grid(None) => msg!("Click to enter the grid's start point."),
             Tool::Grid(Some(_)) => msg!("Click to enter the grid's end point."),

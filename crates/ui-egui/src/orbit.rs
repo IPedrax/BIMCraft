@@ -74,7 +74,12 @@ pub struct Orbit {
     grip: Option<(Id, usize)>,
     /// A section box's grip being dragged: which face (as `view3d::box_grips` orders them), and where the drag began.
     boxing: Option<(usize, Pos2)>,
+    /// Each room's solid as the model shown last has it: its outline, bottom and top. Found once for each model.
+    rooms: Option<(Arc<Model>, std::collections::BTreeMap<Id, RoomSolid>)>,
 }
+
+/// A room as the 3D view draws it: its outline in plan (an unbounded one's square), swept from `bottom` to `top`.
+type RoomSolid = (Vec<P2>, f64, f64);
 
 impl Default for Orbit {
     fn default() -> Orbit {
@@ -92,7 +97,53 @@ impl Default for Orbit {
             before: None,
             grip: None,
             boxing: None,
+            rooms: None,
         }
+    }
+}
+
+/// A room as a see-through solid, drawn over the 3D view's picture in the selection's colour: its outline swept from its
+/// bottom to its top (`Model::room_span`), its faces filled faintly and its edges drawn. Nothing of it behind the eye.
+/// A selected one stronger than one only shown.
+fn room_solid(p: &egui::Painter, (outline, bottom, top): &RoomSolid, selected: bool, screen: &dyn Fn(P3) -> Pos2) {
+    let (bottom, top) = (*bottom, *top);
+    let n = outline.len();
+    if n < 3 || top.partial_cmp(&bottom) != Some(std::cmp::Ordering::Greater) {
+        return;
+    }
+    let low: Vec<Pos2> = outline.iter().map(|q| screen([q.0, q.1, bottom])).collect();
+    let high: Vec<Pos2> = outline.iter().map(|q| screen([q.0, q.1, top])).collect();
+    if low.iter().chain(&high).any(|q| !q.is_finite()) {
+        return;
+    }
+    let accent = canvas_pal().accent;
+    let (alpha, width) = if selected { (34, 1.5) } else { (14, 0.75) };
+    let fill = Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), alpha);
+    let mut mesh = egui::Mesh::default();
+    let mut tri = |a: Pos2, b: Pos2, c: Pos2| {
+        let i = mesh.vertices.len() as u32;
+        for q in [a, b, c] {
+            mesh.colored_vertex(q, fill);
+        }
+        mesh.add_triangle(i, i + 1, i + 2);
+    };
+    for [a, b, c] in geom::triangulate(outline) {
+        if a.max(b).max(c) < n {
+            tri(low[a], low[b], low[c]);
+            tri(high[a], high[b], high[c]);
+        }
+    }
+    for i in 0..n {
+        let j = (i + 1) % n;
+        tri(low[i], low[j], high[j]);
+        tri(low[i], high[j], high[i]);
+    }
+    p.add(egui::Shape::mesh(mesh));
+    let edge = Stroke::new(width, accent);
+    p.add(egui::Shape::closed_line(low.clone(), edge));
+    p.add(egui::Shape::closed_line(high.clone(), edge));
+    for (a, b) in low.iter().zip(&high) {
+        p.line_segment([*a, *b], edge);
     }
 }
 
@@ -362,6 +413,28 @@ impl BimApp {
         let shown = if o.on_card { self.card.gpu.as_ref().and_then(|g| g.texture()) } else { o.texture.as_ref().map(|t| t.id()) };
         if let Some(id) = shown {
             p.image(id, rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+        }
+        // Rooms aren't seen in 3D but while selected: then a see-through solid in the selection's colour, from their bottom to
+        // their top, over their boundary (an unbounded one's square).
+        // With Rooms shown in the view's Visibility/Graphics (they are off in every new 3D view), all of them so.
+        let all_rooms = model
+            .default_3d()
+            .and_then(|v| bimcraft_core::graphics::graphics_of(&model, v))
+            .is_some_and(|g| g.resolved(&model).shows_in_3d("room"));
+        let look = all_rooms.then(|| Look::of_3d(&model));
+        if !o.rooms.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, &model)) {
+            o.rooms = None;
+        }
+        let solids = &mut o.rooms.get_or_insert_with(|| (Arc::clone(&model), std::collections::BTreeMap::new())).1;
+        for (id, e) in model.elements.iter() {
+            let shown = selection.contains(id) || look.as_ref().is_some_and(|l| l.shows(*id));
+            if let (true, bimcraft_core::model::Element::Room(r)) = (shown, e) {
+                let solid = solids.entry(*id).or_insert_with(|| {
+                    let (bottom, top) = model.room_span(r);
+                    (model.room_outline(r).0, bottom, top)
+                });
+                room_solid(&p, solid, selection.contains(id), &|q: P3| on_screen(&cam, rect, ppp, q));
+            }
         }
         // The selected level's grips, and its plane as the held one would leave it.
         if let Some((_, z, extent)) = level {

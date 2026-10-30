@@ -66,6 +66,12 @@ mod reinforce_tests;
 pub mod render;
 #[cfg(test)]
 mod room_area_tests;
+#[cfg(test)]
+mod room_bounds_tests;
+#[cfg(test)]
+mod room_freeze_tests;
+#[cfg(test)]
+mod room_height_tests;
 pub mod runs;
 pub mod sample;
 pub mod schedule;
