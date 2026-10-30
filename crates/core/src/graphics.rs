@@ -386,6 +386,9 @@ pub struct Graphics {
     /// How a 3D view draws its surfaces.
     #[serde(skip_serializing_if = "is_shaded")]
     pub style: VisualStyle,
+    /// Canvas grid owned by this view, or supplied by its view template.
+    #[serde(skip_serializing_if = "crate::background_grid::BackgroundGrid::is_default")]
+    pub background_grid: crate::background_grid::BackgroundGrid,
     /// Revit's Linework: an edge of an element drawn in a line style of the view's own, or not at all.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub linework: Vec<Linework>,
@@ -443,6 +446,9 @@ impl Graphics {
         if t.controls.contains(&Group::Style) {
             g.style = t.graphics.style;
         }
+        if t.controls.contains(&Group::BackgroundGrid) {
+            g.background_grid = t.graphics.background_grid;
+        }
         std::borrow::Cow::Owned(g)
     }
 
@@ -470,6 +476,7 @@ impl Graphics {
     /// Whether it is sound in `m`: known categories, overrides in range, filters and the template
     /// there are.
     pub fn check(&self, m: &Model) -> Result<(), String> {
+        self.background_grid.check()?;
         if self.categories.len() > MAX_ENTRIES || self.elements.len() > MAX_ENTRIES {
             return Err(format!("it has more than {MAX_ENTRIES} overrides"));
         }
@@ -628,11 +635,23 @@ pub enum Group {
     Detail,
     /// A 3D view's visual style.
     Style,
+    /// The canvas background grid display settings.
+    #[serde(rename = "background_grid")]
+    BackgroundGrid,
 }
 
 impl Group {
-    pub const ALL: [Group; 8] =
-        [Group::Categories, Group::Filters, Group::Range, Group::Phase, Group::Options, Group::Scale, Group::Detail, Group::Style];
+    pub const ALL: [Group; 9] = [
+        Group::Categories,
+        Group::Filters,
+        Group::Range,
+        Group::Phase,
+        Group::Options,
+        Group::Scale,
+        Group::Detail,
+        Group::Style,
+        Group::BackgroundGrid,
+    ];
 }
 
 /// A view template: settings under a name for views to follow, the groups in `controls`.
@@ -705,6 +724,7 @@ pub fn check_followed(m: &Model, old: &Element, new: &Element) -> Result<(), Str
     follows(Group::Scale, a.scale == b.scale, "scale")?;
     follows(Group::Detail, a.detail == b.detail, "detail level")?;
     follows(Group::Style, a.style == b.style, "visual style")?;
+    follows(Group::BackgroundGrid, a.background_grid == b.background_grid, "background grids")?;
     if let (Element::Level(x), Element::Level(y)) = (old, new) {
         follows(Group::Range, x.view_range == y.view_range, "view range")?;
     }
@@ -1873,7 +1893,10 @@ mod tests {
         let grid = run(&mut s, "grid", json!({"start": [-1000, 3000], "end": [9000, 3000]}))["id"].as_u64().unwrap();
         run(&mut s, "graphics", json!({"view": 100000, "hide": ["grids"], "categories": {"walls": {"cut": {"color": [200, 0, 0]}}}}));
         let r = run(&mut s, "template", json!({"name": "Presentation", "from": "Level 1"}));
-        assert_eq!(r["controls"], json!(["categories", "filters", "range", "phase", "options", "scale", "detail", "style"]));
+        assert_eq!(
+            r["controls"],
+            json!(["categories", "filters", "range", "phase", "options", "scale", "detail", "style", "background_grid"])
+        );
         assert_eq!((r["hidden"].clone(), r["categories"]["wall"]["cut"]["color"].clone()), (json!(["grid"]), json!([200, 0, 0])));
         assert!(!owned(&plan(&s, 100001), grid).is_empty() && lines(&plan(&s, 100001), up).iter().all(|l| l.1 != RED));
         run(&mut s, "graphics", json!({"view": "Level 2", "template": "Presentation"}));
@@ -1886,7 +1909,7 @@ mod tests {
             (
                 json!("Presentation"),
                 json!(["grid"]),
-                json!(["categories", "filters", "range", "phase", "options", "scale", "detail", "style"])
+                json!(["categories", "filters", "range", "phase", "options", "scale", "detail", "style", "background_grid"])
             )
         );
         // Change the template, and its views follow; the view it came from doesn't.

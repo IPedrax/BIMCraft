@@ -2177,6 +2177,9 @@ impl BimApp {
                     ui.add(egui::Slider::new(&mut s.alignment_tolerance, 2.0..=32.0).suffix(" px"));
                 });
                 }
+                ui.separator();
+                ui.checkbox(&mut self.grid_snapping, t("Grid snapping"))
+                    .on_hover_text(t("Applies to all views; snaps to the active view's enabled main grid or subgrid, even when hidden"));
             });
             crate::popup::footer(ui, |ui| {
                 ui.with_layout(Layout::right_to_left(Align::Min), |ui| close = ui.button(t("Close")).clicked());
