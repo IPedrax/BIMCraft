@@ -2288,6 +2288,9 @@ pub struct Model {
     /// not loaded, and draws nothing.
     #[serde(skip)]
     pub loaded: BTreeMap<String, Arc<Model>>,
+    /// What its elements point at, looked up the other way (`Model::lookup`): no part of the model, never in a file.
+    #[serde(skip)]
+    pub derived: crate::derived::Derived,
 }
 
 impl Model {
@@ -2372,6 +2375,7 @@ impl Model {
             elements: Elements::new(),
             library: crate::library::Library::default(),
             loaded: BTreeMap::new(),
+            derived: Default::default(),
         };
         // A library to start from: each material its colour, its cut's pattern and its surface's, and the texture it has.
         for (name, color, cut, surface, texture) in [
@@ -4950,21 +4954,25 @@ impl Model {
         }
         let meet = |a: &[f64; 4], b: &[f64; 4]| a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3];
         let mut affected: BTreeSet<Id> = changed.iter().copied().filter(|id| self.elements.contains_key(*id)).collect();
+        let lookup = self.lookup();
         // The walls they might join, and what points at what changed, on until nothing more does.
-        for (&id, e) in &self.elements {
-            if let Element::Wall(w) = e
-                && walls::reach(self, w).is_none_or(|b| boxes.iter().any(|c| meet(&b, c)))
-                && affected.insert(id)
-            {
-                frontier.extend(self.elements.guid(id));
+        if !boxes.is_empty() {
+            for id in lookup.walls() {
+                if let Some(w) = self.wall(id)
+                    && walls::reach(self, w).is_none_or(|b| boxes.iter().any(|c| meet(&b, c)))
+                    && affected.insert(id)
+                {
+                    frontier.extend(self.elements.guid(id));
+                }
             }
         }
         while !frontier.is_empty() {
             let mut next = BTreeSet::new();
-            for (&id, e) in &self.elements {
-                if !affected.contains(&id) && e.refers_to(&frontier) {
-                    affected.insert(id);
-                    next.extend(self.elements.guid(id));
+            for g in &frontier {
+                for id in lookup.referrers(g) {
+                    if affected.insert(id) {
+                        next.extend(self.elements.guid(id));
+                    }
                 }
             }
             frontier = next;
@@ -4977,11 +4985,9 @@ impl Model {
                 _ => None,
             })
             .collect();
-        if !hosts.is_empty() {
-            for (&id, e) in &self.elements {
-                if let Element::Door(o) | Element::Window(o) = e
-                    && hosts.contains(&o.host)
-                {
+        for host in &hosts {
+            for id in lookup.referrers(host) {
+                if matches!(self.elements.get(id), Some(Element::Door(o) | Element::Window(o)) if o.host == *host) {
                     affected.insert(id);
                 }
             }
@@ -5818,6 +5824,12 @@ impl Model {
         Ok(())
     }
 
+    /// What its elements point at, looked up the other way, and its walls: kept with it, and brought up to date from the
+    /// model it was copied from by what changed.
+    pub fn lookup(&self) -> Arc<crate::derived::Lookup> {
+        self.derived.lookup(&self.elements)
+    }
+
     /// What changed from `before` to this model: the elements a command added, changed or removed, when it changed nothing
     /// else (no type, material, family, setting or other entry of the project), and this model is the one it made of
     /// `before`; else everything.
@@ -5866,6 +5878,7 @@ impl Model {
             elements: _,
             library,
             loaded,
+            derived: _,
         } = self;
         *format == o.format
             && *name == o.name

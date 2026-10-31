@@ -201,6 +201,9 @@ pub struct Elements {
     /// This collection, and the one it was cloned from (0: none), among all made in this process.
     token: u64,
     base: u64,
+    /// How many changes it has had, and the one it was cloned from had then.
+    version: u64,
+    base_version: u64,
     journal: Journal,
 }
 
@@ -251,6 +254,8 @@ impl Clone for Elements {
             ids: self.ids.clone(),
             token: token(),
             base: self.token,
+            version: 0,
+            base_version: self.version,
             journal: Journal::default(),
         }
     }
@@ -354,11 +359,23 @@ impl Elements {
         (self.token != 0 && self.base != 0 && !j.all && j.from.is_none()).then(|| j.ids.clone())
     }
 
+    /// This collection and how many changes it has had: what something derived from it is of.
+    pub fn state(&self) -> (u64, u64) {
+        (self.token, self.version)
+    }
+
+    /// The collection it was cloned from, as it was then.
+    pub fn base(&self) -> (u64, u64) {
+        (self.base, self.base_version)
+    }
+
     fn touch(&mut self, id: Id) {
+        self.version += 1;
         self.journal.ids.insert(id);
     }
 
     fn touch_all(&mut self) {
+        self.version += 1;
         self.journal.all = true;
     }
 
@@ -487,8 +504,8 @@ impl Elements {
     }
 
     pub fn clear(&mut self) {
-        let (token, base) = (self.token, self.base);
-        *self = Elements { token, base, ..Elements::default() };
+        let (token, base, version, base_version) = (self.token, self.base, self.version, self.base_version);
+        *self = Elements { token, base, version, base_version, ..Elements::default() };
         self.touch_all();
     }
 
@@ -520,6 +537,7 @@ impl Elements {
 
     pub fn range_mut(&mut self, r: std::ops::RangeFrom<Id>) -> impl DoubleEndedIterator<Item = (&Id, &mut Element)> {
         let from = r.start;
+        self.version += 1;
         self.journal.from = Some(self.journal.from.map_or(from, |f| f.min(from)));
         self.chunks.range_mut(chunk_of(from)..).flat_map(move |(_, c)| Arc::make_mut(c).range_mut(from..).map(pair_mut as fn(_) -> _))
     }
