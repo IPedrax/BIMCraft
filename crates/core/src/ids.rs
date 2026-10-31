@@ -9,6 +9,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, btree_map};
 use std::fmt;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::de::{self, Visitor};
@@ -174,7 +175,7 @@ impl Key for Id {
 
 impl Key for Guid {
     fn id_in(&self, e: &Elements) -> Option<Id> {
-        e.ids.get(self).copied().or_else(|| self.pending())
+        e.guid_id(self).or_else(|| self.pending())
     }
 }
 
@@ -186,18 +187,40 @@ impl<K: Key> Key for &K {
 
 /// A project's elements by id, each with its GUID. In a file, an object of ids, each element with its `guid`.
 ///
+/// They are held in chunks of [`CHUNK`] ids, each shared between the copies of a model until one of them changes it: a
+/// command's copy of a model costs a pointer a chunk, and its change, the chunks it touches.
+///
 /// Each keeps a journal of what changed in it since it was cloned from another ([`Elements::changed_since`]): a command
 /// changes a clone of the model it found, so the journal of the model a command leaves is what the command changed.
 #[derive(Debug, Default)]
 pub struct Elements {
-    items: BTreeMap<Id, Element>,
-    guids: BTreeMap<Id, Guid>,
-    ids: HashMap<Guid, Id>,
+    chunks: BTreeMap<Id, Arc<Chunk>>,
+    len: usize,
+    /// Each GUID's id, in buckets by its first bits.
+    ids: BTreeMap<u16, Arc<HashMap<Guid, Id>>>,
     /// This collection, and the one it was cloned from (0: none), among all made in this process.
     token: u64,
     base: u64,
     journal: Journal,
 }
+
+/// Ids a chunk holds: 2^10.
+const SHIFT: u32 = 10;
+pub const CHUNK: Id = 1 << SHIFT;
+
+/// A chunk's elements, each with its GUID.
+type Chunk = BTreeMap<Id, (Guid, Element)>;
+
+fn chunk_of(id: Id) -> Id {
+    id >> SHIFT
+}
+
+fn bucket(g: &Guid) -> u16 {
+    (g.0 >> 116) as u16
+}
+
+/// Nothing to find: what `elements[id]` looks in for an id there's no element of, to say so as a map would.
+static NONE: BTreeMap<Id, Element> = BTreeMap::new();
 
 /// What changed in an [`Elements`] since it was cloned: elements by id, those from an id on, or everything.
 #[derive(Clone, Debug, Default)]
@@ -220,11 +243,11 @@ fn token() -> u64 {
 }
 
 impl Clone for Elements {
-    /// The same elements, with a journal of their own, empty.
+    /// The same elements, sharing their chunks, with a journal of their own, empty.
     fn clone(&self) -> Elements {
         Elements {
-            items: self.items.clone(),
-            guids: self.guids.clone(),
+            chunks: self.chunks.clone(),
+            len: self.len,
             ids: self.ids.clone(),
             token: token(),
             base: self.token,
@@ -235,9 +258,36 @@ impl Clone for Elements {
 
 impl PartialEq for Elements {
     fn eq(&self, other: &Elements) -> bool {
-        self.items == other.items && self.guids == other.guids
+        self.len == other.len
+            && self.chunks.len() == other.chunks.len()
+            && self.chunks.iter().zip(&other.chunks).all(|((a, x), (b, y))| a == b && (Arc::ptr_eq(x, y) || x == y))
     }
 }
+
+type Pairs<'a> = std::iter::Map<btree_map::Iter<'a, Id, (Guid, Element)>, fn((&'a Id, &'a (Guid, Element))) -> (&'a Id, &'a Element)>;
+type PairsMut<'a> =
+    std::iter::Map<btree_map::IterMut<'a, Id, (Guid, Element)>, fn((&'a Id, &'a mut (Guid, Element))) -> (&'a Id, &'a mut Element)>;
+
+fn pair<'a>((id, (_, e)): (&'a Id, &'a (Guid, Element))) -> (&'a Id, &'a Element) {
+    (id, e)
+}
+
+fn pair_mut<'a>((id, (_, e)): (&'a Id, &'a mut (Guid, Element))) -> (&'a Id, &'a mut Element) {
+    (id, e)
+}
+
+fn pairs(c: &Arc<Chunk>) -> Pairs<'_> {
+    c.iter().map(pair as fn(_) -> _)
+}
+
+fn pairs_mut(c: &mut Arc<Chunk>) -> PairsMut<'_> {
+    Arc::make_mut(c).iter_mut().map(pair_mut as fn(_) -> _)
+}
+
+/// The elements in id order, with their ids.
+pub type Iter<'a> = std::iter::FlatMap<btree_map::Values<'a, Id, Arc<Chunk>>, Pairs<'a>, fn(&'a Arc<Chunk>) -> Pairs<'a>>;
+/// The same, to change.
+pub type IterMut<'a> = std::iter::FlatMap<btree_map::ValuesMut<'a, Id, Arc<Chunk>>, PairsMut<'a>, fn(&'a mut Arc<Chunk>) -> PairsMut<'a>>;
 
 impl Elements {
     pub fn new() -> Elements {
@@ -262,38 +312,33 @@ impl Elements {
         Changed::Ids(ids)
     }
 
-    /// The ids from `from` on whose elements or GUIDs differ between these and `before`, or that only one has.
+    /// The ids from `from` on whose elements or GUIDs differ between these and `before`, or that only one has. A chunk
+    /// both still share is the same.
     fn differ(&self, before: &Elements, from: Id) -> BTreeSet<Id> {
-        let (mut a, mut b) = (self.items.range(from..).peekable(), before.items.range(from..).peekable());
         let mut out = BTreeSet::new();
-        loop {
-            match (a.peek().copied(), b.peek().copied()) {
-                (None, None) => return out,
-                (Some((&x, _)), None) => {
-                    out.insert(x);
-                    a.next();
+        let keys: BTreeSet<Id> =
+            self.chunks.range(chunk_of(from)..).chain(before.chunks.range(chunk_of(from)..)).map(|(k, _)| *k).collect();
+        for k in keys {
+            let (a, b) = (self.chunks.get(&k), before.chunks.get(&k));
+            if let (Some(a), Some(b)) = (a, b)
+                && Arc::ptr_eq(a, b)
+            {
+                continue;
+            }
+            let empty = Chunk::new();
+            let (a, b) = (a.map_or(&empty, |c| &**c), b.map_or(&empty, |c| &**c));
+            for (id, x) in a.range(from..) {
+                if b.get(id) != Some(x) {
+                    out.insert(*id);
                 }
-                (None, Some((&y, _))) => {
-                    out.insert(y);
-                    b.next();
-                }
-                (Some((&x, e)), Some((&y, f))) => {
-                    if x < y {
-                        out.insert(x);
-                        a.next();
-                    } else if y < x {
-                        out.insert(y);
-                        b.next();
-                    } else {
-                        if e != f || self.guids.get(&x) != before.guids.get(&y) {
-                            out.insert(x);
-                        }
-                        a.next();
-                        b.next();
-                    }
+            }
+            for id in b.range(from..).map(|(id, _)| id) {
+                if !a.contains_key(id) {
+                    out.insert(*id);
                 }
             }
         }
+        out
     }
 
     /// The ids changed since these were cloned, when the journal names each (none: it can't say which).
@@ -310,41 +355,72 @@ impl Elements {
         self.journal.all = true;
     }
 
+    fn slot(&self, id: Id) -> Option<&(Guid, Element)> {
+        self.chunks.get(&chunk_of(id))?.get(&id)
+    }
+
+    fn slot_mut(&mut self, id: Id) -> Option<&mut (Guid, Element)> {
+        let c = self.chunks.get_mut(&chunk_of(id))?;
+        if !c.contains_key(&id) {
+            return None;
+        }
+        Arc::make_mut(c).get_mut(&id)
+    }
+
+    fn guid_id(&self, g: &Guid) -> Option<Id> {
+        self.ids.get(&bucket(g))?.get(g).copied()
+    }
+
+    fn set_guid(&mut self, g: Guid, id: Id) {
+        Arc::make_mut(self.ids.entry(bucket(&g)).or_default()).insert(g, id);
+    }
+
+    fn unset_guid(&mut self, g: &Guid) {
+        if let Some(b) = self.ids.get_mut(&bucket(g)) {
+            Arc::make_mut(b).remove(g);
+            if b.is_empty() {
+                self.ids.remove(&bucket(g));
+            }
+        }
+    }
+
     pub fn get(&self, k: impl Key) -> Option<&Element> {
-        self.items.get(&k.id_in(self)?)
+        self.slot(k.id_in(self)?).map(|(_, e)| e)
     }
 
     pub fn get_mut(&mut self, k: impl Key) -> Option<&mut Element> {
         let id = k.id_in(self)?;
-        if self.items.contains_key(&id) {
+        if self.slot(id).is_some() {
             self.touch(id);
         }
-        self.items.get_mut(&id)
+        self.slot_mut(id).map(|(_, e)| e)
     }
 
     pub fn contains_key(&self, k: impl Key) -> bool {
-        k.id_in(self).is_some_and(|id| self.items.contains_key(&id))
+        k.id_in(self).is_some_and(|id| self.slot(id).is_some())
     }
 
     /// The id of the element `k` finds.
     pub fn id(&self, k: impl Key) -> Option<Id> {
-        k.id_in(self).filter(|id| self.items.contains_key(id))
+        k.id_in(self).filter(|id| self.slot(*id).is_some())
     }
 
     /// The GUID of the element `k` finds.
     pub fn guid(&self, k: impl Key) -> Option<Guid> {
-        self.guids.get(&k.id_in(self)?).copied()
+        self.slot(k.id_in(self)?).map(|(g, _)| *g)
     }
 
     /// Puts `e` at `id`. An element already there keeps its GUID, so this is how an element changes; a new one gets one of its own.
     pub fn insert(&mut self, id: Id, e: Element) -> Option<Element> {
-        if !self.guids.contains_key(&id) {
-            let g = self.fresh();
-            self.guids.insert(id, g);
-            self.ids.insert(g, id);
-        }
         self.touch(id);
-        self.items.insert(id, e)
+        if let Some(slot) = self.slot_mut(id) {
+            return Some(std::mem::replace(&mut slot.1, e));
+        }
+        let g = self.fresh();
+        self.set_guid(g, id);
+        Arc::make_mut(self.chunks.entry(chunk_of(id)).or_default()).insert(id, (g, e));
+        self.len += 1;
+        None
     }
 
     /// Puts `e` at `id` with GUID `guid`, or an error if another element has that GUID.
@@ -352,16 +428,18 @@ impl Elements {
         if guid.pending().is_some() {
             return Err(format!("element {id}: {guid} is an id, not a GUID"));
         }
-        match self.ids.get(&guid) {
-            Some(&other) if other != id => return Err(format!("elements {other} and {id} have the same GUID {guid}")),
+        match self.guid_id(&guid) {
+            Some(other) if other != id => return Err(format!("elements {other} and {id} have the same GUID {guid}")),
             _ => {}
         }
-        if let Some(old) = self.guids.insert(id, guid) {
-            self.ids.remove(&old);
-        }
-        self.ids.insert(guid, id);
         self.touch(id);
-        self.items.insert(id, e);
+        if let Some(old) = self.slot(id).map(|(g, _)| *g) {
+            self.unset_guid(&old);
+        } else {
+            self.len += 1;
+        }
+        self.set_guid(guid, id);
+        Arc::make_mut(self.chunks.entry(chunk_of(id)).or_default()).insert(id, (guid, e));
         Ok(())
     }
 
@@ -369,7 +447,7 @@ impl Elements {
     pub fn fresh(&self) -> Guid {
         loop {
             let g = Guid::new();
-            if !self.ids.contains_key(&g) {
+            if self.guid_id(&g).is_none() {
                 return g;
             }
         }
@@ -377,18 +455,25 @@ impl Elements {
 
     pub fn remove(&mut self, k: impl Key) -> Option<Element> {
         let id = k.id_in(self)?;
-        if self.items.contains_key(&id) {
-            self.touch(id);
+        let key = chunk_of(id);
+        let c = self.chunks.get_mut(&key)?;
+        if !c.contains_key(&id) {
+            return None;
         }
-        if let Some(g) = self.guids.remove(&id) {
-            self.ids.remove(&g);
+        self.touch(id);
+        let c = self.chunks.get_mut(&key)?;
+        let (g, e) = Arc::make_mut(c).remove(&id)?;
+        if c.is_empty() {
+            self.chunks.remove(&key);
         }
-        self.items.remove(&id)
+        self.len -= 1;
+        self.unset_guid(&g);
+        Some(e)
     }
 
     pub fn retain(&mut self, mut keep: impl FnMut(&Id, &mut Element) -> bool) {
         self.touch_all();
-        let gone: Vec<Id> = self.items.iter_mut().filter_map(|(id, e)| (!keep(id, e)).then_some(*id)).collect();
+        let gone: Vec<Id> = self.iter_mut().filter_map(|(id, e)| (!keep(id, e)).then_some(*id)).collect();
         for id in gone {
             self.remove(id);
         }
@@ -400,48 +485,49 @@ impl Elements {
         self.touch_all();
     }
 
-    pub fn iter(&self) -> btree_map::Iter<'_, Id, Element> {
-        self.items.iter()
+    pub fn iter(&self) -> Iter<'_> {
+        self.chunks.values().flat_map(pairs as fn(_) -> _)
     }
 
-    pub fn iter_mut(&mut self) -> btree_map::IterMut<'_, Id, Element> {
+    pub fn iter_mut(&mut self) -> IterMut<'_> {
         self.touch_all();
-        self.items.iter_mut()
+        self.chunks.values_mut().flat_map(pairs_mut as fn(_) -> _)
     }
 
-    pub fn values(&self) -> btree_map::Values<'_, Id, Element> {
-        self.items.values()
+    pub fn values(&self) -> impl DoubleEndedIterator<Item = &Element> {
+        self.iter().map(|(_, e)| e)
     }
 
-    pub fn values_mut(&mut self) -> btree_map::ValuesMut<'_, Id, Element> {
-        self.touch_all();
-        self.items.values_mut()
+    pub fn values_mut(&mut self) -> impl DoubleEndedIterator<Item = &mut Element> {
+        self.iter_mut().map(|(_, e)| e)
     }
 
-    pub fn keys(&self) -> btree_map::Keys<'_, Id, Element> {
-        self.items.keys()
+    pub fn keys(&self) -> impl DoubleEndedIterator<Item = &Id> {
+        self.iter().map(|(id, _)| id)
     }
 
-    pub fn range(&self, r: std::ops::RangeFrom<Id>) -> btree_map::Range<'_, Id, Element> {
-        self.items.range(r)
+    pub fn range(&self, r: std::ops::RangeFrom<Id>) -> impl DoubleEndedIterator<Item = (&Id, &Element)> {
+        let from = r.start;
+        self.chunks.range(chunk_of(from)..).flat_map(move |(_, c)| c.range(from..).map(pair as fn(_) -> _))
     }
 
-    pub fn range_mut(&mut self, r: std::ops::RangeFrom<Id>) -> btree_map::RangeMut<'_, Id, Element> {
-        self.journal.from = Some(self.journal.from.map_or(r.start, |f| f.min(r.start)));
-        self.items.range_mut(r)
+    pub fn range_mut(&mut self, r: std::ops::RangeFrom<Id>) -> impl DoubleEndedIterator<Item = (&Id, &mut Element)> {
+        let from = r.start;
+        self.journal.from = Some(self.journal.from.map_or(from, |f| f.min(from)));
+        self.chunks.range_mut(chunk_of(from)..).flat_map(move |(_, c)| Arc::make_mut(c).range_mut(from..).map(pair_mut as fn(_) -> _))
     }
 
     pub fn len(&self) -> usize {
-        self.items.len()
+        self.len
     }
 
     pub fn is_empty(&self) -> bool {
-        self.items.is_empty()
+        self.len == 0
     }
 
     /// Every element with its id and its GUID.
     pub fn with_guids(&self) -> impl Iterator<Item = (Id, Guid, &Element)> {
-        self.items.iter().filter_map(|(id, e)| Some((*id, *self.guids.get(id)?, e)))
+        self.chunks.values().flat_map(|c| c.iter().map(|(id, (g, e))| (*id, *g, e)))
     }
 
     /// The same elements, each whose id `wanted` lists with the GUID it gives (where that is a GUID no other takes first),
@@ -454,15 +540,15 @@ impl Elements {
             .filter(|(_, g)| g.pending().is_none())
             .collect();
         for (id, g) in given {
-            if let Some(e) = self.items.get(&id)
-                && !out.ids.contains_key(&g)
+            if let Some(e) = self.get(id)
+                && out.guid_id(&g).is_none()
             {
                 let _ = out.insert_as(id, g, e.clone());
             }
         }
         for (id, g, e) in self.with_guids() {
-            if !out.items.contains_key(&id) {
-                let g = if out.ids.contains_key(&g) { out.fresh() } else { g };
+            if !out.contains_key(id) {
+                let g = if out.guid_id(&g).is_some() { out.fresh() } else { g };
                 let _ = out.insert_as(id, g, e.clone());
             }
         }
@@ -473,7 +559,7 @@ impl Elements {
     pub fn renumbered(&self, to: impl Fn(Id) -> Id) -> Option<Elements> {
         let mut out = Elements::new();
         for (id, g, e) in self.with_guids() {
-            if out.items.contains_key(&to(id)) {
+            if out.contains_key(to(id)) {
                 return None;
             }
             out.insert_as(to(id), g, e.clone()).ok()?;
@@ -486,21 +572,22 @@ impl Elements {
 impl<K: Key> std::ops::Index<K> for Elements {
     type Output = Element;
     fn index(&self, k: K) -> &Element {
-        &self.items[&k.id_in(self).unwrap_or_default()]
+        let id = k.id_in(self).unwrap_or_default();
+        self.get(id).unwrap_or_else(|| &NONE[&id])
     }
 }
 
 impl<'a> IntoIterator for &'a Elements {
     type Item = (&'a Id, &'a Element);
-    type IntoIter = btree_map::Iter<'a, Id, Element>;
+    type IntoIter = Iter<'a>;
     fn into_iter(self) -> Self::IntoIter {
-        self.items.iter()
+        self.iter()
     }
 }
 
 impl<'a> IntoIterator for &'a mut Elements {
     type Item = (&'a Id, &'a mut Element);
-    type IntoIter = btree_map::IterMut<'a, Id, Element>;
+    type IntoIter = IterMut<'a>;
     fn into_iter(self) -> Self::IntoIter {
         self.iter_mut()
     }
@@ -695,5 +782,43 @@ mod journal_tests {
         assert_eq!(d.changed_since(&base), ids(&[]), "gone through, nothing changed");
         d.clear();
         assert_eq!(d.changed_since(&base), ids(&[100_000, 100_001, 100_002, 100_003, 100_004]));
+    }
+
+    #[test]
+    fn copies_share_their_chunks_until_one_changes_and_the_other_stays_as_it_was() {
+        let g = |at: f64| {
+            Element::Grid(crate::model::Grid { start: crate::geom::P2(at, 0.0), end: crate::geom::P2(at, 1.0), name: String::new() })
+        };
+        let mut es = Elements::new();
+        // Across three chunks, with a gap.
+        let ids: Vec<Id> = (0..5).map(|i| 100_000 + i * (CHUNK / 2) + 3).collect();
+        for &id in &ids {
+            es.insert(id, g(id as f64));
+        }
+        let mut copy = es.clone();
+        assert_eq!(copy, es);
+        if let Some(e) = copy.get_mut(ids[2]) {
+            *e = g(-1.0);
+        }
+        copy.remove(ids[4]);
+        copy.insert(ids[4] + 1, g(7.0));
+        assert_eq!(es.len(), 5);
+        assert_eq!(es.get(ids[2]), Some(&g(ids[2] as f64)), "the original is as it was");
+        assert!(es.contains_key(ids[4]) && !es.contains_key(ids[4] + 1));
+        assert_eq!(copy.get(ids[2]), Some(&g(-1.0)));
+        assert_eq!(copy.len(), 5);
+        assert_ne!(copy, es);
+        // In order, across the chunks; from an id inside one; the last.
+        assert_eq!(es.keys().copied().collect::<Vec<_>>(), ids);
+        assert_eq!(es.range(ids[1] + 1..).map(|(id, _)| *id).collect::<Vec<_>>(), ids[2..].to_vec());
+        assert_eq!(copy.keys().next_back(), Some(&(ids[4] + 1)));
+        // GUIDs find their elements in each, and the copy's change set is what it changed.
+        let guid = es.guid(ids[3]).unwrap();
+        assert_eq!((es.id(guid), copy.id(guid)), (Some(ids[3]), Some(ids[3])));
+        assert_eq!(copy.changed_since(&es), ids_of(&[ids[2], ids[4], ids[4] + 1]));
+    }
+
+    fn ids_of(v: &[Id]) -> Changed {
+        Changed::Ids(v.iter().copied().collect())
     }
 }

@@ -7238,8 +7238,8 @@ fn place(s: &mut Session, p: &Value) -> R {
     let scale = num(c, p, "scale")?;
     let at = point_opt(c, p, "at")?;
     let view = match p.get("view") {
-        Some(Value::String(n)) => match m.elements.keys().find(|id| m.view_name(**id) == Some(n.as_str())) {
-            Some(id) => *id,
+        Some(Value::String(n)) => match m.elements.iter().find(|(id, _)| m.view_name(**id) == Some(n.as_str())).map(|(id, _)| *id) {
+            Some(id) => id,
             // A schedule, or the 3D view, comes to be as it's first placed: a schedule by its name in
             // English or in the project's language, named in the latter.
             None => {
