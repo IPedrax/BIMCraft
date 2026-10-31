@@ -8,7 +8,7 @@
 use std::f64::consts::{PI, TAU};
 
 mod index;
-pub(crate) use index::Index;
+pub(crate) use index::{Index, reach};
 
 use crate::geom::{self, P2};
 use crate::model::{Element, Function, Guid, Id, Layer, Location, Model, TOL, Wall};

@@ -79,6 +79,10 @@ pub struct Session {
     resets: usize,
     /// What reads a DWG drawing, when the app has one (`cad::DwgReader`); none says to save it as DXF.
     pub dwg: Option<crate::cad::DwgReader>,
+    /// The last model a command left that passed [`Model::check`]. Held here, it is never changed in place: a change
+    /// outside a command copies it first, so a model still this one is one that passed, and the next command need only
+    /// check what it changes ([`Model::check_changed`]).
+    verified: Option<Arc<Model>>,
 }
 
 impl Default for Session {
@@ -112,6 +116,7 @@ impl Session {
             redo: Vec::new(),
             resets: 0,
             dwg: None,
+            verified: None,
         }
     }
 
@@ -149,6 +154,7 @@ impl Session {
         let named = named(&self.model, params);
         let params = named.as_ref().unwrap_or(params);
         let before = Arc::clone(&self.model);
+        let verified = self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &before));
         let (run, first_new, session) = (cmd.run, self.model.next_id, (self.phase.clone(), self.option.clone()));
         let result = catch_unwind(AssertUnwindSafe(|| run(self, params)))
             .unwrap_or_else(|p| Err(format!("internal error in `{}`: {}", cmd.id, panic_text(p.as_ref()))))
@@ -189,7 +195,18 @@ impl Session {
                 // from before may break; Insert from File brings in what it finds.
                 // (Before the check, which would name a bow tie of no area by that, not by what to redraw.)
                 let edited = if cmd.undoable && cmd.id != "insert" { self.model.check_edits(&before, cmd.id, params) } else { Ok(()) };
-                edited.and_then(|()| self.model.check()).map(|()| v)
+                edited
+                    .and_then(|()| {
+                        let checked = if verified { self.model.check_changed(&before) } else { self.model.check() };
+                        // Tests hold the two to the same answer after every command they run.
+                        #[cfg(test)]
+                        if verified {
+                            let full = self.model.check();
+                            assert_eq!(checked, full, "check_changed differs from check after `{}` {params}", cmd.id);
+                        }
+                        checked
+                    })
+                    .map(|()| v)
             });
         match result {
             Err(e) => {
@@ -199,6 +216,7 @@ impl Session {
                 Err(e)
             }
             Ok(v) => {
+                self.verified = Some(Arc::clone(&self.model));
                 if cmd.undoable && !Arc::ptr_eq(&before, &self.model) {
                     self.undo.push((Step::new(cmd.label, &before, &self.model), before));
                     if self.undo.len() > UNDO_LIMIT {

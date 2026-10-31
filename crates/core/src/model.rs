@@ -2660,6 +2660,11 @@ impl Model {
     /// Every element's id has six digits or more, and what an element points at is an element of the project, by its GUID.
     /// The library's ids and GUIDs are those of what it has, no name is a GUID, and no id or GUID is two things'.
     fn check_ids(&self) -> Result<(), String> {
+        self.check_ids_of(self.elements.iter().map(|(id, e)| (*id, e)))
+    }
+
+    /// The library's ids and GUIDs as [`Model::check_ids`] asks, and of the elements, those of `elements`.
+    fn check_ids_of<'a>(&self, elements: impl Iterator<Item = (Id, &'a Element)>) -> Result<(), String> {
         if !self.library_in_step() {
             return Err("the library's ids and GUIDs are not those of what it has".into());
         }
@@ -2677,8 +2682,8 @@ impl Model {
                 return Err(format!("{} `{}`: a name isn't a GUID; name it otherwise", e.kind.label(), e.name));
             }
         }
-        for (id, e) in self.elements.iter() {
-            if *id < FIRST_ID {
+        for (id, e) in elements {
+            if id < FIRST_ID {
                 return Err(format!("element {id}: ids start at {FIRST_ID}"));
             }
             for g in e.refs() {
@@ -4849,6 +4854,13 @@ impl Model {
         for (&id, e) in &self.elements {
             self.check_element(id, e, &mut t)?;
         }
+        self.check_shared(&t)?;
+        // Last, so what a rule above says of a reference comes first.
+        self.check_ids()
+    }
+
+    /// What [`Model::check`] asks of what the elements it went through hold in common.
+    fn check_shared(&self, t: &Tally) -> Result<(), String> {
         if let Some(n) = t.view_names.intersection(&t.level_names).next() {
             return Err(format!("a view is named `{n}`, as a level is; name it otherwise"));
         }
@@ -4866,8 +4878,101 @@ impl Model {
                 }
             }
         }
-        // Last, so what a rule above says of a reference comes first.
-        self.check_ids()
+        Ok(())
+    }
+
+    /// [`Model::check`] of this model, which a command made of `before`, a model that passed it: the elements the command
+    /// added, changed or removed are checked again, with the walls they might join, what points at any of those (and what
+    /// points at that, on), and the other openings in the walls their openings are in. The rest are as they were. The same
+    /// answer as `check`, which it is where what changed reaches what the whole project shares (a level, a view, a sheet,
+    /// a name every element of a kind keeps apart, a setting or a type) or isn't known.
+    pub fn check_changed(&self, before: &Model) -> Result<(), String> {
+        let Changed::Ids(changed) = self.changed_since(before) else { return self.check() };
+        let shared = |e: &Element| {
+            matches!(
+                e,
+                Element::Level(_)
+                    | Element::Grid(_)
+                    | Element::Link(_)
+                    | Element::Schedule(_)
+                    | Element::PlanView(_)
+                    | Element::View3D(_)
+                    | Element::Section(_)
+                    | Element::Elevation(_)
+                    | Element::Sheet(_)
+                    | Element::Viewport(_)
+                    | Element::DetailGroup(_)
+                    | Element::RepeatingDetail(_)
+                    | Element::Mass(_)
+                    | Element::PointCloud(_)
+                    | Element::CadImport(_)
+            )
+        };
+        // What changed, as GUIDs, and the plan boxes the walls among it took up, before and now.
+        let mut frontier: BTreeSet<Guid> = BTreeSet::new();
+        let mut boxes: Vec<[f64; 4]> = Vec::new();
+        for &id in &changed {
+            for m in [self, before] {
+                let Some(e) = m.elements.get(id) else { continue };
+                if shared(e) {
+                    return self.check();
+                }
+                frontier.extend(m.elements.guid(id));
+                // A wall of no usable extent may meet any: the check says what is wrong with it.
+                if let Element::Wall(w) = e {
+                    let Some(b) = walls::reach(m, w) else { return self.check() };
+                    boxes.push(b);
+                }
+            }
+        }
+        let meet = |a: &[f64; 4], b: &[f64; 4]| a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3];
+        let mut affected: BTreeSet<Id> = changed.iter().copied().filter(|id| self.elements.contains_key(*id)).collect();
+        // The walls they might join, and what points at what changed, on until nothing more does.
+        for (&id, e) in &self.elements {
+            if let Element::Wall(w) = e
+                && walls::reach(self, w).is_none_or(|b| boxes.iter().any(|c| meet(&b, c)))
+                && affected.insert(id)
+            {
+                frontier.extend(self.elements.guid(id));
+            }
+        }
+        while !frontier.is_empty() {
+            let mut next = BTreeSet::new();
+            for (&id, e) in &self.elements {
+                if !affected.contains(&id) && e.refs().iter().any(|g| frontier.contains(g)) {
+                    affected.insert(id);
+                    next.extend(self.elements.guid(id));
+                }
+            }
+            frontier = next;
+        }
+        // The openings in the walls their openings are in: they're kept apart along a wall.
+        let hosts: BTreeSet<Guid> = affected
+            .iter()
+            .filter_map(|id| match self.elements.get(*id) {
+                Some(Element::Door(o) | Element::Window(o)) => Some(o.host),
+                _ => None,
+            })
+            .collect();
+        if !hosts.is_empty() {
+            for (&id, e) in &self.elements {
+                if let Element::Door(o) | Element::Window(o) = e
+                    && hosts.contains(&o.host)
+                {
+                    affected.insert(id);
+                }
+            }
+        }
+        let mut t = Tally::default();
+        for &id in &affected {
+            let Some(e) = self.elements.get(id) else { continue };
+            if shared(e) {
+                return self.check();
+            }
+            self.check_element(id, e, &mut t)?;
+        }
+        self.check_shared(&t)?;
+        self.check_ids_of(affected.iter().filter_map(|id| Some((*id, self.elements.get(*id)?))))
     }
 
     /// What [`Model::check`] asks of element `id`, `e`, keeping in `t` what it must hold in common with the others.

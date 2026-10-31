@@ -72,7 +72,7 @@ impl Index {
 }
 
 /// The plan box a wall's body lies in, grown by twice the tolerance: [x0, y0, x1, y1]. An arc's whole circle's.
-fn reach(m: &Model, w: &crate::model::Wall) -> Option<[f64; 4]> {
+pub(crate) fn reach(m: &Model, w: &crate::model::Wall) -> Option<[f64; 4]> {
     let axis = super::Axis::of(w);
     let (ext, int) = super::faces(m, w);
     let grow = ext.abs().max(int.abs()) + 2.0 * TOL;
