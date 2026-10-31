@@ -315,4 +315,14 @@ mod tests {
         assert_eq!(ys.iter().copied().fold(f32::MIN, f32::max), 100.0);
         assert_eq!(width("II", 12.0), 19.0);
     }
+
+    #[test]
+    fn dutch_words_are_all_drawn_including_ij_and_its_diaeresis_and_accents() {
+        for word in ["IJSSELSTRAAT", "ijzer", "geëist", "ruïne", "coördinatie", "café", "één", "idee\u{eb}n", "Brussel"] {
+            assert!(word.chars().all(has), "{word}");
+        }
+        // ë is E and a diaeresis, ï is I and one: two marks more than the plain letter.
+        assert_eq!(strokes("ë", 0.0, 0.0, 12.0).len(), strokes("e", 0.0, 0.0, 12.0).len() + 2);
+        assert_eq!(strokes("ï", 0.0, 0.0, 12.0).len(), strokes("i", 0.0, 0.0, 12.0).len() + 2);
+    }
 }
