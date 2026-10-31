@@ -337,7 +337,7 @@ msgstr "Terminal d'air (AT): un capteur, à l'endroit cliqué sur le toit; Espac
 msgid "Air Terminals"
 msgstr "Terminaux d'air"
 
-#: crates/core/src/commands.rs:908
+#: crates/core/src/commands.rs:921
 #: crates/ui-egui/src/editor.rs:895
 #: crates/ui-egui/src/lib.rs:316
 #: crates/ui-egui/src/sketch.rs:664
@@ -839,7 +839,7 @@ msgstr "Dessins CAO (DWG, DXF)"
 msgid "Cable Tray"
 msgstr "Chemin de câbles"
 
-#: crates/ui-egui/src/mep.rs:199
+#: crates/ui-egui/src/mep.rs:207
 msgid "Cable Tray (CT): click its start and its end; a chain of clicks makes a tray for each step"
 msgstr "Chemin de câbles (CT): cliquer sur son début et sa fin; une chaîne de clics crée un chemin de câbles par segment"
 
@@ -847,7 +847,7 @@ msgstr "Chemin de câbles (CT): cliquer sur son début et sa fin; une chaîne de
 msgid "Cabling"
 msgstr "Câblage"
 
-#: crates/ui-egui/src/mep.rs:236
+#: crates/ui-egui/src/mep.rs:244
 msgid "Cabling (CB): click its start and its end; a chain of clicks makes a cable for each step"
 msgstr "Câblage (CB): cliquer sur son début et sa fin; une chaîne de clics crée un câble par segment"
 
@@ -908,7 +908,7 @@ msgstr "Annuler le mode d'édition: abandonner les lignes, conserver l'élément
 msgid "Cancel Pattern"
 msgstr "Annuler le motif"
 
-#: crates/ui-egui/src/mep.rs:247
+#: crates/ui-egui/src/mep.rs:255
 msgid "Capture & Descent"
 msgstr "Captation et descente"
 
@@ -1600,7 +1600,7 @@ msgstr "Compact"
 msgid "Comparison"
 msgstr "Comparaison"
 
-#: crates/core/src/commands.rs:871
+#: crates/core/src/commands.rs:884
 msgid "Component"
 msgstr "Composant"
 
@@ -1624,11 +1624,11 @@ msgstr "Bloc de béton"
 msgid "Conduit"
 msgstr "Conduit"
 
-#: crates/ui-egui/src/mep.rs:189
+#: crates/ui-egui/src/mep.rs:197
 msgid "Conduit & Wire"
 msgstr "Conduit et câble"
 
-#: crates/ui-egui/src/mep.rs:193
+#: crates/ui-egui/src/mep.rs:201
 msgid "Conduit (CN): click its start and its end; a chain of clicks makes a conduit for each step"
 msgstr "Conduit (CN): cliquer sur son début et sa fin; une chaîne de clics crée un conduit par segment"
 
@@ -1685,7 +1685,7 @@ msgstr "{} lignes copiées, séparées par des tabulations."
 msgid "Copper"
 msgstr "Cuivre"
 
-#: crates/core/src/commands.rs:925
+#: crates/core/src/commands.rs:938
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:3979
 #: crates/ui-egui/src/lib.rs:4029
@@ -2050,7 +2050,7 @@ msgstr "Démolir (DW): cliquer sur un élément pour le démolir dans la phase d
 msgid "Demolished"
 msgstr "Démoli"
 
-#: crates/core/src/commands.rs:7057
+#: crates/core/src/commands.rs:7070
 msgid "Dependent"
 msgstr "Dépendante"
 
@@ -2300,7 +2300,7 @@ msgstr "Descendre"
 msgid "Down Conductor"
 msgstr "Conducteur de descente"
 
-#: crates/ui-egui/src/mep.rs:251
+#: crates/ui-egui/src/mep.rs:259
 msgid "Down Conductor (DC): click its start and its end; the same point twice and two heights stand it up a wall"
 msgstr "Conducteur de descente (DC): cliquer sur son début et sa fin; le même point deux fois, avec deux hauteurs, le dresse le long d'un mur"
 
@@ -2385,7 +2385,7 @@ msgstr "Largeur de chaque plume sur papier, en mm, pour les cotes, étiquettes, 
 msgid "Each pen's width on paper, mm, in views at each scale: a view between two takes the nearer one's. Pen 0 is always a hairline."
 msgstr "Largeur de chaque plume sur papier, en mm, dans les vues à chaque échelle: une vue entre deux échelles prend celle de la plus proche. La plume 0 est toujours un trait fin."
 
-#: crates/ui-egui/src/mep.rs:256
+#: crates/ui-egui/src/mep.rs:264
 msgid "Earthing"
 msgstr "Mise à la terre"
 
@@ -2393,7 +2393,7 @@ msgstr "Mise à la terre"
 msgid "Earthing Conductor"
 msgstr "Conducteur de terre"
 
-#: crates/ui-egui/src/mep.rs:260
+#: crates/ui-egui/src/mep.rs:268
 msgid "Earthing Conductor (GC): click its start and its end; a chain of clicks makes the ring or the mesh, under the level"
 msgstr "Conducteur de terre (GC): cliquer sur son début et sa fin; une suite de clics forme la boucle ou le maillage, sous le niveau"
 
@@ -2480,7 +2480,7 @@ msgstr "Équipement électrique"
 msgid "Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it"
 msgstr "Équipement électrique (EE): un tableau de distribution, à l'endroit cliqué sur le mur; la barre d'espace le fait pivoter"
 
-#: crates/core/src/commands.rs:1598
+#: crates/core/src/commands.rs:1611
 msgid "Elements"
 msgstr "Éléments"
 
@@ -2730,7 +2730,7 @@ msgstr "Région remplie (FR): dessiner une zone remplie d'un motif, dans cette v
 msgid "Filled region"
 msgstr "Région remplie"
 
-#: crates/core/src/commands.rs:994
+#: crates/core/src/commands.rs:1007
 msgid "Fillet Arc"
 msgstr "Arc de raccordement"
 
@@ -3785,6 +3785,14 @@ msgstr "Liens"
 msgid "List {}"
 msgstr "Liste {}"
 
+#: crates/ui-egui/src/mep.rs:193
+msgid "Load AREI Symbols"
+msgstr "Charger les symboles RGIE"
+
+#: crates/ui-egui/src/mep.rs:191
+msgid "Load AREI Symbols: the Belgian AREI/RGIE's plan symbols (Table 2.23) as families, named in the project's language; loading them again changes nothing"
+msgstr "Charger les symboles RGIE: les symboles de plan du RGIE belge (tableau 2.23) en familles, nommées dans la langue du projet; les recharger ne change rien"
+
 #: crates/ui-egui/src/lib.rs:3727
 msgid "Load Family"
 msgstr "Charger une famille"
@@ -3883,7 +3891,7 @@ msgstr "Sols de volume (MF): un sol à chaque niveau traversé par les volumes s
 msgid "Massing"
 msgstr "Volumes"
 
-#: crates/core/src/commands.rs:900
+#: crates/core/src/commands.rs:913
 msgid "Match Properties"
 msgstr "Reproduire les propriétés"
 
@@ -3938,7 +3946,7 @@ msgstr "Agrandir"
 msgid "Maximum Riser Height"
 msgstr "Hauteur maximale de contremarche"
 
-#: crates/core/src/commands.rs:1450
+#: crates/core/src/commands.rs:1463
 msgid "Measure"
 msgstr "Mesurer"
 
@@ -4067,7 +4075,7 @@ msgstr "Modifier le mur"
 msgid "Mounting Height"
 msgstr "Hauteur de montage"
 
-#: crates/core/src/commands.rs:917
+#: crates/core/src/commands.rs:930
 msgid "Move"
 msgstr "Déplacer"
 
@@ -4528,7 +4536,7 @@ msgstr "Prise"
 msgid "Outlets"
 msgstr "Prises"
 
-#: crates/ui-egui/src/mep.rs:215
+#: crates/ui-egui/src/mep.rs:223
 msgid "Outlets & Equipment"
 msgstr "Prises et équipements"
 
@@ -4893,7 +4901,7 @@ msgstr "Image…"
 msgid "Pipe"
 msgstr "Tuyau"
 
-#: crates/ui-egui/src/mep.rs:274
+#: crates/ui-egui/src/mep.rs:282
 msgid "Pipe (PI): click its start and its end; a chain of clicks makes a pipe for each step"
 msgstr "Tuyau (PI): cliquer son début et sa fin; une suite de clics crée un tuyau pour chaque étape"
 
@@ -5122,7 +5130,7 @@ msgstr "Plâtre"
 msgid "Plumbing"
 msgstr "Plomberie"
 
-#: crates/ui-egui/src/mep.rs:270
+#: crates/ui-egui/src/mep.rs:278
 msgid "Plumbing & Piping"
 msgstr "Plomberie et tuyauterie"
 
@@ -5723,7 +5731,7 @@ msgstr "Calcul de la surface des pièces: où la surface des pièces est mesuré
 msgid "Room Schedule"
 msgstr "Nomenclature des pièces"
 
-#: crates/core/src/commands.rs:932
+#: crates/core/src/commands.rs:945
 msgid "Rotate"
 msgstr "Rotation"
 
@@ -5821,7 +5829,7 @@ msgstr "Échelle: le papier que cette vue représente, 1 : n du modèle: ses ann
 msgid "Scan"
 msgstr "Numérisation"
 
-#: crates/core/src/commands.rs:1302
+#: crates/core/src/commands.rs:1315
 msgid "Schedule"
 msgstr "Nomenclature"
 
@@ -6356,7 +6364,7 @@ msgstr "Spline par des points: cliquer les points par où elle passe; Entrée la
 msgid "Spline: click its control points; Enter finishes it"
 msgstr "Spline: cliquer ses points de contrôle; Entrée la termine"
 
-#: crates/core/src/commands.rs:974
+#: crates/core/src/commands.rs:987
 msgid "Split"
 msgstr "Fractionner"
 
@@ -6557,6 +6565,7 @@ msgid "Symbol Visible"
 msgstr "Symbole visible"
 
 #: crates/ui-egui/src/editor.rs:1011
+#: crates/ui-egui/src/mep.rs:189
 msgid "Symbols"
 msgstr "Symboles"
 
@@ -7057,7 +7066,7 @@ msgstr "Ajuster/Prolonger un seul élément"
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "Ajuster/Prolonger un seul élément: choisir la ligne limite, puis la ligne à modifier, sur la partie à conserver"
 
-#: crates/core/src/commands.rs:948
+#: crates/core/src/commands.rs:961
 #: crates/ui-egui/src/sketch.rs:667
 msgid "Trim/Extend to Corner"
 msgstr "Ajuster/Prolonger au coin"
@@ -7223,7 +7232,7 @@ msgstr "Unités"
 msgid "Units Format"
 msgstr "Format des unités"
 
-#: crates/core/src/commands.rs:7198
+#: crates/core/src/commands.rs:7211
 msgid "Unnamed"
 msgstr "Sans nom"
 
@@ -7544,7 +7553,7 @@ msgstr "Fenêtres"
 msgid "Wire"
 msgstr "Câble"
 
-#: crates/ui-egui/src/mep.rs:205
+#: crates/ui-egui/src/mep.rs:213
 msgid "Wire (EW): click its start and its end; a chain of clicks makes a wire for each step"
 msgstr "Câble (EW): cliquer sur son début et sa fin; une chaîne de clics crée un câble pour chaque segment"
 

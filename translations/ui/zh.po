@@ -337,7 +337,7 @@ msgstr "接闪器 (AT)：在屋顶上单击处放置接闪器；按空格键旋�
 msgid "Air Terminals"
 msgstr "接闪器"
 
-#: crates/core/src/commands.rs:908
+#: crates/core/src/commands.rs:921
 #: crates/ui-egui/src/editor.rs:895
 #: crates/ui-egui/src/lib.rs:316
 #: crates/ui-egui/src/sketch.rs:664
@@ -839,7 +839,7 @@ msgstr "CAD 图纸（DWG、DXF）"
 msgid "Cable Tray"
 msgstr "电缆桥架"
 
-#: crates/ui-egui/src/mep.rs:199
+#: crates/ui-egui/src/mep.rs:207
 msgid "Cable Tray (CT): click its start and its end; a chain of clicks makes a tray for each step"
 msgstr "电缆桥架 (CT)：单击起点和终点；连续单击可为每一段创建一段桥架"
 
@@ -847,7 +847,7 @@ msgstr "电缆桥架 (CT)：单击起点和终点；连续单击可为每一段�
 msgid "Cabling"
 msgstr "布线"
 
-#: crates/ui-egui/src/mep.rs:236
+#: crates/ui-egui/src/mep.rs:244
 msgid "Cabling (CB): click its start and its end; a chain of clicks makes a cable for each step"
 msgstr "布线 (CB)：单击起点和终点；连续单击可为每一段创建一根电缆"
 
@@ -908,7 +908,7 @@ msgstr "取消编辑模式：放弃这些线，保持原样"
 msgid "Cancel Pattern"
 msgstr "取消线型图案"
 
-#: crates/ui-egui/src/mep.rs:247
+#: crates/ui-egui/src/mep.rs:255
 msgid "Capture & Descent"
 msgstr "接闪和引下"
 
@@ -1600,7 +1600,7 @@ msgstr "紧凑"
 msgid "Comparison"
 msgstr "比较"
 
-#: crates/core/src/commands.rs:871
+#: crates/core/src/commands.rs:884
 msgid "Component"
 msgstr "构件"
 
@@ -1624,11 +1624,11 @@ msgstr "混凝土砌块"
 msgid "Conduit"
 msgstr "线管"
 
-#: crates/ui-egui/src/mep.rs:189
+#: crates/ui-egui/src/mep.rs:197
 msgid "Conduit & Wire"
 msgstr "线管和导线"
 
-#: crates/ui-egui/src/mep.rs:193
+#: crates/ui-egui/src/mep.rs:201
 msgid "Conduit (CN): click its start and its end; a chain of clicks makes a conduit for each step"
 msgstr "线管 (CN)：单击起点和终点；连续单击可为每一段创建一根线管"
 
@@ -1685,7 +1685,7 @@ msgstr "已复制 {} 行，以制表符分隔。"
 msgid "Copper"
 msgstr "铜"
 
-#: crates/core/src/commands.rs:925
+#: crates/core/src/commands.rs:938
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:3979
 #: crates/ui-egui/src/lib.rs:4029
@@ -2050,7 +2050,7 @@ msgstr "拆除 (DW)：单击图元，在视图阶段中将其拆除；再次单�
 msgid "Demolished"
 msgstr "已拆除"
 
-#: crates/core/src/commands.rs:7057
+#: crates/core/src/commands.rs:7070
 msgid "Dependent"
 msgstr "相关"
 
@@ -2300,7 +2300,7 @@ msgstr "下移"
 msgid "Down Conductor"
 msgstr "引下线"
 
-#: crates/ui-egui/src/mep.rs:251
+#: crates/ui-egui/src/mep.rs:259
 msgid "Down Conductor (DC): click its start and its end; the same point twice and two heights stand it up a wall"
 msgstr "引下线 (DC)：单击起点和终点；在同一点单击两次并给出两个高度，可使其沿墙竖立"
 
@@ -2385,7 +2385,7 @@ msgstr "每支笔在图纸上的宽度（毫米），用于尺寸标注、标记
 msgid "Each pen's width on paper, mm, in views at each scale: a view between two takes the nearer one's. Pen 0 is always a hairline."
 msgstr "每支笔在各比例视图中于图纸上的宽度（毫米）：介于两个比例之间的视图取较近的一个。笔 0 始终是发丝线。"
 
-#: crates/ui-egui/src/mep.rs:256
+#: crates/ui-egui/src/mep.rs:264
 msgid "Earthing"
 msgstr "接地"
 
@@ -2393,7 +2393,7 @@ msgstr "接地"
 msgid "Earthing Conductor"
 msgstr "接地线"
 
-#: crates/ui-egui/src/mep.rs:260
+#: crates/ui-egui/src/mep.rs:268
 msgid "Earthing Conductor (GC): click its start and its end; a chain of clicks makes the ring or the mesh, under the level"
 msgstr "接地线 (GC)：单击起点和终点；连续单击可形成标高下方的接地环或接地网"
 
@@ -2480,7 +2480,7 @@ msgstr "电气设备"
 msgid "Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it"
 msgstr "电气设备 (EE)：在墙上单击处放置配电箱；按空格键旋转"
 
-#: crates/core/src/commands.rs:1598
+#: crates/core/src/commands.rs:1611
 msgid "Elements"
 msgstr "图元"
 
@@ -2730,7 +2730,7 @@ msgstr "填充区域 (FR)：在此视图中绘制以图案填充的区域"
 msgid "Filled region"
 msgstr "填充区域"
 
-#: crates/core/src/commands.rs:994
+#: crates/core/src/commands.rs:1007
 msgid "Fillet Arc"
 msgstr "圆角弧"
 
@@ -3785,6 +3785,14 @@ msgstr "链接"
 msgid "List {}"
 msgstr "列出 {}"
 
+#: crates/ui-egui/src/mep.rs:193
+msgid "Load AREI Symbols"
+msgstr ""
+
+#: crates/ui-egui/src/mep.rs:191
+msgid "Load AREI Symbols: the Belgian AREI/RGIE's plan symbols (Table 2.23) as families, named in the project's language; loading them again changes nothing"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3727
 msgid "Load Family"
 msgstr "载入族"
@@ -3883,7 +3891,7 @@ msgstr "体量楼层 (MF)：在所选体量穿过的每个标高处创建一个�
 msgid "Massing"
 msgstr "体量建模"
 
-#: crates/core/src/commands.rs:900
+#: crates/core/src/commands.rs:913
 msgid "Match Properties"
 msgstr "匹配属性"
 
@@ -3938,7 +3946,7 @@ msgstr "最大化"
 msgid "Maximum Riser Height"
 msgstr "最大踢面高度"
 
-#: crates/core/src/commands.rs:1450
+#: crates/core/src/commands.rs:1463
 msgid "Measure"
 msgstr "测量"
 
@@ -4067,7 +4075,7 @@ msgstr "修改墙"
 msgid "Mounting Height"
 msgstr "安装高度"
 
-#: crates/core/src/commands.rs:917
+#: crates/core/src/commands.rs:930
 msgid "Move"
 msgstr "移动"
 
@@ -4528,7 +4536,7 @@ msgstr "插座"
 msgid "Outlets"
 msgstr "插座"
 
-#: crates/ui-egui/src/mep.rs:215
+#: crates/ui-egui/src/mep.rs:223
 msgid "Outlets & Equipment"
 msgstr "插座和设备"
 
@@ -4893,7 +4901,7 @@ msgstr "图片…"
 msgid "Pipe"
 msgstr "管道"
 
-#: crates/ui-egui/src/mep.rs:274
+#: crates/ui-egui/src/mep.rs:282
 msgid "Pipe (PI): click its start and its end; a chain of clicks makes a pipe for each step"
 msgstr "管道 (PI)：单击起点和终点；连续单击可为每一段创建一根管道"
 
@@ -5122,7 +5130,7 @@ msgstr "抹灰"
 msgid "Plumbing"
 msgstr "卫浴"
 
-#: crates/ui-egui/src/mep.rs:270
+#: crates/ui-egui/src/mep.rs:278
 msgid "Plumbing & Piping"
 msgstr "卫浴和管道"
 
@@ -5723,7 +5731,7 @@ msgstr "房间面积计算：测量房间面积的位置；当前为{}"
 msgid "Room Schedule"
 msgstr "房间明细表"
 
-#: crates/core/src/commands.rs:932
+#: crates/core/src/commands.rs:945
 msgid "Rotate"
 msgstr "旋转"
 
@@ -5821,7 +5829,7 @@ msgstr "比例：此视图所代表的图纸，为模型的 1 : n；其注释和
 msgid "Scan"
 msgstr "扫描"
 
-#: crates/core/src/commands.rs:1302
+#: crates/core/src/commands.rs:1315
 msgid "Schedule"
 msgstr "明细表"
 
@@ -6356,7 +6364,7 @@ msgstr "通过点的样条曲线：单击它经过的点；按 Enter 完成"
 msgid "Spline: click its control points; Enter finishes it"
 msgstr "样条曲线：单击其控制点；按 Enter 完成"
 
-#: crates/core/src/commands.rs:974
+#: crates/core/src/commands.rs:987
 msgid "Split"
 msgstr "拆分"
 
@@ -6557,6 +6565,7 @@ msgid "Symbol Visible"
 msgstr "符号可见"
 
 #: crates/ui-egui/src/editor.rs:1011
+#: crates/ui-egui/src/mep.rs:189
 msgid "Symbols"
 msgstr "符号"
 
@@ -7057,7 +7066,7 @@ msgstr "修剪/延伸单个图元"
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "修剪/延伸单个图元：拾取边界线，然后在要保留的部分上拾取要更改的线"
 
-#: crates/core/src/commands.rs:948
+#: crates/core/src/commands.rs:961
 #: crates/ui-egui/src/sketch.rs:667
 msgid "Trim/Extend to Corner"
 msgstr "修剪/延伸为角"
@@ -7223,7 +7232,7 @@ msgstr "单位"
 msgid "Units Format"
 msgstr "单位格式"
 
-#: crates/core/src/commands.rs:7198
+#: crates/core/src/commands.rs:7211
 msgid "Unnamed"
 msgstr "未命名"
 
@@ -7544,7 +7553,7 @@ msgstr "窗口"
 msgid "Wire"
 msgstr "导线"
 
-#: crates/ui-egui/src/mep.rs:205
+#: crates/ui-egui/src/mep.rs:213
 msgid "Wire (EW): click its start and its end; a chain of clicks makes a wire for each step"
 msgstr "导线 (EW)：单击起点和终点；连续单击可为每一段创建一根导线"
 

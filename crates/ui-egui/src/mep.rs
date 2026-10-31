@@ -186,6 +186,14 @@ impl BimApp {
         panel(ui, "Electrical", |ui| {
             self.buttons(ui, &[Self::fixture_button("equipment"), Self::fixture_button("device"), Self::fixture_button("lighting")]);
         });
+        panel(ui, msg!("Symbols"), |ui| {
+            let tip = msg!(
+                "Load AREI Symbols: the Belgian AREI/RGIE's plan symbols (Table 2.23) as families, named in the project's language; loading them again changes nothing"
+            );
+            if big_button(ui, Icon::LoadFamily, "Load AREI Symbols", false, tip).clicked() {
+                self.run("symbol_set", serde_json::json!({"set": "arei"}));
+            }
+        });
         panel(ui, msg!("Conduit & Wire"), |ui| {
             let conduit = (
                 Icon::Conduit,

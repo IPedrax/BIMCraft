@@ -669,3 +669,30 @@ fn the_discipline_tabs_speak_portuguese_and_spanish_and_leave_no_english() {
         ["Tubulações", "Eletroduto", "Eletrocalha"]
     );
 }
+
+#[test]
+fn the_electrical_tab_loads_the_arei_symbols_on_request_and_only_once() {
+    let mut h = app(BOX);
+    // A new project doesn't come with them.
+    assert!(!h.state().session.model.families.contains_key("Switch, single-pole"));
+    press(&mut h, "Electrical");
+    press(&mut h, "Load AREI Symbols");
+    let families = |h: &Harness<BimApp>| h.state().session.model.families.clone();
+    let loaded = families(&h);
+    assert!(loaded.contains_key("Switch, single-pole") && loaded.contains_key("Socket, protective contact"));
+    assert!(!h.state().status.error, "{}", h.state().status.text);
+    // Again changes nothing, and the Device tool lists the symbols of its kinds.
+    press(&mut h, "Load AREI Symbols");
+    assert_eq!(families(&h), loaded);
+    press(&mut h, "Device");
+    press(&mut h, "Type Selector");
+    assert!(h.query_by_label("Switch, single-pole: Standard").is_some());
+    assert!(h.query_by_label("Cooker: Standard").is_none(), "a cooker is not a device");
+    // And one placed on the plan is a component of its family.
+    h.get_by_label("Switch, single-pole: Standard").scroll_to_me();
+    h.run();
+    press(&mut h, "Switch, single-pole: Standard");
+    click(&mut h, P2(2000.0, 2000.0));
+    let placed = ids(&h, "component");
+    assert_eq!(field(&h, placed[0], "family"), json!("Switch, single-pole"));
+}

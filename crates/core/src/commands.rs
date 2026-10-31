@@ -867,6 +867,19 @@ pub static ALL: &[Command] = &[
         family,
     ),
     edit(
+        "symbol_set",
+        "Load Symbol Set",
+        &[],
+        "{set: arei, names?: en|nl|fr} loads a set of families that are plan symbols and nothing else, each of one type \
+         `Standard` with no forms: `arei` is the Belgian AREI/RGIE's graphical symbols (Table 2.23: switches, sockets, light \
+         points, appliances, sources, domotics, protection), 76 families, switches in the switch category, sockets in outlet, \
+         luminaires in lighting and the rest generic. `names` is the language of their names, English, Dutch or French as the \
+         source prints them; as given none, French in a French project and English otherwise. A family the project has by \
+         that name stays as it is, so loading twice changes nothing; the reply lists `loaded` and `kept`. Place them as \
+         components",
+        symbol_set,
+    ),
+    edit(
         "component",
         ui_msg!("Component"),
         &["CM"],
@@ -7679,6 +7692,30 @@ fn family(s: &mut Session, p: &Value) -> R {
     };
     m.families.insert(name.clone(), f.clone());
     Ok(json!({"name": name, "family": f}))
+}
+
+fn symbol_set(s: &mut Session, p: &Value) -> R {
+    use crate::symbol_set::{Names, SETS};
+    let c = "symbol_set";
+    let set = string(c, p, "set")?.ok_or_else(|| bad(c, format!("`set` is required: {}", SETS.join(", "))))?;
+    if !SETS.contains(&set.as_str()) {
+        return Err(bad(c, format!("no symbol set `{set}`: there is {}", SETS.join(", "))));
+    }
+    let names = match string(c, p, "names")? {
+        Some(code) => Names::from_code(&code).ok_or_else(|| bad(c, format!("`names` is en, nl or fr, not `{code}`")))?,
+        None => Names::of(s.model.language),
+    };
+    let m = s.model_mut();
+    let (mut loaded, mut kept) = (Vec::new(), Vec::new());
+    for (name, family) in crate::symbol_set::families(&set, names) {
+        if m.families.contains_key(&name) {
+            kept.push(name);
+        } else {
+            m.families.insert(name.clone(), family);
+            loaded.push(name);
+        }
+    }
+    Ok(json!({"set": set, "loaded": loaded, "kept": kept}))
 }
 
 fn component(s: &mut Session, p: &Value) -> R {

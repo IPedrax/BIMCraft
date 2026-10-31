@@ -336,7 +336,7 @@ msgstr "Jímač (AT): jímací prvek v místě kliknutí na střeše; Mezerník 
 msgid "Air Terminals"
 msgstr "Jímače"
 
-#: crates/core/src/commands.rs:908
+#: crates/core/src/commands.rs:921
 #: crates/ui-egui/src/editor.rs:895
 #: crates/ui-egui/src/lib.rs:316
 #: crates/ui-egui/src/sketch.rs:664
@@ -838,7 +838,7 @@ msgstr ""
 msgid "Cable Tray"
 msgstr "Kabelový žlab"
 
-#: crates/ui-egui/src/mep.rs:199
+#: crates/ui-egui/src/mep.rs:207
 msgid "Cable Tray (CT): click its start and its end; a chain of clicks makes a tray for each step"
 msgstr "Kabelový žlab (CT): klikněte na jeho počátek a konec; řetězec kliknutí vytvoří žlab pro každý krok"
 
@@ -846,7 +846,7 @@ msgstr "Kabelový žlab (CT): klikněte na jeho počátek a konec; řetězec kli
 msgid "Cabling"
 msgstr "Kabeláž"
 
-#: crates/ui-egui/src/mep.rs:236
+#: crates/ui-egui/src/mep.rs:244
 msgid "Cabling (CB): click its start and its end; a chain of clicks makes a cable for each step"
 msgstr "Kabeláž (CB): klikněte na její počátek a konec; řetězec kliknutí vytvoří kabel pro každý krok"
 
@@ -907,7 +907,7 @@ msgstr "Zrušit režim úprav: zahodit čáry, zachovat původní stav"
 msgid "Cancel Pattern"
 msgstr "Zrušit vzor"
 
-#: crates/ui-egui/src/mep.rs:247
+#: crates/ui-egui/src/mep.rs:255
 msgid "Capture & Descent"
 msgstr "Jímací soustava a svody"
 
@@ -1599,7 +1599,7 @@ msgstr "Kompaktní"
 msgid "Comparison"
 msgstr "Porovnání"
 
-#: crates/core/src/commands.rs:871
+#: crates/core/src/commands.rs:884
 msgid "Component"
 msgstr "Komponenta"
 
@@ -1623,11 +1623,11 @@ msgstr "Betonová tvárnice"
 msgid "Conduit"
 msgstr "Trubka elektroinstalace"
 
-#: crates/ui-egui/src/mep.rs:189
+#: crates/ui-egui/src/mep.rs:197
 msgid "Conduit & Wire"
 msgstr "Trubka elektroinstalace a vodič"
 
-#: crates/ui-egui/src/mep.rs:193
+#: crates/ui-egui/src/mep.rs:201
 msgid "Conduit (CN): click its start and its end; a chain of clicks makes a conduit for each step"
 msgstr "Trubka elektroinstalace (CN): klikněte na její počátek a konec; řetězec kliknutí vytvoří trubku pro každý krok"
 
@@ -1684,7 +1684,7 @@ msgstr "Zkopírováno {} řádků oddělených tabulátory."
 msgid "Copper"
 msgstr "Měď"
 
-#: crates/core/src/commands.rs:925
+#: crates/core/src/commands.rs:938
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:3979
 #: crates/ui-egui/src/lib.rs:4029
@@ -2049,7 +2049,7 @@ msgstr "Zbourat (DW): klikněte na prvek, který chcete zbourat ve fázi pohledu
 msgid "Demolished"
 msgstr "Zbourané"
 
-#: crates/core/src/commands.rs:7057
+#: crates/core/src/commands.rs:7070
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -2299,7 +2299,7 @@ msgstr "Dolů"
 msgid "Down Conductor"
 msgstr "Svod hromosvodu"
 
-#: crates/ui-egui/src/mep.rs:251
+#: crates/ui-egui/src/mep.rs:259
 msgid "Down Conductor (DC): click its start and its end; the same point twice and two heights stand it up a wall"
 msgstr "Svod hromosvodu (DC): klikněte na počátek a konec; kliknutím dvakrát na stejný bod a dvě výšky jej vztyčíte po stěně"
 
@@ -2384,7 +2384,7 @@ msgstr "Tloušťka jednotlivých per na papíře v mm pro kóty, popisky, text, 
 msgid "Each pen's width on paper, mm, in views at each scale: a view between two takes the nearer one's. Pen 0 is always a hairline."
 msgstr "Tloušťka jednotlivých per na papíře v mm v pohledech každého měřítka: pohled mezi dvěma měřítky převezme bližší hodnotu. Pero 0 je vždy vlasová čára."
 
-#: crates/ui-egui/src/mep.rs:256
+#: crates/ui-egui/src/mep.rs:264
 msgid "Earthing"
 msgstr "Uzemnění"
 
@@ -2392,7 +2392,7 @@ msgstr "Uzemnění"
 msgid "Earthing Conductor"
 msgstr "Zemnicí vodič"
 
-#: crates/ui-egui/src/mep.rs:260
+#: crates/ui-egui/src/mep.rs:268
 msgid "Earthing Conductor (GC): click its start and its end; a chain of clicks makes the ring or the mesh, under the level"
 msgstr "Zemnicí vodič (GC): klikněte na začátek a konec; řetězec kliknutí vytvoří obvodové vedení nebo mříž pod podlažím"
 
@@ -2479,7 +2479,7 @@ msgstr "Elektrická zařízení"
 msgid "Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it"
 msgstr "Elektrické zařízení (EE): rozvaděč v místě kliknutí na stěnu; Mezerník prvek otočí"
 
-#: crates/core/src/commands.rs:1598
+#: crates/core/src/commands.rs:1611
 msgid "Elements"
 msgstr "Prvky"
 
@@ -2729,7 +2729,7 @@ msgstr "Vyplněná oblast (FR): načrtněte v tomto pohledu oblast vyplněnou vz
 msgid "Filled region"
 msgstr "Vyplněná oblast"
 
-#: crates/core/src/commands.rs:994
+#: crates/core/src/commands.rs:1007
 msgid "Fillet Arc"
 msgstr "Zaoblovací oblouk"
 
@@ -3784,6 +3784,14 @@ msgstr "Připojení"
 msgid "List {}"
 msgstr "Výpis {}"
 
+#: crates/ui-egui/src/mep.rs:193
+msgid "Load AREI Symbols"
+msgstr ""
+
+#: crates/ui-egui/src/mep.rs:191
+msgid "Load AREI Symbols: the Belgian AREI/RGIE's plan symbols (Table 2.23) as families, named in the project's language; loading them again changes nothing"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3727
 msgid "Load Family"
 msgstr "Načíst rodinu"
@@ -3882,7 +3890,7 @@ msgstr "Podlaží objemu (MF): podlaží v každé úrovni, kterou vybrané obje
 msgid "Massing"
 msgstr "Objemy"
 
-#: crates/core/src/commands.rs:900
+#: crates/core/src/commands.rs:913
 msgid "Match Properties"
 msgstr "Shoda vlastností"
 
@@ -3937,7 +3945,7 @@ msgstr "Maximalizovat"
 msgid "Maximum Riser Height"
 msgstr "Maximální výška stupně"
 
-#: crates/core/src/commands.rs:1450
+#: crates/core/src/commands.rs:1463
 msgid "Measure"
 msgstr "Změřit"
 
@@ -4066,7 +4074,7 @@ msgstr "Upravit stěnu"
 msgid "Mounting Height"
 msgstr "Montážní výška"
 
-#: crates/core/src/commands.rs:917
+#: crates/core/src/commands.rs:930
 msgid "Move"
 msgstr "Přesunout"
 
@@ -4527,7 +4535,7 @@ msgstr "Zásuvka"
 msgid "Outlets"
 msgstr "Zásuvky"
 
-#: crates/ui-egui/src/mep.rs:215
+#: crates/ui-egui/src/mep.rs:223
 msgid "Outlets & Equipment"
 msgstr "Zásuvky a zařízení"
 
@@ -4892,7 +4900,7 @@ msgstr "Obrázek…"
 msgid "Pipe"
 msgstr "Potrubí"
 
-#: crates/ui-egui/src/mep.rs:274
+#: crates/ui-egui/src/mep.rs:282
 msgid "Pipe (PI): click its start and its end; a chain of clicks makes a pipe for each step"
 msgstr "Potrubí (PI): klikněte na začátek a konec; řada kliknutí vytvoří úsek potrubí pro každý krok"
 
@@ -5121,7 +5129,7 @@ msgstr "Omítka"
 msgid "Plumbing"
 msgstr "Zdravotechnika"
 
-#: crates/ui-egui/src/mep.rs:270
+#: crates/ui-egui/src/mep.rs:278
 msgid "Plumbing & Piping"
 msgstr "Zdravotechnika a potrubí"
 
@@ -5722,7 +5730,7 @@ msgstr ""
 msgid "Room Schedule"
 msgstr "Výkaz místností"
 
-#: crates/core/src/commands.rs:932
+#: crates/core/src/commands.rs:945
 msgid "Rotate"
 msgstr "Otočit"
 
@@ -5820,7 +5828,7 @@ msgstr "Měřítko: velikost papíru odpovídající tomuto pohledu, 1 : n model
 msgid "Scan"
 msgstr "Sken"
 
-#: crates/core/src/commands.rs:1302
+#: crates/core/src/commands.rs:1315
 msgid "Schedule"
 msgstr "Výkaz"
 
@@ -6355,7 +6363,7 @@ msgstr "Křivka spline procházející body: klikněte na body, kterými prochá
 msgid "Spline: click its control points; Enter finishes it"
 msgstr "Křivka spline: klikněte na její řídicí body; klávesa Enter ji dokončí"
 
-#: crates/core/src/commands.rs:974
+#: crates/core/src/commands.rs:987
 msgid "Split"
 msgstr "Rozdělit"
 
@@ -6556,6 +6564,7 @@ msgid "Symbol Visible"
 msgstr "Symbol viditelný"
 
 #: crates/ui-egui/src/editor.rs:1011
+#: crates/ui-egui/src/mep.rs:189
 msgid "Symbols"
 msgstr "Symboly"
 
@@ -7056,7 +7065,7 @@ msgstr "Oříznout/prodloužit jeden prvek"
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "Oříznout/prodloužit jeden prvek: vyberte hraniční čáru a poté čáru k úpravě na části, kterou chcete zachovat"
 
-#: crates/core/src/commands.rs:948
+#: crates/core/src/commands.rs:961
 #: crates/ui-egui/src/sketch.rs:667
 msgid "Trim/Extend to Corner"
 msgstr "Oříznout/prodloužit k rohu"
@@ -7222,7 +7231,7 @@ msgstr "Jednotky"
 msgid "Units Format"
 msgstr ""
 
-#: crates/core/src/commands.rs:7198
+#: crates/core/src/commands.rs:7211
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 
@@ -7543,7 +7552,7 @@ msgstr "Okna"
 msgid "Wire"
 msgstr "Vodič"
 
-#: crates/ui-egui/src/mep.rs:205
+#: crates/ui-egui/src/mep.rs:213
 msgid "Wire (EW): click its start and its end; a chain of clicks makes a wire for each step"
 msgstr "Vodič (EW): klikněte na jeho začátek a konec; řetězec kliknutí vytvoří vodič pro každý segment"
 

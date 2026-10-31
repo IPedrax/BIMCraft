@@ -80,6 +80,7 @@ pub mod standards;
 pub mod step;
 pub mod storm;
 pub mod styles;
+pub mod symbol_set;
 pub mod text;
 pub mod texture;
 pub mod units;
