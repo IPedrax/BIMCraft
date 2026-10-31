@@ -7,7 +7,7 @@
 
 use bimcraft_i18n::{msg, ui_msg};
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::f64::consts::{PI, TAU};
 use std::sync::Arc;
 
@@ -4858,6 +4858,8 @@ impl Model {
         let mut spans: BTreeMap<Guid, Vec<OpeningSpan>> = BTreeMap::new();
         // The members each view's detail groups and repeating details place.
         let mut members_placed: BTreeMap<Guid, usize> = BTreeMap::new();
+        // Whether components' shapes build, by family, type and values (as JSON).
+        let mut shapes: HashMap<(&str, &str, String), Result<(), String>> = HashMap::new();
         for (&id, e) in &self.elements {
             let who = format!("{} {id}", e.category());
             let level_ok = |l: Guid| self.level(l).map(|_| ()).ok_or(format!("{who}: level {} doesn't exist", self.shown(l)));
@@ -5462,7 +5464,13 @@ impl Model {
                     coord(&format!("{who} angle"), c.angle)?;
                     coord(&format!("{who} offset"), c.offset)?;
                     self.family_values_ok(&who, &c.family, f, &c.params)?;
-                    f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v)).map_err(|e| format!("{who}: {e}"))?;
+                    // Its shape, built once for each family, type and values the project's components have.
+                    let build = || f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v)).map(|_| ());
+                    let built = match serde_json::to_string(&c.params) {
+                        Ok(values) => shapes.entry((c.family.as_str(), c.type_name.as_str(), values)).or_insert_with(build).clone(),
+                        Err(_) => build(),
+                    };
+                    built.map_err(|e| format!("{who}: {e}"))?;
                 }
                 Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
                     let types = match e {
@@ -6051,6 +6059,33 @@ mod tests {
         // A wall upstairs meeting the same corner doesn't join walls downstairs.
         let up = m.insert(wall(m.guid(100001), P2(0.0, 0.0), P2(0.0, -3000.0)));
         assert_eq!(walls::cap(&m, up, false), [P2(-100.0, 0.0), P2(100.0, 0.0)]);
+    }
+
+    #[test]
+    fn components_sharing_a_shape_are_each_checked_and_the_first_that_fails_is_named() {
+        use serde_json::json;
+        let mut s = crate::engine::Session::new();
+        let width = json!({"name": "Width", "instance": true, "value": 500});
+        let form = json!({"profile": [[0, 0], ["Width", 0], ["Width", 100], [0, 100]], "to": 100});
+        s.execute("family", &json!({"name": "Slab", "parameters": [width], "forms": [form], "types": {"A": {}}})).unwrap();
+        for _ in 0..3 {
+            s.execute("component", &json!({"family": "Slab", "at": [0, 0]})).unwrap();
+        }
+        s.model.check().unwrap();
+        // Two with a width no profile has, the same one: each its own error, the first named.
+        let ids: Vec<Id> = s.model.elements.iter().filter(|(_, e)| matches!(e, Element::Component(_))).map(|(id, _)| *id).collect();
+        let m = s.model_mut();
+        for id in &ids[1..] {
+            if let Some(Element::Component(c)) = m.elements.get_mut(*id) {
+                c.params.insert("Width".into(), json!(-1e300));
+            }
+        }
+        let first = m.check().unwrap_err();
+        assert!(first.starts_with(&format!("component {}:", ids[1])), "{first}");
+        m.elements.remove(ids[1]);
+        let second = m.check().unwrap_err();
+        assert!(second.starts_with(&format!("component {}:", ids[2])), "{second}");
+        assert_eq!(first.split_once(':').map(|p| p.1), second.split_once(':').map(|p| p.1));
     }
 
     #[test]
