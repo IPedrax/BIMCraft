@@ -32,7 +32,8 @@ preference back to the system's (and `keep_settings` would then write that over 
 
 Application dialogs use `popup.rs`: a shared modal frame with a draggable title bar and a corner × button. Each dialog keeps its own
 position while the application is open; dragging is constrained to the application window. The × button follows Cancel/Close, so it never
-applies a draft. Nested dialogs keep their own positions and close independently. The dialog body scrolls separately from its footer;
+applies a draft; so does Escape. A click beside a dialog, on the dimmed window behind it, does nothing: only its buttons, its × and Escape
+close it. Nested dialogs keep their own positions and close independently. The dialog body scrolls separately from its footer;
 OK, Cancel, Apply and other closing actions stay at the bottom, including on shorter windows and when tabs have different amounts of content.
 Imports and installations keep their close button disabled while they replace the project or application. Native file dialogs keep their system frames.
 
@@ -261,7 +262,8 @@ a description is an action only by its whole name in one of the interface's lang
 is another action's is skipped and counted in the message. Custom shortcuts last while the window is open. Match Properties (MA) is the `match_properties`
 command; with one element selected the window remembers its type for the next one drawn, with several it gives the others of the first's category its type.
 
-Annotation dialogs and draw tools. Manage > Fill Patterns (`fillpatterns.rs`, also Edit Type of a filled region) and Manage > Line Styles
+Annotation dialogs and draw tools. Manage > Annotation Settings lists Line Weights, Line Styles, Line Patterns (Line Styles on its
+Patterns tab) and Fill Patterns. Fill Patterns (`fillpatterns.rs`, also Edit Type of a filled region) and Line Styles
 (`linestyles.rs`) edit a draft of the project's entries and send it as one transaction: what is deleted and made again under its name is changed in
 place, and renames go through `renames::plan`, which runs a chain from its end and a swap through a spare name (the core refuses a rename onto a name
 that is taken). A draft keeps the entries the project held when it opened and is refused over a project that has changed since (an agent's command),

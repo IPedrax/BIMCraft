@@ -58,57 +58,36 @@ fn a_masking_region_starts_in_masking_with_its_lines_unseen_and_fr_starts_a_fill
 }
 
 #[test]
-fn fill_patterns_and_region_types_are_made_and_changed_in_one_step() {
+fn fill_patterns_are_made_and_changed_in_one_step_and_the_region_types_that_fill_with_them_follow() {
     let mut h = app(BOX);
-    press(&mut h, "Manage");
-    press(&mut h, "Fill Patterns");
+    annotation(&mut h, "Fill Patterns");
     assert!(h.state().fill_patterns_dialog.is_some());
-    press(&mut h, "Patterns");
     // A simple pattern of its own: 30°, 3 mm, crosshatched.
     press(&mut h, "New Pattern");
+    press(&mut h, "Simple Lines");
     type_into(&mut h, "Pattern 1: Name", "Lattice");
     type_into(&mut h, "Lattice: Angle", "30");
     type_into(&mut h, "Lattice: Spacing", "3");
     press(&mut h, "Lattice: Crosshatch");
-    // A type filling with it, in red.
-    press(&mut h, "Region Types");
-    press(&mut h, "New Type");
-    type_into(&mut h, "Region Type 1: Name", "Lattice Red");
-    choose(&mut h, "Lattice Red: Foreground", "Lattice");
     let steps = h.state().session.history().len();
     press(&mut h, "OK");
     assert!(h.state().fill_patterns_dialog.is_none(), "{}", h.state().status.text);
     let m = &h.state().session.model;
     assert_eq!(m.fill_patterns["Lattice"].target, Target::Drafting);
     assert_eq!(m.fill_patterns["Lattice"].lines, vec![HatchLine::simple(30.0, 3.0), HatchLine::simple(120.0, 3.0)]);
-    assert_eq!(m.region_types["Lattice Red"].foreground.as_deref(), Some("Lattice"));
     assert_eq!(h.state().session.history().len(), steps + 1);
     assert_eq!(h.state().session.history().last(), Some(&"Fill Patterns"));
-    // Renamed, the type follows; a type a region is of is refused deleted, saying why, the dialog staying open.
-    h.state_mut()
-        .session
-        .execute(
-            "filled_region",
-            &json!({"sketch": [[[0, 0], [1000, 0]], [[1000, 0], [1000, 1000]], [[1000, 1000], [0, 0]]], "type": "Lattice Red"}),
-        )
-        .unwrap();
-    press(&mut h, "Fill Patterns");
-    press(&mut h, "Patterns");
-    type_into(&mut h, "Lattice: Name", "Trellis");
-    press(&mut h, "Region Types");
-    press(&mut h, "Lattice Red: Delete");
-    press(&mut h, "OK");
-    assert!(h.state().fill_patterns_dialog.is_some() && h.state().status.error, "{}", h.state().status.text);
-    press(&mut h, "Cancel");
-    press(&mut h, "Fill Patterns");
-    press(&mut h, "Patterns");
+    // A type filling with it follows its new name.
+    h.state_mut().session.execute("filled_region_type", &json!({"name": "Lattice Red", "foreground": "Lattice"})).unwrap();
+    h.run();
+    annotation(&mut h, "Fill Patterns");
     type_into(&mut h, "Lattice: Name", "Trellis");
     press(&mut h, "OK");
     assert_eq!(h.state().session.model.region_types["Lattice Red"].foreground.as_deref(), Some("Trellis"));
 }
 
 #[test]
-fn patterns_come_in_from_a_pat_file_go_out_to_one_and_any_patterns_lines_are_edited_family_by_family() {
+fn patterns_come_in_from_a_pat_file_go_out_to_one_and_a_custom_one_is_kept_as_it_came() {
     let dir = std::env::temp_dir().join(format!("bimcraft-ui-pat-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("in.pat");
@@ -118,24 +97,18 @@ fn patterns_come_in_from_a_pat_file_go_out_to_one_and_any_patterns_lines_are_edi
     )
     .unwrap();
     let mut h = app(BOX);
-    press(&mut h, "Manage");
-    press(&mut h, "Fill Patterns");
-    press(&mut h, "Patterns");
+    annotation(&mut h, "Fill Patterns");
     h.state_mut().import_patterns(&file);
     h.run();
     assert!(h.query_by_label_contains("Flat").is_some(), "what was left out is said in the dialog");
-    // Its families, edited: the second's dashes typed anew, a third added.
-    press(&mut h, "Herringbone: Edit Lines");
-    type_into(&mut h, "Herringbone family 2: Dashes", "300, -100");
-    press(&mut h, "Add Family");
-    type_into(&mut h, "Herringbone family 3: Spacing", "50");
+    // A custom pattern is kept as it came: it has no Edit Lines.
+    assert!(h.query_by_label("Herringbone: Edit Lines").is_none());
     press(&mut h, "OK");
     let m = &h.state().session.model;
     let p = &m.fill_patterns["Herringbone"];
     assert_eq!(p.target, Target::Model);
-    assert_eq!(p.lines.len(), 3);
-    assert_eq!(p.lines[1].dashes, [300.0, -100.0]);
-    assert_eq!(p.lines[2].spacing, 50.0);
+    assert_eq!(p.lines.len(), 2);
+    assert_eq!(p.lines[1].dashes, [200.0, -200.0]);
     // And out to a file, read back the same.
     let out = dir.join("out");
     let drafted: Vec<(String, bimcraft_core::fills::FillPattern)> = m.fill_patterns.iter().map(|(n, p)| (n.clone(), p.clone())).collect();
@@ -376,4 +349,111 @@ fn a_pan_or_a_zoom_of_a_section_with_a_region_over_it_draws_the_picture_once_a_f
         pan.push(drawn(&h) - before);
     }
     assert!(pan.iter().all(|n| *n == 1), "each frame of the pan drew the picture once: {pan:?}");
+}
+
+/// Detail lines drawn in the plan: a brick's bed joint and its head joint, which runs on past the tile.
+fn brick_lines(h: &mut Harness<BimApp>) -> Vec<Id> {
+    let s = &mut h.state_mut().session;
+    let mut made = Vec::new();
+    for (a, b) in [([1000, 1000], [3000, 1000]), ([1000, 1000], [1000, 3000])] {
+        let r = s.execute("detail_line", &json!({"start": a, "end": b})).unwrap();
+        made.push(r["id"].as_u64().unwrap());
+    }
+    h.run();
+    made
+}
+
+#[test]
+fn a_custom_pattern_is_made_of_the_lines_picked_cut_to_two_corners_previewed_and_kept_on_ok() {
+    let mut h = app(BOX);
+    let lines = brick_lines(&mut h);
+    annotation(&mut h, "Fill Patterns");
+    // The Manage dialog is the patterns alone: region types are edited where a region is drawn, with Edit Type.
+    assert!(h.query_by_label("Region Types").is_none());
+    press(&mut h, "New Pattern");
+    pick(&mut h, Role::Button, "Custom");
+    // The dialog steps aside for the plan, which says what to do.
+    assert!(h.query_by_label("New Pattern").is_none(), "the dialog is hidden while lines are picked");
+    assert_eq!(h.state().prompt(), "Select fill pattern lines then press Enter");
+    click(&mut h, P2(2000.0, 1000.0));
+    click_with(&mut h, P2(1000.0, 2500.0), Modifiers::COMMAND);
+    assert_eq!(h.state().selection.len(), 2);
+    key(&mut h, Key::Enter);
+    assert_eq!(h.state().prompt(), "Click on Bottom Left Corner");
+    click(&mut h, P2(1000.0, 1000.0));
+    assert_eq!(h.state().prompt(), "Click on Top Right Corner");
+    click(&mut h, P2(3000.0, 2000.0));
+    // Back in the dialog, the pattern previewed: kept with OK, picked again, or dropped.
+    assert!(h.query_by_label("Pick Again").is_some(), "{}", h.state().status.text);
+    press(&mut h, "Pick Again");
+    assert_eq!(h.state().prompt(), "Select fill pattern lines then press Enter");
+    assert_eq!(h.state().selection, lines, "the lines picked are still picked");
+    key(&mut h, Key::Enter);
+    click(&mut h, P2(3000.0, 2000.0));
+    click(&mut h, P2(1000.0, 1000.0));
+    press(&mut h, "OK");
+    // A row of the list now: named, model or drafting, deleted as any; a custom one has no Edit Lines.
+    type_into(&mut h, "Pattern 1: Name", "Drawn Brick");
+    assert!(h.query_by_label("Drawn Brick: Edit Lines").is_none());
+    assert!(h.query_by_label("Sand: Edit Lines").is_none(), "nor an imported or a starter custom one");
+    assert!(h.query_by_label("Crosshatch: Edit Lines").is_some(), "a simple one keeps it");
+    assert_eq!(h.state().session.model.fill_patterns.get("Drawn Brick"), None, "nothing is the project's until OK");
+    // Drafting, it is the drawing on paper at the plan's scale; Model again, the drawing.
+    choose(&mut h, "Drawn Brick: Type", "Drafting");
+    choose(&mut h, "Drawn Brick: Type", "Model");
+    press(&mut h, "OK");
+    let p = h.state().session.model.fill_patterns["Drawn Brick"].clone();
+    assert_eq!(p.target, Target::Model);
+    // Both joints cross the 2000 x 1000 tile whole: courses 1000 apart, heads 2000 apart.
+    let mut spacings: Vec<f64> = p.lines.iter().map(|l| l.spacing).collect();
+    spacings.sort_by(f64::total_cmp);
+    assert_eq!(spacings, [1000.0, 2000.0]);
+    // Made again and kept as a drafting pattern.
+    annotation(&mut h, "Fill Patterns");
+    press(&mut h, "New Pattern");
+    pick(&mut h, Role::Button, "Custom");
+    click(&mut h, P2(2000.0, 1000.0));
+    click_with(&mut h, P2(1000.0, 2500.0), Modifiers::COMMAND);
+    key(&mut h, Key::Enter);
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(3000.0, 2000.0));
+    press(&mut h, "OK");
+    choose(&mut h, "Pattern 1: Type", "Drafting");
+    press(&mut h, "OK");
+    let p = &h.state().session.model.fill_patterns["Pattern 1"];
+    let scale = bimcraft_core::graphics::scale_of(&h.state().session.model, h.state().plan_level().unwrap());
+    assert_eq!(p.target, Target::Drafting);
+    assert!(p.lines.iter().any(|l| (l.spacing - 1000.0 / scale).abs() < 1e-9), "{p:?}");
+}
+
+#[test]
+fn escape_while_picking_brings_the_dialog_back_and_nothing_picked_says_so() {
+    let mut h = app(BOX);
+    brick_lines(&mut h);
+    annotation(&mut h, "Fill Patterns");
+    press(&mut h, "New Pattern");
+    pick(&mut h, Role::Button, "Custom");
+    // Enter with nothing picked: said, and still picking.
+    key(&mut h, Key::Enter);
+    assert!(h.state().status.error, "{}", h.state().status.text);
+    assert_eq!(h.state().prompt(), "Select fill pattern lines then press Enter");
+    key(&mut h, Key::Escape);
+    assert!(h.query_by_label("New Pattern").is_some(), "the dialog is back");
+    // Corners around nothing: said, and the corners asked again.
+    press(&mut h, "New Pattern");
+    pick(&mut h, Role::Button, "Custom");
+    click(&mut h, P2(2000.0, 1000.0));
+    key(&mut h, Key::Enter);
+    click(&mut h, P2(5000.0, 4000.0));
+    click(&mut h, P2(6000.0, 5000.0));
+    assert!(h.state().status.error, "{}", h.state().status.text);
+    assert_eq!(h.state().prompt(), "Click on Bottom Left Corner");
+    // The right-click menu's Finish does what Enter does.
+    key(&mut h, Key::Escape);
+    press(&mut h, "New Pattern");
+    pick(&mut h, Role::Button, "Custom");
+    click(&mut h, P2(2000.0, 1000.0));
+    h.state_mut().act(crate::context::Action::FinishPick);
+    assert_eq!(h.state().prompt(), "Click on Bottom Left Corner");
+    assert!(h.state().context_items()[0].iter().all(|i| i.action != crate::context::Action::FinishPick), "only while lines are picked");
 }

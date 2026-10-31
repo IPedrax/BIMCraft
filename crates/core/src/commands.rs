@@ -1062,6 +1062,19 @@ pub static ALL: &[Command] = &[
         fill_pattern,
     ),
     edit(
+        "make_fill_pattern",
+        "Make Fill Pattern",
+        &[],
+        "{ids, from: [x, y], to: [x, y], name, target?: model|drafting} a fill pattern made of the detail lines `ids` (all of \
+         one view), as pyRevit's Make Pattern makes one: the rectangle between corners `from` and `to` (in the view's terms) \
+         is the tile the pattern repeats, and what of the lines lies outside it is cut off. Each line becomes a family that \
+         runs on into the next tiles' copies of itself; one at a slope that never meets itself again is turned to the \
+         simplest slope within 0.25° that does (else the nearest, at most 48 tiles across or up). A model pattern (the \
+         default) is as drawn; a drafting one is the drawing on paper, at the view's scale. The tile is 0.05 to 100000 \
+         each way, and holds at most 256 lines. It returns the pattern's `name` and the `pattern`",
+        make_fill_pattern,
+    ),
+    edit(
         "linework",
         "Linework",
         &["LW"],
@@ -9730,6 +9743,24 @@ fn fill_pattern(s: &mut Session, p: &Value) -> R {
     if m.fill_patterns.get(&name) != Some(&pattern) {
         m.fill_patterns.insert(name.clone(), pattern.clone());
     }
+    Ok(json!({"name": name, "pattern": pattern}))
+}
+
+fn make_fill_pattern(s: &mut Session, p: &Value) -> R {
+    let c = "make_fill_pattern";
+    only(c, p, &["ids", "from", "to", "name", "target"])?;
+    let m = &s.model;
+    let ids = ids_param(c, m, p)?;
+    let (from, to) = (point_req(c, p, "from")?, point_req(c, p, "to")?);
+    let Some(name) = name_param(c, p, "name")? else { return Err(bad(c, "`name` the new pattern's is required")) };
+    if m.fill_patterns.contains_key(&name) {
+        return Err(bad(c, format!("there's already a fill pattern `{name}`")));
+    }
+    let target = shaped::<Target>(c, p, "target", "drafting or model")?.unwrap_or(Target::Model);
+    let made = crate::fills::make::from_lines(m, &ids, from, to).map_err(|e| bad(c, e))?;
+    let pattern = made.as_target(target);
+    pattern.check(&name).map_err(|e| bad(c, e))?;
+    s.model_mut().fill_patterns.insert(name.clone(), pattern.clone());
     Ok(json!({"name": name, "pattern": pattern}))
 }
 

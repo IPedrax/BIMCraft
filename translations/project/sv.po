@@ -31,7 +31,7 @@ msgstr "Säng"
 msgid "Brick"
 msgstr "Tegel"
 
-#: crates/core/src/fills.rs:376
+#: crates/core/src/fills.rs:392
 msgid "Brick 225 x 75"
 msgstr "Tegel 225 x 75"
 
@@ -83,7 +83,7 @@ msgstr "Kopiera"
 msgid "Count"
 msgstr "Antal"
 
-#: crates/core/src/fills.rs:369
+#: crates/core/src/fills.rs:385
 msgid "Crosshatch"
 msgstr "Korsskraffering"
 
@@ -103,7 +103,7 @@ msgstr "Streckpunkt"
 msgid "Data Outlet"
 msgstr "Datauttag"
 
-#: crates/core/src/commands.rs:7049
+#: crates/core/src/commands.rs:7062
 msgid "Dependent"
 msgstr "Beroende"
 
@@ -115,15 +115,15 @@ msgstr "Djup"
 msgid "Desk"
 msgstr "Skrivbord"
 
-#: crates/core/src/fills.rs:368
+#: crates/core/src/fills.rs:384
 msgid "Diagonal Crosshatch"
 msgstr "Diagonal korsskraffering"
 
-#: crates/core/src/fills.rs:367
+#: crates/core/src/fills.rs:383
 msgid "Diagonal Down"
 msgstr "Diagonal nedåt"
 
-#: crates/core/src/fills.rs:366
+#: crates/core/src/fills.rs:382
 msgid "Diagonal Up"
 msgstr "Diagonal uppåt"
 
@@ -167,8 +167,8 @@ msgstr "Öster"
 msgid "Elbow 90"
 msgstr "Böj 90"
 
-#: crates/core/src/commands.rs:6833
-#: crates/core/src/commands.rs:8500
+#: crates/core/src/commands.rs:6846
+#: crates/core/src/commands.rs:8513
 msgid "Elevation"
 msgstr "Fasad"
 
@@ -253,7 +253,7 @@ msgstr "Dold"
 msgid "Hidden Lines"
 msgstr "Dolda linjer"
 
-#: crates/core/src/fills.rs:370
+#: crates/core/src/fills.rs:386
 msgid "Horizontal"
 msgstr "Horisontell"
 
@@ -285,7 +285,7 @@ msgstr "Benbredd"
 msgid "Length"
 msgstr "Längd"
 
-#: crates/core/src/commands.rs:4334
+#: crates/core/src/commands.rs:4347
 #: crates/core/src/model.rs:2503
 msgid "Level"
 msgstr "Nivå"
@@ -302,11 +302,11 @@ msgstr "Långstreckad"
 msgid "Mark"
 msgstr "Beteckning"
 
-#: crates/core/src/fills.rs:356
+#: crates/core/src/fills.rs:372
 msgid "Masking"
 msgstr "Maskering"
 
-#: crates/core/src/commands.rs:5371
+#: crates/core/src/commands.rs:5384
 msgid "Mass"
 msgstr "Volymmodell"
 
@@ -390,7 +390,7 @@ msgstr "Puts"
 msgid "Porcelain"
 msgstr "Porslin"
 
-#: crates/core/src/commands.rs:2220
+#: crates/core/src/commands.rs:2233
 msgid "Project"
 msgstr "Projekt"
 
@@ -414,7 +414,7 @@ msgstr "Sättsteg"
 msgid "Roof tiles"
 msgstr "Takpannor"
 
-#: crates/core/src/commands.rs:5596
+#: crates/core/src/commands.rs:5609
 msgid "Room"
 msgstr "Rum"
 
@@ -430,7 +430,7 @@ msgstr "SKALA"
 msgid "SCALE AS INDICATED"
 msgstr "SKALA ENLIGT ANGIVELSE"
 
-#: crates/core/src/fills.rs:373
+#: crates/core/src/fills.rs:389
 msgid "Sand"
 msgstr "Sand"
 
@@ -442,8 +442,8 @@ msgstr "Avjämningsmassa"
 msgid "Seat Height"
 msgstr "Sitthöjd"
 
-#: crates/core/src/commands.rs:6810
-#: crates/core/src/commands.rs:8499
+#: crates/core/src/commands.rs:6823
+#: crates/core/src/commands.rs:8512
 msgid "Section"
 msgstr "Sektion"
 
@@ -499,11 +499,11 @@ msgstr "Lutning"
 msgid "Sofa"
 msgstr "Soffa"
 
-#: crates/core/src/fills.rs:355
+#: crates/core/src/fills.rs:371
 msgid "Solid Black"
 msgstr "Helfylld svart"
 
-#: crates/core/src/fills.rs:353
+#: crates/core/src/fills.rs:369
 msgid "Solid fill"
 msgstr "Helfyllning"
 
@@ -535,7 +535,7 @@ msgstr "Tjocklek"
 msgid "Thin Lines"
 msgstr "Tunna linjer"
 
-#: crates/core/src/fills.rs:382
+#: crates/core/src/fills.rs:398
 msgid "Tile 300"
 msgstr "Platta 300"
 
@@ -559,11 +559,11 @@ msgstr "Typ"
 msgid "UP"
 msgstr "UPP"
 
-#: crates/core/src/commands.rs:7190
+#: crates/core/src/commands.rs:7203
 msgid "Unnamed"
 msgstr "Namnlös"
 
-#: crates/core/src/fills.rs:371
+#: crates/core/src/fills.rs:387
 msgid "Vertical"
 msgstr "Vertikal"
 
