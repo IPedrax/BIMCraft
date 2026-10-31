@@ -110,17 +110,27 @@ fn run() -> Result<(), String> {
             timed(&mut report, "inspect_command", || s.execute("inspect", &json!({})))?;
         }
         let editable = s.model.elements.iter().find(|(_, e)| e.column().is_some() || matches!(e, Element::Wall(_))).map(|(id, _)| *id);
-        if let Some(id) = editable {
-            let mut edits = Vec::new();
+        // A wall with doors in it, which walls are joined to: its doors slide, its joined walls stretch.
+        let hosting = s.model.elements.values().find_map(|e| match e {
+            Element::Door(o) => s.model.elements.id(o.host),
+            _ => None,
+        });
+        for (name, id) in [("edit", editable), ("edit_wall", hosting)] {
+            let Some(id) = id else { continue };
+            let (mut edits, mut undos) = (Vec::new(), Vec::new());
             for _ in 0..repeats {
                 let start = Instant::now();
-                s.execute("move", &json!({"ids": [id], "by": [10, 0]}))?;
+                s.execute("move", &json!({"ids": [id], "by": [10, 10]}))?;
                 edits.push(start.elapsed().as_secs_f64() * 1000.0);
+                let start = Instant::now();
                 s.execute("undo", &json!({}))?;
+                undos.push(start.elapsed().as_secs_f64() * 1000.0);
             }
             edits.sort_by(f64::total_cmp);
-            report["ms"]["edit_median"] = json!(edits[edits.len() / 2]);
-            report["edit_samples_ms"] = json!(edits);
+            undos.sort_by(f64::total_cmp);
+            report["ms"][format!("{name}_median")] = json!(edits[edits.len() / 2]);
+            report["ms"][format!("{name}_undo_median")] = json!(undos[undos.len() / 2]);
+            report[format!("{name}_samples_ms")] = json!(edits);
         }
         let text = timed(&mut report, "native_serialize", || s.model.to_json())?;
         report["native_bytes"] = json!(text.len());

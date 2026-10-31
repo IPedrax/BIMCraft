@@ -4944,7 +4944,8 @@ impl Model {
         };
         // What changed, as GUIDs, and the plan boxes the walls among it took up, before and now.
         let mut frontier: BTreeSet<Guid> = BTreeSet::new();
-        let mut boxes: Vec<[f64; 4]> = Vec::new();
+        // Each with the heights it spans: walls join only walls they overlap in height (`walls::stacked`).
+        let mut boxes: Vec<([f64; 4], f64, f64)> = Vec::new();
         for &id in &changed {
             for m in [self, before] {
                 let Some(e) = m.elements.get(id) else { continue };
@@ -4955,7 +4956,7 @@ impl Model {
                 // A wall of no usable extent may meet any: the check says what is wrong with it.
                 if let Element::Wall(w) = e {
                     let Some(b) = walls::reach(m, w) else { return self.check() };
-                    boxes.push(b);
+                    boxes.push((b, m.base_z(w), m.top_z(w)));
                 }
             }
         }
@@ -4966,7 +4967,16 @@ impl Model {
         if !boxes.is_empty() {
             for id in lookup.walls() {
                 if let Some(w) = self.wall(id)
-                    && walls::reach(self, w).is_none_or(|b| boxes.iter().any(|c| meet(&b, c)))
+                    && match walls::reach(self, w) {
+                        None => true,
+                        Some(b) => {
+                            let near: Vec<_> = boxes.iter().filter(|(c, _, _)| meet(&b, c)).collect();
+                            !near.is_empty() && {
+                                let (bottom, top) = (self.base_z(w), self.top_z(w));
+                                near.iter().any(|(_, lo, hi)| bottom < *hi && *lo < top)
+                            }
+                        }
+                    }
                     && affected.insert(id)
                 {
                     frontier.extend(self.elements.guid(id));
