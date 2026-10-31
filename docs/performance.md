@@ -118,6 +118,51 @@ An additional 80-storey probe (38,081 elements) measured approximately 27 ms pla
 correctness sweep, so treat those numbers as a scaling diagnostic, not an idle-machine baseline.
 This exposes the remaining cost of whole-model validation and processing every instance.
 
+## The reference tower: the baseline of the next core (2026-10-31)
+
+`tower` ([`sample/tower.rs`](../crates/core/src/sample/tower.rs)) is the original reference building of the next core
+([plan](spatial-core-plan.md)): 100 storeys at 4 m on an 84 × 60 m plate, **10,017 elements a storey and 195 rooms that
+bound**, 1,001,701 elements in all. It is built through the ordinary commands, then stacked.
+
+```sh
+cargo build --release -p bimcraft-core --example performance
+target/release/examples/performance --fixture tower --storeys 1 --repeat 5 --output dist/tower1 --report dist/tower1.json
+target/release/examples/performance --fixture tower --storeys 10 --repeat 3 --rooms 100 --skip ifc,inspect --report dist/tower10.json
+target/release/examples/performance --fixture tower --storeys 100 --repeat 3 --rooms 3 --skip ifc,inspect,plan,scene --report dist/tower100.json
+```
+
+Release build, Ryzen 7 2700X, idle apart from the probe; one run each. [Raw reports](performance/tower-baseline.json).
+A room's boundary is timed over a sample of rooms spread over the storeys; "every room" is that times the rooms.
+
+| Operation | 1 storey (10,018) | 10 storeys (100,171) | 100 storeys (1,001,701) |
+|---|---:|---:|---:|
+| Build (one storey through commands, then stacked) | 68.8 s | 69.8 s | 90.8 s |
+| Full model check | 215 ms | 2.07 s | 21.3 s |
+| Validated edit (move a column 10 mm), median | 220 ms | 2.16 s | 21.5 s |
+| One room's boundary | 48.5 ms | 1.63 s | 16.3 s |
+| Every room's boundary (estimated) | 9.5 s | 53 min | 88 h |
+| `inspect` (every room's boundary) | 9.3 s | skipped | skipped |
+| Fit and draw the plan of Level 1 | 10.9 s | 322 s | skipped |
+| Build the 3D scene | 605 ms | 8.1 s | skipped |
+| Changing-camera CPU frame, 1280 × 720 | 270 ms | 2.17 s | skipped |
+| Write the project | 29 ms | 283 ms | 3.36 s (366 MB) |
+| Read it back | 96 ms | 905 ms | 10.3 s |
+| IFC export | 54.7 s | skipped | skipped |
+| Memory after load / peak | 1.3 / 1.5 GB | 1.4 / 5.0 GB | 2.2 / 4.4 GB |
+
+What it says:
+
+* **Every edit costs the whole project.** Check and edit grow with the element count: 21 s to move one column of a
+  million-element project. The check is most of an edit.
+* **Rooms grow faster than the project.** A room's boundary takes its level's bounding walls with their joins, and each
+  wall's joins are found among every wall of the project, so one room is levels' walls × all walls: 34× from 1 to 10
+  storeys. Every room of the tower would take days.
+* **A plan is its rooms.** The plan of one storey is 10.9 s at one storey and 322 s at ten, nearly all of it the room tags'
+  areas, each finding its boundary again (the 20-storey highrise has no rooms and draws in 6.7 ms).
+* Building one storey through 400-odd commands takes 69 s, because each command checks the whole storey; stacking a
+  hundred is 22 s more.
+* Reading and writing are linear and fine; memory is 2.2 GB for a million elements.
+
 ## 3D on the graphics card
 
 `view3d::gpu::Mesh` keeps a view's shown triangles for the card (retained geometry, uploaded once for each model), and

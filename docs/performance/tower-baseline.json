@@ -1,0 +1,165 @@
+{
+ "1": {
+  "elements": 10018,
+  "levels": 2,
+  "counts": {
+   "beam": 304,
+   "cabletray": 40,
+   "ceiling": 195,
+   "component": 6202,
+   "conduit": 850,
+   "door": 186,
+   "floor": 1,
+   "level": 2,
+   "pipe": 847,
+   "room": 195,
+   "shaft": 4,
+   "structuralcolumn": 165,
+   "tag": 573,
+   "wall": 262,
+   "window": 192
+  },
+  "memory_mb": {
+   "after_load": 1305.9453125,
+   "peak": 1506.15234375
+  },
+  "ms": {
+   "check": 215.325385,
+   "edit_median": 220.331472,
+   "frame_median": 270.084445,
+   "ifc_export": 54659.12381,
+   "inspect_command": 9330.284616,
+   "load": 68800.241964,
+   "native_read": 96.084806,
+   "native_serialize": 28.757506,
+   "plan_fit_draw": 10897.663329,
+   "plan_png": 74.782393,
+   "plan_redraw": 10435.699375,
+   "room_boundaries_all_estimated": 9463.568743,
+   "room_boundary_each": 48.53112175897436,
+   "scene_build": 605.346044
+  },
+  "rooms": {
+   "count": 195,
+   "enclosed": 195,
+   "sampled": 195
+  },
+  "native_bytes": 3834472,
+  "skipped": [],
+  "edit_samples_ms": [
+   219.431813,
+   219.868462,
+   220.331472,
+   224.078785,
+   226.22108599999999
+  ]
+ },
+ "10": {
+  "elements": 100171,
+  "levels": 11,
+  "counts": {
+   "beam": 3040,
+   "cabletray": 400,
+   "ceiling": 1950,
+   "component": 62020,
+   "conduit": 8500,
+   "door": 1860,
+   "floor": 10,
+   "level": 11,
+   "pipe": 8470,
+   "room": 1950,
+   "shaft": 40,
+   "structuralcolumn": 1650,
+   "tag": 5730,
+   "wall": 2620,
+   "window": 1920
+  },
+  "memory_mb": {
+   "after_load": 1386.52734375,
+   "peak": 5010.8203125
+  },
+  "ms": {
+   "check": 2071.713755,
+   "edit_median": 2160.906539,
+   "frame_median": 2166.4580619999997,
+   "load": 69781.255539,
+   "native_read": 904.804059,
+   "native_serialize": 282.86577,
+   "plan_fit_draw": 321547.543618,
+   "plan_png": 74.683106,
+   "plan_redraw": 325877.989285,
+   "room_boundaries_all_estimated": 3184413.6327899997,
+   "room_boundary_each": 1633.0326321999999,
+   "scene_build": 8076.003258
+  },
+  "rooms": {
+   "count": 1950,
+   "enclosed": 100,
+   "sampled": 100
+  },
+  "native_bytes": 36709148,
+  "skipped": [
+   "ifc",
+   "inspect"
+  ],
+  "edit_samples_ms": [
+   2143.3000660000002,
+   2160.906539,
+   2178.425429
+  ]
+ },
+ "100": {
+  "elements": 1001701,
+  "levels": 101,
+  "counts": {
+   "beam": 30400,
+   "cabletray": 4000,
+   "ceiling": 19500,
+   "component": 620200,
+   "conduit": 85000,
+   "door": 18600,
+   "floor": 100,
+   "level": 101,
+   "pipe": 84700,
+   "room": 19500,
+   "shaft": 400,
+   "structuralcolumn": 16500,
+   "tag": 57300,
+   "wall": 26200,
+   "window": 19200
+  },
+  "memory_mb": {
+   "after_load": 2216.58203125,
+   "peak": 4386.25
+  },
+  "ms": {
+   "check": 21301.621767,
+   "edit_median": 21536.675827,
+   "load": 90847.955963,
+   "native_read": 10268.888774000001,
+   "native_serialize": 3356.483002,
+   "room_boundaries_all_estimated": 317029281.86800003,
+   "room_boundary_each": 16257.911890666668
+  },
+  "rooms": {
+   "count": 19500,
+   "enclosed": 3,
+   "sampled": 3
+  },
+  "native_bytes": 365614707,
+  "skipped": [
+   "ifc",
+   "inspect",
+   "plan",
+   "scene"
+  ],
+  "edit_samples_ms": [
+   21405.166679,
+   21536.675827,
+   21578.478175
+  ]
+ },
+ "machine": "Ryzen 7 2700X (8 cores / 16 logical CPUs), 46 GB, Fedora 44, release build, idle apart from the probe",
+ "date": "2026-10-31",
+ "commit": "170f32c"
+}
