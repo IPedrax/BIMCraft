@@ -858,11 +858,12 @@ pub static ALL: &[Command] = &[
          draws besides its forms, in its own axes, turned and moved (and mirrored) with the component or opening and hidden at \
          coarse detail: each one `line` (points), `arc` (degrees from +x counter-clockwise, up to a full turn), `text` or `dot`, \
          one of them, with `visible` a yes/no parameter or formula. A `text` is lettered in BIMCraft's own strokes, capitals \
-         `height` mm tall on a baseline through `at` (`align` says whether `at` is where it starts, its middle or its end), \
-         and turns with the component, so it reads upright only as the component stands upright; `{Parameter Name}` in its \
+         `height` mm tall, `at` the middle of the line of text vertically (`align` says whether `at` is where it starts, its \
+         middle or its end); its anchor moves with the component but its letters always read upright, left to right, never \
+         turned or mirrored; `{Parameter Name}` in its \
          `value` is replaced by that parameter's value (a name the family lacks is refused), up to 256 characters. A `dot` is \
-         a solid disc in ink of a radius above zero. A component of a family with symbols and no forms is drawn where it \
-         stands between its view's cut plane and depth. IFC leaves symbols out",
+         a solid disc in ink of a radius above zero. Symbols draw in the plan and ceiling plan of the component's level whatever height \
+         it has, and on no other level's. IFC leaves symbols out",
         family,
     ),
     edit(

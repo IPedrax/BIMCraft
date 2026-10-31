@@ -824,6 +824,7 @@ pub(crate) fn plan_shows(m: &Model, plan: impl Key) -> Vec<P2> {
                     match mark {
                         crate::family::Mark::Line(pts) => extent.extend(pts),
                         crate::family::Mark::Dot { centre, .. } => extent.push(centre),
+                        crate::family::Mark::Label { at, .. } => extent.push(at),
                     }
                 }
             }
@@ -1637,25 +1638,21 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         }
     }
     // Components it sees, in projection, as Revit draws furniture: whole while any of one is under
-    // the cut plane and over the view depth.
+    // the cut plane and over the view depth; and the symbols of those on its level.
     let mut components = crate::component_geometry::Components::new(m);
-    for (&id, e) in m.elements.iter().filter(|_| !up).filter(|(id, _)| shown(**id)) {
+    for (&id, e) in m.elements.iter().filter(|(id, _)| shown(**id)) {
         let Element::Component(c) = e else { continue };
         let pieces = components.pieces(c);
-        // One with no forms (a symbol alone) is seen where it stands, between the cut plane and the view depth.
-        let seen = if pieces.is_empty() {
-            let at = m.elevation(c.level) + c.offset;
-            range.depth - TOL <= at && at <= range.cut
-        } else {
+        d.owner = Some(id);
+        if !up && !pieces.is_empty() {
             let (bottom, top) = components.heights(c);
-            bottom < range.cut && top > range.depth
-        };
-        if seen {
-            d.owner = Some(id);
-            component(&mut d, m, &pieces);
-            if d.detail != Detail::Coarse {
-                marks(&mut d, &m.component_marks(c));
+            if bottom < range.cut && top > range.depth {
+                component(&mut d, m, &pieces);
             }
+        }
+        // Its symbols are annotation of its level: in that level's plan and ceiling plan, whatever height its forms reach.
+        if c.level == level && d.detail != Detail::Coarse {
+            marks(&mut d, &m.component_marks(c));
         }
     }
     // Walls and columns below the cut plane, as seen from it; past the bottom, faint.
@@ -1953,6 +1950,11 @@ fn marks(d: &mut Drawing, marks: &[crate::family::Mark]) {
     for mark in marks {
         match mark {
             Mark::Line(pts) => d.line(pts, BY_CATEGORY, INK, false),
+            Mark::Label { at, height, text, align } => {
+                for line in crate::family::lettering(text, *at, *height, *align) {
+                    d.line(&line, BY_CATEGORY, INK, false);
+                }
+            }
             Mark::Dot { centre, radius } => {
                 const SIDES: usize = 24;
                 let ring = (0..SIDES)

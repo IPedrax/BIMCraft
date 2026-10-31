@@ -868,7 +868,7 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
                     r.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, format!("{} {n}", t("Symbol Points"))));
                     ui.end_row();
                 } else {
-                    ui.label(t(if y.part == Part::Text { msg!("Point") } else { msg!("Centre") }));
+                    ui.label(t(if y.part == Part::Text { msg!("Middle of the text") } else { msg!("Centre") }));
                     ui.horizontal(|ui| {
                         for (k, what) in [msg!("Symbol Centre X"), msg!("Symbol Centre Y")].into_iter().enumerate() {
                             field(ui, format!("{} {n}", t(what)), &mut y.centre[k], 170.0);

@@ -5567,14 +5567,6 @@ fn centre(ring: &[P2]) -> P2 {
     P2(ring.iter().map(|p| p.0).sum::<f64>() / n, ring.iter().map(|p| p.1).sum::<f64>() / n)
 }
 
-/// A point in the component's own axes, from the model's: undone the move, the turn and the mirror.
-fn local(p: P2, at: P2, angle: f64, mirrored: bool) -> P2 {
-    let (sin, cos) = angle.to_radians().sin_cos();
-    let (dx, dy) = (p.0 - at.0, p.1 - at.1);
-    let (x, y) = (dx * cos + dy * sin, -dx * sin + dy * cos);
-    P2(x, if mirrored { -y } else { y })
-}
-
 #[test]
 fn every_category_carries_plan_symbols_drawn_with_the_component() {
     for category in ["lighting", "furniture", "generic", "casework", "plumbing"] {
@@ -5593,10 +5585,10 @@ fn every_category_carries_plan_symbols_drawn_with_the_component() {
             lines.iter().any(|l| l.len() > 10 && l.iter().all(|p| (p.dist(at) - 50.0).abs() < 1.5 && p.1 >= 998.0)),
             "{category}: the arc, on its upper side"
         );
-        // The label: capitals 60 tall on a baseline 150 below, "C3" 95 wide from the left.
+        // The label: capitals 60 tall centred 150 below, "C3" 95 wide from the left.
         let text: Vec<&P2> = lines.iter().filter(|l| l.iter().all(|p| p.1 < 920.0)).flatten().collect();
         assert!(!text.is_empty(), "{category}: label");
-        assert!(text.iter().all(|p| (849.0..=911.0).contains(&p.1) && (998.0..=1097.0).contains(&p.0)), "{category}: {text:?}");
+        assert!(text.iter().all(|p| (819.0..=881.0).contains(&p.1) && (998.0..=1097.0).contains(&p.0)), "{category}: {text:?}");
         // The dot: a disc 20 across the radius, 200 along and 100 to the left of the component.
         assert_eq!(fills.len(), 1, "{category}");
         let c = centre(&fills[0]);
@@ -5608,24 +5600,24 @@ fn every_category_carries_plan_symbols_drawn_with_the_component() {
 fn symbols_turn_with_a_rotated_component_and_follow_a_mirrored_one() {
     let mut s = Session::new();
     run(&mut s, "family", socket("lighting"));
-    let at = P2(1000.0, 1000.0);
     let id = run(&mut s, "component", json!({"family": "Socket", "at": [1000, 1000], "angle": 90}))["id"].as_u64().unwrap();
     let (lines, fills) = symbol_ink(&s, id);
     // Turned a quarter: the dot's 200 along is now north, its 100 to the left now west.
     assert!(centre(&fills[0]).dist(P2(900.0, 1200.0)) < 1.0, "{:?}", centre(&fills[0]));
     assert!(lines.iter().any(|l| l.len() == 2 && l[1].dist(P2(1000.0, 1100.0)) < 2.0), "the line runs north");
-    // The label is the same label in the component's axes.
-    let text: Vec<P2> = lines
-        .iter()
-        .filter(|l| l.len() != 2 && l.iter().any(|p| p.dist(at) > 80.0))
-        .flatten()
-        .map(|p| local(*p, at, 90.0, false))
-        .collect();
-    assert!(text.iter().filter(|p| p.1 < -80.0).count() > 4);
+    // The label's anchor turned with it, to (1150, 1000), but its letters stay upright: 95 wide and 60 tall, left to right.
+    let text: Vec<&P2> =
+        lines.iter().filter(|l| l.len() != 2).flatten().filter(|p| p.0 >= 1149.0 && (960.0..=1040.0).contains(&p.1)).collect();
+    assert!(text.len() > 4, "{}", text.len());
+    assert!(text.iter().all(|p| (969.0..=1031.0).contains(&p.1) && (1149.0..=1247.0).contains(&p.0)), "{text:?}");
     run(&mut s, "modify", json!({"id": id, "angle": 0, "mirrored": true}));
     let (lines, fills) = symbol_ink(&s, id);
     assert!(centre(&fills[0]).dist(P2(1200.0, 900.0)) < 1.0, "the dot across the x axis: {:?}", centre(&fills[0]));
     assert!(lines.iter().any(|l| l.len() > 10 && l.iter().all(|p| p.1 <= 1002.0)), "the arc below, mirrored");
+    // The label's anchor is mirrored to (1000, 1150) and its letters are not: same width, same side up.
+    let text: Vec<&P2> =
+        lines.iter().filter(|l| l.len() != 2).flatten().filter(|p| p.1 >= 1100.0 && p.1 < 1200.0 && p.0 < 1200.0).collect();
+    assert!(text.len() > 4 && text.iter().all(|p| (1119.0..=1181.0).contains(&p.1) && (998.0..=1097.0).contains(&p.0)), "{text:?}");
 }
 
 #[test]
@@ -5733,8 +5725,24 @@ fn a_family_of_symbols_alone_is_seen_in_plan_where_it_stands() {
     let id = run(&mut s, "component", json!({"family": "Socket", "at": [1000, 1000]}))["id"].as_u64().unwrap();
     let (lines, fills) = symbol_ink(&s, id);
     assert!(lines.len() >= 4 && fills.len() == 1, "{} {}", lines.len(), fills.len());
-    // Over the cut plane it isn't in this plan.
-    run(&mut s, "modify", json!({"id": id, "offset": 5000}));
+}
+
+#[test]
+fn symbols_draw_in_the_plan_and_ceiling_plan_of_their_level_whatever_height_the_component_has() {
+    let mut s = Session::new();
+    run(&mut s, "family", socket("lighting"));
+    let id = run(&mut s, "component", json!({"family": "Socket", "at": [1000, 1000], "offset": 2600}))["id"].as_u64().unwrap();
+    // A ceiling light: its form is over the cut plane, so the floor plan doesn't outline it, but its symbols are there.
     let (lines, fills) = symbol_ink(&s, id);
-    assert!(lines.is_empty() && fills.is_empty());
+    assert!(lines.iter().all(|l| l.len() != 2 || l[0].1 < 1200.0), "no outline of the form: {}", lines.len());
+    assert!(lines.len() >= 3 && fills.len() == 1, "{} {}", lines.len(), fills.len());
+    let view = crate::render::View { scale: 0.5, cx: 1000.0, cy: 1000.0, width: 1000, height: 800 };
+    let up = crate::render::draw_ceiling(&s.model, 100000, view);
+    assert!(
+        up.owners.iter().zip(&up.prims).any(|(o, p)| *o == Some(id) && matches!(p, crate::render::Prim::Fill { .. })),
+        "the ceiling plan has the dot"
+    );
+    // Not on another level's plan.
+    let d = crate::render::draw(&s.model, 100001, view);
+    assert!(!d.owners.contains(&Some(id)));
 }

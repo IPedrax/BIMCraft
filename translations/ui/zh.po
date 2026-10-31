@@ -337,7 +337,7 @@ msgstr "接闪器 (AT)：在屋顶上单击处放置接闪器；按空格键旋�
 msgid "Air Terminals"
 msgstr "接闪器"
 
-#: crates/core/src/commands.rs:907
+#: crates/core/src/commands.rs:908
 #: crates/ui-egui/src/editor.rs:895
 #: crates/ui-egui/src/lib.rs:316
 #: crates/ui-egui/src/sketch.rs:664
@@ -494,7 +494,7 @@ msgstr "建筑"
 msgid "Area"
 msgstr "面积"
 
-#: crates/core/src/family.rs:1498
+#: crates/core/src/family.rs:1502
 msgid "Arm Width"
 msgstr "扶手宽度"
 
@@ -687,7 +687,7 @@ msgstr "钢筋"
 msgid "Base"
 msgstr "底部"
 
-#: crates/core/src/family.rs:1542
+#: crates/core/src/family.rs:1546
 msgid "Base Cabinet"
 msgstr "地柜"
 
@@ -715,7 +715,7 @@ msgstr "基线"
 msgid "Baseline Spacing"
 msgstr "基线间距"
 
-#: crates/core/src/family.rs:1584
+#: crates/core/src/family.rs:1588
 msgid "Bathtub"
 msgstr "浴缸"
 
@@ -727,7 +727,7 @@ msgstr "梁"
 msgid "Beam (BM): click its start and its end; a chain of clicks makes a beam for each step"
 msgstr "梁 (BM)：单击起点和终点；连续单击可为每一段创建一根梁"
 
-#: crates/core/src/family.rs:1483
+#: crates/core/src/family.rs:1487
 msgid "Bed"
 msgstr "床"
 
@@ -916,7 +916,7 @@ msgstr "接闪和引下"
 msgid "Card: {}"
 msgstr "显卡：{}"
 
-#: crates/core/src/family.rs:1762
+#: crates/core/src/family.rs:1766
 msgid "Casement Window"
 msgstr "平开窗"
 
@@ -1012,7 +1012,7 @@ msgstr "瓷砖"
 msgid "Chain"
 msgstr "链"
 
-#: crates/core/src/family.rs:1468
+#: crates/core/src/family.rs:1472
 msgid "Chair"
 msgstr "椅子"
 
@@ -1600,7 +1600,7 @@ msgstr "紧凑"
 msgid "Comparison"
 msgstr "比较"
 
-#: crates/core/src/commands.rs:870
+#: crates/core/src/commands.rs:871
 msgid "Component"
 msgstr "构件"
 
@@ -1612,7 +1612,7 @@ msgstr "构件 (CM)：在单击处放置族的类型；按空格键旋转"
 msgid "Conceptual Mass"
 msgstr "概念体量"
 
-#: crates/core/src/family.rs:1407
+#: crates/core/src/family.rs:1411
 msgid "Concrete"
 msgstr "混凝土"
 
@@ -1685,7 +1685,7 @@ msgstr "已复制 {} 行，以制表符分隔。"
 msgid "Copper"
 msgstr "铜"
 
-#: crates/core/src/commands.rs:924
+#: crates/core/src/commands.rs:925
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:3979
 #: crates/ui-egui/src/lib.rs:4029
@@ -1910,7 +1910,7 @@ msgstr "剖切面"
 msgid "Cylinder"
 msgstr "圆柱体"
 
-#: crates/core/src/render.rs:2503
+#: crates/core/src/render.rs:2505
 msgid "DN"
 msgstr "下"
 
@@ -2050,11 +2050,11 @@ msgstr "拆除 (DW)：单击图元，在视图阶段中将其拆除；再次单�
 msgid "Demolished"
 msgstr "已拆除"
 
-#: crates/core/src/commands.rs:7056
+#: crates/core/src/commands.rs:7057
 msgid "Dependent"
 msgstr "相关"
 
-#: crates/core/src/family.rs:1405
+#: crates/core/src/family.rs:1409
 msgid "Depth"
 msgstr "深度"
 
@@ -2075,7 +2075,7 @@ msgstr "设计选项"
 msgid "Design Options (DO): sets of options for a part of the design, and the one new elements are made in"
 msgstr "设计选项 (DO)：针对设计某一部分的选项集，以及新图元所创建于的选项"
 
-#: crates/core/src/family.rs:1514
+#: crates/core/src/family.rs:1518
 msgid "Desk"
 msgstr "书桌"
 
@@ -2275,7 +2275,7 @@ msgstr "点"
 msgid "Dotted"
 msgstr "点线"
 
-#: crates/core/src/family.rs:1671
+#: crates/core/src/family.rs:1675
 msgid "Double Door"
 msgstr "双扇门"
 
@@ -2480,7 +2480,7 @@ msgstr "电气设备"
 msgid "Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it"
 msgstr "电气设备 (EE)：在墙上单击处放置配电箱；按空格键旋转"
 
-#: crates/core/src/commands.rs:1597
+#: crates/core/src/commands.rs:1598
 msgid "Elements"
 msgstr "图元"
 
@@ -2619,7 +2619,7 @@ msgstr "拉伸起点"
 msgid "Eye Elevation"
 msgstr "视点高度"
 
-#: crates/core/src/family.rs:1407
+#: crates/core/src/family.rs:1411
 msgid "Fabric"
 msgstr "织物"
 
@@ -2730,7 +2730,7 @@ msgstr "填充区域 (FR)：在此视图中绘制以图案填充的区域"
 msgid "Filled region"
 msgstr "填充区域"
 
-#: crates/core/src/commands.rs:993
+#: crates/core/src/commands.rs:994
 msgid "Fillet Arc"
 msgstr "圆角弧"
 
@@ -2824,7 +2824,7 @@ msgstr "离开草图所在平面之前，请先完成或取消草图。"
 msgid "Fixed"
 msgstr "固定"
 
-#: crates/core/src/family.rs:1739
+#: crates/core/src/family.rs:1743
 msgid "Fixed Window"
 msgstr "固定窗"
 
@@ -3000,15 +3000,15 @@ msgstr "公式"
 msgid "Foundation"
 msgstr "基础"
 
-#: crates/core/src/family.rs:1611
+#: crates/core/src/family.rs:1615
 msgid "Frame Depth"
 msgstr "门窗框深度"
 
-#: crates/core/src/family.rs:1613
+#: crates/core/src/family.rs:1617
 msgid "Frame Material"
 msgstr "门窗框材质"
 
-#: crates/core/src/family.rs:1611
+#: crates/core/src/family.rs:1615
 msgid "Frame Width"
 msgstr "门窗框宽度"
 
@@ -3077,7 +3077,7 @@ msgstr "常规"
 msgid "Geometry"
 msgstr "几何图形"
 
-#: crates/core/src/family.rs:1613
+#: crates/core/src/family.rs:1617
 msgid "Glass"
 msgstr "玻璃"
 
@@ -3144,7 +3144,7 @@ msgstr "一半"
 msgid "Halftone"
 msgstr "半色调"
 
-#: crates/core/src/family.rs:1476
+#: crates/core/src/family.rs:1480
 msgid "Headboard Height"
 msgstr "床头板高度"
 
@@ -3561,11 +3561,11 @@ msgstr "引线"
 msgid "Leader/Border Offset"
 msgstr "引线/边框偏移"
 
-#: crates/core/src/family.rs:1613
+#: crates/core/src/family.rs:1617
 msgid "Leaf Material"
 msgstr "门扇材质"
 
-#: crates/core/src/family.rs:1611
+#: crates/core/src/family.rs:1615
 msgid "Leaf Thickness"
 msgstr "门扇厚度"
 
@@ -3582,7 +3582,7 @@ msgstr "左侧装订/归档边距:"
 msgid "Left out: {}"
 msgstr "未导入：{}"
 
-#: crates/core/src/family.rs:1406
+#: crates/core/src/family.rs:1410
 msgid "Leg Width"
 msgstr "腿宽度"
 
@@ -3594,7 +3594,7 @@ msgstr "图例"
 msgid "Legends are coming in a later version."
 msgstr "图例功能将在后续版本中推出。"
 
-#: crates/core/src/family.rs:1405
+#: crates/core/src/family.rs:1409
 #: crates/ui-egui/src/linestyles/creator.rs:136
 msgid "Length"
 msgstr "长度"
@@ -3883,7 +3883,7 @@ msgstr "体量楼层 (MF)：在所选体量穿过的每个标高处创建一个�
 msgid "Massing"
 msgstr "体量建模"
 
-#: crates/core/src/commands.rs:899
+#: crates/core/src/commands.rs:900
 msgid "Match Properties"
 msgstr "匹配属性"
 
@@ -3938,7 +3938,7 @@ msgstr "最大化"
 msgid "Maximum Riser Height"
 msgstr "最大踢面高度"
 
-#: crates/core/src/commands.rs:1449
+#: crates/core/src/commands.rs:1450
 msgid "Measure"
 msgstr "测量"
 
@@ -3971,13 +3971,17 @@ msgstr "沿深度钢筋网"
 msgid "Mesh along width"
 msgstr "沿宽度钢筋网"
 
-#: crates/core/src/family.rs:1613
+#: crates/core/src/family.rs:1617
 msgid "Metal"
 msgstr "金属"
 
 #: crates/core/src/units.rs:52
 msgid "Metres"
 msgstr "米"
+
+#: crates/ui-egui/src/editor.rs:871
+msgid "Middle of the text"
+msgstr ""
 
 #: crates/core/src/snap.rs:59
 msgid "Midpoint"
@@ -4063,7 +4067,7 @@ msgstr "修改墙"
 msgid "Mounting Height"
 msgstr "安装高度"
 
-#: crates/core/src/commands.rs:916
+#: crates/core/src/commands.rs:917
 msgid "Move"
 msgstr "移动"
 
@@ -4125,7 +4129,7 @@ msgstr "NBR 17068：延伸 2 至 3 mm"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492：平面采用圆环靶心 (±0.00)，剖面采用等边三角形"
 
-#: crates/core/src/render.rs:1796
+#: crates/core/src/render.rs:1793
 msgid "NOT ENCLOSED"
 msgstr "未封闭"
 
@@ -5134,10 +5138,6 @@ msgstr "卫浴装置 (PX)：在单击处放置洗手盆、坐便器、水槽、�
 msgid "Plumbing Fixtures"
 msgstr "卫浴装置"
 
-#: crates/ui-egui/src/editor.rs:871
-msgid "Point"
-msgstr ""
-
 #: crates/ui-egui/src/clouds.rs:49
 #: crates/ui-egui/src/lib.rs:3409
 msgid "Point Cloud"
@@ -5167,7 +5167,7 @@ msgstr "多段线"
 msgid "Polyline: one line through every point clicked; Enter finishes it, the first point again closes it"
 msgstr "多段线：一条线经过所有单击的点；按 Enter 完成，再次单击第一个点闭合"
 
-#: crates/core/src/family.rs:1407
+#: crates/core/src/family.rs:1411
 msgid "Porcelain"
 msgstr "瓷"
 
@@ -5723,7 +5723,7 @@ msgstr "房间面积计算：测量房间面积的位置；当前为{}"
 msgid "Room Schedule"
 msgstr "房间明细表"
 
-#: crates/core/src/commands.rs:931
+#: crates/core/src/commands.rs:932
 msgid "Rotate"
 msgstr "旋转"
 
@@ -5821,7 +5821,7 @@ msgstr "比例：此视图所代表的图纸，为模型的 1 : n；其注释和
 msgid "Scan"
 msgstr "扫描"
 
-#: crates/core/src/commands.rs:1301
+#: crates/core/src/commands.rs:1302
 msgid "Schedule"
 msgstr "明细表"
 
@@ -5869,7 +5869,7 @@ msgstr "搜索项目浏览器"
 msgid "Search…"
 msgstr "搜索…"
 
-#: crates/core/src/family.rs:1406
+#: crates/core/src/family.rs:1410
 msgid "Seat Height"
 msgstr "座面高度"
 
@@ -6157,7 +6157,7 @@ msgstr "窗台"
 msgid "Sill Height"
 msgstr "窗台高度"
 
-#: crates/core/src/family.rs:1649
+#: crates/core/src/family.rs:1653
 msgid "Single Door"
 msgstr "单扇门"
 
@@ -6190,11 +6190,11 @@ msgstr "天空"
 msgid "Sliding"
 msgstr "推拉"
 
-#: crates/core/src/family.rs:1698
+#: crates/core/src/family.rs:1702
 msgid "Sliding Door"
 msgstr "推拉门"
 
-#: crates/core/src/family.rs:1793
+#: crates/core/src/family.rs:1797
 msgid "Sliding Window"
 msgstr "推拉窗"
 
@@ -6282,7 +6282,7 @@ msgstr "捕捉已关闭（下一点）"
 msgid "Snaps: what a picked point sticks to (ends, middles, crossings, centres, perpendiculars), and the angles it steps by; SE, SM, SI, SC, SP and SN take one alone for the next point, SO none"
 msgstr "捕捉：拾取的点所吸附的对象（端点、中点、交点、中心、垂足），以及角度步长；SE、SM、SI、SC、SP 和 SN 仅对下一点单独启用其中一种，SO 则全部关闭"
 
-#: crates/core/src/family.rs:1500
+#: crates/core/src/family.rs:1504
 msgid "Sofa"
 msgstr "沙发"
 
@@ -6356,7 +6356,7 @@ msgstr "通过点的样条曲线：单击它经过的点；按 Enter 完成"
 msgid "Spline: click its control points; Enter finishes it"
 msgstr "样条曲线：单击其控制点；按 Enter 完成"
 
-#: crates/core/src/commands.rs:973
+#: crates/core/src/commands.rs:974
 msgid "Split"
 msgstr "拆分"
 
@@ -6579,7 +6579,7 @@ msgstr "系统族：{}"
 msgid "Tab with {}"
 msgstr "与 {} 合并为选项卡"
 
-#: crates/core/src/family.rs:1447
+#: crates/core/src/family.rs:1451
 msgid "Table"
 msgstr "桌子"
 
@@ -6862,7 +6862,7 @@ msgstr "保温层"
 msgid "These patterns to a PAT file, but the solid ones"
 msgstr "将这些图案导出为 PAT 文件（实心除外）"
 
-#: crates/core/src/family.rs:1406
+#: crates/core/src/family.rs:1410
 #: crates/ui-egui/src/properties.rs:732
 #: crates/ui-egui/src/properties.rs:1907
 msgid "Thickness"
@@ -6949,7 +6949,7 @@ msgstr "天花板块尺寸"
 msgid "Tile Width"
 msgstr "图块宽度"
 
-#: crates/core/src/family.rs:1407
+#: crates/core/src/family.rs:1411
 msgid "Timber"
 msgstr "木材"
 
@@ -7057,7 +7057,7 @@ msgstr "修剪/延伸单个图元"
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "修剪/延伸单个图元：拾取边界线，然后在要保留的部分上拾取要更改的线"
 
-#: crates/core/src/commands.rs:947
+#: crates/core/src/commands.rs:948
 #: crates/ui-egui/src/sketch.rs:667
 msgid "Trim/Extend to Corner"
 msgstr "修剪/延伸为角"
@@ -7144,7 +7144,7 @@ msgstr "类型："
 msgid "Types"
 msgstr "类型"
 
-#: crates/core/src/render.rs:2503
+#: crates/core/src/render.rs:2505
 msgid "UP"
 msgstr "上"
 
@@ -7223,7 +7223,7 @@ msgstr "单位"
 msgid "Units Format"
 msgstr "单位格式"
 
-#: crates/core/src/commands.rs:7197
+#: crates/core/src/commands.rs:7198
 msgid "Unnamed"
 msgstr "未命名"
 
@@ -7414,7 +7414,7 @@ msgstr "体积"
 msgid "Volume (m³)"
 msgstr "体积 (m³)"
 
-#: crates/core/src/family.rs:1556
+#: crates/core/src/family.rs:1560
 msgid "WC"
 msgstr "坐便器"
 
@@ -7450,11 +7450,11 @@ msgstr "面墙"
 msgid "Wall by Face (WB): a wall on each edge of the selected masses' footprints"
 msgstr "面墙 (WB)：在所选体量底面轮廓的每条边上创建一面墙"
 
-#: crates/core/src/family.rs:1528
+#: crates/core/src/family.rs:1532
 msgid "Wardrobe"
 msgstr "衣柜"
 
-#: crates/core/src/family.rs:1569
+#: crates/core/src/family.rs:1573
 msgid "Washbasin"
 msgstr "洗手盆"
 
@@ -7576,7 +7576,7 @@ msgstr "尺寸界线长度"
 msgid "Witness Line Overshoot:"
 msgstr "尺寸界线延伸量:"
 
-#: crates/core/src/family.rs:1540
+#: crates/core/src/family.rs:1544
 msgid "Worktop"
 msgstr "台面"
 
@@ -8863,3 +8863,6 @@ msgstr "导线"
 #: crates/ui-egui/src/editor.rs:811
 #~ msgid "Symbols are the lines a door's or a window's plan draws; this family isn't one."
 #~ msgstr "符号是门或窗在平面中绘制的线；此族不是门或窗。"
+#: crates/ui-egui/src/editor.rs:871
+#~ msgid "Point"
+#~ msgstr ""

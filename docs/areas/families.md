@@ -62,18 +62,21 @@ for the kinds checked and runs the same; the Project Browser's Families lists th
 A family's `symbols`, of any category, are what its plan draws besides its forms, in its own axes: each is exactly one of a
 `line` (up to `MAX_PROFILE` points), an `arc`, a `text` or a `dot`, with `visible` (a yes/no parameter or a formula) for any.
 `Family::marks` works them out, for a type's values, as `Mark`s: a `Mark::Line` (an arc as chords of `ARC_STEP` degrees; a
-label as the strokes of `font.rs`, `lettering`) or a `Mark::Dot`. A `text` is `{at, height, value, align?}`: capitals `height` mm
-tall on a baseline through `at`, started, centred or ended there (`Align`); `{Parameter Name}` in `value` reads that parameter
+label as a `Mark::Label`, lettered with `font.rs` by `lettering` where it is drawn) or a `Mark::Dot`. A `text` is `{at, height, value, align?}`: capitals `height` mm
+tall, `at` the middle of the line, started, centred or ended there (`Align`); `{Parameter Name}` in `value` reads that parameter
 (`said_text`: a number as plainly as it reads, a material by its name), an unknown name or an unclosed `{` is refused by
-`Family::check`, and the lettered text is at most `MAX_TEXT` characters. A `dot` is a `Circle`, drawn solid in ink. Everything
+`Family::check`, and the lettered text is at most `MAX_TEXT` characters. `at` is the middle of the line of text vertically, and `align`
+sets the horizontal anchor. A `dot` is a `Circle`, drawn solid in ink. Everything
 numeric is checked finite and within `MAX_COORD`; a label's height and a dot's radius must be above zero.
 
 `Model::component_marks` places a component's marks (mirrored, then turned and moved) and `Model::opening_marks` an opening's,
 and `render::marks` draws them: lines in the category's pen (`BY_CATEGORY`, so Object Styles and Visibility/Graphics apply), dots
-as filled discs. Coarse detail leaves them out. A label is lettered upright in the family's axes, so it turns with the component
-(and is mirrored with one that is mirrored); it isn't kept upright. A component with no forms (symbols alone) is drawn where
-it stands when its base lies between the view's depth and cut plane, a component with forms by the forms' rule (whole while any of
-it is between them). IFC export ignores symbols (they are plan notation, not geometry); the Family Editor's Symbols tab lists
+as filled discs. Coarse detail leaves them out. A label's anchor is placed with the component (turned, mirrored, moved) but its
+letters never are: they are always drawn at 0 degrees in the view, left to right with a horizontal baseline, however the component
+stands (the simplest rule; no flipping by quadrant). Symbols are annotation of the component's level: they draw in that level's
+plan and its ceiling plan whatever height the component's forms reach (a ceiling light shows its symbols in the floor plan) and
+on no other level's; the forms are outlined by the old rule (whole while any of them is between the view's depth and cut plane,
+and not in ceiling plans). A component with no forms draws its symbols the same way. IFC export ignores symbols (they are plan notation, not geometry); the Family Editor's Symbols tab lists
 all four parts. Library parts: a symbol of any kind has its own id and GUID (`HasPart`, `keep_parts`). A file written with
 `text` or `dot` symbols, or symbols on a category other than a door or a window, is read by an older version only with them left
 out or refused, so the file format is unchanged.

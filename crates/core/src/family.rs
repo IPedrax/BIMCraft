@@ -244,8 +244,8 @@ impl Align {
     }
 }
 
-/// A label a symbol letters: capitals `height` mm tall on a baseline through `at`, where `{Parameter Name}` in `value` reads
-/// that parameter of the family, started, centred or ended (`align`) at `at`.
+/// A label a symbol letters: capitals `height` mm tall, `at` the middle of the line of text vertically, where `{Parameter Name}` in `value` reads
+/// that parameter of the family, started, centred or ended (`align`) at `at`; it is drawn upright and unmirrored whatever the component does.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Label {
@@ -256,12 +256,14 @@ pub struct Label {
     pub align: Align,
 }
 
-/// A mark a family's plan draws in its own axes, sized by its parameters: the polyline of a `line` or an `arc`, a label's
-/// strokes, or a solid disc.
+/// A mark a family's plan draws in its own axes, sized by its parameters: the polyline of a `line` or an `arc`, a solid
+/// disc, or a label: its anchor, which is placed with the component, and its lettering, which never is (it is drawn upright,
+/// by [`lettering`], wherever it ends up).
 #[derive(Clone, Debug, PartialEq)]
 pub enum Mark {
     Line(Vec<P2>),
     Dot { centre: P2, radius: f64 },
+    Label { at: P2, height: f64, text: String, align: Align },
 }
 
 impl Mark {
@@ -270,6 +272,7 @@ impl Mark {
         match self {
             Mark::Line(pts) => Mark::Line(pts.iter().map(|p| f(*p)).collect()),
             Mark::Dot { centre, radius } => Mark::Dot { centre: f(*centre), radius: *radius },
+            Mark::Label { at, height, text, align } => Mark::Label { at: f(*at), height: *height, text: text.clone(), align: *align },
         }
     }
 }
@@ -1008,7 +1011,7 @@ impl Family {
     }
 
     /// The marks of its visible symbols, sized by `values`, in its own axes: an arc as a polyline of short chords, a label
-    /// as the strokes of our lettering, a dot as it is.
+    /// a label as its anchor (lettered by [`lettering`] where it is placed), a dot as it is.
     pub fn marks<'a>(&'a self, values: &BTreeMap<String, Val>) -> Result<Vec<Mark>, String> {
         let mut read = HashMap::new();
         let mut out = Vec::new();
@@ -1041,7 +1044,7 @@ impl Family {
                     return Err(said(format!("its text has height {height}; it needs a height above zero")));
                 }
                 let text = said_text(&l.value, values).map_err(said)?;
-                out.extend(lettering(&text, at, height, l.align).into_iter().map(Mark::Line));
+                out.push(Mark::Label { at, height, text, align: l.align });
                 continue;
             }
             let mut pts = Vec::new();
@@ -1220,8 +1223,9 @@ fn said_text(value: &str, values: &BTreeMap<String, Val>) -> Result<String, Stri
     Ok(out)
 }
 
-/// `text` in our lettering, capitals `height` tall on a baseline through `at` (y up), as polylines.
-fn lettering(text: &str, at: P2, height: f64, align: Align) -> Vec<Vec<P2>> {
+/// `text` in our lettering, capitals `height` tall, `at` the middle of its line vertically and, as `align` says, its start,
+/// middle or end (y up), as polylines.
+pub fn lettering(text: &str, at: P2, height: f64, align: Align) -> Vec<Vec<P2>> {
     let h = height as f32;
     let width = f64::from(font::width(text, h));
     let left = at.0
@@ -1232,7 +1236,7 @@ fn lettering(text: &str, at: P2, height: f64, align: Align) -> Vec<Vec<P2>> {
         };
     font::strokes(text, 0.0, 0.0, h)
         .into_iter()
-        .map(|line| line.into_iter().map(|(x, y)| P2(left + f64::from(x), at.1 - f64::from(y))).collect())
+        .map(|line| line.into_iter().map(|(x, y)| P2(left + f64::from(x), at.1 - height / 2.0 - f64::from(y))).collect())
         .collect()
 }
 
