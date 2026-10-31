@@ -87,6 +87,12 @@ impl FillPattern {
         self.lines.is_empty()
     }
 
+    /// Whether it is lines alone, whole (no dashes) and not shifted along: what the Fill Patterns dialog's Simple Lines
+    /// makes and its Edit Lines edits, an angle, an origin and a spacing for each family. A shift only staggers dashes.
+    pub fn whole_lines(&self) -> bool {
+        !self.lines.is_empty() && self.lines.iter().all(|l| l.dashes.is_empty() && l.shift == 0.0)
+    }
+
     /// The pattern as a `target` one: one made of lines drawn is rescaled (drafting, the drawing on paper at the scale it was
     /// drawn at; model, the drawing), any other only told so.
     pub fn retargeted(&self, target: Target) -> FillPattern {

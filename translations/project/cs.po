@@ -31,7 +31,7 @@ msgstr "Postel"
 msgid "Brick"
 msgstr "Cihla"
 
-#: crates/core/src/fills.rs:410
+#: crates/core/src/fills.rs:416
 msgid "Brick 225 x 75"
 msgstr "Cihla 225 x 75"
 
@@ -83,7 +83,7 @@ msgstr "Kopie"
 msgid "Count"
 msgstr "Počet"
 
-#: crates/core/src/fills.rs:403
+#: crates/core/src/fills.rs:409
 msgid "Crosshatch"
 msgstr "Křížové šrafování"
 
@@ -115,15 +115,15 @@ msgstr "Hloubka"
 msgid "Desk"
 msgstr "Pracovní stůl"
 
-#: crates/core/src/fills.rs:402
+#: crates/core/src/fills.rs:408
 msgid "Diagonal Crosshatch"
 msgstr "Úhlopříčné křížové šrafování"
 
-#: crates/core/src/fills.rs:401
+#: crates/core/src/fills.rs:407
 msgid "Diagonal Down"
 msgstr "Úhlopříčně dolů"
 
-#: crates/core/src/fills.rs:400
+#: crates/core/src/fills.rs:406
 msgid "Diagonal Up"
 msgstr "Úhlopříčně nahoru"
 
@@ -253,7 +253,7 @@ msgstr "Skrytá"
 msgid "Hidden Lines"
 msgstr "Skryté čáry"
 
-#: crates/core/src/fills.rs:404
+#: crates/core/src/fills.rs:410
 msgid "Horizontal"
 msgstr "Vodorovná"
 
@@ -302,7 +302,7 @@ msgstr "Dlouhá čárkovaná"
 msgid "Mark"
 msgstr "Označení"
 
-#: crates/core/src/fills.rs:390
+#: crates/core/src/fills.rs:396
 msgid "Masking"
 msgstr "Maskovací"
 
@@ -430,7 +430,7 @@ msgstr "MĚŘÍTKO"
 msgid "SCALE AS INDICATED"
 msgstr "MĚŘÍTKO DLE VÝKRESŮ"
 
-#: crates/core/src/fills.rs:407
+#: crates/core/src/fills.rs:413
 msgid "Sand"
 msgstr "Písek"
 
@@ -499,11 +499,11 @@ msgstr "Sklon"
 msgid "Sofa"
 msgstr "Pohovka"
 
-#: crates/core/src/fills.rs:389
+#: crates/core/src/fills.rs:395
 msgid "Solid Black"
 msgstr "Plná černá"
 
-#: crates/core/src/fills.rs:387
+#: crates/core/src/fills.rs:393
 msgid "Solid fill"
 msgstr "Plná výplň"
 
@@ -535,7 +535,7 @@ msgstr "Tloušťka"
 msgid "Thin Lines"
 msgstr "Tenké čáry"
 
-#: crates/core/src/fills.rs:416
+#: crates/core/src/fills.rs:422
 msgid "Tile 300"
 msgstr "Dlažba 300"
 
@@ -563,7 +563,7 @@ msgstr "NAHORU"
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 
-#: crates/core/src/fills.rs:405
+#: crates/core/src/fills.rs:411
 msgid "Vertical"
 msgstr "Svislá"
 

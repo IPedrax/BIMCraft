@@ -66,9 +66,15 @@ fn fill_patterns_are_made_and_changed_in_one_step_and_the_region_types_that_fill
     press(&mut h, "New Pattern");
     press(&mut h, "Simple Lines");
     type_into(&mut h, "Pattern 1: Name", "Lattice");
-    type_into(&mut h, "Lattice: Angle", "30");
-    type_into(&mut h, "Lattice: Spacing", "3");
-    press(&mut h, "Lattice: Crosshatch");
+    // Its lines in Edit Lines: 30° and 120°, 3 mm apart; no columns of a simple pattern in the list.
+    assert!(h.query_by_label("Lattice: Angle").is_none() && h.query_by_label("Lattice: Crosshatch").is_none());
+    press(&mut h, "Lattice: Edit Lines");
+    assert!(h.query_by_label("Lattice line 1: Shift").is_none() && h.query_by_label("Lattice line 1: Dashes").is_none(), "whole lines");
+    type_into(&mut h, "Lattice line 1: Angle", "30");
+    type_into(&mut h, "Lattice line 1: Spacing", "3");
+    press(&mut h, "Add Line");
+    type_into(&mut h, "Lattice line 2: Angle", "120");
+    type_into(&mut h, "Lattice line 2: Spacing", "3");
     let steps = h.state().session.history().len();
     press(&mut h, "OK");
     assert!(h.state().fill_patterns_dialog.is_none(), "{}", h.state().status.text);
@@ -282,8 +288,8 @@ fn edit_type_keeps_annotation_boundary_styles_and_pattern_placement_and_imports_
     h.state_mut().import_patterns(&pat);
     h.run();
     press(&mut h, "Annotation Pattern: Edit Lines");
-    press(&mut h, "Add Family");
-    type_into(&mut h, "Annotation Pattern family 2: Spacing", "200");
+    press(&mut h, "Add Line");
+    type_into(&mut h, "Annotation Pattern line 2: Spacing", "200");
     press(&mut h, "‹ Back");
     choose(&mut h, "Foreground Pattern", "Annotation Pattern");
     press(&mut h, "OK");
@@ -472,8 +478,10 @@ fn a_pattern_made_of_lines_is_redefined_from_lines_picked_again_keeping_its_name
     h.run();
     let count = h.state().session.model.fill_patterns.len();
     annotation(&mut h, "Fill Patterns");
-    // Made of lines, saved and opened again: Redefine where a simple one has Edit Lines.
+    // Made of lines, saved and opened again: Redefine where a simple one has Edit Lines, as wide.
     assert!(h.query_by_label("Bond: Edit Lines").is_none());
+    let (redefine, edit) = (h.get_by_label("Bond: Redefine").rect(), h.get_by_label("Crosshatch: Edit Lines").rect());
+    assert!((redefine.width() - edit.width()).abs() < 0.5 && (redefine.left() - edit.left()).abs() < 0.5, "{redefine:?} {edit:?}");
     press(&mut h, "Bond: Redefine");
     assert_eq!(h.state().prompt(), "Select fill pattern lines then press Enter");
     h.state_mut().selection = lines.clone();
@@ -507,4 +515,13 @@ fn the_annotation_settings_list_and_the_fill_patterns_window_are_no_wider_than_w
     let (import, new) = (h.get_by_label("Import...").rect(), h.get_by_label("New Pattern").rect());
     assert!(import.left() > r.center().x && new.right() < r.center().x);
     assert!(h.query_by_label("Replace imported by same name").is_some());
+}
+
+#[test]
+fn the_line_editor_stands_twenty_pixels_clear_of_the_row_of_buttons_under_it() {
+    let mut h = app(BOX);
+    annotation(&mut h, "Fill Patterns");
+    press(&mut h, "Crosshatch: Edit Lines");
+    let (done, new) = (h.get_by_label("Done").rect(), h.get_by_label("New Pattern").rect());
+    assert!(new.top() - done.bottom() >= 20.0, "{done:?} {new:?}");
 }

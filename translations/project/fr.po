@@ -31,7 +31,7 @@ msgstr "Lit"
 msgid "Brick"
 msgstr "Brique"
 
-#: crates/core/src/fills.rs:410
+#: crates/core/src/fills.rs:416
 msgid "Brick 225 x 75"
 msgstr "Brique 225 x 75"
 
@@ -83,7 +83,7 @@ msgstr "Copie"
 msgid "Count"
 msgstr "Nombre"
 
-#: crates/core/src/fills.rs:403
+#: crates/core/src/fills.rs:409
 msgid "Crosshatch"
 msgstr "Hachures croisées"
 
@@ -115,15 +115,15 @@ msgstr "Profondeur"
 msgid "Desk"
 msgstr "Bureau"
 
-#: crates/core/src/fills.rs:402
+#: crates/core/src/fills.rs:408
 msgid "Diagonal Crosshatch"
 msgstr "Hachures croisées diagonales"
 
-#: crates/core/src/fills.rs:401
+#: crates/core/src/fills.rs:407
 msgid "Diagonal Down"
 msgstr "Diagonale descendante"
 
-#: crates/core/src/fills.rs:400
+#: crates/core/src/fills.rs:406
 msgid "Diagonal Up"
 msgstr "Diagonale montante"
 
@@ -253,7 +253,7 @@ msgstr "Masqué"
 msgid "Hidden Lines"
 msgstr "Lignes masquées"
 
-#: crates/core/src/fills.rs:404
+#: crates/core/src/fills.rs:410
 msgid "Horizontal"
 msgstr "Horizontal"
 
@@ -302,7 +302,7 @@ msgstr "Tiret long"
 msgid "Mark"
 msgstr "Repère"
 
-#: crates/core/src/fills.rs:390
+#: crates/core/src/fills.rs:396
 msgid "Masking"
 msgstr "Masque"
 
@@ -430,7 +430,7 @@ msgstr "ÉCHELLE"
 msgid "SCALE AS INDICATED"
 msgstr "ÉCHELLE INDIQUÉE"
 
-#: crates/core/src/fills.rs:407
+#: crates/core/src/fills.rs:413
 msgid "Sand"
 msgstr "Sable"
 
@@ -499,11 +499,11 @@ msgstr "Pente"
 msgid "Sofa"
 msgstr "Canapé"
 
-#: crates/core/src/fills.rs:389
+#: crates/core/src/fills.rs:395
 msgid "Solid Black"
 msgstr "Noir plein"
 
-#: crates/core/src/fills.rs:387
+#: crates/core/src/fills.rs:393
 msgid "Solid fill"
 msgstr "Remplissage plein"
 
@@ -535,7 +535,7 @@ msgstr "Épaisseur"
 msgid "Thin Lines"
 msgstr "Lignes fines"
 
-#: crates/core/src/fills.rs:416
+#: crates/core/src/fills.rs:422
 msgid "Tile 300"
 msgstr "Carrelage 300"
 
@@ -563,7 +563,7 @@ msgstr "MONTE"
 msgid "Unnamed"
 msgstr "Sans nom"
 
-#: crates/core/src/fills.rs:405
+#: crates/core/src/fills.rs:411
 msgid "Vertical"
 msgstr "Vertical"
 
