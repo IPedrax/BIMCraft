@@ -61,7 +61,9 @@ impl HatchLine {
     }
 }
 
-/// A fill pattern: its lines, in drafting or model lengths; none, it fills solid.
+/// A fill pattern: its lines, in drafting or model lengths; none, it fills solid. One made of lines drawn in a view
+/// ([`make`]) remembers that view's scale, `drawn`: drafting, it is the drawing on paper at that scale, model, the drawing
+/// itself, so turning it from one to the other rescales it; and the desktop offers to redefine it from lines again.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FillPattern {
@@ -69,6 +71,8 @@ pub struct FillPattern {
     pub target: Target,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lines: Vec<HatchLine>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drawn: Option<f64>,
 }
 
 /// The most line families a pattern has, and dashes a family has.
@@ -83,6 +87,17 @@ impl FillPattern {
         self.lines.is_empty()
     }
 
+    /// The pattern as a `target` one: one made of lines drawn is rescaled (drafting, the drawing on paper at the scale it was
+    /// drawn at; model, the drawing), any other only told so.
+    pub fn retargeted(&self, target: Target) -> FillPattern {
+        let k = match (self.drawn, self.target, target) {
+            (Some(k), Target::Model, Target::Drafting) => 1.0 / k,
+            (Some(k), Target::Drafting, Target::Model) => k,
+            _ => 1.0,
+        };
+        FillPattern { target, ..self.scaled(k) }
+    }
+
     /// The same pattern `k` times as big: its origins, shifts, spacings and dashes.
     pub fn scaled(&self, k: f64) -> FillPattern {
         let lines = (self.lines.iter())
@@ -94,7 +109,7 @@ impl FillPattern {
                 dashes: l.dashes.iter().map(|d| d * k).collect(),
             })
             .collect();
-        FillPattern { target: self.target, lines }
+        FillPattern { target: self.target, lines, drawn: self.drawn }
     }
 
     /// Whether it's one family or two square to each other, all whole and through the origin: what the Fill Patterns
@@ -113,6 +128,9 @@ impl FillPattern {
     /// An error saying what to fix, unless its families are few enough and each is a family of lines.
     pub fn check(&self, name: &str) -> Result<(), String> {
         let who = format!("fill pattern `{name}`");
+        if self.drawn.is_some_and(|k| !(k.is_finite() && k > 0.0 && k <= MAX_SPACING)) {
+            return Err(format!("{who}: the scale it was drawn at is a number above 0, at most {MAX_SPACING}"));
+        }
         if self.lines.len() > MAX_FAMILIES {
             return Err(format!("{who}: {} line families, more than {MAX_FAMILIES}", self.lines.len()));
         }
@@ -374,8 +392,8 @@ pub const MASKING: &str = msg!("Masking");
 /// The fill patterns a project starts with, named in `language`: our own, drafting ones mm on paper and model ones mm in the
 /// building.
 pub fn patterns(language: Language) -> BTreeMap<String, FillPattern> {
-    let drafting = |lines: Vec<HatchLine>| FillPattern { target: Target::Drafting, lines };
-    let model = |lines: Vec<HatchLine>| FillPattern { target: Target::Model, lines };
+    let drafting = |lines: Vec<HatchLine>| FillPattern { target: Target::Drafting, lines, drawn: None };
+    let model = |lines: Vec<HatchLine>| FillPattern { target: Target::Model, lines, drawn: None };
     let s = HatchLine::simple;
     [
         (SOLID_FILL, drafting(Vec::new())),
@@ -447,7 +465,7 @@ mod tests {
 
     #[test]
     fn a_family_of_lines_fills_inside_the_outline_and_not_its_hole() {
-        let p = FillPattern { target: Target::Model, lines: vec![HatchLine::simple(0.0, 100.0)] };
+        let p = FillPattern { target: Target::Model, lines: vec![HatchLine::simple(0.0, 100.0)], drawn: None };
         let rings = vec![square(0.0, 0.0, 1000.0), square(400.0, 400.0, 200.0)];
         let s = strokes(&p, &rings, 1.0, ALL, 10_000).unwrap();
         // Lines at y = 0 … 900 (an edge's lower side is inside, its upper side out, so 1000 is left out); those through the
@@ -464,6 +482,7 @@ mod tests {
         let p = FillPattern {
             target: Target::Drafting,
             lines: vec![HatchLine { dashes: vec![2.0, -1.0, 0.0, -1.0], ..HatchLine::simple(0.0, 1.0) }],
+            drawn: None,
         };
         let ring = vec![square(0.0, 0.0, 400.0)];
         // At 1 : 100 a mm of paper is 100 mm: lines 100 apart, a 200 dash, a dot, every 400.
@@ -504,7 +523,7 @@ mod tests {
         for (n, p) in default_patterns() {
             assert_eq!(p.check(&n), Ok(()));
         }
-        let bad = FillPattern { target: Target::Drafting, lines: vec![HatchLine::simple(0.0, 0.0)] };
+        let bad = FillPattern { target: Target::Drafting, lines: vec![HatchLine::simple(0.0, 0.0)], drawn: None };
         assert!(bad.check("x").unwrap_err().contains("apart"));
         let gapless =
             FillPattern { lines: vec![HatchLine { dashes: vec![1.0, 2.0], ..HatchLine::simple(0.0, 1.0) }], ..Default::default() };
@@ -979,7 +998,11 @@ mod tests {
 
     #[test]
     fn a_dense_pattern_over_an_outline_of_thousands_of_corners_is_refused_in_time() {
-        let p = FillPattern { target: Target::Model, lines: (0..32).map(|i| HatchLine::simple(f64::from(i) * 5.0, 20.0)).collect() };
+        let p = FillPattern {
+            target: Target::Model,
+            lines: (0..32).map(|i| HatchLine::simple(f64::from(i) * 5.0, 20.0)).collect(),
+            drawn: None,
+        };
         let ring: Vec<P2> = (0..10_000)
             .map(|i| {
                 let a = std::f64::consts::TAU * f64::from(i) / 10_000.0;
@@ -994,8 +1017,11 @@ mod tests {
 
     #[test]
     fn dots_a_twentieth_of_a_millimetre_apart_cost_a_bounded_amount() {
-        let p =
-            FillPattern { target: Target::Model, lines: vec![HatchLine { dashes: vec![0.0, -0.05], ..HatchLine::simple(0.0, 10_000.0) }] };
+        let p = FillPattern {
+            target: Target::Model,
+            lines: vec![HatchLine { dashes: vec![0.0, -0.05], ..HatchLine::simple(0.0, 10_000.0) }],
+            drawn: None,
+        };
         assert_eq!(p.check("dots"), Ok(()));
         let (r, steps) = counted(|| strokes(&p, &[square(0.0, 0.0, 100_000.0)], 1.0, (P2(-1.0, -1.0), P2(101_000.0, 101_000.0)), 50_000));
         assert_eq!(r, None);

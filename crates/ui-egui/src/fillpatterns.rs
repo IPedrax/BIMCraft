@@ -31,13 +31,11 @@ use crate::style::{ERROR_HEIGHT, boxed_text, canvas_pal, dialog_room, dialog_row
 use crate::typeprops::{self, Head, Naming};
 use crate::{BimApp, Status, Tool};
 
-/// A pattern as edited: the name it had (none, new), the name it has, what it is; and, made of lines drawn in a view, that
-/// view's scale, so that Drafting makes it the drawing on paper and Model the drawing again.
+/// A pattern as edited: the name it had (none, new), the name it has, what it is.
 struct PatternRow {
     was: Option<String>,
     name: String,
     pattern: FillPattern,
-    drawn: Option<f64>,
 }
 
 /// What New Pattern > Custom is picking in the plan while the dialog is away: the lines, then (they picked) the tile's corners.
@@ -86,6 +84,8 @@ pub(crate) struct FillPatternsDialog {
     /// Pick Again.
     made: Option<Made>,
     picked: Vec<Id>,
+    /// Redefine: the row whose pattern the lines picked make anew; none, New Pattern > Custom makes a new one.
+    redefine: Option<usize>,
 }
 
 /// What the Patterns tab's buttons ask of the app: a file to import from, or to export to; or the lines of a custom pattern,
@@ -108,11 +108,8 @@ enum Step {
 impl FillPatternsDialog {
     /// Open on the project's region types and fill patterns.
     pub(crate) fn new(m: &Model) -> FillPatternsDialog {
-        let patterns: Vec<PatternRow> = m
-            .fill_patterns
-            .iter()
-            .map(|(n, p)| PatternRow { was: Some(n.clone()), name: n.clone(), pattern: p.clone(), drawn: None })
-            .collect();
+        let patterns: Vec<PatternRow> =
+            m.fill_patterns.iter().map(|(n, p)| PatternRow { was: Some(n.clone()), name: n.clone(), pattern: p.clone() }).collect();
         let row = |n: &Option<String>| n.as_ref().and_then(|n| patterns.iter().position(|r| r.name == *n));
         let types = (m.region_types.iter())
             .map(|(n, x)| TypeRow {
@@ -142,6 +139,7 @@ impl FillPatternsDialog {
             picking: None,
             made: None,
             picked: Vec::new(),
+            redefine: None,
         }
     }
 
@@ -151,7 +149,7 @@ impl FillPatternsDialog {
             match self.patterns.iter().enumerate().position(|(i, r)| !self.gone[i] && r.name == name) {
                 Some(i) => self.patterns[i].pattern = pattern,
                 None => {
-                    self.patterns.push(PatternRow { was: None, name, pattern, drawn: None });
+                    self.patterns.push(PatternRow { was: None, name, pattern });
                     self.gone.push(false);
                 }
             }
@@ -255,11 +253,16 @@ impl FillPatternsDialog {
         }
     }
 
-    /// The pattern lines picked made, a row of the list: a model pattern, named anew.
+    /// The pattern lines picked made: the row being redefined's, as drafting or model as it is; else a new row, a model
+    /// pattern named anew.
     fn keep(&mut self, made: &Made) {
+        if let Some(r) = self.redefine.take().and_then(|i| self.patterns.get_mut(i)) {
+            r.pattern = made.as_target(r.pattern.target);
+            return;
+        }
         let taken: Vec<&str> = self.live().map(|(_, p)| p.name.as_str()).collect();
         let name = fresh(t("Pattern"), &taken);
-        self.patterns.push(PatternRow { was: None, name, pattern: made.as_target(Target::Model), drawn: Some(made.scale) });
+        self.patterns.push(PatternRow { was: None, name, pattern: made.as_target(Target::Model) });
         self.gone.push(false);
     }
 }
@@ -524,7 +527,7 @@ fn patterns_tab(ui: &mut Ui, d: &mut FillPatternsDialog, below: f32) -> Option<F
     ui.label(t("Families of parallel lines: drafting ones mm on paper, the same at any scale; model ones mm in the building."));
     ui.add_space(4.0);
     let ink = ui.visuals().text_color();
-    let mut delete = None;
+    let (mut delete, mut redefine) = (None, None);
     let room = dialog_room(ui, below + dialog_row(ui));
     let editor = if d.editing.is_some() { room / 2.0 } else { 0.0 };
     ScrollArea::vertical().max_height(room - editor).show(ui, |ui| {
@@ -544,8 +547,11 @@ fn patterns_tab(ui: &mut Ui, d: &mut FillPatternsDialog, below: f32) -> Option<F
                     ui.selectable_value(&mut r.pattern.target, Target::Model, t("Model"));
                 });
                 c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, label.clone()));
-                if let Some(k) = r.drawn.filter(|_| r.pattern.target != target) {
-                    r.pattern = r.pattern.scaled(if r.pattern.target == Target::Drafting { 1.0 / k } else { k });
+                // One made of lines is rescaled: drafting, it is the drawing on paper at its view's scale.
+                if r.pattern.target != target {
+                    let to = r.pattern.target;
+                    r.pattern.target = target;
+                    r.pattern = r.pattern.retargeted(to);
                 }
                 swatch(ui, Some(&r.pattern), 80.0, ink, None);
                 match r.pattern.simple() {
@@ -578,8 +584,15 @@ fn patterns_tab(ui: &mut Ui, d: &mut FillPatternsDialog, below: f32) -> Option<F
                         ui.label("");
                     }
                 }
-                // A custom pattern (made of lines drawn, or imported) is kept as it came: its families are no simple pattern's.
-                if r.pattern.simple().is_none() {
+                // One made of lines is made again from lines picked; another custom one (imported) is kept as it came, its
+                // families no simple pattern's.
+                if r.pattern.drawn.is_some() {
+                    let b = ui.add(Button::new(t("Redefine")).small());
+                    b.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf("{}: Redefine", &[&who])));
+                    if b.on_hover_text(t("Pick the lines and the tile's corners again: the pattern keeps its name")).clicked() {
+                        redefine = Some(i);
+                    }
+                } else if r.pattern.simple().is_none() {
                     ui.label("");
                 } else if named_button(ui, t("Edit Lines"), tf("{}: Edit Lines", &[&who])) {
                     d.editing = Some((i, r.pattern.lines.iter().map(|l| dashes_text(&l.dashes)).collect()));
@@ -606,6 +619,9 @@ fn patterns_tab(ui: &mut Ui, d: &mut FillPatternsDialog, below: f32) -> Option<F
         }
     }
     let mut ask = None;
+    if redefine.is_some() {
+        (d.redefine, ask) = (redefine, Some(FileAsk::Custom));
+    }
     ui.horizontal(|ui| {
         let mut simple = false;
         ui.menu_button(t("New Pattern"), |ui| {
@@ -613,24 +629,27 @@ fn patterns_tab(ui: &mut Ui, d: &mut FillPatternsDialog, below: f32) -> Option<F
                 ui.button(t("Simple Lines")).on_hover_text(t("Parallel lines at an angle and a spacing, crosshatched or not")).clicked();
             let tip = t("Made of detail lines picked in the plan, repeating the rectangle between two corners");
             if ui.button(t("Custom")).on_hover_text(tip).clicked() {
-                ask = Some(FileAsk::Custom);
+                (d.redefine, ask) = (None, Some(FileAsk::Custom));
             }
         });
         if simple {
             let taken: Vec<&str> = d.live().map(|(_, p)| p.name.as_str()).collect();
             let name = fresh(t("Pattern"), &taken);
-            let pattern = FillPattern { target: Target::Drafting, lines: vec![HatchLine::simple(45.0, 2.0)] };
-            d.patterns.push(PatternRow { was: None, name, pattern, drawn: None });
+            let pattern = FillPattern { target: Target::Drafting, lines: vec![HatchLine::simple(45.0, 2.0)], drawn: None };
+            d.patterns.push(PatternRow { was: None, name, pattern });
             d.gone.push(false);
         }
-        if ui.button(t("Import...")).on_hover_text(t("Patterns from a PAT file, AutoCAD's and Revit's")).clicked() {
-            ask = Some(FileAsk::Import);
-        }
-        if ui.button(t("Export...")).on_hover_text(t("These patterns to a PAT file, but the solid ones")).clicked() {
-            ask = Some(FileAsk::Export);
-        }
-        ui.checkbox(&mut d.replace, t("Replace Same Name"))
-            .on_hover_text(t("A pattern of the file replaces the one of its name in this list; else it is left out"));
+        // A PAT file's, on the right: what an import does with a pattern of a name the list has already is the check box's.
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            if ui.button(t("Export...")).on_hover_text(t("These patterns to a PAT file, but the solid ones")).clicked() {
+                ask = Some(FileAsk::Export);
+            }
+            if ui.button(t("Import...")).on_hover_text(t("Patterns from a PAT file, AutoCAD's and Revit's")).clicked() {
+                ask = Some(FileAsk::Import);
+            }
+            ui.checkbox(&mut d.replace, t("Replace imported by same name"))
+                .on_hover_text(t("Import: a pattern of the file replaces the one of its name in this list; unchecked, it is left out"));
+        });
     });
     ask
 }
@@ -647,7 +666,8 @@ impl FillPatternsDialog {
         out.extend(patterns.renames.iter().map(|(from, to)| ("fill_pattern", json!({"name": from, "rename": to}))));
         for (_, r) in self.live() {
             if r.was.as_ref().and_then(|w| m.fill_patterns.get(w)) != Some(&r.pattern) {
-                out.push(("fill_pattern", json!({"name": r.name, "target": r.pattern.target, "lines": r.pattern.lines})));
+                let p = &r.pattern;
+                out.push(("fill_pattern", json!({"name": r.name, "target": p.target, "lines": p.lines, "drawn": p.drawn})));
             }
         }
         // A pattern renamed renames it in the types already: compare what the type holds read through the renames.
@@ -696,18 +716,19 @@ impl BimApp {
                 self.fill_patterns_dialog = Some(d);
                 return;
             }
-            d.picking = None;
+            (d.picking, d.redefine) = (None, None);
         }
         let editing = d.subject.is_some();
         let (mut ok, mut apply, mut cancel, mut ask, mut step) = (false, false, false, None, None);
-        let width = if editing && d.tab == 0 && d.made.is_none() { typeprops::WIDTH } else { 860.0 };
+        let width = if editing && d.tab == 0 && d.made.is_none() { typeprops::WIDTH } else { WIDTH };
         let units = self.session.model.units;
         let r = Modal::new(UiId::new("fill-patterns"), t(if editing { "Type Properties" } else { msg!("Fill Patterns") }))
             .width(width)
             .show(ctx, |ui| {
                 crate::popup::body(ui, |ui| {
                     if let Some(made) = &d.made {
-                        made_preview(ui, made, units);
+                        let of = d.redefine.and_then(|i| d.patterns.get(i)).map(|r| r.name.as_str());
+                        made_preview(ui, made, of, units);
                         return;
                     }
                     if editing && d.tab == 0 {
@@ -748,7 +769,7 @@ impl BimApp {
                 self.selection = std::mem::take(&mut d.picked);
                 ask = Some(FileAsk::Custom);
             }
-            Some(Step::Drop) => d.made = None,
+            Some(Step::Drop) => (d.made, d.redefine) = (None, None),
             None => {}
         }
         let failed = (ok || apply) && !self.apply_fill_patterns(&mut d, apply);
@@ -931,13 +952,17 @@ impl BimApp {
     }
 }
 
+/// How wide the dialog is: its list's columns, and the row of buttons under them.
+const WIDTH: f32 = 700.0;
+
 /// How tall the preview of a pattern made of lines is.
 const MADE_HEIGHT: f32 = 300.0;
 
 /// The pattern lines picked made, on the canvas's paper: three tiles each way about the one picked, which is outlined.
-fn made_preview(ui: &mut Ui, made: &Made, units: bimcraft_core::units::Units) {
+fn made_preview(ui: &mut Ui, made: &Made, of: Option<&str>, units: bimcraft_core::units::Units) {
     ui.add_space(6.0);
-    ui.label(RichText::new(t("New pattern from lines")).strong());
+    let head = of.map_or_else(|| t("New pattern from lines").to_string(), |name| tf("{} redefined from lines", &[name]));
+    ui.label(RichText::new(head).strong());
     let families = made.pattern.lines.len().to_string();
     let (w, h) = (units.length(made.tile.0), units.length(made.tile.1));
     ui.label(tf("{} line families, repeating a tile {} × {} (outlined).", &[&families, &w, &h]));

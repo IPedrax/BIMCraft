@@ -5556,3 +5556,23 @@ fn make_fill_pattern_makes_a_pattern_of_the_detail_lines_picked_cut_to_the_tile_
     let e = s.execute("make_fill_pattern", &json!({"ids": [wall], "from": [0, 0], "to": [200, 100], "name": "W"})).unwrap_err();
     assert!(e.contains("not a detail line"), "{e}");
 }
+
+#[test]
+fn a_pattern_made_of_lines_remembers_its_scale_and_turned_drafting_by_fill_pattern_is_rescaled() {
+    let mut s = Session::new();
+    house(&mut s);
+    let bed = run(&mut s, "detail_line", json!({"start": [0, 0], "end": [200, 0]}))["id"].clone();
+    run(&mut s, "make_fill_pattern", json!({"ids": [bed], "from": [0, 0], "to": [200, 100], "name": "Course"}));
+    let k = s.model.fill_patterns["Course"].drawn.unwrap();
+    assert!(k > 1.0, "the plan's scale");
+    run(&mut s, "fill_pattern", json!({"name": "Course", "target": "drafting"}));
+    let p = &s.model.fill_patterns["Course"];
+    assert!((p.lines[0].spacing - 100.0 / k).abs() < 1e-9 && p.target == crate::fills::Target::Drafting, "{p:?}");
+    // Saved and read back, it still knows.
+    let (m, _) = crate::model::Model::read(&s.model.to_json().unwrap()).unwrap();
+    assert_eq!(m.fill_patterns["Course"].drawn, Some(k));
+    // Forgotten, a target is only a word again; a scale that is no number is refused.
+    run(&mut s, "fill_pattern", json!({"name": "Course", "drawn": null, "target": "model"}));
+    assert!((s.model.fill_patterns["Course"].lines[0].spacing - 100.0 / k).abs() < 1e-9);
+    assert!(s.execute("fill_pattern", &json!({"name": "Course", "drawn": -1})).is_err());
+}

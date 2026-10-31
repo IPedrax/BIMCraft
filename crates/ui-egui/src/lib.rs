@@ -3450,6 +3450,8 @@ impl BimApp {
             let tip = msg!("Annotation Settings: line weights, line styles, line patterns and fill patterns");
             let r = big_button(ui, Icon::AnnotationSettings, "Annotation Settings", open, tip);
             ribbon::choices(ui, &r, false, |ui| {
+                // As wide as its longest name, not the window.
+                ui.set_width(200.0);
                 ui.spacing_mut().item_spacing.y = 0.0;
                 let tip = msg!("Line Weights: what each pen draws on paper, the model's at each scale and the annotation's at any");
                 if list_row(ui, Icon::LineWeights, "Line Weights", false, tip).clicked() {

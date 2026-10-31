@@ -269,7 +269,7 @@ place, and renames go through `renames::plan`, which runs a chain from its end a
 that is taken). A draft keeps the entries the project held when it opened and is refused over a project that has changed since (an agent's command),
 so Apply never undoes or deletes what the draft never saw. A blank or repeated name is refused in the dialog. What an import or an export says
 (`note`) is said in the dialog, not in the status bar, which can lie over its buttons. A PAT file is read by the `import_fill_patterns` command on a scratch
-project that holds the draft's names, so the command's keep or replace rule and its caps are the dialog's too (Replace Same Name is the command's
+project that holds the draft's names, so the command's keep or replace rule and its caps are the dialog's too (Replace imported by same name is the command's
 `replace`); an export to a name without `.pat` does not write over a file of that name with `.pat`. The preview draws a type as the plan does, in the canvas colours.
 The note belongs to the Patterns tab (the types do not show it), a file's patterns are told in the singular for one, and a left-out pattern is named with its reason (the
 core's message without the pattern's name it begins with), each cut at a word. In a test a file dialog is answered through `dialog::BEGUN`; no system dialog opens.

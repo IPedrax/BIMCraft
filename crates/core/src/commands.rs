@@ -1051,13 +1051,15 @@ pub static ALL: &[Command] = &[
         "fill_pattern",
         "Fill Patterns",
         &[],
-        "{name?, target?: drafting|model, lines?: [{angle, spacing, origin?: [x, y], shift?, dashes?: [mm, -mm, …]}, …], rename?, \
-         delete?: true} a fill pattern of the project's, as Revit's (and a PAT file's): families of parallel lines, each at \
+        "{name?, target?: drafting|model, lines?: [{angle, spacing, origin?: [x, y], shift?, dashes?: [mm, -mm, …]}, …], \
+         drawn?: scale | null, rename?, delete?: true} a fill pattern of the project's, as Revit's (and a PAT file's): families of parallel lines, each at \
          `angle` degrees through `origin`, its lines `spacing` apart and each `shift` along from the last, whole or dashed \
          (`dashes`: a dash's length, a space's as a negative one, 0 a dot); no lines, it fills solid. A drafting pattern's \
          lengths are mm on paper, the same at any scale; a model pattern's mm in the building. A project starts with Solid \
          fill, Diagonal Up and Down, Crosshatch, Diagonal Crosshatch, Horizontal, Vertical, Sand, Brick 225 x 75 and Tile 300. \
          `rename` renames it, the region types filling with it following; `delete` takes it away while no type uses it. \
+         `drawn` is the scale (1 : n, its n) of the view one made of lines (`make_fill_pattern`) was drawn in: such a one given \
+         a new `target` and no `lines` is rescaled, a drafting one being the drawing on paper at that scale; null forgets it. \
          Without `name`, it lists every pattern",
         fill_pattern,
     ),
@@ -9695,7 +9697,7 @@ fn export_fill_patterns(s: &mut Session, p: &Value) -> R {
 
 fn fill_pattern(s: &mut Session, p: &Value) -> R {
     let c = "fill_pattern";
-    only(c, p, &["name", "target", "lines", "rename", "delete"])?;
+    only(c, p, &["name", "target", "lines", "drawn", "rename", "delete"])?;
     let Some(name) = name_param(c, p, "name")? else {
         return Ok(json!({"patterns": s.model.fill_patterns}));
     };
@@ -9722,10 +9724,16 @@ fn fill_pattern(s: &mut Session, p: &Value) -> R {
             return Err(bad(c, format!("there's no fill pattern `{name}`; make one with `lines`{}", known_names(&there))));
         }
     };
-    if let Some(t) = shaped::<Target>(c, p, "target", "drafting or model")? {
-        pattern.target = t;
+    match p.get("drawn") {
+        None => {}
+        Some(Value::Null) => pattern.drawn = None,
+        Some(v) => pattern.drawn = Some(v.as_f64().ok_or_else(|| bad(c, format!("`drawn` is a view's scale, a number, not {v}")))?),
     }
-    if let Some(lines) = shaped(c, p, "lines", "[{angle, spacing, origin?: [x, y], shift?, dashes?: [mm, -mm, …]}, …]")? {
+    let lines = shaped(c, p, "lines", "[{angle, spacing, origin?: [x, y], shift?, dashes?: [mm, -mm, …]}, …]")?;
+    if let Some(t) = shaped::<Target>(c, p, "target", "drafting or model")? {
+        pattern = if lines.is_none() { pattern.retargeted(t) } else { FillPattern { target: t, ..pattern } };
+    }
+    if let Some(lines) = lines {
         pattern.lines = lines;
     }
     let name = match name_param(c, p, "rename")? {

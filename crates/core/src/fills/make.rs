@@ -64,7 +64,7 @@ pub fn from_segments(segments: &[[P2; 2]], a: P2, b: P2) -> Result<FillPattern, 
         return Err(format!("{} lines inside the tile; a pattern holds at most {MAX_FAMILIES}", lines.len()));
     }
     let lines = lines.into_iter().map(|(i, j, origin, len)| family(i, j, origin, len, w, h)).collect();
-    let pattern = FillPattern { target: Target::Model, lines };
+    let pattern = FillPattern { target: Target::Model, lines, drawn: None };
     pattern.check("made").map_err(|e| e.replace("fill pattern `made`", "the pattern"))?;
     Ok(pattern)
 }
@@ -169,13 +169,14 @@ pub struct Made {
 }
 
 impl Made {
-    /// The pattern as a `target` one: a drafting pattern is the drawing on paper, at the view's scale.
+    /// The pattern as a `target` one: a drafting pattern is the drawing on paper, at the view's scale. It remembers that
+    /// scale (`FillPattern::drawn`).
     pub fn as_target(&self, target: Target) -> FillPattern {
         let k = match target {
             Target::Model => 1.0,
             Target::Drafting => 1.0 / self.scale,
         };
-        FillPattern { target, ..self.pattern.scaled(k) }
+        FillPattern { target, drawn: Some(self.scale), ..self.pattern.scaled(k) }
     }
 }
 

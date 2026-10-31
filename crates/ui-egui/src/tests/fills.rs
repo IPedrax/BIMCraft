@@ -457,3 +457,54 @@ fn escape_while_picking_brings_the_dialog_back_and_nothing_picked_says_so() {
     assert_eq!(h.state().prompt(), "Click on Bottom Left Corner");
     assert!(h.state().context_items()[0].iter().all(|i| i.action != crate::context::Action::FinishPick), "only while lines are picked");
 }
+
+#[test]
+fn a_pattern_made_of_lines_is_redefined_from_lines_picked_again_keeping_its_name_and_type() {
+    let mut h = app(BOX);
+    let lines = brick_lines(&mut h);
+    h.state_mut()
+        .session
+        .execute(
+            "make_fill_pattern",
+            &json!({"ids": lines, "from": [1000, 1000], "to": [3000, 2000], "name": "Bond", "target": "drafting"}),
+        )
+        .unwrap();
+    h.run();
+    let count = h.state().session.model.fill_patterns.len();
+    annotation(&mut h, "Fill Patterns");
+    // Made of lines, saved and opened again: Redefine where a simple one has Edit Lines.
+    assert!(h.query_by_label("Bond: Edit Lines").is_none());
+    press(&mut h, "Bond: Redefine");
+    assert_eq!(h.state().prompt(), "Select fill pattern lines then press Enter");
+    h.state_mut().selection = lines.clone();
+    key(&mut h, Key::Enter);
+    // A tile half as wide: the head joints 1000 apart.
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(2000.0, 2000.0));
+    assert!(h.query_by_label_contains("Bond redefined").is_some(), "the preview says what it redefines");
+    press(&mut h, "OK");
+    press(&mut h, "OK");
+    let m = &h.state().session.model;
+    assert_eq!(m.fill_patterns.len(), count, "no new pattern");
+    let p = &m.fill_patterns["Bond"];
+    let scale = p.drawn.unwrap();
+    assert_eq!(p.target, Target::Drafting, "drafting still");
+    let mut spacings: Vec<f64> = p.lines.iter().map(|l| (l.spacing * scale).round()).collect();
+    spacings.sort_by(f64::total_cmp);
+    assert_eq!(spacings, [1000.0, 1000.0]);
+}
+
+#[test]
+fn the_annotation_settings_list_and_the_fill_patterns_window_are_no_wider_than_what_they_hold() {
+    let mut h = app(BOX);
+    press(&mut h, "Manage");
+    press(&mut h, "Annotation Settings");
+    assert!(h.get_by_label("Fill Patterns").rect().width() <= 220.0, "{:?}", h.get_by_label("Fill Patterns").rect());
+    press(&mut h, "Fill Patterns");
+    let r = h.ctx.memory(|m| m.area_rect(egui::Id::new("fill-patterns"))).unwrap();
+    assert!(r.width() <= 760.0, "{r:?}");
+    // Import and Export at the right, with what an import does with a name the list has.
+    let (import, new) = (h.get_by_label("Import...").rect(), h.get_by_label("New Pattern").rect());
+    assert!(import.left() > r.center().x && new.right() < r.center().x);
+    assert!(h.query_by_label("Replace imported by same name").is_some());
+}
