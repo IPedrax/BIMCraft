@@ -836,7 +836,7 @@ pub static ALL: &[Command] = &[
         "{name, category?: furniture|casework|plumbing|lighting|generic|door|window, parameters?: [{name, kind?: length|number|\
          angle|yesno|material, instance?, value?, formula?}], types?: {type: {parameter: value}}, forms?: [{plane?: xy|xz|yz, \
          profile?: [[a, b], …], circle?: {centre: [a, b], radius}, axis?: [[a, b], [a, b]], from?, to, material?, visible?, \
-         void?}], symbols?: [{line?: [[x, y], …] | arc?: {centre: [x, y], radius, from?, to}, visible?}], operation?: swing|\
+         void?}], symbols?: [{line?: [[x, y], …] | arc?: {centre: [x, y], radius, from?, to} | text?: {at: [x, y], height, value, align?: left|center|right} | dot?: {centre: [x, y], radius}, visible?}], operation?: swing|\
          double-swing|sliding|double-sliding|folding|fixed (a door's or window's, for IFC and schedules), rename?, delete?: \
          true, path?, save?} a family of \
          the project's, BIMCraft's own parametric component: created, changed, or loaded from the .json file at `path` (a family \
@@ -849,13 +849,20 @@ pub static ALL: &[Command] = &[
          and a `family`: its forms are drawn in the opening's axes (x along the wall from the middle of the opening, y across \
          it, 0 in the middle of the wall and + toward its exterior, z up from the sill), it must have length parameters \
          `Width` and `Height` (the opening it makes; `Sill Height` is a window's default sill), and its formulas read \
-         `Wall Thickness`, the wall's. Its `symbols` are the lines its plan draws (a door's swing: a `line`, an `arc` in \
-         degrees from +x counter-clockwise). Sizes are mm, or \
+         `Wall Thickness`, the wall's. Sizes are mm, or \
          formulas over its parameters as Revit's are: `Width / 2`, `if(Depth > 600, 4, 2)`, with + - * / ^, < > = <= >=, if, \
          and, or, not, min, max, abs, sqrt, round, roundup, rounddown, sin, cos, tan (degrees). A parameter is each type's, or \
          with `instance` each component's. `types` merges into its types (a null takes one away); `parameters` and `forms` \
          replace its own; `material` is a material's name or a material parameter's; `visible` a yes/no parameter or formula. \
-         `inspect` lists the families",
+         `inspect` lists the families. The `symbols` of a family of any category are what its plan \
+         draws besides its forms, in its own axes, turned and moved (and mirrored) with the component or opening and hidden at \
+         coarse detail: each one `line` (points), `arc` (degrees from +x counter-clockwise, up to a full turn), `text` or `dot`, \
+         one of them, with `visible` a yes/no parameter or formula. A `text` is lettered in BIMCraft's own strokes, capitals \
+         `height` mm tall on a baseline through `at` (`align` says whether `at` is where it starts, its middle or its end), \
+         and turns with the component, so it reads upright only as the component stands upright; `{Parameter Name}` in its \
+         `value` is replaced by that parameter's value (a name the family lacks is refused), up to 256 characters. A `dot` is \
+         a solid disc in ink of a radius above zero. A component of a family with symbols and no forms is drawn where it \
+         stands between its view's cut plane and depth. IFC leaves symbols out",
         family,
     ),
     edit(

@@ -19,7 +19,7 @@ partitions, built and walked with a worklist rather than recursion and bounded b
 a cut piece keeps its uncut outline in plan). A family of category `door` or `window` is hosted: its `Width` and `Height` (English
 names, whatever the project's language) size the wall's opening, `Sill Height` is a window's default sill, its forms are drawn in
 the opening's axes (x along the wall from the middle of the opening, y across it from the wall's middle plane and + toward its
-exterior, z up from the sill) and its formulas read `Wall Thickness`; its `symbols` are the plan lines (a door's swing). An
+exterior, z up from the sill) and its formulas read `Wall Thickness`; its `symbols` also draw in plan (a door's swing). An
 `Opening` holds a `family`, or none (one of the project's own types): `Model::opening_dims` gives its size either way
 (`opening_type` returns it by value), its flips are mirrors (`opening_local`), and `Element::family()` is the one way to ask what
 family a component or an opening is of. Sections show a family opening's forms beyond their line and never cut them.
@@ -56,3 +56,24 @@ for what a pass frees (a family's material, a type's), at most 16 times, on a co
 `Model::remove_entry` is the single place that knows where each kind lives. The desktop's Purge Unused window (`purge.rs`) lists a dry run
 for the kinds checked and runs the same; the Project Browser's Families lists the system types and has the right-click Delete.
 
+
+## Plan symbols
+
+A family's `symbols`, of any category, are what its plan draws besides its forms, in its own axes: each is exactly one of a
+`line` (up to `MAX_PROFILE` points), an `arc`, a `text` or a `dot`, with `visible` (a yes/no parameter or a formula) for any.
+`Family::marks` works them out, for a type's values, as `Mark`s: a `Mark::Line` (an arc as chords of `ARC_STEP` degrees; a
+label as the strokes of `font.rs`, `lettering`) or a `Mark::Dot`. A `text` is `{at, height, value, align?}`: capitals `height` mm
+tall on a baseline through `at`, started, centred or ended there (`Align`); `{Parameter Name}` in `value` reads that parameter
+(`said_text`: a number as plainly as it reads, a material by its name), an unknown name or an unclosed `{` is refused by
+`Family::check`, and the lettered text is at most `MAX_TEXT` characters. A `dot` is a `Circle`, drawn solid in ink. Everything
+numeric is checked finite and within `MAX_COORD`; a label's height and a dot's radius must be above zero.
+
+`Model::component_marks` places a component's marks (mirrored, then turned and moved) and `Model::opening_marks` an opening's,
+and `render::marks` draws them: lines in the category's pen (`BY_CATEGORY`, so Object Styles and Visibility/Graphics apply), dots
+as filled discs. Coarse detail leaves them out. A label is lettered upright in the family's axes, so it turns with the component
+(and is mirrored with one that is mirrored); it isn't kept upright. A component with no forms (symbols alone) is drawn where
+it stands when its base lies between the view's depth and cut plane, a component with forms by the forms' rule (whole while any of
+it is between them). IFC export ignores symbols (they are plan notation, not geometry); the Family Editor's Symbols tab lists
+all four parts. Library parts: a symbol of any kind has its own id and GUID (`HasPart`, `keep_parts`). A file written with
+`text` or `dot` symbols, or symbols on a category other than a door or a window, is read by an older version only with them left
+out or refused, so the file format is unchanged.
