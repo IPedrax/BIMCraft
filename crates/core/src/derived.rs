@@ -123,15 +123,15 @@ impl Lookup {
                 Arc::make_mut(set).remove(&id);
             }
         }
-        if self.tiled.contains_key(&id) {
-            if let Some(Some([x0, y0, x1, y1])) = Arc::make_mut(&mut self.tiled).remove(&id) {
-                for x in x0..=x1 {
-                    for y in y0..=y1 {
-                        if let Some(set) = self.tiles.get_mut(&(x, y)) {
-                            Arc::make_mut(set).remove(&id);
-                            if set.is_empty() {
-                                self.tiles.remove(&(x, y));
-                            }
+        if self.tiled.contains_key(&id)
+            && let Some(Some([x0, y0, x1, y1])) = Arc::make_mut(&mut self.tiled).remove(&id)
+        {
+            for x in x0..=x1 {
+                for y in y0..=y1 {
+                    if let Some(set) = self.tiles.get_mut(&(x, y)) {
+                        Arc::make_mut(set).remove(&id);
+                        if set.is_empty() {
+                            self.tiles.remove(&(x, y));
                         }
                     }
                 }
