@@ -1741,6 +1741,15 @@ impl Element {
         out
     }
 
+    /// Whether it points at any element of `set`: [`Element::refs`] without making the list.
+    pub fn refers_to(&self, set: &BTreeSet<Guid>) -> bool {
+        let mut hit = false;
+        let mut f = |g: &Guid| hit = hit || set.contains(g);
+        visit_refs!(self, &mut f,);
+        hit || self.params().is_some_and(|p| crate::massing::refs(p).iter().any(|g| set.contains(g)))
+            || graphics::graphics_of_element(self).is_some_and(|g| g.elements.keys().any(|k| set.contains(k)))
+    }
+
     /// The family a component or a family's door or window is of, and its type.
     pub fn family(&self) -> Option<(&str, &str)> {
         match self {
@@ -2868,8 +2877,22 @@ impl Model {
     /// What points at an element by its id (as a command gives a reference, or a file from before GUIDs held it) points at
     /// its GUID. An id no element has is left as it is, for [`Model::check`] to name.
     pub fn resolve(&mut self) {
+        self.resolve_in(None);
+    }
+
+    /// [`Model::resolve`] of a model copied from one that passed [`Model::check`], so held no id for a GUID: only what
+    /// changed since it was copied (what a command changed) can hold one.
+    pub(crate) fn resolve_changed(&mut self) {
+        let touched = self.elements.touched();
+        self.resolve_in(touched);
+    }
+
+    fn resolve_in(&mut self, among: Option<BTreeSet<Id>>) {
         let pending = |e: &Element| e.refs().iter().any(|g| g.pending().is_some());
-        let ids: Vec<Id> = self.elements.iter().filter(|(_, e)| pending(e)).map(|(id, _)| *id).collect();
+        let ids: Vec<Id> = match among {
+            Some(touched) => touched.into_iter().filter(|id| self.elements.get(*id).is_some_and(pending)).collect(),
+            None => self.elements.iter().filter(|(_, e)| pending(e)).map(|(id, _)| *id).collect(),
+        };
         for id in ids {
             let Some(mut e) = self.elements.get(id).cloned() else { continue };
             e.refs_mut(&mut |g| {
@@ -4939,7 +4962,7 @@ impl Model {
         while !frontier.is_empty() {
             let mut next = BTreeSet::new();
             for (&id, e) in &self.elements {
-                if !affected.contains(&id) && e.refs().iter().any(|g| frontier.contains(g)) {
+                if !affected.contains(&id) && e.refers_to(&frontier) {
                     affected.insert(id);
                     next.extend(self.elements.guid(id));
                 }

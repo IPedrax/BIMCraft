@@ -296,6 +296,12 @@ impl Elements {
         }
     }
 
+    /// The ids changed since these were cloned, when the journal names each (none: it can't say which).
+    pub fn touched(&self) -> Option<BTreeSet<Id>> {
+        let j = &self.journal;
+        (self.token != 0 && self.base != 0 && !j.all && j.from.is_none()).then(|| j.ids.clone())
+    }
+
     fn touch(&mut self, id: Id) {
         self.journal.ids.insert(id);
     }
