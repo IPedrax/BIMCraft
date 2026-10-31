@@ -102,6 +102,6 @@ tests are never traded for a timing.
 - [x] 3. Change sets: each model's journal; sweeps, undo and redo by what differs
 - [x] 4. Incremental check (an edit of a million elements 21.5 s → 0.27 s with piece 5)
 - [x] 5. Persistent storage: chunks of 1,024 ids shared by copies (memory 2.2 → 1.1 GB)
-- [ ] 6. Derived-result cache
+- [ ] 6. Derived-result cache: begun with the lookup (references both ways, walls by tile, dimensions): an edit of a million elements 1.7 ms (a wall with doors 23 ms)
 - [ ] 7. Views from fragments
 - [ ] 8. Columns and parallel queries

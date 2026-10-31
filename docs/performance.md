@@ -206,6 +206,25 @@ check's walk over every element to find what points at what changed: an index of
 (piece 6) makes it what changed. A plan of one storey and `inspect` still go through every element of the project:
 plans by level (piece 7).
 
+### Piece 6: what elements point at, kept with each model
+
+`derived::Lookup` keeps, with each model, what each element points at and what points at it, the walls by 6 m plan tile
+and the dimensions, in chunks behind `Arc`s; a command's copy brings its model's lookup up to date by what it changed.
+The edit path asks it, and the change set, instead of going through every element: the incremental check follows
+references and finds the walls a changed wall might join in its tiles (overlapping in height); moving finds the walls to
+stretch and the openings to slide there; keeping locked dimensions, resolving references and whether the library is in
+step look at what changed.
+
+The million-element tower, median of nine, each undone after it:
+
+| Edit | Baseline | Pieces 3–5 | Piece 6 | Undo |
+|---|---:|---:|---:|---:|
+| Move a column 10 mm | 21.5 s | 272 ms | **1.7 ms** | 1.0 ms |
+| Move a corridor wall with 24 doors and the partitions joined to it | | | **23 ms** | 14 ms |
+
+The wall's 23 ms is mostly its neighbours: the tiles hold the same wall of every storey, and the 86 elements it changes
+check 377 (its doors, tags and joined walls). Heights in the tiles are next.
+
 ## 3D on the graphics card
 
 `view3d::gpu::Mesh` keeps a view's shown triangles for the card (retained geometry, uploaded once for each model), and
