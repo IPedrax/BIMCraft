@@ -62,8 +62,8 @@ msgstr "<按类别>"
 msgid "<Invisible lines>"
 msgstr "<不可见线>"
 
-#: crates/ui-egui/src/fillpatterns.rs:354
-#: crates/ui-egui/src/fillpatterns.rs:356
+#: crates/ui-egui/src/fillpatterns.rs:357
+#: crates/ui-egui/src/fillpatterns.rs:359
 #: crates/ui-egui/src/graphics.rs:653
 #: crates/ui-egui/src/graphics.rs:1401
 #: crates/ui-egui/src/graphics.rs:1403
@@ -227,15 +227,12 @@ msgstr "添加长方体"
 msgid "Add Cylinder"
 msgstr "添加圆柱体"
 
-#: crates/ui-egui/src/fillpatterns.rs:425
-msgid "Add Family"
-msgstr "添加线族"
-
 #: crates/ui-egui/src/properties.rs:2287
 msgid "Add Filter"
 msgstr "添加过滤器"
 
 #: crates/ui-egui/src/editor.rs:856
+#: crates/ui-egui/src/fillpatterns.rs:410
 msgid "Add Line"
 msgstr "添加线"
 
@@ -641,7 +638,7 @@ msgstr "恢复项目初始的笔"
 msgid "Back to the project ({}D)"
 msgstr "返回项目（{}D）"
 
-#: crates/ui-egui/src/fillpatterns.rs:746
+#: crates/ui-egui/src/fillpatterns.rs:719
 msgid "Back to the type"
 msgstr "返回类型"
 
@@ -649,11 +646,11 @@ msgstr "返回类型"
 msgid "Back to {}"
 msgstr "返回 {}"
 
-#: crates/ui-egui/src/fillpatterns.rs:478
+#: crates/ui-egui/src/fillpatterns.rs:467
 msgid "Background Color"
 msgstr "背景颜色"
 
-#: crates/ui-egui/src/fillpatterns.rs:478
+#: crates/ui-egui/src/fillpatterns.rs:467
 msgid "Background Pattern"
 msgstr "背景填充图案"
 
@@ -798,7 +795,7 @@ msgstr "边界线：绘制竖井洞口的轮廓"
 msgid "Brick"
 msgstr "砖"
 
-#: crates/core/src/fills.rs:410
+#: crates/core/src/fills.rs:416
 msgid "Brick 225 x 75"
 msgstr ""
 
@@ -1006,7 +1003,7 @@ msgstr "链"
 msgid "Chair"
 msgstr "椅子"
 
-#: crates/ui-egui/src/fillpatterns.rs:495
+#: crates/ui-egui/src/fillpatterns.rs:484
 msgid "Changes to a type affect every filled region of that type."
 msgstr "修改类型会影响使用该类型的所有填充区域。"
 
@@ -1861,7 +1858,7 @@ msgstr "裁剪视图"
 msgid "Crop View: show only the crop region; drag its edges by their grips"
 msgstr "裁剪视图：仅显示裁剪区域；拖动其夹点调整边缘"
 
-#: crates/core/src/fills.rs:403
+#: crates/core/src/fills.rs:409
 #: crates/ui-egui/src/properties.rs:605
 msgid "Crosshatch"
 msgstr "交叉线"
@@ -1874,8 +1871,7 @@ msgstr "仅当前视图"
 msgid "Curve preview"
 msgstr "曲线预览"
 
-#: crates/ui-egui/src/fillpatterns.rs:585
-#: crates/ui-egui/src/fillpatterns.rs:634
+#: crates/ui-egui/src/fillpatterns.rs:608
 #: crates/ui-egui/src/footer.rs:289
 msgid "Custom"
 msgstr "自定义"
@@ -1938,10 +1934,6 @@ msgstr ""
 msgid "Dashed"
 msgstr "虚线"
 
-#: crates/ui-egui/src/fillpatterns.rs:383
-msgid "Dashes"
-msgstr "虚线"
-
 #: crates/ui-egui/src/lib.rs:2787
 msgid "Data"
 msgstr "数据"
@@ -1985,8 +1977,8 @@ msgstr "默认厚度"
 #: crates/ui-egui/src/editor.rs:604
 #: crates/ui-egui/src/editor.rs:777
 #: crates/ui-egui/src/editor.rs:847
-#: crates/ui-egui/src/fillpatterns.rs:412
-#: crates/ui-egui/src/fillpatterns.rs:603
+#: crates/ui-egui/src/fillpatterns.rs:398
+#: crates/ui-egui/src/fillpatterns.rs:577
 #: crates/ui-egui/src/graphics.rs:407
 #: crates/ui-egui/src/graphics.rs:499
 #: crates/ui-egui/src/linestyles/creator.rs:170
@@ -2132,15 +2124,15 @@ msgstr "设备 (DV)：在墙上单击处放置插座或开关；按空格键旋�
 msgid "Diagonal"
 msgstr "对角线"
 
-#: crates/core/src/fills.rs:402
+#: crates/core/src/fills.rs:408
 msgid "Diagonal Crosshatch"
 msgstr ""
 
-#: crates/core/src/fills.rs:401
+#: crates/core/src/fills.rs:407
 msgid "Diagonal Down"
 msgstr ""
 
-#: crates/core/src/fills.rs:400
+#: crates/core/src/fills.rs:406
 msgid "Diagonal Up"
 msgstr ""
 
@@ -2240,7 +2232,7 @@ msgstr "停靠 {}"
 msgid "Don't Save"
 msgstr "不保存"
 
-#: crates/ui-egui/src/fillpatterns.rs:429
+#: crates/ui-egui/src/fillpatterns.rs:413
 msgid "Done"
 msgstr "完成"
 
@@ -2315,7 +2307,7 @@ msgstr "正在下载 BIMCraft {}…"
 msgid "Downloads and checks the update; BIMCraft then closes, updates and starts again."
 msgstr "下载并校验更新；随后 BIMCraft 会关闭、更新并重新启动。"
 
-#: crates/ui-egui/src/fillpatterns.rs:549
+#: crates/ui-egui/src/fillpatterns.rs:544
 msgid "Drafting"
 msgstr "绘图"
 
@@ -2375,6 +2367,10 @@ msgstr "带详图复制"
 msgid "Duplicate…"
 msgstr "复制…"
 
+#: crates/ui-egui/src/fillpatterns.rs:571
+msgid "Each line's angle, origin and spacing"
+msgstr "每条线的角度、原点和间距"
+
 #: crates/ui-egui/src/lineweights.rs:107
 msgid "Each pen's width on paper, mm, for dimensions, tags, text, grids, levels and marks, at any scale. Pen 0 is always a hairline."
 msgstr "每支笔在图纸上的宽度（毫米），用于尺寸标注、标记、文字、轴网、标高和符号，在任何比例下都相同。笔 0 始终是发丝线。"
@@ -2432,7 +2428,8 @@ msgstr "编辑族"
 msgid "Edit Family: the family of what is selected, or of the component being placed"
 msgstr "编辑族：所选对象或正在放置的构件所属的族"
 
-#: crates/ui-egui/src/fillpatterns.rs:600
+#: crates/ui-egui/src/fillpatterns.rs:524
+#: crates/ui-egui/src/fillpatterns.rs:571
 msgid "Edit Lines"
 msgstr "编辑线"
 
@@ -2541,7 +2538,7 @@ msgstr "端部上弯"
 msgid "Enter a name for every style and pattern."
 msgstr "请为每个样式和图案输入名称。"
 
-#: crates/ui-egui/src/fillpatterns.rs:232
+#: crates/ui-egui/src/fillpatterns.rs:228
 msgid "Enter a name for every type and pattern."
 msgstr "请为每个类型和图案输入名称。"
 
@@ -2593,7 +2590,7 @@ msgstr "分解多段线 (EX)：将多段线的每一段拆分为一条线或一�
 msgid "Export"
 msgstr "导出"
 
-#: crates/ui-egui/src/fillpatterns.rs:647
+#: crates/ui-egui/src/fillpatterns.rs:621
 msgid "Export..."
 msgstr "导出..."
 
@@ -2630,7 +2627,7 @@ msgstr "读取文件失败：{}"
 msgid "Families"
 msgstr "族"
 
-#: crates/ui-egui/src/fillpatterns.rs:530
+#: crates/ui-egui/src/fillpatterns.rs:519
 msgid "Families of parallel lines: drafting ones mm on paper, the same at any scale; model ones mm in the building."
 msgstr "平行线组：绘图图案以图纸上的毫米计，在任何比例下都相同；模型图案以建筑中的毫米计。"
 
@@ -2691,7 +2688,7 @@ msgstr "文件"
 msgid "Files"
 msgstr "文件管理"
 
-#: crates/ui-egui/src/fillpatterns.rs:729
+#: crates/ui-egui/src/fillpatterns.rs:702
 msgid "Fill Patterns"
 msgstr "填充样式"
 
@@ -2703,12 +2700,12 @@ msgstr "填充图案：填充区域和材质使用的图案，简单图案或由
 msgid "Fill color"
 msgstr "填充颜色"
 
-#: crates/ui-egui/src/fillpatterns.rs:787
-#: crates/ui-egui/src/fillpatterns.rs:791
+#: crates/ui-egui/src/fillpatterns.rs:760
+#: crates/ui-egui/src/fillpatterns.rs:764
 msgid "Fill patterns"
 msgstr "填充图案"
 
-#: crates/ui-egui/src/fillpatterns.rs:948
+#: crates/ui-egui/src/fillpatterns.rs:921
 msgid "Fill patterns exported to {}"
 msgstr "填充图案已导出到 {}"
 
@@ -2724,7 +2721,7 @@ msgstr "填充区域"
 msgid "Filled Region (FR): sketch an area filled with a pattern, in this view"
 msgstr "填充区域 (FR)：在此视图中绘制以图案填充的区域"
 
-#: crates/ui-egui/src/fillpatterns.rs:442
+#: crates/ui-egui/src/fillpatterns.rs:431
 msgid "Filled region"
 msgstr "填充区域"
 
@@ -2818,7 +2815,7 @@ msgstr "面层面：内部"
 msgid "Finish or cancel the sketch before leaving its plan."
 msgstr "离开草图所在平面之前，请先完成或取消草图。"
 
-#: crates/ui-egui/src/fillpatterns.rs:803
+#: crates/ui-egui/src/fillpatterns.rs:776
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr "请先完成或取消草图：图案的线在平面图中选取。"
 
@@ -2925,11 +2922,11 @@ msgstr "折叠标记:"
 msgid "Follow in This View"
 msgstr "在此视图中应用"
 
-#: crates/ui-egui/src/fillpatterns.rs:477
+#: crates/ui-egui/src/fillpatterns.rs:466
 msgid "Foreground Color"
 msgstr "前景颜色"
 
-#: crates/ui-egui/src/fillpatterns.rs:477
+#: crates/ui-egui/src/fillpatterns.rs:466
 msgid "Foreground Pattern"
 msgstr "前景填充图案"
 
@@ -3239,7 +3236,7 @@ msgstr "主视图"
 msgid "Hook"
 msgstr "弯钩"
 
-#: crates/core/src/fills.rs:404
+#: crates/core/src/fills.rs:410
 #: crates/ui-egui/src/lib.rs:4008
 #: crates/ui-egui/src/properties.rs:606
 msgid "Horizontal"
@@ -3330,11 +3327,11 @@ msgstr "导入 CAD：导入项目的 DWG 或 DXF 图纸，绘制在某标高平�
 msgid "Import units"
 msgstr "导入单位"
 
-#: crates/ui-egui/src/fillpatterns.rs:650
+#: crates/ui-egui/src/fillpatterns.rs:624
 msgid "Import..."
 msgstr "导入..."
 
-#: crates/ui-egui/src/fillpatterns.rs:654
+#: crates/ui-egui/src/fillpatterns.rs:628
 msgid "Import: a pattern of the file replaces the one of its name in this list; unchecked, it is left out"
 msgstr "导入：文件中的图案替换此列表中的同名图案；不勾选则跳过"
 
@@ -3705,10 +3702,6 @@ msgstr "线颜色"
 msgid "Line dash"
 msgstr "线型虚实"
 
-#: crates/ui-egui/src/fillpatterns.rs:376
-msgid "Line families of {}"
-msgstr "{} 的线族"
-
 #: crates/ui-egui/src/graphics.rs:1351
 msgid "Line weight"
 msgstr "线宽"
@@ -3736,6 +3729,10 @@ msgstr "线"
 #: crates/ui-egui/src/sketch.rs:267
 msgid "Lines intersect ({}): a loop can't cross itself or another loop."
 msgstr "线相交（{}）：环不能与自身或其他环交叉。"
+
+#: crates/ui-egui/src/fillpatterns.rs:374
+msgid "Lines of {}"
+msgstr "{} 的线"
 
 #: crates/ui-egui/src/sketch.rs:268
 msgid "Lines overlap ({}): one lies along another, or a line is drawn twice."
@@ -3830,7 +3827,7 @@ msgstr "锁定第 {} 段"
 msgid "Long Dash"
 msgstr ""
 
-#: crates/ui-egui/src/fillpatterns.rs:633
+#: crates/ui-egui/src/fillpatterns.rs:607
 msgid "Made of detail lines picked in the plan, repeating the rectangle between two corners"
 msgstr "由在平面图中选取的详图线生成，重复两个角点之间的矩形"
 
@@ -3855,8 +3852,8 @@ msgstr "管理"
 msgid "Mark"
 msgstr "标记"
 
-#: crates/core/src/fills.rs:390
-#: crates/ui-egui/src/fillpatterns.rs:490
+#: crates/core/src/fills.rs:396
+#: crates/ui-egui/src/fillpatterns.rs:479
 msgid "Masking"
 msgstr "遮罩"
 
@@ -4028,7 +4025,7 @@ msgstr "已镜像"
 msgid "Mode"
 msgstr "模式"
 
-#: crates/ui-egui/src/fillpatterns.rs:550
+#: crates/ui-egui/src/fillpatterns.rs:545
 msgid "Model"
 msgstr "模型"
 
@@ -4179,7 +4176,7 @@ msgstr "新建族：创建您自己的某个类别的族，以编辑其参数、
 msgid "New Filter"
 msgstr "新建过滤器"
 
-#: crates/ui-egui/src/fillpatterns.rs:630
+#: crates/ui-egui/src/fillpatterns.rs:604
 #: crates/ui-egui/src/linestyles.rs:224
 msgid "New Pattern"
 msgstr "新建图案"
@@ -4216,7 +4213,7 @@ msgstr "新线 {}"
 msgid "New name"
 msgstr "新名称"
 
-#: crates/ui-egui/src/fillpatterns.rs:968
+#: crates/ui-egui/src/fillpatterns.rs:941
 msgid "New pattern from lines"
 msgstr "由线生成的新图案"
 
@@ -4439,7 +4436,7 @@ msgstr "开放箭头"
 msgid "Open Recent"
 msgstr "最近打开"
 
-#: crates/ui-egui/src/fillpatterns.rs:805
+#: crates/ui-egui/src/fillpatterns.rs:778
 msgid "Open a plan to pick the pattern's lines in: detail lines are drawn in plans."
 msgstr "请打开平面图以选取图案的线：详图线绘制在平面图中。"
 
@@ -4594,7 +4591,7 @@ msgstr "面板"
 msgid "Paper sizes, sheet borders, filing margins, title blocks, and folding specifications."
 msgstr "纸张尺寸、图纸图框、装订边距、标题栏与折叠规范。"
 
-#: crates/ui-egui/src/fillpatterns.rs:632
+#: crates/ui-egui/src/fillpatterns.rs:606
 msgid "Parallel lines at an angle and a spacing, crosshatched or not"
 msgstr "按角度和间距排列的平行线，可交叉或不交叉"
 
@@ -4654,8 +4651,8 @@ msgstr "配线架 (PN)：在单击处放置墙上的配线架；按空格键旋�
 msgid "Patch Panels"
 msgstr "配线架"
 
-#: crates/ui-egui/src/fillpatterns.rs:267
-#: crates/ui-egui/src/fillpatterns.rs:640
+#: crates/ui-egui/src/fillpatterns.rs:263
+#: crates/ui-egui/src/fillpatterns.rs:614
 #: crates/ui-egui/src/linestyles.rs:226
 msgid "Pattern"
 msgstr "图案"
@@ -4672,7 +4669,7 @@ msgstr "图案图形"
 msgid "Pattern Name"
 msgstr "图案名称"
 
-#: crates/ui-egui/src/fillpatterns.rs:975
+#: crates/ui-egui/src/fillpatterns.rs:948
 msgid "Pattern preview"
 msgstr "图案预览"
 
@@ -4684,7 +4681,7 @@ msgstr "图案"
 msgid "Patterns appear in plans, ceiling plans, section cuts and filled regions."
 msgstr "图案显示在平面图、天花板平面图、剖面切割和填充区域中。"
 
-#: crates/ui-egui/src/fillpatterns.rs:650
+#: crates/ui-egui/src/fillpatterns.rs:624
 msgid "Patterns from a PAT file, AutoCAD's and Revit's"
 msgstr "来自 PAT 文件的图案（AutoCAD 与 Revit 的）"
 
@@ -4767,7 +4764,7 @@ msgstr "阶段化"
 msgid "Phasing (PH): the project's phases in order, the phase filters that show them, and how a filter draws each"
 msgstr "阶段化 (PH)：项目的各个阶段（按顺序）、显示它们的阶段过滤器，以及过滤器如何绘制各阶段"
 
-#: crates/ui-egui/src/fillpatterns.rs:1009
+#: crates/ui-egui/src/fillpatterns.rs:982
 msgid "Pick Again"
 msgstr "重新选取"
 
@@ -4875,7 +4872,7 @@ msgstr ""
 msgid "Pick the line to trim or extend to: a line, a wall or a grid."
 msgstr "拾取要修剪或延伸到的线：一条线、一面墙或一条轴网。"
 
-#: crates/ui-egui/src/fillpatterns.rs:595
+#: crates/ui-egui/src/fillpatterns.rs:566
 msgid "Pick the lines and the tile's corners again: the pattern keeps its name"
 msgstr "重新选取线和单元的角点：图案保留其名称"
 
@@ -5452,7 +5449,8 @@ msgstr "矩形"
 msgid "Rectangle: four lines between two opposite corners"
 msgstr "矩形：在两个对角之间绘制四条线"
 
-#: crates/ui-egui/src/fillpatterns.rs:593
+#: crates/ui-egui/src/fillpatterns.rs:524
+#: crates/ui-egui/src/fillpatterns.rs:567
 msgid "Redefine"
 msgstr "重新定义"
 
@@ -5588,7 +5586,7 @@ msgstr "以文字替换"
 msgid "Replace With Text:"
 msgstr "以文字替换："
 
-#: crates/ui-egui/src/fillpatterns.rs:653
+#: crates/ui-egui/src/fillpatterns.rs:627
 msgid "Replace imported by same name"
 msgstr "替换同名导入项"
 
@@ -5769,11 +5767,11 @@ msgstr "SVG 图形"
 msgid "Same as start"
 msgstr "与起点相同"
 
-#: crates/ui-egui/src/fillpatterns.rs:538
+#: crates/ui-egui/src/fillpatterns.rs:533
 msgid "Sample"
 msgstr "示例"
 
-#: crates/core/src/fills.rs:407
+#: crates/core/src/fills.rs:413
 msgid "Sand"
 msgstr ""
 
@@ -5997,7 +5995,7 @@ msgstr "请选择同一类元素：全是梁、全是柱、全是基础或全是
 msgid "Select fill pattern lines then press Enter"
 msgstr "选择填充图案的线，然后按 Enter"
 
-#: crates/ui-egui/src/fillpatterns.rs:833
+#: crates/ui-egui/src/fillpatterns.rs:806
 msgid "Select the detail lines the pattern is made of, then press Enter."
 msgstr "选择构成图案的详图线，然后按 Enter。"
 
@@ -6077,10 +6075,6 @@ msgstr "图纸（全部）"
 #: crates/ui-egui/src/lib.rs:2931
 msgid "Sheets as PDF…"
 msgstr "将图纸导出为 PDF…"
-
-#: crates/ui-egui/src/fillpatterns.rs:383
-msgid "Shift"
-msgstr "偏移"
 
 #: crates/ui-egui/src/shortcuts.rs:453
 msgid "Shortcut '{}' added for '{}'."
@@ -6179,7 +6173,7 @@ msgstr "窗台"
 msgid "Sill Height"
 msgstr "窗台高度"
 
-#: crates/ui-egui/src/fillpatterns.rs:632
+#: crates/ui-egui/src/fillpatterns.rs:606
 msgid "Simple Lines"
 msgstr "简单线"
 
@@ -6316,16 +6310,16 @@ msgstr "沙发"
 msgid "Solid"
 msgstr "实线"
 
-#: crates/core/src/fills.rs:389
+#: crates/core/src/fills.rs:395
 msgid "Solid Black"
 msgstr ""
 
-#: crates/ui-egui/src/fillpatterns.rs:579
+#: crates/ui-egui/src/fillpatterns.rs:555
 #: crates/ui-egui/src/properties.rs:603
 msgid "Solid Fill"
 msgstr "实体填充"
 
-#: crates/core/src/fills.rs:387
+#: crates/core/src/fills.rs:393
 msgid "Solid fill"
 msgstr ""
 
@@ -6345,7 +6339,7 @@ msgstr "GitHub 上的源代码"
 msgid "South"
 msgstr "南"
 
-#: crates/ui-egui/src/fillpatterns.rs:383
+#: crates/ui-egui/src/fillpatterns.rs:380
 #: crates/ui-egui/src/linestyles/creator.rs:181
 #: crates/ui-egui/src/reinforce.rs:65
 #: crates/ui-egui/src/reinforce.rs:79
@@ -6591,7 +6585,7 @@ msgid "System"
 msgstr "系统"
 
 #: crates/ui-egui/src/dimtypes.rs:94
-#: crates/ui-egui/src/fillpatterns.rs:442
+#: crates/ui-egui/src/fillpatterns.rs:431
 #: crates/ui-egui/src/notes.rs:503
 #: crates/ui-egui/src/properties.rs:1575
 msgid "System Family: {}"
@@ -6801,8 +6795,8 @@ msgstr "环未闭合：有 {} 个线端没有与其他线相接。"
 msgid "The middle of a wall, along its arc"
 msgstr "墙的中点，沿其弧线"
 
-#: crates/ui-egui/src/fillpatterns.rs:235
-#: crates/ui-egui/src/fillpatterns.rs:447
+#: crates/ui-egui/src/fillpatterns.rs:231
+#: crates/ui-egui/src/fillpatterns.rs:436
 #: crates/ui-egui/src/linestyles/creator.rs:231
 #: crates/ui-egui/src/linestyles.rs:99
 msgid "The name `{}` is already in use."
@@ -6812,7 +6806,7 @@ msgstr "名称“{}”已被使用。"
 msgid "The pen each category draws its lines in, seen and cut, in every plan and section. A view's Visibility/Graphics overrides them."
 msgstr "每个类别在所有平面和剖面中绘制线条所用的笔，可见线和剖切线各一支。视图的可见性/图形设置会替换它们。"
 
-#: crates/ui-egui/src/fillpatterns.rs:221
+#: crates/ui-egui/src/fillpatterns.rs:217
 #: crates/ui-egui/src/linestyles.rs:90
 msgid "The project changed while this window was open: Cancel, and open it again."
 msgstr "此窗口打开期间项目已更改：请取消并重新打开。"
@@ -6878,7 +6872,7 @@ msgstr "还没有线：请绘制轮廓。"
 msgid "Thermal"
 msgstr "保温层"
 
-#: crates/ui-egui/src/fillpatterns.rs:647
+#: crates/ui-egui/src/fillpatterns.rs:621
 msgid "These patterns to a PAT file, but the solid ones"
 msgstr "将这些图案导出为 PAT 文件（实心除外）"
 
@@ -6953,7 +6947,7 @@ msgstr "拉筋"
 msgid "Tile"
 msgstr "瓷砖"
 
-#: crates/core/src/fills.rs:416
+#: crates/core/src/fills.rs:422
 msgid "Tile 300"
 msgstr ""
 
@@ -6993,7 +6987,7 @@ msgstr "到"
 msgid "To (degrees)"
 msgstr "终止角（度）"
 
-#: crates/ui-egui/src/fillpatterns.rs:996
+#: crates/ui-egui/src/fillpatterns.rs:969
 msgid "Too dense to preview at this size."
 msgstr "图案过密，无法以此尺寸预览。"
 
@@ -7309,7 +7303,7 @@ msgstr "值"
 msgid "Version {}"
 msgstr "版本 {}"
 
-#: crates/core/src/fills.rs:405
+#: crates/core/src/fills.rs:411
 #: crates/ui-egui/src/lib.rs:4009
 #: crates/ui-egui/src/properties.rs:607
 msgid "Vertical"
@@ -7600,11 +7594,11 @@ msgstr "尺寸界线延伸量:"
 msgid "Worktop"
 msgstr "台面"
 
-#: crates/ui-egui/src/fillpatterns.rs:383
+#: crates/ui-egui/src/fillpatterns.rs:380
 msgid "X"
 msgstr "X"
 
-#: crates/ui-egui/src/fillpatterns.rs:383
+#: crates/ui-egui/src/fillpatterns.rs:380
 msgid "Y"
 msgstr "Y"
 
@@ -8042,10 +8036,6 @@ msgstr "墙：{}"
 msgid "what the note says"
 msgstr "注释的内容"
 
-#: crates/ui-egui/src/fillpatterns.rs:403
-msgid "whole"
-msgstr "实线"
-
 #: apps/bimcraft/src/startup.rs:143
 msgid "{}\n\nThe details are in {}."
 msgstr "{}\n\n详细信息见 {}。"
@@ -8074,7 +8064,7 @@ msgstr "{}明细表"
 msgid "{} Skipped {}."
 msgstr "{} 已跳过 {} 个。"
 
-#: crates/ui-egui/src/fillpatterns.rs:944
+#: crates/ui-egui/src/fillpatterns.rs:917
 msgid "{} already exists: save under a name ending in .pat to replace it."
 msgstr "{}已存在：请用以 .pat 结尾的名称保存以替换它。"
 
@@ -8089,10 +8079,6 @@ msgstr "{} 天前"
 #: crates/ui-egui/src/revit.rs:203
 msgid "{} elements"
 msgstr "{} 个图元"
-
-#: crates/ui-egui/src/fillpatterns.rs:390
-msgid "{} family {}: {}"
-msgstr "{} 线族 {}：{}"
 
 #: crates/ui-egui/src/clouds.rs:54
 msgid "{} files, brought in as one scan's stations"
@@ -8118,13 +8104,17 @@ msgstr "{} 没有参数，因此没有可拆除的阶段"
 msgid "{} is not {}: `{}`"
 msgstr "{} 不是{}：`{}`"
 
-#: crates/ui-egui/src/fillpatterns.rs:585
+#: crates/ui-egui/src/fillpatterns.rs:557
 msgid "{} line families"
 msgstr "{} 组线"
 
-#: crates/ui-egui/src/fillpatterns.rs:972
+#: crates/ui-egui/src/fillpatterns.rs:945
 msgid "{} line families, repeating a tile {} × {} (outlined)."
 msgstr "{} 个线族，重复一个 {} × {} 的单元（已框出）。"
+
+#: crates/ui-egui/src/fillpatterns.rs:387
+msgid "{} line {}: {}"
+msgstr "{} 线 {}：{}"
 
 #: crates/ui-egui/src/start.rs:119
 msgid "{} min ago"
@@ -8150,23 +8140,23 @@ msgstr "{} 个踢面（共 {} 个）"
 msgid "{} opened without {} fields this version doesn't know; saving it leaves them out."
 msgstr "{} 已打开，但略去了 {} 个此版本不认识的字段；保存时这些字段将不再保留。"
 
-#: crates/ui-egui/src/fillpatterns.rs:189
+#: crates/ui-egui/src/fillpatterns.rs:185
 msgid "{} pattern imported."
 msgstr "已导入 {} 个图案。"
 
-#: crates/ui-egui/src/fillpatterns.rs:195
+#: crates/ui-egui/src/fillpatterns.rs:191
 msgid "{} pattern imported; left out: {}"
 msgstr "已导入 {} 个图案；未导入：{}"
 
-#: crates/ui-egui/src/fillpatterns.rs:189
+#: crates/ui-egui/src/fillpatterns.rs:185
 msgid "{} patterns imported."
 msgstr "已导入 {} 个图案。"
 
-#: crates/ui-egui/src/fillpatterns.rs:195
+#: crates/ui-egui/src/fillpatterns.rs:191
 msgid "{} patterns imported; left out: {}"
 msgstr "已导入 {} 个图案；未导入：{}"
 
-#: crates/ui-egui/src/fillpatterns.rs:968
+#: crates/ui-egui/src/fillpatterns.rs:941
 msgid "{} redefined from lines"
 msgstr "由线重新定义的 {}"
 
@@ -8190,19 +8180,11 @@ msgstr "{} 年前"
 msgid "{}:"
 msgstr "{}："
 
-#: crates/ui-egui/src/fillpatterns.rs:564
-msgid "{}: Angle"
-msgstr "{}：角度"
-
 #: crates/ui-egui/src/linestyles.rs:165
 msgid "{}: Colour"
 msgstr "{}：颜色"
 
-#: crates/ui-egui/src/fillpatterns.rs:568
-msgid "{}: Crosshatch"
-msgstr "{}：交叉线"
-
-#: crates/ui-egui/src/fillpatterns.rs:603
+#: crates/ui-egui/src/fillpatterns.rs:577
 #: crates/ui-egui/src/linestyles.rs:176
 #: crates/ui-egui/src/linestyles.rs:211
 msgid "{}: Delete"
@@ -8212,11 +8194,11 @@ msgstr "{}：删除"
 msgid "{}: Edit"
 msgstr "{}：编辑"
 
-#: crates/ui-egui/src/fillpatterns.rs:600
+#: crates/ui-egui/src/fillpatterns.rs:571
 msgid "{}: Edit Lines"
 msgstr "{}：编辑线"
 
-#: crates/ui-egui/src/fillpatterns.rs:486
+#: crates/ui-egui/src/fillpatterns.rs:475
 msgid "{}: Edit Patterns"
 msgstr "{}：编辑图案"
 
@@ -8224,7 +8206,7 @@ msgstr "{}：编辑图案"
 msgid "{}: Line Weight"
 msgstr "{}：线宽"
 
-#: crates/ui-egui/src/fillpatterns.rs:544
+#: crates/ui-egui/src/fillpatterns.rs:539
 #: crates/ui-egui/src/linestyles.rs:161
 #: crates/ui-egui/src/linestyles.rs:206
 msgid "{}: Name"
@@ -8234,15 +8216,11 @@ msgstr "{}：名称"
 msgid "{}: Pattern"
 msgstr "{}：图案"
 
-#: crates/ui-egui/src/fillpatterns.rs:594
+#: crates/ui-egui/src/fillpatterns.rs:567
 msgid "{}: Redefine"
 msgstr ""
 
-#: crates/ui-egui/src/fillpatterns.rs:566
-msgid "{}: Spacing"
-msgstr "{}：间距"
-
-#: crates/ui-egui/src/fillpatterns.rs:545
+#: crates/ui-egui/src/fillpatterns.rs:540
 msgid "{}: Type"
 msgstr "{}：类型"
 
@@ -8274,7 +8252,7 @@ msgstr "{}：此版本的 BIMCraft 构建时未包含 Revit 支持（`--no-defau
 msgid "{}: {}"
 msgstr "{}：{}"
 
-#: crates/ui-egui/src/fillpatterns.rs:192
+#: crates/ui-egui/src/fillpatterns.rs:188
 #: crates/ui-egui/src/sketch.rs:282
 msgid "{}; and {} more"
 msgstr "{}；另有 {} 处"
@@ -8347,7 +8325,7 @@ msgstr "• 特粗线 (0.70 mm — 12号笔)：被剖切的突出钢筋混凝土
 msgid "• Wide / Heavy (0.50 mm — 0.70 mm): Cut walls and structural sections."
 msgstr "• 粗线 (0.50 mm — 0.70 mm)：剖切墙体与结构剖面。"
 
-#: crates/ui-egui/src/fillpatterns.rs:746
+#: crates/ui-egui/src/fillpatterns.rs:719
 msgid "‹ Back"
 msgstr "‹ 返回"
 
@@ -8917,3 +8895,30 @@ msgstr "导线"
 #: crates/ui-egui/src/fillpatterns.rs:628
 #~ msgid "Replace Same Name"
 #~ msgstr "替换同名图案"
+#: crates/ui-egui/src/fillpatterns.rs:425
+#~ msgid "Add Family"
+#~ msgstr "添加线族"
+#: crates/ui-egui/src/fillpatterns.rs:383
+#~ msgid "Dashes"
+#~ msgstr "虚线"
+#: crates/ui-egui/src/fillpatterns.rs:376
+#~ msgid "Line families of {}"
+#~ msgstr "{} 的线族"
+#: crates/ui-egui/src/fillpatterns.rs:383
+#~ msgid "Shift"
+#~ msgstr "偏移"
+#: crates/ui-egui/src/fillpatterns.rs:403
+#~ msgid "whole"
+#~ msgstr "实线"
+#: crates/ui-egui/src/fillpatterns.rs:390
+#~ msgid "{} family {}: {}"
+#~ msgstr "{} 线族 {}：{}"
+#: crates/ui-egui/src/fillpatterns.rs:564
+#~ msgid "{}: Angle"
+#~ msgstr "{}：角度"
+#: crates/ui-egui/src/fillpatterns.rs:568
+#~ msgid "{}: Crosshatch"
+#~ msgstr "{}：交叉线"
+#: crates/ui-egui/src/fillpatterns.rs:566
+#~ msgid "{}: Spacing"
+#~ msgstr "{}：间距"

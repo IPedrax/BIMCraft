@@ -1,7 +1,6 @@
 //! Manage > Annotation Settings > Fill Patterns, as Revit's dialog: the project's fill patterns (families of lines, drafting
-//! or model), a draft applied as one undo step (OK and Apply), or dropped (Cancel). A pattern of one family, or two square to
-//! each other, is a simple one: its angle, its spacing, crosshatched or not, and its families one by one with Edit Lines. A
-//! custom one is made of lines drawn in a plan, as pyRevit's Make Pattern makes one: New Pattern > Custom hides the dialog,
+//! or model), a draft applied as one undo step (OK and Apply), or dropped (Cancel). A pattern of whole lines (Simple Lines) is
+//! edited line by line with Edit Lines: each one's angle, origin and spacing. A custom one is made of lines drawn in a plan, as pyRevit's Make Pattern makes one: New Pattern > Custom hides the dialog,
 //! the detail lines are picked (Enter, or the right-click menu's Finish), then the tile's two corners, and the dialog comes
 //! back with the pattern previewed, to keep (OK), pick again, or drop. Patterns also come in from a PAT file and go out to
 //! one. The filled region types are edited from a region, with Edit Type: the same draft, on the type's own page.
@@ -20,8 +19,8 @@ use bimcraft_core::geom::P2;
 use bimcraft_core::model::{Element, Id, Model};
 use bimcraft_core::render::{PAPER, Rgb};
 use egui::{
-    Align, Button, Checkbox, Color32, ComboBox, Context, DragValue, Grid, Id as UiId, Layout, RichText, ScrollArea, Sense, Shape, Stroke,
-    TextEdit, Ui, WidgetInfo, WidgetType, pos2, vec2,
+    Align, Button, Color32, ComboBox, Context, DragValue, Grid, Id as UiId, Layout, RichText, ScrollArea, Sense, Shape, Stroke, TextEdit,
+    Ui, WidgetInfo, WidgetType, pos2, vec2,
 };
 use serde_json::{Value, json};
 
@@ -66,7 +65,7 @@ pub(crate) struct FillPatternsDialog {
     /// Patterns deleted: their rows stay, so the types' indices do, and are skipped.
     gone: Vec<bool>,
     /// The pattern whose families Edit Lines shows, and each family's dashes as typed.
-    editing: Option<(usize, Vec<String>)>,
+    editing: Option<usize>,
     /// Edit Type's current row and the instances to assign it to; None opens Manage's table.
     subject: Option<(usize, Vec<Id>)>,
     /// Edit Type's new name being typed, for a duplicate or a rename.
@@ -296,6 +295,13 @@ fn name_field(ui: &mut Ui, text: &mut String, name: String) {
     r.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, name.clone()));
 }
 
+/// A button of a row of the list, `width` wide, named `name` for screen readers, showing `text`, saying `tip`.
+fn row_button(ui: &mut Ui, text: &str, name: String, tip: &str, width: f32) -> bool {
+    let r = ui.add(Button::new(text).small().min_size(vec2(width, 0.0)));
+    r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, name.clone()));
+    r.on_hover_text(tip).clicked()
+}
+
 /// A small button named `name` for screen readers, showing `text`.
 fn named_button(ui: &mut Ui, text: &str, name: String) -> bool {
     let r = ui.add(Button::new(text).small());
@@ -358,53 +364,36 @@ fn pattern_pick(ui: &mut Ui, row: &mut Option<usize>, names: &[(usize, String)],
     c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, label.clone()));
 }
 
-/// A family's dashes as typed: lengths, a space's negative, 0 a dot, between commas.
-fn dashes_text(d: &[f64]) -> String {
-    d.iter().map(|x| format!("{}", x + 0.0)).collect::<Vec<_>>().join(", ")
-}
-
-/// The families of pattern `i`, one a row: its angle, origin, shift along, spacing across and dashes; Delete; Add
-/// Family. Dashes that don't read as lengths are left as they were until they do. The rows scroll within `room`.
+/// The lines of pattern `d.editing`, one a row: its angle, origin and spacing; Delete; Add Line and Done, and a gap under them.
+/// Whole lines only: a dashed pattern is drawn and made with New Pattern > Custom. The rows scroll within `room`.
 fn families(ui: &mut Ui, d: &mut FillPatternsDialog, room: f32) {
-    let Some((i, texts)) = &mut d.editing else { return };
-    let Some(r) = d.patterns.get_mut(*i) else { return };
+    let Some(i) = d.editing else { return };
+    let Some(r) = d.patterns.get_mut(i) else { return };
     let who = r.name.clone();
     ui.add_space(6.0);
-    ui.label(RichText::new(tf("Line families of {}", &[&who])).strong());
-    texts.resize(r.pattern.lines.len(), String::new());
+    ui.label(RichText::new(tf("Lines of {}", &[&who])).strong());
     let mut delete = None;
-    // The heading above and the row of buttons below are not the rows' room.
-    let rows = (room - 2.0 * dialog_row(ui) - 6.0).max(60.0);
+    // The heading above, the row of buttons and the gap below are not the rows' room.
+    let rows = (room - 2.0 * dialog_row(ui) - 6.0 - EDITOR_GAP).max(60.0);
     ScrollArea::vertical().id_salt("pattern-families-rows").max_height(rows).show(ui, |ui| {
-        Grid::new("pattern-families").striped(true).num_columns(8).show(ui, |ui| {
-            for h in ["", "Angle", msg!("X"), msg!("Y"), msg!("Shift"), msg!("Spacing"), msg!("Dashes"), ""] {
+        Grid::new("pattern-families").striped(true).num_columns(6).show(ui, |ui| {
+            for h in ["", "Angle", msg!("X"), msg!("Y"), msg!("Spacing"), ""] {
                 ui.label(RichText::new(t(h)).strong());
             }
             ui.end_row();
-            for (k, (l, text)) in r.pattern.lines.iter_mut().zip(texts.iter_mut()).enumerate() {
+            for (k, l) in r.pattern.lines.iter_mut().enumerate() {
                 let n = (k + 1).to_string();
                 ui.label(&n);
-                let name = |what: &str| tf("{} family {}: {}", &[&who, &n, t(what)]);
+                let name = |what: &str| tf("{} line {}: {}", &[&who, &n, t(what)]);
                 for (what, v, range) in [
                     ("Angle", &mut l.angle, -360.0..=360.0),
                     ("X", &mut l.origin.0, -MAX_SPACING..=MAX_SPACING),
                     ("Y", &mut l.origin.1, -MAX_SPACING..=MAX_SPACING),
-                    ("Shift", &mut l.shift, -MAX_SPACING..=MAX_SPACING),
                     ("Spacing", &mut l.spacing, MIN_SPACING..=MAX_SPACING),
                 ] {
                     let label = name(what);
                     let r = ui.add(DragValue::new(v).range(range).speed(0.1).max_decimals(3));
                     r.widget_info(|| WidgetInfo::labeled(WidgetType::DragValue, true, label.clone()));
-                }
-                let label = name("Dashes");
-                let e = ui.add_sized(vec2(160.0, 20.0), TextEdit::singleline(text).hint_text(t("whole")));
-                e.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, label.clone()));
-                if e.changed() {
-                    let read: Result<Vec<f64>, _> =
-                        text.split(',').map(str::trim).filter(|x| !x.is_empty()).map(|x| x.parse::<f64>()).collect();
-                    if let Ok(dashes) = read.map(|v| v.into_iter().filter(|x| x.is_finite()).collect::<Vec<_>>()) {
-                        l.dashes = dashes;
-                    }
                 }
                 if named_button(ui, t("Delete"), name("Delete")) {
                     delete = Some(k);
@@ -415,20 +404,23 @@ fn families(ui: &mut Ui, d: &mut FillPatternsDialog, room: f32) {
     });
     if let Some(k) = delete {
         r.pattern.lines.remove(k);
-        texts.remove(k);
     }
     let mut done = false;
     ui.horizontal(|ui| {
-        if ui.button(t("Add Family")).clicked() && r.pattern.lines.len() < fills::MAX_FAMILIES {
+        if ui.button(t("Add Line")).clicked() && r.pattern.lines.len() < fills::MAX_FAMILIES {
             r.pattern.lines.push(HatchLine::simple(0.0, if r.pattern.target == Target::Model { 100.0 } else { 2.0 }));
-            texts.push(String::new());
         }
         done = ui.button(t("Done")).clicked();
     });
+    // Apart from New Pattern and the files' buttons under it.
+    ui.add_space(EDITOR_GAP);
     if done {
         d.editing = None;
     }
 }
+
+/// The room under the line editor, between it and the row of buttons.
+const EDITOR_GAP: f32 = 20.0;
 
 /// Edit one region type, as in Revit's Type Properties: Duplicate and Rename change the draft, which OK and Apply put in the
 /// project with the rest. A pattern's "…" opens the Patterns tab, to edit them.
@@ -518,21 +510,30 @@ fn preview(ui: &mut Ui, r: &TypeRow, patterns: &[PatternRow]) {
     painter.rect_stroke(inner, 0.0, Stroke::new(1.0, canvas_pal().border), egui::StrokeKind::Inside);
 }
 
-/// The patterns: a row each, its name, drafting or model, a swatch, and (a simple one) its angle, spacing and crosshatch and
-/// Edit Lines, else how many line families it has; Delete; New Pattern (Simple Lines or Custom), Import and Export (what's
+/// The patterns: a row each, its name, drafting or model, a swatch (how many line families it has in its tip), Edit Lines for
+/// one of whole lines or Redefine for one made of lines drawn; Delete; New Pattern (Simple Lines or Custom), Import and Export (what's
 /// asked of the app). A pattern made of lines turned Drafting is the drawing on paper at its view's scale. The list
 /// scrolls in what the window has left over `below` (the dialog's notes and buttons) and the row of buttons under it; when a
 /// pattern's families are open, the list and they share it.
 fn patterns_tab(ui: &mut Ui, d: &mut FillPatternsDialog, below: f32) -> Option<FileAsk> {
-    ui.label(t("Families of parallel lines: drafting ones mm on paper, the same at any scale; model ones mm in the building."));
+    ui.add(
+        egui::Label::new(t("Families of parallel lines: drafting ones mm on paper, the same at any scale; model ones mm in the building."))
+            .wrap(),
+    );
     ui.add_space(4.0);
     let ink = ui.visuals().text_color();
     let (mut delete, mut redefine) = (None, None);
+    // Edit Lines and Redefine share a column: one width, the wider name's, in any language.
+    let row_width = [t("Edit Lines"), t("Redefine")]
+        .map(|x| ui.painter().layout_no_wrap(x.to_string(), egui::TextStyle::Button.resolve(ui.style()), ink).size().x)
+        .into_iter()
+        .fold(0.0, f32::max)
+        + 2.0 * ui.spacing().button_padding.x;
     let room = dialog_room(ui, below + dialog_row(ui));
     let editor = if d.editing.is_some() { room / 2.0 } else { 0.0 };
     ScrollArea::vertical().max_height(room - editor).show(ui, |ui| {
         Grid::new("fill-patterns").striped(true).num_columns(8).show(ui, |ui| {
-            for h in ["Name", "Type", msg!("Sample"), "Angle", "Spacing", "Crosshatch", "", ""] {
+            for h in ["Name", "Type", msg!("Sample"), "", ""] {
                 ui.label(RichText::new(t(h)).strong());
             }
             ui.end_row();
@@ -553,49 +554,29 @@ fn patterns_tab(ui: &mut Ui, d: &mut FillPatternsDialog, below: f32) -> Option<F
                     r.pattern.target = target;
                     r.pattern = r.pattern.retargeted(to);
                 }
-                swatch(ui, Some(&r.pattern), 80.0, ink, None);
-                match r.pattern.simple() {
-                    Some(was) => {
-                        let (mut angle, mut spacing, mut cross) = was;
-                        let a = ui.add(DragValue::new(&mut angle).range(-360.0..=360.0).speed(1.0).suffix("°"));
-                        a.widget_info(|| WidgetInfo::labeled(WidgetType::DragValue, true, tf("{}: Angle", &[&who])));
-                        let s = ui.add(DragValue::new(&mut spacing).range(MIN_SPACING..=MAX_SPACING).speed(0.05).suffix(" mm"));
-                        s.widget_info(|| WidgetInfo::labeled(WidgetType::DragValue, true, tf("{}: Spacing", &[&who])));
-                        let c = ui.add(Checkbox::without_text(&mut cross));
-                        c.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, cross, tf("{}: Crosshatch", &[&who])));
-                        // Only a control touched rewrites the families: a crosshatch at 90° and 0° is a simple pattern
-                        // too, but not the one `angle + 90` would make of it.
-                        if (angle, spacing, cross) != was {
-                            r.pattern.lines = vec![HatchLine::simple(angle, spacing)];
-                            if cross {
-                                r.pattern.lines.push(HatchLine::simple(angle + 90.0, spacing));
-                            }
-                        }
-                    }
-                    None if r.pattern.is_solid() => {
-                        ui.label(t("Solid Fill"));
-                        ui.label("");
-                        ui.label("");
-                    }
-                    None => {
-                        let families = r.pattern.lines.len().to_string();
-                        ui.label(t("Custom")).on_hover_text(tf("{} line families", &[&families]));
-                        ui.label("");
-                        ui.label("");
-                    }
-                }
-                // One made of lines is made again from lines picked; another custom one (imported) is kept as it came, its
-                // families no simple pattern's.
+                let tip = if r.pattern.is_solid() {
+                    t("Solid Fill").to_string()
+                } else {
+                    tf("{} line families", &[&r.pattern.lines.len().to_string()])
+                };
+                // The swatch says what it is to screen readers, and in its tip.
+                let sample = ui.scope(|ui| swatch(ui, Some(&r.pattern), 110.0, ink, None)).response;
+                sample.widget_info(|| WidgetInfo::labeled(WidgetType::Image, true, tip.clone()));
+                sample.on_hover_text(tip);
+                // Whole lines are edited line by line; one made of lines drawn is made again from lines picked; another (dashed,
+                // imported or a starter's) is kept as it came.
                 if r.pattern.drawn.is_some() {
-                    let b = ui.add(Button::new(t("Redefine")).small());
-                    b.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf("{}: Redefine", &[&who])));
-                    if b.on_hover_text(t("Pick the lines and the tile's corners again: the pattern keeps its name")).clicked() {
+                    let tip = t("Pick the lines and the tile's corners again: the pattern keeps its name");
+                    if row_button(ui, t("Redefine"), tf("{}: Redefine", &[&who]), tip, row_width) {
                         redefine = Some(i);
                     }
-                } else if r.pattern.simple().is_none() {
+                } else if r.pattern.whole_lines() {
+                    if row_button(ui, t("Edit Lines"), tf("{}: Edit Lines", &[&who]), t("Each line's angle, origin and spacing"), row_width)
+                    {
+                        d.editing = Some(i);
+                    }
+                } else {
                     ui.label("");
-                } else if named_button(ui, t("Edit Lines"), tf("{}: Edit Lines", &[&who])) {
-                    d.editing = Some((i, r.pattern.lines.iter().map(|l| dashes_text(&l.dashes)).collect()));
                 }
                 if named_button(ui, t("Delete"), tf("{}: Delete", &[&who])) {
                     delete = Some(i);
@@ -607,7 +588,7 @@ fn patterns_tab(ui: &mut Ui, d: &mut FillPatternsDialog, below: f32) -> Option<F
     families(ui, d, editor);
     if let Some(i) = delete {
         d.gone[i] = true;
-        if d.editing.as_ref().is_some_and(|(e, _)| *e == i) {
+        if d.editing == Some(i) {
             d.editing = None;
         }
         for r in &mut d.types {
@@ -953,7 +934,7 @@ impl BimApp {
 }
 
 /// How wide the dialog is: its list's columns, and the row of buttons under them.
-const WIDTH: f32 = 700.0;
+const WIDTH: f32 = 560.0;
 
 /// How tall the preview of a pattern made of lines is.
 const MADE_HEIGHT: f32 = 300.0;

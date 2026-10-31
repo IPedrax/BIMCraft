@@ -42,7 +42,8 @@ fn a_pattern_deleted_and_made_again_under_its_name_is_the_new_one() {
     press(&mut h, "Sand: Delete");
     new_simple(&mut h);
     type_into(&mut h, "Pattern 1: Name", "Sand");
-    type_into(&mut h, "Sand: Angle", "30");
+    press(&mut h, "Sand: Edit Lines");
+    type_into(&mut h, "Sand line 1: Angle", "30");
     press(&mut h, "OK");
     assert!(h.state().fill_patterns_dialog.is_none(), "{}", h.state().status.text);
     let m = &h.state().session.model;
@@ -219,11 +220,13 @@ fn a_crosshatch_that_is_not_square_the_way_angle_plus_90_is_is_left_as_it_is() {
     press(&mut h, "OK");
     assert_eq!(h.state().session.history().len(), steps, "looking at it sent no command");
     assert_eq!(h.state().session.model.fill_patterns["Odd"], before);
-    // Touching its angle does rewrite it.
+    // Touching one line's angle changes that line alone.
     patterns_tab(&mut h);
-    type_into(&mut h, "Odd: Angle", "30");
+    press(&mut h, "Odd: Edit Lines");
+    type_into(&mut h, "Odd line 1: Angle", "30");
     press(&mut h, "OK");
-    assert_eq!(h.state().session.model.fill_patterns["Odd"].lines[1].angle, 120.0);
+    let lines = &h.state().session.model.fill_patterns["Odd"].lines;
+    assert_eq!((lines[0].angle, lines[1].angle), (30.0, 0.0));
 }
 
 /// The button named `label` pressed as a screen reader does: the dialog's rows shift as a long note changes its height, and a

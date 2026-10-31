@@ -62,8 +62,8 @@ msgstr "<Por categoría>"
 msgid "<Invisible lines>"
 msgstr "<Líneas invisibles>"
 
-#: crates/ui-egui/src/fillpatterns.rs:354
-#: crates/ui-egui/src/fillpatterns.rs:356
+#: crates/ui-egui/src/fillpatterns.rs:357
+#: crates/ui-egui/src/fillpatterns.rs:359
 #: crates/ui-egui/src/graphics.rs:653
 #: crates/ui-egui/src/graphics.rs:1401
 #: crates/ui-egui/src/graphics.rs:1403
@@ -227,15 +227,12 @@ msgstr "Añadir bloque"
 msgid "Add Cylinder"
 msgstr "Añadir cilindro"
 
-#: crates/ui-egui/src/fillpatterns.rs:425
-msgid "Add Family"
-msgstr "Añadir familia"
-
 #: crates/ui-egui/src/properties.rs:2287
 msgid "Add Filter"
 msgstr "Añadir filtro"
 
 #: crates/ui-egui/src/editor.rs:856
+#: crates/ui-egui/src/fillpatterns.rs:410
 msgid "Add Line"
 msgstr "Añadir línea"
 
@@ -641,7 +638,7 @@ msgstr "Volver a las plumillas con las que empieza un proyecto"
 msgid "Back to the project ({}D)"
 msgstr "Volver al proyecto ({}D)"
 
-#: crates/ui-egui/src/fillpatterns.rs:746
+#: crates/ui-egui/src/fillpatterns.rs:719
 msgid "Back to the type"
 msgstr "Volver al tipo"
 
@@ -649,11 +646,11 @@ msgstr "Volver al tipo"
 msgid "Back to {}"
 msgstr "Volver a {}"
 
-#: crates/ui-egui/src/fillpatterns.rs:478
+#: crates/ui-egui/src/fillpatterns.rs:467
 msgid "Background Color"
 msgstr "Color de fondo"
 
-#: crates/ui-egui/src/fillpatterns.rs:478
+#: crates/ui-egui/src/fillpatterns.rs:467
 msgid "Background Pattern"
 msgstr "Patrón de fondo"
 
@@ -798,7 +795,7 @@ msgstr "Línea de contorno: dibujar el contorno del hueco de patinillo"
 msgid "Brick"
 msgstr "Ladrillo"
 
-#: crates/core/src/fills.rs:410
+#: crates/core/src/fills.rs:416
 msgid "Brick 225 x 75"
 msgstr "Ladrillo 225 x 75"
 
@@ -1006,7 +1003,7 @@ msgstr "Cadena"
 msgid "Chair"
 msgstr "Silla"
 
-#: crates/ui-egui/src/fillpatterns.rs:495
+#: crates/ui-egui/src/fillpatterns.rs:484
 msgid "Changes to a type affect every filled region of that type."
 msgstr "Los cambios en un tipo afectan a todas las regiones rellenas de ese tipo."
 
@@ -1861,7 +1858,7 @@ msgstr "Recortar vista"
 msgid "Crop View: show only the crop region; drag its edges by their grips"
 msgstr "Recortar vista: mostrar solo la región de recorte; arrastra sus bordes por los tiradores"
 
-#: crates/core/src/fills.rs:403
+#: crates/core/src/fills.rs:409
 #: crates/ui-egui/src/properties.rs:605
 msgid "Crosshatch"
 msgstr "Rayado cruzado"
@@ -1874,8 +1871,7 @@ msgstr "Solo la vista actual"
 msgid "Curve preview"
 msgstr "Vista previa en curva"
 
-#: crates/ui-egui/src/fillpatterns.rs:585
-#: crates/ui-egui/src/fillpatterns.rs:634
+#: crates/ui-egui/src/fillpatterns.rs:608
 #: crates/ui-egui/src/footer.rs:289
 msgid "Custom"
 msgstr "Personalizada"
@@ -1938,10 +1934,6 @@ msgstr "Trazo y punto"
 msgid "Dashed"
 msgstr "Discontinua"
 
-#: crates/ui-egui/src/fillpatterns.rs:383
-msgid "Dashes"
-msgstr "Trazos"
-
 #: crates/ui-egui/src/lib.rs:2787
 msgid "Data"
 msgstr "Datos y Voz"
@@ -1985,8 +1977,8 @@ msgstr "Espesor predeterminado"
 #: crates/ui-egui/src/editor.rs:604
 #: crates/ui-egui/src/editor.rs:777
 #: crates/ui-egui/src/editor.rs:847
-#: crates/ui-egui/src/fillpatterns.rs:412
-#: crates/ui-egui/src/fillpatterns.rs:603
+#: crates/ui-egui/src/fillpatterns.rs:398
+#: crates/ui-egui/src/fillpatterns.rs:577
 #: crates/ui-egui/src/graphics.rs:407
 #: crates/ui-egui/src/graphics.rs:499
 #: crates/ui-egui/src/linestyles/creator.rs:170
@@ -2132,15 +2124,15 @@ msgstr "Dispositivo (DV): un tomacorriente o un interruptor, donde hagas clic en
 msgid "Diagonal"
 msgstr "Diagonal"
 
-#: crates/core/src/fills.rs:402
+#: crates/core/src/fills.rs:408
 msgid "Diagonal Crosshatch"
 msgstr "Sombreado cruzado diagonal"
 
-#: crates/core/src/fills.rs:401
+#: crates/core/src/fills.rs:407
 msgid "Diagonal Down"
 msgstr "Diagonal descendente"
 
-#: crates/core/src/fills.rs:400
+#: crates/core/src/fills.rs:406
 msgid "Diagonal Up"
 msgstr "Diagonal ascendente"
 
@@ -2240,7 +2232,7 @@ msgstr "Acoplar {}"
 msgid "Don't Save"
 msgstr "No guardar"
 
-#: crates/ui-egui/src/fillpatterns.rs:429
+#: crates/ui-egui/src/fillpatterns.rs:413
 msgid "Done"
 msgstr "Hecho"
 
@@ -2315,7 +2307,7 @@ msgstr "Descargando BIMCraft {}…"
 msgid "Downloads and checks the update; BIMCraft then closes, updates and starts again."
 msgstr "Descarga y comprueba la actualización; después BIMCraft se cierra, se actualiza y se abre de nuevo."
 
-#: crates/ui-egui/src/fillpatterns.rs:549
+#: crates/ui-egui/src/fillpatterns.rs:544
 msgid "Drafting"
 msgstr "Diseño"
 
@@ -2375,6 +2367,10 @@ msgstr "Duplicar con detalles"
 msgid "Duplicate…"
 msgstr "Duplicar…"
 
+#: crates/ui-egui/src/fillpatterns.rs:571
+msgid "Each line's angle, origin and spacing"
+msgstr "El ángulo, el origen y el espaciado de cada línea"
+
 #: crates/ui-egui/src/lineweights.rs:107
 msgid "Each pen's width on paper, mm, for dimensions, tags, text, grids, levels and marks, at any scale. Pen 0 is always a hairline."
 msgstr "El ancho de cada plumilla en el papel, en mm, para cotas, etiquetas, textos, rejillas, niveles y marcas, a cualquier escala. La plumilla 0 es siempre una línea capilar."
@@ -2432,7 +2428,8 @@ msgstr "Editar familia"
 msgid "Edit Family: the family of what is selected, or of the component being placed"
 msgstr "Editar familia: la familia de lo seleccionado, o del componente que se coloca"
 
-#: crates/ui-egui/src/fillpatterns.rs:600
+#: crates/ui-egui/src/fillpatterns.rs:524
+#: crates/ui-egui/src/fillpatterns.rs:571
 msgid "Edit Lines"
 msgstr "Editar líneas"
 
@@ -2541,7 +2538,7 @@ msgstr "Extremos doblados hacia arriba"
 msgid "Enter a name for every style and pattern."
 msgstr "Introduzca un nombre para cada estilo y patrón."
 
-#: crates/ui-egui/src/fillpatterns.rs:232
+#: crates/ui-egui/src/fillpatterns.rs:228
 msgid "Enter a name for every type and pattern."
 msgstr "Introduzca un nombre para cada tipo y patrón."
 
@@ -2593,7 +2590,7 @@ msgstr "Descomponer polilínea (EX): una polilínea separada en una línea o un 
 msgid "Export"
 msgstr "Exportar"
 
-#: crates/ui-egui/src/fillpatterns.rs:647
+#: crates/ui-egui/src/fillpatterns.rs:621
 msgid "Export..."
 msgstr "Exportar..."
 
@@ -2630,7 +2627,7 @@ msgstr "Error al leer el archivo: {}"
 msgid "Families"
 msgstr "Familias"
 
-#: crates/ui-egui/src/fillpatterns.rs:530
+#: crates/ui-egui/src/fillpatterns.rs:519
 msgid "Families of parallel lines: drafting ones mm on paper, the same at any scale; model ones mm in the building."
 msgstr "Familias de líneas paralelas: las de diseño en mm sobre el papel, iguales a cualquier escala; las de modelo en mm en el edificio."
 
@@ -2691,7 +2688,7 @@ msgstr "Archivo"
 msgid "Files"
 msgstr "Archivos"
 
-#: crates/ui-egui/src/fillpatterns.rs:729
+#: crates/ui-egui/src/fillpatterns.rs:702
 msgid "Fill Patterns"
 msgstr "Patrones de relleno"
 
@@ -2703,12 +2700,12 @@ msgstr "Patrones de relleno: los patrones con que se rellenan las regiones relle
 msgid "Fill color"
 msgstr "Color de relleno"
 
-#: crates/ui-egui/src/fillpatterns.rs:787
-#: crates/ui-egui/src/fillpatterns.rs:791
+#: crates/ui-egui/src/fillpatterns.rs:760
+#: crates/ui-egui/src/fillpatterns.rs:764
 msgid "Fill patterns"
 msgstr "Patrones de relleno"
 
-#: crates/ui-egui/src/fillpatterns.rs:948
+#: crates/ui-egui/src/fillpatterns.rs:921
 msgid "Fill patterns exported to {}"
 msgstr "Patrones de relleno exportados a {}"
 
@@ -2724,7 +2721,7 @@ msgstr "Región rellena"
 msgid "Filled Region (FR): sketch an area filled with a pattern, in this view"
 msgstr "Región rellena (FR): dibuje un área rellena con un patrón, en esta vista"
 
-#: crates/ui-egui/src/fillpatterns.rs:442
+#: crates/ui-egui/src/fillpatterns.rs:431
 msgid "Filled region"
 msgstr "Región rellenada"
 
@@ -2818,7 +2815,7 @@ msgstr "Cara de acabado: interior"
 msgid "Finish or cancel the sketch before leaving its plan."
 msgstr "Termine o cancele el boceto antes de salir de su plano."
 
-#: crates/ui-egui/src/fillpatterns.rs:803
+#: crates/ui-egui/src/fillpatterns.rs:776
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr "Termine o cancele el boceto primero: las líneas de un patrón se eligen en la planta."
 
@@ -2925,11 +2922,11 @@ msgstr "Marcas de plegado:"
 msgid "Follow in This View"
 msgstr "Seguir en esta vista"
 
-#: crates/ui-egui/src/fillpatterns.rs:477
+#: crates/ui-egui/src/fillpatterns.rs:466
 msgid "Foreground Color"
 msgstr "Color de primer plano"
 
-#: crates/ui-egui/src/fillpatterns.rs:477
+#: crates/ui-egui/src/fillpatterns.rs:466
 msgid "Foreground Pattern"
 msgstr "Patrón de primer plano"
 
@@ -3239,7 +3236,7 @@ msgstr "Vista inicial"
 msgid "Hook"
 msgstr "Gancho"
 
-#: crates/core/src/fills.rs:404
+#: crates/core/src/fills.rs:410
 #: crates/ui-egui/src/lib.rs:4008
 #: crates/ui-egui/src/properties.rs:606
 msgid "Horizontal"
@@ -3330,11 +3327,11 @@ msgstr "Importar CAD: un dibujo DWG o DXF traído al proyecto, dibujado bajo el 
 msgid "Import units"
 msgstr "Unidades de importación"
 
-#: crates/ui-egui/src/fillpatterns.rs:650
+#: crates/ui-egui/src/fillpatterns.rs:624
 msgid "Import..."
 msgstr "Importar..."
 
-#: crates/ui-egui/src/fillpatterns.rs:654
+#: crates/ui-egui/src/fillpatterns.rs:628
 msgid "Import: a pattern of the file replaces the one of its name in this list; unchecked, it is left out"
 msgstr "Importar: un patrón del archivo reemplaza al del mismo nombre en esta lista; sin marcar, se omite"
 
@@ -3705,10 +3702,6 @@ msgstr "Color de línea"
 msgid "Line dash"
 msgstr "Guiones de línea"
 
-#: crates/ui-egui/src/fillpatterns.rs:376
-msgid "Line families of {}"
-msgstr "Familias de líneas de {}"
-
 #: crates/ui-egui/src/graphics.rs:1351
 msgid "Line weight"
 msgstr "Grosor de línea"
@@ -3736,6 +3729,10 @@ msgstr "Líneas"
 #: crates/ui-egui/src/sketch.rs:267
 msgid "Lines intersect ({}): a loop can't cross itself or another loop."
 msgstr "Las líneas se cruzan ({}): un bucle no puede cruzarse a sí mismo ni a otro."
+
+#: crates/ui-egui/src/fillpatterns.rs:374
+msgid "Lines of {}"
+msgstr "Líneas de {}"
 
 #: crates/ui-egui/src/sketch.rs:268
 msgid "Lines overlap ({}): one lies along another, or a line is drawn twice."
@@ -3830,7 +3827,7 @@ msgstr "Bloquear segmento {}"
 msgid "Long Dash"
 msgstr "Trazo largo"
 
-#: crates/ui-egui/src/fillpatterns.rs:633
+#: crates/ui-egui/src/fillpatterns.rs:607
 msgid "Made of detail lines picked in the plan, repeating the rectangle between two corners"
 msgstr "Hecho de líneas de detalle elegidas en la planta, repitiendo el rectángulo entre dos esquinas"
 
@@ -3855,8 +3852,8 @@ msgstr "Gestionar"
 msgid "Mark"
 msgstr "Marca"
 
-#: crates/core/src/fills.rs:390
-#: crates/ui-egui/src/fillpatterns.rs:490
+#: crates/core/src/fills.rs:396
+#: crates/ui-egui/src/fillpatterns.rs:479
 msgid "Masking"
 msgstr "Máscara"
 
@@ -4028,7 +4025,7 @@ msgstr "Reflejado"
 msgid "Mode"
 msgstr "Modo"
 
-#: crates/ui-egui/src/fillpatterns.rs:550
+#: crates/ui-egui/src/fillpatterns.rs:545
 msgid "Model"
 msgstr "Modelo"
 
@@ -4179,7 +4176,7 @@ msgstr "Nueva familia: empiece una familia propia, de una categoría, para edita
 msgid "New Filter"
 msgstr "Nuevo filtro"
 
-#: crates/ui-egui/src/fillpatterns.rs:630
+#: crates/ui-egui/src/fillpatterns.rs:604
 #: crates/ui-egui/src/linestyles.rs:224
 msgid "New Pattern"
 msgstr "Nuevo patrón"
@@ -4216,7 +4213,7 @@ msgstr "Línea nueva {}"
 msgid "New name"
 msgstr "Nombre nuevo"
 
-#: crates/ui-egui/src/fillpatterns.rs:968
+#: crates/ui-egui/src/fillpatterns.rs:941
 msgid "New pattern from lines"
 msgstr "Nuevo patrón a partir de líneas"
 
@@ -4439,7 +4436,7 @@ msgstr "Flecha abierta"
 msgid "Open Recent"
 msgstr "Abrir reciente"
 
-#: crates/ui-egui/src/fillpatterns.rs:805
+#: crates/ui-egui/src/fillpatterns.rs:778
 msgid "Open a plan to pick the pattern's lines in: detail lines are drawn in plans."
 msgstr "Abra una planta para elegir las líneas del patrón: las líneas de detalle se dibujan en plantas."
 
@@ -4594,7 +4591,7 @@ msgstr "Paletas"
 msgid "Paper sizes, sheet borders, filing margins, title blocks, and folding specifications."
 msgstr "Formatos de papel, márgenes de lámina, márgenes de encuadernación, rótulos y especificaciones de plegado."
 
-#: crates/ui-egui/src/fillpatterns.rs:632
+#: crates/ui-egui/src/fillpatterns.rs:606
 msgid "Parallel lines at an angle and a spacing, crosshatched or not"
 msgstr "Líneas paralelas con un ángulo y un espaciado, cruzadas o no"
 
@@ -4654,8 +4651,8 @@ msgstr "Panel de parcheo (PN): un panel en el muro, donde hagas clic; Espacio lo
 msgid "Patch Panels"
 msgstr "Paneles de parcheo"
 
-#: crates/ui-egui/src/fillpatterns.rs:267
-#: crates/ui-egui/src/fillpatterns.rs:640
+#: crates/ui-egui/src/fillpatterns.rs:263
+#: crates/ui-egui/src/fillpatterns.rs:614
 #: crates/ui-egui/src/linestyles.rs:226
 msgid "Pattern"
 msgstr "Patrón"
@@ -4672,7 +4669,7 @@ msgstr "Gráficos de patrón"
 msgid "Pattern Name"
 msgstr "Nombre del patrón"
 
-#: crates/ui-egui/src/fillpatterns.rs:975
+#: crates/ui-egui/src/fillpatterns.rs:948
 msgid "Pattern preview"
 msgstr "Vista previa del patrón"
 
@@ -4684,7 +4681,7 @@ msgstr "Patrones"
 msgid "Patterns appear in plans, ceiling plans, section cuts and filled regions."
 msgstr "Los patrones aparecen en plantas, planos de techo, cortes de sección y regiones rellenas."
 
-#: crates/ui-egui/src/fillpatterns.rs:650
+#: crates/ui-egui/src/fillpatterns.rs:624
 msgid "Patterns from a PAT file, AutoCAD's and Revit's"
 msgstr "Patrones de un archivo PAT, de AutoCAD y de Revit"
 
@@ -4767,7 +4764,7 @@ msgstr "Fases"
 msgid "Phasing (PH): the project's phases in order, the phase filters that show them, and how a filter draws each"
 msgstr "Fases (PH): las fases del proyecto en orden, los filtros de fase que las muestran y cómo los dibuja cada filtro"
 
-#: crates/ui-egui/src/fillpatterns.rs:1009
+#: crates/ui-egui/src/fillpatterns.rs:982
 msgid "Pick Again"
 msgstr "Elegir de nuevo"
 
@@ -4875,7 +4872,7 @@ msgstr ""
 msgid "Pick the line to trim or extend to: a line, a wall or a grid."
 msgstr "Elija la línea hasta la que recortar o alargar: una línea, un muro o una rejilla."
 
-#: crates/ui-egui/src/fillpatterns.rs:595
+#: crates/ui-egui/src/fillpatterns.rs:566
 msgid "Pick the lines and the tile's corners again: the pattern keeps its name"
 msgstr "Elija de nuevo las líneas y las esquinas del módulo: el patrón conserva su nombre"
 
@@ -5452,7 +5449,8 @@ msgstr "Rectángulo"
 msgid "Rectangle: four lines between two opposite corners"
 msgstr "Rectángulo: cuatro líneas entre dos esquinas opuestas"
 
-#: crates/ui-egui/src/fillpatterns.rs:593
+#: crates/ui-egui/src/fillpatterns.rs:524
+#: crates/ui-egui/src/fillpatterns.rs:567
 msgid "Redefine"
 msgstr "Redefinir"
 
@@ -5588,7 +5586,7 @@ msgstr "Reemplazar con texto"
 msgid "Replace With Text:"
 msgstr "Reemplazar con texto:"
 
-#: crates/ui-egui/src/fillpatterns.rs:653
+#: crates/ui-egui/src/fillpatterns.rs:627
 msgid "Replace imported by same name"
 msgstr "Reemplazar importados con el mismo nombre"
 
@@ -5769,11 +5767,11 @@ msgstr "Dibujo SVG"
 msgid "Same as start"
 msgstr "Igual al inicio"
 
-#: crates/ui-egui/src/fillpatterns.rs:538
+#: crates/ui-egui/src/fillpatterns.rs:533
 msgid "Sample"
 msgstr "Muestra"
 
-#: crates/core/src/fills.rs:407
+#: crates/core/src/fills.rs:413
 msgid "Sand"
 msgstr "Arena"
 
@@ -5997,7 +5995,7 @@ msgstr "Seleccione elementos de un solo tipo: solo vigas, solo pilares, solo zap
 msgid "Select fill pattern lines then press Enter"
 msgstr "Seleccione las líneas del patrón de relleno y pulse Intro"
 
-#: crates/ui-egui/src/fillpatterns.rs:833
+#: crates/ui-egui/src/fillpatterns.rs:806
 msgid "Select the detail lines the pattern is made of, then press Enter."
 msgstr "Seleccione las líneas de detalle de las que se hace el patrón y pulse Intro."
 
@@ -6077,10 +6075,6 @@ msgstr "Planos (todos)"
 #: crates/ui-egui/src/lib.rs:2931
 msgid "Sheets as PDF…"
 msgstr "Planos como PDF…"
-
-#: crates/ui-egui/src/fillpatterns.rs:383
-msgid "Shift"
-msgstr "Desplazamiento"
 
 #: crates/ui-egui/src/shortcuts.rs:453
 msgid "Shortcut '{}' added for '{}'."
@@ -6179,7 +6173,7 @@ msgstr "Antepecho"
 msgid "Sill Height"
 msgstr "Altura de antepecho"
 
-#: crates/ui-egui/src/fillpatterns.rs:632
+#: crates/ui-egui/src/fillpatterns.rs:606
 msgid "Simple Lines"
 msgstr "Líneas simples"
 
@@ -6316,16 +6310,16 @@ msgstr "Sofá"
 msgid "Solid"
 msgstr "Continua"
 
-#: crates/core/src/fills.rs:389
+#: crates/core/src/fills.rs:395
 msgid "Solid Black"
 msgstr "Negro sólido"
 
-#: crates/ui-egui/src/fillpatterns.rs:579
+#: crates/ui-egui/src/fillpatterns.rs:555
 #: crates/ui-egui/src/properties.rs:603
 msgid "Solid Fill"
 msgstr "Relleno sólido"
 
-#: crates/core/src/fills.rs:387
+#: crates/core/src/fills.rs:393
 msgid "Solid fill"
 msgstr "Relleno sólido"
 
@@ -6345,7 +6339,7 @@ msgstr "Código fuente en GitHub"
 msgid "South"
 msgstr "Sur"
 
-#: crates/ui-egui/src/fillpatterns.rs:383
+#: crates/ui-egui/src/fillpatterns.rs:380
 #: crates/ui-egui/src/linestyles/creator.rs:181
 #: crates/ui-egui/src/reinforce.rs:65
 #: crates/ui-egui/src/reinforce.rs:79
@@ -6591,7 +6585,7 @@ msgid "System"
 msgstr "Sistema"
 
 #: crates/ui-egui/src/dimtypes.rs:94
-#: crates/ui-egui/src/fillpatterns.rs:442
+#: crates/ui-egui/src/fillpatterns.rs:431
 #: crates/ui-egui/src/notes.rs:503
 #: crates/ui-egui/src/properties.rs:1575
 msgid "System Family: {}"
@@ -6801,8 +6795,8 @@ msgstr "El bucle está abierto: {} extremos de línea no se encuentran con otra 
 msgid "The middle of a wall, along its arc"
 msgstr "El medio de un muro, a lo largo de su arco"
 
-#: crates/ui-egui/src/fillpatterns.rs:235
-#: crates/ui-egui/src/fillpatterns.rs:447
+#: crates/ui-egui/src/fillpatterns.rs:231
+#: crates/ui-egui/src/fillpatterns.rs:436
 #: crates/ui-egui/src/linestyles/creator.rs:231
 #: crates/ui-egui/src/linestyles.rs:99
 msgid "The name `{}` is already in use."
@@ -6812,7 +6806,7 @@ msgstr "El nombre `{}` ya está en uso."
 msgid "The pen each category draws its lines in, seen and cut, in every plan and section. A view's Visibility/Graphics overrides them."
 msgstr "La plumilla con la que cada categoría dibuja sus líneas, en proyección y en corte, en todas las plantas y secciones. La Visibilidad/Gráficos de una vista las reemplaza."
 
-#: crates/ui-egui/src/fillpatterns.rs:221
+#: crates/ui-egui/src/fillpatterns.rs:217
 #: crates/ui-egui/src/linestyles.rs:90
 msgid "The project changed while this window was open: Cancel, and open it again."
 msgstr "El proyecto cambió mientras esta ventana estaba abierta: cancele y ábrala de nuevo."
@@ -6878,7 +6872,7 @@ msgstr "Aún no hay líneas: dibuje el contorno."
 msgid "Thermal"
 msgstr "Térmica"
 
-#: crates/ui-egui/src/fillpatterns.rs:647
+#: crates/ui-egui/src/fillpatterns.rs:621
 msgid "These patterns to a PAT file, but the solid ones"
 msgstr "Estos patrones a un archivo PAT, salvo los sólidos"
 
@@ -6953,7 +6947,7 @@ msgstr "Trabas"
 msgid "Tile"
 msgstr "Baldosa"
 
-#: crates/core/src/fills.rs:416
+#: crates/core/src/fills.rs:422
 msgid "Tile 300"
 msgstr "Baldosa 300"
 
@@ -6993,7 +6987,7 @@ msgstr "Hasta"
 msgid "To (degrees)"
 msgstr "Hasta (grados)"
 
-#: crates/ui-egui/src/fillpatterns.rs:996
+#: crates/ui-egui/src/fillpatterns.rs:969
 msgid "Too dense to preview at this size."
 msgstr "Demasiado denso para la vista previa a este tamaño."
 
@@ -7309,7 +7303,7 @@ msgstr "Valor"
 msgid "Version {}"
 msgstr "Versión {}"
 
-#: crates/core/src/fills.rs:405
+#: crates/core/src/fills.rs:411
 #: crates/ui-egui/src/lib.rs:4009
 #: crates/ui-egui/src/properties.rs:607
 msgid "Vertical"
@@ -7600,11 +7594,11 @@ msgstr "Prolongación de la línea de referencia:"
 msgid "Worktop"
 msgstr "Encimera"
 
-#: crates/ui-egui/src/fillpatterns.rs:383
+#: crates/ui-egui/src/fillpatterns.rs:380
 msgid "X"
 msgstr "X"
 
-#: crates/ui-egui/src/fillpatterns.rs:383
+#: crates/ui-egui/src/fillpatterns.rs:380
 msgid "Y"
 msgstr "Y"
 
@@ -8042,10 +8036,6 @@ msgstr "muro: {}"
 msgid "what the note says"
 msgstr "lo que dice la nota"
 
-#: crates/ui-egui/src/fillpatterns.rs:403
-msgid "whole"
-msgstr "continua"
-
 #: apps/bimcraft/src/startup.rs:143
 msgid "{}\n\nThe details are in {}."
 msgstr "{}\n\nLos detalles están en {}."
@@ -8074,7 +8064,7 @@ msgstr "Tabla de {}"
 msgid "{} Skipped {}."
 msgstr "{} Omitidos: {}."
 
-#: crates/ui-egui/src/fillpatterns.rs:944
+#: crates/ui-egui/src/fillpatterns.rs:917
 msgid "{} already exists: save under a name ending in .pat to replace it."
 msgstr "{} ya existe: guarde con un nombre que termine en .pat para sustituirlo."
 
@@ -8089,10 +8079,6 @@ msgstr "hace {} días"
 #: crates/ui-egui/src/revit.rs:203
 msgid "{} elements"
 msgstr "{} elementos"
-
-#: crates/ui-egui/src/fillpatterns.rs:390
-msgid "{} family {}: {}"
-msgstr "{} familia {}: {}"
 
 #: crates/ui-egui/src/clouds.rs:54
 msgid "{} files, brought in as one scan's stations"
@@ -8118,13 +8104,17 @@ msgstr "{} no tiene parámetros, así que no tiene fase que demoler"
 msgid "{} is not {}: `{}`"
 msgstr "{} no es {}: `{}`"
 
-#: crates/ui-egui/src/fillpatterns.rs:585
+#: crates/ui-egui/src/fillpatterns.rs:557
 msgid "{} line families"
 msgstr "{} familias de líneas"
 
-#: crates/ui-egui/src/fillpatterns.rs:972
+#: crates/ui-egui/src/fillpatterns.rs:945
 msgid "{} line families, repeating a tile {} × {} (outlined)."
 msgstr "{} familias de líneas, repitiendo un módulo de {} × {} (contorneado)."
+
+#: crates/ui-egui/src/fillpatterns.rs:387
+msgid "{} line {}: {}"
+msgstr "{} línea {}: {}"
 
 #: crates/ui-egui/src/start.rs:119
 msgid "{} min ago"
@@ -8150,23 +8140,23 @@ msgstr "{} de {} contrahuellas"
 msgid "{} opened without {} fields this version doesn't know; saving it leaves them out."
 msgstr "{} se abrió sin {} campos que esta versión no conoce; al guardarlo, quedan fuera."
 
-#: crates/ui-egui/src/fillpatterns.rs:189
+#: crates/ui-egui/src/fillpatterns.rs:185
 msgid "{} pattern imported."
 msgstr "{} patrón importado."
 
-#: crates/ui-egui/src/fillpatterns.rs:195
+#: crates/ui-egui/src/fillpatterns.rs:191
 msgid "{} pattern imported; left out: {}"
 msgstr "{} patrón importado; omitidos: {}"
 
-#: crates/ui-egui/src/fillpatterns.rs:189
+#: crates/ui-egui/src/fillpatterns.rs:185
 msgid "{} patterns imported."
 msgstr "{} patrones importados."
 
-#: crates/ui-egui/src/fillpatterns.rs:195
+#: crates/ui-egui/src/fillpatterns.rs:191
 msgid "{} patterns imported; left out: {}"
 msgstr "{} patrones importados; omitidos: {}"
 
-#: crates/ui-egui/src/fillpatterns.rs:968
+#: crates/ui-egui/src/fillpatterns.rs:941
 msgid "{} redefined from lines"
 msgstr "{} redefinido a partir de líneas"
 
@@ -8190,19 +8180,11 @@ msgstr "hace {} años"
 msgid "{}:"
 msgstr "{}:"
 
-#: crates/ui-egui/src/fillpatterns.rs:564
-msgid "{}: Angle"
-msgstr "{}: Ángulo"
-
 #: crates/ui-egui/src/linestyles.rs:165
 msgid "{}: Colour"
 msgstr "{}: color"
 
-#: crates/ui-egui/src/fillpatterns.rs:568
-msgid "{}: Crosshatch"
-msgstr "{}: Sombreado cruzado"
-
-#: crates/ui-egui/src/fillpatterns.rs:603
+#: crates/ui-egui/src/fillpatterns.rs:577
 #: crates/ui-egui/src/linestyles.rs:176
 #: crates/ui-egui/src/linestyles.rs:211
 msgid "{}: Delete"
@@ -8212,11 +8194,11 @@ msgstr "{}: eliminar"
 msgid "{}: Edit"
 msgstr "{}: editar"
 
-#: crates/ui-egui/src/fillpatterns.rs:600
+#: crates/ui-egui/src/fillpatterns.rs:571
 msgid "{}: Edit Lines"
 msgstr "{}: editar líneas"
 
-#: crates/ui-egui/src/fillpatterns.rs:486
+#: crates/ui-egui/src/fillpatterns.rs:475
 msgid "{}: Edit Patterns"
 msgstr "{}: Editar patrones"
 
@@ -8224,7 +8206,7 @@ msgstr "{}: Editar patrones"
 msgid "{}: Line Weight"
 msgstr "{}: grosor de línea"
 
-#: crates/ui-egui/src/fillpatterns.rs:544
+#: crates/ui-egui/src/fillpatterns.rs:539
 #: crates/ui-egui/src/linestyles.rs:161
 #: crates/ui-egui/src/linestyles.rs:206
 msgid "{}: Name"
@@ -8234,15 +8216,11 @@ msgstr "{}: nombre"
 msgid "{}: Pattern"
 msgstr "{}: patrón"
 
-#: crates/ui-egui/src/fillpatterns.rs:594
+#: crates/ui-egui/src/fillpatterns.rs:567
 msgid "{}: Redefine"
 msgstr ""
 
-#: crates/ui-egui/src/fillpatterns.rs:566
-msgid "{}: Spacing"
-msgstr "{}: Separación"
-
-#: crates/ui-egui/src/fillpatterns.rs:545
+#: crates/ui-egui/src/fillpatterns.rs:540
 msgid "{}: Type"
 msgstr "{}: Tipo"
 
@@ -8274,7 +8252,7 @@ msgstr "{}: esta versión de BIMCraft se hizo sin soporte para Revit (`--no-defa
 msgid "{}: {}"
 msgstr "{}: {}"
 
-#: crates/ui-egui/src/fillpatterns.rs:192
+#: crates/ui-egui/src/fillpatterns.rs:188
 #: crates/ui-egui/src/sketch.rs:282
 msgid "{}; and {} more"
 msgstr "{}; y {} más"
@@ -8347,7 +8325,7 @@ msgstr "• Línea muy gruesa (0,70 mm — Pluma 12): Columnas y vigas estructur
 msgid "• Wide / Heavy (0.50 mm — 0.70 mm): Cut walls and structural sections."
 msgstr "• Ancho / Grueso (0,50 mm — 0,70 mm): Muros cortados y secciones estructurales."
 
-#: crates/ui-egui/src/fillpatterns.rs:746
+#: crates/ui-egui/src/fillpatterns.rs:719
 msgid "‹ Back"
 msgstr "‹ Volver"
 
@@ -8917,3 +8895,30 @@ msgstr "Cables"
 #: crates/ui-egui/src/fillpatterns.rs:628
 #~ msgid "Replace Same Name"
 #~ msgstr "Reemplazar del mismo nombre"
+#: crates/ui-egui/src/fillpatterns.rs:425
+#~ msgid "Add Family"
+#~ msgstr "Añadir familia"
+#: crates/ui-egui/src/fillpatterns.rs:383
+#~ msgid "Dashes"
+#~ msgstr "Trazos"
+#: crates/ui-egui/src/fillpatterns.rs:376
+#~ msgid "Line families of {}"
+#~ msgstr "Familias de líneas de {}"
+#: crates/ui-egui/src/fillpatterns.rs:383
+#~ msgid "Shift"
+#~ msgstr "Desplazamiento"
+#: crates/ui-egui/src/fillpatterns.rs:403
+#~ msgid "whole"
+#~ msgstr "continua"
+#: crates/ui-egui/src/fillpatterns.rs:390
+#~ msgid "{} family {}: {}"
+#~ msgstr "{} familia {}: {}"
+#: crates/ui-egui/src/fillpatterns.rs:564
+#~ msgid "{}: Angle"
+#~ msgstr "{}: Ángulo"
+#: crates/ui-egui/src/fillpatterns.rs:568
+#~ msgid "{}: Crosshatch"
+#~ msgstr "{}: Sombreado cruzado"
+#: crates/ui-egui/src/fillpatterns.rs:566
+#~ msgid "{}: Spacing"
+#~ msgstr "{}: Separación"

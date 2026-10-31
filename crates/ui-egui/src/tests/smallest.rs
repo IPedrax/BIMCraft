@@ -213,9 +213,9 @@ fn fill_patterns_and_edit_type_with_forty_patterns_and_a_long_note_stay_inside_t
     // A pattern's families open under the list, twenty of them: the list and they share what the window has.
     press(&mut h, "Hatch 00: Edit Lines");
     for _ in 0..20 {
-        press(&mut h, "Add Family");
+        press(&mut h, "Add Line");
     }
-    dialog_fits(&h, "fill-patterns", &[&["Add Family", "Done", "New Pattern"][..], &buttons].concat(), "Patterns with its families open");
+    dialog_fits(&h, "fill-patterns", &[&["Add Line", "Done", "New Pattern"][..], &buttons].concat(), "Patterns with its families open");
     press(&mut h, "Done");
     // Edit Type: the region's own type and, on its Patterns tab, the same list.
     let mut h = crowded();

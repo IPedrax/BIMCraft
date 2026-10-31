@@ -329,9 +329,10 @@ when drawn, any number of outlines; Edit Boundary edits it as any other. Pattern
 renamed with their references (a type follows its patterns, a region its type and line style) and refused deleted while
 used. The desktop has Annotate > Region (Filled Region, FR, and Masking Region, sketch mode with the type and the line style
 in the Options Bar), Properties (the Type Selector above the instance fields, Line Style with invisible lines), and Manage >
-Annotation Settings > Fill Patterns (`fillpatterns.rs`: the patterns as one draft, a simple one edited as an angle, a spacing and
-crosshatched or not and its families one by one with Edit Lines, a custom one made of lines redefined from lines, an imported
-one kept as it came, and Import and Export of PAT files at the right, Replace imported by same name saying what an import does
+Annotation Settings > Fill Patterns (`fillpatterns.rs`: the patterns as one draft, each a name, drafting or model and a
+swatch; one of whole lines (Simple Lines, `FillPattern::whole_lines`) edited line by line with Edit Lines (an angle, an origin
+and a spacing each: a shift only staggers dashes, and dashed patterns are drawn and made with Custom), one made of lines
+redefined from lines (Redefine, as wide as Edit Lines), any other (dashed, imported or a starter's) kept as it came, and Import and Export of PAT files at the right, Replace imported by same name saying what an import does
 with a name the list has; region types are edited from a region with Edit Type, on the same draft).
 
 A custom pattern is made of lines drawn, as pyRevit's Make Pattern makes one (`fills::make`, the `make_fill_pattern` command):
