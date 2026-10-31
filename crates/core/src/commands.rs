@@ -8380,18 +8380,18 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
         let Some(before) = old(id).filter(|b| b.arc == 0.0) else { continue };
         let line = (w.start, w.end);
         for (end, was) in [(&mut w.start, before.start), (&mut w.end, before.end)] {
-            let host =
-                lookup.walls_near([was.0, was.1, was.0, was.1], 2.0 * TOL).into_iter().find_map(|other| match m.elements.get(other) {
-                    Some(Element::Wall(o))
-                        if !moving.contains(&other)
-                            && o.arc == 0.0
-                            && stacked(m, o, before)
-                            && geom::dist_to_segment(was, o.start, o.end) <= TOL =>
-                    {
-                        Some((o.start, o.end))
-                    }
-                    _ => None,
-                });
+            let at = ([was.0, was.1, was.0, was.1], m.base_z(before), m.top_z(before));
+            let host = lookup.walls_near_at(&[at], 2.0 * TOL).into_iter().find_map(|other| match m.elements.get(other) {
+                Some(Element::Wall(o))
+                    if !moving.contains(&other)
+                        && o.arc == 0.0
+                        && stacked(m, o, before)
+                        && geom::dist_to_segment(was, o.start, o.end) <= TOL =>
+                {
+                    Some((o.start, o.end))
+                }
+                _ => None,
+            });
             if let Some((a, b)) = host {
                 *end = geom::line_intersection(line.0, line.1, a, b).map_or(*end, micron);
             }
@@ -8401,8 +8401,8 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
     // end goes with it; an end on a taken wall's span slides along its own wall onto it.
     let moved: Vec<(Wall, Wall)> = walls.iter().filter_map(|(id, w)| Some((old(id)?.clone(), w.clone()))).collect();
     // The walls whose ends may lie on a taken wall's line as it was.
-    let boxes: Vec<[f64; 4]> = moved.iter().map(|(before, _)| crate::derived::axis_box(before)).collect();
-    let near = if boxes.is_empty() { BTreeSet::new() } else { lookup.walls_near_any(&boxes, 2.0 * TOL) };
+    let boxes: Vec<_> = moved.iter().map(|(before, _)| (crate::derived::axis_box(before), m.base_z(before), m.top_z(before))).collect();
+    let near = if boxes.is_empty() { BTreeSet::new() } else { lookup.walls_near_at(&boxes, 2.0 * TOL) };
     for id in near {
         let Some(w) = m.wall(id) else { continue };
         if moving.contains(&id) {
