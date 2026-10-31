@@ -110,14 +110,23 @@ fn moves(m: &Model, d: &Dimension, fixed: &dyn Fn(Guid) -> bool) -> Result<BTree
 /// The constrained dimensions kept after a command changed `before` into the session's model: what they measure to moved
 /// as they say. An error, saying which and why, when they can't be.
 pub(crate) fn keep(s: &mut Session, before: &Model) -> Result<(), String> {
+    let lookup = s.model.lookup();
     let dims: Vec<Id> =
-        s.model.elements.iter().filter(|(_, e)| matches!(e, Element::Dimension(d) if constrained(d))).map(|(id, _)| *id).collect();
+        lookup.dimensions().filter(|id| matches!(s.model.elements.get(*id), Some(Element::Dimension(d)) if constrained(d))).collect();
     if dims.is_empty() {
         return Ok(());
     }
     // What the command changed stays; so does what keeping the constraints has moved already.
-    let mut stays: Vec<Guid> =
-        s.model.elements.with_guids().filter(|(id, _, e)| before.elements.get(*id) != Some(*e)).map(|(_, g, _)| g).collect();
+    let mut stays: Vec<Guid> = match s.model.changed_since(before) {
+        crate::ids::Changed::Ids(ids) => ids
+            .into_iter()
+            .filter(|id| s.model.elements.get(*id).is_some_and(|e| before.elements.get(*id) != Some(e)))
+            .filter_map(|id| s.model.elements.guid(id))
+            .collect(),
+        crate::ids::Changed::All => {
+            s.model.elements.with_guids().filter(|(id, _, e)| before.elements.get(*id) != Some(*e)).map(|(_, g, _)| g).collect()
+        }
+    };
     for _ in 0..PASSES {
         let mut moved = false;
         for &id in &dims {

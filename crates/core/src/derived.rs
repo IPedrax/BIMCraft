@@ -1,4 +1,4 @@
-//! What a model's elements point at, looked up the other way: kept with each model, and brought up to date from the model
+//! What a model's elements point at, looked up the other way, and its walls and dimensions: kept with each model, and brought up to date from the model
 //! it was copied from by what changed since ([`Elements::changed_since`]), not found again among every element.
 //!
 //! A model holds its [`Lookup`] once something asked for it, for the state its elements are in. A copy of the model (what
@@ -29,6 +29,8 @@ pub struct Lookup {
     referrers: BTreeMap<u16, Arc<HashMap<Guid, BTreeSet<Id>>>>,
     /// The walls.
     walls: Arc<BTreeSet<Id>>,
+    /// The dimensions.
+    dimensions: Arc<BTreeSet<Id>>,
 }
 
 impl Lookup {
@@ -61,14 +63,22 @@ impl Lookup {
         if !refs.is_empty() {
             Arc::make_mut(self.refs.entry(id >> SHIFT).or_default()).insert(id, refs);
         }
-        if matches!(e, Element::Wall(_)) {
-            Arc::make_mut(&mut self.walls).insert(id);
+        match e {
+            Element::Wall(_) => {
+                Arc::make_mut(&mut self.walls).insert(id);
+            }
+            Element::Dimension(_) => {
+                Arc::make_mut(&mut self.dimensions).insert(id);
+            }
+            _ => {}
         }
     }
 
     fn take(&mut self, id: Id) {
-        if self.walls.contains(&id) {
-            Arc::make_mut(&mut self.walls).remove(&id);
+        for set in [&mut self.walls, &mut self.dimensions] {
+            if set.contains(&id) {
+                Arc::make_mut(set).remove(&id);
+            }
         }
         let Some(chunk) = self.refs.get_mut(&(id >> SHIFT)) else { return };
         if !chunk.contains_key(&id) {
@@ -99,6 +109,11 @@ impl Lookup {
     /// The walls, by id.
     pub fn walls(&self) -> impl Iterator<Item = Id> + '_ {
         self.walls.iter().copied()
+    }
+
+    /// The dimensions, by id.
+    pub fn dimensions(&self) -> impl Iterator<Item = Id> + '_ {
+        self.dimensions.iter().copied()
     }
 
     /// Whether it shares chunks with `other`: whether one was brought up to date from the other.
