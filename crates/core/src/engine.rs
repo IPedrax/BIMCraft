@@ -186,7 +186,7 @@ impl Session {
                 }
                 // What a command was given by id points at the element's GUID; what it put in the library has an id and a GUID.
                 if verified {
-                    self.model_mut().resolve_changed();
+                    self.model_mut().resolve_changed(&before);
                 } else {
                     self.model_mut().resolve();
                 }

@@ -2673,12 +2673,13 @@ impl Model {
     /// Every element's id has six digits or more, and what an element points at is an element of the project, by its GUID.
     /// The library's ids and GUIDs are those of what it has, no name is a GUID, and no id or GUID is two things'.
     fn check_ids(&self) -> Result<(), String> {
-        self.check_ids_of(self.elements.iter().map(|(id, e)| (*id, e)))
+        self.check_ids_of(self.elements.iter().map(|(id, e)| (*id, e)), self.library_in_step())
     }
 
-    /// The library's ids and GUIDs as [`Model::check_ids`] asks, and of the elements, those of `elements`.
-    fn check_ids_of<'a>(&self, elements: impl Iterator<Item = (Id, &'a Element)>) -> Result<(), String> {
-        if !self.library_in_step() {
+    /// The library's ids and GUIDs as [`Model::check_ids`] asks, whether it is `in_step`, and of the elements, those of
+    /// `elements`.
+    fn check_ids_of<'a>(&self, elements: impl Iterator<Item = (Id, &'a Element)>, in_step: bool) -> Result<(), String> {
+        if !in_step {
             return Err("the library's ids and GUIDs are not those of what it has".into());
         }
         for (id, e) in self.library.entries() {
@@ -2884,11 +2885,17 @@ impl Model {
         self.resolve_in(None);
     }
 
-    /// [`Model::resolve`] of a model copied from one that passed [`Model::check`], so held no id for a GUID: only what
-    /// changed since it was copied (what a command changed) can hold one.
-    pub(crate) fn resolve_changed(&mut self) {
-        let touched = self.elements.touched();
-        self.resolve_in(touched);
+    /// [`Model::resolve`] of a model made from `before`, which passed [`Model::check`], so held no id for a GUID: only what
+    /// changed since (what a command changed, what an undo brought back) can hold one.
+    pub(crate) fn resolve_changed(&mut self, before: &Model) {
+        let among = match self.elements.touched() {
+            Some(touched) => Some(touched),
+            None => match self.changed_since(before) {
+                Changed::Ids(ids) => Some(ids),
+                Changed::All => None,
+            },
+        };
+        self.resolve_in(among);
     }
 
     fn resolve_in(&mut self, among: Option<BTreeSet<Id>>) {
@@ -5001,7 +5008,7 @@ impl Model {
             self.check_element(id, e, &mut t)?;
         }
         self.check_shared(&t)?;
-        self.check_ids_of(affected.iter().filter_map(|id| Some((*id, self.elements.get(*id)?))))
+        self.check_ids_of(affected.iter().filter_map(|id| Some((*id, self.elements.get(*id)?))), self.library_in_step_since(before))
     }
 
     /// What [`Model::check`] asks of element `id`, `e`, keeping in `t` what it must hold in common with the others.
