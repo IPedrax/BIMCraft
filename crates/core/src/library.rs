@@ -591,6 +591,35 @@ impl Model {
 
     /// Whether the library's ids and GUIDs are those of what the library has: none missing, none left over; and each part
     /// has an id and a GUID of its own, which no other thing has.
+    /// [`Model::library_in_step`] of a model a command made of `before`, which was in step: when neither the settings nor
+    /// the library's parts changed, only what the command changed can put it out of step: an element whose sketch lines
+    /// aren't the parts they were, or a new element on an id or a GUID a part has. Else the whole of it is asked.
+    pub fn library_in_step_since(&self, before: &Model) -> bool {
+        let crate::ids::Changed::Ids(changed) = self.changed_since(before) else { return self.library_in_step() };
+        if self.library.parts != before.library.parts {
+            return self.library_in_step();
+        }
+        let sketch = |m: &Model, id: Id| -> Vec<(Id, Guid)> {
+            m.elements.get(id).and_then(|e| e.sketch()).map_or_else(Vec::new, |lines| lines.iter().map(|l| (l.id, l.guid)).collect())
+        };
+        let mut new = Vec::new();
+        for &id in &changed {
+            if sketch(self, id) != sketch(before, id) || self.elements.guid(id) != before.elements.guid(id) {
+                return self.library_in_step();
+            }
+            if let Some(g) = self.elements.guid(id) {
+                // A part's id taken by an element (an entry's is check_ids' to refuse, not out of step).
+                if self.library.part(id).is_some() {
+                    return false;
+                }
+                if !before.elements.contains_key(id) {
+                    new.push(g);
+                }
+            }
+        }
+        new.is_empty() || !self.library.parts.values().any(|p| new.contains(&p.guid))
+    }
+
     pub fn library_in_step(&self) -> bool {
         let now = self.library_names();
         now.len() == self.library.len() && now.iter().all(|(k, n)| self.library.id(k, n).is_some()) && self.parts_in_step()

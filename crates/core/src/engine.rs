@@ -190,7 +190,15 @@ impl Session {
                 } else {
                     self.model_mut().resolve();
                 }
-                self.model_mut().sync_library();
+                // A library in step needs nothing; after a verified model, what the command changed says whether it is.
+                let in_step = if verified { self.model.library_in_step_since(&before) } else { self.model.library_in_step() };
+                #[cfg(test)]
+                if verified {
+                    assert_eq!(in_step, self.model.library_in_step(), "library_in_step_since differs after `{}` {params}", cmd.id);
+                }
+                if !in_step {
+                    self.model_mut().sync_library();
+                }
                 // Locked and equal dimensions moved what they measure to as the command moved it.
                 if cmd.undoable {
                     crate::constraints::keep(self, &before)?;
