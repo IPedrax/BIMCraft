@@ -79,6 +79,23 @@ Each piece is a set of commits that leaves the workspace green and the product w
 8. **Columns and parallel queries.** Bounds, level, category and phase kept in columns; schedules, filters and
    visibility as parallel queries over them.
 9. **Chunked files and lazy loading** (later): a project opened level by level, links as partitions.
+10. **The same numbers as Revit.** Faster is only worth having if the results are right, and "right" for a BIM tool is
+    what the commercial tool its users check against reports. A cross-check replicates the small tower in Revit and
+    compares its calculations with ours:
+    - BIMCraft writes the tower as a neutral description (`tower --describe`: levels, wall axes with their types'
+      thickness and height, floors by outline, doors and windows by host and offset, rooms by point), never Autodesk
+      content;
+    - an original script for Revit's API (in `tools/revit-crosscheck/`, run by the user on Windows, since Revit can't
+      run here) builds the same model natively from that description, with its own system families and no template
+      content copied, and exports Revit's schedules: each room's area, perimeter and volume, each wall's length, area
+      and volume, each floor's area and volume, door and window counts by host, as CSV;
+    - those CSVs are checked in as fixtures (numbers only), and a test (`revit_crosscheck` in `crates/core`) builds the
+      same tower, runs our schedules and compares row by row, within a stated tolerance;
+    - where the two define a quantity differently (a room's height for volume, a wall's area net of openings, where a
+      room is measured), the difference is written down in `docs/areas/schedules.md` and the test applies Revit's rule
+      on our side or names the known difference, so no gap is silently accepted.
+    The test is in place before piece 7 changes how anything is computed, so every later piece is held to both the oracle
+    (the same as before) and Revit (the same as the industry).
 
 ## Targets
 
@@ -105,3 +122,5 @@ tests are never traded for a timing.
 - [ ] 6. Derived-result cache: begun with the lookup (references both ways, walls by tile, dimensions): an edit of a million elements 1.7 ms (a wall with doors 23 ms)
 - [ ] 7. Views from fragments
 - [ ] 8. Columns and parallel queries
+- [ ] 9. Chunked files and lazy loading
+- [ ] 10. The same numbers as Revit: the tower described, rebuilt by a Revit script, its schedules compared in a test
