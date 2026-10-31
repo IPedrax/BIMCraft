@@ -161,5 +161,66 @@
  },
  "machine": "Ryzen 7 2700X (8 cores / 16 logical CPUs), 46 GB, Fedora 44, release build, idle apart from the probe",
  "date": "2026-10-31",
- "commit": "170f32c"
+ "commit": "170f32c",
+ "after_piece_2": {
+  "1": {
+   "elements": 10018,
+   "memory_mb": {
+    "after_load": 1305.953125,
+    "peak": 1432.75
+   },
+   "ms": {
+    "check": 211.495772,
+    "edit_median": 224.42736399999998,
+    "frame_median": 186.041874,
+    "ifc_export": 984.342092,
+    "inspect_command": 7.776783,
+    "load": 69066.668098,
+    "native_read": 92.04023,
+    "native_serialize": 26.747165,
+    "plan_fit_draw": 273.94583900000003,
+    "plan_png": 76.608614,
+    "plan_redraw": 67.552548,
+    "room_boundaries_all_estimated": 1102.6326239999999,
+    "room_boundary_each": 5.654526276923076,
+    "scene_build": 597.2028310000001
+   },
+   "rooms": {
+    "count": 195,
+    "enclosed": 195,
+    "sampled": 195
+   },
+   "skipped": []
+  },
+  "10": {
+   "elements": 100171,
+   "memory_mb": {
+    "after_load": 1386.53125,
+    "peak": 5017.00390625
+   },
+   "ms": {
+    "check": 2149.437805,
+    "edit_median": 2191.9914440000002,
+    "frame_median": 2184.914838,
+    "inspect_command": 162.943976,
+    "load": 71652.393234,
+    "native_read": 915.85883,
+    "native_serialize": 278.494374,
+    "plan_fit_draw": 394.135164,
+    "plan_png": 74.686213,
+    "plan_redraw": 150.601137,
+    "room_boundaries_all_estimated": 33443.5678005,
+    "room_boundary_each": 17.150547590000002,
+    "scene_build": 7937.600203999999
+   },
+   "rooms": {
+    "count": 1950,
+    "enclosed": 100,
+    "sampled": 100
+   },
+   "skipped": [
+    "ifc"
+   ]
+  }
+ }
 }

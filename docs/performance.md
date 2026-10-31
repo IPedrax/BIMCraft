@@ -163,6 +163,23 @@ What it says:
   hundred is 22 s more.
 * Reading and writing are linear and fine; memory is 2.2 GB for a million elements.
 
+### Piece 2: wall joins by plan tile, rooms a level at a time
+
+A wall's joins are looked for among the walls reaching the same 6 m plan tile, and one look at the model
+(`rooms::Rooms`) arranges each level's room-bounding lines once for all its rooms. Same machine, release, one run each:
+
+| Operation | 1 storey, before | after | 10 storeys, before | after |
+|---|---:|---:|---:|---:|
+| Fit and draw the plan of Level 1 | 10.9 s | 274 ms | 322 s | 394 ms |
+| Redraw it | 10.4 s | 68 ms | 326 s | 151 ms |
+| `inspect` (every room's boundary) | 9.3 s | 7.8 ms | 53 min (estimated) | 163 ms |
+| One room's boundary, alone | 48.5 ms | 5.7 ms | 1.63 s | 17.2 ms |
+| IFC export | 54.7 s | 984 ms | skipped | skipped |
+| Check, edit, scene, files | unchanged | | unchanged | |
+
+The plan and the 3D picture of one storey are byte for byte the ones before. Every room at both measures, and every
+wall's centre line, caps, outline, layers and prisms, are tested against the way they were found before.
+
 ## 3D on the graphics card
 
 `view3d::gpu::Mesh` keeps a view's shown triangles for the card (retained geometry, uploaded once for each model), and

@@ -96,9 +96,9 @@ tests are never traded for a timing.
 ## Status
 
 - [x] Plan
-- [ ] 0. Reference and baseline
-- [ ] 1. Oracle harness
-- [ ] 2. Spatial index
+- [x] 0. Reference and baseline (performance.md: 21 s an edit, 16 s a room at a million elements)
+- [ ] 1. Oracle harness (room and wall oracles in place; the fuzzer comes with piece 4)
+- [x] 2. Spatial index: wall joins by plan tile, rooms a level at a time (a plan of 10 storeys 326 s → 0.15 s)
 - [ ] 3. Change sets
 - [ ] 4. Incremental check
 - [ ] 5. Persistent storage
