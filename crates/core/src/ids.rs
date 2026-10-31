@@ -294,13 +294,20 @@ impl Elements {
         Elements { token: token(), ..Elements::default() }
     }
 
-    /// What changed from `before`'s elements to these, when these were cloned from those: the ids the journal names, or
-    /// where something went through them all (`values_mut`, `retain`), those whose elements or GUIDs differ. Else
-    /// everything: these were made another way.
+    /// What changed from `before`'s elements to these. When these were cloned from those: the ids the journal names, or
+    /// where something went through them all (`values_mut`, `retain`), those whose elements or GUIDs differ. When the
+    /// two share most of their chunks still (an undo, a redo: one model of the history for another), those that differ in
+    /// the chunks they don't. Else everything: these were made another way.
     pub fn changed_since(&self, before: &Elements) -> Changed {
         let j = &self.journal;
         if self.token == 0 || self.base != before.token {
-            return Changed::All;
+            let shared = self.chunks.iter().filter(|(k, c)| before.chunks.get(*k).is_some_and(|d| Arc::ptr_eq(c, d))).count();
+            let total = self.chunks.len().max(before.chunks.len());
+            // A few chunks are quickly compared; many, mostly not shared, are another model's.
+            if total > 2 && shared * 2 < total {
+                return Changed::All;
+            }
+            return Changed::Ids(self.differ(before, 0));
         }
         if j.all {
             return Changed::Ids(self.differ(before, 0));
@@ -734,9 +741,11 @@ mod journal_tests {
         let Changed::Ids(moved) = moved else { panic!("{moved:?}") };
         assert!(moved.contains(&a) && moved.contains(&b), "{moved:?}");
         assert_eq!(changed(&mut s, "delete", json!({"ids": [door]})), ids(&[door]));
-        // A command that changes a setting changes everything there is to check.
+        // Undo and redo go to a model of the history, which shares the rest still: what differs.
+        assert_eq!(changed(&mut s, "undo", json!({})), ids(&[door]));
+        assert_eq!(changed(&mut s, "redo", json!({})), ids(&[door]));
+        // A command that changes a setting changes everything there is to check, and so does undoing it.
         assert_eq!(changed(&mut s, "room_area", json!({"at": "finish"})), Changed::All);
-        // Undo goes back to a model the command didn't make: everything.
         assert_eq!(changed(&mut s, "undo", json!({})), Changed::All);
         // Another model's elements: everything.
         assert_eq!(Model::new("x").changed_since(&s.model), Changed::All);
@@ -767,7 +776,8 @@ mod journal_tests {
             }
         }
         assert_eq!(c.changed_since(&base), ids(&[100_000, 100_001, 100_003, 100_004, 100_009]));
-        assert_eq!(c.clone().changed_since(&base), Changed::All, "a clone of a clone isn't base's");
+        // A clone of a clone isn't base's: what differs, found in the chunks they don't share.
+        assert_eq!(c.clone().changed_since(&base), ids(&[100_000, 100_001, 100_003, 100_004, 100_009]));
         let mut d = base.clone();
         for e in d.values_mut() {
             if let Element::Grid(gr) = e
