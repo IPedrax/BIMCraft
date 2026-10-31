@@ -97,3 +97,17 @@ fn popup_actions_and_close_stay_visible_in_a_short_window_even_with_a_type_error
     close(&mut h, "type-properties");
     assert!(h.state().type_dialog.is_none());
 }
+
+#[test]
+fn a_click_beside_an_open_dialog_leaves_it_open_and_only_its_buttons_and_corner_close_it() {
+    let mut h = app(BOX);
+    shortcut(&mut h, "VG");
+    let r = area(&h, "visibility-graphics");
+    // Beside the dialog, on the dimmed window behind it, left of it and right of it.
+    for pos in [pos2(r.left() - 20.0, r.center().y), pos2(r.right() + 20.0, r.center().y)] {
+        click_at(&mut h, pos);
+        assert!(h.state().vg_dialog.is_some(), "a click at {pos:?} closed it");
+    }
+    press(&mut h, "Cancel");
+    assert!(h.state().vg_dialog.is_none());
+}

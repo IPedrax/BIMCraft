@@ -328,9 +328,26 @@ its view (`Model::annotation_plan`, so a duplicated plan has its own) and its sk
 when drawn, any number of outlines; Edit Boundary edits it as any other. Patterns and region types are library entries,
 renamed with their references (a type follows its patterns, a region its type and line style) and refused deleted while
 used. The desktop has Annotate > Region (Filled Region, FR, and Masking Region, sketch mode with the type and the line style
-in the Options Bar), Properties (the Type Selector above the instance fields, Line Style with invisible lines), and Manage > Fill Patterns (`fillpatterns.rs`:
-region types and patterns as one draft, a simple pattern edited as an angle, a spacing and crosshatched or not, any pattern's
-families one by one with Edit Lines, and Import and Export of PAT files). `pat.rs` reads and writes PAT files (`;%UNITS`,
+in the Options Bar), Properties (the Type Selector above the instance fields, Line Style with invisible lines), and Manage >
+Annotation Settings > Fill Patterns (`fillpatterns.rs`: the patterns as one draft, each a name, drafting or model and a
+swatch; one of whole lines (Simple Lines, `FillPattern::whole_lines`) edited line by line with Edit Lines (an angle, an origin
+and a spacing each: a shift only staggers dashes, and dashed patterns are drawn and made with Custom), one made of lines
+redefined from lines (Redefine, as wide as Edit Lines), any other (dashed, imported or a starter's) kept as it came, and Import and Export of PAT files at the right, Replace imported by same name saying what an import does
+with a name the list has; region types are edited from a region with Edit Type, on the same draft).
+
+A custom pattern is made of lines drawn, as pyRevit's Make Pattern makes one (`fills::make`, the `make_fill_pattern` command):
+the detail lines picked, all of one view, cut to the rectangle between two corners (the tile), each a family that runs on into the
+next tiles' copies of itself. A line repeats only at a slope `(i W, j H)` of whole tiles (`i`, `j` at most `MAX_STEPS`, 48), so one
+drawn at another is turned to the simplest such slope within `TURN` (0.25°), else the nearest; its family's dashes are its length
+and a space to the repeat `L = |(i W, j H)|`, its lines `W H / L` apart, each shifted along by the lattice's other vector
+`(c W, d H)`, `i d - j c = 1` (Euclid's). A line on the tile's edge and its copy on the opposite one are one family; curves go as
+their drawn points' chords. A model pattern is as drawn; a drafting one is the drawing on paper at the view's scale, which the
+pattern keeps (`FillPattern::drawn`, saved with it): turned from one to the other (the dialog's Type, or `fill_pattern`'s `target`
+without `lines`), it is rescaled (`retargeted`), and the dialog offers Redefine for it where a simple one has Edit Lines, which
+picks the lines and corners again and keeps its name and type. A pattern holds at most `MAX_FAMILIES`
+(256) families. In the desktop, New Pattern > Custom hides the dialog while the lines are picked as anything is (Enter, or the
+right-click menu's Finish), then the corners (`Tool::PatternCorner`), and brings it back with the pattern previewed: OK, Pick
+Again, Cancel. Esc, another tool or another view brings the dialog back. `pat.rs` reads and writes PAT files (`;%UNITS`,
 `;%TYPE`, a negative offset stepping the other way; a pattern that can't be one left out with why) for the dialog and for the
 `import_fill_patterns` and `export_fill_patterns` commands. A PAT file is hostile input: `read` stops after `MAX_PATTERNS`
 (2,000) patterns and counts the rest, `Read::left_out` names the first `MAX_LEFT_OUT` (100) with `left_out_count` for all, a line

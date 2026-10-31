@@ -5523,3 +5523,56 @@ fn technical_standards_configure_line_weights_sheets_and_styles() {
     run(&mut s, "undo", json!({}));
     assert_eq!(s.model.standard(), crate::standards::TechnicalStandard::Nbr);
 }
+
+#[test]
+fn make_fill_pattern_makes_a_pattern_of_the_detail_lines_picked_cut_to_the_tile_model_or_drafting_at_the_plans_scale() {
+    let mut s = Session::new();
+    house(&mut s);
+    // A brick of 200 x 100 drawn in the plan: its bed joint, its head joint, and a line that hangs out of the tile.
+    let bed = run(&mut s, "detail_line", json!({"start": [0, 0], "end": [200, 0]}))["id"].clone();
+    let head = run(&mut s, "detail_line", json!({"start": [0, 0], "end": [0, 300]}))["id"].clone();
+    let made = run(&mut s, "make_fill_pattern", json!({"ids": [bed, head], "from": [0, 0], "to": [200, 100], "name": "Brick"}));
+    let p = &s.model.fill_patterns["Brick"];
+    assert_eq!((made["name"].as_str(), p.target), (Some("Brick"), crate::fills::Target::Model));
+    assert_eq!(p.lines.len(), 2);
+    assert!(p.lines.iter().all(|l| l.dashes.is_empty()), "both cross the tile whole once the head joint is cut: {p:?}");
+    // A drafting one is the drawing on paper: the plan's 1 : 100 makes the 100 mm course 1 mm.
+    let view = s.model.elements.values().find_map(|e| if let crate::model::Element::DetailLine(l) = e { Some(l.view) } else { None });
+    let scale = crate::graphics::scale_of(&s.model, view.unwrap());
+    assert!(scale > 1.0);
+    run(&mut s, "make_fill_pattern", json!({"ids": [bed], "from": [0, 0], "to": [200, 100], "name": "Brick paper", "target": "drafting"}));
+    let paper = &s.model.fill_patterns["Brick paper"];
+    assert_eq!(paper.target, crate::fills::Target::Drafting);
+    assert!((paper.lines[0].spacing - 100.0 / scale).abs() < 1e-9, "{paper:?}");
+    // A name in use, a wall, nothing inside the tile: refused, and the project as it was.
+    for (p, why) in [
+        (json!({"ids": [bed], "from": [0, 0], "to": [200, 100], "name": "Brick"}), "already"),
+        (json!({"ids": [bed], "from": [5000, 5000], "to": [5200, 5100], "name": "None"}), "no line"),
+    ] {
+        let e = s.execute("make_fill_pattern", &p).unwrap_err();
+        assert!(e.contains(why), "{e}");
+    }
+    let wall = s.model.elements.iter().find(|(_, e)| matches!(e, crate::model::Element::Wall(_))).map(|(id, _)| *id).unwrap();
+    let e = s.execute("make_fill_pattern", &json!({"ids": [wall], "from": [0, 0], "to": [200, 100], "name": "W"})).unwrap_err();
+    assert!(e.contains("not a detail line"), "{e}");
+}
+
+#[test]
+fn a_pattern_made_of_lines_remembers_its_scale_and_turned_drafting_by_fill_pattern_is_rescaled() {
+    let mut s = Session::new();
+    house(&mut s);
+    let bed = run(&mut s, "detail_line", json!({"start": [0, 0], "end": [200, 0]}))["id"].clone();
+    run(&mut s, "make_fill_pattern", json!({"ids": [bed], "from": [0, 0], "to": [200, 100], "name": "Course"}));
+    let k = s.model.fill_patterns["Course"].drawn.unwrap();
+    assert!(k > 1.0, "the plan's scale");
+    run(&mut s, "fill_pattern", json!({"name": "Course", "target": "drafting"}));
+    let p = &s.model.fill_patterns["Course"];
+    assert!((p.lines[0].spacing - 100.0 / k).abs() < 1e-9 && p.target == crate::fills::Target::Drafting, "{p:?}");
+    // Saved and read back, it still knows.
+    let (m, _) = crate::model::Model::read(&s.model.to_json().unwrap()).unwrap();
+    assert_eq!(m.fill_patterns["Course"].drawn, Some(k));
+    // Forgotten, a target is only a word again; a scale that is no number is refused.
+    run(&mut s, "fill_pattern", json!({"name": "Course", "drawn": null, "target": "model"}));
+    assert!((s.model.fill_patterns["Course"].lines[0].spacing - 100.0 / k).abs() < 1e-9);
+    assert!(s.execute("fill_pattern", &json!({"name": "Course", "drawn": -1})).is_err());
+}

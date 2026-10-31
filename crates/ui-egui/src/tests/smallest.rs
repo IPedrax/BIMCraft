@@ -201,28 +201,22 @@ fn dialog_fits(h: &Harness<BimApp>, modal: &str, labels: &[&str], said: &str) {
 #[test]
 fn fill_patterns_and_edit_type_with_forty_patterns_and_a_long_note_stay_inside_the_least_window_with_their_buttons_in_reach() {
     let buttons = ["OK", "Cancel", "Apply"];
-    // Each tab of Manage's table.
+    // Manage's dialog: the patterns.
     let mut h = crowded();
     let model = h.state().session.model.clone();
     h.state_mut().fill_patterns_dialog = Some(crate::fillpatterns::FillPatternsDialog::new(&model));
     h.run();
-    let types = [&["Fill Patterns", "Region Types", "Patterns", "New Type"][..], &buttons].concat();
-    dialog_fits(&h, "fill-patterns", &types, "Region Types");
-    press(&mut h, "Patterns");
+    let patterns = [&["Fill Patterns", "New Pattern", "Import...", "Export..."][..], &buttons].concat();
+    dialog_fits(&h, "fill-patterns", &patterns, "Patterns");
     long_note(&mut h);
-    let patterns = [&["Fill Patterns", "Patterns", "New Pattern", "Import...", "Export..."][..], &buttons].concat();
     dialog_fits(&h, "fill-patterns", &patterns, "Patterns with a long note");
     // A pattern's families open under the list, twenty of them: the list and they share what the window has.
     press(&mut h, "Hatch 00: Edit Lines");
     for _ in 0..20 {
-        press(&mut h, "Add Family");
+        press(&mut h, "Add Line");
     }
-    dialog_fits(&h, "fill-patterns", &[&["Add Family", "Done", "New Pattern"][..], &buttons].concat(), "Patterns with its families open");
+    dialog_fits(&h, "fill-patterns", &[&["Add Line", "Done", "New Pattern"][..], &buttons].concat(), "Patterns with its families open");
     press(&mut h, "Done");
-    // The note is told on this tab alone, and holds to its height.
-    press(&mut h, "Region Types");
-    assert!(h.query_by_label_contains("left out:").is_none(), "the import note belongs to the Patterns tab");
-    dialog_fits(&h, "fill-patterns", &types, "Region Types after an import");
     // Edit Type: the region's own type and, on its Patterns tab, the same list.
     let mut h = crowded();
     let model = h.state().session.model.clone();
