@@ -56,3 +56,21 @@ for what a pass frees (a family's material, a type's), at most 16 times, on a co
 `Model::remove_entry` is the single place that knows where each kind lives. The desktop's Purge Unused window (`purge.rs`) lists a dry run
 for the kinds checked and runs the same; the Project Browser's Families lists the system types and has the right-click Delete.
 
+The `family` command works out the whole change before the model is touched (`commands.rs::family`), so reading one costs no undo step
+and a family `Model::check` would refuse never enters it. `family {name}` alone reads: the definition with every form's and symbol's `id`
+and `GUID`, each type's `values` worked out, and `warnings` — no `model_mut()`, no file. Without `name` it lists the project's families
+with their category and how much of each there is; `save` still writes one to a file. `dry_run: true` builds the change it's given
+locally and replies `ok`, `warnings`, `changes` (parameters and types added, taken away and changed; forms and symbols replaced, patched
+and deleted by id; the rename) instead of doing it; a refusal comes back as an error exactly as it would without it, carrying every error
+and warning found, not only the first. One form or symbol is patched by its `id` or `guid` (`form`/`symbol`: its fields merged over what
+that one holds, a `null` taking one away, its place, id and GUID kept; `delete_form`/`delete_symbol` to take it away), where `forms` and
+`symbols` still replace whole lists — `keep_parts` binds by place, so patching is what leaves the other parts' ids alone. Validation is
+`family/validate.rs` (`Family::problems`): every formula read at once (`names`, unknown parameters besides a hosted family's
+`Wall Thickness`, syntax errors with the character they stop at), then `Family::check`, plus geometry warnings best worked out around
+what doesn't build — a void reaching no solid before it, a form wholly outside its opening, one thicker than its wall, a door's or
+window's plan with no symbols — each aggregated as `(in type …)`. `Family::shapes` gives each form's box before any void cuts it, from
+the same `solid` `build` uses. `render {family, type, mode}` draws a family on its own: a `Session::new()` of its own holding the
+project's materials and images, a wall of `wall_thickness` mm for a hosted family (a floor of its own footprint otherwise) with the type
+in it, then `render_view` on that model — `3d`, `plan` (what its symbols draw) or `elevation` (front-on) — and the project keeps no
+element and no undo step from it, the way the Family Editor's own preview already worked (`editor.rs::scratch`).
+
