@@ -8,7 +8,7 @@ English messages stay in Rust as lookup keys and fallback text. Translations bel
 | Project | `translations/project/bimcraft-project.pot` | `pt.po`, `es.po`, `sv.po`, `cs.po`, `fr.po`, `nl.po` | `Language::word`, `Language::translated`, `Language::find` |
 
 Interface and project language remain independent. Settings and project files retain `en`, `pt`, `es`, `sv`, `cs`, `fr`, `nl`
-and `zh` (interface only); the project languages after `es` came with file format 11, whose step has nothing to convert. Native language names and locale aliases remain language metadata in Rust. Chinese
+and `zh` (interface only); the project languages after `es` came with file format 11, and Dutch with 12; neither step has anything to convert. Native language names and locale aliases remain language metadata in Rust. Chinese
 still needs a system font, and the project's stroke lettering still cannot draw it. Diagnostics returned by the core,
 CLI and MCP remain English. Existing project and user-supplied names are never translated in place.
 
