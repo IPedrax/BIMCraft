@@ -330,8 +330,9 @@ renamed with their references (a type follows its patterns, a region its type an
 used. The desktop has Annotate > Region (Filled Region, FR, and Masking Region, sketch mode with the type and the line style
 in the Options Bar), Properties (the Type Selector above the instance fields, Line Style with invisible lines), and Manage >
 Annotation Settings > Fill Patterns (`fillpatterns.rs`: the patterns as one draft, a simple one edited as an angle, a spacing and
-crosshatched or not and its families one by one with Edit Lines, a custom one (imported, or made of lines) kept as it came, and
-Import and Export of PAT files; region types are edited from a region with Edit Type, on the same draft).
+crosshatched or not and its families one by one with Edit Lines, a custom one made of lines redefined from lines, an imported
+one kept as it came, and Import and Export of PAT files at the right, Replace imported by same name saying what an import does
+with a name the list has; region types are edited from a region with Edit Type, on the same draft).
 
 A custom pattern is made of lines drawn, as pyRevit's Make Pattern makes one (`fills::make`, the `make_fill_pattern` command):
 the detail lines picked, all of one view, cut to the rectangle between two corners (the tile), each a family that runs on into the
@@ -339,8 +340,10 @@ next tiles' copies of itself. A line repeats only at a slope `(i W, j H)` of who
 drawn at another is turned to the simplest such slope within `TURN` (0.25°), else the nearest; its family's dashes are its length
 and a space to the repeat `L = |(i W, j H)|`, its lines `W H / L` apart, each shifted along by the lattice's other vector
 `(c W, d H)`, `i d - j c = 1` (Euclid's). A line on the tile's edge and its copy on the opposite one are one family; curves go as
-their drawn points' chords. A model pattern is as drawn; a drafting one is the drawing on paper at the view's scale (`Made`
-keeps it, and the dialog's Type rescales a row made of lines while the draft is open). A pattern holds at most `MAX_FAMILIES`
+their drawn points' chords. A model pattern is as drawn; a drafting one is the drawing on paper at the view's scale, which the
+pattern keeps (`FillPattern::drawn`, saved with it): turned from one to the other (the dialog's Type, or `fill_pattern`'s `target`
+without `lines`), it is rescaled (`retargeted`), and the dialog offers Redefine for it where a simple one has Edit Lines, which
+picks the lines and corners again and keeps its name and type. A pattern holds at most `MAX_FAMILIES`
 (256) families. In the desktop, New Pattern > Custom hides the dialog while the lines are picked as anything is (Enter, or the
 right-click menu's Finish), then the corners (`Tool::PatternCorner`), and brings it back with the pattern previewed: OK, Pick
 Again, Cancel. Esc, another tool or another view brings the dialog back. `pat.rs` reads and writes PAT files (`;%UNITS`,

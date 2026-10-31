@@ -252,8 +252,8 @@ fn the_import_and_export_buttons_ask_for_a_file_and_work_on_the_draft_not_the_pr
     // The pattern the project lacks came in; the one it has was kept, and the dialog says it was left out, in itself.
     assert!(h.query_by_label("Wicker: Name").is_some() && said(&h, "left out") && said(&h, "Sand"));
     assert!(!h.state().session.model.fill_patterns.contains_key("Wicker"), "a draft until OK");
-    // With Replace Same Name, the file's Sand takes the place of the draft's.
-    press(&mut h, "Replace Same Name");
+    // With Replace imported by same name, the file's Sand takes the place of the draft's.
+    press(&mut h, "Replace imported by same name");
     activate(&mut h, "Import...");
     answer(&mut h, &file);
     // Export writes what the draft holds, which the project doesn't yet.

@@ -31,7 +31,7 @@ msgstr ""
 msgid "Brick"
 msgstr ""
 
-#: crates/core/src/fills.rs:392
+#: crates/core/src/fills.rs:410
 msgid "Brick 225 x 75"
 msgstr ""
 
@@ -83,7 +83,7 @@ msgstr ""
 msgid "Count"
 msgstr ""
 
-#: crates/core/src/fills.rs:385
+#: crates/core/src/fills.rs:403
 msgid "Crosshatch"
 msgstr ""
 
@@ -103,7 +103,7 @@ msgstr ""
 msgid "Data Outlet"
 msgstr ""
 
-#: crates/core/src/commands.rs:7062
+#: crates/core/src/commands.rs:7064
 msgid "Dependent"
 msgstr ""
 
@@ -115,15 +115,15 @@ msgstr ""
 msgid "Desk"
 msgstr ""
 
-#: crates/core/src/fills.rs:384
+#: crates/core/src/fills.rs:402
 msgid "Diagonal Crosshatch"
 msgstr ""
 
-#: crates/core/src/fills.rs:383
+#: crates/core/src/fills.rs:401
 msgid "Diagonal Down"
 msgstr ""
 
-#: crates/core/src/fills.rs:382
+#: crates/core/src/fills.rs:400
 msgid "Diagonal Up"
 msgstr ""
 
@@ -167,8 +167,8 @@ msgstr ""
 msgid "Elbow 90"
 msgstr ""
 
-#: crates/core/src/commands.rs:6846
-#: crates/core/src/commands.rs:8513
+#: crates/core/src/commands.rs:6848
+#: crates/core/src/commands.rs:8515
 msgid "Elevation"
 msgstr ""
 
@@ -253,7 +253,7 @@ msgstr ""
 msgid "Hidden Lines"
 msgstr ""
 
-#: crates/core/src/fills.rs:386
+#: crates/core/src/fills.rs:404
 msgid "Horizontal"
 msgstr ""
 
@@ -285,7 +285,7 @@ msgstr ""
 msgid "Length"
 msgstr ""
 
-#: crates/core/src/commands.rs:4347
+#: crates/core/src/commands.rs:4349
 #: crates/core/src/model.rs:2503
 msgid "Level"
 msgstr ""
@@ -302,11 +302,11 @@ msgstr ""
 msgid "Mark"
 msgstr ""
 
-#: crates/core/src/fills.rs:372
+#: crates/core/src/fills.rs:390
 msgid "Masking"
 msgstr ""
 
-#: crates/core/src/commands.rs:5384
+#: crates/core/src/commands.rs:5386
 msgid "Mass"
 msgstr ""
 
@@ -390,7 +390,7 @@ msgstr ""
 msgid "Porcelain"
 msgstr ""
 
-#: crates/core/src/commands.rs:2233
+#: crates/core/src/commands.rs:2235
 msgid "Project"
 msgstr ""
 
@@ -414,7 +414,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr ""
 
-#: crates/core/src/commands.rs:5609
+#: crates/core/src/commands.rs:5611
 msgid "Room"
 msgstr ""
 
@@ -430,7 +430,7 @@ msgstr ""
 msgid "SCALE AS INDICATED"
 msgstr ""
 
-#: crates/core/src/fills.rs:389
+#: crates/core/src/fills.rs:407
 msgid "Sand"
 msgstr ""
 
@@ -442,8 +442,8 @@ msgstr ""
 msgid "Seat Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:6823
-#: crates/core/src/commands.rs:8512
+#: crates/core/src/commands.rs:6825
+#: crates/core/src/commands.rs:8514
 msgid "Section"
 msgstr ""
 
@@ -499,11 +499,11 @@ msgstr ""
 msgid "Sofa"
 msgstr ""
 
-#: crates/core/src/fills.rs:371
+#: crates/core/src/fills.rs:389
 msgid "Solid Black"
 msgstr ""
 
-#: crates/core/src/fills.rs:369
+#: crates/core/src/fills.rs:387
 msgid "Solid fill"
 msgstr ""
 
@@ -535,7 +535,7 @@ msgstr ""
 msgid "Thin Lines"
 msgstr ""
 
-#: crates/core/src/fills.rs:398
+#: crates/core/src/fills.rs:416
 msgid "Tile 300"
 msgstr ""
 
@@ -559,11 +559,11 @@ msgstr ""
 msgid "UP"
 msgstr ""
 
-#: crates/core/src/commands.rs:7203
+#: crates/core/src/commands.rs:7205
 msgid "Unnamed"
 msgstr ""
 
-#: crates/core/src/fills.rs:387
+#: crates/core/src/fills.rs:405
 msgid "Vertical"
 msgstr ""
 
