@@ -33,6 +33,8 @@ pub struct Step {
     pub label: &'static str,
     pub made: Vec<(&'static str, usize)>,
     pub removed: Vec<(&'static str, usize)>,
+    /// Whether the model the step goes back to passed [`Model::check`]: going back to it needs no check.
+    checked: bool,
 }
 
 impl Step {
@@ -57,7 +59,7 @@ impl Step {
         } else {
             Vec::new()
         };
-        Step { label, made, removed }
+        Step { label, made, removed, checked: false }
     }
 }
 
@@ -75,6 +77,9 @@ pub struct Session {
     pub option: Option<String>,
     undo: Vec<(Step, Arc<Model>)>,
     redo: Vec<(Step, Arc<Model>)>,
+    /// How many times a command's model was checked, for tests that it was or wasn't.
+    #[cfg(test)]
+    pub(crate) checks: usize,
     /// How many times the project was replaced, so a transaction knows its history went with it.
     resets: usize,
     /// What reads a DWG drawing, when the app has one (`cad::DwgReader`); none says to save it as DXF.
@@ -114,6 +119,8 @@ impl Session {
             option: None,
             undo: Vec::new(),
             redo: Vec::new(),
+            #[cfg(test)]
+            checks: 0,
             resets: 0,
             dwg: None,
             verified: None,
@@ -160,6 +167,12 @@ impl Session {
             .unwrap_or_else(|p| Err(format!("internal error in `{}`: {}", cmd.id, panic_text(p.as_ref()))))
             .and_then(|v| {
                 if Arc::ptr_eq(&before, &self.model) {
+                    return Ok(v);
+                }
+                // Back to a model that passed (undo, redo): it is as it was then.
+                if self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &self.model)) {
+                    #[cfg(test)]
+                    assert_eq!(self.model.check(), Ok(()), "`{}` went back to a model that doesn't pass", cmd.id);
                     return Ok(v);
                 }
                 // A command that splits what stands keeps its phase; one that makes something makes it in the session's;
@@ -209,6 +222,10 @@ impl Session {
                 let edited = if cmd.undoable && cmd.id != "insert" { self.model.check_edits(&before, cmd.id, params) } else { Ok(()) };
                 edited
                     .and_then(|()| {
+                        #[cfg(test)]
+                        {
+                            self.checks += 1;
+                        }
                         let checked = if verified { self.model.check_changed(&before) } else { self.model.check() };
                         // Tests hold the two to the same answer after every command they run.
                         #[cfg(test)]
@@ -230,7 +247,8 @@ impl Session {
             Ok(v) => {
                 self.verified = Some(Arc::clone(&self.model));
                 if cmd.undoable && !Arc::ptr_eq(&before, &self.model) {
-                    self.undo.push((Step::new(cmd.label, &before, &self.model), before));
+                    let step = Step { checked: verified, ..Step::new(cmd.label, &before, &self.model) };
+                    self.undo.push((step, before));
                     if self.undo.len() > UNDO_LIMIT {
                         self.undo.remove(0);
                     }
@@ -273,6 +291,7 @@ impl Session {
     /// `open`) left the history it began, so what came after it stays the steps it was.
     pub fn transaction<T>(&mut self, label: &'static str, f: impl FnOnce(&mut Session) -> Result<T, String>) -> Result<T, String> {
         let before = Arc::clone(&self.model);
+        let checked = self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &before));
         let (path, phase, option) = (self.path.clone(), self.phase.clone(), self.option.clone());
         let (mut undo, redo, resets) = (std::mem::take(&mut self.undo), std::mem::take(&mut self.redo), self.resets);
         let result = catch_unwind(AssertUnwindSafe(|| f(self)))
@@ -289,7 +308,7 @@ impl Session {
                 if self.undo.is_empty() {
                     self.redo = redo;
                 } else {
-                    undo.push((Step::new(label, &before, &self.model), before));
+                    undo.push((Step { checked, ..Step::new(label, &before, &self.model) }, before));
                     if undo.len() > UNDO_LIMIT {
                         undo.remove(0);
                     }
@@ -347,10 +366,16 @@ impl Session {
             return Err(format!("`count` must be from 1 to {}, the steps there are to {what}", from.len()));
         }
         let mut label = "";
+        // Whether the model now passed: the step that comes back to it says so.
+        let mut checked = self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &self.model));
         for _ in 0..count {
-            let Some((step, model)) = from.pop() else { break };
+            let Some((mut step, model)) = from.pop() else { break };
             label = step.label;
+            std::mem::swap(&mut step.checked, &mut checked);
             to.push((step, std::mem::replace(&mut self.model, model)));
+        }
+        if checked {
+            self.verified = Some(Arc::clone(&self.model));
         }
         Ok(json!({ key: label, "count": count }))
     }
