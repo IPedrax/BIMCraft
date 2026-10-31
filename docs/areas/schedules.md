@@ -14,3 +14,15 @@ the rename back.
 A table goes to a file as CSV (`schedule::to_csv`, text a spreadsheet would read as a formula guarded with `'`) or, for a path
 ending `.xlsx`, as a workbook of one sheet (`schedule::to_xlsx` over `xlsx.rs`, which writes the parts and the zip by hand on
 `flate2`): headings in bold, numbers as numbers so they sum, text as inline strings, which a spreadsheet never takes for a formula.
+
+## The same numbers as Revit
+
+`crosscheck.rs` holds the numbers schedules show against Revit's ([tools/revit-crosscheck](../../tools/revit-crosscheck/README.md)):
+`export_crosscheck` describes a project in plain numbers (walls by their centre lines, floors, shafts, doors and windows,
+rooms by their points), a script of ours builds it again in Revit and writes what Revit reports, `kind,id,quantity,value`
+by our element ids, and `compare_crosscheck` (and the test `the_small_tower_has_the_numbers_revit_gives_it`, once Revit's
+table of the small two-storey tower is committed) compares them quantity by quantity within `crosscheck::tolerance`.
+Compared: each room's area, perimeter and whether it is enclosed, each wall's length along its centre line and its doors
+and windows, each floor's area less its openings and shafts, and its volume. Revit reports more (a room's volume, a wall's
+area and volume) than we work out yet: those come back as `only_theirs`, the list of what is still to do. Where the two
+define a quantity differently, the difference goes here, with the rule the comparison applies.

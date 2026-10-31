@@ -118,6 +118,14 @@ mod tests {
         }
         let e = s.execute("tower", &json!({"floors": 2})).unwrap_err();
         assert!(e.contains("floors"), "{e}");
+        let e = s.execute("tower", &json!({"storeys": 1, "plate": "huge"})).unwrap_err();
+        assert!(e.contains("`plate` must be `reference` or `small`"), "{e}");
+        assert!(std::sync::Arc::ptr_eq(&before, &s.model));
+        // The small plate: the tower the cross-check with Revit is of.
+        let small = s.execute("tower", &json!({"storeys": 1, "plate": "small"})).unwrap();
+        let built = super::tower::tower_on(super::tower::Plate::SMALL, 1).unwrap();
+        assert_eq!(small["elements"].as_u64(), Some(built.elements.len() as u64));
+        assert_eq!(s.model.elements.keys().collect::<Vec<_>>(), built.elements.keys().collect::<Vec<_>>(), "the same ids");
         assert!(crate::bridge::REFUSED.contains(&"tower"), "a window's project isn't replaced from outside");
     }
 }

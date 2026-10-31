@@ -63,8 +63,9 @@ pub static ALL: &[Command] = &[
     other(
         "tower",
         "Reference Tower",
-        "{storeys?: 100} replace the project with the original reference tower of 1–100 storeys, about 10,000 elements and \
-         195 rooms a storey: the baseline the core is measured on (docs/spatial-core-plan.md)",
+        "{storeys?: 100, plate?: reference|small} replace the project with the original reference tower of 1–100 storeys, \
+         about 10,000 elements and 195 rooms a storey: the baseline the core is measured on (docs/spatial-core-plan.md); \
+         the `small` plate, 36 × 36 m, is the one compared with Revit (tools/revit-crosscheck)",
         tower,
     ),
     other(
@@ -1091,6 +1092,23 @@ pub static ALL: &[Command] = &[
          up to its first 2000 patterns. It returns those `imported`, those `left_out` (the first 100, each with why) and \
          `left_out_count`, all of them",
         import_fill_patterns,
+    ),
+    other(
+        "export_crosscheck",
+        "Export Cross-Check",
+        "{path?} the project's levels, walls (by their centre lines), floors, shafts, doors, windows and rooms as plain \
+         numbers in mm, which tools/revit-crosscheck builds again in another BIM tool to hold its numbers against ours \
+         (compare_crosscheck): written to `path`, or returned as `description` without it",
+        export_crosscheck,
+    ),
+    other(
+        "compare_crosscheck",
+        "Compare Cross-Check",
+        "{path? | text?} another tool's numbers of the project export_crosscheck described, a table `kind,id,quantity,value` \
+         (rooms' enclosed, area_m2, perimeter_m; walls' length_m, openings; floors' area_m2, volume_m3), from the file at \
+         `path` or `text`, held against the project's own: how many were `compared`, those that `differ` (ours and \
+         theirs), and those `only_ours` and `only_theirs`, the first 100 of each with their counts",
+        compare_crosscheck,
     ),
     other(
         "export_fill_patterns",
@@ -4338,16 +4356,22 @@ fn highrise(s: &mut Session, p: &Value) -> R {
 fn tower(s: &mut Session, p: &Value) -> R {
     let c = "tower";
     let params = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
-    if let Some(key) = params.keys().find(|k| k.as_str() != "storeys") {
+    if let Some(key) = params.keys().find(|k| !["storeys", "plate"].contains(&k.as_str())) {
         return Err(bad(c, format!("unknown parameter `{key}`")));
     }
+    let plate = match p.get("plate") {
+        v if absent(v) => crate::sample::tower::Plate::REFERENCE,
+        Some(Value::String(s)) if s == "reference" => crate::sample::tower::Plate::REFERENCE,
+        Some(Value::String(s)) if s == "small" => crate::sample::tower::Plate::SMALL,
+        _ => return Err(bad(c, "`plate` must be `reference` or `small`")),
+    };
     let max = crate::sample::tower::MAX_STOREYS;
     let storeys = count_opt(c, p, "storeys", max as usize)?;
     let storeys = u32::try_from(storeys)
         .ok()
         .filter(|n| (1..=max).contains(n))
         .ok_or_else(|| bad(c, format!("`storeys` must be between 1 and {max}")))?;
-    let model = crate::sample::tower(storeys)?;
+    let model = crate::sample::tower::tower_on(plate, storeys)?;
     let elements = model.elements.len();
     s.reset(model, None);
     Ok(json!({"storeys": storeys, "elements": elements}))
@@ -9697,6 +9721,44 @@ fn import_fill_patterns(s: &mut Session, p: &Value) -> R {
     let room = crate::pat::MAX_LEFT_OUT.saturating_sub(left_out.len());
     left_out.extend(read.left_out.into_iter().take(room).map(|(name, why)| json!({"name": name, "why": why})));
     Ok(json!({"imported": imported, "left_out": left_out, "left_out_count": count}))
+}
+
+fn export_crosscheck(s: &mut Session, p: &Value) -> R {
+    let c = "export_crosscheck";
+    only(c, p, &["path"])?;
+    let description = crate::crosscheck::describe(&s.model);
+    match string(c, p, "path")? {
+        Some(path) => {
+            let text = serde_json::to_string_pretty(&description).map_err(|e| bad(c, e))?;
+            crate::autosave::atomic_write(&PathBuf::from(&path), &text).map_err(|e| bad(c, e))?;
+            Ok(json!({"path": path}))
+        }
+        None => Ok(json!({"description": description})),
+    }
+}
+
+fn compare_crosscheck(s: &mut Session, p: &Value) -> R {
+    let c = "compare_crosscheck";
+    only(c, p, &["path", "text"])?;
+    // A table's text is far longer than a name: `text` takes as much as a file does (`crosscheck::read` refuses more).
+    let text = match p.get("text") {
+        Some(Value::String(t)) => Some(t.clone()),
+        Some(v) if !v.is_null() => return Err(bad(c, "`text` must be the text of a table")),
+        _ => None,
+    };
+    let text = match (string(c, p, "path")?, text) {
+        (Some(path), None) => {
+            let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{path}: {e}")))?.len();
+            if size > crate::crosscheck::MAX_TEXT as u64 {
+                return Err(bad(c, format!("{path} is over {} MB", crate::crosscheck::MAX_TEXT >> 20)));
+            }
+            std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{path}: {e}")))?
+        }
+        (None, Some(text)) => text,
+        _ => return Err(bad(c, "give `path`, a table's file, or its `text`")),
+    };
+    let theirs = crate::crosscheck::read(&text).map_err(|e| bad(c, e))?;
+    Ok(crate::crosscheck::compare(&crate::crosscheck::ours(&s.model), &theirs).to_json(100))
 }
 
 fn export_fill_patterns(s: &mut Session, p: &Value) -> R {

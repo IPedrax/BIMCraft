@@ -20,6 +20,7 @@ mod commands;
 mod component_geometry;
 pub mod conduit;
 mod constraints;
+pub mod crosscheck;
 mod csg;
 pub mod curves;
 pub mod derived;

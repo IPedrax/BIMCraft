@@ -82,15 +82,16 @@ Each piece is a set of commits that leaves the workspace green and the product w
 10. **The same numbers as Revit.** Faster is only worth having if the results are right, and "right" for a BIM tool is
     what the commercial tool its users check against reports. A cross-check replicates the small tower in Revit and
     compares its calculations with ours:
-    - BIMCraft writes the tower as a neutral description (`tower --describe`: levels, wall axes with their types'
+    - BIMCraft writes the tower as a neutral description (`export_crosscheck`: levels, wall axes with their types'
       thickness and height, floors by outline, doors and windows by host and offset, rooms by point), never Autodesk
       content;
     - an original script for Revit's API (in `tools/revit-crosscheck/`, run by the user on Windows, since Revit can't
       run here) builds the same model natively from that description, with its own system families and no template
       content copied, and exports Revit's schedules: each room's area, perimeter and volume, each wall's length, area
-      and volume, each floor's area and volume, door and window counts by host, as CSV;
-    - those CSVs are checked in as fixtures (numbers only), and a test (`revit_crosscheck` in `crates/core`) builds the
-      same tower, runs our schedules and compares row by row, within a stated tolerance;
+      and volume, each floor's area and volume, door and window counts by host, as one table `kind,id,quantity,value`
+      (by element id: the same commands give the same ids, where GUIDs are new each time);
+    - that table is checked in as a fixture (numbers only), and a test (`crosscheck::tests` in `crates/core`) builds the
+      same tower and compares quantity by quantity within a stated tolerance (`compare_crosscheck` does it from the CLI);
     - where the two define a quantity differently (a room's height for volume, a wall's area net of openings, where a
       room is measured), the difference is written down in `docs/areas/schedules.md` and the test applies Revit's rule
       on our side or names the known difference, so no gap is silently accepted.
@@ -119,8 +120,8 @@ tests are never traded for a timing.
 - [x] 3. Change sets: each model's journal; sweeps, undo and redo by what differs
 - [x] 4. Incremental check (an edit of a million elements 21.5 s → 0.27 s with piece 5)
 - [x] 5. Persistent storage: chunks of 1,024 ids shared by copies (memory 2.2 → 1.1 GB)
-- [ ] 6. Derived-result cache: begun with the lookup (references both ways, walls by tile, dimensions): an edit of a million elements 1.7 ms (a wall with doors 23 ms)
+- [ ] 6. Derived-result cache: begun with the lookup (references both ways, walls by tile and height, dimensions) and undo that doesn't check again: at a million elements a column edit 1.3 ms, a wall with its doors 6 ms, undo under 0.01 ms
 - [ ] 7. Views from fragments
 - [ ] 8. Columns and parallel queries
 - [ ] 9. Chunked files and lazy loading
-- [ ] 10. The same numbers as Revit: the tower described, rebuilt by a Revit script, its schedules compared in a test
+- [ ] 10. The same numbers as Revit: `export_crosscheck`, the script (`tools/revit-crosscheck`), `compare_crosscheck` and the test are in; waiting for Revit's table of the small two-storey tower, to be run on Windows
