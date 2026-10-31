@@ -4965,7 +4965,10 @@ impl Model {
         let lookup = self.lookup();
         // The walls they might join, and what points at what changed, on until nothing more does.
         if !boxes.is_empty() {
-            for id in lookup.walls() {
+            // A wall's body lies within its type's thickness of its location line: the walls whose lines come that near.
+            let grow = self.types.wall.values().map(|t| t.thickness.abs()).fold(0.0, f64::max) + 2.0 * TOL;
+            let near = lookup.walls_near_any(&boxes.iter().map(|(c, _, _)| *c).collect::<Vec<_>>(), grow);
+            for id in near {
                 if let Some(w) = self.wall(id)
                     && match walls::reach(self, w) {
                         None => true,
