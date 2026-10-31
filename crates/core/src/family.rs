@@ -16,6 +16,8 @@ use crate::geom::P2;
 use crate::model::{MAX_COORD, MAX_TEXT};
 use crate::view3d::{P3, add, cross, mul};
 
+mod validate;
+
 /// What a family is: how IFC names its components; a door or a window is hosted in a wall, which
 /// its `Width` and `Height` open.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -327,6 +329,32 @@ pub struct Piece {
     pub top: f64,
     pub material: String,
     pub round: bool,
+}
+
+/// Where one form lies before any void cuts it: its box in the family's own axes (x along a
+/// component's angle, y to its left, z up from its base), which is all a warning about where a form
+/// stands needs. [`Family::shapes`] works them out, one per form that builds.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Shape {
+    /// Its place in [`Family::forms`], counting from zero.
+    pub index: usize,
+    pub void: bool,
+    pub min: P3,
+    pub max: P3,
+}
+
+impl Shape {
+    /// Whether it and `other` overlap where all three of them have substance: strictly, a face
+    /// touching another's is no overlap, so a void grazing a form cuts nothing.
+    pub fn over(&self, other: &Shape) -> bool {
+        (0..3).all(|k| self.min[k] < other.max[k] && other.min[k] < self.max[k])
+    }
+
+    /// Whether it lies wholly outside `x` wide each way and `z` tall from `low` up: the box a door's
+    /// or a window's opening fills.
+    pub fn outside(&self, half_width: f64, low: f64, high: f64) -> bool {
+        self.max[0] < -half_width || self.min[0] > half_width || self.max[2] < low || self.min[2] > high
+    }
 }
 
 /// How deep a formula may nest.
@@ -659,9 +687,14 @@ fn parse(formula: &str) -> Result<Node, String> {
         return Err("a formula is empty".into());
     }
     let mut r = Reader { chars: formula.chars().collect(), at: 0, depth: 0 };
-    let node = r.compare().map_err(|e| format!("formula `{formula}`: {e}"))?;
+    // Where it stopped, a character of the formula counted from 1: what can't be read is worth
+    // pointing at, not only naming.
+    let node = match r.compare() {
+        Ok(node) => node,
+        Err(e) => return Err(format!("formula `{formula}`: {e} (character {})", r.at + 1)),
+    };
     match r.peek() {
-        Some(c) => Err(format!("formula `{formula}`: `{c}` follows where it should end")),
+        Some(c) => Err(format!("formula `{formula}`: `{c}` follows where it should end (character {})", r.at + 1)),
         None => Ok(node),
     }
 }
@@ -987,77 +1020,13 @@ impl Family {
         read: &mut HashMap<&'a str, Result<Node, String>>,
         cuts: &mut csg::Meter,
     ) -> Result<Vec<Piece>, String> {
-        let mut num = |e: &'a Expr| number(e, values, read);
         let (mut out, mut voids) = (Vec::new(), Vec::new());
-        for (i, form) in self.forms.iter().enumerate() {
+        for i in 0..self.forms.len() {
             let what = format!("form {}", i + 1);
-            let said = |e: String| format!("{what}: {e}");
-            if let Some(v) = &form.visible
-                && num(v).map_err(said)? == 0.0
-            {
+            let Some(piece) = self.solid(i, values, read).map_err(|e| format!("{what}: {e}"))? else {
                 continue;
-            }
-            let material = match values.get(&form.material) {
-                Some(Val::Text(m)) => m.clone(),
-                _ => form.material.clone(),
             };
-            let piece = if !form.mesh.is_empty() {
-                mesh(&form.mesh, material).map_err(said)?
-            } else {
-                let ring: Vec<P2> = match &form.circle {
-                    Some(c) => {
-                        let (x, y, r) = (num(&c.centre[0]).map_err(said)?, num(&c.centre[1]).map_err(said)?, num(&c.radius).map_err(said)?);
-                        if r <= 0.0 {
-                            return Err(said(format!("its circle's radius is {r}; it needs one above zero")));
-                        }
-                        (0..SEGMENTS)
-                            .map(|k| (k as f64 * std::f64::consts::TAU / SEGMENTS as f64).sin_cos())
-                            .map(|(s, c)| P2(x + r * c, y + r * s))
-                            .collect()
-                    }
-                    None if form.profile.len() > MAX_PROFILE => {
-                        return Err(said(format!("its profile has more than {MAX_PROFILE} corners")));
-                    }
-                    None => form.profile.iter().map(|[a, b]| Ok(P2(num(a)?, num(b)?))).collect::<Result<_, String>>().map_err(said)?,
-                };
-                let (from, to) = (num(&form.from).map_err(said)?, num(&form.to).map_err(said)?);
-                if ring.len() < 3 || crate::geom::area(&ring).abs() < 1.0 {
-                    return Err(said("its profile has no area: it needs three corners or more, or a circle".into()));
-                }
-                if to <= from {
-                    let unit = if form.axis.is_some() { " degrees" } else { "" };
-                    return Err(format!("{what} sweeps nothing: from {from} to {to}{unit}"));
-                }
-                let ring = if crate::geom::area(&ring) < 0.0 { ring.into_iter().rev().collect() } else { ring };
-                match &form.axis {
-                    Some([p, q]) => {
-                        if to - from > 360.0 {
-                            return Err(format!("{what} turns more than all the way round: from {from} to {to} degrees, 360 at most"));
-                        }
-                        let mut corner = |c: &'a [Expr; 2]| Ok(P2(num(&c[0])?, num(&c[1])?));
-                        let axis = [corner(p).map_err(said)?, corner(q).map_err(said)?];
-                        let (tris, outline) = revolve(&ring, axis, (from, to), form.plane).map_err(said)?;
-                        let (bottom, top) = heights(&tris);
-                        Piece { caps: tris.len(), tris, outline, bottom, top, material, round: false }
-                    }
-                    None => {
-                        let (tris, caps) = sweep(&ring, from, to, form.plane).map_err(said)?;
-                        let span = |k: usize| {
-                            ring.iter()
-                                .map(|p| if k == 0 { p.0 } else { p.1 })
-                                .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), x| (lo.min(x), hi.max(x)))
-                        };
-                        let ((a0, a1), (b0, b1)) = (span(0), span(1));
-                        let (outline, bottom, top) = match form.plane {
-                            Plane::Xy => (ring.clone(), from, to),
-                            Plane::Xz => (vec![P2(a0, from), P2(a1, from), P2(a1, to), P2(a0, to)], b0, b1),
-                            Plane::Yz => (vec![P2(from, a0), P2(to, a0), P2(to, a1), P2(from, a1)], b0, b1),
-                        };
-                        Piece { tris, caps, outline, bottom, top, material, round: form.circle.is_some() }
-                    }
-                }
-            };
-            if form.void {
+            if self.forms[i].void {
                 voids.push((i, out.len(), piece.tris));
             } else {
                 out.push(piece);
@@ -1084,6 +1053,114 @@ impl Family {
         }
         out.retain(|p| !p.tris.is_empty());
         Ok(out)
+    }
+
+    /// Form `i`'s own solid, sized by `values`, before any void cuts it: `None` where its `visible`
+    /// says it isn't there. `read`, its formulas as read already.
+    fn solid<'a>(
+        &'a self,
+        i: usize,
+        values: &BTreeMap<String, Val>,
+        read: &mut HashMap<&'a str, Result<Node, String>>,
+    ) -> Result<Option<Piece>, String> {
+        let form = &self.forms[i];
+        let mut num = |e: &'a Expr| number(e, values, read);
+        if let Some(v) = &form.visible
+            && num(v)? == 0.0
+        {
+            return Ok(None);
+        }
+        let material = match values.get(&form.material) {
+            Some(Val::Text(m)) => m.clone(),
+            _ => form.material.clone(),
+        };
+        let piece = if !form.mesh.is_empty() {
+            mesh(&form.mesh, material)?
+        } else {
+            let ring: Vec<P2> = match &form.circle {
+                Some(c) => {
+                    let (x, y, r) = (num(&c.centre[0])?, num(&c.centre[1])?, num(&c.radius)?);
+                    if r <= 0.0 {
+                        return Err(format!("its circle's radius is {r}; it needs one above zero"));
+                    }
+                    (0..SEGMENTS)
+                        .map(|k| (k as f64 * std::f64::consts::TAU / SEGMENTS as f64).sin_cos())
+                        .map(|(s, c)| P2(x + r * c, y + r * s))
+                        .collect()
+                }
+                None if form.profile.len() > MAX_PROFILE => return Err(format!("its profile has more than {MAX_PROFILE} corners")),
+                None => form.profile.iter().map(|[a, b]| Ok(P2(num(a)?, num(b)?))).collect::<Result<_, String>>()?,
+            };
+            let (from, to) = (num(&form.from)?, num(&form.to)?);
+            if ring.len() < 3 || crate::geom::area(&ring).abs() < 1.0 {
+                return Err("its profile has no area: it needs three corners or more, or a circle".into());
+            }
+            if to <= from {
+                let unit = if form.axis.is_some() { " degrees" } else { "" };
+                return Err(format!("sweeps nothing: from {from} to {to}{unit}"));
+            }
+            let ring = if crate::geom::area(&ring) < 0.0 { ring.into_iter().rev().collect() } else { ring };
+            match &form.axis {
+                Some([p, q]) => {
+                    if to - from > 360.0 {
+                        return Err(format!("turns more than all the way round: from {from} to {to} degrees, 360 at most"));
+                    }
+                    let mut corner = |c: &'a [Expr; 2]| -> Result<P2, String> { Ok(P2(num(&c[0])?, num(&c[1])?)) };
+                    let axis = [corner(p)?, corner(q)?];
+                    let (tris, outline) = revolve(&ring, axis, (from, to), form.plane)?;
+                    let (bottom, top) = heights(&tris);
+                    Piece { caps: tris.len(), tris, outline, bottom, top, material, round: false }
+                }
+                None => {
+                    let (tris, caps) = sweep(&ring, from, to, form.plane)?;
+                    let span = |k: usize| {
+                        ring.iter()
+                            .map(|p| if k == 0 { p.0 } else { p.1 })
+                            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), x| (lo.min(x), hi.max(x)))
+                    };
+                    let ((a0, a1), (b0, b1)) = (span(0), span(1));
+                    let (outline, bottom, top) = match form.plane {
+                        Plane::Xy => (ring.clone(), from, to),
+                        Plane::Xz => (vec![P2(a0, from), P2(a1, from), P2(a1, to), P2(a0, to)], b0, b1),
+                        Plane::Yz => (vec![P2(from, a0), P2(to, a0), P2(to, a1), P2(from, a1)], b0, b1),
+                    };
+                    Piece { tris, caps, outline, bottom, top, material, round: form.circle.is_some() }
+                }
+            }
+        };
+        Ok(Some(piece))
+    }
+
+    /// Where each of its forms lies, sized by `values`, before any void cuts it: its place in
+    /// `forms`, whether it is a void, and the box its solid fills in the family's own axes. A form
+    /// that builds to nothing on its own — a formula it can't read, a profile with no area — is left
+    /// out: what a warning tells is best worked out around it, not stopped by it.
+    pub fn shapes(&self, values: &BTreeMap<String, Val>) -> Vec<Shape> {
+        let mut read = HashMap::new();
+        let mut out = Vec::new();
+        for i in 0..self.forms.len() {
+            let Some(piece) = self.solid(i, values, &mut read).ok().flatten() else {
+                continue;
+            };
+            let mut min = [f64::INFINITY; 3];
+            let mut max = [f64::NEG_INFINITY; 3];
+            for p in piece.tris.iter().flatten() {
+                for k in 0..3 {
+                    min[k] = min[k].min(p[k]);
+                    max[k] = max[k].max(p[k]);
+                }
+            }
+            if min[0].is_finite() && max[0].is_finite() {
+                out.push(Shape { index: i, void: self.forms[i].void, min, max });
+            }
+        }
+        out
+    }
+
+    /// What's wrong with it, which a change may not go ahead with, and what's worth knowing, which
+    /// doesn't stop it: every finding, not only the first, so they're fixed in one go.
+    pub fn problems(&self, has_material: &dyn Fn(&str) -> bool) -> (Vec<String>, Vec<String>) {
+        validate::problems(self, has_material)
     }
 }
 
