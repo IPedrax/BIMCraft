@@ -2,7 +2,9 @@
 //! a test of the whole command set.
 
 mod highrise;
+pub mod tower;
 pub use highrise::highrise;
+pub use tower::tower;
 
 pub const SAMPLE: &str = r#"# Sample house: 10 x 7 m, four rooms under a hipped roof and their ceilings, furnished, dimensioned and tagged, with elevations, a section, and three sheets.
 new {"name": "Sample House"}
@@ -104,5 +106,18 @@ mod tests {
             assert!(s.execute("highrise", &json!({"storeys": size})).is_err());
             assert!(std::sync::Arc::ptr_eq(&before, &s.model));
         }
+    }
+
+    #[test]
+    fn tower_rejects_unbounded_sizes_without_replacing_the_project() {
+        let mut s = Session::new();
+        let before = s.model.clone();
+        for size in [json!(0), json!(101), json!(-1), json!(1.5), json!("20")] {
+            assert!(s.execute("tower", &json!({"storeys": size})).is_err(), "{size}");
+            assert!(std::sync::Arc::ptr_eq(&before, &s.model));
+        }
+        let e = s.execute("tower", &json!({"floors": 2})).unwrap_err();
+        assert!(e.contains("floors"), "{e}");
+        assert!(crate::bridge::REFUSED.contains(&"tower"), "a window's project isn't replaced from outside");
     }
 }

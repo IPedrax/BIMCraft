@@ -61,6 +61,13 @@ pub static ALL: &[Command] = &[
     other("open", "Open", "{path} a .bimcraft project", open),
     other("highrise", "Synthetic Highrise", "{storeys?: 20} replace the project with an original 1–80 storey performance sample", highrise),
     other(
+        "tower",
+        "Reference Tower",
+        "{storeys?: 100} replace the project with the original reference tower of 1–100 storeys, about 10,000 elements and \
+         195 rooms a storey: the baseline the core is measured on (docs/spatial-core-plan.md)",
+        tower,
+    ),
+    other(
         "autosave",
         ui_msg!("Autosave"),
         "{path} atomically write a recovery snapshot, keeping the project path and undo history",
@@ -4318,6 +4325,24 @@ fn highrise(s: &mut Session, p: &Value) -> R {
         return Err(bad("highrise", "`storeys` must be between 1 and 80"));
     }
     let model = crate::sample::highrise(storeys as u32)?;
+    let elements = model.elements.len();
+    s.reset(model, None);
+    Ok(json!({"storeys": storeys, "elements": elements}))
+}
+
+fn tower(s: &mut Session, p: &Value) -> R {
+    let c = "tower";
+    let params = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
+    if let Some(key) = params.keys().find(|k| k.as_str() != "storeys") {
+        return Err(bad(c, format!("unknown parameter `{key}`")));
+    }
+    let max = crate::sample::tower::MAX_STOREYS;
+    let storeys = count_opt(c, p, "storeys", max as usize)?;
+    let storeys = u32::try_from(storeys)
+        .ok()
+        .filter(|n| (1..=max).contains(n))
+        .ok_or_else(|| bad(c, format!("`storeys` must be between 1 and {max}")))?;
+    let model = crate::sample::tower(storeys)?;
     let elements = model.elements.len();
     s.reset(model, None);
     Ok(json!({"storeys": storeys, "elements": elements}))

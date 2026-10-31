@@ -23,7 +23,7 @@ pub const MAX_LINE: usize = 16 << 20;
 
 /// What a window's agent may not do to its project: replace it. It is the user's, and the window starts another or opens one by
 /// its own menus, which ask about unsaved changes first.
-pub const REFUSED: &[&str] = &["new", "open", "recover", "highrise"];
+pub const REFUSED: &[&str] = &["new", "open", "recover", "highrise", "tower"];
 
 /// The file the window leaves its port and token in, in the folder of the user's favorites.
 pub const FILE: &str = "bridge.json";
