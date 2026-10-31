@@ -13,7 +13,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::commands::{category, element_json};
+use crate::commands::{category, element_json_with};
+use crate::rooms::Rooms;
 use crate::family::{self, MAX_FORMULA};
 use crate::language::Language;
 use crate::model::{Element, Id, MAX_COORD, MAX_TEXT, Model, ParameterKind, Schedule};
@@ -525,12 +526,17 @@ pub fn fields(m: &Model, cat: &str) -> Vec<(String, Kind)> {
 /// Field `name` of element `id` as its category's schedule shows it (a length or an area in the project's units, a yes or no as
 /// `Yes` or `No`): what a tag shows. None where the element has no such field, or no value for it.
 pub fn field_text(m: &Model, id: impl crate::ids::Key, name: &str) -> Option<String> {
+    field_text_with(m, id, name, &Rooms::new(m))
+}
+
+/// [`field_text`], a room's boundary found among `rooms`.
+pub fn field_text_with(m: &Model, id: impl crate::ids::Key, name: &str, rooms: &Rooms) -> Option<String> {
     let id = m.elements.id(id)?;
     let e = m.elements.get(id)?;
     let cat = e.category();
     let kind = fields(m, cat).into_iter().find(|(n, _)| n == name)?.1;
     let formulas = BTreeMap::new();
-    let mut row = Row { m, e, cat, json: element_json(m, id), formulas: &formulas, done: BTreeMap::new() };
+    let mut row = Row { m, e, cat, json: element_json_with(m, id, rooms), formulas: &formulas, done: BTreeMap::new() };
     match row.get(name) {
         Value::Null => None,
         v => Some(shown(m.units, kind, &v)),
@@ -698,9 +704,10 @@ pub fn picks(m: &Model, cats: &[String], rules: &[Filter]) -> BTreeSet<Id> {
     let kinds: BTreeMap<&str, BTreeMap<String, Kind>> = cats.iter().map(|c| (c.as_str(), fields(m, c).into_iter().collect())).collect();
     let formulas = BTreeMap::new();
     let mut out = BTreeSet::new();
+    let rooms = Rooms::new(m);
     for (&id, e) in &m.elements {
         let Some(of) = kinds.get(e.category()) else { continue };
-        let mut row = Row { m, e, cat: e.category(), json: element_json(m, id), formulas: &formulas, done: BTreeMap::new() };
+        let mut row = Row { m, e, cat: e.category(), json: element_json_with(m, id, &rooms), formulas: &formulas, done: BTreeMap::new() };
         if rules.iter().all(|f| keeps(f, &row.get(&f.field), of.get(&f.field).copied(), m.units)) {
             out.insert(id);
         }
@@ -869,7 +876,8 @@ fn fine(x: f64) -> f64 {
 /// at each level it crosses, with its floor area there, its perimeter and the volume up to the next such level or its top.
 fn sources<'a>(m: &'a Model, cat: &str) -> Vec<(Id, &'a Element, Value)> {
     if cat != "massfloor" {
-        return m.elements.iter().filter(|(_, e)| e.category() == cat).map(|(id, e)| (*id, e, element_json(m, *id))).collect();
+        let rooms = Rooms::new(m);
+        return m.elements.iter().filter(|(_, e)| e.category() == cat).map(|(id, e)| (*id, e, element_json_with(m, *id, &rooms))).collect();
     }
     let mut out = Vec::new();
     for (&id, e) in &m.elements {

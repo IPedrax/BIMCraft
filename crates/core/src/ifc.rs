@@ -535,6 +535,7 @@ fn wall_quantities(m: &Model, wl: &crate::model::Wall, holes: &[(f64, f64, f64)]
 }
 
 pub fn export(m: &Model) -> String {
+    let rooms = crate::rooms::Rooms::new(m);
     let own = m.elements.with_guids().map(|(id, g, _)| (id, g)).collect();
     let mut w = Step {
         out: String::new(),
@@ -718,7 +719,7 @@ pub fn export(m: &Model) -> String {
                 let at = w.place(Some(storey), (0.0, 0.0, 0.0), None);
                 // A room that isn't enclosed has no shape to give.
                 let height = m.level_above(r.level).map_or(DEFAULT_HEIGHT, |up| m.elevation(up) - m.elevation(r.level));
-                let shape = match m.room_region(r) {
+                let shape = match rooms.region(r) {
                     Some(region) => {
                         let profile = w.profile(&region.outer, &region.holes);
                         format!("#{}", w.body(profile, 0.0, height, &[]))
@@ -732,7 +733,7 @@ pub fn export(m: &Model) -> String {
                     s(&r.name)
                 ));
                 // Its areas both ways: gross at the walls' centre lines, net at their faces.
-                if let (Some(gross), Some(net)) = (m.room_region_at(r, RoomArea::Centre), m.room_region_at(r, RoomArea::Finish)) {
+                if let (Some(gross), Some(net)) = (rooms.region_at(r, RoomArea::Centre), rooms.region_at(r, RoomArea::Finish)) {
                     let values = [
                         ("Height", "LENGTH", height),
                         ("GrossPerimeter", "LENGTH", gross.perimeter()),

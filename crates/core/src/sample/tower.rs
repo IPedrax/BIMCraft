@@ -23,28 +23,55 @@ use crate::model::{Element, Guid, Id, Level, Model};
 pub const MAX_STOREYS: u32 = 100;
 /// Floor to floor, mm.
 pub const STOREY: i64 = 4000;
-/// The plate, mm.
-pub const WIDTH: i64 = 84_000;
-pub const DEPTH: i64 = 60_000;
+
+/// A storey's plate, mm: a multiple of the 6 m bay each way, with room for the core's 4 × 8 m cells inside the rings (14 m
+/// in from the facade), each way 28 m and a multiple of 8 m more (so the lifts either side of the middle sit in cells).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Plate {
+    pub width: i64,
+    pub depth: i64,
+}
+
+impl Plate {
+    /// The reference: 84 × 60 m, 14 × 10 bays.
+    pub const REFERENCE: Plate = Plate { width: 84_000, depth: 60_000 };
+    /// The smallest the layout takes: 36 × 36 m, a core of two cells. A fixture tests can afford.
+    pub const SMALL: Plate = Plate { width: 36_000, depth: 36_000 };
+
+    fn check(self) -> Result<(), String> {
+        let fits = |n: i64, core: i64| n % 6000 == 0 && n >= 36_000 && n <= 600_000 && (n - 28_000) % core == 0;
+        if fits(self.width, 8000) && fits(self.depth, 8000) {
+            Ok(())
+        } else {
+            Err(format!("tower: a plate of {} × {} mm doesn't take the layout's bays and core", self.width, self.depth))
+        }
+    }
+}
 /// The ceilings' height over their level, mm.
 const CEILING: i64 = 2700;
 const INTERIOR: &str = "Interior - 100mm";
 
 /// The reference tower of `storeys` storeys (1 to [`MAX_STOREYS`]).
 pub fn tower(storeys: u32) -> Result<Model, String> {
+    tower_on(Plate::REFERENCE, storeys)
+}
+
+/// The tower's layout on another plate: smaller ones make fixtures that tests can afford.
+pub fn tower_on(plate: Plate, storeys: u32) -> Result<Model, String> {
     if !(1..=MAX_STOREYS).contains(&storeys) {
         return Err(format!("tower: `storeys` must be between 1 and {MAX_STOREYS}"));
     }
+    plate.check()?;
     let mut s = Session::new();
     run(&mut s, "new", json!({"name": "Reference Tower"}))?;
     families(&mut s)?;
-    structure(&mut s)?;
-    facade(&mut s)?;
-    partitions(&mut s)?;
-    offices(&mut s)?;
-    ring(&mut s)?;
-    core(&mut s)?;
-    services(&mut s)?;
+    structure(&mut s, plate)?;
+    facade(&mut s, plate)?;
+    partitions(&mut s, plate)?;
+    offices(&mut s, plate)?;
+    ring(&mut s, plate)?;
+    core(&mut s, plate)?;
+    services(&mut s, plate)?;
     run(&mut s, "tag", json!({}))?;
     run(&mut s, "tag", json!({"category": "room"}))?;
     stack(&s.model, storeys)
@@ -126,27 +153,34 @@ fn families(s: &mut Session) -> Result<(), String> {
 }
 
 /// The slab, a column at every grid crossing, a beam along every grid line, and the lift shafts.
-fn structure(s: &mut Session) -> Result<(), String> {
-    run(s, "floor", json!({"boundary": rect(0, 0, WIDTH, DEPTH), "structural": true}))?;
+fn structure(s: &mut Session, plate: Plate) -> Result<(), String> {
+    let (w, d) = (plate.width, plate.depth);
+    run(s, "floor", json!({"boundary": rect(0, 0, w, d), "structural": true}))?;
     let column = make(s, "structural_column", json!({"at": [0, 0], "height": STOREY}))?;
-    let row = array(s, column, [6000, 0], WIDTH / 6000 + 1)?;
-    array(s, row, [0, 6000], DEPTH / 6000 + 1)?;
-    for y in (0..=DEPTH).step_by(6000) {
-        run(s, "beam", json!({"points": line([0, y], [WIDTH, y], 6000), "offset": STOREY}))?;
+    let row = array(s, column, [6000, 0], w / 6000 + 1)?;
+    array(s, row, [0, 6000], d / 6000 + 1)?;
+    for y in (0..=d).step_by(6000) {
+        run(s, "beam", json!({"points": line([0, y], [w, y], 6000), "offset": STOREY}))?;
     }
-    for x in (0..=WIDTH).step_by(6000) {
-        run(s, "beam", json!({"points": line([x, 0], [x, DEPTH], 6000), "offset": STOREY}))?;
+    for x in (0..=w).step_by(6000) {
+        run(s, "beam", json!({"points": line([x, 0], [x, d], 6000), "offset": STOREY}))?;
     }
-    // Four lifts in the core's middle cells.
-    for (cx, cy) in [(40_000, 26_000), (44_000, 26_000), (40_000, 34_000), (44_000, 34_000)] {
+    // Four lifts in the core's middle cells: the two middle rows' (or its one row's), either side of the middle.
+    let rows = (d - 28_000) / 8000;
+    let middle = |r: i64| 18_000 + 8000 * r;
+    let (low, high) = (middle((rows / 2 - 1).max(0)), middle(rows / 2).min(middle(rows - 1)));
+    let lifts = [(w / 2 - 2000, low), (w / 2 + 2000, low), (w / 2 - 2000, high), (w / 2 + 2000, high)];
+    let lifts: std::collections::BTreeSet<(i64, i64)> = lifts.into_iter().collect();
+    for (cx, cy) in lifts {
         run(s, "shaft", json!({"boundary": rect(cx - 1300, cy - 1300, cx + 1300, cy + 1300), "height": STOREY}))?;
     }
     Ok(())
 }
 
 /// The facade, clockwise: 3 m panels, each with two windows.
-fn facade(s: &mut Session) -> Result<(), String> {
-    for (a, b) in [([0, 0], [0, DEPTH]), ([0, DEPTH], [WIDTH, DEPTH]), ([WIDTH, DEPTH], [WIDTH, 0]), ([WIDTH, 0], [0, 0])] {
+fn facade(s: &mut Session, plate: Plate) -> Result<(), String> {
+    let (w, d) = (plate.width, plate.depth);
+    for (a, b) in [([0, 0], [0, d]), ([0, d], [w, d]), ([w, d], [w, 0]), ([w, 0], [0, 0])] {
         let length = (b[0] - a[0]).abs() + (b[1] - a[1]).abs();
         let u = [(b[0] - a[0]).signum(), (b[1] - a[1]).signum()];
         let at = |d: i64| [a[0] + u[0] * d, a[1] + u[1] * d];
@@ -159,8 +193,8 @@ fn facade(s: &mut Session) -> Result<(), String> {
 }
 
 /// The walls inside: the corridor's two rings, the core, and the walls between rooms.
-fn partitions(s: &mut Session) -> Result<(), String> {
-    let (w, d) = (WIDTH, DEPTH);
+fn partitions(s: &mut Session, plate: Plate) -> Result<(), String> {
+    let (w, d) = (plate.width, plate.depth);
     closed(s, 6000, 6000, w - 6000, d - 6000)?;
     closed(s, 8000, 8000, w - 8000, d - 8000)?;
     closed(s, 14_000, 14_000, w - 14_000, d - 14_000)?;
@@ -256,9 +290,9 @@ impl Row {
 }
 
 /// The four sides' rows of 3 m offices, 6 m deep, and their doors onto the corridor.
-fn offices(s: &mut Session) -> Result<(), String> {
+fn offices(s: &mut Session, plate: Plate) -> Result<(), String> {
     use Item::*;
-    let (w, d) = (WIDTH, DEPTH);
+    let (w, d) = (plate.width, plate.depth);
     let office = [
         Room("Office", 1500, 3000),
         Ceiling(1500, 3000),
@@ -299,9 +333,9 @@ fn offices(s: &mut Session) -> Result<(), String> {
 }
 
 /// The ring of meeting rooms round the core, and their doors onto the corridor.
-fn ring(s: &mut Session) -> Result<(), String> {
+fn ring(s: &mut Session, plate: Plate) -> Result<(), String> {
     use Item::*;
-    let (w, d) = (WIDTH, DEPTH);
+    let (w, d) = (plate.width, plate.depth);
     let meeting = [
         Room("Meeting", 2000, 3000),
         Ceiling(2000, 3000),
@@ -329,9 +363,9 @@ fn ring(s: &mut Session) -> Result<(), String> {
 }
 
 /// The core's service rooms, 4 × 8 m, in rows: the outer rows open onto the meeting rooms, the inner ones onto the outer.
-fn core(s: &mut Session) -> Result<(), String> {
+fn core(s: &mut Session, plate: Plate) -> Result<(), String> {
     use Item::*;
-    let (w, d) = (WIDTH, DEPTH);
+    let (w, d) = (plate.width, plate.depth);
     let service = [
         Room("Service", 2000, 4000),
         Ceiling(2000, 4000),
@@ -355,14 +389,17 @@ fn core(s: &mut Session) -> Result<(), String> {
     let top = d - 14_000;
     Row { origin: [14_000, 14_000], along: [1, 0], inward: [0, 1], turn: 0.0 }.doors(s, 1000, 0, 4000, count)?;
     Row { origin: [14_000, top], along: [1, 0], inward: [0, 1], turn: 0.0 }.doors(s, 1000, 0, 4000, count)?;
-    Row { origin: [14_000, 22_000], along: [1, 0], inward: [0, 1], turn: 0.0 }.doors(s, 2000, 0, 4000, count)?;
-    Row { origin: [14_000, top - 8000], along: [1, 0], inward: [0, 1], turn: 0.0 }.doors(s, 2000, 0, 4000, count)?;
+    // With three rows or more, the inner ones open onto the outer ones.
+    if (d - 28_000) / 8000 >= 3 {
+        Row { origin: [14_000, 22_000], along: [1, 0], inward: [0, 1], turn: 0.0 }.doors(s, 2000, 0, 4000, count)?;
+        Row { origin: [14_000, top - 8000], along: [1, 0], inward: [0, 1], turn: 0.0 }.doors(s, 2000, 0, 4000, count)?;
+    }
     Ok(())
 }
 
 /// What runs above the ceilings over the whole plate.
-fn services(s: &mut Session) -> Result<(), String> {
-    let (w, d) = (WIDTH, DEPTH);
+fn services(s: &mut Session, plate: Plate) -> Result<(), String> {
+    let (w, d) = (plate.width, plate.depth);
     let component = |family: &str, at: [i64; 2], offset: i64| json!({"family": family, "at": at, "offset": offset});
     // Luminaires on a 2.4 m grid, each with its junction box; a conduit along each row.
     let (nx, ny) = (w / 2400, d / 2400);
@@ -512,12 +549,29 @@ mod tests {
         // The corridor runs round the inner block, an island of it: between the two rings' centre lines.
         let corridor = all.iter().find(|r| r.name == "Corridor").unwrap();
         let area = m.room_region(corridor).unwrap().area();
-        let ring = (WIDTH - 12_000) * (DEPTH - 12_000) - (WIDTH - 16_000) * (DEPTH - 16_000);
+        let Plate { width, depth } = Plate::REFERENCE;
+        let ring = (width - 12_000) * (depth - 12_000) - (width - 16_000) * (depth - 16_000);
         assert!((area - ring as f64).abs() < 1e3, "{area} mm² against {ring}");
     }
 
     #[test]
-    fn a_tower_is_one_to_a_hundred_storeys() {
+    fn a_tower_is_one_to_a_hundred_storeys_on_a_plate_its_layout_fits() {
         assert!(tower(0).is_err() && tower(MAX_STOREYS + 1).is_err());
+        for (width, depth) in [(30_000, 36_000), (36_000, 42_000), (36_000, 30_000), (0, 0), (-36_000, 36_000), (606_000, 36_000)] {
+            assert!(tower_on(Plate { width, depth }, 1).is_err(), "{width} × {depth}");
+        }
+    }
+
+    #[test]
+    fn a_small_tower_has_the_same_layout() {
+        let m = tower_on(Plate::SMALL, 2).unwrap();
+        m.check().unwrap();
+        let all = rooms(&m);
+        // Offices: 12 a side and 8 an end; the corridor; meeting rooms: 5 a side, 2 an end; 2 in the core.
+        assert_eq!(all.len(), 2 * (40 + 1 + 14 + 2));
+        for r in &all {
+            assert!(m.room_region(r).is_some(), "room {} ({}) isn't enclosed", r.number, r.name);
+        }
+        assert_eq!(m.elements.values().filter(|e| e.category() == "shaft").count(), 2 * 2);
     }
 }

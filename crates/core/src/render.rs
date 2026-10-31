@@ -861,7 +861,7 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
     (d.weights, d.paper) = (m.line_weights().at(n), paper_of(n, view.scale));
     match e {
         Element::Dimension(dm) => dimension(&mut d, m, dm),
-        Element::Tag(t) => tag(&mut d, m, t),
+        Element::Tag(t) => tag(&mut d, m, t, &crate::rooms::Rooms::new(m)),
         Element::Text(n) => note(&mut d, m, n),
         Element::DetailLine(l) => detail_line(&mut d, m, l),
         Element::FilledRegion(r) => filled_region(&mut d, m, r),
@@ -1753,8 +1753,8 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     let crop = m.shown_crop(key).filter(|_| !up);
     // Cropped, annotation shows whole while its anchor is inside the crop, and not at all outside it.
     let inside = |p: P2| crop.is_none_or(|[lo, hi]| (lo.0..=hi.0).contains(&p.0) && (lo.1..=hi.1).contains(&p.1));
-    // Every room of the level is found among the same lines, which take each wall's joins and heights to find.
-    let bounding = std::cell::OnceCell::new();
+    // Every room of the level is found among the same lines, which take each wall's joins and heights to find: once.
+    let rooms = crate::rooms::Rooms::new(m);
     // Bars seen from above that lie where another was drawn (a column's stirrups, up its height) are drawn once.
     let mut bars_seen: std::collections::HashSet<Vec<(i64, i64)>> = std::collections::HashSet::new();
     for (&id, e) in m.elements.iter().filter(|(id, _)| shown(**id)) {
@@ -1767,8 +1767,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
                 }
             }
             Element::Room(r) if r.level == level && inside(r.point) && !up => {
-                let lines = bounding.get_or_init(|| m.room_lines(level, m.room_area));
-                let area = geom::region_at(lines, r.point, TOL).map_or_else(
+                let area = rooms.loop_at(r.level, m.room_area, r.point).map_or_else(
                     || m.language.word(msg!("NOT ENCLOSED")).to_string(),
                     |g| {
                         let (area, unit) = m.units.area(g.area());
@@ -1874,7 +1873,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
                     && m.elements.id(t.host).is_some_and(shown)
                     && m.anchor(t.host).is_some_and(|a| inside(a + t.offset)) =>
             {
-                tag(&mut d, m, t)
+                tag(&mut d, m, t, &rooms)
             }
             Element::Text(n) if m.annotation_in(e, key) && inside(n.at) => note(&mut d, m, n),
             Element::DetailLine(l) if m.annotation_in(e, key) => detail_line(&mut d, m, l),
@@ -2994,13 +2993,13 @@ fn height(units: Units, z: f64) -> String {
 
 /// A tag: a door's mark in a box, a window's in a hexagon, over a paper fill; any other element's label as plain
 /// text over a paper fill; with a leader, a line to the point it names.
-fn tag(d: &mut Drawing, m: &Model, t: &Tag) {
+fn tag(d: &mut Drawing, m: &Model, t: &Tag, rooms: &crate::rooms::Rooms) {
     let Some(anchor) = m.anchor(t.host) else { return };
     let head = anchor + t.offset;
     if t.leader {
         d.line(&[anchor, head], Pen::PROJECTION, INK, false);
     }
-    let text = m.tag_text(t);
+    let text = m.tag_text_with(t, rooms);
     let (x, y) = d.view.px(head);
     let from = d.prims.len();
     let (w, h) = ((font::width(&text, 10.0) / 2.0 + 5.0).max(8.0), 8.0);

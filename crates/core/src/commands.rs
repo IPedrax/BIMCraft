@@ -1962,6 +1962,11 @@ fn next_grid_name(m: &Model) -> String {
 
 /// An element as agents read it: its fields (what it points at by GUID) plus its `id`, its `guid` and derived values.
 pub fn element_json(m: &Model, id: Id) -> Value {
+    element_json_with(m, id, &crate::rooms::Rooms::new(m))
+}
+
+/// [`element_json`], a room's boundary found among `rooms`: what one look at many elements shares.
+pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Value {
     let Some(e) = m.elements.get(id) else { return Value::Null };
     let mut extra = Map::new();
     extra.insert("id".into(), json!(id));
@@ -2121,7 +2126,7 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             extra.insert("looking".into(), json!([l.0 + 0.0, l.1 + 0.0]));
         }
         Element::Tag(t) => {
-            extra.insert("text".into(), json!(m.tag_text(t)));
+            extra.insert("text".into(), json!(m.tag_text_with(t, rooms)));
             extra.insert("level".into(), json!(m.level_of(e)));
             extra.insert("at".into(), json!(m.anchor(t.host).map(|a| a + t.offset)));
         }
@@ -2162,7 +2167,7 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             extra.insert("levels".into(), json!(m.mass_slices(ms).iter().map(|(l, _, _)| *l).collect::<Vec<Id>>()));
         }
         Element::Room(r) => {
-            let region = m.room_region(r);
+            let region = rooms.region(r);
             extra.insert("enclosed".into(), json!(region.is_some()));
             extra.insert("area_m2".into(), json!(region.as_ref().map_or(0.0, |g| m2(g.area()))));
             extra.insert("perimeter_m".into(), json!(region.as_ref().map_or(0.0, |g| (g.perimeter() / 10.0).round() / 100.0)));
@@ -10090,11 +10095,12 @@ fn inspect(s: &mut Session, _: &Value) -> R {
         *counts.entry(e.category()).or_default() += 1;
     }
     let levels: Vec<Value> = m.levels().iter().map(|(id, l)| json!({"id": id, "name": l.name, "elevation": l.elevation})).collect();
+    let rooms = crate::rooms::Rooms::new(m);
     let warnings: Vec<String> = m
         .elements
         .iter()
         .filter_map(|(id, e)| match e {
-            Element::Room(r) if m.room_region(r).is_none() => {
+            Element::Room(r) if rooms.region(r).is_none() => {
                 Some(format!("room {id} ({} {}) is not enclosed: the walls around it no longer close", r.number, r.name))
             }
             _ => None,
@@ -10123,6 +10129,7 @@ fn elements(s: &mut Session, p: &Value) -> R {
         .filter(|(_, e)| level.is_none_or(|l| m.level_of(e) == Some(l)))
         .map(|(id, _)| *id)
         .collect();
-    let page: Vec<Value> = hits.iter().skip(offset).take(limit).map(|id| element_json(m, *id)).collect();
+    let rooms = crate::rooms::Rooms::new(m);
+    let page: Vec<Value> = hits.iter().skip(offset).take(limit).map(|id| element_json_with(m, *id, &rooms)).collect();
     Ok(json!({"count": hits.len(), "returned": page.len(), "elements": page}))
 }

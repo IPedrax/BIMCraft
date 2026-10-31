@@ -236,7 +236,7 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> (Vec<Arm>, bo
     let mut arms = vec![arm(m, w, at_end, true)];
     let mut through = false;
     let candidates: Box<dyn Iterator<Item = (Id, &Wall)> + '_> = match index {
-        Some(index) => Box::new(index.neighbours(id).into_iter().filter_map(|id| Some((id, m.wall(id)?)))),
+        Some(index) => Box::new(index.neighbours_at(id, node).into_iter().filter_map(|id| Some((id, m.wall(id)?)))),
         None => Box::new(m.elements.iter().filter_map(|(&id, e)| match e {
             Element::Wall(w) => Some((id, w)),
             _ => None,
@@ -313,11 +313,16 @@ fn cap_in(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> Vec<P2> {
 /// Wall `id`'s centre line, an arc as chords: each end it joins others at run on (or back) to the
 /// nearest of their centre lines, so rooms close at the centre lines whatever line walls stand on.
 pub fn centre_line(m: &Model, id: Id) -> Vec<P2> {
+    centre_line_in(m, id, None)
+}
+
+/// [`centre_line`], its joins found through `index` when there is one.
+pub(crate) fn centre_line_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<P2> {
     let Some(w) = m.wall(id) else { return Vec::new() };
     let axis = Axis::of(w);
     let mut line = axis.points(0.0, axis.length(), centre(m, w));
     for at_end in [false, true] {
-        let (arms, _) = arms(m, id, at_end, None);
+        let (arms, _) = arms(m, id, at_end, index);
         let Some(me) = arms.iter().find(|a| a.mine) else { continue };
         let reach = 2.0 * arms.iter().map(|a| a.thick).fold(1.0, f64::max);
         let crossing = arms

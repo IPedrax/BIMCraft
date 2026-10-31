@@ -3960,8 +3960,16 @@ impl Model {
     /// What a tag shows: the field of its host it names (as a schedule shows it, in the project's units), `?` while that has no
     /// value (a door's mark before it has one).
     pub fn tag_text(&self, t: &Tag) -> String {
+        self.tag_text_with(t, &crate::rooms::Rooms::new(self))
+    }
+
+    /// [`Model::tag_text`], a room's boundary found among `rooms`.
+    pub fn tag_text_with(&self, t: &Tag, rooms: &crate::rooms::Rooms) -> String {
         let field = t.label.clone().or_else(|| self.elements.get(t.host).map(|e| Tag::usual(e.category()).to_string()));
-        field.and_then(|f| crate::schedule::field_text(self, t.host, &f)).filter(|s| !s.trim().is_empty()).unwrap_or_else(|| "?".into())
+        field
+            .and_then(|f| crate::schedule::field_text_with(self, t.host, &f, rooms))
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "?".into())
     }
 
     /// The line `r` measures to, or why there is none. A straight wall's lines reach as far as its
@@ -4474,7 +4482,12 @@ impl Model {
     /// separation line drawn to a wall's face, as one drawn on a plan usually is, runs on to the wall's centre line, so it
     /// splits rooms measured there too.
     pub fn bounding_lines(&self, level: impl Key) -> Vec<(P2, P2)> {
-        let walls = self.wall_segments(level);
+        self.bounding_lines_in(level, Some(&walls::Index::new(self)))
+    }
+
+    /// [`Model::bounding_lines`], the walls' joins found through `index`, or among every wall without one.
+    pub(crate) fn bounding_lines_in(&self, level: impl Key, index: Option<&walls::Index>) -> Vec<(P2, P2)> {
+        let walls = self.wall_segments(&level, index);
         let mut lines: Vec<(P2, P2)> = walls.iter().map(|&(a, b, _)| (a, b)).collect();
         lines.extend(self.separators(level).into_iter().map(|(a, b)| (to_centre(b, a, &walls), to_centre(a, b, &walls))));
         lines
@@ -4482,19 +4495,20 @@ impl Model {
 
     /// Centre lines of the walls that bound the rooms of `level`, arcs as chords.
     pub fn wall_lines(&self, level: impl Key) -> Vec<(P2, P2)> {
-        self.wall_segments(level).into_iter().map(|(a, b, _)| (a, b)).collect()
+        self.wall_segments(&level, Some(&walls::Index::new(self))).into_iter().map(|(a, b, _)| (a, b)).collect()
+    }
+
+    /// The walls that bound the rooms of `level`, by id.
+    pub(crate) fn bounding_walls<'a>(&'a self, level: &'a impl Key) -> impl Iterator<Item = Id> + 'a {
+        self.elements.iter().filter(move |(_, e)| matches!(e, Element::Wall(w) if self.bounding(w, level))).map(|(&id, _)| id)
     }
 
     /// The segments of [`Model::wall_lines`], each with half its wall's thickness.
-    fn wall_segments(&self, level: impl Key) -> Vec<(P2, P2, f64)> {
-        self.elements
-            .iter()
-            .filter_map(|(&id, e)| match e {
-                Element::Wall(w) if self.bounding(w, level) => Some((id, self.thickness(w) / 2.0)),
-                _ => None,
-            })
+    fn wall_segments(&self, level: &impl Key, index: Option<&walls::Index>) -> Vec<(P2, P2, f64)> {
+        self.bounding_walls(level)
+            .filter_map(|id| Some((id, self.thickness(self.wall(id)?) / 2.0)))
             .flat_map(|(id, half)| {
-                let line = walls::centre_line(self, id);
+                let line = walls::centre_line_in(self, id, index);
                 line.windows(2).filter_map(|s| s.first().zip(s.get(1)).map(|(a, b)| (*a, *b, half))).collect::<Vec<_>>()
             })
             .collect()
@@ -4503,11 +4517,11 @@ impl Model {
     /// The faces of the walls that bound the rooms of `level`: the edges of their outlines. Room separation lines
     /// aren't among them: a floor or a ceiling picked inside the walls runs past them.
     pub fn face_lines(&self, level: impl Key) -> Vec<(P2, P2)> {
-        self.elements
-            .iter()
-            .filter(|(_, e)| matches!(e, Element::Wall(w) if self.bounding(w, level)))
-            .flat_map(|(&id, _)| geom::ring_edges(&walls::outline(self, id)).collect::<Vec<_>>())
-            .collect()
+        self.face_lines_in(level, Some(&walls::Index::new(self)))
+    }
+
+    pub(crate) fn face_lines_in(&self, level: impl Key, index: Option<&walls::Index>) -> Vec<(P2, P2)> {
+        self.bounding_walls(&level).flat_map(|id| geom::ring_edges(&walls::outline_in(self, id, index)).collect::<Vec<_>>()).collect()
     }
 
     /// The room separation lines on `level`.
@@ -4522,7 +4536,7 @@ impl Model {
     }
 
     /// A room's boundary, from the walls around its point, where the project measures rooms (`room_area`). `None` when it
-    /// isn't enclosed.
+    /// isn't enclosed. To ask about many rooms, ask one [`Rooms`](crate::rooms::Rooms): it finds each level's once.
     pub fn room_region(&self, r: &Room) -> Option<Region> {
         self.room_region_at(r, self.room_area)
     }
@@ -4530,32 +4544,26 @@ impl Model {
     /// A room's boundary measured at `at`: the walls' centre lines (Revit's "At wall centerline") or their faces ("At wall
     /// finish": the area inside the walls, which Brazilian codes call área útil).
     pub fn room_region_at(&self, r: &Room, at: RoomArea) -> Option<Region> {
-        if self.wall_holding(r, at).is_some() {
-            return None;
-        }
-        geom::region_at(&self.room_lines(r.level, at), r.point, TOL)
+        crate::rooms::Rooms::new(self).region_at(r, at)
     }
 
     /// The room-bounding wall whose body a room's point lies in, when rooms are measured at `at` the finish faces. There the
     /// faces of a wall close its body into a loop of its own, so a point inside a wall would make a room of the wall. At the
     /// centre lines nothing closes a wall's body, so there is nothing to refuse.
     pub fn wall_holding(&self, r: &Room, at: RoomArea) -> Option<Id> {
-        if at != RoomArea::Finish {
-            return None;
-        }
-        self.elements
-            .iter()
-            .filter(|(_, e)| matches!(e, Element::Wall(w) if self.bounding(w, r.level)))
-            .find(|&(&id, _)| geom::contains(&walls::outline(self, id), r.point))
-            .map(|(&id, _)| id)
+        crate::rooms::Rooms::new(self).holding(r, at)
     }
 
     /// The lines rooms on `level` are found among, measured at `at`.
     pub fn room_lines(&self, level: impl Key, at: RoomArea) -> Vec<(P2, P2)> {
+        self.room_lines_in(level, at, Some(&walls::Index::new(self)))
+    }
+
+    pub(crate) fn room_lines_in(&self, level: impl Key, at: RoomArea, index: Option<&walls::Index>) -> Vec<(P2, P2)> {
         match at {
-            RoomArea::Centre => self.bounding_lines(level),
+            RoomArea::Centre => self.bounding_lines_in(level, index),
             RoomArea::Finish => {
-                let mut lines = self.face_lines(level);
+                let mut lines = self.face_lines_in(&level, index);
                 lines.extend(self.separators(level));
                 lines
             }
