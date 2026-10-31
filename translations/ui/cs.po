@@ -637,7 +637,7 @@ msgstr "Zpět na výchozí pera projektu"
 msgid "Back to the project ({}D)"
 msgstr "Zpět do projektu ({}D)"
 
-#: crates/ui-egui/src/fillpatterns.rs:719
+#: crates/ui-egui/src/fillpatterns.rs:723
 msgid "Back to the type"
 msgstr "Zpět na typ"
 
@@ -1870,7 +1870,7 @@ msgstr "Pouze aktuální pohled"
 msgid "Curve preview"
 msgstr "Náhled křivky"
 
-#: crates/ui-egui/src/fillpatterns.rs:608
+#: crates/ui-egui/src/fillpatterns.rs:612
 #: crates/ui-egui/src/footer.rs:289
 msgid "Custom"
 msgstr "Vlastní"
@@ -1977,7 +1977,7 @@ msgstr "Výchozí tloušťka"
 #: crates/ui-egui/src/editor.rs:777
 #: crates/ui-egui/src/editor.rs:847
 #: crates/ui-egui/src/fillpatterns.rs:398
-#: crates/ui-egui/src/fillpatterns.rs:577
+#: crates/ui-egui/src/fillpatterns.rs:581
 #: crates/ui-egui/src/graphics.rs:407
 #: crates/ui-egui/src/graphics.rs:499
 #: crates/ui-egui/src/linestyles/creator.rs:170
@@ -2306,7 +2306,7 @@ msgstr "Stahování BIMCraft {}…"
 msgid "Downloads and checks the update; BIMCraft then closes, updates and starts again."
 msgstr "Stáhne a ověří aktualizaci; BIMCraft se poté zavře, zaktualizuje a znovu spustí."
 
-#: crates/ui-egui/src/fillpatterns.rs:544
+#: crates/ui-egui/src/fillpatterns.rs:547
 msgid "Drafting"
 msgstr "Výkresové"
 
@@ -2366,7 +2366,7 @@ msgstr "Duplikovat s detaily"
 msgid "Duplicate…"
 msgstr "Duplikovat…"
 
-#: crates/ui-egui/src/fillpatterns.rs:571
+#: crates/ui-egui/src/fillpatterns.rs:574
 msgid "Each line's angle, origin and spacing"
 msgstr ""
 
@@ -2427,8 +2427,8 @@ msgstr "Upravit rodinu"
 msgid "Edit Family: the family of what is selected, or of the component being placed"
 msgstr "Upravit rodinu: rodina vybraného prvku nebo právě umísťované komponenty"
 
-#: crates/ui-egui/src/fillpatterns.rs:524
-#: crates/ui-egui/src/fillpatterns.rs:571
+#: crates/ui-egui/src/fillpatterns.rs:527
+#: crates/ui-egui/src/fillpatterns.rs:574
 msgid "Edit Lines"
 msgstr "Upravit čáry"
 
@@ -2589,7 +2589,7 @@ msgstr "Rozložit křivku (EX): rozdělení křivky na jednotlivé úsečky nebo
 msgid "Export"
 msgstr "Exportovat"
 
-#: crates/ui-egui/src/fillpatterns.rs:621
+#: crates/ui-egui/src/fillpatterns.rs:625
 msgid "Export..."
 msgstr "Exportovat..."
 
@@ -2626,7 +2626,7 @@ msgstr "Nepodařilo se přečíst soubor: {}"
 msgid "Families"
 msgstr "Rodiny"
 
-#: crates/ui-egui/src/fillpatterns.rs:519
+#: crates/ui-egui/src/fillpatterns.rs:520
 msgid "Families of parallel lines: drafting ones mm on paper, the same at any scale; model ones mm in the building."
 msgstr "Skupiny rovnoběžných čar: výkresové v mm na papíře, stejné v libovolném měřítku; modelové v mm v budově."
 
@@ -2687,7 +2687,7 @@ msgstr "Soubor"
 msgid "Files"
 msgstr "Soubory"
 
-#: crates/ui-egui/src/fillpatterns.rs:702
+#: crates/ui-egui/src/fillpatterns.rs:706
 msgid "Fill Patterns"
 msgstr "Vzory výplně"
 
@@ -2699,12 +2699,12 @@ msgstr ""
 msgid "Fill color"
 msgstr "Barva výplně"
 
-#: crates/ui-egui/src/fillpatterns.rs:760
 #: crates/ui-egui/src/fillpatterns.rs:764
+#: crates/ui-egui/src/fillpatterns.rs:768
 msgid "Fill patterns"
 msgstr "Vzory výplně"
 
-#: crates/ui-egui/src/fillpatterns.rs:921
+#: crates/ui-egui/src/fillpatterns.rs:925
 msgid "Fill patterns exported to {}"
 msgstr "Vzory výplně byly exportovány do {}"
 
@@ -2814,7 +2814,7 @@ msgstr "Líc povrchové úpravy: Interiér"
 msgid "Finish or cancel the sketch before leaving its plan."
 msgstr "Před opuštěním půdorysu dokončete nebo zrušte náčrt."
 
-#: crates/ui-egui/src/fillpatterns.rs:776
+#: crates/ui-egui/src/fillpatterns.rs:780
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr ""
 
@@ -3326,11 +3326,11 @@ msgstr ""
 msgid "Import units"
 msgstr "Jednotky importu"
 
-#: crates/ui-egui/src/fillpatterns.rs:624
+#: crates/ui-egui/src/fillpatterns.rs:628
 msgid "Import..."
 msgstr "Importovat..."
 
-#: crates/ui-egui/src/fillpatterns.rs:628
+#: crates/ui-egui/src/fillpatterns.rs:632
 msgid "Import: a pattern of the file replaces the one of its name in this list; unchecked, it is left out"
 msgstr ""
 
@@ -3826,7 +3826,7 @@ msgstr ""
 msgid "Long Dash"
 msgstr "Dlouhá čárkovaná"
 
-#: crates/ui-egui/src/fillpatterns.rs:607
+#: crates/ui-egui/src/fillpatterns.rs:611
 msgid "Made of detail lines picked in the plan, repeating the rectangle between two corners"
 msgstr ""
 
@@ -4024,7 +4024,7 @@ msgstr "Zrcadleno"
 msgid "Mode"
 msgstr "Režim"
 
-#: crates/ui-egui/src/fillpatterns.rs:545
+#: crates/ui-egui/src/fillpatterns.rs:548
 msgid "Model"
 msgstr "Model"
 
@@ -4175,7 +4175,7 @@ msgstr "Nová rodina: vytvořte vlastní rodinu dané kategorie a upravte její 
 msgid "New Filter"
 msgstr "Nový filtr"
 
-#: crates/ui-egui/src/fillpatterns.rs:604
+#: crates/ui-egui/src/fillpatterns.rs:608
 #: crates/ui-egui/src/linestyles.rs:224
 msgid "New Pattern"
 msgstr "Nový vzor"
@@ -4212,7 +4212,7 @@ msgstr "Nová čára {}"
 msgid "New name"
 msgstr "Nový název"
 
-#: crates/ui-egui/src/fillpatterns.rs:941
+#: crates/ui-egui/src/fillpatterns.rs:945
 msgid "New pattern from lines"
 msgstr ""
 
@@ -4435,7 +4435,7 @@ msgstr ""
 msgid "Open Recent"
 msgstr "Otevřít nedávné"
 
-#: crates/ui-egui/src/fillpatterns.rs:778
+#: crates/ui-egui/src/fillpatterns.rs:782
 msgid "Open a plan to pick the pattern's lines in: detail lines are drawn in plans."
 msgstr ""
 
@@ -4590,7 +4590,7 @@ msgstr "Palety"
 msgid "Paper sizes, sheet borders, filing margins, title blocks, and folding specifications."
 msgstr ""
 
-#: crates/ui-egui/src/fillpatterns.rs:606
+#: crates/ui-egui/src/fillpatterns.rs:610
 msgid "Parallel lines at an angle and a spacing, crosshatched or not"
 msgstr ""
 
@@ -4651,7 +4651,7 @@ msgid "Patch Panels"
 msgstr "Propojovací panely"
 
 #: crates/ui-egui/src/fillpatterns.rs:263
-#: crates/ui-egui/src/fillpatterns.rs:614
+#: crates/ui-egui/src/fillpatterns.rs:618
 #: crates/ui-egui/src/linestyles.rs:226
 msgid "Pattern"
 msgstr "Vzor"
@@ -4668,7 +4668,7 @@ msgstr "Grafika vzoru"
 msgid "Pattern Name"
 msgstr "Název vzoru"
 
-#: crates/ui-egui/src/fillpatterns.rs:948
+#: crates/ui-egui/src/fillpatterns.rs:952
 msgid "Pattern preview"
 msgstr ""
 
@@ -4680,7 +4680,7 @@ msgstr "Vzory"
 msgid "Patterns appear in plans, ceiling plans, section cuts and filled regions."
 msgstr "Vzory se zobrazují v půdorysech, půdorysech podhledů, řezech a vyplněných oblastech."
 
-#: crates/ui-egui/src/fillpatterns.rs:624
+#: crates/ui-egui/src/fillpatterns.rs:628
 msgid "Patterns from a PAT file, AutoCAD's and Revit's"
 msgstr "Vzory ze souboru PAT, z AutoCADu a Revitu"
 
@@ -4763,7 +4763,7 @@ msgstr "Fázování"
 msgid "Phasing (PH): the project's phases in order, the phase filters that show them, and how a filter draws each"
 msgstr "Fázování (PH): fáze projektu v pořadí, filtry fází, které je zobrazují, a způsob zobrazení jednotlivých fází filtrem"
 
-#: crates/ui-egui/src/fillpatterns.rs:982
+#: crates/ui-egui/src/fillpatterns.rs:986
 msgid "Pick Again"
 msgstr ""
 
@@ -4871,7 +4871,7 @@ msgstr "Vyberte zvýrazněnou čáru náčrtu pro posun a otočení k referenci;
 msgid "Pick the line to trim or extend to: a line, a wall or a grid."
 msgstr "Vyberte čáru, ke které se má oříznout nebo prodloužit: čáru, stěnu nebo osnovu."
 
-#: crates/ui-egui/src/fillpatterns.rs:566
+#: crates/ui-egui/src/fillpatterns.rs:569
 msgid "Pick the lines and the tile's corners again: the pattern keeps its name"
 msgstr ""
 
@@ -5448,8 +5448,8 @@ msgstr "Obdélník"
 msgid "Rectangle: four lines between two opposite corners"
 msgstr "Obdélník: čtyři čáry mezi dvěma protilehlými rohy"
 
-#: crates/ui-egui/src/fillpatterns.rs:524
-#: crates/ui-egui/src/fillpatterns.rs:567
+#: crates/ui-egui/src/fillpatterns.rs:527
+#: crates/ui-egui/src/fillpatterns.rs:570
 msgid "Redefine"
 msgstr ""
 
@@ -5585,7 +5585,7 @@ msgstr ""
 msgid "Replace With Text:"
 msgstr ""
 
-#: crates/ui-egui/src/fillpatterns.rs:627
+#: crates/ui-egui/src/fillpatterns.rs:631
 msgid "Replace imported by same name"
 msgstr ""
 
@@ -5766,7 +5766,7 @@ msgstr "Výkres SVG"
 msgid "Same as start"
 msgstr "Stejné jako začátek"
 
-#: crates/ui-egui/src/fillpatterns.rs:533
+#: crates/ui-egui/src/fillpatterns.rs:536
 msgid "Sample"
 msgstr "Vzorek"
 
@@ -5994,7 +5994,7 @@ msgstr ""
 msgid "Select fill pattern lines then press Enter"
 msgstr ""
 
-#: crates/ui-egui/src/fillpatterns.rs:806
+#: crates/ui-egui/src/fillpatterns.rs:810
 msgid "Select the detail lines the pattern is made of, then press Enter."
 msgstr ""
 
@@ -6172,7 +6172,7 @@ msgstr "Parapet"
 msgid "Sill Height"
 msgstr "Výška parapetu"
 
-#: crates/ui-egui/src/fillpatterns.rs:606
+#: crates/ui-egui/src/fillpatterns.rs:610
 msgid "Simple Lines"
 msgstr ""
 
@@ -6313,7 +6313,7 @@ msgstr "Plné těleso"
 msgid "Solid Black"
 msgstr "Plná černá"
 
-#: crates/ui-egui/src/fillpatterns.rs:555
+#: crates/ui-egui/src/fillpatterns.rs:558
 #: crates/ui-egui/src/properties.rs:603
 msgid "Solid Fill"
 msgstr "Plná výplň"
@@ -6871,7 +6871,7 @@ msgstr "Zatím zde nejsou žádné čáry: nakreslete obrys."
 msgid "Thermal"
 msgstr "Tepelná vrstva"
 
-#: crates/ui-egui/src/fillpatterns.rs:621
+#: crates/ui-egui/src/fillpatterns.rs:625
 msgid "These patterns to a PAT file, but the solid ones"
 msgstr "Tyto vzory do souboru PAT, kromě plných"
 
@@ -6986,7 +6986,7 @@ msgstr "Do"
 msgid "To (degrees)"
 msgstr "Do (stupně)"
 
-#: crates/ui-egui/src/fillpatterns.rs:969
+#: crates/ui-egui/src/fillpatterns.rs:973
 msgid "Too dense to preview at this size."
 msgstr ""
 
@@ -8063,7 +8063,7 @@ msgstr "Výkaz: {}"
 msgid "{} Skipped {}."
 msgstr "{} Přeskočeno {}."
 
-#: crates/ui-egui/src/fillpatterns.rs:917
+#: crates/ui-egui/src/fillpatterns.rs:921
 msgid "{} already exists: save under a name ending in .pat to replace it."
 msgstr "{} již existuje: chcete-li jej nahradit, uložte jej pod názvem s příponou .pat."
 
@@ -8103,11 +8103,11 @@ msgstr "{} neobsahuje žádné parametry, nemá tedy žádnou fázi k demolici"
 msgid "{} is not {}: `{}`"
 msgstr ""
 
-#: crates/ui-egui/src/fillpatterns.rs:557
+#: crates/ui-egui/src/fillpatterns.rs:560
 msgid "{} line families"
 msgstr "{} rodin čar"
 
-#: crates/ui-egui/src/fillpatterns.rs:945
+#: crates/ui-egui/src/fillpatterns.rs:949
 msgid "{} line families, repeating a tile {} × {} (outlined)."
 msgstr ""
 
@@ -8155,7 +8155,7 @@ msgstr "Importováno {} vzorů."
 msgid "{} patterns imported; left out: {}"
 msgstr "Importováno {} vzorů; vynecháno: {}"
 
-#: crates/ui-egui/src/fillpatterns.rs:941
+#: crates/ui-egui/src/fillpatterns.rs:945
 msgid "{} redefined from lines"
 msgstr ""
 
@@ -8183,7 +8183,7 @@ msgstr ""
 msgid "{}: Colour"
 msgstr "{}: Barva"
 
-#: crates/ui-egui/src/fillpatterns.rs:577
+#: crates/ui-egui/src/fillpatterns.rs:581
 #: crates/ui-egui/src/linestyles.rs:176
 #: crates/ui-egui/src/linestyles.rs:211
 msgid "{}: Delete"
@@ -8193,7 +8193,7 @@ msgstr "{}: Odstranit"
 msgid "{}: Edit"
 msgstr "{}: Upravit"
 
-#: crates/ui-egui/src/fillpatterns.rs:571
+#: crates/ui-egui/src/fillpatterns.rs:574
 msgid "{}: Edit Lines"
 msgstr "{}: Upravit čáry"
 
@@ -8205,7 +8205,7 @@ msgstr "{}: Upravit vzory"
 msgid "{}: Line Weight"
 msgstr "{}: Tloušťka čáry"
 
-#: crates/ui-egui/src/fillpatterns.rs:539
+#: crates/ui-egui/src/fillpatterns.rs:542
 #: crates/ui-egui/src/linestyles.rs:161
 #: crates/ui-egui/src/linestyles.rs:206
 msgid "{}: Name"
@@ -8215,11 +8215,11 @@ msgstr "{}: Název"
 msgid "{}: Pattern"
 msgstr "{}: Vzor"
 
-#: crates/ui-egui/src/fillpatterns.rs:567
+#: crates/ui-egui/src/fillpatterns.rs:570
 msgid "{}: Redefine"
 msgstr ""
 
-#: crates/ui-egui/src/fillpatterns.rs:540
+#: crates/ui-egui/src/fillpatterns.rs:543
 msgid "{}: Type"
 msgstr "{}: Typ"
 
@@ -8324,7 +8324,7 @@ msgstr ""
 msgid "• Wide / Heavy (0.50 mm — 0.70 mm): Cut walls and structural sections."
 msgstr ""
 
-#: crates/ui-egui/src/fillpatterns.rs:719
+#: crates/ui-egui/src/fillpatterns.rs:723
 msgid "‹ Back"
 msgstr "‹ Zpět"
 
