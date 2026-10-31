@@ -217,13 +217,17 @@ step look at what changed.
 
 The million-element tower, median of nine, each undone after it:
 
-| Edit | Baseline | Pieces 3–5 | Piece 6 | Undo |
-|---|---:|---:|---:|---:|
-| Move a column 10 mm | 21.5 s | 272 ms | **1.7 ms** | 1.0 ms |
-| Move a corridor wall with 24 doors and the partitions joined to it | | | **23 ms** | 14 ms |
+| Edit | Baseline | Pieces 3–5 | Piece 6, plan tiles | Piece 6, tiles by height | Undo |
+|---|---:|---:|---:|---:|---:|
+| Move a column 10 mm | 21.5 s | 272 ms | 1.7 ms | **1.65 ms** | 1.0 ms → **under 0.01 ms** |
+| Move a corridor wall with 24 doors and the partitions joined to it | | | 23 ms | **8.3 ms** | 14 ms → **under 0.01 ms** |
 
-The wall's 23 ms is mostly its neighbours: the tiles hold the same wall of every storey, and the 86 elements it changes
-check 377 (its doors, tags and joined walls). Heights in the tiles are next.
+With plan tiles alone, the wall's neighbours were the same wall of every storey above and below. Each tile now holds its
+walls in bands of 1 m of height, by the heights their levels give them (a wall attached to a roof or floor is in every
+band, and a level that changes makes the lookup again), so the check and Move ask for the walls near in plan and in
+height: the check went from 10 ms to 1.4 ms. The bands sit behind `Arc`s within each tile, so a copy shares what an
+edit didn't touch. Undo and redo go back to a model that passed the check and take it as it was: each step remembers
+whether its model passed (a model opened and never checked is still checked when undo comes back to it).
 
 ## 3D on the graphics card
 
