@@ -222,5 +222,79 @@
     "ifc"
    ]
   }
+ },
+ "after_check_shapes": {
+  "100": {
+   "elements": 1001701,
+   "memory_mb": {
+    "after_load": 2216.6796875,
+    "peak": 4386.328125
+   },
+   "ms": {
+    "check": 1193.3693110000002,
+    "edit_median": 1663.5612760000001,
+    "inspect_command": 9312.846742,
+    "load": 10910.030855,
+    "native_read": 10125.728969000002,
+    "native_serialize": 3214.051141,
+    "plan_fit_draw": 1526.4380150000002,
+    "plan_png": 81.001767,
+    "plan_redraw": 979.6680690000001,
+    "room_boundaries_all_estimated": 2503672.798965,
+    "room_boundary_each": 128.39347687
+   },
+   "rooms": {
+    "count": 19500,
+    "enclosed": 100,
+    "sampled": 100
+   },
+   "skipped": [
+    "ifc",
+    "scene"
+   ],
+   "edit_samples_ms": [
+    1587.4306410000002,
+    1663.5612760000001,
+    1894.136331
+   ]
+  }
+ },
+ "after_piece_5": {
+  "100": {
+   "elements": 1001701,
+   "memory_mb": {
+    "after_load": 1143.41015625,
+    "peak": 3518.2109375
+   },
+   "ms": {
+    "check": 1265.068274,
+    "edit_median": 272.243746,
+    "inspect_command": 10059.826205,
+    "load": 5636.157768,
+    "native_read": 10746.750912,
+    "native_serialize": 3357.368195,
+    "plan_fit_draw": 1676.336289,
+    "plan_png": 76.12147800000001,
+    "plan_redraw": 1077.281285,
+    "room_boundaries_all_estimated": 2730715.18473,
+    "room_boundary_each": 140.03667614
+   },
+   "rooms": {
+    "count": 19500,
+    "enclosed": 100,
+    "sampled": 100
+   },
+   "skipped": [
+    "ifc",
+    "scene"
+   ],
+   "edit_samples_ms": [
+    268.988768,
+    271.939094,
+    272.243746,
+    272.877017,
+    281.876843
+   ]
+  }
  }
 }

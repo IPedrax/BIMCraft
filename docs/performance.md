@@ -180,6 +180,32 @@ A wall's joins are looked for among the walls reaching the same 6 m plan tile, a
 The plan and the 3D picture of one storey are byte for byte the ones before. Every room at both measures, and every
 wall's centre line, caps, outline, layers and prisms, are tested against the way they were found before.
 
+### Pieces 3 to 5: change sets, the incremental check, shared storage
+
+Each command's model knows which elements it added, changed or removed; the engine checks those, the walls they might
+join and what points at them (the full check stays where a change reaches levels, views, sheets or settings, and in
+tests, after every command, as the oracle). Elements are kept in chunks of 1,024 ids that copies share until they change
+them, so the copy a command makes and the snapshot undo keeps cost a pointer a chunk. A storey's check also builds each
+family, type and values' shape once instead of each component's.
+
+The 100-storey tower (1,001,701 elements), release, one run each, edit the median of five:
+
+| Operation | Baseline | Piece 2 and the shapes | Pieces 3–5 |
+|---|---:|---:|---:|
+| Validated edit (move a column 10 mm) | 21.5 s | 1.66 s | **272 ms** |
+| Full model check | 21.3 s | 1.19 s | 1.27 s |
+| Build the tower | 90.8 s | 10.9 s | 5.6 s |
+| `inspect`, every room's boundary (19,500) | ~88 h (estimated) | 9.3 s | 10.1 s |
+| Fit and draw the plan of one storey | didn't finish | 1.53 s | 1.68 s |
+| One room's boundary, alone | 16.3 s | 128 ms | 140 ms |
+| Memory after load / peak | 2.2 / 4.4 GB | 2.2 / 4.4 GB | **1.1 / 3.5 GB** |
+| Write / read the project | 3.4 / 10.3 s | 3.2 / 10.1 s | 3.4 / 10.7 s |
+
+At 100,171 elements (ten storeys) an edit went 156 → 29 ms. What is left of an edit at a million is the incremental
+check's walk over every element to find what points at what changed: an index of references kept with the model
+(piece 6) makes it what changed. A plan of one storey and `inspect` still go through every element of the project:
+plans by level (piece 7).
+
 ## 3D on the graphics card
 
 `view3d::gpu::Mesh` keeps a view's shown triangles for the card (retained geometry, uploaded once for each model), and

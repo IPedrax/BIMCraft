@@ -97,11 +97,11 @@ tests are never traded for a timing.
 
 - [x] Plan
 - [x] 0. Reference and baseline (performance.md: 21 s an edit, 16 s a room at a million elements)
-- [ ] 1. Oracle harness (room and wall oracles in place; the fuzzer comes with piece 4)
+- [x] 1. Oracle harness: rooms and walls against brute force; the full check after every command in tests; a seeded fuzzer
 - [x] 2. Spatial index: wall joins by plan tile, rooms a level at a time (a plan of 10 storeys 326 s → 0.15 s)
-- [ ] 3. Change sets
-- [ ] 4. Incremental check
-- [ ] 5. Persistent storage
+- [x] 3. Change sets: each model's journal; sweeps, undo and redo by what differs
+- [x] 4. Incremental check (an edit of a million elements 21.5 s → 0.27 s with piece 5)
+- [x] 5. Persistent storage: chunks of 1,024 ids shared by copies (memory 2.2 → 1.1 GB)
 - [ ] 6. Derived-result cache
 - [ ] 7. Views from fragments
 - [ ] 8. Columns and parallel queries
