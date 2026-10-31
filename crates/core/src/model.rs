@@ -29,7 +29,7 @@ use crate::texture::{Kind, MAX_IMAGES, Picture, Texture};
 use crate::units::Units;
 use crate::walls;
 
-pub use crate::ids::{Elements, FIRST_ID, Guid, Id, Key};
+pub use crate::ids::{Changed, Elements, FIRST_ID, Guid, Id, Key};
 
 /// A line in plan, through two points.
 pub type Line = (P2, P2);
@@ -4563,7 +4563,7 @@ impl Model {
         match at {
             RoomArea::Centre => self.bounding_lines_in(level, index),
             RoomArea::Finish => {
-                let mut lines = self.face_lines_in(&level, index);
+                let mut lines = self.face_lines_in(level, index);
                 lines.extend(self.separators(level));
                 lines
             }
@@ -5707,6 +5707,90 @@ impl Model {
         }
         // Last, so what a rule above says of a reference comes first.
         self.check_ids()
+    }
+
+    /// What changed from `before` to this model: the elements a command added, changed or removed, when it changed nothing
+    /// else (no type, material, family, setting or other entry of the project), and this model is the one it made of
+    /// `before`; else everything.
+    pub fn changed_since(&self, before: &Model) -> Changed {
+        if !self.same_settings(before) {
+            return Changed::All;
+        }
+        self.elements.changed_since(&before.elements)
+    }
+
+    /// Whether everything but the elements and the ids still to give is the same in both. Every field is named, so a new
+    /// one must say how it compares.
+    fn same_settings(&self, o: &Model) -> bool {
+        let Model {
+            format,
+            name,
+            uid,
+            units,
+            language,
+            room_area,
+            next_id: _,
+            types,
+            materials,
+            images,
+            clouds,
+            cads,
+            families,
+            parameters,
+            view_filters,
+            view_templates,
+            phases,
+            phase_filters,
+            phase_overrides,
+            option_sets,
+            line_weights,
+            standard,
+            object_styles,
+            line_patterns,
+            line_styles,
+            fill_patterns,
+            region_types,
+            text_types,
+            dimension_types,
+            detail_groups,
+            reinforcement,
+            elements: _,
+            library,
+            loaded,
+        } = self;
+        *format == o.format
+            && *name == o.name
+            && *uid == o.uid
+            && *units == o.units
+            && *language == o.language
+            && *room_area == o.room_area
+            && *types == o.types
+            && *materials == o.materials
+            && *images == o.images
+            && *clouds == o.clouds
+            && *cads == o.cads
+            && *families == o.families
+            && *parameters == o.parameters
+            && *view_filters == o.view_filters
+            && *view_templates == o.view_templates
+            && *phases == o.phases
+            && *phase_filters == o.phase_filters
+            && *phase_overrides == o.phase_overrides
+            && *option_sets == o.option_sets
+            && *line_weights == o.line_weights
+            && *standard == o.standard
+            && *object_styles == o.object_styles
+            && *line_patterns == o.line_patterns
+            && *line_styles == o.line_styles
+            && *fill_patterns == o.fill_patterns
+            && *region_types == o.region_types
+            && *text_types == o.text_types
+            && *dimension_types == o.dimension_types
+            && *detail_groups == o.detail_groups
+            && *reinforcement == o.reinforcement
+            && *library == o.library
+            && loaded.len() == o.loaded.len()
+            && loaded.iter().zip(&o.loaded).all(|((a, x), (b, y))| a == b && Arc::ptr_eq(x, y))
     }
 
     fn cat(&self, id: impl Key) -> &'static str {

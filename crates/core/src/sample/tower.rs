@@ -39,7 +39,7 @@ impl Plate {
     pub const SMALL: Plate = Plate { width: 36_000, depth: 36_000 };
 
     fn check(self) -> Result<(), String> {
-        let fits = |n: i64, core: i64| n % 6000 == 0 && n >= 36_000 && n <= 600_000 && (n - 28_000) % core == 0;
+        let fits = |n: i64, core: i64| n % 6000 == 0 && (36_000..=600_000).contains(&n) && (n - 28_000) % core == 0;
         if fits(self.width, 8000) && fits(self.depth, 8000) {
             Ok(())
         } else {

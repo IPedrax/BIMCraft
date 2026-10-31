@@ -7,7 +7,7 @@
 //! for that element's GUID ([`Guid::of_id`], `Model::resolve`). That is how a command takes `"level": 100000`, and how a
 //! file from before GUIDs opens.
 
-use std::collections::{BTreeMap, HashMap, btree_map};
+use std::collections::{BTreeMap, BTreeSet, HashMap, btree_map};
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -185,11 +185,52 @@ impl<K: Key> Key for &K {
 }
 
 /// A project's elements by id, each with its GUID. In a file, an object of ids, each element with its `guid`.
-#[derive(Clone, Debug, Default)]
+///
+/// Each keeps a journal of what changed in it since it was cloned from another ([`Elements::changed_since`]): a command
+/// changes a clone of the model it found, so the journal of the model a command leaves is what the command changed.
+#[derive(Debug, Default)]
 pub struct Elements {
     items: BTreeMap<Id, Element>,
     guids: BTreeMap<Id, Guid>,
     ids: HashMap<Guid, Id>,
+    /// This collection, and the one it was cloned from (0: none), among all made in this process.
+    token: u64,
+    base: u64,
+    journal: Journal,
+}
+
+/// What changed in an [`Elements`] since it was cloned: elements by id, those from an id on, or everything.
+#[derive(Clone, Debug, Default)]
+struct Journal {
+    ids: BTreeSet<Id>,
+    from: Option<Id>,
+    all: bool,
+}
+
+/// What changed from one model's elements to another's: the ids of those added, changed or removed, or everything.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Changed {
+    Ids(BTreeSet<Id>),
+    All,
+}
+
+fn token() -> u64 {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
+impl Clone for Elements {
+    /// The same elements, with a journal of their own, empty.
+    fn clone(&self) -> Elements {
+        Elements {
+            items: self.items.clone(),
+            guids: self.guids.clone(),
+            ids: self.ids.clone(),
+            token: token(),
+            base: self.token,
+            journal: Journal::default(),
+        }
+    }
 }
 
 impl PartialEq for Elements {
@@ -200,7 +241,67 @@ impl PartialEq for Elements {
 
 impl Elements {
     pub fn new() -> Elements {
-        Elements::default()
+        Elements { token: token(), ..Elements::default() }
+    }
+
+    /// What changed from `before`'s elements to these, when these were cloned from those: the ids the journal names, or
+    /// where something went through them all (`values_mut`, `retain`), those whose elements or GUIDs differ. Else
+    /// everything: these were made another way.
+    pub fn changed_since(&self, before: &Elements) -> Changed {
+        let j = &self.journal;
+        if self.token == 0 || self.base != before.token {
+            return Changed::All;
+        }
+        if j.all {
+            return Changed::Ids(self.differ(before, 0));
+        }
+        let mut ids = j.ids.clone();
+        if let Some(from) = j.from {
+            ids.extend(self.differ(before, from));
+        }
+        Changed::Ids(ids)
+    }
+
+    /// The ids from `from` on whose elements or GUIDs differ between these and `before`, or that only one has.
+    fn differ(&self, before: &Elements, from: Id) -> BTreeSet<Id> {
+        let (mut a, mut b) = (self.items.range(from..).peekable(), before.items.range(from..).peekable());
+        let mut out = BTreeSet::new();
+        loop {
+            match (a.peek().copied(), b.peek().copied()) {
+                (None, None) => return out,
+                (Some((&x, _)), None) => {
+                    out.insert(x);
+                    a.next();
+                }
+                (None, Some((&y, _))) => {
+                    out.insert(y);
+                    b.next();
+                }
+                (Some((&x, e)), Some((&y, f))) => {
+                    if x < y {
+                        out.insert(x);
+                        a.next();
+                    } else if y < x {
+                        out.insert(y);
+                        b.next();
+                    } else {
+                        if e != f || self.guids.get(&x) != before.guids.get(&y) {
+                            out.insert(x);
+                        }
+                        a.next();
+                        b.next();
+                    }
+                }
+            }
+        }
+    }
+
+    fn touch(&mut self, id: Id) {
+        self.journal.ids.insert(id);
+    }
+
+    fn touch_all(&mut self) {
+        self.journal.all = true;
     }
 
     pub fn get(&self, k: impl Key) -> Option<&Element> {
@@ -209,6 +310,9 @@ impl Elements {
 
     pub fn get_mut(&mut self, k: impl Key) -> Option<&mut Element> {
         let id = k.id_in(self)?;
+        if self.items.contains_key(&id) {
+            self.touch(id);
+        }
         self.items.get_mut(&id)
     }
 
@@ -233,6 +337,7 @@ impl Elements {
             self.guids.insert(id, g);
             self.ids.insert(g, id);
         }
+        self.touch(id);
         self.items.insert(id, e)
     }
 
@@ -249,6 +354,7 @@ impl Elements {
             self.ids.remove(&old);
         }
         self.ids.insert(guid, id);
+        self.touch(id);
         self.items.insert(id, e);
         Ok(())
     }
@@ -265,6 +371,9 @@ impl Elements {
 
     pub fn remove(&mut self, k: impl Key) -> Option<Element> {
         let id = k.id_in(self)?;
+        if self.items.contains_key(&id) {
+            self.touch(id);
+        }
         if let Some(g) = self.guids.remove(&id) {
             self.ids.remove(&g);
         }
@@ -272,6 +381,7 @@ impl Elements {
     }
 
     pub fn retain(&mut self, mut keep: impl FnMut(&Id, &mut Element) -> bool) {
+        self.touch_all();
         let gone: Vec<Id> = self.items.iter_mut().filter_map(|(id, e)| (!keep(id, e)).then_some(*id)).collect();
         for id in gone {
             self.remove(id);
@@ -279,7 +389,9 @@ impl Elements {
     }
 
     pub fn clear(&mut self) {
-        *self = Elements::default();
+        let (token, base) = (self.token, self.base);
+        *self = Elements { token, base, ..Elements::default() };
+        self.touch_all();
     }
 
     pub fn iter(&self) -> btree_map::Iter<'_, Id, Element> {
@@ -287,6 +399,7 @@ impl Elements {
     }
 
     pub fn iter_mut(&mut self) -> btree_map::IterMut<'_, Id, Element> {
+        self.touch_all();
         self.items.iter_mut()
     }
 
@@ -295,6 +408,7 @@ impl Elements {
     }
 
     pub fn values_mut(&mut self) -> btree_map::ValuesMut<'_, Id, Element> {
+        self.touch_all();
         self.items.values_mut()
     }
 
@@ -307,6 +421,7 @@ impl Elements {
     }
 
     pub fn range_mut(&mut self, r: std::ops::RangeFrom<Id>) -> btree_map::RangeMut<'_, Id, Element> {
+        self.journal.from = Some(self.journal.from.map_or(r.start, |f| f.min(r.start)));
         self.items.range_mut(r)
     }
 
@@ -381,7 +496,7 @@ impl<'a> IntoIterator for &'a mut Elements {
     type Item = (&'a Id, &'a mut Element);
     type IntoIter = btree_map::IterMut<'a, Id, Element>;
     fn into_iter(self) -> Self::IntoIter {
-        self.items.iter_mut()
+        self.iter_mut()
     }
 }
 
@@ -491,5 +606,88 @@ mod tests {
         let mut typo = v;
         typo["100000"]["nmae"] = serde_json::json!("x");
         assert!(serde_json::from_value::<Elements>(typo).unwrap_err().to_string().contains("nmae"));
+    }
+}
+
+#[cfg(test)]
+mod journal_tests {
+    use super::*;
+    use crate::engine::Session;
+    use crate::model::Model;
+    use serde_json::json;
+    use std::sync::Arc;
+
+    /// What the command `cmd` changed, as the model it left says.
+    fn changed(s: &mut Session, cmd: &str, p: serde_json::Value) -> Changed {
+        let before = Arc::clone(&s.model);
+        s.execute(cmd, &p).unwrap();
+        s.model.changed_since(&before)
+    }
+
+    fn ids(v: &[Id]) -> Changed {
+        Changed::Ids(v.iter().copied().collect())
+    }
+
+    #[test]
+    fn a_command_leaves_a_journal_of_the_elements_it_added_changed_and_removed() {
+        let mut s = Session::new();
+        let made = s.execute("wall", &json!({"points": [[0, 0], [5000, 0], [5000, 4000]]})).unwrap();
+        let [a, b] = [0, 1].map(|i| made["ids"][i].as_u64().unwrap());
+        let before = Arc::clone(&s.model);
+        let door = s.execute("door", &json!({"at": [2500, 0]})).unwrap()["id"].as_u64().unwrap();
+        assert_eq!(s.model.changed_since(&before), ids(&[door]));
+        // Moving a wall stretches the one joined to it, and carries its door.
+        let moved = changed(&mut s, "move", json!({"ids": [b], "by": [1000, 0]}));
+        let Changed::Ids(moved) = moved else { panic!("{moved:?}") };
+        assert!(moved.contains(&a) && moved.contains(&b), "{moved:?}");
+        assert_eq!(changed(&mut s, "delete", json!({"ids": [door]})), ids(&[door]));
+        // A command that changes a setting changes everything there is to check.
+        assert_eq!(changed(&mut s, "room_area", json!({"at": "finish"})), Changed::All);
+        // Undo goes back to a model the command didn't make: everything.
+        assert_eq!(changed(&mut s, "undo", json!({})), Changed::All);
+        // Another model's elements: everything.
+        assert_eq!(Model::new("x").changed_since(&s.model), Changed::All);
+    }
+
+    #[test]
+    fn the_journal_of_a_clone_starts_empty_names_what_changed_and_finds_what_a_sweep_changed() {
+        let mut es = Elements::new();
+        let g = |at: f64| {
+            Element::Grid(crate::model::Grid { start: crate::geom::P2(at, 0.0), end: crate::geom::P2(at, 1.0), name: String::new() })
+        };
+        for id in 100_000..100_005 {
+            es.insert(id, g(0.0));
+        }
+        let base = es.clone();
+        let mut c = base.clone();
+        assert_eq!(c.changed_since(&base), ids(&[]));
+        if let Some(e) = c.get_mut(100_001) {
+            *e = g(1.0);
+        }
+        c.insert(100_009, g(2.0));
+        c.remove(100_000);
+        assert_eq!(c.changed_since(&base), ids(&[100_000, 100_001, 100_009]));
+        // Gone through from an id on, or all of them: those that differ.
+        for (_, e) in c.range_mut(100_003..) {
+            if let Element::Grid(gr) = e {
+                gr.name = "C".into();
+            }
+        }
+        assert_eq!(c.changed_since(&base), ids(&[100_000, 100_001, 100_003, 100_004, 100_009]));
+        assert_eq!(c.clone().changed_since(&base), Changed::All, "a clone of a clone isn't base's");
+        let mut d = base.clone();
+        for e in d.values_mut() {
+            if let Element::Grid(gr) = e
+                && gr.start.0 == 0.0
+            {
+                gr.start.0 = 5.0;
+            }
+        }
+        assert_eq!(d.changed_since(&base), ids(&[100_000, 100_001, 100_002, 100_003, 100_004]));
+        let mut d = base.clone();
+        let _ = d.values_mut();
+        assert_eq!(d.changed_since(&base), ids(&[]), "gone through, nothing changed");
+        d.clear();
+        assert_eq!(d.changed_since(&base), ids(&[100_000, 100_001, 100_002, 100_003, 100_004]));
     }
 }
