@@ -4845,853 +4845,14 @@ impl Model {
                 return Err(format!("ceiling type `{n}`: grid {} mm; its tiles are 100 mm or wider, or 0 for none", t.grid));
             }
         }
-        let mut level_names = BTreeSet::new();
-        let mut grid_names = BTreeSet::new();
-        let mut link_names = BTreeSet::new();
-        let mut view_names = BTreeSet::new();
-        // The schedules every project has that the project has made its own: one each.
-        let mut twins = BTreeSet::new();
-        let mut sheet_numbers = BTreeSet::new();
-        // Each view on a sheet: the sheet.
-        let mut placed: BTreeMap<Guid, Guid> = BTreeMap::new();
-        // Openings by host wall, in the order they start along it.
-        let mut spans: BTreeMap<Guid, Vec<OpeningSpan>> = BTreeMap::new();
-        // The members each view's detail groups and repeating details place.
-        let mut members_placed: BTreeMap<Guid, usize> = BTreeMap::new();
-        // Whether components' shapes build, by family, type and values (as JSON).
-        let mut shapes: HashMap<(&str, &str, String), Result<(), String>> = HashMap::new();
+        let mut t = Tally::default();
         for (&id, e) in &self.elements {
-            let who = format!("{} {id}", e.category());
-            let level_ok = |l: Guid| self.level(l).map(|_| ()).ok_or(format!("{who}: level {} doesn't exist", self.shown(l)));
-            // A view annotation is drawn in: a plan, a section or an elevation, or with `sheets`, a sheet.
-            let view_ok = |v: Guid, sheets: bool| match self.elements.get(v) {
-                Some(Element::Level(_) | Element::PlanView(_) | Element::Section(_) | Element::Elevation(_)) => Ok(()),
-                Some(Element::Sheet(_)) if sheets => Ok(()),
-                Some(other) => Err(format!(
-                    "{who}: {} {} isn't a plan, a section, an elevation{}",
-                    other.category(),
-                    self.shown(v),
-                    if sheets { " or a sheet" } else { "" }
-                )),
-                None => Err(format!("{who}: view {v} doesn't exist")),
-            };
-            // Its values of the project's parameters, each one of its category's, of its kind; a
-            // component's family's are its family's to check.
-            for (k, v) in e.params().into_iter().flatten() {
-                // Its phases and its design option are values it holds under names no parameter may take.
-                if let Some(checked) = phasing::check_value(self, &who, k, v) {
-                    checked?;
-                    continue;
-                }
-                if let Some(checked) = crate::paint::check_value(self, &who, k, v, e) {
-                    checked?;
-                    continue;
-                }
-                if let Some(checked) = crate::massing::check_value(self, &who, k, v, e) {
-                    checked?;
-                    continue;
-                }
-                if e.family().and_then(|(f, _)| self.families.get(f)).is_some_and(|f| f.parameters.iter().any(|p| p.name == *k)) {
-                    continue;
-                }
-                let p = self
-                    .parameters
-                    .get(k)
-                    .filter(|p| p.categories.iter().any(|c| c == e.category()))
-                    .ok_or_else(|| format!("{who}: `{k}` isn't a parameter of {}s; add it with `parameter`", e.category()))?;
-                if !p.holds(v) {
-                    let what = match p.kind {
-                        ParameterKind::Text => "text",
-                        ParameterKind::Number => "a number",
-                        ParameterKind::Length => "a length",
-                        ParameterKind::YesNo => "yes or no",
-                    };
-                    return Err(format!("{who}: `{k}` holds {what}, not {v}"));
-                }
-            }
-            phasing::check_order(self, &who, e)?;
-            match e {
-                Element::Level(l) => {
-                    text(&who, "name", &l.name)?;
-                    coord(&format!("{who} elevation"), l.elevation)?;
-                    if !level_names.insert(l.name.as_str()) {
-                        return Err(format!("{who}: another level is already named `{}`", l.name));
-                    }
-                    range_ok(&who, &l.view_range)?;
-                    if let Some([a, b]) = l.crop {
-                        crop(&who, a, b)?;
-                    }
-                    if let Some([a, b]) = l.extent {
-                        point(&format!("{who} extent"), a)?;
-                        point(&format!("{who} extent"), b)?;
-                        if !(a.0 < b.0 - TOL && a.1 < b.1 - TOL) {
-                            return Err(format!("{who}: its extent runs from its south-west corner to its north-east one"));
-                        }
-                    }
-                    l.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
-                }
-                Element::Grid(g) => {
-                    text(&who, "name", &g.name)?;
-                    line(&who, g.start, g.end)?;
-                    if !grid_names.insert(g.name.as_str()) {
-                        return Err(format!("{who}: another grid is already named `{}`", g.name));
-                    }
-                }
-                Element::RoomSeparator(rs) => {
-                    level_ok(rs.level)?;
-                    line(&who, rs.start, rs.end)?;
-                }
-                Element::Rebar(rb) => {
-                    level_ok(rb.level)?;
-                    text(&who, "grade", &rb.grade)?;
-                    text(&who, "layer", &rb.layer)?;
-                    if rb.grade.trim().is_empty() {
-                        return Err(format!("{who}: a bar needs a steel grade"));
-                    }
-                    let (thin, thick) = crate::rebar::DIAMETERS;
-                    if !(thin..=thick).contains(&rb.diameter) {
-                        return Err(format!("{who}: diameter {} mm isn't between {thin} and {thick} mm", rb.diameter));
-                    }
-                    if !(2..=MAX_POINTS).contains(&rb.path.len()) {
-                        return Err(format!("{who}: a path needs 2 to {MAX_POINTS} points"));
-                    }
-                    if rb.path.iter().flatten().any(|c| !(c.is_finite() && c.abs() <= MAX_COORD)) {
-                        return Err(format!("{who}: a point of its path is not finite or reaches past {MAX_COORD} mm"));
-                    }
-                    if crate::rebar::length(&rb.path) <= TOL {
-                        return Err(format!("{who}: its path has no length"));
-                    }
-                    if let Some(h) = rb.host {
-                        match self.elements.get(h) {
-                            Some(
-                                Element::Beam(_)
-                                | Element::StripFooting(_)
-                                | Element::Column(_)
-                                | Element::StructuralColumn(_)
-                                | Element::Footing(_)
-                                | Element::Floor(_),
-                            ) => {}
-                            Some(other) => {
-                                return Err(format!(
-                                    "{who}: {} {} is no host for bars; a beam, a column, a footing or a floor is",
-                                    other.category(),
-                                    self.shown(h)
-                                ));
-                            }
-                            None => return Err(format!("{who}: host {h} doesn't exist")),
-                        }
-                    }
-                }
-                Element::Wall(w) => {
-                    known(&who, &w.type_name, &self.types.wall)?;
-                    level_ok(w.level)?;
-                    line(&who, w.start, w.end)?;
-                    coord(&format!("{who} base_offset"), w.base_offset)?;
-                    // An arc within reach: all of its circle inside the model's limits.
-                    let axis = walls::Axis::of(w);
-                    let reach = axis.centre().zip(axis.radius()).is_none_or(|(c, r)| c.0.abs().max(c.1.abs()) + r <= MAX_COORD);
-                    if !(w.arc.is_finite() && w.arc.abs() < 360.0 && reach) {
-                        return Err(format!("{who}: arc {}° isn't between -360° and 360°, reaching no farther than 1000 km", w.arc));
-                    }
-                    for (what, at) in [("attach_top", w.attach_top), ("attach_base", w.attach_base)] {
-                        if let Some(a) = at
-                            && !matches!(self.elements.get(a), Some(Element::Roof(_) | Element::Floor(_)))
-                        {
-                            return Err(format!("{who}: {what} {} isn't a roof or a floor", self.shown(a)));
-                        }
-                    }
-                    match w.top_level {
-                        Some(t) => level_ok(t)?,
-                        None => size(&format!("{who} height"), w.height)?,
-                    }
-                    if self.top_z(w) <= self.base_z(w) + TOL {
-                        return Err(format!("{who}: its top must be above its base"));
-                    }
-                }
-                Element::Floor(f) => {
-                    point(&format!("{who} pattern origin"), f.pattern_origin)?;
-                    coord(&format!("{who} pattern angle"), f.pattern_angle)?;
-                    known(&who, &f.type_name, &self.types.floor)?;
-                    level_ok(f.level)?;
-                    boundary(&who, &f.boundary)?;
-                    openings(&who, &f.boundary, &f.openings)?;
-                    crate::sketch::check(&who, e.sketch().map_or(&[][..], Vec::as_slice))?;
-                    coord(&format!("{who} offset"), f.offset)?;
-                    if !(f.slope.is_finite() && f.slope.abs() <= MAX_SLOPE) {
-                        return Err(format!("{who}: slope {}° isn't between -{MAX_SLOPE}° and {MAX_SLOPE}°", f.slope));
-                    }
-                    match f.arrow {
-                        Some([tail, head]) => line(&format!("{who} arrow"), tail, head)?,
-                        None if f.slope != 0.0 => {
-                            return Err(format!(
-                                "{who}: a sloped floor needs a slope arrow, from where its top is at its offset toward where it rises"
-                            ));
-                        }
-                        None => {}
-                    }
-                }
-                Element::Ceiling(c) => {
-                    known(&who, &c.type_name, &self.types.ceiling)?;
-                    level_ok(c.level)?;
-                    boundary(&who, &c.boundary)?;
-                    openings(&who, &c.boundary, &c.openings)?;
-                    crate::sketch::check(&who, e.sketch().map_or(&[][..], Vec::as_slice))?;
-                    coord(&format!("{who} offset"), c.offset)?;
-                }
-                Element::Shaft(sh) => {
-                    level_ok(sh.level)?;
-                    boundary(&who, &sh.boundary)?;
-                    coord(&format!("{who} base_offset"), sh.base_offset)?;
-                    crate::sketch::check(&who, e.sketch().map_or(&[][..], Vec::as_slice))?;
-                    match sh.top_level {
-                        Some(t) => level_ok(t)?,
-                        None => size(&format!("{who} height"), sh.height)?,
-                    }
-                    let (bottom, top) = self.span(sh.level, sh.base_offset, sh.top_level, sh.height);
-                    if top <= bottom + TOL {
-                        return Err(format!("{who}: its top must be above its base"));
-                    }
-                }
-                Element::Mass(ms) => {
-                    level_ok(ms.level)?;
-                    boundary(&who, &ms.boundary)?;
-                    text(&who, "name", &ms.name)?;
-                    coord(&format!("{who} base_offset"), ms.base_offset)?;
-                    match ms.top_level {
-                        Some(t) => level_ok(t)?,
-                        None => size(&format!("{who} height"), ms.height)?,
-                    }
-                    let (bottom, top) = self.span(ms.level, ms.base_offset, ms.top_level, ms.height);
-                    if top <= bottom + TOL {
-                        return Err(format!("{who}: its top must be above its base"));
-                    }
-                    if let Some(crown) = &ms.top {
-                        // Its points first: past that, the rings pair up and the cross sections can be worked out.
-                        if crown.len() == ms.boundary.len() {
-                            boundary(&format!("{who} top"), crown)?;
-                        }
-                        if let Some(why) = crate::massing::loft_problem(&ms.boundary, crown) {
-                            return Err(format!("{who}: {why}"));
-                        }
-                    }
-                }
-                Element::Door(o) | Element::Window(o) => {
-                    let w = self.wall(o.host).ok_or(format!("{who}: host wall {} doesn't exist", self.shown(o.host)))?;
-                    let t = self.opening_dims(e).map_err(|e| format!("{who}: {e}"))?;
-                    if let Some(f) = o.family.as_ref().and_then(|n| self.families.get(n)) {
-                        self.family_values_ok(&who, o.family.as_deref().unwrap_or_default(), f, &o.params)?;
-                        let values = f.values_in(&o.type_name, &o.params, self.thickness(w)).map_err(|e| format!("{who}: {e}"))?;
-                        f.pieces(&values).and_then(|_| f.strokes(&values)).map_err(|e| format!("{who}: {e}"))?;
-                        size(&format!("{who} width"), t.width)?;
-                        size(&format!("{who} height"), t.height)?;
-                    }
-                    coord(&format!("{who} offset"), o.offset)?;
-                    coord(&format!("{who} sill"), o.sill)?;
-                    text(&who, "mark", &o.mark)?;
-                    let (a, b) = (o.offset - t.width / 2.0, o.offset + t.width / 2.0);
-                    let length = crate::walls::Axis::of(w).length();
-                    if a < -TOL || b > length + TOL {
-                        return Err(format!(
-                            "{who}: {} mm wide at offset {} doesn't fit wall {}, {length} mm long",
-                            t.width,
-                            o.offset,
-                            self.shown(o.host)
-                        ));
-                    }
-                    // Up to the wall's top over it, which a roof it's attached to may raise.
-                    let top = [a, o.offset, b].map(|s| crate::walls::top_at(self, w, s)).into_iter().fold(f64::INFINITY, f64::min);
-                    if o.sill < 0.0 || self.own_base(w) + o.sill + t.height > top + TOL {
-                        return Err(format!(
-                            "{who}: sill {} + height {} doesn't fit wall {}'s height",
-                            o.sill,
-                            t.height,
-                            self.shown(o.host)
-                        ));
-                    }
-                    let span = OpeningSpan { start: a, end: b, sill: o.sill, head: o.sill + t.height, id };
-                    let list = spans.entry(o.host).or_default();
-                    let at = list.partition_point(|held| held.start <= a);
-                    list.insert(at, span);
-                }
-                Element::Room(r) => {
-                    level_ok(r.level)?;
-                    point(&who, r.point)?;
-                    text(&who, "name", &r.name)?;
-                    text(&who, "number", &r.number)?;
-                }
-                Element::Dimension(d) => {
-                    level_ok(d.level)?;
-                    if let Some(v) = d.view {
-                        self.plan_view_of(v, d.level)
-                            .ok_or_else(|| format!("{who}: view {} isn't a plan view of its level", self.shown(v)))?;
-                    }
-                    point(&who, d.at)?;
-                    if !self.dimension_types.contains_key(&d.type_name) {
-                        let there: Vec<&str> = self.dimension_types.keys().map(String::as_str).collect();
-                        return Err(format!("{who}: there's no dimension type `{}` (there are: {})", d.type_name, there.join(", ")));
-                    }
-                    for (what, t) in
-                        [("prefix", &d.prefix), ("suffix", &d.suffix), ("above", &d.above), ("below", &d.below), ("replace", &d.replace)]
-                    {
-                        crate::dims::dim_text(&who, what, t)?;
-                    }
-                    if d.equal && !(matches!(d.kind, DimKind::Aligned | DimKind::Linear) && d.refs.len() > 2) {
-                        return Err(format!("{who}: only an aligned or a linear dimension of two segments or more is kept equal"));
-                    }
-                    if !d.locked.is_empty() && !matches!(d.kind, DimKind::Aligned | DimKind::Linear) {
-                        return Err(format!("{who}: only an aligned or a linear dimension's segments are locked"));
-                    }
-                    let mut locks = BTreeSet::new();
-                    for l in &d.locked {
-                        if l.segment >= MAX_POINTS || !locks.insert(l.segment) || !(l.length.is_finite() && l.length.abs() <= MAX_COORD) {
-                            return Err(format!("{who}: segment {} is locked twice, at no length, or isn't a segment", l.segment));
-                        }
-                    }
-                    let mut segments = BTreeSet::new();
-                    for st in &d.texts {
-                        if st.segment >= MAX_POINTS || !segments.insert(st.segment) {
-                            return Err(format!("{who}: segment {}'s text is given twice, or there's no such segment", st.segment));
-                        }
-                        for (what, t) in st.fields() {
-                            crate::dims::dim_text(&format!("{who} segment {}", st.segment), what, t)?;
-                        }
-                    }
-                    match (d.kind, d.refs.len()) {
-                        (DimKind::Aligned | DimKind::Linear, 2..=MAX_POINTS)
-                        | (DimKind::Angular, 2)
-                        | (DimKind::Radial | DimKind::Diameter | DimKind::ArcLength, 1) => {}
-                        (DimKind::Aligned | DimKind::Linear, _) => {
-                            return Err(format!("{who}: a dimension measures between 2 to {MAX_POINTS} references"));
-                        }
-                        (DimKind::Angular, _) => return Err(format!("{who}: an angular dimension measures between two lines")),
-                        (DimKind::Radial, _) => return Err(format!("{who}: a radial dimension measures one round element")),
-                        (DimKind::Diameter, _) => return Err(format!("{who}: a diameter dimension measures one round element")),
-                        (DimKind::ArcLength, 3) => {}
-                        (DimKind::ArcLength, _) => {
-                            return Err(format!(
-                                "{who}: an arc length dimension measures along one arc, all of it or between two points on it"
-                            ));
-                        }
-                    }
-                    match (d.kind, d.orient) {
-                        (DimKind::Linear, None) => {
-                            return Err(format!("{who}: a linear dimension runs horizontal or vertical: give it an `orient`"));
-                        }
-                        (DimKind::Linear, Some(_)) | (_, None) => {}
-                        (_, Some(_)) => return Err(format!("{who}: only a linear dimension has an `orient`; this one is {:?}", d.kind)),
-                    }
-                    let linear = d.kind == DimKind::Linear;
-                    let along = self.measured_along(d);
-                    let mut seen = BTreeSet::new();
-                    let mut first: Option<(Reference, Line)> = None;
-                    for r in &d.refs {
-                        match d.kind {
-                            DimKind::Radial => {
-                                self.reference_arc(r).map_err(|e| format!("{who}: {e}"))?;
-                                continue;
-                            }
-                            DimKind::Diameter => {
-                                self.reference_arc(r).map_err(|e| format!("{who}: {}", e.replace("a radial", "a diameter")))?;
-                                continue;
-                            }
-                            DimKind::ArcLength => {
-                                self.arc_span(d).map_err(|e| format!("{who}: {e}"))?;
-                                break;
-                            }
-                            _ => {}
-                        }
-                        let what = format!("{} {}", self.cat(r.id), self.shown(r.id));
-                        if r.point.is_some() && d.kind == DimKind::Angular {
-                            return Err(format!("{who}: it measures to an end of {what}; an angle is between two lines"));
-                        }
-                        let line = self.reference_geometry(r).map_err(|e| format!("{who}: {e}"))?;
-                        if !seen.insert((r.id, r.face, r.point)) {
-                            let at = match r.point {
-                                Some(End::Start) => "start of its ",
-                                Some(End::End) => "end of its ",
-                                None => "",
-                            };
-                            return Err(format!("{who}: it measures to {what}'s {at}{} twice", r.face.name()));
-                        }
-                        if r.point.is_some() {
-                            continue;
-                        }
-                        if let (true, Some(n)) = (linear, along)
-                            && !geom::parallel(line.0, line.1, P2(0.0, 0.0), n.perp())
-                        {
-                            let way = if d.orient == Some(Orient::Horizontal) { "horizontal" } else { "vertical" };
-                            return Err(format!(
-                                "{who}: {what} isn't square to a {way} dimension; measure to its ends, or make the dimension aligned"
-                            ));
-                        }
-                        match first {
-                            None => first = Some((*r, line)),
-                            Some((f, (a, b))) => {
-                                let parallel = geom::parallel(a, b, line.0, line.1);
-                                let other = format!("{} {}", self.cat(f.id), self.shown(f.id));
-                                if d.kind == DimKind::Aligned && !parallel {
-                                    return Err(format!(
-                                        "{who}: {what} isn't parallel to {other}; a dimension measures between parallel walls and grids"
-                                    ));
-                                }
-                                if d.kind == DimKind::Angular && parallel {
-                                    return Err(format!("{who}: {what} is parallel to {other}; an angle is between lines that meet"));
-                                }
-                            }
-                        }
-                    }
-                    if matches!(d.kind, DimKind::Aligned | DimKind::Linear) && along.is_none() {
-                        return Err(format!("{who}: its points are all in one place, so it has no way to run"));
-                    }
-                }
-                Element::Text(Note { view, .. })
-                | Element::DetailLine(DetailLine { view, .. })
-                | Element::FilledRegion(FilledRegion { view, .. }) => {
-                    view_ok(*view, true)?;
-                    self.annotation_ok(&who, e)?;
-                }
-                Element::DetailGroup(g) => {
-                    view_ok(g.view, true)?;
-                    point(&who, g.at)?;
-                    coord(&format!("{who} angle"), g.angle)?;
-                    let Some(t) = self.detail_groups.get(&g.type_name) else {
-                        let there: Vec<&str> = self.detail_groups.keys().map(String::as_str).collect();
-                        return Err(format!("{who}: there's no detail group `{}` (there are: {})", g.type_name, there.join(", ")));
-                    };
-                    placing(&who, &mut members_placed, g.view, t.members.len())?;
-                }
-                Element::RepeatingDetail(r) => {
-                    view_ok(r.view, true)?;
-                    point(&who, r.start)?;
-                    point(&who, r.end)?;
-                    if !(r.spacing.is_finite() && r.spacing >= 1.0 && r.spacing <= MAX_COORD) {
-                        return Err(format!("{who}: spacing {} mm isn't from 1 mm to {MAX_COORD}", r.spacing));
-                    }
-                    if r.places().is_none() {
-                        return Err(format!(
-                            "{who}: it would repeat more than {} times; space it wider or draw it shorter",
-                            crate::groups::MAX_REPEATS
-                        ));
-                    }
-                    let Some(t) = self.detail_groups.get(&r.type_name) else {
-                        let there: Vec<&str> = self.detail_groups.keys().map(String::as_str).collect();
-                        return Err(format!("{who}: there's no detail group `{}` (there are: {})", r.type_name, there.join(", ")));
-                    };
-                    placing(&who, &mut members_placed, r.view, t.members.len().saturating_mul(r.count()))?;
-                }
-                Element::PointCloud(pc) => {
-                    if !self.clouds.contains_key(&pc.cloud) {
-                        return Err(format!("{who}: the project holds no scan named `{}`", pc.cloud));
-                    }
-                    level_ok(pc.level)?;
-                    point(&format!("{who} at"), pc.at)?;
-                    coord(&format!("{who} offset"), pc.offset)?;
-                    coord(&format!("{who} angle"), pc.angle)?;
-                }
-                Element::CadImport(ci) => {
-                    if !self.cads.contains_key(&ci.cad) {
-                        return Err(format!("{who}: the project holds no CAD drawing named `{}`", ci.cad));
-                    }
-                    level_ok(ci.level)?;
-                    point(&format!("{who} at"), ci.at)?;
-                    coord(&format!("{who} angle"), ci.angle)?;
-                    if !(ci.origin.is_finite()
-                        && ci.origin.0.abs() <= crate::dxf::MAX_FILE_COORD
-                        && ci.origin.1.abs() <= crate::dxf::MAX_FILE_COORD)
-                    {
-                        return Err(format!("{who}: origin {:?} is past what a drawing holds", ci.origin));
-                    }
-                    if !CAD_SCALE.contains(&ci.scale) {
-                        return Err(format!(
-                            "{who}: a scale of {} mm to the drawing's unit isn't one; give one from {} to {}",
-                            ci.scale,
-                            CAD_SCALE.start(),
-                            CAD_SCALE.end()
-                        ));
-                    }
-                    if let Some(v) = ci.view
-                        && !(matches!(self.elements.get(v), Some(Element::Level(_) | Element::PlanView(_)))
-                            && self.plan_level(v).map(|l| self.guid(l)) == Some(ci.level))
-                    {
-                        return Err(format!(
-                            "{who}: view {} isn't a plan of its level; an import shows in one of its level's plans",
-                            self.shown(v)
-                        ));
-                    }
-                    if ci.hidden.len() > MAX_HIDDEN {
-                        return Err(format!("{who}: it hides {} layers; up to {MAX_HIDDEN}", ci.hidden.len()));
-                    }
-                    for layer in &ci.hidden {
-                        text(&format!("{who} hidden layer"), "name", layer)?;
-                    }
-                    if let Some(b) = self.cad_box(id) {
-                        for p in b {
-                            point(&format!("{who}: the drawing, placed,"), p)
-                                .map_err(|e| format!("{e}; place it nearer the origin (`position`: center), or at another `scale`"))?;
-                        }
-                    }
-                }
-                Element::Spot(sp) => {
-                    view_ok(sp.view, false)?;
-                    point(&who, sp.at)?;
-                    match (self.plan_level(sp.view), sp.host) {
-                        (Some(_), None) => return Err(format!("{who}: a spot elevation in a plan reads an element's top; give `host`")),
-                        (_, Some(h)) if !self.elements.contains_key(h) => return Err(format!("{who}: element {h} doesn't exist")),
-                        _ => {}
-                    }
-                }
-                Element::Schedule(sc) => {
-                    text(&who, "name", &sc.name)?;
-                    if sc.name.trim().is_empty() {
-                        return Err(format!("{who}: a view needs a name"));
-                    }
-                    crate::schedule::check(self, sc).map_err(|e| format!("{who} (`{}`): {e}", sc.name))?;
-                    if let Some((of, name)) = crate::schedule::builtin(Some(&sc.name), None)
-                        && !twins.insert(of)
-                    {
-                        return Err(format!(
-                            "{who} (`{}`): another schedule is already the {of}s' {name}; call it something else",
-                            sc.name
-                        ));
-                    }
-                    if !view_names.insert(sc.name.as_str()) {
-                        return Err(format!("{who}: another view is already named `{}`", sc.name));
-                    }
-                }
-                Element::PlanView(v) => {
-                    text(&who, "name", &v.name)?;
-                    if v.name.trim().is_empty() {
-                        return Err(format!("{who}: a view needs a name"));
-                    }
-                    level_ok(v.level)?;
-                    range_ok(&who, &v.view_range)?;
-                    if let Some([a, b]) = v.crop {
-                        crop(&who, a, b)?;
-                    }
-                    v.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
-                    // A level's name is its own plan's; a view of it takes another.
-                    if self.levels().iter().any(|(_, l)| l.name == v.name) {
-                        return Err(format!("{who}: a level is already named `{}`; a plan view of it needs another name", v.name));
-                    }
-                    if let Some(p) = v.parent {
-                        // Of a level's own plan, or of a plan view that is no dependent itself, on the same level.
-                        let primary = match self.elements.get(p) {
-                            Some(Element::Level(_)) => p == v.level,
-                            Some(Element::PlanView(o)) => o.parent.is_none() && o.level == v.level,
-                            _ => false,
-                        };
-                        if !primary {
-                            return Err(format!(
-                                "{who}: a dependent view hangs from a plan of its own level that is no dependent itself, not {}",
-                                self.shown(p)
-                            ));
-                        }
-                    }
-                    if !view_names.insert(v.name.as_str()) {
-                        return Err(format!("{who}: another view is already named `{}`", v.name));
-                    }
-                }
-                Element::Link(l) => {
-                    text(&who, "name", &l.name)?;
-                    if l.name.trim().is_empty() || l.path.trim().is_empty() || l.path.chars().count() > MAX_TEXT {
-                        return Err(format!("{who}: a link needs a name and the path of a file, up to {MAX_TEXT} characters"));
-                    }
-                    point(&format!("{who} at"), l.at)?;
-                    if !(l.angle.is_finite() && l.angle.abs() <= 360.0) {
-                        return Err(format!("{who}: its angle {}° isn't between -360° and 360°", l.angle));
-                    }
-                    if !link_names.insert(l.name.as_str()) {
-                        return Err(format!("{who}: another link is already named `{}`", l.name));
-                    }
-                }
-                Element::View3D(v) => {
-                    text(&who, "name", &v.name)?;
-                    if v.name.trim().is_empty() {
-                        return Err(format!("{who}: a view needs a name"));
-                    }
-                    coord(&format!("{who} azimuth"), v.azimuth)?;
-                    if !(-89.0..=89.0).contains(&v.elevation) {
-                        return Err(format!("{who}: elevation {}° isn't between -89° and 89°", v.elevation));
-                    }
-                    v.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
-                    if let Some(b) = &v.section_box {
-                        section_box_ok(&who, b)?;
-                    }
-                    if let Some(p) = &v.perspective
-                        && !(crate::view3d::MIN_LENS..=crate::view3d::MAX_LENS).contains(&p.lens)
-                    {
-                        let (lo, hi) = (crate::view3d::MIN_LENS, crate::view3d::MAX_LENS);
-                        return Err(format!("{who}: a {} mm lens is no camera's; a perspective's lens is {lo} to {hi} mm", p.lens));
-                    }
-                    if !view_names.insert(v.name.as_str()) {
-                        return Err(format!("{who}: another view is already named `{}`", v.name));
-                    }
-                }
-                Element::Section(v) | Element::Elevation(v) => {
-                    text(&who, "name", &v.name)?;
-                    if v.name.trim().is_empty() {
-                        return Err(format!("{who}: a view needs a name"));
-                    }
-                    line(&who, v.start, v.end)?;
-                    if let Some(d) = v.depth {
-                        size(&format!("{who} depth"), d)?;
-                    }
-                    if let Some([bottom, top]) = v.crop {
-                        coord(&format!("{who} crop"), bottom)?;
-                        coord(&format!("{who} crop"), top)?;
-                        if bottom >= top - TOL {
-                            return Err(format!("{who}: its crop runs from a bottom up to a top above it, not from {bottom} to {top}"));
-                        }
-                    }
-                    v.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
-                    if !view_names.insert(v.name.as_str()) {
-                        return Err(format!("{who}: another view is already named `{}`", v.name));
-                    }
-                }
-                Element::Component(c) => {
-                    let f = self.families.get(&c.family).ok_or_else(|| {
-                        let names: Vec<&str> = self.families.keys().map(String::as_str).collect();
-                        format!("{who}: family `{}` doesn't exist (there are: {})", c.family, names.join(", "))
-                    })?;
-                    if f.category.hosted() {
-                        return Err(format!(
-                            "{who}: family `{}` is a door's or a window's: it stands in a wall, placed with `door` or `window`",
-                            c.family
-                        ));
-                    }
-                    level_ok(c.level)?;
-                    point(&who, c.at)?;
-                    coord(&format!("{who} angle"), c.angle)?;
-                    coord(&format!("{who} offset"), c.offset)?;
-                    self.family_values_ok(&who, &c.family, f, &c.params)?;
-                    // Its shape, built once for each family, type and values the project's components have.
-                    let build = || f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v)).map(|_| ());
-                    let built = match serde_json::to_string(&c.params) {
-                        Ok(values) => shapes.entry((c.family.as_str(), c.type_name.as_str(), values)).or_insert_with(build).clone(),
-                        Err(_) => build(),
-                    };
-                    built.map_err(|e| format!("{who}: {e}"))?;
-                }
-                Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
-                    let types = match e {
-                        Element::StructuralColumn(_) => &self.types.structural_column,
-                        Element::Footing(_) => &self.types.footing,
-                        _ => &self.types.column,
-                    };
-                    known(&who, &col.type_name, types)?;
-                    level_ok(col.level)?;
-                    point(&who, col.at)?;
-                    coord(&format!("{who} angle"), col.angle)?;
-                    coord(&format!("{who} base_offset"), col.base_offset)?;
-                    match col.top_level {
-                        Some(t) => level_ok(t)?,
-                        None => size(&format!("{who} height"), col.height)?,
-                    }
-                    let (bottom, top) = self.span(col.level, col.base_offset, col.top_level, col.height);
-                    if top <= bottom + TOL {
-                        return Err(format!("{who}: its top must be above its base"));
-                    }
-                }
-                run_arm!(r) => {
-                    let (category, none) = (e.category(), BTreeMap::new());
-                    let t = known(&who, &r.type_name, self.types.runs.get(category).unwrap_or(&none))?;
-                    level_ok(r.level)?;
-                    point(&format!("{who} start"), r.start)?;
-                    point(&format!("{who} end"), r.end)?;
-                    coord(&format!("{who} offset"), r.offset)?;
-                    if let Some(o) = r.end_offset {
-                        coord(&format!("{who} end_offset"), o)?;
-                    }
-                    text(&who, "system", &r.system)?;
-                    crate::runs::check(&who, category, &crate::runs::Geom::of(self, r, t))?;
-                }
-                Element::Stair(st) => {
-                    level_ok(st.level)?;
-                    point(&who, st.start)?;
-                    coord(&format!("{who} angle"), st.angle)?;
-                    match st.top_level {
-                        Some(t) => level_ok(t)?,
-                        None => size(&format!("{who} height"), st.height)?,
-                    }
-                    for (what, v) in [("width", st.width), ("riser", st.riser), ("tread", st.tread)] {
-                        size(&format!("{who} {what}"), v)?;
-                    }
-                    let (n, _, _) = self.flight(st);
-                    if !(2..=200).contains(&n) {
-                        return Err(format!(
-                            "{who}: {n} risers; a stair takes 2 to 200, so check its height and its riser ({} mm)",
-                            st.riser
-                        ));
-                    }
-                    landings(&who, &st.landings, Some(f64::from(n)))?;
-                }
-                Element::Ramp(r) => {
-                    level_ok(r.level)?;
-                    point(&who, r.start)?;
-                    coord(&format!("{who} angle"), r.angle)?;
-                    match r.top_level {
-                        Some(t) => level_ok(t)?,
-                        None => size(&format!("{who} height"), r.height)?,
-                    }
-                    size(&format!("{who} width"), r.width)?;
-                    if !(1.0..=50.0).contains(&r.slope) {
-                        return Err(format!("{who}: slope {}% isn't from 1% to 50%", r.slope));
-                    }
-                    let (bottom, top) = self.span(r.level, 0.0, r.top_level, r.height);
-                    if top <= bottom + TOL {
-                        return Err(format!("{who}: its top must be above its base"));
-                    }
-                    coord(&format!("{who} length"), (top - bottom) / r.slope * 100.0)?;
-                    landings(&who, &r.landings, None)?;
-                    if let Some(l) = r.landings.last().filter(|l| l.at >= top - bottom - TOL) {
-                        return Err(format!("{who}: a landing {} mm up isn't below its top, {} mm up", l.at, top - bottom));
-                    }
-                }
-                Element::Railing(rl) => {
-                    let t = known(&who, &rl.type_name, &self.types.railing)?;
-                    level_ok(rl.level)?;
-                    coord(&format!("{who} base_offset"), rl.base_offset)?;
-                    match (rl.host, rl.side) {
-                        (Some(h), Some(_)) => {
-                            if !matches!(self.elements.get(h), Some(Element::Stair(_) | Element::Ramp(_))) {
-                                return Err(format!("{who}: host {} isn't a stair or a ramp", self.shown(h)));
-                            }
-                        }
-                        (Some(_), None) => {
-                            return Err(format!("{who}: a railing on a stair or a ramp runs along its left or its right side"));
-                        }
-                        (None, _) => {
-                            if rl.path.len() < 2 || rl.path.len() > MAX_POINTS {
-                                return Err(format!("{who}: a path needs 2 to {MAX_POINTS} points"));
-                            }
-                            for p in &rl.path {
-                                point(&who, *p)?;
-                            }
-                        }
-                    }
-                    let line = crate::stairs::railing(self, rl);
-                    let length: f64 = line.windows(2).map(|w| w.first().zip(w.get(1)).map_or(0.0, |(a, b)| a.0.dist(b.0))).sum();
-                    if length <= TOL {
-                        return Err(format!("{who}: its path has no length"));
-                    }
-                    if t.spacing > 0.0 && length / t.spacing > MAX_BALUSTERS {
-                        return Err(format!("{who}: {:.0} balusters, more than {MAX_BALUSTERS}; space them wider", length / t.spacing));
-                    }
-                }
-                Element::Roof(r) => {
-                    known(&who, &r.type_name, &self.types.roof)?;
-                    level_ok(r.level)?;
-                    coord(&format!("{who} overhang"), r.overhang)?;
-                    coord(&format!("{who} offset"), r.offset)?;
-                    match &r.extrusion {
-                        Some(x) => {
-                            line(&who, x.line[0], x.line[1])?;
-                            if !(2..=MAX_POINTS).contains(&x.profile.len()) {
-                                return Err(format!("{who}: an extrusion's profile needs 2 to {MAX_POINTS} points"));
-                            }
-                            for p in &x.profile {
-                                point(&who, *p)?;
-                            }
-                            if x.profile.windows(2).any(|w| w.first().zip(w.get(1)).is_none_or(|(a, b)| b.0 - a.0 <= TOL)) {
-                                return Err(format!("{who}: its profile runs along its line one way, each point past the one before"));
-                            }
-                            coord(&format!("{who} from"), x.from)?;
-                            coord(&format!("{who} to"), x.to)?;
-                            if x.to - x.from <= TOL {
-                                return Err(format!("{who}: it's swept across its line from `from` to `to`, further to the left"));
-                            }
-                        }
-                        None => {
-                            boundary(&who, &r.boundary)?;
-                            if !(0.0..=MAX_SLOPE).contains(&r.slope) {
-                                return Err(format!("{who}: slope {}° isn't from 0° (flat) to {MAX_SLOPE}°", r.slope));
-                            }
-                        }
-                    }
-                    if r.openings.len() > MAX_ROOF_POINTS {
-                        return Err(format!("{who}: {} openings, more than {MAX_ROOF_POINTS}", r.openings.len()));
-                    }
-                    for o in &r.openings {
-                        boundary(&format!("{who} opening"), o)?;
-                    }
-                    if r.extrusion.is_some() && !r.courtyards.is_empty() {
-                        return Err(format!("{who}: courtyards are holes in a roof's footprint; cut an extrusion roof with `openings`"));
-                    }
-                    if r.courtyards.iter().map(Vec::len).sum::<usize>() > MAX_ROOF_POINTS {
-                        return Err(format!("{who}: its courtyards have more than {MAX_ROOF_POINTS} points between them"));
-                    }
-                    for (i, c) in r.courtyards.iter().enumerate() {
-                        boundary(&format!("{who} courtyard {i}"), c)?;
-                    }
-                    holes(&who, "courtyard", &r.boundary, &r.courtyards)?;
-                    crate::sketch::check(&who, &r.sketch)?;
-                    self.roof_pieces(r).map_err(|e| format!("{who}: {e}"))?;
-                }
-                Element::Sheet(sh) => {
-                    text(&who, "number", &sh.number)?;
-                    text(&who, "name", &sh.name)?;
-                    if sh.number.trim().is_empty() {
-                        return Err(format!("{who}: a sheet needs a number"));
-                    }
-                    if !sheet_numbers.insert(sh.number.as_str()) {
-                        return Err(format!("{who}: another sheet is already numbered `{}`", sh.number));
-                    }
-                    if paper(&sh.size).is_none() {
-                        return Err(format!("{who}: size `{}` isn't A0, A1, A2, A3 or A4, or an Arch / ANSI size", sh.size));
-                    }
-                }
-                Element::Viewport(v) => {
-                    if self.sheet(v.sheet).is_none() {
-                        return Err(format!("{who}: {} {} isn't a sheet", self.cat(v.sheet), self.shown(v.sheet)));
-                    }
-                    let name = self.view_name(v.view).ok_or(format!(
-                        "{who}: {} {} isn't a plan, a section, an elevation, a schedule or a 3D view",
-                        self.cat(v.view),
-                        self.shown(v.view)
-                    ))?;
-                    point(&who, v.at)?;
-                    if !(v.scale.is_finite() && (1.0..=100_000.0).contains(&v.scale)) {
-                        return Err(format!("{who}: scale 1 : {} isn't between 1 : 1 and 1 : 100000", v.scale));
-                    }
-                    if let Some(other) = placed.insert(v.view, v.sheet) {
-                        let number = self.sheet(other).map_or("", |s| s.number.as_str());
-                        return Err(format!("{who}: {name} is on sheet {number} already; a view goes on one sheet"));
-                    }
-                }
-                Element::Tag(t) => {
-                    let Some(host) = self.elements.get(t.host) else {
-                        return Err(format!("{who}: element {} doesn't exist", t.host));
-                    };
-                    if let Some(v) = t.view {
-                        let level = self.level_of(e);
-                        level
-                            .and_then(|l| self.plan_view_of(v, l))
-                            .ok_or_else(|| format!("{who}: view {} isn't a plan view of its host's level", self.shown(v)))?;
-                    }
-                    // A door or window whose wall is gone is the wall's to complain of; anything else needs a place in a plan.
-                    if !matches!(host, Element::Door(_) | Element::Window(_)) && self.anchor(t.host).is_none() {
-                        return Err(format!(
-                            "{who}: tags name what has a place in a plan (doors, windows, walls, columns, floors, rooms and the like), not {} {}",
-                            host.category(),
-                            t.host
-                        ));
-                    }
-                    if let Some(label) = &t.label {
-                        let cat = host.category();
-                        let fields = crate::schedule::fields(self, cat);
-                        if !fields.iter().any(|(name, _)| name == label) {
-                            let names: Vec<String> = fields.into_iter().map(|(name, _)| name).collect();
-                            return Err(format!("{who}: {cat} {} has no field `{label}`; its fields are: {}", t.host, names.join(", ")));
-                        }
-                    }
-                    point(&format!("{who} offset"), t.offset)?;
-                }
-            }
+            self.check_element(id, e, &mut t)?;
         }
-        if let Some(n) = view_names.intersection(&level_names).next() {
+        if let Some(n) = t.view_names.intersection(&t.level_names).next() {
             return Err(format!("a view is named `{n}`, as a level is; name it otherwise"));
         }
-        for (host, v) in spans {
+        for (host, v) in &t.spans {
             // Openings share a wall's place only where they share its height too: one over the other is not an overlap, and a
             // storefront wall with a window a storey is a wall whose windows overlap in plan alone.
             for (i, a) in v.iter().enumerate() {
@@ -5707,6 +4868,826 @@ impl Model {
         }
         // Last, so what a rule above says of a reference comes first.
         self.check_ids()
+    }
+
+    /// What [`Model::check`] asks of element `id`, `e`, keeping in `t` what it must hold in common with the others.
+    fn check_element<'a>(&'a self, id: Id, e: &'a Element, t: &mut Tally<'a>) -> Result<(), String> {
+        let Tally { level_names, grid_names, link_names, view_names, twins, sheet_numbers, placed, spans, members_placed, shapes } = t;
+        let who = format!("{} {id}", e.category());
+        let level_ok = |l: Guid| self.level(l).map(|_| ()).ok_or(format!("{who}: level {} doesn't exist", self.shown(l)));
+        // A view annotation is drawn in: a plan, a section or an elevation, or with `sheets`, a sheet.
+        let view_ok = |v: Guid, sheets: bool| match self.elements.get(v) {
+            Some(Element::Level(_) | Element::PlanView(_) | Element::Section(_) | Element::Elevation(_)) => Ok(()),
+            Some(Element::Sheet(_)) if sheets => Ok(()),
+            Some(other) => Err(format!(
+                "{who}: {} {} isn't a plan, a section, an elevation{}",
+                other.category(),
+                self.shown(v),
+                if sheets { " or a sheet" } else { "" }
+            )),
+            None => Err(format!("{who}: view {v} doesn't exist")),
+        };
+        // Its values of the project's parameters, each one of its category's, of its kind; a
+        // component's family's are its family's to check.
+        for (k, v) in e.params().into_iter().flatten() {
+            // Its phases and its design option are values it holds under names no parameter may take.
+            if let Some(checked) = phasing::check_value(self, &who, k, v) {
+                checked?;
+                continue;
+            }
+            if let Some(checked) = crate::paint::check_value(self, &who, k, v, e) {
+                checked?;
+                continue;
+            }
+            if let Some(checked) = crate::massing::check_value(self, &who, k, v, e) {
+                checked?;
+                continue;
+            }
+            if e.family().and_then(|(f, _)| self.families.get(f)).is_some_and(|f| f.parameters.iter().any(|p| p.name == *k)) {
+                continue;
+            }
+            let p = self
+                .parameters
+                .get(k)
+                .filter(|p| p.categories.iter().any(|c| c == e.category()))
+                .ok_or_else(|| format!("{who}: `{k}` isn't a parameter of {}s; add it with `parameter`", e.category()))?;
+            if !p.holds(v) {
+                let what = match p.kind {
+                    ParameterKind::Text => "text",
+                    ParameterKind::Number => "a number",
+                    ParameterKind::Length => "a length",
+                    ParameterKind::YesNo => "yes or no",
+                };
+                return Err(format!("{who}: `{k}` holds {what}, not {v}"));
+            }
+        }
+        phasing::check_order(self, &who, e)?;
+        match e {
+            Element::Level(l) => {
+                text(&who, "name", &l.name)?;
+                coord(&format!("{who} elevation"), l.elevation)?;
+                if !level_names.insert(l.name.as_str()) {
+                    return Err(format!("{who}: another level is already named `{}`", l.name));
+                }
+                range_ok(&who, &l.view_range)?;
+                if let Some([a, b]) = l.crop {
+                    crop(&who, a, b)?;
+                }
+                if let Some([a, b]) = l.extent {
+                    point(&format!("{who} extent"), a)?;
+                    point(&format!("{who} extent"), b)?;
+                    if !(a.0 < b.0 - TOL && a.1 < b.1 - TOL) {
+                        return Err(format!("{who}: its extent runs from its south-west corner to its north-east one"));
+                    }
+                }
+                l.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
+            }
+            Element::Grid(g) => {
+                text(&who, "name", &g.name)?;
+                line(&who, g.start, g.end)?;
+                if !grid_names.insert(g.name.as_str()) {
+                    return Err(format!("{who}: another grid is already named `{}`", g.name));
+                }
+            }
+            Element::RoomSeparator(rs) => {
+                level_ok(rs.level)?;
+                line(&who, rs.start, rs.end)?;
+            }
+            Element::Rebar(rb) => {
+                level_ok(rb.level)?;
+                text(&who, "grade", &rb.grade)?;
+                text(&who, "layer", &rb.layer)?;
+                if rb.grade.trim().is_empty() {
+                    return Err(format!("{who}: a bar needs a steel grade"));
+                }
+                let (thin, thick) = crate::rebar::DIAMETERS;
+                if !(thin..=thick).contains(&rb.diameter) {
+                    return Err(format!("{who}: diameter {} mm isn't between {thin} and {thick} mm", rb.diameter));
+                }
+                if !(2..=MAX_POINTS).contains(&rb.path.len()) {
+                    return Err(format!("{who}: a path needs 2 to {MAX_POINTS} points"));
+                }
+                if rb.path.iter().flatten().any(|c| !(c.is_finite() && c.abs() <= MAX_COORD)) {
+                    return Err(format!("{who}: a point of its path is not finite or reaches past {MAX_COORD} mm"));
+                }
+                if crate::rebar::length(&rb.path) <= TOL {
+                    return Err(format!("{who}: its path has no length"));
+                }
+                if let Some(h) = rb.host {
+                    match self.elements.get(h) {
+                        Some(
+                            Element::Beam(_)
+                            | Element::StripFooting(_)
+                            | Element::Column(_)
+                            | Element::StructuralColumn(_)
+                            | Element::Footing(_)
+                            | Element::Floor(_),
+                        ) => {}
+                        Some(other) => {
+                            return Err(format!(
+                                "{who}: {} {} is no host for bars; a beam, a column, a footing or a floor is",
+                                other.category(),
+                                self.shown(h)
+                            ));
+                        }
+                        None => return Err(format!("{who}: host {h} doesn't exist")),
+                    }
+                }
+            }
+            Element::Wall(w) => {
+                known(&who, &w.type_name, &self.types.wall)?;
+                level_ok(w.level)?;
+                line(&who, w.start, w.end)?;
+                coord(&format!("{who} base_offset"), w.base_offset)?;
+                // An arc within reach: all of its circle inside the model's limits.
+                let axis = walls::Axis::of(w);
+                let reach = axis.centre().zip(axis.radius()).is_none_or(|(c, r)| c.0.abs().max(c.1.abs()) + r <= MAX_COORD);
+                if !(w.arc.is_finite() && w.arc.abs() < 360.0 && reach) {
+                    return Err(format!("{who}: arc {}° isn't between -360° and 360°, reaching no farther than 1000 km", w.arc));
+                }
+                for (what, at) in [("attach_top", w.attach_top), ("attach_base", w.attach_base)] {
+                    if let Some(a) = at
+                        && !matches!(self.elements.get(a), Some(Element::Roof(_) | Element::Floor(_)))
+                    {
+                        return Err(format!("{who}: {what} {} isn't a roof or a floor", self.shown(a)));
+                    }
+                }
+                match w.top_level {
+                    Some(t) => level_ok(t)?,
+                    None => size(&format!("{who} height"), w.height)?,
+                }
+                if self.top_z(w) <= self.base_z(w) + TOL {
+                    return Err(format!("{who}: its top must be above its base"));
+                }
+            }
+            Element::Floor(f) => {
+                point(&format!("{who} pattern origin"), f.pattern_origin)?;
+                coord(&format!("{who} pattern angle"), f.pattern_angle)?;
+                known(&who, &f.type_name, &self.types.floor)?;
+                level_ok(f.level)?;
+                boundary(&who, &f.boundary)?;
+                openings(&who, &f.boundary, &f.openings)?;
+                crate::sketch::check(&who, e.sketch().map_or(&[][..], Vec::as_slice))?;
+                coord(&format!("{who} offset"), f.offset)?;
+                if !(f.slope.is_finite() && f.slope.abs() <= MAX_SLOPE) {
+                    return Err(format!("{who}: slope {}° isn't between -{MAX_SLOPE}° and {MAX_SLOPE}°", f.slope));
+                }
+                match f.arrow {
+                    Some([tail, head]) => line(&format!("{who} arrow"), tail, head)?,
+                    None if f.slope != 0.0 => {
+                        return Err(format!(
+                            "{who}: a sloped floor needs a slope arrow, from where its top is at its offset toward where it rises"
+                        ));
+                    }
+                    None => {}
+                }
+            }
+            Element::Ceiling(c) => {
+                known(&who, &c.type_name, &self.types.ceiling)?;
+                level_ok(c.level)?;
+                boundary(&who, &c.boundary)?;
+                openings(&who, &c.boundary, &c.openings)?;
+                crate::sketch::check(&who, e.sketch().map_or(&[][..], Vec::as_slice))?;
+                coord(&format!("{who} offset"), c.offset)?;
+            }
+            Element::Shaft(sh) => {
+                level_ok(sh.level)?;
+                boundary(&who, &sh.boundary)?;
+                coord(&format!("{who} base_offset"), sh.base_offset)?;
+                crate::sketch::check(&who, e.sketch().map_or(&[][..], Vec::as_slice))?;
+                match sh.top_level {
+                    Some(t) => level_ok(t)?,
+                    None => size(&format!("{who} height"), sh.height)?,
+                }
+                let (bottom, top) = self.span(sh.level, sh.base_offset, sh.top_level, sh.height);
+                if top <= bottom + TOL {
+                    return Err(format!("{who}: its top must be above its base"));
+                }
+            }
+            Element::Mass(ms) => {
+                level_ok(ms.level)?;
+                boundary(&who, &ms.boundary)?;
+                text(&who, "name", &ms.name)?;
+                coord(&format!("{who} base_offset"), ms.base_offset)?;
+                match ms.top_level {
+                    Some(t) => level_ok(t)?,
+                    None => size(&format!("{who} height"), ms.height)?,
+                }
+                let (bottom, top) = self.span(ms.level, ms.base_offset, ms.top_level, ms.height);
+                if top <= bottom + TOL {
+                    return Err(format!("{who}: its top must be above its base"));
+                }
+                if let Some(crown) = &ms.top {
+                    // Its points first: past that, the rings pair up and the cross sections can be worked out.
+                    if crown.len() == ms.boundary.len() {
+                        boundary(&format!("{who} top"), crown)?;
+                    }
+                    if let Some(why) = crate::massing::loft_problem(&ms.boundary, crown) {
+                        return Err(format!("{who}: {why}"));
+                    }
+                }
+            }
+            Element::Door(o) | Element::Window(o) => {
+                let w = self.wall(o.host).ok_or(format!("{who}: host wall {} doesn't exist", self.shown(o.host)))?;
+                let t = self.opening_dims(e).map_err(|e| format!("{who}: {e}"))?;
+                if let Some(f) = o.family.as_ref().and_then(|n| self.families.get(n)) {
+                    self.family_values_ok(&who, o.family.as_deref().unwrap_or_default(), f, &o.params)?;
+                    let values = f.values_in(&o.type_name, &o.params, self.thickness(w)).map_err(|e| format!("{who}: {e}"))?;
+                    f.pieces(&values).and_then(|_| f.strokes(&values)).map_err(|e| format!("{who}: {e}"))?;
+                    size(&format!("{who} width"), t.width)?;
+                    size(&format!("{who} height"), t.height)?;
+                }
+                coord(&format!("{who} offset"), o.offset)?;
+                coord(&format!("{who} sill"), o.sill)?;
+                text(&who, "mark", &o.mark)?;
+                let (a, b) = (o.offset - t.width / 2.0, o.offset + t.width / 2.0);
+                let length = crate::walls::Axis::of(w).length();
+                if a < -TOL || b > length + TOL {
+                    return Err(format!(
+                        "{who}: {} mm wide at offset {} doesn't fit wall {}, {length} mm long",
+                        t.width,
+                        o.offset,
+                        self.shown(o.host)
+                    ));
+                }
+                // Up to the wall's top over it, which a roof it's attached to may raise.
+                let top = [a, o.offset, b].map(|s| crate::walls::top_at(self, w, s)).into_iter().fold(f64::INFINITY, f64::min);
+                if o.sill < 0.0 || self.own_base(w) + o.sill + t.height > top + TOL {
+                    return Err(format!("{who}: sill {} + height {} doesn't fit wall {}'s height", o.sill, t.height, self.shown(o.host)));
+                }
+                let span = OpeningSpan { start: a, end: b, sill: o.sill, head: o.sill + t.height, id };
+                let list = spans.entry(o.host).or_default();
+                let at = list.partition_point(|held| held.start <= a);
+                list.insert(at, span);
+            }
+            Element::Room(r) => {
+                level_ok(r.level)?;
+                point(&who, r.point)?;
+                text(&who, "name", &r.name)?;
+                text(&who, "number", &r.number)?;
+            }
+            Element::Dimension(d) => {
+                level_ok(d.level)?;
+                if let Some(v) = d.view {
+                    self.plan_view_of(v, d.level).ok_or_else(|| format!("{who}: view {} isn't a plan view of its level", self.shown(v)))?;
+                }
+                point(&who, d.at)?;
+                if !self.dimension_types.contains_key(&d.type_name) {
+                    let there: Vec<&str> = self.dimension_types.keys().map(String::as_str).collect();
+                    return Err(format!("{who}: there's no dimension type `{}` (there are: {})", d.type_name, there.join(", ")));
+                }
+                for (what, t) in
+                    [("prefix", &d.prefix), ("suffix", &d.suffix), ("above", &d.above), ("below", &d.below), ("replace", &d.replace)]
+                {
+                    crate::dims::dim_text(&who, what, t)?;
+                }
+                if d.equal && !(matches!(d.kind, DimKind::Aligned | DimKind::Linear) && d.refs.len() > 2) {
+                    return Err(format!("{who}: only an aligned or a linear dimension of two segments or more is kept equal"));
+                }
+                if !d.locked.is_empty() && !matches!(d.kind, DimKind::Aligned | DimKind::Linear) {
+                    return Err(format!("{who}: only an aligned or a linear dimension's segments are locked"));
+                }
+                let mut locks = BTreeSet::new();
+                for l in &d.locked {
+                    if l.segment >= MAX_POINTS || !locks.insert(l.segment) || !(l.length.is_finite() && l.length.abs() <= MAX_COORD) {
+                        return Err(format!("{who}: segment {} is locked twice, at no length, or isn't a segment", l.segment));
+                    }
+                }
+                let mut segments = BTreeSet::new();
+                for st in &d.texts {
+                    if st.segment >= MAX_POINTS || !segments.insert(st.segment) {
+                        return Err(format!("{who}: segment {}'s text is given twice, or there's no such segment", st.segment));
+                    }
+                    for (what, t) in st.fields() {
+                        crate::dims::dim_text(&format!("{who} segment {}", st.segment), what, t)?;
+                    }
+                }
+                match (d.kind, d.refs.len()) {
+                    (DimKind::Aligned | DimKind::Linear, 2..=MAX_POINTS)
+                    | (DimKind::Angular, 2)
+                    | (DimKind::Radial | DimKind::Diameter | DimKind::ArcLength, 1) => {}
+                    (DimKind::Aligned | DimKind::Linear, _) => {
+                        return Err(format!("{who}: a dimension measures between 2 to {MAX_POINTS} references"));
+                    }
+                    (DimKind::Angular, _) => return Err(format!("{who}: an angular dimension measures between two lines")),
+                    (DimKind::Radial, _) => return Err(format!("{who}: a radial dimension measures one round element")),
+                    (DimKind::Diameter, _) => return Err(format!("{who}: a diameter dimension measures one round element")),
+                    (DimKind::ArcLength, 3) => {}
+                    (DimKind::ArcLength, _) => {
+                        return Err(format!(
+                            "{who}: an arc length dimension measures along one arc, all of it or between two points on it"
+                        ));
+                    }
+                }
+                match (d.kind, d.orient) {
+                    (DimKind::Linear, None) => {
+                        return Err(format!("{who}: a linear dimension runs horizontal or vertical: give it an `orient`"));
+                    }
+                    (DimKind::Linear, Some(_)) | (_, None) => {}
+                    (_, Some(_)) => return Err(format!("{who}: only a linear dimension has an `orient`; this one is {:?}", d.kind)),
+                }
+                let linear = d.kind == DimKind::Linear;
+                let along = self.measured_along(d);
+                let mut seen = BTreeSet::new();
+                let mut first: Option<(Reference, Line)> = None;
+                for r in &d.refs {
+                    match d.kind {
+                        DimKind::Radial => {
+                            self.reference_arc(r).map_err(|e| format!("{who}: {e}"))?;
+                            continue;
+                        }
+                        DimKind::Diameter => {
+                            self.reference_arc(r).map_err(|e| format!("{who}: {}", e.replace("a radial", "a diameter")))?;
+                            continue;
+                        }
+                        DimKind::ArcLength => {
+                            self.arc_span(d).map_err(|e| format!("{who}: {e}"))?;
+                            break;
+                        }
+                        _ => {}
+                    }
+                    let what = format!("{} {}", self.cat(r.id), self.shown(r.id));
+                    if r.point.is_some() && d.kind == DimKind::Angular {
+                        return Err(format!("{who}: it measures to an end of {what}; an angle is between two lines"));
+                    }
+                    let line = self.reference_geometry(r).map_err(|e| format!("{who}: {e}"))?;
+                    if !seen.insert((r.id, r.face, r.point)) {
+                        let at = match r.point {
+                            Some(End::Start) => "start of its ",
+                            Some(End::End) => "end of its ",
+                            None => "",
+                        };
+                        return Err(format!("{who}: it measures to {what}'s {at}{} twice", r.face.name()));
+                    }
+                    if r.point.is_some() {
+                        continue;
+                    }
+                    if let (true, Some(n)) = (linear, along)
+                        && !geom::parallel(line.0, line.1, P2(0.0, 0.0), n.perp())
+                    {
+                        let way = if d.orient == Some(Orient::Horizontal) { "horizontal" } else { "vertical" };
+                        return Err(format!(
+                            "{who}: {what} isn't square to a {way} dimension; measure to its ends, or make the dimension aligned"
+                        ));
+                    }
+                    match first {
+                        None => first = Some((*r, line)),
+                        Some((f, (a, b))) => {
+                            let parallel = geom::parallel(a, b, line.0, line.1);
+                            let other = format!("{} {}", self.cat(f.id), self.shown(f.id));
+                            if d.kind == DimKind::Aligned && !parallel {
+                                return Err(format!(
+                                    "{who}: {what} isn't parallel to {other}; a dimension measures between parallel walls and grids"
+                                ));
+                            }
+                            if d.kind == DimKind::Angular && parallel {
+                                return Err(format!("{who}: {what} is parallel to {other}; an angle is between lines that meet"));
+                            }
+                        }
+                    }
+                }
+                if matches!(d.kind, DimKind::Aligned | DimKind::Linear) && along.is_none() {
+                    return Err(format!("{who}: its points are all in one place, so it has no way to run"));
+                }
+            }
+            Element::Text(Note { view, .. })
+            | Element::DetailLine(DetailLine { view, .. })
+            | Element::FilledRegion(FilledRegion { view, .. }) => {
+                view_ok(*view, true)?;
+                self.annotation_ok(&who, e)?;
+            }
+            Element::DetailGroup(g) => {
+                view_ok(g.view, true)?;
+                point(&who, g.at)?;
+                coord(&format!("{who} angle"), g.angle)?;
+                let Some(t) = self.detail_groups.get(&g.type_name) else {
+                    let there: Vec<&str> = self.detail_groups.keys().map(String::as_str).collect();
+                    return Err(format!("{who}: there's no detail group `{}` (there are: {})", g.type_name, there.join(", ")));
+                };
+                placing(&who, members_placed, g.view, t.members.len())?;
+            }
+            Element::RepeatingDetail(r) => {
+                view_ok(r.view, true)?;
+                point(&who, r.start)?;
+                point(&who, r.end)?;
+                if !(r.spacing.is_finite() && r.spacing >= 1.0 && r.spacing <= MAX_COORD) {
+                    return Err(format!("{who}: spacing {} mm isn't from 1 mm to {MAX_COORD}", r.spacing));
+                }
+                if r.places().is_none() {
+                    return Err(format!(
+                        "{who}: it would repeat more than {} times; space it wider or draw it shorter",
+                        crate::groups::MAX_REPEATS
+                    ));
+                }
+                let Some(t) = self.detail_groups.get(&r.type_name) else {
+                    let there: Vec<&str> = self.detail_groups.keys().map(String::as_str).collect();
+                    return Err(format!("{who}: there's no detail group `{}` (there are: {})", r.type_name, there.join(", ")));
+                };
+                placing(&who, members_placed, r.view, t.members.len().saturating_mul(r.count()))?;
+            }
+            Element::PointCloud(pc) => {
+                if !self.clouds.contains_key(&pc.cloud) {
+                    return Err(format!("{who}: the project holds no scan named `{}`", pc.cloud));
+                }
+                level_ok(pc.level)?;
+                point(&format!("{who} at"), pc.at)?;
+                coord(&format!("{who} offset"), pc.offset)?;
+                coord(&format!("{who} angle"), pc.angle)?;
+            }
+            Element::CadImport(ci) => {
+                if !self.cads.contains_key(&ci.cad) {
+                    return Err(format!("{who}: the project holds no CAD drawing named `{}`", ci.cad));
+                }
+                level_ok(ci.level)?;
+                point(&format!("{who} at"), ci.at)?;
+                coord(&format!("{who} angle"), ci.angle)?;
+                if !(ci.origin.is_finite()
+                    && ci.origin.0.abs() <= crate::dxf::MAX_FILE_COORD
+                    && ci.origin.1.abs() <= crate::dxf::MAX_FILE_COORD)
+                {
+                    return Err(format!("{who}: origin {:?} is past what a drawing holds", ci.origin));
+                }
+                if !CAD_SCALE.contains(&ci.scale) {
+                    return Err(format!(
+                        "{who}: a scale of {} mm to the drawing's unit isn't one; give one from {} to {}",
+                        ci.scale,
+                        CAD_SCALE.start(),
+                        CAD_SCALE.end()
+                    ));
+                }
+                if let Some(v) = ci.view
+                    && !(matches!(self.elements.get(v), Some(Element::Level(_) | Element::PlanView(_)))
+                        && self.plan_level(v).map(|l| self.guid(l)) == Some(ci.level))
+                {
+                    return Err(format!(
+                        "{who}: view {} isn't a plan of its level; an import shows in one of its level's plans",
+                        self.shown(v)
+                    ));
+                }
+                if ci.hidden.len() > MAX_HIDDEN {
+                    return Err(format!("{who}: it hides {} layers; up to {MAX_HIDDEN}", ci.hidden.len()));
+                }
+                for layer in &ci.hidden {
+                    text(&format!("{who} hidden layer"), "name", layer)?;
+                }
+                if let Some(b) = self.cad_box(id) {
+                    for p in b {
+                        point(&format!("{who}: the drawing, placed,"), p)
+                            .map_err(|e| format!("{e}; place it nearer the origin (`position`: center), or at another `scale`"))?;
+                    }
+                }
+            }
+            Element::Spot(sp) => {
+                view_ok(sp.view, false)?;
+                point(&who, sp.at)?;
+                match (self.plan_level(sp.view), sp.host) {
+                    (Some(_), None) => return Err(format!("{who}: a spot elevation in a plan reads an element's top; give `host`")),
+                    (_, Some(h)) if !self.elements.contains_key(h) => return Err(format!("{who}: element {h} doesn't exist")),
+                    _ => {}
+                }
+            }
+            Element::Schedule(sc) => {
+                text(&who, "name", &sc.name)?;
+                if sc.name.trim().is_empty() {
+                    return Err(format!("{who}: a view needs a name"));
+                }
+                crate::schedule::check(self, sc).map_err(|e| format!("{who} (`{}`): {e}", sc.name))?;
+                if let Some((of, name)) = crate::schedule::builtin(Some(&sc.name), None)
+                    && !twins.insert(of)
+                {
+                    return Err(format!("{who} (`{}`): another schedule is already the {of}s' {name}; call it something else", sc.name));
+                }
+                if !view_names.insert(sc.name.as_str()) {
+                    return Err(format!("{who}: another view is already named `{}`", sc.name));
+                }
+            }
+            Element::PlanView(v) => {
+                text(&who, "name", &v.name)?;
+                if v.name.trim().is_empty() {
+                    return Err(format!("{who}: a view needs a name"));
+                }
+                level_ok(v.level)?;
+                range_ok(&who, &v.view_range)?;
+                if let Some([a, b]) = v.crop {
+                    crop(&who, a, b)?;
+                }
+                v.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
+                // A level's name is its own plan's; a view of it takes another.
+                if self.levels().iter().any(|(_, l)| l.name == v.name) {
+                    return Err(format!("{who}: a level is already named `{}`; a plan view of it needs another name", v.name));
+                }
+                if let Some(p) = v.parent {
+                    // Of a level's own plan, or of a plan view that is no dependent itself, on the same level.
+                    let primary = match self.elements.get(p) {
+                        Some(Element::Level(_)) => p == v.level,
+                        Some(Element::PlanView(o)) => o.parent.is_none() && o.level == v.level,
+                        _ => false,
+                    };
+                    if !primary {
+                        return Err(format!(
+                            "{who}: a dependent view hangs from a plan of its own level that is no dependent itself, not {}",
+                            self.shown(p)
+                        ));
+                    }
+                }
+                if !view_names.insert(v.name.as_str()) {
+                    return Err(format!("{who}: another view is already named `{}`", v.name));
+                }
+            }
+            Element::Link(l) => {
+                text(&who, "name", &l.name)?;
+                if l.name.trim().is_empty() || l.path.trim().is_empty() || l.path.chars().count() > MAX_TEXT {
+                    return Err(format!("{who}: a link needs a name and the path of a file, up to {MAX_TEXT} characters"));
+                }
+                point(&format!("{who} at"), l.at)?;
+                if !(l.angle.is_finite() && l.angle.abs() <= 360.0) {
+                    return Err(format!("{who}: its angle {}° isn't between -360° and 360°", l.angle));
+                }
+                if !link_names.insert(l.name.as_str()) {
+                    return Err(format!("{who}: another link is already named `{}`", l.name));
+                }
+            }
+            Element::View3D(v) => {
+                text(&who, "name", &v.name)?;
+                if v.name.trim().is_empty() {
+                    return Err(format!("{who}: a view needs a name"));
+                }
+                coord(&format!("{who} azimuth"), v.azimuth)?;
+                if !(-89.0..=89.0).contains(&v.elevation) {
+                    return Err(format!("{who}: elevation {}° isn't between -89° and 89°", v.elevation));
+                }
+                v.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
+                if let Some(b) = &v.section_box {
+                    section_box_ok(&who, b)?;
+                }
+                if let Some(p) = &v.perspective
+                    && !(crate::view3d::MIN_LENS..=crate::view3d::MAX_LENS).contains(&p.lens)
+                {
+                    let (lo, hi) = (crate::view3d::MIN_LENS, crate::view3d::MAX_LENS);
+                    return Err(format!("{who}: a {} mm lens is no camera's; a perspective's lens is {lo} to {hi} mm", p.lens));
+                }
+                if !view_names.insert(v.name.as_str()) {
+                    return Err(format!("{who}: another view is already named `{}`", v.name));
+                }
+            }
+            Element::Section(v) | Element::Elevation(v) => {
+                text(&who, "name", &v.name)?;
+                if v.name.trim().is_empty() {
+                    return Err(format!("{who}: a view needs a name"));
+                }
+                line(&who, v.start, v.end)?;
+                if let Some(d) = v.depth {
+                    size(&format!("{who} depth"), d)?;
+                }
+                if let Some([bottom, top]) = v.crop {
+                    coord(&format!("{who} crop"), bottom)?;
+                    coord(&format!("{who} crop"), top)?;
+                    if bottom >= top - TOL {
+                        return Err(format!("{who}: its crop runs from a bottom up to a top above it, not from {bottom} to {top}"));
+                    }
+                }
+                v.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
+                if !view_names.insert(v.name.as_str()) {
+                    return Err(format!("{who}: another view is already named `{}`", v.name));
+                }
+            }
+            Element::Component(c) => {
+                let f = self.families.get(&c.family).ok_or_else(|| {
+                    let names: Vec<&str> = self.families.keys().map(String::as_str).collect();
+                    format!("{who}: family `{}` doesn't exist (there are: {})", c.family, names.join(", "))
+                })?;
+                if f.category.hosted() {
+                    return Err(format!(
+                        "{who}: family `{}` is a door's or a window's: it stands in a wall, placed with `door` or `window`",
+                        c.family
+                    ));
+                }
+                level_ok(c.level)?;
+                point(&who, c.at)?;
+                coord(&format!("{who} angle"), c.angle)?;
+                coord(&format!("{who} offset"), c.offset)?;
+                self.family_values_ok(&who, &c.family, f, &c.params)?;
+                // Its shape, built once for each family, type and values the project's components have.
+                let build = || f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v)).map(|_| ());
+                let built = match serde_json::to_string(&c.params) {
+                    Ok(values) => shapes.entry((c.family.as_str(), c.type_name.as_str(), values)).or_insert_with(build).clone(),
+                    Err(_) => build(),
+                };
+                built.map_err(|e| format!("{who}: {e}"))?;
+            }
+            Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
+                let types = match e {
+                    Element::StructuralColumn(_) => &self.types.structural_column,
+                    Element::Footing(_) => &self.types.footing,
+                    _ => &self.types.column,
+                };
+                known(&who, &col.type_name, types)?;
+                level_ok(col.level)?;
+                point(&who, col.at)?;
+                coord(&format!("{who} angle"), col.angle)?;
+                coord(&format!("{who} base_offset"), col.base_offset)?;
+                match col.top_level {
+                    Some(t) => level_ok(t)?,
+                    None => size(&format!("{who} height"), col.height)?,
+                }
+                let (bottom, top) = self.span(col.level, col.base_offset, col.top_level, col.height);
+                if top <= bottom + TOL {
+                    return Err(format!("{who}: its top must be above its base"));
+                }
+            }
+            run_arm!(r) => {
+                let (category, none) = (e.category(), BTreeMap::new());
+                let t = known(&who, &r.type_name, self.types.runs.get(category).unwrap_or(&none))?;
+                level_ok(r.level)?;
+                point(&format!("{who} start"), r.start)?;
+                point(&format!("{who} end"), r.end)?;
+                coord(&format!("{who} offset"), r.offset)?;
+                if let Some(o) = r.end_offset {
+                    coord(&format!("{who} end_offset"), o)?;
+                }
+                text(&who, "system", &r.system)?;
+                crate::runs::check(&who, category, &crate::runs::Geom::of(self, r, t))?;
+            }
+            Element::Stair(st) => {
+                level_ok(st.level)?;
+                point(&who, st.start)?;
+                coord(&format!("{who} angle"), st.angle)?;
+                match st.top_level {
+                    Some(t) => level_ok(t)?,
+                    None => size(&format!("{who} height"), st.height)?,
+                }
+                for (what, v) in [("width", st.width), ("riser", st.riser), ("tread", st.tread)] {
+                    size(&format!("{who} {what}"), v)?;
+                }
+                let (n, _, _) = self.flight(st);
+                if !(2..=200).contains(&n) {
+                    return Err(format!("{who}: {n} risers; a stair takes 2 to 200, so check its height and its riser ({} mm)", st.riser));
+                }
+                landings(&who, &st.landings, Some(f64::from(n)))?;
+            }
+            Element::Ramp(r) => {
+                level_ok(r.level)?;
+                point(&who, r.start)?;
+                coord(&format!("{who} angle"), r.angle)?;
+                match r.top_level {
+                    Some(t) => level_ok(t)?,
+                    None => size(&format!("{who} height"), r.height)?,
+                }
+                size(&format!("{who} width"), r.width)?;
+                if !(1.0..=50.0).contains(&r.slope) {
+                    return Err(format!("{who}: slope {}% isn't from 1% to 50%", r.slope));
+                }
+                let (bottom, top) = self.span(r.level, 0.0, r.top_level, r.height);
+                if top <= bottom + TOL {
+                    return Err(format!("{who}: its top must be above its base"));
+                }
+                coord(&format!("{who} length"), (top - bottom) / r.slope * 100.0)?;
+                landings(&who, &r.landings, None)?;
+                if let Some(l) = r.landings.last().filter(|l| l.at >= top - bottom - TOL) {
+                    return Err(format!("{who}: a landing {} mm up isn't below its top, {} mm up", l.at, top - bottom));
+                }
+            }
+            Element::Railing(rl) => {
+                let t = known(&who, &rl.type_name, &self.types.railing)?;
+                level_ok(rl.level)?;
+                coord(&format!("{who} base_offset"), rl.base_offset)?;
+                match (rl.host, rl.side) {
+                    (Some(h), Some(_)) => {
+                        if !matches!(self.elements.get(h), Some(Element::Stair(_) | Element::Ramp(_))) {
+                            return Err(format!("{who}: host {} isn't a stair or a ramp", self.shown(h)));
+                        }
+                    }
+                    (Some(_), None) => {
+                        return Err(format!("{who}: a railing on a stair or a ramp runs along its left or its right side"));
+                    }
+                    (None, _) => {
+                        if rl.path.len() < 2 || rl.path.len() > MAX_POINTS {
+                            return Err(format!("{who}: a path needs 2 to {MAX_POINTS} points"));
+                        }
+                        for p in &rl.path {
+                            point(&who, *p)?;
+                        }
+                    }
+                }
+                let line = crate::stairs::railing(self, rl);
+                let length: f64 = line.windows(2).map(|w| w.first().zip(w.get(1)).map_or(0.0, |(a, b)| a.0.dist(b.0))).sum();
+                if length <= TOL {
+                    return Err(format!("{who}: its path has no length"));
+                }
+                if t.spacing > 0.0 && length / t.spacing > MAX_BALUSTERS {
+                    return Err(format!("{who}: {:.0} balusters, more than {MAX_BALUSTERS}; space them wider", length / t.spacing));
+                }
+            }
+            Element::Roof(r) => {
+                known(&who, &r.type_name, &self.types.roof)?;
+                level_ok(r.level)?;
+                coord(&format!("{who} overhang"), r.overhang)?;
+                coord(&format!("{who} offset"), r.offset)?;
+                match &r.extrusion {
+                    Some(x) => {
+                        line(&who, x.line[0], x.line[1])?;
+                        if !(2..=MAX_POINTS).contains(&x.profile.len()) {
+                            return Err(format!("{who}: an extrusion's profile needs 2 to {MAX_POINTS} points"));
+                        }
+                        for p in &x.profile {
+                            point(&who, *p)?;
+                        }
+                        if x.profile.windows(2).any(|w| w.first().zip(w.get(1)).is_none_or(|(a, b)| b.0 - a.0 <= TOL)) {
+                            return Err(format!("{who}: its profile runs along its line one way, each point past the one before"));
+                        }
+                        coord(&format!("{who} from"), x.from)?;
+                        coord(&format!("{who} to"), x.to)?;
+                        if x.to - x.from <= TOL {
+                            return Err(format!("{who}: it's swept across its line from `from` to `to`, further to the left"));
+                        }
+                    }
+                    None => {
+                        boundary(&who, &r.boundary)?;
+                        if !(0.0..=MAX_SLOPE).contains(&r.slope) {
+                            return Err(format!("{who}: slope {}° isn't from 0° (flat) to {MAX_SLOPE}°", r.slope));
+                        }
+                    }
+                }
+                if r.openings.len() > MAX_ROOF_POINTS {
+                    return Err(format!("{who}: {} openings, more than {MAX_ROOF_POINTS}", r.openings.len()));
+                }
+                for o in &r.openings {
+                    boundary(&format!("{who} opening"), o)?;
+                }
+                if r.extrusion.is_some() && !r.courtyards.is_empty() {
+                    return Err(format!("{who}: courtyards are holes in a roof's footprint; cut an extrusion roof with `openings`"));
+                }
+                if r.courtyards.iter().map(Vec::len).sum::<usize>() > MAX_ROOF_POINTS {
+                    return Err(format!("{who}: its courtyards have more than {MAX_ROOF_POINTS} points between them"));
+                }
+                for (i, c) in r.courtyards.iter().enumerate() {
+                    boundary(&format!("{who} courtyard {i}"), c)?;
+                }
+                holes(&who, "courtyard", &r.boundary, &r.courtyards)?;
+                crate::sketch::check(&who, &r.sketch)?;
+                self.roof_pieces(r).map_err(|e| format!("{who}: {e}"))?;
+            }
+            Element::Sheet(sh) => {
+                text(&who, "number", &sh.number)?;
+                text(&who, "name", &sh.name)?;
+                if sh.number.trim().is_empty() {
+                    return Err(format!("{who}: a sheet needs a number"));
+                }
+                if !sheet_numbers.insert(sh.number.as_str()) {
+                    return Err(format!("{who}: another sheet is already numbered `{}`", sh.number));
+                }
+                if paper(&sh.size).is_none() {
+                    return Err(format!("{who}: size `{}` isn't A0, A1, A2, A3 or A4, or an Arch / ANSI size", sh.size));
+                }
+            }
+            Element::Viewport(v) => {
+                if self.sheet(v.sheet).is_none() {
+                    return Err(format!("{who}: {} {} isn't a sheet", self.cat(v.sheet), self.shown(v.sheet)));
+                }
+                let name = self.view_name(v.view).ok_or(format!(
+                    "{who}: {} {} isn't a plan, a section, an elevation, a schedule or a 3D view",
+                    self.cat(v.view),
+                    self.shown(v.view)
+                ))?;
+                point(&who, v.at)?;
+                if !(v.scale.is_finite() && (1.0..=100_000.0).contains(&v.scale)) {
+                    return Err(format!("{who}: scale 1 : {} isn't between 1 : 1 and 1 : 100000", v.scale));
+                }
+                if let Some(other) = placed.insert(v.view, v.sheet) {
+                    let number = self.sheet(other).map_or("", |s| s.number.as_str());
+                    return Err(format!("{who}: {name} is on sheet {number} already; a view goes on one sheet"));
+                }
+            }
+            Element::Tag(t) => {
+                let Some(host) = self.elements.get(t.host) else {
+                    return Err(format!("{who}: element {} doesn't exist", t.host));
+                };
+                if let Some(v) = t.view {
+                    let level = self.level_of(e);
+                    level
+                        .and_then(|l| self.plan_view_of(v, l))
+                        .ok_or_else(|| format!("{who}: view {} isn't a plan view of its host's level", self.shown(v)))?;
+                }
+                // A door or window whose wall is gone is the wall's to complain of; anything else needs a place in a plan.
+                if !matches!(host, Element::Door(_) | Element::Window(_)) && self.anchor(t.host).is_none() {
+                    return Err(format!(
+                        "{who}: tags name what has a place in a plan (doors, windows, walls, columns, floors, rooms and the like), not {} {}",
+                        host.category(),
+                        t.host
+                    ));
+                }
+                if let Some(label) = &t.label {
+                    let cat = host.category();
+                    let fields = crate::schedule::fields(self, cat);
+                    if !fields.iter().any(|(name, _)| name == label) {
+                        let names: Vec<String> = fields.into_iter().map(|(name, _)| name).collect();
+                        return Err(format!("{who}: {cat} {} has no field `{label}`; its fields are: {}", t.host, names.join(", ")));
+                    }
+                }
+                point(&format!("{who} offset"), t.offset)?;
+            }
+        }
+        Ok(())
     }
 
     /// What changed from `before` to this model: the elements a command added, changed or removed, when it changed nothing
@@ -5804,6 +5785,26 @@ pub fn culprit(error: &str) -> Option<Id> {
     let mut words = error.split_whitespace();
     words.next()?;
     words.next()?.trim_end_matches(':').parse().ok()
+}
+
+/// What [`Model::check`] holds in common between elements while it goes through them.
+#[derive(Default)]
+struct Tally<'a> {
+    level_names: BTreeSet<&'a str>,
+    grid_names: BTreeSet<&'a str>,
+    link_names: BTreeSet<&'a str>,
+    view_names: BTreeSet<&'a str>,
+    /// The schedules every project has that the project has made its own: one each.
+    twins: BTreeSet<&'a str>,
+    sheet_numbers: BTreeSet<&'a str>,
+    /// Each view on a sheet: the sheet.
+    placed: BTreeMap<Guid, Guid>,
+    /// Openings by host wall, in the order they start along it.
+    spans: BTreeMap<Guid, Vec<OpeningSpan>>,
+    /// The members each view's detail groups and repeating details place.
+    members_placed: BTreeMap<Guid, usize>,
+    /// Whether components' shapes build, by family, type and values (as JSON).
+    shapes: HashMap<(&'a str, &'a str, String), Result<(), String>>,
 }
 
 fn coord(what: &str, v: f64) -> Result<(), String> {
