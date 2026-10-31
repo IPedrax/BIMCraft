@@ -1,8 +1,10 @@
-//! Manage > Fill Patterns, as Revit's dialogs: the project's filled region types (a foreground and a background pattern,
-//! their colours, masking or not) and its fill patterns (families of lines, drafting or model), on two tabs of one draft,
-//! applied as one undo step (OK and Apply), or dropped (Cancel). A pattern of one family, or two square to each other, is
-//! edited as Revit's simple pattern: its angle, its spacing, crosshatched or not; any pattern's families, one by one, with
-//! Edit Lines (Revit's custom patterns, which it only imports). Patterns come in from a PAT file and go out to one.
+//! Manage > Annotation Settings > Fill Patterns, as Revit's dialog: the project's fill patterns (families of lines, drafting
+//! or model), a draft applied as one undo step (OK and Apply), or dropped (Cancel). A pattern of one family, or two square to
+//! each other, is a simple one: its angle, its spacing, crosshatched or not, and its families one by one with Edit Lines. A
+//! custom one is made of lines drawn in a plan, as pyRevit's Make Pattern makes one: New Pattern > Custom hides the dialog,
+//! the detail lines are picked (Enter, or the right-click menu's Finish), then the tile's two corners, and the dialog comes
+//! back with the pattern previewed, to keep (OK), pick again, or drop. Patterns also come in from a PAT file and go out to
+//! one. The filled region types are edited from a region, with Edit Type: the same draft, on the type's own page.
 
 use crate::popup::Modal;
 
@@ -12,13 +14,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use bimcraft_core::engine::Session;
+use bimcraft_core::fills::make::{self, Made};
 use bimcraft_core::fills::{self, FillPattern, FilledRegionType, HatchLine, MAX_SPACING, MIN_SPACING, Target};
 use bimcraft_core::geom::P2;
-use bimcraft_core::model::{Id, Model};
+use bimcraft_core::model::{Element, Id, Model};
 use bimcraft_core::render::{PAPER, Rgb};
 use egui::{
-    Button, Checkbox, Color32, ComboBox, Context, DragValue, Grid, Id as UiId, RichText, ScrollArea, Sense, Stroke, TextEdit, Ui,
-    WidgetInfo, WidgetType, pos2, vec2,
+    Align, Button, Checkbox, Color32, ComboBox, Context, DragValue, Grid, Id as UiId, Layout, RichText, ScrollArea, Sense, Shape, Stroke,
+    TextEdit, Ui, WidgetInfo, WidgetType, pos2, vec2,
 };
 use serde_json::{Value, json};
 
@@ -26,16 +29,22 @@ use crate::lang::{t, tf};
 use crate::renames::{self, Row};
 use crate::style::{ERROR_HEIGHT, boxed_text, canvas_pal, dialog_room, dialog_row, pal};
 use crate::typeprops::{self, Head, Naming};
-use crate::{BimApp, Status};
+use crate::{BimApp, Status, Tool};
 
-/// The dialog's tabs.
-const TABS: [&str; 2] = [msg!("Region Types"), "Patterns"];
-
-/// A pattern as edited: the name it had (none, new), the name it has, what it is.
+/// A pattern as edited: the name it had (none, new), the name it has, what it is; and, made of lines drawn in a view, that
+/// view's scale, so that Drafting makes it the drawing on paper and Model the drawing again.
 struct PatternRow {
     was: Option<String>,
     name: String,
     pattern: FillPattern,
+    drawn: Option<f64>,
+}
+
+/// What New Pattern > Custom is picking in the plan while the dialog is away: the lines, then (they picked) the tile's corners.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum Picking {
+    Lines,
+    Corners(Vec<Id>),
 }
 
 /// A type as edited: the name it had, the name it has, its patterns as their rows (none, none), its colours, masking.
@@ -52,6 +61,7 @@ struct TypeRow {
 
 /// The Fill Patterns dialog: its tab, the types and patterns as edited.
 pub(crate) struct FillPatternsDialog {
+    /// Edit Type's pages: the type (0), or the patterns (1), which are all Manage's dialog shows.
     tab: usize,
     types: Vec<TypeRow>,
     patterns: Vec<PatternRow>,
@@ -70,20 +80,39 @@ pub(crate) struct FillPatternsDialog {
     replace: bool,
     /// The patterns and types the project held when this opened: a draft is not applied over a project that has changed since.
     held: (BTreeMap<String, FillPattern>, BTreeMap<String, FilledRegionType>),
+    /// New Pattern > Custom, picking in the plan: the dialog is hidden meanwhile.
+    pub(crate) picking: Option<Picking>,
+    /// The pattern the lines and corners picked make, previewed: OK, Pick Again or Cancel; and those lines, picked again by
+    /// Pick Again.
+    made: Option<Made>,
+    picked: Vec<Id>,
 }
 
-/// What the Patterns tab's buttons ask of the app: a file to import from, or to export to.
+/// What the Patterns tab's buttons ask of the app: a file to import from, or to export to; or the lines of a custom pattern,
+/// picked in the plan.
 #[derive(Clone, Copy, PartialEq)]
 enum FileAsk {
     Import,
     Export,
+    Custom,
+}
+
+/// What the preview's buttons say: keep the pattern, pick its lines and corners again, or drop it.
+#[derive(Clone, Copy, PartialEq)]
+enum Step {
+    Keep,
+    Again,
+    Drop,
 }
 
 impl FillPatternsDialog {
     /// Open on the project's region types and fill patterns.
     pub(crate) fn new(m: &Model) -> FillPatternsDialog {
-        let patterns: Vec<PatternRow> =
-            m.fill_patterns.iter().map(|(n, p)| PatternRow { was: Some(n.clone()), name: n.clone(), pattern: p.clone() }).collect();
+        let patterns: Vec<PatternRow> = m
+            .fill_patterns
+            .iter()
+            .map(|(n, p)| PatternRow { was: Some(n.clone()), name: n.clone(), pattern: p.clone(), drawn: None })
+            .collect();
         let row = |n: &Option<String>| n.as_ref().and_then(|n| patterns.iter().position(|r| r.name == *n));
         let types = (m.region_types.iter())
             .map(|(n, x)| TypeRow {
@@ -99,7 +128,7 @@ impl FillPatternsDialog {
         let gone = vec![false; patterns.len()];
         let held = (m.fill_patterns.clone(), m.region_types.clone());
         FillPatternsDialog {
-            tab: 0,
+            tab: 1,
             types,
             patterns,
             gone,
@@ -110,6 +139,9 @@ impl FillPatternsDialog {
             note: None,
             replace: false,
             held,
+            picking: None,
+            made: None,
+            picked: Vec::new(),
         }
     }
 
@@ -119,7 +151,7 @@ impl FillPatternsDialog {
             match self.patterns.iter().enumerate().position(|(i, r)| !self.gone[i] && r.name == name) {
                 Some(i) => self.patterns[i].pattern = pattern,
                 None => {
-                    self.patterns.push(PatternRow { was: None, name, pattern });
+                    self.patterns.push(PatternRow { was: None, name, pattern, drawn: None });
                     self.gone.push(false);
                 }
             }
@@ -177,7 +209,7 @@ impl FillPatternsDialog {
     pub(crate) fn edit(m: &Model, name: &str, elements: Vec<Id>) -> Self {
         let mut d = Self::new(m);
         let row = d.types.iter().position(|r| r.name == name).unwrap_or(0);
-        d.subject = Some((row, elements));
+        (d.subject, d.tab) = (Some((row, elements)), 0);
         d
     }
 
@@ -211,21 +243,6 @@ impl FillPatternsDialog {
         self.patterns.iter().enumerate().filter(|(i, _)| !self.gone[*i])
     }
 
-    /// A type for New Type, in either view of the dialog: a name not in use, filled solid black as Revit's new types are.
-    fn new_type(&self) -> TypeRow {
-        let taken: Vec<&str> = self.types.iter().map(|s| s.name.as_str()).collect();
-        let solid = self.live().find(|(_, p)| p.name.as_str() == t(fills::SOLID_FILL) || p.name == fills::SOLID_FILL).map(|(i, _)| i);
-        TypeRow {
-            was: None,
-            name: fresh(t("Region Type"), &taken),
-            foreground: solid,
-            foreground_color: [0, 0, 0],
-            background: None,
-            background_color: [255, 255, 255],
-            masking: false,
-        }
-    }
-
     /// A type as the project would hold it, its patterns by their names in the draft.
     fn region_type(&self, r: &TypeRow) -> FilledRegionType {
         let name = |i: Option<usize>| i.and_then(|i| self.patterns.get(i)).map(|p| p.name.clone());
@@ -236,6 +253,14 @@ impl FillPatternsDialog {
             background_color: r.background_color,
             masking: r.masking,
         }
+    }
+
+    /// The pattern lines picked made, a row of the list: a model pattern, named anew.
+    fn keep(&mut self, made: &Made) {
+        let taken: Vec<&str> = self.live().map(|(_, p)| p.name.as_str()).collect();
+        let name = fresh(t("Pattern"), &taken);
+        self.patterns.push(PatternRow { was: None, name, pattern: made.as_target(Target::Model), drawn: Some(made.scale) });
+        self.gone.push(false);
     }
 }
 
@@ -328,49 +353,6 @@ fn pattern_pick(ui: &mut Ui, row: &mut Option<usize>, names: &[(usize, String)],
         }
     });
     c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, label.clone()));
-}
-
-/// The types: a row each, its name, its foreground and background (pattern, colour, swatch), masking, Delete; New Type. The
-/// rows scroll in what the window has left over `below`, the dialog's own notes and buttons.
-fn types_tab(ui: &mut Ui, d: &mut FillPatternsDialog, below: f32) {
-    ui.label(t("What filled regions are filled with: a foreground pattern over a background one, over the paper when it masks."));
-    ui.add_space(4.0);
-    let names: Vec<(usize, String)> = d.live().map(|(i, p)| (i, p.name.clone())).collect();
-    let patterns: Vec<FillPattern> = d.patterns.iter().map(|p| p.pattern.clone()).collect();
-    let mut delete = None;
-    ScrollArea::vertical().max_height(dialog_room(ui, below + dialog_row(ui))).show(ui, |ui| {
-        Grid::new("region-types").striped(true).num_columns(9).show(ui, |ui| {
-            for h in ["Name", msg!("Foreground"), "", "", msg!("Background"), "", "", "Masking", ""] {
-                ui.label(RichText::new(t(h)).strong());
-            }
-            ui.end_row();
-            for (i, r) in d.types.iter_mut().enumerate() {
-                let who = r.name.clone();
-                name_field(ui, &mut r.name, tf("{}: Name", &[&who]));
-                for (row, rgb, side) in
-                    [(&mut r.foreground, &mut r.foreground_color, "Foreground"), (&mut r.background, &mut r.background_color, "Background")]
-                {
-                    pattern_pick(ui, row, &names, tf("{}: {}", &[&who, t(side)]), 150.0);
-                    colour_field(ui, rgb, tf("{}: {} Colour", &[&who, t(side)]));
-                    // As the plan draws it, on its paper: black ink is light on a dark ground.
-                    let ink = crate::canvas::color(bimcraft_core::render::Rgb(rgb[0], rgb[1], rgb[2]));
-                    swatch(ui, row.and_then(|p| patterns.get(p)), 60.0, ink, Some(crate::canvas::color(PAPER)));
-                }
-                let c = ui.add(Checkbox::without_text(&mut r.masking));
-                c.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, r.masking, tf("{}: Masking", &[&who])));
-                if named_button(ui, t("Delete"), tf("{}: Delete", &[&who])) {
-                    delete = Some(i);
-                }
-                ui.end_row();
-            }
-        });
-    });
-    if let Some(i) = delete {
-        d.types.remove(i);
-    }
-    if ui.button(t("New Type")).clicked() {
-        d.types.push(d.new_type());
-    }
 }
 
 /// A family's dashes as typed: lengths, a space's negative, 0 a dot, between commas.
@@ -533,8 +515,9 @@ fn preview(ui: &mut Ui, r: &TypeRow, patterns: &[PatternRow]) {
     painter.rect_stroke(inner, 0.0, Stroke::new(1.0, canvas_pal().border), egui::StrokeKind::Inside);
 }
 
-/// The patterns: a row each, its name, drafting or model, a swatch, and (a simple one) its angle, spacing and crosshatch,
-/// else how many line families it has; Edit Lines; Delete; New Pattern, Import and Export (what's asked of the app). The list
+/// The patterns: a row each, its name, drafting or model, a swatch, and (a simple one) its angle, spacing and crosshatch and
+/// Edit Lines, else how many line families it has; Delete; New Pattern (Simple Lines or Custom), Import and Export (what's
+/// asked of the app). A pattern made of lines turned Drafting is the drawing on paper at its view's scale. The list
 /// scrolls in what the window has left over `below` (the dialog's notes and buttons) and the row of buttons under it; when a
 /// pattern's families are open, the list and they share it.
 fn patterns_tab(ui: &mut Ui, d: &mut FillPatternsDialog, below: f32) -> Option<FileAsk> {
@@ -555,11 +538,15 @@ fn patterns_tab(ui: &mut Ui, d: &mut FillPatternsDialog, below: f32) -> Option<F
                 name_field(ui, &mut r.name, tf("{}: Name", &[&who]));
                 let label = tf("{}: Type", &[&who]);
                 let shown = t(if r.pattern.target == Target::Model { "Model" } else { "Drafting" });
+                let target = r.pattern.target;
                 let c = ComboBox::from_id_salt(("fill-target", i)).selected_text(shown).width(90.0).show_ui(ui, |ui| {
                     ui.selectable_value(&mut r.pattern.target, Target::Drafting, t("Drafting"));
                     ui.selectable_value(&mut r.pattern.target, Target::Model, t("Model"));
                 });
                 c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, label.clone()));
+                if let Some(k) = r.drawn.filter(|_| r.pattern.target != target) {
+                    r.pattern = r.pattern.scaled(if r.pattern.target == Target::Drafting { 1.0 / k } else { k });
+                }
                 swatch(ui, Some(&r.pattern), 80.0, ink, None);
                 match r.pattern.simple() {
                     Some(was) => {
@@ -591,7 +578,10 @@ fn patterns_tab(ui: &mut Ui, d: &mut FillPatternsDialog, below: f32) -> Option<F
                         ui.label("");
                     }
                 }
-                if named_button(ui, t("Edit Lines"), tf("{}: Edit Lines", &[&who])) {
+                // A custom pattern (made of lines drawn, or imported) is kept as it came: its families are no simple pattern's.
+                if r.pattern.simple().is_none() {
+                    ui.label("");
+                } else if named_button(ui, t("Edit Lines"), tf("{}: Edit Lines", &[&who])) {
                     d.editing = Some((i, r.pattern.lines.iter().map(|l| dashes_text(&l.dashes)).collect()));
                 }
                 if named_button(ui, t("Delete"), tf("{}: Delete", &[&who])) {
@@ -617,11 +607,20 @@ fn patterns_tab(ui: &mut Ui, d: &mut FillPatternsDialog, below: f32) -> Option<F
     }
     let mut ask = None;
     ui.horizontal(|ui| {
-        if ui.button(t("New Pattern")).clicked() {
+        let mut simple = false;
+        ui.menu_button(t("New Pattern"), |ui| {
+            simple =
+                ui.button(t("Simple Lines")).on_hover_text(t("Parallel lines at an angle and a spacing, crosshatched or not")).clicked();
+            let tip = t("Made of detail lines picked in the plan, repeating the rectangle between two corners");
+            if ui.button(t("Custom")).on_hover_text(tip).clicked() {
+                ask = Some(FileAsk::Custom);
+            }
+        });
+        if simple {
             let taken: Vec<&str> = d.live().map(|(_, p)| p.name.as_str()).collect();
             let name = fresh(t("Pattern"), &taken);
             let pattern = FillPattern { target: Target::Drafting, lines: vec![HatchLine::simple(45.0, 2.0)] };
-            d.patterns.push(PatternRow { was: None, name, pattern });
+            d.patterns.push(PatternRow { was: None, name, pattern, drawn: None });
             d.gone.push(false);
         }
         if ui.button(t("Import...")).on_hover_text(t("Patterns from a PAT file, AutoCAD's and Revit's")).clicked() {
@@ -684,52 +683,74 @@ impl FillPatternsDialog {
 }
 
 impl BimApp {
-    /// The Fill Patterns dialog, while it's open.
+    /// The Fill Patterns dialog, while it's open; away while a custom pattern's lines and corners are picked in the plan (Esc,
+    /// another tool or another view brings it back).
     pub(crate) fn fill_patterns_window(&mut self, ctx: &Context) {
         let Some(mut d) = self.fill_patterns_dialog.take() else { return };
+        if let Some(p) = &d.picking {
+            let on = match p {
+                Picking::Lines => self.tool == Tool::Modify,
+                Picking::Corners(_) => matches!(self.tool, Tool::PatternCorner(_)),
+            };
+            if on && self.plan_level().is_some() {
+                self.fill_patterns_dialog = Some(d);
+                return;
+            }
+            d.picking = None;
+        }
         let editing = d.subject.is_some();
-        let (mut ok, mut apply, mut cancel, mut ask) = (false, false, false, None);
-        let width = if editing && d.tab == 0 { typeprops::WIDTH } else { 860.0 };
+        let (mut ok, mut apply, mut cancel, mut ask, mut step) = (false, false, false, None, None);
+        let width = if editing && d.tab == 0 && d.made.is_none() { typeprops::WIDTH } else { 860.0 };
+        let units = self.session.model.units;
         let r = Modal::new(UiId::new("fill-patterns"), t(if editing { "Type Properties" } else { msg!("Fill Patterns") }))
             .width(width)
             .show(ctx, |ui| {
                 crate::popup::body(ui, |ui| {
+                    if let Some(made) = &d.made {
+                        made_preview(ui, made, units);
+                        return;
+                    }
                     if editing && d.tab == 0 {
                         let below = typeprops::foot_height(ui, d.error.is_some());
                         edit_type(ui, &mut d, below);
                         typeprops::error(ui, d.error.as_deref());
                         return;
                     }
-                    // One width for both tabs, so the dialog doesn't jump as they change.
-                    ui.add_space(6.0);
-                    ui.horizontal(|ui| {
-                        if editing {
-                            if ui.button(t("‹ Back")).on_hover_text(t("Back to the type")).clicked() {
-                                d.tab = 0;
-                            }
-                            return;
+                    if editing {
+                        ui.add_space(6.0);
+                        if ui.button(t("‹ Back")).on_hover_text(t("Back to the type")).clicked() {
+                            d.tab = 0;
                         }
-                        for (i, tab) in TABS.iter().enumerate() {
-                            if ui.selectable_label(d.tab == i, t(tab)).clicked() {
-                                d.tab = i;
-                            }
-                        }
-                    });
-                    ui.separator();
-                    // Under the tab: its notes, then OK, Cancel and Apply. What the window has left over them is the tab's, so that on a
-                    // small one the buttons stay in reach and the rows scroll.
-                    let below = messages_height(&d) + 8.0 + dialog_row(ui);
-                    if d.tab == 1 {
-                        ask = patterns_tab(ui, &mut d, below);
-                    } else {
-                        types_tab(ui, &mut d, below);
+                        ui.separator();
                     }
+                    // Under the list: its notes, then OK, Cancel and Apply. What the window has left over them is the list's, so
+                    // that on a small one the buttons stay in reach and the rows scroll.
+                    let below = messages_height(&d) + 8.0 + dialog_row(ui);
+                    ask = patterns_tab(ui, &mut d, below);
                     messages(ui, &d);
                 });
                 crate::popup::footer(ui, |ui| {
-                    (ok, cancel, apply) = typeprops::foot(ui);
+                    if d.made.is_some() {
+                        step = made_foot(ui);
+                    } else {
+                        (ok, cancel, apply) = typeprops::foot(ui);
+                    }
                 });
             });
+        match step {
+            Some(Step::Keep) => {
+                if let Some(made) = d.made.take() {
+                    d.keep(&made);
+                }
+            }
+            Some(Step::Again) => {
+                d.made = None;
+                self.selection = std::mem::take(&mut d.picked);
+                ask = Some(FileAsk::Custom);
+            }
+            Some(Step::Drop) => d.made = None,
+            None => {}
+        }
         let failed = (ok || apply) && !self.apply_fill_patterns(&mut d, apply);
         // The draft is read only for the file it is exported to.
         let drafted = matches!(ask, Some(FileAsk::Export)).then(|| d.drafted());
@@ -745,7 +766,87 @@ impl BimApp {
                 let dialog = rfd::AsyncFileDialog::new().add_filter(t("Fill patterns"), &["pat"]).set_file_name("patterns.pat");
                 self.ask_file(ctx, dialog, true, move |app, path| app.export_patterns(&path, &drafted));
             }
+            (Some(FileAsk::Custom), _) => self.pick_pattern_lines(),
             _ => {}
+        }
+    }
+
+    /// New Pattern > Custom and Pick Again: the dialog steps aside for the plan, where the pattern's detail lines are picked
+    /// as anything is (those picked already stay picked); refused, saying why, outside a plan or while a sketch is open.
+    fn pick_pattern_lines(&mut self) {
+        let why = if self.sketch.is_some() {
+            Some(t("Finish or cancel the sketch first: a pattern's lines are picked in the plan."))
+        } else if self.plan_level().is_none() {
+            Some(t("Open a plan to pick the pattern's lines in: detail lines are drawn in plans."))
+        } else {
+            None
+        };
+        let Some(d) = &mut self.fill_patterns_dialog else { return };
+        d.error = why.map(str::to_string);
+        if why.is_none() {
+            d.picking = Some(Picking::Lines);
+            self.status = Status::default();
+            if self.tool != Tool::Modify {
+                self.set_tool(Tool::Modify);
+            }
+        }
+    }
+
+    /// Whether a custom pattern's lines are being picked: Enter and the menu's Finish take them.
+    pub(crate) fn picking_pattern_lines(&self) -> bool {
+        self.fill_patterns_dialog.as_ref().is_some_and(|d| d.picking == Some(Picking::Lines))
+    }
+
+    /// Enter, or the menu's Finish, while a custom pattern's lines are picked: the detail lines selected are the pattern's,
+    /// and its tile's corners are asked next; with none selected, that is said.
+    pub(crate) fn finish_pattern_lines(&mut self) {
+        let m = &self.session.model;
+        let lines: Vec<Id> =
+            self.selection.iter().copied().filter(|id| matches!(m.elements.get(*id), Some(Element::DetailLine(_)))).collect();
+        let Some(d) = self.fill_patterns_dialog.as_mut().filter(|d| d.picking == Some(Picking::Lines)) else { return };
+        if lines.is_empty() {
+            let text = t("Select the detail lines the pattern is made of, then press Enter.").to_string();
+            self.status = Status { text, error: true };
+            return;
+        }
+        d.picking = Some(Picking::Corners(lines));
+        self.status = Status::default();
+        self.set_tool(Tool::PatternCorner(None));
+    }
+
+    /// Esc while a custom pattern is being picked: back to the dialog. Whether there was one.
+    pub(crate) fn cancel_pattern_pick(&mut self) -> bool {
+        let Some(d) = self.fill_patterns_dialog.as_mut().filter(|d| d.picking.is_some()) else { return false };
+        d.picking = None;
+        self.status = Status::default();
+        if matches!(self.tool, Tool::PatternCorner(_)) {
+            self.tool = Tool::Modify;
+        }
+        true
+    }
+
+    /// The tile's second corner clicked, `b`, the first `a`: the pattern the lines picked make of it, previewed in the dialog;
+    /// or what's wrong said and the corners asked again.
+    pub(crate) fn pattern_corners(&mut self, a: P2, b: P2) {
+        let Some(d) = self.fill_patterns_dialog.as_mut() else {
+            self.tool = Tool::Modify;
+            return;
+        };
+        let Some(Picking::Corners(lines)) = &d.picking else {
+            self.tool = Tool::Modify;
+            return;
+        };
+        match make::from_lines(&self.session.model, lines, a, b) {
+            Ok(made) => {
+                d.picked = lines.clone();
+                (d.made, d.picking, d.error) = (Some(made), None, None);
+                self.status = Status::default();
+                self.tool = Tool::Modify;
+            }
+            Err(e) => {
+                self.status = Status { text: e, error: true };
+                self.tool = Tool::PatternCorner(None);
+            }
         }
     }
 
@@ -828,6 +929,61 @@ impl BimApp {
             None => self.status = Status { text, error },
         }
     }
+}
+
+/// How tall the preview of a pattern made of lines is.
+const MADE_HEIGHT: f32 = 300.0;
+
+/// The pattern lines picked made, on the canvas's paper: three tiles each way about the one picked, which is outlined.
+fn made_preview(ui: &mut Ui, made: &Made, units: bimcraft_core::units::Units) {
+    ui.add_space(6.0);
+    ui.label(RichText::new(t("New pattern from lines")).strong());
+    let families = made.pattern.lines.len().to_string();
+    let (w, h) = (units.length(made.tile.0), units.length(made.tile.1));
+    ui.label(tf("{} line families, repeating a tile {} × {} (outlined).", &[&families, &w, &h]));
+    ui.add_space(4.0);
+    let (rect, r) = ui.allocate_exact_size(vec2(ui.available_width(), MADE_HEIGHT), Sense::hover());
+    r.widget_info(|| WidgetInfo::labeled(WidgetType::Image, true, t("Pattern preview")));
+    let (paper, ink) = (crate::canvas::color(PAPER), crate::canvas::color(Rgb(0, 0, 0)));
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 0.0, paper);
+    let P2(tw, th) = made.tile;
+    let px = (f64::from(rect.width()) / (3.0 * tw)).min(f64::from(rect.height()) / (3.0 * th));
+    if !(px.is_finite() && px > 0.0) {
+        return;
+    }
+    let centre = P2(tw / 2.0, th / 2.0);
+    let half = P2(f64::from(rect.width()) / 2.0 / px, f64::from(rect.height()) / 2.0 / px);
+    let (lo, hi) = (centre - half, centre + half);
+    let at = |q: P2| pos2(rect.center().x + ((q.0 - centre.0) * px) as f32, rect.center().y - ((q.1 - centre.1) * px) as f32);
+    let ring = vec![lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)];
+    match fills::strokes(&made.pattern, std::slice::from_ref(&ring), 1.0, (lo, hi), 40_000) {
+        Some(strokes) => {
+            for [a, b] in strokes {
+                painter.line_segment([at(a), at(b)], Stroke::new(1.0, ink));
+            }
+        }
+        None => {
+            let text = t("Too dense to preview at this size.");
+            painter.text(rect.center(), egui::Align2::CENTER_CENTER, text, egui::FontId::proportional(13.0), ink);
+        }
+    }
+    let tile = [P2(0.0, 0.0), P2(tw, 0.0), P2(tw, th), P2(0.0, th), P2(0.0, 0.0)].map(at);
+    painter.extend(Shape::dashed_line(&tile, Stroke::new(1.5, pal().accent), 6.0, 4.0));
+}
+
+/// The preview's buttons: OK keeps the pattern, Pick Again picks its lines and corners anew, Cancel drops it.
+fn made_foot(ui: &mut Ui) -> Option<Step> {
+    let mut step = None;
+    ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+        let size = vec2(76.0, 0.0);
+        for (label, what) in [("Cancel", Step::Drop), (msg!("Pick Again"), Step::Again), ("OK", Step::Keep)] {
+            if ui.add(Button::new(t(label)).min_size(size)).clicked() {
+                step = Some(what);
+            }
+        }
+    });
+    step
 }
 
 /// The tallest the note is, in a box that scrolls.

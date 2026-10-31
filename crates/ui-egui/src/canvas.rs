@@ -2048,6 +2048,14 @@ impl BimApp {
                 }
                 None => self.status = Status { text: tf("ceiling: `{}` is not a height", &[&self.ceiling_height]), error: true },
             },
+            // A custom fill pattern's tile: two opposite corners, the pattern made of the lines picked on the second.
+            &Tool::PatternCorner(first) => {
+                let p = self.snap(m, level, v, at, first.as_slice(), false).at;
+                match first {
+                    None => self.tool = Tool::PatternCorner(Some(p)),
+                    Some(a) => self.pattern_corners(a, p),
+                }
+            }
             // Two opposite corners of a rectangle.
             &Tool::Shaft(start) => {
                 let p = self.snap(m, level, v, at, start.as_slice(), false).at;
@@ -3026,6 +3034,7 @@ impl BimApp {
             | Tool::Copy(_)
             | Tool::Section(None)
             | Tool::Shaft(None)
+            | Tool::PatternCorner(None)
             | Tool::SlopeArrow(None)
             | Tool::Measure(_) => start_of(&self.tool),
             // The section a click would end, and the elevation a click would place.
@@ -3315,6 +3324,13 @@ impl BimApp {
                     let (area, unit) = m.units.area(g.area().abs());
                     label(cursor, format!("{area:.2} {unit}"));
                 }
+                return;
+            }
+            // The tile a click would close: the rectangle to the cursor.
+            &Tool::PatternCorner(Some(a)) => {
+                let b = self.found(sc, q, &[a], false);
+                let c = [a, P2(b.0, a.1), b, P2(a.0, b.1)].map(|pt| sc.screen(pt));
+                p.add(Shape::closed_line(c.to_vec(), stroke));
                 return;
             }
             // The shaft a click would make: the rectangle to the cursor, crossed.

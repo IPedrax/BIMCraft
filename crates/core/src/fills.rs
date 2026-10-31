@@ -20,6 +20,8 @@ use crate::ids::Guid;
 use crate::language::Language;
 use crate::sketch::SketchLine;
 
+pub mod make;
+
 /// What a pattern's lengths are measured in: mm on paper (drafting), or mm in the building (model).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -70,7 +72,7 @@ pub struct FillPattern {
 }
 
 /// The most line families a pattern has, and dashes a family has.
-pub const MAX_FAMILIES: usize = 32;
+pub const MAX_FAMILIES: usize = 256;
 pub const MAX_DASHES: usize = 16;
 /// The closest a family's lines may be, and the furthest apart, in the pattern's lengths; and the longest dash.
 pub const MIN_SPACING: f64 = 0.05;
@@ -79,6 +81,20 @@ pub const MAX_SPACING: f64 = 100_000.0;
 impl FillPattern {
     pub fn is_solid(&self) -> bool {
         self.lines.is_empty()
+    }
+
+    /// The same pattern `k` times as big: its origins, shifts, spacings and dashes.
+    pub fn scaled(&self, k: f64) -> FillPattern {
+        let lines = (self.lines.iter())
+            .map(|l| HatchLine {
+                angle: l.angle,
+                origin: l.origin * k,
+                shift: l.shift * k,
+                spacing: l.spacing * k,
+                dashes: l.dashes.iter().map(|d| d * k).collect(),
+            })
+            .collect();
+        FillPattern { target: self.target, lines }
     }
 
     /// Whether it's one family or two square to each other, all whole and through the origin: what the Fill Patterns

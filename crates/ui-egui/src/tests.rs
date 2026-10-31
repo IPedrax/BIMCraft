@@ -43,6 +43,15 @@ fn press(h: &mut Harness<BimApp>, label: &str) {
     h.run();
 }
 
+/// One of Manage > Annotation Settings' dialogs (Line Weights, Line Styles, Line Patterns, Fill Patterns), from its list.
+fn annotation(h: &mut Harness<BimApp>, item: &str) {
+    if h.query_by_label("Annotation Settings").is_none() {
+        press(h, "Manage");
+    }
+    press(h, "Annotation Settings");
+    press(h, item);
+}
+
 /// A tool from the Architecture tab: a tool's contextual tab takes the ribbon, as in Revit.
 fn tool(h: &mut Harness<BimApp>, label: &str) {
     press(h, "Architecture");
@@ -2657,14 +2666,20 @@ mass {"boundary": [[1000, 1000], [3000, 1000], [3000, 2000], [1000, 2000]], "nam
         press(&mut h, tr("Linework"));
         missed.extend(english(&h, l));
         key(&mut h, Key::Escape);
-        // Manage > Fill Patterns on both tabs, with a pattern's families; Line Styles on both; Edit Type of a region being sketched.
+        // Manage > Annotation Settings' list; Fill Patterns, with a pattern's families and New Pattern's choices; Line Styles on
+        // both tabs; Edit Type of a region being sketched.
         press(&mut h, tr("Manage"));
+        press(&mut h, tr("Annotation Settings"));
+        missed.extend(english(&h, l));
         press(&mut h, tr("Fill Patterns"));
         missed.extend(english(&h, l));
-        topmost(&mut h, tr("Patterns"));
-        press(&mut h, &tr("{}: Edit Lines").replace("{}", "Sand"));
+        press(&mut h, &tr("{}: Edit Lines").replace("{}", "Crosshatch"));
         missed.extend(english(&h, l));
+        press(&mut h, tr("New Pattern"));
+        missed.extend(english(&h, l));
+        press(&mut h, tr("New Pattern"));
         press(&mut h, tr("Cancel"));
+        press(&mut h, tr("Annotation Settings"));
         press(&mut h, tr("Line Styles"));
         missed.extend(english(&h, l));
         topmost(&mut h, tr("Patterns"));
@@ -4458,7 +4473,8 @@ fn ph_and_do_open_phasing_and_design_options_and_so_do_the_manage_tabs_buttons()
 #[test]
 fn a_ribbon_tab_wider_than_the_window_folds_its_last_panels_to_buttons_that_list_their_tools() {
     let mut h = app(BOX);
-    h.set_size(vec2(1000.0, 800.0));
+    // Narrow enough that Manage folds its last panels; the fit is judged on each tool's average width, a few pixels out.
+    h.set_size(vec2(1020.0, 800.0));
     h.run();
     let window = h.ctx.content_rect().right();
     press(&mut h, "Manage");

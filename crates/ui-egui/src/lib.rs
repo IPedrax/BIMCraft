@@ -238,6 +238,8 @@ pub enum Tool {
     SketchLine(Vec<P2>),
     /// Sketch mode's Pick Walls: a line along each wall clicked.
     SketchPick,
+    /// Fill Patterns' New Pattern > Custom: the tile's corners, the first once clicked (the lines are picked already).
+    PatternCorner(Option<P2>),
 }
 
 /// Why the last command failed, shown in a box over the view.
@@ -1161,7 +1163,8 @@ impl BimApp {
             | Tool::GableEdge
             | Tool::SlopeArrow(_)
             | Tool::SketchLine(_)
-            | Tool::SketchPick => None,
+            | Tool::SketchPick
+            | Tool::PatternCorner(_) => None,
             Tool::Wall(_) => Some(msg!("Place Wall")),
             Tool::Paint => Some("Paint"),
             Tool::Unpaint => Some("Remove Paint"),
@@ -1536,7 +1539,7 @@ impl BimApp {
             || self.line_weights_dialog.is_some()
             || self.object_styles_dialog.is_some()
             || self.line_styles_dialog.is_some()
-            || self.fill_patterns_dialog.is_some()
+            || self.fill_patterns_dialog.as_ref().is_some_and(|d| d.picking.is_none())
             || self.options_dialog.is_some()
             || self.purge_dialog.is_some()
             || self.select_by_id.is_some()
@@ -1594,7 +1597,8 @@ impl BimApp {
         } else if pressed(Modifiers::COMMAND, Key::Z) {
             self.run("undo", json!({}));
         }
-        if pressed(Modifiers::NONE, Key::Escape) {
+        // Esc while a custom fill pattern is picked brings its dialog back.
+        if pressed(Modifiers::NONE, Key::Escape) && !self.cancel_pattern_pick() {
             self.escape();
         }
         // Enter places a typed length, else builds the wall chain.
@@ -1602,6 +1606,7 @@ impl BimApp {
             && let Some(level) = self.plan_level()
         {
             match (&self.tool, self.typed_length.is_empty() && self.drawing.other.is_empty()) {
+                _ if self.picking_pattern_lines() => self.finish_pattern_lines(),
                 (Tool::Railing(_), true) => self.finish_railing(level),
                 (Tool::Mass(_), true) => self.finish_mass(level),
                 (Tool::DetailLine(_), true) => self.finish_detail_line(level),
@@ -3440,20 +3445,27 @@ impl BimApp {
             if big_button(ui, Icon::Parameters, "Project Parameters", self.parameters_dialog.is_some(), tip).clicked() {
                 self.parameters_dialog = Some(properties::ParametersDialog::new(&self.session.model));
             }
-            // Pens and lines, stacked: Line Weights, Object Styles, Line Styles.
-            stacked(ui, |ui| {
+            // What annotation draws with: pens, line styles and patterns, fill patterns; one button that lists them.
+            let open = self.line_weights_dialog.is_some() || self.line_styles_dialog.is_some() || self.fill_patterns_dialog.is_some();
+            let tip = msg!("Annotation Settings: line weights, line styles, line patterns and fill patterns");
+            let r = big_button(ui, Icon::AnnotationSettings, "Annotation Settings", open, tip);
+            ribbon::choices(ui, &r, false, |ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
                 let tip = msg!("Line Weights: what each pen draws on paper, the model's at each scale and the annotation's at any");
-                if stacked_button(ui, Icon::LineWeights, "Line Weights", self.line_weights_dialog.is_some(), tip).clicked() {
+                if list_row(ui, Icon::LineWeights, "Line Weights", false, tip).clicked() {
                     self.line_weights_dialog = Some(lineweights::LineWeightsDialog::new(&self.session.model));
                 }
-                let tip = msg!("Object Styles: the pen each category draws in, seen and cut, in every view");
-                if stacked_button(ui, Icon::ObjectStyles, "Object Styles", self.object_styles_dialog.is_some(), tip).clicked() {
-                    self.object_styles_dialog = Some(objectstyles::ObjectStylesDialog::new(&self.session.model));
-                }
-                let tip =
-                    msg!("Line Styles: the pen, colour and line pattern detail lines draw in, and the patterns' dashes, dots and spaces");
-                if stacked_button(ui, Icon::ThinLines, "Line Styles", self.line_styles_dialog.is_some(), tip).clicked() {
+                let tip = msg!("Line Styles: the pen, colour and line pattern detail lines draw in");
+                if list_row(ui, Icon::ThinLines, "Line Styles", false, tip).clicked() {
                     self.line_styles_dialog = Some(linestyles::LineStylesDialog::new(&self.session.model));
+                }
+                let tip = msg!("Line Patterns: the dashes, dots, spaces and shapes lines are drawn with");
+                if list_row(ui, Icon::LinePatterns, "Line Patterns", false, tip).clicked() {
+                    self.line_styles_dialog = Some(linestyles::LineStylesDialog::patterns(&self.session.model));
+                }
+                let tip = msg!("Fill Patterns: the patterns filled regions and materials fill with, simple or made from lines drawn");
+                if list_row(ui, Icon::FillPatterns, "Fill Patterns", false, tip).clicked() {
+                    self.fill_patterns_dialog = Some(fillpatterns::FillPatternsDialog::new(&self.session.model));
                 }
             });
             let tip = msg!(
@@ -3467,11 +3479,11 @@ impl BimApp {
             if big_button(ui, Icon::Settings, "Technical Standards", self.standards_dialog.is_some(), &tip).clicked() {
                 self.standards_dialog = Some(standards::StandardsDialog::new(&self.session.model));
             }
-            // Fills, snaps and units, stacked.
+            // Object styles, snaps and units, stacked.
             stacked(ui, |ui| {
-                let tip = msg!("Fill Patterns: the patterns filled regions fill with, and the filled region types");
-                if stacked_button(ui, Icon::FillPatterns, "Fill Patterns", self.fill_patterns_dialog.is_some(), tip).clicked() {
-                    self.fill_patterns_dialog = Some(fillpatterns::FillPatternsDialog::new(&self.session.model));
+                let tip = msg!("Object Styles: the pen each category draws in, seen and cut, in every view");
+                if stacked_button(ui, Icon::ObjectStyles, "Object Styles", self.object_styles_dialog.is_some(), tip).clicked() {
+                    self.object_styles_dialog = Some(objectstyles::ObjectStylesDialog::new(&self.session.model));
                 }
                 let tip = msg!(
                     "Snaps: what a picked point sticks to (ends, middles, crossings, centres, perpendiculars), and the angles it steps by; SE, SM, SI, SC, SP and SN take one alone for the next point, SO none"
@@ -4094,6 +4106,14 @@ impl BimApp {
         if let Some(hint) = self.sketch_prompt() {
             return hint;
         }
+        if self.picking_pattern_lines() {
+            return msg!("Select fill pattern lines then press Enter");
+        }
+        match self.tool {
+            Tool::PatternCorner(None) => return msg!("Click on Bottom Left Corner"),
+            Tool::PatternCorner(Some(_)) => return msg!("Click on Top Right Corner"),
+            _ => {}
+        }
         match (self.sheet, &self.tool) {
             (Sheet::View3D, Tool::Modify) => {
                 return msg!("Click to select. Drag to orbit (or Shift and the middle button), the middle button pans, the wheel zooms.");
@@ -4230,6 +4250,7 @@ impl BimApp {
             Tool::SlopeArrow(None) => msg!("Click the slope arrow's tail: where the floor's top stays at its height offset."),
             Tool::SlopeArrow(Some(_)) => msg!("Click its head: the floor rises toward it at the Options Bar's slope. Esc cancels."),
             Tool::SketchLine(_) | Tool::SketchPick => msg!("Click where the line starts."),
+            Tool::PatternCorner(_) => msg!("Click on Bottom Left Corner"),
         }
     }
 

@@ -76,7 +76,7 @@ fn detail_lines_are_made_a_line_a_click_as_walls_are_or_as_one_polyline() {
 fn line_styles_and_patterns_are_made_changed_and_deleted_in_one_step() {
     let mut h = app(BOX);
     press(&mut h, "Manage");
-    press(&mut h, "Line Styles");
+    annotation(&mut h, "Line Styles");
     assert!(h.state().line_styles_dialog.is_some());
     // A pattern of its own: two dashes, the second shorter, then a dot.
     press(&mut h, "Patterns");
@@ -113,14 +113,14 @@ fn line_styles_and_patterns_are_made_changed_and_deleted_in_one_step() {
     assert_eq!(h.state().session.history().last(), Some(&"Line Styles"));
     // Renamed and deleted; a style in use is refused, saying why, and the dialog stays open to fix it.
     h.state_mut().session.execute("detail_line", &json!({"points": [[0, 0], [1000, 0]], "style": "Thin Lines"})).unwrap();
-    press(&mut h, "Line Styles");
+    annotation(&mut h, "Line Styles");
     type_into(&mut h, "Fence Line: Name", "Boundary");
     press(&mut h, "Thin Lines: Delete");
     press(&mut h, "OK");
     assert!(h.state().line_styles_dialog.is_some() && h.state().status.error, "{}", h.state().status.text);
     assert!(h.state().session.model.line_styles.contains_key("Fence Line"), "all or nothing");
     press(&mut h, "Cancel");
-    press(&mut h, "Line Styles");
+    annotation(&mut h, "Line Styles");
     type_into(&mut h, "Fence Line: Name", "Boundary");
     press(&mut h, "OK");
     let m = &h.state().session.model;
@@ -257,7 +257,7 @@ fn the_default_line_style_is_thin_lines_in_a_project_of_any_language_in_the_opti
 fn pattern_creator_edits_every_segment_in_a_separate_draft_and_can_cancel() {
     let mut h = app(BOX);
     press(&mut h, "Manage");
-    press(&mut h, "Line Styles");
+    annotation(&mut h, "Line Styles");
     press(&mut h, "Patterns");
     press(&mut h, "New Pattern");
     assert!(h.query_by_label("Line Pattern Creator").is_some());

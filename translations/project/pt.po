@@ -31,7 +31,7 @@ msgstr "Cama"
 msgid "Brick"
 msgstr "Tijolo"
 
-#: crates/core/src/fills.rs:376
+#: crates/core/src/fills.rs:392
 msgid "Brick 225 x 75"
 msgstr "Tijolo 225 x 75"
 
@@ -83,7 +83,7 @@ msgstr "Cópia"
 msgid "Count"
 msgstr "Contagem"
 
-#: crates/core/src/fills.rs:369
+#: crates/core/src/fills.rs:385
 msgid "Crosshatch"
 msgstr "Hachura cruzada"
 
@@ -103,7 +103,7 @@ msgstr "Traço e ponto"
 msgid "Data Outlet"
 msgstr "Ponto de dados"
 
-#: crates/core/src/commands.rs:7049
+#: crates/core/src/commands.rs:7062
 msgid "Dependent"
 msgstr "Dependente"
 
@@ -115,15 +115,15 @@ msgstr "Profundidade"
 msgid "Desk"
 msgstr "Escrivaninha"
 
-#: crates/core/src/fills.rs:368
+#: crates/core/src/fills.rs:384
 msgid "Diagonal Crosshatch"
 msgstr "Hachura cruzada diagonal"
 
-#: crates/core/src/fills.rs:367
+#: crates/core/src/fills.rs:383
 msgid "Diagonal Down"
 msgstr "Diagonal para baixo"
 
-#: crates/core/src/fills.rs:366
+#: crates/core/src/fills.rs:382
 msgid "Diagonal Up"
 msgstr "Diagonal para cima"
 
@@ -167,8 +167,8 @@ msgstr "Leste"
 msgid "Elbow 90"
 msgstr "Joelho 90"
 
-#: crates/core/src/commands.rs:6833
-#: crates/core/src/commands.rs:8500
+#: crates/core/src/commands.rs:6846
+#: crates/core/src/commands.rs:8513
 msgid "Elevation"
 msgstr "Elevação"
 
@@ -253,7 +253,7 @@ msgstr "Oculta"
 msgid "Hidden Lines"
 msgstr "Linhas ocultas"
 
-#: crates/core/src/fills.rs:370
+#: crates/core/src/fills.rs:386
 msgid "Horizontal"
 msgstr "Horizontal"
 
@@ -285,7 +285,7 @@ msgstr "Largura da perna"
 msgid "Length"
 msgstr "Comprimento"
 
-#: crates/core/src/commands.rs:4334
+#: crates/core/src/commands.rs:4347
 #: crates/core/src/model.rs:2503
 msgid "Level"
 msgstr "Nível"
@@ -302,11 +302,11 @@ msgstr "Traço longo"
 msgid "Mark"
 msgstr "Marca"
 
-#: crates/core/src/fills.rs:356
+#: crates/core/src/fills.rs:372
 msgid "Masking"
 msgstr "Máscara"
 
-#: crates/core/src/commands.rs:5371
+#: crates/core/src/commands.rs:5384
 msgid "Mass"
 msgstr "Massa"
 
@@ -390,7 +390,7 @@ msgstr "Reboco"
 msgid "Porcelain"
 msgstr "Porcelana"
 
-#: crates/core/src/commands.rs:2220
+#: crates/core/src/commands.rs:2233
 msgid "Project"
 msgstr "Projeto"
 
@@ -414,7 +414,7 @@ msgstr "Espelhos"
 msgid "Roof tiles"
 msgstr "Telhas"
 
-#: crates/core/src/commands.rs:5596
+#: crates/core/src/commands.rs:5609
 msgid "Room"
 msgstr "Ambiente"
 
@@ -430,7 +430,7 @@ msgstr "ESCALA"
 msgid "SCALE AS INDICATED"
 msgstr "ESCALA CONFORME INDICADO"
 
-#: crates/core/src/fills.rs:373
+#: crates/core/src/fills.rs:389
 msgid "Sand"
 msgstr "Areia"
 
@@ -442,8 +442,8 @@ msgstr "Contrapiso"
 msgid "Seat Height"
 msgstr "Altura do assento"
 
-#: crates/core/src/commands.rs:6810
-#: crates/core/src/commands.rs:8499
+#: crates/core/src/commands.rs:6823
+#: crates/core/src/commands.rs:8512
 msgid "Section"
 msgstr "Corte"
 
@@ -499,11 +499,11 @@ msgstr "Inclinação"
 msgid "Sofa"
 msgstr "Sofá"
 
-#: crates/core/src/fills.rs:355
+#: crates/core/src/fills.rs:371
 msgid "Solid Black"
 msgstr "Preto sólido"
 
-#: crates/core/src/fills.rs:353
+#: crates/core/src/fills.rs:369
 msgid "Solid fill"
 msgstr "Preenchimento sólido"
 
@@ -535,7 +535,7 @@ msgstr "Espessura"
 msgid "Thin Lines"
 msgstr "Linhas finas"
 
-#: crates/core/src/fills.rs:382
+#: crates/core/src/fills.rs:398
 msgid "Tile 300"
 msgstr "Ladrilho 300"
 
@@ -559,11 +559,11 @@ msgstr "Tipo"
 msgid "UP"
 msgstr "SOBE"
 
-#: crates/core/src/commands.rs:7190
+#: crates/core/src/commands.rs:7203
 msgid "Unnamed"
 msgstr "Sem nome"
 
-#: crates/core/src/fills.rs:371
+#: crates/core/src/fills.rs:387
 msgid "Vertical"
 msgstr "Vertical"
 
