@@ -14,11 +14,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::commands::{category, element_json_with};
-use crate::rooms::Rooms;
 use crate::family::{self, MAX_FORMULA};
 use crate::language::Language;
 use crate::model::{Element, Id, MAX_COORD, MAX_TEXT, Model, ParameterKind, Schedule};
 use crate::phasing;
+use crate::rooms::Rooms;
 use crate::units::Units;
 
 /// What a field holds, and so how a schedule shows it and a formula reads it: text, a number, a

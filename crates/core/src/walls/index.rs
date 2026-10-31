@@ -22,12 +22,7 @@ pub(crate) struct Index {
 
 impl Index {
     pub(crate) fn new(m: &Model) -> Self {
-        let mut index = Self {
-            spans: BTreeMap::new(),
-            hosts: BTreeMap::new(),
-            tiles: HashMap::new(),
-            everywhere: Vec::new(),
-        };
+        let mut index = Self { spans: BTreeMap::new(), hosts: BTreeMap::new(), tiles: HashMap::new(), everywhere: Vec::new() };
         let mut tiled = 0;
         for (&id, e) in &m.elements {
             match e {
@@ -35,9 +30,7 @@ impl Index {
                     let (lo, hi) = (m.base_z(w), m.top_z(w));
                     index.spans.insert(id, (lo, hi));
                     match reach(m, w).map(|[x0, y0, x1, y1]| ([tile(x0), tile(y0)], [tile(x1), tile(y1)])) {
-                        Some(([a, b], [c, d]))
-                            if (c - a + 1).saturating_mul(d - b + 1) <= MAX_TILES && tiled < MAX_REFERENCES =>
-                        {
+                        Some(([a, b], [c, d])) if (c - a + 1).saturating_mul(d - b + 1) <= MAX_TILES && tiled < MAX_REFERENCES => {
                             for x in a..=c {
                                 for y in b..=d {
                                     index.tiles.entry((x, y)).or_default().push(id);
@@ -94,7 +87,6 @@ fn reach(m: &Model, w: &crate::model::Wall) -> Option<[f64; 4]> {
 fn tile(v: f64) -> i64 {
     (v / TILE).floor() as i64
 }
-
 
 #[cfg(test)]
 mod tests {

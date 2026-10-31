@@ -63,9 +63,9 @@ pub mod reinforce;
 #[cfg(test)]
 mod reinforce_tests;
 pub mod render;
-pub mod rooms;
 #[cfg(test)]
 mod room_area_tests;
+pub mod rooms;
 pub mod runs;
 pub mod sample;
 pub mod schedule;

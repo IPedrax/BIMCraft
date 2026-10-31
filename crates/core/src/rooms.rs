@@ -127,7 +127,13 @@ mod tests {
         let level = m.levels()[0].0;
         let level = m.guid(level);
         for point in [(3000.0, 4000.0), (-5000.0, -5000.0), (0.0, 0.0)] {
-            m.insert(Element::Room(Room { level, point: P2(point.0, point.1), name: "Odd".into(), number: "9".into(), params: Default::default() }));
+            m.insert(Element::Room(Room {
+                level,
+                point: P2(point.0, point.1),
+                name: "Odd".into(),
+                number: "9".into(),
+                params: Default::default(),
+            }));
         }
         agree(&s.model);
         let tower = crate::sample::tower::tower_on(crate::sample::tower::Plate::SMALL, 2).unwrap();
