@@ -939,6 +939,41 @@ mod tests {
     }
 
     #[test]
+    fn every_plan_finds_from_the_lookup_what_reaches_it_from_other_storeys_and_after_a_type_grows() {
+        let mut s = Session::new();
+        s.reset(drawn(Plate::SMALL, 3, Drawings { annotation: true, sheets: true }).unwrap(), None);
+        let plans = |s: &Session| -> Vec<Id> {
+            s.model.elements.iter().filter(|(_, e)| matches!(e, Element::Level(_) | Element::PlanView(_))).map(|(id, _)| *id).collect()
+        };
+        // Each plan's elements are asked of every element too (the twin in `render::plan_elements`, and `plan_shows`').
+        let draw_all = |s: &Session| {
+            for id in plans(s) {
+                crate::render::plan(&s.model, id, 400, 300);
+            }
+        };
+        draw_all(&s);
+        for (cmd, p) in [
+            // A luminaire raised into the storey over its level, and one let down into the storey under.
+            ("component", json!({"family": "Ceiling Luminaire", "at": [3000, 3000], "level": "Level 1", "offset": 5200})),
+            ("component", json!({"family": "Ceiling Luminaire", "at": [3000, 9000], "level": "Level 3", "offset": -3000})),
+            // A riser through two storeys, and a pipe too steep to band.
+            ("pipe", json!({"points": [[1000, 1000], [1000, 1000]], "level": "Level 1", "offset": 0, "end_offset": 9000})),
+            ("pipe", json!({"points": [[2000, 2000], [2100, 2000]], "level": "Level 1", "offset": 0, "end_offset": 6000})),
+            // A beam deep enough to hang into the storey under its level.
+            ("type", json!({"category": "beam", "name": "Transfer", "width": 400, "depth": 2500})),
+            ("beam", json!({"points": [[0, 18_000], [36_000, 18_000]], "level": "Level 3", "type": "Transfer"})),
+        ] {
+            s.execute(cmd, &p).unwrap();
+        }
+        draw_all(&s);
+        // The library changes; what the lookup keeps of the elements doesn't.
+        s.execute("type", &json!({"category": "beam", "name": "Transfer", "width": 400, "depth": 5000})).unwrap();
+        draw_all(&s);
+        s.execute("move", &json!({"ids": [plans(&s)[0]], "by": [0, 0]})).ok();
+        draw_all(&s);
+    }
+
+    #[test]
     fn a_tower_is_one_to_a_hundred_storeys_on_a_plate_its_layout_fits() {
         assert!(tower(0).is_err() && tower(MAX_STOREYS + 1).is_err());
         for (width, depth) in [(30_000, 36_000), (36_000, 42_000), (36_000, 30_000), (0, 0), (-36_000, 36_000), (606_000, 36_000)] {

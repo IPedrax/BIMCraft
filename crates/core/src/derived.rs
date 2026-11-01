@@ -50,7 +50,80 @@ pub struct Lookup {
     phased: Arc<BTreeSet<Id>>,
     /// The levels: walls' heights are of them, so when one changes the lookup is made again.
     levels: Arc<BTreeSet<Id>>,
+    /// Components and runs by [`Group`], each group by band of the heights the elements' own values give: a component's
+    /// base, a run's ends. What the library adds (a family's geometry, a run type's depth) a plan adds as it asks.
+    heights: BTreeMap<Arc<Group>, Arc<Bands>>,
+    /// Each banded element's group and bands, by chunk of ids.
+    banded: BTreeMap<Id, Arc<Banded>>,
+    /// What a plan finds no other way: the elements of the kinds it looks for among all of them (grids, floors, roofs,
+    /// stairs, sections, a tag of no view…), and the runs too steep to band.
+    other: Arc<BTreeSet<Id>>,
 }
+
+/// What a banded element's heights share with the others of its group beside its own values: a component's family, type,
+/// mirroring and values (its geometry), a run's category and type (its depth).
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Group {
+    Component { family: String, type_name: String, mirrored: bool, params: String },
+    Run { category: &'static str, type_name: String },
+}
+
+/// How much steeper than its plan length a run may be and be banded: its section adds at most twice its depth over and
+/// under its ends (`runs::Geom::half`, and its justification).
+const STEEP: f64 = 2.0;
+
+/// The kinds a plan finds by height, by view, by level or by host, not in [`Lookup::other`].
+fn found_otherwise(e: &Element) -> bool {
+    match e {
+        Element::Wall(_)
+        | Element::Door(_)
+        | Element::Window(_)
+        | Element::Component(_)
+        | Element::Room(_)
+        | Element::RoomSeparator(_)
+        | Element::Ceiling(_)
+        | Element::Text(_)
+        | Element::DetailLine(_)
+        | Element::FilledRegion(_)
+        | Element::Dimension(_)
+        | Element::Spot(_)
+        | Element::DetailGroup(_)
+        | Element::RepeatingDetail(_)
+        | Element::Column(_)
+        | Element::StructuralColumn(_) => true,
+        Element::Tag(t) => t.view.is_some(),
+        _ => false,
+    }
+}
+
+/// A level's elevation as `elements` place it: as `Model::elevation` gives it, 0 for what isn't a level.
+fn elevation_in(elements: &Elements, level: Guid) -> f64 {
+    match elements.get(level) {
+        Some(Element::Level(l)) => l.elevation,
+        _ => 0.0,
+    }
+}
+
+/// The group and own heights of an element banded by height; none for another, or a run too steep.
+fn banding(elements: &Elements, e: &Element) -> Option<(Group, f64, f64)> {
+    if let Element::Component(c) = e {
+        let params = serde_json::to_string(&c.params).unwrap_or_default();
+        let group = Group::Component { family: c.family.clone(), type_name: c.type_name.clone(), mirrored: c.mirrored, params };
+        let base = elevation_in(elements, c.level) + c.offset;
+        return Some((group, base, base));
+    }
+    let r = e.run()?;
+    let base = elevation_in(elements, r.level);
+    let (z0, z1) = (base + r.offset, base + r.end_offset.unwrap_or(r.offset));
+    let plan = r.start.dist(r.end);
+    if plan > crate::model::TOL && (z1 - z0).hypot(plan) / plan > STEEP {
+        return None;
+    }
+    Some((Group::Run { category: e.category(), type_name: r.type_name.clone() }, z0.min(z1), z0.max(z1)))
+}
+
+/// The most bands one element is kept in; past that, in [`ANY`].
+const MAX_BANDS: i64 = 64;
 
 /// The categories a project has few elements of (a column to a hundred others), which views, checks and rooms look for
 /// among all of them: kept by kind. Its views, sheets and viewports among them: a drawing set of a thousand sheets is a
@@ -74,6 +147,9 @@ pub const RARE: &[&str] = &[
 /// The categories of a drawing set: views, sheets and what places a view on a sheet. Their names and numbers are kept
 /// apart, and a view goes on one sheet, so they are checked together ([`crate::model::Model::check_changed`]).
 pub const DRAWING_SET: &[&str] = &["sheet", "viewport", "planview", "section", "elevation", "schedule", "view3d"];
+
+/// Banded elements' groups and bands, by id.
+type Banded = BTreeMap<Id, (Arc<Group>, [i64; 2])>;
 
 /// A tile's walls by band of height.
 type Bands = BTreeMap<i64, Arc<BTreeSet<Id>>>;
@@ -207,6 +283,25 @@ impl Lookup {
         if let Some(cat) = RARE.iter().find(|c| **c == e.category()) {
             Arc::make_mut(self.rare.entry(cat).or_default()).insert(id);
         }
+        match banding(elements, e) {
+            Some((group, lo, hi)) => {
+                let [b0, b1] = bands_of(lo, hi, 1);
+                let b = if b0 != ANY && b1 - b0 >= MAX_BANDS { [ANY, ANY] } else { [b0, b1] };
+                let group = match self.heights.get_key_value(&group) {
+                    Some((g, _)) => Arc::clone(g),
+                    None => Arc::new(group),
+                };
+                let bands = Arc::make_mut(self.heights.entry(Arc::clone(&group)).or_default());
+                for band in if b[0] == ANY { ANY..=ANY } else { b[0]..=b[1] } {
+                    Arc::make_mut(bands.entry(band).or_default()).insert(id);
+                }
+                Arc::make_mut(self.banded.entry(id >> SHIFT).or_default()).insert(id, (group, b));
+            }
+            None if !found_otherwise(e) => {
+                Arc::make_mut(&mut self.other).insert(id);
+            }
+            None => {}
+        }
         if e.params().is_some_and(|p| p.keys().any(|k| crate::phasing::reserved(k))) {
             Arc::make_mut(&mut self.phased).insert(id);
         }
@@ -218,7 +313,38 @@ impl Lookup {
                 Arc::make_mut(set).remove(&id);
             }
         }
-        for set in [&mut self.walls, &mut self.dimensions, &mut self.grids, &mut self.everywhere, &mut self.levels, &mut self.phased] {
+        if let Some(chunk) = self.banded.get_mut(&(id >> SHIFT))
+            && chunk.contains_key(&id)
+        {
+            if let Some((group, b)) = Arc::make_mut(chunk).remove(&id)
+                && let Some(bands) = self.heights.get_mut(&group)
+            {
+                let bands_now = Arc::make_mut(bands);
+                for band in if b[0] == ANY { ANY..=ANY } else { b[0]..=b[1] } {
+                    if let Some(set) = bands_now.get_mut(&band) {
+                        Arc::make_mut(set).remove(&id);
+                        if set.is_empty() {
+                            bands_now.remove(&band);
+                        }
+                    }
+                }
+                if bands_now.is_empty() {
+                    self.heights.remove(&group);
+                }
+            }
+            if chunk.is_empty() {
+                self.banded.remove(&(id >> SHIFT));
+            }
+        }
+        for set in [
+            &mut self.walls,
+            &mut self.dimensions,
+            &mut self.grids,
+            &mut self.everywhere,
+            &mut self.levels,
+            &mut self.phased,
+            &mut self.other,
+        ] {
             if set.contains(&id) {
                 Arc::make_mut(set).remove(&id);
             }
@@ -361,6 +487,47 @@ impl Lookup {
     /// Whether an element is phased or in a design option.
     pub fn any_phased(&self) -> bool {
         !self.phased.is_empty()
+    }
+
+    /// The groups of elements banded by height ([`Group`]), each with one of its elements.
+    pub fn groups(&self) -> impl Iterator<Item = (&Group, Id)> + '_ {
+        self.heights.iter().filter_map(|(g, bands)| Some((g.as_ref(), *bands.values().next()?.iter().next()?)))
+    }
+
+    /// The elements of group `g` whose own heights may reach from `lo` to `hi` (mm, either way up), by id: every one
+    /// that does, and others near. Not finite, every one of the group.
+    pub fn group_between(&self, g: &Group, lo: f64, hi: f64) -> BTreeSet<Id> {
+        let Some(bands) = self.heights.get(g) else { return BTreeSet::new() };
+        let mut out = BTreeSet::new();
+        let [b0, b1] = bands_of(lo, hi, 1);
+        if b0 == ANY {
+            bands.values().for_each(|set| out.extend(set.iter().copied()));
+            return out;
+        }
+        for set in std::iter::once(bands.get(&ANY)).chain(bands.range(b0 - 1..=b1 + 1).map(|(_, s)| Some(s))).flatten() {
+            out.extend(set.iter().copied());
+        }
+        out
+    }
+
+    /// The walls whose heights may reach from `lo` to `hi` (mm), wherever they are, by id: every one that does, and
+    /// others near.
+    pub fn walls_between(&self, lo: f64, hi: f64) -> BTreeSet<Id> {
+        let mut out: BTreeSet<Id> = self.everywhere.iter().copied().collect();
+        let [b0, b1] = bands_of(lo, hi, 1);
+        if b0 == ANY {
+            out.extend(self.walls.iter().copied());
+            return out;
+        }
+        for set in std::iter::once(self.bands.get(&ANY)).chain(self.bands.range(b0 - 1..=b1 + 1).map(|(_, s)| Some(s))).flatten() {
+            out.extend(set.iter().copied());
+        }
+        out
+    }
+
+    /// The elements a plan looks for among all of them ([`Lookup::other`]), by id.
+    pub fn other(&self) -> impl Iterator<Item = Id> + '_ {
+        self.other.iter().copied()
     }
 
     /// The levels, by id.

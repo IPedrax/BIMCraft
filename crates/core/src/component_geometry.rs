@@ -43,6 +43,11 @@ impl<'a> Components<'a> {
         self.local.entry(key).or_insert_with(|| self.model.component_local_pieces(c))
     }
 
+    /// Its geometry's heights over its base, lowest and highest: none (infinity, minus infinity) when it has no pieces.
+    pub(crate) fn local_heights(&mut self, c: &Component) -> (f64, f64) {
+        self.local(c).iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p.bottom), hi.max(p.top)))
+    }
+
     pub(crate) fn heights(&mut self, c: &Component) -> (f64, f64) {
         let base = self.model.elevation(c.level) + c.offset;
         self.local(c).iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(base + p.bottom), hi.max(base + p.top)))

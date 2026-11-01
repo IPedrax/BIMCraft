@@ -629,39 +629,115 @@ fn plan_elements<'a>(
     up: bool,
     components: &mut crate::component_geometry::Components<'a>,
 ) -> Vec<(Id, &'a Element)> {
-    let all = m.elements.iter().map(|(id, e)| (*id, e));
     if up {
-        return all.collect();
+        return m.elements.iter().map(|(id, e)| (*id, e)).collect();
     }
+    let found = plan_candidates(m, key, level, r, components);
+    let candidates = found.iter().filter_map(|id| Some((*id, m.elements.get(*id)?)));
+    let shown: Vec<(Id, &Element)> = plan_filter(m, key, level, r, components, candidates);
+    // Its twin, which tests hold it to: every element of the model, each asked the same.
+    #[cfg(test)]
+    {
+        let every = plan_filter(m, key, level, r, components, m.elements.iter().map(|(id, e)| (*id, e)));
+        assert!(
+            every.iter().map(|(id, _)| id).eq(shown.iter().map(|(id, _)| id)),
+            "a plan's elements found from the lookup aren't every element that shows in it"
+        );
+    }
+    shown
+}
+
+/// The elements that may show in plan `key` of `level`, range `r`, by id: every one that does, and others. From the
+/// lookup: the walls whose heights reach the range, the doors and windows in them, the components and runs whose own
+/// heights reach it once their group's geometry is added, the annotation in the plan (and in its parent's), the level's
+/// rooms, the columns, and the rest of the kinds a plan finds among all of them.
+fn plan_candidates<'a>(
+    m: &'a Model,
+    key: Guid,
+    level: Guid,
+    r: &PlanRange,
+    components: &mut crate::component_geometry::Components<'a>,
+) -> std::collections::BTreeSet<Id> {
+    let lookup = m.lookup();
+    // Every height a plan asks of an element, a hair over and under.
+    let lo = r.depth.min(r.cut).min(r.top) - TOL - 1.0;
+    let hi = r.cut.max(r.top).max(r.depth) + 1.0;
+    let mut out: std::collections::BTreeSet<Id> = lookup.other().collect();
+    for wall in lookup.walls_between(lo, hi) {
+        out.insert(wall);
+        let g = m.guid(wall);
+        out.extend(lookup.referrers(&g).filter(|id| matches!(m.elements.get(*id), Some(Element::Door(_) | Element::Window(_)))));
+    }
+    for (group, one) in lookup.groups() {
+        let found = match (group, m.elements.get(one)) {
+            (crate::derived::Group::Component { .. }, Some(Element::Component(c))) => {
+                let (under, over) = components.local_heights(c);
+                if under > over {
+                    // No geometry: none of them shows.
+                    continue;
+                }
+                lookup.group_between(group, lo - over - 1.0, hi - under + 1.0)
+            }
+            (crate::derived::Group::Run { .. }, Some(e)) => match m.run_type(e) {
+                Some(t) => {
+                    let grow = 2.0 * t.width.abs().max(t.depth.abs()) + 1.0;
+                    lookup.group_between(group, lo - grow, hi + grow)
+                }
+                None => lookup.group_between(group, f64::NAN, f64::NAN),
+            },
+            _ => lookup.group_between(group, f64::NAN, f64::NAN),
+        };
+        out.extend(found);
+    }
+    out.extend(lookup.referrers(&key));
+    if let Some(Element::PlanView(crate::model::PlanView { parent: Some(p), .. })) = m.elements.get(key) {
+        out.extend(lookup.referrers(p));
+    }
+    out.extend(lookup.referrers(&level));
+    out.extend(lookup.rare("column"));
+    out.extend(lookup.rare("structuralcolumn"));
+    out
+}
+
+/// Of `candidates`, those that may show in plan `key` of `level`, range `r`.
+fn plan_filter<'a>(
+    m: &'a Model,
+    key: Guid,
+    level: Guid,
+    r: &PlanRange,
+    components: &mut crate::component_geometry::Components<'a>,
+    candidates: impl Iterator<Item = (Id, &'a Element)>,
+) -> Vec<(Id, &'a Element)> {
     // What reaches from the view depth (and a hair under it: a footing's or a run's top flush with it) to the range's top.
     let reaches = |bottom: f64, top: f64| bottom <= r.top && top > r.depth - TOL;
-    all.filter(|(_, e)| match e {
-        Element::Wall(w) => m.base_z(w) <= r.cut && m.top_z(w) > r.depth - TOL,
-        Element::Door(o) | Element::Window(o) => m.wall(o.host).is_some_and(|w| m.spans(w, r.cut)),
-        Element::Component(c) => {
-            let (bottom, top) = components.heights_of(c);
-            bottom < r.cut && top > r.depth
-        }
-        Element::Room(x) => x.level == level,
-        Element::RoomSeparator(x) => x.level == level,
-        Element::Rebar(_) => m.level_of(e) == Some(level),
-        Element::Ceiling(_) => false,
-        Element::Text(_)
-        | Element::DetailLine(_)
-        | Element::FilledRegion(_)
-        | Element::Dimension(_)
-        | Element::Tag(_)
-        | Element::Spot(_)
-        | Element::DetailGroup(_)
-        | Element::RepeatingDetail(_) => m.annotation_in(e, key),
-        _ if e.column().is_some() => stands(m, e).is_none_or(|(_, bottom, top)| reaches(bottom, top)),
-        _ if e.run().is_some() => m.run_geom(e).is_none_or(|g| {
-            let (bottom, top) = g.z_span();
-            reaches(bottom, top)
-        }),
-        _ => true,
-    })
-    .collect()
+    candidates
+        .filter(|(_, e)| match e {
+            Element::Wall(w) => m.base_z(w) <= r.cut && m.top_z(w) > r.depth - TOL,
+            Element::Door(o) | Element::Window(o) => m.wall(o.host).is_some_and(|w| m.spans(w, r.cut)),
+            Element::Component(c) => {
+                let (bottom, top) = components.heights_of(c);
+                bottom < r.cut && top > r.depth
+            }
+            Element::Room(x) => x.level == level,
+            Element::RoomSeparator(x) => x.level == level,
+            Element::Rebar(_) => m.level_of(e) == Some(level),
+            Element::Ceiling(_) => false,
+            Element::Text(_)
+            | Element::DetailLine(_)
+            | Element::FilledRegion(_)
+            | Element::Dimension(_)
+            | Element::Tag(_)
+            | Element::Spot(_)
+            | Element::DetailGroup(_)
+            | Element::RepeatingDetail(_) => m.annotation_in(e, key),
+            _ if e.column().is_some() => stands(m, e).is_none_or(|(_, bottom, top)| reaches(bottom, top)),
+            _ if e.run().is_some() => m.run_geom(e).is_none_or(|g| {
+                let (bottom, top) = g.z_span();
+                reaches(bottom, top)
+            }),
+            _ => true,
+        })
+        .collect()
 }
 
 /// The cut outlines `look` fills in the same colour, together, so no seam shows where two fills
@@ -874,7 +950,20 @@ fn plan_shows_among(m: &Model, key: Guid, among: bool) -> Vec<P2> {
     };
     let mut extent: Vec<P2> = cut_outlines(m, &elements, r.cut, &look, index).into_iter().flat_map(|(_, o)| o).collect();
     extent.extend(seen_below(m, &elements, &r, &look, index).into_iter().flat_map(|(_, o, _)| o));
-    for (id, e) in m.elements.iter().filter(|(id, _)| look.shows(**id)) {
+    // What it shows besides what is cut and seen: of its level, in it, or of the kinds a plan looks for among all.
+    let rest: Vec<(Id, &Element)> = if among {
+        let lookup = m.lookup();
+        let mut ids: std::collections::BTreeSet<Id> = lookup.other().collect();
+        ids.extend(lookup.referrers(&level));
+        ids.extend(lookup.referrers(&key));
+        if let Some(Element::PlanView(crate::model::PlanView { parent: Some(p), .. })) = m.elements.get(key) {
+            ids.extend(lookup.referrers(p));
+        }
+        ids.into_iter().filter_map(|id| Some((id, m.elements.get(id)?))).collect()
+    } else {
+        m.elements.iter().map(|(id, e)| (*id, e)).collect()
+    };
+    for (id, e) in rest.iter().filter(|(id, _)| look.shows(*id)) {
         match e {
             Element::CadImport(ci) if ci.level == level && ci.view.is_none_or(|v| v == key) => {
                 extent.extend(m.cad_box(*id).into_iter().flatten())
