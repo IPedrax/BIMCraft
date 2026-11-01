@@ -74,26 +74,26 @@ const STEEP: f64 = 2.0;
 
 /// The kinds a plan finds by height, by view, by level or by host, not in [`Lookup::other`].
 fn found_otherwise(e: &Element) -> bool {
-    match e {
+    matches!(
+        e,
         Element::Wall(_)
-        | Element::Door(_)
-        | Element::Window(_)
-        | Element::Component(_)
-        | Element::Room(_)
-        | Element::RoomSeparator(_)
-        | Element::Ceiling(_)
-        | Element::Text(_)
-        | Element::DetailLine(_)
-        | Element::FilledRegion(_)
-        | Element::Dimension(_)
-        | Element::Spot(_)
-        | Element::DetailGroup(_)
-        | Element::RepeatingDetail(_)
-        | Element::Column(_)
-        | Element::StructuralColumn(_)
-        | Element::Tag(_) => true,
-        _ => false,
-    }
+            | Element::Door(_)
+            | Element::Window(_)
+            | Element::Component(_)
+            | Element::Room(_)
+            | Element::RoomSeparator(_)
+            | Element::Ceiling(_)
+            | Element::Text(_)
+            | Element::DetailLine(_)
+            | Element::FilledRegion(_)
+            | Element::Dimension(_)
+            | Element::Spot(_)
+            | Element::DetailGroup(_)
+            | Element::RepeatingDetail(_)
+            | Element::Column(_)
+            | Element::StructuralColumn(_)
+            | Element::Tag(_)
+    )
 }
 
 /// A level's elevation as `elements` place it: as `Model::elevation` gives it, 0 for what isn't a level.
