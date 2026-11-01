@@ -263,6 +263,47 @@ Building one annotated storey through commands went from 76 s to 4.4 s. A storey
 rest of the 450 ms is the one pass over the project's elements that picks the plan's and the passes that are still
 linear: next, a cache of each element's heights in the lookup, so a plan asks for its band, and per-element fragments.
 
+### A drawing set: 406 sheets, and plans that ask the lookup for their elements
+
+`tower {"sheets": true}` (`performance --sheets true`) adds a drawing set: each storey's floor plan, ceiling plan (a
+duplicate) and two enlarged halves (dependent views, cropped, at 1 : 50) on A0 sheets of their own, each with eight
+general notes; and the project's sheets, made once: the cover with the 3D view, the four elevations, a section and the
+room, door and window schedules. With `annotation`, 100 storeys are 1,204,473 elements, 406 sheets, 409 viewports and
+300 plan views.
+
+What the sheets found:
+
+- a sheet, a viewport or a view was among the kinds whose edit checked the whole model: they are now checked as a
+  drawing set (every sheet, viewport and view, with the levels' names), their kinds kept by the lookup;
+- a sheet found its viewports and its notes, and `place` its sheet and view, by walking every element: now the
+  sheet's referrers and the lookup's views and sheets;
+- a plan found the elements that may show in it by asking each of the 1.2 million: now the lookup keeps components and
+  runs by band of the heights their own values give, grouped by what the library adds (a family's geometry, a run
+  type's depth), which the plan adds as it asks, so a library change needs no new lookup; doors come from the walls
+  they're in, annotation from the plan's referrers, view-less tags from what is on its level, the rest from one small
+  set of the kinds a plan looks for among all;
+- a slab less its shafts walked every element for each piece: shafts are kept by the lookup;
+- a plan's extent built each piece of furniture's whole geometry for its outline: now its outline, from the cache.
+
+The 1.2 million elements, release, median of three (each edit with its undo):
+
+| | Before | Now |
+|---|---:|---:|
+| A new sheet | 2,215 ms | **12 ms** |
+| A viewport moved | 2,165 ms | **7.6 ms** |
+| A new sheet and a schedule placed on it | 4,968 ms | 256 ms |
+| A note on a sheet moved | 3.8 ms | 3.9 ms |
+| A storey's plan fitted and drawn | 1,035 ms | **223 ms** |
+| A storey's plan redrawn (52,000 primitives) | 453 ms | **174 ms** |
+| A floor plan's sheet drawn | 1,233 ms | **227 ms** |
+| An enlarged half's sheet drawn (1 : 50) | 617 ms | 183 ms |
+| The door and window schedules' sheet (37,800 rows, 2.1 million primitives) | 1,373 ms | 1,226 ms |
+
+A storey's plan is now nearly the size of the storey's: 155 ms redrawn alone, 174 ms in 100 storeys. What is left is
+drawing it (walls' fills, regions, the floor below), which per-element fragments would keep from one draw to the next.
+Not yet in reach: the elevations' sheet, drawn from the 3D scene, takes 14.8 s at 10 storeys (7.1 s of it building the
+scene) and doesn't finish at 100, as the 3D view doesn't; and the schedules' sheet is as long as its rows.
+
 ## 3D on the graphics card
 
 `view3d::gpu::Mesh` keeps a view's shown triangles for the card (retained geometry, uploaded once for each model), and
