@@ -1052,31 +1052,27 @@ impl Scene {
     ///
     /// Every pixel of its picture is what the whole scene's is: what is left out was behind, and the rest are drawn in the
     /// order they are in the whole scene.
-    pub(crate) fn section(m: &Model, cam: &Camera, clip: &Clip, look: &Look) -> Scene {
+    pub(crate) fn section(m: &Model, solids: &[Solid], placed: &[(Id, Vec<P3>)], cam: &Camera, clip: &Clip, look: &Look) -> Scene {
         let index = walls::Index::new(m);
-        let elements: Vec<(Id, &Element)> =
-            m.elements.iter().filter(|(id, e)| look.shows(**id) && !matches!(e, Element::Mass(_))).map(|(&id, e)| (id, e)).collect();
-        // Each element's box, and the solids of all but the components (whose boxes are their families', placed).
-        let boxed = |chunk: &[(Id, &Element)]| -> Vec<Boxed3> {
-            let mut components = crate::component_geometry::Components::new(m);
-            chunk
-                .iter()
-                .map(|&(id, e)| match e {
-                    Element::Component(c) => (id, components.placed_box(c), Vec::new()),
-                    _ => {
-                        let solids = solids_in(m, &[(id, e)], Some(&index));
-                        (id, bounds(solids.iter().flat_map(Solid::corners)), solids)
-                    }
-                })
-                .collect()
-        };
-        let boxes: Vec<Boxed3> = match (elements.len() >= 1000).then(render_pool).flatten() {
-            Some(pool) => {
-                use rayon::prelude::*;
-                pool.install(|| elements.par_chunks(256).map(boxed).collect::<Vec<_>>()).into_iter().flatten().collect()
-            }
-            None => boxed(&elements),
-        };
+        // Each element's solids lie together, in the order of the elements.
+        let mut ranges: HashMap<Id, std::ops::Range<usize>> = HashMap::new();
+        for (i, s) in solids.iter().enumerate() {
+            ranges.entry(s.owner()).and_modify(|r| r.end = i + 1).or_insert(i..i + 1);
+        }
+        // Each element's box, round the points that may be its farthest, and where its solids are; a component's are made
+        // only if it shows.
+        let boxes: Vec<Boxed3> = placed
+            .iter()
+            .filter(|(id, _)| look.shows(*id) && !matches!(m.elements.get(*id), Some(Element::Mass(_))))
+            .map(|(id, p)| {
+                let at = match m.elements.get(*id) {
+                    Some(Element::Component(_)) => 0..0,
+                    _ => ranges.get(id).cloned().unwrap_or(0..0),
+                };
+                (*id, bounds(p.iter().copied()), at)
+            })
+            .collect();
+        let own = |id: Id, at: &std::ops::Range<usize>| solids.get(at.clone()).into_iter().flatten().filter(move |s| s.owner() == id);
         // The occluders drawn, as the picture draws them.
         let (w, h) = (cam.width.clamp(1, MAX_SIDE) as usize, cam.height.clamp(1, MAX_SIDE) as usize);
         let hides = |id: Id| {
@@ -1095,9 +1091,8 @@ impl Scene {
             )
         };
         let mut occluders = Vec::new();
-        for (id, _, solids) in boxes.iter().filter(|(id, ..)| hides(*id)) {
-            let _ = id;
-            for solid in solids.iter().cloned().flat_map(|s| layered(m, s)) {
+        for (id, _, at) in boxes.iter().filter(|(id, ..)| hides(*id)) {
+            for solid in own(*id, at).cloned().flat_map(|s| layered(m, s)) {
                 solid.tris(&mut occluders);
             }
         }
@@ -1113,16 +1108,12 @@ impl Scene {
         let kept: Vec<&Boxed3> = boxes.iter().filter(|(_, b, _)| b.is_none_or(|b| tiles.may_show(&project, clip, &b))).collect();
         let mut components = crate::component_geometry::Components::new(m);
         let mut tris = Vec::new();
-        for (id, _, solids) in kept {
-            let made;
-            let solids = match m.elements.get(*id) {
-                Some(Element::Component(_)) => {
-                    made = m.elements.get(*id).map(|e| solids_in_with(m, &[(*id, e)], Some(&index), &mut components)).unwrap_or_default();
-                    &made
-                }
-                _ => solids,
+        for (id, _, at) in kept {
+            let made: Vec<Solid> = match m.elements.get(*id) {
+                Some(e @ Element::Component(_)) => solids_in_with(m, &[(*id, e)], Some(&index), &mut components),
+                _ => own(*id, at).cloned().collect(),
             };
-            for solid in solids.iter().cloned().flat_map(|s| layered(m, s)) {
+            for solid in made.into_iter().flat_map(|s| layered(m, s)) {
                 solid.tris(&mut tris);
             }
         }
@@ -1149,9 +1140,9 @@ impl Scene {
     }
 }
 
-/// An element, the box round it (none where it has no geometry, or it isn't known) and its solids, which a component's
-/// are made of only when it shows.
-type Boxed3 = (Id, Option<[P3; 2]>, Vec<Solid>);
+/// An element, the box round it (none where it isn't known) and where its solids are in the list (a component's are made
+/// only when it shows).
+type Boxed3 = (Id, Option<[P3; 2]>, std::ops::Range<usize>);
 
 /// The box round `points`, lowest corner and highest; none for no points.
 fn bounds(points: impl Iterator<Item = P3>) -> Option<[P3; 2]> {
@@ -2552,6 +2543,7 @@ mod tests {
         use crate::sample::tower::{Drawings, Plate, drawn};
         let m = drawn(Plate::SMALL, 3, Drawings { annotation: false, sheets: true }).unwrap();
         let whole = Scene::new(&m);
+        let (solids, placed) = solids_and_extremes(&m);
         for name in ["North Elevation", "South Elevation", "East Elevation", "West Elevation", "Section A"] {
             let id = m
                 .elements
@@ -2561,7 +2553,7 @@ mod tests {
             let view = crate::render::section_fit(&m, id, 900, 600);
             let (cam, clip) = crate::render::section_camera(&m, id, view).unwrap();
             let look = Look::of(&m, id);
-            let lean = Scene::section(&m, &cam, &clip, &look);
+            let lean = Scene::section(&m, &solids, &placed, &cam, &clip, &look);
             lean.cut_in(&cam, &clip, &[], &look).same_as(&whole.cut_in(&cam, &clip, &[], &look)).unwrap();
             // The furniture behind the facade, and the rooms' services, are left out.
             assert!(lean.tris.len() * 4 < whole.tris.len(), "{name}: {} of {} triangles", lean.tris.len(), whole.tris.len());

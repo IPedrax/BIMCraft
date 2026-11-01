@@ -278,6 +278,8 @@ fn measure_section(report: &mut Value, s: &Session, name: &str, id: u64) -> Resu
     })?;
     let d = timed(report, &format!("{name}_drawing"), || Ok(render::section_over(&s.model, id, view, &picture)))?;
     report[format!("{name}_primitives")] = json!(d.prims.len());
+    // Both at once, as the desktop asks for them: the whole model's work done once.
+    timed(report, &format!("{name}_picture_and_drawing"), || Ok(render::section_picture_and_over(&s.model, id, view, view, &[])))?;
     // What the picture is, to the pixel, and what is drawn over it: the same before and after a change that only speeds it.
     report[format!("{name}_picture_hash")] = json!(hash(&mut picture.rgba.iter().copied()));
     report[format!("{name}_drawing_hash")] = json!(hash(&mut render::png(&d)?.into_iter()));

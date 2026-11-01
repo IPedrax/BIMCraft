@@ -47,15 +47,29 @@ pub struct Cut {
 }
 
 impl Cut {
-    /// The picture of section `id` through `pixels` with `tints` on the elements they name, into the texture, of `model`.
+    /// The picture of section `id` through `pixels` with `tints` on the elements they name, into the texture, of `model`; and
+    /// the drawing over it through `view`, kept with it.
     #[allow(clippy::too_many_arguments)]
-    fn draw(&mut self, ctx: &Context, model: &Arc<Model>, id: Id, pixels: View, tints: Vec<(Id, Rgb)>, dark: bool, grid_background: bool) {
+    fn draw(
+        &mut self,
+        ctx: &Context,
+        model: &Arc<Model>,
+        id: Id,
+        (view, pixels): (View, View),
+        tints: Vec<(Id, Rgb)>,
+        dark: bool,
+        grid_background: bool,
+    ) {
         #[cfg(test)]
         {
             self.pictures += 1;
+            self.drawings += 1;
         }
         self.generation += 1;
-        if let Some(image) = render::section_picture(model, id, pixels, &tints) {
+        // The picture, and the drawing over it, which keeps its regions' ink from it: the whole model's work once for both.
+        let (picture, drawing) = render::section_picture_and_over(model, id, view, pixels, &tints);
+        self.drawn = Some((self.generation, Arc::clone(model), id, view, Arc::new(drawing)));
+        if let Some(image) = picture {
             // A hidden-line picture, so dark as the drawing over it is.
             let (rgba, _) = image.rgba.as_chunks::<4>();
             let pixels: Vec<Color32> = rgba
@@ -106,7 +120,7 @@ impl BimApp {
         };
         if !current(&self.cut, None) {
             let tints = self.cut.shown.as_ref().map(|s| s.3.clone()).unwrap_or_default();
-            self.cut.draw(ui.ctx(), &model, id, pixels, tints, dark, grid_background);
+            self.cut.draw(ui.ctx(), &model, id, (view, pixels), tints, dark, grid_background);
         }
         let kept =
             self.cut.drawn.as_ref().filter(|(g, m, v, f, _)| *g == self.cut.generation && Arc::ptr_eq(m, &model) && *v == id && *f == view);
@@ -143,7 +157,7 @@ impl BimApp {
             .chain(hovered.filter(|h| !self.selection.contains(h)).map(|h| (h, rgb(canvas_pal().hover))))
             .collect();
         if !current(&self.cut, Some(&tints)) {
-            self.cut.draw(ui.ctx(), &model, id, pixels, tints, dark, grid_background);
+            self.cut.draw(ui.ctx(), &model, id, (view, pixels), tints, dark, grid_background);
         }
         let p = ui.painter_at(rect);
         p.rect_filled(rect, 0.0, color(render::PAPER));

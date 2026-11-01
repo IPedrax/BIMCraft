@@ -1400,7 +1400,7 @@ fn shown_heights(m: &Model, w: &SectionWork, v: &Section, look: &Look) -> (f64, 
 /// start, and up, with room for its levels' names and its grids' bubbles, which are as big as its
 /// scale makes them.
 pub fn section_fit(m: &Model, id: impl Key, width: u32, height: u32) -> View {
-    let Some([lo, hi]) = section_bare(m, id) else { return fit(&[], width, height, m.units.default_scale()) };
+    let Some([lo, hi]) = section_bare(m, &SectionWork::new(m), id) else { return fit(&[], width, height, m.units.default_scale()) };
     let (n, names) = (scale_of(m, id), level_names(m));
     fit_by(|scale| [lo, P2(hi.0 + f64::from(annotation_of(n, scale) * names) / scale, hi.1)], width, height, n)
 }
@@ -1408,18 +1408,17 @@ pub fn section_fit(m: &Model, id: impl Key, width: u32, height: u32) -> View {
 /// What section or elevation `id` shows, along its line and up, at `scale` px per mm, its annotation `k` times the size it is
 /// laid out at: from its start to its end, past its lowest and highest heights, with room past the end for the widest
 /// level name.
-pub(crate) fn section_extent(m: &Model, id: impl Key, scale: f64, k: f32) -> Option<[P2; 2]> {
-    let [lo, hi] = section_bare(m, id)?;
+pub(crate) fn section_extent(m: &Model, w: &SectionWork, id: impl Key, scale: f64, k: f32) -> Option<[P2; 2]> {
+    let [lo, hi] = section_bare(m, w, id)?;
     Some([lo, P2(hi.0 + f64::from(k * level_names(m)) / scale, hi.1)])
 }
 
 /// Section or elevation `id` along its line, past its lowest and highest heights: all it shows but the names of its levels.
 /// Cropped, from its start to its end; else as far as anything it shows reaches.
-fn section_bare(m: &Model, id: impl Key) -> Option<[P2; 2]> {
+fn section_bare(m: &Model, w: &SectionWork, id: impl Key) -> Option<[P2; 2]> {
     let v = m.section(id)?;
     let look = Look::of(m, id);
-    let w = SectionWork::new(m);
-    let ((lo, hi), (first, last)) = (shown_heights(m, &w, v, &look), span(m, &w, v, &look));
+    let ((lo, hi), (first, last)) = (shown_heights(m, w, v, &look), span(m, w, v, &look));
     Some([P2(first, lo - GRID_PAST), P2(last, hi + GRID_PAST)])
 }
 
@@ -1463,9 +1462,23 @@ pub fn section_image(m: &Model, scene: &Scene, id: impl Key, view: View, tints: 
 /// What section or elevation `id` sees past its line through `view`, in hidden line, as [`section_image`] draws it from
 /// the whole scene: drawn from a scene of only what can show in it ([`Scene::section`]), the same to the pixel.
 pub fn section_picture(m: &Model, id: impl Key, view: View, tints: &[(Id, Rgb)]) -> Option<Image> {
+    section_picture_in(m, &SectionWork::new(m), id, view, tints)
+}
+
+/// [`section_picture`] and the drawing over it, [`section_over`], through `view`, the picture `pixels` (its view at the
+/// screen's pixels): the whole model's work done once for both.
+pub fn section_picture_and_over(m: &Model, id: Id, view: View, pixels: View, tints: &[(Id, Rgb)]) -> (Option<Image>, Drawing) {
+    let w = SectionWork::new(m);
+    let picture = section_picture_in(m, &w, id, pixels, tints);
+    let drawing = section_in(m, &w, id, view, annotation(m, id, view), scale_of(m, id), picture.as_ref());
+    (picture, drawing)
+}
+
+/// [`section_picture`], of `w`'s solids and points.
+pub(crate) fn section_picture_in(m: &Model, w: &SectionWork, id: impl Key, view: View, tints: &[(Id, Rgb)]) -> Option<Image> {
     let (cam, clip) = section_camera(m, id, view)?;
     let look = Look::of(m, id);
-    let picture = Scene::section(m, &cam, &clip, &look).cut_in(&cam, &clip, tints, &look);
+    let picture = Scene::section(m, &w.solids, &w.placed, &cam, &clip, &look).cut_in(&cam, &clip, tints, &look);
     // Its twin, which tests hold it to: the picture of the whole scene.
     #[cfg(test)]
     if let Err(e) = picture.same_as(&Scene::new(m).cut_in(&cam, &clip, tints, &look)) {
@@ -1478,36 +1491,40 @@ pub fn section_picture(m: &Model, id: impl Key, view: View, tints: &[(Id, Rgb)])
 /// the solids, in poché; its levels, named past its end; the grids it crosses; its notes and spot
 /// elevations; and its name. Cropped, only what lies between its crop's heights.
 pub fn section(m: &Model, id: impl Key, view: View) -> Drawing {
-    section_in(m, id, view, annotation(m, id, view), scale_of(m, id), None)
+    section_in(m, &SectionWork::new(m), id, view, annotation(m, id, view), scale_of(m, id), None)
 }
 
 /// [`section`], over `picture`, which [`section_image`] drew (at `view`'s size or a multiple of it): what its regions keep of
 /// the picture's ink comes from there, instead of from a picture drawn again, which costs as much as the picture does.
 pub fn section_over(m: &Model, id: impl Key, view: View, picture: &Image) -> Drawing {
-    section_in(m, id, view, annotation(m, id, view), scale_of(m, id), Some(picture))
+    section_in(m, &SectionWork::new(m), id, view, annotation(m, id, view), scale_of(m, id), Some(picture))
 }
 
 /// Section or elevation `id` as `section` draws it, its annotation `k` times the size it is laid out at: a sheet's, at
 /// paper size. Its pens are the line weights' at the scale `k` and `view` make, a viewport's.
 pub fn section_at(m: &Model, id: impl Key, view: View, k: f32) -> Drawing {
-    section_in(m, id, view, k, f64::from(k) * sheet::DENSITY / view.scale, None)
+    section_in(m, &SectionWork::new(m), id, view, k, f64::from(k) * sheet::DENSITY / view.scale, None)
 }
 
 /// [`section_at`], over `picture` as [`section_over`] is.
 pub fn section_at_over(m: &Model, id: impl Key, view: View, k: f32, picture: &Image) -> Drawing {
-    section_in(m, id, view, k, f64::from(k) * sheet::DENSITY / view.scale, Some(picture))
+    section_at_over_in(m, &SectionWork::new(m), id, view, k, picture)
+}
+
+/// [`section_at_over`], of `w`'s solids and points.
+pub(crate) fn section_at_over_in(m: &Model, w: &SectionWork, id: impl Key, view: View, k: f32, picture: &Image) -> Drawing {
+    section_in(m, w, id, view, k, f64::from(k) * sheet::DENSITY / view.scale, Some(picture))
 }
 
 /// [`section_at`], its pens the line weights' at 1 : `n`.
-fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Option<&Image>) -> Drawing {
+fn section_in(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n: f64, picture: Option<&Image>) -> Drawing {
     let mut d = Drawing::new(view);
     (d.k, d.paper, d.detail, d.weights) = (k, paper_of(n, view.scale), detail_of(m, id), m.line_weights().at(n));
     let Some(v) = m.section(id) else { return d };
     let look = Look::of(m, id);
     d.pattern_styles = look.pattern_styles();
     let u = (v.end - v.start).unit();
-    let work = SectionWork::new(m);
-    let (first, last) = span(m, &work, v, &look);
+    let (first, last) = span(m, work, v, &look);
     // Each element's cut pieces, filled as one so where they meet (a roof's slopes at its ridge)
     // leaves no seam.
     let mut cuts: std::collections::BTreeMap<Id, Vec<Vec<P2>>> = std::collections::BTreeMap::new();
@@ -1684,7 +1701,7 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
     }
     d.owner = None;
     d.part(Part::Projection);
-    let (lo, hi) = shown_heights(m, &work, v, &look);
+    let (lo, hi) = shown_heights(m, work, v, &look);
     if v.crop.is_some() {
         let (a, b) = (d.view.px(P2(first, hi)), d.view.px(P2(last, lo)));
         d.crop(a, b, |_| false);
@@ -1694,7 +1711,7 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
         d.picture(m, section, image);
     }
     // Each level over as much of its extent as the view sees, named past its end.
-    for (level, from, to) in level_spans(m, &work, v, &look) {
+    for (level, from, to) in level_spans(m, work, v, &look) {
         let (from, to) = (from.max(first), to.min(last));
         let Some(l) = m.level(level).filter(|l| from < to && ((lo..=hi).contains(&l.elevation) || v.crop.is_none())) else { continue };
         d.owner = Some(level);
@@ -1761,9 +1778,10 @@ pub fn section_png(m: &Model, id: impl Key, view: View) -> Result<Vec<u8>, Strin
 
 /// [`section_png`], and what its drawing could not draw as asked ([`Drawing::notes`]).
 pub fn section_png_noted(m: &Model, id: impl Key, view: View) -> Result<(Vec<u8>, Vec<String>), String> {
-    let image = section_image(m, &Scene::new(m), id, view, &[]).ok_or_else(|| format!("{id} is not a section or an elevation"))?;
+    let w = SectionWork::new(m);
+    let image = section_picture_in(m, &w, id, view, &[]).ok_or_else(|| format!("{id} is not a section or an elevation"))?;
     let size = tiny_skia::IntSize::from_wh(image.width, image.height).ok_or("the image size is out of range")?;
-    let drawing = section_over(m, id, view, &image);
+    let drawing = section_in(m, &w, id, view, annotation(m, id, view), scale_of(m, id), Some(&image));
     let mut pm = Pixmap::from_vec(image.rgba, size).ok_or("the image size is out of range")?;
     paint(&mut pm, &drawing);
     Ok((pm.encode_png().map_err(|e| e.to_string())?, drawing.notes))
