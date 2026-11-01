@@ -255,8 +255,12 @@ frame, since its first lays out every tool (`a_tool_with_choices_of_its_own_open
 The tool palette (File > Settings > Tools, `Profile::Palette`, kept in `settings.json` as `profile`; the ribbon is the default). The
 button beside Settings in the title bar (`Icon::Palette` on the ribbon, `Icon::Ribbon` on the palette: it shows where it goes) and the
 shortcut TP, an action Keyboard Shortcuts can rebind (`"Tool palette"` in `ACTIONS`), both call `BimApp::toggle_profile`. A left panel
-(`BimApp::tool_palette`) in place of the ribbon, its width set by dragging its edge between `settings::PALETTE_WIDTH` and kept in
-`settings.json` (`palette_width`, read back only as a number in range; `reopened` carries it).
+(`BimApp::tool_palette`) in place of the ribbon, its width set by dragging its edge between `settings::PALETTE_WIDTH` (88 to 480) and kept in
+`settings.json` (`palette_width`, read back only as a number in range; `reopened` carries it). Below `PALETTE_ICONS_BELOW` of room inside it
+(a width of about 150) it is icons only: `ribbon::set_icons_only` makes `rows` a wrapping grid, `list_row` a square with the icon (the
+tooltip is the name, the accessible name too), a panel's heading a new row, and `stacked` leaves its column; a section's header is cut with
+"..." and its tooltip is the whole. The info panel does not fit then: a tool's options float over the view as the Options Bar (`floating_options`,
+with the context name leading them), and a selection's summary is left to Properties. Above it a row is as wide as the column and cuts its name.
 
 The list. Under the info panel the Select panel stands once, then a section for each tab (`TABS`; `palette_section`, an egui
 `CollapsingHeader`, Architecture open to begin with), each holding the tab's panels as rows under their names. The sections draw the same
@@ -278,6 +282,18 @@ since `available_width` is the whole row's in a wrapping layout, and a drop-down
 lets it run off the edge and, in a column that fits its content, widens it); a panel's small buttons that the ribbon sets side by side go
 through `ribbon::strip`, which stacks them in rows. Every tool runs the same command either way; tests in `tests/palette.rs`,
 `tests/selection_info.rs` and `tests/edit_type.rs`.
+
+The docked palettes' sizes and narrow widths. `Docking` keeps what a hand made of the sizes (`Sizes`: a side's width, the bottom's height, the height of a
+stack over another, by the palette that heads it) in `settings.json` under `palettes.sizes`, read back only as numbers in range; `docks()` asks
+egui for them (`default_size`) and notes what it drew (`Docking::measured`) only while the pointer is down or let go and the panel is not the
+size asked for, so a window that grows after its first frame leaves nothing and an untouched layout is the default layout. A side may be
+`DOCK_MIN` (100) wide, a floating palette 120. What holds the content in a narrow palette: a drop-down cuts its text with "..." (`.truncate()`, the
+whole as its tooltip), as does the Type Selector and a palette's title (`style::cut`); the Browser's tabs wrap; the Properties grids take
+`properties::half_width`, which leaves room for the scroll bar (columns that fill the room exactly widened the palette each time the bar came),
+and stack a label over its value below `STACKED_BELOW`; and where a body is narrow (`dock::narrow_scroll`, `scroll_below`) it scrolls sideways as well as down,
+so what still does not fit is reached and never widens the palette (at ordinary widths it scrolls down only: a sideways bar covered the last row).
+`tests/dock.rs` docks Properties and the Browser at 100 to 290, docked and floating, and checks the width asked for is the width, and from 160 up that nothing
+crosses the edge.
 
 Keyboard Shortcuts. Manage > Shortcuts (or KS) opens `shortcuts_window` (`shortcuts.rs`): every shortcut by what it does, from `shortcuts()`
 (`SHORTCUTS`, the fixtures' letters, the commands' aliases), with Add, Edit and Load File. A shortcut is two letters or digits, all that `typed` holds,

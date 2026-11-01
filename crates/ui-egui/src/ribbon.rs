@@ -37,6 +37,8 @@ thread_local! {
     static LISTING: Cell<bool> = const { Cell::new(false) };
     /// Whether a panel drawn as rows names itself first: the tool palette's, where the panels stand one over the other.
     static HEADINGS: Cell<bool> = const { Cell::new(false) };
+    /// Whether the rows are icons only, in a grid: the tool palette where it is too narrow for names.
+    static ICONS: Cell<bool> = const { Cell::new(false) };
     /// Whether the tabs' Select panel is left out: the tool palette draws it once, above its sections.
     static SKIP_SELECT: Cell<bool> = const { Cell::new(false) };
     /// How the panels of the tab being drawn fit, by name; one not named shows all its tools.
@@ -71,14 +73,37 @@ pub(crate) fn skipping_select() -> bool {
     SKIP_SELECT.with(Cell::get)
 }
 
+/// Sets whether the rows drawn next are icons only (see [`rows`]).
+pub(crate) fn set_icons_only(on: bool) {
+    ICONS.with(|i| i.set(on));
+}
+
+/// Whether the rows being drawn are icons only.
+pub(crate) fn icons_only() -> bool {
+    ICONS.with(Cell::get)
+}
+
+/// Whether the tools are being drawn in the tool palette (not a panel's list).
+pub(crate) fn in_palette() -> bool {
+    HEADINGS.with(Cell::get)
+}
+
 /// Draws a tab's panels as rows down `ui`, each under its name: the tool palette's way to show what the ribbon shows as buttons.
 pub(crate) fn rows(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
     LISTING.with(|l| l.set(true));
     HEADINGS.with(|h| h.set(true));
-    ui.vertical(|ui| {
-        ui.spacing_mut().item_spacing.y = 0.0;
-        add(ui);
-    });
+    if icons_only() {
+        // Icons only: laid in a grid, a panel's after the last's, each panel starting a row.
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(2.0, 2.0);
+            add(ui);
+        });
+    } else {
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            add(ui);
+        });
+    }
     HEADINGS.with(|h| h.set(false));
     LISTING.with(|l| l.set(false));
 }
@@ -170,8 +195,14 @@ pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
     if listing() {
         // Inside another panel's list (a folded panel's), or the tool palette: the tools as rows, under the panel's name in the palette.
         if HEADINGS.with(Cell::get) {
-            ui.add_space(8.0);
-            ui.label(egui::RichText::new(t(title)).size(11.5).color(pal().muted));
+            if icons_only() {
+                // No room for the name: a new row, and the panel's icons' tooltips say the rest.
+                ui.end_row();
+                ui.add_space(6.0);
+            } else {
+                ui.add_space(8.0);
+                ui.label(egui::RichText::new(t(title)).size(11.5).color(pal().muted));
+            }
         }
         add(ui);
         return;

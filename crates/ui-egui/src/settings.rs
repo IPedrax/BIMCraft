@@ -61,8 +61,11 @@ impl Profile {
 }
 
 /// How wide the tool palette's column may be, in points, and how wide it starts.
-pub const PALETTE_WIDTH: std::ops::RangeInclusive<f32> = 240.0..=480.0;
+pub const PALETTE_WIDTH: std::ops::RangeInclusive<f32> = 88.0..=480.0;
 pub const PALETTE_DEFAULT: f32 = 280.0;
+/// Below this much room inside the column (the width less about 31 of margins: icons below a width of about 150) the palette is icons only, each tool's name its
+/// tooltip: rows with names need about this.
+pub const PALETTE_ICONS_BELOW: f32 = 120.0;
 
 /// How the window was left: its size in points and whether it was maximized.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

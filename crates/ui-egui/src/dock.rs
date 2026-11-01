@@ -167,7 +167,12 @@ const DOCK_MIN: f32 = 100.0;
 /// The scroll area of a palette's body. Where the palette is narrow (a card less than `NARROW` wide inside), what is wider than it scrolls
 /// sideways and never makes the palette wider; at ordinary widths it scrolls down only, as it always did.
 pub(crate) fn narrow_scroll(ui: &Ui) -> egui::ScrollArea {
-    let area = if ui.available_width() < NARROW { egui::ScrollArea::both() } else { egui::ScrollArea::vertical() };
+    scroll_below(ui, NARROW)
+}
+
+/// A palette's scroll area that goes sideways too where there is less than `narrow` room.
+pub(crate) fn scroll_below(ui: &Ui, narrow: f32) -> egui::ScrollArea {
+    let area = if ui.available_width() < narrow { egui::ScrollArea::both() } else { egui::ScrollArea::vertical() };
     area.auto_shrink([false, false]).min_scrolled_height(0.0)
 }
 

@@ -451,6 +451,8 @@ pub struct BimApp {
     /// How wide the tool palette's column is (kept in the settings), and where it was drawn.
     palette_width: f32,
     palette_rect: Rect,
+    /// The tool palette is icons only now (too narrow for names): its tool's options float over the view as the ribbon's do.
+    palette_icons: bool,
     /// What High Contrast Point Clouds fills a view's scans with: the user's (Settings > Graphics), crimson at first.
     scan_contrast: [u8; 3],
     ribbon_bottom: Pos2,
@@ -809,7 +811,13 @@ fn small_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -
 /// A ribbon button in its panel's list: a row of its icon and its name.
 fn list_row(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
     let (label, tip) = (t(label), t(tip));
-    let (rect, r) = ui.allocate_exact_size(vec2(ui.available_width().max(200.0), 30.0), Sense::click());
+    // A panel's list has at least a menu's width; the tool palette has what its column has, and, where that is narrow, only the icon.
+    let size = if ribbon::icons_only() {
+        vec2(34.0, 32.0)
+    } else {
+        vec2(if ribbon::in_palette() { ui.available_width() } else { ui.available_width().max(200.0) }, 30.0)
+    };
+    let (rect, r) = ui.allocate_exact_size(size, Sense::click());
     let enabled = ui.is_enabled();
     r.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, active, label));
     let fill = match (active, r.hovered() && enabled) {
@@ -824,14 +832,25 @@ fn list_row(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Re
     }
     let dim = |c: Color32| if enabled { c } else { c.gamma_multiply(0.4) };
     let ink = if active { pal().accent_ink } else { pal().icon };
+    if ribbon::icons_only() {
+        icons::paint(p, icon, Rect::from_center_size(rect.center(), vec2(20.0, 20.0)), dim(ink));
+        return r.on_hover_text(tip);
+    }
     icons::paint(p, icon, Rect::from_center_size(rect.left_center() + vec2(18.0, 0.0), vec2(20.0, 20.0)), dim(ink));
     let text = if active { pal().accent_ink } else { pal().text };
-    p.text(rect.left_center() + vec2(38.0, 0.0), Align2::LEFT_CENTER, label, FontId::proportional(13.0), dim(text));
+    // Cut with "..." where the column is narrower than the name; the tooltip says it whole.
+    let galley = style::cut(p, label, FontId::proportional(13.0), dim(text), (rect.width() - 44.0).max(8.0));
+    p.galley(rect.left_center() + vec2(38.0, -galley.size().y / 2.0), galley, dim(text));
     r.on_hover_text(tip)
 }
 
 /// Buttons stacked three high in a panel, as Revit's Settings panel stacks them; in the panel's list they are rows like any other.
 pub(crate) fn stacked(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
+    // Icons only, in a grid: the buttons go in the flow, not in a column of their own.
+    if ribbon::icons_only() {
+        add(ui);
+        return;
+    }
     ui.vertical(|ui| {
         if !ribbon::listing() {
             ui.spacing_mut().item_spacing.y = 2.0;
@@ -982,6 +1001,7 @@ impl BimApp {
             profile: settings::Profile::default(),
             palette_width: settings::PALETTE_DEFAULT,
             palette_rect: Rect::NOTHING,
+            palette_icons: false,
             compact: false,
             ribbon_peek: false,
             scan_contrast: footer::HIGH_CONTRAST,
@@ -2950,7 +2970,11 @@ impl BimApp {
     /// the view with the ribbon (a tool's type, heights, location line), while there is something to show.
     fn tool_palette(&mut self, ui: &mut Ui) {
         ui.set_width(ui.available_width());
-        if self.info_shown() {
+        // Names where there is room for them; below that, icons in a grid (the name is the tooltip).
+        let icons = ui.available_width() < settings::PALETTE_ICONS_BELOW;
+        self.palette_icons = icons;
+        ribbon::set_icons_only(icons);
+        if self.info_shown() && !icons {
             let room = ui.available_height() * 0.4;
             ScrollArea::vertical().id_salt("palette-info").max_height(room).auto_shrink([false, true]).show(ui, |ui| {
                 // A label moves to the next row whole, rather than break between its words.
@@ -2963,7 +2987,8 @@ impl BimApp {
             });
             ui.separator();
         }
-        ScrollArea::vertical().id_salt("palette-tools").auto_shrink([false, false]).show(ui, |ui| {
+        // Sideways too where the column is narrow: what does not fit scrolls, and never widens the column.
+        dock::scroll_below(ui, 200.0).id_salt("palette-tools").show(ui, |ui| {
             // Select once, over the sections; the tabs that begin with it leave it out.
             ribbon::skip_select(false);
             ribbon::rows(ui, |ui| self.select_panel(ui));
@@ -2979,6 +3004,7 @@ impl BimApp {
             }
             ribbon::skip_select(false);
         });
+        ribbon::set_icons_only(false);
     }
 
     /// A section of the tool palette's list: the tab `tab`'s panels as rows under a header named `title`. A click on the header opens
@@ -2987,12 +3013,17 @@ impl BimApp {
         // The Modify section named for a tool in hand has a state of its own, folded until it is opened: it does not push the list down when
         // a tool is picked, and stays as the user left it for the next.
         let id = ("palette-section", tab as u8, tab == Tab::Modify && title != "Modify");
-        let shown = egui::CollapsingHeader::new(t(title)).id_salt(id).default_open(open).show_unindented(ui, |ui| {
+        // Cut with "..." where the column is too narrow for the name, and the whole of it a tooltip.
+        let mut name =
+            egui::text::LayoutJob::simple_singleline(t(title).to_string(), FontId::proportional(13.0), ui.visuals().text_color());
+        name.wrap = egui::text::TextWrapping::truncate_at_width((ui.available_width() - 24.0).max(8.0));
+        let shown = egui::CollapsingHeader::new(name).id_salt(id).default_open(open).show_unindented(ui, |ui| {
             ribbon::rows(ui, |ui| self.tab_content(ui, tab));
         });
         if shown.header_response.clicked() {
             self.tab = tab;
         }
+        shown.header_response.on_hover_text(t(title));
     }
 
     /// The ribbon tab's panels of tools.
@@ -3963,7 +3994,7 @@ impl BimApp {
     /// view's top left, so the view never moves when it comes and goes, and taking the clicks that land on it.
     fn options_bar(&mut self, ctx: &Context) {
         // The tool palette holds the tool's options in its own column (its info panel), so no card floats over the view.
-        if self.profile == settings::Profile::Palette || !self.options_shown() {
+        if !self.floating_options() || !self.options_shown() {
             self.options_rect = Rect::NOTHING;
             return;
         }
@@ -3978,6 +4009,12 @@ impl BimApp {
             frame.show(ui, |ui| self.options(ui));
         });
         self.options_rect = shown.response.rect;
+    }
+
+    /// Whether a tool's options float over the view (the Options Bar): on the ribbon, and with the tool palette where it is icons only,
+    /// since they do not fit its column; else they are in the column, in its info panel.
+    fn floating_options(&self) -> bool {
+        self.profile == settings::Profile::Ribbon || self.palette_icons
     }
 
     /// Whether there is anything on the Options Bar: a contextual tab's name (a tool in hand, a selection), a note being written.
@@ -4001,7 +4038,7 @@ impl BimApp {
             ui.set_min_height(24.0);
             // The tool palette's tab pill already names it, so its info panel starts with the options themselves.
             if let Some(name) = self.context()
-                && self.profile == settings::Profile::Ribbon
+                && self.floating_options()
             {
                 // Painted: the tab already names it for screen readers.
                 let font = FontId::proportional(13.0);

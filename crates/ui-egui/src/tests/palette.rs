@@ -371,7 +371,14 @@ fn default_settings_for_palette() -> Settings {
 
 #[test]
 fn the_width_stays_what_it_is_whatever_tool_is_in_hand_or_tab_is_open() {
-    let mut h = palette_of(300.0);
+    // Wide enough for names, and narrow, where it is icons only and a tool's options float over the view.
+    for width in [300.0, 120.0] {
+        the_width_stays_over_every_tool(width);
+    }
+}
+
+fn the_width_stays_over_every_tool(asked: f32) {
+    let mut h = palette_of(asked);
     let width = h.state().palette_width;
     // A tool of each tab that has options of its own (drop-downs and fields of every kind), picked as a user does: scrolled to.
     for (tab, tools) in [
@@ -401,4 +408,84 @@ fn the_width_stays_what_it_is_whatever_tool_is_in_hand_or_tab_is_open() {
         toggle(&mut h, tab);
         assert!((h.state().palette_width - width).abs() < 0.5, "{tab}: {}", h.state().palette_width);
     }
+}
+
+/// A tool's button in the palette: the one of the row (or the icon) of that name, scrolled to.
+fn tool_button(h: &mut Harness<BimApp>, label: &str) -> egui::Rect {
+    h.get_all_by_role_and_label(Role::Button, label).last().unwrap().scroll_to_me();
+    h.run();
+    h.get_all_by_role_and_label(Role::Button, label).last().unwrap().rect()
+}
+
+#[test]
+fn from_about_150_points_up_the_palette_shows_names_and_below_it_only_icons() {
+    for (width, names) in [(280.0, true), (200.0, true), (170.0, true), (140.0, false), (100.0, false), (88.0, false)] {
+        let mut h = palette_of_script(BOX, width);
+        let wall = tool_button(&mut h, "Wall");
+        if names {
+            assert!(wall.width() > 100.0, "{width}: a row, {} wide", wall.width());
+        } else {
+            assert!(wall.width() < 50.0, "{width}: an icon, {} wide", wall.width());
+        }
+        assert!((h.state().palette_width - width).abs() < 2.0, "asked {width}: the content made it {}", h.state().palette_width);
+        // Whichever, it picks the tool, and the name is what a screen reader hears.
+        let at = wall.center();
+        click_at(&mut h, at);
+        assert!(matches!(h.state().tool, Tool::Wall(_)), "{width}: a click on the button picks the tool");
+    }
+}
+
+#[test]
+fn the_icons_are_a_grid_that_holds_every_tool_in_the_column() {
+    let mut h = palette_of_script(BOX, 100.0);
+    for tool in ["Modify", "Wall", "Door", "Window", "Column", "Roof", "Floor", "Ceiling", "Stair", "Ramp", "Railing", "Room"] {
+        let r = tool_button(&mut h, tool);
+        assert!(r.left() >= 0.0 && r.right() <= 110.0, "{tool}: {r:?}");
+    }
+    // More than one to a row: the icons are laid in a grid, not one under the other.
+    let (wall, door) = (tool_button(&mut h, "Wall").center(), tool_button(&mut h, "Door").center());
+    assert!((wall.y - door.y).abs() < 2.0 && door.x > wall.x, "Wall at {wall:?}, Door at {door:?}");
+}
+
+#[test]
+fn where_the_palette_is_icons_only_a_tools_options_float_over_the_view_as_the_ribbons_do() {
+    let mut narrow = palette_of_script(BOX, 100.0);
+    press_tool(&mut narrow, "Wall");
+    assert_ne!(narrow.state().options_rect, Rect::NOTHING, "the Options Bar floats");
+    let field = narrow.get_by_label("Location Line:").rect();
+    assert!(field.left() > 110.0, "over the view, not in the column: {field:?}");
+    // The name of the tool leads it, as it does on the ribbon: the column has no section to say it.
+    assert!(narrow.query_by_label("Modify | Place Wall").is_some());
+
+    let mut wide = palette_of_script(BOX, 280.0);
+    press_tool(&mut wide, "Wall");
+    assert_eq!(wide.state().options_rect, Rect::NOTHING, "in the column when it fits");
+    assert!(wide.get_by_label("Location Line:").rect().right() <= COLUMN);
+}
+
+#[test]
+fn a_selection_has_no_summary_in_an_icons_only_column() {
+    let mut h = palette_of_script(BOX, 100.0);
+    click(&mut h, P2(4000.0, 0.0));
+    assert!(h.query_by_label("Total thickness: 200 mm").is_none(), "no room for it: Properties has the rest");
+    let mut wide = palette_of_script(BOX, 280.0);
+    click(&mut wide, P2(4000.0, 0.0));
+    assert!(wide.query_by_label("Total thickness: 200 mm").is_some());
+}
+
+/// A tool's button picked as a user does, scrolled to.
+fn press_tool(h: &mut Harness<BimApp>, label: &str) {
+    let at = tool_button(h, label).center();
+    click_at(h, at);
+}
+
+/// A palette window of `width`, on a model of `script`.
+fn palette_of_script(script: &str, width: f32) -> Harness<'static, BimApp> {
+    let mut h = app(script);
+    h.state_mut().profile = Profile::Palette;
+    h.state_mut().palette_width = width;
+    h.ctx.data_mut(|d| d.remove::<egui::PanelState>(egui::Id::new("tool-palette")));
+    h.run();
+    h.run();
+    h
 }
