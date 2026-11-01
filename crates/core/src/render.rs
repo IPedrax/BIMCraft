@@ -1316,6 +1316,20 @@ pub fn section_image(m: &Model, scene: &Scene, id: impl Key, view: View, tints: 
     Some(scene.cut_in(&cam, &clip, tints, &Look::of(m, id)))
 }
 
+/// What section or elevation `id` sees past its line through `view`, in hidden line, as [`section_image`] draws it from
+/// the whole scene: drawn from a scene of only what can show in it ([`Scene::section`]), the same to the pixel.
+pub fn section_picture(m: &Model, id: impl Key, view: View, tints: &[(Id, Rgb)]) -> Option<Image> {
+    let (cam, clip) = section_camera(m, id, view)?;
+    let look = Look::of(m, id);
+    let picture = Scene::section(m, &cam, &clip, &look).cut_in(&cam, &clip, tints, &look);
+    // Its twin, which tests hold it to: the picture of the whole scene.
+    #[cfg(test)]
+    if let Err(e) = picture.same_as(&Scene::new(m).cut_in(&cam, &clip, tints, &look)) {
+        panic!("a section's picture from what can show in it isn't the whole scene's: {e}");
+    }
+    Some(picture)
+}
+
 /// What section or elevation `id` draws over its picture through `view`: where its line cuts
 /// the solids, in poché; its levels, named past its end; the grids it crosses; its notes and spot
 /// elevations; and its name. Cropped, only what lies between its crop's heights.

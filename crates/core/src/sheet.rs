@@ -285,9 +285,8 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
         let inner = match m.elements.get(vp.view) {
             Some(Element::Level(_) | Element::PlanView(_)) => render::draw_at(m, vp.view, view, 1.0),
             Some(Element::Section(_) | Element::Elevation(_)) => {
-                let scene = scene.get_or_insert_with(|| view3d::Scene::new(m));
                 // Its regions keep the ink of this very picture.
-                let img = render::section_image(m, scene, vp.view, view, &[]);
+                let img = render::section_picture(m, vp.view, view, &[]);
                 let drawing = match &img {
                     Some(img) => render::section_at_over(m, vp.view, view, 1.0, img),
                     None => render::section_at(m, vp.view, view, 1.0),

@@ -153,6 +153,7 @@ impl Frame {
 /// with its centre and its centre line's radius, its faces being one surface each); or triangles
 /// (a component's form, which sections show and don't cut; a round run's tube, convex, which they do, as `cut` says): a round
 /// one's sides, past `caps`, are one curved surface; any other's facets that turn little where they meet are ([`facets`]).
+#[derive(Clone)]
 pub(crate) enum Solid {
     Box { owner: Id, color: Rgb, tex: u32, frame: Frame, a: (f64, f64), c: (f64, f64), z: (f64, f64) },
     Slab { owner: Id, color: Rgb, tex: u32, face: Vec<P3>, rise: f64 },
@@ -495,8 +496,17 @@ pub(crate) fn solids(m: &Model) -> Vec<Solid> {
 }
 
 fn solids_in(m: &Model, elements: &[(Id, &Element)], index: Option<&walls::Index>) -> Vec<Solid> {
+    solids_in_with(m, elements, index, &mut crate::component_geometry::Components::new(m))
+}
+
+/// [`solids_in`], its families' geometry from `components`.
+fn solids_in_with(
+    m: &Model,
+    elements: &[(Id, &Element)],
+    index: Option<&walls::Index>,
+    components: &mut crate::component_geometry::Components,
+) -> Vec<Solid> {
     let mut out = Vec::new();
-    let mut components = crate::component_geometry::Components::new(m);
     for &(id, e) in elements {
         match e {
             Element::Wall(_) => out.extend(walls::prisms_in(m, id, true, index).into_iter().map(|p| Solid::Prism {
@@ -965,23 +975,232 @@ impl Scene {
                 (id, l.name.clone(), [[lo.0, lo.1, z], [hi.0, lo.1, z], [hi.0, hi.1, z], [lo.0, hi.1, z]])
             })
             .collect();
-        let scans = m
-            .elements
-            .iter()
-            .filter_map(|(id, e)| {
-                let Element::PointCloud(pc) = e else { return None };
-                let cloud = m.clouds.get(&pc.cloud)?;
-                let (points, colours) = (cloud.shared_points(), cloud.shared_colours());
-                let (lo, hi) = m.cloud_box(*id)?;
-                let corners = std::array::from_fn(|k| std::array::from_fn(|axis| if k >> axis & 1 == 0 { lo[axis] } else { hi[axis] }));
-                let (sin, cos) = pc.angle.to_radians().sin_cos();
-                let at = [pc.at.0, pc.at.1, m.elevation(pc.level) + pc.offset];
-                Some(Scan { owner: *id, points, colours, at, turn: (cos, sin), corners })
-            })
-            .collect();
+        let scans = scans_of(m);
         Scene { tris, planes, smooth, faces: Arc::new(faces), skins, bases, masses, levels, scans, edges: OnceLock::new() }
     }
 
+    /// The scene a section's or an elevation's picture through `cam` and `clip` is drawn from, of what `look` shows: only
+    /// what can show in it, each element whole. Its picture is hidden line, so the scene holds the triangles, their faces and
+    /// their planes, not the textures and smooth normals a shaded view needs. What it leaves out:
+    /// - what lies outside the picture, before the line (cut away) or past the far clip;
+    /// - what lies strictly behind what hides it: walls, floors, roofs, ceilings, doors, windows and columns are drawn into
+    ///   a depth buffer first (as the picture draws them, clipped as it is), kept as tiles of their farthest depth, and an
+    ///   element whose box is nearer than none of the tiles it covers can win no pixel of the picture.
+    ///
+    /// Every pixel of its picture is what the whole scene's is: what is left out was behind, and the rest are drawn in the
+    /// order they are in the whole scene.
+    pub(crate) fn section(m: &Model, cam: &Camera, clip: &Clip, look: &Look) -> Scene {
+        let index = walls::Index::new(m);
+        let elements: Vec<(Id, &Element)> =
+            m.elements.iter().filter(|(id, e)| look.shows(**id) && !matches!(e, Element::Mass(_))).map(|(&id, e)| (id, e)).collect();
+        // Each element's box, and the solids of all but the components (whose boxes are their families', placed).
+        let boxed = |chunk: &[(Id, &Element)]| -> Vec<Boxed3> {
+            let mut components = crate::component_geometry::Components::new(m);
+            chunk
+                .iter()
+                .map(|&(id, e)| match e {
+                    Element::Component(c) => (id, components.placed_box(c), Vec::new()),
+                    _ => {
+                        let solids = solids_in(m, &[(id, e)], Some(&index));
+                        (id, bounds(solids.iter().flat_map(Solid::corners)), solids)
+                    }
+                })
+                .collect()
+        };
+        let boxes: Vec<Boxed3> = match (elements.len() >= 1000).then(render_pool).flatten() {
+            Some(pool) => {
+                use rayon::prelude::*;
+                pool.install(|| elements.par_chunks(256).map(boxed).collect::<Vec<_>>()).into_iter().flatten().collect()
+            }
+            None => boxed(&elements),
+        };
+        // The occluders drawn, as the picture draws them.
+        let (w, h) = (cam.width.clamp(1, MAX_SIDE) as usize, cam.height.clamp(1, MAX_SIDE) as usize);
+        let hides = |id: Id| {
+            matches!(
+                m.elements.get(id),
+                Some(
+                    Element::Wall(_)
+                        | Element::Floor(_)
+                        | Element::Roof(_)
+                        | Element::Ceiling(_)
+                        | Element::Door(_)
+                        | Element::Window(_)
+                        | Element::Column(_)
+                        | Element::StructuralColumn(_)
+                )
+            )
+        };
+        let mut occluders = Vec::new();
+        for (id, _, solids) in boxes.iter().filter(|(id, ..)| hides(*id)) {
+            let _ = id;
+            for solid in solids.iter().cloned().flat_map(|s| layered(m, s)) {
+                solid.tris(&mut occluders);
+            }
+        }
+        let tiles = {
+            let front = Scene::bare(occluders);
+            let mut depth = vec![f32::NEG_INFINITY; w * h];
+            let (mut hit, mut lit) = (vec![u32::MAX; w * h], vec![0.0; w * h]);
+            front.raster((cam, Some(clip), None), (w, h), |_| true, None, &|_| None, (&mut depth, &mut hit, &mut lit));
+            Tiles::of(&depth, w, h)
+        };
+        // What can show, in the order of the elements.
+        let project = cam.projector();
+        let kept: Vec<&Boxed3> = boxes.iter().filter(|(_, b, _)| b.is_none_or(|b| tiles.may_show(&project, clip, &b))).collect();
+        let mut components = crate::component_geometry::Components::new(m);
+        let mut tris = Vec::new();
+        for (id, _, solids) in kept {
+            let made;
+            let solids = match m.elements.get(*id) {
+                Some(Element::Component(_)) => {
+                    made = m.elements.get(*id).map(|e| solids_in_with(m, &[(*id, e)], Some(&index), &mut components)).unwrap_or_default();
+                    &made
+                }
+                _ => solids,
+            };
+            for solid in solids.iter().cloned().flat_map(|s| layered(m, s)) {
+                solid.tris(&mut tris);
+            }
+        }
+        let rules: HashMap<Id, Rule> = rules_of(m, tris.iter().map(|t| t.owner));
+        let faces: Vec<&'static str> = tris.iter().map(|t| rules.get(&t.owner).map_or("", |r| r.face(&t.p))).collect();
+        let planes = planes(&tris);
+        Scene { planes, faces: Arc::new(faces), scans: scans_of(m), ..Scene::bare(tris) }
+    }
+
+    /// A scene of `tris` alone: no planes, faces, textures, smooth normals, levels or scans.
+    fn bare(tris: Vec<Tri>) -> Scene {
+        Scene {
+            tris,
+            planes: Vec::new(),
+            smooth: Vec::new(),
+            faces: Arc::new(Vec::new()),
+            skins: Vec::new(),
+            bases: Vec::new(),
+            masses: BTreeSet::new(),
+            levels: Vec::new(),
+            scans: Vec::new(),
+            edges: OnceLock::new(),
+        }
+    }
+}
+
+/// An element, the box round it (none where it has no geometry, or it isn't known) and its solids, which a component's
+/// are made of only when it shows.
+type Boxed3 = (Id, Option<[P3; 2]>, Vec<Solid>);
+
+/// The box round `points`, lowest corner and highest; none for no points.
+fn bounds(points: impl Iterator<Item = P3>) -> Option<[P3; 2]> {
+    points.fold(None, |b, p| {
+        Some(match b {
+            None => [p, p],
+            Some([lo, hi]) => [std::array::from_fn(|i| lo[i].min(p[i])), std::array::from_fn(|i| hi[i].max(p[i]))],
+        })
+    })
+}
+
+/// A picture's depth buffer as tiles of [`Tiles::SIDE`] px, each keeping its farthest depth: what an element must be nearer
+/// than somewhere to show.
+struct Tiles {
+    far: Vec<f32>,
+    across: usize,
+    w: usize,
+    h: usize,
+}
+
+impl Tiles {
+    const SIDE: usize = 8;
+
+    fn of(depth: &[f32], w: usize, h: usize) -> Tiles {
+        let across = w.div_ceil(Self::SIDE);
+        let mut far = vec![f32::INFINITY; across * h.div_ceil(Self::SIDE)];
+        for (k, d) in depth.iter().enumerate() {
+            let t = (k / w) / Self::SIDE * across + (k % w) / Self::SIDE;
+            if let Some(f) = far.get_mut(t) {
+                *f = f.min(*d);
+            }
+        }
+        Tiles { far, across, w, h }
+    }
+
+    /// Whether what lies in box `b` may win a pixel of a picture through `project` and `clip`: it lies in the picture, past
+    /// the line and before the far clip, and somewhere nearer than the farthest depth of a tile it covers. Depths are
+    /// toward the camera, a pixel kept where a surface is nearer than what it has; a margin covers the rounding of a
+    /// triangle's depth from its corners' and of the depths kept as `f32`.
+    fn may_show(&self, project: &Projector, clip: &Clip, b: &[P3; 2]) -> bool {
+        let corners = (0..8).map(|k| [b[k & 1][0], b[(k >> 1) & 1][1], b[(k >> 2) & 1][2]]).map(|p| project.at(p));
+        let (mut x0, mut x1, mut y0, mut y1, mut z0, mut z1) =
+            (f64::INFINITY, f64::NEG_INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::INFINITY, f64::NEG_INFINITY);
+        for (x, y, z) in corners {
+            if !(x.is_finite() && y.is_finite() && z.is_finite()) {
+                return true;
+            }
+            (x0, x1, y0, y1, z0, z1) = (x0.min(x), x1.max(x), y0.min(y), y1.max(y), z0.min(z), z1.max(z));
+        }
+        let slack = |z: f64| 1e-3 + 1e-6 * z.abs();
+        // Outside the picture, or its crop; cut away before the line; past the far clip.
+        let (w, h) = (self.w as f64, self.h as f64);
+        if x1 < -1.0
+            || y1 < -1.0
+            || x0 > w + 1.0
+            || y0 > h + 1.0
+            || x1 < clip.x.0 - 1.0
+            || x0 > clip.x.1 + 1.0
+            || y1 < clip.y.0 - 1.0
+            || y0 > clip.y.1 + 1.0
+        {
+            return false;
+        }
+        if z0 > clip.near + slack(z0) || clip.far.is_some_and(|f| z1 < clip.near - f - slack(z1)) {
+            return false;
+        }
+        // The pixels whose middles it may cover, by tile.
+        let px = |v: f64, n: usize| ((v - 1.0).floor().max(0.0) as usize).min(n.saturating_sub(1));
+        let (tx0, tx1) = (px(x0, self.w) / Self::SIDE, (px(x1 + 2.0, self.w)) / Self::SIDE);
+        let (ty0, ty1) = (px(y0, self.h) / Self::SIDE, (px(y1 + 2.0, self.h)) / Self::SIDE);
+        (ty0..=ty1).any(|ty| (tx0..=tx1).any(|tx| self.far.get(ty * self.across + tx).is_none_or(|f| z1 + slack(z1) >= f64::from(*f))))
+    }
+}
+
+/// Each paintable element's rule for naming the faces of its triangles, of `owners`.
+fn rules_of(m: &Model, owners: impl Iterator<Item = Id>) -> HashMap<Id, Rule> {
+    let mut rules = HashMap::new();
+    for id in owners {
+        if rules.contains_key(&id) {
+            continue;
+        }
+        let rule = match m.elements.get(id) {
+            Some(Element::Wall(w)) => Some(Rule::Wall(Axis::of(w))),
+            Some(e) if matches!(e.category(), "floor" | "roof" | "ceiling") => Some(Rule::Slab),
+            Some(e) if paint::faces(e.category()).contains(&"all") => Some(Rule::Whole),
+            _ => None,
+        };
+        if let Some(r) = rule {
+            rules.insert(id, r);
+        }
+    }
+    rules
+}
+
+/// The scans the model's point clouds place.
+fn scans_of(m: &Model) -> Vec<Scan> {
+    m.elements
+        .iter()
+        .filter_map(|(id, e)| {
+            let Element::PointCloud(pc) = e else { return None };
+            let cloud = m.clouds.get(&pc.cloud)?;
+            let (points, colours) = (cloud.shared_points(), cloud.shared_colours());
+            let (lo, hi) = m.cloud_box(*id)?;
+            let corners = std::array::from_fn(|k| std::array::from_fn(|axis| if k >> axis & 1 == 0 { lo[axis] } else { hi[axis] }));
+            let (sin, cos) = pc.angle.to_radians().sin_cos();
+            let at = [pc.at.0, pc.at.1, m.elevation(pc.level) + pc.offset];
+            Some(Scan { owner: *id, points, colours, at, turn: (cos, sin), corners })
+        })
+        .collect()
+}
+
+impl Scene {
     /// A view of the whole model from `azimuth` and `elevation` (degrees), fitted into the picture.
     pub fn fit(&self, azimuth: f64, elevation: f64, width: u32, height: u32) -> Camera {
         self.fit_in(azimuth, elevation, width, height, &Look::default())
@@ -2167,6 +2386,27 @@ impl Image {
         (x >= 0.0 && y >= 0.0 && x < w && y < h).then(|| y as usize * self.width as usize + x as usize)
     }
 
+    /// Whether it is `other` to the pixel: its colours, and what each pixel picks, its face, and whether it's covered.
+    #[cfg(test)]
+    pub(crate) fn same_as(&self, other: &Image) -> Result<(), String> {
+        if (self.width, self.height) != (other.width, other.height) {
+            return Err(format!("{}x{} against {}x{}", self.width, self.height, other.width, other.height));
+        }
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let (fx, fy) = (f64::from(x) + 0.5, f64::from(y) + 0.5);
+                let k = 4 * (y as usize * self.width as usize + x as usize);
+                let (a, b) = (self.rgba.get(k..k + 4), other.rgba.get(k..k + 4));
+                let mine = (a, self.pick(fx, fy), self.face(fx, fy), self.covered(fx, fy));
+                let theirs = (b, other.pick(fx, fy), other.face(fx, fy), other.covered(fx, fy));
+                if mine != theirs {
+                    return Err(format!("pixel ({x}, {y}): {mine:?} against {theirs:?}"));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Whether a pixel is covered by model geometry, including linked elements and meshes
     /// without named faces. Canvas backgrounds may show through only where this is false.
     pub fn covered(&self, x: f64, y: f64) -> bool {
@@ -2225,6 +2465,27 @@ impl Image {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_sections_scene_holds_what_can_show_and_its_picture_is_the_whole_scenes() {
+        use crate::sample::tower::{Drawings, Plate, drawn};
+        let m = drawn(Plate::SMALL, 3, Drawings { annotation: false, sheets: true }).unwrap();
+        let whole = Scene::new(&m);
+        for name in ["North Elevation", "South Elevation", "East Elevation", "West Elevation", "Section A"] {
+            let id = m
+                .elements
+                .iter()
+                .find_map(|(id, e)| matches!(e, Element::Section(v) | Element::Elevation(v) if v.name == name).then_some(*id))
+                .unwrap();
+            let view = crate::render::section_fit(&m, id, 900, 600);
+            let (cam, clip) = crate::render::section_camera(&m, id, view).unwrap();
+            let look = Look::of(&m, id);
+            let lean = Scene::section(&m, &cam, &clip, &look);
+            lean.cut_in(&cam, &clip, &[], &look).same_as(&whole.cut_in(&cam, &clip, &[], &look)).unwrap();
+            // The furniture behind the facade, and the rooms' services, are left out.
+            assert!(lean.tris.len() * 4 < whole.tris.len(), "{name}: {} of {} triangles", lean.tris.len(), whole.tris.len());
+        }
+    }
 
     #[test]
     fn background_coverage_includes_geometry_without_a_named_face() {

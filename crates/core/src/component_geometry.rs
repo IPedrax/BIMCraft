@@ -43,6 +43,30 @@ impl<'a> Components<'a> {
         self.local.entry(key).or_insert_with(|| self.model.component_local_pieces(c))
     }
 
+    /// The box round its geometry where it is placed, lowest corner and highest: its family's box, turned and moved as its
+    /// pieces are (every point of them inside it). None when it has no pieces.
+    pub(crate) fn placed_box(&mut self, c: &Component) -> Option<[[f64; 3]; 2]> {
+        let local = self.local(c).iter().flat_map(|pc| pc.tris.iter().flatten().copied().chain(pc.outline.iter().map(|q| [q.0, q.1, 0.0])));
+        let (lo, hi) = local.fold(None, |b: Option<([f64; 3], [f64; 3])>, p| {
+            Some(match b {
+                None => (p, p),
+                Some((lo, hi)) => (std::array::from_fn(|i| lo[i].min(p[i])), std::array::from_fn(|i| hi[i].max(p[i]))),
+            })
+        })?;
+        let base = self.model.elevation(c.level) + c.offset;
+        let (sin, cos) = c.angle.to_radians().sin_cos();
+        let place = |p: [f64; 3]| [c.at.0 + p[0] * cos - p[1] * sin, c.at.1 + p[0] * sin + p[1] * cos, base + p[2]];
+        let corners = (0..8).map(|k| {
+            place([if k & 1 == 0 { lo[0] } else { hi[0] }, if k & 2 == 0 { lo[1] } else { hi[1] }, if k & 4 == 0 { lo[2] } else { hi[2] }])
+        });
+        corners.fold(None, |b: Option<[[f64; 3]; 2]>, p| {
+            Some(match b {
+                None => [p, p],
+                Some([lo, hi]) => [std::array::from_fn(|i| lo[i].min(p[i])), std::array::from_fn(|i| hi[i].max(p[i]))],
+            })
+        })
+    }
+
     /// Its geometry's heights over its base, lowest and highest: none (infinity, minus infinity) when it has no pieces.
     pub(crate) fn local_heights(&mut self, c: &Component) -> (f64, f64) {
         self.local(c).iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p.bottom), hi.max(p.top)))

@@ -183,6 +183,11 @@ fn run() -> Result<(), String> {
                 return Err("the project read back has another number of elements".into());
             }
         }
+        // The views a section measures: the drawing set's, else made now.
+        let sections = if skipped("sections") { Vec::new() } else { section_views(&mut s)? };
+        for (name, id) in &sections {
+            measure_section(&mut report, &s, name, *id)?;
+        }
         let level = s.model.levels().first().map(|(id, _)| *id).ok_or("no levels")?;
         if skipped("plan") {
             return finish(&mut report, &s, output, text, None, None);
@@ -194,11 +199,15 @@ fn run() -> Result<(), String> {
         if skipped("scene") {
             return finish(&mut report, &s, output, text, Some(png), None);
         }
-        // The views a section measures: the drawing set's, else made now (before the scene, which is of the model as it is).
-        let sections = if skipped("sections") { Vec::new() } else { section_views(&mut s)? };
         let scene = timed(&mut report, "scene_build", || Ok(view3d::Scene::new(&s.model)))?;
+        // The sections' pictures from the whole scene too: the same pixels as their own.
         for (name, id) in &sections {
-            measure_section(&mut report, &s, &scene, name, *id)?;
+            let view = render::section_fit(&s.model, *id, 1600, 1000);
+            let whole = timed(&mut report, &format!("{name}_picture_from_whole_scene"), || {
+                render::section_image(&s.model, &scene, *id, view, &[]).ok_or_else(|| format!("{name} has no picture"))
+            })?;
+            let same = report[format!("{name}_picture_hash")] == json!(hash(&mut whole.rgba.iter().copied()));
+            report[format!("{name}_picture_same_as_whole_scene")] = json!(same);
         }
         let cam = scene.fit(view3d::AZIMUTH, view3d::ELEVATION, 1280, 720);
         let mut frames = Vec::new();
@@ -255,21 +264,23 @@ fn section_views(s: &mut Session) -> Result<Vec<(&'static str, u64)>, String> {
         .collect())
 }
 
-/// A section's or an elevation's work at 1600 × 1000 px, step by step: framed, its hidden-line picture from `scene`, and
-/// the drawing over it.
-fn measure_section(report: &mut Value, s: &Session, scene: &view3d::Scene, name: &str, id: u64) -> Result<(), String> {
+/// The bytes' FNV-1a hash, in hex.
+fn hash(bytes: &mut dyn Iterator<Item = u8>) -> String {
+    format!("{:016x}", bytes.fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3)))
+}
+
+/// A section's or an elevation's work at 1600 × 1000 px, step by step: framed, its hidden-line picture (of what can show
+/// in it), and the drawing over it.
+fn measure_section(report: &mut Value, s: &Session, name: &str, id: u64) -> Result<(), String> {
     let view = timed(report, &format!("{name}_fit"), || Ok(render::section_fit(&s.model, id, 1600, 1000)))?;
     let picture = timed(report, &format!("{name}_picture"), || {
-        render::section_image(&s.model, scene, id, view, &[]).ok_or_else(|| format!("{name} has no picture"))
+        render::section_picture(&s.model, id, view, &[]).ok_or_else(|| format!("{name} has no picture"))
     })?;
     let d = timed(report, &format!("{name}_drawing"), || Ok(render::section_over(&s.model, id, view, &picture)))?;
     report[format!("{name}_primitives")] = json!(d.prims.len());
     // What the picture is, to the pixel, and what is drawn over it: the same before and after a change that only speeds it.
-    let fnv = |bytes: &mut dyn Iterator<Item = u8>| {
-        bytes.fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3))
-    };
-    report[format!("{name}_picture_hash")] = json!(format!("{:016x}", fnv(&mut picture.rgba.iter().copied())));
-    report[format!("{name}_drawing_hash")] = json!(format!("{:016x}", fnv(&mut render::png(&d)?.into_iter())));
+    report[format!("{name}_picture_hash")] = json!(hash(&mut picture.rgba.iter().copied()));
+    report[format!("{name}_drawing_hash")] = json!(hash(&mut render::png(&d)?.into_iter()));
     Ok(())
 }
 
