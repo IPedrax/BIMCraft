@@ -175,7 +175,7 @@ The goal is that someone could run a real small project on it.
 |---|---|
 | GPU renderer (wgpu) for 3D: shaded views draw on the card since 0.7 (opt-in), and surfaces seen through; still to come there are hidden line and wireframe, and then plans, a section box, walkthroughs, shadows and sun, silhouettes | L |
 | A navigation gizmo, steering and orbit around the selection; tiled windows (views already float in windows of their own, and palettes dock and float). Not Revit's ViewCube, which is Autodesk's trademark and design: an original one in the manner of Blender's open-source navigation gizmo (axis balls to click to look along an axis, drag to orbit), drawn in code | M |
-| Editable keyboard shortcuts; project templates of BIMCraft's own on the start page | S |
+| Project templates of BIMCraft's own on the start page; shortcuts: export a set to a file, single keys | S |
 | Accessibility: keyboard reach for every dialog and screen-reader labels (egui's AccessKit) | M |
 | A file-format stability promise, with 1.x files opening in every later 1.x | S |
 | Signed installers on all three operating systems (macOS signing is wired up and waits for a Developer ID) | M |

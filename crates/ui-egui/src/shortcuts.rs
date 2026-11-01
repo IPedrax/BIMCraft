@@ -140,7 +140,7 @@ pub struct ShortcutsDialog {
 }
 
 /// A shortcut key: two letters or digits, which is all the typed buffer holds.
-fn is_key(k: &str) -> bool {
+pub(crate) fn is_key(k: &str) -> bool {
     k.len() == 2 && k.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
