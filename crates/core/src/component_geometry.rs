@@ -68,8 +68,8 @@ impl<'a> Components<'a> {
                 points.iter().filter(|p| !p[2].is_nan()).fold((None, None), |(lo, hi): (Option<[f64; 3]>, Option<[f64; 3]>), p| {
                     (Some(lo.filter(|l| l[2] <= p[2]).unwrap_or(*p)), Some(hi.filter(|h| h[2] >= p[2]).unwrap_or(*p)))
                 });
-            // And any point not of finite numbers: more points never change the farthest.
-            let mut kept: Vec<[f64; 3]> = points.iter().copied().filter(|p| !finite(p) || near_hull(P2(p[0], p[1]))).collect();
+            // And any point not of finite numbers: more points never change the farthest. Each place in plan once.
+            let mut kept = crate::view3d::extremes(points.iter().copied().filter(|p| !finite(p) || near_hull(P2(p[0], p[1]))));
             kept.extend(low);
             kept.extend(high);
             self.extremes.insert(key.clone(), kept);

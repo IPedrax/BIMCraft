@@ -1250,8 +1250,8 @@ fn section_walls<'a>(
 }
 
 /// What a section or an elevation asks of the whole model, found once a drawing: every solid but the components' (the view's
-/// look picks those it shows), the points of each component that may be farthest any way (a section never cuts one), and,
-/// when asked, the model's extent.
+/// look picks those it shows), the points of each element that may be farthest any way (a section never cuts a component,
+/// so its triangles aren't made), and, when asked, the model's extent.
 pub(crate) struct SectionWork<'m> {
     m: &'m Model,
     solids: Vec<view3d::Solid>,
@@ -1270,28 +1270,24 @@ impl<'m> SectionWork<'m> {
         self.solids.iter().filter(|s| look.shows(s.owner()))
     }
 
-    /// The corners of the solids `look` shows, and the points that may be farthest of its components: the farthest of them
-    /// any way are those of every solid's corners.
+    /// The points that may be farthest of each element `look` shows: the farthest of them any way are those of every
+    /// corner of its solids.
     fn corners<'a>(&'a self, look: &'a Look) -> impl Iterator<Item = [f64; 3]> + 'a {
-        let placed = self.placed.iter().filter(|(id, _)| look.shows(*id)).flat_map(|(_, p)| p.iter().copied());
-        self.shown(look).flat_map(|s| s.corners()).chain(placed)
+        self.placed.iter().filter(|(id, _)| look.shows(*id)).flat_map(|(_, p)| p.iter().copied())
     }
 
-    /// The lowest and highest of each solid `look` shows, and of each of its components.
+    /// The lowest and highest of each element `look` shows.
     fn heights<'a>(&'a self, look: &'a Look) -> impl Iterator<Item = (f64, f64)> + 'a {
-        let placed = self
-            .placed
+        self.placed
             .iter()
             .filter(|(id, _)| look.shows(*id))
-            .map(|(_, p)| p.iter().fold((f64::MAX, f64::MIN), |(lo, hi), q| (lo.min(q[2]), hi.max(q[2]))));
-        self.shown(look).map(|s| s.heights()).chain(placed)
+            .map(|(_, p)| p.iter().fold((f64::MAX, f64::MIN), |(lo, hi), q| (lo.min(q[2]), hi.max(q[2]))))
     }
 
     /// [`Model::model_extent`].
     fn extent(&self) -> [P2; 2] {
         *self.extent.get_or_init(|| {
-            let placed = self.placed.iter().flat_map(|(_, p)| p.iter().map(|q| P2(q[0], q[1])));
-            let extent = self.m.model_extent_of(self.solids.iter().flat_map(|s| s.corners()).map(|p| P2(p[0], p[1])).chain(placed));
+            let extent = self.m.model_extent_of(self.placed.iter().flat_map(|(_, p)| p.iter().map(|q| P2(q[0], q[1]))));
             // Its twin, which tests hold it to: of every solid's corners.
             #[cfg(test)]
             assert_eq!(extent, self.m.model_extent(), "the model's extent from the components' farthest points");

@@ -495,9 +495,34 @@ pub(crate) fn solids(m: &Model) -> Vec<Solid> {
     solids_in(m, &elements, Some(&index))
 }
 
-/// [`solids`] but the components', and each component's [`crate::component_geometry::Components::extremes`]: the points
-/// of its triangles that may be farthest any way, where they are placed. What a section's frame and cut ask of the model,
-/// without the components' triangles (a section never cuts one).
+/// Of `points`, those that may be the farthest any way across or up: each place in plan once, and the lowest and highest
+/// (of those that aren't NaN, as `f64::min` and `f64::max` leave it out). The farthest of them any way is the farthest of
+/// all, to the bit.
+pub(crate) fn extremes(points: impl Iterator<Item = P3>) -> Vec<P3> {
+    let mut seen = std::collections::HashSet::new();
+    let (mut low, mut high): (Option<P3>, Option<P3>) = (None, None);
+    let mut out = Vec::new();
+    for p in points {
+        if !p[2].is_nan() {
+            if low.is_none_or(|l| p[2] < l[2]) {
+                low = Some(p);
+            }
+            if high.is_none_or(|h| p[2] > h[2]) {
+                high = Some(p);
+            }
+        }
+        if seen.insert((p[0].to_bits(), p[1].to_bits())) {
+            out.push(p);
+        }
+    }
+    out.extend(low);
+    out.extend(high);
+    out
+}
+
+/// [`solids`] but the components', and each element's [`extremes`] (a component's from
+/// [`crate::component_geometry::Components::extremes`], placed): the points that may be farthest any way. What a section's
+/// frame and cut ask of the model, without the components' triangles (a section never cuts one).
 pub(crate) fn solids_and_extremes(m: &Model) -> (Vec<Solid>, Vec<(Id, Vec<P3>)>) {
     let elements: Vec<_> = m.elements.iter().map(|(&id, e)| (id, e)).collect();
     let index = walls::Index::new(m);
@@ -507,7 +532,13 @@ pub(crate) fn solids_and_extremes(m: &Model) -> (Vec<Solid>, Vec<(Id, Vec<P3>)>)
         for &(id, e) in chunk {
             match e {
                 Element::Component(c) => placed.push((id, components.extremes(c))),
-                _ => solids.extend(solids_in_with(m, &[(id, e)], Some(&index), &mut components)),
+                _ => {
+                    let own = solids_in_with(m, &[(id, e)], Some(&index), &mut components);
+                    if !own.is_empty() {
+                        placed.push((id, extremes(own.iter().flat_map(Solid::corners))));
+                    }
+                    solids.extend(own);
+                }
             }
         }
         (solids, placed)
