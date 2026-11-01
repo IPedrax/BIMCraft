@@ -88,6 +88,7 @@ pub mod storm;
 pub mod styles;
 pub mod text;
 pub mod texture;
+pub mod topo;
 pub mod units;
 pub mod view3d;
 pub mod walls;

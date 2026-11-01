@@ -20,6 +20,7 @@ getrandom = { workspace = true }
 tempfile = { workspace = true }
 rayon = { workspace = true }
 proj-core = { workspace = true }
+spade = { workspace = true }
 ttf-parser = { workspace = true }
 
 [build-dependencies]
