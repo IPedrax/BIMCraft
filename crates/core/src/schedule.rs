@@ -452,6 +452,24 @@ const OWN: &[(&str, usize, &[Own])] = &[
         &[("Mass", Kind::Text, From::Key("mass")), LEVEL, AREA, ("Perimeter", Kind::Length, From::Metres("perimeter_m")), VOLUME, COUNT],
     ),
     ("level", 2, &[("Elevation", Kind::Length, From::Key("elevation")), NAME, COUNT]),
+    // Terrain: its plan area and the area of the surface, its lowest and highest heights.
+    (
+        "toposurface",
+        4,
+        &[
+            NAME,
+            ("Material", Kind::Text, From::Key("material")),
+            AREA,
+            ("Surface Area", Kind::Area, From::Key("surface_area_m2")),
+            ("Lowest", Kind::Length, From::Key("z_min")),
+            ("Highest", Kind::Length, From::Key("z_max")),
+            ("Points", Kind::Number, From::Key("points")),
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+        ],
+    ),
 ];
 
 /// The fields of what schedules aren't of: annotation, views and sheets, what Filter on a selection goes by

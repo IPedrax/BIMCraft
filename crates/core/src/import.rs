@@ -1850,6 +1850,46 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             Some((refs(rel.args.get(4)), read_json(loft).ok()?))
         })
         .collect();
+    // Terrain: the vertices of its surface, each place once. Its triangles are made again from them.
+    for id in named(&["IFCGEOGRAPHICELEMENT"]) {
+        let Some(x) = e(id).filter(|x| enumeration(x.args.get(8)) == Some("TERRAIN")) else { continue };
+        let mut seen_at: HashSet<(i64, i64, i64)> = HashSet::new();
+        let mut points: Vec<[f64; 3]> = Vec::new();
+        for p in r.body(x).iter().flatten() {
+            let q = r.flat(*p);
+            if seen_at.insert(((q.0 * 1000.0).round() as i64, (q.1 * 1000.0).round() as i64, (p[2] * 1000.0).round() as i64)) {
+                let q = micron(q);
+                points.push([q.0, q.1, (p[2] * 1000.0).round() / 1000.0]);
+            }
+            if points.len() > crate::model::MAX_TERRAIN_POINTS {
+                break;
+            }
+        }
+        if points.len() < 3 || points.len() > crate::model::MAX_TERRAIN_POINTS {
+            leave(&mut skipped, &mut seen, id, &format!("its surface needs 3 to {} points", crate::model::MAX_TERRAIN_POINTS));
+            continue;
+        }
+        let material = element_material(&r, &l, id).filter(|n| m.materials.contains_key(n)).unwrap_or_default();
+        let t = crate::model::Toposurface {
+            name: text(x.args.get(2)).map(clip).unwrap_or_default(),
+            points,
+            breaklines: Vec::new(),
+            boundary: Vec::new(),
+            material,
+            interval: crate::model::DEFAULT_CONTOUR_INTERVAL,
+            params: Default::default(),
+        };
+        if let Err(why) = t.tin() {
+            leave(&mut skipped, &mut seen, id, &why);
+            continue;
+        }
+        let tid = m.insert(Element::Toposurface(t));
+        from.insert(tid, who(id));
+        origin.entry(id).or_insert(tid);
+        elements_from.entry(id).or_default().push(tid);
+        seen.insert(id);
+    }
+
     for id in named(&["IFCBUILDINGELEMENTPROXY"]) {
         let Some(x) = e(id).filter(|x| text(x.args.get(4)) == Some("Mass")) else { continue };
         let faces = r.body(x);

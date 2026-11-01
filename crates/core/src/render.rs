@@ -49,6 +49,8 @@ const FAINT: Rgb = Rgb(120, 120, 120);
 const GRID: Rgb = Rgb(60, 100, 150);
 /// A mass's outline, dashed.
 const MASS: Rgb = Rgb(88, 112, 168);
+/// Terrain's contours.
+const TERRAIN: Rgb = Rgb(140, 100, 60);
 /// Room for grid bubbles and the view title around the drawing, px.
 const MARGIN: f64 = 70.0;
 const BUBBLE: f32 = 11.0;
@@ -818,6 +820,7 @@ pub(crate) fn plan_shows(m: &Model, plan: impl Key) -> Vec<P2> {
             }
             Element::Room(r) if r.level == level => extent.push(r.point),
             Element::Mass(ms) if m.mass_cut_by(ms, r.cut) => extent.extend(m.mass_outline(ms, r.cut)),
+            Element::Toposurface(t) => extent.extend(terrain_box(t)),
             Element::Component(c) if c.level == level => extent.extend(m.component_pieces(c).into_iter().flat_map(|p| p.outline)),
             Element::Grid(g) => extent.extend([g.start, g.end]),
             Element::RoomSeparator(rs) if rs.level == level => extent.extend([rs.start, rs.end]),
@@ -889,6 +892,7 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         Element::RoomSeparator(rs) => d.line(&[rs.start, rs.end], Pen::PROJECTION, INK, false),
         Element::Roof(r) => roof(&mut d, m, r),
         Element::Mass(ms) => d.dashed(&ms.boundary, Pen::MEDIUM, MASS, true),
+        Element::Toposurface(t) => terrain(&mut d, t),
         _ => {}
     }
     let annotation = on.is_some() || matches!(e, Element::Section(_) | Element::Elevation(_));
@@ -896,6 +900,28 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
     d.by_category(|_| style);
     d.weigh(|_| annotation);
     d
+}
+
+/// Terrain seen from above: its contours, every fifth from sea level heavier.
+fn terrain(d: &mut Drawing, t: &crate::model::Toposurface) {
+    if t.interval <= 0.0 {
+        return;
+    }
+    let Ok(tin) = t.tin() else { return };
+    let Ok(lines) = tin.contours_shared(t.interval, 0.0) else { return };
+    for c in lines.iter() {
+        let index = (c.z / t.interval).round().rem_euclid(5.0) == 0.0;
+        d.line(&c.points, if index { Pen::MEDIUM } else { BY_CATEGORY }, TERRAIN, c.closed);
+    }
+}
+
+/// The corners of the box round terrain's boundary, or its points: what a plan fits to.
+fn terrain_box(t: &crate::model::Toposurface) -> Vec<P2> {
+    let pts: Vec<P2> = if t.boundary.len() >= 3 { t.boundary.clone() } else { t.points.iter().map(|p| P2(p[0], p[1])).collect() };
+    let (lo, hi) = pts.iter().fold((P2(f64::MAX, f64::MAX), P2(f64::MIN, f64::MIN)), |(lo, hi), p| {
+        (P2(lo.0.min(p.0), lo.1.min(p.1)), P2(hi.0.max(p.0), hi.1.max(p.1)))
+    });
+    if pts.is_empty() { Vec::new() } else { vec![lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)] }
 }
 
 /// A reinforcing bar seen from above: its line, with each point once after another, thin; a bar that stands, a dot as thick as it
@@ -1797,6 +1823,8 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
                 }
             }
             _ if up => {}
+            // Terrain, on every level: its contours.
+            Element::Toposurface(t) => terrain(&mut d, t),
             // A mass the plane passes through: its outline, dashed.
             Element::Mass(ms) if m.mass_cut_by(ms, range.cut) => d.dashed(&m.mass_outline(ms, range.cut), BY_CATEGORY, MASS, true),
             Element::Stair(st) => stair(&mut d, m, st, level),

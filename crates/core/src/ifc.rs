@@ -647,6 +647,8 @@ pub fn export(m: &Model) -> String {
     let mut wholes: BTreeMap<Id, (u64, u64, f64, Vec<u64>)> = BTreeMap::new();
     // Reinforcing bars as (level, host, entity): aggregated to their host, else in their level.
     let mut bars: Vec<(Guid, Option<Id>, u64)> = Vec::new();
+    // What stands in the site rather than a storey: terrain.
+    let mut in_site: Vec<u64> = Vec::new();
     // The runs in each system, by its name, for the IfcSystem they are assigned to.
     let mut systems: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
     // The doors and windows in each wall as (width, height, sill), for what its sides measure less them.
@@ -799,6 +801,22 @@ pub fn export(m: &Model) -> String {
             }
             // A mass: a proxy of object type `Mass`, as Revit writes them, its footprint swept up from its base to its top; lofted,
             // a closed face set, with a property set to say which corner pairs with which.
+            // Terrain is an IfcGeographicElement in the site, its surface a face set; where it is made of absolute heights, so is
+            // the site's own placement at the origin.
+            Element::Toposurface(t) => {
+                let Ok(tin) = t.tin() else { continue };
+                let at = w.place(Some(site_at), (0.0, 0.0, 0.0), None);
+                let set = w.faceset(tin.triangles());
+                let shape = w.tessellated(&[set]);
+                let ent =
+                    w.add(format!("IFCGEOGRAPHICELEMENT({},$,{},$,$,#{at},#{shape},'{id}',.TERRAIN.)", w.guid(ELEMENT, id), s(&t.name)));
+                if !t.material.is_empty() {
+                    let material = w.material(m, &t.material);
+                    w.add(format!("IFCRELASSOCIATESMATERIAL({},$,$,$,(#{ent}),#{material})", w.guid(RUN_MATERIALS, id)));
+                }
+                in_site.push(ent);
+                products.insert(id, ent);
+            }
             Element::Mass(ms) => {
                 let Some(&(_, storey)) = storeys.get(&ms.level) else { continue };
                 let (bottom, top) = m.span(ms.level, ms.base_offset, ms.top_level, ms.height);
@@ -1290,6 +1308,9 @@ pub fn export(m: &Model) -> String {
         let key = name.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3));
         let system = w.add(format!("IFCSYSTEM({},$,{},$,$)", w.guid(SYSTEMS, key), s(name)));
         w.add(format!("IFCRELASSIGNSTOGROUP({},$,$,$,({}),$,#{system})", w.guid(SYSTEM_MEMBERS, key), refs(members)));
+    }
+    if !in_site.is_empty() {
+        w.add(format!("IFCRELCONTAINEDINSPATIALSTRUCTURE({},$,$,$,({}),#{site})", w.guid(CONTAINS, 0), refs(&in_site)));
     }
     for (level, (storey, _)) in &storeys {
         if let Some(items) = contained.get(level) {

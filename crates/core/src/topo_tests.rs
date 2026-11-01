@@ -150,3 +150,149 @@ fn a_toposurface_takes_phases_and_parameters_and_a_material() {
     run(&mut s, "parameter", json!({"name": "Soil", "kind": "text", "categories": ["toposurface"]}));
     run(&mut s, "modify", json!({"ids": [id], "params": {"Soil": "Clay"}}));
 }
+
+/// The line primitives the plan of `level` draws for `id`, as (width, number of points).
+fn plan_lines(s: &Session, id: u64, level: u64) -> Vec<(f32, usize)> {
+    use crate::render::{self, Prim};
+    let d = render::plan(&s.model, level, 800, 600);
+    d.prims
+        .iter()
+        .zip(&d.owners)
+        .filter(|(_, o)| **o == Some(id))
+        .filter_map(|(p, _)| if let Prim::Line { pts, width, .. } = p { Some((*width, pts.len())) } else { None })
+        .collect()
+}
+
+#[test]
+fn plans_draw_the_contours_with_every_fifth_one_heavier() {
+    let mut s = Session::new();
+    // 0 to 1000 mm over the 10 m: with an interval of 100, lines at 100 to 1000 and the heavy one at 500 and at 1000.
+    let id = run(&mut s, "toposurface", json!({"points": grid(11, 1000.0, |x, _| x / 10.0), "interval": 100}))["id"].as_u64().unwrap();
+    let lines = plan_lines(&s, id, 100000);
+    assert_eq!(lines.len(), 10, "one line for each level, joined across triangles: {lines:?}");
+    let heavy = lines.iter().filter(|(w, _)| *w > lines[0].0).count();
+    assert_eq!(heavy, 2, "{lines:?}");
+    // The same in Level 2's plan: terrain is on every level.
+    assert_eq!(plan_lines(&s, id, 100001).len(), 10);
+    // No interval, no lines.
+    run(&mut s, "modify", json!({"ids": [id], "interval": 0}));
+    assert!(plan_lines(&s, id, 100000).is_empty());
+}
+
+#[test]
+fn a_category_hides_terrain_and_a_ceiling_plan_leaves_it_out() {
+    use crate::render;
+    let mut s = Session::new();
+    let id = run(&mut s, "toposurface", json!({"points": grid(11, 1000.0, |x, _| x / 10.0), "interval": 250}))["id"].as_u64().unwrap();
+    assert_eq!(plan_lines(&s, id, 100000).len(), 4);
+    run(&mut s, "graphics", json!({"view": 100000, "hide": ["toposurface"]}));
+    assert!(plan_lines(&s, id, 100000).is_empty());
+    assert_eq!(plan_lines(&s, id, 100001).len(), 4, "Level 2's plan still shows it");
+    let ceiling = render::ceiling_plan(&s.model, 100001, 800, 600);
+    assert!(ceiling.owners.iter().all(|o| *o != Some(id)), "seen from below, not from above");
+}
+
+#[test]
+fn a_plan_of_nothing_but_terrain_is_fitted_to_it() {
+    use crate::render::{self, Prim};
+    let mut s = Session::new();
+    let id = run(&mut s, "toposurface", json!({"points": grid(11, 100000.0, |x, _| x / 100.0), "interval": 2000}))["id"].as_u64().unwrap();
+    let d = render::plan(&s.model, 100000, 800, 600);
+    let mine: Vec<&Prim> = d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(id)).map(|(p, _)| p).collect();
+    assert!(!mine.is_empty());
+    let (w, h) = (800.0, 600.0);
+    assert!(
+        mine.iter().flat_map(|p| p.points()).all(|(x, y)| (0.0..=w).contains(&x) && (0.0..=h).contains(&y)),
+        "the 1 km square of terrain fits the picture"
+    );
+}
+
+#[test]
+fn the_3d_view_shows_terrain_as_its_triangles() {
+    use crate::geom::P2;
+    use crate::view3d;
+    let mut s = Session::new();
+    let id = slope(&mut s);
+    let tops = view3d::tops_at(&s.model, P2(5000.0, 3000.0));
+    assert_eq!(tops.get(&id), Some(&500.0), "the ground is 500 high there: {tops:?}");
+    assert_eq!(view3d::tops_at(&s.model, P2(50000.0, 0.0)).get(&id), None, "and nowhere past its edge");
+    let mesh = |s: &Session| {
+        view3d::solids(&s.model)
+            .into_iter()
+            .filter(|x| x.owner() == id)
+            .map(|x| match x {
+                view3d::Solid::Mesh { tris, color, .. } => (tris.len(), color),
+                _ => (0, crate::render::Rgb(0, 0, 0)),
+            })
+            .collect::<Vec<_>>()
+    };
+    let plain = mesh(&s);
+    assert_eq!(plain.len(), 1, "one mesh");
+    assert_eq!(plain[0].0, 200, "a triangle of the surface each");
+    // A material gives it its colour.
+    run(&mut s, "modify", json!({"ids": [id], "material": "Concrete"}));
+    let tinted = mesh(&s);
+    assert_eq!(tinted[0].0, 200);
+    assert_ne!(tinted[0].1, plain[0].1, "Concrete's colour, not the ground's");
+}
+
+#[test]
+fn a_schedule_lists_terrain_with_its_areas_and_heights() {
+    let mut s = Session::new();
+    slope(&mut s);
+    let r = run(
+        &mut s,
+        "schedule",
+        json!({"name": "Terrain", "category": "toposurface", "fields": ["Name", "Area", "Surface Area", "Lowest", "Highest", "Points"]}),
+    );
+    assert_eq!(r["columns"], json!(["Name", "Area (m²)", "Surface Area (m²)", "Lowest", "Highest", "Points"]));
+    let row = &r["rows"][0];
+    assert_eq!((row[0].clone(), row[1].clone()), (json!("Site"), json!(100.0)));
+    assert!(row[2].as_f64().unwrap() > 100.0, "the slope is longer than its plan: {row}");
+    assert_eq!(row[5].as_f64(), Some(121.0));
+}
+
+#[test]
+fn ifc_carries_terrain_as_a_geographic_element_in_the_site() {
+    use crate::step::{self, V};
+    let mut s = Session::new();
+    let id = slope(&mut s);
+    run(&mut s, "modify", json!({"ids": [id], "material": "Concrete"}));
+    let text = crate::ifc::export(&s.model);
+    let f = step::parse(text.as_bytes()).unwrap();
+    let of = |name: &str| f.entities.iter().filter(|(_, e)| e.name == name).map(|(i, e)| (*i, e)).collect::<Vec<_>>();
+    let terrain = of("IFCGEOGRAPHICELEMENT");
+    assert_eq!(terrain.len(), 1);
+    let (tid, t) = terrain[0];
+    assert_eq!((t.args[2].clone(), t.args[8].clone()), (V::Str("Site".into()), V::Enum("TERRAIN".into())));
+    // In the site, not a storey.
+    let site = of("IFCSITE")[0].0;
+    let contains = of("IFCRELCONTAINEDINSPATIALSTRUCTURE");
+    assert!(
+        contains.iter().any(|(_, r)| r.args[5] == V::Ref(site) && matches!(&r.args[4], V::List(l) if l.contains(&V::Ref(tid)))),
+        "the site holds it"
+    );
+    // Its surface: 121 points and 200 triangles.
+    assert!(text.contains("IFCTRIANGULATEDFACESET") || text.contains("IFCPOLYGONALFACESET"));
+    let points = of("IFCCARTESIANPOINTLIST3D");
+    assert!(points.iter().any(|(_, p)| matches!(&p.args[0], V::List(l) if l.len() == 121)), "121 points");
+    assert_eq!(of("IFCRELASSOCIATESMATERIAL").len(), 1, "its material");
+}
+
+#[test]
+fn terrain_comes_back_from_ifc_with_its_points_and_material() {
+    let mut s = Session::new();
+    let id = slope(&mut s);
+    run(&mut s, "modify", json!({"ids": [id], "material": "Concrete"}));
+    let got = crate::import::ifc(crate::ifc::export(&s.model).as_bytes(), "x").unwrap();
+    assert!(got.skipped.is_empty(), "{:?}", got.skipped);
+    let mut t = Session::new();
+    t.model = std::sync::Arc::new(got.model);
+    let e = run(&mut t, "elements", json!({"category": "toposurface"}));
+    assert_eq!(e["count"], 1);
+    let back = &e["elements"][0];
+    assert_eq!((back["name"].clone(), back["points"].clone(), back["material"].clone()), (json!("Site"), json!(121), json!("Concrete")));
+    assert_eq!(back["area_m2"], 100.0);
+    let at = run(&mut t, "height_at", json!({"points": [[2500, 3000], [10000, 10000]]}));
+    assert_eq!(at["heights"], json!([250.0, 1000.0]));
+}

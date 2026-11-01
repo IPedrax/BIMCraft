@@ -49,6 +49,8 @@ const GLASS: Rgb = Rgb(166, 200, 228);
 const ROOF: Rgb = Rgb(176, 118, 96);
 const CEILING: Rgb = Rgb(244, 242, 236);
 const MASS: Rgb = Rgb(158, 190, 224);
+/// Terrain without a material of its own.
+const TERRAIN: Rgb = Rgb(150, 128, 92);
 const RAIL: Rgb = Rgb(120, 122, 128);
 /// A beam, a footing, a structural column made of nothing the library has.
 const STRUCTURE: Rgb = Rgb(182, 184, 190);
@@ -552,6 +554,21 @@ fn solids_in(m: &Model, elements: &[(Id, &Element)], index: Option<&walls::Index
                 out.push(Solid::Mesh { owner: id, color: MASS, tex: 0, tris, caps: 0, round: false, cut: false });
             }
             Element::Mass(ms) => out.push(slab(id, MASS, &ms.footprint(), m.span(ms.level, ms.base_offset, ms.top_level, ms.height))),
+            // Terrain: the triangles of its surface, in its material's colour. One that makes no surface shows nothing.
+            Element::Toposurface(t) => {
+                if let Ok(tin) = t.tin() {
+                    let color = m.materials.get(&t.material).map_or(TERRAIN, |x| Rgb(x.color[0], x.color[1], x.color[2]));
+                    out.push(Solid::Mesh {
+                        owner: id,
+                        color,
+                        tex: skin(m, &t.material),
+                        tris: tin.triangles().to_vec(),
+                        caps: 0,
+                        round: false,
+                        cut: false,
+                    });
+                }
+            }
             // Each form in its material's colour; a curved one's facets one surface, as a curved wall's are.
             Element::Component(c) => {
                 for piece in components.pieces(c) {
