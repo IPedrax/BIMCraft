@@ -120,8 +120,8 @@ tests are never traded for a timing.
 - [x] 3. Change sets: each model's journal; sweeps, undo and redo by what differs
 - [x] 4. Incremental check (an edit of a million elements 21.5 s → 0.27 s with piece 5)
 - [x] 5. Persistent storage: chunks of 1,024 ids shared by copies (memory 2.2 → 1.1 GB)
-- [ ] 6. Derived-result cache: begun with the lookup (references both ways, walls by tile and height, dimensions) and undo that doesn't check again: at a million elements a column edit 1.3 ms, a wall with its doors 6 ms, undo under 0.01 ms
-- [ ] 7. Views from fragments
+- [ ] 6. Derived-result cache: the lookup (references both ways, walls by tile and height, levels, grids, columns, the kinds a project has few of), the library's parts persistent and synced by what changed, undo that doesn't check again. The annotated tower (1.2 million elements): every edit, 2D or model, 4.5 to 10.5 ms; undo under 0.01 ms; the full check 2.2 s
+- [ ] 7. Views from fragments: begun: a plan's passes over the elements that may show in it (each drawn again among every element in tests), regions' ink by grid; with 2,000 2D elements a storey, a storey's plan at 1.2 million elements 2.8 s -> 0.45 s
 - [ ] 8. Columns and parallel queries
 - [ ] 9. Chunked files and lazy loading
-- [ ] 10. The same numbers as Revit: `export_crosscheck`, the script (`tools/revit-crosscheck`), `compare_crosscheck` and the test are in; waiting for Revit's table of the small two-storey tower, to be run on Windows
+- [ ] 10. The same numbers as Revit: `export_crosscheck`, the script (`tools/revit-crosscheck`), `compare_crosscheck` and the test are in, rooms' height and volume among the quantities since #181 merged in; waiting for Revit's table of the small two-storey tower, to be run on Windows

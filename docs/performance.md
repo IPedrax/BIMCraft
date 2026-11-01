@@ -229,6 +229,40 @@ height: the check went from 10 ms to 1.4 ms. The bands sit behind `Arc`s within 
 edit didn't touch. Undo and redo go back to a model that passed the check and take it as it was: each step remembers
 whether its model passed (a model opened and never checked is still checked when undo comes back to it).
 
+### 2D in big numbers, and rooms by #181's rules
+
+`tower {"annotation": true}` (`performance --annotation true`) details every storey's plan as a drawing set does: about
+2,000 detail lines, text notes, filled regions and dimensions on its walls a storey, 1,200,101 elements in 100 storeys.
+The 2D found what the model-only tower hid; each fix keeps its old way as a twin the tests hold it to:
+
+- a point a dimension measures to was looked for among every wall, door and window: now among the walls near it in the
+  lookup's tiles, at the plan's cut height; a wall's joins without an index ask the tiles at its own heights;
+- `Model::levels`, behind every plan range, walked every element: now the lookup's levels;
+- the library's parts (every sketch line of every region, floor and ceiling) were one map copied with each model and
+  synced by walking every element, touching all of them: now chunks behind `Arc`s and a sync of what the command changed;
+- a region kept the model's ink above it by clipping all of it, each line cut by every fill ring: now grids of the ink
+  and of the fills;
+- a plan's dozen passes went through every element: now through those that may show in it (`plan_elements`);
+- rooms (#181: Room Bounding, columns that bound, frozen and redundant rooms) are found a level at a time, the level's
+  faces through a grid of its lines rather than every line against every other.
+
+The 1.2 million elements, release, median of nine:
+
+| | Before | Now |
+|---|---:|---:|
+| Full check (on opening) | 52 s | 2.2 s |
+| A new dimension by points on walls | 1.5 s at 120,000 elements; 120 ms | **10.5 ms** |
+| A wall slid along itself with its doors and the dimensions on it | 253 ms | **10.0 ms** |
+| Move a detail line / a text note | 4.4 ms | 4.6 / 4.5 ms |
+| A new filled region (120,000 elements) | 215 ms | 11 ms |
+| A storey's plan redrawn (52,000 primitives) | 2.8 s | 0.45 s |
+| Every room's boundary (`inspect`, 19,500 rooms) | | 2.3 s |
+| One room's boundary alone | 163 ms | 11.7 ms |
+
+Building one annotated storey through commands went from 76 s to 4.4 s. A storey alone draws its plan in 136 ms; the
+rest of the 450 ms is the one pass over the project's elements that picks the plan's and the passes that are still
+linear: next, a cache of each element's heights in the lookup, so a plan asks for its band, and per-element fragments.
+
 ## 3D on the graphics card
 
 `view3d::gpu::Mesh` keeps a view's shown triangles for the card (retained geometry, uploaded once for each model), and
