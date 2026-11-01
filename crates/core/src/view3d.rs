@@ -1090,22 +1090,42 @@ impl Scene {
                 )
             )
         };
-        let mut occluders = Vec::new();
-        for (id, _, at) in boxes.iter().filter(|(id, ..)| hides(*id)) {
-            for solid in own(*id, at).cloned().flat_map(|s| layered(m, s)) {
-                solid.tris(&mut occluders);
-            }
-        }
-        let tiles = {
-            let front = Scene::bare(occluders);
-            let mut depth = vec![f32::NEG_INFINITY; w * h];
-            let (mut hit, mut lit) = (vec![u32::MAX; w * h], vec![0.0; w * h]);
-            front.raster((cam, Some(clip), None), (w, h), |_| true, None, &|_| None, (&mut depth, &mut hit, &mut lit));
-            Tiles::of(depth, w, h)
-        };
-        // What can show, in the order of the elements.
+        // Each box on the screen, once.
         let project = cam.projector();
-        let kept: Vec<&Boxed3> = boxes.iter().filter(|(_, b, _)| b.is_none_or(|b| tiles.may_show(&project, clip, &b))).collect();
+        let screens: Vec<Option<[f64; 6]>> = boxes.iter().map(|(_, b, _)| b.as_ref().and_then(|b| Tiles::screen(&project, b))).collect();
+        // The occluders nearest first, drawn in batches each twice the last; before each, those already behind what is
+        // drawn are left out: behind part of the depths, they are behind all of them, and the nearest at every pixel is
+        // what it would be with them.
+        let mut tiles = Tiles::of(vec![f32::NEG_INFINITY; w * h], w, h);
+        let nearest = |i: &usize| screens.get(*i).copied().flatten().map_or(f64::INFINITY, |s| s[5]);
+        let mut pending: Vec<usize> = (0..boxes.len()).filter(|i| boxes.get(*i).is_some_and(|(id, ..)| hides(*id))).collect();
+        pending.sort_by(|a, b| nearest(b).total_cmp(&nearest(a)).then(a.cmp(b)));
+        let (mut batch, mut hit, mut lit) = (256, vec![u32::MAX; w * h], vec![0.0; w * h]);
+        while !pending.is_empty() {
+            let rest = pending.split_off(batch.min(pending.len()));
+            let mut occluders = Vec::new();
+            for &i in &pending {
+                let Some((id, _, at)) = boxes.get(i) else { continue };
+                if tiles.may_show_on(clip, screens.get(i).and_then(Option::as_ref)) {
+                    for solid in own(*id, at).cloned().flat_map(|s| layered(m, s)) {
+                        solid.tris(&mut occluders);
+                    }
+                }
+            }
+            Scene::bare(occluders).raster(
+                (cam, Some(clip), None),
+                (w, h),
+                |_| true,
+                None,
+                &|_| None,
+                (&mut tiles.depth, &mut hit, &mut lit),
+            );
+            tiles.refresh();
+            pending = rest.into_iter().filter(|i| tiles.may_show_on(clip, screens.get(*i).and_then(Option::as_ref))).collect();
+            batch *= 2;
+        }
+        // What can show, in the order of the elements.
+        let kept: Vec<&Boxed3> = boxes.iter().zip(&screens).filter(|(_, s)| tiles.may_show_on(clip, s.as_ref())).map(|(b, _)| b).collect();
         let mut components = crate::component_geometry::Components::new(m);
         let mut tris = Vec::new();
         for (id, _, at) in kept {
@@ -1181,20 +1201,37 @@ impl Tiles {
         Tiles { far, depth, across, w, h }
     }
 
-    /// Whether what lies in box `b` may win a pixel of a picture through `project` and `clip`: it lies in the picture, past
-    /// the line and before the far clip, and somewhere nearer than the farthest depth of a tile it covers. Depths are
-    /// toward the camera, a pixel kept where a surface is nearer than what it has; a margin covers the rounding of a
-    /// triangle's depth from its corners' and of the depths kept as `f32`.
-    fn may_show(&self, project: &Projector, clip: &Clip, b: &[P3; 2]) -> bool {
+    /// Box `b` through `project`: across, down and toward the camera, each lowest and highest; none where a corner isn't
+    /// of finite numbers.
+    fn screen(project: &Projector, b: &[P3; 2]) -> Option<[f64; 6]> {
         let corners = (0..8).map(|k| [b[k & 1][0], b[(k >> 1) & 1][1], b[(k >> 2) & 1][2]]).map(|p| project.at(p));
-        let (mut x0, mut x1, mut y0, mut y1, mut z0, mut z1) =
-            (f64::INFINITY, f64::NEG_INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::INFINITY, f64::NEG_INFINITY);
+        let mut s = [f64::INFINITY, f64::NEG_INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::INFINITY, f64::NEG_INFINITY];
         for (x, y, z) in corners {
             if !(x.is_finite() && y.is_finite() && z.is_finite()) {
-                return true;
+                return None;
             }
-            (x0, x1, y0, y1, z0, z1) = (x0.min(x), x1.max(x), y0.min(y), y1.max(y), z0.min(z), z1.max(z));
+            s = [s[0].min(x), s[1].max(x), s[2].min(y), s[3].max(y), s[4].min(z), s[5].max(z)];
         }
+        Some(s)
+    }
+
+    /// The farthest depth of each tile again, after more was drawn into the depths.
+    fn refresh(&mut self) {
+        self.far.iter_mut().for_each(|f| *f = f32::INFINITY);
+        for (k, d) in self.depth.iter().enumerate() {
+            let t = (k / self.w) / Self::SIDE * self.across + (k % self.w) / Self::SIDE;
+            if let Some(f) = self.far.get_mut(t) {
+                *f = f.min(*d);
+            }
+        }
+    }
+
+    /// Whether what lies in a box, `s` on the screen ([`Tiles::screen`]; none, and it may), may win a pixel of a picture
+    /// through `clip`: it lies in the picture, past the line and before the far clip, and somewhere nearer than the
+    /// farthest depth of a tile it covers. Depths are toward the camera, a pixel kept where a surface is nearer than what it
+    /// has; a margin covers the rounding of a triangle's depth from its corners' and of the depths kept as `f32`.
+    fn may_show_on(&self, clip: &Clip, s: Option<&[f64; 6]>) -> bool {
+        let Some(&[x0, x1, y0, y1, z0, z1]) = s else { return true };
         let slack = |z: f64| 1e-3 + 1e-6 * z.abs();
         // Outside the picture, or its crop; cut away before the line; past the far clip.
         let (w, h) = (self.w as f64, self.h as f64);
