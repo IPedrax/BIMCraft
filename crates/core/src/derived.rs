@@ -44,9 +44,16 @@ pub struct Lookup {
     everywhere: Arc<BTreeSet<Id>>,
     /// The tiled walls by band of height, wherever they are in plan (band [`ANY`]: those whose heights aren't known).
     bands: BTreeMap<i64, Arc<BTreeSet<Id>>>,
+    /// The elements of the kinds a project has few of ([`RARE`]), by category.
+    rare: BTreeMap<&'static str, Arc<BTreeSet<Id>>>,
+    /// The elements phased, or in a design option: with a value of a name [`crate::phasing::reserved`] keeps.
+    phased: Arc<BTreeSet<Id>>,
     /// The levels: walls' heights are of them, so when one changes the lookup is made again.
     levels: Arc<BTreeSet<Id>>,
 }
+
+/// The categories a project has few elements of, which views and checks look for among all of them: kept by kind.
+pub const RARE: &[&str] = &["pointcloud", "cadimport", "mass", "link"];
 
 /// A tile's walls by band of height.
 type Bands = BTreeMap<i64, Arc<BTreeSet<Id>>>;
@@ -177,10 +184,21 @@ impl Lookup {
             }
             _ => {}
         }
+        if let Some(cat) = RARE.iter().find(|c| **c == e.category()) {
+            Arc::make_mut(self.rare.entry(cat).or_default()).insert(id);
+        }
+        if e.params().is_some_and(|p| p.keys().any(|k| crate::phasing::reserved(k))) {
+            Arc::make_mut(&mut self.phased).insert(id);
+        }
     }
 
     fn take(&mut self, id: Id) {
-        for set in [&mut self.walls, &mut self.dimensions, &mut self.grids, &mut self.everywhere, &mut self.levels] {
+        for set in self.rare.values_mut() {
+            if set.contains(&id) {
+                Arc::make_mut(set).remove(&id);
+            }
+        }
+        for set in [&mut self.walls, &mut self.dimensions, &mut self.grids, &mut self.everywhere, &mut self.levels, &mut self.phased] {
             if set.contains(&id) {
                 Arc::make_mut(set).remove(&id);
             }
@@ -313,6 +331,16 @@ impl Lookup {
     /// The dimensions, by id.
     pub fn dimensions(&self) -> impl Iterator<Item = Id> + '_ {
         self.dimensions.iter().copied()
+    }
+
+    /// The elements of category `cat`, one of [`RARE`], by id; none of another.
+    pub fn rare(&self, cat: &str) -> impl Iterator<Item = Id> + '_ {
+        self.rare.get(cat).into_iter().flat_map(|s| s.iter().copied())
+    }
+
+    /// Whether an element is phased or in a design option.
+    pub fn any_phased(&self) -> bool {
+        !self.phased.is_empty()
     }
 
     /// The levels, by id.

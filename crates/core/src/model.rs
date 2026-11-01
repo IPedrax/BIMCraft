@@ -5864,6 +5864,15 @@ impl Model {
         Ok(())
     }
 
+    /// The elements of category `cat`, one of [`crate::derived::RARE`], in order of id: from the lookup when it is made,
+    /// else from among every element.
+    pub fn rare(&self, cat: &str) -> Vec<Id> {
+        match self.derived.made(&self.elements) {
+            Some(look) if crate::derived::RARE.contains(&cat) => look.rare(cat).collect(),
+            _ => self.elements.iter().filter(|(_, e)| e.category() == cat).map(|(id, _)| *id).collect(),
+        }
+    }
+
     /// What its elements point at, looked up the other way, and its walls: kept with it, and brought up to date from the
     /// model it was copied from by what changed.
     pub fn lookup(&self) -> Arc<crate::derived::Lookup> {

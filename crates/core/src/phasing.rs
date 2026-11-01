@@ -205,7 +205,10 @@ pub fn status(m: &Model, e: &Element, at: usize) -> Option<Status> {
 
 /// Whether anything in `m` is phased or in a design option.
 pub fn any(m: &Model) -> bool {
-    m.elements.values().any(|e| e.params().is_some_and(|p| p.keys().any(|k| reserved(k))))
+    match m.derived.made(&m.elements) {
+        Some(look) => look.any_phased(),
+        None => m.elements.values().any(|e| e.params().is_some_and(|p| p.keys().any(|k| reserved(k)))),
+    }
 }
 
 /// Whether a view that shows the options `g` chooses shows element `e`: one in no option shows

@@ -10,11 +10,32 @@ type Key = (String, String, bool, String);
 pub(crate) struct Components<'a> {
     model: &'a Model,
     local: BTreeMap<Key, Vec<Piece>>,
+    /// The heights of the model's components with no values of their own, over their base, by family, type and mirroring:
+    /// most of a project's, found without a key made for each.
+    plain: std::collections::HashMap<(&'a str, &'a str, bool), (f64, f64)>,
 }
 
 impl<'a> Components<'a> {
     pub(crate) fn new(model: &'a Model) -> Self {
-        Self { model, local: BTreeMap::new() }
+        Self { model, local: BTreeMap::new(), plain: Default::default() }
+    }
+
+    /// [`Components::heights`] of a component of the model's.
+    pub(crate) fn heights_of(&mut self, c: &'a Component) -> (f64, f64) {
+        if !c.params.is_empty() {
+            return self.heights(c);
+        }
+        let base = self.model.elevation(c.level) + c.offset;
+        let key = (c.family.as_str(), c.type_name.as_str(), c.mirrored);
+        let (lo, hi) = match self.plain.get(&key) {
+            Some(span) => *span,
+            None => {
+                let span = self.local(c).iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p.bottom), hi.max(p.top)));
+                self.plain.insert(key, span);
+                span
+            }
+        };
+        (base + lo, base + hi)
     }
 
     fn local(&mut self, c: &Component) -> &[Piece] {

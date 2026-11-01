@@ -627,7 +627,7 @@ fn plan_elements<'a>(
     level: Guid,
     r: &PlanRange,
     up: bool,
-    components: &mut crate::component_geometry::Components,
+    components: &mut crate::component_geometry::Components<'a>,
 ) -> Vec<(Id, &'a Element)> {
     let all = m.elements.iter().map(|(id, e)| (*id, e));
     if up {
@@ -639,7 +639,7 @@ fn plan_elements<'a>(
         Element::Wall(w) => m.base_z(w) <= r.cut && m.top_z(w) > r.depth - TOL,
         Element::Door(o) | Element::Window(o) => m.wall(o.host).is_some_and(|w| m.spans(w, r.cut)),
         Element::Component(c) => {
-            let (bottom, top) = components.heights(c);
+            let (bottom, top) = components.heights_of(c);
             bottom < r.cut && top > r.depth
         }
         Element::Room(x) => x.level == level,
@@ -654,7 +654,11 @@ fn plan_elements<'a>(
         | Element::Spot(_)
         | Element::DetailGroup(_)
         | Element::RepeatingDetail(_) => m.annotation_in(e, key),
-        _ if e.column().is_some() || m.run_geom(e).is_some() => stands(m, e).is_none_or(|(_, bottom, top)| reaches(bottom, top)),
+        _ if e.column().is_some() => stands(m, e).is_none_or(|(_, bottom, top)| reaches(bottom, top)),
+        _ if e.run().is_some() => m.run_geom(e).is_none_or(|g| {
+            let (bottom, top) = g.z_span();
+            reaches(bottom, top)
+        }),
         _ => true,
     })
     .collect()
@@ -1487,9 +1491,10 @@ pub fn draw_at(m: &Model, level: impl Key, view: View, k: f32) -> Drawing {
 /// it picks where its points are.
 fn scans(d: &mut Drawing, m: &Model, range: &PlanRange, look: &Look) {
     let placed: Vec<(Id, &crate::model::PointCloud, &crate::cloud::Cloud)> = m
-        .elements
-        .iter()
-        .filter_map(|(&id, e)| match e {
+        .rare("pointcloud")
+        .into_iter()
+        .filter_map(|id| Some((id, m.elements.get(id)?)))
+        .filter_map(|(id, e)| match e {
             Element::PointCloud(pc) if look.shows(id) => Some((id, pc, m.clouds.get(&pc.cloud)?)),
             _ => None,
         })
@@ -1554,7 +1559,7 @@ fn cad_imports(d: &mut Drawing, m: &Model, key: crate::ids::Guid, level: crate::
     // The view in model mm, to leave out what lies outside it.
     let (w, h) = (d.view.width as f32, d.view.height as f32);
     let view = [d.view.mm((0.0, 0.0)), d.view.mm((w, 0.0)), d.view.mm((w, h)), d.view.mm((0.0, h))];
-    for (&id, e) in &m.elements {
+    for (id, e) in m.rare("cadimport").into_iter().filter_map(|id| Some((id, m.elements.get(id)?))) {
         let Element::CadImport(ci) = e else { continue };
         if ci.level != level || ci.view.is_some_and(|v| v != key) || !look.shows(id) {
             continue;
