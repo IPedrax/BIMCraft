@@ -145,14 +145,39 @@ the culling must be conservative (strictly behind, opaque only) so the picture s
 proves. 3 and 5 fall out of 4's boxes and survivors. 6 is the structural change, shared with the 3D view and the plan
 fragments of the spatial core's piece 7, and goes last; 7 and 8 use what the others make.
 
+## Progress (2026-11-01)
+
+The drawn tower, a 1600 × 1000 px view, release; every picture and drawing hashed the same before and after:
+
+| | 10 storeys before | 10 storeys now | 100 storeys now |
+|---|---:|---:|---:|
+| Frame a view | 838 ms | 135 ms | 1.9 s |
+| An elevation's picture, no 3D scene built | 8.4 s (scene and raster) | 469 ms | 3.3 s |
+| A section's picture | 8.4 s | 715 ms | 3.8 s |
+| An elevation's drawing over its picture | 1.5 s | 151 ms | 1.9 s |
+| A section's drawing over its picture | 1.8 s | 162 ms | 2.1 s (30.5 s) |
+| Picture and drawing at once (the desktop) | 9.9 s | 507 ms | 4.1 s |
+| The elevations' sheet (two elevations) | 14.8 s | 847 ms | |
+| Peak memory | | | 6.1 GB (12.5 GB; the scene alone passed 32 GB) |
+
+What did it: `SectionWork`, the model's solids but the components' and each element's farthest points (a component's from
+its family's hull, cached and placed; a tube's each place once), made once a sheet or a window's view; `Scene::section`,
+the culled scene (occluders' depth in 8 px tiles, small elements pixel by pixel), the same picture to the pixel as the
+whole scene's; the drawing's quadratic passes (corners carried round by a hash of run ends, a wall's solids by their
+place in the list, cut outlines near each other by a grid); the desktop keeping the drawing between frames.
+
+What is left at 100 storeys: the pass over the model's solids (1.8 s), the occluders' raster and the survivors' scene
+(1.4 to 2 s). Next: the BVH and front-to-back culling of the occluders themselves, then fragments kept across edits.
+
 ## Status
 
 - [x] Plan, with the measurements above
-- [ ] 0. Measure in the probe
-- [ ] 1. Each thing once a drawing
-- [ ] 2. The desktop keeps the drawing
-- [ ] 3. Only what the view's volume holds
-- [ ] 4. Occlusion culling
+- [x] 0. Measure in the probe (`--sheets`, a section and an elevation step by step, hashed)
+- [x] 1. Each thing once a drawing (`SectionWork`, shared by a sheet's and a window's sections)
+- [x] 2. The desktop keeps the drawing
+- [x] 3. Only what the view's volume holds (in the culled scene: outside the picture, before the line, past the far clip)
+- [ ] 4. Occlusion culling: tiles and pixels done; the BVH and culling the occluders front to back left
+- [x] 5. A section's own scene (`Scene::section`: triangles, faces and planes of what can show)
 - [ ] 5. A section's own scene
 - [ ] 6. Fragments kept across edits
 - [ ] 7. Off the interface's thread
