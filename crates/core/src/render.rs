@@ -21,6 +21,7 @@ use tiny_skia::{Color, FillRule, IntSize, LineCap, LineJoin, Paint, PathBuilder,
 
 use crate::geom::{self, P2};
 use crate::graphics::{Detail, Look, scale_of};
+use crate::model::Guid;
 use crate::model::{
     CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, FilledRegion, Floor, Function, Id, Key, Layer, Model, Note, Opening,
     Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, Wall,
@@ -563,12 +564,12 @@ fn drawn_near(p: P2, (at, width, height): ((f32, f32), u32, u32), rgba: &[u8], t
 }
 
 /// The outlines of the walls and columns a plan cutting at height `z` cuts, but for those `look` hides.
-fn cut_outlines(m: &Model, z: f64, look: &Look, index: &walls::Index) -> Vec<(Id, Vec<P2>)> {
-    m.elements
+fn cut_outlines(m: &Model, elements: &[(Id, &Element)], z: f64, look: &Look, index: Option<&walls::Index>) -> Vec<(Id, Vec<P2>)> {
+    elements
         .iter()
-        .filter(|(id, _)| look.shows(**id))
-        .filter_map(|(&id, e)| match e {
-            Element::Wall(w) if m.spans(w, z) => Some((id, walls::outline_in(m, id, Some(index)))),
+        .filter(|(id, _)| look.shows(*id))
+        .filter_map(|&(id, e)| match e {
+            Element::Wall(w) if m.spans(w, z) => Some((id, walls::outline_in(m, id, index))),
             _ => stands(m, e).filter(|(_, bottom, top)| *bottom <= z && z < *top).map(|(outline, ..)| (id, outline)),
         })
         .collect()
@@ -588,11 +589,11 @@ fn stands(m: &Model, e: &Element) -> Option<(Vec<P2>, f64, f64)> {
 
 /// The walls and columns a plan sees below its cut plane, down to its view depth: their outlines,
 /// and their tops; but for those `look` hides.
-fn seen_below(m: &Model, r: &PlanRange, look: &Look, index: &walls::Index) -> Vec<(Id, Vec<P2>, f64)> {
-    m.elements
+fn seen_below(m: &Model, elements: &[(Id, &Element)], r: &PlanRange, look: &Look, index: Option<&walls::Index>) -> Vec<(Id, Vec<P2>, f64)> {
+    elements
         .iter()
-        .filter(|(id, _)| look.shows(**id))
-        .filter_map(|(&id, e)| {
+        .filter(|(id, _)| look.shows(*id))
+        .filter_map(|&(id, e)| {
             let (outline, top) = match e {
                 Element::Wall(w) => {
                     let top = m.top_z(w);
@@ -601,7 +602,7 @@ fn seen_below(m: &Model, r: &PlanRange, look: &Look, index: &walls::Index) -> Ve
                     if !(r.depth < top && top <= r.cut) {
                         return None;
                     }
-                    (walls::outline_in(m, id, Some(index)), top)
+                    (walls::outline_in(m, id, index), top)
                 }
                 _ => {
                     let (outline, _, top) = stands(m, e)?;
@@ -613,6 +614,50 @@ fn seen_below(m: &Model, r: &PlanRange, look: &Look, index: &walls::Index) -> Ve
             (r.depth - flush < top && top <= r.cut).then_some((id, outline, top))
         })
         .collect()
+}
+
+/// What a floor plan's passes look at, in order of id: every element but those of the kinds below that can't show in it,
+/// by what each pass asks of them (a superset of what the passes draw, which is all their filters need): walls, columns
+/// and runs that don't reach from its view depth up to its cut plane (runs: its top), doors and windows in walls it doesn't
+/// cut, components it doesn't see, rooms, room separators and bars of other levels, ceilings, and other views' annotation.
+/// A ceiling plan (`up`) looks at every element.
+fn plan_elements<'a>(
+    m: &'a Model,
+    key: Guid,
+    level: Guid,
+    r: &PlanRange,
+    up: bool,
+    components: &mut crate::component_geometry::Components,
+) -> Vec<(Id, &'a Element)> {
+    let all = m.elements.iter().map(|(id, e)| (*id, e));
+    if up {
+        return all.collect();
+    }
+    // What reaches from the view depth (and a hair under it: a footing's or a run's top flush with it) to the range's top.
+    let reaches = |bottom: f64, top: f64| bottom <= r.top && top > r.depth - TOL;
+    all.filter(|(_, e)| match e {
+        Element::Wall(w) => m.base_z(w) <= r.cut && m.top_z(w) > r.depth - TOL,
+        Element::Door(o) | Element::Window(o) => m.wall(o.host).is_some_and(|w| m.spans(w, r.cut)),
+        Element::Component(c) => {
+            let (bottom, top) = components.heights(c);
+            bottom < r.cut && top > r.depth
+        }
+        Element::Room(x) => x.level == level,
+        Element::RoomSeparator(x) => x.level == level,
+        Element::Rebar(_) => m.level_of(e) == Some(level),
+        Element::Ceiling(_) => false,
+        Element::Text(_)
+        | Element::DetailLine(_)
+        | Element::FilledRegion(_)
+        | Element::Dimension(_)
+        | Element::Tag(_)
+        | Element::Spot(_)
+        | Element::DetailGroup(_)
+        | Element::RepeatingDetail(_) => m.annotation_in(e, key),
+        _ if e.column().is_some() || m.run_geom(e).is_some() => stands(m, e).is_none_or(|(_, bottom, top)| reaches(bottom, top)),
+        _ => true,
+    })
+    .collect()
 }
 
 /// The cut outlines `look` fills in the same colour, together, so no seam shows where two fills
@@ -796,14 +841,34 @@ pub(crate) fn plan_extent(m: &Model, level: impl Key) -> Vec<P2> {
 /// Everything a plan of `level` shows, uncropped: its walls, floors, rooms, dimensions, tags,
 /// notes and spot elevations, the grids, the marks of the sections and elevations, and its CAD imports.
 pub(crate) fn plan_shows(m: &Model, plan: impl Key) -> Vec<P2> {
-    // The plan's own guid says what it is: its graphics, range and annotation; its level is what it shows of the model.
     let key = m.guid(plan);
+    let shows = plan_shows_among(m, key, true);
+    // Its twin, which tests hold it to, as [`draw_plan`]'s.
+    #[cfg(test)]
+    assert!(
+        shows == regions::uncounted(|| plan_shows_among(m, key, false)),
+        "a plan shows other things among the elements that may show in it"
+    );
+    shows
+}
+
+fn plan_shows_among(m: &Model, key: Guid, among: bool) -> Vec<P2> {
+    // The plan's own guid says what it is: its graphics, range and annotation; its level is what it shows of the model.
     let level = m.plan_level(key).map_or(key, |l| m.guid(l));
     let r = m.shown_range(key);
     let look = Look::of(m, key);
-    let index = walls::Index::new(m);
-    let mut extent: Vec<P2> = cut_outlines(m, r.cut, &look, &index).into_iter().flat_map(|(_, o)| o).collect();
-    extent.extend(seen_below(m, &r, &look, &index).into_iter().flat_map(|(_, o, _)| o));
+    let index = match m.derived.made(&m.elements) {
+        Some(_) if among => None,
+        _ => Some(walls::Index::new(m)),
+    };
+    let index = index.as_ref();
+    let elements: Vec<(Id, &Element)> = if among {
+        plan_elements(m, key, level, &r, false, &mut crate::component_geometry::Components::new(m))
+    } else {
+        m.elements.iter().map(|(id, e)| (*id, e)).collect()
+    };
+    let mut extent: Vec<P2> = cut_outlines(m, &elements, r.cut, &look, index).into_iter().flat_map(|(_, o)| o).collect();
+    extent.extend(seen_below(m, &elements, &r, &look, index).into_iter().flat_map(|(_, o, _)| o));
     for (id, e) in m.elements.iter().filter(|(id, _)| look.shows(**id)) {
         match e {
             Element::CadImport(ci) if ci.level == level && ci.view.is_none_or(|v| v == key) => {
@@ -1562,10 +1627,33 @@ fn pale(v: u8) -> u8 {
 /// it has it; a window shows the name in the view's tab, and a sheet under its viewport). Its annotation `k` times the size it
 /// is laid out at, its pens the line weights' at 1 : `n`.
 fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, titled: bool) -> Drawing {
-    // The plan's own guid says what it is: its graphics, range, crop and annotation; its level is what it shows of the model.
     let key = m.guid(plan);
+    let d = draw_plan_among(m, key, view, up, k, n, titled, true);
+    // Its twin, which tests hold it to: every element looked at, the walls joined through an index of every wall.
+    #[cfg(test)]
+    {
+        let every = regions::uncounted(|| draw_plan_among(m, key, view, up, k, n, titled, false));
+        let same = d.prims.len() == every.prims.len()
+            && d.owners == every.owners
+            && d.parts == every.parts
+            && d.prims.iter().zip(&every.prims).all(|(a, b)| a.points() == b.points());
+        assert!(same, "a plan drawn among the elements that may show in it isn't the plan drawn among every element");
+    }
+    d
+}
+
+/// [`draw_plan`] of plan `key`: with `among`, its passes look only at the elements that may show in it
+/// ([`plan_elements`]), its walls joined through the model's lookup when it is made; else at every element, through an
+/// index of every wall.
+#[allow(clippy::too_many_arguments)]
+fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, titled: bool, among: bool) -> Drawing {
+    // The plan's own guid says what it is: its graphics, range, crop and annotation; its level is what it shows of the model.
     let level = m.plan_level(key).map_or(key, |l| m.guid(l));
-    let index = walls::Index::new(m);
+    let index = match m.derived.made(&m.elements) {
+        Some(_) if among => None,
+        _ => Some(walls::Index::new(m)),
+    };
+    let index = index.as_ref();
     let mut d = Drawing::new(view);
     (d.k, d.paper, d.detail, d.weights) = (k, paper_of(n, view.scale), detail_of(m, key), m.line_weights().at(n));
     let look = Look::of(m, key);
@@ -1577,6 +1665,10 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         range.cut = m.elevation(level) + CEILING_CUT;
         range.top = range.top.max(range.cut);
     }
+    let mut components = crate::component_geometry::Components::new(m);
+    let elements: Vec<(Id, &Element)> =
+        if among { plan_elements(m, key, level, &range, up, &mut components) } else { m.elements.iter().map(|(id, e)| (*id, e)).collect() };
+    let all = || elements.iter().map(|(id, e)| (id, *e));
     // The scans it sees, under all the rest; then its CAD drawings.
     if !up {
         scans(&mut d, m, &range, &look);
@@ -1584,7 +1676,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     }
     // Floors whose tops it sees, from the cut plane down to the view depth: their outlines and their
     // openings', the holes shafts cut in them, and a sloped one's slope arrow.
-    for (&id, e) in m.elements.iter().filter(|_| !up).filter(|(id, _)| shown(**id)) {
+    for (&id, e) in all().filter(|_| !up).filter(|(id, _)| shown(**id)) {
         let Element::Floor(f) = e else { continue };
         let top = m.floor_top(f);
         let (lo, hi) = f.boundary.iter().map(|q| top.at(*q)).fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
@@ -1625,8 +1717,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     }
     // Components it sees, in projection, as Revit draws furniture: whole while any of one is under
     // the cut plane and over the view depth.
-    let mut components = crate::component_geometry::Components::new(m);
-    for (&id, e) in m.elements.iter().filter(|_| !up).filter(|(id, _)| shown(**id)) {
+    for (&id, e) in all().filter(|_| !up).filter(|(id, _)| shown(**id)) {
         let Element::Component(c) = e else { continue };
         let (bottom, top) = components.heights(c);
         if bottom < range.cut && top > range.depth {
@@ -1635,13 +1726,13 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         }
     }
     // Walls and columns below the cut plane, as seen from it; past the bottom, faint.
-    for (id, o, top) in seen_below(m, &range, &look, &index).into_iter().filter(|_| !up) {
+    for (id, o, top) in seen_below(m, &elements, &range, &look, index).into_iter().filter(|_| !up) {
         d.owner = Some(id);
         override_patterns(&mut d, m, std::slice::from_ref(&o), false, (P2(0.0, 0.0), 0.0));
         d.line(&o, BY_CATEGORY, if top > range.bottom - TOL { INK } else { FAINT }, true);
     }
     // A run's centre line, faint and dashed, where it is seen but not cut: Revit's mark of a beam, and where to pick it.
-    for (&id, e) in m.elements.iter().filter(|_| !up).filter(|(id, _)| shown(**id)) {
+    for (&id, e) in all().filter(|_| !up).filter(|(id, _)| shown(**id)) {
         let Some(g) = m.run_geom(e).filter(|g| !g.vertical()) else { continue };
         let (lo, hi) = g.z_span();
         let seen = range.depth - TOL < hi && hi <= range.cut;
@@ -1655,9 +1746,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     // Looking up from its cut, a reflected ceiling plan sees the beams and columns over it, up to the ceilings: their outlines,
     // in projection. One over a ceiling it lies above is hidden by that ceiling.
     if up {
-        let ceilings: Vec<(f64, &Ceiling)> = m
-            .elements
-            .iter()
+        let ceilings: Vec<(f64, &Ceiling)> = all()
             .filter(|(id, _)| shown(**id))
             .filter_map(|(_, e)| match e {
                 Element::Ceiling(c) => Some((m.elevation(c.level) + c.offset, c)),
@@ -1665,7 +1754,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
             })
             .filter(|(z, _)| range.cut < *z && *z <= range.top)
             .collect();
-        for (&id, e) in m.elements.iter().filter(|(id, _)| shown(**id)) {
+        for (&id, e) in all().filter(|(id, _)| shown(**id)) {
             if !matches!(e, Element::Beam(_)) && e.column().is_none() {
                 continue;
             }
@@ -1684,7 +1773,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         }
     }
     d.part(Part::Cut);
-    let outlines = cut_outlines(m, range.cut, &look, &index);
+    let outlines = cut_outlines(m, &elements, range.cut, &look, index);
     // Poché first, then the outlines over it, but for where walls meet at their joins: only the edge
     // of their union is inked (`cut_edges`). The union is filled first, as one for each colour the
     // view fills them in, so no seam shows where two fills meet.
@@ -1715,14 +1804,14 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     }
     // A compound wall's layers: each its material's cut pattern where it's wide enough to hold it,
     // else lighter where it isn't the wall's structure; a thin line between each two.
-    for (&id, e) in &m.elements {
+    for (&id, e) in all() {
         let Element::Wall(w) = e else { continue };
         let layers = m.type_layers("wall", &w.type_name);
         if layers.is_empty() || !m.spans(w, range.cut) || !shown(id) || d.detail == Detail::Coarse {
             continue;
         }
         d.owner = Some(id);
-        let lines = walls::layer_lines_in(m, id, Some(&index));
+        let lines = walls::layer_lines_in(m, id, index);
         let along = (w.end - w.start).unit();
         for (k, layer) in layers.iter().enumerate() {
             let (Some(a), Some(b)) = (lines.get(k), lines.get(k + 1)) else { continue };
@@ -1737,7 +1826,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         }
         d.part(Part::Cut);
     }
-    for (&id, e) in &m.elements {
+    for (&id, e) in all() {
         // The opening is the wall's: with neither the wall nor the opening shown, there is nothing to leave a gap in.
         if let Element::Door(o) | Element::Window(o) = e
             && let Some(w) = m.wall(o.host)
@@ -1757,7 +1846,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     let rooms = crate::rooms::Rooms::new(m);
     // Bars seen from above that lie where another was drawn (a column's stirrups, up its height) are drawn once.
     let mut bars_seen: std::collections::HashSet<Vec<(i64, i64)>> = std::collections::HashSet::new();
-    for (&id, e) in m.elements.iter().filter(|(id, _)| shown(**id)) {
+    for (&id, e) in all().filter(|(id, _)| shown(**id)) {
         d.owner = Some(id);
         match e {
             // Cropped, a grid stops at the crop's edge, with its bubbles there.
@@ -1846,7 +1935,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     }
     d.model_under_regions(None);
     // Regions replace model backgrounds; non-masking ones retain the visible model foreground.
-    for (&id, e) in m.elements.iter().filter(|_| !up).filter(|(id, _)| shown(**id)) {
+    for (&id, e) in all().filter(|_| !up).filter(|(id, _)| shown(**id)) {
         if let Element::FilledRegion(r) = e
             && m.annotation_in(e, key)
         {
@@ -1856,7 +1945,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     }
     // Annotation last, over the model; sections and elevations show on every plan. A floor plan's
     // annotation is its own.
-    for (&id, e) in m.elements.iter().filter(|(id, _)| shown(**id)) {
+    for (&id, e) in all().filter(|(id, _)| shown(**id)) {
         d.owner = Some(id);
         match e {
             Element::Dimension(_)
