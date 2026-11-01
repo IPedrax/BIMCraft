@@ -29,6 +29,8 @@ to do. Where the two define a quantity differently, the difference goes here, wi
 
 - A room's volume is its area times its unbounded height (from its level and base offset up to its upper limit and limit
   offset), which is Revit's while nothing under its top bounds it. Revit also stops a room's volume at a room-bounding
-  ceiling, floor or roof lower than its top; we don't yet. The description gives Revit each room's limits as ours, and
-  the tower's rooms (2,500 mm limit offset) stay under their ceilings (2,700 mm), so the two agree there.
+  ceiling, floor or roof lower than its top, and a ceiling bounds rooms unless told not to; we don't yet. The description
+  gives Revit each room's limits as ours. The tower's rooms reach 300 mm under the level above (3.7 m, the `room`
+  command's default), over their ceilings at 2.7 m: Revit's volume of them is their area times 2.7 m where ours is times
+  3.7 m, the one difference the comparison is expected to show until volumes stop at ceilings.
 - Each level's computation height (where walls and columns are cut to bound rooms) goes to Revit as the level's.
