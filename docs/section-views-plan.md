@@ -39,6 +39,34 @@ the whole scene again (`orbit::scene_of`) before the section can be redrawn.
    facade before triangulating and rasterizing it.
 4. **Nothing kept between frames or edits.** The drawing over the picture each frame; the scene after each edit.
 
+## The architecture it builds toward
+
+Plans, projected views (sections and elevations), the 3D view and drafting views are different problems on one
+foundation:
+
+1. **Fragments**: each element's solids, triangles and edges, cached by its revision; a family's geometry once, placed
+   as a transform.
+2. **A bounding volume hierarchy (BVH)** over the fragments' boxes, kept with each model snapshot and refitted by what an
+   edit changed.
+3. **Queries on it**: what lies in a view's volume; what can be seen from a camera (occlusion culling); rays (picking,
+   shadows, exact edges).
+4. **Renderers on top**: the raster picture (processor or card), the vector hidden-line drawing, a shadow pass.
+
+How a projected view finds what is hidden (a chair behind a wall, inside the view range): rays in an orthographic view
+are parallel, so visibility is "what is nearest along the view direction" at each point. The BVH is walked nearest
+first; the large opaque elements (walls, slabs, facade panels) are drawn into a depth buffer, which is reduced to a
+pyramid of tiles keeping their farthest depth (hierarchical Z); a node whose projected box lies strictly behind every
+tile it covers holds nothing visible, and all of it (every chair, desk and pipe behind the facade) is skipped without
+being triangulated. A chair that shows past the end of the wall covers a tile nothing is in front of, and is drawn.
+Only opaque elements hide anything: a transparent one culls nothing, and is drawn over the opaque depth, as now.
+
+The picture is the raster with this culling, so it stays pixel for pixel what it is now. Rays through the same BVH serve
+picking, shadows (a ray to the sun from each visible point, for print) and the vector hidden-line drawing for sheets and
+PDF: the culled survivors' edges, kept where the depth buffer sees them, their ends found exactly by rays. Shadows in a
+view first come from a shadow map rendered from the sun with the same culling. The 3D view takes the same BVH and
+culling to the card (two-phase occlusion culling, instancing, chunks); a plan is a projected view looking down, and its
+"seen below" can come to use the same visibility; a drafting view is 2D only, culled by the lookup's tiles.
+
 ## Pieces
 
 Each leaves the workspace green, and is measured with the probe at 1, 10 and 100 storeys.
@@ -65,7 +93,7 @@ Each leaves the workspace green, and is measured with the probe at 1, 10 and 100
    the building. Twin: every solid, as now.
 
 4. **Only what can be seen: occlusion culling.** The heart of it. Before anything is triangulated:
-   - the boxes of the elements in the volume, projected, nearest first;
+   - a BVH over the boxes of the elements in the volume, walked nearest first, so a hidden node skips all under it;
    - a depth pre-pass of the opaque elements that hide the most (walls, floors, roofs, facade panels: prisms and slabs,
      cheap to triangulate), into a coarse depth pyramid (each tile of 8 × 8 px keeping its farthest depth);
    - each other element whose box lies **strictly behind** every tile it covers is left out, never triangulated;
@@ -92,6 +120,12 @@ Each leaves the workspace green, and is measured with the probe at 1, 10 and 100
 
 8. **Sheets and PDF.** A sheet of elevations and sections uses the same work: one `SectionWork` and one culled scene a
    sheet, not a scene a viewport; the PDF the same.
+
+9. **Vector hidden line.** For sheets and PDF, the visible parts of the survivors' edges as vectors, not a picture:
+   each edge kept where the depth buffer sees it, its ends where visibility changes found by rays through the BVH.
+
+10. **Transparency and shadows.** Transparent surfaces never cull and are drawn over the opaque depth; shadows from a
+    shadow map from the sun (the same culling), and by rays for print.
 
 ## Targets
 
@@ -123,3 +157,5 @@ fragments of the spatial core's piece 7, and goes last; 7 and 8 use what the oth
 - [ ] 6. Fragments kept across edits
 - [ ] 7. Off the interface's thread
 - [ ] 8. Sheets and PDF
+- [ ] 9. Vector hidden line
+- [ ] 10. Transparency and shadows
