@@ -210,7 +210,22 @@ impl Session {
                     assert_eq!(in_step, self.model.library_in_step(), "library_in_step_since differs after `{}` {params}", cmd.id);
                 }
                 if !in_step {
-                    self.model_mut().sync_library();
+                    // After a verified model, what the command changed is synced; else (or when more than elements
+                    // changed) the whole library.
+                    #[cfg(test)]
+                    let oracle = verified.then(|| sync_oracle(&self.model, &before));
+                    if !(verified && self.model_mut().sync_since(&before)) {
+                        self.model_mut().sync_library();
+                    }
+                    #[cfg(test)]
+                    if let Some(Some((incremental, whole))) = oracle {
+                        assert!(
+                            incremental.elements.iter().eq(whole.elements.iter()) && incremental.library.parts().eq(whole.library.parts()),
+                            "the library synced by what `{}` changed isn't as the whole sync makes it",
+                            cmd.id
+                        );
+                        assert!(self.model.library_in_step(), "the library isn't in step after `{}`", cmd.id);
+                    }
                 }
                 // Locked and equal dimensions moved what they measure to as the command moved it.
                 if cmd.undoable {
@@ -405,4 +420,24 @@ fn named(m: &Model, params: &Value) -> Option<Value> {
 
 fn panic_text(p: &(dyn std::any::Any + Send)) -> String {
     p.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| p.downcast_ref::<String>().cloned()).unwrap_or_else(|| "panic".into())
+}
+
+/// The library synced both ways, by what changed since `before` and whole, each new GUID made the same way in order:
+/// what the engine holds the incremental sync to in tests. None where the incremental one can't say.
+#[cfg(test)]
+fn sync_oracle(m: &Model, before: &Model) -> Option<(Model, Model)> {
+    let counter = || {
+        let mut n = 0u64;
+        move |_: &Model, _: Option<&crate::library::Kind>, _: &str| {
+            n += 1;
+            crate::ids::Guid::seeded(0x5eed, n)
+        }
+    };
+    let mut incremental = m.clone();
+    if !incremental.sync_since_with(before, &mut counter()) {
+        return None;
+    }
+    let mut whole = m.clone();
+    whole.sync_library_with(&mut counter());
+    Some((incremental, whole))
 }

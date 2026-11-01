@@ -11,6 +11,7 @@ use bimcraft_i18n::ui_msg;
 
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
+use std::sync::Arc;
 
 use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize, Serializer};
@@ -227,13 +228,174 @@ pub fn keep_parts<T: HasPart>(old: &mut [T], new: &mut [T]) {
     }
 }
 
+/// The library's parts by id, in chunks of ids that copies of the model share (a project's sketch lines are parts, a
+/// hundred thousand of them in a big one), and their ids by GUID.
+#[derive(Clone, Debug, Default)]
+pub struct Parts {
+    chunks: BTreeMap<Id, Arc<BTreeMap<Id, Part>>>,
+    guids: BTreeMap<u16, Arc<HashMap<Guid, Id>>>,
+    /// The GUIDs more than one part holds (out of step, for the sync to put right), with all their parts.
+    shared: Arc<BTreeMap<Guid, std::collections::BTreeSet<Id>>>,
+    len: usize,
+}
+
+const PART_CHUNK: u32 = 10;
+
+fn guid_bucket(g: Guid) -> u16 {
+    (g.as_u128() >> 116) as u16
+}
+
+impl Parts {
+    pub fn get(&self, id: Id) -> Option<&Part> {
+        self.chunks.get(&(id >> PART_CHUNK))?.get(&id)
+    }
+
+    pub fn contains_key(&self, id: Id) -> bool {
+        self.get(id).is_some()
+    }
+
+    /// In order of id.
+    pub fn iter(&self) -> impl DoubleEndedIterator<Item = (Id, &Part)> {
+        self.chunks.values().flat_map(|c| c.iter().map(|(id, p)| (*id, p)))
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    pub fn first_id(&self) -> Option<Id> {
+        self.iter().next().map(|(id, _)| id)
+    }
+
+    pub fn last_id(&self) -> Option<Id> {
+        self.iter().next_back().map(|(id, _)| id)
+    }
+
+    /// The id of a part of GUID `g`.
+    pub fn by_guid(&self, g: Guid) -> Option<Id> {
+        self.guids.get(&guid_bucket(g))?.get(&g).copied()
+    }
+
+    pub fn insert(&mut self, id: Id, p: Part) {
+        let g = p.guid;
+        if let Some(old) = Arc::make_mut(self.chunks.entry(id >> PART_CHUNK).or_default()).insert(id, p) {
+            self.forget_guid(old.guid, id);
+        } else {
+            self.len += 1;
+        }
+        let index = Arc::make_mut(self.guids.entry(guid_bucket(g)).or_default());
+        match index.get(&g) {
+            Some(&other) if other != id => {
+                Arc::make_mut(&mut self.shared).entry(g).or_default().extend([other, id]);
+            }
+            _ => {
+                index.insert(g, id);
+            }
+        }
+    }
+
+    pub fn remove(&mut self, id: Id) -> Option<Part> {
+        let chunk = self.chunks.get_mut(&(id >> PART_CHUNK))?;
+        if !chunk.contains_key(&id) {
+            return None;
+        }
+        let p = Arc::make_mut(chunk).remove(&id)?;
+        if chunk.is_empty() {
+            self.chunks.remove(&(id >> PART_CHUNK));
+        }
+        self.len -= 1;
+        self.forget_guid(p.guid, id);
+        Some(p)
+    }
+
+    /// Whether more than one part holds GUID `g`.
+    pub fn is_shared(&self, g: Guid) -> bool {
+        self.shared.contains_key(&g)
+    }
+
+    /// The ids whose parts aren't the same in `other`: there in one and not the other, or not equal. Only the chunks the
+    /// two don't share are looked at.
+    pub fn differing(&self, other: &Parts) -> std::collections::BTreeSet<Id> {
+        let mut out = std::collections::BTreeSet::new();
+        let keys: std::collections::BTreeSet<&Id> = self.chunks.keys().chain(other.chunks.keys()).collect();
+        for k in keys {
+            match (self.chunks.get(k), other.chunks.get(k)) {
+                (Some(a), Some(b)) if Arc::ptr_eq(a, b) => {}
+                (a, b) => {
+                    let (a, b) = (a.map(|c| c.as_ref()), b.map(|c| c.as_ref()));
+                    for id in a.into_iter().flat_map(|c| c.keys()).chain(b.into_iter().flat_map(|c| c.keys())) {
+                        if a.and_then(|c| c.get(id)) != b.and_then(|c| c.get(id)) {
+                            out.insert(*id);
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// GUID `g` no longer part `id`'s; another part that holds it keeps it.
+    fn forget_guid(&mut self, g: Guid, id: Id) {
+        let mut next = None;
+        if self.shared.contains_key(&g) {
+            let shared = Arc::make_mut(&mut self.shared);
+            if let Some(set) = shared.get_mut(&g) {
+                set.remove(&id);
+                next = set.iter().next().copied();
+                if set.len() < 2 {
+                    shared.remove(&g);
+                }
+            }
+        }
+        let b = guid_bucket(g);
+        let Some(index) = self.guids.get_mut(&b) else { return };
+        if index.get(&g) != Some(&id) && next.is_none() {
+            return;
+        }
+        let index = Arc::make_mut(index);
+        match next {
+            Some(other) => {
+                index.insert(g, other);
+            }
+            None => {
+                index.remove(&g);
+            }
+        }
+        if index.is_empty() {
+            self.guids.remove(&b);
+        }
+    }
+}
+
+impl PartialEq for Parts {
+    fn eq(&self, other: &Parts) -> bool {
+        self.len == other.len
+            && self.chunks.len() == other.chunks.len()
+            && self.chunks.iter().zip(&other.chunks).all(|((k, a), (l, b))| k == l && (Arc::ptr_eq(a, b) || a == b))
+    }
+}
+
+impl FromIterator<(Id, Part)> for Parts {
+    fn from_iter<I: IntoIterator<Item = (Id, Part)>>(iter: I) -> Parts {
+        let mut parts = Parts::default();
+        for (id, p) in iter {
+            parts.insert(id, p);
+        }
+        parts
+    }
+}
+
 /// The library's ids and GUIDs, by id; in a file, an object of ids. Its parts' too, which they hold themselves.
 #[derive(Clone, Debug, Default)]
 pub struct Library {
     by_id: BTreeMap<Id, Entry>,
     by_name: BTreeMap<(Kind, String), Id>,
     by_guid: HashMap<Guid, Id>,
-    parts: BTreeMap<Id, Part>,
+    parts: Parts,
     /// The lowest id this library has held, entry or part, even if it has none now (0 before any): new ids count down from
     /// below it, so an id of something deleted isn't given again while the project is open. A file holds the ids in use,
     /// not this.
@@ -247,7 +409,7 @@ impl PartialEq for Library {
 }
 
 impl Library {
-    pub fn entries(&self) -> impl Iterator<Item = (Id, &Entry)> {
+    pub fn entries(&self) -> impl DoubleEndedIterator<Item = (Id, &Entry)> {
         self.by_id.iter().map(|(id, e)| (*id, e))
     }
 
@@ -257,20 +419,21 @@ impl Library {
 
     /// Whether an entry or a part has id `id`.
     pub fn taken(&self, id: Id) -> bool {
-        self.by_id.contains_key(&id) || self.parts.contains_key(&id)
+        self.by_id.contains_key(&id) || self.parts.contains_key(id)
     }
 
     pub fn part(&self, id: Id) -> Option<&Part> {
-        self.parts.get(&id)
+        self.parts.get(id)
     }
 
     pub fn parts(&self) -> impl Iterator<Item = (Id, &Part)> {
-        self.parts.iter().map(|(id, p)| (*id, p))
+        self.parts.iter()
     }
 
     /// The part of GUID `g`, and its id.
     pub fn part_by_guid(&self, g: Guid) -> Option<(Id, &Part)> {
-        self.parts.iter().find(|(_, p)| p.guid == g).map(|(id, p)| (*id, p))
+        let id = self.parts.by_guid(g)?;
+        Some((id, self.parts.get(id)?))
     }
 
     /// The id of `kind` `name`.
@@ -321,7 +484,7 @@ impl Library {
 
     /// The lowest id an entry or a part has, or has had.
     fn lowest_id(&self) -> Option<Id> {
-        let held = self.by_id.keys().next().into_iter().chain(self.parts.keys().next()).copied();
+        let held = self.by_id.keys().next().copied().into_iter().chain(self.parts.first_id());
         held.chain((self.lowest != 0).then_some(self.lowest)).min()
     }
 
@@ -591,33 +754,79 @@ impl Model {
 
     /// Whether the library's ids and GUIDs are those of what the library has: none missing, none left over; and each part
     /// has an id and a GUID of its own, which no other thing has.
-    /// [`Model::library_in_step`] of a model a command made of `before`, which was in step: when neither the settings nor
-    /// the library's parts changed, only what the command changed can put it out of step: an element whose sketch lines
-    /// aren't the parts they were, or a new element on an id or a GUID a part has. Else the whole of it is asked.
+    /// [`Model::library_in_step`] of a model a command made of `before`, which was in step: when the settings didn't change,
+    /// only what the command changed can put it out of step: an element whose sketch lines aren't the parts of their places
+    /// (where the parts changed, each part that did is a changed element's line, its own or one it no longer has), or a new
+    /// element on an id or a GUID a part has. Else the whole of it is asked.
     pub fn library_in_step_since(&self, before: &Model) -> bool {
         let crate::ids::Changed::Ids(changed) = self.changed_since(before) else { return self.library_in_step() };
-        if self.library.parts != before.library.parts {
-            return self.library_in_step();
-        }
+        // Where the parts changed (a sync of what the command changed), each that differs must be a changed element's
+        // sketch line, now its part or no longer one.
+        let parts_same = self.library.parts == before.library.parts;
+        let mut differing = if parts_same { Default::default() } else { self.library.parts.differing(&before.library.parts) };
+        let (mut held, mut had) = (std::collections::BTreeSet::new(), Vec::new());
         let sketch = |m: &Model, id: Id| -> Vec<(Id, Guid)> {
             m.elements.get(id).and_then(|e| e.sketch()).map_or_else(Vec::new, |lines| lines.iter().map(|l| (l.id, l.guid)).collect())
         };
         let mut new = Vec::new();
         for &id in &changed {
-            if sketch(self, id) != sketch(before, id) || self.elements.guid(id) != before.elements.guid(id) {
+            // An element that took another GUID; one made or taken away is asked of below, by its sketch and its GUID.
+            let (now, was) = (self.elements.guid(id), before.elements.guid(id));
+            if now.is_some() && was.is_some() && now != was {
                 return self.library_in_step();
             }
-            if let Some(g) = self.elements.guid(id) {
+            let (lines, before_lines) = (sketch(self, id), sketch(before, id));
+            if lines != before_lines {
+                // The library's parts as they were: the parts of its place aren't its lines.
+                if parts_same {
+                    return false;
+                }
+                let (Some(e), Some(g)) = (self.elements.get(id), now) else {
+                    had.extend(before_lines.iter().map(|(l, _)| *l));
+                    continue;
+                };
+                let owner = g.to_string();
+                let of = format!("{} {owner}", e.category());
+                for (index, (l, lg)) in lines.iter().enumerate() {
+                    let part = Part { what: "sketch line", of: of.clone(), owner: owner.clone(), index, guid: *lg };
+                    let own = !crate::ids::unset(l)
+                        && !lg.is_nil()
+                        && lg.pending().is_none()
+                        && self.library.part(*l) == Some(&part)
+                        && self.library.get(*l).is_none()
+                        && !self.elements.contains_key(*l)
+                        && self.library.by_guid(*lg).is_none()
+                        && !self.elements.contains_key(*lg)
+                        && self.library.parts.by_guid(*lg) == Some(*l)
+                        && !self.library.parts.is_shared(*lg);
+                    if !own {
+                        return false;
+                    }
+                    held.insert(*l);
+                    differing.remove(l);
+                }
+                had.extend(before_lines.iter().map(|(l, _)| *l));
+            }
+            if let Some(g) = now {
                 // A part's id taken by an element (an entry's is check_ids' to refuse, not out of step).
                 if self.library.part(id).is_some() {
                     return false;
                 }
-                if !before.elements.contains_key(id) {
+                if was.is_none() {
                     new.push(g);
                 }
             }
         }
-        new.is_empty() || !self.library.parts.values().any(|p| new.contains(&p.guid))
+        // What the changed elements held before and hold no more is no part now.
+        for l in had {
+            if !held.contains(&l) {
+                if self.library.part(l).is_some() {
+                    return false;
+                }
+                differing.remove(&l);
+            }
+        }
+        differing.is_empty() && (new.is_empty() || !new.iter().any(|g| self.library.parts.by_guid(*g).is_some()))
     }
 
     pub fn library_in_step(&self) -> bool {
@@ -787,6 +996,143 @@ impl Model {
         self.library.lowest = self.library.lowest_id().unwrap_or(0);
     }
 
+    /// [`Model::sync_library`] of a model a command made of `before`, which was in step, when the command changed elements
+    /// and nothing else: the sketch lines of the elements it changed given ids and GUIDs as the whole sync gives them (new
+    /// GUIDs as [`Model::sync_library_with`]'s `guid` makes them), and the parts of what it took away or redrew forgotten,
+    /// without a walk through every element. False, having changed nothing, where more than elements changed: then the
+    /// whole sync is the caller's to do.
+    pub(crate) fn sync_since_with(&mut self, before: &Model, guid: &mut dyn FnMut(&Model, Option<&Kind>, &str) -> Guid) -> bool {
+        let crate::ids::Changed::Ids(changed) = self.changed_since(before) else { return false };
+        if self.library.parts != before.library.parts {
+            return false;
+        }
+        if changed.iter().any(|&id| before.elements.contains_key(id) && self.elements.guid(id) != before.elements.guid(id)) {
+            return false;
+        }
+        // The parts the changed elements held, and the sketch lines they hold now, in the order `parts_now` walks them.
+        let old: Vec<Id> = changed
+            .iter()
+            .filter_map(|&id| before.elements.get(id)?.sketch())
+            .flat_map(|lines| lines.iter().map(|l| l.id))
+            .filter(|id| before.library.part(*id).is_some_and(|p| p.what == "sketch line"))
+            .collect();
+        struct Line {
+            element: Id,
+            id: Id,
+            guid: Guid,
+            part: Part,
+        }
+        let mut lines: Vec<Line> = Vec::new();
+        for &element in &changed {
+            let (Some(e), Some(g)) = (self.elements.get(element), self.elements.guid(element)) else { continue };
+            let Some(sketch) = e.sketch().filter(|l| !l.is_empty()) else { continue };
+            let owner = g.to_string();
+            let of = format!("{} {owner}", e.category());
+            lines.extend(sketch.iter().enumerate().map(|(index, l)| Line {
+                element,
+                id: l.id,
+                guid: l.guid,
+                part: Part { what: "sketch line", of: of.clone(), owner: owner.clone(), index, guid: l.guid },
+            }));
+        }
+        if let Some(lowest) = lines.iter().map(|l| l.id).filter(|id| !crate::ids::unset(id)).min() {
+            self.library.hold(lowest);
+        }
+        let prior = self.library.parts.clone();
+        // Below every entry's and every part's there has been (those taken away now among them).
+        let mut below = self.library.lowest_id().unwrap_or(LAST_ID + 1);
+        for id in &old {
+            self.library.parts.remove(*id);
+        }
+        let (mut claimed_ids, mut claimed_guids) = (std::collections::BTreeSet::new(), std::collections::HashSet::new());
+        let id_taken = |m: &Model, claimed: &std::collections::BTreeSet<Id>, id: Id| {
+            m.elements.contains_key(id) || m.library.get(id).is_some() || m.library.parts.contains_key(id) || claimed.contains(&id)
+        };
+        let guid_taken = |m: &Model, claimed: &std::collections::HashSet<Guid>, g: Guid| {
+            m.elements.contains_key(g) || m.library.by_guid(g).is_some() || m.library.parts.by_guid(g).is_some() || claimed.contains(&g)
+        };
+        let place = |p: &Part| (p.what, p.of.clone(), p.index);
+        // Who keeps what: first, each that held its id and GUID before at the same place; then the first of the rest.
+        let mut keep = vec![(false, false); lines.len()];
+        for (k, l) in lines.iter().enumerate() {
+            let held = prior.get(l.id).filter(|q| place(q) == place(&l.part));
+            if held.is_some() && !id_taken(self, &claimed_ids, l.id) {
+                claimed_ids.insert(l.id);
+                keep[k].0 = true;
+            }
+            if held.is_some_and(|q| q.guid == l.guid) && !guid_taken(self, &claimed_guids, l.guid) {
+                claimed_guids.insert(l.guid);
+                keep[k].1 = true;
+            }
+        }
+        for (k, l) in lines.iter().enumerate() {
+            if !keep[k].0 && !crate::ids::unset(&l.id) && !id_taken(self, &claimed_ids, l.id) {
+                claimed_ids.insert(l.id);
+                keep[k].0 = true;
+            }
+            if !keep[k].1 && !l.guid.is_nil() && l.guid.pending().is_none() && !guid_taken(self, &claimed_guids, l.guid) {
+                claimed_guids.insert(l.guid);
+                keep[k].1 = true;
+            }
+        }
+        // New ones: ids down from the library's lowest, GUIDs made in order.
+        let floor = self.elements.keys().next_back().map_or(crate::ids::FIRST_ID, |k| k + 1).max(self.next_id);
+        for (k, l) in lines.iter_mut().enumerate() {
+            if !keep[k].0 {
+                let mut next = below.saturating_sub(1);
+                while next >= floor && id_taken(self, &claimed_ids, next) {
+                    next -= 1;
+                }
+                if next < floor {
+                    let top = [
+                        self.elements.keys().next_back().copied(),
+                        self.library.entries().next_back().map(|(id, _)| id),
+                        self.library.parts.last_id(),
+                        claimed_ids.iter().next_back().copied(),
+                    ];
+                    next = top.into_iter().flatten().max().map_or(crate::ids::FIRST_ID, |k| k + 1).max(floor);
+                } else {
+                    below = next;
+                }
+                claimed_ids.insert(next);
+                l.id = next;
+            }
+            if !keep[k].1 {
+                let mut g = guid(self, None, &l.part.name());
+                while g.is_nil() || g.pending().is_some() || guid_taken(self, &claimed_guids, g) {
+                    g = Guid::new();
+                }
+                claimed_guids.insert(g);
+                l.guid = g;
+                l.part.guid = g;
+            }
+        }
+        // Each element's lines given theirs, and the library its parts.
+        let mut given = lines.iter().peekable();
+        for &element in &changed {
+            if given.peek().is_none_or(|l| l.element != element) {
+                continue;
+            }
+            if let Some(sketch) = self.elements.get_mut(element).and_then(|e| e.sketch_mut()) {
+                for line in sketch.iter_mut() {
+                    if let Some(l) = given.next_if(|l| l.element == element) {
+                        (line.id, line.guid) = (l.id, l.guid);
+                    }
+                }
+            }
+        }
+        for l in lines {
+            self.library.parts.insert(l.id, l.part);
+        }
+        self.library.lowest = self.library.lowest_id().unwrap_or(0);
+        true
+    }
+
+    /// [`Model::sync_since_with`], new GUIDs fresh.
+    pub(crate) fn sync_since(&mut self, before: &Model) -> bool {
+        self.sync_since_with(before, &mut |m: &Model, _: Option<&Kind>, _: &str| m.elements.fresh())
+    }
+
     /// What the library has that has no id and GUID gets them; what it has no more loses them. A rename that kept its
     /// entry ([`Library::renamed`]) keeps them. Each part with none, or another's, gets its own.
     pub fn sync_library(&mut self) {
@@ -852,7 +1198,7 @@ impl Model {
                 lines.iter_mut().for_each(|l| (l.id, l.guid) = (0, Guid::default()));
             }
         }
-        self.library.parts.clear();
+        self.library.parts = Parts::default();
     }
 
     /// The next id for the library, which counts down from [`LAST_ID`] while elements count up from
@@ -1187,6 +1533,35 @@ mod tests {
     use super::*;
     use crate::engine::Session;
     use crate::model::{Element, FIRST_ID};
+
+    #[test]
+    fn parts_are_kept_by_id_and_by_guid_and_a_copy_shares_what_it_didnt_change() {
+        let part = |i: usize, guid: Guid| Part { what: "sketch line", of: "floor x".into(), owner: "x".into(), index: i, guid };
+        let (a, b, c) = (Guid::new(), Guid::new(), Guid::new());
+        let mut parts: Parts = [(999_000, part(0, a)), (999_001, part(1, b)), (5_000, part(2, c))].into_iter().collect();
+        assert_eq!(parts.len(), 3);
+        assert_eq!(parts.iter().map(|(id, _)| id).collect::<Vec<_>>(), [5_000, 999_000, 999_001]);
+        assert_eq!((parts.first_id(), parts.last_id()), (Some(5_000), Some(999_001)));
+        assert_eq!((parts.by_guid(a), parts.by_guid(c)), (Some(999_000), Some(5_000)));
+        let copy = parts.clone();
+        assert_eq!(copy, parts);
+        // Two parts of one GUID (out of step): the other keeps it when one goes.
+        parts.insert(999_002, part(3, a));
+        assert_ne!(copy, parts);
+        assert_eq!(parts.remove(999_000).map(|p| p.index), Some(0));
+        assert_eq!(parts.by_guid(a), Some(999_002));
+        assert_eq!(parts.remove(999_002).map(|p| p.guid), Some(a));
+        assert_eq!(parts.by_guid(a), None);
+        assert_eq!(parts.remove(999_002), None);
+        // A part given again with another GUID.
+        parts.insert(5_000, part(2, b));
+        assert_eq!((parts.by_guid(c), parts.len()), (None, 2));
+        parts.remove(999_001);
+        assert_eq!(parts.by_guid(b), Some(5_000));
+        // What the copy didn't change, it shares; and it holds what it held.
+        assert_eq!(copy.len(), 3);
+        assert_eq!(copy.by_guid(a), Some(999_000));
+    }
 
     fn run(s: &mut Session, id: &str, p: Value) -> Value {
         s.execute(id, &p).unwrap_or_else(|e| panic!("{id} {p}: {e}"))
