@@ -350,3 +350,127 @@ fn a_layout_reads_back_as_written_and_a_hostile_one_reads_as_sense() {
     assert_eq!(d.docked(Palette::Properties), Some(Side::Left));
     assert_eq!(Docking::from_json(&json!([1, 2])), Docking::default());
 }
+
+/// A docked panel's rectangle, as egui holds it: `id` is what `docks()` names it.
+fn panel_rect(h: &Harness<BimApp>, id: impl std::hash::Hash + std::fmt::Debug) -> egui::Rect {
+    egui::PanelState::load(&h.ctx, egui::Id::new(id)).map(|s| s.outer_rect).unwrap()
+}
+
+/// A press at `from`, moved to `to`, let go: a hand on a panel's edge. A fixed few frames each, since a tooltip may keep asking for more.
+fn drag_edge(h: &mut Harness<BimApp>, from: Pos2, to: Pos2) {
+    h.hover_at(from);
+    h.run_steps(3);
+    h.event(Event::PointerButton { pos: from, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run_steps(3);
+    h.hover_at(to);
+    h.run_steps(3);
+    h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run_steps(3);
+}
+
+/// Drags the edge of the panel `id` that `edge` picks (a point of it, given the panel's rectangle and how far inside it to press) by `by`,
+/// feeling for the grab line as a hand does: the cards inside a panel leave a margin, so it lies a few points inside the rectangle.
+/// The panel's rectangle after.
+fn resize(
+    h: &mut Harness<BimApp>,
+    id: impl std::hash::Hash + std::fmt::Debug + Copy,
+    edge: impl Fn(egui::Rect, f32) -> Pos2,
+    by: egui::Vec2,
+) -> egui::Rect {
+    let before = panel_rect(h, id);
+    for inset in (0..=16).map(|n| n as f32) {
+        let from = edge(before, inset);
+        drag_edge(h, from, from + by);
+        let now = panel_rect(h, id);
+        if now != before {
+            return now;
+        }
+    }
+    panic!("no edge of {id:?} moved: {before:?}");
+}
+
+#[test]
+fn a_docked_sides_width_is_kept_in_the_settings_and_the_next_window() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("settings.json");
+    let mut h = app(BOX);
+    h.state_mut().use_settings(file.clone());
+    h.run();
+    assert_eq!(docking(&h).size(Side::Left), None, "none is kept until a hand sets one");
+    assert_eq!(*docking(&h), Docking::default(), "and the layout is the default as it began");
+    let before = panel_rect(&h, "dock-left");
+    let after = resize(&mut h, "dock-left", |r, inset| pos2(r.right() - inset, 600.0), vec2(60.0, 0.0));
+    assert!(after.width() > before.width() + 30.0, "{} -> {}", before.width(), after.width());
+    let kept = docking(&h).size(Side::Left).expect("the width the hand set");
+    assert!((kept - after.width()).abs() < 2.0, "{kept} for {}", after.width());
+    h.run();
+    let written: serde_json::Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    assert!((written["palettes"]["sizes"]["left"].as_f64().unwrap() as f32 - kept).abs() < 1.0, "{written}");
+
+    let mut again = app(BOX);
+    again.state_mut().use_settings(file);
+    // The real window has its settings before its first frame; this one drew a frame first, which egui remembers.
+    again.ctx.data_mut(|d| d.remove::<egui::PanelState>(egui::Id::new("dock-left")));
+    again.run();
+    again.run();
+    assert!((panel_rect(&again, "dock-left").width() - kept).abs() < 2.0, "the next start: {}", panel_rect(&again, "dock-left").width());
+    assert_eq!(docking(&again).size(Side::Left), Some(kept));
+    again.state_mut().reopened();
+    again.run();
+    assert_eq!(docking(&again).size(Side::Left), Some(kept), "File > New keeps it");
+}
+
+#[test]
+fn the_height_of_a_stack_above_another_and_of_the_bottom_are_kept() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("settings.json");
+    let mut h = app(BOX);
+    h.state_mut().use_settings(file.clone());
+    h.run();
+    // Properties over the Project Browser: the lower edge of the upper one.
+    let id = ("dock", Side::Left, Palette::Properties);
+    let before = panel_rect(&h, id);
+    let after = resize(&mut h, id, |r, inset| pos2(r.center().x, r.bottom() - inset), vec2(0.0, -70.0));
+    assert!(after.height() < before.height() - 30.0, "{} -> {}", before.height(), after.height());
+    let kept = docking(&h).stack_size(Palette::Properties).expect("the height the hand set");
+    assert!((kept - after.height()).abs() < 2.0, "{kept} for {}", after.height());
+
+    // Along the bottom: the upper edge.
+    h.state_mut().docking.put(Palette::Browser, Target::Side(Side::Bottom));
+    h.run();
+    h.run();
+    let before = panel_rect(&h, "dock-bottom");
+    let after = resize(&mut h, "dock-bottom", |r, inset| pos2(r.center().x, r.top() + inset), vec2(0.0, -60.0));
+    assert!(after.height() > before.height() + 30.0, "{} -> {}", before.height(), after.height());
+    let tall = docking(&h).size(Side::Bottom).expect("the bottom's height");
+    assert!((tall - after.height()).abs() < 2.0, "{tall} for {}", after.height());
+    h.run();
+    let written: serde_json::Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    assert!(written["palettes"]["sizes"]["stacks"]["Properties"].is_number(), "{written}");
+    assert!(written["palettes"]["sizes"]["bottom"].is_number(), "{written}");
+}
+
+#[test]
+fn a_file_with_hostile_sizes_leaves_the_default_ones_and_reset_clears_them() {
+    use serde_json::json;
+    for hostile in [json!("wide"), json!(-4), json!(0), json!(30), json!(1.0e9), json!(null), json!([290]), json!({}), json!(true)] {
+        let d = Docking::from_json(
+            &json!({"sizes": {"left": hostile, "right": hostile, "bottom": hostile, "stacks": {"Properties": hostile}}}),
+        );
+        assert_eq!(d.size(Side::Left), None, "{hostile}");
+        assert_eq!(d.size(Side::Right), None, "{hostile}");
+        assert_eq!(d.size(Side::Bottom), None, "{hostile}");
+        assert_eq!(d.stack_size(Palette::Properties), None, "{hostile}");
+    }
+    for hostile in [json!("sizes"), json!(5), json!(null), json!([1]), json!({"stacks": 5}), json!({"stacks": {"Nope": 200}})] {
+        let d = Docking::from_json(&json!({"sizes": hostile}));
+        assert_eq!(d.size(Side::Left), None, "{hostile}");
+        assert_eq!(d.stack_size(Palette::Properties), None, "{hostile}");
+    }
+    let ok = Docking::from_json(&json!({"sizes": {"left": 333, "bottom": 222, "stacks": {"Project Browser": 410}}}));
+    assert_eq!((ok.size(Side::Left), ok.size(Side::Bottom)), (Some(333.0), Some(222.0)));
+    assert_eq!(ok.stack_size(Palette::Browser), Some(410.0));
+    assert_eq!(ok.size(Side::Right), None, "what the file leaves out stays as it began");
+    assert_eq!(Docking::from_json(&ok.to_json()), ok, "and it reads back what it wrote");
+    assert_eq!(Docking::from_json(&json!({"left": [{"tabs": ["Properties"]}]})).size(Side::Left), None, "older files have none");
+}

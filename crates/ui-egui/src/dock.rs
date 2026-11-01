@@ -57,6 +57,14 @@ pub enum Side {
 impl Side {
     pub const ALL: [Side; 3] = [Side::Left, Side::Right, Side::Bottom];
 
+    fn index(self) -> usize {
+        match self {
+            Side::Left => 0,
+            Side::Right => 1,
+            Side::Bottom => 2,
+        }
+    }
+
     fn key(self) -> &'static str {
         match self {
             Side::Left => "left",
@@ -133,7 +141,28 @@ pub struct Docking {
     pub floats: Vec<Float>,
     /// The side each palette was last docked on, where showing it again puts it.
     home: BTreeMap<Palette, Side>,
+    /// What the user has made of the docked palettes' sizes.
+    sizes: Sizes,
 }
+
+/// The room the user has given the docked palettes, in whole points, as far as it was not as it began: a side's width (the bottom's
+/// height), and the height of a stack that has another below it, by the palette that heads it. None until a hand sets it, so a layout
+/// nobody resized is the default layout, and a window of another size starts the stacks as it always did.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Sizes {
+    sides: [Option<f32>; 3],
+    stacks: BTreeMap<Palette, f32>,
+}
+
+/// Which size a panel's is.
+#[derive(Clone, Copy)]
+enum Which {
+    Side(Side),
+    Stack(Palette),
+}
+
+/// What a size may be: a palette is never smaller than a few controls, nor larger than a wide screen.
+const SIZE: std::ops::RangeInclusive<f32> = 60.0..=2000.0;
 
 impl Default for Docking {
     /// Revit's: Properties over the Project Browser, down the left side.
@@ -144,11 +173,37 @@ impl Default for Docking {
             bottom: Vec::new(),
             floats: Vec::new(),
             home: BTreeMap::new(),
+            sizes: Sizes::default(),
         }
     }
 }
 
 impl Docking {
+    /// The width a hand gave `side`'s panel (its height, along the bottom), if it did.
+    pub fn size(&self, side: Side) -> Option<f32> {
+        self.sizes.sides[side.index()]
+    }
+
+    /// The height a hand gave the stack headed by `first`, over another, if it did.
+    pub fn stack_size(&self, first: Palette) -> Option<f32> {
+        self.sizes.stacks.get(&first).copied()
+    }
+
+    /// Notes `now`, how big a panel was drawn, where the size asked for was `asked`, when it is a hand that changed it: `hand` is the
+    /// pointer being down or let go this frame, since a window growing leaves a panel the size it first had and must not be kept.
+    fn measured(&mut self, hand: bool, which: Which, asked: f32, now: f32) {
+        let now = now.round();
+        if !hand || (now - asked).abs() <= 1.5 || !SIZE.contains(&now) {
+            return;
+        }
+        match which {
+            Which::Side(side) => self.sizes.sides[side.index()] = Some(now),
+            Which::Stack(first) => {
+                self.sizes.stacks.insert(first, now);
+            }
+        }
+    }
+
     pub fn side(&self, side: Side) -> &[Stack] {
         match side {
             Side::Left => &self.left,
@@ -309,6 +364,14 @@ impl Docking {
             })
             .collect();
         v["closed"] = Palette::ALL.into_iter().filter(|p| !self.shown(*p)).map(Palette::name).collect();
+        let mut sizes = json!({});
+        for side in Side::ALL {
+            if let Some(n) = self.size(side) {
+                sizes[side.key()] = json!(n);
+            }
+        }
+        sizes["stacks"] = self.sizes.stacks.iter().map(|(p, n)| (p.name().to_string(), json!(n))).collect::<serde_json::Map<_, _>>().into();
+        v["sizes"] = sizes;
         v["home"] = self.home.iter().map(|(p, s)| (p.name().to_string(), json!(s.key()))).collect::<serde_json::Map<_, _>>().into();
         v
     }
@@ -327,7 +390,14 @@ impl Docking {
             let active = v["active"].as_u64().and_then(|a| usize::try_from(a).ok()).filter(|a| *a < tabs.len()).unwrap_or(0);
             (!tabs.is_empty()).then_some(Stack { tabs, active })
         };
-        let mut d = Docking { left: Vec::new(), right: Vec::new(), bottom: Vec::new(), floats: Vec::new(), home: BTreeMap::new() };
+        let mut d = Docking {
+            left: Vec::new(),
+            right: Vec::new(),
+            bottom: Vec::new(),
+            floats: Vec::new(),
+            home: BTreeMap::new(),
+            sizes: Sizes::default(),
+        };
         for side in Side::ALL {
             let stacks: Vec<Stack> = v[side.key()].as_array().map(|a| a.iter().filter_map(&mut stack).collect()).unwrap_or_default();
             *d.side_mut(side) = stacks;
@@ -342,6 +412,16 @@ impl Docking {
             let (Some(at), Some(size)) = (pair(&f["at"], -FAR, FAR), pair(&f["size"], 120.0, 4000.0)) else { continue };
             if let Some(stack) = stack(f) {
                 d.floats.push(Float { stack, at: at.to_pos2(), size });
+            }
+        }
+        // A size is a finite number in range; anything else is as it began.
+        let size = |v: &Value| v.as_f64().map(|n| n as f32).filter(|n| SIZE.contains(n)).map(f32::round);
+        for side in Side::ALL {
+            d.sizes.sides[side.index()] = size(&v["sizes"][side.key()]);
+        }
+        for (name, n) in v["sizes"]["stacks"].as_object().into_iter().flatten() {
+            if let (Some(p), Some(n)) = (Palette::named(name), size(n)) {
+                d.sizes.stacks.insert(p, n);
             }
         }
         for (name, side) in v["home"].as_object().into_iter().flatten() {
@@ -396,12 +476,18 @@ impl BimApp {
             if self.docking.side(side).is_empty() {
                 continue;
             }
+            // As wide (or, along the bottom, as tall) as the hand made it, else as at first.
+            let asked = self.docking.size(side).unwrap_or(if side == Side::Bottom { 240.0 } else { 290.0 });
             let panel = match side {
-                Side::Left => Panel::left("dock-left").default_size(290.0),
-                Side::Right => Panel::right("dock-right").default_size(290.0),
-                Side::Bottom => Panel::bottom("dock-bottom").default_size(240.0),
+                Side::Left => Panel::left("dock-left").default_size(asked),
+                Side::Right => Panel::right("dock-right").default_size(asked),
+                Side::Bottom => Panel::bottom("dock-bottom").default_size(asked),
             };
-            panel.frame(frame).show_separator_line(false).resizable(true).min_size(140.0).show(ui, |ui| self.dock_side(ui, side));
+            let shown =
+                panel.frame(frame).show_separator_line(false).resizable(true).min_size(140.0).show(ui, |ui| self.dock_side(ui, side));
+            let r = shown.response.rect;
+            let hand = ui.input(|i| i.pointer.any_down() || i.pointer.any_released());
+            self.docking.measured(hand, Which::Side(side), asked, if side == Side::Bottom { r.height() } else { r.width() });
         }
     }
 
@@ -438,14 +524,24 @@ impl BimApp {
             // under a card that was taller: the others' least, 80 each, and the last's header, tabs and search.
             let gap = f32::from(crate::style::gap());
             let most = ui.available_height() - (n - i - 2) as f32 * (80.0 + gap) - LAST_MIN - gap;
+            // As big as the hand made it, else the share it starts with.
+            let first = stack.tabs[0];
+            let asked = self.docking.stack_size(first).unwrap_or(if side == Side::Bottom {
+                ui.available_width() * share
+            } else {
+                ui.available_height() * share
+            });
             let panel = match side {
-                Side::Bottom => Panel::left(id).default_size(ui.available_width() * share),
-                _ => Panel::top(id).default_size(ui.available_height() * share).max_size(most.max(80.0)),
+                Side::Bottom => Panel::left(id).default_size(asked),
+                _ => Panel::top(id).default_size(asked).max_size(most.max(80.0)),
             };
-            panel.frame(frame).show_separator_line(false).resizable(true).min_size(80.0).show(ui, |ui| {
+            let shown = panel.frame(frame).show_separator_line(false).resizable(true).min_size(80.0).show(ui, |ui| {
                 ui.set_min_size(ui.available_size());
                 self.stack_ui(ui, stack, false);
             });
+            let r = shown.response.rect;
+            let hand = ui.input(|i| i.pointer.any_down() || i.pointer.any_released());
+            self.docking.measured(hand, Which::Stack(first), asked, if side == Side::Bottom { r.width() } else { r.height() });
         }
     }
 
