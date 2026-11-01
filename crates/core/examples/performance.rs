@@ -34,6 +34,7 @@ fn run() -> Result<(), String> {
     let mut skip: Vec<String> = Vec::new();
     let mut room_sample = 200usize;
     let mut annotation = false;
+    let mut sheets = false;
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         let value = args.next().ok_or_else(|| format!("{arg} needs a value"))?;
@@ -48,6 +49,8 @@ fn run() -> Result<(), String> {
             "--rooms" => room_sample = value.parse().map_err(|e| format!("rooms: {e}"))?,
             // The tower with its plans detailed: about 2,000 2D elements a storey.
             "--annotation" => annotation = value.parse().map_err(|e| format!("annotation: {e}"))?,
+            // The tower's drawing set: four sheets a storey and the project's.
+            "--sheets" => sheets = value.parse().map_err(|e| format!("sheets: {e}"))?,
             "--repeat" => repeats = value.parse().map_err(|e| format!("repeat: {e}"))?,
             _ => return Err(format!("unknown argument {arg}")),
         }
@@ -69,8 +72,11 @@ fn run() -> Result<(), String> {
                 imported = Some(s.execute("open", &json!({"path": path}))?);
             } else {
                 let storeys = storeys.unwrap_or(if fixture == "tower" { 100 } else { 20 });
-                let params =
-                    if fixture == "tower" { json!({"storeys": storeys, "annotation": annotation}) } else { json!({"storeys": storeys}) };
+                let params = if fixture == "tower" {
+                    json!({"storeys": storeys, "annotation": annotation, "sheets": sheets})
+                } else {
+                    json!({"storeys": storeys})
+                };
                 s.execute(&fixture, &params)?;
             }
             Ok(())
@@ -166,6 +172,9 @@ fn run() -> Result<(), String> {
             report["ms"]["dimension_median"] = json!(made[made.len() / 2]);
             report["ms"]["dimension_undo_median"] = json!(undos[undos.len() / 2]);
         }
+        if sheets {
+            measure_sheets(&mut report, &mut s, repeats)?;
+        }
         let text = timed(&mut report, "native_serialize", || s.model.to_json())?;
         report["native_bytes"] = json!(text.len());
         if !skipped("reopen") {
@@ -217,6 +226,63 @@ fn run() -> Result<(), String> {
     }
     println!("{text}");
     result
+}
+
+/// The median of `repeats` runs of `f`, ms.
+fn median(repeats: usize, mut f: impl FnMut() -> Result<(), String>) -> Result<f64, String> {
+    let mut times = Vec::new();
+    for _ in 0..repeats {
+        let start = Instant::now();
+        f()?;
+        times.push(start.elapsed().as_secs_f64() * 1000.0);
+    }
+    times.sort_by(f64::total_cmp);
+    Ok(times[times.len() / 2])
+}
+
+/// The drawing set's work: drawing a storey's sheet and the project's, a new sheet with a view placed on it, a viewport
+/// moved and a note on a sheet edited, each undone.
+fn measure_sheets(report: &mut Value, s: &mut Session, repeats: usize) -> Result<(), String> {
+    let sheet = |s: &Session, number: &str| {
+        s.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Sheet(sh) if sh.number == number).then_some(*id))
+    };
+    report["sheets"] = json!(s.model.elements.values().filter(|e| matches!(e, Element::Sheet(_))).count());
+    for (name, number) in [("plan", "A1-001"), ("enlarged", "A3-001"), ("elevations", "A5-001"), ("schedule", "A7-002")] {
+        let Some(id) = sheet(s, number) else { continue };
+        let d = timed(report, &format!("sheet_{name}_draw"), || {
+            bimcraft_core::sheet::draw(&s.model, id).ok_or_else(|| format!("sheet {number} doesn't draw"))
+        })?;
+        report[format!("sheet_{name}_primitives")] = json!(d.prims.len());
+    }
+    let ms = median(repeats, || {
+        s.execute("sheet", &json!({"number": "X-001", "name": "Extra", "size": "A1"}))?;
+        s.execute("undo", &json!({}))?;
+        Ok(())
+    })?;
+    report["ms"]["sheet_new_and_undo_median"] = json!(ms);
+    // A new sheet and a view placed on it: the wall schedule, which comes to be as it's placed.
+    let ms = median(repeats, || {
+        s.execute("sheet", &json!({"number": "X-001", "name": "Extra", "size": "A1"}))?;
+        s.execute("place", &json!({"sheet": "X-001", "view": "Wall Schedule"}))?;
+        s.execute("undo", &json!({}))?;
+        s.execute("undo", &json!({}))?;
+        Ok(())
+    })?;
+    report["ms"]["sheet_place_and_undo_median"] = json!(ms);
+    let viewport = s.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Viewport(_)).then_some(*id));
+    let note = s.model.elements.iter().find_map(|(id, e)| {
+        matches!(e, Element::Text(n) if matches!(s.model.elements.get(n.view), Some(Element::Sheet(_)))).then_some(*id)
+    });
+    for (name, id) in [("viewport_move", viewport), ("sheet_note_move", note)] {
+        let Some(id) = id else { continue };
+        let ms = median(repeats, || {
+            s.execute("move", &json!({"ids": [id], "by": [10, 10]}))?;
+            s.execute("undo", &json!({}))?;
+            Ok(())
+        })?;
+        report["ms"][format!("{name}_and_undo_median")] = json!(ms);
+    }
+    Ok(())
 }
 
 /// The files, with `--output`: the project, its IFC (unless skipped), the plan and the 3D picture.

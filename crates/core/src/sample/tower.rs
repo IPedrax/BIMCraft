@@ -12,7 +12,7 @@
 //! pipes, air terminals, fan coils with their pipes and valves, smoke detectors, a cable tray and lights round the
 //! corridor, and the service rooms' water and drains.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Value, json};
 
@@ -58,16 +58,31 @@ pub fn tower(storeys: u32) -> Result<Model, String> {
 
 /// The tower's layout on another plate: smaller ones make fixtures that tests can afford.
 pub fn tower_on(plate: Plate, storeys: u32) -> Result<Model, String> {
-    build(plate, storeys, false)
+    build(plate, storeys, Drawings::default())
 }
 
 /// The tower with its plans annotated and detailed, as a set of drawings is: about two thousand 2D elements in each
 /// storey's plan (detail lines, text notes, filled regions, and dimensions on its walls), two hundred thousand in all.
 pub fn annotated(plate: Plate, storeys: u32) -> Result<Model, String> {
-    build(plate, storeys, true)
+    build(plate, storeys, Drawings { annotation: true, sheets: false })
 }
 
-fn build(plate: Plate, storeys: u32, annotation: bool) -> Result<Model, String> {
+/// What the tower's drawings hold beside its model.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Drawings {
+    /// Each storey's plan annotated and detailed ([`annotated`]).
+    pub annotation: bool,
+    /// A drawing set: each storey's floor plan, ceiling plan and its two halves enlarged on sheets of their own, with
+    /// general notes; and the project's sheets: the 3D view, the elevations, a section and the schedules.
+    pub sheets: bool,
+}
+
+/// The tower with the drawings `d` asks for.
+pub fn drawn(plate: Plate, storeys: u32, d: Drawings) -> Result<Model, String> {
+    build(plate, storeys, d)
+}
+
+fn build(plate: Plate, storeys: u32, drawings: Drawings) -> Result<Model, String> {
     if !(1..=MAX_STOREYS).contains(&storeys) {
         return Err(format!("tower: `storeys` must be between 1 and {MAX_STOREYS}"));
     }
@@ -84,8 +99,12 @@ fn build(plate: Plate, storeys: u32, annotation: bool) -> Result<Model, String> 
     services(&mut s, plate)?;
     run(&mut s, "tag", json!({}))?;
     run(&mut s, "tag", json!({"category": "room"}))?;
-    if annotation {
+    if drawings.annotation {
         annotate(&mut s, plate)?;
+    }
+    if drawings.sheets {
+        storey_sheets(&mut s, plate)?;
+        project_sheets(&mut s, plate)?;
     }
     stack(&s.model, storeys)
 }
@@ -536,6 +555,73 @@ fn annotate(s: &mut Session, plate: Plate) -> Result<(), String> {
     Ok(())
 }
 
+/// The first storey's sheets, numbered for it (`…-001`) and named for its level (`Level 1 …`): [`stack`] numbers and
+/// names each storey's copies for it. Each holds one view at 1 : 100, or its half at 1 : 50, and the general notes.
+fn storey_sheets(s: &mut Session, plate: Plate) -> Result<(), String> {
+    let (w, d) = (plate.width, plate.depth);
+    run(s, "duplicate_view", json!({"view": "Level 1", "name": "Level 1 - Ceiling Plan"}))?;
+    for (name, y0, y1) in [("Level 1 - North Half", d / 2 - 1000, d + 1000), ("Level 1 - South Half", -1000, d / 2 + 1000)] {
+        run(s, "duplicate_view", json!({"view": "Level 1", "mode": "dependent", "name": name}))?;
+        run(s, "crop", json!({"view": name, "region": [[-1000, y0], [w + 1000, y1]]}))?;
+    }
+    for (number, name, view, scale) in [
+        ("A1-001", "Level 1 - Floor Plan", "Level 1", 100),
+        ("A2-001", "Level 1 - Ceiling Plan", "Level 1 - Ceiling Plan", 100),
+        ("A3-001", "Level 1 - Enlarged North", "Level 1 - North Half", 50),
+        ("A4-001", "Level 1 - Enlarged South", "Level 1 - South Half", 50),
+    ] {
+        run(s, "sheet", json!({"number": number, "name": name, "size": "A0"}))?;
+        run(s, "place", json!({"sheet": number, "view": view, "scale": scale}))?;
+        notes(s, number)?;
+    }
+    Ok(())
+}
+
+/// The general notes down a sheet's right side.
+fn notes(s: &mut Session, sheet: &str) -> Result<(), String> {
+    const NOTES: [&str; 8] = [
+        "GENERAL NOTES",
+        "1. Dimensions are in millimetres.",
+        "2. Do not scale from this drawing.",
+        "3. Check dimensions on site.",
+        "4. Partitions are 100 mm unless noted.",
+        "5. Ceilings at 2700 mm unless noted.",
+        "6. Read with the services drawings.",
+        "7. Fire stopping at every penetration.",
+    ];
+    for (k, text) in (0i64..).zip(NOTES) {
+        run(s, "text", json!({"text": text, "at": [1080, 780 - 8 * k], "view": sheet}))?;
+    }
+    Ok(())
+}
+
+/// The sheets of the whole project, made once: the cover with the 3D view, the four elevations, a section through the
+/// middle, and the room, door and window schedules.
+fn project_sheets(s: &mut Session, plate: Plate) -> Result<(), String> {
+    let (w, d) = (plate.width, plate.depth);
+    for facing in ["north", "south", "east", "west"] {
+        let name = format!("{}{} Elevation", facing[..1].to_ascii_uppercase(), &facing[1..]);
+        run(s, "elevation", json!({"facing": facing, "name": name}))?;
+    }
+    run(s, "section", json!({"start": [-3000, d / 2 + 1500], "end": [w + 3000, d / 2 + 1500], "name": "Section A"}))?;
+    let sheets: [(&str, &str, &[&str], i64); 6] = [
+        ("A0-000", "Cover", &["{3D}"], 500),
+        ("A5-001", "Elevations", &["North Elevation", "South Elevation"], 500),
+        ("A5-002", "Elevations", &["East Elevation", "West Elevation"], 500),
+        ("A6-001", "Sections", &["Section A"], 500),
+        ("A7-001", "Room Schedule", &["Room Schedule"], 100),
+        ("A7-002", "Door and Window Schedules", &["Door Schedule", "Window Schedule"], 100),
+    ];
+    for (number, name, views, scale) in sheets {
+        run(s, "sheet", json!({"number": number, "name": name, "size": "A0"}))?;
+        for view in views {
+            run(s, "place", json!({"sheet": number, "view": view, "scale": scale}))?;
+        }
+        notes(s, number)?;
+    }
+    Ok(())
+}
+
 /// `storeys` storeys of `source`'s, which stand on its first level: fresh copies of its elements on each storey's
 /// level, with their references to each other pointed at each other, numbered by storey.
 fn stack(source: &Model, storeys: u32) -> Result<Model, String> {
@@ -545,10 +631,28 @@ fn stack(source: &Model, storeys: u32) -> Result<Model, String> {
     for floor in 0..=storeys {
         m.insert(Element::Level(Level::new(format!("Level {}", floor + 1), (i64::from(floor) * STOREY) as f64)));
     }
-    for e in source.elements.values().filter(|e| matches!(e, Element::View3D(_))) {
-        m.insert(e.clone());
-    }
     let levels: Vec<Guid> = m.levels().iter().map(|(id, _)| m.guid(*id)).collect();
+    // The project's own views and sheets, and what is placed or noted on them, made once, pointed at each other and at
+    // the first storey's levels.
+    let once = project_wide(source);
+    let mut map: BTreeMap<Guid, Guid> = source_levels.iter().copied().zip(levels.iter().copied()).collect();
+    let mut inserted = Vec::new();
+    for (&id, e) in &source.elements {
+        if once.contains(&source.guid(id)) {
+            let new = m.insert(e.clone());
+            map.insert(source.guid(id), m.guid(new));
+            inserted.push(new);
+        }
+    }
+    for id in inserted {
+        if let Some(e) = m.elements.get_mut(id) {
+            e.refs_mut(&mut |g| {
+                if let Some(new) = map.get(g) {
+                    *g = *new;
+                }
+            });
+        }
+    }
     for storey in 0..storeys as usize {
         let mut map: BTreeMap<Guid, Guid> = BTreeMap::new();
         for (k, level) in source_levels.iter().enumerate() {
@@ -558,7 +662,7 @@ fn stack(source: &Model, storeys: u32) -> Result<Model, String> {
         let mut inserted = Vec::new();
         let mut numbers: BTreeMap<&str, usize> = BTreeMap::new();
         for (&old, e) in &source.elements {
-            if matches!(e, Element::Level(_) | Element::View3D(_)) {
+            if matches!(e, Element::Level(_)) || once.contains(&source.guid(old)) {
                 continue;
             }
             let mut e = e.clone();
@@ -571,6 +675,13 @@ fn stack(source: &Model, storeys: u32) -> Result<Model, String> {
                 Element::Room(r) => r.number = number("room", &mut numbers),
                 Element::Door(o) => o.mark = number("door", &mut numbers),
                 Element::Window(o) => o.mark = number("window", &mut numbers),
+                // `A1-001`, `Level 1 - Floor Plan`: the storey's.
+                Element::Sheet(sh) => {
+                    let series = sh.number.trim_end_matches(char::is_numeric).to_string();
+                    sh.number = format!("{series}{:03}", storey + 1);
+                    sh.name = for_storey(&sh.name, storey);
+                }
+                Element::PlanView(v) => v.name = for_storey(&v.name, storey),
                 _ => {}
             }
             let id = m.insert(e);
@@ -589,6 +700,38 @@ fn stack(source: &Model, storeys: u32) -> Result<Model, String> {
     }
     m.sync_library();
     Ok(m)
+}
+
+/// The first storey's `name` (`Level 1 …`) for storey `storey` (from 0).
+fn for_storey(name: &str, storey: usize) -> String {
+    match name.strip_prefix("Level 1 ") {
+        Some(rest) => format!("Level {} {rest}", storey + 1),
+        None => name.to_string(),
+    }
+}
+
+/// The elements of `source` that are the project's, not its storey's: its sections, elevations, schedules and 3D views;
+/// the viewports that place them, the sheets those are on, and what else is on those sheets. By GUID.
+fn project_wide(source: &Model) -> BTreeSet<Guid> {
+    let views = |e: &Element| matches!(e, Element::Section(_) | Element::Elevation(_) | Element::Schedule(_) | Element::View3D(_));
+    let mut once: BTreeSet<Guid> = source.elements.iter().filter(|(_, e)| views(e)).map(|(id, _)| source.guid(*id)).collect();
+    let sheets: BTreeSet<Guid> = source
+        .elements
+        .values()
+        .filter_map(|e| match e {
+            Element::Viewport(v) if once.contains(&v.view) => Some(v.sheet),
+            _ => None,
+        })
+        .collect();
+    for (&id, e) in &source.elements {
+        let mut on = false;
+        let mut e = e.clone();
+        e.refs_mut(&mut |g| on |= sheets.contains(g));
+        if on || sheets.contains(&source.guid(id)) {
+            once.insert(source.guid(id));
+        }
+    }
+    once
 }
 
 #[cfg(test)]
@@ -703,6 +846,71 @@ mod tests {
                 assert_eq!(wall.level, d.level);
             }
         }
+    }
+
+    #[test]
+    fn a_drawn_tower_has_each_storeys_sheets_and_the_projects_once() {
+        let plain = tower_on(Plate::SMALL, 3).unwrap();
+        let m = drawn(Plate::SMALL, 3, Drawings { annotation: false, sheets: true }).unwrap();
+        m.check().unwrap();
+        let sheets: BTreeMap<&str, Id> = m
+            .elements
+            .iter()
+            .filter_map(|(id, e)| if let Element::Sheet(sh) = e { Some((sh.number.as_str(), *id)) } else { None })
+            .collect();
+        let mut numbers: Vec<&str> = sheets.keys().copied().collect();
+        numbers.sort_unstable();
+        let mut expected = vec!["A0-000", "A5-001", "A5-002", "A6-001", "A7-001", "A7-002"];
+        for series in 1..=4 {
+            for storey in 1..=3 {
+                expected.push(Box::leak(format!("A{series}-{storey:03}").into_boxed_str()));
+            }
+        }
+        expected.sort_unstable();
+        assert_eq!(numbers, expected);
+        // What's on a sheet: storey 2's floor plan is Level 2's, its halves Level 2's dependents; the project's once.
+        let on = |number: &str| -> Vec<String> {
+            let g = m.guid(sheets[number]);
+            m.elements
+                .values()
+                .filter_map(|e| match e {
+                    Element::Viewport(v) if v.sheet == g => m.view_name(v.view).map(str::to_string),
+                    _ => None,
+                })
+                .collect()
+        };
+        assert_eq!(on("A1-002"), ["Level 2"]);
+        assert_eq!(on("A2-003"), ["Level 3 - Ceiling Plan"]);
+        assert_eq!(on("A3-002"), ["Level 2 - North Half"]);
+        assert_eq!(on("A5-001"), ["North Elevation", "South Elevation"]);
+        assert_eq!(on("A7-002"), ["Door Schedule", "Window Schedule"]);
+        for e in m.elements.values() {
+            if let Element::PlanView(v) = e {
+                let level = m.levels().into_iter().find(|(id, _)| m.guid(*id) == v.level).unwrap().1.name.clone();
+                assert!(v.name.starts_with(&format!("{level} ")), "{} of {level}", v.name);
+            }
+        }
+        assert_eq!(m.elements.values().filter(|e| matches!(e, Element::Schedule(_))).count(), 3);
+        let notes = m.elements.values().filter(|e| matches!(e, Element::Text(n) if sheets.values().any(|s| m.guid(*s) == n.view))).count();
+        assert_eq!(notes, 8 * sheets.len());
+        // The same building under the drawings.
+        let drawing = |e: &Element| {
+            matches!(
+                e,
+                Element::Sheet(_)
+                    | Element::Viewport(_)
+                    | Element::Text(_)
+                    | Element::PlanView(_)
+                    | Element::Section(_)
+                    | Element::Elevation(_)
+                    | Element::Schedule(_)
+                    | Element::View3D(_)
+            )
+        };
+        assert_eq!(m.elements.values().filter(|e| !drawing(e)).count(), plain.elements.values().filter(|e| !drawing(e)).count());
+        // A storey's sheet draws its plan.
+        let d = crate::sheet::draw(&m, sheets["A1-003"]).unwrap();
+        assert!(d.prims.len() > 1000, "{} primitives", d.prims.len());
     }
 
     #[test]

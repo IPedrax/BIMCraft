@@ -63,11 +63,13 @@ pub static ALL: &[Command] = &[
     other(
         "tower",
         "Reference Tower",
-        "{storeys?: 100, plate?: reference|small, annotation?: false} replace the project with the original reference tower \
+        "{storeys?: 100, plate?: reference|small, annotation?: false, sheets?: false} replace the project with the original reference tower \
          of 1–100 storeys, about 10,000 elements and 195 rooms a storey: the baseline the core is measured on \
          (docs/spatial-core-plan.md); the `small` plate, 36 × 36 m, is the one compared with Revit (tools/revit-crosscheck). \
          With `annotation`, each storey's plan is detailed too: about 2,000 detail lines, text notes, filled regions and \
-         dimensions on its walls",
+         dimensions on its walls; with `sheets`, a drawing set: each storey's floor plan, ceiling plan and two enlarged \
+         halves on sheets of their own (A1-001 to A4-100), with general notes, and the project's 3D view, elevations, \
+         section and schedules (A0-000, A5- to A7-)",
         tower,
     ),
     other(
@@ -4447,7 +4449,7 @@ fn highrise(s: &mut Session, p: &Value) -> R {
 fn tower(s: &mut Session, p: &Value) -> R {
     let c = "tower";
     let params = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
-    if let Some(key) = params.keys().find(|k| !["storeys", "plate", "annotation"].contains(&k.as_str())) {
+    if let Some(key) = params.keys().find(|k| !["storeys", "plate", "annotation", "sheets"].contains(&k.as_str())) {
         return Err(bad(c, format!("unknown parameter `{key}`")));
     }
     let plate = match p.get("plate") {
@@ -4462,11 +4464,8 @@ fn tower(s: &mut Session, p: &Value) -> R {
         .ok()
         .filter(|n| (1..=max).contains(n))
         .ok_or_else(|| bad(c, format!("`storeys` must be between 1 and {max}")))?;
-    let model = if flag(c, p, "annotation")? {
-        crate::sample::tower::annotated(plate, storeys)?
-    } else {
-        crate::sample::tower::tower_on(plate, storeys)?
-    };
+    let drawings = crate::sample::tower::Drawings { annotation: flag(c, p, "annotation")?, sheets: flag(c, p, "sheets")? };
+    let model = crate::sample::tower::drawn(plate, storeys, drawings)?;
     let elements = model.elements.len();
     s.reset(model, None);
     Ok(json!({"storeys": storeys, "elements": elements}))
