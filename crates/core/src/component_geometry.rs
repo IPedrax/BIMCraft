@@ -13,11 +13,13 @@ pub(crate) struct Components<'a> {
     /// The heights of the model's components with no values of their own, over their base, by family, type and mirroring:
     /// most of a project's, found without a key made for each.
     plain: std::collections::HashMap<(&'a str, &'a str, bool), (f64, f64)>,
+    /// The points of each geometry's triangles that may be its farthest any way across or up ([`Components::extremes`]).
+    extremes: BTreeMap<Key, Vec<[f64; 3]>>,
 }
 
 impl<'a> Components<'a> {
     pub(crate) fn new(model: &'a Model) -> Self {
-        Self { model, local: BTreeMap::new(), plain: Default::default() }
+        Self { model, local: BTreeMap::new(), plain: Default::default(), extremes: BTreeMap::new() }
     }
 
     /// [`Components::heights`] of a component of the model's.
@@ -38,9 +40,44 @@ impl<'a> Components<'a> {
         (base + lo, base + hi)
     }
 
+    fn key(c: &Component) -> Key {
+        (c.family.clone(), c.type_name.clone(), c.mirrored, serde_json::to_string(&c.params).unwrap_or_default())
+    }
+
     fn local(&mut self, c: &Component) -> &[Piece] {
-        let key = (c.family.clone(), c.type_name.clone(), c.mirrored, serde_json::to_string(&c.params).unwrap_or_default());
-        self.local.entry(key).or_insert_with(|| self.model.component_local_pieces(c))
+        self.local.entry(Self::key(c)).or_insert_with(|| self.model.component_local_pieces(c))
+    }
+
+    /// The points of its pieces' triangles, where it is placed, that may be the farthest any way: across (along any line
+    /// in plan) or up. Those within a micron of the hull of all of them in plan, and the lowest and highest: the same
+    /// points [`Components::pieces`] places, by the same sums, so the farthest of them any way is the farthest of every
+    /// point of its pieces, to the last bit.
+    pub(crate) fn extremes(&mut self, c: &Component) -> Vec<[f64; 3]> {
+        let key = Self::key(c);
+        if !self.extremes.contains_key(&key) {
+            let points: Vec<[f64; 3]> = self.local(c).iter().flat_map(|pc| pc.tris.iter().flatten().copied()).collect();
+            let finite = |p: &[f64; 3]| p.iter().all(|v| v.is_finite());
+            let hull = crate::geom::hull(points.iter().filter(|p| finite(p)).map(|p| P2(p[0], p[1])).collect());
+            let near_hull = |q: P2| match hull.len() {
+                0 => true,
+                1 => hull.first().is_some_and(|h| h.dist(q) <= 1e-6),
+                n => (0..n).any(|i| crate::geom::dist_to_segment(q, hull[i], hull[(i + 1) % n]) <= 1e-6),
+            };
+            // The lowest and highest, of those that aren't NaN, as `f64::min` and `f64::max` leave NaN out.
+            let (low, high) =
+                points.iter().filter(|p| !p[2].is_nan()).fold((None, None), |(lo, hi): (Option<[f64; 3]>, Option<[f64; 3]>), p| {
+                    (Some(lo.filter(|l| l[2] <= p[2]).unwrap_or(*p)), Some(hi.filter(|h| h[2] >= p[2]).unwrap_or(*p)))
+                });
+            // And any point not of finite numbers: more points never change the farthest.
+            let mut kept: Vec<[f64; 3]> = points.iter().copied().filter(|p| !finite(p) || near_hull(P2(p[0], p[1]))).collect();
+            kept.extend(low);
+            kept.extend(high);
+            self.extremes.insert(key.clone(), kept);
+        }
+        let base = self.model.elevation(c.level) + c.offset;
+        let (sin, cos) = c.angle.to_radians().sin_cos();
+        let place = |p: [f64; 3]| [c.at.0 + p[0] * cos - p[1] * sin, c.at.1 + p[0] * sin + p[1] * cos, base + p[2]];
+        self.extremes.get(&key).map(|v| v.iter().map(|p| place(*p)).collect()).unwrap_or_default()
     }
 
     /// The box round its geometry where it is placed, lowest corner and highest: its family's box, turned and moved as its

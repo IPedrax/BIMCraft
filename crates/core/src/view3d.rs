@@ -495,6 +495,38 @@ pub(crate) fn solids(m: &Model) -> Vec<Solid> {
     solids_in(m, &elements, Some(&index))
 }
 
+/// [`solids`] but the components', and each component's [`crate::component_geometry::Components::extremes`]: the points
+/// of its triangles that may be farthest any way, where they are placed. What a section's frame and cut ask of the model,
+/// without the components' triangles (a section never cuts one).
+pub(crate) fn solids_and_extremes(m: &Model) -> (Vec<Solid>, Vec<(Id, Vec<P3>)>) {
+    let elements: Vec<_> = m.elements.iter().map(|(&id, e)| (id, e)).collect();
+    let index = walls::Index::new(m);
+    let part = |chunk: &[(Id, &Element)]| {
+        let mut components = crate::component_geometry::Components::new(m);
+        let (mut solids, mut placed) = (Vec::new(), Vec::new());
+        for &(id, e) in chunk {
+            match e {
+                Element::Component(c) => placed.push((id, components.extremes(c))),
+                _ => solids.extend(solids_in_with(m, &[(id, e)], Some(&index), &mut components)),
+            }
+        }
+        (solids, placed)
+    };
+    let parts = match (elements.len() >= 1000).then(render_pool).flatten() {
+        Some(pool) => {
+            use rayon::prelude::*;
+            pool.install(|| elements.par_chunks(256).map(part).collect::<Vec<_>>())
+        }
+        None => vec![part(&elements)],
+    };
+    let (mut solids, mut placed) = (Vec::new(), Vec::new());
+    for (s, p) in parts {
+        solids.extend(s);
+        placed.extend(p);
+    }
+    (solids, placed)
+}
+
 fn solids_in(m: &Model, elements: &[(Id, &Element)], index: Option<&walls::Index>) -> Vec<Solid> {
     solids_in_with(m, elements, index, &mut crate::component_geometry::Components::new(m))
 }

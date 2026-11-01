@@ -3129,21 +3129,20 @@ impl Model {
     /// What a level stretches over without an extent of its own: every solid and grid in plan,
     /// [`LEVEL_PAST`] past them (10 m each way of the origin in an empty project).
     pub fn model_extent(&self) -> [P2; 2] {
-        self.model_extent_of(&crate::view3d::solids(self))
+        self.model_extent_of(crate::view3d::solids(self).iter().flat_map(|s| s.corners()).map(|p| P2(p[0], p[1])))
     }
 
-    /// [`Model::model_extent`], of `solids`, which are [`crate::view3d::solids`] of this model.
-    pub(crate) fn model_extent_of(&self, solids: &[crate::view3d::Solid]) -> [P2; 2] {
+    /// [`Model::model_extent`], of `corners`, in plan: those of [`crate::view3d::solids`] of this model, or the points
+    /// that may be farthest among them.
+    pub(crate) fn model_extent_of(&self, corners: impl Iterator<Item = P2>) -> [P2; 2] {
         // The grids, scans and drawings, in the order of their ids, from the lookup.
         let lookup = self.lookup();
         let others: BTreeSet<Id> = lookup.grids().chain(lookup.rare("pointcloud")).chain(lookup.rare("cadimport")).collect();
-        let pts = solids.iter().flat_map(|s| s.corners()).map(|p| P2(p[0], p[1])).chain(others.into_iter().flat_map(|id| {
-            match self.elements.get(id) {
-                Some(Element::Grid(g)) => vec![g.start, g.end],
-                Some(Element::PointCloud(_)) => self.cloud_box(id).map_or(Vec::new(), |(lo, hi)| vec![P2(lo[0], lo[1]), P2(hi[0], hi[1])]),
-                Some(Element::CadImport(_)) => self.cad_box(id).map_or(Vec::new(), |b| b.to_vec()),
-                _ => Vec::new(),
-            }
+        let pts = corners.chain(others.into_iter().flat_map(|id| match self.elements.get(id) {
+            Some(Element::Grid(g)) => vec![g.start, g.end],
+            Some(Element::PointCloud(_)) => self.cloud_box(id).map_or(Vec::new(), |(lo, hi)| vec![P2(lo[0], lo[1]), P2(hi[0], hi[1])]),
+            Some(Element::CadImport(_)) => self.cad_box(id).map_or(Vec::new(), |b| b.to_vec()),
+            _ => Vec::new(),
         }));
         // Folded as they come, the first the start: no list of every corner of every mesh.
         let mut bounds: Option<(P2, P2)> = None;

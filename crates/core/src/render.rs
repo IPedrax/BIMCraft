@@ -1249,37 +1249,68 @@ fn section_walls<'a>(
     walls
 }
 
-/// What a section or an elevation asks of the whole model, found once a drawing: every solid (the view's look picks
-/// those it shows) and, when asked, the model's extent, of the same solids.
+/// What a section or an elevation asks of the whole model, found once a drawing: every solid but the components' (the view's
+/// look picks those it shows), the points of each component that may be farthest any way (a section never cuts one), and,
+/// when asked, the model's extent.
 pub(crate) struct SectionWork<'m> {
     m: &'m Model,
     solids: Vec<view3d::Solid>,
+    placed: Vec<(Id, Vec<[f64; 3]>)>,
     extent: std::cell::OnceCell<[P2; 2]>,
 }
 
 impl<'m> SectionWork<'m> {
     pub(crate) fn new(m: &'m Model) -> Self {
-        SectionWork { m, solids: view3d::solids(m), extent: std::cell::OnceCell::new() }
+        let (solids, placed) = view3d::solids_and_extremes(m);
+        SectionWork { m, solids, placed, extent: std::cell::OnceCell::new() }
     }
 
-    /// The solids `look` shows.
+    /// The solids `look` shows, but the components'.
     fn shown<'a>(&'a self, look: &'a Look) -> impl Iterator<Item = &'a view3d::Solid> + 'a {
         self.solids.iter().filter(|s| look.shows(s.owner()))
     }
 
+    /// The corners of the solids `look` shows, and the points that may be farthest of its components: the farthest of them
+    /// any way are those of every solid's corners.
+    fn corners<'a>(&'a self, look: &'a Look) -> impl Iterator<Item = [f64; 3]> + 'a {
+        let placed = self.placed.iter().filter(|(id, _)| look.shows(*id)).flat_map(|(_, p)| p.iter().copied());
+        self.shown(look).flat_map(|s| s.corners()).chain(placed)
+    }
+
+    /// The lowest and highest of each solid `look` shows, and of each of its components.
+    fn heights<'a>(&'a self, look: &'a Look) -> impl Iterator<Item = (f64, f64)> + 'a {
+        let placed = self
+            .placed
+            .iter()
+            .filter(|(id, _)| look.shows(*id))
+            .map(|(_, p)| p.iter().fold((f64::MAX, f64::MIN), |(lo, hi), q| (lo.min(q[2]), hi.max(q[2]))));
+        self.shown(look).map(|s| s.heights()).chain(placed)
+    }
+
     /// [`Model::model_extent`].
     fn extent(&self) -> [P2; 2] {
-        *self.extent.get_or_init(|| self.m.model_extent_of(&self.solids))
+        *self.extent.get_or_init(|| {
+            let placed = self.placed.iter().flat_map(|(_, p)| p.iter().map(|q| P2(q[0], q[1])));
+            let extent = self.m.model_extent_of(self.solids.iter().flat_map(|s| s.corners()).map(|p| P2(p[0], p[1])).chain(placed));
+            // Its twin, which tests hold it to: of every solid's corners.
+            #[cfg(test)]
+            assert_eq!(extent, self.m.model_extent(), "the model's extent from the components' farthest points");
+            extent
+        })
     }
 }
 
 fn heights(m: &Model, w: &SectionWork, look: &Look) -> (f64, f64) {
-    let zs = m.levels().into_iter().map(|(_, l)| l.elevation).chain(w.shown(look).flat_map(|s| {
-        let (a, b) = s.heights();
-        [a, b]
-    }));
-    let (lo, hi) = zs.fold((f64::MAX, f64::MIN), |(lo, hi), z| (lo.min(z), hi.max(z)));
-    if lo <= hi { (lo, hi) } else { (0.0, 3000.0) }
+    let of = |solids: &mut dyn Iterator<Item = (f64, f64)>| {
+        let zs = m.levels().into_iter().map(|(_, l)| l.elevation).chain(solids.flat_map(|(a, b)| [a, b]));
+        let (lo, hi) = zs.fold((f64::MAX, f64::MIN), |(lo, hi), z| (lo.min(z), hi.max(z)));
+        if lo <= hi { (lo, hi) } else { (0.0, 3000.0) }
+    };
+    let found = of(&mut w.heights(look));
+    // Its twin, which tests hold it to: of every solid the look shows.
+    #[cfg(test)]
+    assert_eq!(found, of(&mut view3d::solids(m).iter().filter(|s| look.shows(s.owner())).map(|s| s.heights())), "a view's heights");
+    found
 }
 
 /// The crop region of view `id` as it shows: a cropped plan's corners; a cropped section's or
@@ -1311,7 +1342,15 @@ fn span(m: &Model, w: &SectionWork, v: &Section, look: &Look) -> (f64, f64) {
     }
     let u = (v.end - v.start).unit();
     let along = |q: P2| (q - v.start).dot(u);
-    let solids = w.shown(look).flat_map(|s| s.corners()).map(|p| along(P2(p[0], p[1])));
+    let solids = w.corners(look).map(|p| along(P2(p[0], p[1])));
+    // Its twin, which tests hold it to: every corner of every solid the look shows, as far along the line.
+    #[cfg(test)]
+    {
+        let fold = |xs: &mut dyn Iterator<Item = f64>| xs.fold((f64::MAX, f64::MIN), |(lo, hi), x| (lo.min(x), hi.max(x)));
+        let every = view3d::solids(m);
+        let all = fold(&mut every.iter().filter(|s| look.shows(s.owner())).flat_map(|s| s.corners()).map(|p| along(P2(p[0], p[1]))));
+        assert_eq!(fold(&mut w.corners(look).map(|p| along(P2(p[0], p[1])))), all, "how far along its line a view's solids reach");
+    }
     let levels = level_spans(m, w, v, look).into_iter().flat_map(|(_, a, b)| [a, b]);
     let lookup = m.lookup();
     let grids = lookup.grids().filter(|id| look.shows(*id)).filter_map(|id| match m.elements.get(id) {
