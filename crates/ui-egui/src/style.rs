@@ -237,6 +237,14 @@ pub fn boxed_text(ui: &mut Ui, id: &str, colour: Color32, text: &str, height: f3
 }
 
 /// The lettering at a weight heavier than the body's: a title, a tab. The body's until the window has it.
+/// `text` laid out on one line, cut with "..." where it would pass `width`: what a palette paints in a place that may be narrow, with the
+/// whole of the text for a tooltip.
+pub fn cut(painter: &egui::Painter, text: &str, font: FontId, color: egui::Color32, width: f32) -> Arc<egui::Galley> {
+    let mut job = egui::text::LayoutJob::simple_singleline(text.to_string(), font, color);
+    job.wrap = egui::text::TextWrapping::truncate_at_width(width.max(1.0));
+    painter.layout_job(job)
+}
+
 pub fn semibold(size: f32) -> FontId {
     match SEMIBOLD_ON.with(Cell::get) {
         true => FontId::new(size, FontFamily::Name(SEMIBOLD.into())),

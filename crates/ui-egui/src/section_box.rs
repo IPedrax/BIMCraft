@@ -53,7 +53,7 @@ impl BimApp {
         let view = self.session.model.default_3d().unwrap_or_default();
         let mut set = None;
         egui::Frame::new().inner_margin(egui::Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
-            let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
+            let half = crate::properties::half_width(ui);
             Grid::new("section-box-properties").num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(ui, |ui| {
                 let name = t("Section Box");
                 let label = ui.label(name);

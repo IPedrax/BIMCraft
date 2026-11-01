@@ -364,7 +364,7 @@ impl BimApp {
         }
         let mut set = None::<Value>;
         Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
-            let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
+            let half = crate::properties::half_width(ui);
             Grid::new("phasing-properties").num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(ui, |ui| {
                 let label = ui.label(t("Phase Filter"));
                 let none = t("<None>").to_string();
@@ -380,13 +380,16 @@ impl BimApp {
                 let label = ui.label(t("Phase"));
                 let shown = g.phase.clone().or_else(|| model.phases.last().cloned()).unwrap_or_default();
                 ui.add_enabled_ui(!follows, |ui| {
-                    let c = ComboBox::from_id_salt((0, "phase")).selected_text(&shown).width(ui.available_width()).show_ui(ui, |ui| {
-                        for p in &model.phases {
-                            if ui.selectable_label(*p == shown, p).clicked() && g.phase.as_ref() != Some(p) {
-                                set = Some(json!({"view": view, "phase": p}));
+                    let c = ComboBox::from_id_salt((0, "phase")).selected_text(&shown).width(ui.available_width()).truncate().show_ui(
+                        ui,
+                        |ui| {
+                            for p in &model.phases {
+                                if ui.selectable_label(*p == shown, p).clicked() && g.phase.as_ref() != Some(p) {
+                                    set = Some(json!({"view": view, "phase": p}));
+                                }
                             }
-                        }
-                    });
+                        },
+                    );
                     c.response.labelled_by(label.id);
                 });
                 ui.end_row();
@@ -424,7 +427,7 @@ impl BimApp {
         }
         let mut change: Option<(&str, Value)> = None;
         Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
-            let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
+            let half = crate::properties::half_width(ui);
             Grid::new(("phasing-parameters", id)).num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(ui, |ui| {
                 let label = ui.label(t("Phase Created"));
                 // Written out even for the first phase: a door with none follows its wall.

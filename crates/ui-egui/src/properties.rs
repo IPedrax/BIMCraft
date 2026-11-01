@@ -542,17 +542,31 @@ fn parse(kind: Kind, s: &str, units: Units) -> Result<Value, String> {
     }
 }
 
+/// Below this a column is too narrow to hold a label's words beside its value, and the label goes over it.
+const STACKED_BELOW: f32 = 85.0;
+
+/// Half the palette's room, for each of the two columns of a parameters grid (a long label wraps rather than push its field past the
+/// palette's edge). A little short of the whole, for the scroll bar that comes when the palette grows tall: columns that fill the room
+/// exactly are wider than what the bar leaves, and widen the palette (or make it scroll sideways) each time.
+pub(crate) fn half_width(ui: &Ui) -> f32 {
+    ((ui.available_width() - ui.spacing().item_spacing.x - 14.0) / 2.0).max(40.0)
+}
+
 /// A drop-down of `options`, named by `label`; the one picked, if it changed.
 pub(crate) fn combo(ui: &mut Ui, salt: (Id, &str), label: UiId, current: &str, options: &[String]) -> Option<String> {
     let mut picked = None;
-    let c = ComboBox::from_id_salt(salt).selected_text(current).width(ui.available_width()).show_ui(ui, |ui| {
+    // Cut with "..." where the palette is narrower than the text, and the whole of it a tooltip.
+    let c = ComboBox::from_id_salt(salt).selected_text(current).width(ui.available_width()).truncate().show_ui(ui, |ui| {
         for o in options {
             if ui.selectable_label(o == current, o).clicked() && o != current {
                 picked = Some(o.clone());
             }
         }
     });
-    c.response.labelled_by(label);
+    let r = c.response.labelled_by(label);
+    if !current.is_empty() {
+        r.on_hover_text(current);
+    }
     picked
 }
 
@@ -1068,10 +1082,21 @@ impl BimApp {
             None => (family, current.clone()),
         };
         let first = if below.is_some() { rect.top() + 16.0 } else { rect.center().y };
-        p.text(egui::pos2(x, first), Align2::LEFT_CENTER, family, FontId::proportional(13.0), pal().text);
+        // Cut with "..." short of the arrow, and the whole of it a tooltip.
+        let room = (rect.right() - 24.0 - x).max(1.0);
+        let line = |p: &egui::Painter, text: &str, y: f32, font: FontId, ink: egui::Color32| {
+            let galley = crate::style::cut(p, text, font, ink, room);
+            p.galley(egui::pos2(x, y - galley.size().y / 2.0), galley, ink);
+        };
+        line(p, &family, first, FontId::proportional(13.0), pal().text);
         if let Some(t) = &below {
-            p.text(egui::pos2(x, rect.top() + 34.0), Align2::LEFT_CENTER, t, FontId::proportional(12.5), pal().muted);
+            line(p, t, rect.top() + 34.0, FontId::proportional(12.5), pal().muted);
         }
+        let whole = match &below {
+            Some(t) => format!("{family}\n{t}"),
+            None => family.clone(),
+        };
+        r.clone().on_hover_text(whole);
         if enabled {
             let c = egui::pos2(rect.right() - 14.0, rect.center().y);
             p.add(Shape::convex_polygon(vec![c + vec2(-4.0, -2.0), c + vec2(4.0, -2.0), c + vec2(0.0, 3.0)], pal().icon, Stroke::NONE));
@@ -1173,139 +1198,148 @@ impl BimApp {
             Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
                 // Half the palette each, as Revit's columns: a long label wraps rather than pushing
                 // its field past the palette's edge.
-                let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-                Grid::new(("properties", id, group)).num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(ui, |ui| {
-                    for &(_, key, label, kind) in rows.iter().filter(|r| r.0 == group) {
-                        let val = &v[key];
-                        // A length one element hasn't got (a straight wall's radius): no row.
-                        if ids.len() == 1 && matches!(kind, LengthShown | LengthIf) && val.is_null() {
-                            continue;
+                let half = half_width(ui);
+                // Too narrow for a label and its value side by side (a word would break): the label over its value.
+                let stacked = half < STACKED_BELOW;
+                let across = if stacked { 2.0 * half + ui.spacing().item_spacing.x } else { half };
+                Grid::new(("properties", id, group)).num_columns(2).striped(true).min_col_width(across).max_col_width(across).show(
+                    ui,
+                    |ui| {
+                        for &(_, key, label, kind) in rows.iter().filter(|r| r.0 == group) {
+                            let val = &v[key];
+                            // A length one element hasn't got (a straight wall's radius): no row.
+                            if ids.len() == 1 && matches!(kind, LengthShown | LengthIf) && val.is_null() {
+                                continue;
+                            }
+                            if ids.len() == 1 && !relevant(&first, key) {
+                                continue;
+                            }
+                            let kind = match kind {
+                                Height if !v["top_level"].is_null() => LengthShown,
+                                Point if paper => PaperPoint,
+                                kind => kind,
+                            };
+                            let label = t(label);
+                            let name = ui.label(label);
+                            if stacked {
+                                ui.end_row();
+                            }
+                            match kind {
+                                Shown => {
+                                    let said = text(val);
+                                    ui.label(RichText::new(t(&said)).color(pal().muted));
+                                }
+                                // An angle's degrees; else lengths.
+                                Values if v["kind"] == "angular" => {
+                                    ui.label(RichText::new(format!("{}°", text(val))).color(pal().muted));
+                                }
+                                LengthShown | AreaShown | MetresShown | Values => {
+                                    ui.label(RichText::new(shown(kind, val, units)).color(pal().muted));
+                                }
+                                LevelName => {
+                                    ui.label(RichText::new(level_name(val)).color(pal().muted));
+                                }
+                                ViewName => {
+                                    let name = id_of(val).and_then(|v| model.view_name(v)).unwrap_or_default();
+                                    ui.label(RichText::new(name).color(pal().muted));
+                                }
+                                Crop => {
+                                    let mut on = !val.is_null();
+                                    let r = ui.checkbox(&mut on, "");
+                                    r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, label));
+                                    if r.labelled_by(name.id).changed() {
+                                        crop = Some(on);
+                                    }
+                                }
+                                Flag => {
+                                    let mut on = val.as_bool().unwrap_or(false);
+                                    let r = ui.checkbox(&mut on, "");
+                                    // A checkbox without text names itself "" for screen readers: give it its row's name.
+                                    r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, label));
+                                    if r.labelled_by(name.id).changed() {
+                                        change = Some((key, Ok(json!(on))));
+                                    }
+                                }
+                                Level => {
+                                    if let Some(l) = combo(ui, (id, key), name.id, &level_name(val), &levels) {
+                                        change = Some((key, Ok(json!(l))));
+                                    }
+                                }
+                                TopLevel => {
+                                    let none = t("Unconnected");
+                                    let options: Vec<String> = std::iter::once(none.to_string()).chain(levels.iter().cloned()).collect();
+                                    let current = if val.is_null() { none.to_string() } else { level_name(val) };
+                                    if let Some(l) = combo(ui, (id, key), name.id, &current, &options) {
+                                        change = Some((key, Ok(if l == none { Value::Null } else { json!(l) })));
+                                    }
+                                }
+                                // Shown by its label; a centre line by default, which the wall's JSON leaves out.
+                                LocationLine => {
+                                    let now = val.as_str().and_then(Location::from_name).unwrap_or_default();
+                                    let options: Vec<String> = Location::ALL.iter().map(|l| t(l.label()).to_string()).collect();
+                                    if let Some(l) = combo(ui, (id, key), name.id, t(now.label()), &options)
+                                        && let Some(loc) = Location::ALL.iter().find(|loc| t(loc.label()) == l)
+                                    {
+                                        change = Some((key, Ok(json!(loc.name()))));
+                                    }
+                                }
+                                LineStyle => {
+                                    let options: Vec<String> = model.line_styles.keys().cloned().collect();
+                                    if let Some(s) = combo(ui, (id, key), name.id, val.as_str().unwrap_or_default(), &options) {
+                                        change = Some((key, Ok(json!(s))));
+                                    }
+                                }
+                                // Invisible lines first, then the styles; picked, none is null.
+                                RegionLines => {
+                                    let invisible = t("<Invisible lines>").to_string();
+                                    let options: Vec<String> =
+                                        std::iter::once(invisible.clone()).chain(model.line_styles.keys().cloned()).collect();
+                                    let now = val.as_str().map_or(invisible.clone(), str::to_string);
+                                    if let Some(s) = combo(ui, (id, key), name.id, &now, &options) {
+                                        change = Some((key, Ok(if s == invisible { Value::Null } else { json!(s) })));
+                                    }
+                                }
+                                Justification => {
+                                    let names = [("top", "Top"), ("centre", "Centre"), ("bottom", "Bottom")];
+                                    let now = names.iter().find(|(k, _)| val.as_str() == Some(k)).map_or("Centre", |(_, n)| n);
+                                    let options: Vec<String> = names.iter().map(|(_, n)| t(n).to_string()).collect();
+                                    if let Some(j) = combo(ui, (id, key), name.id, t(now), &options)
+                                        && let Some((k, _)) = names.iter().find(|(_, n)| t(n) == j)
+                                    {
+                                        change = Some((key, Ok(json!(k))));
+                                    }
+                                }
+                                Choice(names) => {
+                                    let now = names.iter().find(|(k, _)| val.as_str() == Some(k)).or(names.first()).map_or("", |(_, n)| n);
+                                    let options: Vec<String> = names.iter().map(|(_, n)| t(n).to_string()).collect();
+                                    if let Some(j) = combo(ui, (id, key), name.id, t(now), &options)
+                                        && let Some((k, _)) = names.iter().find(|(_, n)| t(n) == j)
+                                    {
+                                        change = Some((key, Ok(json!(k))));
+                                    }
+                                }
+                                // Revit's greyed checkbox: Attach Top/Base and Detach Top/Base change it.
+                                Attached => {
+                                    let mut on = !val.is_null();
+                                    let r = ui.add_enabled(false, Checkbox::new(&mut on, ""));
+                                    r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, false, on, label));
+                                    r.labelled_by(name.id);
+                                }
+                                Text | Number | Length | LengthIf | Point | PaperPoint | Outline | Height | Limit(_) => {
+                                    // Blank across a selection may be values that differ, not nothing.
+                                    let hint = match kind {
+                                        Limit(hint) if ids.len() == 1 => t(hint),
+                                        _ => "",
+                                    };
+                                    if let Some(typed) = self.field(ui, id, key, shown(kind, val, units), name.id, hint) {
+                                        change = Some((key, parse(kind, &typed, units)));
+                                    }
+                                }
+                            }
+                            ui.end_row();
                         }
-                        if ids.len() == 1 && !relevant(&first, key) {
-                            continue;
-                        }
-                        let kind = match kind {
-                            Height if !v["top_level"].is_null() => LengthShown,
-                            Point if paper => PaperPoint,
-                            kind => kind,
-                        };
-                        let label = t(label);
-                        let name = ui.label(label);
-                        match kind {
-                            Shown => {
-                                let said = text(val);
-                                ui.label(RichText::new(t(&said)).color(pal().muted));
-                            }
-                            // An angle's degrees; else lengths.
-                            Values if v["kind"] == "angular" => {
-                                ui.label(RichText::new(format!("{}°", text(val))).color(pal().muted));
-                            }
-                            LengthShown | AreaShown | MetresShown | Values => {
-                                ui.label(RichText::new(shown(kind, val, units)).color(pal().muted));
-                            }
-                            LevelName => {
-                                ui.label(RichText::new(level_name(val)).color(pal().muted));
-                            }
-                            ViewName => {
-                                let name = id_of(val).and_then(|v| model.view_name(v)).unwrap_or_default();
-                                ui.label(RichText::new(name).color(pal().muted));
-                            }
-                            Crop => {
-                                let mut on = !val.is_null();
-                                let r = ui.checkbox(&mut on, "");
-                                r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, label));
-                                if r.labelled_by(name.id).changed() {
-                                    crop = Some(on);
-                                }
-                            }
-                            Flag => {
-                                let mut on = val.as_bool().unwrap_or(false);
-                                let r = ui.checkbox(&mut on, "");
-                                // A checkbox without text names itself "" for screen readers: give it its row's name.
-                                r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, label));
-                                if r.labelled_by(name.id).changed() {
-                                    change = Some((key, Ok(json!(on))));
-                                }
-                            }
-                            Level => {
-                                if let Some(l) = combo(ui, (id, key), name.id, &level_name(val), &levels) {
-                                    change = Some((key, Ok(json!(l))));
-                                }
-                            }
-                            TopLevel => {
-                                let none = t("Unconnected");
-                                let options: Vec<String> = std::iter::once(none.to_string()).chain(levels.iter().cloned()).collect();
-                                let current = if val.is_null() { none.to_string() } else { level_name(val) };
-                                if let Some(l) = combo(ui, (id, key), name.id, &current, &options) {
-                                    change = Some((key, Ok(if l == none { Value::Null } else { json!(l) })));
-                                }
-                            }
-                            // Shown by its label; a centre line by default, which the wall's JSON leaves out.
-                            LocationLine => {
-                                let now = val.as_str().and_then(Location::from_name).unwrap_or_default();
-                                let options: Vec<String> = Location::ALL.iter().map(|l| t(l.label()).to_string()).collect();
-                                if let Some(l) = combo(ui, (id, key), name.id, t(now.label()), &options)
-                                    && let Some(loc) = Location::ALL.iter().find(|loc| t(loc.label()) == l)
-                                {
-                                    change = Some((key, Ok(json!(loc.name()))));
-                                }
-                            }
-                            LineStyle => {
-                                let options: Vec<String> = model.line_styles.keys().cloned().collect();
-                                if let Some(s) = combo(ui, (id, key), name.id, val.as_str().unwrap_or_default(), &options) {
-                                    change = Some((key, Ok(json!(s))));
-                                }
-                            }
-                            // Invisible lines first, then the styles; picked, none is null.
-                            RegionLines => {
-                                let invisible = t("<Invisible lines>").to_string();
-                                let options: Vec<String> =
-                                    std::iter::once(invisible.clone()).chain(model.line_styles.keys().cloned()).collect();
-                                let now = val.as_str().map_or(invisible.clone(), str::to_string);
-                                if let Some(s) = combo(ui, (id, key), name.id, &now, &options) {
-                                    change = Some((key, Ok(if s == invisible { Value::Null } else { json!(s) })));
-                                }
-                            }
-                            Justification => {
-                                let names = [("top", "Top"), ("centre", "Centre"), ("bottom", "Bottom")];
-                                let now = names.iter().find(|(k, _)| val.as_str() == Some(k)).map_or("Centre", |(_, n)| n);
-                                let options: Vec<String> = names.iter().map(|(_, n)| t(n).to_string()).collect();
-                                if let Some(j) = combo(ui, (id, key), name.id, t(now), &options)
-                                    && let Some((k, _)) = names.iter().find(|(_, n)| t(n) == j)
-                                {
-                                    change = Some((key, Ok(json!(k))));
-                                }
-                            }
-                            Choice(names) => {
-                                let now = names.iter().find(|(k, _)| val.as_str() == Some(k)).or(names.first()).map_or("", |(_, n)| n);
-                                let options: Vec<String> = names.iter().map(|(_, n)| t(n).to_string()).collect();
-                                if let Some(j) = combo(ui, (id, key), name.id, t(now), &options)
-                                    && let Some((k, _)) = names.iter().find(|(_, n)| t(n) == j)
-                                {
-                                    change = Some((key, Ok(json!(k))));
-                                }
-                            }
-                            // Revit's greyed checkbox: Attach Top/Base and Detach Top/Base change it.
-                            Attached => {
-                                let mut on = !val.is_null();
-                                let r = ui.add_enabled(false, Checkbox::new(&mut on, ""));
-                                r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, false, on, label));
-                                r.labelled_by(name.id);
-                            }
-                            Text | Number | Length | LengthIf | Point | PaperPoint | Outline | Height | Limit(_) => {
-                                // Blank across a selection may be values that differ, not nothing.
-                                let hint = match kind {
-                                    Limit(hint) if ids.len() == 1 => t(hint),
-                                    _ => "",
-                                };
-                                if let Some(typed) = self.field(ui, id, key, shown(kind, val, units), name.id, hint) {
-                                    change = Some((key, parse(kind, &typed, units)));
-                                }
-                            }
-                        }
-                        ui.end_row();
-                    }
-                });
+                    },
+                );
             });
         }
         if ids.len() == 1 && v["enclosed"] == json!(false) {
@@ -1458,7 +1492,7 @@ impl BimApp {
         let units = model.units;
         let mut change: Option<(String, Result<Value, String>)> = None;
         Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
-            let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
+            let half = half_width(ui);
             Grid::new(("project-parameters", id)).num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(ui, |ui| {
                 for (name, kind) in &params {
                     let val = value(name);
@@ -1510,7 +1544,7 @@ impl BimApp {
                 continue;
             }
             Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
-                let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
+                let half = half_width(ui);
                 Grid::new(("schedule-properties", group)).num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(
                     ui,
                     |ui| {

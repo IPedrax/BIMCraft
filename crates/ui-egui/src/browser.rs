@@ -189,21 +189,24 @@ impl BimApp {
             self.browser_search(ui);
         });
         ui.separator();
-        let scroll = egui::ScrollArea::vertical().auto_shrink([false, false]).min_scrolled_height(0.0);
+        let scroll = crate::dock::narrow_scroll(ui);
         scroll.id_salt("browser").show(ui, |ui| egui::Frame::new().inner_margin(8.0).show(ui, |ui| self.browser(ui)));
     }
 
     /// One tab a kind, its icon, and the one in force named too, so they fit a narrow palette.
     fn browser_tabs(&mut self, ui: &mut Ui) {
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 2.0;
+        // Wrapped, so a narrow palette has them on two rows rather than stay as wide as they are; the open one's name goes (it is the
+        // tooltip) where there is no room for it.
+        let roomy = ui.available_width() >= 230.0;
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
             for tab in Tab::ALL {
                 let on = self.browser_tab == tab;
                 let name = t(tab.name());
                 // Named apart from the ribbon's Schedules and the tree's Families, for screen readers and tests.
                 let what = tf("List {}", &[name]);
                 let font = TextStyle::Small.resolve(ui.style()).clone();
-                let text = on.then(|| ui.painter().layout_no_wrap(name.to_string(), font, pal().text));
+                let text = (on && roomy).then(|| ui.painter().layout_no_wrap(name.to_string(), font, pal().text));
                 let width = 26.0 + text.as_ref().map_or(0.0, |g| g.size().x + 6.0);
                 let sense = if tab.ready() { Sense::click() } else { Sense::hover() };
                 let (rect, r) = ui.allocate_exact_size(vec2(width, 24.0), sense);

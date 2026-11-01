@@ -474,3 +474,66 @@ fn a_file_with_hostile_sizes_leaves_the_default_ones_and_reset_clears_them() {
     assert_eq!(Docking::from_json(&ok.to_json()), ok, "and it reads back what it wrote");
     assert_eq!(Docking::from_json(&json!({"left": [{"tabs": ["Properties"]}]})).size(Side::Left), None, "older files have none");
 }
+
+/// A wall of a long type name, and a level of a long name: what makes a palette's content wide.
+fn long_names() -> String {
+    let long = "Exterior wall with brick, cavity and insulation 350mm";
+    format!(
+        "type {{\"category\": \"wall\", \"name\": \"{long}\", \"thickness\": 350}}\nwall {{\"points\": [[0,0],[8000,0],[8000,6000],[0,6000]], \"closed\": true, \"type\": \"{long}\"}}\nlevel {{\"elevation\": 6000, \"name\": \"Mezzanine of the east wing, with a very long name\"}}"
+    )
+}
+
+/// The widgets of the window that lie across the right edge of `panel` (not its scroll bars, which are the panel's own).
+fn across_the_edge(h: &Harness<BimApp>, panel: egui::Rect) -> Vec<String> {
+    let mut over = Vec::new();
+    for n in h.root().children_recursive() {
+        let Some(r) = n.accesskit_node().raw_bounds() else { continue };
+        let (x0, x1, y0) = (r.x0 as f32, r.x1 as f32, r.y0 as f32);
+        let label = n.accesskit_node().label().unwrap_or_default();
+        if x0 < panel.right() && x1 > panel.right() + 1.0 && y0 > panel.top() && y0 < panel.bottom() && !label.is_empty() {
+            over.push(format!("{:?} {label:?} to {x1:.0}, the edge at {:.0}", n.accesskit_node().role(), panel.right()));
+        }
+    }
+    over
+}
+
+#[test]
+fn a_docked_palette_narrow_holds_its_content_and_never_widens_its_side() {
+    for (palette, closed) in [("Properties", "Project Browser"), ("Project Browser", "Properties")] {
+        for width in [100.0, 130.0, 160.0, 200.0, 290.0] {
+            let mut h = app_at(&long_names(), 0.25);
+            h.state_mut().docking =
+                Docking::from_json(&serde_json::json!({"left": [{"tabs": [palette]}], "closed": [closed], "sizes": {"left": width}}));
+            // The window the settings were made for has them before its first frame.
+            h.ctx.data_mut(|d| d.remove::<egui::PanelState>(egui::Id::new("dock-left")));
+            h.run_steps(4);
+            click(&mut h, P2(4000.0, 0.0));
+            h.run_steps(4);
+            let panel = panel_rect(&h, "dock-left");
+            assert!((panel.width() - width).abs() < 2.0, "{palette} asked {width}: the content made it {}", panel.width());
+            if width >= 160.0 {
+                let over = across_the_edge(&h, panel);
+                assert!(over.is_empty(), "{palette} at {width}: {over:#?}");
+            }
+            // Whatever the width, a palette's own buttons are in reach.
+            let close = h.get_by_label(&format!("Close {palette}")).rect();
+            assert!(close.right() <= panel.right() + 1.0 && close.left() >= panel.left(), "{palette} at {width}: Close at {close:?}");
+        }
+    }
+}
+
+#[test]
+fn a_floating_palette_narrow_holds_its_content_too() {
+    for palette in [Palette::Properties, Palette::Browser] {
+        let mut h = app_at(&long_names(), 0.25);
+        h.state_mut().docking.put(palette, Target::Float(pos2(400.0, 200.0)));
+        h.state_mut().docking.floats[0].size = vec2(150.0, 420.0);
+        h.run_steps(4);
+        click(&mut h, P2(4000.0, 0.0));
+        h.run_steps(4);
+        let window = egui::AreaState::load(&h.ctx, egui::Id::new(("palette-window", palette))).map(|a| a.rect()).unwrap();
+        assert!((window.width() - 150.0).abs() < 3.0, "{palette:?} asked 150: the content made it {}", window.width());
+        let over = across_the_edge(&h, window);
+        assert!(over.is_empty(), "{palette:?}: {over:#?}");
+    }
+}

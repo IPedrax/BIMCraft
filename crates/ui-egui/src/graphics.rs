@@ -604,7 +604,7 @@ impl BimApp {
             _ => None,
         };
         egui::Frame::new().inner_margin(egui::Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
-            let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
+            let half = crate::properties::half_width(ui);
             Grid::new("graphics-properties").num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(ui, |ui| {
                 let controlled = |g: Group| own.controlled_by(&model, g).map(controlled_note);
                 if let Some(id) = own_id {

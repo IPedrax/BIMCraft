@@ -161,6 +161,19 @@ enum Which {
     Stack(Palette),
 }
 
+/// The least a docked side may be, in points: the palettes' content wraps, is cut with "..." or scrolls below what it needs.
+const DOCK_MIN: f32 = 100.0;
+
+/// The scroll area of a palette's body. Where the palette is narrow (a card less than `NARROW` wide inside), what is wider than it scrolls
+/// sideways and never makes the palette wider; at ordinary widths it scrolls down only, as it always did.
+pub(crate) fn narrow_scroll(ui: &Ui) -> egui::ScrollArea {
+    let area = if ui.available_width() < NARROW { egui::ScrollArea::both() } else { egui::ScrollArea::vertical() };
+    area.auto_shrink([false, false]).min_scrolled_height(0.0)
+}
+
+/// How narrow a palette's body is before it may scroll sideways: a bit less than the 290 a side starts at, less its card's margins.
+const NARROW: f32 = 250.0;
+
 /// What a size may be: a palette is never smaller than a few controls, nor larger than a wide screen.
 const SIZE: std::ops::RangeInclusive<f32> = 60.0..=2000.0;
 
@@ -484,7 +497,7 @@ impl BimApp {
                 Side::Bottom => Panel::bottom("dock-bottom").default_size(asked),
             };
             let shown =
-                panel.frame(frame).show_separator_line(false).resizable(true).min_size(140.0).show(ui, |ui| self.dock_side(ui, side));
+                panel.frame(frame).show_separator_line(false).resizable(true).min_size(DOCK_MIN).show(ui, |ui| self.dock_side(ui, side));
             let r = shown.response.rect;
             let hand = ui.input(|i| i.pointer.any_down() || i.pointer.any_released());
             self.docking.measured(hand, Which::Side(side), asked, if side == Side::Bottom { r.height() } else { r.width() });
@@ -556,7 +569,7 @@ impl BimApp {
                 .resizable(true)
                 .current_pos(f.at)
                 .default_size(f.size)
-                .min_size(vec2(180.0, 120.0))
+                .min_size(vec2(120.0, 100.0))
                 .frame(frame)
                 .show(ctx, |ui| {
                     ui.set_min_size(ui.available_size());
@@ -584,7 +597,14 @@ impl BimApp {
             let title = self.palette_title(shown);
             back.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, &title));
             let at = rect.left_center() + vec2(12.0, 0.0);
-            ui.painter().text(at, Align2::LEFT_CENTER, title, crate::style::semibold(13.0), pal().text);
+            // Cut with "..." short of the Dock and Close buttons (and the whole of it a tooltip, where it was).
+            let room = (rect.width() - 12.0 - 64.0).max(8.0);
+            let whole = ui.painter().layout_no_wrap(title.clone(), crate::style::semibold(13.0), pal().text).size().x;
+            let galley = crate::style::cut(ui.painter(), &title, crate::style::semibold(13.0), pal().text, room);
+            ui.painter().galley(at - vec2(0.0, galley.size().y / 2.0), galley, pal().text);
+            if whole > room {
+                back.clone().on_hover_text(&title);
+            }
         }
         if back.drag_started() {
             self.dragging = Some(if floating { Drag::Window(shown) } else { Drag::Palette(shown) });
@@ -654,7 +674,8 @@ impl BimApp {
 
     /// What a palette shows, under its title: as wide as where it's docked, its scroll bar at the edge.
     pub(crate) fn palette_body(&mut self, ui: &mut Ui, p: Palette) {
-        let scroll = egui::ScrollArea::vertical().auto_shrink([false, false]).min_scrolled_height(0.0);
+        // Both ways: what is wider than the palette scrolls sideways, and never makes the palette wider.
+        let scroll = narrow_scroll(ui);
         match p {
             Palette::Properties => {
                 scroll.id_salt("properties").show(ui, |ui| Frame::new().inner_margin(8.0).show(ui, |ui| self.properties(ui)));

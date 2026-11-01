@@ -33,7 +33,7 @@ impl BimApp {
         let eye = self.orbit.camera.and_then(|c| c.eye_elevation());
         let (mut set, mut raise) = (None, None);
         egui::Frame::new().inner_margin(egui::Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
-            let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
+            let half = crate::properties::half_width(ui);
             Grid::new("camera-properties").num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(ui, |ui| {
                 let label = ui.label(t("Projection")).on_hover_text(t(TIP));
                 let options: Vec<String> = PROJECTIONS.iter().map(|p| t(p).to_string()).collect();
