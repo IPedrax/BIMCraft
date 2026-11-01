@@ -63,9 +63,11 @@ pub static ALL: &[Command] = &[
     other(
         "tower",
         "Reference Tower",
-        "{storeys?: 100, plate?: reference|small} replace the project with the original reference tower of 1–100 storeys, \
-         about 10,000 elements and 195 rooms a storey: the baseline the core is measured on (docs/spatial-core-plan.md); \
-         the `small` plate, 36 × 36 m, is the one compared with Revit (tools/revit-crosscheck)",
+        "{storeys?: 100, plate?: reference|small, annotation?: false} replace the project with the original reference tower \
+         of 1–100 storeys, about 10,000 elements and 195 rooms a storey: the baseline the core is measured on \
+         (docs/spatial-core-plan.md); the `small` plate, 36 × 36 m, is the one compared with Revit (tools/revit-crosscheck). \
+         With `annotation`, each storey's plan is detailed too: about 2,000 detail lines, text notes, filled regions and \
+         dimensions on its walls",
         tower,
     ),
     other(
@@ -4356,7 +4358,7 @@ fn highrise(s: &mut Session, p: &Value) -> R {
 fn tower(s: &mut Session, p: &Value) -> R {
     let c = "tower";
     let params = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
-    if let Some(key) = params.keys().find(|k| !["storeys", "plate"].contains(&k.as_str())) {
+    if let Some(key) = params.keys().find(|k| !["storeys", "plate", "annotation"].contains(&k.as_str())) {
         return Err(bad(c, format!("unknown parameter `{key}`")));
     }
     let plate = match p.get("plate") {
@@ -4371,7 +4373,11 @@ fn tower(s: &mut Session, p: &Value) -> R {
         .ok()
         .filter(|n| (1..=max).contains(n))
         .ok_or_else(|| bad(c, format!("`storeys` must be between 1 and {max}")))?;
-    let model = crate::sample::tower::tower_on(plate, storeys)?;
+    let model = if flag(c, p, "annotation")? {
+        crate::sample::tower::annotated(plate, storeys)?
+    } else {
+        crate::sample::tower::tower_on(plate, storeys)?
+    };
     let elements = model.elements.len();
     s.reset(model, None);
     Ok(json!({"storeys": storeys, "elements": elements}))
@@ -5683,42 +5689,83 @@ fn room(s: &mut Session, p: &Value) -> R {
     Ok(json!({"id": id, "number": number, "area_m2": area}))
 }
 
+/// The elements whose reference lines may come within `reach` mm of `p`, by id: the walls near it (a wall's faces and
+/// caps stay within twice the thickest wall's thickness of its location line: a cap runs on no farther than the
+/// thickest wall meeting it, [`walls::cap`]), the doors and windows in them, and the grids.
+fn near_point(m: &Model, p: P2, reach: f64) -> BTreeSet<Id> {
+    let look = m.lookup();
+    let thickest = m.types.wall.values().map(|t| t.thickness).filter(|t| t.is_finite()).fold(0.0, f64::max);
+    let walls = look.walls_near([p.0, p.1, p.0, p.1], reach + 2.0 * thickest + 1.0);
+    let mut out = BTreeSet::new();
+    for &w in &walls {
+        let g = m.guid(w);
+        out.extend(
+            look.referrers(&g).filter(|id| matches!(m.elements.get(*id), Some(Element::Door(o) | Element::Window(o)) if o.host == g)),
+        );
+    }
+    out.extend(walls);
+    out.extend(look.grids());
+    out
+}
+
 /// Of the lines a plan of `level` shows that `keep` takes (walls' faces, centre lines and ends,
 /// doors' and windows' centres and jambs, grids), the nearest `p`, within 100 mm.
-fn reference_near(m: &Model, level: impl Key, p: P2, keep: impl Fn(Line) -> bool) -> Option<Reference> {
+pub(crate) fn reference_near(m: &Model, level: impl Key, p: P2, keep: impl Fn(Line) -> bool) -> Option<Reference> {
+    let level = m.guid(level);
+    nearest_reference(m, level, p, keep, near_point(m, p, 100.0).into_iter())
+}
+
+/// [`reference_near`] among every element: its twin, which tests hold it to.
+#[cfg(test)]
+pub(crate) fn reference_near_everywhere(m: &Model, level: impl Key, p: P2, keep: impl Fn(Line) -> bool) -> Option<Reference> {
+    let level = m.guid(level);
+    nearest_reference(m, level, p, keep, m.elements.iter().map(|(id, _)| *id))
+}
+
+fn nearest_reference(m: &Model, level: Guid, p: P2, keep: impl Fn(Line) -> bool, ids: impl Iterator<Item = Id>) -> Option<Reference> {
     let cut = |w: Option<&Wall>| w.is_some_and(|w| m.cut_by(w, level));
-    m.elements
-        .iter()
-        .filter(|(_, e)| match e {
-            Element::Wall(w) => cut(Some(w)),
-            Element::Door(o) | Element::Window(o) => cut(m.wall(o.host)),
-            Element::Grid(_) => true,
-            _ => false,
-        })
-        .filter_map(|(&id, _)| m.reference_at(id, p, &keep))
-        .filter(|(_, d)| *d <= 100.0)
-        .min_by(|a, b| a.1.total_cmp(&b.1))
-        .map(|(r, _)| r)
+    ids.filter(|id| match m.elements.get(*id) {
+        Some(Element::Wall(w)) => cut(Some(w)),
+        Some(Element::Door(o) | Element::Window(o)) => cut(m.wall(o.host)),
+        Some(Element::Grid(_)) => true,
+        _ => false,
+    })
+    .filter_map(|id| m.reference_at(id, p, &keep))
+    .filter(|(_, d)| *d <= 100.0)
+    .min_by(|a, b| a.1.total_cmp(&b.1))
+    .map(|(r, _)| r)
 }
 
 /// Of the ends of the lines a plan of `level` (`view`, when not the level's own) shows (walls' centre lines and faces,
 /// doors' and windows' jambs, grids, its detail lines), the nearest `p`, within 100 mm.
-fn endpoint_near(m: &Model, level: Guid, view: Option<Guid>, p: P2) -> Option<Reference> {
+pub(crate) fn endpoint_near(m: &Model, level: Guid, view: Option<Guid>, p: P2) -> Option<Reference> {
+    let plan = view.unwrap_or(level);
+    let mut ids = near_point(m, p, 100.0);
+    // The view's detail lines: what points at it.
+    ids.extend(m.lookup().referrers(&m.guid(plan)).filter(|id| matches!(m.elements.get(*id), Some(Element::DetailLine(_)))));
+    nearest_end(m, level, view, p, ids.into_iter())
+}
+
+/// [`endpoint_near`] among every element: its twin, which tests hold it to.
+#[cfg(test)]
+pub(crate) fn endpoint_near_everywhere(m: &Model, level: Guid, view: Option<Guid>, p: P2) -> Option<Reference> {
+    nearest_end(m, level, view, p, m.elements.iter().map(|(id, _)| *id))
+}
+
+fn nearest_end(m: &Model, level: Guid, view: Option<Guid>, p: P2, ids: impl Iterator<Item = Id>) -> Option<Reference> {
     let cut = |w: Option<&Wall>| w.is_some_and(|w| m.cut_by(w, level));
     let plan = view.unwrap_or(level);
-    m.elements
-        .iter()
-        .filter(|(_, e)| match e {
-            Element::Wall(w) => cut(Some(w)),
-            Element::Door(o) | Element::Window(o) => cut(m.wall(o.host)),
-            Element::Grid(_) => true,
-            Element::DetailLine(l) => m.same(l.view, plan),
-            _ => false,
-        })
-        .filter_map(|(&id, _)| m.endpoint_at(id, p))
-        .filter(|(_, d)| *d <= 100.0)
-        .min_by(|a, b| a.1.total_cmp(&b.1))
-        .map(|(r, _)| r)
+    ids.filter(|id| match m.elements.get(*id) {
+        Some(Element::Wall(w)) => cut(Some(w)),
+        Some(Element::Door(o) | Element::Window(o)) => cut(m.wall(o.host)),
+        Some(Element::Grid(_)) => true,
+        Some(Element::DetailLine(l)) => m.same(l.view, plan),
+        _ => false,
+    })
+    .filter_map(|id| m.endpoint_at(id, p))
+    .filter(|(_, d)| *d <= 100.0)
+    .min_by(|a, b| a.1.total_cmp(&b.1))
+    .map(|(r, _)| r)
 }
 
 /// Of the arcs a plan of `level` (`view`, when not the level's own) shows (its curved walls' centre lines and faces, its

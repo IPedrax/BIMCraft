@@ -58,6 +58,16 @@ pub fn tower(storeys: u32) -> Result<Model, String> {
 
 /// The tower's layout on another plate: smaller ones make fixtures that tests can afford.
 pub fn tower_on(plate: Plate, storeys: u32) -> Result<Model, String> {
+    build(plate, storeys, false)
+}
+
+/// The tower with its plans annotated and detailed, as a set of drawings is: about two thousand 2D elements in each
+/// storey's plan (detail lines, text notes, filled regions, and dimensions on its walls), two hundred thousand in all.
+pub fn annotated(plate: Plate, storeys: u32) -> Result<Model, String> {
+    build(plate, storeys, true)
+}
+
+fn build(plate: Plate, storeys: u32, annotation: bool) -> Result<Model, String> {
     if !(1..=MAX_STOREYS).contains(&storeys) {
         return Err(format!("tower: `storeys` must be between 1 and {MAX_STOREYS}"));
     }
@@ -74,6 +84,9 @@ pub fn tower_on(plate: Plate, storeys: u32) -> Result<Model, String> {
     services(&mut s, plate)?;
     run(&mut s, "tag", json!({}))?;
     run(&mut s, "tag", json!({"category": "room"}))?;
+    if annotation {
+        annotate(&mut s, plate)?;
+    }
     stack(&s.model, storeys)
 }
 
@@ -439,6 +452,90 @@ fn services(s: &mut Session, plate: Plate) -> Result<(), String> {
     Ok(())
 }
 
+/// What a plan says of a room, in the room's terms as [`Item`]'s.
+enum Mark {
+    Note(&'static str, i64, i64),
+    /// A detail line from one point to the other.
+    Line(i64, i64, i64, i64),
+    /// A filled region of a type over a rectangle, its corners.
+    Region(&'static str, i64, i64, i64, i64),
+}
+
+impl Row {
+    /// The first room's `marks` drawn in the plan, then the row of `count`, `width` apart.
+    fn mark(&self, s: &mut Session, marks: &[Mark], width: i64, count: i64) -> Result<(), String> {
+        let mut ids = Vec::new();
+        for m in marks {
+            ids.extend(match *m {
+                Mark::Note(text, u, v) => make(s, "text", json!({"text": text, "at": self.at(u, v)}))?,
+                Mark::Line(u0, v0, u1, v1) => make(s, "detail_line", json!({"start": self.at(u0, v0), "end": self.at(u1, v1)}))?,
+                Mark::Region(kind, u0, v0, u1, v1) => {
+                    let [a, b, c, d] = [self.at(u0, v0), self.at(u1, v0), self.at(u1, v1), self.at(u0, v1)];
+                    make(s, "filled_region", json!({"sketch": [[a, b], [b, c], [c, d], [d, a]], "type": kind}))?
+                }
+            });
+        }
+        array(s, ids, [self.along[0] * width, self.along[1] * width], count)?;
+        Ok(())
+    }
+
+    /// Each of `count` rooms `width` wide dimensioned across, between its walls at `v`, and the row dimensioned as a
+    /// string through all of them. Made one by one: a copied dimension would measure the walls it was copied from.
+    fn dimension(&self, s: &mut Session, v: i64, width: i64, count: i64) -> Result<(), String> {
+        for k in 0..count {
+            let refs = [self.at(width * k, v), self.at(width * (k + 1), v)];
+            run(s, "dimension", json!({"refs": refs, "at": self.at(width * k + width / 2, v - 500)}))?;
+        }
+        let refs: Vec<[i64; 2]> = (0..=count).map(|k| self.at(width * k, v)).collect();
+        run(s, "dimension", json!({"refs": refs, "at": self.at(0, v + 500)}))?;
+        Ok(())
+    }
+}
+
+/// Each storey's plan annotated and detailed: the offices' and meeting rooms' notes, clear zones and dimensions, the
+/// service rooms' tiling, as a drawing set's plans are. All of it 2D: drawn in the level's plan only.
+fn annotate(s: &mut Session, plate: Plate) -> Result<(), String> {
+    use Mark::*;
+    let (w, d) = (plate.width, plate.depth);
+    let office = [
+        Note("2 workstations", 200, 2600),
+        Note("Keep clear", 600, 5100),
+        Line(400, 5000, 2600, 5000),
+        Line(2600, 5000, 2600, 5800),
+        Line(2600, 5800, 400, 5800),
+        Line(400, 5800, 400, 5000),
+        Region("Diagonal Up", 400, 5000, 2600, 5800),
+    ];
+    let rows = [
+        (Row { origin: [0, 0], along: [1, 0], inward: [0, 1], turn: 0.0 }, w / 3000),
+        (Row { origin: [0, d], along: [1, 0], inward: [0, -1], turn: 180.0 }, w / 3000),
+        (Row { origin: [0, 6000], along: [0, 1], inward: [1, 0], turn: 270.0 }, (d - 12_000) / 3000),
+        (Row { origin: [w, 6000], along: [0, 1], inward: [-1, 0], turn: 90.0 }, (d - 12_000) / 3000),
+    ];
+    for (row, count) in rows {
+        row.mark(s, &office, 3000, count)?;
+        row.dimension(s, 2000, 3000, count)?;
+    }
+    let meeting = [Note("Seats 4", 300, 1000), Region("Crosshatch", 1000, 1800, 3000, 4200)];
+    for (row, count) in [
+        (Row { origin: [8000, 8000], along: [1, 0], inward: [0, 1], turn: 0.0 }, (w - 16_000) / 4000),
+        (Row { origin: [8000, d - 8000], along: [1, 0], inward: [0, -1], turn: 180.0 }, (w - 16_000) / 4000),
+        (Row { origin: [8000, 14_000], along: [0, 1], inward: [1, 0], turn: 270.0 }, (d - 28_000) / 4000),
+        (Row { origin: [w - 8000, 14_000], along: [0, 1], inward: [-1, 0], turn: 90.0 }, (d - 28_000) / 4000),
+    ] {
+        row.mark(s, &meeting, 4000, count)?;
+    }
+    // The service rooms' floors tiled 600 × 600, and the wet area at the back.
+    let mut service = vec![Note("Floor tiled 600 × 600", 300, 600), Region("Sand", 200, 6400, 3800, 7800)];
+    service.extend((600..4000).step_by(600).map(|u| Line(u, 0, u, 8000)));
+    service.extend((600..8000).step_by(600).map(|v| Line(0, v, 4000, v)));
+    let count = (w - 28_000) / 4000;
+    for y in (14_000..d - 14_000).step_by(8000) {
+        Row { origin: [14_000, y], along: [1, 0], inward: [0, 1], turn: 0.0 }.mark(s, &service, 4000, count)?;
+    }
+    Ok(())
+}
+
 /// `storeys` storeys of `source`'s, which stand on its first level: fresh copies of its elements on each storey's
 /// level, with their references to each other pointed at each other, numbered by storey.
 fn stack(source: &Model, storeys: u32) -> Result<Model, String> {
@@ -552,6 +649,54 @@ mod tests {
         let Plate { width, depth } = Plate::REFERENCE;
         let ring = (width - 12_000) * (depth - 12_000) - (width - 16_000) * (depth - 16_000);
         assert!((area - ring as f64).abs() < 1e3, "{area} mm² against {ring}");
+    }
+
+    /// Whether `e` is drawn in one view only: annotation and detailing.
+    fn two_d(e: &Element) -> bool {
+        matches!(e, Element::Text(_) | Element::DetailLine(_) | Element::FilledRegion(_) | Element::Dimension(_))
+    }
+
+    #[test]
+    fn an_annotated_storey_has_two_thousand_2d_elements_in_its_own_plan_and_dimensions_on_its_own_walls() {
+        let plain = tower(2).unwrap();
+        let m = annotated(Plate::REFERENCE, 2).unwrap();
+        m.check().unwrap();
+        // The same building, with the 2D on top of it.
+        assert_eq!(m.elements.values().filter(|e| !two_d(e)).count(), plain.elements.len());
+        let levels: Vec<Guid> = m.levels().iter().map(|(id, _)| m.guid(*id)).collect();
+        for (storey, level) in levels.iter().take(2).enumerate() {
+            let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
+            for e in m.elements.values() {
+                let view = match e {
+                    Element::Text(n) => n.view,
+                    Element::DetailLine(l) => l.view,
+                    Element::FilledRegion(r) => r.view,
+                    Element::Dimension(d) => d.view.unwrap_or(d.level),
+                    _ => continue,
+                };
+                if view == *level {
+                    *counts.entry(e.category()).or_default() += 1;
+                }
+            }
+            let all: usize = counts.values().sum();
+            assert!(all >= 1800, "storey {storey}: {counts:?}");
+            for (category, least) in [("line", 1000), ("text", 250), ("region", 100), ("dimension", 90)] {
+                assert!(counts.get(category).copied().unwrap_or(0) >= least, "storey {storey}: {category} in {counts:?}");
+            }
+        }
+        assert!(levels.get(2).is_some_and(|top| !m.elements.values().any(|e| match e {
+            Element::Text(n) => n.view == *top,
+            _ => false,
+        })));
+        // A dimension measures the walls of its own storey, as the storey it was copied from did.
+        for e in m.elements.values() {
+            let Element::Dimension(d) = e else { continue };
+            assert!(d.refs.len() >= 2);
+            for r in &d.refs {
+                let wall = m.wall(r.id).unwrap_or_else(|| panic!("a dimension measures {r:?}, not a wall"));
+                assert_eq!(wall.level, d.level);
+            }
+        }
     }
 
     #[test]

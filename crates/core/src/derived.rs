@@ -31,6 +31,8 @@ pub struct Lookup {
     walls: Arc<BTreeSet<Id>>,
     /// The dimensions.
     dimensions: Arc<BTreeSet<Id>>,
+    /// The grids.
+    grids: Arc<BTreeSet<Id>>,
     /// Each plan tile's walls, by band of height: those whose location line's box reaches into it (an arc's, its circle's)
     /// and whose heights reach the band. A wall whose heights the lookup doesn't know (one attached to what's over or
     /// under it) is in band [`ANY`] of its tiles.
@@ -165,12 +167,15 @@ impl Lookup {
             Element::Dimension(_) => {
                 Arc::make_mut(&mut self.dimensions).insert(id);
             }
+            Element::Grid(_) => {
+                Arc::make_mut(&mut self.grids).insert(id);
+            }
             _ => {}
         }
     }
 
     fn take(&mut self, id: Id) {
-        for set in [&mut self.walls, &mut self.dimensions, &mut self.everywhere, &mut self.levels] {
+        for set in [&mut self.walls, &mut self.dimensions, &mut self.grids, &mut self.everywhere, &mut self.levels] {
             if set.contains(&id) {
                 Arc::make_mut(set).remove(&id);
             }
@@ -281,6 +286,16 @@ impl Lookup {
         self.dimensions.iter().copied()
     }
 
+    /// The levels, by id.
+    pub fn levels(&self) -> impl Iterator<Item = Id> + '_ {
+        self.levels.iter().copied()
+    }
+
+    /// The grids, by id.
+    pub fn grids(&self) -> impl Iterator<Item = Id> + '_ {
+        self.grids.iter().copied()
+    }
+
     /// Whether it shares chunks with `other`: whether one was brought up to date from the other.
     #[cfg(test)]
     fn shares(&self, other: &Lookup) -> bool {
@@ -300,6 +315,12 @@ pub struct Derived {
 impl Derived {
     fn current(&self) -> Option<(u64, u64, Arc<Lookup>)> {
         self.now.lock().ok().and_then(|now| now.clone())
+    }
+
+    /// The lookup of `elements` if it is made already: what asks only where it costs nothing.
+    pub fn made(&self, elements: &Elements) -> Option<Arc<Lookup>> {
+        let state = elements.state();
+        self.current().filter(|(t, v, _)| (*t, *v) == state).map(|(_, _, l)| l)
     }
 
     /// The lookup of `elements`: kept, brought up to date from the parent's, or made.

@@ -33,6 +33,7 @@ fn run() -> Result<(), String> {
     let mut fixture = "highrise".to_string();
     let mut skip: Vec<String> = Vec::new();
     let mut room_sample = 200usize;
+    let mut annotation = false;
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         let value = args.next().ok_or_else(|| format!("{arg} needs a value"))?;
@@ -45,6 +46,8 @@ fn run() -> Result<(), String> {
             // Steps to leave out, by name (inspect, rooms, plan, scene, ifc, reopen): what doesn't finish at a size.
             "--skip" => skip = value.split(',').map(str::to_string).collect(),
             "--rooms" => room_sample = value.parse().map_err(|e| format!("rooms: {e}"))?,
+            // The tower with its plans detailed: about 2,000 2D elements a storey.
+            "--annotation" => annotation = value.parse().map_err(|e| format!("annotation: {e}"))?,
             "--repeat" => repeats = value.parse().map_err(|e| format!("repeat: {e}"))?,
             _ => return Err(format!("unknown argument {arg}")),
         }
@@ -66,7 +69,9 @@ fn run() -> Result<(), String> {
                 imported = Some(s.execute("open", &json!({"path": path}))?);
             } else {
                 let storeys = storeys.unwrap_or(if fixture == "tower" { 100 } else { 20 });
-                s.execute(&fixture, &json!({"storeys": storeys}))?;
+                let params =
+                    if fixture == "tower" { json!({"storeys": storeys, "annotation": annotation}) } else { json!({"storeys": storeys}) };
+                s.execute(&fixture, &params)?;
             }
             Ok(())
         })?;
@@ -115,12 +120,25 @@ fn run() -> Result<(), String> {
             Element::Door(o) => s.model.elements.id(o.host),
             _ => None,
         });
-        for (name, id) in [("edit", editable), ("edit_wall", hosting)] {
+        // 2D: a detail line and a text note of the first plan.
+        let first = |f: fn(&Element) -> bool| s.model.elements.iter().find(|(_, e)| f(e)).map(|(id, _)| *id);
+        let line = first(|e| matches!(e, Element::DetailLine(_)));
+        let note = first(|e| matches!(e, Element::Text(_)));
+        for (name, id) in [("edit", editable), ("edit_wall", hosting), ("edit_line", line), ("edit_text", note)] {
             let Some(id) = id else { continue };
             let (mut edits, mut undos) = (Vec::new(), Vec::new());
+            // A wall slides along itself, its doors with it: the walls joined to its ends stretch along their own lines,
+            // so they stay parallel to the walls dimensions measure them with (moved across, the corner walls would turn).
+            let by = match s.model.elements.get(id) {
+                Some(Element::Wall(w)) => {
+                    let d = (w.end - w.start).unit() * 10.0;
+                    json!([d.0.round(), d.1.round()])
+                }
+                _ => json!([10, 10]),
+            };
             for _ in 0..repeats {
                 let start = Instant::now();
-                s.execute("move", &json!({"ids": [id], "by": [10, 10]}))?;
+                s.execute("move", &json!({"ids": [id], "by": by}))?;
                 edits.push(start.elapsed().as_secs_f64() * 1000.0);
                 let start = Instant::now();
                 s.execute("undo", &json!({}))?;
@@ -131,6 +149,22 @@ fn run() -> Result<(), String> {
             report["ms"][format!("{name}_median")] = json!(edits[edits.len() / 2]);
             report["ms"][format!("{name}_undo_median")] = json!(undos[undos.len() / 2]);
             report[format!("{name}_samples_ms")] = json!(edits);
+        }
+        // A new dimension across an office, by points on its walls (the first storey's), and its undo.
+        if fixture == "tower" {
+            let (mut made, mut undos) = (Vec::new(), Vec::new());
+            for _ in 0..repeats {
+                let start = Instant::now();
+                s.execute("dimension", &json!({"refs": [[0, 2000], [3000, 2000], [6000, 2000]], "at": [1500, 1200]}))?;
+                made.push(start.elapsed().as_secs_f64() * 1000.0);
+                let start = Instant::now();
+                s.execute("undo", &json!({}))?;
+                undos.push(start.elapsed().as_secs_f64() * 1000.0);
+            }
+            made.sort_by(f64::total_cmp);
+            undos.sort_by(f64::total_cmp);
+            report["ms"]["dimension_median"] = json!(made[made.len() / 2]);
+            report["ms"]["dimension_undo_median"] = json!(undos[undos.len() / 2]);
         }
         let text = timed(&mut report, "native_serialize", || s.model.to_json())?;
         report["native_bytes"] = json!(text.len());

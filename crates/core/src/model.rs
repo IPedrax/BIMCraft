@@ -3049,15 +3049,24 @@ impl Model {
     }
 
     /// Levels from lowest to highest.
+    /// The levels, lowest first (of one height, by id). From the lookup when it is made for the elements as they are,
+    /// else from every element.
     pub fn levels(&self) -> Vec<(Id, &Level)> {
-        let mut v: Vec<(Id, &Level)> = self
-            .elements
-            .iter()
-            .filter_map(|(&id, e)| match e {
-                Element::Level(l) => Some((id, l)),
-                _ => None,
-            })
-            .collect();
+        let level = |id: Id| match self.elements.get(id) {
+            Some(Element::Level(l)) => Some((id, l)),
+            _ => None,
+        };
+        let mut v: Vec<(Id, &Level)> = match self.derived.made(&self.elements) {
+            Some(look) => look.levels().filter_map(level).collect(),
+            None => self
+                .elements
+                .iter()
+                .filter_map(|(&id, e)| match e {
+                    Element::Level(l) => Some((id, l)),
+                    _ => None,
+                })
+                .collect(),
+        };
         v.sort_by(|a, b| a.1.elevation.total_cmp(&b.1.elevation));
         v
     }

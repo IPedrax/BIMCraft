@@ -126,6 +126,13 @@ mod tests {
         let built = super::tower::tower_on(super::tower::Plate::SMALL, 1).unwrap();
         assert_eq!(small["elements"].as_u64(), Some(built.elements.len() as u64));
         assert_eq!(s.model.elements.keys().collect::<Vec<_>>(), built.elements.keys().collect::<Vec<_>>(), "the same ids");
+        // Annotated: its plans detailed, 2D in thousands.
+        let annotated = s.execute("tower", &json!({"storeys": 1, "plate": "small", "annotation": true})).unwrap();
+        let built = super::tower::annotated(super::tower::Plate::SMALL, 1).unwrap();
+        assert_eq!(annotated["elements"].as_u64(), Some(built.elements.len() as u64));
+        assert!(built.elements.len() > small["elements"].as_u64().unwrap_or(0) as usize + 300);
+        let e = s.execute("tower", &json!({"storeys": 1, "annotation": "yes"})).unwrap_err();
+        assert!(e.contains("annotation"), "{e}");
         assert!(crate::bridge::REFUSED.contains(&"tower"), "a window's project isn't replaced from outside");
     }
 }
