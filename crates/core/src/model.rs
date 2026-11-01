@@ -67,9 +67,17 @@ pub const MAX_POINTS: usize = 10_000;
 pub const CEILING_CUT: f64 = 2300.0;
 /// Height of a ceiling's underside above its level, unless told otherwise.
 pub const CEILING_HEIGHT: f64 = 2600.0;
+/// The most points (x, y, z) one toposurface may be made of: a survey or a grid of a terrain model, not a hand-drawn outline.
+pub const MAX_TERRAIN_POINTS: usize = 50_000;
+/// The most breaklines one toposurface may have.
+pub const MAX_BREAKLINES: usize = 1_000;
+/// The finest contour interval of a toposurface, mm.
+pub const MIN_CONTOUR_INTERVAL: f64 = 10.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 11: a project's language may be Swedish,
+/// The version of the project file this build writes, and the newest it reads. 12: a project holds terrain (the element
+/// `toposurface`); nothing in a file of 11 changes, but a build that reads up to 11 would answer one of 12 with a serde error
+/// ("unknown variant"), not "saved by a newer BIMCraft". 11: a project's language may be Swedish,
 /// Czech or French (`sv`, `cs`, `fr`); nothing in a file of 10 changes, but a build that reads up to 10 would answer one of
 /// 11 with a serde error ("unknown variant"), not "saved by a newer BIMCraft". 8: text types (`text_types`, library
 /// entries of kind `text-type`); a note names its type, which holds its size, and may override parts of its formatting
@@ -87,7 +95,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 11;
+pub const FORMAT: u32 = 12;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -547,6 +555,43 @@ impl Mass {
             ring.reverse();
         }
         ring
+    }
+}
+
+/// Terrain, Revit's toposurface: surveyed `points` (x, y, z in mm, z above sea level, not over a level), `breaklines` that its
+/// triangles follow (ridges, valleys, kerbs), and a `boundary` that cuts away what is outside it. Plans draw its contours every
+/// `interval` mm (none, if 0), the 3D view its triangles in `material`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Toposurface {
+    #[serde(default)]
+    pub name: String,
+    pub points: Vec<[f64; 3]>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub breaklines: Vec<Vec<[f64; 3]>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub boundary: Vec<P2>,
+    /// A material of the project's, by name; none, the terrain's own colour.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub material: String,
+    #[serde(default = "default_interval")]
+    pub interval: f64,
+    /// Its values of the project's parameters, by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, serde_json::Value>,
+}
+
+/// A toposurface's contour interval until it is given another, mm.
+pub const DEFAULT_CONTOUR_INTERVAL: f64 = 1000.0;
+
+fn default_interval() -> f64 {
+    DEFAULT_CONTOUR_INTERVAL
+}
+
+impl Toposurface {
+    /// Its triangles, built once for as long as its points stay as they are.
+    pub fn tin(&self) -> Result<std::sync::Arc<crate::topo::Tin>, String> {
+        crate::topo::cached(&self.points, &self.breaklines, &self.boundary)
     }
 }
 
@@ -1522,7 +1567,7 @@ macro_rules! visit_refs {
         match $e {
             // A view's graphics, as `views_graphics` gives them.
             Element::Level(_) | Element::Section(_) | Element::Elevation(_) | Element::View3D(_) => {}
-            Element::Grid(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) => {}
+            Element::Grid(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) | Element::Toposurface(_) => {}
             Element::PlanView(v) => {
                 f(& $($m)? v.level);
                 if let Some(g) = & $($m)? v.parent { f(g) }
@@ -1603,6 +1648,7 @@ pub enum Element {
     Ceiling(Ceiling),
     Shaft(Shaft),
     Mass(Mass),
+    Toposurface(Toposurface),
     Door(Opening),
     Window(Opening),
     Room(Room),
@@ -1669,6 +1715,7 @@ impl Element {
             | Element::Ceiling(Ceiling { params, .. })
             | Element::Roof(Roof { params, .. })
             | Element::Mass(Mass { params, .. })
+            | Element::Toposurface(Toposurface { params, .. })
             | Element::Door(Opening { params, .. })
             | Element::Window(Opening { params, .. })
             | Element::Room(Room { params, .. })
@@ -1692,6 +1739,7 @@ impl Element {
             | Element::Ceiling(Ceiling { params, .. })
             | Element::Roof(Roof { params, .. })
             | Element::Mass(Mass { params, .. })
+            | Element::Toposurface(Toposurface { params, .. })
             | Element::Door(Opening { params, .. })
             | Element::Window(Opening { params, .. })
             | Element::Room(Room { params, .. })
@@ -1837,6 +1885,7 @@ impl Element {
             Element::Ceiling(_) => "ceiling",
             Element::Shaft(_) => "shaft",
             Element::Mass(_) => "mass",
+            Element::Toposurface(_) => "toposurface",
             Element::Door(_) => "door",
             Element::Window(_) => "window",
             Element::Room(_) => "room",
@@ -2102,7 +2151,7 @@ pub struct ProjectParameter {
 pub const MAX_PROJECT_PARAMETERS: usize = 256;
 
 /// The categories project parameters are for.
-pub const PARAMETER_CATEGORIES: [&str; 24] = [
+pub const PARAMETER_CATEGORIES: [&str; 25] = [
     "wall",
     "floor",
     "ceiling",
@@ -2127,6 +2176,7 @@ pub const PARAMETER_CATEGORIES: [&str; 24] = [
     "downconductor",
     "groundconductor",
     "cable",
+    "toposurface",
 ];
 
 impl ProjectParameter {
@@ -3500,7 +3550,8 @@ impl Model {
             | Element::Viewport(_)
             | Element::Schedule(_)
             | Element::Link(_)
-            | Element::View3D(_) => None,
+            | Element::View3D(_)
+            | Element::Toposurface(_) => None,
         }
     }
 
@@ -5070,6 +5121,45 @@ impl Model {
                         if let Some(why) = crate::massing::loft_problem(&ms.boundary, crown) {
                             return Err(format!("{who}: {why}"));
                         }
+                    }
+                }
+                Element::Toposurface(t) => {
+                    text(&who, "name", &t.name)?;
+                    if t.points.len() < 3 || t.points.len() > MAX_TERRAIN_POINTS {
+                        return Err(format!("{who}: a toposurface needs 3 to {MAX_TERRAIN_POINTS} points"));
+                    }
+                    for p in &t.points {
+                        for v in p {
+                            coord(&format!("{who} point"), *v)?;
+                        }
+                    }
+                    if t.breaklines.len() > MAX_BREAKLINES {
+                        return Err(format!("{who}: more than {MAX_BREAKLINES} breaklines"));
+                    }
+                    let mut vertices = t.points.len();
+                    for l in &t.breaklines {
+                        if l.len() < 2 || l.len() > MAX_POINTS {
+                            return Err(format!("{who}: a breakline needs 2 to {MAX_POINTS} points"));
+                        }
+                        vertices += l.len();
+                        for v in l.iter().flatten() {
+                            coord(&format!("{who} breakline"), *v)?;
+                        }
+                    }
+                    if vertices > MAX_TERRAIN_POINTS * 2 {
+                        return Err(format!("{who}: its points and breaklines come to more than {} vertices", MAX_TERRAIN_POINTS * 2));
+                    }
+                    if !t.boundary.is_empty() {
+                        boundary(&who, &t.boundary)?;
+                    }
+                    if !t.interval.is_finite() || t.interval < 0.0 || (t.interval > 0.0 && t.interval < MIN_CONTOUR_INTERVAL) {
+                        return Err(format!(
+                            "{who}: its contour interval is 0 (none) or at least {MIN_CONTOUR_INTERVAL} mm, not {}",
+                            t.interval
+                        ));
+                    }
+                    if !t.material.is_empty() && !self.materials.contains_key(&t.material) {
+                        return Err(format!("{who}: material `{}` isn't in the library; add it with `material`", t.material));
                     }
                 }
                 Element::Door(o) | Element::Window(o) => {

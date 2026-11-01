@@ -23,11 +23,11 @@ use crate::lines::{DetailLine, LineStyle};
 use crate::massing;
 use crate::model::{
     CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Element, End,
-    Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, Id, Key, Landing, Layer, Level, Line, Location, MAX_COORD, MAX_POINTS,
-    MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind, Pattern, Perspective,
-    PlanView, PointCloud, ProjectParameter, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp, Rebar, Reference, Roof, RoofType,
-    Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox, Shaft, Sheet, Side, Spot, Stair, TOL, TREAD, Tag, View3D,
-    Viewport, Wall, WallType, heading, paper,
+    Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, Id, Key, Landing, Layer, Level, Line, Location, MAX_BREAKLINES, MAX_COORD,
+    MAX_POINTS, MAX_SLOPE, MAX_TERRAIN_POINTS, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES,
+    ParameterKind, Pattern, Perspective, PlanView, PointCloud, ProjectParameter, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp,
+    Rebar, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox, Shaft, Sheet, Side, Spot,
+    Stair, TOL, TREAD, Tag, Toposurface, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
@@ -262,6 +262,31 @@ pub static ALL: &[Command] = &[
          outline and holes it has now, as the lines to edit. The outline must be simple, as `floor` says; a line that \
          crosses itself is found as two that cross are",
         edit_boundary,
+    ),
+    edit(
+        "toposurface",
+        "Toposurface",
+        &["TS"],
+        "{points: [[x,y,z],…], breaklines?: [[[x,y,z],…],…], boundary?: [[x,y],…], name?, material?, interval?} terrain, Revit's \
+         toposurface: a surface through surveyed points (mm, z above sea level), triangulated (Delaunay) so that its triangles follow \
+         the `breaklines` (ridges, valleys, kerbs; one that crosses an earlier one is skipped) and none lie outside `boundary`. \
+         `interval` is the mm between the contours plans draw (1000 by default; 0, none). Reports its triangles, plan area and \
+         heights. Ask it with `height_at` and `contours`; it moves, turns and mirrors in plan, and its heights stay",
+        toposurface,
+    ),
+    other(
+        "height_at",
+        "Height at",
+        "{points: [[x,y],…], id?} the terrain's height (mm) over each point, or null where there is none; `id` names the toposurface \
+         when the project has several",
+        height_at,
+    ),
+    other(
+        "contours",
+        "Contours",
+        "{interval?, base?, id?} a toposurface's contour lines, lowest first, each {z, closed, points}: every `interval` mm of \
+         height (its own by default) counted from `base` (0)",
+        contours,
     ),
     edit(
         "mass",
@@ -2167,6 +2192,26 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             let gross: f64 = m.mass_slices(ms).iter().map(|(_, z, _)| geom::area(&m.mass_outline(ms, *z)).abs()).sum();
             extra.insert("gross_floor_area_m2".into(), json!(m2(gross)));
             extra.insert("levels".into(), json!(m.mass_slices(ms).iter().map(|(l, _, _)| *l).collect::<Vec<Id>>()));
+        }
+        // Counts, not the points: a terrain of thousands would fill every listing.
+        Element::Toposurface(t) => {
+            extra.insert("points".into(), json!(t.points.len()));
+            extra.insert("breaklines".into(), json!(t.breaklines.len()));
+            let lo_hi = |i: usize| t.points.iter().map(|p| p[i]).fold((f64::MAX, f64::MIN), |(lo, hi), v| (lo.min(v), hi.max(v)));
+            extra.insert("bounds".into(), json!([[lo_hi(0).0, lo_hi(1).0], [lo_hi(0).1, lo_hi(1).1]]));
+            match t.tin() {
+                Ok(tin) => {
+                    extra.insert("triangles".into(), json!(tin.triangles().len()));
+                    extra.insert("area_m2".into(), json!(m2(tin.plan_area())));
+                    extra.insert("surface_area_m2".into(), json!(m2(tin.surface_area())));
+                    let (lo, hi) = tin.z_range().unwrap_or((0.0, 0.0));
+                    extra.insert("z_min".into(), json!(lo));
+                    extra.insert("z_max".into(), json!(hi));
+                }
+                Err(why) => {
+                    extra.insert("problem".into(), json!(why));
+                }
+            }
         }
         Element::Room(r) => {
             let region = m.room_region(r);
@@ -5398,6 +5443,115 @@ fn mass(s: &mut Session, p: &Value) -> R {
     Ok(json!({"id": id, "area_m2": area, "height": height, "volume_m3": volume}))
 }
 
+/// `[[x, y, z], …]` for terrain: up to [`MAX_TERRAIN_POINTS`] of them.
+fn terrain_points(c: &str, v: &Value, key: &str, least: usize) -> Result<Vec<[f64; 3]>, String> {
+    let a = v.as_array().ok_or_else(|| bad(c, format!("`{key}` must be a list of points [x, y, z] in mm")))?;
+    if a.len() < least || a.len() > MAX_TERRAIN_POINTS {
+        return Err(bad(c, format!("`{key}` needs {least} to {MAX_TERRAIN_POINTS} points [x, y, z], not {}", a.len())));
+    }
+    a.iter().map(|p| point3(p).ok_or_else(|| bad(c, format!("`{key}`: {p} is not a point [x, y, z] in mm")))).collect()
+}
+
+fn toposurface(s: &mut Session, p: &Value) -> R {
+    let c = "toposurface";
+    only(c, p, &["points", "breaklines", "boundary", "name", "material", "interval"])?;
+    let samples = terrain_points(c, p.get("points").ok_or_else(|| bad(c, "`points`, [[x, y, z], …], is required"))?, "points", 3)?;
+    let breaklines = match p.get("breaklines") {
+        v if absent(v) => Vec::new(),
+        Some(Value::Array(lines)) if lines.len() <= MAX_BREAKLINES => {
+            lines.iter().map(|l| terrain_points(c, l, "breaklines", 2)).collect::<Result<Vec<_>, _>>()?
+        }
+        Some(v) => {
+            return Err(bad(
+                c,
+                format!("`breaklines` must be a list of at most {MAX_BREAKLINES} breaklines, each a list of points [x, y, z], got {v}"),
+            ));
+        }
+        None => Vec::new(),
+    };
+    let boundary = if absent(p.get("boundary")) { Vec::new() } else { points(c, p, "boundary")? };
+    let m = &s.model;
+    let t = Toposurface {
+        name: string(c, p, "name")?.unwrap_or_else(|| m.language.word("Toposurface").into()),
+        points: samples,
+        breaklines,
+        boundary,
+        material: string(c, p, "material")?.unwrap_or_default(),
+        interval: num(c, p, "interval")?.unwrap_or(crate::model::DEFAULT_CONTOUR_INTERVAL),
+        params: Default::default(),
+    };
+    // Whether it makes a surface is known now, not when something draws it.
+    let tin = t.tin().map_err(|why| bad(c, why))?;
+    let (lo, hi) = tin.z_range().unwrap_or((0.0, 0.0));
+    let report = json!({"triangles": tin.triangles().len(), "area_m2": m2(tin.plan_area()), "z_min": lo, "z_max": hi});
+    let id = s.model_mut().insert(Element::Toposurface(t));
+    let mut out = report;
+    out["id"] = json!(id);
+    Ok(out)
+}
+
+/// The toposurface `id` names, or the project's only one.
+fn terrain_of(c: &str, m: &Model, p: &Value) -> Result<(Id, Toposurface), String> {
+    match id_opt(c, p, "id")? {
+        Some(g) => match (m.elements.id(g), m.elements.get(g)) {
+            (Some(id), Some(Element::Toposurface(t))) => Ok((id, t.clone())),
+            _ => Err(bad(c, format!("{g} isn't a toposurface"))),
+        },
+        None => {
+            let all: Vec<(Id, &Toposurface)> =
+                m.elements.iter().filter_map(|(id, e)| if let Element::Toposurface(t) = e { Some((*id, t)) } else { None }).collect();
+            match all.as_slice() {
+                [(id, t)] => Ok((*id, (*t).clone())),
+                [] => Err(bad(c, "no toposurface; make one with `toposurface`")),
+                many => {
+                    let ids: Vec<String> = many.iter().map(|(id, t)| format!("{id} ({})", t.name)).collect();
+                    Err(bad(c, format!("the project has {} toposurfaces: give the `id` of one: {}", many.len(), ids.join(", "))))
+                }
+            }
+        }
+    }
+}
+
+fn height_at(s: &mut Session, p: &Value) -> R {
+    let c = "height_at";
+    only(c, p, &["points", "id"])?;
+    let at = points(c, p, "points")?;
+    let (_, t) = terrain_of(c, &s.model, p)?;
+    let tin = t.tin().map_err(|why| bad(c, why))?;
+    let heights: Vec<Value> = at.iter().map(|q| tin.height_at(q.0, q.1).map_or(Value::Null, |z| json!(z))).collect();
+    Ok(json!({"heights": heights}))
+}
+
+/// The most points `contours` answers with.
+const MAX_CONTOUR_POINTS: usize = 20_000;
+
+fn contours(s: &mut Session, p: &Value) -> R {
+    let c = "contours";
+    only(c, p, &["interval", "base", "id"])?;
+    let (_, t) = terrain_of(c, &s.model, p)?;
+    let interval = match p.get("interval") {
+        v if absent(v) => t.interval,
+        Some(v) => v.as_f64().ok_or_else(|| bad(c, format!("`interval` must be a number of mm, got {v}")))?,
+        None => t.interval,
+    };
+    let base = num(c, p, "base")?.unwrap_or(0.0);
+    if interval == 0.0 {
+        return Ok(json!({"interval": interval, "base": base, "contours": [], "truncated": false}));
+    }
+    let tin = t.tin().map_err(|why| bad(c, why))?;
+    let lines = tin.contours_shared(interval, base).map_err(|why| bad(c, why))?;
+    let (mut out, mut sent, mut truncated) = (Vec::new(), 0, false);
+    for l in lines.iter() {
+        if sent + l.points.len() > MAX_CONTOUR_POINTS {
+            truncated = true;
+            break;
+        }
+        sent += l.points.len();
+        out.push(json!({"z": l.z, "closed": l.closed, "points": l.points}));
+    }
+    Ok(json!({"interval": interval, "base": base, "contours": out, "truncated": truncated}))
+}
+
 /// The mass `mass` names.
 fn mass_of(c: &str, m: &Model, p: &Value) -> Result<(Id, Mass), String> {
     let mass = id_opt(c, p, "mass")?.ok_or_else(|| bad(c, "`mass`, the id of a mass, is required"))?;
@@ -8274,6 +8428,17 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
                 if mo.mirror {
                     ring.reverse();
                 }
+            }
+        }
+        // Its heights stay: the terrain moves, turns and mirrors in plan.
+        Element::Toposurface(t) => {
+            for p in t.points.iter_mut().chain(t.breaklines.iter_mut().flatten()) {
+                let q = f(P2(p[0], p[1]));
+                (p[0], p[1]) = (q.0, q.1);
+            }
+            t.boundary.iter_mut().for_each(|q| *q = f(*q));
+            if mo.mirror {
+                t.boundary.reverse();
             }
         }
         Element::Room(r) => r.point = f(r.point),

@@ -6,6 +6,8 @@
 //! is in mm, x east, y north, z up.
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::{Arc, Mutex};
 
 use spade::handles::FixedVertexHandle;
 use spade::{ConstrainedDelaunayTriangulation, HasPosition, InsertionError, Point2, Triangulation};
@@ -25,6 +27,9 @@ pub struct Contour {
     pub closed: bool,
 }
 
+/// Contours already worked out for an interval and a base (their bits).
+type Memo = ((u64, u64), Arc<Vec<Contour>>);
+
 /// A terrain's triangles, indexed to find the one over a point.
 #[derive(Clone, Debug, Default)]
 pub struct Tin {
@@ -36,6 +41,8 @@ pub struct Tin {
     n: usize,
     cells: Vec<Vec<u32>>,
     big: Vec<u32>,
+    /// Contours already worked out, by interval and base, shared with every clone.
+    memo: Arc<Mutex<Vec<Memo>>>,
 }
 
 /// A vertex of the triangulation: where it is in plan, and how high.
@@ -107,6 +114,45 @@ pub fn build(points: &[P3], breaklines: &[Vec<P3>], boundary: &[P2]) -> Result<T
     Ok(Tin::new(tris))
 }
 
+/// The terrains built lately, by a digest of what they are made of: drawing a plan again, or asking a height again, is not
+/// triangulating again. Failures are kept too.
+static BUILT: Mutex<Vec<Built>> = Mutex::new(Vec::new());
+
+/// A terrain built (or not) from points with this digest.
+type Built = (u64, Result<Arc<Tin>, String>);
+const KEPT: usize = 32;
+
+/// [`build`], remembering the last few: the same points, breaklines and boundary give the same [`Tin`].
+pub fn cached(points: &[P3], breaklines: &[Vec<P3>], boundary: &[P2]) -> Result<Arc<Tin>, String> {
+    let mut h = DefaultHasher::new();
+    points.len().hash(&mut h);
+    points.iter().flatten().for_each(|c| c.to_bits().hash(&mut h));
+    breaklines.len().hash(&mut h);
+    for l in breaklines {
+        l.len().hash(&mut h);
+        l.iter().flatten().for_each(|c| c.to_bits().hash(&mut h));
+    }
+    boundary.len().hash(&mut h);
+    boundary.iter().for_each(|p| (p.0.to_bits(), p.1.to_bits()).hash(&mut h));
+    let key = h.finish();
+    if let Ok(mut kept) = BUILT.lock()
+        && let Some(i) = kept.iter().position(|(k, _)| *k == key)
+    {
+        let entry = kept.remove(i);
+        let found = entry.1.clone();
+        kept.push(entry);
+        return found;
+    }
+    let built = build(points, breaklines, boundary).map(Arc::new);
+    if let Ok(mut kept) = BUILT.lock() {
+        kept.push((key, built.clone()));
+        if kept.len() > KEPT {
+            drop(kept.remove(0));
+        }
+    }
+    built
+}
+
 /// How many cells a triangle may cover in the index before it is kept apart from them.
 const MAX_CELLS: usize = 64;
 
@@ -131,7 +177,7 @@ impl Tin {
         // About a triangle or two to a cell.
         let n = ((tris.len() as f64).sqrt().ceil() as usize).clamp(1, 256);
         let size = [((hi[0] - lo[0]) / n as f64).max(1e-9), ((hi[1] - lo[1]) / n as f64).max(1e-9)];
-        let mut tin = Tin { tris, lo, hi, size, n, cells: vec![Vec::new(); n * n], big: Vec::new() };
+        let mut tin = Tin { tris, lo, hi, size, n, cells: vec![Vec::new(); n * n], big: Vec::new(), memo: Arc::default() };
         for (i, t) in tin.tris.iter().enumerate() {
             let (c0, c1) = tin.cells_of(t);
             if (c1.0 - c0.0 + 1) * (c1.1 - c0.1 + 1) > MAX_CELLS {
@@ -208,6 +254,24 @@ impl Tin {
             join(level(k as f64), segs, &mut out);
         }
         Ok(out)
+    }
+
+    /// [`Tin::contours`], remembering the last few for this surface.
+    pub fn contours_shared(&self, interval: f64, base: f64) -> Result<Arc<Vec<Contour>>, String> {
+        let key = (interval.to_bits(), base.to_bits());
+        if let Ok(memo) = self.memo.lock()
+            && let Some((_, found)) = memo.iter().find(|(k, _)| *k == key)
+        {
+            return Ok(found.clone());
+        }
+        let made = Arc::new(self.contours(interval, base)?);
+        if let Ok(mut memo) = self.memo.lock() {
+            memo.push((key, made.clone()));
+            if memo.len() > 8 {
+                memo.remove(0);
+            }
+        }
+        Ok(made)
     }
 
     /// The area in plan, mm².
@@ -425,6 +489,23 @@ mod tests {
         let hill = build(&grid(3, 1000.0, |x, _| x * 100.0), &[], &[]).unwrap();
         assert!(hill.contours(1.0, 0.0).unwrap_err().contains("interval"));
         assert!(hill.contours(0.0, 0.0).is_err() && hill.contours(f64::NAN, 0.0).is_err() && hill.contours(-5.0, 0.0).is_err());
+    }
+
+    #[test]
+    fn the_same_terrain_is_built_once_and_its_contours_with_it() {
+        let points = grid(7, 937.0, |x, y| x / 7.0 + y / 11.0);
+        let a = cached(&points, &[], &[]).unwrap();
+        let b = cached(&points, &[], &[]).unwrap();
+        assert!(Arc::ptr_eq(&a, &b), "the same points, the same triangles");
+        let mut raised = points.clone();
+        raised[3][2] += 1.0;
+        assert!(!Arc::ptr_eq(&a, &cached(&raised, &[], &[]).unwrap()), "a point moved, a new surface");
+        let x = a.contours_shared(100.0, 0.0).unwrap();
+        let y = a.contours_shared(100.0, 0.0).unwrap();
+        assert!(Arc::ptr_eq(&x, &y) && *x == a.contours(100.0, 0.0).unwrap());
+        assert!(!Arc::ptr_eq(&x, &a.contours_shared(200.0, 0.0).unwrap()));
+        assert!(cached(&points[..2], &[], &[]).is_err(), "a failure is told again, not built again");
+        assert!(cached(&points[..2], &[], &[]).is_err());
     }
 
     #[test]

@@ -964,6 +964,7 @@ impl crate::model::Element {
             },
             Element::Component(c) => family_and_type(&mut c.family, &mut c.type_name, f),
             Element::PointCloud(pc) => f(&Kind::Cloud, &mut pc.cloud),
+            Element::Toposurface(t) if !t.material.is_empty() => f(&Kind::Material, &mut t.material),
             Element::DetailLine(l) => f(&Kind::LineStyle, &mut l.style),
             Element::DetailGroup(g) => f(&Kind::DetailGroup, &mut g.type_name),
             Element::RepeatingDetail(r) => f(&Kind::DetailGroup, &mut r.type_name),

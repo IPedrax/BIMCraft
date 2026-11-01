@@ -89,6 +89,8 @@ pub mod styles;
 pub mod text;
 pub mod texture;
 pub mod topo;
+#[cfg(test)]
+mod topo_tests;
 pub mod units;
 pub mod view3d;
 pub mod walls;
