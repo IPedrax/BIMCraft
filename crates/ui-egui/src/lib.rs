@@ -29,6 +29,7 @@ mod gpu;
 mod graphics;
 mod groups;
 pub mod icons;
+mod info;
 mod inquiry;
 pub mod lang;
 mod linestyles;
@@ -2949,12 +2950,16 @@ impl BimApp {
     /// the view with the ribbon (a tool's type, heights, location line), while there is something to show.
     fn tool_palette(&mut self, ui: &mut Ui) {
         ui.set_width(ui.available_width());
-        if self.options_shown() {
+        if self.info_shown() {
             let room = ui.available_height() * 0.4;
             ScrollArea::vertical().id_salt("palette-info").max_height(room).auto_shrink([false, true]).show(ui, |ui| {
                 // A label moves to the next row whole, rather than break between its words.
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                self.options(ui);
+                if self.selection_info_shown() {
+                    self.selection_info(ui);
+                } else {
+                    self.options(ui);
+                }
             });
             ui.separator();
         }

@@ -664,7 +664,7 @@ const FUNCTIONS: [(Function, &str); 5] = [
     (Function::Finish, "Finish"),
 ];
 
-fn function_name(f: Function) -> &'static str {
+pub(crate) fn function_name(f: Function) -> &'static str {
     FUNCTIONS.iter().find(|(g, _)| *g == f).map_or("Structure", |(_, n)| n)
 }
 

@@ -254,18 +254,30 @@ frame, since its first lays out every tool (`a_tool_with_choices_of_its_own_open
 
 The tool palette (File > Settings > Tools, `Profile::Palette`, kept in `settings.json` as `profile`; the ribbon is the default). The
 button beside Settings in the title bar (`Icon::Palette` on the ribbon, `Icon::Ribbon` on the palette: it shows where it goes) and the
-shortcut TP, an action Keyboard Shortcuts can rebind (`"Tool palette"` in `ACTIONS`), both call `BimApp::toggle_profile`. A
-left panel (`BimApp::tool_palette`) in place of the ribbon: the tab pills (`TABS`, the ribbon's list; the contextual tab last) over the
-open tab's panels as rows, each under its name. It draws the same tab functions as the ribbon (`BimApp::tab_tools`) with `ribbon::rows`,
-which turns on `ribbon::listing` (every button is a `list_row`) and a panel's heading, so a tool is added once and shows in both. What
-differs: `raise_context` does nothing, so a tool picked doesn't swap the list for its contextual tab (the user opens that from the pills),
-and `ribbon::choices` makes a tool's choices a popup menu of the row's own, since the palette is not a popup and a `SubMenu` there closes
-before a choice is clicked. The column is a fixed `PALETTE_WIDTH` (it would otherwise grow to its widest field, tool by tool), and
-what is wider wraps. Between the tabs and the tools is the info panel: the Options Bar's own `options` (a tool's height, location
-line, slope, a note's text), in a scroll area of its own, while `options_shown`; the floating Options Bar is not drawn in this
-profile and the pill already names the tool, so `options` leaves the name out. A panel's small buttons that the ribbon sets side by
-side go through `ribbon::strip`, which stacks them in rows (a plain `ui.horizontal` of rows runs off the column's edge, and a
-panel's list too). Every tool runs the same command either way; tests in `tests/palette.rs`.
+shortcut TP, an action Keyboard Shortcuts can rebind (`"Tool palette"` in `ACTIONS`), both call `BimApp::toggle_profile`. A left panel
+(`BimApp::tool_palette`) in place of the ribbon, its width set by dragging its edge between `settings::PALETTE_WIDTH` and kept in
+`settings.json` (`palette_width`, read back only as a number in range; `reopened` carries it).
+
+The list. Under the info panel the Select panel stands once, then a section for each tab (`TABS`; `palette_section`, an egui
+`CollapsingHeader`, Architecture open to begin with), each holding the tab's panels as rows under their names. The sections draw the same
+tab functions as the ribbon (`BimApp::tab_content`) through `ribbon::rows`, which turns on `ribbon::listing` (every button is a
+`list_row`) and a panel's heading, so a tool is added once and shows in both; the tabs that begin with the Select panel (`select_panel`,
+and `tools(.., "Select", ..)` in Structure and the MEP tabs) leave it out (`ribbon::skip_select`). The Modify section comes first; with a
+tool in hand or a selection it is named for the contextual tab ("Modify | Place Wall") and holds its panels, folded until opened, in a
+state of its own, so picking a tool does not push the list down. A click on a header makes its tab the window's `tab` (which the column
+shortcut reads). `raise_context` does nothing in this profile, and `ribbon::choices` makes a tool's choices a popup menu of the row's own,
+since the palette is not a popup and a `SubMenu` there closes before a choice is clicked.
+
+The info panel (over the list, in a scroll area of its own, while `info_shown`). With a tool in hand, a note being written or a sketch,
+it is the Options Bar's own `options` (a tool's height, location line, slope, a note's text), and the floating Options Bar is not drawn in
+this profile (the section header names the tool, so `options` leaves the name out). With elements selected in Modify it is
+`selection_info` (`info.rs`): the category and type, the type's total thickness and layers (`Model::layered_types`), read only, and Edit
+Type, which a double click on the element does too (`canvas.rs`, before `clicked_at`; sections, notes and dimensions keep their own double
+click). A tool's drop-down and its label start a new row when both do not fit (`ribbon::room`: it reads `available_size_before_wrap`,
+since `available_width` is the whole row's in a wrapping layout, and a drop-down lays itself out in a row of its own, so a wrapping parent
+lets it run off the edge and, in a column that fits its content, widens it); a panel's small buttons that the ribbon sets side by side go
+through `ribbon::strip`, which stacks them in rows. Every tool runs the same command either way; tests in `tests/palette.rs`,
+`tests/selection_info.rs` and `tests/edit_type.rs`.
 
 Keyboard Shortcuts. Manage > Shortcuts (or KS) opens `shortcuts_window` (`shortcuts.rs`): every shortcut by what it does, from `shortcuts()`
 (`SHORTCUTS`, the fixtures' letters, the commands' aliases), with Add, Edit and Load File. A shortcut is two letters or digits, all that `typed` holds,

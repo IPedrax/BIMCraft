@@ -5288,6 +5288,7 @@ mod purge;
 mod reinforce;
 mod revit;
 mod section_box;
+mod selection_info;
 mod shortcuts_kept;
 mod sketch;
 mod smallest;
