@@ -1043,7 +1043,7 @@ impl Scene {
             let mut depth = vec![f32::NEG_INFINITY; w * h];
             let (mut hit, mut lit) = (vec![u32::MAX; w * h], vec![0.0; w * h]);
             front.raster((cam, Some(clip), None), (w, h), |_| true, None, &|_| None, (&mut depth, &mut hit, &mut lit));
-            Tiles::of(&depth, w, h)
+            Tiles::of(depth, w, h)
         };
         // What can show, in the order of the elements.
         let project = cam.projector();
@@ -1104,6 +1104,7 @@ fn bounds(points: impl Iterator<Item = P3>) -> Option<[P3; 2]> {
 /// than somewhere to show.
 struct Tiles {
     far: Vec<f32>,
+    depth: Vec<f32>,
     across: usize,
     w: usize,
     h: usize,
@@ -1111,8 +1112,10 @@ struct Tiles {
 
 impl Tiles {
     const SIDE: usize = 8;
+    /// The most pixels an element is tested over one by one.
+    const PIXELS: usize = 1024;
 
-    fn of(depth: &[f32], w: usize, h: usize) -> Tiles {
+    fn of(depth: Vec<f32>, w: usize, h: usize) -> Tiles {
         let across = w.div_ceil(Self::SIDE);
         let mut far = vec![f32::INFINITY; across * h.div_ceil(Self::SIDE)];
         for (k, d) in depth.iter().enumerate() {
@@ -1121,7 +1124,7 @@ impl Tiles {
                 *f = f.min(*d);
             }
         }
-        Tiles { far, across, w, h }
+        Tiles { far, depth, across, w, h }
     }
 
     /// Whether what lies in box `b` may win a pixel of a picture through `project` and `clip`: it lies in the picture, past
@@ -1155,11 +1158,26 @@ impl Tiles {
         if z0 > clip.near + slack(z0) || clip.far.is_some_and(|f| z1 < clip.near - f - slack(z1)) {
             return false;
         }
-        // The pixels whose middles it may cover, by tile.
-        let px = |v: f64, n: usize| ((v - 1.0).floor().max(0.0) as usize).min(n.saturating_sub(1));
-        let (tx0, tx1) = (px(x0, self.w) / Self::SIDE, (px(x1 + 2.0, self.w)) / Self::SIDE);
-        let (ty0, ty1) = (px(y0, self.h) / Self::SIDE, (px(y1 + 2.0, self.h)) / Self::SIDE);
-        (ty0..=ty1).any(|ty| (tx0..=tx1).any(|tx| self.far.get(ty * self.across + tx).is_none_or(|f| z1 + slack(z1) >= f64::from(*f))))
+        // The pixels whose middles it may cover (a pixel is drawn where its middle is in a triangle, to a hair): none, and it shows
+        // nowhere.
+        let first = |v: f64| (v - 0.5 - 1e-3).ceil().max(0.0);
+        let last = |v: f64, n: usize| (v - 0.5 + 1e-3).floor().min(n as f64 - 1.0);
+        let (px0, px1, py0, py1) = (first(x0), last(x1, self.w), first(y0), last(y1, self.h));
+        if px0 > px1 || py0 > py1 {
+            return false;
+        }
+        let (px0, px1, py0, py1) = (px0 as usize, px1 as usize, py0 as usize, py1 as usize);
+        let nearer = |f: f32| z1 + slack(z1) >= f64::from(f);
+        // By tile first: nearer than none of its tiles' farthest depths, it is behind everywhere.
+        let (tx0, tx1, ty0, ty1) = (px0 / Self::SIDE, px1 / Self::SIDE, py0 / Self::SIDE, py1 / Self::SIDE);
+        if !(ty0..=ty1).any(|ty| (tx0..=tx1).any(|tx| self.far.get(ty * self.across + tx).is_none_or(|f| nearer(*f)))) {
+            return false;
+        }
+        // Small, then pixel by pixel: a tile it touches may hold what it is behind and, beside it, what it isn't.
+        if (px1 - px0 + 1) * (py1 - py0 + 1) > Self::PIXELS {
+            return true;
+        }
+        (py0..=py1).any(|y| (px0..=px1).any(|x| self.depth.get(y * self.w + x).is_none_or(|d| nearer(*d))))
     }
 }
 
