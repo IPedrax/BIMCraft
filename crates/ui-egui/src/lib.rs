@@ -2920,9 +2920,14 @@ impl BimApp {
         self.ribbon_peek = false;
     }
 
-    /// The tools of the tab that is open, in the panels it draws: the ribbon lays them side by side, the palette in rows.
+    /// The tools of the tab that is open, in the panels it draws: the ribbon lays them side by side.
     fn tab_tools(&mut self, ui: &mut Ui) {
-        match self.tab {
+        self.tab_content(ui, self.tab);
+    }
+
+    /// The panels of `tab`.
+    fn tab_content(&mut self, ui: &mut Ui, tab: Tab) {
+        match tab {
             Tab::Architecture => self.architecture_tab(ui),
             Tab::Structure => self.structure_tab(ui),
             Tab::Plumbing => self.plumbing_tab(ui),
@@ -2938,28 +2943,12 @@ impl BimApp {
         }
     }
 
-    /// The tool palette (File > Settings > Tools): the tabs as a row of pills over the open tab's panels, each panel's tools as rows
-    /// under its name. The same buttons the ribbon draws, so a tool is picked, listed and chosen from the same way, and runs the same
-    /// command; the contextual tab is the picker's last entry.
+    /// The tool palette (File > Settings > Tools, TP): the info panel over one list of every tab's tools, in the panels the ribbon has
+    /// them in but as rows, each tab a section that opens and folds (Architecture open to begin with). The ribbon's tab row is not
+    /// needed: the discipline is not switched often, and the sections are all there. The info panel is what the Options Bar shows over
+    /// the view with the ribbon (a tool's type, heights, location line), while there is something to show.
     fn tool_palette(&mut self, ui: &mut Ui) {
         ui.set_width(ui.available_width());
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
-            for (tab, label) in TABS {
-                if tab_button(ui, label, self.tab == tab, false).clicked() {
-                    self.tab = tab;
-                }
-            }
-            if let Some(name) = self.context()
-                && tab_button(ui, &name, self.tab == Tab::Context, true).clicked()
-            {
-                self.tab = Tab::Context;
-            }
-        });
-        ui.add_space(4.0);
-        ui.separator();
-        // The info panel, between the tabs and the tools: what the Options Bar shows over the view with the ribbon (the tool's type,
-        // heights, location line), while there is something to show. Its own scroll area, short of the tools' room.
         if self.options_shown() {
             let room = ui.available_height() * 0.4;
             ScrollArea::vertical().id_salt("palette-info").max_height(room).auto_shrink([false, true]).show(ui, |ui| {
@@ -2970,8 +2959,35 @@ impl BimApp {
             ui.separator();
         }
         ScrollArea::vertical().id_salt("palette-tools").auto_shrink([false, false]).show(ui, |ui| {
-            ribbon::rows(ui, |ui| self.tab_tools(ui));
+            // Select once, over the sections; the tabs that begin with it leave it out.
+            ribbon::skip_select(false);
+            ribbon::rows(ui, |ui| self.select_panel(ui));
+            ribbon::skip_select(true);
+            // The Modify section first: the edit tools, or, with a tool in hand or a selection, the contextual tab, named for it.
+            let context = self.context();
+            let title = context.clone().unwrap_or_else(|| "Modify".to_string());
+            self.palette_section(ui, Tab::Modify, &title, false);
+            for (tab, label) in TABS {
+                if tab != Tab::Modify {
+                    self.palette_section(ui, tab, label, tab == Tab::Architecture);
+                }
+            }
+            ribbon::skip_select(false);
         });
+    }
+
+    /// A section of the tool palette's list: the tab `tab`'s panels as rows under a header named `title`. A click on the header opens
+    /// or folds it, and makes it the tab the window works in (what the column shortcut reads).
+    fn palette_section(&mut self, ui: &mut Ui, tab: Tab, title: &str, open: bool) {
+        // The Modify section named for a tool in hand has a state of its own, folded until it is opened: it does not push the list down when
+        // a tool is picked, and stays as the user left it for the next.
+        let id = ("palette-section", tab as u8, tab == Tab::Modify && title != "Modify");
+        let shown = egui::CollapsingHeader::new(t(title)).id_salt(id).default_open(open).show_unindented(ui, |ui| {
+            ribbon::rows(ui, |ui| self.tab_content(ui, tab));
+        });
+        if shown.header_response.clicked() {
+            self.tab = tab;
+        }
     }
 
     /// The ribbon tab's panels of tools.
@@ -3046,6 +3062,9 @@ impl BimApp {
     /// The Select panel each tab starts with: Modify, and Revit's Filter while something is selected, to keep some of it by
     /// category or by the values of a parameter they all have.
     fn select_panel(&mut self, ui: &mut Ui) {
+        if ribbon::skipping_select() {
+            return;
+        }
         panel(ui, msg!("Select"), |ui| {
             if big_button(ui, Icon::Modify, "Modify", structure::same_tool(&self.tool, &Tool::Modify), msg!("Modify (MD): select elements"))
                 .clicked()
@@ -3062,6 +3081,10 @@ impl BimApp {
     }
 
     fn tools(&mut self, ui: &mut Ui, name: &str, tools: Tools) {
+        // The tool palette has the Select panel once, over its sections; the tabs that have their own copy leave it out.
+        if name == "Select" && ribbon::skipping_select() {
+            return;
+        }
         panel(ui, name, |ui| {
             for (icon, label, tip, tool) in tools {
                 let active = structure::same_tool(&self.tool, tool);

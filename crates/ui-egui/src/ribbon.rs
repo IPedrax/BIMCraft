@@ -37,6 +37,8 @@ thread_local! {
     static LISTING: Cell<bool> = const { Cell::new(false) };
     /// Whether a panel drawn as rows names itself first: the tool palette's, where the panels stand one over the other.
     static HEADINGS: Cell<bool> = const { Cell::new(false) };
+    /// Whether the tabs' Select panel is left out: the tool palette draws it once, above its sections.
+    static SKIP_SELECT: Cell<bool> = const { Cell::new(false) };
     /// How the panels of the tab being drawn fit, by name; one not named shows all its tools.
     static FITS: RefCell<Vec<(String, Fit)>> = const { RefCell::new(Vec::new()) };
     /// The panels of the tab being drawn, as they're drawn.
@@ -57,6 +59,16 @@ thread_local! {
 /// Whether the tools drawn now go in a panel's list.
 pub(crate) fn listing() -> bool {
     LISTING.with(Cell::get)
+}
+
+/// Leaves the Select panel out of the tabs drawn next (or puts it back): in the tool palette's list every section would have it.
+pub(crate) fn skip_select(skip: bool) {
+    SKIP_SELECT.with(|s| s.set(skip));
+}
+
+/// Whether the Select panel is being left out.
+pub(crate) fn skipping_select() -> bool {
+    SKIP_SELECT.with(Cell::get)
 }
 
 /// Draws a tab's panels as rows down `ui`, each under its name: the tool palette's way to show what the ribbon shows as buttons.

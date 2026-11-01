@@ -12,6 +12,21 @@ fn palette() -> Harness<'static, BimApp> {
     h
 }
 
+/// The section of the palette's list named `label`: its header, which is also what opens and folds it. A panel of the section may be
+/// named like it (Structure's Structure), but that is a label, not a button; and "Modify" is a tool in the Select panel above and a
+/// section below it, so of the buttons the lower one is taken.
+fn header(h: &Harness<BimApp>, label: &str) -> egui::Pos2 {
+    h.get_all_by_role_and_label(Role::Button, label).max_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).unwrap().rect().center()
+}
+
+/// Opens (or folds) the section `label`: scrolled to, as a user does when the list runs below the fold, and clicked on its header.
+fn toggle(h: &mut Harness<BimApp>, label: &str) {
+    h.get_all_by_role_and_label(Role::Button, label).max_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).unwrap().scroll_to_me();
+    h.run();
+    let at = header(h, label);
+    click_at(h, at);
+}
+
 #[test]
 fn the_ribbon_is_the_default_and_the_palette_replaces_it() {
     let mut h = app("");
@@ -36,28 +51,72 @@ fn a_row_of_the_palette_picks_its_tool_as_a_ribbon_button_does() {
 }
 
 #[test]
-fn the_palette_names_each_panel_of_a_tab_and_a_tab_picked_shows_its_tools() {
+fn the_palette_is_one_list_with_a_section_for_each_tab_and_no_tab_pills() {
     let mut h = palette();
+    for tab in [
+        "Architecture",
+        "Structure",
+        "Plumbing",
+        "Electrical",
+        "Lightning Protection",
+        "Data",
+        "Insert",
+        "Annotate",
+        "Massing",
+        "View",
+        "Manage",
+    ] {
+        assert!(h.query_by_label(tab).is_some(), "a section for {tab}");
+    }
+    // Architecture is open to begin with: its panels, and none of the others' tools.
     for panel in ["Build", "Circulation", "Opening"] {
         assert!(h.query_by_label(panel).is_some(), "{panel}");
     }
-    assert!(h.query_by_label("Beam").is_none(), "a Structure tool is on another tab");
-    press(&mut h, "Structure");
+    assert!(h.query_by_label("Wall").is_some());
+    assert!(h.query_by_label("Beam").is_none(), "Structure is folded");
+    // Opening a section adds its tools to the list; the others stay as they are.
+    toggle(&mut h, "Structure");
     assert_eq!(h.state().tab, Tab::Structure);
     assert!(h.query_by_label("Beam").is_some());
-    assert!(h.query_by_label("Wall").is_none(), "and the Architecture tab's are not");
-    press(&mut h, "Architecture");
-    assert!(h.query_by_label("Wall").is_some());
+    assert!(h.query_by_label("Wall").is_some(), "one list: Architecture is still open");
+    toggle(&mut h, "Structure");
+    assert!(h.query_by_label("Beam").is_none(), "folded again");
+    // And what is above the list is not five rows of pills: the list starts under the Select panel.
+    let first = h.get_by_label("Select").rect().top();
+    assert!(first < 200.0, "the Select panel is at the top of the column: {first}");
 }
 
 #[test]
-fn the_palette_keeps_the_tools_of_the_modify_tab_in_reach() {
+fn the_select_panel_is_shown_once_however_many_sections_are_open() {
     let mut h = palette();
-    // The tab's pill, not the Architecture tab's Modify tool: the higher of the two.
-    let pill = h.get_all_by_label("Modify").min_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).unwrap().rect().center();
-    click_at(&mut h, pill);
-    assert_eq!(h.state().tab, Tab::Modify);
-    assert!(h.query_by_label("Move").is_some());
+    for tab in ["Structure", "Annotate", "View"] {
+        toggle(&mut h, tab);
+    }
+    assert_eq!(h.get_all_by_label("Select").count(), 1, "the panel's name");
+}
+
+#[test]
+fn the_modify_section_holds_the_edit_tools_and_a_tool_in_hand_names_it() {
+    let mut h = app(BOX);
+    h.state_mut().profile = Profile::Palette;
+    h.run();
+    assert!(h.query_by_label("Move").is_none(), "folded to begin with");
+    toggle(&mut h, "Modify");
+    for tool in ["Move", "Copy", "Delete", "Align"] {
+        assert!(in_column(&h, tool), "{tool}");
+    }
+    toggle(&mut h, "Modify");
+    // A tool in hand: its own panels (the shapes it draws) come at the top, under the tool's name.
+    press(&mut h, "Wall");
+    assert!(h.query_by_label("Modify | Place Wall").is_some(), "the section is named for the tool");
+    assert!(h.query_by_label("Draw").is_none(), "folded: the list does not jump when a tool is picked");
+    press(&mut h, "Door");
+    assert!(matches!(h.state().tool, Tool::Door), "the tools are where they were");
+    press(&mut h, "Wall");
+    toggle(&mut h, "Modify | Place Wall");
+    assert!(h.query_by_label("Draw").is_some(), "opened, it holds the tool's own panel");
+    key(&mut h, Key::Escape);
+    assert!(h.query_by_label("Modify | Place Wall").is_none(), "and the name goes with the tool");
 }
 
 #[test]
@@ -104,8 +163,10 @@ fn a_tool_that_drops_choices_down_shows_them_beside_its_row() {
     let mut h = app(BOX);
     h.state_mut().profile = Profile::Palette;
     h.run();
-    press(&mut h, "View");
+    toggle(&mut h, "View");
     let before = h.state().sheet;
+    h.get_by_role_and_label(Role::Button, "Duplicate View").scroll_to_me();
+    h.run();
     press(&mut h, "Duplicate View");
     assert!(h.query_by_label("Duplicate with Detailing").is_some(), "its choices");
     press(&mut h, "Duplicate with Detailing");
@@ -141,13 +202,12 @@ fn a_field_of_the_info_panel_is_typed_into_and_stays_in_the_column() {
     let mut h = app(BOX);
     h.state_mut().profile = Profile::Palette;
     h.run();
-    press(&mut h, "Architecture");
     press(&mut h, "Ceiling");
     type_into(&mut h, "Height Offset:", "2500");
     assert_eq!(h.state().ceiling_height, "2500");
     key(&mut h, Key::Escape);
     // The widest of the Options Bar's fields (a note's text, 240 wide) is held to the column.
-    press(&mut h, "Annotate");
+    toggle(&mut h, "Annotate");
     // The list runs below the fold: scrolled to, as a user does.
     h.get_by_role_and_label(Role::Button, "Text").scroll_to_me();
     h.run();
@@ -165,13 +225,12 @@ fn in_column(h: &Harness<BimApp>, label: &str) -> bool {
 #[test]
 fn small_buttons_the_ribbon_sets_side_by_side_are_rows_one_under_the_other_in_the_palette() {
     let mut h = palette();
-    press(&mut h, "Annotate");
+    toggle(&mut h, "Annotate");
     for tool in ["Aligned", "Linear", "Angular", "Radial", "Diameter", "Arc Length", "Spot Elevation"] {
         assert!(in_column(&h, tool), "{tool}");
     }
-    // The Modify tab's panel of Move, Copy and the rest.
-    let pill = h.get_all_by_label("Modify").min_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).unwrap().rect().center();
-    click_at(&mut h, pill);
+    // The Modify section's panel of Move, Copy and the rest.
+    toggle(&mut h, "Modify");
     for tool in ["Move", "Copy", "Delete"] {
         assert!(in_column(&h, tool), "{tool}");
     }
@@ -323,20 +382,23 @@ fn the_width_stays_what_it_is_whatever_tool_is_in_hand_or_tab_is_open() {
         ("Annotate", &["Aligned", "Detail Line", "Detail Group", "Text", "Tag by Category"][..]),
         ("Massing", &["Mass"][..]),
     ] {
-        press(&mut h, tab);
+        if tab != "Architecture" {
+            toggle(&mut h, tab);
+        }
         assert!((h.state().palette_width - width).abs() < 0.5, "{tab}: {}", h.state().palette_width);
         for tool in tools {
-            let row = h.get_by_role_and_label(Role::Button, tool);
-            row.scroll_to_me();
+            // Two sections can have a tool of the name (a Column in Architecture and in Structure): the section opened last is lowest.
+            h.get_all_by_role_and_label(Role::Button, tool).last().unwrap().scroll_to_me();
             h.run();
-            pick(&mut h, Role::Button, tool);
+            let at = h.get_all_by_role_and_label(Role::Button, tool).last().unwrap().rect().center();
+            click_at(&mut h, at);
             assert!(!matches!(h.state().tool, Tool::Modify), "{tab} > {tool} is in hand");
             assert!((h.state().palette_width - width).abs() < 0.5, "{tab} > {tool}: {}", h.state().palette_width);
             key(&mut h, Key::Escape);
         }
     }
     for tab in ["Insert", "View", "Manage", "Modify"] {
-        press(&mut h, tab);
+        toggle(&mut h, tab);
         assert!((h.state().palette_width - width).abs() < 0.5, "{tab}: {}", h.state().palette_width);
     }
 }
