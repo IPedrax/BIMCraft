@@ -22,6 +22,9 @@ use crate::{BimApp, Status, Tool};
 /// whether it's drawn dark.
 type Shot = (Arc<Model>, Id, View, Vec<(Id, Rgb)>, bool);
 
+/// The drawing over a picture, with the picture's generation, the model, the view and its framing it was made for.
+type Drawn = (u64, Arc<Model>, Id, View, Arc<render::Drawing>);
+
 /// The section or elevation on screen, between frames: its picture, and its texture.
 #[derive(Default)]
 pub struct Cut {
@@ -32,7 +35,7 @@ pub struct Cut {
     generation: u64,
     /// The drawing over the picture, and what it is of: the picture's generation, the model, the view and its framing. It
     /// takes its regions' ink from the picture, so a new picture (a hover's tint) makes it again; a still frame doesn't.
-    drawn: Option<(u64, Arc<Model>, Id, View, Arc<render::Drawing>)>,
+    drawn: Option<Drawn>,
     /// How many times a picture was drawn (by the core, for the drawing over it or for the texture): a tick of the test that a
     /// pan or a zoom draws it once.
     #[cfg(test)]

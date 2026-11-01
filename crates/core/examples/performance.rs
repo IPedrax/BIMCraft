@@ -265,7 +265,9 @@ fn measure_section(report: &mut Value, s: &Session, scene: &view3d::Scene, name:
     let d = timed(report, &format!("{name}_drawing"), || Ok(render::section_over(&s.model, id, view, &picture)))?;
     report[format!("{name}_primitives")] = json!(d.prims.len());
     // What the picture is, to the pixel, and what is drawn over it: the same before and after a change that only speeds it.
-    let fnv = |bytes: &mut dyn Iterator<Item = u8>| bytes.fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3));
+    let fnv = |bytes: &mut dyn Iterator<Item = u8>| {
+        bytes.fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3))
+    };
     report[format!("{name}_picture_hash")] = json!(format!("{:016x}", fnv(&mut picture.rgba.iter().copied())));
     report[format!("{name}_drawing_hash")] = json!(format!("{:016x}", fnv(&mut render::png(&d)?.into_iter())));
     Ok(())
