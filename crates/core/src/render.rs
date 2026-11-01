@@ -980,8 +980,33 @@ fn turn_corners(runs: &mut [(Id, Vec<Vec<P2>>)], reach: f64) {
             [(r[0], r[1]), (r[n - 1], r[n - 2])]
         })
         .collect();
+    // The ends by cell of a micron (a match is within a millionth of a millimetre, in its cell or the next); the ends
+    // that aren't finite numbers are asked every time.
+    const CELL: f64 = 1e-3;
+    let key = |p: P2| ((p.0 / CELL).floor(), (p.1 / CELL).floor());
+    let fits = |(x, y): (f64, f64)| x.is_finite() && y.is_finite() && x.abs() < 1e15 && y.abs() < 1e15;
+    let mut cells: std::collections::HashMap<(i64, i64), Vec<usize>> = std::collections::HashMap::new();
+    let mut loose = Vec::new();
+    for (i, (p, _)) in ends.iter().enumerate() {
+        match key(*p) {
+            k if fits(k) => cells.entry((k.0 as i64, k.1 as i64)).or_default().push(i),
+            _ => loose.push(i),
+        }
+    }
     let on = |at: P2, from: P2| {
-        ends.iter().find(|(p, q)| p.dist(at) < 1e-6 && q.dist(from) > 1e-9).map(|(p, q)| {
+        let matches = |i: &usize| ends.get(*i).is_some_and(|(p, q)| p.dist(at) < 1e-6 && q.dist(from) > 1e-9);
+        // The first that matches, as a search of every end in order would find.
+        let first = match key(at) {
+            k if fits(k) => {
+                let (x, y) = (k.0 as i64, k.1 as i64);
+                let near = (x - 1..=x + 1).flat_map(|x| (y - 1..=y + 1).map(move |y| (x, y)));
+                near.filter_map(|c| cells.get(&c)).flatten().chain(&loose).copied().filter(matches).min()
+            }
+            _ => (0..ends.len()).find(matches),
+        };
+        #[cfg(test)]
+        assert_eq!(first, (0..ends.len()).find(|i| matches(i)), "the end a run carries on along");
+        first.and_then(|i| ends.get(i)).map(|(p, q)| {
             let len = p.dist(*q);
             *p + (*q - *p) * (reach.min(len) / len)
         })
