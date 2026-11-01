@@ -266,7 +266,7 @@ pub static ALL: &[Command] = &[
     edit(
         "toposurface",
         "Toposurface",
-        &["TS"],
+        &[],
         "{points: [[x,y,z],…], breaklines?: [[[x,y,z],…],…], boundary?: [[x,y],…], name?, material?, interval?} terrain, Revit's \
          toposurface: a surface through surveyed points (mm, z above sea level), triangulated (Delaunay) so that its triangles follow \
          the `breaklines` (ridges, valleys, kerbs; one that crosses an earlier one is skipped) and none lie outside `boundary`. \
