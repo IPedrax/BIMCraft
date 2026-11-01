@@ -1287,24 +1287,51 @@ impl SectionWork {
         self.solids.iter().filter(|s| look.shows(s.owner()))
     }
 
-    /// The points that may be farthest of each element `look` shows: the farthest of them any way are those of every
-    /// corner of its solids.
-    fn corners<'a>(&'a self, look: &'a Look) -> impl Iterator<Item = [f64; 3]> + 'a {
-        self.placed.iter().filter(|(id, _)| look.shows(*id)).flat_map(|(_, p)| p.iter().copied())
+    /// The lowest and highest of each element `look` shows: its box's, which are its points'.
+    fn heights<'a>(&'a self, look: &'a Look) -> impl Iterator<Item = (f64, f64)> + 'a {
+        self.placed.iter().zip(&self.boxes).filter(|((id, _), _)| look.shows(*id)).filter_map(|(_, b)| b.map(|[lo, hi]| (lo[2], hi[2])))
     }
 
-    /// The lowest and highest of each element `look` shows.
-    fn heights<'a>(&'a self, look: &'a Look) -> impl Iterator<Item = (f64, f64)> + 'a {
-        self.placed
+    /// The least and the most of `along` (a measure linear in plan, as far along a line) over the points of every element
+    /// `look` shows: of the elements whose boxes reach past what another surely reaches, their points. Of a box, `along` is
+    /// the most at one of its corners, which no point inside it passes, its sums rounded as they are.
+    fn along_range(&self, look: &Look, along: impl Fn(P2) -> f64) -> (f64, f64) {
+        #[allow(clippy::type_complexity)]
+        let shown: Vec<(&Vec<[f64; 3]>, (f64, f64))> = self
+            .placed
             .iter()
-            .filter(|(id, _)| look.shows(*id))
-            .map(|(_, p)| p.iter().fold((f64::MAX, f64::MIN), |(lo, hi), q| (lo.min(q[2]), hi.max(q[2]))))
+            .zip(&self.boxes)
+            .filter(|((id, _), _)| look.shows(*id))
+            .map(|((_, p), b)| {
+                let reach = b.map_or((f64::NEG_INFINITY, f64::INFINITY), |[lo, hi]| {
+                    let xs = [P2(lo[0], lo[1]), P2(hi[0], lo[1]), P2(hi[0], hi[1]), P2(lo[0], hi[1])].map(&along);
+                    let (a, z) = xs.iter().fold((f64::MAX, f64::MIN), |(a, z), x| (a.min(*x), z.max(*x)));
+                    // Not finite numbers: asked of its points.
+                    if a.is_finite() && z.is_finite() { (a, z) } else { (f64::NEG_INFINITY, f64::INFINITY) }
+                });
+                (p, reach)
+            })
+            .collect();
+        // What some point surely reaches: each element's first point.
+        let first = |p: &Vec<[f64; 3]>| p.first().map(|q| along(P2(q[0], q[1]))).filter(|x| !x.is_nan());
+        let (least, most) = shown.iter().filter_map(|(p, _)| first(p)).fold((f64::MAX, f64::MIN), |(a, z), x| (a.min(x), z.max(x)));
+        let mut out = (f64::MAX, f64::MIN);
+        for (p, (a, z)) in &shown {
+            if *a <= least || *z >= most {
+                for q in p.iter() {
+                    let x = along(P2(q[0], q[1]));
+                    out = (out.0.min(x), out.1.max(x));
+                }
+            }
+        }
+        out
     }
 
     /// [`Model::model_extent`] of `m`, the model it was made of.
     fn extent(&self, m: &Model) -> [P2; 2] {
         *self.extent.get_or_init(|| {
-            let extent = m.model_extent_of(self.placed.iter().flat_map(|(_, p)| p.iter().map(|q| P2(q[0], q[1]))));
+            // Each box's lowest and highest corners in plan: the least and most of its points either way.
+            let extent = m.model_extent_of(self.boxes.iter().flatten().flat_map(|[lo, hi]| [P2(lo[0], lo[1]), P2(hi[0], hi[1])]));
             // Its twin, which tests hold it to: of every solid's corners.
             #[cfg(test)]
             assert_eq!(extent, m.model_extent(), "the model's extent from the components' farthest points");
@@ -1355,14 +1382,16 @@ fn span(m: &Model, w: &SectionWork, v: &Section, look: &Look) -> (f64, f64) {
     }
     let u = (v.end - v.start).unit();
     let along = |q: P2| (q - v.start).dot(u);
-    let solids = w.corners(look).map(|p| along(P2(p[0], p[1])));
+    let (least, most) = w.along_range(look, along);
+    // Nothing shown, nothing found: no reach of its own.
+    let solids = [least, most].into_iter().filter(|_| least <= most);
     // Its twin, which tests hold it to: every corner of every solid the look shows, as far along the line.
     #[cfg(test)]
     {
         let fold = |xs: &mut dyn Iterator<Item = f64>| xs.fold((f64::MAX, f64::MIN), |(lo, hi), x| (lo.min(x), hi.max(x)));
         let every = view3d::solids(m);
         let all = fold(&mut every.iter().filter(|s| look.shows(s.owner())).flat_map(|s| s.corners()).map(|p| along(P2(p[0], p[1]))));
-        assert_eq!(fold(&mut w.corners(look).map(|p| along(P2(p[0], p[1])))), all, "how far along its line a view's solids reach");
+        assert_eq!((least, most), all, "how far along its line a view's solids reach");
     }
     let levels = level_spans(m, w, v, look).into_iter().flat_map(|(_, a, b)| [a, b]);
     let lookup = m.lookup();
