@@ -53,6 +53,18 @@ impl<'a> Components<'a> {
         self.local(c).iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(base + p.bottom), hi.max(base + p.top)))
     }
 
+    /// Its pieces' outlines in plan, as [`Components::pieces`] places them, without their triangles.
+    pub(crate) fn outlines(&mut self, c: &Component) -> Vec<P2> {
+        let base = self.model.elevation(c.level) + c.offset;
+        let (sin, cos) = c.angle.to_radians().sin_cos();
+        let place = |p: [f64; 3]| [c.at.0 + p[0] * cos - p[1] * sin, c.at.1 + p[0] * sin + p[1] * cos, base + p[2]];
+        let outlines: Vec<P2> =
+            self.local(c).iter().flat_map(|pc| pc.outline.iter().map(|q| place([q.0, q.1, 0.0])).map(|p| P2(p[0], p[1]))).collect();
+        #[cfg(test)]
+        assert_eq!(outlines, self.model.component_pieces(c).into_iter().flat_map(|p| p.outline).collect::<Vec<_>>());
+        outlines
+    }
+
     pub(crate) fn pieces(&mut self, c: &Component) -> Vec<Piece> {
         let base = self.model.elevation(c.level) + c.offset;
         let (sin, cos) = c.angle.to_radians().sin_cos();

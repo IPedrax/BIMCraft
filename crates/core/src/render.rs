@@ -963,11 +963,9 @@ fn plan_shows_among(m: &Model, key: Guid, among: bool) -> Vec<P2> {
         _ => Some(walls::Index::new(m)),
     };
     let index = index.as_ref();
-    let elements: Vec<(Id, &Element)> = if among {
-        plan_elements(m, key, level, &r, false, &mut crate::component_geometry::Components::new(m))
-    } else {
-        m.elements.iter().map(|(id, e)| (*id, e)).collect()
-    };
+    let mut components = crate::component_geometry::Components::new(m);
+    let elements: Vec<(Id, &Element)> =
+        if among { plan_elements(m, key, level, &r, false, &mut components) } else { m.elements.iter().map(|(id, e)| (*id, e)).collect() };
     let mut extent: Vec<P2> = cut_outlines(m, &elements, r.cut, &look, index).into_iter().flat_map(|(_, o)| o).collect();
     extent.extend(seen_below(m, &elements, &r, &look, index).into_iter().flat_map(|(_, o, _)| o));
     // What it shows besides what is cut and seen: of its level, in it, or of the kinds a plan looks for among all.
@@ -998,7 +996,7 @@ fn plan_shows_among(m: &Model, key: Guid, among: bool) -> Vec<P2> {
             }
             Element::Room(r) if r.level == level => extent.push(r.point),
             Element::Mass(ms) if m.mass_cut_by(ms, r.cut) => extent.extend(m.mass_outline(ms, r.cut)),
-            Element::Component(c) if c.level == level => extent.extend(m.component_pieces(c).into_iter().flat_map(|p| p.outline)),
+            Element::Component(c) if c.level == level => extent.extend(components.outlines(c)),
             Element::Grid(g) => extent.extend([g.start, g.end]),
             Element::RoomSeparator(rs) if rs.level == level => extent.extend([rs.start, rs.end]),
             Element::Dimension(dm) if m.annotation_in(e, key) => extent.push(dm.at),
