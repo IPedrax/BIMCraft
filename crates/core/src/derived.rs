@@ -52,8 +52,9 @@ pub struct Lookup {
     levels: Arc<BTreeSet<Id>>,
 }
 
-/// The categories a project has few elements of, which views and checks look for among all of them: kept by kind.
-pub const RARE: &[&str] = &["pointcloud", "cadimport", "mass", "link"];
+/// The categories a project has few elements of (a column to a hundred others), which views, checks and rooms look for
+/// among all of them: kept by kind.
+pub const RARE: &[&str] = &["pointcloud", "cadimport", "mass", "link", "column", "structuralcolumn"];
 
 /// A tile's walls by band of height.
 type Bands = BTreeMap<i64, Arc<BTreeSet<Id>>>;

@@ -3331,9 +3331,14 @@ impl Model {
     /// The outlines of the columns (and structural columns) that bound the rooms of `level`: Room Bounding on, standing at
     /// the level's Computation Height.
     pub fn bounding_columns(&self, level: impl Key) -> Vec<Vec<P2>> {
+        let level = self.guid(level);
         let z = self.elevation(level) + self.level(level).map_or(CUT_HEIGHT, |l| l.computation_height);
-        self.elements
-            .values()
+        // In order of id, the columns and the structural ones: from the lookup when it is made.
+        let mut ids = self.rare("column");
+        ids.extend(self.rare("structuralcolumn"));
+        ids.sort_unstable();
+        ids.into_iter()
+            .filter_map(|id| self.elements.get(id))
             .filter(|e| {
                 matches!(e, Element::Column(c) | Element::StructuralColumn(c) if c.room_bounding && {
                     let (bottom, top) = self.span(c.level, c.base_offset, c.top_level, c.height);
