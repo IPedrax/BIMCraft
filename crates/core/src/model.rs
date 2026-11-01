@@ -4547,8 +4547,13 @@ impl Model {
     }
 
     /// The walls that bound the rooms of `level`, by id.
+    /// (Those whose heights reach the rooms' height, from the lookup when it is made; else among every element.)
     pub(crate) fn bounding_walls<'a>(&'a self, level: &'a impl Key) -> impl Iterator<Item = Id> + 'a {
-        self.elements.iter().filter(move |(_, e)| matches!(e, Element::Wall(w) if self.bounding(w, level))).map(|(&id, _)| id)
+        let candidates: Box<dyn Iterator<Item = Id> + 'a> = match self.derived.made(&self.elements) {
+            Some(look) => Box::new(look.walls_at(self.elevation(level) + CUT_HEIGHT).into_iter()),
+            None => Box::new(self.elements.iter().filter(|(_, e)| matches!(e, Element::Wall(_))).map(|(&id, _)| id)),
+        };
+        candidates.filter(move |&id| self.wall(id).is_some_and(|w| self.bounding(w, level)))
     }
 
     /// The segments of [`Model::wall_lines`], each with half its wall's thickness.
@@ -4574,13 +4579,19 @@ impl Model {
 
     /// The room separation lines on `level`.
     pub fn separators(&self, level: impl Key) -> Vec<(P2, P2)> {
-        self.elements
-            .values()
-            .filter_map(|e| match e {
-                Element::RoomSeparator(rs) if self.same(rs.level, level) => Some((rs.start, rs.end)),
-                _ => None,
-            })
-            .collect()
+        let level = self.guid(level);
+        let line = |e: &Element| match e {
+            Element::RoomSeparator(rs) if self.same(rs.level, level) => Some((rs.start, rs.end)),
+            _ => None,
+        };
+        // What points at the level, from the lookup when it is made: in order of id, as among every element.
+        match self.derived.made(&self.elements) {
+            Some(look) => {
+                let ids: BTreeSet<Id> = look.referrers(&level).collect();
+                ids.into_iter().filter_map(|id| line(self.elements.get(id)?)).collect()
+            }
+            None => self.elements.values().filter_map(line).collect(),
+        }
     }
 
     /// A room's boundary, from the walls around its point, where the project measures rooms (`room_area`). `None` when it

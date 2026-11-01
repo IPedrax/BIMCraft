@@ -5689,13 +5689,16 @@ fn room(s: &mut Session, p: &Value) -> R {
     Ok(json!({"id": id, "number": number, "area_m2": area}))
 }
 
-/// The elements whose reference lines may come within `reach` mm of `p`, by id: the walls near it (a wall's faces and
-/// caps stay within twice the thickest wall's thickness of its location line: a cap runs on no farther than the
-/// thickest wall meeting it, [`walls::cap`]), the doors and windows in them, and the grids.
-fn near_point(m: &Model, p: P2, reach: f64) -> BTreeSet<Id> {
+/// The elements whose reference lines may come within `reach` mm of `p` in a plan of `level`, by id: the walls near it
+/// that span the plan's cut height (a wall's faces and caps stay within twice the thickest wall's thickness of its location
+/// line: a cap runs on no farther than the thickest wall meeting it, [`walls::cap`]), the doors and windows in them, and
+/// the grids.
+fn near_point(m: &Model, level: Guid, p: P2, reach: f64) -> BTreeSet<Id> {
     let look = m.lookup();
     let thickest = m.types.wall.values().map(|t| t.thickness).filter(|t| t.is_finite()).fold(0.0, f64::max);
-    let walls = look.walls_near([p.0, p.1, p.0, p.1], reach + 2.0 * thickest + 1.0);
+    // Of the walls the plan cuts: those that span its cut height.
+    let cut = m.plan_range(level).cut;
+    let walls = look.walls_near_at(&[([p.0, p.1, p.0, p.1], cut, cut)], reach + 2.0 * thickest + 1.0);
     let mut out = BTreeSet::new();
     for &w in &walls {
         let g = m.guid(w);
@@ -5712,7 +5715,7 @@ fn near_point(m: &Model, p: P2, reach: f64) -> BTreeSet<Id> {
 /// doors' and windows' centres and jambs, grids), the nearest `p`, within 100 mm.
 pub(crate) fn reference_near(m: &Model, level: impl Key, p: P2, keep: impl Fn(Line) -> bool) -> Option<Reference> {
     let level = m.guid(level);
-    nearest_reference(m, level, p, keep, near_point(m, p, 100.0).into_iter())
+    nearest_reference(m, level, p, keep, near_point(m, level, p, 100.0).into_iter())
 }
 
 /// [`reference_near`] among every element: its twin, which tests hold it to.
@@ -5740,7 +5743,7 @@ fn nearest_reference(m: &Model, level: Guid, p: P2, keep: impl Fn(Line) -> bool,
 /// doors' and windows' jambs, grids, its detail lines), the nearest `p`, within 100 mm.
 pub(crate) fn endpoint_near(m: &Model, level: Guid, view: Option<Guid>, p: P2) -> Option<Reference> {
     let plan = view.unwrap_or(level);
-    let mut ids = near_point(m, p, 100.0);
+    let mut ids = near_point(m, level, p, 100.0);
     // The view's detail lines: what points at it.
     ids.extend(m.lookup().referrers(&m.guid(plan)).filter(|id| matches!(m.elements.get(*id), Some(Element::DetailLine(_)))));
     nearest_end(m, level, view, p, ids.into_iter())

@@ -39,9 +39,14 @@ impl<'a> Rooms<'a> {
         if let Some(plan) = self.plans.borrow().get(&key) {
             return Rc::clone(plan);
         }
-        let (m, index) = (self.m, self.index.get_or_init(|| Index::new(self.m)));
+        // The walls' joins through the model's lookup when it is made (its tiles and heights), else an index of every wall.
+        let m = self.m;
+        let index = match m.derived.made(&m.elements) {
+            Some(_) => None,
+            None => Some(self.index.get_or_init(|| Index::new(m))),
+        };
         let walls: Vec<(Id, Vec<P2>)> = match at {
-            RoomArea::Finish => m.bounding_walls(&level).map(|id| (id, walls::outline_in(m, id, Some(index)))).collect(),
+            RoomArea::Finish => m.bounding_walls(&level).map(|id| (id, walls::outline_in(m, id, index))).collect(),
             RoomArea::Centre => Vec::new(),
         };
         let lines = match at {
@@ -50,7 +55,7 @@ impl<'a> Rooms<'a> {
                 lines.extend(m.separators(level));
                 lines
             }
-            RoomArea::Centre => m.room_lines_in(level, at, Some(index)),
+            RoomArea::Centre => m.room_lines_in(level, at, index),
         };
         let plan = Rc::new(Plan { faces: geom::faces(&lines, TOL), walls });
         self.plans.borrow_mut().insert(key, Rc::clone(&plan));

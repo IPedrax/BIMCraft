@@ -42,6 +42,8 @@ pub struct Lookup {
     tiled: Arc<BTreeMap<Id, Option<[i64; 6]>>>,
     /// The walls in no tile: a candidate everywhere.
     everywhere: Arc<BTreeSet<Id>>,
+    /// The tiled walls by band of height, wherever they are in plan (band [`ANY`]: those whose heights aren't known).
+    bands: BTreeMap<i64, Arc<BTreeSet<Id>>>,
     /// The levels: walls' heights are of them, so when one changes the lookup is made again.
     levels: Arc<BTreeSet<Id>>,
 }
@@ -147,6 +149,9 @@ impl Lookup {
                     [x0, y0, x1, y1, b0, b1]
                 });
                 if let Some([x0, y0, x1, y1, b0, b1]) = t {
+                    for b in b0..=b1 {
+                        Arc::make_mut(self.bands.entry(b).or_default()).insert(id);
+                    }
                     for x in x0..=x1 {
                         for y in y0..=y1 {
                             for b in b0..=b1 {
@@ -183,6 +188,14 @@ impl Lookup {
         if self.tiled.contains_key(&id)
             && let Some(Some([x0, y0, x1, y1, b0, b1])) = Arc::make_mut(&mut self.tiled).remove(&id)
         {
+            for b in b0..=b1 {
+                if let Some(set) = self.bands.get_mut(&b) {
+                    Arc::make_mut(set).remove(&id);
+                    if set.is_empty() {
+                        self.bands.remove(&b);
+                    }
+                }
+            }
             for x in x0..=x1 {
                 for y in y0..=y1 {
                     let Some(bands) = self.tiles.get_mut(&(x, y)) else { continue };
@@ -276,6 +289,22 @@ impl Lookup {
                     }
                 }
                 None => bands.values().for_each(|set| out.extend(set.iter().copied())),
+            }
+        }
+        out
+    }
+
+    /// The walls whose heights may reach height `z`, wherever they are, by id: every wall that spans it, and others.
+    pub fn walls_at(&self, z: f64) -> BTreeSet<Id> {
+        let [b, _] = bands_of(z, z, 1);
+        let mut out: BTreeSet<Id> = self.everywhere.iter().copied().collect();
+        if b == ANY {
+            out.extend(self.walls.iter().copied());
+            return out;
+        }
+        for band in [ANY, b] {
+            if let Some(set) = self.bands.get(&band) {
+                out.extend(set.iter().copied());
             }
         }
         out

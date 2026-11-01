@@ -237,11 +237,12 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> (Vec<Arm>, bo
     let mut through = false;
     let candidates: Box<dyn Iterator<Item = (Id, &Wall)> + '_> = match index {
         Some(index) => Box::new(index.neighbours_at(id, node).into_iter().filter_map(|id| Some((id, m.wall(id)?)))),
-        // The walls whose location lines come within the thickest wall's thickness of the node: those that end at it,
-        // and those it ends on (the node within their thickness).
+        // The walls whose location lines come within the thickest wall's thickness of the node (those that end at it,
+        // and those it ends on: the node within their thickness), of heights it overlaps (only those join it).
         None => {
             let thickest = m.types.wall.values().map(|t| t.thickness).filter(|t| t.is_finite()).fold(0.0, f64::max);
-            let near = m.lookup().walls_near([node.0, node.1, node.0, node.1], thickest + 1.0);
+            let at = ([node.0, node.1, node.0, node.1], m.base_z(w), m.top_z(w));
+            let near = m.lookup().walls_near_at(&[at], thickest + 1.0);
             Box::new(near.into_iter().filter_map(|id| Some((id, m.wall(id)?))))
         }
     };
