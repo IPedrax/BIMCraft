@@ -212,7 +212,8 @@ fn settings_can_ask_for_the_systems_title_bar_and_keep_it() {
     h.state_mut().use_settings(file.clone());
     assert!(!crate::settings::system_title_bar_in(&file), "nothing kept yet: the window's own bar");
     press(&mut h, "Settings");
-    h.get_by_role_and_label(Role::CheckBox, "Use the system's title bar").click();
+    // The page runs below the fold, so it is pressed as a screen reader does.
+    h.get_by_role_and_label(Role::CheckBox, "Use the system's title bar").click_accesskit();
     let now = asked(&mut h);
     assert!(now.contains(&ViewportCommand::Decorations(true)), "the system's bar comes back at once: {now:?}");
     press(&mut h, "Close");
@@ -220,7 +221,8 @@ fn settings_can_ask_for_the_systems_title_bar_and_keep_it() {
     assert!(crate::settings::system_title_bar_in(&file), "kept for the next start");
     // Off again: the window's own.
     press(&mut h, "Settings");
-    h.get_by_role_and_label(Role::CheckBox, "Use the system's title bar").click();
+    // The page runs below the fold, so it is pressed as a screen reader does.
+    h.get_by_role_and_label(Role::CheckBox, "Use the system's title bar").click_accesskit();
     assert!(asked(&mut h).contains(&ViewportCommand::Decorations(false)));
     assert!(!crate::settings::system_title_bar_in(&file));
     // A file that says something else keeps the window's own.
