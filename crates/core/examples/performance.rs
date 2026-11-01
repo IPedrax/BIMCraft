@@ -44,7 +44,7 @@ fn run() -> Result<(), String> {
             "--report" => report_path = Some(value),
             "--storeys" => storeys = Some(value.parse::<u32>().map_err(|e| format!("storeys: {e}"))?),
             "--fixture" => fixture = value.clone(),
-            // Steps to leave out, by name (inspect, rooms, plan, scene, ifc, reopen): what doesn't finish at a size.
+            // Steps to leave out, by name (inspect, rooms, plan, scene, sections, ifc, reopen): what doesn't finish at a size.
             "--skip" => skip = value.split(',').map(str::to_string).collect(),
             "--rooms" => room_sample = value.parse().map_err(|e| format!("rooms: {e}"))?,
             // The tower with its plans detailed: about 2,000 2D elements a storey.
@@ -194,7 +194,12 @@ fn run() -> Result<(), String> {
         if skipped("scene") {
             return finish(&mut report, &s, output, text, Some(png), None);
         }
+        // The views a section measures: the drawing set's, else made now (before the scene, which is of the model as it is).
+        let sections = if skipped("sections") { Vec::new() } else { section_views(&mut s)? };
         let scene = timed(&mut report, "scene_build", || Ok(view3d::Scene::new(&s.model)))?;
+        for (name, id) in &sections {
+            measure_section(&mut report, &s, &scene, name, *id)?;
+        }
         let cam = scene.fit(view3d::AZIMUTH, view3d::ELEVATION, 1280, 720);
         let mut frames = Vec::new();
         let mut last = None;
@@ -226,6 +231,44 @@ fn run() -> Result<(), String> {
     }
     println!("{text}");
     result
+}
+
+/// The north elevation and a section through the middle, by name and id: the model's, or made.
+fn section_views(s: &mut Session) -> Result<Vec<(&'static str, u64)>, String> {
+    let find = |s: &Session, name: &str| {
+        s.model.elements.iter().find_map(|(id, e)| match e {
+            Element::Section(v) | Element::Elevation(v) if v.name == name => Some(*id),
+            _ => None,
+        })
+    };
+    if find(s, "North Elevation").is_none() {
+        s.execute("elevation", &json!({"facing": "north", "name": "North Elevation"}))?;
+    }
+    if find(s, "Section A").is_none() {
+        let [lo, hi] = s.model.model_extent();
+        let y = (lo.1 + hi.1) / 2.0 + 1500.0;
+        s.execute("section", &json!({"start": [lo.0, y], "end": [hi.0, y], "name": "Section A"}))?;
+    }
+    Ok([("elevation", "North Elevation"), ("section", "Section A")]
+        .into_iter()
+        .filter_map(|(key, name)| Some((key, find(s, name)?)))
+        .collect())
+}
+
+/// A section's or an elevation's work at 1600 × 1000 px, step by step: framed, its hidden-line picture from `scene`, and
+/// the drawing over it.
+fn measure_section(report: &mut Value, s: &Session, scene: &view3d::Scene, name: &str, id: u64) -> Result<(), String> {
+    let view = timed(report, &format!("{name}_fit"), || Ok(render::section_fit(&s.model, id, 1600, 1000)))?;
+    let picture = timed(report, &format!("{name}_picture"), || {
+        render::section_image(&s.model, scene, id, view, &[]).ok_or_else(|| format!("{name} has no picture"))
+    })?;
+    let d = timed(report, &format!("{name}_drawing"), || Ok(render::section_over(&s.model, id, view, &picture)))?;
+    report[format!("{name}_primitives")] = json!(d.prims.len());
+    // What the picture is, to the pixel, and what is drawn over it: the same before and after a change that only speeds it.
+    let fnv = |bytes: &mut dyn Iterator<Item = u8>| bytes.fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3));
+    report[format!("{name}_picture_hash")] = json!(format!("{:016x}", fnv(&mut picture.rgba.iter().copied())));
+    report[format!("{name}_drawing_hash")] = json!(format!("{:016x}", fnv(&mut render::png(&d)?.into_iter())));
+    Ok(())
 }
 
 /// The median of `repeats` runs of `f`, ms.
