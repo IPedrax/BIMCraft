@@ -25,6 +25,14 @@ type Shot = (Arc<Model>, Id, View, Vec<(Id, Rgb)>, bool);
 /// The section or elevation on screen, between frames: its picture, and its texture.
 #[derive(Default)]
 pub struct Cut {
+    /// How many times the drawing over the picture was made: a tick of the test that a still window keeps it.
+    #[cfg(test)]
+    pub(crate) drawings: usize,
+    /// Which picture this is: one more each time one is drawn.
+    generation: u64,
+    /// The drawing over the picture, and what it is of: the picture's generation, the model, the view and its framing. It
+    /// takes its regions' ink from the picture, so a new picture (a hover's tint) makes it again; a still frame doesn't.
+    drawn: Option<(u64, Arc<Model>, Id, View, Arc<render::Drawing>)>,
     /// How many times a picture was drawn (by the core, for the drawing over it or for the texture): a tick of the test that a
     /// pan or a zoom draws it once.
     #[cfg(test)]
@@ -53,6 +61,7 @@ impl Cut {
         {
             self.pictures += 1;
         }
+        self.generation += 1;
         if let Some(image) = render::section_image(model, scene, id, pixels, &tints) {
             // A hidden-line picture, so dark as the drawing over it is.
             let (rgba, _) = image.rgba.as_chunks::<4>();
@@ -106,14 +115,27 @@ impl BimApp {
             let tints = self.cut.shown.as_ref().map(|s| s.3.clone()).unwrap_or_default();
             self.cut.draw(ui.ctx(), &model, scene_of(&mut self.orbit.scene, &model), id, pixels, tints, dark, grid_background);
         }
-        let d = match &self.cut.image {
-            Some(image) => render::section_over(&model, id, view, image),
+        let kept =
+            self.cut.drawn.as_ref().filter(|(g, m, v, f, _)| *g == self.cut.generation && Arc::ptr_eq(m, &model) && *v == id && *f == view);
+        let d = match kept {
+            Some((.., d)) => Arc::clone(d),
             None => {
                 #[cfg(test)]
                 {
-                    self.cut.pictures += 1;
+                    self.cut.drawings += 1;
                 }
-                render::section(&model, id, view)
+                let d = Arc::new(match &self.cut.image {
+                    Some(image) => render::section_over(&model, id, view, image),
+                    None => {
+                        #[cfg(test)]
+                        {
+                            self.cut.pictures += 1;
+                        }
+                        render::section(&model, id, view)
+                    }
+                });
+                self.cut.drawn = Some((self.cut.generation, Arc::clone(&model), id, view, Arc::clone(&d)));
+                d
             }
         };
         // Under the cursor: what's drawn over the picture, else what the picture shows.
