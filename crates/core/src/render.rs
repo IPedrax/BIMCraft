@@ -1528,6 +1528,11 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
     // the line crosses its boundaries; a thin line up each boundary between two, as high as the wall
     // stands there, around its openings.
     let lookup = m.lookup();
+    // Each element's solids, which lie together in the list, in its order.
+    let mut of_wall: std::collections::HashMap<Id, std::ops::Range<usize>> = std::collections::HashMap::new();
+    for (i, s) in solids.iter().enumerate() {
+        of_wall.entry(s.owner()).and_modify(|r| r.end = i + 1).or_insert(i..i + 1);
+    }
     for (wall, w) in section_walls(m, &lookup, v, first, last) {
         let layers = m.type_layers("wall", &w.type_name);
         if layers.is_empty() || !look.shows(wall) || d.detail == Detail::Coarse {
@@ -1579,7 +1584,7 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
                 if !(first..=last).contains(&along) {
                     continue;
                 }
-                for s in solids.iter().filter(|s| s.owner() == wall && s.over(x)) {
+                for s in of_wall.get(&wall).map_or(&[][..], |r| &solids[r.clone()]).iter().filter(|s| s.owner() == wall && s.over(x)) {
                     let (z0, z1) = s.z_at(x);
                     d.part(Part::Pattern);
                     d.line(&[P2(along, z0), P2(along, z1)], Pen::PROJECTION, INK, false);
