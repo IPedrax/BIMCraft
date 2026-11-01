@@ -5278,6 +5278,7 @@ mod look;
 mod mep;
 mod notes;
 mod objectstyles;
+mod palette;
 mod patterns;
 mod perspective;
 mod planviews;

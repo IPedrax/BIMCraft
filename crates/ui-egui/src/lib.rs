@@ -444,6 +444,8 @@ pub struct BimApp {
     /// while folded); where its tabs end.
     ribbon_min: bool,
     ribbon_peek: bool,
+    /// The tools as the ribbon or as the tool palette (File > Settings).
+    profile: settings::Profile,
     /// What High Contrast Point Clouds fills a view's scans with: the user's (Settings > Graphics), crimson at first.
     scan_contrast: [u8; 3],
     ribbon_bottom: Pos2,
@@ -893,6 +895,22 @@ fn step_name(st: &engine::Step) -> String {
 }
 
 /// A tab, of the ribbon or of a view. Contextual tabs are green, as Revit's are.
+/// The tabs, in order: what the ribbon's tab row and the tool palette's tab picker show (the contextual tab comes after them).
+const TABS: [(Tab, &str); 12] = [
+    (Tab::Architecture, msg!("Architecture")),
+    (Tab::Structure, msg!("Structure")),
+    (Tab::Plumbing, msg!("Plumbing")),
+    (Tab::Electrical, msg!("Electrical")),
+    (Tab::Lightning, msg!("Lightning Protection")),
+    (Tab::Data, msg!("Data")),
+    (Tab::Insert, msg!("Insert")),
+    (Tab::Annotate, msg!("Annotate")),
+    (Tab::Massing, msg!("Massing")),
+    (Tab::View, msg!("View")),
+    (Tab::Manage, msg!("Manage")),
+    (Tab::Modify, "Modify"),
+];
+
 fn tab_button(ui: &mut Ui, label: &str, active: bool, contextual: bool) -> Response {
     tab_button_with(ui, label, active, contextual, Sense::click(), 0.0)
 }
@@ -955,6 +973,7 @@ impl BimApp {
             pointer: Pos2::ZERO,
             grab: egui::Vec2::ZERO,
             ribbon_min: false,
+            profile: settings::Profile::default(),
             compact: false,
             ribbon_peek: false,
             scan_contrast: footer::HIGH_CONTRAST,
@@ -1211,6 +1230,11 @@ impl BimApp {
 
     /// Bring the contextual tab up, as Revit does for a tool or a selection.
     fn raise_context(&mut self) {
+        // The palette keeps the tab the user picked: its list is what they are choosing from, and the contextual tab is the last entry of
+        // its tab picker.
+        if self.profile == settings::Profile::Palette {
+            return;
+        }
         if self.tab != Tab::Context {
             self.back = self.tab;
             self.tab = Tab::Context;
@@ -1332,7 +1356,15 @@ impl BimApp {
             }
         });
         let card = style::card([true, true, true, false]);
-        Panel::top("ribbon").frame(card).show_separator_line(false).show(ui, |ui| self.ribbon(ui));
+        match self.profile {
+            settings::Profile::Ribbon => {
+                Panel::top("ribbon").frame(card).show_separator_line(false).show(ui, |ui| self.ribbon(ui));
+            }
+            settings::Profile::Palette => {
+                let card = style::card([true, false, true, true]).inner_margin(Margin::same(6));
+                Panel::left("tool-palette").frame(card).show_separator_line(false).default_size(236.0).show(ui, |ui| self.tool_palette(ui));
+            }
+        }
         if self.has_update_banner() {
             Panel::top("update").frame(Frame::NONE).show_separator_line(false).show(ui, |ui| self.update_banner(ui));
         }
@@ -2549,6 +2581,7 @@ impl BimApp {
         (fresh.own_title_bar, fresh.system_title_bar) = (self.own_title_bar, self.system_title_bar);
         (fresh.thin, fresh.lang, fresh.snaps, fresh.ribbon_min) = (self.thin, self.lang, self.snaps, self.ribbon_min);
         fresh.compact = self.compact;
+        fresh.profile = self.profile;
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
         fresh.light_canvas = self.light_canvas;
@@ -2774,20 +2807,7 @@ impl BimApp {
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 2.0;
-                            for (tab, label) in [
-                                (Tab::Architecture, msg!("Architecture")),
-                                (Tab::Structure, msg!("Structure")),
-                                (Tab::Plumbing, msg!("Plumbing")),
-                                (Tab::Electrical, msg!("Electrical")),
-                                (Tab::Lightning, msg!("Lightning Protection")),
-                                (Tab::Data, msg!("Data")),
-                                (Tab::Insert, msg!("Insert")),
-                                (Tab::Annotate, msg!("Annotate")),
-                                (Tab::Massing, msg!("Massing")),
-                                (Tab::View, msg!("View")),
-                                (Tab::Manage, msg!("Manage")),
-                                (Tab::Modify, "Modify"),
-                            ] {
+                            for (tab, label) in TABS {
                                 let r = tab_button(ui, label, self.tab == tab, false);
                                 if changed && self.tab == tab {
                                     r.scroll_to_me(None);
@@ -2859,6 +2879,49 @@ impl BimApp {
         }
     }
 
+    /// The tools of the tab that is open, in the panels it draws: the ribbon lays them side by side, the palette in rows.
+    fn tab_tools(&mut self, ui: &mut Ui) {
+        match self.tab {
+            Tab::Architecture => self.architecture_tab(ui),
+            Tab::Structure => self.structure_tab(ui),
+            Tab::Plumbing => self.plumbing_tab(ui),
+            Tab::Electrical => self.electrical_tab(ui),
+            Tab::Lightning => self.lightning_tab(ui),
+            Tab::Data => self.data_tab(ui),
+            Tab::Insert => self.insert_tab(ui),
+            Tab::Annotate => self.annotate_tab(ui),
+            Tab::Massing => self.massing_tab(ui),
+            Tab::View => self.view_tab(ui),
+            Tab::Manage => self.manage_tab(ui),
+            Tab::Modify | Tab::Context => self.modify_tab(ui),
+        }
+    }
+
+    /// The tool palette (File > Settings > Tools): the tabs as a row of pills over the open tab's panels, each panel's tools as rows
+    /// under its name. The same buttons the ribbon draws, so a tool is picked, listed and chosen from the same way, and runs the same
+    /// command; the contextual tab is the picker's last entry.
+    fn tool_palette(&mut self, ui: &mut Ui) {
+        ui.set_width(ui.available_width());
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
+            for (tab, label) in TABS {
+                if tab_button(ui, label, self.tab == tab, false).clicked() {
+                    self.tab = tab;
+                }
+            }
+            if let Some(name) = self.context()
+                && tab_button(ui, &name, self.tab == Tab::Context, true).clicked()
+            {
+                self.tab = Tab::Context;
+            }
+        });
+        ui.add_space(4.0);
+        ui.separator();
+        ScrollArea::vertical().id_salt("palette-tools").auto_shrink([false, false]).show(ui, |ui| {
+            ribbon::rows(ui, |ui| self.tab_tools(ui));
+        });
+    }
+
     /// The ribbon tab's panels of tools.
     fn ribbon_panels(&mut self, ui: &mut Ui) {
         Frame::new().inner_margin(Margin { left: 6, right: 6, top: 4, bottom: 4 }).show(ui, |ui| {
@@ -2868,20 +2931,7 @@ impl BimApp {
             let room = ui.available_width();
             egui::ScrollArea::horizontal().id_salt(self.tab as u8).auto_shrink([false, true]).show(ui, |ui| {
                 ribbon::tab(ui, key, room, |ui| {
-                    ui.horizontal(|ui| match self.tab {
-                        Tab::Architecture => self.architecture_tab(ui),
-                        Tab::Structure => self.structure_tab(ui),
-                        Tab::Plumbing => self.plumbing_tab(ui),
-                        Tab::Electrical => self.electrical_tab(ui),
-                        Tab::Lightning => self.lightning_tab(ui),
-                        Tab::Data => self.data_tab(ui),
-                        Tab::Insert => self.insert_tab(ui),
-                        Tab::Annotate => self.annotate_tab(ui),
-                        Tab::Massing => self.massing_tab(ui),
-                        Tab::View => self.view_tab(ui),
-                        Tab::Manage => self.manage_tab(ui),
-                        Tab::Modify | Tab::Context => self.modify_tab(ui),
-                    });
+                    ui.horizontal(|ui| self.tab_tools(ui));
                 });
             });
         });

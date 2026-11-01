@@ -252,6 +252,14 @@ popup open, so a popup of a row's own closes the panel's list that holds the row
 submenu of the row; a request to open them at once (UN) opens the panel's list when the tool has no button, and waits for a tab's second
 frame, since its first lays out every tool (`a_tool_with_choices_of_its_own_opens_them_from_a_panels_list`).
 
+The tool palette (File > Settings > Tools, `Profile::Palette`, kept in `settings.json` as `profile`; the ribbon is the default). A
+left panel (`BimApp::tool_palette`) in place of the ribbon: the tab pills (`TABS`, the ribbon's list; the contextual tab last) over the
+open tab's panels as rows, each under its name. It draws the same tab functions as the ribbon (`BimApp::tab_tools`) with `ribbon::rows`,
+which turns on `ribbon::listing` (every button is a `list_row`) and a panel's heading, so a tool is added once and shows in both. What
+differs: `raise_context` does nothing, so a tool picked doesn't swap the list for its contextual tab (the user opens that from the pills),
+and `ribbon::choices` makes a tool's choices a popup menu of the row's own, since the palette is not a popup and a `SubMenu` there closes
+before a choice is clicked. Every tool runs the same command either way; tests in `tests/palette.rs`.
+
 Keyboard Shortcuts. Manage > Shortcuts (or KS) opens `shortcuts_window` (`shortcuts.rs`): every shortcut by what it does, from `shortcuts()`
 (`SHORTCUTS`, the fixtures' letters, the commands' aliases), with Add, Edit and Load File. A shortcut is two letters or digits, all that `typed` holds,
 and a custom one is tried before the defaults. Each name in `ACTIONS` is a tool or command the window runs (`execute_shortcut_action`), and a key never

@@ -2,7 +2,7 @@
 //! `settings.json` beside the favorites and the update settings ([`beside`]), which the desktop's `main` hands the app
 //! ([`BimApp::use_settings`]); a window that wasn't given the file (every test's) keeps them for as long as it's open.
 //! What it keeps: the theme and whether the drawing stays light in a dark one, the layout, interface language, ribbon, palettes, the
-//! window's size, the background autosave interval, the colour High Contrast Point Clouds draws scans in, and the shortcuts the user made.
+//! window's size, the background autosave interval, the colour High Contrast Point Clouds draws scans in, the shortcuts the user made, and whether the tools are the ribbon or the palette.
 //! The pages for what is still to come (performance and graphics) show what they will hold, greyed out.
 
 use crate::popup::Modal;
@@ -36,6 +36,28 @@ pub fn beside(favorites: &Path) -> PathBuf {
 /// The interface's language the settings file at `path` keeps, if it keeps one: a blank project starts in it.
 pub fn language_in(path: &Path) -> Option<Lang> {
     read(path)?["language"].as_str().and_then(Lang::from_code)
+}
+
+/// How the window shows its tools: the ribbon along the top (the default), or the tool palette, a column at the left with the same
+/// tools as rows. Only what the window draws: every tool runs the same command either way.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Profile {
+    #[default]
+    Ribbon,
+    Palette,
+}
+
+impl Profile {
+    fn code(self) -> &'static str {
+        match self {
+            Profile::Ribbon => "ribbon",
+            Profile::Palette => "palette",
+        }
+    }
+
+    fn from_code(code: &str) -> Option<Profile> {
+        [Profile::Ribbon, Profile::Palette].into_iter().find(|p| p.code() == code)
+    }
 }
 
 /// How the window was left: its size in points and whether it was maximized.
@@ -99,6 +121,8 @@ pub struct Settings {
     pub system_title_bar: bool,
     /// The shortcuts the user made (Keyboard Shortcuts): two-character key to the English name of an action.
     pub shortcuts: BTreeMap<String, String>,
+    /// The ribbon or the tool palette.
+    pub profile: Profile,
 }
 
 impl Settings {
@@ -121,6 +145,7 @@ impl Settings {
             "high_contrast": self.high_contrast,
             "system_title_bar": self.system_title_bar,
             "shortcuts": self.shortcuts,
+            "profile": self.profile.code(),
         })
     }
 
@@ -150,6 +175,7 @@ impl Settings {
             high_contrast: colour(&v["high_contrast"]).unwrap_or(base.high_contrast),
             system_title_bar: v["system_title_bar"].as_bool().unwrap_or(base.system_title_bar),
             shortcuts: shortcuts_from(&v["shortcuts"], base.shortcuts),
+            profile: v["profile"].as_str().and_then(Profile::from_code).unwrap_or(base.profile),
         }
     }
 }
@@ -247,6 +273,7 @@ impl BimApp {
         self.scan_contrast = kept.high_contrast;
         self.system_title_bar = kept.system_title_bar;
         self.custom_shortcuts = kept.shortcuts.clone();
+        self.profile = kept.profile;
         self.settings_kept = Some(kept);
         self.settings_path = Some(path);
     }
@@ -270,6 +297,7 @@ impl BimApp {
             high_contrast: self.scan_contrast,
             system_title_bar: self.system_title_bar,
             shortcuts: self.custom_shortcuts.clone(),
+            profile: self.profile,
         }
     }
 
@@ -362,6 +390,13 @@ impl BimApp {
                     self.set_lang(ctx, l);
                 }
             }
+        });
+        heading(ui, msg!("Tools"));
+        ui.horizontal(|ui| {
+            ui.radio_value(&mut self.profile, Profile::Ribbon, t("Ribbon"))
+                .on_hover_text(t(msg!("The tools along the top, in tabs and panels")));
+            ui.radio_value(&mut self.profile, Profile::Palette, t("Tool palette"))
+                .on_hover_text(t(msg!("The same tools as a column at the left, under the names of their panels")));
         });
         heading(ui, msg!("Ribbon"));
         ui.checkbox(&mut self.ribbon_min, t("Minimize the ribbon to its tabs"))

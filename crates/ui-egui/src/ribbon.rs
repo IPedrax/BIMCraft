@@ -35,6 +35,8 @@ pub(crate) struct Seen {
 thread_local! {
     /// Whether the tools drawn now are a panel's list: rows of an icon and its name, not the ribbon's buttons.
     static LISTING: Cell<bool> = const { Cell::new(false) };
+    /// Whether a panel drawn as rows names itself first: the tool palette's, where the panels stand one over the other.
+    static HEADINGS: Cell<bool> = const { Cell::new(false) };
     /// How the panels of the tab being drawn fit, by name; one not named shows all its tools.
     static FITS: RefCell<Vec<(String, Fit)>> = const { RefCell::new(Vec::new()) };
     /// The panels of the tab being drawn, as they're drawn.
@@ -55,6 +57,18 @@ thread_local! {
 /// Whether the tools drawn now go in a panel's list.
 pub(crate) fn listing() -> bool {
     LISTING.with(Cell::get)
+}
+
+/// Draws a tab's panels as rows down `ui`, each under its name: the tool palette's way to show what the ribbon shows as buttons.
+pub(crate) fn rows(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
+    LISTING.with(|l| l.set(true));
+    HEADINGS.with(|h| h.set(true));
+    ui.vertical(|ui| {
+        ui.spacing_mut().item_spacing.y = 0.0;
+        add(ui);
+    });
+    HEADINGS.with(|h| h.set(false));
+    LISTING.with(|l| l.set(false));
 }
 
 /// Counts a ribbon tool, and says whether its panel has handed it over to its list: then it isn't drawn on the ribbon. A
@@ -122,7 +136,11 @@ pub(crate) fn fits(seen: &[Seen], whole: f32, room: f32) -> Vec<(String, Fit)> {
 /// A ribbon panel: its tools over its name, which lists them; or, folded, one button that does.
 pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
     if listing() {
-        // Inside another panel's list (a folded panel's): the tools as rows.
+        // Inside another panel's list (a folded panel's), or the tool palette: the tools as rows, under the panel's name in the palette.
+        if HEADINGS.with(Cell::get) {
+            ui.add_space(8.0);
+            ui.label(egui::RichText::new(t(title)).size(11.5).color(pal().muted));
+        }
         add(ui);
         return;
     }
@@ -196,7 +214,8 @@ fn open_if_asked(ui: &Ui, r: &Response) {
 /// with it itself, so in a list the choices are a submenu of it. A tool the panel has handed over or folded has no button on the
 /// ribbon to hang them from: a request to open them opens the panel's list, where its row is.
 pub(crate) fn choices(ui: &Ui, r: &Response, open: bool, content: impl FnOnce(&mut Ui)) -> bool {
-    if listing() {
+    // In a panel's list, a submenu of the list; in the tool palette, which no popup holds, a menu of the row's own like the ribbon's.
+    if listing() && !HEADINGS.with(Cell::get) {
         egui::containers::menu::SubMenu::new().show(ui, r, content);
         return false;
     }
