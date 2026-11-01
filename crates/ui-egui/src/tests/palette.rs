@@ -176,3 +176,40 @@ fn small_buttons_the_ribbon_sets_side_by_side_are_rows_one_under_the_other_in_th
         assert!(in_column(&h, tool), "{tool}");
     }
 }
+
+#[test]
+fn a_button_in_the_title_bar_switches_between_the_ribbon_and_the_palette_and_is_kept() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("settings.json");
+    let mut h = app("");
+    h.state_mut().use_settings(file.clone());
+    assert_eq!(h.state().profile, Profile::Ribbon);
+    // On the ribbon the button offers the palette; on the palette, the ribbon.
+    press(&mut h, "Tool palette");
+    assert_eq!(h.state().profile, Profile::Palette);
+    assert!(h.query_by_label("Minimize the Ribbon").is_none(), "the ribbon is gone at once");
+    press(&mut h, "Ribbon");
+    assert_eq!(h.state().profile, Profile::Ribbon);
+    assert!(h.query_by_label("Minimize the Ribbon").is_some());
+    press(&mut h, "Tool palette");
+    h.run();
+    let kept: serde_json::Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    assert_eq!(kept["profile"], "palette", "and the next start has it");
+}
+
+#[test]
+fn tp_switches_the_layout_is_listed_once_and_can_be_given_another_key() {
+    let mut h = app("");
+    shortcut(&mut h, "TP");
+    assert_eq!(h.state().profile, Profile::Palette);
+    shortcut(&mut h, "TP");
+    assert_eq!(h.state().profile, Profile::Ribbon);
+
+    let keys: Vec<_> = crate::shortcuts().into_iter().filter(|(k, _)| *k == "TP").collect();
+    assert_eq!(keys, [("TP", "Tool palette")], "no command or fixture has it too");
+    assert_eq!(crate::shortcuts::resolve_action("Tool palette"), Some("Tool palette"), "an action Keyboard Shortcuts can bind");
+
+    h.state_mut().custom_shortcuts.insert("ZP".to_string(), "Tool palette".to_string());
+    shortcut(&mut h, "ZP");
+    assert_eq!(h.state().profile, Profile::Palette, "a key of the user's own does the same");
+}

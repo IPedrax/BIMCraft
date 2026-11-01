@@ -140,6 +140,8 @@ icon_names! {
     TempHide,
     Reveal,
     Settings,
+    Palette,
+    Ribbon,
     Dock,
     Minimize,
     Expand,
@@ -315,6 +317,22 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(7.0, 7.0), (21.0, 7.0), (21.0, 21.0), (7.0, 21.0)]);
             g.line(&[(11.0, 11.0), (17.0, 17.0)]);
             g.line(&[(17.0, 11.0), (11.0, 17.0)]);
+        }
+        Icon::Palette => {
+            // A window with a column of tool rows at its left: the tool palette, as against the ribbon along the top.
+            g.closed(&[(3.0, 4.0), (21.0, 4.0), (21.0, 20.0), (3.0, 20.0)]);
+            g.line(&[(10.0, 4.0), (10.0, 20.0)]);
+            g.line(&[(5.5, 8.0), (7.5, 8.0)]);
+            g.line(&[(5.5, 12.0), (7.5, 12.0)]);
+            g.line(&[(5.5, 16.0), (7.5, 16.0)]);
+        }
+        Icon::Ribbon => {
+            // A window with a band of tools along the top: the ribbon, as against the tool palette at the left.
+            g.closed(&[(3.0, 4.0), (21.0, 4.0), (21.0, 20.0), (3.0, 20.0)]);
+            g.line(&[(3.0, 10.0), (21.0, 10.0)]);
+            g.line(&[(5.5, 7.0), (8.5, 7.0)]);
+            g.line(&[(10.5, 7.0), (13.5, 7.0)]);
+            g.line(&[(15.5, 7.0), (18.5, 7.0)]);
         }
         Icon::Interface => {
             g.closed(&[(3.0, 4.0), (21.0, 4.0), (21.0, 20.0), (3.0, 20.0)]);

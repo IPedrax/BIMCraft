@@ -252,7 +252,9 @@ popup open, so a popup of a row's own closes the panel's list that holds the row
 submenu of the row; a request to open them at once (UN) opens the panel's list when the tool has no button, and waits for a tab's second
 frame, since its first lays out every tool (`a_tool_with_choices_of_its_own_opens_them_from_a_panels_list`).
 
-The tool palette (File > Settings > Tools, `Profile::Palette`, kept in `settings.json` as `profile`; the ribbon is the default). A
+The tool palette (File > Settings > Tools, `Profile::Palette`, kept in `settings.json` as `profile`; the ribbon is the default). The
+button beside Settings in the title bar (`Icon::Palette` on the ribbon, `Icon::Ribbon` on the palette: it shows where it goes) and the
+shortcut TP, an action Keyboard Shortcuts can rebind (`"Tool palette"` in `ACTIONS`), both call `BimApp::toggle_profile`. A
 left panel (`BimApp::tool_palette`) in place of the ribbon: the tab pills (`TABS`, the ribbon's list; the contextual tab last) over the
 open tab's panels as rows, each under its name. It draws the same tab functions as the ribbon (`BimApp::tab_tools`) with `ribbon::rows`,
 which turns on `ribbon::listing` (every button is a `list_row`) and a panel's heading, so a tool is added once and shows in both. What

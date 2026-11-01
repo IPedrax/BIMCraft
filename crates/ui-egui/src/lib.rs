@@ -306,7 +306,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 53] = [
+const SHORTCUTS: [(&str, &str); 54] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -324,6 +324,7 @@ const SHORTCUTS: [(&str, &str); 53] = [
     ("PP", "Properties"),
     ("VP", "Properties"),
     ("NP", "Project Browser"),
+    ("TP", "Tool palette"),
     ("SA", "Select All Instances"),
     ("AG", msg!("Alignment Guides")),
     ("OG", msg!("Orthogonal Guides")),
@@ -1745,6 +1746,10 @@ impl BimApp {
                 self.toggle_browser();
                 return true;
             }
+            "TP" => {
+                self.toggle_profile();
+                return true;
+            }
             "SA" => {
                 self.select_all_instances();
                 return true;
@@ -2709,6 +2714,14 @@ impl BimApp {
                     self.open_sheet(Sheet::View3D);
                 }
                 ui.separator();
+                // The layout the other one: the palette on the ribbon, the ribbon on the palette.
+                let (icon, label) = match self.profile {
+                    settings::Profile::Ribbon => (Icon::Palette, msg!("Tool palette")),
+                    settings::Profile::Palette => (Icon::Ribbon, msg!("Ribbon")),
+                };
+                if icon_button(ui, icon, label).clicked() {
+                    self.toggle_profile();
+                }
                 if icon_button(ui, Icon::Settings, "Settings").clicked() {
                     self.settings_page = Some(settings::Page::Interface);
                 }
@@ -2885,6 +2898,16 @@ impl BimApp {
         if self.tool != tool || (released && !Popup::is_any_open(ctx) && (inside || !on_tabs)) {
             self.ribbon_peek = false;
         }
+    }
+
+    /// Switches between the ribbon and the tool palette (TP, and the button in the title bar).
+    pub(crate) fn toggle_profile(&mut self) {
+        self.profile = match self.profile {
+            settings::Profile::Ribbon => settings::Profile::Palette,
+            settings::Profile::Palette => settings::Profile::Ribbon,
+        };
+        // A folded ribbon's peek belongs to the ribbon that has just gone.
+        self.ribbon_peek = false;
     }
 
     /// The tools of the tab that is open, in the panels it draws: the ribbon lays them side by side, the palette in rows.
