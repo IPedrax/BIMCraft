@@ -1259,18 +1259,22 @@ pub struct SectionWork {
     solids: Vec<view3d::Solid>,
     ranges: std::collections::HashMap<Id, std::ops::Range<usize>>,
     placed: Vec<(Id, Vec<[f64; 3]>)>,
+    /// Each element's box (as `placed` lists them), and by id.
+    boxes: Vec<Option<[[f64; 3]; 2]>>,
+    box_of: std::collections::HashMap<Id, [[f64; 3]; 2]>,
     extent: std::sync::OnceLock<[P2; 2]>,
 }
 
 impl SectionWork {
     pub fn new(m: &Model) -> Self {
-        let (solids, placed) = view3d::solids_and_extremes(m);
+        let (solids, placed, boxes) = view3d::solids_and_extremes(m);
+        let box_of = placed.iter().zip(&boxes).filter_map(|((id, _), b)| Some((*id, (*b)?))).collect();
         // Each element's solids lie together, in the order of the elements.
         let mut ranges: std::collections::HashMap<Id, std::ops::Range<usize>> = std::collections::HashMap::new();
         for (i, s) in solids.iter().enumerate() {
             ranges.entry(s.owner()).and_modify(|r| r.end = i + 1).or_insert(i..i + 1);
         }
-        SectionWork { of: m.elements.state(), solids, ranges, placed, extent: std::sync::OnceLock::new() }
+        SectionWork { of: m.elements.state(), solids, ranges, placed, boxes, box_of, extent: std::sync::OnceLock::new() }
     }
 
     /// Whether it is of `m`'s elements as they are.
@@ -1509,7 +1513,7 @@ pub fn section_picture_and_over_with(
 pub(crate) fn section_picture_in(m: &Model, w: &SectionWork, id: impl Key, view: View, tints: &[(Id, Rgb)]) -> Option<Image> {
     let (cam, clip) = section_camera(m, id, view)?;
     let look = Look::of(m, id);
-    let picture = Scene::section(m, (&w.solids, &w.ranges, &w.placed), &cam, &clip, &look).cut_in(&cam, &clip, tints, &look);
+    let picture = Scene::section(m, (&w.solids, &w.ranges, &w.placed, &w.boxes), &cam, &clip, &look).cut_in(&cam, &clip, tints, &look);
     // Its twin, which tests hold it to: the picture of the whole scene.
     #[cfg(test)]
     if let Err(e) = picture.same_as(&Scene::new(m).cut_in(&cam, &clip, tints, &look)) {
@@ -1564,7 +1568,20 @@ fn section_in(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n
     // A bar lies inside the concrete it reinforces, so its cuts are dots over that poché, not pieces of it.
     let mut dots: Vec<(Id, Vec<P2>)> = Vec::new();
     // A mass is outlined where the line cuts it, below, not filled.
-    for s in solids.iter().filter(|s| !matches!(m.elements.get(s.owner()), Some(Element::Mass(_)))) {
+    // What lies all on one side of the line's upright plane is cut by none of it, whatever it is made of.
+    let side = |q: P2| (q - v.start).dot(u.perp());
+    let one_side = |id: Id| {
+        work.box_of.get(&id).is_some_and(|[lo, hi]| {
+            let s = [P2(lo[0], lo[1]), P2(hi[0], lo[1]), P2(hi[0], hi[1]), P2(lo[0], hi[1])].map(side);
+            s.iter().all(|x| *x > 1e-3) || s.iter().all(|x| *x < -1e-3)
+        })
+    };
+    // Its twin, which tests hold it to: what is left out cuts nothing.
+    #[cfg(test)]
+    for s in solids.iter().filter(|s| one_side(s.owner())) {
+        assert!(s.cuts(v.start + u * first, u, last - first).is_empty(), "{} is cut by a line it lies all on one side of", s.owner());
+    }
+    for s in solids.iter().filter(|s| !matches!(m.elements.get(s.owner()), Some(Element::Mass(_))) && !one_side(s.owner())) {
         let bar = matches!(m.elements.get(s.owner()), Some(Element::Rebar(_)));
         // Cut from where the view begins, then back along the line from its start.
         for ring in s.cuts(v.start + u * first, u, last - first) {

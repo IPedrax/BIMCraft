@@ -495,6 +495,9 @@ pub(crate) fn solids(m: &Model) -> Vec<Solid> {
     solids_in(m, &elements, Some(&index))
 }
 
+/// What [`solids_and_extremes`] makes: the solids, each element's farthest points and its box.
+pub(crate) type Made = (Vec<Solid>, Vec<(Id, Vec<P3>)>, Vec<Option<[P3; 2]>>);
+
 /// Of `points`, those that may be the farthest any way across or up: each place in plan once, and the lowest and highest
 /// (of those that aren't NaN, as `f64::min` and `f64::max` leave it out). The farthest of them any way is the farthest of
 /// all, to the bit.
@@ -523,7 +526,7 @@ pub(crate) fn extremes(points: impl Iterator<Item = P3>) -> Vec<P3> {
 /// [`solids`] but the components', and each element's [`extremes`] (a component's from
 /// [`crate::component_geometry::Components::extremes`], placed): the points that may be farthest any way. What a section's
 /// frame and cut ask of the model, without the components' triangles (a section never cuts one).
-pub(crate) fn solids_and_extremes(m: &Model) -> (Vec<Solid>, Vec<(Id, Vec<P3>)>) {
+pub(crate) fn solids_and_extremes(m: &Model) -> Made {
     let elements: Vec<_> = m.elements.iter().map(|(&id, e)| (id, e)).collect();
     let index = walls::Index::new(m);
     let part = |chunk: &[(Id, &Element)]| {
@@ -541,7 +544,8 @@ pub(crate) fn solids_and_extremes(m: &Model) -> (Vec<Solid>, Vec<(Id, Vec<P3>)>)
                 }
             }
         }
-        (solids, placed)
+        let boxes: Vec<Option<[P3; 2]>> = placed.iter().map(|(_, p): &(Id, Vec<P3>)| bounds(p.iter().copied())).collect();
+        (solids, placed, boxes)
     };
     let parts = match (elements.len() >= 1000).then(render_pool).flatten() {
         Some(pool) => {
@@ -550,12 +554,13 @@ pub(crate) fn solids_and_extremes(m: &Model) -> (Vec<Solid>, Vec<(Id, Vec<P3>)>)
         }
         None => vec![part(&elements)],
     };
-    let (mut solids, mut placed) = (Vec::new(), Vec::new());
-    for (s, p) in parts {
+    let (mut solids, mut placed, mut boxes) = (Vec::new(), Vec::new(), Vec::new());
+    for (s, p, b) in parts {
         solids.extend(s);
         placed.extend(p);
+        boxes.extend(b);
     }
-    (solids, placed)
+    (solids, placed, boxes)
 }
 
 fn solids_in(m: &Model, elements: &[(Id, &Element)], index: Option<&walls::Index>) -> Vec<Solid> {
@@ -1052,19 +1057,20 @@ impl Scene {
     ///
     /// Every pixel of its picture is what the whole scene's is: what is left out was behind, and the rest are drawn in the
     /// order they are in the whole scene.
-    pub(crate) fn section(m: &Model, (solids, ranges, placed): Work<'_>, cam: &Camera, clip: &Clip, look: &Look) -> Scene {
+    pub(crate) fn section(m: &Model, (solids, ranges, placed, boxes): Work<'_>, cam: &Camera, clip: &Clip, look: &Look) -> Scene {
         let index = walls::Index::new(m);
         // Each element's box, round the points that may be its farthest, and where its solids are; a component's are made
         // only if it shows.
         let boxes: Vec<Boxed3> = placed
             .iter()
-            .filter(|(id, _)| look.shows(*id) && !matches!(m.elements.get(*id), Some(Element::Mass(_))))
-            .map(|(id, p)| {
+            .zip(boxes)
+            .filter(|((id, _), _)| look.shows(*id) && !matches!(m.elements.get(*id), Some(Element::Mass(_))))
+            .map(|((id, _), b)| {
                 let at = match m.elements.get(*id) {
                     Some(Element::Component(_)) => 0..0,
                     _ => ranges.get(id).cloned().unwrap_or(0..0),
                 };
-                (*id, bounds(p.iter().copied()), at)
+                (*id, *b, at)
             })
             .collect();
         let own = |id: Id, at: &std::ops::Range<usize>| solids.get(at.clone()).into_iter().flatten().filter(move |s| s.owner() == id);
@@ -1157,7 +1163,7 @@ impl Scene {
 
 /// What a section's scene is made of, as `render::SectionWork` holds it: the model's solids but the components', where each
 /// element's are among them, and each element's farthest points ([`extremes`]).
-pub(crate) type Work<'a> = (&'a [Solid], &'a HashMap<Id, std::ops::Range<usize>>, &'a [(Id, Vec<P3>)]);
+pub(crate) type Work<'a> = (&'a [Solid], &'a HashMap<Id, std::ops::Range<usize>>, &'a [(Id, Vec<P3>)], &'a [Option<[P3; 2]>]);
 
 /// An element, the box round it (none where it isn't known) and where its solids are in the list (a component's are made
 /// only when it shows).
@@ -2579,7 +2585,7 @@ mod tests {
         use crate::sample::tower::{Drawings, Plate, drawn};
         let m = drawn(Plate::SMALL, 3, Drawings { annotation: false, sheets: true }).unwrap();
         let whole = Scene::new(&m);
-        let (solids, placed) = solids_and_extremes(&m);
+        let (solids, placed, boxes) = solids_and_extremes(&m);
         let mut ranges: HashMap<Id, std::ops::Range<usize>> = HashMap::new();
         for (i, s) in solids.iter().enumerate() {
             ranges.entry(s.owner()).and_modify(|r| r.end = i + 1).or_insert(i..i + 1);
@@ -2593,7 +2599,7 @@ mod tests {
             let view = crate::render::section_fit(&m, id, 900, 600);
             let (cam, clip) = crate::render::section_camera(&m, id, view).unwrap();
             let look = Look::of(&m, id);
-            let lean = Scene::section(&m, (&solids, &ranges, &placed), &cam, &clip, &look);
+            let lean = Scene::section(&m, (&solids, &ranges, &placed, &boxes), &cam, &clip, &look);
             lean.cut_in(&cam, &clip, &[], &look).same_as(&whole.cut_in(&cam, &clip, &[], &look)).unwrap();
             // The furniture behind the facade, and the rooms' services, are left out.
             assert!(lean.tris.len() * 4 < whole.tris.len(), "{name}: {} of {} triangles", lean.tris.len(), whole.tris.len());
