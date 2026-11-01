@@ -36,6 +36,8 @@ pub struct Cut {
     /// The drawing over the picture, and what it is of: the picture's generation, the model, the view and its framing. It
     /// takes its regions' ink from the picture, so a new picture (a hover's tint) makes it again; a still frame doesn't.
     drawn: Option<Drawn>,
+    /// What every section of a model asks of all of it, kept with the model (a snapshot) it was made of.
+    work: Option<(Arc<Model>, render::SectionWork)>,
     /// How many times a picture was drawn (by the core, for the drawing over it or for the texture): a tick of the test that a
     /// pan or a zoom draws it once.
     #[cfg(test)]
@@ -67,7 +69,13 @@ impl Cut {
         }
         self.generation += 1;
         // The picture, and the drawing over it, which keeps its regions' ink from it: the whole model's work once for both.
-        let (picture, drawing) = render::section_picture_and_over(model, id, view, pixels, &tints);
+        if !self.work.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, model)) {
+            self.work = Some((Arc::clone(model), render::SectionWork::new(model)));
+        }
+        let (picture, drawing) = match &self.work {
+            Some((_, work)) => render::section_picture_and_over_with(model, work, id, view, pixels, &tints),
+            None => render::section_picture_and_over(model, id, view, pixels, &tints),
+        };
         self.drawn = Some((self.generation, Arc::clone(model), id, view, Arc::new(drawing)));
         if let Some(image) = picture {
             // A hidden-line picture, so dark as the drawing over it is.

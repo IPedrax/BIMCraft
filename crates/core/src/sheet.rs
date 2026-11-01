@@ -46,10 +46,10 @@ fn framing(m: &Model, view: impl Key, scale: f64) -> Option<View> {
 }
 
 /// What a sheet's sections and elevations ask of the whole model, made once a sheet when the first asks.
-type Work<'m> = std::cell::OnceCell<render::SectionWork<'m>>;
+type Work = std::cell::OnceCell<render::SectionWork>;
 
 /// [`framing`], a section's of `work`.
-fn framing_in<'m>(m: &'m Model, work: &Work<'m>, view: impl Key, scale: f64) -> Option<View> {
+fn framing_in(m: &Model, work: &Work, view: impl Key, scale: f64) -> Option<View> {
     let k = DENSITY / scale;
     let pts: Vec<P2> = match m.elements.get(view)? {
         Element::Level(_) | Element::PlanView(_) => render::plan_extent(m, view),
@@ -86,7 +86,7 @@ pub fn frame(m: &Model, id: impl Key) -> Option<(View, (f32, f32))> {
 }
 
 /// [`frame`], a section's of `work`.
-fn frame_in<'m>(m: &'m Model, work: &Work<'m>, id: impl Key) -> Option<(View, (f32, f32))> {
+fn frame_in(m: &Model, work: &Work, id: impl Key) -> Option<(View, (f32, f32))> {
     let Some(Element::Viewport(vp)) = m.elements.get(id) else { return None };
     let view = framing_in(m, work, vp.view, vp.scale)?;
     let (x, y) = page(paper(&m.sheet(vp.sheet)?.size)?).px(vp.at);

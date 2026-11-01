@@ -1249,20 +1249,33 @@ fn section_walls<'a>(
     walls
 }
 
-/// What a section or an elevation asks of the whole model, found once a drawing: every solid but the components' (the view's
-/// look picks those it shows), the points of each element that may be farthest any way (a section never cuts a component,
-/// so its triangles aren't made), and, when asked, the model's extent.
-pub(crate) struct SectionWork<'m> {
-    m: &'m Model,
+/// What a section or an elevation asks of the whole model, found once for a model: every solid but the components' (the
+/// view's look picks those it shows), where each element's solids are among them, the points of each element that may be
+/// farthest any way (a section never cuts a component, so its triangles aren't made), and, when asked, the model's extent.
+/// A front end keeps one with the model it was made of (a snapshot, which never changes) for every section it draws of it.
+pub struct SectionWork {
+    /// The elements' state it was made of ([`crate::ids::Elements::state`]): a work of another is made again.
+    of: (u64, u64),
     solids: Vec<view3d::Solid>,
+    ranges: std::collections::HashMap<Id, std::ops::Range<usize>>,
     placed: Vec<(Id, Vec<[f64; 3]>)>,
-    extent: std::cell::OnceCell<[P2; 2]>,
+    extent: std::sync::OnceLock<[P2; 2]>,
 }
 
-impl<'m> SectionWork<'m> {
-    pub(crate) fn new(m: &'m Model) -> Self {
+impl SectionWork {
+    pub fn new(m: &Model) -> Self {
         let (solids, placed) = view3d::solids_and_extremes(m);
-        SectionWork { m, solids, placed, extent: std::cell::OnceCell::new() }
+        // Each element's solids lie together, in the order of the elements.
+        let mut ranges: std::collections::HashMap<Id, std::ops::Range<usize>> = std::collections::HashMap::new();
+        for (i, s) in solids.iter().enumerate() {
+            ranges.entry(s.owner()).and_modify(|r| r.end = i + 1).or_insert(i..i + 1);
+        }
+        SectionWork { of: m.elements.state(), solids, ranges, placed, extent: std::sync::OnceLock::new() }
+    }
+
+    /// Whether it is of `m`'s elements as they are.
+    fn is_of(&self, m: &Model) -> bool {
+        self.of == m.elements.state()
     }
 
     /// The solids `look` shows, but the components'.
@@ -1284,13 +1297,13 @@ impl<'m> SectionWork<'m> {
             .map(|(_, p)| p.iter().fold((f64::MAX, f64::MIN), |(lo, hi), q| (lo.min(q[2]), hi.max(q[2]))))
     }
 
-    /// [`Model::model_extent`].
-    fn extent(&self) -> [P2; 2] {
+    /// [`Model::model_extent`] of `m`, the model it was made of.
+    fn extent(&self, m: &Model) -> [P2; 2] {
         *self.extent.get_or_init(|| {
-            let extent = self.m.model_extent_of(self.placed.iter().flat_map(|(_, p)| p.iter().map(|q| P2(q[0], q[1]))));
+            let extent = m.model_extent_of(self.placed.iter().flat_map(|(_, p)| p.iter().map(|q| P2(q[0], q[1]))));
             // Its twin, which tests hold it to: of every solid's corners.
             #[cfg(test)]
-            assert_eq!(extent, self.m.model_extent(), "the model's extent from the components' farthest points");
+            assert_eq!(extent, m.model_extent(), "the model's extent from the components' farthest points");
             extent
         })
     }
@@ -1378,7 +1391,7 @@ fn level_spans(m: &Model, w: &SectionWork, v: &Section, look: &Look) -> Vec<(Id,
         .into_iter()
         .filter(|(id, _)| look.shows(*id))
         .filter_map(|(id, l)| {
-            let [lo, hi] = l.extent.unwrap_or_else(|| w.extent());
+            let [lo, hi] = l.extent.unwrap_or_else(|| w.extent(m));
             let corners = [lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)];
             let (near, far) = corners.iter().fold((f64::MAX, f64::MIN), |(a, b), q| (a.min(past(*q)), b.max(past(*q))));
             if far < -TOL || v.depth.is_some_and(|d| near > d) {
@@ -1468,9 +1481,27 @@ pub fn section_picture(m: &Model, id: impl Key, view: View, tints: &[(Id, Rgb)])
 /// [`section_picture`] and the drawing over it, [`section_over`], through `view`, the picture `pixels` (its view at the
 /// screen's pixels): the whole model's work done once for both.
 pub fn section_picture_and_over(m: &Model, id: Id, view: View, pixels: View, tints: &[(Id, Rgb)]) -> (Option<Image>, Drawing) {
-    let w = SectionWork::new(m);
-    let picture = section_picture_in(m, &w, id, pixels, tints);
-    let drawing = section_in(m, &w, id, view, annotation(m, id, view), scale_of(m, id), picture.as_ref());
+    section_picture_and_over_with(m, &SectionWork::new(m), id, view, pixels, tints)
+}
+
+/// [`section_picture_and_over`] of `work`, which a front end keeps with model `m` (made again here if it is of another).
+pub fn section_picture_and_over_with(
+    m: &Model,
+    work: &SectionWork,
+    id: Id,
+    view: View,
+    pixels: View,
+    tints: &[(Id, Rgb)],
+) -> (Option<Image>, Drawing) {
+    let fresh;
+    let w = if work.is_of(m) {
+        work
+    } else {
+        fresh = SectionWork::new(m);
+        &fresh
+    };
+    let picture = section_picture_in(m, w, id, pixels, tints);
+    let drawing = section_in(m, w, id, view, annotation(m, id, view), scale_of(m, id), picture.as_ref());
     (picture, drawing)
 }
 
@@ -1478,7 +1509,7 @@ pub fn section_picture_and_over(m: &Model, id: Id, view: View, pixels: View, tin
 pub(crate) fn section_picture_in(m: &Model, w: &SectionWork, id: impl Key, view: View, tints: &[(Id, Rgb)]) -> Option<Image> {
     let (cam, clip) = section_camera(m, id, view)?;
     let look = Look::of(m, id);
-    let picture = Scene::section(m, &w.solids, &w.placed, &cam, &clip, &look).cut_in(&cam, &clip, tints, &look);
+    let picture = Scene::section(m, (&w.solids, &w.ranges, &w.placed), &cam, &clip, &look).cut_in(&cam, &clip, tints, &look);
     // Its twin, which tests hold it to: the picture of the whole scene.
     #[cfg(test)]
     if let Err(e) = picture.same_as(&Scene::new(m).cut_in(&cam, &clip, tints, &look)) {
@@ -1580,11 +1611,6 @@ fn section_in(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n
     // the line crosses its boundaries; a thin line up each boundary between two, as high as the wall
     // stands there, around its openings.
     let lookup = m.lookup();
-    // Each element's solids, which lie together in the list, in its order.
-    let mut of_wall: std::collections::HashMap<Id, std::ops::Range<usize>> = std::collections::HashMap::new();
-    for (i, s) in solids.iter().enumerate() {
-        of_wall.entry(s.owner()).and_modify(|r| r.end = i + 1).or_insert(i..i + 1);
-    }
     for (wall, w) in section_walls(m, &lookup, v, first, last) {
         let layers = m.type_layers("wall", &w.type_name);
         if layers.is_empty() || !look.shows(wall) || d.detail == Detail::Coarse {
@@ -1636,7 +1662,8 @@ fn section_in(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n
                 if !(first..=last).contains(&along) {
                     continue;
                 }
-                for s in of_wall.get(&wall).map_or(&[][..], |r| &solids[r.clone()]).iter().filter(|s| s.owner() == wall && s.over(x)) {
+                let own = work.ranges.get(&wall).and_then(|r| work.solids.get(r.clone())).unwrap_or_default();
+                for s in own.iter().filter(|s| s.owner() == wall && s.over(x)) {
                     let (z0, z1) = s.z_at(x);
                     d.part(Part::Pattern);
                     d.line(&[P2(along, z0), P2(along, z1)], Pen::PROJECTION, INK, false);

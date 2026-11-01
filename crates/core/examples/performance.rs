@@ -280,6 +280,12 @@ fn measure_section(report: &mut Value, s: &Session, name: &str, id: u64) -> Resu
     report[format!("{name}_primitives")] = json!(d.prims.len());
     // Both at once, as the desktop asks for them: the whole model's work done once.
     timed(report, &format!("{name}_picture_and_drawing"), || Ok(render::section_picture_and_over(&s.model, id, view, view, &[])))?;
+    // Again with the model's work kept, as the desktop keeps it between a pan or a zoom and the next.
+    let work = timed(report, &format!("{name}_work"), || Ok(render::SectionWork::new(&s.model)))?;
+    let zoomed = render::View { scale: view.scale * 1.25, ..view };
+    timed(report, &format!("{name}_picture_and_drawing_work_kept"), || {
+        Ok(render::section_picture_and_over_with(&s.model, &work, id, zoomed, zoomed, &[]))
+    })?;
     // What the picture is, to the pixel, and what is drawn over it: the same before and after a change that only speeds it.
     report[format!("{name}_picture_hash")] = json!(hash(&mut picture.rgba.iter().copied()));
     report[format!("{name}_drawing_hash")] = json!(hash(&mut render::png(&d)?.into_iter()));

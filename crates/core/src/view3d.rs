@@ -1052,13 +1052,8 @@ impl Scene {
     ///
     /// Every pixel of its picture is what the whole scene's is: what is left out was behind, and the rest are drawn in the
     /// order they are in the whole scene.
-    pub(crate) fn section(m: &Model, solids: &[Solid], placed: &[(Id, Vec<P3>)], cam: &Camera, clip: &Clip, look: &Look) -> Scene {
+    pub(crate) fn section(m: &Model, (solids, ranges, placed): Work<'_>, cam: &Camera, clip: &Clip, look: &Look) -> Scene {
         let index = walls::Index::new(m);
-        // Each element's solids lie together, in the order of the elements.
-        let mut ranges: HashMap<Id, std::ops::Range<usize>> = HashMap::new();
-        for (i, s) in solids.iter().enumerate() {
-            ranges.entry(s.owner()).and_modify(|r| r.end = i + 1).or_insert(i..i + 1);
-        }
         // Each element's box, round the points that may be its farthest, and where its solids are; a component's are made
         // only if it shows.
         let boxes: Vec<Boxed3> = placed
@@ -1159,6 +1154,10 @@ impl Scene {
         }
     }
 }
+
+/// What a section's scene is made of, as `render::SectionWork` holds it: the model's solids but the components', where each
+/// element's are among them, and each element's farthest points ([`extremes`]).
+pub(crate) type Work<'a> = (&'a [Solid], &'a HashMap<Id, std::ops::Range<usize>>, &'a [(Id, Vec<P3>)]);
 
 /// An element, the box round it (none where it isn't known) and where its solids are in the list (a component's are made
 /// only when it shows).
@@ -2581,6 +2580,10 @@ mod tests {
         let m = drawn(Plate::SMALL, 3, Drawings { annotation: false, sheets: true }).unwrap();
         let whole = Scene::new(&m);
         let (solids, placed) = solids_and_extremes(&m);
+        let mut ranges: HashMap<Id, std::ops::Range<usize>> = HashMap::new();
+        for (i, s) in solids.iter().enumerate() {
+            ranges.entry(s.owner()).and_modify(|r| r.end = i + 1).or_insert(i..i + 1);
+        }
         for name in ["North Elevation", "South Elevation", "East Elevation", "West Elevation", "Section A"] {
             let id = m
                 .elements
@@ -2590,7 +2593,7 @@ mod tests {
             let view = crate::render::section_fit(&m, id, 900, 600);
             let (cam, clip) = crate::render::section_camera(&m, id, view).unwrap();
             let look = Look::of(&m, id);
-            let lean = Scene::section(&m, &solids, &placed, &cam, &clip, &look);
+            let lean = Scene::section(&m, (&solids, &ranges, &placed), &cam, &clip, &look);
             lean.cut_in(&cam, &clip, &[], &look).same_as(&whole.cut_in(&cam, &clip, &[], &look)).unwrap();
             // The furniture behind the facade, and the rooms' services, are left out.
             assert!(lean.tris.len() * 4 < whole.tris.len(), "{name}: {} of {} triangles", lean.tris.len(), whole.tris.len());
