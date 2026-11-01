@@ -53,8 +53,27 @@ pub struct Lookup {
 }
 
 /// The categories a project has few elements of (a column to a hundred others), which views, checks and rooms look for
-/// among all of them: kept by kind.
-pub const RARE: &[&str] = &["pointcloud", "cadimport", "mass", "link", "column", "structuralcolumn"];
+/// among all of them: kept by kind. Its views, sheets and viewports among them: a drawing set of a thousand sheets is a
+/// thousandth of a million elements.
+pub const RARE: &[&str] = &[
+    "pointcloud",
+    "cadimport",
+    "mass",
+    "link",
+    "column",
+    "structuralcolumn",
+    "sheet",
+    "viewport",
+    "planview",
+    "section",
+    "elevation",
+    "schedule",
+    "view3d",
+];
+
+/// The categories of a drawing set: views, sheets and what places a view on a sheet. Their names and numbers are kept
+/// apart, and a view goes on one sheet, so they are checked together ([`crate::model::Model::check_changed`]).
+pub const DRAWING_SET: &[&str] = &["sheet", "viewport", "planview", "section", "elevation", "schedule", "view3d"];
 
 /// A tile's walls by band of height.
 type Bands = BTreeMap<i64, Arc<BTreeSet<Id>>>;

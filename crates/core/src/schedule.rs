@@ -139,10 +139,10 @@ pub fn builtin(name: Option<&str>, cat: Option<&str>) -> Option<(&'static str, &
 /// else the one of that name.
 pub fn named(m: &Model, name: &str) -> Option<Id> {
     let twin = builtin(Some(name), None);
-    m.elements.iter().find_map(|(id, e)| match e {
-        Element::Schedule(sc) if twin.is_some() && builtin(Some(&sc.name), None) == twin => Some(*id),
-        Element::Schedule(sc) if twin.is_none() && sc.name == name => Some(*id),
-        _ => None,
+    m.lookup().rare("schedule").find(|id| match m.elements.get(*id) {
+        Some(Element::Schedule(sc)) if twin.is_some() => builtin(Some(&sc.name), None) == twin,
+        Some(Element::Schedule(sc)) => sc.name == name,
+        _ => false,
     })
 }
 

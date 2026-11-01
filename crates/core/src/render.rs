@@ -833,8 +833,9 @@ pub(crate) fn plan_extent(m: &Model, level: impl Key) -> Vec<P2> {
     match m.shown_crop(level) {
         None => plan_shows(m, level),
         Some([lo, hi]) => {
-            let grids = m.elements.values().filter_map(|e| match e {
-                Element::Grid(g) => clip(g.start, g.end, lo, hi),
+            let lookup = m.lookup();
+            let grids = lookup.grids().filter_map(|id| match m.elements.get(id) {
+                Some(Element::Grid(g)) => clip(g.start, g.end, lo, hi),
                 _ => None,
             });
             [lo, hi].into_iter().chain(grids.flat_map(|(a, b)| [a, b])).collect()

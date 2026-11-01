@@ -4067,6 +4067,43 @@ impl Model {
         }
     }
 
+    /// The views, by id: the levels' plans, the plan views, sections, elevations, schedules and 3D views. From the lookup.
+    pub fn views(&self) -> BTreeSet<Id> {
+        let lookup = self.lookup();
+        let mut ids: BTreeSet<Id> = lookup.levels().collect();
+        for cat in ["planview", "section", "elevation", "schedule", "view3d"] {
+            ids.extend(lookup.rare(cat));
+        }
+        ids
+    }
+
+    /// The view named `name` (the first, by id, were two so named).
+    pub fn view_named(&self, name: &str) -> Option<Id> {
+        self.views().into_iter().find(|id| self.view_name(*id) == Some(name))
+    }
+
+    /// The sheets, by id.
+    pub fn sheets(&self) -> Vec<Id> {
+        self.lookup().rare("sheet").collect()
+    }
+
+    /// The sheet numbered `n`, or else named `n` (the first, by id).
+    pub fn sheet_numbered(&self, n: &str) -> Option<Id> {
+        self.sheets().into_iter().find(|id| self.sheet(*id).is_some_and(|sh| sh.number == n || sh.name == n))
+    }
+
+    /// What is on sheet `sheet`, by id: its viewports, and the notes, lines, regions and details drawn on it.
+    pub fn on_sheet(&self, sheet: impl Key) -> Vec<Id> {
+        let g = self.guid(sheet);
+        let ids: Vec<Id> = self.lookup().referrers(&g).collect();
+        #[cfg(test)]
+        {
+            let every: Vec<Id> = self.elements.iter().filter(|(_, e)| e.refs().contains(&g)).map(|(id, _)| *id).collect();
+            assert_eq!(ids, every, "what is on sheet {g}");
+        }
+        ids
+    }
+
     /// Section or elevation `id`.
     pub fn section(&self, id: impl Key) -> Option<&Section> {
         match self.elements.get(id) {
@@ -5169,23 +5206,17 @@ impl Model {
     /// [`Model::check`] of this model, which a command made of `before`, a model that passed it: the elements the command
     /// added, changed or removed are checked again, with the walls they might join, what points at any of those (and what
     /// points at that, on), and the other openings in the walls their openings are in. The rest are as they were. The same
-    /// answer as `check`, which it is where what changed reaches what the whole project shares (a level, a view, a sheet,
-    /// a name every element of a kind keeps apart, a setting or a type) or isn't known.
+    /// answer as `check`, which it is where what changed reaches what the whole project shares (a level, a grid, a link, a
+    /// name every element of a kind keeps apart, a setting or a type) or isn't known. A view, a sheet or a viewport is
+    /// checked with the whole drawing set.
     pub fn check_changed(&self, before: &Model) -> Result<(), String> {
-        let Changed::Ids(changed) = self.changed_since(before) else { return self.check() };
+        let Changed::Ids(changed) = self.changed_since(before) else { return self.check_all() };
         let shared = |e: &Element| {
             matches!(
                 e,
                 Element::Level(_)
                     | Element::Grid(_)
                     | Element::Link(_)
-                    | Element::Schedule(_)
-                    | Element::PlanView(_)
-                    | Element::View3D(_)
-                    | Element::Section(_)
-                    | Element::Elevation(_)
-                    | Element::Sheet(_)
-                    | Element::Viewport(_)
                     | Element::DetailGroup(_)
                     | Element::RepeatingDetail(_)
                     | Element::Mass(_)
@@ -5201,12 +5232,12 @@ impl Model {
             for m in [self, before] {
                 let Some(e) = m.elements.get(id) else { continue };
                 if shared(e) {
-                    return self.check();
+                    return self.check_all();
                 }
                 frontier.extend(m.elements.guid(id));
                 // A wall of no usable extent may meet any: the check says what is wrong with it.
                 if let Element::Wall(w) = e {
-                    let Some(b) = walls::reach(m, w) else { return self.check() };
+                    let Some(b) = walls::reach(m, w) else { return self.check_all() };
                     boxes.push((b, m.base_z(w), m.top_z(w)));
                 }
             }
@@ -5263,16 +5294,37 @@ impl Model {
                 }
             }
         }
+        // A view, a sheet or a viewport: the drawing set's names, numbers and places are kept apart, so all of it is
+        // checked, with the levels whose names the views' keep apart from theirs.
+        let drawing_set = |e: &Element| crate::derived::DRAWING_SET.contains(&e.category());
         let mut t = Tally::default();
+        if changed.iter().any(|id| [self, before].iter().any(|m| m.elements.get(*id).is_some_and(drawing_set))) {
+            for cat in crate::derived::DRAWING_SET {
+                affected.extend(lookup.rare(cat));
+            }
+            // The levels are as they were (a changed one checks everything): their names, which no view's may be.
+            for id in lookup.levels() {
+                if let Some(Element::Level(l)) = self.elements.get(id) {
+                    t.level_names.insert(l.name.as_str());
+                }
+            }
+        }
         for &id in &affected {
             let Some(e) = self.elements.get(id) else { continue };
             if shared(e) {
-                return self.check();
+                return self.check_all();
             }
             self.check_element(id, e, &mut t)?;
         }
         self.check_shared(&t)?;
         self.check_ids_of(affected.iter().filter_map(|id| Some((*id, self.elements.get(*id)?))), self.library_in_step_since(before))
+    }
+
+    /// [`Model::check`], where [`Model::check_changed`] can't tell what an edit reaches; tests count how often.
+    fn check_all(&self) -> Result<(), String> {
+        #[cfg(test)]
+        FALLBACKS.with(|n| n.set(n.get() + 1));
+        self.check()
     }
 
     /// What [`Model::check`] asks of element `id`, `e`, keeping in `t` what it must hold in common with the others.
@@ -6224,6 +6276,12 @@ pub fn culprit(error: &str) -> Option<Id> {
     let mut words = error.split_whitespace();
     words.next()?;
     words.next()?.trim_end_matches(':').parse().ok()
+}
+
+#[cfg(test)]
+thread_local! {
+    /// How many times this thread's [`Model::check_changed`] checked the whole model.
+    pub(crate) static FALLBACKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// What [`Model::check`] holds in common between elements while it goes through them.

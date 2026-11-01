@@ -173,7 +173,7 @@ fn run() -> Result<(), String> {
             report["ms"]["dimension_undo_median"] = json!(undos[undos.len() / 2]);
         }
         if sheets {
-            measure_sheets(&mut report, &mut s, repeats)?;
+            measure_sheets(&mut report, &mut s, repeats, skipped("scene"))?;
         }
         let text = timed(&mut report, "native_serialize", || s.model.to_json())?;
         report["native_bytes"] = json!(text.len());
@@ -242,12 +242,16 @@ fn median(repeats: usize, mut f: impl FnMut() -> Result<(), String>) -> Result<f
 
 /// The drawing set's work: drawing a storey's sheet and the project's, a new sheet with a view placed on it, a viewport
 /// moved and a note on a sheet edited, each undone.
-fn measure_sheets(report: &mut Value, s: &mut Session, repeats: usize) -> Result<(), String> {
+fn measure_sheets(report: &mut Value, s: &mut Session, repeats: usize, scene_skipped: bool) -> Result<(), String> {
     let sheet = |s: &Session, number: &str| {
         s.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Sheet(sh) if sh.number == number).then_some(*id))
     };
     report["sheets"] = json!(s.model.elements.values().filter(|e| matches!(e, Element::Sheet(_))).count());
     for (name, number) in [("plan", "A1-001"), ("enlarged", "A3-001"), ("elevations", "A5-001"), ("schedule", "A7-002")] {
+        // Elevations are drawn from the 3D scene: skipped with it.
+        if name == "elevations" && scene_skipped {
+            continue;
+        }
         let Some(id) = sheet(s, number) else { continue };
         let d = timed(report, &format!("sheet_{name}_draw"), || {
             bimcraft_core::sheet::draw(&s.model, id).ok_or_else(|| format!("sheet {number} doesn't draw"))

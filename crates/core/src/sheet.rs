@@ -90,10 +90,10 @@ pub fn spot(m: &Model, sheet: impl Key, view: impl Key, scale: f64) -> P2 {
     let middle = P2((margins.left + paper.0 - margins.right) / 2.0, (margins.bottom + margins.title_height + paper.1 - margins.top) / 2.0);
     let taken = size(m, view, scale).unwrap_or(P2(0.0, 0.0));
     let right = m
-        .elements
-        .values()
-        .filter_map(|e| match e {
-            Element::Viewport(v) if v.sheet == sheet => Some(v.at.0 + size(m, v.view, v.scale)?.0 / 2.0),
+        .on_sheet(sheet)
+        .into_iter()
+        .filter_map(|id| match m.elements.get(id) {
+            Some(Element::Viewport(v)) if v.sheet == sheet => Some(v.at.0 + size(m, v.view, v.scale)?.0 / 2.0),
             _ => None,
         })
         .fold(None, |r: Option<f64>, x| Some(r.map_or(x, |r| r.max(x))));
@@ -258,10 +258,11 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
     let sheet = m.sheet(id)?;
     let guid = m.guid(id);
     let paper = paper(&sheet.size)?;
-    let views: Vec<(Id, &Viewport)> = m
-        .elements
+    // What is on it, in the order of its ids: its viewports, and the 2D drawn on it.
+    let on: Vec<(Id, &Element)> = m.on_sheet(id).into_iter().filter_map(|id| Some((id, m.elements.get(id)?))).collect();
+    let views: Vec<(Id, &Viewport)> = on
         .iter()
-        .filter_map(|(&vid, e)| match e {
+        .filter_map(|&(vid, e)| match e {
             Element::Viewport(v) if v.sheet == guid => Some((vid, v)),
             _ => None,
         })
@@ -331,7 +332,7 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
         d.line(&[P2(x, corner.1 - 8.0), P2(x + line, corner.1 - 8.0)], Pen::MEDIUM, INK, false);
         left(&mut d, &m.units.scale(vp.scale), P2(x, corner.1 - 11.0), 2.0);
     }
-    for (&nid, e) in &m.elements {
+    for &(nid, e) in &on {
         if let Element::FilledRegion(r) = e
             && r.view == guid
         {
@@ -339,7 +340,7 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
             render::filled_region(&mut d, m, r);
         }
     }
-    for (&nid, e) in &m.elements {
+    for &(nid, e) in &on {
         if let Element::DetailGroup(g) = e
             && g.view == guid
         {

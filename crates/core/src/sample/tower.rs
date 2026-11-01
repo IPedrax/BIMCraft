@@ -914,6 +914,31 @@ mod tests {
     }
 
     #[test]
+    fn sheets_views_and_viewports_are_checked_with_the_drawing_set_not_the_whole_model() {
+        let mut s = Session::new();
+        s.reset(drawn(Plate::SMALL, 2, Drawings { annotation: false, sheets: true }).unwrap(), None);
+        let fallbacks = || crate::model::FALLBACKS.with(std::cell::Cell::get);
+        let before = fallbacks();
+        let viewport = s.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Viewport(_)).then_some(*id)).unwrap();
+        // The engine holds each to the full check's answer (`check_changed differs from check`).
+        s.execute("sheet", &json!({"number": "X-001", "name": "Extra"})).unwrap();
+        s.execute("place", &json!({"sheet": "X-001", "view": "Wall Schedule"})).unwrap();
+        s.execute("move", &json!({"ids": [viewport], "by": [10, 10]})).unwrap();
+        s.execute("duplicate_view", &json!({"view": "Level 2", "name": "Level 2 - Furniture"})).unwrap();
+        s.execute("text", &json!({"text": "Revised", "at": [100, 100], "view": "X-001"})).unwrap();
+        let err = |s: &mut Session, cmd: &str, p: Value| s.execute(cmd, &p).unwrap_err();
+        assert!(err(&mut s, "sheet", json!({"number": "A1-002"})).contains("already numbered `A1-002`"));
+        assert!(err(&mut s, "place", json!({"sheet": "X-001", "view": "Level 1"})).contains("is on sheet A1-001 already"));
+        let e = err(&mut s, "duplicate_view", json!({"view": "Level 2", "name": "Level 1"}));
+        assert!(e.contains("Level 1"), "{e}");
+        for id in s.model.sheets() {
+            s.execute("delete", &json!({"ids": [id]})).unwrap();
+            s.execute("undo", &json!({})).unwrap();
+        }
+        assert_eq!(fallbacks(), before, "a sheet's edit checked the whole model");
+    }
+
+    #[test]
     fn a_tower_is_one_to_a_hundred_storeys_on_a_plate_its_layout_fits() {
         assert!(tower(0).is_err() && tower(MAX_STOREYS + 1).is_err());
         for (width, depth) in [(30_000, 36_000), (36_000, 42_000), (36_000, 30_000), (0, 0), (-36_000, 36_000), (606_000, 36_000)] {
