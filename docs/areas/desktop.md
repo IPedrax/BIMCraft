@@ -258,7 +258,12 @@ open tab's panels as rows, each under its name. It draws the same tab functions 
 which turns on `ribbon::listing` (every button is a `list_row`) and a panel's heading, so a tool is added once and shows in both. What
 differs: `raise_context` does nothing, so a tool picked doesn't swap the list for its contextual tab (the user opens that from the pills),
 and `ribbon::choices` makes a tool's choices a popup menu of the row's own, since the palette is not a popup and a `SubMenu` there closes
-before a choice is clicked. Every tool runs the same command either way; tests in `tests/palette.rs`.
+before a choice is clicked. The column is a fixed `PALETTE_WIDTH` (it would otherwise grow to its widest field, tool by tool), and
+what is wider wraps. Between the tabs and the tools is the info panel: the Options Bar's own `options` (a tool's height, location
+line, slope, a note's text), in a scroll area of its own, while `options_shown`; the floating Options Bar is not drawn in this
+profile and the pill already names the tool, so `options` leaves the name out. A panel's small buttons that the ribbon sets side by
+side go through `ribbon::strip`, which stacks them in rows (a plain `ui.horizontal` of rows runs off the column's edge, and a
+panel's list too). Every tool runs the same command either way; tests in `tests/palette.rs`.
 
 Keyboard Shortcuts. Manage > Shortcuts (or KS) opens `shortcuts_window` (`shortcuts.rs`): every shortcut by what it does, from `shortcuts()`
 (`SHORTCUTS`, the fixtures' letters, the commands' aliases), with Add, Edit and Load File. A shortcut is two letters or digits, all that `typed` holds,

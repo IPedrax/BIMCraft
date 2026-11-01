@@ -895,6 +895,9 @@ fn step_name(st: &engine::Step) -> String {
 }
 
 /// A tab, of the ribbon or of a view. Contextual tabs are green, as Revit's are.
+/// How wide the tool palette's column is.
+const PALETTE_WIDTH: f32 = 280.0;
+
 /// The tabs, in order: what the ribbon's tab row and the tool palette's tab picker show (the contextual tab comes after them).
 const TABS: [(Tab, &str); 12] = [
     (Tab::Architecture, msg!("Architecture")),
@@ -1362,7 +1365,12 @@ impl BimApp {
             }
             settings::Profile::Palette => {
                 let card = style::card([true, false, true, true]).inner_margin(Margin::same(6));
-                Panel::left("tool-palette").frame(card).show_separator_line(false).default_size(236.0).show(ui, |ui| self.tool_palette(ui));
+                // A fixed width, so the column never changes with the tool in hand: what is wider wraps (or, a field, is held to it).
+                Panel::left("tool-palette")
+                    .frame(card)
+                    .show_separator_line(false)
+                    .exact_size(PALETTE_WIDTH)
+                    .show(ui, |ui| self.tool_palette(ui));
             }
         }
         if self.has_update_banner() {
@@ -2917,6 +2925,17 @@ impl BimApp {
         });
         ui.add_space(4.0);
         ui.separator();
+        // The info panel, between the tabs and the tools: what the Options Bar shows over the view with the ribbon (the tool's type,
+        // heights, location line), while there is something to show. Its own scroll area, short of the tools' room.
+        if self.options_shown() {
+            let room = ui.available_height() * 0.4;
+            ScrollArea::vertical().id_salt("palette-info").max_height(room).auto_shrink([false, true]).show(ui, |ui| {
+                // A label moves to the next row whole, rather than break between its words.
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                self.options(ui);
+            });
+            ui.separator();
+        }
         ScrollArea::vertical().id_salt("palette-tools").auto_shrink([false, false]).show(ui, |ui| {
             ribbon::rows(ui, |ui| self.tab_tools(ui));
         });
@@ -3226,7 +3245,7 @@ impl BimApp {
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
                 for row in small.chunks(3) {
-                    ui.horizontal(|ui| {
+                    ribbon::strip(ui, |ui| {
                         ui.spacing_mut().item_spacing.x = 1.0;
                         for (icon, label, tip, tool) in row {
                             if small_button(ui, *icon, label, structure::same_tool(&self.tool, tool), tip).clicked() {
@@ -3844,7 +3863,7 @@ impl BimApp {
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
                 for row in rows {
-                    ui.horizontal(|ui| {
+                    ribbon::strip(ui, |ui| {
                         for (icon, label, tip, tool, enabled) in row {
                             let active = tool.as_ref().is_some_and(|t| on(t, &self.tool) && *t != Tool::Modify);
                             if ui.add_enabled_ui(*enabled, |ui| small_button(ui, *icon, label, active, tip)).inner.clicked() {
@@ -3882,7 +3901,8 @@ impl BimApp {
     /// The Options Bar, while there's something on it (a contextual tab's name, a tool's options): a card floating over the
     /// view's top left, so the view never moves when it comes and goes, and taking the clicks that land on it.
     fn options_bar(&mut self, ctx: &Context) {
-        if self.context().is_none() && matches!(self.tool, Tool::Modify) && self.note_edit.is_none() {
+        // The tool palette holds the tool's options in its own column (its info panel), so no card floats over the view.
+        if self.profile == settings::Profile::Palette || !self.options_shown() {
             self.options_rect = Rect::NOTHING;
             return;
         }
@@ -3899,6 +3919,11 @@ impl BimApp {
         self.options_rect = shown.response.rect;
     }
 
+    /// Whether there is anything on the Options Bar: a contextual tab's name (a tool in hand, a selection), a note being written.
+    fn options_shown(&self) -> bool {
+        self.context().is_some() || !matches!(self.tool, Tool::Modify) || self.note_edit.is_some()
+    }
+
     /// Where a view's navigation bar starts: at its top right, or under the Options Bar when that reaches over it.
     pub(crate) fn nav_corner(&self, view: Rect) -> Pos2 {
         let at = view.right_top() + vec2(-46.0, 14.0);
@@ -3913,7 +3938,10 @@ impl BimApp {
         // Wrapped: in a narrow view (the window's least) the bar takes a second line rather than run over the zoom buttons.
         ui.horizontal_wrapped(|ui| {
             ui.set_min_height(24.0);
-            if let Some(name) = self.context() {
+            // The tool palette's tab pill already names it, so its info panel starts with the options themselves.
+            if let Some(name) = self.context()
+                && self.profile == settings::Profile::Ribbon
+            {
                 // Painted: the tab already names it for screen readers.
                 let font = FontId::proportional(13.0);
                 let size = ui.painter().layout_no_wrap(name.clone(), font.clone(), pal().text).size();
@@ -4054,7 +4082,9 @@ impl BimApp {
                 }
                 Tool::Text => {
                     let l = ui.label(t("Text:"));
-                    ui.add(TextEdit::singleline(&mut self.note_text).desired_width(240.0).hint_text(t("what the note says")))
+                    // Held to the width it has: the tool palette's column is narrower than a field this wide.
+                    let width = 240.0_f32.min(ui.max_rect().width() - 8.0);
+                    ui.add(TextEdit::singleline(&mut self.note_text).desired_width(width).hint_text(t("what the note says")))
                         .labelled_by(l.id);
                 }
                 Tool::Attach => {

@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::settings::{Profile, Settings};
+use egui::Rect;
 use serde_json::json;
 
 fn palette() -> Harness<'static, BimApp> {
@@ -109,4 +110,69 @@ fn a_tool_that_drops_choices_down_shows_them_beside_its_row() {
     assert!(h.query_by_label("Duplicate with Detailing").is_some(), "its choices");
     press(&mut h, "Duplicate with Detailing");
     assert_ne!(h.state().sheet, before, "and a choice does what it does on the ribbon: the new plan is open");
+}
+
+/// The palette column's right edge, with its margin: what lies right of it is the view.
+const COLUMN: f32 = 300.0;
+
+#[test]
+fn a_tools_options_are_in_the_palette_column_and_not_over_the_view() {
+    let mut h = app(BOX);
+    h.state_mut().profile = Profile::Palette;
+    h.run();
+    assert_eq!(h.state().options_rect, Rect::NOTHING, "no tool: nothing to show");
+    assert!(h.query_by_label("Location Line:").is_none());
+    press(&mut h, "Wall");
+    let field = h.get_by_label("Location Line:").rect();
+    assert!(field.right() <= COLUMN, "the wall's options are in the column: {field:?}");
+    assert_eq!(h.state().options_rect, Rect::NOTHING, "so nothing floats over the view");
+    key(&mut h, Key::Escape);
+    assert!(h.query_by_label("Location Line:").is_none(), "and they go with the tool");
+
+    // The ribbon's profile is as it was: a card over the view.
+    let mut r = app(BOX);
+    tool(&mut r, "Wall");
+    assert_ne!(r.state().options_rect, Rect::NOTHING);
+    assert!(r.get_by_label("Location Line:").rect().left() > COLUMN || r.state().profile == Profile::Ribbon);
+}
+
+#[test]
+fn a_field_of_the_info_panel_is_typed_into_and_stays_in_the_column() {
+    let mut h = app(BOX);
+    h.state_mut().profile = Profile::Palette;
+    h.run();
+    press(&mut h, "Architecture");
+    press(&mut h, "Ceiling");
+    type_into(&mut h, "Height Offset:", "2500");
+    assert_eq!(h.state().ceiling_height, "2500");
+    key(&mut h, Key::Escape);
+    // The widest of the Options Bar's fields (a note's text, 240 wide) is held to the column.
+    press(&mut h, "Annotate");
+    // The list runs below the fold: scrolled to, as a user does.
+    h.get_by_role_and_label(Role::Button, "Text").scroll_to_me();
+    h.run();
+    pick(&mut h, Role::Button, "Text");
+    let text = h.get_by_label("Text:").rect();
+    assert!(text.right() <= COLUMN, "{text:?}");
+}
+
+/// Whether a tool has a row of its own in the palette's column: on screen, not off to its right.
+fn in_column(h: &Harness<BimApp>, label: &str) -> bool {
+    let nodes: Vec<_> = h.get_all_by_label(label).collect();
+    nodes.len() == 1 && nodes[0].rect().left() < COLUMN && nodes[0].rect().right() <= COLUMN
+}
+
+#[test]
+fn small_buttons_the_ribbon_sets_side_by_side_are_rows_one_under_the_other_in_the_palette() {
+    let mut h = palette();
+    press(&mut h, "Annotate");
+    for tool in ["Aligned", "Linear", "Angular", "Radial", "Diameter", "Arc Length", "Spot Elevation"] {
+        assert!(in_column(&h, tool), "{tool}");
+    }
+    // The Modify tab's panel of Move, Copy and the rest.
+    let pill = h.get_all_by_label("Modify").min_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).unwrap().rect().center();
+    click_at(&mut h, pill);
+    for tool in ["Move", "Copy", "Delete"] {
+        assert!(in_column(&h, tool), "{tool}");
+    }
 }

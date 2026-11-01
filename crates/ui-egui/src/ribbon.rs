@@ -71,6 +71,16 @@ pub(crate) fn rows(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
     LISTING.with(|l| l.set(false));
 }
 
+/// A strip of small buttons side by side on the ribbon; as rows (a panel's list, the tool palette) each is a row of its own, one under
+/// the other: a row is a column wide, so side by side they would run off its right edge.
+pub(crate) fn strip(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
+    if listing() {
+        add(ui);
+    } else {
+        ui.horizontal(add);
+    }
+}
+
 /// Counts a ribbon tool, and says whether its panel has handed it over to its list: then it isn't drawn on the ribbon. A
 /// handed-over tool takes no room and has no name, so it's found only in the list.
 pub(crate) fn handed_over(ui: &mut Ui) -> Option<Response> {
