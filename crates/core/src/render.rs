@@ -801,6 +801,85 @@ fn annotates(m: &Model, owner: Option<Id>) -> bool {
 /// What of each cut outline is the edge of what the view cuts, as runs of points: its edges, but for the stretches
 /// another outline lies against on their outer side, where two walls meet at a join or one runs into another; where two
 /// runs meet, each carried on `reach` mm round the corner ([`turn_corners`]).
+/// Boxes `(lo, hi)` by cells of a grid, to find those within `past` of one another without asking each of every other.
+struct BoxGrid<'a> {
+    boxes: &'a [(P2, P2)],
+    past: f64,
+    side: f64,
+    cells: std::collections::HashMap<(i64, i64), Vec<usize>>,
+    /// The boxes too big (or not finite) for cells: near anything.
+    big: Vec<usize>,
+}
+
+impl<'a> BoxGrid<'a> {
+    /// The most cells one box goes in.
+    const MAX_CELLS: i64 = 256;
+
+    fn new(boxes: &'a [(P2, P2)], past: f64) -> BoxGrid<'a> {
+        // Cells about as big as a box is, by the median of their larger sides.
+        let mut sides: Vec<f64> =
+            boxes.iter().map(|(lo, hi)| (hi.0 - lo.0).max(hi.1 - lo.1)).filter(|s| s.is_finite() && *s >= 0.0).collect();
+        sides.sort_by(f64::total_cmp);
+        let side = sides.get(sides.len() / 2).copied().unwrap_or(1.0).max(1.0) + 2.0 * past;
+        let mut grid = BoxGrid { boxes, past, side, cells: std::collections::HashMap::new(), big: Vec::new() };
+        for (i, b) in boxes.iter().enumerate() {
+            match grid.cells_of(b) {
+                Some([x0, y0, x1, y1]) => {
+                    for x in x0..=x1 {
+                        for y in y0..=y1 {
+                            grid.cells.entry((x, y)).or_default().push(i);
+                        }
+                    }
+                }
+                None => grid.big.push(i),
+            }
+        }
+        grid
+    }
+
+    /// The cells box `b`, grown by `past`, reaches; none when it is too big for them.
+    fn cells_of(&self, (lo, hi): &(P2, P2)) -> Option<[i64; 4]> {
+        let cell = |v: f64| (v / self.side).floor();
+        let c = [cell(lo.0 - self.past), cell(lo.1 - self.past), cell(hi.0 + self.past), cell(hi.1 + self.past)];
+        if !c.iter().all(|v| v.is_finite() && v.abs() < 1e15) {
+            return None;
+        }
+        let [x0, y0, x1, y1] = c.map(|v| v as i64);
+        ((x1 - x0 + 1).saturating_mul(y1 - y0 + 1) <= Self::MAX_CELLS).then_some([x0, y0, x1, y1])
+    }
+
+    /// The boxes but `i` within `past` of box `i`, and perhaps others near, in order: those in a cell it reaches, and the
+    /// big ones (with box `i` big, every one).
+    fn near(&self, i: usize) -> Vec<usize> {
+        let Some(b) = self.boxes.get(i) else { return Vec::new() };
+        let mut found: Vec<usize> = match self.cells_of(b) {
+            Some([x0, y0, x1, y1]) => {
+                let mut v: Vec<usize> = self.big.clone();
+                for x in x0..=x1 {
+                    for y in y0..=y1 {
+                        v.extend(self.cells.get(&(x, y)).into_iter().flatten().copied());
+                    }
+                }
+                v
+            }
+            None => (0..self.boxes.len()).collect(),
+        };
+        found.sort_unstable();
+        found.dedup();
+        let ((a, b), past) = (*b, self.past);
+        found
+            .into_iter()
+            .filter(|&j| {
+                j != i
+                    && self
+                        .boxes
+                        .get(j)
+                        .is_some_and(|(c, d)| a.0 <= d.0 + past && c.0 <= b.0 + past && a.1 <= d.1 + past && c.1 <= b.1 + past)
+            })
+            .collect()
+    }
+}
+
 fn cut_edges(outlines: &[(Id, Vec<P2>)], reach: f64) -> Vec<(Id, Vec<Vec<P2>>)> {
     // How far past an edge, outward, a point is looked for in another outline: mm.
     const PAST: f64 = 1.0;
@@ -816,9 +895,14 @@ fn cut_edges(outlines: &[(Id, Vec<P2>)], reach: f64) -> Vec<(Id, Vec<Vec<P2>>)> 
         let ((a, b), (c, d)) = (boxes[i], boxes[j]);
         i != j && a.0 <= d.0 + PAST && c.0 <= b.0 + PAST && a.1 <= d.1 + PAST && c.1 <= b.1 + PAST
     };
+    let grid = BoxGrid::new(&boxes, PAST);
     let mut out = Vec::with_capacity(outlines.len());
     for (i, (id, o)) in outlines.iter().enumerate() {
-        let others: Vec<&[P2]> = (0..outlines.len()).filter(|&j| near(i, j)).map(|j| outlines[j].1.as_slice()).collect();
+        let found = grid.near(i);
+        // Its twin, which tests hold it to: every outline asked.
+        #[cfg(test)]
+        assert_eq!(found, (0..outlines.len()).filter(|&j| near(i, j)).collect::<Vec<_>>(), "the outlines near outline {i}");
+        let others: Vec<&[P2]> = found.into_iter().filter(|&j| near(i, j)).map(|j| outlines[j].1.as_slice()).collect();
         if others.is_empty() {
             let mut ring = o.clone();
             ring.extend(o.first().copied());
