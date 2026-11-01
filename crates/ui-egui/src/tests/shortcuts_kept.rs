@@ -32,6 +32,23 @@ fn a_shortcut_made_is_kept_in_the_settings_and_works_in_the_next_window() {
 }
 
 #[test]
+fn file_new_and_open_keep_the_shortcuts_and_do_not_wipe_them_from_the_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("settings.json");
+    let mut h = app("");
+    h.state_mut().use_settings(file.clone());
+    h.state_mut().custom_shortcuts.insert("ZW".to_string(), "Wall".to_string());
+    h.run();
+    h.state_mut().reopened();
+    h.run();
+    assert_eq!(h.state().custom_shortcuts.get("ZW").map(String::as_str), Some("Wall"), "still there in the new project");
+    shortcut(&mut h, "ZW");
+    assert!(matches!(h.state().tool, Tool::Wall(_)));
+    let kept: serde_json::Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    assert_eq!(kept["shortcuts"], json!({"ZW": "Wall"}), "and in the file");
+}
+
+#[test]
 fn a_settings_file_keeps_only_two_character_keys_that_name_an_action() {
     let base = default_settings();
     let read = |shortcuts: serde_json::Value| Settings::from_json(&json!({"shortcuts": shortcuts}), base.clone()).shortcuts;

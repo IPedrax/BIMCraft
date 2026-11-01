@@ -2555,6 +2555,7 @@ impl BimApp {
         fresh.styled = self.styled;
         fresh.theme_wanted = self.theme_wanted.take();
         fresh.docking = std::mem::take(&mut self.docking);
+        fresh.custom_shortcuts = std::mem::take(&mut self.custom_shortcuts);
         (fresh.settings_path, fresh.settings_kept) = (self.settings_path.take(), self.settings_kept.take());
         fresh.window = std::mem::take(&mut self.window);
         (fresh.updates, fresh.revit) = (self.updates.take(), self.revit.take());
