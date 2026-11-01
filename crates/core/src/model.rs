@@ -3984,8 +3984,8 @@ impl Model {
         let Some(plane) = walls::Plane::of(face) else { return (vec![ring], Vec::new()) };
         let area = |rings: &[Vec<P2>]| rings.iter().map(|r| geom::area(r).abs()).sum::<f64>();
         let (mut pieces, mut cut) = (vec![ring], Vec::new());
-        for (&id, e) in &self.elements {
-            let Element::Shaft(sh) = e else { continue };
+        for id in self.rare("shaft") {
+            let Some(Element::Shaft(sh)) = self.elements.get(id) else { continue };
             let (bottom, top) = self.span(sh.level, sh.base_offset, sh.top_level, sh.height);
             let zs = sh.boundary.iter().map(|q| plane.at(*q));
             let (lo, hi) = zs.fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));

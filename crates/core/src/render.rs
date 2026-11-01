@@ -694,9 +694,29 @@ fn plan_candidates<'a>(
         out.extend(lookup.referrers(p));
     }
     out.extend(lookup.referrers(&level));
+    out.extend(tags_of_level(m, &lookup, level));
     out.extend(lookup.rare("column"));
     out.extend(lookup.rare("structuralcolumn"));
     out
+}
+
+/// The tags that may be in plan `key` of `level` with no view of their own, by id: those of what is of the level
+/// (`Model::level_of`), what points at it, the doors and windows in its walls, the railings on its stairs and ramps, and
+/// the annotation in its plan views.
+fn tags_of_level(m: &Model, lookup: &crate::derived::Lookup, level: Guid) -> std::collections::BTreeSet<Id> {
+    let mut hosts: Vec<Id> = lookup.referrers(&level).collect();
+    let mut more = Vec::new();
+    for &id in &hosts {
+        if matches!(m.elements.get(id), Some(Element::Wall(_) | Element::Stair(_) | Element::Ramp(_) | Element::PlanView(_))) {
+            more.extend(lookup.referrers(&m.guid(id)));
+        }
+    }
+    hosts.extend(more);
+    hosts
+        .into_iter()
+        .flat_map(|h| lookup.referrers(&m.guid(h)).collect::<Vec<_>>())
+        .filter(|id| matches!(m.elements.get(*id), Some(Element::Tag(t)) if t.view.is_none()))
+        .collect()
 }
 
 /// Of `candidates`, those that may show in plan `key` of `level`, range `r`.
@@ -955,6 +975,7 @@ fn plan_shows_among(m: &Model, key: Guid, among: bool) -> Vec<P2> {
         let lookup = m.lookup();
         let mut ids: std::collections::BTreeSet<Id> = lookup.other().collect();
         ids.extend(lookup.referrers(&level));
+        ids.extend(tags_of_level(m, &lookup, level));
         ids.extend(lookup.referrers(&key));
         if let Some(Element::PlanView(crate::model::PlanView { parent: Some(p), .. })) = m.elements.get(key) {
             ids.extend(lookup.referrers(p));

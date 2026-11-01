@@ -56,7 +56,7 @@ pub struct Lookup {
     /// Each banded element's group and bands, by chunk of ids.
     banded: BTreeMap<Id, Arc<Banded>>,
     /// What a plan finds no other way: the elements of the kinds it looks for among all of them (grids, floors, roofs,
-    /// stairs, sections, a tag of no view…), and the runs too steep to band.
+    /// stairs, sections…), and the runs too steep to band.
     other: Arc<BTreeSet<Id>>,
 }
 
@@ -90,8 +90,8 @@ fn found_otherwise(e: &Element) -> bool {
         | Element::DetailGroup(_)
         | Element::RepeatingDetail(_)
         | Element::Column(_)
-        | Element::StructuralColumn(_) => true,
-        Element::Tag(t) => t.view.is_some(),
+        | Element::StructuralColumn(_)
+        | Element::Tag(_) => true,
         _ => false,
     }
 }
@@ -135,6 +135,7 @@ pub const RARE: &[&str] = &[
     "link",
     "column",
     "structuralcolumn",
+    "shaft",
     "sheet",
     "viewport",
     "planview",
