@@ -5264,6 +5264,7 @@ mod dialog;
 mod dimensions;
 mod dock;
 mod draw;
+mod edit_type;
 mod fills;
 mod filter;
 mod fonts;

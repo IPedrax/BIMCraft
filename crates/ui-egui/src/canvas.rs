@@ -1264,6 +1264,22 @@ impl BimApp {
             self.dimension_text_dialog = Some(crate::dimtypes::DimensionTextDialog::new(&model, id, segment));
             return;
         }
+        // On any other element, in Modify, its settings, as Archicad's double click does: its type's thickness, materials and layers
+        // (Edit Type, which the right-click menu has too). The first click of the double click selected it, or does in this frame.
+        if response.double_clicked()
+            && !writing
+            && matches!(self.tool, Tool::Modify)
+            && self.sketch.is_none()
+            && let Some(id) = hovered
+        {
+            if !self.selection.contains(&id) {
+                self.pick_up(vec![id], Modifiers::NONE);
+            }
+            if self.type_subject().is_some() {
+                self.edit_type();
+                return;
+            }
+        }
         if let Some(at) = self.clicked_at(&response).filter(|_| !dragged && !writing) {
             let q = (at.x - rect.min.x, at.y - rect.min.y);
             // What lay under the press, which the hand may have left by the time the button came up.
