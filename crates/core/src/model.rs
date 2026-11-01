@@ -2196,6 +2196,9 @@ pub struct Model {
     /// Where room areas are measured: at the walls' centre lines, or at their finish faces.
     #[serde(default, skip_serializing_if = "RoomArea::is_default")]
     pub room_area: RoomArea,
+    /// Where on Earth its origin is, and which way is true north (Manage > Location), once set; a project that isn't placed has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<crate::georef::Location>,
     pub next_id: Id,
     pub types: Types,
     /// What layers are made of, by name.
@@ -2335,6 +2338,7 @@ impl Model {
             units: Units::default(),
             language,
             room_area: RoomArea::default(),
+            location: None,
             next_id: FIRST_ID,
             types: Types::default(),
             materials: BTreeMap::new(),
@@ -4631,6 +4635,9 @@ impl Model {
     /// Everything that must hold between commands: references resolve, geometry is finite and
     /// not degenerate, doors and windows fit their walls and don't overlap.
     pub fn check(&self) -> Result<(), String> {
+        if let Some(why) = self.location.as_ref().and_then(|l| l.problem()) {
+            return Err(format!("location: {why}"));
+        }
         if let Some(lw) = &self.line_weights {
             lw.check()?;
         }

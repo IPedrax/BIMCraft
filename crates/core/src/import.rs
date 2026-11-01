@@ -1401,6 +1401,11 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     m.elements.clear();
     m.next_id = FIRST_ID;
     let (mut skipped, mut seen): (Vec<String>, HashSet<u64>) = (Vec::new(), HashSet::new());
+    // Where the file puts the project on Earth; what the project can't hold is noted, and the rest opens.
+    match crate::ifc_georef::read(&file, mm) {
+        Ok(place) => m.location = place,
+        Err(why) => skipped.push(format!("the project's location: {why}")),
+    }
     // Each element made, and what it was in the file.
     let mut from: HashMap<Id, String> = HashMap::new();
     // The first element made of each in the file, which takes its GlobalId for its GUID.

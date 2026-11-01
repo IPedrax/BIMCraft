@@ -13,6 +13,8 @@ rust-version = "1.90"
 getrandom = "0.3"
 tempfile = "3"
 rayon = "1.12"
+# CRS transformations (EPSG codes, UTM and national grids): pure Rust, no unsafe, MIT OR Apache-2.0; without its geo-types and rayon.
+proj-core = { version = "0.13", default-features = false }
 bimcraft-core = { path = "crates/core" }
 bimcraft-i18n = { path = "crates/i18n", default-features = false }
 serde = { version = "1", features = ["derive", "rc"] }

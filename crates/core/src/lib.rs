@@ -35,11 +35,17 @@ pub mod fills;
 mod fixtures;
 mod font;
 pub mod geom;
+pub mod georef;
+#[cfg(test)]
+mod georef_tests;
 pub mod graphics;
 pub mod groups;
 pub mod hydrant;
 pub mod ids;
 pub mod ifc;
+mod ifc_georef;
+#[cfg(test)]
+mod ifc_georef_tests;
 pub mod import;
 pub mod inquiry;
 pub mod insert;

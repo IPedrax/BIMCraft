@@ -28,6 +28,7 @@ is in the root `CLAUDE.md`; the write-ups by area are in `docs/areas/`, which th
 | Families, forms, materials, textures, paint, favorites | [families](../../docs/areas/families.md) |
 | Beams, columns, footings, pipes, conduits, fixtures | [structure and MEP](../../docs/areas/structure-and-mep.md), [disciplines](../../docs/disciplines.md) |
 | IFC export or import | [looking at the result](../../docs/areas/looking-at-results.md): the IfcOpenShell checks |
+| Project location, true north, CRS, IFC map conversion | [georeferencing](../../docs/areas/georeferencing.md) |
 | Autosave and recovery | [autosave](../../docs/autosave.md) |
 
 ## Testing

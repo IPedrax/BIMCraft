@@ -1266,6 +1266,20 @@ pub static ALL: &[Command] = &[
         language,
     ),
     edit(
+        "geolocate",
+        "Location",
+        &[],
+        "{latitude?, longitude?, elevation?, true_north?, crs?, clear?, point?, lonlat?} places the project on Earth (Revit's Manage > Location): \
+         its origin (0, 0) is at `latitude` and `longitude` (degrees, WGS 84), `elevation` mm above sea level, and true north is `true_north` \
+         degrees counter-clockwise from the project's +y (0, +y is north; 90, north is -x). `crs` is the EPSG code of the metre grid the \
+         project maps to (31983 is SIRGAS 2000 / UTM zone 23S; 'utm', or leaving it out, is WGS 84's UTM zone of the place). \
+         Both `latitude` and `longitude` are needed the first time; after that any one changes. `clear` removes the location. \
+         `point` [x, y] mm answers with its `lonlat`; `lonlat` [longitude, latitude] answers with its `point` in the project. \
+         Reports the location, with the grid's easting and northing at the origin, its convergence and its scale. IFC carries it as \
+         IfcSite's position and IfcMapConversion. Accurate over a site of some kilometres",
+        geolocate,
+    ),
+    edit(
         "standard",
         "Technical Standards",
         &[],
@@ -9322,6 +9336,89 @@ fn units(s: &mut Session, p: &Value) -> R {
     Ok(json!({"length": s.model.units.name()}))
 }
 
+fn geolocate(s: &mut Session, p: &Value) -> R {
+    let c = "geolocate";
+    only(c, p, &["latitude", "longitude", "elevation", "true_north", "crs", "clear", "point", "lonlat"])?;
+    let (latitude, longitude, elevation, true_north) =
+        (num(c, p, "latitude")?, num(c, p, "longitude")?, num(c, p, "elevation")?, num(c, p, "true_north")?);
+    // None, not said; Some(None), the place's UTM zone; Some(Some(code)), that CRS.
+    let crs: Option<Option<u32>> = match p.get("crs") {
+        v if absent(v) => None,
+        Some(Value::String(t)) if t.trim().eq_ignore_ascii_case("utm") => Some(None),
+        Some(v) => {
+            let code = match v {
+                Value::Number(n) => n.as_u64(),
+                Value::String(t) => {
+                    let t = t.trim();
+                    t.strip_prefix("EPSG:").or_else(|| t.strip_prefix("epsg:")).unwrap_or(t).parse::<u64>().ok()
+                }
+                _ => None,
+            };
+            let code = code
+                .and_then(|n| u32::try_from(n).ok())
+                .ok_or_else(|| bad(c, format!("`crs` is an EPSG code such as 31983, or utm, not {v}")))?;
+            Some(Some(code))
+        }
+        None => None,
+    };
+    let to_geo = point_opt(c, p, "point")?;
+    let to_project = match p.get("lonlat") {
+        v if absent(v) => None,
+        Some(v) => match v.as_array().map(Vec::as_slice) {
+            Some([lo, la]) => match (lo.as_f64(), la.as_f64()) {
+                (Some(lo), Some(la)) if lo.is_finite() && la.is_finite() => Some((lo, la)),
+                _ => return Err(bad(c, format!("`lonlat` is [longitude, latitude] in degrees, not {v}"))),
+            },
+            _ => return Err(bad(c, format!("`lonlat` is [longitude, latitude] in degrees, not {v}"))),
+        },
+        None => None,
+    };
+    if flag(c, p, "clear")? {
+        if s.model.location.is_some() {
+            s.model_mut().location = None;
+        }
+    } else if latitude.is_some() || longitude.is_some() || elevation.is_some() || true_north.is_some() || crs.is_some() {
+        if s.model.location.is_none() && (latitude.is_none() || longitude.is_none()) {
+            return Err(bad(c, "`latitude` and `longitude` (degrees) are both needed to place the project"));
+        }
+        let mut l = s.model.location.unwrap_or_default();
+        l.latitude = latitude.unwrap_or(l.latitude);
+        l.longitude = longitude.unwrap_or(l.longitude);
+        l.elevation = elevation.unwrap_or(l.elevation);
+        l.true_north = true_north.unwrap_or(l.true_north);
+        if let Some(code) = crs {
+            l.crs = code;
+        }
+        l.grid().map_err(|why| bad(c, why))?;
+        if s.model.location != Some(l) {
+            s.model_mut().location = Some(l);
+        }
+    }
+    let Some(l) = s.model.location else {
+        if to_geo.is_some() || to_project.is_some() {
+            return Err(bad(c, "the project has no location yet: give `latitude` and `longitude` first"));
+        }
+        return Ok(json!({"located": false}));
+    };
+    let g = l.grid().map_err(|why| bad(c, why))?;
+    let mut out = json!({
+        "located": true, "latitude": l.latitude, "longitude": l.longitude, "elevation": l.elevation, "true_north": l.true_north,
+        "crs": {
+            "epsg": g.epsg, "name": g.name, "easting": g.easting, "northing": g.northing,
+            "convergence": g.convergence, "scale": g.scale, "rotation": g.rotation,
+        },
+    });
+    if let Some(q) = to_geo {
+        let (lon, lat) = l.to_lonlat(q).map_err(|why| bad(c, why))?;
+        out["lonlat"] = json!([lon, lat]);
+    }
+    if let Some((lon, lat)) = to_project {
+        let q = l.from_lonlat(lon, lat).map_err(|why| bad(c, why))?;
+        out["point"] = json!([q.0, q.1]);
+    }
+    Ok(out)
+}
+
 fn room_area(s: &mut Session, p: &Value) -> R {
     let c = "room_area";
     only(c, p, &["at"])?;
@@ -10076,7 +10173,7 @@ fn inspect(s: &mut Session, _: &Value) -> R {
         })
         .collect();
     Ok(json!({
-        "name": m.name, "units": "mm", "project_units": m.units.name(), "room_area": m.room_area.name(), "language": m.language.code(), "standard": m.standard().code(), "path": s.path, "levels": levels,
+        "name": m.name, "units": "mm", "project_units": m.units.name(), "room_area": m.room_area.name(), "language": m.language.code(), "standard": m.standard().code(), "location": m.location, "path": s.path, "levels": levels,
         "counts": counts,
         "types": m.types, "materials": m.materials, "images": images(m), "families": families(m), "parameters": m.parameters,
         "view_filters": m.view_filters, "view_templates": m.view_templates, "phases": m.phases, "phase_filters": m.phase_filters,

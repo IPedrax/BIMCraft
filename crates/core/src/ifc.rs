@@ -125,6 +125,31 @@ fn ratio(x: f64) -> String {
     format!("{x:.12}").trim_end_matches('0').to_string()
 }
 
+/// A STEP real to fifteen places, for a scale that is small: it reads back to a part in 10^12.
+fn precise(x: f64) -> String {
+    let x = if x.is_finite() && x != 0.0 { x } else { 0.0 };
+    format!("{x:.15}").trim_end_matches('0').to_string()
+}
+
+/// A compound plane angle, `(degrees, minutes, seconds, millionths of a second)`.
+fn angle(degrees: f64) -> String {
+    let [d, m, s, u] = crate::georef::compound(degrees);
+    format!("({d},{m},{s},{u})")
+}
+
+/// The datum, projection and zone IfcProjectedCRS names for an EPSG CRS, from the registry's name for it
+/// (`SIRGAS 2000 / UTM zone 23S`, `WGS 84 / UTM zone 31N`): `$` where the name doesn't say.
+fn crs_names(name: &str) -> (String, String, String) {
+    let datum = match name.split(" / ").next().unwrap_or(name) {
+        "WGS 84" => "WGS84",
+        other => other,
+    };
+    match name.split("UTM zone ").nth(1).and_then(|z| z.split_whitespace().next()) {
+        Some(zone) => (s(datum), s("UTM"), s(zone)),
+        None => (s(datum), "$".into(), "$".into()),
+    }
+}
+
 /// The digits of an IFC GlobalId, in order.
 const DIGITS: &[u8; 64] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
 
@@ -551,7 +576,14 @@ pub fn export(m: &Model) -> String {
     let origin = w.add("IFCCARTESIANPOINT((0.,0.,0.))");
     w.z = w.add("IFCDIRECTION((0.,0.,1.))");
     w.world = w.add(format!("IFCAXIS2PLACEMENT3D(#{origin},$,$)"));
-    let ctx = w.add(format!("IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#{},$)", w.world));
+    // Where the project is on Earth, if it has been placed: true north in the context, the site's position, and the map.
+    let place = m.location.as_ref().and_then(|l| l.grid().ok().map(|g| (l, g)));
+    let north = place.as_ref().map(|(l, _)| {
+        let a = l.true_north.to_radians();
+        w.add(format!("IFCDIRECTION(({},{}))", ratio(-a.sin()), ratio(a.cos())))
+    });
+    let north = north.map_or_else(|| "$".to_string(), |n| format!("#{n}"));
+    let ctx = w.add(format!("IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#{},{north})", w.world));
     w.context = ctx;
     w.body = w.add(format!("IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#{ctx},$,.MODEL_VIEW.,$)"));
     let axis = w.add(format!("IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Axis','Model',*,*,*,*,#{ctx},$,.GRAPH_VIEW.,$)"));
@@ -565,7 +597,27 @@ pub fn export(m: &Model) -> String {
     let units = w.add(format!("IFCUNITASSIGNMENT(({}))", refs(&units)));
     let project = w.add(format!("IFCPROJECT({},$,{},$,$,$,$,(#{ctx}),#{units})", w.guid(PROJECT, 0), s(&m.name)));
     let site_at = w.place(None, (0.0, 0.0, 0.0), None);
-    let site = w.add(format!("IFCSITE({},$,'Site',$,$,#{site_at},$,$,.ELEMENT.,$,$,$,$,$)", w.guid(SITE, 0)));
+    let position = place
+        .as_ref()
+        .map_or_else(|| "$,$,$".to_string(), |(l, _)| format!("{},{},{}", angle(l.latitude), angle(l.longitude), real(l.elevation)));
+    let site = w.add(format!("IFCSITE({},$,'Site',$,$,#{site_at},$,$,.ELEMENT.,{position},$,$)", w.guid(SITE, 0)));
+    if let Some((l, g)) = &place {
+        // The map: a CRS in metres, and where the project's origin is in it, how it is turned, and mm to metres on the grid.
+        let metre = w.add("IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)");
+        let (datum, projection, zone) = crs_names(&g.name);
+        let crs =
+            w.add(format!("IFCPROJECTEDCRS({},{},{datum},$,{projection},{zone},#{metre})", s(&format!("EPSG:{}", g.epsg)), s(&g.name)));
+        let turn = g.rotation.to_radians();
+        w.add(format!(
+            "IFCMAPCONVERSION(#{ctx},#{crs},{},{},{},{},{},{})",
+            real(g.easting),
+            real(g.northing),
+            real(l.elevation / 1000.0),
+            ratio(turn.cos()),
+            ratio(turn.sin()),
+            precise(g.scale * 0.001),
+        ));
+    }
     let building_at = w.place(Some(site_at), (0.0, 0.0, 0.0), None);
     let building = w.add(format!("IFCBUILDING({},$,{},$,$,#{building_at},$,$,.ELEMENT.,$,$,$)", w.guid(BUILDING, 0), s(&m.name)));
     w.add(format!("IFCRELAGGREGATES({},$,$,$,#{project},(#{site}))", w.guid(AGGREGATES, PROJECT)));
