@@ -26,10 +26,36 @@ lines, run on or back to meet at joins (`walls::centre_line`). A room separator 
 would and nothing else: it is no edge of a floor, a ceiling or a roof (`Model::bounding_lines` takes it, `wall_lines` and
 `face_lines` don't; an end drawn to a wall's face runs on to its centre line there, so the line splits rooms measured at
 the centre lines too), it is drawn in plan only, and it goes to IFC as an `IfcVirtualElement` of `ObjectType` `RoomSeparation`
-with an `Axis` polyline on its storey, which the import reads back. With `room_area {at: "finish"}` (`Model::room_area`, Revit's Area and
+with an `Axis` polyline on its storey, which the import reads back. The desktop's Room Separator, beside Room, lays one a
+click from the point before until Esc. A room's height is Revit's: from `base_offset` over its level up to `limit_offset` over
+its Upper Limit, `top_level` (none: Not Bounded, the offset then over its own level). A new room reaches 300 mm under the
+level above (`ROOM_BELOW_ABOVE`), or with none above is Not Bounded and 2500 mm tall; a room read from a file without them is
+Not Bounded, 2500 mm. `Model::room_span` and `room_height` give it, `elements` its `unbounded_height` and `volume_m3` (the area times that height, not cut by floors or roofs), and the IFC
+space is swept that tall. A frozen room (`frozen`, an instance parameter: `room {frozen}` or `modify {id, frozen}`) keeps the
+boundary it has when frozen, both ways it can be measured (`Room::kept`, given after the command that froze it by
+`Model::keep_rooms`, which the engine calls after every command, and let go when it is thawed): `room_region_at` returns it
+and the plan draws it without finding the level's lines, so the walls are never searched for it again, which saves the time
+of many rooms; moved, rotated or mirrored, its boundary goes with it, and only a bounded room can be frozen. Walls and columns (and structural columns) bound
+rooms while their Room Bounding is on (`Wall::room_bounding`, `Column::room_bounding`, on unless set; `Model::room_bounding`,
+`bounding_columns`, `room_lines`): a column's outline either way rooms are measured, a free one an island. A wall with it off
+still bounds floors and roofs picked by their walls. Walls and columns bound a level's rooms where its
+Computation Height (`Level::computation_height`, 1200 mm unless set) cuts them; room separation lines bound them whatever
+it is. Two rooms can't share a space (`Model::room_bound`, `Unbound`): the one placed first (the lower id) keeps it, the
+other is unbounded, and `room` and `inspect` warn. A room can be placed where nothing encloses it: unbounded, it covers a
+`UNBOUNDED_ROOM` square round its point (`Model::room_outline`), as Revit's. A plan labels it NOT ENCLOSED, or REDUNDANT where another
+room has its space. Its reference, a cross from the point it was placed at out along the diagonals to its boundary
+(`geom::ray_hit`), drawn as the room's own lines (a click on it picks the room), is the subcategory `roomreference` under
+Rooms, off unless shown (`graphics {show: ["roomreference"]}`), beside `roomseparator`, the separation lines.
+Subcategories are general (`graphics::SUBCATEGORIES`: a key, its category, a name, whether it is off unless shown):
+a view holds them as categories, with `Override::shown` for the ones off unless shown, `Graphics::hides` answers for
+them (a category hidden hides its subcategories), and Visibility/Graphics folds them under their category. In a 3D
+view rooms are off until shown (`graphics::OFF_IN_3D`, `Graphics::shows_in_3d`; `graphics {view: "{3D}", show: [rooms]}`,
+or ticked in its Visibility/Graphics), every new 3D view so; shown, each is drawn as below, fainter than a selected one,
+and a selected room is seen whatever the view says: a see-through solid in the selection's colour from its bottom to its top
+(`orbit::room_solid`, drawn over the picture, so it shows through walls). With `room_area {at: "finish"}` (`Model::room_area`, Revit's Area and
 Volume Computations) room areas are measured at the walls' faces instead (`face_lines` and the separators), the floor inside them; the IFC space
 takes that outline, and its `Qto_SpaceBaseQuantities` give both whichever is set: `GrossFloorArea` and `GrossPerimeter` at
-the centre lines, `NetFloorArea` and `NetPerimeter` at the faces, and `Height` up to the level above. Walls, slabs, doors and windows
+the centre lines, `NetFloorArea` and `NetPerimeter` at the faces, `Height` (the room's Unbounded Height) and `GrossVolume` and `NetVolume`. Walls, slabs, doors and windows
 carry theirs too (`ifc::wall_quantities`): a wall its `Length` on its axis, `Width`, `Height` and side and volume, gross and less the
 doors and windows in it (each cut to its height; joins aside), or only `Length` and `Width` when attached, as its height then varies;
 a level slab its `Width` (depth), `Perimeter` and area and volume less its openings, a sloped one only its `Width`; a door or window

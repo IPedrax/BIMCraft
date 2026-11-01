@@ -18,7 +18,8 @@ Revit can't run where BIMCraft is tested, so it's done in three steps: two here,
    family of your own loaded, set `DESCRIPTION` and `RESULTS` at the top of [`crosscheck.py`](crosscheck.py), and run it
    with pyRevit, RevitPythonShell or a Python node. It makes the levels, a one-layer type for each wall and floor
    thickness, the walls on their centre lines, the floors, the shafts, a type of your door and window families for each
-   size, the doors and windows, and the rooms (each up to the next level), with rooms measured as the description says;
+   size, the doors and windows, and the rooms (each with BIMCraft's upper limit and offsets, each level with its
+   computation height), with rooms measured as the description says;
    then writes Revit's numbers, `kind,id,quantity,value`, by BIMCraft's element ids.
 
 3. **Compare** (any machine): commit the table as `crates/core/tests/revit/small-tower-2.csv` and take the `#[ignore]`
@@ -32,7 +33,7 @@ Revit can't run where BIMCraft is tested, so it's done in three steps: two here,
    quantity has its tolerance (`crosscheck::tolerance`): a thousandth, or a square centimetre, a millimetre, a cubic
    decimetre.
 
-What only Revit reports today (a room's volume, a wall's area and volume) is what BIMCraft has yet to work out; a
+What only Revit reports today (a wall's area and volume) is what BIMCraft has yet to work out; a
 difference that comes from the two measuring a thing differently is written down in
 [schedules](../../docs/areas/schedules.md), with the rule the test applies, never left to pass.
 

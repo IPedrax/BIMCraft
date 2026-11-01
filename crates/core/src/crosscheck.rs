@@ -83,7 +83,9 @@ pub fn describe(m: &Model) -> Value {
     let (mut wall_types, mut floor_types) = (BTreeMap::new(), BTreeMap::new());
     for (id, g, e) in m.elements.with_guids() {
         match e {
-            Element::Level(l) => levels.push(json!({"guid": g, "name": l.name, "elevation": l.elevation})),
+            Element::Level(l) => levels.push(json!({
+                "guid": g, "name": l.name, "elevation": l.elevation, "computation_height": l.computation_height,
+            })),
             Element::Wall(w) => {
                 let (start, end, mid, _) = centre_line(m, w);
                 wall_types.insert(w.type_name.clone(), m.thickness(w));
@@ -118,6 +120,7 @@ pub fn describe(m: &Model) -> Value {
             }
             Element::Room(r) => rooms.push(json!({
                 "guid": g, "id": id, "level": r.level, "point": point(r.point), "name": r.name, "number": r.number,
+                "top_level": r.top_level, "base_offset": r.base_offset, "limit_offset": r.limit_offset,
             })),
             _ => *left_out.entry(e.category()).or_default() += 1,
         }
@@ -144,8 +147,8 @@ pub fn describe(m: &Model) -> Value {
     })
 }
 
-/// What this model works out of the quantities [`describe`]'s tool reports: each room's area and perimeter (0 where it
-/// isn't enclosed) and whether it is, each wall's length along its centre line and how many doors and windows it holds,
+/// What this model works out of the quantities [`describe`]'s tool reports: each room's area, perimeter and volume (0 where
+/// it isn't enclosed), whether it is, and its unbounded height (its upper limit and offsets'), each wall's length along its centre line and how many doors and windows it holds,
 /// each floor's area (less its openings and the shafts through it) and volume.
 pub fn ours(m: &Model) -> Vec<Row> {
     let rooms = Rooms::new(m);
@@ -163,6 +166,10 @@ pub fn ours(m: &Model) -> Vec<Row> {
                 rows.push(Row::new("room", id, "enclosed", if region.is_some() { 1.0 } else { 0.0 }));
                 rows.push(Row::new("room", id, "area_m2", region.as_ref().map_or(0.0, |r| r.area() / 1e6)));
                 rows.push(Row::new("room", id, "perimeter_m", region.as_ref().map_or(0.0, |r| r.perimeter() / 1e3)));
+                // Its volume as Revit's: its area up its unbounded height, while nothing lower (a ceiling) bounds it.
+                let height = m.room_height(r);
+                rows.push(Row::new("room", id, "height_m", height / 1e3));
+                rows.push(Row::new("room", id, "volume_m3", region.as_ref().map_or(0.0, |r| r.area() * height / 1e9)));
             }
             Element::Wall(w) => {
                 rows.push(Row::new("wall", id, "length_m", centre_line(m, w).3 / 1e3));
@@ -321,6 +328,8 @@ mod tests {
                     assert!((of("area_m2").unwrap() - shown["area_m2"].as_f64().unwrap()).abs() < 0.006);
                     assert!((of("perimeter_m").unwrap() - shown["perimeter_m"].as_f64().unwrap()).abs() < 0.006);
                     assert_eq!(of("enclosed"), Some(if shown["enclosed"] == json!(true) { 1.0 } else { 0.0 }));
+                    assert!((of("volume_m3").unwrap() - shown["volume_m3"].as_f64().unwrap()).abs() < 0.006);
+                    assert!((of("height_m").unwrap() * 1e3 - shown["unbounded_height"].as_f64().unwrap()).abs() < 1e-6);
                     n += 1;
                 }
                 Element::Floor(_) => {

@@ -28,8 +28,10 @@ icon_names! {
     Door,
     Window,
     Room,
+    RoomSeparator,
     Level,
     Grid,
+    BackgroundGrid,
     Undo,
     Redo,
     Open,
@@ -237,10 +239,26 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(8.0, 10.0), (16.0, 10.0)]);
             g.line(&[(10.0, 14.0), (14.0, 14.0)]);
         }
+        Icon::RoomSeparator => {
+            // Two rooms' corners, and the separation line between them, dashed.
+            g.line(&[(4.0, 4.0), (20.0, 4.0)]);
+            g.line(&[(4.0, 20.0), (20.0, 20.0)]);
+            g.line(&[(4.0, 4.0), (4.0, 20.0)]);
+            g.line(&[(20.0, 4.0), (20.0, 20.0)]);
+            for (a, b) in [(4.5, 7.5), (10.5, 13.5), (16.5, 19.5)] {
+                g.line(&[(12.0, a), (12.0, b)]);
+            }
+        }
         Icon::Level => {
             // The level head is clear of the datum until its tip, with a balanced line.
             g.line(&[(3.0, 16.0), (21.0, 16.0)]);
             g.closed(&[(12.0, 7.0), (20.0, 7.0), (16.0, 16.0)]);
+        }
+        Icon::BackgroundGrid => {
+            for at in [4.0, 12.0, 20.0] {
+                g.line(&[(at, 4.0), (at, 20.0)]);
+                g.line(&[(4.0, at), (20.0, at)]);
+            }
         }
         Icon::Grid => {
             // A centered grid bubble on its datum axis.

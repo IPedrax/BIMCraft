@@ -8,7 +8,7 @@ window families are used, one type of each size the description asks for; nothin
 The table is `kind,id,quantity,value`, the ids those of the description (BIMCraft's element ids), in square metres,
 metres and cubic metres:
 
-    room   enclosed, area_m2, perimeter_m, volume_m3
+    room   enclosed, area_m2, perimeter_m, height_m, volume_m3
     wall   length_m, openings, area_m2, volume_m3
     floor  area_m2, volume_m3
 
@@ -120,7 +120,7 @@ def build(doc, d):
     for l in sorted(d["levels"], key=lambda l: l["elevation"]):
         lv = Level.Create(doc, l["elevation"] * MM)
         lv.Name = "BIMCraft " + l["name"]
-        put(lv, BuiltInParameter.LEVEL_ROOM_COMPUTATION_HEIGHT, d["computation_height"] * MM)
+        put(lv, BuiltInParameter.LEVEL_ROOM_COMPUTATION_HEIGHT, l.get("computation_height", d["computation_height"]) * MM)
         levels[l["guid"]] = lv
 
     base_wall = FilteredElementCollector(doc).OfClass(WallType).FirstElement()
@@ -171,16 +171,15 @@ def build(doc, d):
         inst = doc.Create.NewFamilyInstance(xyz(o["at"], lv.Elevation / MM), t, host, lv, StructuralType.NonStructural)
         put(inst, BuiltInParameter.INSTANCE_SILL_HEIGHT_PARAM, o["sill"] * MM)
 
-    # A room reaches up to the next level, so its volume is its storey's.
-    order = [l["guid"] for l in sorted(d["levels"], key=lambda l: l["elevation"])]
-    above = dict(zip(order, order[1:]))
+    # A room reaches from its level and base offset up to its upper limit (its level, unless it names another) and limit
+    # offset, as BIMCraft's: its Unbounded Height, and its volume while nothing lower bounds it.
     for r in d["rooms"]:
         room = doc.Create.NewRoom(levels[r["level"]], UV(r["point"][0] * MM, r["point"][1] * MM))
         room.Name = r["name"]
         room.Number = r["number"]
-        if r["level"] in above:
-            put(room, BuiltInParameter.ROOM_UPPER_LEVEL, levels[above[r["level"]]].Id)
-            put(room, BuiltInParameter.ROOM_UPPER_OFFSET, 0.0)
+        put(room, BuiltInParameter.ROOM_UPPER_LEVEL, levels[r.get("top_level") or r["level"]].Id)
+        put(room, BuiltInParameter.ROOM_UPPER_OFFSET, r.get("limit_offset", 2500.0) * MM)
+        put(room, BuiltInParameter.ROOM_LOWER_OFFSET, r.get("base_offset", 0.0) * MM)
         rooms[r["guid"]] = (r["id"], room)
     return walls, floors, rooms
 
@@ -200,6 +199,9 @@ def report(doc, d, walls, floors, rooms):
         rows.append(("room", i, "enclosed", 1 if enclosed else 0))
         rows.append(("room", i, "area_m2", room.Area * M2))
         rows.append(("room", i, "perimeter_m", room.Perimeter * M if enclosed else 0.0))
+        height = number(room, BuiltInParameter.ROOM_HEIGHT, M)
+        if height is not None:
+            rows.append(("room", i, "height_m", height))
         rows.append(("room", i, "volume_m3", room.Volume * M3))
     for guid, (i, wall) in walls.items():
         rows.append(("wall", i, "length_m", wall.Location.Curve.Length * M))

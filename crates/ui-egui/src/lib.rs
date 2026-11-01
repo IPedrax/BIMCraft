@@ -9,6 +9,7 @@ use crate::popup::Modal;
 
 use bimcraft_i18n::msg;
 
+mod background_grid;
 mod browser;
 mod cad;
 mod camera;
@@ -57,6 +58,7 @@ mod standards;
 mod start;
 mod structure;
 mod style;
+mod templates;
 #[cfg(test)]
 mod tests;
 mod titlebar;
@@ -120,6 +122,8 @@ pub enum Tool {
     Door,
     Window,
     Room,
+    /// Room separation lines, one a click from the point before: the last point clicked, while the chain goes on.
+    RoomSeparator(Option<P2>),
     /// The Options Bar asks for the new level's elevation.
     Level,
     /// The grid's start, once clicked.
@@ -446,6 +450,9 @@ pub struct BimApp {
     ribbon_peek: bool,
     /// What High Contrast Point Clouds fills a view's scans with: the user's (Settings > Graphics), crimson at first.
     scan_contrast: [u8; 3],
+    background_grid_dialog: Option<background_grid::GridDialog>,
+    /// Global grid snapping preference, independent of view graphics and templates.
+    grid_snapping: bool,
     ribbon_bottom: Pos2,
     /// The Compact layout (File > Settings): the bars and palettes flush to the edges, not floating cards.
     compact: bool,
@@ -630,7 +637,7 @@ pub struct BimApp {
     /// Visibility/Graphics, Filters and View Templates, while they're open.
     vg_dialog: Option<graphics::VgDialog>,
     filters_dialog: Option<graphics::FiltersDialog>,
-    templates_dialog: Option<graphics::TemplatesDialog>,
+    templates_dialog: Option<templates::TemplatesDialog>,
     /// Phasing and Design Options, while they're open, and the design option (`set: option`) new
     /// elements are made in: none is the main model.
     phasing_dialog: Option<phasing::PhasingDialog>,
@@ -958,6 +965,8 @@ impl BimApp {
             compact: false,
             ribbon_peek: false,
             scan_contrast: footer::HIGH_CONTRAST,
+            background_grid_dialog: None,
+            grid_snapping: false,
             ribbon_bottom: Pos2::ZERO,
             settings_page: None,
             settings_path: None,
@@ -1168,6 +1177,7 @@ impl BimApp {
             Tool::Door => Some(msg!("Place Door")),
             Tool::Window => Some(msg!("Place Window")),
             Tool::Room => Some(msg!("Place Room")),
+            Tool::RoomSeparator(_) => Some(msg!("Place Room Separation")),
             Tool::Level => Some(msg!("Place Level")),
             Tool::Grid(_) => Some(msg!("Place Grid")),
             Tool::Dimension(..) | Tool::Angular(_) | Tool::Round(..) => Some(msg!("Place Dimensions")),
@@ -1793,7 +1803,7 @@ impl BimApp {
                 return true;
             }
             "VT" => {
-                self.templates_dialog = Some(graphics::TemplatesDialog::default());
+                self.open_templates();
                 return true;
             }
             "PH" => {
@@ -1827,6 +1837,7 @@ impl BimApp {
                 Some("door") => Tool::Door,
                 Some("window") => Tool::Window,
                 Some("room") => Tool::Room,
+                Some("room_separator") => Tool::RoomSeparator(None),
                 Some("level") => Tool::Level,
                 Some("grid") => Tool::Grid(None),
                 Some("move") => Tool::Move(None),
@@ -1959,6 +1970,7 @@ impl BimApp {
             Some(Element::Ramp(_)) => Tool::Ramp(Vec::new()),
             Some(Element::Railing(_)) => Tool::Railing(Vec::new()),
             Some(Element::Room(_)) => Tool::Room,
+            Some(Element::RoomSeparator(_)) => Tool::RoomSeparator(None),
             Some(Element::Level(_)) => Tool::Level,
             Some(Element::Grid(_)) => Tool::Grid(None),
             Some(Element::Dimension(d)) => match d.kind {
@@ -2210,7 +2222,12 @@ impl BimApp {
         match &self.tool {
             Tool::Wall(chain) => chain.last().copied(),
             Tool::Run(_, start) => *start,
-            Tool::Grid(start) | Tool::Move(start) | Tool::Copy(start) | Tool::Section(start) | Tool::SlopeArrow(start) => *start,
+            Tool::Grid(start)
+            | Tool::RoomSeparator(start)
+            | Tool::Move(start)
+            | Tool::Copy(start)
+            | Tool::Section(start)
+            | Tool::SlopeArrow(start) => *start,
             Tool::Stair(pts) | Tool::Ramp(pts) | Tool::Railing(pts) | Tool::Mass(pts) | Tool::DetailLine(pts) | Tool::SketchLine(pts) => {
                 pts.last().copied()
             }
@@ -2245,6 +2262,7 @@ impl BimApp {
         self.tool = match std::mem::replace(&mut self.tool, Tool::Modify) {
             Tool::Wall(chain) if !chain.is_empty() => Tool::Wall(Vec::new()),
             Tool::Grid(Some(_)) => Tool::Grid(None),
+            Tool::RoomSeparator(Some(_)) => Tool::RoomSeparator(None),
             Tool::Run(c, Some(_)) => Tool::Run(c, None),
             Tool::Mirror { draw, start: Some(_) } => Tool::Mirror { draw, start: None },
             Tool::Align(Some(_)) => {
@@ -2354,7 +2372,7 @@ impl BimApp {
         }
         match &mut self.tool {
             Tool::Wall(chain) => chain.clear(),
-            Tool::Grid(start) | Tool::Run(_, start) => *start = None,
+            Tool::Grid(start) | Tool::RoomSeparator(start) | Tool::Run(_, start) => *start = None,
             Tool::Dimension(_, refs) | Tool::Angular(refs) => refs.clear(),
             Tool::Round(_, picked) => picked.clear(),
             Tool::Section(start) | Tool::Shaft(start) | Tool::Measure(start) => *start = None,
@@ -2551,6 +2569,7 @@ impl BimApp {
         fresh.compact = self.compact;
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
+        fresh.grid_snapping = self.grid_snapping;
         fresh.light_canvas = self.light_canvas;
         fresh.styled = self.styled;
         fresh.theme_wanted = self.theme_wanted.take();
@@ -3083,7 +3102,19 @@ impl BimApp {
                 ),
             ],
         );
-        self.tools(ui, msg!("Room & Area"), &[(Icon::Room, "Room", msg!("Room (RM): click inside walls"), Tool::Room)]);
+        self.tools(
+            ui,
+            msg!("Room & Area"),
+            &[
+                (Icon::Room, "Room", msg!("Room (RM): click inside walls"), Tool::Room),
+                (
+                    Icon::RoomSeparator,
+                    "Room Separator",
+                    msg!("Room Separator: lines that bound rooms as walls do, to split an open space; click from point to point"),
+                    Tool::RoomSeparator(None),
+                ),
+            ],
+        );
         self.tools(
             ui,
             msg!("Opening"),
@@ -3260,7 +3291,7 @@ impl BimApp {
             }
             let tip = msg!("View Templates (VT): a view's settings under a name, for other views to follow");
             if big_button(ui, Icon::Template, "View Templates", self.templates_dialog.is_some(), tip).clicked() {
-                self.templates_dialog = Some(graphics::TemplatesDialog::default());
+                self.open_templates();
             }
             if big_button(ui, Icon::ThinLines, "Thin Lines", self.thin, "Thin Lines (TL): every line one pixel wide").clicked() {
                 self.thin = !self.thin;
@@ -4132,6 +4163,8 @@ impl BimApp {
             Tool::Door => msg!("Click a wall to place the door."),
             Tool::Window => msg!("Click a wall to place the window."),
             Tool::Room => msg!("Click inside walls to place a room; the outline shows the room you'd get."),
+            Tool::RoomSeparator(None) => msg!("Click the separation line's start."),
+            Tool::RoomSeparator(Some(_)) => msg!("Click the line's next point; each click places a line. Esc ends the chain."),
             Tool::Level => "Type the new level's elevation in the Options Bar, then Create.",
             Tool::Grid(None) => msg!("Click to enter the grid's start point."),
             Tool::Grid(Some(_)) => msg!("Click to enter the grid's end point."),
@@ -4490,6 +4523,7 @@ impl BimApp {
         self.selection_filter_window(ctx);
         self.shortcuts_window(ctx);
         self.settings_window(ctx);
+        self.background_grid_window(ctx);
         self.installing_box(ctx);
         self.importing_box(ctx);
         self.report_window(ctx);

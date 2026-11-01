@@ -594,6 +594,7 @@ fn stack(source: &Model, storeys: u32) -> Result<Model, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::geom;
     use crate::model::Room;
 
     fn rooms(m: &Model) -> Vec<&Room> {
@@ -643,12 +644,17 @@ mod tests {
         let numbers: std::collections::BTreeSet<&str> = all.iter().map(|r| r.number.as_str()).collect();
         assert_eq!(numbers.len(), all.len(), "room numbers are the project's own");
         assert!(numbers.contains("1001") && numbers.contains("2195"));
-        // The corridor runs round the inner block, an island of it: between the two rings' centre lines.
+        // The corridor runs round the inner block, an island of it: between the two rings' centre lines, less the columns
+        // standing on its outer ring, which bound rooms (as Revit's do): half of each along its sides, a quarter at its
+        // corners.
         let corridor = all.iter().find(|r| r.name == "Corridor").unwrap();
         let area = m.room_region(corridor).unwrap().area();
         let Plate { width, depth } = Plate::REFERENCE;
         let ring = (width - 12_000) * (depth - 12_000) - (width - 16_000) * (depth - 16_000);
-        assert!((area - ring as f64).abs() < 1e3, "{area} mm² against {ring}");
+        let column = m.elements.values().find(|e| e.category() == "structuralcolumn").map(|e| geom::area(&m.column_outline(e)).abs());
+        let halves = 2 * ((width - 12_000) / 6000 - 1) + 2 * ((depth - 12_000) / 6000 - 1);
+        let expected = ring as f64 - column.unwrap() * (halves as f64 / 2.0 + 1.0);
+        assert!((area - expected).abs() < 1e3, "{area} mm² against {expected}");
     }
 
     /// Whether `e` is drawn in one view only: annotation and detailing.

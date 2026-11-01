@@ -227,6 +227,16 @@ impl Session {
                         assert!(self.model.library_in_step(), "the library isn't in step after `{}`", cmd.id);
                     }
                 }
+                // A room frozen keeps the boundary it has now; one thawed lets it go. After a verified model, only a room the
+                // command changed can be either.
+                let unsettled = |e: &Element| matches!(e, Element::Room(r) if r.frozen != r.kept.is_some());
+                let unsettled = match (verified, self.model.changed_since(&before)) {
+                    (true, crate::ids::Changed::Ids(ids)) => ids.iter().any(|id| self.model.elements.get(*id).is_some_and(unsettled)),
+                    _ => self.model.elements.values().any(unsettled),
+                };
+                if unsettled {
+                    self.model_mut().keep_rooms();
+                }
                 // Locked and equal dimensions moved what they measure to as the command moved it.
                 if cmd.undoable {
                     crate::constraints::keep(self, &before)?;

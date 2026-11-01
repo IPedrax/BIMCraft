@@ -51,6 +51,8 @@ enum Kind {
     ViewName,
     /// A level, or none for a wall of unconnected height.
     TopLevel,
+    /// A room's Upper Limit: a level, or Not Bounded (none), its Limit Offset then its height over its own level.
+    UpperLimit,
     /// A wall's height: typed when its top is unconnected, else what its levels make it.
     Height,
     /// A length, or nothing, which its hint names when blank (a plan's top at the level above, a
@@ -127,6 +129,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "top_level", msg!("Top Constraint"), TopLevel),
             ("Constraints", "height", msg!("Unconnected Height"), Height),
             ("Constraints", "attach_top", msg!("Top is Attached"), Attached),
+            ("Constraints", "room_bounding", msg!("Room Bounding"), Flag),
             ("Dimensions", "length", "Length", LengthShown),
             ("Dimensions", "radius", "Radius", LengthShown),
             (msg!("Other"), "start", msg!("Start"), Point),
@@ -150,11 +153,17 @@ fn rows(category: &str) -> &'static [Row] {
         ],
         "room" => &[
             ("Constraints", "level", "Level", Level),
+            ("Constraints", "top_level", msg!("Upper Limit"), UpperLimit),
+            ("Constraints", "limit_offset", msg!("Limit Offset"), Length),
+            ("Constraints", "base_offset", "Base Offset", Length),
             ("Dimensions", "area_m2", "Area", AreaShown),
             ("Dimensions", "perimeter_m", "Perimeter", MetresShown),
+            ("Dimensions", "unbounded_height", msg!("Unbounded Height"), LengthShown),
+            ("Dimensions", "volume_m3", "Volume (m³)", Shown),
             ("Identity Data", "number", "Number", Text),
             ("Identity Data", "name", "Name", Text),
             ("Other", "point", msg!("Location"), Point),
+            ("Other", "frozen", msg!("Frozen"), Flag),
         ],
         "floor" => &[
             ("Constraints", "level", "Level", Level),
@@ -189,7 +198,11 @@ fn rows(category: &str) -> &'static [Row] {
             ("Dimensions", "gross_floor_area_m2", "Gross Floor Area", AreaShown),
             ("Identity Data", "name", "Name", Text),
         ],
-        "level" => &[("Constraints", "elevation", "Elevation", Length), ("Identity Data", "name", "Name", Text)],
+        "level" => &[
+            ("Constraints", "elevation", "Elevation", Length),
+            ("Dimensions", "computation_height", msg!("Computation Height"), Length),
+            ("Identity Data", "name", "Name", Text),
+        ],
         "grid" => &[("Identity Data", "name", "Name", Text), ("Other", "start", "Start", Point), ("Other", "end", "End", Point)],
         "dimension" => &[
             ("Dimensions", "values", "Value", Values),
@@ -268,15 +281,16 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "at", "Location", Point),
             ("Other", "angle", "Rotation (°)", Number),
         ],
-        "column" => &[
+        "column" | "structuralcolumn" => &[
             ("Constraints", "level", msg!("Base Level"), Level),
             ("Constraints", "base_offset", "Base Offset", Length),
             ("Constraints", "top_level", msg!("Top Level"), TopLevel),
             ("Constraints", "height", "Unconnected Height", Height),
+            ("Constraints", "room_bounding", msg!("Room Bounding"), Flag),
             ("Other", "at", "Location", Point),
             ("Other", "angle", "Rotation (°)", Number),
         ],
-        "structuralcolumn" | "footing" => &[
+        "footing" => &[
             ("Constraints", "level", "Base Level", Level),
             ("Constraints", "base_offset", "Base Offset", Length),
             ("Constraints", "top_level", "Top Level", TopLevel),
@@ -554,6 +568,11 @@ pub(crate) fn combo(ui: &mut Ui, salt: (Id, &str), label: UiId, current: &str, o
     });
     c.response.labelled_by(label);
     picked
+}
+
+/// A button across a value cell, as wide as the drop-downs beside it, its text centred: Edit…, a view template's name.
+pub(crate) fn wide_button(ui: &mut Ui, text: impl Into<egui::WidgetText>) -> egui::Response {
+    ui.add_sized([ui.available_width(), ui.spacing().interact_size.y], Button::new(text).truncate())
 }
 
 /// A parameter group's header: a bar across the palette that folds the group, as Revit's do.
@@ -1158,6 +1177,8 @@ impl BimApp {
             }
         }
         let mut change: Option<(&str, Result<Value, String>)> = None;
+        // A second field the change sets with it: a room's Limit Offset, kept where its top is as its Upper Limit changes.
+        let mut also: Option<(&str, Value)> = None;
         let mut crop = None;
         let units = model.units;
         // A note on a sheet sits in paper mm.
@@ -1174,7 +1195,7 @@ impl BimApp {
                 // Half the palette each, as Revit's columns: a long label wraps rather than pushing
                 // its field past the palette's edge.
                 let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-                Grid::new(("properties", id, group)).num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(ui, |ui| {
+                Grid::new(("properties", id, group)).num_columns(2).min_col_width(half).max_col_width(half).show(ui, |ui| {
                     for &(_, key, label, kind) in rows.iter().filter(|r| r.0 == group) {
                         let val = &v[key];
                         // A length one element hasn't got (a straight wall's radius): no row.
@@ -1230,6 +1251,22 @@ impl BimApp {
                             Level => {
                                 if let Some(l) = combo(ui, (id, key), name.id, &level_name(val), &levels) {
                                     change = Some((key, Ok(json!(l))));
+                                }
+                            }
+                            UpperLimit => {
+                                let none = t("Not Bounded");
+                                let options: Vec<String> = std::iter::once(none.to_string()).chain(levels.iter().cloned()).collect();
+                                let now = if val.is_null() { none.to_string() } else { level_name(val) };
+                                if let Some(l) = combo(ui, (id, key), name.id, &now, &options) {
+                                    let upper =
+                                        levels.iter().position(|n| *n == l).and_then(|i| model.levels().get(i).map(|(lid, _)| *lid));
+                                    // One room: its top stays where it is, its Limit Offset now measured from the new limit.
+                                    if let ([_], Some(Element::Room(r))) = (ids, model.elements.get(id)) {
+                                        let (_, top) = model.room_span(r);
+                                        let from = upper.map_or_else(|| model.elevation(r.level), |u| model.elevation(u));
+                                        also = Some(("limit_offset", json!(top - from)));
+                                    }
+                                    change = Some((key, Ok(if l == none { Value::Null } else { json!(l) })));
                                 }
                             }
                             TopLevel => {
@@ -1318,6 +1355,9 @@ impl BimApp {
         match change {
             Some((key, Ok(val))) => {
                 let mut p = nested(key, val);
+                if let Some((k, v)) = also {
+                    p[k] = v;
+                }
                 p["ids"] = json!(ids);
                 self.run("modify", p);
             }
@@ -1384,7 +1424,7 @@ impl BimApp {
                 continue;
             }
             Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
-                Grid::new(("component", id, group)).num_columns(2).striped(true).min_col_width(124.0).show(ui, |ui| {
+                Grid::new(("component", id, group)).num_columns(2).min_col_width(124.0).show(ui, |ui| {
                     for p in params {
                         let val = shared(&p.name);
                         let name = ui.label(&p.name);
@@ -1459,7 +1499,7 @@ impl BimApp {
         let mut change: Option<(String, Result<Value, String>)> = None;
         Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
             let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-            Grid::new(("project-parameters", id)).num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(ui, |ui| {
+            Grid::new(("project-parameters", id)).num_columns(2).min_col_width(half).max_col_width(half).show(ui, |ui| {
                 for (name, kind) in &params {
                     let val = value(name);
                     let label = ui.label(name.as_str());
@@ -1511,40 +1551,37 @@ impl BimApp {
             }
             Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
                 let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-                Grid::new(("schedule-properties", group)).num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(
-                    ui,
-                    |ui| {
-                        if group == "Identity Data" {
-                            let label = ui.label(t("View Name"));
-                            match made {
-                                Some(id) => {
-                                    if let Some(typed) = self.field(ui, id, "name", sc.name.clone(), label.id, "") {
-                                        rename = Some((id, typed));
-                                    }
-                                }
-                                // Every project's, as it is: named as the project's once it's changed.
-                                None => {
-                                    ui.label(RichText::new(&sc.name).color(pal().muted));
+                Grid::new(("schedule-properties", group)).num_columns(2).min_col_width(half).max_col_width(half).show(ui, |ui| {
+                    if group == "Identity Data" {
+                        let label = ui.label(t("View Name"));
+                        match made {
+                            Some(id) => {
+                                if let Some(typed) = self.field(ui, id, "name", sc.name.clone(), label.id, "") {
+                                    rename = Some((id, typed));
                                 }
                             }
-                            ui.end_row();
-                            return;
+                            // Every project's, as it is: named as the project's once it's changed.
+                            None => {
+                                ui.label(RichText::new(&sc.name).color(pal().muted));
+                            }
                         }
-                        ui.label(t("Category"));
-                        ui.label(RichText::new(lang::category(&sc.of, true)).color(pal().muted));
                         ui.end_row();
-                        for (tab, label) in SCHEDULE_TABS.iter().enumerate() {
-                            ui.label(t(label));
-                            let r = ui.button(t("Edit…"));
-                            // Named for what it edits, for screen readers.
-                            r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf("Edit {}", &[t(label)])));
-                            if r.clicked() {
-                                open = Some(tab);
-                            }
-                            ui.end_row();
+                        return;
+                    }
+                    ui.label(t("Category"));
+                    ui.label(RichText::new(lang::category(&sc.of, true)).color(pal().muted));
+                    ui.end_row();
+                    for (tab, label) in SCHEDULE_TABS.iter().enumerate() {
+                        ui.label(t(label));
+                        let r = wide_button(ui, t("Edit…"));
+                        // Named for what it edits, for screen readers.
+                        r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf("Edit {}", &[t(label)])));
+                        if r.clicked() {
+                            open = Some(tab);
                         }
-                    },
-                );
+                        ui.end_row();
+                    }
+                });
             });
         }
         // Named otherwise, one every project has is just the project's: its tab follows it.
@@ -2177,6 +2214,9 @@ impl BimApp {
                     ui.add(egui::Slider::new(&mut s.alignment_tolerance, 2.0..=32.0).suffix(" px"));
                 });
                 }
+                ui.separator();
+                ui.checkbox(&mut self.grid_snapping, t("Grid snapping"))
+                    .on_hover_text(t("Applies to all views; snaps to the active view's enabled main grid or subgrid, even when hidden"));
             });
             crate::popup::footer(ui, |ui| {
                 ui.with_layout(Layout::right_to_left(Align::Min), |ui| close = ui.button(t("Close")).clicked());

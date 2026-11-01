@@ -22,7 +22,13 @@ ending `.xlsx`, as a workbook of one sheet (`schedule::to_xlsx` over `xlsx.rs`, 
 rooms by their points), a script of ours builds it again in Revit and writes what Revit reports, `kind,id,quantity,value`
 by our element ids, and `compare_crosscheck` (and the test `the_small_tower_has_the_numbers_revit_gives_it`, once Revit's
 table of the small two-storey tower is committed) compares them quantity by quantity within `crosscheck::tolerance`.
-Compared: each room's area, perimeter and whether it is enclosed, each wall's length along its centre line and its doors
-and windows, each floor's area less its openings and shafts, and its volume. Revit reports more (a room's volume, a wall's
-area and volume) than we work out yet: those come back as `only_theirs`, the list of what is still to do. Where the two
-define a quantity differently, the difference goes here, with the rule the comparison applies.
+Compared: each room's area, perimeter, whether it is enclosed, its unbounded height and its volume, each wall's length
+along its centre line and its doors and windows, each floor's area less its openings and shafts, and its volume. Revit
+reports more (a wall's area and volume) than we work out yet: those come back as `only_theirs`, the list of what is still
+to do. Where the two define a quantity differently, the difference goes here, with the rule the comparison applies.
+
+- A room's volume is its area times its unbounded height (from its level and base offset up to its upper limit and limit
+  offset), which is Revit's while nothing under its top bounds it. Revit also stops a room's volume at a room-bounding
+  ceiling, floor or roof lower than its top; we don't yet. The description gives Revit each room's limits as ours, and
+  the tower's rooms (2,500 mm limit offset) stay under their ceilings (2,700 mm), so the two agree there.
+- Each level's computation height (where walls and columns are cut to bound rooms) goes to Revit as the level's.

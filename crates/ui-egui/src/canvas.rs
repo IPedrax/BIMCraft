@@ -792,9 +792,13 @@ fn degrees(a: f64) -> String {
 /// The point a tool picked first, while it has one.
 fn start_of(tool: &Tool) -> &[P2] {
     match tool {
-        Tool::Grid(start) | Tool::Move(start) | Tool::Copy(start) | Tool::Section(start) | Tool::Measure(start) | Tool::Run(_, start) => {
-            start.as_slice()
-        }
+        Tool::Grid(start)
+        | Tool::RoomSeparator(start)
+        | Tool::Move(start)
+        | Tool::Copy(start)
+        | Tool::Section(start)
+        | Tool::Measure(start)
+        | Tool::Run(_, start) => start.as_slice(),
         _ => &[],
     }
 }
@@ -894,7 +898,7 @@ impl BimApp {
     pub(crate) fn snap(&self, m: &Model, level: Id, v: &View, at: (f32, f32), from: &[P2], square: bool) -> Found {
         let reach = Reach { point: SNAP / v.scale, line: f64::from(PICK) / v.scale };
         let view = self.plan_key().unwrap_or(level);
-        match &self.sketch {
+        let found = match &self.sketch {
             Some(sk) => {
                 let editing = match sk.of {
                     crate::sketch::Of::Edit(id) => Some(id),
@@ -903,7 +907,16 @@ impl BimApp {
                 snap::in_sketch(m, snap::Sketch { view, lines: &sk.lines, editing }, v.mm(at), reach, from, square, &self.snaps_now())
             }
             None => snap::snap(m, view, v.mm(at), reach, from, square, &self.snaps_now()),
+        };
+        if matches!(found.kind, Kind::Free | Kind::Angle)
+            && !square
+            && self.snap_once.is_none()
+            && self.grid_snapping
+            && let Some(at) = self.background_grid().nearest(v.mm(at))
+        {
+            return Found { at, kind: Kind::Intersection, guide: None };
         }
+        found
     }
 
     /// Finds alignment guides (smart snapping) to reference points of existing elements when drawing.
@@ -1279,6 +1292,7 @@ impl BimApp {
 
         let p = ui.painter_at(rect);
         p.rect_filled(rect, 0.0, color(render::PAPER));
+        self.paint_background_grid(&p, rect, view);
         let mut marked = self.selection.clone();
         if let Tool::Trim(Some((first, _))) | Tool::TrimTo { boundary: Some(first), .. } = self.tool {
             marked.push(first);
@@ -1326,10 +1340,16 @@ impl BimApp {
         p.extend(crop);
         let rooms = hovered.iter().map(|id| (*id, canvas_pal().hover)).chain(self.selection.iter().map(|id| (*id, canvas_pal().accent)));
         for (id, accent) in rooms {
-            if let Some(Element::Room(r)) = model.elements.get(id)
-                && let Some(g) = model.room_region(r)
-            {
-                p.add(Shape::closed_line(g.outer.iter().map(|q| pos(rect.min, view.px(*q))).collect(), Stroke::new(2.0, accent)));
+            // An unbounded room: the square it sits as, dashed.
+            if let Some(Element::Room(r)) = model.elements.get(id) {
+                let (outline, bounded) = model.room_outline(r);
+                let mut ring: Vec<Pos2> = outline.iter().map(|q| pos(rect.min, view.px(*q))).collect();
+                if bounded {
+                    p.add(Shape::closed_line(ring, Stroke::new(2.0, accent)));
+                } else {
+                    ring.extend(ring.first().copied());
+                    p.extend(Shape::dashed_line(&ring, Stroke::new(2.0, accent), 6.0, 4.0));
+                }
             }
         }
         match (self.canvas.drag, local) {
@@ -1623,12 +1643,15 @@ impl BimApp {
                     None => self.status = Status { text: t("Pick Faces: click a face of a mass").into(), error: true },
                 }
             }
-            Tool::Wall(_) | Tool::Grid(_) | Tool::Move(_) | Tool::Copy(_) | Tool::Section(_) | Tool::Run(..) => {
+            Tool::Wall(_) | Tool::Grid(_) | Tool::RoomSeparator(_) | Tool::Move(_) | Tool::Copy(_) | Tool::Section(_) | Tool::Run(..) => {
                 let chain: Vec<P2> = match &self.tool {
                     Tool::Wall(chain) => chain.clone(),
-                    Tool::Grid(start) | Tool::Move(start) | Tool::Copy(start) | Tool::Section(start) | Tool::Run(_, start) => {
-                        start.iter().copied().collect()
-                    }
+                    Tool::Grid(start)
+                    | Tool::RoomSeparator(start)
+                    | Tool::Move(start)
+                    | Tool::Copy(start)
+                    | Tool::Section(start)
+                    | Tool::Run(_, start) => start.iter().copied().collect(),
                     _ => Vec::new(),
                 };
                 // A shape's points past its second follow no guide from the points before.
@@ -2402,6 +2425,17 @@ impl BimApp {
                 (Some(_), _) => {}
                 (None, _) => chain.push(p),
             },
+            // Each click past the first a line from the one before, the chain going on from there.
+            Tool::RoomSeparator(start) => match start.take() {
+                Some(a) if a.dist(p) <= TOL => *start = Some(a),
+                Some(a) => {
+                    self.run("room_separator", json!({"points": [point(a), point(p)], "level": level}));
+                    if let Tool::RoomSeparator(start) = &mut self.tool {
+                        *start = Some(p);
+                    }
+                }
+                None => *start = Some(p),
+            },
             Tool::Grid(start) => match start.take() {
                 None => *start = Some(p),
                 Some(a) if a.dist(p) > TOL => {
@@ -3021,6 +3055,7 @@ impl BimApp {
                 return;
             }
             Tool::Grid(_)
+            | Tool::RoomSeparator(_)
             | Tool::Run(_, None)
             | Tool::Move(_)
             | Tool::Copy(_)
@@ -3281,6 +3316,7 @@ impl BimApp {
                 let type_name =
                     self.types.get("column").cloned().or_else(|| m.default_type("column").map(String::from)).unwrap_or_default();
                 let e = Element::Column(Column {
+                    room_bounding: true,
                     params: Default::default(),
                     type_name,
                     level: m.guid(level),
