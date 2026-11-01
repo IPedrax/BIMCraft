@@ -419,6 +419,7 @@ impl BimApp {
         let names: Vec<String> = self.session.model.text_types.keys().cloned().collect();
         let Some(mut e) = self.note_edit.take() else { return };
         let base = self.edited_type(&e).style();
+        crate::ribbon::room(ui, 200.0);
         let l = ui.label(t("Type:"));
         ComboBox::from_id_salt("note-type")
             .selected_text(&e.note.type_name)

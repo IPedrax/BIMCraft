@@ -356,6 +356,7 @@ impl BimApp {
             let wide = m.language.word("Wide Lines").to_string();
             self.linework_style = if m.line_styles.contains_key(&wide) { wide } else { INVISIBLE.to_string() };
         }
+        crate::ribbon::room(ui, 240.0);
         let l = ui.label(t("Line Style:"));
         let c = ComboBox::from_id_salt("linework-style").selected_text(t(&self.linework_style)).width(160.0).show_ui(ui, |ui| {
             for n in &options {
@@ -372,6 +373,7 @@ impl BimApp {
         if !m.line_styles.contains_key(&self.line_style) {
             self.line_style = bimcraft_core::lines::default_style(&m.line_styles, m.language).cloned().unwrap_or_default();
         }
+        crate::ribbon::room(ui, 240.0);
         let l = ui.label(t("Line Style:"));
         let c = ComboBox::from_id_salt("detail-line-style").selected_text(&self.line_style).width(160.0).show_ui(ui, |ui| {
             for n in m.line_styles.keys() {

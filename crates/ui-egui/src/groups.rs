@@ -62,6 +62,7 @@ impl BimApp {
     pub(crate) fn group_options(&mut self, ui: &mut Ui) {
         let m = &self.session.model;
         let now = self.placing_group().unwrap_or_default();
+        crate::ribbon::room(ui, 220.0);
         let l = ui.label(t("Group:"));
         let mut chosen = now.clone();
         let c = ComboBox::from_id_salt("detail-group-type").selected_text(&now).width(160.0).show_ui(ui, |ui| {

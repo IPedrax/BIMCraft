@@ -213,3 +213,130 @@ fn tp_switches_the_layout_is_listed_once_and_can_be_given_another_key() {
     shortcut(&mut h, "ZP");
     assert_eq!(h.state().profile, Profile::Palette, "a key of the user's own does the same");
 }
+
+/// A press at `from`, moved to `to`, let go: what a hand does to a panel's edge.
+fn drag(h: &mut Harness<BimApp>, from: egui::Pos2, to: egui::Pos2) {
+    h.hover_at(from);
+    h.run();
+    h.event(Event::PointerButton { pos: from, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run();
+    h.hover_at(to);
+    h.run();
+    h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run();
+}
+
+/// A palette window of the given width.
+fn palette_of(width: f32) -> Harness<'static, BimApp> {
+    let mut h = app(BOX);
+    h.state_mut().profile = Profile::Palette;
+    h.state_mut().palette_width = width;
+    h.run();
+    h.run();
+    h
+}
+
+#[test]
+fn the_columns_width_is_the_one_asked_for_and_does_not_drift() {
+    for width in [240.0, 280.0, 340.0, 480.0] {
+        let h = palette_of(width);
+        assert!((h.state().palette_width - width).abs() < 1.0, "asked {width}, is {}", h.state().palette_width);
+    }
+}
+
+#[test]
+fn dragging_the_columns_edge_resizes_it_within_limits() {
+    let mut h = palette_of(280.0);
+    let edge = |h: &Harness<BimApp>| egui::pos2(h.state().palette_rect.right(), 400.0);
+    let from = edge(&h);
+    drag(&mut h, from, from + egui::vec2(80.0, 0.0));
+    assert!((h.state().palette_width - 360.0).abs() < 4.0, "wider: {}", h.state().palette_width);
+    let from = edge(&h);
+    drag(&mut h, from, egui::pos2(1250.0, 400.0));
+    assert!(
+        h.state().palette_width <= crate::settings::PALETTE_WIDTH.end() + 1.0,
+        "no wider than the least of the window: {}",
+        h.state().palette_width
+    );
+    let from = edge(&h);
+    drag(&mut h, from, egui::pos2(5.0, 400.0));
+    assert!(
+        h.state().palette_width >= crate::settings::PALETTE_WIDTH.start() - 1.0,
+        "no narrower than it can be: {}",
+        h.state().palette_width
+    );
+}
+
+#[test]
+fn the_width_is_kept_in_the_settings_and_across_new_and_open() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("settings.json");
+    let mut h = app(BOX);
+    h.state_mut().use_settings(file.clone());
+    h.state_mut().profile = Profile::Palette;
+    h.run();
+    let edge = egui::pos2(h.state().palette_rect.right(), 400.0);
+    drag(&mut h, edge, edge + egui::vec2(60.0, 0.0));
+    let width = h.state().palette_width;
+    assert!(width > 320.0, "{width}");
+    h.run();
+    let kept: serde_json::Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    assert!((kept["palette_width"].as_f64().unwrap() as f32 - width).abs() < 1.0, "{kept}");
+
+    let mut again = app(BOX);
+    again.state_mut().use_settings(file);
+    again.run();
+    again.run();
+    assert!((again.state().palette_width - width).abs() < 1.0, "the next start: {}", again.state().palette_width);
+    again.state_mut().reopened();
+    again.run();
+    assert!((again.state().palette_width - width).abs() < 1.0, "File > New keeps it");
+}
+
+#[test]
+fn a_settings_file_with_a_hostile_width_leaves_the_one_there_is() {
+    let base = Settings { palette_width: 333.0, ..default_settings_for_palette() };
+    for hostile in [json!("wide"), json!(-5), json!(0), json!(5.0), json!(1.0e9), json!(null), json!([300]), json!({}), json!(true)] {
+        let v = json!({"palette_width": hostile});
+        assert_eq!(Settings::from_json(&v, base.clone()).palette_width, 333.0, "{hostile}");
+    }
+    assert_eq!(Settings::from_json(&json!({"palette_width": 400}), base.clone()).palette_width, 400.0);
+    assert_eq!(Settings::from_json(&json!({}), base).palette_width, 333.0, "older files have none");
+}
+
+fn default_settings_for_palette() -> Settings {
+    let mut h = app("");
+    h.state_mut().use_settings(tempfile::tempdir().unwrap().path().join("settings.json"));
+    h.state().settings_kept.clone().unwrap()
+}
+
+#[test]
+fn the_width_stays_what_it_is_whatever_tool_is_in_hand_or_tab_is_open() {
+    let mut h = palette_of(300.0);
+    let width = h.state().palette_width;
+    // A tool of each tab that has options of its own (drop-downs and fields of every kind), picked as a user does: scrolled to.
+    for (tab, tools) in [
+        ("Architecture", &["Wall", "Door", "Column", "Roof", "Floor", "Ceiling", "Stair", "Ramp", "Shaft", "Dormer", "Level"][..]),
+        ("Structure", &["Column", "Beam", "Isolated Footing", "Wall Footing"][..]),
+        ("Plumbing", &["Pipe"][..]),
+        ("Electrical", &["Conduit", "Wire"][..]),
+        ("Annotate", &["Aligned", "Detail Line", "Detail Group", "Text", "Tag by Category"][..]),
+        ("Massing", &["Mass"][..]),
+    ] {
+        press(&mut h, tab);
+        assert!((h.state().palette_width - width).abs() < 0.5, "{tab}: {}", h.state().palette_width);
+        for tool in tools {
+            let row = h.get_by_role_and_label(Role::Button, tool);
+            row.scroll_to_me();
+            h.run();
+            pick(&mut h, Role::Button, tool);
+            assert!(!matches!(h.state().tool, Tool::Modify), "{tab} > {tool} is in hand");
+            assert!((h.state().palette_width - width).abs() < 0.5, "{tab} > {tool}: {}", h.state().palette_width);
+            key(&mut h, Key::Escape);
+        }
+    }
+    for tab in ["Insert", "View", "Manage", "Modify"] {
+        press(&mut h, tab);
+        assert!((h.state().palette_width - width).abs() < 0.5, "{tab}: {}", h.state().palette_width);
+    }
+}

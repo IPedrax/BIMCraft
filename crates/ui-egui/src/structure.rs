@@ -132,6 +132,7 @@ impl BimApp {
     pub(crate) fn run_options(&mut self, ui: &mut Ui, category: &'static str) {
         let hint = self.session.model.units.name();
         if category != "stripfooting" {
+            crate::ribbon::room(ui, 190.0);
             let l = ui.label(t("Justification:"));
             let now = self.run_justify;
             let c = ComboBox::from_id_salt("run-justify").selected_text(t(justify_name(now))).width(90.0).show_ui(ui, |ui| {

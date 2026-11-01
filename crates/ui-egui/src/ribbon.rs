@@ -71,6 +71,16 @@ pub(crate) fn rows(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
     LISTING.with(|l| l.set(false));
 }
 
+/// Starts a new row in a wrapping layout when less than `width` is left on this one. A drop-down lays itself out in a row of its own, which
+/// a wrapping parent takes for fitting wherever it begins, so a label and its drop-down that don't fit would run off the edge (and make
+/// the tool palette's column wider). Called before the label, with the room both need; a layout that doesn't wrap does nothing.
+pub(crate) fn room(ui: &mut Ui, width: f32) {
+    // Not `available_width`: in a wrapping layout that is the whole row's, and this is what is left of it.
+    if ui.available_size_before_wrap().x < width {
+        ui.end_row();
+    }
+}
+
 /// A strip of small buttons side by side on the ribbon; as rows (a panel's list, the tool palette) each is a row of its own, one under
 /// the other: a row is a column wide, so side by side they would run off its right edge.
 pub(crate) fn strip(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {

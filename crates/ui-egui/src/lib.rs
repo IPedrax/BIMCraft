@@ -447,6 +447,9 @@ pub struct BimApp {
     ribbon_peek: bool,
     /// The tools as the ribbon or as the tool palette (File > Settings).
     profile: settings::Profile,
+    /// How wide the tool palette's column is (kept in the settings), and where it was drawn.
+    palette_width: f32,
+    palette_rect: Rect,
     /// What High Contrast Point Clouds fills a view's scans with: the user's (Settings > Graphics), crimson at first.
     scan_contrast: [u8; 3],
     ribbon_bottom: Pos2,
@@ -708,6 +711,7 @@ fn height_options(ui: &mut Ui, m: &Model, level: Id, top: &mut Option<Option<Id>
     let above: Vec<(Id, &str)> = m.levels().into_iter().filter(|(_, l)| l.elevation > z).map(|(id, l)| (id, l.name.as_str())).collect();
     let now = top.unwrap_or_else(|| above.first().map(|(id, _)| *id));
     let current = now.and_then(|id| m.level(id)).map_or(t("Unconnected"), |l| l.name.as_str());
+    ribbon::room(ui, 190.0);
     let label = ui.label(t("Height:"));
     let combo = ComboBox::from_id_salt(salt).selected_text(current).width(130.0).show_ui(ui, |ui| {
         for (id, name) in &above {
@@ -896,9 +900,6 @@ fn step_name(st: &engine::Step) -> String {
 }
 
 /// A tab, of the ribbon or of a view. Contextual tabs are green, as Revit's are.
-/// How wide the tool palette's column is.
-const PALETTE_WIDTH: f32 = 280.0;
-
 /// The tabs, in order: what the ribbon's tab row and the tool palette's tab picker show (the contextual tab comes after them).
 const TABS: [(Tab, &str); 12] = [
     (Tab::Architecture, msg!("Architecture")),
@@ -978,6 +979,8 @@ impl BimApp {
             grab: egui::Vec2::ZERO,
             ribbon_min: false,
             profile: settings::Profile::default(),
+            palette_width: settings::PALETTE_DEFAULT,
+            palette_rect: Rect::NOTHING,
             compact: false,
             ribbon_peek: false,
             scan_contrast: footer::HIGH_CONTRAST,
@@ -1366,12 +1369,18 @@ impl BimApp {
             }
             settings::Profile::Palette => {
                 let card = style::card([true, false, true, true]).inner_margin(Margin::same(6));
-                // A fixed width, so the column never changes with the tool in hand: what is wider wraps (or, a field, is held to it).
-                Panel::left("tool-palette")
+                // The user sets the width (by its edge, between limits), and it is the same whatever tool is in hand: what is wider
+                // wraps (or, a field, is held to it), so no tool widens the column.
+                let shown = Panel::left("tool-palette")
                     .frame(card)
                     .show_separator_line(false)
-                    .exact_size(PALETTE_WIDTH)
+                    .resizable(true)
+                    .default_size(self.palette_width)
+                    .size_range(settings::PALETTE_WIDTH)
                     .show(ui, |ui| self.tool_palette(ui));
+                // Whole points, so the settings file isn't written again for a fraction.
+                self.palette_rect = shown.response.rect;
+                self.palette_width = shown.response.rect.width().round();
             }
         }
         if self.has_update_banner() {
@@ -2595,6 +2604,7 @@ impl BimApp {
         (fresh.thin, fresh.lang, fresh.snaps, fresh.ribbon_min) = (self.thin, self.lang, self.snaps, self.ribbon_min);
         fresh.compact = self.compact;
         fresh.profile = self.profile;
+        fresh.palette_width = self.palette_width;
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
         fresh.light_canvas = self.light_canvas;
@@ -4136,6 +4146,7 @@ impl BimApp {
     fn wall_options(&mut self, ui: &mut Ui) {
         let Some(level) = self.plan_level() else { return };
         height_options(ui, &self.session.model, level, &mut self.wall_top, &mut self.wall_height, "wall-top");
+        ribbon::room(ui, 250.0);
         let l = ui.label(t("Location Line:"));
         let now = self.wall_location;
         let c = ComboBox::from_id_salt("wall-location").selected_text(t(now.label())).width(150.0).show_ui(ui, |ui| {

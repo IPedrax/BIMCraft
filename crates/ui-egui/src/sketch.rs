@@ -768,6 +768,7 @@ impl BimApp {
         let m = &self.session.model;
         let Some(sk) = self.sketch.as_mut().filter(|sk| sk.styled) else { return };
         // The region's type is the Type Selector's, in the Properties palette: one place to set it.
+        crate::ribbon::room(ui, 240.0);
         let l = ui.label(t("Line Style:"));
         let invisible = t("<Invisible lines>").to_string();
         let shown = sk.region.1.clone().unwrap_or_else(|| invisible.clone());

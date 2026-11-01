@@ -60,6 +60,10 @@ impl Profile {
     }
 }
 
+/// How wide the tool palette's column may be, in points, and how wide it starts.
+pub const PALETTE_WIDTH: std::ops::RangeInclusive<f32> = 240.0..=480.0;
+pub const PALETTE_DEFAULT: f32 = 280.0;
+
 /// How the window was left: its size in points and whether it was maximized.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Window {
@@ -123,6 +127,8 @@ pub struct Settings {
     pub shortcuts: BTreeMap<String, String>,
     /// The ribbon or the tool palette.
     pub profile: Profile,
+    /// How wide the tool palette's column is.
+    pub palette_width: f32,
 }
 
 impl Settings {
@@ -146,6 +152,7 @@ impl Settings {
             "system_title_bar": self.system_title_bar,
             "shortcuts": self.shortcuts,
             "profile": self.profile.code(),
+            "palette_width": self.palette_width,
         })
     }
 
@@ -176,6 +183,11 @@ impl Settings {
             system_title_bar: v["system_title_bar"].as_bool().unwrap_or(base.system_title_bar),
             shortcuts: shortcuts_from(&v["shortcuts"], base.shortcuts),
             profile: v["profile"].as_str().and_then(Profile::from_code).unwrap_or(base.profile),
+            palette_width: v["palette_width"]
+                .as_f64()
+                .map(|w| w as f32)
+                .filter(|w| PALETTE_WIDTH.contains(w))
+                .unwrap_or(base.palette_width),
         }
     }
 }
@@ -274,6 +286,7 @@ impl BimApp {
         self.system_title_bar = kept.system_title_bar;
         self.custom_shortcuts = kept.shortcuts.clone();
         self.profile = kept.profile;
+        self.palette_width = kept.palette_width;
         self.settings_kept = Some(kept);
         self.settings_path = Some(path);
     }
@@ -298,6 +311,7 @@ impl BimApp {
             system_title_bar: self.system_title_bar,
             shortcuts: self.custom_shortcuts.clone(),
             profile: self.profile,
+            palette_width: self.palette_width,
         }
     }
 
