@@ -1106,9 +1106,66 @@ fn bar_in_plan(d: &mut Drawing, rb: &crate::model::Rebar, dashed: bool, seen: &m
 const GRID_PAST: f64 = 600.0;
 
 /// From the lowest level or solid `look` shows to the highest.
-fn heights(m: &Model, look: &Look) -> (f64, f64) {
-    let solids: Vec<_> = view3d::solids(m).into_iter().filter(|s| look.shows(s.owner())).collect();
-    let zs = m.levels().into_iter().map(|(_, l)| l.elevation).chain(solids.iter().flat_map(|s| {
+/// The walls whose layers section or elevation `v` may cut between `first` and `last` along its line, by id: those near
+/// the line in the lookup's tiles, by as much as a wall is thick, twice (its joins carry its layers past its ends).
+fn section_walls<'a>(
+    m: &'a Model,
+    lookup: &crate::derived::Lookup,
+    v: &Section,
+    first: f64,
+    last: f64,
+) -> Vec<(Id, &'a crate::model::Wall)> {
+    let u = (v.end - v.start).unit();
+    let (a, b) = (v.start + u * first, v.start + u * last);
+    let grow = 2.0 * m.types.wall.values().map(|t| t.thickness.abs()).fold(0.0, f64::max) + 10.0;
+    let near = lookup.walls_near([a.0.min(b.0), a.1.min(b.1), a.0.max(b.0), a.1.max(b.1)], grow);
+    let walls: Vec<(Id, &crate::model::Wall)> = near.into_iter().filter_map(|id| Some((id, m.wall(id)?))).collect();
+    // Its twin, which tests hold it to: no other wall's layer lines cross the line there.
+    #[cfg(test)]
+    for (&id, e) in &m.elements {
+        if let Element::Wall(_) = e
+            && !walls.iter().any(|(w, _)| *w == id)
+        {
+            for line in walls::layer_lines(m, id) {
+                for seg in line.windows(2) {
+                    let &[p, q] = seg else { continue };
+                    let crosses = geom::line_intersection(v.start, v.end, p, q)
+                        .filter(|x| geom::dist_to_segment(*x, p, q) < 1e-6)
+                        .is_some_and(|x| (first - 1e-6..=last + 1e-6).contains(&(x - v.start).dot(u)));
+                    assert!(!crosses, "wall {id}'s layers cross the section's line, and it isn't among the walls near it");
+                }
+            }
+        }
+    }
+    walls
+}
+
+/// What a section or an elevation asks of the whole model, found once a drawing: every solid (the view's look picks
+/// those it shows) and, when asked, the model's extent, of the same solids.
+pub(crate) struct SectionWork<'m> {
+    m: &'m Model,
+    solids: Vec<view3d::Solid>,
+    extent: std::cell::OnceCell<[P2; 2]>,
+}
+
+impl<'m> SectionWork<'m> {
+    pub(crate) fn new(m: &'m Model) -> Self {
+        SectionWork { m, solids: view3d::solids(m), extent: std::cell::OnceCell::new() }
+    }
+
+    /// The solids `look` shows.
+    fn shown<'a>(&'a self, look: &'a Look) -> impl Iterator<Item = &'a view3d::Solid> + 'a {
+        self.solids.iter().filter(|s| look.shows(s.owner()))
+    }
+
+    /// [`Model::model_extent`].
+    fn extent(&self) -> [P2; 2] {
+        *self.extent.get_or_init(|| self.m.model_extent_of(&self.solids))
+    }
+}
+
+fn heights(m: &Model, w: &SectionWork, look: &Look) -> (f64, f64) {
+    let zs = m.levels().into_iter().map(|(_, l)| l.elevation).chain(w.shown(look).flat_map(|s| {
         let (a, b) = s.heights();
         [a, b]
     }));
@@ -1131,24 +1188,25 @@ pub fn crop_region(m: &Model, id: impl Key) -> Option<[P2; 2]> {
 /// The heights section or elevation `id` would crop to: all of the model's, as far as its grids
 /// reach past them.
 pub(crate) fn section_heights(m: &Model, id: impl Key) -> [f64; 2] {
-    let (lo, hi) = heights(m, &Look::of(m, id));
+    let (lo, hi) = heights(m, &SectionWork::new(m), &Look::of(m, id));
     [lo - GRID_PAST, hi + GRID_PAST]
 }
 
 /// How far along its line, from its start, section or elevation `v` shows: cropped, from its start
 /// to its end; else as far as anything it shows reaches (what lies beyond its line, its levels and
 /// its grids), and its line.
-fn span(m: &Model, v: &Section, look: &Look) -> (f64, f64) {
+fn span(m: &Model, w: &SectionWork, v: &Section, look: &Look) -> (f64, f64) {
     let len = v.start.dist(v.end);
     if v.crop.is_some() {
         return (0.0, len);
     }
     let u = (v.end - v.start).unit();
     let along = |q: P2| (q - v.start).dot(u);
-    let solids = view3d::solids(m).into_iter().filter(|s| look.shows(s.owner())).flat_map(|s| s.corners()).map(|p| along(P2(p[0], p[1])));
-    let levels = level_spans(m, v, look).into_iter().flat_map(|(_, a, b)| [a, b]);
-    let grids = m.elements.iter().filter(|(id, _)| look.shows(**id)).filter_map(|(_, e)| match e {
-        Element::Grid(g) => geom::line_intersection(v.start, v.end, g.start, g.end).map(along),
+    let solids = w.shown(look).flat_map(|s| s.corners()).map(|p| along(P2(p[0], p[1])));
+    let levels = level_spans(m, w, v, look).into_iter().flat_map(|(_, a, b)| [a, b]);
+    let lookup = m.lookup();
+    let grids = lookup.grids().filter(|id| look.shows(*id)).filter_map(|id| match m.elements.get(id) {
+        Some(Element::Grid(g)) => geom::line_intersection(v.start, v.end, g.start, g.end).map(along),
         _ => None,
     });
     solids.chain(levels).chain(grids).fold((0.0, len), |(lo, hi), x| (lo.min(x), hi.max(x)))
@@ -1159,24 +1217,24 @@ fn span(m: &Model, v: &Section, look: &Look) -> (f64, f64) {
 pub fn level_ends(m: &Model, level: impl Key, view: impl Key) -> Option<(f64, f64)> {
     let v = m.section(view)?;
     let look = Look::of(m, view);
-    let (first, last) = span(m, v, &look);
+    let w = SectionWork::new(m);
+    let (first, last) = span(m, &w, v, &look);
     let level = m.elements.id(level)?;
-    let (_, a, b) = level_spans(m, v, &look).into_iter().find(|(id, ..)| *id == level)?;
+    let (_, a, b) = level_spans(m, &w, v, &look).into_iter().find(|(id, ..)| *id == level)?;
     let (a, b) = (a.max(first), b.min(last));
     (a < b).then_some((a, b))
 }
 
 /// The levels section or elevation `v` sees, each from how far along its line to how far: where
 /// its extent lies, past its line (within its depth).
-fn level_spans(m: &Model, v: &Section, look: &Look) -> Vec<(Id, f64, f64)> {
+fn level_spans(m: &Model, w: &SectionWork, v: &Section, look: &Look) -> Vec<(Id, f64, f64)> {
     let u = (v.end - v.start).unit();
     let past = |q: P2| (q - v.start).dot(v.looking());
-    let default = std::cell::OnceCell::new();
     m.levels()
         .into_iter()
         .filter(|(id, _)| look.shows(*id))
         .filter_map(|(id, l)| {
-            let [lo, hi] = l.extent.unwrap_or_else(|| *default.get_or_init(|| m.model_extent()));
+            let [lo, hi] = l.extent.unwrap_or_else(|| w.extent());
             let corners = [lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)];
             let (near, far) = corners.iter().fold((f64::MAX, f64::MIN), |(a, b), q| (a.min(past(*q)), b.max(past(*q))));
             if far < -TOL || v.depth.is_some_and(|d| near > d) {
@@ -1190,8 +1248,8 @@ fn level_spans(m: &Model, v: &Section, look: &Look) -> Vec<(Id, f64, f64)> {
 }
 
 /// The heights a section or elevation shows: its crop's, else all of the model's.
-fn shown_heights(m: &Model, v: &Section, look: &Look) -> (f64, f64) {
-    v.crop.map_or_else(|| heights(m, look), |[bottom, top]| (bottom, top))
+fn shown_heights(m: &Model, w: &SectionWork, v: &Section, look: &Look) -> (f64, f64) {
+    v.crop.map_or_else(|| heights(m, w, look), |[bottom, top]| (bottom, top))
 }
 
 /// The view section or elevation `id` fits into `width` x `height` px: along its line from its
@@ -1216,7 +1274,8 @@ pub(crate) fn section_extent(m: &Model, id: impl Key, scale: f64, k: f32) -> Opt
 fn section_bare(m: &Model, id: impl Key) -> Option<[P2; 2]> {
     let v = m.section(id)?;
     let look = Look::of(m, id);
-    let ((lo, hi), (first, last)) = (shown_heights(m, v, &look), span(m, v, &look));
+    let w = SectionWork::new(m);
+    let ((lo, hi), (first, last)) = (shown_heights(m, &w, v, &look), span(m, &w, v, &look));
     Some([P2(first, lo - GRID_PAST), P2(last, hi + GRID_PAST)])
 }
 
@@ -1289,11 +1348,12 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
     let look = Look::of(m, id);
     d.pattern_styles = look.pattern_styles();
     let u = (v.end - v.start).unit();
-    let (first, last) = span(m, v, &look);
+    let work = SectionWork::new(m);
+    let (first, last) = span(m, &work, v, &look);
     // Each element's cut pieces, filled as one so where they meet (a roof's slopes at its ridge)
     // leaves no seam.
     let mut cuts: std::collections::BTreeMap<Id, Vec<Vec<P2>>> = std::collections::BTreeMap::new();
-    let solids: Vec<_> = view3d::solids(m).into_iter().filter(|s| look.shows(s.owner())).collect();
+    let solids: Vec<&view3d::Solid> = work.shown(&look).collect();
     d.part(Part::Cut);
     // A bar lies inside the concrete it reinforces, so its cuts are dots over that poché, not pieces of it.
     let mut dots: Vec<(Id, Vec<P2>)> = Vec::new();
@@ -1344,8 +1404,8 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
     // A compound wall's layers where the line cuts it: each its material's cut pattern, between where
     // the line crosses its boundaries; a thin line up each boundary between two, as high as the wall
     // stands there, around its openings.
-    for (&wall, e) in &m.elements {
-        let Element::Wall(w) = e else { continue };
+    let lookup = m.lookup();
+    for (wall, w) in section_walls(m, &lookup, v, first, last) {
         let layers = m.type_layers("wall", &w.type_name);
         if layers.is_empty() || !look.shows(wall) || d.detail == Detail::Coarse {
             continue;
@@ -1438,7 +1498,7 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
             }
         }
     }
-    for (&mid, e) in m.elements.iter().filter(|(id, _)| look.shows(**id)) {
+    for (mid, e) in lookup.rare("mass").filter(|id| look.shows(*id)).filter_map(|id| Some((id, m.elements.get(id)?))) {
         let Element::Mass(ms) = e else { continue };
         let (z0, z1) = m.span(ms.level, ms.base_offset, ms.top_level, ms.height);
         d.owner = Some(mid);
@@ -1461,7 +1521,7 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
     }
     d.owner = None;
     d.part(Part::Projection);
-    let (lo, hi) = shown_heights(m, v, &look);
+    let (lo, hi) = shown_heights(m, &work, v, &look);
     if v.crop.is_some() {
         let (a, b) = (d.view.px(P2(first, hi)), d.view.px(P2(last, lo)));
         d.crop(a, b, |_| false);
@@ -1471,7 +1531,7 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
         d.picture(m, section, image);
     }
     // Each level over as much of its extent as the view sees, named past its end.
-    for (level, from, to) in level_spans(m, v, &look) {
+    for (level, from, to) in level_spans(m, &work, v, &look) {
         let (from, to) = (from.max(first), to.min(last));
         let Some(l) = m.level(level).filter(|l| from < to && ((lo..=hi).contains(&l.elevation) || v.crop.is_none())) else { continue };
         d.owner = Some(level);
@@ -1484,7 +1544,7 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
     }
     // Grids running into what it sees: across its line, reaching past it (within its depth).
     let past = |q: P2| (q - v.start).dot(v.looking());
-    for (&grid_id, e) in m.elements.iter().filter(|(id, _)| look.shows(**id)) {
+    for (grid_id, e) in lookup.grids().filter(|id| look.shows(*id)).filter_map(|id| Some((id, m.elements.get(id)?))) {
         if let Element::Grid(g) = e
             && let Some(x) = geom::line_intersection(v.start, v.end, g.start, g.end)
             && past(g.start).max(past(g.end)) >= -TOL
@@ -1496,8 +1556,11 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
             grid(&mut d, P2(along, lo - GRID_PAST), P2(along, hi + GRID_PAST), &g.name);
         }
     }
+    // What is drawn in it, from what points at it: its regions, notes, details and spot elevations.
+    let own: Vec<(Id, &Element)> =
+        lookup.referrers(&m.guid(id)).filter(|id| look.shows(*id)).filter_map(|id| Some((id, m.elements.get(id)?))).collect();
     // Filled regions over the model, under the annotation.
-    for (&nid, e) in m.elements.iter().filter(|(id, _)| look.shows(**id)) {
+    for &(nid, e) in &own {
         if let Element::FilledRegion(r) = e
             && m.same(r.view, id)
         {
@@ -1505,7 +1568,7 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
             filled_region(&mut d, m, r);
         }
     }
-    for (&nid, e) in m.elements.iter().filter(|(id, _)| look.shows(**id)) {
+    for &(nid, e) in &own {
         d.owner = Some(nid);
         match e {
             Element::Text(n) if m.same(n.view, id) => note(&mut d, m, n),

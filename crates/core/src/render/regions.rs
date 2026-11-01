@@ -95,7 +95,8 @@ impl Layers {
 
 /// Whether view `view` has a region that keeps the model's ink above it, which wants the picture of a section.
 pub(super) fn wanted(m: &Model, view: Id) -> bool {
-    m.elements.values().any(|e| match e {
+    // What is drawn in it points at it.
+    m.lookup().referrers(&m.guid(view)).filter_map(|id| m.elements.get(id)).any(|e| match e {
         Element::FilledRegion(r) => m.same(r.view, view) && m.region_types.get(&r.type_name).is_some_and(|t| !t.masking),
         Element::DetailGroup(g) => m.same(g.view, view),
         Element::RepeatingDetail(r) => m.same(r.view, view),
