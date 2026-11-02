@@ -115,7 +115,7 @@ msgstr ""
 msgid "Data Outlet"
 msgstr ""
 
-#: crates/core/src/commands.rs:6091
+#: crates/core/src/commands.rs:6087
 msgid "Dependent"
 msgstr ""
 
@@ -176,8 +176,8 @@ msgstr ""
 msgid "Elbow 90"
 msgstr ""
 
-#: crates/core/src/commands.rs:5875
-#: crates/core/src/commands.rs:7667
+#: crates/core/src/commands.rs:5871
+#: crates/core/src/commands.rs:7663
 msgid "Elevation"
 msgstr ""
 
@@ -297,7 +297,7 @@ msgstr ""
 msgid "Length"
 msgstr ""
 
-#: crates/core/src/commands.rs:3801
+#: crates/core/src/commands.rs:3797
 #: crates/core/src/model.rs:2153
 msgid "Level"
 msgstr ""
@@ -322,7 +322,7 @@ msgstr ""
 msgid "Masking"
 msgstr ""
 
-#: crates/core/src/commands.rs:4645
+#: crates/core/src/commands.rs:4641
 msgid "Mass"
 msgstr ""
 
@@ -342,7 +342,7 @@ msgstr ""
 msgid "Motion Detector"
 msgstr ""
 
-#: crates/core/src/commands.rs:5052
+#: crates/core/src/commands.rs:5048
 #: crates/core/src/fixtures.rs:233
 msgid "Mounting Height"
 msgstr ""
@@ -424,7 +424,7 @@ msgstr ""
 msgid "Porcelain"
 msgstr ""
 
-#: crates/core/src/commands.rs:2267
+#: crates/core/src/commands.rs:2263
 msgid "Project"
 msgstr ""
 
@@ -448,7 +448,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr ""
 
-#: crates/core/src/commands.rs:4870
+#: crates/core/src/commands.rs:4866
 msgid "Room"
 msgstr ""
 
@@ -476,8 +476,8 @@ msgstr ""
 msgid "Seat Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:5852
-#: crates/core/src/commands.rs:7666
+#: crates/core/src/commands.rs:5848
+#: crates/core/src/commands.rs:7662
 msgid "Section"
 msgstr ""
 
@@ -545,7 +545,7 @@ msgstr ""
 msgid "South"
 msgstr ""
 
-#: crates/core/src/commands.rs:6786
+#: crates/core/src/commands.rs:6782
 msgid "Specification Items"
 msgstr ""
 
@@ -597,7 +597,7 @@ msgstr ""
 msgid "UP"
 msgstr ""
 
-#: crates/core/src/commands.rs:6232
+#: crates/core/src/commands.rs:6228
 msgid "Unnamed"
 msgstr ""
 
