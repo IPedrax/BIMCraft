@@ -46,7 +46,23 @@ Status, on the branch `mod-16-shape-editing` (raised upstream as IPedrax/BIMCraf
   (`Model::roof_under`, `roof_prisms`, `roof_solid`, `variable_under`): 3D layers, sections, attached walls, IFC (one
   closed Brep; `ci/ifc-coverage.txt` has both kinds) and the check (tests `a_roofs_variable_layer_*`,
   `a_section_shows_a_roofs_insulation_*`, `a_roof_point_that_would_leave_its_insulation_*`).
-- **Phase 5** is a proposal.
+- **Phase 5**, the extras, is built:
+  - **`falls`** (`crates/core/src/falls.rs`): a floor's or flat roof's shape from its drains and the least fall. Each
+    drain takes the part of the outline nearer it than any other; where two parts meet a ridge runs at the top's height;
+    from each drain a valley runs to each corner of its part; each drain goes down as far as the fall takes its farthest
+    corner, to the tenth of a millimetre down. Every plane then falls at least as asked toward a drain, its lowest corner,
+    and so does every valley. Refused, saying why: a drain outside, two within a millimetre, a corner a drain can't see
+    across the outline (an L with one drain: add one on the other wing), and, for now, a floor with openings. Tests
+    `falls_to_two_drains_*` and `falls_refuse_*`.
+  - **IFC import of a slab whose top isn't one plane** (`import::shaped_top`): a level floor at its highest point, its
+    upward faces' outline, each of their corners under that height (or inside) a point, and each edge two of them share at
+    an angle a split line; as thick as it is under its highest corner. What doesn't fold into planes, or folds into others
+    than its faces (a step), comes in as before. Test `a_shaped_slab_exported_and_imported_*`. A roof's shape doesn't come
+    back from IFC yet, nor a variable layer (the type's layers come in, none marked).
+  - **Spot Slope** (`spot_slope`, `Spot::slope`, `Model::spot_slope`, `top_plane_at`): in a plan, an arrow downhill from
+    the point clicked on a floor or a roof, with how steeply its top falls there, following it; Annotate > Dimension's
+    Spot Slope places one. Tests `a_spot_slope_reads_*` and the desktop's
+    `spot_slope_reads_the_fall_of_a_shaped_floor_where_its_clicked`.
 
 Line numbers are as of `0733fd4`.
 

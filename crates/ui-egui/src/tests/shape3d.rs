@@ -142,3 +142,18 @@ roof {"level": 100001, "boundary": [[10000, 0], [18000, 0], [18000, 6000], [1000
     let z = field(&h, roofs[0], "shape")["points"][0]["z"].as_f64().unwrap();
     assert!((z + 20.0).abs() <= 2.0, "{z}");
 }
+
+#[test]
+fn spot_slope_reads_the_fall_of_a_shaped_floor_where_its_clicked() {
+    let mut h = app(r#"floor {"boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}"#);
+    let floor = ids(&h, "floor")[0];
+    h.state_mut().run("edit_shape", json!({"id": floor, "points": [{"at": [4000, 3000], "z": -60}]}));
+    press(&mut h, "Annotate");
+    press(&mut h, "Spot Slope");
+    assert_eq!(h.state().tool, Tool::SpotSlope);
+    click(&mut h, P2(1000.0, 3000.0));
+    let spots = ids(&h, "spot");
+    assert_eq!(spots.len(), 1);
+    assert_eq!((field(&h, spots[0], "slope"), field(&h, spots[0], "toward")), (json!(1.5), json!([1.0, 0.0])));
+    assert_eq!(h.state().tool, Tool::SpotSlope, "ready for the next one");
+}

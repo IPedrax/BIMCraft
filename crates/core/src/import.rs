@@ -283,6 +283,63 @@ fn top_of(faces: &[Vec<P3>]) -> Option<(Plane, geom::Region, f64)> {
     Some((top, shape, top.at(q) - under.at(q)))
 }
 
+/// A slab's top that isn't one plane, as a shape reads it (MOD-16): its highest point's height; the outline in plan of
+/// its faces turned up, and the holes in it; each corner of those faces under that height, or inside the outline, a point
+/// with how far under it lies; each edge two of them share at an angle, a crease; and how thick it is under its highest
+/// corner, plumb; and the corners of its faces turned up, which the shape must meet. None when its faces turned up lie in
+/// one plane, or it has none.
+#[allow(clippy::type_complexity)]
+fn shaped_top(faces: &[Vec<P3>]) -> Option<(f64, geom::Region, Vec<(P2, f64)>, Vec<(P2, P2)>, f64, Vec<P3>)> {
+    let up: Vec<&Vec<P3>> = faces.iter().filter(|f| f.len() >= 3 && normal(f)[2] >= 0.2).collect();
+    let plane = Plane::of(up.iter().max_by(|a, b| area3(a).total_cmp(&area3(b)))?)?;
+    if up.iter().flat_map(|f| f.iter()).all(|p| (p[2] - plane.at(P2(p[0], p[1]))).abs() <= 0.5) {
+        return None;
+    }
+    let mut rings: Vec<Vec<P2>> = loops(up.iter().copied()).into_iter().map(|l| geom::corners(&l)).filter(|l| l.len() >= 3).collect();
+    rings.sort_by(|a, b| geom::area(b).abs().total_cmp(&geom::area(a).abs()));
+    let mut rings = rings.into_iter();
+    let mut outer = rings.next()?;
+    if geom::area(&outer) < 0.0 {
+        outer.reverse();
+    }
+    let holes: Vec<Vec<P2>> = rings.filter(|h| geom::area(h) < 0.0 && h.iter().all(|p| geom::contains(&outer, *p))).collect();
+    let high = up.iter().flat_map(|f| f.iter()).map(|p| p[2]).fold(f64::NEG_INFINITY, f64::max);
+    let corner = |q: P2| outer.iter().chain(holes.iter().flatten()).any(|c| c.dist(q) <= 0.5);
+    let mut points: Vec<(P2, f64)> = Vec::new();
+    for p in up.iter().flat_map(|f| f.iter()) {
+        let (q, z) = (P2(p[0], p[1]), p[2] - high);
+        if (z.abs() > 0.05 || !corner(q)) && !points.iter().any(|(r, _)| r.dist(q) <= 0.5) {
+            points.push((q, z));
+        }
+    }
+    // A crease: an edge two faces turned up share, their planes apart.
+    let key = |p: &P3| ((p[0] * 10.0).round() as i64, (p[1] * 10.0).round() as i64);
+    let mut edges: BTreeMap<((i64, i64), (i64, i64)), (P2, P2, Vec<P3>)> = BTreeMap::new();
+    for f in &up {
+        let n = normal(f);
+        for (a, b) in f.iter().zip(f.iter().cycle().skip(1)) {
+            let k = if key(a) <= key(b) { (key(a), key(b)) } else { (key(b), key(a)) };
+            edges.entry(k).or_insert_with(|| (P2(a[0], a[1]), P2(b[0], b[1]), Vec::new())).2.push(n);
+        }
+    }
+    let creases = edges
+        .into_values()
+        .filter(|(a, b, ns)| a.dist(*b) > 1.0 && ns.len() == 2 && dot(ns[0], ns[1]) < 1.0 - 1e-9)
+        .map(|(a, b, _)| (a, b))
+        .collect();
+    // Under its highest corner, the face turned down there.
+    let top_at = up.iter().flat_map(|f| f.iter()).find(|p| (p[2] - high).abs() <= 0.05)?;
+    let under = faces
+        .iter()
+        .filter(|f| f.len() >= 3 && normal(f)[2] <= -0.2)
+        .flat_map(|f| f.iter())
+        .filter(|p| (p[0] - top_at[0]).abs() <= 0.5 && (p[1] - top_at[1]).abs() <= 0.5)
+        .map(|p| p[2])
+        .fold(f64::INFINITY, f64::min);
+    let corners = up.iter().flat_map(|f| f.iter()).copied().collect();
+    under.is_finite().then_some((high, geom::Region { outer, holes }, points, creases, high - under, corners))
+}
+
 /// A point well inside a ring: the middle of the largest of the triangles that make it up.
 fn inside(ring: &[P2]) -> Option<P2> {
     let pt = |i: usize| ring.get(i).copied();
@@ -1637,6 +1694,56 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
             continue;
         };
+        // A top of several planes: a level floor at its highest point, its shape's points under it and its creases.
+        if let Some((high, geom::Region { outer, holes }, points, creases, depth, corners)) = shaped_top(&faces) {
+            let flat = |p: P2| micron(r.flat([p.0, p.1, 0.0]));
+            let t = (depth * 100.0).round() / 100.0;
+            let base = label(id).unwrap_or_else(|| format!("Imported - {}mm", num(t)));
+            let (t, layers) = top_down(id, t);
+            let type_name = kind(
+                &mut m.types.floor,
+                &base,
+                |k| (k.thickness - t).abs() < 0.05 && k.layers == layers,
+                FloorType { thickness: t, layers: layers.clone() },
+            );
+            let level = level_near(high).unwrap_or_else(|| level_for(id, high));
+            let shape = crate::model::Shape {
+                points: points
+                    .into_iter()
+                    .map(|(q, z)| crate::model::ShapePoint { at: flat(q), z: (z * 1000.0).round() / 1000.0, ..Default::default() })
+                    .collect(),
+                lines: creases.into_iter().map(|(a, b)| crate::model::SplitLine { a: flat(a), b: flat(b), ..Default::default() }).collect(),
+            };
+            let floor = Floor {
+                params: Default::default(),
+                sketch: Vec::new(),
+                shape,
+                type_name,
+                level,
+                boundary: outer.into_iter().map(flat).collect(),
+                openings: openings_of(id, holes),
+                offset: ((high - elevation(level)) * 1000.0).round() / 1000.0 + 0.0,
+                slope: 0.0,
+                arrow: None,
+                structural: bearing.contains(&id),
+                pattern_origin: P2(0.0, 0.0),
+                pattern_angle: 0.0,
+            };
+            // What doesn't fold into planes, or folds into others (a step, which a shape can't make), comes in as before: by
+            // its largest face turned up.
+            let meets = |p: &P3| {
+                let q = flat(P2(p[0], p[1]));
+                (m.floor_top(&floor).at(q) + m.shape_height(&floor, q) - p[2]).abs() <= 1.0
+            };
+            if m.shape_planes(&floor).is_ok() && corners.iter().all(meets) {
+                let fid = m.insert(Element::Floor(floor));
+                from.insert(fid, who(id));
+                origin.entry(id).or_insert(fid);
+                elements_from.entry(id).or_default().push(fid);
+                seen.insert(id);
+                continue;
+            }
+        }
         // Level at its highest, or sloped: then its slope arrow runs up it from its lowest corner,
         // all the way across.
         let shape = outline(&faces, Plane::flat(z1), true).map(|shape| (Plane::flat(z1), shape, z1 - z0)).or_else(|| top_of(&faces));

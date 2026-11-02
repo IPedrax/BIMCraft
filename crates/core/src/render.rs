@@ -867,6 +867,7 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         Element::FilledRegion(r) => filled_region(&mut d, m, r),
         Element::DetailGroup(g) => detail_group(&mut d, m, g),
         Element::RepeatingDetail(r) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
+        Element::Spot(sp) if sp.slope => slope_mark(&mut d, sp.at, m.spot_slope(sp)),
         Element::Spot(sp) => spot_mark(&mut d, view.px(sp.at), m.spot_value(sp), m.units),
         Element::Section(v) => section_mark(&mut d, v),
         Element::Elevation(v) => elevation_mark(&mut d, v),
@@ -1344,7 +1345,8 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
             Element::DetailLine(l) if m.same(l.view, id) => detail_line(&mut d, m, l),
             Element::DetailGroup(g) if m.same(g.view, id) => detail_group(&mut d, m, g),
             Element::RepeatingDetail(r) if m.same(r.view, id) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
-            Element::Spot(sp) if m.same(sp.view, id) => {
+            // A spot slope reads a plan's floor or roof; a section has none to show.
+            Element::Spot(sp) if m.same(sp.view, id) && !sp.slope => {
                 let z = m.spot_value(sp).unwrap_or(sp.at.1);
                 spot_mark(&mut d, view.px(P2(sp.at.0, z)), Some(z), m.units);
             }
@@ -1898,6 +1900,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
             Element::DetailLine(l) if m.annotation_in(e, key) => detail_line(&mut d, m, l),
             Element::DetailGroup(g) if m.annotation_in(e, key) => detail_group(&mut d, m, g),
             Element::RepeatingDetail(r) if m.annotation_in(e, key) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
+            Element::Spot(sp) if sp.slope && m.annotation_in(e, key) && inside(sp.at) => slope_mark(&mut d, sp.at, m.spot_slope(sp)),
             Element::Spot(sp) if m.annotation_in(e, key) && inside(sp.at) => spot_mark(&mut d, view.px(sp.at), m.spot_value(sp), m.units),
             // A section's line is cropped as a line is.
             Element::Section(v) => section_mark(&mut d, v),
@@ -3006,6 +3009,36 @@ fn spot_mark(d: &mut Drawing, (x, y): (f32, f32), z: Option<f64>, units: Units) 
     d.grow(from, (x, y));
 }
 
+/// A spot slope: from its point an arrow 24 px long pointing downhill, and the fall over it, as `1.5%`; on the level, `0%`
+/// alone; `?` while its host has no top there.
+fn slope_mark(d: &mut Drawing, at: P2, read: Option<(f64, Option<P2>)>) {
+    let from = d.prims.len();
+    let (x, y) = d.view.px(at);
+    let text = read.map_or_else(|| "?".into(), |(f, _)| format!("{}%", figure(f)));
+    let w = font::width(&text, 10.0);
+    match read.and_then(|(_, way)| way) {
+        Some(way) => {
+            // Downhill on paper: the way in plan, as the view turns it, 24 px long.
+            let (fx, fy) = d.view.px(at + way * 1000.0);
+            let (dx, dy) = (fx - x, fy - y);
+            let n = dx.hypot(dy).max(1e-6);
+            let (ux, uy) = (dx / n, dy / n);
+            let tip = (x + ux * 24.0, y + uy * 24.0);
+            d.stroke(vec![(x, y), tip], Pen::PROJECTION, INK, None, false);
+            let back = (tip.0 - ux * 6.0, tip.1 - uy * 6.0);
+            let side = (-uy * 3.0, ux * 3.0);
+            d.push(Prim::Fill {
+                rings: vec![vec![tip, (back.0 + side.0, back.1 + side.1), (back.0 - side.0, back.1 - side.1)]],
+                color: INK,
+            });
+            // Its fall beside the arrow's middle, upright.
+            d.text(&text, (x + ux * 12.0 + w / 2.0 + 4.0 * uy.abs(), y + uy * 12.0 - 8.0), 10.0, INK);
+        }
+        None => d.text(&text, (x + w / 2.0 + 4.0, y - 8.0), 10.0, INK),
+    }
+    d.grow(from, (x, y));
+}
+
 /// A height as a spot elevation reads it, signed: ±0, +3000, -600, +9'-10 1/8".
 fn height(units: Units, z: f64) -> String {
     let shown = units.length(z);
@@ -3942,7 +3975,7 @@ mod tests {
     fn a_tools_sketch_of_annotation_is_the_size_its_view_would_draw_it() {
         let mut s = house();
         let view = View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
-        let spot = Element::Spot(crate::model::Spot { view: s.model.guid(100000), at: P2(4000.0, 3000.0), host: None });
+        let spot = Element::Spot(crate::model::Spot { view: s.model.guid(100000), at: P2(4000.0, 3000.0), host: None, slope: false });
         let text = |s: &Session| lettering(&sketch(&s.model, view, 99, &spot), 99);
         s.execute("scale", &serde_json::json!({"view": 100000, "scale": 50})).unwrap();
         let none = text(&s);

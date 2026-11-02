@@ -29,6 +29,7 @@ pub mod dxf;
 #[cfg(test)]
 mod eberick_tests;
 pub mod engine;
+pub mod falls;
 pub mod family;
 pub mod favorites;
 pub mod fills;

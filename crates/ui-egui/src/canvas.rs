@@ -1181,6 +1181,10 @@ impl BimApp {
             }),
             // What a spot elevation would read.
             Tool::Spot => model.spot_host(level, view.mm(q)),
+            // The floor or roof a spot slope would read.
+            Tool::SpotSlope => model
+                .spot_host(level, view.mm(q))
+                .filter(|id| matches!(model.elements.get(*id), Some(Element::Floor(_) | Element::Roof(_)))),
             Tool::Tag => d.pick(q, PICK).filter(|id| model.anchor(*id).is_some()),
             Tool::Attach => {
                 d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Roof(_) | Element::Floor(_))))
@@ -1841,6 +1845,9 @@ impl BimApp {
             }
             Tool::Spot => {
                 self.run("spot", json!({"at": point(round(v.mm(at))), "view": key}));
+            }
+            Tool::SpotSlope => {
+                self.run("spot_slope", json!({"at": point(round(v.mm(at))), "view": key}));
             }
             Tool::Tag => {
                 if let Some(id) = hovered {
@@ -3250,7 +3257,12 @@ impl BimApp {
             }
             Tool::Spot => {
                 let at = round(v.mm(q));
-                sketched(&Element::Spot(Spot { view: m.guid(key), at, host: m.spot_host(level, at).map(|h| m.guid(h)) }));
+                sketched(&Element::Spot(Spot { view: m.guid(key), at, host: m.spot_host(level, at).map(|h| m.guid(h)), slope: false }));
+                return;
+            }
+            Tool::SpotSlope => {
+                let at = round(v.mm(q));
+                sketched(&Element::Spot(Spot { view: m.guid(key), at, host: m.spot_host(level, at).map(|h| m.guid(h)), slope: true }));
                 return;
             }
             // The door or window a click would put in the wall, as the command makes it, and how far it stands from

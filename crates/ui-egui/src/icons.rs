@@ -94,6 +94,7 @@ icon_names! {
     Theme,
     Text,
     Spot,
+    SpotSlope,
     Angular,
     Radial,
     Linear,
@@ -855,6 +856,13 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(5.0, 8.0), (13.0, 8.0), (9.0, 16.0)]);
             g.line(&[(15.0, 7.0), (21.0, 7.0)]);
             g.line(&[(15.0, 11.0), (19.0, 11.0)]);
+        }
+        Icon::SpotSlope => {
+            // A falling top, an arrow down it, and its fall written over.
+            g.line(&[(3.0, 13.0), (21.0, 19.0)]);
+            g.line(&[(6.0, 9.0), (18.0, 13.0)]);
+            g.line(&[(14.0, 9.5), (18.0, 13.0), (13.5, 14.0)]);
+            g.line(&[(4.0, 4.0), (9.0, 4.0)]);
         }
         Icon::Angular => {
             // Two rays and their shared-center angular dimension arc.
