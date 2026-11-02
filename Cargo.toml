@@ -19,6 +19,8 @@ proj-core = { version = "0.13", default-features = false }
 spade = "2"
 # OSM XML: pure Rust, forbid(unsafe_code), no DTDs, a limit on nodes; MIT OR Apache-2.0.
 roxmltree = "0.21"
+# Elevation tiles are PNGs: decoded and, in tests, encoded; the version the picture crates already pull in.
+png = "0.17"
 bimcraft-core = { path = "crates/core" }
 bimcraft-i18n = { path = "crates/i18n", default-features = false }
 serde = { version = "1", features = ["derive", "rc"] }
@@ -30,6 +32,8 @@ flate2 = "1"
 zune-jpeg = "0.5"
 bimcraft-ui-egui = { path = "crates/ui-egui" }
 bimcraft-update = { path = "crates/update" }
+# Fetching OpenStreetMap and elevation data: the other code that phones home, and only the desktop app attaches it.
+bimcraft-geofetch = { path = "crates/geofetch" }
 # The Revit reader: Apache-2.0 only, so the command line and the desktop take it through an optional feature.
 bimcraft-rvt = { path = "crates/rvt" }
 # The DWG bridge: MIT OR Apache-2.0 itself, over acadrust (MPL-2.0, unmodified); the core never depends on it.

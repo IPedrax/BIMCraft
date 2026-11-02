@@ -517,6 +517,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "bimcraft-geofetch"
+version = "0.9.0"
+dependencies = [
+ "bimcraft-core",
+ "png 0.17.16",
+ "ring",
+ "serde_json",
+ "ureq",
+]
+
+[[package]]
 name = "bimcraft-i18n"
 version = "0.9.0"
 dependencies = [
