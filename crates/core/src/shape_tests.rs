@@ -475,3 +475,49 @@ fn a_shapes_labels_give_each_points_height_relative_or_above_its_level() {
     assert_eq!(s.model.shape_labels(fl, false), [(P2(4000.0, 3000.0), -30.0)]);
     assert_eq!(s.model.shape_labels(fl, true), [(P2(4000.0, 3000.0), 20.0)], "50 up, 30 down, above Level 2");
 }
+
+/// The 3D view's default camera on the model, 1200 by 800 pixels.
+fn camera(s: &Session) -> crate::view3d::Camera {
+    crate::view3d::Scene::new(&s.model).fit(crate::view3d::AZIMUTH, crate::view3d::ELEVATION, 1200, 800)
+}
+
+#[test]
+fn in_3d_a_click_lands_on_the_shaped_top_and_picks_points_corners_and_edges() {
+    use crate::view3d::{on_floor_top, shape_handles, shape_pick_3d};
+    let mut s = Session::new();
+    let f = slab(&mut s);
+    run(
+        &mut s,
+        "edit_shape",
+        json!({"id": f, "points": [{"at": [4000, 3000], "z": -300}], "lines": [{"a": [0, 6000], "b": [4000, 3000]}]}),
+    );
+    let cam = camera(&s);
+    let Some(crate::model::Element::Floor(fl)) = s.model.elements.get(f) else { panic!("no floor") };
+    // Each point and corner where the top is: the drain 300 mm down, the corners at the top.
+    let (handles, edges) = shape_handles(&s.model, fl);
+    assert_eq!(handles.len(), 5);
+    assert_eq!(handles[0], (P2(4000.0, 3000.0), [4000.0, 3000.0, -300.0]));
+    assert!(handles.contains(&(P2(8000.0, 6000.0), [8000.0, 6000.0, 0.0])));
+    assert_eq!(edges.len(), 5, "the split line and the outline's four");
+    let px = |p: [f64; 3]| {
+        let (x, y, _) = cam.project(p);
+        (x, y)
+    };
+    // A pixel showing a point on a sloped plane of the top gives it back in plan.
+    let on = [2000.0, 3000.0, -150.0];
+    let hit = on_floor_top(&s.model, fl, &cam, px(on)).unwrap();
+    assert!(hit.dist(P2(2000.0, 3000.0)) < 0.5, "{hit:?}");
+    // Picks as in plan, in pixels: the drain, a corner, the split line's two ends, nothing.
+    let (dx, dy) = px([4000.0, 3000.0, -300.0]);
+    assert_eq!(shape_pick_3d(&s.model, fl, &cam, (dx + 3.0, dy - 2.0), 8.0), [P2(4000.0, 3000.0)]);
+    assert_eq!(shape_pick_3d(&s.model, fl, &cam, px([8000.0, 0.0, 0.0]), 8.0), [P2(8000.0, 0.0)]);
+    assert_eq!(shape_pick_3d(&s.model, fl, &cam, px([2000.0, 4500.0, -150.0]), 8.0), [P2(0.0, 6000.0), P2(4000.0, 3000.0)]);
+    assert!(shape_pick_3d(&s.model, fl, &cam, px([6000.0, 1500.0, -150.0]), 2.0).is_empty());
+    // Off the floor, no hit.
+    assert_eq!(on_floor_top(&s.model, fl, &cam, px([12000.0, 3000.0, 0.0])), None);
+    // In perspective too, from the eye.
+    let eye = crate::view3d::Camera { lens: Some(35.0), ..cam };
+    let (x, y, _) = eye.project(on);
+    let hit = on_floor_top(&s.model, fl, &eye, (x, y)).unwrap();
+    assert!(hit.dist(P2(2000.0, 3000.0)) < 0.5, "{hit:?}");
+}

@@ -5404,6 +5404,7 @@ mod purge;
 mod reinforce;
 mod revit;
 mod section_box;
+mod shape3d;
 mod sketch;
 mod smallest;
 mod standards;

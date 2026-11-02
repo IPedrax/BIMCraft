@@ -4,16 +4,19 @@
 //! click picks the element the picture shows there, and so does a press let go quickly, however
 //! far the hand went with it (`Canvas::quick_press`): the camera it turned goes back. A level
 //! selected alone has a grip at the middle of each edge of its plane, which a drag moves over it. A section box is drawn
-//! round what it keeps, with a grip on each face in Modify that a drag moves along its axis (`section_box.rs`).
+//! round what it keeps, with a grip on each face in Modify that a drag moves along its axis (`section_box.rs`). With Shape Editing's tools, the
+//! selected floor's points and corners have grips that drag their heights, and clicks land on its top (`shape.rs`).
 
 use std::sync::Arc;
 
 use bimcraft_core::geom::{self, P2};
 use bimcraft_core::graphics::{Look, VisualStyle};
-use bimcraft_core::model::{Id, Model};
+use bimcraft_core::model::{Element, Id, Model, TOL};
 use bimcraft_core::render::{self, Rgb};
 use bimcraft_core::view3d::gpu::{Hit, Mesh};
-use bimcraft_core::view3d::{AZIMUTH, Camera, ELEVATION, Image, MAX_SIDE, P3, Scene, box_grips, move_box_face};
+use bimcraft_core::view3d::{
+    AZIMUTH, Camera, ELEVATION, Image, MAX_SIDE, P3, Scene, box_grips, move_box_face, on_floor_top, shape_handles, shape_pick_3d,
+};
 use egui::{
     Align, Color32, ColorImage, Layout, PointerButton, Pos2, Rect, Sense, Stroke, StrokeKind, TextureHandle, TextureOptions, Ui, UiBuilder,
     pos2, vec2,
@@ -74,6 +77,9 @@ pub struct Orbit {
     grip: Option<(Id, usize)>,
     /// A section box's grip being dragged: which face (as `view3d::box_grips` orders them), and where the drag began.
     boxing: Option<(usize, Pos2)>,
+    /// A shaped floor's point or corner being dragged up or down: where it is in plan and in the model, and where the drag
+    /// began.
+    lift: Option<(P2, P3, Pos2)>,
 }
 
 impl Default for Orbit {
@@ -92,6 +98,7 @@ impl Default for Orbit {
             before: None,
             grip: None,
             boxing: None,
+            lift: None,
         }
     }
 }
@@ -182,6 +189,20 @@ impl BimApp {
         let model = self.view_model();
         let (modify, demolish, selection) = (self.tool == Tool::Modify, self.tool == Tool::Demolish, self.selection.clone());
         let (paint, unpaint) = (self.tool == Tool::Paint, self.tool == Tool::Unpaint);
+        // The floor being shaped, with Shape Editing's tools: its points and corners where its top is, which Modify Sub
+        // Elements' grips drag up or down; Add Point and Add Split Line click on its top.
+        let shaping = self.shaping().and_then(|id| match model.elements.get(id) {
+            Some(Element::Floor(f)) => Some(f.clone()),
+            _ => None,
+        });
+        let lifting = shaping.is_some() && self.tool == Tool::ModifySubElements;
+        let split_start = match self.tool {
+            Tool::AddSplitLine(start) => start,
+            _ => None,
+        };
+        let adding = shaping.is_some() && matches!(self.tool, Tool::AddPoint | Tool::AddSplitLine(_));
+        let handles = shaping.as_ref().map(|f| shape_handles(&model, f).0).unwrap_or_default();
+        let absolute = self.shape_absolute;
         let o = &mut self.orbit;
         (o.rect, o.ppp) = (rect, ppp);
         let scene = scene_of(&mut o.scene, &model);
@@ -261,11 +282,38 @@ impl BimApp {
         {
             boxed_to = Some(to);
         }
+        // A drag from a grip of the floor being shaped raises or lowers that point or corner, to the millimetre; the command
+        // runs when the drag ends.
+        if lifting
+            && o.grip.is_none()
+            && o.boxing.is_none()
+            && response.drag_started_by(PointerButton::Primary)
+            && let Some(origin) = ui.input(|i| i.pointer.press_origin())
+        {
+            let off = |p: &P3| on_screen(&cam, rect, ppp, *p).distance(origin);
+            o.lift =
+                handles.iter().filter(|(_, p)| off(p) <= 8.0).min_by(|a, b| off(&a.1).total_cmp(&off(&b.1))).map(|(q, p)| (*q, *p, origin));
+        }
+        if !lifting {
+            o.lift = None;
+        }
+        let lifted_by = match (o.lift, latest) {
+            (Some((_, at, from)), Some(now)) => cam.along(2, at, px(from), px(now)).map(f64::round),
+            _ => None,
+        };
+        let mut raise = None;
+        if response.drag_stopped()
+            && let Some((q, ..)) = o.lift.take()
+            && !self.canvas.quick()
+        {
+            raise = lifted_by.map(|by| (q, by));
+        }
         // The primary button, or Shift and the middle button, orbit, 0.4° a point; the middle
         // button alone pans.
         if response.drag_started()
             && o.grip.is_none()
             && o.boxing.is_none()
+            && o.lift.is_none()
             && let Some(origin) = ui.input(|i| i.pointer.press_origin())
         {
             o.drag = Some((response.dragged_by(PointerButton::Primary) || shift, origin));
@@ -383,9 +431,63 @@ impl BimApp {
         if let Some(b) = reboxed.or(boxed) {
             crate::section_box::draw(&p, &cam, b, modify, o.boxing.map(|(k, _)| k), screen);
         }
+        // Where a click lands on the floor being shaped, in plan: a point or corner within reach of it, or its top there.
+        let landing = |at: Pos2| -> Option<P2> {
+            let off = |p: &P3| on_screen(&cam, rect, ppp, *p).distance(at);
+            let near = handles.iter().filter(|(_, p)| off(p) <= 8.0).min_by(|a, b| off(&a.1).total_cmp(&off(&b.1))).map(|(q, _)| *q);
+            near.or_else(|| on_floor_top(&model, shaping.as_ref()?, &cam, px(at)))
+        };
+        // Where the floor's top is over plan point `q`.
+        let on_top = |q: P2| -> Option<P3> {
+            let f = shaping.as_ref()?;
+            Some([q.0, q.1, model.floor_top(f).at(q) + model.shape_height(f, q)])
+        };
+        if let Some(f) = &shaping {
+            let (base, level) = (model.floor_top(f), model.elevation(f.level));
+            let held = o.lift.map(|(q, ..)| q);
+            for (q, at) in &handles {
+                let is_held = held.is_some_and(|h| h.dist(*q) <= TOL);
+                let by = if is_held { lifted_by.unwrap_or(0.0) } else { 0.0 };
+                let (from, to) = (screen(*at), screen([at[0], at[1], at[2] + by]));
+                if !to.is_finite() {
+                    continue;
+                }
+                if is_held {
+                    p.line_segment([from, to], Stroke::new(1.5, pal().accent));
+                }
+                if lifting {
+                    let r = Rect::from_center_size(to, vec2(9.0, 9.0));
+                    p.rect_filled(r, 1.0, if is_held { pal().accent } else { canvas_pal().surface });
+                    p.rect_stroke(r, 1.0, Stroke::new(1.5, pal().accent), StrokeKind::Middle);
+                }
+                // Its height as the Options Bar's Elevation reads it: a shape point's always, a corner's while it's held.
+                let point = f.shape.points.iter().any(|s| s.at.dist(*q) <= TOL);
+                if point || is_held {
+                    let z = at[2] + by - if absolute { level } else { base.at(*q) };
+                    crate::canvas::tag(&p, to + vec2(8.0, -8.0), egui::Align2::LEFT_BOTTOM, model.units.length(z));
+                }
+            }
+            // Where a click would add a point, or end the split line begun.
+            if adding && let Some(at) = hover.and_then(landing).and_then(on_top) {
+                let to = screen(at);
+                match split_start.and_then(on_top) {
+                    Some(start) => {
+                        p.line_segment([screen(start), to], Stroke::new(1.5, pal().accent));
+                    }
+                    None => {
+                        p.circle_stroke(to, 4.0, Stroke::new(1.5, pal().accent));
+                    }
+                }
+            }
+        }
         // A click on a grip picks nothing behind it.
         let click = response.clicked().then(|| response.interact_pointer_pos()).flatten().or(self.canvas.quick_press());
         let click = click.filter(|at| !boxed.is_some_and(|b| modify && crate::section_box::grip_at(b, *at, screen).is_some()));
+        // Shape Editing's clicks are the floor's, not the picture's.
+        let shape_click = click.filter(|_| shaping.is_some());
+        let shape_reach = 8.0 * f64::from(ppp);
+        let landed = shape_click.map(|at| (landing(at), px(at)));
+        let click = click.filter(|_| shaping.is_none());
         let clicked = click.map(|at| pick(&o.picker, at).map(|h| h.id));
         // The face of what's clicked, as paint names the faces of an element.
         let face = click.and_then(|at| pick(&o.picker, at).map(|h| h.face).filter(|f| !f.is_empty()));
@@ -407,6 +509,17 @@ impl BimApp {
         }
         if let Some((lo, hi)) = boxed_to {
             self.run("section_box", json!({"min": lo, "max": hi}));
+        }
+        if let Some((q, by)) = raise {
+            self.shape_raise(q, by);
+        }
+        if let Some((landed, at)) = landed {
+            match (&self.tool, landed) {
+                (Tool::ModifySubElements, _) => self.shape_modify(|f| shape_pick_3d(&model, f, &cam, at, shape_reach)),
+                (Tool::AddPoint, Some(q)) => self.shape_add_point(q),
+                (Tool::AddSplitLine(_), Some(q)) => self.shape_split(q),
+                _ => self.status = Status { text: crate::lang::t("click on the floor's top").into(), error: true },
+            }
         }
         // The navigation bar, at the view's top right: Home (Revit's default orientation), fit, zoom.
         let bar = Rect::from_min_size(self.nav_corner(rect), vec2(32.0, 104.0));

@@ -75,7 +75,9 @@ saying why. In the desktop, a floor selected shows Shape Editing in its contextu
 click on the top, at the Options Bar's Elevation, above the unshaped top or, with Absolute, above the level; empty, the
 top's height there), Add Split Line (two clicks, snapping to points, corners and edges) and Reset Shape, each a command.
 While one is on, each point's height is labelled beside it (`Model::shape_labels`); under Modify Sub Elements a point's
-grip drags it in plan at its height, its split lines with it (`Shape::moved`), in one `edit_shape`. Type Properties ticks a floor's or a roof's variable layer. A ceiling's `offset` is its underside; its `openings` are holes as a floor's
+grip drags it in plan at its height, its split lines with it (`Shape::moved`), in one `edit_shape`. In the 3D view the
+same tools work on the floor's top: each point's and corner's grip drags its height up or down, and clicks land on the top
+(`view3d::shape_handles`, `on_floor_top`, `shape_pick_3d`); both views run `shape.rs`. Type Properties ticks a floor's or a roof's variable layer. A ceiling's `offset` is its underside; its `openings` are holes as a floor's
 are, and `Model::ceiling_slabs` what's left. A shaft cuts each floor,
 ceiling and roof its span reaches into over its outline, all the way through (`Model::less_shafts`). A stair or a ramp
 is runs and landings laid out from its start (`stairs::stair`, `stairs::ramp`): a landing after `at` risers (a ramp's, `at`

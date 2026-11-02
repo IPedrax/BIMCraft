@@ -28,7 +28,11 @@ Status, on the branch `mod-16-shape-editing` (raised upstream as IPedrax/BIMCraf
   has a grip, and a drag moves it in plan at its height, the split lines ending there with it, in one `edit_shape`
   (`Shape::point_near`, `Shape::moved`; test `modify_sub_elements_drags_a_point_with_its_split_lines_and_labels_its_height`).
   Absolute is above the floor's level for every tool (`absolute_elevations_are_above_the_floors_level_on_any_level`).
-  Left for later: dragging heights in the 3D view.
+  The 3D view edits it too (`orbit.rs`, `shape.rs`): with a Shape Editing tool, each point and corner of the selected
+  floor has a grip where its top is, and a drag raises or lowers it to the millimetre (`Camera::along`); a click picks as
+  in plan, in pixels (`view3d::shape_pick_3d`), and Add Point and Add Split Line land on the top under the cursor
+  (`Camera::on_slope`, `view3d::on_floor_top`), or on a point or corner within reach (tests in
+  `crates/ui-egui/src/tests/shape3d.rs`).
 - **Phases 4 and 5** are a proposal.
 
 Line numbers are as of `0733fd4`.
@@ -218,7 +222,7 @@ New rules, each with an error that says what to fix:
 - **Add Point:** click on the top. The Options Bar takes the height and an Absolute check box.
 - **Add Split Line:** two clicks, snapping to points, corners and edges.
 - **Modify Sub Elements:** click a point or an edge (an edge sets both its ends) and type its height. Points drag in plan
-  with the usual grips; dragging heights in the 3D view (`orbit.rs`) comes later.
+  with the usual grips; in the 3D view (`orbit.rs`) their grips, and the corners', drag heights up or down.
 - Every action runs a command. The canvas holds no geometry of its own (CLAUDE.md, "The UI is thin").
 - egui_kittest tests: place a point at a model point, type −30, and check the reply's top range and the plan's pixels.
 
