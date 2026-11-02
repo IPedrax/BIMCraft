@@ -263,6 +263,25 @@ pub static ALL: &[Command] = &[
          crosses itself is found as two that cross are",
         edit_boundary,
     ),
+    other(
+        "cut_fill",
+        "Cut and Fill",
+        "{pads?: [ids], terrain?} or {existing, proposed, cell?} the earth building pads take out of the terrain and put in, in m³ (cut where the \
+         ground is above a pad's top, fill where below; `net_m3` is fill less cut, so positive means earth to bring in): each pad's and \
+         the total, exact, against `terrain` (a toposurface's id) or the one each pad lies over; every pad by default. With `existing` \
+         and `proposed`, the ids of two toposurfaces, the earth between them over where both are, by cells of `cell` mm (as fine as \
+         keeps them to about 250,000 by default)",
+        cut_fill,
+    ),
+    edit(
+        "place_on_terrain",
+        "Place on Terrain",
+        &[],
+        "{ids: [ids], terrain?, offset?} stands masses, columns, footings, components and walls on the ground: each at the lowest ground \
+         under its footprint (a wall along its axis), `offset` mm above it (below, if negative: an embedment), whatever level it is on. \
+         `terrain` is a toposurface's id, by default the project's only one. What is not over the terrain is left, and said",
+        place_on_terrain,
+    ),
     edit(
         "pad",
         "Building Pad",
@@ -5765,25 +5784,7 @@ fn import_osm(s: &mut Session, p: &Value) -> R {
     };
     let level = level_param(c, m, p, "level")?;
     let level_z = m.elevation(level);
-    let tin = match id_opt(c, p, "terrain")? {
-        Some(g) => Some(terrain_of(c, m, &json!({"id": g}))?.1),
-        None => {
-            let all: Vec<&Toposurface> =
-                m.elements.values().filter_map(|e| if let Element::Toposurface(t) = e { Some(t) } else { None }).collect();
-            match all.as_slice() {
-                [] => None,
-                [one] => Some((*one).clone()),
-                many => {
-                    return Err(bad(
-                        c,
-                        format!("the project has {} toposurfaces: give the `terrain` id of the one to stand on", many.len()),
-                    ));
-                }
-            }
-        }
-    }
-    .map(|t| t.tin().map_err(|why| bad(c, why)))
-    .transpose()?;
+    let tin = terrain_tin(c, m, p, "terrain")?;
     let osm = crate::osm::parse(&text).map_err(|why| bad(c, why))?;
     let found = crate::osm::buildings(&osm, &options);
     let projector = location.projector().map_err(|why| bad(c, why))?;
@@ -5851,17 +5852,10 @@ fn import_osm(s: &mut Session, p: &Value) -> R {
         }
         courtyards += b.holes.len();
         let ground = match &tin {
-            Some(tin) => {
-                let n = ring.len() as f64;
-                let middle = P2(ring.iter().map(|q| q.0).sum::<f64>() / n, ring.iter().map(|q| q.1).sum::<f64>() / n);
-                let low = ring.iter().chain([&middle]).filter_map(|q| tin.height_at(q.0, q.1)).fold(f64::MAX, f64::min);
-                if low == f64::MAX {
-                    off_terrain += 1;
-                    level_z
-                } else {
-                    low
-                }
-            }
+            Some(tin) => lowest_ground(tin, &ring).unwrap_or_else(|| {
+                off_terrain += 1;
+                level_z
+            }),
             None => level_z,
         };
         let cut = |t: &str| -> String { t.chars().take(MAX_TEXT.min(256)).collect() };
@@ -5955,6 +5949,207 @@ fn pad_cut_fill(m: &Model, pd: &Pad) -> Option<crate::topo::CutFill> {
         first.get_or_insert(r);
     }
     first
+}
+
+/// The terrain a command stands things on or compares with: the toposurface `key` names, else the project's only one; none where there
+/// is none, and an error where there are several and none is named.
+fn terrain_tin(c: &str, m: &Model, p: &Value, key: &str) -> Result<Option<std::sync::Arc<crate::topo::Tin>>, String> {
+    let chosen = match id_opt(c, p, key)? {
+        Some(g) => Some(toposurface_named(c, m, g)?),
+        None => {
+            let all: Vec<&Toposurface> =
+                m.elements.values().filter_map(|e| if let Element::Toposurface(t) = e { Some(t) } else { None }).collect();
+            match all.as_slice() {
+                [] => None,
+                [one] => Some((*one).clone()),
+                many => {
+                    return Err(bad(c, format!("the project has {} toposurfaces: give the `{key}` id of the one to use", many.len())));
+                }
+            }
+        }
+    };
+    chosen.map(|t| t.tin().map_err(|why| bad(c, why))).transpose()
+}
+
+/// The toposurface `g` names.
+fn toposurface_named(c: &str, m: &Model, g: Guid) -> Result<Toposurface, String> {
+    match m.elements.get(g) {
+        Some(Element::Toposurface(t)) => Ok(t.clone()),
+        _ => Err(bad(c, format!("{g} isn't a toposurface"))),
+    }
+}
+
+/// The lowest ground under a footprint: at its corners and its middle; none where none of them is over the surface.
+fn lowest_ground(tin: &crate::topo::Tin, ring: &[P2]) -> Option<f64> {
+    if ring.is_empty() {
+        return None;
+    }
+    let n = ring.len() as f64;
+    let middle = P2(ring.iter().map(|q| q.0).sum::<f64>() / n, ring.iter().map(|q| q.1).sum::<f64>() / n);
+    let low = ring.iter().chain([&middle]).filter_map(|q| tin.height_at(q.0, q.1)).fold(f64::MAX, f64::min);
+    (low != f64::MAX).then_some(low)
+}
+
+/// m³ from mm³, to the litre.
+fn cubic_metres(mm3: f64) -> f64 {
+    (mm3 / 1e9 * 1000.0).round() / 1000.0
+}
+
+fn cut_fill(s: &mut Session, p: &Value) -> R {
+    let c = "cut_fill";
+    only(c, p, &["pads", "terrain", "existing", "proposed", "cell"])?;
+    let m = &s.model;
+    let cell = num(c, p, "cell")?;
+    if cell.is_some_and(|x| x <= 0.0) {
+        return Err(bad(c, "`cell` is a size in mm above 0"));
+    }
+    let surfaces = !absent(p.get("existing")) || !absent(p.get("proposed"));
+    if surfaces && (!absent(p.get("pads")) || !absent(p.get("terrain"))) {
+        return Err(bad(c, "give `pads` (and `terrain`) or `existing` and `proposed`, not both"));
+    }
+    if surfaces {
+        let (Some(e), Some(q)) = (id_opt(c, p, "existing")?, id_opt(c, p, "proposed")?) else {
+            return Err(bad(c, "`existing` and `proposed`, the ids of two toposurfaces, are both needed"));
+        };
+        let (first, second) = (toposurface_named(c, m, e)?, toposurface_named(c, m, q)?);
+        let (first, second) = (first.tin().map_err(|why| bad(c, why))?, second.tin().map_err(|why| bad(c, why))?);
+        // As fine as keeps the cells to about 250,000, and no finer than 10 mm.
+        let cell = cell.unwrap_or_else(|| {
+            let (lo, hi) = (first.bounds().0, first.bounds().1);
+            let area = (hi[0] - lo[0]).max(1.0) * (hi[1] - lo[1]).max(1.0);
+            (area / 250_000.0).sqrt().max(10.0)
+        });
+        let r = crate::topo::between(&first, &second, cell, 4_000_000).map_err(|why| bad(c, why))?;
+        return Ok(json!({
+            "method": "grid", "existing": e, "proposed": q, "cell": r.cell, "cells": r.cells, "area_m2": m2(r.area),
+            "cut_m3": cubic_metres(r.cut), "fill_m3": cubic_metres(r.fill), "net_m3": cubic_metres(r.fill - r.cut),
+        }));
+    }
+    let pads: Vec<(Id, Pad)> = match p.get("pads") {
+        v if absent(v) => {
+            m.elements.iter().filter_map(|(id, e)| if let Element::Pad(pd) = e { Some((*id, pd.clone())) } else { None }).collect()
+        }
+        Some(Value::Array(a)) if a.len() <= MAX_POINTS => {
+            let mut out = Vec::new();
+            for v in a {
+                let g: Guid = serde_json::from_value(v.clone()).map_err(|_| bad(c, format!("`pads` is a list of pad ids, not {v}")))?;
+                match (m.elements.id(g), m.elements.get(g)) {
+                    (Some(id), Some(Element::Pad(pd))) => out.push((id, pd.clone())),
+                    _ => return Err(bad(c, format!("{g} isn't a pad"))),
+                }
+            }
+            out
+        }
+        Some(v) => return Err(bad(c, format!("`pads` is a list of pad ids, not {v}"))),
+        None => Vec::new(),
+    };
+    if pads.is_empty() {
+        return Err(bad(c, "no pad; make one with `pad`"));
+    }
+    let chosen = terrain_tin(c, m, p, "terrain")?;
+    if chosen.is_none() && !m.elements.values().any(|e| matches!(e, Element::Toposurface(_))) {
+        return Err(bad(c, "no terrain to cut and fill: make one with `toposurface` or `fetch_terrain`"));
+    }
+    let (mut cut, mut fill) = (0.0, 0.0);
+    let mut listed = Vec::new();
+    for (id, pd) in &pads {
+        let top = m.elevation(pd.level) + pd.offset;
+        let r = match (&chosen, !absent(p.get("terrain"))) {
+            (Some(tin), true) => tin.cut_fill(&pd.footprint(), top).ok(),
+            _ => pad_cut_fill(m, pd),
+        };
+        let r = r.unwrap_or_default();
+        cut += r.cut;
+        fill += r.fill;
+        listed.push(json!({
+            "id": id, "name": pd.name, "top": top, "area_m2": m2(r.pad_area), "covered_m2": m2(r.covered),
+            "cut_m3": cubic_metres(r.cut), "fill_m3": cubic_metres(r.fill), "net_m3": cubic_metres(r.fill - r.cut),
+        }));
+    }
+    Ok(json!({
+        "method": "pads", "pads": listed,
+        "totals": {"cut_m3": cubic_metres(cut), "fill_m3": cubic_metres(fill), "net_m3": cubic_metres(fill - cut)},
+    }))
+}
+
+fn place_on_terrain(s: &mut Session, p: &Value) -> R {
+    let c = "place_on_terrain";
+    only(c, p, &["ids", "terrain", "offset"])?;
+    let wanted: Vec<Guid> = match p.get("ids") {
+        Some(Value::Array(a)) if !a.is_empty() && a.len() <= MAX_POINTS => a
+            .iter()
+            .map(|v| serde_json::from_value(v.clone()).map_err(|_| bad(c, format!("`ids` is a list of element ids, not {v}"))))
+            .collect::<Result<_, _>>()?,
+        other => {
+            return Err(bad(
+                c,
+                format!(
+                    "`ids`, a list of the ids of what to stand on the terrain, is required, not {}",
+                    other.map_or("nothing".into(), Value::to_string)
+                ),
+            ));
+        }
+    };
+    let offset = num(c, p, "offset")?.unwrap_or(0.0);
+    let m = &s.model;
+    let Some(tin) = terrain_tin(c, m, p, "terrain")? else {
+        return Err(bad(c, "no terrain to stand them on: make one with `toposurface` or `fetch_terrain`"));
+    };
+    // What each is: where its footprint is, how it is held (its level's elevation), and what field holds its height.
+    #[derive(Clone, Copy)]
+    enum Field {
+        Base,
+        Offset,
+    }
+    let (mut moved, mut skipped, mut changes) = (Vec::new(), Vec::new(), Vec::new());
+    for g in wanted {
+        let Some(id) = m.elements.id(g) else { return Err(bad(c, format!("{g} isn't an element"))) };
+        let Some(e) = m.elements.get(id) else { return Err(bad(c, format!("{g} isn't an element"))) };
+        let (points, level, field, was): (Vec<P2>, Guid, Field, f64) = match e {
+            Element::Mass(ms) => (ms.footprint(), ms.level, Field::Base, ms.base_offset),
+            Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
+                let mut pts = m.column_outline(e);
+                pts.push(col.at);
+                (pts, col.level, Field::Base, col.base_offset)
+            }
+            Element::Component(comp) => (vec![comp.at], comp.level, Field::Offset, comp.offset),
+            Element::Wall(w) => {
+                // Along its axis, as a straight line from end to end: an arc's belly is not looked at.
+                let pts = (0..=10).map(|i| w.start + (w.end - w.start) * (f64::from(i) / 10.0)).collect();
+                (pts, w.level, Field::Base, w.base_offset)
+            }
+            other => {
+                return Err(bad(
+                    c,
+                    format!(
+                        "{id} is a {}, which can't be stood on the terrain: masses, columns, footings, components and walls can",
+                        other.category()
+                    ),
+                ));
+            }
+        };
+        let Some(ground) = lowest_ground(&tin, &points) else {
+            skipped.push(json!({"id": id, "why": "it is not over the terrain"}));
+            continue;
+        };
+        let now = ground - m.elevation(level) + offset;
+        changes.push((id, field, now));
+        moved.push(json!({"id": id, "was": was, "now": now}));
+    }
+    if moved.is_empty() {
+        return Err(bad(c, "none of them is over the terrain: move them over it, or the terrain under them"));
+    }
+    let model = s.model_mut();
+    for (id, field, now) in changes {
+        match (model.elements.get_mut(id), field) {
+            (Some(Element::Mass(ms)), _) => ms.base_offset = now,
+            (Some(Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col)), _) => col.base_offset = now,
+            (Some(Element::Wall(w)), _) => w.base_offset = now,
+            (Some(Element::Component(comp)), Field::Offset) => comp.offset = now,
+            _ => {}
+        }
+    }
+    Ok(json!({"moved": moved, "skipped": skipped}))
 }
 
 fn pad(s: &mut Session, p: &Value) -> R {

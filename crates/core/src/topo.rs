@@ -375,6 +375,11 @@ impl Tin {
         (a, b)
     }
 
+    /// The lower and the upper corner of the box round the surface, in plan.
+    pub fn bounds(&self) -> ([f64; 2], [f64; 2]) {
+        (self.lo, self.hi)
+    }
+
     pub fn triangles(&self) -> &[[P3; 3]] {
         &self.tris
     }

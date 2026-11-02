@@ -323,7 +323,7 @@ more to say.
 | Id | Idea | Seen in | Diff. | Value | Notes |
 |---|---|---|---|---|---|
 | SITE-01 | **Terrain from points, contours or a survey file**, with sub-regions (paving, grass) and building pads that cut it | Revit (toposolid), Archicad (Mesh), Vectorworks (Site Model) | 4 | ●●● | Roadmap 2.x Site |
-| SITE-02 | **Cut and fill**: volumes between existing and proposed terrain, coloured in plan | Vectorworks, Civil 3D | 3 | ●● | After SITE-01 |
+| SITE-02 | **Cut and fill**: volumes between existing and proposed terrain, coloured in plan | Vectorworks, Civil 3D | 3 | ●● | After SITE-01. Done in the core: exact pad cut and fill, and a gridded comparison of two surfaces ([terrain](docs/areas/terrain.md)); the plan colouring is not |
 | SITE-03 | **Slope analysis map** with a legend of slope ranges | Vectorworks (site model analysis legends) | 2 | ●● | |
 | SITE-04 | **Geolocation and true north**: project at real coordinates (EPSG code), survey point, written to IFC `IfcMapConversion` | Revit (shared coordinates), Archicad | 3 | ●●● | Revit's shared coordinates confuse everybody; make it one clear dialog. Done in the core: the `geolocate` command, IFC map conversion in and out ([georeferencing](docs/areas/georeferencing.md)); the dialog and a survey point are not |
 | SITE-05 | **Hardscape and landscaping**: paths, walls, steps on terrain; trees and planting areas with species data | Vectorworks (Landmark) | 4 | ●● | |

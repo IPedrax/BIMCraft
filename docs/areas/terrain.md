@@ -38,6 +38,26 @@ a plan drawn again, a height asked again, is not triangulating again.
 - **IFC**: an `IfcGeographicElement` (`.TERRAIN.`) with a face set, contained in the `IfcSite`, with its material. Import makes a
   toposurface of such an element, from its vertices (breaklines, boundary and interval are not in IFC).
 
+## Pads, cut and fill, and standing things on the ground
+
+**`pad`**: Revit's building pad, an element with a `level`, an outline flat at `offset` mm above it, and a `thickness` (300 by default): a slab
+under its top. It is a category (`pad`: phases, project parameters, views may hide it), drawn as an outline on its own level's plan, a
+slab in 3D, scheduled (Name, Level, Area, Top, Thickness, Cut, Fill, Net), moved, turned and mirrored in plan, and exported as an
+`IfcSlab` (`.BASESLAB.`, object type `Pad`) on its storey, read back as a pad and never as a floor. `FORMAT` 13 added it.
+
+**Cut and fill** (`Tin::cut_fill`, the `cut_fill` command, and `cut_m3`, `fill_m3`, `net_m3` in a pad's listing): cut is where the ground is above
+the pad's top, fill where it is below; `net_m3` is fill less cut, so positive is earth to bring in. It is **exact**: the pad's outline is cut into
+triangles (any simple outline, either way round, concave too), each is clipped to the triangles of the ground it meets, and in each piece the
+ground less the pad's top is a linear function whose positive and negative parts are integrated, cutting the piece where it crosses zero.
+Walls are vertical: the pad's edge is a step in the ground, not a slope. A pad partly off the terrain counts what is over it (`covered_m2`
+against its whole `area_m2`). Two pads that overlap are counted twice each; keep them apart. `cut_fill {existing, proposed}` compares two
+toposurfaces over where both are, by the midpoint of cells (`cell`, about 250,000 of them by default), so its volumes are near, not exact
+(the error is the cells that straddle where the surfaces cross).
+
+**`place_on_terrain {ids, terrain?, offset?}`** stands masses, columns, footings, components and walls on the ground: each at the lowest ground
+under its footprint (corners and middle; a wall along its axis as a straight line), `offset` mm above it (negative for an embedment), measured
+from the element's own level. What is not over the terrain is left and said. `import_osm` does the same for the masses it makes.
+
 ## Heights
 
 A level's elevation and a terrain's z are both project coordinates, so a building at terrain height 3 m is 3 m over Level 1 whatever the
@@ -45,5 +65,5 @@ site's height above sea level; data in metres above sea level (a DEM) must have 
 
 ## Not yet
 
-A desktop tool (the Site tab; `TS` is free for it), pads and subregions, cut and fill, slope maps, contours cut by a section, points
+A desktop tool (the Site tab; `TS` is free for it), pads that grade the surface (a slope out to the ground) and subregions, slope maps, contours cut by a section, points
 from a point cloud, LandXML. Elevation from tiles is `fetch_terrain` ([geofetch](geofetch.md)).

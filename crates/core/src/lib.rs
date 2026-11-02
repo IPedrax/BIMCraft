@@ -22,6 +22,8 @@ pub mod conduit;
 mod constraints;
 mod csg;
 pub mod curves;
+#[cfg(test)]
+mod cutfill_tests;
 pub mod dims;
 pub mod drainage;
 pub mod draw;
