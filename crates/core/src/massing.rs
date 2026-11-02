@@ -1,7 +1,8 @@
 //! What an element made from a mass remembers of it, under reserved names in its `params` (as phases and paint are held):
 //! a floor `mass_floors` made holds `{mass, level}` under [`FLOOR`], so a second run updates it instead of making another;
 //! a wall, floor or roof made by face holds `{mass, face}` under [`FACE`] (an edge number for a wall, `"top"` for a floor or
-//! a roof), so `update_by_face` can rebuild it from the mass as it is now.
+//! a roof, `{storey, rise}` for a floor of a storey: the `storey`th above the mass's base, `rise` mm apart), so `update_by_face`
+//! can rebuild it from the mass as it is now.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -81,19 +82,50 @@ pub(crate) fn check_value(m: &Model, who: &str, key: &str, v: &Value, e: &Elemen
             let level = mark(o, "level").ok_or_else(wrong)?;
             m.level(level).map(|_| ()).ok_or_else(|| format!("{who}: `{key}` names {level}, which isn't a level"))
         } else {
-            match (e, o.get("face")) {
-                (Element::Wall(_), Some(f)) if f.is_u64() => Ok(()),
-                (Element::Floor(_) | Element::Roof(_), Some(f)) if f == "top" => Ok(()),
-                _ => Err(format!("{who}: `{key}` is {shape}: a wall's face is an edge number, a floor's or a roof's is \"top\", not {v}")),
+            match (e, o.get("face").and_then(face_value)) {
+                (Element::Wall(_), Some(Face::Edge(_))) => Ok(()),
+                (Element::Floor(_) | Element::Roof(_), Some(Face::Top)) => Ok(()),
+                (Element::Floor(_), Some(Face::Storey { .. })) => Ok(()),
+                _ => Err(format!(
+                    "{who}: `{key}` is {shape}: a wall's face is an edge number, a floor's or a roof's is \"top\", a storey's floor is {{storey, rise}} with the storey under {MAX_STOREYS} and a rise above 0, not {v}"
+                )),
             }
         }
     })
 }
 
-/// The mass and the face a by-face element was made on, if it holds a mark: a `Some` face is an edge number, `None` the top.
-pub fn face_of(e: &Element) -> Option<(Guid, Option<usize>)> {
+/// The most storeys a building's floors are made for.
+pub const MAX_STOREYS: usize = 500;
+
+/// The face of a mass an element was made on.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Face {
+    /// A wall on an edge of the footprint, numbered from its first point.
+    Edge(usize),
+    /// A floor or a roof on the top.
+    Top,
+    /// A floor of a storey: the footprint at `index` times `rise` mm over the base.
+    Storey { index: usize, rise: f64 },
+}
+
+/// The face a mark's `face` value names, if it is one.
+fn face_value(v: &Value) -> Option<Face> {
+    if let Some(n) = v.as_u64() {
+        return usize::try_from(n).ok().map(Face::Edge);
+    }
+    if v == "top" {
+        return Some(Face::Top);
+    }
+    let o = v.as_object().filter(|o| o.len() == 2)?;
+    let index = usize::try_from(o.get("storey")?.as_u64()?).ok().filter(|i| *i < MAX_STOREYS)?;
+    let rise = o.get("rise")?.as_f64().filter(|r| r.is_finite() && *r > 0.0 && *r <= crate::model::MAX_COORD)?;
+    Some(Face::Storey { index, rise })
+}
+
+/// The mass and the face a by-face element was made on, if it holds a mark.
+pub fn face_of(e: &Element) -> Option<(Guid, Face)> {
     let o = e.params()?.get(FACE)?.as_object()?;
-    Some((mark(o, "mass")?, o.get("face")?.as_u64().and_then(|f| usize::try_from(f).ok())))
+    Some((mark(o, "mass")?, face_value(o.get("face")?)?))
 }
 
 /// The floors `mass_floors` made from `mass` that still lie on the level their mark names, with that level.
@@ -128,10 +160,10 @@ pub fn forget(m: &mut Model, gone: &BTreeSet<Guid>) {
 /// Element `e`, made on `face` of `ms` (an edge number for a wall, none for the top), rebuilt from the mass as it is now:
 /// a wall stands on the edge as tall as the mass, a floor or a roof lies on its top face. What was done to it since
 /// (its type, a roof's slope) stays. The reason, when the face is gone.
-pub fn follow(e: &mut Element, ms: &Mass, mass: Id, face: Option<usize>) -> Result<(), String> {
+pub fn follow(e: &mut Element, ms: &Mass, mass: Id, face: Face) -> Result<(), String> {
     let ring = ms.footprint();
     match (e, face) {
-        (Element::Wall(w), Some(f)) => {
+        (Element::Wall(w), Face::Edge(f)) => {
             let n = ring.len();
             let (Some(&a), Some(&b)) = (ring.get(f), ring.get((f + 1) % n)) else {
                 return Err(format!("was made on face {f} of mass {mass}, which has {n} faces now (0 to {})", n.saturating_sub(1)));
@@ -147,11 +179,15 @@ pub fn follow(e: &mut Element, ms: &Mass, mass: Id, face: Option<usize>) -> Resu
             }
             Ok(())
         }
-        (Element::Floor(fl), None) => {
+        (Element::Floor(fl), Face::Top) => {
             (fl.boundary, (fl.level, fl.offset)) = (ms.top_ring(), ms.top_face());
             Ok(())
         }
-        (Element::Roof(r), None) => {
+        (Element::Floor(fl), Face::Storey { index, rise }) => {
+            (fl.boundary, fl.level, fl.offset) = (ring, ms.level, ms.base_offset + index as f64 * rise);
+            Ok(())
+        }
+        (Element::Roof(r), Face::Top) => {
             (r.boundary, (r.level, r.offset)) = (ms.top_ring(), ms.top_face());
             Ok(())
         }

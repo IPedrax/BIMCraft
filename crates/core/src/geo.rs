@@ -155,7 +155,9 @@ pub fn overpass_query(b: &Bbox, layers: Layers) -> String {
     let mut q =
         format!("[out:json][timeout:60][maxsize:67108864];(way[\"building\"]{at};relation[\"building\"][\"type\"=\"multipolygon\"]{at};");
     if layers.parts {
-        q.push_str(&format!("way[\"building:part\"]{at};relation[\"building:part\"][\"type\"=\"multipolygon\"]{at};"));
+        q.push_str(&format!(
+            "way[\"building:part\"]{at};relation[\"building:part\"][\"type\"=\"multipolygon\"]{at};relation[\"type\"=\"building\"]{at};"
+        ));
     }
     q.push_str(");out geom;");
     q
@@ -489,6 +491,9 @@ mod tests {
         let with = overpass_query(&block(), Layers { parts: true });
         assert!(with.contains("way[\"building:part\"](-23.56,-46.64,-23.54,-46.62)"), "{with}");
         assert!(with.contains("relation[\"building:part\"][\"type\"=\"multipolygon\"]"), "{with}");
+        // A relation that groups an outline with its parts, too.
+        assert!(with.contains("relation[\"type\"=\"building\"](-23.56,-46.64,-23.54,-46.62)"), "{with}");
+        assert!(!overpass_query(&block(), Layers::default()).contains("type\"=\"building"));
         // Numbers are written plainly: no exponent, no trailing zeros.
         let tiny = Bbox::new(0.000_001, 0.5, 0.000_002, 1.0).unwrap();
         assert!(

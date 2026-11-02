@@ -415,6 +415,22 @@ pub static ALL: &[Command] = &[
         roof_by_face,
     ),
     edit(
+        "building_shell",
+        ui_msg!("Building Shell"),
+        &[],
+        "{ids: [mass, …], storeys?, storey_height?, walls?, floors?, roof?, shape?, angle?, height?, orientation?} the outer \
+         walls, the floors at each storey and the roof of each mass, as OpenStreetMap's Simple 3D Buildings describe a \
+         building: a wall on each plumb edge of the footprint; a floor at the base and over each storey (`storeys` of them, \
+         else the mass's `OSM Levels`, else its height over `storey_height`, 3000 mm; they are spaced `storey_height` apart, \
+         else the facade's height over their number); and a roof on top of the walls, `shape` flat, hipped, pyramidal or gabled \
+         (else the mass's `OSM Roof Shape`; other shapes are made flat and said in `notes`), its slope `angle` degrees, else \
+         what makes it `height` mm tall (else `OSM Roof Angle`, `OSM Roof Height`), else 30; a gabled one has its ridge along \
+         the footprint's longer side, or across it with `orientation: \"across\"`. `walls`, `floors`, `roof` (all true) leave \
+         one out. Up to 200 masses at a time, in one step; one that has walls, floors or a roof made by face already is \
+         skipped (`update_by_face` makes them follow the mass). Ordinary elements from then on, marked as the by-face ones are",
+        building_shell,
+    ),
+    edit(
         "update_by_face",
         ui_msg!("Update to Face"),
         &["UF"],
@@ -5689,11 +5705,27 @@ fn fetch_terrain(s: &mut Session, p: &Value) -> R {
 }
 
 /// The most buildings `import_osm` makes walls, floors and roofs of at once.
-const MAX_DETAIL: usize = 50;
+const MAX_DETAIL: usize = MAX_SHELL;
 /// The most mass ids `import_osm` lists in its reply.
 const MAX_LISTED: usize = 1000;
 /// The parameters `import_osm` keeps what it knew of a building in.
-const OSM_PARAMETERS: [&str; 4] = ["OSM Id", "OSM Building", "OSM Name", "OSM Levels"];
+const OSM_PARAMETERS: [&str; 13] = [
+    "OSM Id",
+    "OSM Building",
+    "OSM Name",
+    "OSM Levels",
+    "OSM Roof Shape",
+    "OSM Roof Height",
+    "OSM Roof Angle",
+    "OSM Roof Orientation",
+    "OSM Roof Direction",
+    "OSM Colour",
+    "OSM Material",
+    "OSM Roof Colour",
+    "OSM Roof Material",
+];
+/// The parameter that says which outline a building part belongs to.
+const OSM_PART_OF: &str = "OSM Part Of";
 
 /// The text of the file `path` names (relative to the project's folder), up to [`MAX_FILE`].
 fn read_text_file(s: &Session, c: &str, path: &str) -> Result<String, String> {
@@ -5792,7 +5824,7 @@ fn import_osm(s: &mut Session, p: &Value) -> R {
     // The parameters a building keeps what OSM said of it in, declared for masses.
     if !found.buildings.is_empty() {
         let m = s.model_mut();
-        for name in OSM_PARAMETERS {
+        for name in OSM_PARAMETERS.iter().copied().chain([OSM_PART_OF]) {
             match m.parameters.get_mut(name) {
                 Some(existing) if existing.kind != ParameterKind::Text => {
                     return Err(bad(c, format!("the project parameter `{name}` exists and is not text")));
@@ -5861,7 +5893,23 @@ fn import_osm(s: &mut Session, p: &Value) -> R {
         let cut = |t: &str| -> String { t.chars().take(MAX_TEXT.min(256)).collect() };
         let mut params: BTreeMap<String, Value> = BTreeMap::new();
         params.insert("OSM Id".into(), json!(b.osm_id));
-        for (key, value) in [("OSM Building", &b.kind), ("OSM Name", &b.name), ("OSM Levels", &b.levels)] {
+        let number = |x: f64| if x.fract() == 0.0 { format!("{x:.0}") } else { x.to_string() };
+        let (roof_height, roof_angle) = (Some(b.roof_height).filter(|h| *h > 0.0).map(number), b.roof_angle.map(number));
+        for (key, value) in [
+            ("OSM Building", &b.kind),
+            ("OSM Name", &b.name),
+            ("OSM Levels", &b.levels),
+            ("OSM Roof Shape", &b.roof_shape),
+            ("OSM Roof Height", &roof_height.unwrap_or_default()),
+            ("OSM Roof Angle", &roof_angle.unwrap_or_default()),
+            ("OSM Roof Orientation", &b.roof_orientation),
+            ("OSM Roof Direction", &b.roof_direction),
+            ("OSM Colour", &b.colour),
+            ("OSM Material", &b.material),
+            ("OSM Roof Colour", &b.roof_colour),
+            ("OSM Roof Material", &b.roof_material),
+            (OSM_PART_OF, &b.part_of),
+        ] {
             if !value.is_empty() {
                 params.insert(key.into(), json!(cut(value)));
             }
@@ -5896,23 +5944,29 @@ fn import_osm(s: &mut Session, p: &Value) -> R {
         by_osm.insert(b.osm_id.clone(), id);
         ids.push(id);
     }
-    // Walls, a floor and a roof of the masses asked for, by the commands that make them from a mass.
+    // The shell of the masses asked for (outer walls, a floor at each storey and a roof by the tags), by `building_shell`.
     let mut detail_report = None;
     if !detail.is_empty() {
-        let (mut done, mut missing, mut errors) = (Vec::new(), Vec::new(), Vec::new());
+        let (mut chosen, mut missing) = (Vec::new(), Vec::new());
         for wanted in &detail {
-            let Some(&mass) = by_osm.get(wanted) else {
-                missing.push(wanted.clone());
-                continue;
-            };
-            let q = json!({ "mass": mass });
-            let outcome = wall_by_face(s, &q).and_then(|_| floor_by_face(s, &q)).and_then(|_| roof_by_face(s, &q));
-            match outcome {
-                Ok(_) => done.push(wanted.clone()),
-                Err(why) => errors.push(json!({"id": wanted, "error": why})),
+            match by_osm.get(wanted) {
+                Some(&mass) if !chosen.contains(&mass) => chosen.push(mass),
+                Some(_) => {}
+                None => missing.push(wanted.clone()),
             }
         }
-        detail_report = Some(json!({"detailed": done, "not_found": missing, "errors": errors}));
+        let mut report = json!({"detailed": [], "not_found": missing, "errors": [], "skipped": [], "notes": []});
+        if !chosen.is_empty() {
+            let shell = building_shell(s, &json!({ "ids": chosen })).map_err(|why| why.replacen("building_shell", c, 1))?;
+            let skipped: Vec<u64> = shell["skipped"].as_array().into_iter().flatten().filter_map(|v| v["mass"].as_u64()).collect();
+            let osm_of = |mass: u64| by_osm.iter().find(|(_, id)| **id == mass).map(|(osm, _)| osm.clone());
+            report["detailed"] = json!(chosen.iter().filter(|m| !skipped.contains(m)).filter_map(|m| osm_of(*m)).collect::<Vec<_>>());
+            report["skipped"] = json!(skipped.iter().filter_map(|m| osm_of(*m)).collect::<Vec<_>>());
+            for key in ["walls", "floors", "roofs", "notes"] {
+                report[key] = shell[key].clone();
+            }
+        }
+        detail_report = Some(report);
     }
     let mut reasons: BTreeMap<String, usize> = BTreeMap::new();
     for (_, why) in &skipped {
@@ -5924,6 +5978,7 @@ fn import_osm(s: &mut Session, p: &Value) -> R {
     let mut out = json!({
         "made": made, "updated": updated, "skipped": skipped.len(), "skipped_by_reason": reasons, "skipped_list": listed,
         "courtyards_filled": courtyards, "off_terrain": off_terrain, "defaulted_height": found.defaulted,
+        "outlines_replaced": found.replaced,
         "ids": ids, "ids_truncated": truncated,
         "attribution": "Data (c) OpenStreetMap contributors, under the Open Database Licence (ODbL): https://www.openstreetmap.org/copyright",
     });
@@ -6430,6 +6485,189 @@ fn roof_by_face(s: &mut Session, p: &Value) -> R {
     let made = roof(s, &passing(p, &["type", "slope", "overhang"], q))?;
     mark(s, &made["id"], massing::FACE, json!({"mass": mass, "face": "top"}));
     Ok(made)
+}
+
+/// The most masses one `building_shell` makes a shell for: a shell is about eleven elements, and every pitched roof is laid out
+/// again by each check after it.
+pub(crate) const MAX_SHELL: usize = 200;
+
+/// `key`, a yes or no, or `default` when it is not given.
+fn flag_or(c: &str, p: &Value, key: &str, default: bool) -> Result<bool, String> {
+    if absent(p.get(key)) { Ok(default) } else { flag(c, p, key) }
+}
+
+/// The number the text of a mass's parameter `key` holds, if it holds one.
+fn param_number(ms: &Mass, key: &str) -> Option<f64> {
+    ms.params.get(key)?.as_str()?.trim().replace(',', ".").parse::<f64>().ok().filter(|x| x.is_finite())
+}
+
+/// How high a roof peaks over its base: its highest point less its base.
+fn roof_peak(m: &Model, r: &Roof) -> Result<f64, String> {
+    let base = m.elevation(r.level) + r.offset;
+    let top = m.roof_faces(r)?.iter().flat_map(|(loops, plane)| loops.iter().flatten().map(move |q| plane.at(*q))).fold(f64::MIN, f64::max);
+    if top.is_finite() { Ok(top - base) } else { Err("it has no slopes".into()) }
+}
+
+fn building_shell(s: &mut Session, p: &Value) -> R {
+    let c = "building_shell";
+    only(c, p, &["ids", "id", "storeys", "storey_height", "walls", "floors", "roof", "shape", "angle", "height", "orientation"])?;
+    let ids = ids_param(c, &s.model, p)?;
+    if ids.is_empty() {
+        return Err(bad(c, "`ids` [id, …] is required: the masses to build a shell for"));
+    }
+    if ids.len() > MAX_SHELL {
+        return Err(bad(c, format!("{} masses is more than the {MAX_SHELL} one command makes shells for: give fewer `ids`", ids.len())));
+    }
+    if let Some(not) = ids.iter().find(|id| !matches!(s.model.elements.get(id), Some(Element::Mass(_)))) {
+        return Err(bad(c, format!("{not} isn't a mass")));
+    }
+    let (walls, floors, roof) = (flag_or(c, p, "walls", true)?, flag_or(c, p, "floors", true)?, flag_or(c, p, "roof", true)?);
+    let storeys = match num(c, p, "storeys")? {
+        None => None,
+        Some(n) if n.fract() == 0.0 && (1.0..=massing::MAX_STOREYS as f64).contains(&n) => Some(n as usize),
+        Some(n) => return Err(bad(c, format!("`storeys` is a whole number from 1 to {}, not {n}", massing::MAX_STOREYS))),
+    };
+    let above_zero = |key: &str, what: &str| -> Result<Option<f64>, String> {
+        match num(c, p, key)? {
+            Some(x) if x <= 0.0 => Err(bad(c, format!("`{key}` is {what} above 0, not {x}"))),
+            other => Ok(other),
+        }
+    };
+    let storey_height = above_zero("storey_height", "a height in mm")?;
+    let height = above_zero("height", "a height in mm")?;
+    let angle = match num(c, p, "angle")? {
+        Some(a) if !(a > 0.0 && a < 90.0) => return Err(bad(c, format!("`angle` is a slope in degrees above 0 and below 90, not {a}"))),
+        other => other,
+    };
+    let orientation = match string(c, p, "orientation")? {
+        Some(o) if o != "along" && o != "across" => return Err(bad(c, format!("`orientation` is \"along\" or \"across\", not \"{o}\""))),
+        other => other,
+    };
+    let shape = string(c, p, "shape")?;
+    // The masses that have walls, floors or a roof made by face already.
+    let held: BTreeSet<Guid> = s.model.elements.values().filter_map(|e| massing::face_of(e).map(|(mass, _)| mass)).collect();
+    let (mut made, mut skipped, mut notes) = (Vec::new(), Vec::new(), Vec::new());
+    let (mut wall_count, mut floor_count, mut roof_count) = (0, 0, 0);
+    for id in ids {
+        if held.contains(&s.model.guid(id)) {
+            skipped.push(
+                json!({"mass": id, "why": "it has walls, floors or a roof made by face already: `update_by_face` makes them follow it"}),
+            );
+            continue;
+        }
+        let (mass, ms) = mass_of(c, &s.model, &json!({"mass": id}))?;
+        let (bottom, top) = s.model.span(ms.level, ms.base_offset, ms.top_level, ms.height);
+        let facade = top - bottom;
+        let mut mine: Vec<String> = Vec::new();
+        let mut report = json!({"mass": id});
+        if walls {
+            match wall_by_face(s, &json!({"mass": mass})) {
+                Ok(v) => {
+                    let n = v["ids"].as_array().map_or(0, Vec::len);
+                    wall_count += n;
+                    report["walls"] = json!(n);
+                }
+                Err(why) => mine.push(why.replacen("wall_by_face", "walls", 1)),
+            }
+        }
+        if floors {
+            // The storeys: as told, else the levels OSM gave, else the height over a storey; spaced as told, else evenly.
+            let tagged = param_number(&ms, "OSM Levels").map(f64::round).filter(|n| (1.0..=massing::MAX_STOREYS as f64).contains(n));
+            let (n, rise) = match (storeys, tagged.map(|n| n as usize)) {
+                (Some(n), _) | (None, Some(n)) => (n, storey_height.unwrap_or(facade / n as f64)),
+                (None, None) => {
+                    let rise = storey_height.unwrap_or(3000.0);
+                    (((facade / rise).round() as usize).max(1), rise)
+                }
+            };
+            if n > massing::MAX_STOREYS || !(rise.is_finite() && rise > 0.0 && rise <= MAX_COORD) {
+                return Err(bad(c, format!("mass {id}: {n} storeys {rise} mm apart: raise `storey_height` or give `storeys`")));
+            }
+            for k in 0..n {
+                let q = json!({"boundary": ms.footprint(), "level": ms.level, "offset": ms.base_offset + k as f64 * rise});
+                let made_floor = floor(s, &q)?;
+                mark(s, &made_floor["id"], massing::FACE, json!({"mass": mass, "face": {"storey": k, "rise": rise}}));
+            }
+            floor_count += n;
+            report["floors"] = json!(n);
+            report["rise"] = json!(rise);
+        }
+        if roof {
+            let (level, offset) = ms.top_face();
+            let ring = ms.top_ring();
+            let tag =
+                shape.clone().or_else(|| ms.params.get("OSM Roof Shape").and_then(Value::as_str).map(str::to_string)).unwrap_or_default();
+            let across = orientation.clone().or_else(|| ms.params.get("OSM Roof Orientation").and_then(Value::as_str).map(str::to_string));
+            let mut plan = crate::shell::plan(&ring, &tag, across.as_deref().unwrap_or(""));
+            if plan.shape != crate::shell::Shape::Flat && ring.len() > crate::model::MAX_ROOF_POINTS {
+                plan.notes.push(format!(
+                    "its footprint has {} corners, more than the {} a pitched roof holds: a flat roof",
+                    ring.len(),
+                    crate::model::MAX_ROOF_POINTS
+                ));
+                plan = crate::shell::Plan { shape: crate::shell::Shape::Flat, gables: Vec::new(), notes: plan.notes };
+            }
+            let trial = |slope: f64, gables: &[usize]| Roof {
+                type_name: String::new(),
+                level,
+                boundary: ring.clone(),
+                courtyards: Vec::new(),
+                slope,
+                overhang: 0.0,
+                gable: false,
+                gables: gables.to_vec(),
+                offset,
+                openings: Vec::new(),
+                join: None,
+                extrusion: None,
+                sketch: Vec::new(),
+                params: Default::default(),
+            };
+            let mut slope = 0.0;
+            if plan.shape != crate::shell::Shape::Flat {
+                let wanted_angle = angle.or_else(|| param_number(&ms, "OSM Roof Angle")).filter(|a| *a > 0.0 && *a < 90.0);
+                let wanted_height = height.or_else(|| param_number(&ms, "OSM Roof Height")).filter(|h| *h > 0.0);
+                // Laid out once at 45 degrees: it shows whether the footprint takes the roof, and how high it peaks (in proportion to the slope's tangent).
+                match roof_peak(&s.model, &trial(45.0, &plan.gables)) {
+                    Ok(peak45) => {
+                        slope = match (wanted_angle, wanted_height) {
+                            (Some(a), _) => a,
+                            (None, Some(h)) if peak45 > 1e-6 => (h / peak45).atan().to_degrees(),
+                            _ => crate::shell::DEFAULT_SLOPE,
+                        };
+                        if slope > crate::model::MAX_SLOPE {
+                            plan.notes
+                                .push(format!("a roof of that height needs a slope of {slope:.0}°: cut to {}°", crate::model::MAX_SLOPE));
+                            slope = crate::model::MAX_SLOPE;
+                        }
+                    }
+                    Err(why) => plan.notes.push(format!("a pitched roof does not fit this footprint ({why}): a flat roof")),
+                }
+            }
+            let gables = if slope > 0.0 { plan.gables.clone() } else { Vec::new() };
+            let mut q = json!({"boundary": ring, "level": level, "offset": offset, "slope": slope, "overhang": 0});
+            if !gables.is_empty() {
+                q["gables"] = json!(gables);
+            }
+            let made_roof = self::roof(s, &q)?;
+            mark(s, &made_roof["id"], massing::FACE, json!({"mass": mass, "face": "top"}));
+            roof_count += 1;
+            report["roof"] = made_roof["id"].clone();
+            report["slope"] = json!(slope);
+            report["shape"] = json!(if slope == 0.0 {
+                "flat"
+            } else if gables.is_empty() {
+                "hipped"
+            } else {
+                "gabled"
+            });
+            mine.extend(plan.notes);
+        }
+        notes.extend(mine.iter().map(|n| format!("mass {id}: {n}")));
+        report["notes"] = json!(mine);
+        made.push(report);
+    }
+    Ok(json!({"shells": made, "walls": wall_count, "floors": floor_count, "roofs": roof_count, "skipped": skipped, "notes": notes}))
 }
 
 fn update_by_face(s: &mut Session, p: &Value) -> R {

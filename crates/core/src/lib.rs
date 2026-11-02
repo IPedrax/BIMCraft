@@ -89,6 +89,9 @@ pub mod schedule;
 mod section_box_tests;
 pub mod selection;
 pub mod sheet;
+pub mod shell;
+#[cfg(test)]
+mod shell_tests;
 pub mod skeleton;
 pub mod sketch;
 pub mod snap;

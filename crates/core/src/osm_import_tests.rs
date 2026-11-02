@@ -143,7 +143,8 @@ fn walls_are_made_on_request_for_the_buildings_asked_for() {
     assert_eq!((count(&s, "wall"), count(&s, "floor"), count(&s, "roof")), (0, 0, 0), "masses only, by default");
     let r = run(&mut s, "import_osm", json!({"data": two_houses(), "detail": ["way/1"]}));
     assert_eq!(count(&s, "wall"), 4, "{r}");
-    assert_eq!((count(&s, "floor"), count(&s, "roof")), (1, 1));
+    // A floor at the ground and over each of the three storeys that 12 m makes, and a roof.
+    assert_eq!((count(&s, "floor"), count(&s, "roof")), (4, 1));
     assert_eq!(r["detail"]["detailed"], json!(["way/1"]));
     let r = run(&mut s, "import_osm", json!({"data": two_houses(), "detail": ["way/99"]}));
     assert_eq!(r["detail"]["not_found"], json!(["way/99"]));
@@ -274,4 +275,82 @@ fn the_masses_export_to_ifc_and_are_drawn_in_plans() {
     let drawn =
         d.prims.iter().zip(&d.owners).filter(|(p, o)| matches!(p, Prim::Line { .. }) && o.is_some_and(|o| ids.contains(&o))).count();
     assert!(drawn >= 2, "both are in the plan: {drawn}");
+}
+
+/// The elements of `category` with their ids.
+fn of(s: &Session, category: &str) -> Vec<(u64, Element)> {
+    s.model.elements.iter().filter(|(_, e)| e.category() == category).map(|(id, e)| (*id, e.clone())).collect()
+}
+
+#[test]
+fn building_parts_replace_their_outline_and_say_whose_they_are() {
+    let mut s = placed();
+    let (dx, dy) = (40.0 * 0.000_01, 20.0 * 0.000_009);
+    let rect = |x0: f64, x1: f64| {
+        vec![(HOME.0 + x0, HOME.1), (HOME.0 + x1, HOME.1), (HOME.0 + x1, HOME.1 + dy), (HOME.0 + x0, HOME.1 + dy), (HOME.0 + x0, HOME.1)]
+    };
+    let data = file(&[
+        way(1, &rect(0.0, dx), r#""building":"yes","name":"Hall""#),
+        way(2, &rect(0.0, dx / 2.0), r#""building:part":"yes","height":"8""#),
+        way(3, &rect(dx / 2.0, dx), r#""building:part":"yes","height":"14","roof:shape":"gabled","roof:height":"3""#),
+    ]);
+    // Without parts wanted the outline is the building, as before.
+    let r = run(&mut s, "import_osm", json!({"data": data}));
+    assert_eq!((r["made"].as_u64(), r["outlines_replaced"].as_u64()), (Some(1), Some(0)), "{r}");
+    let mut s = placed();
+    let r = run(&mut s, "import_osm", json!({"data": data, "parts": true}));
+    assert_eq!((r["made"].as_u64(), r["outlines_replaced"].as_u64()), (Some(2), Some(1)), "{r}");
+    assert_eq!(r["skipped_by_reason"]["replaced by its building parts"], 1, "{r}");
+    let ms = masses(&s);
+    let ids: Vec<String> = ms.iter().map(|(_, m)| osm_id(m)).collect();
+    assert!(ids.contains(&"way/2".to_string()) && ids.contains(&"way/3".to_string()) && !ids.contains(&"way/1".to_string()), "{ids:?}");
+    for (_, m) in &ms {
+        assert_eq!(m.params.get("OSM Part Of").and_then(Value::as_str), Some("way/1"));
+        assert_eq!(m.name, "Hall", "a part with no name has its outline's");
+    }
+    // The tall part's facade is its height less its roof: 14 m less 3 m.
+    let tall = ms.iter().find(|(_, m)| osm_id(m) == "way/3").unwrap();
+    assert_eq!(tall.1.height, 11000.0);
+    assert_eq!(tall.1.params.get("OSM Roof Shape").and_then(Value::as_str), Some("gabled"));
+    assert_eq!(tall.1.params.get("OSM Roof Height").and_then(Value::as_str), Some("3000"));
+}
+
+#[test]
+fn the_shell_of_a_building_follows_its_tags_storeys_roof_shape_and_height() {
+    let mut s = placed();
+    // 12 m tall with a 3 m gabled roof: a 9 m facade of three storeys; the ridge runs along the 30 m side.
+    let (w, h) = (30.0 * 0.000_01, 12.0 * 0.000_009);
+    let ring = vec![(HOME.0, HOME.1), (HOME.0 + w, HOME.1), (HOME.0 + w, HOME.1 + h), (HOME.0, HOME.1 + h), (HOME.0, HOME.1)];
+    let data = file(&[way(1, &ring, r#""building":"house","height":"12","building:levels":"3","roof:shape":"gabled","roof:height":"3""#)]);
+    let r = run(&mut s, "import_osm", json!({"data": data, "detail": ["way/1"]}));
+    assert_eq!(r["detail"]["detailed"], json!(["way/1"]), "{r}");
+    assert_eq!((r["detail"]["walls"].as_u64(), r["detail"]["floors"].as_u64(), r["detail"]["roofs"].as_u64()), (Some(4), Some(3), Some(1)));
+    let mass = &masses(&s)[0].1;
+    assert!((mass.height - 9000.0).abs() < 1e-6, "{}", mass.height);
+    let offsets: Vec<f64> = {
+        let mut v: Vec<f64> = of(&s, "floor")
+            .iter()
+            .filter_map(|(_, e)| if let Element::Floor(f) = e { Some(f.offset - mass.base_offset) } else { None })
+            .collect();
+        v.sort_by(f64::total_cmp);
+        v
+    };
+    assert_eq!(offsets, [0.0, 3000.0, 6000.0], "a floor at the ground and over each storey but the last, whose top is the roof's");
+    let roofs = of(&s, "roof");
+    let Element::Roof(roof) = &roofs[0].1 else { panic!("a roof") };
+    assert_eq!(roof.gables.len(), 2, "the short ends stand upright");
+    let top = s
+        .model
+        .roof_faces(roof)
+        .unwrap()
+        .iter()
+        .flat_map(|(loops, plane)| loops.iter().flatten().map(move |q| plane.at(*q)))
+        .fold(f64::MIN, f64::max);
+    let base = s.model.elevation(roof.level) + roof.offset;
+    assert!((top - base - 3000.0).abs() < 1.0, "the roof is the 3 m the tag says: {}", top - base);
+    // Importing again with the same detail leaves the shell alone: it is reported skipped, not doubled.
+    let before = s.model.elements.len();
+    let r = run(&mut s, "import_osm", json!({"data": data, "detail": ["way/1"]}));
+    assert_eq!(s.model.elements.len(), before, "{r}");
+    assert_eq!(r["detail"]["skipped"], json!(["way/1"]));
 }
