@@ -1634,6 +1634,10 @@ msgstr "Abhängig machen"
 msgid "Constraints"
 msgstr "Abhängigkeiten"
 
+#: crates/ui-egui/src/properties.rs:419
+msgid "Construction"
+msgstr "Konstruktion"
+
 #: crates/ui-egui/src/dimtypes.rs:108
 msgid "Continuous"
 msgstr "Fortlaufend"
@@ -2044,6 +2048,8 @@ msgid "Dependent"
 msgstr "Abhängig"
 
 #: crates/core/src/family.rs:1257
+#: crates/ui-egui/src/properties.rs:426
+#: crates/ui-egui/src/properties.rs:427
 msgid "Depth"
 msgstr "Tiefe"
 
@@ -2190,6 +2196,7 @@ msgid "Dimension lines, witness lines, terminators, text placement, and level ma
 msgstr "Maßlinien, Hilfslinien, Abschlüsse, Textplatzierung und Geschossmarkierungssymbole."
 
 #: crates/ui-egui/src/lang.rs:26
+#: crates/ui-egui/src/properties.rs:420
 msgid "Dimensions"
 msgstr "Bemaßungen"
 
@@ -2781,6 +2788,7 @@ msgstr "Fein"
 
 #: crates/core/src/import.rs:1075
 #: crates/ui-egui/src/notes.rs:451
+#: crates/ui-egui/src/properties.rs:664
 msgid "Finish"
 msgstr "Oberfläche"
 
@@ -3141,6 +3149,9 @@ msgid "Heading"
 msgstr "Überschrift"
 
 #: crates/core/src/family.rs:154
+#: crates/ui-egui/src/properties.rs:424
+#: crates/ui-egui/src/properties.rs:425
+#: crates/ui-egui/src/properties.rs:430
 msgid "Height"
 msgstr "Höhe"
 
@@ -3378,7 +3389,7 @@ msgstr "Davor einfügen"
 
 #: crates/ui-egui/src/properties.rs:1957
 msgid "Insert Layer"
-msgstr "Layer einfügen"
+msgstr "Schicht einfügen"
 
 #: crates/core/src/fixtures.rs:354
 msgid "Inspection Box"
@@ -3526,7 +3537,7 @@ msgstr "Später"
 #: crates/ui-egui/src/cad.rs:97
 #: crates/ui-egui/src/properties.rs:1902
 msgid "Layers"
-msgstr "Layer"
+msgstr "Schichten"
 
 #: crates/ui-egui/src/graphics.rs:1200
 msgid "Layers this view shows of each drawing"
@@ -3938,6 +3949,7 @@ msgid "Medium Lines"
 msgstr "Mittlere Linien"
 
 #: crates/core/src/import.rs:1077
+#: crates/ui-egui/src/properties.rs:663
 msgid "Membrane"
 msgstr "Membran"
 
@@ -6001,7 +6013,7 @@ msgstr "Formbearbeitung"
 
 #: crates/ui-egui/src/lib.rs:3957
 msgid "Shed"
-msgstr "Schuppen"
+msgstr "Pultdach"
 
 #: crates/ui-egui/src/lib.rs:3340
 msgid "Sheet"
@@ -6452,6 +6464,7 @@ msgid "Structural Column (CL): click where it stands"
 msgstr "Tragende Stütze (CL): Standort anklicken"
 
 #: crates/ui-egui/src/lib.rs:2778
+#: crates/ui-egui/src/properties.rs:660
 msgid "Structure"
 msgstr "Struktur"
 
@@ -6464,6 +6477,7 @@ msgid "Styles"
 msgstr "Stile"
 
 #: crates/core/src/import.rs:1076
+#: crates/ui-egui/src/properties.rs:661
 msgid "Substrate"
 msgstr "Untergrund"
 
@@ -6832,6 +6846,8 @@ msgid "These patterns to a PAT file, but the solid ones"
 msgstr "Diese Muster in eine PAT-Datei, aber nicht die Volltonmuster"
 
 #: crates/core/src/family.rs:1258
+#: crates/ui-egui/src/properties.rs:428
+#: crates/ui-egui/src/properties.rs:429
 #: crates/ui-egui/src/properties.rs:732
 #: crates/ui-egui/src/properties.rs:1907
 msgid "Thickness"
@@ -7474,6 +7490,11 @@ msgstr "Breite Linien"
 
 #: crates/core/src/family.rs:153
 #: crates/ui-egui/src/lineweights.rs:112
+#: crates/ui-egui/src/properties.rs:422
+#: crates/ui-egui/src/properties.rs:424
+#: crates/ui-egui/src/properties.rs:425
+#: crates/ui-egui/src/properties.rs:426
+#: crates/ui-egui/src/properties.rs:427
 msgid "Width"
 msgstr "Breite"
 

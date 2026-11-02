@@ -1635,6 +1635,10 @@ msgstr ""
 msgid "Constraints"
 msgstr ""
 
+#: crates/ui-egui/src/properties.rs:419
+msgid "Construction"
+msgstr ""
+
 #: crates/ui-egui/src/dimtypes.rs:108
 msgid "Continuous"
 msgstr ""
@@ -2045,6 +2049,8 @@ msgid "Dependent"
 msgstr ""
 
 #: crates/core/src/family.rs:1257
+#: crates/ui-egui/src/properties.rs:426
+#: crates/ui-egui/src/properties.rs:427
 msgid "Depth"
 msgstr ""
 
@@ -2191,6 +2197,7 @@ msgid "Dimension lines, witness lines, terminators, text placement, and level ma
 msgstr ""
 
 #: crates/ui-egui/src/lang.rs:26
+#: crates/ui-egui/src/properties.rs:420
 msgid "Dimensions"
 msgstr ""
 
@@ -2782,6 +2789,7 @@ msgstr ""
 
 #: crates/core/src/import.rs:1075
 #: crates/ui-egui/src/notes.rs:451
+#: crates/ui-egui/src/properties.rs:664
 msgid "Finish"
 msgstr ""
 
@@ -3142,6 +3150,9 @@ msgid "Heading"
 msgstr ""
 
 #: crates/core/src/family.rs:154
+#: crates/ui-egui/src/properties.rs:424
+#: crates/ui-egui/src/properties.rs:425
+#: crates/ui-egui/src/properties.rs:430
 msgid "Height"
 msgstr ""
 
@@ -3939,6 +3950,7 @@ msgid "Medium Lines"
 msgstr ""
 
 #: crates/core/src/import.rs:1077
+#: crates/ui-egui/src/properties.rs:663
 msgid "Membrane"
 msgstr ""
 
@@ -6453,6 +6465,7 @@ msgid "Structural Column (CL): click where it stands"
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:2778
+#: crates/ui-egui/src/properties.rs:660
 msgid "Structure"
 msgstr ""
 
@@ -6465,6 +6478,7 @@ msgid "Styles"
 msgstr ""
 
 #: crates/core/src/import.rs:1076
+#: crates/ui-egui/src/properties.rs:661
 msgid "Substrate"
 msgstr ""
 
@@ -6833,6 +6847,8 @@ msgid "These patterns to a PAT file, but the solid ones"
 msgstr ""
 
 #: crates/core/src/family.rs:1258
+#: crates/ui-egui/src/properties.rs:428
+#: crates/ui-egui/src/properties.rs:429
 #: crates/ui-egui/src/properties.rs:732
 #: crates/ui-egui/src/properties.rs:1907
 msgid "Thickness"
@@ -7475,6 +7491,11 @@ msgstr ""
 
 #: crates/core/src/family.rs:153
 #: crates/ui-egui/src/lineweights.rs:112
+#: crates/ui-egui/src/properties.rs:422
+#: crates/ui-egui/src/properties.rs:424
+#: crates/ui-egui/src/properties.rs:425
+#: crates/ui-egui/src/properties.rs:426
+#: crates/ui-egui/src/properties.rs:427
 msgid "Width"
 msgstr ""
 
