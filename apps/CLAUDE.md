@@ -5,7 +5,8 @@ write-up of the start, its log and the graphics fallback is under Startup in [th
 is the same engine from a terminal: `run` (scripts and commands), `convert`, `info`, and `mcp`, the MCP server for agents, whose
 tools run the same commands. Neither adds behaviour of its own: a feature is a command in the core.
 
-- Only the desktop phones home, and only through `crates/update`; the CLI and the MCP server never do (a test reads their manifests).
+- Only the desktop phones home, and only through `crates/update` and `crates/geofetch`; the CLI and the MCP server never do (a test reads their
+  manifests). Headless, `fetch_osm` and `fetch_terrain` refuse: an agent fetches the Overpass JSON itself and gives it to `import_osm` as `data`.
 - The desktop listens only when asked (`--control PORT`), only on 127.0.0.1, and lets in only a connection that says the token in the file only
   the user reads; an agent through it may not replace the project (`bimcraft_core::bridge`). `mcp --connect` is the asking side (`window.rs`).
 - A release build on Windows has no console: a start that fails says so through `startup::note`, not `eprintln!` alone.

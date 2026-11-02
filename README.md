@@ -546,6 +546,8 @@ the window. The window answers between its frames, so a long command holds the w
 | `fillet` | FL | `ids` (two straight detail lines, or two walls), `radius`: the corner rounded by an arc, the lines cut back to it (a wall's doors and windows stay where they stand in plan, as in `corner`, and only their offset along the wall changes) |
 | `units` | UN | `length?` (`mm`, `cm`, `m`, `in`, `ft` or `ft-in`): how lengths show in drawings, schedules and the desktop; commands keep mm |
 | `room_area` | | `at?` (`centre` or `finish`): where rooms are measured, at the walls' centre lines or at their faces |
+| `fetch_osm` | | `bbox?` ([south, west, north, east]) or `radius?` (metres round the origin, 1000), and `import_osm`'s `level?`, `level_height?`, `default_height?`, `parts?`, `terrain?`, `detail?`, `replace?`: fetches the buildings of up to 25 km² from OpenStreetMap and makes them as `import_osm` does; needs a build with network access (the desktop's) |
+| `fetch_terrain` | | `bbox?` or `radius?`, `spacing?` (metres), `source?` (`terrarium`, `copernicus`), `name?`, `set_elevation?` (true), `interval?`: fetches the ground of a box and makes a toposurface clipped to it, the project's origin at its own height; needs network access as `fetch_osm` does |
 | `import_osm` | | `path` or `data` (Overpass JSON or OSM XML), `bbox?` ([south, west, north, east]), `level?`, `level_height?`, `default_height?`, `parts?`, `terrain?`, `detail?` (OSM ids to make walls, a floor and a roof of), `replace?` (true): the buildings of an OpenStreetMap file as masses on the ground (the project must be placed with `geolocate`); data (c) OpenStreetMap contributors, ODbL |
 | `geolocate` | | `latitude?`, `longitude?` (degrees, WGS 84, both the first time), `elevation?` (mm), `true_north?` (degrees counter-clockwise from +y), `crs?` (an EPSG code such as 31983, or `utm`), `clear?`, `point?` ([x, y] mm to `lonlat`), `lonlat?` (to `point`): where the project is on Earth; IFC carries it as the site's position and `IfcMapConversion` |
 | `language` | | `code?` (`en`, `pt` or `es`): the language the project's drawings print and new names come in; names already given stay |
@@ -624,6 +626,7 @@ crates/rvt             bimcraft-rvt: the Revit file reader (Apache-2.0 only; the
   container.rs, gzip.rs  a Compound File opened under limits, its gzip streams and stored pages inflated under caps
   info.rs, atom.rs, preview.rs, schema.rs  BasicFileInfo, the Atom entry, the preview PNG, Formats/Latest (classes with tags)
   elem_table.rs, inventory.rs  the ElementIds a file declares; its elements by category, and its levels
+crates/geofetch        bimcraft-geofetch: fetches OpenStreetMap buildings and elevation tiles, for the desktop app only; the core, the CLI and MCP never depend on it
 crates/update          bimcraft-update: the updater, which only the desktop app uses; the core, the CLI and MCP never depend on it
   lib.rs               a release read from GitHub's reply, its file for this kind of install chosen and downloaded into a folder of its own, checked
   net.rs               HTTPS to GitHub and its release CDN, redirects followed by hand

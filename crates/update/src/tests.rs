@@ -335,7 +335,7 @@ fn only_the_desktop_app_can_reach_the_network() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     for manifest in ["crates/core/Cargo.toml", "apps/bimcraft-cli/Cargo.toml"] {
         let text = std::fs::read_to_string(root.join(manifest)).unwrap();
-        for dep in ["bimcraft-update", "ureq", "rustls", "reqwest", "hyper"] {
+        for dep in ["bimcraft-update", "bimcraft-geofetch", "ureq", "rustls", "reqwest", "hyper"] {
             assert!(!text.contains(dep), "{manifest} depends on {dep}: the core, the CLI and the MCP server never phone home");
         }
     }

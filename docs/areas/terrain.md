@@ -46,4 +46,4 @@ site's height above sea level; data in metres above sea level (a DEM) must have 
 ## Not yet
 
 A desktop tool (the Site tab; `TS` is free for it), pads and subregions, cut and fill, slope maps, contours cut by a section, points
-from a point cloud, LandXML and DEM import (the planned `geofetch` crate would bring elevation tiles).
+from a point cloud, LandXML. Elevation from tiles is `fetch_terrain` ([geofetch](geofetch.md)).

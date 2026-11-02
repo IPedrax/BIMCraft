@@ -52,14 +52,15 @@ and MCP server, and milestone 2, the egui desktop app, are done. What works and 
   the model. Logic any front end needs (what a plan shows, what's under the cursor) belongs in the core: the canvas draws
   `render::draw` and picks with `Drawing::pick`. UI behaviour is tested with egui_kittest: clicks at model points
   (`BimApp::screen`), buttons by label, keys (`crates/ui-egui/src/tests.rs`).
-- **Only the desktop app phones home, and only through `crates/update`.** The core, the CLI and the MCP server don't depend on it
-  (a test reads their manifests), and a `BimApp` starts with `updates: None`, so no UI test reaches the network; `apps/bimcraft`'s
-  `main` attaches the updater and starts the check on a thread. What comes from the network is hostile: the reply and the download
-  are capped, the installer's address is built from the release's tag and never read from the reply, an asset is taken only if it is
-  named exactly for the version and the kind of install (`Target::asset_name`), uploaded, with a `sha256:` digest, and nothing runs that
-  failed a check. A new
+- **Only the desktop app phones home, and only through `crates/update` (releases) and `crates/geofetch` (OpenStreetMap and elevation,
+  when the user asks).** The core, the CLI and the MCP server depend on neither (a test reads their manifests; the core asks a hook,
+  `Session.geo`, that a build without a fetcher leaves empty, so `fetch_osm` and `fetch_terrain` refuse there), and a `BimApp` starts
+  with `updates: None` and no fetcher, so no UI test reaches the network; `apps/bimcraft`'s `main` attaches them. What comes from the
+  network is hostile: a request goes only to the hosts a crate names, over HTTPS, a reply and a download are capped, the installer's
+  address is built from the release's tag and never read from the reply, an asset is taken only if it is named exactly for the version
+  and the kind of install (`Target::asset_name`), uploaded, with a `sha256:` digest, and nothing runs that failed a check. A new
   check is a pure function with a test, and the network stays behind `Net` (`testing::Fake` in tests; `net::Ureq` is tested against
-  a server on this machine, never GitHub).
+  a server on this machine, never GitHub, Overpass or AWS).
 - **Test first.** Write the failing test, watch it fail, then write the code. Drawings and IFC are tested through their output:
   pixels of the PNG, entity references in the STEP file.
 - **Keep the agent docs layered.** This file stays short: the rules, the checks, the conventions and a map of the modules. A
@@ -110,7 +111,7 @@ One line per module: what it owns. Read the module's file and, for the areas it 
 - `render.rs`: plans (a display list drawn to SVG and PNG, and picking); `render/regions.rs`: region and model foreground compositing; `render/dimensions.rs`: dimensions, as their types say. `dims.rs`: dimension types, and how the Dimension tool lays one. `constraints.rs`: locked and equal dimensions kept after each command. `view3d.rs`: the 3D scene, its software rasterizer and picking; `view3d/gpu.rs`: its mesh and picking for the graphics card. `sheet.rs`, `pdf.rs`: sheets and their PDF. `font.rs`: our own lettering. `text.rs`: text types, their fonts (the system's, IBM Plex and our lettering), a note's formatting runs and its layout; `text/system.rs`: the system's fonts, listed from their headers. Area: [views and graphics](docs/areas/views-and-graphics.md).
 - `graphics.rs`: Visibility/Graphics, view filters and templates (`Look`). `pen.rs`: line weights as pens and the project's Line Weights, widths on paper (paper space and model space: [views and graphics](docs/areas/views-and-graphics.md)). `styles.rs`: Object Styles, each model category's pens cut and seen. `lines.rs`: line patterns, line styles and detail lines. `fills.rs`: fill patterns, filled region types and filled regions; `pat.rs`: PAT files. `groups.rs`: detail groups and repeating details. `schedule.rs`: schedules ([schedules](docs/areas/schedules.md)); `xlsx.rs`: a one-sheet workbook they export to. `selection.rs`: Filter on a selection, by category or a parameter they share. `phasing.rs`: phases and design options ([phasing](docs/areas/phasing.md)). `massing.rs`: what an element made from a mass remembers ([masses](docs/areas/massing.md)).
 - `georef.rs`: the project's place on Earth (`geolocate`): latitude, longitude, true north and a projected CRS through `proj-core`; `ifc_georef.rs` reads it from IFC ([georeferencing](docs/areas/georeferencing.md)).
-- `osm.rs`: OpenStreetMap files (Overpass JSON, OSM XML) read and their buildings found; `import_osm` makes masses on the terrain ([OSM import](docs/areas/osm-import.md)). `topo.rs`: terrain, a TIN with breaklines, heights and contours (`toposurface`, [terrain](docs/areas/terrain.md)).
+- `geo.rs`: boxes, tiles, the Overpass query, elevation grids and the `GeoSource` hook (`fetch_osm`, `fetch_terrain`; [geofetch](docs/areas/geofetch.md)). `osm.rs`: OpenStreetMap files (Overpass JSON, OSM XML) read and their buildings found; `import_osm` makes masses on the terrain ([OSM import](docs/areas/osm-import.md)). `topo.rs`: terrain, a TIN with breaklines, heights and contours (`toposurface`, [terrain](docs/areas/terrain.md)).
 - `link.rs`: linked models, the project with other projects' built elements drawn in and never edited ([views and graphics](docs/areas/views-and-graphics.md)).
 - `dxf.rs`: DXF drawings read from the public reference. `cad.rs`: the drawings a project holds, and how an import colours, pens and dashes them ([CAD import](docs/areas/cad-import.md)).
 - `family.rs`, `csg.rs`, `fixtures.rs`, `favorites.rs`: families, solids cut from solids, the starter fixtures, the user's favorites. `texture.rs`, `paint.rs`: textures and paint. Area: [families](docs/areas/families.md).
@@ -132,7 +133,9 @@ One line per module: what it owns. Read the module's file and, for the areas it 
 `crates/i18n` (`bimcraft-i18n`; [notes](crates/i18n/CLAUDE.md)): embedded lookup, build-time PO compilation and the
 `cargo i18n` extraction, merge and validation tools. Area: [translations](docs/areas/translations.md).
 
-`crates/update` (the updater, the only code that phones home; notes: [crates/update/CLAUDE.md](crates/update/CLAUDE.md); area: [updates](docs/areas/updates.md)): `updater.rs` the state the banner draws; `net.rs` HTTPS to GitHub; `detect.rs` which install this is; `install.rs` Windows, `appimage.rs` Linux, `macos.rs` macOS; `exec.rs`, `prefs.rs`, `testing.rs`.
+`crates/geofetch` (`bimcraft-geofetch`, the fetcher for OpenStreetMap and elevation, which the core never depends on; notes: [crates/geofetch/CLAUDE.md](crates/geofetch/CLAUDE.md); area: [geofetch](docs/areas/geofetch.md)): `net.rs` HTTPS to named hosts, `cache.rs`, `overpass.rs`, `terrarium.rs` and `copernicus.rs` (elevation tiles), `layout.rs`.
+
+`crates/update` (the updater, with geofetch the only code that phones home; notes: [crates/update/CLAUDE.md](crates/update/CLAUDE.md); area: [updates](docs/areas/updates.md)): `updater.rs` the state the banner draws; `net.rs` HTTPS to GitHub; `detect.rs` which install this is; `install.rs` Windows, `appimage.rs` Linux, `macos.rs` macOS; `exec.rs`, `prefs.rs`, `testing.rs`.
 
 `crates/dwg` (`bimcraft-dwg`, the DWG bridge, which the core never depends on; notes: [crates/dwg/CLAUDE.md](crates/dwg/CLAUDE.md); area: [CAD import](docs/areas/cad-import.md)): a DWG as the DXF the core reads, through acadrust (MPL-2.0, unmodified), in a child process of the app (`in_child`, `child_main`); the apps hand a `Session` its `reader`.
 

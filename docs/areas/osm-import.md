@@ -57,8 +57,10 @@ view range, or add levels at the site's heights. The 3D view and schedules show 
 `bimcraft-cli run --cmd 'geolocate {...}' --cmd 'import_osm {"path": "block.json"}' --save /tmp/block.ifc` and `python
 ci/validate_ifc.py /tmp/block.ifc`; masses export as `IfcBuildingElementProxy`. Look at the plan PNG (`--save x.png`).
 
+Fetching a box from Overpass instead of a file is `fetch_osm` ([geofetch](geofetch.md)), which runs this import on what it fetches.
+
 ## Not yet
 
 Roads, water and land use (a CAD-style drawing with layers is the likely route: the CAD import holds thousands of polylines as one
-element with layer visibility); GeoJSON; fetching from Overpass (the `geofetch` crate, with the map picker); roof shapes
+element with layer visibility); GeoJSON; roof shapes
 (`roof:shape`), and walls for a whole district.

@@ -128,6 +128,22 @@ mod tests {
     }
 
     #[test]
+    fn only_the_desktop_app_can_reach_the_network_through_it() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        // Nothing but the desktop depends on it: not the core, the CLI or the MCP server, nor the interface (the desktop's main attaches it).
+        for manifest in ["crates/core/Cargo.toml", "apps/bimcraft-cli/Cargo.toml", "crates/ui-egui/Cargo.toml", "crates/update/Cargo.toml"]
+        {
+            let text = std::fs::read_to_string(root.join(manifest)).unwrap();
+            assert!(!text.contains("bimcraft-geofetch"), "{manifest} depends on bimcraft-geofetch");
+        }
+        // And it depends on none of what is not its business: the updater, the interface, the other readers.
+        let own = std::fs::read_to_string(root.join("crates/geofetch/Cargo.toml")).unwrap();
+        for dep in ["bimcraft-update", "bimcraft-ui-egui", "bimcraft-dwg", "bimcraft-rvt", "reqwest", "hyper"] {
+            assert!(!own.contains(dep), "geofetch depends on {dep}");
+        }
+    }
+
+    #[test]
     fn the_core_asks_through_the_trait_and_overpass_answers() {
         let net = Arc::new(Fake::new().post(OVERPASS, GOOD.as_bytes()));
         let f: Fetcher = Arc::new(fetcher(net.clone()));
