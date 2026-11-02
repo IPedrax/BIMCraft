@@ -30,6 +30,176 @@ pub struct Contour {
 /// Contours already worked out for an interval and a base (their bits).
 type Memo = ((u64, u64), Arc<Vec<Contour>>);
 
+/// What a pad takes out of the ground and puts in, mm³: where the ground is above its top the earth is cut, where below it, filled.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct CutFill {
+    pub cut: f64,
+    pub fill: f64,
+    /// The area of the pad that is over the surface, mm².
+    pub covered: f64,
+    /// The pad's whole area, mm².
+    pub pad_area: f64,
+}
+
+/// What lies between two surfaces, where both are, taken a `cell` at a time: cut where the first is above the second, fill where below.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Between {
+    pub cut: f64,
+    pub fill: f64,
+    /// The area compared, mm².
+    pub area: f64,
+    pub cells: usize,
+    pub cell: f64,
+}
+
+/// The volume between two surfaces over where both are: the midpoint of each `cell` mm square, up to `most` cells.
+pub fn between(first: &Tin, second: &Tin, cell: f64, most: usize) -> Result<Between, String> {
+    if !cell.is_finite() || cell <= 0.0 {
+        return Err(format!("`cell` is a size in mm above 0, not {cell}"));
+    }
+    let lo = [first.lo[0].max(second.lo[0]), first.lo[1].max(second.lo[1])];
+    let hi = [first.hi[0].min(second.hi[0]), first.hi[1].min(second.hi[1])];
+    if hi[0] <= lo[0] || hi[1] <= lo[1] {
+        return Err("the surfaces do not overlap".into());
+    }
+    let (nx, ny) = (((hi[0] - lo[0]) / cell).ceil(), ((hi[1] - lo[1]) / cell).ceil());
+    if nx * ny > most as f64 {
+        return Err(format!("a cell of {cell} mm would make {} cells over the surfaces, more than {most}: use a larger `cell`", nx * ny));
+    }
+    let (nx, ny) = (nx as usize, ny as usize);
+    let mut r = Between { cell, cells: nx * ny, ..Between::default() };
+    let unit = cell * cell;
+    for j in 0..ny {
+        for i in 0..nx {
+            let (x, y) = (lo[0] + (i as f64 + 0.5) * cell, lo[1] + (j as f64 + 0.5) * cell);
+            let (Some(a), Some(b)) = (first.height_at(x, y), second.height_at(x, y)) else { continue };
+            r.area += unit;
+            if a > b {
+                r.cut += (a - b) * unit;
+            } else {
+                r.fill += (b - a) * unit;
+            }
+        }
+    }
+    Ok(r)
+}
+
+/// The part of `poly` inside the triangle `tri`, whichever way round it is (Sutherland-Hodgman: a triangle is convex, so a polygon of any
+/// shape is clipped by its three sides in turn).
+fn clip_to(mut poly: Vec<P2>, tri: [P2; 3]) -> Vec<P2> {
+    let tri = if (tri[1] - tri[0]).cross(tri[2] - tri[0]) < 0.0 { [tri[0], tri[2], tri[1]] } else { tri };
+    for k in 0..3 {
+        let (a, b) = (tri[k], tri[(k + 1) % 3]);
+        let side = |p: P2| (b - a).cross(p - a);
+        let mut out = Vec::with_capacity(poly.len() + 2);
+        for i in 0..poly.len() {
+            let (prev, cur) = (poly[(i + poly.len() - 1) % poly.len()], poly[i]);
+            let (sp, sc) = (side(prev), side(cur));
+            if (sc >= 0.0) != (sp >= 0.0) {
+                let t = sp / (sp - sc);
+                out.push(prev + (cur - prev) * t);
+            }
+            if sc >= 0.0 {
+                out.push(cur);
+            }
+        }
+        poly = out;
+        if poly.len() < 3 {
+            return Vec::new();
+        }
+    }
+    poly
+}
+
+/// The height of the plane through the triangle `t`, over (x, y), even where that is off the triangle.
+fn plane_at(t: &[P3; 3], x: f64, y: f64) -> Option<f64> {
+    let [a, b, c] = t;
+    let d = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    if d.abs() < 1e-12 {
+        return None;
+    }
+    let gx = ((b[2] - a[2]) * (c[1] - a[1]) - (c[2] - a[2]) * (b[1] - a[1])) / d;
+    let gy = ((c[2] - a[2]) * (b[0] - a[0]) - (b[2] - a[2]) * (c[0] - a[0])) / d;
+    Some(a[2] + gx * (x - a[0]) + gy * (y - a[1]))
+}
+
+/// The mean of the positive part of the linear function that has `v` at the corners of a triangle: exact, by cutting the triangle where
+/// the function is zero.
+fn positive(v: [f64; 3]) -> f64 {
+    let mut s = v;
+    s.sort_by(|a, b| b.total_cmp(a));
+    let (a, b, c) = (s[0], s[1], s[2]);
+    if c >= 0.0 {
+        (a + b + c) / 3.0
+    } else if a <= 0.0 {
+        0.0
+    } else if b >= 0.0 {
+        // Only the lowest corner is below zero: take from the whole the corner that is.
+        let (t1, t2) = (-c / (a - c), -c / (b - c));
+        (a + b + c) / 3.0 - t1 * t2 * c / 3.0
+    } else {
+        // Only the highest is above zero: the corner that is, a triangle of it.
+        let (s2, s3) = (a / (a - b), a / (a - c));
+        s2 * s3 * a / 3.0
+    }
+}
+
+impl Tin {
+    /// The triangles whose box meets the box `lo`..`hi`.
+    fn near(&self, lo: [f64; 2], hi: [f64; 2]) -> Vec<u32> {
+        let cell = |v: f64, i: usize| (((v - self.lo[i]) / self.size[i]).floor().max(0.0) as usize).min(self.n - 1);
+        if hi[0] < self.lo[0] || hi[1] < self.lo[1] || lo[0] > self.hi[0] || lo[1] > self.hi[1] {
+            return Vec::new();
+        }
+        let mut found: Vec<u32> = self.big.clone();
+        for cy in cell(lo[1], 1)..=cell(hi[1], 1) {
+            for cx in cell(lo[0], 0)..=cell(hi[0], 0) {
+                found.extend(&self.cells[cy * self.n + cx]);
+            }
+        }
+        found.sort_unstable();
+        found.dedup();
+        found
+    }
+
+    /// What a flat pad of outline `ring` with its top at `z` cuts and fills in this ground: exact, since the ground is flat in each
+    /// triangle and the pad is cut into triangles that meet them.
+    pub fn cut_fill(&self, ring: &[P2], z: f64) -> Result<CutFill, String> {
+        if ring.len() < 3 || !z.is_finite() || ring.iter().any(|p| !p.0.is_finite() || !p.1.is_finite()) {
+            return Err("a pad needs an outline of three points or more, and a height, that are numbers".into());
+        }
+        if geom::area(ring).abs() < 1e-6 {
+            return Err("the pad's outline encloses no area".into());
+        }
+        let pieces = geom::triangulate(ring);
+        if pieces.is_empty() {
+            return Err("the pad's outline cannot be cut into triangles: does it cross itself?".into());
+        }
+        let mut r = CutFill::default();
+        for [i, j, k] in pieces {
+            let pad = [ring[i], ring[j], ring[k]];
+            r.pad_area += geom::area(&pad).abs();
+            let lo = [pad.iter().map(|p| p.0).fold(f64::MAX, f64::min), pad.iter().map(|p| p.1).fold(f64::MAX, f64::min)];
+            let hi = [pad.iter().map(|p| p.0).fold(f64::MIN, f64::max), pad.iter().map(|p| p.1).fold(f64::MIN, f64::max)];
+            for n in self.near(lo, hi) {
+                let t = &self.tris[n as usize];
+                let piece = clip_to(pad.to_vec(), [P2(t[0][0], t[0][1]), P2(t[1][0], t[1][1]), P2(t[2][0], t[2][1])]);
+                for m in 1..piece.len().saturating_sub(1) {
+                    let corner = [piece[0], piece[m], piece[m + 1]];
+                    let area = geom::area(&corner).abs();
+                    let Some(f) = corner.iter().map(|p| plane_at(t, p.0, p.1).map(|h| h - z)).collect::<Option<Vec<f64>>>() else {
+                        continue;
+                    };
+                    r.covered += area;
+                    r.cut += area * positive([f[0], f[1], f[2]]);
+                    r.fill += area * positive([-f[0], -f[1], -f[2]]);
+                }
+            }
+        }
+        Ok(r)
+    }
+}
+
 /// A terrain's triangles, indexed to find the one over a point.
 #[derive(Clone, Debug, Default)]
 pub struct Tin {
@@ -506,6 +676,84 @@ mod tests {
         assert!(!Arc::ptr_eq(&x, &a.contours_shared(200.0, 0.0).unwrap()));
         assert!(cached(&points[..2], &[], &[]).is_err(), "a failure is told again, not built again");
         assert!(cached(&points[..2], &[], &[]).is_err());
+    }
+
+    /// A ring of the corners of a rectangle, counter-clockwise.
+    fn rect(x0: f64, y0: f64, x1: f64, y1: f64) -> Vec<P2> {
+        vec![P2(x0, y0), P2(x1, y0), P2(x1, y1), P2(x0, y1)]
+    }
+
+    #[test]
+    fn a_flat_pad_over_flat_ground_is_all_cut_or_all_fill() {
+        let tin = build(&grid(3, 5000.0, |_, _| 1000.0), &[], &[]).unwrap();
+        let pad = rect(3000.0, 3000.0, 7000.0, 7000.0);
+        let low = tin.cut_fill(&pad, 500.0).unwrap();
+        assert!(near(low.cut, 16e6 * 500.0) && low.fill.abs() < 1.0, "{low:?}");
+        assert!(near(low.covered, 16e6) && near(low.pad_area, 16e6));
+        let high = tin.cut_fill(&pad, 1500.0).unwrap();
+        assert!(near(high.fill, 16e6 * 500.0) && high.cut.abs() < 1.0, "{high:?}");
+        let level = tin.cut_fill(&pad, 1000.0).unwrap();
+        assert!(level.cut.abs() < 1.0 && level.fill.abs() < 1.0, "{level:?}");
+        // A clockwise ring is the same pad.
+        let mut cw = pad.clone();
+        cw.reverse();
+        assert_eq!(tin.cut_fill(&cw, 500.0).unwrap(), low);
+    }
+
+    #[test]
+    fn on_a_slope_the_cut_and_the_fill_are_what_the_arithmetic_says() {
+        // Ground z = x / 10 from 0 to 1000 over 10 m; a 4 m square pad from x = 2 m to 6 m at z = 500. The ground is above the pad
+        // for x past 5 m, by up to 100 mm: a cut of 50 mm on average over 1 m by 4 m, 0.2 m3. Below it from 2 m to 5 m, by up to 300:
+        // 150 on average over 3 m by 4 m, 1.8 m3.
+        let tin = build(&grid(11, 1000.0, |x, _| x / 10.0), &[], &[]).unwrap();
+        let r = tin.cut_fill(&rect(2000.0, 2000.0, 6000.0, 6000.0), 500.0).unwrap();
+        assert!((r.cut - 2e8).abs() < 1e3 && (r.fill - 1.8e9).abs() < 1e3, "{r:?}");
+        assert!(near(r.covered, 16e6));
+    }
+
+    #[test]
+    fn a_pad_of_any_shape_counts_its_own_area_only() {
+        let tin = build(&grid(3, 5000.0, |_, _| 1000.0), &[], &[]).unwrap();
+        // An L: the 4 m square less a 2 m square from its corner: 12 m2.
+        let l =
+            vec![P2(2000.0, 2000.0), P2(6000.0, 2000.0), P2(6000.0, 4000.0), P2(4000.0, 4000.0), P2(4000.0, 6000.0), P2(2000.0, 6000.0)];
+        let r = tin.cut_fill(&l, 0.0).unwrap();
+        assert!(near(r.cut, 12e6 * 1000.0) && near(r.covered, 12e6), "{r:?}");
+        // Partly off the ground: only what is over it is dug.
+        let off = tin.cut_fill(&rect(8000.0, 2000.0, 12000.0, 4000.0), 0.0).unwrap();
+        assert!(near(off.covered, 4e6) && near(off.pad_area, 8e6) && near(off.cut, 4e6 * 1000.0), "{off:?}");
+        // Wholly off it: nothing.
+        let none = tin.cut_fill(&rect(20000.0, 20000.0, 22000.0, 22000.0), 0.0).unwrap();
+        assert_eq!((none.cut, none.fill, none.covered), (0.0, 0.0, 0.0));
+        assert!(tin.cut_fill(&[P2(0.0, 0.0), P2(1.0, 1.0)], 0.0).is_err());
+        assert!(tin.cut_fill(&rect(0.0, 0.0, 1000.0, 1000.0), f64::NAN).is_err());
+        assert!(tin.cut_fill(&[P2(0.0, 0.0), P2(1.0, 0.0), P2(2.0, 0.0)], 0.0).is_err(), "no area");
+        assert!(tin.cut_fill(&[P2(0.0, 0.0), P2(f64::NAN, 0.0), P2(0.0, 1.0)], 0.0).is_err());
+    }
+
+    #[test]
+    fn two_surfaces_are_compared_where_both_are() {
+        // Ground rising 0 to 1000 mm over 10 m, against flat at 500: half is cut, half fill, 12.5 m3 each (1.25e10 mm3).
+        let rising = build(&grid(11, 1000.0, |x, _| x / 10.0), &[], &[]).unwrap();
+        let flat = build(&grid(3, 5000.0, |_, _| 500.0), &[], &[]).unwrap();
+        let b = between(&rising, &flat, 100.0, 1_000_000).unwrap();
+        assert!((b.cut - 1.25e10).abs() < 1.25e10 * 0.01 && (b.fill - 1.25e10).abs() < 1.25e10 * 0.01, "{b:?}");
+        assert!(near(b.area, 1e8) && b.cells == 10_000, "{b:?}");
+        // Only the common ground: the second covers the east half.
+        let east =
+            build(&[[5000.0, 0.0, 500.0], [10000.0, 0.0, 500.0], [10000.0, 10000.0, 500.0], [5000.0, 10000.0, 500.0]], &[], &[]).unwrap();
+        let b = between(&rising, &east, 100.0, 1_000_000).unwrap();
+        assert!((b.area - 5e7).abs() < 5e5 && b.fill < 1.0 && (b.cut - 1.25e10).abs() < 1.25e10 * 0.01, "{b:?}");
+        // Cut by one is fill the other way round.
+        let back = between(&east, &rising, 100.0, 1_000_000).unwrap();
+        assert!((back.fill - b.cut).abs() < 1e7 && back.cut < 1.0, "{back:?}");
+        // Too fine a cell, nonsense, and surfaces that do not touch.
+        assert!(between(&rising, &flat, 1.0, 1_000_000).unwrap_err().contains("cell"));
+        for bad in [0.0, -1.0, f64::NAN] {
+            assert!(between(&rising, &flat, bad, 1000).is_err());
+        }
+        let far = build(&[[50000.0, 0.0, 0.0], [60000.0, 0.0, 0.0], [60000.0, 10000.0, 0.0]], &[], &[]).unwrap();
+        assert!(between(&rising, &far, 100.0, 1_000_000).unwrap_err().contains("do not overlap"));
     }
 
     #[test]
