@@ -3977,9 +3977,61 @@ impl Model {
             .map(|(_, id, i)| (id, i))
     }
 
-    /// A roof's slabs: each piece's underside in space, and how far its top lies over it.
+    /// A roof's slabs: each piece's underside in space, and how far its top lies over it (at most, over a level underside).
     pub fn roof_slabs(&self, r: &Roof) -> Vec<(Vec<[f64; 3]>, f64)> {
-        self.roof_pieces(r).unwrap_or_default().into_iter().map(|(ring, p)| (p.lift(&ring), self.roof_rise(r, &p))).collect()
+        self.roof_prisms(r)
+            .into_iter()
+            .map(|(ring, bottom, top)| {
+                let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
+                (bottom.lift(&ring), rise)
+            })
+            .collect()
+    }
+
+    /// A roof's slabs as prisms: each of its pieces (`roof_pieces`) in plan, from its underside's plane up to its top's,
+    /// `roof_rise` over it; a shaped one's underside level at its base under a variable layer (`roof_under`).
+    pub fn roof_prisms(&self, r: &Roof) -> Vec<(Vec<P2>, walls::Plane, walls::Plane)> {
+        let under = self.roof_under(r).map(|(p, _)| p);
+        self.roof_pieces(r)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(ring, p)| {
+                let top = walls::Plane { z: p.z + self.roof_rise(r, &p), ..p };
+                (ring, under.unwrap_or(p), top)
+            })
+            .collect()
+    }
+
+    /// A shaped flat roof's underside, level at its base, when its type has a variable layer, and that layer: the layers
+    /// over it follow its top, those under it stay level, as a shaped floor's do (`floor_under`). None otherwise: its
+    /// underside follows its top.
+    pub fn roof_under(&self, r: &Roof) -> Option<(walls::Plane, Variable)> {
+        if r.shape.is_empty() || r.unshapeable().is_some() {
+            return None;
+        }
+        let v = Variable::of(self.type_layers("roof", &r.type_name))?;
+        Some((walls::Plane::flat(self.elevation(r.level) + r.offset), v))
+    }
+
+    /// The variable layer element `id` keeps its underside level under: a shaped floor's (`floor_under`) or a shaped flat
+    /// roof's (`roof_under`).
+    pub fn variable_under(&self, id: impl Key) -> Option<Variable> {
+        match self.elements.get(id) {
+            Some(Element::Floor(f)) => self.floor_under(f).map(|(_, v)| v),
+            Some(Element::Roof(r)) => self.roof_under(r).map(|(_, v)| v),
+            _ => None,
+        }
+    }
+
+    /// A shaped flat roof's slab as one closed solid, as a shaped floor's (`shape_solid`): its top's planes, its underside
+    /// its thickness under them or level under a variable layer, and plumb sides. None unshaped.
+    pub fn roof_solid(&self, r: &Roof) -> Option<Polyhedron> {
+        if r.shape.is_empty() || r.unshapeable().is_some() {
+            return None;
+        }
+        let f = self.roof_as_floor(r);
+        let thickness = self.types.roof.get(&r.type_name).map_or(0.0, |t| t.thickness);
+        self.shaped_solid(&f, &f.openings, thickness, self.roof_under(r).map(|(p, _)| p))
     }
 
     /// A roof's slopes less the holes in them and its openings, in convex pieces where a hole cuts one.
@@ -4056,13 +4108,16 @@ impl Model {
 
     /// [`shape_solid`](Self::shape_solid), open through `openings` only: none for its whole outline.
     pub fn shape_solid_over(&self, f: &Floor, openings: &[Vec<P2>]) -> Option<Polyhedron> {
+        self.shaped_solid(f, openings, self.floor_depth(f), self.floor_under(f).map(|(p, _)| p))
+    }
+
+    /// A shaped top's slab as one closed solid (`shape_solid_over`), `depth` under its top, plumb, or down to `under`.
+    fn shaped_solid(&self, f: &Floor, openings: &[Vec<P2>], depth: f64, under: Option<walls::Plane>) -> Option<Polyhedron> {
         if f.shape.is_empty() {
             return None;
         }
         let (t, lifted, planes) = self.shape_mesh(f, openings).ok()?;
         let n = lifted.len();
-        let depth = self.floor_depth(f);
-        let under = self.floor_under(f).map(|(p, _)| p);
         let down = |p: &[f64; 3]| [p[0], p[1], under.map_or(p[2] - depth, |u| u.at(P2(p[0], p[1])))];
         let corners: Vec<[f64; 3]> = lifted.iter().copied().chain(lifted.iter().map(down)).collect();
         let index: BTreeMap<(u64, u64), usize> = t.points.iter().enumerate().map(|(i, q)| ((q.0.to_bits(), q.1.to_bits()), i)).collect();
@@ -6060,7 +6115,7 @@ impl Model {
                         if let Some(why) = r.unshapeable() {
                             return Err(format!("{who}: {why}"));
                         }
-                        shape_ok(&who, &self.roof_as_floor(r), None)?;
+                        shape_ok(&who, &self.roof_as_floor(r), Variable::of(self.type_layers("roof", &r.type_name)))?;
                     }
                     self.roof_pieces(r).map_err(|e| format!("{who}: {e}"))?;
                 }

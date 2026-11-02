@@ -618,6 +618,15 @@ fn solids_in(m: &Model, elements: &[(Id, &Element)], index: Option<&walls::Index
                 top,
                 curve: None,
             })),
+            // Under a variable layer, a shaped roof's underside is level: each piece a prism from it up to its top.
+            Element::Roof(r) if m.roof_under(r).is_some() => {
+                for (ring, bottom, top) in m.roof_prisms(r) {
+                    let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
+                    for piece in m.less_shafts(&bottom.lift(&ring), rise).0 {
+                        out.push(Solid::Prism { owner: id, color: ROOF, tex: 0, ring: piece, bottom, top, curve: None });
+                    }
+                }
+            }
             Element::Roof(r) => {
                 for (face, rise) in m.roof_slabs(r) {
                     slabs(&mut out, m, id, ROOF, face, rise);
@@ -775,12 +784,9 @@ fn layered(m: &Model, s: Solid) -> Vec<Solid> {
             }
             out
         }
-        // A shaped floor's over a level underside: from the top down, the layers above its variable one following its top,
-        // those below it level over its underside, and the variable one between.
-        Solid::Prism { owner, color, tex, ring, bottom, top, curve: None }
-            if let Some(Element::Floor(f)) = m.elements.get(owner)
-                && let Some((_, v)) = m.floor_under(f) =>
-        {
+        // A shaped floor's or roof's over a level underside: from the top down, the layers above its variable one following
+        // its top, those below it level over its underside, and the variable one between.
+        Solid::Prism { owner, color, tex, ring, bottom, top, curve: None } if let Some(v) = m.variable_under(owner) => {
             let depth = top.z - bottom.z;
             let b = crate::model::Variable::bounds(Some(v), layers, depth);
             // Where layer `k` starts, from the top down: over the variable layer, under the top; under it, over the bottom.

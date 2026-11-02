@@ -1241,12 +1241,9 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
         if total <= 0.0 {
             continue;
         }
-        // A shaped floor's over a level underside: the layers above its variable one from the top, those below it from the
-        // bottom, the variable one between; any other's in proportion to their thicknesses.
-        let variable = match m.elements.get(owner) {
-            Some(Element::Floor(f)) => m.floor_under(f).map(|(_, v)| v),
-            _ => None,
-        };
+        // A shaped floor's or roof's over a level underside: the layers above its variable one from the top, those below it
+        // from the bottom, the variable one between; any other's in proportion to their thicknesses.
+        let variable = m.variable_under(owner);
         d.owner = Some(owner);
         for r in rings {
             let &[a0, b0, b1, a1] = r.as_slice() else { continue };

@@ -442,12 +442,12 @@ impl Bound {
     /// The roof or floor `id` from below (with `top`, from above), or `own` without one.
     fn of(m: &Model, id: Option<Guid>, top: bool, own: f64) -> Bound {
         let regions = match id.and_then(|id| m.elements.get(id)) {
+            // From below its underside (a shaped one's level under a variable layer), from above its top.
             Some(Element::Roof(r)) => m
-                .roof_pieces(r)
-                .unwrap_or_default()
+                .roof_prisms(r)
                 .into_iter()
-                .flat_map(|(ring, p)| {
-                    let plane = Plane { z: p.z + if top { m.roof_rise(r, &p) } else { 0.0 }, ..p };
+                .flat_map(|(ring, bottom, up)| {
+                    let plane = if top { up } else { bottom };
                     convex_pieces(&ring).into_iter().map(move |c| (c, plane))
                 })
                 .collect(),

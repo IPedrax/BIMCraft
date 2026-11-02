@@ -42,7 +42,10 @@ Status, on the branch `mod-16-shape-editing` (raised upstream as IPedrax/BIMCraf
   kept by `edit_boundary` and carried by moves and mirrors; a pitched, extruded or joining roof refuses one, saying why
   (`Roof::unshapeable`). `ci/ifc-coverage.txt` has one for IfcOpenShell. Tests: the three `*roof*` tests in
   `shape_tests.rs`, and `a_flat_roof_by_footprint_is_shaped_as_a_floor_is_and_a_pitched_one_isnt` in the desktop's
-  `tests/shape3d.rs`. Not yet: a shaped roof's variable layer keeping its underside level, as a floor's does.
+  `tests/shape3d.rs`. A roof type's variable layer keeps a shaped roof's underside level at its base, as a floor's does
+  (`Model::roof_under`, `roof_prisms`, `roof_solid`, `variable_under`): 3D layers, sections, attached walls, IFC (one
+  closed Brep; `ci/ifc-coverage.txt` has both kinds) and the check (tests `a_roofs_variable_layer_*`,
+  `a_section_shows_a_roofs_insulation_*`, `a_roof_point_that_would_leave_its_insulation_*`).
 - **Phase 5** is a proposal.
 
 Line numbers are as of `0733fd4`.

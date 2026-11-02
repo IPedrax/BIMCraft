@@ -1041,7 +1041,11 @@ pub fn export(m: &Model) -> String {
             Element::Roof(r) => {
                 let (Some(&(_, storey)), pieces) = (storeys.get(&r.level), m.roof_slabs(r)) else { continue };
                 let at = w.place(Some(storey), (0.0, 0.0, 0.0), None);
-                let breps: Vec<u64> = pieces.iter().map(|(face, rise)| w.brep(face, m.elevation(r.level), *rise)).collect();
+                // A shaped one is one closed faceted Brep, as a shaped floor is; any other a shell round each piece.
+                let breps: Vec<u64> = match m.roof_solid(r) {
+                    Some(solid) => vec![w.polyhedron(&solid, m.elevation(r.level))],
+                    None => pieces.iter().map(|(face, rise)| w.brep(face, m.elevation(r.level), *rise)).collect(),
+                };
                 let shape = w.solid(&breps, &[]);
                 let kind = match (&r.extrusion, r.slope == 0.0, r.gable || !r.gables.is_empty()) {
                     (Some(x), ..) => [".SHED_ROOF.", ".GABLE_ROOF."].get(x.profile.len().saturating_sub(2)).unwrap_or(&".FREEFORM."),

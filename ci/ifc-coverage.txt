@@ -53,3 +53,7 @@ edit_shape {"id": 100342, "points": [{"at": [44000,3000], "z": -30}]}
 # A shaped flat roof (MOD-16, phase 4): two drains 40 mm down; each plane a slab, its underside following.
 roof {"level": 100001, "slope": 0, "boundary": [[50000,0],[58000,0],[58000,6000],[50000,6000]]}
 edit_shape {"id": 100343, "points": [{"at": [52000,3000], "z": -40}, {"at": [56000,3000], "z": -40}]}
+# The same over a variable layer: a level underside, the insulation taking up the fall; one closed faceted Brep.
+type {"category": "roof", "name": "Terrace Roof", "layers": [{"function": "finish", "thickness": 10}, {"function": "substrate", "thickness": 100, "variable": true}, {"function": "structure", "thickness": 200}]}
+roof {"level": 100001, "slope": 0, "type": "Terrace Roof", "boundary": [[60000,0],[68000,0],[68000,6000],[60000,6000]]}
+edit_shape {"id": 100344, "points": [{"at": [64000,3000], "z": -40}]}
