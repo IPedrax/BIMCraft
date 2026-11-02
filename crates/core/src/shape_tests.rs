@@ -464,6 +464,44 @@ fn a_dragged_point_takes_its_split_lines_with_it_and_keeps_its_height() {
 }
 
 #[test]
+fn a_raised_point_keeps_its_part_and_a_raised_corner_becomes_one() {
+    let mut s = Session::new();
+    let f = slab(&mut s);
+    run(&mut s, "edit_shape", json!({"id": f, "points": [{"at": [4000, 3000], "z": -30}]}));
+    let Some(crate::model::Element::Floor(fl)) = s.model.elements.get(f) else { panic!("no floor") };
+    let raised = fl.shape.raised(P2(4000.0, 3000.0), 20.0);
+    assert_eq!((raised.points.len(), raised.points[0].z, raised.points[0].id), (1, 20.0, fl.shape.points[0].id));
+    let corner = fl.shape.raised(P2(8000.0, 6000.0), 15.0);
+    assert_eq!(corner.points.len(), 2);
+    assert_eq!((corner.points[1].at, corner.points[1].z), (P2(8000.0, 6000.0), 15.0));
+}
+
+#[test]
+fn a_shaped_tops_creases_are_its_planes_edges_in_3d_each_once() {
+    let mut s = Session::new();
+    let f = slab(&mut s);
+    let Some(crate::model::Element::Floor(flat)) = s.model.elements.get(f).cloned() else { panic!("no floor") };
+    assert!(s.model.shape_creases(&flat).is_empty(), "a flat floor folds nowhere");
+    run(&mut s, "edit_shape", json!({"id": f, "points": [{"at": [4000, 3000], "z": -30}]}));
+    let Some(crate::model::Element::Floor(fl)) = s.model.elements.get(f).cloned() else { panic!("no floor") };
+    let creases = s.model.shape_creases(&fl);
+    // A drain in a rectangle: its outline's four edges and one from each corner down to it.
+    assert_eq!(creases.len(), 8, "{creases:?}");
+    let top = top(&s, f, 0.0, 0.0);
+    let to_drain = creases.iter().filter(|[a, b]| [a, b].iter().any(|p| (p[0], p[1]) == (4000.0, 3000.0))).count();
+    assert_eq!(to_drain, 4);
+    for [a, b] in &creases {
+        for p in [a, b] {
+            let drain = (p[0], p[1]) == (4000.0, 3000.0);
+            assert!((p[2] - if drain { top - 30.0 } else { top }).abs() < 1e-6, "{p:?}");
+        }
+    }
+    // A preview of a drag is the same floor with the shape it would have: the drain moved, its creases with it.
+    let moved = crate::model::Floor { shape: fl.shape.moved(P2(4000.0, 3000.0), P2(2000.0, 3000.0)), ..fl.clone() };
+    assert!(s.model.shape_creases(&moved).iter().flatten().any(|p| (p[0], p[1], p[2]) == (2000.0, 3000.0, top - 30.0)));
+}
+
+#[test]
 fn a_shapes_labels_give_each_points_height_relative_or_above_its_level() {
     let mut s = Session::new();
     // On Level 2, 3000 mm up, offset 50 mm: a drain 30 mm down.

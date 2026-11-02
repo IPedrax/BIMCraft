@@ -297,8 +297,16 @@ impl BimApp {
         if !lifting {
             o.lift = None;
         }
+        let lift_held = o.lift.is_some();
         let lifted_by = match (o.lift, latest) {
             (Some((_, at, from)), Some(now)) => cam.along(2, at, px(from), px(now)).map(f64::round),
+            _ => None,
+        };
+        // While it's dragged, the floor as it would be with that point or corner there.
+        let preview = match (&shaping, o.lift, lifted_by) {
+            (Some(f), Some((q, ..)), Some(by)) => {
+                crate::shape::raised(&model, f, q, by).map(|shape| bimcraft_core::model::Floor { shape, ..f.clone() })
+            }
             _ => None,
         };
         let mut raise = None;
@@ -308,6 +316,7 @@ impl BimApp {
         {
             raise = lifted_by.map(|by| (q, by));
         }
+        let still = o.lift.is_some();
         // The primary button, or Shift and the middle button, orbit, 0.4° a point; the middle
         // button alone pans.
         if response.drag_started()
@@ -444,6 +453,13 @@ impl BimApp {
         };
         if let Some(f) = &shaping {
             let (base, level) = (model.floor_top(f), model.elevation(f.level));
+            // The creases the drag would leave, dashed over the ones there are.
+            for [a, b] in preview.as_ref().map(|f| model.shape_creases(f)).unwrap_or_default() {
+                let (a, b) = (screen(a), screen(b));
+                if a.is_finite() && b.is_finite() {
+                    p.extend(egui::Shape::dashed_line(&[a, b], Stroke::new(1.5, pal().accent), 6.0, 4.0));
+                }
+            }
             let held = o.lift.map(|(q, ..)| q);
             for (q, at) in &handles {
                 let is_held = held.is_some_and(|h| h.dist(*q) <= TOL);
@@ -509,6 +525,10 @@ impl BimApp {
         }
         if let Some((lo, hi)) = boxed_to {
             self.run("section_box", json!({"min": lo, "max": hi}));
+        }
+        // This view's drag's preview, while it lasts; a plan's is its own.
+        if lift_held {
+            self.shape_preview = preview.filter(|_| still);
         }
         if let Some((q, by)) = raise {
             self.shape_raise(q, by);

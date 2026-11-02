@@ -46,6 +46,33 @@ fn in_3d_a_points_grip_drags_it_up_or_down_and_a_corners_makes_it_a_point() {
 }
 
 #[test]
+fn in_3d_a_grip_held_mid_drag_previews_the_creases_its_release_will_leave() {
+    let (mut h, floor) = drained();
+    press(&mut h, "Modify Sub Elements");
+    let (a, b) = (h.state().screen3([4000.0, 3000.0, -300.0]), h.state().screen3([4000.0, 3000.0, -100.0]));
+    h.hover_at(a);
+    h.run();
+    h.event(Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run();
+    for t in [0.5, 1.0] {
+        h.hover_at(a + (b - a) * t);
+        h.run();
+    }
+    // Held: the model as it was, the preview with the drain up, its creases down to it.
+    assert_eq!(point_near(&h, floor, 4000.0, 3000.0, 0.0).map(|p| p.1), Some(-300.0));
+    let preview = h.state().shape_preview.clone().expect("a preview while the grip is held");
+    let z = preview.shape.points[0].z;
+    assert!((z + 100.0).abs() <= 2.0, "{z}");
+    let creases = h.state().session.model.shape_creases(&preview);
+    assert_eq!(creases.iter().flatten().filter(|p| (p[0], p[1]) == (4000.0, 3000.0)).count(), 4, "{creases:?}");
+    // Let go: the shape it previewed, and no preview.
+    h.event(Event::PointerButton { pos: b, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run();
+    assert_eq!(point_near(&h, floor, 4000.0, 3000.0, 0.0).map(|p| p.1), Some(z));
+    assert!(h.state().shape_preview.is_none());
+}
+
+#[test]
 fn in_3d_a_click_sets_what_it_picks_to_the_elevation_and_adds_points_and_split_lines_on_the_top() {
     let (mut h, floor) = drained();
     // Modify Sub Elements: the drain clicked, a little off it, to the Options Bar's elevation.

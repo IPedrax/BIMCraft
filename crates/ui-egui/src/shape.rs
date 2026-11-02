@@ -3,7 +3,7 @@
 //! this runs it.
 
 use bimcraft_core::geom::P2;
-use bimcraft_core::model::{Element, Floor, Id, Shape, TOL};
+use bimcraft_core::model::{Element, Floor, Id, Model, Shape, TOL};
 use serde_json::{Value, json};
 
 use crate::lang::{t, tf};
@@ -11,6 +11,13 @@ use crate::{BimApp, Status, Tool};
 
 fn point(p: P2) -> Value {
     json!([p.0, p.1])
+}
+
+/// Floor `f`'s shape with its point or corner at `at` raised `by` mm, to the millimetre; none when that leaves it as it is.
+pub(crate) fn raised(m: &Model, f: &Floor, at: P2, by: f64) -> Option<Shape> {
+    let now = m.shape_height(f, at);
+    let z = (now + by).round();
+    ((z - now).abs() >= 0.5).then(|| f.shape.raised(at, z))
 }
 
 impl BimApp {
@@ -107,16 +114,8 @@ impl BimApp {
     /// up or down in the 3D view. A corner becomes a point.
     pub(crate) fn shape_raise(&mut self, at: P2, by: f64) {
         let Some((floor, f)) = self.floor_selected() else { return };
-        let now = self.session.model.shape_height(&f, at);
-        let z = (now + by).round();
-        if (z - now).abs() < 0.5 {
-            return;
+        if let Some(shape) = raised(&self.session.model, &f, at, by) {
+            self.edit_shape(floor, &shape);
         }
-        let mut shape = f.shape.clone();
-        match shape.points.iter_mut().find(|p| p.at.dist(at) <= TOL) {
-            Some(p) => p.z = z,
-            None => shape.points.push(bimcraft_core::model::ShapePoint { at, z, ..Default::default() }),
-        }
-        self.edit_shape(floor, &shape);
     }
 }

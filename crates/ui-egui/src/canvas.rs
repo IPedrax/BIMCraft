@@ -9,8 +9,8 @@ use std::sync::{Arc, Weak};
 
 use bimcraft_core::geom::{self, P2};
 use bimcraft_core::model::{
-    Clearance, Column, Component, DEFAULT_HEIGHT, DimKind, Dimension, Element, Extrusion, Id, Landing, Line, MAX_COORD, Mass, Model, RISER,
-    Ramp, Reference, Roof, Section, Spot, Stair, TOL, TREAD, Tag, Wall,
+    Clearance, Column, Component, DEFAULT_HEIGHT, DimKind, Dimension, Element, Extrusion, Floor, Id, Landing, Line, MAX_COORD, Mass, Model,
+    RISER, Ramp, Reference, Roof, Section, Spot, Stair, TOL, TREAD, Tag, Wall,
 };
 use bimcraft_core::render::{self, Drawing, Prim, Rgb, View};
 use bimcraft_core::snap::{self, Found, Kind, Reach};
@@ -3484,7 +3484,9 @@ impl BimApp {
     ) -> bool {
         let floor = self.selected_floor().filter(|_| self.tool == Tool::ModifySubElements);
         let Some(Element::Floor(f)) = floor.and_then(|id| self.session.model.elements.get(id)).cloned() else {
-            self.shape_grip = None;
+            if self.shape_grip.take().is_some() {
+                self.shape_preview = None;
+            }
             return false;
         };
         if response.drag_started_by(PointerButton::Primary)
@@ -3495,9 +3497,15 @@ impl BimApp {
         }
         let Some(from) = self.shape_grip else { return false };
         if !response.drag_stopped() {
+            // While it's dragged, the floor as it would be with the point where the cursor snaps.
+            if let Some(q) = ui.input(|i| i.pointer.latest_pos()) {
+                let m = std::sync::Arc::clone(&self.session.model);
+                let to = self.snap(&m, level, view, (q.x - rect.min.x, q.y - rect.min.y), &[], false).at;
+                self.shape_preview = Some(Floor { shape: f.shape.moved(from, to), ..f });
+            }
             return false;
         }
-        self.shape_grip = None;
+        (self.shape_grip, self.shape_preview) = (None, None);
         let Some(q) = ui.input(|i| i.pointer.latest_pos()) else { return true };
         let m = std::sync::Arc::clone(&self.session.model);
         let to = self.snap(&m, level, view, (q.x - rect.min.x, q.y - rect.min.y), &[], false).at;
@@ -3525,6 +3533,10 @@ impl BimApp {
             .and_then(|_| ui.input(|i| i.pointer.latest_pos()))
             .map(|q| self.snap(m, level, view, (q.x - rect.min.x, q.y - rect.min.y), &[], false).at);
         let grips = self.tool == Tool::ModifySubElements;
+        // The creases the drag would leave, dashed over the ones there are.
+        for [a, b] in self.shape_preview.as_ref().map(|f| m.shape_creases(f)).unwrap_or_default() {
+            p.extend(egui::Shape::dashed_line(&[at(P2(a[0], a[1])), at(P2(b[0], b[1]))], Stroke::new(1.5, pal().accent), 6.0, 4.0));
+        }
         for (q, z) in m.shape_labels(f, self.shape_absolute) {
             let held = self.shape_grip.is_some_and(|g| g.dist(q) <= TOL);
             let q = cursor.filter(|_| held).unwrap_or(q);
