@@ -4,7 +4,7 @@
 //! the tools' points, temporary dimensions, and previews of what a click would do.
 
 use std::cell::{Cell, RefCell};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Weak};
 
 use bimcraft_core::geom::{self, P2};
@@ -68,7 +68,12 @@ pub(crate) struct PlanCache {
     pub(crate) retained: crate::retained::Retained,
     /// Who makes the next drawing while a view moves.
     work: PlanWork,
+    /// What each room lit so far covers, of the model it was found in.
+    outlines: Option<(Weak<Model>, HashMap<Id, RoomOutline>)>,
 }
+
+/// What a room covers in plan, and whether it is bounded.
+type RoomOutline = (Vec<P2>, bool);
 
 /// A plan's drawing and triangles asked of a worker: what a view that moved shows next.
 struct PlanJob {
@@ -197,6 +202,24 @@ impl PlanCache {
     #[cfg(test)]
     pub(crate) fn shown_drawing(&self) -> Option<Arc<Drawing>> {
         self.shown.as_ref().map(|(.., drawing)| Arc::clone(drawing))
+    }
+
+    /// What the rooms among `ids` cover, each found once for a model, however many frames it stays lit. Those not known yet are found
+    /// together, as finding a level's loops is what costs, and it is the same for all its rooms.
+    pub(crate) fn room_outlines(&mut self, model: &Arc<Model>, ids: &[Id]) -> &HashMap<Id, RoomOutline> {
+        if !self.outlines.as_ref().is_some_and(|(m, _)| m.ptr_eq(&Arc::downgrade(model))) {
+            self.outlines = Some((Arc::downgrade(model), HashMap::new()));
+        }
+        let known = &mut self.outlines.get_or_insert_with(Default::default).1;
+        let rooms = bimcraft_core::rooms::Rooms::new(model);
+        for id in ids {
+            if !known.contains_key(id)
+                && let Some(Element::Room(r)) = model.elements.get(*id)
+            {
+                known.insert(*id, rooms.outline(r));
+            }
+        }
+        known
     }
 
     /// Leaving the plans: nothing more is made, and what was is let go.
@@ -617,8 +640,10 @@ pub(crate) fn paint_to(
     pictures: &[TextureId],
 ) {
     let mut pictures = pictures.iter();
+    // Looked up for each primitive: not searched through.
+    let set: HashSet<Id> = selected.iter().copied().collect();
     for ((prim, owner), part) in d.prims.iter().zip(&d.owners).zip(&d.parts) {
-        paint_prim(out, clip, at, (prim, *owner, *part), selected, hovered, thin, &mut pictures);
+        paint_prim(out, clip, at, (prim, *owner, *part), &set, hovered, thin, &mut pictures);
     }
 }
 
@@ -629,7 +654,7 @@ pub(crate) fn paint_prim(
     clip: Rect,
     at: Place,
     (prim, owner, part): (&Prim, Option<Id>, render::Part),
-    selected: &[Id],
+    selected: &HashSet<Id>,
     hovered: Option<Id>,
     thin: bool,
     pictures: &mut std::slice::Iter<TextureId>,
@@ -758,6 +783,7 @@ fn letter(rings: &[Vec<(f32, f32)>]) -> Triangles {
 fn ghost(p: &Painter, place: Place, d: &Drawing, selected: &[Id], f: &dyn Fn(Pos2) -> Pos2) {
     let stroke = Stroke::new(1.0, pal().accent);
     let at = |q: &(f32, f32)| f(place.pos(*q));
+    let selected: HashSet<Id> = selected.iter().copied().collect();
     for (prim, owner) in d.prims.iter().zip(&d.owners) {
         if !owner.is_some_and(|id| selected.contains(&id)) {
             continue;
@@ -1600,13 +1626,15 @@ impl BimApp {
             }
         }
         p.extend(crop);
-        let rooms = hovered.iter().map(|id| (*id, canvas_pal().hover)).chain(self.selection.iter().map(|id| (*id, canvas_pal().accent)));
-        for (id, accent) in rooms {
+        let lit: Vec<Id> = hovered.iter().chain(&self.selection).copied().collect();
+        let outlines = self.canvas.drawing.room_outlines(&model, &lit);
+        let hover_lit = usize::from(hovered.is_some());
+        for (i, id) in lit.iter().enumerate() {
             // An unbounded room: the square it sits as, dashed.
-            if let Some(Element::Room(r)) = model.elements.get(id) {
-                let (outline, bounded) = model.room_outline(r);
+            if let Some((outline, bounded)) = outlines.get(id) {
+                let accent = if i < hover_lit { canvas_pal().hover } else { canvas_pal().accent };
                 let mut ring: Vec<Pos2> = outline.iter().map(|q| pos(rect.min, view.px(*q))).collect();
-                if bounded {
+                if *bounded {
                     p.add(Shape::closed_line(ring, Stroke::new(2.0, accent)));
                 } else {
                     ring.extend(ring.first().copied());

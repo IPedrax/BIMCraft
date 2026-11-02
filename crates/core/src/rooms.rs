@@ -83,6 +83,14 @@ impl<'a> Rooms<'a> {
         self.region_at(r, self.m.room_area)
     }
 
+    /// What room `r` covers in plan ([`Model::room_outline`]), for asking of many rooms.
+    pub fn outline(&self, r: &Room) -> (Vec<P2>, bool) {
+        match self.region(r) {
+            Some(g) => (g.outer, true),
+            None => (crate::model::unbounded_square(r.point), false),
+        }
+    }
+
     /// Room `r`'s boundary measured at `at`.
     pub fn region_at(&self, r: &Room, at: RoomArea) -> Option<Region> {
         self.bound(r, at).ok()

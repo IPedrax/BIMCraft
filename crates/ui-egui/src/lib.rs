@@ -2430,10 +2430,10 @@ impl BimApp {
     pub(crate) fn schedules(&self) -> Vec<(Id, &str)> {
         let m = &self.session.model;
         let mut out: Vec<(Id, &str)> = m
-            .elements
-            .iter()
-            .filter_map(|(id, e)| match e {
-                Element::Schedule(sc) if schedule::builtin(Some(&sc.name), None).is_none() => Some((*id, sc.name.as_str())),
+            .rare("schedule")
+            .into_iter()
+            .filter_map(|id| match m.elements.get(id) {
+                Some(Element::Schedule(sc)) if schedule::builtin(Some(&sc.name), None).is_none() => Some((id, sc.name.as_str())),
                 _ => None,
             })
             .collect();

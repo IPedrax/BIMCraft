@@ -3452,10 +3452,10 @@ impl Model {
 
     /// The plan views of `level`, in element order.
     pub fn plan_views(&self, level: impl Key) -> Vec<(Id, &PlanView)> {
-        self.elements
-            .iter()
-            .filter_map(|(id, e)| match e {
-                Element::PlanView(v) if self.same(v.level, level) => Some((*id, v)),
+        self.rare("planview")
+            .into_iter()
+            .filter_map(|id| match self.elements.get(id) {
+                Some(Element::PlanView(v)) if self.same(v.level, level) => Some((id, v)),
                 _ => None,
             })
             .collect()
@@ -4879,10 +4879,7 @@ impl Model {
     /// What a room covers in plan: its boundary's outer ring where the project measures rooms, or, unbounded, a square
     /// [`UNBOUNDED_ROOM`] mm a side round its point, as Revit shows a room in no enclosed region. Whether it is bounded.
     pub fn room_outline(&self, r: &Room) -> (Vec<P2>, bool) {
-        match self.room_region(r) {
-            Some(g) => (g.outer, true),
-            None => (unbounded_square(r.point), false),
-        }
+        crate::rooms::Rooms::new(self).outline(r)
     }
 
     /// The room-bounding wall whose body a room's point lies in, when rooms are measured at `at` the finish faces. There the

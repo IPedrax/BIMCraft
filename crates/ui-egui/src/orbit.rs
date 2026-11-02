@@ -426,14 +426,15 @@ impl BimApp {
             o.rooms = None;
         }
         let solids = &mut o.rooms.get_or_insert_with(|| (Arc::clone(&model), std::collections::BTreeMap::new())).1;
+        let selected: std::collections::HashSet<Id> = selection.iter().copied().collect();
         for (id, e) in model.elements.iter() {
-            let shown = selection.contains(id) || look.as_ref().is_some_and(|l| l.shows(*id));
+            let shown = selected.contains(id) || look.as_ref().is_some_and(|l| l.shows(*id));
             if let (true, bimcraft_core::model::Element::Room(r)) = (shown, e) {
                 let solid = solids.entry(*id).or_insert_with(|| {
                     let (bottom, top) = model.room_span(r);
                     (model.room_outline(r).0, bottom, top)
                 });
-                room_solid(&p, solid, selection.contains(id), &|q: P3| on_screen(&cam, rect, ppp, q));
+                room_solid(&p, solid, selected.contains(id), &|q: P3| on_screen(&cam, rect, ppp, q));
             }
         }
         // The selected level's grips, and its plane as the held one would leave it.

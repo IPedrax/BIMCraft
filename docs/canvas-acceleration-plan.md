@@ -48,15 +48,7 @@ Each keeps the workspace green. Each is held to today's path: the same pixels, c
    [the review's priority 2](spatial-core-review.md): a wall's drawing depends on the walls it joins.
 7. **Section overlays and sheets.** They share `canvas::paint`, so they take pieces 1 and 2 with little more.
 
-8. **Selecting many elements.** To investigate (reported by the user, 2026-11-02): with many elements selected, the 2D view's performance
-   collapses. Not yet reproduced or measured. The one number so far, 10 ms for a selection of 700 elements, is only the kept triangles'
-   tint, not the frames after it. First measure a frame at growing selections (100, 1,000, 10,000, all) on the dense plan, on the card and
-   off it, with the window around it, then fix what grows. Places to look:
-   - `selected.contains(id)` in `canvas::paint_prim`, a search of the selection for each primitive, so selection × primitives when
-     triangles are made and on `canvas::paint`.
-   - A selection past a quarter of the plan: `retint` gives up and the whole plan is made again on the interface's thread.
-   - What runs every frame for each selected element: the rooms' loop, grips and overlays, and the selection copied.
-   - What isn't the canvas at all: Properties, the ribbon and the browser working over the selection each frame.
+8. **Selecting many elements.** Done; see below.
 
 ## What must stay the same
 
@@ -103,6 +95,29 @@ from a window with no card. What's under the cursor while moving is what the sho
 of a plan and an edit are as slow as they were: about 330 ms at the fit zoom. Piece 6 is what takes the edit's cost away. Plans with a
 picture go through a worker too, drawn moved by `canvas::paint`, which no test yet drives with a card.
 
+## Selecting many elements (2026-11-02)
+
+Reported by the user on the annotated 10-storey tower, and reproduced: a frame grew by about 0.27 ms for each element selected, even with
+nothing changing. Stacks taken from the running window all stood in `Model::room_outline`, called from `BimApp::canvas` for each selected
+room, every frame, and each call finding the level's loops again. Three things changed:
+
+- A room's outline is found once for a model (`PlanCache::room_outlines`), those not known yet together, through one `Rooms`.
+- What is selected is looked up in a set, not searched for each primitive (`paint_prim`, `ghost`, the 3D view's rooms).
+- The Project Browser walked all the elements about six times every frame, once more for each level: it asks the lookup now (`Model::rare`).
+
+The whole window's frame, 1600 × 1000, the plan's 52,351 primitives, on the card, release:
+
+| Selected | Idle before | Idle after | Pointer moving after | The frame that selects |
+|---:|---:|---:|---:|---:|
+| None | 65 ms | 1.0 ms | 13 ms | |
+| 100 | 98 ms | 10 ms | 15 ms | 23 ms |
+| 1,000 | 272 ms | 12 ms | 15 ms | 65 ms |
+| 7,103 (all of the plan) | 1,931 ms | 17 ms | 16 ms | 228 ms |
+| 120,011 (the whole model) | didn't finish | 169 ms | 197 ms | 366 ms |
+
+Left: what a selection still costs each frame, 10 ms past none and 169 ms for the whole model, was not looked into. Selecting past a quarter of
+the plan makes its triangles again on the interface's thread. Without a card, frames stay at about 165 ms (egui tessellating the plan).
+
 ## Status
 
 - [x] Measure
@@ -113,4 +128,4 @@ picture go through a worker too, drawn moved by `canvas::paint`, which no test y
 - [ ] 5. Geometry apart from the view
 - [ ] 6. Fragments by element
 - [ ] 7. Section overlays and sheets
-- [ ] 8. Selecting many elements (to investigate)
+- [x] 8. Selecting many elements

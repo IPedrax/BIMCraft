@@ -409,6 +409,7 @@ fn build(pipeline: &Pipeline, key: &Key, selected: &[Id], hovered: Option<Id>, c
     use rayon::prelude::*;
     let d = &key.drawing;
     let (at, reach, look) = (key.look.place(), key.look.reach(), &key.look);
+    let set: HashSet<Id> = selected.iter().copied().collect();
     let prims: Vec<usize> = (0..d.prims.len()).collect();
     // A part of the drawing's primitives at a time, each thread's triangles in their place in the order, so the whole is what one
     // thread would have made.
@@ -428,7 +429,7 @@ fn build(pipeline: &Pipeline, key: &Key, selected: &[Id], hovered: Option<Id>, c
                 let (Some(prim), Some(owner), Some(part)) = (d.prims.get(i), d.owners.get(i), d.parts.get(i)) else { continue };
                 let (first, indices) = (mesh.vertices.len(), mesh.indices.len());
                 let out = &mut |shape| tessellator.tessellate_shape(shape, &mut mesh);
-                canvas::paint_prim(out, reach, at, (prim, *owner, *part), selected, hovered, look.thin, &mut [].iter());
+                canvas::paint_prim(out, reach, at, (prim, *owner, *part), &set, hovered, look.thin, &mut [].iter());
                 if let Some(id) = owner
                     && mesh.vertices.len() > first
                 {
@@ -515,7 +516,7 @@ fn retint(pipeline: &Pipeline, key: &Key, mesh: &Mesh, tinted: &mut Tinted, sele
             let (Some(prim), Some(part)) = (d.prims.get(i), d.parts.get(i)) else { return false };
             let mut again = epaint::Mesh::default();
             let out = &mut |shape| tessellator.tessellate_shape(shape, &mut again);
-            canvas::paint_prim(out, reach, at, (prim, Some(*id), *part), selected, hovered, look.thin, &mut [].iter());
+            canvas::paint_prim(out, reach, at, (prim, Some(*id), *part), &now, hovered, look.thin, &mut [].iter());
             if again.vertices.len() != piece.vertices as usize || again.indices.len() != piece.indices as usize {
                 return false;
             }
