@@ -66,6 +66,52 @@ pub(crate) struct PlanCache {
     pub(crate) pictures: Option<(Weak<Drawing>, Vec<TextureHandle>)>,
     /// Its triangles on the graphics card.
     pub(crate) retained: crate::retained::Retained,
+    /// Who makes the next drawing while a view moves.
+    work: PlanWork,
+}
+
+/// A plan's drawing and triangles asked of a worker: what a view that moved shows next.
+struct PlanJob {
+    model: Arc<Model>,
+    level: Id,
+    view: View,
+    ceiling: bool,
+    pipeline: Arc<crate::retained::Pipeline>,
+    look: crate::retained::Look,
+    selected: Vec<Id>,
+    hovered: Option<Id>,
+}
+
+struct PlanDone {
+    model: Weak<Model>,
+    level: Id,
+    view: View,
+    ceiling: bool,
+    drawing: Arc<Drawing>,
+    made: Option<crate::retained::Made>,
+}
+
+fn plan_job(job: PlanJob, cancel: &crate::view_worker::Cancel) -> Option<PlanDone> {
+    let PlanJob { model, level, view, ceiling, pipeline, look, selected, hovered } = job;
+    let drawing = Arc::new(if ceiling { render::draw_ceiling(&model, level, view) } else { render::draw(&model, level, view) });
+    if cancel.cancelled() {
+        return None;
+    }
+    let made = crate::retained::make(&pipeline, Arc::clone(&drawing), look, &selected, hovered, &|| cancel.cancelled());
+    if cancel.cancelled() {
+        return None;
+    }
+    Some(PlanDone { model: Arc::downgrade(&model), level, view, ceiling, drawing, made })
+}
+
+/// A copy of a canvas asks for its own.
+#[derive(Default)]
+struct PlanWork(Option<crate::view_worker::Latest<PlanJob, PlanDone>>);
+
+impl Clone for PlanWork {
+    fn clone(&self) -> Self {
+        PlanWork::default()
+    }
 }
 
 type PlanShot = (Weak<Model>, Id, View, bool, Arc<Drawing>);
@@ -85,6 +131,79 @@ impl PlanCache {
         drawing
     }
 
+    /// The drawing to show of a view at `view` on a card: the last whole one, while a worker makes the one for `view`, so that moving never
+    /// waits for a plan. Only what the view moved over waits: another level, or an edit, is made here, and shows at once.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn moving(
+        &mut self,
+        ctx: &egui::Context,
+        model: &Arc<Model>,
+        level: Id,
+        view: View,
+        ceiling: bool,
+        pipeline: &Arc<crate::retained::Pipeline>,
+        look: crate::retained::Look,
+    ) -> Arc<Drawing> {
+        // Whether it was idle first: then what it finished is all there is, and nothing can come after asking.
+        let idle = !self.work.0.as_ref().is_some_and(crate::view_worker::Latest::busy);
+        if let Some(done) = self.work.0.as_ref().and_then(crate::view_worker::Latest::take)
+            && done.model.ptr_eq(&Arc::downgrade(model))
+            && (done.level, done.ceiling) == (level, ceiling)
+        {
+            self.shown = Some((done.model, level, done.view, ceiling, done.drawing));
+            match done.made {
+                Some(made) => self.retained.adopt(made),
+                None => self.retained = Default::default(),
+            }
+        }
+        let Some(drawing) = self
+            .shown
+            .as_ref()
+            .filter(|(m, id, _, up, _)| m.ptr_eq(&Arc::downgrade(model)) && *id == level && *up == ceiling)
+            .map(|(.., drawing)| Arc::clone(drawing))
+        else {
+            return self.drawing(model, level, view, ceiling);
+        };
+        if drawing.view == view {
+            return drawing;
+        }
+        // One at a time, each for where the view is when it starts: a view that never stops still gets drawings.
+        let wake = ctx.clone();
+        let worker = self.work.0.get_or_insert_with(|| crate::view_worker::Latest::new(plan_job, move || wake.request_repaint()));
+        if worker.take_error().is_some() {
+            return self.drawing(model, level, view, ceiling);
+        }
+        if idle {
+            let (selected, hovered) = self.retained.tints();
+            worker.request(PlanJob {
+                model: Arc::clone(model),
+                level,
+                view,
+                ceiling,
+                pipeline: Arc::clone(pipeline),
+                look,
+                selected,
+                hovered,
+            });
+        }
+        if worker.start().is_err() {
+            return self.drawing(model, level, view, ceiling);
+        }
+        ctx.request_repaint_after(std::time::Duration::from_millis(16));
+        drawing
+    }
+
+    /// The drawing shown now.
+    #[cfg(test)]
+    pub(crate) fn shown_drawing(&self) -> Option<Arc<Drawing>> {
+        self.shown.as_ref().map(|(.., drawing)| Arc::clone(drawing))
+    }
+
+    /// Leaving the plans: nothing more is made, and what was is let go.
+    pub(crate) fn suspend(&mut self) {
+        self.work = PlanWork::default();
+    }
+
     /// The pictures drawing `d` holds, in order, loaded once for as long as it is the one shown.
     pub(crate) fn pictures(&mut self, ctx: &egui::Context, d: &Arc<Drawing>) -> Vec<TextureId> {
         if !matches!(&self.pictures, Some((shown, _)) if shown.ptr_eq(&Arc::downgrade(d))) {
@@ -102,6 +221,51 @@ impl PlanCache {
             self.pictures = Some((Arc::downgrade(d), loaded));
         }
         self.pictures.as_ref().map(|(_, t)| t.iter().map(TextureHandle::id).collect()).unwrap_or_default()
+    }
+}
+
+/// The drawing shown, and where it lies on a canvas at a view that may have moved on from it: what's under a pixel of the canvas is
+/// what the drawing shows there.
+pub(crate) struct Shown {
+    drawing: Arc<Drawing>,
+    /// Where the drawing's own pixels go.
+    pub(crate) place: Place,
+    /// Its top left, from the canvas's.
+    offset: Vec2,
+}
+
+impl Shown {
+    pub(crate) fn new(drawing: Arc<Drawing>, view: View, origin: Pos2) -> Shown {
+        let (k, offset) = if drawing.view == view {
+            (1.0, Vec2::ZERO)
+        } else {
+            let (x, y) = view.px(drawing.view.mm((0.0, 0.0)));
+            ((view.scale / drawing.view.scale) as f32, vec2(x, y))
+        };
+        Shown { drawing, place: Place { k, ..Place::at(origin + offset) }, offset }
+    }
+
+    fn own(&self, (x, y): (f32, f32)) -> (f32, f32) {
+        ((x - self.offset.x) / self.place.k, (y - self.offset.y) / self.place.k)
+    }
+
+    fn pick(&self, at: (f32, f32), tol: f32) -> Option<Id> {
+        self.drawing.pick(self.own(at), tol / self.place.k)
+    }
+
+    pub(crate) fn pick_all(&self, at: (f32, f32), tol: f32) -> Vec<Id> {
+        self.drawing.pick_all(self.own(at), tol / self.place.k)
+    }
+
+    fn in_box(&self, a: (f32, f32), b: (f32, f32), crossing: bool) -> Vec<Id> {
+        self.drawing.in_box(self.own(a), self.own(b), crossing)
+    }
+}
+
+impl std::ops::Deref for Shown {
+    type Target = Drawing;
+    fn deref(&self) -> &Drawing {
+        &self.drawing
     }
 }
 
@@ -249,6 +413,11 @@ impl Canvas {
         if scale.is_finite() && cx.is_finite() && cy.is_finite() {
             self.cams.insert(level, Camera { scale, cx: cx.clamp(-MAX_COORD, MAX_COORD), cy: cy.clamp(-MAX_COORD, MAX_COORD) });
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn current_view(&self, id: Id) -> Option<View> {
+        self.view(id)
     }
 
     /// Worker-computed initial framing, installed only if navigation has not supplied one.
@@ -586,9 +755,9 @@ fn letter(rings: &[Vec<(f32, f32)>]) -> Triangles {
 
 /// The selected elements' outlines taken by `f` (on screen): where a move, a turn or a mirror
 /// puts them.
-fn ghost(p: &Painter, origin: Pos2, d: &Drawing, selected: &[Id], f: &dyn Fn(Pos2) -> Pos2) {
+fn ghost(p: &Painter, place: Place, d: &Drawing, selected: &[Id], f: &dyn Fn(Pos2) -> Pos2) {
     let stroke = Stroke::new(1.0, pal().accent);
-    let at = |q: &(f32, f32)| f(pos(origin, *q));
+    let at = |q: &(f32, f32)| f(place.pos(*q));
     for (prim, owner) in d.prims.iter().zip(&d.owners) {
         if !owner.is_some_and(|id| selected.contains(&id)) {
             continue;
@@ -739,6 +908,8 @@ struct Scene<'a> {
     p: &'a Painter,
     m: &'a Model,
     d: &'a Drawing,
+    /// Where the drawing's own pixels go.
+    place: Place,
     /// The level whose model the plan shows, and the plan's own key (the level's, or a plan view's): what annotation is in.
     level: Id,
     key: Id,
@@ -1181,9 +1352,15 @@ impl BimApp {
         let Some((view, local)) = self.canvas.navigate(ui, &response, rect, key, fit) else { return };
         let mods = ui.input(|i| i.modifiers);
         let shape = self.shape();
+        let pipeline = self.card.canvas();
+        let look = crate::retained::Look::now(ui.ctx(), &ui.painter_at(rect), rect.min, self.writing(), self.thin);
         let c = &mut self.canvas;
         c.cursor = local.map(|q| view.mm(q));
-        let d = c.drawing.drawing(&model, key, view, up);
+        let d = match &pipeline {
+            Some(pipeline) => c.drawing.moving(ui.ctx(), &model, key, view, up, pipeline, look),
+            None => c.drawing.drawing(&model, key, view, up),
+        };
+        let d = Shown::new(d, view, rect.min);
 
         // What's under the cursor; Tab steps through it. (Without the app's input hook, as in
         // tests, egui moved the keyboard to a widget on that Tab: give it back.)
@@ -1376,7 +1553,7 @@ impl BimApp {
         if let Tool::Trim(Some((first, _))) | Tool::TrimTo { boundary: Some(first), .. } = self.tool {
             marked.push(first);
         }
-        let pictures = self.canvas.drawing.pictures(ui.ctx(), &d);
+        let pictures = self.canvas.drawing.pictures(ui.ctx(), &d.drawing);
         // Fillet Arc's lines picked so far, in the selection's colour.
         marked.extend(self.drawing.fillet.iter().filter_map(|(l, _)| match l {
             draw::Picked::Element(id) => Some(*id),
@@ -1384,15 +1561,15 @@ impl BimApp {
         }));
         let sketch_trim = self.sketch.is_some() && matches!(self.tool, Tool::Trim(_) | Tool::TrimTo { .. });
         let painted_hover = if matches!(self.tool, Tool::Align(_)) || sketch_trim { None } else { hovered };
-        let place = Place { hide: self.writing(), ..Place::at(rect.min) };
-        let kept = self.card.canvas().is_some_and(|pipeline| {
-            self.canvas.drawing.retained.paint(ui.ctx(), &pipeline, &p, place, &d, &marked, painted_hover, self.thin)
+        let place = Place { hide: self.writing(), ..d.place };
+        let kept = pipeline.as_ref().is_some_and(|pipeline| {
+            self.canvas.drawing.retained.paint(ui.ctx(), pipeline, &p, place, rect.min, &d.drawing, &marked, painted_hover, self.thin)
         });
         if !kept {
             paint(&p, place, &d, &marked, painted_hover, self.thin, &pictures);
         }
         if writing {
-            self.note_canvas(ui, &response, &p, Place::at(rect.min), &d);
+            self.note_canvas(ui, &response, &p, d.place, &d);
         }
         if let Some(sk) = &self.sketch {
             let over = local
@@ -1440,18 +1617,18 @@ impl BimApp {
         match (self.canvas.drag, local) {
             (Some(Drag::Move(from)), Some(q)) => {
                 let (a, b) = (view.px(from), view.px(from + self.dragged(&model, &view, from, view.mm(q))));
-                ghost(&p, rect.min, &d, &self.selection, &|q| q + vec2(b.0 - a.0, b.1 - a.1));
+                ghost(&p, d.place, &d, &self.selection, &|q| q + vec2(b.0 - a.0, b.1 - a.1));
             }
             (Some(Drag::Box(from)), Some(q)) => p.extend(box_shapes(rect, from, q)),
             _ => {}
         }
         if let Some(q) = local {
-            let scene = Scene { p: &p, m: &model, d: &d, level, key, v: &view };
+            let scene = Scene { p: &p, m: &model, d: &d, place: d.place, level, key, v: &view };
             self.preview(&scene, q, hovered, mods.shift);
         }
         // The Measure tool's ruler, as laid.
         if let (Tool::Measure(_), Some((a, b))) = (&self.tool, self.measured) {
-            let scene = Scene { p: &p, m: &model, d: &d, level, key, v: &view };
+            let scene = Scene { p: &p, m: &model, d: &d, place: d.place, level, key, v: &view };
             p.extend(ruler_shapes(&scene, a, b));
             let r = snap::ruler(a, b);
             let units = model.units;
@@ -1469,7 +1646,7 @@ impl BimApp {
                 p.rect_stroke(Rect::from_center_size(q, vec2(8.0, 8.0)), 0.0, Stroke::new(2.0, pal().accent), StrokeKind::Middle);
             }
         }
-        self.grip_overlay(ui, &model, &view, rect, level, &d);
+        self.grip_overlay(ui, &model, &view, rect, level, &d, d.place);
         // Where the cursor snaps is worked out only while a grip is held to it.
         let cursor = self
             .drawing
@@ -2704,7 +2881,8 @@ impl BimApp {
 
     /// The selected wall's grips at its ends and, beside each, its angle to click and type: it
     /// turns about that end. Dragging one, the wall as it would stand, with its ruler.
-    fn grip_overlay(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect, level: Id, d: &Drawing) {
+    #[allow(clippy::too_many_arguments)]
+    fn grip_overlay(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect, level: Id, d: &Drawing, place: Place) {
         let Some(id) = self.gripped() else {
             self.angle_edit = None;
             return;
@@ -2718,7 +2896,7 @@ impl BimApp {
             let (mods, q) = (ui.input(|i| i.modifiers), (q.x - rect.min.x, q.y - rect.min.y));
             let (found, to) = self.grip_target(m, level, v, (w, start), q, mods);
             let moved = Wall { start: if start { to } else { w.start }, end: if start { w.end } else { to }, ..w.clone() };
-            let sc = Scene { p: &p, m, d, level, key: level, v };
+            let sc = Scene { p: &p, m, d, place, level, key: level, v };
             // The wall as it would stand: its outline, and the ruler from the end that stays.
             // Its faces, where its location line puts them.
             let (ext, int) = walls::faces(m, &moved);
@@ -3086,8 +3264,8 @@ impl BimApp {
         // An element a click would add, drawn as the plan would draw it.
         // What a dimension or a tag made here says it is in: the plan view, when the plan on screen is one.
         let in_view = || m.plan_view(key).map(|_| m.guid(key));
-        let sketched = |e: &Element| ghost(p, origin, &render::sketch(m, *v, m.next_id, e), &[m.next_id], &|pt| pt);
-        let ghost = |f: &dyn Fn(Pos2) -> Pos2| ghost(p, origin, sc.d, &self.selection, f);
+        let sketched = |e: &Element| ghost(p, Place::at(origin), &render::sketch(m, *v, m.next_id, e), &[m.next_id], &|pt| pt);
+        let ghost = |f: &dyn Fn(Pos2) -> Pos2| ghost(p, sc.place, sc.d, &self.selection, f);
         let chain = match &self.tool {
             Tool::Wall(chain) | Tool::Railing(chain) | Tool::Mass(chain) | Tool::DetailLine(chain) | Tool::SketchLine(chain) => {
                 chain.as_slice()

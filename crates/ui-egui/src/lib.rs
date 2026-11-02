@@ -2351,6 +2351,7 @@ impl BimApp {
         if !matches!(sheet, Sheet::Section(_)) {
             self.cut.suspend();
         }
+        self.canvas.drawing.suspend();
         if !self.views.contains(&sheet) && !self.floats(sheet) {
             self.views.push(sheet);
         }

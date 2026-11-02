@@ -34,10 +34,13 @@ Each keeps the workspace green. Each is held to today's path: the same pixels, c
    Off-screen primitives are left out before shapes are made, which leaves the triangles as they were.
 2. **Hover and selection in place.** Each element's range of vertices kept; a change of tint tessellates that element again and writes
    its range. Crossing an element costs its own triangles, not the plan's.
-3. **Pan as a transform.** The buffers drawn moved until the new drawing comes; a whole-pixel move is the same pixels. The final
-   drawing replaces it when it's ready. A zoom shows the last triangles scaled until then, as sections do with their picture.
-4. **Plans on the view workers.** `render::draw` and tessellation off the interface's thread, on `view_worker.rs`, latest request
-   only, the drawing and its picking published together. Input never waits for a plan.
+3. **Pan as a transform.** The buffers drawn moved until the new drawing comes. A whole-pixel move is what egui draws there but for
+   rounding, in a few edge pixels, because a vertex's position is summed otherwise in floats: one level, three at the dark end of an
+   sRGB framebuffer. The final drawing replaces
+   it, exact. A zoom shows the last triangles scaled until then, as sections do with their picture.
+4. **Plans on the view workers.** `render::draw` and tessellation off the interface's thread, on `view_worker.rs`, one job at a time, each
+   for where the view is when it starts, the drawing and its picking published together. Moving never waits for a plan. What the view
+   didn't move over (a plan opened, an edit, and a window with no card) is still made in its frame, so it shows at once.
 5. **Geometry apart from the view.** `Drawing` holds pixels baked for one view. Model-space geometry kept separately from what depends
    on scale (lettering, symbols, line weights, dashes), so a pan needs no new drawing at all, with a spatial index for picking and
    snapping.
@@ -72,13 +75,31 @@ framebuffer kinds, light and dark, Thin Lines, selected and hovered, retinted fr
 differ, so they can tell. The dense tower plan had no pixel different at any zoom, by a one-off run. They need a card, and pass without
 one (as `gpu::headless`'s do), so a runner with no adapter proves nothing here: run them on a machine with one.
 
+## Pieces 3 and 4 measured (2026-11-02)
+
+The same plan, 1600 × 1000, release, the RTX 2060. Triangles are now made half a canvas past each edge, so a pan has something to show:
+the scissor cuts them, so the pixels on the canvas don't change.
+
+| | A frame moving | The worker: drawing, then triangles | Worst wait of the card's queue meanwhile |
+|---|---:|---:|---:|
+| Fitted | 0.08 ms | 168 + 207 ms | 3.2 ms |
+| 4× | 0.05 ms | 159 + 58 ms | 0.3 ms |
+| 64× | 0.04 ms | 164 + 2 ms | 0.1 ms |
+
+Today's cost of the wider reach is on what is still made in its frame: an edit at 4× pays 58 ms for its triangles, not 22.
+
+`a_view_moved_shows_what_is_kept_until_a_worker_replaces_it_with_the_exact_pixels` holds the window, once settled, to no pixel different
+from a window with no card. What's under the cursor while moving is what the shown drawing shows there (`canvas::Shown`). The first frame
+of a plan and an edit are as slow as they were: about 330 ms at the fit zoom. Piece 6 is what takes the edit's cost away. Plans with a
+picture go through a worker too, drawn moved by `canvas::paint`, which no test yet drives with a card.
+
 ## Status
 
 - [x] Measure
 - [x] 1. Retained triangles
 - [x] 2. Hover and selection in place
-- [ ] 3. Pan as a transform
-- [ ] 4. Plans on the view workers
+- [x] 3. Pan as a transform
+- [x] 4. Plans on the view workers (for moving; opening a plan and edits stay in the frame)
 - [ ] 5. Geometry apart from the view
 - [ ] 6. Fragments by element
 - [ ] 7. Section overlays and sheets

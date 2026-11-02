@@ -41,9 +41,11 @@ startup, tags) is [the desktop](../../docs/areas/desktop.md).
 
 A plan's triangles are egui's own, made once from `canvas::paint_to`'s shapes and kept on the card (`retained.rs`), so a frame that
 changes nothing is a draw call. A shape's look changes in `canvas::paint_prim`, for both paths. A new thing that decides what a plan
-looks like goes in `retained::Key`, or the canvas shows it late. The window's renderer's options must stay what `retained::Pipeline`
+looks like goes in `retained::Look`, or the canvas shows it late. The window's renderer's options must stay what `retained::Pipeline`
 assumes: no multisampling, no depth buffer, dithering on. The tests compare pixels with egui's renderer on a real card; a harness has no
-card, so it stays on `canvas::paint`. Plan and numbers: [canvas acceleration](../../docs/canvas-acceleration-plan.md).
+card, so it stays on `canvas::paint`. While a view moves, the frame shows the last drawing moved (`canvas::Shown`, which also picks through
+it, so use its `pick`s and `place`, not the view's pixels, for anything read from the drawing) and `PlanCache::moving` asks a worker for the
+exact one; an edit or another level is made in the frame. Plan and numbers: [canvas acceleration](../../docs/canvas-acceleration-plan.md).
 
 ## Background view work
 

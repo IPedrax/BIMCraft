@@ -1,6 +1,8 @@
 //! The 2D canvas's triangles kept on the card: made once by egui's own tessellator from the shapes `canvas::paint` makes, and drawn
 //! by the sums and blending of egui's own shader, so a frame that changes nothing costs a draw call, and the pixels are the ones
 //! egui would have drawn. A window with no card, and a drawing with a picture, stay on `canvas::paint`.
+//!
+//! While a view moves they are drawn moved, whole, until a worker's exact drawing and triangles replace them ([`make`], [`Retained::adopt`]).
 use crate::canvas::{self, Place};
 use bimcraft_core::model::Id;
 use bimcraft_core::render::Drawing;
@@ -14,7 +16,8 @@ use std::sync::Arc;
 const DITHERING: bool = true;
 /// A vertex as epaint lays it out: position, texture position (unused) and colour.
 const STRIDE: u64 = 20;
-const LOCALS: u64 = 16;
+/// The shader's `Locals`.
+const LOCALS: u64 = 24;
 /// How many primitives a thread tessellates at a time.
 const PRIMS_AT_ONCE: usize = 2048;
 
@@ -152,6 +155,9 @@ impl Mesh {
 struct Draw {
     pipeline: Arc<Pipeline>,
     mesh: Arc<Mesh>,
+    /// How far they are scaled and then moved from where they were made, points.
+    k: f32,
+    moved: egui::Vec2,
 }
 
 impl egui_wgpu::CallbackTrait for Draw {
@@ -169,6 +175,9 @@ impl egui_wgpu::CallbackTrait for Draw {
         locals[0..4].copy_from_slice(&w.to_ne_bytes());
         locals[4..8].copy_from_slice(&h.to_ne_bytes());
         locals[8..12].copy_from_slice(&u32::from(DITHERING).to_ne_bytes());
+        locals[12..16].copy_from_slice(&self.k.to_ne_bytes());
+        locals[16..20].copy_from_slice(&self.moved.x.to_ne_bytes());
+        locals[20..24].copy_from_slice(&self.moved.y.to_ne_bytes());
         queue.write_buffer(&self.mesh.locals, 0, &locals);
         Vec::new()
     }
@@ -184,9 +193,9 @@ impl egui_wgpu::CallbackTrait for Draw {
     }
 }
 
-/// All that what is kept depends on.
-struct Key {
-    drawing: Arc<Drawing>,
+/// All but the drawing that the triangles depend on: what a frame or a worker makes them for.
+#[derive(Clone, Copy)]
+pub(crate) struct Look {
     origin: egui::Pos2,
     clip: egui::Rect,
     pixels_per_point: f32,
@@ -196,15 +205,46 @@ struct Key {
     hide: Option<Id>,
 }
 
-impl Key {
-    fn same(&self, o: &Key) -> bool {
-        Arc::ptr_eq(&self.drawing, &o.drawing)
-            && self.origin == o.origin
-            && self.clip == o.clip
-            && self.pixels_per_point == o.pixels_per_point
+impl Look {
+    /// A canvas whose top left is `origin`, painted through `p`.
+    pub(crate) fn now(ctx: &Context, p: &Painter, origin: egui::Pos2, hide: Option<Id>, thin: bool) -> Look {
+        Look {
+            origin,
+            clip: p.clip_rect(),
+            pixels_per_point: ctx.pixels_per_point(),
+            options: ctx.tessellation_options(|o| *o),
+            dark: crate::style::canvas_dark(),
+            thin,
+            hide,
+        }
+    }
+
+    /// Whether triangles of this look, wherever they were made, are those of `o`.
+    fn same_ink(&self, o: &Look) -> bool {
+        self.pixels_per_point == o.pixels_per_point
             && self.options == o.options
             && (self.dark, self.thin, self.hide) == (o.dark, o.thin, o.hide)
     }
+
+    fn same_place(&self, o: &Look) -> bool {
+        self.origin == o.origin && self.clip == o.clip
+    }
+
+    fn place(&self) -> Place {
+        Place { hide: self.hide, ..Place::at(self.origin) }
+    }
+
+    /// How far round the canvas triangles are made: half of it again each way, so a pan shows what is there before the exact drawing
+    /// comes. What lies past the clip is cut by the scissor, so the pixels on the canvas don't change.
+    fn reach(&self) -> egui::Rect {
+        self.clip.expand2(self.clip.size() / 2.0)
+    }
+}
+
+/// All that what is kept depends on.
+struct Key {
+    drawing: Arc<Drawing>,
+    look: Look,
 }
 
 enum Kept {
@@ -252,7 +292,8 @@ impl Clone for Retained {
 }
 
 impl Retained {
-    /// Draws `d` through `p` as [`canvas::paint`] would, from what is kept. False where it can't, and nothing is drawn.
+    /// Draws `d` through `p`, where `at` puts it, on a canvas whose top left is `base`, as [`canvas::paint`] would, from what is kept.
+    /// Put anywhere else than its own place, what is kept of `d` is drawn moved rather than made again. False where it can't, and nothing is drawn.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn paint(
         &mut self,
@@ -260,35 +301,25 @@ impl Retained {
         pipeline: &Arc<Pipeline>,
         p: &Painter,
         at: Place,
+        base: egui::Pos2,
         d: &Arc<Drawing>,
         selected: &[Id],
         hovered: Option<Id>,
         thin: bool,
     ) -> bool {
         // What the shapes' own painter would do to them, and what needs a texture, is left to it.
-        if at.k != 1.0
-            || at.paper
-            || p.opacity() != 1.0
-            || d.prims.iter().any(|prim| matches!(prim, bimcraft_core::render::Prim::Image { .. }))
-        {
+        if at.paper || p.opacity() != 1.0 || holds_picture(d) {
             return false;
         }
-        let key = Key {
-            drawing: Arc::clone(d),
-            origin: at.origin,
-            clip: p.clip_rect(),
-            pixels_per_point: ctx.pixels_per_point(),
-            options: ctx.tessellation_options(|o| *o),
-            dark: crate::style::canvas_dark(),
-            thin,
-            hide: at.hide,
-        };
+        let look = Look::now(ctx, p, base, at.hide, thin);
+        let moved = at.k != 1.0 || at.origin != base;
+        let holds = |old: &Key| Arc::ptr_eq(&old.drawing, d) && old.look.same_ink(&look) && (moved || old.look.same_place(&look));
         // Only the tints changed: the same triangles, their colours written where they are.
         if let Some((old, Kept::Mesh(mesh, tinted))) = &mut self.kept
-            && old.same(&key)
+            && holds(old)
             && (tinted.selected != selected || tinted.hovered != hovered)
         {
-            if retint(pipeline, &key, at, mesh, tinted, selected, hovered) {
+            if retint(pipeline, old, mesh, tinted, selected, hovered) {
                 #[cfg(test)]
                 {
                     self.retinted += 1;
@@ -297,26 +328,72 @@ impl Retained {
                 self.kept = None;
             }
         }
-        if !self.kept.as_ref().is_some_and(|(old, kept)| old.same(&key) && tints_hold(kept, selected, hovered)) {
+        if !self.kept.as_ref().is_some_and(|(old, kept)| holds(old) && tints_hold(kept, selected, hovered)) {
             // Release the old triangles before making the new.
             self.kept = None;
-            let kept = build(pipeline, &key, at, selected, hovered);
+            let key = Key { drawing: Arc::clone(d), look };
+            let kept = build(pipeline, &key, selected, hovered, &|| false).unwrap_or(Kept::Nothing);
             self.kept = Some((key, kept));
             #[cfg(test)]
             {
                 self.built += 1;
             }
         }
-        match self.kept.as_ref().map(|(_, kept)| kept) {
-            Some(Kept::Mesh(mesh, _)) => {
-                let draw = Draw { pipeline: Arc::clone(pipeline), mesh: Arc::clone(mesh) };
+        match self.kept.as_ref() {
+            Some((old, Kept::Mesh(mesh, _))) => {
+                let draw = Draw {
+                    pipeline: Arc::clone(pipeline),
+                    mesh: Arc::clone(mesh),
+                    k: at.k,
+                    moved: if moved { at.origin - old.look.origin * at.k } else { egui::Vec2::ZERO },
+                };
                 p.add(egui_wgpu::Callback::new_paint_callback(p.clip_rect(), draw));
                 true
             }
-            Some(Kept::Nothing) => true,
+            Some((_, Kept::Nothing)) => true,
             _ => false,
         }
     }
+
+    /// What a worker made takes the place of what is kept.
+    pub(crate) fn adopt(&mut self, made: Made) {
+        self.kept = Some((made.key, made.kept));
+    }
+
+    /// The tints what is kept shows, for what's made next to start from.
+    pub(crate) fn tints(&self) -> (Vec<Id>, Option<Id>) {
+        match &self.kept {
+            Some((_, Kept::Mesh(_, tinted))) => (tinted.selected.clone(), tinted.hovered),
+            _ => (Vec::new(), None),
+        }
+    }
+}
+
+fn holds_picture(d: &Drawing) -> bool {
+    d.prims.iter().any(|prim| matches!(prim, bimcraft_core::render::Prim::Image { .. }))
+}
+
+/// A drawing's triangles, made away from the interface's thread.
+pub(crate) struct Made {
+    key: Key,
+    kept: Kept,
+}
+
+/// `drawing`'s triangles on the card, for [`Retained::adopt`]; none for what stays on `canvas::paint`, or when `cancelled`.
+pub(crate) fn make(
+    pipeline: &Pipeline,
+    drawing: Arc<Drawing>,
+    look: Look,
+    selected: &[Id],
+    hovered: Option<Id>,
+    cancelled: &(dyn Fn() -> bool + Sync),
+) -> Option<Made> {
+    if holds_picture(&drawing) {
+        return None;
+    }
+    let key = Key { drawing, look };
+    let kept = build(pipeline, &key, selected, hovered, cancelled)?;
+    Some(Made { key, kept })
 }
 
 /// Whether what is kept shows these tints. What draws nothing has none to show; what the card couldn't hold is drawn by `canvas::paint`.
@@ -327,26 +404,31 @@ fn tints_hold(kept: &Kept, selected: &[Id], hovered: Option<Id>) -> bool {
     }
 }
 
-fn build(pipeline: &Pipeline, key: &Key, at: Place, selected: &[Id], hovered: Option<Id>) -> Kept {
+/// The triangles of `key`; none once `cancelled`.
+fn build(pipeline: &Pipeline, key: &Key, selected: &[Id], hovered: Option<Id>, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Kept> {
     use rayon::prelude::*;
     let d = &key.drawing;
+    let (at, reach, look) = (key.look.place(), key.look.reach(), &key.look);
     let prims: Vec<usize> = (0..d.prims.len()).collect();
     // A part of the drawing's primitives at a time, each thread's triangles in their place in the order, so the whole is what one
     // thread would have made.
     let parts: Vec<(epaint::Mesh, Vec<(Id, Piece)>)> = prims
         .par_chunks(PRIMS_AT_ONCE)
         .map(|chunk| {
+            if cancelled() {
+                return Default::default();
+            }
             // The canvas's look is kept per thread, and this may be another.
-            crate::style::set_canvas_dark(key.dark);
+            crate::style::set_canvas_dark(look.dark);
             // The shapes `canvas::paint` makes hold no circles or text, the only things that read the two last.
-            let mut tessellator = Tessellator::new(key.pixels_per_point, key.options, [1, 1], Vec::new());
-            tessellator.set_clip_rect(key.clip);
+            let mut tessellator = Tessellator::new(look.pixels_per_point, look.options, [1, 1], Vec::new());
+            tessellator.set_clip_rect(reach);
             let (mut mesh, mut pieces) = (epaint::Mesh::default(), Vec::new());
             for &i in chunk {
                 let (Some(prim), Some(owner), Some(part)) = (d.prims.get(i), d.owners.get(i), d.parts.get(i)) else { continue };
                 let (first, indices) = (mesh.vertices.len(), mesh.indices.len());
                 let out = &mut |shape| tessellator.tessellate_shape(shape, &mut mesh);
-                canvas::paint_prim(out, key.clip, at, (prim, *owner, *part), selected, hovered, key.thin, &mut [].iter());
+                canvas::paint_prim(out, reach, at, (prim, *owner, *part), selected, hovered, look.thin, &mut [].iter());
                 if let Some(id) = owner
                     && mesh.vertices.len() > first
                 {
@@ -362,6 +444,9 @@ fn build(pipeline: &Pipeline, key: &Key, at: Place, selected: &[Id], hovered: Op
             (mesh, pieces)
         })
         .collect();
+    if cancelled() {
+        return None;
+    }
     // Each part's place in the whole, and its indices and pieces put there. Written straight to the card: no whole on this side.
     let mut parts = parts;
     let mut base = 0;
@@ -378,17 +463,17 @@ fn build(pipeline: &Pipeline, key: &Key, at: Place, selected: &[Id], hovered: Op
         pieces.iter_mut().for_each(|(_, piece)| piece.first += base);
     });
     if parts.iter().all(|(mesh, _)| mesh.indices.is_empty()) {
-        return Kept::Nothing;
+        return Some(Kept::Nothing);
     }
     let meshes: Vec<&epaint::Mesh> = parts.iter().map(|(mesh, _)| mesh).collect();
-    let Some(mesh) = Mesh::upload(pipeline, &meshes) else { return Kept::TooBig };
+    let Some(mesh) = Mesh::upload(pipeline, &meshes) else { return Some(Kept::TooBig) };
     let pieces = parts.into_iter().flat_map(|(_, pieces)| pieces).collect();
-    Kept::Mesh(Arc::new(mesh), Tinted { pieces, owned: None, selected: selected.to_vec(), hovered })
+    Some(Kept::Mesh(Arc::new(mesh), Tinted { pieces, owned: None, selected: selected.to_vec(), hovered }))
 }
 
 /// `tinted` brought to `selected` and `hovered`, each element whose tint changes tessellated again and written where it is.
 /// False when that can't be done (most of the drawing changes, or its triangles came out otherwise): make it again.
-fn retint(pipeline: &Pipeline, key: &Key, at: Place, mesh: &Mesh, tinted: &mut Tinted, selected: &[Id], hovered: Option<Id>) -> bool {
+fn retint(pipeline: &Pipeline, key: &Key, mesh: &Mesh, tinted: &mut Tinted, selected: &[Id], hovered: Option<Id>) -> bool {
     #[derive(PartialEq)]
     enum Tint {
         Selected,
@@ -419,8 +504,9 @@ fn retint(pipeline: &Pipeline, key: &Key, at: Place, mesh: &Mesh, tinted: &mut T
     if pieces > d.prims.len() / 4 + 16 {
         return false;
     }
-    let mut tessellator = Tessellator::new(key.pixels_per_point, key.options, [1, 1], Vec::new());
-    tessellator.set_clip_rect(key.clip);
+    let (at, reach, look) = (key.look.place(), key.look.reach(), &key.look);
+    let mut tessellator = Tessellator::new(look.pixels_per_point, look.options, [1, 1], Vec::new());
+    tessellator.set_clip_rect(reach);
     // All first: a piece that doesn't come out the same leaves what is kept as it was.
     let mut writes = Vec::with_capacity(pieces);
     for id in &changed {
@@ -429,7 +515,7 @@ fn retint(pipeline: &Pipeline, key: &Key, at: Place, mesh: &Mesh, tinted: &mut T
             let (Some(prim), Some(part)) = (d.prims.get(i), d.parts.get(i)) else { return false };
             let mut again = epaint::Mesh::default();
             let out = &mut |shape| tessellator.tessellate_shape(shape, &mut again);
-            canvas::paint_prim(out, key.clip, at, (prim, Some(*id), *part), selected, hovered, key.thin, &mut [].iter());
+            canvas::paint_prim(out, reach, at, (prim, Some(*id), *part), selected, hovered, look.thin, &mut [].iter());
             if again.vertices.len() != piece.vertices as usize || again.indices.len() != piece.indices as usize {
                 return false;
             }
@@ -598,16 +684,16 @@ mod tests {
                 let mut retained = Retained::default();
                 let mut drew = false;
                 let kept = frame(&card, format, ppp, clip, |p, ctx| {
-                    drew = retained.paint(ctx, &pipeline, p, at, &d, &selected, hovered, thin);
+                    drew = retained.paint(ctx, &pipeline, p, at, at.origin, &d, &selected, hovered, thin);
                 });
                 assert!(drew, "the kept triangles draw");
                 // And brought there from another tint, written in place.
                 let mut moved = Retained::default();
                 let other = frame(&card, format, ppp, clip, |p, ctx| {
-                    moved.paint(ctx, &pipeline, p, at, &d, &[], Some(second), thin);
+                    moved.paint(ctx, &pipeline, p, at, at.origin, &d, &[], Some(second), thin);
                 });
                 let through = frame(&card, format, ppp, clip, |p, ctx| {
-                    moved.paint(ctx, &pipeline, p, at, &d, &selected, hovered, thin);
+                    moved.paint(ctx, &pipeline, p, at, at.origin, &d, &selected, hovered, thin);
                 });
                 assert_eq!(moved.built, 1, "a change of tint keeps the triangles");
                 assert!(moved.retinted <= 1);
@@ -687,16 +773,193 @@ mod tests {
         let at = Place::at(clip.min);
         let mut kept = Retained::default();
         for _ in 0..5 {
-            assert!(kept.paint(&ctx, &pipeline, &p, at, &d, &[], None, false));
+            assert!(kept.paint(&ctx, &pipeline, &p, at, at.origin, &d, &[], None, false));
         }
         assert_eq!(kept.built, 1, "frames that change nothing make nothing");
-        assert!(kept.paint(&ctx, &pipeline, &p, at, &d, &[], Some(owner), false));
-        assert!(kept.paint(&ctx, &pipeline, &p, at, &d, &[owner], Some(owner), false));
-        assert!(kept.paint(&ctx, &pipeline, &p, at, &d, &[owner], Some(owner), true));
+        assert!(kept.paint(&ctx, &pipeline, &p, at, at.origin, &d, &[], Some(owner), false));
+        assert!(kept.paint(&ctx, &pipeline, &p, at, at.origin, &d, &[owner], Some(owner), false));
+        assert!(kept.paint(&ctx, &pipeline, &p, at, at.origin, &d, &[owner], Some(owner), true));
         assert_eq!((kept.built, kept.retinted), (2, 2), "a tint writes its element where it is; Thin Lines makes the whole again");
         let again = Arc::new(render::draw(&m, level, view));
-        assert!(kept.paint(&ctx, &pipeline, &p, at, &again, &[owner], Some(owner), true));
+        assert!(kept.paint(&ctx, &pipeline, &p, at, at.origin, &again, &[owner], Some(owner), true));
         assert_eq!(kept.built, 3, "another drawing shows");
+    }
+
+    #[test]
+    fn what_is_kept_moves_a_whole_pixel_to_what_egui_draws_there_and_is_not_made_again() {
+        let Some(card) = card() else { return };
+        let (m, level, view, owner) = drawing();
+        let zoomed = View { scale: view.scale * 3.0, ..view };
+        let d = Arc::new(render::draw(&m, level, zoomed));
+        let clip = Rect::from_min_max(pos2(37.0, 21.0), pos2(611.0, 503.0));
+        let base = clip.min;
+        for format in [wgpu::TextureFormat::Rgba8Unorm, wgpu::TextureFormat::Rgba8UnormSrgb] {
+            let pipeline = Arc::new(Pipeline::new(&card.0, &card.1, format));
+            let mut kept = Retained::default();
+            frame(&card, format, 1.0, clip, |p, ctx| {
+                kept.paint(ctx, &pipeline, p, Place::at(base), base, &d, &[owner], None, false);
+            });
+            for by in [vec2(40.0, -25.0), vec2(-90.0, 60.0)] {
+                let at = Place::at(base + by);
+                let moved = frame(&card, format, 1.0, clip, |p, ctx| {
+                    assert!(kept.paint(ctx, &pipeline, p, at, base, &d, &[owner], None, false));
+                });
+                let today = frame(&card, format, 1.0, clip, |p, _| canvas::paint(p, at, &d, &[owner], None, false, &[]));
+                // A vertex's position is summed otherwise, in floats, so an edge's coverage may round the other way: this is what shows
+                // only until the exact drawing comes.
+                let differs: Vec<u8> = today.iter().zip(&moved).filter(|(a, b)| a != b).map(|(a, b)| a.abs_diff(*b)).collect();
+                // (Three levels where sRGB's curve is steep, at its darkest.)
+                let rounding = if format.is_srgb() { 3 } else { 1 };
+                assert!(differs.iter().all(|d| *d <= rounding), "{format:?} moved {by:?}: a pixel is further off than rounding");
+                assert!(differs.len() < 200, "{format:?} moved {by:?}: {} channels differ", differs.len());
+            }
+            assert_eq!(kept.built, 1, "moving makes nothing");
+            // A zoom scales them; and home again, the pixels they were made for.
+            let home = frame(&card, format, 1.0, clip, |p, _| canvas::paint(p, Place::at(base), &d, &[owner], None, false, &[]));
+            let scaled = frame(&card, format, 1.0, clip, |p, ctx| {
+                kept.paint(ctx, &pipeline, p, Place { k: 1.5, ..Place::at(base) }, base, &d, &[owner], None, false);
+            });
+            assert_ne!(home, scaled);
+            let back = frame(&card, format, 1.0, clip, |p, ctx| {
+                kept.paint(ctx, &pipeline, p, Place::at(base), base, &d, &[owner], None, false);
+            });
+            assert_eq!(home, back);
+            assert_eq!(kept.built, 1);
+        }
+    }
+
+    /// One frame of the app in `ctx`.
+    fn step(app: &mut crate::BimApp, ctx: &Context, i: u32) -> egui::FullOutput {
+        let side = Rect::from_min_size(Pos2::ZERO, vec2(SIDE[0] as f32, SIDE[1] as f32));
+        let mut raw = RawInput { screen_rect: Some(side), time: Some(f64::from(i) * 10.0), ..RawInput::default() };
+        raw.viewports.entry(ViewportId::ROOT).or_default().native_pixels_per_point = Some(1.0);
+        ctx.run_ui(raw, |ui| app.show(ui))
+    }
+
+    #[test]
+    fn a_view_moved_shows_what_is_kept_until_a_worker_replaces_it_with_the_exact_pixels() {
+        let Some(card) = card() else { return };
+        let format = wgpu::TextureFormat::Bgra8Unorm;
+        let pipeline = Arc::new(Pipeline::new(&card.0, &card.1, format));
+        let (_, level, _, _) = drawing();
+        let start = |pipeline: Option<Arc<Pipeline>>| {
+            let mut s = Session::new();
+            s.script(bimcraft_core::sample::SAMPLE).unwrap();
+            let mut app = crate::BimApp::new(s);
+            app.open_sheet(crate::Sheet::Plan(level));
+            app.card.canvas = pipeline;
+            app
+        };
+        let (lo, hi) = (bimcraft_core::geom::P2(1000.0, 1000.0), bimcraft_core::geom::P2(6000.0, 5000.0));
+
+        let mut app = start(Some(Arc::clone(&pipeline)));
+        let ctx = Context::default();
+        let mut outputs = Vec::new();
+        for i in 0..4 {
+            outputs.push(step(&mut app, &ctx, i));
+        }
+        assert_eq!(app.canvas.drawing.retained.built, 1, "the plan's first drawing is made in the frame");
+        // The window's layout settles over its first frames, which is a view that moved too.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        let mut i = 4;
+        while app.canvas.drawing.shown_drawing().unwrap().view != app.canvas.current_view(level).unwrap() {
+            assert!(std::time::Instant::now() < deadline, "the worker published nothing");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            outputs.push(step(&mut app, &ctx, i));
+            i += 1;
+        }
+        let first = app.canvas.drawing.shown_drawing().unwrap();
+        app.canvas.show(level, lo, hi);
+        outputs.push(step(&mut app, &ctx, i));
+        i += 1;
+        assert!(Arc::ptr_eq(&first, &app.canvas.drawing.shown_drawing().unwrap()), "the frame that moved doesn't wait for a drawing");
+        let wanted = app.canvas.current_view(level).unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while app.canvas.drawing.shown_drawing().unwrap().view != wanted {
+            assert!(std::time::Instant::now() < deadline, "the worker published nothing");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            outputs.push(step(&mut app, &ctx, i));
+            i += 1;
+        }
+        for _ in 0..3 {
+            outputs.push(step(&mut app, &ctx, i));
+            i += 1;
+        }
+        assert_eq!(app.canvas.drawing.retained.built, 1, "nothing was made on the interface's thread for the move");
+        let kept = pixels((&card.0, &card.1), format, &ctx, outputs);
+
+        // The same window drawn the way a window with no card draws it, at the same view.
+        let mut today = start(None);
+        let ctx = Context::default();
+        let mut outputs = Vec::new();
+        for i in 0..2 {
+            outputs.push(step(&mut today, &ctx, i));
+        }
+        today.canvas.show(level, lo, hi);
+        for i in 2..6 {
+            outputs.push(step(&mut today, &ctx, i));
+        }
+        let differs = pixels((&card.0, &card.1), format, &ctx, outputs).chunks(4).zip(kept.chunks(4)).filter(|(a, b)| a != b).count();
+        assert_eq!(differs, 0, "{differs} pixels differ once the exact drawing is in");
+    }
+
+    #[test]
+    fn an_edit_while_a_worker_draws_shows_at_once_and_what_the_worker_made_of_before_is_dropped() {
+        let Some(card) = card() else { return };
+        let pipeline = Arc::new(Pipeline::new(&card.0, &card.1, wgpu::TextureFormat::Bgra8Unorm));
+        let (_, level, _, _) = drawing();
+        let mut s = Session::new();
+        s.script(bimcraft_core::sample::SAMPLE).unwrap();
+        let mut app = crate::BimApp::new(s);
+        app.open_sheet(crate::Sheet::Plan(level));
+        app.card.canvas = Some(pipeline);
+        let ctx = Context::default();
+        let mut outputs = Vec::new();
+        for i in 0..4 {
+            outputs.push(step(&mut app, &ctx, i));
+        }
+        let before = app.canvas.drawing.shown_drawing().unwrap().prims.len();
+        app.canvas.show(level, bimcraft_core::geom::P2(1000.0, 1000.0), bimcraft_core::geom::P2(6000.0, 5000.0));
+        outputs.push(step(&mut app, &ctx, 4));
+        app.session.execute("wall", &serde_json::json!({"points": [[500, 500], [500, 3000]]})).unwrap();
+        outputs.push(step(&mut app, &ctx, 5));
+        let edited = app.canvas.drawing.shown_drawing().unwrap();
+        let wanted = app.canvas.current_view(level).unwrap();
+        assert_eq!(edited.view, wanted, "the edit's frame made its own drawing");
+        assert_ne!(edited.prims.len(), before, "and it holds the edit");
+        for i in 6..40 {
+            outputs.push(step(&mut app, &ctx, i));
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            assert!(
+                Arc::ptr_eq(&edited, &app.canvas.drawing.shown_drawing().unwrap()),
+                "what the worker made of the model before never shows"
+            );
+        }
+        // The frames' textures must be handed on, as a window's are.
+        pixels((&card.0, &card.1), wgpu::TextureFormat::Bgra8Unorm, &ctx, outputs);
+    }
+
+    #[test]
+    fn what_was_moved_is_picked_where_it_shows() {
+        let (m, level, view, _) = drawing();
+        let d = Arc::new(render::draw(&m, level, view));
+        let (q, owner) = d
+            .prims
+            .iter()
+            .zip(&d.owners)
+            .find_map(|(prim, owner)| match prim {
+                render::Prim::Line { pts, .. } => owner.and_then(|o| pts.first().map(|p| (*p, o))),
+                _ => None,
+            })
+            .unwrap();
+        // Half as far in, and moved: the same element is where it now shows.
+        let later = View { scale: view.scale * 2.0, cx: view.cx + 500.0, cy: view.cy - 300.0, ..view };
+        let shown = canvas::Shown::new(Arc::clone(&d), later, Pos2::ZERO);
+        let there = later.px(view.mm(q));
+        assert!(shown.pick_all(there, 2.0).contains(&owner));
+        let held = canvas::Shown::new(Arc::clone(&d), view, Pos2::ZERO);
+        assert_eq!(held.pick_all(q, 2.0), d.pick_all(q, 2.0));
+        assert_eq!((held.place.k, held.place.origin), (1.0, Pos2::ZERO), "at its own view it is exactly where it was");
     }
 
     #[test]

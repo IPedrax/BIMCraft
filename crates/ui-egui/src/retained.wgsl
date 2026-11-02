@@ -9,7 +9,9 @@ struct VertexOutput {
 struct Locals {
     screen_size: vec2<f32>,
     dithering: u32,
-    padding: u32,
+    // How they are scaled and moved from where they were made, while a view moves: 1 and nothing once its drawing is the exact one.
+    k: f32,
+    moved: vec2<f32>,
 };
 @group(0) @binding(0) var<uniform> r_locals: Locals;
 
@@ -47,9 +49,10 @@ fn unpack_color(color: u32) -> vec4<f32> {
 fn vs_main(@location(0) a_pos: vec2<f32>, @location(2) a_color: u32) -> VertexOutput {
     var out: VertexOutput;
     out.color = unpack_color(a_color);
+    let at = a_pos * r_locals.k + r_locals.moved;
     out.position = vec4<f32>(
-        2.0 * a_pos.x / r_locals.screen_size.x - 1.0,
-        1.0 - 2.0 * a_pos.y / r_locals.screen_size.y,
+        2.0 * at.x / r_locals.screen_size.x - 1.0,
+        1.0 - 2.0 * at.y / r_locals.screen_size.y,
         0.0,
         1.0,
     );
