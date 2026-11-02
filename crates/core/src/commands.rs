@@ -5587,14 +5587,15 @@ fn fetch_osm(s: &mut Session, p: &Value) -> R {
     import_osm(s, &Value::Object(check)).map_err(|why| why.replacen("import_osm", c, 1))?;
     let bbox = fetch_bbox(c, p, &s.model)?;
     let layers = crate::geo::Layers { parts: flag(c, p, "parts")? };
-    let reply = geo.overpass(&bbox, &crate::geo::overpass_query(&bbox, layers)).map_err(|why| bad(c, why))?;
+    let query = crate::geo::overpass_query(&bbox, layers);
+    let reply = geo.overpass(&bbox, &query).map_err(|why| bad(c, why))?;
     if reply.text.len() as u64 > MAX_FILE {
         return Err(bad(c, format!("the reply is too large ({} bytes)", reply.text.len())));
     }
     let bytes = reply.text.len();
     forward.insert("data".into(), json!(reply.text));
     let mut out = import_osm(s, &Value::Object(forward)).map_err(|why| why.replacen("import_osm", c, 1))?;
-    out["fetched"] = json!({"bbox": bbox.as_array(), "area_km2": bbox.area_km2(), "bytes": bytes, "cached": reply.cached});
+    out["fetched"] = json!({"bbox": bbox.as_array(), "area_km2": bbox.area_km2(), "bytes": bytes, "cached": reply.cached, "query": query});
     out["attribution"] = json!(geo.attribution("osm"));
     Ok(out)
 }

@@ -31,6 +31,14 @@ That holds over a site of some kilometres: the scale and the convergence are tho
 between the project's mm and degrees; WGS 84 is the datum of the degrees (where the registry has no step from WGS 84 to a CRS, its own
 datum's geographic CRS is used; SIRGAS 2000 differs from WGS 84 by under a metre).
 
+## A pair copied from a map
+
+`georef::parse_coordinates` reads the text of a pair as a map gives it: `51.2254809, 6.7700762` (latitude first), with `;` or a space
+for the comma, a decimal comma (`51,2254809; 6,7700762`), degree signs, brackets, and `N`, `S`, `E`, `W` before or after a number
+(`23.5505 S, 46.6333 W`; with hemispheres the pair may come in either order). A latitude beyond 90 or a longitude beyond 180 is
+refused, never taken for a swapped pair; the text is capped. The desktop's Location box fills Latitude and Longitude from it (its
+Coordinates row, or a pair pasted into either field).
+
 ## The command
 
 `geolocate {latitude?, longitude?, elevation?, true_north?, crs?, clear?, point?, lonlat?}`. Both `latitude` and `longitude` the

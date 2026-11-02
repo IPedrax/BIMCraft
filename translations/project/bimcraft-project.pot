@@ -103,7 +103,7 @@ msgstr ""
 msgid "Data Outlet"
 msgstr ""
 
-#: crates/core/src/commands.rs:7940
+#: crates/core/src/commands.rs:7941
 msgid "Dependent"
 msgstr ""
 
@@ -167,8 +167,8 @@ msgstr ""
 msgid "Elbow 90"
 msgstr ""
 
-#: crates/core/src/commands.rs:7724
-#: crates/core/src/commands.rs:9408
+#: crates/core/src/commands.rs:7725
+#: crates/core/src/commands.rs:9409
 msgid "Elevation"
 msgstr ""
 
@@ -370,7 +370,7 @@ msgstr ""
 msgid "PVC"
 msgstr ""
 
-#: crates/core/src/commands.rs:6162
+#: crates/core/src/commands.rs:6163
 msgid "Pad"
 msgstr ""
 
@@ -418,7 +418,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr ""
 
-#: crates/core/src/commands.rs:6487
+#: crates/core/src/commands.rs:6488
 msgid "Room"
 msgstr ""
 
@@ -446,8 +446,8 @@ msgstr ""
 msgid "Seat Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:7701
-#: crates/core/src/commands.rs:9407
+#: crates/core/src/commands.rs:7702
+#: crates/core/src/commands.rs:9408
 msgid "Section"
 msgstr ""
 
@@ -547,7 +547,7 @@ msgstr ""
 msgid "Timber"
 msgstr ""
 
-#: crates/core/src/commands.rs:6198
+#: crates/core/src/commands.rs:6199
 msgid "Toposurface"
 msgstr ""
 
@@ -567,7 +567,7 @@ msgstr ""
 msgid "UP"
 msgstr ""
 
-#: crates/core/src/commands.rs:8081
+#: crates/core/src/commands.rs:8082
 msgid "Unnamed"
 msgstr ""
 

@@ -10,10 +10,11 @@ use std::time::Duration;
 
 use bimcraft_core::geo::{self, Bbox, Elevation, Layers, Prefetched, Reply};
 use bimcraft_core::geom::P2;
+use bimcraft_core::georef::parse_coordinates;
 use bimcraft_core::ids::Id;
 use bimcraft_core::model::{Element, Model, Pad};
 use bimcraft_i18n::msg;
-use egui::{Align, Button, Context, Grid, Id as UiId, Layout, RichText, TextEdit, Ui};
+use egui::{Align, Button, Context, Grid, Id as UiId, Layout, Response, RichText, ScrollArea, TextEdit, Ui};
 use serde_json::{Value, json};
 
 use crate::lang::{t, tf};
@@ -43,11 +44,17 @@ struct Job {
     kind: Kind,
     bbox: Bbox,
     params: Value,
+    /// The Overpass query it asks with, for a fetch of buildings.
+    query: Option<String>,
     answer: Receiver<Result<Fetched, String>>,
 }
 
 /// The Location box: where the project is on Earth, as typed.
 pub(crate) struct LocationBox {
+    /// A pair pasted from a map, `51.2254809, 6.7700762`: it fills the two fields under it.
+    coordinates: String,
+    /// What is wrong with it, while it is not a pair yet.
+    coordinates_note: Option<String>,
     latitude: String,
     longitude: String,
     /// The ground height at the origin, in the project's units.
@@ -87,6 +94,8 @@ pub(crate) struct Said {
     title: String,
     lines: Vec<String>,
     credit: Option<String>,
+    /// The Overpass query a fetch asked with.
+    query: Option<String>,
 }
 
 /// The Site tab's state.
@@ -106,10 +115,21 @@ pub(crate) fn pad_sketch(m: &Model, level: Id, ring: &[P2]) -> Pad {
     Pad { name: String::new(), level: m.guid(level), boundary: ring.to_vec(), offset: 0.0, thickness: 300.0, params: Default::default() }
 }
 
-fn text_field(ui: &mut Ui, label: &str, value: &mut String, hint: &str) {
+/// A query shown as it goes out: monospace, selectable, with a button that copies it.
+fn query_view(ui: &mut Ui, query: &str) {
+    ScrollArea::vertical().id_salt("site-query-text").max_height(120.0).show(ui, |ui| {
+        ui.label(RichText::new(query).monospace().size(11.0));
+    });
+    if ui.small_button(t("Copy")).clicked() {
+        ui.ctx().copy_text(query.to_string());
+    }
+}
+
+fn text_field(ui: &mut Ui, label: &str, value: &mut String, hint: &str) -> Response {
     let l = ui.label(t(label));
-    ui.add_sized([220.0, 20.0], TextEdit::singleline(value).hint_text(hint)).labelled_by(l.id);
+    let r = ui.add_sized([220.0, 20.0], TextEdit::singleline(value).hint_text(hint)).labelled_by(l.id);
     ui.end_row();
+    r
 }
 
 /// A number typed, or what to say about it.
@@ -177,6 +197,8 @@ impl BimApp {
         let units = self.session.model.units;
         let b = match self.session.model.location {
             Some(l) => LocationBox {
+                coordinates: String::new(),
+                coordinates_note: None,
                 latitude: l.latitude.to_string(),
                 longitude: l.longitude.to_string(),
                 elevation: units.length(l.elevation),
@@ -186,6 +208,8 @@ impl BimApp {
                 error: None,
             },
             None => LocationBox {
+                coordinates: String::new(),
+                coordinates_note: None,
                 latitude: String::new(),
                 longitude: String::new(),
                 elevation: units.length(0.0),
@@ -208,13 +232,32 @@ impl BimApp {
                 ui.label(t("Where the project's origin is on Earth. Everything fetched is placed from it."));
                 ui.add_space(6.0);
                 Grid::new("site-location-grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
-                    text_field(ui, "Latitude (°)", &mut b.latitude, "-23.5505");
-                    text_field(ui, "Longitude (°)", &mut b.longitude, "-46.6333");
+                    // A pair copied from a map goes in the first row, or straight into either of the next two.
+                    if text_field(ui, "Coordinates", &mut b.coordinates, "51.2254809, 6.7700762").changed() {
+                        b.coordinates_note = None;
+                        if !b.coordinates.trim().is_empty() {
+                            match parse_coordinates(&b.coordinates) {
+                                Ok((latitude, longitude)) => (b.latitude, b.longitude) = (latitude.to_string(), longitude.to_string()),
+                                Err(e) => b.coordinates_note = Some(e),
+                            }
+                        }
+                    }
+                    let pasted = text_field(ui, "Latitude (°)", &mut b.latitude, "-23.5505").changed();
+                    let pasted = text_field(ui, "Longitude (°)", &mut b.longitude, "-46.6333").changed() || pasted;
+                    if pasted {
+                        let both = parse_coordinates(&b.latitude).or_else(|_| parse_coordinates(&b.longitude));
+                        if let Ok((latitude, longitude)) = both {
+                            (b.latitude, b.longitude) = (latitude.to_string(), longitude.to_string());
+                        }
+                    }
                     text_field(ui, "Ground height", &mut b.elevation, unit);
                     text_field(ui, "True north (°)", &mut b.true_north, "0");
                     text_field(ui, "Grid", &mut b.crs, "utm");
                     ui.end_row();
                 });
+                if let Some(note) = &b.coordinates_note {
+                    ui.label(RichText::new(note).color(pal().muted));
+                }
                 ui.label(RichText::new(t("Grid: utm, for the place's own zone, or an EPSG code such as 31983.")).color(pal().muted));
                 if let Some(g) = &b.grid {
                     ui.label(RichText::new(tf("In {}", &[g])).color(pal().muted));
@@ -327,7 +370,9 @@ impl BimApp {
             Kind::Terrain => (t("Terrain from Elevation Data"), Kind::Terrain),
         };
         let offline = self.session.geo.is_none();
-        let live = self.area_bbox(b).map(|x| x.area_km2());
+        let area = self.area_bbox(b);
+        let live = area.as_ref().map(|x| x.area_km2()).map_err(Clone::clone);
+        let area = area.ok();
         let unit = self.session.model.units.name();
         let Some(b) = self.site.area.as_mut() else { return };
         let (mut ok, mut close) = (false, false);
@@ -391,6 +436,16 @@ impl BimApp {
                     ),
                     Err(e) => ui.label(RichText::new(e).color(pal().muted)),
                 };
+                // What will be asked of Overpass, as it will be asked: it follows the area and the check above.
+                if kind == Kind::Osm {
+                    ui.add_space(6.0);
+                    egui::CollapsingHeader::new(t("Overpass query")).id_salt("site-query").default_open(true).show(ui, |ui| match area {
+                        Some(x) => query_view(ui, &geo::overpass_query(&x, Layers { parts: b.parts })),
+                        None => {
+                            ui.label(RichText::new(t("Give the area first: the query is made from its box.")).color(pal().muted));
+                        }
+                    });
+                }
                 if let Some(e) = &b.error {
                     ui.add_space(6.0);
                     ui.label(RichText::new(e).color(pal().error));
@@ -489,7 +544,8 @@ impl BimApp {
         if let Err(e) = spawned {
             return self.area_error(e.to_string());
         }
-        self.site.job = Some(Job { kind, bbox, params, answer });
+        let query = (kind == Kind::Osm).then(|| geo::overpass_query(&bbox, layers));
+        self.site.job = Some(Job { kind, bbox, params, query, answer });
     }
 
     fn area_error(&mut self, e: String) {
@@ -576,7 +632,8 @@ impl BimApp {
             }
         };
         let credit = v["attribution"].as_str().map(str::to_string);
-        self.site.said = Some(Said { title, lines, credit });
+        let query = v["fetched"]["query"].as_str().map(str::to_string);
+        self.site.said = Some(Said { title, lines, credit, query });
     }
 
     /// The box over a fetch that is running.
@@ -595,6 +652,11 @@ impl BimApp {
                     ui.label(RichText::new(what).strong());
                 });
                 ui.label(RichText::new(km2).color(pal().muted));
+                if let Some(q) = &job.query {
+                    ui.add_space(6.0);
+                    ui.label(t("Overpass query"));
+                    query_view(ui, q);
+                }
             });
             crate::popup::footer(ui, |ui| {
                 ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
@@ -616,6 +678,11 @@ impl BimApp {
                 ui.add_space(6.0);
                 for line in &s.lines {
                     ui.label(line);
+                }
+                if let Some(q) = &s.query {
+                    ui.add_space(8.0);
+                    ui.label(RichText::new(t("Query used")).strong());
+                    query_view(ui, q);
                 }
                 if let Some(c) = &s.credit {
                     ui.add_space(8.0);
@@ -705,6 +772,6 @@ impl BimApp {
             "All: cut {} m³, fill {} m³; net {} m³ (positive is earth to bring in)",
             &[&m3(&totals["cut_m3"]), &m3(&totals["fill_m3"]), &m3(&totals["net_m3"])],
         ));
-        self.site.said = Some(Said { title: t("Cut/Fill").to_string(), lines, credit: None });
+        self.site.said = Some(Said { title: t("Cut/Fill").to_string(), lines, credit: None, query: None });
     }
 }

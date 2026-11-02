@@ -117,6 +117,88 @@ pub fn lonlat_of_grid(epsg: u32, easting: f64, northing: f64) -> Result<(f64, f6
     if lon.is_finite() && lat.is_finite() { Ok((lon, lat)) } else { Err(format!("({easting}, {northing}) is not on the map of {target}")) }
 }
 
+/// The longest text [`parse_coordinates`] reads: a pair is under fifty characters, and a clipboard holds anything.
+const MAX_COORDINATES: usize = 200;
+
+/// One number of a pair, with the hemisphere it names (`N`, `S`, `E` or `W`, before or after it), as the sign it makes: `23.5505 S` is
+/// -23.5505. A decimal comma is a point; a degree sign is dropped.
+fn coordinate(part: &str) -> Result<(f64, Option<char>), String> {
+    let text = part.trim().replace('°', "");
+    let text = text.trim();
+    let number = |t: &str| -> Option<f64> {
+        let t = t.trim();
+        let t = if t.contains('.') { t.to_string() } else { t.replace(',', ".") };
+        t.parse::<f64>().ok().filter(|x| x.is_finite())
+    };
+    if let Some(x) = number(text) {
+        return Ok((x, None));
+    }
+    let hemisphere = |c: char| matches!(c.to_ascii_uppercase(), 'N' | 'S' | 'E' | 'W');
+    let (first, last) = (text.chars().next(), text.chars().next_back());
+    let tries = [
+        first.filter(|c| hemisphere(*c)).map(|c| (c, &text[c.len_utf8()..])),
+        last.filter(|c| hemisphere(*c)).map(|c| (c, &text[..text.len() - c.len_utf8()])),
+    ];
+    for (letter, rest) in tries.into_iter().flatten() {
+        if let Some(x) = number(rest) {
+            let letter = letter.to_ascii_uppercase();
+            if x < 0.0 || rest.trim_start().starts_with('+') {
+                return Err(format!("`{text}` has a sign and a hemisphere ({letter}): give one or the other"));
+            }
+            return Ok((if matches!(letter, 'S' | 'W') { -x } else { x }, Some(letter)));
+        }
+    }
+    Err(format!("`{text}` is not a number of degrees"))
+}
+
+/// A latitude and a longitude, degrees, read from the text of a pair as a map gives it: `51.2254809, 6.7700762`, with a `;` or a space
+/// for the comma, a decimal comma (`51,2254809; 6,7700762`), degree signs, brackets, and `N`, `S`, `E`, `W` before or after a number
+/// (which may then come in either order). The pair is latitude first unless a hemisphere says otherwise; a latitude beyond 90 or a
+/// longitude beyond 180 is refused, never taken for a swapped pair.
+pub fn parse_coordinates(text: &str) -> Result<(f64, f64), String> {
+    let wanted = "give a latitude and longitude in degrees, such as 51.2254809, 6.7700762";
+    let t = text.trim();
+    if t.is_empty() {
+        return Err(wanted.to_string());
+    }
+    if t.chars().count() > MAX_COORDINATES {
+        return Err(format!("that is too long to be a pair of coordinates: {wanted}"));
+    }
+    let t = t.trim_matches(|c| "()[]{}".contains(c)).trim();
+    let parts: Vec<&str> = if t.contains(';') {
+        t.split(';').collect()
+    } else if t.matches(',').count() == 1 {
+        t.split(',').collect()
+    } else {
+        t.split_whitespace().collect()
+    };
+    let [first, second] = parts.as_slice() else {
+        return Err(format!("two numbers (latitude, longitude) are wanted, not {}: {wanted}", parts.len()));
+    };
+    let ((a, ha), (b, hb)) = (coordinate(first)?, coordinate(second)?);
+    let is_latitude = |h: char| matches!(h, 'N' | 'S');
+    // Which is the latitude: what a hemisphere says, else the first.
+    let first_is_latitude = match (ha, hb) {
+        (Some(x), Some(y)) if is_latitude(x) == is_latitude(y) => {
+            return Err(format!(
+                "`{first}` and `{second}` are both a {}: one latitude (N, S) and one longitude (E, W) are wanted",
+                if is_latitude(x) { "latitude" } else { "longitude" }
+            ));
+        }
+        (Some(x), _) => is_latitude(x),
+        (None, Some(y)) => !is_latitude(y),
+        (None, None) => true,
+    };
+    let (latitude, longitude) = if first_is_latitude { (a, b) } else { (b, a) };
+    if latitude.abs() > 90.0 {
+        return Err(format!("the latitude {latitude} is beyond 90°: a pair is latitude first, then longitude"));
+    }
+    if longitude.abs() > 180.0 {
+        return Err(format!("the longitude {longitude} is beyond 180°"));
+    }
+    Ok((latitude, longitude))
+}
+
 /// A step along the meridian and the parallel, degrees, to measure the grid's convergence and scale with.
 const STEP: f64 = 1e-5;
 /// WGS 84's semi-major axis, metres, and first eccentricity squared: the ground length of a step along the parallel.

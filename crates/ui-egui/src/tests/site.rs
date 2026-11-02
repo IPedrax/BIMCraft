@@ -117,6 +117,13 @@ fn fetch(h: &mut Harness<BimApp>) {
     h.step();
 }
 
+/// The Overpass query a box shows, whole (its label).
+fn query_shown(h: &Harness<BimApp>) -> String {
+    use egui_kittest::kittest::NodeT;
+    let n = h.get_by_label_contains("[out:json]");
+    n.accesskit_node().label().or_else(|| n.accesskit_node().value()).unwrap_or_default().to_string()
+}
+
 #[test]
 fn the_site_tab_has_its_panels_and_buttons() {
     let mut h = app(BOX);
@@ -329,4 +336,70 @@ fn the_properties_of_a_pad_and_a_terrain_are_shown_and_edited() {
     h.run();
     assert!(h.query_by_label_contains("Height Offset From Level").is_some());
     assert!(h.query_by_label_contains("Thickness").is_some());
+}
+
+#[test]
+fn a_pair_pasted_from_a_map_fills_latitude_and_longitude_and_places_the_project() {
+    let mut h = app(BOX);
+    press(&mut h, "Site");
+    press(&mut h, "Location");
+    type_into(&mut h, "Coordinates", "51.2254809, 6.7700762");
+    press(&mut h, "OK");
+    let l = h.state().session.model.location.expect("placed");
+    assert_eq!((l.latitude, l.longitude), (51.2254809, 6.7700762));
+    // Germany: WGS 84 / UTM zone 32 north.
+    assert_eq!(l.grid().unwrap().epsg, 32632);
+}
+
+#[test]
+fn a_pair_pasted_into_latitude_or_longitude_is_split_the_same_way() {
+    for field in ["Latitude (°)", "Longitude (°)"] {
+        let mut h = app(BOX);
+        press(&mut h, "Site");
+        press(&mut h, "Location");
+        type_into(&mut h, field, "51,2254809; 6,7700762");
+        press(&mut h, "OK");
+        let l = h.state().session.model.location.expect("placed");
+        assert_eq!((l.latitude, l.longitude), (51.2254809, 6.7700762), "{field}");
+    }
+}
+
+#[test]
+fn a_string_that_is_not_a_pair_says_so_and_changes_nothing() {
+    let mut h = app(BOX);
+    press(&mut h, "Site");
+    press(&mut h, "Location");
+    type_into(&mut h, "Coordinates", "95, 6.7");
+    assert!(h.query_by_label_contains("beyond 90").is_some(), "the reason shows under the row");
+    press(&mut h, "OK");
+    assert!(h.state().session.model.location.is_none(), "nothing was filled, so nothing is placed");
+}
+
+#[test]
+fn the_import_box_shows_the_overpass_query_that_will_be_asked() {
+    let mut h = located(Arc::new(Fake::new()));
+    press(&mut h, "Site");
+    press(&mut h, "Import from OpenStreetMap");
+    assert!(h.query_by_label_contains("[out:json]").is_some(), "the query is there before anything is fetched");
+    assert!(h.query_by_label_contains("building:part").is_none());
+    pick(&mut h, Role::CheckBox, "Parts of buildings too");
+    assert!(h.query_by_label_contains("building:part").is_some(), "it follows the options");
+    // And the area: 10 times the distance, a box 10 times as wide.
+    let before = query_shown(&h);
+    type_into(&mut h, "Distance round the origin (m)", "900");
+    let after = query_shown(&h);
+    assert_ne!(before, after, "it follows the area");
+}
+
+#[test]
+fn what_was_fetched_with_is_said_when_it_is_done() {
+    let mut h = located(Arc::new(Fake::new()));
+    press(&mut h, "Site");
+    press(&mut h, "Import from OpenStreetMap");
+    let shown = query_shown(&h);
+    fetch(&mut h);
+    until_fetched(&mut h);
+    assert!(h.query_by_label("Query used").is_some());
+    let said = query_shown(&h);
+    assert_eq!(shown, said, "the query shown before is the one that was asked");
 }

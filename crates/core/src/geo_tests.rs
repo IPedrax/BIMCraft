@@ -371,3 +371,17 @@ fn the_default_spacing_is_what_fetch_terrain_uses() {
     assert_eq!(asked.1, crate::geo::default_spacing(&asked.0));
     assert!(crate::geo::default_spacing(&Bbox::around(0.0, 0.0, 10.0).unwrap()) >= 10.0, "no finer than 10 m");
 }
+
+#[test]
+fn fetch_osm_reports_the_query_it_asked_with() {
+    for parts in [false, true] {
+        let fake = Arc::new(Fake::new(overpass_reply()));
+        let mut s = session(fake.clone());
+        let r = run(&mut s, "fetch_osm", json!({"radius": 300, "parts": parts}));
+        let asked = fake.asked.lock().unwrap();
+        let (bbox, query) = &asked[0];
+        assert_eq!(r["fetched"]["query"], json!(query), "parts {parts}");
+        assert_eq!(*query, crate::geo::overpass_query(bbox, crate::geo::Layers { parts }));
+        assert_eq!(query.contains("building:part"), parts);
+    }
+}
