@@ -40,6 +40,8 @@ pub struct Card {
     pub note: Option<String>,
     /// The card was tried and can't draw the 3D view.
     pub(crate) failed: bool,
+    /// How the 2D canvas draws its kept triangles, on the card egui draws on: made the first time, whatever the 3D view's setting.
+    pub(crate) canvas: Option<std::sync::Arc<crate::retained::Pipeline>>,
 }
 
 impl Card {
@@ -47,6 +49,16 @@ impl Card {
     #[cfg(test)]
     pub(crate) fn with(gpu: Gpu) -> Card {
         Card { wanted: true, gpu: Some(gpu), ..Card::default() }
+    }
+
+    /// How the 2D canvas's triangles are drawn on the window's card; none in a window with no wgpu device, as in every test.
+    pub(crate) fn canvas(&mut self) -> Option<std::sync::Arc<crate::retained::Pipeline>> {
+        if self.canvas.is_none()
+            && let Some(state) = &self.state
+        {
+            self.canvas = Some(std::sync::Arc::new(crate::retained::Pipeline::new(&state.device, &state.queue, state.target_format)));
+        }
+        self.canvas.clone()
     }
 
     /// Whether there is a card the user can ask for.

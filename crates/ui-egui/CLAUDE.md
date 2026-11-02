@@ -37,6 +37,14 @@ startup, tags) is [the desktop](../../docs/areas/desktop.md).
   that keeps none: `tests/light_canvas.rs`'s `Uploads` is one that does (`Harness::builder().renderer(..)`).
 - After a change to how the window looks, look at it in the three looks (Light, Dark, Dark UI with a Light Canvas): [looking at the result](../../docs/areas/looking-at-results.md).
 
+## The 2D canvas on the card
+
+A plan's triangles are egui's own, made once from `canvas::paint_to`'s shapes and kept on the card (`retained.rs`), so a frame that
+changes nothing is a draw call. A shape's look changes in `canvas::paint_prim`, for both paths. A new thing that decides what a plan
+looks like goes in `retained::Key`, or the canvas shows it late. The window's renderer's options must stay what `retained::Pipeline`
+assumes: no multisampling, no depth buffer, dithering on. The tests compare pixels with egui's renderer on a real card; a harness has no
+card, so it stays on `canvas::paint`. Plan and numbers: [canvas acceleration](../../docs/canvas-acceleration-plan.md).
+
 ## Background view work
 
 Sections/elevations use `view_worker.rs` (bounded latest-request mailboxes) and `section_worker.rs` (snapshot-bound

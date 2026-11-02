@@ -64,6 +64,8 @@ pub(crate) struct PlanCache {
     shown: Option<PlanShot>,
     /// The pictures (a scan's) of the drawing shown, on the graphics card.
     pub(crate) pictures: Option<(Weak<Drawing>, Vec<TextureHandle>)>,
+    /// Its triangles on the graphics card.
+    pub(crate) retained: crate::retained::Retained,
 }
 
 type PlanShot = (Weak<Model>, Id, View, bool, Arc<Drawing>);
@@ -395,89 +397,157 @@ pub(crate) fn on_screen(width: f32, k: f32, thin: bool) -> f32 {
 /// The display list, with the selected and hovered elements in the accent colours, but for what `at` leaves out; with
 /// `thin`, every line one pixel wide. Its pictures are `pictures`, in order.
 pub(crate) fn paint(p: &Painter, at: Place, d: &Drawing, selected: &[Id], hovered: Option<Id>, thin: bool, pictures: &[TextureId]) {
-    let mut pictures = pictures.iter();
-    let color = |c: Rgb| if at.paper { Color32::from_rgb(c.0, c.1, c.2) } else { color(c) };
-    for ((prim, owner), part) in d.prims.iter().zip(&d.owners).zip(&d.parts) {
-        if owner.is_some() && *owner == at.hide {
-            continue;
+    paint_to(
+        &mut |shape| {
+            p.add(shape);
+        },
+        p.clip_rect(),
+        at,
+        d,
+        selected,
+        hovered,
+        thin,
+        pictures,
+    );
+}
+
+/// Whether `prim` draws nothing inside `clip`, however it is drawn: all of it, past its widest line, to one side.
+fn outside(prim: &Prim, at: Place, thin: bool, clip: Rect) -> bool {
+    let (mut lo, mut hi) = (Pos2::new(f32::INFINITY, f32::INFINITY), Pos2::new(f32::NEG_INFINITY, f32::NEG_INFINITY));
+    let mut grow = |q: &(f32, f32)| {
+        let q = at.pos(*q);
+        (lo, hi) = (lo.min(q), hi.max(q));
+    };
+    // A mitred corner reaches past its line by some widths, and the edge is feathered: more than either could ever take.
+    let margin = match prim {
+        Prim::Fill { rings, .. } => {
+            rings.iter().flatten().for_each(&mut grow);
+            4.0
         }
-        let accent = match *owner {
-            Some(id) if selected.contains(&id) => Some((canvas_pal().accent, canvas_pal().select_fill)),
-            Some(id) if Some(id) == hovered => Some((canvas_pal().hover, canvas_pal().hover_fill)),
-            _ => None,
-        };
-        match prim {
-            // Notes and compound pattern glyphs use the non-zero fill rule, preserving counters and overlapping contours.
-            // Single-contour pattern fills (including dots) keep their ordinary polygon rendering below.
-            Prim::Fill { rings, color: c } if *part == render::Part::Text || (*part == render::Part::LinePattern && rings.len() > 1) => {
-                let fill = accent.map_or(color(*c), |a| a.0);
-                let mut mesh = Mesh::default();
-                for tri in letter(rings).iter() {
-                    let first = mesh.vertices.len() as u32;
-                    for q in tri {
-                        mesh.colored_vertex(at.pos(*q), fill);
-                    }
-                    mesh.add_triangle(first, first + 1, first + 2);
+        Prim::Line { pts, width, .. } => {
+            pts.iter().for_each(&mut grow);
+            on_screen(*width, at.k, thin) * 8.0 + 4.0
+        }
+        // A picture's place has more to it; it is few, and drawn.
+        Prim::Image { .. } => return false,
+    };
+    // Comparisons a number that isn't finite fails say nothing is outside.
+    hi.x + margin < clip.min.x || lo.x - margin > clip.max.x || hi.y + margin < clip.min.y || lo.y - margin > clip.max.y
+}
+
+/// [`paint`], its shapes handed to `out`, those that can't reach `clip` left out.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn paint_to(
+    out: &mut dyn FnMut(Shape),
+    clip: Rect,
+    at: Place,
+    d: &Drawing,
+    selected: &[Id],
+    hovered: Option<Id>,
+    thin: bool,
+    pictures: &[TextureId],
+) {
+    let mut pictures = pictures.iter();
+    for ((prim, owner), part) in d.prims.iter().zip(&d.owners).zip(&d.parts) {
+        paint_prim(out, clip, at, (prim, *owner, *part), selected, hovered, thin, &mut pictures);
+    }
+}
+
+/// One primitive of a drawing, as [`paint`] draws it.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn paint_prim(
+    out: &mut dyn FnMut(Shape),
+    clip: Rect,
+    at: Place,
+    (prim, owner, part): (&Prim, Option<Id>, render::Part),
+    selected: &[Id],
+    hovered: Option<Id>,
+    thin: bool,
+    pictures: &mut std::slice::Iter<TextureId>,
+) {
+    let color = |c: Rgb| if at.paper { Color32::from_rgb(c.0, c.1, c.2) } else { color(c) };
+    if owner.is_some() && owner == at.hide {
+        return;
+    }
+    if outside(prim, at, thin, clip) {
+        return;
+    }
+    let accent = match owner {
+        Some(id) if selected.contains(&id) => Some((canvas_pal().accent, canvas_pal().select_fill)),
+        Some(id) if Some(id) == hovered => Some((canvas_pal().hover, canvas_pal().hover_fill)),
+        _ => None,
+    };
+    match prim {
+        // Notes and compound pattern glyphs use the non-zero fill rule, preserving counters and overlapping contours.
+        // Single-contour pattern fills (including dots) keep their ordinary polygon rendering below.
+        Prim::Fill { rings, color: c } if part == render::Part::Text || (part == render::Part::LinePattern && rings.len() > 1) => {
+            let fill = accent.map_or(color(*c), |a| a.0);
+            let mut mesh = Mesh::default();
+            for tri in letter(rings).iter() {
+                let first = mesh.vertices.len() as u32;
+                for q in tri {
+                    mesh.colored_vertex(at.pos(*q), fill);
                 }
-                p.add(Shape::mesh(mesh));
-                for r in rings {
-                    p.add(Shape::closed_line(r.iter().map(|q| at.pos(*q)).collect(), Stroke::new(0.5, fill)));
-                }
+                mesh.add_triangle(first, first + 1, first + 2);
             }
-            // Ordinary fills are convex rings or independent polygons, triangulated without seams.
-            Prim::Fill { rings, color: c } => {
-                let fill = accent.map_or(color(*c), |a| a.1);
-                match rings.as_slice() {
-                    [r] if convex(r) => {
-                        p.add(Shape::convex_polygon(r.iter().map(|q| at.pos(*q)).collect(), fill, Stroke::NONE));
-                    }
-                    _ => {
-                        let mut mesh = Mesh::default();
-                        for r in rings {
-                            let ring: Vec<P2> = r.iter().map(|q| P2(f64::from(q.0), f64::from(q.1))).collect();
-                            let first = mesh.vertices.len() as u32;
-                            for q in r {
-                                mesh.colored_vertex(at.pos(*q), fill);
-                            }
-                            for [a, b, c] in geom::triangulate(&ring) {
-                                mesh.add_triangle(first + a as u32, first + b as u32, first + c as u32);
-                            }
+            out(Shape::mesh(mesh));
+            for r in rings {
+                out(Shape::closed_line(r.iter().map(|q| at.pos(*q)).collect(), Stroke::new(0.5, fill)));
+            }
+        }
+        // Ordinary fills are convex rings or independent polygons, triangulated without seams.
+        Prim::Fill { rings, color: c } => {
+            let fill = accent.map_or(color(*c), |a| a.1);
+            match rings.as_slice() {
+                [r] if convex(r) => {
+                    out(Shape::convex_polygon(r.iter().map(|q| at.pos(*q)).collect(), fill, Stroke::NONE));
+                }
+                _ => {
+                    let mut mesh = Mesh::default();
+                    for r in rings {
+                        let ring: Vec<P2> = r.iter().map(|q| P2(f64::from(q.0), f64::from(q.1))).collect();
+                        let first = mesh.vertices.len() as u32;
+                        for q in r {
+                            mesh.colored_vertex(at.pos(*q), fill);
                         }
-                        p.add(Shape::mesh(mesh));
-                    }
-                }
-            }
-            Prim::Image { at: corner, width, height, ink, .. } => {
-                if let Some(texture) = pictures.next() {
-                    let rect = Rect::from_min_size(at.pos(*corner), vec2(*width as f32, *height as f32) * at.k);
-                    // On a dark canvas a plan's picture (a scan's) is dimmed, so the ink lightened over it still reads; a sheet's
-                    // paper stays white, and so does a scan the view fills with a colour of its own, which is ink itself.
-                    let plain = if !at.paper && !*ink && crate::style::canvas_dark() { Color32::from_gray(120) } else { Color32::WHITE };
-                    let tint = accent.map_or(plain, |a| a.1);
-                    p.image(*texture, rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), tint);
-                }
-            }
-            Prim::Line { pts, width, color: c, dash, closed } => {
-                let stroke = Stroke::new(on_screen(*width, at.k, thin), accent.map_or(color(*c), |a| a.0));
-                let mut pts: Vec<Pos2> = pts.iter().map(|q| at.pos(*q)).collect();
-                match dash {
-                    Some(dash) => {
-                        // A dashed ring: its closing side too.
-                        if *closed {
-                            pts.extend(pts.first().copied());
+                        for [a, b, c] in geom::triangulate(&ring) {
+                            mesh.add_triangle(first + a as u32, first + b as u32, first + c as u32);
                         }
-                        // Its on and off lengths, as big as its width is drawn.
-                        let k = at.k.max(f32::EPSILON);
-                        let on: Vec<f32> = dash.iter().step_by(2).map(|x| x * k).collect();
-                        let off: Vec<f32> = dash.iter().skip(1).step_by(2).map(|x| x * k).collect();
-                        p.extend(Shape::dashed_line_with_offset(&pts, stroke, &on, &off, 0.0));
                     }
-                    None if *closed => {
-                        p.add(Shape::closed_line(pts, stroke));
+                    out(Shape::mesh(mesh));
+                }
+            }
+        }
+        Prim::Image { at: corner, width, height, ink, .. } => {
+            if let Some(texture) = pictures.next() {
+                let rect = Rect::from_min_size(at.pos(*corner), vec2(*width as f32, *height as f32) * at.k);
+                // On a dark canvas a plan's picture (a scan's) is dimmed, so the ink lightened over it still reads; a sheet's
+                // paper stays white, and so does a scan the view fills with a colour of its own, which is ink itself.
+                let plain = if !at.paper && !*ink && crate::style::canvas_dark() { Color32::from_gray(120) } else { Color32::WHITE };
+                let tint = accent.map_or(plain, |a| a.1);
+                out(Shape::image(*texture, rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), tint));
+            }
+        }
+        Prim::Line { pts, width, color: c, dash, closed } => {
+            let stroke = Stroke::new(on_screen(*width, at.k, thin), accent.map_or(color(*c), |a| a.0));
+            let mut pts: Vec<Pos2> = pts.iter().map(|q| at.pos(*q)).collect();
+            match dash {
+                Some(dash) => {
+                    // A dashed ring: its closing side too.
+                    if *closed {
+                        pts.extend(pts.first().copied());
                     }
-                    None => {
-                        p.add(Shape::line(pts, stroke));
-                    }
+                    // Its on and off lengths, as big as its width is drawn.
+                    let k = at.k.max(f32::EPSILON);
+                    let on: Vec<f32> = dash.iter().step_by(2).map(|x| x * k).collect();
+                    let off: Vec<f32> = dash.iter().skip(1).step_by(2).map(|x| x * k).collect();
+                    Shape::dashed_line_with_offset(&pts, stroke, &on, &off, 0.0).into_iter().for_each(&mut *out);
+                }
+                None if *closed => {
+                    out(Shape::closed_line(pts, stroke));
+                }
+                None => {
+                    out(Shape::line(pts, stroke));
                 }
             }
         }
@@ -1314,7 +1384,13 @@ impl BimApp {
         }));
         let sketch_trim = self.sketch.is_some() && matches!(self.tool, Tool::Trim(_) | Tool::TrimTo { .. });
         let painted_hover = if matches!(self.tool, Tool::Align(_)) || sketch_trim { None } else { hovered };
-        paint(&p, Place { hide: self.writing(), ..Place::at(rect.min) }, &d, &marked, painted_hover, self.thin, &pictures);
+        let place = Place { hide: self.writing(), ..Place::at(rect.min) };
+        let kept = self.card.canvas().is_some_and(|pipeline| {
+            self.canvas.drawing.retained.paint(ui.ctx(), &pipeline, &p, place, &d, &marked, painted_hover, self.thin)
+        });
+        if !kept {
+            paint(&p, place, &d, &marked, painted_hover, self.thin, &pictures);
+        }
         if writing {
             self.note_canvas(ui, &response, &p, Place::at(rect.min), &d);
         }

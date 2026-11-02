@@ -395,6 +395,8 @@ over a million triangles survive for an elevation that shows far fewer.
 
 ## Next task for the receiving agent
 
+The 2D canvas has its own plan now, [canvas acceleration](canvas-acceleration-plan.md), ahead of what follows at the user's asking.
+
 Two directions, by measured cost. First, making triangles scales poorly on threads, each solid cloned and each layer allocated:
 make them without the clone (`PreparedSolids::painted`, `layered`), and reuse an occluder's triangles in the final scene rather
 than making them twice. Second, depth tiles too coarse for a fitted tower: benchmark finer or masked coverage (section 6 above),
