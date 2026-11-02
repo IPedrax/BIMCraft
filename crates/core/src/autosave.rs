@@ -1,12 +1,13 @@
 //! Background snapshots of immutable models. A single worker orders writes and removals, so a
 //! late autosave can never resurrect a file removed by Save/Discard. No UI toolkit or model lock.
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak, mpsc};
 
 use crate::engine::Session;
+use crate::ids::Guid;
 use crate::model::Model;
 
 pub const SUFFIX: &str = ".autosave.bimcraft";
@@ -21,10 +22,15 @@ pub fn backup_path(project: &Path) -> PathBuf {
 /// Flush a complete file in the destination directory, then replace the old one atomically.
 /// Never fall back to truncating the destination, including on Windows.
 pub fn atomic_write(path: &Path, text: &str) -> Result<(), String> {
+    atomic_write_bytes(path, text.as_bytes())
+}
+
+/// Atomically replace a binary document, including an ODS catalogue, without truncating its predecessor.
+pub fn atomic_write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let write = || -> Result<(), Box<dyn std::error::Error>> {
         let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
         let mut staged = tempfile::NamedTempFile::new_in(parent)?;
-        staged.write_all(text.as_bytes())?;
+        staged.write_all(bytes)?;
         staged.as_file().sync_all()?;
         staged.persist(path)?;
         // The file contents were synced before replacement. Persist the directory entry too on Unix.
@@ -49,8 +55,10 @@ pub enum Notice {
     Discovered { generation: u64, result: Result<Vec<Backup>, String> },
 }
 
+type CatalogueSnapshot = (BTreeSet<Guid>, Arc<BTreeMap<Guid, Vec<String>>>);
+
 enum Job {
-    Save(PathBuf, Arc<Model>),
+    Save(PathBuf, Arc<Model>, Option<CatalogueSnapshot>),
     Remove(PathBuf),
     Discover(Option<PathBuf>, u64),
     Release(PathBuf),
@@ -74,7 +82,7 @@ impl Worker {
                 let mut leases = BTreeMap::new();
                 for job in inbox {
                     let note = match job {
-                        Job::Save(path, model) => {
+                        Job::Save(path, model, owned) => {
                             let snapshot = Arc::downgrade(&model);
                             let result = (|| {
                                 if path.parent() == Some(temp.as_path()) {
@@ -83,6 +91,12 @@ impl Worker {
                                 lease(&path, &mut leases)?;
                                 let mut session = Session::new();
                                 session.model = model;
+                                if let Some((owned, baseline)) = owned {
+                                    session.catalogue_owned = owned;
+                                    session.catalogue_baseline = baseline;
+                                } else {
+                                    session.remember_catalogue();
+                                }
                                 session.execute("autosave", &serde_json::json!({"path": path})).map(|_| ())
                             })();
                             Notice::Saved { path, snapshot, result }
@@ -123,10 +137,19 @@ impl Worker {
 
     /// False while one snapshot is outstanding: typing never grows a queue of obsolete models.
     pub fn save(&mut self, path: PathBuf, model: Arc<Model>) -> Result<bool, String> {
+        self.queue_save(path, model, None)
+    }
+
+    /// Preserve session-owned catalogue changes while identifying the original editing snapshot.
+    pub fn save_session(&mut self, path: PathBuf, session: &Session) -> Result<bool, String> {
+        self.queue_save(path, Arc::clone(&session.model), Some((session.catalogue_owned.clone(), session.catalogue_baseline.clone())))
+    }
+
+    fn queue_save(&mut self, path: PathBuf, model: Arc<Model>, owned: Option<CatalogueSnapshot>) -> Result<bool, String> {
         if self.busy {
             return Ok(false);
         }
-        self.send(Job::Save(path, model))?;
+        self.send(Job::Save(path, model, owned))?;
         self.busy = true;
         Ok(true)
     }

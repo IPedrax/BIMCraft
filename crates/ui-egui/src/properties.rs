@@ -370,6 +370,7 @@ const PLAN: &[Row] = &[
     ("View Range", "view_range.cut", msg!("Cut Plane"), Length),
     ("View Range", "view_range.bottom", msg!("Bottom"), Length),
     ("View Range", "view_range.depth", msg!("View Depth"), Length),
+    ("Graphics", "graphics.engineering", msg!("Engineering Level Mode"), Flag),
 ];
 
 /// A plan view's parameters, read from and written to the plan view itself.
@@ -382,6 +383,7 @@ const PLAN_VIEW: &[Row] = &[
     ("View Range", "view_range.cut", "Cut Plane", Length),
     ("View Range", "view_range.bottom", "Bottom", Length),
     ("View Range", "view_range.depth", "View Depth", Length),
+    ("Graphics", "graphics.engineering", "Engineering Level Mode", Flag),
 ];
 
 /// A dependent view's: its view range and graphics are its parent's, so it shows the parent, and a crop of its own.
@@ -439,8 +441,7 @@ fn icon(category: &str) -> Icon {
         "footing" => Icon::Footing,
         "stripfooting" => Icon::WallFooting,
         "pipe" => Icon::Pipe,
-        "conduit" => Icon::Conduit,
-        "cabletray" => Icon::CableTray,
+        "cablecarrier" => Icon::CableTray,
         "wire" => Icon::Wire,
         "downconductor" => Icon::DownConductor,
         "groundconductor" => Icon::GroundConductor,

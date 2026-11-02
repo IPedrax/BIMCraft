@@ -308,7 +308,7 @@ impl<'a> Scene<'a> {
                     ]);
                     s.lines.push((r.start, r.end));
                 }
-                Element::Component(c) if c.level == level && near(&[c.at]) => s.points.push((c.at, Kind::Centre)),
+                Element::Component(c) if c.is_placed() && c.level == level && near(&[c.at]) => s.points.push((c.at, Kind::Centre)),
                 Element::Floor(f) if f.level == level => {
                     s.points.extend(ring(&f.boundary));
                     f.openings.iter().for_each(|o| s.points.extend(ring(o)));

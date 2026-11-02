@@ -23,10 +23,10 @@ pub const IFC: &[(&str, &str, &str)] = &[
     ("beam", "IFCBEAM", ".BEAM."),
     ("stripfooting", "IFCFOOTING", ".STRIP_FOOTING."),
     ("pipe", "IFCPIPESEGMENT", ".RIGIDSEGMENT."),
-    ("conduit", "IFCCABLECARRIERSEGMENT", ".CONDUITSEGMENT."),
-    ("cabletray", "IFCCABLECARRIERSEGMENT", ".CABLETRAYSEGMENT."),
+    ("cablecarrier", "IFCCABLECARRIERSEGMENT", ".CONDUITSEGMENT."),
+    ("cablecarrier", "IFCCABLECARRIERSEGMENT", ".CABLETRAYSEGMENT."),
     // A ladder is a tray to BIMCraft, written as a tray: only a file of another tool's says it.
-    ("cabletray", "IFCCABLECARRIERSEGMENT", ".CABLELADDERSEGMENT."),
+    ("cablecarrier", "IFCCABLECARRIERSEGMENT", ".CABLELADDERSEGMENT."),
     ("wire", "IFCCABLESEGMENT", ".CABLESEGMENT."),
     // IFC has no lightning protection: a down conductor is a conductor segment, as is an earthing conductor (BIMCraft's own
     // `Category` tells them apart).
@@ -39,6 +39,16 @@ pub const IFC: &[(&str, &str, &str)] = &[
 /// The IFC class and predefined type a run of `category` is written as.
 pub fn ifc(category: &str) -> Option<(&'static str, &'static str)> {
     IFC.iter().find(|(c, ..)| *c == category).map(|(_, class, kind)| (*class, *kind))
+}
+
+/// The IFC class and predefined type a run of `category` is written as for its shape: a cable carrier's
+/// round section writes as a conduit segment, a rectangular one as a cable tray segment.
+pub fn ifc_shape(category: &str, round: bool) -> Option<(&'static str, &'static str)> {
+    if category != "cablecarrier" {
+        return ifc(category);
+    }
+    let kind = if round { ".CONDUITSEGMENT." } else { ".CABLETRAYSEGMENT." };
+    IFC.iter().find(|(c, _, t)| *c == category && *t == kind).map(|(_, class, kind)| (*class, *kind))
 }
 
 /// The category of a run an IFC product is, from its `class`, its `kind` (the predefined type) and, when a file of BIMCraft's says
@@ -210,6 +220,13 @@ mod tests {
             end_offset,
             justify,
             system: String::new(),
+            source: None,
+            devices: Vec::new(),
+            cable: String::new(),
+            reserve: 0.0,
+            along_walls: false,
+            carrier: None,
+            local_offset: 0.0,
             params: Default::default(),
         }
     }

@@ -46,27 +46,15 @@ const RUN_TOOLS: &[RunTool] = &[
     },
     RunTool {
         tab: "Electrical",
-        button: "Conduit",
-        category: "conduit",
-        command: "conduit",
-        context: "Modify | Place Conduit",
-        letters: "CN",
+        button: "Cable Carrier",
+        category: "cablecarrier",
+        command: "cable_carrier",
+        context: "Modify | Place Cable Carrier",
+        letters: "CC",
         default_type: "PVC 25",
         width: 25.0,
-        other: "Steel 25",
+        other: "Tray 100 x 50",
         round: true,
-    },
-    RunTool {
-        tab: "Electrical",
-        button: "Cable Tray",
-        category: "cabletray",
-        command: "cable_tray",
-        context: "Modify | Place Cable Tray",
-        letters: "CT",
-        default_type: "Perforated 100 x 50",
-        width: 100.0,
-        other: "Perforated 200 x 50",
-        round: false,
     },
     RunTool {
         tab: "Electrical",
@@ -119,7 +107,7 @@ const RUN_TOOLS: &[RunTool] = &[
 ];
 
 /// What Visibility/Graphics lists the categories of these tabs as.
-const CATEGORY_NAMES: &[&str] = &["Pipes", "Conduits", "Cable Trays", "Wires", "Down Conductors", "Earthing Conductors", "Cables"];
+const CATEGORY_NAMES: &[&str] = &["Pipes", "Cable Carriers", "Wires", "Down Conductors", "Earthing Conductors", "Cables"];
 
 /// A fixture tab's tool: the tab, the button, its contextual tab, the shortcut, the families it places and one it doesn't.
 struct FixtureTool {
@@ -272,9 +260,9 @@ const FIXTURE_TOOLS: &[FixtureTool] = &[
 fn each_discipline_tab_has_its_tools_and_none_of_the_architecture_tabs() {
     let tabs: [(&str, &[&str]); 4] = [
         ("Plumbing", &["Pipe", "Plumbing Fixture", "Pipe Fitting", "Pipe Accessory"]),
-        ("Electrical", &["Electrical Equipment", "Device", "Lighting Fixture", "Conduit", "Cable Tray", "Wire"]),
+        ("Electrical", &["Electrical Equipment", "Device", "Lighting Fixture", "Cable Carrier", "Wire"]),
         ("Lightning Protection", &["Air Terminal", "Down Conductor", "Earthing Electrode", "Inspection Box", "Earthing Conductor"]),
-        ("Data", &["Data Outlet", "Voice Outlet", "Rack", "Patch Panel", "Cable Tray", "Cabling"]),
+        ("Data", &["Data Outlet", "Voice Outlet", "Rack", "Patch Panel", "Cable Carrier", "Cabling"]),
     ];
     for (tab, labels) in tabs {
         let mut h = app(BOX);
@@ -458,7 +446,7 @@ fn revits_shortcuts_pick_the_tools_of_the_discipline_tabs() {
         key(&mut h, Key::Escape);
     }
     let listed: Vec<(&str, &str)> = crate::shortcuts();
-    // Each is listed by its button's name, which the command's label (Conduit, Cable Tray, Wire…) is.
+    // Each is listed by its button's name, which the command's label (Cable Carrier, Wire…) is.
     let names = RUN_TOOLS.iter().map(|c| (c.letters, c.button)).chain(FIXTURE_TOOLS.iter().map(|c| (c.letters, c.button)));
     for (letters, name) in names {
         assert!(listed.contains(&(letters, name)), "{letters} {name}");
@@ -578,8 +566,8 @@ fn the_discipline_tabs_speak_portuguese_and_spanish_and_leave_no_english() {
             .collect()
     };
     let script = format!(
-        "{BOX}\npipe {{\"points\": [[1000, 1000], [5000, 1000]], \"offset\": 2400}}\nconduit {{\"points\": [[1000, 2000], [5000, 2000]], \"offset\": 2400}}\n\
-         cable_tray {{\"points\": [[1000, 3000], [5000, 3000]], \"offset\": 2600}}\nwire {{\"points\": [[1000, 4000], [5000, 4000]], \"offset\": 2400}}\n\
+        "{BOX}\npipe {{\"points\": [[1000, 1000], [5000, 1000]], \"offset\": 2400}}\ncable_carrier {{\"points\": [[1000, 2000], [5000, 2000]], \"offset\": 2400}}\n\
+         cable_carrier {{\"points\": [[1000, 3000], [5000, 3000]], \"type\": \"Tray 100 x 50\", \"offset\": 2600}}\nwire {{\"points\": [[1000, 4000], [5000, 4000]], \"offset\": 2400}}\n\
          component {{\"family\": \"WC\", \"at\": [7000, 1000]}}\ncomponent {{\"family\": \"Outlet\", \"type\": \"Low 300\", \"at\": [7000, 3000]}}\n\
          down_conductor {{\"points\": [[6000, 5000], [6000, 5000]], \"offset\": 0, \"end_offset\": 3000}}\n\
          component {{\"family\": \"Air Terminal\", \"type\": \"1000\", \"at\": [7000, 5000]}}\n\
@@ -592,16 +580,16 @@ fn the_discipline_tabs_speak_portuguese_and_spanish_and_leave_no_english() {
             Lang::Portuguese,
             [
                 ("Hidrossanitário", vec!["Tubulação", "Peça sanitária", "Conexão de tubulação", "Acessório de tubulação"]),
-                ("Elétrico", vec!["Equipamento elétrico", "Dispositivo", "Luminária", "Eletroduto", "Eletrocalha", "Fio"]),
+                ("Elétrico", vec!["Equipamento elétrico", "Dispositivo", "Luminária", "Suporte de cabos", "Fio"]),
                 ("SPDA", vec!["Captor", "Condutor de descida", "Haste de aterramento", "Caixa de inspeção", "Condutor de aterramento"]),
-                ("Lógica, Dados e Voz", vec!["Ponto de dados", "Ponto de voz", "Rack", "Patch panel", "Eletrocalha", "Cabeamento"]),
+                ("Lógica, Dados e Voz", vec!["Ponto de dados", "Ponto de voz", "Rack", "Patch panel", "Suporte de cabos", "Cabeamento"]),
             ],
         ),
         (
             Lang::Spanish,
             [
                 ("Fontanería", vec!["Tubería", "Aparato sanitario", "Conexión de tubería", "Accesorio de tubería"]),
-                ("Eléctrico", vec!["Equipo eléctrico", "Dispositivo", "Luminaria", "Tubo conduit", "Bandeja portacables", "Cable"]),
+                ("Eléctrico", vec!["Equipo eléctrico", "Dispositivo", "Luminaria", "Soporte de cables", "Cable"]),
                 (
                     "SPDA",
                     vec![
@@ -612,7 +600,7 @@ fn the_discipline_tabs_speak_portuguese_and_spanish_and_leave_no_english() {
                         "Conductor de puesta a tierra",
                     ],
                 ),
-                ("Datos y Voz", vec!["Punto de datos", "Punto de voz", "Rack", "Panel de parcheo", "Bandeja portacables", "Cableado"]),
+                ("Datos y Voz", vec!["Punto de datos", "Punto de voz", "Rack", "Panel de parcheo", "Soporte de cables", "Cableado"]),
             ],
         ),
     ];
@@ -661,11 +649,8 @@ fn the_discipline_tabs_speak_portuguese_and_spanish_and_leave_no_english() {
     h.state_mut().lang = Lang::English;
     h.run();
     use crate::lang::category;
-    assert_eq!([category("pipe", false), category("cabletray", true)], ["Pipe", "Cable Trays"]);
+    assert_eq!([category("pipe", false), category("cablecarrier", true)], ["Pipe", "Cable Carriers"]);
     h.state_mut().lang = Lang::Portuguese;
     h.run();
-    assert_eq!(
-        [category("pipe", true), category("conduit", false), category("cabletray", false)],
-        ["Tubulações", "Eletroduto", "Eletrocalha"]
-    );
+    assert_eq!([category("pipe", true), category("cablecarrier", false)], ["Tubulações", "Suporte de cabos"]);
 }

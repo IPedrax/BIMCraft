@@ -13,6 +13,24 @@ fn dir() -> std::path::PathBuf {
     dir
 }
 
+#[test]
+fn binary_catalogue_write_replaces_the_complete_file_and_preserves_it_on_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("catalogue.ods");
+    std::fs::write(&path, b"previous catalogue").unwrap();
+    let data = b"PK\x03\x04\x00\xff\x80binary catalogue";
+    crate::autosave::atomic_write_bytes(&path, data).unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), data);
+
+    let occupied = dir.path().join("occupied");
+    std::fs::create_dir(&occupied).unwrap();
+    std::fs::write(occupied.join("keep"), b"keep").unwrap();
+    assert!(crate::autosave::atomic_write_bytes(&occupied, data).is_err());
+    assert_eq!(std::fs::read(occupied.join("keep")).unwrap(), b"keep");
+    assert_eq!(std::fs::read(&path).unwrap(), data);
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2, "failed writes leave no staging file");
+}
+
 fn notice(worker: &mut Worker) -> Notice {
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     loop {
@@ -22,6 +40,92 @@ fn notice(worker: &mut Worker) -> Notice {
         assert!(std::time::Instant::now() < deadline, "worker did not reply");
         std::thread::sleep(Duration::from_millis(1));
     }
+}
+
+#[test]
+fn background_session_snapshot_keeps_an_unexported_product_and_its_original_identity() {
+    let temp = tempfile::tempdir().unwrap();
+    let catalogue = temp.path().join("catalogue.ods");
+    let backup = temp.path().join("recovery.bimcraft");
+    let mut s = Session::new();
+    s.execute("catalogue_link", &json!({"path":catalogue})).unwrap();
+    s.execute("equipment", &json!({"name":"Unexported software"})).unwrap();
+    let original = Arc::clone(&s.model);
+    let mut worker = Worker::start(temp.path().join("temp"), || {}).unwrap();
+    worker.save_session(backup.clone(), &s).unwrap();
+    s.execute("equipment", &json!({"name":"Later edit"})).unwrap();
+    match notice(&mut worker) {
+        Notice::Saved { snapshot, result, .. } => {
+            result.unwrap();
+            assert!(snapshot.ptr_eq(&Arc::downgrade(&original)));
+        }
+        other => panic!("{other:?}"),
+    }
+    let mut recovered = Session::new();
+    let reply = recovered.execute("open", &json!({"path":backup})).unwrap();
+    assert!(reply.get("catalogue_not_loaded").is_none(), "{reply}");
+    let rows = crate::ods::catalogue_rows(&recovered.model);
+    assert!(rows.iter().any(|row| row[2].ends_with(": Unexported software")));
+    assert!(!rows.iter().any(|row| row[2].ends_with(": Later edit")));
+    assert!(!recovered.model.library.entries().any(|(_, entry)| entry.placeholder));
+    recovered.model.check().unwrap();
+}
+
+#[test]
+fn a_model_only_background_snapshot_does_not_invent_unexported_products() {
+    let temp = tempfile::tempdir().unwrap();
+    let catalogue = temp.path().join("catalogue.ods");
+    let backup = temp.path().join("recovery.bimcraft");
+    let mut s = Session::new();
+    s.execute("catalogue_link", &json!({"path":catalogue})).unwrap();
+    s.execute("equipment", &json!({"name":"Committed software","product":{"article":"ORIGINAL"}})).unwrap();
+    s.execute("catalogue_sync", &json!({})).unwrap();
+    let mut worker = Worker::start(temp.path().join("temp"), || {}).unwrap();
+    worker.save(backup.clone(), Arc::clone(&s.model)).unwrap();
+    match notice(&mut worker) {
+        Notice::Saved { result, .. } => result.unwrap(),
+        other => panic!("{other:?}"),
+    }
+    let mut rows = crate::ods::read(&std::fs::read(&catalogue).unwrap()).unwrap();
+    rows.iter_mut().find(|row| row[2].ends_with(": Committed software")).unwrap()[9] = "REPLACEMENT".into();
+    std::fs::write(&catalogue, crate::ods::write(&rows).unwrap()).unwrap();
+    let mut recovered = Session::new();
+    let reply = recovered.execute("open", &json!({"path":backup})).unwrap();
+    assert!(reply.get("catalogue_not_loaded").is_none(), "{reply}");
+    assert_eq!(
+        crate::ods::catalogue_rows(&recovered.model).iter().find(|row| row[2].ends_with(": Committed software")).unwrap()[9],
+        "REPLACEMENT"
+    );
+}
+
+#[test]
+fn background_session_snapshot_preserves_catalogue_cancellations_and_original_identity() {
+    let temp = tempfile::tempdir().unwrap();
+    let catalogue = temp.path().join("catalogue.ods");
+    let backup = temp.path().join("recovery.bimcraft");
+    let mut s = Session::new();
+    s.execute("catalogue_link", &json!({"path":catalogue})).unwrap();
+    s.execute("equipment", &json!({"name":"Cancelled software"})).unwrap();
+    s.execute("catalogue_sync", &json!({})).unwrap();
+    s.execute("undo", &json!({})).unwrap();
+    let original = Arc::clone(&s.model);
+    let mut worker = Worker::start(temp.path().join("temp"), || {}).unwrap();
+    worker.save_session(backup.clone(), &s).unwrap();
+    s.execute("equipment", &json!({"name":"Later edit"})).unwrap();
+    match notice(&mut worker) {
+        Notice::Saved { snapshot, result, .. } => {
+            result.unwrap();
+            assert!(snapshot.ptr_eq(&Arc::downgrade(&original)), "completion must identify the editing snapshot, not its serialized copy");
+        }
+        other => panic!("{other:?}"),
+    }
+    let mut recovered = Session::new();
+    let reply = recovered.execute("open", &json!({"path":backup})).unwrap();
+    assert!(reply.get("catalogue_not_loaded").is_none(), "{reply}");
+    assert_eq!(recovered.model.elements.len(), original.elements.len());
+    assert!(!crate::ods::catalogue_rows(&recovered.model).iter().any(|row| row[2].ends_with(": Later edit")));
+    let rows = crate::ods::read(&std::fs::read(&catalogue).unwrap()).unwrap();
+    assert!(!rows.iter().any(|row| row[2].ends_with(": Cancelled software")));
 }
 
 #[test]
@@ -189,4 +293,34 @@ fn queuing_a_snapshot_and_cleanup_never_waits_for_a_blocked_worker() {
     let mut worker = returned.expect("scheduling blocked the caller");
     assert!(matches!(notice(&mut worker), Notice::Saved { result: Ok(()), .. }));
     assert!(matches!(notice(&mut worker), Notice::Removed { result: Ok(()), .. }));
+}
+
+#[test]
+fn pending_local_change_to_exported_type_survives_autosave() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut session = Session::new();
+    session.execute("type", &json!({"category":"wire","name":"Recovery cable","width":6,"round":true})).unwrap();
+    let catalogue = temp.path().join("catalogue.ods");
+    session.execute("catalogue_link", &json!({"path":catalogue})).unwrap();
+    session.execute("type", &json!({"category":"wire","name":"Recovery cable","width":12})).unwrap();
+    let original = Arc::clone(&session.model);
+    let ods_bytes = std::fs::read(&catalogue).unwrap();
+    let mut worker = Worker::start(temp.path().join("worker"), || {}).unwrap();
+    let backup = temp.path().join("recovery.bimcraft");
+    assert!(worker.save_session(backup.clone(), &session).unwrap());
+    session.execute("type", &json!({"category":"wire","name":"Recovery cable","width":18})).unwrap();
+    match notice(&mut worker) {
+        Notice::Saved { result, snapshot, .. } => {
+            result.unwrap();
+            assert!(snapshot.ptr_eq(&Arc::downgrade(&original)));
+        }
+        other => panic!("expected Saved: {other:?}"),
+    }
+    assert_eq!(std::fs::read(&catalogue).unwrap(), ods_bytes);
+    let mut recovered = Session::new();
+    let reply = recovered.execute("open", &json!({"path":backup})).unwrap();
+    assert!(reply.get("catalogue_not_loaded").is_none(), "{reply}");
+    assert_eq!(recovered.model.types.runs["wire"]["Recovery cable"].width, 12.0);
+    assert_eq!(session.model.types.runs["wire"]["Recovery cable"].width, 18.0);
+    recovered.model.check().unwrap();
 }

@@ -326,6 +326,57 @@ impl Region {
     pub fn perimeter(&self) -> f64 {
         perimeter(&self.outer) + self.holes.iter().map(|h| perimeter(h)).sum::<f64>()
     }
+
+    /// Whether `p` is in it: inside its outer ring and out of its islands.
+    pub fn contains(&self, p: P2) -> bool {
+        contains(&self.outer, p) && !self.holes.iter().any(|h| contains(h, p))
+    }
+
+    /// How far `p` is from its nearest edge, outer or an island's.
+    pub fn edge_distance(&self, p: P2) -> f64 {
+        std::iter::once(&self.outer)
+            .chain(&self.holes)
+            .flat_map(|r| ring_edges(r))
+            .map(|(a, b)| dist_to_segment(p, a, b))
+            .fold(f64::MAX, f64::min)
+    }
+
+    /// Points that reach all of it within `reach`, none nearer an edge than `margin`: a square grid over its bounds, its
+    /// cells' diagonal no more than twice the reach, a point in each cell the region has. The cell's centre when it's in
+    /// and clear of the edges, else the point of the cell nearest the centre that is, sought every tenth of the cell; a
+    /// cell with no such point is left out. A rectangle is covered exactly; a cell cut by an edge is covered from inside it.
+    pub fn cover(&self, reach: f64, margin: f64) -> Vec<P2> {
+        let Some((lo, hi)) = bounds(&self.outer) else { return Vec::new() };
+        let step = reach * std::f64::consts::SQRT_2;
+        let n = |span: f64| (span / step).ceil().max(1.0) as usize;
+        let (nx, ny) = (n(hi.0 - lo.0), n(hi.1 - lo.1));
+        let (dx, dy) = ((hi.0 - lo.0) / nx as f64, (hi.1 - lo.1) / ny as f64);
+        let clear = |p: P2| self.contains(p) && self.edge_distance(p) >= margin;
+        let mut out = Vec::new();
+        for j in 0..ny {
+            for i in 0..nx {
+                let centre = P2(lo.0 + dx * (i as f64 + 0.5), lo.1 + dy * (j as f64 + 0.5));
+                let found = if clear(centre) {
+                    Some(centre)
+                } else {
+                    (0..=10)
+                        .flat_map(|a| {
+                            (0..=10).map(move |b| P2(centre.0 + dx * (a as f64 / 10.0 - 0.5), centre.1 + dy * (b as f64 / 10.0 - 0.5)))
+                        })
+                        .filter(|p| clear(*p))
+                        .min_by(|a, b| a.dist(centre).total_cmp(&b.dist(centre)))
+                };
+                out.extend(found);
+            }
+        }
+        out
+    }
+}
+
+/// The lower-left and upper-right corners of the box round `ring`; `None` when it has no points.
+fn bounds(ring: &[P2]) -> Option<(P2, P2)> {
+    let first = *ring.first()?;
+    Some(ring.iter().fold((first, first), |(lo, hi), p| (P2(lo.0.min(p.0), lo.1.min(p.1)), P2(hi.0.max(p.0), hi.1.max(p.1)))))
 }
 
 /// The region around `p`: the smallest loop of segments enclosing it, minus any separate pieces

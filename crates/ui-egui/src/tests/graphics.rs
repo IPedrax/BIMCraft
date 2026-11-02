@@ -4,7 +4,7 @@ use super::*;
 fn visibility_graphics_categories_follow_the_alphabet_of_the_displayed_names() {
     let mut h = app(BOX);
     shortcut(&mut h, "VV");
-    for names in [["Beams", "Cable Trays", "Cables", "Ceilings"], ["Dimensions", "Elevations", "Grids", "Levels"]] {
+    for names in [["Beams", "Cable Carriers", "Cables", "Ceilings"], ["Dimensions", "Elevations", "Grids", "Levels"]] {
         let positions: Vec<_> = names.iter().map(|n| h.get_by_role_and_label(Role::CheckBox, n).rect().top()).collect();
         assert!(positions.windows(2).all(|p| p[0] < p[1]), "{names:?}: {positions:?}");
         press(&mut h, "Annotation Categories");

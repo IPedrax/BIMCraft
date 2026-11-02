@@ -23,7 +23,7 @@ mod fill_tests;
 
 /// The categories a plan, a section or a 3D view draws, and so may hide and override: those of the
 /// model, then those of the annotation.
-pub const MODEL: [&str; 26] = [
+pub const MODEL: [&str; 25] = [
     "wall",
     "floor",
     "ceiling",
@@ -39,8 +39,7 @@ pub const MODEL: [&str; 26] = [
     "beam",
     "stripfooting",
     "pipe",
-    "conduit",
-    "cabletray",
+    "cablecarrier",
     "wire",
     "downconductor",
     "groundconductor",
@@ -385,6 +384,10 @@ pub struct Graphics {
     /// How a 3D view draws its surfaces.
     #[serde(skip_serializing_if = "is_shaded")]
     pub style: VisualStyle,
+    /// Engineering Level Mode (Renga style): the architecture a pale thin backdrop, and every engineering system drawn whole
+    /// by its level whatever the cut plane and the view depth, its routes thick in its system's colour and its devices over.
+    #[serde(skip_serializing_if = "is_false")]
+    pub engineering: bool,
     /// Revit's Linework: an edge of an element drawn in a line style of the view's own, or not at all.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub linework: Vec<Linework>,
@@ -728,6 +731,11 @@ pub fn graphics_of_element(e: &Element) -> Option<&Graphics> {
 /// default.
 pub fn scale_of(m: &Model, id: impl Key) -> f64 {
     graphics_of(m, id).map_or_else(|| m.units.default_scale(), |g| g.resolved(m).scale_n(m.units))
+}
+
+/// Whether view `view` draws in Engineering Level Mode ([`Graphics::engineering`]).
+pub fn engineering_of(m: &Model, view: impl Key) -> bool {
+    graphics_of(m, view).is_some_and(|g| g.engineering)
 }
 
 /// The graphics view `view` holds, to change.

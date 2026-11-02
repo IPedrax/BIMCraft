@@ -2,6 +2,8 @@
 //! the browser by their labels, keys. Each test then reads the model the session ended up with,
 //! or what the window shows.
 
+mod catalogue;
+
 use bimcraft_core::element_json;
 use bimcraft_core::engine::Session;
 use bimcraft_core::geom::P2;
@@ -740,6 +742,68 @@ fn create_similar_starts_the_selected_elements_tool_placing_its_type() {
     click(&mut h, P2(4000.0, 4800.0));
     let placed: Vec<(Value, Value)> = ids(&h, "component").into_iter().map(|id| (field(&h, id, "family"), field(&h, id, "type"))).collect();
     assert_eq!(placed, vec![(json!("Table"), json!("1200 x 800")); 2]);
+}
+
+#[test]
+fn the_wire_tool_places_physical_segments_from_the_electrical_tab_and_shortcut() {
+    let mut h = app(BOX);
+    press(&mut h, "Electrical");
+    press(&mut h, "Wire");
+    assert!(matches!(h.state().tool, Tool::Run("wire", None)));
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(3000.0, 1000.0));
+    let first = ids(&h, "wire")[0];
+    assert_eq!(field(&h, first, "length"), json!(2000.0));
+    key(&mut h, Key::Escape);
+    shortcut(&mut h, "EW");
+    assert!(matches!(h.state().tool, Tool::Run("wire", None)));
+    click(&mut h, P2(1000.0, 3000.0));
+    click(&mut h, P2(3000.0, 3000.0));
+    assert_eq!(ids(&h, "wire").len(), 2);
+    assert_eq!(h.state().session.model.check(), Ok(()));
+}
+
+#[test]
+fn the_low_voltage_tab_uses_the_same_wire_tool() {
+    let mut h = app(BOX);
+    press(&mut h, "Low Voltage");
+    press(&mut h, "Wire");
+    assert!(matches!(h.state().tool, Tool::Run("wire", None)));
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(3000.0, 3000.0));
+    assert_eq!(ids(&h, "wire").len(), 1);
+    assert_eq!(h.state().session.model.check(), Ok(()));
+}
+
+#[test]
+fn the_low_voltage_tab_places_the_fire_and_security_families() {
+    let mut h = app(BOX);
+    press(&mut h, "Low Voltage");
+    for label in [
+        "Fire Alarm Panel",
+        "Smoke Detector",
+        "Heat Detector",
+        "Manual Call Point",
+        "Sounder",
+        "Exit Sign",
+        "Ceiling Speaker",
+        "Motion Detector",
+        "Camera",
+        "Wire",
+    ] {
+        assert!(h.query_by_label(label).is_some(), "{label}");
+    }
+    press(&mut h, "Smoke Detector");
+    assert!(matches!(h.state().tool, Tool::Fixture("smokedetector")));
+    click(&mut h, P2(3000.0, 3000.0));
+    let detector = ids(&h, "component")[0];
+    assert_eq!(field(&h, detector, "family"), json!("Smoke Detector"));
+    assert_eq!(field(&h, detector, "category"), json!("component"));
+    // Each family's shortcut picks its tool.
+    for (letters, key) in [("DS", "smokedetector"), ("VC", "camera"), ("ES", "exitsign")] {
+        shortcut(&mut h, letters);
+        assert!(matches!(h.state().tool, Tool::Fixture(k) if k == key), "{letters}");
+    }
 }
 
 #[test]
@@ -4378,7 +4442,10 @@ fn a_ribbon_tab_wider_than_the_window_folds_its_last_panels_to_buttons_that_list
     h.set_size(vec2(1000.0, 800.0));
     h.run();
     let window = h.ctx.content_rect().right();
-    press(&mut h, "Manage");
+    // Past the window's edge at this size, the tab is out of the reach of a click: opened as the code does.
+    h.state_mut().tab = Tab::Manage;
+    h.run();
+    h.run();
     assert!(h.query_by_label("Design Options").is_none(), "the last panel is folded at {window}");
     assert!(h.get_by_label("Design Options ▾").rect().right() <= window, "to one button, in the window");
     assert!(h.get_by_label("Materials").rect().left() >= 0.0, "and the first panel is as it was");

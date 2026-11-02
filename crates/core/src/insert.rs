@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::graphics;
 use crate::ids::LINKED;
-use crate::library::{Entry, Kind};
+use crate::library::Kind;
 use crate::model::{Element, Guid, Id, Model};
 use crate::phasing;
 
@@ -139,7 +139,7 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
             continue;
         }
         let id = to.fresh_library_id();
-        to.library.insert(id, Entry { kind: e.kind.clone(), name: e.name.clone(), guid: e.guid })?;
+        to.library.insert(id, e.clone())?;
         out.library.push(format!("{}: {}", e.kind.label(), e.name));
         copied.push((e.kind.clone(), e.name.clone()));
     }
@@ -149,7 +149,7 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
         let of = came.iter().any(|f| e.name.starts_with(&format!("{f}: ")));
         if of && to.library.id(&e.kind, &e.name).is_none() && to.library.by_guid(e.guid).is_none() {
             let id = to.fresh_library_id();
-            to.library.insert(id, Entry { kind: e.kind.clone(), name: e.name.clone(), guid: e.guid })?;
+            to.library.insert(id, e.clone())?;
         }
     }
     // What came in names the materials, pictures and line patterns it's made of as this project does.

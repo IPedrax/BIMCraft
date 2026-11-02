@@ -51,6 +51,39 @@ const fn other(id: &'static str, label: &'static str, params: &'static str, run:
 
 pub static ALL: &[Command] = &[
     other(
+        "catalogue_pending",
+        "Unassigned Catalogue Products",
+        "{} list ODS-added types without model instances; built-in unused types and placeholders are excluded",
+        catalogue_pending,
+    ),
+    edit(
+        "catalogue_link",
+        "Link Catalogue",
+        &[],
+        "{path:string|null} bind an ODS catalogue (import existing or create new); null unlinks without deleting the file",
+        catalogue_link,
+    ),
+    edit(
+        "catalogue_sync",
+        "Synchronize Catalogue",
+        &[],
+        "{} protect existing model rows, accept new ODS rows, back up external edits before writing assigned GUIDs",
+        catalogue_sync,
+    ),
+    other(
+        "catalogue_export",
+        "Export Catalogue",
+        "{path} export cable, carrier and family type GUIDs, dimensions and product data to the first ODS sheet",
+        catalogue_export,
+    ),
+    edit(
+        "catalogue_import",
+        "Import Catalogue",
+        &[],
+        "{path, conflicts?: error|update|copy} import first ODS sheet; copied products receive local GUIDs; resolve conflicting products by update or separate copy",
+        catalogue_import,
+    ),
+    other(
         "new",
         "New",
         "{name?, language?: en|pt|es} an empty project with Level 1 (0) and Level 2 (3000), named in its language (Nível 1, \
@@ -405,27 +438,21 @@ pub static ALL: &[Command] = &[
         pipe,
     ),
     edit(
-        "conduit",
-        ui_msg!("Conduit"),
-        &["CN"],
-        "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a conduit (eletroduto) \
-         for each segment of the points, as `pipe` lays them: round, `width` its outside diameter; `system` names its circuit",
-        conduit,
-    ),
-    edit(
-        "cable_tray",
-        ui_msg!("Cable Tray"),
-        &["CT"],
-        "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a cable tray (eletrocalha) \
-         for each segment of the points, as `pipe` lays them: its section the type's `width` across by `depth` deep",
-        cable_tray,
+        "cable_carrier",
+        ui_msg!("Cable Carrier"),
+        &["CC"],
+        "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a cable carrier \
+         (КНС) for each segment of the points, as `pipe` lays them: round types write as an IFC conduit segment, rectangular \
+         types as an IFC cable tray segment; `system` names the cable group it carries",
+        cable_carrier,
     ),
     edit(
         "wire",
         ui_msg!("Wire"),
         &["EW"],
-        "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a wire (condutor) for \
-         each segment of the points, as `pipe` lays them: round, `width` its outside diameter; `system` names its circuit",
+        "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?, source?, devices?: [id,…], cable?, reserve?, along_walls?, carrier?, local_offset?} a wire (the one \
+         physical and logical cable) for each segment of the points, as `pipe` lays them: round, `width` its outside diameter; `system` \
+         names its circuit or shield; `source` and `devices` give the panel-to-device loop it carries; `carrier` is the cable carrier it runs in",
         wire,
     ),
     edit(
@@ -454,6 +481,17 @@ pub static ALL: &[Command] = &[
          (cabeamento estruturado, NBR 14565) for each segment of the points, as `pipe` lays them: round, `width` the cable's outside \
          diameter; `system` names the link or the network it belongs to",
         cabling,
+    ),
+    edit(
+        "detectors",
+        ui_msg!("Lay Detectors"),
+        &[],
+        "{room, kind?: smoke|heat, family?, type?, radius?, margin?} lays point fire detectors over a room (SP 484): a square \
+         grid that brings every point of it within `radius` mm of one (by default a smoke detector's 6400, a heat \
+         detector's 3500, and a reach that closes in proportion when the room's ceiling, to the level above, stands \
+         higher than the detector's mounting height); none nearer a wall than `margin` (500). `family` is by default the \
+         project's first of the `kind`'s (smoke), `type` its first; they stand on the room's level. Returns the new ids",
+        detectors,
     ),
     edit(
         "stair",
@@ -650,10 +688,10 @@ pub static ALL: &[Command] = &[
         "type",
         "Edit Type",
         &[],
-        "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|beam|stripfooting|pipe|conduit|\
-         cabletray|wire|downconductor|groundconductor|cable, name, thickness? | width?, height?, sill? | width?, depth?, round?, \
+        "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|beam|stripfooting|pipe|cablecarrier|\
+         wire|downconductor|groundconductor|cable, name, thickness? | width?, height?, sill? | width?, depth?, round?, \
          material? | height?, spacing?} creates the type, or changes it everywhere it's used. A column's, a structural column's or \
-         a footing's type is a `width` by `depth`, or `round` (`width` across); a run's (a beam's, a pipe's, a cable tray's…) too, \
+         a footing's type is a `width` by `depth`, or `round` (`width` across); a run's (a beam's, a pipe's, a cable carrier's…) too, \
          made of a `material` of the library. A wall type may have `layers` [{function?: structure|\
          substrate|thermal|membrane|finish, material?, thickness}, …] from its exterior side in: it's as thick as they are, \
          its core from its first structure layer to its last, and a new `thickness` goes to its structure. A ceiling type may \
@@ -744,11 +782,18 @@ pub static ALL: &[Command] = &[
         "component",
         ui_msg!("Component"),
         &["CM"],
-        "{family, type?, at: [x,y], level?, angle?, offset?, mirrored?, params?: {parameter: value}} a family's type placed, its \
+        "{family, type?, at?: [x,y], level?, angle?, offset?, mirrored?, params?: {parameter: value}, provision?: {placement: placed | planned | nonspatial, quantity: 1..1000000, system?: text, host?: id}} a family's type placed, its \
          first by default: at a point on a level, turned `angle` degrees counter-clockwise, `offset` mm up from the level, and \
          with `mirrored` flipped across its own x axis; `params` sets its instance parameters (`modify` merges into them, a null \
-         taking one back to the family's)",
+         taking one back to the family's). `provision` records billable quantities and a system: planned and nonspatial positions need no `at` and have no geometry or snaps; placed positions require `at` and quantity 1. An optional host is another component or run",
         component,
+    ),
+    edit(
+        "equipment",
+        ui_msg!("Equipment"),
+        &[],
+        "{name? OR type?: existing family-type library name or GUID, quantity?: 1..1000000, system?: text, host?: id, product?: {description?, brand?, article?, manufacturer?, mass_kg?}} add a nonspatial bill position, such as fasteners or software. With name, creates or reuses a type in Specification Items; supplied product data updates that type for all its positions. With type, reuses that existing non-placeholder family type without changing its definition; name and product must be omitted. Quantities appear in component schedules; no plan, 3D or IFC geometry is produced",
+        equipment,
     ),
     edit(
         "flip",
@@ -1322,6 +1367,82 @@ pub static ALL: &[Command] = &[
     ),
 ];
 
+fn catalogue_link(s: &mut Session, p: &Value) -> R {
+    only("catalogue_link", p, &["path"])?;
+    if p.get("path") == Some(&Value::Null) {
+        let model = s.model_mut();
+        model.catalogue = None;
+        model.catalogue_retired.clear();
+        model.catalogue_unexported.clear();
+        model.catalogue_pending_edits.clear();
+        return Ok(json!({"path":null}));
+    }
+    let path = string("catalogue_link", p, "path")?.ok_or("catalogue_link: path is required")?;
+    let path = std::path::absolute(&path).map_err(|e| e.to_string())?;
+    let mut model = (*s.model).clone();
+    let catalogue = path.to_str().ok_or("Catalogue path must be Unicode")?;
+    let already_linked = model.catalogue.as_deref() == Some(catalogue);
+    if !already_linked {
+        model.catalogue_retired.clear();
+        model.catalogue_unexported.clear();
+        model.catalogue_pending_edits.clear();
+    }
+    model.catalogue = Some(catalogue.into());
+    model.check()?;
+    let unowned = BTreeSet::new();
+    let reply = if path.try_exists().map_err(|e| e.to_string())? {
+        crate::ods::sync_bound(&mut model, already_linked, if already_linked { &s.catalogue_owned } else { &unowned })?
+    } else {
+        crate::autosave::atomic_write_bytes(&path, &crate::ods::write(&crate::ods::catalogue_rows(&model))?)?;
+        json!({"path":path,"updated":0})
+    };
+    if model != *s.model {
+        *s.model_mut() = model;
+    }
+    s.remember_catalogue();
+    Ok(reply)
+}
+
+fn catalogue_sync(s: &mut Session, p: &Value) -> R {
+    only("catalogue_sync", p, &[])?;
+    let mut model = (*s.model).clone();
+    let reply = crate::ods::sync_bound(&mut model, true, &s.catalogue_owned)?;
+    if model != *s.model {
+        *s.model_mut() = model;
+    }
+    s.remember_catalogue();
+    Ok(reply)
+}
+
+fn catalogue_pending(s: &mut Session, p: &Value) -> R {
+    only("catalogue_pending", p, &[])?;
+    let types: Vec<_> = crate::ods::pending_products(&s.model)
+        .into_iter()
+        .map(|(id, entry)| json!({"id":id,"guid":entry.guid,"name":entry.name,"kind":entry.kind}))
+        .collect();
+    Ok(json!({"types":types}))
+}
+
+fn catalogue_export(s: &mut Session, p: &Value) -> R {
+    only("catalogue_export", p, &["path"])?;
+    let path = string("catalogue_export", p, "path")?.ok_or("catalogue_export: path is required")?;
+    let bytes = crate::ods::write(&crate::ods::catalogue_rows(&s.model))?;
+    crate::autosave::atomic_write_bytes(Path::new(&path), &bytes)?;
+    Ok(json!({"path":path}))
+}
+
+fn catalogue_import(s: &mut Session, p: &Value) -> R {
+    only("catalogue_import", p, &["path", "conflicts"])?;
+    let path = string("catalogue_import", p, "path")?.ok_or("catalogue_import: path is required")?;
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(&path).map_err(|e| e.to_string())?.take((32 << 20) + 1).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    let rows = crate::ods::read(&bytes)?;
+    let rows = crate::ods::transfer_rows(&s.model, &rows, string("catalogue_import", p, "conflicts")?.as_deref())?;
+    let count = crate::ods::apply_catalogue(s.model_mut(), &rows)?;
+    Ok(json!({"updated":count}))
+}
+
 // ---------- parameters ----------
 
 fn bad(cmd: &str, msg: impl std::fmt::Display) -> String {
@@ -1411,6 +1532,14 @@ fn ids_param(c: &str, m: &Model, p: &Value) -> Result<Vec<Id>, String> {
     }
     let mut seen = BTreeSet::new();
     Ok(ids.into_iter().filter(|id| seen.insert(*id)).collect())
+}
+
+/// `v` under `key`, a list of elements of `m` by id or GUID: their GUIDs in the order given, twice where given twice.
+fn guids_param(c: &str, m: &Model, v: &Value, key: &str) -> Result<Vec<Guid>, String> {
+    match v {
+        Value::Array(a) if a.len() <= MAX_POINTS => a.iter().map(|v| element_id(c, m, v).map(|id| m.guid(id))).collect(),
+        _ => Err(bad(c, format!("`{key}` must be a list of at most {MAX_POINTS} element ids, got {v}"))),
+    }
 }
 
 /// `key`, an element by its id or its GUID, if given: as its GUID, or as the id given until the model resolves it.
@@ -1702,6 +1831,9 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             let base = m.elevation(cp.level) + cp.offset;
             let top = m.component_pieces(cp).iter().map(|p| p.top).fold(base, f64::max);
             extra.insert("height".into(), json!(hundredth(top - base)));
+            if let Some(a) = m.address(m.guid(id)) {
+                extra.insert("address".into(), json!(a));
+            }
         }
         Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
             let (bottom, top) = m.span(col.level, col.base_offset, col.top_level, col.height);
@@ -1713,13 +1845,20 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             }
         }
         // Its section, how long it runs along its axis, and the heights of its centre line's ends.
-        crate::model::run_arm!(_) => {
+        crate::model::run_arm!(r) => {
             if let (Some(t), Some(g)) = (m.run_type(e), m.run_geom(e)) {
                 extra.insert("width".into(), json!(t.width));
                 extra.insert("depth".into(), json!(t.depth));
                 extra.insert("round".into(), json!(t.round));
                 extra.insert("length".into(), json!(hundredth(g.length())));
                 extra.insert("axis".into(), json!([g.a, g.b].map(|p| p.map(hundredth))));
+            }
+            // Its source and devices by id too, and its cable's length.
+            if e.category() == "wire" && (r.source.is_some() || !r.devices.is_empty()) {
+                extra.insert("source_id".into(), json!(r.source.map(|g| m.elements.id(g))));
+                extra.insert("device_ids".into(), json!(r.devices.iter().filter_map(|d| m.elements.id(*d)).collect::<Vec<_>>()));
+                extra.insert("device_count".into(), json!(r.devices.len()));
+                extra.insert("length".into(), json!(hundredth(m.circuit_length(r))));
             }
         }
         Element::Stair(st) => {
@@ -1772,6 +1911,7 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             // `+ 0.0`: no `-0`.
             extra.insert("looking".into(), json!([l.0 + 0.0, l.1 + 0.0]));
         }
+
         Element::Tag(t) => {
             extra.insert("text".into(), json!(m.tag_text(t)));
             extra.insert("level".into(), json!(m.level_of(e)));
@@ -1961,9 +2101,19 @@ fn open_file(s: &mut Session, p: &Value) -> R {
     }
     m.sync_library();
     m.check().map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+    let catalogue = m.catalogue.as_ref().map(|_| ()).map(|()| crate::ods::sync_bound(&mut m, false, &BTreeSet::new()));
     let name = m.name.clone();
     s.reset(m, Some(path.clone()));
     let mut reply = json!({"path": path, "name": name});
+    let missing: Vec<_> = s.model.library.entries().filter(|(_, entry)| entry.placeholder).map(|(_, entry)| entry.guid).collect();
+    if !missing.is_empty() {
+        reply["catalogue_placeholders"] = json!(missing);
+    }
+    match catalogue {
+        Some(Ok(result)) => reply["catalogue"] = result,
+        Some(Err(error)) => reply["catalogue_not_loaded"] = json!(error),
+        None => {}
+    }
     if !renamed.is_empty() {
         reply["renamed"] = json!(renamed);
     }
@@ -2211,7 +2361,9 @@ fn save(s: &mut Session, p: &Value) -> R {
         write_plan(&render::plan(&crate::link::seen(&s.model), level, 1600, 1000), &path)?;
         return Ok(json!({"path": path, "format": format}));
     }
-    let text = s.model.to_json().map_err(|e| bad(c, e))?;
+    let snapshot = s.snapshot();
+    snapshot.check().map_err(|e| bad(c, e))?;
+    let text = snapshot.to_json().map_err(|e| bad(c, e))?;
     crate::autosave::atomic_write(&path, &text).map_err(|e| bad(c, e))?;
     s.path = Some(path.clone());
     Ok(json!({"path": path, "format": "bimcraft"}))
@@ -2222,7 +2374,9 @@ fn autosave(s: &mut Session, p: &Value) -> R {
     if s.path.as_ref() == Some(&path) {
         return Err(bad("autosave", "the recovery file must differ from the saved project"));
     }
-    let text = s.model.to_json().map_err(|e| bad("autosave", e))?;
+    let snapshot = s.snapshot();
+    snapshot.check().map_err(|e| bad("autosave", e))?;
+    let text = snapshot.to_json().map_err(|e| bad("autosave", e))?;
     if text.len() as u64 >= MAX_FILE {
         return Err(bad("autosave", "the recovery snapshot exceeds the project file size limit"));
     }
@@ -2668,6 +2822,12 @@ fn edit_graphics(c: &str, m: &Model, p: &Value, g: &mut Graphics, of_template: b
         }
     }
     // The design option it shows of each set, null taking a choice back.
+    if let Some(v) = p.get("engineering") {
+        g.engineering = match v {
+            Value::Bool(b) => *b,
+            v => return Err(bad(c, format!("`engineering` is true or false, not {v}"))),
+        };
+    }
     match p.get("options") {
         v if absent(v) => {}
         Some(Value::Object(o)) if o.len() <= phasing::MAX_OPTION_SETS => {
@@ -2696,7 +2856,7 @@ fn graphics_reply(g: &Graphics) -> Value {
     json!({
         "hidden": hidden, "categories": g.categories, "filters": g.filters, "layers": g.layers,
         "phase": g.phase, "phase_filter": g.phase_filter, "options": g.options,
-        "scale": g.scale, "detail": g.detail, "visual_style": g.style,
+        "scale": g.scale, "detail": g.detail, "visual_style": g.style, "engineering": g.engineering,
     })
 }
 
@@ -4601,6 +4761,93 @@ fn tag(s: &mut Session, p: &Value) -> R {
     Ok(json!({"ids": ids}))
 }
 
+fn detectors(s: &mut Session, p: &Value) -> R {
+    let c = "detectors";
+    let m = &s.model;
+    let room = element_id(c, m, p.get("room").ok_or_else(|| bad(c, "`room` (the room's id) is required"))?)?;
+    let Some(Element::Room(r)) = m.elements.get(room) else {
+        return Err(bad(c, format!("{room} isn't a room")));
+    };
+    let region = m.room_region(r).ok_or_else(|| bad(c, format!("room {} isn't bound by walls any more", r.number)))?;
+    let kind = match string(c, p, "kind")?.as_deref() {
+        None | Some("smoke") => crate::family::Category::SmokeDetector,
+        Some("heat") => crate::family::Category::HeatDetector,
+        Some(k) => return Err(bad(c, format!("`kind` is smoke or heat, not `{k}`"))),
+    };
+    let family = match string(c, p, "family")? {
+        Some(f) => f,
+        None => m
+            .families
+            .iter()
+            .find(|(_, f)| f.category == kind)
+            .map(|(name, _)| name.clone())
+            .ok_or_else(|| bad(c, "the project has no family of that kind of detector: give `family`"))?,
+    };
+    let f = m.families.get(&family).ok_or_else(|| bad(c, format!("family `{family}` doesn't exist")))?;
+    let base = match f.category {
+        crate::family::Category::SmokeDetector => 6400.0,
+        crate::family::Category::HeatDetector => 3500.0,
+        _ => return Err(bad(c, format!("`{family}` isn't a smoke or heat detector"))),
+    };
+    let type_name = match string(c, p, "type")? {
+        Some(t) if f.types.contains_key(&t) => t,
+        Some(t) => return Err(bad(c, format!("family `{family}` has no type `{t}`"))),
+        None => f.types.keys().next().cloned().ok_or_else(|| bad(c, format!("family `{family}` has no type")))?,
+    };
+    // SP 484 lets a point detector sense within its reach only up to the height its type is made for:
+    // over a room whose ceiling stands higher, the plume is thinner and the reach closes in
+    // proportion. The ceiling is the room's level to the one above, or the height of a room without
+    // a level above; the height made for is the family's mounting height, its type's over it.
+    const MAX_DETECTORS: usize = 2000;
+    let mounting = m.language.word("Mounting Height");
+    let design = f
+        .types
+        .get(&type_name)
+        .and_then(|t| t.get(mounting).and_then(Value::as_f64))
+        .or_else(|| f.parameters.iter().find(|q| q.name == mounting).and_then(|q| q.value.as_f64()))
+        .filter(|d| d.is_finite() && *d > 0.0)
+        .unwrap_or(crate::model::DEFAULT_HEIGHT);
+    let ceiling = m.level_above(r.level).map_or(crate::model::DEFAULT_HEIGHT, |up| m.elevation(up) - m.elevation(r.level));
+    let reach = match num(c, p, "radius")? {
+        Some(r) => r,
+        None => base * (design / ceiling.max(1.0)).min(1.0),
+    };
+    if reach <= 0.0 {
+        return Err(bad(c, "`radius` is more than 0"));
+    }
+    let margin = num(c, p, "margin")?.unwrap_or(500.0).max(0.0);
+    // No grid tinier than what one command may lay in detectors.
+    let (x0, x1, y0, y1) = region
+        .outer
+        .iter()
+        .fold((f64::MAX, f64::MIN, f64::MAX, f64::MIN), |(x0, x1, y0, y1), q| (x0.min(q.0), x1.max(q.0), y0.min(q.1), y1.max(q.1)));
+    let step = reach * std::f64::consts::SQRT_2;
+    let cells = |span: f64| (span / step).ceil().max(1.0);
+    if cells(x1 - x0) * cells(y1 - y0) > MAX_DETECTORS as f64 {
+        return Err(bad(c, format!("this `radius` would need over {MAX_DETECTORS} detectors over the room: ask for a bigger one")));
+    }
+    let level = r.level;
+    let points = region.cover(reach, margin);
+    let model = s.model_mut();
+    let ids: Vec<Id> = points
+        .into_iter()
+        .map(|at| {
+            model.insert(Element::Component(Component {
+                family: family.clone(),
+                type_name: type_name.clone(),
+                level,
+                at,
+                angle: 0.0,
+                offset: 0.0,
+                mirrored: false,
+                params: BTreeMap::new(),
+                provision: None,
+            }))
+        })
+        .collect();
+    Ok(json!({"ids": ids}))
+}
+
 fn text_note(s: &mut Session, p: &Value) -> R {
     let c = "text";
     let m = &s.model;
@@ -4723,12 +4970,8 @@ fn pipe(s: &mut Session, p: &Value) -> R {
     chain(s, p, "pipe")
 }
 
-fn conduit(s: &mut Session, p: &Value) -> R {
-    chain(s, p, "conduit")
-}
-
-fn cable_tray(s: &mut Session, p: &Value) -> R {
-    chain(s, p, "cabletray")
+fn cable_carrier(s: &mut Session, p: &Value) -> R {
+    chain(s, p, "cablecarrier")
 }
 
 fn wire(s: &mut Session, p: &Value) -> R {
@@ -4754,7 +4997,7 @@ fn chain(s: &mut Session, p: &Value, category: &str) -> R {
     Ok(json!({"ids": ids}))
 }
 
-/// The run category a command makes, if it makes runs (`pipe`, `cable_tray`): `command_of`'s other way.
+/// The run category a command makes, if it makes runs (`pipe`, `cable_carrier`): `command_of`'s other way.
 pub fn run_category_of(command: &str) -> Option<&'static str> {
     crate::model::RUN_CATEGORIES.into_iter().find(|c| command_of(c) == command)
 }
@@ -4766,8 +5009,7 @@ pub fn command_of(category: &str) -> &'static str {
         "stripfooting" => "strip_footing",
         "beam" => "beam",
         "pipe" => "pipe",
-        "conduit" => "conduit",
-        "cabletray" => "cable_tray",
+        "cablecarrier" => "cable_carrier",
         "wire" => "wire",
         "downconductor" => "down_conductor",
         "groundconductor" => "ground_conductor",
@@ -4781,6 +5023,27 @@ pub fn command_of(category: &str) -> &'static str {
 /// makes them, not yet in the model: a tool previews what a click would make.
 pub fn runs_of(m: &Model, p: &Value, category: &str) -> Result<Vec<Element>, String> {
     let c = command_of(category);
+    only(
+        c,
+        p,
+        &[
+            "points",
+            "closed",
+            "type",
+            "level",
+            "offset",
+            "end_offset",
+            "justify",
+            "system",
+            "source",
+            "devices",
+            "cable",
+            "reserve",
+            "along_walls",
+            "carrier",
+            "local_offset",
+        ],
+    )?;
     let mut pts = points(c, p, "points")?;
     if pts.len() < 2 {
         return Err(bad(c, "`points` needs at least 2 points"));
@@ -4803,6 +5066,31 @@ pub fn runs_of(m: &Model, p: &Value, category: &str) -> Result<Vec<Element>, Str
             .map_err(|_| bad(c, format!("`justify` is top, centre or bottom, not `{n}`")))?,
     };
     let system = string(c, p, "system")?.unwrap_or_default();
+    let wire = category == "wire";
+    for key in ["source", "devices", "cable", "reserve", "along_walls", "carrier", "local_offset"] {
+        if !wire && !absent(p.get(key)) {
+            return Err(bad(c, format!("`{key}` is a wire's, not a carrier's, beam's, pipe's or other run's")));
+        }
+    }
+    let source = if wire && !absent(p.get("source")) {
+        Some(m.guid(element_id(c, m, p.get("source").ok_or_else(|| bad(c, "`source` names no element in the model"))?)?))
+    } else {
+        None
+    };
+    let devices = if wire && !absent(p.get("devices")) {
+        guids_param(c, m, p.get("devices").ok_or_else(|| bad(c, "`devices` is an array of device ids"))?, "devices")?
+    } else {
+        Vec::new()
+    };
+    let carrier = if wire && !absent(p.get("carrier")) {
+        Some(m.guid(element_id(c, m, p.get("carrier").ok_or_else(|| bad(c, "`carrier` names no element in the model"))?)?))
+    } else {
+        None
+    };
+    let cable = string(c, p, "cable")?.unwrap_or_default();
+    let reserve = num(c, p, "reserve")?.unwrap_or(0.0);
+    let along_walls = flag(c, p, "along_walls")?;
+    let local_offset = num(c, p, "local_offset")?.unwrap_or(0.0);
     pts.windows(2)
         .map(|seg| match seg {
             [a, b] => Element::of_run(
@@ -4816,6 +5104,13 @@ pub fn runs_of(m: &Model, p: &Value, category: &str) -> Result<Vec<Element>, Str
                     end_offset,
                     justify,
                     system: system.clone(),
+                    source,
+                    devices: devices.clone(),
+                    cable: cable.clone(),
+                    reserve,
+                    along_walls,
+                    carrier,
+                    local_offset,
                     params: Default::default(),
                 },
             ),
@@ -6167,18 +6462,92 @@ fn component(s: &mut Session, p: &Value) -> R {
         v if absent(v) => BTreeMap::new(),
         v => return Err(bad(c, format!("`params` is {{parameter: value}}, not {}", v.unwrap_or(&Value::Null)))),
     };
+    let provision: Option<crate::model::Provision> =
+        p.get("provision").filter(|v| !v.is_null()).map(|v| serde_json::from_value(v.clone()).map_err(|e| bad(c, e))).transpose()?;
+    let placed = provision.as_ref().is_none_or(|p| p.placement == crate::model::Placement::Placed);
     let comp = Component {
         family,
         type_name,
         level: level_param(c, m, p, "level")?,
-        at: point_req(c, p, "at")?,
+        at: if placed || p.get("at").is_some() { point_req(c, p, "at")? } else { P2(0.0, 0.0) },
         angle: num(c, p, "angle")?.unwrap_or(0.0),
         offset: num(c, p, "offset")?.unwrap_or(0.0),
         mirrored: flag(c, p, "mirrored")?,
         params,
+        provision,
     };
     let id = s.model_mut().insert(Element::Component(comp));
     Ok(json!({"id": id}))
+}
+
+fn equipment(s: &mut Session, p: &Value) -> R {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Params {
+        name: Option<String>,
+        #[serde(rename = "type")]
+        type_name: Option<String>,
+        quantity: Option<u32>,
+        system: Option<String>,
+        host: Option<Guid>,
+        product: Option<crate::library::Product>,
+    }
+    let c = "equipment";
+    let params: Params = serde_json::from_value(p.clone()).map_err(|e| bad(c, e))?;
+    if params.type_name.is_some() {
+        if params.name.is_some() || params.product.is_some() {
+            return Err(bad(c, "with `type`, omit `name` and `product`; adding a position must not redefine its catalogue product"));
+        }
+        let selected = name_of(c, &p["type"], "type")?;
+        let model = &s.model;
+        let kind = crate::library::Kind::FamilyType;
+        if model.library.guid(&kind, &selected).is_none() || model.library.placeholder(&kind, &selected) {
+            return Err(bad(c, "`type` must name an existing non-placeholder family type"));
+        }
+        let (family, type_name) = model
+            .families
+            .iter()
+            .filter_map(|(name, family)| {
+                selected
+                    .strip_prefix(&format!("{name}: "))
+                    .filter(|ty| family.types.contains_key(*ty))
+                    .map(|ty| (name.clone(), ty.to_owned()))
+            })
+            .max_by_key(|(name, _)| name.len())
+            .ok_or_else(|| bad(c, "the catalogue type has no matching family definition"))?;
+        return component(
+            s,
+            &json!({"family":family,"type":type_name,
+            "provision":{"placement":"nonspatial","quantity":params.quantity.unwrap_or(1),"system":params.system.unwrap_or_default(),"host":params.host}}),
+        );
+    }
+    let name = name_of(c, &p["name"], "name")?;
+    let model = s.model_mut();
+    let family_name = model.language.word(msg!("Specification Items")).to_string();
+    let family = model
+        .families
+        .entry(family_name.clone())
+        .or_insert_with(|| crate::family::Family { category: crate::family::Category::Generic, ..Default::default() });
+    if family.category != crate::family::Category::Generic
+        || !family.parameters.is_empty()
+        || !family.forms.is_empty()
+        || !family.symbols.is_empty()
+    {
+        return Err(bad(c, "Specification Items must remain a catalogue-only generic family"));
+    }
+    family.types.entry(name.clone()).or_default();
+    model.sync_library();
+    if let Some(product) = params.product {
+        model
+            .library
+            .set_product(&crate::library::Kind::FamilyType, &format!("{family_name}: {name}"), Some(product))
+            .map_err(|e| bad(c, e))?;
+    }
+    component(
+        s,
+        &json!({"family":family_name,"type":name,
+        "provision":{"placement":"nonspatial","quantity":params.quantity.unwrap_or(1),"system":params.system.unwrap_or_default(),"host":params.host}}),
+    )
 }
 
 /// The project's pictures, each its name and its size in pixels.
@@ -6406,7 +6775,7 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
                 c,
                 format!(
                     "`{other}` has no types; use wall, floor, ceiling, door, window, column, structural column, footing, beam, \
-                     strip footing, pipe, conduit, cable tray, wire, down conductor, earthing conductor, cable, roof or railing"
+                     strip footing, pipe, cable carrier, wire, down conductor, earthing conductor, cable, roof or railing"
                 ),
             ));
         }
@@ -6481,6 +6850,28 @@ fn modify(s: &mut Session, p: &Value) -> R {
                 "category" if obj.get("category") == Some(val) => continue,
                 "category" => return Err(bad(c, "`category` can't change; delete the element and create another")),
                 "level" | "top_level" if val.is_string() => json!(level_param(c, m, p, k)?),
+                // A wire's source, devices and carrier, by id or GUID.
+                "source" if matches!(e, Element::Wire(_)) => {
+                    if val.is_null() {
+                        val.clone()
+                    } else {
+                        json!(m.guid(element_id(c, m, val)?))
+                    }
+                }
+                "devices" if matches!(e, Element::Wire(_)) => {
+                    if val.is_null() {
+                        json!([])
+                    } else {
+                        json!(guids_param(c, m, val, k)?)
+                    }
+                }
+                "carrier" if matches!(e, Element::Wire(_)) => {
+                    if val.is_null() {
+                        val.clone()
+                    } else {
+                        json!(m.guid(element_id(c, m, val)?))
+                    }
+                }
                 _ => val.clone(),
             };
             match obj.get_mut(k) {
@@ -7610,6 +8001,11 @@ fn delete(s: &mut Session, p: &Value) -> R {
                         Element::Spot(sp) => gone.contains(&sp.view) || sp.host.is_some_and(|h| gone.contains(&h)),
                         // An import in one view only goes with it.
                         Element::CadImport(ci) => ci.view.is_some_and(|v| gone.contains(&v)),
+                        // A wired run goes when every component it names has gone.
+                        Element::Wire(w) => {
+                            (w.source.is_some() || !w.devices.is_empty())
+                                && w.source.into_iter().chain(w.devices.iter().copied()).all(|g| gone.contains(&g))
+                        }
                         _ => false,
                     }
             })
@@ -7632,8 +8028,27 @@ fn delete(s: &mut Session, p: &Value) -> R {
             if d.refs.len() < 2 {
                 gone.insert(guid);
             } else {
-                kept.push((id, d));
+                kept.push((id, Element::Dimension(d)));
             }
+        }
+        // A wired run loses the components it names that go; the run itself stays while it has a place.
+        if let Element::Wire(w) = e
+            && !gone.contains(&guid)
+            && w.source.into_iter().chain(w.devices.iter().copied()).chain(w.carrier).any(|g| gone.contains(&g))
+        {
+            let mut w = w.clone();
+            if w.source.into_iter().any(|g| gone.contains(&g)) {
+                w.source = None;
+            }
+            w.devices.retain(|d| !gone.contains(d));
+            if w.source.is_none() || w.devices.is_empty() {
+                w.source = None;
+                w.devices.clear();
+            }
+            if w.carrier.is_some_and(|g| gone.contains(&g)) {
+                w.carrier = None;
+            }
+            kept.push((id, Element::Wire(w)));
         }
     }
     let deleted: Vec<Id> = m.elements.with_guids().filter(|(_, g, _)| gone.contains(g)).map(|(id, ..)| id).collect();
@@ -7648,8 +8063,8 @@ fn delete(s: &mut Session, p: &Value) -> R {
         g.elements.retain(|id, _| !gone.contains(id));
         g.linework.retain(|l| !gone.contains(&l.element));
     }
-    for (id, d) in kept {
-        m.elements.insert(id, Element::Dimension(d));
+    for (id, e) in kept {
+        m.elements.insert(id, e);
     }
     // Walls attached to a roof or a floor that goes come loose, and roofs running into one end nowhere.
     for e in m.elements.values_mut() {

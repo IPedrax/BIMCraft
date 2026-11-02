@@ -1780,6 +1780,9 @@ fn hostile_params_never_panic_or_break_the_model() {
     // Detailing, one of each (detail lines, regions, a group, a repeating detail, a sketch floor, Linework), and the payloads
     // that name them: some for every command, some for the one they are for.
     let (detailing, targeted) = crate::detail_tests::sweep_payloads(&mut base);
+    // A room, its detectors and a wire, after the detailing so that no id the detailing payloads name moves, and the
+    // payloads written for `wire`, `detectors` and `modify` that name them.
+    let targeted = targeted.into_iter().chain(crate::wire_tests::sweep_payloads(&mut base));
     // A section and an elevation of it, after those, so that no id the payloads name moves: their views are drawn too.
     let _ = base.execute("section", &json!({"start": [-1000, 3000], "end": [9000, 3000]}));
     let _ = base.execute("elevation", &json!({"facing": "south"}));
@@ -1822,9 +1825,9 @@ fn hostile_params_never_panic_or_break_the_model() {
             });
         }
     });
-    for (cmd, p) in &targeted {
+    for (cmd, p) in targeted {
         let mut s = base.clone();
-        let made = s.execute(cmd, p).is_ok();
+        let made = s.execute(cmd, &p).is_ok();
         assert_eq!(s.model.check(), Ok(()), "{cmd} {p} left a broken model");
         if made {
             draw_plans(&s.model);
@@ -4940,7 +4943,7 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
 }
 
 #[test]
-fn a_project_is_saved_as_format_6_and_one_of_format_4_or_5_opens_as_it_is_and_one_of_format_7_is_refused() {
+fn a_project_is_saved_as_the_current_format_and_older_files_open_but_newer_files_are_refused() {
     use crate::model::Model;
     // 5 added the scans a project holds and the point clouds that place them; 6 added detailing (lines, regions, groups,
     // repeating details, line and fill styles); 7 its CAD drawings and the imports that place them. Nothing in a file of 4, 5
@@ -4951,32 +4954,35 @@ fn a_project_is_saved_as_format_6_and_one_of_format_4_or_5_opens_as_it_is_and_on
     run(&mut s, "detail_line", json!({"start": [0, 0], "end": [1000, 0]}));
     let full = serde_json::to_value(&*s.model).unwrap();
     for v in [&empty, &full] {
-        assert_eq!(v["format"], 7, "a project is saved as format 7");
-        for old in [4, 5, 6] {
+        assert_eq!(v["format"], crate::model::FORMAT);
+        for old in 4..crate::model::FORMAT {
             let mut was = v.clone();
             was["format"] = json!(old);
             let (m, left_out) = Model::read(&was.to_string()).unwrap();
-            assert_eq!((m.format, left_out.len(), m.elements.len()), (7, 0, v["elements"].as_object().unwrap().len()));
+            assert_eq!((m.format, left_out.len(), m.elements.len()), (crate::model::FORMAT, 0, v["elements"].as_object().unwrap().len()));
         }
     }
     assert!(full["elements"].as_object().unwrap().len() > 5);
     // A newer file says what it is and what to do, even when nothing else in it is wrong.
-    let mut eight = empty.clone();
-    eight["format"] = json!(8);
-    let e = Model::read(&eight.to_string()).unwrap_err();
+    let mut newer = empty.clone();
+    newer["format"] = json!(crate::model::FORMAT + 1);
+    let e = Model::read(&newer.to_string()).unwrap_err();
     assert!(
-        e.contains("newer BIMCraft") && e.contains("file format 8") && e.contains("reads up to 7") && e.contains("update BIMCraft"),
+        e.contains("newer BIMCraft")
+            && e.contains(&format!("file format {}", crate::model::FORMAT + 1))
+            && e.contains(&format!("reads up to {}", crate::model::FORMAT))
+            && e.contains("update BIMCraft"),
         "{e}"
     );
     // A file of this format with a field it doesn't know is read without it, and says which.
     let mut odd = full.clone();
     odd["something_new"] = json!(true);
     let (m, left_out) = Model::read(&odd.to_string()).unwrap();
-    assert_eq!((m.format, left_out), (7, vec!["/something_new".to_string()]));
+    assert_eq!((m.format, left_out), (crate::model::FORMAT, vec!["/something_new".to_string()]));
 }
 
 #[test]
-fn a_format_5_file_that_holds_elements_and_scans_migrates_to_7_and_keeps_both() {
+fn a_format_5_file_that_holds_elements_and_scans_migrates_and_keeps_both() {
     use crate::model::Model;
     let mut s = Session::new();
     house(&mut s);
@@ -4988,13 +4994,13 @@ fn a_format_5_file_that_holds_elements_and_scans_migrates_to_7_and_keeps_both() 
     let mut file: serde_json::Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
     file["format"] = json!(5);
     let (m, left_out) = Model::read(&file.to_string()).unwrap();
-    assert_eq!((m.format, m.clouds.len(), left_out.len(), m.elements.len()), (7, 1, 0, s.model.elements.len()));
-    // Written again, it says 7.
-    assert_eq!(serde_json::from_str::<serde_json::Value>(&m.to_json().unwrap()).unwrap()["format"], 7);
-    // A file of 6 (detailing, no CAD drawings) opens as 7 likewise.
+    assert_eq!((m.format, m.clouds.len(), left_out.len(), m.elements.len()), (crate::model::FORMAT, 1, 0, s.model.elements.len()));
+    // Written again, it says this build's format.
+    assert_eq!(serde_json::from_str::<serde_json::Value>(&m.to_json().unwrap()).unwrap()["format"], crate::model::FORMAT);
+    // A file of 6 (detailing, no CAD drawings) opens likewise.
     file["format"] = json!(6);
     let (m, left_out) = Model::read(&file.to_string()).unwrap();
-    assert_eq!((m.format, left_out.len(), m.elements.len()), (7, 0, s.model.elements.len()));
+    assert_eq!((m.format, left_out.len(), m.elements.len()), (crate::model::FORMAT, 0, s.model.elements.len()));
 }
 
 #[test]

@@ -54,6 +54,24 @@ pub enum Category {
     PatchPanel,
     /// A rack.
     Rack,
+    /// A fire alarm control panel (ППК).
+    AlarmPanel,
+    /// A point smoke detector.
+    SmokeDetector,
+    /// A point heat detector.
+    HeatDetector,
+    /// A manual call point (ИПР).
+    CallPoint,
+    /// A sounder: a fire alarm bell or siren.
+    Sounder,
+    /// A light sign: EXIT over a door.
+    ExitSign,
+    /// A loudspeaker of a voice evacuation or public address system.
+    Speaker,
+    /// An intruder alarm's motion detector.
+    MotionDetector,
+    /// A CCTV camera.
+    Camera,
     Door,
     Window,
 }
@@ -61,7 +79,7 @@ pub enum Category {
 impl Category {
     /// The categories a component may be of (a door's or a window's family is placed in a wall), in the order an import reads
     /// them.
-    pub const PLACED: [Category; 17] = [
+    pub const PLACED: [Category; 26] = [
         Category::Furniture,
         Category::Plumbing,
         Category::Drain,
@@ -79,6 +97,15 @@ impl Category {
         Category::VoiceOutlet,
         Category::PatchPanel,
         Category::Rack,
+        Category::AlarmPanel,
+        Category::SmokeDetector,
+        Category::HeatDetector,
+        Category::CallPoint,
+        Category::Sounder,
+        Category::ExitSign,
+        Category::Speaker,
+        Category::MotionDetector,
+        Category::Camera,
     ];
 
     /// How IFC writes a component of it: the product's class, its predefined type, and the object type a proxy carries where
@@ -99,6 +126,15 @@ impl Category {
             Category::VoiceOutlet => ("IFCOUTLET", ".TELEPHONEOUTLET.", None),
             Category::PatchPanel => ("IFCCOMMUNICATIONSAPPLIANCE", ".NETWORKAPPLIANCE.", None),
             Category::Rack => ("IFCBUILDINGELEMENTPROXY", ".USERDEFINED.", Some(msg!("Rack"))),
+            Category::AlarmPanel => ("IFCUNITARYCONTROLELEMENT", ".ALARMPANEL.", None),
+            Category::SmokeDetector => ("IFCSENSOR", ".SMOKESENSOR.", None),
+            Category::HeatDetector => ("IFCSENSOR", ".HEATSENSOR.", None),
+            Category::MotionDetector => ("IFCSENSOR", ".MOVEMENTSENSOR.", None),
+            Category::CallPoint => ("IFCALARM", ".BREAKGLASSBUTTON.", None),
+            Category::Sounder => ("IFCALARM", ".SIREN.", None),
+            Category::ExitSign => ("IFCALARM", ".LIGHT.", None),
+            Category::Speaker => ("IFCAUDIOVISUALAPPLIANCE", ".SPEAKER.", None),
+            Category::Camera => ("IFCAUDIOVISUALAPPLIANCE", ".CAMERA.", None),
             Category::AirTerminal => ("IFCBUILDINGELEMENTPROXY", ".USERDEFINED.", Some("LightningTerminal")),
             Category::Earthing => ("IFCBUILDINGELEMENTPROXY", ".USERDEFINED.", Some("EarthingRod")),
             Category::InspectionBox => ("IFCBUILDINGELEMENTPROXY", ".USERDEFINED.", Some("InspectionBox")),

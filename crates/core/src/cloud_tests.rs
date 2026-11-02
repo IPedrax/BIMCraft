@@ -530,7 +530,7 @@ fn a_snap_on_a_big_scan_looks_only_near_the_cursor() {
 /// A project of `n` two-point scans, as it is written to a file.
 fn project_file(n: usize) -> Value {
     let mut s = Session::new();
-    let path = scan("file", "dot.xyz", "0 0 0\n1 0 0\n");
+    let path = scan(&format!("file-{n}"), "dot.xyz", "0 0 0\n1 0 0\n");
     for i in 0..n {
         run(&mut s, "point_cloud", json!({"path": path, "name": format!("dot {i}")}));
     }

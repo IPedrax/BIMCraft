@@ -148,6 +148,87 @@ pub(crate) const FIXTURES: &[FixtureTool] = &[
         tip: msg!("Patch Panel (PN): a panel on the wall, where you click; Space turns it"),
         icon: Icon::PatchPanel,
     },
+    FixtureTool {
+        key: "alarmpanel",
+        kinds: &[Category::AlarmPanel],
+        letters: "FA",
+        label: msg!("Fire Alarm Panel"),
+        title: msg!("Place Fire Alarm Panel"),
+        tip: msg!("Fire Alarm Panel (FA): a panel on the wall, where you click; Space turns it"),
+        icon: Icon::Equipment,
+    },
+    FixtureTool {
+        key: "smokedetector",
+        kinds: &[Category::SmokeDetector],
+        letters: "DS",
+        label: msg!("Smoke Detector"),
+        title: msg!("Place Smoke Detector"),
+        tip: msg!("Smoke Detector (DS): a point detector on the ceiling, where you click; Space turns it"),
+        icon: Icon::Device,
+    },
+    FixtureTool {
+        key: "heatdetector",
+        kinds: &[Category::HeatDetector],
+        letters: "HD",
+        label: msg!("Heat Detector"),
+        title: msg!("Place Heat Detector"),
+        tip: msg!("Heat Detector (HD): a point detector on the ceiling, where you click; Space turns it"),
+        icon: Icon::Device,
+    },
+    FixtureTool {
+        key: "callpoint",
+        kinds: &[Category::CallPoint],
+        letters: "CP",
+        label: msg!("Manual Call Point"),
+        title: msg!("Place Manual Call Point"),
+        tip: msg!("Manual Call Point (CP): a call point on the wall, where you click; Space turns it"),
+        icon: Icon::Device,
+    },
+    FixtureTool {
+        key: "sounder",
+        kinds: &[Category::Sounder],
+        letters: "SR",
+        label: msg!("Sounder"),
+        title: msg!("Place Sounder"),
+        tip: msg!("Sounder (SR): a bell or a siren on the wall, where you click; Space turns it"),
+        icon: Icon::Device,
+    },
+    FixtureTool {
+        key: "exitsign",
+        kinds: &[Category::ExitSign],
+        letters: "ES",
+        label: msg!("Exit Sign"),
+        title: msg!("Place Exit Sign"),
+        tip: msg!("Exit Sign (ES): a light sign over a door, where you click on the wall; Space turns it"),
+        icon: Icon::Luminaire,
+    },
+    FixtureTool {
+        key: "speaker",
+        kinds: &[Category::Speaker],
+        letters: "AU",
+        label: msg!("Ceiling Speaker"),
+        title: msg!("Place Ceiling Speaker"),
+        tip: msg!("Ceiling Speaker (AU): a speaker on the ceiling, where you click; Space turns it"),
+        icon: Icon::Luminaire,
+    },
+    FixtureTool {
+        key: "motiondetector",
+        kinds: &[Category::MotionDetector],
+        letters: "MO",
+        label: msg!("Motion Detector"),
+        title: msg!("Place Motion Detector"),
+        tip: msg!("Motion Detector (MO): a sensor on the wall, where you click; Space turns it"),
+        icon: Icon::Device,
+    },
+    FixtureTool {
+        key: "camera",
+        kinds: &[Category::Camera],
+        letters: "VC",
+        label: msg!("Camera"),
+        title: msg!("Place Camera"),
+        tip: msg!("Camera (VC): a CCTV camera on the wall, where you click; Space turns it"),
+        icon: Icon::Device,
+    },
 ];
 
 pub(crate) fn fixture(key: &str) -> Option<&'static FixtureTool> {
@@ -186,18 +267,12 @@ impl BimApp {
         panel(ui, "Electrical", |ui| {
             self.buttons(ui, &[Self::fixture_button("equipment"), Self::fixture_button("device"), Self::fixture_button("lighting")]);
         });
-        panel(ui, msg!("Conduit & Wire"), |ui| {
-            let conduit = (
-                Icon::Conduit,
-                "Conduit",
-                msg!("Conduit (CN): click its start and its end; a chain of clicks makes a conduit for each step"),
-                Tool::Run("conduit", None),
-            );
-            let tray = (
+        panel(ui, msg!("Cable Carrier & Wire"), |ui| {
+            let carrier = (
                 Icon::CableTray,
-                "Cable Tray",
-                msg!("Cable Tray (CT): click its start and its end; a chain of clicks makes a tray for each step"),
-                Tool::Run("cabletray", None),
+                "Cable Carrier",
+                msg!("Cable Carrier (CC): click its start and its end; a chain of clicks makes a carrier for each step"),
+                Tool::Run("cablecarrier", None),
             );
             let wire = (
                 Icon::Wire,
@@ -205,7 +280,7 @@ impl BimApp {
                 msg!("Wire (EW): click its start and its end; a chain of clicks makes a wire for each step"),
                 Tool::Run("wire", None),
             );
-            self.buttons(ui, &[conduit, tray, wire]);
+            self.buttons(ui, &[carrier, wire]);
         });
     }
 
@@ -224,11 +299,11 @@ impl BimApp {
             );
         });
         panel(ui, "Cabling", |ui| {
-            let tray = (
+            let carrier = (
                 Icon::CableTray,
-                "Cable Tray",
-                "Cable Tray (CT): click its start and its end; a chain of clicks makes a tray for each step",
-                Tool::Run("cabletray", None),
+                "Cable Carrier",
+                "Cable Carrier (CC): click its start and its end; a chain of clicks makes a carrier for each step",
+                Tool::Run("cablecarrier", None),
             );
             let cabling = (
                 Icon::Cabling,
@@ -236,7 +311,41 @@ impl BimApp {
                 msg!("Cabling (CB): click its start and its end; a chain of clicks makes a cable for each step"),
                 Tool::Run("cable", None),
             );
-            self.buttons(ui, &[tray, cabling]);
+            self.buttons(ui, &[carrier, cabling]);
+        });
+    }
+
+    /// The Low Voltage tab (fire alarm, voice evacuation, security): its panel, its detectors and alarm appliances, its
+    /// security devices, and the circuit that runs between them.
+    pub(crate) fn low_voltage_tab(&mut self, ui: &mut Ui) {
+        self.tools(ui, "Select", &[(Icon::Modify, "Modify", "Modify (MD): select elements", Tool::Modify)]);
+        panel(ui, msg!("Fire Alarm"), |ui| {
+            self.buttons(
+                ui,
+                &[
+                    Self::fixture_button("alarmpanel"),
+                    Self::fixture_button("smokedetector"),
+                    Self::fixture_button("heatdetector"),
+                    Self::fixture_button("callpoint"),
+                ],
+            );
+        });
+        panel(ui, msg!("Alarm & Voice"), |ui| {
+            self.buttons(ui, &[Self::fixture_button("sounder"), Self::fixture_button("exitsign"), Self::fixture_button("speaker")]);
+        });
+        panel(ui, msg!("Security"), |ui| {
+            self.buttons(ui, &[Self::fixture_button("motiondetector"), Self::fixture_button("camera")]);
+        });
+        panel(ui, msg!("Wires"), |ui| {
+            self.buttons(
+                ui,
+                &[(
+                    Icon::Wire,
+                    "Wire",
+                    msg!("Wire (EW): click its start and its end; a chain of clicks makes a wire for each step"),
+                    Tool::Run("wire", None),
+                )],
+            );
         });
     }
 

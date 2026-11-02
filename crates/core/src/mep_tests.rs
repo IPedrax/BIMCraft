@@ -40,26 +40,15 @@ const CASES: &[Case] = &[
         predefined: ".RIGIDSEGMENT.",
     },
     Case {
-        category: "conduit",
-        command: "conduit",
-        alias: "CN",
+        category: "cablecarrier",
+        command: "cable_carrier",
+        alias: "CC",
         default_type: "PVC 25",
         round: true,
-        columns: &["System", "Length", "Diameter"],
-        alone: true,
-        class: "IFCCABLECARRIERSEGMENT",
-        predefined: ".CONDUITSEGMENT.",
-    },
-    Case {
-        category: "cabletray",
-        command: "cable_tray",
-        alias: "CT",
-        default_type: "Perforated 100 x 50",
-        round: false,
         columns: &["System", "Length", "Width", "Depth"],
         alone: true,
         class: "IFCCABLECARRIERSEGMENT",
-        predefined: ".CABLETRAYSEGMENT.",
+        predefined: ".CONDUITSEGMENT.",
     },
     Case {
         category: "wire",
@@ -453,6 +442,25 @@ fn a_run_of_the_mep_is_written_as_its_ifc_class_swept_along_its_axis_in_a_system
     }
 }
 
+#[test]
+fn cable_carriers_write_their_section_kind_and_both_read_as_one_category() {
+    let mut s = Session::new();
+    let round = made(&mut s, "cable_carrier", json!({"points": [[0, 0], [3000, 0]], "type": "PVC 25"}));
+    let tray = made(&mut s, "cable_carrier", json!({"points": [[0, 1000], [3000, 1000]], "type": "Tray 100 x 50"}));
+    let file = ifc(&mut s);
+    let carriers = entities(&file, "IFCCABLECARRIERSEGMENT");
+    assert_eq!(carriers.len(), 2);
+    assert!(carriers.iter().any(|e| e.ends_with(".CONDUITSEGMENT.);")));
+    assert!(carriers.iter().any(|e| e.ends_with(".CABLETRAYSEGMENT.);")));
+    let imported = crate::import::ifc(file.as_bytes(), "Carriers").unwrap();
+    assert_eq!(imported.model.check(), Ok(()));
+    for id in [round, tray] {
+        let e = imported.model.elements.get(s.model.guid(id)).unwrap();
+        assert_eq!(e.category(), "cablecarrier");
+        assert_eq!(imported.model.run_geom(e).unwrap().round, id == round);
+    }
+}
+
 // ---------- IFC, back in ----------
 
 /// What a run is and where, to the tenth of a millimetre, whatever its id: its section, its system, where its justify line is
@@ -743,6 +751,87 @@ const FIXTURES: &[Fixture] = &[
         base: (-1.0, 1.0),
         top: (1900.0, 2100.0),
     },
+    Fixture {
+        family: "Fire Alarm Panel",
+        category: Category::AlarmPanel,
+        class: "IFCUNITARYCONTROLELEMENT",
+        predefined: ".ALARMPANEL.",
+        object_type: None,
+        base: (1499.0, 1501.0),
+        top: (1900.0, 2100.0),
+    },
+    Fixture {
+        family: "Smoke Detector",
+        category: Category::SmokeDetector,
+        class: "IFCSENSOR",
+        predefined: ".SMOKESENSOR.",
+        object_type: None,
+        base: (2900.0, 3000.0),
+        top: (3000.0, 3000.0),
+    },
+    Fixture {
+        family: "Heat Detector",
+        category: Category::HeatDetector,
+        class: "IFCSENSOR",
+        predefined: ".HEATSENSOR.",
+        object_type: None,
+        base: (2900.0, 3000.0),
+        top: (3000.0, 3000.0),
+    },
+    Fixture {
+        family: "Manual Call Point",
+        category: Category::CallPoint,
+        class: "IFCALARM",
+        predefined: ".BREAKGLASSBUTTON.",
+        object_type: None,
+        base: (1400.0, 1500.0),
+        top: (1500.0, 1600.0),
+    },
+    Fixture {
+        family: "Sounder",
+        category: Category::Sounder,
+        class: "IFCALARM",
+        predefined: ".SIREN.",
+        object_type: None,
+        base: (2200.0, 2300.0),
+        top: (2300.0, 2400.0),
+    },
+    Fixture {
+        family: "Exit Sign",
+        category: Category::ExitSign,
+        class: "IFCALARM",
+        predefined: ".LIGHT.",
+        object_type: None,
+        base: (2200.0, 2300.0),
+        top: (2300.0, 2400.0),
+    },
+    Fixture {
+        family: "Ceiling Speaker",
+        category: Category::Speaker,
+        class: "IFCAUDIOVISUALAPPLIANCE",
+        predefined: ".SPEAKER.",
+        object_type: None,
+        base: (2900.0, 3000.0),
+        top: (3000.0, 3000.0),
+    },
+    Fixture {
+        family: "Motion Detector",
+        category: Category::MotionDetector,
+        class: "IFCSENSOR",
+        predefined: ".MOVEMENTSENSOR.",
+        object_type: None,
+        base: (2200.0, 2300.0),
+        top: (2300.0, 2400.0),
+    },
+    Fixture {
+        family: "Camera",
+        category: Category::Camera,
+        class: "IFCAUDIOVISUALAPPLIANCE",
+        predefined: ".CAMERA.",
+        object_type: None,
+        base: (2550.0, 2700.0),
+        top: (2700.0, 2800.0),
+    },
 ];
 
 #[test]
@@ -791,6 +880,8 @@ fn a_category_of_family_is_written_as_its_ifc_class_and_read_back_as_the_same_ca
     assert_eq!(Category::from_ifc("IFCOUTLET", None, None), Some(Category::Outlet));
     assert_eq!(Category::from_ifc("IFCOUTLET", Some("NOTDEFINED"), None), Some(Category::Outlet));
     assert_eq!(Category::from_ifc("IFCOUTLET", Some("TELEPHONEOUTLET"), None), Some(Category::VoiceOutlet));
+    // A sensor of no type is a smoke detector, the class's first.
+    assert_eq!(Category::from_ifc("IFCSENSOR", Some("NOTDEFINED"), None), Some(Category::SmokeDetector));
     // A proxy of an object type no category names is the generic one's.
     assert_eq!(Category::from_ifc("IFCBUILDINGELEMENTPROXY", Some("USERDEFINED"), Some("Sculpture")), Some(Category::Generic));
 }

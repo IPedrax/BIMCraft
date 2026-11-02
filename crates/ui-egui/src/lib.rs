@@ -75,6 +75,7 @@ use serde_json::{Value, json};
 
 use bimcraft_core::language::Language;
 mod autosave;
+mod catalogue;
 use icons::Icon;
 use lang::{Lang, t, tf};
 use ribbon::panel;
@@ -252,6 +253,7 @@ enum Tab {
     Electrical,
     Lightning,
     Data,
+    LowVoltage,
     Insert,
     Annotate,
     Massing,
@@ -654,6 +656,9 @@ pub struct BimApp {
     styled: bool,
     /// The updater, which the desktop app attaches: a window starts without one, and so never phones home.
     pub updates: Option<bimcraft_update::Updater>,
+    catalogue: catalogue::State,
+    equipment_draft: catalogue::EquipmentDraft,
+    show_catalogue: bool,
     /// The reader of Revit files, which the desktop app attaches (`bimcraft-rvt` is Apache-2.0 only, so this crate never depends on
     /// it): a window starts without one, so it offers no `.rvt` and a test never reads a real one.
     pub revit: Option<revit::Importer>,
@@ -1062,6 +1067,9 @@ impl BimApp {
             title: String::new(),
             styled: false,
             updates: None,
+            catalogue: catalogue::State::default(),
+            equipment_draft: catalogue::EquipmentDraft::default(),
+            show_catalogue: false,
             revit: None,
             control: None,
             revit_job: None,
@@ -1242,6 +1250,7 @@ impl BimApp {
         self.poll_updates(&ctx);
         self.poll_revit(&ctx);
         self.poll_autosave(&ctx);
+        self.poll_catalogue(&ctx);
         self.keys(&ctx);
         self.os_requests(&ctx);
         self.dialog_answered();
@@ -1464,6 +1473,7 @@ impl BimApp {
             || self.new_schedule.is_some()
             || self.show_shortcuts
             || self.show_snaps
+            || self.show_catalogue
             || self.pending.is_some()
             || self.autosave.show_recovery
             || self.installing()
@@ -2430,6 +2440,10 @@ impl BimApp {
                 tf("{} opened without {} fields this version doesn't know; saving it leaves them out.", &[&name, &count.to_string()]);
             self.status = Status { text, error: false };
         }
+        // Reopening recreates selection and dialog state; apply carrier feedback afterwards.
+        if let Some(error) = reply["catalogue_not_loaded"].as_str() {
+            self.status = Status { text: tf("Equipment catalogue could not be loaded: {}", &[error]), error: true };
+        }
         true
     }
 
@@ -2673,6 +2687,7 @@ impl BimApp {
                                 (Tab::Electrical, msg!("Electrical")),
                                 (Tab::Lightning, msg!("Lightning Protection")),
                                 (Tab::Data, msg!("Data")),
+                                (Tab::LowVoltage, msg!("Low Voltage")),
                                 (Tab::Insert, msg!("Insert")),
                                 (Tab::Annotate, msg!("Annotate")),
                                 (Tab::Massing, msg!("Massing")),
@@ -2767,6 +2782,7 @@ impl BimApp {
                         Tab::Electrical => self.electrical_tab(ui),
                         Tab::Lightning => self.lightning_tab(ui),
                         Tab::Data => self.data_tab(ui),
+                        Tab::LowVoltage => self.low_voltage_tab(ui),
                         Tab::Insert => self.insert_tab(ui),
                         Tab::Annotate => self.annotate_tab(ui),
                         Tab::Massing => self.massing_tab(ui),
@@ -3114,6 +3130,16 @@ impl BimApp {
             if big_button(ui, Icon::ThinLines, "Thin Lines", self.thin, "Thin Lines (TL): every line one pixel wide").clicked() {
                 self.thin = !self.thin;
             }
+            let engineering = self.graphics_shown().engineering;
+            let tip = msg!(
+                "Engineering Level Mode (Renga style): the architecture as a pale thin backdrop, and every engineering system whole by its level, its routes thick in its system's colour and its devices over them"
+            );
+            let plan = self.graphic_view().is_some() && self.plan_key().is_some();
+            if ui.add_enabled_ui(plan, |ui| big_button(ui, Icon::Visibility, "Engineering Level Mode", engineering, tip)).inner.clicked()
+                && let Some(key) = self.plan_key()
+            {
+                self.run("modify", json!({"id": key, "graphics": {"engineering": !engineering}}));
+            }
             let dark = style::dark();
             let tip = msg!("Choose a theme, including a dark interface with a light canvas");
             let r = big_button(ui, Icon::Theme, "Dark Mode", dark, tip);
@@ -3353,6 +3379,17 @@ impl BimApp {
             });
         });
         panel(ui, msg!("Links"), |ui| {
+            if big_button(
+                ui,
+                Icon::Schedule,
+                "Equipment Catalogue",
+                self.show_catalogue,
+                msg!("Link the project's editable ODS equipment catalogue"),
+            )
+            .clicked()
+            {
+                self.show_catalogue = true;
+            }
             let tip = "Link Model (LK): another project, a BIMCraft file or an IFC, shown in this one as a reference that can't be edited: halftone in the plans, the sections and the 3D view, and snapped to";
             if big_button(ui, Icon::Link, "Link Model", false, tip).clicked() {
                 self.link_dialog = true;
@@ -3603,6 +3640,7 @@ impl BimApp {
                 }
             });
         }
+        // A circuit selected: the devices joined to it.
         // A roof selected: which of its edges stand upright.
         if self.selected_roof().is_some() && matches!(self.tool, Tool::Modify | Tool::GableEdge) {
             panel(ui, msg!("Shape Editing"), |ui| {
@@ -4265,6 +4303,7 @@ impl BimApp {
         self.templates_window(ctx);
         self.phasing_window(ctx);
         self.line_weights_window(ctx);
+        self.catalogue_window(ctx);
         self.object_styles_window(ctx);
         self.line_styles_window(ctx);
         self.fill_patterns_window(ctx);

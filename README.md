@@ -221,6 +221,12 @@ transparent). Hidden line, wireframe, sections and sheets are still drawn on the
 
 ## What works today
 
+Manage > Equipment Catalogue links an editable ODS type catalogue and adds equipment
+without placement, such as fasteners and software, by name, system and whole quantity.
+These positions count in schedules and stay out of plan, 3D and IFC geometry
+([details](docs/areas/schedules.md)). The Russian СПС/СОУЭ workflow is still in development;
+its scope and progress are tracked in the [roadmap](docs/low-voltage.md).
+
 BIMCraft is in early, fast development. Honest status:
 
 | Area | Works today |

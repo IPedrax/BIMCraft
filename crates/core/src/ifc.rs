@@ -680,11 +680,10 @@ pub fn export(m: &Model) -> String {
             }
             // A run: its section swept along its axis, in its material, a member of the system it is in.
             crate::model::run_arm!(r) => {
-                let (Some(&(_, storey)), Some(t), Some(g), Some((class, kind))) =
-                    (storeys.get(&r.level), m.run_type(e), m.run_geom(e), crate::runs::ifc(e.category()))
-                else {
+                let (Some(&(_, storey)), Some(t), Some(g)) = (storeys.get(&r.level), m.run_type(e), m.run_geom(e)) else {
                     continue;
                 };
+                let Some((class, kind)) = crate::runs::ifc_shape(e.category(), g.round) else { continue };
                 let axis = crate::view3d::unit(crate::view3d::sub(g.b, g.a));
                 // Placed at the start of its centre line; its section's x across it, level, its y up.
                 let at = w.place(Some(storey), (g.a[0], g.a[1], g.a[2] - m.elevation(r.level)), None);

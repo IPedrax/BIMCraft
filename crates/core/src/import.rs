@@ -1989,6 +1989,13 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             end_offset: ((z1 - z0).abs() > 1e-6).then_some(z1),
             justify,
             system,
+            source: None,
+            devices: Vec::new(),
+            cable: std::string::String::new(),
+            reserve: 0.0,
+            along_walls: false,
+            carrier: None,
+            local_offset: 0.0,
             params: Default::default(),
         };
         let Some(made) = Element::of_run(category, run) else { continue };
@@ -2118,7 +2125,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         }
         let level = level_for(id, z);
         let offset = ((z - elevation(level)) * 1000.0).round() / 1000.0 + 0.0;
-        let c = Component { family, type_name, level, at: micron(at), angle, offset, mirrored, params: BTreeMap::new() };
+        let c = Component { family, type_name, level, at: micron(at), angle, offset, mirrored, params: BTreeMap::new(), provision: None };
         let cid = m.insert(Element::Component(c));
         from.insert(cid, who(id));
         origin.entry(id).or_insert(cid);

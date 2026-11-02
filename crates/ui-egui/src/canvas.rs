@@ -2882,6 +2882,7 @@ impl BimApp {
                         offset: 0.0,
                         mirrored: false,
                         params: Default::default(),
+                        provision: None,
                     };
                     let e = Element::Component(c);
                     sketched(&e);

@@ -1,6 +1,6 @@
 //! A project's language: the words its drawings print (a stair's UP, a title block's SCALE, a
 //! schedule's headings) and the names commands give what they make (levels, views, sheets, rooms).
-//! English, Brazilian Portuguese or Spanish. Names already given stay as they are; the core's
+//! English, Brazilian Portuguese, Spanish or Russian. Names already given stay as they are; the core's
 //! messages, which agents read, stay English.
 
 use serde::{Deserialize, Serialize};
@@ -16,27 +16,30 @@ pub enum Language {
     Portuguese,
     #[serde(rename = "es")]
     Spanish,
+    #[serde(rename = "ru")]
+    Russian,
 }
 
 impl Language {
-    pub const ALL: [Language; 3] = [Language::English, Language::Portuguese, Language::Spanish];
+    pub const ALL: [Language; 4] = [Language::English, Language::Portuguese, Language::Spanish, Language::Russian];
 
-    /// Its code in commands and files: en, pt, es.
+    /// Its code in commands and files: en, pt, es, ru.
     pub fn code(self) -> &'static str {
-        self.of(["en", "pt", "es"])
+        self.of(["en", "pt", "es", "ru"])
     }
 
     /// Its name, in itself.
     pub fn label(self) -> &'static str {
-        self.of(["English", "Português (Brasil)", "Español"])
+        self.of(["English", "Português (Brasil)", "Español", "Русский"])
     }
 
     /// Of one thing in each language, English first, this language's.
-    pub fn of<T>(self, [english, portuguese, spanish]: [T; 3]) -> T {
+    pub fn of<T>(self, [english, portuguese, spanish, russian]: [T; 4]) -> T {
         match self {
             Language::English => english,
             Language::Portuguese => portuguese,
             Language::Spanish => spanish,
+            Language::Russian => russian,
         }
     }
 
@@ -47,6 +50,7 @@ impl Language {
             "en" | "english" => Language::English,
             "pt" | "portuguese" | "português" => Language::Portuguese,
             "es" | "spanish" | "español" => Language::Spanish,
+            "ru" | "russian" | "русский" => Language::Russian,
             _ => return None,
         })
     }
@@ -86,10 +90,26 @@ mod tests {
         let es = Language::Spanish;
         assert_eq!([es.word("Level"), es.word("UP"), es.word("Room Schedule")], ["Nivel", "SUBE", "Tabla de habitaciones"]);
         assert_eq!(es.find("TABLA DE PUERTAS", &["Room Schedule", "Door Schedule"]), Some("Door Schedule"));
+        let ru = Language::Russian;
+        assert_eq!([ru.word("Level"), ru.word("UP"), ru.word("Room Schedule")], ["Уровень", "ВВЕРХ", "Экспликация помещений"]);
+        assert_eq!(ru.find("ведомость дверей", &["Room Schedule", "Door Schedule"]), Some("Door Schedule"));
         // Codes as commands write them, and locales as systems give them.
         assert_eq!(
-            ["pt-BR", "pt_BR.UTF-8", "es", "es-419", "Español", "en-US", "en", "de", "C", ""].map(Language::from_code),
-            [Some(pt), Some(pt), Some(es), Some(es), Some(es), Some(Language::English), Some(Language::English), None, None, None]
+            ["pt-BR", "pt_BR.UTF-8", "es", "es-419", "Español", "en-US", "en", "ru-RU", "Русский", "de", "C", ""].map(Language::from_code),
+            [
+                Some(pt),
+                Some(pt),
+                Some(es),
+                Some(es),
+                Some(es),
+                Some(Language::English),
+                Some(Language::English),
+                Some(ru),
+                Some(ru),
+                None,
+                None,
+                None
+            ]
         );
     }
 }

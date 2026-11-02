@@ -1,5 +1,45 @@
 # The desktop app: browser, docking, settings, picking, snapping, clicks, startup, tags
 
+`catalogue.rs` polls a project's bound ODS every two seconds and after model changes.
+It runs the core `catalogue_sync` command, so existing rows remain model-owned while
+new rows receive GUIDs. File errors appear in the status bar without changing the model;
+a changed/repaired file is retried. Polling unchanged data keeps the undo history intact.
+Change detection uses file modification time and length, as produced by normal office saves.
+Manage > Equipment Catalogue opens the same dialog from plans and 3D: link an existing
+ODS, create a new one, synchronize, or unlink. File selection is asynchronous; cancelling
+does nothing, and unlinking leaves the external workbook intact.
+The same dialog adds equipment without placement: product name, optional system and
+whole quantity. It calls `equipment`; success clears the name and keeps the other
+fields for batch entry. The polling state is separate from this unsaved input, so
+catalogue synchronization does not discard it.
+New ODS types without model instances automatically open this dialog and appear in
+the virtualized Unassigned catalogue products list. Built-in unused types are omitted.
+Selecting a family type in that list fills the read-only product name in the entry
+form. Set quantity and system, then Add to specification to account for the existing
+type without placement or duplication. New product clears the selection for manual
+entry. Cable and carrier types remain listed without this component-only action.
+Closing the dialog acknowledges those GUIDs for the current document; further edits
+do not reopen it for the same types. Opening a document resets this acknowledgement.
+Types disappear from the list when an instance is placed or accounted for as a planned
+or nonspatial position. Unlinking the ODS does not lose their recorded provenance.
+Missing catalogue products produce a warning and are listed in this dialog, with
+their id and GUID on hover. The warning also appears when a project containing
+placeholders is opened without an ODS link; unlinking does not restore the products.
+The catalogue also imports a separate ODS without changing the current link. Choose
+Report conflict (the default), Update product, or Create separate product before
+Import Catalogue. Cancellation leaves the model unchanged; import runs the core
+`catalogue_import` command, preserving the source workbook and Undo/Redo.
+The conflict controls and selected unassigned product were inspected at 1280×800
+in all three looks on 2026-11-01, without clipped fields or buttons:
+`target/catalogue-ui-qa/stage2-selected-dialog-{light,dark,dark-light-canvas}.png`.
+The catalogue dialog and synchronization error were rendered and inspected in Light,
+Dark, and Dark UI with Light Canvas (`target/catalogue-ui-qa/` in the development workspace).
+The missing-product list and warning were inspected in all three looks too
+(`missing-dialog-*.png` in that folder).
+The equipment entry form was inspected in all three looks (`provisions-dialog-*.png`).
+The combined missing-product and unassigned-product lists were inspected in all three
+looks (`pending-dialog-*.png`).
+
 Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the map, and this file is read when the area is touched.
 
 The Project Browser (`browser.rs`) builds its tree as `Node`s and draws it through its tab (`browser::Tab`) and its search

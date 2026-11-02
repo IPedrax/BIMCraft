@@ -102,6 +102,8 @@ One line per module: what it owns. Read the module's file and, for the areas it 
 
 `crates/core` (`bimcraft-core`; its own notes: [crates/core/CLAUDE.md](crates/core/CLAUDE.md)):
 
+- `ods.rs`: bounded ODS catalogue exchange and type identity checks ([schedules](docs/areas/schedules.md), [Rubezh sources](docs/areas/rubezh-catalogue.md), [Russian standards](docs/areas/low-voltage-standards.md), [PD templates](docs/areas/low-voltage-documents.md)).
+
 - `commands.rs`: every command (`ALL`): what the CLI, scripts and MCP run. `engine.rs`: `Session`, which runs them (rollback, undo). `bridge.rs`: the control port's protocol, which the window and `mcp --connect` share.
 - `model.rs`: the model: elements, types, `Model::check` and the queries on it. `ids.rs`: element ids and GUIDs. `library.rs`: types, materials and families as entries with ids and GUIDs.
 - `walls.rs` (`walls/index.rs`): wall axes, faces, mitred caps, outlines. `skeleton.rs`: the straight skeleton (roofs by footprint). `stairs.rs`: stairs, ramps, railings. `runs.rs`: beams, pipes, conduits and the other straight runs. `geom.rs`: plan geometry. `snap.rs`: where a picked point lands. `sketch.rs`: sketches, lines solved into outlines and holes for floors, ceilings, roofs and shafts. `curves.rs`: the shapes a line takes (polylines, circles, ellipses, splines), split and joined. `draw.rs`: the Draw panel's shapes, what clicks make. Areas: [levels, walls and roofs](docs/areas/levels-walls-roofs.md), [structure and MEP](docs/areas/structure-and-mep.md).
@@ -119,6 +121,8 @@ One line per module: what it owns. Read the module's file and, for the areas it 
 - `graphics.rs`, `footer.rs`, `phasing.rs`: Visibility/Graphics, the view control bar, Phasing. `filter.rs`: Filter on the selection. `inquiry.rs`, `recent.rs`, `autosave.rs`, `updates.rs`, `revit.rs`: Manage > Inquiry, Open Recent, autosave and recovery, the update banner, Revit files.
 - `links.rs`: Link Model. `clouds.rs`: Insert > Point Cloud. `cad.rs`: Insert > Import CAD and Link CAD. `section_box.rs`: the 3D view's section box, its Properties and grips. `structure.rs`, `mep.rs`: the Structure tab and the discipline tabs. `editor.rs`, `favorites.rs`: the Family Editor and Favorites. `style.rs`: look and feel, light and dark, floating cards or compact. `ribbon.rs`: the ribbon's panels, their lists, and folding them to fit. `titlebar.rs`: the window's own title bar and frame. `icons.rs`: the icons, drawn in code (`--example icon_catalog` exports them). `lang.rs`: language selection and the interface PO catalogs; `lang/font.rs`: Chinese font support. `tests.rs`, `tests/`: the app driven as a user does.
 
+- `catalogue.rs`: equipment entry, bound ODS polling and synchronization status ([the desktop](docs/areas/desktop.md)).
+
 `crates/i18n` (`bimcraft-i18n`; [notes](crates/i18n/CLAUDE.md)): embedded lookup, build-time PO compilation and the
 `cargo i18n` extraction, merge and validation tools. Area: [translations](docs/areas/translations.md).
 
@@ -129,5 +133,6 @@ One line per module: what it owns. Read the module's file and, for the areas it 
 `apps/bimcraft` (the desktop: `main.rs`, `startup.rs`: the log and the graphics fallback) and `apps/bimcraft-cli` (`main.rs`; `mcp.rs` the MCP server; `window.rs`: `mcp --connect`; `revit.rs`); notes: [apps/CLAUDE.md](apps/CLAUDE.md). More: `packaging/` (installers and packages: [packaging](docs/areas/packaging.md)), `docs/` (design notes), `.github/workflows/` (CI on every pull request, and the release).
 
 ## Keep the agent docs layered
+
 
 This file holds the rules, the checks, the conventions and the map, and stays under 3,000 words (the `agent_docs` test in `crates/core` fails past that). The detail of a feature goes in `docs/areas/<area>.md`, or in the nearest crate's `CLAUDE.md` when it concerns the whole crate, and the map names it. A new feature adds its paragraph there, never here; a new module adds a line to the map; an area's write-up moves with the code it describes. Move text, never delete what is still true.

@@ -146,6 +146,22 @@ impl<'de> Deserialize<'de> for Kind {
     }
 }
 
+/// Product data shared by every instance of a library type; absent mass means unknown, not zero.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Product {
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub brand: String,
+    #[serde(default)]
+    pub article: String,
+    #[serde(default)]
+    pub manufacturer: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mass_kg: Option<f64>,
+}
+
 /// A library entry: what it is, its name, its GUID.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -153,6 +169,13 @@ pub struct Entry {
     pub kind: Kind,
     pub name: String,
     pub guid: Guid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub product: Option<Product>,
+    #[serde(default)]
+    pub placeholder: bool,
+    /// This type entered through ODS rather than the built-in library.
+    #[serde(default)]
+    pub catalogue_added: bool,
 }
 
 /// A part of a library entry, with an id and a GUID of its own that it holds itself, kept while it stays where it is
@@ -274,6 +297,34 @@ impl Library {
     pub fn by_guid(&self, g: Guid) -> Option<(Id, &Entry)> {
         let id = *self.by_guid.get(&g)?;
         Some((id, self.by_id.get(&id)?))
+    }
+
+    pub fn set_product(&mut self, kind: &Kind, name: &str, product: Option<Product>) -> Result<(), String> {
+        let id = self.id(kind, name).ok_or("product type is not in the library")?;
+        let entry = self.by_id.get_mut(&id).ok_or("product library entry is missing")?;
+        entry.product = product;
+        Ok(())
+    }
+
+    pub fn placeholder(&self, kind: &Kind, name: &str) -> bool {
+        self.id(kind, name).and_then(|id| self.get(id)).is_some_and(|e| e.placeholder)
+    }
+
+    pub fn set_placeholder(&mut self, kind: &Kind, name: &str, value: bool) -> Result<(), String> {
+        let id = self.id(kind, name).ok_or("placeholder type is not in the library")?;
+        let entry = self.by_id.get_mut(&id).ok_or("placeholder library entry is missing")?;
+        entry.placeholder = value;
+        if value {
+            entry.product = None;
+        }
+        Ok(())
+    }
+
+    pub fn mark_catalogue_added(&mut self, kind: &Kind, name: &str) -> Result<(), String> {
+        let id = self.id(kind, name).ok_or("catalogue type is not in the library")?;
+        let entry = self.by_id.get_mut(&id).ok_or("catalogue library entry is missing")?;
+        entry.catalogue_added = true;
+        Ok(())
     }
 
     pub fn first_id(&self) -> Option<Id> {
@@ -738,7 +789,7 @@ impl Model {
                     g = self.elements.fresh();
                 }
                 let guid = g;
-                let _ = self.library.insert(id, Entry { kind, name, guid });
+                let _ = self.library.insert(id, Entry { kind, name, guid, product: None, placeholder: false, catalogue_added: false });
             }
         }
         if !self.parts_in_step() {
