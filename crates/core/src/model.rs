@@ -548,6 +548,16 @@ impl Shape {
         }
         s
     }
+
+    /// It with its point at `at` given height `z`, or with a corner there, a new point at that height.
+    pub fn raised(&self, at: P2, z: f64) -> Shape {
+        let mut s = self.clone();
+        match s.points.iter_mut().find(|p| p.at.dist(at) <= TOL) {
+            Some(p) => p.z = z,
+            None => s.points.push(ShapePoint { at, z, ..Default::default() }),
+        }
+        s
+    }
 }
 
 impl Floor {
@@ -4035,6 +4045,30 @@ impl Model {
         let planes: Vec<walls::Plane> =
             t.triangles.iter().map(|k| walls::Plane::of(&k.map(at)).unwrap_or_else(|| walls::Plane::flat(at(k[0])[2]))).collect();
         Ok((t, lifted, planes))
+    }
+
+    /// A shaped floor's creases: each edge of its top's planes (`shape_planes`) once, its ends where the top is, the outline's
+    /// edges among them. What a drag of its shape previews, given the floor with the shape it would have. None without a
+    /// shape, or for one that doesn't triangulate.
+    pub fn shape_creases(&self, f: &Floor) -> Vec<[[f64; 3]; 2]> {
+        if f.shape.is_empty() {
+            return Vec::new();
+        }
+        let key = |p: [f64; 3]| [p[0], p[1], p[2]].map(|v| (v * 100.0).round() as i64);
+        let mut seen = BTreeSet::new();
+        let mut creases = Vec::new();
+        for (loops, plane) in self.shape_planes(f).unwrap_or_default() {
+            for ring in &loops {
+                for (a, b) in geom::ring_edges(ring) {
+                    let (a, b) = ([a.0, a.1, plane.at(a)], [b.0, b.1, plane.at(b)]);
+                    let k = if key(a) <= key(b) { (key(a), key(b)) } else { (key(b), key(a)) };
+                    if seen.insert(k) {
+                        creases.push([a, b]);
+                    }
+                }
+            }
+        }
+        creases
     }
 
     /// How far a floor's top lies above where it would be without its shape at `q`, mm: by the piece of its top over `q`,

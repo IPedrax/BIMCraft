@@ -32,7 +32,10 @@ Status, on the branch `mod-16-shape-editing` (raised upstream as IPedrax/BIMCraf
   floor has a grip where its top is, and a drag raises or lowers it to the millimetre (`Camera::along`); a click picks as
   in plan, in pixels (`view3d::shape_pick_3d`), and Add Point and Add Split Line land on the top under the cursor
   (`Camera::on_slope`, `view3d::on_floor_top`), or on a point or corner within reach (tests in
-  `crates/ui-egui/src/tests/shape3d.rs`).
+  `crates/ui-egui/src/tests/shape3d.rs`). While a grip is held, in plan or in 3D, the creases the release will leave are
+  drawn over the floor (`BimApp::shape_preview`, `Model::shape_creases`, `Shape::raised`; tests
+  `a_shape_points_grip_held_mid_drag_previews_where_it_and_its_creases_will_go` and
+  `in_3d_a_grip_held_mid_drag_previews_the_creases_its_release_will_leave`).
 - **Phases 4 and 5** are a proposal.
 
 Line numbers are as of `0733fd4`.

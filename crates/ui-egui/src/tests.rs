@@ -2974,6 +2974,34 @@ fn modify_sub_elements_drags_a_point_with_its_split_lines_and_labels_its_height(
 }
 
 #[test]
+fn a_shape_points_grip_held_mid_drag_previews_where_it_and_its_creases_will_go() {
+    let mut h = app(r#"floor {"boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}"#);
+    let floor = ids(&h, "floor")[0];
+    h.state_mut().run("edit_shape", json!({"id": floor, "points": [{"at": [4000, 3000], "z": -30}]}));
+    click(&mut h, P2(4000.0, 0.0));
+    press(&mut h, "Modify Sub Elements");
+    let (a, b) = (h.state().screen(P2(4000.0, 3000.0)), h.state().screen(P2(5000.0, 2000.0)));
+    h.hover_at(a);
+    h.run();
+    h.event(Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run();
+    for t in [0.5, 1.0] {
+        h.hover_at(a + (b - a) * t);
+        h.run();
+    }
+    // Held: the model as it was; the preview with the drain where the cursor is, the creases running to it.
+    assert_eq!(field(&h, floor, "shape")["points"][0]["at"], json!([4000.0, 3000.0]));
+    let preview = h.state().shape_preview.clone().expect("a preview while the grip is held");
+    assert_eq!((preview.shape.points[0].at, preview.shape.points[0].z), (P2(5000.0, 2000.0), -30.0));
+    let creases = h.state().session.model.shape_creases(&preview);
+    assert_eq!(creases.iter().flatten().filter(|p| (p[0], p[1]) == (5000.0, 2000.0)).count(), 4, "{creases:?}");
+    h.event(Event::PointerButton { pos: b, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run();
+    assert_eq!(field(&h, floor, "shape")["points"][0]["at"], json!([5000.0, 2000.0]));
+    assert!(h.state().shape_preview.is_none());
+}
+
+#[test]
 fn absolute_elevations_are_above_the_floors_level_on_any_level() {
     let mut h = app(r#"floor {"level": 100001, "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}"#);
     topmost(&mut h, "Level 2");

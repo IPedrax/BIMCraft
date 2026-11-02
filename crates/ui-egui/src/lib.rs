@@ -519,6 +519,8 @@ pub struct BimApp {
     shape_absolute: bool,
     /// The selected floor's shape point a drag under Modify Sub Elements holds, where it was.
     shape_grip: Option<P2>,
+    /// The selected floor as a grip's drag would leave it, plan or 3D, while it's dragged: its creases drawn over it.
+    pub(crate) shape_preview: Option<bimcraft_core::model::Floor>,
     shaft_top: Option<Option<Id>>,
     shaft_height: String,
     /// The Mass tool's top, as the Shaft tool's.
@@ -1013,6 +1015,7 @@ impl BimApp {
             shape_z: String::new(),
             shape_absolute: false,
             shape_grip: None,
+            shape_preview: None,
             shaft_top: None,
             shaft_height: units.length(3000.0),
             mass_top: None,
