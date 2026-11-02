@@ -16,6 +16,7 @@ use bimcraft_core::render::{self, Rgb};
 use bimcraft_core::view3d::gpu::{Hit, Mesh};
 use bimcraft_core::view3d::{
     AZIMUTH, Camera, ELEVATION, Image, MAX_SIDE, P3, Scene, box_grips, move_box_face, on_floor_top, shape_handles, shape_pick_3d,
+    shape_snap_3d,
 };
 use egui::{
     Align, Color32, ColorImage, Layout, PointerButton, Pos2, Rect, Sense, Stroke, StrokeKind, TextureHandle, TextureOptions, Ui, UiBuilder,
@@ -437,12 +438,20 @@ impl BimApp {
         if let Some(b) = reboxed.or(boxed) {
             crate::section_box::draw(&p, &cam, b, modify, o.boxing.map(|(k, _)| k), screen);
         }
-        // Where a click lands on the floor being shaped, in plan: a point or corner within reach of it, or its top there.
-        let landing = |at: Pos2| -> Option<P2> {
-            let off = |p: &P3| on_screen(&cam, rect, ppp, *p).distance(at);
-            let near = handles.iter().filter(|(_, p)| off(p) <= 8.0).min_by(|a, b| off(&a.1).total_cmp(&off(&b.1))).map(|(q, _)| *q);
-            near.or_else(|| on_floor_top(&model, shaping.as_ref()?, &cam, px(at)))
+        // Where a click lands on the floor being shaped, in plan: a point or corner within reach of it, else on an edge within
+        // reach (the edge, to light up), else its top there.
+        let snapped = |at: Pos2| -> Option<(P2, Option<[P3; 2]>)> {
+            let f = shaping.as_ref()?;
+            shape_snap_3d(&model, f, &cam, px(at), 8.0 * f64::from(ppp))
+                .or_else(|| on_floor_top(&model, f, &cam, px(at)).map(|q| (q, None)))
         };
+        let landing = |at: Pos2| snapped(at).map(|(q, _)| q);
+        // The grip under the cursor, lit.
+        let lit = hover.filter(|_| lifting && o.lift.is_none()).and_then(|h| {
+            let off = |p: &P3| on_screen(&cam, rect, ppp, *p).distance(h);
+            handles.iter().filter(|(_, p)| off(p) <= 8.0).min_by(|a, b| off(&a.1).total_cmp(&off(&b.1))).map(|(q, _)| *q)
+        });
+        let mut labels: Vec<(Pos2, P2, String)> = Vec::new();
         // Where the floor's top is over plan point `q`.
         let on_top = |q: P2| -> Option<P3> {
             let f = shaping.as_ref()?;
@@ -468,27 +477,43 @@ impl BimApp {
                 if is_held {
                     p.line_segment([from, to], Stroke::new(1.5, pal().accent));
                 }
+                let is_lit = lit.is_some_and(|l| l.dist(*q) <= TOL);
                 if lifting {
-                    let r = Rect::from_center_size(to, vec2(9.0, 9.0));
-                    p.rect_filled(r, 1.0, if is_held { pal().accent } else { canvas_pal().surface });
+                    let side = if is_lit { 12.0 } else { 9.0 };
+                    let r = Rect::from_center_size(to, vec2(side, side));
+                    p.rect_filled(r, 1.0, if is_held || is_lit { pal().accent } else { canvas_pal().surface });
                     p.rect_stroke(r, 1.0, Stroke::new(1.5, pal().accent), StrokeKind::Middle);
                 }
-                // Its height as the Options Bar's Elevation reads it: a shape point's always, a corner's while it's held.
+                // Its height as the Options Bar's Elevation reads it: a shape point's always, a corner's while it's held; a
+                // still one's a label to click and type.
                 let point = f.shape.points.iter().any(|s| s.at.dist(*q) <= TOL);
                 if point || is_held {
                     let z = at[2] + by - if absolute { level } else { base.at(*q) };
-                    crate::canvas::tag(&p, to + vec2(8.0, -8.0), egui::Align2::LEFT_BOTTOM, model.units.length(z));
+                    let text = model.units.length(z);
+                    if is_held {
+                        crate::canvas::tag(&p, to + vec2(8.0, -8.0), egui::Align2::LEFT_BOTTOM, text);
+                    } else {
+                        labels.push((to + vec2(8.0, -8.0), *q, text));
+                    }
                 }
             }
-            // Where a click would add a point, or end the split line begun.
-            if adding && let Some(at) = hover.and_then(landing).and_then(on_top) {
-                let to = screen(at);
-                match split_start.and_then(on_top) {
-                    Some(start) => {
-                        p.line_segment([screen(start), to], Stroke::new(1.5, pal().accent));
+            // Where a click would add a point, or end the split line begun; the edge it snaps to lit.
+            if adding && let Some((q, edge)) = hover.and_then(snapped) {
+                if let Some([a, b]) = edge {
+                    let (a, b) = (screen(a), screen(b));
+                    if a.is_finite() && b.is_finite() {
+                        p.line_segment([a, b], Stroke::new(3.0, pal().accent));
                     }
-                    None => {
-                        p.circle_stroke(to, 4.0, Stroke::new(1.5, pal().accent));
+                }
+                if let Some(at) = on_top(q) {
+                    let to = screen(at);
+                    match split_start.and_then(on_top) {
+                        Some(start) => {
+                            p.line_segment([screen(start), to], Stroke::new(1.5, pal().accent));
+                        }
+                        None => {
+                            p.circle_stroke(to, 4.0, Stroke::new(1.5, pal().accent));
+                        }
                     }
                 }
             }
@@ -496,8 +521,10 @@ impl BimApp {
         // A click on a grip picks nothing behind it.
         let click = response.clicked().then(|| response.interact_pointer_pos()).flatten().or(self.canvas.quick_press());
         let click = click.filter(|at| !boxed.is_some_and(|b| modify && crate::section_box::grip_at(b, *at, screen).is_some()));
-        // Shape Editing's clicks are the floor's, not the picture's.
-        let shape_click = click.filter(|_| shaping.is_some());
+        // Shape Editing's clicks are the floor's, not the picture's; one on a height label is the label's.
+        let label_rects: Vec<Rect> =
+            labels.iter().map(|(at, _, text)| crate::shape::label_rect(ui, *at, text).expand2(vec2(18.0, 2.0))).collect();
+        let shape_click = click.filter(|at| shaping.is_some() && !label_rects.iter().any(|r| r.contains(*at)));
         let shape_reach = 8.0 * f64::from(ppp);
         let landed = shape_click.map(|at| (landing(at), px(at)));
         let click = click.filter(|_| shaping.is_none());
@@ -526,6 +553,12 @@ impl BimApp {
         // This view's drag's preview, while it lasts; a plan's is its own.
         if lift_held {
             self.shape_preview = preview.filter(|_| still);
+        }
+        if shaping.is_none() {
+            self.shape_label_edit = None;
+        }
+        for (at, q, text) in labels {
+            self.shape_label(ui, at, q, &text);
         }
         if let Some((q, by)) = raise {
             self.shape_raise(q, by);
