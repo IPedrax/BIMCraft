@@ -6768,8 +6768,13 @@ fn edit_boundary(s: &mut Session, p: &Value) -> R {
         return Ok(json!({"id": id, "sketch": now}));
     };
     let area = m2(r.area());
+    let mut dropped = Value::Null;
     let e = match e {
-        Element::Floor(f) => Element::Floor(Floor { boundary: r.outer, openings: r.holes, sketch: lines, ..f }),
+        Element::Floor(f) => {
+            let (shape, gone) = shape_within(&f.shape, &r.outer, &r.holes);
+            dropped = gone;
+            Element::Floor(Floor { boundary: r.outer, openings: r.holes, sketch: lines, shape, ..f })
+        }
         Element::Ceiling(x) => Element::Ceiling(Ceiling { boundary: r.outer, openings: r.holes, sketch: lines, ..x }),
         Element::Shaft(_) if !r.holes.is_empty() => return Err(bad(c, "a shaft is one outline with no holes in it")),
         Element::Shaft(sh) => Element::Shaft(Shaft { boundary: r.outer, sketch: lines, ..sh }),
@@ -6786,7 +6791,33 @@ fn edit_boundary(s: &mut Session, p: &Value) -> R {
     };
     let id = m.elements.id(id).ok_or_else(|| bad(c, "no such element"))?;
     s.model_mut().elements.insert(id, e);
-    Ok(json!({"id": id, "area_m2": area}))
+    let mut reply = json!({"id": id, "area_m2": area});
+    if !dropped.is_null() {
+        reply["dropped"] = dropped;
+    }
+    Ok(reply)
+}
+
+/// What of a floor's shape a new outline and openings keep: the points inside the outline (or on it) and in no opening,
+/// and the lines between kept points or the new corners whose middles are inside too; and what went, as
+/// `{points: [[x, y], …], lines: [[[x, y], [x, y]], …]}`, or null when nothing did.
+fn shape_within(sh: &crate::model::Shape, outline: &[P2], holes: &[Vec<P2>]) -> (crate::model::Shape, Value) {
+    let near = |r: &[P2], q: P2| geom::ring_edges(r).any(|(a, b)| geom::dist_to_segment(q, a, b) <= TOL);
+    let inside = |q: P2| (geom::contains(outline, q) || near(outline, q)) && !holes.iter().any(|h| geom::contains(h, q) && !near(h, q));
+    let (points, gone_points): (Vec<_>, Vec<_>) = sh.points.iter().cloned().partition(|x| inside(x.at));
+    let corners: Vec<P2> = outline.iter().chain(holes.iter().flatten()).copied().collect();
+    let known = |q: P2| points.iter().any(|x| x.at.dist(q) <= TOL) || corners.iter().any(|c| c.dist(q) <= TOL);
+    let (lines, gone_lines): (Vec<_>, Vec<_>) =
+        sh.lines.iter().cloned().partition(|l| known(l.a) && known(l.b) && inside((l.a + l.b) * 0.5));
+    let gone = if gone_points.is_empty() && gone_lines.is_empty() {
+        Value::Null
+    } else {
+        json!({
+            "points": gone_points.iter().map(|x| x.at).collect::<Vec<_>>(),
+            "lines": gone_lines.iter().map(|l| [l.a, l.b]).collect::<Vec<_>>(),
+        })
+    };
+    (crate::model::Shape { points, lines }, gone)
 }
 
 /// A shape's point as a command takes it; `id` keeps the point it names, and a `guid` sent back with it is let be.

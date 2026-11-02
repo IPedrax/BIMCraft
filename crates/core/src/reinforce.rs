@@ -406,6 +406,13 @@ pub fn bars(m: &Model, host: &Element, p: &Value) -> Result<Vec<Bar>, String> {
             footing(&f, top - bottom, (t.width, t.depth), t.round, &x, a)?
         }
         Element::Floor(fl) => {
+            // ponytail: a shaped floor's bars could follow its flat structure once a variable layer keeps it flat (MOD-16
+            // phase 2); until then its top isn't one plane to measure the cover from.
+            if !fl.shape.is_empty() {
+                return Err("reinforce: a shaped floor can't be armed yet, its top being more than one plane: `reset_shape` it, \
+                     or arm a floor without a shape"
+                    .into());
+            }
             // Its thickness is square to its top, which may slope; the cover and the bars are measured from it.
             let thick = m.types.floor.get(&fl.type_name).map_or(0.0, |t| t.thickness);
             if thick <= TOL {

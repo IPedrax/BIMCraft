@@ -180,3 +180,67 @@ fn a_shape_is_kept_in_the_file_and_goes_to_ifc_as_its_planes() {
     let text = std::fs::read_to_string(&ifc).unwrap();
     assert!(text.contains("'Body','Brep'") && !text.contains("SweptSolid"), "the slab isn't its planes");
 }
+
+#[test]
+fn a_wall_under_a_shaped_floor_follows_its_planes() {
+    let mut s = Session::new();
+    // On Level 2, 3000 mm up, a drain 30 mm down in its middle.
+    let f =
+        run(&mut s, "floor", json!({"level": 100001, "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}))["id"].as_u64().unwrap();
+    run(&mut s, "edit_shape", json!({"id": f, "points": [{"at": [4000, 3000], "z": -30}]}));
+    let wall = run(&mut s, "wall", json!({"points": [[4000, 0], [4000, 6000]], "type": "Interior - 100mm", "attach_top": f}))["ids"][0]
+        .as_u64()
+        .unwrap();
+    // Its top keeps the floor's 200 mm under the floor's top, down to the drain and up again.
+    for (y, fall) in [(500.0, 5.0), (1500.0, 15.0), (3000.0, 30.0), (4500.0, 15.0)] {
+        assert!(near(top(&s, wall, 4000.0, y), 3000.0 - fall - 200.0), "at {y}: {}", top(&s, wall, 4000.0, y));
+    }
+}
+
+#[test]
+fn a_plan_draws_a_shaped_floors_creases() {
+    let mut s = Session::new();
+    slab(&mut s);
+    let ink = |s: &Session| {
+        let d = crate::render::plan(&s.model, 100_000u64, 800, 600);
+        let pm = tiny_skia::Pixmap::decode_png(&crate::render::png(&d).unwrap()).unwrap();
+        pm.pixels().iter().map(|p| p.demultiply()).filter(|p| p.alpha() > 0 && p.red() < 160 && p.green() < 160).count()
+    };
+    let flat = ink(&s);
+    let f = run(&mut s, "elements", json!({"category": "floors"}))["elements"][0]["id"].as_u64().unwrap();
+    run(&mut s, "edit_shape", json!({"id": f, "points": [{"at": [4000, 3000], "z": -30}]}));
+    // Four creases, a corner to the drain each: some hundreds of pixels at this size.
+    let shaped = ink(&s);
+    assert!(shaped > flat + 200, "flat {flat} pixels, shaped {shaped}");
+}
+
+#[test]
+fn edit_boundary_keeps_the_points_inside_and_names_the_rest() {
+    let mut s = Session::new();
+    let f = slab(&mut s);
+    run(
+        &mut s,
+        "edit_shape",
+        json!({"id": f, "points": [{"at": [3000, 3000], "z": -30}, {"at": [7000, 5000], "z": -10}], "lines": [{"a": [0, 0], "b": [3000, 3000]}, {"a": [8000, 6000], "b": [7000, 5000]}]}),
+    );
+    // A 6 m square: the drain stays, and its line from the corner; the far point and its line from a corner gone go.
+    let square = json!([[[0, 0], [6000, 0]], [[6000, 0], [6000, 6000]], [[6000, 6000], [0, 6000]], [[0, 6000], [0, 0]]]);
+    let r = run(&mut s, "edit_boundary", json!({"id": f, "sketch": square}));
+    assert_eq!(r["dropped"]["points"], json!([[7000.0, 5000.0]]), "{r}");
+    assert_eq!(r["dropped"]["lines"].as_array().map(Vec::len), Some(1), "{r}");
+    let now = shape(&mut s, f);
+    assert_eq!((now["points"].as_array().map(Vec::len), now["lines"].as_array().map(Vec::len)), (Some(1), Some(1)));
+    assert!(near(top(&s, f, 3000.0, 3000.0), -30.0));
+}
+
+#[test]
+fn snaps_find_a_shapes_points_and_reinforcement_waits_for_a_flat_structure() {
+    use crate::snap::{Kind, Reach, Snaps, snap};
+    let mut s = Session::new();
+    let f = slab(&mut s);
+    run(&mut s, "edit_shape", json!({"id": f, "points": [{"at": [3000, 2500], "z": -30}]}));
+    let found = snap(&s.model, 100_000, P2(3040.0, 2470.0), Reach { point: 100.0, line: 100.0 }, &[], false, &Snaps::default());
+    assert_eq!((found.kind, found.at), (Kind::Endpoint, P2(3000.0, 2500.0)), "{found:?}");
+    let e = fails(&mut s, "reinforce", json!({"host": f, "cover": 20, "bottom": {"y": {"diameter": 8, "spacing": 150}}}));
+    assert!(e.contains("shape"), "{e}");
+}
