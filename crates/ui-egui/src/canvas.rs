@@ -14,6 +14,7 @@ use bimcraft_core::model::{
 };
 use bimcraft_core::render::{self, Drawing, Prim, Rgb, View};
 use bimcraft_core::snap::{self, Found, Kind, Reach};
+use bimcraft_core::view3d::shape_snap_plan;
 use bimcraft_core::walls::{self, Axis};
 use bimcraft_core::{floor_outline, opening_of, roof_footprint};
 use egui::{
@@ -990,6 +991,33 @@ impl BimApp {
 
     /// What a pick at pixel `q` would land on, shown: its marker and what it is, and the guide it
     /// follows. The point.
+    /// Where Add Point or Add Split Line lands at `q` on the selected floor or roof: a point or corner of its shape within
+    /// reach, else the nearest point on an edge within reach (`shape_snap_plan`), else where the ordinary snaps put it.
+    pub(crate) fn shape_landing(&self, m: &Model, level: Id, v: &View, q: (f32, f32), from: &[P2], square: bool) -> (P2, Option<(P2, P2)>) {
+        let shaped = self.floor_selected().and_then(|(_, f)| shape_snap_plan(m, &f, v.mm(q), f64::from(PICK) / v.scale));
+        shaped.unwrap_or_else(|| (self.snap(m, level, v, q, from, square).at, None))
+    }
+
+    /// [`shape_landing`](Self::shape_landing) as a tool's preview shows it: the edge it snaps to lit, and its marker.
+    fn shape_found(&self, sc: &Scene, q: (f32, f32), from: &[P2], square: bool) -> P2 {
+        let shaped = self.floor_selected().and_then(|(_, f)| shape_snap_plan(sc.m, &f, sc.v.mm(q), f64::from(PICK) / sc.v.scale));
+        let Some((p, edge)) = shaped else { return self.found(sc, q, from, square) };
+        let (stroke, at) = (Stroke::new(2.0, pal().accent), sc.screen(p));
+        match edge {
+            Some((a, b)) => {
+                sc.p.line_segment([sc.screen(a), sc.screen(b)], Stroke::new(3.0, pal().accent));
+                sc.p.add(Shape::closed_line(
+                    vec![at + vec2(0.0, -6.0), at + vec2(6.0, 0.0), at + vec2(0.0, 6.0), at + vec2(-6.0, 0.0)],
+                    stroke,
+                ));
+            }
+            None => {
+                sc.p.rect_stroke(Rect::from_center_size(at, vec2(11.0, 11.0)), 0.0, stroke, StrokeKind::Middle);
+            }
+        }
+        p
+    }
+
     fn found(&self, sc: &Scene, q: (f32, f32), from: &[P2], square: bool) -> P2 {
         let mut f = self.snap(sc.m, sc.level, sc.v, q, from, square);
         if self.snaps_now().alignment_guides && !from.is_empty() && f.kind == Kind::Free {
@@ -1269,7 +1297,9 @@ impl BimApp {
             self.dimension_text_dialog = Some(crate::dimtypes::DimensionTextDialog::new(&model, id, segment));
             return;
         }
-        if let Some(at) = self.clicked_at(&response).filter(|_| !dragged && !writing) {
+        // A click on a shape point's height label is the label's.
+        let on_label = |at: &Pos2| self.shape_label_rects.iter().any(|r| r.contains(*at));
+        if let Some(at) = self.clicked_at(&response).filter(|at| !dragged && !writing && !on_label(at)) {
             let q = (at.x - rect.min.x, at.y - rect.min.y);
             // What lay under the press, which the hand may have left by the time the button came up.
             let found = if Some(q) == local { hovered } else { under_at(q) };
@@ -2097,7 +2127,7 @@ impl BimApp {
             // A point on the selected floor's top: at the Options Bar's elevation, or the top's height there; the tool stays
             // for the next one.
             Tool::AddPoint => {
-                let p = self.snap(m, level, v, at, &[], mods.shift).at;
+                let (p, _) = self.shape_landing(m, level, v, at, &[], mods.shift);
                 self.shape_add_point(p);
             }
             // A point of the selected floor's shape or a corner picked, or else an edge (a split line's, the outline's or an
@@ -2108,7 +2138,7 @@ impl BimApp {
             }
             // A split line across the selected floor's top, from one click to the next; then ready for another.
             &Tool::AddSplitLine(start) => {
-                let p = self.snap(m, level, v, at, start.as_slice(), mods.shift).at;
+                let (p, _) = self.shape_landing(m, level, v, at, start.as_slice(), mods.shift);
                 self.shape_split(p);
             }
         }
@@ -3053,11 +3083,10 @@ impl BimApp {
             | Tool::Section(None)
             | Tool::Shaft(None)
             | Tool::SlopeArrow(None)
-            | Tool::AddSplitLine(None)
             | Tool::Measure(_) => start_of(&self.tool),
             // The point a click would add, and its elevation.
             Tool::AddPoint => {
-                let at = sc.screen(self.found(sc, q, &[], shift));
+                let at = sc.screen(self.shape_found(sc, q, &[], shift));
                 p.circle_stroke(at, 4.0, stroke);
                 let z = self.shape_z.trim();
                 label(cursor, if z.is_empty() { t("Top").to_string() } else { format!("{z} {}", m.units.name()) });
@@ -3065,8 +3094,14 @@ impl BimApp {
             }
             // The split line a click would make.
             &Tool::AddSplitLine(Some(start)) => {
-                let (a, b) = (sc.screen(start), sc.screen(self.found(sc, q, &[start], shift)));
+                let (a, b) = (sc.screen(start), sc.screen(self.shape_found(sc, q, &[start], shift)));
                 p.line_segment([a, b], stroke);
+                return;
+            }
+            // Where a split line would start.
+            Tool::AddSplitLine(None) => {
+                let at = sc.screen(self.shape_found(sc, q, &[], shift));
+                p.circle_stroke(at, 4.0, stroke);
                 return;
             }
             // The section a click would end, and the elevation a click would place.
@@ -3533,8 +3568,12 @@ impl BimApp {
 
     /// While a floor is shaped, each of its points' heights beside it, as the Options Bar's Elevation reads them (relative,
     /// or with Absolute above the level); under Modify Sub Elements, a grip on each, the one held at the cursor.
-    pub(crate) fn shape_overlay(&self, ui: &Ui, m: &Model, view: &bimcraft_core::render::View, rect: Rect, level: Id) {
-        let Some(f) = self.shaping().and_then(|id| m.shapeable(id).ok()) else { return };
+    pub(crate) fn shape_overlay(&mut self, ui: &mut Ui, m: &Model, view: &bimcraft_core::render::View, rect: Rect, level: Id) {
+        self.shape_label_rects.clear();
+        let Some(f) = self.shaping().and_then(|id| m.shapeable(id).ok()) else {
+            self.shape_label_edit = None;
+            return;
+        };
         let f = &f;
         let p = ui.painter_at(rect);
         let at = |q: P2| {
@@ -3550,15 +3589,29 @@ impl BimApp {
         for [a, b] in self.shape_preview.as_ref().map(|f| m.shape_creases(f)).unwrap_or_default() {
             p.extend(egui::Shape::dashed_line(&[at(P2(a[0], a[1])), at(P2(b[0], b[1]))], Stroke::new(1.5, pal().accent), 6.0, 4.0));
         }
-        for (q, z) in m.shape_labels(f, self.shape_absolute) {
+        let hover = ui.input(|i| i.pointer.hover_pos()).filter(|h| rect.contains(*h));
+        let labels = m.shape_labels(f, self.shape_absolute);
+        // The grip under the cursor, lit as the held one is.
+        let lit = hover.and_then(|h| {
+            labels.iter().map(|(q, _)| (*q, at(*q).distance(h))).filter(|(_, d)| *d <= 8.0).min_by(|a, b| a.1.total_cmp(&b.1))
+        });
+        for (q, z) in labels {
             let held = self.shape_grip.is_some_and(|g| g.dist(q) <= TOL);
             let q = cursor.filter(|_| held).unwrap_or(q);
+            let hovered = lit.is_some_and(|(l, _)| l.dist(q) <= TOL);
             if grips {
-                let r = Rect::from_center_size(at(q), vec2(9.0, 9.0));
-                p.rect_filled(r, 1.0, if held { pal().accent } else { canvas_pal().surface });
+                let r = Rect::from_center_size(at(q), vec2(if hovered { 12.0 } else { 9.0 }, if hovered { 12.0 } else { 9.0 }));
+                p.rect_filled(r, 1.0, if held || hovered { pal().accent } else { canvas_pal().surface });
                 p.rect_stroke(r, 1.0, Stroke::new(1.5, pal().accent), StrokeKind::Middle);
             }
-            tag(&p, at(q) + vec2(8.0, -8.0), Align2::LEFT_BOTTOM, m.units.length(z));
+            // Held, its label follows it; else a click on it types its height.
+            let text = m.units.length(z);
+            if held {
+                tag(&p, at(q) + vec2(8.0, -8.0), Align2::LEFT_BOTTOM, text);
+            } else {
+                let r = self.shape_label(ui, at(q) + vec2(8.0, -8.0), q, &text);
+                self.shape_label_rects.push(r);
+            }
         }
     }
 }

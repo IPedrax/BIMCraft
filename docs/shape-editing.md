@@ -35,7 +35,12 @@ Status, on the branch `mod-16-shape-editing` (raised upstream as IPedrax/BIMCraf
   `crates/ui-egui/src/tests/shape3d.rs`). While a grip is held, in plan or in 3D, the creases the release will leave are
   drawn over the floor (`BimApp::shape_preview`, `Model::shape_creases`, `Shape::raised`; tests
   `a_shape_points_grip_held_mid_drag_previews_where_it_and_its_creases_will_go` and
-  `in_3d_a_grip_held_mid_drag_previews_the_creases_its_release_will_leave`).
+  `in_3d_a_grip_held_mid_drag_previews_the_creases_its_release_will_leave`). In both views a grip lights up under the
+  cursor, a point's height label is a button that turns into a field to type its height in (`BimApp::shape_label`;
+  Enter sets it as the Options Bar's Elevation reads it, Esc keeps it, and a click on a label is never the tool's), and
+  Add Point and Add Split Line snap onto the shape's points and corners, else onto the nearest edge (outline, openings,
+  split lines, creases), the edge lit (`view3d::shape_snap_plan`, `shape_snap_3d`; tests
+  `a_points_height_label_clicked_*`, `in_plan_add_point_snaps_*`, `in_3d_add_point_snaps_*`).
 - **Phase 4**, flat roofs, is built: a flat roof by footprint takes a shape through the same commands and tools
   (`Model::shapeable` sees its top as a floor's, `Model::roof_as_floor`), its underside following its top plumb
   (`roof_faces`, `roof_rise`), walls attached under it following its falls, its plan creases thin, its points snapped,

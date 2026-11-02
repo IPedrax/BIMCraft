@@ -2296,6 +2296,70 @@ pub fn shape_handles(m: &Model, f: &crate::model::Floor) -> ShapeHandles {
     (handles, edges)
 }
 
+/// Where Add Point or Add Split Line snaps near plan point `q` on floor `f`'s top in a plan, within `reach` mm: the nearest
+/// point or corner; else the nearest point on the nearest edge (its outline's, an opening's, a split line, or a crease
+/// between its planes), with that edge to light up. None away from them all.
+pub fn shape_snap_plan(m: &Model, f: &crate::model::Floor, q: P2, reach: f64) -> Option<(P2, Option<(P2, P2)>)> {
+    let (handles, mut edges) = shape_handles(m, f);
+    if let Some((c, _)) = handles.iter().map(|(c, _)| (*c, c.dist(q))).filter(|(_, d)| *d <= reach).min_by(|a, b| a.1.total_cmp(&b.1)) {
+        return Some((c, None));
+    }
+    edges.extend(m.shape_creases(f).into_iter().map(|[a, b]| (P2(a[0], a[1]), P2(b[0], b[1]))));
+    let (a, b) = edges
+        .into_iter()
+        .map(|(a, b)| (a, b, geom::dist_to_segment(q, a, b)))
+        .filter(|(.., d)| *d <= reach)
+        .min_by(|x, y| x.2.total_cmp(&y.2))
+        .map(|(a, b, _)| (a, b))?;
+    let t = geom::param_on_segment(q, a, b).clamp(0.0, 1.0);
+    Some((a + (b - a) * t, Some((a, b))))
+}
+
+/// Where Add Point or Add Split Line snaps near pixel `at` on floor `f`'s top in the 3D view through `cam`, within `reach`
+/// pixels: the nearest point or corner; else the point under the cursor on the nearest edge (its outline's, an opening's, a
+/// split line, or a crease between its planes), with that edge in the model to light up. None away from them all.
+pub fn shape_snap_3d(m: &Model, f: &crate::model::Floor, cam: &Camera, at: (f64, f64), reach: f64) -> Option<(P2, Option<[P3; 2]>)> {
+    let (handles, edges) = shape_handles(m, f);
+    let q = P2(at.0, at.1);
+    let shown = |p: P3| {
+        let (x, y, z) = cam.project(p);
+        (x.is_finite() && y.is_finite() && z.is_finite()).then_some(P2(x, y))
+    };
+    let corner =
+        handles.iter().filter_map(|(c, p)| Some((*c, shown(*p)?.dist(q)))).filter(|(_, d)| *d <= reach).min_by(|a, b| a.1.total_cmp(&b.1));
+    if let Some((c, _)) = corner {
+        return Some((c, None));
+    }
+    // The edges in the model: the creases between its planes (its outline's and openings' edges among them), and its split
+    // lines, where its top is.
+    let height = |p: P2| m.floor_top(f).at(p) + m.shape_height(f, p);
+    let lift = |p: P2| [p.0, p.1, height(p)];
+    let mut lines: Vec<[P3; 2]> = m.shape_creases(f);
+    lines.extend(edges.iter().map(|&(a, b)| [lift(a), lift(b)]));
+    let lerp = |[a, b]: [P3; 2], t: f64| [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+    let off = |e: [P3; 2], t: f64| shown(lerp(e, t)).map_or(f64::INFINITY, |s| s.dist(q));
+    // Along an edge, how far its picture lies from the cursor falls then rises, even in perspective: narrowed down to it.
+    let nearest = |e: [P3; 2]| {
+        let (mut lo, mut hi) = (0.0, 1.0);
+        for _ in 0..60 {
+            let (a, b) = (lo + (hi - lo) / 3.0, hi - (hi - lo) / 3.0);
+            if off(e, a) < off(e, b) { hi = b } else { lo = a }
+        }
+        let t = (lo + hi) / 2.0;
+        (t, off(e, t))
+    };
+    let (e, t, _) = lines
+        .into_iter()
+        .map(|e| {
+            let (t, d) = nearest(e);
+            (e, t, d)
+        })
+        .filter(|(.., d)| *d <= reach)
+        .min_by(|a, b| a.2.total_cmp(&b.2))?;
+    let p = lerp(e, t);
+    Some((P2(p[0], p[1]), Some(e)))
+}
+
 /// Where pixel `at` meets floor `f`'s top in the 3D view through `cam`, in plan: on the nearest of its planes there.
 pub fn on_floor_top(m: &Model, f: &crate::model::Floor, cam: &Camera, at: (f64, f64)) -> Option<P2> {
     let mut best: Option<(f64, P2)> = None;

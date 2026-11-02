@@ -1105,3 +1105,55 @@ fn a_shaped_flat_roof_comes_back_from_ifc_shaped_and_a_pitched_one_pitched() {
     assert!(i.model.roof_under(flat).is_some(), "{:?}", i.model.type_layers("roof", &flat.type_name));
     let _ = (pitched, first_roof(&i.model));
 }
+
+#[test]
+fn in_3d_a_cursor_near_an_edge_snaps_onto_it_and_names_the_edge() {
+    use crate::view3d::shape_snap_3d;
+    let mut s = Session::new();
+    let f = slab(&mut s);
+    run(&mut s, "edit_shape", json!({"id": f, "points": [{"at": [4000, 3000], "z": -300}]}));
+    for lens in [None, Some(35.0)] {
+        let mut cam = camera(&s);
+        cam.lens = lens;
+        let fl = s.model.shapeable(f).unwrap();
+        let screen = |p: [f64; 3]| {
+            let (x, y, _) = cam.project(p);
+            (x, y)
+        };
+        // A few pixels off the south edge, a quarter of the way along: on it, there.
+        let (x, y) = screen([2000.0, 0.0, 0.0]);
+        let (q, edge) = shape_snap_3d(&s.model, &fl, &cam, (x + 2.0, y + 3.0), 8.0).expect("the edge");
+        assert!((q.1).abs() < 1.0 && (q.0 - 2000.0).abs() < 150.0, "{q:?} ({lens:?})");
+        let [a, b] = edge.expect("an edge, to light up");
+        assert!(a[1].abs() < 1e-6 && b[1].abs() < 1e-6, "{a:?} {b:?}");
+        // Off a crease from a corner to the drain: on it, at its height.
+        let mid = [2000.0, 1500.0, -150.0];
+        let (x, y) = screen(mid);
+        let (q, edge) = shape_snap_3d(&s.model, &fl, &cam, (x + 1.0, y - 2.0), 8.0).expect("the crease");
+        assert!(q.dist(P2(2000.0, 1500.0)) < 150.0 && edge.is_some(), "{q:?}");
+        // Near the drain: the drain itself, no edge.
+        let (x, y) = screen([4000.0, 3000.0, -300.0]);
+        assert_eq!(shape_snap_3d(&s.model, &fl, &cam, (x + 3.0, y), 8.0), Some((P2(4000.0, 3000.0), None)));
+        // Out in the middle of a plane: nothing to snap to.
+        let (x, y) = screen([2500.0, 2800.0, -150.0]);
+        assert_eq!(shape_snap_3d(&s.model, &fl, &cam, (x, y), 8.0), None);
+    }
+}
+
+#[test]
+fn in_plan_a_cursor_near_an_edge_snaps_onto_it_and_names_the_edge() {
+    use crate::view3d::shape_snap_plan;
+    let mut s = Session::new();
+    let f = slab(&mut s);
+    run(&mut s, "edit_shape", json!({"id": f, "points": [{"at": [4000, 3000], "z": -300}]}));
+    let fl = s.model.shapeable(f).unwrap();
+    // Off the south edge: onto it, the edge named.
+    let (q, edge) = shape_snap_plan(&s.model, &fl, P2(2000.0, 40.0), 100.0).expect("the edge");
+    assert_eq!((q, edge), (P2(2000.0, 0.0), Some((P2(0.0, 0.0), P2(8000.0, 0.0)))));
+    // Off a crease to the drain: onto it.
+    let (q, edge) = shape_snap_plan(&s.model, &fl, P2(2030.0, 1460.0), 100.0).expect("the crease");
+    assert!(q.dist(P2(2030.0, 1460.0)) < 60.0 && (q.1 - 0.75 * q.0).abs() < 1e-6 && edge.is_some(), "{q:?}");
+    // By the drain: the drain.
+    assert_eq!(shape_snap_plan(&s.model, &fl, P2(4050.0, 2960.0), 100.0), Some((P2(4000.0, 3000.0), None)));
+    assert_eq!(shape_snap_plan(&s.model, &fl, P2(2500.0, 2800.0), 100.0), None);
+}

@@ -6,8 +6,17 @@ use bimcraft_core::geom::P2;
 use bimcraft_core::model::{Floor, Id, Model, Shape, TOL};
 use serde_json::{Value, json};
 
+use egui::{Align, Align2, FontId, Key, Pos2, Rect, Sense, TextEdit, Ui, WidgetInfo, WidgetType, vec2};
+
 use crate::lang::{t, tf};
+use crate::style::pal;
 use crate::{BimApp, Status, Tool};
+
+/// Where a height label with `text` lies, its bottom left at `anchor`, with its margin.
+pub(crate) fn label_rect(ui: &Ui, anchor: Pos2, text: &str) -> Rect {
+    let size = ui.painter().layout_no_wrap(text.to_string(), FontId::proportional(12.0), pal().accent).size();
+    Align2::LEFT_BOTTOM.anchor_size(anchor, size).expand2(vec2(3.0, 1.0))
+}
 
 fn point(p: P2) -> Value {
     json!([p.0, p.1])
@@ -64,13 +73,20 @@ impl BimApp {
     /// Modify Sub Elements: the points and corners `picked` (a point, a corner, or an edge's two ends) each to the Options
     /// Bar's elevation, in one `edit_shape`; a corner becomes a point.
     pub(crate) fn shape_modify(&mut self, picked: impl FnOnce(&Floor) -> Vec<P2>) {
+        let typed = self.shape_z.clone();
+        self.shape_heights(picked, &typed);
+    }
+
+    /// The points and corners `picked` each to elevation `typed`, as the Options Bar's Elevation reads (above the unshaped
+    /// top, or with Absolute above the level), in one `edit_shape`; a corner becomes a point.
+    pub(crate) fn shape_heights(&mut self, picked: impl FnOnce(&Floor) -> Vec<P2>, typed: &str) {
         let Some((floor, f)) = self.floor_selected() else { return };
         let m = &self.session.model;
-        let Some(z) = m.units.parse(&self.shape_z) else {
-            let text = if self.shape_z.trim().is_empty() {
+        let Some(z) = m.units.parse(typed) else {
+            let text = if typed.trim().is_empty() {
                 t("type the elevation first").to_string()
             } else {
-                tf("modify sub elements: `{}` is not an elevation", &[&self.shape_z])
+                tf("modify sub elements: `{}` is not an elevation", &[typed])
             };
             self.status = Status { text, error: true };
             return;
@@ -105,6 +121,47 @@ impl BimApp {
             }
             _ => {}
         }
+    }
+
+    /// A shape point's height label, its bottom left at `anchor`: `text`, which a click turns into a field to type the height
+    /// in (as the Options Bar's Elevation reads it); Enter sets it, Esc or leaving it unchanged keeps it. Where it is.
+    pub(crate) fn shape_label(&mut self, ui: &mut Ui, anchor: Pos2, q: P2, text: &str) -> Rect {
+        let at = label_rect(ui, anchor, text);
+        let field = ui.id().with(("shape height", (q.0.to_bits(), q.1.to_bits())));
+        let mut done = None;
+        match &mut self.shape_label_edit {
+            Some((p, typed)) if p.dist(q) <= TOL => {
+                let edit = ui.put(at.expand2(vec2(18.0, 2.0)), TextEdit::singleline(typed).id(field).horizontal_align(Align::Center));
+                if edit.lost_focus() {
+                    done = Some(ui.input(|i| !i.key_pressed(Key::Escape)).then(|| typed.clone()));
+                } else if !edit.has_focus() {
+                    edit.request_focus();
+                }
+            }
+            _ => {
+                let r = ui.interact(at, field, Sense::click());
+                r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf("Point height {}", &[text])));
+                let p = ui.painter();
+                p.rect_filled(at, 2.0, if r.hovered() { pal().accent } else { pal().surface.gamma_multiply(0.85) });
+                p.text(
+                    at.center(),
+                    Align2::CENTER_CENTER,
+                    text,
+                    FontId::proportional(12.0),
+                    if r.hovered() { pal().surface } else { pal().accent },
+                );
+                if r.clicked() {
+                    self.shape_label_edit = Some((q, text.to_string()));
+                }
+            }
+        }
+        if let Some(typed) = done {
+            self.shape_label_edit = None;
+            if let Some(typed) = typed.filter(|t| t.trim() != text) {
+                self.shape_heights(|_| vec![q], &typed);
+            }
+        }
+        at.expand2(vec2(18.0, 2.0))
     }
 
     /// The selected floor's point or corner at `at` raised `by` mm (lowered, negative), to the millimetre: a grip dragged

@@ -75,7 +75,7 @@ msgstr "Betonová tvárnice"
 msgid "Copper"
 msgstr "Měď"
 
-#: crates/core/src/commands.rs:976
+#: crates/core/src/commands.rs:978
 msgid "Copy"
 msgstr "Kopie"
 
@@ -103,7 +103,7 @@ msgstr "Čerchovaná"
 msgid "Data Outlet"
 msgstr "Datová zásuvka"
 
-#: crates/core/src/commands.rs:7367
+#: crates/core/src/commands.rs:7450
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -167,8 +167,8 @@ msgstr "Východ"
 msgid "Elbow 90"
 msgstr "Koleno 90°"
 
-#: crates/core/src/commands.rs:7151
-#: crates/core/src/commands.rs:8824
+#: crates/core/src/commands.rs:7234
+#: crates/core/src/commands.rs:8907
 msgid "Elevation"
 msgstr "Pohled"
 
@@ -261,7 +261,7 @@ msgstr "Vodorovná"
 msgid "Inspection Box"
 msgstr "Revizní šachta"
 
-#: crates/core/src/import.rs:1131
+#: crates/core/src/import.rs:1172
 msgid "Insulation"
 msgstr "Tepelná izolace"
 
@@ -285,7 +285,7 @@ msgstr "Šířka nohy"
 msgid "Length"
 msgstr "Délka"
 
-#: crates/core/src/commands.rs:4398
+#: crates/core/src/commands.rs:4400
 #: crates/core/src/model.rs:2720
 msgid "Level"
 msgstr "Podlaží"
@@ -306,7 +306,7 @@ msgstr "Označení"
 msgid "Masking"
 msgstr "Maskovací"
 
-#: crates/core/src/commands.rs:5436
+#: crates/core/src/commands.rs:5438
 msgid "Mass"
 msgstr "Objem"
 
@@ -314,7 +314,7 @@ msgstr "Objem"
 msgid "Medium Lines"
 msgstr "Střední čáry"
 
-#: crates/core/src/import.rs:1134
+#: crates/core/src/import.rs:1175
 msgid "Membrane"
 msgstr "Hydroizolační fólie"
 
@@ -390,7 +390,7 @@ msgstr "Omítka"
 msgid "Porcelain"
 msgstr "Porcelán"
 
-#: crates/core/src/commands.rs:2284
+#: crates/core/src/commands.rs:2286
 msgid "Project"
 msgstr "Projekt"
 
@@ -414,7 +414,7 @@ msgstr "Počet stupňů"
 msgid "Roof tiles"
 msgstr "Střešní tašky"
 
-#: crates/core/src/commands.rs:5661
+#: crates/core/src/commands.rs:5663
 msgid "Room"
 msgstr "Místnost"
 
@@ -442,8 +442,8 @@ msgstr "Potěr"
 msgid "Seat Height"
 msgstr "Výška sedáku"
 
-#: crates/core/src/commands.rs:7128
-#: crates/core/src/commands.rs:8823
+#: crates/core/src/commands.rs:7211
+#: crates/core/src/commands.rs:8906
 msgid "Section"
 msgstr "Řez"
 
@@ -559,7 +559,7 @@ msgstr "Typ"
 msgid "UP"
 msgstr "NAHORU"
 
-#: crates/core/src/commands.rs:7508
+#: crates/core/src/commands.rs:7591
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 

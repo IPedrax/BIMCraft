@@ -157,3 +157,63 @@ fn spot_slope_reads_the_fall_of_a_shaped_floor_where_its_clicked() {
     assert_eq!((field(&h, spots[0], "slope"), field(&h, spots[0], "toward")), (json!(1.5), json!([1.0, 0.0])));
     assert_eq!(h.state().tool, Tool::SpotSlope, "ready for the next one");
 }
+
+/// A click on point `label`'s height label, `text` typed over it and Enter.
+fn retype_height(h: &mut Harness<BimApp>, label: &str, text: &str) {
+    h.get_by_label(label).click();
+    h.run();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.event(Event::Text(text.into()));
+    h.run();
+    key(h, Key::Enter);
+}
+
+#[test]
+fn a_points_height_label_clicked_takes_a_height_typed_in_plan_and_in_3d() {
+    let mut h = app(r#"floor {"boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}"#);
+    let floor = ids(&h, "floor")[0];
+    h.state_mut().run("edit_shape", json!({"id": floor, "points": [{"at": [4000, 3000], "z": -30}]}));
+    click(&mut h, P2(4000.0, 0.0));
+    press(&mut h, "Modify Sub Elements");
+    retype_height(&mut h, "Point height -30", "-45");
+    assert_eq!(point_near(&h, floor, 4000.0, 3000.0, 0.0).map(|p| p.1), Some(-45.0));
+    // Under Add Point a click on a label is the label's: no point there.
+    press(&mut h, "Add Point");
+    h.get_by_label("Point height -45").click();
+    h.run();
+    key(&mut h, Key::Escape);
+    assert_eq!(field(&h, floor, "shape")["points"].as_array().map(Vec::len), Some(1));
+    assert_eq!(point_near(&h, floor, 4000.0, 3000.0, 0.0).map(|p| p.1), Some(-45.0), "Esc leaves it");
+    // In 3D alike.
+    press(&mut h, "Default 3D View");
+    press(&mut h, "Modify Sub Elements");
+    retype_height(&mut h, "Point height -45", "-120");
+    assert_eq!(point_near(&h, floor, 4000.0, 3000.0, 0.0).map(|p| p.1), Some(-120.0));
+    assert_eq!(field(&h, floor, "shape")["points"].as_array().map(Vec::len), Some(1));
+}
+
+#[test]
+fn in_3d_add_point_snaps_onto_an_edge_near_the_cursor() {
+    let (mut h, floor) = drained();
+    press(&mut h, "Add Point");
+    type_into(&mut h, "Elevation:", "-10");
+    // A few pixels off the south edge, a quarter of the way along.
+    let at = h.state().screen3([2000.0, 0.0, 0.0]) + vec2(2.0, 3.0);
+    click_at(&mut h, at);
+    let (p, z) = point_near(&h, floor, 2000.0, 0.0, 200.0).expect("a point on the edge");
+    assert!(p.1.abs() < 1.0 && z == -10.0, "{p:?} {z}");
+}
+
+#[test]
+fn in_plan_add_point_snaps_onto_an_edge_near_the_cursor() {
+    let mut h = app(r#"floor {"boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}"#);
+    let floor = ids(&h, "floor")[0];
+    h.state_mut().run("edit_shape", json!({"id": floor, "points": [{"at": [4000, 3000], "z": -300}]}));
+    click(&mut h, P2(4000.0, 0.0));
+    press(&mut h, "Add Point");
+    type_into(&mut h, "Elevation:", "-10");
+    // Just off a crease from a corner to the drain: onto it.
+    click(&mut h, P2(2040.0, 1480.0));
+    let (p, z) = point_near(&h, floor, 2040.0, 1480.0, 100.0).expect("a point on the crease");
+    assert!((p.1 - 0.75 * p.0).abs() < 1.0 && z == -10.0, "{p:?} {z}");
+}

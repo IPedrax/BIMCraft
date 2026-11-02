@@ -523,6 +523,10 @@ pub struct BimApp {
     shape_grip: Option<P2>,
     /// The selected floor as a grip's drag would leave it, plan or 3D, while it's dragged: its creases drawn over it.
     pub(crate) shape_preview: Option<bimcraft_core::model::Floor>,
+    /// A shape point's height label clicked into a field: the point, and what's typed.
+    pub(crate) shape_label_edit: Option<(P2, String)>,
+    /// Where the plan drew the shape's height labels, last frame: a click there is the label's, not the tool's.
+    pub(crate) shape_label_rects: Vec<egui::Rect>,
     shaft_top: Option<Option<Id>>,
     shaft_height: String,
     /// The Mass tool's top, as the Shaft tool's.
@@ -1018,6 +1022,8 @@ impl BimApp {
             shape_absolute: false,
             shape_grip: None,
             shape_preview: None,
+            shape_label_edit: None,
+            shape_label_rects: Vec::new(),
             shaft_top: None,
             shaft_height: units.length(3000.0),
             mass_top: None,
