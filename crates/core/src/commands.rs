@@ -6823,11 +6823,11 @@ fn edit_boundary(s: &mut Session, p: &Value) -> R {
         return Ok(json!({"id": id, "sketch": now}));
     };
     let area = m2(r.area());
-    let mut dropped = Value::Null;
+    let mut said = serde_json::Map::new();
     let e = match e {
         Element::Floor(f) => {
-            let (shape, gone) = shape_within(&f.shape, &r.outer, &r.holes);
-            dropped = gone;
+            let shape;
+            (shape, said) = shape_within(m, &f, &r.outer, &r.holes);
             Element::Floor(Floor { boundary: r.outer, openings: r.holes, sketch: lines, shape, ..f })
         }
         Element::Ceiling(x) => Element::Ceiling(Ceiling { boundary: r.outer, openings: r.holes, sketch: lines, ..x }),
@@ -6837,7 +6837,7 @@ fn edit_boundary(s: &mut Session, p: &Value) -> R {
             let mut new = Roof { boundary: r.outer, courtyards: r.holes, gables: Vec::new(), sketch: lines, ..old.clone() };
             // A flat one's shape keeps what stays on its top, as a floor's does.
             let holes: Vec<Vec<P2>> = new.courtyards.iter().chain(&new.openings).cloned().collect();
-            (new.shape, dropped) = shape_within(&old.shape, &new.boundary, &holes);
+            (new.shape, said) = shape_within(m, &m.roof_as_floor(&old), &new.boundary, &holes);
             // A gable stays where its edge does, either way round.
             let same =
                 |(a, b): (P2, P2), (c, d): (P2, P2)| (a.dist(c) <= TOL && b.dist(d) <= TOL) || (a.dist(d) <= TOL && b.dist(c) <= TOL);
@@ -6850,32 +6850,96 @@ fn edit_boundary(s: &mut Session, p: &Value) -> R {
     let id = m.elements.id(id).ok_or_else(|| bad(c, "no such element"))?;
     s.model_mut().elements.insert(id, e);
     let mut reply = json!({"id": id, "area_m2": area});
-    if !dropped.is_null() {
-        reply["dropped"] = dropped;
+    if let Some(o) = reply.as_object_mut() {
+        o.extend(said);
     }
     Ok(reply)
 }
 
-/// What of a floor's shape a new outline and openings keep: the points inside the outline (or on it) and in no opening,
-/// and the lines between kept points or the new corners whose middles are inside too; and what went, as
-/// `{points: [[x, y], …], lines: [[[x, y], [x, y]], …]}`, or null when nothing did.
-fn shape_within(sh: &crate::model::Shape, outline: &[P2], holes: &[Vec<P2>]) -> (crate::model::Shape, Value) {
+/// What of a floor's (or a flat roof's, seen as one) shape a new outline and openings keep, so its top round them stays
+/// as it was: the points inside the outline (or on it) and in no opening; each split line cut where it leaves the outline
+/// or enters an opening, the pieces inside kept; and at each end of a piece, and each new corner of the outline or an
+/// opening, a point at the height the top had there, unless one is there or it was 0. And what changed, as `dropped`
+/// (`{points: [[x, y], …], lines: [[[x, y], [x, y]], …]}`, what went), `cut` (the lines cut) and `added` (the points made).
+fn shape_within(m: &Model, old: &Floor, outline: &[P2], holes: &[Vec<P2>]) -> (crate::model::Shape, serde_json::Map<String, Value>) {
+    let sh = &old.shape;
+    let mut said = serde_json::Map::new();
+    if sh.is_empty() {
+        return (sh.clone(), said);
+    }
+    let was = |q: P2| (m.shape_height(old, q) * 1000.0).round() / 1000.0;
     let near = |r: &[P2], q: P2| geom::ring_edges(r).any(|(a, b)| geom::dist_to_segment(q, a, b) <= TOL);
     let inside = |q: P2| (geom::contains(outline, q) || near(outline, q)) && !holes.iter().any(|h| geom::contains(h, q) && !near(h, q));
-    let (points, gone_points): (Vec<_>, Vec<_>) = sh.points.iter().cloned().partition(|x| inside(x.at));
+    let (mut points, gone_points): (Vec<_>, Vec<_>) = sh.points.iter().cloned().partition(|x| inside(x.at));
     let corners: Vec<P2> = outline.iter().chain(holes.iter().flatten()).copied().collect();
-    let known = |q: P2| points.iter().any(|x| x.at.dist(q) <= TOL) || corners.iter().any(|c| c.dist(q) <= TOL);
-    let (lines, gone_lines): (Vec<_>, Vec<_>) =
-        sh.lines.iter().cloned().partition(|l| known(l.a) && known(l.b) && inside((l.a + l.b) * 0.5));
-    let gone = if gone_points.is_empty() && gone_lines.is_empty() {
-        Value::Null
-    } else {
-        json!({
-            "points": gone_points.iter().map(|x| x.at).collect::<Vec<_>>(),
-            "lines": gone_lines.iter().map(|l| [l.a, l.b]).collect::<Vec<_>>(),
-        })
+    let old_corners: Vec<P2> = old.boundary.iter().chain(old.openings.iter().flatten()).copied().collect();
+    let edges: Vec<(P2, P2)> = std::iter::once(outline).chain(holes.iter().map(Vec::as_slice)).flat_map(geom::ring_edges).collect();
+    let mut added: Vec<P2> = Vec::new();
+    // A point at `q` at the height the top had there, unless one is there, it's a corner the top already meets, or it was 0.
+    let mut keep_height = |points: &mut Vec<crate::model::ShapePoint>, q: P2, corner_ok: bool| {
+        let known = points.iter().any(|x| x.at.dist(q) <= TOL) || (corner_ok && corners.iter().any(|c| c.dist(q) <= TOL));
+        let z = was(q);
+        if !known && z.abs() > 0.01 {
+            points.push(crate::model::ShapePoint { at: q, z, ..Default::default() });
+            added.push(q);
+        }
     };
-    (crate::model::Shape { points, lines }, gone)
+    // Each new corner where the top wasn't at 0.
+    for &c in &corners {
+        if !old_corners.iter().any(|o| o.dist(c) <= TOL) {
+            keep_height(&mut points, c, false);
+        }
+    }
+    let (mut lines, mut gone_lines, mut cut) = (Vec::new(), Vec::new(), Vec::new());
+    for l in &sh.lines {
+        // Where it crosses an edge, or passes a corner: the pieces between, those inside kept.
+        let mut ts = vec![0.0, 1.0];
+        ts.extend(edges.iter().filter_map(|&(a, b)| geom::crossing(l.a, l.b, a, b)));
+        ts.extend(corners.iter().filter(|c| geom::dist_to_segment(**c, l.a, l.b) <= TOL).map(|c| geom::param_on_segment(*c, l.a, l.b)));
+        ts.sort_by(f64::total_cmp);
+        ts.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+        let at = |t: f64| l.a + (l.b - l.a) * t;
+        let mut pieces: Vec<(f64, f64)> = Vec::new();
+        for w in ts.windows(2) {
+            if let [t0, t1] = *w
+                && inside(at((t0 + t1) / 2.0))
+            {
+                match pieces.last_mut() {
+                    Some(last) if (last.1 - t0).abs() < 1e-9 => last.1 = t1,
+                    _ => pieces.push((t0, t1)),
+                }
+            }
+        }
+        let pieces: Vec<(P2, P2)> = pieces.into_iter().map(|(t0, t1)| (at(t0), at(t1))).filter(|(a, b)| a.dist(*b) > TOL).collect();
+        match pieces.as_slice() {
+            [] => gone_lines.push(l.clone()),
+            [(a, b)] if a.dist(l.a) <= TOL && b.dist(l.b) <= TOL => lines.push(l.clone()),
+            _ => {
+                cut.push([l.a, l.b]);
+                lines.extend(pieces.iter().map(|&(a, b)| crate::model::SplitLine { a, b, ..Default::default() }));
+            }
+        }
+    }
+    // Each end of a line kept a point or a corner, at the height the top had there.
+    for end in lines.iter().flat_map(|l| [l.a, l.b]).collect::<Vec<_>>() {
+        keep_height(&mut points, end, true);
+    }
+    if !gone_points.is_empty() || !gone_lines.is_empty() {
+        said.insert(
+            "dropped".into(),
+            json!({
+                "points": gone_points.iter().map(|x| x.at).collect::<Vec<_>>(),
+                "lines": gone_lines.iter().map(|l| [l.a, l.b]).collect::<Vec<_>>(),
+            }),
+        );
+    }
+    if !cut.is_empty() {
+        said.insert("cut".into(), json!(cut));
+    }
+    if !added.is_empty() {
+        said.insert("added".into(), json!(added));
+    }
+    (crate::model::Shape { points, lines }, said)
 }
 
 /// A shape's point as a command takes it; `id` keeps the point it names, and a `guid` sent back with it is let be.
