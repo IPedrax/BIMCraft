@@ -334,3 +334,99 @@ fn pick_finds_the_plane_under_the_pointer_a_points_or_a_datums() {
     // Outside every datum's rectangle and every point's planes: nothing.
     assert_eq!(pick([5000., 0., 5000.]), None);
 }
+
+#[test]
+fn a_selection_box_takes_what_is_inside_it_left_to_right_and_what_it_touches_right_to_left() {
+    let mut d = Definition::default();
+    let a = d.add_point([100., 100., 0.]);
+    let b = d.add_point([900., 100., 0.]);
+    let c = d.add_point([900., 900., 0.]);
+    let line = d.add_chain(&[a.clone(), b.clone()], false).expect("a line");
+    let far = d.add_point([5000., 5000., 0.]);
+    let _ = (c, far);
+    let r = d.evaluate(&BTreeMap::new(), &d.preview);
+    // Seen from above, a millimetre a pixel, y down.
+    let screen = |p: P3| Some((p[0], -p[1], 0.));
+    let sorted = |mut v: Vec<String>| {
+        v.sort();
+        v
+    };
+    // Left to right round the line and its two points: those three, nothing only partly in.
+    assert_eq!(sorted(r.in_box(&screen, (0., -200.), (1000., 0.))), sorted(vec![a.clone(), b.clone(), line.clone()]));
+    // Left to right over half of the line: only the point wholly inside.
+    assert_eq!(r.in_box(&screen, (0., -200.), (500., 0.)), vec![a.clone()]);
+    // Right to left over the same half: the point, and the line it touches.
+    assert_eq!(sorted(r.in_box(&screen, (500., 0.), (0., -200.))), sorted(vec![a.clone(), line.clone()]));
+    // Right to left across the middle of the line, touching no point: the line.
+    assert_eq!(r.in_box(&screen, (600., -150.), (400., -50.)), vec![line]);
+}
+
+#[test]
+fn a_forms_edges_are_where_its_faces_fold_and_its_open_borders() {
+    // A box: its 12 edges, not the diagonals that split its faces into triangles.
+    let mut d = Definition::default();
+    let ids: Vec<String> = [[0., 0., 0.], [1000., 0., 0.], [1000., 500., 0.], [0., 500., 0.]].into_iter().map(|p| d.add_point(p)).collect();
+    let profile = d.add_chain(&ids, true).expect("a profile");
+    let form = d.create_form(&[profile], 300., false).expect("a form");
+    let r = d.evaluate(&BTreeMap::new(), &d.preview);
+    let Some(Evaluated::Form { mesh, .. }) = r.values.get(&form) else { panic!("{:?}", r.diagnostics) };
+    assert_eq!(mesh.folds(20.).len(), 12);
+}
+
+/// Two points on Ref. Level, a line through them, and a point on the first one's XY plane.
+fn two_points_a_line_and_a_child() -> (Definition, String, String, String, String) {
+    let mut d = Definition::default();
+    let a = d.add_point([0., 0., 0.]);
+    let b = d.add_point([1000., 0., 0.]);
+    let line = d.add_chain(&[a.clone(), b.clone()], false).expect("a line");
+    let r = d.evaluate(&BTreeMap::new(), &d.preview);
+    let child = d.add_point_on(&WorkPlane::Point { point: a.clone(), plane: Plane::Xy }, [200., 300., 0.], &r).expect("a child");
+    (d, a, b, line, child)
+}
+
+fn at(d: &Definition, id: &str) -> P3 {
+    frame_of(d, id).origin
+}
+
+#[test]
+fn move_takes_a_line_with_its_points_and_what_is_hosted_on_them() {
+    let (mut d, a, b, line, child) = two_points_a_line_and_a_child();
+    let r = d.evaluate(&BTreeMap::new(), &d.preview);
+    d.move_elements(&[line], [0., 500., 0.], &r).expect("moved");
+    assert!(near(at(&d, &a), [0., 500., 0.]) && near(at(&d, &b), [1000., 500., 0.]));
+    assert!(near(at(&d, &child), [200., 800., 0.]), "the child came with its host, once");
+    // The child alone moves within its host's plane.
+    let r = d.evaluate(&BTreeMap::new(), &d.preview);
+    d.move_elements(std::slice::from_ref(&child), [100., 0., 0.], &r).expect("moved");
+    assert!(near(at(&d, &child), [300., 800., 0.]));
+    assert!(near(at(&d, &a), [0., 500., 0.]), "its host stays");
+}
+
+#[test]
+fn copy_makes_new_points_and_lines_and_a_copied_adaptive_point_is_numbered_next() {
+    let (mut d, a, b, line, _) = two_points_a_line_and_a_child();
+    let before = d.nodes.len();
+    let r = d.evaluate(&BTreeMap::new(), &d.preview);
+    let made = d.copy_elements(std::slice::from_ref(&line), [0., 500., 0.], &r).expect("copied");
+    assert_eq!(d.nodes.len(), before + 3, "a line and its two points");
+    let copy =
+        made.iter().find(|id| d.nodes.iter().any(|n| &&n.id == id && matches!(n.operation, Operation::Line { .. }))).expect("a line");
+    let Some(Node { operation: Operation::Line { a: ca, b: cb }, .. }) = d.nodes.iter().find(|n| &n.id == copy) else { panic!() };
+    assert!(near(at(&d, ca), [0., 500., 0.]) && near(at(&d, cb), [1000., 500., 0.]));
+    assert!(near(at(&d, &a), [0., 0., 0.]) && near(at(&d, &b), [1000., 0., 0.]), "the originals stay");
+    // An adaptive point copied is a new placement point, numbered next.
+    d.make_adaptive(&a).expect("adaptive");
+    let r = d.evaluate(&BTreeMap::new(), &d.preview);
+    let made = d.copy_elements(&[a], [0., 0., 300.], &r).expect("copied");
+    assert_eq!(d.number(&made[0]), Some(2));
+}
+
+#[test]
+fn rotate_turns_the_points_about_the_centre_square_to_the_work_plane() {
+    let (mut d, a, b, line, _) = two_points_a_line_and_a_child();
+    let r = d.evaluate(&BTreeMap::new(), &d.preview);
+    d.rotate_elements(&[line], [0., 0., 0.], [0., 0., 1.], 90., &r).expect("rotated");
+    assert!(near(at(&d, &a), [0., 0., 0.]));
+    let p = at(&d, &b);
+    assert!((p[0]).abs() < 1e-6 && (p[1] - 1000.).abs() < 1e-6, "{p:?}");
+}

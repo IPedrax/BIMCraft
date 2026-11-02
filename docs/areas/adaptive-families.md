@@ -59,21 +59,33 @@ samples/adaptive-panel.txt --save panel.bimcraft` places two instances of it, th
 
 An adaptive family is edited as Revit edits a family: a **family document** that takes the whole window
 (`editor/document.rs`, `BimApp::family_doc`), in place of the Family Editor dialog the other families keep. The window's title
-and title bar name the family and its view. Its own ribbon has Create and Modify, and a contextual tab for the tool in hand or
-what is selected, as Revit names them ("Modify | Place Reference Point", "Modify | Place Lines", "Modify | Reference Points",
-"Modify | Lines", "Modify | Form", "Modify | Multi-Select"); it comes up when it appears and goes back to the tab it came from.
-Its panels:
+and title bar name the family and its view. Its own ribbon has Revit's tabs, Create, Insert, View, Manage and Modify, and a
+contextual tab for the tool in hand or what is selected, as Revit names them ("Modify | Place Reference Point", "Modify | Place
+Lines", "Modify | Reference Points", "Modify | Lines", "Modify | Form", "Modify | Multi-Select"): Modify's panels with the
+selection's own; it comes up when it appears and goes back to the tab it came from. Its panels lay out as Revit's, and a tool
+BIMCraft does not have yet shows greyed where Revit has it ("Not in BIMCraft yet"):
 
-- **Select**: Modify.
-- **Properties**: the palette, **Family Category and Parameters** and **Family Types** (dialogs, as Revit's: the name and
-  category; the parameters and the types).
-- **Draw** (Create): Line and Point Element.
-- **Form**: Create Form > Solid Form or Void Form.
-- **Adaptive Component** (with points selected): Make Adaptive.
-- **Modify**: Delete.
-- **Test Placement** (Create, BIMCraft's own): Capture Placement, Apply to Instance, Place Instance.
-- **Family** (Create): Load Family, Save Family, Add to Favorites.
-- **Family Editor**: Load into Project, Load into Project and Close.
+- **Select** (Create, Modify, contextual): Modify.
+- **Properties** (the same): the palette, **Family Category and Parameters** and **Family Types** (dialogs, as Revit's: the
+  name and category; the parameters and the types).
+- **Draw** (Create, and the contextual tab while drawing): Model, Reference, Plane, then the gallery: Line and Point Element
+  work; Rectangle, Inscribed Polygon, Circle, Center-ends Arc, Spline, Ellipse, Spline Through Points, Pick Lines, Pick Faces
+  are greyed, as are Reference and Plane.
+- **Work Plane** (the same): **Set** picks the work plane in the view (as Placement Plane's Pick), **Show** draws it (tinted,
+  with a grid); Viewer is greyed.
+- **Model**, **Datum** (Create): greyed (Component, Model Text, Level, Reference Plane).
+- **Form** (Create, and the contextual tab with lines selected): Create Form > Solid Form or Void Form.
+- **Test Placement** (Create, BIMCraft's own): Replay Instance, Capture Placement, Apply to Instance, Place Instance.
+- **Family** (Insert): Load Family, Save Family, Add to Favorites; **Import** greyed.
+- **Graphics**, **Windows** (View) and **Settings** (Manage): greyed.
+- **Clipboard**, **Modify**, **Measure** (Modify, contextual): Delete; **Move**, **Copy** and **Rotate**, as Revit's: two clicks in
+  the view, on points exactly or on the work plane (Move and Copy from the first to the second; Rotate about the selection's
+  centre, square to the work plane, from where the angle starts to where it ends, to the whole degree), then back to Modify,
+  the copies selected (`Definition::move_elements`, `copy_elements`, `rotate_elements`: what is selected with what it is built
+  on, a line's points, never a point's host; a point hosted on another moves within it, a copied placement point is numbered
+  next). Align, Offset, the Mirrors, Trim/Extend, Split, Paste and Measure are greyed.
+- **Adaptive Component** (contextual, with points selected): Make Adaptive.
+- **Family Editor** (every tab): Load into Project, Load into Project and Close.
 
 What they ask for goes through the code the dialog's buttons use (`FamilyEditor::ask`, `family_asked`). The docked Properties
 palette shows what is selected with Revit's groups (Adaptive Component, Graphics, Identity Data; a type-selector box naming it),
@@ -83,10 +95,16 @@ forgotten), with a view control bar (Zoom to Fit), the Options Bar over it (the 
 depth Create Form extrudes), Undo in the title bar stepping through the family's edits, and the status bar saying what the tool
 asks for.
 
-The modelling view (`adaptive_view.rs`) is a 3D view on the drawing's own ground (light in a dark interface when the canvas is
-kept light), orbited by a drag on empty space, panned with the middle button, zoomed with the wheel. It draws the template's
+The modelling view (`adaptive_view.rs`) is a 3D view drawn as Revit's of a family: a grey ground lighter towards the bottom (on
+the drawing's own ground: lighter in a dark interface when the canvas is kept light), Ref. Level a dash-dot outline, the
+reference planes dashed green, forms light grey with their edges where their faces fold (`Mesh::folds`), points as black dots,
+placement numbers in blue; and Revit's **ViewCube** at the top right (a face clicked looks from that side, `cube_faces`; the house
+over it is the default view; a drag on it orbits). It opens framing the family and its datums, and is orbited by Shift and the middle button (as Revit's), panned with the middle button, zoomed with the wheel; a drag on
+empty space draws a selection box, as Revit's: left to right it takes what lies wholly inside it (a solid outline), right to
+left what it touches (dashed), Ctrl adding to the selection and Shift taking away (`Evaluation::in_box`). It draws the template's
 datums (`Datum`): Ref. Level and the reference planes Center (Front/Back) and Center (Left/Right), each the outline of a rectangle
-round what the family takes up, named; and a grid a metre apart on the work plane Point Element and Line draw on. That is Revit's
+round what the family takes up, named; and, with Work Plane > Show, a grid a metre apart on the work plane Point Element and
+Line draw on. That is Revit's
 **Placement Plane**, in the Options Bar while drawing (`WorkPlane`, `Modeller::work_plane`): one of the datums (Ref. Level to
 begin with) or one of a point's three planes, or **Pick…**, first in the list as in Revit: the next click picks the plane under
 the pointer, lit as the pointer passes over it (`Evaluation::pick_plane`: the nearest the eye, a point's plane before a datum it

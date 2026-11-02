@@ -6195,6 +6195,7 @@ fn adaptive_editor_visual_preview_in_three_looks() {
         h.set_size(vec2(1600., 1000.));
         h.state_mut().edit_family("Adaptive panel");
         h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("adaptive-create-{name}.png"))).unwrap();
         // Point 1 selected, so Properties shows its Revit fields.
         if let Some(ed) = h.state_mut().family_editor.as_mut() {
             ed.modeller.selection = vec!["p1".into()];

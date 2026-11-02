@@ -19,7 +19,7 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
     match m.tool {
         Draw::Point => return Some(msg!("Modify | Place Reference Point")),
         Draw::Line(_) => return Some(msg!("Modify | Place Lines")),
-        Draw::Modify => {}
+        Draw::Modify | Draw::Move { .. } | Draw::Rotate { .. } => {}
     }
     let d = ed.adaptive.as_ref()?;
     let r = d.evaluate(&ed.values(), &d.preview);
@@ -73,7 +73,13 @@ impl BimApp {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
-                for (tab, label) in [(DocTab::Create, msg!("Create")), (DocTab::Modify, "Modify")] {
+                for (tab, label) in [
+                    (DocTab::Create, msg!("Create")),
+                    (DocTab::Insert, msg!("Insert")),
+                    (DocTab::View, msg!("View")),
+                    (DocTab::Manage, msg!("Manage")),
+                    (DocTab::Modify, "Modify"),
+                ] {
                     if tab_button(ui, label, ed.doc_tab == tab, false).clicked() {
                         ed.doc_tab = tab;
                     }
@@ -100,7 +106,9 @@ impl BimApp {
         self.family_editor = Some(ed);
     }
 
-    /// The panels of the family document's active tab, as Revit's family editor lays them out.
+    /// The panels of the family document's active tab, as Revit's family editor lays them out: Create (drawing), Insert, View,
+    /// Manage, Modify (editing what is selected), and the contextual tab, Modify's panels with the selection's own. A tool
+    /// BIMCraft does not have yet shows where Revit has it, greyed.
     fn family_panels(&mut self, ui: &mut Ui, ed: &mut FamilyEditor) {
         let values = ed.values();
         let (points, lines) = match ed.adaptive.as_ref() {
@@ -108,10 +116,159 @@ impl BimApp {
             None => (Vec::new(), Vec::new()),
         };
         let tab = ed.doc_tab;
+        let drawing = !matches!(ed.modeller.tool, Draw::Modify);
+        if matches!(tab, DocTab::Create | DocTab::Modify | DocTab::Context) {
+            self.select_and_properties(ui, ed);
+        }
+        match tab {
+            DocTab::Create => {
+                draw_panel(ui, ed);
+                work_plane_panel(ui, ed);
+                ribbon::panel(ui, msg!("Model"), |ui| {
+                    later(ui, Icon::Component, "Component");
+                    later(ui, Icon::Text, msg!("Model Text"));
+                });
+                ribbon::panel(ui, msg!("Datum"), |ui| {
+                    later(ui, Icon::Level, "Level");
+                    later(ui, Icon::Line, msg!("Reference Plane"));
+                });
+                self.form_panel(ui, ed, &lines);
+                self.test_placement_panel(ui, ed);
+            }
+            DocTab::Insert => {
+                ribbon::panel(ui, msg!("Family"), |ui| {
+                    if big_button(ui, Icon::LoadFamily, msg!("Load Family"), false, msg!("Load Family: open a family file here")).clicked()
+                    {
+                        ed.ask.load = true;
+                    }
+                    if big_button(ui, Icon::Save, msg!("Save Family"), false, msg!("Save Family: the family to a file")).clicked() {
+                        ed.ask.save = true;
+                    }
+                    let tip = msg!("Add to Favorites: the family to your Favorites");
+                    if big_button(ui, Icon::Favorite, msg!("Add to Favorites"), false, tip).clicked() {
+                        ed.ask.favorite = true;
+                    }
+                });
+                ribbon::panel(ui, msg!("Import"), |ui| {
+                    later(ui, Icon::ImportCad, msg!("Import CAD"));
+                    later(ui, Icon::Materials, msg!("Image"));
+                });
+            }
+            DocTab::View => {
+                ribbon::panel(ui, msg!("Graphics"), |ui| {
+                    later(ui, Icon::Visibility, msg!("Visibility/Graphics"));
+                    later(ui, Icon::ThinLines, msg!("Thin Lines"));
+                });
+                ribbon::panel(ui, msg!("Windows"), |ui| {
+                    later(ui, Icon::CloseInactive, msg!("Close Inactive Views"));
+                });
+            }
+            DocTab::Manage => {
+                ribbon::panel(ui, msg!("Settings"), |ui| {
+                    later(ui, Icon::ObjectStyles, msg!("Object Styles"));
+                    later(ui, Icon::Materials, "Materials");
+                    later(ui, Icon::Units, msg!("Project Units"));
+                });
+            }
+            DocTab::Modify | DocTab::Context => {
+                if tab == DocTab::Context && drawing {
+                    draw_panel(ui, ed);
+                    work_plane_panel(ui, ed);
+                }
+                ribbon::panel(ui, msg!("Clipboard"), |ui| {
+                    later(ui, Icon::Copy, msg!("Paste"));
+                });
+                ribbon::panel(ui, msg!("Modify"), |ui| {
+                    let some = !ed.modeller.selection.is_empty();
+                    for (icon, label) in [(Icon::Align, "Align"), (Icon::Offset, "Offset"), (Icon::MirrorPick, msg!("Mirror - Pick Axis"))]
+                    {
+                        later_small(ui, icon, label);
+                    }
+                    later_small(ui, Icon::MirrorDraw, msg!("Mirror - Draw Axis"));
+                    // Move, Copy and Rotate, as Revit's: two clicks in the view.
+                    let tool = ed.modeller.tool.clone();
+                    let tip = msg!("Move (MV): what is selected, from a point clicked to another");
+                    if ui
+                        .add_enabled_ui(some, |ui| {
+                            crate::small_button(ui, Icon::Move, "Move", matches!(tool, Draw::Move { copy: false, .. }), tip)
+                        })
+                        .inner
+                        .clicked()
+                    {
+                        ed.modeller.tool = Draw::Move { from: None, copy: false };
+                    }
+                    let tip = msg!("Copy (CO): copies of what is selected, from a point clicked to another");
+                    if ui
+                        .add_enabled_ui(some, |ui| {
+                            crate::small_button(ui, Icon::Copy, "Copy", matches!(tool, Draw::Move { copy: true, .. }), tip)
+                        })
+                        .inner
+                        .clicked()
+                    {
+                        ed.modeller.tool = Draw::Move { from: None, copy: true };
+                    }
+                    let tip = msg!("Rotate (RO): what is selected, about its centre, by the angle between two clicks");
+                    if ui
+                        .add_enabled_ui(some, |ui| {
+                            crate::small_button(ui, Icon::Rotate, "Rotate", matches!(tool, Draw::Rotate { .. }), tip)
+                        })
+                        .inner
+                        .clicked()
+                        && let Some(d) = ed.adaptive.as_ref()
+                        && let Some(centre) = adaptive_view::selection_centre(d, &ed.modeller, &values)
+                    {
+                        ed.modeller.tool = Draw::Rotate { centre, start: None };
+                    }
+                    later_small(ui, Icon::Trim, msg!("Trim/Extend"));
+                    later_small(ui, Icon::Split, msg!("Split Element"));
+                    let tip = msg!("Delete (DE): what is selected, with what depends on it");
+                    if ui.add_enabled_ui(some, |ui| big_button(ui, Icon::Delete, "Delete", false, tip)).inner.clicked()
+                        && let Some(d) = ed.adaptive.as_mut()
+                    {
+                        adaptive_view::delete(d, &mut ed.modeller);
+                    }
+                });
+                ribbon::panel(ui, msg!("Measure"), |ui| {
+                    later(ui, Icon::Measure, msg!("Measure"));
+                });
+                if tab == DocTab::Context {
+                    if !lines.is_empty() {
+                        self.form_panel(ui, ed, &lines);
+                    }
+                    if !points.is_empty() {
+                        ribbon::panel(ui, msg!("Adaptive Component"), |ui| {
+                            let tip = msg!(
+                                "Make Adaptive: the points selected become placement points, numbered in the order selected; adaptive already, they go back to reference points"
+                            );
+                            if big_button(ui, Icon::MakeAdaptive, msg!("Make Adaptive"), false, tip).clicked()
+                                && let Some(d) = ed.adaptive.as_mut()
+                            {
+                                adaptive_view::make_adaptive(d, &mut ed.modeller, &points);
+                            }
+                        });
+                    }
+                }
+            }
+        }
+        ribbon::panel(ui, msg!("Family Editor"), |ui| {
+            let tip = msg!("Load into Project: the project takes the family as it is here, and the family stays open");
+            if big_button(ui, Icon::LoadIntoProject, msg!("Load into Project"), false, tip).clicked() {
+                ed.ask.apply = true;
+            }
+            let tip = msg!("Load into Project and Close: the project takes the family, and the family closes");
+            if big_button(ui, Icon::LoadIntoProjectClose, msg!("Load into Project and Close"), false, tip).clicked() {
+                ed.ask.ok = true;
+            }
+        });
+    }
+
+    /// Revit's Select and Properties panels, which Create, Modify and the contextual tab begin with.
+    fn select_and_properties(&mut self, ui: &mut Ui, ed: &mut FamilyEditor) {
         ribbon::panel(ui, msg!("Select"), |ui| {
             let tip = msg!("Modify (MD): select elements");
             if big_button(ui, Icon::Modify, "Modify", ed.modeller.tool == Draw::Modify, tip).clicked() {
                 ed.modeller.tool = Draw::Modify;
+                ed.modeller.picking_plane = false;
             }
         });
         let shown = self.docking.shown(Palette::Properties);
@@ -133,98 +290,40 @@ impl BimApp {
                 }
             }
         });
-        if tab == DocTab::Create {
-            ribbon::panel(ui, msg!("Draw"), |ui| {
-                let line = matches!(ed.modeller.tool, Draw::Line(_));
-                let tip = msg!("Line (LI): click points, or the work plane, in turn; the first again closes a profile");
-                if big_button(ui, Icon::Line, "Line", line, tip).clicked() {
-                    ed.modeller.tool = Draw::Line(Vec::new());
-                }
-                let tip = msg!("Point Element: click the work plane for a reference point, or a line for one hosted on it");
-                if big_button(ui, Icon::PointElement, msg!("Point Element"), ed.modeller.tool == Draw::Point, tip).clicked() {
-                    ed.modeller.tool = Draw::Point;
-                }
-            });
-        }
-        if tab == DocTab::Create || !lines.is_empty() {
-            self.form_panel(ui, ed, &lines);
-        }
-        if !points.is_empty() {
-            ribbon::panel(ui, msg!("Adaptive Component"), |ui| {
+    }
+
+    /// BIMCraft's own Test Placement panel: replaying the instance the family was opened from, capturing the project's
+    /// selection, giving the test placement to an instance or placing a new one.
+    fn test_placement_panel(&mut self, ui: &mut Ui, ed: &mut FamilyEditor) {
+        let sources = !self.capture_sources().is_empty();
+        let source = ed.source;
+        let mut replay = false;
+        ribbon::panel(ui, msg!("Test Placement"), |ui| {
+            if source.is_some() {
                 let tip = msg!(
-                    "Make Adaptive: the points selected become placement points, numbered in the order selected; adaptive already, they go back to reference points"
+                    "Replay Instance: the family takes the placement, type and parameters of the instance it was opened from, to see it as it is or to model from it"
                 );
-                if big_button(ui, Icon::MakeAdaptive, msg!("Make Adaptive"), false, tip).clicked()
-                    && let Some(d) = ed.adaptive.as_mut()
-                {
-                    adaptive_view::make_adaptive(d, &mut ed.modeller, &points);
-                }
-            });
-        }
-        if tab != DocTab::Create {
-            ribbon::panel(ui, msg!("Modify"), |ui| {
-                let some = !ed.modeller.selection.is_empty();
-                let tip = msg!("Delete (DE): what is selected, with what depends on it");
-                if ui.add_enabled_ui(some, |ui| big_button(ui, Icon::Delete, "Delete", false, tip)).inner.clicked()
-                    && let Some(d) = ed.adaptive.as_mut()
-                {
-                    adaptive_view::delete(d, &mut ed.modeller);
-                }
-            });
-        }
-        if tab == DocTab::Create {
-            let sources = !self.capture_sources().is_empty();
-            let source = ed.source;
-            let mut replay = false;
-            ribbon::panel(ui, msg!("Test Placement"), |ui| {
-                if source.is_some() {
-                    let tip = msg!(
-                        "Replay Instance: the family takes the placement, type and parameters of the instance it was opened from, to see it as it is or to model from it"
-                    );
-                    replay = big_button(ui, Icon::Component, msg!("Replay Instance"), ed.replaying().is_some(), tip).clicked();
-                }
-                let tip = msg!("Capture Placement: the adaptive instances selected in the project give their points as the test placement");
-                if ui.add_enabled_ui(sources, |ui| big_button(ui, Icon::PickFaces, msg!("Capture Placement"), false, tip)).inner.clicked() {
-                    ed.ask.capture = true;
-                }
-                if ed.replaying().is_some() {
-                    let tip = msg!("Apply to Instance: the instance the family was opened on takes the test placement");
-                    if big_button(ui, Icon::Check, msg!("Apply to Instance"), false, tip).clicked() {
-                        ed.ask.apply_placement = true;
-                    }
-                }
-                let tip = msg!("Place Instance: a new instance of the family on the test placement, in the project");
-                if big_button(ui, Icon::Component, msg!("Place Instance"), false, tip).clicked() {
-                    ed.ask.place = true;
-                }
-            });
-            if replay {
-                let model = Arc::clone(&self.session.model);
-                ed.replay_from(&model);
+                replay = big_button(ui, Icon::Component, msg!("Replay Instance"), ed.replaying().is_some(), tip).clicked();
             }
-            ribbon::panel(ui, msg!("Family"), |ui| {
-                if big_button(ui, Icon::LoadFamily, msg!("Load Family"), false, msg!("Load Family: open a family file here")).clicked() {
-                    ed.ask.load = true;
-                }
-                if big_button(ui, Icon::Save, msg!("Save Family"), false, msg!("Save Family: the family to a file")).clicked() {
-                    ed.ask.save = true;
-                }
-                let tip = msg!("Add to Favorites: the family to your Favorites");
-                if big_button(ui, Icon::Favorite, msg!("Add to Favorites"), false, tip).clicked() {
-                    ed.ask.favorite = true;
-                }
-            });
-        }
-        ribbon::panel(ui, msg!("Family Editor"), |ui| {
-            let tip = msg!("Load into Project: the project takes the family as it is here, and the family stays open");
-            if big_button(ui, Icon::LoadIntoProject, msg!("Load into Project"), false, tip).clicked() {
-                ed.ask.apply = true;
+            let tip = msg!("Capture Placement: the adaptive instances selected in the project give their points as the test placement");
+            if ui.add_enabled_ui(sources, |ui| big_button(ui, Icon::PickFaces, msg!("Capture Placement"), false, tip)).inner.clicked() {
+                ed.ask.capture = true;
             }
-            let tip = msg!("Load into Project and Close: the project takes the family, and the family closes");
-            if big_button(ui, Icon::LoadIntoProjectClose, msg!("Load into Project and Close"), false, tip).clicked() {
-                ed.ask.ok = true;
+            if ed.replaying().is_some() {
+                let tip = msg!("Apply to Instance: the instance the family was opened on takes the test placement");
+                if big_button(ui, Icon::Check, msg!("Apply to Instance"), false, tip).clicked() {
+                    ed.ask.apply_placement = true;
+                }
+            }
+            let tip = msg!("Place Instance: a new instance of the family on the test placement, in the project");
+            if big_button(ui, Icon::Component, msg!("Place Instance"), false, tip).clicked() {
+                ed.ask.place = true;
             }
         });
+        if replay {
+            let model = Arc::clone(&self.session.model);
+            ed.replay_from(&model);
+        }
     }
 
     /// Revit's Form panel: Create Form, a solid or a void of the lines selected.
@@ -363,6 +462,10 @@ impl BimApp {
             ui.scope_builder(UiBuilder::new().max_rect(pane), |ui| {
                 adaptive_view::show(ui, d, &mut ed.modeller, &values, pane.size());
             });
+            // What a tool in the view could not do, in the status bar.
+            if let Some(e) = ui.ctx().data_mut(|w| w.remove_temp::<String>(UiId::new("adaptive-view-problem"))) {
+                self.status = Status { text: e, error: true };
+            }
         }
         let card = crate::style::card([true, false, true, false]).inner_margin(Margin::same(2));
         let mut over = ui.new_child(UiBuilder::new().id_salt("family-view-tabs").max_rect(pane));
@@ -428,6 +531,11 @@ impl BimApp {
             }
         });
         true
+    }
+
+    /// Whether the family document's Options Bar has anything to show: only with a contextual tab, as Revit's.
+    pub(crate) fn family_has_options(&self) -> bool {
+        self.family_editor.as_ref().is_some_and(|ed| context(ed).is_some())
     }
 
     /// What the family document's status bar asks for.
@@ -517,6 +625,72 @@ pub(crate) fn work_planes(d: &bimcraft_core::adaptive::Definition) -> Vec<(WorkP
         }
     }
     out
+}
+
+/// A tool Revit's family editor has and BIMCraft does not yet: where Revit has it, greyed.
+fn later(ui: &mut Ui, icon: Icon, label: &str) {
+    ui.add_enabled_ui(false, |ui| big_button(ui, icon, label, false, msg!("Not in BIMCraft yet")));
+}
+
+/// The same, a small button.
+fn later_small(ui: &mut Ui, icon: Icon, label: &str) {
+    ui.add_enabled_ui(false, |ui| crate::small_button(ui, icon, label, false, msg!("Not in BIMCraft yet")));
+}
+
+/// Revit's Draw panel: what a line is (Model, Reference, Plane) over the gallery of what draws, Line and Point Element working.
+fn draw_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
+    ribbon::panel(ui, msg!("Draw"), |ui| {
+        crate::stacked(ui, |ui| {
+            crate::stacked_button(ui, Icon::Line, msg!("Model"), true, msg!("Model: lines drawn are model lines"));
+            ui.add_enabled_ui(false, |ui| {
+                crate::stacked_button(ui, Icon::PickLines, msg!("Reference"), false, msg!("Not in BIMCraft yet"))
+            });
+            ui.add_enabled_ui(false, |ui| crate::stacked_button(ui, Icon::Level, msg!("Plane"), false, msg!("Not in BIMCraft yet")));
+        });
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                let line = matches!(ed.modeller.tool, Draw::Line(_));
+                let tip = msg!("Line (LI): click points, or the work plane, in turn; the first again closes a profile");
+                if crate::small_button(ui, Icon::Line, "Line", line, tip).clicked() {
+                    ed.modeller.tool = Draw::Line(Vec::new());
+                }
+                later_small(ui, Icon::Rectangle, "Rectangle");
+                later_small(ui, Icon::Inscribed, msg!("Inscribed Polygon"));
+                later_small(ui, Icon::Circle, "Circle");
+            });
+            ui.horizontal(|ui| {
+                later_small(ui, Icon::CentreArc, msg!("Center-ends Arc"));
+                later_small(ui, Icon::Spline, "Spline");
+                later_small(ui, Icon::Ellipse, "Ellipse");
+                later_small(ui, Icon::FitSpline, msg!("Spline Through Points"));
+            });
+            ui.horizontal(|ui| {
+                let tip = msg!("Point Element: click the work plane for a reference point, or a line for one hosted on it");
+                if crate::small_button(ui, Icon::PointElement, msg!("Point Element"), ed.modeller.tool == Draw::Point, tip).clicked() {
+                    ed.modeller.tool = Draw::Point;
+                }
+                later_small(ui, Icon::PickLines, msg!("Pick Lines"));
+                later_small(ui, Icon::PickFaces, msg!("Pick Faces"));
+            });
+        });
+    });
+}
+
+/// Revit's Work Plane panel: Set (a plane picked in the view, as Placement Plane's Pick), Show (the work plane drawn).
+fn work_plane_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
+    ribbon::panel(ui, msg!("Work Plane"), |ui| {
+        let tip = msg!("Set: the work plane, a plane picked in the view (a point's, the level or a reference plane)");
+        if big_button(ui, Icon::PickFaces, msg!("Set"), ed.modeller.picking_plane, tip).clicked() {
+            ed.modeller.picking_plane = true;
+        }
+        crate::stacked(ui, |ui| {
+            let tip = msg!("Show: the work plane drawn, tinted, with a grid on it");
+            if crate::stacked_button(ui, Icon::Visibility, msg!("Show"), ed.modeller.show_work_plane, tip).clicked() {
+                ed.modeller.show_work_plane = !ed.modeller.show_work_plane;
+            }
+            ui.add_enabled_ui(false, |ui| crate::stacked_button(ui, Icon::View3D, msg!("Viewer"), false, msg!("Not in BIMCraft yet")));
+        });
+    });
 }
 
 /// Where Properties names what it shows, as Revit's type selector does: an icon and the name, on a box of its own.

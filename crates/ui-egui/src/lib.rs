@@ -783,7 +783,7 @@ fn big_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> 
 }
 
 /// A small ribbon button: an icon alone, as in Revit's Modify panel; its name in its tooltip.
-fn small_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
+pub(crate) fn small_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
     if ribbon::listing() {
         return list_row(ui, icon, label, active, tip);
     }
@@ -3864,6 +3864,10 @@ impl BimApp {
     /// view's top left, so the view never moves when it comes and goes, and taking the clicks that land on it.
     fn options_bar(&mut self, ctx: &Context) {
         if self.family_doc() {
+            if !self.family_has_options() {
+                self.options_rect = Rect::NOTHING;
+                return;
+            }
             let g = f32::from(style::gap());
             let view = self.view_rect;
             let top = view.top().max(self.tabs_foot - g + 4.0);

@@ -11,6 +11,9 @@ use crate::family::Expr;
 use crate::view3d::{P3, add, dot, mul, sub};
 use std::collections::BTreeSet;
 
+/// A segment as it shows on screen, its two ends' pixels.
+type OnScreen = ((f64, f64), (f64, f64));
+
 /// What the pointer is over in a picture of an evaluation.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Picked {
@@ -140,6 +143,62 @@ impl Evaluation {
             }
         }
         best.map(|(_, plane)| plane)
+    }
+
+    /// What a selection box from pixel `a` to pixel `b` takes, as Revit's: dragged left to right (a window), what lies wholly
+    /// inside it; right to left (a crossing), what it touches. In the order of the evaluation; `screen` as for [`Evaluation::pick`].
+    pub fn in_box(&self, screen: &dyn Fn(P3) -> Option<(f64, f64, f64)>, a: (f64, f64), b: (f64, f64)) -> Vec<String> {
+        let crossing = b.0 < a.0;
+        let (x0, x1, y0, y1) = (a.0.min(b.0), a.0.max(b.0), a.1.min(b.1), a.1.max(b.1));
+        let inside = |p: (f64, f64)| p.0 >= x0 && p.0 <= x1 && p.1 >= y0 && p.1 <= y1;
+        // Whether segment p-q crosses the box: clipped to it, something is left (Liang-Barsky).
+        let crosses = |p: (f64, f64), q: (f64, f64)| {
+            let (dx, dy) = (q.0 - p.0, q.1 - p.1);
+            let (mut lo, mut hi) = (0.0_f64, 1.0_f64);
+            for (den, num) in [(-dx, p.0 - x0), (dx, x1 - p.0), (-dy, p.1 - y0), (dy, y1 - p.1)] {
+                if den.abs() < 1e-12 {
+                    if num < 0. {
+                        return false;
+                    }
+                } else {
+                    let t = num / den;
+                    if den < 0. { lo = lo.max(t) } else { hi = hi.min(t) }
+                }
+            }
+            lo <= hi
+        };
+        let mut out = Vec::new();
+        for id in &self.order {
+            // Each element as the pieces it is drawn with: a point, a line's run of samples, a form's triangles' edges.
+            let segments: Vec<(P3, P3)> = match self.values.get(id) {
+                Some(Evaluated::Point { frame }) => vec![(frame.origin, frame.origin)],
+                Some(Evaluated::Curve { curve }) => {
+                    let mut samples = curve.samples();
+                    if curve.closed
+                        && let Some(first) = samples.first().copied()
+                    {
+                        samples.push(first);
+                    }
+                    samples.windows(2).map(|w| (w[0], w[1])).collect()
+                }
+                Some(Evaluated::Form { mesh, .. }) => {
+                    mesh.triangles().iter().flat_map(|t| [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])]).collect()
+                }
+                None => continue,
+            };
+            let on_screen: Option<Vec<OnScreen>> =
+                segments.iter().map(|(p, q)| Some((screen(*p).map(|s| (s.0, s.1))?, screen(*q).map(|s| (s.0, s.1))?))).collect();
+            let Some(on_screen) = on_screen.filter(|v| !v.is_empty()) else { continue };
+            let taken = if crossing {
+                on_screen.iter().any(|(p, q)| inside(*p) || inside(*q) || crosses(*p, *q))
+            } else {
+                on_screen.iter().all(|(p, q)| inside(*p) && inside(*q))
+            };
+            if taken {
+                out.push(id.clone());
+            }
+        }
+        out
     }
 
     /// Where point `id` is, evaluated.
@@ -459,6 +518,141 @@ impl Definition {
             _ => return Err("A point on a form's face, edge or vertex moves with the form".into()),
         }
         Ok(())
+    }
+
+    /// `ids` and everything they are built on (a line's points, a form's profile and its points, not a point's host): what Move,
+    /// Copy and Rotate take.
+    fn closure(&self, ids: &[String]) -> BTreeSet<String> {
+        let mut out: BTreeSet<String> = BTreeSet::new();
+        let mut todo: Vec<String> = ids.to_vec();
+        while let Some(id) = todo.pop() {
+            if let Some(n) = self.nodes.iter().find(|n| n.id == id)
+                && out.insert(id)
+                // A point is not built on its host: moved alone, it moves within it.
+                && !matches!(n.operation, Operation::Point { .. })
+            {
+                todo.extend(n.dependencies().into_iter().map(String::from));
+            }
+        }
+        out
+    }
+
+    /// The points of `taken` that move themselves when it moves: those whose host is not taken too (a point hosted on a taken
+    /// point comes with it) and that are not on a line or a form (they come with those).
+    fn free_points<'a>(&'a self, taken: &'a BTreeSet<String>) -> impl Iterator<Item = &'a Node> + 'a {
+        self.nodes.iter().filter(move |n| {
+            taken.contains(&n.id)
+                && match &n.operation {
+                    Operation::Point { host, .. } => {
+                        !matches!(host, Host::Curve { .. } | Host::Face { .. } | Host::Edge { .. } | Host::Vertex { .. })
+                            && !n.dependencies().iter().any(|d| taken.contains(*d))
+                    }
+                    _ => false,
+                }
+        })
+    }
+
+    /// Revit's Move: `ids`, with what they are built on, moved `by` mm, as `evaluation` has them. A point hosted on another moves
+    /// within its host (its offset changes); one on a line or a form moves with it.
+    pub fn move_elements(&mut self, ids: &[String], by: P3, evaluation: &Evaluation) -> Result<(), String> {
+        let taken = self.closure(ids);
+        let moving: Vec<String> = self.free_points(&taken).map(|n| n.id.clone()).collect();
+        for id in moving {
+            let from = evaluation.origin(&id).ok_or_else(|| format!("`{id}` did not evaluate"))?;
+            self.move_point(&id, evaluation, add(from, by))?;
+        }
+        Ok(())
+    }
+
+    /// Revit's Rotate: `ids`, with what they are built on, turned `degrees` about the axis through `centre` along `axis` (the
+    /// work plane's normal), counterclockwise seen from where the axis points.
+    pub fn rotate_elements(&mut self, ids: &[String], centre: P3, axis: P3, degrees: f64, evaluation: &Evaluation) -> Result<(), String> {
+        let k = super::frame::unit(axis)?;
+        let (sin, cos) = degrees.to_radians().sin_cos();
+        let taken = self.closure(ids);
+        let moving: Vec<String> = self.free_points(&taken).map(|n| n.id.clone()).collect();
+        for id in moving {
+            let from = evaluation.origin(&id).ok_or_else(|| format!("`{id}` did not evaluate"))?;
+            // Rodrigues: v cos + (k x v) sin + k (k . v)(1 - cos), about the centre.
+            let v = sub(from, centre);
+            let kv = crate::view3d::cross(k, v);
+            let turned = add(add(mul(v, cos), mul(kv, sin)), mul(k, dot(k, v) * (1. - cos)));
+            self.move_point(&id, evaluation, add(centre, turned))?;
+        }
+        Ok(())
+    }
+
+    /// Revit's Copy: `ids`, with what they are built on, copied and the copies moved `by` mm; an adaptive point copied is a new
+    /// placement point, numbered next. The copies' ids, in the order of the originals.
+    pub fn copy_elements(&mut self, ids: &[String], by: P3, evaluation: &Evaluation) -> Result<Vec<String>, String> {
+        if self.nodes.len() + ids.len() > super::MAX_NODES {
+            return Err(format!("Adaptive family exceeds {} nodes", super::MAX_NODES));
+        }
+        let taken = self.closure(ids);
+        let originals: Vec<Node> = self.nodes.iter().filter(|n| taken.contains(&n.id)).cloned().collect();
+        if self.nodes.len() + originals.len() > super::MAX_NODES {
+            return Err(format!("Adaptive family exceeds {} nodes", super::MAX_NODES));
+        }
+        // New ids first, so references between the copies point at the copies.
+        let mut names = std::collections::BTreeMap::new();
+        for n in &originals {
+            let stem: String = n.id.trim_end_matches(|c: char| c.is_ascii_digit()).to_string();
+            let fresh = self.fresh_id(if stem.is_empty() { "copy" } else { &stem });
+            self.nodes.push(Node {
+                id: fresh.clone(),
+                name: String::new(),
+                operation: Operation::Line { a: String::new(), b: String::new() },
+                appearance: Appearance::default(),
+            });
+            names.insert(n.id.clone(), fresh);
+        }
+        let rename = |id: &mut String| {
+            if let Some(new) = names.get(id) {
+                *id = new.clone();
+            }
+        };
+        let mut made = Vec::new();
+        for n in originals {
+            let mut copy = n.clone();
+            copy.id = names[&n.id].clone();
+            match &mut copy.operation {
+                Operation::Point { host, .. } => match host {
+                    Host::Frame { point } | Host::Plane { point, .. } => rename(point),
+                    Host::Curve { curve, .. } => rename(curve),
+                    Host::Face { form, .. } | Host::Edge { form, .. } | Host::Vertex { form, .. } => rename(form),
+                    Host::World { .. } | Host::Adaptive { .. } | Host::Handle { .. } => {}
+                },
+                Operation::Line { a, b } | Operation::Intersection { a, b, .. } => {
+                    rename(a);
+                    rename(b);
+                }
+                Operation::Polyline { points, .. } => points.iter_mut().for_each(rename),
+                Operation::Bezier { points } => points.iter_mut().for_each(rename),
+                Operation::Patch { chain } | Operation::Extrude { chain, .. } => rename(chain),
+                Operation::Loft { profiles } => profiles.iter_mut().for_each(rename),
+            }
+            if let Operation::Point { host: Host::Adaptive { number, .. }, .. } = &mut copy.operation {
+                *number = 0;
+            }
+            if let Some(slot) = self.nodes.iter_mut().find(|m| m.id == copy.id) {
+                *slot = copy;
+            }
+            made.push(names[&n.id].clone());
+        }
+        // A copied placement point takes the next number, in the order of the originals'.
+        for id in &made {
+            let next = self.next_number();
+            if let Some(Node { operation: Operation::Point { host: Host::Adaptive { number, .. }, .. }, name, .. }) =
+                self.nodes.iter_mut().find(|n| &n.id == id)
+                && *number == 0
+            {
+                *number = next;
+                *name = format!("Adaptive point {next}");
+            }
+        }
+        let moved = self.evaluate(&evaluation.parameters, &self.preview);
+        self.move_elements(&made, by, &moved)?;
+        Ok(made)
     }
 
     /// `ids` deleted, with every element that depends on them (as Revit deletes a line with its points); what was deleted.

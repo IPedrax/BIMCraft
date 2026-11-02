@@ -17,6 +17,30 @@ impl Mesh {
     pub fn triangles(&self) -> Vec<[P3; 3]> {
         self.faces.iter().map(|f| f.map(|i| self.vertices[i])).collect()
     }
+    /// The edges a drawing shows: where two faces meet folding more than `angle` degrees, and where only one face has the edge
+    /// (an open border); not the diagonals that split a flat face into triangles.
+    pub fn folds(&self, angle: f64) -> Vec<(P3, P3)> {
+        let normal = |f: &[usize; 3]| {
+            let [a, b, c] = f.map(|i| self.vertices[i]);
+            let n = crate::view3d::cross(crate::view3d::sub(b, a), crate::view3d::sub(c, a));
+            let l = crate::view3d::dot(n, n).sqrt();
+            if l > 0. { crate::view3d::mul(n, 1. / l) } else { n }
+        };
+        let mut by_edge: std::collections::BTreeMap<(usize, usize), Vec<P3>> = std::collections::BTreeMap::new();
+        for f in &self.faces {
+            let n = normal(f);
+            for k in 0..3 {
+                let (a, b) = (f[k], f[(k + 1) % 3]);
+                by_edge.entry((a.min(b), a.max(b))).or_default().push(n);
+            }
+        }
+        let fold = angle.to_radians().cos();
+        by_edge
+            .into_iter()
+            .filter(|(_, ns)| ns.len() != 2 || crate::view3d::dot(ns[0], ns[1]) < fold)
+            .map(|((a, b), _)| (self.vertices[a], self.vertices[b]))
+            .collect()
+    }
     pub fn topology(&self) -> String {
         let mut hash = 0xcbf29ce484222325u64;
         for n in [self.vertices.len(), self.faces.len()].into_iter().chain(self.faces.iter().flatten().copied()) {

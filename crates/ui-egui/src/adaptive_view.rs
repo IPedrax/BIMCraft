@@ -24,6 +24,16 @@ pub(crate) enum Draw {
     Point,
     /// Line, and the points of the chain drawn so far.
     Line(Vec<String>),
+    /// Move, or with `copy` Copy, of the selection: where it moves from, once clicked.
+    Move {
+        from: Option<P3>,
+        copy: bool,
+    },
+    /// Rotate of the selection about `centre`, square to the work plane: where the angle starts, once clicked.
+    Rotate {
+        centre: P3,
+        start: Option<P3>,
+    },
 }
 
 /// A drag under way in the view.
@@ -35,6 +45,8 @@ enum Drag {
     Plane(String, f64),
     /// A point dragged along a gizmo axis: which, where the drag began, and where the point was then.
     Axis(String, usize, Pos2, P3),
+    /// A selection box, from where the drag began: left to right a window, right to left a crossing.
+    Box(Pos2),
 }
 
 /// The modelling view between frames.
@@ -52,6 +64,8 @@ pub(crate) struct Modeller {
     pub(crate) work_plane: WorkPlane,
     /// Placement Plane's Pick: the next click in the view picks the plane under it.
     pub(crate) picking_plane: bool,
+    /// Work Plane > Show: the work plane drawn, tinted, with a grid on it.
+    pub(crate) show_work_plane: bool,
 }
 
 impl Default for Modeller {
@@ -66,6 +80,7 @@ impl Default for Modeller {
             depth: 300.,
             work_plane: WorkPlane::default(),
             picking_plane: false,
+            show_work_plane: false,
         }
     }
 }
@@ -94,10 +109,70 @@ impl Modeller {
     }
 }
 
-/// How far the datums reach: a box 300 mm beyond what the family takes up, and at least 1.5 m from its origin, each way.
+/// How far the datums reach: a box 300 mm beyond what the family takes up, and at least 1.5 m from its origin, each way but
+/// down: the reference planes stand on the level, as Revit's do, reaching below it only as far as the family does.
 fn room(r: &Evaluation) -> (P3, P3) {
     let (lo, hi) = extent(r).unwrap_or(([-1000.; 3], [1000.; 3]));
-    (std::array::from_fn(|i| (lo[i] - 300.).min(-1500.)), std::array::from_fn(|i| (hi[i] + 300.).max(1500.)))
+    (
+        std::array::from_fn(|i| if i == 2 { (lo[i] - 300.).min(0.) } else { (lo[i] - 300.).min(-1500.) }),
+        std::array::from_fn(|i| (hi[i] + 300.).max(1500.)),
+    )
+}
+
+/// The ViewCube's faces, as Revit's: the direction each looks from (its outward normal), its name, and the camera's azimuth and
+/// elevation that look at the family from that side.
+const CUBE_FACES: [(P3, &str, f64, f64); 6] = [
+    ([0., 0., 1.], msg!("TOP"), -90., 89.),
+    ([0., 0., -1.], msg!("BOTTOM"), -90., -89.),
+    ([0., -1., 0.], msg!("FRONT"), -90., 0.),
+    ([0., 1., 0.], msg!("BACK"), 90., 0.),
+    ([1., 0., 0.], msg!("RIGHT"), 0., 0.),
+    ([-1., 0., 0.], msg!("LEFT"), 180., 0.),
+];
+
+/// Where the ViewCube stands in view `rect`: its top right corner, 84 px across.
+fn cube_rect(rect: Rect) -> Rect {
+    Rect::from_min_size(rect.right_top() + vec2(-98.0, 14.0), vec2(84.0, 84.0))
+}
+
+/// The house over the ViewCube's corner: Home, Revit's default 3D view.
+pub(crate) fn home_rect(rect: Rect) -> Rect {
+    Rect::from_min_size(cube_rect(rect).left_top() + vec2(-4.0, -6.0), vec2(18.0, 18.0))
+}
+
+/// The ViewCube's faces that face the camera, each on screen with its name and the view it gives.
+pub(crate) fn cube_faces(cam: &Camera, rect: Rect) -> Vec<(Vec<Pos2>, &'static str, f64, f64)> {
+    let (a, e) = (cam.azimuth.to_radians(), cam.elevation.clamp(-89.0, 89.0).to_radians());
+    let back = [e.cos() * a.cos(), e.cos() * a.sin(), e.sin()];
+    let right = [-a.sin(), a.cos(), 0.0];
+    let up = [back[1] * right[2] - back[2] * right[1], back[2] * right[0] - back[0] * right[2], back[0] * right[1] - back[1] * right[0]];
+    let box_ = cube_rect(rect);
+    let (c, half) = (box_.center(), box_.width() as f64 * 0.27);
+    let dot = |p: P3, q: P3| p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
+    let on = |p: P3| c + vec2((dot(p, right) * half) as f32, (-dot(p, up) * half) as f32);
+    CUBE_FACES
+        .iter()
+        .filter(|(n, ..)| dot(*n, back) > 0.02)
+        .map(|(n, label, az, el)| {
+            // The face's two other axes, round it in turn.
+            let k = n.iter().position(|v| v.abs() > 0.5).unwrap_or(2);
+            let (u, v) = ((k + 1) % 3, (k + 2) % 3);
+            let corner = |su: f64, sv: f64| {
+                let mut p = *n;
+                p[u] = su;
+                p[v] = sv;
+                on(p)
+            };
+            (vec![corner(-1., -1.), corner(1., -1.), corner(1., 1.), corner(-1., 1.)], *label, *az, *el)
+        })
+        .collect()
+}
+
+/// Whether `p` is inside the convex polygon `poly`.
+fn inside(poly: &[Pos2], p: Pos2) -> bool {
+    let side = |a: Pos2, b: Pos2| (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+    let sides: Vec<f32> = (0..poly.len()).map(|i| side(poly[i], poly[(i + 1) % poly.len()])).collect();
+    sides.iter().all(|s| *s >= 0.) || sides.iter().all(|s| *s <= 0.)
 }
 
 /// How far each of a point's planes reaches from it on screen, px: half the square drawn.
@@ -118,11 +193,11 @@ fn extent(r: &Evaluation) -> Option<(P3, P3)> {
     Some((lo, hi)).filter(|(lo, hi): &(P3, P3)| lo.iter().chain(hi).all(|v| v.is_finite()))
 }
 
-/// A camera from Revit's default 3D orientation that shows all of `r` in `w` by `h` points.
+/// A camera from Revit's default 3D orientation that shows all of `r` and its datums in `w` by `h` points.
 fn fit(r: &Evaluation, w: f32, h: f32) -> Camera {
-    let (lo, hi) = extent(r).unwrap_or(([-1000.; 3], [1000.; 3]));
-    // An empty family shows six metres round the work plane's origin, room to start drawing in.
-    let least = if r.values.is_empty() { 6000. } else { 1000. };
+    // All the datums show, as in Revit's view of a family: what the family takes up and the level and reference planes round it.
+    let (lo, hi) = room(r);
+    let least = 1000.;
     let size = (0..3).map(|i| hi[i] - lo[i]).fold(0., f64::max).max(least);
     Camera {
         azimuth: AZIMUTH,
@@ -198,10 +273,78 @@ pub(crate) fn prompt(m: &Modeller) -> &'static str {
         return msg!("Pick a plane: one of a point's planes, the level or a reference plane; Escape gives up.");
     }
     match &m.tool {
-        Draw::Modify => msg!("Click to select, Ctrl adds; drag a point or a gizmo arrow to move it; drag elsewhere to orbit."),
+        Draw::Modify => msg!(
+            "Click to select, Ctrl adds; drag a box to select (left to right what is inside it, right to left what it touches); drag a point or a gizmo arrow to move it; Shift and the middle button orbit."
+        ),
         Draw::Point => msg!("Click on the work plane for a reference point, on a line for a point hosted on it."),
         Draw::Line(chain) if chain.is_empty() => msg!("Click points or the work plane; click the first point again to close the profile."),
         Draw::Line(_) => msg!("Click the next point; the first again closes the profile; Enter or Escape finishes it open."),
+        Draw::Move { from: None, copy: false } => msg!("Move: click the point to move from."),
+        Draw::Move { from: None, copy: true } => msg!("Copy: click the point to copy from."),
+        Draw::Move { .. } => msg!("Click where it goes."),
+        Draw::Rotate { start: None, .. } => msg!("Rotate: click where the angle starts, about the centre shown."),
+        Draw::Rotate { .. } => msg!("Click where the angle ends."),
+    }
+}
+
+/// Where the points of what is selected are, on average: the centre Rotate turns about.
+pub(crate) fn selection_centre(d: &Definition, m: &Modeller, values: &BTreeMap<String, Val>) -> Option<P3> {
+    let r = d.evaluate(values, &d.preview);
+    let mut points: Vec<P3> = Vec::new();
+    for id in &m.selection {
+        match r.values.get(id.as_str()) {
+            Some(Evaluated::Point { frame }) => points.push(frame.origin),
+            Some(Evaluated::Curve { curve }) => points.extend(curve.samples()),
+            Some(Evaluated::Form { mesh, .. }) => points.extend(mesh.vertices.iter().copied()),
+            None => {}
+        }
+    }
+    (!points.is_empty()).then(|| {
+        let n = points.len() as f64;
+        std::array::from_fn(|i| points.iter().map(|p| p[i]).sum::<f64>() / n)
+    })
+}
+
+/// A click of Move, Copy or Rotate at `p`: the first sets where it moves from (or where the angle starts), the second does it
+/// (Rotate about the work plane's normal `normal`, to the whole degree), and the tool goes back to Modify, as Revit's.
+fn transform_click(d: &mut Definition, m: &mut Modeller, r: &Evaluation, p: P3, normal: P3) -> Result<(), String> {
+    let sub = |a: P3, b: P3| [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    let dot = |a: P3, b: P3| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let cross = |a: P3, b: P3| [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    let selection = m.selection.clone();
+    let before = d.clone();
+    let done = match &mut m.tool {
+        Draw::Move { from: from @ None, .. } | Draw::Rotate { start: from @ None, .. } => {
+            *from = Some(p);
+            return Ok(());
+        }
+        Draw::Move { from: Some(from), copy } => {
+            let by = sub(p, *from);
+            if *copy { d.copy_elements(&selection, by, r).map(Some) } else { d.move_elements(&selection, by, r).map(|_| None) }
+        }
+        Draw::Rotate { centre, start: Some(start) } => {
+            let flat = |v: P3| sub(v, [normal[0] * dot(v, normal), normal[1] * dot(v, normal), normal[2] * dot(v, normal)]);
+            let (u, v) = (flat(sub(*start, *centre)), flat(sub(p, *centre)));
+            let degrees = dot(cross(u, v), normal).atan2(dot(u, v)).to_degrees().round();
+            d.rotate_elements(&selection, *centre, normal, degrees, r).map(|_| None)
+        }
+        _ => return Ok(()),
+    };
+    match done {
+        Ok(made) => {
+            m.history.push(before);
+            if let Some(made) = made {
+                // The copies of what was selected are selected after.
+                m.selection = made.into_iter().filter(|id| d.nodes.iter().any(|n| &n.id == id)).collect();
+            }
+            m.tool = Draw::Modify;
+            Ok(())
+        }
+        Err(e) => {
+            *d = before;
+            m.tool = Draw::Modify;
+            Err(e)
+        }
     }
 }
 
@@ -264,7 +407,8 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, m: &mut Modeller, values: &B
                 })
                 .map(|k| (id.clone(), k, *o))
         });
-        m.drag = Some(match (primary, m.tool == Draw::Modify, on_arrow) {
+        let on_cube = cube_rect(rect).contains(origin);
+        m.drag = Some(match (primary && !on_cube, m.tool == Draw::Modify, on_arrow) {
             (true, true, Some((id, k, o))) => Drag::Axis(id, k, origin, o),
             (true, true, None) => match r.pick(&|p| screen_of(&cam, p), px(origin)) {
                 Some(Picked::Point(id)) if movable(d, &id) => {
@@ -272,7 +416,8 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, m: &mut Modeller, values: &B
                     let z = r.origin(&id).map_or(0., |o| o[2]);
                     Drag::Plane(id, z)
                 }
-                _ => Drag::Orbit(origin),
+                // On empty space, as Revit's: a selection box.
+                _ => Drag::Box(origin),
             },
             _ if middle && !mods.shift => Drag::Pan(origin),
             _ => Drag::Orbit(origin),
@@ -305,10 +450,26 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, m: &mut Modeller, values: &B
                     let _ = d.move_point(&id, &r, to);
                 }
             }
+            Drag::Box(_) => {}
         }
         r = d.evaluate(values, &d.preview);
     }
     if response.drag_stopped() {
+        // A box let go selects what it takes: Ctrl adds it to the selection, Shift takes it away, else it is the selection.
+        if let (Some(Drag::Box(from)), Some(to)) = (m.drag.clone(), latest) {
+            let taken = r.in_box(&|p| screen_of(&cam, p), px(from), px(to));
+            if mods.ctrl || mods.command {
+                for id in taken {
+                    if !m.selection.contains(&id) {
+                        m.selection.push(id);
+                    }
+                }
+            } else if mods.shift {
+                m.selection.retain(|id| !taken.contains(id));
+            } else {
+                m.selection = taken;
+            }
+        }
         m.drag = None;
     }
     m.camera = Some(cam);
@@ -319,7 +480,19 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, m: &mut Modeller, values: &B
         r.pick_plane(&|o, n| cam.on(px(at), o, n), &|p| cam.project(p).2, half, room(&r))
     };
     let lit = if m.picking_plane { hover.and_then(plane_at) } else { None };
-    if m.picking_plane
+    // The ViewCube: a face clicked looks at the family from that side; the house, Revit's default 3D view.
+    let on_cube = response
+        .clicked()
+        .then(|| response.interact_pointer_pos())
+        .flatten()
+        .filter(|at| cube_rect(rect).contains(*at) || home_rect(rect).contains(*at));
+    if let Some(at) = on_cube {
+        if home_rect(rect).contains(at) {
+            m.camera = None;
+        } else if let Some((_, _, az, el)) = cube_faces(&cam, rect).into_iter().find(|(poly, ..)| inside(poly, at)) {
+            m.camera = Some(Camera { azimuth: az, elevation: el, ..cam });
+        }
+    } else if m.picking_plane
         && response.clicked()
         && let Some(at) = response.interact_pointer_pos()
     {
@@ -336,51 +509,65 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, m: &mut Modeller, values: &B
         let plane = m.work_plane.frame(&r).unwrap_or_default();
         let on_plane = cam.on(px(at), plane.origin, plane.z);
         let work_plane = m.work_plane.clone();
-        match &mut m.tool {
-            Draw::Modify => match picked {
-                Some(p) if mods.ctrl || mods.shift => {
-                    let id = p.id().to_string();
-                    if let Some(k) = m.selection.iter().position(|s| *s == id) {
-                        m.selection.remove(k);
-                    } else {
-                        m.selection.push(id);
-                    }
-                }
-                Some(p) => m.selection = vec![p.id().to_string()],
-                None => m.selection.clear(),
-            },
-            Draw::Point => {
-                let before = d.clone();
-                let made = match picked {
-                    Some(Picked::Curve(curve, t)) => d.add_hosted_point(&curve, t).ok(),
-                    // Snapped onto the point under the pointer: exactly where it falls on the work plane (on that point's own
-                    // plane, on it, at no offset).
-                    Some(Picked::Point(snap)) => r.origin(&snap).and_then(|o| d.add_point_on(&work_plane, o, &r).ok()),
-                    _ => on_plane.and_then(|p| d.add_point_on(&work_plane, p, &r).ok()),
-                };
-                if let Some(id) = made {
-                    m.history.push(before);
-                    m.selection = vec![id];
-                }
+        // Move, Copy and Rotate take clicks on points exactly, else on the work plane.
+        let clicked = match &picked {
+            Some(Picked::Point(id)) => r.origin(id),
+            _ => on_plane,
+        };
+        if let Draw::Move { .. } | Draw::Rotate { .. } = m.tool {
+            if let Some(p) = clicked
+                && let Err(e) = transform_click(d, m, &r, p, plane.z)
+            {
+                ui.ctx().data_mut(|w| w.insert_temp(egui::Id::new("adaptive-view-problem"), e));
             }
-            Draw::Line(chain) => {
-                let before = d.clone();
-                let point = match picked {
-                    Some(Picked::Point(id)) => Some(id),
-                    _ => on_plane.and_then(|p| d.add_point_on(&work_plane, p, &r).ok()),
-                };
-                if let Some(id) = point {
-                    let closes = chain.len() >= 3 && chain.first() == Some(&id);
-                    if closes {
-                        if let Ok(line) = d.add_chain(chain, true) {
-                            m.selection = vec![line];
+        } else {
+            match &mut m.tool {
+                Draw::Modify => match picked {
+                    Some(p) if mods.ctrl || mods.shift => {
+                        let id = p.id().to_string();
+                        if let Some(k) = m.selection.iter().position(|s| *s == id) {
+                            m.selection.remove(k);
+                        } else {
+                            m.selection.push(id);
                         }
-                        chain.clear();
-                    } else if chain.last() != Some(&id) {
-                        chain.push(id);
                     }
-                    m.history.push(before);
+                    Some(p) => m.selection = vec![p.id().to_string()],
+                    None => m.selection.clear(),
+                },
+                Draw::Point => {
+                    let before = d.clone();
+                    let made = match picked {
+                        Some(Picked::Curve(curve, t)) => d.add_hosted_point(&curve, t).ok(),
+                        // Snapped onto the point under the pointer: exactly where it falls on the work plane (on that point's own
+                        // plane, on it, at no offset).
+                        Some(Picked::Point(snap)) => r.origin(&snap).and_then(|o| d.add_point_on(&work_plane, o, &r).ok()),
+                        _ => on_plane.and_then(|p| d.add_point_on(&work_plane, p, &r).ok()),
+                    };
+                    if let Some(id) = made {
+                        m.history.push(before);
+                        m.selection = vec![id];
+                    }
                 }
+                Draw::Line(chain) => {
+                    let before = d.clone();
+                    let point = match picked {
+                        Some(Picked::Point(id)) => Some(id),
+                        _ => on_plane.and_then(|p| d.add_point_on(&work_plane, p, &r).ok()),
+                    };
+                    if let Some(id) = point {
+                        let closes = chain.len() >= 3 && chain.first() == Some(&id);
+                        if closes {
+                            if let Ok(line) = d.add_chain(chain, true) {
+                                m.selection = vec![line];
+                            }
+                            chain.clear();
+                        } else if chain.last() != Some(&id) {
+                            chain.push(id);
+                        }
+                        m.history.push(before);
+                    }
+                }
+                Draw::Move { .. } | Draw::Rotate { .. } => {}
             }
         }
     }
@@ -441,12 +628,22 @@ fn draw(
     lit: Option<&WorkPlane>,
 ) {
     let p = ui.painter_at(rect);
-    let visuals = ui.visuals();
     // On the drawing's own ground, as the plans and the 3D view: light in a dark interface when the user keeps the canvas light.
     let cp = crate::style::canvas_pal();
-    let (ink, faint, accent, hover_ink) = (cp.text, cp.muted.gamma_multiply(0.5), cp.accent, cp.hover);
-    let ground = if crate::style::canvas_dark() { visuals.extreme_bg_color } else { crate::canvas::color(bimcraft_core::render::PAPER) };
-    p.rect_filled(rect, 2.0, ground);
+    let (ink, accent, hover_ink) = (cp.text, cp.accent, cp.hover);
+    // The ground, as Revit's 3D view of a family: grey, lighter towards the bottom.
+    let (top, bottom) = if crate::style::canvas_dark() {
+        (Color32::from_rgb(40, 43, 49), Color32::from_rgb(70, 74, 82))
+    } else {
+        (Color32::from_rgb(150, 152, 155), Color32::from_rgb(206, 207, 209))
+    };
+    let mut ground = egui::Mesh::default();
+    for (q, c) in [(rect.left_top(), top), (rect.right_top(), top), (rect.right_bottom(), bottom), (rect.left_bottom(), bottom)] {
+        ground.colored_vertex(q, c);
+    }
+    ground.add_triangle(0, 1, 2);
+    ground.add_triangle(0, 2, 3);
+    p.add(Shape::mesh(ground));
     let at = |q: P3| {
         let (x, y, _) = cam.project(q);
         rect.min + vec2(x as f32, y as f32)
@@ -460,7 +657,8 @@ fn draw(
             base
         }
     };
-    // The work plane Point Element and Line draw on: a grid on it, a line each metre over what the family takes up there.
+    // The work plane Point Element and Line draw on, when Work Plane > Show shows it: a blue tint over it and a grid on it, a
+    // line each metre over what the family takes up there.
     let (lo, hi) = extent(r).unwrap_or(([-1000.; 3], [1000.; 3]));
     let plane = m.work_plane.frame(r).unwrap_or_default();
     let corners: Vec<P3> =
@@ -473,22 +671,29 @@ fn draw(
     let (x0, x1) = ((u0 / step).floor() - 1., (u1 / step).ceil() + 1.);
     let (y0, y1) = ((v0 / step).floor() - 1., (v1 / step).ceil() + 1.);
     let on = |u: f64, v: f64| at(plane.point([u * step, v * step, 0.]));
-    if (x1 - x0) < 200. && (y1 - y0) < 200. {
+    let blue = Color32::from_rgb(86, 170, 226);
+    if m.show_work_plane && (x1 - x0) < 200. && (y1 - y0) < 200. {
+        p.add(Shape::convex_polygon(
+            vec![on(x0, y0), on(x1, y0), on(x1, y1), on(x0, y1)],
+            blue.gamma_multiply(0.12),
+            Stroke::new(1.0, blue),
+        ));
         let mut x = x0;
         while x <= x1 {
-            p.line_segment([on(x, y0), on(x, y1)], Stroke::new(1.0, faint));
+            p.line_segment([on(x, y0), on(x, y1)], Stroke::new(1.0, blue.gamma_multiply(0.45)));
             x += 1.;
         }
         let mut y = y0;
         while y <= y1 {
-            p.line_segment([on(x0, y), on(x1, y)], Stroke::new(1.0, faint));
+            p.line_segment([on(x0, y), on(x1, y)], Stroke::new(1.0, blue.gamma_multiply(0.45)));
             y += 1.;
         }
     }
-    // The datums, as Revit's template has them: Ref. Level and the two Center reference planes, each the outline of a
-    // rectangle 300 mm beyond what the family takes up, named at a corner; the one drawn on in a lighter accent.
+    // The datums, as Revit's template has them and draws them: Ref. Level a dash-dot outline in the ink, the two Center
+    // reference planes dashed green; each 300 mm beyond what the family takes up, named at a corner. The one drawn on is
+    // drawn heavier, the one Pick is over in the hover's colour.
     let (a, b) = room(r);
-    let datum_ink = cp.muted.gamma_multiply(0.8);
+    let green = if crate::style::canvas_dark() { Color32::from_rgb(90, 200, 110) } else { Color32::from_rgb(20, 140, 40) };
     for (datum, quad) in [
         (Datum::Level, [[a[0], a[1], 0.], [b[0], a[1], 0.], [b[0], b[1], 0.], [a[0], b[1], 0.]]),
         (Datum::FrontBack, [[a[0], 0., a[2]], [b[0], 0., a[2]], [b[0], 0., b[2]], [a[0], 0., b[2]]]),
@@ -496,14 +701,25 @@ fn draw(
     ] {
         let active = m.work_plane == WorkPlane::Datum(datum);
         let picked = lit == Some(&WorkPlane::Datum(datum));
-        let ink = if picked {
-            cp.hover
-        } else if active {
-            cp.accent.gamma_multiply(0.55)
+        let own = if datum == Datum::Level { ink.gamma_multiply(0.85) } else { green };
+        let ink = if picked { cp.hover } else { own };
+        let stroke = Stroke::new(
+            if picked {
+                2.5
+            } else if active {
+                1.6
+            } else {
+                1.0
+            },
+            ink,
+        );
+        let mut outline: Vec<Pos2> = quad.iter().map(|q| at(*q)).collect();
+        outline.push(outline[0]);
+        if datum == Datum::Level {
+            p.extend(Shape::dashed_line_with_offset(&outline, stroke, &[14.0, 2.0], &[4.0, 4.0], 0.0));
         } else {
-            datum_ink
-        };
-        p.add(Shape::closed_line(quad.iter().map(|q| at(*q)).collect(), Stroke::new(if picked { 2.5 } else { 1.0 }, ink)));
+            p.extend(Shape::dashed_line(&outline, stroke, 7.0, 5.0));
+        }
         let name = match datum {
             Datum::Level => "Ref. Level",
             Datum::FrontBack => "Center (Front/Back)",
@@ -519,7 +735,7 @@ fn draw(
     let mut tris: Vec<(f64, [Pos2; 3], Color32)> = Vec::new();
     for id in &r.order {
         if let Some(Evaluated::Form { mesh, appearance }) = r.values.get(id) {
-            let base = if appearance.void { Color32::from_rgb(230, 150, 90) } else { Color32::from_rgb(196, 188, 170) };
+            let base = if appearance.void { Color32::from_rgb(230, 150, 90) } else { Color32::from_rgb(232, 232, 230) };
             let base = tone(id, base);
             for t in mesh.triangles() {
                 let e1 = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
@@ -547,6 +763,15 @@ fn draw(
         mesh.add_triangle(i, i + 1, i + 2);
     }
     p.add(Shape::mesh(mesh));
+    // The forms' edges, where their faces fold: thin, in the ink (the selection's colour when selected).
+    for id in &r.order {
+        if let Some(Evaluated::Form { mesh, .. }) = r.values.get(id) {
+            let edge = tone(id, ink.gamma_multiply(0.8));
+            for (a, b) in mesh.folds(20.) {
+                p.line_segment([at(a), at(b)], Stroke::new(1.0, edge));
+            }
+        }
+    }
     // The lines.
     for id in &r.order {
         if let Some(Evaluated::Curve { curve }) = r.values.get(id) {
@@ -559,6 +784,37 @@ fn draw(
             let selected = m.selection.iter().any(|s| s == id);
             p.add(Shape::line(points, Stroke::new(if selected { 2.5 } else { 1.5 }, tone(id, ink))));
         }
+    }
+    // The selection box being dragged: a solid outline left to right (a window), dashed right to left (a crossing).
+    if let (Some(Drag::Box(from)), Some(to)) = (&m.drag, hover) {
+        let r = Rect::from_two_pos(*from, to);
+        let ink = cp.accent;
+        p.rect_filled(r, 0.0, ink.gamma_multiply(0.08));
+        let corners = [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom(), r.left_top()];
+        if to.x < from.x {
+            p.extend(Shape::dashed_line(&corners, Stroke::new(1.0, ink), 6.0, 4.0));
+        } else {
+            p.add(Shape::line(corners.to_vec(), Stroke::new(1.0, ink)));
+        }
+    }
+    // Move and Copy: from where the selection moves, to the pointer; Rotate: its centre, where the angle starts, and the pointer.
+    match (&m.tool, hover) {
+        (Draw::Move { from: Some(from), .. }, Some(to)) => {
+            p.line_segment([at(*from), to], Stroke::new(1.5, accent));
+            p.circle_stroke(at(*from), 4.0, Stroke::new(1.5, accent));
+        }
+        (Draw::Rotate { centre, start }, _) => {
+            let c = at(*centre);
+            p.circle_stroke(c, 5.0, Stroke::new(1.5, accent));
+            p.circle_filled(c, 2.0, accent);
+            if let Some(s) = start {
+                p.line_segment([c, at(*s)], Stroke::new(1.5, accent));
+                if let Some(to) = hover {
+                    p.extend(Shape::dashed_line(&[c, to], Stroke::new(1.0, accent), 6.0, 4.0));
+                }
+            }
+        }
+        _ => {}
     }
     // The line being drawn, to the pointer.
     if let (Draw::Line(chain), Some(to)) = (&m.tool, hover)
@@ -611,7 +867,8 @@ fn draw(
             (Some(n), _) => {
                 p.circle_filled(s, 5.0, color);
                 if look.is_some_and(|l| shown(l.number)) {
-                    p.text(s + vec2(7.0, -7.0), egui::Align2::LEFT_BOTTOM, n.to_string(), egui::FontId::proportional(13.0), color);
+                    let number = if color == ink { Color32::from_rgb(30, 90, 200) } else { color };
+                    p.text(s + vec2(7.0, -7.0), egui::Align2::LEFT_BOTTOM, n.to_string(), egui::FontId::proportional(13.0), number);
                 }
             }
             (None, Some(PointType::ShapeHandle)) => {
@@ -622,7 +879,7 @@ fn draw(
                     .nodes
                     .iter()
                     .any(|n| &n.id == id && matches!(&n.operation, Operation::Point { host, .. } if !matches!(host, Host::World { .. })));
-                p.circle_stroke(s, if hosted { 3.0 } else { 4.5 }, Stroke::new(1.5, color));
+                p.circle_filled(s, if hosted { 2.5 } else { 3.5 }, color);
             }
         }
     }
@@ -637,6 +894,18 @@ fn draw(
             p.arrow(base, end - base, Stroke::new(2.0, color));
         }
     }
+    // The ViewCube, as Revit's: the faces turned to the eye, named, the one under the pointer lit; the house over its corner.
+    let face_fill = if crate::style::canvas_dark() { Color32::from_rgb(92, 97, 106) } else { Color32::from_rgb(236, 237, 239) };
+    let edge = if crate::style::canvas_dark() { Color32::from_rgb(150, 155, 165) } else { Color32::from_rgb(120, 124, 130) };
+    for (poly, label, ..) in cube_faces(cam, rect) {
+        let lit = hover.is_some_and(|h| inside(&poly, h));
+        let centre = poly.iter().fold(Pos2::ZERO, |a, q| a + q.to_vec2() / poly.len() as f32);
+        p.add(Shape::convex_polygon(poly, if lit { cp.hover.gamma_multiply(0.6) } else { face_fill }, Stroke::new(1.0, edge)));
+        p.text(centre, egui::Align2::CENTER_CENTER, t(label), egui::FontId::proportional(9.5), ink.gamma_multiply(0.85));
+    }
+    let home = home_rect(rect);
+    let home_lit = hover.is_some_and(|h| home.contains(h));
+    crate::icons::paint(&p, crate::icons::Icon::Home, home, if home_lit { cp.hover } else { edge });
     p.rect_stroke(rect, 2.0, Stroke::new(1.0, pal().border), StrokeKind::Inside);
     if r.order.is_empty() {
         p.text(

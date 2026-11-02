@@ -340,6 +340,9 @@ pub(crate) struct FamilyEditor {
 pub(crate) enum DocTab {
     #[default]
     Create,
+    Insert,
+    View,
+    Manage,
     Modify,
     /// "Modify | Reference Points" and the like, for the selection or the tool in hand.
     Context,

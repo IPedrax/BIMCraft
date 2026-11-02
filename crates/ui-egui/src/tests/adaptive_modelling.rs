@@ -400,3 +400,99 @@ fn a_point_clicked_near_another_snaps_onto_it_as_in_revit() {
         d.nodes.last()
     );
 }
+
+#[test]
+fn a_box_dragged_selects_what_is_inside_it_or_what_it_touches_as_in_revit() {
+    let mut h = modelling();
+    tool(&mut h, "Point");
+    click_model(&mut h, [0., 0., 0.], Modifiers::NONE);
+    click_model(&mut h, [2000., 0., 0.], Modifiers::NONE);
+    tool(&mut h, "Modify");
+    let d = definition(&h);
+    let (a, b) = (d.nodes[0].id.clone(), d.nodes[1].id.clone());
+    let screen = |h: &Harness<BimApp>, p: [f64; 3]| h.state().family_editor.as_ref().unwrap().modeller.screen(p);
+    let (pa, pb) = (screen(&h, [0., 0., 0.]), screen(&h, [2000., 0., 0.]));
+    let (lo, hi) = (pa.min(pb) - vec2(30., 30.), pa.max(pb) + vec2(30., 30.));
+    // Left to right round both: both.
+    drag_screen(&mut h, lo, hi, PointerButton::Primary);
+    let mut selected = h.state().family_editor.as_ref().unwrap().modeller.selection.clone();
+    selected.sort();
+    let mut both = vec![a.clone(), b.clone()];
+    both.sort();
+    assert_eq!(selected, both, "a window takes what is inside it");
+    // Right to left round the second only: the second.
+    drag_screen(&mut h, pb + vec2(20., 20.), pb - vec2(20., 20.), PointerButton::Primary);
+    assert_eq!(h.state().family_editor.as_ref().unwrap().modeller.selection, vec![b.clone()], "a crossing takes what it touches");
+    // A drag on empty space selects nothing and leaves the view where it was: it no longer orbits.
+    let camera = h.state().family_editor.as_ref().unwrap().modeller.camera.map(|c| (c.azimuth, c.elevation));
+    drag_screen(&mut h, pa + vec2(300., 200.), pa + vec2(360., 240.), PointerButton::Primary);
+    assert!(h.state().family_editor.as_ref().unwrap().modeller.selection.is_empty());
+    assert_eq!(h.state().family_editor.as_ref().unwrap().modeller.camera.map(|c| (c.azimuth, c.elevation)), camera);
+}
+
+#[test]
+fn the_viewcube_looks_from_the_face_clicked_and_its_house_goes_home_as_in_revit() {
+    let mut h = modelling();
+    let (cam, rect) = {
+        let m = &h.state().family_editor.as_ref().unwrap().modeller;
+        (m.camera.expect("a camera"), m.rect)
+    };
+    let faces = crate::adaptive_view::cube_faces(&cam, rect);
+    let front = faces.iter().find(|(_, label, ..)| *label == "FRONT").expect("the front face shows");
+    let centre = front.0.iter().fold(Pos2::ZERO, |a, q| a + q.to_vec2() / 4.0);
+    click_at(&mut h, centre);
+    let now = h.state().family_editor.as_ref().unwrap().modeller.camera.unwrap();
+    assert_eq!((now.azimuth, now.elevation), (-90., 0.), "seen from the front");
+    click_at(&mut h, crate::adaptive_view::home_rect(rect).center());
+    let home = h.state().family_editor.as_ref().unwrap().modeller.camera.unwrap();
+    assert_eq!((home.azimuth, home.elevation), (bimcraft_core::view3d::AZIMUTH, bimcraft_core::view3d::ELEVATION), "home again");
+    assert!(definition(&h).nodes.is_empty(), "the cube's clicks select and place nothing");
+}
+
+#[test]
+fn move_copy_and_rotate_take_the_selection_from_two_clicks_as_in_revit() {
+    let mut h = modelling();
+    tool(&mut h, "Line");
+    click_model(&mut h, [0., 0., 0.], Modifiers::NONE);
+    click_model(&mut h, [1000., 0., 0.], Modifiers::NONE);
+    h.key_press(Key::Enter);
+    h.run();
+    tool(&mut h, "Modify");
+    let d = definition(&h);
+    let line = d.nodes.iter().find(|n| matches!(n.operation, Operation::Line { .. })).map(|n| n.id.clone()).expect("a line");
+    let (a, b) = match &d.nodes.iter().find(|n| n.id == line).unwrap().operation {
+        Operation::Line { a, b } => (a.clone(), b.clone()),
+        other => panic!("{other:?}"),
+    };
+    let at = |h: &Harness<BimApp>, id: &str| {
+        let d = definition(h);
+        d.evaluate(&Default::default(), &d.preview).origin(id).unwrap()
+    };
+    let close = |p: [f64; 3], q: [f64; 3]| (0..3).all(|i| (p[i] - q[i]).abs() < 20.);
+    // Move: the line selected, from its first point (snapped) to 500 mm north of it.
+    if let Some(ed) = h.state_mut().family_editor.as_mut() {
+        ed.modeller.selection = vec![line.clone()];
+    }
+    h.run();
+    tool(&mut h, "Move");
+    click_model(&mut h, [0., 0., 0.], Modifiers::NONE);
+    click_model(&mut h, [0., 500., 0.], Modifiers::NONE);
+    assert!(close(at(&h, &a), [0., 500., 0.]) && close(at(&h, &b), [1000., 500., 0.]), "moved: {:?} {:?}", at(&h, &a), at(&h, &b));
+    assert_eq!(h.state().family_editor.as_ref().unwrap().modeller.tool, Draw::Modify, "back to Modify after one move");
+    // Copy: the line again, 500 mm further; the original stays, the copy is selected.
+    let count = definition(&h).nodes.len();
+    tool(&mut h, "Copy");
+    click_model(&mut h, [0., 500., 0.], Modifiers::NONE);
+    click_model(&mut h, [0., 1000., 0.], Modifiers::NONE);
+    assert_eq!(definition(&h).nodes.len(), count + 3, "a line and its two points copied");
+    assert!(close(at(&h, &a), [0., 500., 0.]), "the original stays");
+    // Rotate the original a quarter turn about its middle: its ends swap round it.
+    if let Some(ed) = h.state_mut().family_editor.as_mut() {
+        ed.modeller.selection = vec![line.clone()];
+    }
+    h.run();
+    tool(&mut h, "Rotate");
+    click_model(&mut h, [1000., 500., 0.], Modifiers::NONE);
+    click_model(&mut h, [500., 1000., 0.], Modifiers::NONE);
+    assert!(close(at(&h, &b), [500., 1000., 0.]) && close(at(&h, &a), [500., 0., 0.]), "turned: {:?} {:?}", at(&h, &a), at(&h, &b));
+}
