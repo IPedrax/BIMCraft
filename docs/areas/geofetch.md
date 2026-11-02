@@ -4,8 +4,7 @@
 The pure part is `crates/core/src/geo.rs` (boxes, tiles, the Overpass query, elevation grids, the `GeoSource` hook); the commands are in
 `commands.rs`; the fetching is `crates/geofetch`, which only the desktop app attaches (`Session.geo`). A build without it (the CLI,
 the MCP server, tests) refuses both commands: an agent fetches the Overpass JSON itself and gives it to [`import_osm`](osm-import.md) as
-`data`, or brings terrain in with [`toposurface`](terrain.md). The desktop's `main` does not attach it yet, so nothing user-reachable
-fetches until the Site tab does (its background job and the map picker for the box).
+`data`, or brings terrain in with [`toposurface`](terrain.md). The desktop's `main` attaches it, and the [Site tab](#the-site-tab) is what asks it.
 
 ## The box
 
@@ -49,8 +48,23 @@ Overpass's public servers ask for fair use (one request at a time, small boxes, 
 `Geofetch::desktop` gives none when `BIMCRAFT_NO_NETWORK` is set or in a Flatpak (which is not given the network). The cache folder is
 `cache` beside the settings file (`geofetch::cache_dir(favorites::default_path())`); with none, nothing is kept.
 
+## The Site tab
+
+The window never waits on the network. `crates/ui-egui/src/site.rs` takes the box's area and options on the window's thread, asks the
+fetcher the session holds on a thread of its own (`Job`, one at a time, the busy box with Cancel, as reading a Revit file does), and
+when the answer comes hands it to the **unchanged** `fetch_osm` or `fetch_terrain` through `geo::Prefetched`: a `GeoSource` that holds
+that one reply (or grid) for that one box, query, spacing and source and answers only it, taking its credits from the real fetcher.
+`session.geo` is swapped for it for the length of the command and put back whatever the command says. So there is one validation path,
+one undo step, one report and one attribution line, and a refusal (no location, a bad height) is said in the box. Cancel drops what the
+thread brings. An agent's `fetch_*` through `mcp --connect` still runs on the window's thread (agents wait while a fetch is on).
+`geo::default_spacing` is the spacing both the box and the command default to.
+
+`apps/bimcraft/src/main.rs` is the only place that builds the fetcher (`session.geo = Geofetch::desktop(..)`): `ui-egui` never names
+`bimcraft-geofetch` or an HTTP crate (`the_window_library_fetches_only_through_what_the_app_attaches` reads the manifests). Where
+`desktop` gives none (`BIMCRAFT_NO_NETWORK`, a Flatpak) the Site tab's boxes say there is no network and their Fetch is off.
+
 ## Not yet
 
-The desktop attach, a background job so the window never waits, and the Site tab's map picker (a rectangle on a zoomable map); an
-agent's `fetch_*` through `mcp --connect` would run on the window's thread until then. Copernicus as the default (once checked against
+The Site tab's map picker (a rectangle on a zoomable map, tiles fetched on demand from OpenStreetMap under its tile policy, a bundled
+outline offline); the boxes take a distance round the origin or four typed degrees until then. Copernicus as the default (once checked against
 a real tile), or both with a fallback. Roads, water and land use.

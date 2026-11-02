@@ -318,3 +318,18 @@ Dimension Type Properties (`dimtypes.rs`), and Properties edits its prefix, suff
 A double click on one of its numbers opens Dimension Text for that segment (`DimensionTextDialog`). Selected, an aligned or linear one shows
 a padlock under each segment and, over a string of two or more, EQ past its end (`dimension_constraints`): a click locks or unlocks, or makes
 it equal or not.
+
+## The Site tab
+
+`site.rs` (`Tab::Site`, between Massing and View). **Project Location**: Location opens a box (latitude, longitude, ground height in the
+project's units, true north, grid: `utm` or an EPSG code) that runs `geolocate`; a refusal stays in the box. **Terrain**: Terrain from
+Elevation Data and Import from OpenStreetMap open the area box (a distance round the origin, or a box of degrees; its km² and the 25 km²
+cap live; the options each command takes) and fetch on a thread (see [geofetch](geofetch.md#the-site-tab)), then a box says what was made
+and the credit the data is owed (ODbL, the elevation source). Pad is `Tool::Pad(points)`, the Mass tool's way (click the corners, Enter or
+the first corner again finishes, Esc cancels; its Options Bar has the offset and thickness) and runs `pad`. Place on Terrain runs
+`place_on_terrain` on the selection; Cut/Fill runs `cut_fill` on the selected pads (every pad when none is) and lists each pad's cut and
+fill and the totals in a box. Properties has rows for pads (level, offset, thickness, area, cut/fill/net) and toposurfaces (contour
+interval, material, points, areas), edited through `modify`. While a fetch runs the window's keys and agents wait, as for a Revit file.
+Not yet: a toposurface drawn by clicking points, the map picker, a right-click item for Place on Terrain. The tests (`tests/site.rs`)
+give the session a fake fetcher and step frames until the thread answers (a spinner asks for frames forever: `step`, never `run`).
+The sandbox that built this has no graphics adapter, so the tab and its boxes were not looked at in the three looks: do that first.

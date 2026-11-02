@@ -65,5 +65,5 @@ site's height above sea level; data in metres above sea level (a DEM) must have 
 
 ## Not yet
 
-A desktop tool (the Site tab; `TS` is free for it), pads that grade the surface (a slope out to the ground) and subregions, slope maps, contours cut by a section, points
+A toposurface drawn by clicking points (the [Site tab](desktop.md#the-site-tab) has Pad, Place on Terrain, Cut/Fill and the fetches; `TS` is free), pads that grade the surface (a slope out to the ground) and subregions, slope maps, contours cut by a section, points
 from a point cloud, LandXML. Elevation from tiles is `fetch_terrain` ([geofetch](geofetch.md)).
