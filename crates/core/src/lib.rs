@@ -57,6 +57,7 @@ pub mod link;
 pub mod massing;
 pub mod model;
 pub mod nbr5410;
+pub mod osm;
 pub mod paint;
 pub mod pat;
 pub mod pdf;

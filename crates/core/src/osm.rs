@@ -1,0 +1,823 @@
+//! OpenStreetMap data: Overpass JSON (the `out geom` form, which carries the geometry on each way, and the plain form, whose ways
+//! name nodes) and OSM XML, read into one shape, and the buildings found in it: closed ways and multipolygon relations tagged
+//! `building`, their outlines in longitude and latitude, their heights, and why anything was left out. No I/O and no model:
+//! `import_osm` projects the outlines and makes the masses. What a file holds is hostile: sizes are capped, coordinates are
+//! checked, and a feature that cannot be a building is counted, not a failure.
+//!
+//! Data (c) OpenStreetMap contributors, under the Open Database Licence (ODbL).
+
+use std::collections::{BTreeMap, HashMap};
+
+use crate::geom::P2;
+
+/// The most elements (nodes, ways and relations) one file may hold.
+pub const MAX_ELEMENTS: usize = 3_000_000;
+/// The most points one way may have.
+pub const MAX_WAY_POINTS: usize = 20_000;
+/// The most buildings one import makes.
+pub const MAX_BUILDINGS: usize = 20_000;
+/// The most members one relation may have.
+pub const MAX_MEMBERS: usize = 2_000;
+/// Rings with more corners than this are not checked for crossing themselves (the check is quadratic), and so are left out.
+pub const MAX_RING_CHECK: usize = 2_000;
+/// The longest a tag's text is kept, characters.
+const MAX_TAG: usize = 256;
+/// Most tags kept on one element.
+const MAX_TAGS: usize = 256;
+
+/// A longitude and latitude, degrees. NaN where the file gave none that make sense.
+pub type LonLat = (f64, f64);
+
+type Tags = BTreeMap<String, String>;
+
+#[derive(Clone, Debug, Default)]
+struct Way {
+    refs: Vec<i64>,
+    inline: Vec<LonLat>,
+    tags: Tags,
+    /// It has more points than are read.
+    too_long: bool,
+}
+
+#[derive(Clone, Debug)]
+struct Member {
+    kind: String,
+    id: i64,
+    role: String,
+    inline: Vec<LonLat>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct Relation {
+    members: Vec<Member>,
+    tags: Tags,
+}
+
+/// What a file holds: its nodes, ways and relations.
+#[derive(Clone, Debug, Default)]
+pub struct Osm {
+    nodes: HashMap<i64, LonLat>,
+    ways: BTreeMap<i64, Way>,
+    relations: BTreeMap<i64, Relation>,
+}
+
+/// What to make of the buildings.
+#[derive(Clone, Debug)]
+pub struct Options {
+    /// Parts of buildings (`building:part`) are buildings too.
+    pub parts: bool,
+    /// How tall a level is where only `building:levels` says, mm.
+    pub level_height: f64,
+    /// How tall a building is where nothing says, mm.
+    pub default_height: f64,
+    /// Only buildings with a corner inside: south, west, north, east, degrees.
+    pub bbox: Option<[f64; 4]>,
+}
+
+impl Default for Options {
+    fn default() -> Options {
+        Options { parts: false, level_height: 3000.0, default_height: 6000.0, bbox: None }
+    }
+}
+
+/// A building: its outline and courtyards in longitude and latitude (not closed: the last point is not the first again), its
+/// height above the ground and what it is lifted off it, mm.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Building {
+    /// `way/123`, or `relation/456` (`relation/456#2` for a second outline of one).
+    pub osm_id: String,
+    pub outer: Vec<LonLat>,
+    pub holes: Vec<Vec<LonLat>>,
+    pub height: f64,
+    pub min_height: f64,
+    pub name: String,
+    /// What the `building` tag says: `yes`, `house`, `apartments`.
+    pub kind: String,
+    /// What `building:levels` says, as given.
+    pub levels: String,
+}
+
+/// A feature that is not a building here, and why.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Skipped {
+    pub osm_id: String,
+    pub why: String,
+}
+
+/// The buildings a file holds.
+#[derive(Clone, Debug, Default)]
+pub struct Found {
+    pub buildings: Vec<Building>,
+    pub skipped: Vec<Skipped>,
+    /// How many of the buildings have no usable height and take the default.
+    pub defaulted: usize,
+}
+
+/// A coordinate that is on the Earth, or NaN, which nothing built from it will accept.
+fn coordinate(lat: Option<f64>, lon: Option<f64>) -> LonLat {
+    match (lat, lon) {
+        (Some(lat), Some(lon)) if lat.is_finite() && lon.is_finite() && lat.abs() <= 90.0 && lon.abs() <= 180.0 => (lon, lat),
+        _ => (f64::NAN, f64::NAN),
+    }
+}
+
+fn clip(text: &str, most: usize) -> String {
+    text.chars().take(most).collect()
+}
+
+/// Reads Overpass JSON or OSM XML, by its first character.
+pub fn parse(text: &str) -> Result<Osm, String> {
+    let text = text.trim_start_matches('\u{feff}').trim_start();
+    match text.chars().next() {
+        Some('{') => from_json(text),
+        Some('<') => from_xml(text),
+        _ => Err("it is neither Overpass JSON nor OSM XML: a file of either begins with `{` or `<`".into()),
+    }
+}
+
+fn json_tags(v: Option<&serde_json::Value>) -> Tags {
+    v.and_then(serde_json::Value::as_object)
+        .map(|o| o.iter().filter_map(|(k, v)| Some((clip(k, 64), clip(v.as_str()?, MAX_TAG)))).take(MAX_TAGS).collect())
+        .unwrap_or_default()
+}
+
+fn json_geometry(v: Option<&serde_json::Value>) -> (Vec<LonLat>, bool) {
+    let Some(a) = v.and_then(serde_json::Value::as_array) else { return (Vec::new(), false) };
+    let points = a
+        .iter()
+        .take(MAX_WAY_POINTS)
+        .map(|p| coordinate(p.get("lat").and_then(serde_json::Value::as_f64), p.get("lon").and_then(serde_json::Value::as_f64)))
+        .collect();
+    (points, a.len() > MAX_WAY_POINTS)
+}
+
+fn from_json(text: &str) -> Result<Osm, String> {
+    use serde_json::Value;
+    let v: Value = serde_json::from_str(text).map_err(|e| format!("not valid JSON: {e}"))?;
+    let elements = v
+        .get("elements")
+        .and_then(Value::as_array)
+        .ok_or("it has no `elements` list: Overpass JSON has one (ask Overpass for `[out:json]`)")?;
+    if elements.len() > MAX_ELEMENTS {
+        return Err(format!("it has {} elements; at most {MAX_ELEMENTS} are read", elements.len()));
+    }
+    let mut osm = Osm::default();
+    for el in elements {
+        let Some(id) = el.get("id").and_then(Value::as_i64) else { continue };
+        match el.get("type").and_then(Value::as_str) {
+            Some("node") => {
+                osm.nodes.insert(id, coordinate(el.get("lat").and_then(Value::as_f64), el.get("lon").and_then(Value::as_f64)));
+            }
+            Some("way") => {
+                let refs = el.get("nodes").and_then(Value::as_array);
+                let (inline, long) = json_geometry(el.get("geometry"));
+                osm.ways.insert(
+                    id,
+                    Way {
+                        refs: refs.map(|a| a.iter().take(MAX_WAY_POINTS).filter_map(Value::as_i64).collect()).unwrap_or_default(),
+                        inline,
+                        tags: json_tags(el.get("tags")),
+                        too_long: long || refs.is_some_and(|a| a.len() > MAX_WAY_POINTS),
+                    },
+                );
+            }
+            Some("relation") => {
+                let members = el.get("members").and_then(Value::as_array).map(Vec::as_slice).unwrap_or_default();
+                let members = members
+                    .iter()
+                    .take(MAX_MEMBERS)
+                    .filter_map(|m| {
+                        Some(Member {
+                            kind: m.get("type")?.as_str()?.to_string(),
+                            id: m.get("ref")?.as_i64()?,
+                            role: clip(m.get("role").and_then(Value::as_str).unwrap_or(""), 64),
+                            inline: json_geometry(m.get("geometry")).0,
+                        })
+                    })
+                    .collect();
+                osm.relations.insert(id, Relation { members, tags: json_tags(el.get("tags")) });
+            }
+            _ => {}
+        }
+    }
+    Ok(osm)
+}
+
+fn from_xml(text: &str) -> Result<Osm, String> {
+    let options = roxmltree::ParsingOptions { allow_dtd: false, nodes_limit: 50_000_000, ..Default::default() };
+    let doc = roxmltree::Document::parse_with_options(text, options).map_err(|e| format!("not valid OSM XML: {e}"))?;
+    let root = doc.root_element();
+    if root.tag_name().name() != "osm" {
+        return Err(format!("the XML is not OSM: its root element is `{}`, not `osm`", clip(root.tag_name().name(), 64)));
+    }
+    let num = |n: roxmltree::Node, k: &str| n.attribute(k).and_then(|v| v.trim().parse::<f64>().ok());
+    let int = |n: roxmltree::Node, k: &str| n.attribute(k).and_then(|v| v.trim().parse::<i64>().ok());
+    let tags = |n: roxmltree::Node| -> Tags {
+        n.children()
+            .filter(|c| c.has_tag_name("tag"))
+            .filter_map(|c| Some((clip(c.attribute("k")?, 64), clip(c.attribute("v")?, MAX_TAG))))
+            .take(MAX_TAGS)
+            .collect()
+    };
+    // A way's `nd` elements: the node they name, and where it is, if the file says.
+    let nds = |n: roxmltree::Node| -> (Vec<i64>, Vec<LonLat>, bool) {
+        let all: Vec<_> = n.children().filter(|c| c.has_tag_name("nd")).collect();
+        let refs = all.iter().take(MAX_WAY_POINTS).filter_map(|c| int(*c, "ref")).collect();
+        let inline = if all.iter().any(|c| c.attribute("lat").is_some()) {
+            all.iter().take(MAX_WAY_POINTS).map(|c| coordinate(num(*c, "lat"), num(*c, "lon"))).collect()
+        } else {
+            Vec::new()
+        };
+        (refs, inline, all.len() > MAX_WAY_POINTS)
+    };
+    let mut osm = Osm::default();
+    let mut count = 0usize;
+    for el in root.children().filter(roxmltree::Node::is_element) {
+        count += 1;
+        if count > MAX_ELEMENTS {
+            return Err(format!("it has more than {MAX_ELEMENTS} elements"));
+        }
+        let Some(id) = int(el, "id") else { continue };
+        match el.tag_name().name() {
+            "node" => {
+                osm.nodes.insert(id, coordinate(num(el, "lat"), num(el, "lon")));
+            }
+            "way" => {
+                let (refs, inline, too_long) = nds(el);
+                osm.ways.insert(id, Way { refs, inline, tags: tags(el), too_long });
+            }
+            "relation" => {
+                let members = el
+                    .children()
+                    .filter(|c| c.has_tag_name("member"))
+                    .take(MAX_MEMBERS)
+                    .filter_map(|m| {
+                        Some(Member {
+                            kind: m.attribute("type")?.to_string(),
+                            id: int(m, "ref")?,
+                            role: clip(m.attribute("role").unwrap_or(""), 64),
+                            inline: nds(m).1,
+                        })
+                    })
+                    .collect();
+                osm.relations.insert(id, Relation { members, tags: tags(el) });
+            }
+            _ => {}
+        }
+    }
+    Ok(osm)
+}
+
+/// The most a length may be, mm: a kilometre.
+const MAX_LENGTH: f64 = 1_000_000.0;
+
+/// A length as OSM writes it, in mm: `12`, `12.5`, `12 m`, `12,5 m`, `40 ft`, `40'`, `40' 6"`.
+pub fn length(text: &str) -> Option<f64> {
+    let t = text.trim().to_lowercase();
+    let number = |s: &str| s.trim().replace(',', ".").parse::<f64>().ok().filter(|v| v.is_finite() && *v >= 0.0);
+    let mm = if let Some((feet, rest)) = t.split_once('\'') {
+        let rest = rest.trim().trim_end_matches('"').trim();
+        let inches = if rest.is_empty() { 0.0 } else { number(rest)? };
+        (number(feet)? * 12.0 + inches) * 25.4
+    } else {
+        let split = t.find(|c: char| c.is_alphabetic()).unwrap_or(t.len());
+        let value = number(&t[..split])?;
+        match t[split..].trim() {
+            "" | "m" | "meter" | "meters" | "metre" | "metres" => value * 1000.0,
+            "ft" | "foot" | "feet" => value * 304.8,
+            _ => return None,
+        }
+    };
+    (mm.is_finite() && mm <= MAX_LENGTH).then_some(mm)
+}
+
+/// A ring's corners as a key two equal places share (to a ten-millionth of a degree, a centimetre).
+fn key(p: LonLat) -> (i64, i64) {
+    ((p.0 * 1e7).round() as i64, (p.1 * 1e7).round() as i64)
+}
+
+/// Whether segment `a`-`b` meets segment `c`-`d`, touching included.
+fn meets(a: LonLat, b: LonLat, c: LonLat, d: LonLat) -> bool {
+    let side = |p: LonLat, q: LonLat, r: LonLat| (q.0 - p.0) * (r.1 - p.1) - (q.1 - p.1) * (r.0 - p.0);
+    let on = |p: LonLat, q: LonLat, r: LonLat| r.0 >= p.0.min(q.0) && r.0 <= p.0.max(q.0) && r.1 >= p.1.min(q.1) && r.1 <= p.1.max(q.1);
+    let (d1, d2, d3, d4) = (side(c, d, a), side(c, d, b), side(a, b, c), side(a, b, d));
+    if ((d1 > 0.0 && d2 < 0.0) || (d1 < 0.0 && d2 > 0.0)) && ((d3 > 0.0 && d4 < 0.0) || (d3 < 0.0 && d4 > 0.0)) {
+        return true;
+    }
+    (d1 == 0.0 && on(c, d, a)) || (d2 == 0.0 && on(c, d, b)) || (d3 == 0.0 && on(a, b, c)) || (d4 == 0.0 && on(a, b, d))
+}
+
+/// A closed ring made into an open one (no closing point) that is a simple polygon, or why it is not.
+fn clean(points: &[LonLat]) -> Result<Vec<LonLat>, String> {
+    if points.iter().any(|p| !p.0.is_finite() || !p.1.is_finite()) {
+        return Err("a corner of it is missing from the file or is not on the Earth".into());
+    }
+    let mut ring: Vec<LonLat> = Vec::with_capacity(points.len());
+    for p in points {
+        if ring.last().is_none_or(|q| key(*q) != key(*p)) {
+            ring.push(*p);
+        }
+    }
+    if ring.len() < 4 || ring.first().map(|p| key(*p)) != ring.last().map(|p| key(*p)) {
+        return Err("it is not a closed outline, or has fewer than three corners".into());
+    }
+    ring.pop();
+    if ring.len() > MAX_RING_CHECK {
+        return Err(format!("it has more than {MAX_RING_CHECK} corners to check, so it is left out"));
+    }
+    let n = ring.len();
+    for i in 0..n {
+        for j in i + 1..n {
+            // Neighbours meet at their shared corner, as they should.
+            if j == i + 1 || (i == 0 && j == n - 1) {
+                continue;
+            }
+            if meets(ring[i], ring[(i + 1) % n], ring[j], ring[(j + 1) % n]) {
+                return Err("its outline crosses itself".into());
+            }
+        }
+    }
+    let twice: f64 = (0..ring.len()).map(|i| ring[i].0 * ring[(i + 1) % ring.len()].1 - ring[(i + 1) % ring.len()].0 * ring[i].1).sum();
+    if twice.abs() < 1e-14 {
+        return Err("it encloses no area".into());
+    }
+    Ok(ring)
+}
+
+/// Pieces of outline joined end to end, in either direction, into closed rings; how many pieces were left over.
+fn join(mut pieces: Vec<Vec<LonLat>>) -> (Vec<Vec<LonLat>>, usize) {
+    let (mut rings, mut open) = (Vec::new(), 0);
+    pieces.retain(|p| p.len() >= 2);
+    while let Some(mut ring) = pieces.pop() {
+        loop {
+            if ring.len() >= 4 && ring.first().map(|p| key(*p)) == ring.last().map(|p| key(*p)) {
+                rings.push(ring);
+                break;
+            }
+            let Some(end) = ring.last().map(|p| key(*p)) else { break };
+            if let Some(i) = pieces.iter().position(|p| p.first().map(|q| key(*q)) == Some(end)) {
+                ring.extend(pieces.remove(i).into_iter().skip(1));
+            } else if let Some(i) = pieces.iter().position(|p| p.last().map(|q| key(*q)) == Some(end)) {
+                let mut piece = pieces.remove(i);
+                piece.reverse();
+                ring.extend(piece.into_iter().skip(1));
+            } else {
+                open += 1;
+                break;
+            }
+        }
+    }
+    (rings, open)
+}
+
+fn inside(ring: &[LonLat], p: LonLat) -> bool {
+    let ring: Vec<P2> = ring.iter().map(|q| P2(q.0, q.1)).collect();
+    crate::geom::contains(&ring, P2(p.0, p.1))
+}
+
+impl Osm {
+    /// A way's points: the geometry it carries, else the nodes it names.
+    fn points(&self, w: &Way) -> Result<Vec<LonLat>, String> {
+        if w.too_long {
+            return Err(format!("it has more than {MAX_WAY_POINTS} points"));
+        }
+        if !w.inline.is_empty() {
+            return Ok(w.inline.clone());
+        }
+        w.refs.iter().map(|r| self.nodes.get(r).copied().ok_or_else(|| "a node of it is not in the file".to_string())).collect()
+    }
+}
+
+/// How tall a building is, and how far off the ground it starts, mm; and whether the height is the default.
+fn heights(tags: &Tags, o: &Options) -> Result<(f64, f64, bool), String> {
+    let level_height = if o.level_height.is_finite() && o.level_height > 0.0 { o.level_height } else { 3000.0 };
+    let levels = |key: &str| {
+        tags.get(key).and_then(|t| t.trim().replace(',', ".").parse::<f64>().ok()).filter(|n| n.is_finite() && (0.0..=500.0).contains(n))
+    };
+    let by_height = ["height", "building:height"].iter().find_map(|k| tags.get(*k).and_then(|t| length(t))).filter(|h| *h > 0.0);
+    let by_levels = levels("building:levels").filter(|n| *n > 0.0).map(|n| n * level_height);
+    let (height, defaulted) = match by_height.or(by_levels) {
+        Some(h) => (h, false),
+        None => (if o.default_height.is_finite() && o.default_height > 0.0 { o.default_height.min(MAX_LENGTH) } else { 6000.0 }, true),
+    };
+    let min =
+        tags.get("min_height").and_then(|t| length(t)).or_else(|| levels("building:min_level").map(|n| n * level_height)).unwrap_or(0.0);
+    if min >= height - 1.0 {
+        return Err(format!("its min_height ({min} mm) is not below its height ({height} mm)"));
+    }
+    Ok((height, min, defaulted))
+}
+
+/// The buildings in `osm`.
+pub fn buildings(osm: &Osm, o: &Options) -> Found {
+    let mut found = Found::default();
+    let in_box = |ring: &[LonLat]| o.bbox.is_none_or(|[s, w, n, e]| ring.iter().any(|p| p.1 >= s && p.1 <= n && p.0 >= w && p.0 <= e));
+    let named = |tags: &Tags, key: &str| tags.get(key).filter(|v| v.as_str() != "no").is_some();
+    // Whether this is a building (or a part, if parts are wanted): `Ok(true)` a part only; `Err`, to be passed over.
+    let wanted = |id: &str, tags: &Tags, found: &mut Found| -> Option<bool> {
+        let (building, part) = (named(tags, "building"), named(tags, "building:part"));
+        if !building && !part {
+            return None;
+        }
+        if !building && !o.parts {
+            found.skipped.push(Skipped {
+                osm_id: id.into(),
+                why: "it is a building part (building:part); import with parts to include parts".into(),
+            });
+            return None;
+        }
+        Some(!building)
+    };
+    let make = |found: &mut Found, id: String, tags: &Tags, part: bool, outer: Vec<LonLat>, holes: Vec<Vec<LonLat>>| {
+        if !in_box(&outer) {
+            return;
+        }
+        if found.buildings.len() >= MAX_BUILDINGS {
+            if !found.skipped.iter().any(|s| s.why.contains("more than")) {
+                found
+                    .skipped
+                    .push(Skipped { osm_id: id, why: format!("more than {MAX_BUILDINGS} buildings: this and the rest are left out") });
+            }
+            return;
+        }
+        match heights(tags, o) {
+            Ok((height, min_height, defaulted)) => {
+                found.defaulted += usize::from(defaulted);
+                found.buildings.push(Building {
+                    osm_id: id,
+                    outer,
+                    holes,
+                    height,
+                    min_height,
+                    name: tags.get("name").cloned().unwrap_or_default(),
+                    kind: if part { "part".into() } else { tags.get("building").cloned().unwrap_or_default() },
+                    levels: tags.get("building:levels").cloned().unwrap_or_default(),
+                });
+            }
+            Err(why) => found.skipped.push(Skipped { osm_id: id, why }),
+        }
+    };
+    for (id, w) in &osm.ways {
+        let osm_id = format!("way/{id}");
+        let Some(part) = wanted(&osm_id, &w.tags, &mut found) else { continue };
+        match osm.points(w).and_then(|p| clean(&p)) {
+            Ok(ring) => make(&mut found, osm_id, &w.tags, part, ring, Vec::new()),
+            Err(why) => found.skipped.push(Skipped { osm_id, why }),
+        }
+    }
+    for (id, r) in &osm.relations {
+        let osm_id = format!("relation/{id}");
+        let Some(part) = wanted(&osm_id, &r.tags, &mut found) else { continue };
+        let skip = |found: &mut Found, why: &str| found.skipped.push(Skipped { osm_id: osm_id.clone(), why: why.into() });
+        if r.tags.get("type").map(String::as_str) != Some("multipolygon") {
+            skip(&mut found, "it is a relation but not a multipolygon");
+            continue;
+        }
+        let (mut outers, mut inners) = (Vec::new(), Vec::new());
+        let mut broken = None;
+        for m in r.members.iter().filter(|m| m.kind == "way") {
+            let points = if m.inline.is_empty() {
+                osm.ways.get(&m.id).ok_or_else(|| "a way of it is not in the file".to_string()).and_then(|w| osm.points(w))
+            } else {
+                Ok(m.inline.clone())
+            };
+            match points {
+                Ok(p) if p.iter().all(|q| q.0.is_finite() && q.1.is_finite()) => {
+                    if m.role == "inner" {
+                        inners.push(p)
+                    } else {
+                        outers.push(p)
+                    }
+                }
+                Ok(_) => broken = Some("a corner of it is missing from the file or is not on the Earth".to_string()),
+                Err(why) => broken = Some(why),
+            }
+        }
+        if let Some(why) = broken {
+            skip(&mut found, &why);
+            continue;
+        }
+        if outers.is_empty() {
+            skip(&mut found, "it has no outer way");
+            continue;
+        }
+        let (rings, open) = join(outers);
+        if open > 0 && rings.is_empty() {
+            skip(&mut found, "its outer ways do not close into an outline");
+            continue;
+        }
+        let holes: Vec<Vec<LonLat>> = join(inners).0.iter().filter_map(|h| clean(h).ok()).collect();
+        let mut n = 0;
+        for ring in rings {
+            match clean(&ring) {
+                Ok(outer) => {
+                    n += 1;
+                    let own: Vec<Vec<LonLat>> = holes.iter().filter(|h| inside(&outer, h[0])).cloned().collect();
+                    let id = if n == 1 { osm_id.clone() } else { format!("{osm_id}#{n}") };
+                    make(&mut found, id, &r.tags, part, outer, own);
+                }
+                Err(why) => skip(&mut found, &why),
+            }
+        }
+    }
+    found
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A square of about 20 m by 20 m near São Paulo: its corners, longitude and latitude, closed.
+    fn square(lon: f64, lat: f64, size: f64) -> Vec<LonLat> {
+        let (dx, dy) = (size * 0.000_01, size * 0.000_009);
+        vec![(lon, lat), (lon + dx, lat), (lon + dx, lat + dy), (lon, lat + dy), (lon, lat)]
+    }
+
+    fn geometry(points: &[LonLat]) -> String {
+        points.iter().map(|(lon, lat)| format!(r#"{{"lat":{lat},"lon":{lon}}}"#)).collect::<Vec<_>>().join(",")
+    }
+
+    /// An Overpass `out geom` file of `elements`.
+    fn file(elements: &[String]) -> String {
+        format!(r#"{{"version":0.6,"generator":"Overpass API","elements":[{}]}}"#, elements.join(","))
+    }
+
+    fn way(id: i64, points: &[LonLat], tags: &str) -> String {
+        format!(r#"{{"type":"way","id":{id},"geometry":[{}],"tags":{{{tags}}}}}"#, geometry(points))
+    }
+
+    fn found(elements: &[String]) -> Found {
+        buildings(&parse(&file(elements)).unwrap(), &Options::default())
+    }
+
+    const HOUSE: LonLat = (-46.6333, -23.5505);
+
+    #[test]
+    fn a_closed_way_tagged_building_is_a_building_with_its_height() {
+        let f = found(&[way(10, &square(HOUSE.0, HOUSE.1, 20.0), r#""building":"house","height":"12 m","name":"Casa""#)]);
+        assert_eq!(f.buildings.len(), 1, "{:?}", f.skipped);
+        let b = &f.buildings[0];
+        assert_eq!((b.osm_id.as_str(), b.kind.as_str(), b.name.as_str()), ("way/10", "house", "Casa"));
+        assert_eq!((b.height, b.min_height, b.outer.len(), b.holes.len()), (12000.0, 0.0, 4, 0), "the closing point is not repeated");
+        assert_eq!(f.defaulted, 0);
+    }
+
+    #[test]
+    fn height_comes_from_height_then_levels_then_the_default() {
+        let at = |tags: &str| found(&[way(1, &square(HOUSE.0, HOUSE.1, 20.0), tags)]);
+        assert_eq!(at(r#""building":"yes","height":"9""#).buildings[0].height, 9000.0);
+        assert_eq!(at(r#""building":"yes","building:levels":"4""#).buildings[0].height, 12000.0);
+        assert_eq!(at(r#""building":"yes","height":"10","building:levels":"4""#).buildings[0].height, 10000.0, "height first");
+        let none = at(r#""building":"yes""#);
+        assert_eq!((none.buildings[0].height, none.defaulted), (6000.0, 1));
+        let bad = at(r#""building":"yes","height":"tall","building:levels":"two""#);
+        assert_eq!((bad.buildings[0].height, bad.defaulted), (6000.0, 1), "what is not a length is not read");
+        let o = Options { level_height: 3500.0, default_height: 4000.0, ..Options::default() };
+        let osm = parse(&file(&[way(1, &square(HOUSE.0, HOUSE.1, 20.0), r#""building":"yes","building:levels":"4""#)])).unwrap();
+        assert_eq!(buildings(&osm, &o).buildings[0].height, 14000.0);
+    }
+
+    #[test]
+    fn lengths_are_read_in_the_units_osm_uses() {
+        for (text, mm) in [
+            ("12", 12000.0),
+            ("12.5", 12500.0),
+            ("12,5", 12500.0),
+            (" 12 m ", 12000.0),
+            ("12m", 12000.0),
+            ("40 ft", 12192.0),
+            ("40'", 12192.0),
+            ("40' 6\"", 12344.4),
+            ("0.5", 500.0),
+        ] {
+            assert!(length(text).is_some_and(|v| (v - mm).abs() < 0.01), "{text}: {:?}", length(text));
+        }
+        for text in ["", "tall", "-3", "m", "12 parsecs", "1e999", "nan", "99999999999"] {
+            assert_eq!(length(text), None, "{text}");
+        }
+    }
+
+    #[test]
+    fn a_part_lifted_off_the_ground_has_a_min_height() {
+        let tags = r#""building:part":"yes","height":"20","min_height":"8""#;
+        let osm = parse(&file(&[way(1, &square(HOUSE.0, HOUSE.1, 20.0), tags)])).unwrap();
+        let none = buildings(&osm, &Options::default());
+        assert!(none.buildings.is_empty() && none.skipped[0].why.contains("part"), "{:?}", none.skipped);
+        let with = buildings(&osm, &Options { parts: true, ..Options::default() });
+        assert_eq!((with.buildings[0].height, with.buildings[0].min_height), (20000.0, 8000.0));
+        let by_level = r#""building:part":"yes","building:levels":"6","building:min_level":"2""#;
+        let osm = parse(&file(&[way(1, &square(HOUSE.0, HOUSE.1, 20.0), by_level)])).unwrap();
+        let b = &buildings(&osm, &Options { parts: true, ..Options::default() }).buildings[0];
+        assert_eq!((b.height, b.min_height), (18000.0, 6000.0));
+    }
+
+    #[test]
+    fn a_multipolygon_joins_its_outer_ways_and_holds_its_courtyard() {
+        // The outer ring in two ways, one of them running the other way; a courtyard.
+        let outer = square(HOUSE.0, HOUSE.1, 40.0);
+        let (a, b) = (outer[..3].to_vec(), outer[2..].to_vec());
+        let mut b_reversed = b.clone();
+        b_reversed.reverse();
+        let court = square(HOUSE.0 + 0.00015, HOUSE.1 + 0.00013, 8.0);
+        let rel = format!(
+            r#"{{"type":"relation","id":77,"members":[
+                {{"type":"way","ref":1,"role":"outer","geometry":[{}]}},
+                {{"type":"way","ref":2,"role":"outer","geometry":[{}]}},
+                {{"type":"way","ref":3,"role":"inner","geometry":[{}]}}],
+               "tags":{{"type":"multipolygon","building":"apartments","height":"30"}}}}"#,
+            geometry(&a),
+            geometry(&b_reversed),
+            geometry(&court)
+        );
+        let f = found(&[rel]);
+        assert_eq!(f.buildings.len(), 1, "{:?}", f.skipped);
+        let b = &f.buildings[0];
+        assert_eq!((b.osm_id.as_str(), b.outer.len(), b.holes.len(), b.holes[0].len()), ("relation/77", 4, 1, 4));
+        assert_eq!(b.height, 30000.0);
+        // Two outlines are two buildings; one that does not close is left out.
+        let far = square(HOUSE.0 + 0.01, HOUSE.1, 40.0);
+        let two = format!(
+            r#"{{"type":"relation","id":78,"members":[{{"type":"way","ref":1,"role":"outer","geometry":[{}]}},{{"type":"way","ref":2,"role":"outer","geometry":[{}]}}],"tags":{{"type":"multipolygon","building":"yes"}}}}"#,
+            geometry(&outer),
+            geometry(&far)
+        );
+        let f = found(&[two]);
+        assert_eq!(f.buildings.iter().map(|b| b.osm_id.as_str()).collect::<Vec<_>>(), ["relation/78", "relation/78#2"]);
+        let open = format!(
+            r#"{{"type":"relation","id":79,"members":[{{"type":"way","ref":1,"role":"outer","geometry":[{}]}}],"tags":{{"type":"multipolygon","building":"yes"}}}}"#,
+            geometry(&outer[..3])
+        );
+        let f = found(&[open]);
+        assert!(f.buildings.is_empty() && f.skipped[0].why.contains("close"), "{:?}", f.skipped);
+    }
+
+    #[test]
+    fn what_cannot_be_a_building_is_counted_with_why() {
+        let sq = square(HOUSE.0, HOUSE.1, 20.0);
+        let bowtie = vec![
+            (HOUSE.0, HOUSE.1),
+            (HOUSE.0 + 0.0002, HOUSE.1 + 0.0002),
+            (HOUSE.0 + 0.0002, HOUSE.1),
+            (HOUSE.0, HOUSE.1 + 0.0002),
+            (HOUSE.0, HOUSE.1),
+        ];
+        let off = vec![(HOUSE.0, 95.0), (HOUSE.0 + 0.1, 95.0), (HOUSE.0 + 0.1, 96.0), (HOUSE.0, 95.0)];
+        let f = found(&[
+            way(1, &sq[..4], r#""building":"yes""#),
+            way(2, &sq[..2], r#""building":"yes""#),
+            way(3, &bowtie, r#""building":"yes""#),
+            way(4, &sq, r#""building":"no""#),
+            way(5, &sq, r#""highway":"residential""#),
+            way(6, &off, r#""building":"yes""#),
+            way(7, &sq, r#""building":"yes","height":"3","min_height":"5""#),
+            way(8, &sq, r#""building":"yes""#),
+        ]);
+        let why = |id: &str| f.skipped.iter().find(|s| s.osm_id == id).map(|s| s.why.as_str()).unwrap_or("not skipped");
+        assert!(why("way/1").contains("closed"), "{}", why("way/1"));
+        assert!(why("way/2").contains("closed") || why("way/2").contains("corners"), "{}", why("way/2"));
+        assert!(why("way/3").contains("cross"), "{}", why("way/3"));
+        assert_eq!(why("way/4"), "not skipped", "building=no is not a building, and not worth a word");
+        assert_eq!(why("way/5"), "not skipped", "a road is not asked about");
+        assert!(why("way/6").contains("Earth"), "{}", why("way/6"));
+        assert!(why("way/7").contains("min_height"), "{}", why("way/7"));
+        assert_eq!(f.buildings.iter().map(|b| b.osm_id.as_str()).collect::<Vec<_>>(), ["way/8"]);
+    }
+
+    #[test]
+    fn a_box_keeps_the_buildings_with_a_corner_in_it() {
+        let near = way(1, &square(HOUSE.0, HOUSE.1, 20.0), r#""building":"yes""#);
+        let far = way(2, &square(HOUSE.0 + 0.5, HOUSE.1, 20.0), r#""building":"yes""#);
+        let osm = parse(&file(&[near, far])).unwrap();
+        let o = Options { bbox: Some([HOUSE.1 - 0.001, HOUSE.0 - 0.001, HOUSE.1 + 0.001, HOUSE.0 + 0.001]), ..Options::default() };
+        let f = buildings(&osm, &o);
+        assert_eq!(f.buildings.iter().map(|b| b.osm_id.as_str()).collect::<Vec<_>>(), ["way/1"]);
+        assert!(f.skipped.is_empty(), "outside the box is not a failure: {:?}", f.skipped);
+    }
+
+    /// The same two buildings as `out geom` JSON, plain JSON (ways before their nodes) and XML.
+    fn same_in_three_forms() -> (String, String, String) {
+        let (a, b) = (square(HOUSE.0, HOUSE.1, 20.0), square(HOUSE.0 + 0.001, HOUSE.1, 30.0));
+        let geom = file(&[way(1, &a, r#""building":"yes","height":"7""#), way(2, &b, r#""building":"house","building:levels":"2""#)]);
+        let node = |id: i64, p: LonLat| format!(r#"{{"type":"node","id":{id},"lat":{},"lon":{}}}"#, p.1, p.0);
+        let (mut nodes, mut refs) = (Vec::new(), Vec::new());
+        for (w, ring) in [&a, &b].into_iter().enumerate() {
+            let mut ids = Vec::new();
+            for (i, p) in ring[..4].iter().enumerate() {
+                let id = 100 * (w as i64 + 1) + i as i64;
+                nodes.push(node(id, *p));
+                ids.push(id);
+            }
+            ids.push(ids[0]);
+            refs.push(ids);
+        }
+        let list = |ids: &Vec<i64>| ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
+        let plain = file(&[
+            format!(r#"{{"type":"way","id":1,"nodes":[{}],"tags":{{"building":"yes","height":"7"}}}}"#, list(&refs[0])),
+            format!(r#"{{"type":"way","id":2,"nodes":[{}],"tags":{{"building":"house","building:levels":"2"}}}}"#, list(&refs[1])),
+            nodes.join(","),
+        ]);
+        let xml_nodes: String = [&a, &b]
+            .iter()
+            .enumerate()
+            .flat_map(|(w, ring)| {
+                ring[..4].iter().enumerate().map(move |(i, p)| format!(r#"<node id="{}" lat="{}" lon="{}"/>"#, 100 * (w + 1) + i, p.1, p.0))
+            })
+            .collect();
+        let nd = |ids: &Vec<i64>| ids.iter().map(|i| format!(r#"<nd ref="{i}"/>"#)).collect::<String>();
+        let xml = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?><osm version="0.6" generator="Overpass API">{xml_nodes}
+               <way id="1">{}<tag k="building" v="yes"/><tag k="height" v="7"/></way>
+               <way id="2">{}<tag k="building" v="house"/><tag k="building:levels" v="2"/></way></osm>"#,
+            nd(&refs[0]),
+            nd(&refs[1])
+        );
+        (geom, plain, xml)
+    }
+
+    #[test]
+    fn json_with_geometry_json_with_nodes_and_xml_give_the_same_buildings() {
+        let (geom, plain, xml) = same_in_three_forms();
+        let of = |text: &str| buildings(&parse(text).unwrap(), &Options::default());
+        let (g, p, x) = (of(&geom), of(&plain), of(&xml));
+        assert_eq!(g.buildings.len(), 2, "{:?}", g.skipped);
+        for other in [&p, &x] {
+            assert!(other.skipped.is_empty(), "{:?}", other.skipped);
+            assert_eq!(other.buildings.len(), 2);
+            for (a, b) in g.buildings.iter().zip(&other.buildings) {
+                assert_eq!((&a.osm_id, a.height, &a.kind), (&b.osm_id, b.height, &b.kind));
+                assert!(a.outer.iter().zip(&b.outer).all(|(p, q)| (p.0 - q.0).abs() < 1e-9 && (p.1 - q.1).abs() < 1e-9));
+            }
+        }
+        assert_eq!((g.buildings[1].height, g.buildings[1].levels.as_str()), (6000.0, "2"));
+    }
+
+    #[test]
+    fn xml_with_geometry_on_its_nd_elements_is_read_too() {
+        let ring = square(HOUSE.0, HOUSE.1, 20.0);
+        let nds: String = ring.iter().map(|p| format!(r#"<nd ref="1" lat="{}" lon="{}"/>"#, p.1, p.0)).collect();
+        let xml = format!(r#"<osm><way id="5">{nds}<tag k="building" v="yes"/></way></osm>"#);
+        let f = buildings(&parse(&xml).unwrap(), &Options::default());
+        assert_eq!(f.buildings.len(), 1, "{:?}", f.skipped);
+    }
+
+    #[test]
+    fn a_file_that_is_not_osm_is_refused_with_why() {
+        for (text, says) in [
+            ("", "neither"),
+            ("hello", "neither"),
+            ("{", "JSON"),
+            (r#"{"elements": 5}"#, "elements"),
+            (r#"{"version":0.6}"#, "elements"),
+            ("<html></html>", "osm"),
+            ("<osm><way", "XML"),
+            (r#"<!DOCTYPE osm [<!ENTITY a "aaaa"><!ENTITY b "&a;&a;&a;&a;">]><osm>&b;</osm>"#, "XML"),
+        ] {
+            let e = parse(text).unwrap_err();
+            assert!(e.contains(says), "{text:?}: {e}");
+        }
+        assert!(parse("\u{feff}  {\"elements\": []}").is_ok(), "a byte order mark and spaces first");
+        assert!(parse(r#"<osm></osm>"#).unwrap().nodes.is_empty());
+    }
+
+    #[test]
+    fn hostile_values_in_a_file_are_left_out_not_trusted() {
+        // Out-of-range and missing coordinates, a node that is not there, ids that are not numbers.
+        let ring = square(HOUSE.0, HOUSE.1, 20.0);
+        let text = file(&[
+            r#"{"type":"node","id":"x","lat":1,"lon":2}"#.into(),
+            r#"{"type":"node","id":1,"lat":999,"lon":2}"#.into(),
+            r#"{"type":"way","id":9,"nodes":[1,2,3,4,1],"tags":{"building":"yes"}}"#.into(),
+            r#"{"type":"way","id":"y","geometry":[],"tags":{"building":"yes"}}"#.into(),
+            r#"{"type":"way","id":10,"geometry":[null,null,null,null],"tags":{"building":"yes"}}"#.into(),
+            r#"{"type":"relation","id":11,"members":"x","tags":{"building":"yes"}}"#.into(),
+            r#"{"type":"relation","id":12,"members":[{"type":"way"},{"ref":"a"},5],"tags":{"building":"yes","type":"multipolygon"}}"#
+                .into(),
+            r#"{"type":"way","id":13,"tags":{"building":["yes"]}}"#.into(),
+            way(14, &ring, &format!(r#""building":"yes","name":"{}","height":"{}""#, "n".repeat(10_000), "9".repeat(10_000))),
+        ]);
+        let f = buildings(&parse(&text).unwrap(), &Options::default());
+        assert_eq!(f.buildings.len(), 1, "{:?}", f.skipped);
+        assert!(f.buildings[0].name.chars().count() <= 256, "tag text is cut");
+        assert_eq!(f.buildings[0].height, 6000.0, "an absurd height is not read");
+        assert!(f.skipped.len() >= 3, "{:?}", f.skipped);
+    }
+
+    #[test]
+    fn a_ring_with_too_many_corners_to_check_is_left_out_and_many_buildings_are_capped() {
+        let n = MAX_RING_CHECK + 50;
+        let big: Vec<LonLat> = (0..=n)
+            .map(|i| {
+                let a = (i % n) as f64 / n as f64 * std::f64::consts::TAU;
+                (HOUSE.0 + a.cos() * 0.001, HOUSE.1 + a.sin() * 0.001)
+            })
+            .collect();
+        let f = found(&[way(1, &big, r#""building":"yes""#)]);
+        assert!(f.buildings.is_empty() && f.skipped[0].why.contains("corners"), "{:?}", f.skipped);
+        // More buildings than an import makes: the first ones, and a word about the rest.
+        let many: Vec<String> =
+            (0..MAX_BUILDINGS as i64 + 5).map(|i| way(i + 1, &square(HOUSE.0, HOUSE.1, 20.0), r#""building":"yes""#)).collect();
+        let f = found(&many);
+        assert_eq!(f.buildings.len(), MAX_BUILDINGS);
+        assert!(f.skipped.iter().any(|s| s.why.contains("more than")), "{:?}", f.skipped.last());
+    }
+}

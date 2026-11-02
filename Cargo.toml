@@ -17,6 +17,8 @@ rayon = "1.12"
 proj-core = { version = "0.13", default-features = false }
 # Constrained Delaunay triangulation (terrain): pure Rust, robust predicates, MIT OR Apache-2.0.
 spade = "2"
+# OSM XML: pure Rust, forbid(unsafe_code), no DTDs, a limit on nodes; MIT OR Apache-2.0.
+roxmltree = "0.21"
 bimcraft-core = { path = "crates/core" }
 bimcraft-i18n = { path = "crates/i18n", default-features = false }
 serde = { version = "1", features = ["derive", "rc"] }
