@@ -1318,6 +1318,8 @@ impl GeometryKey {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PreparationStats {
     pub deferred_components: usize,
+    /// Round runs whose tubes are made only for a view that needs them.
+    pub deferred_runs: usize,
     pub resolved_components: usize,
 }
 
@@ -1337,7 +1339,8 @@ pub struct SectionWork {
     /// Beside `placed`, by place, not by id: a framing query asks of every element, and a hash each would cost more than
     /// the components' points it saves. Empty when nothing is deferred.
     deferred: Vec<Option<std::sync::OnceLock<Vec<[f64; 3]>>>>,
-    deferred_count: usize,
+    deferred_components: usize,
+    deferred_runs: usize,
     resolved: std::sync::atomic::AtomicUsize,
 }
 
@@ -1360,7 +1363,8 @@ impl SectionWork {
             box_of,
             extent: std::sync::OnceLock::new(),
             deferred: Default::default(),
-            deferred_count: 0,
+            deferred_components: 0,
+            deferred_runs: 0,
             resolved: Default::default(),
         }
     }
@@ -1383,8 +1387,14 @@ impl SectionWork {
     pub fn new_deferred_cancellable(m: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Self> {
         let ((solids, placed, boxes), deferred) = view3d::solids_and_extremes_deferred(m, cancelled)?;
         let mut work = Self::assembled_cancellable(m, view3d::PreparedSolids::Owned(solids), placed, boxes, cancelled)?;
-        work.deferred_count = deferred.iter().filter(|d| **d).count();
-        if work.deferred_count > 0 {
+        for ((id, _), d) in work.placed.iter().zip(&deferred) {
+            match m.elements.get(*id) {
+                Some(Element::Component(_)) if *d => work.deferred_components += 1,
+                _ if *d => work.deferred_runs += 1,
+                _ => {}
+            }
+        }
+        if work.deferred_components + work.deferred_runs > 0 {
             work.deferred = deferred.into_iter().map(|d| d.then(std::sync::OnceLock::new)).collect();
         }
         (!cancelled()).then_some(work)
@@ -1392,7 +1402,8 @@ impl SectionWork {
 
     pub fn preparation_stats(&self) -> PreparationStats {
         PreparationStats {
-            deferred_components: self.deferred_count,
+            deferred_components: self.deferred_components,
+            deferred_runs: self.deferred_runs,
             resolved_components: self.resolved.load(std::sync::atomic::Ordering::Relaxed),
         }
     }
@@ -1432,7 +1443,8 @@ impl SectionWork {
             box_of,
             extent: std::sync::OnceLock::new(),
             deferred: Default::default(),
-            deferred_count: 0,
+            deferred_components: 0,
+            deferred_runs: 0,
             resolved: Default::default(),
         })
     }
@@ -1458,10 +1470,7 @@ impl SectionWork {
     ) -> &'s Vec<[f64; 3]> {
         let Some(cell) = self.cell(at) else { return points };
         cell.get_or_init(|| {
-            let points = match m.elements.get(id) {
-                Some(Element::Component(c)) => components.extremes(c),
-                _ => Vec::new(),
-            };
+            let points = m.elements.get(id).map_or_else(Vec::new, |e| view3d::lazy_points(m, id, e, components));
             self.resolved.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             points
         })
@@ -2030,6 +2039,29 @@ fn section_base_cancellable(
         for ring in s.cuts(v.start + u * first, u, last - first) {
             let ring: Vec<P2> = ring.into_iter().map(|q| P2(q.0 + first, q.1)).collect();
             if bar { dots.push((s.owner(), ring)) } else { cuts.entry(s.owner()).or_default().push(ring) }
+        }
+    }
+    // The round runs not made yet: only those whose boxes the line's plane crosses.
+    let mut lazy = crate::component_geometry::Components::new(m);
+    for (at, (id, _)) in work.placed.iter().enumerate() {
+        if work.cell(at).is_none() || !look.shows(*id) {
+            continue;
+        }
+        let Some(e) = m.elements.get(*id).filter(|e| e.run().is_some()) else { continue };
+        if cfg!(not(test)) && one_side(*id) {
+            continue;
+        }
+        if cancelled() {
+            return None;
+        }
+        for s in view3d::lazy_solids(m, *id, e, &mut lazy) {
+            let rings = s.cuts(v.start + u * first, u, last - first);
+            // Its twin, which tests hold it to: what is left out cuts nothing.
+            #[cfg(test)]
+            assert!(!one_side(*id) || rings.is_empty(), "{id} is cut by a line it lies all on one side of");
+            for ring in rings {
+                cuts.entry(*id).or_default().push(ring.into_iter().map(|q| P2(q.0 + first, q.1)).collect());
+            }
         }
     }
     // Poché, then the edge of what is cut over it: joined walls show their union, as in plan, filled
@@ -4246,6 +4278,28 @@ mod tests {
         let pm = tiny_skia::Pixmap::decode_png(png).unwrap();
         let c = pm.pixel(x as u32, y as u32).unwrap();
         (c.red(), c.green(), c.blue())
+    }
+
+    /// Without its lookup a model finds its levels and hosts by going through every element, for each element it prepares:
+    /// 116 s for the 100-storey tower, not 2 s. Every way of making a work builds it first.
+    #[test]
+    fn every_section_work_prepares_on_a_built_lookup() {
+        let s = house();
+        let never = || false;
+        type Maker<'a> = (&'a str, &'a dyn Fn(&Model));
+        let makers: [Maker; 5] = [
+            ("new", &|m| drop(SectionWork::new(m))),
+            ("new_cancellable", &|m| drop(SectionWork::new_cancellable(m, &never))),
+            ("new_deferred", &|m| drop(SectionWork::new_deferred(m))),
+            ("new_deferred_cancellable", &|m| drop(SectionWork::new_deferred_cancellable(m, &never))),
+            ("SectionCache::work", &|m| drop(SectionCache::default().work(m))),
+        ];
+        for (name, make) in makers {
+            let bare = (*s.model).clone();
+            assert!(bare.derived.made(&bare.elements).is_none(), "a copy starts without its lookup");
+            make(&bare);
+            assert!(bare.derived.made(&bare.elements).is_some(), "{name} prepared without the model's lookup");
+        }
     }
 
     #[test]

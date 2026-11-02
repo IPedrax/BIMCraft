@@ -83,7 +83,8 @@ handles swept profiles and imported meshes without triangulation. Voids and revo
 not replace exact framing extrema. Hosted geometry, spatial discovery and renderer integration remain further work.
 Tests compare bounds with fresh solid/family vertices, including mirrored and rotated instance placement.
 
-`render::SectionCache` is an optional, bounded first fragment cache (128 MiB by default). It retains isolated
+`render::SectionCache` is an optional, bounded first fragment cache (128 MiB by default, which the tower's 1.56 GB of
+fragments overflows until it thrashes; nothing uses it yet, for the reasons in `docs/spatial-core-review.md`). It retains isolated
 column/footing and run geometry with exact framing extrema, and shares geometry with completed `SectionWork`.
 Run appearance is applied from the current snapshot, including material ordinals used for texture ids. Eviction
 releases cache ownership while an active work object remains valid. `stats()` distinguishes primitive hits/builds,
@@ -98,10 +99,11 @@ independently of visible mesh generation. `tests/component_preparation.rs` compa
 pixels, picking, face names and coverage, including tower views. Lazy fitting, datum and extent queries are cancellable
 (`section_fit_cancellable`, `SectionOverlay::new_cancellable`): cancelled, a component's extrema are whole or unresolved
 and the model's extent stays unset, so the same work goes on to the exact answer; the tests sweep the checkpoints. The
-section worker uses this path. It saves memory, not time: see the measurements in `docs/spatial-core-review.md`. The cells
-lie beside `placed` by place, since framing asks of every element and a hash per element cost more than deferring saved.
+section worker uses this path. Round runs are deferred the same way (`deferred_runs`): a box now, the tube only when the
+picture shows it or the line's plane crosses its box, which takes 73% off what the work holds and 12% off a first frame at 100
+storeys (`docs/spatial-core-review.md`). The cells lie beside `placed` by place, since framing asks of every element and a
+hash per element cost more than deferring saved.
 
-A model that has not built its lookup answers `Model::levels` and similar by scanning every element, which makes
-`SectionWork` quadratic (116 s against 2 s at 100 storeys, with the bare model from `sample::tower::drawn`). The `tower`
-command's model, through a `Session`, was fast; other routes to a worker, such as `open`, have not been measured. When
-measuring, go through a `Session` or call `m.lookup()` first.
+A model that has not built its lookup answers `Model::levels` and similar by scanning every element, which would make
+preparation quadratic (116 s against 2 s at 100 storeys), so every way of making a `SectionWork` builds it first. Other full
+passes, such as `view3d::solids` for the 3D scene, don't yet: measure those through a `Session`.

@@ -172,7 +172,7 @@ impl BoundsCache {
     }
 }
 
-fn primitive(m: &Model, id: Id) -> Bounds {
+pub(crate) fn primitive(m: &Model, id: Id) -> Bounds {
     let Some(e) = m.elements.get(id) else { return Bounds::Empty };
     if let Some(c) = e.column() {
         let Some(t) = m.column_type(e) else { return Bounds::Unknown };

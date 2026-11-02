@@ -288,6 +288,8 @@ Keep this checklist current; mark a whole priority complete only when all of its
     - [x] Adopt `new_deferred_cancellable` in the section worker (`section_worker::tests`, including a real worker replacing a job).
     - [x] Measure it: a memory gain and no latency gain; see below. Cells moved from a hash to `placed`'s order to remove a regression.
   - [x] Complete the final deferred-preparation workspace checkpoint (1,118 core, five deferred-preparation, seven bounds, seven work-cache, four fragment, six revision integration, 621 UI tests and remaining suites/doctests passed; formatting and Clippy clean).
+  - [x] Build the model's lookup before any section preparation (a bare model was quadratic: 116 s, now about 2 s).
+  - [x] Leave round runs' tubes unmade until a view needs them (`deferred_runs`; `tests/component_preparation.rs`).
   - [ ] Extend dependency-complete bounds/fragments to hosts, neighbouring geometry, families and empty spatial reads.
 - [ ] **3. Incremental instance BVH and shared prototypes.**
 - [ ] **4. Retained 2D fragments and partial GPU uploads.**
@@ -320,10 +322,36 @@ has it; median shown. Picture hashes were equal in every run. Single-digit-perce
 already cheap, from each family's cached hull. Preparation's cost lies in the other elements' solids, and the picture is the
 largest step, so that is where priority 2 and later should look for time.
 
+## Lazy round runs measured (2026-11-02)
+
+The same conditions as above at 100 storeys, median of three, with deferred now also leaving round runs unmade. Every
+picture (fitted and zoomed) and drawing hashed the same as full preparation's.
+
+| | North Elevation, full | North Elevation, deferred | Section A, full | Section A, deferred |
+|---|---:|---:|---:|---:|
+| Prepare the work | 2,079 ms | 1,493 ms | 2,101 ms | 1,512 ms |
+| First frame (prepare, fit, overlay, picture) | 3,862 ms | 3,391 ms | 4,248 ms | 3,717 ms |
+| Overlay at a new zoom | 249 ms | 299 ms | 338 ms | 380 ms |
+| Retained by the work | 2.12 GB | 0.57 GB | 2.12 GB | 0.57 GB |
+| Peak | 4.06 GB | 2.52 GB | 4.20 GB | 2.66 GB |
+
+## Where preparation's time goes (2026-11-02)
+
+Measured at 100 storeys before lazy runs, with per-element timers, whose lock inflates small elements. CPU by category: walls
+29% (127 µs each), ceilings 19% (110 µs), components 18% (3.3 µs, 530,000 of them), pipes 17% and conduits 16% (22 µs). Wall
+clock of the 1.7 s: parallel chunks 1.2 to 1.3 s, `box_of` 220 ms (a hash of 900,000), joining 100 to 130 ms, elements and the
+wall index about 80 ms, ranges 27 ms.
+
+`SectionCache` isn't worth adopting as it stands. At its 128 MiB default it thrashes: 8% hits, because a pass in element order
+evicts what the next pass wants first. Unbounded it holds 1.56 GB and, at 100% hits, a pass takes 1.8 s against 2.0 s, still
+slower than plain deferred preparation. A fragment cache has to hold walls and ceilings to pay, and the cost of what it stores
+needs to be measured against rebuilding it.
+
 ## Next task for the receiving agent
 
-Finish hosted/wall/spatial read dependencies and narrow family keys, starting from what preparation spends its time on
-(measure it per category first: the deferred components are no longer the cost). Joined walls need old/new tile
+Preparation's largest costs left are walls and ceilings, then `box_of`. Find out why a ceiling costs 110 µs, and look at
+leaving walls' and ceilings' solids to their boxes too, keeping occluders' exactness. Then finish hosted/wall/spatial read
+dependencies and narrow family keys. Joined walls need old/new tile
 invalidation, empty-query dependencies, type users and long-wall handling. Preparation/assembly still enumerates
 the model, so priority 2 remains incomplete. Keep the subsequent BVH/prototype, retained drawing/GPU and later
 items in the recommended order above. Commit on this branch as work completes; do not push without asking.

@@ -614,6 +614,8 @@ pub(crate) fn solids_and_extremes_cancellable(m: &Model, cancelled: &(dyn Fn() -
     if cancelled() {
         return None;
     }
+    // Without it, each element's levels and hosts are found by going through every element.
+    m.lookup();
     let elements: Vec<_> = m.elements.iter().map(|(&id, e)| (id, e)).collect();
     let index = walls::Index::new(m);
     if cancelled() {
@@ -667,6 +669,7 @@ pub(crate) fn solids_and_extremes_deferred(m: &Model, cancelled: &(dyn Fn() -> b
     if cancelled() {
         return None;
     }
+    m.lookup();
     let elements: Vec<_> = m.elements.iter().map(|(&id, e)| (id, e)).collect();
     let index = walls::Index::new(m);
     if cancelled() {
@@ -690,6 +693,10 @@ pub(crate) fn solids_and_extremes_deferred(m: &Model, cancelled: &(dyn Fn() -> b
                     placed.push((id, points));
                     deferred.push(false);
                 }
+            } else if let Some(reach) = lazy_run_box(m, id, e) {
+                placed.push((id, Vec::new()));
+                boxes.push(Some(reach));
+                deferred.push(true);
             } else {
                 let own = solids_in_with(m, &[(id, e)], Some(&index), &mut components);
                 if !own.is_empty() {
@@ -721,6 +728,32 @@ pub(crate) fn solids_and_extremes_deferred(m: &Model, cancelled: &(dyn Fn() -> b
         deferred.extend(d);
     }
     Some(((solids, placed, boxes), deferred))
+}
+
+/// The box of a round run, whose tube is the most a work would hold and whose place alone says where it is: most are hidden,
+/// and made only for a view that needs them. None for what isn't one, or has no finite box: made now.
+fn lazy_run_box(m: &Model, id: Id, e: &Element) -> Option<[P3; 2]> {
+    e.run()?;
+    if !m.run_geom(e)?.round {
+        return None;
+    }
+    match crate::bounds::primitive(m, id) {
+        crate::bounds::Bounds::Box(reach) => Some(reach),
+        _ => None,
+    }
+}
+
+/// The solids of an element whose preparation was deferred: a round run reads no wall, and a component no wall index.
+pub(crate) fn lazy_solids(m: &Model, id: Id, e: &Element, components: &mut crate::component_geometry::Components) -> Vec<Solid> {
+    solids_in_with(m, &[(id, e)], None, components)
+}
+
+/// The points that may be farthest of an element whose preparation was deferred, as preparing it would have found them.
+pub(crate) fn lazy_points(m: &Model, id: Id, e: &Element, components: &mut crate::component_geometry::Components) -> Vec<P3> {
+    match e {
+        Element::Component(c) => components.extremes(c),
+        _ => extremes(lazy_solids(m, id, e, components).iter().flat_map(Solid::corners)),
+    }
 }
 
 fn solids_in(m: &Model, elements: &[(Id, &Element)], index: Option<&walls::Index>) -> Vec<Solid> {
@@ -1316,6 +1349,8 @@ impl Scene {
             }
             let made: Vec<Solid> = match m.elements.get(*id) {
                 Some(e @ Element::Component(_)) => solids_in_with(m, &[(*id, e)], Some(&index), &mut components),
+                // No solids in the list: a round run left until now, or one that has none, which makes none here.
+                Some(e) if at.is_empty() && e.run().is_some() => lazy_solids(m, *id, e, &mut components),
                 _ => own(*id, at).collect(),
             };
             for solid in made.into_iter().flat_map(|s| layered(m, s)) {

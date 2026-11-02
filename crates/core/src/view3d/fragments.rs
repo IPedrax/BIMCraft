@@ -172,6 +172,7 @@ impl SectionCache {
         if cancelled() {
             return None;
         }
+        m.lookup();
         let elements: Vec<_> = m.elements.iter().map(|(&id, e)| (id, e)).collect();
         let index = walls::Index::new(m);
         if cancelled() {

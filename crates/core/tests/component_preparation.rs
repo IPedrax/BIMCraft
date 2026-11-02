@@ -180,6 +180,52 @@ section {"start":[-2000,-2000],"end":[2000,-2000]}"#,
         assert_eq!(render::section_fit_cancellable(&s.model, &work, 1, 240, 180, &|| true), None);
     }
 
+    /// Round runs: one the section cuts, one it sees past its line, one hidden behind a wall, a sloped one, one past the walls
+    /// that decides the frame, and a rectangular one, which is made as ever.
+    fn runs() -> (Session, Id, Id) {
+        let (mut s, elevation) = fixture();
+        let pipe = |s: &mut Session, from: [i32; 2], to: [i32; 2], offset: i32| {
+            s.execute("pipe", &json!({"points":[from,to],"offset":offset})).unwrap();
+        };
+        pipe(&mut s, [2000, 3000], [2000, 7000], 1500);
+        pipe(&mut s, [3000, 7000], [8000, 7000], 2500);
+        pipe(&mut s, [3000, 8000], [8000, 8000], 1000);
+        pipe(&mut s, [40000, 3000], [40000, 7000], 1500);
+        s.execute("pipe", &json!({"points":[[1000,6000],[9000,4000]],"offset":1000,"end_offset":2000})).unwrap();
+        s.execute("cable_tray", &json!({"points":[[1000,2000],[9000,2000]],"offset":2200})).unwrap();
+        let section = s.execute("section", &json!({"start":[-1000,5000],"end":[11000,5000]})).unwrap()["id"].as_u64().unwrap();
+        (s, elevation, section)
+    }
+
+    #[test]
+    fn round_runs_are_made_only_where_a_view_needs_them_and_change_nothing_it_shows() {
+        let (s, elevation, section) = runs();
+        let m = &s.model;
+        let work = SectionWork::new_deferred(m);
+        assert_eq!(work.preparation_stats().deferred_runs, 5);
+        same_output(m, elevation, &work);
+        same_output(m, section, &work);
+        assert!(work.preparation_stats().resolved_components < 7, "interior runs need no exact points: {:?}", work.preparation_stats());
+        // The section really cuts a lazy pipe: its ink has that owner, or the sweep above would prove nothing of the cut.
+        let cut = s.model.elements.iter().find_map(|(&id, e)| match e {
+            bimcraft_core::model::Element::Pipe(r) if r.start.0 == 2000.0 => Some(id),
+            _ => None,
+        });
+        let view = render::section_fit_with(m, &work, section, 240, 180);
+        assert!(SectionOverlay::new(m, &work, section, view).draw(m, None).owners.contains(&cut));
+    }
+
+    #[test]
+    fn a_hidden_or_cropped_run_is_left_out_as_the_full_preparation_leaves_it() {
+        let (mut s, elevation, section) = runs();
+        let pipe = s.model.elements.iter().find_map(|(&id, e)| matches!(e, bimcraft_core::model::Element::Pipe(_)).then_some(id)).unwrap();
+        s.execute("graphics", &json!({"view":section,"hide_elements":[pipe]})).unwrap();
+        s.execute("crop", &json!({"view":elevation,"region":[[0,500],[12000,2600]]})).unwrap();
+        for id in [section, elevation] {
+            same_output(&s.model, id, &SectionWork::new_deferred(&s.model));
+        }
+    }
+
     #[test]
     fn tower_sections_and_elevations_match_full_preparation_with_interior_extrema_deferred() {
         use bimcraft_core::sample::tower::{Drawings, Plate, drawn};
