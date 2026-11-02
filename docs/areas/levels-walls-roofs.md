@@ -62,7 +62,9 @@ cross). A wall attached to one follows `Model::shape_triangles`, its top over th
 closed, as a slope arrow's plane runs on over them. Plans draw each plane's edges as thin as the outline. `edit_shape`
 gives the shape anew or says what it is, `add_point`, `add_split_line` and `reset_shape` change it a piece at a time (an
 end of a line that is no point becomes one, at the height the top has there), `edit_boundary` keeps what stays inside the
-new outline and names what it drops, moves and mirrors take the shape along, and snaps find its points. A flat roof by
+new outline and its openings, cuts a split line where it leaves them, and gives each new end and each new corner a point at
+the height the top had there, so a hole cut through a shaped top leaves it as it was round the hole; it names what it
+`dropped`, `cut` and `added`. Moves and mirrors take the shape along, and snaps find its points. A flat roof by
 footprint (`slope` 0, no extrusion, joining none) takes a shape too (`Roof::shape`, `Roof::unshapeable` says why another
 can't): the commands, checks and both views' tools see its top as a floor's (`Model::shapeable`, `Model::roof_as_floor`:
 its footprint, its courtyards and openings as openings, at its top), and `roof_faces` lays each plane's underside its

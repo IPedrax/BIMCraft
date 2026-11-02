@@ -235,7 +235,7 @@ New rules, each with an error that says what to fix:
 | Attached walls (`walls.rs:454`) | one plane over the floor's convex pieces | each piece with its own plane, as the roof branch above it does |
 | Shafts (`Model::less_shafts`, `model.rs:3773`) | per slab face | already per face: no change, but a test |
 | Move, copy, rotate, mirror (`commands.rs:8236`) | outline, openings, arrow, pattern | the points' `at` and the lines' ends too; a mirror keeps the heights |
-| `edit_boundary` | redraws the outline | keeps the points and lines inside the new outline, drops the rest, and names them in the reply |
+| `edit_boundary` | redraws the outline | keeps the points inside the new outline and its openings, cuts each split line where it leaves the outline or enters an opening (keeping the pieces inside), and puts a point at the height the top had at each new end and each new corner, so the top round a new hole or a moved edge stays as it was; the reply names what was `dropped`, `cut` and `added` (built; test `a_hole_cut_through_a_shape_*`) |
 | A floor's details (`element_json`, `commands.rs:2122`) | area and top from the outline | top range over every point; a volume (`volume_m3`) for every floor |
 | Reinforce (`reinforce.rs:409`) | bars from `floor_top` | with a variable layer above the structure, the structure is flat: bars from the flat bottom. Otherwise refuse in version 1, saying why |
 | IFC export (`ifc.rs:658`) | level: an extruded profile; sloped: per-piece Breps; quantities only `Width` when sloped | a shaped slab is **one closed `IfcFacetedBrep`**: top facets, a flat or following bottom, and plumb sides, all planar. Write `NetVolume` and `GrossVolume` for sloped and shaped slabs too, from the prisms. |

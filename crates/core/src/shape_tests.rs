@@ -899,3 +899,79 @@ fn a_spot_slope_reads_how_steeply_a_shaped_top_falls_and_which_way() {
     let e = fails(&mut s, "spot_slope", json!({"at": [1000, 0], "view": section}));
     assert!(e.contains("plan"), "{e}");
 }
+
+/// The 8 by 6 m floor with a drain 30 mm down in its middle, a point 10 mm down on the way to it, and a split line from
+/// corner to corner through both; its outline as a sketch, and that with a hole from `lo` to `hi`.
+fn creased(s: &mut Session) -> u64 {
+    let f = slab(s);
+    run(
+        s,
+        "edit_shape",
+        json!({"id": f, "points": [{"at": [4000, 3000], "z": -30}, {"at": [2000, 1500], "z": -10}], "lines": [{"a": [0, 0], "b": [8000, 6000]}]}),
+    );
+    f
+}
+
+fn with_hole(lo: [f64; 2], hi: [f64; 2]) -> Value {
+    let edge = |a: [f64; 2], b: [f64; 2]| json!([a, b]);
+    let (x0, y0, x1, y1) = (lo[0], lo[1], hi[0], hi[1]);
+    json!([
+        edge([0.0, 0.0], [8000.0, 0.0]),
+        edge([8000.0, 0.0], [8000.0, 6000.0]),
+        edge([8000.0, 6000.0], [0.0, 6000.0]),
+        edge([0.0, 6000.0], [0.0, 0.0]),
+        edge([x0, y0], [x1, y0]),
+        edge([x1, y0], [x1, y1]),
+        edge([x1, y1], [x0, y1]),
+        edge([x0, y1], [x0, y0])
+    ])
+}
+
+/// How far floor `id`'s top lies over where it would be without its shape at `q`.
+fn height_at(s: &Session, id: u64, q: P2) -> f64 {
+    let f = s.model.shapeable(id).expect("a floor");
+    s.model.shape_height(&f, q)
+}
+
+#[test]
+fn a_hole_cut_through_a_shape_cuts_its_split_lines_and_keeps_the_heights_round_it() {
+    // Round the drain: the drain goes; the split line is cut at the hole, both pieces kept, their new ends and the hole's
+    // corners at the heights the top had there.
+    let mut s = Session::new();
+    let f = creased(&mut s);
+    let rim = [P2(3500.0, 2500.0), P2(4500.0, 2500.0), P2(4500.0, 3500.0), P2(3500.0, 3500.0), P2(3500.0, 2625.0), P2(4500.0, 3375.0)];
+    let before: Vec<f64> = rim.iter().map(|q| height_at(&s, f, *q)).collect();
+    let r = run(&mut s, "edit_boundary", json!({"id": f, "sketch": with_hole([3500.0, 2500.0], [4500.0, 3500.0])}));
+    assert_eq!(r["dropped"]["points"], json!([[4000.0, 3000.0]]), "{r}");
+    assert_eq!(r["cut"].as_array().map(Vec::len), Some(1), "{r}");
+    let shape = run(&mut s, "edit_shape", json!({"id": f}));
+    let lines = shape["lines"].as_array().unwrap();
+    assert_eq!(lines.len(), 2, "{shape}");
+    for (q, z) in rim.iter().zip(&before) {
+        assert!((height_at(&s, f, *q) - z).abs() < 0.01, "at {q:?}: {} for {z}", height_at(&s, f, *q));
+    }
+    assert!(near(before[4], -25.0) && near(before[5], -26.25), "{before:?}");
+    // The point kept keeps its height.
+    assert!(near(height_at(&s, f, P2(2000.0, 1500.0)), -10.0));
+    // Off the drain, crossing the split line only: it's cut, nothing refused.
+    let mut s = Session::new();
+    let f = creased(&mut s);
+    let r = run(&mut s, "edit_boundary", json!({"id": f, "sketch": with_hole([5500.0, 3800.0], [6500.0, 4800.0])}));
+    assert_eq!((r["cut"].as_array().map(Vec::len), r.get("dropped")), (Some(1), None), "{r}");
+    assert_eq!(run(&mut s, "edit_shape", json!({"id": f}))["lines"].as_array().map(Vec::len), Some(2), "its two pieces");
+    // Clear of it all: the shape as it was, the hole's corners at the heights the top had there.
+    let mut s = Session::new();
+    let f = creased(&mut s);
+    let corner = P2(6000.0, 1500.0);
+    let was = height_at(&s, f, corner);
+    let r = run(&mut s, "edit_boundary", json!({"id": f, "sketch": with_hole([6000.0, 500.0], [7000.0, 1500.0])}));
+    assert_eq!((r.get("dropped"), r.get("cut")), (None, None), "{r}");
+    assert!((height_at(&s, f, corner) - was).abs() < 0.01, "{was}");
+    // A roof's courtyard alike.
+    let mut s = Session::new();
+    let roof = flat_roof(&mut s);
+    run(&mut s, "edit_shape", json!({"id": roof, "points": [{"at": [4000, 3000], "z": -40}], "lines": [{"a": [0, 0], "b": [4000, 3000]}]}));
+    let r = run(&mut s, "edit_boundary", json!({"id": roof, "sketch": with_hole([1500.0, 500.0], [2500.0, 2500.0])}));
+    assert_eq!(r["cut"].as_array().map(Vec::len), Some(1), "{r}");
+    assert!(near(height_at(&s, roof, P2(1500.0, 1125.0)), -15.0));
+}
