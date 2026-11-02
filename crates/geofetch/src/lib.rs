@@ -7,6 +7,8 @@
 //! limits; what is kept on disk is checked again when it is read. The network sits behind [`net::Net`], so the tests use a table of
 //! answers or a server on this machine, never the real services.
 
+pub mod cache;
 pub mod net;
+pub mod overpass;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;

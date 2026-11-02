@@ -85,11 +85,14 @@ impl Server {
     }
 }
 
+/// An answer: a reply, or why not.
+type Answer = Result<Reply, NetError>;
+
 /// A network that answers from a table, and remembers what it was asked. Each address has a list of answers, given in turn, the
 /// last one for ever after (so a 429 and then a 200 is two answers).
 #[derive(Default)]
 pub struct Fake {
-    answers: Mutex<BTreeMap<(String, String), Vec<Result<Reply, NetError>>>>,
+    answers: Mutex<BTreeMap<(String, String), Vec<Answer>>>,
     asked: Mutex<Vec<(String, String, Vec<u8>)>>,
 }
 
@@ -113,7 +116,7 @@ impl Fake {
         self.push(method, url, Err(NetError { message: format!("{url}: HTTP {status}"), status: Some(status), retry_after }))
     }
 
-    fn push(self, method: &str, url: &str, answer: Result<Reply, NetError>) -> Fake {
+    fn push(self, method: &str, url: &str, answer: Answer) -> Fake {
         self.answers.lock().unwrap().entry((method.into(), url.into())).or_default().push(answer);
         self
     }
@@ -147,5 +150,26 @@ impl Net for Fake {
 
     fn post(&self, url: &str, _content_type: &str, body: &[u8], _limit: u64) -> Result<Reply, NetError> {
         self.answer("POST", url, body)
+    }
+}
+
+/// A folder of its own in the temp folder, removed when it is dropped.
+pub struct Scratch(pub std::path::PathBuf);
+
+impl Scratch {
+    pub fn new(name: &str) -> Scratch {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static N: AtomicU64 = AtomicU64::new(0);
+        let dir =
+            std::env::temp_dir().join(format!("bimcraft-geofetch-{name}-{}-{}", std::process::id(), N.fetch_add(1, Ordering::Relaxed)));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        Scratch(dir)
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
