@@ -88,7 +88,7 @@ msgstr "BIMCraft 项目、IFC 或 Revit 文件。"
 msgid "A blank value is the family's own, as the Parameters tab has it."
 msgstr "留空的值表示使用族自身的值，如“参数”选项卡中所示。"
 
-#: crates/ui-egui/src/site.rs:392
+#: crates/ui-egui/src/site/mod.rs:403
 msgid "A box of degrees"
 msgstr ""
 
@@ -100,13 +100,21 @@ msgstr "圆、椭圆或圆弧沿其轴线的点：东、北、西、南"
 msgid "A direction from the last point sticks to multiples of this angle, from east and from the line before; a dashed guide shows it"
 msgstr "从上一点出发的方向会吸附到该角度的整数倍（相对于正东方向和前一条线）；以虚线导向线显示"
 
-#: crates/ui-egui/src/site.rs:391
+#: crates/ui-egui/src/site/mod.rs:402
 msgid "A distance round the project's origin"
 msgstr ""
 
 #: crates/ui-egui/src/editor.rs:567
 msgid "A door or a window needs lengths named Width and Height; its formulas can read Wall Thickness, the wall's."
 msgstr "门或窗需要名为 Width 和 Height 的长度参数；其公式可以读取 Wall Thickness（墙的厚度）。"
+
+#: crates/ui-egui/src/site/map.rs:334
+msgid "A drag draws the box to fetch"
+msgstr ""
+
+#: crates/ui-egui/src/site/map.rs:335
+msgid "A drag moves the map (so does the right button)"
+msgstr ""
 
 #: crates/ui-egui/src/graphics.rs:1119
 msgid "A filter is made in View > Filters"
@@ -148,7 +156,7 @@ msgstr "阶段过滤器在标明“已替换”之处以此方式绘制该状态
 msgid "A scan's points where the plan's cut plane cuts it, to trace what was measured"
 msgstr "平面的剖切面切过扫描处的点，用于描绘测得的内容"
 
-#: crates/ui-egui/src/site.rs:621
+#: crates/ui-egui/src/site/mod.rs:637
 msgid "A toposurface of {} points, every {} m, from {}"
 msgstr ""
 
@@ -383,7 +391,7 @@ msgstr "对齐参考线已开启"
 msgid "All"
 msgstr "全部"
 
-#: crates/ui-egui/src/site.rs:772
+#: crates/ui-egui/src/site/mod.rs:789
 msgid "All: cut {} m³, fill {} m³; net {} m³ (positive is earth to bring in)"
 msgstr ""
 
@@ -898,9 +906,10 @@ msgstr "相机"
 #: crates/ui-egui/src/reinforce.rs:469
 #: crates/ui-egui/src/shortcuts.rs:398
 #: crates/ui-egui/src/shortcuts.rs:526
-#: crates/ui-egui/src/site.rs:272
-#: crates/ui-egui/src/site.rs:456
-#: crates/ui-egui/src/site.rs:663
+#: crates/ui-egui/src/site/map.rs:306
+#: crates/ui-egui/src/site/mod.rs:280
+#: crates/ui-egui/src/site/mod.rs:470
+#: crates/ui-egui/src/site/mod.rs:679
 #: crates/ui-egui/src/standards.rs:334
 #: crates/ui-egui/src/typeprops.rs:310
 msgid "Cancel"
@@ -1350,6 +1359,14 @@ msgstr ""
 msgid "Click the path's next point. Enter finishes, Esc cancels."
 msgstr "单击路径的下一个点。按 Enter 完成，按 Esc 取消。"
 
+#: crates/ui-egui/src/site/map.rs:513
+msgid "Click the place: it becomes the project's origin."
+msgstr ""
+
+#: crates/ui-egui/src/site/mod.rs:266
+msgid "Click the project's origin on a map"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:4200
 msgid "Click the ruler's start: points snap as they do drawing."
 msgstr "单击标尺的起点：点的捕捉方式与绘制时相同。"
@@ -1545,7 +1562,7 @@ msgstr "单击平台之后下一梯段的走向：直行、左转、右转，或
 #: crates/ui-egui/src/revit.rs:259
 #: crates/ui-egui/src/settings.rs:298
 #: crates/ui-egui/src/shortcuts.rs:564
-#: crates/ui-egui/src/site.rs:694
+#: crates/ui-egui/src/site/mod.rs:710
 msgid "Close"
 msgstr "关闭"
 
@@ -1667,7 +1684,7 @@ msgstr "约束"
 msgid "Constraints"
 msgstr "约束"
 
-#: crates/ui-egui/src/site.rs:184
+#: crates/ui-egui/src/site/mod.rs:188
 msgid "Context"
 msgstr ""
 
@@ -1679,7 +1696,7 @@ msgstr "连续"
 msgid "Contour Interval"
 msgstr ""
 
-#: crates/ui-egui/src/site.rs:506
+#: crates/ui-egui/src/site/mod.rs:522
 msgid "Contour interval: `{}` is not a length"
 msgstr ""
 
@@ -1724,7 +1741,7 @@ msgstr "铜"
 #: crates/ui-egui/src/lib.rs:4004
 #: crates/ui-egui/src/lib.rs:4054
 #: crates/ui-egui/src/lib.rs:4091
-#: crates/ui-egui/src/site.rs:123
+#: crates/ui-egui/src/site/mod.rs:127
 msgid "Copy"
 msgstr "复制"
 
@@ -1949,12 +1966,12 @@ msgstr "剖切笔号"
 msgid "Cut Plane"
 msgstr "剖切面"
 
-#: crates/ui-egui/src/site.rs:180
-#: crates/ui-egui/src/site.rs:775
+#: crates/ui-egui/src/site/mod.rs:184
+#: crates/ui-egui/src/site/mod.rs:792
 msgid "Cut/Fill"
 msgstr ""
 
-#: crates/ui-egui/src/site.rs:179
+#: crates/ui-egui/src/site/mod.rs:183
 msgid "Cut/Fill: the earth the selected pads take out of the terrain and put in (all the pads when none is selected)"
 msgstr ""
 
@@ -2372,13 +2389,25 @@ msgstr "下载并校验更新；随后 BIMCraft 会关闭、更新并重新启�
 msgid "Drafting"
 msgstr "绘图"
 
+#: crates/ui-egui/src/site/map.rs:521
+msgid "Drag a box over the area to fetch."
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:996
 msgid "Drag the picture to turn it."
 msgstr "拖动图片可旋转它。"
 
+#: crates/ui-egui/src/site/map.rs:505
+msgid "Drag to move, wheel to zoom, double click to zoom in"
+msgstr ""
+
 #: crates/ui-egui/src/draw.rs:293
 msgid "Draw"
 msgstr "绘制"
+
+#: crates/ui-egui/src/site/map.rs:334
+msgid "Draw box"
+msgstr ""
 
 #: crates/ui-egui/src/sketch.rs:273
 msgid "Draw one outline, with any openings inside it: these lines make {} separate outlines."
@@ -2387,6 +2416,10 @@ msgstr "请绘制一个轮廓，洞口画在其内部：这些线构成了 {} �
 #: crates/ui-egui/src/settings.rs:392
 msgid "Draw the 3D view on the graphics card"
 msgstr "使用显卡绘制三维视图"
+
+#: crates/ui-egui/src/site/mod.rs:404
+msgid "Draw the box on a map"
+msgstr ""
 
 #: crates/ui-egui/src/properties.rs:370
 msgid "Drawing"
@@ -2544,7 +2577,7 @@ msgstr "立面"
 msgid "Elevation (°)"
 msgstr "仰角 (°)"
 
-#: crates/ui-egui/src/site.rs:411
+#: crates/ui-egui/src/site/mod.rs:425
 msgid "Elevation data"
 msgstr ""
 
@@ -2736,19 +2769,19 @@ msgstr "英尺"
 msgid "Feet and inches"
 msgstr "英尺和英寸"
 
-#: crates/ui-egui/src/site.rs:457
+#: crates/ui-egui/src/site/mod.rs:471
 msgid "Fetch"
 msgstr ""
 
-#: crates/ui-egui/src/site.rs:648
+#: crates/ui-egui/src/site/mod.rs:664
 msgid "Fetching"
 msgstr ""
 
-#: crates/ui-egui/src/site.rs:643
+#: crates/ui-egui/src/site/mod.rs:659
 msgid "Fetching buildings from OpenStreetMap…"
 msgstr ""
 
-#: crates/ui-egui/src/site.rs:644
+#: crates/ui-egui/src/site/mod.rs:660
 msgid "Fetching elevation data…"
 msgstr ""
 
@@ -3152,13 +3185,21 @@ msgstr "常规"
 msgid "Geometry"
 msgstr "几何图形"
 
-#: crates/ui-egui/src/site.rs:445
+#: crates/ui-egui/src/site/mod.rs:459
 msgid "Give the area first: the query is made from its box."
 msgstr ""
 
 #: crates/core/src/family.rs:1465
 msgid "Glass"
 msgstr "玻璃"
+
+#: crates/ui-egui/src/site/map.rs:341
+msgid "Go"
+msgstr ""
+
+#: crates/ui-egui/src/site/map.rs:338
+msgid "Go to"
+msgstr ""
 
 #: crates/ui-egui/src/standards.rs:43
 msgid "Governing Body:"
@@ -3192,7 +3233,7 @@ msgstr "轴网"
 msgid "Grid (GR): click its two ends"
 msgstr "轴网 (GR)：单击其两端"
 
-#: crates/ui-egui/src/site.rs:261
+#: crates/ui-egui/src/site/mod.rs:269
 msgid "Grid: utm, for the place's own zone, or an EPSG code such as 31983."
 msgstr ""
 
@@ -3200,7 +3241,7 @@ msgstr ""
 msgid "Gross Floor Area"
 msgstr "建筑面积"
 
-#: crates/ui-egui/src/site.rs:289
+#: crates/ui-egui/src/site/mod.rs:299
 msgid "Ground height: `{}` is not a length"
 msgstr ""
 
@@ -3252,11 +3293,11 @@ msgstr "距标高的高度偏移"
 msgid "Height Offset:"
 msgstr "高度偏移："
 
-#: crates/ui-egui/src/site.rs:484
+#: crates/ui-egui/src/site/mod.rs:500
 msgid "Height of a building with none: `{}` is not a length"
 msgstr ""
 
-#: crates/ui-egui/src/site.rs:491
+#: crates/ui-egui/src/site/mod.rs:507
 msgid "Height of a level: `{}` is not a length"
 msgstr ""
 
@@ -3424,13 +3465,13 @@ msgstr "导入 CAD"
 msgid "Import CAD: a DWG or DXF drawing brought into the project, drawn under the model in the plans of a level, its layers, colours and linetypes kept, and snapped to"
 msgstr "导入 CAD：导入项目的 DWG 或 DXF 图纸，绘制在某标高平面图的模型之下，保留其图层、颜色和线型，并可捕捉"
 
-#: crates/ui-egui/src/site.rs:186
-#: crates/ui-egui/src/site.rs:369
-#: crates/ui-egui/src/site.rs:617
+#: crates/ui-egui/src/site/mod.rs:190
+#: crates/ui-egui/src/site/mod.rs:379
+#: crates/ui-egui/src/site/mod.rs:633
 msgid "Import from OpenStreetMap"
 msgstr ""
 
-#: crates/ui-egui/src/site.rs:185
+#: crates/ui-egui/src/site/mod.rs:189
 msgid "Import from OpenStreetMap: the buildings round the origin, fetched from Overpass, as masses on the ground"
 msgstr ""
 
@@ -3462,7 +3503,7 @@ msgstr "在库中，不是可选择的图元：{}"
 msgid "In this plan only, not in every plan of its level"
 msgstr "仅在此平面图中，而非其标高的所有平面图"
 
-#: crates/ui-egui/src/site.rs:263
+#: crates/ui-egui/src/site/mod.rs:271
 msgid "In {}"
 msgstr ""
 
@@ -3915,8 +3956,8 @@ msgid "Loaded {} shortcuts from file."
 msgstr "已从文件加载 {} 个快捷键。"
 
 #: crates/ui-egui/src/properties.rs:157
-#: crates/ui-egui/src/site.rs:153
-#: crates/ui-egui/src/site.rs:229
+#: crates/ui-egui/src/site/mod.rs:157
+#: crates/ui-egui/src/site/mod.rs:234
 msgid "Location"
 msgstr "位置"
 
@@ -3928,7 +3969,7 @@ msgstr "定位线"
 msgid "Location Line:"
 msgstr "定位线："
 
-#: crates/ui-egui/src/site.rs:151
+#: crates/ui-egui/src/site/mod.rs:155
 msgid "Location: where the project's origin is on Earth: latitude, longitude, ground height, true north and the grid it is in"
 msgstr ""
 
@@ -3956,6 +3997,14 @@ msgstr "创建明细表，或打开已有的明细表"
 #: crates/ui-egui/src/lib.rs:2810
 msgid "Manage"
 msgstr "管理"
+
+#: crates/ui-egui/src/site/map.rs:360
+msgid "Map"
+msgstr ""
+
+#: crates/ui-egui/src/site/map.rs:456
+msgid "Map tiles are not here (yet)"
+msgstr ""
 
 #: crates/core/src/model.rs:1182
 msgid "Mark"
@@ -4192,6 +4241,10 @@ msgstr "下移"
 msgid "Move Up"
 msgstr "上移"
 
+#: crates/ui-egui/src/site/map.rs:335
+msgid "Move map"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:1221
 msgid "Multi-Select"
 msgstr "多选"
@@ -4382,6 +4435,10 @@ msgstr "尚无过滤器：点击“新建”创建一个。"
 msgid "No font with Chinese characters was found on this system: install one (such as Noto Sans CJK) and choose Chinese again."
 msgstr ""
 
+#: crates/ui-egui/src/site/map.rs:456
+msgid "No map: this BIMCraft has no network access"
+msgstr ""
+
 #: crates/ui-egui/src/properties.rs:2492
 msgid "No project parameters yet: New makes one."
 msgstr "尚无项目参数：点击“新建”创建一个。"
@@ -4484,7 +4541,7 @@ msgstr "编号"
 #: crates/ui-egui/src/properties.rs:2548
 #: crates/ui-egui/src/properties.rs:2741
 #: crates/ui-egui/src/reinforce.rs:470
-#: crates/ui-egui/src/site.rs:273
+#: crates/ui-egui/src/site/mod.rs:281
 #: crates/ui-egui/src/standards.rs:335
 #: crates/ui-egui/src/typeprops.rs:311
 msgid "OK"
@@ -4524,7 +4581,7 @@ msgstr "偏移 (OF)：拾取一面墙或一条线；副本放在光标所在的�
 
 #: crates/ui-egui/src/draw.rs:338
 #: crates/ui-egui/src/lib.rs:4051
-#: crates/ui-egui/src/site.rs:715
+#: crates/ui-egui/src/site/mod.rs:732
 #: crates/ui-egui/src/structure.rs:145
 msgid "Offset:"
 msgstr "偏移："
@@ -4653,8 +4710,8 @@ msgstr "悬挑："
 msgid "Overhead Lines"
 msgstr ""
 
-#: crates/ui-egui/src/site.rs:442
-#: crates/ui-egui/src/site.rs:657
+#: crates/ui-egui/src/site/mod.rs:456
+#: crates/ui-egui/src/site/mod.rs:673
 msgid "Overpass query"
 msgstr ""
 
@@ -4691,11 +4748,11 @@ msgstr "PNG 图像"
 msgid "PVC"
 msgstr "PVC"
 
-#: crates/ui-egui/src/site.rs:171
+#: crates/ui-egui/src/site/mod.rs:175
 msgid "Pad"
 msgstr ""
 
-#: crates/ui-egui/src/site.rs:170
+#: crates/ui-egui/src/site/mod.rs:174
 msgid "Pad: click the corners of a building pad's outline; Enter, or the first corner again, finishes; Esc cancels"
 msgstr ""
 
@@ -4759,7 +4816,7 @@ msgstr "半椭圆"
 msgid "Partial Ellipse: click the ends of its axis, then how far it bulges"
 msgstr "半椭圆：单击轴的两端，然后单击其凸出的距离"
 
-#: crates/ui-egui/src/site.rs:425
+#: crates/ui-egui/src/site/mod.rs:439
 msgid "Parts of buildings too"
 msgstr ""
 
@@ -4955,13 +5012,26 @@ msgstr "选取作为镜像轴的墙或轴网。"
 msgid "Pick a wall, a grid or another line; then one that meets it."
 msgstr "选取一面墙、一条轴网或其他线；然后选取与之相交的线。"
 
+#: crates/ui-egui/src/site/map.rs:293
+msgid "Pick an Area on the Map"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:4197
 msgid "Pick more references, or click away from them where the dimension line goes; Space steps Auto, Aligned, Horizontal, Vertical. Esc cancels."
 msgstr "拾取更多参照，或在远离参照处单击放置尺寸线；空格键在自动、对齐、水平、垂直之间切换。Esc 取消。"
 
+#: crates/ui-egui/src/site/mod.rs:266
+#: crates/ui-egui/src/site/mod.rs:404
+msgid "Pick on Map…"
+msgstr ""
+
 #: crates/ui-egui/src/sketch.rs:838
 msgid "Pick sketch lines (a box picks several); drag a picked line's end to move it; Delete removes them. Finish Edit Mode when every loop is closed."
 msgstr "选择草图线（框选可选多条）；拖动所选线的端点以移动它；按 Delete 删除。所有环闭合后完成编辑模式。"
+
+#: crates/ui-egui/src/site/map.rs:292
+msgid "Pick the Project's Place on the Map"
+msgstr ""
 
 #: crates/ui-egui/src/lib.rs:4173
 msgid "Pick the element's highlighted edge to move and turn onto the reference."
@@ -5211,17 +5281,21 @@ msgstr "放置窗"
 msgid "Place Wire"
 msgstr "放置导线"
 
-#: crates/ui-egui/src/site.rs:176
+#: crates/ui-egui/src/site/mod.rs:180
 msgid "Place on Terrain"
 msgstr ""
 
-#: crates/ui-egui/src/site.rs:175
+#: crates/ui-egui/src/site/mod.rs:179
 msgid "Place on Terrain: stands the selected masses, columns, footings, components and walls on the ground under them"
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:4015
 msgid "Place:"
 msgstr "放置："
+
+#: crates/ui-egui/src/site/map.rs:510
+msgid "Place: {}, {}"
+msgstr ""
 
 #: crates/ui-egui/src/settings.rs:447
 #: crates/ui-egui/src/settings.rs:448
@@ -5386,7 +5460,7 @@ msgstr "项目语言"
 msgid "Project Language: what the drawings say and how new things are named; now {}"
 msgstr "项目语言：图纸上的文字以及新建对象的命名方式；当前为 {}"
 
-#: crates/ui-egui/src/site.rs:149
+#: crates/ui-egui/src/site/mod.rs:153
 msgid "Project Location"
 msgstr ""
 
@@ -5475,7 +5549,7 @@ msgstr "将一个视图放到此图纸上：尚未上图纸的视图"
 msgid "Quadrant"
 msgstr "象限点"
 
-#: crates/ui-egui/src/site.rs:684
+#: crates/ui-egui/src/site/mod.rs:700
 msgid "Query used"
 msgstr ""
 
@@ -6122,7 +6196,7 @@ msgstr "按 ID 选择：按 ID、GUID 或 IFC GlobalId 选择图元，可粘贴�
 msgid "Select elements of one kind: all beams, all columns, all footings or all floors."
 msgstr "请选择同一类元素：全是梁、全是柱、全是基础或全是楼板。"
 
-#: crates/ui-egui/src/site.rs:741
+#: crates/ui-egui/src/site/mod.rs:758
 msgid "Select what is to stand on the terrain first."
 msgstr ""
 
@@ -6762,7 +6836,7 @@ msgstr "被标记的图元"
 msgid "Take away the bars this command made for the element: bars drawn by hand stay"
 msgstr "删除此命令为该构件生成的钢筋；手工绘制的钢筋保留"
 
-#: crates/ui-egui/src/site.rs:428
+#: crates/ui-egui/src/site/mod.rs:442
 msgid "Take the project's ground height from the data, when it has none"
 msgstr ""
 
@@ -6835,17 +6909,17 @@ msgstr "临时隔离图元"
 msgid "Temporary dimension {}"
 msgstr "临时尺寸标注 {}"
 
-#: crates/ui-egui/src/site.rs:157
+#: crates/ui-egui/src/site/mod.rs:161
 msgid "Terrain"
 msgstr ""
 
-#: crates/ui-egui/src/site.rs:162
-#: crates/ui-egui/src/site.rs:370
-#: crates/ui-egui/src/site.rs:631
+#: crates/ui-egui/src/site/mod.rs:166
+#: crates/ui-egui/src/site/mod.rs:380
+#: crates/ui-egui/src/site/mod.rs:647
 msgid "Terrain from Elevation Data"
 msgstr ""
 
-#: crates/ui-egui/src/site.rs:158
+#: crates/ui-egui/src/site/mod.rs:162
 msgid "Terrain from Elevation Data: the ground round the origin, fetched from an elevation service, as a toposurface"
 msgstr ""
 
@@ -6959,6 +7033,10 @@ msgstr "名称“{}”已被使用。"
 msgid "The pen each category draws its lines in, seen and cut, in every plan and section. A view's Visibility/Graphics overrides them."
 msgstr "每个类别在所有平面和剖面中绘制线条所用的笔，可见线和剖切线各一支。视图的可见性/图形设置会替换它们。"
 
+#: crates/ui-egui/src/site/map.rs:528
+msgid "The place can still be picked on the lines, or typed."
+msgstr ""
+
 #: crates/ui-egui/src/fillpatterns.rs:188
 #: crates/ui-egui/src/linestyles.rs:85
 msgid "The project changed while this window was open: Cancel, and open it again."
@@ -6972,8 +7050,8 @@ msgstr "项目中没有 CAD 图纸：插入 > 导入 CAD 可导入。"
 msgid "The project has no design options: Manage > Design Options makes them."
 msgstr "项目没有设计选项：可通过“管理”>“设计选项”创建。"
 
-#: crates/ui-egui/src/site.rs:346
-#: crates/ui-egui/src/site.rs:519
+#: crates/ui-egui/src/site/mod.rs:356
+#: crates/ui-egui/src/site/mod.rs:535
 msgid "The project has no location yet: set it with Location first."
 msgstr ""
 
@@ -6981,7 +7059,7 @@ msgstr ""
 msgid "The project stays as you left it."
 msgstr "项目保持您离开时的状态。"
 
-#: crates/ui-egui/src/site.rs:629
+#: crates/ui-egui/src/site/mod.rs:645
 msgid "The project's ground height is now {} m above sea level"
 msgstr ""
 
@@ -7044,7 +7122,7 @@ msgstr "将这些图案导出为 PAT 文件（实心除外）"
 msgid "Thickness"
 msgstr "厚度"
 
-#: crates/ui-egui/src/site.rs:717
+#: crates/ui-egui/src/site/mod.rs:734
 #: crates/ui-egui/src/structure.rs:170
 msgid "Thickness:"
 msgstr "厚度："
@@ -7058,12 +7136,12 @@ msgstr "细线"
 msgid "Thin Lines (TL): every line one pixel wide"
 msgstr "细线 (TL)：所有线条均为一个像素宽"
 
-#: crates/ui-egui/src/site.rs:385
+#: crates/ui-egui/src/site/mod.rs:396
 msgid "This BIMCraft has no network access (BIMCRAFT_NO_NETWORK is set, or it runs in a sandbox that has none)."
 msgstr ""
 
-#: crates/ui-egui/src/site.rs:522
-#: crates/ui-egui/src/site.rs:573
+#: crates/ui-egui/src/site/mod.rs:538
+#: crates/ui-egui/src/site/mod.rs:589
 msgid "This BIMCraft has no network access."
 msgstr ""
 
@@ -7455,6 +7533,14 @@ msgstr "更新"
 msgid "Use Project Settings"
 msgstr "使用项目设置"
 
+#: crates/ui-egui/src/site/map.rs:309
+msgid "Use This Box"
+msgstr ""
+
+#: crates/ui-egui/src/site/map.rs:308
+msgid "Use This Place"
+msgstr ""
+
 #: crates/ui-egui/src/settings.rs:349
 msgid "Use the system's title bar"
 msgstr "使用系统标题栏"
@@ -7680,7 +7766,7 @@ msgstr "从上一点出发的直线与圆或圆弧相切的位置"
 msgid "Where its file's coordinates put it, as the survey placed it"
 msgstr "按文件坐标放置，与测量时的位置一致"
 
-#: crates/ui-egui/src/site.rs:232
+#: crates/ui-egui/src/site/mod.rs:237
 msgid "Where the project's origin is on Earth. Everything fetched is placed from it."
 msgstr ""
 
@@ -7809,6 +7895,14 @@ msgstr "放大"
 #: crates/ui-egui/src/canvas.rs:1426
 msgid "Zoom Out"
 msgstr "缩小"
+
+#: crates/ui-egui/src/site/map.rs:326
+msgid "Zoom in"
+msgstr ""
+
+#: crates/ui-egui/src/site/map.rs:329
+msgid "Zoom out"
+msgstr ""
 
 #: crates/ui-egui/src/canvas.rs:1420
 #: crates/ui-egui/src/orbit.rs:419
@@ -8045,7 +8139,7 @@ msgstr "偏移：`{}` 不是有效的距离"
 msgid "offset: it offsets straight walls"
 msgstr "偏移：仅可偏移直墙"
 
-#: crates/ui-egui/src/site.rs:731
+#: crates/ui-egui/src/site/mod.rs:748
 msgid "pad: the offset and the thickness are lengths"
 msgstr ""
 
@@ -8252,7 +8346,7 @@ msgstr "{} 已跳过 {} 个。"
 msgid "{} already exists: save under a name ending in .pat to replace it."
 msgstr "{}已存在：请用以 .pat 结尾的名称保存以替换它。"
 
-#: crates/ui-egui/src/site.rs:607
+#: crates/ui-egui/src/site/mod.rs:623
 msgid "{} are not over the terrain: they stand at the level"
 msgstr ""
 
@@ -8260,11 +8354,11 @@ msgstr ""
 msgid "{} at x {}, y {}"
 msgstr "{} 位于 x {}，y {}"
 
-#: crates/ui-egui/src/site.rs:603
+#: crates/ui-egui/src/site/mod.rs:619
 msgid "{} buildings made, {} updated, {} left out"
 msgstr ""
 
-#: crates/ui-egui/src/site.rs:610
+#: crates/ui-egui/src/site/mod.rs:626
 msgid "{} courtyards filled in"
 msgstr ""
 
@@ -8304,11 +8398,12 @@ msgstr "{} 没有参数，因此没有可拆除的阶段"
 msgid "{} is not {}: `{}`"
 msgstr "{} 不是{}：`{}`"
 
-#: crates/ui-egui/src/site.rs:646
+#: crates/ui-egui/src/site/mod.rs:662
 msgid "{} km²"
 msgstr ""
 
-#: crates/ui-egui/src/site.rs:434
+#: crates/ui-egui/src/site/map.rs:517
+#: crates/ui-egui/src/site/mod.rs:448
 msgid "{} km² (at most {})"
 msgstr ""
 
@@ -8360,11 +8455,11 @@ msgstr "已导入 {} 个图案；未导入：{}"
 msgid "{} selected."
 msgstr "已选择 {}。"
 
-#: crates/ui-egui/src/site.rs:748
+#: crates/ui-egui/src/site/mod.rs:765
 msgid "{} stand on the terrain"
 msgstr ""
 
-#: crates/ui-egui/src/site.rs:750
+#: crates/ui-egui/src/site/mod.rs:767
 msgid "{} stand on the terrain; {} are not over it"
 msgstr ""
 
@@ -8454,7 +8549,7 @@ msgid "{}: `{}` is not a length"
 msgstr "{}：`{}` 不是有效的长度"
 
 #: crates/ui-egui/src/properties.rs:2030
-#: crates/ui-egui/src/site.rs:137
+#: crates/ui-egui/src/site/mod.rs:141
 msgid "{}: `{}` is not a number"
 msgstr "{}：`{}` 不是数字"
 
@@ -8462,7 +8557,7 @@ msgstr "{}：`{}` 不是数字"
 msgid "{}: `{}` isn't a number"
 msgstr "{}：`{}` 不是数字"
 
-#: crates/ui-egui/src/site.rs:766
+#: crates/ui-egui/src/site/mod.rs:783
 msgid "{}: cut {} m³, fill {} m³ (net {} m³)"
 msgstr ""
 

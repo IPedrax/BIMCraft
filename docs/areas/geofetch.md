@@ -63,8 +63,21 @@ thread brings. An agent's `fetch_*` through `mcp --connect` still runs on the wi
 `bimcraft-geofetch` or an HTTP crate (`the_window_library_fetches_only_through_what_the_app_attaches` reads the manifests). Where
 `desktop` gives none (`BIMCRAFT_NO_NETWORK`, a Flatpak) the Site tab's boxes say there is no network and their Fetch is off.
 
+## The map the picker is drawn on
+
+`GeoSource::tile(zoom, x, y)` (empty by default: "no map tiles") is the picker's map, and `geofetch::tiles::OsmTiles` answers it from
+OpenStreetMap's standard tiles, `https://tile.openstreetmap.org/{z}/{x}/{y}.png` (one host, in `Allow::standard`), one tile at a time,
+only when the picker is on screen and shows it: decoded to RGBA (a palette, grey or 16-bit PNG is brought to 8-bit colour; 256 x 256
+only, a header that claims more is refused before anything is made), kept two weeks (the tile policy asks for at least a week), a
+reply that is not a tile is kept nowhere. The usage policy (operations.osmfoundation.org/policies/tiles) is kept to: BIMCraft's own
+`User-Agent`, caching, no bulk fetching or fetching ahead, two connections at most (the window's loader has two threads and drops
+what is no longer in view), and the credit, "© OpenStreetMap contributors", in the corner of the map. **Read the policy before
+shipping**: the sandbox that built this could not open it, and heavy use (many users) may need a tile server of the project's own.
+The pure part is `bimcraft_core::map` (a view of the map, its pixels, pan, zoom about a point, the tiles that cover a window, a drag as
+a box, a graticule); `Prefetched` hands `tile` on to the real fetcher.
+
 ## Not yet
 
-The Site tab's map picker (a rectangle on a zoomable map, tiles fetched on demand from OpenStreetMap under its tile policy, a bundled
-outline offline); the boxes take a distance round the origin or four typed degrees until then. Copernicus as the default (once checked against
+A bundled world outline for the picker with no network (it has its lines of latitude and longitude instead: the outline would have
+to come from a public-domain dataset such as Natural Earth, checked in); tiles from a server of the user's own. Copernicus as the default (once checked against
 a real tile), or both with a fallback. Roads, water and land use.

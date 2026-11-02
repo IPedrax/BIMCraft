@@ -22,11 +22,14 @@ struct Fake {
     delay: Duration,
     fail: Option<String>,
     asked: Mutex<usize>,
+    /// The map tiles asked for, in order, and whether there are none.
+    tiles: Mutex<Vec<(u8, u32, u32)>>,
+    no_tiles: bool,
 }
 
 impl Fake {
     fn new() -> Fake {
-        Fake { osm: overpass_reply(), delay: Duration::ZERO, fail: None, asked: Mutex::new(0) }
+        Fake { osm: overpass_reply(), delay: Duration::ZERO, fail: None, asked: Mutex::new(0), tiles: Mutex::default(), no_tiles: false }
     }
 }
 
@@ -57,6 +60,15 @@ impl GeoSource for Fake {
             source: source.unwrap_or("terrarium").to_string(),
             cached: false,
         })
+    }
+
+    fn tile(&self, zoom: u8, x: u32, y: u32) -> Result<bimcraft_core::geo::Tile, String> {
+        self.tiles.lock().unwrap().push((zoom, x, y));
+        if self.no_tiles {
+            return Err("no map tiles here".into());
+        }
+        let rgba = [(x % 256) as u8, (y % 256) as u8, 90, 255].repeat(256 * 256);
+        Ok(bimcraft_core::geo::Tile { rgba, side: 256, cached: false })
     }
 
     fn attribution(&self, what: &str) -> String {
@@ -402,4 +414,183 @@ fn what_was_fetched_with_is_said_when_it_is_done() {
     assert!(h.query_by_label("Query used").is_some());
     let said = query_shown(&h);
     assert_eq!(shown, said, "the query shown before is the one that was asked");
+}
+
+// ---- the map ----
+
+/// Steps frames until the map has a picture of a tile, or fails.
+fn until_tiles(h: &mut Harness<BimApp>) {
+    let start = Instant::now();
+    while h.state().map().is_some_and(|m| m.ready() == 0) {
+        assert!(start.elapsed() < Duration::from_secs(20), "no tile ever came");
+        std::thread::sleep(Duration::from_millis(5));
+        h.step();
+    }
+    h.run();
+}
+
+/// The Location box open over a project not yet placed, with the map open at `typed`.
+fn place_map(fake: Arc<Fake>, typed: &str) -> Harness<'static, BimApp> {
+    let mut h = app(BOX);
+    h.state_mut().session.geo = Some(fake);
+    press(&mut h, "Site");
+    press(&mut h, "Location");
+    type_into(&mut h, "Coordinates", typed);
+    press(&mut h, "Pick on Map…");
+    h
+}
+
+#[test]
+fn the_map_asks_for_the_tiles_it_shows_once_each_and_a_click_picks_the_place() {
+    let fake = Arc::new(Fake::new());
+    let mut h = place_map(fake.clone(), "51.2254809, 6.7700762");
+    until_tiles(&mut h);
+    let m = h.state().map().unwrap();
+    let asked = fake.tiles.lock().unwrap().clone();
+    assert!(!asked.is_empty() && asked.len() <= 40, "{}", asked.len());
+    assert!(asked.iter().all(|(z, _, _)| *z == 15), "the zoom it opens at: {asked:?}");
+    let mut once = asked.clone();
+    once.sort();
+    once.dedup();
+    assert_eq!(once.len(), asked.len(), "no tile twice");
+    assert_eq!(m.asked(), asked.len());
+    // The place typed is the marker, and a click 100 px east of it moves the marker there.
+    assert_eq!(m.place(), Some((6.7700762, 51.2254809)));
+    let at = m.screen_of(6.7700762, 51.2254809).unwrap() + vec2(100.0, -40.0);
+    click_at(&mut h, at);
+    let (lon, lat) = h.state().map().unwrap().place().unwrap();
+    assert!(lon > 6.7700762 && lon < 6.78 && lat > 51.2254809 && lat < 51.2275, "{lon} {lat}");
+    // Use This Place gives it to the Location box, and OK to the project.
+    press(&mut h, "Use This Place");
+    assert!(h.state().map().is_none());
+    press(&mut h, "OK");
+    let l = h.state().session.model.location.expect("placed");
+    assert!((l.longitude - lon).abs() < 1e-6 && (l.latitude - lat).abs() < 1e-6, "{l:?}");
+}
+
+#[test]
+fn dragging_moves_the_map_and_the_wheel_zooms_about_the_pointer() {
+    let mut h = place_map(Arc::new(Fake::new()), "51.2254809, 6.7700762");
+    let before = h.state().map().unwrap().view();
+    let from = h.state().map().unwrap().canvas_centre();
+    drag_screen(&mut h, from, from + vec2(120.0, 0.0), PointerButton::Primary);
+    let after = h.state().map().unwrap().view();
+    assert!(after.lon < before.lon, "dragged east, so what was west of the middle comes in: {} {}", before.lon, after.lon);
+    assert_eq!(h.state().map().unwrap().place(), Some((6.7700762, 51.2254809)), "a drag is not a click");
+    // The wheel zooms in; the place under the pointer stays under it.
+    let m = h.state().map().unwrap();
+    let pointer = from + vec2(150.0, 60.0);
+    let (lon, lat) = (m.view().lon, m.view().lat);
+    let _ = (lon, lat);
+    h.hover_at(pointer);
+    h.run();
+    let under = {
+        let m = h.state().map().unwrap();
+        let r = m.canvas_rect();
+        m.view().from_screen(((pointer.x - r.min.x) as f64, (pointer.y - r.min.y) as f64), (r.width() as f64, r.height() as f64))
+    };
+    h.event(Event::MouseWheel {
+        unit: MouseWheelUnit::Point,
+        delta: vec2(0.0, 240.0),
+        phase: TouchPhase::Move,
+        modifiers: Modifiers::NONE,
+    });
+    for _ in 0..8 {
+        h.step();
+    }
+    let m = h.state().map().unwrap();
+    assert!(m.view().zoom > after.zoom, "{} {}", m.view().zoom, after.zoom);
+    let there = m.screen_of(under.0, under.1).unwrap();
+    assert!((there - pointer).length() < 1.5, "the place under the pointer stays: {there:?} {pointer:?}");
+}
+
+#[test]
+fn go_to_takes_a_pair_pasted_from_a_map_and_says_when_it_is_not_one() {
+    let mut h = place_map(Arc::new(Fake::new()), "-23.5505, -46.6333");
+    type_into(&mut h, "Go to", "52.5200, 13.4050");
+    press(&mut h, "Go");
+    let v = h.state().map().unwrap().view();
+    assert!((v.lon - 13.405).abs() < 1e-9 && (v.lat - 52.52).abs() < 1e-9 && v.zoom >= 14.0, "{v:?}");
+    type_into(&mut h, "Go to", "somewhere");
+    press(&mut h, "Go");
+    assert!(h.query_by_label_contains("two numbers").is_some());
+    assert_eq!(h.state().map().unwrap().view().lon, v.lon, "the map stays");
+}
+
+#[test]
+fn a_box_is_drawn_by_a_drag_and_used_by_the_area_box_which_fetches_it() {
+    let fake = Arc::new(Fake::new());
+    let mut h = located(fake.clone());
+    press(&mut h, "Site");
+    press(&mut h, "Import from OpenStreetMap");
+    pick(&mut h, Role::RadioButton, "A box of degrees");
+    press(&mut h, "Pick on Map…");
+    until_tiles(&mut h);
+    assert!(is_disabled(&h, Role::Button, "Use This Box"), "no box yet");
+    let m = h.state().map().unwrap();
+    let v = m.view();
+    let (a, b) = (m.screen_of(v.lon, v.lat).unwrap() + vec2(-80.0, -60.0), m.screen_of(v.lon, v.lat).unwrap() + vec2(90.0, 70.0));
+    drag_screen(&mut h, a, b, PointerButton::Primary);
+    let drawn = h.state().map().unwrap().area().expect("a box");
+    assert!(drawn.contains(v.lon, v.lat) && drawn.area_km2() > 0.1 && drawn.area_km2() < 25.0, "{drawn:?}");
+    assert!(h.query_by_label_contains("km² (at most 25)").is_some());
+    press(&mut h, "Use This Box");
+    // The four degrees are in the area box now, and fetching takes that box.
+    fetch(&mut h);
+    until_fetched(&mut h);
+    assert_eq!(count(&h, "mass"), 2);
+    assert!(h.query_by_label_contains("[out:json]").is_some());
+    let query = query_shown(&h);
+    assert!(query.contains(&format!("{}", drawn.south)) || query.contains(&format!("{:.5}", drawn.south)), "{query}");
+}
+
+#[test]
+fn a_box_over_what_one_fetch_may_cover_is_red_and_cannot_be_used() {
+    let mut h = located(Arc::new(Fake::new()));
+    press(&mut h, "Site");
+    press(&mut h, "Terrain from Elevation Data");
+    pick(&mut h, Role::RadioButton, "A box of degrees");
+    press(&mut h, "Pick on Map…");
+    until_tiles(&mut h);
+    for _ in 0..3 {
+        press(&mut h, "−");
+    }
+    let m = h.state().map().unwrap();
+    let r = m.canvas_rect();
+    drag_screen(&mut h, r.min + vec2(40.0, 40.0), r.max - vec2(40.0, 40.0), PointerButton::Primary);
+    let drawn = h.state().map().unwrap().area().expect("a box");
+    assert!(drawn.area_km2() > 25.0, "{}", drawn.area_km2());
+    assert!(is_disabled(&h, Role::Button, "Use This Box"));
+    assert!(h.query_by_label_contains("km² (at most 25)").is_some());
+}
+
+#[test]
+fn with_no_fetcher_or_no_tiles_the_map_is_lines_and_the_place_can_still_be_picked() {
+    // No fetcher at all.
+    let mut h = app(BOX);
+    press(&mut h, "Site");
+    press(&mut h, "Location");
+    type_into(&mut h, "Coordinates", "51.2254809, 6.7700762");
+    press(&mut h, "Pick on Map…");
+    assert_eq!((h.state().map().unwrap().asked(), h.state().map().unwrap().ready()), (0, 0));
+    assert!(h.query_by_label_contains("can still be picked").is_some(), "the map says it has no picture");
+    let at = h.state().map().unwrap().screen_of(6.7700762, 51.2254809).unwrap() + vec2(30.0, 30.0);
+    click_at(&mut h, at);
+    assert!(h.state().map().unwrap().place().is_some());
+    assert!(!is_disabled(&h, Role::Button, "Use This Place"));
+    // A fetcher that has no tiles: the reason is said and nothing breaks.
+    let fake = Arc::new(Fake { no_tiles: true, ..Fake::new() });
+    let mut h = place_map(fake.clone(), "51.2254809, 6.7700762");
+    let start = Instant::now();
+    while h.state().map().is_some_and(|m| m.asked() > 0) && !h.query_by_label_contains("no map tiles here").is_some() {
+        assert!(start.elapsed() < Duration::from_secs(20), "the reason never came");
+        std::thread::sleep(Duration::from_millis(5));
+        h.step();
+    }
+    assert_eq!(h.state().map().unwrap().ready(), 0);
+    // Cancel is in both boxes; the map's is the one drawn last.
+    h.get_all_by_label("Cancel").last().unwrap().click();
+    h.run();
+    assert!(h.state().map().is_none());
+    assert!(h.query_by_label("OK").is_some(), "the Location box is still there");
 }

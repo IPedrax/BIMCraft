@@ -330,6 +330,14 @@ the first corner again finishes, Esc cancels; its Options Bar has the offset and
 `place_on_terrain` on the selection; Cut/Fill runs `cut_fill` on the selected pads (every pad when none is) and lists each pad's cut and
 fill and the totals in a box. Properties has rows for pads (level, offset, thickness, area, cut/fill/net) and toposurfaces (contour
 interval, material, points, areas), edited through `modify`. While a fetch runs the window's keys and agents wait, as for a Revit file.
-Not yet: a toposurface drawn by clicking points, the map picker, a right-click item for Place on Terrain. The tests (`tests/site.rs`)
+**Pick on Map** (`site/map.rs`), a button in the Location box and in the area box's box of degrees, opens a window with OpenStreetMap's map
+(`GeoSource::tile`, two loader threads, only the tiles in view; the credit in the corner; [geofetch](geofetch.md#the-map-the-picker-is-drawn-on)):
+drag to move (the right or middle button always does), wheel or double click to zoom about the pointer, + and -, Go to (a pair pasted
+from a map). In the Location box a click picks the place and Use This Place fills Latitude and Longitude; in the area box a drag draws
+the box (Move map turns the drag back into a move), its km² shown against the 25 km² cap, red and unusable over it, and Use This Box
+fills the four degrees. The project's origin is marked. With no fetcher, or no tile, the map is a plain ground with its lines of
+latitude and longitude and the place can still be picked. What the map shows is `bimcraft_core::map`'s, so the widget only draws and
+passes the pointer in; the tests (`tests/site.rs`) read its state (`BimApp::map`) since a texture's pixels are not in the harness.
+Not yet: a toposurface drawn by clicking points, a right-click item for Place on Terrain. The tests (`tests/site.rs`)
 give the session a fake fetcher and step frames until the thread answers (a spinner asks for frames forever: `step`, never `run`).
 The sandbox that built this has no graphics adapter, so the tab and its boxes were not looked at in the three looks: do that first.

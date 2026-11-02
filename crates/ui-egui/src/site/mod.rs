@@ -5,6 +5,8 @@
 //! reading a Revit file does: the thread asks the fetcher the session holds, and what it brings is handed back to the unchanged
 //! command through [`Prefetched`], so one validation, one undo step and one report, and the window never waits on the network.
 
+mod map;
+
 use std::sync::mpsc::{Receiver, TryRecvError, channel};
 use std::time::Duration;
 
@@ -105,6 +107,8 @@ pub(crate) struct Site {
     area: Option<AreaBox>,
     job: Option<Job>,
     said: Option<Said>,
+    /// The map a place or an area is picked on.
+    map: Option<map::MapBox>,
 }
 
 /// The elevation sources the Terrain box offers: how they are named to the command, and shown.
@@ -225,6 +229,7 @@ impl BimApp {
     fn location_window(&mut self, ctx: &Context) {
         let Some(b) = self.site.location.as_mut() else { return };
         let (mut ok, mut close) = (false, false);
+        let mut pick = None;
         let unit = self.session.model.units.name();
         let r = Modal::new(UiId::new("site-location"), t("Location")).width(440.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
@@ -258,6 +263,9 @@ impl BimApp {
                 if let Some(note) = &b.coordinates_note {
                     ui.label(RichText::new(note).color(pal().muted));
                 }
+                if ui.button(t("Pick on Map…")).on_hover_text(t("Click the project's origin on a map")).clicked() {
+                    pick = Some(map::Pick::Place);
+                }
                 ui.label(RichText::new(t("Grid: utm, for the place's own zone, or an EPSG code such as 31983.")).color(pal().muted));
                 if let Some(g) = &b.grid {
                     ui.label(RichText::new(tf("In {}", &[g])).color(pal().muted));
@@ -278,6 +286,8 @@ impl BimApp {
             self.apply_location();
         } else if close || r.should_close() {
             self.site.location = None;
+        } else if let Some(pick) = pick {
+            self.open_map(pick);
         }
     }
 
@@ -375,6 +385,7 @@ impl BimApp {
         let area = area.ok();
         let unit = self.session.model.units.name();
         let Some(b) = self.site.area.as_mut() else { return };
+        let mut pick = None;
         let (mut ok, mut close) = (false, false);
         let r = Modal::new(UiId::new("site-area"), title).width(480.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
@@ -390,6 +401,9 @@ impl BimApp {
                 }
                 ui.radio_value(&mut b.around, true, t("A distance round the project's origin"));
                 ui.radio_value(&mut b.around, false, t("A box of degrees"));
+                if ui.button(t("Pick on Map…")).on_hover_text(t("Draw the box on a map")).clicked() {
+                    pick = Some(map::Pick::Area);
+                }
                 ui.add_space(4.0);
                 Grid::new("site-area-grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
                     if b.around {
@@ -462,6 +476,8 @@ impl BimApp {
             self.start_fetch(ctx);
         } else if close || r.should_close() {
             self.site.area = None;
+        } else if let Some(pick) = pick {
+            self.open_map(pick);
         }
     }
 
@@ -706,6 +722,7 @@ impl BimApp {
         self.area_window(ctx);
         self.fetching_box(ctx);
         self.said_window(ctx);
+        self.map_window(ctx);
     }
 
     // ---- The Pad tool, Place on Terrain, Cut/Fill ----
