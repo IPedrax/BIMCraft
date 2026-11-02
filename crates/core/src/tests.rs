@@ -1622,6 +1622,16 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"data": "{\"elements\":[]}", "level_height": 1e300, "default_height": "x", "terrain": u64::MAX}),
         json!({"path": 5, "data": 5}),
         json!({"data": "<!DOCTYPE osm [<!ENTITY a \"x\">]><osm/>", "replace": "x", "detail": "all"}),
+        json!({"radius": 500, "spacing": 25, "source": "copernicus", "set_elevation": true, "interval": 100}),
+        json!({"bbox": [-23.56, -46.64, -23.54, -46.62], "spacing": 1e-300}),
+        json!({"bbox": [-23.56, -46.64, -23.54, -46.62], "spacing": f64::MAX, "name": ""}),
+        json!({"radius": 1e300}),
+        json!({"radius": 0.0001, "spacing": 5e-324}),
+        json!({"bbox": [90, 180, 90, 180]}),
+        json!({"bbox": [-90, -180, 90, 180], "radius": 5}),
+        json!({"radius": 500, "source": "../../etc/passwd", "name": "n".repeat(2000)}),
+        json!({"bbox": [-23.56, -46.64, -23.54, -46.62], "parts": "x", "detail": ["way/1", "way/1"], "terrain": 100000, "replace": 3}),
+        json!({"radius": 300, "parts": true, "detail": ["way/1", "way/2"], "level_height": 1e300, "default_height": -1}),
         json!({"latitude": 91, "longitude": 0}),
         json!({"latitude": 1e300, "longitude": -1e300, "elevation": 1e300, "true_north": 1e300}),
         json!({"latitude": -23.5, "longitude": -46.6, "crs": 4326}),
@@ -1839,8 +1849,9 @@ fn hostile_params_never_panic_or_break_the_model() {
     };
     assert_eq!(views(&base.model), 2, "the sweep's base has a section and an elevation to draw");
     // Terrain, last too, for height_at, contours and what draws it.
-    // The project is placed, for import_osm.
+    // The project is placed, for import_osm, and has a fake fetcher, for fetch_osm and fetch_terrain.
     let _ = base.execute("geolocate", &json!({"latitude": -23.5505, "longitude": -46.6333}));
+    base.geo = Some(crate::geo_tests::sweep_fetcher());
     let _ = base.execute(
         "toposurface",
         &json!({"points": [[-2000, -2000, 0], [12000, -2000, 400], [12000, 9000, 900], [-2000, 9000, 300], [5000, 3000, 1500]], "interval": 100}),

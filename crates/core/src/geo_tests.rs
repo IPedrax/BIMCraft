@@ -105,6 +105,11 @@ fn session(fake: Arc<Fake>) -> Session {
     s
 }
 
+/// A fetcher for the hostile-parameters sweep: it answers, so the commands go all the way through.
+pub(crate) fn sweep_fetcher() -> crate::geo::Fetcher {
+    Arc::new(Fake::new(overpass_reply()))
+}
+
 fn masses(s: &Session) -> usize {
     s.model.elements.values().filter(|e| matches!(e, Element::Mass(_))).count()
 }
@@ -188,4 +193,124 @@ fn fetch_osm_is_refused_without_a_fetcher_over_too_big_a_box_and_on_a_bad_reply(
         v.execute("fetch_osm", &json!({"bbox": [-23.56, -46.64, -23.54, -46.62]})).unwrap_err().contains("no location"),
         "it cannot place them either"
     );
+}
+
+fn heights(s: &mut Session, points: Value) -> Vec<Option<f64>> {
+    run(s, "height_at", json!({"points": points}))["heights"].as_array().unwrap().iter().map(Value::as_f64).collect()
+}
+
+fn terrain_count(s: &Session) -> usize {
+    s.model.elements.values().filter(|e| e.category() == "toposurface").count()
+}
+
+#[test]
+fn fetch_terrain_makes_the_ground_with_the_origin_at_its_own_height() {
+    let fake = Arc::new(Fake::new(String::new()));
+    let mut s = session(fake.clone());
+    let r = run(&mut s, "fetch_terrain", json!({"radius": 500, "spacing": 10, "name": "Ground", "interval": 500}));
+    assert_eq!(r["source"], "terrarium", "{r}");
+    // The project had no height above the sea: the ground at its origin (760 m) becomes it, so project z = 0 is there.
+    assert!((r["elevation_set"].as_f64().unwrap() - 760_000.0).abs() < 1.0, "{r}");
+    let place = run(&mut s, "geolocate", json!({}));
+    assert!((place["elevation"].as_f64().unwrap() - 760_000.0).abs() < 1.0);
+    let at = heights(&mut s, json!([[0, 0], [100_000, 0], [0, 100_000], [-100_000, -100_000]]));
+    // 100 m east is 0.00098 degrees: 0.98 m more; 100 m north is 0.000898 degrees: 1.8 m more (the project's axes are a little
+    // out of line with the degrees, hence the slack).
+    for (got, want) in at.iter().zip([0.0, 980.0, 1800.0, -2780.0]) {
+        assert!(got.is_some_and(|z| (z - want).abs() < 40.0), "{at:?}");
+    }
+    // The box is the terrain: about a square kilometre, and nothing past it.
+    assert!((r["area_m2"].as_f64().unwrap() - 1.0e6).abs() < 0.06e6, "{r}");
+    assert_eq!(heights(&mut s, json!([[800_000, 0], [0, -800_000]])), [None, None]);
+    // The hook was asked once, for the box and the spacing, and the reply carries its credit.
+    let asked = fake.heights.lock().unwrap();
+    assert_eq!(asked.len(), 1);
+    assert!((asked[0].0.area_km2() - 1.0).abs() < 0.02 && asked[0].1 == 10.0 && asked[0].2.is_none());
+    assert_eq!(r["attribution"], "Elevation: terrarium");
+    let listed = run(&mut s, "elements", json!({"category": "toposurface"}));
+    assert_eq!((listed["elements"][0]["name"].clone(), listed["elements"][0]["points"].clone()), (json!("Ground"), r["points"].clone()));
+    // One step: the terrain and the height above the sea come back together.
+    s.execute("undo", &json!({})).unwrap();
+    assert_eq!((terrain_count(&s), run(&mut s, "geolocate", json!({}))["elevation"].clone()), (0, json!(0.0)));
+}
+
+#[test]
+fn a_height_the_project_already_has_is_kept_and_asked_not_to_change_it_is_not_changed() {
+    let fake = Arc::new(Fake::new(String::new()));
+    let mut s = session(fake.clone());
+    run(&mut s, "geolocate", json!({"elevation": 700_000}));
+    let r = run(&mut s, "fetch_terrain", json!({"radius": 300, "spacing": 20}));
+    assert!(r["elevation_set"].is_null(), "{r}");
+    assert!(heights(&mut s, json!([[0, 0]]))[0].is_some_and(|z| (z - 60_000.0).abs() < 120.0), "760 m ground over a 700 m origin");
+    let mut t = session(fake);
+    let r = run(&mut t, "fetch_terrain", json!({"radius": 300, "spacing": 20, "set_elevation": false}));
+    assert!(r["elevation_set"].is_null());
+    assert!(heights(&mut t, json!([[0, 0]]))[0].is_some_and(|z| (z - 760_000.0).abs() < 120.0), "heights as they come");
+    assert_eq!(run(&mut t, "geolocate", json!({}))["elevation"], 0.0);
+}
+
+#[test]
+fn the_default_spacing_keeps_the_points_under_the_cap_and_a_fine_one_is_refused() {
+    let fake = Arc::new(Fake::new(String::new()));
+    let mut s = session(fake.clone());
+    let r = run(&mut s, "fetch_terrain", json!({"radius": 2000}));
+    let n = r["points"].as_u64().unwrap();
+    assert!((10_000..=50_000).contains(&n), "{n}");
+    let asked = fake.heights.lock().unwrap().len();
+    assert!(refused(&mut s, "fetch_terrain", json!({"radius": 1000, "spacing": 1})).contains("spacing"));
+    assert_eq!(fake.heights.lock().unwrap().len(), asked, "a spacing that cannot be made is not fetched for");
+}
+
+#[test]
+fn what_cannot_be_fetched_for_is_refused_and_leaves_the_project_as_it_was() {
+    let fake = Arc::new(Fake::new(String::new()));
+    let mut none = Session::new();
+    run(&mut none, "geolocate", json!({"latitude": HOME.1, "longitude": HOME.0}));
+    assert!(refused(&mut none, "fetch_terrain", json!({})).contains("no network access"));
+    let mut s = session(fake.clone());
+    for (p, says) in [
+        (json!({"radius": 4000}), "25"),
+        (json!({"bbox": [1, 2, 3]}), "bbox"),
+        (json!({"radius": 500, "bbox": [-23.56, -46.64, -23.54, -46.62]}), "not both"),
+        (json!({"spacing": "x"}), "spacing"),
+        (json!({"spacing": -5}), "spacing"),
+        (json!({"set_elevation": "yes"}), "set_elevation"),
+        (json!({"interval": 3}), "interval"),
+        (json!({"name": 5}), "name"),
+        (json!({"colour": 1}), "colour"),
+    ] {
+        assert!(refused(&mut s, "fetch_terrain", p.clone()).contains(says), "{p}");
+    }
+    assert!(fake.heights.lock().unwrap().is_empty());
+    // A fetcher with nothing under the box, and one that fails.
+    let bare = Arc::new(Fake { holes: usize::MAX, ..Fake::new(String::new()) });
+    let mut t = session(bare);
+    assert!(refused(&mut t, "fetch_terrain", json!({"radius": 300, "spacing": 30})).contains("no height at the project's origin"));
+    assert!(refused(&mut t, "fetch_terrain", json!({"radius": 300, "spacing": 30, "set_elevation": false})).contains("no heights"));
+    let failing = Arc::new(Fake { fail: Some("s3.amazonaws.com: 503".into()), ..Fake::new(String::new()) });
+    let mut u = session(failing);
+    assert!(refused(&mut u, "fetch_terrain", json!({"radius": 300, "spacing": 30})).contains("503"));
+    for x in [&mut t, &mut u] {
+        assert_eq!((terrain_count(x), run(x, "geolocate", json!({}))["elevation"].clone()), (0, json!(0.0)), "nothing changed");
+    }
+    // Not placed.
+    let mut v = Session::new();
+    v.geo = Some(fake);
+    assert!(refused(&mut v, "fetch_terrain", json!({})).contains("no location"));
+}
+
+#[test]
+fn the_source_asked_for_goes_to_the_fetcher_and_buildings_then_stand_on_the_ground_fetched() {
+    let fake = Arc::new(Fake::new(overpass_reply()));
+    let mut s = session(fake.clone());
+    let r = run(&mut s, "fetch_terrain", json!({"radius": 400, "spacing": 10, "source": "copernicus"}));
+    assert_eq!(r["source"], "copernicus");
+    assert_eq!(fake.heights.lock().unwrap()[0].2.as_deref(), Some("copernicus"));
+    // The houses 30 m east and 20 m north of the origin stand about 0.3 + 0.4 m higher than at the origin.
+    run(&mut s, "fetch_osm", json!({"radius": 400}));
+    let bases: Vec<f64> =
+        s.model.elements.values().filter_map(|e| if let Element::Mass(m) = e { Some(m.base_offset) } else { None }).collect();
+    assert_eq!(bases.len(), 2);
+    assert!(bases.iter().all(|b| (-100.0..2500.0).contains(b)), "on the ground fetched, not at the level: {bases:?}");
+    assert!(bases.iter().any(|b| *b > 100.0), "{bases:?}");
 }

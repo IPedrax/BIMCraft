@@ -188,6 +188,29 @@ impl ElevationGrid {
         Ok(ElevationGrid { west, north, dlon, dlat, cols, rows, values })
     }
 
+    /// Whether it is what [`ElevationGrid::new`] would have made: its fields are public, and what a fetcher returns is not trusted.
+    pub fn check(&self) -> Result<(), String> {
+        if ![self.west, self.north, self.dlon, self.dlat].iter().all(|x| x.is_finite()) || self.dlon <= 0.0 || self.dlat <= 0.0 {
+            return Err("an elevation grid needs finite corners and steps above 0".into());
+        }
+        if self.cols < 2 || self.rows < 2 || self.cols.checked_mul(self.rows).is_none_or(|n| n > MAX_GRID_NODES) {
+            return Err(format!(
+                "an elevation grid is 2 or more nodes each way and at most {MAX_GRID_NODES} in all, not {} x {}",
+                self.cols, self.rows
+            ));
+        }
+        if self.values.len() != self.cols * self.rows {
+            return Err(format!(
+                "an elevation grid of {} x {} has {} heights, not {}",
+                self.cols,
+                self.rows,
+                self.cols * self.rows,
+                self.values.len()
+            ));
+        }
+        Ok(())
+    }
+
     /// The height at a place, from the four nodes round it: none off the grid or where one of them has none.
     pub fn sample(&self, lon: f64, lat: f64) -> Option<f64> {
         if !lon.is_finite() || !lat.is_finite() {

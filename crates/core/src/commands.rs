@@ -302,6 +302,20 @@ pub static ALL: &[Command] = &[
         fetch_osm,
     ),
     edit(
+        "fetch_terrain",
+        "Fetch Terrain",
+        &[],
+        "{bbox? | radius?, spacing?, source?, name?, set_elevation?, interval?} fetches the ground of an area and makes a toposurface of \
+         it: `bbox` [south, west, north, east] degrees, or `radius` metres each way round the project's origin (1000 by default); at \
+         most 25 km². A node every `spacing` metres (by default as fine as keeps it under 50,000 points, at least 10 m), from `source` \
+         (`terrarium` or `copernicus`; by default the best there is). The terrain is clipped to the box. Heights are made project \
+         heights: if the project has no height above the sea yet and `set_elevation` is true (by default) the ground at the origin \
+         becomes it, so z = 0 is there; otherwise the project's own is taken off. Needs a build with network access (the desktop app \
+         has it); without one, bring terrain in with `toposurface`. Reports the toposurface, the source, whether it came from the cache \
+         and the credit its data asks for",
+        fetch_terrain,
+    ),
+    edit(
         "import_osm",
         "Import OpenStreetMap",
         &[],
@@ -5533,6 +5547,95 @@ fn fetch_osm(s: &mut Session, p: &Value) -> R {
     let mut out = import_osm(s, &Value::Object(forward)).map_err(|why| why.replacen("import_osm", c, 1))?;
     out["fetched"] = json!({"bbox": bbox.as_array(), "area_km2": bbox.area_km2(), "bytes": bytes, "cached": reply.cached});
     out["attribution"] = json!(geo.attribution("osm"));
+    Ok(out)
+}
+
+fn fetch_terrain(s: &mut Session, p: &Value) -> R {
+    let c = "fetch_terrain";
+    only(c, p, &["bbox", "radius", "spacing", "source", "name", "set_elevation", "interval"])?;
+    let Some(geo) = s.geo.clone() else {
+        return Err(bad(c, "this BIMCraft has no network access built in: bring terrain in with `toposurface`, from points you have"));
+    };
+    let bbox = fetch_bbox(c, p, &s.model)?;
+    let Some(location) = s.model.location else { return Err(bad(c, "the project has no location yet")) };
+    let spacing = match num(c, p, "spacing")? {
+        Some(x) => x,
+        // As fine as keeps the nodes to about 36,000, and no finer than 10 m.
+        None => (bbox.area_km2() * 1e6 / 36_000.0).sqrt().ceil().max(10.0),
+    };
+    let setting = match p.get("set_elevation") {
+        v if absent(v) => true,
+        Some(Value::Bool(b)) => *b,
+        Some(v) => return Err(bad(c, format!("`set_elevation` must be true or false, got {v}"))),
+        None => true,
+    };
+    let interval = num(c, p, "interval")?;
+    if interval.is_some_and(|x| x != 0.0 && x < crate::model::MIN_CONTOUR_INTERVAL) {
+        return Err(bad(c, format!("`interval` is 0 (none) or at least {} mm", crate::model::MIN_CONTOUR_INTERVAL)));
+    }
+    let name = string(c, p, "name")?;
+    let source = match string(c, p, "source")? {
+        Some(t) if t.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') && t.len() <= 32 && !t.is_empty() => Some(t),
+        Some(t) => return Err(bad(c, format!("`source` is a name such as terrarium or copernicus, not `{t}`"))),
+        None => None,
+    };
+    // Where the nodes would be, before anyone is asked: a spacing that makes too many is refused here.
+    let grid = crate::geo::nodes(&bbox, spacing, crate::model::MAX_TERRAIN_POINTS).map_err(|why| bad(c, why))?;
+    let got = geo.elevation(&bbox, spacing, source.as_deref()).map_err(|why| bad(c, why))?;
+    got.grid.check().map_err(|why| bad(c, why))?;
+    let projector = location.projector().map_err(|why| bad(c, why))?;
+    let origin = got.grid.sample(location.longitude, location.latitude).filter(|z| z.is_finite());
+    // The height project z = 0 is at, mm above the sea: the project's own, or the ground at the origin.
+    let (base, set) = if setting && location.elevation == 0.0 {
+        match origin {
+            Some(z) if (z * 1000.0).abs() <= MAX_COORD => (z * 1000.0, true),
+            _ => {
+                return Err(bad(
+                    c,
+                    "the elevation data has no height at the project's origin, so it cannot become the project's height: give \
+                     `set_elevation` false, or a box that covers the origin",
+                ));
+            }
+        }
+    } else {
+        (location.elevation, false)
+    };
+    let mut points = Vec::with_capacity(grid.at.len());
+    for (lon, lat) in &grid.at {
+        let Some(z) = got.grid.sample(*lon, *lat).filter(|z| z.is_finite()) else { continue };
+        let q = projector.point(*lon, *lat).map_err(|why| bad(c, why))?;
+        points.push(json!([q.0, q.1, z * 1000.0 - base]));
+    }
+    if points.len() < 3 {
+        return Err(bad(
+            c,
+            format!("the elevation data has no heights over this box ({} of {} nodes have one)", points.len(), grid.at.len()),
+        ));
+    }
+    let corners = [(bbox.west, bbox.south), (bbox.east, bbox.south), (bbox.east, bbox.north), (bbox.west, bbox.north)];
+    let boundary: Vec<Value> = corners
+        .iter()
+        .map(|(lon, lat)| projector.point(*lon, *lat).map(|q| json!([q.0, q.1])))
+        .collect::<Result<_, _>>()
+        .map_err(|why| bad(c, why))?;
+    if set {
+        s.model_mut().location = Some(crate::georef::Location { elevation: base, ..location });
+    }
+    let n = points.len();
+    let mut q = json!({"points": points, "boundary": boundary});
+    if let Some(name) = name {
+        q["name"] = json!(name);
+    }
+    if let Some(x) = interval {
+        q["interval"] = json!(x);
+    }
+    let mut out = toposurface(s, &q).map_err(|why| why.replacen("toposurface", c, 1))?;
+    out["points"] = json!(n);
+    out["spacing"] = json!(spacing);
+    out["source"] = json!(got.source);
+    out["cached"] = json!(got.cached);
+    out["elevation_set"] = if set { json!(base) } else { Value::Null };
+    out["attribution"] = json!(geo.attribution(&got.source));
     Ok(out)
 }
 
