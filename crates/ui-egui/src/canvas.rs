@@ -1205,6 +1205,7 @@ impl BimApp {
         self.canvas.found.set(None);
         self.grip_drag(ui, &response, rect, &view, level);
         self.line_grip_drag(ui, &response, rect, &view, level);
+        let dragged = self.shape_grip_drag(ui, &response, rect, &view, level) || dragged;
         // A drag from an element moves the selection; from empty floor, it draws a selection box.
         if response.drag_started_by(PointerButton::Primary)
             && self.tool == Tool::Modify
@@ -1372,6 +1373,7 @@ impl BimApp {
             .and_then(|_| ui.input(|i| i.pointer.latest_pos()))
             .map(|q| self.snap(&model, level, &view, (q.x - rect.min.x, q.y - rect.min.y), &[], false).at);
         self.line_grip_overlay(&ui.painter_at(rect), rect, &view, cursor);
+        self.shape_overlay(ui, &model, &view, rect, level);
         self.temporary_dimension(ui, &model, &view, rect);
         self.context_menu(&response);
         self.nav_bar(ui, rect, key);
@@ -2091,9 +2093,14 @@ impl BimApp {
                 let p = self.snap(m, level, v, at, &[], mods.shift).at;
                 let Some(floor) = self.selected_floor() else { return };
                 let mut q = json!({"id": floor, "at": point(p)});
+                // `add_point` reads an absolute elevation from the project's zero; the Options Bar's, from the floor's level.
+                let level = match m.elements.get(floor) {
+                    Some(Element::Floor(f)) if self.shape_absolute => m.elevation(f.level),
+                    _ => 0.0,
+                };
                 if !self.shape_z.trim().is_empty() {
                     match m.units.parse(&self.shape_z) {
-                        Some(z) => q["z"] = json!(z),
+                        Some(z) => q["z"] = json!(z + level),
                         None => {
                             self.status = Status { text: tf("add point: `{}` is not an elevation", &[&self.shape_z]), error: true };
                             return;
@@ -3514,6 +3521,80 @@ impl BimApp {
             (Some(_), false) => label(sc.screen(next), format!("{} (Enter)", self.typed_length.trim())),
             (Some(last), true) => label(sc.screen(next), reading(*last)),
             (None, _) => {}
+        }
+    }
+}
+
+impl BimApp {
+    /// The floor being shaped: the one selected, while a Shape Editing tool is on.
+    fn shaping(&self) -> Option<Id> {
+        self.selected_floor().filter(|_| matches!(self.tool, Tool::ModifySubElements | Tool::AddPoint | Tool::AddSplitLine(_)))
+    }
+
+    /// Under Modify Sub Elements, a drag from one of the selected floor's shape points moves it in plan, snapped, at its
+    /// height, the split lines ending there going with it; on release, one `edit_shape`. Whether it took the release, which is
+    /// then no click.
+    pub(crate) fn shape_grip_drag(
+        &mut self,
+        ui: &Ui,
+        response: &Response,
+        rect: Rect,
+        view: &bimcraft_core::render::View,
+        level: Id,
+    ) -> bool {
+        let floor = self.selected_floor().filter(|_| self.tool == Tool::ModifySubElements);
+        let Some(Element::Floor(f)) = floor.and_then(|id| self.session.model.elements.get(id)).cloned() else {
+            self.shape_grip = None;
+            return false;
+        };
+        if response.drag_started_by(PointerButton::Primary)
+            && let Some(o) = ui.input(|i| i.pointer.press_origin())
+        {
+            self.shape_grip =
+                f.shape.point_near(view.mm((o.x - rect.min.x, o.y - rect.min.y)), f64::from(crate::section_box::GRIP) / view.scale);
+        }
+        let Some(from) = self.shape_grip else { return false };
+        if !response.drag_stopped() {
+            return false;
+        }
+        self.shape_grip = None;
+        let Some(q) = ui.input(|i| i.pointer.latest_pos()) else { return true };
+        let m = std::sync::Arc::clone(&self.session.model);
+        let to = self.snap(&m, level, view, (q.x - rect.min.x, q.y - rect.min.y), &[], false).at;
+        self.snap_once = None;
+        if to.dist(from) <= TOL {
+            return true;
+        }
+        let shape = f.shape.moved(from, to);
+        let points: Vec<serde_json::Value> = shape.points.iter().map(|p| json!({"id": p.id, "at": point(p.at), "z": p.z})).collect();
+        let lines: Vec<serde_json::Value> = shape.lines.iter().map(|l| json!({"id": l.id, "a": point(l.a), "b": point(l.b)})).collect();
+        self.run("edit_shape", json!({"id": floor, "points": points, "lines": lines}));
+        true
+    }
+
+    /// While a floor is shaped, each of its points' heights beside it, as the Options Bar's Elevation reads them (relative,
+    /// or with Absolute above the level); under Modify Sub Elements, a grip on each, the one held at the cursor.
+    pub(crate) fn shape_overlay(&self, ui: &Ui, m: &Model, view: &bimcraft_core::render::View, rect: Rect, level: Id) {
+        let Some(Element::Floor(f)) = self.shaping().and_then(|id| m.elements.get(id)) else { return };
+        let p = ui.painter_at(rect);
+        let at = |q: P2| {
+            let (x, y) = view.px(q);
+            rect.min + vec2(x, y)
+        };
+        let cursor = self
+            .shape_grip
+            .and_then(|_| ui.input(|i| i.pointer.latest_pos()))
+            .map(|q| self.snap(m, level, view, (q.x - rect.min.x, q.y - rect.min.y), &[], false).at);
+        let grips = self.tool == Tool::ModifySubElements;
+        for (q, z) in m.shape_labels(f, self.shape_absolute) {
+            let held = self.shape_grip.is_some_and(|g| g.dist(q) <= TOL);
+            let q = cursor.filter(|_| held).unwrap_or(q);
+            if grips {
+                let r = Rect::from_center_size(at(q), vec2(9.0, 9.0));
+                p.rect_filled(r, 1.0, if held { pal().accent } else { canvas_pal().surface });
+                p.rect_stroke(r, 1.0, Stroke::new(1.5, pal().accent), StrokeKind::Middle);
+            }
+            tag(&p, at(q) + vec2(8.0, -8.0), Align2::LEFT_BOTTOM, m.units.length(z));
         }
     }
 }
