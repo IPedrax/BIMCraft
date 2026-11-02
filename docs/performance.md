@@ -308,7 +308,7 @@ scene) and doesn't finish at 100, as the 3D view doesn't; and the schedules' she
 
 `view3d::gpu::Mesh` keeps a view's shown triangles for the card (retained geometry, uploaded once for each model), and
 `crates/ui-egui/src/gpu.rs` draws them in passes: the opaque surfaces, those seen through (only when the view sees through any),
-edges, ground and the blend, then the levels' lines. It is opt-in
+edges, ground and the blend, then the levels' lines. It was opt-in then
 (File > Settings > Performance). Release build on Linux, an NVIDIA GeForce RTX 3060 over Vulkan, the 20-storey tower
 (427,280 triangles, 1,281,840 vertices) at 1920 × 1080 with the camera turning 3° a frame, median of nine:
 

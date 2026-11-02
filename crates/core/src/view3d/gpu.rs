@@ -14,12 +14,6 @@ use crate::graphics::{Look, VisualStyle};
 use crate::model::Id;
 use crate::render::Rgb;
 
-/// The most triangles a mesh holds: the card takes 44 bytes a vertex, so that is 211 MB, under the 256 MiB a buffer may be.
-pub const MAX_TRIS: usize = 1_600_000;
-
-/// The most of the textures' pixels a mesh holds, bytes: a storage buffer may be 128 MiB.
-const MAX_TEXELS: usize = 64 << 20;
-
 /// One vertex: 52 bytes of 32-bit words here, 44 on the card, which takes the normals as 16-bit fractions.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Vertex {
@@ -155,9 +149,6 @@ impl Mesh {
             return Err("a point cloud, which only the processor draws yet".into());
         }
         let shown: Vec<usize> = (0..scene.tris.len()).filter(|&i| plain || look.shows(scene.tris[i].owner)).collect();
-        if shown.len() > MAX_TRIS {
-            return Err(format!("{} triangles, more than the card is given", shown.len()));
-        }
         // What the view sees through is drawn after what it doesn't, each in the order the processor draws it.
         let clear = |i: usize| scene.tris[i].alpha(look) > 0;
         let shown: Vec<usize> = shown.iter().copied().filter(|&i| !clear(i)).chain(shown.iter().copied().filter(|&i| clear(i))).collect();
@@ -174,16 +165,20 @@ impl Mesh {
         let mut mesh = Mesh {
             origin,
             radius,
-            vertices: Vec::with_capacity(shown.len() * 3),
+            vertices: Vec::new(),
             clear_from,
             owners: Vec::new(),
             skins: vec![Skin::default(); scene.skins.len()],
             texels: Vec::new(),
             level_colors: levels.iter().map(|(id, ..)| (*id, look.edge(*id, DATUM))).collect(),
             levels,
-            tris: Vec::with_capacity(shown.len()),
+            tris: Vec::new(),
             bvh: OnceLock::new(),
         };
+        // However many there are: a model too big for this machine's memory is said, not an abort.
+        let room = |_| "more than this machine's memory holds".to_string();
+        mesh.vertices.try_reserve_exact(shown.len().saturating_mul(3)).map_err(room)?;
+        mesh.tris.try_reserve_exact(shown.len()).map_err(room)?;
         let mut owners: BTreeMap<(Id, u8), u32> = BTreeMap::new();
         for i in shown {
             let t = &scene.tris[i];
@@ -217,9 +212,6 @@ impl Mesh {
                 mesh.texels.extend(
                     rgb.as_chunks::<3>().0.iter().map(|p| u32::from(p[0]) | u32::from(p[1]) << 8 | u32::from(p[2]) << 16 | 0xff << 24),
                 );
-            }
-            if mesh.texels.len() * 4 > MAX_TEXELS {
-                return Err("textures bigger than the card is given".into());
             }
             let f = |v: f64| v as f32;
             mesh.skins[id as usize] = Skin {
@@ -477,6 +469,14 @@ mod tests {
         s.execute("graphics", &json!({"view": "{3D}", "categories": {"floors": {"transparency": 80}, "roofs": {"transparency": 30}}}))
             .unwrap();
         picks_as_the_picture(&s);
+    }
+
+    #[test]
+    fn a_mesh_holds_a_tower_however_many_triangles_it_has() {
+        let m = crate::sample::tower::drawn(crate::sample::tower::Plate::REFERENCE, 2, crate::sample::tower::Drawings::default()).unwrap();
+        let scene = Scene::new(&m);
+        let mesh = Mesh::new(&scene, &Look::of_3d(&m)).unwrap();
+        assert!(mesh.vertices.len() / 3 > 1_600_000, "{} triangles, more than it was once given", mesh.vertices.len() / 3);
     }
 
     #[test]

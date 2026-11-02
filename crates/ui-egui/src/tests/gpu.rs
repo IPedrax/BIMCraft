@@ -7,21 +7,21 @@ use crate::gpu::{Card, headless};
 use egui_kittest::kittest::NodeT;
 
 #[test]
-fn drawing_on_the_card_is_opt_in_kept_in_the_settings_and_survives_a_new_project() {
+fn drawing_on_the_card_is_on_until_turned_off_kept_in_the_settings_and_survives_a_new_project() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("settings.json");
     let mut h = app("");
     h.state_mut().use_settings(file.clone());
-    assert!(!h.state().card.wanted, "off until it's asked for");
-    h.state_mut().card.wanted = true;
+    assert!(h.state().card.wanted, "on from the start");
+    h.state_mut().card.wanted = false;
     h.run();
     let kept: serde_json::Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
-    assert_eq!(kept["gpu_3d"], true);
+    assert_eq!(kept["gpu_3d"], false);
     h.state_mut().reopened();
-    assert!(h.state().card.wanted, "File > New keeps it");
+    assert!(!h.state().card.wanted, "File > New keeps it");
     let mut again = app("");
     again.state_mut().use_settings(file);
-    assert!(again.state().card.wanted, "and so does the next start");
+    assert!(!again.state().card.wanted, "and so does the next start");
 }
 
 #[test]

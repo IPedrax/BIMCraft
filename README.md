@@ -185,7 +185,7 @@ https://github.com/user-attachments/assets/46488109-fdc4-4ce5-a6bd-92b3b95af16c
 
 ## Performance sample
 
-Start an original 20-storey, 9,521-element tower with `bimcraft --highrise`, or generate a native
+Start the 100-storey, 1.2-million-element reference tower with `bimcraft --tower`, an original 20-storey, 9,521-element tower with `bimcraft --highrise`, or generate a native
 file with `bimcraft-cli run --highrise --save highrise.bimcraft`. The script is
 [`samples/highrise.txt`](samples/highrise.txt). See the [performance baseline](docs/performance.md)
 for reproducible core/UI measurements and the remaining optimization work. Private local IFC

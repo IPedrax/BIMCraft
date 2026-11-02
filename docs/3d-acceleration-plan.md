@@ -106,19 +106,42 @@ settled picture, byte for byte, with the card's picture before the piece, on a m
 - **Exports.** PNG, PDF, sheets and the CLI are untouched by this plan.
 - **Never crash.** Everything the card can refuse is caught and answered, as `caught` does today.
 
+## Piece 1 measured (2026-11-02)
+
+The same tower and picture, on the same card, in release, with no refusal now and 5 buffers of 256 MiB at most:
+
+| What | Before | Now |
+|---|---:|---:|
+| A frame | 2,700 ms, on the processor | **55 ms** median, 149 ms p95; 0.3 ms of it on the interface's thread |
+| Build the scene | 7.7 s | the same, piece 2 |
+| Build the mesh | never | 3.0 s, piece 2 |
+| Put it on the card, the first frame | never | 2.2 s, piece 2 |
+| The first pick, for the hierarchy | | 5.5 s, piece 2 |
+| Each pick after that | | 2.0 ms |
+| A frame with a new tint | 2,700 ms | 157 ms, not looked into |
+| The process's memory | | 5.4 GB, and 0.4 GB more once picked |
+
+`a_mesh_in_many_buffers_draws_the_pixels_of_one` holds a split mesh to one buffer's bytes, across the line to what is seen through and in both
+projections. On this card a buffer may be 4 GiB and a binding 2 GiB. Still refused for size: textures or owners past a binding, and an
+out-of-memory error still gives the card up for good (piece 9). At 100 storeys `Scene::new` alone is the wall: about 2.6 GB of it per 10
+storeys, so about 26 GB and a minute, and the mesh double that again, until pieces 3 and 4. A window on `--tower` should stay out of the 3D
+view until then.
+
+The card is on by default for a new user. A `settings.json` already holding `gpu_3d: false` keeps it, as it can't tell a choice from the
+old default.
+
 ## What isn't decided yet
 
 - **How far a card gets.** Piece 1's measurement decides how much of piece 5 is on the processor's side, and whether piece 6 needs coarser
   shapes or only boxes. Occlusion culling is left out until a measurement after piece 6 asks for it.
 - **The rest of the scene's memory.** `Scene::tris` holds each copy in full for the processor and for sections. Piece 3 stops the card
   needing it; sections and exports may still build it, which [the sections' plan](section-views-plan.md) follows.
-- **`--tower`.** A window can't be told to build the tower (the control port refuses what would replace the user's project) and the 100-storey
-  file is past the size a project may open at. Testing 100 storeys in the real window needs a start option like `--highrise`, in piece 1.
+- **`--tower`.** Done in piece 1, as a window can't be told to build the tower and its file is past the size a project may open at.
 
 ## Status
 
 - [x] Measure
-- [ ] 1. No cap, and the card's real limits
+- [x] 1. No cap, and the card's real limits
 - [ ] 2. Scene and mesh off the interface's thread
 - [ ] 3. One shape, many places: components
 - [ ] 4. The same for runs

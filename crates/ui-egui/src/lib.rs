@@ -27,6 +27,7 @@ mod fillpatterns;
 mod filter;
 mod footer;
 mod gpu;
+pub use gpu::limits_for;
 mod graphics;
 mod groups;
 pub mod icons;

@@ -32,7 +32,6 @@ const SEGMENT: u64 = 48;
 
 /// The window's use of the card: whether the user asked for it, the wgpu state it would be made on (none where the window has
 /// no wgpu device, as in every test), the card once it's made, and why the last picture was drawn on the processor, if it was.
-#[derive(Default)]
 pub struct Card {
     pub wanted: bool,
     pub state: Option<RenderState>,
@@ -42,6 +41,13 @@ pub struct Card {
     pub(crate) failed: bool,
     /// How the 2D canvas draws its kept triangles, on the card egui draws on: made the first time, whatever the 3D view's setting.
     pub(crate) canvas: Option<std::sync::Arc<crate::retained::Pipeline>>,
+}
+
+/// Wanted from the start: a window with a card draws on it unless the user says otherwise.
+impl Default for Card {
+    fn default() -> Card {
+        Card { wanted: true, state: None, gpu: None, note: None, failed: false, canvas: None }
+    }
 }
 
 impl Card {
@@ -109,10 +115,12 @@ struct Targets {
 /// A mesh on the card, the buffers that change with the pictures, and what they were last written with.
 struct Uploaded {
     mesh: Arc<Mesh>,
-    vertices: wgpu::Buffer,
-    count: u32,
+    /// Its vertices, as many buffers as they take, each but the last holding [`Uploaded::per`].
+    vertices: Vec<wgpu::Buffer>,
+    per: u64,
+    count: u64,
     /// Where the vertices seen through start.
-    clear_from: u32,
+    clear_from: u64,
     owners: wgpu::Buffer,
     skins: wgpu::Buffer,
     texels: wgpu::Buffer,
@@ -141,6 +149,33 @@ pub struct Gpu {
     targets: Option<Targets>,
     texture: Option<TextureId>,
     adapter: String,
+    /// The most bytes of vertices in one buffer.
+    vertex_bytes: u64,
+}
+
+/// The most bytes a buffer of vertices holds, whatever the card allows: some drivers place a very large buffer badly.
+const VERTEX_BUFFER: u64 = 256 << 20;
+
+/// What a device is asked for to draw any model: the buffers as big as the adapter has them, the rest as `asked`. OpenGL isn't the card's.
+pub fn limits_for(adapter: &wgpu::Adapter, asked: wgpu::Limits) -> wgpu::Limits {
+    if adapter.get_info().backend == wgpu::Backend::Gl {
+        return asked;
+    }
+    let has = adapter.limits();
+    wgpu::Limits { max_buffer_size: has.max_buffer_size, max_storage_buffer_binding_size: has.max_storage_buffer_binding_size, ..asked }
+}
+
+/// Which vertices of which buffer `range` is, buffers holding `per` vertices each, in order.
+fn spans(per: u64, range: std::ops::Range<u64>) -> Vec<(usize, std::ops::Range<u32>)> {
+    let per = per.max(3);
+    let (mut out, mut at) = (Vec::new(), range.start);
+    while at < range.end {
+        let k = at / per;
+        let stop = ((k + 1) * per).min(range.end);
+        out.push((k as usize, (at - k * per) as u32..(stop - k * per) as u32));
+        at = stop;
+    }
+    out
 }
 
 /// The bytes of a buffer, 32-bit words as the card's byte order has them.
@@ -336,6 +371,7 @@ impl Gpu {
             targets: None,
             texture: None,
             adapter: String::new(),
+            vertex_bytes: VERTEX_BUFFER,
         })
     }
 
@@ -511,8 +547,12 @@ impl Gpu {
                 if through_pass {
                     pass.set_bind_group(1, &targets.bind, &[]);
                 }
-                pass.set_vertex_buffer(0, up.vertices.slice(..));
-                pass.draw(vertices, 0..1);
+                for (k, part) in spans(up.per, vertices) {
+                    if let Some(buffer) = up.vertices.get(k) {
+                        pass.set_vertex_buffer(0, buffer.slice(..));
+                        pass.draw(part, 0..1);
+                    }
+                }
             }
         }
         for (name, pipeline, load, instances) in
@@ -553,22 +593,33 @@ impl Gpu {
             return Ok(());
         }
         self.mesh = None;
-        let (size, limits) = (mesh.vertices.len() as u64 * STRIDE, self.device.limits());
-        if size > limits.max_buffer_size || mesh.texels.len() as u64 * 4 > limits.max_storage_buffer_binding_size {
+        let binding = self.device.limits().max_storage_buffer_binding_size;
+        if mesh.texels.len() as u64 * 4 > binding || mesh.owners.len() as u64 * OWNER > binding {
             return Err("the model is bigger than the card holds".into());
         }
-        let mut bytes = Words::with_capacity(size as usize);
-        for Vertex { position, normal, face, color, owner, plane, tex } in &mesh.vertices {
-            put(&mut bytes, position);
-            put_unit(&mut bytes, normal);
-            put_unit(&mut bytes, face);
-            put_words(&mut bytes, &[*color, *owner, *plane, *tex]);
+        // Whole triangles to a buffer, written and sent one at a time, so that what waits to go up is one buffer's.
+        let per = (self.vertex_bytes.min(self.device.limits().max_buffer_size) / STRIDE / 3).max(1) * 3;
+        let mut vertices = Vec::with_capacity((mesh.vertices.len() as u64 / per + 1) as usize);
+        let mut bytes = Words::new();
+        for part in mesh.vertices.chunks(per as usize) {
+            bytes.clear();
+            bytes.reserve(part.len() * STRIDE as usize);
+            for Vertex { position, normal, face, color, owner, plane, tex } in part {
+                put(&mut bytes, position);
+                put_unit(&mut bytes, normal);
+                put_unit(&mut bytes, face);
+                put_words(&mut bytes, &[*color, *owner, *plane, *tex]);
+            }
+            let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("bimcraft-3d-vertices"),
+                size: bytes.len() as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            self.write(&buffer, &bytes);
+            self.queue.submit([]);
+            vertices.push(buffer);
         }
-        let make = |label: &str, size: u64, usage: wgpu::BufferUsages| {
-            self.device.create_buffer(&wgpu::BufferDescriptor { label: Some(label), size: size.max(4), usage, mapped_at_creation: false })
-        };
-        let vertices = make("bimcraft-3d-vertices", size, wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST);
-        self.write(&vertices, &bytes);
         let texels = Gpu::storage(&self.device, mesh.texels.len() as u64 * 4);
         let mut words = Words::with_capacity(mesh.texels.len() * 4);
         put_words(&mut words, &mesh.texels);
@@ -576,8 +627,9 @@ impl Gpu {
         self.mesh = Some(Uploaded {
             mesh: Arc::clone(mesh),
             vertices,
-            count: mesh.vertices.len() as u32,
-            clear_from: mesh.clear_from.min(mesh.vertices.len()) as u32,
+            per,
+            count: mesh.vertices.len() as u64,
+            clear_from: mesh.clear_from.min(mesh.vertices.len()) as u64,
             tints: None,
             lookups: Vec::new(),
             bind: None,
@@ -659,7 +711,12 @@ pub(crate) fn headless() -> Option<Gpu> {
     if adapter.get_info().backend == wgpu::Backend::Gl {
         return None;
     }
-    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).ok()?;
+    let (device, queue) =
+        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            required_limits: limits_for(&adapter, wgpu::Limits::default()),
+            ..Default::default()
+        }))
+        .ok()?;
     match Gpu::from_device(device, queue) {
         Ok(gpu) => Some(gpu),
         // A software adapter may lack what the card needs; a real one that can't draw is a bug to hear about.
@@ -824,6 +881,47 @@ mod tests {
     /// `cargo test -p bimcraft-ui-egui --release gpu_speed -- --ignored --nocapture`: the 20-storey tower at 1920 x 1080, orbited.
     /// The card's frames are timed back to back, apart from the processor's: timed straight after a processor's picture, a frame
     /// waits for the card to wake from idle (24 ms on an RTX 2060 for a 1.5 ms frame), which a window turning the view never does.
+    #[test]
+    fn spans_are_whole_and_in_order_across_buffers() {
+        assert_eq!(spans(6, 0..15), vec![(0, 0..6), (1, 0..6), (2, 0..3)]);
+        assert_eq!(spans(6, 3..9), vec![(0, 3..6), (1, 0..3)]);
+        assert_eq!(spans(6, 6..12), vec![(1, 0..6)]);
+        assert_eq!(spans(6, 4..4), vec![]);
+        // Past what 32 bits count, each buffer's own stay small.
+        let far = 9_000_000_000 / 300 * 300;
+        assert_eq!(spans(300, far..far + 600), vec![((far / 300) as usize, 0..300), ((far / 300 + 1) as usize, 0..300)]);
+    }
+
+    #[test]
+    fn a_mesh_in_many_buffers_draws_the_pixels_of_one() {
+        let Some(mut whole) = headless() else { return };
+        let Some(mut split) = headless() else { return };
+        // A few triangles to a buffer, so that many draws go across the line from what is opaque to what is seen through.
+        split.vertex_bytes = STRIDE * 3 * 25;
+        let mut s = sample();
+        for (name, cam_lens) in [("parallel", None), ("perspective", Some(35.0))] {
+            for seen_through in [false, true] {
+                if seen_through {
+                    s.execute("graphics", &serde_json::json!({"view": "{3D}", "categories": {"walls": {"transparency": 50}}})).unwrap();
+                }
+                let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+                let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+                assert!(mesh.vertices.len() > 75 * 4, "enough for several buffers");
+                let cam = Camera { lens: cam_lens, ..scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look) };
+                let cam = scene.fit_from(cam, &look);
+                let tints = [(mesh.owners[0].id, Rgb(0, 120, 215))];
+                for gpu in [&mut whole, &mut split] {
+                    gpu.draw(&mesh, &cam, &tints, PAPER).unwrap();
+                    gpu.device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+                }
+                let up = split.mesh.as_ref().unwrap();
+                assert!(up.vertices.len() > 3, "{} buffers", up.vertices.len());
+                assert_eq!(whole.mesh.as_ref().unwrap().vertices.len(), 1);
+                assert_eq!(read(&whole), read(&split), "{name}, seen through {seen_through}");
+            }
+        }
+    }
+
     #[test]
     #[ignore]
     fn gpu_speed() {
