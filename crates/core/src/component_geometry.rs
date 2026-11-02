@@ -15,11 +15,26 @@ pub(crate) struct Components<'a> {
     plain: std::collections::HashMap<(&'a str, &'a str, bool), (f64, f64)>,
     /// The points of each geometry's triangles that may be its farthest any way across or up ([`Components::extremes`]).
     extremes: BTreeMap<Key, Vec<[f64; 3]>>,
+    envelopes: BTreeMap<Key, Option<[[f64; 3]; 2]>>,
 }
 
 impl<'a> Components<'a> {
     pub(crate) fn new(model: &'a Model) -> Self {
-        Self { model, local: BTreeMap::new(), plain: Default::default(), extremes: BTreeMap::new() }
+        Self { model, local: BTreeMap::new(), plain: Default::default(), extremes: BTreeMap::new(), envelopes: BTreeMap::new() }
+    }
+
+    /// Supported local form envelopes, placed without building any triangles.
+    pub(crate) fn envelope(&mut self, c: &Component) -> Option<[[f64; 3]; 2]> {
+        let model = self.model;
+        let local = *self.envelopes.entry(Self::key(c)).or_insert_with(|| {
+            let family = model.families.get(&c.family)?;
+            let values = family.values(&c.type_name, &c.params).ok()?;
+            family.conservative_bounds(&values)
+        });
+        match crate::bounds::place_component(model, c, local?) {
+            crate::bounds::Bounds::Box(bounds) => Some(bounds),
+            _ => None,
+        }
     }
 
     /// [`Components::heights`] of a component of the model's.

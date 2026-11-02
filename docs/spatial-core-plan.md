@@ -111,6 +111,140 @@ Each piece is a set of commits that leaves the workspace green and the product w
 Timings are measured on a release build on an idle machine, as [performance.md](performance.md) says. Correctness
 tests are never traded for a timing.
 
+## Fragment cache contract (implementation priority 2)
+
+The review puts dependency completeness and memory ownership ahead of persistent cache reuse.
+The implementation should proceed in these bounded steps:
+
+- [x] Close the `SectionWork::is_of` library-only mutation gap, with regressions for type/family edits,
+  undo, redo, branching snapshots and direct model-library mutations.
+- [x] Give types/materials/families shared ownership with mutation-sensitive identity and transparent serialization.
+  Snapshot cloning and ordinary mutable access preserve isolation; replacing a plain value uses `.into()`.
+- [ ] Narrow fragment keys to the individual definitions they read, with retained-allocation accounting rather than
+  an `Arc<Model>` that indirectly retains a whole project. The initial `SectionWork` guard is conservative.
+- [x] Complete the full workspace regression checkpoint for the shared-definition guard (1,107 core, five cache integration, 621 UI tests, and the remaining suites passed).
+- [x] Expose per-element runtime revisions so a changed chunk does not invalidate all of its unchanged elements.
+  Revisions survive snapshot copies, and change conservatively when mutable access is granted; GUIDs remain
+  the cross-file identity. Runtime revisions are never serialized and never replace authoritative GUIDs.
+- [ ] Cache conservative bounds independently of tessellation. Reuse analytic primitive bounds and transformed
+  family bounds; keep exact extrema for framing where a looser bound would change output.
+  - [x] Lazy column/footing and straight-run bounds, narrow type/level dependencies, configurable byte-budgeted LRU
+    (six integration and two independent solid-corner/nonfinite unit tests passed).
+  - [ ] Hosted/family bounds and integration with spatial discovery.
+    - [x] Swept-profile and imported-mesh family envelopes, transformed to mirrored/rotated component bounds
+      (three core unit and seven bounds integration regressions passed).
+    - [ ] Individual family-definition keys, void/revolved envelopes, hosted geometry and spatial discovery.
+- [ ] Retain geometry fragments with explicit read dependencies: own/reference revisions, host geometry,
+  levels, relevant types/families/materials/settings, and spatial queries. Record empty queries too.
+- [ ] Invalidate spatial reads around both old and new bounds, including long elements outside ordinary tiles.
+- [ ] Account and evict retained data under a byte budget before enabling cross-command reuse in the desktop.
+
+The first library guard may be conservative. It must be exact: hashing alone is not a correctness proof, and
+an element-state key cannot detect a library-only edit. Shared immutable definition identities make checks
+cheap. Authoritative snapshots preserve definitions, while a derived guard can retain a weak identity that
+keeps no old definition data alive and still detaches on unique-owner mutation. Narrow those identities to individual
+entries as dependency recording becomes available; measure cloning on library edits separately from local edits.
+
+Runtime revision snapshots should retain metadata only, rather than old element chunks or models. Keep revision
+columns in the same id chunks as elements, sharing unchanged columns across snapshots. Compare column identities
+first, then only the changed chunks' stamps. Mutable iterators must stamp elements as they are yielded; merely
+constructing an iterator or taking its first item must not revise every other element. Insert/remove/clear,
+GUID-preserving replacement, skipped snapshots and undo branches all need explicit tests. Revision metadata
+must not affect model equality, GUIDs, serialized bytes or the existing semantic change journal.
+
+Runtime revision implementation is in `ids/revisions.rs`; six integration regressions pass. Deletion
+now targets indexed referrers and affected views instead of requesting mutable access to every element. Its
+original full scan is retained as an independent unit-test oracle; nine core and 12 UI targeted tests pass.
+The full workspace checkpoint including the new primitive bounds API passed: 1,110 core, six revision, six bounds,
+five cache integration, 621 UI tests, and the remaining suites.
+
+The first independent bounds cache is implemented in `bounds.rs`: lazy column/footing and straight-run
+queries, per-element/level revisions and used type dimensions, conservative unknown results, and byte-budgeted
+LRU eviction. It does not yet replace section framing or implement hosted/family bounds. Keep the overall
+bounds and fragment tasks open until those paths and their output oracles are covered.
+
+The wider deletion run exposed empty reference buckets left by incremental lookup removal, previously hidden
+by deletion's full mutable sweeps. Empty reference and rare-kind buckets are now removed; focused regressions
+and the corrected full checkpoint passed. The earlier failing run is superseded by that corrected checkpoint.
+
+`Shared::identity()` now provides weak allocation tokens for derived guards; `SectionWork` uses these instead
+of strong ownership of whole old type/material/family maps. The three standalone source tests verify unique-owner
+mutation, branch identity, and dropping definition data while its token lives. All 17 cache/bounds/revision
+integration regressions and workspace Clippy passed for this ownership refinement.
+
+The next bounded step is in `view3d/fragments.rs`: optional `render::SectionCache` retains isolated column/run
+geometry and exact extrema under a 128 MiB default byte budget. Prepared work shares retained geometry and
+resolves paint/texture ordinals from the current snapshot. The uncached full renderer remains the output oracle.
+The output/rebuild/parallel-order integration tests and full workspace checkpoint passed. The uncached renderer
+keeps its original contiguous storage, avoiding a full-buffer conversion. Desktop adoption is still pending. This path still enumerates
+and assembles the model, and unsupported categories still use full preparation; it does not satisfy the overall
+incremental acceptance criterion below.
+Counters explicitly report all element visits and uncached preparations separately from primitive hits/builds,
+so zero primitive rebuilds cannot conceal work on unsupported categories.
+
+Family envelopes now cover supported swept profiles and imported meshes without constructing triangles. The
+component cache transforms their local box corners and conservatively checks a weak family-map identity; unrelated
+family edits may still invalidate these boxes. Visible voids and revolved forms return unknown. Three core unit
+tests compare supported local bounds with full geometry (including the default library), and seven bounds
+integration tests cover placement, direct family edits and annotation reuse. Root-capacity accounting was added
+to both bounded caches; the checkpoint passed (1,117 core, seven bounds, four fragment integration, 621 UI tests,
+remaining suites and doctests; Clippy clean). These envelopes are query
+data; exact section framing still uses the original extrema.
+
+The next dependency audit reproduced stale section fitting after replacing CAD or point-cloud data without an
+element edit: the cached model extent also reads their bulk/bounds metadata. `GeometryKey` now captures names
+and floating-point bounds bits, retaining no drawing entities or scan points. Two output regressions failed
+before this fix; all seven work-cache regressions and workspace Clippy passed afterward.
+
+The next worker-preparation step should use supported conservative component envelopes for culling, and
+compute exact component extrema lazily only when fitting, datum spans or a model extent needs them. Keep the
+full `SectionWork::new` path as the oracle. Loose boxes must never become framing endpoints; unsupported
+families retain the full path. Structural tests should prove that hidden interior components remain deferred,
+while outlying components still contribute exact fitting/datum coordinates. Begin with an opt-in core constructor;
+desktop adoption must also propagate cancellation through lazy fitting, datum-span and extent resolution, and
+must never cache partial extrema after cancellation.
+
+The opt-in core step is implemented as `SectionWork::new_deferred[_cancellable]`, with per-work lazy exact
+points and counters. Five integration tests passed, covering interior/outlying components, component-only
+models, unsupported forms, construction cancellation, and five views of the two-storey tower. Fitting, PNGs,
+picking, face names, coverage and datum endpoints match the full oracle. The final workspace checkpoint passed
+at wrap-up: 1,118 core, 621 UI, 181 Revit-reader, 118 updater tests, all integration suites and doctests; formatting
+and workspace Clippy are clean. `new` and the existing worker retain full preparation; cancellation through lazy queries and worker
+adoption remain pending. The resolved counter counts exact-extrema construction, not visible mesh generation.
+
+### Dependency audit for the next fragment steps
+
+| Product | Reads to preserve | Current boundary |
+|---|---|---|
+| Column/footing bounds | Own revision, base/top level revisions, used type dimensions and shape | First lazy cache; no triangulation or whole-library retention |
+| Straight-run bounds | Own revision, base level revision, used type dimensions and shape | Material name/colour does not affect bounds |
+| Component bounds | Used family/type/instance parameters, form profile/axis/mesh and visibility, mirroring, level and placement | Bound local forms before tessellation and transform their corners; retain `Unknown` for unsupported forms. Exact framing still needs the full extrema oracle |
+| Painted run solids | Bounds inputs plus effective material colour/transparency and texture assignment | `view3d::skin` encodes a material's ordinal in the sorted library; inserting another material can change that ordinal. Refresh appearance separately or capture this dependency before retaining painted solids |
+| Joined wall solids | Own/type/level inputs, openings, both endpoint neighbour queries, neighbour types/heights, attachment geometry | Endpoint queries must invalidate even when formerly empty; moved candidates affect old and new locations. Long/unindexed walls remain global candidates |
+| View drawing fragments | View scale/settings, annotation dependencies, effective graphics and linework | `Element::refs` currently omits graphics linework references. Indexed deletion explicitly scans the small view index for them; future drawing dependencies must capture the actual reads |
+
+The primitive bounds cache does not establish a safe key for walls, families, painted solids or view drawings.
+Keep the full renderer as the oracle while extending each product's read set.
+
+For the wall step, persist body-tile and height metadata before retaining joined fragments. Record endpoint
+tile reads even when their candidate set is empty, plus the unindexed/long-wall candidate set. A type's thickness
+changes a wall's body reach without changing the wall's own element revision; update the old/new tiles of its
+users before validating neighbours. Attached wall heights also depend on the attachment's geometry/type/levels.
+The existing per-operation `walls::Index::new` still scans the model, so retaining that index unchanged would
+not remove whole-model preparation. Track type users and changed elements explicitly, then compare local
+updates with the existing index and full prisms before desktop adoption.
+
+Start with a bounded CPU fragment cache (initial target 128 MiB, configurable independently of authoritative
+undo history). Charge vector capacities, dependency keys, prototype data and retained definition ownership;
+shared allocations count once. Oversize fragments may be used for the current operation without being cached.
+Eviction must release derived allocations and must not modify the model, invalidate undo, or change output.
+Keep cache hit/miss/rebuild/eviction/retained-byte counters for structural tests and performance probes.
+
+Acceptance requires a remote annotation edit to rebuild zero 3D fragments, a local geometry edit to rebuild
+only its dependency closure, a library-only edit to rebuild every affected fragment, and all output to match
+the from-scratch twin across undo/redo and branches. Do not mark the whole piece complete after only adding
+keys, an unbounded map, or a cache that still enumerates the whole model on each local edit.
+
 ## Status
 
 - [x] Plan

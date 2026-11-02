@@ -249,6 +249,15 @@ impl Canvas {
         }
     }
 
+    /// Worker-computed initial framing, installed only if navigation has not supplied one.
+    pub(crate) fn has_view(&self, id: Id) -> bool {
+        self.cams.contains_key(&id)
+    }
+
+    pub(crate) fn fitted(&mut self, id: Id, view: View) {
+        self.cams.entry(id).or_insert(Camera { scale: view.scale, cx: view.cx, cy: view.cy });
+    }
+
     /// Show all of `level` again, the next time it's drawn.
     pub fn fit(&mut self, level: Id) {
         self.cams.remove(&level);
@@ -1497,13 +1506,22 @@ impl BimApp {
     /// The level selected alone, with Modify, in section or elevation `id` in `rect` through `view`:
     /// a grip at each end of its line. A drag from one moves that end along the line, and its extent
     /// with it (`Model::level_extent_along`); on release, `modify`. What to paint over the view.
-    pub(crate) fn level_grips(&mut self, ui: &Ui, response: &Response, rect: Rect, view: &View, id: Id) -> Vec<Shape> {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn level_grips(
+        &mut self,
+        ui: &Ui,
+        response: &Response,
+        rect: Rect,
+        view: &View,
+        id: Id,
+        ends: Option<(f64, f64)>,
+    ) -> Vec<Shape> {
         let m = std::sync::Arc::clone(&self.session.model);
         let level = match self.selection.as_slice() {
             &[l] if self.tool == Tool::Modify => m.level(l).map(|lv| (l, lv.elevation)),
             _ => None,
         };
-        let Some(((level, z), (a, b))) = level.and_then(|(l, z)| Some(((l, z), render::level_ends(&m, l, id)?))) else {
+        let Some(((level, z), (a, b))) = level.and_then(|(l, z)| Some(((l, z), ends?))) else {
             self.canvas.level_grip = None;
             return Vec::new();
         };

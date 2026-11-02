@@ -403,3 +403,22 @@ fn a_pan_or_a_zoom_of_a_section_with_a_region_over_it_draws_the_picture_once_a_f
     }
     assert!(pan.iter().all(|n| *n == 1), "each frame of the pan drew the picture once: {pan:?}");
 }
+
+#[test]
+fn section_selection_and_hover_reuse_geometry_and_visibility() {
+    let mut h = app(&format!("{BOX}\nsection {{\"start\": [-1000, 3000], \"end\": [9000, 3000]}}"));
+    browse(&mut h, "Section 1");
+    h.run();
+    let pictures = h.state().cut.pictures;
+    let drawings = h.state().cut.drawings;
+    let wall = ids(&h, "wall")[0];
+    h.state_mut().selection = vec![wall];
+    h.run();
+    h.state_mut().selection.clear();
+    for at in [pos2(640.0, 400.0), pos2(700.0, 350.0), pos2(800.0, 450.0)] {
+        h.hover_at(at);
+        h.run();
+    }
+    assert_eq!(h.state().cut.pictures, pictures, "interaction rebuilt visibility");
+    assert_eq!(h.state().cut.drawings, drawings, "interaction rebuilt cut geometry");
+}

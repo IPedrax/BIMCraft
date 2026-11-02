@@ -25,6 +25,7 @@ use crate::language::Language;
 pub use crate::lines::DetailLine;
 use crate::lines::{self, LinePattern, LineStyle};
 use crate::phasing::{self, OptionSet, PhaseFilter, Status};
+use crate::shared::Shared;
 use crate::texture::{Kind, MAX_IMAGES, Picture, Texture};
 use crate::units::Units;
 use crate::walls;
@@ -2339,10 +2340,10 @@ pub struct Model {
     #[serde(default, skip_serializing_if = "RoomArea::is_default")]
     pub room_area: RoomArea,
     pub next_id: Id,
-    pub types: Types,
+    pub types: Shared<Types>,
     /// What layers are made of, by name.
     #[serde(default)]
-    pub materials: BTreeMap<String, Material>,
+    pub materials: Shared<BTreeMap<String, Material>>,
     /// The pictures its materials' textures are made of, by id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub images: BTreeMap<String, Picture>,
@@ -2354,7 +2355,7 @@ pub struct Model {
     pub cads: BTreeMap<String, Cad>,
     /// Its families, by name: what components place.
     #[serde(default)]
-    pub families: BTreeMap<String, Family>,
+    pub families: Shared<BTreeMap<String, Family>>,
     /// Its project parameters, by name: values each element of their categories may have.
     #[serde(default)]
     pub parameters: BTreeMap<String, ProjectParameter>,
@@ -2481,12 +2482,12 @@ impl Model {
             language,
             room_area: RoomArea::default(),
             next_id: FIRST_ID,
-            types: Types::default(),
-            materials: BTreeMap::new(),
+            types: Types::default().into(),
+            materials: BTreeMap::new().into(),
             images: BTreeMap::new(),
             clouds: BTreeMap::new(),
             cads: BTreeMap::new(),
-            families: BTreeMap::new(),
+            families: BTreeMap::new().into(),
             parameters: BTreeMap::new(),
             view_filters: BTreeMap::new(),
             view_templates: BTreeMap::new(),
@@ -2535,7 +2536,7 @@ impl Model {
             let transparency = if name == "Glass" { GLASS_TRANSPARENCY } else { 0 };
             m.materials.insert(language.word(name).into(), Material { color, cut, surface, texture, transparency, ..Material::default() });
         }
-        m.families = crate::family::library(language);
+        m.families = crate::family::library(language).into();
         for (n, t) in [("Generic - 200mm", 200.0), ("Interior - 100mm", 100.0)] {
             m.types.wall.insert(n.into(), WallType { thickness: t, layers: Vec::new() });
         }
@@ -2671,7 +2672,7 @@ impl Model {
 
     /// Every type's layers, to change.
     pub fn layers_mut(&mut self) -> impl Iterator<Item = &mut Layer> {
-        let Types { wall, floor, roof, ceiling, .. } = &mut self.types;
+        let Types { wall, floor, roof, ceiling, .. } = &mut *self.types;
         (wall.values_mut().flat_map(|t| t.layers.iter_mut()))
             .chain(floor.values_mut().flat_map(|t| t.layers.iter_mut()))
             .chain(roof.values_mut().flat_map(|t| t.layers.iter_mut()))

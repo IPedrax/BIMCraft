@@ -25,6 +25,10 @@ pub const FIRST_ID: Id = 100_000;
 /// Where the ids of linked elements begin, in the model the views draw ([`crate::link::seen`]): past any a project makes.
 pub const LINKED: Id = 100_000_000;
 
+mod revisions;
+use revisions::Revised;
+pub use revisions::{Revision, RevisionSnapshot};
+
 /// An element's GUID: 128 bits, random (a version 4 UUID), written `xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx`. One whose top
 /// half is zero, which a random one never is, stands for the element with the id in its bottom half, until resolved.
 /// Its default, the nil GUID, points at nothing: [`Model::check`](crate::model::Model::check) says so.
@@ -194,6 +198,7 @@ impl<K: Key> Key for &K {
 /// changes a clone of the model it found, so the journal of the model a command leaves is what the command changed.
 #[derive(Debug, Default)]
 pub struct Elements {
+    revisions: RevisionSnapshot,
     chunks: BTreeMap<Id, Arc<Chunk>>,
     len: usize,
     /// Each GUID's id, in buckets by its first bits.
@@ -257,6 +262,7 @@ impl Clone for Elements {
             version: 0,
             base_version: self.version,
             journal: Journal::default(),
+            revisions: self.revisions.clone(),
         }
     }
 }
@@ -292,7 +298,8 @@ fn pairs_mut(c: &mut Arc<Chunk>) -> PairsMut<'_> {
 /// The elements in id order, with their ids.
 pub type Iter<'a> = std::iter::FlatMap<btree_map::Values<'a, Id, Arc<Chunk>>, Pairs<'a>, fn(&'a Arc<Chunk>) -> Pairs<'a>>;
 /// The same, to change.
-pub type IterMut<'a> = std::iter::FlatMap<btree_map::ValuesMut<'a, Id, Arc<Chunk>>, PairsMut<'a>, fn(&'a mut Arc<Chunk>) -> PairsMut<'a>>;
+type InnerMut<'a> = std::iter::FlatMap<btree_map::ValuesMut<'a, Id, Arc<Chunk>>, PairsMut<'a>, fn(&'a mut Arc<Chunk>) -> PairsMut<'a>>;
+pub type IterMut<'a> = Revised<'a, InnerMut<'a>>;
 
 impl Elements {
     pub fn new() -> Elements {
@@ -364,6 +371,16 @@ impl Elements {
         (self.token, self.version)
     }
 
+    /// The element's runtime revision, independent of its id and GUID.
+    pub fn revision(&self, key: impl Key) -> Option<Revision> {
+        self.revisions.get(self.id(key)?)
+    }
+
+    /// Retain change metadata without retaining any element objects or an entire model.
+    pub fn revision_snapshot(&self) -> RevisionSnapshot {
+        self.revisions.clone()
+    }
+
     /// The collection it was cloned from, as it was then.
     pub fn base(&self) -> (u64, u64) {
         (self.base, self.base_version)
@@ -372,6 +389,7 @@ impl Elements {
     fn touch(&mut self, id: Id) {
         self.version += 1;
         self.journal.ids.insert(id);
+        self.revisions.touch(id, Revision::fresh());
     }
 
     fn touch_all(&mut self) {
@@ -491,6 +509,7 @@ impl Elements {
             self.chunks.remove(&key);
         }
         self.len -= 1;
+        self.revisions.remove(id);
         self.unset_guid(&g);
         Some(e)
     }
@@ -515,7 +534,7 @@ impl Elements {
 
     pub fn iter_mut(&mut self) -> IterMut<'_> {
         self.touch_all();
-        self.chunks.values_mut().flat_map(pairs_mut as fn(_) -> _)
+        Revised::new(self.chunks.values_mut().flat_map(pairs_mut as fn(_) -> _), &mut self.revisions)
     }
 
     pub fn values(&self) -> impl DoubleEndedIterator<Item = &Element> {
@@ -539,7 +558,10 @@ impl Elements {
         let from = r.start;
         self.version += 1;
         self.journal.from = Some(self.journal.from.map_or(from, |f| f.min(from)));
-        self.chunks.range_mut(chunk_of(from)..).flat_map(move |(_, c)| Arc::make_mut(c).range_mut(from..).map(pair_mut as fn(_) -> _))
+        Revised::new(
+            self.chunks.range_mut(chunk_of(from)..).flat_map(move |(_, c)| Arc::make_mut(c).range_mut(from..).map(pair_mut as fn(_) -> _)),
+            &mut self.revisions,
+        )
     }
 
     pub fn len(&self) -> usize {

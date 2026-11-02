@@ -30,6 +30,7 @@ use crate::pen::{Pen, Weights};
 use crate::styles::{BY_CATEGORY, ObjectStyle};
 use crate::units::Units;
 use crate::view3d::{self, Camera, Clip, Image, Scene};
+pub use crate::view3d::{FragmentStats, SectionCache};
 use crate::walls::{self, Axis};
 use crate::{font, massing, sheet, stairs};
 
@@ -1249,37 +1250,253 @@ fn section_walls<'a>(
     walls
 }
 
-/// What a section or an elevation asks of the whole model, found once for a model: every solid but the components' (the
-/// view's look picks those it shows), where each element's solids are among them, the points of each element that may be
-/// farthest any way (a section never cuts a component, so its triangles aren't made), and, when asked, the model's extent.
-/// A front end keeps one with the model it was made of (a snapshot, which never changes) for every section it draws of it.
+/// Bounds of external data used by cached level/model extents. Names and floating
+/// point bits suffice: no scan points, drawing entities or old models are retained.
+struct ExtentSources {
+    clouds: Vec<(String, [[u64; 3]; 2])>,
+    cads: Vec<(String, Option<[[u64; 2]; 2]>)>,
+}
+
+impl ExtentSources {
+    fn cloud(cloud: &crate::cloud::Cloud) -> [[u64; 3]; 2] {
+        let (lo, hi) = cloud.bounds();
+        [lo.map(f64::to_bits), hi.map(f64::to_bits)]
+    }
+
+    fn cad(cad: &crate::cad::Cad) -> Option<[[u64; 2]; 2]> {
+        cad.bulk().map(|bounds| bounds.map(|p| [p.0.to_bits(), p.1.to_bits()]))
+    }
+
+    fn of(m: &Model) -> Self {
+        Self {
+            clouds: m.clouds.iter().map(|(name, cloud)| (name.clone(), Self::cloud(cloud))).collect(),
+            cads: m.cads.iter().map(|(name, cad)| (name.clone(), Self::cad(cad))).collect(),
+        }
+    }
+
+    fn is_of(&self, m: &Model) -> bool {
+        self.clouds.len() == m.clouds.len()
+            && self.cads.len() == m.cads.len()
+            && self.clouds.iter().zip(&m.clouds).all(|((name, bounds), (current, cloud))| name == current && *bounds == Self::cloud(cloud))
+            && self.cads.iter().zip(&m.cads).all(|((name, bounds), (current, cad))| name == current && *bounds == Self::cad(cad))
+    }
+}
+
+/// Geometry inputs, without holding a model snapshot or old library data.
+/// Weak allocation identities also detach on in-place library edits.
+struct GeometryKey {
+    elements: (u64, u64),
+    types: crate::shared::Identity<crate::model::Types>,
+    materials: crate::shared::Identity<std::collections::BTreeMap<String, crate::model::Material>>,
+    families: crate::shared::Identity<std::collections::BTreeMap<String, crate::family::Family>>,
+    language: crate::language::Language,
+    extents: ExtentSources,
+}
+
+impl GeometryKey {
+    fn of(m: &Model) -> Self {
+        Self {
+            elements: m.elements.state(),
+            types: m.types.identity(),
+            materials: m.materials.identity(),
+            families: m.families.identity(),
+            language: m.language,
+            extents: ExtentSources::of(m),
+        }
+    }
+    fn is_of(&self, m: &Model) -> bool {
+        self.elements == m.elements.state()
+            && self.types.is_of(&m.types)
+            && self.materials.is_of(&m.materials)
+            && self.families.is_of(&m.families)
+            && self.language == m.language
+            && self.extents.is_of(m)
+    }
+}
+
+/// Structural counts for opt-in component-extrema preparation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PreparationStats {
+    pub deferred_components: usize,
+    pub resolved_components: usize,
+}
+
+/// A snapshot's section/elevation geometry, component extrema or deferred envelopes,
+/// and exact model extent. `new` prepares the full oracle; `new_deferred` can resolve
+/// supported component extrema lazily when fitting or datum queries need them.
 pub struct SectionWork {
-    /// The elements' state it was made of ([`crate::ids::Elements::state`]): a work of another is made again.
-    of: (u64, u64),
-    solids: Vec<view3d::Solid>,
+    /// Elements and geometry-definition identities; stale work is rebuilt even after a library-only edit.
+    of: GeometryKey,
+    solids: view3d::PreparedSolids,
     ranges: std::collections::HashMap<Id, std::ops::Range<usize>>,
     placed: Vec<(Id, Vec<[f64; 3]>)>,
     /// Each element's box (as `placed` lists them), and by id.
     boxes: Vec<Option<[[f64; 3]; 2]>>,
     box_of: std::collections::HashMap<Id, [[f64; 3]; 2]>,
     extent: std::sync::OnceLock<[P2; 2]>,
+    /// Beside `placed`, by place, not by id: a framing query asks of every element, and a hash each would cost more than
+    /// the components' points it saves. Empty when nothing is deferred.
+    deferred: Vec<Option<std::sync::OnceLock<Vec<[f64; 3]>>>>,
+    deferred_count: usize,
+    resolved: std::sync::atomic::AtomicUsize,
 }
 
 impl SectionWork {
     pub fn new(m: &Model) -> Self {
         let (solids, placed, boxes) = view3d::solids_and_extremes(m);
+        let solids = view3d::PreparedSolids::Owned(solids);
         let box_of = placed.iter().zip(&boxes).filter_map(|((id, _), b)| Some((*id, (*b)?))).collect();
         // Each element's solids lie together, in the order of the elements.
         let mut ranges: std::collections::HashMap<Id, std::ops::Range<usize>> = std::collections::HashMap::new();
         for (i, s) in solids.iter().enumerate() {
             ranges.entry(s.owner()).and_modify(|r| r.end = i + 1).or_insert(i..i + 1);
         }
-        SectionWork { of: m.elements.state(), solids, ranges, placed, boxes, box_of, extent: std::sync::OnceLock::new() }
+        SectionWork {
+            of: GeometryKey::of(m),
+            solids,
+            ranges,
+            placed,
+            boxes,
+            box_of,
+            extent: std::sync::OnceLock::new(),
+            deferred: Default::default(),
+            deferred_count: 0,
+            resolved: Default::default(),
+        }
     }
 
-    /// Whether it is of `m`'s elements as they are.
+    /// Cooperative geometry preparation. No partial work is returned.
+    pub fn new_cancellable(m: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Self> {
+        let (solids, placed, boxes) = view3d::solids_and_extremes_cancellable(m, cancelled)?;
+        Self::assembled_cancellable(m, view3d::PreparedSolids::Owned(solids), placed, boxes, cancelled)
+    }
+
+    /// Opt-in envelope preparation. Exact extrema are resolved only when a fitting
+    /// or datum query needs them; `new` remains the full-computation oracle.
+    pub fn new_deferred(m: &Model) -> Self {
+        Self::new_deferred_cancellable(m, &|| false).unwrap_or_else(|| Self::new(m))
+    }
+
+    /// Cooperative [`Self::new_deferred`]. The lazy queries are cancellable too
+    /// ([`section_fit_cancellable`], [`SectionOverlay::new_cancellable`]): a cancelled one
+    /// leaves each component's extrema whole or unresolved, and the model's extent unset.
+    pub fn new_deferred_cancellable(m: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Self> {
+        let ((solids, placed, boxes), deferred) = view3d::solids_and_extremes_deferred(m, cancelled)?;
+        let mut work = Self::assembled_cancellable(m, view3d::PreparedSolids::Owned(solids), placed, boxes, cancelled)?;
+        work.deferred_count = deferred.iter().filter(|d| **d).count();
+        if work.deferred_count > 0 {
+            work.deferred = deferred.into_iter().map(|d| d.then(std::sync::OnceLock::new)).collect();
+        }
+        (!cancelled()).then_some(work)
+    }
+
+    pub fn preparation_stats(&self) -> PreparationStats {
+        PreparationStats {
+            deferred_components: self.deferred_count,
+            resolved_components: self.resolved.load(std::sync::atomic::Ordering::Relaxed),
+        }
+    }
+
+    pub(crate) fn from_prepared_cancellable(
+        m: &Model,
+        (solids, placed, boxes): view3d::PreparedMade,
+        cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> Option<Self> {
+        Self::assembled_cancellable(m, view3d::PreparedSolids::Cached(solids), placed, boxes, cancelled)
+    }
+
+    fn assembled_cancellable(
+        m: &Model,
+        solids: view3d::PreparedSolids,
+        placed: Vec<(Id, Vec<[f64; 3]>)>,
+        boxes: Vec<Option<[[f64; 3]; 2]>>,
+        cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> Option<Self> {
+        if cancelled() {
+            return None;
+        }
+        let box_of = placed.iter().zip(&boxes).filter_map(|((id, _), b)| Some((*id, (*b)?))).collect();
+        let mut ranges: std::collections::HashMap<Id, std::ops::Range<usize>> = std::collections::HashMap::new();
+        for (i, s) in solids.iter().enumerate() {
+            if i % 256 == 0 && cancelled() {
+                return None;
+            }
+            ranges.entry(s.owner()).and_modify(|r| r.end = i + 1).or_insert(i..i + 1);
+        }
+        Some(SectionWork {
+            of: GeometryKey::of(m),
+            solids,
+            ranges,
+            placed,
+            boxes,
+            box_of,
+            extent: std::sync::OnceLock::new(),
+            deferred: Default::default(),
+            deferred_count: 0,
+            resolved: Default::default(),
+        })
+    }
+
+    /// The cell of what `placed` holds at `at`, if its points are deferred.
+    fn cell(&self, at: usize) -> Option<&std::sync::OnceLock<Vec<[f64; 3]>>> {
+        self.deferred.get(at)?.as_ref()
+    }
+
+    fn known_points<'s>(&'s self, at: usize, points: &'s Vec<[f64; 3]>) -> Option<&'s Vec<[f64; 3]>> {
+        match self.cell(at) {
+            Some(cell) => cell.get(),
+            None => Some(points),
+        }
+    }
+
+    fn points<'s, 'm>(
+        &'s self,
+        m: &'m Model,
+        (at, id): (usize, Id),
+        points: &'s Vec<[f64; 3]>,
+        components: &mut crate::component_geometry::Components<'m>,
+    ) -> &'s Vec<[f64; 3]> {
+        let Some(cell) = self.cell(at) else { return points };
+        cell.get_or_init(|| {
+            let points = match m.elements.get(id) {
+                Some(Element::Component(c)) => components.extremes(c),
+                _ => Vec::new(),
+            };
+            self.resolved.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            points
+        })
+    }
+
+    fn deferred_heights(&self, m: &Model, look: &Look, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<(f64, f64)> {
+        let mut out = m.levels().iter().map(|(_, level)| level.elevation).fold((f64::MAX, f64::MIN), |(lo, hi), z| (lo.min(z), hi.max(z)));
+        for (i, ((id, _), bounds)) in self.placed.iter().zip(&self.boxes).enumerate() {
+            if i % 256 == 0 && cancelled() {
+                return None;
+            }
+            if self.cell(i).is_none()
+                && look.shows(*id)
+                && let Some([lo, hi]) = bounds
+            {
+                out = (out.0.min(lo[2]), out.1.max(hi[2]));
+            }
+        }
+        let mut components = crate::component_geometry::Components::new(m);
+        for (at, ((id, points), bounds)) in self.placed.iter().zip(&self.boxes).enumerate() {
+            if self.cell(at).is_some() && bounds.is_none_or(|[lo, hi]| lo[2] < out.0 || hi[2] > out.1) && look.shows(*id) {
+                if cancelled() {
+                    return None;
+                }
+                for p in self.points(m, (at, *id), points, &mut components) {
+                    out = (out.0.min(p[2]), out.1.max(p[2]));
+                }
+            }
+        }
+        Some(if out.0 <= out.1 { out } else { (0.0, 3000.0) })
+    }
+
+    /// Whether every geometry source still belongs to the same immutable definitions.
     fn is_of(&self, m: &Model) -> bool {
-        self.of == m.elements.state()
+        self.of.is_of(m)
     }
 
     /// The solids `look` shows, but the components'.
@@ -1295,62 +1512,77 @@ impl SectionWork {
     /// The least and the most of `along` (a measure linear in plan, as far along a line) over the points of every element
     /// `look` shows: of the elements whose boxes reach past what another surely reaches, their points. Of a box, `along` is
     /// the most at one of its corners, which no point inside it passes, its sums rounded as they are.
-    fn along_range(&self, look: &Look, along: impl Fn(P2) -> f64) -> (f64, f64) {
+    fn along_range(&self, m: &Model, look: &Look, along: impl Fn(P2) -> f64, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<(f64, f64)> {
         #[allow(clippy::type_complexity)]
-        let shown: Vec<(&Vec<[f64; 3]>, (f64, f64))> = self
-            .placed
-            .iter()
-            .zip(&self.boxes)
-            .filter(|((id, _), _)| look.shows(*id))
-            .map(|((_, p), b)| {
-                let reach = b.map_or((f64::NEG_INFINITY, f64::INFINITY), |[lo, hi]| {
-                    let xs = [P2(lo[0], lo[1]), P2(hi[0], lo[1]), P2(hi[0], hi[1]), P2(lo[0], hi[1])].map(&along);
-                    let (a, z) = xs.iter().fold((f64::MAX, f64::MIN), |(a, z), x| (a.min(*x), z.max(*x)));
-                    // Not finite numbers: asked of its points.
-                    if a.is_finite() && z.is_finite() { (a, z) } else { (f64::NEG_INFINITY, f64::INFINITY) }
-                });
-                (p, reach)
-            })
-            .collect();
+        let mut shown: Vec<(usize, Id, &Vec<[f64; 3]>, (f64, f64))> = Vec::new();
+        for (i, ((id, p), b)) in self.placed.iter().zip(&self.boxes).enumerate() {
+            if i % 256 == 0 && cancelled() {
+                return None;
+            }
+            if !look.shows(*id) {
+                continue;
+            }
+            let reach = b.map_or((f64::NEG_INFINITY, f64::INFINITY), |[lo, hi]| {
+                let xs = [P2(lo[0], lo[1]), P2(hi[0], lo[1]), P2(hi[0], hi[1]), P2(lo[0], hi[1])].map(&along);
+                let (a, z) = xs.iter().fold((f64::MAX, f64::MIN), |(a, z), x| (a.min(*x), z.max(*x)));
+                // Not finite numbers: asked of its points.
+                if a.is_finite() && z.is_finite() { (a, z) } else { (f64::NEG_INFINITY, f64::INFINITY) }
+            });
+            shown.push((i, *id, p, reach));
+        }
         // What some point surely reaches: each element's first point.
-        let first = |p: &Vec<[f64; 3]>| p.first().map(|q| along(P2(q[0], q[1]))).filter(|x| !x.is_nan());
-        let (least, most) = shown.iter().filter_map(|(p, _)| first(p)).fold((f64::MAX, f64::MIN), |(a, z), x| (a.min(x), z.max(x)));
+        let first = |at, p| self.known_points(at, p).and_then(|p| p.first()).map(|q| along(P2(q[0], q[1]))).filter(|x| !x.is_nan());
+        let (least, most) =
+            shown.iter().filter_map(|(at, _, p, _)| first(*at, p)).fold((f64::MAX, f64::MIN), |(a, z), x| (a.min(x), z.max(x)));
         let mut out = (f64::MAX, f64::MIN);
-        for (p, (a, z)) in &shown {
+        let mut components = crate::component_geometry::Components::new(m);
+        for (at, id, p, (a, z)) in &shown {
             if *a <= least || *z >= most {
-                for q in p.iter() {
+                if cancelled() {
+                    return None;
+                }
+                for q in self.points(m, (*at, *id), p, &mut components) {
                     let x = along(P2(q[0], q[1]));
                     out = (out.0.min(x), out.1.max(x));
                 }
             }
         }
-        out
+        Some(out)
     }
 
     /// [`Model::model_extent`] of `m`, the model it was made of.
-    fn extent(&self, m: &Model) -> [P2; 2] {
-        *self.extent.get_or_init(|| {
-            // Each box's lowest and highest corners in plan: the least and most of its points either way.
-            let extent = m.model_extent_of(self.boxes.iter().flatten().flat_map(|[lo, hi]| [P2(lo[0], lo[1]), P2(hi[0], hi[1])]));
-            // Its twin, which tests hold it to: of every solid's corners.
-            #[cfg(test)]
-            assert_eq!(extent, m.model_extent(), "the model's extent from the components' farthest points");
-            extent
-        })
+    /// Kept only when it is whole: a query cancelled part of the way sets nothing.
+    fn extent(&self, m: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<[P2; 2]> {
+        if let Some(extent) = self.extent.get() {
+            return Some(*extent);
+        }
+        // Each box's lowest and highest corners in plan: the least and most of its points either way.
+        let extent = if self.deferred.is_empty() {
+            m.model_extent_of(self.boxes.iter().flatten().flat_map(|[lo, hi]| [P2(lo[0], lo[1]), P2(hi[0], hi[1])]))
+        } else {
+            let look = Look::default();
+            let (x0, x1) = self.along_range(m, &look, |p| p.0, cancelled)?;
+            let (y0, y1) = self.along_range(m, &look, |p| p.1, cancelled)?;
+            m.model_extent_of([P2(x0, y0), P2(x1, y1)].into_iter().filter(|_| x0 <= x1 && y0 <= y1))
+        };
+        // Its twin, which tests hold it to: of every solid's corners.
+        #[cfg(test)]
+        assert_eq!(extent, m.model_extent(), "the model's extent from the components' farthest points");
+        Some(*self.extent.get_or_init(|| extent))
     }
 }
 
-fn heights(m: &Model, w: &SectionWork, look: &Look) -> (f64, f64) {
+fn heights(m: &Model, w: &SectionWork, look: &Look, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<(f64, f64)> {
     let of = |solids: &mut dyn Iterator<Item = (f64, f64)>| {
         let zs = m.levels().into_iter().map(|(_, l)| l.elevation).chain(solids.flat_map(|(a, b)| [a, b]));
         let (lo, hi) = zs.fold((f64::MAX, f64::MIN), |(lo, hi), z| (lo.min(z), hi.max(z)));
         if lo <= hi { (lo, hi) } else { (0.0, 3000.0) }
     };
-    let found = of(&mut w.heights(look));
+    let found = if w.deferred.is_empty() { of(&mut w.heights(look)) } else { w.deferred_heights(m, look, cancelled)? };
     // Its twin, which tests hold it to: of every solid the look shows.
     #[cfg(test)]
     assert_eq!(found, of(&mut view3d::solids(m).iter().filter(|s| look.shows(s.owner())).map(|s| s.heights())), "a view's heights");
-    found
+    Some(found)
 }
 
 /// The crop region of view `id` as it shows: a cropped plan's corners; a cropped section's or
@@ -1368,21 +1600,21 @@ pub fn crop_region(m: &Model, id: impl Key) -> Option<[P2; 2]> {
 /// The heights section or elevation `id` would crop to: all of the model's, as far as its grids
 /// reach past them.
 pub(crate) fn section_heights(m: &Model, id: impl Key) -> [f64; 2] {
-    let (lo, hi) = heights(m, &SectionWork::new(m), &Look::of(m, id));
+    let (lo, hi) = heights(m, &SectionWork::new(m), &Look::of(m, id), &|| false).unwrap_or((0.0, 3000.0));
     [lo - GRID_PAST, hi + GRID_PAST]
 }
 
 /// How far along its line, from its start, section or elevation `v` shows: cropped, from its start
 /// to its end; else as far as anything it shows reaches (what lies beyond its line, its levels and
 /// its grids), and its line.
-fn span(m: &Model, w: &SectionWork, v: &Section, look: &Look) -> (f64, f64) {
+fn span(m: &Model, w: &SectionWork, v: &Section, look: &Look, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<(f64, f64)> {
     let len = v.start.dist(v.end);
     if v.crop.is_some() {
-        return (0.0, len);
+        return Some((0.0, len));
     }
     let u = (v.end - v.start).unit();
     let along = |q: P2| (q - v.start).dot(u);
-    let (least, most) = w.along_range(look, along);
+    let (least, most) = w.along_range(m, look, along, cancelled)?;
     // Nothing shown, nothing found: no reach of its own.
     let solids = [least, most].into_iter().filter(|_| least <= most);
     // Its twin, which tests hold it to: every corner of every solid the look shows, as far along the line.
@@ -1393,13 +1625,13 @@ fn span(m: &Model, w: &SectionWork, v: &Section, look: &Look) -> (f64, f64) {
         let all = fold(&mut every.iter().filter(|s| look.shows(s.owner())).flat_map(|s| s.corners()).map(|p| along(P2(p[0], p[1]))));
         assert_eq!((least, most), all, "how far along its line a view's solids reach");
     }
-    let levels = level_spans(m, w, v, look).into_iter().flat_map(|(_, a, b)| [a, b]);
+    let levels = level_spans(m, w, v, look, cancelled)?.into_iter().flat_map(|(_, a, b)| [a, b]);
     let lookup = m.lookup();
     let grids = lookup.grids().filter(|id| look.shows(*id)).filter_map(|id| match m.elements.get(id) {
         Some(Element::Grid(g)) => geom::line_intersection(v.start, v.end, g.start, g.end).map(along),
         _ => None,
     });
-    solids.chain(levels).chain(grids).fold((0.0, len), |(lo, hi), x| (lo.min(x), hi.max(x)))
+    Some(solids.chain(levels).chain(grids).fold((0.0, len), |(lo, hi), x| (lo.min(x), hi.max(x))))
 }
 
 /// Where level `level` ends in section or elevation `view`, along its line from its start: its near
@@ -1408,63 +1640,115 @@ pub fn level_ends(m: &Model, level: impl Key, view: impl Key) -> Option<(f64, f6
     let v = m.section(view)?;
     let look = Look::of(m, view);
     let w = SectionWork::new(m);
-    let (first, last) = span(m, &w, v, &look);
+    let (first, last) = span(m, &w, v, &look, &|| false)?;
     let level = m.elements.id(level)?;
-    let (_, a, b) = level_spans(m, &w, v, &look).into_iter().find(|(id, ..)| *id == level)?;
+    let (_, a, b) = level_spans(m, &w, v, &look, &|| false)?.into_iter().find(|(id, ..)| *id == level)?;
     let (a, b) = (a.max(first), b.min(last));
     (a < b).then_some((a, b))
 }
 
+fn section_level_ends(
+    m: &Model,
+    work: &SectionWork,
+    id: Id,
+    cancelled: &(dyn Fn() -> bool + Sync),
+) -> Option<std::collections::BTreeMap<Id, (f64, f64)>> {
+    let Some(v) = m.section(id) else { return Some(Default::default()) };
+    let look = Look::of(m, id);
+    let (first, last) = span(m, work, v, &look, cancelled)?;
+    let spans = level_spans(m, work, v, &look, cancelled)?;
+    Some(
+        spans
+            .into_iter()
+            .filter_map(|(level, a, b)| {
+                let (a, b) = (a.max(first), b.min(last));
+                (a < b).then_some((level, (a, b)))
+            })
+            .collect(),
+    )
+}
+
 /// The levels section or elevation `v` sees, each from how far along its line to how far: where
 /// its extent lies, past its line (within its depth).
-fn level_spans(m: &Model, w: &SectionWork, v: &Section, look: &Look) -> Vec<(Id, f64, f64)> {
+fn level_spans(m: &Model, w: &SectionWork, v: &Section, look: &Look, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Vec<(Id, f64, f64)>> {
     let u = (v.end - v.start).unit();
     let past = |q: P2| (q - v.start).dot(v.looking());
-    m.levels()
-        .into_iter()
-        .filter(|(id, _)| look.shows(*id))
-        .filter_map(|(id, l)| {
-            let [lo, hi] = l.extent.unwrap_or_else(|| w.extent(m));
-            let corners = [lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)];
-            let (near, far) = corners.iter().fold((f64::MAX, f64::MIN), |(a, b), q| (a.min(past(*q)), b.max(past(*q))));
-            if far < -TOL || v.depth.is_some_and(|d| near > d) {
-                return None;
-            }
-            let (a, b) =
-                corners.iter().fold((f64::MAX, f64::MIN), |(a, b), q| (a.min((*q - v.start).dot(u)), b.max((*q - v.start).dot(u))));
-            Some((id, a, b))
-        })
-        .collect()
+    let mut spans = Vec::new();
+    for (id, l) in m.levels().into_iter().filter(|(id, _)| look.shows(*id)) {
+        let [lo, hi] = match l.extent {
+            Some(extent) => extent,
+            None => w.extent(m, cancelled)?,
+        };
+        let corners = [lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)];
+        let (near, far) = corners.iter().fold((f64::MAX, f64::MIN), |(a, b), q| (a.min(past(*q)), b.max(past(*q))));
+        if far < -TOL || v.depth.is_some_and(|d| near > d) {
+            continue;
+        }
+        let (a, b) = corners.iter().fold((f64::MAX, f64::MIN), |(a, b), q| (a.min((*q - v.start).dot(u)), b.max((*q - v.start).dot(u))));
+        spans.push((id, a, b));
+    }
+    Some(spans)
 }
 
 /// The heights a section or elevation shows: its crop's, else all of the model's.
-fn shown_heights(m: &Model, w: &SectionWork, v: &Section, look: &Look) -> (f64, f64) {
-    v.crop.map_or_else(|| heights(m, w, look), |[bottom, top]| (bottom, top))
+fn shown_heights(m: &Model, w: &SectionWork, v: &Section, look: &Look, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<(f64, f64)> {
+    match v.crop {
+        Some([bottom, top]) => Some((bottom, top)),
+        None => heights(m, w, look, cancelled),
+    }
 }
 
 /// The view section or elevation `id` fits into `width` x `height` px: along its line from its
 /// start, and up, with room for its levels' names and its grids' bubbles, which are as big as its
 /// scale makes them.
 pub fn section_fit(m: &Model, id: impl Key, width: u32, height: u32) -> View {
-    let Some([lo, hi]) = section_bare(m, &SectionWork::new(m), id) else { return fit(&[], width, height, m.units.default_scale()) };
+    section_fit_with(m, &SectionWork::new(m), id, width, height)
+}
+
+/// Fit a section using work retained with the same immutable model snapshot.
+pub fn section_fit_with(m: &Model, work: &SectionWork, id: impl Key, width: u32, height: u32) -> View {
+    section_fit_cancellable(m, work, id, width, height, &|| false).unwrap_or_else(|| fit(&[], width, height, m.units.default_scale()))
+}
+
+/// [`section_fit_with`] on a worker: None only when cancelled, between components' extrema. What isn't a section still has
+/// its empty frame.
+pub fn section_fit_cancellable(
+    m: &Model,
+    work: &SectionWork,
+    id: impl Key,
+    width: u32,
+    height: u32,
+    cancelled: &(dyn Fn() -> bool + Sync),
+) -> Option<View> {
+    if cancelled() {
+        return None;
+    }
+    if !work.is_of(m) {
+        let fresh = SectionWork::new_cancellable(m, cancelled)?;
+        return section_fit_cancellable(m, &fresh, id, width, height, cancelled);
+    }
+    if m.section(id).is_none() {
+        return Some(fit(&[], width, height, m.units.default_scale()));
+    }
+    let [lo, hi] = section_bare(m, work, id, cancelled)?;
     let (n, names) = (scale_of(m, id), level_names(m));
-    fit_by(|scale| [lo, P2(hi.0 + f64::from(annotation_of(n, scale) * names) / scale, hi.1)], width, height, n)
+    Some(fit_by(|scale| [lo, P2(hi.0 + f64::from(annotation_of(n, scale) * names) / scale, hi.1)], width, height, n))
 }
 
 /// What section or elevation `id` shows, along its line and up, at `scale` px per mm, its annotation `k` times the size it is
 /// laid out at: from its start to its end, past its lowest and highest heights, with room past the end for the widest
 /// level name.
 pub(crate) fn section_extent(m: &Model, w: &SectionWork, id: impl Key, scale: f64, k: f32) -> Option<[P2; 2]> {
-    let [lo, hi] = section_bare(m, w, id)?;
+    let [lo, hi] = section_bare(m, w, id, &|| false)?;
     Some([lo, P2(hi.0 + f64::from(k * level_names(m)) / scale, hi.1)])
 }
 
 /// Section or elevation `id` along its line, past its lowest and highest heights: all it shows but the names of its levels.
 /// Cropped, from its start to its end; else as far as anything it shows reaches.
-fn section_bare(m: &Model, w: &SectionWork, id: impl Key) -> Option<[P2; 2]> {
+fn section_bare(m: &Model, w: &SectionWork, id: impl Key, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<[P2; 2]> {
     let v = m.section(id)?;
     let look = Look::of(m, id);
-    let ((lo, hi), (first, last)) = (shown_heights(m, w, v, &look), span(m, w, v, &look));
+    let ((lo, hi), (first, last)) = (shown_heights(m, w, v, &look, cancelled)?, span(m, w, v, &look, cancelled)?);
     Some([P2(first, lo - GRID_PAST), P2(last, hi + GRID_PAST)])
 }
 
@@ -1538,6 +1822,35 @@ pub fn section_picture_and_over_with(
     (picture, drawing)
 }
 
+/// A section picture using work retained with the supplied model snapshot.
+pub fn section_picture_with(m: &Model, work: &SectionWork, id: Id, view: View, tints: &[(Id, Rgb)]) -> Option<Image> {
+    if work.is_of(m) { section_picture_in(m, work, id, view, tints) } else { section_picture(m, id, view, tints) }
+}
+
+/// Render on a worker, checking cancellation between geometry/raster chunks.
+/// `work` must belong to this exact immutable model snapshot.
+pub fn section_picture_cancellable(
+    m: &Model,
+    work: &SectionWork,
+    id: Id,
+    view: View,
+    tints: &[(Id, Rgb)],
+    cancelled: &(dyn Fn() -> bool + Sync),
+) -> Option<Image> {
+    if cancelled() {
+        return None;
+    }
+    if !work.is_of(m) {
+        let fresh = SectionWork::new_cancellable(m, cancelled)?;
+        return section_picture_cancellable(m, &fresh, id, view, tints, cancelled);
+    }
+    let (cam, clip) = section_camera(m, id, view)?;
+    let look = Look::of(m, id);
+    let scene = Scene::section_cancellable(m, (&work.solids, &work.ranges, &work.placed, &work.boxes), &cam, &clip, &look, cancelled)?;
+    let image = scene.picture_cancellable(&cam, Some(&clip), tints, &look, cancelled);
+    (!cancelled()).then_some(image)
+}
+
 /// [`section_picture`], of `w`'s solids and points.
 pub(crate) fn section_picture_in(m: &Model, w: &SectionWork, id: impl Key, view: View, tints: &[(Id, Rgb)]) -> Option<Image> {
     let (cam, clip) = section_camera(m, id, view)?;
@@ -1580,15 +1893,110 @@ pub(crate) fn section_at_over_in(m: &Model, w: &SectionWork, id: impl Key, view:
     section_in(m, w, id, view, k, f64::from(k) * sheet::DENSITY / view.scale, Some(picture))
 }
 
+/// The model cut and datums for one immutable snapshot and framing. Repainting
+/// view annotations/region ink reads this base without constructing or cutting solids.
+/// Keep it with the exact model snapshot supplied to `new`.
+pub struct SectionOverlay {
+    id: Id,
+    base: Drawing,
+    levels: std::collections::BTreeMap<Id, (f64, f64)>,
+}
+
+impl SectionOverlay {
+    pub fn new(m: &Model, work: &SectionWork, id: Id, view: View) -> Self {
+        if !work.is_of(m) {
+            return Self::new(m, &SectionWork::new(m), id, view);
+        }
+        Self {
+            id,
+            base: section_base(m, work, id, view, annotation(m, id, view), scale_of(m, id)),
+            levels: section_level_ends(m, work, id, &|| false).unwrap_or_default(),
+        }
+    }
+
+    /// Cached datum endpoints for lightweight grips; never rebuild geometry on hover/selection.
+    pub fn levels(&self) -> &std::collections::BTreeMap<Id, (f64, f64)> {
+        &self.levels
+    }
+
+    pub fn new_cancellable(m: &Model, work: &SectionWork, id: Id, view: View, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Self> {
+        if !work.is_of(m) {
+            let fresh = SectionWork::new_cancellable(m, cancelled)?;
+            return Self::new_cancellable(m, &fresh, id, view, cancelled);
+        }
+        let base = section_base_cancellable(m, work, id, view, annotation(m, id, view), scale_of(m, id), cancelled)?;
+        if cancelled() {
+            return None;
+        }
+        let levels = section_level_ends(m, work, id, cancelled)?;
+        (!cancelled()).then_some(Self { id, base, levels })
+    }
+
+    pub fn draw(&self, m: &Model, picture: Option<&Image>) -> Drawing {
+        self.draw_cancellable(m, picture, &|| false).unwrap_or_else(|| Drawing::new(self.base.view))
+    }
+
+    pub fn draw_cancellable(&self, m: &Model, picture: Option<&Image>, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Drawing> {
+        if cancelled() {
+            return None;
+        }
+        let b = &self.base;
+        let mut d = Drawing {
+            view: b.view,
+            prims: b.prims.clone(),
+            owners: b.owners.clone(),
+            parts: b.parts.clone(),
+            pens: b.pens.clone(),
+            regions: regions::Layers::new(b.regions.end(), Some(self.id)),
+            notes: b.notes.clone(),
+            weights: b.weights,
+            owner: None,
+            part: b.part,
+            k: b.k,
+            paper: b.paper,
+            detail: b.detail,
+            pattern_styles: b.pattern_styles.clone(),
+        };
+        if let Some(image) = picture {
+            d.picture(m, self.id, image);
+        }
+        section_finish_cancellable(m, self.id, d, cancelled)
+    }
+}
+
 /// [`section_at`], its pens the line weights' at 1 : `n`.
 fn section_in(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n: f64, picture: Option<&Image>) -> Drawing {
+    let mut d = section_base(m, work, id, view, k, n);
+    let Some(id) = m.elements.id(id) else { return d };
+    if let Some(image) = picture {
+        d.picture(m, id, image);
+    }
+    section_finish(m, id, d)
+}
+
+fn section_base(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n: f64) -> Drawing {
+    section_base_cancellable(m, work, id, view, k, n, &|| false).unwrap_or_else(|| Drawing::new(view))
+}
+
+fn section_base_cancellable(
+    m: &Model,
+    work: &SectionWork,
+    id: impl Key,
+    view: View,
+    k: f32,
+    n: f64,
+    cancelled: &(dyn Fn() -> bool + Sync),
+) -> Option<Drawing> {
+    if cancelled() {
+        return None;
+    }
     let mut d = Drawing::new(view);
     (d.k, d.paper, d.detail, d.weights) = (k, paper_of(n, view.scale), detail_of(m, id), m.line_weights().at(n));
-    let Some(v) = m.section(id) else { return d };
+    let Some(v) = m.section(id) else { return Some(d) };
     let look = Look::of(m, id);
     d.pattern_styles = look.pattern_styles();
     let u = (v.end - v.start).unit();
-    let (first, last) = span(m, work, v, &look);
+    let (first, last) = span(m, work, v, &look, cancelled)?;
     // Each element's cut pieces, filled as one so where they meet (a roof's slopes at its ridge)
     // leaves no seam.
     let mut cuts: std::collections::BTreeMap<Id, Vec<Vec<P2>>> = std::collections::BTreeMap::new();
@@ -1608,9 +2016,15 @@ fn section_in(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n
     // Its twin, which tests hold it to: what is left out cuts nothing.
     #[cfg(test)]
     for s in solids.iter().filter(|s| one_side(s.owner())) {
+        if cancelled() {
+            return None;
+        }
         assert!(s.cuts(v.start + u * first, u, last - first).is_empty(), "{} is cut by a line it lies all on one side of", s.owner());
     }
     for s in solids.iter().filter(|s| !matches!(m.elements.get(s.owner()), Some(Element::Mass(_))) && !one_side(s.owner())) {
+        if cancelled() {
+            return None;
+        }
         let bar = matches!(m.elements.get(s.owner()), Some(Element::Rebar(_)));
         // Cut from where the view begins, then back along the line from its start.
         for ring in s.cuts(v.start + u * first, u, last - first) {
@@ -1623,6 +2037,9 @@ fn section_in(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n
     d.owner = None;
     let mut unions: Vec<(Rgb, Vec<Vec<P2>>)> = Vec::new();
     for (owner, rings) in &cuts {
+        if cancelled() {
+            return None;
+        }
         let color = look.cut_fill(*owner, POCHE);
         match unions.iter_mut().find(|(c, _)| *c == color) {
             Some((_, all)) => all.extend(rings.iter().cloned()),
@@ -1630,9 +2047,15 @@ fn section_in(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n
         }
     }
     for (color, rings) in unions {
+        if cancelled() {
+            return None;
+        }
         d.fill(&rings, color);
     }
     for (owner, rings) in &cuts {
+        if cancelled() {
+            return None;
+        }
         d.owner = Some(*owner);
         if pattern_style(&d, true).is_some() {
             d.fill(rings, PAPER);
@@ -1643,12 +2066,18 @@ fn section_in(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n
     }
     let pieces: Vec<(Id, Vec<P2>)> = cuts.iter().flat_map(|(owner, rings)| rings.iter().map(|r| (*owner, r.clone()))).collect();
     for (owner, runs) in cut_edges(&pieces, 1.0 / d.view.scale) {
+        if cancelled() {
+            return None;
+        }
         d.owner = Some(owner);
         for run in runs {
             ink_cut(&mut d, &run);
         }
     }
     for (owner, ring) in dots {
+        if cancelled() {
+            return None;
+        }
         d.owner = Some(owner);
         d.fill(std::slice::from_ref(&ring), INK);
         ink_cut(&mut d, &ring);
@@ -1658,6 +2087,9 @@ fn section_in(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n
     // stands there, around its openings.
     let lookup = m.lookup();
     for (wall, w) in section_walls(m, &lookup, v, first, last) {
+        if cancelled() {
+            return None;
+        }
         let layers = m.type_layers("wall", &w.type_name);
         if layers.is_empty() || !look.shows(wall) || d.detail == Detail::Coarse {
             continue;
@@ -1708,8 +2140,8 @@ fn section_in(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n
                 if !(first..=last).contains(&along) {
                     continue;
                 }
-                let own = work.ranges.get(&wall).and_then(|r| work.solids.get(r.clone())).unwrap_or_default();
-                for s in own.iter().filter(|s| s.owner() == wall && s.over(x)) {
+                let own = work.solids.in_range(work.ranges.get(&wall).cloned().unwrap_or(0..0));
+                for s in own.filter(|s| s.owner() == wall && s.over(x)) {
                     let (z0, z1) = s.z_at(x);
                     d.part(Part::Pattern);
                     d.line(&[P2(along, z0), P2(along, z1)], Pen::PROJECTION, INK, false);
@@ -1722,6 +2154,9 @@ fn section_in(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n
     // line between each two, parallel to its faces.
     let coarse = d.detail == Detail::Coarse;
     for (&owner, rings) in cuts.iter().filter(|_| !coarse) {
+        if cancelled() {
+            return None;
+        }
         let layers = match m.elements.get(owner) {
             Some(Element::Floor(f)) => m.type_layers("floor", &f.type_name),
             Some(Element::Roof(r)) => m.type_layers("roof", &r.type_name),
@@ -1752,6 +2187,9 @@ fn section_in(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n
         }
     }
     for (mid, e) in lookup.rare("mass").filter(|id| look.shows(*id)).filter_map(|id| Some((id, m.elements.get(id)?))) {
+        if cancelled() {
+            return None;
+        }
         let Element::Mass(ms) = e else { continue };
         let (z0, z1) = m.span(ms.level, ms.base_offset, ms.top_level, ms.height);
         d.owner = Some(mid);
@@ -1774,17 +2212,17 @@ fn section_in(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n
     }
     d.owner = None;
     d.part(Part::Projection);
-    let (lo, hi) = shown_heights(m, work, v, &look);
+    let (lo, hi) = shown_heights(m, work, v, &look, cancelled)?;
     if v.crop.is_some() {
         let (a, b) = (d.view.px(P2(first, hi)), d.view.px(P2(last, lo)));
         d.crop(a, b, |_| false);
     }
     d.model_under_regions(m.elements.id(id));
-    if let (Some(image), Some(section)) = (picture, m.elements.id(id)) {
-        d.picture(m, section, image);
-    }
     // Each level over as much of its extent as the view sees, named past its end.
-    for (level, from, to) in level_spans(m, work, v, &look) {
+    for (level, from, to) in level_spans(m, work, v, &look, cancelled)? {
+        if cancelled() {
+            return None;
+        }
         let (from, to) = (from.max(first), to.min(last));
         let Some(l) = m.level(level).filter(|l| from < to && ((lo..=hi).contains(&l.elevation) || v.crop.is_none())) else { continue };
         d.owner = Some(level);
@@ -1798,6 +2236,9 @@ fn section_in(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n
     // Grids running into what it sees: across its line, reaching past it (within its depth).
     let past = |q: P2| (q - v.start).dot(v.looking());
     for (grid_id, e) in lookup.grids().filter(|id| look.shows(*id)).filter_map(|id| Some((id, m.elements.get(id)?))) {
+        if cancelled() {
+            return None;
+        }
         if let Element::Grid(g) = e
             && let Some(x) = geom::line_intersection(v.start, v.end, g.start, g.end)
             && past(g.start).max(past(g.end)) >= -TOL
@@ -1809,11 +2250,31 @@ fn section_in(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n
             grid(&mut d, P2(along, lo - GRID_PAST), P2(along, hi + GRID_PAST), &g.name);
         }
     }
+    if cancelled() {
+        return None;
+    }
+    Some(d)
+}
+
+fn section_finish(m: &Model, id: Id, d: Drawing) -> Drawing {
+    let view = d.view;
+    section_finish_cancellable(m, id, d, &|| false).unwrap_or_else(|| Drawing::new(view))
+}
+
+fn section_finish_cancellable(m: &Model, id: Id, mut d: Drawing, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Drawing> {
+    if cancelled() {
+        return None;
+    }
+    let Some(v) = m.section(id) else { return Some(d) };
+    let (lookup, look, view) = (m.lookup(), Look::of(m, id), d.view);
     // What is drawn in it, from what points at it: its regions, notes, details and spot elevations.
     let own: Vec<(Id, &Element)> =
         lookup.referrers(&m.guid(id)).filter(|id| look.shows(*id)).filter_map(|id| Some((id, m.elements.get(id)?))).collect();
     // Filled regions over the model, under the annotation.
     for &(nid, e) in &own {
+        if cancelled() {
+            return None;
+        }
         if let Element::FilledRegion(r) = e
             && m.same(r.view, id)
         {
@@ -1822,6 +2283,9 @@ fn section_in(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n
         }
     }
     for &(nid, e) in &own {
+        if cancelled() {
+            return None;
+        }
         d.owner = Some(nid);
         match e {
             Element::Text(n) if m.same(n.view, id) => note(&mut d, m, n),
@@ -1841,7 +2305,7 @@ fn section_in(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n
     d.weigh(|o| annotates(m, o));
     let at = (24.0 + font::width(&v.name, 16.0) / 2.0, view.height as f32 - 26.0);
     d.text_turned(&v.name, at, 16.0, 0.0, INK);
-    d
+    (!cancelled()).then_some(d)
 }
 
 /// Section or elevation `id` through `view`, as a PNG: its picture, and its drawing over it.
@@ -3782,6 +4246,71 @@ mod tests {
         let pm = tiny_skia::Pixmap::decode_png(png).unwrap();
         let c = pm.pixel(x as u32, y as u32).unwrap();
         (c.red(), c.green(), c.blue())
+    }
+
+    #[test]
+    fn deferred_component_queries_keep_the_full_geometry_oracles() {
+        let mut s = house();
+        s.execute("component", &serde_json::json!({"family":"Desk","type":"1400 x 700","at":[4000,3000],"offset":300})).unwrap();
+        let id = s.execute("section", &serde_json::json!({"start":[-1000,-1000],"end":[9000,-1000]})).unwrap()["id"].as_u64().unwrap();
+        let work = SectionWork::new_deferred(&s.model);
+        let view = section_fit_with(&s.model, &work, id, 400, 300);
+        let overlay = SectionOverlay::new(&s.model, &work, id, view);
+        let picture = section_picture_with(&s.model, &work, id, view, &[]).unwrap();
+        assert!(!png(&overlay.draw(&s.model, Some(&picture))).unwrap().is_empty());
+        assert_eq!(work.preparation_stats().resolved_components, 0);
+    }
+
+    #[test]
+    fn cancelled_section_stages_do_not_publish_partial_geometry_or_pictures() {
+        let mut s = house();
+        let id = s.execute("section", &serde_json::json!({"start": [-1000,3000], "end": [9000,3000]})).unwrap()["id"].as_u64().unwrap();
+        assert!(SectionWork::new_cancellable(&s.model, &|| true).is_none());
+        let calls = std::sync::atomic::AtomicUsize::new(0);
+        assert!(SectionWork::new_cancellable(&s.model, &|| calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= 3).is_none());
+        assert!(calls.load(std::sync::atomic::Ordering::Relaxed) <= 6, "geometry must stop within a few cancellation checkpoints");
+        let work = SectionWork::new(&s.model);
+        let view = section_fit(&s.model, id, 400, 300);
+        assert!(SectionOverlay::new_cancellable(&s.model, &work, id, view, &|| true).is_none());
+        assert!(section_picture_cancellable(&s.model, &work, id, view, &[], &|| true).is_none());
+        let picture = section_picture_cancellable(&s.model, &work, id, view, &[], &|| false).unwrap();
+        picture.same_as(&section_picture(&s.model, id, view, &[]).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn retained_section_tints_match_fresh_pictures_and_region_ink() {
+        let mut s = house();
+        let id = s.execute("section", &serde_json::json!({"start": [-1000,3000], "end": [9000,3000]})).unwrap()["id"].as_u64().unwrap();
+        s.execute(
+            "filled_region",
+            &serde_json::json!({"view": id, "type": "Crosshatch", "sketch": [
+                [[0,0],[10000,0]], [[10000,0],[10000,4000]], [[10000,4000],[0,4000]], [[0,4000],[0,0]]
+            ]}),
+        )
+        .unwrap();
+        let view = section_fit(&s.model, id, 400, 300);
+        let work = SectionWork::new(&s.model);
+        let overlay = SectionOverlay::new(&s.model, &work, id, view);
+        for (level, ends) in overlay.levels() {
+            assert_eq!(Some(*ends), level_ends(&s.model, *level, id));
+        }
+        let mut image = section_picture(&s.model, id, view, &[]).unwrap();
+        let original = image.rgba.clone();
+        let visible: Vec<_> = image.shows().into_iter().collect();
+        assert!(!visible.is_empty());
+        let mut paints: Vec<_> = visible.iter().map(|id| vec![(*id, Rgb(37, 99, 235))]).collect();
+        paints.push(visible.iter().map(|id| (*id, Rgb(220, 40, 60))).collect());
+        paints.push(vec![]);
+        for tints in paints {
+            assert!(image.retint_section(&tints));
+            if !tints.is_empty() {
+                assert_ne!(image.rgba, original, "the fixture must exercise tinted pixels");
+            }
+            let fresh = section_picture(&s.model, id, view, &tints).unwrap();
+            image.same_as(&fresh).unwrap();
+            assert_eq!(png(&overlay.draw(&s.model, Some(&image))).unwrap(), png(&section_over(&s.model, id, view, &fresh)).unwrap());
+        }
+        assert_eq!(image.rgba, original, "clearing selection restores the original paint");
     }
 
     #[test]

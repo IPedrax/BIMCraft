@@ -286,6 +286,26 @@ fn measure_section(report: &mut Value, s: &Session, name: &str, id: u64) -> Resu
     timed(report, &format!("{name}_picture_and_drawing_work_kept"), || {
         Ok(render::section_picture_and_over_with(&s.model, &work, id, zoomed, zoomed, &[]))
     })?;
+    // A worker's first frame of a snapshot, both ways: the same pixels and drawing, the components' exact points asked only
+    // where they decide an end.
+    let first_frame = |report: &mut Value, how: &str, work: render::SectionWork| -> Result<(String, String), String> {
+        let m = &s.model;
+        let fit = timed(report, &format!("{name}_{how}_fit"), || Ok(render::section_fit_with(m, &work, id, 1600, 1000)))?;
+        let over = timed(report, &format!("{name}_{how}_overlay"), || Ok(render::SectionOverlay::new(m, &work, id, fit)))?;
+        let image = timed(report, &format!("{name}_{how}_picture"), || {
+            render::section_picture_with(m, &work, id, fit, &[]).ok_or_else(|| format!("{name} has no picture"))
+        })?;
+        let drawn = timed(report, &format!("{name}_{how}_draw"), || Ok(over.draw(m, Some(&image))))?;
+        report[format!("{name}_{how}_resolved")] = json!(work.preparation_stats().resolved_components);
+        report[format!("{name}_{how}_deferred")] = json!(work.preparation_stats().deferred_components);
+        Ok((hash(&mut image.rgba.iter().copied()), hash(&mut render::png(&drawn)?.into_iter())))
+    };
+    let full = first_frame(report, "full", work)?;
+    let lazy = timed(report, &format!("{name}_deferred_work"), || Ok(render::SectionWork::new_deferred(&s.model)))?;
+    let deferred = first_frame(report, "deferred", lazy)?;
+    if full != deferred {
+        return Err(format!("{name}: the deferred work's frame isn't the full work's: {full:?} and {deferred:?}"));
+    }
     // What the picture is, to the pixel, and what is drawn over it: the same before and after a change that only speeds it.
     report[format!("{name}_picture_hash")] = json!(hash(&mut picture.rgba.iter().copied()));
     report[format!("{name}_drawing_hash")] = json!(hash(&mut render::png(&d)?.into_iter()));

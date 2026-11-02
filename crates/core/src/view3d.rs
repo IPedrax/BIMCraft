@@ -161,6 +161,86 @@ pub(crate) enum Solid {
     Mesh { owner: Id, color: Rgb, tex: u32, tris: Vec<[P3; 3]>, caps: usize, round: bool, cut: bool },
 }
 
+/// Retained geometry with per-snapshot appearance. Copying prepared work shares
+/// triangle/outline storage; applying paint happens only when making a scene.
+#[derive(Clone)]
+pub(crate) enum Prepared {
+    Owned(Solid),
+    Shared { geometry: Arc<Solid>, paint: Option<(Rgb, u32)> },
+}
+
+impl From<Solid> for Prepared {
+    fn from(solid: Solid) -> Self {
+        Self::Owned(solid)
+    }
+}
+
+impl std::ops::Deref for Prepared {
+    type Target = Solid;
+    fn deref(&self) -> &Solid {
+        match self {
+            Self::Owned(solid) => solid,
+            Self::Shared { geometry, .. } => geometry,
+        }
+    }
+}
+
+impl Prepared {
+    fn painted(&self) -> Solid {
+        let mut solid = (**self).clone();
+        if let Self::Shared { paint: Some((color, tex)), .. } = self {
+            match &mut solid {
+                Solid::Box { color: c, tex: t, .. }
+                | Solid::Slab { color: c, tex: t, .. }
+                | Solid::Prism { color: c, tex: t, .. }
+                | Solid::Mesh { color: c, tex: t, .. } => (*c, *t) = (*color, *tex),
+            }
+        }
+        solid
+    }
+}
+
+/// Preserve the uncached renderer's original contiguous storage. Cached preparation
+/// may mix owned and shared geometry without converting the full oracle's buffer.
+pub(crate) enum PreparedSolids {
+    Owned(Vec<Solid>),
+    Cached(Vec<Prepared>),
+}
+
+impl PreparedSolids {
+    fn slices(&self, range: std::ops::Range<usize>) -> (&[Solid], &[Prepared]) {
+        match self {
+            Self::Owned(solids) => (solids.get(range).unwrap_or_default(), &[]),
+            Self::Cached(solids) => (&[], solids.get(range).unwrap_or_default()),
+        }
+    }
+
+    fn len(&self) -> usize {
+        match self {
+            Self::Owned(solids) => solids.len(),
+            Self::Cached(solids) => solids.len(),
+        }
+    }
+
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &Solid> {
+        self.in_range(0..self.len())
+    }
+
+    pub(crate) fn in_range(&self, range: std::ops::Range<usize>) -> impl Iterator<Item = &Solid> {
+        let (owned, cached) = self.slices(range);
+        owned.iter().chain(cached.iter().map(|s| &**s))
+    }
+
+    fn painted(&self, range: std::ops::Range<usize>) -> impl Iterator<Item = Solid> {
+        let (owned, cached) = self.slices(range);
+        owned.iter().cloned().chain(cached.iter().map(Prepared::painted))
+    }
+}
+
+mod fragments;
+pub use fragments::{FragmentStats, SectionCache};
+pub(crate) type PreparedMade = (Vec<Prepared>, Vec<(Id, Vec<P3>)>, Vec<Option<[P3; 2]>>);
+
 /// A level slab: `ring` from `z.0` up to `z.1`.
 fn slab(owner: Id, color: Rgb, ring: &[P2], z: (f64, f64)) -> Solid {
     Solid::Slab { owner, color, tex: 0, face: ring.iter().map(|p| [p.0, p.1, z.0]).collect(), rise: z.1 - z.0 }
@@ -527,12 +607,25 @@ pub(crate) fn extremes(points: impl Iterator<Item = P3>) -> Vec<P3> {
 /// [`crate::component_geometry::Components::extremes`], placed): the points that may be farthest any way. What a section's
 /// frame and cut ask of the model, without the components' triangles (a section never cuts one).
 pub(crate) fn solids_and_extremes(m: &Model) -> Made {
+    solids_and_extremes_cancellable(m, &|| false).unwrap_or_default()
+}
+
+pub(crate) fn solids_and_extremes_cancellable(m: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Made> {
+    if cancelled() {
+        return None;
+    }
     let elements: Vec<_> = m.elements.iter().map(|(&id, e)| (id, e)).collect();
     let index = walls::Index::new(m);
-    let part = |chunk: &[(Id, &Element)]| {
+    if cancelled() {
+        return None;
+    }
+    let part = |chunk: &[(Id, &Element)]| -> Option<Made> {
         let mut components = crate::component_geometry::Components::new(m);
         let (mut solids, mut placed) = (Vec::new(), Vec::new());
         for &(id, e) in chunk {
+            if cancelled() {
+                return None;
+            }
             match e {
                 Element::Component(c) => placed.push((id, components.extremes(c))),
                 _ => {
@@ -545,7 +638,7 @@ pub(crate) fn solids_and_extremes(m: &Model) -> Made {
             }
         }
         let boxes: Vec<Option<[P3; 2]>> = placed.iter().map(|(_, p): &(Id, Vec<P3>)| bounds(p.iter().copied())).collect();
-        (solids, placed, boxes)
+        Some((solids, placed, boxes))
     };
     let parts = match (elements.len() >= 1000).then(render_pool).flatten() {
         Some(pool) => {
@@ -555,12 +648,79 @@ pub(crate) fn solids_and_extremes(m: &Model) -> Made {
         None => vec![part(&elements)],
     };
     let (mut solids, mut placed, mut boxes) = (Vec::new(), Vec::new(), Vec::new());
-    for (s, p, b) in parts {
+    for part in parts {
+        if cancelled() {
+            return None;
+        }
+        let (s, p, b) = part?;
         solids.extend(s);
         placed.extend(p);
         boxes.extend(b);
     }
-    (solids, placed, boxes)
+    Some((solids, placed, boxes))
+}
+
+/// As the full preparation oracle, but supported components supply conservative
+/// boxes and empty point slots, marked in the list beside `placed`. Their exact
+/// extrema can be resolved by the work.
+pub(crate) fn solids_and_extremes_deferred(m: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<(Made, Vec<bool>)> {
+    if cancelled() {
+        return None;
+    }
+    let elements: Vec<_> = m.elements.iter().map(|(&id, e)| (id, e)).collect();
+    let index = walls::Index::new(m);
+    if cancelled() {
+        return None;
+    }
+    let part = |chunk: &[(Id, &Element)]| -> Option<(Made, Vec<bool>)> {
+        let mut components = crate::component_geometry::Components::new(m);
+        let (mut solids, mut placed, mut boxes, mut deferred) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        for &(id, e) in chunk {
+            if cancelled() {
+                return None;
+            }
+            if let Element::Component(c) = e {
+                if let Some(envelope) = components.envelope(c) {
+                    placed.push((id, Vec::new()));
+                    boxes.push(Some(envelope));
+                    deferred.push(true);
+                } else {
+                    let points = components.extremes(c);
+                    boxes.push(bounds(points.iter().copied()));
+                    placed.push((id, points));
+                    deferred.push(false);
+                }
+            } else {
+                let own = solids_in_with(m, &[(id, e)], Some(&index), &mut components);
+                if !own.is_empty() {
+                    let points = extremes(own.iter().flat_map(Solid::corners));
+                    boxes.push(bounds(points.iter().copied()));
+                    placed.push((id, points));
+                    deferred.push(false);
+                }
+                solids.extend(own);
+            }
+        }
+        Some(((solids, placed, boxes), deferred))
+    };
+    let parts = match (elements.len() >= 1000).then(render_pool).flatten() {
+        Some(pool) => {
+            use rayon::prelude::*;
+            pool.install(|| elements.par_chunks(256).map(part).collect::<Option<Vec<_>>>())?
+        }
+        None => vec![part(&elements)?],
+    };
+    let (mut solids, mut placed, mut boxes, mut deferred) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    for ((s, p, b), d) in parts {
+        if cancelled() {
+            return None;
+        }
+        solids.extend(s);
+        placed.extend(p);
+        boxes.extend(b);
+        deferred.extend(d);
+    }
+    Some(((solids, placed, boxes), deferred))
 }
 
 fn solids_in(m: &Model, elements: &[(Id, &Element)], index: Option<&walls::Index>) -> Vec<Solid> {
@@ -1057,7 +1217,21 @@ impl Scene {
     ///
     /// Every pixel of its picture is what the whole scene's is: what is left out was behind, and the rest are drawn in the
     /// order they are in the whole scene.
-    pub(crate) fn section(m: &Model, (solids, ranges, placed, boxes): Work<'_>, cam: &Camera, clip: &Clip, look: &Look) -> Scene {
+    pub(crate) fn section(m: &Model, work: Work<'_>, cam: &Camera, clip: &Clip, look: &Look) -> Scene {
+        Self::section_cancellable(m, work, cam, clip, look, &|| false).unwrap_or_else(|| Self::bare(Vec::new()))
+    }
+
+    pub(crate) fn section_cancellable(
+        m: &Model,
+        (solids, ranges, placed, boxes): Work<'_>,
+        cam: &Camera,
+        clip: &Clip,
+        look: &Look,
+        cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> Option<Scene> {
+        if cancelled() {
+            return None;
+        }
         let index = walls::Index::new(m);
         // Each element's box, round the points that may be its farthest, and where its solids are; a component's are made
         // only if it shows.
@@ -1073,7 +1247,7 @@ impl Scene {
                 (*id, *b, at)
             })
             .collect();
-        let own = |id: Id, at: &std::ops::Range<usize>| solids.get(at.clone()).into_iter().flatten().filter(move |s| s.owner() == id);
+        let own = |id: Id, at: &std::ops::Range<usize>| solids.painted(at.clone()).filter(move |s| s.owner() == id);
         // The occluders drawn, as the picture draws them.
         let (w, h) = (cam.width.clamp(1, MAX_SIDE) as usize, cam.height.clamp(1, MAX_SIDE) as usize);
         let hides = |id: Id| {
@@ -1103,23 +1277,30 @@ impl Scene {
         pending.sort_by(|a, b| nearest(b).total_cmp(&nearest(a)).then(a.cmp(b)));
         let (mut batch, mut hit, mut lit) = (256, vec![u32::MAX; w * h], vec![0.0; w * h]);
         while !pending.is_empty() {
+            if cancelled() {
+                return None;
+            }
             let rest = pending.split_off(batch.min(pending.len()));
             let mut occluders = Vec::new();
             for &i in &pending {
+                if cancelled() {
+                    return None;
+                }
                 let Some((id, _, at)) = boxes.get(i) else { continue };
                 if tiles.may_show_on(clip, screens.get(i).and_then(Option::as_ref)) {
-                    for solid in own(*id, at).cloned().flat_map(|s| layered(m, s)) {
+                    for solid in own(*id, at).flat_map(|s| layered(m, s)) {
                         solid.tris(&mut occluders);
                     }
                 }
             }
-            Scene::bare(occluders).raster(
+            Scene::bare(occluders).raster_cancellable(
                 (cam, Some(clip), None),
                 (w, h),
                 |_| true,
                 None,
                 &|_| None,
                 (&mut tiles.depth, &mut hit, &mut lit),
+                cancelled,
             );
             tiles.refresh();
             pending = rest.into_iter().filter(|i| tiles.may_show_on(clip, screens.get(*i).and_then(Option::as_ref))).collect();
@@ -1130,9 +1311,12 @@ impl Scene {
         let mut components = crate::component_geometry::Components::new(m);
         let mut tris = Vec::new();
         for (id, _, at) in kept {
+            if cancelled() {
+                return None;
+            }
             let made: Vec<Solid> = match m.elements.get(*id) {
                 Some(e @ Element::Component(_)) => solids_in_with(m, &[(*id, e)], Some(&index), &mut components),
-                _ => own(*id, at).cloned().collect(),
+                _ => own(*id, at).collect(),
             };
             for solid in made.into_iter().flat_map(|s| layered(m, s)) {
                 solid.tris(&mut tris);
@@ -1140,8 +1324,14 @@ impl Scene {
         }
         let rules: HashMap<Id, Rule> = rules_of(m, tris.iter().map(|t| t.owner));
         let faces: Vec<&'static str> = tris.iter().map(|t| rules.get(&t.owner).map_or("", |r| r.face(&t.p))).collect();
+        if cancelled() {
+            return None;
+        }
         let planes = planes(&tris);
-        Scene { planes, faces: Arc::new(faces), scans: scans_of(m), ..Scene::bare(tris) }
+        if cancelled() {
+            return None;
+        }
+        Some(Scene { planes, faces: Arc::new(faces), scans: scans_of(m), ..Scene::bare(tris) })
     }
 
     /// A scene of `tris` alone: no planes, faces, textures, smooth normals, levels or scans.
@@ -1163,7 +1353,7 @@ impl Scene {
 
 /// What a section's scene is made of, as `render::SectionWork` holds it: the model's solids but the components', where each
 /// element's are among them, and each element's farthest points ([`extremes`]).
-pub(crate) type Work<'a> = (&'a [Solid], &'a HashMap<Id, std::ops::Range<usize>>, &'a [(Id, Vec<P3>)], &'a [Option<[P3; 2]>]);
+pub(crate) type Work<'a> = (&'a PreparedSolids, &'a HashMap<Id, std::ops::Range<usize>>, &'a [(Id, Vec<P3>)], &'a [Option<[P3; 2]>]);
 
 /// An element, the box round it (none where it isn't known) and where its solids are in the list (a component's are made
 /// only when it shows).
@@ -1404,6 +1594,20 @@ impl Scene {
         lights: &dyn Fn(usize) -> Option<[f64; 3]>,
         (depth, hit, lit): (&mut [f32], &mut [u32], &mut [f32]),
     ) {
+        self.raster_cancellable((cam, clip, cut), (w, h), keep, front, lights, (depth, hit, lit), &|| false);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn raster_cancellable(
+        &self,
+        (cam, clip, cut): (&Camera, Option<&Clip>, Option<&Boxed>),
+        (w, h): (usize, usize),
+        keep: impl Fn(&Tri) -> bool,
+        front: Option<&[f32]>,
+        lights: &dyn Fn(usize) -> Option<[f64; 3]>,
+        (depth, hit, lit): (&mut [f32], &mut [u32], &mut [f32]),
+        cancelled: &(dyn Fn() -> bool + Sync),
+    ) {
         // Project once, then bin in stable triangle order. Each job owns disjoint rows:
         // no locks, atomic depth writes, duplicate framebuffers, or depth-tie races.
         const ROWS: usize = 32;
@@ -1419,6 +1623,9 @@ impl Scene {
         let mut tris = Vec::new();
         let mut bins = vec![Vec::new(); h.div_ceil(ROWS)];
         for (i, t) in self.tris.iter().enumerate() {
+            if i % 256 == 0 && cancelled() {
+                return;
+            }
             if !keep(t) || cut.is_some_and(|k| k.misses(t)) {
                 continue;
             }
@@ -1450,6 +1657,9 @@ impl Scene {
             let first = band * ROWS;
             let end = (first + ROWS).min(h);
             for &i in &bins[band] {
+                if cancelled() {
+                    return;
+                }
                 let t = &tris[i];
                 let [a, b, c] = t.p;
                 for py in t.y.0.max(first)..=t.y.1.min(end - 1) {
@@ -1645,9 +1855,10 @@ impl Scene {
             width: w as u32,
             height: h as u32,
             rgba,
-            hit,
-            owners: self.tris.iter().map(|t| t.owner).collect(),
+            hit: Arc::new(hit),
+            owners: Arc::new(self.tris.iter().map(|t| t.owner).collect()),
             faces: Arc::clone(&self.faces),
+            section_paint: None,
         }
     }
 
@@ -1707,6 +1918,20 @@ impl Scene {
     }
 
     fn picture(&self, cam: &Camera, clip: Option<&Clip>, tints: &[(Id, Rgb)], look: &Look) -> Image {
+        self.picture_cancellable(cam, clip, tints, look, &|| false)
+    }
+
+    pub(crate) fn picture_cancellable(
+        &self,
+        cam: &Camera,
+        clip: Option<&Clip>,
+        tints: &[(Id, Rgb)],
+        look: &Look,
+        cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> Image {
+        if cancelled() {
+            return Image::empty();
+        }
         // A section's picture is hidden line, whatever the view says.
         let style = if clip.is_some() { VisualStyle::HiddenLine } else { look.style() };
         if style == VisualStyle::Wireframe {
@@ -1748,7 +1973,10 @@ impl Scene {
         // A 3D view's section box keeps what lies inside it; a section has its own clip.
         let cut = look.section_box().filter(|_| clip.is_none()).map(|b| Boxed::new(cam, b));
         let cut = cut.as_ref();
-        self.raster((cam, clip, cut), (w, h), opaque, None, &corner_light, (&mut depth, &mut hit, &mut curve_lit));
+        self.raster_cancellable((cam, clip, cut), (w, h), opaque, None, &corner_light, (&mut depth, &mut hit, &mut curve_lit), cancelled);
+        if cancelled() {
+            return Image::empty();
+        }
         // The scans' points, each a dot in its colour where nothing opaque is nearer; in a section's picture, those between its
         // line and its far clip. A pixel a point shows holds its scan's slot, after the triangles', and the point's colour.
         let first = self.tris.len();
@@ -1812,7 +2040,7 @@ impl Scene {
             let scan = self.scans.get((*hit.get(k)? as usize).checked_sub(first)?)?;
             Some((scan.owner, *dots.get(k)?))
         };
-        let pixel = |k: usize| {
+        let pixel = |k: usize, tints: &BTreeMap<Id, Rgb>| {
             let (px, py) = (k % w, k / w);
             let here = plane(k);
             // A surface's edge is where it meets another surface or nothing; a point is not one.
@@ -1844,8 +2072,11 @@ impl Scene {
         };
         let mut rgba = vec![0; w * h * 4];
         let fill = |offset: usize, bytes: &mut [u8]| {
+            if cancelled() {
+                return;
+            }
             for (i, out) in bytes.as_chunks_mut::<4>().0.iter_mut().enumerate() {
-                out.copy_from_slice(&pixel(offset + i));
+                out.copy_from_slice(&pixel(offset + i, &tints));
             }
         };
         if let Some(pool) = (w * h >= 256 * 256).then(render_pool).flatten() {
@@ -1855,6 +2086,25 @@ impl Scene {
         } else {
             fill(0, &mut rgba);
         }
+
+        // Sections are opaque hidden-line pictures, including glass. Retain only their
+        // untinted paint and edge mask; picking already retains ownership. No scene is held.
+        let section_paint = clip.map(|_| {
+            let base = if tints.is_empty() {
+                rgba.clone()
+            } else {
+                let empty = BTreeMap::new();
+                (0..w * h).flat_map(|k| pixel(k, &empty)).collect()
+            };
+            let edges = (0..w * h)
+                .map(|k| {
+                    let (px, py) = (k % w, k / w);
+                    let differs = |n| dot(n).is_none() && plane(n) != plane(k);
+                    dot(k).is_none() && ((px + 1 < w && differs(k + 1)) || (py + 1 < h && differs(k + w)))
+                })
+                .collect();
+            SectionPaint { base, edges }
+        });
 
         // What a pixel shows, for picking: a surface seen through is the one in front.
         if through_any {
@@ -1914,7 +2164,15 @@ impl Scene {
                 }
             }
         }
-        Image { width: w as u32, height: h as u32, rgba, hit, owners, faces: Arc::clone(&self.faces) }
+        Image {
+            width: w as u32,
+            height: h as u32,
+            rgba,
+            hit: Arc::new(hit),
+            owners: Arc::new(owners),
+            faces: Arc::clone(&self.faces),
+            section_paint: section_paint.map(Arc::new),
+        }
     }
 }
 
@@ -2483,18 +2741,54 @@ pub fn inside(m: &Model, cam: Camera) -> Camera {
 }
 
 /// A picture of the 3D view: its pixels, and which element each one shows.
+#[derive(Clone)]
 pub struct Image {
     pub width: u32,
     pub height: u32,
     /// Row by row: red, green, blue and alpha.
     pub rgba: Vec<u8>,
     /// Each pixel's triangle (`u32::MAX` for none), and each triangle's element.
-    hit: Vec<u32>,
-    owners: Vec<Id>,
+    hit: Arc<Vec<u32>>,
+    owners: Arc<Vec<Id>>,
     faces: Arc<Vec<&'static str>>,
+    section_paint: Option<Arc<SectionPaint>>,
+}
+
+struct SectionPaint {
+    base: Vec<u8>,
+    edges: Vec<bool>,
 }
 
 impl Image {
+    fn empty() -> Self {
+        Self {
+            width: 1,
+            height: 1,
+            rgba: vec![255; 4],
+            hit: Arc::new(vec![u32::MAX]),
+            owners: Arc::new(Vec::new()),
+            faces: Arc::new(Vec::new()),
+            section_paint: None,
+        }
+    }
+
+    /// Repaint a section's hover/selection without rebuilding geometry or visibility.
+    /// Returns false for other images, whose shaded transparency needs a different compositor.
+    /// Picking, face information and coverage remain those of the original image.
+    pub fn retint_section(&mut self, tints: &[(Id, Rgb)]) -> bool {
+        let Some(paint) = &self.section_paint else { return false };
+        self.rgba.clone_from(&paint.base);
+        let tints: BTreeMap<Id, Rgb> = tints.iter().copied().collect();
+        for (k, px) in self.rgba.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+            let tint = self.hit.get(k).and_then(|t| self.owners.get(*t as usize)).and_then(|o| tints.get(o));
+            if let Some(tint) = tint {
+                let c = if paint.edges.get(k).copied().unwrap_or(false) { *tint } else { mix(Rgb(px[0], px[1], px[2]), *tint) };
+                px[..3].copy_from_slice(&[c.0, c.1, c.2]);
+            }
+        }
+        true
+    }
+
     fn index(&self, x: f64, y: f64) -> Option<usize> {
         let (w, h) = (f64::from(self.width), f64::from(self.height));
         (x >= 0.0 && y >= 0.0 && x < w && y < h).then(|| y as usize * self.width as usize + x as usize)
@@ -2586,6 +2880,7 @@ mod tests {
         let m = drawn(Plate::SMALL, 3, Drawings { annotation: false, sheets: true }).unwrap();
         let whole = Scene::new(&m);
         let (solids, placed, boxes) = solids_and_extremes(&m);
+        let solids = PreparedSolids::Owned(solids);
         let mut ranges: HashMap<Id, std::ops::Range<usize>> = HashMap::new();
         for (i, s) in solids.iter().enumerate() {
             ranges.entry(s.owner()).and_modify(|r| r.end = i + 1).or_insert(i..i + 1);
@@ -2608,8 +2903,15 @@ mod tests {
 
     #[test]
     fn background_coverage_includes_geometry_without_a_named_face() {
-        let image =
-            Image { width: 2, height: 1, rgba: vec![255; 8], hit: vec![0, u32::MAX], owners: vec![Id::MAX], faces: Arc::new(vec![""]) };
+        let image = Image {
+            width: 2,
+            height: 1,
+            rgba: vec![255; 8],
+            hit: Arc::new(vec![0, u32::MAX]),
+            owners: Arc::new(vec![Id::MAX]),
+            faces: Arc::new(vec![""]),
+            section_paint: None,
+        };
         assert!(image.covered(0.0, 0.0));
         assert_eq!(image.face(0.0, 0.0), None);
         assert_eq!(image.pick(0.0, 0.0), None, "linked geometry is covered even though it cannot be picked");

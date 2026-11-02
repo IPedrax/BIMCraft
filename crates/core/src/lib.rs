@@ -10,6 +10,7 @@ pub mod autosave;
 #[cfg(test)]
 mod autosave_tests;
 pub mod background_grid;
+pub mod bounds;
 pub mod bridge;
 pub mod cad;
 #[cfg(test)]
@@ -83,6 +84,7 @@ pub mod schedule;
 #[cfg(test)]
 mod section_box_tests;
 pub mod selection;
+pub mod shared;
 pub mod sheet;
 pub mod skeleton;
 pub mod sketch;

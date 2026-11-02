@@ -9418,6 +9418,136 @@ fn purge(s: &mut Session, p: &Value) -> R {
 }
 
 fn delete(s: &mut Session, p: &Value) -> R {
+    #[cfg(test)]
+    let mut twin = s.clone();
+    let result = delete_indexed(s, p);
+    #[cfg(test)]
+    {
+        let expected = delete_from_scratch(&mut twin, p);
+        assert_eq!(result, expected, "indexed deletion returned a different reply");
+        assert_eq!(s.model, twin.model, "indexed deletion left a different model");
+    }
+    result
+}
+
+fn delete_indexed(s: &mut Session, p: &Value) -> R {
+    let m = &s.model;
+    let ids = ids_param("delete", m, p)?;
+    let lookup = m.lookup();
+    let mut gone: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
+    let mut frontier = gone.clone();
+    // Only referrers can be hosted by a deleted element. Keep the original cascade rules.
+    while !frontier.is_empty() {
+        let candidates: BTreeSet<Id> = frontier.iter().flat_map(|g| lookup.referrers(g)).collect();
+        let mut next = BTreeSet::new();
+        for id in candidates {
+            let guid = m.guid(id);
+            if gone.contains(&guid) {
+                continue;
+            }
+            let hosted = match m.elements.get(id) {
+                Some(Element::Door(o) | Element::Window(o)) => gone.contains(&o.host),
+                Some(Element::Railing(r)) => r.host.is_some_and(|h| gone.contains(&h)),
+                Some(Element::Rebar(rb)) => rb.host.is_some_and(|h| gone.contains(&h)),
+                Some(Element::PlanView(v)) => gone.contains(&v.level) || v.parent.is_some_and(|p| gone.contains(&p)),
+                Some(Element::Tag(t)) => gone.contains(&t.host) || t.view.is_some_and(|v| gone.contains(&v)),
+                Some(Element::Dimension(d)) => d.view.is_some_and(|v| gone.contains(&v)),
+                Some(Element::Viewport(v)) => gone.contains(&v.sheet) || gone.contains(&v.view),
+                Some(Element::Text(n)) => gone.contains(&n.view),
+                Some(Element::DetailLine(l)) => gone.contains(&l.view),
+                Some(Element::FilledRegion(r)) => gone.contains(&r.view),
+                Some(Element::DetailGroup(g)) => gone.contains(&g.view),
+                Some(Element::RepeatingDetail(r)) => gone.contains(&r.view),
+                Some(Element::Spot(sp)) => gone.contains(&sp.view) || sp.host.is_some_and(|h| gone.contains(&h)),
+                Some(Element::CadImport(ci)) => ci.view.is_some_and(|v| gone.contains(&v)),
+                _ => false,
+            };
+            if hosted {
+                next.insert(guid);
+            }
+        }
+        gone.extend(&next);
+        frontier = next;
+    }
+    let mut dimensions: BTreeSet<Id> =
+        gone.iter().flat_map(|g| lookup.referrers(g)).filter(|id| matches!(m.elements.get(*id), Some(Element::Dimension(_)))).collect();
+    let mut kept = Vec::new();
+    while let Some(id) = dimensions.pop_first() {
+        let guid = m.guid(id);
+        let Some(Element::Dimension(d)) = m.elements.get(id) else { continue };
+        if gone.contains(&guid) || !d.refs.iter().any(|r| gone.contains(&r.id)) {
+            continue;
+        }
+        let mut d = d.clone();
+        d.refs.retain(|r| !gone.contains(&r.id));
+        if d.refs.len() < 2 {
+            gone.insert(guid);
+            // The oracle visits dimensions once in id order; preserve that ordering even
+            // when a dimension references another dimension that has just gone.
+            dimensions.extend(
+                lookup.referrers(&guid).filter(|other| *other > id && matches!(m.elements.get(*other), Some(Element::Dimension(_)))),
+            );
+        } else {
+            kept.push((id, d));
+        }
+    }
+    let mut deleted: Vec<Id> = gone.iter().filter_map(|g| m.elements.id(*g)).collect();
+    deleted.sort_unstable();
+    let ties: BTreeSet<Id> = gone
+        .iter()
+        .flat_map(|g| lookup.referrers(g))
+        .filter(|id| match m.elements.get(*id) {
+            Some(Element::Wall(w)) => w.attach_top.is_some_and(|g| gone.contains(&g)) || w.attach_base.is_some_and(|g| gone.contains(&g)),
+            Some(Element::Roof(r)) => r.join.is_some_and(|g| gone.contains(&g)),
+            _ => false,
+        })
+        .collect();
+    // Linework is not currently part of Element::refs; inspect the small view index as
+    // well as graphics overrides, without mutably visiting every model element.
+    let views: BTreeSet<Id> = lookup
+        .levels()
+        .chain(["planview", "section", "elevation", "view3d"].into_iter().flat_map(|cat| lookup.rare(cat)))
+        .filter(|id| !gone.contains(&m.guid(*id)))
+        .filter(|id| {
+            m.elements
+                .get(*id)
+                .and_then(graphics::graphics_of_element)
+                .is_some_and(|g| g.elements.keys().any(|id| gone.contains(id)) || g.linework.iter().any(|l| gone.contains(&l.element)))
+        })
+        .collect();
+    let m = s.model_mut();
+    for id in &gone {
+        m.elements.remove(id);
+    }
+    massing::forget(m, &gone);
+    for id in views {
+        if let Some(g) = m.elements.get_mut(id).and_then(graphics::graphics_mut) {
+            g.elements.retain(|id, _| !gone.contains(id));
+            g.linework.retain(|l| !gone.contains(&l.element));
+        }
+    }
+    for (id, d) in kept {
+        m.elements.insert(id, Element::Dimension(d));
+    }
+    for id in ties {
+        match m.elements.get_mut(id) {
+            Some(Element::Wall(w)) => {
+                if w.attach_top.is_some_and(|g| gone.contains(&g)) {
+                    w.attach_top = None;
+                }
+                if w.attach_base.is_some_and(|g| gone.contains(&g)) {
+                    w.attach_base = None;
+                }
+            }
+            Some(Element::Roof(r)) if r.join.is_some_and(|g| gone.contains(&g)) => r.join = None,
+            _ => {}
+        }
+    }
+    Ok(json!({"deleted": deleted}))
+}
+
+#[cfg(test)]
+fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
     let c = "delete";
     let m = &s.model;
     let ids = ids_param(c, m, p)?;
@@ -9479,7 +9609,7 @@ fn delete(s: &mut Session, p: &Value) -> R {
         m.elements.remove(id);
     }
     // What was made from a mass that goes is ordinary from then on.
-    massing::forget(m, &gone);
+    massing::forget_from_scratch(m, &gone);
     // No view keeps an override for what isn't there.
     for g in m.elements.values_mut().filter_map(graphics::graphics_mut) {
         g.elements.retain(|id, _| !gone.contains(id));

@@ -51,6 +51,7 @@ pub mod revit;
 mod ribbon;
 mod section;
 mod section_box;
+mod section_worker;
 pub mod settings;
 pub mod shortcuts;
 mod sketch;
@@ -64,6 +65,7 @@ mod tests;
 mod titlebar;
 mod typeprops;
 mod updates;
+mod view_worker;
 pub mod window;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -2345,6 +2347,9 @@ impl BimApp {
 
     /// Open a view in a tab, or bring its tab forward.
     fn open_sheet(&mut self, sheet: Sheet) {
+        if !matches!(sheet, Sheet::Section(_)) {
+            self.cut.suspend();
+        }
         if !self.views.contains(&sheet) && !self.floats(sheet) {
             self.views.push(sheet);
         }

@@ -36,3 +36,16 @@ startup, tags) is [the desktop](../../docs/areas/desktop.md).
 - A texture's pixels (the 3D view's picture, a section's) are not in the context, and the harness hands each frame's uploads to a renderer
   that keeps none: `tests/light_canvas.rs`'s `Uploads` is one that does (`Harness::builder().renderer(..)`).
 - After a change to how the window looks, look at it in the three looks (Light, Dark, Dark UI with a Light Canvas): [looking at the result](../../docs/areas/looking-at-results.md).
+
+## Background view work
+
+Sections/elevations use `view_worker.rs` (bounded latest-request mailboxes) and `section_worker.rs` (snapshot-bound
+geometry, pictures and overlays). The UI installs each picture and its picking/display list together, and reprojects
+that completed generation during navigation. Never fall back to full geometry work on the UI thread when a job is late.
+Keep selected-level grip endpoints in the worker result too; `render::level_ends` builds whole-model work.
+The worker prepares with `SectionWork::new_deferred_cancellable` and fits with `section_fit_cancellable`; a job stopped part
+way publishes nothing, and what the renderer keeps of it is whole.
+
+Ordinary UI harnesses use inline section execution for deterministic tool tests. `section::worker_tests`,
+`section_worker::tests` and `view_worker::tests` exercise actual threaded publication, cancellation and navigation picking.
+New worker lifecycle behavior needs a real-worker test, not only an inline harness assertion.

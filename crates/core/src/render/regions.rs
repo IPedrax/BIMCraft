@@ -83,6 +83,10 @@ impl Grid {
 }
 
 impl Layers {
+    pub(super) fn end(&self) -> usize {
+        self.end
+    }
+
     pub(super) fn new(end: usize, section: Option<Id>) -> Self {
         Self { on: true, end, section, ..Self::default() }
     }

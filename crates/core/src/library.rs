@@ -967,7 +967,7 @@ impl Model {
                 (*id, *guid) = (i, g);
             }
         };
-        let t = &mut self.types;
+        let t = &mut *self.types;
         for x in t.wall.values_mut() {
             x.layers.iter_mut().for_each(|l| give(&mut l.id, &mut l.guid));
         }
@@ -1175,7 +1175,7 @@ impl Model {
 
     /// Every part's id and GUID taken away, for [`Model::sync_library_with`] to give them anew.
     pub(crate) fn forget_parts(&mut self) {
-        let t = &mut self.types;
+        let t = &mut *self.types;
         let layers = t
             .wall
             .values_mut()
@@ -1394,7 +1394,7 @@ impl Model {
         for e in self.elements.values_mut() {
             e.lib_refs_mut(f);
         }
-        let t = &mut self.types;
+        let t = &mut *self.types;
         let layers = t
             .wall
             .values_mut()

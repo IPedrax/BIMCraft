@@ -5,7 +5,51 @@ elevations and the 3D scene they are drawn from), to make drawing a section or a
 size of the project. Every piece keeps the result: the same pixels in the picture, the same primitives over it, the same
 sheets and PDF. The old computation stays as the twin tests hold the new one to.
 
-## What it costs now (2026-11-01)
+## Current implementation priority (2026-11-01)
+
+Follow the [review's implementation order](spatial-core-review.md#recommended-implementation-order),
+starting with responsive interaction before persistent fragment caches. The first local change separates
+section tint paint from model cuts and visibility: `Image::retint_section` retains untinted pixels and an
+edge mask, while `SectionOverlay` retains the model cut and datums. Region ink is repainted from the tinted
+picture, preserving the existing non-masking-region semantics. Sections remain opaque hidden-line views,
+including glass; shaded 3D transparency uses its existing renderer.
+
+The desktop now uses a shared pool of two view workers. Each view keeps one active request, one latest pending
+request and one completed result. Replacing a request cancels the previous generation; closing the view clears
+pending input and cancels active work. The shared queue holds at most 32 weak view jobs, so queued jobs do not keep
+closed views or model snapshots alive. Exceptions in a renderer are caught outside the mailbox lock and reported;
+they do not kill a worker or prevent later requests.
+
+Initial fitting, solids/bounds, visibility, model cuts, datums and full region/annotation overlays run on workers.
+Cooperative checks occur between elements, occluder batches, raster projection chunks/stripes and annotation objects.
+Existing atomic operations (such as plane merging or a single complex element) finish before the next checkpoint.
+Partial geometry and images are discarded rather than published. Level-grip endpoints are part of the retained
+worker overlay, avoiding an otherwise hidden whole-model geometry pass when a level is selected.
+
+Pictures, ownership/face data, and overlays are installed together. Pan/zoom reprojects the last completed picture
+and drawing, and picking uses the inverse of that same transform. Results for a different model snapshot or view
+are discarded. Theme-only repaint/upload remains on the UI thread along with input and presentation.
+
+The extra untinted pixels and edge mask cost five bytes per pixel (8 MB at 1600 × 1000). Published and working
+images share ownership, faces and base paint; a tint update copies only the displayed RGBA buffer when needed.
+There is at most one displayed frame, worker geometry/base cache, active input and replaceable pending input per
+view. No model history is kept in the cache. Model-pointer changes invalidate geometry, including library-only
+edits. Reusable `SectionWork` now also checks shared type/material/family definition identities and language,
+so an in-place library-only edit invalidates stale geometry without retaining the entire model. Five targeted
+cache regressions and the full shared-definition checkpoint passed (1,107 core and 621 UI tests, plus the integration and other crate suites).
+
+Focused tests cover cancellation/replacement, pending-snapshot release on close, worker recovery after a bad
+renderer, fresh picture/overlay equality, tint reuse, actual threaded initial fitting and generation-consistent
+picking during a held render. Existing interaction counters verify zero geometry/visibility rebuilds for tints.
+Formatting, workspace Clippy and the full worker-integration regression run passed (1,106 core and 621 UI tests).
+Existing ignored tests remain unchanged. No new tower timing is claimed.
+The production asynchronous path was also inspected at 1280 × 800 in Light, Dark, and Dark UI/Light Canvas;
+local previews are in ignored `dist/section-tint-review/worker-*.png`.
+
+Next: the remaining dependency work of priority 2 (hosts, neighbouring geometry, families, empty spatial reads); see
+[the review's tracking](spatial-core-review.md#implementation-tracking), which holds the latest measurements.
+
+## Original baseline (2026-11-01, before section optimizations)
 
 The annotated tower with its drawing set (`tower {"storeys": 10, "annotation": true, "sheets": true}`, 120,513
 elements), release build, a 1600 × 1000 px view:
@@ -24,9 +68,9 @@ What the picture shows: **the north elevation sees 4,884 of the 9.3 million tria
 elements**; the section through the middle, 3,289 elements. Nearly all the work is on what is hidden behind the facade
 or far from the line.
 
-In the desktop (`crates/ui-egui/src/section.rs`) the picture is kept until the view, its size or the model changes, but
-the drawing over it (`render::section_over`) is made again **every frame**, 1.5 s each at 10 storeys; and any edit builds
-the whole scene again (`orbit::scene_of`) before the section can be redrawn.
+At this original baseline, the desktop kept the picture until the view, size or model changed, but rebuilt the
+drawing over it every frame (1.5 s at 10 storeys), and rebuilt the full scene after an edit. These are historical
+observations; current desktop behavior is described above.
 
 ## Why
 
@@ -116,10 +160,11 @@ Each leaves the workspace green, and is measured with the probe at 1, 10 and 100
 
 7. **Off the interface's thread.** The picture made on a worker from the model's snapshot (models are shared, not
    copied); the previous picture shown, scaled, until the new one comes; a request for a view no longer shown dropped.
-   The drawing over the picture (pieces 1 to 3 make it quick) stays on the frame.
+   Both the picture and drawing overlay run on workers: even the optimized overlay exceeds a frame budget.
+   Use cooperative cancellation and generation checks; publish the picture and picking data together.
 
-8. **Sheets and PDF.** A sheet of elevations and sections uses the same work: one `SectionWork` and one culled scene a
-   sheet, not a scene a viewport; the PDF the same.
+8. **Sheets and PDF.** A sheet of elevations and sections shares geometry and `SectionWork` across viewports.
+   Visibility is specific to each viewport; the PDF follows the same rule.
 
 9. **Vector hidden line.** For sheets and PDF, the visible parts of the survivors' edges as vectors, not a picture:
    each edge kept where the depth buffer sees it, its ends where visibility changes found by rays through the BVH.
@@ -140,12 +185,15 @@ Each leaves the workspace green, and is measured with the probe at 1, 10 and 100
 
 ## Order and risk
 
-1 and 2 first: small, safe, and they take the per-frame cost out of the desktop. 4 is the large gain and the most care:
-the culling must be conservative (strictly behind, opaque only) so the picture stays identical, which the pixel twin
-proves. 3 and 5 fall out of 4's boxes and survivors. 6 is the structural change, shared with the 3D view and the plan
-fragments of the spatial core's piece 7, and goes last; 7 and 8 use what the others make.
+Follow the review's current implementation priority at the top of this document. The first milestone combines
+retained paint/model cuts (piece 2) with cancellable background view work (piece 7). Dependency-complete fragments
+(piece 6) come next, before a shared instance BVH, retained 2D/GPU updates and further occlusion work. Culling must
+remain conservative and preserve the full-scene pixel/owner/face twin. Vector visibility and independent shadow
+queries require their own geometric correctness contracts, as the review explains.
 
-## Progress (2026-11-01)
+## Historical section optimization measurements (2026-11-01)
+
+These timings predate the local tint/worker changes; they are not measurements of the current working tree.
 
 The drawn tower, a 1600 × 1000 px view, release; every picture and drawing hashed the same before and after:
 
@@ -167,7 +215,7 @@ whole scene's; the drawing's quadratic passes (corners carried round by a hash o
 place in the list, cut outlines near each other by a grid); the desktop keeping the drawing between frames.
 
 What is left at 100 storeys: the pass over the model's solids (1.8 s), the occluders' raster and the survivors' scene
-(1.4 to 2 s). Next: the BVH and front-to-back culling of the occluders themselves, then fragments kept across edits.
+(1.4 to 2 s). Front-to-back batched occluder processing is implemented in `Scene::section`. Next: hierarchical BVH traversal and fragments kept across edits.
 
 ## Status
 
@@ -176,11 +224,10 @@ What is left at 100 storeys: the pass over the model's solids (1.8 s), the occlu
 - [x] 1. Each thing once a drawing (`SectionWork`, shared by a sheet's and a window's sections)
 - [x] 2. The desktop keeps the drawing
 - [x] 3. Only what the view's volume holds (in the culled scene: outside the picture, before the line, past the far clip)
-- [ ] 4. Occlusion culling: tiles and pixels done; the BVH and culling the occluders front to back left
+- [ ] 4. Occlusion culling: tiles, pixels and front-to-back occluder batches done; BVH traversal remains
 - [x] 5. A section's own scene (`Scene::section`: triangles, faces and planes of what can show)
-- [ ] 5. A section's own scene
 - [ ] 6. Fragments kept across edits
-- [ ] 7. Off the interface's thread
+- [x] 7. Off the interface's thread (sections/elevations, including fitting, overlays and datum endpoints; cancellable latest requests)
 - [ ] 8. Sheets and PDF
 - [ ] 9. Vector hidden line
 - [ ] 10. Transparency and shadows

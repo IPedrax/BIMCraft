@@ -314,6 +314,7 @@ impl Lookup {
                 Arc::make_mut(set).remove(&id);
             }
         }
+        self.rare.retain(|_, set| !set.is_empty());
         if let Some(chunk) = self.banded.get_mut(&(id >> SHIFT))
             && chunk.contains_key(&id)
         {
@@ -395,6 +396,9 @@ impl Lookup {
                     if set.is_empty() {
                         b.remove(&g);
                     }
+                }
+                if b.is_empty() {
+                    self.referrers.remove(&bucket(&g));
                 }
             }
         }
@@ -617,6 +621,23 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn removing_the_last_reference_or_rare_kind_removes_empty_lookup_buckets() {
+        for (command, params) in
+            [("text", json!({"view":100000,"at":[0,0],"text":"Only reference"})), ("section", json!({"start":[0,0],"end":[1000,0]}))]
+        {
+            let mut s = Session::new();
+            let id = s.execute(command, &params).unwrap()["id"].as_u64().unwrap();
+            let before = Lookup::of(&s.model.elements);
+            let mut after = s.model.elements.clone();
+            after.remove(id);
+            let updated = before.updated(&after, &BTreeSet::from([id]));
+            assert_eq!(updated, Lookup::of(&after), "remove only {command}");
+            assert!(updated.referrers.values().all(|bucket| !bucket.is_empty()));
+            assert!(updated.rare.values().all(|ids| !ids.is_empty()));
+        }
+    }
+
+    #[test]
     fn a_lookup_brought_up_to_date_is_the_one_made_again() {
         let mut s = Session::new();
         s.reset(tower_on(Plate::SMALL, 1).unwrap(), None);
@@ -635,8 +656,8 @@ mod tests {
             s.execute(cmd, &p).unwrap();
             let kept = s.model.lookup();
             assert_eq!(*kept, Lookup::of(&s.model.elements), "after {cmd}");
-            // Brought up to date, not made again: it shares what didn't change (a sweep, as delete's, makes it again).
-            assert!(cmd == "delete" || kept.shares(&was), "after {cmd}");
+            // Deletion, like the other local edits, shares the untouched lookup columns.
+            assert!(kept.shares(&was), "after {cmd}");
         }
         // A level that moves moves its walls' heights: the lookup is made again.
         let level = s.model.levels()[0].0;
