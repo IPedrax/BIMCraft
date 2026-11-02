@@ -2945,6 +2945,56 @@ fn modify_sub_elements_sets_a_points_height_or_an_edges_both_ends() {
 }
 
 #[test]
+fn modify_sub_elements_drags_a_point_with_its_split_lines_and_labels_its_height() {
+    let mut h = app(BOX);
+    tool(&mut h, "Floor");
+    click(&mut h, P2(4000.0, 3000.0));
+    let floor = ids(&h, "floor");
+    press(&mut h, "Add Point");
+    type_into(&mut h, "Elevation:", "-30");
+    click(&mut h, P2(4000.0, 3000.0));
+    press(&mut h, "Add Split Line");
+    click(&mut h, P2(40.0, 5960.0));
+    click(&mut h, P2(3970.0, 3030.0));
+    // While shaping, the point's height beside it.
+    assert!(painted(&h).iter().any(|t| t == "-30"), "{:?}", painted(&h));
+    let id = field(&h, floor[0], "shape")["points"][0]["id"].clone();
+    // Its grip dragged: the same point, at its height, somewhere else, and the split line ending there with it.
+    press(&mut h, "Modify Sub Elements");
+    drag(&mut h, P2(4000.0, 3000.0), P2(5000.0, 2000.0));
+    let shape = field(&h, floor[0], "shape");
+    let p = &shape["points"][0];
+    assert_eq!((p["id"].clone(), p["at"].clone(), p["z"].clone()), (id, json!([5000.0, 2000.0]), json!(-30.0)), "{shape}");
+    assert_eq!(shape["lines"][0]["b"], json!([5000.0, 2000.0]), "{shape}");
+    assert_eq!((h.state().selection.as_slice(), &h.state().tool), (floor.as_slice(), &Tool::ModifySubElements));
+    // Away from shaping, no labels.
+    key(&mut h, Key::Escape);
+    key(&mut h, Key::Escape);
+    assert!(!painted(&h).iter().any(|t| t == "-30"), "{:?}", painted(&h));
+}
+
+#[test]
+fn absolute_elevations_are_above_the_floors_level_on_any_level() {
+    let mut h = app(r#"floor {"level": 100001, "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}"#);
+    topmost(&mut h, "Level 2");
+    let floor = ids(&h, "floor");
+    click(&mut h, P2(4000.0, 0.0));
+    assert_eq!(h.state().selection, floor);
+    // 30 mm under Level 2, which is 3000 mm up: 30 mm under its top.
+    press(&mut h, "Add Point");
+    pick(&mut h, Role::CheckBox, "Absolute");
+    type_into(&mut h, "Elevation:", "-30");
+    click(&mut h, P2(4000.0, 3000.0));
+    assert_eq!(field(&h, floor[0], "shape")["points"][0]["z"], json!(-30.0), "{}", field(&h, floor[0], "shape"));
+    assert!(painted(&h).iter().any(|t| t == "-30"), "{:?}", painted(&h));
+    // Modify Sub Elements reads it the same way.
+    press(&mut h, "Modify Sub Elements");
+    type_into(&mut h, "Elevation:", "-50");
+    click(&mut h, P2(4000.0, 3000.0));
+    assert_eq!(field(&h, floor[0], "shape")["points"][0]["z"], json!(-50.0));
+}
+
+#[test]
 fn the_floor_tool_leaves_a_courtyard_open_inside_a_loop_of_walls_standing_free() {
     let mut h = app(r#"wall {"points": [[0, 0], [16000, 0], [16000, 16000], [0, 16000]], "closed": true}
 wall {"points": [[6000, 6000], [10000, 6000], [10000, 10000], [6000, 10000]], "closed": true}"#);

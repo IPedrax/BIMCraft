@@ -446,3 +446,32 @@ fn a_shape_picks_its_nearest_point_or_corner_else_an_edges_ends() {
     assert_eq!(fl.shape_pick(P2(2000.0, 4520.0), 100.0), [P2(0.0, 6000.0), P2(4000.0, 3000.0)], "the split line");
     assert!(fl.shape_pick(P2(2000.0, 2000.0), 100.0).is_empty());
 }
+
+#[test]
+fn a_dragged_point_takes_its_split_lines_with_it_and_keeps_its_height() {
+    let mut s = Session::new();
+    let f = slab(&mut s);
+    run(&mut s, "edit_shape", json!({"id": f, "points": [{"at": [4000, 3000], "z": -30}], "lines": [{"a": [0, 6000], "b": [4000, 3000]}]}));
+    let Some(crate::model::Element::Floor(fl)) = s.model.elements.get(f) else { panic!("no floor") };
+    assert_eq!(fl.shape.point_near(P2(4040.0, 2980.0), 100.0), Some(P2(4000.0, 3000.0)));
+    assert_eq!(fl.shape.point_near(P2(30.0, 20.0), 100.0), None, "a corner isn't a point to drag");
+    let moved = fl.shape.moved(P2(4000.0, 3000.0), P2(5000.0, 2000.0));
+    assert_eq!(moved.points[0].at, P2(5000.0, 2000.0));
+    assert_eq!(moved.points[0].z, -30.0);
+    assert_eq!((moved.points[0].id, moved.points[0].guid), (fl.shape.points[0].id, fl.shape.points[0].guid), "the same part");
+    assert_eq!((moved.lines[0].a, moved.lines[0].b), (P2(0.0, 6000.0), P2(5000.0, 2000.0)));
+    assert_eq!(fl.shape.moved(P2(1.0, 1.0), P2(5.0, 5.0)), fl.shape, "nothing there, nothing moves");
+}
+
+#[test]
+fn a_shapes_labels_give_each_points_height_relative_or_above_its_level() {
+    let mut s = Session::new();
+    // On Level 2, 3000 mm up, offset 50 mm: a drain 30 mm down.
+    let f = run(&mut s, "floor", json!({"level": 100001, "offset": 50, "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}))["id"]
+        .as_u64()
+        .unwrap();
+    run(&mut s, "edit_shape", json!({"id": f, "points": [{"at": [4000, 3000], "z": -30}]}));
+    let Some(crate::model::Element::Floor(fl)) = s.model.elements.get(f) else { panic!("no floor") };
+    assert_eq!(s.model.shape_labels(fl, false), [(P2(4000.0, 3000.0), -30.0)]);
+    assert_eq!(s.model.shape_labels(fl, true), [(P2(4000.0, 3000.0), 20.0)], "50 up, 30 down, above Level 2");
+}

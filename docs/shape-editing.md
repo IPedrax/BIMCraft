@@ -23,8 +23,12 @@ Status, on the branch `mod-16-shape-editing` (raised upstream as IPedrax/BIMCraf
   picked, `Floor::shape_pick`, set to the Options Bar's Elevation in one `edit_shape`), Add Point (Elevation, and
   Absolute), Add Split Line and Reset Shape, and a Variable box for a floor's or a roof's layers in Type Properties
   (`crates/ui-egui`; tests `shape_editing_raises_points_draws_split_lines_and_resets_a_floor` and
-  `modify_sub_elements_sets_a_points_height_or_an_edges_both_ends`). Left for later: dragging points with grips, and each
-  point's height as a label in plan while editing.
+  `modify_sub_elements_sets_a_points_height_or_an_edges_both_ends`). While a Shape Editing tool is on, each point's height
+  is labelled beside it in plan, as the Elevation reads it (`Model::shape_labels`); under Modify Sub Elements each point
+  has a grip, and a drag moves it in plan at its height, the split lines ending there with it, in one `edit_shape`
+  (`Shape::point_near`, `Shape::moved`; test `modify_sub_elements_drags_a_point_with_its_split_lines_and_labels_its_height`).
+  Absolute is above the floor's level for every tool (`absolute_elevations_are_above_the_floors_level_on_any_level`).
+  Left for later: dragging heights in the 3D view.
 - **Phases 4 and 5** are a proposal.
 
 Line numbers are as of `0733fd4`.
@@ -194,7 +198,7 @@ New rules, each with an error that says what to fix:
 | 3D solids (`view3d.rs:511`, `612`) | `Solid::Slab` per piece | the same for constant thickness; `Solid::Prism` (top facet, flat bottom) with a variable layer |
 | 3D layers (`view3d::layered`, `view3d.rs:741`) | a slab's layers in proportion; the `Prism` branch is walls only | a slab `Prism` branch: layers above the variable one from the top, below it from the bottom |
 | Section layers (`render.rs:1230`) | each cut quad split in proportion to the layers' thicknesses | the same rule as 3D: fixed layers measured from the top or the bottom edge, the variable one between |
-| Plan (`render.rs:1585`) | outline, openings, surface pattern, slope arrow | the pattern over each piece; split lines solid and generated creases dashed, thin, when the element is selected or being edited; each point's height as a label while editing |
+| Plan (`render.rs:1585`) | outline, openings, surface pattern, slope arrow | the pattern over each piece; split lines solid and generated creases dashed, thin, when the element is selected or being edited; each point's height as a label while editing (built as the desktop's overlay, not in `render.rs`, so it never prints) |
 | Attached walls (`walls.rs:454`) | one plane over the floor's convex pieces | each piece with its own plane, as the roof branch above it does |
 | Shafts (`Model::less_shafts`, `model.rs:3773`) | per slab face | already per face: no change, but a test |
 | Move, copy, rotate, mirror (`commands.rs:8236`) | outline, openings, arrow, pattern | the points' `at` and the lines' ends too; a mirror keeps the heights |

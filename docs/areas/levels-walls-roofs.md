@@ -73,8 +73,9 @@ over all its structure: the bars keep to the layers under it, as on a level floo
 saying why. In the desktop, a floor selected shows Shape Editing in its contextual tab: Slope Arrow, Modify Sub Elements (a point, a corner or an edge's two ends,
 `Floor::shape_pick`, to the Options Bar's Elevation), Add Point (a
 click on the top, at the Options Bar's Elevation, above the unshaped top or, with Absolute, above the level; empty, the
-top's height there), Add Split Line (two clicks, snapping to points, corners and edges) and Reset Shape, each a command;
-Type Properties ticks a floor's or a roof's variable layer. A ceiling's `offset` is its underside; its `openings` are holes as a floor's
+top's height there), Add Split Line (two clicks, snapping to points, corners and edges) and Reset Shape, each a command.
+While one is on, each point's height is labelled beside it (`Model::shape_labels`); under Modify Sub Elements a point's
+grip drags it in plan at its height, its split lines with it (`Shape::moved`), in one `edit_shape`. Type Properties ticks a floor's or a roof's variable layer. A ceiling's `offset` is its underside; its `openings` are holes as a floor's
 are, and `Model::ceiling_slabs` what's left. A shaft cuts each floor,
 ceiling and roof its span reaches into over its outline, all the way through (`Model::less_shafts`). A stair or a ramp
 is runs and landings laid out from its start (`stairs::stair`, `stairs::ramp`): a landing after `at` risers (a ramp's, `at`

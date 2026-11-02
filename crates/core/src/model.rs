@@ -522,6 +522,32 @@ impl Shape {
     pub fn is_empty(&self) -> bool {
         self.points.is_empty() && self.lines.is_empty()
     }
+
+    /// The nearest of its points within `reach` of `q`, where a grip takes hold of one.
+    pub fn point_near(&self, q: P2, reach: f64) -> Option<P2> {
+        self.points.iter().map(|p| p.at).filter(|p| p.dist(q) <= reach).min_by(|a, b| a.dist(q).total_cmp(&b.dist(q)))
+    }
+
+    /// It with its point at `from` dragged to `to`, at the same height, the split lines ending there going with it; the
+    /// same shape when no point is at `from`.
+    pub fn moved(&self, from: P2, to: P2) -> Shape {
+        let mut s = self.clone();
+        if !s.points.iter().any(|p| p.at.dist(from) <= TOL) {
+            return s;
+        }
+        let near = |q: P2| q.dist(from) <= TOL;
+        for p in s.points.iter_mut().filter(|p| near(p.at)) {
+            p.at = to;
+        }
+        for l in &mut s.lines {
+            for end in [&mut l.a, &mut l.b] {
+                if near(*end) {
+                    *end = to;
+                }
+            }
+        }
+        s
+    }
 }
 
 impl Floor {
@@ -4020,6 +4046,15 @@ impl Model {
         let top = self.floor_top(f);
         let near = |r: &[P2]| geom::contains(r, q) || geom::ring_edges(r).any(|(a, b)| geom::dist_to_segment(q, a, b) <= TOL);
         self.floor_faces(f).iter().find(|(r, _)| near(r)).map_or(0.0, |(_, plane)| plane.at(q) - top.at(q))
+    }
+
+    /// A shaped floor's points with the heights shape editing labels them with in plan: each above (negative, below) the
+    /// top as it would be without the shape, or with `absolute`, above the floor's level, as the Options Bar's Elevation
+    /// reads.
+    pub fn shape_labels(&self, f: &Floor, absolute: bool) -> Vec<(P2, f64)> {
+        let top = self.floor_top(f);
+        let level = self.elevation(f.level);
+        f.shape.points.iter().map(|p| (p.at, if absolute { p.z + top.at(p.at) - level } else { p.z })).collect()
     }
 
     /// A floor's slabs: its underside less its openings (in convex pieces once one cuts it), each a

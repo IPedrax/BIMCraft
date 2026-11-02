@@ -516,6 +516,8 @@ pub struct BimApp {
     /// level; empty, the top's height where it's clicked.
     shape_z: String,
     shape_absolute: bool,
+    /// The selected floor's shape point a drag under Modify Sub Elements holds, where it was.
+    shape_grip: Option<P2>,
     shaft_top: Option<Option<Id>>,
     shaft_height: String,
     /// The Mass tool's top, as the Shaft tool's.
@@ -1009,6 +1011,7 @@ impl BimApp {
             floor_slope: "5".into(),
             shape_z: String::new(),
             shape_absolute: false,
+            shape_grip: None,
             shaft_top: None,
             shaft_height: units.length(3000.0),
             mass_top: None,
