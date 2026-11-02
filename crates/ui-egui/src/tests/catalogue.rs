@@ -414,6 +414,7 @@ fn carrier_dialog_visual_acceptance() {
         press(&mut h, "Manage");
         press(&mut h, "Equipment Catalogue");
         press(&mut h, "Cable carriers");
+        press(&mut h, "SP 76.13330.2016: maximum box fill only");
         press(&mut h, "Apply carrier settings");
         h.render().unwrap().save(output.join(format!("carrier-profile-{name}.png"))).unwrap();
         press(&mut h, "Check and highlight carriers");
@@ -425,6 +426,19 @@ fn carrier_dialog_visual_acceptance() {
         assert!(h.ctx.content_rect().contains_rect(h.get_by_label("Close").rect()), "expanded dialog must keep Close inside the window");
         h.render().unwrap().save(output.join(format!("carrier-{name}.png"))).unwrap();
     }
+}
+
+#[test]
+fn carrier_dialog_can_select_the_explicit_box_maximum_profile() {
+    use bimcraft_core::carrier_limits::Profile;
+    let mut h = app("");
+    press(&mut h, "Manage");
+    press(&mut h, "Equipment Catalogue");
+    press(&mut h, "Cable carriers");
+    press(&mut h, "SP 76.13330.2016: maximum box fill only");
+    press(&mut h, "Apply carrier settings");
+    assert_eq!(h.state().session.model.carrier_settings.as_ref().unwrap().profile, Profile::RuSp76_2016MaxFill);
+    assert!(!h.state().status.error, "{}", h.state().status.text);
 }
 
 #[test]

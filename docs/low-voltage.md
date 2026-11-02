@@ -17,6 +17,6 @@ SP 484, SP 3.13130). Each step is a branch of its own, tested, documented in `do
 
 ## Standards packages and current scope
 
-Standards and drawing conventions are intended to be replaceable, versioned modules: calculations and checks, symbols, specification templates, and document formatting. The geometric core is shared. This boundary implements physical carrier geometry and explicit project fill limits. A bounded Russian maximum-fill profile is a subsequent contribution. American, European, and other national packages are not implemented. A general loadable package interface remains future work.
+Standards and drawing conventions are intended to be replaceable, versioned modules: calculations and checks, symbols, specification templates, and document formatting. The geometric core is shared. The current Russian profile implements only maximum box fill from measured clear sections; it is not a complete compliance check. American, European, and other national packages are not implemented. A general loadable package interface remains future work.
 
 Automatic creation of carriers from a cable, inherited elevations, and device-to-route drops/rises are planned, not implemented here. Universal device ports are also future work.

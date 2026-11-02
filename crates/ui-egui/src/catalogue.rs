@@ -252,6 +252,10 @@ impl BimApp {
         let (mut percent, mut auto, mut profile) = *self.equipment_draft.carrier_policy.get_or_insert(initial);
         ui.collapsing(t("Cable carriers"), |ui| {
             ui.radio_value(&mut profile, Profile::Project, t("Project gross-section limit"));
+            ui.radio_value(&mut profile, Profile::RuSp76_2016MaxFill, t("SP 76.13330.2016: maximum box fill only"));
+            if profile == Profile::RuSp76_2016MaxFill {
+                ui.label(t("Box limits: 35% blind, 40% lidded; measured clear section required. This is not a full compliance check."));
+            }
             let previous_type = default_type.clone();
             egui::ComboBox::from_label(t("Project carrier type"))
                 .selected_text(if default_type.is_empty() { t("Unspecified") } else { &default_type })
