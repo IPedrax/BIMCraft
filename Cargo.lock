@@ -521,9 +521,11 @@ name = "bimcraft-geofetch"
 version = "0.9.0"
 dependencies = [
  "bimcraft-core",
+ "flate2",
  "png 0.17.16",
  "ring",
  "serde_json",
+ "tiff",
  "ureq",
 ]
 

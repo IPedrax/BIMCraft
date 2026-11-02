@@ -19,3 +19,8 @@ serde_json = { workspace = true }
 ureq = { workspace = true }
 ring = { workspace = true }
 png = { workspace = true }
+tiff = { workspace = true }
+
+[dev-dependencies]
+# The tests write the GeoTIFFs they read.
+flate2 = { workspace = true }

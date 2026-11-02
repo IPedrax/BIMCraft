@@ -8,6 +8,8 @@
 //! answers or a server on this machine, never the real services.
 
 pub mod cache;
+pub mod copernicus;
+pub mod layout;
 pub mod net;
 pub mod overpass;
 pub mod terrarium;
@@ -20,12 +22,13 @@ use std::sync::Arc;
 use bimcraft_core::geo::{Bbox, Elevation, Fetcher, GeoSource, Reply};
 
 use crate::cache::Cache;
+use crate::copernicus::Copernicus;
 use crate::net::{Allow, Net, OVERPASS, Ureq};
 use crate::overpass::Overpass;
 use crate::terrarium::Terrarium;
 
 /// The elevation sources there are, as `source` names them, the first being the one used when none is named.
-pub const SOURCES: [&str; 1] = ["terrarium"];
+pub const SOURCES: [&str; 2] = ["terrarium", "copernicus"];
 
 /// What OpenStreetMap's licence asks to be said where its data is used.
 pub const OSM_ATTRIBUTION: &str =
@@ -35,11 +38,16 @@ pub const OSM_ATTRIBUTION: &str =
 pub struct Geofetch {
     overpass: Overpass,
     terrarium: Terrarium,
+    copernicus: Copernicus,
 }
 
 impl Geofetch {
     pub fn new(net: Arc<dyn Net>, cache: Arc<Cache>, endpoint: &str) -> Geofetch {
-        Geofetch { overpass: Overpass::new(net.clone(), cache.clone(), endpoint), terrarium: Terrarium::new(net, cache) }
+        Geofetch {
+            overpass: Overpass::new(net.clone(), cache.clone(), endpoint),
+            terrarium: Terrarium::new(net.clone(), cache.clone()),
+            copernicus: Copernicus::new(net, cache),
+        }
     }
 
     /// The fetcher the desktop app attaches, or none where it is not wanted: `BIMCRAFT_NO_NETWORK` set, or a Flatpak, which is not
@@ -85,6 +93,10 @@ impl GeoSource for Geofetch {
                 let (grid, cached) = self.terrarium.grid(bbox, spacing)?;
                 Ok(Elevation { grid, source: "terrarium".into(), cached })
             }
+            "copernicus" => {
+                let (grid, cached) = self.copernicus.grid(bbox, spacing)?;
+                Ok(Elevation { grid, source: "copernicus".into(), cached })
+            }
             other => Err(format!("there is no elevation source `{other}`: the sources are {}", SOURCES.join(", "))),
         }
     }
@@ -93,6 +105,7 @@ impl GeoSource for Geofetch {
         match what {
             "osm" => OSM_ATTRIBUTION.into(),
             "terrarium" => terrarium::ATTRIBUTION.into(),
+            "copernicus" => copernicus::ATTRIBUTION.into(),
             other => format!("Data from {other}"),
         }
     }
@@ -132,6 +145,8 @@ mod tests {
             let e = f.elevation(&block(), 20.0, named).unwrap_err();
             assert!(e.contains("tile 13/"), "{named:?}: {e}");
         }
+        // Copernicus is a source too: with nothing to fetch, it is the lack of its tile that is the answer.
+        assert!(f.elevation(&block(), 20.0, Some("copernicus")).unwrap_err().contains("no Copernicus tile"));
         for bad in ["", "srtm", "terrarium/../x", "TERRARIUM"] {
             let e = f.elevation(&block(), 20.0, Some(bad)).unwrap_err();
             assert!(e.contains("no elevation source") && e.contains("terrarium"), "{bad}: {e}");
@@ -143,6 +158,7 @@ mod tests {
         let f = fetcher(Arc::new(Fake::new()));
         assert!(f.attribution("osm").contains("OpenStreetMap") && f.attribution("osm").contains("ODbL"));
         assert!(f.attribution("terrarium").contains("Terrain Tiles") && f.attribution("terrarium").contains("joerd"));
+        assert!(f.attribution("copernicus").contains("Copernicus DEM GLO-30") && f.attribution("copernicus").contains("Airbus"));
         assert!(f.attribution("something").contains("something"));
     }
 

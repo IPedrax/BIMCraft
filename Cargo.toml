@@ -21,6 +21,8 @@ spade = "2"
 roxmltree = "0.21"
 # Elevation tiles are PNGs: decoded and, in tests, encoded; the version the picture crates already pull in.
 png = "0.17"
+# Copernicus tiles are GeoTIFFs (float32, deflate): read only, and only what a box needs; pure Rust, MIT.
+tiff = { version = "0.11", default-features = false, features = ["deflate"] }
 bimcraft-core = { path = "crates/core" }
 bimcraft-i18n = { path = "crates/i18n", default-features = false }
 serde = { version = "1", features = ["derive", "rc"] }

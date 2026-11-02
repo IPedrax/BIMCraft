@@ -6,9 +6,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use bimcraft_core::geo::{Bbox, ElevationGrid, MAX_GRID_NODES, tile_xy, tiles_for, zoom_for};
+use bimcraft_core::geo::{Bbox, ElevationGrid, tile_xy, tiles_for, zoom_for};
 
 use crate::cache::{Cache, key};
+use crate::layout::Layout;
 use crate::net::Net;
 
 /// How long a tile is kept, seconds: a month, for the ground does not change by the day.
@@ -22,11 +23,6 @@ pub const BASE: &str = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium"
 /// What the data asks to be credited.
 pub const ATTRIBUTION: &str = "Elevation: Terrain Tiles (Terrarium) on AWS Open Data, made from USGS 3DEP and SRTM, GMTED2010 and ETOPO1 \
     (NOAA), and other national sources: see https://github.com/tilezen/joerd/blob/master/docs/attribution.md";
-
-/// Metres in a degree of latitude, near enough: the core's figure.
-const METRES_PER_DEGREE: f64 = 111_320.0;
-/// The Web Mercator map's last latitude.
-const MAX_LAT: f64 = 85.0;
 
 pub struct Terrarium {
     net: Arc<dyn Net>,
@@ -108,27 +104,8 @@ impl Terrarium {
     /// A grid of heights over the box, a node every `spacing` metres, one more each way than the box has room for, so it covers it;
     /// and whether every tile came from the cache. Fewer, coarser tiles are taken when the box would need more than [`MAX_TILES`].
     pub fn grid(&self, bbox: &Bbox, spacing: f64) -> Result<(ElevationGrid, bool), String> {
-        if !spacing.is_finite() || spacing <= 0.0 {
-            return Err(format!("`spacing` is a distance in metres above 0, not {spacing}"));
-        }
-        let dlat = spacing / METRES_PER_DEGREE;
-        let dlon = spacing / (METRES_PER_DEGREE * bbox.centre().1.to_radians().cos().max(1e-3));
-        let (cols, rows) = (((bbox.east - bbox.west) / dlon).floor() + 2.0, ((bbox.north - bbox.south) / dlat).floor() + 2.0);
-        if cols * rows > MAX_GRID_NODES as f64 {
-            return Err(format!(
-                "a `spacing` of {spacing} m over this box would make {} nodes, more than {MAX_GRID_NODES}: use a larger `spacing` or a smaller box",
-                cols * rows
-            ));
-        }
-        let (cols, rows) = (cols as usize, rows as usize);
-        // What the grid covers, for the tiles it needs: the box and the node past its south and east edges.
-        let extent = Bbox::new(
-            (bbox.north - (rows - 1) as f64 * dlat).max(-MAX_LAT),
-            bbox.west,
-            bbox.north.min(MAX_LAT),
-            (bbox.west + (cols - 1) as f64 * dlon).min(180.0),
-        )
-        .map_err(|_| "the box is too near the poles or the edge of the map for these tiles".to_string())?;
+        let layout = Layout::new(bbox, spacing)?;
+        let extent = layout.extent(bbox)?;
         let mut zoom = zoom_for(bbox, spacing);
         let tiles = loop {
             match tiles_for(&extent, zoom) {
@@ -143,11 +120,14 @@ impl Terrarium {
             all_cached &= cached;
             held.insert((x, y), heights);
         }
-        let values: Vec<f32> = (0..rows)
-            .flat_map(|r| (0..cols).map(move |c| (bbox.west + c as f64 * dlon, bbox.north - r as f64 * dlat)))
-            .map(|(lon, lat)| sample(&held, zoom, lon, lat).unwrap_or(f32::NAN))
+        let values: Vec<f32> = (0..layout.rows)
+            .flat_map(|r| (0..layout.cols).map(move |c| (r, c)))
+            .map(|(r, c)| {
+                let (lon, lat) = layout.at(bbox, c, r);
+                sample(&held, zoom, lon, lat).unwrap_or(f32::NAN)
+            })
             .collect();
-        Ok((ElevationGrid::new(bbox.west, bbox.north, dlon, dlat, cols, rows, values)?, all_cached))
+        Ok((ElevationGrid::new(bbox.west, bbox.north, layout.dlon, layout.dlat, layout.cols, layout.rows, values)?, all_cached))
     }
 }
 
