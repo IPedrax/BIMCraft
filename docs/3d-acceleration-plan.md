@@ -1,0 +1,129 @@
+# The 3D view on the card, at any size
+
+A plan in pieces, as [the canvas's](canvas-acceleration-plan.md) and [the sections'](section-views-plan.md), for the 3D view.
+
+**The goal: a model's size never sends the 3D view to the processor, and no number of triangles is refused.** A 3D modelling tool has to
+draw the big model, and the big model is where the processor is slowest. What a card can't hold at once it draws in parts, or over
+several frames, or holds fewer of: it doesn't refuse. Orbiting, hovering and selecting stay responsive whatever the size. The picture
+once the view is still is the one the card draws today.
+
+## Measured (2026-11-02)
+
+The annotated tower, 10 storeys (`tower {"storeys": 10, "annotation": true}`), 120,011 elements, 1920 × 1080, release, an NVIDIA RTX 2060
+over Vulkan, with the card turned on in Settings:
+
+| What | Time | When it's paid |
+|---|---:|---|
+| Build the scene (`Scene::new`) | 7.3 s | opening the view, **and after every edit**, on the interface's thread |
+| Fit the view | 0.85 s | opening the view, on the interface's thread |
+| A frame on the processor | 2.7 s | each step of an orbit, and each time the pointer crosses an element, which changes a tint |
+| A frame on the card | never reached | `Mesh::new` refuses: "9302680 triangles, more than the card is given" |
+
+Where the 9.3 million triangles are:
+
+| Category | Triangles | Share | Elements | Each |
+|---|---:|---:|---:|---:|
+| Components (family instances) | 7,118,800 | 76.5% | 62,020 | 114 |
+| Conduits | 816,000 | 8.8% | 8,500 | 96 |
+| Pipes | 813,120 | 8.7% | 8,470 | 96 |
+| Walls | 421,920 | 4.5% | 2,620 | 161 |
+| Everything else | 132,840 | 1.4% | 10,830 | 12 for most |
+
+For scale, the card draws the 20-storey highrise (427,280 triangles) in about 1.2 ms a frame ([performance](performance.md#3d-on-the-graphics-card)).
+At 100 storeys the same tower is about 93 million triangles; the 3D view doesn't finish opening.
+
+## What stands in the way
+
+Each of these is a limit on size, and all of them have to go. Taking away only the first would change the error, not the result.
+
+1. **`MAX_TRIS`** (`view3d/gpu.rs`): 1.6 million, refused in `Mesh::new`.
+2. **The buffers the device was asked for.** egui's default setup requests `wgpu::Limits::default()`, a `max_buffer_size` of 256 MiB and a
+   storage binding of 128 MiB, whatever the card has. `Gpu::upload` refuses past them, and one vertex buffer holds all of a mesh.
+3. **44 bytes × 3 for each triangle, each copy stored in full.** About 1.2 GB of vertices at 10 storeys and 12 GB at 100, with a copy on
+   the processor's side, in `Mesh::vertices`, and `Mesh::tris` and `Scene::tris` beside it.
+4. **Every triangle drawn every frame.** Even held on the card, 93 million a frame is not an interactive orbit on this card.
+5. **The work on the interface's thread.** Scene, mesh, upload and the first pick's hierarchy (124 ms at 427,000 triangles, so seconds
+   here) all stop the window.
+6. **A whole rebuild for each edit.** `scene_of` and `mesh_of` start again whenever the model is another `Arc`, so an edit costs what
+   opening costs.
+7. **What the card doesn't draw at all.** `Mesh::new` also refuses hidden line, wireframe, a section box and a point cloud. Each sends
+   a big model to the processor exactly as its size does today, so turning on a section box on a tower would bring back the 2.7 s frame.
+8. **Off until asked for.** `gpu_3d` starts false, so a new user with a card still gets the processor.
+
+## The rule on the processor
+
+After this plan the processor draws the 3D view in one case only: **there is no usable card** (no adapter, OpenGL only, or a card that
+failed), and the window says so. Sheets, PDF, PNG and the CLI keep `Scene`'s software picture, which is what they are held to; they aren't
+the interactive view. Nothing about a model, not its size and not how it is shown, is a reason.
+
+A card that runs out of memory is not a card that failed. The out-of-memory error, which the card's error scopes catch today and answer
+by giving up for good, becomes a signal to hold less (piece 9).
+
+## Pieces
+
+Each keeps the workspace green. Tests stay as they are for what they check today: the card against the processor's picture
+(`the_card_draws_what_the_processor_does` and those beside it), and picking through the mesh against the picture. Each piece also compares its
+settled picture, byte for byte, with the card's picture before the piece, on a model that fitted then, in both projections.
+
+1. **No cap, and the card's real limits.** Ask the adapter for what it has (`Limits` from `adapter.limits()`, in `main.rs`, and the same in
+   a test's headless card). Take out `MAX_TRIS`. A mesh goes up in as many vertex buffers as it needs, each within `max_buffer_size`, one
+   draw for each. Turn `gpu_3d` on by default where a card exists. This alone puts the 10-storey tower on this card, at about 1.2 GB, with the
+   stall of building and uploading it. Measure it: it is the base the later pieces beat, and the first number for how the frame scales.
+2. **Scene and mesh off the interface's thread.** `Scene::new`, the fit and the mesh on `view_worker.rs`, cancellable, snapshot-bound, as
+   sections do it, published together. Opening a view shows it empty with its progress, and the window stays live. The first pick's
+   hierarchy is built there too.
+3. **One shape, many places: components.** The card holds each family and type's triangles once, and an instance buffer holds each
+   copy's transform and owner. Built from the geometry `component_geometry.rs` already reuses, without making each copy's triangles at all.
+   To stay the same: a mirrored copy's winding (`front_facing`), a normal under its transform, a texture that lies by world position,
+   and **each copy's plane numbers**, because an edge is drawn where the plane changes between pixels, so two touching copies must
+   not read as one. A component with values of its own that change its shape is a shape of its own. Picking goes through a hierarchy of
+   instances over each shape's, so a hover stays under a millisecond.
+4. **The same for runs.** Conduits and pipes are 17.5% here, at 96 triangles each: one tube per section and segment count, scaled along its
+   length, with its normals and edges held to today's. Then what's left is what really differs from element to element.
+5. **Draw what the view can see.** Elements grouped by tile and storey, each group with bounds, using what `derived.rs` keeps. Groups
+   outside the view are left out, on the processor's side first, then by an indirect draw if that's needed. This must not change one pixel:
+   it only leaves out what can't reach the picture.
+6. **A frame never waits for all of it.** Past what fits in a frame's time, draw nearest groups first and finish over the next frames into
+   the same targets, as the plans' worker finishes the exact drawing after a pan. While orbiting, what isn't reached yet stands in as
+   its group's box, or a coarser shape if measuring says that isn't enough. When the view stops it completes, and the settled picture is the
+   exact one. This is what makes 100 storeys interactive, and the only piece that shows something different on the way there.
+7. **An edit changes only what it changed.** The scene and the groups brought up to date from the elements an edit touched, with what
+   `derived.rs` says depends on them (a wall's joins, a host's openings). The full build stays as the twin the tests hold it to, as in
+   [the spatial core](spatial-core-plan.md). Overlaps the plans' piece 6 on the same dependencies, so whichever comes first builds them.
+8. **What only the processor draws now.** On the card: a section box (clip planes, and its cut faces, from the shapes' triangles), then
+   hidden line and wireframe (from the edge pass), then point clouds (as points, with the same budget as piece 6). Each one held to
+   the processor's picture, as the card's shaded view was. Until each lands, say in the view why it is on the processor.
+9. **When the card runs out.** Nothing is refused here either. A budget that starts from what the card lets us allocate, and shrinks when an
+   allocation fails: groups not in view let go first and uploaded again when wanted, then stand-ins for the farthest. The most a card can
+   hold then decides how sharp a far storey is while moving, never whether the model draws.
+
+## What must stay the same
+
+- **The settled picture.** Pixel for pixel what the card draws today. Pieces 3, 4 and 5 are never allowed to change it; piece 6 only
+  before the view stops. Where the card already differs from the processor (level lines, about 0.12% of a house's pixels) it stays as is.
+- **Picking.** What's under a pixel is what that pixel shows, including through a stand-in being replaced and through what's seen through.
+- **Hover and selection.** A tint is still a write to an owner, never a redraw of geometry.
+- **Exports.** PNG, PDF, sheets and the CLI are untouched by this plan.
+- **Never crash.** Everything the card can refuse is caught and answered, as `caught` does today.
+
+## What isn't decided yet
+
+- **How far a card gets.** Piece 1's measurement decides how much of piece 5 is on the processor's side, and whether piece 6 needs coarser
+  shapes or only boxes. Occlusion culling is left out until a measurement after piece 6 asks for it.
+- **The rest of the scene's memory.** `Scene::tris` holds each copy in full for the processor and for sections. Piece 3 stops the card
+  needing it; sections and exports may still build it, which [the sections' plan](section-views-plan.md) follows.
+- **`--tower`.** A window can't be told to build the tower (the control port refuses what would replace the user's project) and the 100-storey
+  file is past the size a project may open at. Testing 100 storeys in the real window needs a start option like `--highrise`, in piece 1.
+
+## Status
+
+- [x] Measure
+- [ ] 1. No cap, and the card's real limits
+- [ ] 2. Scene and mesh off the interface's thread
+- [ ] 3. One shape, many places: components
+- [ ] 4. The same for runs
+- [ ] 5. Draw what the view can see
+- [ ] 6. A frame never waits for all of it
+- [ ] 7. An edit changes only what it changed
+- [ ] 8. What only the processor draws now
+- [ ] 9. When the card runs out
