@@ -1225,7 +1225,9 @@ pub fn export(m: &Model) -> String {
                 Function::Substrate => "'Substrate'",
                 Function::Membrane => "'Membrane'",
             };
-            ids.push(w.add(format!("IFCMATERIALLAYER({material},{},$,$,$,{category},$)", real(l.thickness))));
+            // The variable layer (MOD-16) says so in its description: IFC has no word of its own for a layer that tapers.
+            let description = if l.variable { "'Variable'" } else { "$" };
+            ids.push(w.add(format!("IFCMATERIALLAYER({material},{},$,$,{description},{category},$)", real(l.thickness))));
         }
         w.add(format!("IFCMATERIALLAYERSET(({}),{},$)", refs(&ids), s(name)))
     };
