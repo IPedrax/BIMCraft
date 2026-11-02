@@ -1931,6 +1931,17 @@ impl BimApp {
                     path.push(p);
                 }
             }
+            // A pad's next corner; back on the first, it's done.
+            Tool::Pad(path) => {
+                let p = self.snap_point(m, level, v, at, path, mods.shift);
+                if path.len() >= 3 && path.first().is_some_and(|f| f.dist(p) <= TOL) {
+                    self.finish_pad(level);
+                } else if let Tool::Pad(path) = &mut self.tool
+                    && path.last().is_none_or(|l| l.dist(p) > TOL)
+                {
+                    path.push(p);
+                }
+            }
             Tool::DetailLine(path) => {
                 let guide: Vec<P2> = match self.shape() {
                     draw::Shape::Line | draw::Shape::Polyline => path.clone(),
@@ -2961,9 +2972,12 @@ impl BimApp {
         let sketched = |e: &Element| ghost(p, origin, &render::sketch(m, *v, m.next_id, e), &[m.next_id], &|pt| pt);
         let ghost = |f: &dyn Fn(Pos2) -> Pos2| ghost(p, origin, sc.d, &self.selection, f);
         let chain = match &self.tool {
-            Tool::Wall(chain) | Tool::Railing(chain) | Tool::Mass(chain) | Tool::DetailLine(chain) | Tool::SketchLine(chain) => {
-                chain.as_slice()
-            }
+            Tool::Wall(chain)
+            | Tool::Railing(chain)
+            | Tool::Mass(chain)
+            | Tool::Pad(chain)
+            | Tool::DetailLine(chain)
+            | Tool::SketchLine(chain) => chain.as_slice(),
             Tool::SketchPick => &[],
             // The group a click would place.
             Tool::DetailGroup => {
@@ -3406,6 +3420,14 @@ impl BimApp {
                 base_offset: 0.0,
                 params: Default::default(),
             }));
+            let (area, unit) = m.units.area(geom::area(&ring).abs());
+            let middle = ring.iter().fold(P2(0.0, 0.0), |a, q| a + *q * (1.0 / ring.len() as f64));
+            label(sc.screen(middle), format!("{area:.2} {unit}"));
+        }
+        // The pad a click would close, as the plan draws it, and its area.
+        if let (Tool::Pad(_), true) = (&self.tool, chain.len() >= 2) {
+            let ring: Vec<P2> = chain.iter().copied().chain([next]).collect();
+            sketched(&Element::Pad(crate::site::pad_sketch(m, level, &ring)));
             let (area, unit) = m.units.area(geom::area(&ring).abs());
             let middle = ring.iter().fold(P2(0.0, 0.0), |a, q| a + *q * (1.0 / ring.len() as f64));
             label(sc.screen(middle), format!("{area:.2} {unit}"));

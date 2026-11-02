@@ -52,6 +52,7 @@ mod section;
 mod section_box;
 pub mod settings;
 pub mod shortcuts;
+mod site;
 mod sketch;
 mod standards;
 mod start;
@@ -230,6 +231,8 @@ pub enum Tool {
     Shaft(Option<P2>),
     /// A mass: the corners of its footprint, as clicked so far.
     Mass(Vec<P2>),
+    /// A building pad: the corners of its outline, as clicked so far.
+    Pad(Vec<P2>),
     /// A detail line in the Options Bar's line style: its points, as clicked so far.
     DetailLine(Vec<P2>),
     /// The selected floor's slope arrow: its tail, once clicked.
@@ -267,6 +270,7 @@ enum Tab {
     Insert,
     Annotate,
     Massing,
+    Site,
     View,
     Manage,
     Modify,
@@ -510,6 +514,11 @@ pub struct BimApp {
     /// The Mass tool's top, as the Shaft tool's.
     mass_top: Option<Option<Id>>,
     mass_height: String,
+    /// The Pad tool's offset above its level and its thickness, as typed.
+    pad_offset: String,
+    pad_thickness: String,
+    /// The Site tab's dialogs and the fetch running for one.
+    site: site::Site,
     /// Each click ends a wall and starts the next; off, two clicks make one wall.
     chain: bool,
     /// The line the Wall tool's walls stand on.
@@ -1000,6 +1009,9 @@ impl BimApp {
             shaft_height: units.length(3000.0),
             mass_top: None,
             mass_height: units.length(3000.0),
+            pad_offset: units.length(0.0),
+            pad_thickness: units.length(300.0),
+            site: site::Site::default(),
             chain: true,
             wall_location: Location::Centre,
             attach_base: false,
@@ -1196,6 +1208,7 @@ impl BimApp {
             Tool::Ceiling => Some(msg!("Place Ceiling")),
             Tool::Shaft(_) => Some(msg!("Create Shaft Opening")),
             Tool::Mass(_) => Some(msg!("Create Mass")),
+            Tool::Pad(_) => Some(msg!("Create Pad")),
         };
         if let Some(what) = place {
             return Some(format!("{} | {}", t("Modify"), t(what)));
@@ -1281,6 +1294,7 @@ impl BimApp {
         self.tidy();
         self.poll_updates(&ctx);
         self.poll_revit(&ctx);
+        self.poll_site(&ctx);
         self.poll_autosave(&ctx);
         self.keys(&ctx);
         self.os_requests(&ctx);
@@ -1550,6 +1564,7 @@ impl BimApp {
             || self.autosave.show_recovery
             || self.installing()
             || self.importing()
+            || self.fetching()
             || self.report_open()
             // An open menu takes the keys: Esc closes it, not the tool.
             || egui::Popup::is_any_open(ctx)
@@ -1604,6 +1619,7 @@ impl BimApp {
             match (&self.tool, self.typed_length.is_empty() && self.drawing.other.is_empty()) {
                 (Tool::Railing(_), true) => self.finish_railing(level),
                 (Tool::Mass(_), true) => self.finish_mass(level),
+                (Tool::Pad(_), true) => self.finish_pad(level),
                 (Tool::DetailLine(_), true) => self.finish_detail_line(level),
                 (Tool::SketchLine(_), true) if self.shape().open_ended() => self.finish_open_shape(),
                 (_, true) => self.finish_wall(),
@@ -2211,9 +2227,13 @@ impl BimApp {
             Tool::Wall(chain) => chain.last().copied(),
             Tool::Run(_, start) => *start,
             Tool::Grid(start) | Tool::Move(start) | Tool::Copy(start) | Tool::Section(start) | Tool::SlopeArrow(start) => *start,
-            Tool::Stair(pts) | Tool::Ramp(pts) | Tool::Railing(pts) | Tool::Mass(pts) | Tool::DetailLine(pts) | Tool::SketchLine(pts) => {
-                pts.last().copied()
-            }
+            Tool::Stair(pts)
+            | Tool::Ramp(pts)
+            | Tool::Railing(pts)
+            | Tool::Mass(pts)
+            | Tool::Pad(pts)
+            | Tool::DetailLine(pts)
+            | Tool::SketchLine(pts) => pts.last().copied(),
             _ => None,
         }
     }
@@ -2264,6 +2284,7 @@ impl BimApp {
             Tool::Ramp(pts) if !pts.is_empty() => Tool::Ramp(Vec::new()),
             Tool::Railing(pts) if !pts.is_empty() => Tool::Railing(Vec::new()),
             Tool::Mass(pts) if !pts.is_empty() => Tool::Mass(Vec::new()),
+            Tool::Pad(pts) if !pts.is_empty() => Tool::Pad(Vec::new()),
             Tool::DetailLine(pts) if !pts.is_empty() => Tool::DetailLine(Vec::new()),
             Tool::Shaft(Some(_)) => Tool::Shaft(None),
             Tool::SlopeArrow(Some(_)) => Tool::SlopeArrow(None),
@@ -2363,6 +2384,7 @@ impl BimApp {
             | Tool::Railing(pts)
             | Tool::ExtrusionRoof(pts)
             | Tool::Mass(pts)
+            | Tool::Pad(pts)
             | Tool::DetailLine(pts) => pts.clear(),
             Tool::Move(_) | Tool::Copy(_) | Tool::SlopeArrow(_) | Tool::GableEdge => self.tool = Tool::Modify,
             _ => {}
@@ -2783,6 +2805,7 @@ impl BimApp {
                                 (Tab::Insert, msg!("Insert")),
                                 (Tab::Annotate, msg!("Annotate")),
                                 (Tab::Massing, msg!("Massing")),
+                                (Tab::Site, msg!("Site")),
                                 (Tab::View, msg!("View")),
                                 (Tab::Manage, msg!("Manage")),
                                 (Tab::Modify, "Modify"),
@@ -2877,6 +2900,7 @@ impl BimApp {
                         Tab::Insert => self.insert_tab(ui),
                         Tab::Annotate => self.annotate_tab(ui),
                         Tab::Massing => self.massing_tab(ui),
+                        Tab::Site => self.site_tab(ui),
                         Tab::View => self.view_tab(ui),
                         Tab::Manage => self.manage_tab(ui),
                         Tab::Modify | Tab::Context => self.modify_tab(ui),
@@ -3917,6 +3941,7 @@ impl BimApp {
                         height_options(ui, &self.session.model, level, &mut self.mass_top, &mut self.mass_height, "mass-top");
                     }
                 }
+                Tool::Pad(_) => self.pad_options(ui),
                 Tool::Ceiling => {
                     let l = ui.label(t("Height Offset:"));
                     let hint = self.session.model.units.name();
@@ -4225,6 +4250,9 @@ impl BimApp {
             Tool::Mass(pts) if pts.is_empty() => msg!("Click the first corner of the mass's footprint."),
             Tool::Mass(pts) if pts.len() < 3 => msg!("Click the footprint's next corner. Esc cancels."),
             Tool::Mass(_) => msg!("Click the next corner; Enter, or the first corner again, finishes the mass. Esc cancels."),
+            Tool::Pad(pts) if pts.is_empty() => msg!("Click the first corner of the pad's outline."),
+            Tool::Pad(pts) if pts.len() < 3 => msg!("Click the outline's next corner. Esc cancels."),
+            Tool::Pad(_) => msg!("Click the next corner; Enter, or the first corner again, finishes the pad. Esc cancels."),
             Tool::DetailLine(pts) if pts.is_empty() => msg!("Click where the detail line starts."),
             Tool::DetailLine(_) => "Click its next point; Enter finishes it, the first point again closes it. Esc cancels.",
             Tool::SlopeArrow(None) => msg!("Click the slope arrow's tail: where the floor's top stays at its height offset."),
@@ -4492,6 +4520,7 @@ impl BimApp {
         self.settings_window(ctx);
         self.installing_box(ctx);
         self.importing_box(ctx);
+        self.site_windows(ctx);
         self.report_window(ctx);
         if self.pending.is_none() {
             self.recovery_window(ctx);

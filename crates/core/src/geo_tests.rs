@@ -314,3 +314,60 @@ fn the_source_asked_for_goes_to_the_fetcher_and_buildings_then_stand_on_the_grou
     assert!(bases.iter().all(|b| (-100.0..2500.0).contains(b)), "on the ground fetched, not at the level: {bases:?}");
     assert!(bases.iter().any(|b| *b > 100.0), "{bases:?}");
 }
+
+// ---- what a desktop fetched on a thread, handed to the same commands ----
+
+#[test]
+fn a_prefetched_reply_runs_the_unchanged_fetch_osm_without_asking_the_real_fetcher_again() {
+    let real = Arc::new(Fake::new(overpass_reply()));
+    let mut s = session(real.clone());
+    let location = s.model.location.unwrap();
+    let bbox = Bbox::around(location.longitude, location.latitude, 500.0).unwrap();
+    // The thread's part: ask the real fetcher once, with the query the command would write.
+    let query = crate::geo::overpass_query(&bbox, crate::geo::Layers::default());
+    let reply = real.overpass(&bbox, &query).unwrap();
+    assert_eq!(real.asked.lock().unwrap().len(), 1);
+    // The UI thread's part: the command, over what was fetched.
+    let real_dyn: crate::geo::Fetcher = real.clone();
+    s.geo = Some(Arc::new(crate::geo::Prefetched::new(real_dyn, bbox).with_osm(query, reply)));
+    let r = run(&mut s, "fetch_osm", json!({"radius": 500}));
+    assert_eq!(r["made"], json!(2), "{r}");
+    assert_eq!(real.asked.lock().unwrap().len(), 1, "the real fetcher was not asked again");
+    assert!(r["attribution"].as_str().unwrap().contains("OpenStreetMap"), "the credit is the real source's: {r}");
+    s.execute("undo", &json!({})).unwrap();
+    assert_eq!(masses(&s), 0, "one undo step, as ever");
+}
+
+#[test]
+fn prefetched_elevation_serves_the_spacing_and_source_it_was_fetched_for_and_no_others() {
+    let real = Arc::new(Fake::new(String::new()));
+    let mut s = session(real.clone());
+    let location = s.model.location.unwrap();
+    let bbox = Bbox::around(location.longitude, location.latitude, 500.0).unwrap();
+    let spacing = crate::geo::default_spacing(&bbox);
+    let got = real.elevation(&bbox, spacing, Some("terrarium")).unwrap();
+    let real_dyn: crate::geo::Fetcher = real.clone();
+    let pre = crate::geo::Prefetched::new(real_dyn, bbox).with_elevation(spacing, Some("terrarium".into()), got);
+    // Another box, spacing or source is an error that says what was fetched, not a silent answer from the network.
+    let other = Bbox::around(location.longitude, location.latitude, 600.0).unwrap();
+    assert!(pre.elevation(&other, spacing, Some("terrarium")).unwrap_err().contains("fetched"));
+    assert!(pre.elevation(&bbox, spacing * 2.0, Some("terrarium")).unwrap_err().contains("fetched"));
+    assert!(pre.elevation(&bbox, spacing, Some("copernicus")).unwrap_err().contains("fetched"));
+    assert!(pre.overpass(&bbox, "x").unwrap_err().contains("fetched"));
+    assert_eq!(real.heights.lock().unwrap().len(), 1);
+    s.geo = Some(Arc::new(pre));
+    let r = run(&mut s, "fetch_terrain", json!({"radius": 500, "source": "terrarium"}));
+    assert_eq!(r["source"], json!("terrarium"), "{r}");
+    assert_eq!(terrain_count(&s), 1);
+    assert_eq!(real.heights.lock().unwrap().len(), 1, "the real fetcher was not asked again");
+}
+
+#[test]
+fn the_default_spacing_is_what_fetch_terrain_uses() {
+    let real = Arc::new(Fake::new(String::new()));
+    let mut s = session(real.clone());
+    run(&mut s, "fetch_terrain", json!({"radius": 700}));
+    let asked = real.heights.lock().unwrap()[0].clone();
+    assert_eq!(asked.1, crate::geo::default_spacing(&asked.0));
+    assert!(crate::geo::default_spacing(&Bbox::around(0.0, 0.0, 10.0).unwrap()) >= 10.0, "no finer than 10 m");
+}

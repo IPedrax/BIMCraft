@@ -469,6 +469,7 @@ version = "0.9.0"
 dependencies = [
  "bimcraft-core",
  "bimcraft-dwg",
+ "bimcraft-geofetch",
  "bimcraft-i18n",
  "bimcraft-rvt",
  "bimcraft-ui-egui",

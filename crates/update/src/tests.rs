@@ -341,6 +341,23 @@ fn only_the_desktop_app_can_reach_the_network() {
     }
 }
 
+#[test]
+fn the_window_library_fetches_only_through_what_the_app_attaches() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let read = |manifest: &str| std::fs::read_to_string(root.join(manifest)).unwrap();
+    // The Site tab asks the fetcher the session holds; it never names the crate that talks to the network.
+    let ui = read("crates/ui-egui/Cargo.toml");
+    for dep in ["bimcraft-geofetch", "ureq", "rustls", "reqwest", "hyper"] {
+        assert!(!ui.contains(dep), "crates/ui-egui depends on {dep}: only the desktop app's main attaches a fetcher");
+    }
+    assert!(read("apps/bimcraft/Cargo.toml").contains("bimcraft-geofetch"), "the desktop app attaches the fetcher");
+    // And the fetcher depends on neither the updater nor a window.
+    let geofetch = read("crates/geofetch/Cargo.toml");
+    for dep in ["bimcraft-update", "bimcraft-ui-egui", "egui"] {
+        assert!(!geofetch.contains(dep), "crates/geofetch depends on {dep}");
+    }
+}
+
 // ---------- preferences ----------
 
 use std::ffi::OsString;

@@ -5609,8 +5609,7 @@ fn fetch_terrain(s: &mut Session, p: &Value) -> R {
     let Some(location) = s.model.location else { return Err(bad(c, "the project has no location yet")) };
     let spacing = match num(c, p, "spacing")? {
         Some(x) => x,
-        // As fine as keeps the nodes to about 36,000, and no finer than 10 m.
-        None => (bbox.area_km2() * 1e6 / 36_000.0).sqrt().ceil().max(10.0),
+        None => crate::geo::default_spacing(&bbox),
     };
     let setting = match p.get("set_elevation") {
         v if absent(v) => true,

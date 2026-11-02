@@ -292,6 +292,61 @@ pub trait GeoSource: Send + Sync {
 /// A fetcher an app attached.
 pub type Fetcher = Arc<dyn GeoSource>;
 
+/// The spacing, metres, `fetch_terrain` uses when none is given: as fine as keeps the nodes to about 36,000, and no finer than 10 m.
+pub fn default_spacing(b: &Bbox) -> f64 {
+    (b.area_km2() * 1e6 / 36_000.0).sqrt().ceil().max(10.0)
+}
+
+/// What an app fetched on a thread of its own, held so the commands `fetch_osm` and `fetch_terrain` can be run on the main thread over it:
+/// they ask this for the same box, query, spacing and source, and are answered at once, from memory. One validation path, one undo
+/// step and one report, and the window never waits on the network. Anything else is refused, never fetched; the credits are the real
+/// source's.
+pub struct Prefetched {
+    inner: Fetcher,
+    bbox: Bbox,
+    osm: Option<(String, Reply)>,
+    heights: Option<(f64, Option<String>, Elevation)>,
+}
+
+impl Prefetched {
+    /// Nothing held yet, for `bbox`; `inner` names the credits.
+    pub fn new(inner: Fetcher, bbox: Bbox) -> Prefetched {
+        Prefetched { inner, bbox, osm: None, heights: None }
+    }
+
+    /// Holds the Overpass `reply` to `query`.
+    pub fn with_osm(mut self, query: String, reply: Reply) -> Prefetched {
+        self.osm = Some((query, reply));
+        self
+    }
+
+    /// Holds the heights fetched at `spacing` from `source` (as it was asked for).
+    pub fn with_elevation(mut self, spacing: f64, source: Option<String>, got: Elevation) -> Prefetched {
+        self.heights = Some((spacing, source, got));
+        self
+    }
+}
+
+impl GeoSource for Prefetched {
+    fn overpass(&self, bbox: &Bbox, query: &str) -> Result<Reply, String> {
+        match &self.osm {
+            Some((q, reply)) if *bbox == self.bbox && q == query => Ok(reply.clone()),
+            _ => Err("this is not what was fetched: ask again from the Site tab".into()),
+        }
+    }
+
+    fn elevation(&self, bbox: &Bbox, spacing: f64, source: Option<&str>) -> Result<Elevation, String> {
+        match &self.heights {
+            Some((sp, src, got)) if *bbox == self.bbox && *sp == spacing && src.as_deref() == source => Ok(got.clone()),
+            _ => Err("these are not the heights that were fetched: ask again from the Site tab".into()),
+        }
+    }
+
+    fn attribution(&self, what: &str) -> String {
+        self.inner.attribution(what)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

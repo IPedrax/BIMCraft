@@ -103,7 +103,7 @@ msgstr "Streckpunkt"
 msgid "Data Outlet"
 msgstr "Datauttag"
 
-#: crates/core/src/commands.rs:7941
+#: crates/core/src/commands.rs:7940
 msgid "Dependent"
 msgstr "Beroende"
 
@@ -167,8 +167,8 @@ msgstr "Öster"
 msgid "Elbow 90"
 msgstr "Böj 90"
 
-#: crates/core/src/commands.rs:7725
-#: crates/core/src/commands.rs:9409
+#: crates/core/src/commands.rs:7724
+#: crates/core/src/commands.rs:9408
 msgid "Elevation"
 msgstr "Fasad"
 
@@ -370,7 +370,7 @@ msgstr "Linjer ovanför"
 msgid "PVC"
 msgstr "PVC"
 
-#: crates/core/src/commands.rs:6163
+#: crates/core/src/commands.rs:6162
 msgid "Pad"
 msgstr ""
 
@@ -418,7 +418,7 @@ msgstr "Sättsteg"
 msgid "Roof tiles"
 msgstr "Takpannor"
 
-#: crates/core/src/commands.rs:6488
+#: crates/core/src/commands.rs:6487
 msgid "Room"
 msgstr "Rum"
 
@@ -446,8 +446,8 @@ msgstr "Avjämningsmassa"
 msgid "Seat Height"
 msgstr "Sitthöjd"
 
-#: crates/core/src/commands.rs:7702
-#: crates/core/src/commands.rs:9408
+#: crates/core/src/commands.rs:7701
+#: crates/core/src/commands.rs:9407
 msgid "Section"
 msgstr "Sektion"
 
@@ -547,7 +547,7 @@ msgstr "Platta 300"
 msgid "Timber"
 msgstr "Trä"
 
-#: crates/core/src/commands.rs:6199
+#: crates/core/src/commands.rs:6198
 msgid "Toposurface"
 msgstr ""
 
@@ -567,7 +567,7 @@ msgstr "Typ"
 msgid "UP"
 msgstr "UPP"
 
-#: crates/core/src/commands.rs:8082
+#: crates/core/src/commands.rs:8081
 msgid "Unnamed"
 msgstr "Namnlös"
 
