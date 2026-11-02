@@ -594,3 +594,76 @@ fn with_no_fetcher_or_no_tiles_the_map_is_lines_and_the_place_can_still_be_picke
     assert!(h.state().map().is_none());
     assert!(h.query_by_label("OK").is_some(), "the Location box is still there");
 }
+
+// ---- Build Shell ----
+
+fn masses_of(h: &Harness<BimApp>) -> Vec<Id> {
+    h.state().session.model.elements.iter().filter(|(_, e)| e.category() == "mass").map(|(id, _)| *id).collect()
+}
+
+/// A window with the fake's two buildings imported (house of 12 m, and a building of 3 levels), closed, and both selected.
+fn imported_and_selected() -> Harness<'static, BimApp> {
+    let mut h = located(Arc::new(Fake::new()));
+    press(&mut h, "Site");
+    press(&mut h, "Import from OpenStreetMap");
+    fetch(&mut h);
+    until_fetched(&mut h);
+    press(&mut h, "Close");
+    let masses = masses_of(&h);
+    assert_eq!(masses.len(), 2);
+    h.state_mut().selection = masses;
+    h.run();
+    h
+}
+
+#[test]
+fn build_shell_makes_the_walls_floors_and_roofs_of_the_buildings_selected_in_one_step() {
+    let mut h = imported_and_selected();
+    press(&mut h, "Build Shell");
+    press(&mut h, "OK");
+    // The project has its box of four walls already; each building has 4 and a roof; a 12 m house is four storeys, the
+    // three-level building three.
+    assert_eq!((count(&h, "wall"), count(&h, "floor"), count(&h, "roof")), (4 + 8, 7, 2));
+    assert!(h.query_by_label_contains("8 walls, 7 floors and 2 roofs").is_some(), "the box says what it made");
+    press(&mut h, "Close");
+    h.state_mut().session.execute("undo", &json!({})).unwrap();
+    assert_eq!((count(&h, "wall"), count(&h, "floor"), count(&h, "roof")), (4, 0, 0));
+    assert_eq!(count(&h, "mass"), 2, "the buildings stay");
+}
+
+#[test]
+fn build_shell_leaves_out_what_is_unticked_and_a_second_run_skips_what_has_a_shell() {
+    let mut h = imported_and_selected();
+    press(&mut h, "Build Shell");
+    pick(&mut h, Role::CheckBox, "Floors at each storey");
+    pick(&mut h, Role::CheckBox, "Roof (the shape the OpenStreetMap tags give, else flat)");
+    press(&mut h, "OK");
+    assert_eq!((count(&h, "wall"), count(&h, "floor"), count(&h, "roof")), (4 + 8, 0, 0));
+    press(&mut h, "Close");
+    // Again: the buildings have walls by face already.
+    press(&mut h, "Build Shell");
+    press(&mut h, "OK");
+    assert_eq!(count(&h, "wall"), 4 + 8);
+    assert!(h.query_by_label_contains("already have").is_some());
+}
+
+#[test]
+fn build_shell_needs_buildings_selected_and_a_storey_height_that_is_a_length() {
+    let mut h = imported_and_selected();
+    h.state_mut().selection.clear();
+    press(&mut h, "Build Shell");
+    assert!(h.state().status.error && h.state().status.text.contains("Select the buildings"), "{:?}", h.state().status);
+    assert!(h.query_by_label("OK").is_none(), "no box opens");
+    h.state_mut().selection = masses_of(&h);
+    h.run();
+    press(&mut h, "Build Shell");
+    type_into(&mut h, "Storey height", "tall");
+    press(&mut h, "OK");
+    assert!(h.query_by_label_contains("is not a length").is_some());
+    assert_eq!(count(&h, "wall"), 4);
+    type_into(&mut h, "Storey height", "4000");
+    press(&mut h, "OK");
+    assert_eq!(count(&h, "wall"), 4 + 8);
+    // 4 m storeys: the 12 m house has three, and the three-level building keeps its levels (3), 4 m apart.
+    assert_eq!(count(&h, "floor"), 6);
+}

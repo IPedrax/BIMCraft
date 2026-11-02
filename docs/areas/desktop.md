@@ -338,6 +338,8 @@ the box (Move map turns the drag back into a move), its km² shown against the 2
 fills the four degrees. The project's origin is marked. With no fetcher, or no tile, the map is a plain ground with its lines of
 latitude and longitude and the place can still be picked. What the map shows is `bimcraft_core::map`'s, so the widget only draws and
 passes the pointer in; the tests (`tests/site.rs`) read its state (`BimApp::map`) since a texture's pixels are not in the harness.
-Not yet: a toposurface drawn by clicking points, a right-click item for Place on Terrain. The tests (`tests/site.rs`)
+**Build Shell** (`site/shell.rs`, the Context panel) acts on the selected masses: a box with Storey height (blank: from each building's
+`OSM Levels`, else 3 m) and the checks Outer walls, Floors at each storey and Roof (the shape the OpenStreetMap tags give, else flat) runs
+`building_shell`, and a box says what was made, what already had a shell and the notes ([masses](massing.md#building-shell)). Not yet: a toposurface drawn by clicking points, a right-click item for Place on Terrain. The tests (`tests/site.rs`)
 give the session a fake fetcher and step frames until the thread answers (a spinner asks for frames forever: `step`, never `run`).
 The sandbox that built this has no graphics adapter, so the tab and its boxes were not looked at in the three looks: do that first.

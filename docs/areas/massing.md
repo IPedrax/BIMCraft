@@ -46,3 +46,19 @@ hold its levels and offsets and `Top Outline`, its corners as `x, y` parted by `
 
 Masses also come from OpenStreetMap: `import_osm` makes one for each building of a file, on the terrain, and keeps its `OSM Id` as a
 parameter so importing again updates it in place ([OSM import](osm-import.md)).
+
+## Building shell
+
+`building_shell {ids, storeys?, storey_height?, walls?, floors?, roof?, shape?, angle?, height?, orientation?}` (`commands.rs`, the pure
+roof planning in `shell.rs`) makes, for each mass chosen (up to 200 a command, one check, one undo step): a wall on each plumb edge
+(`wall_by_face`); **a floor at the base and over each storey** on the mass's own level at `base_offset + k x rise` (the storeys: `storeys`,
+else the mass's `OSM Levels`, else its height over `storey_height`, 3000; `rise` is `storey_height`, else the facade's height over their
+number), each marked `Mass Face` = `{mass, face: {storey: k, rise}}` so `update_by_face` re-places it (`massing::Face::Storey`); and a
+**roof** on top of the walls: `shape` (else `OSM Roof Shape`) flat, hipped, pyramidal (a hip on a square) or gabled; any other value is a
+flat roof and is said in the reply's `notes`. The slope is `angle` (else `OSM Roof Angle`), else what makes the roof `height` mm tall
+(`OSM Roof Height`: the roof is laid out once at 45 degrees and its peak, proportional to the slope's tangent, gives the slope; cut to 75
+degrees, said), else 30. A gabled roof stands the footprint's two edges across its ridge upright (the ridge runs along the smallest
+enclosing rectangle's longer side, or across it with `orientation: "across"`); a footprint that is not near a rectangle (under 80% of
+its rectangle) or has no edge across the ridge at each end gets a hipped roof, said. A footprint of more than 256 corners gets a flat
+roof. A mass that has walls, floors or a roof made by face already is skipped (`skipped` in the reply), so a second run never doubles.
+

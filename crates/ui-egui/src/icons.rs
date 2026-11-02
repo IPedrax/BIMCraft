@@ -190,6 +190,7 @@ icon_names! {
     PlaceOnTerrain,
     Location,
     FromMap,
+    Shell,
 }
 
 /// A single unfilled contour in grid coordinates, shared by egui and the catalog.
@@ -1011,6 +1012,12 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.arc((12.0, 9.0), 5.5, 0.0, std::f32::consts::TAU);
             g.line(&[(8.0, 13.0), (12.0, 21.0), (16.0, 13.0)]);
             g.circle((12.0, 9.0), 1.8);
+        }
+        Icon::Shell => {
+            // A house: walls, a floor across them and a hipped roof.
+            g.closed(&[(4.0, 12.0), (4.0, 20.0), (20.0, 20.0), (20.0, 12.0)]);
+            g.line(&[(2.0, 12.0), (12.0, 4.0), (22.0, 12.0)]);
+            g.line(&[(4.0, 16.0), (20.0, 16.0)]);
         }
         Icon::FromMap => {
             // Buildings, as a map of them: three blocks of different heights.

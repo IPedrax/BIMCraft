@@ -6,6 +6,7 @@
 //! command through [`Prefetched`], so one validation, one undo step and one report, and the window never waits on the network.
 
 mod map;
+mod shell;
 
 use std::sync::mpsc::{Receiver, TryRecvError, channel};
 use std::time::Duration;
@@ -109,6 +110,8 @@ pub(crate) struct Site {
     said: Option<Said>,
     /// The map a place or an area is picked on.
     map: Option<map::MapBox>,
+    /// The Build Shell box.
+    shell: Option<shell::ShellBox>,
 }
 
 /// The elevation sources the Terrain box offers: how they are named to the command, and shown.
@@ -191,6 +194,12 @@ impl BimApp {
                 .clicked()
             {
                 self.open_area(Kind::Osm);
+            }
+            let tip = msg!(
+                "Build Shell: the outer walls, a floor at each storey and the roof of the selected buildings, as their OpenStreetMap tags describe them"
+            );
+            if big_button(ui, Icon::Shell, "Build Shell", self.site.shell.is_some(), tip).clicked() {
+                self.open_shell();
             }
         });
     }
@@ -723,6 +732,7 @@ impl BimApp {
         self.fetching_box(ctx);
         self.said_window(ctx);
         self.map_window(ctx);
+        self.shell_window(ctx);
     }
 
     // ---- The Pad tool, Place on Terrain, Cut/Fill ----
