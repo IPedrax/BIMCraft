@@ -7,7 +7,8 @@ and `topo_tests.rs`. OpenStreetMap buildings stand on it ([OSM import](osm-impor
 
 ## The element
 
-`Toposurface`: `points` ([x, y, z] mm, **z above sea level, not over a level**), optional `breaklines` (polylines in 3D that triangle
+`Toposurface`: `points` ([x, y, z] mm, **z in project coordinates, as a level's elevation is: 0 is the height of the project's origin**,
+which `geolocate`'s `elevation` puts above sea level; not over a level), optional `breaklines` (polylines in 3D that triangle
 edges follow: ridges, valleys, kerbs), an optional `boundary` (a ring in plan; whole triangles outside it are dropped), a `material`
 (none: the terrain's own colour), an `interval` (the mm between the contours plans draw: 1000 by default, 0 for none) and `params`
 (so it has phases, design options and project parameters, category `toposurface`). No level: it is on every level's plan.
@@ -36,6 +37,11 @@ a plan drawn again, a height asked again, is not triangulating again.
 - **Schedules**: category `toposurface`: Name, Material, Area, Surface Area, Lowest, Highest, Points.
 - **IFC**: an `IfcGeographicElement` (`.TERRAIN.`) with a face set, contained in the `IfcSite`, with its material. Import makes a
   toposurface of such an element, from its vertices (breaklines, boundary and interval are not in IFC).
+
+## Heights
+
+A level's elevation and a terrain's z are both project coordinates, so a building at terrain height 3 m is 3 m over Level 1 whatever the
+site's height above sea level; data in metres above sea level (a DEM) must have the project origin's `elevation` taken off first.
 
 ## Not yet
 

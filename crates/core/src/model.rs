@@ -558,7 +558,8 @@ impl Mass {
     }
 }
 
-/// Terrain, Revit's toposurface: surveyed `points` (x, y, z in mm, z above sea level, not over a level), `breaklines` that its
+/// Terrain, Revit's toposurface: surveyed `points` (x, y, z in mm, z in project coordinates, as a level's elevation is: 0 is the
+/// height of the project's origin, which `Location::elevation` puts above sea level; not over a level), `breaklines` that its
 /// triangles follow (ridges, valleys, kerbs), and a `boundary` that cuts away what is outside it. Plans draw its contours every
 /// `interval` mm (none, if 0), the 3D view its triangles in `material`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

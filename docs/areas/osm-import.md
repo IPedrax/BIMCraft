@@ -46,6 +46,12 @@ link; what you added to its parameters stays); `replace: false` makes new ones. 
 **Walls on request**: `detail: ["way/123", …]` (up to 50) also runs `wall_by_face`, `floor_by_face` and `roof_by_face` on those
 masses. Everything else stays a mass: a district of thousands is one command, one model check, one undo step.
 
+## Seeing them in plans
+
+A plan draws a mass (dashed) where its cut plane passes through it, as Revit's does. The masses of a sloping site stand at the
+ground, so on ground higher than a level's cut plane (1200 mm over it by default) they are not in that level's plan: raise the plan's
+view range, or add levels at the site's heights. The 3D view and schedules show every one.
+
 ## Checking it
 
 `bimcraft-cli run --cmd 'geolocate {...}' --cmd 'import_osm {"path": "block.json"}' --save /tmp/block.ifc` and `python

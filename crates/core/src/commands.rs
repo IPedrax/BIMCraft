@@ -268,7 +268,8 @@ pub static ALL: &[Command] = &[
         "Toposurface",
         &[],
         "{points: [[x,y,z],…], breaklines?: [[[x,y,z],…],…], boundary?: [[x,y],…], name?, material?, interval?} terrain, Revit's \
-         toposurface: a surface through surveyed points (mm, z above sea level), triangulated (Delaunay) so that its triangles follow \
+         toposurface: a surface through surveyed points (mm, z in project coordinates as a level's elevation is: 0 is the height of the \
+         project's origin), triangulated (Delaunay) so that its triangles follow \
          the `breaklines` (ridges, valleys, kerbs; one that crosses an earlier one is skipped) and none lie outside `boundary`. \
          `interval` is the mm between the contours plans draw (1000 by default; 0, none). Reports its triangles, plan area and \
          heights. Ask it with `height_at` and `contours`; it moves, turns and mirrors in plan, and its heights stay",
