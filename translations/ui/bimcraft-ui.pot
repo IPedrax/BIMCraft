@@ -314,7 +314,7 @@ msgstr ""
 msgid "All"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:436
+#: crates/ui-egui/src/catalogue.rs:432
 msgid "Allowed systems (comma separated):"
 msgstr ""
 
@@ -386,15 +386,15 @@ msgstr ""
 msgid "Apply Overrides"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:280
+#: crates/ui-egui/src/catalogue.rs:276
 msgid "Apply carrier settings"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:443
+#: crates/ui-egui/src/catalogue.rs:439
 msgid "Apply compartment"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:356
+#: crates/ui-egui/src/catalogue.rs:352
 msgid "Apply measured section"
 msgstr ""
 
@@ -464,7 +464,7 @@ msgstr ""
 msgid "Auto-Detect"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:279
+#: crates/ui-egui/src/catalogue.rs:275
 msgid "Automatic carrier sizing"
 msgstr ""
 
@@ -622,7 +622,7 @@ msgstr ""
 msgid "Black and White"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:335
+#: crates/ui-egui/src/catalogue.rs:331
 msgid "Blind box"
 msgstr ""
 
@@ -652,10 +652,6 @@ msgstr ""
 
 #: crates/ui-egui/src/sketch.rs:665
 msgid "Boundary Line: sketch the shaft opening's outline"
-msgstr ""
-
-#: crates/ui-egui/src/catalogue.rs:257
-msgid "Box limits: 35% blind, 40% lidded; measured clear section required. This is not a full compliance check."
 msgstr ""
 
 #: crates/core/src/model.rs:2043
@@ -706,7 +702,7 @@ msgstr ""
 msgid "Cable carrier check failed: {}"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:484
+#: crates/ui-egui/src/catalogue.rs:480
 msgid "Cable carrier conflicts: {}. Review selected carriers."
 msgstr ""
 
@@ -795,11 +791,11 @@ msgstr ""
 msgid "Carrier Type Properties"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:417
+#: crates/ui-egui/src/catalogue.rs:413
 msgid "Carrier compartments"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:342
+#: crates/ui-egui/src/catalogue.rs:338
 msgid "Carrier enclosure"
 msgstr ""
 
@@ -918,7 +914,7 @@ msgstr ""
 msgid "Check None"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:283
+#: crates/ui-egui/src/catalogue.rs:279
 msgid "Check and highlight carriers"
 msgstr ""
 
@@ -975,11 +971,11 @@ msgstr ""
 msgid "Clear Recent Files"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:349
+#: crates/ui-egui/src/catalogue.rs:345
 msgid "Clear depth:"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:370
+#: crates/ui-egui/src/catalogue.rs:366
 msgid "Clear measured section"
 msgstr ""
 
@@ -987,7 +983,7 @@ msgstr ""
 msgid "Clear the Search"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:349
+#: crates/ui-egui/src/catalogue.rs:345
 msgid "Clear width:"
 msgstr ""
 
@@ -1484,19 +1480,19 @@ msgstr ""
 msgid "Comparison"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:434
+#: crates/ui-egui/src/catalogue.rs:430
 msgid "Compartment depth:"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:432
+#: crates/ui-egui/src/catalogue.rs:428
 msgid "Compartment name:"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:435
+#: crates/ui-egui/src/catalogue.rs:431
 msgid "Compartment offset:"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:433
+#: crates/ui-egui/src/catalogue.rs:429
 msgid "Compartment width:"
 msgstr ""
 
@@ -1520,7 +1516,7 @@ msgstr ""
 msgid "Concrete block"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:339
+#: crates/ui-egui/src/catalogue.rs:335
 msgid "Conduit"
 msgstr ""
 
@@ -1924,7 +1920,7 @@ msgstr ""
 msgid "Demolished"
 msgstr ""
 
-#: crates/core/src/commands.rs:6091
+#: crates/core/src/commands.rs:6087
 msgid "Dependent"
 msgstr ""
 
@@ -2365,15 +2361,15 @@ msgstr ""
 msgid "Enter a name for every type and pattern."
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:418
+#: crates/ui-egui/src/catalogue.rs:414
 msgid "Enter measured usable dimensions and permitted systems. Empty systems allow any system."
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:458
+#: crates/ui-egui/src/catalogue.rs:454
 msgid "Enter valid compartment lengths."
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:366
+#: crates/ui-egui/src/catalogue.rs:362
 msgid "Enter valid internal lengths or leave unknown dimensions blank."
 msgstr ""
 
@@ -2394,7 +2390,7 @@ msgstr ""
 msgid "Equipment catalogue could not be loaded: {}"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:529
+#: crates/ui-egui/src/catalogue.rs:525
 msgid "Equipment catalogue could not be synchronized: {}"
 msgstr ""
 
@@ -3306,7 +3302,7 @@ msgstr ""
 msgid "Label:"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:338
+#: crates/ui-egui/src/catalogue.rs:334
 msgid "Ladder"
 msgstr ""
 
@@ -3393,7 +3389,7 @@ msgstr ""
 msgid "Level Schedule"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:336
+#: crates/ui-egui/src/catalogue.rs:332
 msgid "Lidded box"
 msgstr ""
 
@@ -3590,7 +3586,7 @@ msgstr ""
 msgid "Location Line:"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:294
+#: crates/ui-egui/src/catalogue.rs:290
 msgid "Lock selected carrier sizes"
 msgstr ""
 
@@ -3722,7 +3718,7 @@ msgstr ""
 msgid "Maximum Riser Height"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:275
+#: crates/ui-egui/src/catalogue.rs:271
 msgid "Maximum fill (%):"
 msgstr ""
 
@@ -3734,7 +3730,7 @@ msgstr ""
 msgid "Measure (ME): click two points; their length and angle read beside the ruler between them"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:331
+#: crates/ui-egui/src/catalogue.rs:327
 msgid "Measured product section"
 msgstr ""
 
@@ -3803,7 +3799,7 @@ msgstr ""
 msgid "Mirrored"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:551
+#: crates/ui-egui/src/catalogue.rs:547
 msgid "Missing catalogue product types: {}. Geometry is retained; schedules omit these products."
 msgstr ""
 
@@ -4980,7 +4976,7 @@ msgstr ""
 msgid "Project Units (UN): how lengths show and read; now {}"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:260
+#: crates/ui-egui/src/catalogue.rs:256
 msgid "Project carrier type"
 msgstr ""
 
@@ -5203,7 +5199,7 @@ msgstr ""
 msgid "Remove Paint: take the paint off the face you click in the 3D view"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:461
+#: crates/ui-egui/src/catalogue.rs:457
 msgid "Remove compartment"
 msgstr ""
 
@@ -5398,10 +5394,6 @@ msgstr ""
 
 #: crates/core/src/sheet.rs:215
 msgid "SCALE AS INDICATED"
-msgstr ""
-
-#: crates/ui-egui/src/catalogue.rs:255
-msgid "SP 76.13330.2016: maximum box fill only"
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:2846
@@ -5943,7 +5935,7 @@ msgstr ""
 msgid "Speakers"
 msgstr ""
 
-#: crates/core/src/commands.rs:6786
+#: crates/core/src/commands.rs:6782
 msgid "Specification Items"
 msgstr ""
 
@@ -6493,7 +6485,7 @@ msgstr ""
 msgid "Transparency"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:337
+#: crates/ui-egui/src/catalogue.rs:333
 msgid "Tray"
 msgstr ""
 
@@ -6665,7 +6657,7 @@ msgstr ""
 msgid "Units"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:334
+#: crates/ui-egui/src/catalogue.rs:330
 msgid "Unknown"
 msgstr ""
 
@@ -6673,11 +6665,11 @@ msgstr ""
 msgid "Unlink"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:295
+#: crates/ui-egui/src/catalogue.rs:291
 msgid "Unlock selected carrier sizes"
 msgstr ""
 
-#: crates/core/src/commands.rs:6232
+#: crates/core/src/commands.rs:6228
 msgid "Unnamed"
 msgstr ""
 
@@ -6685,8 +6677,8 @@ msgstr ""
 msgid "Unsaved changes"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:261
-#: crates/ui-egui/src/catalogue.rs:263
+#: crates/ui-egui/src/catalogue.rs:257
+#: crates/ui-egui/src/catalogue.rs:259
 msgid "Unspecified"
 msgstr ""
 
@@ -6903,7 +6895,7 @@ msgstr ""
 msgid "Wardrobe"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:278
+#: crates/ui-egui/src/catalogue.rs:274
 msgid "Warn and highlight carriers"
 msgstr ""
 
@@ -6985,7 +6977,7 @@ msgstr ""
 msgid "Wire (EW): click its start and its end; a chain of clicks makes a wire for each step"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:394
+#: crates/ui-egui/src/catalogue.rs:390
 msgid "Wire compartment"
 msgstr ""
 

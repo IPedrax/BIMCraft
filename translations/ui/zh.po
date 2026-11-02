@@ -314,7 +314,7 @@ msgstr "对齐尺寸标注 (DI)：选取平行的墙面、墙端、门、窗或�
 msgid "All"
 msgstr "全部"
 
-#: crates/ui-egui/src/catalogue.rs:436
+#: crates/ui-egui/src/catalogue.rs:432
 msgid "Allowed systems (comma separated):"
 msgstr ""
 
@@ -386,15 +386,15 @@ msgstr "将隐藏/隔离应用到视图"
 msgid "Apply Overrides"
 msgstr "应用替换"
 
-#: crates/ui-egui/src/catalogue.rs:280
+#: crates/ui-egui/src/catalogue.rs:276
 msgid "Apply carrier settings"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:443
+#: crates/ui-egui/src/catalogue.rs:439
 msgid "Apply compartment"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:356
+#: crates/ui-egui/src/catalogue.rs:352
 msgid "Apply measured section"
 msgstr ""
 
@@ -464,7 +464,7 @@ msgstr "自动 - 原点到原点"
 msgid "Auto-Detect"
 msgstr "自动检测"
 
-#: crates/ui-egui/src/catalogue.rs:279
+#: crates/ui-egui/src/catalogue.rs:275
 msgid "Automatic carrier sizing"
 msgstr ""
 
@@ -622,7 +622,7 @@ msgstr "床"
 msgid "Black and White"
 msgstr "黑白"
 
-#: crates/ui-egui/src/catalogue.rs:335
+#: crates/ui-egui/src/catalogue.rs:331
 msgid "Blind box"
 msgstr ""
 
@@ -653,10 +653,6 @@ msgstr "边界线：在上一标高绘制屋顶的迹线及其中的天井"
 #: crates/ui-egui/src/sketch.rs:665
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "边界线：绘制竖井洞口的轮廓"
-
-#: crates/ui-egui/src/catalogue.rs:257
-msgid "Box limits: 35% blind, 40% lidded; measured clear section required. This is not a full compliance check."
-msgstr ""
 
 #: crates/core/src/model.rs:2043
 msgid "Brick"
@@ -706,7 +702,7 @@ msgstr ""
 msgid "Cable carrier check failed: {}"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:484
+#: crates/ui-egui/src/catalogue.rs:480
 msgid "Cable carrier conflicts: {}. Review selected carriers."
 msgstr ""
 
@@ -795,11 +791,11 @@ msgstr "显卡：{}"
 msgid "Carrier Type Properties"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:417
+#: crates/ui-egui/src/catalogue.rs:413
 msgid "Carrier compartments"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:342
+#: crates/ui-egui/src/catalogue.rs:338
 msgid "Carrier enclosure"
 msgstr ""
 
@@ -918,7 +914,7 @@ msgstr "全部勾选"
 msgid "Check None"
 msgstr "全部不选"
 
-#: crates/ui-egui/src/catalogue.rs:283
+#: crates/ui-egui/src/catalogue.rs:279
 msgid "Check and highlight carriers"
 msgstr ""
 
@@ -975,11 +971,11 @@ msgstr "清除替换"
 msgid "Clear Recent Files"
 msgstr "清除最近的文件"
 
-#: crates/ui-egui/src/catalogue.rs:349
+#: crates/ui-egui/src/catalogue.rs:345
 msgid "Clear depth:"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:370
+#: crates/ui-egui/src/catalogue.rs:366
 msgid "Clear measured section"
 msgstr ""
 
@@ -987,7 +983,7 @@ msgstr ""
 msgid "Clear the Search"
 msgstr "清除搜索"
 
-#: crates/ui-egui/src/catalogue.rs:349
+#: crates/ui-egui/src/catalogue.rs:345
 msgid "Clear width:"
 msgstr ""
 
@@ -1484,19 +1480,19 @@ msgstr "紧凑"
 msgid "Comparison"
 msgstr "比较"
 
-#: crates/ui-egui/src/catalogue.rs:434
+#: crates/ui-egui/src/catalogue.rs:430
 msgid "Compartment depth:"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:432
+#: crates/ui-egui/src/catalogue.rs:428
 msgid "Compartment name:"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:435
+#: crates/ui-egui/src/catalogue.rs:431
 msgid "Compartment offset:"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:433
+#: crates/ui-egui/src/catalogue.rs:429
 msgid "Compartment width:"
 msgstr ""
 
@@ -1520,7 +1516,7 @@ msgstr "混凝土"
 msgid "Concrete block"
 msgstr "混凝土砌块"
 
-#: crates/ui-egui/src/catalogue.rs:339
+#: crates/ui-egui/src/catalogue.rs:335
 msgid "Conduit"
 msgstr "线管"
 
@@ -1924,7 +1920,7 @@ msgstr "拆除 (DW)：单击图元，在视图阶段中将其拆除；再次单�
 msgid "Demolished"
 msgstr "已拆除"
 
-#: crates/core/src/commands.rs:6091
+#: crates/core/src/commands.rs:6087
 msgid "Dependent"
 msgstr "相关"
 
@@ -2365,15 +2361,15 @@ msgstr "请为每个样式和图案输入名称。"
 msgid "Enter a name for every type and pattern."
 msgstr "请为每个类型和图案输入名称。"
 
-#: crates/ui-egui/src/catalogue.rs:418
+#: crates/ui-egui/src/catalogue.rs:414
 msgid "Enter measured usable dimensions and permitted systems. Empty systems allow any system."
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:458
+#: crates/ui-egui/src/catalogue.rs:454
 msgid "Enter valid compartment lengths."
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:366
+#: crates/ui-egui/src/catalogue.rs:362
 msgid "Enter valid internal lengths or leave unknown dimensions blank."
 msgstr ""
 
@@ -2394,7 +2390,7 @@ msgstr ""
 msgid "Equipment catalogue could not be loaded: {}"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:529
+#: crates/ui-egui/src/catalogue.rs:525
 msgid "Equipment catalogue could not be synchronized: {}"
 msgstr ""
 
@@ -3306,7 +3302,7 @@ msgstr "厨房水槽"
 msgid "Label:"
 msgstr "标签："
 
-#: crates/ui-egui/src/catalogue.rs:338
+#: crates/ui-egui/src/catalogue.rs:334
 msgid "Ladder"
 msgstr ""
 
@@ -3393,7 +3389,7 @@ msgstr "标高高程"
 msgid "Level Schedule"
 msgstr "标高明细表"
 
-#: crates/ui-egui/src/catalogue.rs:336
+#: crates/ui-egui/src/catalogue.rs:332
 msgid "Lidded box"
 msgstr ""
 
@@ -3590,7 +3586,7 @@ msgstr "定位线"
 msgid "Location Line:"
 msgstr "定位线："
 
-#: crates/ui-egui/src/catalogue.rs:294
+#: crates/ui-egui/src/catalogue.rs:290
 msgid "Lock selected carrier sizes"
 msgstr ""
 
@@ -3722,7 +3718,7 @@ msgstr "最大化"
 msgid "Maximum Riser Height"
 msgstr "最大踢面高度"
 
-#: crates/ui-egui/src/catalogue.rs:275
+#: crates/ui-egui/src/catalogue.rs:271
 msgid "Maximum fill (%):"
 msgstr ""
 
@@ -3734,7 +3730,7 @@ msgstr "测量"
 msgid "Measure (ME): click two points; their length and angle read beside the ruler between them"
 msgstr "测量 (ME)：单击两点；其长度和角度显示在两点之间的标尺旁"
 
-#: crates/ui-egui/src/catalogue.rs:331
+#: crates/ui-egui/src/catalogue.rs:327
 msgid "Measured product section"
 msgstr ""
 
@@ -3803,7 +3799,7 @@ msgstr "镜像 - 拾取轴 (MM)：选取作为镜像轴的墙或轴网"
 msgid "Mirrored"
 msgstr "已镜像"
 
-#: crates/ui-egui/src/catalogue.rs:551
+#: crates/ui-egui/src/catalogue.rs:547
 msgid "Missing catalogue product types: {}. Geometry is retained; schedules omit these products."
 msgstr ""
 
@@ -4980,7 +4976,7 @@ msgstr "项目单位"
 msgid "Project Units (UN): how lengths show and read; now {}"
 msgstr "项目单位 (UN)：长度的显示和输入方式；当前为 {}"
 
-#: crates/ui-egui/src/catalogue.rs:260
+#: crates/ui-egui/src/catalogue.rs:256
 msgid "Project carrier type"
 msgstr ""
 
@@ -5203,7 +5199,7 @@ msgstr "移除油漆"
 msgid "Remove Paint: take the paint off the face you click in the 3D view"
 msgstr "移除油漆：去除三维视图中您单击的面上的油漆"
 
-#: crates/ui-egui/src/catalogue.rs:461
+#: crates/ui-egui/src/catalogue.rs:457
 msgid "Remove compartment"
 msgstr ""
 
@@ -5399,10 +5395,6 @@ msgstr "比例"
 #: crates/core/src/sheet.rs:215
 msgid "SCALE AS INDICATED"
 msgstr "比例如图所示"
-
-#: crates/ui-egui/src/catalogue.rs:255
-msgid "SP 76.13330.2016: maximum box fill only"
-msgstr ""
 
 #: crates/ui-egui/src/lib.rs:2846
 msgid "SVG drawing"
@@ -5943,7 +5935,7 @@ msgstr "间距："
 msgid "Speakers"
 msgstr "扬声器"
 
-#: crates/core/src/commands.rs:6786
+#: crates/core/src/commands.rs:6782
 msgid "Specification Items"
 msgstr ""
 
@@ -6493,7 +6485,7 @@ msgstr "选中图元总数：{}"
 msgid "Transparency"
 msgstr "透明度"
 
-#: crates/ui-egui/src/catalogue.rs:337
+#: crates/ui-egui/src/catalogue.rs:333
 msgid "Tray"
 msgstr ""
 
@@ -6665,7 +6657,7 @@ msgstr "取消隐藏图元"
 msgid "Units"
 msgstr "单位"
 
-#: crates/ui-egui/src/catalogue.rs:334
+#: crates/ui-egui/src/catalogue.rs:330
 msgid "Unknown"
 msgstr ""
 
@@ -6673,11 +6665,11 @@ msgstr ""
 msgid "Unlink"
 msgstr ""
 
-#: crates/ui-egui/src/catalogue.rs:295
+#: crates/ui-egui/src/catalogue.rs:291
 msgid "Unlock selected carrier sizes"
 msgstr ""
 
-#: crates/core/src/commands.rs:6232
+#: crates/core/src/commands.rs:6228
 msgid "Unnamed"
 msgstr "未命名"
 
@@ -6685,8 +6677,8 @@ msgstr "未命名"
 msgid "Unsaved changes"
 msgstr "有未保存的更改"
 
-#: crates/ui-egui/src/catalogue.rs:261
-#: crates/ui-egui/src/catalogue.rs:263
+#: crates/ui-egui/src/catalogue.rs:257
+#: crates/ui-egui/src/catalogue.rs:259
 msgid "Unspecified"
 msgstr ""
 
@@ -6903,7 +6895,7 @@ msgstr "面墙 (WB)：在所选体量底面轮廓的每条边上创建一面墙"
 msgid "Wardrobe"
 msgstr "衣柜"
 
-#: crates/ui-egui/src/catalogue.rs:278
+#: crates/ui-egui/src/catalogue.rs:274
 msgid "Warn and highlight carriers"
 msgstr ""
 
@@ -6985,7 +6977,7 @@ msgstr "导线"
 msgid "Wire (EW): click its start and its end; a chain of clicks makes a wire for each step"
 msgstr "导线 (EW)：单击起点和终点；连续单击可为每一段创建一根导线"
 
-#: crates/ui-egui/src/catalogue.rs:394
+#: crates/ui-egui/src/catalogue.rs:390
 msgid "Wire compartment"
 msgstr ""
 
@@ -8184,4 +8176,10 @@ msgstr "导线"
 #~ msgstr "线管"
 #: crates/ui-egui/src/catalogue.rs:243
 #~ msgid "Explicit project limit for gross section; no regulatory profile is assumed."
+#~ msgstr ""
+#: crates/ui-egui/src/catalogue.rs:257
+#~ msgid "Box limits: 35% blind, 40% lidded; measured clear section required. This is not a full compliance check."
+#~ msgstr ""
+#: crates/ui-egui/src/catalogue.rs:255
+#~ msgid "SP 76.13330.2016: maximum box fill only"
 #~ msgstr ""
