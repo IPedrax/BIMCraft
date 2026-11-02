@@ -1665,6 +1665,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let floor = Floor {
             params: Default::default(),
             sketch: Vec::new(),
+            shape: Default::default(),
             type_name,
             level,
             boundary: ring.into_iter().map(flat).collect(),

@@ -69,7 +69,9 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 11: a project's language may be Swedish,
+/// The version of the project file this build writes, and the newest it reads. 12: a floor may have a shape (`shape`: points
+/// and split lines on its top, parts); nothing in a file of 11 changes, but a build that reads up to 11 would leave a shape
+/// out as a field it doesn't know and draw the floor flat. 11: a project's language may be Swedish,
 /// Czech or French (`sv`, `cs`, `fr`); nothing in a file of 10 changes, but a build that reads up to 10 would answer one of
 /// 11 with a serde error ("unknown variant"), not "saved by a newer BIMCraft". 8: text types (`text_types`, library
 /// entries of kind `text-type`); a note names its type, which holds its size, and may override parts of its formatting
@@ -87,7 +89,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 11;
+pub const FORMAT: u32 = 12;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -449,10 +451,62 @@ pub struct Floor {
     /// was made another way (over the walls, from a file); Edit Boundary then starts from its outline.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sketch: Vec<crate::sketch::SketchLine>,
+    /// Points and split lines on its top, which fold it into planes (falls to a drain, a ridge, a valley); none, it's flat
+    /// or one slope.
+    #[serde(default, skip_serializing_if = "Shape::is_empty")]
+    pub shape: Shape,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
 }
+
+/// A floor's top folded into planes: points raised or lowered on it, and split lines it folds along. Between them it's
+/// triangles (`triangulation::constrained`), its outline's and its openings' corners at their height unless a point is
+/// there, and neighbours in one plane are one piece (`Model::floor_faces`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Shape {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub points: Vec<ShapePoint>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lines: Vec<SplitLine>,
+}
+
+impl Shape {
+    pub fn is_empty(&self) -> bool {
+        self.points.is_empty() && self.lines.is_empty()
+    }
+}
+
+/// A point on a floor's top, `z` mm above (negative, below) where the top would be without its shape. A part, with an id
+/// and a GUID of its own.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ShapePoint {
+    #[serde(default, skip_serializing_if = "crate::ids::unset")]
+    pub id: crate::ids::Id,
+    #[serde(default, skip_serializing_if = "crate::ids::Guid::is_nil")]
+    pub guid: crate::ids::Guid,
+    pub at: P2,
+    pub z: f64,
+}
+
+/// A line a floor's top folds along, from `a` to `b`, each end one of its shape's points or a corner of its outline or an
+/// opening. A part, with an id and a GUID of its own.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SplitLine {
+    #[serde(default, skip_serializing_if = "crate::ids::unset")]
+    pub id: crate::ids::Id,
+    #[serde(default, skip_serializing_if = "crate::ids::Guid::is_nil")]
+    pub guid: crate::ids::Guid,
+    pub a: P2,
+    pub b: P2,
+}
+
+/// The most points a shape has, and the most split lines.
+pub const MAX_SHAPE_POINTS: usize = 2_000;
+pub const MAX_SPLIT_LINES: usize = 2_000;
 
 /// A ceiling along `boundary` (counter-clockwise), open through its `openings` (holes inside it,
 /// apart), its underside `offset` mm above its level, its type's thickness over that.
@@ -1340,6 +1394,21 @@ impl Element {
             Element::Roof(r) => Some(&r.sketch),
             Element::Shaft(sh) => Some(&sh.sketch),
             Element::FilledRegion(r) => Some(&r.sketch),
+            _ => None,
+        }
+    }
+
+    /// Its shape, when it's of a kind that has one: a floor's.
+    pub fn shape(&self) -> Option<&Shape> {
+        match self {
+            Element::Floor(f) => Some(&f.shape),
+            _ => None,
+        }
+    }
+
+    pub fn shape_mut(&mut self) -> Option<&mut Shape> {
+        match self {
+            Element::Floor(f) => Some(&mut f.shape),
             _ => None,
         }
     }
@@ -2812,6 +2881,7 @@ impl Model {
         // dimension type; one of 10 read by 9 would measure its points as lines. A dimension of 9 gets its kind's type.
         self.typed_dimensions();
         // 10 to 11 (Swedish, Czech and French as a project's language) has no step: a file of 10 holds none of them.
+        // 11 to 12 (a floor's shape) has none either: a file of 11 holds no shape.
         self.format = FORMAT;
     }
 
@@ -3745,17 +3815,63 @@ impl Model {
         }
     }
 
-    /// How far a floor's underside lies below its top, plumb: its type's thickness across its slope.
+    /// How far a floor's underside lies below its top, plumb: its type's thickness across its slope. A shaped floor has
+    /// no slope, so it's its type's thickness plumb, and its planes meet underneath as they do on top.
     pub fn floor_depth(&self, f: &Floor) -> f64 {
         self.types.floor.get(&f.type_name).map_or(0.0, |t| t.thickness) / f.slope.to_radians().cos()
+    }
+
+    /// A floor's top in pieces, less its openings, each counter-clockwise with the plane it lies in: its outline over
+    /// `floor_top` (in convex pieces once an opening cuts it), or a shaped floor's planes (`shape_planes`), each in convex
+    /// pieces. A shape that doesn't triangulate (a file's; a command's is checked) leaves the floor as it would be without.
+    pub fn floor_faces(&self, f: &Floor) -> Vec<(Vec<P2>, walls::Plane)> {
+        if !f.shape.is_empty()
+            && let Ok(planes) = self.shape_planes(f)
+        {
+            return planes.into_iter().flat_map(|(loops, plane)| solid(&loops, &[]).into_iter().map(move |r| (r, plane))).collect();
+        }
+        let top = self.floor_top(f);
+        solid(&[ccw(&f.boundary)], &f.openings).into_iter().map(|ring| (ring, top)).collect()
+    }
+
+    /// A shaped floor's planes: its top triangulated (`triangulation::constrained`, its outline and openings, its points
+    /// as corners and its split lines as edges), each corner at `floor_top` plus the height of the point there (within
+    /// `TOL`; a corner with none, 0), and neighbouring triangles in one plane (within 0.01 mm) made one. Each plane is the
+    /// loops round it, its outline counter-clockwise first and then its holes clockwise; a plane whose edges don't make
+    /// such loops (it touches itself at a corner) stays its triangles.
+    pub fn shape_planes(&self, f: &Floor) -> Result<Vec<Slope>, String> {
+        let points: Vec<P2> = f.shape.points.iter().map(|p| p.at).collect();
+        let lines: Vec<(P2, P2)> = f.shape.lines.iter().map(|l| (l.a, l.b)).collect();
+        let t = crate::triangulation::constrained(&f.boundary, &f.openings, &points, &lines)?;
+        let top = self.floor_top(f);
+        let height = |q: P2| {
+            f.shape.points.iter().filter(|p| p.at.dist(q) <= TOL).min_by(|a, b| a.at.dist(q).total_cmp(&b.at.dist(q))).map_or(0.0, |p| p.z)
+        };
+        let lifted: Vec<[f64; 3]> = t.points.iter().map(|&q| [q.0, q.1, top.at(q) + height(q)]).collect();
+        let at = |i: usize| lifted.get(i).copied().unwrap_or_default();
+        let planes: Vec<walls::Plane> =
+            t.triangles.iter().map(|k| walls::Plane::of(&k.map(at)).unwrap_or_else(|| walls::Plane::flat(at(k[0])[2]))).collect();
+        Ok(crate::triangulation::merge(&t, &planes, &|plane: &walls::Plane, i: usize| {
+            (plane.at(P2(at(i)[0], at(i)[1])) - at(i)[2]).abs() <= 0.01
+        }))
+    }
+
+    /// How far a floor's top lies above where it would be without its shape at `q`, mm: by the piece of its top over `q`,
+    /// or within `TOL` of one's edge; 0 off it, or without a shape.
+    pub fn shape_height(&self, f: &Floor, q: P2) -> f64 {
+        if f.shape.is_empty() {
+            return 0.0;
+        }
+        let top = self.floor_top(f);
+        let near = |r: &[P2]| geom::contains(r, q) || geom::ring_edges(r).any(|(a, b)| geom::dist_to_segment(q, a, b) <= TOL);
+        self.floor_faces(f).iter().find(|(r, _)| near(r)).map_or(0.0, |(_, plane)| plane.at(q) - top.at(q))
     }
 
     /// A floor's slabs: its underside less its openings (in convex pieces once one cuts it), each a
     /// flat polygon in space, counter-clockwise; and how far its top lies above that.
     pub fn floor_slabs(&self, f: &Floor) -> Vec<(Vec<[f64; 3]>, f64)> {
-        let (top, depth) = (self.floor_top(f), self.floor_depth(f));
-        let under = walls::Plane { z: top.z - depth, ..top };
-        solid(&[ccw(&f.boundary)], &f.openings).into_iter().map(|ring| (under.lift(&ring), depth)).collect()
+        let depth = self.floor_depth(f);
+        self.floor_faces(f).into_iter().map(|(ring, top)| (walls::Plane { z: top.z - depth, ..top }.lift(&ring), depth)).collect()
     }
 
     /// A ceiling's slabs: its underside less its openings (in convex pieces once one cuts it), each
@@ -5019,6 +5135,7 @@ impl Model {
                         }
                         None => {}
                     }
+                    shape_ok(&who, f)?;
                 }
                 Element::Ceiling(c) => {
                     known(&who, &c.type_name, &self.types.ceiling)?;
@@ -5824,6 +5941,66 @@ fn ccw(ring: &[P2]) -> Vec<P2> {
 fn solid(loops: &[Vec<P2>], holes: &[Vec<P2>]) -> Vec<Vec<P2>> {
     let Some((outline, inner)) = loops.split_first() else { return Vec::new() };
     inner.iter().chain(holes).fold(vec![outline.clone()], |parts, hole| walls::minus(&parts, hole))
+}
+
+/// A floor's shape: no more points and lines than it may have, each point finite and in range, inside the outline and in
+/// no opening, none within a millimetre of another, each line's ends points or corners, no slope arrow, and the whole
+/// triangulating (no line crossing another, an opening or the outline).
+fn shape_ok(who: &str, f: &Floor) -> Result<(), String> {
+    let sh = &f.shape;
+    if sh.is_empty() {
+        return Ok(());
+    }
+    if sh.points.len() > MAX_SHAPE_POINTS || sh.lines.len() > MAX_SPLIT_LINES {
+        return Err(format!("{who}: a shape has at most {MAX_SHAPE_POINTS} points and {MAX_SPLIT_LINES} split lines"));
+    }
+    if f.slope != 0.0 {
+        return Err(format!(
+            "{who}: a shaped floor takes its falls from its points, not a slope arrow too: `modify` its `slope` to 0, or `reset_shape`"
+        ));
+    }
+    let at = |p: P2| format!("({:.0}, {:.0})", p.0, p.1);
+    let near = |r: &[P2], q: P2| geom::ring_edges(r).any(|(a, b)| geom::dist_to_segment(q, a, b) <= TOL);
+    for x in &sh.points {
+        point(&format!("{who} shape point"), x.at)?;
+        if !(x.z.is_finite() && x.z.abs() <= MAX_COORD) {
+            return Err(format!("{who}: the shape point at {} has a height `z` of {}: it must be a number in mm", at(x.at), x.z));
+        }
+        if !geom::contains(&f.boundary, x.at) && !near(&f.boundary, x.at) {
+            return Err(format!("{who}: the shape point at {} is outside its outline", at(x.at)));
+        }
+        if f.openings.iter().any(|o| geom::contains(o, x.at) && !near(o, x.at)) {
+            return Err(format!("{who}: the shape point at {} is in an opening", at(x.at)));
+        }
+    }
+    for (k, x) in sh.points.iter().enumerate() {
+        if let Some(y) = sh.points.iter().skip(k + 1).find(|y| y.at.dist(x.at) <= TOL) {
+            return Err(format!(
+                "{who}: the shape points at {} and {} are within a millimetre of each other: one is enough",
+                at(x.at),
+                at(y.at)
+            ));
+        }
+    }
+    let corners: Vec<P2> = f.boundary.iter().chain(f.openings.iter().flatten()).copied().collect();
+    for l in &sh.lines {
+        line(&format!("{who} split line"), l.a, l.b)?;
+        let known = |q: P2| sh.points.iter().any(|x| x.at.dist(q) <= TOL) || corners.iter().any(|c| c.dist(q) <= TOL);
+        if let Some(end) = [l.a, l.b].into_iter().find(|q| !known(*q)) {
+            return Err(format!(
+                "{who}: the split line from {} to {} ends at {}, which is no point of its shape and no corner: add a point there",
+                at(l.a),
+                at(l.b),
+                at(end)
+            ));
+        }
+    }
+    let points: Vec<P2> = sh.points.iter().map(|x| x.at).collect();
+    let lines: Vec<(P2, P2)> = sh.lines.iter().map(|l| (l.a, l.b)).collect();
+    crate::triangulation::constrained(&f.boundary, &f.openings, &points, &lines).map(|_| ()).map_err(|why| {
+        let why = why.replace("the line", "the split line").replace("of a hole", "of an opening").replace("a hole", "an opening");
+        format!("{who}: {why}")
+    })
 }
 
 /// An outline: 3 to [`MAX_POINTS`] points around some area.
