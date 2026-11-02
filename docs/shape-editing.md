@@ -9,16 +9,23 @@ each floor is level or one sloped plane, and nothing else. The rules in [CLAUDE.
 Status, on the branch `mod-16-shape-editing` (raised upstream as IPedrax/BIMCraft#183):
 
 - **Phase 0**, the triangulation, is built (`crates/core/src/triangulation.rs`).
-- **Phase 1**, shapes on floors, is built in the engine (`crates/core/src/shape_tests.rs`, and
+- **Phase 1**, shapes on floors, is built (`crates/core/src/shape_tests.rs`, and
   [levels, walls and roofs](areas/levels-walls-roofs.md) says how): the data and parts, the four commands, the checks,
-  `floor_faces` and `shape_planes`, 3D, plans, IFC, `inspect`, attached walls, transforms, `edit_boundary`, snaps and
-  file format 12. Three things planned for it are not done yet:
-  - IFC writes a closed shell for each piece, as sloped floors' are, not one faceted Brep for the slab, and no
-    `NetVolume`;
-  - `inspect` gives no `volume_m3`;
-  - sections take the shaped slabs from the 3D view's solids, but no test looks at one, and IfcOpenShell hasn't checked
-    the IFC.
-- **Phases 2 to 5** are a proposal.
+  `floor_faces` and `shape_planes`, 3D, plans, sections, IFC (one closed faceted Brep per slab, `Model::shape_solid`,
+  with `GrossVolume` and `NetVolume`), `volume_m3` in a floor's details, attached walls, transforms, `edit_boundary`,
+  snaps and file format 12. IfcOpenShell validates it with `express_rules=True` (`ci/ifc-coverage.txt` has a shaped
+  floor) and measures the slab's volume as BIMCraft gives it.
+- **Phase 2**, the variable layer, is built: `Layer::variable`, one a floor or roof type; a shaped floor's level underside
+  (`Model::floor_under`) and prisms (`floor_prisms`); its layers in the 3D view and sections (`Variable::bounds`); its
+  volume (`floor_volume`, and IFC's from its closed solid); attached walls under it; `Model::check` refusing a point that
+  leaves the variable layer thinner than nothing; and reinforcement keeping to the structure under it.
+- **Phase 3**, the desktop, is built: Shape Editing's Modify Sub Elements (a point, a corner, or both ends of an edge
+  picked, `Floor::shape_pick`, set to the Options Bar's Elevation in one `edit_shape`), Add Point (Elevation, and
+  Absolute), Add Split Line and Reset Shape, and a Variable box for a floor's or a roof's layers in Type Properties
+  (`crates/ui-egui`; tests `shape_editing_raises_points_draws_split_lines_and_resets_a_floor` and
+  `modify_sub_elements_sets_a_points_height_or_an_edges_both_ends`). Left for later: dragging points with grips, and each
+  point's height as a label in plan while editing.
+- **Phases 4 and 5** are a proposal.
 
 Line numbers are as of `0733fd4`.
 
@@ -192,7 +199,7 @@ New rules, each with an error that says what to fix:
 | Shafts (`Model::less_shafts`, `model.rs:3773`) | per slab face | already per face: no change, but a test |
 | Move, copy, rotate, mirror (`commands.rs:8236`) | outline, openings, arrow, pattern | the points' `at` and the lines' ends too; a mirror keeps the heights |
 | `edit_boundary` | redraws the outline | keeps the points and lines inside the new outline, drops the rest, and names them in the reply |
-| `inspect` (`commands.rs:2122`) | area and top from the outline | top range over every point; a volume (`volume_m3`) for every floor |
+| A floor's details (`element_json`, `commands.rs:2122`) | area and top from the outline | top range over every point; a volume (`volume_m3`) for every floor |
 | Reinforce (`reinforce.rs:409`) | bars from `floor_top` | with a variable layer above the structure, the structure is flat: bars from the flat bottom. Otherwise refuse in version 1, saying why |
 | IFC export (`ifc.rs:658`) | level: an extruded profile; sloped: per-piece Breps; quantities only `Width` when sloped | a shaped slab is **one closed `IfcFacetedBrep`**: top facets, a flat or following bottom, and plumb sides, all planar. Write `NetVolume` and `GrossVolume` for sloped and shaped slabs too, from the prisms. |
 | Snaps (`snap.rs:320`, `603`) | outline edges and corners | the shape's points and split lines too |

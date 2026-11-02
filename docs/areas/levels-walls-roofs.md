@@ -52,15 +52,29 @@ points `z` mm above (negative, below) where the top would be without them, and s
 with an id and a GUID (`ShapePoint`, `SplitLine`). `Model::shape_planes` triangulates its outline, openings, points and
 lines (`triangulation::constrained`), lifts each corner by the point there (a corner with none stays at 0) and merges
 neighbours in one plane; `Model::floor_faces` are those planes in convex pieces, or the unshaped top, and `floor_slabs`,
-the 3D view, sections, IFC and `inspect` take them. A shaped floor is its type's thickness plumb, so its planes meet
+the 3D view, sections and the element's details take them. In IFC a shaped slab is one closed `IfcFacetedBrep`
+(`Model::shape_solid`: its top's planes, the same planes under them, plumb sides round its outline and openings, each
+corner written once), and a sloped or shaped slab gives `GrossVolume` and `NetVolume`, its plan through its depth plumb;
+every floor's details give `volume_m3`, what's left of it in plan (shafts too) through that depth. A shaped floor is its type's thickness plumb, so its planes meet
 underneath too, and has no slope arrow (`Model::check`, `shape_ok`, refuses one, and points outside the outline or in an
 opening, points within a millimetre of each other, a split line's end that is no point and no corner, and lines that
 cross). A wall attached to one follows `Model::shape_triangles`, its top over the whole outline as if its openings were
 closed, as a slope arrow's plane runs on over them. Plans draw each plane's edges as thin as the outline. `edit_shape`
 gives the shape anew or says what it is, `add_point`, `add_split_line` and `reset_shape` change it a piece at a time (an
 end of a line that is no point becomes one, at the height the top has there), `edit_boundary` keeps what stays inside the
-new outline and names what it drops, moves and mirrors take the shape along, and snaps find its points. Reinforcement
-refuses a shaped floor until a variable layer keeps its structure flat. A ceiling's `offset` is its underside; its `openings` are holes as a floor's
+new outline and names what it drops, moves and mirrors take the shape along, and snaps find its points. A layer of a floor or roof type may be `variable` (one a type at most; never a wall's or a ceiling's): under a
+shaped floor of that type, the underside stays level where the unshaped floor's was (`Model::floor_under`), the layers
+above the variable one follow the top, those below it stay level, and the variable one takes up the difference
+(`Variable::bounds`, which the 3D view's layers and sections share). Its pieces are then prisms from that level underside
+(`Model::floor_prisms`), its volume is less where its top falls (`Model::floor_volume`, `model::volume` for IFC), a wall
+attached under it stops at the level underside, and `Model::check` refuses a point that would leave the variable layer
+thinner than nothing, saying by how much to raise it. Reinforcement arms a shaped floor only when a variable layer lies
+over all its structure: the bars keep to the layers under it, as on a level floor that thick. Without one it refuses,
+saying why. In the desktop, a floor selected shows Shape Editing in its contextual tab: Slope Arrow, Modify Sub Elements (a point, a corner or an edge's two ends,
+`Floor::shape_pick`, to the Options Bar's Elevation), Add Point (a
+click on the top, at the Options Bar's Elevation, above the unshaped top or, with Absolute, above the level; empty, the
+top's height there), Add Split Line (two clicks, snapping to points, corners and edges) and Reset Shape, each a command;
+Type Properties ticks a floor's or a roof's variable layer. A ceiling's `offset` is its underside; its `openings` are holes as a floor's
 are, and `Model::ceiling_slabs` what's left. A shaft cuts each floor,
 ceiling and roof its span reaches into over its outline, all the way through (`Model::less_shafts`). A stair or a ramp
 is runs and landings laid out from its start (`stairs::stair`, `stairs::ramp`): a landing after `at` risers (a ramp's, `at`

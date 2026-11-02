@@ -1241,22 +1241,35 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
         if total <= 0.0 {
             continue;
         }
+        // A shaped floor's over a level underside: the layers above its variable one from the top, those below it from the
+        // bottom, the variable one between; any other's in proportion to their thicknesses.
+        let variable = match m.elements.get(owner) {
+            Some(Element::Floor(f)) => m.floor_under(f).map(|(_, v)| v),
+            _ => None,
+        };
         d.owner = Some(owner);
         for r in rings {
             let &[a0, b0, b1, a1] = r.as_slice() else { continue };
-            // The line a fraction of the way down from its top to its bottom.
-            let at = |f: f64| (a1 + (a0 - a1) * f, b1 + (b0 - b1) * f);
-            let mut above = 0.0;
+            // Where each layer starts down from the top at each end.
+            let down = |top: P2, bottom: P2| {
+                let depth = top.1 - bottom.1;
+                crate::model::Variable::bounds(variable, layers, depth)
+                    .into_iter()
+                    .map(|x| if depth.abs() > 1e-9 { top + (bottom - top) * (x / depth) } else { top })
+                    .collect::<Vec<P2>>()
+            };
+            let (at_a, at_b) = (down(a1, a0), down(b1, b0));
             for (k, layer) in layers.iter().enumerate() {
-                let ((p, q), (p2, q2)) = (at(above / total), at((above + layer.thickness) / total));
-                let room = (p.1 - p2.1).abs() * d.view.scale;
+                let (Some(&p), Some(&q), Some(&p2), Some(&q2)) = (at_a.get(k), at_b.get(k), at_a.get(k + 1), at_b.get(k + 1)) else {
+                    continue;
+                };
+                let room = (p.1 - p2.1).abs().min((q.1 - q2.1).abs()) * d.view.scale;
                 cut_layer(&mut d, m, layer, &[p2, q2, q, p], (q - p).unit(), room);
                 if k > 0 {
                     d.part(Part::Pattern);
                     d.line(&[p, q], Pen::PROJECTION, INK, false);
                     d.part(Part::Cut);
                 }
-                above += layer.thickness;
             }
         }
     }

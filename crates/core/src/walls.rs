@@ -451,6 +451,11 @@ impl Bound {
                     convex_pieces(&ring).into_iter().map(move |c| (c, plane))
                 })
                 .collect(),
+            // A shaped one's underside under a variable layer: level.
+            Some(Element::Floor(f)) if !top && m.floor_under(f).is_some() => {
+                let under = m.floor_under(f).map_or(Plane::flat(0.0), |(p, _)| p);
+                convex_pieces(&f.boundary).into_iter().map(|c| (c, under)).collect()
+            }
             // A shaped one's triangles, each its own plane.
             Some(Element::Floor(f)) if !f.shape.is_empty() => {
                 let depth = if top { 0.0 } else { m.floor_depth(f) };
