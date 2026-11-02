@@ -304,3 +304,99 @@ fn an_adaptive_family_is_a_document_with_its_own_ribbon_properties_and_browser_a
     assert!(h.state().session.model.families.values().any(|f| f.adaptive.is_some()));
     assert!(h.query_by_label("Architecture").is_some(), "the project's ribbon is back");
 }
+
+#[test]
+fn edit_family_on_a_deformed_instance_shows_the_family_straight_until_it_is_replayed() {
+    let mut h = app("");
+    h.set_size(vec2(1800., 1000.));
+    h.state_mut()
+        .session
+        .execute("family", &json!({"name":"Adaptive panel","types":{"A":{}},"adaptive":bimcraft_core::adaptive::four_point_panel()}))
+        .unwrap();
+    // Point 3 raised 260 mm in this instance: the instance leans.
+    let raised = json!({"family":"Adaptive panel","at":[0,0],"adaptive":{"frames":{"3":{"origin":[1200,900,500]}}}});
+    let id = serde_json::from_value(h.state_mut().session.execute("component", &raised).unwrap()["id"].clone()).unwrap();
+    h.state_mut().selection = vec![id];
+    h.state_mut().edit_family("Adaptive panel");
+    h.run();
+    let z_of_p3 = |h: &Harness<BimApp>| {
+        let ed = h.state().family_editor.as_ref().unwrap();
+        let d = ed.adaptive.as_ref().unwrap();
+        match d.evaluate(&ed.values(), &d.preview).values.get("p3") {
+            Some(Evaluated::Point { frame }) => frame.z,
+            other => panic!("{other:?}"),
+        }
+    };
+    assert_eq!(z_of_p3(&h), [0., 0., 1.], "as Revit's: the family as defined, its points on its axes");
+    if let Some(ed) = h.state_mut().family_editor.as_mut() {
+        ed.modeller.selection = vec!["p3".into()];
+    }
+    h.run();
+    assert!(h.query_by_label("Rotation X").is_some(), "Properties says how the point is turned");
+    // Replayed (on the Create tab), it is the instance as it is: point 3 raised, its axes leaning with the instance's.
+    press(&mut h, "Create");
+    press(&mut h, "Replay Instance");
+    let z = z_of_p3(&h);
+    assert!(z[2] < 0.999 && z[2] > 0.9, "{z:?}");
+}
+
+#[test]
+fn a_point_drawn_on_the_placement_plane_chosen_lies_on_it_as_in_revit() {
+    let mut h = modelling();
+    tool(&mut h, "Point");
+    // Ref. Level to begin with, as Revit's template; Center (Front/Back) chosen in the Options Bar.
+    assert_eq!(combo_value(&h, "Placement Plane"), "Level : Ref. Level");
+    choose(&mut h, "Placement Plane", "Reference Plane : Center (Front/Back)");
+    click_model(&mut h, [800., 0., 600.], Modifiers::NONE);
+    let d = definition(&h);
+    let id = d.nodes.last().map(|n| n.id.clone()).expect("a point made");
+    let at = d.evaluate(&Default::default(), &d.preview).origin(&id).expect("it evaluates");
+    assert!(at[1].abs() < 1e-6 && (at[0] - 800.).abs() < 20. && (at[2] - 600.).abs() < 20., "on the plane y = 0: {at:?}");
+    assert_eq!(d.work_plane(&id), Some(bimcraft_core::adaptive::WorkPlane::Datum(bimcraft_core::adaptive::Datum::FrontBack)));
+    // Properties says so, as Revit's Work Plane.
+    tool(&mut h, "Modify");
+    assert!(h.query_by_label("Work Plane").is_some());
+    assert!(h.query_all_by_label("Reference Plane : Center (Front/Back)").count() >= 1);
+}
+
+#[test]
+fn pick_in_placement_plane_takes_the_plane_clicked_in_the_view_as_in_revit() {
+    let mut h = modelling();
+    tool(&mut h, "Point");
+    // Pick, first in the list: the next click picks a plane rather than placing a point.
+    choose(&mut h, "Placement Plane", "Pick…");
+    assert!(h.state().family_editor.as_ref().unwrap().modeller.picking_plane);
+    click_model(&mut h, [800., 0., 600.], Modifiers::NONE);
+    let ed = h.state().family_editor.as_ref().unwrap();
+    assert!(!ed.modeller.picking_plane, "picked");
+    assert_eq!(ed.modeller.work_plane, bimcraft_core::adaptive::WorkPlane::Datum(bimcraft_core::adaptive::Datum::FrontBack));
+    assert!(definition(&h).nodes.is_empty(), "a pick places nothing");
+    assert_eq!(combo_value(&h, "Placement Plane"), "Reference Plane : Center (Front/Back)");
+}
+
+#[test]
+fn a_point_clicked_near_another_snaps_onto_it_as_in_revit() {
+    let mut h = modelling();
+    tool(&mut h, "Point");
+    click_model(&mut h, [500., 500., 0.], Modifiers::NONE);
+    let parent = definition(&h).nodes[0].id.clone();
+    // Drawn on the parent's own XY plane, clicked a few pixels off it: on it exactly, no offset.
+    if let Some(ed) = h.state_mut().family_editor.as_mut() {
+        ed.modeller.work_plane =
+            bimcraft_core::adaptive::WorkPlane::Point { point: parent.clone(), plane: bimcraft_core::adaptive::Plane::Xy };
+    }
+    h.run();
+    let near = h.state().family_editor.as_ref().unwrap().modeller.screen([500., 500., 0.]) + vec2(4.0, -3.0);
+    click_at(&mut h, near);
+    let d = definition(&h);
+    let child = d.nodes.last().map(|n| n.id.clone()).unwrap();
+    assert_ne!(child, parent, "a new point");
+    let r = d.evaluate(&Default::default(), &d.preview);
+    assert_eq!(r.origin(&child), r.origin(&parent), "snapped onto its parent");
+    assert!(
+        matches!(&d.nodes.last().unwrap().operation, Operation::Point { host: Host::Plane { point, .. }, transform } if *point == parent
+            && transform.offset.iter().all(|o| *o == bimcraft_core::family::Expr::Number(0.))),
+        "hosted on its plane at no offset: {:?}",
+        d.nodes.last()
+    );
+}

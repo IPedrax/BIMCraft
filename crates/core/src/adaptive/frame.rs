@@ -114,6 +114,18 @@ impl Frame {
         f.y = add(mul(x, -s), mul(y, c));
         f.checked()
     }
+    /// The angles, degrees, that turn the world's axes into these: about X, then the moved Y, then the moved Z, as
+    /// [`Frame::transformed`] turns them. With Y at ±90° the X and Z turns are one; X takes it all.
+    pub fn rotations(&self) -> P3 {
+        // The rotation's matrix has the axes as its columns: R = Rx(a) Ry(b) Rz(c).
+        let b = self.z[0].clamp(-1., 1.).asin();
+        let (a, c) = if b.cos().abs() < 1e-9 {
+            (self.y[2].atan2(self.y[1]), 0.)
+        } else {
+            ((-self.z[1]).atan2(self.z[2]), (-self.y[0]).atan2(self.x[0]))
+        };
+        [a.to_degrees(), b.to_degrees(), c.to_degrees()]
+    }
     pub fn from_z(origin: P3, z: P3, x_hint: P3) -> Result<Self, String> {
         let z = unit(z)?;
         let projected = project(x_hint, z);

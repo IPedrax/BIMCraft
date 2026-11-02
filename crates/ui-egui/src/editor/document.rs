@@ -10,7 +10,7 @@ use crate::icons::Icon;
 use crate::properties::group_header;
 use crate::ribbon;
 use crate::{big_button, icon_button, tab_button};
-use bimcraft_core::adaptive::{Evaluated, PointType};
+use bimcraft_core::adaptive::{Datum, Evaluated, Plane, PointType, WorkPlane};
 use egui::{Align2, FontId, Frame, Margin, UiBuilder};
 
 /// The contextual tab for what the family document has in hand: the tool, else what is selected, as Revit names them.
@@ -174,7 +174,15 @@ impl BimApp {
         }
         if tab == DocTab::Create {
             let sources = !self.capture_sources().is_empty();
+            let source = ed.source;
+            let mut replay = false;
             ribbon::panel(ui, msg!("Test Placement"), |ui| {
+                if source.is_some() {
+                    let tip = msg!(
+                        "Replay Instance: the family takes the placement, type and parameters of the instance it was opened from, to see it as it is or to model from it"
+                    );
+                    replay = big_button(ui, Icon::Component, msg!("Replay Instance"), ed.replaying().is_some(), tip).clicked();
+                }
                 let tip = msg!("Capture Placement: the adaptive instances selected in the project give their points as the test placement");
                 if ui.add_enabled_ui(sources, |ui| big_button(ui, Icon::PickFaces, msg!("Capture Placement"), false, tip)).inner.clicked() {
                     ed.ask.capture = true;
@@ -190,6 +198,10 @@ impl BimApp {
                     ed.ask.place = true;
                 }
             });
+            if replay {
+                let model = Arc::clone(&self.session.model);
+                ed.replay_from(&model);
+            }
             ribbon::panel(ui, msg!("Family"), |ui| {
                 if big_button(ui, Icon::LoadFamily, msg!("Load Family"), false, msg!("Load Family: open a family file here")).clicked() {
                     ed.ask.load = true;
@@ -280,7 +292,7 @@ impl BimApp {
             let mut delete = Vec::new();
             for id in &selected {
                 ui.push_id(id, |ui| {
-                    crate::adaptive_editor::point_properties(ui, d, id);
+                    crate::adaptive_editor::point_properties(ui, d, id, &values);
                     if let Some(node) = d.nodes.iter_mut().find(|n| &n.id == id) {
                         let open = ui.ctx().data(|w| w.get_temp::<bool>(UiId::new("family-relationship"))).unwrap_or(true);
                         if group_header(ui, t("Relationship"), open) {
@@ -377,15 +389,37 @@ impl BimApp {
         self.family_editor = Some(ed);
     }
 
-    /// The family document's Options Bar: the contextual tab's name, and the depth Create Form gives a solid or a void.
+    /// The family document's Options Bar: the contextual tab's name; drawing, Revit's Placement Plane; with lines selected, the
+    /// depth Create Form gives a solid or a void.
     pub(crate) fn family_options(&mut self, ui: &mut Ui) -> bool {
         let Some(ed) = self.family_editor.as_mut() else { return false };
         let Some(name) = context(ed) else { return false };
         let values = ed.values();
         let lines = ed.adaptive.as_ref().is_some_and(|d| !adaptive_view::selected(d, &ed.modeller, &values).1.is_empty());
+        let drawing = !matches!(ed.modeller.tool, Draw::Modify);
+        let planes = ed.adaptive.as_ref().map(work_planes).unwrap_or_default();
         ui.horizontal(|ui| {
             ui.set_min_height(24.0);
             ui.label(t(name));
+            if drawing {
+                ui.separator();
+                let l = ui.label(t("Placement Plane"));
+                let shown = if ed.modeller.picking_plane {
+                    t(PICK).to_string()
+                } else {
+                    planes.iter().find(|(p, _)| *p == ed.modeller.work_plane).map(|(_, n)| n.clone()).unwrap_or_default()
+                };
+                let list = ComboBox::from_id_salt("family-placement-plane").selected_text(shown).width(280.0).show_ui(ui, |ui| {
+                    // As Revit's: Pick first, a plane picked in the view.
+                    if ui.selectable_label(ed.modeller.picking_plane, t(PICK)).clicked() {
+                        ed.modeller.picking_plane = true;
+                    }
+                    for (plane, label) in &planes {
+                        ui.selectable_value(&mut ed.modeller.work_plane, plane.clone(), label);
+                    }
+                });
+                list.response.labelled_by(l.id);
+            }
             // How deep Create Form extrudes a closed profile.
             if lines {
                 ui.separator();
@@ -468,6 +502,21 @@ impl BimApp {
             ed.dialog = None;
         }
     }
+}
+
+/// Placement Plane's first entry: a plane picked in the view.
+const PICK: &str = msg!("Pick…");
+
+/// The work planes a family offers, as Placement Plane lists them: its datums, then each point's three planes.
+pub(crate) fn work_planes(d: &bimcraft_core::adaptive::Definition) -> Vec<(WorkPlane, String)> {
+    let mut out: Vec<(WorkPlane, String)> = Datum::ALL.iter().map(|d| (WorkPlane::Datum(*d), t(d.label()).to_string())).collect();
+    for n in d.nodes.iter().filter(|n| matches!(n.operation, bimcraft_core::adaptive::Operation::Point { .. })) {
+        for (plane, name) in [(Plane::Xy, "XY"), (Plane::Xz, "XZ"), (Plane::Yz, "YZ")] {
+            let label = tf("{} : {} plane", &[if n.name.is_empty() { &n.id } else { &n.name }, name]);
+            out.push((WorkPlane::Point { point: n.id.clone(), plane }, label));
+        }
+    }
+    out
 }
 
 /// Where Properties names what it shows, as Revit's type selector does: an icon and the name, on a box of its own.

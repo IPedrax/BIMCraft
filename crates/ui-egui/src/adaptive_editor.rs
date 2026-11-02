@@ -20,6 +20,15 @@ fn expression(ui: &mut Ui, label: &str, value: &mut Expr) {
         }
     });
 }
+/// Where a point is, mm.
+fn position(ui: &mut Ui, value: &mut Frame) {
+    ui.horizontal(|ui| {
+        ui.label(t("Position (mm)"));
+        for v in &mut value.origin {
+            ui.add(DragValue::new(v).speed(5.));
+        }
+    });
+}
 fn frame(ui: &mut Ui, value: &mut Frame) {
     ui.horizontal(|ui| {
         ui.label(t("Position (mm)"));
@@ -285,12 +294,31 @@ fn pick<T: Copy + PartialEq>(ui: &mut Ui, label: &str, value: &mut T, options: &
     *value != before
 }
 
-/// A point's properties as Revit's palette groups them: Adaptive Component (Point, Number, Show Placement Number, Orients
-/// to, Constrained), Graphics (Show Reference Planes, Visible) and Identity Data (Name). Nothing for an element that is not a
-/// point.
-pub(crate) fn point_properties(ui: &mut Ui, d: &mut Definition, id: &str) {
+/// A point's properties as Revit's palette groups them: Constraints (how it is turned, as `values` evaluate it), Adaptive
+/// Component (Point, Number, Show Placement Number, Orients to, Constrained), Graphics (Show Reference Planes, Visible) and
+/// Identity Data (Name). Nothing for an element that is not a point.
+pub(crate) fn point_properties(ui: &mut Ui, d: &mut Definition, id: &str, values: &BTreeMap<String, Val>) {
     use crate::editor::document::group;
     let Some(kind) = d.point_type(id) else { return };
+    // Its axes where it is now (an instance replayed may turn them): the angles about X, then Y, then Z from the family's.
+    if let Some(Evaluated::Point { frame }) = d.evaluate(values, &d.preview).values.get(id) {
+        let angles = frame.rotations();
+        let work_plane = d
+            .work_plane(id)
+            .and_then(|w| crate::editor::document::work_planes(d).into_iter().find(|(p, _)| *p == w).map(|(_, label)| label));
+        group(ui, msg!("Constraints"), |ui| {
+            if let Some(label) = &work_plane {
+                ui.label(t("Work Plane"));
+                ui.label(label.as_str());
+                ui.end_row();
+            }
+            for (label, a) in [(msg!("Rotation X"), angles[0]), (msg!("Rotation Y"), angles[1]), (msg!("Rotation Z"), angles[2])] {
+                ui.label(t(label));
+                ui.label(format!("{:.2}°", if a.abs() < 0.005 { 0.0 } else { a }));
+                ui.end_row();
+            }
+        });
+    }
     let mut problem = None;
     group(ui, msg!("Adaptive Component"), |ui| {
         let mut chosen = kind;
@@ -387,8 +415,9 @@ pub(crate) fn node_properties(ui: &mut Ui, node: &mut adaptive::Node) -> bool {
     if kind == "point" {
         if let Ok(mut typed) = serde_json::from_value::<Operation>(v.clone()) {
             if let Operation::Point { host, transform: t } = &mut typed {
-                if let Host::Adaptive { frame: f, .. } | Host::Handle { frame: f, .. } | Host::World { frame: f } = host {
-                    frame(ui, f);
+                // A point on the work plane, adaptive or not, has the family's axes, as in Revit: only where it is.
+                if let Host::Adaptive { frame: f, .. } | Host::Handle { frame: f, .. } | Host::World { frame: f, .. } = host {
+                    position(ui, f);
                 }
                 for i in 0..3 {
                     expression(ui, [msg!("OffsetX (mm)"), msg!("OffsetY (mm)"), msg!("OffsetZ (mm)")][i], &mut t.offset[i]);
@@ -405,7 +434,7 @@ pub(crate) fn node_properties(ui: &mut Ui, node: &mut adaptive::Node) -> bool {
         }
         if let Some(map) = v["host"].as_object_mut() {
             hosted_frame = map.remove("frame");
-            for key in ["orients", "constrained"] {
+            for key in ["orients", "constrained", "datum"] {
                 if let Some(v) = map.remove(key) {
                     revit_fields.push((key, v));
                 }

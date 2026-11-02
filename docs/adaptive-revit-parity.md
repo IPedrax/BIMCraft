@@ -119,7 +119,9 @@ each with its points in order and in reverse order, for every option. A point's 
 offset on each adaptive point's plane.
 
 - **The instance's own axes** are the rotation that best takes the family's placement points onto the placed ones. They are the
-  same whatever Orients to says.
+  same whatever Orients to says. A panel placed on its family's own points with point 3 raised 260 mm leans its Z to (-0.0173,
+  -0.0169, 0.9997) in Revit, (-0.0173, -0.0168, 0.9997) by a least-squares fit; raised 1000 mm, (-0.0668, -0.0651, 0.9956) in
+  Revit, (-0.0663, -0.0645, 0.9957) by the fit [observed, 2026-11-02].
   - Its Z points to the side from which the placed points turn the same way as they do in the family. In the test family they
     turn clockwise seen from its Z, so the instance's Z is the side from which the placed loop looks clockwise.
   - Placing the points in reverse order flips it.
@@ -271,10 +273,10 @@ Status: **same** as Revit; **differs** (we have it, but not as Revit has it); **
 
 | Revit | BIMCraft today | Status |
 |---|---|---|
-| Ref. Level and the two Center reference planes | a work plane at 0 with a 1 m grid | differs |
+| Ref. Level and the two Center reference planes | the same, drawn in the 3D view | same |
 | Plan, elevation and 3D views of the family | one 3D view | missing |
-| Work Plane Set / Show; the plane under the cursor | the one work plane | missing |
-| Each point's three planes, pickable as work planes | no | missing |
+| Work Plane Set / Show; the plane under the cursor | Placement Plane in the Options Bar: Pick… (the plane under the pointer), the datums, or a point's planes | differs: no Set / Show buttons |
+| Each point's three planes, pickable as work planes | drawn, picked with Pick… or chosen from the list; points drawn on them are hosted | same |
 | Draw on Work Plane / Draw on Face | Point on the plane, or on a line | differs |
 | 3D Snapping, Chain | Line clicks points | differs |
 | Model / Reference lines, Is Reference Line | one kind of line | missing |

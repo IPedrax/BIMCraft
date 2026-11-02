@@ -241,3 +241,96 @@ fn a_points_show_options_default_as_revits() {
     }
     assert_eq!(look(&d, &one).number, Show::WhenSelected);
 }
+
+#[test]
+fn a_frames_rotations_read_back_as_the_angles_that_turned_it() {
+    for angles in [[0., 0., 0.], [10., 20., 30.], [-45., 5., 170.], [0., 0., -90.]] {
+        let f = Frame::default().transformed([0.; 3], angles).expect("turned");
+        let back = f.rotations();
+        assert!((0..3).all(|i| (back[i] - angles[i]).abs() < 1e-9), "{angles:?} read back as {back:?}");
+    }
+}
+
+fn frame_of(d: &Definition, id: &str) -> Frame {
+    match d.evaluate(&BTreeMap::new(), &d.preview).values.get(id) {
+        Some(Evaluated::Point { frame }) => *frame,
+        other => panic!("{id} did not evaluate: {other:?}"),
+    }
+}
+
+#[test]
+fn a_point_drawn_on_a_work_plane_lies_on_it_hosted_with_the_planes_axes() {
+    let mut d = panel(OrientsTo::Instance);
+    let r = d.evaluate(&BTreeMap::new(), &d.preview);
+    // Ref. Level, the template's default: on it, the family's own axes.
+    let on_level = d.add_point_on(&WorkPlane::Datum(Datum::Level), [100., 200., 300.], &r).expect("placed");
+    let f = frame_of(&d, &on_level);
+    assert!(near(f.origin, [100., 200., 0.]) && near(f.z, [0., 0., 1.]), "{f:?}");
+    assert_eq!(d.work_plane(&on_level), Some(WorkPlane::Datum(Datum::Level)));
+    // Center (Front/Back): y = 0, its Z square to the plane, its Y up.
+    let front = d.add_point_on(&WorkPlane::Datum(Datum::FrontBack), [500., 30., 700.], &r).expect("placed");
+    let f = frame_of(&d, &front);
+    assert!(near(f.origin, [500., 0., 700.]) && near(f.z, [0., -1., 0.]) && near(f.y, [0., 0., 1.]), "{f:?}");
+    // Center (Left/Right): x = 0.
+    let side = d.add_point_on(&WorkPlane::Datum(Datum::LeftRight), [40., 600., 700.], &r).expect("placed");
+    assert!(near(frame_of(&d, &side).origin, [0., 600., 700.]));
+    // On point 1's XZ plane: hosted on it, so it follows point 1.
+    let p1 = adaptive(&d, 1).id.clone();
+    let on_point = WorkPlane::Point { point: p1.clone(), plane: Plane::Xz };
+    let b = d.add_point_on(&on_point, [200., 50., 300.], &r).expect("placed");
+    assert!(near(frame_of(&d, &b).origin, [200., 0., 300.]));
+    assert_eq!(d.work_plane(&b), Some(on_point));
+    if let Some(Node { operation: Operation::Point { host: Host::Adaptive { frame, .. }, .. }, .. }) =
+        d.nodes.iter_mut().find(|n| n.id == p1)
+    {
+        frame.origin = [0., 1000., 0.];
+    }
+    assert!(near(frame_of(&d, &b).origin, [200., 1000., 300.]), "it moved with its host");
+    // A plane of something that is not a point is no work plane.
+    assert!(d.add_point_on(&WorkPlane::Point { point: "nothing".into(), plane: Plane::Xy }, [0.; 3], &r).is_err());
+}
+
+#[test]
+fn the_camera_finds_where_a_pixel_lands_on_any_plane() {
+    let cam = crate::view3d::Camera {
+        azimuth: crate::view3d::AZIMUTH,
+        elevation: crate::view3d::ELEVATION,
+        lens: None,
+        target: [0., 0., 0.],
+        scale: 0.1,
+        width: 800,
+        height: 600,
+    };
+    for (origin, normal) in [([0., 0., 0.], [0., 0., 1.]), ([0., 0., 0.], [0., 1., 0.]), ([250., 0., 0.], [1., 0., 0.])] {
+        let p = cam.on((400., 300.), origin, normal).expect("the plane is in view");
+        let off: f64 = (0..3).map(|i| (p[i] - origin[i]) * normal[i]).sum();
+        assert!(off.abs() < 1e-6, "{p:?} is on the plane through {origin:?} square to {normal:?}");
+        let (x, y, _) = cam.project(p);
+        assert!((x - 400.).abs() < 1e-6 && (y - 300.).abs() < 1e-6, "and under the pixel");
+    }
+}
+
+/// A camera looking down the family's Y axis, from the front: what a pixel hits on a plane, and how near the eye that is.
+fn front_view() -> crate::view3d::Camera {
+    crate::view3d::Camera { azimuth: -90., elevation: 10., lens: None, target: [1000., 0., 0.], scale: 0.2, width: 800, height: 600 }
+}
+
+#[test]
+fn pick_finds_the_plane_under_the_pointer_a_points_or_a_datums() {
+    let d = panel(OrientsTo::Instance);
+    let r = d.evaluate(&BTreeMap::new(), &d.preview);
+    let cam = front_view();
+    let room = ([-300., -300., -300.], [2300., 1300., 1300.]);
+    let pick = |at: P3| {
+        let (x, y, _) = cam.project(at);
+        r.pick_plane(&|o, n| cam.on((x, y), o, n), &|p| cam.project(p).2, 70., room)
+    };
+    // Near point 1, a little up from it: one of point 1's planes standing towards the eye.
+    let p1 = adaptive(&d, 1).id.clone();
+    let near_p1 = pick([30., 0., 40.]);
+    assert!(matches!(&near_p1, Some(WorkPlane::Point { point, .. }) if *point == p1), "{near_p1:?}");
+    // Up and away from every point, over Center (Front/Back): that plane.
+    assert_eq!(pick([1000., 0., 1000.]), Some(WorkPlane::Datum(Datum::FrontBack)));
+    // Outside every datum's rectangle and every point's planes: nothing.
+    assert_eq!(pick([5000., 0., 5000.]), None);
+}

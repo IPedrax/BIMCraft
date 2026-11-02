@@ -5870,7 +5870,10 @@ fn a_family_instance_selected_offers_edit_family_on_the_right_click_as_revit_doe
     h.set_size(vec2(1800., 1000.));
     h.run();
     assert!(h.query_by_label("Load into Project").is_some(), "it opens as a family document");
-    assert!(h.query_all_by_label_contains("Replaying instance").count() > 0, "it opens on the instance selected");
+    // As Revit's: the family as defined; the instance it was opened from is there to replay.
+    assert_eq!(h.query_all_by_label_contains("Replaying instance").count(), 0, "it opens on the family, not on the instance");
+    press(&mut h, "Replay Instance");
+    assert!(h.query_all_by_label_contains("Replaying instance").count() > 0, "replayed, it shows the instance selected");
 }
 
 #[test]
@@ -6139,6 +6142,7 @@ fn adaptive_family_editor_reopens_exact_failed_instance_and_keeps_valid_dependen
     h.set_size(vec2(1800., 1000.));
     h.run();
     assert!(h.query_by_label("Load into Project").is_some());
+    press(&mut h, "Replay Instance");
     assert!(h.query_all_by_label_contains("Replaying instance").count() > 0);
     press(&mut h, "Load into Project");
     let Element::Component(c) = &h.state().session.model.elements[&id] else { panic!() };

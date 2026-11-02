@@ -7,7 +7,9 @@
 //! project's.
 use crate::lang::t;
 use crate::style::pal;
-use bimcraft_core::adaptive::{Definition, Evaluated, Evaluation, Host, Operation, Picked, PointType, Show, gizmo_end};
+use bimcraft_core::adaptive::{
+    Datum, Definition, Evaluated, Evaluation, Host, Operation, Picked, Plane, PointType, Show, WorkPlane, gizmo_end,
+};
 use bimcraft_core::family::Val;
 use bimcraft_core::view3d::{AZIMUTH, Camera, ELEVATION, P3};
 use bimcraft_i18n::msg;
@@ -46,11 +48,25 @@ pub(crate) struct Modeller {
     history: Vec<Definition>,
     /// The solid or void Create Form makes: its depth, mm.
     pub(crate) depth: f64,
+    /// Where Point Element and Line draw: Revit's Placement Plane, Ref. Level to begin with.
+    pub(crate) work_plane: WorkPlane,
+    /// Placement Plane's Pick: the next click in the view picks the plane under it.
+    pub(crate) picking_plane: bool,
 }
 
 impl Default for Modeller {
     fn default() -> Modeller {
-        Modeller { camera: None, rect: Rect::ZERO, tool: Draw::Modify, selection: Vec::new(), drag: None, history: Vec::new(), depth: 300. }
+        Modeller {
+            camera: None,
+            rect: Rect::ZERO,
+            tool: Draw::Modify,
+            selection: Vec::new(),
+            drag: None,
+            history: Vec::new(),
+            depth: 300.,
+            work_plane: WorkPlane::default(),
+            picking_plane: false,
+        }
     }
 }
 
@@ -77,6 +93,15 @@ impl Modeller {
         }
     }
 }
+
+/// How far the datums reach: a box 300 mm beyond what the family takes up, and at least 1.5 m from its origin, each way.
+fn room(r: &Evaluation) -> (P3, P3) {
+    let (lo, hi) = extent(r).unwrap_or(([-1000.; 3], [1000.; 3]));
+    (std::array::from_fn(|i| (lo[i] - 300.).min(-1500.)), std::array::from_fn(|i| (hi[i] + 300.).max(1500.)))
+}
+
+/// How far each of a point's planes reaches from it on screen, px: half the square drawn.
+const PLANE_REACH: f64 = 14.0;
 
 /// Everything an evaluation shows, for fitting the view to it.
 fn extent(r: &Evaluation) -> Option<(P3, P3)> {
@@ -169,6 +194,9 @@ pub(crate) fn undo(d: &mut Definition, m: &mut Modeller) -> bool {
 
 /// What the tool in hand asks for, as the status bar says it.
 pub(crate) fn prompt(m: &Modeller) -> &'static str {
+    if m.picking_plane {
+        return msg!("Pick a plane: one of a point's planes, the level or a reference plane; Escape gives up.");
+    }
     match &m.tool {
         Draw::Modify => msg!("Click to select, Ctrl adds; drag a point or a gizmo arrow to move it; drag elsewhere to orbit."),
         Draw::Point => msg!("Click on the work plane for a reference point, on a line for a point hosted on it."),
@@ -285,13 +313,29 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, m: &mut Modeller, values: &B
     }
     m.camera = Some(cam);
     let hovered = hover.filter(|_| m.drag.is_none()).and_then(|at| r.pick(&|p| screen_of(&cam, p), px(at)));
-    // Clicks, by tool.
-    if response.clicked()
+    // Placement Plane's Pick: the plane under the pointer lights up, and a click makes it the work plane; Escape gives up.
+    let plane_at = |at: Pos2| {
+        let half = PLANE_REACH / cam.scale.max(1e-9);
+        r.pick_plane(&|o, n| cam.on(px(at), o, n), &|p| cam.project(p).2, half, room(&r))
+    };
+    let lit = if m.picking_plane { hover.and_then(plane_at) } else { None };
+    if m.picking_plane
+        && response.clicked()
+        && let Some(at) = response.interact_pointer_pos()
+    {
+        if let Some(plane) = plane_at(at) {
+            m.work_plane = plane;
+            m.picking_plane = false;
+        }
+    } else if response.clicked()
         && let Some(at) = response.interact_pointer_pos()
     {
         let mods = crate::canvas::click_modifiers(ui);
         let picked = r.pick(&|p| screen_of(&cam, p), px(at));
-        let on_plane = cam.on_plane(px(at), 0.0);
+        // Where the click falls on the work plane (Ref. Level when the one chosen has gone).
+        let plane = m.work_plane.frame(&r).unwrap_or_default();
+        let on_plane = cam.on(px(at), plane.origin, plane.z);
+        let work_plane = m.work_plane.clone();
         match &mut m.tool {
             Draw::Modify => match picked {
                 Some(p) if mods.ctrl || mods.shift => {
@@ -309,7 +353,10 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, m: &mut Modeller, values: &B
                 let before = d.clone();
                 let made = match picked {
                     Some(Picked::Curve(curve, t)) => d.add_hosted_point(&curve, t).ok(),
-                    _ => on_plane.map(|p| d.add_point(p)),
+                    // Snapped onto the point under the pointer: exactly where it falls on the work plane (on that point's own
+                    // plane, on it, at no offset).
+                    Some(Picked::Point(snap)) => r.origin(&snap).and_then(|o| d.add_point_on(&work_plane, o, &r).ok()),
+                    _ => on_plane.and_then(|p| d.add_point_on(&work_plane, p, &r).ok()),
                 };
                 if let Some(id) = made {
                     m.history.push(before);
@@ -320,7 +367,7 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, m: &mut Modeller, values: &B
                 let before = d.clone();
                 let point = match picked {
                     Some(Picked::Point(id)) => Some(id),
-                    _ => on_plane.map(|p| d.add_point(p)),
+                    _ => on_plane.and_then(|p| d.add_point_on(&work_plane, p, &r).ok()),
                 };
                 if let Some(id) = point {
                     let closes = chain.len() >= 3 && chain.first() == Some(&id);
@@ -346,6 +393,9 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, m: &mut Modeller, values: &B
             i.modifiers.matches_exact(Modifiers::COMMAND) && i.key_pressed(Key::Z),
         )
     });
+    if m.picking_plane && escape {
+        m.picking_plane = false;
+    }
     let finish = enter || ((escape || response.secondary_clicked()) && hover.is_some());
     if finish && let Draw::Line(chain) = &mut m.tool {
         if chain.len() >= 2 {
@@ -373,13 +423,23 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, m: &mut Modeller, values: &B
     }
     m.selection.retain(|id| d.nodes.iter().any(|n| &n.id == id));
     let r = d.evaluate(values, &d.preview);
-    draw(ui, rect, &cam, d, &r, m, hovered.as_ref().map(Picked::id), hover);
+    draw(ui, rect, &cam, d, &r, m, hovered.as_ref().map(Picked::id), hover, lit.as_ref());
 }
 
 /// What the view shows: the work plane, the forms shaded, the lines, the points with the adaptive ones numbered, the
 /// selection in the accent, and the gizmo of a point selected.
 #[allow(clippy::too_many_arguments)]
-fn draw(ui: &Ui, rect: Rect, cam: &Camera, d: &Definition, r: &Evaluation, m: &Modeller, hovered: Option<&str>, hover: Option<Pos2>) {
+fn draw(
+    ui: &Ui,
+    rect: Rect,
+    cam: &Camera,
+    d: &Definition,
+    r: &Evaluation,
+    m: &Modeller,
+    hovered: Option<&str>,
+    hover: Option<Pos2>,
+    lit: Option<&WorkPlane>,
+) {
     let p = ui.painter_at(rect);
     let visuals = ui.visuals();
     // On the drawing's own ground, as the plans and the 3D view: light in a dark interface when the user keeps the canvas light.
@@ -400,22 +460,56 @@ fn draw(ui: &Ui, rect: Rect, cam: &Camera, d: &Definition, r: &Evaluation, m: &M
             base
         }
     };
-    // The work plane: a grid at height 0, a line each metre over what the family takes up.
+    // The work plane Point Element and Line draw on: a grid on it, a line each metre over what the family takes up there.
     let (lo, hi) = extent(r).unwrap_or(([-1000.; 3], [1000.; 3]));
+    let plane = m.work_plane.frame(r).unwrap_or_default();
+    let corners: Vec<P3> =
+        (0..8).map(|k| plane.inverse_point([[lo, hi][k & 1][0], [lo, hi][(k >> 1) & 1][1], [lo, hi][k >> 2][2]])).collect();
+    let span = |i: usize| {
+        (corners.iter().map(|c| c[i]).fold(f64::INFINITY, f64::min), corners.iter().map(|c| c[i]).fold(f64::NEG_INFINITY, f64::max))
+    };
+    let ((u0, u1), (v0, v1)) = (span(0), span(1));
     let step = 1000.0_f64;
-    let (x0, x1) = ((lo[0] / step).floor() - 1., (hi[0] / step).ceil() + 1.);
-    let (y0, y1) = ((lo[1] / step).floor() - 1., (hi[1] / step).ceil() + 1.);
+    let (x0, x1) = ((u0 / step).floor() - 1., (u1 / step).ceil() + 1.);
+    let (y0, y1) = ((v0 / step).floor() - 1., (v1 / step).ceil() + 1.);
+    let on = |u: f64, v: f64| at(plane.point([u * step, v * step, 0.]));
     if (x1 - x0) < 200. && (y1 - y0) < 200. {
         let mut x = x0;
         while x <= x1 {
-            p.line_segment([at([x * step, y0 * step, 0.]), at([x * step, y1 * step, 0.])], Stroke::new(1.0, faint));
+            p.line_segment([on(x, y0), on(x, y1)], Stroke::new(1.0, faint));
             x += 1.;
         }
         let mut y = y0;
         while y <= y1 {
-            p.line_segment([at([x0 * step, y * step, 0.]), at([x1 * step, y * step, 0.])], Stroke::new(1.0, faint));
+            p.line_segment([on(x0, y), on(x1, y)], Stroke::new(1.0, faint));
             y += 1.;
         }
+    }
+    // The datums, as Revit's template has them: Ref. Level and the two Center reference planes, each the outline of a
+    // rectangle 300 mm beyond what the family takes up, named at a corner; the one drawn on in a lighter accent.
+    let (a, b) = room(r);
+    let datum_ink = cp.muted.gamma_multiply(0.8);
+    for (datum, quad) in [
+        (Datum::Level, [[a[0], a[1], 0.], [b[0], a[1], 0.], [b[0], b[1], 0.], [a[0], b[1], 0.]]),
+        (Datum::FrontBack, [[a[0], 0., a[2]], [b[0], 0., a[2]], [b[0], 0., b[2]], [a[0], 0., b[2]]]),
+        (Datum::LeftRight, [[0., a[1], a[2]], [0., b[1], a[2]], [0., b[1], b[2]], [0., a[1], b[2]]]),
+    ] {
+        let active = m.work_plane == WorkPlane::Datum(datum);
+        let picked = lit == Some(&WorkPlane::Datum(datum));
+        let ink = if picked {
+            cp.hover
+        } else if active {
+            cp.accent.gamma_multiply(0.55)
+        } else {
+            datum_ink
+        };
+        p.add(Shape::closed_line(quad.iter().map(|q| at(*q)).collect(), Stroke::new(if picked { 2.5 } else { 1.0 }, ink)));
+        let name = match datum {
+            Datum::Level => "Ref. Level",
+            Datum::FrontBack => "Center (Front/Back)",
+            Datum::LeftRight => "Center (Left/Right)",
+        };
+        p.text(at(quad[3]) + vec2(4.0, 2.0), egui::Align2::LEFT_TOP, t(name), egui::FontId::proportional(11.0), ink);
     }
     // The forms, far triangles first, each shaded by how squarely it faces a light over the viewer's left shoulder.
     let light = {
@@ -473,7 +567,7 @@ fn draw(ui: &Ui, rect: Rect, cam: &Camera, d: &Definition, r: &Evaluation, m: &M
         p.line_segment([at(last), to], Stroke::new(1.0, accent));
     }
     // The points: a placement point filled and numbered, a shape handle a filled square, a reference point a ring, a hosted
-    // one a small ring; each with its own planes when Show Reference Planes says so.
+    // one a small ring; each with its own planes and axes when Show Reference Planes says so.
     for id in &r.order {
         let Some(Evaluated::Point { frame }) = r.values.get(id) else { continue };
         let o = frame.origin;
@@ -482,14 +576,36 @@ fn draw(ui: &Ui, rect: Rect, cam: &Camera, d: &Definition, r: &Evaluation, m: &M
         let selected = m.selection.iter().any(|x| x == id);
         let shown = |show: Show| show == Show::Always || (show == Show::WhenSelected && selected);
         let look = d.nodes.iter().find(|n| &n.id == id).map(|n| n.look());
+        // Its three planes and its three axes, light blue, where Show Reference Planes says: each plane the outline of a square
+        // 28 px across centred on it, each axis a short arrow 24 px long. Selected, the axes are the gizmo's long ones (or, for a
+        // point the gizmo does not move, as long and in the selection's colour), and the planes take the selection's colour.
+        let gizmo = selected && m.selection.len() == 1 && movable(d, id);
         if look.is_some_and(|l| shown(l.planes)) {
-            // Each plane a square of 16 px, in the point's own axes.
-            let h = 8.0 / cam.scale.max(1e-9);
-            for (u, v) in [(frame.x, frame.y), (frame.x, frame.z), (frame.y, frame.z)] {
+            let px = 1.0 / cam.scale.max(1e-9);
+            let blue = Color32::from_rgb(86, 170, 226);
+            let tone = if color == ink { blue } else { color };
+            let h = PLANE_REACH * px;
+            for (plane, (u, v)) in [(Plane::Xy, (frame.x, frame.y)), (Plane::Xz, (frame.x, frame.z)), (Plane::Yz, (frame.y, frame.z))] {
                 let corner = |a: f64, b: f64| at(std::array::from_fn(|i| o[i] + (u[i] * a + v[i] * b) * h));
-                let square = vec![corner(-1., -1.), corner(1., -1.), corner(1., 1.), corner(-1., 1.), corner(-1., -1.)];
-                p.add(Shape::line(square, Stroke::new(1.0, color.gamma_multiply(0.6))));
+                let square = vec![corner(-1., -1.), corner(1., -1.), corner(1., 1.), corner(-1., 1.)];
+                // The plane Pick is over: lit, and tinted.
+                if lit == Some(&WorkPlane::Point { point: id.clone(), plane }) {
+                    p.add(Shape::convex_polygon(square.clone(), cp.hover.gamma_multiply(0.25), Stroke::new(2.5, cp.hover)));
+                } else {
+                    p.add(Shape::closed_line(square, Stroke::new(1.0, tone.gamma_multiply(0.7))));
+                }
             }
+            if !gizmo {
+                let length = if selected { ARROW } else { 24.0 } * px;
+                for axis in [frame.x, frame.y, frame.z] {
+                    let end = at(std::array::from_fn(|i| o[i] + axis[i] * length));
+                    p.arrow(s, end - s, Stroke::new(1.3, tone));
+                }
+            }
+        }
+        // The snap a click would take, drawing: a square round the point under the pointer.
+        if matches!(m.tool, Draw::Point | Draw::Line(_)) && hovered == Some(id.as_str()) {
+            p.rect_stroke(Rect::from_center_size(s, vec2(14.0, 14.0)), 0.0, Stroke::new(1.5, cp.hover), StrokeKind::Outside);
         }
         match (number(d, id), d.point_type(id)) {
             (Some(n), _) => {

@@ -326,7 +326,7 @@ fn adaptive_commands_capture_place_replay_modify_undo_and_persist() {
     assert_eq!(captured.frames.len(), 4);
     assert_eq!(captured.bindings.len(), 4);
     near(captured.frames[&1].origin, [100., 200., 0.]);
-    assert_ne!(captured.frames[&1].z, captured.frames[&2].z);
+    assert_eq!(captured.frames[&1].z, captured.frames[&2].z, "points oriented to the instance share its axes");
     let batch = s
         .execute(
             "adaptive_place",

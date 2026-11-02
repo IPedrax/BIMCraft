@@ -331,6 +331,8 @@ pub(crate) struct FamilyEditor {
     pub(crate) ask: Asked,
     /// The dialog its ribbon opened, if any.
     pub(crate) dialog: Option<DocDialog>,
+    /// The instance it was opened from (Edit Family on it), whose placement Replay Instance takes.
+    source: Option<bimcraft_core::model::Id>,
 }
 
 /// The tabs of a family document's ribbon, as Revit's family editor has them.
@@ -410,6 +412,7 @@ impl FamilyEditor {
             doc_back: DocTab::Create,
             ask: Asked::default(),
             dialog: None,
+            source: None,
         }
     }
 
@@ -424,6 +427,20 @@ impl FamilyEditor {
             .ok()
             .and_then(|f| self.types.get(self.picked).and_then(|(name, _)| f.values(name, &self.preview_params).ok()))
             .unwrap_or_default()
+    }
+
+    /// Replay Instance: the test placement becomes the placement, the type and the instance parameters of the instance it was
+    /// opened from (held in `model`), to see that instance as it is (deformed, or not building) or to start modelling from it;
+    /// Apply to Instance gives it back. Whether there was one to replay.
+    pub(crate) fn replay_from(&mut self, model: &Model) -> bool {
+        let Some(id) = self.source else { return false };
+        let Some(bimcraft_core::model::Element::Component(c)) = model.elements.get(id) else { return false };
+        let Some(d) = self.adaptive.as_mut() else { return false };
+        d.preview = c.adaptive.clone().unwrap_or_default();
+        self.replay = Some(id);
+        self.preview_params = c.params.clone();
+        self.picked = self.types.iter().position(|(n, _)| n == &c.type_name).unwrap_or(0);
+        true
     }
 
     /// Its name, as typed.
@@ -594,7 +611,7 @@ fn adaptive_side(ui: &mut Ui, ed: &mut FamilyEditor, values: &BTreeMap<String, b
     for id in &selected {
         ui.push_id(id, |ui| {
             egui::Frame::group(ui.style()).show(ui, |ui| {
-                crate::adaptive_editor::point_properties(ui, d, id);
+                crate::adaptive_editor::point_properties(ui, d, id, values);
                 if let Some(node) = d.nodes.iter_mut().find(|n| &n.id == id)
                     && crate::adaptive_editor::node_properties(ui, node)
                 {
@@ -1019,16 +1036,14 @@ impl BimApp {
     pub(crate) fn edit_family(&mut self, name: &str) {
         if let Some(f) = self.session.model.families.get(name) {
             let mut editor = FamilyEditor::of(name, f);
+            // As Revit's: the family as it is defined, its points on its own axes, whatever instance it was opened from; that
+            // instance is remembered, for Replay Instance.
             if let Some((id, c)) = self.selection.iter().find_map(|id| match self.session.model.elements.get(id) {
                 Some(bimcraft_core::model::Element::Component(c)) if c.family == name => Some((*id, c)),
                 _ => None,
-            }) && let Some(d) = editor.adaptive.as_mut()
+            }) && editor.adaptive.is_some()
             {
-                if let Some(placement) = &c.adaptive {
-                    d.preview = placement.clone();
-                }
-                editor.replay = Some(id);
-                editor.preview_params = c.params.clone();
+                editor.source = Some(id);
                 editor.picked = editor.types.iter().position(|(n, _)| n == &c.type_name).unwrap_or(0);
                 editor.tab = Tab::Adaptive;
             }

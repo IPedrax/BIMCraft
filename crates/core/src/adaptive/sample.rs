@@ -1,22 +1,15 @@
-//! A reusable panel with deliberately nonparallel test frames.
+//! A reusable four-point panel, as one is made in Revit: four reference points on the family's axes (one of them raised, so the
+//! panel is warped), made adaptive and oriented to the instance, a closed profile through them extruded, and a point hosted
+//! halfway along a reference line.
 use super::*;
 pub fn four_point_panel() -> Definition {
     let mut nodes = Vec::new();
-    for (index, origin, rotation) in [
-        (1, [0., 0., 0.], [0., -20., 0.]),
-        (2, [1200., 0., 120.], [0., 20., 0.]),
-        (3, [1200., 900., 240.], [15., 20., 0.]),
-        (4, [0., 900., 0.], [15., -20., 0.]),
-    ] {
+    for (index, origin) in [(1, [0., 0., 0.]), (2, [1200., 0., 120.]), (3, [1200., 900., 240.]), (4, [0., 900., 0.])] {
         nodes.push(Node {
             id: format!("p{index}"),
             name: format!("Placement {index}"),
             operation: Operation::Point {
-                host: Host::Adaptive {
-                    number: index,
-                    frame: Frame::at(origin).transformed([0.; 3], rotation).unwrap_or_default(),
-                    orients: OrientsTo::Host,
-                },
+                host: Host::Adaptive { number: index, frame: Frame::at(origin), orients: OrientsTo::Instance },
                 transform: Transform::default(),
             },
             appearance: Appearance::default(),
@@ -35,16 +28,6 @@ pub fn four_point_panel() -> Definition {
                 orientation: Orientation::ProjectInterpolatedNormals,
             },
             transform: Transform::default(),
-        },
-    );
-    push(
-        "child",
-        Operation::Point {
-            host: Host::Frame { point: "p1".into() },
-            transform: Transform {
-                offset: [Expr::Number(100.), Expr::Number(50.), Expr::Number(100.)],
-                rotation: [Expr::Number(10.), Expr::Number(20.), Expr::Number(30.)],
-            },
         },
     );
     Definition { nodes, ..Definition::default() }

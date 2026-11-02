@@ -60,6 +60,66 @@ pub enum Plane {
     Xz,
     Yz,
 }
+/// The datums a Generic Model Adaptive family starts with, as Revit's template has them: the level Ref. Level and the reference
+/// planes Center (Front/Back) and Center (Left/Right), all through the family's origin.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Datum {
+    Level,
+    FrontBack,
+    LeftRight,
+}
+impl Datum {
+    pub const ALL: [Datum; 3] = [Datum::Level, Datum::FrontBack, Datum::LeftRight];
+    /// The plane's axes at the origin, its Z square to it: Ref. Level the family's own; Center (Front/Back) seen from the front,
+    /// Y up; Center (Left/Right) seen from the right, Y up.
+    pub fn frame(self) -> Frame {
+        match self {
+            Datum::Level => Frame::default(),
+            Datum::FrontBack => Frame { origin: [0.; 3], x: [1., 0., 0.], y: [0., 0., 1.], z: [0., -1., 0.] },
+            Datum::LeftRight => Frame { origin: [0.; 3], x: [0., 1., 0.], y: [0., 0., 1.], z: [1., 0., 0.] },
+        }
+    }
+    /// What Revit's Work Plane and Placement Plane call it.
+    pub fn label(self) -> &'static str {
+        match self {
+            Datum::Level => "Level : Ref. Level",
+            Datum::FrontBack => "Reference Plane : Center (Front/Back)",
+            Datum::LeftRight => "Reference Plane : Center (Left/Right)",
+        }
+    }
+}
+/// Where a point or a line is drawn: a datum, or one of a point's three planes (Revit's work plane, its Placement Plane).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WorkPlane {
+    Datum(Datum),
+    Point { point: String, plane: Plane },
+}
+impl Default for WorkPlane {
+    fn default() -> Self {
+        WorkPlane::Datum(Datum::Level)
+    }
+}
+impl WorkPlane {
+    /// Its axes, as `evaluation` has them, its Z square to it; none for a point that did not evaluate.
+    pub fn frame(&self, evaluation: &Evaluation) -> Option<Frame> {
+        match self {
+            WorkPlane::Datum(d) => Some(d.frame()),
+            WorkPlane::Point { point, plane } => match evaluation.values.get(point.as_str()) {
+                Some(Evaluated::Point { frame }) => Some(plane_of(*frame, *plane)),
+                _ => None,
+            },
+        }
+    }
+}
+/// Plane `plane` of a point at `f`, as a frame whose XY it is: XZ is (X, Z, -Y), YZ is (Y, Z, X).
+pub fn plane_of(f: Frame, plane: Plane) -> Frame {
+    match plane {
+        Plane::Xy => f,
+        Plane::Xz => Frame { x: f.x, y: f.z, z: mul(f.y, -1.), ..f },
+        Plane::Yz => Frame { x: f.y, y: f.z, z: f.x, ..f },
+    }
+}
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Orientation {
@@ -166,6 +226,9 @@ pub enum Host {
     World {
         #[serde(default)]
         frame: Frame,
+        /// The datum it was drawn on, its Work Plane; none from before work planes.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        datum: Option<Datum>,
     },
     /// A placement point: clicked `number`th when the family is placed; `frame` is where the family has it.
     Adaptive {
@@ -865,7 +928,7 @@ fn evaluate_operation(
     let result = match &node.operation {
         Operation::Point { host, transform } => {
             let base = match host {
-                Host::World { frame } => frame.checked()?,
+                Host::World { frame, .. } => frame.checked()?,
                 Host::Adaptive { number, frame, orients } => {
                     let at = placement.frames.get(number).copied().unwrap_or(*frame).checked()?;
                     oriented(*orients, *frame, at, report)?
@@ -879,14 +942,7 @@ fn evaluate_operation(
                     oriented(*orients, *frame, at.checked()?, report)?
                 }
                 Host::Frame { point: id } => point(report, id)?,
-                Host::Plane { point: id, plane } => {
-                    let f = point(report, id)?;
-                    match plane {
-                        Plane::Xy => f,
-                        Plane::Xz => Frame { x: f.x, y: f.z, z: mul(f.y, -1.), ..f },
-                        Plane::Yz => Frame { x: f.y, y: f.z, z: f.x, ..f },
-                    }
-                }
+                Host::Plane { point: id, plane } => plane_of(point(report, id)?, *plane),
                 Host::Curve { curve: id, location, orientation } => {
                     let c = curve(report, id)?;
                     let t = c.parameter(location, values)?;

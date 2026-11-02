@@ -51,8 +51,8 @@ point, the view's buttons by label).
 4. **Load into Project and Close**, then in a plan **Component** (CM) with the family: click its adaptive points in order;
    select the instance and drag its numbered grips.
 
-`samples/adaptive-panel.json` (Family Editor > Load Family…) is a ready panel with four independently oriented points, a warped
-extrusion, a six-DOF child point, a reference line and a point hosted on it; `bimcraft-cli run --script
+`samples/adaptive-panel.json` (Family Editor > Load Family…) is a ready panel with four adaptive points on the family's axes (two raised), a warped
+extrusion, a reference line and a point hosted on it; `bimcraft-cli run --script
 samples/adaptive-panel.txt --save panel.bimcraft` places two instances of it, the second flexing one frame and its Thickness.
 
 ## Modelling as in Revit
@@ -83,12 +83,21 @@ forgotten), with a view control bar (Zoom to Fit), the Options Bar over it (the 
 depth Create Form extrudes), Undo in the title bar stepping through the family's edits, and the status bar saying what the tool
 asks for.
 
-The modelling view (`adaptive_view.rs`) is a 3D view over a work plane at height 0 (a grid a metre apart), on the drawing's own
-ground (light in a dark interface when the canvas is kept light), orbited by a drag on empty space, panned with the middle
-button, zoomed with the wheel. Its tools:
+The modelling view (`adaptive_view.rs`) is a 3D view on the drawing's own ground (light in a dark interface when the canvas is
+kept light), orbited by a drag on empty space, panned with the middle button, zoomed with the wheel. It draws the template's
+datums (`Datum`): Ref. Level and the reference planes Center (Front/Back) and Center (Left/Right), each the outline of a rectangle
+round what the family takes up, named; and a grid a metre apart on the work plane Point Element and Line draw on. That is Revit's
+**Placement Plane**, in the Options Bar while drawing (`WorkPlane`, `Modeller::work_plane`): one of the datums (Ref. Level to
+begin with) or one of a point's three planes, or **Pick…**, first in the list as in Revit: the next click picks the plane under
+the pointer, lit as the pointer passes over it (`Evaluation::pick_plane`: the nearest the eye, a point's plane before a datum it
+lies on; Escape gives up). The datums reach 300 mm beyond what the family takes up, and at least 1.5 m from its origin. A point drawn on a datum has the datum's axes and keeps it as its Work Plane
+(`Host::World`'s `datum`); one drawn on a point's plane is hosted on it, at an offset in it, and follows that point
+(`Definition::add_point_on`). Properties shows it under Constraints as **Work Plane**. Its tools:
 
-- **Point**: a click on the work plane places a reference point (a point on the world, `Definition::add_point`); a click on a line
-  places a point hosted on it, at the parameter clicked (`add_hosted_point`).
+- **Point Element**: a click on the work plane places a reference point on it (`Definition::add_point_on`); a click on a line
+  places a point hosted on it, at the parameter clicked (`add_hosted_point`); a click within 8 px of a point snaps onto it,
+  exactly where it falls on the work plane (on that point's own plane, on it at no offset), a square round it showing the snap
+  while the pointer is there.
 - **Line**: clicks on points (or on the work plane, which places one) draw a chain through them; a click on the first point again
   closes it into a profile, Enter, Escape or a right click finish it open (`add_chain`).
 - **Make Adaptive** is a toggle, as Revit's: the points selected are made placement points, numbered next in the order they are
@@ -105,7 +114,7 @@ Beside the view, Properties shows what is selected. A point first has Revit's fi
 Point, Placement Point (Adaptive) or Shape Handle Point (Adaptive): `set_point_type`), **Number** (typing one another point holds
 swaps the two: `set_number`), **Show Placement Number**, **Orients to**, **Constrained** on a shape handle, then **Show
 Reference Planes** and **Visible**, with Revit's defaults (`Node::look`). The view draws a placement point filled and numbered, a
-shape handle a filled square, a reference point a ring, and each point's three planes as small squares when Show Reference Planes
+shape handle a filled square, a reference point a ring, and each point's three planes (light blue outlines of squares centred on it) and three axes (short light blue arrows, the gizmo's long ones when it is selected) when Show Reference Planes
 says so. Then come its relationship (host), offsets and rotations, a form's depth, void,
 material and visibility, each a number or a formula of the family's parameters. Below it, **All elements and the test placement**
 lists every element with the same fields, the test placement's frames, and what the evaluation says; that is where a relationship
