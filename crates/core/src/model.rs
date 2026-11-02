@@ -85,7 +85,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 12;
+pub const FORMAT: u32 = 13;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -935,6 +935,19 @@ impl Justify {
 /// vertical one the same `start` and `end` and two heights. Its section is square to its axis. `system` names the system it
 /// belongs to; schedules group by it. Under several categories, as an opening is a door or a window: `Element::Beam`,
 /// `Element::Pipe` and the others `run_arm!` names.
+/// Measured usable space and user-defined system constraints within a carrier.
+/// These are section measurements, not independent model elements or fabricated catalogue parts.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CarrierCompartment {
+    pub width: f64,
+    pub depth: f64,
+    #[serde(default)]
+    pub offset: f64,
+    #[serde(default)]
+    pub systems: Vec<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Run {
@@ -965,6 +978,13 @@ pub struct Run {
     pub carrier: Option<Guid>,
     #[serde(default)]
     pub local_offset: f64,
+    /// Manual carrier size boundary: never changed by automatic sizing.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub size_locked: bool,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub compartments: BTreeMap<String, CarrierCompartment>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub compartment: String,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -1852,6 +1872,18 @@ impl ProjectParameter {
     }
 }
 
+/// Explicit project carrier policy; no regulatory percentage is assumed.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CarrierSettings {
+    #[serde(default)]
+    pub profile: crate::carrier_limits::Profile,
+    pub fill_percent: f64,
+    pub auto: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub default_type: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Model {
@@ -1870,6 +1902,8 @@ pub struct Model {
     /// External equipment catalogue; an absolute path, independent of the working directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub catalogue: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub carrier_settings: Option<CarrierSettings>,
     /// Cancelled catalogue identities awaiting cleanup; these are tombstones, not element references.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub catalogue_retired: BTreeSet<Guid>,
@@ -1975,6 +2009,7 @@ impl Model {
             units: Units::default(),
             language,
             catalogue: None,
+            carrier_settings: None,
             catalogue_retired: BTreeSet::new(),
             catalogue_unexported: BTreeSet::new(),
             catalogue_pending_edits: BTreeMap::new(),
@@ -2480,6 +2515,23 @@ impl Model {
                 if product.mass_kg.is_some_and(|mass| !mass.is_finite() || !(0.0..=1e9).contains(&mass)) {
                     return Err(format!("{who}: product mass must be finite and between 0 and 1000000000 kg"));
                 }
+                if let Some(section) = &product.carrier {
+                    if e.kind != crate::library::Kind::Type("cablecarrier".into()) {
+                        return Err(format!("{who}: measured carrier section belongs only to cable-carrier types"));
+                    }
+                    section.check().map_err(|error| format!("{who}: {error}"))?;
+                    let ty = self
+                        .types
+                        .runs
+                        .get("cablecarrier")
+                        .and_then(|types| types.get(&e.name))
+                        .ok_or_else(|| format!("{who}: measured carrier section has no geometric type"))?;
+                    if section.clear_width.is_some_and(|width| width > ty.width)
+                        || section.clear_depth.is_some_and(|depth| depth > ty.depth)
+                    {
+                        return Err(format!("{who}: measured internal section must fit within the external width and depth"));
+                    }
+                }
             }
             if id < FIRST_ID {
                 return Err(format!("{} `{}`: ids start at {FIRST_ID}", e.kind.label(), e.name));
@@ -2779,6 +2831,8 @@ impl Model {
         // 9 to 10 defaults components to placed; older readers must not place nonspatial equipment or miscount quantities.
         // 10 to 11 defaults pending catalogue identities to empty; older readers must not drop unexported products on open.
         // 11 to 12 defaults pending product edits to empty; older readers must not overwrite local edits on open.
+        // 12 to 13: absent carrier profile defaults to the explicit legacy project policy.
+        // The version fence prevents older readers silently dropping a selected normative profile.
         self.format = FORMAT;
     }
 
@@ -3228,6 +3282,11 @@ impl Model {
     /// The type a new element of `category` gets when none is named: the one a new model starts
     /// with, else the first by name.
     pub fn default_type(&self, category: &str) -> Option<&str> {
+        if crate::commands::category(category) == "cablecarrier"
+            && let Some(p) = self.carrier_settings.as_ref().filter(|p| !p.default_type.is_empty())
+        {
+            return Some(&p.default_type);
+        }
         let preferred = match crate::commands::category(category).as_str() {
             "region" => return fills::default_region_type(&self.region_types, self.language).map(String::as_str),
             "wall" | "floor" => "Generic - 200mm",
@@ -3722,6 +3781,276 @@ impl Model {
     /// The type of a beam or another run.
     pub fn run_type(&self, e: &Element) -> Option<&RunType> {
         self.types.runs.get(e.category())?.get(&e.run()?.type_name)
+    }
+
+    /// Peak simultaneous cable section along each carrier, compared with its gross section.
+    /// Regulatory limits and internal usable dimensions require an explicit profile.
+    pub fn carrier_sections(&self) -> BTreeMap<Guid, f64> {
+        let area = |t: &RunType| if t.round { std::f64::consts::PI * t.width * t.width / 4.0 } else { t.width * t.depth };
+        let mut events: BTreeMap<Guid, Vec<(f64, f64)>> = BTreeMap::new();
+        for e in self.elements.values() {
+            let Element::Wire(wire) = e else { continue };
+            let Some(carrier) = wire.carrier else { continue };
+            let Some(host @ Element::CableCarrier(_)) = self.elements.get(carrier) else { continue };
+            let (Some(h), Some(w), Some(t)) = (self.run_geom(host), self.run_geom(e), self.run_type(e)) else { continue };
+            let axis = [h.b[0] - h.a[0], h.b[1] - h.a[1], h.b[2] - h.a[2]];
+            let length2: f64 = axis.iter().map(|v| v * v).sum();
+            if length2 <= TOL * TOL {
+                continue;
+            }
+            let project = |p: [f64; 3]| (0..3).map(|i| (p[i] - h.a[i]) * axis[i]).sum::<f64>() / length2;
+            let (a, b) = (project(w.a), project(w.b));
+            let (lo, hi) = (a.min(b).max(0.0), a.max(b).min(1.0));
+            if hi <= lo {
+                continue;
+            }
+            let section = area(t);
+            let list = events.entry(carrier).or_default();
+            list.push((lo, section));
+            list.push((hi, -section));
+        }
+        let mut peaks = BTreeMap::new();
+        for (carrier, mut list) in events {
+            list.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
+            let (mut current, mut peak) = (0.0_f64, 0.0_f64);
+            for (_, delta) in list {
+                current += delta;
+                peak = peak.max(current);
+            }
+            peaks.insert(carrier, peak);
+        }
+        peaks
+    }
+
+    /// Type edits shift a top/bottom-justified carrier's physical centre without editing its axis.
+    /// Keep unchanged cables in that section; explicit instance edits already move them themselves.
+    pub(crate) fn follow_carrier_type_changes(&mut self, before: &Self) {
+        if self.types.runs.get("cablecarrier") == before.types.runs.get("cablecarrier") {
+            return;
+        }
+        let mut moved = Vec::new();
+        for (&id, element) in &self.elements {
+            let Element::Wire(wire) = element else { continue };
+            if before.elements.get(id) != Some(element) {
+                continue;
+            }
+            let Some(host) = wire.carrier.and_then(|id| self.elements.get(id)) else { continue };
+            let Some(old_host) = wire.carrier.and_then(|id| before.elements.get(id)) else { continue };
+            if host != old_host {
+                continue;
+            }
+            let (Some(old), Some(new)) = (before.run_geom(old_host), self.run_geom(host)) else { continue };
+            let dz = new.a[2] - old.a[2];
+            if dz == 0.0 {
+                continue;
+            }
+            let (Some(old_wire), Some(new_wire)) = (before.run_geom(element), self.run_geom(element)) else { continue };
+            let shift = dz - (new_wire.a[2] - old_wire.a[2]);
+            let mut wire = wire.clone();
+            wire.offset += shift;
+            if let Some(end) = &mut wire.end_offset {
+                *end += shift;
+            }
+            moved.push((id, Element::Wire(wire)));
+        }
+        for (id, wire) in moved {
+            self.elements.insert(id, wire);
+        }
+    }
+
+    /// Cable envelope around each carrier axis: width, depth and enclosing diameter.
+    /// Includes endpoint offsets and the cable's oriented section, not just its area.
+    pub fn carrier_envelopes(&self) -> BTreeMap<Guid, [f64; 3]> {
+        use crate::view3d::{cross, sub, unit};
+        let dot = |a: [f64; 3], b: [f64; 3]| a.iter().zip(b).map(|(x, y)| x * y).sum::<f64>();
+        let frame = |g: crate::runs::Geom| {
+            let axis = unit(sub(g.b, g.a));
+            let across = if g.vertical() { [1.0, 0.0, 0.0] } else { unit([-axis[1], axis[0], 0.0]) };
+            (axis, across, cross(axis, across))
+        };
+        let mut result: BTreeMap<Guid, [f64; 3]> = BTreeMap::new();
+        for e in self.elements.values() {
+            let Element::Wire(wire) = e else { continue };
+            let Some(guid) = wire.carrier else { continue };
+            let Some(host) = self.elements.get(guid).and_then(|e| self.run_geom(e)) else { continue };
+            let Some(cable) = self.run_geom(e) else { continue };
+            let (_, x, y) = frame(host);
+            let (axis, cx, cy) = frame(cable);
+            let required = result.entry(guid).or_default();
+            for end in [cable.a, cable.b] {
+                let delta = sub(end, host.a);
+                let (px, py) = (dot(delta, x), dot(delta, y));
+                if cable.round {
+                    let r = cable.width / 2.0;
+                    required[0] = required[0].max(2.0 * (px.abs() + r * (1.0 - dot(x, axis).powi(2)).max(0.0).sqrt()));
+                    required[1] = required[1].max(2.0 * (py.abs() + r * (1.0 - dot(y, axis).powi(2)).max(0.0).sqrt()));
+                    required[2] = required[2].max(2.0 * (px.hypot(py) + r));
+                } else {
+                    for a in [-0.5, 0.5] {
+                        for b in [-0.5, 0.5] {
+                            let vx = px + a * cable.width * dot(cx, x) + b * cable.depth * dot(cy, x);
+                            let vy = py + a * cable.width * dot(cx, y) + b * cable.depth * dot(cy, y);
+                            required[0] = required[0].max(2.0 * vx.abs());
+                            required[1] = required[1].max(2.0 * vy.abs());
+                            required[2] = required[2].max(2.0 * vx.hypot(vy));
+                        }
+                    }
+                }
+            }
+        }
+        result
+    }
+
+    pub fn carrier_fits(t: &RunType, required: [f64; 3]) -> bool {
+        if t.round { t.width + TOL >= required[2] } else { t.width + TOL >= required[0] && t.depth + TOL >= required[1] }
+    }
+
+    /// Advisory per-compartment occupancy and explicitly configured system separation.
+    pub fn carrier_compartment_warnings(&self, percent: f64) -> BTreeMap<Guid, Vec<String>> {
+        use crate::view3d::{cross, sub, unit};
+        let dot = |a: [f64; 3], b: [f64; 3]| a.iter().zip(b).map(|(x, y)| x * y).sum::<f64>();
+        let mut warnings: BTreeMap<Guid, Vec<String>> = BTreeMap::new();
+        let mut events: BTreeMap<(Guid, String), Vec<(f64, f64)>> = BTreeMap::new();
+        for e in self.elements.values() {
+            let Element::Wire(wire) = e else { continue };
+            let Some(guid) = wire.carrier else { continue };
+            let Some(host @ Element::CableCarrier(run)) = self.elements.get(guid) else { continue };
+            if run.compartments.is_empty() && wire.compartment.is_empty() {
+                continue;
+            }
+            let Some(slot) = run.compartments.get(&wire.compartment) else {
+                warnings.entry(guid).or_default().push(format!("cable carrier {guid}: assign the wire to an existing compartment"));
+                continue;
+            };
+            let notes = warnings.entry(guid).or_default();
+            if !slot.systems.is_empty() && !slot.systems.contains(&wire.system) {
+                notes
+                    .push(format!("cable carrier {guid}: compartment {} system separation conflict for {}", wire.compartment, wire.system));
+            }
+            let (Some(h), Some(w)) = (self.run_geom(host), self.run_geom(e)) else { continue };
+            let axis = unit(sub(h.b, h.a));
+            let x = if h.vertical() { [1.0, 0.0, 0.0] } else { unit([-axis[1], axis[0], 0.0]) };
+            let y = cross(axis, x);
+            let wa = unit(sub(w.b, w.a));
+            let wx = if w.vertical() { [1.0, 0.0, 0.0] } else { unit([-wa[1], wa[0], 0.0]) };
+            let wy = cross(wa, wx);
+            let support = |n| {
+                if w.round {
+                    w.width / 2.0 * (1.0 - dot(n, wa).powi(2)).max(0.0).sqrt()
+                } else {
+                    (w.width * dot(n, wx).abs() + w.depth * dot(n, wy).abs()) / 2.0
+                }
+            };
+            if [w.a, w.b].iter().any(|p| {
+                let d = sub(*p, h.a);
+                (dot(d, x) - slot.offset).abs() + support(x) > slot.width / 2.0 + TOL
+                    || dot(d, y).abs() + support(y) > slot.depth / 2.0 + TOL
+            }) {
+                notes.push(format!(
+                    "cable carrier {guid}: compartment {} geometric conflict; cable envelope does not fit its usable section",
+                    wire.compartment
+                ));
+            }
+            let a = dot(sub(w.a, h.a), axis) / h.length();
+            let b = dot(sub(w.b, h.a), axis) / h.length();
+            let lo = a.min(b).max(0.0);
+            let hi = a.max(b).min(1.0);
+            if hi > lo {
+                let area = if w.round { std::f64::consts::PI * w.width * w.width / 4.0 } else { w.width * w.depth };
+                events.entry((guid, wire.compartment.clone())).or_default().extend([(lo, area), (hi, -area)]);
+            }
+        }
+        for ((guid, name), mut list) in events {
+            list.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
+            let (mut current, mut peak) = (0.0_f64, 0.0_f64);
+            for (_, delta) in list {
+                current += delta;
+                peak = peak.max(current);
+            }
+            let Some(Element::CableCarrier(run)) = self.elements.get(guid) else { continue };
+            let Some(slot) = run.compartments.get(&name) else { continue };
+            if peak > slot.width * slot.depth * percent / 100.0 {
+                warnings.entry(guid).or_default().push(format!(
+                    "cable carrier {guid}: compartment {name} simultaneous cable section exceeds {percent}% of its usable section"
+                ));
+            }
+        }
+        warnings.retain(|_, notes| !notes.is_empty());
+        warnings
+    }
+
+    /// Measured product section, kept with the catalogue type rather than a placed run.
+    pub fn carrier_section(&self, name: &str) -> Option<&crate::carrier_limits::Section> {
+        let id = self.library.id(&crate::library::Kind::Type("cablecarrier".into()), name)?;
+        self.library.get(id)?.product.as_ref()?.carrier.as_ref()
+    }
+
+    pub fn carrier_capacity(&self, name: &str, profile: crate::carrier_limits::Profile, percent: f64) -> Result<f64, String> {
+        let t = self.types.runs.get("cablecarrier").and_then(|types| types.get(name)).ok_or("carrier type is missing")?;
+        let gross = if t.round { std::f64::consts::PI * t.width * t.width / 4.0 } else { t.width * t.depth };
+        crate::carrier_limits::capacity(profile, percent, gross, self.carrier_section(name))
+    }
+
+    pub fn carrier_type_fits(&self, name: &str, required: [f64; 3], profile: crate::carrier_limits::Profile) -> bool {
+        let Some(t) = self.types.runs.get("cablecarrier").and_then(|types| types.get(name)) else { return false };
+        if !Self::carrier_fits(t, required) {
+            return false;
+        }
+        if profile == crate::carrier_limits::Profile::Project {
+            return true;
+        }
+        self.carrier_section(name).is_some_and(|section| {
+            section.clear_width.is_some_and(|w| w + TOL >= required[0]) && section.clear_depth.is_some_and(|d| d + TOL >= required[1])
+        })
+    }
+
+    pub(crate) fn carrier_compartments_fit(&self, name: &str, run: &Run, profile: crate::carrier_limits::Profile) -> bool {
+        run.compartments.is_empty()
+            || self.carrier_type_fits(
+                name,
+                run.compartments
+                    .values()
+                    .fold([0.0_f64; 3], |a, slot| [a[0].max(slot.width + 2.0 * slot.offset.abs()), a[1].max(slot.depth), 0.0]),
+                profile,
+            )
+    }
+
+    pub fn carrier_warnings(&self) -> Vec<String> {
+        let profile = self.carrier_settings.as_ref().map_or(crate::carrier_limits::Profile::default(), |p| p.profile);
+        let percent = self.carrier_settings.as_ref().map_or(100.0, |p| p.fill_percent);
+        let mut warnings: Vec<_> = self.carrier_sections().into_iter().filter_map(|(carrier, peak)| {
+            let Element::CableCarrier(run) = self.elements.get(carrier)? else { return None };
+            match self.carrier_capacity(&run.type_name, profile, percent) {
+                Err(error) => Some(format!("cable carrier {carrier}: {error}; capacity cannot be verified")),
+                Ok(allowed) if peak > allowed => Some(format!("cable carrier {carrier}: simultaneous cable section {peak:.1} mm2 exceeds allowed section {allowed:.1} mm2; choose a larger carrier or smaller cables")),
+                _ => None,
+            }
+        }).collect();
+        for (guid, required) in self.carrier_envelopes() {
+            let Some(Element::CableCarrier(run)) = self.elements.get(guid) else { continue };
+            if !self.carrier_type_fits(&run.type_name, required, profile) {
+                warnings.push(format!(
+                    "cable carrier {guid}: geometric conflict; cable envelope needs {:.1} x {:.1} mm, diameter {:.1} mm",
+                    required[0], required[1], required[2]
+                ));
+            }
+        }
+        for (id, element) in self.elements.iter() {
+            if let Element::CableCarrier(run) = element
+                && !self.carrier_compartments_fit(&run.type_name, run, profile)
+            {
+                warnings.push(format!(
+                    "cable carrier {}: geometric conflict; measured compartment does not fit the carrier section",
+                    self.guid(*id)
+                ));
+            }
+        }
+        warnings.extend(
+            self.carrier_compartment_warnings(if profile == crate::carrier_limits::Profile::Project { percent } else { 100.0 })
+                .into_values()
+                .flatten(),
+        );
+        warnings
     }
 
     /// A run worked out: its ends and its section. None for another element, or a type it doesn't have.
@@ -4280,10 +4609,19 @@ impl Model {
     /// Everything that must hold between commands: references resolve, geometry is finite and
     /// not degenerate, doors and windows fit their walls and don't overlap.
     pub fn check(&self) -> Result<(), String> {
+        if let Some(p) = &self.carrier_settings {
+            text("Carrier settings", "default_type", &p.default_type)?;
+            if !p.default_type.is_empty() && !self.types.runs.get("cablecarrier").is_some_and(|types| types.contains_key(&p.default_type)) {
+                return Err("Carrier default_type must name an existing cable carrier type".into());
+            }
+        }
+        if self.carrier_settings.as_ref().is_some_and(|p| !p.fill_percent.is_finite() || p.fill_percent <= 0.0 || p.fill_percent > 100.0) {
+            return Err("Carrier fill_percent must be greater than 0 and at most 100".into());
+        }
         if self.catalogue_pending_edits.len() > crate::ods::MAX_ROWS
             || self.catalogue_pending_edits.iter().any(|(guid, row)| {
                 guid.pending().is_some()
-                    || row.len() != 13
+                    || !matches!(row.len(), 13 | 16)
                     || row.first().and_then(|value| Guid::parse(value)) != Some(*guid)
                     || row.iter().any(|value| value.len() > crate::ods::MAX_CELL)
             })
@@ -5032,6 +5370,40 @@ impl Model {
                     text(&who, "system", &r.system)?;
                     text(&who, "cable", &r.cable)?;
                     crate::runs::check(&who, category, &crate::runs::Geom::of(self, r, t))?;
+                    if r.compartments.len() > 32 || (!r.compartments.is_empty() && (category != "cablecarrier" || t.round)) {
+                        return Err(format!("{who}: at most 32 compartments belong to a rectangular cable carrier"));
+                    }
+                    text(&who, "compartment", &r.compartment)?;
+                    if !r.compartment.is_empty() && category != "wire" {
+                        return Err(format!("{who}: only a wire names its compartment"));
+                    }
+                    for (name, slot) in &r.compartments {
+                        text(&who, "compartment name", name)?;
+                        size(&who, slot.width)?;
+                        size(&who, slot.depth)?;
+                        coord(&who, slot.offset)?;
+                        if name.trim().is_empty()
+                            || slot.systems.len() > 32
+                            || 2.0 * slot.offset.abs() + slot.width > t.width + TOL
+                            || slot.depth > t.depth + TOL
+                        {
+                            return Err(format!("{who}: named compartments must fit the carrier section and list at most 32 systems"));
+                        }
+                        for system in &slot.systems {
+                            text(&who, "compartment system", system)?;
+                        }
+                    }
+                    let slots: Vec<_> = r.compartments.values().collect();
+                    for (i, a) in slots.iter().enumerate() {
+                        for b in &slots[i + 1..] {
+                            if (a.offset - b.offset).abs() + TOL < (a.width + b.width) / 2.0 {
+                                return Err(format!("{who}: compartments overlap; separate their usable sections"));
+                            }
+                        }
+                    }
+                    if r.size_locked && category != "cablecarrier" {
+                        return Err(format!("{who}: size_locked is only for cable carriers"));
+                    }
                     let wire = category == "wire";
                     if !wire && (r.source.is_some() || !r.devices.is_empty() || r.carrier.is_some()) {
                         return Err(format!("{who}: only a wire carries its source, devices and carrier"));

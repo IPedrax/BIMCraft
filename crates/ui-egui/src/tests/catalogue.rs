@@ -301,3 +301,153 @@ fn opening_with_a_broken_catalogue_shows_a_visible_warning() {
     }
     assert!(!h.state().status.error, "{}", h.state().status.text);
 }
+
+#[test]
+fn carrier_dialog_checks_highlights_and_saves_project_policy() {
+    let mut h = app("");
+    for (name, p) in [
+        ("type", json!({"category":"cablecarrier","name":"Small box","width":10,"depth":10,"round":false})),
+        ("type", json!({"category":"wire","name":"Large cable","width":20,"depth":20,"round":true})),
+    ] {
+        h.state_mut().session.execute(name, &p).unwrap();
+    }
+    let reply = h.state_mut().session.execute("cable_carrier", &json!({"type":"Small box","points":[[0,0],[3000,0]]})).unwrap();
+    let carrier = reply.get("id").or_else(|| reply["ids"].get(0)).unwrap().clone();
+    h.state_mut().session.execute("wire", &json!({"type":"Large cable","points":[[0,0],[3000,0]],"carrier":carrier})).unwrap();
+    press(&mut h, "Manage");
+    press(&mut h, "Equipment Catalogue");
+    press(&mut h, "Cable carriers");
+    press(&mut h, "Check and highlight carriers");
+    assert_eq!(h.state().selection.len(), 1);
+    assert_eq!(h.state().session.model.elements.get(h.state().selection[0]).unwrap().category(), "cablecarrier");
+    press(&mut h, "Automatic carrier sizing");
+    press(&mut h, "Apply carrier settings");
+    assert!(h.state().session.model.carrier_settings.as_ref().unwrap().auto);
+}
+
+#[test]
+fn selected_carrier_compartments_can_be_configured_without_editing_json() {
+    let mut h = app("");
+    let reply = h.state_mut().session.execute("cable_carrier", &json!({"type":"Tray 100 x 50","points":[[0,0],[3000,0]]})).unwrap();
+    let value = reply.get("id").or_else(|| reply["ids"].get(0)).unwrap().clone();
+    let guid: Guid = serde_json::from_value(value).unwrap();
+    let id = h.state().session.model.elements.id(guid).unwrap();
+    h.state_mut().selection = vec![id];
+    press(&mut h, "Manage");
+    press(&mut h, "Equipment Catalogue");
+    press(&mut h, "Cable carriers");
+    press(&mut h, "Carrier compartments");
+    type_into(&mut h, "Compartment name:", "Data");
+    press(&mut h, "Apply compartment");
+    assert!(h.state().session.model.elements.get(id).unwrap().run().unwrap().compartments.contains_key("Data"));
+}
+
+#[test]
+fn project_carrier_type_can_be_selected_in_the_catalogue_dialog() {
+    let mut h = app("");
+    h.state_mut()
+        .session
+        .execute("type", &json!({"category":"cablecarrier","name":"Project tray","width":150,"depth":75,"round":false}))
+        .unwrap();
+    press(&mut h, "Manage");
+    press(&mut h, "Equipment Catalogue");
+    press(&mut h, "Cable carriers");
+    h.get_by_role_and_label(Role::ComboBox, "Project carrier type").click();
+    h.run();
+    press(&mut h, "Project tray");
+    assert_eq!(h.state().session.model.carrier_settings.as_ref().unwrap().default_type, "Project tray");
+}
+
+#[test]
+fn opening_an_overfilled_carrier_keeps_its_warning_and_highlight() {
+    for configured in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("overfilled.bimcraft");
+        let mut h = app("");
+        let state = h.state_mut();
+        state.session.execute("type", &json!({"category":"cablecarrier","name":"Small tray","width":10,"depth":10,"round":false})).unwrap();
+        state.session.execute("type", &json!({"category":"wire","name":"Large cable","width":20,"depth":20,"round":true})).unwrap();
+        state.session.execute("cable_carrier", &json!({"type":"Small tray","points":[[0,0],[3000,0]]})).unwrap();
+        let carrier = *state.session.model.elements.iter().find(|(_, e)| e.category() == "cablecarrier").unwrap().0;
+        state.session.execute("wire", &json!({"type":"Large cable","carrier":carrier,"points":[[0,0],[3000,0]]})).unwrap();
+        if configured {
+            state.session.execute("cable_carrier_check", &json!({"mode":"warn","fill_percent":40,"configure":true})).unwrap();
+        }
+        state.session.execute("save", &json!({"path":project})).unwrap();
+        assert!(state.open_path(&project));
+        assert!(state.selection.contains(&carrier), "opening should highlight the overfilled carrier (configured={configured})");
+        assert!(state.status.text.starts_with("Cable carrier conflicts:"), "opening should keep visible warnings");
+    }
+}
+
+#[cfg(feature = "visual-tests")]
+#[test]
+#[ignore = "renders the carrier dialog in three looks for visual inspection"]
+fn carrier_dialog_visual_acceptance() {
+    let output =
+        std::env::var_os("DUMP").map(std::path::PathBuf::from).unwrap_or_else(|| std::path::PathBuf::from("../../target/stage3-visual"));
+    std::fs::create_dir_all(&output).unwrap();
+    for (name, theme, light_canvas) in [
+        ("light", egui::ThemePreference::Light, false),
+        ("dark", egui::ThemePreference::Dark, false),
+        ("dark-light-canvas", egui::ThemePreference::Dark, true),
+    ] {
+        let mut s = Session::new();
+        s.execute("cable_carrier", &json!({"type":"Tray 100 x 50","points":[[0,0],[3000,0]]})).unwrap();
+        let carrier = *s.model.elements.iter().find(|(_, e)| e.category() == "cablecarrier").unwrap().0;
+        s.execute("type", &json!({"category":"wire","name":"Oversized cable","width":120,"depth":120,"round":true})).unwrap();
+        s.execute("wire", &json!({"type":"Oversized cable","carrier":carrier,"points":[[0,0],[3000,0]]})).unwrap();
+        s.execute(
+            "carrier_section",
+            &json!({"type":"Tray 100 x 50","section":{"enclosure":"lidded_box","clear_width":80,"clear_depth":40}}),
+        )
+        .unwrap();
+        let mut state = BimApp::new(s);
+        state.theme_wanted = Some(theme);
+        state.light_canvas = light_canvas;
+        let mut h = Harness::builder()
+            .with_size([1280.0, 800.0])
+            .with_max_steps(32)
+            .renderer(egui_kittest::wgpu::WgpuTestRenderer::new())
+            .build_ui_state(|ui, state: &mut BimApp| state.show(ui), state);
+        h.run();
+        press(&mut h, "Manage");
+        press(&mut h, "Equipment Catalogue");
+        press(&mut h, "Cable carriers");
+        press(&mut h, "Apply carrier settings");
+        h.render().unwrap().save(output.join(format!("carrier-profile-{name}.png"))).unwrap();
+        press(&mut h, "Check and highlight carriers");
+        assert_eq!(h.state().selection.len(), 1, "check must select the carrier: {}", h.state().status.text);
+        press(&mut h, "Measured product section");
+        h.render().unwrap().save(output.join(format!("carrier-measured-{name}.png"))).unwrap();
+        press(&mut h, "Carrier compartments");
+        type_into(&mut h, "Compartment name:", "Data");
+        assert!(h.ctx.content_rect().contains_rect(h.get_by_label("Close").rect()), "expanded dialog must keep Close inside the window");
+        h.render().unwrap().save(output.join(format!("carrier-{name}.png"))).unwrap();
+    }
+}
+
+#[test]
+fn carrier_dialog_edits_measured_type_section_through_command() {
+    let mut h = app("");
+    h.state_mut().session.execute("cable_carrier", &json!({"type":"Tray 100 x 50","points":[[0,0],[3000,0]]})).unwrap();
+    let id = *h.state().session.model.elements.iter().find(|(_, e)| e.category() == "cablecarrier").unwrap().0;
+    h.state_mut().selection = vec![id];
+    press(&mut h, "Manage");
+    press(&mut h, "Equipment Catalogue");
+    press(&mut h, "Cable carriers");
+    press(&mut h, "Measured product section");
+    h.get_by_role_and_label(Role::ComboBox, "Carrier enclosure").click();
+    h.run();
+    press(&mut h, "Lidded box");
+    type_into(&mut h, "Clear width:", "80");
+    type_into(&mut h, "Clear depth:", "40");
+    press(&mut h, "Apply measured section");
+    let measured = h.state().session.model.carrier_section("Tray 100 x 50").unwrap();
+    assert_eq!(measured.clear_width, Some(80.0));
+    assert_eq!(measured.clear_depth, Some(40.0));
+    assert_eq!(measured.enclosure, Some(bimcraft_core::carrier_limits::Enclosure::LiddedBox));
+    assert!(!h.state().status.error, "{}", h.state().status.text);
+    press(&mut h, "Clear measured section");
+    assert!(h.state().session.model.carrier_section("Tray 100 x 50").is_none());
+}

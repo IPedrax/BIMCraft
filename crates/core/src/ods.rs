@@ -142,6 +142,7 @@ pub fn sync_bound(
         }
         count
     };
+    candidate.follow_carrier_type_changes(model);
     candidate.catalogue_retired.clear();
     candidate.catalogue_unexported.clear();
     candidate.catalogue_pending_edits.clear();
@@ -231,7 +232,7 @@ fn escaped(s: &str) -> String {
     quick_xml::escape::escape(s).into_owned()
 }
 
-const HEADINGS: [&str; 13] = [
+const HEADINGS: [&str; 16] = [
     "GUID",
     "Category",
     "Name",
@@ -245,6 +246,9 @@ const HEADINGS: [&str; 13] = [
     "Manufacturer",
     "Mass_kg",
     "Height_mm",
+    "CarrierEnclosure",
+    "ClearWidth_mm",
+    "ClearDepth_mm",
 ];
 
 fn dimension_parameter<'a>(
@@ -268,6 +272,7 @@ pub fn catalogue_rows(model: &crate::model::Model) -> Vec<Vec<String>> {
                 let guid = model.library.guid(&crate::library::Kind::Type(category.into()), name);
                 let product =
                     guid.and_then(|g| model.library.by_guid(g)).and_then(|(_, e)| e.product.as_ref()).cloned().unwrap_or_default();
+                let carrier = product.carrier.unwrap_or_default();
                 rows.push(vec![
                     guid.map(|g| g.to_string()).unwrap_or_default(),
                     category.into(),
@@ -282,6 +287,9 @@ pub fn catalogue_rows(model: &crate::model::Model) -> Vec<Vec<String>> {
                     product.manufacturer,
                     product.mass_kg.map(|mass| mass.to_string()).unwrap_or_default(),
                     String::new(),
+                    carrier.enclosure.map(|kind| kind.key().to_owned()).unwrap_or_default(),
+                    carrier.clear_width.map(|value| value.to_string()).unwrap_or_default(),
+                    carrier.clear_depth.map(|value| value.to_string()).unwrap_or_default(),
                 ]);
             }
         }
@@ -318,6 +326,9 @@ pub fn catalogue_rows(model: &crate::model::Model) -> Vec<Vec<String>> {
                 product.manufacturer,
                 product.mass_kg.map(|mass| mass.to_string()).unwrap_or_default(),
                 dimension("Height"),
+                String::new(),
+                String::new(),
+                String::new(),
             ]);
         }
     }
@@ -367,7 +378,7 @@ pub fn transfer_rows(model: &crate::model::Model, rows: &[Vec<String>], conflict
         let identical = row.iter().enumerate().skip(1).all(|(i, cell)| {
             existing.get(i).is_some_and(|old| {
                 old == cell
-                    || (matches!(i, 3 | 4 | 11 | 12)
+                    || (matches!(i, 3 | 4 | 11 | 12 | 14 | 15)
                         && old.parse::<f64>().ok().zip(cell.parse::<f64>().ok()).is_some_and(|(a, b)| a.is_finite() && a == b))
             })
         });
@@ -399,10 +410,9 @@ pub fn transfer_rows(model: &crate::model::Model, rows: &[Vec<String>], conflict
 
 /// Apply rows to existing library identities; Session validates and rolls back the entire command.
 pub fn apply_catalogue(model: &mut crate::model::Model, rows: &[Vec<String>]) -> Result<usize, String> {
-    if rows
-        .first()
-        .is_none_or(|r| ![7, 12, HEADINGS.len()].contains(&r.len()) || r.iter().map(String::as_str).ne(HEADINGS[..r.len()].iter().copied()))
-    {
+    if rows.first().is_none_or(|r| {
+        ![7, 12, 13, HEADINGS.len()].contains(&r.len()) || r.iter().map(String::as_str).ne(HEADINGS[..r.len()].iter().copied())
+    }) {
         return Err("ODS catalogue headings do not match the exported schema".into());
     }
     let mut seen = std::collections::BTreeSet::new();
@@ -410,6 +420,7 @@ pub fn apply_catalogue(model: &mut crate::model::Model, rows: &[Vec<String>]) ->
     let mut products = Vec::new();
     let mut applied = Vec::new();
     let has_product_columns = rows.first().is_some_and(|row| row.len() >= 12);
+    let has_section_columns = rows.first().is_some_and(|row| row.len() == HEADINGS.len());
     for source in rows.iter().skip(1).filter(|r| r.iter().any(|s| !s.is_empty())) {
         if source.len() > HEADINGS.len() {
             return Err("ODS catalogue row has too many cells".into());
@@ -485,6 +496,36 @@ pub fn apply_catalogue(model: &mut crate::model::Model, rows: &[Vec<String>]) ->
                 article: row[9].clone(),
                 manufacturer: row[10].clone(),
                 mass_kg: if row[11].is_empty() { None } else { Some(row[11].parse().map_err(|_| "ODS mass must be a number")?) },
+                carrier: if has_section_columns {
+                    let section = crate::carrier_limits::Section {
+                        enclosure: if row[13].is_empty() {
+                            None
+                        } else {
+                            Some(
+                                serde_json::from_value(serde_json::Value::String(row[13].clone()))
+                                    .map_err(|_| "ODS carrier enclosure is unknown")?,
+                            )
+                        },
+                        clear_width: if row[14].is_empty() {
+                            None
+                        } else {
+                            Some(row[14].parse().map_err(|_| "ODS clear width must be a number")?)
+                        },
+                        clear_depth: if row[15].is_empty() {
+                            None
+                        } else {
+                            Some(row[15].parse().map_err(|_| "ODS clear depth must be a number")?)
+                        },
+                    };
+                    (section != crate::carrier_limits::Section::default()).then_some(section)
+                } else {
+                    model
+                        .library
+                        .id(&kind, name)
+                        .and_then(|id| model.library.get(id))
+                        .and_then(|entry| entry.product.as_ref())
+                        .and_then(|product| product.carrier.clone())
+                },
             };
             let product = (product != crate::library::Product::default()).then_some(product);
             products.push((kind.clone(), name.clone(), product));
@@ -617,7 +658,10 @@ pub fn read(bytes: &[u8]) -> Result<Vec<Vec<String>>, String> {
                     for _ in 0..cell_repeat {
                         let heading = rows.first().and_then(|header: &Vec<String>| header.get(row.len())).map(String::as_str);
                         let value = match (heading, scalar.as_ref()) {
-                            (Some("Width_mm" | "Depth_mm" | "Height_mm" | "Mass_kg"), Some(("float", value)))
+                            (
+                                Some("Width_mm" | "Depth_mm" | "Height_mm" | "Mass_kg" | "ClearWidth_mm" | "ClearDepth_mm"),
+                                Some(("float", value)),
+                            )
                             | (Some("Round"), Some(("boolean", value))) => value,
                             (_, Some((_, value))) if cell.is_empty() => value,
                             _ => &cell,
@@ -709,7 +753,7 @@ mod tests {
         let mut s = crate::engine::Session::new();
         s.execute("type", &json!({"category":"wire", "name":"Product", "width":6, "round":true})).unwrap();
         let mut rows = super::catalogue_rows(&s.model);
-        assert_eq!(rows[0].len(), 13);
+        assert_eq!(rows[0].len(), 16);
         let row = rows.iter_mut().skip(1).find(|r| r[2] == "Product").unwrap();
         row[7..12].clone_from_slice(&["Кабель огнестойкий".into(), "КПС".into(), "001-23".into(), "Изготовитель".into(), "0.08".into()]);
         let expected = row.clone();

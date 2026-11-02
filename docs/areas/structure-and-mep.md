@@ -89,3 +89,30 @@ whose grid would ask for over 2000 detectors is refused. It leaves to the design
 where one alone would trip the alarm, and beams and ducts that split a ceiling.
 
 Panel-limit automation is a future Wire workflow; panel families still describe their capacity in their type names.
+
+Stage 3 links a Wire to its CableCarrier by GUID. Translation, rotation and mirror
+move the cable once, including when both are selected. Direct axis/height edits
+map cable centres through the carrier's 3D frame. Type depth changes, including
+closed-project ODS synchronization, retain cable position relative to the physical
+section for top/bottom justification. Undo/Redo preserves both instances and GUIDs.
+
+`open` after ODS synchronization and `inspect` report peak simultaneous gross cable
+section along carrier intervals. `cable_carrier_check` takes explicit `fill_percent`
+and `mode: warn|auto`; `configure` saves the policy and optional project default
+carrier type. Auto chooses the smallest sufficient shape-compatible type from the
+same known manufacturer for a straight connected run, including across perpendicular
+branches. It checks both peak area and the cable's offset/oriented envelope, keeps
+one size along the run, and never reduces an existing section's area. Unknown
+manufacturer or insufficient catalogue leaves warnings. Persisted `size_locked`
+marks a manual size boundary excluded from automatic sizing; locked overfill is
+reported. Advisory checks do not add Undo steps.
+
+No regulatory percentage is assumed. Gross type dimensions are not verified internal
+dimensions. Instance `compartments` record measured usable width/depth/lateral offset
+and explicitly permitted systems; assigned cables receive per-compartment geometry,
+separation and simultaneous-fill warnings. These measurements must fit any candidate
+type. They describe constraints, not independently identified divider products.
+Manage > Equipment Catalogue exposes the policy, project type, manual locks and
+selected element's compartment settings. Checks highlight affected carriers;
+opening and ODS polling retain the feedback. The bounded Russian maximum-fill
+profile is documented in [carrier limits](carrier-norms.md).

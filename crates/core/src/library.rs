@@ -160,6 +160,8 @@ pub struct Product {
     pub manufacturer: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mass_kg: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub carrier: Option<crate::carrier_limits::Section>,
 }
 
 /// A library entry: what it is, its name, its GUID.
@@ -1013,6 +1015,11 @@ impl Model {
     /// materials, its materials' pictures, its view filters' rules, its view templates' graphics, its option sets'
     /// primaries. (A family's forms name their materials themselves.)
     pub fn lib_refs_mut(&mut self, f: &mut dyn FnMut(&Kind, &mut String)) {
+        if let Some(p) = &mut self.carrier_settings
+            && !p.default_type.is_empty()
+        {
+            f(&Kind::Type("cablecarrier".into()), &mut p.default_type);
+        }
         for e in self.elements.values_mut() {
             e.lib_refs_mut(f);
         }

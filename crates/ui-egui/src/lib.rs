@@ -1097,6 +1097,9 @@ impl BimApp {
                 self.status = Status::default();
                 // The core renames and drops the option with its set.
                 self.active_option = self.session.option.clone();
+                if let Some(report) = v.get("carrier_check").or_else(|| (id == "cable_carrier_check").then_some(&v)) {
+                    self.carrier_feedback(report);
+                }
                 Some(v)
             }
             Err(e) => {
@@ -2441,6 +2444,16 @@ impl BimApp {
             self.status = Status { text, error: false };
         }
         // Reopening recreates selection and dialog state; apply carrier feedback afterwards.
+        if let Some(report) = reply.get("carrier_check") {
+            self.carrier_feedback(report);
+        } else {
+            match self.session.execute("cable_carrier_check", &json!({"mode":"warn","fill_percent":100})) {
+                Ok(report) => self.carrier_feedback(&report),
+                Err(error) => {
+                    self.status = Status { text: tf("Cable carrier check failed: {}", &[&error]), error: true };
+                }
+            }
+        }
         if let Some(error) = reply["catalogue_not_loaded"].as_str() {
             self.status = Status { text: tf("Equipment catalogue could not be loaded: {}", &[error]), error: true };
         }

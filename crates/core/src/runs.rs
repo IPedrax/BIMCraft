@@ -227,6 +227,9 @@ mod tests {
             along_walls: false,
             carrier: None,
             local_offset: 0.0,
+            size_locked: false,
+            compartments: Default::default(),
+            compartment: String::new(),
             params: Default::default(),
         }
     }

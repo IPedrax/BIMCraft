@@ -32,6 +32,15 @@ Import Catalogue. Cancellation leaves the model unchanged; import runs the core
 The conflict controls and selected unassigned product were inspected at 1280×800
 in all three looks on 2026-11-01, without clipped fields or buttons:
 `target/catalogue-ui-qa/stage2-selected-dialog-{light,dark,dark-light-canvas}.png`.
+The carrier controls share this dialog. Its body scrolls independently of the
+heading and footer; changes to the modal bounds request another frame so the
+centered layout settles before the next interaction. The ignored GPU acceptance
+test renders all three looks and checks that Close remains inside the viewport:
+`cargo test -p bimcraft-ui-egui --features visual-tests carrier_dialog_visual_acceptance -- --ignored --test-threads=1`.
+Set `DUMP` to an absolute output directory; the default is `target/stage3-visual`.
+The 1280×800 outputs `carrier-{light,dark,dark-light-canvas}.png` were inspected
+on 2026-11-01, with the expanded compartment form and conflict feedback visible.
+
 The catalogue dialog and synchronization error were rendered and inspected in Light,
 Dark, and Dark UI with Light Canvas (`target/catalogue-ui-qa/` in the development workspace).
 The missing-product list and warning were inspected in all three looks too

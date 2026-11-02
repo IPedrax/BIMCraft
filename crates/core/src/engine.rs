@@ -220,7 +220,7 @@ impl Session {
         let before = Arc::clone(&self.model);
         let (run, first_new, session) = (cmd.run, self.model.next_id, (self.phase.clone(), self.option.clone()));
         let result = catch_unwind(AssertUnwindSafe(|| {
-            run(self, params).and_then(|v| {
+            run(self, params).and_then(|mut v| {
                 if Arc::ptr_eq(&before, &self.model) {
                     return Ok(v);
                 }
@@ -249,12 +249,34 @@ impl Session {
                 // What a command was given by id points at the element's GUID; what it put in the library has an id and a GUID.
                 self.model_mut().resolve();
                 self.model_mut().sync_library();
+                if cmd.undoable {
+                    self.model_mut().follow_carrier_type_changes(&before);
+                }
                 // What was made or changed must be as a sketch of it solves too (an outline that is simple), which a file
                 // from before may break; Insert from File brings in what it finds.
                 // (Before the check, which would name a bow tie of no area by that, not by what to redraw.)
                 let edited = if cmd.undoable && cmd.id != "insert" { self.model.check_edits(&before, cmd.id, params) } else { Ok(()) };
                 edited.and_then(|()| self.model.check())?;
-
+                if (cmd.undoable || cmd.id == "open")
+                    && cmd.id != "cable_carrier_check"
+                    && let Some(policy) = self.model.carrier_settings.clone()
+                {
+                    let report = crate::commands::cable_carrier_check(
+                        self,
+                        &json!({"mode":if policy.auto {"auto"} else {"warn"},"fill_percent":policy.fill_percent}),
+                    )?;
+                    if let Some(object) = v.as_object_mut() {
+                        let warnings = object.entry("warnings").or_insert_with(|| json!([]));
+                        if let Some(warnings) = warnings.as_array_mut() {
+                            warnings.retain(|v| !v.as_str().is_some_and(|s| s.starts_with("cable carrier ")));
+                            if let Some(current) = report["warnings"].as_array() {
+                                warnings.extend(current.iter().cloned());
+                            }
+                        }
+                        object.insert("carrier_check".into(), report);
+                    }
+                    self.model.check()?;
+                }
                 Ok(v)
             })
         }))

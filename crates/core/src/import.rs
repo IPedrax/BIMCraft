@@ -1996,6 +1996,9 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             along_walls: false,
             carrier: None,
             local_offset: 0.0,
+            size_locked: false,
+            compartments: Default::default(),
+            compartment: String::new(),
             params: Default::default(),
         };
         let Some(made) = Element::of_run(category, run) else { continue };
