@@ -320,6 +320,9 @@ impl<'a> Scene<'a> {
                 Element::Floor(f) if f.level == level => {
                     s.points.extend(ring(&f.boundary));
                     f.openings.iter().for_each(|o| s.points.extend(ring(o)));
+                    // Its shape's points, and its split lines to run along.
+                    s.points.extend(f.shape.points.iter().map(|x| (x.at, Kind::Endpoint)));
+                    s.lines.extend(f.shape.lines.iter().map(|l| (l.a, l.b)));
                 }
                 Element::Ceiling(c) if c.level == level => {
                     s.points.extend(ring(&c.boundary));

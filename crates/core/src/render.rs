@@ -1618,6 +1618,14 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         for ring in std::iter::once(&f.boundary).chain(&f.openings) {
             d.line(ring, BY_CATEGORY, FAINT, true);
         }
+        // A shaped one's creases: the edges of each of its planes, as thin as its outline.
+        if !f.shape.is_empty() {
+            for (loops, _) in m.shape_planes(f).unwrap_or_default() {
+                for ring in &loops {
+                    d.line(ring, BY_CATEGORY, FAINT, true);
+                }
+            }
+        }
         holes(&mut d, m, &m.floor_slabs(f));
         if let Some([tail, head]) = f.arrow.filter(|_| f.slope != 0.0) {
             slope_arrow(&mut d, tail, head, f.slope);

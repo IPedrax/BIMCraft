@@ -6,8 +6,21 @@ terrace, a roof garden, a podium's paving, a shower floor or a car park deck nee
 each floor is level or one sloped plane, and nothing else. The rules in [CLAUDE.md](../CLAUDE.md) apply to all of it
 (everything is a command, `Model::check` validates, the core has no UI, test first, clean room).
 
-Status: phase 0, the triangulation, is built (`crates/core/src/triangulation.rs`, on the branch `mod-16-shape-editing`);
-the rest is a proposal, raised upstream as IPedrax/BIMCraft#183. Line numbers are as of `0733fd4`.
+Status, on the branch `mod-16-shape-editing` (raised upstream as IPedrax/BIMCraft#183):
+
+- **Phase 0**, the triangulation, is built (`crates/core/src/triangulation.rs`).
+- **Phase 1**, shapes on floors, is built in the engine (`crates/core/src/shape_tests.rs`, and
+  [levels, walls and roofs](areas/levels-walls-roofs.md) says how): the data and parts, the four commands, the checks,
+  `floor_faces` and `shape_planes`, 3D, plans, IFC, `inspect`, attached walls, transforms, `edit_boundary`, snaps and
+  file format 12. Three things planned for it are not done yet:
+  - IFC writes a closed shell for each piece, as sloped floors' are, not one faceted Brep for the slab, and no
+    `NetVolume`;
+  - `inspect` gives no `volume_m3`;
+  - sections take the shaped slabs from the 3D view's solids, but no test looks at one, and IfcOpenShell hasn't checked
+    the IFC.
+- **Phases 2 to 5** are a proposal.
+
+Line numbers are as of `0733fd4`.
 
 ## What users expect
 
@@ -213,7 +226,7 @@ Sizes as the roadmap gives them, for one developer working with agents.
 | Phase | Size | First failing tests |
 |---|---|---|
 | **0. Triangulation** in `triangulation.rs` (built) | M | A square with a centre point gives 4 triangles; a split line is always an edge; an opening stays empty; the same input in any order gives the same triangles; duplicates, collinear runs, points on edges and the cap never panic (a property sweep). |
-| **1. Shape on floors**: data, commands, `check`, `floor_faces`, 3D, plan, sections (no variable layer), attached walls, transforms, `edit_boundary`, `inspect`, IFC export, snaps, format 12 | L | A 10 × 10 m floor with a drain at −30 mm gives 4 faces and the volume to 0.1 %; a section through the drain shows a V top; a wall attached under it follows the creases; IfcOpenShell validates the closed Brep with `express_rules=True`; mirror and move keep the shape; a format-11 file opens and a format-12 file is refused by 11; `hostile_params_never_panic_or_break_the_model` covers the new commands as it does every command. |
+| **1. Shape on floors** (built, but for what the status above lists): data, commands, `check`, `floor_faces`, 3D, plan, sections (no variable layer), attached walls, transforms, `edit_boundary`, `inspect`, IFC export, snaps, format 12 | L | A 10 × 10 m floor with a drain at −30 mm gives 4 faces and the volume to 0.1 %; a section through the drain shows a V top; a wall attached under it follows the creases; IfcOpenShell validates the closed Brep with `express_rules=True`; mirror and move keep the shape; a format-11 file opens and a format-12 file is refused by 11; `hostile_params_never_panic_or_break_the_model` covers the new commands as it does every command. |
 | **2. Variable layer** | M | A tile, screed (variable), membrane and concrete type: the section shows the concrete flat and the screed tapering; the 3D view's layers match; `check` refuses a point that makes the screed negative; reinforcement follows the flat structure. |
 | **3. Desktop** | M | Add Point at a clicked model point with −30 typed; Add Split Line snapping to two corners; Reset Shape; the three looks screenshotted as `docs/areas/looking-at-results.md` asks. |
 | **4. Flat roofs** | S | A flat roof by footprint with four drains; walls attached to it; a sloped roof refuses a shape. |
@@ -228,6 +241,8 @@ tapering screeds, and IFC carries them. The desktop tools follow.
    rather have `spade`; #183 asks.
 2. Shaped thickness plumb (proposed), or square to each facet as sloped floors are today?
 3. Shape and slope arrow exclusive in version 1 (proposed), or a shape on top of a sloped plane?
-4. Creases drawn only while selected or editing (proposed), or always at fine detail?
+4. Creases: plans draw every plane's edges always, as thin as the outline (built that way, as the simplest start).
+   Generated creases dashed apart from the user's split lines, or shown only while selected, could come with the
+   desktop tools.
 5. Upstream first: IDEAS asks for an issue naming **MOD-16** before the work starts, so the fork doesn't drift from
    `IPedrax/BIMCraft`.

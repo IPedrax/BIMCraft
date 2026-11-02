@@ -504,6 +504,9 @@ pub struct SplitLine {
     pub b: P2,
 }
 
+/// A shaped floor's top triangulated: the triangles, each corner lifted to its height, and each triangle's plane.
+type ShapeMesh = (crate::triangulation::Triangulation, Vec<[f64; 3]>, Vec<walls::Plane>);
+
 /// The most points a shape has, and the most split lines.
 pub const MAX_SHAPE_POINTS: usize = 2_000;
 pub const MAX_SPLIT_LINES: usize = 2_000;
@@ -3834,15 +3837,33 @@ impl Model {
         solid(&[ccw(&f.boundary)], &f.openings).into_iter().map(|ring| (ring, top)).collect()
     }
 
-    /// A shaped floor's planes: its top triangulated (`triangulation::constrained`, its outline and openings, its points
-    /// as corners and its split lines as edges), each corner at `floor_top` plus the height of the point there (within
-    /// `TOL`; a corner with none, 0), and neighbouring triangles in one plane (within 0.01 mm) made one. Each plane is the
-    /// loops round it, its outline counter-clockwise first and then its holes clockwise; a plane whose edges don't make
-    /// such loops (it touches itself at a corner) stays its triangles.
+    /// A shaped floor's planes: its top triangulated (`shape_mesh`), and neighbouring triangles in one plane (within
+    /// 0.01 mm) made one. Each plane is the loops round it, its outline counter-clockwise first and then its holes
+    /// clockwise; a plane whose edges don't make such loops (it touches itself at a corner) stays its triangles.
     pub fn shape_planes(&self, f: &Floor) -> Result<Vec<Slope>, String> {
+        let (t, lifted, planes) = self.shape_mesh(f, &f.openings)?;
+        let at = |i: usize| lifted.get(i).copied().unwrap_or_default();
+        Ok(crate::triangulation::merge(&t, &planes, &|plane: &walls::Plane, i: usize| {
+            (plane.at(P2(at(i)[0], at(i)[1])) - at(i)[2]).abs() <= 0.01
+        }))
+    }
+
+    /// A shaped floor's top over its whole outline, its openings as if closed, as triangles in plan with their planes:
+    /// what a wall attached to it follows, as a slope arrow's plane runs on over an opening. None for a shape that doesn't
+    /// triangulate.
+    pub fn shape_triangles(&self, f: &Floor) -> Vec<(Vec<P2>, walls::Plane)> {
+        let Ok((t, _, planes)) = self.shape_mesh(f, &[]) else { return Vec::new() };
+        let corner = |i: usize| t.points.get(i).copied().unwrap_or_default();
+        t.triangles.iter().zip(planes).map(|(k, plane)| (k.map(corner).to_vec(), plane)).collect()
+    }
+
+    /// A shaped floor's top triangulated (`triangulation::constrained`: its outline and `openings`, its points as corners
+    /// and its split lines as edges), each corner lifted to `floor_top` plus the height of the point there (within `TOL`; a
+    /// corner with none, 0), and each triangle's plane.
+    fn shape_mesh(&self, f: &Floor, openings: &[Vec<P2>]) -> Result<ShapeMesh, String> {
         let points: Vec<P2> = f.shape.points.iter().map(|p| p.at).collect();
         let lines: Vec<(P2, P2)> = f.shape.lines.iter().map(|l| (l.a, l.b)).collect();
-        let t = crate::triangulation::constrained(&f.boundary, &f.openings, &points, &lines)?;
+        let t = crate::triangulation::constrained(&f.boundary, openings, &points, &lines)?;
         let top = self.floor_top(f);
         let height = |q: P2| {
             f.shape.points.iter().filter(|p| p.at.dist(q) <= TOL).min_by(|a, b| a.at.dist(q).total_cmp(&b.at.dist(q))).map_or(0.0, |p| p.z)
@@ -3851,9 +3872,7 @@ impl Model {
         let at = |i: usize| lifted.get(i).copied().unwrap_or_default();
         let planes: Vec<walls::Plane> =
             t.triangles.iter().map(|k| walls::Plane::of(&k.map(at)).unwrap_or_else(|| walls::Plane::flat(at(k[0])[2]))).collect();
-        Ok(crate::triangulation::merge(&t, &planes, &|plane: &walls::Plane, i: usize| {
-            (plane.at(P2(at(i)[0], at(i)[1])) - at(i)[2]).abs() <= 0.01
-        }))
+        Ok((t, lifted, planes))
     }
 
     /// How far a floor's top lies above where it would be without its shape at `q`, mm: by the piece of its top over `q`,

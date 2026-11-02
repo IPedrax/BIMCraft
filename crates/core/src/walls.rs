@@ -451,6 +451,11 @@ impl Bound {
                     convex_pieces(&ring).into_iter().map(move |c| (c, plane))
                 })
                 .collect(),
+            // A shaped one's triangles, each its own plane.
+            Some(Element::Floor(f)) if !f.shape.is_empty() => {
+                let depth = if top { 0.0 } else { m.floor_depth(f) };
+                m.shape_triangles(f).into_iter().map(|(t, p)| (t, Plane { z: p.z - depth, ..p })).collect()
+            }
             Some(Element::Floor(f)) => {
                 let face = m.floor_top(f);
                 let plane = Plane { z: face.z - if top { 0.0 } else { m.floor_depth(f) }, ..face };
