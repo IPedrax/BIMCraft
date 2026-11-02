@@ -552,7 +552,10 @@ impl BimApp {
     fn palette_title(&self, p: Palette) -> String {
         match p {
             Palette::Properties => t(p.name()).to_string(),
-            Palette::Browser => tf("Project Browser · {}", &[&self.session.model.name]),
+            Palette::Browser => match &self.family_editor {
+                Some(ed) if ed.document() => tf("Project Browser · {}", &[ed.title()]),
+                _ => tf("Project Browser · {}", &[&self.session.model.name]),
+            },
         }
     }
 
@@ -560,9 +563,13 @@ impl BimApp {
     pub(crate) fn palette_body(&mut self, ui: &mut Ui, p: Palette) {
         let scroll = egui::ScrollArea::vertical().auto_shrink([false, false]).min_scrolled_height(0.0);
         match p {
+            Palette::Properties if self.family_doc() => {
+                scroll.id_salt("family-properties").show(ui, |ui| Frame::new().inner_margin(8.0).show(ui, |ui| self.family_properties(ui)));
+            }
             Palette::Properties => {
                 scroll.id_salt("properties").show(ui, |ui| Frame::new().inner_margin(8.0).show(ui, |ui| self.properties(ui)));
             }
+            Palette::Browser if self.family_doc() => self.family_browser(ui),
             Palette::Browser => self.browser_palette(ui),
         }
     }

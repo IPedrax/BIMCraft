@@ -4,7 +4,8 @@
 //! canonical [`Definition`]; nothing here keeps state of its own.
 use super::frame::norm;
 use super::{
-    Appearance, CurveLocation, Definition, Evaluated, Evaluation, Frame, Host, Measurement, Node, Operation, Placement, Transform,
+    Appearance, CurveLocation, Definition, Evaluated, Evaluation, Frame, Host, Measurement, Node, Operation, OrientsTo, Placement,
+    PointType, Transform,
 };
 use crate::family::Expr;
 use crate::view3d::{P3, add, dot, mul, sub};
@@ -14,7 +15,7 @@ use std::collections::BTreeSet;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Picked {
     Point(String),
-    /// A curve, and the normalized parameter (as [`Measurement::Parameter`] reads it) of the place on it nearest the pointer.
+    /// A curve, and the normalized parameter (as [`Measurement::NormalizedCurveParameter`] reads it) of the place on it nearest the pointer.
     Curve(String, f64),
     Form(String),
 }
@@ -135,7 +136,8 @@ impl Definition {
         {
             return Err(format!("`{curve}` is not a line"));
         }
-        let location = CurveLocation { measurement: Measurement::Parameter, value: Expr::Number(t.clamp(0., 1.)), from_end: false };
+        let location =
+            CurveLocation { measurement: Measurement::NormalizedCurveParameter, value: Expr::Number(t.clamp(0., 1.)), from_end: false };
         let host = Host::Curve { curve: curve.into(), location, orientation: Default::default() };
         Ok(self.push("point", "Hosted point", Operation::Point { host, transform: Transform::default() }))
     }
@@ -153,16 +155,21 @@ impl Definition {
             + 1
     }
 
-    /// Point `id` made adaptive, numbered next as Revit numbers them: in the order they are made adaptive. A point on the
-    /// work plane keeps where it is; one already adaptive keeps its number. Its number.
+    /// Point `id` made a placement point, numbered next as Revit numbers them: in the order they are made adaptive, and
+    /// oriented to the instance, Revit's default. A point on the work plane or a shape handle keeps where it is; one already a
+    /// placement point keeps its number. Its number.
     pub fn make_adaptive(&mut self, id: &str) -> Result<u32, String> {
         let number = self.next_number();
         let node = self.nodes.iter_mut().find(|n| n.id == id).ok_or_else(|| format!("No element `{id}`"))?;
         let Operation::Point { host, .. } = &mut node.operation else { return Err(format!("`{id}` is not a point")) };
         match *host {
             Host::Adaptive { number, .. } => Ok(number),
-            Host::World { frame } => {
-                *host = Host::Adaptive { number, frame };
+            Host::World { frame } | Host::Handle { frame, .. } => {
+                let orients = match *host {
+                    Host::Handle { orients, .. } => orients,
+                    _ => OrientsTo::Instance,
+                };
+                *host = Host::Adaptive { number, frame, orients };
                 node.name = format!("Adaptive point {number}");
                 Ok(number)
             }
@@ -170,13 +177,47 @@ impl Definition {
         }
     }
 
-    /// An adaptive point made a reference point on the work plane again, where it is; the points numbered after it close up.
+    /// An adaptive point (placement or shape handle) made a reference point on the work plane again, where it is; the points
+    /// numbered after it close up.
     pub fn make_reference(&mut self, id: &str) -> Result<(), String> {
+        let number = self.unnumber(id)?;
         let node = self.nodes.iter_mut().find(|n| n.id == id).ok_or_else(|| format!("No element `{id}`"))?;
         let Operation::Point { host, .. } = &mut node.operation else { return Err(format!("`{id}` is not a point")) };
-        let Host::Adaptive { number, frame } = *host else { return Ok(()) };
-        *host = Host::World { frame };
-        node.name = "Reference point".into();
+        if let Host::Adaptive { frame, .. } | Host::Handle { frame, .. } = *host {
+            *host = Host::World { frame };
+            node.name = "Reference point".into();
+        }
+        if number.is_none() {
+            self.preview.handles.remove(id);
+        }
+        Ok(())
+    }
+
+    /// Point `id` made a shape handle (Revit's Shape Handle Point): no number, the placement points after it closing up.
+    fn make_handle(&mut self, id: &str) -> Result<(), String> {
+        self.unnumber(id)?;
+        let node = self.nodes.iter_mut().find(|n| n.id == id).ok_or_else(|| format!("No element `{id}`"))?;
+        let Operation::Point { host, .. } = &mut node.operation else { return Err(format!("`{id}` is not a point")) };
+        match *host {
+            Host::Handle { .. } => Ok(()),
+            Host::World { frame } | Host::Adaptive { frame, .. } => {
+                let orients = match *host {
+                    Host::Adaptive { orients, .. } => orients,
+                    _ => OrientsTo::Instance,
+                };
+                *host = Host::Handle { frame, orients, constrained: Default::default() };
+                node.name = "Shape handle point".into();
+                Ok(())
+            }
+            _ => Err(format!("`{id}` is hosted: only a point on the work plane can be made adaptive")),
+        }
+    }
+
+    /// Takes point `id`'s number away, if it is a placement point, closing up the numbers after it and the test placement's
+    /// frames; the number it had.
+    fn unnumber(&mut self, id: &str) -> Result<Option<u32>, String> {
+        let node = self.nodes.iter().find(|n| n.id == id).ok_or_else(|| format!("No element `{id}`"))?;
+        let Operation::Point { host: Host::Adaptive { number, .. }, .. } = node.operation else { return Ok(None) };
         for n in &mut self.nodes {
             if let Operation::Point { host: Host::Adaptive { number: k, .. }, .. } = &mut n.operation
                 && *k > number
@@ -189,6 +230,60 @@ impl Definition {
             .filter(|(k, _)| *k != number)
             .map(|(k, f)| (if k > number { k - 1 } else { k }, f))
             .collect();
+        Ok(Some(number))
+    }
+
+    /// What kind of point `id` is, Revit's Point; none if it is not a point.
+    pub fn point_type(&self, id: &str) -> Option<PointType> {
+        match &self.nodes.iter().find(|n| n.id == id)?.operation {
+            Operation::Point { host: Host::Adaptive { .. }, .. } => Some(PointType::Placement),
+            Operation::Point { host: Host::Handle { .. }, .. } => Some(PointType::ShapeHandle),
+            Operation::Point { .. } => Some(PointType::Reference),
+            _ => None,
+        }
+    }
+
+    /// Point `id`'s number, if it is a placement point.
+    pub fn number(&self, id: &str) -> Option<u32> {
+        match &self.nodes.iter().find(|n| n.id == id)?.operation {
+            Operation::Point { host: Host::Adaptive { number, .. }, .. } => Some(*number),
+            _ => None,
+        }
+    }
+
+    /// Point `id` made a reference point, a placement point or a shape handle, as Revit's Point does.
+    pub fn set_point_type(&mut self, id: &str, kind: PointType) -> Result<(), String> {
+        match kind {
+            PointType::Reference => self.make_reference(id),
+            PointType::Placement => self.make_adaptive(id).map(|_| ()),
+            PointType::ShapeHandle => self.make_handle(id),
+        }
+    }
+
+    /// Placement point `id` numbered `number`, as typing it in Revit does: the point that had it takes `id`'s, the two
+    /// swapping (with their frames in the test placement). Numbers run 1 to the number of placement points.
+    pub fn set_number(&mut self, id: &str, number: u32) -> Result<(), String> {
+        let from = self.number(id).ok_or_else(|| format!("`{id}` is not a placement point"))?;
+        let count = self.next_number() - 1;
+        if !(1..=count).contains(&number) {
+            return Err(format!("Placement numbers run 1 to {count}"));
+        }
+        for n in &mut self.nodes {
+            if let Operation::Point { host: Host::Adaptive { number: k, .. }, .. } = &mut n.operation {
+                if n.id == id {
+                    *k = number;
+                } else if *k == number {
+                    *k = from;
+                }
+            }
+        }
+        let (a, b) = (self.preview.frames.remove(&from), self.preview.frames.remove(&number));
+        if let Some(f) = a {
+            self.preview.frames.insert(number, f);
+        }
+        if let Some(f) = b {
+            self.preview.frames.insert(from, f);
+        }
         Ok(())
     }
 
@@ -248,7 +343,11 @@ impl Definition {
         let Operation::Point { host, transform } = &mut node.operation else { return Err(format!("`{id}` is not a point")) };
         match host {
             Host::World { frame } => frame.origin = add(frame.origin, by),
-            Host::Adaptive { number, frame } => match self.preview.frames.get_mut(number) {
+            Host::Adaptive { number, frame, .. } => match self.preview.frames.get_mut(number) {
+                Some(f) => f.origin = add(f.origin, by),
+                None => frame.origin = add(frame.origin, by),
+            },
+            Host::Handle { frame, .. } => match self.preview.handles.get_mut(&node.id) {
                 Some(f) => f.origin = add(f.origin, by),
                 None => frame.origin = add(frame.origin, by),
             },
@@ -275,7 +374,7 @@ impl Definition {
                     .map(|i| i as f64 / 512.)
                     .min_by(|a, b| norm(sub(c.point(*a), to)).total_cmp(&norm(sub(c.point(*b), to))))
                     .unwrap_or(0.);
-                *location = CurveLocation { measurement: Measurement::Parameter, value: Expr::Number(t), from_end: false };
+                *location = CurveLocation { measurement: Measurement::NormalizedCurveParameter, value: Expr::Number(t), from_end: false };
             }
             _ => return Err("A point on a form's face, edge or vertex moves with the form".into()),
         }

@@ -2,6 +2,8 @@
 //! preview as they're typed, then made the project's, saved to a file or kept in the Favorites.
 //! Every change to the project is a `family` command, so it's checked, and undone, like any other.
 
+pub(crate) mod document;
+
 use crate::popup::Modal;
 
 use bimcraft_i18n::msg;
@@ -322,6 +324,50 @@ pub(crate) struct FamilyEditor {
     preview: Option<(u64, TextureHandle)>,
     /// Why the family can't be tried or made: shown under the preview.
     problem: Option<String>,
+    /// The family document's ribbon tab, and the one it goes back to when the contextual tab goes.
+    pub(crate) doc_tab: DocTab,
+    pub(crate) doc_back: DocTab,
+    /// What its ribbon asked for this frame, done after it is drawn.
+    pub(crate) ask: Asked,
+    /// The dialog its ribbon opened, if any.
+    pub(crate) dialog: Option<DocDialog>,
+}
+
+/// The tabs of a family document's ribbon, as Revit's family editor has them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum DocTab {
+    #[default]
+    Create,
+    Modify,
+    /// "Modify | Reference Points" and the like, for the selection or the tool in hand.
+    Context,
+}
+
+/// A family document's dialogs: Family Types (its parameters and types) and Family Category and Parameters.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DocDialog {
+    Types,
+    Category,
+}
+
+/// What a family document's ribbon asked for in a frame.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Asked {
+    /// The selected adaptive instances' points taken as the test placement.
+    pub(crate) capture: bool,
+    /// The test placement placed as a new instance.
+    pub(crate) place: bool,
+    /// The test placement given to the instance the family was opened on.
+    pub(crate) apply_placement: bool,
+    /// Load into Project.
+    pub(crate) apply: bool,
+    /// Load into Project and Close.
+    pub(crate) ok: bool,
+    /// Close, forgetting what was not loaded.
+    pub(crate) cancel: bool,
+    pub(crate) save: bool,
+    pub(crate) favorite: bool,
+    pub(crate) load: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -360,7 +406,39 @@ impl FamilyEditor {
             look: (AZIMUTH, ELEVATION),
             preview: None,
             problem: None,
+            doc_tab: DocTab::Create,
+            doc_back: DocTab::Create,
+            ask: Asked::default(),
+            dialog: None,
         }
+    }
+
+    /// Whether it is edited as Revit edits a family, a document taking the whole window: an adaptive family is.
+    pub(crate) fn document(&self) -> bool {
+        self.adaptive.is_some()
+    }
+
+    /// The values of the type it previews (and the instance parameters it replays), for evaluating it.
+    pub(crate) fn values(&self) -> BTreeMap<String, bimcraft_core::family::Val> {
+        self.family()
+            .ok()
+            .and_then(|f| self.types.get(self.picked).and_then(|(name, _)| f.values(name, &self.preview_params).ok()))
+            .unwrap_or_default()
+    }
+
+    /// Its name, as typed.
+    pub(crate) fn title(&self) -> &str {
+        self.name.trim()
+    }
+
+    /// The instance it was opened on, replaying its placement, if any.
+    pub(crate) fn replaying(&self) -> Option<bimcraft_core::model::Id> {
+        self.replay
+    }
+
+    /// Why it can't be made, if something said so.
+    pub(crate) fn problem(&self) -> Option<&str> {
+        self.problem.as_deref()
     }
 
     /// A family to start from, of `category`: a box of its width, depth and height, or a door's or window's frame of its own.
@@ -514,15 +592,16 @@ fn adaptive_side(ui: &mut Ui, ed: &mut FamilyEditor, values: &BTreeMap<String, b
     }
     let mut delete = Vec::new();
     for id in &selected {
-        if let Some(node) = d.nodes.iter_mut().find(|n| &n.id == id) {
-            ui.push_id(id, |ui| {
-                egui::Frame::group(ui.style()).show(ui, |ui| {
-                    if crate::adaptive_editor::node_properties(ui, node) {
-                        delete.push(id.clone());
-                    }
-                });
+        ui.push_id(id, |ui| {
+            egui::Frame::group(ui.style()).show(ui, |ui| {
+                crate::adaptive_editor::point_properties(ui, d, id);
+                if let Some(node) = d.nodes.iter_mut().find(|n| &n.id == id)
+                    && crate::adaptive_editor::node_properties(ui, node)
+                {
+                    delete.push(id.clone());
+                }
             });
-        }
+        });
     }
     if !delete.is_empty() {
         d.remove(&delete);
@@ -969,14 +1048,10 @@ impl BimApp {
         selected.or_else(|| if matches!(self.tool, Tool::Component | Tool::Fixture(_)) { self.placing().map(|(f, _)| f) } else { None })
     }
 
-    /// The Family Editor, while it's open.
-    pub(crate) fn family_editor_window(&mut self, ctx: &Context) {
-        let Some(mut ed) = self.family_editor.take() else { return };
-        let base = Arc::clone(&self.session.model);
-        ed.refresh(ctx, &base);
-        let materials: Vec<String> = base.materials.keys().cloned().collect();
-        let capture_sources = self
-            .selection
+    /// The selected adaptive instances' points, as `adaptive_capture` takes them, in each instance's number order.
+    pub(crate) fn capture_sources(&self) -> Vec<Value> {
+        let base = &self.session.model;
+        self.selection
             .iter()
             .flat_map(|id| {
                 let Some(bimcraft_core::model::Element::Component(c)) = base.elements.get(id) else { return Vec::new() };
@@ -994,7 +1069,24 @@ impl BimApp {
                 points.sort_by_key(|p| p.0);
                 points.into_iter().map(|(_, point)| json!({"id":id,"host":{"type":"frame","point":point}})).collect::<Vec<_>>()
             })
-            .collect::<Vec<_>>();
+            .collect::<Vec<_>>()
+    }
+
+    /// The Family Editor, while it's open: a dialog over the project, or for a family document (an adaptive family) only what
+    /// its ribbon asked for and the dialogs it opened, the window drawing the rest.
+    pub(crate) fn family_editor_window(&mut self, ctx: &Context) {
+        let Some(mut ed) = self.family_editor.take() else { return };
+        let base = Arc::clone(&self.session.model);
+        let materials: Vec<String> = base.materials.keys().cloned().collect();
+        if ed.document() {
+            self.document_dialogs(ctx, &mut ed, &materials);
+            let ask = std::mem::take(&mut ed.ask);
+            let close = ask.cancel || ask.ok;
+            self.family_asked(ctx, ed, ask, close);
+            return;
+        }
+        ed.refresh(ctx, &base);
+        let capture_sources = self.capture_sources();
         let mut capture_context = false;
         let mut place_adaptive = false;
         let mut apply_placement = false;
@@ -1149,6 +1241,18 @@ impl BimApp {
                 });
             });
         });
+        let ask = Asked { capture: capture_context, place: place_adaptive, apply_placement, apply, ok, cancel, save, favorite, load };
+        let close = cancel || r.should_close();
+        self.family_asked(ctx, ed, ask, close);
+    }
+
+    /// Does what the editor's buttons (or a family document's ribbon) asked for: capturing the selection's frames, loading a
+    /// file, making the family the project's (Apply, OK, saving, Favorites, placing the test frames), then closing it on `close`
+    /// (Cancel) or on OK when it was made. It stays open otherwise.
+    fn family_asked(&mut self, ctx: &Context, mut ed: FamilyEditor, ask: Asked, close: bool) {
+        let base = Arc::clone(&self.session.model);
+        let Asked { capture: capture_context, place: place_adaptive, apply_placement, apply, ok, cancel, save, favorite, load } = ask;
+        let capture_sources = self.capture_sources();
         if capture_context && let Some(value) = self.run("adaptive_capture", json!({"sources":capture_sources})) {
             match serde_json::from_value(value) {
                 Ok(placement) => {
@@ -1215,7 +1319,8 @@ impl BimApp {
                 self.status = Status { text: tf("Saved {} to your Favorites", &[&name]), error: false };
             }
         }
-        if !(cancel || (ok && made) || r.should_close()) {
+        let closed = cancel || (ok && made) || (close && !ok);
+        if !closed {
             self.family_editor = Some(ed);
         }
     }

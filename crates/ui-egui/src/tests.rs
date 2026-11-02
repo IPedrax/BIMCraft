@@ -5869,7 +5869,7 @@ fn a_family_instance_selected_offers_edit_family_on_the_right_click_as_revit_doe
     assert!(h.state().family_editor.is_some(), "the Family Editor is open");
     h.set_size(vec2(1800., 1000.));
     h.run();
-    assert!(h.query_by_label("Adaptive").is_some());
+    assert!(h.query_by_label("Load into Project").is_some(), "it opens as a family document");
     assert!(h.query_all_by_label_contains("Replaying instance").count() > 0, "it opens on the instance selected");
 }
 
@@ -6138,15 +6138,15 @@ fn adaptive_family_editor_reopens_exact_failed_instance_and_keeps_valid_dependen
     h.state_mut().edit_family("Adaptive panel");
     h.set_size(vec2(1800., 1000.));
     h.run();
-    assert!(h.query_by_label("Adaptive").is_some());
+    assert!(h.query_by_label("Load into Project").is_some());
     assert!(h.query_all_by_label_contains("Replaying instance").count() > 0);
-    press_near(&mut h, "Apply", "Cancel");
+    press(&mut h, "Load into Project");
     let Element::Component(c) = &h.state().session.model.elements[&id] else { panic!() };
     assert_eq!(c.adaptive.as_ref(), Some(&p));
     let r = h.state().session.model.component_adaptive_evaluation(c).unwrap();
     assert!(r.failed());
     assert!(r.values.contains_key("p1"));
-    press(&mut h, "Cancel");
+    press(&mut h, "Close Family");
     assert!(h.state().family_editor.is_none());
 }
 
@@ -6162,8 +6162,7 @@ fn adaptive_test_frames_place_where_they_are_even_on_a_raised_level() {
     h.set_size(vec2(1800., 1000.));
     h.state_mut().edit_family("Adaptive panel");
     h.run();
-    press(&mut h, "Adaptive");
-    press(&mut h, "Place test frames as a new instance");
+    press(&mut h, "Place Instance");
     let m = &h.state().session.model;
     let mut placed = m.elements.values().filter_map(|e| if let Element::Component(c) = e { Some(c) } else { None });
     let problem = h.state().status.text.clone();
@@ -6192,7 +6191,11 @@ fn adaptive_editor_visual_preview_in_three_looks() {
         h.set_size(vec2(1600., 1000.));
         h.state_mut().edit_family("Adaptive panel");
         h.run();
-        press(&mut h, "Adaptive");
+        // Point 1 selected, so Properties shows its Revit fields.
+        if let Some(ed) = h.state_mut().family_editor.as_mut() {
+            ed.modeller.selection = vec!["p1".into()];
+        }
+        h.run();
         h.render().unwrap().save(std::path::Path::new(&folder).join(format!("adaptive-{name}.png"))).unwrap();
     }
 }

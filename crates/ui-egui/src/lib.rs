@@ -1296,7 +1296,10 @@ impl BimApp {
         self.dialog_answered();
         self.watch_window(&ctx);
         let view = self.view_title(self.sheet);
-        let title = format!("{}{} · {view} · BIMCraft", self.session.model.name, if self.dirty() { "*" } else { "" });
+        let title = match self.family_title() {
+            Some(family) => format!("{family} · BIMCraft"),
+            None => format!("{}{} · {view} · BIMCraft", self.session.model.name, if self.dirty() { "*" } else { "" }),
+        };
         if title != self.title {
             ctx.send_viewport_cmd(ViewportCommand::Title(title.clone()));
             self.title = title;
@@ -1341,7 +1344,12 @@ impl BimApp {
             }
         });
         let card = style::card([true, true, true, false]);
-        Panel::top("ribbon").frame(card).show_separator_line(false).show(ui, |ui| self.ribbon(ui));
+        // A family document (an adaptive family open) has a ribbon, palettes and a view of its own, as Revit's family editor.
+        let family = self.family_doc();
+        Panel::top("ribbon")
+            .frame(card)
+            .show_separator_line(false)
+            .show(ui, |ui| if family { self.family_ribbon(ui) } else { self.ribbon(ui) });
         if self.has_update_banner() {
             Panel::top("update").frame(Frame::NONE).show_separator_line(false).show(ui, |ui| self.update_banner(ui));
         }
@@ -1349,6 +1357,10 @@ impl BimApp {
         Panel::bottom("status").frame(status).show_separator_line(false).show(ui, |ui| self.status_bar(ui));
         self.docks(ui);
         CentralPanel::default().frame(Frame::NONE).show(ui, |ui| {
+            if family {
+                self.family_central(ui);
+                return;
+            }
             let g = style::gap().max(4);
             let front = self.front;
             // A schedule's table keeps its rows clear of the tabs.
@@ -2669,11 +2681,15 @@ impl BimApp {
                 ui.separator();
                 ui.spacing_mut().item_spacing.x = 0.0;
                 if icon_button(ui, Icon::Undo, "Undo").clicked() {
-                    self.run("undo", json!({}));
+                    if self.family_doc() {
+                        self.family_undo();
+                    } else {
+                        self.run("undo", json!({}));
+                    }
                 }
                 self.steps_list(ui, false);
                 ui.add_space(4.0);
-                if icon_button(ui, Icon::Redo, "Redo").clicked() {
+                if icon_button(ui, Icon::Redo, "Redo").clicked() && !self.family_doc() {
                     self.run("redo", json!({}));
                 }
                 self.steps_list(ui, true);
@@ -2696,7 +2712,7 @@ impl BimApp {
         let right = ui.max_rect().right() + if self.own_bar() { 8.0 - 3.0 * titlebar::BUTTON_WIDTH } else { 0.0 } - gap;
         let left = row.right() + gap;
         let mut title = egui::text::LayoutJob::simple_singleline(
-            format!("{} · {view}", self.session.model.name),
+            self.family_title().unwrap_or_else(|| format!("{} · {view}", self.session.model.name)),
             FontId::proportional(12.5),
             pal().app_bar_muted,
         );
@@ -3847,6 +3863,18 @@ impl BimApp {
     /// The Options Bar, while there's something on it (a contextual tab's name, a tool's options): a card floating over the
     /// view's top left, so the view never moves when it comes and goes, and taking the clicks that land on it.
     fn options_bar(&mut self, ctx: &Context) {
+        if self.family_doc() {
+            let g = f32::from(style::gap());
+            let view = self.view_rect;
+            let top = view.top().max(self.tabs_foot - g + 4.0);
+            let frame = style::card([false; 4]).inner_margin(Margin::symmetric(10, 3));
+            let shown = Area::new(UiId::new("family-options-bar"))
+                .order(Order::Middle)
+                .fixed_pos(pos2(view.left() + g, top + g))
+                .show(ctx, |ui| frame.show(ui, |ui| self.family_options(ui)).inner);
+            self.options_rect = if shown.inner { shown.response.rect } else { Rect::NOTHING };
+            return;
+        }
         if self.context().is_none() && matches!(self.tool, Tool::Modify) && self.note_edit.is_none() {
             self.options_rect = Rect::NOTHING;
             return;
@@ -4107,6 +4135,9 @@ impl BimApp {
 
     /// What the tool wants next, in the status bar as Revit puts it.
     fn prompt(&self) -> &'static str {
+        if let Some(hint) = self.family_prompt() {
+            return hint;
+        }
         if let Some(hint) = self.sketch_prompt() {
             return hint;
         }

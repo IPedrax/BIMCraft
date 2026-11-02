@@ -9,6 +9,8 @@ mod sample;
 pub use sample::four_point_panel;
 mod geometry;
 #[cfg(test)]
+mod revit_tests;
+#[cfg(test)]
 mod tests;
 
 use crate::family::{Expr, Piece, Val};
@@ -67,13 +69,87 @@ pub enum Orientation {
     WorldVertical,
     ProjectWorldZ,
 }
+/// Where a point on a line is, as Revit's Measurement Type gives it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Measurement {
+    /// The line's own parameter: mm along a straight line, 0 to the number of segments along a polyline, 0..1 on a Bezier.
+    NonNormalizedCurveParameter,
+    /// That parameter as a fraction, 0..1.
     #[default]
-    Parameter,
-    NormalizedLength,
-    Distance,
+    #[serde(alias = "parameter")]
+    NormalizedCurveParameter,
+    /// mm along the line.
+    #[serde(alias = "distance")]
+    SegmentLength,
+    /// The fraction of the line's length, 0..1.
+    #[serde(alias = "normalized_length")]
+    NormalizedSegmentLength,
+    /// mm in a straight line from the end it is measured from.
+    ChordLength,
+    /// Degrees round an arc or a circle; none of this family's lines is one, so it is refused.
+    Angle,
+}
+/// How an adaptive point's axes are taken once the family is placed: Revit's Orients to, as it was measured in Revit 2025
+/// (docs/adaptive-revit-parity.md §1.4). The host is what the point was placed on; with none, the project.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OrientsTo {
+    /// The instance's axes: one direction for the whole instance. Revit's default.
+    #[default]
+    Instance,
+    /// Z the instance's, X from the host's.
+    InstanceZThenHost,
+    /// The host's axes at the point.
+    Host,
+    /// The host's axes, flipped when the points are placed winding against the family's.
+    HostAndLoopSystem,
+    /// The project's axes.
+    Global,
+    /// Z straight up, X from the host's.
+    GlobalZThenHost,
+}
+/// A point made adaptive in a file from before Orients to kept the frame it was placed on: the host's.
+fn host_orients() -> OrientsTo {
+    OrientsTo::Host
+}
+/// What a shape handle may be dragged along: Revit's Constrained, a plane or an axis of the point's own.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Constrained {
+    #[default]
+    None,
+    PlaneYz,
+    PlaneZx,
+    PlaneXy,
+    AxisX,
+    AxisY,
+    AxisZ,
+}
+/// When a point's number or planes show: Revit's Never, When Selected, Always.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Show {
+    Never,
+    WhenSelected,
+    Always,
+}
+/// Revit's Point: a reference point, or an adaptive one clicked when placing (placement) or dragged after (shape handle).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PointType {
+    Reference,
+    Placement,
+    ShapeHandle,
+}
+/// What a point shows, its own settings or Revit's defaults.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PointLook {
+    /// Show Placement Number: Always by default on a placement point, Never on any other.
+    pub number: Show,
+    /// Show Reference Planes: Always by default on an adaptive point, Never on a reference point.
+    pub planes: Show,
+    /// Visible: whether the point shows when the family is in a project; No by default.
+    pub visible: bool,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -91,10 +167,22 @@ pub enum Host {
         #[serde(default)]
         frame: Frame,
     },
+    /// A placement point: clicked `number`th when the family is placed; `frame` is where the family has it.
     Adaptive {
         number: u32,
         #[serde(default)]
         frame: Frame,
+        #[serde(default = "host_orients")]
+        orients: OrientsTo,
+    },
+    /// A shape handle point: not clicked when placing, where the family has it in the instance's axes until it is dragged.
+    Handle {
+        #[serde(default)]
+        frame: Frame,
+        #[serde(default)]
+        orients: OrientsTo,
+        #[serde(default)]
+        constrained: Constrained,
     },
     Frame {
         point: String,
@@ -178,8 +266,15 @@ pub struct Appearance {
     pub void: bool,
     #[serde(default)]
     pub material: String,
+    /// A form: whether it shows (a formula; none, it shows). A point: Revit's Visible, whether it shows in a project.
     #[serde(default)]
     pub visible: Option<Expr>,
+    /// A point's Show Placement Number; none, Revit's default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub show_number: Option<Show>,
+    /// A point's Show Reference Planes; none, Revit's default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub show_planes: Option<Show>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -195,7 +290,7 @@ impl Node {
     pub fn dependencies(&self) -> Vec<&str> {
         match &self.operation {
             Operation::Point { host, .. } => match host {
-                Host::World { .. } | Host::Adaptive { .. } => vec![],
+                Host::World { .. } | Host::Adaptive { .. } | Host::Handle { .. } => vec![],
                 Host::Frame { point } | Host::Plane { point, .. } => vec![point],
                 Host::Curve { curve, .. } => vec![curve],
                 Host::Face { form, .. } | Host::Edge { form, .. } | Host::Vertex { form, .. } => vec![form],
@@ -210,6 +305,20 @@ impl Node {
     pub fn is_form(&self) -> bool {
         matches!(self.operation, Operation::Patch { .. } | Operation::Extrude { .. } | Operation::Loft { .. })
     }
+    /// What this point shows, its own settings or Revit's defaults for its type.
+    pub fn look(&self) -> PointLook {
+        let (placement, adaptive) = match &self.operation {
+            Operation::Point { host: Host::Adaptive { .. }, .. } => (true, true),
+            Operation::Point { host: Host::Handle { .. }, .. } => (false, true),
+            _ => (false, false),
+        };
+        let a = &self.appearance;
+        PointLook {
+            number: a.show_number.unwrap_or(if placement { Show::Always } else { Show::Never }),
+            planes: a.show_planes.unwrap_or(if adaptive { Show::Always } else { Show::Never }),
+            visible: matches!(a.visible, Some(Expr::Number(n)) if n != 0.),
+        }
+    }
 }
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -222,6 +331,9 @@ pub struct Placement {
     /// Persistent source references of a captured context snapshot (not live constraints).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty", deserialize_with = "numbered")]
     pub bindings: BTreeMap<u32, ContextHost>,
+    /// The shape handles dragged in this instance, by the point's id; the others stay where the family has them.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub handles: BTreeMap<String, Frame>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -239,7 +351,9 @@ impl Placement {
     /// Its frames, given in the project, in the axes of a component standing on `root` (mirrored or not); the rest kept.
     pub fn into_local(&self, root: Frame, mirrored: bool) -> Result<Self, String> {
         let frames = self.frames.iter().map(|(n, f)| f.into_local(root, mirrored).map(|f| (*n, f))).collect::<Result<_, String>>()?;
-        Ok(Self { frames, ..self.clone() })
+        let handles =
+            self.handles.iter().map(|(id, f)| f.into_local(root, mirrored).map(|f| (id.clone(), f))).collect::<Result<_, String>>()?;
+        Ok(Self { frames, handles, ..self.clone() })
     }
     pub fn check(&self) -> Result<(), String> {
         for (number, frame) in &self.frames {
@@ -247,6 +361,12 @@ impl Placement {
                 return Err("Placement numbers start at 1".into());
             }
             frame.checked().map_err(|e| format!("placement {number}: {e}"))?;
+        }
+        if self.handles.len() > MAX_NODES {
+            return Err(format!("A placement has at most {MAX_NODES} shape handles"));
+        }
+        for (id, frame) in &self.handles {
+            frame.checked().map_err(|e| format!("shape handle `{id}`: {e}"))?;
         }
         Ok(())
     }
@@ -320,11 +440,55 @@ impl Curve {
     }
     fn parameter(&self, location: &CurveLocation, values: &BTreeMap<String, Val>) -> Result<f64, String> {
         let value = read(&location.value, values)?;
-        if location.measurement == Measurement::Parameter {
-            if !(0. ..=1.).contains(&value) {
-                return Err("Normalized curve parameter must be between 0 and 1".into());
+        let flip = |t: f64| if location.from_end { 1. - t } else { t };
+        match location.measurement {
+            Measurement::NormalizedCurveParameter => {
+                if !(0. ..=1.).contains(&value) {
+                    return Err("Normalized curve parameter must be between 0 and 1".into());
+                }
+                return Ok(flip(value));
             }
-            return Ok(if location.from_end { 1. - value } else { value });
+            Measurement::NonNormalizedCurveParameter => {
+                // A straight line's parameter runs along it in mm, a polyline's over its segments, a Bezier's 0..1.
+                let domain = if self.bezier {
+                    1.
+                } else if self.controls.len() == 2 && !self.closed {
+                    norm(sub(self.controls[1].origin, self.controls[0].origin))
+                } else if self.closed {
+                    self.controls.len() as f64
+                } else {
+                    (self.controls.len() - 1) as f64
+                };
+                if !(0. ..=domain).contains(&value) || domain < EPS {
+                    return Err(format!("Curve parameter must be between 0 and {domain}"));
+                }
+                return Ok(flip(value / domain));
+            }
+            Measurement::ChordLength => {
+                if value < 0. {
+                    return Err("A chord length is not negative".into());
+                }
+                // The first place, from the end measured from, that far away in a straight line.
+                let start = self.point(flip(0.));
+                let chord = |t: f64| norm(sub(self.point(flip(t)), start));
+                const STEPS: usize = 1024;
+                let mut previous = 0.;
+                for i in 1..=STEPS {
+                    let t = i as f64 / STEPS as f64;
+                    if chord(t) >= value - 1e-9 {
+                        let (mut lo, mut hi) = (previous, t);
+                        for _ in 0..60 {
+                            let mid = 0.5 * (lo + hi);
+                            if chord(mid) >= value { hi = mid } else { lo = mid }
+                        }
+                        return Ok(flip(hi));
+                    }
+                    previous = t;
+                }
+                return Err(format!("No place on the line is {value} mm from its end in a straight line"));
+            }
+            Measurement::Angle => return Err("An angle places a point on an arc or a circle, and this line is neither".into()),
+            Measurement::SegmentLength | Measurement::NormalizedSegmentLength => {}
         }
         let n = if self.bezier {
             256
@@ -341,7 +505,7 @@ impl Curve {
         if total < EPS {
             return Err("Curve length is zero".into());
         }
-        let distance = if location.measurement == Measurement::NormalizedLength {
+        let distance = if location.measurement == Measurement::NormalizedSegmentLength {
             if !(0. ..=1.).contains(&value) {
                 return Err("Normalized arc length must be between 0 and 1".into());
             }
@@ -373,6 +537,14 @@ pub struct Evaluation {
     pub order: Vec<String>,
     pub diagnostics: Vec<Diagnostic>,
     pub placement: Placement,
+    /// The instance's own axes: the rotation that best takes the family's placement points onto the placed ones, and where
+    /// that puts the family's origin. Revit's "instance" in Orients to.
+    #[serde(default)]
+    pub instance: Frame,
+    /// Which way the family's placement points wind and which way the placed ones do (each a Newell normal); none when there
+    /// are fewer than three or they are in a line.
+    #[serde(skip)]
+    winding: Option<(P3, P3)>,
 }
 impl Evaluation {
     pub fn replay(&self, definition: &Definition) -> Evaluation {
@@ -465,11 +637,24 @@ impl Definition {
     pub fn completed(&self, placement: &Placement) -> Placement {
         let mut out = placement.clone();
         for node in &self.nodes {
-            if let Operation::Point { host: Host::Adaptive { number, frame }, .. } = &node.operation {
+            if let Operation::Point { host: Host::Adaptive { number, frame, .. }, .. } = &node.operation {
                 out.frames.entry(*number).or_insert(*frame);
             }
         }
         out
+    }
+    /// The placement points, in number order: where the family has each, and where `placement` puts it.
+    fn placed(&self, placement: &Placement) -> Vec<(Frame, Frame)> {
+        let mut points: Vec<(u32, Frame)> = self
+            .nodes
+            .iter()
+            .filter_map(|n| match &n.operation {
+                Operation::Point { host: Host::Adaptive { number, frame, .. }, .. } => Some((*number, *frame)),
+                _ => None,
+            })
+            .collect();
+        points.sort_by_key(|p| p.0);
+        points.into_iter().map(|(n, f)| (f, placement.frames.get(&n).copied().unwrap_or(f))).collect()
     }
     pub fn check(&self) -> Result<(), String> {
         if self.nodes.len() > MAX_NODES {
@@ -482,11 +667,17 @@ impl Definition {
             if node.id.is_empty() || node.id.len() > 128 || !ids.insert(node.id.as_str()) {
                 return Err(format!("Adaptive node ID `{}` is empty, too long or duplicated", node.id));
             }
-            if let Operation::Point { host: Host::Adaptive { number, frame }, .. } = &node.operation {
-                if *number == 0 || !numbers.insert(*number) {
-                    return Err("Adaptive numbers must be unique and start at 1".into());
+            match &node.operation {
+                Operation::Point { host: Host::Adaptive { number, frame, .. }, .. } => {
+                    if *number == 0 || !numbers.insert(*number) {
+                        return Err("Adaptive numbers must be unique and start at 1".into());
+                    }
+                    frame.checked()?;
                 }
-                frame.checked()?;
+                Operation::Point { host: Host::Handle { frame, .. }, .. } => {
+                    frame.checked()?;
+                }
+                _ => {}
             }
         }
         for node in &self.nodes {
@@ -536,6 +727,14 @@ impl Definition {
             report.diagnostics.push(Diagnostic { node: String::new(), code: "definition".into(), message, path: vec![], warning: false });
             return report;
         }
+        let placed = self.placed(placement);
+        let from: Vec<P3> = placed.iter().map(|p| p.0.origin).collect();
+        let to: Vec<P3> = placed.iter().map(|p| p.1.origin).collect();
+        report.instance = frame::best_fit(&from, &to);
+        report.winding = match (frame::newell(&from), frame::newell(&to)) {
+            (Some(a), Some(b)) => Some((a, b)),
+            _ => None,
+        };
         let nodes = self.nodes.iter().map(|n| (n.id.as_str(), n)).collect();
         let mut failed = BTreeSet::new();
         for node in &self.nodes {
@@ -633,6 +832,29 @@ fn warn(report: &mut Evaluation, node: &Node, message: &str) {
         warning: true,
     });
 }
+/// An adaptive point's frame at `at` (where it was placed, with its host's axes), as `orients` takes its axes. `family` is
+/// where the family has it, with its own axes there.
+fn oriented(orients: OrientsTo, family: Frame, at: Frame, report: &Evaluation) -> Result<Frame, String> {
+    let i = report.instance;
+    let up = [0., 0., 1.];
+    let x_of = |z: P3| if norm(frame::project(at.x, z)) < EPS { at.y } else { at.x };
+    match orients {
+        OrientsTo::Instance => Ok(Frame { origin: at.origin, x: i.vector(family.x), y: i.vector(family.y), z: i.vector(family.z) }),
+        OrientsTo::InstanceZThenHost => {
+            let z = i.vector(family.z);
+            Frame::from_z(at.origin, z, x_of(z))
+        }
+        OrientsTo::Host => Ok(at),
+        OrientsTo::HostAndLoopSystem => {
+            // Flipped (Z reversed, X and Y swapped, still right-handed) when the placed points wind, seen along the host's Z,
+            // the other way from the family's seen along the point's own.
+            let against = report.winding.is_some_and(|(f, p)| dot(f, family.z) * dot(p, at.z) < 0.);
+            Ok(if against { Frame { x: at.y, y: at.x, z: mul(at.z, -1.), ..at } } else { at })
+        }
+        OrientsTo::Global => Ok(Frame::at(at.origin)),
+        OrientsTo::GlobalZThenHost => Frame::from_z(at.origin, up, x_of(up)),
+    }
+}
 fn evaluate_operation(
     node: &Node,
     values: &BTreeMap<String, Val>,
@@ -644,7 +866,18 @@ fn evaluate_operation(
         Operation::Point { host, transform } => {
             let base = match host {
                 Host::World { frame } => frame.checked()?,
-                Host::Adaptive { number, frame } => placement.frames.get(number).copied().unwrap_or(*frame).checked()?,
+                Host::Adaptive { number, frame, orients } => {
+                    let at = placement.frames.get(number).copied().unwrap_or(*frame).checked()?;
+                    oriented(*orients, *frame, at, report)?
+                }
+                Host::Handle { frame, orients, .. } => {
+                    let i = report.instance;
+                    let at = match placement.handles.get(&node.id) {
+                        Some(f) => *f,
+                        None => Frame { origin: i.point(frame.origin), x: i.vector(frame.x), y: i.vector(frame.y), z: i.vector(frame.z) },
+                    };
+                    oriented(*orients, *frame, at.checked()?, report)?
+                }
                 Host::Frame { point: id } => point(report, id)?,
                 Host::Plane { point: id, plane } => {
                     let f = point(report, id)?;

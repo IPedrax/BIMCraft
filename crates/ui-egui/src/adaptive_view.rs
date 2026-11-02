@@ -7,9 +7,10 @@
 //! project's.
 use crate::lang::t;
 use crate::style::pal;
-use bimcraft_core::adaptive::{Definition, Evaluated, Evaluation, Host, Operation, Picked, gizmo_end};
+use bimcraft_core::adaptive::{Definition, Evaluated, Evaluation, Host, Operation, Picked, PointType, Show, gizmo_end};
 use bimcraft_core::family::Val;
 use bimcraft_core::view3d::{AZIMUTH, Camera, ELEVATION, P3};
+use bimcraft_i18n::msg;
 use egui::{Color32, Key, Modifiers, PointerButton, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, Ui, vec2};
 use std::collections::BTreeMap;
 
@@ -124,70 +125,64 @@ fn number(d: &Definition, id: &str) -> Option<u32> {
     })
 }
 
-/// The modelling view and its tools, `size` points, over definition `d` evaluated with `values`.
+/// The points and the lines selected.
+pub(crate) fn selected(d: &Definition, m: &Modeller, values: &BTreeMap<String, Val>) -> (Vec<String>, Vec<String>) {
+    let r = d.evaluate(values, &d.preview);
+    let points = m.selection.iter().filter(|id| r.origin(id).is_some()).cloned().collect();
+    let lines = m.selection.iter().filter(|id| matches!(r.values.get(id.as_str()), Some(Evaluated::Curve { .. }))).cloned().collect();
+    (points, lines)
+}
+
+/// Make Adaptive, a toggle as Revit's: points all adaptive already go back to reference points; otherwise the others are made
+/// adaptive, numbered in the order they were selected.
+pub(crate) fn make_adaptive(d: &mut Definition, m: &mut Modeller, points: &[String]) {
+    m.remember(d);
+    let all = points.iter().all(|id| matches!(d.point_type(id), Some(PointType::Placement | PointType::ShapeHandle)));
+    for id in points {
+        let _ = if all { d.make_reference(id) } else { d.make_adaptive(id).map(|_| ()) };
+    }
+}
+
+/// Create Form, a solid or a `void`, from the lines selected, `m.depth` deep; it is selected after. What went wrong, if it did.
+pub(crate) fn create_form(d: &mut Definition, m: &mut Modeller, lines: &[String], void: bool) -> Result<(), String> {
+    let before = d.clone();
+    let id = d.create_form(lines, m.depth, void).inspect_err(|_| *d = before.clone())?;
+    m.history.push(before);
+    m.selection = vec![id];
+    Ok(())
+}
+
+/// Delete: what is selected, with what depends on it.
+pub(crate) fn delete(d: &mut Definition, m: &mut Modeller) {
+    m.remember(d);
+    d.remove(&m.selection);
+    m.selection.clear();
+}
+
+/// Undo: one step back through this family's edits; whether there was one.
+pub(crate) fn undo(d: &mut Definition, m: &mut Modeller) -> bool {
+    let Some(before) = m.history.pop() else { return false };
+    *d = before;
+    m.selection.retain(|id| d.nodes.iter().any(|n| &n.id == id));
+    true
+}
+
+/// What the tool in hand asks for, as the status bar says it.
+pub(crate) fn prompt(m: &Modeller) -> &'static str {
+    match &m.tool {
+        Draw::Modify => msg!("Click to select, Ctrl adds; drag a point or a gizmo arrow to move it; drag elsewhere to orbit."),
+        Draw::Point => msg!("Click on the work plane for a reference point, on a line for a point hosted on it."),
+        Draw::Line(chain) if chain.is_empty() => msg!("Click points or the work plane; click the first point again to close the profile."),
+        Draw::Line(_) => msg!("Click the next point; the first again closes the profile; Enter or Escape finishes it open."),
+    }
+}
+
+/// The modelling view, `size` points, over definition `d` evaluated with `values`.
 pub(crate) fn show(ui: &mut Ui, d: &mut Definition, m: &mut Modeller, values: &BTreeMap<String, Val>, size: egui::Vec2) {
     if m.depth <= 0. {
         m.depth = 300.;
     }
     let mut r = d.evaluate(values, &d.preview);
-    // The tools, as Revit's Create tab and the Modify contextual tab lay them out.
-    ui.horizontal_wrapped(|ui| {
-        for (tool, label) in [(Draw::Modify, "Modify"), (Draw::Point, "Point"), (Draw::Line(Vec::new()), "Line")] {
-            let on = std::mem::discriminant(&m.tool) == std::mem::discriminant(&tool);
-            if ui.selectable_label(on, t(label)).clicked() {
-                m.tool = tool;
-            }
-        }
-        ui.separator();
-        let points: Vec<String> = m.selection.iter().filter(|id| r.origin(id).is_some()).cloned().collect();
-        let lines: Vec<String> =
-            m.selection.iter().filter(|id| matches!(r.values.get(id.as_str()), Some(Evaluated::Curve { .. }))).cloned().collect();
-        if ui.add_enabled(!points.is_empty(), egui::Button::new(t("Make Adaptive"))).clicked() {
-            m.remember(d);
-            for id in &points {
-                let _ = d.make_adaptive(id);
-            }
-        }
-        if ui.add_enabled(points.iter().any(|id| number(d, id).is_some()), egui::Button::new(t("Make Reference Point"))).clicked() {
-            m.remember(d);
-            for id in &points {
-                let _ = d.make_reference(id);
-            }
-        }
-        for (label, void) in [("Create Solid Form", false), ("Create Void Form", true)] {
-            if ui.add_enabled(!lines.is_empty(), egui::Button::new(t(label))).clicked() {
-                let before = d.clone();
-                match d.create_form(&lines, m.depth, void) {
-                    Ok(id) => {
-                        m.history.push(before);
-                        m.selection = vec![id];
-                    }
-                    Err(e) => {
-                        *d = before;
-                        ui.ctx().data_mut(|w| w.insert_temp(egui::Id::new("adaptive-view-problem"), e));
-                    }
-                }
-            }
-        }
-        ui.label(t("Depth (mm)"));
-        ui.add(egui::DragValue::new(&mut m.depth).speed(5.).range(1.0..=100_000.0));
-        ui.separator();
-        if ui.add_enabled(!m.selection.is_empty(), egui::Button::new(t("Delete"))).clicked() {
-            m.remember(d);
-            d.remove(&m.selection);
-            m.selection.clear();
-        }
-        if ui.add_enabled(!m.history.is_empty(), egui::Button::new(t("Undo"))).clicked()
-            && let Some(before) = m.history.pop()
-        {
-            *d = before;
-            m.selection.retain(|id| d.nodes.iter().any(|n| &n.id == id));
-        }
-        if ui.button(t("Zoom to Fit")).clicked() {
-            m.camera = None;
-        }
-    });
-    r = d.evaluate(values, &d.preview);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
     m.rect = rect;
     let mut cam = match m.camera {
@@ -379,16 +374,6 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, m: &mut Modeller, values: &B
     m.selection.retain(|id| d.nodes.iter().any(|n| &n.id == id));
     let r = d.evaluate(values, &d.preview);
     draw(ui, rect, &cam, d, &r, m, hovered.as_ref().map(Picked::id), hover);
-    let tip = match &m.tool {
-        Draw::Modify => t("Click to select, Ctrl adds; drag a point or a gizmo arrow to move it; drag elsewhere to orbit."),
-        Draw::Point => t("Click on the work plane for a reference point, on a line for a point hosted on it."),
-        Draw::Line(chain) if chain.is_empty() => t("Click points or the work plane; click the first point again to close the profile."),
-        Draw::Line(_) => t("Click the next point; the first again closes the profile; Enter or Escape finishes it open."),
-    };
-    ui.label(egui::RichText::new(tip).color(pal().muted));
-    if let Some(e) = ui.ctx().data_mut(|w| w.remove_temp::<String>(egui::Id::new("adaptive-view-problem"))) {
-        ui.colored_label(ui.visuals().error_fg_color, e);
-    }
 }
 
 /// What the view shows: the work plane, the forms shaded, the lines, the points with the adaptive ones numbered, the
@@ -397,8 +382,11 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, m: &mut Modeller, values: &B
 fn draw(ui: &Ui, rect: Rect, cam: &Camera, d: &Definition, r: &Evaluation, m: &Modeller, hovered: Option<&str>, hover: Option<Pos2>) {
     let p = ui.painter_at(rect);
     let visuals = ui.visuals();
-    let (ink, faint, accent, hover_ink) = (visuals.text_color(), visuals.weak_text_color().gamma_multiply(0.5), pal().accent, pal().hover);
-    p.rect_filled(rect, 2.0, visuals.extreme_bg_color);
+    // On the drawing's own ground, as the plans and the 3D view: light in a dark interface when the user keeps the canvas light.
+    let cp = crate::style::canvas_pal();
+    let (ink, faint, accent, hover_ink) = (cp.text, cp.muted.gamma_multiply(0.5), cp.accent, cp.hover);
+    let ground = if crate::style::canvas_dark() { visuals.extreme_bg_color } else { crate::canvas::color(bimcraft_core::render::PAPER) };
+    p.rect_filled(rect, 2.0, ground);
     let at = |q: P3| {
         let (x, y, _) = cam.project(q);
         rect.min + vec2(x as f32, y as f32)
@@ -484,17 +472,36 @@ fn draw(ui: &Ui, rect: Rect, cam: &Camera, d: &Definition, r: &Evaluation, m: &M
     {
         p.line_segment([at(last), to], Stroke::new(1.0, accent));
     }
-    // The points: an adaptive one filled and numbered, a reference point a ring, a hosted one a small ring.
+    // The points: a placement point filled and numbered, a shape handle a filled square, a reference point a ring, a hosted
+    // one a small ring; each with its own planes when Show Reference Planes says so.
     for id in &r.order {
-        let Some(o) = r.origin(id) else { continue };
+        let Some(Evaluated::Point { frame }) = r.values.get(id) else { continue };
+        let o = frame.origin;
         let s = at(o);
         let color = tone(id, ink);
-        match number(d, id) {
-            Some(n) => {
-                p.circle_filled(s, 5.0, color);
-                p.text(s + vec2(7.0, -7.0), egui::Align2::LEFT_BOTTOM, n.to_string(), egui::FontId::proportional(13.0), color);
+        let selected = m.selection.iter().any(|x| x == id);
+        let shown = |show: Show| show == Show::Always || (show == Show::WhenSelected && selected);
+        let look = d.nodes.iter().find(|n| &n.id == id).map(|n| n.look());
+        if look.is_some_and(|l| shown(l.planes)) {
+            // Each plane a square of 16 px, in the point's own axes.
+            let h = 8.0 / cam.scale.max(1e-9);
+            for (u, v) in [(frame.x, frame.y), (frame.x, frame.z), (frame.y, frame.z)] {
+                let corner = |a: f64, b: f64| at(std::array::from_fn(|i| o[i] + (u[i] * a + v[i] * b) * h));
+                let square = vec![corner(-1., -1.), corner(1., -1.), corner(1., 1.), corner(-1., 1.), corner(-1., -1.)];
+                p.add(Shape::line(square, Stroke::new(1.0, color.gamma_multiply(0.6))));
             }
-            None => {
+        }
+        match (number(d, id), d.point_type(id)) {
+            (Some(n), _) => {
+                p.circle_filled(s, 5.0, color);
+                if look.is_some_and(|l| shown(l.number)) {
+                    p.text(s + vec2(7.0, -7.0), egui::Align2::LEFT_BOTTOM, n.to_string(), egui::FontId::proportional(13.0), color);
+                }
+            }
+            (None, Some(PointType::ShapeHandle)) => {
+                p.rect_filled(Rect::from_center_size(s, vec2(8.0, 8.0)), 0.0, color);
+            }
+            _ => {
                 let hosted = d
                     .nodes
                     .iter()

@@ -34,19 +34,22 @@ take about 25 minutes. To look at the Adaptive tab in the three looks, set `BIMC
 `target/`) and run `cargo test -p bimcraft-ui-egui adaptive_editor_visual_preview_in_three_looks`; to try it by hand,
 `cargo run -p bimcraft`.
 
-**What to do next** is under Status and next steps, below; each step is a tool of Revit's, with a core test for its edit or
+**What Revit does**, tool by tool and with its defaults, and where we differ, is in
+[adaptive-revit-parity.md](../adaptive-revit-parity.md): read it before changing a tool. **What to do next** is under Status and
+next steps, below; each step is a tool of Revit's, with a core test for its edit or
 command and a desktop test that drives it as a user would (`tests/adaptive_modelling.rs` shows how: `click_model` at a model
 point, the view's buttons by label).
 
 ## Try it
 
 1. Manage > New Family, any category; on the **Adaptive** tab, **Make this family adaptive** (or **Create four-point adaptive
-   panel** for a ready-made one).
-2. **Point**: click four points on the work plane. **Line**: click them in turn and the first again, closing a profile.
-3. **Create Solid Form** with the profile selected. **Modify**: select the points (Ctrl adds) in the order they should be
-   numbered and press **Make Adaptive**. Drag a gizmo arrow to see the form follow.
-4. **OK**, then in a plan **Component** (CM) with the family: click its adaptive points in order; select the instance and drag
-   its numbered grips.
+   panel** for a ready-made one). The family opens as a document of its own, taking the window.
+2. Create > **Point Element**: click four points on the work plane. **Line**: click them in turn and the first again, closing
+   a profile.
+3. **Create Form** > **Solid Form** with the profile selected. **Modify**: select the points (Ctrl adds) in the order they should
+   be numbered; on **Modify | Reference Points**, **Make Adaptive**. Drag a gizmo arrow to see the form follow.
+4. **Load into Project and Close**, then in a plan **Component** (CM) with the family: click its adaptive points in order;
+   select the instance and drag its numbered grips.
 
 `samples/adaptive-panel.json` (Family Editor > Load Family…) is a ready panel with four independently oriented points, a warped
 extrusion, a six-DOF child point, a reference line and a point hosted on it; `bimcraft-cli run --script
@@ -54,16 +57,43 @@ samples/adaptive-panel.txt --save panel.bimcraft` places two instances of it, th
 
 ## Modelling as in Revit
 
-The Adaptive tab of an adaptive family is a modelling view (`adaptive_view.rs`), as Revit's family editor for a Generic Model
-Adaptive: a 3D view over a work plane at height 0 (a grid a metre apart), orbited by a drag on empty space, panned with the middle
-button, zoomed with the wheel; the dialog widens to the screen for it. Its tools:
+An adaptive family is edited as Revit edits a family: a **family document** that takes the whole window
+(`editor/document.rs`, `BimApp::family_doc`), in place of the Family Editor dialog the other families keep. The window's title
+and title bar name the family and its view. Its own ribbon has Create and Modify, and a contextual tab for the tool in hand or
+what is selected, as Revit names them ("Modify | Place Reference Point", "Modify | Place Lines", "Modify | Reference Points",
+"Modify | Lines", "Modify | Form", "Modify | Multi-Select"); it comes up when it appears and goes back to the tab it came from.
+Its panels:
+
+- **Select**: Modify.
+- **Properties**: the palette, **Family Category and Parameters** and **Family Types** (dialogs, as Revit's: the name and
+  category; the parameters and the types).
+- **Draw** (Create): Line and Point Element.
+- **Form**: Create Form > Solid Form or Void Form.
+- **Adaptive Component** (with points selected): Make Adaptive.
+- **Modify**: Delete.
+- **Test Placement** (Create, BIMCraft's own): Capture Placement, Apply to Instance, Place Instance.
+- **Family** (Create): Load Family, Save Family, Add to Favorites.
+- **Family Editor**: Load into Project, Load into Project and Close.
+
+What they ask for goes through the code the dialog's buttons use (`FamilyEditor::ask`, `family_asked`). The docked Properties
+palette shows what is selected with Revit's groups (Adaptive Component, Graphics, Identity Data; a type-selector box naming it),
+or the family itself; the Project Browser lists the family's views as the template has them (Ref. Level's plans, `{3D}`, the four
+elevations: only `{3D}` is drawn yet). The view fills the pane under its tab (whose × is **Close Family**: what was not loaded is
+forgotten), with a view control bar (Zoom to Fit), the Options Bar over it (the contextual tab's name; with lines selected, the
+depth Create Form extrudes), Undo in the title bar stepping through the family's edits, and the status bar saying what the tool
+asks for.
+
+The modelling view (`adaptive_view.rs`) is a 3D view over a work plane at height 0 (a grid a metre apart), on the drawing's own
+ground (light in a dark interface when the canvas is kept light), orbited by a drag on empty space, panned with the middle
+button, zoomed with the wheel. Its tools:
 
 - **Point**: a click on the work plane places a reference point (a point on the world, `Definition::add_point`); a click on a line
   places a point hosted on it, at the parameter clicked (`add_hosted_point`).
 - **Line**: clicks on points (or on the work plane, which places one) draw a chain through them; a click on the first point again
   closes it into a profile, Enter, Escape or a right click finish it open (`add_chain`).
-- **Make Adaptive** numbers the points selected in the order they are made adaptive, as Revit does; **Make Reference Point** takes
-  it back, and the higher numbers close up (`make_adaptive`, `make_reference`).
+- **Make Adaptive** is a toggle, as Revit's: the points selected are made placement points, numbered next in the order they are
+  made adaptive and oriented to the instance (Revit's default); if all of them are adaptive already, they go back to reference
+  points and the higher numbers close up (`make_adaptive`, `make_reference`).
 - **Create Solid Form** and **Create Void Form**: one closed profile selected is extruded `Depth` along its normal, two or more
   profiles are lofted in the order selected (`create_form`).
 - **Modify**: a click selects (Ctrl adds), a drag of a point moves it over its height, and a point selected alone shows a gizmo:
@@ -71,7 +101,12 @@ button, zoomed with the wheel; the dialog widens to the screen for it. Its tools
   a point changes its offset). **Delete** removes what is selected and what depends on it, as Revit does (`remove`).
 - **Undo** steps back through the view's edits; Cancel forgets them all, Apply or OK makes the family the project's.
 
-Beside the view, Properties shows what is selected: its relationship (host), offsets and rotations, a form's depth, void,
+Beside the view, Properties shows what is selected. A point first has Revit's fields (`point_properties`): **Point** (Reference
+Point, Placement Point (Adaptive) or Shape Handle Point (Adaptive): `set_point_type`), **Number** (typing one another point holds
+swaps the two: `set_number`), **Show Placement Number**, **Orients to**, **Constrained** on a shape handle, then **Show
+Reference Planes** and **Visible**, with Revit's defaults (`Node::look`). The view draws a placement point filled and numbered, a
+shape handle a filled square, a reference point a ring, and each point's three planes as small squares when Show Reference Planes
+says so. Then come its relationship (host), offsets and rotations, a form's depth, void,
 material and visibility, each a number or a formula of the family's parameters. Below it, **All elements and the test placement**
 lists every element with the same fields, the test placement's frames, and what the evaluation says; that is where a relationship
 the tools don't make yet (a point on a form's face by index, an intersection, a Bezier) is set. What is under the pointer is the
@@ -97,22 +132,38 @@ follows.
 
 Done: the definition and its evaluator (frames, hosts, curves, forms, diagnostics), persistence (file format 12), the commands
 (`adaptive_capture`, `adaptive_place`, `adaptive_move`, `adaptive_evaluate`), the modelling view with Point, Line, Make Adaptive,
-Create Form, the gizmo, Delete and Undo, Properties, and placing and reshaping instances in a plan. Each is covered by tests in
-`adaptive/tests.rs`, `adaptive/edit_tests.rs` and the desktop's `tests/adaptive_modelling.rs`.
+Create Form, the gizmo, Delete and Undo, Properties, and placing and reshaping instances in a plan. Of the parity study's step 1:
+point types with shape handles, Revit's numbering, Orients to as measured in Revit, the six measurement types, and the show
+options. Each is covered by tests in `adaptive/tests.rs`, `adaptive/edit_tests.rs`, `adaptive/revit_tests.rs` (Revit's rules)
+and the desktop's `tests/adaptive_modelling.rs`.
 
-Next, in order: placing and dragging adaptive points in the project's 3D view (on levels and on other instances); reference planes
-other than the work plane, and points placed on them; a point hosted on a form's face or edge by clicking it; parameters that drive
-a form's depth or a point's offset from the view; dimensions in the family; divided surfaces with repeated panels.
+Next: the order of work in [adaptive-revit-parity.md](../adaptive-revit-parity.md), the study of how Revit does it (with its
+defaults, observed in Revit 2025) and where each tool here differs. What is left of step 1: Revit's single Offset and Rotation Angle
+in Properties (the three offsets and rotations stay, a superset), Mirrored and Flipped, and dragging shape handles in a project;
+then the family editor's space, Create Form, the 3D control, placing
+in the project, and divided surfaces.
 
 ## Frame convention
 
 A Frame stores origin and unit right-handed X/Y/Z axes. Coordinates are millimetres, angles degrees, column-vector convention. OffsetX/Y/Z translate along the unrotated host axes. Rotation then occurs about the translated origin, with intrinsic local X, then moved local Y, then moved local Z: `Fchild = Fhost * T(offset) * Rx * Ry * Rz`. The origin is the pivot; rotation does not rotate the offset around the host origin. World, complete-frame, XY/XZ/YZ-plane, adaptive-point, curve and native mesh-subelement hosts are explicit alternatives. XZ uses (X,Z,-Y); YZ uses (Y,Z,X).
 
+**Orients to** (`OrientsTo`, `oriented`) sets an adaptive point's axes once placed, as measured in Revit 2025
+([the study](../adaptive-revit-parity.md) §1.4). A placement frame is where the point was placed and its host's axes there (a click
+on the level gives the project's). The instance's own axes (`Evaluation::instance`) are the rigid motion that best takes the
+family's placement points onto the placed ones (`frame::best_fit`, Horn's quaternion method; one point only moves, points in a line
+turn the shortest way), so they flip when the points are placed in the other order. Instance (xyz), Revit's default for a new
+point, takes the point's family axes through the instance's; Instance (z) then Host (xy) takes Z so and X from the host; Host
+(xyz) takes the host's; Host and Loop System (xyz) the host's, flipped (Z reversed, X and Y swapped) when the placed points wind
+against the family's (`frame::newell`); Global (xyz) the project's; Global (z) then Host (xy) Z up and X from the host. A file
+from before Orients to reads its points as Host (xyz), which is what they did. A **shape handle** (`Host::Handle`) has no number
+and is not clicked: it is where the family has it carried by the instance's axes, or where the instance's `Placement::handles`
+puts it (by the point's id), and its `Constrained` is kept for dragging it.
+
 A definition supplies default frames for numbered adaptive points and a separate editable preview placement. A Component can override any numbered frame in its own coordinates; missing overrides use definition defaults. The component's normal level/offset/angle/mirror transform is applied once after evaluation (`Model::component_axes`; `Frame::from_local` and `Frame::into_local` go between the two). Context snapshots are in world coordinates: `adaptive_place` converts them into each instance's own axes, so the instance builds on the captured points whatever its `at`, angle, offset or level; `component` and `modify` take frames already in the instance's axes.
 
 ## Reference curves and orientation
 
-Line, ordered open/closed Polyline and cubic Bezier refer to actual point IDs, including references across branches. Parameter measures the native curve domain (uniform by segment for polylines), NormalizedLength measures arc length fraction, Distance measures mm. From-end reverses measurement without reversing the curve tangent. Polyline arc lengths are exact. Bezier arc length uses a deterministic 256-interval chord table; it is an approximation, not a promised absolute tolerance. Bezier preview uses 64 intervals.
+Line, ordered open/closed Polyline and cubic Bezier refer to actual point IDs, including references across branches. The measurement types are Revit's: NonNormalizedCurveParameter (mm along a straight line, 0 to the number of segments along a polyline, 0..1 on a Bezier), NormalizedCurveParameter (that as a fraction, uniform by segment for polylines), SegmentLength (mm along the line), NormalizedSegmentLength (the arc length fraction), ChordLength (mm in a straight line from the end measured from: the first place that far), and Angle, refused since no line here is an arc; files read the old names `parameter`, `normalized_length` and `distance` as these. From-end reverses measurement without reversing the curve tangent. Polyline arc lengths are exact. Bezier arc length uses a deterministic 256-interval chord table; it is an approximation, not a promised absolute tolerance. Bezier preview uses 64 intervals.
 
 Curve-hosted points choose their orientation explicitly:
 

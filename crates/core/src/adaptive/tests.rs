@@ -8,7 +8,13 @@ fn node(id: &str, operation: Operation) -> Node {
     Node { id: id.into(), name: id.into(), operation, appearance: Appearance::default() }
 }
 fn adaptive(id: &str, number: u32, origin: P3) -> Node {
-    node(id, Operation::Point { host: Host::Adaptive { number, frame: Frame::at(origin) }, transform: Transform::default() })
+    node(
+        id,
+        Operation::Point {
+            host: Host::Adaptive { number, frame: Frame::at(origin), orients: OrientsTo::Host },
+            transform: Transform::default(),
+        },
+    )
 }
 fn xyz(report: &Evaluation, id: &str) -> P3 {
     point(report, id).unwrap().origin
@@ -45,6 +51,7 @@ fn definition_and_instance_frames_are_independent() {
         },
     ));
     let placement = Placement {
+        handles: BTreeMap::new(),
         bindings: BTreeMap::new(),
         frames: [(1, Frame::at([100., 100., 100.]).transformed([0.; 3], [0., 0., 90.]).unwrap())].into(),
         context: "cylinder sample".into(),
@@ -74,13 +81,14 @@ fn nonparallel_placement_frames_keep_orthonormal_curve_hosts() {
         Operation::Point {
             host: Host::Curve {
                 curve: "line".into(),
-                location: CurveLocation { measurement: Measurement::Parameter, value: scalar(0.5), from_end: false },
+                location: CurveLocation { measurement: Measurement::NormalizedCurveParameter, value: scalar(0.5), from_end: false },
                 orientation: Orientation::ProjectInterpolatedNormals,
             },
             transform: Transform::default(),
         },
     ));
     let p = Placement {
+        handles: BTreeMap::new(),
         bindings: BTreeMap::new(),
         frames: [
             (1, Frame::at([0., 0., 0.]).transformed([0.; 3], [20., 30., 0.]).unwrap()),
@@ -116,7 +124,7 @@ fn tangent_normal_degeneracy_is_deterministic_and_reported() {
         Operation::Point {
             host: Host::Curve {
                 curve: "l".into(),
-                location: CurveLocation { measurement: Measurement::Parameter, value: scalar(0.5), from_end: false },
+                location: CurveLocation { measurement: Measurement::NormalizedCurveParameter, value: scalar(0.5), from_end: false },
                 orientation: Orientation::ProjectWorldZ,
             },
             transform: Transform::default(),
@@ -135,11 +143,11 @@ fn distance_and_normalized_parameter_are_not_confused() {
         bezier: false,
     };
     let values = BTreeMap::new();
-    let mut location = CurveLocation { measurement: Measurement::Parameter, value: scalar(0.5), from_end: false };
+    let mut location = CurveLocation { measurement: Measurement::NormalizedCurveParameter, value: scalar(0.5), from_end: false };
     near(c.point(c.parameter(&location, &values).unwrap()), [10., 0., 0.]);
-    location.measurement = Measurement::NormalizedLength;
+    location.measurement = Measurement::NormalizedSegmentLength;
     near(c.point(c.parameter(&location, &values).unwrap()), [10., 40., 0.]);
-    location.measurement = Measurement::Distance;
+    location.measurement = Measurement::SegmentLength;
     location.value = scalar(20.);
     location.from_end = true;
     near(c.point(c.parameter(&location, &values).unwrap()), [10., 70., 0.]);
@@ -185,8 +193,12 @@ fn loft_accepts_three_ordered_profiles() {
 #[test]
 fn errors_keep_valid_upstream_geometry_and_replay_exact_placement() {
     let d = panel();
-    let placement =
-        Placement { bindings: BTreeMap::new(), frames: [(2, Frame::at([0., 0., 0.]))].into(), context: "failed panel 7".into() };
+    let placement = Placement {
+        handles: BTreeMap::new(),
+        bindings: BTreeMap::new(),
+        frames: [(2, Frame::at([0., 0., 0.]))].into(),
+        context: "failed panel 7".into(),
+    };
     let report = d.evaluate(&BTreeMap::new(), &placement);
     assert!(report.failed());
     assert!(report.values.contains_key("p1"));
@@ -218,7 +230,12 @@ fn subelement_hosts_track_geometry_but_reject_topology_changes() {
         },
     ));
     near(xyz(&d.evaluate(&BTreeMap::new(), &Placement::default()), "vertex"), [1000., 1000., 0.]);
-    let p = Placement { bindings: BTreeMap::new(), frames: [(3, Frame::at([1200., 1000., 0.]))].into(), context: String::new() };
+    let p = Placement {
+        handles: BTreeMap::new(),
+        bindings: BTreeMap::new(),
+        frames: [(3, Frame::at([1200., 1000., 0.]))].into(),
+        context: String::new(),
+    };
     near(xyz(&d.evaluate(&BTreeMap::new(), &p), "vertex"), [1200., 1000., 0.]);
     if let Operation::Point { host: Host::Vertex { topology, .. }, .. } = &mut d.nodes.last_mut().unwrap().operation {
         *topology = "old-topology".into();

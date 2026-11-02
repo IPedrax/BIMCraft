@@ -183,6 +183,12 @@ icon_names! {
     AddVertex,
     DeleteVertex,
     ConvertSpline,
+    PointElement,
+    MakeAdaptive,
+    CreateForm,
+    FamilyTypes,
+    LoadIntoProject,
+    LoadIntoProjectClose,
 }
 
 /// A single unfilled contour in grid coordinates, shared by egui and the catalog.
@@ -1187,6 +1193,50 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
                 (3.0, 9.6),
                 (9.2, 8.7),
             ]);
+        }
+        Icon::PointElement => {
+            // A reference point: a dot on a work plane seen at an angle, its normal standing up.
+            g.closed(&[(3.0, 15.0), (12.0, 10.5), (21.0, 15.0), (12.0, 19.5)]);
+            g.circle((12.0, 15.0), 2.0);
+            g.line(&[(12.0, 13.0), (12.0, 3.5)]);
+        }
+        Icon::MakeAdaptive => {
+            // A point numbered 1, the number it takes when made adaptive.
+            g.circle((8.0, 16.0), 3.5);
+            g.line(&[(14.5, 6.5), (17.0, 4.0), (17.0, 13.0)]);
+            g.line(&[(15.0, 13.0), (19.0, 13.0)]);
+            g.line(&[(10.5, 13.5), (13.5, 10.5)]);
+        }
+        Icon::CreateForm => {
+            // A closed profile on its plane, extruded up from it.
+            g.closed(&[(3.0, 17.0), (12.0, 13.5), (21.0, 17.0), (12.0, 20.5)]);
+            g.line(&[(3.0, 17.0), (3.0, 10.0)]);
+            g.line(&[(21.0, 17.0), (21.0, 10.0)]);
+            g.line(&[(12.0, 16.0), (12.0, 4.0)]);
+            g.line(&[(9.0, 7.0), (12.0, 4.0), (15.0, 7.0)]);
+        }
+        Icon::FamilyTypes => {
+            // A sheet of a family's types: a table of their values.
+            g.closed(&[(4.0, 3.0), (20.0, 3.0), (20.0, 21.0), (4.0, 21.0)]);
+            g.line(&[(4.0, 8.0), (20.0, 8.0)]);
+            g.line(&[(4.0, 13.0), (20.0, 13.0)]);
+            g.line(&[(4.0, 17.0), (20.0, 17.0)]);
+            g.line(&[(10.0, 8.0), (10.0, 21.0)]);
+        }
+        Icon::LoadIntoProject => {
+            // The family, a small volume, going down into the project below it.
+            g.closed(&[(3.0, 13.0), (21.0, 13.0), (21.0, 21.0), (3.0, 21.0)]);
+            g.closed(&[(8.0, 3.0), (16.0, 3.0), (16.0, 8.0), (8.0, 8.0)]);
+            g.line(&[(12.0, 8.0), (12.0, 18.0)]);
+            g.line(&[(9.0, 15.0), (12.0, 18.0), (15.0, 15.0)]);
+        }
+        Icon::LoadIntoProjectClose => {
+            // The same, with the family's window closed after: a cross where its volume was.
+            g.closed(&[(3.0, 13.0), (21.0, 13.0), (21.0, 21.0), (3.0, 21.0)]);
+            g.line(&[(12.0, 4.0), (12.0, 18.0)]);
+            g.line(&[(9.0, 15.0), (12.0, 18.0), (15.0, 15.0)]);
+            g.line(&[(16.0, 3.0), (21.0, 8.0)]);
+            g.line(&[(21.0, 3.0), (16.0, 8.0)]);
         }
         Icon::FamilyEditor => {
             // An editable component: a small volume plus a separate pencil, distinct from View3D.

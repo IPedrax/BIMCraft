@@ -12,7 +12,11 @@ pub fn four_point_panel() -> Definition {
             id: format!("p{index}"),
             name: format!("Placement {index}"),
             operation: Operation::Point {
-                host: Host::Adaptive { number: index, frame: Frame::at(origin).transformed([0.; 3], rotation).unwrap_or_default() },
+                host: Host::Adaptive {
+                    number: index,
+                    frame: Frame::at(origin).transformed([0.; 3], rotation).unwrap_or_default(),
+                    orients: OrientsTo::Host,
+                },
                 transform: Transform::default(),
             },
             appearance: Appearance::default(),
@@ -27,7 +31,7 @@ pub fn four_point_panel() -> Definition {
         Operation::Point {
             host: Host::Curve {
                 curve: "reference".into(),
-                location: CurveLocation { measurement: Measurement::NormalizedLength, value: Expr::Number(0.5), from_end: false },
+                location: CurveLocation { measurement: Measurement::NormalizedSegmentLength, value: Expr::Number(0.5), from_end: false },
                 orientation: Orientation::ProjectInterpolatedNormals,
             },
             transform: Transform::default(),

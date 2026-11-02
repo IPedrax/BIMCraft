@@ -35,17 +35,31 @@ fn click_model(h: &mut Harness<BimApp>, p: [f64; 3], modifiers: Modifiers) {
     h.run();
 }
 
-/// A tool or button of the view: the one beside Point, not the ribbon's Modify tab or the title bar's Undo.
+/// A button of the family document's ribbon (or the title bar's Undo), as a user finds it: Point and Line on the Create tab,
+/// Create Solid Form as Create Form's Solid Form, the rest on the tab in front. Of two of a name, the ribbon's: the Modify tool
+/// under the Modify tab, Delete over the Delete of the element's Properties.
 fn tool(h: &mut Harness<BimApp>, label: &str) {
-    if label == "Point" {
-        h.get_by_role_and_label(Role::Button, label).click();
-        h.run();
-    } else {
-        // On Point's row: the ribbon's tab and the title bar's button lie above it.
-        let row = h.get_by_label("Point").rect().center().y;
-        let pos = h.get_all_by_label(label).map(|n| n.rect().center()).min_by(|a, b| (a.y - row).abs().total_cmp(&(b.y - row).abs()));
-        click_at(h, pos.unwrap());
+    let lowest = |h: &Harness<BimApp>, label: &str| {
+        h.get_all_by_label(label).map(|n| n.rect().center()).max_by(|a, b| a.y.total_cmp(&b.y)).unwrap_or_else(|| panic!("no {label}"))
+    };
+    let label = if label == "Point" { "Point Element" } else { label };
+    if matches!(label, "Point Element" | "Line") {
+        let tab = h.get_all_by_label("Create").map(|n| n.rect().center()).min_by(|a, b| a.y.total_cmp(&b.y)).unwrap();
+        click_at(h, tab);
     }
+    if label == "Create Solid Form" {
+        let at = lowest(h, "Create Form");
+        click_at(h, at);
+        h.get_by_label("Solid Form").click();
+        h.run();
+        return;
+    }
+    let at = if label == "Modify" {
+        lowest(h, label)
+    } else {
+        h.get_all_by_label(label).map(|n| n.rect().center()).min_by(|a, b| a.y.total_cmp(&b.y)).unwrap_or_else(|| panic!("no {label}"))
+    };
+    click_at(h, at);
 }
 
 const CORNERS: [[f64; 3]; 4] = [[0., 0., 0.], [2000., 0., 0.], [2000., 1500., 0.], [0., 1500., 0.]];
@@ -98,8 +112,8 @@ fn points_clicked_on_the_work_plane_and_a_closed_profile_through_them_make_a_sol
         })
         .collect();
     assert_eq!(numbers, [2, 1, 3, 4]);
-    // Applied, the project has it, adaptive, with its form.
-    press_near(&mut h, "Apply", "Cancel");
+    // Loaded into the project, the project has it, adaptive, with its form.
+    press(&mut h, "Load into Project");
     let m = &h.state().session.model;
     let f = m.families.values().find(|f| f.adaptive.is_some()).expect("the project has the family");
     assert_eq!(f.adaptive.as_ref().map(|d| d.next_number()), Some(5));
@@ -227,4 +241,66 @@ fn an_adaptive_instance_selected_shows_grips_and_a_drag_moves_its_point() {
     h.state_mut().run("undo", json!({}));
     let third = instances(&h)[0].iter().find(|(n, _)| *n == 3).unwrap().1;
     assert!((third[0] - 3000.).abs() < 1.0, "{third:?}");
+}
+
+#[test]
+fn a_point_selected_shows_revits_adaptive_fields_and_make_adaptive_toggles_it() {
+    let mut h = modelling();
+    four_points_and_a_profile(&mut h);
+    tool(&mut h, "Modify");
+    for (k, mods) in [(0, Modifiers::NONE), (1, Modifiers::CTRL), (2, Modifiers::CTRL), (3, Modifiers::CTRL)] {
+        click_model(&mut h, CORNERS[k], mods);
+    }
+    tool(&mut h, "Make Adaptive");
+    // Point 1 alone: Properties shows what Revit's palette does, with Revit's defaults.
+    click_model(&mut h, CORNERS[0], Modifiers::NONE);
+    assert!(h.query_by_label("Adaptive Component").is_some());
+    for (field, value) in [
+        ("Point", "Placement Point (Adaptive)"),
+        ("Orients to", "Instance (xyz)"),
+        ("Show Placement Number", "Always"),
+        ("Show Reference Planes", "Always"),
+    ] {
+        assert_eq!(combo_value(&h, field), value, "Properties shows {field}");
+    }
+    // Make Adaptive again on an adaptive point: it is a reference point again, and the others close up.
+    tool(&mut h, "Make Adaptive");
+    let d = definition(&h);
+    let first = &d.nodes[0].id;
+    assert_eq!(d.number(first), None);
+    assert_eq!(d.next_number(), 4, "three placement points are left, numbered 1 to 3");
+    assert_eq!(combo_value(&h, "Point"), "Reference Point");
+    // And again: adaptive, numbered next.
+    tool(&mut h, "Make Adaptive");
+    assert_eq!(definition(&h).number(first), Some(4));
+}
+
+#[test]
+fn an_adaptive_family_is_a_document_with_its_own_ribbon_properties_and_browser_as_in_revit() {
+    let mut h = modelling();
+    // Its own ribbon, in place of the project's.
+    for label in ["Create", "Point Element", "Family Types", "Load into Project", "Load into Project and Close", "Close Family"] {
+        assert!(h.query_by_label(label).is_some(), "the family document has {label}");
+    }
+    assert!(h.query_by_label("Architecture").is_none(), "the project's ribbon is away");
+    // The Project Browser lists the family's views.
+    assert!(h.query_all_by_label("Ref. Level").count() >= 2, "a floor plan and a ceiling plan");
+    assert!(h.query_by_label("{3D}").is_some());
+    // A tool in hand, then a point selected: the contextual tab names it, as Revit's.
+    tool(&mut h, "Point");
+    assert!(h.query_all_by_label("Modify | Place Reference Point").count() >= 1, "the tab, and the Options Bar says it too");
+    click_model(&mut h, [500., 500., 0.], Modifiers::NONE);
+    tool(&mut h, "Modify");
+    assert!(h.query_all_by_label("Modify | Reference Points").count() >= 1);
+    assert!(h.query_by_label("Make Adaptive").is_some());
+    // Family Types opens its dialog of parameters and types; OK closes it.
+    tool(&mut h, "Family Types");
+    assert!(matches!(h.state().family_editor.as_ref().and_then(|e| e.dialog), Some(crate::editor::DocDialog::Types)));
+    press(&mut h, "OK");
+    assert!(h.state().family_editor.as_ref().is_some_and(|e| e.dialog.is_none()));
+    // Load into Project and Close: the project has the family, and its document is gone.
+    press(&mut h, "Load into Project and Close");
+    assert!(h.state().family_editor.is_none());
+    assert!(h.state().session.model.families.values().any(|f| f.adaptive.is_some()));
+    assert!(h.query_by_label("Architecture").is_some(), "the project's ribbon is back");
 }

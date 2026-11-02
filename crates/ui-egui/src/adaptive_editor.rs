@@ -1,7 +1,7 @@
 //! Direct editing of the canonical adaptive dependency model, without a graph canvas: the Properties beside the modelling view
 //! (`adaptive_view.rs`), and the list of every element, the test placement and what the evaluation says.
 use crate::lang::{t, tf};
-use bimcraft_core::adaptive::{self, Definition, Evaluated, Frame, Host, Operation, Placement};
+use bimcraft_core::adaptive::{self, Constrained, Definition, Evaluated, Frame, Host, Operation, OrientsTo, Placement, PointType, Show};
 use bimcraft_core::family::{Expr, Val};
 use bimcraft_i18n::msg;
 use egui::{ComboBox, DragValue, RichText, Ui};
@@ -93,7 +93,19 @@ fn properties(ui: &mut Ui, key: &str, value: &mut Value) {
             "orientation" => {
                 choice(ui, key, s, &["interpolate_normals", "project_interpolated_normals", "world_vertical", "project_world_z"])
             }
-            "measurement" => choice(ui, key, s, &["parameter", "normalized_length", "distance"]),
+            "measurement" => choice(
+                ui,
+                key,
+                s,
+                &[
+                    "non_normalized_curve_parameter",
+                    "normalized_curve_parameter",
+                    "segment_length",
+                    "normalized_segment_length",
+                    "chord_length",
+                    "angle",
+                ],
+            ),
             "plane" => choice(ui, key, s, &["xy", "xz", "yz"]),
             "axis_a" | "axis_b" => choice(ui, key, s, &["x", "y", "z"]),
             _ => {
@@ -131,7 +143,8 @@ fn operation(kind: &str) -> Value {
 fn host(kind: &str) -> Value {
     match kind {
         "world" => json!({"type":"world","frame":Frame::default()}),
-        "adaptive" => json!({"type":"adaptive","number":1,"frame":Frame::default()}),
+        "adaptive" => json!({"type":"adaptive","number":1,"frame":Frame::default(),"orients":"instance"}),
+        "handle" => json!({"type":"handle","frame":Frame::default(),"orients":"instance","constrained":"none"}),
         "plane" => json!({"type":"plane","point":"p1","plane":"xy"}),
         "curve" => {
             json!({"type":"curve","curve":"reference","location":{"measurement":"parameter","value":0.5,"from_end":false},"orientation":"project_interpolated_normals"})
@@ -158,7 +171,7 @@ pub(crate) fn show(ui: &mut Ui, definition: &mut Option<Definition>, values: &BT
     ui.collapsing(t("Simulate placement frames"), |ui| {
         ui.text_edit_singleline(&mut d.preview.context);
         for node in &d.nodes {
-            if let Operation::Point { host: Host::Adaptive { number, frame: default }, .. } = &node.operation {
+            if let Operation::Point { host: Host::Adaptive { number, frame: default, .. }, .. } = &node.operation {
                 ui.push_id(number, |ui| {
                     ui.collapsing(tf("Placement {} - {}", &[&number.to_string(), &node.name]), |ui| {
                         let f = d.preview.frames.entry(*number).or_insert(*default);
@@ -233,6 +246,113 @@ pub(crate) fn diagnostics(ui: &mut Ui, report: &adaptive::Evaluation) {
     }
 }
 
+/// Revit's labels for Orients to, in the order its list has them.
+pub(crate) const ORIENTS: [(OrientsTo, &str); 6] = [
+    (OrientsTo::Instance, msg!("Instance (xyz)")),
+    (OrientsTo::InstanceZThenHost, msg!("Instance (z) then Host (xy)")),
+    (OrientsTo::Host, msg!("Host (xyz)")),
+    (OrientsTo::HostAndLoopSystem, msg!("Host and Loop System (xyz)")),
+    (OrientsTo::Global, msg!("Global (xyz)")),
+    (OrientsTo::GlobalZThenHost, msg!("Global (z) then Host (xy)")),
+];
+const SHOWS: [(Show, &str); 3] =
+    [(Show::Never, msg!("Never")), (Show::WhenSelected, msg!("When Selected")), (Show::Always, msg!("Always"))];
+const CONSTRAINTS: [(Constrained, &str); 7] = [
+    (Constrained::None, msg!("None")),
+    (Constrained::PlaneYz, msg!("Center (Left/Right)")),
+    (Constrained::PlaneZx, msg!("Center (Front/Back)")),
+    (Constrained::PlaneXy, msg!("Ref. Level")),
+    (Constrained::AxisX, msg!("X axis")),
+    (Constrained::AxisY, msg!("Y axis")),
+    (Constrained::AxisZ, msg!("Z axis")),
+];
+
+/// A row of Properties: the label, and a drop-down of `options` named by it; whether it changed.
+fn pick<T: Copy + PartialEq>(ui: &mut Ui, label: &str, value: &mut T, options: &[(T, &str)]) -> bool {
+    let before = *value;
+    let name = ui.label(t(label));
+    let shown = options.iter().find(|(v, _)| v == value).map(|(_, l)| t(l)).unwrap_or_default();
+    // As wide as the group's value column.
+    let column = ui.ctx().data(|w| w.get_temp::<f32>(egui::Id::new("family-group-column"))).unwrap_or(160.0);
+    let list = ComboBox::from_id_salt(label).selected_text(shown).width(column - 8.0).truncate().show_ui(ui, |ui| {
+        for (v, l) in options {
+            ui.selectable_value(value, *v, t(l));
+        }
+    });
+    // Named by its label, as a screen reader reads it.
+    list.response.labelled_by(name.id);
+    ui.end_row();
+    *value != before
+}
+
+/// A point's properties as Revit's palette groups them: Adaptive Component (Point, Number, Show Placement Number, Orients
+/// to, Constrained), Graphics (Show Reference Planes, Visible) and Identity Data (Name). Nothing for an element that is not a
+/// point.
+pub(crate) fn point_properties(ui: &mut Ui, d: &mut Definition, id: &str) {
+    use crate::editor::document::group;
+    let Some(kind) = d.point_type(id) else { return };
+    let mut problem = None;
+    group(ui, msg!("Adaptive Component"), |ui| {
+        let mut chosen = kind;
+        let kinds = [
+            (PointType::Reference, msg!("Reference Point")),
+            (PointType::Placement, msg!("Placement Point (Adaptive)")),
+            (PointType::ShapeHandle, msg!("Shape Handle Point (Adaptive)")),
+        ];
+        if pick(ui, msg!("Point"), &mut chosen, &kinds)
+            && let Err(e) = d.set_point_type(id, chosen)
+        {
+            problem = Some(e);
+        }
+        if let Some(number) = d.number(id) {
+            let mut n = number;
+            let count = d.next_number() - 1;
+            let l = ui.label(t("Number"));
+            ui.add(DragValue::new(&mut n).range(1..=count.max(1))).labelled_by(l.id);
+            ui.end_row();
+            if n != number {
+                let _ = d.set_number(id, n);
+            }
+        }
+        let Some(node) = d.nodes.iter_mut().find(|n| n.id == id) else { return };
+        let look = node.look();
+        if matches!(node.operation, Operation::Point { host: Host::Adaptive { .. }, .. }) {
+            let mut number = look.number;
+            if pick(ui, msg!("Show Placement Number"), &mut number, &SHOWS) {
+                node.appearance.show_number = Some(number);
+            }
+        }
+        if let Operation::Point { host: Host::Adaptive { orients, .. } | Host::Handle { orients, .. }, .. } = &mut node.operation {
+            pick(ui, msg!("Orients to"), orients, &ORIENTS);
+        }
+        if let Operation::Point { host: Host::Handle { constrained, .. }, .. } = &mut node.operation {
+            pick(ui, msg!("Constrained"), constrained, &CONSTRAINTS);
+        }
+    });
+    let Some(node) = d.nodes.iter_mut().find(|n| n.id == id) else { return };
+    let look = node.look();
+    group(ui, msg!("Graphics"), |ui| {
+        let mut planes = look.planes;
+        if pick(ui, msg!("Show Reference Planes"), &mut planes, &SHOWS) {
+            node.appearance.show_planes = Some(planes);
+        }
+        let l = ui.label(t("Visible"));
+        let mut visible = look.visible;
+        if ui.checkbox(&mut visible, "").labelled_by(l.id).changed() {
+            node.appearance.visible = Some(Expr::Number(if visible { 1. } else { 0. }));
+        }
+        ui.end_row();
+    });
+    group(ui, msg!("Identity Data"), |ui| {
+        let l = ui.label(t("Name"));
+        ui.add(egui::TextEdit::singleline(&mut node.name).desired_width(f32::INFINITY)).labelled_by(l.id);
+        ui.end_row();
+    });
+    if let Some(e) = problem {
+        ui.colored_label(ui.visuals().error_fg_color, e);
+    }
+}
+
 /// One element's properties: its name, its relationship and what that takes, and a form's appearance. Whether Delete was
 /// pressed.
 pub(crate) fn node_properties(ui: &mut Ui, node: &mut adaptive::Node) -> bool {
@@ -255,17 +375,19 @@ pub(crate) fn node_properties(ui: &mut Ui, node: &mut adaptive::Node) -> bool {
     if kind == "point" {
         let mut kind = v["host"]["type"].as_str().unwrap_or("frame").to_string();
         let before = kind.clone();
-        choice(ui, "Host relationship", &mut kind, &["world", "adaptive", "frame", "plane", "curve", "face", "edge", "vertex"]);
+        choice(ui, "Host relationship", &mut kind, &["world", "adaptive", "handle", "frame", "plane", "curve", "face", "edge", "vertex"]);
         if kind != before {
             v["host"] = host(&kind);
         }
     }
     let mut transform = None;
     let mut hosted_frame = None;
+    // Shown as Revit's fields by point_properties, not as raw values here.
+    let mut revit_fields = Vec::new();
     if kind == "point" {
         if let Ok(mut typed) = serde_json::from_value::<Operation>(v.clone()) {
             if let Operation::Point { host, transform: t } = &mut typed {
-                if let Host::Adaptive { frame: f, .. } | Host::World { frame: f } = host {
+                if let Host::Adaptive { frame: f, .. } | Host::Handle { frame: f, .. } | Host::World { frame: f } = host {
                     frame(ui, f);
                 }
                 for i in 0..3 {
@@ -283,6 +405,11 @@ pub(crate) fn node_properties(ui: &mut Ui, node: &mut adaptive::Node) -> bool {
         }
         if let Some(map) = v["host"].as_object_mut() {
             hosted_frame = map.remove("frame");
+            for key in ["orients", "constrained"] {
+                if let Some(v) = map.remove(key) {
+                    revit_fields.push((key, v));
+                }
+            }
         }
     }
     if let Some(map) = v.as_object_mut() {
@@ -293,6 +420,9 @@ pub(crate) fn node_properties(ui: &mut Ui, node: &mut adaptive::Node) -> bool {
     v["kind"] = json!(kind);
     if let Some(frame) = hosted_frame {
         v["host"]["frame"] = frame;
+    }
+    for (key, value) in revit_fields {
+        v["host"][key] = value;
     }
     if let Some(transform) = transform {
         v["transform"] = transform;
