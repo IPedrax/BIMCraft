@@ -890,6 +890,48 @@ fn flat(s: &mut Session) {
 }
 
 #[test]
+fn a_multi_category_schedule_counts_the_categories_it_names_and_is_the_projects_view() {
+    let mut s = Session::new();
+    flat(&mut s);
+    let r = run(
+        &mut s,
+        "schedule",
+        json!({"name": "Takeoff", "category": "multi-category", "categories": ["walls", "doors"],
+               "fields": ["Category", "Type", {"name": "Count", "total": true}], "sort": ["Category", "Type"], "grouped": true}),
+    );
+    assert_eq!(r["category"], "multicategory");
+    assert_eq!(r["categories"], json!(["wall", "door"]));
+    assert_eq!(
+        r["rows"],
+        json!([
+            ["door", "Single 800 x 2100", 1.0],
+            ["door", "Single 900 x 2100", 2.0],
+            ["wall", "Generic - 200mm", 4.0],
+            ["wall", "Interior - 100mm", 1.0]
+        ])
+    );
+    assert_eq!(r["totals"], json!([null, null, 8.0]));
+    assert!(r["available"].as_array().unwrap().contains(&json!("Material")), "{}", r["available"]);
+    // Kept by its name, as it was left; its categories changed in place.
+    let id = r["id"].as_u64().unwrap();
+    let r = run(&mut s, "schedule", json!({"name": "Takeoff", "categories": ["doors"]}));
+    assert_eq!((r["id"].as_u64(), r["rows"].as_array().map(Vec::len)), (Some(id), Some(2)));
+    let e = s.execute("schedule", &json!({"name": "Door Schedule", "categories": ["walls"]})).unwrap_err();
+    assert!(e.contains("multi-category"), "{e}");
+    // On a sheet, as any schedule; and in a file, read back.
+    s.script(
+        r#"sheet {}
+               place {"sheet": "A101", "view": "Takeoff"}"#,
+    )
+    .unwrap();
+    let (back, left_out) = crate::model::Model::read(&serde_json::to_string(&*s.model).unwrap()).unwrap();
+    assert!(
+        left_out.is_empty()
+            && back.elements.values().any(|e| matches!(e, crate::model::Element::Schedule(sc) if sc.categories == ["door"]))
+    );
+}
+
+#[test]
 fn schedules_show_the_fields_chosen_of_the_elements_their_filters_keep_sorted_grouped_and_totalled() {
     let mut s = Session::new();
     flat(&mut s);

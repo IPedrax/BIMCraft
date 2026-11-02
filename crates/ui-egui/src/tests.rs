@@ -3382,6 +3382,28 @@ fn project_parameters_are_made_in_their_window_and_given_values_in_properties() 
 }
 
 #[test]
+fn a_multi_category_schedule_is_made_from_the_new_schedule_dialog_and_lists_walls_and_doors() {
+    let mut h = app_at(&format!("{BOX}\ndoor {{\"at\": [2000, 0]}}"), 0.05);
+    press(&mut h, "View");
+    press(&mut h, "Schedules");
+    press(&mut h, "Schedule/Quantities…");
+    pick(&mut h, Role::Button, "Multi-Category");
+    let named = {
+        use egui_kittest::kittest::NodeT;
+        h.get_by_role_and_label(Role::TextInput, "Name:").accesskit_node().value()
+    };
+    assert_eq!(named.as_deref(), Some("Multi-Category Schedule"));
+    press(&mut h, "OK");
+    let sc = ids(&h, "schedule")[0];
+    assert_eq!(h.state().sheet, Sheet::Table(sc));
+    let Some(Element::Schedule(s)) = h.state().session.model.elements.get(sc).cloned() else { panic!("no schedule {sc}") };
+    assert_eq!(s.of, bimcraft_core::schedule::MULTI);
+    let t = bimcraft_core::schedule::table(&h.state().session.model, &s).unwrap();
+    let cats: Vec<&str> = t.rows.iter().filter_map(|r| r[0].as_str()).collect();
+    assert!(cats.contains(&"wall") && cats.contains(&"door"), "{cats:?}");
+}
+
+#[test]
 fn a_new_schedule_takes_its_fields_filter_and_sorting_from_schedule_properties() {
     use bimcraft_core::schedule::{Filter, Op, Sort};
     let rooms = r#"wall {"points": [[5000,0],[5000,6000]], "type": "Interior - 100mm"}

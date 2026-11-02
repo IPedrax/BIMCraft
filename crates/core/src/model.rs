@@ -1096,6 +1096,9 @@ pub struct Link {
 pub struct Schedule {
     pub name: String,
     pub of: String,
+    /// A multi-category schedule's categories (`schedule::MULTI`): none, every built one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub categories: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fields: Vec<crate::schedule::Field>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
