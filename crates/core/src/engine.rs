@@ -79,6 +79,9 @@ pub struct Session {
     resets: usize,
     /// What reads a DWG drawing, when the app has one (`cad::DwgReader`); none says to save it as DXF.
     pub dwg: Option<crate::cad::DwgReader>,
+    /// What fetches OpenStreetMap and elevation data, when the app has one (`geo::GeoSource`); none says to fetch it elsewhere and
+    /// bring it in as a file.
+    pub geo: Option<crate::geo::Fetcher>,
 }
 
 impl Default for Session {
@@ -112,6 +115,7 @@ impl Session {
             redo: Vec::new(),
             resets: 0,
             dwg: None,
+            geo: None,
         }
     }
 

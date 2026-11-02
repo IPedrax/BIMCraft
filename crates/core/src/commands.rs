@@ -290,6 +290,18 @@ pub static ALL: &[Command] = &[
         contours,
     ),
     edit(
+        "fetch_osm",
+        "Fetch OpenStreetMap",
+        &[],
+        "{bbox? | radius?, level?, level_height?, default_height?, parts?, terrain?, detail?, replace?} fetches the buildings of an \
+         area from OpenStreetMap (Overpass) and makes them as `import_osm` does: `bbox` [south, west, north, east] degrees, or \
+         `radius` metres each way round the project's origin (1000 by default); at most 25 km². The project must be placed \
+         (`geolocate`). Needs a build with network access (the desktop app has it); without one, fetch the Overpass JSON elsewhere and \
+         give it to `import_osm` as `data`. The reply is `import_osm`'s, with `fetched` (the box, its area, the bytes, and whether they \
+         came from the cache) and the credit OpenStreetMap's licence asks for",
+        fetch_osm,
+    ),
+    edit(
         "import_osm",
         "Import OpenStreetMap",
         &[],
@@ -5460,6 +5472,68 @@ fn mass(s: &mut Session, p: &Value) -> R {
     let (area, height, volume) = mass_size(m, &ms);
     let id = s.model_mut().insert(Element::Mass(ms));
     Ok(json!({"id": id, "area_m2": area, "height": height, "volume_m3": volume}))
+}
+
+/// The box a fetch is for: `bbox`, or `radius` metres each way round the project's origin (`DEFAULT_FETCH_RADIUS_M` when neither is
+/// given), and small enough. The project must be placed, as what is fetched is placed in it.
+fn fetch_bbox(c: &str, p: &Value, m: &Model) -> Result<crate::geo::Bbox, String> {
+    use crate::geo::{Bbox, DEFAULT_FETCH_RADIUS_M};
+    let Some(location) = m.location else {
+        return Err(bad(c, "the project has no location yet: place it with `geolocate` (latitude and longitude) first"));
+    };
+    let bbox = match (p.get("bbox").filter(|v| !v.is_null()), p.get("radius").filter(|v| !v.is_null())) {
+        (Some(_), Some(_)) => return Err(bad(c, "give `bbox` or `radius`, not both")),
+        (Some(v), None) => {
+            let b: Option<Vec<f64>> = v.as_array().filter(|a| a.len() == 4).and_then(|a| a.iter().map(Value::as_f64).collect());
+            match b.as_deref() {
+                Some(&[south, west, north, east]) => Bbox::new(south, west, north, east).map_err(|why| bad(c, why))?,
+                _ => return Err(bad(c, format!("`bbox` is [south, west, north, east] in degrees, got {v}"))),
+            }
+        }
+        (None, radius) => {
+            let r = match radius {
+                None => DEFAULT_FETCH_RADIUS_M,
+                Some(v) => v.as_f64().ok_or_else(|| bad(c, format!("`radius` is a distance in metres, got {v}")))?,
+            };
+            Bbox::around(location.longitude, location.latitude, r).map_err(|why| bad(c, why))?
+        }
+    };
+    bbox.check_area().map_err(|why| bad(c, why))?;
+    Ok(bbox)
+}
+
+fn fetch_osm(s: &mut Session, p: &Value) -> R {
+    let c = "fetch_osm";
+    only(c, p, &["bbox", "radius", "level", "level_height", "default_height", "parts", "terrain", "detail", "replace"])?;
+    let Some(geo) = s.geo.clone() else {
+        return Err(bad(
+            c,
+            "this BIMCraft has no network access built in: fetch the Overpass JSON elsewhere (Overpass Turbo, or the desktop app) and \
+             give it to `import_osm` as `data`",
+        ));
+    };
+    // What goes on to the import, checked now, by importing nothing: a refusal should not cost a fetch.
+    let mut forward = serde_json::Map::new();
+    for key in ["level", "level_height", "default_height", "parts", "terrain", "detail", "replace"] {
+        if let Some(v) = p.get(key).filter(|v| !v.is_null()) {
+            forward.insert(key.into(), v.clone());
+        }
+    }
+    let mut check = forward.clone();
+    check.insert("data".into(), json!({"elements": []}));
+    import_osm(s, &Value::Object(check)).map_err(|why| why.replacen("import_osm", c, 1))?;
+    let bbox = fetch_bbox(c, p, &s.model)?;
+    let layers = crate::geo::Layers { parts: flag(c, p, "parts")? };
+    let reply = geo.overpass(&bbox, &crate::geo::overpass_query(&bbox, layers)).map_err(|why| bad(c, why))?;
+    if reply.text.len() as u64 > MAX_FILE {
+        return Err(bad(c, format!("the reply is too large ({} bytes)", reply.text.len())));
+    }
+    let bytes = reply.text.len();
+    forward.insert("data".into(), json!(reply.text));
+    let mut out = import_osm(s, &Value::Object(forward)).map_err(|why| why.replacen("import_osm", c, 1))?;
+    out["fetched"] = json!({"bbox": bbox.as_array(), "area_km2": bbox.area_km2(), "bytes": bytes, "cached": reply.cached});
+    out["attribution"] = json!(geo.attribution("osm"));
+    Ok(out)
 }
 
 /// The most buildings `import_osm` makes walls, floors and roofs of at once.
