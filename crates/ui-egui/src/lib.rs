@@ -51,6 +51,7 @@ mod ribbon;
 mod section;
 mod section_box;
 pub mod settings;
+mod shape;
 pub mod shortcuts;
 mod sketch;
 mod standards;
@@ -4186,6 +4187,13 @@ impl BimApp {
             (Sheet::Section(_), Tool::Spot) => return msg!("Click a point to mark its height."),
             // Demolish picks in these views as it does in a plan; Paint in the 3D view alone.
             (Sheet::View3D | Sheet::Section(_), Tool::Demolish) | (Sheet::View3D, Tool::Paint | Tool::Unpaint) => {}
+            // Shape Editing works on the floor's top in the 3D view too.
+            (Sheet::View3D, Tool::ModifySubElements) => {
+                return msg!(
+                    "Drag a grip up or down to set its height, or click a point, a corner or an edge: it goes to the Options Bar's elevation."
+                );
+            }
+            (Sheet::View3D, Tool::AddPoint | Tool::AddSplitLine(_)) => {}
             (Sheet::View3D | Sheet::Section(_) | Sheet::Paper(_), _) => {
                 return msg!("This tool works in plan views: open one from the Project Browser.");
             }
@@ -4302,7 +4310,11 @@ impl BimApp {
             Tool::DetailLine(_) => "Click its next point; Enter finishes it, the first point again closes it. Esc cancels.",
             Tool::SlopeArrow(None) => msg!("Click the slope arrow's tail: where the floor's top stays at its height offset."),
             Tool::SlopeArrow(Some(_)) => msg!("Click its head: the floor rises toward it at the Options Bar's slope. Esc cancels."),
-            Tool::ModifySubElements => msg!("Click a point, a corner or an edge of the floor: it goes to the Options Bar's elevation."),
+            Tool::ModifySubElements => {
+                msg!(
+                    "Click a point, a corner or an edge of the floor: it goes to the Options Bar's elevation; drag a point's grip to move it."
+                )
+            }
             Tool::AddPoint => msg!("Click on the floor's top: a point there at the Options Bar's elevation, or the top's height if none."),
             Tool::AddSplitLine(None) => msg!("Click where the split line starts: a point, a corner or an edge of the floor."),
             Tool::AddSplitLine(Some(_)) => msg!("Click where it ends: the floor's top folds along it. Esc cancels."),

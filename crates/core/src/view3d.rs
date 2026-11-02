@@ -2117,6 +2117,21 @@ impl Camera {
         (along[2].abs() > 1e-9 && t.is_finite() && (self.lens.is_none() || t > 0.0)).then(|| add(from, mul(along, t)))
     }
 
+    /// The point at pixel `(x, y)` on `plane`, level or sloped; none where the view runs along it, or in perspective where it
+    /// is behind the eye there.
+    pub fn on_slope(&self, at: (f64, f64), plane: Plane) -> Option<P3> {
+        let (back, ..) = self.axes();
+        let p = self.unproject(at);
+        let (from, along) = match self.eye() {
+            Some(eye) => (eye, unit(sub(p, eye))),
+            None => (p, back),
+        };
+        // Along the ray, the height left over the plane falls by `rate` a mm.
+        let rate = along[2] - plane.g.0 * along[0] - plane.g.1 * along[1];
+        let t = (plane.at(P2(from[0], from[1])) - from[2]) / rate;
+        (rate.abs() > 1e-9 && t.is_finite() && (self.lens.is_none() || t > 0.0)).then(|| add(from, mul(along, t)))
+    }
+
     /// The model point at pixel `(x, y)` on the plane through the target, square to the view.
     pub fn unproject(&self, (x, y): (f64, f64)) -> P3 {
         let (_, right, up) = self.axes();
@@ -2251,6 +2266,66 @@ impl Image {
         let pm = tiny_skia::Pixmap::from_vec(self.rgba.clone(), size).ok_or("the picture's size is out of range")?;
         pm.encode_png().map_err(|e| e.to_string())
     }
+}
+
+/// A shaped floor's handles in the 3D view: its points and corners, in plan and in the model; and its edges, as plan pairs.
+pub type ShapeHandles = (Vec<(P2, P3)>, Vec<(P2, P2)>);
+
+/// A floor's shape as the 3D view edits it: each of its shape's points and its outline's and openings' corners, in plan and
+/// where its top is there; and the edges between them (split lines, the outline's and the openings'), as pairs of those.
+pub fn shape_handles(m: &Model, f: &crate::model::Floor) -> ShapeHandles {
+    let faces = m.floor_faces(f);
+    let top = |q: P2| {
+        let near = |r: &[P2]| geom::contains(r, q) || geom::ring_edges(r).any(|(a, b)| geom::dist_to_segment(q, a, b) <= crate::model::TOL);
+        faces.iter().find(|(r, _)| near(r)).map_or_else(|| m.floor_top(f).at(q), |(_, plane)| plane.at(q))
+    };
+    let rings = || std::iter::once(&f.boundary).chain(&f.openings);
+    let mut handles: Vec<(P2, P3)> = Vec::new();
+    for q in f.shape.points.iter().map(|p| p.at).chain(rings().flatten().copied()) {
+        if !handles.iter().any(|(h, _)| h.dist(q) <= crate::model::TOL) {
+            handles.push((q, [q.0, q.1, top(q)]));
+        }
+    }
+    let edges = f.shape.lines.iter().map(|l| (l.a, l.b)).chain(rings().flat_map(|r| geom::ring_edges(r))).collect();
+    (handles, edges)
+}
+
+/// Where pixel `at` meets floor `f`'s top in the 3D view through `cam`, in plan: on the nearest of its planes there.
+pub fn on_floor_top(m: &Model, f: &crate::model::Floor, cam: &Camera, at: (f64, f64)) -> Option<P2> {
+    let mut best: Option<(f64, P2)> = None;
+    for (ring, plane) in m.floor_faces(f) {
+        let Some(p) = cam.on_slope(at, plane) else { continue };
+        let q = P2(p[0], p[1]);
+        let inside = geom::contains(&ring, q) || geom::ring_edges(&ring).any(|(a, b)| geom::dist_to_segment(q, a, b) <= crate::model::TOL);
+        let near = cam.project(p).2;
+        if inside && near.is_finite() && best.is_none_or(|(n, _)| near > n) {
+            best = Some((near, q));
+        }
+    }
+    best.map(|(_, q)| q)
+}
+
+/// What of floor `f`'s shape a click at pixel `at` picks in the 3D view through `cam`, as `Floor::shape_pick` does in plan,
+/// within `reach` pixels: the nearest point or corner; else both ends of the nearest edge; else nothing.
+pub fn shape_pick_3d(m: &Model, f: &crate::model::Floor, cam: &Camera, at: (f64, f64), reach: f64) -> Vec<P2> {
+    let (handles, edges) = shape_handles(m, f);
+    let q = P2(at.0, at.1);
+    let shown = |p: P3| {
+        let (x, y, z) = cam.project(p);
+        (x.is_finite() && y.is_finite() && z.is_finite()).then_some(P2(x, y))
+    };
+    let near = handles.iter().filter_map(|(plan, p)| Some((*plan, shown(*p)?.dist(q)))).filter(|(_, d)| *d <= reach);
+    if let Some((plan, _)) = near.min_by(|a, b| a.1.total_cmp(&b.1)) {
+        return vec![plan];
+    }
+    let lift = |plan: P2| handles.iter().find(|(h, _)| h.dist(plan) <= crate::model::TOL).map(|(_, p)| *p);
+    let off = |(a, b): &(P2, P2)| Some(geom::dist_to_segment(q, shown(lift(*a)?)?, shown(lift(*b)?)?));
+    edges
+        .iter()
+        .filter_map(|e| Some((*e, off(e)?)))
+        .filter(|(_, d)| *d <= reach)
+        .min_by(|x, y| x.1.total_cmp(&y.1))
+        .map_or_else(Vec::new, |((a, b), _)| vec![a, b])
 }
 
 #[cfg(test)]

@@ -2091,73 +2091,18 @@ impl BimApp {
             // for the next one.
             Tool::AddPoint => {
                 let p = self.snap(m, level, v, at, &[], mods.shift).at;
-                let Some(floor) = self.selected_floor() else { return };
-                let mut q = json!({"id": floor, "at": point(p)});
-                // `add_point` reads an absolute elevation from the project's zero; the Options Bar's, from the floor's level.
-                let level = match m.elements.get(floor) {
-                    Some(Element::Floor(f)) if self.shape_absolute => m.elevation(f.level),
-                    _ => 0.0,
-                };
-                if !self.shape_z.trim().is_empty() {
-                    match m.units.parse(&self.shape_z) {
-                        Some(z) => q["z"] = json!(z + level),
-                        None => {
-                            self.status = Status { text: tf("add point: `{}` is not an elevation", &[&self.shape_z]), error: true };
-                            return;
-                        }
-                    }
-                }
-                if self.shape_absolute {
-                    q["absolute"] = json!(true);
-                }
-                self.run("add_point", q);
+                self.shape_add_point(p);
             }
             // A point of the selected floor's shape or a corner picked, or else an edge (a split line's, the outline's or an
             // opening's) and both its ends: each to the Options Bar's elevation, in one `edit_shape`.
             Tool::ModifySubElements => {
-                let Some(Element::Floor(f)) = self.selected_floor().and_then(|id| m.elements.get(id)) else { return };
-                let Some(z) = m.units.parse(&self.shape_z) else {
-                    let text = if self.shape_z.trim().is_empty() {
-                        t("type the elevation first").to_string()
-                    } else {
-                        tf("modify sub elements: `{}` is not an elevation", &[&self.shape_z])
-                    };
-                    self.status = Status { text, error: true };
-                    return;
-                };
-                let picked = f.shape_pick(v.mm(at), 2.0 * f64::from(PICK) / v.scale);
-                if picked.is_empty() {
-                    return;
-                }
-                // Above the top as it would be without the shape, or with Absolute, above the level.
-                let base = m.floor_top(f);
-                let lift = |at: P2| if self.shape_absolute { z - (base.at(at) - m.elevation(f.level)) } else { z };
-                let mut points: Vec<serde_json::Value> =
-                    f.shape.points.iter().map(|p| json!({"id": p.id, "at": point(p.at), "z": p.z})).collect();
-                for at in picked {
-                    match f.shape.points.iter().position(|p| p.at.dist(at) <= TOL) {
-                        Some(k) => points[k]["z"] = json!(lift(at)),
-                        None => points.push(json!({"at": point(at), "z": lift(at)})),
-                    }
-                }
-                let lines: Vec<serde_json::Value> =
-                    f.shape.lines.iter().map(|l| json!({"id": l.id, "a": point(l.a), "b": point(l.b)})).collect();
-                let id = self.selected_floor();
-                self.run("edit_shape", json!({"id": id, "points": points, "lines": lines}));
+                let (q, reach) = (v.mm(at), 2.0 * f64::from(PICK) / v.scale);
+                self.shape_modify(|f| f.shape_pick(q, reach));
             }
             // A split line across the selected floor's top, from one click to the next; then ready for another.
             &Tool::AddSplitLine(start) => {
                 let p = self.snap(m, level, v, at, start.as_slice(), mods.shift).at;
-                match (start, self.selected_floor()) {
-                    (None, _) => self.tool = Tool::AddSplitLine(Some(p)),
-                    // Refused, it keeps its start, to end it elsewhere.
-                    (Some(a), Some(floor))
-                        if a.dist(p) > TOL && self.run("add_split_line", json!({"id": floor, "a": point(a), "b": point(p)})).is_some() =>
-                    {
-                        self.tool = Tool::AddSplitLine(None);
-                    }
-                    _ => {}
-                }
+                self.shape_split(p);
             }
         }
     }
@@ -3526,11 +3471,6 @@ impl BimApp {
 }
 
 impl BimApp {
-    /// The floor being shaped: the one selected, while a Shape Editing tool is on.
-    fn shaping(&self) -> Option<Id> {
-        self.selected_floor().filter(|_| matches!(self.tool, Tool::ModifySubElements | Tool::AddPoint | Tool::AddSplitLine(_)))
-    }
-
     /// Under Modify Sub Elements, a drag from one of the selected floor's shape points moves it in plan, snapped, at its
     /// height, the split lines ending there going with it; on release, one `edit_shape`. Whether it took the release, which is
     /// then no click.
@@ -3565,10 +3505,9 @@ impl BimApp {
         if to.dist(from) <= TOL {
             return true;
         }
-        let shape = f.shape.moved(from, to);
-        let points: Vec<serde_json::Value> = shape.points.iter().map(|p| json!({"id": p.id, "at": point(p.at), "z": p.z})).collect();
-        let lines: Vec<serde_json::Value> = shape.lines.iter().map(|l| json!({"id": l.id, "a": point(l.a), "b": point(l.b)})).collect();
-        self.run("edit_shape", json!({"id": floor, "points": points, "lines": lines}));
+        if let Some(id) = floor {
+            self.edit_shape(id, &f.shape.moved(from, to));
+        }
         true
     }
 
