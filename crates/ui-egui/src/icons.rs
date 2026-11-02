@@ -111,6 +111,10 @@ icon_names! {
     Shaft,
     Mass,
     SlopeArrow,
+    ModifySubElements,
+    AddPoint,
+    AddSplitLine,
+    ResetShape,
     Ramp,
     Railing,
     ExtrusionRoof,
@@ -978,6 +982,31 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(3.0, 16.0), (21.0, 7.0), (21.0, 11.0), (3.0, 20.0)]);
             g.line(&[(5.0, 11.0), (15.0, 6.0)]);
             g.line(&[(11.5, 5.0), (15.0, 6.0), (13.7, 9.4)]);
+        }
+        Icon::ModifySubElements => {
+            // A slab's folded top, a pointer on its point.
+            g.line(&[(3.0, 9.0), (12.0, 13.0), (21.0, 9.0)]);
+            g.line(&[(3.0, 9.0), (3.0, 19.0), (21.0, 19.0), (21.0, 9.0)]);
+            g.closed(&[(12.0, 13.0), (12.0, 4.0), (15.0, 7.0), (18.0, 6.0)]);
+        }
+        Icon::AddPoint => {
+            // A slab's top folded down to a point, the point ringed.
+            g.line(&[(3.0, 9.0), (12.0, 14.0), (21.0, 9.0)]);
+            g.line(&[(3.0, 9.0), (3.0, 19.0), (21.0, 19.0), (21.0, 9.0)]);
+            g.circle((12.0, 14.0), 2.0);
+        }
+        Icon::AddSplitLine => {
+            // A slab's top in plan, a crease across it from corner to corner, its ends ringed.
+            g.closed(&[(3.0, 5.0), (21.0, 5.0), (21.0, 19.0), (3.0, 19.0)]);
+            g.line(&[(5.0, 17.0), (19.0, 7.0)]);
+            g.circle((5.0, 17.0), 1.6);
+            g.circle((19.0, 7.0), 1.6);
+        }
+        Icon::ResetShape => {
+            // A flat slab, and over it an arrow turning back.
+            g.closed(&[(3.0, 14.0), (21.0, 14.0), (21.0, 19.0), (3.0, 19.0)]);
+            g.line(&[(8.0, 10.0), (8.0, 6.0), (16.0, 6.0), (16.0, 10.0)]);
+            g.line(&[(5.5, 8.0), (8.0, 10.5), (10.5, 8.0)]);
         }
         Icon::Ramp => {
             g.closed(&[(3.0, 19.0), (21.0, 19.0), (21.0, 10.0)]);
