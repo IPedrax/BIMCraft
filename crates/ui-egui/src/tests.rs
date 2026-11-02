@@ -5849,6 +5849,31 @@ fn a_right_click_in_a_plan_opens_a_menu_of_what_the_view_and_the_selection_can_d
 }
 
 #[test]
+fn a_family_instance_selected_offers_edit_family_on_the_right_click_as_revit_does() {
+    let mut h = app("");
+    h.state_mut()
+        .session
+        .execute("family", &json!({"name":"Adaptive panel","types":{"A":{}},"adaptive":bimcraft_core::adaptive::four_point_panel()}))
+        .unwrap();
+    let result = h.state_mut().session.execute("component", &json!({"family":"Adaptive panel","at":[0,0]})).unwrap();
+    let id = serde_json::from_value(result["id"].clone()).unwrap();
+    // Nothing selected: no family to edit.
+    let at = h.state().screen(P2(4000.0, 3000.0));
+    assert!(offered(&mut h, at, &["Edit Family"]).is_empty());
+    key(&mut h, Key::Escape);
+    // The panel selected: Edit Family opens the Family Editor on it, at its Adaptive tab.
+    h.state_mut().selection = vec![id];
+    h.run();
+    assert_eq!(offered(&mut h, at, &["Edit Family"]), ["Edit Family"]);
+    choose_item(&mut h, "Edit Family");
+    assert!(h.state().family_editor.is_some(), "the Family Editor is open");
+    h.set_size(vec2(1800., 1000.));
+    h.run();
+    assert!(h.query_by_label("Adaptive").is_some());
+    assert!(h.query_all_by_label_contains("Replaying instance").count() > 0, "it opens on the instance selected");
+}
+
+#[test]
 fn every_view_has_the_right_click_menu() {
     let mut h = app(&format!(
         "{BOX}\nsection {{\"start\": [-1000, 3000], \"end\": [9000, 3000]}}\nroom {{\"point\": [4000, 3000], \"name\": \"Hall\"}}"
