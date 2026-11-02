@@ -1332,9 +1332,8 @@ pub struct SectionWork {
     solids: view3d::PreparedSolids,
     ranges: std::collections::HashMap<Id, std::ops::Range<usize>>,
     placed: Vec<(Id, Vec<[f64; 3]>)>,
-    /// Each element's box (as `placed` lists them), and by id.
+    /// Each element's box (as `placed` lists them, by id).
     boxes: Vec<Option<[[f64; 3]; 2]>>,
-    box_of: std::collections::HashMap<Id, [[f64; 3]; 2]>,
     extent: std::sync::OnceLock<[P2; 2]>,
     /// Beside `placed`, by place, not by id: a framing query asks of every element, and a hash each would cost more than
     /// the components' points it saves. Empty when nothing is deferred.
@@ -1348,7 +1347,6 @@ impl SectionWork {
     pub fn new(m: &Model) -> Self {
         let (solids, placed, boxes) = view3d::solids_and_extremes(m);
         let solids = view3d::PreparedSolids::Owned(solids);
-        let box_of = placed.iter().zip(&boxes).filter_map(|((id, _), b)| Some((*id, (*b)?))).collect();
         // Each element's solids lie together, in the order of the elements.
         let mut ranges: std::collections::HashMap<Id, std::ops::Range<usize>> = std::collections::HashMap::new();
         for (i, s) in solids.iter().enumerate() {
@@ -1360,7 +1358,6 @@ impl SectionWork {
             ranges,
             placed,
             boxes,
-            box_of,
             extent: std::sync::OnceLock::new(),
             deferred: Default::default(),
             deferred_components: 0,
@@ -1426,7 +1423,6 @@ impl SectionWork {
         if cancelled() {
             return None;
         }
-        let box_of = placed.iter().zip(&boxes).filter_map(|((id, _), b)| Some((*id, (*b)?))).collect();
         let mut ranges: std::collections::HashMap<Id, std::ops::Range<usize>> = std::collections::HashMap::new();
         for (i, s) in solids.iter().enumerate() {
             if i % 256 == 0 && cancelled() {
@@ -1440,13 +1436,18 @@ impl SectionWork {
             ranges,
             placed,
             boxes,
-            box_of,
             extent: std::sync::OnceLock::new(),
             deferred: Default::default(),
             deferred_components: 0,
             deferred_runs: 0,
             resolved: Default::default(),
         })
+    }
+
+    /// The box of element `id`: `placed` lists elements as the model does, by id. None tells a caller nothing of where it is.
+    fn box_of(&self, id: Id) -> Option<&[[f64; 3]; 2]> {
+        let at = self.placed.binary_search_by_key(&id, |(id, _)| *id).ok()?;
+        self.boxes.get(at)?.as_ref()
     }
 
     /// The cell of what `placed` holds at `at`, if its points are deferred.
@@ -2017,7 +2018,7 @@ fn section_base_cancellable(
     // What lies all on one side of the line's upright plane is cut by none of it, whatever it is made of.
     let side = |q: P2| (q - v.start).dot(u.perp());
     let one_side = |id: Id| {
-        work.box_of.get(&id).is_some_and(|[lo, hi]| {
+        work.box_of(id).is_some_and(|[lo, hi]| {
             let s = [P2(lo[0], lo[1]), P2(hi[0], lo[1]), P2(hi[0], hi[1]), P2(lo[0], hi[1])].map(side);
             s.iter().all(|x| *x > 1e-3) || s.iter().all(|x| *x < -1e-3)
         })
@@ -4282,6 +4283,17 @@ mod tests {
 
     /// Without its lookup a model finds its levels and hosts by going through every element, for each element it prepares:
     /// 116 s for the 100-storey tower, not 2 s. Every way of making a work builds it first.
+    #[test]
+    fn a_works_elements_are_in_id_order_and_each_finds_its_box() {
+        let m = crate::sample::tower::drawn(crate::sample::tower::Plate::SMALL, 2, Default::default()).unwrap();
+        for work in [SectionWork::new(&m), SectionWork::new_deferred(&m), SectionCache::default().work(&m)] {
+            assert!(work.placed.windows(2).all(|w| w[0].0 < w[1].0), "by id, as a box is searched for");
+            for ((id, _), b) in work.placed.iter().zip(&work.boxes) {
+                assert_eq!(work.box_of(*id), b.as_ref());
+            }
+        }
+    }
+
     #[test]
     fn every_section_work_prepares_on_a_built_lookup() {
         let s = house();

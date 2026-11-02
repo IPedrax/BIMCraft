@@ -11,11 +11,31 @@ const MAX_REFERENCES: usize = 1_000_000;
 const TILE: f64 = 6000.0;
 const MAX_TILES: i64 = 4096;
 
+/// A tile's walls by how low they begin, and the tallest's height: of a tower's, what a wall can reach is its own storeys, not
+/// the 100 stacked in the tile.
+#[derive(Default)]
+struct Tile {
+    walls: Vec<(f64, Id)>,
+    tallest: f64,
+}
+
+impl Tile {
+    /// Those that may overlap `lo` to `hi`: more, near the ends, as the caller still asks each. Numbers that aren't finite
+    /// leave the search wider, never narrower.
+    fn may_overlap(&self, lo: f64, hi: f64) -> impl Iterator<Item = Id> + '_ {
+        // A wall's top is its bottom and its height, rounded: a margin well past what the rounding moves.
+        let floor = lo - self.tallest - 1.0 - 1e-6 * lo.abs();
+        let start = self.walls.partition_point(|(bottom, _)| *bottom < floor);
+        let end = self.walls.partition_point(|(bottom, _)| bottom.total_cmp(&hi).is_lt());
+        self.walls.get(start..end.max(start)).unwrap_or_default().iter().map(|(_, id)| *id)
+    }
+}
+
 pub(crate) struct Index {
     spans: BTreeMap<Id, (f64, f64)>,
     hosts: BTreeMap<Guid, Vec<Id>>,
     /// Each tile's walls: those whose body, grown by a tolerance, reaches into it.
-    tiles: HashMap<(i64, i64), Vec<Id>>,
+    tiles: HashMap<(i64, i64), Tile>,
     /// Walls in no tile: too long for them, or of no finite size.
     everywhere: Vec<Id>,
 }
@@ -33,7 +53,9 @@ impl Index {
                         Some(([a, b], [c, d])) if (c - a + 1).saturating_mul(d - b + 1) <= MAX_TILES && tiled < MAX_REFERENCES => {
                             for x in a..=c {
                                 for y in b..=d {
-                                    index.tiles.entry((x, y)).or_default().push(id);
+                                    let tile = index.tiles.entry((x, y)).or_default();
+                                    tile.walls.push((lo, id));
+                                    tile.tallest = tile.tallest.max(hi - lo);
                                     tiled += 1;
                                 }
                             }
@@ -47,6 +69,9 @@ impl Index {
                 _ => {}
             }
         }
+        for tile in index.tiles.values_mut() {
+            tile.walls.sort_unstable_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        }
         index
     }
 
@@ -56,7 +81,9 @@ impl Index {
         let Some(&(lo, hi)) = self.spans.get(&id) else { return Vec::new() };
         let mut ids = self.everywhere.clone();
         if node.0.is_finite() && node.1.is_finite() {
-            ids.extend(self.tiles.get(&(tile(node.0), tile(node.1))).map_or(&[][..], Vec::as_slice));
+            if let Some(tile) = self.tiles.get(&(tile(node.0), tile(node.1))) {
+                ids.extend(tile.may_overlap(lo, hi));
+            }
         } else {
             ids = self.spans.keys().copied().collect();
         }
@@ -93,6 +120,30 @@ mod tests {
     use super::*;
     use crate::{engine::Session, model::Model, walls};
     use serde_json::json;
+
+    #[test]
+    fn a_tiles_search_by_height_leaves_out_no_wall_that_overlaps() {
+        let spans = [(0.0, 4000.0), (0.0, 400_000.0), (4000.0, 8000.0), (-3000.0, -1.0), (8000.0, 8000.0), (396_000.0, 400_000.0)];
+        let mut tile = Tile::default();
+        for (id, (lo, hi)) in spans.iter().enumerate() {
+            tile.walls.push((*lo, id as Id));
+            tile.tallest = tile.tallest.max(hi - lo);
+        }
+        tile.walls.sort_unstable_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        let edges = [-1e12, -3000.0, -1.0, 0.0, 1.0, 3999.0, 4000.0, 8000.0, 396_000.0, 400_000.0, 1e12];
+        let queries = edges.iter().flat_map(|lo| edges.iter().map(move |hi| (*lo, *hi)));
+        for (lo, hi) in queries.chain([(f64::NEG_INFINITY, f64::INFINITY), (0.0, f64::INFINITY), (f64::NAN, 1.0), (0.0, f64::NAN)]) {
+            let found: Vec<Id> = tile.may_overlap(lo, hi).collect();
+            for (id, (bottom, top)) in spans.iter().enumerate() {
+                if lo < *top && *bottom < hi {
+                    assert!(found.contains(&(id as Id)), "wall {id} overlaps {lo} to {hi}: {found:?}");
+                }
+            }
+        }
+        // With no tall wall, only the storeys near: what makes a tower's tile cheap.
+        let storeys = Tile { walls: (0..100).map(|i| (f64::from(i) * 4000.0, Id::from(i as u32))).collect(), tallest: 4000.0 };
+        assert!(storeys.may_overlap(200_000.0, 204_000.0).count() <= 4);
+    }
 
     #[test]
     fn indexed_joins_match_brute_force_for_storeys_arcs_tall_and_attached_walls() {

@@ -290,6 +290,7 @@ Keep this checklist current; mark a whole priority complete only when all of its
   - [x] Complete the final deferred-preparation workspace checkpoint (1,118 core, five deferred-preparation, seven bounds, seven work-cache, four fragment, six revision integration, 621 UI tests and remaining suites/doctests passed; formatting and Clippy clean).
   - [x] Build the model's lookup before any section preparation (a bare model was quadratic: 116 s, now about 2 s).
   - [x] Leave round runs' tubes unmade until a view needs them (`deferred_runs`; `tests/component_preparation.rs`).
+  - [x] Remove what grew with height from preparation: shafts per slab, walls per tile, family envelopes per chunk, the box hash.
   - [ ] Extend dependency-complete bounds/fragments to hosts, neighbouring geometry, families and empty spatial reads.
 - [ ] **3. Incremental instance BVH and shared prototypes.**
 - [ ] **4. Retained 2D fragments and partial GPU uploads.**
@@ -347,11 +348,36 @@ evicts what the next pass wants first. Unbounded it holds 1.56 GB and, at 100% h
 slower than plain deferred preparation. A fragment cache has to hold walls and ceilings to pay, and the cost of what it stores
 needs to be measured against rebuilding it.
 
+## Quadratics in height removed (2026-11-02)
+
+Profiling per category at both 10 and 100 storeys showed what cost more per element as the tower grew. A ceiling went from 110 to
+3 µs, as `Model::less_shafts` asked every shaft of the project for each slab; it now reads a table kept per model state, with a
+plan-box test first, which every caller shares (plans, quantities, IFC). A wall went from 123 to 21 µs at 100 storeys, the
+same as at 10: a plan tile held its square's walls from every storey, and each wall end sorted them all; tiles are now searched by
+height. Family envelopes are found once a pass, not once a chunk, and `box_of`'s hash is a binary search of `placed`.
+
+The same conditions as above, 100 storeys, median of three; every picture and drawing hashed the same as before these changes:
+
+| | North Elevation, full | North Elevation, deferred | Section A, full | Section A, deferred |
+|---|---:|---:|---:|---:|
+| Prepare the work | 1,236 ms | 710 ms | 1,298 ms | 726 ms |
+| Fit | 79 ms | 148 ms | 75 ms | 148 ms |
+| Overlay | 212 ms | 255 ms | 310 ms | 383 ms |
+| Picture | 1,497 ms | 1,473 ms | 1,681 ms | 1,668 ms |
+| First frame | 3,035 ms | 2,587 ms | 3,355 ms | 2,924 ms |
+| Overlay at a new zoom | 222 ms | 276 ms | 288 ms | 361 ms |
+| Retained by the work | 2.01 GB | 0.45 GB | 2.01 GB | 0.45 GB |
+| Peak | 3.94 GB | 2.40 GB | 4.08 GB | 2.54 GB |
+
+At 10 storeys a first frame is 463 ms deferred and 497 ms full, its peak 0.47 GB and 0.62 GB. Comparing cost per element across
+sizes is what found these: the tower's repetition hid them in totals.
+
 ## Next task for the receiving agent
 
-Preparation's largest costs left are walls and ceilings, then `box_of`. Find out why a ceiling costs 110 µs, and look at
-leaving walls' and ceilings' solids to their boxes too, keeping occluders' exactness. Then finish hosted/wall/spatial read
-dependencies and narrow family keys. Joined walls need old/new tile
+The picture is now over half of a first frame (about 1.5 s at 100 storeys) and is rebuilt on every pan and zoom, so it is next:
+measure `Scene::section`'s steps at 10 and 100 storeys the same way, looking for what grows with height. Overlay and fit scan every
+element's box, which a spatial structure (priority 3) would avoid. Then finish hosted/wall/spatial read dependencies and narrow
+family keys. Joined walls need old/new tile
 invalidation, empty-query dependencies, type users and long-wall handling. Preparation/assembly still enumerates
 the model, so priority 2 remains incomplete. Keep the subsequent BVH/prototype, retained drawing/GPU and later
 items in the recommended order above. Commit on this branch as work completes; do not push without asking.

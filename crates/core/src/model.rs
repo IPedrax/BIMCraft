@@ -3994,22 +3994,64 @@ impl Model {
         let ring: Vec<P2> = face.iter().map(|p| P2(p[0], p[1])).collect();
         let Some(plane) = walls::Plane::of(face) else { return (vec![ring], Vec::new()) };
         let area = |rings: &[Vec<P2>]| rings.iter().map(|r| geom::area(r).abs()).sum::<f64>();
+        let reach = ring.iter().fold([f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY], |[x0, y0, x1, y1], q| {
+            [x0.min(q.0), y0.min(q.1), x1.max(q.0), y1.max(q.1)]
+        });
         let (mut pieces, mut cut) = (vec![ring], Vec::new());
-        for id in self.rare("shaft") {
-            let Some(Element::Shaft(sh)) = self.elements.get(id) else { continue };
-            let (bottom, top) = self.span(sh.level, sh.base_offset, sh.top_level, sh.height);
+        // Each shaft's span and plan box once a model: a slab's cost is the shafts that may reach it, not the project's.
+        let shafts = self.derived.shafts(&self.elements, || self.shaft_table());
+        for sh in shafts.iter() {
+            // All of it to one side in plan takes nothing off.
+            if sh.plan[2] < reach[0] || sh.plan[0] > reach[2] || sh.plan[3] < reach[1] || sh.plan[1] > reach[3] {
+                continue;
+            }
             let zs = sh.boundary.iter().map(|q| plane.at(*q));
             let (lo, hi) = zs.fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
-            if !(lo < top - TOL && hi + rise > bottom + TOL) {
+            if !(lo < sh.top - TOL && hi + rise > sh.bottom + TOL) {
                 continue;
             }
             let left = walls::minus(&pieces, &sh.boundary);
             if area(&left) < area(&pieces) - 1.0 {
                 pieces = left;
-                cut.push(id);
+                cut.push(sh.id);
             }
         }
+        // Its twin, which tests hold it to: every shaft asked of the geometry.
+        #[cfg(test)]
+        {
+            let (mut all, mut through) = (vec![face.iter().map(|p| P2(p[0], p[1])).collect::<Vec<P2>>()], Vec::new());
+            for id in self.rare("shaft") {
+                let Some(Element::Shaft(sh)) = self.elements.get(id) else { continue };
+                let (bottom, top) = self.span(sh.level, sh.base_offset, sh.top_level, sh.height);
+                let zs = sh.boundary.iter().map(|q| plane.at(*q));
+                let (lo, hi) = zs.fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
+                if !(lo < top - TOL && hi + rise > bottom + TOL) {
+                    continue;
+                }
+                let left = walls::minus(&all, &sh.boundary);
+                if area(&left) < area(&all) - 1.0 {
+                    all = left;
+                    through.push(id);
+                }
+            }
+            assert_eq!((&pieces, &cut), (&all, &through), "a slab less the shafts found by their boxes");
+        }
         (pieces, cut)
+    }
+
+    /// Every shaft's span and plan box, as [`Model::less_shafts`] asks of them, by id.
+    fn shaft_table(&self) -> Vec<crate::derived::ShaftReach> {
+        let mut table = Vec::new();
+        for id in self.rare("shaft") {
+            let Some(Element::Shaft(sh)) = self.elements.get(id) else { continue };
+            let (bottom, top) = self.span(sh.level, sh.base_offset, sh.top_level, sh.height);
+            let plan =
+                sh.boundary.iter().fold([f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY], |[x0, y0, x1, y1], q| {
+                    [x0.min(q.0), y0.min(q.1), x1.max(q.0), y1.max(q.1)]
+                });
+            table.push(crate::derived::ShaftReach { id, bottom, top, plan, boundary: sh.boundary.clone() });
+        }
+        table
     }
 
     /// The type of a column, a structural column or a footing.

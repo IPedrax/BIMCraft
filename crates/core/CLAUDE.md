@@ -100,10 +100,12 @@ pixels, picking, face names and coverage, including tower views. Lazy fitting, d
 (`section_fit_cancellable`, `SectionOverlay::new_cancellable`): cancelled, a component's extrema are whole or unresolved
 and the model's extent stays unset, so the same work goes on to the exact answer; the tests sweep the checkpoints. The
 section worker uses this path. Round runs are deferred the same way (`deferred_runs`): a box now, the tube only when the
-picture shows it or the line's plane crosses its box, which takes 73% off what the work holds and 12% off a first frame at 100
-storeys (`docs/spatial-core-review.md`). The cells lie beside `placed` by place, since framing asks of every element and a
+picture shows it or the line's plane crosses its box, which takes most of what the work holds (`docs/spatial-core-review.md`). The cells lie beside `placed` by place, since framing asks of every element and a
 hash per element cost more than deferring saved.
 
 A model that has not built its lookup answers `Model::levels` and similar by scanning every element, which would make
 preparation quadratic (116 s against 2 s at 100 storeys), so every way of making a `SectionWork` builds it first. Other full
 passes, such as `view3d::solids` for the 3D scene, don't yet: measure those through a `Session`.
+
+When measuring preparation or a drawing, compare the cost per element at two sizes of the tower, not totals: the shafts per slab
+and walls per tile were found that way, and neither showed in a total at 10 storeys.

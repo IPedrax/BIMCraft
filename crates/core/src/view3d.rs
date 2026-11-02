@@ -675,6 +675,14 @@ pub(crate) fn solids_and_extremes_deferred(m: &Model, cancelled: &(dyn Fn() -> b
     if cancelled() {
         return None;
     }
+    let plain = crate::component_geometry::plain_envelopes(
+        m,
+        elements.iter().filter_map(|(_, e)| match e {
+            Element::Component(c) => Some(c),
+            _ => None,
+        }),
+        cancelled,
+    )?;
     let part = |chunk: &[(Id, &Element)]| -> Option<(Made, Vec<bool>)> {
         let mut components = crate::component_geometry::Components::new(m);
         let (mut solids, mut placed, mut boxes, mut deferred) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
@@ -683,7 +691,7 @@ pub(crate) fn solids_and_extremes_deferred(m: &Model, cancelled: &(dyn Fn() -> b
                 return None;
             }
             if let Element::Component(c) = e {
-                if let Some(envelope) = components.envelope(c) {
+                if let Some(envelope) = components.envelope(c, &plain) {
                     placed.push((id, Vec::new()));
                     boxes.push(Some(envelope));
                     deferred.push(true);

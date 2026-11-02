@@ -559,11 +559,41 @@ pub struct Derived {
     now: Mutex<Option<(u64, u64, Arc<Lookup>)>>,
     /// The lookup of the model this was copied from, with the token and version of the elements it is of.
     parent: Option<(u64, u64, Arc<Lookup>)>,
+    /// What a slab asks of each shaft, with the token and version of the elements it is of.
+    shafts: Mutex<Option<KeptShafts>>,
+}
+
+type KeptShafts = (u64, u64, Arc<Vec<ShaftReach>>);
+
+/// A shaft as a slab asks of it: its span, its plan box [x0, y0, x1, y1] and its outline.
+#[derive(Debug)]
+pub struct ShaftReach {
+    pub id: Id,
+    pub bottom: f64,
+    pub top: f64,
+    pub plan: [f64; 4],
+    pub boundary: Vec<crate::geom::P2>,
 }
 
 impl Derived {
     fn current(&self) -> Option<(u64, u64, Arc<Lookup>)> {
         self.now.lock().ok().and_then(|now| now.clone())
+    }
+
+    /// What `make` finds of the shafts of `elements`, kept until they change.
+    pub fn shafts(&self, elements: &Elements, make: impl FnOnce() -> Vec<ShaftReach>) -> Arc<Vec<ShaftReach>> {
+        let (token, version) = elements.state();
+        if let Ok(now) = self.shafts.lock()
+            && let Some((t, v, table)) = now.as_ref()
+            && (*t, *v) == (token, version)
+        {
+            return Arc::clone(table);
+        }
+        let made = Arc::new(make());
+        if let Ok(mut now) = self.shafts.lock() {
+            *now = Some((token, version, Arc::clone(&made)));
+        }
+        made
     }
 
     /// The lookup of `elements` if it is made already: what asks only where it costs nothing.
@@ -596,7 +626,7 @@ impl Clone for Derived {
     /// For the model's copy: what it starts from, this one's lookup. It is the copy's to bring up to date, if its elements
     /// were cloned from the elements this lookup is of, as they were then.
     fn clone(&self) -> Derived {
-        Derived { now: Mutex::new(None), parent: self.current() }
+        Derived { now: Mutex::new(None), parent: self.current(), shafts: Mutex::new(None) }
     }
 }
 

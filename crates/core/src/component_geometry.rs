@@ -7,6 +7,32 @@ use crate::model::{Component, Model};
 
 type Key = (String, String, bool, String);
 
+/// The local form envelope of each family and type that components with no values of their own use, found once for a whole
+/// pass over the model: most of a project's, each found without a key made for it, and no chunk of the pass finding it again.
+pub(crate) type PlainEnvelopes<'a> = std::collections::HashMap<(&'a str, &'a str), Option<[[f64; 3]; 2]>>;
+
+/// [`PlainEnvelopes`] of `components`. None when `cancelled`.
+pub(crate) fn plain_envelopes<'a>(
+    m: &Model,
+    components: impl Iterator<Item = &'a Component>,
+    cancelled: &(dyn Fn() -> bool + Sync),
+) -> Option<PlainEnvelopes<'a>> {
+    let mut plain = PlainEnvelopes::new();
+    for (i, c) in components.filter(|c| c.params.is_empty()).enumerate() {
+        if i % 256 == 0 && cancelled() {
+            return None;
+        }
+        plain.entry((c.family.as_str(), c.type_name.as_str())).or_insert_with(|| local_envelope(m, c));
+    }
+    Some(plain)
+}
+
+fn local_envelope(m: &Model, c: &Component) -> Option<[[f64; 3]; 2]> {
+    let family = m.families.get(&c.family)?;
+    let values = family.values(&c.type_name, &c.params).ok()?;
+    family.conservative_bounds(&values)
+}
+
 pub(crate) struct Components<'a> {
     model: &'a Model,
     local: BTreeMap<Key, Vec<Piece>>,
@@ -24,13 +50,12 @@ impl<'a> Components<'a> {
     }
 
     /// Supported local form envelopes, placed without building any triangles.
-    pub(crate) fn envelope(&mut self, c: &Component) -> Option<[[f64; 3]; 2]> {
+    pub(crate) fn envelope(&mut self, c: &Component, plain: &PlainEnvelopes) -> Option<[[f64; 3]; 2]> {
         let model = self.model;
-        let local = *self.envelopes.entry(Self::key(c)).or_insert_with(|| {
-            let family = model.families.get(&c.family)?;
-            let values = family.values(&c.type_name, &c.params).ok()?;
-            family.conservative_bounds(&values)
-        });
+        let local = match plain.get(&(c.family.as_str(), c.type_name.as_str())).filter(|_| c.params.is_empty()) {
+            Some(local) => *local,
+            None => *self.envelopes.entry(Self::key(c)).or_insert_with(|| local_envelope(model, c)),
+        };
         match crate::bounds::place_component(model, c, local?) {
             crate::bounds::Bounds::Box(bounds) => Some(bounds),
             _ => None,
