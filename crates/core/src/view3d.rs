@@ -508,6 +508,15 @@ fn solids_in(m: &Model, elements: &[(Id, &Element)], index: Option<&walls::Index
                 top: p.top,
                 curve: p.curve,
             })),
+            // Under a variable layer, a shaped floor's underside is level: each piece a prism from it up to its top.
+            Element::Floor(f) if m.floor_under(f).is_some() => {
+                for (ring, bottom, top) in m.floor_prisms(f) {
+                    let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
+                    for piece in m.less_shafts(&bottom.lift(&ring), rise).0 {
+                        out.push(Solid::Prism { owner: id, color: SLAB, tex: 0, ring: piece, bottom, top, curve: None });
+                    }
+                }
+            }
             Element::Floor(f) => {
                 for (face, rise) in m.floor_slabs(f) {
                     slabs(&mut out, m, id, SLAB, face, rise);
@@ -765,6 +774,34 @@ fn layered(m: &Model, s: Solid) -> Vec<Solid> {
                 above += r;
             }
             out
+        }
+        // A shaped floor's over a level underside: from the top down, the layers above its variable one following its top,
+        // those below it level over its underside, and the variable one between.
+        Solid::Prism { owner, color, tex, ring, bottom, top, curve: None }
+            if let Some(Element::Floor(f)) = m.elements.get(owner)
+                && let Some((_, v)) = m.floor_under(f) =>
+        {
+            let depth = top.z - bottom.z;
+            let b = crate::model::Variable::bounds(Some(v), layers, depth);
+            // Where layer `k` starts, from the top down: over the variable layer, under the top; under it, over the bottom.
+            let at = |k: usize| {
+                let from_top = b.get(k).copied().unwrap_or(depth);
+                if k <= v.index { Plane { z: top.z - from_top, ..top } } else { Plane { z: bottom.z + (depth - from_top), ..bottom } }
+            };
+            layers
+                .iter()
+                .enumerate()
+                .filter(|(_, l)| l.thickness > 1e-9 || l.variable)
+                .map(|(k, l)| Solid::Prism {
+                    owner,
+                    color: colour(l, color),
+                    tex: over(skin(m, &l.material), tex),
+                    ring: ring.clone(),
+                    bottom: at(k + 1),
+                    top: at(k),
+                    curve: None,
+                })
+                .collect()
         }
         // Across the wall from its exterior face in, each layer between two of its boundaries; the
         // outermost and innermost reach whatever lies past them.

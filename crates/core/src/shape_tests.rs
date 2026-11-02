@@ -244,3 +244,205 @@ fn snaps_find_a_shapes_points_and_reinforcement_waits_for_a_flat_structure() {
     let e = fails(&mut s, "reinforce", json!({"host": f, "cover": 20, "bottom": {"y": {"diameter": 8, "spacing": 150}}}));
     assert!(e.contains("shape"), "{e}");
 }
+
+#[test]
+fn a_floors_details_give_its_volume_shaped_or_not() {
+    let mut s = Session::new();
+    let f = slab(&mut s);
+    let volume = |s: &mut Session| element(s, f)["volume_m3"].as_f64().unwrap_or(f64::NAN);
+    let thickness = element(&mut s, f)["thickness"].as_f64().unwrap();
+    let flat = volume(&mut s);
+    assert!((flat - 48.0 * thickness / 1e3).abs() < 1e-3, "{flat}");
+    // A drain folds the top, and the slab under it with it: as much concrete as before, to 0.1 %.
+    run(&mut s, "edit_shape", json!({"id": f, "points": [{"at": [4000, 3000], "z": -30}]}));
+    let shaped = volume(&mut s);
+    assert!((shaped - flat).abs() <= flat * 1e-3, "flat {flat}, shaped {shaped}");
+}
+
+#[test]
+fn a_section_through_a_drain_shows_the_top_falling_to_it() {
+    let mut s = Session::new();
+    let f = slab(&mut s);
+    run(&mut s, "edit_shape", json!({"id": f, "points": [{"at": [4000, 3000], "z": -30}]}));
+    // West to east through the drain, looking north: along it, the drain is 5 m from its start.
+    let id = run(&mut s, "section", json!({"start": [-1000, 3000], "end": [9000, 3000]}))["id"].as_u64().unwrap();
+    let view = crate::render::View { scale: 0.5, cx: 5000.0, cy: -100.0, width: 6000, height: 800 };
+    let d = crate::render::section(&s.model, id, view);
+    let corners: Vec<(f32, f32)> = d
+        .prims
+        .iter()
+        .zip(&d.owners)
+        .filter(|(_, o)| **o == Some(f))
+        .filter_map(|(p, _)| match p {
+            crate::render::Prim::Fill { rings, .. } => Some(rings.concat()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    let has = |along: f64, z: f64| {
+        let (x, y) = view.px(P2(along, z));
+        corners.iter().any(|c| (c.0 - x).abs() < 0.5 && (c.1 - y).abs() < 0.5)
+    };
+    // A V: the top at the sides, 30 mm down at the drain, and the slab its 200 mm under that all the way.
+    assert!(has(1000.0, 0.0) && has(9000.0, 0.0), "the top at the sides");
+    assert!(has(5000.0, -30.0) && has(5000.0, -230.0), "down at the drain, the underside with it");
+    assert!(!has(5000.0, 0.0), "no flat top over the drain");
+}
+
+/// A terrace's floor type, 275 mm: tile 10, screed 60 (variable), membrane 5 and concrete 200, from the top down.
+fn terrace(s: &mut Session) {
+    let layers = json!([
+        {"function": "finish", "material": "Ceramic tile", "thickness": 10},
+        {"function": "substrate", "thickness": 60, "variable": true},
+        {"function": "membrane", "thickness": 5},
+        {"function": "structure", "material": "Concrete", "thickness": 200}
+    ]);
+    run(s, "type", json!({"category": "floor", "name": "Terrace", "layers": layers}));
+}
+
+/// An 8 by 6 m terrace floor on Level 1, its top at the level, a drain 30 mm down in its middle.
+fn drained(s: &mut Session) -> u64 {
+    terrace(s);
+    let boundary = json!([[0, 0], [8000, 0], [8000, 6000], [0, 6000]]);
+    let f = run(s, "floor", json!({"boundary": boundary, "type": "Terrace"}))["id"].as_u64().unwrap();
+    run(s, "edit_shape", json!({"id": f, "points": [{"at": [4000, 3000], "z": -30}]}));
+    f
+}
+
+#[test]
+fn a_variable_layer_keeps_the_underside_flat_and_takes_up_the_fall() {
+    let mut s = Session::new();
+    let f = drained(&mut s);
+    // The underside stays where the unshaped floor's was; only the screed thins toward the drain: 48 m² of 275 mm, less the
+    // pyramid the drain takes out, 48 m² by 30 mm over 3.
+    let v = element(&mut s, f)["volume_m3"].as_f64().unwrap();
+    assert!((v - (48.0 * 0.275 - 48.0 * 0.030 / 3.0)).abs() < 1e-3, "{v}");
+    // In the 3D view, at a point 29 mm down: the tile follows the top, the screed takes what's left, the membrane and the
+    // concrete under it stay level.
+    let q = P2(4000.0, 2900.0);
+    let mut layers: Vec<(f64, f64)> = crate::view3d::shaded(&s.model)
+        .into_iter()
+        .filter(|x| x.owner() == f)
+        .filter_map(|x| match x {
+            crate::view3d::Solid::Prism { ring, bottom, top, .. } if crate::geom::contains(&ring, q) => Some((bottom.at(q), top.at(q))),
+            _ => None,
+        })
+        .collect();
+    layers.sort_by(|a, b| b.1.total_cmp(&a.1));
+    let want = [(-39.0, -29.0), (-70.0, -39.0), (-75.0, -70.0), (-275.0, -75.0)];
+    assert_eq!(layers.len(), 4, "{layers:?}");
+    for ((lo, hi), (wlo, whi)) in layers.iter().zip(want) {
+        assert!(near(*lo, wlo) && near(*hi, whi), "{layers:?}");
+    }
+}
+
+#[test]
+fn a_section_shows_the_screed_tapering_over_a_level_structure() {
+    let mut s = Session::new();
+    let f = drained(&mut s);
+    let id = run(&mut s, "section", json!({"start": [-1000, 3000], "end": [9000, 3000]}))["id"].as_u64().unwrap();
+    let view = crate::render::View { scale: 0.5, cx: 5000.0, cy: -150.0, width: 6000, height: 800 };
+    let d = crate::render::section(&s.model, id, view);
+    let mine = || d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(f)).map(|(p, _)| p);
+    let corners: Vec<(f32, f32)> = mine()
+        .filter_map(|p| match p {
+            crate::render::Prim::Fill { rings, .. } => Some(rings.concat()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    let lines: Vec<&Vec<(f32, f32)>> = mine()
+        .filter_map(|p| match p {
+            crate::render::Prim::Line { pts, .. } => Some(pts),
+            _ => None,
+        })
+        .collect();
+    let close = |c: &(f32, f32), along: f64, z: f64| {
+        let (x, y) = view.px(P2(along, z));
+        (c.0 - x).abs() < 0.5 && (c.1 - y).abs() < 0.5
+    };
+    let corner = |along: f64, z: f64| corners.iter().any(|c| close(c, along, z));
+    let between = |along: f64, z: f64| lines.iter().any(|l| l.iter().any(|c| close(c, along, z)));
+    // The top falls to the drain; the underside doesn't.
+    assert!(corner(5000.0, -30.0) && corner(5000.0, -275.0) && !corner(5000.0, -305.0), "a flat underside");
+    // Between the layers: under the tile, 10 mm under the top; over and under the membrane, level.
+    assert!(between(5000.0, -40.0) && between(1000.0, -10.0), "the tile follows the top");
+    assert!(between(5000.0, -70.0) && between(1000.0, -70.0) && between(5000.0, -75.0), "the membrane stays level");
+}
+
+#[test]
+fn a_point_that_would_leave_the_screed_thinner_than_nothing_is_refused() {
+    let mut s = Session::new();
+    let f = drained(&mut s);
+    let e = fails(&mut s, "add_point", json!({"id": f, "at": [2000, 3000], "z": -80}));
+    assert!(e.contains("-20 mm") && e.contains("raise the point by 20 mm"), "{e}");
+    // A type made thinner under a shape: the same.
+    let thin = json!([
+        {"function": "finish", "material": "Ceramic tile", "thickness": 10},
+        {"function": "substrate", "thickness": 20, "variable": true},
+        {"function": "membrane", "thickness": 5},
+        {"function": "structure", "material": "Concrete", "thickness": 200}
+    ]);
+    let e = fails(&mut s, "type", json!({"category": "floor", "name": "Terrace", "layers": thin}));
+    assert!(e.contains("-10 mm"), "{e}");
+}
+
+#[test]
+fn only_one_layer_of_a_floor_or_roof_type_is_variable() {
+    let mut s = Session::new();
+    let two = json!([{"thickness": 50, "variable": true}, {"thickness": 200, "variable": true}]);
+    let e = fails(&mut s, "type", json!({"category": "floor", "name": "Two", "layers": two}));
+    assert!(e.contains("one variable layer"), "{e}");
+    let one = json!([{"thickness": 50, "variable": true}, {"thickness": 200}]);
+    for cat in ["wall", "ceiling"] {
+        let e = fails(&mut s, "type", json!({"category": cat, "name": "Odd", "layers": one}));
+        assert!(e.contains("variable"), "{cat}: {e}");
+    }
+    run(&mut s, "type", json!({"category": "roof", "name": "Flat", "layers": one}));
+}
+
+#[test]
+fn a_wall_under_a_terrace_and_its_bars_keep_to_the_level_structure() {
+    // On Level 2, 3000 mm up: the wall under it rises to its level underside, 275 mm down, all along.
+    let mut s = Session::new();
+    terrace(&mut s);
+    let up =
+        run(&mut s, "floor", json!({"level": 100001, "type": "Terrace", "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}))["id"]
+            .as_u64()
+            .unwrap();
+    run(&mut s, "edit_shape", json!({"id": up, "points": [{"at": [4000, 3000], "z": -30}]}));
+    let wall = run(&mut s, "wall", json!({"points": [[4000, 0], [4000, 6000]], "type": "Interior - 100mm", "attach_top": up}))["ids"][0]
+        .as_u64()
+        .unwrap();
+    for y in [500.0, 3000.0, 4500.0] {
+        assert!(near(top(&s, wall, 4000.0, y), 3000.0 - 275.0), "at {y}: {}", top(&s, wall, 4000.0, y));
+    }
+    // The bars: a mesh in the concrete, 20 mm cover, all of it under the membrane however the top falls.
+    run(&mut s, "reinforce", json!({"host": up, "cover": 20, "bottom": {"x": {"diameter": 8, "spacing": 150}}}));
+    let guid = s.model.elements.guid(up).unwrap();
+    let zs: Vec<f64> = s
+        .model
+        .elements
+        .iter()
+        .filter_map(|(_, e)| match e {
+            crate::model::Element::Rebar(r) if r.host == Some(guid) => Some(r.path.iter().map(|p| p[2]).collect::<Vec<_>>()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    assert!(!zs.is_empty());
+    assert!(zs.iter().all(|z| near(*z, -275.0 + 20.0 + 4.0)), "{:?}", &zs[..zs.len().min(6)]);
+}
+
+#[test]
+fn a_shape_picks_its_nearest_point_or_corner_else_an_edges_ends() {
+    let mut s = Session::new();
+    let f = slab(&mut s);
+    run(&mut s, "edit_shape", json!({"id": f, "points": [{"at": [4000, 3000], "z": -30}], "lines": [{"a": [0, 6000], "b": [4000, 3000]}]}));
+    let Some(crate::model::Element::Floor(fl)) = s.model.elements.get(f) else { panic!("no floor") };
+    assert_eq!(fl.shape_pick(P2(4040.0, 2980.0), 100.0), [P2(4000.0, 3000.0)]);
+    assert_eq!(fl.shape_pick(P2(30.0, 20.0), 100.0), [P2(0.0, 0.0)]);
+    assert_eq!(fl.shape_pick(P2(4000.0, 50.0), 100.0), [P2(0.0, 0.0), P2(8000.0, 0.0)]);
+    assert_eq!(fl.shape_pick(P2(2000.0, 4520.0), 100.0), [P2(0.0, 6000.0), P2(4000.0, 3000.0)], "the split line");
+    assert!(fl.shape_pick(P2(2000.0, 2000.0), 100.0).is_empty());
+}
