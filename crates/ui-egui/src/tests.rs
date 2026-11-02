@@ -5253,6 +5253,7 @@ fn the_massing_tab_makes_floors_walls_a_floor_and_a_roof_from_the_selected_mass(
     assert_eq!(h.state().tool, Tool::Mass(Vec::new()));
 }
 
+mod adaptive_modelling;
 mod align;
 mod autosave;
 mod browser;
@@ -6092,4 +6093,81 @@ fn room_area_computation_is_set_from_manage_and_undone() {
     h.state_mut().run("undo", json!({}));
     h.run();
     assert_eq!(h.state().session.model.room_area, RoomArea::Centre);
+}
+
+#[test]
+fn adaptive_family_editor_reopens_exact_failed_instance_and_keeps_valid_dependencies() {
+    let mut h = app("");
+    h.state_mut()
+        .session
+        .execute("family", &json!({"name":"Adaptive panel","types":{"A":{}},"adaptive":bimcraft_core::adaptive::four_point_panel()}))
+        .unwrap();
+    let p = bimcraft_core::adaptive::Placement {
+        frames: [(2, bimcraft_core::adaptive::Frame::at([0., 0., 0.]))].into(),
+        context: "Failed panel 7".into(),
+        ..Default::default()
+    };
+    let result = h.state_mut().session.execute("component", &json!({"family":"Adaptive panel","at":[0,0],"adaptive":p})).unwrap();
+    let id = serde_json::from_value(result["id"].clone()).unwrap();
+    h.state_mut().selection = vec![id];
+    h.state_mut().edit_family("Adaptive panel");
+    h.set_size(vec2(1800., 1000.));
+    h.run();
+    assert!(h.query_by_label("Adaptive").is_some());
+    assert!(h.query_all_by_label_contains("Replaying instance").count() > 0);
+    press_near(&mut h, "Apply", "Cancel");
+    let Element::Component(c) = &h.state().session.model.elements[&id] else { panic!() };
+    assert_eq!(c.adaptive.as_ref(), Some(&p));
+    let r = h.state().session.model.component_adaptive_evaluation(c).unwrap();
+    assert!(r.failed());
+    assert!(r.values.contains_key("p1"));
+    press(&mut h, "Cancel");
+    assert!(h.state().family_editor.is_none());
+}
+
+#[test]
+fn adaptive_test_frames_place_where_they_are_even_on_a_raised_level() {
+    let mut h = app("");
+    let level = h.state().session.model.levels()[0].0;
+    h.state_mut().session.execute("modify", &json!({"id": level, "elevation": 1000})).unwrap();
+    h.state_mut()
+        .session
+        .execute("family", &json!({"name":"Adaptive panel","types":{"A":{}},"adaptive":bimcraft_core::adaptive::four_point_panel()}))
+        .unwrap();
+    h.set_size(vec2(1800., 1000.));
+    h.state_mut().edit_family("Adaptive panel");
+    h.run();
+    press(&mut h, "Adaptive");
+    press(&mut h, "Place test frames as a new instance");
+    let m = &h.state().session.model;
+    let mut placed = m.elements.values().filter_map(|e| if let Element::Component(c) = e { Some(c) } else { None });
+    let problem = h.state().status.text.clone();
+    let c = placed.next().unwrap_or_else(|| panic!("an instance is placed: {problem:?}"));
+    let f = &m.families["Adaptive panel"];
+    let d = f.adaptive.as_ref().unwrap();
+    let low = |pieces: Vec<bimcraft_core::family::Piece>| {
+        pieces.iter().flat_map(|p| p.tris.iter().flatten()).map(|q| q[2]).fold(f64::INFINITY, f64::min)
+    };
+    let want = low(d.evaluate(&f.values("A", &Default::default()).unwrap(), &d.preview).pieces());
+    assert!((low(m.component_pieces(c)) - want).abs() < 1e-6, "the test frames are the project's, whatever the level's elevation");
+}
+
+#[test]
+fn adaptive_editor_visual_preview_in_three_looks() {
+    let Ok(folder) = std::env::var("BIMCRAFT_ADAPTIVE_UI_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    for (name, dark, light_canvas) in [("light", false, false), ("dark", true, false), ("dark-ui-light-canvas", true, true)] {
+        let mut h = app("");
+        h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+        h.state_mut().light_canvas = light_canvas;
+        h.state_mut()
+            .session
+            .execute("family", &json!({"name":"Adaptive panel","types":{"A":{}},"adaptive":bimcraft_core::adaptive::four_point_panel()}))
+            .unwrap();
+        h.set_size(vec2(1600., 1000.));
+        h.state_mut().edit_family("Adaptive panel");
+        h.run();
+        press(&mut h, "Adaptive");
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("adaptive-{name}.png"))).unwrap();
+    }
 }

@@ -23,7 +23,9 @@ sys-locale = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-egui_kittest = { workspace = true }
+# `wgpu` lets a test render the window to a picture (looking at the result); `image` names the picture's type.
+egui_kittest = { workspace = true, features = ["wgpu"] }
+image = { version = "0.25", default-features = false }
 bimcraft-update = { workspace = true, features = ["testing"] }
 
 [build-dependencies]

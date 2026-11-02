@@ -293,6 +293,8 @@ fn no_mesh(mesh: &Arc<Vec<[P3; 3]>>) -> bool {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Family {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adaptive: Option<crate::adaptive::Definition>,
     #[serde(default)]
     pub category: Category,
     #[serde(default)]
@@ -310,7 +312,8 @@ pub struct Family {
 }
 
 /// A parameter's value, worked out: a number (yes/no, 1 or 0), or a material's name.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum Val {
     Number(f64),
     Text(String),
@@ -721,6 +724,13 @@ impl Family {
                 }
             }
         }
+        if let Some(d) = &mut self.adaptive {
+            for node in
+                d.nodes.iter_mut().filter(|n| n.is_form() && !n.appearance.material.is_empty() && !params.contains(&n.appearance.material))
+            {
+                f(&mut node.appearance.material);
+            }
+        }
         for form in self.forms.iter_mut().filter(|x| !x.material.is_empty() && !params.contains(&x.material)) {
             f(&mut form.material);
         }
@@ -739,6 +749,14 @@ impl Family {
             out.extend(self.types.values().filter_map(|t| t.get(&p.name)).filter_map(Value::as_str));
         }
         out.extend(self.forms.iter().filter(|f| !self.material_parameter(&f.material)).map(|f| f.material.as_str()));
+        if let Some(d) = &self.adaptive {
+            out.extend(
+                d.nodes
+                    .iter()
+                    .filter(|n| n.is_form() && !self.material_parameter(&n.appearance.material))
+                    .map(|n| n.appearance.material.as_str()),
+            );
+        }
         out.retain(|m| !m.is_empty());
         out
     }
@@ -753,6 +771,11 @@ impl Family {
         };
         self.parameters.iter_mut().filter(|p| p.kind == Kind::Material).for_each(|p| swap(&mut p.value));
         self.types.values_mut().flat_map(|t| t.iter_mut()).filter(|(k, _)| params.contains(k)).for_each(|(_, v)| swap(v));
+        if let Some(d) = &mut self.adaptive {
+            for node in d.nodes.iter_mut().filter(|n| n.appearance.material == from && !params.contains(&n.appearance.material)) {
+                node.appearance.material = to.into();
+            }
+        }
         self.forms.iter_mut().filter(|f| f.material == from && !params.contains(&f.material)).for_each(|f| f.material = to.into());
     }
 
@@ -818,6 +841,9 @@ impl Family {
     /// what their kinds hold; its types setting only the type parameters no formula works out; its
     /// materials in the library (`has_material`); and every type building.
     pub fn check(&self, has_material: &dyn Fn(&str) -> bool) -> Result<(), String> {
+        if let Some(definition) = &self.adaptive {
+            definition.check()?;
+        }
         for (what, n, most) in [
             ("parameters", self.parameters.len(), MAX_PARAMETERS),
             ("forms", self.forms.len(), MAX_FORMS),
@@ -912,6 +938,16 @@ impl Family {
                 return Err(format!("{who}: a formula of it is longer than {MAX_FORMULA} characters"));
             }
         }
+        if let Some(definition) = &self.adaptive {
+            for node in &definition.nodes {
+                if node.is_form()
+                    && !node.appearance.void
+                    && !self.parameters.iter().any(|p| p.name == node.appearance.material && p.kind == Kind::Material)
+                {
+                    material_ok(&node.id, &node.appearance.material)?;
+                }
+            }
+        }
         let symbol_exprs = self.symbols.iter().flat_map(|y| {
             y.line.iter().flatten().chain(&y.visible).chain(y.arc.iter().flat_map(|c| c.centre.iter().chain([&c.radius, &c.from, &c.to])))
         });
@@ -938,7 +974,15 @@ impl Family {
 
     /// Its visible forms' solids, sized by `values`, less what its voids cut.
     pub fn pieces(&self, values: &BTreeMap<String, Val>) -> Result<Vec<Piece>, String> {
-        self.build(values, &mut HashMap::new(), &mut csg::Meter::default())
+        self.pieces_at(values, None)
+    }
+
+    pub fn pieces_at(&self, values: &BTreeMap<String, Val>, placement: Option<&crate::adaptive::Placement>) -> Result<Vec<Piece>, String> {
+        let mut pieces = self.build(values, &mut HashMap::new(), &mut csg::Meter::default())?;
+        if let Some(definition) = &self.adaptive {
+            pieces.extend(definition.evaluate(values, placement.unwrap_or(&definition.preview)).pieces());
+        }
+        Ok(pieces)
     }
 
     /// The lines of its visible symbols, sized by `values`, in its own axes: an arc as a polyline of short chords.

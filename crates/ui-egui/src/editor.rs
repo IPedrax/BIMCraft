@@ -305,10 +305,15 @@ pub(crate) struct FamilyEditor {
     /// Each type's name, and for each parameter of its own what's typed (blank: the family's).
     types: Vec<(String, BTreeMap<String, String>)>,
     forms: Vec<FormText>,
+    pub(crate) adaptive: Option<bimcraft_core::adaptive::Definition>,
+    /// The adaptive modelling view's camera, tool and selection.
+    pub(crate) modeller: crate::adaptive_view::Modeller,
+    replay: Option<bimcraft_core::model::Id>,
+    preview_params: BTreeMap<String, Value>,
     symbols: Vec<SymbolText>,
     /// How a door's or a window's leaves open; none, not said.
     operation: Option<Operation>,
-    tab: Tab,
+    pub(crate) tab: Tab,
     /// The type shown in Types and on the preview.
     picked: usize,
     /// How the preview looks at it: azimuth and elevation, degrees.
@@ -320,11 +325,12 @@ pub(crate) struct FamilyEditor {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-enum Tab {
+pub(crate) enum Tab {
     Parameters,
     Types,
     Forms,
     Symbols,
+    Adaptive,
 }
 
 impl FamilyEditor {
@@ -343,6 +349,10 @@ impl FamilyEditor {
             params: f.parameters.iter().map(ParamText::of).collect(),
             types,
             forms: f.forms.iter().map(FormText::of).collect(),
+            adaptive: f.adaptive.clone(),
+            modeller: Default::default(),
+            replay: None,
+            preview_params: BTreeMap::new(),
             symbols: f.symbols.iter().map(SymbolText::of).collect(),
             operation: f.operation,
             tab: Tab::Parameters,
@@ -397,7 +407,7 @@ impl FamilyEditor {
         let forms = self.forms.iter().map(FormText::form).collect::<Result<_, _>>()?;
         let symbols = self.symbols.iter().map(SymbolText::symbol).collect::<Result<_, _>>()?;
         let operation = self.operation.filter(|_| self.category.hosted());
-        Ok(Family { category: self.category, parameters, types, forms, symbols, operation })
+        Ok(Family { category: self.category, parameters, types, forms, symbols, operation, adaptive: self.adaptive.clone() })
     }
 
     /// The `family` command's parameters making the project's family what's typed: its name, its own and the type it drops.
@@ -442,7 +452,7 @@ impl FamilyEditor {
             let kind = if family.category == Category::Door { "door" } else { "window" };
             place(&mut s, kind, json!({"at": [0, 0], "family": name, "type": type_name}))?;
         } else {
-            place(&mut s, "component", json!({"family": name, "type": type_name, "at": [0, 0]}))?;
+            place(&mut s, "component", json!({"family": name, "type": type_name, "at": [0, 0], "params": self.preview_params}))?;
         }
         Ok(Arc::unwrap_or_clone(s.model))
     }
@@ -487,6 +497,41 @@ impl FamilyEditor {
             Ok(None) => self.problem = None,
             Err(e) => self.problem = Some(e),
         }
+    }
+}
+
+/// Beside the adaptive modelling view, as Revit's Properties palette: what is selected in it, then every element and the test
+/// placement, and what the evaluation says is wrong.
+fn adaptive_side(ui: &mut Ui, ed: &mut FamilyEditor, values: &BTreeMap<String, bimcraft_core::family::Val>) {
+    if let Some(p) = &ed.problem {
+        ui.label(RichText::new(p).color(pal().error));
+    }
+    let Some(d) = ed.adaptive.as_mut() else { return };
+    ui.label(RichText::new(t("Properties")).strong());
+    let selected = ed.modeller.selection.clone();
+    if selected.is_empty() {
+        ui.label(RichText::new(t("Select an element in the view to see its properties.")).color(pal().muted));
+    }
+    let mut delete = Vec::new();
+    for id in &selected {
+        if let Some(node) = d.nodes.iter_mut().find(|n| &n.id == id) {
+            ui.push_id(id, |ui| {
+                egui::Frame::group(ui.style()).show(ui, |ui| {
+                    if crate::adaptive_editor::node_properties(ui, node) {
+                        delete.push(id.clone());
+                    }
+                });
+            });
+        }
+    }
+    if !delete.is_empty() {
+        d.remove(&delete);
+        ed.modeller.selection.retain(|id| !delete.contains(id));
+    }
+    ui.separator();
+    ui.collapsing(t("All elements and the test placement"), |ui| crate::adaptive_editor::show(ui, &mut ed.adaptive, values));
+    if let Some(d) = &ed.adaptive {
+        crate::adaptive_editor::diagnostics(ui, &d.evaluate(values, &d.preview));
     }
 }
 
@@ -894,7 +939,21 @@ impl BimApp {
     /// Open the Family Editor on family `name` of the project.
     pub(crate) fn edit_family(&mut self, name: &str) {
         if let Some(f) = self.session.model.families.get(name) {
-            self.family_editor = Some(FamilyEditor::of(name, f));
+            let mut editor = FamilyEditor::of(name, f);
+            if let Some((id, c)) = self.selection.iter().find_map(|id| match self.session.model.elements.get(id) {
+                Some(bimcraft_core::model::Element::Component(c)) if c.family == name => Some((*id, c)),
+                _ => None,
+            }) && let Some(d) = editor.adaptive.as_mut()
+            {
+                if let Some(placement) = &c.adaptive {
+                    d.preview = placement.clone();
+                }
+                editor.replay = Some(id);
+                editor.preview_params = c.params.clone();
+                editor.picked = editor.types.iter().position(|(n, _)| n == &c.type_name).unwrap_or(0);
+                editor.tab = Tab::Adaptive;
+            }
+            self.family_editor = Some(editor);
         }
     }
 
@@ -916,8 +975,34 @@ impl BimApp {
         let base = Arc::clone(&self.session.model);
         ed.refresh(ctx, &base);
         let materials: Vec<String> = base.materials.keys().cloned().collect();
+        let capture_sources = self
+            .selection
+            .iter()
+            .flat_map(|id| {
+                let Some(bimcraft_core::model::Element::Component(c)) = base.elements.get(id) else { return Vec::new() };
+                let Some(d) = base.families.get(&c.family).and_then(|f| f.adaptive.as_ref()) else { return Vec::new() };
+                let mut points = d
+                    .nodes
+                    .iter()
+                    .filter_map(|n| match &n.operation {
+                        bimcraft_core::adaptive::Operation::Point {
+                            host: bimcraft_core::adaptive::Host::Adaptive { number, .. }, ..
+                        } => Some((*number, n.id.clone())),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                points.sort_by_key(|p| p.0);
+                points.into_iter().map(|(_, point)| json!({"id":id,"host":{"type":"frame","point":point}})).collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let mut capture_context = false;
+        let mut place_adaptive = false;
+        let mut apply_placement = false;
         let (mut apply, mut ok, mut cancel, mut save, mut favorite, mut load) = (false, false, false, false, false, false);
-        let r = Modal::new(UiId::new("family-editor"), t("Family Editor")).width(1000.0).show(ctx, |ui| {
+        // An adaptive family is modelled in a view of its own, as wide as the screen allows, with no preview beside it.
+        let wide = ed.tab == Tab::Adaptive && ed.adaptive.is_some();
+        let width = if wide { (ctx.content_rect().width() - 40.0).clamp(1000.0, 1500.0) } else { 1000.0 };
+        let r = Modal::new(UiId::new("family-editor"), t("Family Editor")).width(width).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
                 ui.add_space(4.0);
                 Grid::new("fe-head").num_columns(4).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
@@ -956,13 +1041,14 @@ impl BimApp {
                 let room = (ctx.content_rect().height() - 330.0).clamp(160.0, 470.0);
                 ui.horizontal_top(|ui| {
                     ui.vertical(|ui| {
-                        ui.set_width(620.0);
+                        ui.set_width(if wide { width - 30.0 } else { 620.0 });
                         ui.horizontal(|ui| {
                             for (tab, label) in [
                                 (Tab::Parameters, msg!("Parameters")),
                                 (Tab::Types, msg!("Types")),
                                 (Tab::Forms, msg!("Forms")),
                                 (Tab::Symbols, msg!("Symbols")),
+                                (Tab::Adaptive, msg!("Adaptive")),
                             ] {
                                 if ui.selectable_label(ed.tab == tab, t(label)).clicked() {
                                     ed.tab = tab;
@@ -970,16 +1056,56 @@ impl BimApp {
                             }
                         });
                         ui.separator();
-                        ScrollArea::vertical().max_height(room).min_scrolled_height(room).auto_shrink([false, false]).show(
-                            ui,
-                            |ui| match ed.tab {
-                                Tab::Parameters => parameters_tab(&mut ed, ui, &materials),
-                                Tab::Types => types_tab(&mut ed, ui, &materials),
-                                Tab::Forms => forms_tab(&mut ed, ui, &materials),
-                                Tab::Symbols => symbols_tab(&mut ed, ui),
-                            },
-                        );
+                        let values = ed
+                            .family()
+                            .ok()
+                            .and_then(|f| ed.types.get(ed.picked).and_then(|(name, _)| f.values(name, &ed.preview_params).ok()))
+                            .unwrap_or_default();
+                        if wide {
+                            ui.horizontal(|ui| {
+                                capture_context = ui
+                                    .add_enabled(
+                                        !capture_sources.is_empty(),
+                                        egui::Button::new(t("Capture selected placement frames in project coordinates")),
+                                    )
+                                    .clicked();
+                                if let Some(id) = ed.replay {
+                                    ui.label(tf("Replaying instance {} with its exact parameters and placement", &[&id.to_string()]));
+                                    apply_placement = ui.button(t("Apply test frames to this instance")).clicked();
+                                }
+                                place_adaptive = ui.button(t("Place test frames as a new instance")).clicked();
+                            });
+                            let side = 360.0;
+                            let view = vec2((width - side - 60.0).max(400.0), (room - 40.0).max(260.0));
+                            ui.horizontal_top(|ui| {
+                                ui.vertical(|ui| {
+                                    ui.set_width(view.x);
+                                    if let Some(d) = ed.adaptive.as_mut() {
+                                        crate::adaptive_view::show(ui, d, &mut ed.modeller, &values, view);
+                                    }
+                                });
+                                ui.vertical(|ui| {
+                                    ui.set_width(side);
+                                    ScrollArea::vertical().id_salt("adaptive-side").max_height(view.y + 60.0).show(ui, |ui| {
+                                        adaptive_side(ui, &mut ed, &values);
+                                    });
+                                });
+                            });
+                        } else {
+                            ScrollArea::vertical().max_height(room).min_scrolled_height(room).auto_shrink([false, false]).show(ui, |ui| {
+                                match ed.tab {
+                                    Tab::Parameters => parameters_tab(&mut ed, ui, &materials),
+                                    Tab::Types => types_tab(&mut ed, ui, &materials),
+                                    Tab::Forms => forms_tab(&mut ed, ui, &materials),
+                                    Tab::Symbols => symbols_tab(&mut ed, ui),
+                                    Tab::Adaptive => crate::adaptive_editor::show(ui, &mut ed.adaptive, &values),
+                                }
+                            });
+                        }
                     });
+                    if wide {
+                        return;
+                    }
                     ui.add_space(8.0);
                     ui.vertical(|ui| {
                         ui.set_width(340.0);
@@ -1023,6 +1149,17 @@ impl BimApp {
                 });
             });
         });
+        if capture_context && let Some(value) = self.run("adaptive_capture", json!({"sources":capture_sources})) {
+            match serde_json::from_value(value) {
+                Ok(placement) => {
+                    if let Some(d) = ed.adaptive.as_mut() {
+                        d.preview = placement;
+                        ed.replay = None;
+                    }
+                }
+                Err(e) => ed.problem = Some(e.to_string()),
+            }
+        }
         if load {
             let dialog = rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]);
             self.ask_file(ctx, dialog, false, |app, path| match read_family_file(&path) {
@@ -1038,7 +1175,7 @@ impl BimApp {
         }
         // Made the project's: Apply and OK do it, and so do saving to a file or to the Favorites, which keep what's in the project.
         let mut made = false;
-        if apply || ok || save || favorite {
+        if apply || ok || save || favorite || place_adaptive || apply_placement {
             match ed.command(&base) {
                 Ok(p) => {
                     if self.run("family", p).is_some() {
@@ -1050,6 +1187,18 @@ impl BimApp {
                     }
                 }
                 Err(e) => ed.problem = Some(e),
+            }
+        }
+        if made && let Some(d) = &ed.adaptive {
+            if apply_placement && let Some(id) = ed.replay {
+                self.run("modify", json!({"id":id,"adaptive":d.preview}));
+            }
+            // The test frames are taken as the project's, so a captured context builds where it was captured.
+            if place_adaptive && let Some((type_name, _)) = ed.types.get(ed.picked) {
+                self.run(
+                    "adaptive_place",
+                    json!({"family":ed.name.trim(),"type":type_name,"placements":[{"params":ed.preview_params,"adaptive":d.completed(&d.preview)}]}),
+                );
             }
         }
         let name = ed.name.trim().to_string();
@@ -1077,6 +1226,20 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::*;
+
+    #[test]
+    fn adaptive_editor_roundtrip_preserves_identity_and_independent_preview_frames() {
+        let family = Family {
+            types: [("A".into(), BTreeMap::new())].into(),
+            adaptive: Some(bimcraft_core::adaptive::four_point_panel()),
+            ..Family::default()
+        };
+        let mut ed = FamilyEditor::of("Adaptive panel", &family);
+        assert_eq!(ed.family().unwrap(), family);
+        ed.adaptive.as_mut().unwrap().preview.frames.insert(2, bimcraft_core::adaptive::Frame::at([2000., 0., 100.]));
+        assert_eq!(family.adaptive.as_ref().unwrap().preview.frames.len(), 0);
+        assert_eq!(ed.family().unwrap().adaptive.unwrap().nodes, family.adaptive.unwrap().nodes);
+    }
 
     #[test]
     fn what_is_typed_is_a_number_or_a_formula_and_a_profile_is_a_corner_to_a_line() {

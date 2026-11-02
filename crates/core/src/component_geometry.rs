@@ -18,7 +18,7 @@ impl<'a> Components<'a> {
     }
 
     fn local(&mut self, c: &Component) -> &[Piece] {
-        let key = (c.family.clone(), c.type_name.clone(), c.mirrored, serde_json::to_string(&c.params).unwrap_or_default());
+        let key = (c.family.clone(), c.type_name.clone(), c.mirrored, serde_json::to_string(&(&c.params, &c.adaptive)).unwrap_or_default());
         self.local.entry(key).or_insert_with(|| self.model.component_local_pieces(c))
     }
 

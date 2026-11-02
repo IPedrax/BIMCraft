@@ -56,3 +56,4 @@ for what a pass frees (a family's material, a type's), at most 16 times, on a co
 `Model::remove_entry` is the single place that knows where each kind lives. The desktop's Purge Unused window (`purge.rs`) lists a dry run
 for the kinds checked and runs the same; the Project Browser's Families lists the system types and has the right-click Delete.
 
+Adaptive definitions, frame conventions, context snapshots and replay: [Adaptive families](adaptive-families.md).

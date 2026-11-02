@@ -69,7 +69,8 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 11: a project's language may be Swedish,
+/// The version of the project file this build writes, and the newest it reads. 12: adaptive family definitions and
+/// per-instance frames; older builds would discard them and lose geometry. Defaults migrate existing families unchanged. 11: a project's language may be Swedish,
 /// Czech or French (`sv`, `cs`, `fr`); nothing in a file of 10 changes, but a build that reads up to 10 would answer one of
 /// 11 with a serde error ("unknown variant"), not "saved by a newer BIMCraft". 8: text types (`text_types`, library
 /// entries of kind `text-type`); a note names its type, which holds its size, and may override parts of its formatting
@@ -87,7 +88,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 11;
+pub const FORMAT: u32 = 12;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -1187,6 +1188,9 @@ pub struct Run {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Component {
+    /// Frames in component-local coordinates; None uses the definition test placement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adaptive: Option<crate::adaptive::Placement>,
     pub family: String,
     #[serde(rename = "type")]
     pub type_name: String,
@@ -2611,12 +2615,39 @@ impl Model {
         }
     }
 
+    /// Adaptive component `c`'s family evaluated on its frames (the family's test placement without frames of its own), in
+    /// its own axes, unmirrored.
+    pub fn component_adaptive_evaluation(&self, c: &Component) -> Result<crate::adaptive::Evaluation, String> {
+        let family = self.families.get(&c.family).ok_or("Unknown family")?;
+        let definition = family.adaptive.as_ref().ok_or("Family is not adaptive")?;
+        let values = family.values(&c.type_name, &c.params)?;
+        Ok(definition.evaluate(&values, c.adaptive.as_ref().unwrap_or(&definition.preview)))
+    }
+
+    /// Component `c`'s own axes in the project: at its point, up its level's elevation and its offset, turned by its angle.
+    pub fn component_axes(&self, c: &Component) -> Result<crate::adaptive::Frame, String> {
+        crate::adaptive::Frame::at([c.at.0, c.at.1, self.elevation(c.level) + c.offset]).transformed([0.; 3], [0., 0., c.angle])
+    }
+
+    /// Adaptive component `c`'s placement in its own axes, a frame for every adaptive point: its own, else the family's
+    /// test placement's, else the point's in the family. None for a component of a family that isn't adaptive.
+    pub fn adaptive_placement(&self, c: &Component) -> Option<crate::adaptive::Placement> {
+        let d = self.families.get(&c.family)?.adaptive.as_ref()?;
+        Some(d.completed(c.adaptive.as_ref().unwrap_or(&d.preview)))
+    }
+
+    /// Adaptive component `c`'s adaptive points in the project, by number: where its grips are and what a placement snaps to.
+    pub fn adaptive_points(&self, c: &Component) -> Vec<(u32, crate::adaptive::Frame)> {
+        let (Some(placement), Ok(axes)) = (self.adaptive_placement(c), self.component_axes(c)) else { return Vec::new() };
+        placement.frames.iter().filter_map(|(n, f)| f.from_local(axes, c.mirrored).ok().map(|f| (*n, f))).collect()
+    }
+
     /// Component `c`'s solids in its own axes, mirrored if it is: each visible form's triangles, its
     /// outline seen from above, from its bottom to its top over its base, what it's made of; none
     /// for one that doesn't build.
     pub fn component_local_pieces(&self, c: &Component) -> Vec<Piece> {
         let Some(f) = self.families.get(&c.family) else { return Vec::new() };
-        let Ok(pieces) = f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v)) else { return Vec::new() };
+        let Ok(pieces) = f.values(&c.type_name, &c.params).and_then(|v| f.pieces_at(&v, c.adaptive.as_ref())) else { return Vec::new() };
         if !c.mirrored {
             return pieces;
         }
@@ -5454,6 +5485,12 @@ impl Model {
                     coord(&format!("{who} angle"), c.angle)?;
                     coord(&format!("{who} offset"), c.offset)?;
                     self.family_values_ok(&who, &c.family, f, &c.params)?;
+                    if let Some(placement) = &c.adaptive {
+                        if f.adaptive.is_none() {
+                            return Err(format!("{who}: adaptive placement requires an adaptive family"));
+                        }
+                        placement.check().map_err(|e| format!("{who}: {e}"))?;
+                    }
                     f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v)).map_err(|e| format!("{who}: {e}"))?;
                 }
                 Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {

@@ -9,6 +9,9 @@ use crate::popup::Modal;
 
 use bimcraft_i18n::msg;
 
+mod adaptive_editor;
+mod adaptive_place;
+mod adaptive_view;
 mod browser;
 mod cad;
 mod camera;
@@ -668,6 +671,10 @@ pub struct BimApp {
     /// The family and type the Component tool places, as picked, and how far it's turned, degrees.
     component: Option<(String, String)>,
     component_angle: f64,
+    /// An adaptive component's points clicked so far, in the project, before the last one places it.
+    pub(crate) adaptive_clicks: Vec<[f64; 3]>,
+    /// An adaptive instance's grip being dragged in a plan: the instance, and its point's number.
+    pub(crate) adaptive_grip: Option<(Id, u32)>,
     /// The Properties palette's folded groups.
     collapsed: BTreeSet<&'static str>,
     /// Where views show, last frame.
@@ -1093,6 +1100,8 @@ impl BimApp {
             new_schedule: None,
             component: None,
             component_angle: 0.0,
+            adaptive_clicks: Vec::new(),
+            adaptive_grip: None,
             collapsed: BTreeSet::new(),
             view_rect: Rect::ZERO,
             pane: Rect::ZERO,
@@ -2078,6 +2087,7 @@ impl BimApp {
     }
 
     fn set_tool(&mut self, mut tool: Tool) {
+        self.adaptive_clicks.clear();
         // Trim/Extend to Corner with two lines or walls selected (or picked, sketching) joins them at once, keeping the
         // parts toward their middles; with any other selection it asks for the picks.
         if tool == Tool::Trim(None) && self.corner_selected() {
@@ -2238,6 +2248,12 @@ impl BimApp {
         self.ribbon_peek = false;
         // A snap override waiting for its point goes first, leaving what's being drawn.
         if self.snap_once.take().is_some() {
+            return;
+        }
+        // An adaptive instance's points clicked go next, leaving the tool.
+        if !self.adaptive_clicks.is_empty() {
+            self.adaptive_clicks.clear();
+            self.status = Status::default();
             return;
         }
         self.clear_typed();
