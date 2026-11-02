@@ -2352,6 +2352,12 @@ impl BimApp {
         if !matches!(sheet, Sheet::Section(_)) {
             self.cut.suspend();
         }
+        if !matches!(sheet, Sheet::View3D) {
+            self.orbit.suspend();
+            if let Some(gpu) = &mut self.card.gpu {
+                gpu.suspend_upload();
+            }
+        }
         self.canvas.drawing.suspend();
         if !self.views.contains(&sheet) && !self.floats(sheet) {
             self.views.push(sheet);

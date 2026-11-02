@@ -131,6 +131,28 @@ struct Uploaded {
     bind: Option<wgpu::BindGroup>,
 }
 
+struct UploadJob {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    vertex_bytes: u64,
+    mesh: Arc<Mesh>,
+}
+
+struct UploadDone {
+    mesh: Arc<Mesh>,
+    uploaded: Result<Uploaded, String>,
+}
+
+fn build_upload(job: UploadJob, cancel: &crate::view_worker::Cancel) -> Option<UploadDone> {
+    let guard = scopes(&job.device);
+    let uploaded = Gpu::make_uploaded(&job.device, &job.queue, job.vertex_bytes, &job.mesh, &|| cancel.cancelled());
+    let caught = caught(guard);
+    if cancel.cancelled() {
+        return None;
+    }
+    Some(UploadDone { mesh: job.mesh, uploaded: uploaded.and_then(|u| caught.map(|()| u)) })
+}
+
 /// The card, and what it keeps between pictures.
 pub struct Gpu {
     device: wgpu::Device,
@@ -146,6 +168,8 @@ pub struct Gpu {
     globals: wgpu::Buffer,
     segments: (wgpu::Buffer, u64),
     mesh: Option<Uploaded>,
+    upload_worker: Option<crate::view_worker::Latest<UploadJob, UploadDone>>,
+    upload_requested: Option<Arc<Mesh>>,
     targets: Option<Targets>,
     texture: Option<TextureId>,
     adapter: String,
@@ -368,6 +392,8 @@ impl Gpu {
             globals,
             segments,
             mesh: None,
+            upload_worker: None,
+            upload_requested: None,
             targets: None,
             texture: None,
             adapter: String::new(),
@@ -387,12 +413,6 @@ impl Gpu {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         })
-    }
-
-    fn write(&self, buffer: &wgpu::Buffer, bytes: &[u8]) {
-        if !bytes.is_empty() {
-            self.queue.write_buffer(buffer, 0, bytes);
-        }
     }
 
     /// Where egui finds the last picture drawn.
@@ -416,6 +436,54 @@ impl Gpu {
             (self.mesh, self.targets) = (None, None);
         }
         drawn.and(caught)
+    }
+
+    /// Starts the large first upload away from the interface thread. A result belongs to its exact mesh snapshot.
+    /// Tests that call `draw` directly retain the synchronous path there.
+    pub(crate) fn prepare_upload(&mut self, ctx: &egui::Context, mesh: &Arc<Mesh>) -> Result<bool, String> {
+        if self.mesh.as_ref().is_some_and(|u| Arc::ptr_eq(&u.mesh, mesh)) {
+            return Ok(true);
+        }
+        if let Some(done) = self.upload_worker.as_ref().and_then(crate::view_worker::Latest::take)
+            && Arc::ptr_eq(&done.mesh, mesh)
+        {
+            self.mesh = Some(done.uploaded?);
+            return Ok(true);
+        }
+        if !self.upload_requested.as_ref().is_some_and(|m| Arc::ptr_eq(m, mesh)) {
+            self.mesh = None;
+            let job = UploadJob {
+                device: self.device.clone(),
+                queue: self.queue.clone(),
+                vertex_bytes: self.vertex_bytes,
+                mesh: Arc::clone(mesh),
+            };
+            let wake = ctx.clone();
+            let worker =
+                self.upload_worker.get_or_insert_with(|| crate::view_worker::Latest::new(build_upload, move || wake.request_repaint()));
+            worker.request(job);
+            self.upload_requested = Some(Arc::clone(mesh));
+        }
+        if let Some(worker) = &self.upload_worker {
+            worker.start()?;
+            if let Some(error) = worker.take_error() {
+                return Err(error);
+            }
+            if worker.busy() {
+                ctx.request_repaint_after(std::time::Duration::from_millis(16));
+            }
+        }
+        Ok(false)
+    }
+
+    pub(crate) fn suspend_upload(&mut self) {
+        self.upload_worker = None;
+        self.upload_requested = None;
+    }
+
+    pub(crate) fn forget_mesh(&mut self) {
+        self.suspend_upload();
+        self.mesh = None;
     }
 
     fn encode(&mut self, mesh: &Arc<Mesh>, cam: &Camera, tints: &[(Id, Rgb)], ground: Rgb) -> Result<(), String> {
@@ -593,38 +661,60 @@ impl Gpu {
             return Ok(());
         }
         self.mesh = None;
-        let binding = self.device.limits().max_storage_buffer_binding_size;
+        self.mesh = Some(Self::make_uploaded(&self.device, &self.queue, self.vertex_bytes, mesh, &|| false)?);
+        Ok(())
+    }
+
+    fn make_uploaded(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        vertex_bytes: u64,
+        mesh: &Arc<Mesh>,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<Uploaded, String> {
+        let binding = device.limits().max_storage_buffer_binding_size;
         if mesh.texels.len() as u64 * 4 > binding || mesh.owners.len() as u64 * OWNER > binding {
             return Err("the model is bigger than the card holds".into());
         }
         // Whole triangles to a buffer, written and sent one at a time, so that what waits to go up is one buffer's.
-        let per = (self.vertex_bytes.min(self.device.limits().max_buffer_size) / STRIDE / 3).max(1) * 3;
+        let per = (vertex_bytes.min(device.limits().max_buffer_size) / STRIDE / 3).max(1) * 3;
         let mut vertices = Vec::with_capacity((mesh.vertices.len() as u64 / per + 1) as usize);
         let mut bytes = Words::new();
         for part in mesh.vertices.chunks(per as usize) {
+            if cancelled() {
+                return Err("3D upload was cancelled".into());
+            }
             bytes.clear();
             bytes.reserve(part.len() * STRIDE as usize);
-            for Vertex { position, normal, face, color, owner, plane, tex } in part {
+            for (k, Vertex { position, normal, face, color, owner, plane, tex }) in part.iter().enumerate() {
+                if k % 8192 == 0 && cancelled() {
+                    return Err("3D upload was cancelled".into());
+                }
                 put(&mut bytes, position);
                 put_unit(&mut bytes, normal);
                 put_unit(&mut bytes, face);
                 put_words(&mut bytes, &[*color, *owner, *plane, *tex]);
             }
-            let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            let buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("bimcraft-3d-vertices"),
                 size: bytes.len() as u64,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
-            self.write(&buffer, &bytes);
-            self.queue.submit([]);
+            queue.write_buffer(&buffer, 0, &bytes);
+            queue.submit([]);
             vertices.push(buffer);
         }
-        let texels = Gpu::storage(&self.device, mesh.texels.len() as u64 * 4);
+        if cancelled() {
+            return Err("3D upload was cancelled".into());
+        }
+        let texels = Gpu::storage(device, mesh.texels.len() as u64 * 4);
         let mut words = Words::with_capacity(mesh.texels.len() * 4);
         put_words(&mut words, &mesh.texels);
-        self.write(&texels, &words);
-        self.mesh = Some(Uploaded {
+        if !words.is_empty() {
+            queue.write_buffer(&texels, 0, &words);
+        }
+        Ok(Uploaded {
             mesh: Arc::clone(mesh),
             vertices,
             per,
@@ -634,11 +724,10 @@ impl Gpu {
             lookups: Vec::new(),
             bind: None,
             // An array in a shader is at least one element long.
-            owners: Gpu::storage(&self.device, mesh.owners.len().max(1) as u64 * OWNER),
-            skins: Gpu::storage(&self.device, mesh.skins.len().max(1) as u64 * SKIN),
+            owners: Gpu::storage(device, mesh.owners.len().max(1) as u64 * OWNER),
+            skins: Gpu::storage(device, mesh.skins.len().max(1) as u64 * SKIN),
             texels,
-        });
-        Ok(())
+        })
     }
 
     /// Targets of `w` by `h` pixels, made again where the picture's size changed, and put in egui's reach.
@@ -795,6 +884,35 @@ mod tests {
         let mut s = Session::new();
         s.script(bimcraft_core::sample::SAMPLE).unwrap();
         s
+    }
+
+    #[test]
+    fn worker_upload_keeps_only_the_latest_mesh_and_draws_the_same_pixels() {
+        let Some(mut gpu) = headless() else { return };
+        let s = sample();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let perspective = scene.fit_from(Camera { lens: Some(bimcraft_core::view3d::LENS), ..cam }, &look);
+        let first = Arc::new(Mesh::new(&scene, &look).unwrap());
+        let latest = Arc::new(Mesh::new(&scene, &look).unwrap());
+        gpu.draw(&first, &cam, &[], PAPER).unwrap();
+        let pixels = read(&gpu);
+        gpu.draw(&first, &perspective, &[], PAPER).unwrap();
+        let perspective_pixels = read(&gpu);
+        gpu.mesh = None;
+        let ctx = egui::Context::default();
+        assert!(!gpu.prepare_upload(&ctx, &first).unwrap());
+        assert!(!gpu.prepare_upload(&ctx, &latest).unwrap());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !gpu.prepare_upload(&ctx, &latest).unwrap() {
+            assert!(std::time::Instant::now() < deadline, "worker upload did not finish");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(gpu.mesh.as_ref().is_some_and(|up| Arc::ptr_eq(&up.mesh, &latest)));
+        gpu.draw(&latest, &cam, &[], PAPER).unwrap();
+        assert_eq!(read(&gpu), pixels);
+        gpu.draw(&latest, &perspective, &[], PAPER).unwrap();
+        assert_eq!(read(&gpu), perspective_pixels);
     }
 
     #[test]

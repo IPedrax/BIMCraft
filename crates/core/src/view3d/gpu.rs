@@ -138,6 +138,14 @@ fn bounds<'a>(points: impl Iterator<Item = &'a P3>) -> Option<(P3, P3)> {
 impl Mesh {
     /// The mesh of what `look` shows of `scene`, or what a card can't draw of it as the CPU picture does.
     pub fn new(scene: &Scene, look: &Look) -> Result<Mesh, String> {
+        Self::new_cancellable(scene, look, &|| false).and_then(|mesh| mesh.ok_or_else(|| "mesh build was cancelled".into()))
+    }
+
+    /// The same mesh, abandoning a superseded view between batches of triangles.
+    pub fn new_cancellable(scene: &Scene, look: &Look, cancelled: &dyn Fn() -> bool) -> Result<Option<Mesh>, String> {
+        if cancelled() {
+            return Ok(None);
+        }
         if look.style() != VisualStyle::Shaded {
             return Err("hidden line or wireframe".into());
         }
@@ -148,7 +156,15 @@ impl Mesh {
         if scene.scans.iter().any(|s| plain || look.shows(s.owner)) {
             return Err("a point cloud, which only the processor draws yet".into());
         }
-        let shown: Vec<usize> = (0..scene.tris.len()).filter(|&i| plain || look.shows(scene.tris[i].owner)).collect();
+        let mut shown = Vec::new();
+        for i in 0..scene.tris.len() {
+            if i % 8192 == 0 && cancelled() {
+                return Ok(None);
+            }
+            if plain || look.shows(scene.tris[i].owner) {
+                shown.push(i);
+            }
+        }
         // What the view sees through is drawn after what it doesn't, each in the order the processor draws it.
         let clear = |i: usize| scene.tris[i].alpha(look) > 0;
         let shown: Vec<usize> = shown.iter().copied().filter(|&i| !clear(i)).chain(shown.iter().copied().filter(|&i| clear(i))).collect();
@@ -180,7 +196,10 @@ impl Mesh {
         mesh.vertices.try_reserve_exact(shown.len().saturating_mul(3)).map_err(room)?;
         mesh.tris.try_reserve_exact(shown.len()).map_err(room)?;
         let mut owners: BTreeMap<(Id, u8), u32> = BTreeMap::new();
-        for i in shown {
+        for (k, i) in shown.into_iter().enumerate() {
+            if k % 8192 == 0 && cancelled() {
+                return Ok(None);
+            }
             let t = &scene.tris[i];
             let alpha = t.alpha(look).min(100);
             let owner = *owners.entry((t.owner, alpha)).or_insert_with(|| {
@@ -204,6 +223,9 @@ impl Mesh {
         }
         let used: std::collections::BTreeSet<u32> = mesh.vertices.iter().map(|v| v.tex).filter(|t| *t > 0).collect();
         for id in used {
+            if cancelled() {
+                return Ok(None);
+            }
             let Some(Some(sampler)) = scene.skins.get(id as usize) else { continue };
             let plan = sampler.plan();
             let mut levels = Vec::new();
@@ -222,7 +244,7 @@ impl Mesh {
                 texel: plan.texel,
             };
         }
-        Ok(mesh)
+        if cancelled() { Ok(None) } else { Ok(Some(mesh)) }
     }
 
     /// Each skin as a card reads it for pictures of `cam`: its size, turn and offset, then (as words) where in
@@ -268,10 +290,34 @@ impl Mesh {
         self.bvh.get_or_init(|| {
             let mut bvh = Bvh { nodes: Vec::new(), order: (0..self.tris.len()).collect() };
             if !self.tris.is_empty() {
-                bvh.build(&self.tris, 0, self.tris.len());
+                bvh.build(&self.tris, 0, self.tris.len(), &|| false);
             }
             bvh
         })
+    }
+
+    /// Build the picking hierarchy while the mesh is still on a view worker.
+    pub fn prepare_picking(&self) {
+        self.bvh();
+    }
+
+    /// Build the hierarchy while a worker owns this mesh, abandoning a superseded snapshot.
+    pub fn prepare_picking_cancellable(&self, cancelled: &dyn Fn() -> bool) -> bool {
+        if self.bvh.get().is_some() {
+            return true;
+        }
+        if cancelled() {
+            return false;
+        }
+        let mut bvh = Bvh { nodes: Vec::new(), order: (0..self.tris.len()).collect() };
+        if !self.tris.is_empty() && bvh.build(&self.tris, 0, self.tris.len(), cancelled).is_none() {
+            return false;
+        }
+        if cancelled() {
+            return false;
+        }
+        let _ = self.bvh.set(bvh);
+        true
     }
 
     /// What the picture shows at pixel `(x, y)`: the nearest surface there (the first drawn where two are as near), and over it
@@ -385,7 +431,10 @@ fn covers((a, b): ((f64, f64, f64), (f64, f64, f64)), wide: u8, (x, y): (f64, f6
 
 impl Bvh {
     /// The node for `order[first..first + count]`, split in two at the middle of its longest side while it holds more than 8.
-    fn build(&mut self, tris: &[Tri], first: usize, count: usize) -> usize {
+    fn build(&mut self, tris: &[Tri], first: usize, count: usize, cancelled: &dyn Fn() -> bool) -> Option<usize> {
+        if cancelled() {
+            return None;
+        }
         let range = first..first + count;
         let (lo, hi) = bounds(self.order[range.clone()].iter().flat_map(|&i| tris[i].p.iter())).unwrap_or(([0.0; 3], [0.0; 3]));
         let id = self.nodes.len();
@@ -395,10 +444,10 @@ impl Bvh {
             let centre = |i: usize| tris[i].p.iter().map(|p| p[axis]).sum::<f64>();
             self.order[range].select_nth_unstable_by(count / 2, |&a, &b| centre(a).total_cmp(&centre(b)).then(a.cmp(&b)));
             let half = count / 2;
-            let children = [self.build(tris, first, half), self.build(tris, first + half, count - half)];
+            let children = [self.build(tris, first, half, cancelled)?, self.build(tris, first + half, count - half, cancelled)?];
             self.nodes[id].children = Some(children);
         }
-        id
+        Some(id)
     }
 }
 
@@ -408,11 +457,30 @@ mod tests {
     use crate::engine::Session;
     use crate::view3d::{AZIMUTH, ELEVATION};
     use serde_json::json;
+    use std::cell::Cell;
 
     fn sample() -> Session {
         let mut s = Session::new();
         s.script(crate::sample::SAMPLE).unwrap();
         s
+    }
+
+    #[test]
+    fn cancelled_mesh_and_picking_builds_publish_nothing_and_can_retry() {
+        let s = sample();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let calls = Cell::new(0);
+        let cancel = || {
+            calls.set(calls.get() + 1);
+            calls.get() > 2
+        };
+        assert!(Mesh::new_cancellable(&scene, &look, &cancel).unwrap().is_none());
+        let mesh = Mesh::new(&scene, &look).unwrap();
+        calls.set(0);
+        assert!(!mesh.prepare_picking_cancellable(&cancel));
+        assert!(mesh.bvh.get().is_none());
+        assert!(mesh.prepare_picking_cancellable(&|| false));
+        assert!(mesh.bvh.get().is_some());
     }
 
     /// Whether picking `s`'s 3D view through its mesh finds what the processor's picture shows, at every third pixel.

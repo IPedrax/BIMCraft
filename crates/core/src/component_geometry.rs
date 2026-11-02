@@ -3,9 +3,103 @@ use std::collections::BTreeMap;
 
 use crate::family::Piece;
 use crate::geom::P2;
-use crate::model::{Component, Model};
+use crate::model::{Component, Id, Model};
 
 type Key = (String, String, bool, String);
+
+/// One local family shape and every component that places it. Mirroring and instance parameters
+/// are part of the shape key; rotation and translation belong to the placement.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) struct SharedComponents {
+    pub(crate) shapes: Vec<Vec<Piece>>,
+    /// Local triangle bounds for each shape, used to bound placed instances without expanding triangles.
+    pub(crate) bounds: Vec<Option<[[f64; 3]; 2]>>,
+    pub(crate) instances: Vec<ComponentInstance>,
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+#[derive(Clone, Copy)]
+pub(crate) struct ComponentInstance {
+    pub(crate) owner: Id,
+    pub(crate) shape: usize,
+    pub(crate) at: [f64; 3],
+    pub(crate) sin: f64,
+    pub(crate) cos: f64,
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+impl ComponentInstance {
+    pub(crate) fn place(&self, p: [f64; 3]) -> [f64; 3] {
+        [self.at[0] + p[0] * self.cos - p[1] * self.sin, self.at[1] + p[0] * self.sin + p[1] * self.cos, self.at[2] + p[2]]
+    }
+
+    pub(crate) fn rotate(&self, n: [f64; 3]) -> [f64; 3] {
+        [n[0] * self.cos - n[1] * self.sin, n[0] * self.sin + n[1] * self.cos, n[2]]
+    }
+
+    pub(crate) fn bounds(&self, local: [[f64; 3]; 2]) -> [[f64; 3]; 2] {
+        let mut world = [[f64::INFINITY; 3], [f64::NEG_INFINITY; 3]];
+        for k in 0..8 {
+            let corner = std::array::from_fn(|axis| local[(k >> axis) & 1][axis]);
+            let p = self.place(corner);
+            for axis in 0..3 {
+                world[0][axis] = world[0][axis].min(p[axis]);
+                world[1][axis] = world[1][axis].max(p[axis]);
+            }
+        }
+        world
+    }
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+impl SharedComponents {
+    fn key(model: &Model, c: &Component) -> Key {
+        // Paint, phase and design-option metadata live in `params` too. Only names that the family
+        // evaluates can change its local geometry; appearance is resolved per placement later.
+        let params = model.families.get(&c.family).map(|family| {
+            c.params.iter().filter(|(name, _)| family.parameters.iter().any(|p| p.name == **name)).collect::<BTreeMap<_, _>>()
+        });
+        (c.family.clone(), c.type_name.clone(), c.mirrored, serde_json::to_string(&params).unwrap_or_default())
+    }
+
+    /// Build each local shape once. No triangles are placed or copied for the instances here.
+    pub(crate) fn new(model: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Self> {
+        let mut shapes = Vec::new();
+        let mut bounds = Vec::new();
+        let mut indices = BTreeMap::new();
+        let mut instances = Vec::new();
+        for (i, (owner, element)) in model.elements.iter().enumerate() {
+            if i % 256 == 0 && cancelled() {
+                return None;
+            }
+            let crate::model::Element::Component(c) = element else { continue };
+            let key = Self::key(model, c);
+            let shape = match indices.get(&key) {
+                Some(&n) => n,
+                None => {
+                    let n = shapes.len();
+                    let pieces = model.component_local_pieces(c);
+                    let local = pieces.iter().flat_map(|piece| piece.tris.iter().flatten());
+                    let extent = local.fold(None, |state: Option<[[f64; 3]; 2]>, p| {
+                        let [mut lo, mut hi] = state.unwrap_or([*p, *p]);
+                        for axis in 0..3 {
+                            lo[axis] = lo[axis].min(p[axis]);
+                            hi[axis] = hi[axis].max(p[axis]);
+                        }
+                        Some([lo, hi])
+                    });
+                    bounds.push(extent);
+                    shapes.push(pieces);
+                    indices.insert(key, n);
+                    n
+                }
+            };
+            let (sin, cos) = c.angle.to_radians().sin_cos();
+            instances.push(ComponentInstance { owner: *owner, shape, at: [c.at.0, c.at.1, model.elevation(c.level) + c.offset], sin, cos });
+        }
+        (!cancelled()).then_some(Self { shapes, bounds, instances })
+    }
+}
 
 /// The local form envelope of each family and type that components with no values of their own use, found once for a whole
 /// pass over the model: most of a project's, each found without a key made for it, and no chunk of the pass finding it again.
@@ -186,6 +280,9 @@ mod tests {
             )
             .unwrap();
         }
+        let first = s.model.elements.iter().find(|(_, e)| matches!(e, crate::model::Element::Component(_))).map(|(id, _)| *id).unwrap();
+        s.execute("material", &json!({"name": "Test paint", "color": [90, 120, 150]})).unwrap();
+        s.execute("paint", &json!({"id": first, "face": "all", "material": "Test paint"})).unwrap();
         let mut cache = Components::new(&s.model);
         for _ in 0..2 {
             for e in s.model.elements.values() {
@@ -198,5 +295,53 @@ mod tests {
                 }
             }
         }
+        let shared = SharedComponents::new(&s.model, &|| false).unwrap();
+        assert_eq!(shared.shapes.len(), 3);
+        assert_eq!(shared.instances.len(), 4);
+        for instance in &shared.instances {
+            let Some(crate::model::Element::Component(c)) = s.model.elements.get(instance.owner) else { panic!("component") };
+            let placed = s.model.component_pieces(c);
+            let local = &shared.shapes[instance.shape];
+            let bounds = instance.bounds(shared.bounds[instance.shape].unwrap());
+            assert_eq!(placed.len(), local.len());
+            for (p, shape) in placed.iter().zip(local) {
+                assert_eq!(p.tris, shape.tris.iter().map(|t| t.map(|q| instance.place(q))).collect::<Vec<_>>());
+                for (world, local) in p.tris.iter().zip(&shape.tris) {
+                    for point in world {
+                        for axis in 0..3 {
+                            assert!(point[axis] >= bounds[0][axis] - 1e-9 && point[axis] <= bounds[1][axis] + 1e-9);
+                        }
+                    }
+                    let normal = |[a, b, c]: &[[f64; 3]; 3]| {
+                        let u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+                        let v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+                        [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]
+                    };
+                    let expected = instance.rotate(normal(local));
+                    let actual = normal(world);
+                    for axis in 0..3 {
+                        assert!((actual[axis] - expected[axis]).abs() <= expected[axis].abs().max(1.0) * 1e-9);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "measures the large tower fixture"]
+    fn shared_component_shape_count_in_the_ten_storey_tower() {
+        let model = crate::sample::tower::annotated(crate::sample::tower::Plate::REFERENCE, 10).unwrap();
+        let shared = SharedComponents::new(&model, &|| false).unwrap();
+        let tris = |shape: &Vec<Piece>| shape.iter().map(|p| p.tris.len()).sum::<usize>();
+        let unique = shared.shapes.iter().map(&tris).sum::<usize>();
+        let placed = shared.instances.iter().map(|i| tris(&shared.shapes[i.shape])).sum::<usize>();
+        eprintln!(
+            "{} instances, {} shapes, {} placed triangles, {} unique triangles",
+            shared.instances.len(),
+            shared.shapes.len(),
+            placed,
+            unique
+        );
+        assert!(placed > unique * 10);
     }
 }

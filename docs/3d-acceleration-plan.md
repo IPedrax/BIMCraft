@@ -130,6 +130,32 @@ view until then.
 The card is on by default for a new user. A `settings.json` already holding `gpu_3d: false` keeps it, as it can't tell a choice from the
 old default.
 
+## Piece 2: view work off the interface thread
+
+The 3D view builds its scene, initial fit, card mesh and first-pick hierarchy on `view_worker.rs`. The first card upload has its own
+worker; a new model shows a loading view until both the scene and upload are ready. Later Zoom to Fit and Home fits also run on a
+worker. A superseded snapshot is cancelled during scene, mesh, hierarchy and upload construction, and its result cannot replace the
+current model or camera. Switching away from 3D cancels pending work. The test harness builds inline for deterministic view tests.
+
+On the annotated 10-storey tower at 1920 × 1080, release on the RTX 2060, the headless worker path measured **0.14 ms** to request
+and start scene work, **16.58 s** until scene, fit, mesh and picking hierarchy completed, **0.01 ms** to request and start the card
+upload, and **1.78 s** until upload completed. The work still takes time, but it no longer holds the requesting thread. This probe
+does not measure complete egui frame latency or the first shader compilation.
+
+The UI library's 636 tests passed, including the card's picture and picking comparisons.
+`worker_upload_keeps_only_the_latest_mesh_and_draws_the_same_pixels` compares synchronous and worker uploads byte for byte in
+parallel and perspective; the mesh cancellation test checks that a discarded hierarchy can be built again.
+
+## Piece 3 in progress
+
+`component_geometry::SharedComponents` now groups component instances by local family shape, including mirroring and the parameters
+the family evaluates in the key, while paint and phase metadata do not split a shape. Each instance keeps its owner and placement
+transform. Its test checks that placing every shared triangle gives the same coordinates and face normals as the existing full
+component geometry. Each shape's local bounds transform into a conservative world box for the instance hierarchy. The card still receives expanded triangles: shader
+instancing, per-instance plane and owner numbers, world-position textures and hierarchical picking are next.
+On the annotated 10-storey tower it finds **62,020 instances of 20 shapes**: 7,118,800 placed component triangles come from **2,845
+unique local triangles**. This is geometry reuse potential, before the instance buffer and picking hierarchy are counted.
+
 ## What isn't decided yet
 
 - **How far a card gets.** Piece 1's measurement decides how much of piece 5 is on the processor's side, and whether piece 6 needs coarser
@@ -142,7 +168,7 @@ old default.
 
 - [x] Measure
 - [x] 1. No cap, and the card's real limits
-- [ ] 2. Scene and mesh off the interface's thread
+- [x] 2. Scene and mesh off the interface's thread
 - [ ] 3. One shape, many places: components
 - [ ] 4. The same for runs
 - [ ] 5. Draw what the view can see

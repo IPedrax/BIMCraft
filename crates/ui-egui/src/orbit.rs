@@ -32,6 +32,79 @@ type Shot = (Arc<Model>, Camera, Vec<(Id, Rgb)>, bool, bool, Option<(P3, P3)>);
 /// A model's mesh for the card, or why the card can't draw it.
 type Meshed = (Arc<Model>, Result<Arc<Mesh>, String>);
 
+struct SceneJob {
+    model: Arc<Model>,
+    scene: Option<Arc<Scene>>,
+    width: u32,
+    height: u32,
+    lens: Option<f64>,
+    card: bool,
+}
+
+struct SceneDone {
+    model: Arc<Model>,
+    scene: Arc<Scene>,
+    fitted: Camera,
+    mesh: Option<Result<Arc<Mesh>, String>>,
+}
+
+fn build_scene(job: SceneJob, cancel: &crate::view_worker::Cancel) -> Option<SceneDone> {
+    let scene = match job.scene {
+        Some(scene) => scene,
+        None => Arc::new(Scene::new_cancellable(&job.model, &|| cancel.cancelled())?),
+    };
+    if cancel.cancelled() {
+        return None;
+    }
+    let look = Look::of_3d(&job.model);
+    let fitted = scene.fit_from(Camera { lens: job.lens, ..scene.fit_in(AZIMUTH, ELEVATION, job.width, job.height, &look) }, &look);
+    if cancel.cancelled() {
+        return None;
+    }
+    let mesh = if job.card {
+        match Mesh::new_cancellable(&scene, &look, &|| cancel.cancelled()) {
+            Ok(Some(mesh)) => Some(Ok(Arc::new(mesh))),
+            Ok(None) => return None,
+            Err(error) => Some(Err(error)),
+        }
+    } else {
+        None
+    };
+    if let Some(Ok(mesh)) = &mesh
+        && !mesh.prepare_picking_cancellable(&|| cancel.cancelled())
+    {
+        return None;
+    }
+    if cancel.cancelled() {
+        return None;
+    }
+    Some(SceneDone { model: job.model, scene, fitted, mesh })
+}
+
+struct FitJob {
+    model: Arc<Model>,
+    scene: Arc<Scene>,
+    from: Camera,
+    camera: Camera,
+}
+
+struct FitDone {
+    model: Arc<Model>,
+    scene: Arc<Scene>,
+    from: Camera,
+    target: Camera,
+    camera: Camera,
+}
+
+fn fit_scene(job: FitJob, cancel: &crate::view_worker::Cancel) -> Option<FitDone> {
+    if cancel.cancelled() {
+        return None;
+    }
+    let look = Look::of_3d(&job.model);
+    let camera = job.scene.fit_from(job.camera, &look);
+    (!cancel.cancelled()).then_some(FitDone { model: job.model, scene: job.scene, from: job.from, target: job.camera, camera })
+}
+
 /// What picks in the picture on screen: the processor's own picture, or the mesh the card drew it from (with its tints).
 enum Picker {
     Image(Image),
@@ -56,7 +129,7 @@ pub struct Orbit {
     pub(crate) rect: Rect,
     ppp: f32,
     /// The scene of the model shown last, in the 3D view or a section's.
-    pub(crate) scene: Option<(Arc<Model>, Scene)>,
+    pub(crate) scene: Option<(Arc<Model>, Arc<Scene>)>,
     /// What picks in the picture on screen, and what the picture is of.
     picker: Option<Picker>,
     shown: Option<Shot>,
@@ -65,6 +138,14 @@ pub struct Orbit {
     pub(crate) on_card: bool,
     /// The mesh of the scene shown last, for the card: or why it can't draw it.
     mesh: Option<Meshed>,
+    worker: Option<crate::view_worker::Latest<SceneJob, SceneDone>>,
+    requested: Option<Arc<Model>>,
+    requested_card: bool,
+    loading_error: Option<String>,
+    fit_worker: Option<crate::view_worker::Latest<FitJob, FitDone>>,
+    fit_target: Option<Camera>,
+    fit_requested: Option<Camera>,
+    fit_from: Option<Camera>,
     /// A drag under way: whether it orbits (else it pans), and where the pointer was last.
     drag: Option<(bool, Pos2)>,
     /// The camera as that drag found it, for a drag that turns out a click.
@@ -93,6 +174,14 @@ impl Default for Orbit {
             texture: None,
             on_card: false,
             mesh: None,
+            worker: None,
+            requested: None,
+            requested_card: false,
+            loading_error: None,
+            fit_worker: None,
+            fit_target: None,
+            fit_requested: None,
+            fit_from: None,
             drag: None,
             before: None,
             grip: None,
@@ -158,11 +247,11 @@ pub(crate) fn rgb(c: Color32) -> Rgb {
 }
 
 /// The scene of `model` in `slot`, built again when the model changed.
-pub(crate) fn scene_of<'a>(slot: &'a mut Option<(Arc<Model>, Scene)>, model: &Arc<Model>) -> &'a Scene {
+pub(crate) fn scene_of<'a>(slot: &'a mut Option<(Arc<Model>, Arc<Scene>)>, model: &Arc<Model>) -> &'a Scene {
     if !slot.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, model)) {
         *slot = None;
     }
-    &slot.get_or_insert_with(|| (Arc::clone(model), Scene::new(model))).1
+    &slot.get_or_insert_with(|| (Arc::clone(model), Arc::new(Scene::new(model)))).1
 }
 
 /// The lens the default 3D view is seen through while it's in perspective.
@@ -174,11 +263,134 @@ pub(crate) fn lens_of(model: &Model) -> Option<f64> {
 }
 
 /// The mesh of `scene` for the card, built again when the model changed; or why the card can't draw it.
-fn mesh_of<'a>(slot: &'a mut Option<Meshed>, model: &Arc<Model>, scene: &Scene) -> &'a Result<Arc<Mesh>, String> {
-    if !slot.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, model)) {
-        *slot = None;
+impl Orbit {
+    pub(crate) fn suspend(&mut self) {
+        self.worker = None;
+        self.requested = None;
+        self.fit_worker = None;
+        self.fit_target = None;
+        self.fit_requested = None;
+        self.fit_from = None;
     }
-    &slot.get_or_insert_with(|| (Arc::clone(model), Mesh::new(scene, &Look::of_3d(model)).map(Arc::new))).1
+
+    /// Install a whole snapshot at once, so the picture and its picker cannot refer to different models.
+    fn prepare(&mut self, ctx: &egui::Context, model: &Arc<Model>, width: u32, height: u32, card: bool) -> bool {
+        if let Some(done) = self.worker.as_ref().and_then(crate::view_worker::Latest::take)
+            && Arc::ptr_eq(&done.model, model)
+        {
+            if self.camera.is_none() {
+                self.camera = Some(done.fitted);
+            }
+            self.mesh = done.mesh.map(|m| (Arc::clone(model), m));
+            self.scene = Some((done.model, done.scene));
+        }
+        let current = self.scene.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, model));
+        let needs_mesh = card && !self.mesh.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, model));
+        if !current || needs_mesh || self.camera.is_none() {
+            if !self.requested.as_ref().is_some_and(|m| Arc::ptr_eq(m, model)) || (needs_mesh && !self.requested_card) {
+                let job = SceneJob {
+                    model: Arc::clone(model),
+                    scene: self.scene.as_ref().filter(|(m, _)| Arc::ptr_eq(m, model)).map(|(_, s)| Arc::clone(s)),
+                    width,
+                    height,
+                    lens: lens_of(model),
+                    card,
+                };
+                if !current {
+                    self.scene = None;
+                    self.mesh = None;
+                    self.picker = None;
+                    self.shown = None;
+                    self.fit_worker = None;
+                    self.fit_target = None;
+                    self.fit_requested = None;
+                    self.fit_from = None;
+                }
+                self.loading_error = None;
+                if cfg!(test) {
+                    if let Some(done) = build_scene(job, &crate::view_worker::Cancel::default()) {
+                        if self.camera.is_none() {
+                            self.camera = Some(done.fitted);
+                        }
+                        self.mesh = done.mesh.map(|m| (Arc::clone(model), m));
+                        self.scene = Some((done.model, done.scene));
+                    }
+                } else {
+                    let wake = ctx.clone();
+                    let worker =
+                        self.worker.get_or_insert_with(|| crate::view_worker::Latest::new(build_scene, move || wake.request_repaint()));
+                    worker.request(job);
+                }
+                self.requested = Some(Arc::clone(model));
+                self.requested_card = card;
+            }
+            if let Some(worker) = &self.worker {
+                if let Err(error) = worker.start() {
+                    self.loading_error = Some(error);
+                }
+                if let Some(error) = worker.take_error() {
+                    self.loading_error = Some(error);
+                }
+                if worker.busy() {
+                    ctx.request_repaint_after(std::time::Duration::from_millis(16));
+                }
+            }
+        }
+        self.camera.is_some() && self.scene.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, model))
+    }
+
+    fn prepare_fit(&mut self, ctx: &egui::Context, model: &Arc<Model>) -> Option<String> {
+        if self.fit_from.is_some_and(|from| self.camera != Some(from)) {
+            self.fit_worker = None;
+            self.fit_target = None;
+            self.fit_requested = None;
+            self.fit_from = None;
+        }
+        if let Some(done) = self.fit_worker.as_ref().and_then(crate::view_worker::Latest::take)
+            && self.fit_requested == Some(done.target)
+        {
+            if self.camera == Some(done.from)
+                && Arc::ptr_eq(&done.model, model)
+                && self.scene.as_ref().is_some_and(|(_, scene)| Arc::ptr_eq(scene, &done.scene))
+            {
+                self.camera = Some(done.camera);
+            }
+            self.fit_target = None;
+            self.fit_requested = None;
+            self.fit_from = None;
+        }
+        let (Some(target), Some(from), Some((_, scene))) = (self.fit_target, self.camera, &self.scene) else { return None };
+        if self.fit_requested != Some(target) {
+            let job = FitJob { model: Arc::clone(model), scene: Arc::clone(scene), from, camera: target };
+            if cfg!(test) {
+                if let Some(done) = fit_scene(job, &crate::view_worker::Cancel::default()) {
+                    self.camera = Some(done.camera);
+                    self.fit_target = None;
+                }
+                return None;
+            }
+            let wake = ctx.clone();
+            let worker = self.fit_worker.get_or_insert_with(|| crate::view_worker::Latest::new(fit_scene, move || wake.request_repaint()));
+            worker.request(job);
+            self.fit_requested = Some(target);
+            self.fit_from = Some(from);
+        }
+        if let Some(worker) = &self.fit_worker {
+            if let Err(error) = worker.start() {
+                return Some(error);
+            }
+            if let Some(error) = worker.take_error() {
+                self.fit_target = None;
+                self.fit_requested = None;
+                self.fit_from = None;
+                return Some(error);
+            }
+            if worker.busy() {
+                ctx.request_repaint_after(std::time::Duration::from_millis(16));
+            }
+        }
+        None
+    }
 }
 
 impl BimApp {
@@ -196,11 +408,10 @@ impl BimApp {
 
     /// Zoom to Fit: all the view shows of the model, from where the camera is.
     pub(crate) fn fit3d(&mut self) {
-        let model = Arc::clone(&self.session.model);
-        let look = Look::of_3d(&model);
-        let o = &mut self.orbit;
-        if let (Some(c), Some((_, scene))) = (o.camera, &o.scene) {
-            o.camera = Some(scene.fit_from(c, &look));
+        if let Some(c) = self.orbit.camera {
+            self.orbit.fit_target = Some(c);
+            self.orbit.fit_requested = None;
+            self.orbit.fit_from = None;
         }
     }
 
@@ -235,16 +446,32 @@ impl BimApp {
         let (paint, unpaint) = (self.tool == Tool::Paint, self.tool == Tool::Unpaint);
         let o = &mut self.orbit;
         (o.rect, o.ppp) = (rect, ppp);
-        let scene = scene_of(&mut o.scene, &model);
+        if !o.scene.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, &model))
+            && let Some(gpu) = &mut self.card.gpu
+        {
+            gpu.forget_mesh();
+        }
+        let card_ready = self.card.ready().is_some();
+        if !o.prepare(ui.ctx(), &model, w, h, card_ready) {
+            let p = ui.painter_at(rect);
+            p.rect_filled(rect, 0.0, color(render::PAPER));
+            p.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                o.loading_error.as_deref().unwrap_or("Building 3D view…"),
+                egui::FontId::proportional(16.0),
+                pal().text,
+            );
+            return;
+        }
+        if let Some(error) = o.prepare_fit(ui.ctx(), &model) {
+            self.status = Status { text: crate::lang::tf("Could not fit the 3D view: {}", &[&error]), error: true };
+        }
+        // A prepared view has both; without them there's nothing to draw this frame.
+        let (Some((_, scene)), Some(camera)) = (o.scene.as_ref(), o.camera) else { return };
         // Through the view's lens while it's in perspective: the eye stays where it stood as the lens or the picture changes.
         let lens = lens_of(&model);
-        let mut cam = match o.camera {
-            Some(c) => c.sized(w, h, lens),
-            None => {
-                let look = Look::of_3d(&model);
-                scene.fit_from(Camera { lens, ..scene.fit_in(AZIMUTH, ELEVATION, w, h, &look) }, &look)
-            }
-        };
+        let mut cam = camera.sized(w, h, lens);
         if let Some(at) = hover {
             // A wheel notch (about 50 points) zooms by a fifth.
             let factor = (f64::from(wheel) * 0.004).exp() * f64::from(pinch);
@@ -338,10 +565,37 @@ impl BimApp {
         }
         o.camera = Some(cam);
         // On the card when the user asked for it and it can draw what the view shows; else on the processor.
-        let mesh = match self.card.ready().is_some().then(|| mesh_of(&mut o.mesh, &model, scene)) {
+        let mut mesh = match card_ready.then(|| o.mesh.as_ref().map(|(_, m)| m)).flatten() {
             Some(Ok(mesh)) => Some(Arc::clone(mesh)),
             _ => None,
         };
+        if let (Some(mesh_to_upload), Some(gpu)) = (mesh.as_ref(), self.card.gpu.as_mut())
+            && !cfg!(test)
+        {
+            match gpu.prepare_upload(ui.ctx(), mesh_to_upload) {
+                Ok(true) => {}
+                Ok(false) => {
+                    let p = ui.painter_at(rect);
+                    p.rect_filled(rect, 0.0, color(render::PAPER));
+                    p.text(
+                        rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "Loading 3D view onto the card…",
+                        egui::FontId::proportional(16.0),
+                        pal().text,
+                    );
+                    return;
+                }
+                Err(e) => {
+                    self.status = crate::updates::failed(crate::lang::tf(
+                        "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor",
+                        &[&e],
+                    ));
+                    (self.card.gpu, self.card.note) = (None, Some(e));
+                    mesh = None;
+                }
+            }
+        }
         // Why not, where the mesh says; a card that failed keeps what it said.
         if !self.card.failed {
             let why = (self.card.wanted && mesh.is_none()).then(|| o.mesh.as_ref().and_then(|(_, m)| m.as_ref().err().cloned())).flatten();
@@ -487,8 +741,12 @@ impl BimApp {
         p.rect(bar, 6.0, pal().surface, Stroke::new(1.0, pal().border), StrokeKind::Inside);
         ui.scope_builder(UiBuilder::new().max_rect(bar.shrink(3.0)).layout(Layout::top_down(Align::Center)), |ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
-            if icon_button(ui, Icon::View3D, "Home View").clicked() {
-                self.orbit.camera = None;
+            if icon_button(ui, Icon::View3D, "Home View").clicked()
+                && let Some(c) = self.orbit.camera
+            {
+                self.orbit.fit_target = Some(Camera { azimuth: AZIMUTH, elevation: ELEVATION, lens: lens_of(&model), ..c });
+                self.orbit.fit_requested = None;
+                self.orbit.fit_from = None;
             }
             if icon_button(ui, Icon::Fit, "Zoom to Fit").clicked() {
                 self.fit3d();
@@ -501,5 +759,50 @@ impl BimApp {
                 }
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod worker_measurements {
+    use super::*;
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    #[ignore = "measures the annotated ten-storey tower in release"]
+    fn tower_scene_and_upload_leave_the_requesting_thread_free() {
+        let model = Arc::new(bimcraft_core::sample::tower::annotated(bimcraft_core::sample::tower::Plate::REFERENCE, 10).unwrap());
+        let (send, receive) = mpsc::channel();
+        let worker = crate::view_worker::Latest::new(build_scene, move || {
+            let _ = send.send(());
+        });
+        let started = Instant::now();
+        worker.request(SceneJob { model, scene: None, width: 1920, height: 1080, lens: None, card: true });
+        worker.start().unwrap();
+        eprintln!("scene request and start: {:.2} ms", started.elapsed().as_secs_f64() * 1000.0);
+        let done = loop {
+            receive.recv_timeout(Duration::from_secs(120)).unwrap();
+            if let Some(error) = worker.take_error() {
+                panic!("scene worker: {error}");
+            }
+            if let Some(done) = worker.take() {
+                break done;
+            }
+        };
+        eprintln!("scene, fit, mesh and picking hierarchy complete: {:.2} s", started.elapsed().as_secs_f64());
+        let mesh = done.mesh.unwrap().unwrap();
+        let Some(mut gpu) = crate::gpu::headless() else { return };
+        let ctx = egui::Context::default();
+        let started = Instant::now();
+        assert!(!gpu.prepare_upload(&ctx, &mesh).unwrap());
+        eprintln!("upload request and start: {:.2} ms", started.elapsed().as_secs_f64() * 1000.0);
+        loop {
+            if gpu.prepare_upload(&ctx, &mesh).unwrap() {
+                break;
+            }
+            assert!(started.elapsed() < Duration::from_secs(120), "upload did not finish");
+            std::thread::sleep(Duration::from_millis(16));
+        }
+        eprintln!("upload complete: {:.2} s", started.elapsed().as_secs_f64());
     }
 }

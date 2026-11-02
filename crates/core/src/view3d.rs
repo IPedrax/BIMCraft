@@ -560,19 +560,31 @@ fn slabs(out: &mut Vec<Solid>, m: &Model, owner: Id, color: Rgb, face: Vec<P3>, 
 /// The model's solids: walls cut around their openings, door leaves and glass, floor slabs and
 /// ceilings, columns, stairs' steps and roofs' slopes.
 pub(crate) fn solids(m: &Model) -> Vec<Solid> {
+    solids_cancellable(m, &|| false).unwrap_or_default()
+}
+
+fn solids_cancellable(m: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Vec<Solid>> {
+    if cancelled() {
+        return None;
+    }
     let elements: Vec<_> = m.elements.iter().map(|(&id, e)| (id, e)).collect();
     let index = walls::Index::new(m);
+    if cancelled() {
+        return None;
+    }
     if let Some(pool) = (elements.len() >= 1000).then(render_pool).flatten() {
         use rayon::prelude::*;
         // Collect indexed chunks before flattening: triangle order, depth ties and
         // picking are identical to the serial path. Each job owns its family cache.
-        return pool
-            .install(|| elements.par_chunks(128).map(|chunk| solids_in(m, chunk, Some(&index))).collect::<Vec<_>>())
-            .into_iter()
-            .flatten()
-            .collect();
+        let parts = pool.install(|| {
+            elements.par_chunks(128).map(|chunk| (!cancelled()).then(|| solids_in(m, chunk, Some(&index)))).collect::<Vec<_>>()
+        });
+        return Some(parts.into_iter().collect::<Option<Vec<_>>>()?.into_iter().flatten().collect());
     }
-    solids_in(m, &elements, Some(&index))
+    if cancelled() {
+        return None;
+    }
+    Some(solids_in(m, &elements, Some(&index)))
 }
 
 /// What [`solids_and_extremes`] makes: the solids, each element's farthest points and its box.
@@ -1011,8 +1023,8 @@ fn over(layer: u32, outer: u32) -> u32 {
     if layer == 0 { outer } else { layer }
 }
 
-/// The model's solids as its pictures show them: an element of a compound type split into its
-/// layers, each in its material's colour; a slab's from the top down, a wall's from its exterior in.
+/// The model's solids split into their material layers, used by the layer oracle tests.
+#[cfg(test)]
 pub(crate) fn shaded(m: &Model) -> Vec<Solid> {
     solids(m).into_iter().flat_map(|s| layered(m, s)).collect()
 }
@@ -1205,9 +1217,34 @@ const HEAD_PAD: f32 = 3.0;
 
 impl Scene {
     pub fn new(m: &Model) -> Scene {
+        Self::new_cancellable(m, &|| false).unwrap_or_else(|| Scene {
+            tris: Vec::new(),
+            planes: Vec::new(),
+            smooth: Vec::new(),
+            faces: Arc::default(),
+            skins: Vec::new(),
+            bases: Vec::new(),
+            masses: BTreeSet::new(),
+            levels: Vec::new(),
+            scans: Vec::new(),
+            edges: OnceLock::new(),
+        })
+    }
+
+    /// Build a view snapshot, releasing superseded work between its expensive stages.
+    pub fn new_cancellable(m: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Scene> {
+        if cancelled() {
+            return None;
+        }
         let mut tris = Vec::new();
-        for solid in shaded(m) {
+        for solid in solids_cancellable(m, cancelled)?.into_iter().flat_map(|s| layered(m, s)) {
+            if cancelled() {
+                return None;
+            }
             solid.tris(&mut tris);
+        }
+        if cancelled() {
+            return None;
         }
         // Each paintable element's rule for naming the faces of its triangles; paint gives those it's laid on their material.
         let rules: HashMap<Id, Rule> = m
@@ -1222,6 +1259,9 @@ impl Scene {
             .collect();
         let faces: Vec<&'static str> = tris.iter().map(|t| rules.get(&t.owner).map_or("", |r| r.face(&t.p))).collect();
         painted(m, &mut tris, &faces);
+        if cancelled() {
+            return None;
+        }
         // The textures the scene uses, ready to look up, and what each textured triangle lies across.
         let used: BTreeSet<u32> = tris.iter().map(Tri::texture).filter(|t| *t > 0).collect();
         let mut skins: Vec<Option<Sampler>> = vec![None; m.materials.len() + 1];
@@ -1232,7 +1272,17 @@ impl Scene {
             }
         }
         let bases = tris.iter().map(|t| skins.get(t.texture() as usize).is_some_and(Option::is_some).then(|| basis(t))).collect();
-        let (planes, smooth) = (planes(&tris), corner_normals(&tris));
+        if cancelled() {
+            return None;
+        }
+        let planes = planes(&tris);
+        if cancelled() {
+            return None;
+        }
+        let smooth = corner_normals(&tris);
+        if cancelled() {
+            return None;
+        }
         let masses = m.elements.iter().filter(|(_, e)| matches!(e, Element::Mass(_))).map(|(id, _)| *id).collect();
         let default = std::cell::OnceCell::new();
         let levels = m
@@ -1245,7 +1295,7 @@ impl Scene {
             })
             .collect();
         let scans = scans_of(m);
-        Scene { tris, planes, smooth, faces: Arc::new(faces), skins, bases, masses, levels, scans, edges: OnceLock::new() }
+        Some(Scene { tris, planes, smooth, faces: Arc::new(faces), skins, bases, masses, levels, scans, edges: OnceLock::new() })
     }
 
     /// The scene a section's or an elevation's picture through `cam` and `clip` is drawn from, of what `look` shows: only

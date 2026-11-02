@@ -306,7 +306,7 @@ scene) and doesn't finish at 100, as the 3D view doesn't; and the schedules' she
 
 ## 3D on the graphics card
 
-`view3d::gpu::Mesh` keeps a view's shown triangles for the card (retained geometry, uploaded once for each model), and
+`view3d::gpu::Mesh` keeps a view's shown triangles for the card (retained geometry, uploaded once for each model on a view worker), and
 `crates/ui-egui/src/gpu.rs` draws them in passes: the opaque surfaces, those seen through (only when the view sees through any),
 edges, ground and the blend, then the levels' lines. It was opt-in then
 (File > Settings > Performance). Release build on Linux, an NVIDIA GeForce RTX 3060 over Vulkan, the 20-storey tower
@@ -350,8 +350,8 @@ than the opaque depth, as `Scene::picture`'s second raster finds it; the edge pa
 view lets show (a tinted one at least 35%). Edges and level lines stay the opaque surfaces', as the processor's do. The sample house
 with its walls 60% see-through differs from the processor's picture in 255 pixels of 307,200, with a mass in it 192.
 
-Not measured: integrated cards, macOS and Windows, a model of several million triangles (the mesh holds up to 1.6
-million and falls back to the processor above that).
+This was measured before the mesh cap was removed. The several-million-triangle measurement and current limits are in the
+[3D acceleration plan](3d-acceleration-plan.md#piece-1-measured-2026-11-02). Integrated cards, macOS and Windows remain unmeasured here.
 
 ## Verification
 
