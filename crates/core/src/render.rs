@@ -2505,9 +2505,16 @@ fn arrow(d: &mut Drawing, a: (f32, f32), b: (f32, f32)) -> (f32, f32) {
 // ponytail: openings aren't drawn; a dormer's roof covers its own. Draw them for skylights.
 fn roof(d: &mut Drawing, m: &Model, r: &Roof) {
     let faces = m.roof_faces(r).map_or_else(|_| vec![m.roof_outline(r)], |f| f.into_iter().flat_map(|(loops, _)| loops).collect());
+    // A shaped one's creases thin, as a shaped floor's are, its outline and courtyards as any roof's.
+    let shaped = !r.shape.is_empty();
     for f in faces {
         override_patterns(d, m, std::slice::from_ref(&f), false, (P2(0.0, 0.0), 0.0));
-        d.line(&f, BY_CATEGORY, INK, true);
+        d.line(&f, BY_CATEGORY, if shaped { FAINT } else { INK }, true);
+    }
+    if shaped {
+        for ring in std::iter::once(&r.boundary).chain(&r.courtyards) {
+            d.line(ring, BY_CATEGORY, INK, true);
+        }
     }
 }
 

@@ -62,7 +62,13 @@ cross). A wall attached to one follows `Model::shape_triangles`, its top over th
 closed, as a slope arrow's plane runs on over them. Plans draw each plane's edges as thin as the outline. `edit_shape`
 gives the shape anew or says what it is, `add_point`, `add_split_line` and `reset_shape` change it a piece at a time (an
 end of a line that is no point becomes one, at the height the top has there), `edit_boundary` keeps what stays inside the
-new outline and names what it drops, moves and mirrors take the shape along, and snaps find its points. A layer of a floor or roof type may be `variable` (one a type at most; never a wall's or a ceiling's): under a
+new outline and names what it drops, moves and mirrors take the shape along, and snaps find its points. A flat roof by
+footprint (`slope` 0, no extrusion, joining none) takes a shape too (`Roof::shape`, `Roof::unshapeable` says why another
+can't): the commands, checks and both views' tools see its top as a floor's (`Model::shapeable`, `Model::roof_as_floor`:
+its footprint, its courtyards and openings as openings, at its top), and `roof_faces` lays each plane's underside its
+thickness below, plumb (`roof_rise`), so its slabs, IFC, sections and the walls attached under it follow its falls; plans
+draw its creases thin. A shaped roof keeps its whole thickness: its type's variable layer doesn't yet keep its underside
+level as a floor's does. A layer of a floor or roof type may be `variable` (one a type at most; never a wall's or a ceiling's): under a
 shaped floor of that type, the underside stays level where the unshaped floor's was (`Model::floor_under`), the layers
 above the variable one follow the top, those below it stay level, and the variable one takes up the difference
 (`Variable::bounds`, which the 3D view's layers and sections share). Its pieces are then prisms from that level underside

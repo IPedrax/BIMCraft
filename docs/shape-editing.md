@@ -36,7 +36,14 @@ Status, on the branch `mod-16-shape-editing` (raised upstream as IPedrax/BIMCraf
   drawn over the floor (`BimApp::shape_preview`, `Model::shape_creases`, `Shape::raised`; tests
   `a_shape_points_grip_held_mid_drag_previews_where_it_and_its_creases_will_go` and
   `in_3d_a_grip_held_mid_drag_previews_the_creases_its_release_will_leave`).
-- **Phases 4 and 5** are a proposal.
+- **Phase 4**, flat roofs, is built: a flat roof by footprint takes a shape through the same commands and tools
+  (`Model::shapeable` sees its top as a floor's, `Model::roof_as_floor`), its underside following its top plumb
+  (`roof_faces`, `roof_rise`), walls attached under it following its falls, its plan creases thin, its points snapped,
+  kept by `edit_boundary` and carried by moves and mirrors; a pitched, extruded or joining roof refuses one, saying why
+  (`Roof::unshapeable`). `ci/ifc-coverage.txt` has one for IfcOpenShell. Tests: the three `*roof*` tests in
+  `shape_tests.rs`, and `a_flat_roof_by_footprint_is_shaped_as_a_floor_is_and_a_pitched_one_isnt` in the desktop's
+  `tests/shape3d.rs`. Not yet: a shaped roof's variable layer keeping its underside level, as a floor's does.
+- **Phase 5** is a proposal.
 
 Line numbers are as of `0733fd4`.
 

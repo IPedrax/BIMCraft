@@ -1503,6 +1503,10 @@ pub struct Roof {
     /// was made another way (over the walls, from a file); Edit Boundary then starts from its outline.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sketch: Vec<crate::sketch::SketchLine>,
+    /// Points and split lines on its top, as a floor's (`Floor::shape`): only a flat roof by footprint has them, its
+    /// underside following its top.
+    #[serde(default, skip_serializing_if = "Shape::is_empty")]
+    pub shape: Shape,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -1521,10 +1525,11 @@ impl Element {
         }
     }
 
-    /// Its shape, when it's of a kind that has one: a floor's.
+    /// Its shape, when it's of a kind that has one: a floor's or a roof's.
     pub fn shape(&self) -> Option<&Shape> {
         match self {
             Element::Floor(f) => Some(&f.shape),
+            Element::Roof(r) => Some(&r.shape),
             _ => None,
         }
     }
@@ -1532,6 +1537,7 @@ impl Element {
     pub fn shape_mut(&mut self) -> Option<&mut Shape> {
         match self {
             Element::Floor(f) => Some(&mut f.shape),
+            Element::Roof(r) => Some(&mut r.shape),
             _ => None,
         }
     }
@@ -1549,6 +1555,22 @@ impl Element {
 }
 
 impl Roof {
+    /// Why it can't take a shape: only a flat roof by footprint, joining none, has its top folded by points and split
+    /// lines. None when it can.
+    pub fn unshapeable(&self) -> Option<&'static str> {
+        if self.extrusion.is_some() {
+            Some("an extruded roof takes its shape from its profile: only a flat roof by footprint takes points and split lines")
+        } else if self.slope != 0.0 {
+            Some(
+                "a pitched roof's slopes come from its `slope`: only a flat roof takes points and split lines: `modify` its `slope` to 0, or `reset_shape`",
+            )
+        } else if self.join.is_some() {
+            Some("a roof joining another ends at that one's top: only a flat roof joining none takes points and split lines")
+        } else {
+            None
+        }
+    }
+
     /// Its footprint's edges as `gables` numbers them: its boundary's, then each courtyard's.
     pub fn edges(&self) -> impl Iterator<Item = (P2, P2)> + '_ {
         geom::ring_edges(&self.boundary).chain(self.courtyards.iter().flat_map(|c| geom::ring_edges(c)))
@@ -3756,9 +3778,45 @@ impl Model {
         }
     }
 
-    /// How far a roof's top lies over its underside where that's in `plane`: its type's thickness, plumb.
+    /// How far a roof's top lies over its underside where that's in `plane`: its type's thickness, square to the plane; a
+    /// shaped roof's, plumb, so its planes meet underneath as they do on top.
     pub fn roof_rise(&self, r: &Roof, plane: &walls::Plane) -> f64 {
-        self.types.roof.get(&r.type_name).map_or(0.0, |t| t.thickness) * plane.g.dot(plane.g).sqrt().hypot(1.0)
+        let thickness = self.types.roof.get(&r.type_name).map_or(0.0, |t| t.thickness);
+        if r.shape.is_empty() { thickness * plane.g.dot(plane.g).sqrt().hypot(1.0) } else { thickness }
+    }
+
+    /// A flat roof's top as shape editing sees it: a floor over its footprint, its courtyards and openings as openings, at
+    /// its top (its type's thickness over its base), with its shape. Its points' heights, picks, labels and checks are then
+    /// a floor's; `roof_faces` lays its underside the thickness below.
+    pub fn roof_as_floor(&self, r: &Roof) -> Floor {
+        Floor {
+            type_name: String::new(),
+            level: r.level,
+            boundary: ccw(&r.boundary),
+            openings: r.courtyards.iter().chain(&r.openings).cloned().collect(),
+            offset: r.offset + self.types.roof.get(&r.type_name).map_or(0.0, |t| t.thickness),
+            slope: 0.0,
+            arrow: None,
+            structural: false,
+            pattern_origin: P2::default(),
+            pattern_angle: 0.0,
+            sketch: Vec::new(),
+            shape: r.shape.clone(),
+            params: BTreeMap::new(),
+        }
+    }
+
+    /// Element `id` as shape editing works on it: a floor as it is, or a flat roof by footprint as `roof_as_floor` sees it.
+    /// None for anything else, or with why for a roof that can't take a shape.
+    pub fn shapeable(&self, id: impl Key) -> Result<Floor, String> {
+        match self.elements.get(id) {
+            Some(Element::Floor(f)) => Ok(f.clone()),
+            Some(Element::Roof(r)) => match r.unshapeable() {
+                Some(why) => Err(why.into()),
+                None => Ok(self.roof_as_floor(r)),
+            },
+            _ => Err("only floors and flat roofs have shapes".into()),
+        }
     }
 
     /// A roof's slopes. Over its footprint, flat at its base, or each edge but its gables sloping
@@ -3782,6 +3840,14 @@ impl Model {
                         _ => None,
                     })
                     .collect()
+            }
+            // A shaped one's top in planes (as a floor's, through `roof_as_floor`), its underside its thickness below.
+            None if r.slope == 0.0
+                && !r.shape.is_empty()
+                && let Ok(planes) = self.shape_planes(&self.roof_as_floor(r)) =>
+            {
+                let thickness = self.types.roof.get(&r.type_name).map_or(0.0, |t| t.thickness);
+                planes.into_iter().map(|(loops, plane)| (loops, walls::Plane { z: plane.z - thickness, ..plane })).collect()
             }
             None if r.slope == 0.0 => {
                 let courtyards = r.courtyards.iter().map(|c| ccw(c).into_iter().rev().collect());
@@ -5990,6 +6056,12 @@ impl Model {
                     }
                     holes(&who, "courtyard", &r.boundary, &r.courtyards)?;
                     crate::sketch::check(&who, &r.sketch)?;
+                    if !r.shape.is_empty() {
+                        if let Some(why) = r.unshapeable() {
+                            return Err(format!("{who}: {why}"));
+                        }
+                        shape_ok(&who, &self.roof_as_floor(r), None)?;
+                    }
                     self.roof_pieces(r).map_err(|e| format!("{who}: {e}"))?;
                 }
                 Element::Sheet(sh) => {
