@@ -291,6 +291,7 @@ Keep this checklist current; mark a whole priority complete only when all of its
   - [x] Build the model's lookup before any section preparation (a bare model was quadratic: 116 s, now about 2 s).
   - [x] Leave round runs' tubes unmade until a view needs them (`deferred_runs`; `tests/component_preparation.rs`).
   - [x] Remove what grew with height from preparation: shafts per slab, walls per tile, family envelopes per chunk, the box hash.
+  - [x] Run the picture's per-element loops on the render threads, in order; drop its wall index and its scan for point clouds.
   - [ ] Extend dependency-complete bounds/fragments to hosts, neighbouring geometry, families and empty spatial reads.
 - [ ] **3. Incremental instance BVH and shared prototypes.**
 - [ ] **4. Retained 2D fragments and partial GPU uploads.**
@@ -372,11 +373,32 @@ The same conditions as above, 100 storeys, median of three; every picture and dr
 At 10 storeys a first frame is 463 ms deferred and 497 ms full, its peak 0.47 GB and 0.62 GB. Comparing cost per element across
 sizes is what found these: the tower's repetition hid them in totals.
 
+## The picture measured (2026-11-02)
+
+The picture's per-element loops now run on the render threads in order, and it no longer builds a wall index or scans the model
+for point clouds. That took it from 1,473 to 1,259 ms for the elevation and from 1,668 to 1,432 ms for the section at 100 storeys,
+hashes unchanged: less than the steps' serial times suggested, because the rest is making triangles. Where it goes now:
+
+| 100 storeys | North Elevation | Section A |
+|---|---:|---:|
+| Boxes, screens, what hides | 123 ms | 115 ms |
+| Occluders: making triangles | 303 ms (1.64 M) | 75 ms (0.50 M) |
+| Occluders: raster | 213 ms | 54 ms |
+| Occluders: depth tiles and filter | 73 ms | 45 ms |
+| Survivors' triangles | 231 ms (1.08 M) | 547 ms (2.16 M) |
+| Face names | 31 ms | 60 ms |
+| Planes (serial) | 116 ms | 181 ms |
+| Final raster | 113 ms | 233 ms |
+
+Fitted at 1600 x 1000 px, a storey is 8.5 px tall, about one 8 px tile, so tiles keeping their farthest depth prove little hidden:
+over a million triangles survive for an elevation that shows far fewer.
+
 ## Next task for the receiving agent
 
-The picture is now over half of a first frame (about 1.5 s at 100 storeys) and is rebuilt on every pan and zoom, so it is next:
-measure `Scene::section`'s steps at 10 and 100 storeys the same way, looking for what grows with height. Overlay and fit scan every
-element's box, which a spatial structure (priority 3) would avoid. Then finish hosted/wall/spatial read dependencies and narrow
+Two directions, by measured cost. First, making triangles scales poorly on threads, each solid cloned and each layer allocated:
+make them without the clone (`PreparedSolids::painted`, `layered`), and reuse an occluder's triangles in the final scene rather
+than making them twice. Second, depth tiles too coarse for a fitted tower: benchmark finer or masked coverage (section 6 above),
+keeping culling conservative. Overlay and fit scan every element's box, which a spatial structure (priority 3) would avoid. Then finish hosted/wall/spatial read dependencies and narrow
 family keys. Joined walls need old/new tile
 invalidation, empty-query dependencies, type users and long-wall handling. Preparation/assembly still enumerates
 the model, so priority 2 remains incomplete. Keep the subsequent BVH/prototype, retained drawing/GPU and later

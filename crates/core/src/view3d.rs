@@ -1273,21 +1273,22 @@ impl Scene {
         if cancelled() {
             return None;
         }
-        let index = walls::Index::new(m);
         // Each element's box, round the points that may be its farthest, and where its solids are; a component's are made
         // only if it shows.
-        let boxes: Vec<Boxed3> = placed
-            .iter()
-            .zip(boxes)
-            .filter(|((id, _), _)| look.shows(*id) && !matches!(m.elements.get(*id), Some(Element::Mass(_))))
-            .map(|((id, _), b)| {
-                let at = match m.elements.get(*id) {
+        let listed: Vec<_> = placed.iter().zip(boxes).collect();
+        let boxes: Vec<Boxed3> = in_order(&listed, |((id, _), b)| {
+            let e = m.elements.get(*id);
+            (look.shows(*id) && !matches!(e, Some(Element::Mass(_)))).then(|| {
+                let at = match e {
                     Some(Element::Component(_)) => 0..0,
                     _ => ranges.get(id).cloned().unwrap_or(0..0),
                 };
-                (*id, *b, at)
+                (*id, **b, at)
             })
-            .collect();
+        })
+        .into_iter()
+        .flatten()
+        .collect();
         let own = |id: Id, at: &std::ops::Range<usize>| solids.painted(at.clone()).filter(move |s| s.owner() == id);
         // The occluders drawn, as the picture draws them.
         let (w, h) = (cam.width.clamp(1, MAX_SIDE) as usize, cam.height.clamp(1, MAX_SIDE) as usize);
@@ -1308,13 +1309,14 @@ impl Scene {
         };
         // Each box on the screen, once.
         let project = cam.projector();
-        let screens: Vec<Option<[f64; 6]>> = boxes.iter().map(|(_, b, _)| b.as_ref().and_then(|b| Tiles::screen(&project, b))).collect();
+        let screens: Vec<Option<[f64; 6]>> = in_order(&boxes, |(_, b, _)| b.as_ref().and_then(|b| Tiles::screen(&project, b)));
         // The occluders nearest first, drawn in batches each twice the last; before each, those already behind what is
         // drawn are left out: behind part of the depths, they are behind all of them, and the nearest at every pixel is
         // what it would be with them.
         let mut tiles = Tiles::of(vec![f32::NEG_INFINITY; w * h], w, h);
         let nearest = |i: &usize| screens.get(*i).copied().flatten().map_or(f64::INFINITY, |s| s[5]);
-        let mut pending: Vec<usize> = (0..boxes.len()).filter(|i| boxes.get(*i).is_some_and(|(id, ..)| hides(*id))).collect();
+        let mut pending: Vec<usize> =
+            in_order(&boxes, |(id, ..)| hides(*id)).into_iter().enumerate().filter_map(|(i, hiding)| hiding.then_some(i)).collect();
         pending.sort_by(|a, b| nearest(b).total_cmp(&nearest(a)).then(a.cmp(b)));
         let (mut batch, mut hit, mut lit) = (256, vec![u32::MAX; w * h], vec![0.0; w * h]);
         while !pending.is_empty() {
@@ -1322,17 +1324,25 @@ impl Scene {
                 return None;
             }
             let rest = pending.split_off(batch.min(pending.len()));
-            let mut occluders = Vec::new();
-            for &i in &pending {
-                if cancelled() {
-                    return None;
-                }
-                let Some((id, _, at)) = boxes.get(i) else { continue };
-                if tiles.may_show_on(clip, screens.get(i).and_then(Option::as_ref)) {
-                    for solid in own(*id, at).flat_map(|s| layered(m, s)) {
-                        solid.tris(&mut occluders);
+            let groups: Vec<&[usize]> = pending.chunks(TRIS_AT_ONCE).collect();
+            let made = in_order(&groups, |group| {
+                let mut tris = Vec::new();
+                for &i in *group {
+                    if cancelled() {
+                        return None;
+                    }
+                    let Some((id, _, at)) = boxes.get(i) else { continue };
+                    if tiles.may_show_on(clip, screens.get(i).and_then(Option::as_ref)) {
+                        for solid in own(*id, at).flat_map(|s| layered(m, s)) {
+                            solid.tris(&mut tris);
+                        }
                     }
                 }
+                Some(tris)
+            });
+            let mut occluders = Vec::with_capacity(made.iter().flatten().map(Vec::len).sum());
+            for tris in made {
+                occluders.extend(tris?);
             }
             Scene::bare(occluders).raster_cancellable(
                 (cam, Some(clip), None),
@@ -1348,25 +1358,35 @@ impl Scene {
             batch *= 2;
         }
         // What can show, in the order of the elements.
-        let kept: Vec<&Boxed3> = boxes.iter().zip(&screens).filter(|(_, s)| tiles.may_show_on(clip, s.as_ref())).map(|(b, _)| b).collect();
-        let mut components = crate::component_geometry::Components::new(m);
-        let mut tris = Vec::new();
-        for (id, _, at) in kept {
-            if cancelled() {
-                return None;
+        let screened: Vec<_> = boxes.iter().zip(&screens).collect();
+        let kept: Vec<&Boxed3> =
+            in_order(&screened, |(b, s)| tiles.may_show_on(clip, s.as_ref()).then_some(*b)).into_iter().flatten().collect();
+        let groups: Vec<&[&Boxed3]> = kept.chunks(TRIS_AT_ONCE).collect();
+        let made = in_order(&groups, |group| {
+            let mut components = crate::component_geometry::Components::new(m);
+            let mut tris = Vec::new();
+            for (id, _, at) in group.iter().copied() {
+                if cancelled() {
+                    return None;
+                }
+                let made: Vec<Solid> = match m.elements.get(*id) {
+                    Some(e @ Element::Component(_)) => lazy_solids(m, *id, e, &mut components),
+                    // No solids in the list: a round run left until now, or one that has none, which makes none here.
+                    Some(e) if at.is_empty() && e.run().is_some() => lazy_solids(m, *id, e, &mut components),
+                    _ => own(*id, at).collect(),
+                };
+                for solid in made.into_iter().flat_map(|s| layered(m, s)) {
+                    solid.tris(&mut tris);
+                }
             }
-            let made: Vec<Solid> = match m.elements.get(*id) {
-                Some(e @ Element::Component(_)) => solids_in_with(m, &[(*id, e)], Some(&index), &mut components),
-                // No solids in the list: a round run left until now, or one that has none, which makes none here.
-                Some(e) if at.is_empty() && e.run().is_some() => lazy_solids(m, *id, e, &mut components),
-                _ => own(*id, at).collect(),
-            };
-            for solid in made.into_iter().flat_map(|s| layered(m, s)) {
-                solid.tris(&mut tris);
-            }
+            Some(tris)
+        });
+        let mut tris = Vec::with_capacity(made.iter().flatten().map(Vec::len).sum());
+        for part in made {
+            tris.extend(part?);
         }
         let rules: HashMap<Id, Rule> = rules_of(m, tris.iter().map(|t| t.owner));
-        let faces: Vec<&'static str> = tris.iter().map(|t| rules.get(&t.owner).map_or("", |r| r.face(&t.p))).collect();
+        let faces: Vec<&'static str> = in_order(&tris, |t| rules.get(&t.owner).map_or("", |r| r.face(&t.p)));
         if cancelled() {
             return None;
         }
@@ -1391,6 +1411,20 @@ impl Scene {
             scans: Vec::new(),
             edges: OnceLock::new(),
         }
+    }
+}
+
+/// How many elements a thread makes the triangles of at a time.
+const TRIS_AT_ONCE: usize = 256;
+
+/// `f` of each item, in their order, on the render threads when there are enough to pay for it: the same list either way.
+fn in_order<T: Sync, U: Send>(items: &[T], f: impl Fn(&T) -> U + Sync) -> Vec<U> {
+    match (items.len() >= 1000).then(render_pool).flatten() {
+        Some(pool) => {
+            use rayon::prelude::*;
+            pool.install(|| items.par_iter().map(&f).collect())
+        }
+        None => items.iter().map(f).collect(),
     }
 }
 
@@ -1532,10 +1566,10 @@ fn rules_of(m: &Model, owners: impl Iterator<Item = Id>) -> HashMap<Id, Rule> {
 
 /// The scans the model's point clouds place.
 fn scans_of(m: &Model) -> Vec<Scan> {
-    m.elements
+    m.rare("pointcloud")
         .iter()
-        .filter_map(|(id, e)| {
-            let Element::PointCloud(pc) = e else { return None };
+        .filter_map(|id| {
+            let Some(Element::PointCloud(pc)) = m.elements.get(*id) else { return None };
             let cloud = m.clouds.get(&pc.cloud)?;
             let (points, colours) = (cloud.shared_points(), cloud.shared_colours());
             let (lo, hi) = m.cloud_box(*id)?;
