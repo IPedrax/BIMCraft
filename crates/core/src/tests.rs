@@ -1614,6 +1614,14 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"points": [[0, 0, 0], [4000, 0, 3], [0, 4000, 6], [4000, 4000, 9]], "boundary": [[0, 0], [1, 0], [0, 1]], "interval": 10}),
         json!({"interval": 1e-300, "base": 1e300, "id": 100001}),
         json!({"interval": 0, "base": "x", "id": u64::MAX}),
+        json!({"data": r#"{"elements":[{"type":"way","id":1,"geometry":[{"lat":-23.55,"lon":-46.63},{"lat":-23.55,"lon":-46.629},{"lat":-23.549,"lon":-46.629},{"lat":-23.55,"lon":-46.63}],"tags":{"building":"yes","height":"9"}}]}"#, "detail": ["way/1", "way/1", "way/9"]}),
+        json!({"data": r#"{"elements":[{"type":"way","id":2,"geometry":[{"lat":80,"lon":170},{"lat":80,"lon":171},{"lat":81,"lon":171},{"lat":80,"lon":170}],"tags":{"building":"yes"}}]}"#}),
+        json!({"data": r#"<osm><node id="1" lat="-23.55" lon="-46.63"/><node id="2" lat="-23.55" lon="-46.62"/><node id="3" lat="-23.54" lon="-46.62"/><way id="1"><nd ref="1"/><nd ref="2"/><nd ref="3"/><nd ref="1"/><tag k="building" v="yes"/></way></osm>"#, "bbox": [-24, -47, -23, -46]}),
+        json!({"data": "<osm><way id=\"1\"/></osm>", "bbox": [1e300, 0, 0, 0]}),
+        json!({"data": {"elements": 5}, "parts": "x"}),
+        json!({"data": "{\"elements\":[]}", "level_height": 1e300, "default_height": "x", "terrain": u64::MAX}),
+        json!({"path": 5, "data": 5}),
+        json!({"data": "<!DOCTYPE osm [<!ENTITY a \"x\">]><osm/>", "replace": "x", "detail": "all"}),
         json!({"latitude": 91, "longitude": 0}),
         json!({"latitude": 1e300, "longitude": -1e300, "elevation": 1e300, "true_north": 1e300}),
         json!({"latitude": -23.5, "longitude": -46.6, "crs": 4326}),
@@ -1831,6 +1839,8 @@ fn hostile_params_never_panic_or_break_the_model() {
     };
     assert_eq!(views(&base.model), 2, "the sweep's base has a section and an elevation to draw");
     // Terrain, last too, for height_at, contours and what draws it.
+    // The project is placed, for import_osm.
+    let _ = base.execute("geolocate", &json!({"latitude": -23.5505, "longitude": -46.6333}));
     let _ = base.execute(
         "toposurface",
         &json!({"points": [[-2000, -2000, 0], [12000, -2000, 400], [12000, 9000, 900], [-2000, 9000, 300], [5000, 3000, 1500]], "interval": 100}),

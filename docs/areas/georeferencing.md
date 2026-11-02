@@ -64,5 +64,4 @@ pyproj to under a millimetre over a kilometre.
 ## Not yet
 
 A survey point and project base point as distinct from the origin; vertical datums and geoid heights (`elevation` is as given); a
-CRS in feet; grid-based datum shifts; the Location dialog in the desktop. Terrain and OpenStreetMap import build on this (see
-`IDEAS.md` §13).
+CRS in feet; grid-based datum shifts; the Location dialog in the desktop. Terrain ([terrain](terrain.md)) and OpenStreetMap import ([OSM import](osm-import.md)) build on this.

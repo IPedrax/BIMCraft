@@ -138,6 +138,29 @@ struct Mapping {
     convergence: f64,
 }
 
+/// A [`Location`] ready to turn many longitudes and latitudes into project points: the transform is built once.
+pub struct Projector {
+    m: Mapping,
+}
+
+impl Projector {
+    /// The project's plane point, mm, of a longitude and latitude, degrees.
+    pub fn point(&self, longitude: f64, latitude: f64) -> Result<P2, String> {
+        if !longitude.is_finite() || !latitude.is_finite() || longitude.abs() > 180.0 || latitude.abs() > 90.0 {
+            return Err(format!("({longitude}, {latitude}) is not on the Earth"));
+        }
+        let m = &self.m;
+        let (e, n) = m
+            .forward
+            .convert((longitude, latitude))
+            .map_err(|err| format!("({longitude}, {latitude}) is off the map of EPSG:{}: {err}", m.epsg))?;
+        let (dx, dy) = ((e - m.easting) / m.scale, (n - m.northing) / m.scale);
+        let (s, c) = m.rotation.sin_cos();
+        let p = P2((dx * c + dy * s) * 1000.0, (-dx * s + dy * c) * 1000.0);
+        if p.0.is_finite() && p.1.is_finite() { Ok(p) } else { Err(format!("({longitude}, {latitude}) cannot be mapped to the project")) }
+    }
+}
+
 impl Location {
     /// The CRS code in use: the one named, else WGS 84's UTM zone of the place.
     pub fn epsg(&self) -> u32 {
@@ -238,15 +261,12 @@ impl Location {
 
     /// The project's plane point, mm, of a longitude and latitude, degrees.
     pub fn from_lonlat(&self, longitude: f64, latitude: f64) -> Result<P2, String> {
-        let m = self.mapping()?;
-        let (e, n) = m
-            .forward
-            .convert((longitude, latitude))
-            .map_err(|err| format!("({longitude}, {latitude}) is off the map of EPSG:{}: {err}", m.epsg))?;
-        let (dx, dy) = ((e - m.easting) / m.scale, (n - m.northing) / m.scale);
-        let (s, c) = m.rotation.sin_cos();
-        let p = P2((dx * c + dy * s) * 1000.0, (-dx * s + dy * c) * 1000.0);
-        if p.0.is_finite() && p.1.is_finite() { Ok(p) } else { Err(format!("({longitude}, {latitude}) cannot be mapped to the project")) }
+        self.projector()?.point(longitude, latitude)
+    }
+
+    /// Many places at once: the same, with the transform built the once.
+    pub fn projector(&self) -> Result<Projector, String> {
+        Ok(Projector { m: self.mapping()? })
     }
 }
 
@@ -358,6 +378,18 @@ mod tests {
         let h = ((p1 - p0) / 2.0).sin().powi(2) + p0.cos() * p1.cos() * (dl / 2.0).sin().powi(2);
         let metres = 2.0 * 6_371_000.0 * h.sqrt().asin();
         assert!((metres - 1000.0).abs() < 1.5, "{metres}");
+    }
+
+    #[test]
+    fn a_projector_gives_what_from_lonlat_gives_and_refuses_what_it_refuses() {
+        let l = at(-23.5505, -46.6333, 17.0);
+        let projector = l.projector().unwrap();
+        for (lon, lat) in [(-46.6333, -23.5505), (-46.6, -23.5), (-46.7, -23.6), (-46.6330, -23.5502)] {
+            let (a, b) = (projector.point(lon, lat).unwrap(), l.from_lonlat(lon, lat).unwrap());
+            assert!((a.0 - b.0).abs() < 1e-6 && (a.1 - b.1).abs() < 1e-6, "{lon} {lat}: {a:?} {b:?}");
+        }
+        assert!(projector.point(f64::NAN, 0.0).is_err() && projector.point(0.0, 95.0).is_err(), "off the Earth");
+        assert!(at(95.0, 0.0, 0.0).projector().is_err(), "a place that cannot be mapped has no projector");
     }
 
     #[test]

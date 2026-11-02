@@ -546,6 +546,7 @@ the window. The window answers between its frames, so a long command holds the w
 | `fillet` | FL | `ids` (two straight detail lines, or two walls), `radius`: the corner rounded by an arc, the lines cut back to it (a wall's doors and windows stay where they stand in plan, as in `corner`, and only their offset along the wall changes) |
 | `units` | UN | `length?` (`mm`, `cm`, `m`, `in`, `ft` or `ft-in`): how lengths show in drawings, schedules and the desktop; commands keep mm |
 | `room_area` | | `at?` (`centre` or `finish`): where rooms are measured, at the walls' centre lines or at their faces |
+| `import_osm` | | `path` or `data` (Overpass JSON or OSM XML), `bbox?` ([south, west, north, east]), `level?`, `level_height?`, `default_height?`, `parts?`, `terrain?`, `detail?` (OSM ids to make walls, a floor and a roof of), `replace?` (true): the buildings of an OpenStreetMap file as masses on the ground (the project must be placed with `geolocate`); data (c) OpenStreetMap contributors, ODbL |
 | `geolocate` | | `latitude?`, `longitude?` (degrees, WGS 84, both the first time), `elevation?` (mm), `true_north?` (degrees counter-clockwise from +y), `crs?` (an EPSG code such as 31983, or `utm`), `clear?`, `point?` ([x, y] mm to `lonlat`), `lonlat?` (to `point`): where the project is on Earth; IFC carries it as the site's position and `IfcMapConversion` |
 | `language` | | `code?` (`en`, `pt` or `es`): the language the project's drawings print and new names come in; names already given stay |
 | `grid` | GR | `start`, `end`, `name?` |

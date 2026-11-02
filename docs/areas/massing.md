@@ -43,3 +43,6 @@ outline changes from base to top with no such set is left out and listed. The de
 corners clicked, Enter or the first corner again finishes, `finish_mass`), Show Mass (the button is pressed while the view shows
 masses) and, for each selected mass, the Model by Face buttons, which run the face commands, and Update to Face; a mass's Properties
 hold its levels and offsets and `Top Outline`, its corners as `x, y` parted by `;`, blank for none.
+
+Masses also come from OpenStreetMap: `import_osm` makes one for each building of a file, on the terrain, and keeps its `OSM Id` as a
+parameter so importing again updates it in place ([OSM import](osm-import.md)).
