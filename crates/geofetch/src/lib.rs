@@ -15,17 +15,19 @@ pub mod overpass;
 pub mod terrarium;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
+pub mod tiles;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use bimcraft_core::geo::{Bbox, Elevation, Fetcher, GeoSource, Reply};
+use bimcraft_core::geo::{Bbox, Elevation, Fetcher, GeoSource, Reply, Tile};
 
 use crate::cache::Cache;
 use crate::copernicus::Copernicus;
 use crate::net::{Allow, Net, OVERPASS, Ureq};
 use crate::overpass::Overpass;
 use crate::terrarium::Terrarium;
+use crate::tiles::OsmTiles;
 
 /// The elevation sources there are, as `source` names them, the first being the one used when none is named.
 pub const SOURCES: [&str; 2] = ["terrarium", "copernicus"];
@@ -39,6 +41,7 @@ pub struct Geofetch {
     overpass: Overpass,
     terrarium: Terrarium,
     copernicus: Copernicus,
+    tiles: OsmTiles,
 }
 
 impl Geofetch {
@@ -46,7 +49,8 @@ impl Geofetch {
         Geofetch {
             overpass: Overpass::new(net.clone(), cache.clone(), endpoint),
             terrarium: Terrarium::new(net.clone(), cache.clone()),
-            copernicus: Copernicus::new(net, cache),
+            copernicus: Copernicus::new(net.clone(), cache.clone()),
+            tiles: OsmTiles::new(net, cache),
         }
     }
 
@@ -101,11 +105,16 @@ impl GeoSource for Geofetch {
         }
     }
 
+    fn tile(&self, zoom: u8, x: u32, y: u32) -> Result<Tile, String> {
+        self.tiles.tile(zoom, x, y)
+    }
+
     fn attribution(&self, what: &str) -> String {
         match what {
             "osm" => OSM_ATTRIBUTION.into(),
             "terrarium" => terrarium::ATTRIBUTION.into(),
             "copernicus" => copernicus::ATTRIBUTION.into(),
+            "tiles" => tiles::ATTRIBUTION.into(),
             other => format!("Data from {other}"),
         }
     }
@@ -170,11 +179,32 @@ mod tests {
     }
 
     #[test]
+    fn the_map_tile_hook_is_the_tile_fetchers() {
+        let url = tiles::OsmTiles::url(2, 1, 1).unwrap();
+        let data: Vec<u8> = (0..256 * 256).flat_map(|_| [10u8, 20, 30]).collect();
+        let mut body = Vec::new();
+        {
+            let mut enc = png::Encoder::new(&mut body, 256, 256);
+            enc.set_color(png::ColorType::Rgb);
+            enc.set_depth(png::BitDepth::Eight);
+            let mut w = enc.write_header().unwrap();
+            w.write_image_data(&data).unwrap();
+            w.finish().unwrap();
+        }
+        let net = Arc::new(Fake::new().get(&url, &body));
+        let f: Fetcher = Arc::new(fetcher(net.clone()));
+        let tile = f.tile(2, 1, 1).unwrap();
+        assert_eq!((tile.side, &tile.rgba[..4]), (256, &[10u8, 20, 30, 255][..]));
+        assert!(f.tile(2, 4, 0).is_err(), "off the map");
+    }
+
+    #[test]
     fn each_kind_of_data_has_its_credit() {
         let f = fetcher(Arc::new(Fake::new()));
         assert!(f.attribution("osm").contains("OpenStreetMap") && f.attribution("osm").contains("ODbL"));
         assert!(f.attribution("terrarium").contains("Terrain Tiles") && f.attribution("terrarium").contains("joerd"));
         assert!(f.attribution("copernicus").contains("Copernicus DEM GLO-30") && f.attribution("copernicus").contains("Airbus"));
+        assert!(f.attribution("tiles").contains("OpenStreetMap contributors"));
         assert!(f.attribution("something").contains("something"));
     }
 

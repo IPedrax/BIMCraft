@@ -279,14 +279,46 @@ pub struct Elevation {
     pub cached: bool,
 }
 
+/// A tile of the map as a picture: `side` x `side` pixels of RGBA, row after row from the top left.
+#[derive(Clone, Debug)]
+pub struct Tile {
+    pub rgba: Vec<u8>,
+    pub side: u32,
+    /// It was kept from an earlier fetch.
+    pub cached: bool,
+}
+
+/// The most a tile may be across, pixels: the map's own are 256.
+pub const MAX_TILE_SIDE: u32 = 512;
+
+impl Tile {
+    /// Whether it is a picture of the size it says (what an app's hook returns is hostile, as a file is).
+    pub fn check(&self) -> Result<(), String> {
+        let side = self.side as usize;
+        if self.side == 0 || self.side > MAX_TILE_SIDE || self.rgba.len() != side * side * 4 {
+            return Err(format!(
+                "a map tile is up to {MAX_TILE_SIDE} pixels across, in RGBA, not {} bytes for {} pixels across",
+                self.rgba.len(),
+                self.side
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// What fetches for the core: an app attaches one (the desktop's, which talks to the network); a headless build has none.
 pub trait GeoSource: Send + Sync {
     /// The Overpass reply to `query` for `bbox`.
     fn overpass(&self, bbox: &Bbox, query: &str) -> Result<Reply, String>;
     /// A grid of heights over `bbox` at about `spacing` metres, from `source` (`terrarium`, `copernicus`; none, the best there is).
     fn elevation(&self, bbox: &Bbox, spacing: f64, source: Option<&str>) -> Result<Elevation, String>;
-    /// The credit that goes with the data: `osm`, or an elevation source's name.
+    /// The credit that goes with the data: `osm`, or an elevation source's name; `tiles` is the map's.
     fn attribution(&self, what: &str) -> String;
+    /// The picture of the map tile at `zoom`, column `x`, row `y`: what the map a place is picked on is drawn with. A fetcher with
+    /// none says so.
+    fn tile(&self, _zoom: u8, _x: u32, _y: u32) -> Result<Tile, String> {
+        Err("this BIMCraft has no map tiles: give the place as latitude and longitude".into())
+    }
 }
 
 /// A fetcher an app attached.
@@ -344,6 +376,10 @@ impl GeoSource for Prefetched {
 
     fn attribution(&self, what: &str) -> String {
         self.inner.attribution(what)
+    }
+
+    fn tile(&self, zoom: u8, x: u32, y: u32) -> Result<Tile, String> {
+        self.inner.tile(zoom, x, y)
     }
 }
 

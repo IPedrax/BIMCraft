@@ -50,12 +50,14 @@ pub struct Allow(Vec<(String, String)>);
 pub const OVERPASS: &str = "https://overpass-api.de/api/interpreter";
 
 impl Allow {
-    /// The services the fetcher uses: Overpass, the terrain tiles, the Copernicus bucket.
+    /// The services the fetcher uses: Overpass, the terrain tiles, the Copernicus bucket, OpenStreetMap's map tiles.
     pub fn standard() -> Allow {
         Allow(vec![
             ("overpass-api.de".into(), "/api/".into()),
             ("s3.amazonaws.com".into(), "/elevation-tiles-prod/".into()),
             ("copernicus-dem-30m.s3.amazonaws.com".into(), "/".into()),
+            // The map the picker draws: one host, tiles only.
+            ("tile.openstreetmap.org".into(), "/".into()),
         ])
     }
 
@@ -260,6 +262,8 @@ mod tests {
             "https://overpass-api.de/api/interpreter",
             "https://OVERPASS-API.DE/api/interpreter",
             "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/14/6069/9294.png",
+            "https://tile.openstreetmap.org/12/1517/2332.png",
+            "https://TILE.openstreetmap.org/0/0/0.png",
             "https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_S24_00_W047_00_DEM/Copernicus_DSM_COG_10_S24_00_W047_00_DEM.tif",
         ] {
             assert!(a.allows(url), "{url}");
@@ -285,6 +289,13 @@ mod tests {
             "https://s3.amazonaws.com.evil.com/elevation-tiles-prod/x",
             "https://evil.s3.amazonaws.com/elevation-tiles-prod/x",
             "https://github.com/",
+            "http://tile.openstreetmap.org/12/1517/2332.png",
+            "https://tile.openstreetmap.org:8443/12/1517/2332.png",
+            "https://a.tile.openstreetmap.org.evil.com/12/1517/2332.png",
+            "https://tile.openstreetmap.org.evil.com/12/1517/2332.png",
+            "https://tile.openstreetmap.org/12/../../x.png",
+            "https://tile.openstreetmap.org/12/1517/2332.png?key=x",
+            "https://user@tile.openstreetmap.org/12/1517/2332.png",
             "//overpass-api.de/api/interpreter",
             "overpass-api.de/api/interpreter",
             "",

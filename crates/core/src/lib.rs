@@ -59,6 +59,7 @@ pub mod lenient;
 pub mod library;
 pub mod lines;
 pub mod link;
+pub mod map;
 pub mod massing;
 pub mod model;
 pub mod nbr5410;

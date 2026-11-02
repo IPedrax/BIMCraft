@@ -385,3 +385,42 @@ fn fetch_osm_reports_the_query_it_asked_with() {
         assert_eq!(query.contains("building:part"), parts);
     }
 }
+
+#[test]
+fn a_fetcher_with_no_map_tiles_says_so_and_a_tile_is_checked() {
+    use crate::geo::Tile;
+    let fake = Fake::new(String::new());
+    assert!(fake.tile(3, 1, 2).unwrap_err().contains("no map tiles"));
+    let good = Tile { rgba: vec![0; 4 * 256 * 256], side: 256, cached: false };
+    assert!(good.check().is_ok());
+    for bad in [
+        Tile { rgba: vec![0; 4 * 255 * 256], side: 256, cached: false },
+        Tile { rgba: vec![], side: 0, cached: false },
+        Tile { rgba: vec![0; 4 * 513 * 513], side: 513, cached: false },
+        Tile { rgba: vec![0; 3], side: 1, cached: false },
+    ] {
+        assert!(bad.check().is_err(), "side {} of {} bytes", bad.side, bad.rgba.len());
+    }
+    // What holds a fetch's results hands the tiles on to the real fetcher.
+    let real: crate::geo::Fetcher = Arc::new(TileFake);
+    let held = crate::geo::Prefetched::new(real, Bbox::new(-23.56, -46.64, -23.54, -46.62).unwrap());
+    assert_eq!(held.tile(1, 0, 0).unwrap().side, 1);
+}
+
+/// A fetcher that has one tile, a pixel.
+struct TileFake;
+
+impl GeoSource for TileFake {
+    fn overpass(&self, _: &Bbox, _: &str) -> Result<Reply, String> {
+        Err("none".into())
+    }
+    fn elevation(&self, _: &Bbox, _: f64, _: Option<&str>) -> Result<Elevation, String> {
+        Err("none".into())
+    }
+    fn attribution(&self, _: &str) -> String {
+        String::new()
+    }
+    fn tile(&self, _: u8, _: u32, _: u32) -> Result<crate::geo::Tile, String> {
+        Ok(crate::geo::Tile { rgba: vec![1, 2, 3, 255], side: 1, cached: true })
+    }
+}
