@@ -801,6 +801,16 @@ pub fn export(m: &Model) -> String {
             }
             // A mass: a proxy of object type `Mass`, as Revit writes them, its footprint swept up from its base to its top; lofted,
             // a closed face set, with a property set to say which corner pairs with which.
+            // A pad is a base slab on its storey, its body from its top down by its thickness; read back by the object type `Pad`.
+            Element::Pad(pd) => {
+                let Some(&(_, storey)) = storeys.get(&pd.level) else { continue };
+                let at = w.place(Some(storey), (0.0, 0.0, 0.0), None);
+                let profile = w.profile(&pd.footprint(), &[]);
+                let shape = w.body(profile, pd.offset - pd.thickness, pd.thickness, &[]);
+                let ent = w.add(format!("IFCSLAB({},$,{},$,'Pad',#{at},#{shape},'{id}',.BASESLAB.)", w.guid(ELEMENT, id), s(&pd.name)));
+                contained.entry(pd.level).or_default().push(ent);
+                products.insert(id, ent);
+            }
             // Terrain is an IfcGeographicElement in the site, its surface a face set; where it is made of absolute heights, so is
             // the site's own placement at the origin.
             Element::Toposurface(t) => {

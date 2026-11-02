@@ -68,6 +68,7 @@ fn element_lines(m: &Model, e: &Element) -> Vec<Line> {
         Element::Mass(ms) => path(&ms.boundary, true),
         Element::Toposurface(t) if t.boundary.len() >= 3 => path(&t.boundary, true),
         Element::Toposurface(_) => Vec::new(),
+        Element::Pad(p) => path(&p.boundary, true),
         Element::DetailLine(l) => curve_lines(&l.curve),
         Element::FilledRegion(r) => r.sketch.iter().filter(|l| !l.invisible).flat_map(|l| curve_lines(&l.curve)).collect(),
         Element::DetailGroup(g) => crate::groups::placed(m, g).iter().flat_map(|e| element_lines(m, e)).collect(),

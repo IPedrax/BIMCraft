@@ -1627,9 +1627,40 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     // Floors: their top outline and the holes in it, and how thick they are below it.
     let in_whole = |id: u64, names: &[&str]| l.whole.get(&id).and_then(|w| e(*w)).is_some_and(|w| names.contains(&w.name.as_str()));
     let mut roofs: Vec<u64> = named(&["IFCROOF"]).into_iter().filter(|id| !l.whole.contains_key(id)).collect();
+    // Pads: the base slabs BIMCraft wrote with the object type `Pad`: a flat top, a thickness, a level.
+    for id in named(SLABS) {
+        let Some(x) = e(id).filter(|x| text(x.args.get(4)) == Some("Pad")) else { continue };
+        let faces = r.body(x);
+        let Some((z0, z1)) = span(faces.iter().flatten().map(|p| p[2])) else {
+            leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
+            continue;
+        };
+        let Some(region) = outline(&faces, Plane::flat(z1), true).filter(|g| g.holes.is_empty()) else {
+            leave(&mut skipped, &mut seen, id, "its top isn't one flat outline");
+            continue;
+        };
+        let level = level_for(id, z1);
+        let boundary: Vec<P2> = region.outer.into_iter().map(|p| micron(r.flat([p.0, p.1, 0.0]))).collect();
+        let pad = crate::model::Pad {
+            name: text(x.args.get(2)).map(clip).unwrap_or_default(),
+            level,
+            boundary,
+            offset: ((z1 - elevation(level)) * 1000.0).round() / 1000.0 + 0.0,
+            thickness: ((z1 - z0) * 1000.0).round() / 1000.0,
+            params: Default::default(),
+        };
+        let pid = m.insert(Element::Pad(pad));
+        from.insert(pid, who(id));
+        origin.entry(id).or_insert(pid);
+        elements_from.entry(id).or_default().push(pid);
+        seen.insert(id);
+    }
     for id in named(SLABS) {
         let Some(s) = e(id) else { continue };
         if in_whole(id, &["IFCROOF", "IFCSTAIR", "IFCRAMP"]) {
+            continue;
+        }
+        if text(s.args.get(4)) == Some("Pad") {
             continue;
         }
         // A landing of a stair is the stair's, above; one on its own is a slab like any, read as a floor.

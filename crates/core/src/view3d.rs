@@ -51,6 +51,8 @@ const CEILING: Rgb = Rgb(244, 242, 236);
 const MASS: Rgb = Rgb(158, 190, 224);
 /// Terrain without a material of its own.
 const TERRAIN: Rgb = Rgb(150, 128, 92);
+/// A building pad.
+const PAD: Rgb = Rgb(150, 150, 140);
 const RAIL: Rgb = Rgb(120, 122, 128);
 /// A beam, a footing, a structural column made of nothing the library has.
 const STRUCTURE: Rgb = Rgb(182, 184, 190);
@@ -554,6 +556,11 @@ fn solids_in(m: &Model, elements: &[(Id, &Element)], index: Option<&walls::Index
                 out.push(Solid::Mesh { owner: id, color: MASS, tex: 0, tris, caps: 0, round: false, cut: false });
             }
             Element::Mass(ms) => out.push(slab(id, MASS, &ms.footprint(), m.span(ms.level, ms.base_offset, ms.top_level, ms.height))),
+            // A pad: a slab under its top.
+            Element::Pad(pd) => {
+                let top = m.elevation(pd.level) + pd.offset;
+                out.push(slab(id, PAD, &pd.footprint(), (top - pd.thickness, top)));
+            }
             // Terrain: the triangles of its surface, in its material's colour. One that makes no surface shows nothing.
             Element::Toposurface(t) => {
                 if let Ok(tin) = t.tin() {

@@ -75,7 +75,9 @@ pub const MAX_BREAKLINES: usize = 1_000;
 pub const MIN_CONTOUR_INTERVAL: f64 = 10.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 12: a project holds terrain (the element
+/// The version of the project file this build writes, and the newest it reads. 13: a project holds building pads (the element
+/// `pad`); nothing in a file of 12 changes, but a build that reads up to 12 would answer one of 13 with a serde error
+/// ("unknown variant"), not "saved by a newer BIMCraft". 12: a project holds terrain (the element
 /// `toposurface`); nothing in a file of 11 changes, but a build that reads up to 11 would answer one of 12 with a serde error
 /// ("unknown variant"), not "saved by a newer BIMCraft". 11: a project's language may be Swedish,
 /// Czech or French (`sv`, `cs`, `fr`); nothing in a file of 10 changes, but a build that reads up to 10 would answer one of
@@ -95,7 +97,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 12;
+pub const FORMAT: u32 = 13;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -593,6 +595,44 @@ impl Toposurface {
     /// Its triangles, built once for as long as its points stay as they are.
     pub fn tin(&self) -> Result<std::sync::Arc<crate::topo::Tin>, String> {
         crate::topo::cached(&self.points, &self.breaklines, &self.boundary)
+    }
+}
+
+/// The thickness a pad has until it is given another, mm.
+pub const DEFAULT_PAD_THICKNESS: f64 = 300.0;
+/// The thickest a pad may be, mm.
+pub const MAX_PAD_THICKNESS: f64 = 10_000.0;
+
+/// A building pad, Revit's: ground made level where a building stands. Its `boundary` is flat at `offset` mm above `level`, a slab
+/// `thickness` mm thick under that top. What it takes out of the terrain, and what it puts in, is cut and fill (`cut_fill`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Pad {
+    #[serde(default)]
+    pub name: String,
+    pub level: Guid,
+    pub boundary: Vec<P2>,
+    #[serde(default)]
+    pub offset: f64,
+    #[serde(default = "default_pad_thickness")]
+    pub thickness: f64,
+    /// Its values of the project's parameters, by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, serde_json::Value>,
+}
+
+fn default_pad_thickness() -> f64 {
+    DEFAULT_PAD_THICKNESS
+}
+
+impl Pad {
+    /// Its outline, counter-clockwise whichever way round `boundary` was given.
+    pub fn footprint(&self) -> Vec<P2> {
+        let mut ring = self.boundary.clone();
+        if geom::area(&ring) < 0.0 {
+            ring.reverse();
+        }
+        ring
     }
 }
 
@@ -1580,6 +1620,7 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? w.attach_base { f(g) }
             }
             Element::Floor(Floor { level, .. }) | Element::Ceiling(Ceiling { level, .. }) | Element::Room(Room { level, .. }) => f(level),
+            Element::Pad(Pad { level, .. }) => f(level),
             Element::Shaft(Shaft { level, top_level, .. })
             | Element::Mass(Mass { level, top_level, .. })
             | Element::Column(Column { level, top_level, .. })
@@ -1650,6 +1691,7 @@ pub enum Element {
     Shaft(Shaft),
     Mass(Mass),
     Toposurface(Toposurface),
+    Pad(Pad),
     Door(Opening),
     Window(Opening),
     Room(Room),
@@ -1717,6 +1759,7 @@ impl Element {
             | Element::Roof(Roof { params, .. })
             | Element::Mass(Mass { params, .. })
             | Element::Toposurface(Toposurface { params, .. })
+            | Element::Pad(Pad { params, .. })
             | Element::Door(Opening { params, .. })
             | Element::Window(Opening { params, .. })
             | Element::Room(Room { params, .. })
@@ -1741,6 +1784,7 @@ impl Element {
             | Element::Roof(Roof { params, .. })
             | Element::Mass(Mass { params, .. })
             | Element::Toposurface(Toposurface { params, .. })
+            | Element::Pad(Pad { params, .. })
             | Element::Door(Opening { params, .. })
             | Element::Window(Opening { params, .. })
             | Element::Room(Room { params, .. })
@@ -1887,6 +1931,7 @@ impl Element {
             Element::Shaft(_) => "shaft",
             Element::Mass(_) => "mass",
             Element::Toposurface(_) => "toposurface",
+            Element::Pad(_) => "pad",
             Element::Door(_) => "door",
             Element::Window(_) => "window",
             Element::Room(_) => "room",
@@ -2152,7 +2197,7 @@ pub struct ProjectParameter {
 pub const MAX_PROJECT_PARAMETERS: usize = 256;
 
 /// The categories project parameters are for.
-pub const PARAMETER_CATEGORIES: [&str; 25] = [
+pub const PARAMETER_CATEGORIES: [&str; 26] = [
     "wall",
     "floor",
     "ceiling",
@@ -2178,6 +2223,7 @@ pub const PARAMETER_CATEGORIES: [&str; 25] = [
     "groundconductor",
     "cable",
     "toposurface",
+    "pad",
 ];
 
 impl ProjectParameter {
@@ -3519,6 +3565,7 @@ impl Model {
             Element::Floor(f) => Some(f.level),
             Element::Ceiling(c) => Some(c.level),
             Element::Shaft(sh) => Some(sh.level),
+            Element::Pad(p) => Some(p.level),
             Element::Mass(ms) => Some(ms.level),
             Element::Room(r) => Some(r.level),
             Element::RoomSeparator(rs) => Some(rs.level),
@@ -5122,6 +5169,15 @@ impl Model {
                         if let Some(why) = crate::massing::loft_problem(&ms.boundary, crown) {
                             return Err(format!("{who}: {why}"));
                         }
+                    }
+                }
+                Element::Pad(pd) => {
+                    level_ok(pd.level)?;
+                    boundary(&who, &pd.boundary)?;
+                    text(&who, "name", &pd.name)?;
+                    coord(&format!("{who} offset"), pd.offset)?;
+                    if !pd.thickness.is_finite() || pd.thickness <= 0.0 || pd.thickness > MAX_PAD_THICKNESS {
+                        return Err(format!("{who}: its thickness is above 0 and at most {MAX_PAD_THICKNESS} mm, not {}", pd.thickness));
                     }
                 }
                 Element::Toposurface(t) => {

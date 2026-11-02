@@ -63,6 +63,8 @@ pub mod nbr5410;
 pub mod osm;
 #[cfg(test)]
 mod osm_import_tests;
+#[cfg(test)]
+mod pad_tests;
 pub mod paint;
 pub mod pat;
 pub mod pdf;

@@ -24,7 +24,7 @@ use crate::massing;
 use crate::model::{
     CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Element, End,
     Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, Id, Key, Landing, Layer, Level, Line, Location, MAX_BREAKLINES, MAX_COORD,
-    MAX_POINTS, MAX_SLOPE, MAX_TERRAIN_POINTS, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES,
+    MAX_POINTS, MAX_SLOPE, MAX_TERRAIN_POINTS, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, Pad,
     ParameterKind, Pattern, Perspective, PlanView, PointCloud, ProjectParameter, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp,
     Rebar, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox, Shaft, Sheet, Side, Spot,
     Stair, TOL, TREAD, Tag, Toposurface, View3D, Viewport, Wall, WallType, heading, paper,
@@ -262,6 +262,16 @@ pub static ALL: &[Command] = &[
          outline and holes it has now, as the lines to edit. The outline must be simple, as `floor` says; a line that \
          crosses itself is found as two that cross are",
         edit_boundary,
+    ),
+    edit(
+        "pad",
+        "Building Pad",
+        &[],
+        "{boundary: [[x,y],…], level?, offset?, thickness?, name?} a building pad, Revit's: ground made level where a building stands. \
+         Its `boundary` is flat at `offset` mm above `level` (0 by default, the lowest level), a slab `thickness` mm thick (300) under \
+         that top. Where terrain is over it the earth is cut, where the terrain is below it, filled: the reply and the listing say \
+         how much (`cut_m3`, `fill_m3`), and `cut_fill` totals them. It moves, turns and mirrors in plan",
+        pad,
     ),
     edit(
         "toposurface",
@@ -2237,6 +2247,26 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             let gross: f64 = m.mass_slices(ms).iter().map(|(_, z, _)| geom::area(&m.mass_outline(ms, *z)).abs()).sum();
             extra.insert("gross_floor_area_m2".into(), json!(m2(gross)));
             extra.insert("levels".into(), json!(m.mass_slices(ms).iter().map(|(l, _, _)| *l).collect::<Vec<Id>>()));
+        }
+        Element::Pad(pd) => {
+            let top = m.elevation(pd.level) + pd.offset;
+            extra.insert("area_m2".into(), json!(m2(geom::area(&pd.boundary).abs())));
+            extra.insert("top".into(), json!(top));
+            extra.insert("bottom".into(), json!(top - pd.thickness));
+            // What it takes out of the ground it stands in, and what it puts in: none to say where there is no ground.
+            let cubic = |mm3: f64| (mm3 / 1e9 * 1000.0).round() / 1000.0;
+            match pad_cut_fill(m, pd) {
+                Some(r) => {
+                    extra.insert("cut_m3".into(), json!(cubic(r.cut)));
+                    extra.insert("fill_m3".into(), json!(cubic(r.fill)));
+                    extra.insert("net_m3".into(), json!(cubic(r.fill - r.cut)));
+                }
+                None => {
+                    for k in ["cut_m3", "fill_m3", "net_m3"] {
+                        extra.insert(k.into(), Value::Null);
+                    }
+                }
+            }
         }
         // Counts, not the points: a terrain of thousands would fill every listing.
         Element::Toposurface(t) => {
@@ -5909,6 +5939,39 @@ fn import_osm(s: &mut Session, p: &Value) -> R {
     Ok(out)
 }
 
+/// What the pad cuts and fills in the terrain under it: the first toposurface it lies over (by id); where it lies over none, the first
+/// one, and nothing; where there is no terrain at all, none.
+fn pad_cut_fill(m: &Model, pd: &Pad) -> Option<crate::topo::CutFill> {
+    let top = m.elevation(pd.level) + pd.offset;
+    let ring = pd.footprint();
+    let mut first = None;
+    for e in m.elements.values() {
+        let Element::Toposurface(t) = e else { continue };
+        let Ok(tin) = t.tin() else { continue };
+        let Ok(r) = tin.cut_fill(&ring, top) else { continue };
+        if r.covered > 0.0 {
+            return Some(r);
+        }
+        first.get_or_insert(r);
+    }
+    first
+}
+
+fn pad(s: &mut Session, p: &Value) -> R {
+    let c = "pad";
+    only(c, p, &["boundary", "level", "offset", "thickness", "name"])?;
+    let m = &s.model;
+    let level = level_param(c, m, p, "level")?;
+    let boundary = points(c, p, "boundary")?;
+    let offset = num(c, p, "offset")?.unwrap_or(0.0);
+    let thickness = num(c, p, "thickness")?.unwrap_or(crate::model::DEFAULT_PAD_THICKNESS);
+    let name = string(c, p, "name")?.unwrap_or_else(|| m.language.word("Pad").into());
+    let top = m.elevation(level) + offset;
+    let area = geom::area(&boundary).abs();
+    let id = s.model_mut().insert(Element::Pad(Pad { name, level, boundary, offset, thickness, params: Default::default() }));
+    Ok(json!({"id": id, "area_m2": m2(area), "top": top, "thickness": thickness}))
+}
+
 /// `[[x, y, z], …]` for terrain: up to [`MAX_TERRAIN_POINTS`] of them.
 fn terrain_points(c: &str, v: &Value, key: &str, least: usize) -> Result<Vec<[f64; 3]>, String> {
     let a = v.as_array().ok_or_else(|| bad(c, format!("`{key}` must be a list of points [x, y, z] in mm")))?;
@@ -8894,6 +8957,12 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
                 if mo.mirror {
                     ring.reverse();
                 }
+            }
+        }
+        Element::Pad(Pad { boundary, .. }) => {
+            boundary.iter_mut().for_each(|q| *q = f(*q));
+            if mo.mirror {
+                boundary.reverse();
             }
         }
         // Its heights stay: the terrain moves, turns and mirrors in plan.

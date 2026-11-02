@@ -23,7 +23,7 @@ use crate::geom::{self, P2};
 use crate::graphics::{Detail, Look, scale_of};
 use crate::model::{
     CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, FilledRegion, Floor, Function, Id, Key, Layer, Model, Note, Opening,
-    Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, Wall,
+    Pad, Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, Wall,
 };
 use crate::pen::{Pen, Weights};
 use crate::styles::{BY_CATEGORY, ObjectStyle};
@@ -51,6 +51,8 @@ const GRID: Rgb = Rgb(60, 100, 150);
 const MASS: Rgb = Rgb(88, 112, 168);
 /// Terrain's contours.
 const TERRAIN: Rgb = Rgb(140, 100, 60);
+/// A building pad's outline.
+const PAD: Rgb = Rgb(110, 110, 100);
 /// Room for grid bubbles and the view title around the drawing, px.
 const MARGIN: f64 = 70.0;
 const BUBBLE: f32 = 11.0;
@@ -814,6 +816,7 @@ pub(crate) fn plan_shows(m: &Model, plan: impl Key) -> Vec<P2> {
             Element::Floor(Floor { level: l, boundary, .. })
             | Element::Ceiling(Ceiling { level: l, boundary, .. })
             | Element::Shaft(Shaft { level: l, boundary, .. })
+            | Element::Pad(Pad { level: l, boundary, .. })
                 if *l == level =>
             {
                 extent.extend(boundary)
@@ -893,6 +896,7 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         Element::Roof(r) => roof(&mut d, m, r),
         Element::Mass(ms) => d.dashed(&ms.boundary, Pen::MEDIUM, MASS, true),
         Element::Toposurface(t) => terrain(&mut d, t),
+        Element::Pad(pd) => d.line(&pd.footprint(), Pen::MEDIUM, PAD, true),
         _ => {}
     }
     let annotation = on.is_some() || matches!(e, Element::Section(_) | Element::Elevation(_));
@@ -1825,6 +1829,8 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
             _ if up => {}
             // Terrain, on every level: its contours.
             Element::Toposurface(t) => terrain(&mut d, t),
+            // A pad, on its own level's plan: its outline.
+            Element::Pad(pd) if pd.level == level => d.line(&pd.footprint(), BY_CATEGORY, PAD, true),
             // A mass the plane passes through: its outline, dashed.
             Element::Mass(ms) if m.mass_cut_by(ms, range.cut) => d.dashed(&m.mass_outline(ms, range.cut), BY_CATEGORY, MASS, true),
             Element::Stair(st) => stair(&mut d, m, st, level),

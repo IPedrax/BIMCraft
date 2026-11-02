@@ -452,6 +452,25 @@ const OWN: &[(&str, usize, &[Own])] = &[
         &[("Mass", Kind::Text, From::Key("mass")), LEVEL, AREA, ("Perimeter", Kind::Length, From::Metres("perimeter_m")), VOLUME, COUNT],
     ),
     ("level", 2, &[("Elevation", Kind::Length, From::Key("elevation")), NAME, COUNT]),
+    // A pad: where it is, how big, how high its top, and what it takes out of the ground and puts in (m3).
+    (
+        "pad",
+        5,
+        &[
+            NAME,
+            LEVEL,
+            AREA,
+            ("Top", Kind::Length, From::Key("top")),
+            ("Thickness", Kind::Length, From::Key("thickness")),
+            ("Cut", Kind::Number, From::Key("cut_m3")),
+            ("Fill", Kind::Number, From::Key("fill_m3")),
+            ("Net", Kind::Number, From::Key("net_m3")),
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+        ],
+    ),
     // Terrain: its plan area and the area of the surface, its lowest and highest heights.
     (
         "toposurface",

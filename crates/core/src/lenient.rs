@@ -36,7 +36,7 @@ pub fn element(category: &str, v: &Value) -> Vec<String> {
     }
     kinds! {
         "level" => Level, "grid" => Grid, "wall" => Wall, "floor" => Floor, "ceiling" => Ceiling, "shaft" => Shaft,
-        "mass" => Mass, "toposurface" => Toposurface, "door" => Opening, "window" => Opening, "room" => Room, "roomseparator" => RoomSeparator, "dimension" => Dimension, "tag" => Tag,
+        "mass" => Mass, "toposurface" => Toposurface, "pad" => Pad, "door" => Opening, "window" => Opening, "room" => Room, "roomseparator" => RoomSeparator, "dimension" => Dimension, "tag" => Tag,
         "section" => Section, "elevation" => Section, "sheet" => Sheet, "viewport" => Viewport, "column" => Column,
         "structuralcolumn" => Column, "footing" => Column, "beam" => Run, "stripfooting" => Run, "pipe" => Run,
         "conduit" => Run, "cabletray" => Run, "wire" => Run, "downconductor" => Run, "groundconductor" => Run,
