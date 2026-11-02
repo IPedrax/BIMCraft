@@ -2887,6 +2887,64 @@ fn floors_go_under_the_walls_and_a_slope_arrow_slopes_them() {
 }
 
 #[test]
+fn shape_editing_raises_points_draws_split_lines_and_resets_a_floor() {
+    let mut h = app(BOX);
+    tool(&mut h, "Floor");
+    click(&mut h, P2(4000.0, 3000.0));
+    let floor = ids(&h, "floor");
+    // A drain 30 mm down in its middle, from Shape Editing's Add Point at the Options Bar's elevation.
+    press(&mut h, "Add Point");
+    type_into(&mut h, "Elevation:", "-30");
+    click(&mut h, P2(4000.0, 3000.0));
+    let shape = field(&h, floor[0], "shape");
+    assert_eq!((shape["points"][0]["at"].clone(), shape["points"][0]["z"].clone()), (json!([4000.0, 3000.0]), json!(-30.0)), "{shape}");
+    assert_eq!(field(&h, floor[0], "top"), json!([-30.0, 0.0]));
+    assert_eq!((h.state().selection.as_slice(), &h.state().tool), (floor.as_slice(), &Tool::AddPoint), "ready for the next point");
+    // With Absolute, an elevation above the level, not the top: 10 mm under the level is 10 mm under the top here.
+    pick(&mut h, Role::CheckBox, "Absolute");
+    type_into(&mut h, "Elevation:", "-10");
+    click(&mut h, P2(2000.0, 1500.0));
+    assert_eq!(field(&h, floor[0], "shape")["points"].as_array().map(Vec::len), Some(2));
+    // A split line from a corner to the drain, each click snapping to them.
+    press(&mut h, "Add Split Line");
+    click(&mut h, P2(40.0, 5960.0));
+    click(&mut h, P2(3970.0, 3030.0));
+    let lines = field(&h, floor[0], "shape")["lines"].clone();
+    assert_eq!((lines[0]["a"].clone(), lines[0]["b"].clone()), (json!([0.0, 6000.0]), json!([4000.0, 3000.0])), "{lines}");
+    assert_eq!(h.state().tool, Tool::AddSplitLine(None), "ready for the next line");
+    // Reset Shape takes it all off, the floor still selected.
+    press(&mut h, "Reset Shape");
+    assert_eq!(field(&h, floor[0], "shape"), json!(null));
+    assert_eq!(h.state().selection, floor);
+}
+
+#[test]
+fn modify_sub_elements_sets_a_points_height_or_an_edges_both_ends() {
+    let mut h = app(BOX);
+    tool(&mut h, "Floor");
+    click(&mut h, P2(4000.0, 3000.0));
+    let floor = ids(&h, "floor");
+    press(&mut h, "Add Point");
+    type_into(&mut h, "Elevation:", "-30");
+    click(&mut h, P2(4000.0, 3000.0));
+    let id = field(&h, floor[0], "shape")["points"][0]["id"].clone();
+    // The drain picked again, a little off it: lower, the same point.
+    press(&mut h, "Modify Sub Elements");
+    type_into(&mut h, "Elevation:", "-50");
+    click(&mut h, P2(4030.0, 2970.0));
+    let points = field(&h, floor[0], "shape")["points"].clone();
+    assert_eq!((points.as_array().map(Vec::len), points[0]["id"].clone(), points[0]["z"].clone()), (Some(1), id, json!(-50.0)), "{points}");
+    // An edge of the outline: both its corners, each a point now.
+    type_into(&mut h, "Elevation:", "20");
+    click(&mut h, P2(4000.0, 20.0));
+    let points = field(&h, floor[0], "shape")["points"].clone();
+    let at = |x: f64, y: f64| points.as_array().unwrap().iter().find(|p| p["at"] == json!([x, y])).map(|p| p["z"].clone());
+    assert_eq!((at(0.0, 0.0), at(8000.0, 0.0)), (Some(json!(20.0)), Some(json!(20.0))), "{points}");
+    assert_eq!(field(&h, floor[0], "top"), json!([-50.0, 20.0]));
+    assert_eq!(h.state().tool, Tool::ModifySubElements);
+}
+
+#[test]
 fn the_floor_tool_leaves_a_courtyard_open_inside_a_loop_of_walls_standing_free() {
     let mut h = app(r#"wall {"points": [[0, 0], [16000, 0], [16000, 16000], [0, 16000]], "closed": true}
 wall {"points": [[6000, 6000], [10000, 6000], [10000, 10000], [6000, 10000]], "closed": true}"#);
@@ -3095,10 +3153,20 @@ fn a_floor_types_layers_go_from_its_top_down() {
     h.get_by(|n| n.id() == thick).type_text("10");
     h.run();
     assert!(h.get_all_by_label("Down").count() > 0 && h.query_by_label("In").is_none(), "a floor's layers move up and down");
+    // A floor's layer may be variable, to take up a shaped top's falls: one at most, so ticking another unticks it.
+    let boxes = |h: &Harness<BimApp>| {
+        h.query_all(By::new().role(Role::CheckBox).label("Variable")).map(|n| n.accesskit_node().id()).collect::<Vec<_>>()
+    };
+    let (top, under) = (boxes(&h)[0], boxes(&h)[1]);
+    h.get_by(|n| n.id() == under).click();
+    h.run();
+    h.get_by(|n| n.id() == top).click();
+    h.run();
     press(&mut h, "OK");
     let t = &h.state().session.model.types.floor["Generic - 200mm"];
     assert_eq!((t.thickness, t.layers.len()), (210.0, 2));
     assert_eq!((t.layers[0].material.as_str(), t.layers[0].thickness), ("Ceramic tile", 10.0));
+    assert_eq!((t.layers[0].variable, t.layers[1].variable), (true, false));
 }
 
 #[test]

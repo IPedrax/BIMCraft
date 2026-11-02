@@ -234,6 +234,13 @@ pub enum Tool {
     DetailLine(Vec<P2>),
     /// The selected floor's slope arrow: its tail, once clicked.
     SlopeArrow(Option<P2>),
+    /// Shape Editing's Modify Sub Elements: a point of the selected floor's shape, a corner, or both ends of an edge picked,
+    /// to the Options Bar's elevation.
+    ModifySubElements,
+    /// Shape Editing's Add Point: a point on the selected floor's top at the Options Bar's elevation.
+    AddPoint,
+    /// Shape Editing's Add Split Line: a crease across the selected floor's top; its first end, once clicked.
+    AddSplitLine(Option<P2>),
     /// Sketch mode's Draw panel: the points clicked so far of the shape it draws (Line: since the last loop closed).
     SketchLine(Vec<P2>),
     /// Sketch mode's Pick Walls: a line along each wall clicked.
@@ -505,6 +512,10 @@ pub struct BimApp {
     /// How high the Ceiling tool's ceilings are; the Slope Arrow's slope; the Shaft tool's top.
     ceiling_height: String,
     floor_slope: String,
+    /// Add Point's elevation: above the floor's top as it would be without its shape, or with `shape_absolute`, above its
+    /// level; empty, the top's height where it's clicked.
+    shape_z: String,
+    shape_absolute: bool,
     shaft_top: Option<Option<Id>>,
     shaft_height: String,
     /// The Mass tool's top, as the Shaft tool's.
@@ -996,6 +1007,8 @@ impl BimApp {
             ramp_slope: "8.33".into(),
             ceiling_height: units.length(CEILING_HEIGHT),
             floor_slope: "5".into(),
+            shape_z: String::new(),
+            shape_absolute: false,
             shaft_top: None,
             shaft_height: units.length(3000.0),
             mass_top: None,
@@ -1160,6 +1173,9 @@ impl BimApp {
             | Tool::Attach
             | Tool::GableEdge
             | Tool::SlopeArrow(_)
+            | Tool::ModifySubElements
+            | Tool::AddPoint
+            | Tool::AddSplitLine(_)
             | Tool::SketchLine(_)
             | Tool::SketchPick => None,
             Tool::Wall(_) => Some(msg!("Place Wall")),
@@ -2112,6 +2128,10 @@ impl BimApp {
             self.status = Status { text: t("select the floor to slope first").into(), error: true };
             return;
         }
+        if matches!(tool, Tool::ModifySubElements | Tool::AddPoint | Tool::AddSplitLine(_)) && self.selected_floor().is_none() {
+            self.status = Status { text: t("select the floor to shape first").into(), error: true };
+            return;
+        }
         if let Tool::Rotate { centre, .. } = &mut tool
             && let Some(middle) = self.middle()
         {
@@ -2121,7 +2141,8 @@ impl BimApp {
             let top = self.session.model.levels().last().map_or(0.0, |(_, l)| l.elevation);
             self.new_level = (self.session.model.units.length(top + 3000.0), String::new());
         }
-        if tool != Tool::Modify && tool != Tool::Attach && tool != Tool::GableEdge && !matches!(tool, Tool::SlopeArrow(_)) && !edits {
+        let shaping = matches!(tool, Tool::SlopeArrow(_) | Tool::ModifySubElements | Tool::AddPoint | Tool::AddSplitLine(_));
+        if tool != Tool::Modify && tool != Tool::Attach && tool != Tool::GableEdge && !shaping && !edits {
             self.selection.clear();
         }
         if tool != Tool::Modify && !picks {
@@ -2210,7 +2231,12 @@ impl BimApp {
         match &self.tool {
             Tool::Wall(chain) => chain.last().copied(),
             Tool::Run(_, start) => *start,
-            Tool::Grid(start) | Tool::Move(start) | Tool::Copy(start) | Tool::Section(start) | Tool::SlopeArrow(start) => *start,
+            Tool::Grid(start)
+            | Tool::Move(start)
+            | Tool::Copy(start)
+            | Tool::Section(start)
+            | Tool::SlopeArrow(start)
+            | Tool::AddSplitLine(start) => *start,
             Tool::Stair(pts) | Tool::Ramp(pts) | Tool::Railing(pts) | Tool::Mass(pts) | Tool::DetailLine(pts) | Tool::SketchLine(pts) => {
                 pts.last().copied()
             }
@@ -2267,6 +2293,7 @@ impl BimApp {
             Tool::DetailLine(pts) if !pts.is_empty() => Tool::DetailLine(Vec::new()),
             Tool::Shaft(Some(_)) => Tool::Shaft(None),
             Tool::SlopeArrow(Some(_)) => Tool::SlopeArrow(None),
+            Tool::AddSplitLine(Some(_)) => Tool::AddSplitLine(None),
             Tool::ExtrusionRoof(pts) if !pts.is_empty() => Tool::ExtrusionRoof(Vec::new()),
             Tool::SketchLine(pts) if !pts.is_empty() => Tool::SketchLine(Vec::new()),
             // Fillet Arc's lines picked so far go first, then the tool.
@@ -2364,7 +2391,13 @@ impl BimApp {
             | Tool::ExtrusionRoof(pts)
             | Tool::Mass(pts)
             | Tool::DetailLine(pts) => pts.clear(),
-            Tool::Move(_) | Tool::Copy(_) | Tool::SlopeArrow(_) | Tool::GableEdge => self.tool = Tool::Modify,
+            Tool::Move(_)
+            | Tool::Copy(_)
+            | Tool::SlopeArrow(_)
+            | Tool::ModifySubElements
+            | Tool::AddPoint
+            | Tool::AddSplitLine(_)
+            | Tool::GableEdge => self.tool = Tool::Modify,
             _ => {}
         }
     }
@@ -3780,13 +3813,44 @@ impl BimApp {
                 }
             });
         }
-        // A floor selected: its slope arrow.
-        if self.selected_floor().is_some() && matches!(self.tool, Tool::Modify | Tool::SlopeArrow(_)) {
+        // A floor selected: its slope arrow, or its shape's points and split lines.
+        if let Some(floor) = self.selected_floor()
+            && matches!(self.tool, Tool::Modify | Tool::SlopeArrow(_) | Tool::ModifySubElements | Tool::AddPoint | Tool::AddSplitLine(_))
+        {
             panel(ui, "Shape Editing", |ui| {
                 let tip = msg!("Slope Arrow: click its tail, then its head; the floor rises toward the head at the Options Bar's slope");
                 if big_button(ui, Icon::SlopeArrow, "Slope Arrow", matches!(self.tool, Tool::SlopeArrow(_)), tip).clicked() {
                     self.set_tool(Tool::SlopeArrow(None));
                 }
+                // The shape's own tools small, two by two as the Modify panel's are, so the panels after it keep their room.
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    ui.horizontal(|ui| {
+                        let tip = msg!(
+                            "Modify Sub Elements: click a point, a corner or an edge of the floor to set it to the Options Bar's elevation"
+                        );
+                        let active = self.tool == Tool::ModifySubElements;
+                        if small_button(ui, Icon::ModifySubElements, "Modify Sub Elements", active, tip).clicked() {
+                            self.set_tool(Tool::ModifySubElements);
+                        }
+                        let tip = msg!("Add Point: click on the floor's top to raise or lower it there to the Options Bar's elevation");
+                        if small_button(ui, Icon::AddPoint, "Add Point", self.tool == Tool::AddPoint, tip).clicked() {
+                            self.set_tool(Tool::AddPoint);
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        let tip = msg!("Add Split Line: click two points; the floor's top folds along the line between them");
+                        let active = matches!(self.tool, Tool::AddSplitLine(_));
+                        if small_button(ui, Icon::AddSplitLine, "Add Split Line", active, tip).clicked() {
+                            self.set_tool(Tool::AddSplitLine(None));
+                        }
+                        let tip = msg!("Reset Shape: take the floor's points and split lines off, its top flat again");
+                        if small_button(ui, Icon::ResetShape, "Reset Shape", false, tip).clicked() {
+                            self.run("reset_shape", serde_json::json!({"id": floor}));
+                            self.tool = Tool::Modify;
+                        }
+                    });
+                });
             });
         }
         panel(ui, "Modify", |ui| {
@@ -3925,6 +3989,12 @@ impl BimApp {
                 Tool::SlopeArrow(_) => {
                     let l = ui.label(t("Slope:"));
                     ui.add(TextEdit::singleline(&mut self.floor_slope).desired_width(48.0).hint_text("°")).labelled_by(l.id);
+                }
+                Tool::AddPoint | Tool::ModifySubElements => {
+                    let l = ui.label(t("Elevation:"));
+                    let hint = self.session.model.units.name();
+                    ui.add(TextEdit::singleline(&mut self.shape_z).desired_width(64.0).hint_text(hint)).labelled_by(l.id);
+                    ui.checkbox(&mut self.shape_absolute, t("Absolute"));
                 }
                 Tool::Stair(_) => {
                     let l = ui.label(t("Width:"));
@@ -4229,6 +4299,10 @@ impl BimApp {
             Tool::DetailLine(_) => "Click its next point; Enter finishes it, the first point again closes it. Esc cancels.",
             Tool::SlopeArrow(None) => msg!("Click the slope arrow's tail: where the floor's top stays at its height offset."),
             Tool::SlopeArrow(Some(_)) => msg!("Click its head: the floor rises toward it at the Options Bar's slope. Esc cancels."),
+            Tool::ModifySubElements => msg!("Click a point, a corner or an edge of the floor: it goes to the Options Bar's elevation."),
+            Tool::AddPoint => msg!("Click on the floor's top: a point there at the Options Bar's elevation, or the top's height if none."),
+            Tool::AddSplitLine(None) => msg!("Click where the split line starts: a point, a corner or an edge of the floor."),
+            Tool::AddSplitLine(Some(_)) => msg!("Click where it ends: the floor's top folds along it. Esc cancels."),
             Tool::SketchLine(_) | Tool::SketchPick => msg!("Click where the line starts."),
         }
     }
