@@ -746,3 +746,156 @@ fn a_section_shows_a_roofs_insulation_tapering_over_its_level_structure() {
     assert!(between(5000.0, 3260.0) && between(1000.0, 3300.0), "the finish follows the top");
     assert!(between(5000.0, 3200.0) && between(1000.0, 3200.0), "the structure stays level");
 }
+
+/// Each plane of floor `id`'s top, as its corners lifted, and its plane.
+fn planes(s: &Session, id: u64) -> Vec<(Vec<[f64; 3]>, crate::walls::Plane)> {
+    let f = s.model.shapeable(id).expect("a shaped floor or roof");
+    s.model
+        .shape_planes(&f)
+        .expect("it triangulates")
+        .into_iter()
+        .map(|(loops, plane)| (loops[0].iter().map(|q| [q.0, q.1, plane.at(*q)]).collect(), plane))
+        .collect()
+}
+
+#[test]
+fn falls_to_two_drains_fall_at_least_as_steep_as_asked_and_every_plane_runs_to_one() {
+    let mut s = Session::new();
+    // 12 by 6 m, a drain in each half.
+    let f = run(&mut s, "floor", json!({"boundary": [[0, 0], [12000, 0], [12000, 6000], [0, 6000]]}))["id"].as_u64().unwrap();
+    let reply = run(&mut s, "falls", json!({"id": f, "drains": [[3000, 3000], [9000, 3000]], "fall": 1.5}));
+    // Each drain as low as its farthest corner, 3000 by 3000 mm away, at 1.5 %: 63.64 mm, to the tenth down.
+    let drains = reply["drains"].as_array().unwrap();
+    assert_eq!(drains.len(), 2, "{reply}");
+    for d in drains {
+        assert!((d["z"].as_f64().unwrap() + 63.7).abs() < 1e-9, "{reply}");
+    }
+    let tops = planes(&s, f);
+    assert!(tops.len() >= 8, "{} planes", tops.len());
+    let flat = top(&s, f, 0.0, 0.0);
+    for (ring, plane) in &tops {
+        let fall = plane.g.dot(plane.g).sqrt() * 100.0;
+        assert!(fall >= 1.5 - 1e-9, "a plane falling {fall} %: {ring:?}");
+        // Its lowest corner is a drain, and none of it is over the top as it was.
+        let low = ring.iter().min_by(|a, b| a[2].total_cmp(&b[2])).unwrap();
+        assert!([[3000.0, 3000.0], [9000.0, 3000.0]].iter().any(|d| (d[0], d[1]) == (low[0], low[1])), "{ring:?}");
+        assert!(ring.iter().all(|q| q[2] <= flat + 1e-9), "{ring:?}");
+    }
+    // The ridge between them runs across at the top's height.
+    assert!(near(top(&s, f, 6000.0, 3000.0), flat) && near(top(&s, f, 6000.0, 0.0), flat));
+    // Again, the shape given anew; a roof takes falls too.
+    run(&mut s, "falls", json!({"id": f, "drains": [[6000, 3000]], "fall": 2}));
+    assert_eq!(run(&mut s, "edit_shape", json!({"id": f}))["points"].as_array().map(Vec::len), Some(1));
+    let roof = flat_roof(&mut s);
+    let reply = run(&mut s, "falls", json!({"id": roof, "drains": [[4000, 3000]], "fall": 1}));
+    assert!((reply["drains"][0]["z"].as_f64().unwrap() + 50.0).abs() < 1e-9, "{reply}");
+}
+
+#[test]
+fn falls_refuse_what_they_cant_drain_saying_why() {
+    let mut s = Session::new();
+    let f = slab(&mut s);
+    let e = fails(&mut s, "falls", json!({"id": f, "drains": [[9000, 3000]], "fall": 1.5}));
+    assert!(e.contains("outside"), "{e}");
+    let e = fails(&mut s, "falls", json!({"id": f, "drains": [], "fall": 1.5}));
+    assert!(e.contains("drain"), "{e}");
+    let e = fails(&mut s, "falls", json!({"id": f, "drains": [[4000, 3000]], "fall": 0}));
+    assert!(e.contains("fall"), "{e}");
+    let e = fails(&mut s, "falls", json!({"id": f, "drains": [[4000, 3000], [4000.5, 3000]], "fall": 1}));
+    assert!(e.contains("millimetre"), "{e}");
+    // An L whose far wing the drain can't see: a drain there too, it says.
+    let l = run(
+        &mut s,
+        "floor",
+        json!({"level": 100001, "boundary": [[0, 0], [6000, 0], [6000, 2000], [2000, 2000], [2000, 6000], [0, 6000]]}),
+    )["id"]
+        .as_u64()
+        .unwrap();
+    let e = fails(&mut s, "falls", json!({"id": l, "drains": [[5000, 1000]], "fall": 1}));
+    assert!(e.contains("can't see"), "{e}");
+    run(&mut s, "falls", json!({"id": l, "drains": [[5000, 1000], [1000, 5000]], "fall": 1}));
+    // An opening: not yet.
+    let o = run(
+        &mut s,
+        "floor",
+        json!({"boundary": [[20000, 0], [26000, 0], [26000, 6000], [20000, 6000]], "openings": [[[22000, 2000], [23000, 2000], [23000, 3000], [22000, 3000]]]}),
+    )["id"]
+        .as_u64()
+        .unwrap();
+    let e = fails(&mut s, "falls", json!({"id": o, "drains": [[25000, 5000]], "fall": 1}));
+    assert!(e.contains("opening"), "{e}");
+}
+
+#[test]
+fn a_shaped_slab_exported_and_imported_comes_back_with_its_points_and_creases() {
+    let mut s = Session::new();
+    let f = slab(&mut s);
+    run(
+        &mut s,
+        "edit_shape",
+        json!({"id": f, "points": [{"at": [4000, 3000], "z": -30}, {"at": [6000, 1000], "z": -10}], "lines": [{"a": [0, 6000], "b": [4000, 3000]}]}),
+    );
+    let before = run(&mut s, "edit_shape", json!({"id": f}));
+    let file = crate::ifc::export(&s.model);
+    let i = crate::import::ifc(file.as_bytes(), "x").unwrap();
+    assert_eq!(i.skipped, Vec::<String>::new());
+    let (id, back) = i
+        .model
+        .elements
+        .iter()
+        .find_map(|(id, e)| match e {
+            crate::model::Element::Floor(f) => Some((*id, f.clone())),
+            _ => None,
+        })
+        .expect("a floor");
+    // The same top, plane for plane: each point at its height, under the highest corner, which stays at 0.
+    let height = |m: &crate::model::Model, f: &crate::model::Floor, q: P2| m.floor_top(f).at(q) + m.shape_height(f, q);
+    let Some(crate::model::Element::Floor(was)) = s.model.elements.get(f).cloned() else { panic!("no floor") };
+    for q in [P2(4000.0, 3000.0), P2(6000.0, 1000.0), P2(0.0, 0.0), P2(8000.0, 6000.0), P2(2000.0, 4500.0), P2(7000.0, 500.0)] {
+        assert!(near(height(&i.model, &back, q), height(&s.model, &was, q)), "at {q:?}");
+    }
+    let shape = crate::commands::element_json(&i.model, id);
+    assert_eq!(shape["top"], element(&mut s, f)["top"], "{shape}");
+    assert_eq!(back.shape.points.len(), 2, "{:?}", back.shape);
+    assert!(
+        back.shape.lines.iter().any(|l| [l.a, l.b].contains(&P2(0.0, 6000.0)) && [l.a, l.b].contains(&P2(4000.0, 3000.0))),
+        "the split line: {:?} (was {before})",
+        back.shape.lines
+    );
+    // As thick as it was.
+    assert_eq!(i.model.floor_depth(&back), s.model.floor_depth(&was));
+}
+
+#[test]
+fn a_spot_slope_reads_how_steeply_a_shaped_top_falls_and_which_way() {
+    let mut s = Session::new();
+    let f = slab(&mut s);
+    run(&mut s, "edit_shape", json!({"id": f, "points": [{"at": [4000, 3000], "z": -30}]}));
+    // On the west plane, 30 mm down over 4 m toward the drain: 0.75 %, falling east.
+    let r = run(&mut s, "spot_slope", json!({"at": [1000, 3000]}));
+    assert_eq!((r["slope"].clone(), r["toward"].clone(), r["host"].clone()), (json!(0.75), json!([1.0, 0.0]), json!(f)), "{r}");
+    let spot = r["id"].as_u64().unwrap();
+    let e = element(&mut s, spot);
+    assert_eq!((e["category"].clone(), e["slope"].clone()), (json!("spot"), json!(0.75)), "{e}");
+    // It follows the top: the drain lower, the slope steeper.
+    run(&mut s, "add_point", json!({"id": f, "at": [4000, 3000], "z": -60}));
+    assert_eq!(element(&mut s, spot)["slope"], json!(1.5));
+    // In the plan: an arrow from its point, running east, downhill.
+    let view = crate::render::View { scale: 0.05, cx: 4000.0, cy: 3000.0, width: 800, height: 600 };
+    let d = crate::render::draw(&s.model, 100_000u64, view);
+    let (x, y) = view.px(P2(1000.0, 3000.0));
+    let pts: Vec<(f32, f32)> = d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(spot)).flat_map(|(p, _)| p.points()).collect();
+    assert!(!pts.is_empty());
+    let east = pts.iter().map(|p| p.0 - x).fold(f32::NEG_INFINITY, f32::max);
+    let west = pts.iter().map(|p| x - p.0).fold(f32::NEG_INFINITY, f32::max);
+    assert!(east > 20.0 && west < 5.0 && pts.iter().all(|p| (p.1 - y).abs() < 30.0), "{pts:?}");
+    // A level floor reads 0; not in a section; nothing to read, it says.
+    let level = run(&mut s, "floor", json!({"boundary": [[20000, 0], [24000, 0], [24000, 4000], [20000, 4000]]}))["id"].as_u64().unwrap();
+    let r = run(&mut s, "spot_slope", json!({"at": [22000, 2000], "host": level}));
+    assert_eq!((r["slope"].clone(), r["toward"].clone()), (json!(0.0), json!(null)), "{r}");
+    let e = fails(&mut s, "spot_slope", json!({"at": [50000, 50000]}));
+    assert!(e.contains("floor or a roof"), "{e}");
+    let section = run(&mut s, "section", json!({"start": [-1000, 3000], "end": [9000, 3000]}))["id"].as_u64().unwrap();
+    let e = fails(&mut s, "spot_slope", json!({"at": [1000, 0], "view": section}));
+    assert!(e.contains("plan"), "{e}");
+}

@@ -302,6 +302,18 @@ pub static ALL: &[Command] = &[
         reset_shape,
     ),
     edit(
+        "falls",
+        "Falls",
+        &[],
+        "{id, drains: [[x,y], …], fall: 1.5} gives a floor's or flat roof's top falls to its drains, at no less than `fall` %: \
+         each drain takes the part of the outline nearest it, a ridge runs at the top's height where two parts meet, a valley \
+         runs from each drain to each corner of its part, and each drain goes down as far as `fall` takes its farthest \
+         corner. Its shape is given anew (points and split lines, as `edit_shape` would); the reply gives each drain's depth, \
+         how many planes (`faces`) and its top's lowest and highest. A floor with openings, or a corner a drain can't see \
+         across the outline, is refused, saying why",
+        falls,
+    ),
+    edit(
         "mass",
         "Mass",
         &["MS"],
@@ -698,6 +710,15 @@ pub static ALL: &[Command] = &[
          what stands on the level at `at` (or of `host`), following it; in a section or an elevation, of its point `at`, \
          along and up",
         spot,
+    ),
+    edit(
+        "spot_slope",
+        ui_msg!("Spot Slope"),
+        &[],
+        "{at: [x, y], view?, host?} a spot slope in a level's plan (the lowest by default): how steeply the top of the floor \
+         or roof at `at` (or `host`) falls there, %, an arrow pointing downhill; it follows the top. The reply gives `slope` \
+         and `toward`, the way down in plan (null on the level)",
+        spot_slope,
     ),
     edit(
         "tag",
@@ -2220,6 +2241,12 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             let length = l.curve.length();
             extra.insert("shape".into(), json!(l.curve.kind()));
             extra.insert("length".into(), json!(hundredth(length)));
+            extra.insert("level".into(), json!(m.level_of(e)));
+        }
+        Element::Spot(sp) if sp.slope => {
+            let read = m.spot_slope(sp);
+            extra.insert("slope".into(), json!(read.map(|(f, _)| hundredth(f))));
+            extra.insert("toward".into(), json!(read.and_then(|(_, d)| d).map(|d| [hundredth(d.0), hundredth(d.1)])));
             extra.insert("level".into(), json!(m.level_of(e)));
         }
         Element::Spot(sp) => {
@@ -6183,11 +6210,35 @@ fn spot(s: &mut Session, p: &Value) -> R {
         })?)),
         (None, None) => None,
     };
-    let sp = Spot { view: m.guid(view), at, host };
+    let sp = Spot { view: m.guid(view), at, host, slope: false };
     let elevation = m.spot_value(&sp).map(hundredth);
     let host = host.and_then(|h| m.elements.id(h));
     let id = s.model_mut().insert(Element::Spot(sp));
     Ok(json!({"id": id, "elevation": elevation, "host": host}))
+}
+
+/// A spot slope: in a plan, how steeply the top of the floor or roof at `at` (or `host`) falls there, and which way.
+fn spot_slope(s: &mut Session, p: &Value) -> R {
+    let c = "spot_slope";
+    let m = &s.model;
+    let at = point_req(c, p, "at")?;
+    let view = view_param(c, m, p, false)?;
+    let level = m.plan_level(view).ok_or_else(|| bad(c, "a spot slope reads a floor's or a roof's top: place it in a plan"))?;
+    let tops = |id: &Id| matches!(m.elements.get(*id), Some(Element::Floor(_) | Element::Roof(_)));
+    let host = match id_opt(c, p, "host")? {
+        Some(h) => m.elements.id(h),
+        None => m.spot_host(level, at),
+    };
+    let host = host.filter(tops).ok_or_else(|| {
+        let place = format!("[{}, {}] on {}", at.0, at.1, level_name(m, level));
+        bad(c, format!("no slope to read at {place}; place it on a floor or a roof"))
+    })?;
+    let sp = Spot { view: m.guid(view), at, host: Some(m.guid(host)), slope: true };
+    let read = m.spot_slope(&sp);
+    let id = s.model_mut().insert(Element::Spot(sp));
+    Ok(
+        json!({"id": id, "host": host, "slope": read.map(|(f, _)| hundredth(f)), "toward": read.and_then(|(_, d)| d).map(|d| [hundredth(d.0), hundredth(d.1)])}),
+    )
 }
 
 /// The top of something standing on `level`: up to the next level, or `height` mm tall, or up to
@@ -6983,6 +7034,32 @@ fn add_split_line(s: &mut Session, p: &Value) -> R {
     f.shape.points = points;
     f.shape.lines.push(line);
     let reply = json!({"id": id, "faces": shape_faces(m, &f), "top": top_range(m, &f)});
+    put_shape(s, id, f.shape);
+    Ok(reply)
+}
+
+/// Falls: a floor's or flat roof's shape worked out from its drains and the least fall (`falls::falls`), given anew.
+fn falls(s: &mut Session, p: &Value) -> R {
+    let c = "falls";
+    let (id, f) = shaped_floor(c, s, p, &["id", "drains", "fall"])?;
+    if !f.openings.is_empty() {
+        return Err(bad(c, format!("{id} has openings: falls round an opening are drawn point by point for now (`edit_shape`)")));
+    }
+    let drains = points(c, p, "drains")?;
+    let fall = num(c, p, "fall")?.ok_or_else(|| bad(c, "`fall`, the least fall in %, is required"))?;
+    let out = crate::falls::falls(&f.boundary, &drains, fall).map_err(|e| bad(c, e))?;
+    let points: Vec<crate::model::ShapePoint> = out
+        .drains
+        .iter()
+        .copied()
+        .chain(out.ridges.iter().map(|&q| (q, 0.0)))
+        .map(|(at, z)| crate::model::ShapePoint { at, z, ..Default::default() })
+        .collect();
+    let lines = out.lines.iter().map(|&(a, b)| crate::model::SplitLine { a, b, ..Default::default() }).collect();
+    let f = Floor { shape: crate::model::Shape { points, lines }, ..f };
+    let m = &s.model;
+    let drains: Vec<Value> = out.drains.iter().map(|(at, z)| json!({"at": at, "z": z})).collect();
+    let reply = json!({"id": id, "drains": drains, "faces": shape_faces(m, &f), "top": top_range(m, &f)});
     put_shape(s, id, f.shape);
     Ok(reply)
 }

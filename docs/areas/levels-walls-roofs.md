@@ -70,7 +70,10 @@ thickness below, plumb (`roof_rise`), so its slabs, IFC, sections and the walls 
 draw its creases thin. Under its type's variable layer a shaped roof's underside stays level at its base
 (`Model::roof_under`, `roof_prisms`), as a floor's does: its layers in 3D and sections share `Variable::bounds` through
 `Model::variable_under`, walls attached under it stop at that underside, IFC writes it as one closed faceted Brep
-(`Model::roof_solid`), and `Model::check` refuses a point that leaves the layer thinner than nothing. A layer of a floor or roof type may be `variable` (one a type at most; never a wall's or a ceiling's): under a
+(`Model::roof_solid`), and `Model::check` refuses a point that leaves the layer thinner than nothing. `falls` (`falls.rs`) gives a floor or a flat roof its shape from its drains and the least fall:
+catchments nearest each drain, ridges between them at the top's height, valleys from each drain to its catchment's corners,
+each drain as deep as the fall takes its farthest corner. A slab whose top isn't one plane comes in from IFC as a shaped
+floor (`import::shaped_top`), and a spot slope (`Spot::slope`) reads a floor's or roof's fall in a plan. A layer of a floor or roof type may be `variable` (one a type at most; never a wall's or a ceiling's): under a
 shaped floor of that type, the underside stays level where the unshaped floor's was (`Model::floor_under`), the layers
 above the variable one follow the top, those below it stay level, and the variable one takes up the difference
 (`Variable::bounds`, which the 3D view's layers and sections share). Its pieces are then prisms from that level underside

@@ -183,6 +183,8 @@ pub enum Tool {
     Text,
     /// A spot elevation where clicked.
     Spot,
+    /// A spot slope where clicked: how steeply the floor's or roof's top falls there.
+    SpotSlope,
     /// A ruler laid between two points: the first, once clicked.
     Measure(Option<P2>),
     /// Tag the door or window clicked.
@@ -1201,6 +1203,7 @@ impl BimApp {
             Tool::DetailLine(_) if self.drawing.cloud.is_some() => Some(msg!("Place Revision Cloud")),
             Tool::DetailLine(_) => Some(msg!("Place Detail Lines")),
             Tool::Spot => Some("Spot Elevation"),
+            Tool::SpotSlope => Some(msg!("Spot Slope")),
             Tool::Measure(_) => Some("Measure"),
             Tool::Tag => Some("Tag"),
             Tool::Section(_) => Some("Section"),
@@ -1998,6 +2001,7 @@ impl BimApp {
                 self.line_style.clone_from(&l.style);
                 Tool::DetailLine(Vec::new())
             }
+            Some(Element::Spot(sp)) if sp.slope => Tool::SpotSlope,
             Some(Element::Spot(_)) => Tool::Spot,
             Some(Element::Tag(_)) => Tool::Tag,
             Some(Element::Section(_)) => Tool::Section(None),
@@ -3214,7 +3218,7 @@ impl BimApp {
                 Tool::Dimension(DimMode::Auto, Vec::new()),
             ),
         ];
-        let small: [(Icon, &str, &str, Tool); 5] = [
+        let small: [(Icon, &str, &str, Tool); 6] = [
             (
                 Icon::Angular,
                 msg!("Angular"),
@@ -3244,6 +3248,12 @@ impl BimApp {
                 "Spot Elevation",
                 msg!("Spot Elevation (EL): click a floor, a roof or a stair; in a section, a point"),
                 Tool::Spot,
+            ),
+            (
+                Icon::SpotSlope,
+                msg!("Spot Slope"),
+                msg!("Spot Slope: click a floor or a roof in a plan; an arrow points downhill with how steeply its top falls"),
+                Tool::SpotSlope,
             ),
         ];
         panel(ui, "Dimension", |ui| {
@@ -4289,6 +4299,7 @@ impl BimApp {
             Tool::Round(..) => msg!("Click where the radius goes. Esc cancels."),
             Tool::Text => msg!("Type the note in the Options Bar, then click where it goes: its top left corner."),
             Tool::Spot => msg!("Click a floor, a roof, a stair or a wall: the spot elevation reads the height of its top there."),
+            Tool::SpotSlope => msg!("Click a floor or a roof: the spot slope reads how steeply its top falls there, and which way."),
             Tool::Section(None) => msg!("Click the section's start: it looks to the left of the line you draw."),
             Tool::Section(Some(_)) => msg!("Click the section's end."),
             Tool::Elevation => msg!("Click beside the building: the elevation looks at the side you click by."),

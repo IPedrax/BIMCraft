@@ -1110,7 +1110,8 @@ pub const MAX_HIDDEN: usize = 10_000;
 pub const CAD_SCALE: std::ops::RangeInclusive<f64> = 1e-6..=1e7;
 
 /// A spot elevation in a view: in a level's plan, the height of the top of `host` at `at`; in a
-/// section or an elevation, of its point `at`, along and up.
+/// section or an elevation, of its point `at`, along and up. With `slope`, a spot slope: in a plan, how steeply the top of
+/// `host` (a floor or a roof) falls at `at`, and which way.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Spot {
@@ -1118,6 +1119,8 @@ pub struct Spot {
     pub at: P2,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host: Option<Guid>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub slope: bool,
 }
 
 /// Another project shown in this one, a reference that can't be edited: Revit's linked model. The file stays where it is;
@@ -4959,6 +4962,27 @@ impl Model {
         match self.elements.get(sp.view)? {
             Element::Level(_) | Element::PlanView(_) => crate::view3d::tops_at(self, sp.at).get(&self.elements.id(sp.host?)?).copied(),
             Element::Section(_) | Element::Elevation(_) => Some(sp.at.1),
+            _ => None,
+        }
+    }
+
+    /// What a spot slope reads: in a plan, how steeply its host's top falls at its point, %, and which way, a unit vector
+    /// downhill in plan (none on the level). None while its host isn't a floor or a roof there, or out of a plan.
+    pub fn spot_slope(&self, sp: &Spot) -> Option<(f64, Option<P2>)> {
+        if !matches!(self.elements.get(sp.view)?, Element::Level(_) | Element::PlanView(_)) {
+            return None;
+        }
+        let plane = self.top_plane_at(sp.host?, sp.at)?;
+        let fall = plane.g.length();
+        Some((fall * 100.0, (fall > 1e-9).then(|| plane.g * (-1.0 / fall))))
+    }
+
+    /// The plane of floor or roof `id`'s top over plan point `q`: of the piece over it, or within a millimetre of one.
+    pub fn top_plane_at(&self, id: impl Key, q: P2) -> Option<walls::Plane> {
+        let near = |r: &[P2]| geom::contains(r, q) || geom::ring_edges(r).any(|(a, b)| geom::dist_to_segment(q, a, b) <= TOL);
+        match self.elements.get(id)? {
+            Element::Floor(f) => self.floor_faces(f).into_iter().find(|(r, _)| near(r)).map(|(_, p)| p),
+            Element::Roof(r) => self.roof_prisms(r).into_iter().find(|(ring, ..)| near(ring)).map(|(_, _, top)| top),
             _ => None,
         }
     }
