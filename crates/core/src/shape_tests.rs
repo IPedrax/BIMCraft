@@ -650,3 +650,99 @@ fn a_shaped_roof_draws_its_creases_snaps_to_its_points_and_keeps_them_through_a_
     let now = run(&mut s, "edit_shape", json!({"id": roof}));
     assert_eq!((now["points"][0]["at"].clone(), now["points"][0]["z"].clone()), (json!([3000.0, 2500.0]), json!(-40.0)), "{now}");
 }
+
+/// A flat roof over Level 2 of a type with a tapering insulation layer (finish 10, insulation 100 variable, structure 200),
+/// a drain 40 mm down in its middle.
+fn drained_roof(s: &mut Session) -> u64 {
+    let layers = json!([
+        {"function": "finish", "thickness": 10},
+        {"function": "substrate", "thickness": 100, "variable": true},
+        {"function": "structure", "thickness": 200}
+    ]);
+    run(s, "type", json!({"category": "roof", "name": "Terrace Roof", "layers": layers}));
+    let roof = run(
+        s,
+        "roof",
+        json!({"level": 100001, "slope": 0, "type": "Terrace Roof", "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}),
+    )["id"]
+        .as_u64()
+        .unwrap();
+    run(s, "edit_shape", json!({"id": roof, "points": [{"at": [4000, 3000], "z": -40}]}));
+    roof
+}
+
+#[test]
+fn a_roofs_variable_layer_keeps_its_underside_level_and_takes_up_the_fall() {
+    let mut s = Session::new();
+    let roof = drained_roof(&mut s);
+    assert!(near(top(&s, roof, 4000.0, 3000.0), 3270.0) && near(top(&s, roof, 0.0, 0.0), 3310.0));
+    // In the 3D view, 2900 mm up the south plane: the finish follows the top, the insulation takes what's left, the
+    // structure stays level on Level 2.
+    let q = P2(4000.0, 2900.0);
+    let t = 3310.0 - 40.0 * 2900.0 / 3000.0;
+    let mut layers: Vec<(f64, f64)> = crate::view3d::shaded(&s.model)
+        .into_iter()
+        .filter(|x| x.owner() == roof)
+        .filter_map(|x| match x {
+            crate::view3d::Solid::Prism { ring, bottom, top, .. } if crate::geom::contains(&ring, q) => Some((bottom.at(q), top.at(q))),
+            _ => None,
+        })
+        .collect();
+    layers.sort_by(|a, b| b.1.total_cmp(&a.1));
+    let want = [(t - 10.0, t), (3200.0, t - 10.0), (3000.0, 3200.0)];
+    assert_eq!(layers.len(), 3, "{layers:?}");
+    for ((lo, hi), (wlo, whi)) in layers.iter().zip(want) {
+        assert!(near(*lo, wlo) && near(*hi, whi), "{layers:?}");
+    }
+    // A wall attached under it reaches its level underside, drain or not.
+    let wall = run(&mut s, "wall", json!({"points": [[0, 3000], [8000, 3000]]}))["ids"][0].as_u64().unwrap();
+    run(&mut s, "modify", json!({"id": wall, "attach_top": roof}));
+    assert!(near(top(&s, wall, 4000.0, 3000.0), 3000.0) && near(top(&s, wall, 1000.0, 3000.0), 3000.0));
+    // Its closed solid holds 48 m² of 310 mm less the pyramid the drain takes out, 48 m² by 40 mm over 3.
+    let Some(crate::model::Element::Roof(r)) = s.model.elements.get(roof).cloned() else { panic!("no roof") };
+    let solid = s.model.roof_solid(&r).expect("a shaped roof's solid");
+    let v = crate::model::volume(&solid) / 1e9;
+    assert!((v - (48.0 * 0.31 - 48.0 * 0.04 / 3.0)).abs() < 1e-3, "{v}");
+}
+
+#[test]
+fn a_roof_point_that_would_leave_its_insulation_thinner_than_nothing_is_refused() {
+    let mut s = Session::new();
+    let roof = drained_roof(&mut s);
+    let e = fails(&mut s, "add_point", json!({"id": roof, "at": [2000, 1500], "z": -150}));
+    assert!(e.contains("raise the point by 50"), "{e}");
+}
+
+#[test]
+fn a_section_shows_a_roofs_insulation_tapering_over_its_level_structure() {
+    let mut s = Session::new();
+    let roof = drained_roof(&mut s);
+    let id = run(&mut s, "section", json!({"start": [-1000, 3000], "end": [9000, 3000]}))["id"].as_u64().unwrap();
+    let view = crate::render::View { scale: 0.5, cx: 5000.0, cy: 3150.0, width: 6000, height: 800 };
+    let d = crate::render::section(&s.model, id, view);
+    let mine = || d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(roof)).map(|(p, _)| p);
+    let corners: Vec<(f32, f32)> = mine()
+        .filter_map(|p| match p {
+            crate::render::Prim::Fill { rings, .. } => Some(rings.concat()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    let lines: Vec<&Vec<(f32, f32)>> = mine()
+        .filter_map(|p| match p {
+            crate::render::Prim::Line { pts, .. } => Some(pts),
+            _ => None,
+        })
+        .collect();
+    let close = |c: &(f32, f32), along: f64, z: f64| {
+        let (x, y) = view.px(P2(along, z));
+        (c.0 - x).abs() < 0.5 && (c.1 - y).abs() < 0.5
+    };
+    let corner = |along: f64, z: f64| corners.iter().any(|c| close(c, along, z));
+    let between = |along: f64, z: f64| lines.iter().any(|l| l.iter().any(|c| close(c, along, z)));
+    // The top falls to the drain; the underside doesn't.
+    assert!(corner(5000.0, 3270.0) && corner(5000.0, 3000.0) && !corner(5000.0, 2960.0), "a level underside");
+    // Under the finish, 10 mm under the top; over the structure, level.
+    assert!(between(5000.0, 3260.0) && between(1000.0, 3300.0), "the finish follows the top");
+    assert!(between(5000.0, 3200.0) && between(1000.0, 3200.0), "the structure stays level");
+}
