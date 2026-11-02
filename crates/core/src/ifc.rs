@@ -658,10 +658,11 @@ pub fn export(m: &Model) -> String {
             Element::Floor(f) => {
                 let Some(&(_, storey)) = storeys.get(&f.level) else { continue };
                 let at = w.place(Some(storey), (0.0, 0.0, 0.0), None);
-                // Level, its outline less its openings swept up to its top; sloped, a shell round each
+                // Level, its outline less its openings swept up to its top; sloped or shaped, a shell round each
                 // piece of it.
                 let depth = m.floor_depth(f);
-                let shape = if m.floor_top(f).g == P2(0.0, 0.0) {
+                let level = m.floor_top(f).g == P2(0.0, 0.0) && f.shape.is_empty();
+                let shape = if level {
                     let profile = w.profile(&f.boundary, &f.openings);
                     w.body(profile, f.offset - depth, depth, &[])
                 } else {
@@ -683,7 +684,7 @@ pub fn export(m: &Model) -> String {
                 // A level slab measures as its outline less its openings, through its depth; a sloped one has no plan
                 // area to give, so only its depth.
                 let net = geom::area(&f.boundary).abs() - f.openings.iter().map(|o| geom::area(o).abs()).sum::<f64>();
-                let values = if m.floor_top(f).g == P2(0.0, 0.0) {
+                let values = if level {
                     vec![
                         ("Width", "LENGTH", depth),
                         ("Perimeter", "LENGTH", perimeter(&f.boundary)),

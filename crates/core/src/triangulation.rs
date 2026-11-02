@@ -188,6 +188,89 @@ pub fn constrained(outline: &[P2], holes: &[Vec<P2>], points: &[P2], lines: &[(P
     Ok(Triangulation { points: pts, triangles })
 }
 
+/// The triangles of `t` made into fewer pieces where neighbours lie in one plane: two that share an edge are one when
+/// `on(plane, corner)` holds for each one's plane and each corner of the other. Each piece is the loops round it in
+/// plan, its outline counter-clockwise first and then its holes clockwise, with its first triangle's plane (`planes`
+/// has one for each triangle). A piece whose edges don't make one such outline (it touches itself at a corner) stays its
+/// triangles. In order of the triangles they start from.
+pub fn merge<P: Copy>(t: &Triangulation, planes: &[P], on: &dyn Fn(&P, usize) -> bool) -> Vec<(Vec<Vec<P2>>, P)> {
+    let corner = |i: usize| t.points.get(i).copied().unwrap_or_default();
+    let tris: Vec<([usize; 3], P)> = t.triangles.iter().zip(planes).map(|(k, p)| (*k, *p)).collect();
+    let edges: HashMap<(usize, usize), usize> = tris.iter().enumerate().flat_map(|(n, (k, _))| sides(*k).map(|e| (e, n))).collect();
+    // Each triangle's way to the first of its piece: union-find.
+    let mut root: Vec<usize> = (0..tris.len()).collect();
+    for (n, (k, p)) in tris.iter().enumerate() {
+        for (a, b) in sides(*k) {
+            let Some(&m) = edges.get(&(b, a)).filter(|&&m| m > n) else { continue };
+            let Some((other, q)) = tris.get(m) else { continue };
+            if other.iter().all(|&v| on(p, v)) && k.iter().all(|&v| on(q, v)) {
+                let (x, y) = (find(&mut root, n), find(&mut root, m));
+                if let Some(r) = root.get_mut(x.max(y)) {
+                    *r = x.min(y);
+                }
+            }
+        }
+    }
+    let mut groups: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for n in 0..tris.len() {
+        let r = find(&mut root, n);
+        groups.entry(r).or_default().push(n);
+    }
+    let mut out = Vec::new();
+    for members in groups.values() {
+        let Some(&(_, plane)) = members.first().and_then(|&n| tris.get(n)) else { continue };
+        let mine: HashSet<(usize, usize)> = members.iter().filter_map(|&n| tris.get(n)).flat_map(|(k, _)| sides(*k)).collect();
+        let mut next: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        for &(a, b) in mine.iter().filter(|(a, b)| !mine.contains(&(*b, *a))) {
+            next.entry(a).or_default().push(b);
+        }
+        let traced = (next.values().all(|v| v.len() == 1)).then(|| {
+            let mut loops: Vec<Vec<P2>> = Vec::new();
+            let mut used = HashSet::new();
+            for &start in next.keys() {
+                let mut ring = Vec::new();
+                let mut v = start;
+                while used.insert(v) {
+                    ring.push(corner(v));
+                    match next.get(&v).and_then(|n| n.first()) {
+                        Some(&w) => v = w,
+                        None => break,
+                    }
+                }
+                if ring.len() >= 3 {
+                    loops.push(ring);
+                }
+            }
+            loops
+        });
+        let outlines = traced.as_ref().map_or(0, |ls| ls.iter().filter(|l| geom::area(l) > 0.0).count());
+        match traced {
+            Some(mut loops) if outlines == 1 => {
+                loops.sort_by(|a, b| geom::area(b).total_cmp(&geom::area(a)));
+                out.push((loops, plane));
+            }
+            _ => out.extend(members.iter().filter_map(|&n| tris.get(n)).map(|(k, p)| (vec![k.map(corner).to_vec()], *p))),
+        }
+    }
+    out
+}
+
+/// The first triangle of `x`'s piece, the way to it shortened for next time.
+fn find(root: &mut [usize], x: usize) -> usize {
+    let mut first = x;
+    while let Some(&up) = root.get(first).filter(|&&up| up != first) {
+        first = up;
+    }
+    let mut y = x;
+    while let Some(&up) = root.get(y).filter(|&&up| up != y) {
+        if let Some(slot) = root.get_mut(y) {
+            *slot = first;
+        }
+        y = up;
+    }
+    first
+}
+
 /// A point as messages give it, to the millimetre.
 fn at(p: P2) -> String {
     format!("({:.0}, {:.0})", p.0, p.1)

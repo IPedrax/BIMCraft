@@ -264,6 +264,44 @@ pub static ALL: &[Command] = &[
         edit_boundary,
     ),
     edit(
+        "edit_shape",
+        "Modify Sub Elements",
+        &[],
+        "{id, points?: [{at: [x,y], z, id?}, …], lines?: [{a: [x,y], b: [x,y], id?}, …], absolute?} gives a floor's top its \
+         shape anew, all at once: points `z` mm above (negative, below) where its top would be without them (with `absolute`, \
+         at that elevation), and split lines it folds along, between which it's flat triangles, merged where neighbours lie \
+         in one plane: falls to drains, ridges, valleys. Its outline's and openings' corners stay at 0 unless a point is \
+         there; a line's end that is no point and no corner becomes a point at the height the top has there. Sent back with \
+         its `id`, a point or a line keeps it. A shaped floor has no slope arrow. Without `points` or `lines`, gives the \
+         shape: its points and lines with their ids, its corners at their heights, how many planes (`faces`) and its top's \
+         lowest and highest (`top`, mm above zero)",
+        edit_shape,
+    ),
+    edit(
+        "add_point",
+        "Add Point",
+        &[],
+        "{id, at: [x,y], z?, absolute?} a point on a floor's top, `z` mm above where it would be without its shape (with \
+         `absolute`, at that elevation); with no `z`, at the height the top has there now. Within a millimetre of a point it \
+         has, sets that one's height",
+        add_point,
+    ),
+    edit(
+        "add_split_line",
+        "Add Split Line",
+        &[],
+        "{id, a: [x,y], b: [x,y]} a line a floor's top folds along; an end that is no point of its shape and no corner of its \
+         outline or an opening becomes a point, at the height the top has there now",
+        add_split_line,
+    ),
+    edit(
+        "reset_shape",
+        "Reset Shape",
+        &[],
+        "{id} takes a floor's points and split lines all off: it's flat at its offset again",
+        reset_shape,
+    ),
+    edit(
         "mass",
         "Mass",
         &["MS"],
@@ -2123,11 +2161,8 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             let left: f64 = m.floor_slabs(f).iter().map(|(face, rise)| area(&m.less_shafts(face, *rise).0)).sum();
             extra.insert("area_m2".into(), json!(m2(left)));
             extra.insert("thickness".into(), json!(m.types.floor.get(&f.type_name).map_or(0.0, |t| t.thickness)));
-            // How high its top is, at its lowest and its highest.
-            let top = m.floor_top(f);
-            let (lo, hi) =
-                f.boundary.iter().map(|q| top.at(*q)).fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
-            extra.insert("top".into(), json!([hundredth(lo), hundredth(hi)]));
+            // How high its top is, at its lowest and its highest, its shape's points too.
+            extra.insert("top".into(), top_range(m, f));
             // Where its top's model pattern starts and how far it's turned: shown at their defaults too, to be set by modify.
             extra.insert("pattern_origin".into(), json!(f.pattern_origin));
             extra.insert("pattern_angle".into(), json!(f.pattern_angle));
@@ -5277,6 +5312,7 @@ fn floor(s: &mut Session, p: &Value) -> R {
         arrow,
         structural,
         sketch,
+        shape: Default::default(),
         pattern_origin: P2(0.0, 0.0),
         pattern_angle: 0.0,
     }));
@@ -6751,6 +6787,170 @@ fn edit_boundary(s: &mut Session, p: &Value) -> R {
     let id = m.elements.id(id).ok_or_else(|| bad(c, "no such element"))?;
     s.model_mut().elements.insert(id, e);
     Ok(json!({"id": id, "area_m2": area}))
+}
+
+/// A shape's point as a command takes it; `id` keeps the point it names, and a `guid` sent back with it is let be.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PointIn {
+    #[serde(default)]
+    id: Option<Id>,
+    #[serde(default, rename = "guid")]
+    _guid: Option<Guid>,
+    at: P2,
+    #[serde(default)]
+    z: Option<f64>,
+}
+
+/// A split line as a command takes it.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LineIn {
+    #[serde(default)]
+    id: Option<Id>,
+    #[serde(default, rename = "guid")]
+    _guid: Option<Guid>,
+    a: P2,
+    b: P2,
+}
+
+/// The floor `id` names, by its id, with params that are only `keys`.
+fn shaped_floor(c: &str, s: &Session, p: &Value, keys: &[&str]) -> Result<(Id, Floor), String> {
+    if let Some(key) = p.as_object().and_then(|o| o.keys().find(|k| !keys.contains(&k.as_str()))) {
+        return Err(bad(c, format!("unknown parameter `{key}`")));
+    }
+    let m = &s.model;
+    let key = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, the floor to shape, is required"))?;
+    match (m.elements.id(key), m.elements.get(key)) {
+        (Some(id), Some(Element::Floor(f))) => Ok((id, f.clone())),
+        (Some(id), Some(_)) => Err(bad(c, format!("{id} isn't a floor: only floors have shapes"))),
+        _ => Err(bad(c, format!("no element {key}"))),
+    }
+}
+
+/// A height as a command takes it, mm: `z`, finite and in range.
+fn height(c: &str, z: f64) -> Result<f64, String> {
+    (z.is_finite() && z.abs() <= MAX_COORD).then_some(z).ok_or_else(|| bad(c, format!("`z` must be a number in mm, got {z}")))
+}
+
+/// Each end of `lines` that is none of `points` and no corner of `f`'s outline or openings, made a point at the height
+/// `f`'s top has there with `points` and no lines.
+fn loose_ends(m: &Model, f: &Floor, points: &mut Vec<crate::model::ShapePoint>, lines: &[crate::model::SplitLine]) {
+    let corners: Vec<P2> = f.boundary.iter().chain(f.openings.iter().flatten()).copied().collect();
+    let base = Floor { shape: crate::model::Shape { points: points.clone(), lines: Vec::new() }, ..f.clone() };
+    for end in lines.iter().flat_map(|l| [l.a, l.b]) {
+        let known = |q: &P2| q.dist(end) <= TOL;
+        if !points.iter().any(|x| known(&x.at)) && !corners.iter().any(known) {
+            points.push(crate::model::ShapePoint { at: end, z: m.shape_height(&base, end), ..Default::default() });
+        }
+    }
+}
+
+/// What `edit_shape` says of a floor's shape: its points and split lines, its corners at their heights, how many planes
+/// its top is, and its lowest and highest.
+fn shape_reply(m: &Model, id: Id, f: &Floor) -> Value {
+    let points: Vec<Value> = f.shape.points.iter().map(|x| json!({"id": x.id, "at": x.at, "z": x.z})).collect();
+    let lines: Vec<Value> = f.shape.lines.iter().map(|l| json!({"id": l.id, "a": l.a, "b": l.b})).collect();
+    let corners: Vec<Value> =
+        f.boundary.iter().chain(f.openings.iter().flatten()).map(|q| json!({"at": q, "z": hundredth(m.shape_height(f, *q))})).collect();
+    json!({"id": id, "points": points, "lines": lines, "corners": corners, "faces": shape_faces(m, f), "top": top_range(m, f)})
+}
+
+/// How many planes a floor's top is.
+fn shape_faces(m: &Model, f: &Floor) -> usize {
+    if f.shape.is_empty() { 1 } else { m.shape_planes(f).map_or(1, |planes| planes.len()) }
+}
+
+/// A floor's top at its lowest and its highest, mm above the project's zero, to the hundredth.
+fn top_range(m: &Model, f: &Floor) -> Value {
+    let (lo, hi) = m
+        .floor_faces(f)
+        .iter()
+        .flat_map(|(ring, plane)| ring.iter().map(move |q| plane.at(*q)))
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
+    json!([hundredth(lo), hundredth(hi)])
+}
+
+/// The established tools' shape editing, all at once: a floor's points and split lines given anew, as `edit_boundary`
+/// gives an outline. Asked with neither, says what the shape is.
+fn edit_shape(s: &mut Session, p: &Value) -> R {
+    let c = "edit_shape";
+    let (id, f) = shaped_floor(c, s, p, &["id", "points", "lines", "absolute"])?;
+    let m = &s.model;
+    if absent(p.get("points")) && absent(p.get("lines")) {
+        return Ok(shape_reply(m, id, &f));
+    }
+    let absolute = flag(c, p, "absolute")?;
+    let given: Vec<PointIn> = shaped(c, p, "points", "a list of {at: [x, y], z, id?}")?.unwrap_or_default();
+    let lines_in: Vec<LineIn> = shaped(c, p, "lines", "a list of {a: [x, y], b: [x, y], id?}")?.unwrap_or_default();
+    let top = m.floor_top(&f);
+    let old = &f.shape;
+    let mut points = Vec::with_capacity(given.len());
+    for x in given {
+        let z = height(c, x.z.ok_or_else(|| bad(c, format!("the point at {:?} needs its height `z`", x.at)))?)?;
+        let was = x.id.and_then(|i| old.points.iter().find(|o| o.id == i));
+        let (pid, guid) = was.map_or((0, Guid::default()), |o| (o.id, o.guid));
+        points.push(crate::model::ShapePoint { id: pid, guid, at: x.at, z: if absolute { z - top.at(x.at) } else { z } });
+    }
+    let lines: Vec<crate::model::SplitLine> = lines_in
+        .into_iter()
+        .map(|l| {
+            let was = l.id.and_then(|i| old.lines.iter().find(|o| o.id == i));
+            let (lid, guid) = was.map_or((0, Guid::default()), |o| (o.id, o.guid));
+            crate::model::SplitLine { id: lid, guid, a: l.a, b: l.b }
+        })
+        .collect();
+    loose_ends(m, &f, &mut points, &lines);
+    let f = Floor { shape: crate::model::Shape { points, lines }, ..f };
+    let reply = json!({"id": id, "faces": shape_faces(m, &f), "top": top_range(m, &f)});
+    s.model_mut().elements.insert(id, Element::Floor(f));
+    Ok(reply)
+}
+
+/// Add Point: a point on a floor's top at `at`, `z` mm above where the top would be without its shape (with `absolute`,
+/// at that elevation); with no `z`, at the height the top has there now. Within a millimetre of a point it has, that one.
+fn add_point(s: &mut Session, p: &Value) -> R {
+    let c = "add_point";
+    let (id, mut f) = shaped_floor(c, s, p, &["id", "at", "z", "absolute"])?;
+    let m = &s.model;
+    let at = point_req(c, p, "at")?;
+    let z = match num(c, p, "z")? {
+        Some(z) if flag(c, p, "absolute")? => z - m.floor_top(&f).at(at),
+        Some(z) => z,
+        None => m.shape_height(&f, at),
+    };
+    match f.shape.points.iter_mut().find(|x| x.at.dist(at) <= TOL) {
+        Some(x) => x.z = z,
+        None => f.shape.points.push(crate::model::ShapePoint { at, z, ..Default::default() }),
+    }
+    let reply = json!({"id": id, "faces": shape_faces(m, &f), "top": top_range(m, &f)});
+    s.model_mut().elements.insert(id, Element::Floor(f));
+    Ok(reply)
+}
+
+/// Add Split Line: a line from `a` to `b` a floor's top folds along; an end that is no point of its and no corner becomes
+/// a point, at the height the top has there now.
+fn add_split_line(s: &mut Session, p: &Value) -> R {
+    let c = "add_split_line";
+    let (id, mut f) = shaped_floor(c, s, p, &["id", "a", "b"])?;
+    let m = &s.model;
+    let line = crate::model::SplitLine { a: point_req(c, p, "a")?, b: point_req(c, p, "b")?, ..Default::default() };
+    let mut points = f.shape.points.clone();
+    loose_ends(m, &f, &mut points, std::slice::from_ref(&line));
+    f.shape.points = points;
+    f.shape.lines.push(line);
+    let reply = json!({"id": id, "faces": shape_faces(m, &f), "top": top_range(m, &f)});
+    s.model_mut().elements.insert(id, Element::Floor(f));
+    Ok(reply)
+}
+
+/// Reset Shape: a floor's points and split lines all taken off; it's flat at its offset again.
+fn reset_shape(s: &mut Session, p: &Value) -> R {
+    let c = "reset_shape";
+    let (id, mut f) = shaped_floor(c, s, p, &["id"])?;
+    f.shape = Default::default();
+    s.model_mut().elements.insert(id, Element::Floor(f));
+    Ok(json!({"id": id}))
 }
 
 /// `key` as JSON shaped like `T` (a list of at most `MAX_POINTS`), or none.
@@ -8240,6 +8440,9 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
             }
             fl.arrow = fl.arrow.map(|a| a.map(f));
             (fl.pattern_origin, fl.pattern_angle) = turned(f, fl.pattern_origin, fl.pattern_angle);
+            // Its shape's points and lines go with it, each at its height.
+            fl.shape.points.iter_mut().for_each(|x| x.at = f(x.at));
+            fl.shape.lines.iter_mut().for_each(|l| (l.a, l.b) = (f(l.a), f(l.b)));
         }
         Element::Ceiling(cl) => {
             cl.boundary.iter_mut().chain(cl.openings.iter_mut().flatten()).for_each(|q| *q = f(*q));
