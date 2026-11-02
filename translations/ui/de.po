@@ -3345,7 +3345,7 @@ msgstr "Importiert {}: {}."
 
 #: crates/ui-egui/src/properties.rs:1606
 msgid "In"
-msgstr "In"
+msgstr "Innen"
 
 #: crates/ui-egui/src/inquiry.rs:83
 msgid "In the library, not elements to select: {}"
@@ -3534,7 +3534,6 @@ msgstr "Sprache"
 msgid "Later"
 msgstr "Später"
 
-#: crates/ui-egui/src/cad.rs:97
 #: crates/ui-egui/src/properties.rs:1902
 msgid "Layers"
 msgstr "Schichten"
@@ -7528,7 +7527,7 @@ msgstr "Fenstertabelle"
 
 #: crates/ui-egui/src/lang.rs:28
 msgid "Windows"
-msgstr "Windows"
+msgstr "Fenster"
 
 #: crates/core/src/commands.rs:472
 msgid "Wire"
@@ -8319,6 +8318,11 @@ msgstr "• Breit / Schwer (0,50 mm — 0,70 mm): geschnittene Wände und Tragwe
 #: crates/ui-egui/src/fillpatterns.rs:707
 msgid "‹ Back"
 msgstr "‹ Zurück"
+
+#: crates/ui-egui/src/cad.rs:97
+msgctxt "cad"
+msgid "Layers"
+msgstr "Layer"
 
 #: crates/ui-egui/src/lang.rs:239
 msgctxt "category"

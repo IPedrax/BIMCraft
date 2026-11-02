@@ -3535,7 +3535,6 @@ msgstr "Idioma"
 msgid "Later"
 msgstr "Depois"
 
-#: crates/ui-egui/src/cad.rs:97
 #: crates/ui-egui/src/properties.rs:1902
 msgid "Layers"
 msgstr "Camadas"
@@ -8320,6 +8319,11 @@ msgstr "• Largo / Grosso (0,50 mm — 0,70 mm): Paredes cortadas e seções es
 #: crates/ui-egui/src/fillpatterns.rs:707
 msgid "‹ Back"
 msgstr "‹ Voltar"
+
+#: crates/ui-egui/src/cad.rs:97
+msgctxt "cad"
+msgid "Layers"
+msgstr "Camadas"
 
 #: crates/ui-egui/src/lang.rs:239
 msgctxt "category"

@@ -3535,7 +3535,6 @@ msgstr "语言"
 msgid "Later"
 msgstr "稍后"
 
-#: crates/ui-egui/src/cad.rs:97
 #: crates/ui-egui/src/properties.rs:1902
 msgid "Layers"
 msgstr "构造层"
@@ -8320,6 +8319,11 @@ msgstr "• 粗线 (0.50 mm — 0.70 mm)：剖切墙体与结构剖面。"
 #: crates/ui-egui/src/fillpatterns.rs:707
 msgid "‹ Back"
 msgstr "‹ 返回"
+
+#: crates/ui-egui/src/cad.rs:97
+msgctxt "cad"
+msgid "Layers"
+msgstr ""
 
 #: crates/ui-egui/src/lang.rs:239
 msgctxt "category"

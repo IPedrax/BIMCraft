@@ -3535,7 +3535,6 @@ msgstr "Langue"
 msgid "Later"
 msgstr "Plus tard"
 
-#: crates/ui-egui/src/cad.rs:97
 #: crates/ui-egui/src/properties.rs:1902
 msgid "Layers"
 msgstr "Calques"
@@ -8320,6 +8319,11 @@ msgstr "• Large / forte (0,50 mm à 0,70 mm): murs coupés et sections structu
 #: crates/ui-egui/src/fillpatterns.rs:707
 msgid "‹ Back"
 msgstr "‹ Retour"
+
+#: crates/ui-egui/src/cad.rs:97
+msgctxt "cad"
+msgid "Layers"
+msgstr "Calques"
 
 #: crates/ui-egui/src/lang.rs:239
 msgctxt "category"

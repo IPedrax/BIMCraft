@@ -11,7 +11,7 @@ use egui::{Align, Button, Checkbox, ComboBox, Context, Grid, Id as UiId, Layout,
 use serde_json::{Value, json};
 
 use crate::BimApp;
-use crate::lang::t;
+use crate::lang::{t, tc};
 use crate::style::pal;
 
 /// The units a drawing may be in, as `import_cad` names them: auto reads its file's.
@@ -94,7 +94,7 @@ impl BimApp {
                     });
                     c.response.labelled_by(l.id);
                     ui.end_row();
-                    let l = ui.label(t("Layers"));
+                    let l = ui.label(tc("cad", "Layers"));
                     let now = if b.all_layers { "All" } else { "Visible" };
                     let c = ComboBox::from_id_salt("import-cad-layers").selected_text(t(now)).show_ui(ui, |ui| {
                         ui.selectable_value(&mut b.all_layers, false, t("Visible"));

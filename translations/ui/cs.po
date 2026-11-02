@@ -3534,7 +3534,6 @@ msgstr "Jazyk"
 msgid "Later"
 msgstr "Později"
 
-#: crates/ui-egui/src/cad.rs:97
 #: crates/ui-egui/src/properties.rs:1902
 msgid "Layers"
 msgstr "Vrstvy"
@@ -8319,6 +8318,11 @@ msgstr ""
 #: crates/ui-egui/src/fillpatterns.rs:707
 msgid "‹ Back"
 msgstr "‹ Zpět"
+
+#: crates/ui-egui/src/cad.rs:97
+msgctxt "cad"
+msgid "Layers"
+msgstr "Vrstvy"
 
 #: crates/ui-egui/src/lang.rs:239
 msgctxt "category"
