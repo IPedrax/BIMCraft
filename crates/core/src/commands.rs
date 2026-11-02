@@ -305,12 +305,14 @@ pub static ALL: &[Command] = &[
         "falls",
         "Falls",
         &[],
-        "{id, drains: [[x,y], …], fall: 1.5} gives a floor's or flat roof's top falls to its drains, at no less than `fall` %: \
-         each drain takes the part of the outline nearest it, a ridge runs at the top's height where two parts meet, a valley \
-         runs from each drain to each corner of its part, and each drain goes down as far as `fall` takes its farthest \
-         corner. Its shape is given anew (points and split lines, as `edit_shape` would); the reply gives each drain's depth, \
-         how many planes (`faces`) and its top's lowest and highest. A floor with openings, or a corner a drain can't see \
-         across the outline, is refused, saying why",
+        "{id, drains: [[x,y], …], fall: 1.5, ridges?: [[[x,y], [x,y]], …]} gives a floor's or flat roof's top falls to its \
+         drains, at no less than `fall` %: `ridges` (each from the outline, an opening or another ridge to another) split it \
+         into parts, each needing a drain; in a part each drain takes what is nearest it, a ridge runs at the top's height \
+         where two meet, a valley runs from each drain to each corner of its part (round an opening's corners, which lie on \
+         the drain's cone, where it can't see straight), and each drain goes down as far as `fall` takes its farthest corner. \
+         Its shape is given anew (points and split lines, as `edit_shape` would); the reply gives each drain's depth, how many \
+         planes (`faces`) and its top's lowest and highest. Refused, saying why and where: a corner a drain can reach only \
+         over the outline or a ridge, or a plane that can't fall as asked to a drain",
         falls,
     ),
     edit(
@@ -7105,23 +7107,38 @@ fn add_split_line(s: &mut Session, p: &Value) -> R {
 /// Falls: a floor's or flat roof's shape worked out from its drains and the least fall (`falls::falls`), given anew.
 fn falls(s: &mut Session, p: &Value) -> R {
     let c = "falls";
-    let (id, f) = shaped_floor(c, s, p, &["id", "drains", "fall"])?;
-    if !f.openings.is_empty() {
-        return Err(bad(c, format!("{id} has openings: falls round an opening are drawn point by point for now (`edit_shape`)")));
-    }
+    let (id, f) = shaped_floor(c, s, p, &["id", "drains", "fall", "ridges"])?;
     let drains = points(c, p, "drains")?;
     let fall = num(c, p, "fall")?.ok_or_else(|| bad(c, "`fall`, the least fall in %, is required"))?;
-    let out = crate::falls::falls(&f.boundary, &drains, fall).map_err(|e| bad(c, e))?;
-    let points: Vec<crate::model::ShapePoint> = out
-        .drains
-        .iter()
-        .copied()
-        .chain(out.ridges.iter().map(|&q| (q, 0.0)))
-        .map(|(at, z)| crate::model::ShapePoint { at, z, ..Default::default() })
-        .collect();
+    let ridges: Vec<[P2; 2]> = shaped(c, p, "ridges", "a list of lines [[x, y], [x, y]]")?.unwrap_or_default();
+    if let Some(q) = ridges.iter().flatten().find(|q| !(q.0.is_finite() && q.1.is_finite() && q.0.abs().max(q.1.abs()) <= MAX_COORD)) {
+        return Err(bad(c, format!("a ridge's end {q:?} is not a point in mm")));
+    }
+    let ridges: Vec<(P2, P2)> = ridges.into_iter().map(|[a, b]| (a, b)).collect();
+    let out = crate::falls::falls(&f.boundary, &f.openings, &drains, fall, &ridges).map_err(|e| bad(c, e))?;
+    let points: Vec<crate::model::ShapePoint> =
+        out.drains.iter().chain(&out.points).map(|&(at, z)| crate::model::ShapePoint { at, z, ..Default::default() }).collect();
     let lines = out.lines.iter().map(|&(a, b)| crate::model::SplitLine { a, b, ..Default::default() }).collect();
     let f = Floor { shape: crate::model::Shape { points, lines }, ..f };
     let m = &s.model;
+    // Every plane at least as steep as asked, its lowest corner a drain or an opening's corner a valley runs on from.
+    let planes = m.shape_planes(&f).map_err(|e| bad(c, format!("the falls don't fold into planes: {e}")))?;
+    let low = |q: P2| out.drains.iter().chain(&out.points).any(|(r, z)| r.dist(q) <= TOL && *z < 0.0);
+    for (loops, plane) in &planes {
+        let ring = loops.first().map(Vec::as_slice).unwrap_or_default();
+        let steep = plane.g.length() * 100.0 >= fall - 1e-6;
+        let lowest = ring.iter().copied().min_by(|a, b| plane.at(*a).total_cmp(&plane.at(*b)));
+        if !steep || !lowest.is_some_and(low) {
+            let q = geom::centroid(ring);
+            return Err(bad(
+                c,
+                format!(
+                    "round ({:.0}, {:.0}) the top can't fall {fall} % to a drain: add a drain there, or a ridge to part it off",
+                    q.0, q.1
+                ),
+            ));
+        }
+    }
     let drains: Vec<Value> = out.drains.iter().map(|(at, z)| json!({"at": at, "z": z})).collect();
     let reply = json!({"id": id, "drains": drains, "faces": shape_faces(m, &f), "top": top_range(m, &f)});
     put_shape(s, id, f.shape);

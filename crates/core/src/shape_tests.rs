@@ -814,7 +814,7 @@ fn falls_refuse_what_they_cant_drain_saying_why() {
     let e = fails(&mut s, "falls", json!({"id": l, "drains": [[5000, 1000]], "fall": 1}));
     assert!(e.contains("can't see"), "{e}");
     run(&mut s, "falls", json!({"id": l, "drains": [[5000, 1000], [1000, 5000]], "fall": 1}));
-    // An opening: not yet.
+    // A drain in an opening.
     let o = run(
         &mut s,
         "floor",
@@ -822,7 +822,7 @@ fn falls_refuse_what_they_cant_drain_saying_why() {
     )["id"]
         .as_u64()
         .unwrap();
-    let e = fails(&mut s, "falls", json!({"id": o, "drains": [[25000, 5000]], "fall": 1}));
+    let e = fails(&mut s, "falls", json!({"id": o, "drains": [[22500, 2500]], "fall": 1}));
     assert!(e.contains("opening"), "{e}");
 }
 
@@ -974,4 +974,134 @@ fn a_hole_cut_through_a_shape_cuts_its_split_lines_and_keeps_the_heights_round_i
     let r = run(&mut s, "edit_boundary", json!({"id": roof, "sketch": with_hole([1500.0, 500.0], [2500.0, 2500.0])}));
     assert_eq!(r["cut"].as_array().map(Vec::len), Some(1), "{r}");
     assert!(near(height_at(&s, roof, P2(1500.0, 1125.0)), -15.0));
+}
+
+/// Every plane of floor `id`'s top falls at least `fall` %, toward a drain or an opening's corner under the top (from which
+/// a valley runs on down to a drain), its lowest corner; and each drain is the lowest of the planes round it.
+fn falls_everywhere(s: &Session, id: u64, drains: &[[f64; 2]], fall: f64) {
+    let flat = top(s, id, drains[0][0], drains[0][1]) - height_at(s, id, P2(drains[0][0], drains[0][1]));
+    for (ring, plane) in planes(s, id) {
+        let f = plane.g.dot(plane.g).sqrt() * 100.0;
+        assert!(f >= fall - 1e-9, "a plane falling {f} %: {ring:?}");
+        let low = ring.iter().min_by(|a, b| a[2].total_cmp(&b[2])).unwrap();
+        assert!(low[2] < flat - 1e-6, "a plane with nowhere lower to run: {ring:?}");
+    }
+}
+
+#[test]
+fn falls_run_round_an_opening_to_two_drains_or_to_one_beside_it() {
+    let mut s = Session::new();
+    // 12 by 6 m, a 1 m opening where the two halves meet.
+    let hole = json!([[[5500, 2500], [6500, 2500], [6500, 3500], [5500, 3500]]]);
+    let f =
+        run(&mut s, "floor", json!({"boundary": [[0, 0], [12000, 0], [12000, 6000], [0, 6000]], "openings": hole}))["id"].as_u64().unwrap();
+    let drains = [[3000.0, 3000.0], [9000.0, 3000.0]];
+    let reply = run(&mut s, "falls", json!({"id": f, "drains": drains, "fall": 1.5}));
+    assert_eq!(reply["drains"].as_array().map(Vec::len), Some(2), "{reply}");
+    falls_everywhere(&s, f, &drains, 1.5);
+    // The opening's rim on its drains' cones, under the top; where the halfway line meets it, at the top's height.
+    assert!(height_at(&s, f, P2(5500.0, 2500.0)) < -1.0 && height_at(&s, f, P2(6500.0, 3500.0)) < -1.0);
+    assert!(near(height_at(&s, f, P2(6000.0, 2500.0)), 0.0));
+    // One drain beside it: the far side's water runs round the opening's corners, on the drain's cone.
+    run(&mut s, "falls", json!({"id": f, "drains": [[3000, 3000]], "fall": 1.5}));
+    falls_everywhere(&s, f, &[[3000.0, 3000.0]], 1.5);
+    assert!(height_at(&s, f, P2(6500.0, 3500.0)) < height_at(&s, f, P2(12000.0, 6000.0)));
+}
+
+#[test]
+fn ridges_drawn_split_the_top_each_part_to_its_own_drains() {
+    let mut s = Session::new();
+    let f = run(&mut s, "floor", json!({"boundary": [[0, 0], [10000, 0], [10000, 6000], [0, 6000]]}))["id"].as_u64().unwrap();
+    // A ridge across, off the middle: the drains' halfway line would be elsewhere; the ridge is where the parts meet.
+    let ridge = json!([[[4000, 0], [4000, 6000]]]);
+    let drains = [[2000.0, 3000.0], [7000.0, 3000.0]];
+    let reply = run(&mut s, "falls", json!({"id": f, "drains": drains, "fall": 1.5, "ridges": ridge}));
+    falls_everywhere(&s, f, &drains, 1.5);
+    assert!(near(height_at(&s, f, P2(4000.0, 3000.0)), 0.0), "{reply}");
+    // The far drain is as deep as its farthest corner, 3000 by 3000 mm away at 1.5 %: 63.7.
+    assert!((reply["drains"][1]["z"].as_f64().unwrap() + 63.7).abs() < 1e-9, "{reply}");
+    // A part with no drain; a ridge that divides nothing.
+    let e = fails(&mut s, "falls", json!({"id": f, "drains": [[2000, 3000]], "fall": 1.5, "ridges": ridge}));
+    assert!(e.contains("no drain"), "{e}");
+    let e = fails(&mut s, "falls", json!({"id": f, "drains": drains, "fall": 1.5, "ridges": [[[4000, 0], [4000, 3000]]]}));
+    assert!(e.contains("divide"), "{e}");
+}
+
+/// The first floor and the first roof a project holds.
+fn first_floor(m: &crate::model::Model) -> Option<crate::model::Floor> {
+    m.elements.values().find_map(|e| match e {
+        crate::model::Element::Floor(f) => Some(f.clone()),
+        _ => None,
+    })
+}
+
+fn first_roof(m: &crate::model::Model) -> Option<crate::model::Roof> {
+    m.elements.values().find_map(|e| match e {
+        crate::model::Element::Roof(r) => Some(r.clone()),
+        _ => None,
+    })
+}
+
+#[test]
+fn a_shaped_floor_over_a_variable_layer_comes_back_from_ifc_with_it_marked_or_guessed() {
+    let mut s = Session::new();
+    let f = drained(&mut s);
+    let file = crate::ifc::export(&s.model);
+    assert!(file.contains("'Variable'"), "the variable layer says so");
+    let Some(was) = first_floor(&s.model) else { panic!("no floor") };
+    let check = |file: &str| {
+        let i = crate::import::ifc(file.as_bytes(), "x").unwrap();
+        let back = first_floor(&i.model).expect("a floor");
+        let layers = i.model.type_layers("floor", &back.type_name);
+        let variable: Vec<bool> = layers.iter().map(|l| l.variable).collect();
+        assert_eq!(variable, [false, true, false, false], "{layers:?}");
+        // The underside level again, the top as it was.
+        assert!(i.model.floor_under(&back).is_some());
+        for q in [P2(4000.0, 3000.0), P2(1000.0, 1000.0), P2(8000.0, 6000.0)] {
+            let h = |m: &crate::model::Model, f: &crate::model::Floor| m.floor_top(f).at(q) + m.shape_height(f, q);
+            assert!(near(h(&i.model, &back), h(&s.model, &was)), "at {q:?}");
+        }
+        assert!((i.model.floor_volume(&back) - s.model.floor_volume(&was)).abs() < 1e3, "the same volume, to a cm³");
+    };
+    check(&file);
+    // From another program, saying nothing of it: the underside level under a shaped top, the screed is the one.
+    check(&file.replace("'Variable'", "$"));
+    let _ = f;
+}
+
+#[test]
+fn a_shaped_flat_roof_comes_back_from_ifc_shaped_and_a_pitched_one_pitched() {
+    let mut s = Session::new();
+    let roof = drained_roof(&mut s);
+    run(&mut s, "add_point", json!({"id": roof, "at": [6000, 1000], "z": -20}));
+    let pitched = run(&mut s, "roof", json!({"level": 100001, "boundary": [[20000, 0], [28000, 0], [28000, 6000], [20000, 6000]]}))["id"]
+        .as_u64()
+        .unwrap();
+    let file = crate::ifc::export(&s.model);
+    let i = crate::import::ifc(file.as_bytes(), "x").unwrap();
+    assert_eq!(i.skipped, Vec::<String>::new());
+    let roofs: Vec<crate::model::Roof> = i
+        .model
+        .elements
+        .values()
+        .filter_map(|e| match e {
+            crate::model::Element::Roof(r) => Some(r.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(roofs.len(), 2);
+    let (flat, hip) = if roofs[0].shape.is_empty() { (&roofs[1], &roofs[0]) } else { (&roofs[0], &roofs[1]) };
+    assert!(hip.slope > 0.0 && hip.shape.is_empty(), "{hip:?}");
+    assert_eq!((flat.slope, flat.shape.points.len()), (0.0, 2), "{flat:?}");
+    // Its top as it was, its insulation the variable layer, its underside level.
+    let Some(crate::model::Element::Roof(was)) = s.model.elements.get(roof).cloned() else { panic!("no roof") };
+    for q in [P2(4000.0, 3000.0), P2(6000.0, 1000.0), P2(0.0, 0.0), P2(2000.0, 5000.0)] {
+        let h = |m: &crate::model::Model, r: &crate::model::Roof| {
+            let f = m.roof_as_floor(r);
+            m.floor_top(&f).at(q) + m.shape_height(&f, q)
+        };
+        assert!(near(h(&i.model, flat), h(&s.model, &was)), "at {q:?}: {} for {}", h(&i.model, flat), h(&s.model, &was));
+    }
+    assert!(i.model.roof_under(flat).is_some(), "{:?}", i.model.type_layers("roof", &flat.type_name));
+    let _ = (pitched, first_roof(&i.model));
 }

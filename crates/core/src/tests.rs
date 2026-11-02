@@ -1638,6 +1638,7 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"id": 100002, "slope": 5, "arrow": [[0, 0], [1, 1]]}),
         json!({"id": 100002, "drains": [[1e300, 0], [0, 0]], "fall": 1e300}),
         json!({"id": 100002, "drains": "x", "fall": -1, "points": [{"at": [0, 0], "z": 1e300}], "lines": 5}),
+        json!({"id": 100002, "drains": [[1, 1]], "fall": 1, "ridges": [[[0, 0], [1e300, 0]], [[0, 0], [0, 0]]]}),
         json!({"ids": [100002, 100003], "offset": 1e300, "grid": 600}),
         json!({"start": [0, 0], "landings": [{"at": 1e300, "turn": 90}]}),
         json!({"start": [0, 0], "landings": [{"at": 8, "turn": "left"}], "slope": 1e-300}),

@@ -51,14 +51,22 @@ Status, on the branch `mod-16-shape-editing` (raised upstream as IPedrax/BIMCraf
     drain takes the part of the outline nearer it than any other; where two parts meet a ridge runs at the top's height;
     from each drain a valley runs to each corner of its part; each drain goes down as far as the fall takes its farthest
     corner, to the tenth of a millimetre down. Every plane then falls at least as asked toward a drain, its lowest corner,
-    and so does every valley. Refused, saying why: a drain outside, two within a millimetre, a corner a drain can't see
-    across the outline (an L with one drain: add one on the other wing), and, for now, a floor with openings. Tests
-    `falls_to_two_drains_*` and `falls_refuse_*`.
+    and so does every valley. Round an opening, a valley runs from the drain round the opening's corners by the shortest
+    way, each corner on the cone falling from the drain at the fall, so water reaching it runs on down. `ridges` drawn
+    (each from the outline, an opening or another ridge to another) split the top into parts first, each needing a drain.
+    The command checks every plane falls as asked to a drain or an opening's corner, and refuses, saying where, what
+    doesn't. Refused too: a drain outside or in an opening, two within a millimetre, a corner a drain can reach only over
+    the outline or a ridge (an L with one drain: add one on the other wing). Tests `falls_to_two_drains_*`,
+    `falls_refuse_*`, `falls_run_round_an_opening_*`, `ridges_drawn_split_the_top_*`.
   - **IFC import of a slab whose top isn't one plane** (`import::shaped_top`): a level floor at its highest point, its
     upward faces' outline, each of their corners under that height (or inside) a point, and each edge two of them share at
     an angle a split line; as thick as it is under its highest corner. What doesn't fold into planes, or folds into others
-    than its faces (a step), comes in as before. Test `a_shaped_slab_exported_and_imported_*`. A roof's shape doesn't come
-    back from IFC yet, nor a variable layer (the type's layers come in, none marked).
+    than its faces (a step), comes in as before. A roof's body read the same way comes in as a shaped flat roof, unless its
+    footprint and pitch already make every corner of its top (a pitched roof stays pitched; an extruded one is read by its
+    profile). A variable layer goes out with `Description` `'Variable'` and comes back marked; from a file that says
+    nothing, a shaped slab whose underside is level gets its insulation nearest the top, else its substrate, marked
+    variable. Tests `a_shaped_slab_exported_and_imported_*`, `a_shaped_floor_over_a_variable_layer_comes_back_*`,
+    `a_shaped_flat_roof_comes_back_from_ifc_*`.
   - **Spot Slope** (`spot_slope`, `Spot::slope`, `Model::spot_slope`, `top_plane_at`): in a plan, an arrow downhill from
     the point clicked on a floor or a roof, with how steeply its top falls there, following it; Annotate > Dimension's
     Spot Slope places one. Tests `a_spot_slope_reads_*` and the desktop's
