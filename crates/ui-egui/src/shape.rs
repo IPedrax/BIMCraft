@@ -1,9 +1,9 @@
 //! Shape Editing's actions (MOD-16, [shape editing](../../../docs/shape-editing.md)): what a click or a grip's drag does to
-//! the selected floor's shape, the same from a plan and from the 3D view, each one command. The views find the plan point;
-//! this runs it.
+//! the selected floor's or flat roof's shape, the same from a plan and from the 3D view, each one command. The views find
+//! the plan point; this runs it.
 
 use bimcraft_core::geom::P2;
-use bimcraft_core::model::{Element, Floor, Id, Model, Shape, TOL};
+use bimcraft_core::model::{Floor, Id, Model, Shape, TOL};
 use serde_json::{Value, json};
 
 use crate::lang::{t, tf};
@@ -21,18 +21,15 @@ pub(crate) fn raised(m: &Model, f: &Floor, at: P2, by: f64) -> Option<Shape> {
 }
 
 impl BimApp {
-    /// The floor being shaped: the one selected, while a Shape Editing tool is on.
+    /// The floor or flat roof being shaped: the one selected, while a Shape Editing tool is on.
     pub(crate) fn shaping(&self) -> Option<Id> {
-        self.selected_floor().filter(|_| matches!(self.tool, Tool::ModifySubElements | Tool::AddPoint | Tool::AddSplitLine(_)))
+        self.selected_shapeable().filter(|_| matches!(self.tool, Tool::ModifySubElements | Tool::AddPoint | Tool::AddSplitLine(_)))
     }
 
-    /// The selected floor, as it is now.
+    /// The selected floor or flat roof as shape editing sees it now (`Model::shapeable`: a roof's top as a floor's).
     pub(crate) fn floor_selected(&self) -> Option<(Id, Floor)> {
-        let id = self.selected_floor()?;
-        match self.session.model.elements.get(id) {
-            Some(Element::Floor(f)) => Some((id, f.clone())),
-            _ => None,
-        }
+        let id = self.selected_shapeable()?;
+        self.session.model.shapeable(id).ok().map(|f| (id, f))
     }
 
     /// Floor `id`'s shape given anew, its points' and lines' ids kept: one `edit_shape`.
@@ -99,7 +96,7 @@ impl BimApp {
     /// elsewhere.
     pub(crate) fn shape_split(&mut self, p: P2) {
         let Tool::AddSplitLine(start) = self.tool else { return };
-        match (start, self.selected_floor()) {
+        match (start, self.selected_shapeable()) {
             (None, _) => self.tool = Tool::AddSplitLine(Some(p)),
             (Some(a), Some(floor))
                 if a.dist(p) > TOL && self.run("add_split_line", json!({"id": floor, "a": point(a), "b": point(p)})).is_some() =>

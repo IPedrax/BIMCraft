@@ -50,3 +50,6 @@ edit_shape {"id": 100341, "points": [{"at": [35000,3000], "z": -30}], "lines": [
 type {"category": "floor", "name": "Terrace", "layers": [{"function": "finish", "thickness": 10}, {"function": "substrate", "thickness": 60, "variable": true}, {"function": "structure", "thickness": 200}]}
 floor {"boundary": [[40000,0],[48000,0],[48000,6000],[40000,6000]], "type": "Terrace"}
 edit_shape {"id": 100342, "points": [{"at": [44000,3000], "z": -30}]}
+# A shaped flat roof (MOD-16, phase 4): two drains 40 mm down; each plane a slab, its underside following.
+roof {"level": 100001, "slope": 0, "boundary": [[50000,0],[58000,0],[58000,6000],[50000,6000]]}
+edit_shape {"id": 100343, "points": [{"at": [52000,3000], "z": -40}, {"at": [56000,3000], "z": -40}]}

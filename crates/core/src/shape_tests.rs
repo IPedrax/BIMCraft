@@ -559,3 +559,94 @@ fn in_3d_a_click_lands_on_the_shaped_top_and_picks_points_corners_and_edges() {
     let hit = on_floor_top(&s.model, fl, &eye, (x, y)).unwrap();
     assert!(hit.dist(P2(2000.0, 3000.0)) < 0.5, "{hit:?}");
 }
+
+/// A flat roof by footprint over Level 2, 8 by 6 m.
+fn flat_roof(s: &mut Session) -> u64 {
+    run(s, "roof", json!({"level": 100001, "slope": 0, "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}))["id"].as_u64().unwrap()
+}
+
+#[test]
+fn a_flat_roof_takes_a_shape_its_underside_and_the_walls_under_it_following() {
+    let mut s = Session::new();
+    let roof = flat_roof(&mut s);
+    let flat = top(&s, roof, 4000.0, 3000.0);
+    let Some(crate::model::Element::Roof(r)) = s.model.elements.get(roof).cloned() else { panic!("no roof") };
+    let thick = s.model.roof_rise(&r, &crate::walls::Plane::flat(0.0));
+    assert!(thick > 0.0 && (flat - (3000.0 + thick)).abs() < 1e-6, "{flat} {thick}");
+    // Four drains 40 mm down.
+    let drains = [[2000, 1500], [6000, 1500], [2000, 4500], [6000, 4500]];
+    let points: Vec<Value> = drains.iter().map(|at| json!({"at": at, "z": -40})).collect();
+    let reply = run(&mut s, "edit_shape", json!({"id": roof, "points": points}));
+    assert!(reply["faces"].as_u64().unwrap() > 4, "{reply}");
+    assert_eq!(reply["top"], json!([flat - 40.0, flat]), "{reply}");
+    for [x, y] in drains {
+        assert!((top(&s, roof, f64::from(x), f64::from(y)) - (flat - 40.0)).abs() < 1e-6);
+    }
+    assert!((top(&s, roof, 0.0, 0.0) - flat).abs() < 1e-6, "its corners stay");
+    // Its underside follows its top, plumb: every piece as thick as its type.
+    let Some(crate::model::Element::Roof(r)) = s.model.elements.get(roof).cloned() else { panic!("no roof") };
+    let slabs = s.model.roof_slabs(&r);
+    assert!(slabs.len() > 4 && slabs.iter().all(|(_, rise)| (rise - thick).abs() < 1e-9), "{slabs:?}");
+    // A wall through two drains, attached to it, reaches its underside there.
+    let wall = run(&mut s, "wall", json!({"points": [[0, 1500], [8000, 1500]]}))["ids"][0].as_u64().unwrap();
+    run(&mut s, "modify", json!({"id": wall, "attach_top": roof}));
+    assert!((top(&s, wall, 2000.0, 1500.0) - 2960.0).abs() < 1.0, "{}", top(&s, wall, 2000.0, 1500.0));
+    assert!((top(&s, wall, 0.0, 1500.0) - 3000.0).abs() < 1.0, "{}", top(&s, wall, 0.0, 1500.0));
+    // It moves with its roof, and resets.
+    run(&mut s, "move", json!({"ids": [roof], "by": [1000, 0]}));
+    let shape = run(&mut s, "edit_shape", json!({"id": roof}));
+    assert_eq!(shape["points"][0]["at"], json!([3000.0, 1500.0]), "{shape}");
+    run(&mut s, "reset_shape", json!({"id": roof}));
+    assert!((top(&s, roof, 3000.0, 1500.0) - flat).abs() < 1e-6);
+}
+
+#[test]
+fn only_a_flat_roof_by_footprint_takes_a_shape_and_a_shaped_one_keeps_flat() {
+    let mut s = Session::new();
+    let pitched =
+        run(&mut s, "roof", json!({"level": 100001, "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}))["id"].as_u64().unwrap();
+    let e = fails(&mut s, "edit_shape", json!({"id": pitched, "points": [{"at": [4000, 3000], "z": -40}]}));
+    assert!(e.contains("flat"), "{e}");
+    let e = fails(&mut s, "add_point", json!({"id": pitched, "at": [4000, 3000], "z": -40}));
+    assert!(e.contains("flat"), "{e}");
+    let profile = json!({"line": [[0, 0], [8000, 0]], "profile": [[0, 0], [4000, 0]], "to": 6000});
+    let extruded = run(&mut s, "roof", json!({"level": 100001, "extrusion": profile}))["id"].as_u64().unwrap();
+    let e = fails(&mut s, "add_point", json!({"id": extruded, "at": [2000, 3000], "z": -40}));
+    assert!(e.contains("footprint"), "{e}");
+    let roof = flat_roof(&mut s);
+    run(&mut s, "add_point", json!({"id": roof, "at": [4000, 3000], "z": -40}));
+    let e = fails(&mut s, "modify", json!({"id": roof, "slope": 20}));
+    assert!(e.contains("reset_shape"), "{e}");
+    // Other elements still say what has a shape.
+    let wall = run(&mut s, "wall", json!({"points": [[0, 0], [1000, 0]]}))["ids"][0].as_u64().unwrap();
+    let e = fails(&mut s, "add_point", json!({"id": wall, "at": [500, 0]}));
+    assert!(e.contains("floors and flat roofs"), "{e}");
+}
+
+#[test]
+fn a_shaped_roof_draws_its_creases_snaps_to_its_points_and_keeps_them_through_a_new_outline() {
+    use crate::snap::{Kind, Reach, Snaps, snap};
+    let mut s = Session::new();
+    let roof = flat_roof(&mut s);
+    let ink = |s: &Session| {
+        let d = crate::render::plan(&s.model, 100_001u64, 800, 600);
+        let pm = tiny_skia::Pixmap::decode_png(&crate::render::png(&d).unwrap()).unwrap();
+        pm.pixels().iter().map(|p| p.demultiply()).filter(|p| p.alpha() > 0 && p.red() < 160 && p.green() < 160).count()
+    };
+    let flat = ink(&s);
+    run(&mut s, "edit_shape", json!({"id": roof, "points": [{"at": [3000, 2500], "z": -40}, {"at": [7000, 5000], "z": -20}]}));
+    let shaped = ink(&s);
+    assert!(shaped > flat + 200, "flat {flat} pixels, shaped {shaped}");
+    let found = snap(&s.model, 100_001, P2(3040.0, 2470.0), Reach { point: 100.0, line: 100.0 }, &[], false, &Snaps::default());
+    assert_eq!((found.kind, found.at), (Kind::Endpoint, P2(3000.0, 2500.0)), "{found:?}");
+    // A 6 m square: the drain stays, the far point goes.
+    let square = json!([[[0, 0], [6000, 0]], [[6000, 0], [6000, 6000]], [[6000, 6000], [0, 6000]], [[0, 6000], [0, 0]]]);
+    let r = run(&mut s, "edit_boundary", json!({"id": roof, "sketch": square}));
+    assert_eq!(r["dropped"]["points"], json!([[7000.0, 5000.0]]), "{r}");
+    let now = run(&mut s, "edit_shape", json!({"id": roof}));
+    assert_eq!(now["points"].as_array().map(Vec::len), Some(1), "{now}");
+    // A mirror image keeps its heights.
+    run(&mut s, "mirror", json!({"ids": [roof], "axis": [[3000, 0], [3000, 6000]]}));
+    let now = run(&mut s, "edit_shape", json!({"id": roof}));
+    assert_eq!((now["points"][0]["at"].clone(), now["points"][0]["z"].clone()), (json!([3000.0, 2500.0]), json!(-40.0)), "{now}");
+}

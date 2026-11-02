@@ -1767,6 +1767,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
                     openings: rd.openings,
                     join: None,
                     extrusion: rd.extrusion,
+                    shape: Default::default(),
                 };
                 match m.roof_faces(&roof) {
                     Ok(_) => {

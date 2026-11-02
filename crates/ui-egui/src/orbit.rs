@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use bimcraft_core::geom::{self, P2};
 use bimcraft_core::graphics::{Look, VisualStyle};
-use bimcraft_core::model::{Element, Id, Model, TOL};
+use bimcraft_core::model::{Id, Model, TOL};
 use bimcraft_core::render::{self, Rgb};
 use bimcraft_core::view3d::gpu::{Hit, Mesh};
 use bimcraft_core::view3d::{
@@ -191,10 +191,7 @@ impl BimApp {
         let (paint, unpaint) = (self.tool == Tool::Paint, self.tool == Tool::Unpaint);
         // The floor being shaped, with Shape Editing's tools: its points and corners where its top is, which Modify Sub
         // Elements' grips drag up or down; Add Point and Add Split Line click on its top.
-        let shaping = self.shaping().and_then(|id| match model.elements.get(id) {
-            Some(Element::Floor(f)) => Some(f.clone()),
-            _ => None,
-        });
+        let shaping = self.shaping().and_then(|id| model.shapeable(id).ok());
         let lifting = shaping.is_some() && self.tool == Tool::ModifySubElements;
         let split_start = match self.tool {
             Tool::AddSplitLine(start) => start,

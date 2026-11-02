@@ -108,3 +108,37 @@ fn in_3d_a_click_sets_what_it_picks_to_the_elevation_and_adds_points_and_split_l
     click_at(&mut h, corner);
     assert!(h.state().status.error && h.state().status.text.contains("floor's top"), "{}", h.state().status.text);
 }
+
+#[test]
+fn a_flat_roof_by_footprint_is_shaped_as_a_floor_is_and_a_pitched_one_isnt() {
+    let mut h = app(r#"roof {"level": 100001, "slope": 0, "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}
+roof {"level": 100001, "boundary": [[10000, 0], [18000, 0], [18000, 6000], [10000, 6000]]}"#);
+    let roofs = ids(&h, "roof");
+    topmost(&mut h, "Level 2");
+    // The pitched one: Gable Edge, but no shape.
+    click(&mut h, P2(18000.0, 3000.0));
+    assert_eq!(h.state().selection, [roofs[1]]);
+    assert!(h.query_by_label("Gable Edge").is_some() && h.query_by_label("Add Point").is_none());
+    // The flat one: Add Point on its top, 40 mm down.
+    click(&mut h, P2(8000.0, 3000.0));
+    assert_eq!(h.state().selection, [roofs[0]]);
+    assert!(h.query_by_label("Gable Edge").is_some());
+    press(&mut h, "Add Point");
+    type_into(&mut h, "Elevation:", "-40");
+    click(&mut h, P2(4000.0, 3000.0));
+    assert_eq!(field(&h, roofs[0], "shape")["points"][0]["z"], json!(-40.0), "{}", field(&h, roofs[0], "shape"));
+    assert!(painted(&h).iter().any(|t| t == "-40"), "{:?}", painted(&h));
+    // In 3D its point's grip drags it, as a floor's.
+    press(&mut h, "Default 3D View");
+    press(&mut h, "Modify Sub Elements");
+    let top = |h: &Harness<BimApp>, x: f64, y: f64| {
+        let m = &h.state().session.model;
+        let f = m.shapeable(roofs[0]).expect("a flat roof");
+        m.floor_top(&f).at(P2(x, y)) + m.shape_height(&f, P2(x, y))
+    };
+    let at = top(&h, 4000.0, 3000.0);
+    let (a, b) = (h.state().screen3([4000.0, 3000.0, at]), h.state().screen3([4000.0, 3000.0, at + 20.0]));
+    drag_screen(&mut h, a, b, PointerButton::Primary);
+    let z = field(&h, roofs[0], "shape")["points"][0]["z"].as_f64().unwrap();
+    assert!((z + 20.0).abs() <= 2.0, "{z}");
+}

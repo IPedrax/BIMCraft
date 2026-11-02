@@ -331,6 +331,9 @@ impl<'a> Scene<'a> {
                 Element::Roof(r) if r.level == level || Some(r.level) == above => {
                     s.points.extend(ring(&r.boundary));
                     r.courtyards.iter().chain(&r.openings).for_each(|o| s.points.extend(ring(o)));
+                    // A flat one's shape points, and its split lines to run along, as a floor's.
+                    s.points.extend(r.shape.points.iter().map(|x| (x.at, Kind::Endpoint)));
+                    s.lines.extend(r.shape.lines.iter().map(|l| (l.a, l.b)));
                 }
                 Element::Shaft(sh) if sh.level == level => s.points.extend(ring(&sh.boundary)),
                 Element::Mass(ms) if m.mass_cut_by(ms, cut) => s.points.extend(ring(&m.mass_outline(ms, cut))),

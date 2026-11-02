@@ -2135,8 +2135,8 @@ impl BimApp {
             self.status = Status { text: t("select the floor to slope first").into(), error: true };
             return;
         }
-        if matches!(tool, Tool::ModifySubElements | Tool::AddPoint | Tool::AddSplitLine(_)) && self.selected_floor().is_none() {
-            self.status = Status { text: t("select the floor to shape first").into(), error: true };
+        if matches!(tool, Tool::ModifySubElements | Tool::AddPoint | Tool::AddSplitLine(_)) && self.selected_shapeable().is_none() {
+            self.status = Status { text: t("select the floor or flat roof to shape first").into(), error: true };
             return;
         }
         if let Tool::Rotate { centre, .. } = &mut tool
@@ -2184,6 +2184,46 @@ impl BimApp {
     pub(crate) fn selected_roof(&self) -> Option<Id> {
         match self.selection.as_slice() {
             &[id] if matches!(self.session.model.elements.get(id), Some(Element::Roof(_))) => Some(id),
+            _ => None,
+        }
+    }
+
+    /// Shape Editing's own tools for floor or flat roof `id`: small, two by two as the Modify panel's are, so the panels
+    /// after them keep their room.
+    fn shape_tools(&mut self, ui: &mut egui::Ui, id: Id) {
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = 2.0;
+            ui.horizontal(|ui| {
+                let tip =
+                    msg!("Modify Sub Elements: click a point, a corner or an edge of the top to set it to the Options Bar's elevation");
+                let active = self.tool == Tool::ModifySubElements;
+                if small_button(ui, Icon::ModifySubElements, "Modify Sub Elements", active, tip).clicked() {
+                    self.set_tool(Tool::ModifySubElements);
+                }
+                let tip = msg!("Add Point: click on the top to raise or lower it there to the Options Bar's elevation");
+                if small_button(ui, Icon::AddPoint, "Add Point", self.tool == Tool::AddPoint, tip).clicked() {
+                    self.set_tool(Tool::AddPoint);
+                }
+            });
+            ui.horizontal(|ui| {
+                let tip = msg!("Add Split Line: click two points; the top folds along the line between them");
+                let active = matches!(self.tool, Tool::AddSplitLine(_));
+                if small_button(ui, Icon::AddSplitLine, "Add Split Line", active, tip).clicked() {
+                    self.set_tool(Tool::AddSplitLine(None));
+                }
+                let tip = msg!("Reset Shape: take the points and split lines off, the top flat again");
+                if small_button(ui, Icon::ResetShape, "Reset Shape", false, tip).clicked() {
+                    self.run("reset_shape", serde_json::json!({"id": id}));
+                    self.tool = Tool::Modify;
+                }
+            });
+        });
+    }
+
+    /// What Shape Editing works on, when it's all that's selected: a floor, or a flat roof by footprint.
+    pub(crate) fn selected_shapeable(&self) -> Option<Id> {
+        match self.selection.as_slice() {
+            &[id] if self.session.model.shapeable(id).is_ok() => Some(id),
             _ => None,
         }
     }
@@ -3811,12 +3851,18 @@ impl BimApp {
                 }
             });
         }
-        // A roof selected: which of its edges stand upright.
-        if self.selected_roof().is_some() && matches!(self.tool, Tool::Modify | Tool::GableEdge) {
+        // A roof selected: which of its edges stand upright; a flat one's shape too.
+        let shaping = matches!(self.tool, Tool::ModifySubElements | Tool::AddPoint | Tool::AddSplitLine(_));
+        if let Some(roof) = self.selected_roof()
+            && (matches!(self.tool, Tool::Modify | Tool::GableEdge) || shaping)
+        {
             panel(ui, msg!("Shape Editing"), |ui| {
                 let tip = msg!("Gable Edge: click an edge of a roof's footprint to stand it upright, a gable end; click again to slope it");
                 if big_button(ui, Icon::GableEdge, "Gable Edge", self.tool == Tool::GableEdge, tip).clicked() {
                     self.set_tool(Tool::GableEdge);
+                }
+                if self.selected_shapeable().is_some() {
+                    self.shape_tools(ui, roof);
                 }
             });
         }
@@ -3829,35 +3875,7 @@ impl BimApp {
                 if big_button(ui, Icon::SlopeArrow, "Slope Arrow", matches!(self.tool, Tool::SlopeArrow(_)), tip).clicked() {
                     self.set_tool(Tool::SlopeArrow(None));
                 }
-                // The shape's own tools small, two by two as the Modify panel's are, so the panels after it keep their room.
-                ui.vertical(|ui| {
-                    ui.spacing_mut().item_spacing.y = 2.0;
-                    ui.horizontal(|ui| {
-                        let tip = msg!(
-                            "Modify Sub Elements: click a point, a corner or an edge of the floor to set it to the Options Bar's elevation"
-                        );
-                        let active = self.tool == Tool::ModifySubElements;
-                        if small_button(ui, Icon::ModifySubElements, "Modify Sub Elements", active, tip).clicked() {
-                            self.set_tool(Tool::ModifySubElements);
-                        }
-                        let tip = msg!("Add Point: click on the floor's top to raise or lower it there to the Options Bar's elevation");
-                        if small_button(ui, Icon::AddPoint, "Add Point", self.tool == Tool::AddPoint, tip).clicked() {
-                            self.set_tool(Tool::AddPoint);
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        let tip = msg!("Add Split Line: click two points; the floor's top folds along the line between them");
-                        let active = matches!(self.tool, Tool::AddSplitLine(_));
-                        if small_button(ui, Icon::AddSplitLine, "Add Split Line", active, tip).clicked() {
-                            self.set_tool(Tool::AddSplitLine(None));
-                        }
-                        let tip = msg!("Reset Shape: take the floor's points and split lines off, its top flat again");
-                        if small_button(ui, Icon::ResetShape, "Reset Shape", false, tip).clicked() {
-                            self.run("reset_shape", serde_json::json!({"id": floor}));
-                            self.tool = Tool::Modify;
-                        }
-                    });
-                });
+                self.shape_tools(ui, floor);
             });
         }
         panel(ui, "Modify", |ui| {
@@ -4315,12 +4333,12 @@ impl BimApp {
             Tool::SlopeArrow(Some(_)) => msg!("Click its head: the floor rises toward it at the Options Bar's slope. Esc cancels."),
             Tool::ModifySubElements => {
                 msg!(
-                    "Click a point, a corner or an edge of the floor: it goes to the Options Bar's elevation; drag a point's grip to move it."
+                    "Click a point, a corner or an edge of the top: it goes to the Options Bar's elevation; drag a point's grip to move it."
                 )
             }
-            Tool::AddPoint => msg!("Click on the floor's top: a point there at the Options Bar's elevation, or the top's height if none."),
-            Tool::AddSplitLine(None) => msg!("Click where the split line starts: a point, a corner or an edge of the floor."),
-            Tool::AddSplitLine(Some(_)) => msg!("Click where it ends: the floor's top folds along it. Esc cancels."),
+            Tool::AddPoint => msg!("Click on the top: a point there at the Options Bar's elevation, or the top's height if none."),
+            Tool::AddSplitLine(None) => msg!("Click where the split line starts: a point, a corner or an edge of the top."),
+            Tool::AddSplitLine(Some(_)) => msg!("Click where it ends: the top folds along it. Esc cancels."),
             Tool::SketchLine(_) | Tool::SketchPick => msg!("Click where the line starts."),
         }
     }

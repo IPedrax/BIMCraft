@@ -267,12 +267,12 @@ pub static ALL: &[Command] = &[
         "edit_shape",
         "Modify Sub Elements",
         &[],
-        "{id, points?: [{at: [x,y], z, id?}, …], lines?: [{a: [x,y], b: [x,y], id?}, …], absolute?} gives a floor's top its \
-         shape anew, all at once: points `z` mm above (negative, below) where its top would be without them (with `absolute`, \
+        "{id, points?: [{at: [x,y], z, id?}, …], lines?: [{a: [x,y], b: [x,y], id?}, …], absolute?} gives a floor's top, or a \
+         flat roof's by footprint (its underside following), its shape anew, all at once: points `z` mm above (negative, below) where its top would be without them (with `absolute`, \
          at that elevation), and split lines it folds along, between which it's flat triangles, merged where neighbours lie \
          in one plane: falls to drains, ridges, valleys. Its outline's and openings' corners stay at 0 unless a point is \
          there; a line's end that is no point and no corner becomes a point at the height the top has there. Sent back with \
-         its `id`, a point or a line keeps it. A shaped floor has no slope arrow. Without `points` or `lines`, gives the \
+         its `id`, a point or a line keeps it. A shaped floor has no slope arrow, a shaped roof no `slope`. Without `points` or `lines`, gives the \
          shape: its points and lines with their ids, its corners at their heights, how many planes (`faces`) and its top's \
          lowest and highest (`top`, mm above zero)",
         edit_shape,
@@ -281,7 +281,7 @@ pub static ALL: &[Command] = &[
         "add_point",
         "Add Point",
         &[],
-        "{id, at: [x,y], z?, absolute?} a point on a floor's top, `z` mm above where it would be without its shape (with \
+        "{id, at: [x,y], z?, absolute?} a point on a floor's or flat roof's top, `z` mm above where it would be without its shape (with \
          `absolute`, at that elevation); with no `z`, at the height the top has there now. Within a millimetre of a point it \
          has, sets that one's height",
         add_point,
@@ -290,7 +290,7 @@ pub static ALL: &[Command] = &[
         "add_split_line",
         "Add Split Line",
         &[],
-        "{id, a: [x,y], b: [x,y]} a line a floor's top folds along; an end that is no point of its shape and no corner of its \
+        "{id, a: [x,y], b: [x,y]} a line a floor's or flat roof's top folds along; an end that is no point of its shape and no corner of its \
          outline or an opening becomes a point, at the height the top has there now",
         add_split_line,
     ),
@@ -298,7 +298,7 @@ pub static ALL: &[Command] = &[
         "reset_shape",
         "Reset Shape",
         &[],
-        "{id} takes a floor's points and split lines all off: it's flat at its offset again",
+        "{id} takes a floor's or roof's points and split lines all off: it's flat at its offset again",
         reset_shape,
     ),
     edit(
@@ -6539,6 +6539,7 @@ fn roof(s: &mut Session, p: &Value) -> R {
         join: id_opt(c, p, "join")?,
         extrusion,
         sketch,
+        shape: Default::default(),
     };
     let id = s.model_mut().insert(Element::Roof(r));
     Ok(json!({"id": id}))
@@ -6607,6 +6608,7 @@ fn dormer(s: &mut Session, p: &Value) -> R {
         join: Some(host),
         extrusion: None,
         sketch: Vec::new(),
+        shape: Default::default(),
     }));
     let roof_guid = model.guid(roof);
     let wall = |start: P2, end: P2| {
@@ -6782,6 +6784,9 @@ fn edit_boundary(s: &mut Session, p: &Value) -> R {
         Element::Shaft(sh) => Element::Shaft(Shaft { boundary: r.outer, sketch: lines, ..sh }),
         Element::Roof(old) => {
             let mut new = Roof { boundary: r.outer, courtyards: r.holes, gables: Vec::new(), sketch: lines, ..old.clone() };
+            // A flat one's shape keeps what stays on its top, as a floor's does.
+            let holes: Vec<Vec<P2>> = new.courtyards.iter().chain(&new.openings).cloned().collect();
+            (new.shape, dropped) = shape_within(&old.shape, &new.boundary, &holes);
             // A gable stays where its edge does, either way round.
             let same =
                 |(a, b): (P2, P2), (c, d): (P2, P2)| (a.dist(c) <= TOL && b.dist(d) <= TOL) || (a.dist(d) <= TOL && b.dist(c) <= TOL);
@@ -6847,17 +6852,22 @@ struct LineIn {
     b: P2,
 }
 
-/// The floor `id` names, by its id, with params that are only `keys`.
+/// The floor or flat roof `id` names, by its id, with params that are only `keys`: as shape editing sees it
+/// (`Model::shapeable`), a roof's top as a floor's.
 fn shaped_floor(c: &str, s: &Session, p: &Value, keys: &[&str]) -> Result<(Id, Floor), String> {
     if let Some(key) = p.as_object().and_then(|o| o.keys().find(|k| !keys.contains(&k.as_str()))) {
         return Err(bad(c, format!("unknown parameter `{key}`")));
     }
     let m = &s.model;
-    let key = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, the floor to shape, is required"))?;
-    match (m.elements.id(key), m.elements.get(key)) {
-        (Some(id), Some(Element::Floor(f))) => Ok((id, f.clone())),
-        (Some(id), Some(_)) => Err(bad(c, format!("{id} isn't a floor: only floors have shapes"))),
-        _ => Err(bad(c, format!("no element {key}"))),
+    let key = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, the floor or flat roof to shape, is required"))?;
+    let id = m.elements.id(key).ok_or_else(|| bad(c, format!("no element {key}")))?;
+    m.shapeable(id).map(|f| (id, f)).map_err(|e| bad(c, format!("{id}: {e}")))
+}
+
+/// Element `id`'s shape given anew: a floor's or a roof's.
+fn put_shape(s: &mut Session, id: Id, shape: crate::model::Shape) {
+    if let Some(sh) = s.model_mut().elements.get_mut(id).and_then(Element::shape_mut) {
+        *sh = shape;
     }
 }
 
@@ -6936,7 +6946,7 @@ fn edit_shape(s: &mut Session, p: &Value) -> R {
     loose_ends(m, &f, &mut points, &lines);
     let f = Floor { shape: crate::model::Shape { points, lines }, ..f };
     let reply = json!({"id": id, "faces": shape_faces(m, &f), "top": top_range(m, &f)});
-    s.model_mut().elements.insert(id, Element::Floor(f));
+    put_shape(s, id, f.shape);
     Ok(reply)
 }
 
@@ -6957,7 +6967,7 @@ fn add_point(s: &mut Session, p: &Value) -> R {
         None => f.shape.points.push(crate::model::ShapePoint { at, z, ..Default::default() }),
     }
     let reply = json!({"id": id, "faces": shape_faces(m, &f), "top": top_range(m, &f)});
-    s.model_mut().elements.insert(id, Element::Floor(f));
+    put_shape(s, id, f.shape);
     Ok(reply)
 }
 
@@ -6973,7 +6983,7 @@ fn add_split_line(s: &mut Session, p: &Value) -> R {
     f.shape.points = points;
     f.shape.lines.push(line);
     let reply = json!({"id": id, "faces": shape_faces(m, &f), "top": top_range(m, &f)});
-    s.model_mut().elements.insert(id, Element::Floor(f));
+    put_shape(s, id, f.shape);
     Ok(reply)
 }
 
@@ -6982,7 +6992,7 @@ fn reset_shape(s: &mut Session, p: &Value) -> R {
     let c = "reset_shape";
     let (id, mut f) = shaped_floor(c, s, p, &["id"])?;
     f.shape = Default::default();
-    s.model_mut().elements.insert(id, Element::Floor(f));
+    put_shape(s, id, f.shape);
     Ok(json!({"id": id}))
 }
 
@@ -8448,6 +8458,9 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         // Its edges keep their numbers, its gables with them; a mirror image sweeps the other way.
         Element::Roof(r) => {
             r.boundary.iter_mut().chain(r.courtyards.iter_mut().flatten()).chain(r.openings.iter_mut().flatten()).for_each(|q| *q = f(*q));
+            // A flat one's shape goes with it, each point at its height.
+            r.shape.points.iter_mut().for_each(|x| x.at = f(x.at));
+            r.shape.lines.iter_mut().for_each(|l| (l.a, l.b) = (f(l.a), f(l.b)));
             if let Some(x) = &mut r.extrusion {
                 x.line = x.line.map(&f);
                 if mo.mirror {

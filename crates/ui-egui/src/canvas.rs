@@ -3482,8 +3482,8 @@ impl BimApp {
         view: &bimcraft_core::render::View,
         level: Id,
     ) -> bool {
-        let floor = self.selected_floor().filter(|_| self.tool == Tool::ModifySubElements);
-        let Some(Element::Floor(f)) = floor.and_then(|id| self.session.model.elements.get(id)).cloned() else {
+        let floor = self.selected_shapeable().filter(|_| self.tool == Tool::ModifySubElements);
+        let Some(f) = floor.and_then(|id| self.session.model.shapeable(id).ok()) else {
             if self.shape_grip.take().is_some() {
                 self.shape_preview = None;
             }
@@ -3522,7 +3522,8 @@ impl BimApp {
     /// While a floor is shaped, each of its points' heights beside it, as the Options Bar's Elevation reads them (relative,
     /// or with Absolute above the level); under Modify Sub Elements, a grip on each, the one held at the cursor.
     pub(crate) fn shape_overlay(&self, ui: &Ui, m: &Model, view: &bimcraft_core::render::View, rect: Rect, level: Id) {
-        let Some(Element::Floor(f)) = self.shaping().and_then(|id| m.elements.get(id)) else { return };
+        let Some(f) = self.shaping().and_then(|id| m.shapeable(id).ok()) else { return };
+        let f = &f;
         let p = ui.painter_at(rect);
         let at = |q: P2| {
             let (x, y) = view.px(q);
