@@ -23,6 +23,7 @@ pub mod conduit;
 mod constraints;
 mod csg;
 pub mod curves;
+pub mod demand;
 pub mod dims;
 pub mod drainage;
 pub mod draw;

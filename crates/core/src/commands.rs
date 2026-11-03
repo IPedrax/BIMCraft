@@ -1702,6 +1702,29 @@ pub static ALL: &[Command] = &[
         load_points,
     ),
     other(
+        "demand",
+        "Demand and Service Category",
+        "{utility: CPFL, building?: residential|other, system?: 127/220|220/380, area?, outlets?, lighting_points?, \
+         lighting_outlets?: {use, kw, pf?}, heaters?, boilers?, appliances?, stoves?: [{w, count?}], air_conditioners?: [{btu | va and w, \
+         count?}], air_use?: residential|commercial, motors?: [{cv, phases: 1|3 | kva and kw, count?}], special?: [{kind: arc_weld|\
+         resistance_weld|xray, kw, count?}], hydromassage?: [{w, count?}]} the demand D (kVA) of an installation and the category of \
+         service it asks of the `utility`, by that utility's own standard, since NBR 5410 gives no demand factors. `utility` is \
+         required and is CPFL only (GED 13 version 2.24, 18/09/2020: CPFL Paulista, Piratininga, Santa Cruz and RGE); any other is \
+         refused until its tables are added. `D = a + b + c + d + e + f + g + h + i`: a lighting and outlets (in a dwelling, `area` m² \
+         gives the least outlets of Tabela 2, or `outlets` above 250 m² (100 W each, and the kitchen's 3 of 600 W), and `lighting_points` of \
+         100 W; in another building `lighting_outlets` declares its `use` (auditorium, shop, barbershop, club, school, office, garage, hospital, \
+         hotel, church, industry, restaurant), kW and power factor, by Tabela 18), b `heaters` (showers, taps, instant heaters, irons: Tabela 4 \
+         by their number in all), c `boilers` (Tabela 5), d `appliances` (dryers, ovens, dishwashers, microwaves: Tabela 6), e `stoves` \
+         (Tabela 7), f `air_conditioners` (a `btu` of Tabela 8, or `va` and `w`; a factor of 1, or Tabela 9 for `air_use` commercial), g \
+         `motors` (a `cv` of Tabela 14 or 15 with its `phases`, or `kva` and `kw`; Tabela 10 by rank, the biggest first), h `special` \
+         equipment (Tabela 11, power factor 0.75), i `hydromassage` (Tabela 10). `w` is the power of one appliance in watts. It replies the \
+         installed load (kW), each term, D, and the `category` of Tabela 1A (`system` 127/220, the default) or 1B (220/380) with its breaker, \
+         cable, conduit and earthing conductor: by the installed load up to 25 kW, by D above, `null` where the table ends (75 kW; D of 76 \
+         or 82 kVA). Not covered: the other columns of Tabela 1, the cables of Tabelas 1D and 1E, and the starting of motors (Tabela 13) \
+         (`not_covered`). It has no shortcut: Revit has no tool for it. It changes nothing",
+        demand,
+    ),
+    other(
         "water_size",
         "Size Cold Water Pipes",
         "{fixtures?: {wc, lav, sink, shower, laundry: count}, flow?, method?: weights|sum, dn?, length?, fittings?: {elbow90, elbow45, \
@@ -4504,6 +4527,227 @@ fn vent_size(_: &mut Session, p: &Value) -> R {
         out.insert("trap_to_vent_mm".into(), json!(mm));
     }
     Ok(Value::Object(out))
+}
+
+fn demand(_: &mut Session, p: &Value) -> R {
+    use crate::demand::{self as d, Air, Load, Motor, OtherUse, SPECIAL_KINDS, Special, SpecialKind, System, USES};
+    let c = "demand";
+    if !p.is_object() {
+        return Err(bad(c, "params must be an object"));
+    }
+    only(
+        c,
+        p,
+        &[
+            "utility",
+            "building",
+            "system",
+            "area",
+            "outlets",
+            "lighting_points",
+            "lighting_outlets",
+            "heaters",
+            "boilers",
+            "appliances",
+            "stoves",
+            "air_conditioners",
+            "air_use",
+            "motors",
+            "special",
+            "hydromassage",
+        ],
+    )?;
+    let utility = string(c, p, "utility")?.ok_or_else(|| bad(c, format!("`utility` is required: {}", d::UTILITIES.join(", "))))?;
+    let Some(source) = d::source(&utility) else {
+        return Err(bad(
+            c,
+            format!(
+                "there are no tables for `{utility}` yet, only {}: they are the utility's own, and are added from its standard",
+                d::UTILITIES.join(", ")
+            ),
+        ));
+    };
+    let residential = choice(c, p, "building", &["residential", "other"], "residential")? == "residential";
+    let system = System::parse(choice(c, p, "system", &["127/220", "220/380"], "127/220")?).unwrap_or(System::S127_220);
+    let area = match p.get("area").filter(|v| !v.is_null()) {
+        None => None,
+        Some(_) => Some(within(c, p, "area", 0.0, 0.0, 1.0e6)?),
+    };
+    let count = |v: &Value, key: &str, hi: f64| -> Result<u32, String> {
+        match v.get(key).filter(|x| !x.is_null()) {
+            None => Ok(1),
+            Some(x) => x
+                .as_u64()
+                .filter(|n| (*n as f64) <= hi)
+                .map(|n| n as u32)
+                .ok_or_else(|| bad(c, format!("`{key}` must be a whole number up to {hi}, got {x}"))),
+        }
+    };
+    let whole = |key: &str, default: u32| -> Result<u32, String> {
+        match p.get(key).filter(|v| !v.is_null()) {
+            None => Ok(default),
+            Some(x) => x
+                .as_u64()
+                .filter(|n| *n <= 100_000)
+                .map(|n| n as u32)
+                .ok_or_else(|| bad(c, format!("`{key}` must be a whole number up to 100000, got {x}"))),
+        }
+    };
+    let outlets = match p.get("outlets").filter(|v| !v.is_null()) {
+        None => None,
+        Some(_) => Some(whole("outlets", 0)?),
+    };
+    let lighting_points = whole("lighting_points", 0)?;
+    let list = |key: &str| -> Result<Vec<Value>, String> {
+        match p.get(key).filter(|v| !v.is_null()) {
+            None => Ok(Vec::new()),
+            Some(Value::Array(a)) if a.len() <= 1000 => Ok(a.clone()),
+            Some(v) => Err(bad(c, format!("`{key}` must be a list of at most 1000 items, got {v}"))),
+        }
+    };
+    let loads = |key: &str, field: &str| -> Result<Vec<Load>, String> {
+        list(key)?
+            .iter()
+            .map(|v| {
+                let o = v.as_object().ok_or_else(|| bad(c, format!("`{key}` holds objects, got {v}")))?;
+                if let Some(k) = o.keys().find(|k| ![field, "count"].contains(&k.as_str())) {
+                    return Err(bad(c, format!("`{key}`: unknown parameter `{k}`")));
+                }
+                Ok(Load {
+                    w: within(c, v, field, f64::NAN, 0.0, 1.0e8).map_err(|e| format!("{e} (in `{key}`)"))?,
+                    count: count(v, "count", 100_000.0)?,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .and_then(|l| {
+                if l.iter().any(|x| x.w.is_nan()) { Err(bad(c, format!("`{key}`: `{field}` (watts) is required for each"))) } else { Ok(l) }
+            })
+    };
+    let other = match p.get("lighting_outlets").filter(|v| !v.is_null()) {
+        None => None,
+        Some(v) => {
+            let o = v.as_object().ok_or_else(|| bad(c, "`lighting_outlets` is {use, kw, pf?}"))?;
+            if let Some(k) = o.keys().find(|k| !["use", "kw", "pf"].contains(&k.as_str())) {
+                return Err(bad(c, format!("`lighting_outlets`: unknown parameter `{k}`")));
+            }
+            let kind = choice(c, v, "use", USES, "")?;
+            if kind.is_empty() {
+                return Err(bad(c, format!("`lighting_outlets`: `use` is one of {}", USES.join(", "))));
+            }
+            let kw = within(c, v, "kw", f64::NAN, 0.0, 1.0e6)?;
+            if kw.is_nan() {
+                return Err(bad(c, "`lighting_outlets`: `kw` is required"));
+            }
+            Some(OtherUse { kind: kind.to_string(), kw, pf: within(c, v, "pf", 1.0, 0.1, 1.0)? })
+        }
+    };
+    let mut air = Vec::new();
+    for v in list("air_conditioners")? {
+        let o = v.as_object().ok_or_else(|| bad(c, format!("`air_conditioners` holds objects, got {v}")))?;
+        if let Some(k) = o.keys().find(|k| !["btu", "va", "w", "count"].contains(&k.as_str())) {
+            return Err(bad(c, format!("`air_conditioners`: unknown parameter `{k}`")));
+        }
+        let n = count(&v, "count", 100_000.0)?;
+        if o.get("btu").is_some_and(|x| !x.is_null()) {
+            let btu = within(c, &v, "btu", 0.0, 0.0, 1.0e6)?;
+            let (va, w) = d::window_air(btu).ok_or_else(|| {
+                bad(
+                    c,
+                    format!("`btu` {btu} is not in Tabela 8: 7100, 8500, 10000, 12000, 14000, 18000, 21000 or 30000; or give `va` and `w`"),
+                )
+            })?;
+            air.push(Air { va, w, count: n });
+        } else {
+            let (va, w) = (within(c, &v, "va", f64::NAN, 0.0, 1.0e8)?, within(c, &v, "w", f64::NAN, 0.0, 1.0e8)?);
+            if va.is_nan() || w.is_nan() {
+                return Err(bad(c, "`air_conditioners`: give `btu` (Tabela 8), or `va` and `w`"));
+            }
+            air.push(Air { va, w, count: n });
+        }
+    }
+    let mut motors = Vec::new();
+    for v in list("motors")? {
+        let o = v.as_object().ok_or_else(|| bad(c, format!("`motors` holds objects, got {v}")))?;
+        if let Some(k) = o.keys().find(|k| !["cv", "phases", "kva", "kw", "count"].contains(&k.as_str())) {
+            return Err(bad(c, format!("`motors`: unknown parameter `{k}`")));
+        }
+        let n = count(&v, "count", 100_000.0)?;
+        if o.get("cv").is_some_and(|x| !x.is_null()) {
+            let cv = within(c, &v, "cv", 0.0, 0.0, 1000.0)?;
+            let phases = match v.get("phases").and_then(Value::as_u64) {
+                Some(x @ (1 | 3)) => x as u32,
+                _ => return Err(bad(c, "`motors`: `phases` is 1 or 3 with `cv`")),
+            };
+            let (kva, kw) = d::motor(cv, phases).ok_or_else(|| {
+                bad(c, format!("no {cv} cv {}-phase motor in Tabela {}; give `kva` and `kw`", phases, if phases == 1 { 14 } else { 15 }))
+            })?;
+            motors.push(Motor { kva, kw, count: n });
+        } else {
+            let (kva, kw) = (within(c, &v, "kva", f64::NAN, 0.0, 1.0e6)?, within(c, &v, "kw", f64::NAN, 0.0, 1.0e6)?);
+            if kva.is_nan() || kw.is_nan() {
+                return Err(bad(c, "`motors`: give `cv` and `phases` (Tabela 14 or 15), or `kva` and `kw`"));
+            }
+            motors.push(Motor { kva, kw, count: n });
+        }
+    }
+    let mut special = Vec::new();
+    for v in list("special")? {
+        let o = v.as_object().ok_or_else(|| bad(c, format!("`special` holds objects, got {v}")))?;
+        if let Some(k) = o.keys().find(|k| !["kind", "kw", "count"].contains(&k.as_str())) {
+            return Err(bad(c, format!("`special`: unknown parameter `{k}`")));
+        }
+        let kind = SpecialKind::parse(choice(c, &v, "kind", SPECIAL_KINDS, "")?)
+            .ok_or_else(|| bad(c, format!("`special`: `kind` is one of {}", SPECIAL_KINDS.join(", "))))?;
+        let kw = within(c, &v, "kw", f64::NAN, 0.0, 1.0e6)?;
+        if kw.is_nan() {
+            return Err(bad(c, "`special`: `kw` is required"));
+        }
+        special.push(Special { kind, kw, count: count(&v, "count", 100_000.0)? });
+    }
+    let input = d::Input {
+        residential,
+        area,
+        outlets,
+        lighting_points,
+        other,
+        heaters: loads("heaters", "w")?,
+        boilers: loads("boilers", "w")?,
+        appliances: loads("appliances", "w")?,
+        stoves: loads("stoves", "w")?,
+        air,
+        motors,
+        special,
+        hydro: loads("hydromassage", "w")?,
+        commercial_air: choice(c, p, "air_use", &["residential", "commercial"], "residential")? == "commercial",
+    };
+    let o = d::compute(&input).map_err(|e| bad(c, e))?;
+    let r6 = |x: f64| (x * 1.0e6).round() / 1.0e6 + 0.0;
+    let cat = d::category(system, o.installed_kw, o.demand_kva);
+    let (category, note) = match cat {
+        Some(k) => (
+            json!({"name": k.name, "breaker_a": k.breaker, "cable_mm2": k.cable, "conduit_mm": k.conduit, "earthing_mm2": k.earth, "phases": k.phases}),
+            Value::Null,
+        ),
+        None if o.installed_kw > 75.0 => {
+            (Value::Null, json!("above 75 kW the utility serves at primary voltage, which this standard does not cover"))
+        }
+        None => (Value::Null, json!("the demand is above the last category of the table")),
+    };
+    let t = &o.terms;
+    Ok(json!({
+        "utility": utility,
+        "source": source,
+        "installed_kw": r6(o.installed_kw),
+        "installed_kw_rounded_up": (o.installed_kw - 1.0e-9).ceil(),
+        "lighting_outlets_w": r6(o.lighting_outlets_w),
+        "terms_kva": {"a": r6(t.a), "b": r6(t.b), "c": r6(t.c), "d": r6(t.d), "e": r6(t.e), "f": r6(t.f), "g": r6(t.g), "h": r6(t.h), "i": r6(t.i)},
+        "demand_kva": r6(o.demand_kva),
+        "demand_kva_rounded_up": (o.demand_kva - 1.0e-9).ceil(),
+        "category": category,
+        "category_note": note,
+        "system": if system == System::S127_220 { "127/220" } else { "220/380" },
+        "not_covered": "the other columns of Tabela 1 (poles, pontalete, ramal de ligação), the cables of Tabelas 1D and 1E, the starting of motors (Tabela 13) and the DPS and other requirements of the entry",
+    }))
 }
 
 fn load_points(s: &mut Session, p: &Value) -> R {

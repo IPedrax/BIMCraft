@@ -2207,7 +2207,7 @@ msgstr "Abbrechen (DW): ein Element anklicken, um es in der Phase der Ansicht ab
 msgid "Demolished"
 msgstr "Abgebrochen"
 
-#: crates/core/src/commands.rs:7872
+#: crates/core/src/commands.rs:8116
 msgid "Dependent"
 msgstr "Abhängig"
 
@@ -2684,7 +2684,7 @@ msgstr ""
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr ""
 
-#: crates/core/src/commands.rs:1775
+#: crates/core/src/commands.rs:1798
 msgid "Elements"
 msgstr "Elemente"
 
@@ -7916,7 +7916,7 @@ msgstr "Einheiten"
 msgid "Units Format"
 msgstr "Einheitenformat"
 
-#: crates/core/src/commands.rs:8013
+#: crates/core/src/commands.rs:8257
 msgid "Unnamed"
 msgstr "Unbenannt"
 

@@ -2208,7 +2208,7 @@ msgstr "拆除 (DW)：單擊圖元，在視圖階段中將其拆除；再次單�
 msgid "Demolished"
 msgstr "已拆除"
 
-#: crates/core/src/commands.rs:7872
+#: crates/core/src/commands.rs:8116
 msgid "Dependent"
 msgstr "相關"
 
@@ -2685,7 +2685,7 @@ msgstr ""
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr ""
 
-#: crates/core/src/commands.rs:1775
+#: crates/core/src/commands.rs:1798
 msgid "Elements"
 msgstr "圖元"
 
@@ -7917,7 +7917,7 @@ msgstr "單位"
 msgid "Units Format"
 msgstr "單位格式"
 
-#: crates/core/src/commands.rs:8013
+#: crates/core/src/commands.rs:8257
 msgid "Unnamed"
 msgstr "未命名"
 

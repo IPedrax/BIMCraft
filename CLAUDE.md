@@ -117,6 +117,7 @@ One line per module: what it owns. Read the module's file and, for the areas it 
 - `symbol_set.rs`: symbol sets, families of plan symbols loaded on demand by the `symbol_set` command (the AREI/RGIE's, `data/arei-symbols.json`; [families](docs/areas/families.md)).
 - `hydrant.rs`: the `hydrant_size` command, hydrants and hose reels by IT 22/2025 (Tabelas 1 to 3, Hazen-Williams).
 - `loads.rs`: the `load_points` command, a dwelling's lighting and outlets by room by NBR 5410 item 9.5.2.
+- `demand.rs`: the `demand` command, an installation's demand and service category by a utility's own standard (CPFL's GED 13).
 - `water.rs`: the `water_size` command, cold water by NBR 5626 (design flow, speed, head loss, pressure).
 - `storm.rs`: the `storm_size` command, storm drains by NBR 10844 (Manning, the downpipe abacuses).
 - `drainage.rs`: the `drain_size` and `vent_size` commands, sanitary drains and vents by NBR 8160's tables.
