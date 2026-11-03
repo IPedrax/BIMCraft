@@ -169,7 +169,7 @@ fn a_shape_is_kept_in_the_file_and_goes_to_ifc_as_its_planes() {
     let path = dir.path().join("shaped.bimcraft");
     run(&mut s, "save", json!({"path": path}));
     let file: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-    assert_eq!(file["format"], 12);
+    assert_eq!(file["format"], 13);
     let mut t = Session::new();
     run(&mut t, "open", json!({"path": path}));
     assert_eq!(shape(&mut t, f), shape(&mut s, f));

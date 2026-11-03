@@ -92,6 +92,8 @@ pub struct Settings {
     pub window: Window,
     /// What High Contrast Point Clouds fills a view's scans with.
     pub high_contrast: [u8; 3],
+    /// Grid snapping applies to every view, using the active view's enabled lattice.
+    pub grid_snapping: bool,
     /// The system's title bar rather than the window's own, where the window can draw its own.
     pub system_title_bar: bool,
 }
@@ -114,6 +116,7 @@ impl Settings {
             "gpu_3d": self.gpu_3d,
             "window": self.window.to_json(),
             "high_contrast": self.high_contrast,
+            "grid_snapping": self.grid_snapping,
             "system_title_bar": self.system_title_bar,
         })
     }
@@ -142,6 +145,7 @@ impl Settings {
             gpu_3d: v["gpu_3d"].as_bool().unwrap_or(base.gpu_3d),
             window: Window::from_json(&v["window"], base.window),
             high_contrast: colour(&v["high_contrast"]).unwrap_or(base.high_contrast),
+            grid_snapping: v["grid_snapping"].as_bool().unwrap_or(base.grid_snapping),
             system_title_bar: v["system_title_bar"].as_bool().unwrap_or(base.system_title_bar),
         }
     }
@@ -201,10 +205,11 @@ impl Page {
 }
 
 impl BimApp {
-    /// Puts the interface in `lang`. Chinese needs a font with its glyphs: where the system has none the language stays as it was, and
-    /// the status says why.
+    /// Puts the interface in `lang`. The fonts with the hanzi and the Hangul are already behind the window's own, whatever it
+    /// speaks. Chinese needs its glyphs: where the system has none the language stays as it was, and the status says why.
     pub(crate) fn set_lang(&mut self, ctx: &Context, lang: Lang) {
-        if lang == Lang::Chinese && !crate::lang::use_chinese_font(ctx, self.font_finder) {
+        let hanzi = crate::lang::use_cjk_font(ctx, self.font_finder);
+        if lang.is_chinese() && !hanzi {
             self.status = failed(t(crate::lang::NO_CHINESE_FONT).to_string());
         } else {
             self.lang = lang;
@@ -223,6 +228,7 @@ impl BimApp {
         self.card.wanted = kept.gpu_3d;
         self.window.kept = kept.window;
         self.scan_contrast = kept.high_contrast;
+        self.grid_snapping = kept.grid_snapping;
         self.system_title_bar = kept.system_title_bar;
         self.settings_kept = Some(kept);
         self.settings_path = Some(path);
@@ -245,6 +251,7 @@ impl BimApp {
             gpu_3d: self.card.wanted,
             window: self.window.kept,
             high_contrast: self.scan_contrast,
+            grid_snapping: self.grid_snapping,
             system_title_bar: self.system_title_bar,
         }
     }

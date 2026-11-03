@@ -12,9 +12,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::csg;
+use crate::font;
 use crate::geom::P2;
 use crate::model::{MAX_COORD, MAX_TEXT};
 use crate::view3d::{P3, add, cross, mul};
+
+mod validate;
 
 /// What a family is: how IFC names its components; a door or a window is hosted in a wall, which
 /// its `Width` and `Height` open.
@@ -105,6 +108,11 @@ impl Category {
             Category::Lighting => ("IFCLIGHTFIXTURE", OPEN, None),
             Category::Generic | Category::Door | Category::Window => ("IFCBUILDINGELEMENTPROXY", OPEN, None),
         }
+    }
+
+    /// Whether a device of it draws or switches a load, so its family should hold a connector that says how much.
+    pub fn electrical_device(self) -> bool {
+        matches!(self, Category::Lighting | Category::Outlet | Category::Switch)
     }
 
     /// The classes other tools write a product of it as, besides the one BIMCraft does.
@@ -227,8 +235,58 @@ pub struct Curve {
     pub to: Expr,
 }
 
-/// A line a door's or a window's plan draws, in its own axes (a swing, a sill), and no view shows
-/// otherwise: a `line` through points, or an `arc`; `visible` (a yes/no parameter, or a formula) whether it's there.
+/// Which side of its point a label's lettering starts, is centred or ends.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Align {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
+
+impl Align {
+    fn is_left(&self) -> bool {
+        *self == Align::Left
+    }
+}
+
+/// A label a symbol letters: capitals `height` mm tall, `at` the middle of the line of text vertically, where `{Parameter Name}` in `value` reads
+/// that parameter of the family, started, centred or ended (`align`) at `at`; it is drawn upright and unmirrored whatever the component does.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Label {
+    pub at: [Expr; 2],
+    pub height: Expr,
+    pub value: String,
+    #[serde(default, skip_serializing_if = "Align::is_left")]
+    pub align: Align,
+}
+
+/// A mark a family's plan draws in its own axes, sized by its parameters: the polyline of a `line` or an `arc`, a solid
+/// disc, or a label: its anchor, which is placed with the component, and its lettering, which never is (it is drawn upright,
+/// by [`lettering`], wherever it ends up).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Mark {
+    Line(Vec<P2>),
+    Dot { centre: P2, radius: f64 },
+    Label { at: P2, height: f64, text: String, align: Align },
+}
+
+impl Mark {
+    /// The same mark with every point taken through `f`.
+    pub fn map(&self, f: impl Fn(P2) -> P2) -> Mark {
+        match self {
+            Mark::Line(pts) => Mark::Line(pts.iter().map(|p| f(*p)).collect()),
+            Mark::Dot { centre, radius } => Mark::Dot { centre: f(*centre), radius: *radius },
+            Mark::Label { at, height, text, align } => Mark::Label { at: f(*at), height: *height, text: text.clone(), align: *align },
+        }
+    }
+}
+
+/// A mark a family's plan draws in its own axes, and no view shows otherwise (a door's swing, a socket's circle): a `line`
+/// through points, an `arc`, a `text` label or a `dot`, a solid disc; `visible` (a yes/no parameter, or a formula) whether it's
+/// there.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Symbol {
@@ -242,7 +300,98 @@ pub struct Symbol {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub arc: Option<Curve>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<Label>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dot: Option<Circle>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visible: Option<Expr>,
+}
+
+/// What a connector joins: `power` carries a load, `switch` only switches one.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ConnectorKind {
+    #[default]
+    Power,
+    Switch,
+}
+
+/// How a connector's load is shared among its poles: the same on each (`power-balanced`), or each its own
+/// (`power-unbalanced`); a `switch` has none.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConnectorSystem {
+    #[default]
+    PowerBalanced,
+    PowerUnbalanced,
+    Switch,
+}
+
+/// A connector's load in volt-amperes: one number (shared evenly among the poles), or, for an unbalanced connector,
+/// one for each pole.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Load {
+    One(Expr),
+    PerPhase(Vec<Expr>),
+}
+
+impl Default for Load {
+    fn default() -> Load {
+        Load::One(Expr::default())
+    }
+}
+
+/// Where a family joins a system, as Revit's connector does: what an electrical device draws, what a switch controls.
+/// `voltage`, `load_va` and `power_factor` are numbers or formulas over the family's parameters, so a type or a
+/// component can set them.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Connector {
+    /// Its id and GUID, as an element's: given when it's made, kept while it stays where it is in its list.
+    #[serde(default, skip_serializing_if = "crate::ids::unset")]
+    pub id: crate::ids::Id,
+    #[serde(default, skip_serializing_if = "crate::ids::Guid::is_nil")]
+    pub guid: crate::ids::Guid,
+    pub kind: ConnectorKind,
+    pub system: ConnectorSystem,
+    #[serde(default = "one_pole")]
+    pub poles: u8,
+    /// Volts.
+    #[serde(default)]
+    pub voltage: Expr,
+    #[serde(default)]
+    pub load_va: Load,
+    #[serde(default = "unity")]
+    pub power_factor: Expr,
+    /// What the device is for: `lighting`, `receptacle`…, as a schedule would group it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub classification: String,
+}
+
+fn one_pole() -> u8 {
+    1
+}
+
+fn unity() -> Expr {
+    Expr::Number(1.0)
+}
+
+/// A connector, worked out for one type and one component's values.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ConnectorValues {
+    pub id: crate::ids::Id,
+    pub guid: crate::ids::Guid,
+    pub kind: ConnectorKind,
+    pub system: ConnectorSystem,
+    pub poles: u8,
+    pub voltage: f64,
+    /// The whole load, VA: the phases' sum.
+    pub load_va: f64,
+    /// Each phase's load, VA; none for a switch.
+    pub load_va_by_phase: Vec<f64>,
+    pub power_factor: f64,
+    pub classification: String,
 }
 
 /// A solid of a family, in its own axes (x along the component's angle, y to its left, z up from
@@ -301,12 +450,15 @@ pub struct Family {
     pub types: BTreeMap<String, BTreeMap<String, Value>>,
     #[serde(default)]
     pub forms: Vec<Form>,
-    /// What a door's or a window's plan draws besides its forms: lines of its own.
+    /// What its plan draws besides its forms: lines, arcs, labels and dots of its own, in any category.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub symbols: Vec<Symbol>,
     /// How a door's or a window's leaves open, which IFC and schedules say; none, a door swings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub operation: Option<crate::model::Operation>,
+    /// Where it joins a system: an electrical device's load, a switch. At most one is `power`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub connectors: Vec<Connector>,
 }
 
 /// A parameter's value, worked out: a number (yes/no, 1 or 0), or a material's name.
@@ -329,6 +481,32 @@ pub struct Piece {
     pub round: bool,
 }
 
+/// Where one form lies before any void cuts it: its box in the family's own axes (x along a
+/// component's angle, y to its left, z up from its base), which is all a warning about where a form
+/// stands needs. [`Family::shapes`] works them out, one per form that builds.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Shape {
+    /// Its place in [`Family::forms`], counting from zero.
+    pub index: usize,
+    pub void: bool,
+    pub min: P3,
+    pub max: P3,
+}
+
+impl Shape {
+    /// Whether it and `other` overlap where all three of them have substance: strictly, a face
+    /// touching another's is no overlap, so a void grazing a form cuts nothing.
+    pub fn over(&self, other: &Shape) -> bool {
+        (0..3).all(|k| self.min[k] < other.max[k] && other.min[k] < self.max[k])
+    }
+
+    /// Whether it lies wholly outside `x` wide each way and `z` tall from `low` up: the box a door's
+    /// or a window's opening fills.
+    pub fn outside(&self, half_width: f64, low: f64, high: f64) -> bool {
+        self.max[0] < -half_width || self.min[0] > half_width || self.max[2] < low || self.min[2] > high
+    }
+}
+
 /// How deep a formula may nest.
 const MAX_DEPTH: usize = 64;
 /// Sides a circle's profile is drawn with.
@@ -348,6 +526,10 @@ pub const MAX_TRIANGLES: usize = 100_000;
 pub const MAX_PARAMETERS: usize = 64;
 pub const MAX_FORMS: usize = 256;
 pub const MAX_SYMBOLS: usize = 64;
+pub const MAX_CONNECTORS: usize = 8;
+/// The highest voltage and load a connector may hold: far past any real device, short of overflow.
+pub const MAX_VOLTAGE: f64 = 1.0e5;
+pub const MAX_LOAD_VA: f64 = 1.0e9;
 pub const MAX_TYPES: usize = 1000;
 /// The longest formula, in characters.
 pub const MAX_FORMULA: usize = 1024;
@@ -659,9 +841,14 @@ fn parse(formula: &str) -> Result<Node, String> {
         return Err("a formula is empty".into());
     }
     let mut r = Reader { chars: formula.chars().collect(), at: 0, depth: 0 };
-    let node = r.compare().map_err(|e| format!("formula `{formula}`: {e}"))?;
+    // Where it stopped, a character of the formula counted from 1: what can't be read is worth
+    // pointing at, not only naming.
+    let node = match r.compare() {
+        Ok(node) => node,
+        Err(e) => return Err(format!("formula `{formula}`: {e} (character {})", r.at + 1)),
+    };
     match r.peek() {
-        Some(c) => Err(format!("formula `{formula}`: `{c}` follows where it should end")),
+        Some(c) => Err(format!("formula `{formula}`: `{c}` follows where it should end (character {})", r.at + 1)),
         None => Ok(node),
     }
 }
@@ -822,6 +1009,7 @@ impl Family {
             ("parameters", self.parameters.len(), MAX_PARAMETERS),
             ("forms", self.forms.len(), MAX_FORMS),
             ("symbols", self.symbols.len(), MAX_SYMBOLS),
+            ("connectors", self.connectors.len(), MAX_CONNECTORS),
             ("types", self.types.len(), MAX_TYPES),
         ] {
             if n > most {
@@ -840,8 +1028,6 @@ impl Family {
             if self.parameters.iter().any(|p| p.name == WALL) {
                 return Err(format!("`{WALL}` is the wall's, which a door or a window reads; name the parameter otherwise"));
             }
-        } else if !self.symbols.is_empty() {
-            return Err("symbols are the lines a door's or a window's plan draws; this family isn't one".into());
         }
         let material_ok = |who: &str, m: &str| {
             if m.is_empty() || has_material(m) {
@@ -912,19 +1098,36 @@ impl Family {
                 return Err(format!("{who}: a formula of it is longer than {MAX_FORMULA} characters"));
             }
         }
+        for (i, y) in self.symbols.iter().enumerate() {
+            let Some(label) = &y.text else { continue };
+            for name in fields(&label.value).map_err(|e| format!("symbol {}: {e}", i + 1))? {
+                if !self.parameters.iter().any(|p| p.name == name) {
+                    return Err(format!("symbol {}: its text reads `{{{name}}}`, which isn't one of the family's parameters", i + 1));
+                }
+            }
+        }
         let symbol_exprs = self.symbols.iter().flat_map(|y| {
-            y.line.iter().flatten().chain(&y.visible).chain(y.arc.iter().flat_map(|c| c.centre.iter().chain([&c.radius, &c.from, &c.to])))
+            let label = y.text.iter().flat_map(|l| l.at.iter().chain([&l.height]));
+            let dot = y.dot.iter().flat_map(|c| c.centre.iter().chain([&c.radius]));
+            y.line
+                .iter()
+                .flatten()
+                .chain(&y.visible)
+                .chain(y.arc.iter().flat_map(|c| c.centre.iter().chain([&c.radius, &c.from, &c.to])))
+                .chain(label)
+                .chain(dot)
         });
         if symbol_exprs.into_iter().any(|e| matches!(e, Expr::Formula(f) if long(f))) {
             return Err(format!("a formula of a symbol is longer than {MAX_FORMULA} characters"));
         }
+        self.check_connectors()?;
         // Each formula read once across the types; past what a family may build, refused.
         let (mut read, mut built, mut cuts) = (HashMap::new(), 0, csg::Meter::default());
         for t in self.types.keys() {
             let pieces = self
                 .values(t, &BTreeMap::new())
                 .and_then(|v| {
-                    self.strokes(&v)?;
+                    self.marks(&v)?;
                     self.build(&v, &mut read, &mut cuts)
                 })
                 .map_err(|e| format!("type `{t}`: {e}"))?;
@@ -936,32 +1139,156 @@ impl Family {
         Ok(())
     }
 
+    /// Whether its connectors are sound: at most one `power`; each kind with its system, its poles and its numbers
+    /// in range, for every type.
+    fn check_connectors(&self) -> Result<(), String> {
+        if self.connectors.iter().filter(|c| c.kind == ConnectorKind::Power).count() > 1 {
+            return Err("it has two power connectors: keep one, a device draws its load through one".into());
+        }
+        let long = |e: &Expr| matches!(e, Expr::Formula(f) if f.chars().count() > MAX_FORMULA);
+        for (i, c) in self.connectors.iter().enumerate() {
+            let who = format!("connector {}", i + 1);
+            if c.classification.chars().count() > MAX_TEXT {
+                return Err(format!("{who}: its classification is longer than {MAX_TEXT} characters"));
+            }
+            let loads: &[Expr] = match &c.load_va {
+                Load::One(e) => std::slice::from_ref(e),
+                Load::PerPhase(v) => v,
+            };
+            if [&c.voltage, &c.power_factor].into_iter().chain(loads).any(long) {
+                return Err(format!("{who}: a formula of it is longer than {MAX_FORMULA} characters"));
+            }
+            match (c.kind, c.system) {
+                (ConnectorKind::Power, ConnectorSystem::PowerBalanced | ConnectorSystem::PowerUnbalanced)
+                | (ConnectorKind::Switch, ConnectorSystem::Switch) => {}
+                (ConnectorKind::Power, _) => {
+                    return Err(format!("{who}: a power connector's system is `power-balanced` or `power-unbalanced`, not `switch`"));
+                }
+                (ConnectorKind::Switch, _) => {
+                    return Err(format!("{who}: a switch connector's system is `switch`"));
+                }
+            }
+            if !(1..=3).contains(&c.poles) {
+                return Err(format!("{who}: poles are 1, 2 or 3, not {}", c.poles));
+            }
+            if let Load::PerPhase(v) = &c.load_va
+                && (c.system != ConnectorSystem::PowerUnbalanced || v.len() != usize::from(c.poles))
+            {
+                return Err(format!(
+                    "{who}: a load per phase is a list of one for each pole ({}) on a `power-unbalanced` connector; a balanced one takes a single load",
+                    c.poles
+                ));
+            }
+        }
+        for t in self.types.keys() {
+            self.connector_values(t, &BTreeMap::new()).map_err(|e| format!("type `{t}`: {e}"))?;
+        }
+        Ok(())
+    }
+
+    /// Its connectors, worked out for type `type_name` and a component's `instance` values.
+    pub fn connector_values(&self, type_name: &str, instance: &BTreeMap<String, Value>) -> Result<Vec<ConnectorValues>, String> {
+        if self.connectors.is_empty() {
+            return Ok(Vec::new());
+        }
+        let values = self.values(type_name, instance)?;
+        let mut read = HashMap::new();
+        let mut out = Vec::new();
+        for (i, c) in self.connectors.iter().enumerate() {
+            let who = format!("connector {}", i + 1);
+            let said = |what: &str, e: String| format!("{who}: its {what}: {e}");
+            let voltage = number(&c.voltage, &values, &mut read).map_err(|e| said("voltage", e))?;
+            let power_factor = number(&c.power_factor, &values, &mut read).map_err(|e| said("power factor", e))?;
+            let by_phase = match &c.load_va {
+                Load::One(e) => {
+                    let all = number(e, &values, &mut read).map_err(|e| said("load", e))?;
+                    if c.kind == ConnectorKind::Switch {
+                        if all != 0.0 {
+                            return Err(format!("{who}: a switch carries no load; leave `load_va` out"));
+                        }
+                        Vec::new()
+                    } else {
+                        vec![all / f64::from(c.poles.max(1)); usize::from(c.poles)]
+                    }
+                }
+                Load::PerPhase(v) => {
+                    v.iter().map(|e| number(e, &values, &mut read).map_err(|e| said("load", e))).collect::<Result<_, _>>()?
+                }
+            };
+            if c.kind == ConnectorKind::Power {
+                if voltage <= 0.0 || voltage > MAX_VOLTAGE {
+                    return Err(format!("{who}: its voltage is {voltage} V; it takes more than 0 and up to {MAX_VOLTAGE}"));
+                }
+                if power_factor <= 0.0 || power_factor > 1.0 {
+                    return Err(format!("{who}: its power factor is {power_factor}; it takes more than 0 and up to 1"));
+                }
+                if let Some(x) = by_phase.iter().find(|x| !(0.0..=MAX_LOAD_VA).contains(*x)) {
+                    return Err(format!("{who}: its load is {x} VA; it takes 0 up to {MAX_LOAD_VA}"));
+                }
+            }
+            out.push(ConnectorValues {
+                id: c.id,
+                guid: c.guid,
+                kind: c.kind,
+                system: c.system,
+                poles: c.poles,
+                voltage,
+                load_va: by_phase.iter().sum(),
+                load_va_by_phase: by_phase,
+                power_factor,
+                classification: c.classification.clone(),
+            });
+        }
+        Ok(out)
+    }
+
     /// Its visible forms' solids, sized by `values`, less what its voids cut.
     pub fn pieces(&self, values: &BTreeMap<String, Val>) -> Result<Vec<Piece>, String> {
         self.build(values, &mut HashMap::new(), &mut csg::Meter::default())
     }
 
-    /// The lines of its visible symbols, sized by `values`, in its own axes: an arc as a polyline of short chords.
-    pub fn strokes<'a>(&'a self, values: &BTreeMap<String, Val>) -> Result<Vec<Vec<P2>>, String> {
+    /// The marks of its visible symbols, sized by `values`, in its own axes: an arc as a polyline of short chords, a label
+    /// a label as its anchor (lettered by [`lettering`] where it is placed), a dot as it is.
+    pub fn marks<'a>(&'a self, values: &BTreeMap<String, Val>) -> Result<Vec<Mark>, String> {
         let mut read = HashMap::new();
         let mut out = Vec::new();
         for (i, sym) in self.symbols.iter().enumerate() {
             let said = |e: String| format!("symbol {}: {e}", i + 1);
+            let ways = usize::from(!sym.line.is_empty())
+                + usize::from(sym.arc.is_some())
+                + usize::from(sym.text.is_some())
+                + usize::from(sym.dot.is_some());
+            if ways != 1 || sym.line.len() > MAX_PROFILE {
+                return Err(said(format!("it takes a `line` of up to {MAX_PROFILE} points, an `arc`, a `text` or a `dot`, one of them")));
+            }
             if let Some(v) = &sym.visible
                 && number(v, values, &mut read).map_err(said)? == 0.0
             {
                 continue;
             }
-            let ways = usize::from(!sym.line.is_empty()) + usize::from(sym.arc.is_some());
-            if ways != 1 || sym.line.len() > MAX_PROFILE {
-                return Err(said(format!("it takes a `line` of up to {MAX_PROFILE} points, or an `arc`, one of them")));
+            let mut n = |e: &'a Expr| number(e, values, &mut read).map_err(said);
+            if let Some(c) = &sym.dot {
+                let (centre, r) = (P2(n(&c.centre[0])?, n(&c.centre[1])?), n(&c.radius)?);
+                if r <= 0.0 {
+                    return Err(said(format!("its dot has radius {r}; it needs a radius above zero")));
+                }
+                out.push(Mark::Dot { centre, radius: r });
+                continue;
+            }
+            if let Some(l) = &sym.text {
+                let (at, height) = (P2(n(&l.at[0])?, n(&l.at[1])?), n(&l.height)?);
+                if height <= 0.0 {
+                    return Err(said(format!("its text has height {height}; it needs a height above zero")));
+                }
+                let text = said_text(&l.value, values).map_err(said)?;
+                out.push(Mark::Label { at, height, text, align: l.align });
+                continue;
             }
             let mut pts = Vec::new();
             for [a, b] in &sym.line {
-                pts.push(P2(number(a, values, &mut read).map_err(said)?, number(b, values, &mut read).map_err(said)?));
+                pts.push(P2(n(a)?, n(b)?));
             }
             if let Some(c) = &sym.arc {
-                let mut n = |e: &'a Expr| number(e, values, &mut read).map_err(said);
                 let (centre, r, from, to) = (P2(n(&c.centre[0])?, n(&c.centre[1])?), n(&c.radius)?, n(&c.from)?, n(&c.to)?);
                 if r <= 0.0 || (to - from).abs() > 360.0 || to == from {
                     return Err(said(format!(
@@ -974,7 +1301,7 @@ impl Family {
                     P2(centre.0 + r * c, centre.1 + r * s)
                 }));
             }
-            out.push(pts);
+            out.push(Mark::Line(pts));
         }
         Ok(out)
     }
@@ -987,77 +1314,13 @@ impl Family {
         read: &mut HashMap<&'a str, Result<Node, String>>,
         cuts: &mut csg::Meter,
     ) -> Result<Vec<Piece>, String> {
-        let mut num = |e: &'a Expr| number(e, values, read);
         let (mut out, mut voids) = (Vec::new(), Vec::new());
-        for (i, form) in self.forms.iter().enumerate() {
+        for i in 0..self.forms.len() {
             let what = format!("form {}", i + 1);
-            let said = |e: String| format!("{what}: {e}");
-            if let Some(v) = &form.visible
-                && num(v).map_err(said)? == 0.0
-            {
+            let Some(piece) = self.solid(i, values, read).map_err(|e| format!("{what}: {e}"))? else {
                 continue;
-            }
-            let material = match values.get(&form.material) {
-                Some(Val::Text(m)) => m.clone(),
-                _ => form.material.clone(),
             };
-            let piece = if !form.mesh.is_empty() {
-                mesh(&form.mesh, material).map_err(said)?
-            } else {
-                let ring: Vec<P2> = match &form.circle {
-                    Some(c) => {
-                        let (x, y, r) = (num(&c.centre[0]).map_err(said)?, num(&c.centre[1]).map_err(said)?, num(&c.radius).map_err(said)?);
-                        if r <= 0.0 {
-                            return Err(said(format!("its circle's radius is {r}; it needs one above zero")));
-                        }
-                        (0..SEGMENTS)
-                            .map(|k| (k as f64 * std::f64::consts::TAU / SEGMENTS as f64).sin_cos())
-                            .map(|(s, c)| P2(x + r * c, y + r * s))
-                            .collect()
-                    }
-                    None if form.profile.len() > MAX_PROFILE => {
-                        return Err(said(format!("its profile has more than {MAX_PROFILE} corners")));
-                    }
-                    None => form.profile.iter().map(|[a, b]| Ok(P2(num(a)?, num(b)?))).collect::<Result<_, String>>().map_err(said)?,
-                };
-                let (from, to) = (num(&form.from).map_err(said)?, num(&form.to).map_err(said)?);
-                if ring.len() < 3 || crate::geom::area(&ring).abs() < 1.0 {
-                    return Err(said("its profile has no area: it needs three corners or more, or a circle".into()));
-                }
-                if to <= from {
-                    let unit = if form.axis.is_some() { " degrees" } else { "" };
-                    return Err(format!("{what} sweeps nothing: from {from} to {to}{unit}"));
-                }
-                let ring = if crate::geom::area(&ring) < 0.0 { ring.into_iter().rev().collect() } else { ring };
-                match &form.axis {
-                    Some([p, q]) => {
-                        if to - from > 360.0 {
-                            return Err(format!("{what} turns more than all the way round: from {from} to {to} degrees, 360 at most"));
-                        }
-                        let mut corner = |c: &'a [Expr; 2]| Ok(P2(num(&c[0])?, num(&c[1])?));
-                        let axis = [corner(p).map_err(said)?, corner(q).map_err(said)?];
-                        let (tris, outline) = revolve(&ring, axis, (from, to), form.plane).map_err(said)?;
-                        let (bottom, top) = heights(&tris);
-                        Piece { caps: tris.len(), tris, outline, bottom, top, material, round: false }
-                    }
-                    None => {
-                        let (tris, caps) = sweep(&ring, from, to, form.plane).map_err(said)?;
-                        let span = |k: usize| {
-                            ring.iter()
-                                .map(|p| if k == 0 { p.0 } else { p.1 })
-                                .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), x| (lo.min(x), hi.max(x)))
-                        };
-                        let ((a0, a1), (b0, b1)) = (span(0), span(1));
-                        let (outline, bottom, top) = match form.plane {
-                            Plane::Xy => (ring.clone(), from, to),
-                            Plane::Xz => (vec![P2(a0, from), P2(a1, from), P2(a1, to), P2(a0, to)], b0, b1),
-                            Plane::Yz => (vec![P2(from, a0), P2(to, a0), P2(to, a1), P2(from, a1)], b0, b1),
-                        };
-                        Piece { tris, caps, outline, bottom, top, material, round: form.circle.is_some() }
-                    }
-                }
-            };
-            if form.void {
+            if self.forms[i].void {
                 voids.push((i, out.len(), piece.tris));
             } else {
                 out.push(piece);
@@ -1085,9 +1348,179 @@ impl Family {
         out.retain(|p| !p.tris.is_empty());
         Ok(out)
     }
+
+    /// Form `i`'s own solid, sized by `values`, before any void cuts it: `None` where its `visible`
+    /// says it isn't there. `read`, its formulas as read already.
+    fn solid<'a>(
+        &'a self,
+        i: usize,
+        values: &BTreeMap<String, Val>,
+        read: &mut HashMap<&'a str, Result<Node, String>>,
+    ) -> Result<Option<Piece>, String> {
+        let form = &self.forms[i];
+        let mut num = |e: &'a Expr| number(e, values, read);
+        if let Some(v) = &form.visible
+            && num(v)? == 0.0
+        {
+            return Ok(None);
+        }
+        let material = match values.get(&form.material) {
+            Some(Val::Text(m)) => m.clone(),
+            _ => form.material.clone(),
+        };
+        let piece = if !form.mesh.is_empty() {
+            mesh(&form.mesh, material)?
+        } else {
+            let ring: Vec<P2> = match &form.circle {
+                Some(c) => {
+                    let (x, y, r) = (num(&c.centre[0])?, num(&c.centre[1])?, num(&c.radius)?);
+                    if r <= 0.0 {
+                        return Err(format!("its circle's radius is {r}; it needs one above zero"));
+                    }
+                    (0..SEGMENTS)
+                        .map(|k| (k as f64 * std::f64::consts::TAU / SEGMENTS as f64).sin_cos())
+                        .map(|(s, c)| P2(x + r * c, y + r * s))
+                        .collect()
+                }
+                None if form.profile.len() > MAX_PROFILE => return Err(format!("its profile has more than {MAX_PROFILE} corners")),
+                None => form.profile.iter().map(|[a, b]| Ok(P2(num(a)?, num(b)?))).collect::<Result<_, String>>()?,
+            };
+            let (from, to) = (num(&form.from)?, num(&form.to)?);
+            if ring.len() < 3 || crate::geom::area(&ring).abs() < 1.0 {
+                return Err("its profile has no area: it needs three corners or more, or a circle".into());
+            }
+            if to <= from {
+                let unit = if form.axis.is_some() { " degrees" } else { "" };
+                return Err(format!("sweeps nothing: from {from} to {to}{unit}"));
+            }
+            let ring = if crate::geom::area(&ring) < 0.0 { ring.into_iter().rev().collect() } else { ring };
+            match &form.axis {
+                Some([p, q]) => {
+                    if to - from > 360.0 {
+                        return Err(format!("turns more than all the way round: from {from} to {to} degrees, 360 at most"));
+                    }
+                    let mut corner = |c: &'a [Expr; 2]| -> Result<P2, String> { Ok(P2(num(&c[0])?, num(&c[1])?)) };
+                    let axis = [corner(p)?, corner(q)?];
+                    let (tris, outline) = revolve(&ring, axis, (from, to), form.plane)?;
+                    let (bottom, top) = heights(&tris);
+                    Piece { caps: tris.len(), tris, outline, bottom, top, material, round: false }
+                }
+                None => {
+                    let (tris, caps) = sweep(&ring, from, to, form.plane)?;
+                    let span = |k: usize| {
+                        ring.iter()
+                            .map(|p| if k == 0 { p.0 } else { p.1 })
+                            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), x| (lo.min(x), hi.max(x)))
+                    };
+                    let ((a0, a1), (b0, b1)) = (span(0), span(1));
+                    let (outline, bottom, top) = match form.plane {
+                        Plane::Xy => (ring.clone(), from, to),
+                        Plane::Xz => (vec![P2(a0, from), P2(a1, from), P2(a1, to), P2(a0, to)], b0, b1),
+                        Plane::Yz => (vec![P2(from, a0), P2(to, a0), P2(to, a1), P2(from, a1)], b0, b1),
+                    };
+                    Piece { tris, caps, outline, bottom, top, material, round: form.circle.is_some() }
+                }
+            }
+        };
+        Ok(Some(piece))
+    }
+
+    /// Where each of its forms lies, sized by `values`, before any void cuts it: its place in
+    /// `forms`, whether it is a void, and the box its solid fills in the family's own axes. A form
+    /// that builds to nothing on its own — a formula it can't read, a profile with no area — is left
+    /// out: what a warning tells is best worked out around it, not stopped by it.
+    pub fn shapes(&self, values: &BTreeMap<String, Val>) -> Vec<Shape> {
+        let mut read = HashMap::new();
+        let mut out = Vec::new();
+        for i in 0..self.forms.len() {
+            let Some(piece) = self.solid(i, values, &mut read).ok().flatten() else {
+                continue;
+            };
+            let mut min = [f64::INFINITY; 3];
+            let mut max = [f64::NEG_INFINITY; 3];
+            for p in piece.tris.iter().flatten() {
+                for k in 0..3 {
+                    min[k] = min[k].min(p[k]);
+                    max[k] = max[k].max(p[k]);
+                }
+            }
+            if min[0].is_finite() && max[0].is_finite() {
+                out.push(Shape { index: i, void: self.forms[i].void, min, max });
+            }
+        }
+        out
+    }
+
+    /// What's wrong with it, which a change may not go ahead with, and what's worth knowing, which
+    /// doesn't stop it: every finding, not only the first, so they're fixed in one go.
+    pub fn problems(&self, has_material: &dyn Fn(&str) -> bool) -> (Vec<String>, Vec<String>) {
+        validate::problems(self, has_material)
+    }
 }
 
 /// `e` as a number: itself, or its formula worked out over `values`; `read`, the formulas as read already.
+/// The names between braces in a label's `value`: `{Circuit}` reads the parameter `Circuit`.
+fn fields(value: &str) -> Result<Vec<&str>, String> {
+    let (mut out, mut rest) = (Vec::new(), value);
+    while let Some(open) = rest.find('{') {
+        let Some(close) = rest[open..].find('}') else {
+            return Err("its text has a `{` with no `}` to close it".into());
+        };
+        out.push(rest[open + 1..open + close].trim());
+        rest = &rest[open + close + 1..];
+    }
+    Ok(out)
+}
+
+/// A label's `value` with each `{Parameter}` replaced by that parameter's value: a number as plainly as it reads (3, 2.5), a
+/// material by its name.
+fn said_text(value: &str, values: &BTreeMap<String, Val>) -> Result<String, String> {
+    let mut out = String::new();
+    let mut rest = value;
+    for name in fields(value)? {
+        let Some(open) = rest.find('{') else { break };
+        out.push_str(&rest[..open]);
+        let close = rest[open..].find('}').unwrap_or(0) + open;
+        rest = &rest[close + 1..];
+        match values.get(name) {
+            Some(Val::Number(x)) => {
+                let plain = format!("{x:.3}");
+                out.push_str(plain.trim_end_matches('0').trim_end_matches('.'));
+            }
+            Some(Val::Text(t)) => out.push_str(t),
+            None => return Err(format!("its text reads `{{{name}}}`, which isn't one of the family's parameters")),
+        }
+        if out.chars().count() > MAX_TEXT {
+            break;
+        }
+    }
+    out.push_str(rest);
+    if out.trim().is_empty() {
+        return Err("its text is empty; give it a `value` with something to letter".into());
+    }
+    if out.chars().count() > MAX_TEXT {
+        return Err(format!("its text is longer than {MAX_TEXT} characters"));
+    }
+    Ok(out)
+}
+
+/// `text` in our lettering, capitals `height` tall, `at` the middle of its line vertically and, as `align` says, its start,
+/// middle or end (y up), as polylines.
+pub fn lettering(text: &str, at: P2, height: f64, align: Align) -> Vec<Vec<P2>> {
+    let h = height as f32;
+    let width = f64::from(font::width(text, h));
+    let left = at.0
+        - match align {
+            Align::Left => 0.0,
+            Align::Center => width / 2.0,
+            Align::Right => width,
+        };
+    font::strokes(text, 0.0, 0.0, h)
+        .into_iter()
+        .map(|line| line.into_iter().map(|(x, y)| P2(left + f64::from(x), at.1 - height / 2.0 - f64::from(y))).collect())
+        .collect()
+}
+
 fn number<'a>(e: &'a Expr, values: &BTreeMap<String, Val>, read: &mut HashMap<&'a str, Result<Node, String>>) -> Result<f64, String> {
     let x = match e {
         Expr::Number(x) => *x,
@@ -1998,5 +2431,104 @@ mod tests {
         let (pieces, took) = worked;
         let pieces = pieces.unwrap();
         assert!(volume(&pieces[0].tris) > 0.0 && took.as_secs_f64() < 10.0, "{took:?}: a hang, not a slow machine");
+    }
+    /// A one-type lighting family holding `connectors`.
+    fn lamp(connectors: Value) -> Family {
+        serde_json::from_value(json!({
+            "category": "lighting",
+            "parameters": [{"name": "Load", "kind": "number", "value": 0}],
+            "types": {"9 W": {"Load": 9}, "18 W": {"Load": 18}},
+            "connectors": connectors
+        }))
+        .unwrap()
+    }
+
+    fn power() -> Value {
+        json!({"kind": "power", "system": "power-balanced", "poles": 1, "voltage": 127, "load_va": "Load", "power_factor": 0.9,
+               "classification": "lighting"})
+    }
+
+    #[test]
+    fn a_family_holds_connectors_and_a_connector_reads_its_load_from_the_type() {
+        let f = lamp(json!([power()]));
+        assert_eq!(f.check(&|_| true), Ok(()));
+        for (t, load) in [("9 W", 9.0), ("18 W", 18.0)] {
+            let c = f.connector_values(t, &BTreeMap::new()).unwrap();
+            assert_eq!(c.len(), 1);
+            assert_eq!((c[0].kind, c[0].system, c[0].poles), (ConnectorKind::Power, ConnectorSystem::PowerBalanced, 1));
+            assert_eq!((c[0].voltage, c[0].load_va, c[0].power_factor), (127.0, load, 0.9));
+            assert_eq!((c[0].load_va_by_phase.clone(), c[0].classification.as_str()), (vec![load], "lighting"));
+        }
+        // Written back as it was read, so a loaded family file keeps them.
+        let back: Family = serde_json::from_value(serde_json::to_value(&f).unwrap()).unwrap();
+        assert_eq!(back, f);
+    }
+
+    #[test]
+    fn a_family_without_connectors_is_as_it_was() {
+        let f: Family = serde_json::from_value(json!({"types": {"A": {}}})).unwrap();
+        assert!(f.connectors.is_empty());
+        assert_eq!(f.check(&|_| true), Ok(()));
+        assert!(serde_json::to_value(&f).unwrap().get("connectors").is_none(), "an empty list isn't written");
+        assert!(f.connector_values("A", &BTreeMap::new()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn two_power_connectors_are_refused_and_the_message_says_so() {
+        let e = lamp(json!([power(), power()])).check(&|_| true).unwrap_err();
+        assert!(e.contains("two power connectors") && e.contains("keep one"), "{e}");
+        // A switch beside a power connector is no second power connector.
+        let sw = json!({"kind": "switch", "system": "switch"});
+        assert_eq!(lamp(json!([power(), sw])).check(&|_| true), Ok(()));
+    }
+
+    #[test]
+    fn a_connector_is_checked_for_what_it_says() {
+        let bad = |change: Value, says: &str| {
+            let mut c = power();
+            c.as_object_mut().unwrap().extend(change.as_object().unwrap().clone());
+            let e = lamp(json!([c])).check(&|_| true).unwrap_err();
+            assert!(e.contains(says), "{change}: {e}");
+        };
+        bad(json!({"system": "switch"}), "system");
+        bad(json!({"poles": 0}), "poles");
+        bad(json!({"poles": 4}), "poles");
+        bad(json!({"voltage": 0}), "voltage");
+        bad(json!({"voltage": -127}), "voltage");
+        bad(json!({"voltage": 1e12}), "voltage");
+        bad(json!({"power_factor": 0}), "power factor");
+        bad(json!({"power_factor": 1.5}), "power factor");
+        bad(json!({"load_va": -1}), "load");
+        bad(json!({"load_va": 1e300}), "load");
+        bad(json!({"load_va": "Nope"}), "Nope");
+        bad(json!({"load_va": [1, 2]}), "per phase");
+        bad(json!({"classification": "x".repeat(MAX_TEXT + 1)}), "classification");
+        let sw = |extra: Value| {
+            let mut c = json!({"kind": "switch", "system": "switch"});
+            c.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+            lamp(json!([c])).check(&|_| true)
+        };
+        assert_eq!(sw(json!({})), Ok(()));
+        assert!(sw(json!({"load_va": 10})).unwrap_err().contains("switch"));
+        assert!(sw(json!({"system": "power-balanced"})).unwrap_err().contains("system"));
+        let many: Vec<Value> = (0..=MAX_CONNECTORS).map(|_| json!({"kind": "switch", "system": "switch"})).collect();
+        assert!(lamp(json!(many)).check(&|_| true).unwrap_err().contains("connectors"));
+    }
+
+    #[test]
+    fn an_unbalanced_connector_may_load_each_phase_differently() {
+        let f = lamp(json!([{"kind": "power", "system": "power-unbalanced", "poles": 3, "voltage": 220,
+                              "load_va": [1000, 2000, "Load"], "power_factor": 0.8}]));
+        assert_eq!(f.check(&|_| true), Ok(()));
+        let c = &f.connector_values("9 W", &BTreeMap::new()).unwrap()[0];
+        assert_eq!(c.load_va_by_phase, vec![1000.0, 2000.0, 9.0]);
+        assert_eq!(c.load_va, 3009.0);
+        // A single number is shared out evenly; a balanced connector takes no list.
+        let shared = lamp(json!([{"kind": "power", "system": "power-unbalanced", "poles": 3, "voltage": 220, "load_va": 3000}]));
+        assert_eq!(shared.connector_values("9 W", &BTreeMap::new()).unwrap()[0].load_va_by_phase, vec![1000.0; 3]);
+        let e = lamp(json!([{"kind": "power", "system": "power-balanced", "poles": 3, "voltage": 220, "load_va": [1, 2, 3]}]))
+            .check(&|_| true)
+            .unwrap_err();
+        assert!(e.contains("balanced"), "{e}");
     }
 }

@@ -845,7 +845,10 @@ mod tests {
             json!({"view": 100000, "phase": "Existing", "phase_filter": "Show Complete", "options": {"Facade": "Glass"}}),
         );
         let r = run(&mut s, "template", json!({"name": "Survey", "from": 100000}));
-        assert_eq!(r["controls"], json!(["categories", "filters", "range", "phase", "options", "scale", "detail", "style"]));
+        assert_eq!(
+            r["controls"],
+            json!(["categories", "filters", "range", "phase", "options", "scale", "detail", "style", "background_grid"])
+        );
         assert_eq!(
             (r["phase"].clone(), r["phase_filter"].clone(), r["options"].clone()),
             (json!("Existing"), json!("Show Complete"), json!({"Facade": "Glass"}))

@@ -23,6 +23,7 @@ pub const IFC: &[(&str, &str, &str)] = &[
     ("beam", "IFCBEAM", ".BEAM."),
     ("stripfooting", "IFCFOOTING", ".STRIP_FOOTING."),
     ("pipe", "IFCPIPESEGMENT", ".RIGIDSEGMENT."),
+    ("duct", "IFCDUCTSEGMENT", ".RIGIDSEGMENT."),
     ("conduit", "IFCCABLECARRIERSEGMENT", ".CONDUITSEGMENT."),
     ("cabletray", "IFCCABLECARRIERSEGMENT", ".CABLETRAYSEGMENT."),
     // A ladder is a tray to BIMCraft, written as a tray: only a file of another tool's says it.

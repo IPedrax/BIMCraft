@@ -16,6 +16,8 @@ pub const MAX_BARS: usize = 1000;
 /// The most bars one command makes in all, and the most hosts it arms.
 pub const MAX_BARS_ALL: usize = 20_000;
 pub const MAX_HOSTS: usize = 1000;
+/// The most notes a `reinforce` returns.
+pub const MAX_NOTES: usize = 100;
 
 /// The length of the bar along its points, unbent: what it is cut from.
 pub fn length(path: &[P3]) -> f64 {

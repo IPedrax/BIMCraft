@@ -42,6 +42,8 @@ pub struct Rec {
     /// The two reference lists after the box.
     pub refs: Vec<u64>,
     pub refs2: Vec<u64>,
+    /// The items of the list after the header tag, which only a workshared file's record holds (up to 2023).
+    pub items: usize,
 }
 
 impl Rec {
@@ -56,6 +58,7 @@ impl Rec {
             bbox: [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
             refs: Vec::new(),
             refs2: Vec::new(),
+            items: 0,
         }
     }
 
@@ -75,11 +78,13 @@ pub struct TypeRec {
     pub kind: u32,
     /// From 2024: the type's frame has no id of its own and sits in the body of a chain record of its id (the second prologue).
     pub inside: bool,
+    /// The items of the list after the header tag, which only a workshared file's record holds (up to 2023).
+    pub items: usize,
 }
 
 impl TypeRec {
     pub fn new(id: u32, category: i64) -> Self {
-        Self { id, category, kind: KIND_TYPE, inside: false }
+        Self { id, category, kind: KIND_TYPE, inside: false, items: 0 }
     }
 }
 
@@ -119,11 +124,13 @@ pub struct Lev {
     pub story: Option<bool>,
     /// A level that sits inside another element, which its block names (from 2024 only).
     pub owner: Option<u32>,
+    /// The items of the list after the header tag, which only a workshared file's record holds (up to 2023).
+    pub items: usize,
 }
 
 impl Lev {
     pub fn new(id: u32, name: &str, feet: f64) -> Self {
-        Self { id, name: name.to_string(), feet, placed: true, named: true, confirmed: true, story: None, owner: None }
+        Self { id, name: name.to_string(), feet, placed: true, named: true, confirmed: true, story: None, owner: None, items: 0 }
     }
 }
 
@@ -411,13 +418,23 @@ fn level64(l: &Lev) -> Vec<u8> {
     f
 }
 
+/// The count and the items of the list after a header tag: a workshared file's record holds some, another file's none.
+fn list_items(n: usize) -> Vec<u8> {
+    let mut b = (n as u32).to_le_bytes().to_vec();
+    for _ in 0..n {
+        b.extend_from_slice(&[0xff; 8]);
+        b.extend_from_slice(&[1, 0, 0x9a, 0x34, 0, 0]);
+    }
+    b
+}
+
 /// An element record of up to 2023, laid out back from its marker.
 fn record32(r: &Rec) -> Vec<u8> {
     let mut f = Vec::new();
     f.extend_from_slice(&r.id.to_le_bytes()); // m-52
     f.extend_from_slice(&112u32.to_le_bytes());
-    f.extend_from_slice(&HEADER.to_le_bytes()); // m-44
-    f.extend_from_slice(&[0; 4]);
+    f.extend_from_slice(&HEADER.to_le_bytes()); // m-44 with no items
+    f.extend_from_slice(&list_items(r.items));
     f.extend_from_slice(&r.category.to_le_bytes()); // m-38
     f.extend_from_slice(&[0xff; 8]);
     f.extend_from_slice(&u32::MAX.to_le_bytes()); // m-22 container
@@ -434,10 +451,10 @@ fn record32(r: &Rec) -> Vec<u8> {
 
 fn level32(l: &Lev) -> Vec<u8> {
     let mut f = Vec::new();
-    f.extend_from_slice(&l.id.to_le_bytes()); // id_at = category - 14
+    f.extend_from_slice(&l.id.to_le_bytes()); // id_at = category - 14, and 14 more for each item
     f.extend_from_slice(&66u32.to_le_bytes());
     f.extend_from_slice(&HEADER.to_le_bytes());
-    f.extend_from_slice(&[0; 4]);
+    f.extend_from_slice(&list_items(l.items));
     f.extend_from_slice(&(-2_000_240i64).to_le_bytes()); // the category
     f.extend_from_slice(&[0; 8]);
     f.extend_from_slice(&u32::MAX.to_le_bytes()); // +16 container
@@ -532,9 +549,10 @@ fn type_frame64(raw_id: u64, t: &TypeRec) -> Vec<u8> {
 
 /// A box-less record up to 2023: a level's frame.
 fn type32(t: &TypeRec) -> Vec<u8> {
-    let mut f = level32(&Lev { placed: true, ..Lev::new(t.id, "", 0.0) });
-    f[14..22].copy_from_slice(&t.category.to_le_bytes()); // the category follows the id, size, header tag and 4 bytes
-    f[14 + 24..14 + 28].copy_from_slice(&t.kind.to_le_bytes());
+    let mut f = level32(&Lev { placed: true, items: t.items, ..Lev::new(t.id, "", 0.0) });
+    let at = 14 + 14 * t.items; // the category follows the id, size, header tag, the count and the items
+    f[at..at + 8].copy_from_slice(&t.category.to_le_bytes());
+    f[at + 24..at + 28].copy_from_slice(&t.kind.to_le_bytes());
     f
 }
 

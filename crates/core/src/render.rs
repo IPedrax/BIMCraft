@@ -23,7 +23,7 @@ use crate::geom::{self, P2};
 use crate::graphics::{Detail, Look, scale_of};
 use crate::model::{
     CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, FilledRegion, Floor, Function, Id, Key, Layer, Model, Note, Opening,
-    Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, Wall,
+    Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, View3D, Wall,
 };
 use crate::pen::{Pen, Weights};
 use crate::styles::{BY_CATEGORY, ObjectStyle};
@@ -818,7 +818,16 @@ pub(crate) fn plan_shows(m: &Model, plan: impl Key) -> Vec<P2> {
             }
             Element::Room(r) if r.level == level => extent.push(r.point),
             Element::Mass(ms) if m.mass_cut_by(ms, r.cut) => extent.extend(m.mass_outline(ms, r.cut)),
-            Element::Component(c) if c.level == level => extent.extend(m.component_pieces(c).into_iter().flat_map(|p| p.outline)),
+            Element::Component(c) if c.level == level => {
+                extent.extend(m.component_pieces(c).into_iter().flat_map(|p| p.outline));
+                for mark in m.component_marks(c) {
+                    match mark {
+                        crate::family::Mark::Line(pts) => extent.extend(pts),
+                        crate::family::Mark::Dot { centre, .. } => extent.push(centre),
+                        crate::family::Mark::Label { at, .. } => extent.push(at),
+                    }
+                }
+            }
             Element::Grid(g) => extent.extend([g.start, g.end]),
             Element::RoomSeparator(rs) if rs.level == level => extent.extend([rs.start, rs.end]),
             Element::Dimension(dm) if m.annotation_in(e, key) => extent.push(dm.at),
@@ -877,7 +886,12 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
                 d.line(&g.footprint(), Pen::HEAVY, INK, true)
             }
         }
-        Element::Component(c) => component(&mut d, m, &m.component_pieces(c)),
+        Element::Component(c) => {
+            component(&mut d, m, &m.component_pieces(c));
+            if d.detail != Detail::Coarse {
+                marks(&mut d, &m.component_marks(c));
+            }
+        }
         // Drawn at its sill, where the cut plane would pass through it whatever the plan's cut is.
         Element::Door(o) | Element::Window(o) => {
             if let Some(w) = m.wall(o.host) {
@@ -1644,14 +1658,21 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         }
     }
     // Components it sees, in projection, as Revit draws furniture: whole while any of one is under
-    // the cut plane and over the view depth.
+    // the cut plane and over the view depth; and the symbols of those on its level.
     let mut components = crate::component_geometry::Components::new(m);
-    for (&id, e) in m.elements.iter().filter(|_| !up).filter(|(id, _)| shown(**id)) {
+    for (&id, e) in m.elements.iter().filter(|(id, _)| shown(**id)) {
         let Element::Component(c) = e else { continue };
-        let (bottom, top) = components.heights(c);
-        if bottom < range.cut && top > range.depth {
-            d.owner = Some(id);
-            component(&mut d, m, &components.pieces(c));
+        let pieces = components.pieces(c);
+        d.owner = Some(id);
+        if !up && !pieces.is_empty() {
+            let (bottom, top) = components.heights(c);
+            if bottom < range.cut && top > range.depth {
+                component(&mut d, m, &pieces);
+            }
+        }
+        // Its symbols are annotation of its level: in that level's plan and ceiling plan, whatever height its forms reach.
+        if c.level == level && d.detail != Detail::Coarse {
+            marks(&mut d, &m.component_marks(c));
         }
     }
     // Walls and columns below the cut plane, as seen from it; past the bottom, faint.
@@ -1773,8 +1794,12 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     let crop = m.shown_crop(key).filter(|_| !up);
     // Cropped, annotation shows whole while its anchor is inside the crop, and not at all outside it.
     let inside = |p: P2| crop.is_none_or(|[lo, hi]| (lo.0..=hi.0).contains(&p.0) && (lo.1..=hi.1).contains(&p.1));
-    // Every room of the level is found among the same lines, which take each wall's joins and heights to find.
+    // Every room of the level is found among the same faces of the same lines, which take each wall's joins and heights to
+    // find, and the arrangement of them is the costly part: made once, for the first room that isn't frozen.
     let bounding = std::cell::OnceCell::new();
+    // Rooms > Reference: off unless the view shows it.
+    let reference =
+        !crate::graphics::graphics_of(m, key).map_or_else(Default::default, |g| g.resolved(m).into_owned()).hides("roomreference");
     // Bars seen from above that lie where another was drawn (a column's stirrups, up its height) are drawn once.
     let mut bars_seen: std::collections::HashSet<Vec<(i64, i64)>> = std::collections::HashSet::new();
     for (&id, e) in m.elements.iter().filter(|(id, _)| shown(**id)) {
@@ -1787,14 +1812,42 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
                 }
             }
             Element::Room(r) if r.level == level && inside(r.point) && !up => {
-                let lines = bounding.get_or_init(|| m.room_lines(level, m.room_area));
-                let area = geom::region_at(lines, r.point, TOL).map_or_else(
-                    || m.language.word(msg!("NOT ENCLOSED")).to_string(),
+                // A frozen room has its boundary: the level's lines are found only for those that don't.
+                let (region, redundant) = match &r.kept {
+                    Some(k) => (k.at(m.room_area).cloned(), false),
+                    // Two rooms can't share a space: the one placed later is left unbounded, Revit's redundant room.
+                    None => {
+                        match geom::region_in(bounding.get_or_init(|| geom::faces(&m.room_lines(level, m.room_area), TOL)), r.point, TOL) {
+                            Some(g) if m.room_before(r, &g).is_some() => (None, true),
+                            g => (g, false),
+                        }
+                    }
+                };
+                let area = region.as_ref().map_or_else(
+                    || m.language.word(if redundant { msg!("REDUNDANT") } else { msg!("NOT ENCLOSED") }).to_string(),
                     |g| {
                         let (area, unit) = m.units.area(g.area());
                         format!("{area:.2} {unit}")
                     },
                 );
+                // Its reference, as Revit's: a cross from the point it was placed at, out along the diagonals to its boundary
+                // (the square an unbounded room covers), the room's own lines, so a click on it picks the room.
+                if reference {
+                    let square;
+                    let (outer, holes): (&[P2], &[Vec<P2>]) = match &region {
+                        Some(g) => (&g.outer, &g.holes),
+                        None => {
+                            square = crate::model::unbounded_square(r.point);
+                            (&square, &[])
+                        }
+                    };
+                    let edges = || geom::ring_edges(outer).chain(holes.iter().flat_map(|h| geom::ring_edges(h)));
+                    for dir in [P2(1.0, 1.0), P2(-1.0, 1.0), P2(-1.0, -1.0), P2(1.0, -1.0)] {
+                        if let Some(end) = geom::ray_hit(r.point, dir, edges()) {
+                            d.stroke(vec![d.view.px(r.point), d.view.px(end)], BY_CATEGORY, INK, None, false);
+                        }
+                    }
+                }
                 let (x, y) = d.view.px(r.point);
                 let from = d.prims.len();
                 d.text(&r.name, (x, y - 16.0), 13.0, INK);
@@ -1905,6 +1958,10 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
             // A section's line is cropped as a line is.
             Element::Section(v) => section_mark(&mut d, v),
             Element::Elevation(v) if inside(v.start + (v.end - v.start) * 0.5) => elevation_mark(&mut d, v),
+            // A camera stands on its level's plan: a symbol at its eye, and a line to what it looks at.
+            Element::View3D(v) if !up && v.camera.is_some_and(|c| m.camera_level(c.eye[2]) == m.elements.id(level)) => {
+                camera_mark(&mut d, v)
+            }
             _ => {}
         }
     }
@@ -1942,6 +1999,31 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         d.text_turned(&title, at, 16.0, 0.0, INK);
     }
     d
+}
+
+/// A family's plan marks, in the model's axes: its lines and lettering in the category's pen, its dots solid ink.
+fn marks(d: &mut Drawing, marks: &[crate::family::Mark]) {
+    use crate::family::Mark;
+    for mark in marks {
+        match mark {
+            Mark::Line(pts) => d.line(pts, BY_CATEGORY, INK, false),
+            Mark::Label { at, height, text, align } => {
+                for line in crate::family::lettering(text, *at, *height, *align) {
+                    d.line(&line, BY_CATEGORY, INK, false);
+                }
+            }
+            Mark::Dot { centre, radius } => {
+                const SIDES: usize = 24;
+                let ring = (0..SIDES)
+                    .map(|k| {
+                        let (s, c) = (std::f64::consts::TAU * k as f64 / SIDES as f64).sin_cos();
+                        P2(centre.0 + radius * c, centre.1 + radius * s)
+                    })
+                    .collect::<Vec<_>>();
+                d.fill(&[ring], INK);
+            }
+        }
+    }
 }
 
 /// A component seen from above: each of its forms' outlines, but where a higher form covers it (a
@@ -2353,9 +2435,7 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
             d.line(&piece.outline, BY_CATEGORY, INK, true);
         }
         d.part(Part::Projection);
-        for stroke in m.opening_strokes(e) {
-            d.line(&stroke, BY_CATEGORY, INK, false);
-        }
+        marks(d, &m.opening_marks(e));
         d.part(Part::Cut);
         return;
     }
@@ -3140,6 +3220,42 @@ fn grid(d: &mut Drawing, start: P2, end: P2, name: &str) {
         d.text(name, c, 10.0, GRID);
         d.grow(from, (x, y));
     }
+}
+
+/// A camera's symbol in plan, at its eye: a little body pointing the way it looks, a line to what it looks at, and its name
+/// behind it. Drawn as a section's or an elevation's mark is (the symbol grows with the view's annotation).
+fn camera_mark(d: &mut Drawing, v: &View3D) {
+    let Some(cam) = v.camera else { return };
+    let a = d.view.px(P2(cam.eye[0], cam.eye[1]));
+    let b = d.view.px(P2(cam.target[0], cam.target[1]));
+    // The line to what it looks at, dashed, at the model's size.
+    d.stroke(vec![a, b], Pen::PROJECTION, INK, Some(vec![12.0, 6.0]), false);
+    // The symbol, drawn at its own size then grown as the view's annotation is.
+    let len = (b.0 - a.0).hypot(b.1 - a.1).max(1e-3);
+    let (ux, uy) = ((b.0 - a.0) / len, (b.1 - a.1) / len);
+    let (px, py) = (-uy, ux);
+    let from = d.prims.len();
+    // The body: a small box square to the line, centred a little behind the eye.
+    let (back, half, depth) = (-7.0f32, 9.0f32, 8.0f32);
+    let c = (a.0 + ux * back, a.1 + uy * back);
+    let body = vec![
+        (c.0 - ux * depth + px * half, c.1 - uy * depth + py * half),
+        (c.0 + ux * depth + px * half, c.1 + uy * depth + py * half),
+        (c.0 + ux * depth - px * half, c.1 + uy * depth - py * half),
+        (c.0 - ux * depth - px * half, c.1 - uy * depth - py * half),
+    ];
+    d.push(Prim::Fill { rings: vec![body.clone()], color: PAPER });
+    d.stroke(body, Pen::BUBBLE, INK, None, true);
+    // The lens: a small dark circle at the front, toward the target.
+    let lc = (c.0 + ux * (depth + 3.0), c.1 + uy * (depth + 3.0));
+    let ring: Vec<(f32, f32)> = (0..16)
+        .map(|i| (lc.0 + 3.5 * (f64::from(i) * PI / 8.0).cos() as f32, lc.1 + 3.5 * (f64::from(i) * PI / 8.0).sin() as f32))
+        .collect();
+    d.push(Prim::Fill { rings: vec![ring], color: INK });
+    // Its name behind the eye, against the way it looks.
+    let name_at = (a.0 - ux * (14.0 + font::width(&v.name, 10.0) / 2.0), a.1 - uy * (14.0 + font::width(&v.name, 10.0) / 2.0));
+    d.text(&v.name, name_at, 10.0, INK);
+    d.grow(from, a);
 }
 
 fn hex(c: Rgb) -> String {

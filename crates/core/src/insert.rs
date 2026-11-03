@@ -190,6 +190,11 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
                     }
                 }
             }
+            Kind::DistributionSystem => {
+                for v in to.distribution_systems.get_mut(&name).into_iter().flat_map(|d| d.voltages_mut()) {
+                    here(&Kind::Voltage, v);
+                }
+            }
             Kind::Type(c) => {
                 let t = &mut to.types;
                 let layers = match c.as_str() {
@@ -246,6 +251,9 @@ fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> boo
         Kind::TextType => one(&mut to.text_types, Some(&from.text_types), name),
         Kind::ReinforcementPreset => one(&mut to.reinforcement, Some(&from.reinforcement), name),
         Kind::DimensionType => one(&mut to.dimension_types, Some(&from.dimension_types), name),
+        Kind::Voltage => one(&mut to.voltages, Some(&from.voltages), name),
+        Kind::DistributionSystem => one(&mut to.distribution_systems, Some(&from.distribution_systems), name),
+        Kind::WireType => one(&mut to.wire_types, Some(&from.wire_types), name),
         _ => false,
     }
 }
@@ -424,5 +432,27 @@ mod tests {
         let e = s.execute("insert", &json!({"path": path, "ids": [5]})).unwrap_err();
         let _ = std::fs::remove_file(&path);
         assert!(e.contains("no element 5"), "{e}");
+    }
+
+    #[test]
+    fn a_camera_view_comes_in_with_its_camera_and_its_own_name() {
+        let mut other = Session::new();
+        run(&mut other, "wall", json!({"points": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "closed": true}));
+        let made = run(&mut other, "camera", json!({"eye": [-5000.0, -4000.0, 1600.0], "target": [4000.0, 3000.0, 1200.0], "lens": 24}));
+        let camera_there = made["id"].as_u64().unwrap();
+        let path = std::env::temp_dir().join(format!("bimcraft-insert-camera-{}.bimcraft", std::process::id()));
+        let path = path.to_string_lossy().into_owned();
+        run(&mut other, "save", json!({"path": path}));
+        // This project already has a Camera 1, so the inserted one is named apart.
+        let mut s = Session::new();
+        run(&mut s, "camera", json!({"eye": [0.0, -9000.0, 1700.0], "target": [4000.0, 3000.0, 1000.0]}));
+        let r = run(&mut s, "insert", json!({"path": path, "ids": [camera_there]}));
+        let _ = std::fs::remove_file(&path);
+        let here = r["ids"][camera_there.to_string()].as_u64().unwrap();
+        let Some(Element::View3D(v)) = s.model.elements.get(here) else { panic!("the camera view came in") };
+        assert_eq!(v.camera, Some(crate::model::ViewCamera { eye: [-5000.0, -4000.0, 1600.0], target: [4000.0, 3000.0, 1200.0] }));
+        assert_eq!(v.perspective.filter(|p| p.on).map(|p| p.lens), Some(24.0));
+        assert!(v.name.starts_with("Camera 1") && v.name != "Camera 1", "named apart from this project's: {}", v.name);
+        assert_eq!(s.model.check(), Ok(()));
     }
 }

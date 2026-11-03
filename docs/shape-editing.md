@@ -13,7 +13,7 @@ Status, on the branch `mod-16-shape-editing` (raised upstream as IPedrax/BIMCraf
   [levels, walls and roofs](areas/levels-walls-roofs.md) says how): the data and parts, the four commands, the checks,
   `floor_faces` and `shape_planes`, 3D, plans, sections, IFC (one closed faceted Brep per slab, `Model::shape_solid`,
   with `GrossVolume` and `NetVolume`), `volume_m3` in a floor's details, attached walls, transforms, `edit_boundary`,
-  snaps and file format 12. IfcOpenShell validates it with `express_rules=True` (`ci/ifc-coverage.txt` has a shaped
+  snaps and file format 13 (12 when written; upstream took 12 meanwhile). IfcOpenShell validates it with `express_rules=True` (`ci/ifc-coverage.txt` has a shaped
   floor) and measures the slab's volume as BIMCraft gives it.
 - **Phase 2**, the variable layer, is built: `Layer::variable`, one a floor or roof type; a shaped floor's level underside
   (`Model::floor_under`) and prisms (`floor_prisms`); its layers in the 3D view and sections (`Variable::bounds`); its
@@ -175,7 +175,7 @@ pub struct SplitLine { pub id: Id, pub guid: Guid, pub a: P2, pub b: P2 }
 - Every end of a split line is one of the points or an outline corner. A command that adds a line with a loose end adds
   that end as a point, at the height the top has there at the time.
 - `Layer` gets `#[serde(default, skip_serializing_if = "Not::not")] pub variable: bool`.
-- **File format 12**, with a no-op step in `Model::migrate`. An older build that read a shaped floor would drop the shape
+- **File format 13** (upstream's 12 came first), with a no-op step in `Model::migrate`. An older build that read a shaped floor would drop the shape
   and draw it flat. That's a misreading, not a field it can do without, so the bump is needed (CLAUDE.md, "A file is read
   kindly").
 
@@ -303,7 +303,7 @@ Sizes as the roadmap gives them, for one developer working with agents.
 | Phase | Size | First failing tests |
 |---|---|---|
 | **0. Triangulation** in `triangulation.rs` (built) | M | A square with a centre point gives 4 triangles; a split line is always an edge; an opening stays empty; the same input in any order gives the same triangles; duplicates, collinear runs, points on edges and the cap never panic (a property sweep). |
-| **1. Shape on floors** (built, but for what the status above lists): data, commands, `check`, `floor_faces`, 3D, plan, sections (no variable layer), attached walls, transforms, `edit_boundary`, `inspect`, IFC export, snaps, format 12 | L | A 10 × 10 m floor with a drain at −30 mm gives 4 faces and the volume to 0.1 %; a section through the drain shows a V top; a wall attached under it follows the creases; IfcOpenShell validates the closed Brep with `express_rules=True`; mirror and move keep the shape; a format-11 file opens and a format-12 file is refused by 11; `hostile_params_never_panic_or_break_the_model` covers the new commands as it does every command. |
+| **1. Shape on floors** (built, but for what the status above lists): data, commands, `check`, `floor_faces`, 3D, plan, sections (no variable layer), attached walls, transforms, `edit_boundary`, `inspect`, IFC export, snaps, format 13 | L | A 10 × 10 m floor with a drain at −30 mm gives 4 faces and the volume to 0.1 %; a section through the drain shows a V top; a wall attached under it follows the creases; IfcOpenShell validates the closed Brep with `express_rules=True`; mirror and move keep the shape; a format-12 file opens and a format-13 file is refused by 12; `hostile_params_never_panic_or_break_the_model` covers the new commands as it does every command. |
 | **2. Variable layer** | M | A tile, screed (variable), membrane and concrete type: the section shows the concrete flat and the screed tapering; the 3D view's layers match; `check` refuses a point that makes the screed negative; reinforcement follows the flat structure. |
 | **3. Desktop** | M | Add Point at a clicked model point with −30 typed; Add Split Line snapping to two corners; Reset Shape; the three looks screenshotted as `docs/areas/looking-at-results.md` asks. |
 | **4. Flat roofs** | S | A flat roof by footprint with four drains; walls attached to it; a sloped roof refuses a shape. |

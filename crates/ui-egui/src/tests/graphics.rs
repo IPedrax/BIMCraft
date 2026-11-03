@@ -17,7 +17,7 @@ fn visibility_graphics_sorts_categories_in_each_interface_language() {
     use bimcraft_core::graphics::{ANNOTATION, MODEL, SCANS};
     let mut h = app(BOX);
     for language in [Lang::Portuguese, Lang::Spanish, Lang::Chinese] {
-        crate::lang::assume_chinese_font(&h.ctx);
+        crate::lang::assume_cjk_font(&h.ctx);
         h.state_mut().lang = language;
         shortcut(&mut h, "VV");
         for (tab, cats) in
@@ -25,7 +25,9 @@ fn visibility_graphics_sorts_categories_in_each_interface_language() {
         {
             let tr = |en| lang::translated_in(language, en).unwrap_or(en);
             press(&mut h, tr(tab));
-            let mut names: Vec<_> = cats.into_iter().map(|c| lang::category(c, true)).collect();
+            // A subcategory sits folded under its category, not among them.
+            let mut names: Vec<_> =
+                cats.into_iter().filter(|c| bimcraft_core::graphics::sub(c).is_none()).map(|c| lang::category(c, true)).collect();
             names.sort_by_key(|n| n.to_lowercase());
             // Equal translated names may belong to different categories, so inspect all their positions.
             let positions: Vec<_> = names

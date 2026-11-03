@@ -31,6 +31,9 @@ pub struct Palette {
     pub panel: Color32,
     /// A band inside a card: a header, a group's heading.
     pub bar: Color32,
+    /// What a button or a drop-down is: a step past `bar` (darker on light, lighter on dark), so a control never reads as a
+    /// heading beside it.
+    pub control: Color32,
     pub border: Color32,
     pub error: Color32,
     /// Revit's contextual tabs (Modify | …) stand out in green.
@@ -66,6 +69,7 @@ pub const LIGHT: Palette = Palette {
     icon: rgb(0x3A404C),
     panel: rgb(0xFAFBFC),
     bar: rgb(0xECEEF2),
+    control: rgb(0xE0E3E9),
     border: rgb(0xD0D4DC),
     error: rgb(0xCC2020),
     context: rgb(0x15803D),
@@ -95,6 +99,7 @@ pub const DARK: Palette = Palette {
     icon: rgb(0xCFD4DB),
     panel: rgb(0x272B34),
     bar: rgb(0x2F343E),
+    control: rgb(0x3A404C),
     border: rgb(0x3F4552),
     error: rgb(0xF87171),
     context: rgb(0x4ADE80),
@@ -312,7 +317,7 @@ pub fn apply(ctx: &Context) {
             v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, pal.border);
             v.widgets.noninteractive.fg_stroke = Stroke::new(1.0, pal.text);
             v.widgets.inactive.fg_stroke = Stroke::new(1.0, pal.text);
-            v.widgets.inactive.weak_bg_fill = pal.bar;
+            v.widgets.inactive.weak_bg_fill = pal.control;
             v.widgets.inactive.bg_stroke = Stroke::new(1.0, pal.border);
             v.widgets.hovered.weak_bg_fill = pal.hover_fill;
             v.widgets.hovered.bg_stroke = Stroke::new(1.0, pal.hover);
@@ -360,7 +365,7 @@ mod tests {
             let (ring, ring_on_bar) = (focus_ring().color, on_app_bar(|| focus_ring().color));
             // Text, on a card, a band, a field and a hovered row; some also on the open tab's tint.
             let on_cards = [p.panel, p.bar, p.surface, p.hover_fill];
-            let on_tints = [p.panel, p.bar, p.surface, p.hover_fill, p.select_fill];
+            let on_tints = [p.panel, p.bar, p.surface, p.hover_fill, p.select_fill, p.control];
             let on_bar = [p.app_bar, p.app_bar_hover];
             let mut rows: Vec<(&str, Color32, Color32, f32)> = Vec::new();
             for (what, ink, grounds, least) in [
