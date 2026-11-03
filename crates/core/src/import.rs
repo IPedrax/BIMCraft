@@ -113,7 +113,7 @@ fn clip(text: &str) -> String {
 const MARKED: [&str; 6] = ["beam", "column", "structuralcolumn", "footing", "stripfooting", "floor"];
 
 /// A property's name as a project parameter's: what a formula can say, each character it can't made a space.
-fn parameter_name(raw: &str) -> Option<String> {
+pub(crate) fn parameter_name(raw: &str) -> Option<String> {
     let spaced: String = raw.chars().map(|c| if c.is_alphanumeric() || c == '_' { c } else { ' ' }).collect();
     Some(spaced.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|n| crate::family::nameable(n))
 }
@@ -2610,7 +2610,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
                 && !crate::schedule::own_field(cat, name)
                 && !matches!(el, Element::Component(c) if theirs(&c.family))
                 && m.parameters.get(name).is_none_or(|p| p.kind == kind);
-            let p = ProjectParameter { kind, categories: vec![cat.to_string()] };
+            let p = ProjectParameter { kind, categories: vec![cat.to_string()], ..ProjectParameter::default() };
             if !fits || !p.holds(value) {
                 continue;
             }
@@ -2667,6 +2667,23 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
                     ("IFCBOOLEAN" | "IFCLOGICAL", V::Enum(b)) if b == "T" || b == "F" => (ParameterKind::YesNo, json!(b == "T")),
                     ("IFCLENGTHMEASURE" | "IFCPOSITIVELENGTHMEASURE", v) => match real(Some(v)) {
                         Some(x) => (ParameterKind::Length, json!((x * mm * 1e6).round() / 1e6)),
+                        None => continue,
+                    },
+                    // What BIMCraft writes has its units fixed: m², m³ and radians.
+                    ("IFCINTEGER", v) if ours => match real(Some(v)) {
+                        Some(x) => (ParameterKind::Integer, json!(x)),
+                        None => continue,
+                    },
+                    ("IFCAREAMEASURE", v) if ours => match real(Some(v)) {
+                        Some(x) => (ParameterKind::Area, json!(x)),
+                        None => continue,
+                    },
+                    ("IFCVOLUMEMEASURE", v) if ours => match real(Some(v)) {
+                        Some(x) => (ParameterKind::Volume, json!(x)),
+                        None => continue,
+                    },
+                    ("IFCPLANEANGLEMEASURE", v) if ours => match real(Some(v)) {
+                        Some(x) => (ParameterKind::Angle, json!((x.to_degrees() * 1e6).round() / 1e6)),
                         None => continue,
                     },
                     ("IFCREAL" | "IFCINTEGER" | "IFCNUMERICMEASURE" | "IFCCOUNTMEASURE", v) => match real(Some(v)) {

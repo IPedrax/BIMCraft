@@ -8,12 +8,12 @@ use crate::popup::Modal;
 
 use bimcraft_i18n::msg;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use bimcraft_core::element_json;
 use bimcraft_core::family::{Kind as Holds, Val};
-use bimcraft_core::model::{Element, Function, Guid, Id, Layer, Location, Model, PARAMETER_CATEGORIES, ParameterKind, Pattern};
+use bimcraft_core::model::{Element, Function, Guid, Id, Layer, Location, Model, ParameterKind, Pattern, ProjectParameter};
 use bimcraft_core::schedule::{self, Field, Filter, Op, Sort};
 use bimcraft_core::snap::Kind as Snap;
 use bimcraft_core::texture::{Kind as TextureKind, Texture};
@@ -515,6 +515,17 @@ pub(crate) fn number(s: &str) -> Option<f64> {
 }
 
 /// A value of `kind` as the palette shows it, lengths and areas in `units`.
+/// An area parameter's value, m² in the model, in the project's units.
+fn area_shown(v: &Value, units: Units) -> String {
+    v.as_f64().map_or_else(String::new, |x| format!("{:.2}", units.area(x * 1e6).0))
+}
+
+/// An area typed in the project's units, as the m² it is in the model.
+fn area_parsed(s: &str, units: Units) -> Result<Value, String> {
+    let per_m2 = units.area(1e6).0;
+    number(s).map(|x| json!(x / per_m2)).ok_or_else(|| tf("`{}` is not a number", &[s]))
+}
+
 fn shown(kind: Kind, v: &Value, units: Units) -> String {
     let each = |f: &dyn Fn(f64) -> String| match v {
         Value::Array(a) => a.iter().filter_map(Value::as_f64).map(f).collect::<Vec<_>>().join(", "),
@@ -1493,67 +1504,104 @@ impl BimApp {
     fn project_parameters(&mut self, ui: &mut Ui, model: &Model, ids: &[Id]) {
         let cats: BTreeSet<&str> = ids.iter().filter_map(|id| model.elements.get(id)).map(Element::category).collect();
         let (Some(&id), Some(&cat)) = (ids.first(), cats.first()) else { return };
-        let params: Vec<(&String, ParameterKind)> = model
-            .parameters
-            .iter()
-            .filter(|(_, p)| cats.len() == 1 && p.categories.iter().any(|c| c == cat))
-            .map(|(n, p)| (n, p.kind))
-            .collect();
-        if params.is_empty() {
-            return;
-        }
         // Blank across a selection may be values that differ, not none.
         let value = |name: &str| -> Value {
             let of = |i: &Id| model.elements.get(i).and_then(Element::params).and_then(|p| p.get(name)).cloned().unwrap_or(Value::Null);
             let first = of(&id);
             if ids.iter().all(|i| of(i) == first) { first } else { Value::Null }
         };
-        let group = "Project Parameters";
-        let open = !self.collapsed.contains(group);
-        if group_header(ui, t(group), open) && !self.collapsed.remove(group) {
-            self.collapsed.insert(group);
-        }
-        if !open {
-            return;
+        // Each group, its own name or Project Parameters; what's hidden, or empty and hidden when empty, isn't shown.
+        let mut groups: BTreeMap<&str, Vec<(&String, &ProjectParameter)>> = BTreeMap::new();
+        for (n, p) in &model.parameters {
+            let shown = cats.len() == 1 && p.categories.iter().any(|c| c == cat) && !p.hidden && !(p.hide_when_empty && value(n).is_null());
+            if shown {
+                groups.entry(if p.group.is_empty() { "Project Parameters" } else { p.group.as_str() }).or_default().push((n, p));
+            }
         }
         let units = model.units;
-        let mut change: Option<(String, Result<Value, String>)> = None;
-        Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
-            let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-            Grid::new(("project-parameters", id)).num_columns(2).min_col_width(half).max_col_width(half).show(ui, |ui| {
-                for (name, kind) in &params {
-                    let val = value(name);
-                    let label = ui.label(name.as_str());
-                    let field = match kind {
-                        ParameterKind::YesNo => {
-                            let mut on = val.as_bool().unwrap_or(false);
-                            let r = ui.checkbox(&mut on, "");
-                            r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, name.as_str()));
-                            if r.labelled_by(label.id).changed() {
-                                change = Some((name.to_string(), Ok(json!(on))));
-                            }
+        for (group, params) in groups {
+            let key: &'static str = if group == "Project Parameters" { "Project Parameters" } else { self.collapse_key(group) };
+            let open = !self.collapsed.contains(key);
+            if group_header(ui, t(group), open) && !self.collapsed.remove(key) {
+                self.collapsed.insert(key);
+            }
+            if !open {
+                continue;
+            }
+            let mut change: Option<(String, Result<Value, String>)> = None;
+            Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
+                let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
+                Grid::new(("project-parameters", id, group)).num_columns(2).min_col_width(half).max_col_width(half).show(ui, |ui| {
+                    for &(name, p) in &params {
+                        let val = value(name);
+                        let label = if p.description.is_empty() {
+                            ui.label(name.as_str())
+                        } else {
+                            ui.label(name.as_str()).on_hover_text(&p.description)
+                        };
+                        if p.read_only {
+                            // Shown, and changed only by a command.
+                            let text = match p.kind {
+                                ParameterKind::YesNo if val.as_bool().unwrap_or(false) => t("Yes").to_string(),
+                                ParameterKind::YesNo => t("No").to_string(),
+                                ParameterKind::Length => shown(Length, &val, units),
+                                ParameterKind::Area => area_shown(&val, units),
+                                ParameterKind::Text => shown(Text, &val, units),
+                                _ => shown(Number, &val, units),
+                            };
+                            ui.add_enabled(false, egui::Label::new(text));
                             ui.end_row();
                             continue;
                         }
-                        ParameterKind::Length => Length,
-                        ParameterKind::Number => Number,
-                        ParameterKind::Text => Text,
-                    };
-                    if let Some(typed) = self.field(ui, id, &format!("params.{name}"), shown(field, &val, units), label.id, "") {
-                        let v = if typed.trim().is_empty() { Ok(Value::Null) } else { parse(field, &typed, units) };
-                        change = Some((name.to_string(), v));
+                        let field = match p.kind {
+                            ParameterKind::YesNo => {
+                                let mut on = val.as_bool().unwrap_or(false);
+                                let r = ui.checkbox(&mut on, "");
+                                r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, name.as_str()));
+                                if r.labelled_by(label.id).changed() {
+                                    change = Some((name.to_string(), Ok(json!(on))));
+                                }
+                                ui.end_row();
+                                continue;
+                            }
+                            ParameterKind::Area => {
+                                if let Some(typed) = self.field(ui, id, &format!("params.{name}"), area_shown(&val, units), label.id, "") {
+                                    let v = if typed.trim().is_empty() { Ok(Value::Null) } else { area_parsed(&typed, units) };
+                                    change = Some((name.to_string(), v));
+                                }
+                                ui.end_row();
+                                continue;
+                            }
+                            ParameterKind::Length => Length,
+                            ParameterKind::Number | ParameterKind::Integer | ParameterKind::Volume | ParameterKind::Angle => Number,
+                            ParameterKind::Text => Text,
+                        };
+                        if let Some(typed) = self.field(ui, id, &format!("params.{name}"), shown(field, &val, units), label.id, "") {
+                            let v = if typed.trim().is_empty() { Ok(Value::Null) } else { parse(field, &typed, units) };
+                            change = Some((name.to_string(), v));
+                        }
+                        ui.end_row();
                     }
-                    ui.end_row();
-                }
+                });
             });
-        });
-        match change {
-            Some((name, Ok(v))) => {
-                self.run("modify", json!({"ids": ids, "params": {name: v}}));
+            match change {
+                Some((name, Ok(v))) => {
+                    self.run("modify", json!({"ids": ids, "params": {name: v}}));
+                }
+                Some((name, Err(e))) => self.status = Status { text: format!("{name}: {e}"), error: true },
+                None => {}
             }
-            Some((name, Err(e))) => self.status = Status { text: format!("{name}: {e}"), error: true },
-            None => {}
         }
+    }
+
+    /// The name a group of a project's own keeps its folding under.
+    fn collapse_key(&mut self, group: &str) -> &'static str {
+        if let Some(k) = self.collapse_keys.iter().find(|k| **k == group) {
+            return k;
+        }
+        let k: &'static str = Box::leak(group.to_string().into_boxed_str());
+        self.collapse_keys.push(k);
+        k
     }
 
     /// A schedule view's own parameters, as Revit's palette has them: its name and category, and
@@ -2355,24 +2403,6 @@ impl BimApp {
     }
 }
 
-/// What a project parameter holds, as Project Parameters names it.
-const KINDS: [(ParameterKind, &str); 4] =
-    [(ParameterKind::Text, "Text"), (ParameterKind::Number, "Number"), (ParameterKind::Length, "Length"), (ParameterKind::YesNo, "Yes/No")];
-
-/// Manage > Project Parameters: the project's parameters, the one picked to edit, and its name as
-/// typed (a rename once typed in).
-pub(crate) struct ParametersDialog {
-    picked: String,
-    name: String,
-}
-
-impl ParametersDialog {
-    pub(crate) fn new(m: &Model) -> ParametersDialog {
-        let picked = m.parameters.keys().next().cloned().unwrap_or_default();
-        ParametersDialog { name: picked.clone(), picked }
-    }
-}
-
 /// View > Schedules > Schedule/Quantities: the category picked, and the name typed.
 #[derive(Default)]
 pub(crate) struct NewSchedule {
@@ -2453,106 +2483,6 @@ fn blank(kind: schedule::Kind) -> Value {
 }
 
 impl BimApp {
-    /// Manage > Project Parameters: each project parameter, what it holds and the categories it's
-    /// for, as Revit's dialog has them. Each change is a `parameter` command, undone like any other.
-    pub(crate) fn parameters_window(&mut self, ctx: &Context) {
-        let Some(mut d) = self.parameters_dialog.take() else { return };
-        let model = Arc::clone(&self.session.model);
-        let (mut close, mut run, mut picked): (bool, Option<Value>, Option<String>) = (false, None, None);
-        let r = Modal::new(UiId::new("project-parameters"), t("Project Parameters")).width(460.0).show(ctx, |ui| {
-            crate::popup::body(ui, |ui| {
-                ui.add_space(6.0);
-                Grid::new("parameter-head").num_columns(2).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
-                    let l = ui.label(t("Parameter:"));
-                    ui.horizontal(|ui| {
-                        let c = ComboBox::from_id_salt("parameter-name").selected_text(&d.picked).width(200.0).show_ui(ui, |ui| {
-                            for name in model.parameters.keys() {
-                                if ui.selectable_label(*name == d.picked, name).clicked() {
-                                    picked = Some(name.clone());
-                                }
-                            }
-                        });
-                        c.response.labelled_by(l.id);
-                        if ui.button(t("New")).clicked() {
-                            let fresh = (1..)
-                                .map(|n| format!("{} {n}", t("Parameter")))
-                                .find(|n| !model.parameters.contains_key(n))
-                                .unwrap_or_default();
-                            run = Some(json!({"name": fresh, "categories": ["wall"]}));
-                            picked = Some(fresh);
-                        }
-                        if ui.add_enabled(model.parameters.contains_key(&d.picked), Button::new(t("Delete"))).clicked() {
-                            run = Some(json!({"name": d.picked, "delete": true}));
-                            picked = model.parameters.keys().find(|n| **n != d.picked).cloned().or_else(|| Some(String::new()));
-                        }
-                    });
-                    ui.end_row();
-                });
-                match model.parameters.get(&d.picked) {
-                    Some(p) => {
-                        ui.add_space(6.0);
-                        Grid::new("parameter").num_columns(2).striped(true).spacing(vec2(12.0, 6.0)).min_col_width(130.0).show(ui, |ui| {
-                            let l = ui.label(t("Name"));
-                            let r = ui.add(TextEdit::singleline(&mut d.name).desired_width(200.0)).labelled_by(l.id);
-                            if r.lost_focus() && !d.name.trim().is_empty() && d.name.trim() != d.picked {
-                                run = Some(json!({"name": d.picked, "rename": d.name.trim()}));
-                                picked = Some(d.name.trim().to_string());
-                            }
-                            ui.end_row();
-                            let l = ui.label(t("Type of Parameter"));
-                            let now = KINDS.iter().find(|(k, _)| *k == p.kind).map_or("Text", |(_, n)| n);
-                            let c = ComboBox::from_id_salt("parameter-kind").selected_text(t(now)).width(160.0).show_ui(ui, |ui| {
-                                for (k, label) in KINDS {
-                                    if ui.selectable_label(k == p.kind, t(label)).clicked() && k != p.kind {
-                                        run = Some(json!({"name": d.picked, "kind": k}));
-                                    }
-                                }
-                            });
-                            c.response.labelled_by(l.id);
-                            ui.end_row();
-                        });
-                        ui.add_space(6.0);
-                        ui.label(RichText::new(t("Categories")).strong());
-                        Grid::new("parameter-categories").num_columns(3).spacing(vec2(16.0, 4.0)).show(ui, |ui| {
-                            for (i, cat) in PARAMETER_CATEGORIES.iter().enumerate() {
-                                let mut on = p.categories.iter().any(|c| c == cat);
-                                if ui.checkbox(&mut on, lang::category(cat, true)).changed() {
-                                    let mut list: Vec<&str> = p.categories.iter().map(String::as_str).filter(|c| c != cat).collect();
-                                    if on {
-                                        list.push(cat);
-                                    }
-                                    run = Some(json!({"name": d.picked, "categories": list}));
-                                }
-                                if i % 3 == 2 {
-                                    ui.end_row();
-                                }
-                            }
-                        });
-                    }
-                    None => {
-                        ui.label(RichText::new(t("No project parameters yet: New makes one.")).color(pal().muted));
-                    }
-                }
-            });
-            crate::popup::footer(ui, |ui| {
-                ui.with_layout(Layout::right_to_left(Align::Min), |ui| close = ui.button(t("Close")).clicked());
-            });
-        });
-        if let Some(p) = run
-            && self.run("parameter", p).is_none()
-        {
-            picked = None;
-        }
-        if let Some(n) = picked {
-            (d.name, d.picked) = (n.clone(), n);
-        } else if !self.session.model.parameters.contains_key(&d.picked) {
-            d = ParametersDialog::new(&self.session.model);
-        }
-        if !(close || r.should_close()) {
-            self.parameters_dialog = Some(d);
-        }
-    }
-
     /// View > Schedules > Schedule/Quantities: a category and a name, and OK makes the schedule,
     /// opens it, and opens its properties on Fields.
     pub(crate) fn new_schedule_window(&mut self, ctx: &Context) {

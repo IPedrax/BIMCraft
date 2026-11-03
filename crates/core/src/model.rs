@@ -91,7 +91,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 12;
+pub const FORMAT: u32 = 13;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -2244,20 +2244,50 @@ pub enum ParameterKind {
     Number,
     Length,
     YesNo,
+    /// A whole number.
+    Integer,
+    /// In m², as a schedule's areas are.
+    Area,
+    /// In m³.
+    Volume,
+    /// In degrees.
+    Angle,
 }
 
 /// A project parameter, as Revit's Manage > Project Parameters makes one: a value of its kind each
-/// element of its categories may have of its own.
+/// element of its categories may have of its own. There is no separate shared kind: any parameter has a GUID, and can be
+/// scheduled and tagged; one from a dictionary says so in `dictionary`.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectParameter {
     #[serde(default)]
     pub kind: ParameterKind,
     pub categories: Vec<String>,
+    /// What it's for: Properties shows it as a tooltip.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+    /// The group of Properties it shows under; none for Project Parameters.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub group: String,
+    /// Not shown in Properties.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
+    /// Shown in Properties and not changed there; commands still can.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub read_only: bool,
+    /// Not shown in Properties for an element with no value.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hide_when_empty: bool,
+    /// The dictionary it came from, which makes it shared; a name in memory, its GUID in a file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dictionary: Option<String>,
+    /// Other parameters' GUIDs it has been said to be, or merged from: what a file holding one of them means here.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub same_as: Vec<Guid>,
 }
 
 /// The most project parameters a project holds.
-pub const MAX_PROJECT_PARAMETERS: usize = 256;
+pub const MAX_PROJECT_PARAMETERS: usize = 4096;
 
 /// The categories project parameters are for.
 pub const PARAMETER_CATEGORIES: [&str; 25] = [
@@ -2293,7 +2323,10 @@ impl ProjectParameter {
     pub fn holds(&self, v: &serde_json::Value) -> bool {
         match self.kind {
             ParameterKind::Text => v.as_str().is_some_and(|t| t.chars().count() <= MAX_TEXT),
-            ParameterKind::Number | ParameterKind::Length => v.as_f64().is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD),
+            ParameterKind::Number | ParameterKind::Length | ParameterKind::Area | ParameterKind::Volume | ParameterKind::Angle => {
+                v.as_f64().is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD)
+            }
+            ParameterKind::Integer => v.as_f64().is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD && x.fract() == 0.0),
             ParameterKind::YesNo => v.is_boolean(),
         }
     }
@@ -2375,6 +2408,12 @@ pub struct Model {
     /// Its project parameters, by name: values each element of their categories may have.
     #[serde(default)]
     pub parameters: BTreeMap<String, ProjectParameter>,
+    /// The dictionaries its parameters came from, by name: where each was and the version it was at.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dictionaries: BTreeMap<String, crate::parameters::DictionaryRef>,
+    /// What the files imported call categories, each to one of ours or, none, left out: asked once.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub parameter_map: BTreeMap<String, Option<String>>,
     /// Its view filters, by name: categories and rules that pick elements out for views to hide
     /// or draw another way.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -2511,6 +2550,8 @@ impl Model {
             cads: BTreeMap::new(),
             families: BTreeMap::new(),
             parameters: BTreeMap::new(),
+            dictionaries: BTreeMap::new(),
+            parameter_map: BTreeMap::new(),
             view_filters: BTreeMap::new(),
             view_templates: BTreeMap::new(),
             phases: phasing::phases(language),
@@ -3008,6 +3049,8 @@ impl Model {
         // dimension type; one of 10 read by 9 would measure its points as lines. A dimension of 9 gets its kind's type.
         self.typed_dimensions();
         // 10 to 11 (Swedish, Czech and French as a project's language) has no step: a file of 10 holds none of them.
+        // 12 to 13 (dictionaries, and the kinds and settings of project parameters) has no step: a file of 12 holds none of them.
+        // A file of 13 read by 12 could hold a kind it can't read, and a tag's label by GUID it would show as text.
         // 11 to 12 (German and Dutch as a project's language, a wall that bounds no rooms, a family's connectors) has no step either: a
         // file of 11 holds none. The electrical settings (voltages, distribution systems, wire types) have none within 11 or 12: a file
         // without them reads with the starter set, and one that has them is read by an older version with them left out.
@@ -5118,6 +5161,12 @@ impl Model {
             if p.categories.is_empty() {
                 return Err(format!("{who}: it needs a category: one of {}", PARAMETER_CATEGORIES.join(", ")));
             }
+            if p.description.chars().count() > MAX_TEXT || p.group.chars().count() > MAX_TEXT {
+                return Err(format!("{who}: a description and a group hold up to {MAX_TEXT} characters"));
+            }
+            if let Some(d) = p.dictionary.as_ref().filter(|d| !self.dictionaries.contains_key(*d)) {
+                return Err(format!("{who}: there's no dictionary `{d}`; make it a project parameter with `dictionary` null"));
+            }
             if let Some(c) = p.categories.iter().find(|c| !PARAMETER_CATEGORIES.contains(&c.as_str())) {
                 return Err(format!("{who}: `{c}` isn't a category it can be for; there are {}", PARAMETER_CATEGORIES.join(", ")));
             }
@@ -5249,6 +5298,10 @@ impl Model {
                         ParameterKind::Number => "a number",
                         ParameterKind::Length => "a length",
                         ParameterKind::YesNo => "yes or no",
+                        ParameterKind::Integer => "a whole number",
+                        ParameterKind::Area => "an area",
+                        ParameterKind::Volume => "a volume",
+                        ParameterKind::Angle => "an angle",
                     };
                     return Err(format!("{who}: `{k}` holds {what}, not {v}"));
                 }

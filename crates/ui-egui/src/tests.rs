@@ -3346,42 +3346,6 @@ fn a_floor_types_layers_go_from_its_top_down() {
 }
 
 #[test]
-fn project_parameters_are_made_in_their_window_and_given_values_in_properties() {
-    use bimcraft_core::model::ParameterKind;
-    let mut h = app(BOX);
-    press(&mut h, "Manage");
-    press(&mut h, "Project Parameters");
-    assert!(h.query_by_label("No project parameters yet: New makes one.").is_some());
-    press(&mut h, "New");
-    assert_eq!(h.state().session.model.parameters["Parameter 1"].categories, ["wall"]);
-    type_into(&mut h, "Name", "Finish Height");
-    key(&mut h, Key::Enter);
-    pick(&mut h, Role::CheckBox, "Doors");
-    assert_eq!(h.state().session.model.parameters["Finish Height"].categories, ["door", "wall"]);
-    h.get_by_role_and_label(Role::ComboBox, "Type of Parameter").click();
-    h.run();
-    press(&mut h, "Length");
-    assert_eq!(h.state().session.model.parameters["Finish Height"].kind, ParameterKind::Length);
-    press(&mut h, "Close");
-    // The bottom wall's value, typed in the project's units; emptied, it has none.
-    let wall = ids(&h, "wall")[0];
-    click(&mut h, P2(4000.0, 0.0));
-    type_role(&mut h, Role::TextInput, "Finish Height", "2400");
-    assert_eq!(field(&h, wall, "params"), json!({"Finish Height": 2400.0}));
-    type_role(&mut h, Role::TextInput, "Finish Height", "");
-    assert_eq!(field(&h, wall, "params"), Value::Null);
-    // Deleted, it's gone from the palette.
-    key(&mut h, Key::Escape);
-    press(&mut h, "Manage");
-    press(&mut h, "Project Parameters");
-    press(&mut h, "Delete");
-    press(&mut h, "Close");
-    assert!(h.state().session.model.parameters.is_empty());
-    click(&mut h, P2(4000.0, 0.0));
-    assert!(h.query_by_label("Finish Height").is_none() && h.query_by_label("Project Parameters").is_none(), "no group for it");
-}
-
-#[test]
 fn a_new_schedule_takes_its_fields_filter_and_sorting_from_schedule_properties() {
     use bimcraft_core::schedule::{Filter, Op, Sort};
     let rooms = r#"wall {"points": [[5000,0],[5000,6000]], "type": "Interior - 100mm"}
@@ -5393,6 +5357,7 @@ mod look;
 mod mep;
 mod notes;
 mod objectstyles;
+mod parameters;
 mod patterns;
 mod perspective;
 mod planviews;

@@ -503,8 +503,9 @@ pub fn fields(m: &Model, cat: &str) -> Vec<(String, Kind)> {
             n,
             match p.kind {
                 ParameterKind::Text => Kind::Text,
-                ParameterKind::Number => Kind::Number,
+                ParameterKind::Number | ParameterKind::Integer | ParameterKind::Volume | ParameterKind::Angle => Kind::Number,
                 ParameterKind::Length => Kind::Length,
+                ParameterKind::Area => Kind::Area,
                 ParameterKind::YesNo => Kind::YesNo,
             },
         );

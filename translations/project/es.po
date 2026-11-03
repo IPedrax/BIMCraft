@@ -27,7 +27,7 @@ msgstr "Bañera"
 msgid "Bed"
 msgstr "Cama"
 
-#: crates/core/src/model.rs:2540
+#: crates/core/src/model.rs:2581
 msgid "Brick"
 msgstr "Ladrillo"
 
@@ -35,7 +35,7 @@ msgstr "Ladrillo"
 msgid "Brick 225 x 75"
 msgstr "Ladrillo 225 x 75"
 
-#: crates/core/src/commands.rs:3653
+#: crates/core/src/commands.rs:3736
 msgid "Camera"
 msgstr "Cámara"
 
@@ -59,7 +59,7 @@ msgstr "Eje"
 msgid "Centre Lines"
 msgstr "Líneas de eje"
 
-#: crates/core/src/model.rs:2548
+#: crates/core/src/model.rs:2589
 msgid "Ceramic tile"
 msgstr "Baldosa cerámica"
 
@@ -71,15 +71,15 @@ msgstr "Silla"
 msgid "Concrete"
 msgstr "Hormigón"
 
-#: crates/core/src/model.rs:2542
+#: crates/core/src/model.rs:2583
 msgid "Concrete block"
 msgstr "Bloque de hormigón"
 
-#: crates/core/src/model.rs:2556
+#: crates/core/src/model.rs:2597
 msgid "Copper"
 msgstr "Cobre"
 
-#: crates/core/src/commands.rs:1026
+#: crates/core/src/commands.rs:1104
 msgid "Copy"
 msgstr "Copia"
 
@@ -107,7 +107,7 @@ msgstr "Trazo y punto"
 msgid "Data Outlet"
 msgstr "Punto de datos"
 
-#: crates/core/src/commands.rs:7872
+#: crates/core/src/commands.rs:7955
 msgid "Dependent"
 msgstr "Dependiente"
 
@@ -171,8 +171,8 @@ msgstr "Este"
 msgid "Elbow 90"
 msgstr "Codo 90"
 
-#: crates/core/src/commands.rs:7656
-#: crates/core/src/commands.rs:9613
+#: crates/core/src/commands.rs:7739
+#: crates/core/src/commands.rs:9722
 msgid "Elevation"
 msgstr "Elevación"
 
@@ -233,7 +233,7 @@ msgstr "Vidrio"
 msgid "Gross Floor Area"
 msgstr "Superficie bruta de planta"
 
-#: crates/core/src/model.rs:2547
+#: crates/core/src/model.rs:2588
 msgid "Gypsum board"
 msgstr "Placa de yeso"
 
@@ -289,8 +289,8 @@ msgstr "Ancho de la pata"
 msgid "Length"
 msgstr "Longitud"
 
-#: crates/core/src/commands.rs:4917
-#: crates/core/src/model.rs:2686
+#: crates/core/src/commands.rs:5000
+#: crates/core/src/model.rs:2727
 msgid "Level"
 msgstr "Nivel"
 
@@ -314,7 +314,7 @@ msgstr "Marca"
 msgid "Masking"
 msgstr "Máscara"
 
-#: crates/core/src/commands.rs:6159
+#: crates/core/src/commands.rs:6242
 msgid "Mass"
 msgstr "Masa"
 
@@ -346,7 +346,7 @@ msgstr "Nombre"
 msgid "New Construction"
 msgstr "Nueva construcción"
 
-#: crates/core/src/schedule.rs:1048
+#: crates/core/src/schedule.rs:1049
 msgid "No"
 msgstr "No"
 
@@ -398,7 +398,7 @@ msgstr "Enlucido"
 msgid "Porcelain"
 msgstr "Porcelana"
 
-#: crates/core/src/commands.rs:2429
+#: crates/core/src/commands.rs:2507
 msgid "Project"
 msgstr "Proyecto"
 
@@ -422,11 +422,11 @@ msgstr "Altura de contrahuella"
 msgid "Risers"
 msgstr "Contrahuellas"
 
-#: crates/core/src/model.rs:2549
+#: crates/core/src/model.rs:2590
 msgid "Roof tiles"
 msgstr "Tejas"
 
-#: crates/core/src/commands.rs:6384
+#: crates/core/src/commands.rs:6467
 msgid "Room"
 msgstr "Habitación"
 
@@ -446,7 +446,7 @@ msgstr "ESCALA SEGÚN SE INDICA"
 msgid "Sand"
 msgstr "Arena"
 
-#: crates/core/src/model.rs:2545
+#: crates/core/src/model.rs:2586
 msgid "Screed"
 msgstr "Recrecido"
 
@@ -454,8 +454,8 @@ msgstr "Recrecido"
 msgid "Seat Height"
 msgstr "Altura del asiento"
 
-#: crates/core/src/commands.rs:7633
-#: crates/core/src/commands.rs:9612
+#: crates/core/src/commands.rs:7716
+#: crates/core/src/commands.rs:9721
 msgid "Section"
 msgstr "Sección"
 
@@ -579,7 +579,7 @@ msgstr "SUBE"
 msgid "Unbounded Height"
 msgstr "Altura no delimitada"
 
-#: crates/core/src/commands.rs:8013
+#: crates/core/src/commands.rs:8096
 msgid "Unnamed"
 msgstr "Sin nombre"
 
@@ -639,7 +639,7 @@ msgstr "Tabla de ventanas"
 msgid "Worktop"
 msgstr "Encimera"
 
-#: crates/core/src/schedule.rs:1048
+#: crates/core/src/schedule.rs:1049
 msgid "Yes"
 msgstr "Sí"
 
@@ -655,3 +655,21 @@ msgstr "aseo"
 msgid "wc"
 msgstr ""
 
+#: crates/core/src/parameters.rs:812
+#~ msgid "find"
+#~ msgstr ""
+#: crates/core/src/parameters/table.rs:334
+#~ msgid "guid"
+#~ msgstr ""
+#: crates/core/src/parameters.rs:812
+#~ msgid "prefix"
+#~ msgstr ""
+#: crates/core/src/parameters.rs:812
+#~ msgid "replace"
+#~ msgstr ""
+#: crates/core/src/parameters.rs:812
+#~ msgid "suffix"
+#~ msgstr ""
+#: crates/core/src/parameters/table.rs:335
+#~ msgid "version"
+#~ msgstr ""

@@ -1336,6 +1336,10 @@ pub fn export(m: &Model) -> String {
                     (ParameterKind::Text, Value::String(t)) => format!("IFCTEXT({})", s(t)),
                     (ParameterKind::Number, v) => format!("IFCREAL({})", real(v.as_f64()?)),
                     (ParameterKind::Length, v) => format!("IFCLENGTHMEASURE({})", real(v.as_f64()?)),
+                    (ParameterKind::Integer, v) => format!("IFCINTEGER({})", v.as_f64()? as i64),
+                    (ParameterKind::Area, v) => format!("IFCAREAMEASURE({})", real(v.as_f64()?)),
+                    (ParameterKind::Volume, v) => format!("IFCVOLUMEMEASURE({})", real(v.as_f64()?)),
+                    (ParameterKind::Angle, v) => format!("IFCPLANEANGLEMEASURE({})", real(v.as_f64()?.to_radians())),
                     (ParameterKind::YesNo, Value::Bool(b)) => format!("IFCBOOLEAN({})", if *b { ".T." } else { ".F." }),
                     _ => return None,
                 };

@@ -160,7 +160,7 @@ The goal is that BIMCraft fits into a mixed-software office.
 | glTF 2.0 and OBJ export (for visualisation and the web) | M | |
 | gbXML export (rooms and spaces, surfaces, openings) for energy tools | M | |
 | BCF 3.0 import and export: issues with viewpoints, opened in views | M | |
-| CSV import of parameters (schedules export to CSV and XLSX today) | S | |
+| CSV import of parameters' values (their definitions import and export today: `parameter_import`, [parameters](docs/areas/parameters.md)) | S | |
 | Clash detection between categories (solid intersection), reported as BCF | M | High value once the geometry is there |
 | Point clouds: PTS, XYZ, PLY, LAS and E57 import, shown in 3D, plans and sections, with snaps to their points | L | Public specifications only (ASPRS LAS 1.2 to 1.4, ASTM E2807). A cloud is project data placed by an element, capped and thinned on import, its origin moved so survey coordinates fit. LAZ needs a LASzip port and ReCap's RCP/RCS are closed, so neither comes in. IFC4 has no point cloud in common use, so export leaves them out and says so |
 

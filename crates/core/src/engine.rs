@@ -361,7 +361,8 @@ fn named(m: &Model, params: &Value) -> Option<Value> {
                 }
             }
             Value::Array(a) => a.iter_mut().for_each(|x| walk(m, x, changed)),
-            Value::Object(o) => o.values_mut().for_each(|x| walk(m, x, changed)),
+            // A `guid` field says which thing it is, as a definition for a dictionary does: it stays a GUID.
+            Value::Object(o) => o.iter_mut().filter(|(k, _)| k.as_str() != "guid").for_each(|(_, x)| walk(m, x, changed)),
             _ => {}
         }
     }
