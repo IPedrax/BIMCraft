@@ -24,7 +24,7 @@ const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 /// A vertex (see [`Vertex`]) as the card takes it: its position as three floats, its two normals as four 16-bit signed fractions
 /// each (the fourth 0), and its four words. 44 bytes, not the 52 of floats.
 const STRIDE: u64 = 44;
-const GLOBALS: u64 = 8 * 16;
+const GLOBALS: u64 = 9 * 16;
 /// An owner's edge and tint colours, a skin's parts and a segment's ends and colour: 2, 3 and 3 vec4s.
 const OWNER: u64 = 32;
 const SKIN: u64 = 48;
@@ -442,6 +442,10 @@ impl Gpu {
         put(&mut globals, &[width, height, slack, if through { 1.0 } else { 0.0 }]);
         let lens = view.perspective.map_or([0.0; 4], |p| [p.focal, p.eye, p.a, p.b]);
         put(&mut globals, &lens);
+        // The view's edges, silhouettes and ambient shadows, as the processor draws them.
+        let d = mesh.display;
+        let silhouette = d.silhouette.min(bimcraft_core::view3d::MAX_SILHOUETTE) as f32;
+        put(&mut globals, &[if d.edges { 1.0 } else { 0.0 }, silhouette, if d.ambient_shadows { 1.0 } else { 0.0 }, 0.0]);
         write(&self.globals, &globals);
         let bind = up.bind.get_or_insert_with(|| {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -793,6 +797,40 @@ mod tests {
         )
         .unwrap();
         draws_as_the_processor(&mut gpu, &s, &[]);
+    }
+
+    #[test]
+    fn the_card_draws_edges_silhouettes_and_ambient_shadows_as_the_processor_does() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: the card's edges and shadows are not compared");
+            return;
+        };
+        let mut s = sample();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let mesh = |s: &Session| Arc::new(Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).unwrap());
+        gpu.draw(&mesh(&s), &cam, &[], PAPER).unwrap();
+        let plain = read(&gpu);
+        for options in [
+            serde_json::json!({"edges": false}),
+            serde_json::json!({"edges": true, "silhouette": 3}),
+            serde_json::json!({"silhouette": 0, "ambient_shadows": true}),
+            serde_json::json!({"edges": false, "silhouette": 6, "ambient_shadows": true}),
+        ] {
+            s.execute("graphic_display_options", &options).unwrap();
+            draws_as_the_processor(&mut gpu, &s, &[]);
+        }
+        // In perspective too, where a pixel's worth of depth changes with the depth.
+        let cam_p = scene.fit_from(Camera { lens: Some(bimcraft_core::view3d::LENS), ..cam }, &look);
+        draws_through(&mut gpu, &s, &[], cam_p);
+        // Ambient shadows alone: the card's own picture darkens in corners and lightens nowhere.
+        s.execute("graphic_display_options", &serde_json::json!({"edges": true, "silhouette": 0})).unwrap();
+        gpu.draw(&mesh(&s), &cam, &[], PAPER).unwrap();
+        let shadowed = read(&gpu);
+        let (a, b) = (plain.as_chunks::<4>().0, shadowed.as_chunks::<4>().0);
+        let darker = a.iter().zip(b).filter(|(p, q)| (0..3).all(|i| q[i] < p[i])).count();
+        let lighter = a.iter().zip(b).filter(|(p, q)| (0..3).any(|i| q[i] > p[i])).count();
+        assert!(darker > 500 && lighter == 0, "{darker} pixels darker, {lighter} lighter");
     }
 
     #[test]

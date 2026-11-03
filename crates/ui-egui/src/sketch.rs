@@ -856,3 +856,41 @@ fn sent(l: &SketchLine) -> serde_json::Value {
     }
     v
 }
+
+impl BimApp {
+    /// A small palette over the view at the middle of the sketch line picked alone, in Modify: what can be done to it, each button
+    /// starting its tool as the panels' do (Add Vertex, which no panel offers while sketching, Split, Offset, Trim/Extend).
+    pub(crate) fn edge_palette(&mut self, ctx: &egui::Context) {
+        if !matches!(self.tool, Tool::Modify) {
+            return;
+        }
+        let Some(sk) = &self.sketch else { return };
+        let picked: Vec<usize> = sk.picked.iter().copied().collect();
+        let [i] = picked[..] else { return };
+        let Some(line) = sk.lines.get(i) else { return };
+        let at = self.screen(line.middle()) + egui::vec2(12.0, -44.0);
+        if !self.view_rect.contains(at) {
+            return;
+        }
+        let mut pick = None;
+        egui::Area::new(egui::Id::new("edge-palette")).order(egui::Order::Middle).fixed_pos(at).show(ctx, |ui| {
+            egui::Frame::popup(ui.style()).fill(crate::style::pal().surface).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    for (icon, label, tool) in [
+                        (crate::icons::Icon::AddVertex, bimcraft_i18n::msg!("Add Vertex"), Tool::Vertex { delete: false }),
+                        (crate::icons::Icon::Split, bimcraft_i18n::msg!("Split Element"), Tool::Split),
+                        (crate::icons::Icon::Offset, bimcraft_i18n::msg!("Offset"), Tool::Offset),
+                        (crate::icons::Icon::Trim, bimcraft_i18n::msg!("Trim/Extend to Corner"), Tool::Trim(None)),
+                    ] {
+                        if crate::icon_button(ui, icon, label).clicked() {
+                            pick = Some(tool);
+                        }
+                    }
+                });
+            });
+        });
+        if let Some(tool) = pick {
+            self.set_tool(tool);
+        }
+    }
+}

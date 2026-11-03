@@ -11,10 +11,10 @@ use bimcraft_i18n::msg;
 
 use std::sync::Arc;
 
-use bimcraft_core::graphics::{Group, Override};
+use bimcraft_core::graphics::{Graphics, Group, Override};
 use bimcraft_core::model::{Element, Id, Model};
-use bimcraft_core::phasing::{self, Presentation, Status};
-use egui::{Align, Button, ComboBox, Context, Grid, Id as UiId, Layout, RichText, ScrollArea, TextEdit, Ui, vec2};
+use bimcraft_core::phasing::{self, PhaseFilter, Presentation, Status};
+use egui::{Align, Button, ComboBox, Context, Grid, Id as UiId, Layout, Popup, RichText, ScrollArea, TextEdit, Ui, vec2};
 use serde_json::{Value, json};
 
 use crate::BimApp;
@@ -60,6 +60,47 @@ fn status_name(s: Status) -> &'static str {
         Status::Demolished => msg!("Demolished"),
         Status::Temporary => msg!("Temporary"),
     }
+}
+
+/// The renovation filter's choices, the views a renovation is drawn in, in plain words: each its tip, whether it shows the
+/// project's first phase (else its last), and how its phase filter shows each status. A filter is found by what it does, not
+/// by its name, which a project may change or have in its own language.
+const RENOVATION: [(&str, &str, bool, PhaseFilter); 4] = {
+    use Presentation::{ByCategory as B, NotDisplayed as N, Overridden as O};
+    const ALL: PhaseFilter = PhaseFilter { new: B, existing: B, demolished: B, temporary: B };
+    [
+        (msg!("All"), msg!("Everything the project has, as its categories draw it"), false, ALL),
+        ("Existing", msg!("What stands before the work: the project's first phase"), true, ALL),
+        (
+            msg!("Demolition"),
+            msg!("What stands before the work and what it takes down, drawn as the phases' overrides say"),
+            false,
+            PhaseFilter { new: N, existing: B, demolished: O, temporary: N },
+        ),
+        (
+            "New",
+            msg!("What the work builds, over what stood before"),
+            false,
+            PhaseFilter { new: B, existing: O, demolished: N, temporary: B },
+        ),
+    ]
+};
+
+/// Which of [`RENOVATION`] a view with graphics `g` (as its template leaves them) shows, if it is one of them.
+fn renovation(m: &Model, g: &Graphics) -> Option<usize> {
+    let last = m.phases.len().checked_sub(1)?;
+    let at = g.phase.as_deref().and_then(|p| phasing::index(m, p)).unwrap_or(last);
+    let filter = g.phase_filter.as_ref().and_then(|f| m.phase_filters.get(f)).cloned().unwrap_or_default();
+    RENOVATION.iter().position(|(_, _, first, f)| *f == filter && at == if *first { 0 } else { last })
+}
+
+/// The `phase_filter` a view is given to show `f`: none for every status by its category, else a filter of the project's
+/// that does; nothing when the project has none.
+fn filter_for(m: &Model, f: &PhaseFilter) -> Option<Value> {
+    if *f == PhaseFilter::default() {
+        return Some(Value::Null);
+    }
+    m.phase_filters.iter().find(|(_, held)| *held == f).map(|(name, _)| json!(name))
 }
 
 fn presentation_name(p: Presentation) -> &'static str {
@@ -132,6 +173,36 @@ impl BimApp {
         {
             self.run("graphics", json!({"view": view, "options": {set: name}}));
         }
+    }
+
+    /// The view control bar's renovation filter: which phase of the work the view shows, in plain words, set as Properties'
+    /// Phase and Phase Filter are, in one `graphics` command. All is the view's own again (no phase, no filter); Existing,
+    /// the project's first phase. Greyed out where a view template sets the phase, and left out where the project's scale
+    /// leaves out phasing.
+    pub(crate) fn renovation_menu(&mut self, ui: &mut Ui) {
+        let Some(view) = self.graphic_view().filter(|_| !crate::ribbon::scale_hides("Phasing")) else { return };
+        let m = Arc::clone(&self.session.model);
+        let now = renovation(&m, &self.graphics_shown());
+        let tip =
+            msg!("Renovation: which phase of the work this view shows: all of it, what stood before, what comes down, or what is built");
+        let set_by = self.controlled_by(Group::Phase);
+        let r = crate::footer::menu_button(ui, msg!("Renovation"), now.map_or("Custom", |i| RENOVATION[i].0), tip, set_by.as_deref());
+        let mut picked = None;
+        Popup::menu(&r).show(|ui| {
+            for (i, (word, tip, first, f)) in RENOVATION.iter().enumerate() {
+                let set = filter_for(&m, f);
+                let item = ui.add_enabled_ui(set.is_some(), |ui| ui.selectable_label(now == Some(i), t(word))).inner;
+                let note = t("The project has no phase filter that shows this: make one in Manage > Phasing");
+                if item.on_hover_text(t(tip)).on_disabled_hover_text(note).clicked() {
+                    let phase = if *first { json!(m.phases.first()) } else { Value::Null };
+                    picked = set.map(|filter| json!({"view": view, "phase": phase, "phase_filter": filter}));
+                }
+            }
+        });
+        if let Some(p) = picked {
+            self.run("graphics", p);
+        }
+        ui.separator();
     }
 
     /// The active design option, in the status bar: what new elements are made in. Nothing while the
