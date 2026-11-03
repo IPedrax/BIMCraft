@@ -87,8 +87,9 @@ fn in_3d_a_click_picks_what_the_elevation_then_sets_and_adds_points_and_split_li
     type_into(&mut h, "Elevation:", "-40");
     key(&mut h, Key::Enter);
     assert_eq!(point_near(&h, floor, 4000.0, 3000.0, 0.0).map(|p| p.1), Some(-40.0));
-    // Add Point: on the top where it's clicked.
+    // Add Point, Absolute: on the top where it's clicked, 20 mm under the level.
     press(&mut h, "Add Point");
+    pick(&mut h, Role::RadioButton, "Absolute");
     type_into(&mut h, "Elevation:", "-20");
     let top = |h: &Harness<BimApp>, x: f64, y: f64| {
         let m = &h.state().session.model;
@@ -130,7 +131,7 @@ roof {"level": 100001, "boundary": [[10000, 0], [18000, 0], [18000, 6000], [1000
     assert_eq!(h.state().selection, [roofs[0]]);
     assert!(h.query_by_label("Gable Edge").is_some());
     press(&mut h, "Add Point");
-    type_into(&mut h, "Elevation:", "-40");
+    type_into(&mut h, "Offset from Surface:", "-40");
     click(&mut h, P2(4000.0, 3000.0));
     assert_eq!(field(&h, roofs[0], "shape")["points"][0]["z"], json!(-40.0), "{}", field(&h, roofs[0], "shape"));
     assert!(painted(&h).iter().any(|t| t == "-40"), "{:?}", painted(&h));
@@ -202,7 +203,7 @@ fn a_points_height_label_clicked_takes_a_height_typed_in_plan_and_in_3d() {
 fn in_3d_add_point_snaps_onto_an_edge_near_the_cursor() {
     let (mut h, floor) = drained();
     press(&mut h, "Add Point");
-    type_into(&mut h, "Elevation:", "-10");
+    type_into(&mut h, "Offset from Surface:", "-10");
     // A few pixels off the south edge, a quarter of the way along.
     let at = h.state().screen3([2000.0, 0.0, 0.0]) + vec2(2.0, 3.0);
     click_at(&mut h, at);
@@ -217,6 +218,7 @@ fn in_plan_add_point_snaps_onto_an_edge_near_the_cursor() {
     h.state_mut().run("edit_shape", json!({"id": floor, "points": [{"at": [4000, 3000], "z": -300}]}));
     click(&mut h, P2(4000.0, 0.0));
     press(&mut h, "Add Point");
+    pick(&mut h, Role::RadioButton, "Absolute");
     type_into(&mut h, "Elevation:", "-10");
     // Just off a crease from a corner to the drain: onto it.
     click(&mut h, P2(2040.0, 1480.0));
@@ -242,4 +244,34 @@ fn in_3d_a_picked_edges_arrow_drags_both_its_ends_up_together() {
         assert!((z - 100.0).abs() <= 2.0, "{x}: {z}");
     }
     assert!((h.state().shape_z.parse::<f64>().unwrap() - 100.0).abs() <= 2.0, "{}", h.state().shape_z);
+}
+
+#[test]
+fn add_point_along_the_surface_lands_on_it_and_the_cursor_reads_how_high() {
+    let mut h = app(r#"floor {"boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}"#);
+    let floor = ids(&h, "floor")[0];
+    h.state_mut().run("edit_shape", json!({"id": floor, "points": [{"at": [4000, 3000], "z": -300}]}));
+    click(&mut h, P2(4000.0, 0.0));
+    press(&mut h, "Add Point");
+    assert!(h.state().shape_along, "Along Surface first, as Revit's");
+    // Halfway down the west plane the top is 150 mm under the level: the cursor says so, and a point at 0 over it stays there.
+    h.hover_at(h.state().screen(P2(2000.0, 3000.0)));
+    h.run();
+    assert!(painted(&h).iter().any(|t| t == "-150"), "{:?}", painted(&h));
+    click(&mut h, P2(2000.0, 3000.0));
+    assert_eq!(point_near(&h, floor, 2000.0, 3000.0, 1.0).map(|p| p.1), Some(-150.0));
+    // 20 over the surface: 20 over where it is.
+    type_into(&mut h, "Offset from Surface:", "20");
+    click(&mut h, P2(6000.0, 3000.0));
+    assert_eq!(point_near(&h, floor, 6000.0, 3000.0, 1.0).map(|p| p.1), Some(-130.0));
+}
+
+#[test]
+fn in_3d_a_selected_point_is_dimensioned_from_where_the_top_would_be() {
+    let (mut h, _) = drained();
+    press(&mut h, "Modify Sub Elements");
+    assert!(!painted(&h).iter().any(|t| t == "300"), "nothing selected, no dimension");
+    let at = h.state().screen3([4000.0, 3000.0, -300.0]);
+    click_at(&mut h, at);
+    assert!(painted(&h).iter().any(|t| t == "300"), "{:?}", painted(&h));
 }

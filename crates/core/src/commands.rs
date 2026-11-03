@@ -281,9 +281,10 @@ pub static ALL: &[Command] = &[
         "add_point",
         "Add Point",
         &[],
-        "{id, at: [x,y], z?, absolute?} a point on a floor's or flat roof's top, `z` mm above where it would be without its shape (with \
-         `absolute`, at that elevation); with no `z`, at the height the top has there now. Within a millimetre of a point it \
-         has, sets that one's height",
+        "{id, at: [x,y], z?, absolute?, offset?} a point on a floor's or flat roof's top: `offset` mm over the top as it is \
+         there now (Revit's Along Surface), or `z` mm above where it would be without its shape (with `absolute`, at that \
+         elevation); with neither, at the height the top has there now. Within a millimetre of a point it has, sets that \
+         one's height",
         add_point,
     ),
     edit(
@@ -7071,13 +7072,15 @@ fn edit_shape(s: &mut Session, p: &Value) -> R {
 /// at that elevation); with no `z`, at the height the top has there now. Within a millimetre of a point it has, that one.
 fn add_point(s: &mut Session, p: &Value) -> R {
     let c = "add_point";
-    let (id, mut f) = shaped_floor(c, s, p, &["id", "at", "z", "absolute"])?;
+    let (id, mut f) = shaped_floor(c, s, p, &["id", "at", "z", "absolute", "offset"])?;
     let m = &s.model;
     let at = point_req(c, p, "at")?;
-    let z = match num(c, p, "z")? {
-        Some(z) if flag(c, p, "absolute")? => z - m.floor_top(&f).at(at),
-        Some(z) => z,
-        None => m.shape_height(&f, at),
+    let z = match (num(c, p, "z")?, num(c, p, "offset")?) {
+        (Some(_), Some(_)) => return Err(bad(c, "give `z` or `offset`, not both")),
+        (None, Some(by)) => m.shape_height(&f, at) + by,
+        (Some(z), None) if flag(c, p, "absolute")? => z - m.floor_top(&f).at(at),
+        (Some(z), None) => z,
+        (None, None) => m.shape_height(&f, at),
     };
     match f.shape.points.iter_mut().find(|x| x.at.dist(at) <= TOL) {
         Some(x) => x.z = z,

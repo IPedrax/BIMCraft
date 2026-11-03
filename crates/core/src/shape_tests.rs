@@ -1108,7 +1108,7 @@ fn a_shaped_flat_roof_comes_back_from_ifc_shaped_and_a_pitched_one_pitched() {
 
 #[test]
 fn in_3d_a_cursor_near_an_edge_snaps_onto_it_and_names_the_edge() {
-    use crate::view3d::shape_snap_3d;
+    use crate::view3d::{ShapeSnap, shape_snap_3d};
     let mut s = Session::new();
     let f = slab(&mut s);
     run(&mut s, "edit_shape", json!({"id": f, "points": [{"at": [4000, 3000], "z": -300}]}));
@@ -1122,18 +1122,22 @@ fn in_3d_a_cursor_near_an_edge_snaps_onto_it_and_names_the_edge() {
         };
         // A few pixels off the south edge, a quarter of the way along: on it, there.
         let (x, y) = screen([2000.0, 0.0, 0.0]);
-        let (q, edge) = shape_snap_3d(&s.model, &fl, &cam, (x + 2.0, y + 3.0), 8.0).expect("the edge");
+        let (q, edge, _) = shape_snap_3d(&s.model, &fl, &cam, (x + 2.0, y + 3.0), 8.0).expect("the edge");
         assert!((q.1).abs() < 1.0 && (q.0 - 2000.0).abs() < 150.0, "{q:?} ({lens:?})");
         let [a, b] = edge.expect("an edge, to light up");
         assert!(a[1].abs() < 1e-6 && b[1].abs() < 1e-6, "{a:?} {b:?}");
         // Off a crease from a corner to the drain: on it, at its height.
         let mid = [2000.0, 1500.0, -150.0];
         let (x, y) = screen(mid);
-        let (q, edge) = shape_snap_3d(&s.model, &fl, &cam, (x + 1.0, y - 2.0), 8.0).expect("the crease");
+        let (q, edge, _) = shape_snap_3d(&s.model, &fl, &cam, (x + 1.0, y - 2.0), 8.0).expect("the crease");
         assert!(q.dist(P2(2000.0, 1500.0)) < 150.0 && edge.is_some(), "{q:?}");
         // Near the drain: the drain itself, no edge.
         let (x, y) = screen([4000.0, 3000.0, -300.0]);
-        assert_eq!(shape_snap_3d(&s.model, &fl, &cam, (x + 3.0, y), 8.0), Some((P2(4000.0, 3000.0), None)));
+        assert_eq!(shape_snap_3d(&s.model, &fl, &cam, (x + 3.0, y), 8.0), Some((P2(4000.0, 3000.0), None, ShapeSnap::Endpoint)));
+        // By the south edge's middle: the middle.
+        let (x, y) = screen([4000.0, 0.0, 0.0]);
+        let (q, _, kind) = shape_snap_3d(&s.model, &fl, &cam, (x + 3.0, y + 2.0), 8.0).expect("the middle");
+        assert_eq!((q, kind), (P2(4000.0, 0.0), ShapeSnap::Midpoint));
         // Out in the middle of a plane: nothing to snap to.
         let (x, y) = screen([2500.0, 2800.0, -150.0]);
         assert_eq!(shape_snap_3d(&s.model, &fl, &cam, (x, y), 8.0), None);
@@ -1142,18 +1146,34 @@ fn in_3d_a_cursor_near_an_edge_snaps_onto_it_and_names_the_edge() {
 
 #[test]
 fn in_plan_a_cursor_near_an_edge_snaps_onto_it_and_names_the_edge() {
-    use crate::view3d::shape_snap_plan;
+    use crate::view3d::{ShapeSnap, shape_snap_plan};
     let mut s = Session::new();
     let f = slab(&mut s);
     run(&mut s, "edit_shape", json!({"id": f, "points": [{"at": [4000, 3000], "z": -300}]}));
     let fl = s.model.shapeable(f).unwrap();
     // Off the south edge: onto it, the edge named.
-    let (q, edge) = shape_snap_plan(&s.model, &fl, P2(2000.0, 40.0), 100.0).expect("the edge");
-    assert_eq!((q, edge), (P2(2000.0, 0.0), Some((P2(0.0, 0.0), P2(8000.0, 0.0)))));
+    let (q, edge, kind) = shape_snap_plan(&s.model, &fl, P2(2000.0, 40.0), 100.0).expect("the edge");
+    assert_eq!((q, edge, kind), (P2(2000.0, 0.0), Some((P2(0.0, 0.0), P2(8000.0, 0.0))), ShapeSnap::Nearest));
+    // By its middle: the middle, first.
+    let (q, _, kind) = shape_snap_plan(&s.model, &fl, P2(4030.0, 50.0), 100.0).expect("the middle");
+    assert_eq!((q, kind), (P2(4000.0, 0.0), ShapeSnap::Midpoint));
     // Off a crease to the drain: onto it.
-    let (q, edge) = shape_snap_plan(&s.model, &fl, P2(2030.0, 1460.0), 100.0).expect("the crease");
+    let (q, edge, _) = shape_snap_plan(&s.model, &fl, P2(2030.0, 1460.0), 100.0).expect("the crease");
     assert!(q.dist(P2(2030.0, 1460.0)) < 60.0 && (q.1 - 0.75 * q.0).abs() < 1e-6 && edge.is_some(), "{q:?}");
     // By the drain: the drain.
-    assert_eq!(shape_snap_plan(&s.model, &fl, P2(4050.0, 2960.0), 100.0), Some((P2(4000.0, 3000.0), None)));
+    assert_eq!(shape_snap_plan(&s.model, &fl, P2(4050.0, 2960.0), 100.0), Some((P2(4000.0, 3000.0), None, ShapeSnap::Endpoint)));
     assert_eq!(shape_snap_plan(&s.model, &fl, P2(2500.0, 2800.0), 100.0), None);
+}
+
+#[test]
+fn add_point_with_an_offset_lands_that_far_over_the_top_as_it_is_there() {
+    let mut s = Session::new();
+    let f = slab(&mut s);
+    run(&mut s, "edit_shape", json!({"id": f, "points": [{"at": [4000, 3000], "z": -300}]}));
+    // Halfway from a corner to the drain the top is 150 mm down: 20 over it is 130 down.
+    run(&mut s, "add_point", json!({"id": f, "at": [2000, 1500], "offset": 20}));
+    assert!(near(height_at(&s, f, P2(2000.0, 1500.0)), -130.0), "{}", height_at(&s, f, P2(2000.0, 1500.0)));
+    // Not both.
+    let e = fails(&mut s, "add_point", json!({"id": f, "at": [6000, 1500], "offset": 20, "z": 5}));
+    assert!(e.contains("offset"), "{e}");
 }

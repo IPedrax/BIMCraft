@@ -81,11 +81,42 @@ pub(crate) fn raised_all(m: &Model, f: &Floor, all: &[P2], by: f64) -> Option<Sh
     (shape != f.shape).then_some(shape)
 }
 
-/// How high `ends` lie on floor `f`'s top, raised `by` mm, as the Options Bar's Elevation reads them (above the unshaped
-/// top, or with `absolute` above the level): one height, or the lowest and the highest, `-30…-10`.
-pub(crate) fn heights_text(m: &Model, f: &Floor, ends: &[P2], absolute: bool, by: f64) -> String {
-    let (base, level) = (m.floor_top(f), m.elevation(f.level));
-    let read = |q: P2| m.shape_height(f, q) + by + if absolute { base.at(q) - level } else { 0.0 };
+/// What the Options Bar's elevations are measured from, as Revit's Elevation Base: the floor's top as it would be without
+/// its shape, its level, or the project's zero (Revit's Internal Origin; a survey point waits for shared coordinates).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Base {
+    #[default]
+    Floor,
+    Level,
+    Project,
+}
+
+impl Base {
+    pub(crate) const ALL: [Base; 3] = [Base::Floor, Base::Level, Base::Project];
+
+    /// Its name on the Options Bar.
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Base::Floor => bimcraft_i18n::msg!("Unshaped Top"),
+            Base::Level => bimcraft_i18n::msg!("Level"),
+            Base::Project => bimcraft_i18n::msg!("Project Zero"),
+        }
+    }
+
+    /// How high it is over plan point `q` of floor `f`, in the model: what an elevation there counts from.
+    pub(crate) fn at(self, m: &Model, f: &Floor, q: P2) -> f64 {
+        match self {
+            Base::Floor => m.floor_top(f).at(q),
+            Base::Level => m.elevation(f.level),
+            Base::Project => 0.0,
+        }
+    }
+}
+
+/// How high `ends` lie on floor `f`'s top, raised `by` mm, as the Options Bar's Elevation reads them, over `base`: one
+/// height, or the lowest and the highest, `-30…-10`.
+pub(crate) fn heights_text(m: &Model, f: &Floor, ends: &[P2], base: Base, by: f64) -> String {
+    let read = |q: P2| m.floor_top(f).at(q) + m.shape_height(f, q) + by - base.at(m, f, q);
     let zs: Vec<f64> = ends.iter().map(|q| read(*q)).collect();
     let (lo, hi) = zs.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(*z), hi.max(*z)));
     if hi - lo < 0.5 { m.units.length(lo) } else { format!("{}…{}", m.units.length(lo), m.units.length(hi)) }
@@ -163,6 +194,27 @@ pub(crate) fn draw_marks(p: &Painter, marks: &Marks, to: impl Fn(P3) -> Pos2, pi
     }
 }
 
+/// A shape snap's marker at `at`, as a plan's snaps draw theirs: a square on a point or corner, a triangle on an edge's
+/// middle, a diamond along an edge.
+pub(crate) fn snap_marker(p: &Painter, at: Pos2, kind: bimcraft_core::view3d::ShapeSnap) {
+    use bimcraft_core::view3d::ShapeSnap;
+    let stroke = Stroke::new(2.0, pal().accent);
+    match kind {
+        ShapeSnap::Endpoint => {
+            p.rect_stroke(Rect::from_center_size(at, vec2(11.0, 11.0)), 0.0, stroke, egui::StrokeKind::Middle);
+        }
+        ShapeSnap::Midpoint => {
+            p.add(egui::Shape::closed_line(vec![at + vec2(0.0, -6.0), at + vec2(6.0, 5.0), at + vec2(-6.0, 5.0)], stroke));
+        }
+        ShapeSnap::Nearest => {
+            p.add(egui::Shape::closed_line(
+                vec![at + vec2(0.0, -6.0), at + vec2(6.0, 0.0), at + vec2(0.0, 6.0), at + vec2(-6.0, 0.0)],
+                stroke,
+            ));
+        }
+    }
+}
+
 /// ▲ and ▼ beside a selected point or edge at `c`, as Revit draws them to drag it up or down: where each is.
 pub(crate) fn arrows(p: &Painter, c: Pos2) -> [Pos2; 2] {
     let (up, down) = (c + vec2(-12.0, -9.0), c + vec2(-12.0, 9.0));
@@ -194,30 +246,44 @@ impl BimApp {
         self.run("edit_shape", json!({"id": id, "points": points, "lines": lines}))
     }
 
-    /// Add Point at `p` on the selected floor's top: at the Options Bar's elevation, or the top's height there.
+    /// Add Point at `p` on the selected floor's top, as the Options Bar says: along the surface as it is, the offset over
+    /// it; or Absolute, at the elevation above the floor's level (none typed, the top's height there).
     pub(crate) fn shape_add_point(&mut self, p: P2) {
         let Some((floor, f)) = self.floor_selected() else { return };
         let m = &self.session.model;
         let mut q = json!({"id": floor, "at": point(p)});
-        // `add_point` reads an absolute elevation from the project's zero; the Options Bar's, from the floor's level.
-        let level = if self.shape_absolute { m.elevation(f.level) } else { 0.0 };
-        if !self.shape_z.trim().is_empty() {
-            match m.units.parse(&self.shape_z) {
-                Some(z) => q["z"] = json!(z + level),
-                None => {
-                    self.status = Status { text: tf("add point: `{}` is not an elevation", &[&self.shape_z]), error: true };
-                    return;
-                }
+        let (typed, what) = if self.shape_along { (&self.shape_offset, "an offset") } else { (&self.shape_z, "an elevation") };
+        if !typed.trim().is_empty() {
+            let Some(v) = m.units.parse(typed) else {
+                self.status = Status { text: tf("add point: `{}` is not {}", &[typed, what]), error: true };
+                return;
+            };
+            if self.shape_along {
+                q["offset"] = json!(v);
+            } else {
+                // `add_point` reads an absolute elevation from the project's zero; the Options Bar's, from its Elevation Base.
+                q["z"] = json!(v + self.shape_base.at(m, &f, p));
+                q["absolute"] = json!(true);
             }
-        }
-        if self.shape_absolute {
-            q["absolute"] = json!(true);
         }
         self.run("add_point", q);
     }
 
-    /// The points and corners `picked` each to elevation `typed`, as the Options Bar's Elevation reads (above the unshaped
-    /// top, or with Absolute above the level), in one `edit_shape`; a corner becomes a point.
+    /// How high over the Elevation Base a click at plan point `q` would land: Add Point's point, as the Options Bar
+    /// says; Add Split Line's end, on the top. What the cursor reads while they're on.
+    pub(crate) fn landing_height(&self, q: P2) -> Option<f64> {
+        let (_, f) = self.floor_selected()?;
+        let m = &self.session.model;
+        let on_top = m.floor_top(&f).at(q) + m.shape_height(&f, q) - self.shape_base.at(m, &f, q);
+        match self.tool {
+            Tool::AddPoint if self.shape_along => Some(on_top + m.units.parse(&self.shape_offset).unwrap_or(0.0)),
+            Tool::AddPoint => Some(m.units.parse(&self.shape_z).unwrap_or(on_top)),
+            _ => Some(on_top),
+        }
+    }
+
+    /// The points and corners `picked` each to elevation `typed`, as the Options Bar's Elevation reads (over its Elevation
+    /// Base), in one `edit_shape`; a corner becomes a point.
     pub(crate) fn shape_heights(&mut self, picked: impl FnOnce(&Floor) -> Vec<P2>, typed: &str) {
         let Some((floor, f)) = self.floor_selected() else { return };
         let m = &self.session.model;
@@ -234,9 +300,8 @@ impl BimApp {
         if picked.is_empty() {
             return;
         }
-        // Above the top as it would be without the shape, or with Absolute, above the level.
-        let (base, level) = (m.floor_top(&f), m.elevation(f.level));
-        let lift = |at: P2| if self.shape_absolute { z - (base.at(at) - level) } else { z };
+        // Over the Elevation Base, in the shape's own terms: over the top as it would be without it.
+        let lift = |at: P2| z + self.shape_base.at(m, &f, at) - m.floor_top(&f).at(at);
         let mut shape = f.shape.clone();
         for at in picked {
             match shape.points.iter_mut().find(|p| p.at.dist(at) <= TOL) {
@@ -334,13 +399,12 @@ impl BimApp {
         self.shape_refresh();
     }
 
-    /// How high the selection is, as the Options Bar's Elevation reads it (above the unshaped top, or with Absolute above
-    /// the level): one height for all, or none when it's mixed or nothing is selected.
+    /// How high the selection is, as the Options Bar's Elevation reads it (over its Elevation Base): one height for all, or
+    /// none when it's mixed or nothing is selected.
     pub(crate) fn shape_picked_height(&self) -> Option<f64> {
         let (_, f) = self.floor_selected()?;
         let m = &self.session.model;
-        let (base, level) = (m.floor_top(&f), m.elevation(f.level));
-        let read = |q: P2| m.shape_height(&f, q) + if self.shape_absolute { base.at(q) - level } else { 0.0 };
+        let read = |q: P2| m.floor_top(&f).at(q) + m.shape_height(&f, q) - self.shape_base.at(m, &f, q);
         let zs: Vec<f64> = self.shape_picked.iter().flat_map(|s| s.ends()).map(read).collect();
         let first = *zs.first()?;
         zs.iter().all(|z| (z - first).abs() < 0.5).then_some(first)
@@ -349,7 +413,7 @@ impl BimApp {
     /// How high `ends` lie on floor `f`'s top, as the Options Bar's Elevation reads them: one height, or the lowest and the
     /// highest, `-30…-10`.
     pub(crate) fn heights_text(&self, f: &Floor, ends: &[P2]) -> String {
-        heights_text(&self.session.model, f, ends, self.shape_absolute, 0.0)
+        heights_text(&self.session.model, f, ends, self.shape_base, 0.0)
     }
 
     /// The Options Bar's Elevation as the selection reads it now.

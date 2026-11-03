@@ -2296,15 +2296,32 @@ pub fn shape_handles(m: &Model, f: &crate::model::Floor) -> ShapeHandles {
     (handles, edges)
 }
 
+/// Where a shape snap lands in plan, the edge it's on (in plan, or in the model) to light up, and which it was.
+pub type PlanSnap = (P2, Option<(P2, P2)>, ShapeSnap);
+pub type ModelSnap = (P2, Option<[P3; 2]>, ShapeSnap);
+
+/// What a shape snap found, by priority: a point or corner, an edge's middle, or the nearest point along an edge. (Its
+/// edges meet only at its points, being one triangulation's, so an intersection is always an endpoint.)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShapeSnap {
+    Endpoint,
+    Midpoint,
+    Nearest,
+}
+
 /// Where Add Point or Add Split Line snaps near plan point `q` on floor `f`'s top in a plan, within `reach` mm: the nearest
-/// point or corner; else the nearest point on the nearest edge (its outline's, an opening's, a split line, or a crease
-/// between its planes), with that edge to light up. None away from them all.
-pub fn shape_snap_plan(m: &Model, f: &crate::model::Floor, q: P2, reach: f64) -> Option<(P2, Option<(P2, P2)>)> {
+/// point or corner; else the middle of an edge (its outline's, an opening's, a split line, or a crease between its planes);
+/// else the nearest point on the nearest edge; with the edge to light up, and which it was. None away from them all.
+pub fn shape_snap_plan(m: &Model, f: &crate::model::Floor, q: P2, reach: f64) -> Option<PlanSnap> {
     let (handles, mut edges) = shape_handles(m, f);
     if let Some((c, _)) = handles.iter().map(|(c, _)| (*c, c.dist(q))).filter(|(_, d)| *d <= reach).min_by(|a, b| a.1.total_cmp(&b.1)) {
-        return Some((c, None));
+        return Some((c, None, ShapeSnap::Endpoint));
     }
     edges.extend(m.shape_creases(f).into_iter().map(|[a, b]| (P2(a[0], a[1]), P2(b[0], b[1]))));
+    let mid = |(a, b): (P2, P2)| (a + b) * 0.5;
+    if let Some(&e) = edges.iter().filter(|e| mid(**e).dist(q) <= reach).min_by(|x, y| mid(**x).dist(q).total_cmp(&mid(**y).dist(q))) {
+        return Some((mid(e), Some(e), ShapeSnap::Midpoint));
+    }
     let (a, b) = edges
         .into_iter()
         .map(|(a, b)| (a, b, geom::dist_to_segment(q, a, b)))
@@ -2312,13 +2329,13 @@ pub fn shape_snap_plan(m: &Model, f: &crate::model::Floor, q: P2, reach: f64) ->
         .min_by(|x, y| x.2.total_cmp(&y.2))
         .map(|(a, b, _)| (a, b))?;
     let t = geom::param_on_segment(q, a, b).clamp(0.0, 1.0);
-    Some((a + (b - a) * t, Some((a, b))))
+    Some((a + (b - a) * t, Some((a, b)), ShapeSnap::Nearest))
 }
 
 /// Where Add Point or Add Split Line snaps near pixel `at` on floor `f`'s top in the 3D view through `cam`, within `reach`
-/// pixels: the nearest point or corner; else the point under the cursor on the nearest edge (its outline's, an opening's, a
-/// split line, or a crease between its planes), with that edge in the model to light up. None away from them all.
-pub fn shape_snap_3d(m: &Model, f: &crate::model::Floor, cam: &Camera, at: (f64, f64), reach: f64) -> Option<(P2, Option<[P3; 2]>)> {
+/// pixels, as in a plan (`shape_snap_plan`): the nearest point or corner; else an edge's middle; else the point under the
+/// cursor on the nearest edge; with that edge in the model to light up, and which it was. None away from them all.
+pub fn shape_snap_3d(m: &Model, f: &crate::model::Floor, cam: &Camera, at: (f64, f64), reach: f64) -> Option<ModelSnap> {
     let (handles, edges) = shape_handles(m, f);
     let q = P2(at.0, at.1);
     let shown = |p: P3| {
@@ -2328,7 +2345,7 @@ pub fn shape_snap_3d(m: &Model, f: &crate::model::Floor, cam: &Camera, at: (f64,
     let corner =
         handles.iter().filter_map(|(c, p)| Some((*c, shown(*p)?.dist(q)))).filter(|(_, d)| *d <= reach).min_by(|a, b| a.1.total_cmp(&b.1));
     if let Some((c, _)) = corner {
-        return Some((c, None));
+        return Some((c, None, ShapeSnap::Endpoint));
     }
     // The edges in the model: the creases between its planes (its outline's and openings' edges among them), and its split
     // lines, where its top is.
@@ -2337,6 +2354,11 @@ pub fn shape_snap_3d(m: &Model, f: &crate::model::Floor, cam: &Camera, at: (f64,
     let mut lines: Vec<[P3; 2]> = m.shape_creases(f);
     lines.extend(edges.iter().map(|&(a, b)| [lift(a), lift(b)]));
     let lerp = |[a, b]: [P3; 2], t: f64| [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+    let mid_off = |e: [P3; 2]| shown(lerp(e, 0.5)).map_or(f64::INFINITY, |s| s.dist(q));
+    if let Some(&e) = lines.iter().filter(|e| mid_off(**e) <= reach).min_by(|x, y| mid_off(**x).total_cmp(&mid_off(**y))) {
+        let p = lerp(e, 0.5);
+        return Some((P2(p[0], p[1]), Some(e), ShapeSnap::Midpoint));
+    }
     let off = |e: [P3; 2], t: f64| shown(lerp(e, t)).map_or(f64::INFINITY, |s| s.dist(q));
     // Along an edge, how far its picture lies from the cursor falls then rises, even in perspective: narrowed down to it.
     let nearest = |e: [P3; 2]| {
@@ -2357,7 +2379,7 @@ pub fn shape_snap_3d(m: &Model, f: &crate::model::Floor, cam: &Camera, at: (f64,
         .filter(|(.., d)| *d <= reach)
         .min_by(|a, b| a.2.total_cmp(&b.2))?;
     let p = lerp(e, t);
-    Some((P2(p[0], p[1]), Some(e)))
+    Some((P2(p[0], p[1]), Some(e), ShapeSnap::Nearest))
 }
 
 /// Where pixel `at` meets floor `f`'s top in the 3D view through `cam`, in plan: on the nearest of its planes there.
