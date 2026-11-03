@@ -631,7 +631,7 @@ fn cut_unions(look: &Look, outlines: impl Iterator<Item = (Id, Vec<P2>)>) -> Vec
 
 /// The object style of `owner`'s category; with no owner, what a project's categories start with.
 fn style_of(m: &Model, owner: Option<Id>) -> ObjectStyle {
-    m.object_style(owner.and_then(|id| m.elements.get(id)).map_or("", Element::category))
+    owner.and_then(|id| m.elements.get(id)).map_or_else(|| m.object_style(""), |e| m.object_style_of(e))
 }
 
 /// Whether what `owner` is draws in the annotation's pens: a dimension, a tag, text, a spot elevation, a grid, a level, a
@@ -907,7 +907,7 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         _ => {}
     }
     let annotation = on.is_some() || matches!(e, Element::Section(_) | Element::Elevation(_));
-    let style = m.object_style(e.category());
+    let style = m.object_style_of(e);
     d.by_category(|_| style);
     d.weigh(|_| annotation);
     d

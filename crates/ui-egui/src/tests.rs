@@ -4760,6 +4760,7 @@ fn a_templates_controls_are_ticked_and_unticked_one_at_a_time() {
     let mut h = app(BOX);
     h.state_mut().session.execute("template", &json!({"name": "T", "from": 100000, "controls": ["categories"]})).unwrap();
     shortcut(&mut h, "VT");
+    press(&mut h, "T");
     let controls = |h: &Harness<BimApp>| h.state().session.model.view_templates["T"].controls.iter().copied().collect::<Vec<_>>();
     assert_eq!(controls(&h), [Group::Categories]);
     // Each is ticked on its own, the others staying as they were; Apply (the dialog's, over the palette's) sends them.

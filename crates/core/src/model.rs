@@ -69,7 +69,11 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 13: a floor or a flat roof may have a shape
+/// The version of the project file this build writes, and the newest it reads. 14: a view's graphics, a view template and the
+/// object styles may name the categories of family components (`lighting`, `outlet`, `switch`…, `graphics::COMPONENTS`) as well as
+/// `component`, which names them all, and a new project starts with three view templates (Electrical Power, Lighting and Ceiling)
+/// that do; nothing in a file of 13 changes, but a build that reads up to 13 would refuse one of 14 on opening ("isn't a category
+/// views draw"), not say "saved by a newer BIMCraft". 13: a floor or a flat roof may have a shape
 /// (`shape`: points and split lines on its top, parts), a floor's or roof's type a `variable` layer, and a spot a `slope`;
 /// nothing in a file of 12 changes, but a build that reads up to 12 would answer a spot slope or a variable layer with a
 /// serde error and leave a shape out as a field it doesn't know, drawing the floor flat, not "saved by a newer BIMCraft".
@@ -95,7 +99,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 13;
+pub const FORMAT: u32 = 14;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -2750,7 +2754,7 @@ impl Model {
             families: BTreeMap::new(),
             parameters: BTreeMap::new(),
             view_filters: BTreeMap::new(),
-            view_templates: BTreeMap::new(),
+            view_templates: graphics::starter_templates(language),
             phases: phasing::phases(language),
             phase_filters: phasing::filters(language),
             phase_overrides: phasing::overrides(),
@@ -3250,6 +3254,8 @@ impl Model {
         // file of 11 holds none. The electrical settings (voltages, distribution systems, wire types) have none within 11 or 12: a file
         // without them reads with the starter set, and one that has them is read by an older version with them left out.
         // 12 to 13 (a floor's or flat roof's shape, a variable layer, a spot slope) has none either: a file of 12 holds none.
+        // 13 to 14 (the categories of family components, and the starter view templates) has no step: a file of 13 names
+        // `component` for them all, which still does, and has the templates it was given: none, unless the user made them.
         self.format = FORMAT;
     }
 

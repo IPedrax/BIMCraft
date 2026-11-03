@@ -1004,7 +1004,7 @@ fn a_file_from_before_connectors_opens_and_its_devices_place() {
     let mut s = Session::new();
     made(&mut s, "component", json!({"family": "Outlet", "at": [0, 0]}));
     let mut v: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
-    assert_eq!(v["format"], json!(13));
+    assert_eq!(v["format"], json!(14));
     v["format"] = json!(11);
     for f in v["families"].as_object_mut().unwrap().values_mut() {
         f.as_object_mut().unwrap().remove("connectors");

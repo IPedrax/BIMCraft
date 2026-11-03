@@ -2073,8 +2073,13 @@ fn type_param(c: &str, p: &Value, m: &Model, category: &str) -> Result<String, S
 pub(crate) fn category(s: &str) -> String {
     // `structural column` and `structural_column` are `structuralcolumn`.
     let s: String = s.to_ascii_lowercase().chars().filter(char::is_ascii_alphanumeric).collect();
-    // `mass` ends in the plural's letter.
-    if s == "mass" || s == "masses" { "mass".into() } else { s.trim_end_matches('s').to_string() }
+    // `mass` and `switch` end in the plural's letter, and an accessory's plural isn't made by it.
+    match s.as_str() {
+        "mass" | "masses" => "mass".into(),
+        "switch" | "switches" => "switch".into(),
+        "pipeaccessory" | "pipeaccessories" => "pipeaccessory".into(),
+        _ => s.trim_end_matches('s').to_string(),
+    }
 }
 
 // ---------- derived values ----------
@@ -3267,6 +3272,7 @@ fn drawn_category(c: &str, given: &str) -> Result<String, String> {
                     .chain(&graphics::SCANS)
                     .chain(&graphics::IMPORTED)
                     .copied()
+                    .chain([graphics::COMPONENT])
                     .chain(graphics::SUBCATEGORIES.iter().map(|s| s.key))
                     .collect::<Vec<_>>()
                     .join(", ")
@@ -11725,12 +11731,16 @@ fn object_styles(s: &mut Session, p: &Value) -> R {
         let given: BTreeMap<String, Given> = serde_json::from_value(v.clone())
             .map_err(|e| bad(c, format!("`categories` is {{category: {{projection?: pen, cut?: pen}}, …}}: {e}")))?;
         let mut styles = s.model.object_styles.clone();
+        // `component` first: the family categories given with it are given on top of it, in whatever order they came.
+        let mut given: Vec<(String, Given)> = given.into_iter().collect();
+        given.sort_by_key(|(cat, _)| cat != graphics::COMPONENT);
         for (cat, g) in given {
             crate::styles::known(&cat).map_err(|e| bad(c, e))?;
-            let was = s.model.object_style(&cat);
+            let was = styles.get(&cat).copied().unwrap_or_else(|| crate::styles::inherited(&styles, &cat));
             let style = crate::styles::ObjectStyle { projection: g.projection.unwrap_or(was.projection), cut: g.cut.unwrap_or(was.cut) };
             style.check(&cat).map_err(|e| bad(c, e))?;
-            if style == crate::styles::default_of(&cat) {
+            // A category given what it starts with has nothing of its own to keep, unless `component` says another.
+            if style == crate::styles::inherited(&styles, &cat) {
                 styles.remove(&cat);
             } else {
                 styles.insert(cat, style);

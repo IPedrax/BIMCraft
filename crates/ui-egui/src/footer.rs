@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use bimcraft_core::engine::Session;
 use bimcraft_core::graphics::{self, ANNOTATION, Detail, Group, MODEL, VisualStyle};
-use bimcraft_core::model::{Id, Model};
+use bimcraft_core::model::{Element, Id, Model};
 use egui::{
     Color32, FontId, Frame, Key, Margin, Popup, Rect, Response, RichText, Sense, Shape, Stroke, StrokeKind, TextEdit, Ui, UiBuilder,
     WidgetInfo, WidgetType, pos2, vec2,
@@ -121,7 +121,12 @@ fn shadowed(base: &Arc<Model>, sheet: Sheet, three_d: Option<Id>, temp: &Temp) -
             g.elements.iter().filter(|(_, o)| o.hidden).filter_map(|(g, _)| base.elements.id(g)).filter(|i| drawn(i)).collect();
         // Each of them, and each element of a category hidden, in magenta.
         let paint = json!({"projection": {"color": REVEALED}, "cut": {"color": REVEALED}});
-        let by_category = base.elements.iter().filter(|(_, e)| cats.contains(&e.category())).map(|(i, _)| *i);
+        // Hidden with its own category, or with `component`, which an older project may say of all of them.
+        let hidden_whole = |e: &Element| {
+            let c = graphics::category_of(base, e);
+            cats.contains(&c) || (graphics::COMPONENTS.contains(&c) && cats.contains(&graphics::COMPONENT))
+        };
+        let by_category = base.elements.iter().filter(|(_, e)| hidden_whole(e)).map(|(i, _)| *i);
         if !cats.is_empty() {
             p["show"] = json!(cats);
         }
@@ -227,7 +232,7 @@ impl BimApp {
             self.status = Status { text: t("select what to hide or isolate first").into(), error: true };
             return None;
         }
-        let categories = elements.iter().filter_map(|id| m.elements.get(id)).map(|e| e.category()).collect();
+        let categories = elements.iter().filter_map(|id| m.elements.get(id)).map(|e| graphics::category_of(&m, e)).collect();
         Some((elements, categories))
     }
 

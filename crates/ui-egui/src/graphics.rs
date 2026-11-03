@@ -157,12 +157,14 @@ pub(crate) fn controlled_note(template: &str) -> String {
 impl VgDialog {
     /// The dialog on template `name`'s graphics as the View Templates dialog has them, on a tab.
     pub(crate) fn for_template(name: String, graphics: Graphics, tab: usize) -> VgDialog {
+        let mut draft = graphics.clone();
+        draft.split_component();
         VgDialog {
             view: Value::Null,
             title: tf("View Template: {}", &[&name]),
             template: Some(name),
-            own: graphics.clone(),
-            draft: graphics,
+            own: graphics,
+            draft,
             tab,
             pick: None,
             listed: BTreeSet::new(),
@@ -222,11 +224,14 @@ impl BimApp {
         };
         let own = self.graphics_now();
         let listed = own.elements.keys().filter_map(|g| self.session.model.elements.id(g)).collect();
+        // What an older project says of `component` is split among the family categories, which are the rows now.
+        let mut draft = own.clone();
+        draft.split_component();
         self.vg_dialog = Some(VgDialog {
             view,
             template: None,
             title: self.view_title(self.sheet),
-            draft: own.clone(),
+            draft,
             own,
             tab,
             pick: None,
@@ -269,7 +274,8 @@ impl BimApp {
         }
         let mut p = json!({"view": view});
         if category {
-            let cats: BTreeSet<&str> = picked.iter().filter_map(|id| m.elements.get(id)).map(Element::category).collect();
+            let cats: BTreeSet<&str> =
+                picked.iter().filter_map(|id| m.elements.get(id)).map(|e| bimcraft_core::graphics::category_of(&m, e)).collect();
             p["hide"] = json!(cats);
         } else {
             p["hide_elements"] = json!(picked);
@@ -288,8 +294,9 @@ impl BimApp {
             if g.elements.get(&m.guid(id)).is_some_and(|o| o.hidden) {
                 elements.push(id);
             }
-            if g.hides(e.category()) {
-                categories.insert(e.category());
+            // A luminaire is hidden with Lighting, or with Components, which an older project may say of all of them.
+            if let Some(by) = g.hidden_by(bimcraft_core::graphics::category_of(m, e)) {
+                categories.insert(by);
             }
         }
         (elements, categories.into_iter().collect())
@@ -355,7 +362,8 @@ impl BimApp {
                         }
                     });
                     ui.separator();
-                    let shown = d.draft.resolved(&model).into_owned();
+                    let mut shown = d.draft.resolved(&model).into_owned();
+                    shown.split_component();
                     match d.tab {
                         0 | 1 => {
                             // A view's point clouds with its model's categories: Revit gives them a tab of their own.
