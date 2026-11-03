@@ -3125,6 +3125,13 @@ impl Model {
         self.elements.id(a).is_some_and(|a| self.elements.id(b) == Some(a))
     }
 
+    /// The elements that point at element `k`, by id, as [`Element::refs`] gives what each points at: the doors and windows
+    /// in a wall, the walls attached to a roof or a floor, the dimensions and tags on it.
+    pub fn referring(&self, k: impl Key) -> Vec<Id> {
+        let Some(g) = self.elements.guid(k) else { return Vec::new() };
+        self.elements.iter().filter(|(_, e)| e.refs().contains(&g)).map(|(id, _)| *id).collect()
+    }
+
     /// The GUID of the element `k` finds; the nil GUID, which is no element's, when there's none.
     pub fn guid(&self, k: impl Key) -> Guid {
         self.elements.guid(k).unwrap_or_default()

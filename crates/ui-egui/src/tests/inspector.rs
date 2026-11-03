@@ -90,3 +90,34 @@ fn a_floors_slope_is_drawn_at_its_angle_and_stepped_on_its_picture_in_both_profi
         assert!(matches!(h.state().tool, Tool::SlopeArrow(None)), "rev {rev}");
     }
 }
+
+#[test]
+fn what_an_element_is_tied_to_is_a_link_that_selects_it_in_both_profiles() {
+    for rev in [false, true] {
+        let script = format!("{BOX}\ndoor {{\"at\": [2000, 0]}}\nroof {{}}");
+        let mut h = if rev { app(&script) } else { bimcraft(&script) };
+        let (walls, door, roof) = (ids(&h, "wall"), ids(&h, "door")[0], ids(&h, "roof")[0]);
+        let (south, east, west) = (walls[0], walls[1], walls[3]);
+        let session = &mut h.state_mut().session;
+        session.execute("modify", &json!({"ids": [south], "attach_top": roof})).unwrap();
+        let d = session.execute("dimension", &json!({"refs": [{"id": west}, {"id": east}], "at": [4000, 3000]})).unwrap()["id"].clone();
+        session.execute("dimension_constraint", &json!({"id": d, "locked": [0]})).unwrap();
+        // By the link's own action: a wall's rows run below the palette's fold.
+        let follow = |h: &mut Harness<BimApp>, link: String| {
+            h.get_by_role_and_label(Role::Link, &link).click_accesskit();
+            h.run();
+            h.state().selection.clone()
+        };
+        h.state_mut().selection = vec![door];
+        h.run();
+        // The door's host; the wall's openings and the roof its top is attached to; the walls attached to the roof.
+        assert_eq!(follow(&mut h, format!("Wall {south}")), [south], "rev {rev}");
+        assert_eq!(follow(&mut h, format!("Roof {roof}")), [roof], "rev {rev}");
+        assert_eq!(follow(&mut h, format!("Wall {south}")), [south], "rev {rev}");
+        assert_eq!(follow(&mut h, format!("Door {door}")), [door], "rev {rev}");
+        // The locked dimension that holds a wall.
+        h.state_mut().selection = vec![west];
+        h.run();
+        assert_eq!(follow(&mut h, format!("Dimension {d}")), [d.as_u64().unwrap_or_default()], "rev {rev}");
+    }
+}
