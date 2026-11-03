@@ -160,7 +160,7 @@ The goal is that BIMCraft fits into a mixed-software office.
 | glTF 2.0 and OBJ export (for visualisation and the web) | M | |
 | gbXML export (rooms and spaces, surfaces, openings) for energy tools | M | |
 | BCF 3.0 import and export: issues with viewpoints, opened in views | M | |
-| CSV import of parameters (schedules export to CSV and XLSX today) | S | |
+| CSV import of parameters' values (their definitions import and export today: `parameter_import`, [parameters](docs/areas/parameters.md)) | S | |
 | Clash detection between categories (solid intersection), reported as BCF | M | High value once the geometry is there |
 | Point clouds: PTS, XYZ, PLY, LAS and E57 import, shown in 3D, plans and sections, with snaps to their points | L | Public specifications only (ASPRS LAS 1.2 to 1.4, ASTM E2807). A cloud is project data placed by an element, capped and thinned on import, its origin moved so survey coordinates fit. LAZ needs a LASzip port and ReCap's RCP/RCS are closed, so neither comes in. IFC4 has no point cloud in common use, so export leaves them out and says so |
 
@@ -176,6 +176,7 @@ The goal is that someone could run a real small project on it.
 | GPU renderer (wgpu) for 3D: shaded views draw on the card since 0.7 (opt-in), and surfaces seen through; still to come there are hidden line and wireframe, and then plans, a section box, walkthroughs, shadows and sun, silhouettes | L |
 | A navigation gizmo, steering and orbit around the selection; tiled windows (views already float in windows of their own, and palettes dock and float). Not Revit's ViewCube, which is Autodesk's trademark and design: an original one in the manner of Blender's open-source navigation gizmo (axis balls to click to look along an axis, drag to orbit), drawn in code | M |
 | Editable keyboard shortcuts; project templates of BIMCraft's own on the start page | S |
+| Project Parameters window, UI/UX pass: tabs that keep one layout and size, columns that resize, sort and filter, a footer and actions that follow the tab (Parameters' Apply and counts show on tabs they don't concern), the In This Project table and the dictionary dropdown as one thing, changes not lost on Close without asking, and checks shared clearly across tabs | M |
 | Accessibility: keyboard reach for every dialog and screen-reader labels (egui's AccessKit) | M |
 | A file-format stability promise, with 1.x files opening in every later 1.x | S |
 | Signed installers on all three operating systems (macOS signing is wired up and waits for a Developer ID) | M |

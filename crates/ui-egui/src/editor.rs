@@ -187,6 +187,9 @@ struct ParamText {
     instance: bool,
     value: String,
     formula: String,
+    /// Kept as they are: the Project Parameters window sets them.
+    group: String,
+    definition: Option<bimcraft_core::ids::Guid>,
 }
 
 /// The name a parameter's kind goes by.
@@ -197,6 +200,7 @@ fn kind_name(k: Holds) -> &'static str {
         Holds::Angle => "Angle",
         Holds::YesNo => msg!("Yes/No"),
         Holds::Material => "Material",
+        Holds::Text => msg!("Text"),
     }
 }
 
@@ -217,7 +221,7 @@ fn text_value(kind: Holds, s: &str, who: &str) -> Result<Option<Value>, String> 
         return Ok(None);
     }
     Ok(Some(match kind {
-        Holds::Material => json!(s),
+        Holds::Material | Holds::Text => json!(s),
         Holds::YesNo => json!(matches!(s, "1" | "true" | "yes" | "Yes")),
         Holds::Length | Holds::Number | Holds::Angle => {
             json!(s.parse::<f64>().ok().filter(|x| x.is_finite()).ok_or_else(|| tf("{}: `{}` isn't a number", &[who, s]))?)
@@ -233,17 +237,27 @@ impl ParamText {
             instance: p.instance,
             value: value_text(p.kind, &p.value),
             formula: p.formula.clone().unwrap_or_default(),
+            group: p.group.clone(),
+            definition: p.definition,
         }
     }
 
     fn parameter(&self) -> Result<Parameter, String> {
         let value = text_value(self.kind, &self.value, &self.name)?.unwrap_or(match self.kind {
-            Holds::Material => json!(""),
+            Holds::Material | Holds::Text => json!(""),
             Holds::YesNo => json!(false),
             _ => json!(0.0),
         });
         let formula = Some(self.formula.trim().to_string()).filter(|f| !f.is_empty());
-        Ok(Parameter { name: self.name.trim().to_string(), kind: self.kind, instance: self.instance, value, formula })
+        Ok(Parameter {
+            name: self.name.trim().to_string(),
+            kind: self.kind,
+            instance: self.instance,
+            value,
+            formula,
+            group: self.group.clone(),
+            definition: self.definition,
+        })
     }
 }
 
@@ -618,7 +632,7 @@ fn parameters_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
         for (i, p) in ed.params.iter_mut().enumerate() {
             let n = i + 1;
             field(ui, format!("{} {n}", t("Parameter Name")), &mut p.name, 130.0);
-            let kinds = [Holds::Length, Holds::Number, Holds::Angle, Holds::YesNo, Holds::Material];
+            let kinds = [Holds::Length, Holds::Number, Holds::Angle, Holds::YesNo, Holds::Material, Holds::Text];
             ComboBox::from_id_salt(("fe-param-kind", i)).selected_text(t(kind_name(p.kind))).width(84.0).show_ui(ui, |ui| {
                 for k in kinds {
                     ui.selectable_value(&mut p.kind, k, t(kind_name(k)));
@@ -654,7 +668,15 @@ fn parameters_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
     }
     if ui.button(t("Add Parameter")).clicked() {
         let name = (1..).map(|k| format!("{} {k}", t("Parameter"))).find(|n| !ed.params.iter().any(|p| p.name == *n)).unwrap_or_default();
-        ed.params.push(ParamText { name, kind: Holds::Length, instance: false, value: "0".into(), formula: String::new() });
+        ed.params.push(ParamText {
+            name,
+            kind: Holds::Length,
+            instance: false,
+            value: "0".into(),
+            formula: String::new(),
+            group: String::new(),
+            definition: None,
+        });
     }
 }
 
@@ -1269,7 +1291,7 @@ mod tests {
         for part in [Part::Line, Part::Arc, Part::Text, Part::Dot] {
             assert_eq!(SymbolText::of(&SymbolText::blank(part).symbol().unwrap()).part, part);
         }
-        let p = Parameter { name: "Legs".into(), kind: Holds::YesNo, instance: true, value: json!(true), formula: None };
+        let p = Parameter { name: "Legs".into(), kind: Holds::YesNo, instance: true, value: json!(true), ..Parameter::default() };
         assert_eq!(ParamText::of(&p).parameter().unwrap(), p);
         let area = Parameter {
             name: "Area".into(),
@@ -1277,6 +1299,7 @@ mod tests {
             instance: false,
             value: json!(0.0),
             formula: Some("Width * Depth".into()),
+            ..Parameter::default()
         };
         assert_eq!(ParamText::of(&area).parameter().unwrap(), area);
         assert_eq!(kind_name(Holds::YesNo), "Yes/No");

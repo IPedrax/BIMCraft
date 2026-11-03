@@ -1838,6 +1838,23 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"start": [0, 0], "end": [0, 0]}),
         json!({"level": "nowhere"}),
         json!({"path": 5}),
+        json!({"ops": "x", "dry_run": 5}),
+        json!({"ops": [{"op": "rename", "names": ["x"], "prefix": 1e300}, {"op": "zap"}, 5, {"op": "duplicate", "name": []}]}),
+        json!({"ops": [{"op": "duplicate", "name": "Rating", "as": "\u{1}"}, {"op": "rename", "names": [5]}], "dry_run": true}),
+        json!({"path": "/nonexistent/x.csv", "map": {"a": 5}, "resolve": {"a": "zap"}, "categories": [1], "names": "x", "replace_categories": 3}),
+        json!({"path": "/nonexistent/x.bimparams", "add": [{"name": 5}], "merge": [1], "remove": {}, "names": 5, "version": []}),
+        json!({"from": [], "into": 5, "overwrite": "x"}),
+        json!({"from": "a", "to": [1], "names": "x", "prefix": 5, "find": []}),
+        json!({"name": "P", "description": 5, "group": [], "read_only": 1, "scope": "x", "dictionary": "d", "kind": "plasma"}),
+        json!({"name": "P", "scope": 5, "categories": ["room"]}),
+        json!({"category": "wall", "type": "x", "values": {"P": 1e300}, "copy_to": 5}),
+        json!({"family": [], "type": {}, "values": 5}),
+        json!({"category": "wall", "type": "Generic - 200mm", "values": {"Nope": []}}),
+        json!({"families": "x", "parameters": 5}),
+        json!({"path": 5, "name": [], "remove": "x"}),
+        json!({"name": "nope", "remove": true}),
+        json!({"families": ["x"], "parameters": [{"name": 5, "kind": "plasma", "definition": "x"}]}),
+        json!({"path": "/nonexistent/x.csv", "definitions": 5, "scopes": {"a": "zap"}}),
         json!({"path": "/nonexistent/scan.las", "units": "furlong", "spacing": -1}),
         json!({"cloud": "nope", "origin": "file", "at": [1e300, 0]}),
         json!({"path": "/nonexistent/plan.dxf", "units": "furlong", "scale": -1, "position": 3}),
@@ -5618,7 +5635,7 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
 }
 
 #[test]
-fn a_project_is_saved_as_format_12_and_one_of_format_4_to_11_opens_as_it_is_and_one_of_format_13_is_refused() {
+fn a_project_is_saved_as_format_13_and_one_of_format_4_to_12_opens_as_it_is_and_one_of_format_14_is_refused() {
     use crate::model::Model;
     // 5 added the scans a project holds and the point clouds that place them; 6 added detailing (lines, regions, groups,
     // repeating details, line and fill styles); 7 its CAD drawings and the imports that place them; 8 text types; 9 graphic line patterns; 10 dimensions to points and linear ones; 11 and 12 the project languages Swedish, Czech and French, and Dutch. Nothing in a file of 4
@@ -5629,37 +5646,37 @@ fn a_project_is_saved_as_format_12_and_one_of_format_4_to_11_opens_as_it_is_and_
     run(&mut s, "detail_line", json!({"start": [0, 0], "end": [1000, 0]}));
     let full = serde_json::to_value(&*s.model).unwrap();
     for v in [&empty, &full] {
-        assert_eq!(v["format"], 12, "a project is saved as format 12");
-        for old in [4, 5, 6, 7, 8, 9, 10, 11] {
+        assert_eq!(v["format"], 13, "a project is saved as format 13");
+        for old in [4, 5, 6, 7, 8, 9, 10, 11, 12] {
             let mut was = v.clone();
             was["format"] = json!(old);
             let (m, left_out) = Model::read(&was.to_string()).unwrap();
-            assert_eq!((m.format, left_out.len(), m.elements.len()), (12, 0, v["elements"].as_object().unwrap().len()));
+            assert_eq!((m.format, left_out.len(), m.elements.len()), (13, 0, v["elements"].as_object().unwrap().len()));
         }
     }
     assert!(full["elements"].as_object().unwrap().len() > 5);
-    // A project in Dutch is saved as format 12, which is what tells a build that doesn't know `nl` to refuse it.
+    // A project in Dutch is saved as format 13, which is what tells a build that doesn't know `nl` to refuse it.
     let mut dutch = Session::new();
     run(&mut dutch, "new", json!({"language": "nl"}));
     let v = serde_json::to_value(&*dutch.model).unwrap();
-    assert_eq!((v["format"].clone(), v["language"].clone()), (json!(12), json!("nl")));
+    assert_eq!((v["format"].clone(), v["language"].clone()), (json!(13), json!("nl")));
     // A newer file says what it is and what to do, even when nothing else in it is wrong.
     let mut newer = empty.clone();
-    newer["format"] = json!(13);
+    newer["format"] = json!(14);
     let e = Model::read(&newer.to_string()).unwrap_err();
     assert!(
-        e.contains("newer BIMCraft") && e.contains("file format 13") && e.contains("reads up to 12") && e.contains("update BIMCraft"),
+        e.contains("newer BIMCraft") && e.contains("file format 14") && e.contains("reads up to 13") && e.contains("update BIMCraft"),
         "{e}"
     );
     // A file of this format with a field it doesn't know is read without it, and says which.
     let mut odd = full.clone();
     odd["something_new"] = json!(true);
     let (m, left_out) = Model::read(&odd.to_string()).unwrap();
-    assert_eq!((m.format, left_out), (12, vec!["/something_new".to_string()]));
+    assert_eq!((m.format, left_out), (13, vec!["/something_new".to_string()]));
 }
 
 #[test]
-fn a_format_5_file_that_holds_elements_and_scans_migrates_to_12_and_keeps_both() {
+fn a_format_5_file_that_holds_elements_and_scans_migrates_to_13_and_keeps_both() {
     use crate::model::Model;
     let mut s = Session::new();
     house(&mut s);
@@ -5671,13 +5688,13 @@ fn a_format_5_file_that_holds_elements_and_scans_migrates_to_12_and_keeps_both()
     let mut file: serde_json::Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
     file["format"] = json!(5);
     let (m, left_out) = Model::read(&file.to_string()).unwrap();
-    assert_eq!((m.format, m.clouds.len(), left_out.len(), m.elements.len()), (12, 1, 0, s.model.elements.len()));
-    // Written again, it says 12.
-    assert_eq!(serde_json::from_str::<serde_json::Value>(&m.to_json().unwrap()).unwrap()["format"], 12);
+    assert_eq!((m.format, m.clouds.len(), left_out.len(), m.elements.len()), (13, 1, 0, s.model.elements.len()));
+    // Written again, it says 13.
+    assert_eq!(serde_json::from_str::<serde_json::Value>(&m.to_json().unwrap()).unwrap()["format"], 13);
     // A file of 6 (detailing, no CAD drawings) opens as 10 likewise.
     file["format"] = json!(6);
     let (m, left_out) = Model::read(&file.to_string()).unwrap();
-    assert_eq!((m.format, left_out.len(), m.elements.len()), (12, 0, s.model.elements.len()));
+    assert_eq!((m.format, left_out.len(), m.elements.len()), (13, 0, s.model.elements.len()));
 }
 
 #[test]

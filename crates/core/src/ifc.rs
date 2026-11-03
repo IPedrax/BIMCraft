@@ -1338,8 +1338,14 @@ pub fn export(m: &Model) -> String {
     for (&id, &ent) in &products {
         let Some(e) = m.elements.get(id) else { continue };
         let Some(params) = e.params() else { continue };
+        // A type parameter goes out on each element of the type: IFC has it where a reader of the element looks.
+        let of_type = m.parameters.iter().filter(|(_, p)| p.scope == crate::model::Scope::Type).filter_map(|(n, p)| {
+            let mine = p.categories.iter().any(|c| c == e.category());
+            Some((n, mine.then(|| crate::parameters::value_of(m, e, n, p)).flatten()?))
+        });
         let props: Vec<u64> = params
             .iter()
+            .chain(of_type)
             .filter_map(|(name, v)| {
                 // The project's parameters for its category: a component's family's values are its family's.
                 let p = m.parameters.get(name).filter(|p| p.categories.iter().any(|c| c == e.category()))?;
@@ -1347,6 +1353,10 @@ pub fn export(m: &Model) -> String {
                     (ParameterKind::Text, Value::String(t)) => format!("IFCTEXT({})", s(t)),
                     (ParameterKind::Number, v) => format!("IFCREAL({})", real(v.as_f64()?)),
                     (ParameterKind::Length, v) => format!("IFCLENGTHMEASURE({})", real(v.as_f64()?)),
+                    (ParameterKind::Integer, v) => format!("IFCINTEGER({})", v.as_f64()? as i64),
+                    (ParameterKind::Area, v) => format!("IFCAREAMEASURE({})", real(v.as_f64()?)),
+                    (ParameterKind::Volume, v) => format!("IFCVOLUMEMEASURE({})", real(v.as_f64()?)),
+                    (ParameterKind::Angle, v) => format!("IFCPLANEANGLEMEASURE({})", real(v.as_f64()?.to_radians())),
                     (ParameterKind::YesNo, Value::Bool(b)) => format!("IFCBOOLEAN({})", if *b { ".T." } else { ".F." }),
                     _ => return None,
                 };

@@ -1,6 +1,6 @@
 //! A workbook of one sheet as Office Open XML (`.xlsx`), written by hand: the five parts a spreadsheet needs, deflated into a
 //! zip with `flate2`. Text goes in as inline strings, so there is no shared-string table; numbers as numbers; the first row
-//! in bold. Nothing is read back.
+//! in bold. [`read`] reads the first sheet of any workbook back, as text.
 
 use std::io::Write;
 
@@ -37,6 +37,196 @@ fn workbook_xml(name: &str) -> String {
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="{}" sheetId="1" r:id="rId1"/></sheets></workbook>"#,
         escape(name)
     )
+}
+
+/// The most bytes a part of a workbook inflates to.
+const MAX_PART: u64 = 256 << 20;
+/// The most rows, and columns, read from a sheet.
+const MAX_ROWS: usize = 65_536;
+const MAX_COLUMNS: usize = 256;
+
+/// The first sheet of a workbook, as rows of text: a spreadsheet's own, with its shared strings, or one of ours. A number comes
+/// back as it was written and a date as its serial number. Cells a row skips are empty. A workbook is hostile: every offset is
+/// checked, a part inflates only so far, and a file that isn't one is an error.
+pub fn read(bytes: &[u8]) -> Result<Vec<Vec<String>>, String> {
+    let parts = zip_entries(bytes)?;
+    let part = |name: &str| parts.iter().find(|(n, _)| n == name).map(|(_, b)| String::from_utf8_lossy(b).into_owned());
+    let mut sheets: Vec<&String> =
+        parts.iter().map(|(n, _)| n).filter(|n| n.starts_with("xl/worksheets/") && n.ends_with(".xml")).collect();
+    // `sheet2` before `sheet10`.
+    sheets.sort_by_key(|n| (n.len(), n.as_str()));
+    let sheet = sheets.first().and_then(|n| part(n)).ok_or("it has no worksheet")?;
+    let shared: Vec<String> = part("xl/sharedStrings.xml").map_or_else(Vec::new, |x| {
+        tag_bodies(&x, "si").map(|(_, si)| tag_bodies(si, "t").map(|(_, t)| unescape(t)).collect::<String>()).take(MAX_ROWS * 16).collect()
+    });
+    let mut rows = Vec::new();
+    for (_, row) in tag_bodies(&sheet, "row").take(MAX_ROWS) {
+        let mut cells: Vec<String> = Vec::new();
+        for (head, cell) in tag_bodies(row, "c") {
+            let at = attribute(head, "r").map_or(cells.len(), column_index);
+            if at >= MAX_COLUMNS {
+                continue;
+            }
+            let value = tag_bodies(cell, "v").next().map(|(_, v)| unescape(v));
+            let text = match attribute(head, "t") {
+                Some("s") => value.and_then(|v| v.trim().parse::<usize>().ok()).and_then(|i| shared.get(i).cloned()).unwrap_or_default(),
+                Some("inlineStr") => tag_bodies(cell, "t").map(|(_, t)| unescape(t)).collect(),
+                _ => value.unwrap_or_default(),
+            };
+            if cells.len() <= at {
+                cells.resize(at + 1, String::new());
+            }
+            if let Some(slot) = cells.get_mut(at) {
+                *slot = text;
+            }
+        }
+        rows.push(cells);
+    }
+    Ok(rows)
+}
+
+/// A cell reference's column: `A1` is 0, `AA3` is 26.
+fn column_index(reference: &str) -> usize {
+    let n = reference
+        .chars()
+        .take_while(char::is_ascii_alphabetic)
+        .fold(0usize, |n, c| n.saturating_mul(26).saturating_add(usize::from(c.to_ascii_uppercase() as u8 - b'A') + 1));
+    n.saturating_sub(1)
+}
+
+/// Each element `name` in `xml`: its opening tag's attributes, and what it holds (nothing for one that closes itself).
+fn tag_bodies<'a>(xml: &'a str, name: &'a str) -> impl Iterator<Item = (&'a str, &'a str)> {
+    let mut rest = xml;
+    std::iter::from_fn(move || {
+        loop {
+            let start = rest.find('<')?;
+            let after = rest.get(start + 1..)?;
+            let name_end = after.find(|c: char| c.is_whitespace() || c == '>' || c == '/').unwrap_or(after.len());
+            let found = after.get(..name_end)?;
+            // A prefixed tag (`x:row`) is the same tag.
+            let bare = found.rsplit(':').next().unwrap_or(found);
+            if bare != name {
+                rest = after;
+                continue;
+            }
+            let close = after.find('>')?;
+            let head = after.get(name_end..close)?;
+            if head.ends_with('/') {
+                rest = after.get(close + 1..)?;
+                return Some((head, ""));
+            }
+            let body = after.get(close + 1..)?;
+            let closing = format!("</{found}>");
+            let Some(end) = body.find(&closing) else {
+                rest = "";
+                return Some((head, body));
+            };
+            rest = body.get(end + closing.len()..)?;
+            return Some((head, body.get(..end)?));
+        }
+    })
+}
+
+/// Attribute `key` of an opening tag.
+fn attribute<'a>(head: &'a str, key: &str) -> Option<&'a str> {
+    let mut rest = head;
+    loop {
+        let eq = rest.find('=')?;
+        let name = rest.get(..eq)?.trim();
+        let after = rest.get(eq + 1..)?.trim_start();
+        let quote = after.chars().next().filter(|c| *c == '"' || *c == '\'')?;
+        let body = after.get(1..)?;
+        let end = body.find(quote)?;
+        if name == key {
+            return body.get(..end);
+        }
+        rest = body.get(end + 1..)?;
+    }
+}
+
+/// XML's entities and character references read.
+fn unescape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(at) = rest.find('&') {
+        out.push_str(rest.get(..at).unwrap_or(""));
+        let tail = rest.get(at..).unwrap_or("");
+        let Some(end) = tail.find(';').filter(|e| *e <= 12) else {
+            out.push('&');
+            rest = tail.get(1..).unwrap_or("");
+            continue;
+        };
+        let name = tail.get(1..end).unwrap_or("");
+        let c = match name {
+            "amp" => Some('&'),
+            "lt" => Some('<'),
+            "gt" => Some('>'),
+            "quot" => Some('"'),
+            "apos" => Some('\''),
+            _ => name
+                .strip_prefix("#x")
+                .map_or_else(|| name.strip_prefix('#').and_then(|d| d.parse().ok()), |h| u32::from_str_radix(h, 16).ok())
+                .and_then(char::from_u32),
+        };
+        match c {
+            Some(c) => {
+                out.push(c);
+                rest = tail.get(end + 1..).unwrap_or("");
+            }
+            None => {
+                out.push('&');
+                rest = tail.get(1..).unwrap_or("");
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// A zip's entries a workbook needs, by name, from its central directory; stored or deflated, none past [`MAX_PART`].
+fn zip_entries(b: &[u8]) -> Result<Vec<(String, Vec<u8>)>, String> {
+    const NOT: &str = "it isn't a workbook";
+    let u16_at = |at: usize| -> Option<usize> { Some(usize::from(u16::from_le_bytes([*b.get(at)?, *b.get(at + 1)?]))) };
+    let u32_at = |at: usize| -> Option<usize> {
+        Some(u32::from_le_bytes([*b.get(at)?, *b.get(at + 1)?, *b.get(at + 2)?, *b.get(at + 3)?]) as usize)
+    };
+    // The end of central directory record is within the last 64 KB, comment and all.
+    let from = b.len().saturating_sub(65_557);
+    let tail = b.get(from..).ok_or(NOT)?;
+    let eocd = tail.windows(4).rposition(|w| w == b"PK\x05\x06").map(|i| i + from).ok_or(NOT)?;
+    let count = u16_at(eocd + 10).ok_or(NOT)?;
+    let mut at = u32_at(eocd + 16).ok_or(NOT)?;
+    let mut out = Vec::new();
+    for _ in 0..count {
+        if b.get(at..at + 4) != Some(b"PK\x01\x02") {
+            return Err(NOT.into());
+        }
+        let method = u16_at(at + 10).ok_or(NOT)?;
+        let compressed = u32_at(at + 20).ok_or(NOT)?;
+        let (name_len, extra, comment) = (u16_at(at + 28).ok_or(NOT)?, u16_at(at + 30).ok_or(NOT)?, u16_at(at + 32).ok_or(NOT)?);
+        let local = u32_at(at + 42).ok_or(NOT)?;
+        let name = String::from_utf8_lossy(b.get(at + 46..at + 46 + name_len).ok_or(NOT)?).into_owned();
+        at = at + 46 + name_len + extra + comment;
+        if !(name == "xl/sharedStrings.xml" || name.starts_with("xl/worksheets/")) {
+            continue;
+        }
+        if b.get(local..local + 4) != Some(b"PK\x03\x04") {
+            return Err(NOT.into());
+        }
+        let start = local + 30 + u16_at(local + 26).ok_or(NOT)? + u16_at(local + 28).ok_or(NOT)?;
+        let data = b.get(start..start.saturating_add(compressed)).ok_or(NOT)?;
+        let mut body = Vec::new();
+        match method {
+            0 => body.extend_from_slice(data),
+            8 => {
+                use std::io::Read;
+                flate2::read::DeflateDecoder::new(data).take(MAX_PART).read_to_end(&mut body).map_err(|e| format!("{NOT}: {e}"))?;
+            }
+            other => return Err(format!("{name} is compressed in a way this reader doesn't know ({other})")),
+        }
+        out.push((name, body));
+    }
+    Ok(out)
 }
 
 /// What a sheet may be called: no `[]:*?/\`, not empty, at most 31 characters.
@@ -246,5 +436,66 @@ mod tests {
         assert_eq!(sheet_name(&"x".repeat(40)).len(), MAX_NAME);
         assert_eq!(sheet_name("[]"), "Sheet1");
         assert_eq!(escape("a\u{1}b\tc"), "ab\tc");
+    }
+
+    /// A zip of `parts`, stored: what a spreadsheet writes, in the way a reader must take it.
+    fn zipped(parts: &[(&str, &str)]) -> Vec<u8> {
+        let (mut out, mut central) = (Vec::new(), Vec::new());
+        for (name, body) in parts {
+            let at = out.len() as u32;
+            let (n, b) = (name.len() as u16, body.len() as u32);
+            out.extend(b"PK\x03\x04\x14\0\0\0\0\0\0\0\0\0\0\0\0\0");
+            out.extend(b.to_le_bytes());
+            out.extend(b.to_le_bytes());
+            out.extend(n.to_le_bytes());
+            out.extend(0u16.to_le_bytes());
+            out.extend(name.as_bytes());
+            out.extend(body.as_bytes());
+            central.extend(b"PK\x01\x02\x14\0\x14\0\0\0\0\0\0\0\0\0\0\0\0\0");
+            central.extend(b.to_le_bytes());
+            central.extend(b.to_le_bytes());
+            central.extend(n.to_le_bytes());
+            central.extend([0u8; 10]);
+            central.extend([0u8; 2]);
+            central.extend(at.to_le_bytes());
+            central.extend(name.as_bytes());
+        }
+        let start = out.len() as u32;
+        let size = central.len() as u32;
+        out.extend(central);
+        out.extend(b"PK\x05\x06\0\0\0\0");
+        out.extend((parts.len() as u16).to_le_bytes());
+        out.extend((parts.len() as u16).to_le_bytes());
+        out.extend(size.to_le_bytes());
+        out.extend(start.to_le_bytes());
+        out.extend(0u16.to_le_bytes());
+        out
+    }
+
+    #[test]
+    fn a_spreadsheets_own_workbook_is_read_with_its_shared_strings_and_the_cells_it_skips() {
+        let shared = r#"<sst xmlns="x"><si><t>Name</t></si><si><t xml:space="preserve">Fire &amp; Smoke</t></si><si><r><t>Ri</t></r><r><rPr><b/></rPr><t>ch</t></r></si></sst>"#;
+        let sheet = r#"<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="C1" t="s"><v>2</v></c></row><row r="2" spans="1:3"><c r="A2" s="1" t="s"><v>1</v></c><c r="B2"/><c r="C2"><v>12.5</v></c><c r="D2" t="inlineStr"><is><t>in&#x41;</t></is></c></row><row r="3"/></sheetData></worksheet>"#;
+        let book = zipped(&[
+            ("xl/workbook.xml", "<workbook/>"),
+            ("xl/sharedStrings.xml", shared),
+            ("xl/worksheets/sheet10.xml", "<worksheet/>"),
+            ("xl/worksheets/sheet1.xml", sheet),
+        ]);
+        let rows = read(&book).unwrap();
+        assert_eq!(rows[0], ["Name", "", "Rich"]);
+        assert_eq!(rows[1], ["Fire & Smoke", "", "12.5", "inA"]);
+    }
+
+    #[test]
+    fn what_isnt_a_workbook_is_an_error_and_ours_reads_back() {
+        for junk in [&b""[..], b"PK", b"PK\x05\x06", &[0xFF; 100]] {
+            assert!(read(junk).is_err());
+        }
+        let bad_offset = zipped(&[("xl/worksheets/sheet1.xml", "<x/>")]);
+        let cut = bad_offset.get(..bad_offset.len() - 30).unwrap();
+        assert!(read(cut).is_err(), "cut short");
+        let ours = workbook("S", &["A".to_string(), "B".to_string()], &[vec![Cell::Text("x".into()), Cell::Number(2.0)]]);
+        assert_eq!(read(&ours).unwrap()[1], ["x", "2"]);
     }
 }
