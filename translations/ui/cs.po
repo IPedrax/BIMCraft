@@ -2813,7 +2813,7 @@ msgstr "Textilie"
 msgid "Failed to read file: {}"
 msgstr "Nepodařilo se přečíst soubor: {}"
 
-#: crates/ui-egui/src/browser.rs:536
+#: crates/ui-egui/src/browser.rs:541
 msgid "Families"
 msgstr "Rodiny"
 
@@ -4036,7 +4036,7 @@ msgstr "Připojit model (LK): jiný projekt, soubor BIMCraft nebo IFC, zobrazen�
 msgid "Linked File"
 msgstr "Připojený soubor"
 
-#: crates/ui-egui/src/browser.rs:493
+#: crates/ui-egui/src/browser.rs:498
 msgid "Linked Models"
 msgstr "Připojené modely"
 
@@ -5900,11 +5900,11 @@ msgstr ""
 msgid "Reinforcement"
 msgstr ""
 
-#: crates/ui-egui/src/browser.rs:486
+#: crates/ui-egui/src/browser.rs:491
 msgid "Reload"
 msgstr "Znovu načíst"
 
-#: crates/ui-egui/src/browser.rs:493
+#: crates/ui-egui/src/browser.rs:498
 msgid "Reload All"
 msgstr "Znovu načíst vše"
 
@@ -6271,7 +6271,7 @@ msgstr "Pole výkazu (v pořadí):"
 msgid "Schedules"
 msgstr "Výkazy"
 
-#: crates/ui-egui/src/browser.rs:474
+#: crates/ui-egui/src/browser.rs:479
 msgid "Schedules/Quantities (all)"
 msgstr "Výkazy/množství (vše)"
 
@@ -8708,7 +8708,7 @@ msgstr "{}\n\nPodrobnosti naleznete v {}."
 msgid "{} (HR resets)"
 msgstr "{} (HR obnoví)"
 
-#: crates/ui-egui/src/browser.rs:485
+#: crates/ui-egui/src/browser.rs:490
 msgid "{} (not loaded)"
 msgstr "{} (nenačteno)"
 

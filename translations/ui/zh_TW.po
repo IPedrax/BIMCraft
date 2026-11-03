@@ -2814,7 +2814,7 @@ msgstr "織物"
 msgid "Failed to read file: {}"
 msgstr "讀取檔案失敗：{}"
 
-#: crates/ui-egui/src/browser.rs:536
+#: crates/ui-egui/src/browser.rs:541
 msgid "Families"
 msgstr "族"
 
@@ -4037,7 +4037,7 @@ msgstr "鏈接模型 (LK)：另一個項目（BIMCraft 檔案或 IFC），在此
 msgid "Linked File"
 msgstr "鏈接的檔案"
 
-#: crates/ui-egui/src/browser.rs:493
+#: crates/ui-egui/src/browser.rs:498
 msgid "Linked Models"
 msgstr "鏈接模型"
 
@@ -5901,11 +5901,11 @@ msgstr "已配筋：{} 根鋼筋，{} kg 鋼材。"
 msgid "Reinforcement"
 msgstr "鋼筋"
 
-#: crates/ui-egui/src/browser.rs:486
+#: crates/ui-egui/src/browser.rs:491
 msgid "Reload"
 msgstr "重新載入"
 
-#: crates/ui-egui/src/browser.rs:493
+#: crates/ui-egui/src/browser.rs:498
 msgid "Reload All"
 msgstr "全部重新載入"
 
@@ -6272,7 +6272,7 @@ msgstr "明細表字段（按順序）："
 msgid "Schedules"
 msgstr "明細表"
 
-#: crates/ui-egui/src/browser.rs:474
+#: crates/ui-egui/src/browser.rs:479
 msgid "Schedules/Quantities (all)"
 msgstr "明細表/數量（全部）"
 
@@ -8709,7 +8709,7 @@ msgstr "{}\n\n詳細信息見 {}。"
 msgid "{} (HR resets)"
 msgstr "{}（按 HR 重設）"
 
-#: crates/ui-egui/src/browser.rs:485
+#: crates/ui-egui/src/browser.rs:490
 msgid "{} (not loaded)"
 msgstr "{}（未載入）"
 

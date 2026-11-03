@@ -2814,7 +2814,7 @@ msgstr "Tecido"
 msgid "Failed to read file: {}"
 msgstr "Falha ao ler arquivo: {}"
 
-#: crates/ui-egui/src/browser.rs:536
+#: crates/ui-egui/src/browser.rs:541
 msgid "Families"
 msgstr "Famílias"
 
@@ -4037,7 +4037,7 @@ msgstr "Vincular modelo (LK): outro projeto, um arquivo BIMCraft ou um IFC, most
 msgid "Linked File"
 msgstr "Arquivo vinculado"
 
-#: crates/ui-egui/src/browser.rs:493
+#: crates/ui-egui/src/browser.rs:498
 msgid "Linked Models"
 msgstr "Modelos vinculados"
 
@@ -5901,11 +5901,11 @@ msgstr "Armado: {} barras, {} kg de aço."
 msgid "Reinforcement"
 msgstr "Armadura"
 
-#: crates/ui-egui/src/browser.rs:486
+#: crates/ui-egui/src/browser.rs:491
 msgid "Reload"
 msgstr "Recarregar"
 
-#: crates/ui-egui/src/browser.rs:493
+#: crates/ui-egui/src/browser.rs:498
 msgid "Reload All"
 msgstr "Recarregar todos"
 
@@ -6272,7 +6272,7 @@ msgstr "Campos da tabela (em ordem):"
 msgid "Schedules"
 msgstr "Tabelas"
 
-#: crates/ui-egui/src/browser.rs:474
+#: crates/ui-egui/src/browser.rs:479
 msgid "Schedules/Quantities (all)"
 msgstr "Tabelas/quantitativos (todas)"
 
@@ -8709,7 +8709,7 @@ msgstr "{}\n\nOs detalhes estão em {}."
 msgid "{} (HR resets)"
 msgstr "{} (HR redefine)"
 
-#: crates/ui-egui/src/browser.rs:485
+#: crates/ui-egui/src/browser.rs:490
 msgid "{} (not loaded)"
 msgstr "{} (não carregado)"
 

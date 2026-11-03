@@ -470,7 +470,12 @@ impl BimApp {
                 self.view_leaf(&name, Sheet::Schedule(cat))
             })
             .collect();
-        kids.extend(self.schedules().into_iter().map(|(id, name)| self.view_leaf(name, Sheet::Table(id))));
+        // The project's own have a right-click Delete; the six every project has stay.
+        kids.extend(
+            self.schedules()
+                .into_iter()
+                .map(|(id, name)| self.view_leaf(name, Sheet::Table(id)).with_menu(vec![("Delete", Act::Delete(vec![id]))])),
+        );
         Node::group(t("Schedules/Quantities (all)"), true, kids)
     }
 
