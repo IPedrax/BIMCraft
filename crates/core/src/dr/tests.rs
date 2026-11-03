@@ -79,6 +79,11 @@ fn an_outlet_above_32_a_is_not_covered() {
     assert!(required(&circuit(vec![p.clone()]), true));
     p.rating = Some(32.5);
     assert!(!required(&circuit(vec![p]), true));
+    // Note 1 reaches every outlet, a bathroom's too; what else is in the circuit still asks for it.
+    let mut b = point(Place::Bath, Kind::Outlet);
+    b.rating = Some(63.0);
+    assert!(!required(&circuit(vec![b.clone()]), true));
+    assert!(required(&circuit(vec![b, point(Place::Bath, Kind::Lighting)]), true));
     let mut k = point(Place::Kitchen, Kind::Outlet);
     k.rating = Some(63.0);
     assert!(!required(&circuit(vec![k]), true));

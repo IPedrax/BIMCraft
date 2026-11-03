@@ -2,7 +2,7 @@
 //! current of 30 mA at most, whatever the earthing scheme. A pure function of the circuits it is given, with no model behind it:
 //! the `dr_check` command is its only caller.
 //!
-//! A circuit needs it if any point it serves is in one of these cases:
+//! A circuit needs it (item 5.1.3.2.2) if any point it serves is in one of these cases:
 //!
 //! - a place with a bathtub or a shower: every point;
 //! - an outlet in an external area;
@@ -11,7 +11,7 @@
 //!   normal use or may be washed, but for lights 2.5 m up or more;
 //! - in a building that is not a dwelling, an outlet in those same areas.
 //!
-//! An outlet is covered up to a rated current of 32 A. A circuit or sector of an IT scheme that must not be cut, for the safety of
+//! An outlet is covered up to a rated current of 32 A (Note 1 of 5.1.3.2.2), in a bathroom too. A circuit or sector of an IT scheme that must not be cut, for the safety of
 //! persons or to keep lives, is left out. What is not covered, and the caller says so: the further rules for the volumes of a
 //! bathroom and for swimming pools, and the other protections against shock the device does not replace.
 
@@ -123,11 +123,11 @@ fn covered(p: &Point) -> bool {
 
 /// Why a point asks for it, if it does.
 fn reason(p: &Point, residential: bool) -> Option<&'static str> {
-    if p.place == Place::Bath {
-        return Some("bath: a point in a place with a bathtub or a shower");
-    }
     if !covered(p) {
         return None;
+    }
+    if p.place == Place::Bath {
+        return Some("bath: a point in a place with a bathtub or a shower");
     }
     match (p.place, p.kind) {
         (Place::External, Kind::Outlet) => Some("external: an outlet in an external area"),
