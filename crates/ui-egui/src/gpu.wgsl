@@ -3,8 +3,10 @@
 //      shows and its element), with their depth.
 //   2. vs_scene / fs_clear: the surfaces seen through, the nearest of them where it is nearer than anything opaque, into a
 //      colour target and an element target of their own (only when the view sees through something).
-//   3. vs_full / fs_post: an edge wherever the opaque plane changes between a pixel and the one to its right or below it, else
-//      the shaded colour (tinted halfway where selected), else the ground; and over it what is seen through, blended.
+//   3. vs_full / fs_post: an edge wherever the opaque plane changes between a pixel and the one to its right or below it (where
+//      the view shows its edges) and a silhouette as wide as the view says, else the shaded colour (in ambient shadow where the
+//      view shows them, read off the opaque depth round the pixel; tinted halfway where selected), else the ground; and over it
+//      what is seen through, blended.
 //   4. vs_line / fs_line: each level's plane and name as lines, where nothing opaque nearer hides them.
 // Lengths are mm. A colour is 0 to 255 in each channel, as the processor keeps it, and is divided down only on its way out.
 
@@ -29,6 +31,9 @@ struct Globals {
     // the aim, mm; and the depth (larger nearer, 1 at the near plane and 0 at the far one) z + w / ahead, for a point ahead mm
     // in front of the eye.
     lens: vec4<f32>,
+    // The view's Graphic Display Options: x 1 where it shows its edges, y a silhouette's width (px, 0 for none), z 1 where it
+    // shows ambient shadows.
+    display: vec4<f32>,
 }
 
 // A point `d` from the aim in clip space: parallel, or seen from the eye.
@@ -222,6 +227,101 @@ fn bytes(c: vec4<f32>) -> vec3<f32> {
     return floor(c.xyz * 255.0 + vec3<f32>(0.5));
 }
 
+// The opaque depth at a pixel: 0 where nothing is, and outside the picture.
+fn depth_at(x: i32, y: i32) -> f32 {
+    let size = vec2<i32>(g.size.xy);
+    if x < 0 || y < 0 || x >= size.x || y >= size.y {
+        return 0.0;
+    }
+    return textureLoad(scene_depth, vec2<i32>(x, y), 0);
+}
+
+// A pixel's worth of depth where the depth is `d`, as the core's `Camera::slack` gives it.
+fn worth(d: f32) -> f32 {
+    if g.lens.x > 0.0 {
+        return (d - g.lens.z) / g.lens.x;
+    }
+    return g.back.w / g.aim.w;
+}
+
+// How lit the surface at a pixel of depth `z` is under ambient shadows, as the core's `ambient` works it out: as dark as the
+// surfaces round it rise toward the eye on both sides of it.
+fn ambient(x: i32, y: i32, z: f32) -> f32 {
+    var offsets = array<vec2<i32>, 8>(
+        vec2<i32>(12, 0), vec2<i32>(0, 12), vec2<i32>(8, 8), vec2<i32>(8, -8),
+        vec2<i32>(6, 0), vec2<i32>(0, 6), vec2<i32>(4, 4), vec2<i32>(4, -4),
+    );
+    let px = worth(z);
+    var sum = 0.0;
+    var n = 0.0;
+    for (var i = 0; i < 8; i++) {
+        let o = offsets[i];
+        let a = depth_at(x + o.x, y + o.y);
+        let b = depth_at(x - o.x, y - o.y);
+        let unit = px * length(vec2<f32>(o));
+        if a <= 0.0 || b <= 0.0 || !(unit > 0.0) || abs(a - z) > 4.0 * unit || abs(b - z) > 4.0 * unit {
+            continue;
+        }
+        sum += ((a + b) * 0.5 - z) / unit;
+        n += 1.0;
+    }
+    if n == 0.0 {
+        return 1.0;
+    }
+    return 1.0 - 0.6 * clamp(sum / n, 0.0, 1.0);
+}
+
+// Whether two neighbouring pixels, each its depth and plane, have a silhouette between them: one on a surface and one on
+// nothing, or on two surfaces four pixels' worth apart in depth.
+fn gap(d0: f32, p0: u32, d1: f32, p1: u32) -> bool {
+    if (d0 > 0.0) != (d1 > 0.0) {
+        return true;
+    }
+    return d0 > 0.0 && p0 != p1 && abs(d0 - d1) > 4.0 * worth(max(d0, d1));
+}
+
+// Whether a pixel is in a silhouette as wide as the view says: whether the square one wider than it, from half its width before
+// the pixel, holds two neighbours with a silhouette between them, as the core's `outlines` finds.
+fn outlined(x: i32, y: i32) -> bool {
+    let width = min(i32(g.display.y), 10);
+    if width <= 0 {
+        return false;
+    }
+    let size = vec2<i32>(g.size.xy);
+    let corner = vec2<i32>(x - width / 2, y - width / 2);
+    var above_d: array<f32, 11>;
+    var above_p: array<u32, 11>;
+    var above_in: array<bool, 11>;
+    for (var j = 0; j <= width; j++) {
+        var left_d = 0.0;
+        var left_p = 0u;
+        var left_in = false;
+        for (var i = 0; i <= width; i++) {
+            let q = corner + vec2<i32>(i, j);
+            let inside = q.x >= 0 && q.y >= 0 && q.x < size.x && q.y < size.y;
+            var d = 0.0;
+            var p = 0u;
+            if inside {
+                d = textureLoad(scene_depth, q, 0);
+                p = textureLoad(scene_ids, q, 0).x;
+            }
+            if inside && left_in && gap(left_d, left_p, d, p) {
+                return true;
+            }
+            if inside && above_in[i] && gap(above_d[i], above_p[i], d, p) {
+                return true;
+            }
+            above_d[i] = d;
+            above_p[i] = p;
+            above_in[i] = inside;
+            left_d = d;
+            left_p = p;
+            left_in = inside;
+        }
+    }
+    return false;
+}
+
 @fragment
 fn fs_post(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let x = i32(frag.x);
@@ -230,7 +330,8 @@ fn fs_post(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let here = ids_at(x, y);
     let right = ids_at(x + 1, y);
     let below = ids_at(x, y + 1);
-    let edge = (x + 1 < size.x && right.x != here.x) || (y + 1 < size.y && below.x != here.x);
+    let differs = (x + 1 < size.x && right.x != here.x) || (y + 1 < size.y && below.x != here.x);
+    let edge = (g.display.x > 0.5 && differs) || outlined(x, y);
     var rgb = g.ground.xyz;
     if edge {
         // In the tint where the pixel's own element is tinted, else in the edge colour of the first element of it, the pixel
@@ -248,6 +349,9 @@ fn fs_post(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
         rgb = color;
     } else if here.y != 0u {
         rgb = bytes(textureLoad(scene_color, vec2<i32>(x, y), 0));
+        if g.display.z > 0.5 {
+            rgb = floor(rgb * ambient(x, y, textureLoad(scene_depth, vec2<i32>(x, y), 0)) + vec3<f32>(0.5));
+        }
         if owners[here.y - 1u].tint.w > 0.5 {
             rgb = floor((rgb + owners[here.y - 1u].tint.xyz) / 2.0);
         }

@@ -470,6 +470,12 @@ impl BimApp {
         draw::numbers(self.shape(), self.points().map_or(0, Vec::len)).len()
     }
 
+    /// Whether a line or a wall is being drawn from a point, with no shape's numbers: its length is typed, and after Tab its angle
+    /// (degrees counter-clockwise from east), in `drawing.other` while the other is typed.
+    pub(crate) fn line_angle_field(&self) -> bool {
+        self.base().is_some() && self.typed_fields() == 0 && !self.filleting()
+    }
+
     /// The lines picked for Fillet Arc and the first of Trim/Extend's picks dropped: they were picked for the tool, or the
     /// sketch, that is over.
     pub(crate) fn forget_picks(&mut self) {

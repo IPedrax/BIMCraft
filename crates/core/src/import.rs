@@ -1151,6 +1151,12 @@ fn colour(r: &Reader, mut styles: Vec<u64>) -> Option<([u8; 3], u8)> {
     None
 }
 
+/// The colour each representation item is styled in: a space's, a room's colour on plans.
+fn item_colours(r: &Reader, ids: &[u64]) -> HashMap<u64, [u8; 3]> {
+    let styled = ids.iter().filter_map(|id| r.get(*id)).filter(|e| e.name == "IFCSTYLEDITEM");
+    styled.filter_map(|e| Some((reference(e.args.first())?, colour(r, refs(e.args.get(1)))?.0))).collect()
+}
+
 /// The name of the surface style each representation item is styled with: what a component's
 /// form made of it is made of.
 fn item_styles(r: &Reader, ids: &[u64]) -> HashMap<u64, String> {
@@ -2541,6 +2547,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         .filter_map(|s| text(s.args.get(2)).map(String::from))
         .collect();
     let mut numbers: BTreeSet<String> = numbers.into_iter().collect();
+    let colours = item_colours(&r, &ids);
     for id in named(&["IFCSPACE"]) {
         let Some(s) = e(id) else { continue };
         let faces = r.body(s);
@@ -2566,7 +2573,10 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             }
         };
         let level = level_for(id, floor.unwrap_or(0.0));
-        let rid = m.insert(Element::Room(Room::new(level, micron(point), clip(&room_name), clip(&number))));
+        let mut room = Room::new(level, micron(point), clip(&room_name), clip(&number));
+        // Its colour on plans: the colour its body is styled in.
+        room.colour = r.reps(s).into_iter().flat_map(|(_, items)| items).find_map(|item| colours.get(&item).copied());
+        let rid = m.insert(Element::Room(room));
         from.insert(rid, who(id));
         origin.entry(id).or_insert(rid);
         elements_from.entry(id).or_default().push(rid);
@@ -3489,6 +3499,28 @@ ENDSEC;END-ISO-10303-21;",
         let i = ifc(file.as_bytes(), "x").unwrap();
         assert_eq!(i.model.parameters.len(), crate::model::MAX_PROJECT_PARAMETERS);
         assert!(i.skipped.iter().any(|s| s.contains("parameter")), "{:?}", i.skipped);
+    }
+
+    #[test]
+    fn a_rooms_colour_comes_back_from_ifc_and_one_without_stays_without() {
+        let mut s = crate::engine::Session::new();
+        s.script(
+            r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}
+               wall {"points": [[4000,0],[4000,6000]]}
+               room {"point": [2000, 3000], "name": "Kitchen"}
+               room {"point": [6000, 3000], "name": "Hall"}"#,
+        )
+        .unwrap();
+        let kitchen = s.model.elements.iter().find(|(_, e)| matches!(e, Element::Room(r) if r.name == "Kitchen")).map(|(id, _)| *id);
+        s.execute("modify", &json!({"id": kitchen, "colour": [214, 229, 210]})).unwrap();
+        let i = ifc(crate::ifc::export(&s.model).as_bytes(), "x").unwrap();
+        let colours: BTreeMap<String, Option<[u8; 3]>> = i
+            .model
+            .elements
+            .values()
+            .filter_map(|e| if let Element::Room(r) = e { Some((r.name.clone(), r.colour)) } else { None })
+            .collect();
+        assert_eq!(colours, BTreeMap::from([("Kitchen".to_string(), Some([214, 229, 210])), ("Hall".to_string(), None)]));
     }
 
     #[test]

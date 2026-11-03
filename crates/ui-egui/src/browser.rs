@@ -183,9 +183,10 @@ pub fn words(find: &str) -> Vec<String> {
 }
 
 impl BimApp {
-    /// The Project Browser's palette: its tabs and its search over the tree, which scrolls under them.
+    /// The Project Browser's palette: the minimap of the view, its tabs and its search over the tree, which scrolls under them.
     pub(crate) fn browser_palette(&mut self, ui: &mut Ui) {
         egui::Frame::new().inner_margin(egui::Margin { left: 8, right: 8, top: 6, bottom: 4 }).show(ui, |ui| {
+            self.minimap(ui);
             self.browser_tabs(ui);
             ui.add_space(4.0);
             self.browser_search(ui);

@@ -13,8 +13,8 @@ use bimcraft_core::engine::Session;
 use bimcraft_core::graphics::{self, ANNOTATION, Detail, Group, MODEL, VisualStyle};
 use bimcraft_core::model::{Id, Model};
 use egui::{
-    Align, Color32, FontId, Frame, Key, Layout, Margin, Popup, Response, RichText, Sense, Shape, Stroke, StrokeKind, TextEdit, Ui,
-    UiBuilder, WidgetInfo, WidgetType, pos2, vec2,
+    Color32, FontId, Frame, Key, Margin, Popup, Rect, Response, RichText, Sense, Shape, Stroke, StrokeKind, TextEdit, Ui, UiBuilder,
+    WidgetInfo, WidgetType, pos2, vec2,
 };
 use serde_json::{Value, json};
 
@@ -34,6 +34,8 @@ pub(crate) struct Temp {
     categories: BTreeSet<String>,
     /// What the view hides for good is drawn instead, in magenta.
     reveal: bool,
+    /// The 3D view's section box for now, Linked 3D View's: what the plan it follows shows (`section_box.rs`).
+    pub(crate) section_box: Option<([f64; 3], [f64; 3])>,
 }
 
 impl Temp {
@@ -50,15 +52,18 @@ pub(crate) struct Shadow {
     model: Arc<Model>,
 }
 
-/// A button of the bar that opens a menu: named `label` for screen readers, and showing `shown`, the setting it holds. Greyed
-/// out, and saying so, when view template `set_by` sets it.
-fn menu_button(ui: &mut Ui, label: &str, shown: &str, tip: &str, set_by: Option<&str>) -> Response {
-    let (label, tip) = (t(label), t(tip));
-    let galley = ui.painter().layout_no_wrap(t(shown).to_string(), FontId::proportional(12.0), pal().text);
+/// A button of the bar that opens a menu: named `label` for screen readers, and showing `shown`, the setting it holds, which
+/// they read as its value. Greyed out, and saying so, when view template `set_by` sets it.
+pub(crate) fn menu_button(ui: &mut Ui, label: &str, shown: &str, tip: &str, set_by: Option<&str>) -> Response {
+    let (label, tip, shown) = (t(label), t(tip), t(shown));
+    let galley = ui.painter().layout_no_wrap(shown.to_string(), FontId::proportional(12.0), pal().text);
     ui.add_enabled_ui(set_by.is_none(), |ui| {
         let (rect, r) = ui.allocate_exact_size(vec2(galley.size().x + 28.0, 25.0), Sense::click());
         let enabled = ui.is_enabled();
-        r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label));
+        r.widget_info(|| WidgetInfo {
+            current_text_value: Some(shown.to_string()),
+            ..WidgetInfo::labeled(WidgetType::Button, enabled, label)
+        });
         let p = ui.painter();
         if r.hovered() {
             p.rect_filled(rect, 4.0, pal().hover_fill);
@@ -126,7 +131,12 @@ fn shadowed(base: &Arc<Model>, sheet: Sheet, three_d: Option<Id>, temp: &Temp) -
     }
     let mut s = Session::new();
     s.reset((**base).clone(), None);
-    s.execute("graphics", &p)?;
+    if temp.hides() || temp.reveal {
+        s.execute("graphics", &p)?;
+    }
+    if let Some((min, max)) = temp.section_box {
+        s.execute("section_box", &json!({"view": p["view"], "min": min, "max": max}))?;
+    }
     Ok(s.model)
 }
 
@@ -140,7 +150,7 @@ impl BimApp {
     /// graphics refuse (categories that follow a view template) ends it, and says why.
     pub(crate) fn view_model(&mut self) -> Arc<Model> {
         let base = self.linked_model();
-        let Some(temp) = self.temporary().filter(|t| t.hides() || t.reveal).cloned() else { return base };
+        let Some(temp) = self.temporary().filter(|t| t.hides() || t.reveal || t.section_box.is_some()).cloned() else { return base };
         if let Some(s) = &self.shadow
             && s.sheet == self.sheet
             && s.temp == temp
@@ -326,6 +336,7 @@ impl BimApp {
 
     /// The bar, when the view has one: a plan, a ceiling plan, a section or an elevation, the 3D view.
     pub(crate) fn view_control_bar(&mut self, ui: &mut Ui) {
+        self.follow_plan(ui);
         if self.graphic_view().is_none() {
             return;
         }
@@ -339,9 +350,11 @@ impl BimApp {
             false => (Frame::NONE, card),
         };
         let (id, over) = (egui::Id::new(("view-control", self.sheet)), self.view_rect);
+        // How tall the card is: a row, or more where the view is narrower than the bar.
         let mut controls = |ui: &mut Ui| {
             card.show(ui, |ui| {
-                ui.horizontal(|ui| {
+                // Onto a second row where the view is narrower than the bar, never under the palettes beside it.
+                ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
                     match (self.graphic_view(), self.sheet == Sheet::View3D) {
                         (Some(view), false) => self.scale_and_detail(ui, &view),
@@ -357,10 +370,25 @@ impl BimApp {
                                         self.set_visual_style(v);
                                     }
                                 }
+                                ui.separator();
+                                if ui.button(t("Graphic Display Options...")).clicked() {
+                                    self.open_display();
+                                }
                             });
                             ui.separator();
                         }
                         _ => {}
+                    }
+                    self.renovation_menu(ui);
+                    self.visibility_sets(ui);
+                    if matches!(self.sheet, Sheet::Plan(_)) {
+                        let tip = msg!(
+                            "Linked 3D View: the 3D view beside this plan, cut to its level and to what it shows as it pans or changes \
+                             level; again to put the 3D view back as it was"
+                        );
+                        if small_button(ui, Icon::View3D, "Linked 3D View", self.linked_3d.is_some(), tip).clicked() {
+                            self.toggle_linked_3d();
+                        }
                     }
                     let tip = msg!(
                         "Temporary Hide/Isolate: hide or isolate what is selected, or its categories, in this view until you reset it"
@@ -456,13 +484,20 @@ impl BimApp {
                         ui.label(RichText::new(tf("{} (HR resets)", &[t(note)])).color(FRAME));
                     }
                 })
-            });
+            })
+            .response
+            .rect
+            .height()
         };
         if compact {
             egui::Panel::bottom(id).frame(panel).show_separator_line(false).show(ui, controls);
         } else {
-            // A child that takes no room of the view's: over it, not after it.
-            controls(&mut ui.new_child(UiBuilder::new().id_salt(id).max_rect(over).layout(Layout::bottom_up(Align::Min))));
+            // A child that takes no room of the view's: over it, not after it, its foot on the view's foot. Its rows run down,
+            // so it starts as high as it was tall last frame.
+            let tall = ui.ctx().data(|d| d.get_temp::<f32>(id.with("tall"))).unwrap_or(crate::FLOATING_CARD);
+            let rect = Rect::from_min_max(pos2(over.left(), over.bottom() - tall), over.max);
+            let tall = controls(&mut ui.new_child(UiBuilder::new().id_salt(id).max_rect(rect)));
+            ui.ctx().data_mut(|d| d.insert_temp(id.with("tall"), tall));
         }
     }
 

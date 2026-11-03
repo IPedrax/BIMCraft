@@ -1507,6 +1507,18 @@ pub static ALL: &[Command] = &[
         perspective,
     ),
     edit(
+        "graphic_display_options",
+        "Graphic Display Options",
+        &["GD"],
+        "{view?: a 3D view's name or id ({3D} unless given), edges?: true | false, silhouette?: px, ambient_shadows?: true | \
+         false} how a 3D view draws its edges and shadows, as Revit's Graphic Display Options: `edges`, the lines where its \
+         surfaces meet in Shaded (on unless turned off; Hidden Line always draws them); `silhouette`, an outline that many \
+         pixels wide (a whole number, 0 to 10; 0, the default, for none) round what stands in front of what is further off \
+         or of nothing; `ambient_shadows`, soft shadows where faces meet inside a corner (off unless turned on). What is left \
+         out stays as it was; with none of them it only says what the view has",
+        graphic_display_options,
+    ),
+    edit(
         "camera",
         ui_msg!("Camera"),
         &[],
@@ -3596,6 +3608,61 @@ fn perspective(s: &mut Session, p: &Value) -> R {
         v3.perspective = Some(set);
     }
     Ok(json!({"view": v, "on": on, "lens": lens}))
+}
+
+fn graphic_display_options(s: &mut Session, p: &Value) -> R {
+    let c = "graphic_display_options";
+    let m = &s.model;
+    let default = absent(p.get("view"))
+        || matches!(p.get("view"), Some(Value::String(n)) if n.eq_ignore_ascii_case("{3D}") || n.eq_ignore_ascii_case("3D"));
+    // The default 3D view is made when its options first change, as when its graphics first change.
+    let view = if default {
+        m.default_3d()
+    } else {
+        let v = view_param(c, m, p, false)?;
+        if !matches!(m.elements.get(v), Some(Element::View3D(_))) {
+            return Err(bad(c, format!("{} isn't a 3D view; only a 3D view has graphic display options", view_title(m, v))));
+        }
+        Some(v)
+    };
+    let was = view
+        .and_then(|v| match m.elements.get(v) {
+            Some(Element::View3D(v3)) => Some(v3.display),
+            _ => None,
+        })
+        .unwrap_or_default();
+    let on = |key: &str| match p.get(key) {
+        v if absent(v) => Ok(None),
+        Some(Value::Bool(b)) => Ok(Some(*b)),
+        Some(v) => Err(bad(c, format!("`{key}` must be true or false, got {v}"))),
+        None => Ok(None),
+    };
+    let most = view3d::MAX_SILHOUETTE;
+    let silhouette = match p.get("silhouette") {
+        v if absent(v) => None,
+        Some(v) => Some(
+            v.as_f64()
+                .filter(|px| px.fract() == 0.0 && (0.0..=f64::from(most)).contains(px))
+                .map(|px| px as u32)
+                .ok_or_else(|| bad(c, format!("`silhouette` is how many px wide the outline is, a whole number 0 to {most}, got {v}")))?,
+        ),
+        None => None,
+    };
+    let now = view3d::DisplayOptions {
+        edges: on("edges")?.unwrap_or(was.edges),
+        silhouette: silhouette.unwrap_or(was.silhouette),
+        ambient_shadows: on("ambient_shadows")?.unwrap_or(was.ambient_shadows),
+    };
+    let view = match view {
+        None if now != was => Some(s.model_mut().insert(Element::View3D(View3D::default_view()))),
+        v => v,
+    };
+    if let (true, Some(v)) = (now != was, view)
+        && let Some(Element::View3D(v3)) = s.model_mut().elements.get_mut(v)
+    {
+        v3.display = now;
+    }
+    Ok(json!({"view": view, "edges": now.edges, "silhouette": now.silhouette, "ambient_shadows": now.ambient_shadows}))
 }
 
 /// `[x, y, z]` in mm within the model's limits, or an error naming `key`.
