@@ -4444,7 +4444,9 @@ fn sliding_doors_and_windows_say_how_they_open_in_ifc_and_in_schedules() {
     // Out to IFC: a sliding door slides toward its hand, a double door is a double door, a window of two leaves two panels.
     let file = crate::ifc::export(&s.model);
     assert!(file.contains(".SLIDING_TO_LEFT.") && file.contains(".DOUBLE_DOOR_SINGLE_SWING."), "door operations");
-    assert_eq!(file.matches(".DOUBLE_PANEL_VERTICAL.").count(), 2, "both windows have two leaves");
+    // Counted on the windows themselves: their types say so too, as a window of two leaves is of a type that does.
+    let two_leaves = file.lines().filter(|l| l.contains("=IFCWINDOW(") && l.contains(".DOUBLE_PANEL_VERTICAL.")).count();
+    assert_eq!(two_leaves, 2, "both windows have two leaves");
     run(&mut s, "modify", json!({"id": doors[0], "flip_hand": true}));
     let file = crate::ifc::export(&s.model);
     assert!(file.contains(".SLIDING_TO_RIGHT."));

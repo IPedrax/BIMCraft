@@ -28,6 +28,8 @@ pipe {"points": [[0,6000],[6000,6000]], "offset": 500, "end_offset": 300, "syste
 pipe {"points": [[1000,6500],[1000,6500]], "offset": 0, "end_offset": 3000}
 conduit {"points": [[0,7000],[6000,7000]], "offset": 2500, "justify": "top", "system": "Circuit 1"}
 cable_tray {"points": [[0,7500],[6000,7500]], "offset": 2700, "justify": "bottom"}
+duct {"points": [[0,8000],[6000,8000]], "offset": 2500, "system": "Supply air"}
+cabling {"points": [[0,8500],[6000,8500]], "offset": 2500, "system": "Network"}
 # An open plan split by a room separator, a room either side.
 wall {"points": [[0,20000],[8000,20000],[8000,26000],[0,26000]], "closed": true}
 room_separator {"points": [[5000,20000],[5000,26000]]}
