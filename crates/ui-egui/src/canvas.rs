@@ -985,7 +985,9 @@ impl BimApp {
             sc.p.rect_stroke(Rect::from_center_size(a, vec2(7.0, 7.0)), 0.0, marker_stroke, StrokeKind::Middle);
         }
         if let Some(first) = alignments.first() {
-            tag(sc.p, sc.screen(first.snapped_point) + vec2(12.0, 14.0), Align2::LEFT_TOP, t("align"));
+            // Why it lined up: with which wall, by its id, as Select by ID finds it.
+            let why = first.wall_id.map_or_else(|| t("align").to_string(), |w| tf("Lines up with wall {}", &[&w.to_string()]));
+            tag(sc.p, sc.screen(first.snapped_point) + vec2(12.0, 14.0), Align2::LEFT_TOP, &why);
         }
     }
 

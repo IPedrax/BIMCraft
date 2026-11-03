@@ -2768,7 +2768,7 @@ msgstr "Geef elk type en elk patroon een naam."
 msgid "Entities"
 msgstr "Entiteiten"
 
-#: crates/ui-egui/src/canvas.rs:2850
+#: crates/ui-egui/src/canvas.rs:2852
 msgid "Equal"
 msgstr "Gelijk"
 
@@ -4085,6 +4085,10 @@ msgstr ""
 msgid "Lines overlap ({}): one lies along another, or a line is drawn twice."
 msgstr "Lijnen overlappen ({}): de ene ligt langs de andere, of een lijn is dubbel getekend."
 
+#: crates/ui-egui/src/canvas.rs:989
+msgid "Lines up with wall {}"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:4030
 msgid "Linework"
 msgstr "Lijnwerk"
@@ -4182,7 +4186,7 @@ msgstr "Locatielijn:"
 msgid "Location line: {}"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2817
+#: crates/ui-egui/src/canvas.rs:2819
 msgid "Lock segment {}"
 msgstr "Segment {} vergrendelen"
 
@@ -5251,7 +5255,7 @@ msgstr ""
 msgid "Pick Faces"
 msgstr "Vlakken kiezen"
 
-#: crates/ui-egui/src/canvas.rs:1657
+#: crates/ui-egui/src/canvas.rs:1659
 msgid "Pick Faces: click a face of a mass"
 msgstr "Vlakken kiezen: klik op een vlak van een massa"
 
@@ -7352,7 +7356,7 @@ msgstr "Categorie tijdelijk isoleren"
 msgid "Temporary Isolate Element"
 msgstr "Element tijdelijk isoleren"
 
-#: crates/ui-egui/src/canvas.rs:2779
+#: crates/ui-egui/src/canvas.rs:2781
 msgid "Temporary dimension {}"
 msgstr "Tijdelijke maatlijn {}"
 
@@ -7778,7 +7782,7 @@ msgstr "Bijsnijden/verlengen tot hoek (TR): kies twee muren of twee lijnen, op d
 msgid "Turn Snap Override Off"
 msgstr "Snap-overschrijving uitschakelen"
 
-#: crates/ui-egui/src/canvas.rs:2730
+#: crates/ui-egui/src/canvas.rs:2732
 msgid "Turn the wall about its {}: {}"
 msgstr "Draai de muur rond zijn {}: {}"
 
@@ -8429,15 +8433,15 @@ msgstr "Zigzag"
 msgid "Zoom"
 msgstr "Zoomen"
 
-#: crates/ui-egui/src/canvas.rs:1457
+#: crates/ui-egui/src/canvas.rs:1459
 msgid "Zoom In"
 msgstr "Inzoomen"
 
-#: crates/ui-egui/src/canvas.rs:1460
+#: crates/ui-egui/src/canvas.rs:1462
 msgid "Zoom Out"
 msgstr "Uitzoomen"
 
-#: crates/ui-egui/src/canvas.rs:1454
+#: crates/ui-egui/src/canvas.rs:1456
 #: crates/ui-egui/src/orbit.rs:515
 msgid "Zoom to Fit"
 msgstr "Passend zoomen"
@@ -8448,10 +8452,10 @@ msgstr "`{}` is geen hoogte"
 
 #: crates/ui-egui/src/camera.rs:91
 #: crates/ui-egui/src/camera.rs:103
-#: crates/ui-egui/src/canvas.rs:2548
-#: crates/ui-egui/src/canvas.rs:2928
-#: crates/ui-egui/src/canvas.rs:3002
-#: crates/ui-egui/src/canvas.rs:3022
+#: crates/ui-egui/src/canvas.rs:2550
+#: crates/ui-egui/src/canvas.rs:2930
+#: crates/ui-egui/src/canvas.rs:3004
+#: crates/ui-egui/src/canvas.rs:3024
 #: crates/ui-egui/src/draw.rs:258
 #: crates/ui-egui/src/draw.rs:259
 #: crates/ui-egui/src/draw.rs:260
@@ -8495,7 +8499,7 @@ msgstr "`{}` is geen grootte, hoek of verschuiving"
 msgid "`{}` is not a spacing"
 msgstr "`{}` is geen tussenafstand"
 
-#: crates/ui-egui/src/canvas.rs:2757
+#: crates/ui-egui/src/canvas.rs:2759
 msgid "`{}` is not an angle"
 msgstr "`{}` is geen hoek"
 
@@ -8531,7 +8535,7 @@ msgstr "een grootte in mm"
 msgid "a whole number"
 msgstr "een geheel getal"
 
-#: crates/ui-egui/src/canvas.rs:988
+#: crates/ui-egui/src/canvas.rs:989
 msgid "align"
 msgstr "uitlijnen"
 
@@ -8551,7 +8555,7 @@ msgstr "boog"
 msgid "begins with"
 msgstr "begint met"
 
-#: crates/ui-egui/src/canvas.rs:2094
+#: crates/ui-egui/src/canvas.rs:2096
 msgid "ceiling: `{}` is not a height"
 msgstr "plafond: `{}` is geen hoogte"
 
@@ -8559,15 +8563,15 @@ msgstr "plafond: `{}` is geen hoogte"
 msgid "circle"
 msgstr "cirkel"
 
-#: crates/ui-egui/src/canvas.rs:2148
+#: crates/ui-egui/src/canvas.rs:2150
 msgid "click its line's end"
 msgstr "klik op het einde van de lijn"
 
-#: crates/ui-egui/src/canvas.rs:2172
+#: crates/ui-egui/src/canvas.rs:2174
 msgid "click where its run ends"
 msgstr "klik waar de loop eindigt"
 
-#: crates/ui-egui/src/canvas.rs:1925
+#: crates/ui-egui/src/canvas.rs:1927
 msgid "column: {}"
 msgstr "kolom: {}"
 
@@ -8619,7 +8623,7 @@ msgstr "eindigt niet op"
 msgid "does not equal"
 msgstr "is niet gelijk aan"
 
-#: crates/ui-egui/src/canvas.rs:2058
+#: crates/ui-egui/src/canvas.rs:2060
 msgid "dormer: the width `{}`, the height `{}` and the slope `{}` must be numbers"
 msgstr "dakkapel: de breedte `{}`, de hoogte `{}` en de helling `{}` moeten getallen zijn"
 
@@ -8683,7 +8687,7 @@ msgstr "niveau: `{}` is geen hoogte"
 msgid "line"
 msgstr "lijn"
 
-#: crates/ui-egui/src/canvas.rs:2335
+#: crates/ui-egui/src/canvas.rs:2337
 msgid "mass: {}"
 msgstr "massa: {}"
 
@@ -8691,12 +8695,12 @@ msgstr "massa: {}"
 msgid "material"
 msgstr "materiaal"
 
-#: crates/ui-egui/src/canvas.rs:1756
-#: crates/ui-egui/src/canvas.rs:2412
+#: crates/ui-egui/src/canvas.rs:1758
+#: crates/ui-egui/src/canvas.rs:2414
 msgid "offset: `{}` is not a distance"
 msgstr "verschuiving: `{}` is geen afstand"
 
-#: crates/ui-egui/src/canvas.rs:2408
+#: crates/ui-egui/src/canvas.rs:2410
 msgid "offset: it offsets straight walls"
 msgstr "verschuiving: ze verschuift rechte muren"
 
@@ -8724,23 +8728,23 @@ msgstr "afbeelding"
 msgid "polyline"
 msgstr "polylijn"
 
-#: crates/ui-egui/src/canvas.rs:2190
+#: crates/ui-egui/src/canvas.rs:2192
 msgid "ramp: `{}` is not a slope"
 msgstr "helling: `{}` is geen helling"
 
-#: crates/ui-egui/src/canvas.rs:2191
+#: crates/ui-egui/src/canvas.rs:2193
 msgid "ramp: `{}` is not a width"
 msgstr "helling: `{}` is geen breedte"
 
-#: crates/ui-egui/src/canvas.rs:2192
+#: crates/ui-egui/src/canvas.rs:2194
 msgid "ramp: {}"
 msgstr "helling: {}"
 
-#: crates/ui-egui/src/canvas.rs:2149
+#: crates/ui-egui/src/canvas.rs:2151
 msgid "roof: `{}` is not a slope"
 msgstr "dak: `{}` is geen helling"
 
-#: crates/ui-egui/src/canvas.rs:2010
+#: crates/ui-egui/src/canvas.rs:2012
 msgid "roof: the slope `{}` and the overhang `{}` must be numbers"
 msgstr "dak: de helling `{}` en de overstek `{}` moeten getallen zijn"
 
@@ -8780,11 +8784,11 @@ msgstr "selecteer eerst wat je wilt verbergen of isoleren"
 msgid "select what to move, copy, rotate or mirror first"
 msgstr "selecteer eerst wat je wilt verplaatsen, kopiëren, roteren of spiegelen"
 
-#: crates/ui-egui/src/canvas.rs:2118
+#: crates/ui-egui/src/canvas.rs:2120
 msgid "shaft: {}"
 msgstr "schacht: {}"
 
-#: crates/ui-egui/src/canvas.rs:2136
+#: crates/ui-egui/src/canvas.rs:2138
 msgid "slope arrow: `{}` is not a slope"
 msgstr "hellingspijl: `{}` is geen helling"
 
@@ -8792,7 +8796,7 @@ msgstr "hellingspijl: `{}` is geen helling"
 msgid "spline"
 msgstr "spline"
 
-#: crates/ui-egui/src/canvas.rs:2213
+#: crates/ui-egui/src/canvas.rs:2215
 msgid "stair: `{}` is not a width"
 msgstr "trap: `{}` is geen breedte"
 
@@ -8812,7 +8816,7 @@ msgstr "begin"
 msgid "the next free name"
 msgstr "de volgende vrije naam"
 
-#: crates/ui-egui/src/canvas.rs:3001
+#: crates/ui-egui/src/canvas.rs:3003
 msgid "the opening has to stay on its wall"
 msgstr "de opening moet op haar muur blijven"
 
@@ -8867,7 +8871,7 @@ msgstr ""
 msgid "voltages"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2583
+#: crates/ui-egui/src/canvas.rs:2585
 msgid "wall: {}"
 msgstr "muur: {}"
 
@@ -8983,7 +8987,7 @@ msgstr "{} mm voor A2-A4"
 msgid "{} months ago"
 msgstr "{} maanden geleden"
 
-#: crates/ui-egui/src/canvas.rs:3092
+#: crates/ui-egui/src/canvas.rs:3094
 msgid "{} of {} risers"
 msgstr "{} van {} optreden"
 
@@ -9019,7 +9023,7 @@ msgstr "{} geselecteerd."
 msgid "{} triangles, from a file"
 msgstr "{} driehoeken, uit een bestand"
 
-#: crates/ui-egui/src/canvas.rs:3094
+#: crates/ui-egui/src/canvas.rs:3096
 msgid "{} up"
 msgstr "{} omhoog"
 

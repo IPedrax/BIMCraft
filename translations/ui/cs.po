@@ -2767,7 +2767,7 @@ msgstr "Zadejte název pro každý typ a vzor."
 msgid "Entities"
 msgstr "Entity"
 
-#: crates/ui-egui/src/canvas.rs:2850
+#: crates/ui-egui/src/canvas.rs:2852
 msgid "Equal"
 msgstr ""
 
@@ -4084,6 +4084,10 @@ msgstr ""
 msgid "Lines overlap ({}): one lies along another, or a line is drawn twice."
 msgstr "Čáry se překrývají ({}): jedna leží na druhé nebo je čára nakreslena dvakrát."
 
+#: crates/ui-egui/src/canvas.rs:989
+msgid "Lines up with wall {}"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:4030
 msgid "Linework"
 msgstr "Čárová grafika"
@@ -4181,7 +4185,7 @@ msgstr "Čára umístění:"
 msgid "Location line: {}"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2817
+#: crates/ui-egui/src/canvas.rs:2819
 msgid "Lock segment {}"
 msgstr ""
 
@@ -5250,7 +5254,7 @@ msgstr ""
 msgid "Pick Faces"
 msgstr "Vybrat plochy"
 
-#: crates/ui-egui/src/canvas.rs:1657
+#: crates/ui-egui/src/canvas.rs:1659
 msgid "Pick Faces: click a face of a mass"
 msgstr "Vybrat plochy: klikněte na plochu objemu"
 
@@ -7351,7 +7355,7 @@ msgstr "Dočasně izolovat kategorii"
 msgid "Temporary Isolate Element"
 msgstr "Dočasně izolovat prvek"
 
-#: crates/ui-egui/src/canvas.rs:2779
+#: crates/ui-egui/src/canvas.rs:2781
 msgid "Temporary dimension {}"
 msgstr "Dočasná kóta {}"
 
@@ -7777,7 +7781,7 @@ msgstr "Oříznout/prodloužit k rohu (TR): vyberte dvě stěny nebo dvě čáry
 msgid "Turn Snap Override Off"
 msgstr "Vypnout přepsání přichycení"
 
-#: crates/ui-egui/src/canvas.rs:2730
+#: crates/ui-egui/src/canvas.rs:2732
 msgid "Turn the wall about its {}: {}"
 msgstr "Otočit stěnu kolem jejího {}: {}"
 
@@ -8428,15 +8432,15 @@ msgstr "Cik-cak"
 msgid "Zoom"
 msgstr "Zoom"
 
-#: crates/ui-egui/src/canvas.rs:1457
+#: crates/ui-egui/src/canvas.rs:1459
 msgid "Zoom In"
 msgstr "Přiblížit"
 
-#: crates/ui-egui/src/canvas.rs:1460
+#: crates/ui-egui/src/canvas.rs:1462
 msgid "Zoom Out"
 msgstr "Oddálit"
 
-#: crates/ui-egui/src/canvas.rs:1454
+#: crates/ui-egui/src/canvas.rs:1456
 #: crates/ui-egui/src/orbit.rs:515
 msgid "Zoom to Fit"
 msgstr "Přizpůsobit oknu"
@@ -8447,10 +8451,10 @@ msgstr "`{}` není platná výška"
 
 #: crates/ui-egui/src/camera.rs:91
 #: crates/ui-egui/src/camera.rs:103
-#: crates/ui-egui/src/canvas.rs:2548
-#: crates/ui-egui/src/canvas.rs:2928
-#: crates/ui-egui/src/canvas.rs:3002
-#: crates/ui-egui/src/canvas.rs:3022
+#: crates/ui-egui/src/canvas.rs:2550
+#: crates/ui-egui/src/canvas.rs:2930
+#: crates/ui-egui/src/canvas.rs:3004
+#: crates/ui-egui/src/canvas.rs:3024
 #: crates/ui-egui/src/draw.rs:258
 #: crates/ui-egui/src/draw.rs:259
 #: crates/ui-egui/src/draw.rs:260
@@ -8494,7 +8498,7 @@ msgstr "`{}` není rozměr, úhel ani odsazení"
 msgid "`{}` is not a spacing"
 msgstr "`{}` není platná rozteč"
 
-#: crates/ui-egui/src/canvas.rs:2757
+#: crates/ui-egui/src/canvas.rs:2759
 msgid "`{}` is not an angle"
 msgstr "`{}` není úhel"
 
@@ -8530,7 +8534,7 @@ msgstr ""
 msgid "a whole number"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:988
+#: crates/ui-egui/src/canvas.rs:989
 msgid "align"
 msgstr ""
 
@@ -8550,7 +8554,7 @@ msgstr "oblouk"
 msgid "begins with"
 msgstr "začíná na"
 
-#: crates/ui-egui/src/canvas.rs:2094
+#: crates/ui-egui/src/canvas.rs:2096
 msgid "ceiling: `{}` is not a height"
 msgstr "podhled: `{}` není platná výška"
 
@@ -8558,15 +8562,15 @@ msgstr "podhled: `{}` není platná výška"
 msgid "circle"
 msgstr "kružnice"
 
-#: crates/ui-egui/src/canvas.rs:2148
+#: crates/ui-egui/src/canvas.rs:2150
 msgid "click its line's end"
 msgstr "klikněte na konec její čáry"
 
-#: crates/ui-egui/src/canvas.rs:2172
+#: crates/ui-egui/src/canvas.rs:2174
 msgid "click where its run ends"
 msgstr "klikněte na místo, kde končí její rameno"
 
-#: crates/ui-egui/src/canvas.rs:1925
+#: crates/ui-egui/src/canvas.rs:1927
 msgid "column: {}"
 msgstr "sloup: {}"
 
@@ -8618,7 +8622,7 @@ msgstr "nekončí na"
 msgid "does not equal"
 msgstr "nerovná se"
 
-#: crates/ui-egui/src/canvas.rs:2058
+#: crates/ui-egui/src/canvas.rs:2060
 msgid "dormer: the width `{}`, the height `{}` and the slope `{}` must be numbers"
 msgstr "vikýř: šířka `{}`, výška `{}` a sklon `{}` musí být čísla"
 
@@ -8682,7 +8686,7 @@ msgstr "podlaží: `{}` není platná výšková kóta"
 msgid "line"
 msgstr "čára"
 
-#: crates/ui-egui/src/canvas.rs:2335
+#: crates/ui-egui/src/canvas.rs:2337
 msgid "mass: {}"
 msgstr "objem: {}"
 
@@ -8690,12 +8694,12 @@ msgstr "objem: {}"
 msgid "material"
 msgstr "materiál"
 
-#: crates/ui-egui/src/canvas.rs:1756
-#: crates/ui-egui/src/canvas.rs:2412
+#: crates/ui-egui/src/canvas.rs:1758
+#: crates/ui-egui/src/canvas.rs:2414
 msgid "offset: `{}` is not a distance"
 msgstr "odsazení: `{}` není platná vzdálenost"
 
-#: crates/ui-egui/src/canvas.rs:2408
+#: crates/ui-egui/src/canvas.rs:2410
 msgid "offset: it offsets straight walls"
 msgstr "odsazení: odsadí přímé stěny"
 
@@ -8723,23 +8727,23 @@ msgstr "obrázek"
 msgid "polyline"
 msgstr "křivka"
 
-#: crates/ui-egui/src/canvas.rs:2190
+#: crates/ui-egui/src/canvas.rs:2192
 msgid "ramp: `{}` is not a slope"
 msgstr "rampa: `{}` není platný sklon"
 
-#: crates/ui-egui/src/canvas.rs:2191
+#: crates/ui-egui/src/canvas.rs:2193
 msgid "ramp: `{}` is not a width"
 msgstr "rampa: `{}` není platná šířka"
 
-#: crates/ui-egui/src/canvas.rs:2192
+#: crates/ui-egui/src/canvas.rs:2194
 msgid "ramp: {}"
 msgstr "rampa: {}"
 
-#: crates/ui-egui/src/canvas.rs:2149
+#: crates/ui-egui/src/canvas.rs:2151
 msgid "roof: `{}` is not a slope"
 msgstr "střecha: `{}` není platný sklon"
 
-#: crates/ui-egui/src/canvas.rs:2010
+#: crates/ui-egui/src/canvas.rs:2012
 msgid "roof: the slope `{}` and the overhang `{}` must be numbers"
 msgstr "střecha: sklon `{}` a přesah `{}` musí být čísla"
 
@@ -8779,11 +8783,11 @@ msgstr "nejprve vyberte prvky ke skrytí nebo izolování"
 msgid "select what to move, copy, rotate or mirror first"
 msgstr "nejprve vyberte prvky k přesunutí, zkopírování, otočení nebo zrcadlení"
 
-#: crates/ui-egui/src/canvas.rs:2118
+#: crates/ui-egui/src/canvas.rs:2120
 msgid "shaft: {}"
 msgstr "šachta: {}"
 
-#: crates/ui-egui/src/canvas.rs:2136
+#: crates/ui-egui/src/canvas.rs:2138
 msgid "slope arrow: `{}` is not a slope"
 msgstr "šipka sklonu: `{}` není platný sklon"
 
@@ -8791,7 +8795,7 @@ msgstr "šipka sklonu: `{}` není platný sklon"
 msgid "spline"
 msgstr "křivka spline"
 
-#: crates/ui-egui/src/canvas.rs:2213
+#: crates/ui-egui/src/canvas.rs:2215
 msgid "stair: `{}` is not a width"
 msgstr "schodiště: `{}` není platná šířka"
 
@@ -8811,7 +8815,7 @@ msgstr "začátek"
 msgid "the next free name"
 msgstr "další volný název"
 
-#: crates/ui-egui/src/canvas.rs:3001
+#: crates/ui-egui/src/canvas.rs:3003
 msgid "the opening has to stay on its wall"
 msgstr "otvor musí zůstat na své stěně"
 
@@ -8866,7 +8870,7 @@ msgstr ""
 msgid "voltages"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2583
+#: crates/ui-egui/src/canvas.rs:2585
 msgid "wall: {}"
 msgstr "stěna: {}"
 
@@ -8982,7 +8986,7 @@ msgstr ""
 msgid "{} months ago"
 msgstr "Před {} měsíci"
 
-#: crates/ui-egui/src/canvas.rs:3092
+#: crates/ui-egui/src/canvas.rs:3094
 msgid "{} of {} risers"
 msgstr "{} z {} stupňů"
 
@@ -9018,7 +9022,7 @@ msgstr "Vybráno: {}."
 msgid "{} triangles, from a file"
 msgstr "{} trojúhelníků, ze souboru"
 
-#: crates/ui-egui/src/canvas.rs:3094
+#: crates/ui-egui/src/canvas.rs:3096
 msgid "{} up"
 msgstr "{} nahoru"
 

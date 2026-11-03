@@ -2767,7 +2767,7 @@ msgstr "Für jeden Typ und jedes Muster einen Namen eingeben."
 msgid "Entities"
 msgstr "Elemente"
 
-#: crates/ui-egui/src/canvas.rs:2850
+#: crates/ui-egui/src/canvas.rs:2852
 msgid "Equal"
 msgstr "Gleich"
 
@@ -4084,6 +4084,10 @@ msgstr ""
 msgid "Lines overlap ({}): one lies along another, or a line is drawn twice."
 msgstr "Linien überlappen ({}): Eine liegt auf einer anderen, oder eine Linie ist doppelt gezeichnet."
 
+#: crates/ui-egui/src/canvas.rs:989
+msgid "Lines up with wall {}"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:4030
 msgid "Linework"
 msgstr "Linienführung"
@@ -4181,7 +4185,7 @@ msgstr "Positionslinie:"
 msgid "Location line: {}"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2817
+#: crates/ui-egui/src/canvas.rs:2819
 msgid "Lock segment {}"
 msgstr "Segment {} sperren"
 
@@ -5250,7 +5254,7 @@ msgstr ""
 msgid "Pick Faces"
 msgstr "Flächen wählen"
 
-#: crates/ui-egui/src/canvas.rs:1657
+#: crates/ui-egui/src/canvas.rs:1659
 msgid "Pick Faces: click a face of a mass"
 msgstr "Flächen wählen: eine Fläche eines Volumenkörpers anklicken"
 
@@ -7351,7 +7355,7 @@ msgstr "Kategorie temporär isolieren"
 msgid "Temporary Isolate Element"
 msgstr "Element temporär isolieren"
 
-#: crates/ui-egui/src/canvas.rs:2779
+#: crates/ui-egui/src/canvas.rs:2781
 msgid "Temporary dimension {}"
 msgstr "Temporäre Bemaßung {}"
 
@@ -7777,7 +7781,7 @@ msgstr "Kürzen/Verlängern bis zur Ecke (TR): zwei Wände oder zwei Linien auf 
 msgid "Turn Snap Override Off"
 msgstr "Fang-Überschreibung ausschalten"
 
-#: crates/ui-egui/src/canvas.rs:2730
+#: crates/ui-egui/src/canvas.rs:2732
 msgid "Turn the wall about its {}: {}"
 msgstr "Die Wand um ihre {} drehen: {}"
 
@@ -8428,15 +8432,15 @@ msgstr "Zickzack"
 msgid "Zoom"
 msgstr "Zoom"
 
-#: crates/ui-egui/src/canvas.rs:1457
+#: crates/ui-egui/src/canvas.rs:1459
 msgid "Zoom In"
 msgstr "Vergrößern"
 
-#: crates/ui-egui/src/canvas.rs:1460
+#: crates/ui-egui/src/canvas.rs:1462
 msgid "Zoom Out"
 msgstr "Verkleinern"
 
-#: crates/ui-egui/src/canvas.rs:1454
+#: crates/ui-egui/src/canvas.rs:1456
 #: crates/ui-egui/src/orbit.rs:515
 msgid "Zoom to Fit"
 msgstr "Alles einpassen"
@@ -8447,10 +8451,10 @@ msgstr "`{}` ist keine Höhe"
 
 #: crates/ui-egui/src/camera.rs:91
 #: crates/ui-egui/src/camera.rs:103
-#: crates/ui-egui/src/canvas.rs:2548
-#: crates/ui-egui/src/canvas.rs:2928
-#: crates/ui-egui/src/canvas.rs:3002
-#: crates/ui-egui/src/canvas.rs:3022
+#: crates/ui-egui/src/canvas.rs:2550
+#: crates/ui-egui/src/canvas.rs:2930
+#: crates/ui-egui/src/canvas.rs:3004
+#: crates/ui-egui/src/canvas.rs:3024
 #: crates/ui-egui/src/draw.rs:258
 #: crates/ui-egui/src/draw.rs:259
 #: crates/ui-egui/src/draw.rs:260
@@ -8494,7 +8498,7 @@ msgstr "`{}` ist weder Größe, Winkel noch Versatz"
 msgid "`{}` is not a spacing"
 msgstr "`{}` ist kein Abstand"
 
-#: crates/ui-egui/src/canvas.rs:2757
+#: crates/ui-egui/src/canvas.rs:2759
 msgid "`{}` is not an angle"
 msgstr "`{}` ist kein Winkel"
 
@@ -8530,7 +8534,7 @@ msgstr "eine Größe in mm"
 msgid "a whole number"
 msgstr "eine ganze Zahl"
 
-#: crates/ui-egui/src/canvas.rs:988
+#: crates/ui-egui/src/canvas.rs:989
 msgid "align"
 msgstr "ausrichten"
 
@@ -8550,7 +8554,7 @@ msgstr "Bogen"
 msgid "begins with"
 msgstr "beginnt mit"
 
-#: crates/ui-egui/src/canvas.rs:2094
+#: crates/ui-egui/src/canvas.rs:2096
 msgid "ceiling: `{}` is not a height"
 msgstr "Decke: `{}` ist keine Höhe"
 
@@ -8558,15 +8562,15 @@ msgstr "Decke: `{}` ist keine Höhe"
 msgid "circle"
 msgstr "Kreis"
 
-#: crates/ui-egui/src/canvas.rs:2148
+#: crates/ui-egui/src/canvas.rs:2150
 msgid "click its line's end"
 msgstr "das Ende der Linie anklicken"
 
-#: crates/ui-egui/src/canvas.rs:2172
+#: crates/ui-egui/src/canvas.rs:2174
 msgid "click where its run ends"
 msgstr "dort anklicken, wo der Lauf endet"
 
-#: crates/ui-egui/src/canvas.rs:1925
+#: crates/ui-egui/src/canvas.rs:1927
 msgid "column: {}"
 msgstr "Stütze: {}"
 
@@ -8618,7 +8622,7 @@ msgstr "endet nicht mit"
 msgid "does not equal"
 msgstr "ist nicht gleich"
 
-#: crates/ui-egui/src/canvas.rs:2058
+#: crates/ui-egui/src/canvas.rs:2060
 msgid "dormer: the width `{}`, the height `{}` and the slope `{}` must be numbers"
 msgstr "Gaube: Breite `{}`, Höhe `{}` und Neigung `{}` müssen Zahlen sein"
 
@@ -8682,7 +8686,7 @@ msgstr "Geschoss: `{}` ist keine Höhe"
 msgid "line"
 msgstr "Linie"
 
-#: crates/ui-egui/src/canvas.rs:2335
+#: crates/ui-egui/src/canvas.rs:2337
 msgid "mass: {}"
 msgstr "Volumenkörper: {}"
 
@@ -8690,12 +8694,12 @@ msgstr "Volumenkörper: {}"
 msgid "material"
 msgstr "Material"
 
-#: crates/ui-egui/src/canvas.rs:1756
-#: crates/ui-egui/src/canvas.rs:2412
+#: crates/ui-egui/src/canvas.rs:1758
+#: crates/ui-egui/src/canvas.rs:2414
 msgid "offset: `{}` is not a distance"
 msgstr "Versatz: `{}` ist kein Abstand"
 
-#: crates/ui-egui/src/canvas.rs:2408
+#: crates/ui-egui/src/canvas.rs:2410
 msgid "offset: it offsets straight walls"
 msgstr "Versatz: gilt nur für gerade Wände"
 
@@ -8723,23 +8727,23 @@ msgstr "Bild"
 msgid "polyline"
 msgstr "Polylinie"
 
-#: crates/ui-egui/src/canvas.rs:2190
+#: crates/ui-egui/src/canvas.rs:2192
 msgid "ramp: `{}` is not a slope"
 msgstr "Rampe: `{}` ist keine Neigung"
 
-#: crates/ui-egui/src/canvas.rs:2191
+#: crates/ui-egui/src/canvas.rs:2193
 msgid "ramp: `{}` is not a width"
 msgstr "Rampe: `{}` ist keine Breite"
 
-#: crates/ui-egui/src/canvas.rs:2192
+#: crates/ui-egui/src/canvas.rs:2194
 msgid "ramp: {}"
 msgstr "Rampe: {}"
 
-#: crates/ui-egui/src/canvas.rs:2149
+#: crates/ui-egui/src/canvas.rs:2151
 msgid "roof: `{}` is not a slope"
 msgstr "Dach: `{}` ist keine Neigung"
 
-#: crates/ui-egui/src/canvas.rs:2010
+#: crates/ui-egui/src/canvas.rs:2012
 msgid "roof: the slope `{}` and the overhang `{}` must be numbers"
 msgstr "Dach: Neigung `{}` und Überstand `{}` müssen Zahlen sein"
 
@@ -8779,11 +8783,11 @@ msgstr "zuerst auswählen, was ausgeblendet oder isoliert werden soll"
 msgid "select what to move, copy, rotate or mirror first"
 msgstr "zuerst auswählen, was verschoben, kopiert, gedreht oder gespiegelt werden soll"
 
-#: crates/ui-egui/src/canvas.rs:2118
+#: crates/ui-egui/src/canvas.rs:2120
 msgid "shaft: {}"
 msgstr "Schacht: {}"
 
-#: crates/ui-egui/src/canvas.rs:2136
+#: crates/ui-egui/src/canvas.rs:2138
 msgid "slope arrow: `{}` is not a slope"
 msgstr "Neigungspfeil: `{}` ist keine Neigung"
 
@@ -8791,7 +8795,7 @@ msgstr "Neigungspfeil: `{}` ist keine Neigung"
 msgid "spline"
 msgstr "Spline"
 
-#: crates/ui-egui/src/canvas.rs:2213
+#: crates/ui-egui/src/canvas.rs:2215
 msgid "stair: `{}` is not a width"
 msgstr "Treppe: `{}` ist keine Breite"
 
@@ -8811,7 +8815,7 @@ msgstr "Anfang"
 msgid "the next free name"
 msgstr "der nächste freie Name"
 
-#: crates/ui-egui/src/canvas.rs:3001
+#: crates/ui-egui/src/canvas.rs:3003
 msgid "the opening has to stay on its wall"
 msgstr "die Öffnung muss auf ihrer Wand bleiben"
 
@@ -8866,7 +8870,7 @@ msgstr ""
 msgid "voltages"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2583
+#: crates/ui-egui/src/canvas.rs:2585
 msgid "wall: {}"
 msgstr "Wand: {}"
 
@@ -8982,7 +8986,7 @@ msgstr "{} mm für A2-A4"
 msgid "{} months ago"
 msgstr "vor {} Monaten"
 
-#: crates/ui-egui/src/canvas.rs:3092
+#: crates/ui-egui/src/canvas.rs:3094
 msgid "{} of {} risers"
 msgstr "{} von {} Steigungen"
 
@@ -9018,7 +9022,7 @@ msgstr "{} ausgewählt."
 msgid "{} triangles, from a file"
 msgstr "{} Dreiecke, aus einer Datei"
 
-#: crates/ui-egui/src/canvas.rs:3094
+#: crates/ui-egui/src/canvas.rs:3096
 msgid "{} up"
 msgstr "{} nach oben"
 
