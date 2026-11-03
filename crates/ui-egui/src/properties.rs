@@ -1071,6 +1071,7 @@ impl BimApp {
         ui.add_space(4.0);
         self.layer_picture(ui, &model);
         self.opening_picker(ui, &model);
+        self.room_colour(ui, &model);
         if !ids.is_empty() {
             self.parameters(ui, &model, &ids, rows);
             self.component_parameters(ui, &model, &ids);
@@ -1214,6 +1215,54 @@ impl BimApp {
         });
         if let Some((hand, facing)) = pick {
             self.run("modify", json!({"ids": ids, "flip_hand": hand, "flip_facing": facing}));
+        }
+    }
+
+    /// The colour the rooms the palette shows are filled with on plans: swatches, none first, and any other colour; the one they
+    /// share is ringed, and a pick sets it through `modify`.
+    fn room_colour(&mut self, ui: &mut Ui, model: &Model) {
+        const SWATCHES: [(&str, Option<[u8; 3]>); 6] = [
+            (msg!("No fill"), None),
+            (msg!("Sand"), Some([239, 227, 200])),
+            (msg!("Sage"), Some([214, 229, 210])),
+            (msg!("Sky"), Some([211, 227, 244])),
+            (msg!("Rose"), Some([241, 217, 214])),
+            (msg!("Lilac"), Some([226, 218, 240])),
+        ];
+        let ids = self.palette_ids();
+        let colour = |id: &Id| match model.elements.get(id) {
+            Some(Element::Room(r)) => Some(r.colour),
+            _ => None,
+        };
+        let Some(colours) = ids.iter().map(colour).collect::<Option<Vec<_>>>().filter(|c| !c.is_empty()) else { return };
+        let shared = colours.first().copied().filter(|c| colours.iter().all(|d| d == c));
+        ui.label(RichText::new(t("Colour on plans")).strong());
+        let mut pick = None;
+        ui.horizontal(|ui| {
+            for (label, c) in SWATCHES {
+                let (rect, r) = ui.allocate_exact_size(vec2(28.0, 22.0), Sense::click());
+                let on = shared == Some(c);
+                r.widget_info(|| WidgetInfo::selected(WidgetType::RadioButton, true, on, t(label)));
+                let fill = c.map_or(pal().surface, |[red, green, blue]| egui::Color32::from_rgb(red, green, blue));
+                let edge = if on { Stroke::new(2.0, pal().accent_ink) } else { Stroke::new(1.0, pal().border) };
+                ui.painter().rect(rect, crate::style::corner(4.0), fill, edge, StrokeKind::Inside);
+                if c.is_none() {
+                    ui.painter().line_segment(
+                        [rect.left_bottom() + vec2(4.0, -4.0), rect.right_top() + vec2(-4.0, 4.0)],
+                        Stroke::new(1.0, pal().muted),
+                    );
+                }
+                if r.on_hover_text(t(label)).clicked() {
+                    pick = Some(c);
+                }
+            }
+            let mut rgb = shared.flatten().unwrap_or([239, 227, 200]);
+            if ui.color_edit_button_srgb(&mut rgb).on_hover_text(t("Another colour")).changed() {
+                pick = Some(Some(rgb));
+            }
+        });
+        if let Some(c) = pick {
+            self.run("modify", json!({"ids": ids, "colour": c}));
         }
     }
 

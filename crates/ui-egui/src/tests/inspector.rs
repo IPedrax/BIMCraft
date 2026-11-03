@@ -42,3 +42,20 @@ fn which_way_a_door_opens_is_picked_from_four_pictures_in_both_profiles() {
         assert_eq!(flips(&h), (false, false), "rev {rev}");
     }
 }
+
+#[test]
+fn a_rooms_colour_on_plans_is_picked_from_swatches_in_both_profiles() {
+    for rev in [false, true] {
+        let script = format!("{BOX}\nroom {{\"point\": [4000, 3000]}}");
+        let mut h = if rev { app(&script) } else { bimcraft(&script) };
+        let room = ids(&h, "room")[0];
+        h.state_mut().selection = vec![room];
+        h.run();
+        h.get_by_role_and_label(Role::RadioButton, "Sage").click();
+        h.run();
+        assert_eq!(field(&h, room, "colour"), json!([214, 229, 210]), "rev {rev}");
+        h.get_by_role_and_label(Role::RadioButton, "No fill").click();
+        h.run();
+        assert!(field(&h, room, "colour").is_null(), "rev {rev}");
+    }
+}

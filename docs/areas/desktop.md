@@ -204,7 +204,9 @@ type without layers as one band. A wall's run from its exterior face to its inte
 dashed where it runs (`walls::depth`, the core's own rule) and named under it; a click on the picture sets the line nearest it, through
 `modify`. A floor's, a roof's or a ceiling's run from the top down. Under it, for doors, which way they open (`opening_picker`): four plans of a door in
 its wall (as placed, hand flipped, facing flipped, both), the one the selected doors share lit, a click setting their `flip_hand` and
-`flip_facing` through `modify`.
+`flip_facing` through `modify`. For rooms, their colour on plans (`room_colour`): swatches, No fill first, and any
+other colour; a pick sets the room's `colour` (`Room::colour`, red, green and blue, none for no fill), which plans draw as a fill of
+the room's region under its name (`render.rs`) and a file keeps (an optional field an older version leaves out, so no format step).
 
 Properties' filter. With a selection of several categories, the line under the Type Selector is a drop-down of them, as Revit's is
 (`BimApp::selection_categories`): Multiple Categories first, then each category with its count. One picked is what the palette shows

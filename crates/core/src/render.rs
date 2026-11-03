@@ -1803,6 +1803,11 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
                         }
                     }
                 };
+                // Its colour, a fill of its region under its name.
+                if let (Some([red, green, blue]), Some(g)) = (r.colour, &region) {
+                    let rings: Vec<Vec<P2>> = std::iter::once(g.outer.clone()).chain(g.holes.iter().cloned()).collect();
+                    d.fill(&rings, Rgb(red, green, blue));
+                }
                 let area = region.as_ref().map_or_else(
                     || m.language.word(if redundant { msg!("REDUNDANT") } else { msg!("NOT ENCLOSED") }).to_string(),
                     |g| {
@@ -3331,6 +3336,23 @@ fn paint(pm: &mut Pixmap, d: &Drawing) {
 mod tests {
     use super::*;
     use crate::engine::Session;
+
+    /// A room's colour fills its region on the plan, under its name, and a project file keeps it.
+    #[test]
+    fn a_rooms_colour_fills_its_region_on_the_plan_and_the_file_keeps_it() {
+        let mut s = house();
+        let room = s.model.elements.iter().find(|(_, e)| matches!(e, Element::Room(_))).map(|(id, _)| *id).unwrap();
+        let level = s.model.levels()[0].0;
+        let view = View { scale: 0.05, cx: 4000.0, cy: 3000.0, width: 800, height: 600 };
+        let fills = |m: &Model| {
+            draw(m, level, view).prims.iter().filter(|p| matches!(p, Prim::Fill { color, .. } if *color == Rgb(200, 120, 40))).count()
+        };
+        assert_eq!(fills(&s.model), 0);
+        s.execute("modify", &serde_json::json!({"ids": [room], "colour": [200, 120, 40]})).unwrap();
+        assert_eq!(fills(&s.model), 1, "its region, in its colour");
+        let (back, left_out) = Model::read(&s.model.to_json().unwrap()).unwrap();
+        assert!(left_out.is_empty() && fills(&back) == 1, "{left_out:?}");
+    }
 
     fn house() -> Session {
         let mut s = Session::new();

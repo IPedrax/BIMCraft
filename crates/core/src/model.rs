@@ -647,6 +647,9 @@ pub struct Room {
     pub point: P2,
     pub name: String,
     pub number: String,
+    /// What it is filled with on plans, red, green and blue: none, no fill.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<[u8; 3]>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -677,6 +680,7 @@ impl Room {
             point,
             name: name.into(),
             number: number.into(),
+            colour: None,
             params: BTreeMap::new(),
             base_offset: 0.0,
             top_level: None,
