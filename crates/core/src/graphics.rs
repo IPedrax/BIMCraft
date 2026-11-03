@@ -887,6 +887,8 @@ pub struct Look {
     style: VisualStyle,
     /// The section box a 3D view is cut to, its min and max corners, while it's on.
     section: Option<([f64; 3], [f64; 3])>,
+    /// A 3D view's Graphic Display Options: its edges, silhouettes and ambient shadows.
+    display: crate::view3d::DisplayOptions,
 }
 
 /// `c` halfway to the paper.
@@ -914,7 +916,16 @@ impl Look {
     /// What view `view` looks like: nothing hidden or painted when it isn't a view, or has no graphics.
     pub fn of(m: &Model, view: impl Key) -> Look {
         let look = graphics_of(m, view).map_or_else(Look::default, |own| Look::with(m, own));
-        Look { section: m.section_box(view), ..look }
+        let display = match m.elements.get(view) {
+            Some(Element::View3D(v)) => v.display,
+            _ => Default::default(),
+        };
+        Look { section: m.section_box(view), display, ..look }
+    }
+
+    /// How a 3D view draws its edges and shadows: its Graphic Display Options.
+    pub fn display(&self) -> crate::view3d::DisplayOptions {
+        self.display
     }
 
     /// The section box the view is cut to, its min and max corners: none unless it's a 3D view with one turned on.

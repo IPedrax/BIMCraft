@@ -1162,6 +1162,9 @@ pub struct View3D {
     /// target in the model). None for a view that is fitted over the model rather than through a camera of its own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub camera: Option<ViewCamera>,
+    /// Its Graphic Display Options: edges, silhouettes and ambient shadows.
+    #[serde(default, skip_serializing_if = "crate::view3d::DisplayOptions::is_default")]
+    pub display: crate::view3d::DisplayOptions,
 }
 
 /// A 3D view's camera: the model point its eye stands at, and the model point it looks at, in mm. The view is seen in
@@ -1201,6 +1204,7 @@ impl View3D {
             section_box: None,
             perspective: None,
             camera: None,
+            display: Default::default(),
         }
     }
 }
@@ -3178,6 +3182,13 @@ impl Model {
     /// Whether `a` and `b`, ids or GUIDs, are the same element of the project.
     pub fn same(&self, a: impl Key, b: impl Key) -> bool {
         self.elements.id(a).is_some_and(|a| self.elements.id(b) == Some(a))
+    }
+
+    /// The elements that point at element `k`, by id, as [`Element::refs`] gives what each points at: the doors and windows
+    /// in a wall, the walls attached to a roof or a floor, the dimensions and tags on it.
+    pub fn referring(&self, k: impl Key) -> Vec<Id> {
+        let Some(g) = self.elements.guid(k) else { return Vec::new() };
+        self.elements.iter().filter(|(_, e)| e.refs().contains(&g)).map(|(id, _)| *id).collect()
     }
 
     /// The GUID of the element `k` finds; the nil GUID, which is no element's, when there's none.
@@ -5875,6 +5886,10 @@ impl Model {
                     }
                     if let Some(cam) = &v.camera {
                         camera_ok(&who, cam)?;
+                    }
+                    if v.display.silhouette > crate::view3d::MAX_SILHOUETTE {
+                        let most = crate::view3d::MAX_SILHOUETTE;
+                        return Err(format!("{who}: a silhouette {} px wide is wider than the {most} px one may be", v.display.silhouette));
                     }
                     if !view_names.insert(v.name.as_str()) {
                         return Err(format!("{who}: another view is already named `{}`", v.name));

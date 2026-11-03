@@ -1,7 +1,8 @@
 //! File > Settings (Ctrl+,): the window's own settings, the user's and never a project's. They live in
 //! `settings.json` beside the favorites and the update settings ([`beside`]), which the desktop's `main` hands the app
 //! ([`BimApp::use_settings`]); a window that wasn't given the file (every test's) keeps them for as long as it's open.
-//! What it keeps: the theme and whether the drawing stays light in a dark one, the profile, the layout, interface language, ribbon, palettes, the
+//! What it keeps: the theme and whether the drawing stays light in a dark one, the user's own accent, panel, canvas and text colours,
+//! the profile, the layout, interface language, ribbon, palettes, the
 //! window's size, the background autosave interval, and the colour High Contrast Point Clouds draws scans in.
 //! The pages for what is still to come (performance and graphics) show what they will hold, greyed out.
 
@@ -11,7 +12,7 @@ use bimcraft_i18n::msg;
 
 use std::path::{Path, PathBuf};
 
-use egui::{Align, ComboBox, Context, Id as UiId, Layout, RichText, ScrollArea, ThemePreference, Ui, vec2};
+use egui::{Align, Color32, ComboBox, Context, Id as UiId, Layout, RichText, ScrollArea, ThemePreference, Ui, vec2};
 use serde_json::{Value, json};
 
 use crate::BimApp;
@@ -89,6 +90,10 @@ pub struct Settings {
     /// A preset's colours when dark, and the user's accent.
     pub scheme: Scheme,
     pub accent: Option<[u8; 3]>,
+    /// The user's own panel, canvas and text colours, over any scheme.
+    pub panel_colour: Option<[u8; 3]>,
+    pub canvas_colour: Option<[u8; 3]>,
+    pub text_colour: Option<[u8; 3]>,
     /// The project's scale, the tools taken out of the ribbon and the Tools palette, and the presets (`presets.rs`).
     pub scale: Scale,
     pub tools_hidden: BTreeSet<String>,
@@ -122,6 +127,9 @@ impl Settings {
             "profile": self.profile.code(),
             "scheme": self.scheme.code(),
             "accent": self.accent,
+            "panel_colour": self.panel_colour,
+            "canvas_colour": self.canvas_colour,
+            "text_colour": self.text_colour,
             "scale": self.scale.code(),
             "tools_hidden": self.tools_hidden,
             "presets": self.presets.iter().map(Preset::to_json).collect::<Vec<_>>(),
@@ -146,6 +154,8 @@ impl Settings {
             Some("system") => ThemePreference::System,
             _ => base.theme,
         };
+        // A colour of the user's: none (the scheme's) when the file has one this can't read.
+        let own = |key: &str, base: Option<[u8; 3]>| if v.get(key).is_some() { colour(&v[key]) } else { base };
         Settings {
             theme,
             light_canvas: theme == ThemePreference::Dark && v["light_canvas"].as_bool().unwrap_or(base.light_canvas),
@@ -156,7 +166,10 @@ impl Settings {
             },
             profile: v["profile"].as_str().and_then(Profile::from_code).unwrap_or(base.profile),
             scheme: v["scheme"].as_str().and_then(Scheme::from_code).unwrap_or(base.scheme),
-            accent: if v.get("accent").is_some() { colour(&v["accent"]) } else { base.accent },
+            accent: own("accent", base.accent),
+            panel_colour: own("panel_colour", base.panel_colour),
+            canvas_colour: own("canvas_colour", base.canvas_colour),
+            text_colour: own("text_colour", base.text_colour),
             scale: v["scale"].as_str().and_then(Scale::from_code).unwrap_or(base.scale),
             tools_hidden: if v["tools_hidden"].is_array() { hidden_from_json(&v["tools_hidden"]) } else { base.tools_hidden },
             presets: if v["presets"].is_array() { presets_from_json(&v["presets"]) } else { base.presets },
@@ -245,6 +258,7 @@ impl BimApp {
         (self.lang, self.ribbon_min, self.docking) = (kept.language, kept.ribbon_minimized, kept.docking.clone());
         (self.compact, self.profile, self.scale) = (kept.compact, kept.profile, kept.scale);
         (self.scheme, self.accent) = (kept.scheme, kept.accent);
+        (self.panel_colour, self.canvas_colour, self.text_colour) = (kept.panel_colour, kept.canvas_colour, kept.text_colour);
         (self.tools_hidden, self.presets) = (kept.tools_hidden.clone(), kept.presets.clone());
         // BIMCraft has no ribbon: it starts with its tools out, whatever a session in Rev left.
         if self.profile == Profile::BimCraft {
@@ -275,6 +289,9 @@ impl BimApp {
             profile: self.profile,
             scheme: self.scheme,
             accent: self.accent,
+            panel_colour: self.panel_colour,
+            canvas_colour: self.canvas_colour,
+            text_colour: self.text_colour,
             scale: self.scale,
             tools_hidden: self.tools_hidden.clone(),
             presets: self.presets.clone(),
@@ -396,20 +413,56 @@ impl BimApp {
         self.presets_section(ui);
         heading(ui, msg!("Theme"));
         self.theme_choices(ui, false);
-        ui.horizontal(|ui| {
-            let label = ui.label(t("Accent colour"));
-            let now = pal().accent;
-            let mut rgb = self.accent.unwrap_or([now.r(), now.g(), now.b()]);
-            let tip = msg!(
-                "What is picked and what has focus are drawn in it, in every theme; its lettering is made dark or light enough to read"
-            );
-            if ui.color_edit_button_srgb(&mut rgb).labelled_by(label.id).on_hover_text(t(tip)).changed() {
-                self.accent = Some(rgb);
-            }
-            if self.accent.is_some() && ui.button(t("Reset Accent")).clicked() {
-                self.accent = None;
-            }
-        });
+        // Colours of the user's own over any theme, each showing what is drawn now until one is picked.
+        let (now, ground) = (pal(), crate::canvas::color(bimcraft_core::render::PAPER));
+        let rgb = |c: Color32| [c.r(), c.g(), c.b()];
+        for (label, tip, reset, kept, shown) in [
+            (
+                msg!("Accent colour"),
+                msg!(
+                    "What is picked and what has focus are drawn in it, in every theme; its lettering is made dark or light enough to read"
+                ),
+                msg!("Reset Accent"),
+                &mut self.accent,
+                now.accent,
+            ),
+            (
+                msg!("Panel colour"),
+                msg!("The ground of the ribbon, the palettes, the bars and the dialogs; their bands and buttons are a step off it"),
+                msg!("Reset Panels"),
+                &mut self.panel_colour,
+                now.panel,
+            ),
+            (
+                msg!("Canvas colour"),
+                msg!("What the views are drawn on; the drawing's lines turn light on a dark one and dark on a light one"),
+                msg!("Reset Canvas"),
+                &mut self.canvas_colour,
+                ground,
+            ),
+            (
+                msg!("Text colour"),
+                msg!("The interface's lettering, made darker or lighter where it would not read at 4.5:1 on the panels"),
+                msg!("Reset Text"),
+                &mut self.text_colour,
+                now.text,
+            ),
+        ] {
+            ui.horizontal(|ui| {
+                let label = ui.label(t(label));
+                let mut picked = kept.unwrap_or(rgb(shown));
+                if ui.color_edit_button_srgb(&mut picked).labelled_by(label.id).on_hover_text(t(tip)).changed() {
+                    *kept = Some(picked);
+                }
+                if kept.is_some() && ui.button(t(reset)).clicked() {
+                    *kept = None;
+                }
+            });
+        }
+        if self.text_colour.is_some_and(|c| c != rgb(now.text)) {
+            let why = t("Your text colour was too close to the panels: it is made darker or lighter to read at 4.5:1");
+            ui.label(RichText::new(why).color(now.muted));
+        }
         heading(ui, msg!("Layout"));
         // Rev has one layout, flush: the choice is BIMCraft's, and kept for it.
         ui.add_enabled_ui(self.profile == Profile::BimCraft, |ui| {

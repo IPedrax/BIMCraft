@@ -14,6 +14,16 @@ ids inside a view are per view (`push_id`), so two views on screen never clash. 
 they hand it a file): what it keeps is `Settings`, written when it changes, between drags; a setting still to come goes on
 its page greyed out (`later`).
 
+The minimap (`minimap.rs`, the same in both profiles) is at the top of the Navigator, Rev's Project Browser, under a header that folds
+it away: folded at first, so the tree keeps its room (the tests that click the tree's entries where they are drawn rely on it), and
+egui keeps the fold for the session. Unfolded, it is as wide as the palette and no taller than a third of what is left of it. For the
+active plan, ceiling plan, section or elevation it draws the whole view small (`render::plan`, `render::ceiling_plan`, or a section's
+picture and `render::section_over`, fitted into `SIZE`), drawn again only for another model, view or canvas theme, never for a pan or
+a zoom; the 3D view, sheets and schedules have none. The part the view shows is outlined on it, from the canvas's camera
+(`Canvas::view`). A click centres the view there and a drag pans it as it goes, both through `Canvas::centre`, which keeps the zoom: a
+drag begun on the outline takes the view with it, one begun beside it moves the view there first. `tests/minimap.rs` clicks and drags
+it in both profiles (`Minimap::screen` is where a model point is on it).
+
 View > Dark Mode opens a small theme menu: As the System, Light, Dark, or Dark UI, Light Canvas. The same choices are in
 Settings > User Interface. The last choice keeps plans, ceiling plans, sections, elevations and 3D views on a light background
 while the interface stays dark; sheets stay white paper in every mode. `Settings::light_canvas` is saved alongside `theme`
@@ -201,6 +211,23 @@ over the card for what is picked, and its lettering stepped toward the text's co
 any accent stays legible; the contrast test runs every theme and an accent of every kind on each. The drawing keeps its own colours
 (`canvas_pal`). `settings.json` keeps the scheme and the accent beside the theme.
 
+Own colours over any theme, the same in both profiles. Beside the accent, Settings > User Interface > Theme takes a panel colour, a
+canvas colour and a text colour of the user's own (`style::Look::panel_colour`, `canvas_colour`, `text_colour`), each with a Reset
+that brings back the scheme's; `settings.json` keeps them as `panel_colour`, `canvas_colour` and `text_colour`, read as the accent is
+(`colour()`), so one this version can't read is left out and the scheme's stands. Two grounds, because the window has two: the
+cards' and the drawing's, which already part in Dark UI, Light Canvas. The panel colour (`with_ground`) is the cards' ground, with
+their bands, buttons and hovered rows a step toward the ink that reads on it (black or white, `ink_on`, whichever holds more: one
+always holds 4.5:1) and never so far that the ink stops reading; in Rev the chrome too, a step darker, as Rev's own is. What is read
+on it (the text, the muted text, icons, errors, the contextual tabs) is stepped toward that ink until it holds, and the accent's
+tints are made again over it (`with_accent`, whose tint of what is picked now steps back toward the card while the text would not
+read on it). The text colour (`with_text`) is stepped the same way on every ground it is read on (in Rev the chrome's lettering is the
+text's), and the dialog says so when it had to. The canvas colour is the paper the views draw on (`style::canvas_ground`, which
+`canvas::color` returns for the drawing's white), and the drawing's ink follows it rather than the interface: dark ink on a light
+one, light on a dark one (`canvas_dark`, from its luminance), so never black on black; a section's and the 3D view's pictures are
+kept by their ground's colour, so a new one draws them again. `style::follow` restyles the widgets when anything in `Look` changes.
+The contrast test runs every base with these colours at their worst (white, black, the grey both inks read worst on, a pale yellow,
+a navy, pure red, and a text the panel's own colour).
+
 The Inspector's pictures, the same in both profiles. Under the filter row, the type the palette shows is drawn when it has layers
 (`properties::layer_picture`, for walls, floors, roofs and ceilings, `LAYERED`): each layer to its thickness in its material's colour, a
 type without layers as one band. A wall's run from its exterior face to its interior one, with the location line the selected walls share
@@ -210,6 +237,20 @@ its wall (as placed, hand flipped, facing flipped, both), the one the selected d
 `flip_facing` through `modify`. For rooms, their colour on plans (`room_colour`): swatches, No fill first, and any
 other colour; a pick sets the room's `colour` (`Room::colour`, red, green and blue, none for no fill), which plans draw as a fill of
 the room's region under its name (`render.rs`) and a file keeps (an optional field an older version leaves out, so no format step).
+For floors, their slope (`floor_slope`): a short section of the slab at its true angle from its slope arrow's tail, a dashed line
+level with the tail, and the angle written on it in degrees and percent (its accessible label too); under it the steps Flat, 1%, 2%
+and 5%, the one they share lit, a click setting `slope` through `modify` as the Slope field does, a falling floor kept falling. A
+floor with no slope arrow says it is flat and how to slope it, with a button that starts the Slope Arrow tool for it: the picture
+never makes up an arrow, since `Model::check` refuses a sloped floor without one.
+
+What an element is tied to, the same in both profiles (Rev's in its ruled grid, BIMCraft's as Inspector rows). Each tie is a link,
+named by the other element's category and id, that makes it the selection, which every view shows. In the element's own rows: a
+door's or a window's Host Wall, a railing's, a spot's and a tag's host (`Kind::Link`), and beside a wall's greyed Top and Base is
+Attached, the roof or floor it is attached to. For one element, a Tied To group (`properties::ties`) lists the rest: a wall's
+Openings (`Model::referring`, the elements whose `refs` hold its GUID), a roof's or a floor's Attached Walls, and the locked or
+equal dimensions that hold it (`Model::held_by` in `constraints.rs`: one kept equal that measures to it, or one with a locked
+segment that ends at it). egui gives a link's node a label's role when its text is selectable, so `properties::link` names it a
+link again; a test clicks one with `click_accesskit`, since a wall's rows run below the palette's fold.
 
 Properties' filter. With a selection of several categories, the line under the Type Selector is a drop-down of them, as Revit's is
 (`BimApp::selection_categories`): Multiple Categories first, then each category with its count. One picked is what the palette shows
@@ -227,6 +268,16 @@ V/G Overrides, V/G Filters and Design Options open Visibility/Graphics on the te
 drawing's layers, which are a view's own; its OK puts the categories, filters and options back in the draft), View Range a small dialog of
 its four offsets, and Background Grids the grid editor. A view's Properties name its template on a button (`properties::wide_button`, as wide as the drop-downs, as Edit… is), which
 opens the same dialog as Assign View Template: <None> first, the view's kind's tab showing, and OK also sets the template the view follows.
+
+Visibility sets (`BimApp::visibility_sets`, `templates.rs`, the same in both profiles) are view templates, switched from the view control bar: no
+layer is given to an element, and no new kind of entry was needed, because a template already holds what a view shows and its phase and a view
+that stops following one has its own settings back as they were. The bar's Visibility Set menu names the template the view follows (<None> for
+its own), lists <None> and the templates of the view's kind (`listed`), and a pick is one `graphics {template}`. Its Save as field makes one from
+the view as it is that controls only what it shows and its phase (`SET`: categories, filters, phase with its phase filter; `template {from,
+controls}`), and the view follows it, the two in one transaction and one undo step; a name a template has already is said and makes nothing, as
+`template` would change that one. The Sketch scale leaves the menu out with View Templates, and a long name is cut short on the bar. The bar
+runs onto a second row where the view is narrower than it, never under the palettes beside the view: its rows run down, so `footer.rs` starts
+it as high as it was tall the frame before, and its foot stays on the view's.
 
 The palette's rows are not striped: a stripe is `bar`, the group headers' colour. Buttons and drop-downs fill with `Palette::control`, a step past
 `bar` (darker on light, lighter on dark), so a control never reads as a heading beside it.
@@ -246,6 +297,17 @@ for a face square to the screen); a primary drag from one (`section_box::grip_at
 `Camera::along` and `move_box_face`, the picture cut to the box as it goes (`Look::with_section_box`, part of the `Shot` it caches), and
 runs `section_box` when the drag ends. The grip takes the drag, not the camera, and a click on a grip picks nothing behind it. A
 plan's (and a plan view's) Properties have Section Box under Extents too, a `Flag` row: ticked, the plan shows what the box keeps.
+
+Linked 3D View (VIEW-13; `section_box.rs`, a button on a plan's view control bar in both profiles). On, the 3D view floats beside the plan
+(`float_view`, the plan staying the view the tools work in) and is cut to what the plan shows (`plan_box`): its level, from its view range's
+bottom (the level, unless the range says) up to its top (the model's top over the highest level, which has none), across the part of the plan
+the canvas shows (`Canvas::view`). `BimApp::follow_plan`, run with the active plan's bar, sets it again when the hand rests (no button down,
+no wheel turning), so the 3D view follows a pan when it ends and another level's plan when one is opened. The box is the window's, like
+Temporary Hide/Isolate: `footer::Temp::section_box` on the 3D view's sheet, which `BimApp::view_model` puts through `section_box` on the copy
+of the model the 3D view draws, so the project, its undo and its file never hold it, and the 3D view's own box stays as it was. Off, the 3D
+view goes back where it was (`section_box::Was`: closed, its tab at its place, or floating) and is drawn as the project has it; closing its
+window ends the link. The selection is the model's, so the plan and the 3D view share it already. The plan's own Section Box flag reads the
+project's box, never the link's, so a plan that follows the box and a 3D view that follows the plan never chase each other.
 
 Unhide. Only Reveal Hidden Elements lets what a view hides be picked, so the Modify tab's View panel offers Unhide Element and Unhide Category (EU, VU) for a selection
 `BimApp::hidden_selection` finds the active view hiding: the elements hidden one by one, and the categories hidden whole. They run `graphics` with `show_elements` or `show`

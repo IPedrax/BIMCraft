@@ -19,6 +19,7 @@ mod context;
 pub mod control;
 mod dialog;
 mod dimtypes;
+mod display;
 mod dock;
 mod draw;
 mod editor;
@@ -38,6 +39,7 @@ mod linestyles;
 mod lineweights;
 mod links;
 mod mep;
+mod minimap;
 mod notes;
 mod objectstyles;
 mod orbit;
@@ -319,7 +321,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 53] = [
+const SHORTCUTS: [(&str, &str); 54] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -373,6 +375,7 @@ const SHORTCUTS: [(&str, &str); 53] = [
     ("SD", "Shaded"),
     ("KS", "Keyboard Shortcuts"),
     ("BX", "Section Box"),
+    ("GD", "Graphic Display Options"),
 ];
 
 /// Every two-letter shortcut and what it does: the desktop's own, then the commands' aliases.
@@ -470,6 +473,10 @@ pub struct BimApp {
     /// A preset's colours when dark, and the user's accent (Settings > User Interface > Theme).
     scheme: style::Scheme,
     accent: Option<[u8; 3]>,
+    /// The user's own panel, canvas and text colours over any scheme (the same page).
+    panel_colour: Option<[u8; 3]>,
+    canvas_colour: Option<[u8; 3]>,
+    text_colour: Option<[u8; 3]>,
     /// The category the Properties palette's filter narrows a selection of several to, and the selection it was picked for: a new
     /// selection drops it (`BimApp::palette_ids`).
     palette_filter: Option<(&'static str, Vec<Id>)>,
@@ -597,6 +604,8 @@ pub struct BimApp {
     /// What each view hides or reveals for now (not the project's), and the model it is drawn from.
     temporary: HashMap<Sheet, footer::Temp>,
     shadow: Option<footer::Shadow>,
+    /// Linked 3D View, while it's on: where the 3D view was before it floated beside the plan.
+    linked_3d: Option<section_box::Was>,
     /// The project, and what the views draw of it with its links built in: see [`BimApp::view_model`].
     seen: Option<(Arc<Model>, Arc<Model>)>,
     /// Link Model was asked for: its file dialog opens on the next frame, so a shortcut typed alone never waits on one.
@@ -642,6 +651,7 @@ pub struct BimApp {
     /// The graphics card the 3D view may be drawn on (Settings > Performance).
     card: gpu::Card,
     cut: section::Cut,
+    minimap: minimap::Minimap,
     paper: paper::Papers,
     /// The model as last opened or saved: any other is unsaved.
     saved: Arc<Model>,
@@ -675,6 +685,8 @@ pub struct BimApp {
     /// Phasing and Design Options, while they're open, and the design option (`set: option`) new
     /// elements are made in: none is the main model.
     phasing_dialog: Option<phasing::PhasingDialog>,
+    /// Graphic Display Options (GD), while open.
+    display_dialog: Option<display::DisplayDialog>,
     /// Structure > Reinforce, while open, and what was typed in it for each kind of host.
     reinforce_dialog: Option<reinforce::ReinforceDialog>,
     reinforce_kept: BTreeMap<reinforce::Form, BTreeMap<&'static str, String>>,
@@ -1112,6 +1124,9 @@ impl BimApp {
             profile: style::Profile::default(),
             scheme: style::Scheme::default(),
             accent: None,
+            panel_colour: None,
+            canvas_colour: None,
+            text_colour: None,
             palette_filter: None,
             ribbon_peek: false,
             scan_contrast: footer::HIGH_CONTRAST,
@@ -1200,6 +1215,7 @@ impl BimApp {
             dim_edit: None,
             temporary: HashMap::new(),
             shadow: None,
+            linked_3d: None,
             seen: None,
             link_dialog: false,
             cloud_dialog: false,
@@ -1223,6 +1239,7 @@ impl BimApp {
             active_3d: None,
             card: gpu::Card::default(),
             cut: section::Cut::default(),
+            minimap: minimap::Minimap::default(),
             paper: paper::Papers::default(),
             edit: None,
             new_level: (String::new(), String::new()),
@@ -1244,6 +1261,7 @@ impl BimApp {
             filters_dialog: None,
             templates_dialog: None,
             phasing_dialog: None,
+            display_dialog: None,
             reinforce_dialog: None,
             reinforce_kept: BTreeMap::new(),
             line_weights_dialog: None,
@@ -1445,6 +1463,9 @@ impl BimApp {
             profile: self.profile,
             scheme: self.scheme,
             accent: self.accent,
+            panel_colour: self.panel_colour,
+            canvas_colour: self.canvas_colour,
+            text_colour: self.text_colour,
         };
         style::follow(&ctx, look);
         ribbon::tool_rules(self.tools_hidden.clone(), self.scale, self.editing_tools);
@@ -1738,6 +1759,7 @@ impl BimApp {
             || self.filters_dialog.is_some()
             || self.templates_dialog.is_some()
             || self.phasing_dialog.is_some()
+            || self.display_dialog.is_some()
             || self.reinforce_dialog.is_some()
             || self.line_weights_dialog.is_some()
             || self.electrical_dialog.is_some()
@@ -1983,6 +2005,10 @@ impl BimApp {
             }
             "BX" => {
                 self.toggle_section_box();
+                return true;
+            }
+            "GD" => {
+                self.open_display();
                 return true;
             }
             "EU" | "UE" => {
@@ -2791,6 +2817,7 @@ impl BimApp {
         fresh.scan_contrast = self.scan_contrast;
         fresh.grid_snapping = self.grid_snapping;
         (fresh.light_canvas, fresh.scheme, fresh.accent) = (self.light_canvas, self.scheme, self.accent);
+        (fresh.panel_colour, fresh.canvas_colour, fresh.text_colour) = (self.panel_colour, self.canvas_colour, self.text_colour);
         fresh.styled = self.styled;
         fresh.theme_wanted = self.theme_wanted.take();
         fresh.docking = std::mem::take(&mut self.docking);
@@ -4850,6 +4877,7 @@ impl BimApp {
         self.filters_window(ctx);
         self.templates_window(ctx);
         self.phasing_window(ctx);
+        self.display_window(ctx);
         self.reinforce_window(ctx);
         self.line_weights_window(ctx);
         self.object_styles_window(ctx);

@@ -2176,6 +2176,10 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"view": "{3D}", "eye": [0, 0, 0], "target": [1000, 0, 0]}),
         json!({"view": "Level 1", "eye": [0, 0, 0], "target": [1000, 0, 0]}),
         json!({"view": "Camera 1"}),
+        // Graphic display options: a silhouette no outline is, flags that aren't, a view that isn't 3D; and the widest one.
+        json!({"view": "{3D}", "silhouette": 1e300, "edges": "x", "ambient_shadows": 5}),
+        json!({"view": "Level 1", "silhouette": -1, "edges": false}),
+        json!({"silhouette": 10, "ambient_shadows": true, "edges": false}),
     ];
     let mut base = Session::new();
     house(&mut base);
@@ -2192,6 +2196,8 @@ fn hostile_params_never_panic_or_break_the_model() {
         m.elements.values().filter(|e| matches!(e, crate::model::Element::Section(_) | crate::model::Element::Elevation(_))).count()
     };
     assert_eq!(views(&base.model), 2, "the sweep's base has a section and an elevation to draw");
+    // The default 3D view's silhouettes and ambient shadows on, last so that no id moves: every picture of it draws them.
+    let _ = base.execute("graphic_display_options", &json!({"edges": false, "silhouette": 4, "ambient_shadows": true}));
     let hostile: Vec<Value> = hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();

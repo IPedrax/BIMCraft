@@ -281,12 +281,9 @@ impl Step {
         }
         let id = self.add(format!("IFCMATERIAL({},$,$)", s(name)));
         let style = m.materials.get(name).map(|x| {
-            let [r, g, b] = x.color.map(|c| real(f64::from(c) / 255.0));
-            let colour = self.add(format!("IFCCOLOURRGB($,{r},{g},{b})"));
-            // Its second argument is how see-through the material is, 0 for opaque to 1 for clear; none for an opaque one.
+            // How see-through the material is, 0 for opaque to 1 for clear; none for an opaque one.
             let clear = if x.transparency == 0 { "$".to_string() } else { real(f64::from(x.transparency.min(100)) / 100.0) };
-            let shading = self.add(format!("IFCSURFACESTYLESHADING(#{colour},{clear})"));
-            let style = self.add(format!("IFCSURFACESTYLE({},.BOTH.,(#{shading}))", s(name)));
+            let style = self.surface_style(&s(name), x.color, &clear);
             let item = self.add(format!("IFCSTYLEDITEM($,(#{style}),$)"));
             let rep = self.add(format!("IFCSTYLEDREPRESENTATION(#{},'Style','Material',(#{item}))", self.context));
             self.add(format!("IFCMATERIALDEFINITIONREPRESENTATION($,$,(#{rep}),#{id})"));
@@ -294,6 +291,15 @@ impl Step {
         });
         self.materials.insert(name.to_string(), (id, style));
         (id, style)
+    }
+
+    /// A surface style named `name` (a STEP string, or `$` for none) that shades in `rgb`, `clear` how see-through (`$`
+    /// for opaque).
+    fn surface_style(&mut self, name: &str, rgb: [u8; 3], clear: &str) -> u64 {
+        let [r, g, b] = rgb.map(|c| real(f64::from(c) / 255.0));
+        let colour = self.add(format!("IFCCOLOURRGB($,{r},{g},{b})"));
+        let shading = self.add(format!("IFCSURFACESTYLESHADING(#{colour},{clear})"));
+        self.add(format!("IFCSURFACESTYLE({name},.BOTH.,(#{shading}))"))
     }
 
     /// A closed surface of triangles, each corner written once.
@@ -400,17 +406,21 @@ impl Step {
 
     /// A body: `profile` swept `depth` up from `bottom`, plus any extra representations.
     fn body(&mut self, profile: u64, bottom: f64, depth: f64, extra: &[u64]) -> u64 {
-        self.bodies(&[(profile, bottom, depth)], extra)
+        self.bodies(&[(profile, bottom, depth)], extra, None)
     }
 
-    /// A body of solids, each a profile swept `depth` up from `bottom`, plus any extra
-    /// representations.
-    fn bodies(&mut self, solids: &[(u64, f64, f64)], extra: &[u64]) -> u64 {
+    /// A body of solids, each a profile swept `depth` up from `bottom` and styled in `style` when there's one, plus any
+    /// extra representations.
+    fn bodies(&mut self, solids: &[(u64, f64, f64)], extra: &[u64], style: Option<u64>) -> u64 {
         let items: Vec<u64> = solids
             .iter()
             .map(|&(profile, bottom, depth)| {
                 let at = if bottom == 0.0 { self.world } else { self.axes((0.0, 0.0, bottom), None) };
-                self.add(format!("IFCEXTRUDEDAREASOLID(#{profile},#{at},#{},{})", self.z, real(depth)))
+                let solid = self.add(format!("IFCEXTRUDEDAREASOLID(#{profile},#{at},#{},{})", self.z, real(depth)));
+                if let Some(style) = style {
+                    self.add(format!("IFCSTYLEDITEM(#{solid},(#{style}),$)"));
+                }
+                solid
             })
             .collect();
         let rep = self.add(format!("IFCSHAPEREPRESENTATION(#{},'Body','SweptSolid',({}))", self.body, refs(&items)));
@@ -769,12 +779,13 @@ pub fn export(m: &Model) -> String {
                 let Some(&(_, storey)) = storeys.get(&r.level) else { continue };
                 let at = w.place(Some(storey), (0.0, 0.0, 0.0), None);
                 // A room that isn't enclosed has no shape to give.
-                // As tall as its upper limit and offsets make it, from its base offset.
+                // As tall as its upper limit and offsets make it, from its base offset; in its colour on plans, if it has one.
                 let height = m.room_height(r);
                 let shape = match m.room_region(r) {
                     Some(region) => {
                         let profile = w.profile(&region.outer, &region.holes);
-                        format!("#{}", w.body(profile, r.base_offset, height, &[]))
+                        let style = r.colour.map(|c| w.surface_style("$", c, "$"));
+                        format!("#{}", w.bodies(&[(profile, r.base_offset, height)], &[], style))
                     }
                     None => "$".into(),
                 };
@@ -977,7 +988,7 @@ pub fn export(m: &Model) -> String {
                             (w.rectangle(P2((k - 0.5) * st.tread, 0.0), P2(st.tread, st.width)), base - run.z.0, run.z.0 - base + k * each)
                         })
                         .collect();
-                    let shape = w.bodies(&steps, &[]);
+                    let shape = w.bodies(&steps, &[], None);
                     parts.push(w.add(format!(
                         "IFCSTAIRFLIGHT({},$,'Flight',$,$,#{fat},#{shape},$,{},{},{},{},.STRAIGHT.)",
                         w.guid(FLIGHT, w.part(id, i)),
@@ -1600,6 +1611,39 @@ mod tests {
             assert!(!line.contains(",0.)") && !line.contains(",0.,"), "{line}");
         }
         dangling(&f);
+    }
+
+    #[test]
+    fn a_rooms_colour_styles_the_solid_of_its_spaces_body() {
+        let mut s = Session::new();
+        s.script(
+            r#"wall {"points": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "closed": true}
+               room {"point": [4000, 3000]}"#,
+        )
+        .unwrap();
+        let styled = |f: &str| f.matches("=IFCSTYLEDITEM(").count();
+        let plain = styled(&export(&s.model));
+        let room = s.model.elements.iter().find(|(_, e)| e.category() == "room").map(|(id, _)| *id).unwrap();
+        s.execute("modify", &json!({"id": room, "colour": [214, 229, 210]})).unwrap();
+        let f = export(&s.model);
+        dangling(&f);
+        assert_eq!(styled(&f), plain + 1, "one style, for the one room with a colour");
+        // `#n=...` of reference `#n`, and the first reference in it after `after`.
+        let line = |n: &str| f.lines().find(|l| l.starts_with(&format!("{n}="))).unwrap_or_else(|| panic!("no {n}")).to_string();
+        let after = |l: &str, after: &str| {
+            format!("#{}", l.split_once(after).unwrap().1.chars().take_while(char::is_ascii_digit).collect::<String>())
+        };
+        // The space's body, its shape's representation's solid: the item its style is on.
+        let space = f.lines().find(|l| l.contains("=IFCSPACE(")).unwrap();
+        let shape = space.split(',').nth(6).unwrap();
+        let solid = after(&line(&after(&line(shape), "(#")), ",(#");
+        assert!(line(&solid).contains("=IFCEXTRUDEDAREASOLID("), "{}", line(&solid));
+        let item = f.lines().find(|l| l.contains(&format!("=IFCSTYLEDITEM({solid},"))).unwrap();
+        // Its surface style shades it in the room's colour.
+        let shading = after(&line(&after(item, ",(#")), ",(#");
+        let colour = line(&after(&line(&shading), "(#"));
+        let [r, g, b] = [214.0, 229.0, 210.0].map(|c: f64| real(c / 255.0));
+        assert!(colour.ends_with(&format!("=IFCCOLOURRGB($,{r},{g},{b});")), "{colour}");
     }
 
     /// Every reference in `f` points at an entity written once.

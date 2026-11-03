@@ -82,8 +82,10 @@ enum Kind {
     RegionLines,
     /// Which line of a run's section its heights are: a drop-down.
     Justification,
-    /// Whether a roof or a floor is there (a wall's attachment); read only.
+    /// Whether a roof or a floor is there (a wall's attachment), and a link that selects it; read only.
     Attached,
+    /// An element it points at (a door's host wall): a link that selects it; read only.
+    Link,
     /// One of these values (as the command names it, and its label): a drop-down, the first when it has none.
     Choice(&'static [(&'static str, &'static str)]),
 }
@@ -139,7 +141,7 @@ fn rows(category: &str) -> &'static [Row] {
         "door" => &[
             ("Constraints", "level", "Level", LevelName),
             (msg!("Identity Data"), "mark", "Mark", Text),
-            ("Other", "host", msg!("Host Wall"), Shown),
+            ("Other", "host", msg!("Host Wall"), Link),
             ("Other", "offset", "Offset", Length),
             ("Other", "flip_facing", msg!("Flip Facing"), Flag),
             ("Other", "flip_hand", msg!("Flip Hand"), Flag),
@@ -148,7 +150,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "level", "Level", LevelName),
             ("Constraints", "sill", "Sill Height", Length),
             ("Identity Data", "mark", "Mark", Text),
-            ("Other", "host", "Host Wall", Shown),
+            ("Other", "host", "Host Wall", Link),
             ("Other", "offset", "Offset", Length),
             ("Other", "flip_facing", "Flip Facing", Flag),
         ],
@@ -225,7 +227,7 @@ fn rows(category: &str) -> &'static [Row] {
         ],
         "spot" => &[
             ("Dimensions", "elevation", "Elevation", LengthShown),
-            ("Other", "host", msg!("Host"), Shown),
+            ("Other", "host", msg!("Host"), Link),
             ("Other", "at", "Location", Point),
         ],
         "line" => &[
@@ -263,7 +265,7 @@ fn rows(category: &str) -> &'static [Row] {
         ],
         "tag" => &[
             ("Graphics", "leader", msg!("Leader Line"), Flag),
-            ("Other", "host", msg!("Tagged Element"), Shown),
+            ("Other", "host", msg!("Tagged Element"), Link),
             ("Other", "offset", "Offset", Point),
         ],
         "sheet" => &[
@@ -332,7 +334,7 @@ fn rows(category: &str) -> &'static [Row] {
         "railing" => &[
             ("Constraints", "level", "Level", Level),
             ("Constraints", "base_offset", "Base Offset", Length),
-            ("Constraints", "host", "Host", Shown),
+            ("Constraints", "host", "Host", Link),
             ("Constraints", "side", msg!("Side"), Shown),
             ("Dimensions", "height", "Height", LengthShown),
         ],
@@ -590,6 +592,16 @@ pub(crate) fn combo(ui: &mut Ui, salt: (Id, &str), label: UiId, current: &str, o
 /// A button across a value cell, as wide as the drop-downs beside it, its text centred: Edit…, a view template's name.
 pub(crate) fn wide_button(ui: &mut Ui, text: impl Into<egui::WidgetText>) -> egui::Response {
     ui.add_sized([ui.available_width(), ui.spacing().interact_size.y], Button::new(text).truncate())
+}
+
+/// Element `id` as a link, by its category and its id: whether it was clicked, to select it.
+fn link(ui: &mut Ui, model: &Model, id: Id) -> bool {
+    let category = model.elements.get(id).map_or("element", |e| e.category());
+    let text = format!("{} {id}", lang::category(category, false));
+    let r = ui.link(&text);
+    // egui's selectable text gives the link's node a label's role: a link's again, for screen readers.
+    r.widget_info(|| WidgetInfo::labeled(WidgetType::Link, true, &text));
+    r.clicked()
 }
 
 /// A parameter group's header: a bar across the palette that folds the group, as Revit's do.
@@ -1214,8 +1226,12 @@ impl BimApp {
         self.layer_picture(ui, &model);
         self.opening_picker(ui, &model);
         self.room_colour(ui, &model);
+        self.floor_slope(ui, &model);
         if !ids.is_empty() {
             self.parameters(ui, &model, &ids, rows);
+            if let Subject::Element(id) = subject {
+                self.ties(ui, &model, id);
+            }
             self.component_parameters(ui, &model, &ids);
             self.project_parameters(ui, &model, &ids);
             self.element_phasing(ui, &model, &ids);
@@ -1408,6 +1424,62 @@ impl BimApp {
         }
     }
 
+    /// The slope of the floors the palette shows: a short section of the slab at its angle from its slope arrow's tail, the
+    /// angle written on it, and steps that set it through `modify`, as the Slope field does; one that falls keeps falling. A
+    /// floor with no slope arrow is flat until one is drawn, which the Slope Arrow tool does.
+    fn floor_slope(&mut self, ui: &mut Ui, model: &Model) {
+        let ids = self.palette_ids();
+        let floor = |id: &Id| match model.elements.get(id) {
+            Some(Element::Floor(f)) => Some((f.slope, f.arrow.is_some())),
+            _ => None,
+        };
+        let Some(floors) = ids.iter().map(floor).collect::<Option<Vec<_>>>().filter(|f| !f.is_empty()) else { return };
+        ui.label(RichText::new(t("Slope")).strong());
+        if !floors.iter().all(|(_, arrow)| *arrow) {
+            ui.label(
+                RichText::new(t("Flat: it has no slope arrow. Draw one from where its top stays toward where it rises."))
+                    .color(pal().muted),
+            );
+            if self.selected_floor().is_some() && ui.button(t("Draw a slope arrow")).clicked() {
+                self.set_tool(Tool::SlopeArrow(None));
+            }
+            return;
+        }
+        let slope = floors[0].0;
+        let shared = floors.iter().all(|(s, _)| *s == slope);
+        if shared {
+            let said = format!("{}° ({}%)", text(&json!(slope)), text(&json!(slope.to_radians().tan() * 100.0)));
+            let (rect, r) = ui.allocate_exact_size(vec2(ui.available_width(), 48.0), Sense::hover());
+            r.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, tf("Floor slope: {}", &[&said])));
+            // The slab's top from the arrow's tail, rising (or falling) at its angle, as long as the picture holds; its
+            // thickness square to it.
+            let (thick, room) = (8.0, rect.shrink(8.0));
+            let a = slope.to_radians() as f32;
+            let fits = (room.height() - thick) / a.sin().abs().max(1e-6);
+            let tail = if a >= 0.0 { pos2(room.left(), room.bottom() - thick) } else { room.left_top() };
+            let (along, across) = (vec2(a.cos(), -a.sin()), vec2(a.sin(), a.cos()) * thick);
+            let head = tail + along * room.width().min(fits);
+            let p = ui.painter();
+            p.extend(Shape::dashed_line(&[tail, pos2(room.right(), tail.y)], Stroke::new(1.0, pal().muted), 4.0, 3.0));
+            let slab = vec![tail, head, head + across, tail + across];
+            p.add(Shape::convex_polygon(slab, pal().control, Stroke::new(1.0, pal().icon)));
+            p.text(rect.right_top() + vec2(-4.0, 4.0), Align2::RIGHT_TOP, said, FontId::proportional(12.0), pal().text);
+        }
+        let sign = if slope < 0.0 { -1.0 } else { 1.0 };
+        let mut pick = None;
+        ui.horizontal(|ui| {
+            for (label, percent) in [(msg!("Flat"), 0.0), ("1%", 1.0), ("2%", 2.0), ("5%", 5.0)] {
+                let degrees = sign * f64::atan(percent / 100.0).to_degrees();
+                if ui.selectable_label(shared && (slope - degrees).abs() < 1e-9, t(label)).clicked() {
+                    pick = Some(degrees);
+                }
+            }
+        });
+        if let Some(degrees) = pick {
+            self.run("modify", json!({"ids": ids, "slope": degrees}));
+        }
+    }
+
     /// The Type Selector: the category and the type of what the palette shows, a drop-down of
     /// the category's types.
     fn type_selector(&mut self, ui: &mut Ui, model: &Model, subject: Subject) {
@@ -1582,6 +1654,8 @@ impl BimApp {
         // A second field the change sets with it: a room's Limit Offset, kept where its top is as its Upper Limit changes.
         let mut also: Option<(&str, Value)> = None;
         let mut crop = None;
+        // An element a link was clicked for: the selection.
+        let mut select = None;
         let units = model.units;
         // A note on a sheet sits in paper mm.
         let paper = matches!(model.elements.get(id), Some(Element::Text(n)) if model.sheet(n.view).is_some());
@@ -1719,12 +1793,26 @@ impl BimApp {
                                 change = Some((key, Ok(json!(k))));
                             }
                         }
-                        // Revit's greyed checkbox: Attach Top/Base and Detach Top/Base change it.
+                        // Revit's greyed checkbox: Attach Top/Base and Detach Top/Base change it. Beside it, what it's attached to.
                         Attached => {
-                            let mut on = !val.is_null();
-                            let r = ui.add_enabled(false, Checkbox::new(&mut on, ""));
-                            r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, false, on, label));
-                            r.labelled_by(name.id);
+                            ui.horizontal(|ui| {
+                                let mut on = !val.is_null();
+                                let r = ui.add_enabled(false, Checkbox::new(&mut on, ""));
+                                r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, false, on, label));
+                                r.labelled_by(name.id);
+                                if let Some(other) = id_of(val)
+                                    && link(ui, model, other)
+                                {
+                                    select = Some(other);
+                                }
+                            });
+                        }
+                        Link => {
+                            if let Some(other) = id_of(val)
+                                && link(ui, model, other)
+                            {
+                                select = Some(other);
+                            }
                         }
                         Text | Number | Length | LengthIf | Point | PaperPoint | Outline | Height | Limit(_) => {
                             // Blank across a selection may be values that differ, not nothing.
@@ -1744,6 +1832,9 @@ impl BimApp {
         if ids.len() == 1 && v["enclosed"] == json!(false) {
             ui.label(RichText::new(t("Not enclosed: the walls around it don't close.")).color(pal().error));
         }
+        if let Some(other) = select {
+            self.selection = vec![other];
+        }
         // A view's crop: on to all it shows, or off.
         if let (Some(on), &[view]) = (crop, ids) {
             self.run("crop", if on { json!({"view": view}) } else { json!({"view": view, "region": null}) });
@@ -1759,6 +1850,49 @@ impl BimApp {
             }
             Some((key, Err(e))) => self.status = Status { text: format!("{key}: {e}"), error: true },
             None => {}
+        }
+    }
+
+    /// What else the one element the palette shows is tied to, each a link that selects it: a wall's doors and windows, the
+    /// walls attached to a roof or a floor, the locked or equal dimensions that hold it. Its host and what it's attached to
+    /// are links in its own rows (`Link`, `Attached`).
+    fn ties(&mut self, ui: &mut Ui, model: &Model, id: Id) {
+        let Some(e) = model.elements.get(id) else { return };
+        let referring = model.referring(id);
+        let of = |categories: &[&str]| -> Vec<Id> {
+            let keep = |r: &&Id| model.elements.get(**r).is_some_and(|x| categories.contains(&x.category()));
+            referring.iter().filter(keep).copied().collect()
+        };
+        let openings = if matches!(e, Element::Wall(_)) { of(&["door", "window"]) } else { Vec::new() };
+        let walls = if matches!(e, Element::Roof(_) | Element::Floor(_)) { of(&["wall"]) } else { Vec::new() };
+        let rows = [(msg!("Openings"), openings), (msg!("Attached Walls"), walls), (msg!("Held by Dimensions"), model.held_by(id))];
+        if rows.iter().all(|(_, links)| links.is_empty()) {
+            return;
+        }
+        let group = msg!("Tied To");
+        let open = !self.collapsed.contains(group);
+        if group_header(ui, t(group), open) && !self.collapsed.remove(group) {
+            self.collapsed.insert(group);
+        }
+        if !open {
+            return;
+        }
+        let mut select = None;
+        grid(ui, ("ties", id), |ui| {
+            for (label, links) in rows.iter().filter(|(_, links)| !links.is_empty()) {
+                ui.label(t(label));
+                ui.vertical(|ui| {
+                    for &other in links {
+                        if link(ui, model, other) {
+                            select = Some(other);
+                        }
+                    }
+                });
+                end_row(ui);
+            }
+        });
+        if let Some(other) = select {
+            self.selection = vec![other];
         }
     }
 

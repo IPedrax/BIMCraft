@@ -31,7 +31,11 @@ click from the point before until Esc. A room's height is Revit's: from `base_of
 its Upper Limit, `top_level` (none: Not Bounded, the offset then over its own level). A new room reaches 300 mm under the
 level above (`ROOM_BELOW_ABOVE`), or with none above is Not Bounded and 2500 mm tall; a room read from a file without them is
 Not Bounded, 2500 mm. `Model::room_span` and `room_height` give it, `elements` its `unbounded_height` and `volume_m3` (the area times that height, not cut by floors or roofs), and the IFC
-space is swept that tall. A frozen room (`frozen`, an instance parameter: `room {frozen}` or `modify {id, frozen}`) keeps the
+space is swept that tall. A room's colour on plans (`Room::colour`) styles that solid in IFC as other elements' colours do: an
+`IfcStyledItem` on the swept solid, its unnamed `IfcSurfaceStyle` shading in the colour (`IfcSurfaceStyleShading`, which IFC4's
+rendering style extends; `Step::surface_style`, which a material's style shares), so a viewer shades the space in it. The import
+reads it back from the colour the space's body is styled in (`import::item_colours`), so a round trip keeps it and a space
+another program styled comes in filled in its colour; a room that isn't enclosed has no body, so no colour, in IFC. A frozen room (`frozen`, an instance parameter: `room {frozen}` or `modify {id, frozen}`) keeps the
 boundary it has when frozen, both ways it can be measured (`Room::kept`, given after the command that froze it by
 `Model::keep_rooms`, which the engine calls after every command, and let go when it is thawed): `room_region_at` returns it
 and the plan draws it without finding the level's lines, so the walls are never searched for it again, which saves the time

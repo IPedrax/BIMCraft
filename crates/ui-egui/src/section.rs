@@ -19,8 +19,8 @@ use crate::style::canvas_pal;
 use crate::{BimApp, Status, Tool};
 
 /// What a picture is of: the model, the view, its framing in pixels, the elements tinted, and
-/// whether it's drawn dark.
-type Shot = (Arc<Model>, Id, View, Vec<(Id, Rgb)>, bool);
+/// the ground it's drawn on (which says whether it's drawn dark too).
+type Shot = (Arc<Model>, Id, View, Vec<(Id, Rgb)>, Color32);
 
 /// The section or elevation on screen, between frames: its picture, and its texture.
 #[derive(Default)]
@@ -46,7 +46,7 @@ impl Cut {
         id: Id,
         pixels: View,
         tints: Vec<(Id, Rgb)>,
-        dark: bool,
+        ground: Color32,
         grid_background: bool,
     ) {
         #[cfg(test)]
@@ -76,7 +76,7 @@ impl Cut {
             self.image = Some(image);
         }
         self.grid_background = grid_background;
-        self.shown = Some((Arc::clone(model), id, pixels, tints, dark));
+        self.shown = Some((Arc::clone(model), id, pixels, tints, ground));
     }
 }
 
@@ -93,18 +93,18 @@ impl BimApp {
         let ppp = f64::from(ui.ctx().pixels_per_point());
         let side = |v: u32| ((f64::from(v) * ppp).round().max(1.0) as u32).min(MAX_SIDE);
         let pixels = View { scale: view.scale * ppp, width: side(view.width), height: side(view.height), ..view };
-        let dark = crate::style::canvas_dark();
+        let ground = color(render::PAPER);
         // The picture on screen is this model's, in this view and size (and, tints given, tinted so): a pan or a zoom, a new
         // model or another tab is not. A picture costs a frame, and the drawing over it keeps its regions' ink from it: so it is
         // drawn first and once, with the tints it had, and again only if the hover changed along with the view.
         let grid_background = self.background_grid().shown();
         let current = |cut: &Cut, tints: Option<&[(Id, Rgb)]>| {
             cut.grid_background == grid_background
-                && matches!(&cut.shown, Some((m, v, f, t, k)) if Arc::ptr_eq(m, &model) && *v == id && *f == pixels && *k == dark && tints.is_none_or(|x| x == t))
+                && matches!(&cut.shown, Some((m, v, f, t, k)) if Arc::ptr_eq(m, &model) && *v == id && *f == pixels && *k == ground && tints.is_none_or(|x| x == t))
         };
         if !current(&self.cut, None) {
             let tints = self.cut.shown.as_ref().map(|s| s.3.clone()).unwrap_or_default();
-            self.cut.draw(ui.ctx(), &model, scene_of(&mut self.orbit.scene, &model), id, pixels, tints, dark, grid_background);
+            self.cut.draw(ui.ctx(), &model, scene_of(&mut self.orbit.scene, &model), id, pixels, tints, ground, grid_background);
         }
         let d = match &self.cut.image {
             Some(image) => render::section_over(&model, id, view, image),
@@ -128,7 +128,7 @@ impl BimApp {
             .chain(hovered.filter(|h| !self.selection.contains(h)).map(|h| (h, rgb(canvas_pal().hover))))
             .collect();
         if !current(&self.cut, Some(&tints)) {
-            self.cut.draw(ui.ctx(), &model, scene_of(&mut self.orbit.scene, &model), id, pixels, tints, dark, grid_background);
+            self.cut.draw(ui.ctx(), &model, scene_of(&mut self.orbit.scene, &model), id, pixels, tints, ground, grid_background);
         }
         let p = ui.painter_at(rect);
         p.rect_filled(rect, 0.0, color(render::PAPER));
