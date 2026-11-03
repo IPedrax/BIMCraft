@@ -4919,7 +4919,7 @@ impl Model {
 
     /// What is amiss in the model but doesn't make it wrong: soft issues, said so they can be fixed. `check` refuses a model;
     /// these it accepts. A room the walls no longer close; a family of lighting, outlets or switches in use that holds no
-    /// connector, so its devices count as a load of zero.
+    /// connector, so its devices count as a load of zero (a family of plan symbols alone, a symbol set's, is no device).
     pub fn warnings(&self) -> Vec<String> {
         let mut out: Vec<String> = self
             .elements
@@ -4947,6 +4947,8 @@ impl Model {
                 && let Some(f) = self.families.get(&c.family)
                 && f.category.electrical_device()
                 && f.connectors.is_empty()
+                // A family of plan symbols alone (a symbol set's) is notation, not a device that draws a load.
+                && !(f.forms.is_empty() && !f.symbols.is_empty())
             {
                 *bare.entry(c.family.as_str()).or_default() += 1;
             }

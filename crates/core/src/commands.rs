@@ -8455,8 +8455,20 @@ fn family(s: &mut Session, p: &Value) -> R {
     }
     // Read it, which changes nothing and costs no undo step: what it is, each of its types' values
     // worked out, and what's worth knowing. `dry_run` reads it the same way and says it changed nothing.
-    let keys =
-        ["category", "parameters", "forms", "symbols", "operation", "types", "rename", "form", "symbol", "delete_form", "delete_symbol"];
+    let keys = [
+        "category",
+        "parameters",
+        "forms",
+        "symbols",
+        "operation",
+        "connectors",
+        "types",
+        "rename",
+        "form",
+        "symbol",
+        "delete_form",
+        "delete_symbol",
+    ];
     if !keys.iter().any(|k| p.get(*k).is_some_and(|v| !v.is_null())) {
         let f = s.model.families.get(&name).ok_or_else(|| bad(c, format!("there's no family `{name}`")))?;
         let (_, warnings) = f.problems(&|m| s.model.materials.contains_key(m));

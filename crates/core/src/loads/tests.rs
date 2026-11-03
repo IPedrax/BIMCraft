@@ -191,7 +191,6 @@ mod command {
         let mut s = Session::new();
         run(&mut s, "wall", json!({"points": [[0, 0], [5000, 0], [5000, 4000], [0, 4000]], "closed": true}));
         run(&mut s, "room", json!({"point": [2500, 2000], "name": "Dormitório"}));
-        run(&mut s, "room", json!({"point": [2500, 2000], "name": "Dormitório"}));
         let r = run(&mut s, "load_points", json!({}));
         let room = &r["rooms"][0];
         let area = room["area_m2"].as_f64().unwrap_or(0.0);
