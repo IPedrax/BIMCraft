@@ -914,7 +914,7 @@ impl BimApp {
             && self.grid_snapping
             && let Some(at) = self.background_grid().nearest(v.mm(at))
         {
-            return Found { at, kind: Kind::Intersection, guide: None };
+            return Found { at, kind: Kind::Intersection, guide: None, source: None };
         }
         found
     }
@@ -1095,7 +1095,16 @@ impl BimApp {
             }
         }
         if !matches!(f.kind, Kind::Free | Kind::Angle) {
-            tag(p, at + vec2(12.0, 14.0), Align2::LEFT_TOP, t(f.kind.name()));
+            // And of which element, by its id, as Select by ID finds it.
+            let name = match f.source.and_then(|id| Some((id, sc.m.elements.get(id)?))) {
+                Some((id, e)) => {
+                    let of = crate::lang::category(e.category(), false);
+                    // TRANSLATORS: what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
+                    tf("{} of {} {}", &[t(f.kind.name()), &of, &id.to_string()])
+                }
+                None => t(f.kind.name()).to_string(),
+            };
+            tag(p, at + vec2(12.0, 14.0), Align2::LEFT_TOP, name);
         }
     }
 

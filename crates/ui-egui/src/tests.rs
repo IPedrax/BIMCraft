@@ -3608,6 +3608,19 @@ wall {"points": [[3000,5500],[4000,5500]]}"#);
 }
 
 #[test]
+fn a_snaps_tag_names_the_element_it_came_from_by_its_id() {
+    use bimcraft_core::snap::Kind;
+    let mut h = app(r#"wall {"points": [[0,0],[6000,0]]}
+wall {"points": [[0,4000],[6000,4000]]}"#);
+    let wall = ids(&h, "wall")[0];
+    tool(&mut h, "Wall");
+    let f = hover(&mut h, P2(6020.0, 10.0)).unwrap();
+    assert_eq!((f.kind, f.source), (Kind::Endpoint, Some(wall)));
+    let text = painted_text(&h);
+    assert!(text.contains(&format!("Endpoint of Wall {wall}")), "{text:?}");
+}
+
+#[test]
 fn manage_snaps_switches_each_snap_and_the_angle_steps() {
     use bimcraft_core::snap::Kind;
     let mut h = app(BOX);

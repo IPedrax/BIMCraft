@@ -2769,7 +2769,7 @@ msgstr "请为每个类型和图案输入名称。"
 msgid "Entities"
 msgstr "图元数"
 
-#: crates/ui-egui/src/canvas.rs:2867
+#: crates/ui-egui/src/canvas.rs:2876
 msgid "Equal"
 msgstr "相等"
 
@@ -4187,7 +4187,7 @@ msgstr "定位线："
 msgid "Location line: {}"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2834
+#: crates/ui-egui/src/canvas.rs:2843
 msgid "Lock segment {}"
 msgstr "锁定第 {} 段"
 
@@ -5257,7 +5257,7 @@ msgstr "重新选取"
 msgid "Pick Faces"
 msgstr "拾取面"
 
-#: crates/ui-egui/src/canvas.rs:1659
+#: crates/ui-egui/src/canvas.rs:1668
 msgid "Pick Faces: click a face of a mass"
 msgstr "拾取面：请单击体量的一个面"
 
@@ -7359,7 +7359,7 @@ msgstr "临时隔离类别"
 msgid "Temporary Isolate Element"
 msgstr "临时隔离图元"
 
-#: crates/ui-egui/src/canvas.rs:2796
+#: crates/ui-egui/src/canvas.rs:2805
 msgid "Temporary dimension {}"
 msgstr "临时尺寸标注 {}"
 
@@ -7786,7 +7786,7 @@ msgstr "修剪/延伸为角 (TR)：拾取两面墙或两条线，在要保留的
 msgid "Turn Snap Override Off"
 msgstr "关闭捕捉替换"
 
-#: crates/ui-egui/src/canvas.rs:2747
+#: crates/ui-egui/src/canvas.rs:2756
 msgid "Turn the wall about its {}: {}"
 msgstr "绕墙的{}旋转墙：{}"
 
@@ -8437,15 +8437,15 @@ msgstr "锯齿"
 msgid "Zoom"
 msgstr "缩放"
 
-#: crates/ui-egui/src/canvas.rs:1459
+#: crates/ui-egui/src/canvas.rs:1468
 msgid "Zoom In"
 msgstr "放大"
 
-#: crates/ui-egui/src/canvas.rs:1462
+#: crates/ui-egui/src/canvas.rs:1471
 msgid "Zoom Out"
 msgstr "缩小"
 
-#: crates/ui-egui/src/canvas.rs:1456
+#: crates/ui-egui/src/canvas.rs:1465
 #: crates/ui-egui/src/orbit.rs:515
 msgid "Zoom to Fit"
 msgstr "缩放以适应"
@@ -8456,10 +8456,10 @@ msgstr "`{}` 不是有效的高度"
 
 #: crates/ui-egui/src/camera.rs:91
 #: crates/ui-egui/src/camera.rs:103
-#: crates/ui-egui/src/canvas.rs:2565
-#: crates/ui-egui/src/canvas.rs:2945
-#: crates/ui-egui/src/canvas.rs:3038
-#: crates/ui-egui/src/canvas.rs:3058
+#: crates/ui-egui/src/canvas.rs:2574
+#: crates/ui-egui/src/canvas.rs:2954
+#: crates/ui-egui/src/canvas.rs:3047
+#: crates/ui-egui/src/canvas.rs:3067
 #: crates/ui-egui/src/draw.rs:258
 #: crates/ui-egui/src/draw.rs:259
 #: crates/ui-egui/src/draw.rs:260
@@ -8503,8 +8503,8 @@ msgstr "`{}` 不是有效的尺寸、角度或偏移"
 msgid "`{}` is not a spacing"
 msgstr "`{}` 不是间距"
 
-#: crates/ui-egui/src/canvas.rs:2550
-#: crates/ui-egui/src/canvas.rs:2774
+#: crates/ui-egui/src/canvas.rs:2559
+#: crates/ui-egui/src/canvas.rs:2783
 msgid "`{}` is not an angle"
 msgstr "`{}` 不是有效的角度"
 
@@ -8560,7 +8560,7 @@ msgstr "圆弧"
 msgid "begins with"
 msgstr "开头是"
 
-#: crates/ui-egui/src/canvas.rs:2096
+#: crates/ui-egui/src/canvas.rs:2105
 msgid "ceiling: `{}` is not a height"
 msgstr "天花板：`{}` 不是有效的高度"
 
@@ -8568,15 +8568,15 @@ msgstr "天花板：`{}` 不是有效的高度"
 msgid "circle"
 msgstr "圆"
 
-#: crates/ui-egui/src/canvas.rs:2150
+#: crates/ui-egui/src/canvas.rs:2159
 msgid "click its line's end"
 msgstr "单击其直线的终点"
 
-#: crates/ui-egui/src/canvas.rs:2174
+#: crates/ui-egui/src/canvas.rs:2183
 msgid "click where its run ends"
 msgstr "单击其梯段终点"
 
-#: crates/ui-egui/src/canvas.rs:1927
+#: crates/ui-egui/src/canvas.rs:1936
 msgid "column: {}"
 msgstr "柱：{}"
 
@@ -8628,7 +8628,7 @@ msgstr "结尾不是"
 msgid "does not equal"
 msgstr "不等于"
 
-#: crates/ui-egui/src/canvas.rs:2060
+#: crates/ui-egui/src/canvas.rs:2069
 msgid "dormer: the width `{}`, the height `{}` and the slope `{}` must be numbers"
 msgstr "老虎窗：宽度 `{}`、高度 `{}` 和坡度 `{}` 必须是数字"
 
@@ -8692,7 +8692,7 @@ msgstr "标高：`{}` 不是有效的高程"
 msgid "line"
 msgstr "直线"
 
-#: crates/ui-egui/src/canvas.rs:2337
+#: crates/ui-egui/src/canvas.rs:2346
 msgid "mass: {}"
 msgstr "体量：{}"
 
@@ -8700,12 +8700,12 @@ msgstr "体量：{}"
 msgid "material"
 msgstr "材质"
 
-#: crates/ui-egui/src/canvas.rs:1758
-#: crates/ui-egui/src/canvas.rs:2414
+#: crates/ui-egui/src/canvas.rs:1767
+#: crates/ui-egui/src/canvas.rs:2423
 msgid "offset: `{}` is not a distance"
 msgstr "偏移：`{}` 不是有效的距离"
 
-#: crates/ui-egui/src/canvas.rs:2410
+#: crates/ui-egui/src/canvas.rs:2419
 msgid "offset: it offsets straight walls"
 msgstr "偏移：仅可偏移直墙"
 
@@ -8733,23 +8733,23 @@ msgstr "图片"
 msgid "polyline"
 msgstr "多段线"
 
-#: crates/ui-egui/src/canvas.rs:2192
+#: crates/ui-egui/src/canvas.rs:2201
 msgid "ramp: `{}` is not a slope"
 msgstr "坡道：`{}` 不是有效的坡度"
 
-#: crates/ui-egui/src/canvas.rs:2193
+#: crates/ui-egui/src/canvas.rs:2202
 msgid "ramp: `{}` is not a width"
 msgstr "坡道：`{}` 不是有效的宽度"
 
-#: crates/ui-egui/src/canvas.rs:2194
+#: crates/ui-egui/src/canvas.rs:2203
 msgid "ramp: {}"
 msgstr "坡道：{}"
 
-#: crates/ui-egui/src/canvas.rs:2151
+#: crates/ui-egui/src/canvas.rs:2160
 msgid "roof: `{}` is not a slope"
 msgstr "屋顶：`{}` 不是有效的坡度"
 
-#: crates/ui-egui/src/canvas.rs:2012
+#: crates/ui-egui/src/canvas.rs:2021
 msgid "roof: the slope `{}` and the overhang `{}` must be numbers"
 msgstr "屋顶：坡度 `{}` 和悬挑 `{}` 必须是数字"
 
@@ -8789,11 +8789,11 @@ msgstr "请先选择要隐藏或隔离的对象"
 msgid "select what to move, copy, rotate or mirror first"
 msgstr "请先选择要移动、复制、旋转或镜像的对象"
 
-#: crates/ui-egui/src/canvas.rs:2120
+#: crates/ui-egui/src/canvas.rs:2129
 msgid "shaft: {}"
 msgstr "竖井：{}"
 
-#: crates/ui-egui/src/canvas.rs:2138
+#: crates/ui-egui/src/canvas.rs:2147
 msgid "slope arrow: `{}` is not a slope"
 msgstr "坡度箭头：`{}` 不是有效的坡度"
 
@@ -8801,7 +8801,7 @@ msgstr "坡度箭头：`{}` 不是有效的坡度"
 msgid "spline"
 msgstr "样条曲线"
 
-#: crates/ui-egui/src/canvas.rs:2215
+#: crates/ui-egui/src/canvas.rs:2224
 msgid "stair: `{}` is not a width"
 msgstr "楼梯：`{}` 不是有效的宽度"
 
@@ -8821,7 +8821,7 @@ msgstr "起点"
 msgid "the next free name"
 msgstr "下一个可用名称"
 
-#: crates/ui-egui/src/canvas.rs:3037
+#: crates/ui-egui/src/canvas.rs:3046
 msgid "the opening has to stay on its wall"
 msgstr "洞口必须保留在其所在的墙上"
 
@@ -8876,7 +8876,7 @@ msgstr "电压"
 msgid "voltages"
 msgstr "电压"
 
-#: crates/ui-egui/src/canvas.rs:2600
+#: crates/ui-egui/src/canvas.rs:2609
 msgid "wall: {}"
 msgstr "墙：{}"
 
@@ -8992,9 +8992,14 @@ msgstr "A2-A4 为 {} mm"
 msgid "{} months ago"
 msgstr "{} 个月前"
 
-#: crates/ui-egui/src/canvas.rs:3128
+#: crates/ui-egui/src/canvas.rs:3137
 msgid "{} of {} risers"
 msgstr "{} 个踢面（共 {} 个）"
+
+#: crates/ui-egui/src/canvas.rs:1103
+#. what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
+msgid "{} of {} {}"
+msgstr "{}：{} {}"
 
 #: crates/ui-egui/src/lib.rs:2770
 msgid "{} opened without {} fields this version doesn't know; saving it leaves them out."
@@ -9028,7 +9033,7 @@ msgstr "已选择 {}。"
 msgid "{} triangles, from a file"
 msgstr "来自文件的 {} 个三角形"
 
-#: crates/ui-egui/src/canvas.rs:3130
+#: crates/ui-egui/src/canvas.rs:3139
 msgid "{} up"
 msgstr "上行 {}"
 
