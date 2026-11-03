@@ -168,7 +168,7 @@ msgid "Elbow 90"
 msgstr "Koleno 90°"
 
 #: crates/core/src/commands.rs:7186
-#: crates/core/src/commands.rs:9062
+#: crates/core/src/commands.rs:9069
 msgid "Elevation"
 msgstr "Pohled"
 
@@ -443,7 +443,7 @@ msgid "Seat Height"
 msgstr "Výška sedáku"
 
 #: crates/core/src/commands.rs:7163
-#: crates/core/src/commands.rs:9061
+#: crates/core/src/commands.rs:9068
 msgid "Section"
 msgstr "Řez"
 
