@@ -5447,6 +5447,7 @@ mod lineweights;
 mod links;
 mod look;
 mod mep;
+mod minimap;
 mod notes;
 mod objectstyles;
 mod patterns;

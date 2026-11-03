@@ -14,6 +14,16 @@ ids inside a view are per view (`push_id`), so two views on screen never clash. 
 they hand it a file): what it keeps is `Settings`, written when it changes, between drags; a setting still to come goes on
 its page greyed out (`later`).
 
+The minimap (`minimap.rs`, the same in both profiles) is at the top of the Navigator, Rev's Project Browser, under a header that folds
+it away: folded at first, so the tree keeps its room (the tests that click the tree's entries where they are drawn rely on it), and
+egui keeps the fold for the session. Unfolded, it is as wide as the palette and no taller than a third of what is left of it. For the
+active plan, ceiling plan, section or elevation it draws the whole view small (`render::plan`, `render::ceiling_plan`, or a section's
+picture and `render::section_over`, fitted into `SIZE`), drawn again only for another model, view or canvas theme, never for a pan or
+a zoom; the 3D view, sheets and schedules have none. The part the view shows is outlined on it, from the canvas's camera
+(`Canvas::view`). A click centres the view there and a drag pans it as it goes, both through `Canvas::centre`, which keeps the zoom: a
+drag begun on the outline takes the view with it, one begun beside it moves the view there first. `tests/minimap.rs` clicks and drags
+it in both profiles (`Minimap::screen` is where a model point is on it).
+
 View > Dark Mode opens a small theme menu: As the System, Light, Dark, or Dark UI, Light Canvas. The same choices are in
 Settings > User Interface. The last choice keeps plans, ceiling plans, sections, elevations and 3D views on a light background
 while the interface stays dark; sheets stay white paper in every mode. `Settings::light_canvas` is saved alongside `theme`

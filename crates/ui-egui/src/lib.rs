@@ -38,6 +38,7 @@ mod linestyles;
 mod lineweights;
 mod links;
 mod mep;
+mod minimap;
 mod notes;
 mod objectstyles;
 mod orbit;
@@ -645,6 +646,7 @@ pub struct BimApp {
     /// The graphics card the 3D view may be drawn on (Settings > Performance).
     card: gpu::Card,
     cut: section::Cut,
+    minimap: minimap::Minimap,
     paper: paper::Papers,
     /// The model as last opened or saved: any other is unsaved.
     saved: Arc<Model>,
@@ -1227,6 +1229,7 @@ impl BimApp {
             active_3d: None,
             card: gpu::Card::default(),
             cut: section::Cut::default(),
+            minimap: minimap::Minimap::default(),
             paper: paper::Papers::default(),
             edit: None,
             new_level: (String::new(), String::new()),

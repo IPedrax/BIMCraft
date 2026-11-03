@@ -179,7 +179,8 @@ impl Default for Canvas {
 }
 
 impl Canvas {
-    fn view(&self, level: Id) -> Option<View> {
+    /// View `level` (a plan's key, a section or an elevation) as it was last shown: its zoom, its middle and its size.
+    pub(crate) fn view(&self, level: Id) -> Option<View> {
         let c = self.cams.get(&level)?;
         Some(View {
             scale: c.scale,
@@ -304,6 +305,13 @@ impl Canvas {
     pub(crate) fn slide(&mut self, id: Id, dx: f64) {
         if let Some(c) = self.cams.get_mut(&id) {
             c.cx += dx;
+        }
+    }
+
+    /// Model point `p` in the middle of view `id`, at the zoom it has: where the minimap is clicked or dragged to.
+    pub(crate) fn centre(&mut self, id: Id, p: P2) {
+        if let Some(v) = self.view(id) {
+            self.hold(id, p, self.rect.size() / 2.0, v.scale);
         }
     }
 
