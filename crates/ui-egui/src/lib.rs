@@ -305,6 +305,8 @@ enum Pending {
     Recover(bimcraft_core::autosave::Backup),
     New,
     Open,
+    /// The sample house, as a project nobody has saved ([`bimcraft_core::sample::SAMPLE`]).
+    Sample,
     /// A file the system asked to open ([`OsEvent::Open`]).
     OpenPath(PathBuf),
     Close,
@@ -2954,6 +2956,21 @@ impl BimApp {
         true
     }
 
+    /// The sample house, the model `bimcraft --sample` builds, as a project with no file: Save asks where to put it. Built
+    /// all or nothing (a line that fails leaves the project as it was), and its steps are not undo steps, as with `--sample`.
+    fn open_sample(&mut self) {
+        match self.session.script_atomic(bimcraft_core::sample::SAMPLE) {
+            Ok(_) => {
+                let model = (*self.session.model).clone();
+                self.session.reset(model, None);
+                self.retire_autosave();
+                self.reopened();
+                self.autosave_document();
+            }
+            Err(e) => self.status = Status { text: e, error: true },
+        }
+    }
+
     /// Start over on the model the session holds now (after New and Open), keeping how the
     /// window is set up.
     fn reopened(&mut self) {
@@ -3027,6 +3044,7 @@ impl BimApp {
                     self.autosave_document();
                 }
             }
+            Pending::Sample => self.open_sample(),
             Pending::OpenPath(path) => {
                 self.open_path(&path);
             }
