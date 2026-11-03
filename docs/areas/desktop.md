@@ -198,6 +198,12 @@ over the card for what is picked, and its lettering stepped toward the text's co
 any accent stays legible; the contrast test runs every theme and an accent of every kind on each. The drawing keeps its own colours
 (`canvas_pal`). `settings.json` keeps the scheme and the accent beside the theme.
 
+The Inspector's pictures, the same in both profiles. Under the filter row, the type the palette shows is drawn when it has layers
+(`properties::layer_picture`, for walls, floors, roofs and ceilings, `LAYERED`): each layer to its thickness in its material's colour, a
+type without layers as one band. A wall's run from its exterior face to its interior one, with the location line the selected walls share
+dashed where it runs (`walls::depth`, the core's own rule) and named under it; a click on the picture sets the line nearest it, through
+`modify`. A floor's, a roof's or a ceiling's run from the top down.
+
 Properties' filter. With a selection of several categories, the line under the Type Selector is a drop-down of them, as Revit's is
 (`BimApp::selection_categories`): Multiple Categories first, then each category with its count. One picked is what the palette shows
 and edits, the selection staying as it is: `BimApp::palette_ids` is the selection narrowed to it, and the palette's subject, the Type

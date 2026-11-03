@@ -5426,6 +5426,7 @@ mod fonts;
 mod gpu;
 mod graphics;
 mod groups;
+mod inspector;
 mod korean;
 mod light_canvas;
 mod lines;
