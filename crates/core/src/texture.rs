@@ -279,14 +279,7 @@ impl Picture {
     /// The colour every pixel has, give or take [`FLAT_TOLERANCE`], if there is one. A map service's tile for a place it has no
     /// imagery of is often one flat colour, and is not imagery.
     pub fn flat(&self) -> Option<[u8; 3]> {
-        let pixels = self.levels.first()?.rgb.as_chunks::<3>().0;
-        if pixels.is_empty() {
-            return None;
-        }
-        let n = pixels.len() as f64;
-        let mean: [f64; 3] = std::array::from_fn(|k| pixels.iter().map(|p| f64::from(p[k])).sum::<f64>() / n);
-        let one = pixels.iter().all(|p| (0..3).all(|k| (f64::from(p[k]) - mean[k]).abs() <= FLAT_TOLERANCE));
-        one.then(|| mean.map(|m| m.round() as u8))
+        flat_rgb(&self.levels.first()?.rgb)
     }
 
     /// An id for it among a project's pictures: the same for the same bytes, so the same picture comes in once.
@@ -302,6 +295,25 @@ fn shrunk(mut level: Level) -> Level {
         level = level.halved();
     }
     level
+}
+
+/// The width, height and pixels (RGB, row after row) of a PNG or a JPEG, for what is fetched and is not a project's picture. The
+/// header is checked before anything of its size is made, as for [`Picture::import`].
+pub fn decode_rgb(bytes: &[u8]) -> Result<(usize, usize, Vec<u8>), String> {
+    let level = decode(bytes)?;
+    Ok((level.w, level.h, level.rgb))
+}
+
+/// The colour every pixel of `rgb` (three bytes each) has, give or take [`FLAT_TOLERANCE`], if there is one.
+pub fn flat_rgb(rgb: &[u8]) -> Option<[u8; 3]> {
+    let pixels = rgb.as_chunks::<3>().0;
+    if pixels.is_empty() {
+        return None;
+    }
+    let n = pixels.len() as f64;
+    let mean: [f64; 3] = std::array::from_fn(|k| pixels.iter().map(|p| f64::from(p[k])).sum::<f64>() / n);
+    let one = pixels.iter().all(|p| (0..3).all(|k| (f64::from(p[k]) - mean[k]).abs() <= FLAT_TOLERANCE));
+    one.then(|| mean.map(|m| m.round() as u8))
 }
 
 /// Whether `w` by `h` px is a size to take.
@@ -631,6 +643,34 @@ mod tests {
         assert_eq!(Picture::import("spot", &pixmap(spot)).unwrap().flat(), None);
         let halves = pixmap((0..32 * 32).flat_map(|i| if i % 32 < 16 { [255, 0, 0, 255] } else { [0, 0, 255, 255] }).collect());
         assert_eq!(Picture::import("halves", &halves).unwrap().flat(), None);
+    }
+
+    #[test]
+    fn the_pixels_of_a_png_or_jpeg_come_out_as_rgb_and_what_is_not_either_is_refused() {
+        let (w, h, rgb) = decode_rgb(&png(4, 2, [10, 20, 30, 255])).unwrap();
+        assert_eq!((w, h, rgb.len()), (4, 2, 4 * 2 * 3));
+        assert_eq!(&rgb[..3], &[10, 20, 30]);
+        let (w, h, rgb) = decode_rgb(JPEG).unwrap();
+        assert_eq!((w, h, rgb.len()), (16, 8, 16 * 8 * 3));
+        for (what, bytes) in
+            [("empty", Vec::new()), ("a page", b"<html>429 Too Many Requests</html>".to_vec()), ("cut short", JPEG[..40].to_vec())]
+        {
+            assert!(decode_rgb(&bytes).is_err(), "{what}");
+        }
+        // A header that claims a picture the size of a country is refused by the limits, not by running out of memory.
+        let mut huge = png(2, 2, [0, 0, 0, 255]);
+        huge[16..20].copy_from_slice(&60_000u32.to_be_bytes());
+        huge[20..24].copy_from_slice(&60_000u32.to_be_bytes());
+        assert!(decode_rgb(&huge).is_err());
+    }
+
+    #[test]
+    fn the_one_colour_of_raw_pixels_is_found_with_the_same_tolerance() {
+        assert_eq!(flat_rgb(&[5, 5, 5, 5, 5, 5]), Some([5, 5, 5]));
+        assert_eq!(flat_rgb(&[255, 255, 255, 250, 254, 253]), Some([253, 255, 254]));
+        assert_eq!(flat_rgb(&[0, 0, 0, 255, 255, 255]), None);
+        assert_eq!(flat_rgb(&[]), None);
+        assert_eq!(flat_rgb(&[1, 2]), None, "less than a pixel is no picture");
     }
 
     #[test]

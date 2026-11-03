@@ -42,23 +42,156 @@ pub trait Net: Send + Sync {
     fn post(&self, url: &str, content_type: &str, body: &[u8], limit: u64) -> Result<Reply, NetError>;
 }
 
-/// Where a request may go: a host, exactly as named, and a path that starts as given.
+/// A part of a path made from a tile address template: text as written, or a number to be put in (one to ten digits).
+#[derive(Clone, Debug, PartialEq)]
+enum Piece {
+    Text(String),
+    Number,
+}
+
+/// The paths of an entry that are its.
+#[derive(Clone, Debug, PartialEq)]
+enum Path {
+    /// Any path that starts so.
+    Prefix(String),
+    /// This path and no other.
+    Exact(String),
+    /// A tile address's: its text as written and its numbers where they go, nothing before, between or after.
+    Pattern(Vec<Piece>),
+}
+
+impl Path {
+    fn matches(&self, path: &str) -> bool {
+        match self {
+            Path::Prefix(prefix) => path.starts_with(prefix.as_str()),
+            Path::Exact(exact) => path == exact,
+            Path::Pattern(pieces) => {
+                let mut rest = path;
+                for piece in pieces {
+                    match piece {
+                        Piece::Text(text) => match rest.strip_prefix(text.as_str()) {
+                            Some(after) => rest = after,
+                            None => return false,
+                        },
+                        Piece::Number => {
+                            let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
+                            if !(1..=10).contains(&digits) {
+                                return false;
+                            }
+                            rest = rest.get(digits..).unwrap_or_default();
+                        }
+                    }
+                }
+                rest.is_empty()
+            }
+        }
+    }
+}
+
+/// Where a request may go: a host, exactly as named, the paths it may take, and, for a service that can only be asked by query, the
+/// query it may carry: each pair in turn, its key, and its value either exactly as written or, where it is a number to be put in,
+/// one to ten digits.
+#[derive(Clone, Debug, PartialEq)]
+struct Entry {
+    host: String,
+    path: Path,
+    query: Option<Vec<(String, Option<String>)>>,
+}
+
+impl Entry {
+    fn prefix(host: &str, prefix: &str) -> Entry {
+        Entry { host: host.into(), path: Path::Prefix(prefix.into()), query: None }
+    }
+
+    /// The entry for the tile addresses of `template` (`https://host/path/{z}/{x}/{y}.ext`, or `https://host/path?a=b&c={y}`): the
+    /// path as the template has it, and the query pair by pair. None if the template is not one that can be matched so.
+    fn of_template(template: &str) -> Option<Entry> {
+        let (host, rest) = template.strip_prefix("https://")?.split_once('/')?;
+        let (path, query) = match rest.split_once('?') {
+            Some((path, query)) => (path, Some(query)),
+            None => (rest, None),
+        };
+        let host = host.to_ascii_lowercase();
+        // The path in pieces: its text, and a number where there is a `{...}`. A number is followed by text that is not a digit.
+        let mut pieces = Vec::new();
+        let mut rest = format!("/{path}");
+        while let Some(open) = rest.find('{') {
+            let close = open + rest.get(open..)?.find('}')?;
+            if open > 0 {
+                pieces.push(Piece::Text(rest.get(..open)?.to_string()));
+            } else if pieces.last() == Some(&Piece::Number) {
+                return None;
+            }
+            pieces.push(Piece::Number);
+            rest = rest.get(close + 1..)?.to_string();
+            if rest.starts_with(|c: char| c.is_ascii_digit()) {
+                return None;
+            }
+        }
+        if !rest.is_empty() {
+            pieces.push(Piece::Text(rest));
+        }
+        let Some(query) = query else {
+            return matches!(pieces.first(), Some(Piece::Text(t)) if t.len() > 1).then(|| Entry {
+                host,
+                path: Path::Pattern(pieces),
+                query: None,
+            });
+        };
+        let [Piece::Text(path)] = pieces.as_slice() else { return None };
+        let pairs = query
+            .split('&')
+            .map(|pair| {
+                let (key, value) = pair.split_once('=')?;
+                let number = value.starts_with('{') && value.ends_with('}');
+                Some((key.to_string(), (!number).then(|| value.to_string())))
+            })
+            .collect::<Option<Vec<_>>>()?;
+        Some(Entry { host, path: Path::Exact(path.clone()), query: Some(pairs) })
+    }
+
+    /// Whether a request to `path` (and `query`, if it has one) on `host` is one this entry names.
+    fn allows(&self, host: &str, path: &str, query: Option<&str>) -> bool {
+        if self.host != host || !self.path.matches(path) {
+            return false;
+        }
+        match (&self.query, query) {
+            (None, None) => true,
+            (Some(rule), Some(query)) => {
+                let pairs: Vec<&str> = query.split('&').collect();
+                pairs.len() == rule.len()
+                    && pairs.iter().zip(rule).all(|(pair, (key, value))| match pair.split_once('=') {
+                        Some((k, v)) if k == key => match value {
+                            Some(literal) => v == literal,
+                            None => (1..=10).contains(&v.len()) && v.bytes().all(|b| b.is_ascii_digit()),
+                        },
+                        _ => false,
+                    })
+            }
+            _ => false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Allow(Vec<(String, String)>);
+pub struct Allow(Vec<Entry>);
 
 /// The Overpass endpoint used unless another is named.
 pub const OVERPASS: &str = "https://overpass-api.de/api/interpreter";
 
 impl Allow {
-    /// The services the fetcher uses: Overpass, the terrain tiles, the Copernicus bucket, OpenStreetMap's map tiles.
+    /// The services the fetcher uses: Overpass, the terrain tiles, the Copernicus bucket, OpenStreetMap's map tiles, and the tiles of
+    /// each aerial imagery source in the core's table (`bimcraft_core::imagery::SOURCES`), as far as its addresses go and no further.
     pub fn standard() -> Allow {
-        Allow(vec![
-            ("overpass-api.de".into(), "/api/".into()),
-            ("s3.amazonaws.com".into(), "/elevation-tiles-prod/".into()),
-            ("copernicus-dem-30m.s3.amazonaws.com".into(), "/".into()),
+        let mut entries = vec![
+            Entry::prefix("overpass-api.de", "/api/"),
+            Entry::prefix("s3.amazonaws.com", "/elevation-tiles-prod/"),
+            Entry::prefix("copernicus-dem-30m.s3.amazonaws.com", "/"),
             // The map the picker draws: one host, tiles only.
-            ("tile.openstreetmap.org".into(), "/".into()),
-        ])
+            Entry::prefix("tile.openstreetmap.org", "/"),
+        ];
+        entries.extend(bimcraft_core::imagery::SOURCES.iter().filter_map(|s| Entry::of_template(s.template)));
+        Allow(entries)
     }
 
     /// Whether a request to `url` may be made: HTTPS, to a host as an entry names it (no port, no credentials in front of it, nothing
@@ -70,17 +203,14 @@ impl Allow {
         }
         let Ok(uri) = url.parse::<Uri>() else { return false };
         let Some(authority) = uri.authority() else { return false };
-        if uri.scheme_str() != Some("https") || uri.query().is_some() || uri.port().is_some() || authority.as_str().contains(['@', ':']) {
+        if uri.scheme_str() != Some("https") || uri.port().is_some() || authority.as_str().contains(['@', ':']) {
             return false;
         }
         let (host, path) = (authority.host().to_ascii_lowercase(), uri.path());
         if path.contains("..") || path.contains('%') {
             return false;
         }
-        self.0.iter().any(|(h, prefix)| match prefix.strip_prefix('=') {
-            Some(exact) => *h == host && path == exact,
-            None => *h == host && path.starts_with(prefix.as_str()),
-        })
+        self.0.iter().any(|e| e.allows(&host, path, uri.query()))
     }
 
     /// The same, and the one address `endpoint` too: an Overpass server the user names must be HTTPS, with no port or credentials,
@@ -108,7 +238,7 @@ impl Allow {
         {
             return Err(wrong());
         }
-        self.0.push((host, format!("={path}")));
+        self.0.push(Entry { host, path: Path::Exact(path.to_string()), query: None });
         Ok(self)
     }
 }
@@ -307,6 +437,93 @@ mod tests {
             "https://overpass-api.de/api/interpreter\r\nHost: evil.com",
         ] {
             assert!(!a.allows(url), "{url}");
+        }
+    }
+
+    #[test]
+    fn every_source_in_the_table_is_reached_by_the_addresses_it_makes_and_by_no_other() {
+        use bimcraft_core::imagery::SOURCES;
+        let a = Allow::standard();
+        for s in SOURCES {
+            for (z, x, y) in [(s.min_zoom, 0, 0), (s.max_zoom, 1, 1), (12, 1000, 7)] {
+                if s.url(z, x, y).is_err() {
+                    continue;
+                }
+                let url = s.url(z, x, y).unwrap();
+                assert!(a.allows(&url), "{url}");
+                let host = url.trim_start_matches("https://").split('/').next().unwrap().to_string();
+                for (what, bad) in [
+                    ("an extra pair", format!("{url}&extra=1")),
+                    ("a query on the end", format!("{url}?extra=1")),
+                    ("a fragment", format!("{url}#x")),
+                    ("plain http", url.replacen("https://", "http://", 1)),
+                    ("credentials", url.replacen("https://", "https://user@", 1)),
+                    ("a port", url.replacen(&host, &format!("{host}:8443"), 1)),
+                    ("a look-alike host", url.replacen("https://", "https://evil.", 1)),
+                    ("a host with ours in its path", url.replacen("https://", "https://evil.com/", 1)),
+                    ("a way up the path", url.replacen(&host, &format!("{host}/.."), 1)),
+                    ("an escape", url.replacen(&host, &format!("{host}/%2e%2e"), 1)),
+                ] {
+                    assert!(!a.allows(&bad), "{} with {what}: {bad}", s.id);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_source_asked_by_query_is_reached_by_that_query_and_no_other() {
+        use bimcraft_core::imagery::SOURCES;
+        let Some(s) = SOURCES.iter().find(|s| s.template.contains('?')) else { return };
+        let a = Allow::standard();
+        let url = s.url(17, 5, 7).unwrap();
+        assert!(a.allows(&url) && a.allows(&s.url(0, 0, 0).unwrap()), "{url}");
+        let (path, query) = url.split_once('?').unwrap();
+        let pairs: Vec<&str> = query.split('&').collect();
+        let mut swapped = pairs.clone();
+        swapped.swap(0, 1);
+        let mut doubled = pairs.clone();
+        doubled.push(pairs[pairs.len() - 1]);
+        let mut cut = pairs.clone();
+        cut.remove(1);
+        let mut other = vec![];
+        for (i, pair) in pairs.iter().enumerate() {
+            // The literal pairs, each changed; the numbers, each made something else.
+            let (key, value) = pair.split_once('=').unwrap();
+            if !["tilematrix", "tilerow", "tilecol"].contains(&key) {
+                let mut changed = pairs.clone();
+                let wrong = format!("{key}={value}x");
+                changed[i] = &wrong;
+                other.push((format!("{key} changed"), format!("{path}?{}", changed.join("&"))));
+            }
+        }
+        for bad in ["-7", "", "7.0", "0x7", "%37", "77777777777", "7a", "+7", " 7"] {
+            other.push((
+                format!("tilerow {bad:?}"),
+                format!(
+                    "{path}?{}",
+                    pairs
+                        .iter()
+                        .map(|p| if p.starts_with("tilerow=") { format!("tilerow={bad}") } else { (*p).to_string() })
+                        .collect::<Vec<_>>()
+                        .join("&")
+                ),
+            ));
+        }
+        for (what, bad) in [
+            ("two pairs swapped", format!("{path}?{}", swapped.join("&"))),
+            ("a pair repeated", format!("{path}?{}", doubled.join("&"))),
+            ("a pair left out", format!("{path}?{}", cut.join("&"))),
+            ("no query", path.to_string()),
+            ("an empty query", format!("{path}?")),
+            ("another path", format!("{}/x?{query}", path)),
+            ("the path's case", format!("{}?{query}", path.to_ascii_lowercase())),
+            ("a semicolon", format!("{path}?{}", query.replacen('&', ";", 1))),
+            ("a doubled &", format!("{path}?{}", query.replacen('&', "&&", 1))),
+        ] {
+            other.push((what.to_string(), bad));
+        }
+        for (what, bad) in other {
+            assert!(!a.allows(&bad), "{what}: {bad}");
         }
     }
 

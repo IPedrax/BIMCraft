@@ -4,11 +4,9 @@
 //! it touches the network, and what a document says is hostile, so it is read to a cap and never indexed blindly.
 
 use bimcraft_core::geo::tile_xy;
+// The address of a tile from a template is the core's, because its table of sources is made of such templates.
+pub use bimcraft_core::imagery::{MAX_TEMPLATE, MAX_ZOOM, expand};
 
-/// The finest zoom an address is made for: 2^24 columns and rows.
-pub const MAX_ZOOM: u8 = 24;
-/// The longest address template taken, characters.
-pub const MAX_TEMPLATE: usize = 2048;
 /// The most of a capabilities document that is read, bytes.
 pub const MAX_CAPABILITIES: usize = 4 << 20;
 /// The most of each kind a document gives back, and the longest text it gives.
@@ -68,62 +66,6 @@ impl Format {
             Format::Empty | Format::Other => "bin",
         }
     }
-}
-
-/// The address of a tile: `template` with `{z}`, `{x}` and `{y}` (or `{-y}`, rows from the south) put in.
-///
-/// WMTS's own names for them (`{TileMatrix}`, `{TileCol}`, `{TileRow}`) and `{zoom}` are taken too, so an address copied from a
-/// capabilities document works. Anything else in braces (`{Style}`, `{TileMatrixSet}`) is refused by name, to be written in by hand.
-pub fn expand(template: &str, zoom: u8, x: u32, y: u32) -> Result<String, String> {
-    if template.len() > MAX_TEMPLATE {
-        return Err(format!("the address is {} characters; up to {MAX_TEMPLATE} are taken", template.len()));
-    }
-    if zoom > MAX_ZOOM {
-        return Err(format!("zoom {zoom} is finer than the {MAX_ZOOM} an address is made for"));
-    }
-    let n = 1u64 << zoom;
-    if u64::from(x) >= n || u64::from(y) >= n {
-        return Err(format!("there is no tile {x}/{y} at zoom {zoom}: the map has {n} columns and rows there"));
-    }
-    let (mut out, mut rest) = (String::new(), template);
-    let (mut has_zoom, mut has_column, mut has_row) = (false, false, false);
-    while let Some(at) = rest.find(['{', '}']) {
-        out.push_str(rest.get(..at).unwrap_or_default());
-        let tail = rest.get(at..).unwrap_or_default();
-        if tail.starts_with('}') {
-            return Err("the address has a } with no { before it".into());
-        }
-        let Some(close) = tail.find('}') else { return Err("the address has a { with no } after it".into()) };
-        match tail.get(1..close).unwrap_or_default() {
-            "z" | "zoom" | "TileMatrix" => {
-                out.push_str(&zoom.to_string());
-                has_zoom = true;
-            }
-            "x" | "TileCol" => {
-                out.push_str(&x.to_string());
-                has_column = true;
-            }
-            "y" | "TileRow" => {
-                out.push_str(&y.to_string());
-                has_row = true;
-            }
-            "-y" => {
-                out.push_str(&(n - 1 - u64::from(y)).to_string());
-                has_row = true;
-            }
-            other => {
-                return Err(format!(
-                    "the address has {{{other}}}, which is none of {{z}}, {{x}}, {{y}} and {{-y}}: write that part in by hand"
-                ));
-            }
-        }
-        rest = tail.get(close + 1..).unwrap_or_default();
-    }
-    out.push_str(rest);
-    if !(has_zoom && has_column && has_row) {
-        return Err("an address needs {z}, {x} and {y} (or {-y}) in it".into());
-    }
-    Ok(out)
 }
 
 /// The ground a pixel of a 256-pixel tile stands for at `latitude` and `zoom`, metres.

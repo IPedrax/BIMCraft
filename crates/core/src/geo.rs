@@ -5,6 +5,8 @@
 
 use std::sync::Arc;
 
+use crate::imagery::{Imagery, Plan};
+
 /// The most area one fetch may cover, km².
 pub const MAX_FETCH_AREA_KM2: f64 = 25.0;
 /// The half-width of the box a fetch takes round the project's origin when it is given none, metres.
@@ -332,6 +334,11 @@ pub trait GeoSource: Send + Sync {
     fn tile(&self, _zoom: u8, _x: u32, _y: u32) -> Result<Tile, String> {
         Err("this BIMCraft has no map tiles: give the place as latitude and longitude".into())
     }
+    /// The aerial imagery of `plan` from the source called `source` (`imagery::SOURCES`), as a mosaic of tiles. A fetcher with none
+    /// says so. What it returns is checked by the commands, as a file is.
+    fn imagery(&self, _source: &str, _plan: &Plan) -> Result<Imagery, String> {
+        Err("this BIMCraft has no aerial imagery to fetch".into())
+    }
 }
 
 /// A fetcher an app attached.
@@ -351,12 +358,19 @@ pub struct Prefetched {
     bbox: Bbox,
     osm: Option<(String, Reply)>,
     heights: Option<(f64, Option<String>, Elevation)>,
+    imagery: Option<Imagery>,
 }
 
 impl Prefetched {
     /// Nothing held yet, for `bbox`; `inner` names the credits.
     pub fn new(inner: Fetcher, bbox: Bbox) -> Prefetched {
-        Prefetched { inner, bbox, osm: None, heights: None }
+        Prefetched { inner, bbox, osm: None, heights: None, imagery: None }
+    }
+
+    /// Holds the imagery fetched: it is handed back for the source and plan it was fetched for.
+    pub fn with_imagery(mut self, got: Imagery) -> Prefetched {
+        self.imagery = Some(got);
+        self
     }
 
     /// Holds the Overpass `reply` to `query`.
@@ -393,6 +407,13 @@ impl GeoSource for Prefetched {
 
     fn tile(&self, zoom: u8, x: u32, y: u32) -> Result<Tile, String> {
         self.inner.tile(zoom, x, y)
+    }
+
+    fn imagery(&self, source: &str, plan: &Plan) -> Result<Imagery, String> {
+        match &self.imagery {
+            Some(got) if got.source == source && got.plan == *plan => Ok(got.clone()),
+            _ => Err("this is not the imagery that was fetched: ask again from the Site tab".into()),
+        }
     }
 }
 

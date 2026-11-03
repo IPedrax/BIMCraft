@@ -407,6 +407,23 @@ fn a_fetcher_with_no_map_tiles_says_so_and_a_tile_is_checked() {
     assert_eq!(held.tile(1, 0, 0).unwrap().side, 1);
 }
 
+#[test]
+fn imagery_held_by_a_fetch_is_handed_back_for_the_source_and_plan_it_was_fetched_for_and_no_other() {
+    use crate::imagery::{Imagery, Mosaic, Plan};
+    let plan = Plan { zoom: 18, x0: 10, y0: 20, cols: 2, rows: 1, metres_per_pixel: 0.36, width: 300, height: 100 };
+    let got = Imagery { source: "pdok".into(), plan: plan.clone(), mosaic: Mosaic::new(&plan), cached: false };
+    let real: crate::geo::Fetcher = Arc::new(TileFake);
+    let held = crate::geo::Prefetched::new(real, Bbox::new(-23.56, -46.64, -23.54, -46.62).unwrap()).with_imagery(got.clone());
+    assert_eq!(held.imagery("pdok", &plan).unwrap(), got);
+    // Another source, or another plan, is an error that says what was fetched, not an answer from the network.
+    assert!(held.imagery("usgs", &plan).unwrap_err().contains("fetched"));
+    assert!(held.imagery("pdok", &Plan { zoom: 17, ..plan.clone() }).unwrap_err().contains("fetched"));
+    // Nothing held, and a fetcher with none, say there is none.
+    let empty = crate::geo::Prefetched::new(Arc::new(TileFake), Bbox::new(-23.56, -46.64, -23.54, -46.62).unwrap());
+    assert!(empty.imagery("pdok", &plan).unwrap_err().contains("fetched"));
+    assert!(TileFake.imagery("pdok", &plan).unwrap_err().contains("imagery"));
+}
+
 /// A fetcher that has one tile, a pixel.
 struct TileFake;
 

@@ -51,6 +51,9 @@ pub mod ifc;
 mod ifc_georef;
 #[cfg(test)]
 mod ifc_georef_tests;
+pub mod imagery;
+#[cfg(test)]
+mod imagery_tests;
 pub mod import;
 pub mod inquiry;
 pub mod insert;

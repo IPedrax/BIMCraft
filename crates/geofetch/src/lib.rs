@@ -9,6 +9,7 @@
 
 pub mod cache;
 pub mod copernicus;
+pub mod imagery;
 pub mod layout;
 pub mod net;
 pub mod overpass;
@@ -22,9 +23,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bimcraft_core::geo::{Bbox, Elevation, Fetcher, GeoSource, Reply, Tile};
+use bimcraft_core::imagery::{Imagery, Plan};
 
 use crate::cache::Cache;
 use crate::copernicus::Copernicus;
+use crate::imagery::ImageryTiles;
 use crate::net::{Allow, Net, OVERPASS, Ureq};
 use crate::overpass::Overpass;
 use crate::terrarium::Terrarium;
@@ -43,6 +46,7 @@ pub struct Geofetch {
     terrarium: Terrarium,
     copernicus: Copernicus,
     tiles: OsmTiles,
+    imagery: ImageryTiles,
 }
 
 impl Geofetch {
@@ -51,7 +55,8 @@ impl Geofetch {
             overpass: Overpass::new(net.clone(), cache.clone(), endpoint),
             terrarium: Terrarium::new(net.clone(), cache.clone()),
             copernicus: Copernicus::new(net.clone(), cache.clone()),
-            tiles: OsmTiles::new(net, cache),
+            tiles: OsmTiles::new(net.clone(), cache.clone()),
+            imagery: ImageryTiles::new(net, cache),
         }
     }
 
@@ -110,13 +115,26 @@ impl GeoSource for Geofetch {
         self.tiles.tile(zoom, x, y)
     }
 
+    fn imagery(&self, source: &str, plan: &Plan) -> Result<Imagery, String> {
+        match bimcraft_core::imagery::source(source) {
+            Some(source) => self.imagery.fetch(source, plan),
+            None => {
+                let names: Vec<&str> = bimcraft_core::imagery::SOURCES.iter().map(|s| s.id).collect();
+                Err(format!("there is no imagery source `{source}`: the sources are {}", names.join(", ")))
+            }
+        }
+    }
+
     fn attribution(&self, what: &str) -> String {
         match what {
             "osm" => OSM_ATTRIBUTION.into(),
             "terrarium" => terrarium::ATTRIBUTION.into(),
             "copernicus" => copernicus::ATTRIBUTION.into(),
             "tiles" => tiles::ATTRIBUTION.into(),
-            other => format!("Data from {other}"),
+            other => match bimcraft_core::imagery::source(other) {
+                Some(source) => source.credit.into(),
+                None => format!("Data from {other}"),
+            },
         }
     }
 }
@@ -128,6 +146,27 @@ mod tests {
     use crate::testing::{Fake, Scratch};
 
     const GOOD: &str = r#"{"version":0.6,"elements":[]}"#;
+
+    #[test]
+    fn imagery_comes_from_the_source_named_and_is_credited_in_its_words() {
+        use bimcraft_core::imagery::{Plan, SOURCES, source};
+        let s = source("pdok").unwrap();
+        let plan = Plan { zoom: 18, x0: 100, y0: 200, cols: 1, rows: 1, metres_per_pixel: 0.4, width: 10, height: 10 };
+        let net = Arc::new(Fake::new().get(&s.url(18, 100, 200).unwrap(), include_bytes!("../testdata/tile256.jpg")));
+        let f = Geofetch::new(net, Arc::new(Cache::new(None)), OVERPASS);
+        let got = f.imagery("pdok", &plan).unwrap();
+        assert_eq!((got.source.as_str(), got.mosaic.has.as_slice()), ("pdok", &[true][..]));
+        assert_eq!(f.attribution("pdok"), s.credit);
+        for sx in SOURCES {
+            assert_eq!(f.attribution(sx.id), sx.credit, "{}", sx.id);
+        }
+        // A source that is not in the table is not made up, and the error names the ones there are.
+        for other in ["nobody", "", "bing", "PDOK"] {
+            let why = f.imagery(other, &plan).unwrap_err();
+            assert!(why.contains("pdok") && why.contains("eox2016"), "{other}: {why}");
+        }
+        assert_eq!(f.attribution("osm"), OSM_ATTRIBUTION, "the others are as they were");
+    }
 
     fn fetcher(net: Arc<Fake>) -> Geofetch {
         Geofetch::new(net, Arc::new(Cache::new(None)), OVERPASS)

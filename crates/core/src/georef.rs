@@ -241,6 +241,19 @@ impl Projector {
         let p = P2((dx * c + dy * s) * 1000.0, (-dx * s + dy * c) * 1000.0);
         if p.0.is_finite() && p.1.is_finite() { Ok(p) } else { Err(format!("({longitude}, {latitude}) cannot be mapped to the project")) }
     }
+
+    /// The longitude and latitude, degrees, of a point in the project's plane, mm: the way back from [`Projector::point`].
+    pub fn lonlat(&self, p: P2) -> Result<(f64, f64), String> {
+        let m = &self.m;
+        if !p.0.is_finite() || !p.1.is_finite() {
+            return Err(format!("({}, {}) mm is not a point", p.0, p.1));
+        }
+        let (x, y) = (p.0 / 1000.0, p.1 / 1000.0);
+        let (s, c) = m.rotation.sin_cos();
+        let (e, n) = (m.easting + m.scale * (x * c - y * s), m.northing + m.scale * (x * s + y * c));
+        let (lon, lat) = m.back.convert((e, n)).map_err(|err| format!("({}, {}) mm is off the map of EPSG:{}: {err}", p.0, p.1, m.epsg))?;
+        if lon.is_finite() && lat.is_finite() { Ok((lon, lat)) } else { Err(format!("({}, {}) mm cannot be mapped to degrees", p.0, p.1)) }
+    }
 }
 
 impl Location {
@@ -334,11 +347,7 @@ impl Location {
 
     /// The longitude and latitude, degrees, of a point in the project's plane, mm.
     pub fn to_lonlat(&self, p: P2) -> Result<(f64, f64), String> {
-        let m = self.mapping()?;
-        let (x, y) = (p.0 / 1000.0, p.1 / 1000.0);
-        let (s, c) = m.rotation.sin_cos();
-        let (e, n) = (m.easting + m.scale * (x * c - y * s), m.northing + m.scale * (x * s + y * c));
-        m.back.convert((e, n)).map_err(|err| format!("({}, {}) mm is off the map of EPSG:{}: {err}", p.0, p.1, m.epsg))
+        self.projector()?.lonlat(p)
     }
 
     /// The project's plane point, mm, of a longitude and latitude, degrees.
@@ -472,6 +481,28 @@ mod tests {
         }
         assert!(projector.point(f64::NAN, 0.0).is_err() && projector.point(0.0, 95.0).is_err(), "off the Earth");
         assert!(at(95.0, 0.0, 0.0).projector().is_err(), "a place that cannot be mapped has no projector");
+    }
+
+    #[test]
+    fn a_projector_goes_back_to_degrees_as_the_location_does() {
+        for l in [
+            at(-23.5505, -46.6333, 17.0),
+            at(50.85, 4.35, -30.0),
+            at(51.05, 3.72, 0.0),
+            Location { crs: Some(32631), ..at(50.85, 4.35, 12.0) },
+        ] {
+            let projector = l.projector().unwrap();
+            for p in [P2(0.0, 0.0), P2(3_000_000.0, -2_000_000.0), P2(-250.0, 1234.5), P2(-12_000_000.0, 9_000_000.0)] {
+                let (lon, lat) = projector.lonlat(p).unwrap();
+                let (lon2, lat2) = l.to_lonlat(p).unwrap();
+                assert!((lon - lon2).abs() < 1e-12 && (lat - lat2).abs() < 1e-12, "{l:?} {p:?}: {lon} {lat} against {lon2} {lat2}");
+                let back = projector.point(lon, lat).unwrap();
+                assert!((back.0 - p.0).abs() < 1.0 && (back.1 - p.1).abs() < 1.0, "{p:?} came back as {back:?}");
+            }
+            for bad in [P2(f64::NAN, 0.0), P2(0.0, f64::INFINITY), P2(f64::NEG_INFINITY, f64::NAN)] {
+                assert!(projector.lonlat(bad).is_err(), "{bad:?}");
+            }
+        }
     }
 
     #[test]
