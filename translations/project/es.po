@@ -1,12 +1,7 @@
 # BIMCraft project translations.
 # SPDX-License-Identifier: MIT OR Apache-2.0
 msgid ""
-msgstr ""
-"Project-Id-Version: BIMCraft\n"
-"Language: es\n"
-"MIME-Version: 1.0\n"
-"Content-Type: text/plain; charset=UTF-8\n"
-"Content-Transfer-Encoding: 8bit\n"
+msgstr "Project-Id-Version: BIMCraft\nLanguage: es\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n"
 
 #: crates/core/src/fixtures.rs:364
 msgid "Air Terminal"
@@ -40,7 +35,7 @@ msgstr "Ladrillo"
 msgid "Brick 225 x 75"
 msgstr "Ladrillo 225 x 75"
 
-#: crates/core/src/commands.rs:3809
+#: crates/core/src/commands.rs:3815
 msgid "Camera"
 msgstr "Cámara"
 
@@ -84,7 +79,7 @@ msgstr "Bloque de hormigón"
 msgid "Copper"
 msgstr "Cobre"
 
-#: crates/core/src/commands.rs:1089
+#: crates/core/src/commands.rs:1090
 msgid "Copy"
 msgstr "Copia"
 
@@ -112,7 +107,7 @@ msgstr "Trazo y punto"
 msgid "Data Outlet"
 msgstr "Punto de datos"
 
-#: crates/core/src/commands.rs:8420
+#: crates/core/src/commands.rs:8426
 msgid "Dependent"
 msgstr "Dependiente"
 
@@ -188,7 +183,8 @@ msgstr ""
 msgid "Electrical Power"
 msgstr ""
 
-#: crates/core/src/commands.rs:8204 crates/core/src/commands.rs:10167
+#: crates/core/src/commands.rs:8210
+#: crates/core/src/commands.rs:10173
 msgid "Elevation"
 msgstr "Elevación"
 
@@ -240,7 +236,8 @@ msgstr "Ancho del marco"
 msgid "Gate Valve"
 msgstr "Válvula de compuerta"
 
-#: crates/core/src/family.rs:1898 crates/core/src/view3d.rs:702
+#: crates/core/src/family.rs:1898
+#: crates/core/src/view3d.rs:702
 msgid "Glass"
 msgstr "Vidrio"
 
@@ -304,7 +301,8 @@ msgstr "Ancho de la pata"
 msgid "Length"
 msgstr "Longitud"
 
-#: crates/core/src/commands.rs:5128 crates/core/src/model.rs:2928
+#: crates/core/src/commands.rs:5134
+#: crates/core/src/model.rs:2928
 msgid "Level"
 msgstr "Nivel"
 
@@ -328,7 +326,7 @@ msgstr "Marca"
 msgid "Masking"
 msgstr "Máscara"
 
-#: crates/core/src/commands.rs:6371
+#: crates/core/src/commands.rs:6377
 msgid "Mass"
 msgstr "Masa"
 
@@ -412,7 +410,7 @@ msgstr "Enlucido"
 msgid "Porcelain"
 msgstr "Porcelana"
 
-#: crates/core/src/commands.rs:2529
+#: crates/core/src/commands.rs:2530
 msgid "Project"
 msgstr "Proyecto"
 
@@ -440,7 +438,7 @@ msgstr "Contrahuellas"
 msgid "Roof tiles"
 msgstr "Tejas"
 
-#: crates/core/src/commands.rs:6596
+#: crates/core/src/commands.rs:6602
 msgid "Room"
 msgstr "Habitación"
 
@@ -468,7 +466,8 @@ msgstr "Recrecido"
 msgid "Seat Height"
 msgstr "Altura del asiento"
 
-#: crates/core/src/commands.rs:8181 crates/core/src/commands.rs:10166
+#: crates/core/src/commands.rs:8187
+#: crates/core/src/commands.rs:10172
 msgid "Section"
 msgstr "Sección"
 
@@ -592,7 +591,7 @@ msgstr "SUBE"
 msgid "Unbounded Height"
 msgstr "Altura no delimitada"
 
-#: crates/core/src/commands.rs:8561
+#: crates/core/src/commands.rs:8567
 msgid "Unnamed"
 msgstr "Sin nombre"
 
@@ -612,7 +611,7 @@ msgstr "Volumen"
 msgid "WC"
 msgstr "Inodoro"
 
-#: crates/core/src/commands.rs:183
+#: crates/core/src/commands.rs:184
 msgid "Wall"
 msgstr "Muro"
 
@@ -667,3 +666,4 @@ msgstr "aseo"
 #: crates/core/src/loads.rs:78
 msgid "wc"
 msgstr ""
+
