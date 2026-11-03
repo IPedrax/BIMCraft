@@ -1162,6 +1162,9 @@ pub struct View3D {
     /// target in the model). None for a view that is fitted over the model rather than through a camera of its own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub camera: Option<ViewCamera>,
+    /// Its Graphic Display Options: edges, silhouettes and ambient shadows.
+    #[serde(default, skip_serializing_if = "crate::view3d::DisplayOptions::is_default")]
+    pub display: crate::view3d::DisplayOptions,
 }
 
 /// A 3D view's camera: the model point its eye stands at, and the model point it looks at, in mm. The view is seen in
@@ -1201,6 +1204,7 @@ impl View3D {
             section_box: None,
             perspective: None,
             camera: None,
+            display: Default::default(),
         }
     }
 }
@@ -5791,6 +5795,10 @@ impl Model {
                     }
                     if let Some(cam) = &v.camera {
                         camera_ok(&who, cam)?;
+                    }
+                    if v.display.silhouette > crate::view3d::MAX_SILHOUETTE {
+                        let most = crate::view3d::MAX_SILHOUETTE;
+                        return Err(format!("{who}: a silhouette {} px wide is wider than the {most} px one may be", v.display.silhouette));
                     }
                     if !view_names.insert(v.name.as_str()) {
                         return Err(format!("{who}: another view is already named `{}`", v.name));

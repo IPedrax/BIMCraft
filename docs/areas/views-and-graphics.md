@@ -335,6 +335,26 @@ The card is made the first time it is wanted (`Card::ready`: compiling its shade
 A device error is caught
 in the card's own error scopes, never left to wgpu's handler (which ends the program), and hands the view to the processor for good.
 
+A 3D view's **Graphic Display Options** (Revit's GD) are `View3D::display`, a `view3d::DisplayOptions`: `edges` (on unless turned
+off; only Shaded leaves them out, as Hidden Line and Wireframe always draw them), `silhouette` (an outline that many px wide, 0 to
+`MAX_SILHOUETTE`, 10, checked in `Model::check`; 0 for none) and `ambient_shadows` (off unless turned on), set by the
+`graphic_display_options` command (GD; it makes the default 3D view as `section_box` does, keeps what is left out, and with
+nothing given reads them back). `Look::of` carries them (`Look::display`), so the desktop, a sheet's 3D viewport and `render`
+draw them alike; a section's picture ignores them. Both come off the opaque depth the rasterizer already has, before a scan's
+dots are in it, in nearness as `Camera::project` gives it, measured in pixels' worth (`Camera::slack`), so they read the
+same parallel and in perspective. Ambient shadows (`view3d::ambient`) are a screen-space pass: for each pixel, the pixels
+across from each other at eight offsets (`AMBIENT`, 4 to 12 px, four lines at two reaches); over a plane the depth runs
+straight, so their mean is the pixel's own, and only where the surfaces round it rise toward the eye on both sides (a corner,
+the foot of a wall on a floor) does it darken, by `AMBIENT_DARK` of its light at most; a neighbour more than `AMBIENT_REACH`
+pixels' worth a pixel off in depth is something else, in front or behind, and counts for nothing, so nothing casts a halo. A
+silhouette (`view3d::outlines`) is wherever two neighbouring pixels are one on a surface and one on nothing, or on different
+planes `OUTLINE_GAP` (4) pixels' worth apart in depth: each pixel whose square `width + 1` across (from `width / 2` before it)
+holds such a pair is drawn in the edge's colour, so a straight outline is exactly `width` px wide. The card does the same in
+`fs_post` (`ambient`, `outlined`, `worth` in `gpu.wgsl`, the options in the globals' ninth vector, from `Mesh::display`), so
+no pass is added: `the_card_draws_edges_silhouettes_and_ambient_shadows_as_the_processor_does` compares them. Cast shadows
+from a sun are not drawn yet. The desktop's dialog (`display.rs`) opens by GD and from the view control bar's Visual Style
+menu, alike in both looks of the window, and runs the command on the 3D view on screen.
+
 A level's own plan is the level (its `view_range`, `crop` and `graphics` are the level's); every other plan of it is an `Element::PlanView`
 (Revit's Duplicate View: `duplicate_view`, which only plans take). A plan has a key: the level's id, or a plan view's. `Model::plan_level` says
 which level a key shows, and everything that draws or measures the model takes that level (`draw_plan`, `plan_shows`, the canvas's tools), while

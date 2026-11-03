@@ -128,6 +128,8 @@ pub struct Mesh {
     /// The textures, by the number a vertex holds (the first, 0, is none), and their pixels: each a word of red, green and blue.
     pub skins: Vec<Skin>,
     pub texels: Vec<u32>,
+    /// The view's edges, silhouettes and ambient shadows, which the card draws as the processor does.
+    pub display: super::DisplayOptions,
     levels: Vec<(Id, String, [P3; 4])>,
     level_colors: BTreeMap<Id, Rgb>,
     tris: Vec<Tri>,
@@ -179,6 +181,7 @@ impl Mesh {
             owners: Vec::new(),
             skins: vec![Skin::default(); scene.skins.len()],
             texels: Vec::new(),
+            display: look.display(),
             level_colors: levels.iter().map(|(id, ..)| (*id, look.edge(*id, DATUM))).collect(),
             levels,
             tris: Vec::with_capacity(shown.len()),

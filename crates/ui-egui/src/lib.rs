@@ -19,6 +19,7 @@ mod context;
 pub mod control;
 mod dialog;
 mod dimtypes;
+mod display;
 mod dock;
 mod draw;
 mod editor;
@@ -319,7 +320,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 53] = [
+const SHORTCUTS: [(&str, &str); 54] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -373,6 +374,7 @@ const SHORTCUTS: [(&str, &str); 53] = [
     ("SD", "Shaded"),
     ("KS", "Keyboard Shortcuts"),
     ("BX", "Section Box"),
+    ("GD", "Graphic Display Options"),
 ];
 
 /// Every two-letter shortcut and what it does: the desktop's own, then the commands' aliases.
@@ -680,6 +682,8 @@ pub struct BimApp {
     /// Phasing and Design Options, while they're open, and the design option (`set: option`) new
     /// elements are made in: none is the main model.
     phasing_dialog: Option<phasing::PhasingDialog>,
+    /// Graphic Display Options (GD), while open.
+    display_dialog: Option<display::DisplayDialog>,
     /// Structure > Reinforce, while open, and what was typed in it for each kind of host.
     reinforce_dialog: Option<reinforce::ReinforceDialog>,
     reinforce_kept: BTreeMap<reinforce::Form, BTreeMap<&'static str, String>>,
@@ -1251,6 +1255,7 @@ impl BimApp {
             filters_dialog: None,
             templates_dialog: None,
             phasing_dialog: None,
+            display_dialog: None,
             reinforce_dialog: None,
             reinforce_kept: BTreeMap::new(),
             line_weights_dialog: None,
@@ -1747,6 +1752,7 @@ impl BimApp {
             || self.filters_dialog.is_some()
             || self.templates_dialog.is_some()
             || self.phasing_dialog.is_some()
+            || self.display_dialog.is_some()
             || self.reinforce_dialog.is_some()
             || self.line_weights_dialog.is_some()
             || self.electrical_dialog.is_some()
@@ -1992,6 +1998,10 @@ impl BimApp {
             }
             "BX" => {
                 self.toggle_section_box();
+                return true;
+            }
+            "GD" => {
+                self.open_display();
                 return true;
             }
             "EU" | "UE" => {
@@ -4859,6 +4869,7 @@ impl BimApp {
         self.filters_window(ctx);
         self.templates_window(ctx);
         self.phasing_window(ctx);
+        self.display_window(ctx);
         self.reinforce_window(ctx);
         self.line_weights_window(ctx);
         self.object_styles_window(ctx);

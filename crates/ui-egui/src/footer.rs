@@ -357,6 +357,10 @@ impl BimApp {
                                         self.set_visual_style(v);
                                     }
                                 }
+                                ui.separator();
+                                if ui.button(t("Graphic Display Options...")).clicked() {
+                                    self.open_display();
+                                }
                             });
                             ui.separator();
                         }
