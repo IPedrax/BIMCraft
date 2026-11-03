@@ -70,8 +70,9 @@ pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
 /// The version of the project file this build writes, and the newest it reads. 12: a project's language may be German (`de`) or
-/// Dutch (`nl`); nothing in a file of 11 changes, but a build that reads up to 11 would answer one of 12 with a serde error
-/// ("unknown variant"), not "saved by a newer BIMCraft". 11: a project's language may be Swedish,
+/// Dutch (`nl`), and a wall may bound no rooms (`room_bounding: false`, written only then); nothing in a file of 11 changes, but a
+/// build that reads up to 11 would answer one of 12 with a serde error ("unknown variant") or, for such a wall, leave the setting
+/// out and bound rooms by it again, not "saved by a newer BIMCraft". 11: a project's language may be Swedish,
 /// Czech or French (`sv`, `cs`, `fr`); nothing in a file of 10 changes, but a build that reads up to 10 would answer one of
 /// 11 with a serde error ("unknown variant"), not "saved by a newer BIMCraft". 8: text types (`text_types`, library
 /// entries of kind `text-type`); a note names its type, which holds its size, and may override parts of its formatting
@@ -232,9 +233,17 @@ pub struct Wall {
     pub attach_top: Option<Guid>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attach_base: Option<Guid>,
+    /// Whether it bounds rooms (Revit's Room Bounding): on unless turned off, as for a low wall or a balustrade a room
+    /// runs past.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub room_bounding: bool,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+}
+
+fn is_yes(b: &bool) -> bool {
+    *b
 }
 
 fn is_zero(x: &f64) -> bool {
@@ -2814,7 +2823,7 @@ impl Model {
         // dimension type; one of 10 read by 9 would measure its points as lines. A dimension of 9 gets its kind's type.
         self.typed_dimensions();
         // 10 to 11 (Swedish, Czech and French as a project's language) has no step: a file of 10 holds none of them.
-        // 11 to 12 (German and Dutch as a project's language) has no step either: a file of 11 holds none of them.
+        // 11 to 12 (German and Dutch as a project's language, a wall that bounds no rooms) has no step either: a file of 11 holds none.
         self.format = FORMAT;
     }
 
@@ -3138,10 +3147,10 @@ impl Model {
         self.spans(w, self.plan_range(level).cut)
     }
 
-    /// Whether the wall bounds the rooms of `level`: it spans the height rooms are found at,
+    /// Whether the wall bounds the rooms of `level`: it is room bounding, and it spans the height rooms are found at,
     /// [`CUT_HEIGHT`] above the level, whatever the level's plan cuts at.
     pub fn bounding(&self, w: &Wall, level: impl Key) -> bool {
-        self.spans(w, self.elevation(level) + CUT_HEIGHT)
+        w.room_bounding && self.spans(w, self.elevation(level) + CUT_HEIGHT)
     }
 
     /// Whether the wall spans height `z`.
@@ -5973,6 +5982,7 @@ mod tests {
             location: Location::Centre,
             attach_top: None,
             attach_base: None,
+            room_bounding: true,
         })
     }
 

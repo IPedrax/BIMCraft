@@ -180,12 +180,12 @@ pub static ALL: &[Command] = &[
         msg!("Wall"),
         &["WA"],
         "{points: [[x,y],…], closed?, type?, level?, top_level?, height?, base_offset?, arc?, location?, attach_top?, \
-         attach_base?} one wall per segment of its location line; up to the next level, or `height` mm tall (unconnected), or up \
+         attach_base?, room_bounding?} one wall per segment of its location line; up to the next level, or `height` mm tall (unconnected), or up \
          to `top_level`. `arc`: degrees each turns from its start to its end, counter-clockwise (180, a half circle bulging to \
          its right). `location`: the line of it the points are on: centre (the default), core-centre, exterior-finish, \
          interior-finish, exterior-core or interior-core; its exterior side is to the left of its start to its end, so walls \
          drawn clockwise face out. `attach_top`, `attach_base`: a roof or floor its top follows from below, or its base stands \
-         on",
+         on. `room_bounding`: false for a wall rooms run past (a low wall, a balustrade); true, the default, bounds them",
         wall,
     ),
     edit(
@@ -5070,6 +5070,11 @@ fn wall(s: &mut Session, p: &Value) -> R {
         None => Location::Centre,
     };
     let (attach_top, attach_base) = (id_opt(c, p, "attach_top")?, id_opt(c, p, "attach_base")?);
+    let room_bounding = match p.get("room_bounding") {
+        None | Some(Value::Null) => true,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return Err(bad(c, "`room_bounding` is true or false")),
+    };
     let m = s.model_mut();
     let ids: Vec<Id> = pts
         .windows(2)
@@ -5087,6 +5092,7 @@ fn wall(s: &mut Session, p: &Value) -> R {
                 location,
                 attach_top,
                 attach_base,
+                room_bounding,
             }))),
             _ => None,
         })
@@ -6585,6 +6591,7 @@ fn dormer(s: &mut Session, p: &Value) -> R {
             location: Location::Centre,
             attach_top: Some(roof_guid),
             attach_base: Some(host),
+            room_bounding: true,
         })
     };
     let (l, r) = (micron(at + n * (w / 2.0)), micron(at - n * (w / 2.0)));
