@@ -39,6 +39,7 @@ pub mod fills;
 mod fixtures;
 mod font;
 pub mod geom;
+pub mod gltf;
 pub mod graphics;
 pub mod groups;
 pub mod hydrant;

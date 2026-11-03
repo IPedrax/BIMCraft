@@ -355,6 +355,21 @@ no pass is added: `the_card_draws_edges_silhouettes_and_ambient_shadows_as_the_p
 from a sun are not drawn yet. The desktop's dialog (`display.rs`) opens by GD and from the view control bar's Visual Style
 menu, alike in both looks of the window, and runs the command on the 3D view on screen.
 
+The 3D scene can be exported as glTF 2.0 binary, for Blender and other viewers (`gltf.rs`: `save` to a `.glb`, which the CLI's `--save` and
+`convert` and the MCP server reach too, and File > Export > 3D Scene as glTF in both profiles). It writes the triangles of `Scene::facets`,
+the ones the processor's picture and the card's mesh are made of, as the default 3D view shows them (`Look::of_3d`): its phase and phase
+filter, its design options, what Visibility/Graphics hides, and the colours and transparency it paints, linked models included
+(`extras.linked`). A section box on that view is not applied, the whole of each element shown is written, and neither are textures, edges,
+levels, point clouds or the camera. There is a node and a mesh for each element, the node named by the element's id with its `id`, `guid`
+and `category` in `extras`, and a primitive in the mesh for each colour the element is shaded in (a compound wall has one for each layer).
+A primitive's material is the scene's sRGB colour in linear light, as glTF's base colour is, blended with alpha `1 - clearness` where the view
+sees through the surface (a mass is, by default), and always double sided, as the scene draws both sides of every surface. Positions are in
+metres, turned and not mirrored: east stays x, up becomes y and north becomes -z, so the winding is kept. Curved surfaces keep their smooth
+normals, vertices that agree in position and normal are shared within a primitive, and a triangle with no area is left out. A scene past
+`gltf::MAX_TRIS` (the card's limit) is refused with how many triangles there are, and an empty one with what to show. The tests read the
+chunks back (header, lengths, alignment, the JSON, a box's bounds and volume); the Khronos validator (`npm i gltf-validator`, then
+`validateBytes`) reports no errors, warnings or hints on the sample house and on the 20-storey tower of `run --highrise`.
+
 The 3D view works round what is under the cursor, on both painters. What a pick finds has a point: `view3d::Surface` is the
 element, the model point where the line of sight through the pixel meets the surface the picture shows there, and its normal turned
 toward the camera. The processor's picture finds it from the triangle its pixel holds (`Scene::surface_in`), the card's mesh from

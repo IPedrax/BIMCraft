@@ -1009,11 +1009,29 @@ fn saving_writes_the_project_and_exports_by_extension() {
     let project = dir.join("house.bimcraft");
     assert!(h.state_mut().save_to(&project));
     assert!(!h.state().dirty() && h.state().session.path.as_deref() == Some(project.as_path()));
-    for (name, starts) in [("house.ifc", &b"ISO-10303-21"[..]), ("plan.png", b"\x89PNG"), ("plan.svg", b"<svg")] {
+    for (name, starts) in [("house.ifc", &b"ISO-10303-21"[..]), ("scene.glb", b"glTF"), ("plan.png", b"\x89PNG"), ("plan.svg", b"<svg")] {
         assert!(h.state_mut().save_to(&dir.join(name)), "{name}: {}", h.state().status.text);
         assert!(std::fs::read(dir.join(name)).unwrap().starts_with(starts), "{name}");
     }
     assert_eq!(h.state().session.path.as_deref(), Some(project.as_path()), "exports leave the project's path alone");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn file_export_lists_the_3d_scene_as_gltf_in_both_profiles_and_an_export_leaves_the_project_unsaved() {
+    for (name, mut h) in [("Rev", app(SAMPLE)), ("BIMCraft", bimcraft(SAMPLE))] {
+        press(&mut h, "File");
+        // The submenu's label carries its arrow too.
+        h.get_by_label_contains("Export").click();
+        h.run();
+        assert!(h.query_by_label("3D Scene as glTF…").is_some(), "{name}: File > Export lists glTF");
+    }
+    let mut h = app(SAMPLE);
+    let dir = std::env::temp_dir().join(format!("bimcraft-ui-gltf-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    h.state_mut().session.execute("level", &json!({"elevation": 6000})).unwrap();
+    assert!(h.state_mut().save_to(&dir.join("house.glb")), "{}", h.state().status.text);
+    assert!(h.state().dirty() && h.state().session.path.is_none(), "the project is still unsaved");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -2350,10 +2368,10 @@ fn a_window_told_of_no_file_keeps_no_recent_files_and_offers_none() {
 #[test]
 fn saved_and_opened_projects_are_listed_in_open_recent_newest_first_and_exports_are_not() {
     let (mut h, dir, file) = recent_rig("list");
-    for name in ["a.bimcraft", "b.bimcraft", "plan.png", "house.pdf", "house.ifc"] {
+    for name in ["a.bimcraft", "b.bimcraft", "plan.png", "house.pdf", "house.ifc", "scene.glb"] {
         assert!(h.state_mut().save_to(&dir.join(name)), "{name}");
     }
-    // An IFC export leaves the project unsaved and is not a file to come back to.
+    // An IFC or glTF export leaves the project unsaved and is not a file to come back to.
     let names = |h: &Harness<BimApp>| h.state().recent.labels();
     assert_eq!(names(&h), ["b.bimcraft", "a.bimcraft"]);
     // Opening one moves it to the top; an IFC file that is opened (imported) is listed too.

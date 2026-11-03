@@ -2697,7 +2697,7 @@ impl BimApp {
 
     // ---------- files ----------
 
-    /// Save the project (`.bimcraft`, or any other name) or export by extension: `.ifc`, or the
+    /// Save the project (`.bimcraft`, or any other name) or export by extension: `.ifc`, the 3D scene as `.glb`, or the
     /// view on screen as `.png` (a plan or the 3D view) or `.svg` (a plan). Whether it worked; the
     /// warning box says why not.
     pub fn save_to(&mut self, path: &Path) -> bool {
@@ -2719,8 +2719,8 @@ impl BimApp {
             return self.run("render", p).is_some();
         }
         let saved = self.run("save", json!({"path": file})).is_some();
-        // Exports (IFC, the sheets' PDF) leave the project unsaved.
-        if saved && !matches!(ext.as_str(), "ifc" | "pdf") {
+        // Exports (IFC, glTF, the sheets' PDF) leave the project unsaved.
+        if saved && !matches!(ext.as_str(), "ifc" | "glb" | "pdf") {
             self.saved = Arc::clone(&self.session.model);
             self.note_recent(path);
             self.autosave_saved();
@@ -3273,6 +3273,9 @@ impl BimApp {
             }
             if ui.button(t("Sheets as PDF…")).clicked() {
                 self.export(ctx, "PDF", "pdf");
+            }
+            if ui.button(t("3D Scene as glTF…")).clicked() {
+                self.export(ctx, msg!("glTF binary"), "glb");
             }
         });
         self.report_menu(ui);

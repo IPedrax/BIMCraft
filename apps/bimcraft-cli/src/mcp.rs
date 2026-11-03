@@ -111,7 +111,7 @@ fn tools() -> Value {
          "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}}},
         {"name": "open", "description": "Open a .bimcraft project, import a Revit .rvt file (read directly, no Revit needed: its levels, walls, floors, ceilings, doors and windows, columns, rooms and flat roofs come in, and the reply lists what was left out and why), or import an .ifc file (IFC2x3 or IFC4, from Revit or any BIM tool): its storeys, straight and curved walls with their doors and windows, floors (level or sloped) and ceilings, with their holes, rooms, columns, grids, stairs and ramps of straight runs with landings, railings, shafts and roofs (flat, sloping all round over any footprint with gable ends, courtyards and openings, or one profile swept across) come in measured from their geometry; the reply lists what was left out and why.",
          "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
-        {"name": "save", "description": "Save to .bimcraft (the project), or export by extension: .ifc (IFC4 for other BIM tools), .svg or .png (the lowest level's plan), .pdf (every sheet, a page each).",
+        {"name": "save", "description": "Save to .bimcraft (the project), or export by extension: .ifc (IFC4 for other BIM tools), .glb (the default 3D view's scene as glTF 2.0, for Blender and viewers: metres, y up, a node for each element named by its id), .svg or .png (the lowest level's plan), .pdf (every sheet, a page each).",
          "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}}}}
     ])
 }
