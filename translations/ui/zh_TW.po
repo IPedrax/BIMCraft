@@ -2190,7 +2190,7 @@ msgstr "拆除 (DW)：單擊圖元，在視圖階段中將其拆除；再次單�
 msgid "Demolished"
 msgstr "已拆除"
 
-#: crates/core/src/commands.rs:7872
+#: crates/core/src/commands.rs:7880
 msgid "Dependent"
 msgstr "相關"
 
@@ -7781,7 +7781,7 @@ msgstr "單位"
 msgid "Units Format"
 msgstr "單位格式"
 
-#: crates/core/src/commands.rs:8013
+#: crates/core/src/commands.rs:8021
 msgid "Unnamed"
 msgstr "未命名"
 

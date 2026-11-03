@@ -2190,7 +2190,7 @@ msgstr "Slopen (DW): klik op een element om het in de fase van de weergave te sl
 msgid "Demolished"
 msgstr "Gesloopt"
 
-#: crates/core/src/commands.rs:7872
+#: crates/core/src/commands.rs:7880
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -7781,7 +7781,7 @@ msgstr "Eenheden"
 msgid "Units Format"
 msgstr "Eenhedenformaat"
 
-#: crates/core/src/commands.rs:8013
+#: crates/core/src/commands.rs:8021
 msgid "Unnamed"
 msgstr "Naamloos"
 

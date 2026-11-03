@@ -1782,8 +1782,16 @@ pub static ALL: &[Command] = &[
 
 // ---------- parameters ----------
 
+/// The longest an error message is, in characters: a message that repeats what it was given (a list of a hundred thousand ids)
+/// is cut, and says by how much.
+const MAX_MESSAGE: usize = 2000;
+
 fn bad(cmd: &str, msg: impl std::fmt::Display) -> String {
-    format!("{cmd}: {msg}")
+    let text = format!("{cmd}: {msg}");
+    match text.char_indices().nth(MAX_MESSAGE) {
+        Some((cut, _)) => format!("{}… ({} more characters)", &text[..cut], text[cut..].chars().count()),
+        None => text,
+    }
 }
 
 fn absent(v: Option<&Value>) -> bool {

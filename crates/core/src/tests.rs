@@ -6276,3 +6276,18 @@ fn symbols_draw_in_the_plan_and_ceiling_plan_of_their_level_whatever_height_the_
     let d = crate::render::draw(&s.model, 100001, view);
     assert!(!d.owners.contains(&Some(id)));
 }
+
+#[test]
+fn an_error_that_repeats_a_huge_value_stays_short() {
+    let mut s = Session::new();
+    house(&mut s);
+    // Isolating a few elements of a big model hides all the rest: more ids than a view's overrides may hold.
+    let ids: Vec<u64> = (100_000..100_000 + 100_001).collect();
+    let e = s.execute("graphics", &json!({"view": "Level 1", "hide_elements": ids})).unwrap_err();
+    assert!(e.len() < 2500, "{} characters", e.len());
+    assert!(e.starts_with("graphics: `hide_elements` is a list of element ids"), "{}", &e[..80.min(e.len())]);
+    assert!(e.contains("more characters"), "it says it was cut");
+    // A short message is left as it is.
+    let e = s.execute("graphics", &json!({"view": "Level 1", "hide_elements": [1]})).unwrap_err();
+    assert!(!e.contains("more characters"), "{e}");
+}
