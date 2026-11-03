@@ -576,22 +576,21 @@ fn perimeter(ring: &[P2]) -> f64 {
 }
 
 /// What a beam or a column measures, for its `Qto_BeamBaseQuantities` or `Qto_ColumnBaseQuantities`: its length (a column's
-/// height), the area of its section (m²), its surface (the sides and the two ends, m²) and its volume (m³). Nothing is
-/// subtracted from it, so it has no net values: nothing is taken off where a beam meets a column or a slab yet.
+/// height), the area of its section (m²), its outer surface (m²) and its volume (m³). The outer surface is the sides only,
+/// perimeter by length, without the two ends, as IFC 4.3 defines it for these sets. IFC gives the gross surface (with the
+/// ends) only when the outer surface and the section can't be given apart, so it isn't written: a reader adds two sections.
+/// Nothing is subtracted from it, so it has no net values: nothing is taken off where a beam meets a column or a slab yet.
 fn member_quantities(width: f64, depth: f64, round: bool, length: f64) -> Vec<(&'static str, &'static str, f64)> {
     let (area, perimeter) = if round {
         (std::f64::consts::PI * width * width / 4.0, std::f64::consts::PI * width)
     } else {
         (width * depth, 2.0 * (width + depth))
     };
-    let surface = (perimeter * length + 2.0 * area) / 1e6;
-    let volume = area * length / 1e9;
     vec![
         ("Length", "LENGTH", length),
         ("CrossSectionArea", "AREA", area / 1e6),
-        ("OuterSurfaceArea", "AREA", surface),
-        ("GrossSurfaceArea", "AREA", surface),
-        ("GrossVolume", "VOLUME", volume),
+        ("OuterSurfaceArea", "AREA", perimeter * length / 1e6),
+        ("GrossVolume", "VOLUME", area * length / 1e9),
     ]
 }
 
@@ -1855,13 +1854,15 @@ mod tests {
         assert_eq!(occurrences_of(&f, kinds[0]), beams);
         let q = quantities_of(&f, beams[0], "Qto_BeamBaseQuantities");
         assert!(near(q["Length"], 5000.0) && near(q["CrossSectionArea"], 0.09) && !q.contains_key("NetVolume"), "{q:?}");
-        assert!(near(q["GrossVolume"], 0.45) && near(q["OuterSurfaceArea"], 2.0 * (0.15 + 0.6) * 5.0 + 2.0 * 0.09), "{q:?}");
+        assert!(near(q["GrossVolume"], 0.45) && near(q["OuterSurfaceArea"], 2.0 * (0.15 + 0.6) * 5.0), "the sides only: {q:?}");
+        assert!(!q.contains_key("GrossSurfaceArea"), "outer surface and section are given apart: {q:?}");
         let columns = of_kind(&f, "IFCCOLUMN");
         let types = of_kind(&f, "IFCCOLUMNTYPE");
         assert_eq!((columns.len(), types.len()), (1, 1));
         assert_eq!(occurrences_of(&f, types[0]), columns);
         let q = quantities_of(&f, columns[0], "Qto_ColumnBaseQuantities");
         assert!(near(q["CrossSectionArea"], 0.09) && near(q["GrossVolume"], 0.09 * q["Length"] / 1e3), "{q:?}");
+        assert!(near(q["OuterSurfaceArea"], 4.0 * 0.3 * q["Length"] / 1e3) && !q.contains_key("GrossSurfaceArea"), "{q:?}");
         // Walls and slabs have theirs, one for each type used.
         let walls: BTreeSet<String> =
             s.model.elements.iter().filter_map(|(_, e)| if let Element::Wall(w) = e { Some(w.type_name.clone()) } else { None }).collect();
