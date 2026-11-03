@@ -228,7 +228,7 @@ msgstr "應用對像樣式"
 msgid "Adapt Project Units"
 msgstr "調整項目單位"
 
-#: crates/ui-egui/src/properties.rs:2671
+#: crates/ui-egui/src/properties.rs:2672
 #: crates/ui-egui/src/shortcuts.rs:438
 msgid "Add"
 msgstr "添加"
@@ -295,7 +295,7 @@ msgstr "添加快速鍵"
 msgid "Add Size"
 msgstr ""
 
-#: crates/ui-egui/src/properties.rs:2843
+#: crates/ui-egui/src/properties.rs:2844
 msgid "Add Sort"
 msgstr "添加排序"
 
@@ -545,7 +545,8 @@ msgstr "弧長："
 msgid "Architecture"
 msgstr "建築"
 
-#: crates/core/src/schedule.rs:184
+#: crates/core/src/schedule.rs:193
+#: crates/core/src/schedule.rs:229
 msgid "Area"
 msgstr "面積"
 
@@ -565,7 +566,7 @@ msgstr "跟隨系統"
 msgid "As the units show"
 msgstr "按單位顯示"
 
-#: crates/ui-egui/src/properties.rs:2823
+#: crates/ui-egui/src/properties.rs:2824
 msgid "Ascending"
 msgstr "升序"
 
@@ -581,11 +582,11 @@ msgstr ""
 msgid "Associated Level"
 msgstr "關聯標高"
 
-#: crates/core/src/model.rs:2330
+#: crates/core/src/model.rs:2333
 msgid "At wall centre line"
 msgstr "在牆中心線"
 
-#: crates/core/src/model.rs:2331
+#: crates/core/src/model.rs:2334
 msgid "At wall finish"
 msgstr "在牆面層"
 
@@ -627,7 +628,7 @@ msgstr "自動儲存"
 msgid "Autosave in the background"
 msgstr "在後台自動儲存"
 
-#: crates/ui-egui/src/properties.rs:2655
+#: crates/ui-egui/src/properties.rs:2656
 msgid "Available fields:"
 msgstr "可用的字段："
 
@@ -871,7 +872,7 @@ msgstr "邊界線：在上一標高繪製屋頂的跡線及其中的天井"
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "邊界線：繪製豎井洞口的輪廓"
 
-#: crates/core/src/model.rs:2540
+#: crates/core/src/model.rs:2543
 msgid "Brick"
 msgstr "磚"
 
@@ -919,16 +920,16 @@ msgstr "布線"
 msgid "Cabling (CB): click its start and its end; a chain of clicks makes a cable for each step"
 msgstr "布線 (CB)：單擊起點和終點；連續單擊可為每一段創建一根電纜"
 
-#: crates/ui-egui/src/properties.rs:2739
-#: crates/ui-egui/src/properties.rs:2742
+#: crates/ui-egui/src/properties.rs:2740
+#: crates/ui-egui/src/properties.rs:2743
 msgid "Calculate totals"
 msgstr "計算總數"
 
-#: crates/ui-egui/src/properties.rs:2763
+#: crates/ui-egui/src/properties.rs:2764
 msgid "Calculated Value"
 msgstr "計算值"
 
-#: crates/ui-egui/src/properties.rs:2689
+#: crates/ui-egui/src/properties.rs:2690
 msgid "Calculated Value…"
 msgstr "計算值…"
 
@@ -937,7 +938,7 @@ msgstr "計算值…"
 msgid "Came in: {}"
 msgstr "已導入：{}"
 
-#: crates/core/src/commands.rs:1511
+#: crates/core/src/commands.rs:1515
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3398
 #: crates/ui-egui/src/properties.rs:260
@@ -961,8 +962,8 @@ msgstr ""
 #: crates/ui-egui/src/linestyles.rs:307
 #: crates/ui-egui/src/lineweights.rs:151
 #: crates/ui-egui/src/objectstyles.rs:79
-#: crates/ui-egui/src/properties.rs:2588
-#: crates/ui-egui/src/properties.rs:2783
+#: crates/ui-egui/src/properties.rs:2589
+#: crates/ui-egui/src/properties.rs:2784
 #: crates/ui-egui/src/purge.rs:77
 #: crates/ui-egui/src/reinforce.rs:536
 #: crates/ui-egui/src/shortcuts.rs:401
@@ -1010,6 +1011,7 @@ msgstr "類別"
 msgid "Categories not overridden are drawn as Object Styles sets them."
 msgstr "未替換的類別按對像樣式的設定繪製。"
 
+#: crates/core/src/schedule.rs:220
 #: crates/ui-egui/src/editor.rs:975
 #: crates/ui-egui/src/objectstyles.rs:55
 #: crates/ui-egui/src/properties.rs:1592
@@ -1079,7 +1081,7 @@ msgstr "中心"
 msgid "Centre Lines"
 msgstr ""
 
-#: crates/core/src/model.rs:2548
+#: crates/core/src/model.rs:2551
 msgid "Ceramic tile"
 msgstr "瓷磚"
 
@@ -1633,7 +1635,7 @@ msgstr "單擊平台之後下一梯段的走向：直行、左轉、右轉，或
 #: crates/ui-egui/src/properties.rs:1916
 #: crates/ui-egui/src/properties.rs:2243
 #: crates/ui-egui/src/properties.rs:2538
-#: crates/ui-egui/src/properties.rs:2861
+#: crates/ui-egui/src/properties.rs:2862
 #: crates/ui-egui/src/revit.rs:259
 #: crates/ui-egui/src/settings.rs:305
 #: crates/ui-egui/src/shortcuts.rs:567
@@ -1733,7 +1735,7 @@ msgstr "概念體量"
 msgid "Concrete"
 msgstr "混凝土"
 
-#: crates/core/src/model.rs:2542
+#: crates/core/src/model.rs:2545
 msgid "Concrete block"
 msgstr "混凝土砌塊"
 
@@ -1802,7 +1804,7 @@ msgstr "已複製 {} 個 IFC GlobalId。"
 msgid "Copied {} rows, tab-separated."
 msgstr "已複製 {} 行，以製表符分隔。"
 
-#: crates/core/src/model.rs:2556
+#: crates/core/src/model.rs:2559
 msgid "Copper"
 msgstr "銅"
 
@@ -1882,7 +1884,7 @@ msgstr "無法開啟 {}：{}"
 msgid "Couldn't save the setting: {}"
 msgstr "無法儲存設置：{}"
 
-#: crates/core/src/schedule.rs:196
+#: crates/core/src/schedule.rs:205
 #: crates/ui-egui/src/filter.rs:84
 #: crates/ui-egui/src/linestyles/creator.rs:178
 #: crates/ui-egui/src/reinforce.rs:50
@@ -2186,7 +2188,7 @@ msgstr "拆除 (DW)：單擊圖元，在視圖階段中將其拆除；再次單�
 msgid "Demolished"
 msgstr "已拆除"
 
-#: crates/core/src/commands.rs:7872
+#: crates/core/src/commands.rs:7887
 msgid "Dependent"
 msgstr "相關"
 
@@ -2196,7 +2198,7 @@ msgstr "相關"
 msgid "Depth"
 msgstr "深度"
 
-#: crates/ui-egui/src/properties.rs:2823
+#: crates/ui-egui/src/properties.rs:2824
 msgid "Descending"
 msgstr "降序"
 
@@ -2394,7 +2396,7 @@ msgstr "門"
 msgid "Door (DR): click a wall"
 msgstr "門 (DR)：單擊一面牆"
 
-#: crates/core/src/schedule.rs:117
+#: crates/core/src/schedule.rs:118
 msgid "Door Schedule"
 msgstr "門明細表"
 
@@ -2420,11 +2422,11 @@ msgstr "點線"
 msgid "Double Door"
 msgstr "雙扇門"
 
-#: crates/core/src/model.rs:2161
+#: crates/core/src/model.rs:2164
 msgid "Double Sliding"
 msgstr "雙扇推拉"
 
-#: crates/core/src/model.rs:2159
+#: crates/core/src/model.rs:2162
 msgid "Double Swing"
 msgstr "雙扇平開"
 
@@ -2564,7 +2566,7 @@ msgstr "接地極 (EG)：在單擊處自標高向下打入接地棒；按空格�
 msgid "Earthing Electrodes"
 msgstr "接地極"
 
-#: crates/core/src/model.rs:1584
+#: crates/core/src/model.rs:1587
 msgid "East"
 msgstr "東"
 
@@ -2652,7 +2654,7 @@ msgstr ""
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr ""
 
-#: crates/core/src/commands.rs:1775
+#: crates/core/src/commands.rs:1779
 msgid "Elements"
 msgstr "圖元"
 
@@ -2820,7 +2822,7 @@ msgstr "族"
 msgid "Families of parallel lines: drafting ones mm on paper, the same at any scale; model ones mm in the building."
 msgstr "平行線組：繪圖圖案以圖紙上的毫米計，在任何比例下都相同；模型圖案以建築中的毫米計。"
 
-#: crates/core/src/schedule.rs:182
+#: crates/core/src/schedule.rs:191
 msgid "Family"
 msgstr "族"
 
@@ -3009,7 +3011,7 @@ msgstr "離開草圖所在平面之前，請先完成或取消草圖。"
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr ""
 
-#: crates/core/src/model.rs:2163
+#: crates/core/src/model.rs:2166
 msgid "Fixed"
 msgstr "固定"
 
@@ -3068,7 +3070,7 @@ msgstr "樓層平面：{}"
 msgid "Floor Plans"
 msgstr "樓層平面"
 
-#: crates/core/src/schedule.rs:120
+#: crates/core/src/schedule.rs:121
 msgid "Floor Schedule"
 msgstr "樓板明細表"
 
@@ -3104,7 +3106,7 @@ msgstr ""
 msgid "Folder for new projects"
 msgstr "新項目的資料夾"
 
-#: crates/core/src/model.rs:2162
+#: crates/core/src/model.rs:2165
 msgid "Folding"
 msgstr "折疊"
 
@@ -3176,8 +3178,8 @@ msgstr "形狀空心"
 msgid "Forms"
 msgstr "形狀"
 
-#: crates/ui-egui/src/properties.rs:2750
-#: crates/ui-egui/src/properties.rs:2777
+#: crates/ui-egui/src/properties.rs:2751
+#: crates/ui-egui/src/properties.rs:2778
 msgid "Formula"
 msgstr "公式"
 
@@ -3323,7 +3325,7 @@ msgstr ""
 msgid "Grids start at 0, 0 in each view and rotate together."
 msgstr ""
 
-#: crates/core/src/schedule.rs:444
+#: crates/core/src/schedule.rs:482
 msgid "Gross Floor Area"
 msgstr "建築面積"
 
@@ -3335,7 +3337,7 @@ msgstr "組"
 msgid "Group:"
 msgstr "組："
 
-#: crates/core/src/model.rs:2547
+#: crates/core/src/model.rs:2550
 msgid "Gypsum board"
 msgstr "石膏板"
 
@@ -3358,7 +3360,7 @@ msgstr "半色調"
 msgid "Headboard Height"
 msgstr "床頭板高度"
 
-#: crates/ui-egui/src/properties.rs:2730
+#: crates/ui-egui/src/properties.rs:2731
 msgid "Heading"
 msgstr "標題"
 
@@ -3696,7 +3698,7 @@ msgstr "斜體"
 msgid "Italic (Ctrl+I)"
 msgstr "斜體 (Ctrl+I)"
 
-#: crates/ui-egui/src/properties.rs:2854
+#: crates/ui-egui/src/properties.rs:2855
 msgid "Itemize every instance"
 msgstr "逐項列舉每個實例"
 
@@ -3865,7 +3867,7 @@ msgstr "標高高程"
 msgid "Level Marker Symbol:"
 msgstr "標高符號:"
 
-#: crates/core/src/schedule.rs:121
+#: crates/core/src/schedule.rs:122
 msgid "Level Schedule"
 msgstr "標高明細表"
 
@@ -4145,7 +4147,7 @@ msgstr "創建明細表，或開啟已有的明細表"
 msgid "Manage"
 msgstr "管理"
 
-#: crates/core/src/model.rs:1242
+#: crates/core/src/model.rs:1245
 msgid "Mark"
 msgstr "標記"
 
@@ -4194,6 +4196,7 @@ msgstr "符合屬性：已選擇源類型“{}”。選擇目標元素並再次�
 msgid "Matched properties: applied type '{}' to {} element(s)"
 msgstr "已符合屬性：將類型“{}”應用於 {} 個元素"
 
+#: crates/core/src/schedule.rs:230
 #: crates/ui-egui/src/editor.rs:787
 #: crates/ui-egui/src/properties.rs:1660
 #: crates/ui-egui/src/properties.rs:1774
@@ -4242,7 +4245,7 @@ msgstr ""
 msgid "Maximum Riser Height"
 msgstr "最大踢面高度"
 
-#: crates/core/src/commands.rs:1606
+#: crates/core/src/commands.rs:1610
 msgid "Measure"
 msgstr "測量"
 
@@ -4385,12 +4388,12 @@ msgid "Move (MV): click a base point, then where it goes"
 msgstr "移動 (MV)：單擊基點，再單擊目標位置"
 
 #: crates/ui-egui/src/editor.rs:816
-#: crates/ui-egui/src/properties.rs:2715
+#: crates/ui-egui/src/properties.rs:2716
 msgid "Move Down"
 msgstr "下移"
 
 #: crates/ui-egui/src/editor.rs:813
-#: crates/ui-egui/src/properties.rs:2708
+#: crates/ui-egui/src/properties.rs:2709
 msgid "Move Up"
 msgstr "上移"
 
@@ -4442,7 +4445,7 @@ msgstr "NBR 6492：平面採用圓環靶心 (±0.00)，剖面採用等邊三角�
 msgid "NOT ENCLOSED"
 msgstr "未封閉"
 
-#: crates/core/src/model.rs:1243
+#: crates/core/src/model.rs:1246
 #: crates/ui-egui/src/cad.rs:85
 #: crates/ui-egui/src/clouds.rs:59
 #: crates/ui-egui/src/electrical.rs:298
@@ -4450,14 +4453,14 @@ msgstr "未封閉"
 #: crates/ui-egui/src/lib.rs:4177
 #: crates/ui-egui/src/properties.rs:1788
 #: crates/ui-egui/src/properties.rs:2495
-#: crates/ui-egui/src/properties.rs:2765
+#: crates/ui-egui/src/properties.rs:2766
 msgid "Name"
 msgstr "名稱"
 
 #: crates/ui-egui/src/electrical.rs:417
 #: crates/ui-egui/src/phasing.rs:279
 #: crates/ui-egui/src/phasing.rs:470
-#: crates/ui-egui/src/properties.rs:2583
+#: crates/ui-egui/src/properties.rs:2584
 #: crates/ui-egui/src/templates.rs:425
 #: crates/ui-egui/src/typeprops.rs:100
 #: crates/ui-egui/src/typeprops.rs:101
@@ -4556,7 +4559,7 @@ msgstr "新類型"
 msgid "New {}"
 msgstr "新建{}"
 
-#: crates/core/src/schedule.rs:1048
+#: crates/core/src/schedule.rs:1179
 msgid "No"
 msgstr "否"
 
@@ -4636,7 +4639,7 @@ msgstr "標稱文字高度:"
 msgid "None"
 msgstr "無"
 
-#: crates/core/src/model.rs:1582
+#: crates/core/src/model.rs:1585
 msgid "North"
 msgstr "北"
 
@@ -4702,7 +4705,7 @@ msgstr "所選內容在此視圖中均未隱藏。“顯示隱藏的圖元”(RH
 msgid "Nothing was left out."
 msgstr "沒有未導入的內容。"
 
-#: crates/core/src/schedule.rs:209
+#: crates/core/src/schedule.rs:247
 msgid "Number"
 msgstr "編號"
 
@@ -4719,8 +4722,8 @@ msgstr "編號"
 #: crates/ui-egui/src/linestyles.rs:308
 #: crates/ui-egui/src/lineweights.rs:152
 #: crates/ui-egui/src/objectstyles.rs:80
-#: crates/ui-egui/src/properties.rs:2589
-#: crates/ui-egui/src/properties.rs:2782
+#: crates/ui-egui/src/properties.rs:2590
+#: crates/ui-egui/src/properties.rs:2783
 #: crates/ui-egui/src/reinforce.rs:537
 #: crates/ui-egui/src/standards.rs:335
 #: crates/ui-egui/src/templates.rs:680
@@ -4749,7 +4752,7 @@ msgstr "對像樣式…"
 msgid "Off"
 msgstr "關"
 
-#: crates/core/src/schedule.rs:191
+#: crates/core/src/schedule.rs:200
 #: crates/ui-egui/src/linestyles/creator.rs:76
 #: crates/ui-egui/src/sketch.rs:684
 msgid "Offset"
@@ -4837,7 +4840,7 @@ msgstr "開啟 GitHub 上的發佈頁面。此副本無法自行更新。"
 msgid "Open…"
 msgstr "開啟…"
 
-#: crates/core/src/schedule.rs:193
+#: crates/core/src/schedule.rs:202
 #: crates/ui-egui/src/editor.rs:987
 msgid "Operation"
 msgstr "開啟方式"
@@ -4854,7 +4857,7 @@ msgstr "選項集："
 msgid "Options:"
 msgstr "選項："
 
-#: crates/ui-egui/src/properties.rs:2832
+#: crates/ui-egui/src/properties.rs:2833
 msgid "Order"
 msgstr "順序"
 
@@ -5072,7 +5075,7 @@ msgstr "筆 {}，比例 {}"
 msgid "Performance"
 msgstr "性能"
 
-#: crates/core/src/schedule.rs:213
+#: crates/core/src/schedule.rs:251
 msgid "Perimeter"
 msgstr "周長"
 
@@ -5492,7 +5495,7 @@ msgstr "純色"
 msgid "Plan"
 msgstr ""
 
-#: crates/core/src/schedule.rs:269
+#: crates/core/src/schedule.rs:307
 msgid "Plan Area"
 msgstr "平面面積"
 
@@ -5915,8 +5918,8 @@ msgstr "重新載入 CAD"
 #: crates/ui-egui/src/graphics.rs:1139
 #: crates/ui-egui/src/graphics.rs:1194
 #: crates/ui-egui/src/properties.rs:2338
-#: crates/ui-egui/src/properties.rs:2680
-#: crates/ui-egui/src/properties.rs:2833
+#: crates/ui-egui/src/properties.rs:2681
+#: crates/ui-egui/src/properties.rs:2834
 msgid "Remove"
 msgstr "移除"
 
@@ -6072,11 +6075,11 @@ msgstr "功能區"
 msgid "Right"
 msgstr ""
 
-#: crates/core/src/schedule.rs:405
+#: crates/core/src/schedule.rs:443
 msgid "Riser Height"
 msgstr "踢面高度"
 
-#: crates/core/src/schedule.rs:404
+#: crates/core/src/schedule.rs:442
 msgid "Risers"
 msgstr "踢面"
 
@@ -6104,7 +6107,7 @@ msgstr "面屋頂 (RB)：在所選體量的頂面上創建屋頂"
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "跡線屋頂：單擊牆內部，在上一標高為其創建屋頂"
 
-#: crates/core/src/model.rs:2549
+#: crates/core/src/model.rs:2552
 msgid "Roof tiles"
 msgstr "屋面瓦"
 
@@ -6133,7 +6136,7 @@ msgstr "房間面積計算：測量房間面積的位置；目前為{}"
 msgid "Room Bounding"
 msgstr ""
 
-#: crates/core/src/schedule.rs:116
+#: crates/core/src/schedule.rs:117
 msgid "Room Schedule"
 msgstr "房間明細表"
 
@@ -6247,7 +6250,7 @@ msgstr "掃瞄"
 msgid "Schedule"
 msgstr "明細表"
 
-#: crates/ui-egui/src/properties.rs:2637
+#: crates/ui-egui/src/properties.rs:2638
 msgid "Schedule Properties: {}"
 msgstr "明細表屬性：{}"
 
@@ -6261,7 +6264,7 @@ msgstr "明細表/數量…"
 msgid "Schedule: {}"
 msgstr "明細表：{}"
 
-#: crates/ui-egui/src/properties.rs:2695
+#: crates/ui-egui/src/properties.rs:2696
 msgid "Scheduled fields (in order):"
 msgstr "明細表字段（按順序）："
 
@@ -6273,7 +6276,7 @@ msgstr "明細表"
 msgid "Schedules/Quantities (all)"
 msgstr "明細表/數量（全部）"
 
-#: crates/core/src/model.rs:2545
+#: crates/core/src/model.rs:2548
 msgid "Screed"
 msgstr "找平層"
 
@@ -6584,7 +6587,7 @@ msgstr "側面"
 msgid "Sides:"
 msgstr "邊數："
 
-#: crates/core/src/schedule.rs:231
+#: crates/core/src/schedule.rs:269
 msgid "Sill"
 msgstr "窗台"
 
@@ -6637,7 +6640,7 @@ msgstr "跳過此版本"
 msgid "Sky"
 msgstr "天空"
 
-#: crates/core/src/model.rs:2160
+#: crates/core/src/model.rs:2163
 msgid "Sliding"
 msgstr "推拉"
 
@@ -6649,7 +6652,7 @@ msgstr "推拉門"
 msgid "Sliding Window"
 msgstr "推拉窗"
 
-#: crates/core/src/schedule.rs:268
+#: crates/core/src/schedule.rs:306
 #: crates/ui-egui/src/reinforce.rs:111
 #: crates/ui-egui/src/reinforce.rs:139
 msgid "Slope"
@@ -6756,7 +6759,7 @@ msgstr "實體填充"
 msgid "Solid fill"
 msgstr ""
 
-#: crates/ui-egui/src/properties.rs:2812
+#: crates/ui-egui/src/properties.rs:2813
 msgid "Sort by:"
 msgstr "排序方式："
 
@@ -6768,7 +6771,7 @@ msgstr "排序/成組"
 msgid "Source code on GitHub"
 msgstr "GitHub 上的源代碼"
 
-#: crates/core/src/model.rs:1583
+#: crates/core/src/model.rs:1586
 msgid "South"
 msgstr "南"
 
@@ -6927,7 +6930,7 @@ msgstr "箍筋"
 msgid "Straight"
 msgstr "直線"
 
-#: crates/core/src/schedule.rs:254
+#: crates/core/src/schedule.rs:292
 msgid "Structural"
 msgstr "結構"
 
@@ -6998,7 +7001,7 @@ msgstr "表面填充圖案"
 msgid "Surface Transparency"
 msgstr "表面透明度"
 
-#: crates/core/src/model.rs:2158
+#: crates/core/src/model.rs:2161
 msgid "Swing"
 msgstr "平開"
 
@@ -7051,7 +7054,7 @@ msgstr "符號"
 msgid "Symbols are what the plan draws of the family besides its forms: lines, arcs, labels and dots."
 msgstr ""
 
-#: crates/core/src/schedule.rs:190
+#: crates/core/src/schedule.rs:199
 msgid "System"
 msgstr "系統"
 
@@ -7369,7 +7372,7 @@ msgstr ""
 msgid "Theme"
 msgstr "主題"
 
-#: crates/ui-egui/src/properties.rs:2812
+#: crates/ui-egui/src/properties.rs:2813
 msgid "Then by:"
 msgstr "然後按："
 
@@ -7482,7 +7485,7 @@ msgstr "圖塊寬度"
 msgid "Timber"
 msgstr "木材"
 
-#: crates/core/src/schedule.rs:474
+#: crates/core/src/schedule.rs:512
 msgid "Title"
 msgstr "標題"
 
@@ -7567,7 +7570,7 @@ msgstr "透明度"
 msgid "Transparent"
 msgstr "透明"
 
-#: crates/core/src/schedule.rs:406
+#: crates/core/src/schedule.rs:444
 msgid "Tread"
 msgstr "踏板"
 
@@ -7613,10 +7616,10 @@ msgstr "繞牆的{}旋轉牆：{}"
 msgid "Two {} are called {}."
 msgstr ""
 
-#: crates/core/src/model.rs:1244
+#: crates/core/src/model.rs:1247
 #: crates/ui-egui/src/editor.rs:666
 #: crates/ui-egui/src/editor.rs:672
-#: crates/ui-egui/src/properties.rs:2768
+#: crates/ui-egui/src/properties.rs:2769
 msgid "Type"
 msgstr "類型"
 
@@ -7686,7 +7689,7 @@ msgstr "類型"
 msgid "UP"
 msgstr "上"
 
-#: crates/core/src/schedule.rs:215
+#: crates/core/src/schedule.rs:253
 #: crates/ui-egui/src/properties.rs:161
 msgid "Unbounded Height"
 msgstr ""
@@ -7770,7 +7773,7 @@ msgstr "單位"
 msgid "Units Format"
 msgstr "單位格式"
 
-#: crates/core/src/commands.rs:8013
+#: crates/core/src/commands.rs:8028
 msgid "Unnamed"
 msgstr "未命名"
 
@@ -8005,7 +8008,7 @@ msgstr ""
 msgid "Voltages"
 msgstr ""
 
-#: crates/core/src/schedule.rs:200
+#: crates/core/src/schedule.rs:209
 msgid "Volume"
 msgstr "體積"
 
@@ -8037,7 +8040,7 @@ msgstr "條形基礎"
 msgid "Wall Footing (FW): click its start and its end, or a chain of clicks, under a wall"
 msgstr "條形基礎 (FW)：在牆下單擊起點和終點，或連續單擊"
 
-#: crates/core/src/schedule.rs:119
+#: crates/core/src/schedule.rs:120
 msgid "Wall Schedule"
 msgstr "牆明細表"
 
@@ -8061,11 +8064,11 @@ msgstr "洗手盆"
 msgid "Wave"
 msgstr "波浪"
 
-#: crates/core/src/schedule.rs:321
+#: crates/core/src/schedule.rs:359
 msgid "Weight"
 msgstr "重量"
 
-#: crates/core/src/model.rs:1585
+#: crates/core/src/model.rs:1588
 msgid "West"
 msgstr "西"
 
@@ -8132,7 +8135,7 @@ msgstr "窗"
 msgid "Window (WN): click a wall"
 msgstr "窗 (WN)：單擊一面牆"
 
-#: crates/core/src/schedule.rs:118
+#: crates/core/src/schedule.rs:119
 msgid "Window Schedule"
 msgstr "窗明細表"
 
@@ -8220,7 +8223,7 @@ msgstr "X"
 msgid "Y"
 msgstr "Y"
 
-#: crates/core/src/schedule.rs:1048
+#: crates/core/src/schedule.rs:1179
 msgid "Yes"
 msgstr "是"
 
@@ -8714,11 +8717,11 @@ msgstr "{}（未載入）"
 msgid "{} (primary)"
 msgstr "{}（主選項）"
 
-#: crates/core/src/schedule.rs:1038
+#: crates/core/src/schedule.rs:1169
 msgid "{} ({})"
 msgstr "{}（{}）"
 
-#: crates/ui-egui/src/properties.rs:2571
+#: crates/ui-egui/src/properties.rs:2572
 msgid "{} Schedule"
 msgstr "{}明細表"
 
@@ -9120,6 +9123,11 @@ msgctxt "category"
 msgid "Mass Floor"
 msgstr "體量樓層"
 
+#: crates/ui-egui/src/lang.rs:278
+msgctxt "category"
+msgid "Multi-Category"
+msgstr ""
+
 #: crates/ui-egui/src/lang.rs:262
 msgctxt "category"
 msgid "Pipe"
@@ -9344,6 +9352,11 @@ msgstr "體量樓層"
 msgctxt "category-plural"
 msgid "Masses"
 msgstr "體量"
+
+#: crates/ui-egui/src/lang.rs:278
+msgctxt "category-plural"
+msgid "Multi-Category"
+msgstr ""
 
 #: crates/ui-egui/src/lang.rs:262
 msgctxt "category-plural"

@@ -227,7 +227,7 @@ msgstr "Objektstile anpassen"
 msgid "Adapt Project Units"
 msgstr "Projekteinheiten anpassen"
 
-#: crates/ui-egui/src/properties.rs:2671
+#: crates/ui-egui/src/properties.rs:2672
 #: crates/ui-egui/src/shortcuts.rs:438
 msgid "Add"
 msgstr "Hinzufügen"
@@ -294,7 +294,7 @@ msgstr "Tastenkürzel hinzufügen"
 msgid "Add Size"
 msgstr ""
 
-#: crates/ui-egui/src/properties.rs:2843
+#: crates/ui-egui/src/properties.rs:2844
 msgid "Add Sort"
 msgstr "Sortierung hinzufügen"
 
@@ -544,7 +544,8 @@ msgstr "Bogenlänge:"
 msgid "Architecture"
 msgstr "Architektur"
 
-#: crates/core/src/schedule.rs:184
+#: crates/core/src/schedule.rs:193
+#: crates/core/src/schedule.rs:229
 msgid "Area"
 msgstr "Fläche"
 
@@ -564,7 +565,7 @@ msgstr "Wie das System"
 msgid "As the units show"
 msgstr "Wie die Einheiten anzeigen"
 
-#: crates/ui-egui/src/properties.rs:2823
+#: crates/ui-egui/src/properties.rs:2824
 msgid "Ascending"
 msgstr "Aufsteigend"
 
@@ -580,11 +581,11 @@ msgstr ""
 msgid "Associated Level"
 msgstr "Zugeordnetes Geschoss"
 
-#: crates/core/src/model.rs:2330
+#: crates/core/src/model.rs:2333
 msgid "At wall centre line"
 msgstr "An Wandmittellinie"
 
-#: crates/core/src/model.rs:2331
+#: crates/core/src/model.rs:2334
 msgid "At wall finish"
 msgstr "An Wandoberfläche"
 
@@ -626,7 +627,7 @@ msgstr "Automatisches Speichern"
 msgid "Autosave in the background"
 msgstr "Im Hintergrund automatisch speichern"
 
-#: crates/ui-egui/src/properties.rs:2655
+#: crates/ui-egui/src/properties.rs:2656
 msgid "Available fields:"
 msgstr "Verfügbare Felder:"
 
@@ -870,7 +871,7 @@ msgstr "Begrenzungslinie: Grundriss des Dachs im Geschoss darüber und darin lie
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "Begrenzungslinie: Umriss des Schachtdurchbruchs skizzieren"
 
-#: crates/core/src/model.rs:2540
+#: crates/core/src/model.rs:2543
 msgid "Brick"
 msgstr "Ziegel"
 
@@ -918,16 +919,16 @@ msgstr "Verkabelung"
 msgid "Cabling (CB): click its start and its end; a chain of clicks makes a cable for each step"
 msgstr "Verkabelung (CB): Anfang und Ende anklicken; eine Klickkette erzeugt je Schritt ein Kabel"
 
-#: crates/ui-egui/src/properties.rs:2739
-#: crates/ui-egui/src/properties.rs:2742
+#: crates/ui-egui/src/properties.rs:2740
+#: crates/ui-egui/src/properties.rs:2743
 msgid "Calculate totals"
 msgstr "Summen berechnen"
 
-#: crates/ui-egui/src/properties.rs:2763
+#: crates/ui-egui/src/properties.rs:2764
 msgid "Calculated Value"
 msgstr "Berechneter Wert"
 
-#: crates/ui-egui/src/properties.rs:2689
+#: crates/ui-egui/src/properties.rs:2690
 msgid "Calculated Value…"
 msgstr "Berechneter Wert…"
 
@@ -936,7 +937,7 @@ msgstr "Berechneter Wert…"
 msgid "Came in: {}"
 msgstr "Eingelesen: {}"
 
-#: crates/core/src/commands.rs:1511
+#: crates/core/src/commands.rs:1515
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3398
 #: crates/ui-egui/src/properties.rs:260
@@ -960,8 +961,8 @@ msgstr ""
 #: crates/ui-egui/src/linestyles.rs:307
 #: crates/ui-egui/src/lineweights.rs:151
 #: crates/ui-egui/src/objectstyles.rs:79
-#: crates/ui-egui/src/properties.rs:2588
-#: crates/ui-egui/src/properties.rs:2783
+#: crates/ui-egui/src/properties.rs:2589
+#: crates/ui-egui/src/properties.rs:2784
 #: crates/ui-egui/src/purge.rs:77
 #: crates/ui-egui/src/reinforce.rs:536
 #: crates/ui-egui/src/shortcuts.rs:401
@@ -1009,6 +1010,7 @@ msgstr "Kategorien"
 msgid "Categories not overridden are drawn as Object Styles sets them."
 msgstr "Nicht überschriebene Kategorien werden so gezeichnet, wie Objektstile sie festlegen."
 
+#: crates/core/src/schedule.rs:220
 #: crates/ui-egui/src/editor.rs:975
 #: crates/ui-egui/src/objectstyles.rs:55
 #: crates/ui-egui/src/properties.rs:1592
@@ -1078,7 +1080,7 @@ msgstr "Mittelpunkt"
 msgid "Centre Lines"
 msgstr "Mittellinien"
 
-#: crates/core/src/model.rs:2548
+#: crates/core/src/model.rs:2551
 msgid "Ceramic tile"
 msgstr "Keramikfliese"
 
@@ -1632,7 +1634,7 @@ msgstr "Klicken, wohin der nächste Lauf vom Podest geht: geradeaus, links, rech
 #: crates/ui-egui/src/properties.rs:1916
 #: crates/ui-egui/src/properties.rs:2243
 #: crates/ui-egui/src/properties.rs:2538
-#: crates/ui-egui/src/properties.rs:2861
+#: crates/ui-egui/src/properties.rs:2862
 #: crates/ui-egui/src/revit.rs:259
 #: crates/ui-egui/src/settings.rs:305
 #: crates/ui-egui/src/shortcuts.rs:567
@@ -1732,7 +1734,7 @@ msgstr "Konzeptioneller Volumenkörper"
 msgid "Concrete"
 msgstr "Beton"
 
-#: crates/core/src/model.rs:2542
+#: crates/core/src/model.rs:2545
 msgid "Concrete block"
 msgstr "Betonblock"
 
@@ -1801,7 +1803,7 @@ msgstr "{} IFC GlobalIds kopiert."
 msgid "Copied {} rows, tab-separated."
 msgstr "{} Zeilen kopiert, tabgetrennt."
 
-#: crates/core/src/model.rs:2556
+#: crates/core/src/model.rs:2559
 msgid "Copper"
 msgstr "Kupfer"
 
@@ -1881,7 +1883,7 @@ msgstr "{} konnte nicht geöffnet werden: {}"
 msgid "Couldn't save the setting: {}"
 msgstr "Die Einstellung konnte nicht gespeichert werden: {}"
 
-#: crates/core/src/schedule.rs:196
+#: crates/core/src/schedule.rs:205
 #: crates/ui-egui/src/filter.rs:84
 #: crates/ui-egui/src/linestyles/creator.rs:178
 #: crates/ui-egui/src/reinforce.rs:50
@@ -2185,7 +2187,7 @@ msgstr "Abbrechen (DW): ein Element anklicken, um es in der Phase der Ansicht ab
 msgid "Demolished"
 msgstr "Abgebrochen"
 
-#: crates/core/src/commands.rs:7872
+#: crates/core/src/commands.rs:7887
 msgid "Dependent"
 msgstr "Abhängig"
 
@@ -2195,7 +2197,7 @@ msgstr "Abhängig"
 msgid "Depth"
 msgstr "Tiefe"
 
-#: crates/ui-egui/src/properties.rs:2823
+#: crates/ui-egui/src/properties.rs:2824
 msgid "Descending"
 msgstr "Absteigend"
 
@@ -2393,7 +2395,7 @@ msgstr "Tür"
 msgid "Door (DR): click a wall"
 msgstr "Tür (DR): Wand anklicken"
 
-#: crates/core/src/schedule.rs:117
+#: crates/core/src/schedule.rs:118
 msgid "Door Schedule"
 msgstr "Türtabelle"
 
@@ -2419,11 +2421,11 @@ msgstr "Gepunktet"
 msgid "Double Door"
 msgstr "Zweiflügelige Tür"
 
-#: crates/core/src/model.rs:2161
+#: crates/core/src/model.rs:2164
 msgid "Double Sliding"
 msgstr "Doppelt schiebend"
 
-#: crates/core/src/model.rs:2159
+#: crates/core/src/model.rs:2162
 msgid "Double Swing"
 msgstr "Doppelt aufschlagend"
 
@@ -2563,7 +2565,7 @@ msgstr "Erdungselektrode (EG): ein Stab, der vom Geschoss aus dort eingetrieben 
 msgid "Earthing Electrodes"
 msgstr "Erdungselektroden"
 
-#: crates/core/src/model.rs:1584
+#: crates/core/src/model.rs:1587
 msgid "East"
 msgstr "Osten"
 
@@ -2651,7 +2653,7 @@ msgstr ""
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr ""
 
-#: crates/core/src/commands.rs:1775
+#: crates/core/src/commands.rs:1779
 msgid "Elements"
 msgstr "Elemente"
 
@@ -2819,7 +2821,7 @@ msgstr "Familien"
 msgid "Families of parallel lines: drafting ones mm on paper, the same at any scale; model ones mm in the building."
 msgstr "Familien paralleler Linien: Zeichnungsmuster in mm auf dem Papier, bei jedem Maßstab gleich; Modellmuster in mm im Gebäude."
 
-#: crates/core/src/schedule.rs:182
+#: crates/core/src/schedule.rs:191
 msgid "Family"
 msgstr "Familie"
 
@@ -3008,7 +3010,7 @@ msgstr "Skizze abschließen oder abbrechen, bevor der zugehörige Plan verlassen
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr ""
 
-#: crates/core/src/model.rs:2163
+#: crates/core/src/model.rs:2166
 msgid "Fixed"
 msgstr "Fest"
 
@@ -3067,7 +3069,7 @@ msgstr "Grundriss: {}"
 msgid "Floor Plans"
 msgstr "Grundrisse"
 
-#: crates/core/src/schedule.rs:120
+#: crates/core/src/schedule.rs:121
 msgid "Floor Schedule"
 msgstr "Bodentabelle"
 
@@ -3103,7 +3105,7 @@ msgstr ""
 msgid "Folder for new projects"
 msgstr "Ordner für neue Projekte"
 
-#: crates/core/src/model.rs:2162
+#: crates/core/src/model.rs:2165
 msgid "Folding"
 msgstr "Falt-"
 
@@ -3175,8 +3177,8 @@ msgstr "Körperaussparung"
 msgid "Forms"
 msgstr "Volumenkörper"
 
-#: crates/ui-egui/src/properties.rs:2750
-#: crates/ui-egui/src/properties.rs:2777
+#: crates/ui-egui/src/properties.rs:2751
+#: crates/ui-egui/src/properties.rs:2778
 msgid "Formula"
 msgstr "Formel"
 
@@ -3322,7 +3324,7 @@ msgstr ""
 msgid "Grids start at 0, 0 in each view and rotate together."
 msgstr ""
 
-#: crates/core/src/schedule.rs:444
+#: crates/core/src/schedule.rs:482
 msgid "Gross Floor Area"
 msgstr "Bruttogrundfläche"
 
@@ -3334,7 +3336,7 @@ msgstr "Gruppe"
 msgid "Group:"
 msgstr "Gruppe:"
 
-#: crates/core/src/model.rs:2547
+#: crates/core/src/model.rs:2550
 msgid "Gypsum board"
 msgstr "Gipskartonplatte"
 
@@ -3357,7 +3359,7 @@ msgstr "Halbton"
 msgid "Headboard Height"
 msgstr "Höhe Kopfteil"
 
-#: crates/ui-egui/src/properties.rs:2730
+#: crates/ui-egui/src/properties.rs:2731
 msgid "Heading"
 msgstr "Überschrift"
 
@@ -3695,7 +3697,7 @@ msgstr "Kursiv"
 msgid "Italic (Ctrl+I)"
 msgstr "Kursiv (Strg+I)"
 
-#: crates/ui-egui/src/properties.rs:2854
+#: crates/ui-egui/src/properties.rs:2855
 msgid "Itemize every instance"
 msgstr "Jedes Exemplar einzeln auflisten"
 
@@ -3864,7 +3866,7 @@ msgstr "Geschosshöhe"
 msgid "Level Marker Symbol:"
 msgstr "Geschossmarke:"
 
-#: crates/core/src/schedule.rs:121
+#: crates/core/src/schedule.rs:122
 msgid "Level Schedule"
 msgstr "Geschosstabelle"
 
@@ -4144,7 +4146,7 @@ msgstr "Tabelle erstellen oder öffnen"
 msgid "Manage"
 msgstr "Verwalten"
 
-#: crates/core/src/model.rs:1242
+#: crates/core/src/model.rs:1245
 msgid "Mark"
 msgstr "Markierung"
 
@@ -4193,6 +4195,7 @@ msgstr "Eigenschaften übertragen: Quelltyp '{}' gewählt. Zielelemente auswähl
 msgid "Matched properties: applied type '{}' to {} element(s)"
 msgstr "Eigenschaften übertragen: Typ '{}' auf {} Element(e) angewendet"
 
+#: crates/core/src/schedule.rs:230
 #: crates/ui-egui/src/editor.rs:787
 #: crates/ui-egui/src/properties.rs:1660
 #: crates/ui-egui/src/properties.rs:1774
@@ -4241,7 +4244,7 @@ msgstr ""
 msgid "Maximum Riser Height"
 msgstr "Maximale Steigungshöhe"
 
-#: crates/core/src/commands.rs:1606
+#: crates/core/src/commands.rs:1610
 msgid "Measure"
 msgstr "Messen"
 
@@ -4384,12 +4387,12 @@ msgid "Move (MV): click a base point, then where it goes"
 msgstr "Verschieben (MV): einen Basispunkt klicken, dann die Zielstelle"
 
 #: crates/ui-egui/src/editor.rs:816
-#: crates/ui-egui/src/properties.rs:2715
+#: crates/ui-egui/src/properties.rs:2716
 msgid "Move Down"
 msgstr "Nach unten"
 
 #: crates/ui-egui/src/editor.rs:813
-#: crates/ui-egui/src/properties.rs:2708
+#: crates/ui-egui/src/properties.rs:2709
 msgid "Move Up"
 msgstr "Nach oben"
 
@@ -4441,7 +4444,7 @@ msgstr "NBR 6492: Zielmarke im Plan (±0.00), gleichseitiges Dreieck im Schnitt"
 msgid "NOT ENCLOSED"
 msgstr "NICHT UMSCHLOSSEN"
 
-#: crates/core/src/model.rs:1243
+#: crates/core/src/model.rs:1246
 #: crates/ui-egui/src/cad.rs:85
 #: crates/ui-egui/src/clouds.rs:59
 #: crates/ui-egui/src/electrical.rs:298
@@ -4449,14 +4452,14 @@ msgstr "NICHT UMSCHLOSSEN"
 #: crates/ui-egui/src/lib.rs:4177
 #: crates/ui-egui/src/properties.rs:1788
 #: crates/ui-egui/src/properties.rs:2495
-#: crates/ui-egui/src/properties.rs:2765
+#: crates/ui-egui/src/properties.rs:2766
 msgid "Name"
 msgstr "Name"
 
 #: crates/ui-egui/src/electrical.rs:417
 #: crates/ui-egui/src/phasing.rs:279
 #: crates/ui-egui/src/phasing.rs:470
-#: crates/ui-egui/src/properties.rs:2583
+#: crates/ui-egui/src/properties.rs:2584
 #: crates/ui-egui/src/templates.rs:425
 #: crates/ui-egui/src/typeprops.rs:100
 #: crates/ui-egui/src/typeprops.rs:101
@@ -4555,7 +4558,7 @@ msgstr "Neuer Typ"
 msgid "New {}"
 msgstr "Neu: {}"
 
-#: crates/core/src/schedule.rs:1048
+#: crates/core/src/schedule.rs:1179
 msgid "No"
 msgstr "Nein"
 
@@ -4635,7 +4638,7 @@ msgstr "Nominelle Texthöhe:"
 msgid "None"
 msgstr "Keine"
 
-#: crates/core/src/model.rs:1582
+#: crates/core/src/model.rs:1585
 msgid "North"
 msgstr "Norden"
 
@@ -4701,7 +4704,7 @@ msgstr "Nichts Ausgewähltes ist in dieser Ansicht ausgeblendet. Ausgeblendete E
 msgid "Nothing was left out."
 msgstr "Nichts wurde ausgelassen."
 
-#: crates/core/src/schedule.rs:209
+#: crates/core/src/schedule.rs:247
 msgid "Number"
 msgstr "Nummer"
 
@@ -4718,8 +4721,8 @@ msgstr "Nummer"
 #: crates/ui-egui/src/linestyles.rs:308
 #: crates/ui-egui/src/lineweights.rs:152
 #: crates/ui-egui/src/objectstyles.rs:80
-#: crates/ui-egui/src/properties.rs:2589
-#: crates/ui-egui/src/properties.rs:2782
+#: crates/ui-egui/src/properties.rs:2590
+#: crates/ui-egui/src/properties.rs:2783
 #: crates/ui-egui/src/reinforce.rs:537
 #: crates/ui-egui/src/standards.rs:335
 #: crates/ui-egui/src/templates.rs:680
@@ -4748,7 +4751,7 @@ msgstr "Objektstile…"
 msgid "Off"
 msgstr "Aus"
 
-#: crates/core/src/schedule.rs:191
+#: crates/core/src/schedule.rs:200
 #: crates/ui-egui/src/linestyles/creator.rs:76
 #: crates/ui-egui/src/sketch.rs:684
 msgid "Offset"
@@ -4836,7 +4839,7 @@ msgstr "Öffnet die Release-Seite auf GitHub. Diese Kopie kann sich nicht selbst
 msgid "Open…"
 msgstr "Öffnen…"
 
-#: crates/core/src/schedule.rs:193
+#: crates/core/src/schedule.rs:202
 #: crates/ui-egui/src/editor.rs:987
 msgid "Operation"
 msgstr "Bedienung"
@@ -4853,7 +4856,7 @@ msgstr "Optionssatz:"
 msgid "Options:"
 msgstr "Optionen:"
 
-#: crates/ui-egui/src/properties.rs:2832
+#: crates/ui-egui/src/properties.rs:2833
 msgid "Order"
 msgstr "Reihenfolge"
 
@@ -5071,7 +5074,7 @@ msgstr "Stift {} bei {}"
 msgid "Performance"
 msgstr "Leistung"
 
-#: crates/core/src/schedule.rs:213
+#: crates/core/src/schedule.rs:251
 msgid "Perimeter"
 msgstr "Umfang"
 
@@ -5491,7 +5494,7 @@ msgstr "Einfach"
 msgid "Plan"
 msgstr ""
 
-#: crates/core/src/schedule.rs:269
+#: crates/core/src/schedule.rs:307
 msgid "Plan Area"
 msgstr "Planfläche"
 
@@ -5914,8 +5917,8 @@ msgstr "CAD neu laden"
 #: crates/ui-egui/src/graphics.rs:1139
 #: crates/ui-egui/src/graphics.rs:1194
 #: crates/ui-egui/src/properties.rs:2338
-#: crates/ui-egui/src/properties.rs:2680
-#: crates/ui-egui/src/properties.rs:2833
+#: crates/ui-egui/src/properties.rs:2681
+#: crates/ui-egui/src/properties.rs:2834
 msgid "Remove"
 msgstr "Entfernen"
 
@@ -6071,11 +6074,11 @@ msgstr "Menüband"
 msgid "Right"
 msgstr ""
 
-#: crates/core/src/schedule.rs:405
+#: crates/core/src/schedule.rs:443
 msgid "Riser Height"
 msgstr "Steigungshöhe"
 
-#: crates/core/src/schedule.rs:404
+#: crates/core/src/schedule.rs:442
 msgid "Risers"
 msgstr "Steigungen"
 
@@ -6103,7 +6106,7 @@ msgstr "Dach über Fläche (RB): ein Dach auf den oberen Flächen der ausgewähl
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Dach über Grundriss: innerhalb der Wände anklicken, um sie im Geschoss darüber zu überdachen"
 
-#: crates/core/src/model.rs:2549
+#: crates/core/src/model.rs:2552
 msgid "Roof tiles"
 msgstr "Dachziegel"
 
@@ -6132,7 +6135,7 @@ msgstr "Raumflächenberechnung: wo Raumflächen gemessen werden; aktuell {}"
 msgid "Room Bounding"
 msgstr ""
 
-#: crates/core/src/schedule.rs:116
+#: crates/core/src/schedule.rs:117
 msgid "Room Schedule"
 msgstr "Raumtabelle"
 
@@ -6246,7 +6249,7 @@ msgstr "Scan"
 msgid "Schedule"
 msgstr "Tabelle"
 
-#: crates/ui-egui/src/properties.rs:2637
+#: crates/ui-egui/src/properties.rs:2638
 msgid "Schedule Properties: {}"
 msgstr "Tabelleneigenschaften: {}"
 
@@ -6260,7 +6263,7 @@ msgstr "Tabelle/Mengen…"
 msgid "Schedule: {}"
 msgstr "Tabelle: {}"
 
-#: crates/ui-egui/src/properties.rs:2695
+#: crates/ui-egui/src/properties.rs:2696
 msgid "Scheduled fields (in order):"
 msgstr "Tabellenfelder (in Reihenfolge):"
 
@@ -6272,7 +6275,7 @@ msgstr "Tabellen"
 msgid "Schedules/Quantities (all)"
 msgstr "Tabellen/Mengen (alle)"
 
-#: crates/core/src/model.rs:2545
+#: crates/core/src/model.rs:2548
 msgid "Screed"
 msgstr "Estrich"
 
@@ -6583,7 +6586,7 @@ msgstr "Seiten"
 msgid "Sides:"
 msgstr "Seiten:"
 
-#: crates/core/src/schedule.rs:231
+#: crates/core/src/schedule.rs:269
 msgid "Sill"
 msgstr "Brüstung"
 
@@ -6636,7 +6639,7 @@ msgstr "Diese Version überspringen"
 msgid "Sky"
 msgstr "Himmel"
 
-#: crates/core/src/model.rs:2160
+#: crates/core/src/model.rs:2163
 msgid "Sliding"
 msgstr "Schiebe-"
 
@@ -6648,7 +6651,7 @@ msgstr "Schiebetür"
 msgid "Sliding Window"
 msgstr "Schiebefenster"
 
-#: crates/core/src/schedule.rs:268
+#: crates/core/src/schedule.rs:306
 #: crates/ui-egui/src/reinforce.rs:111
 #: crates/ui-egui/src/reinforce.rs:139
 msgid "Slope"
@@ -6755,7 +6758,7 @@ msgstr "Volltonfüllung"
 msgid "Solid fill"
 msgstr "Volltonfüllung"
 
-#: crates/ui-egui/src/properties.rs:2812
+#: crates/ui-egui/src/properties.rs:2813
 msgid "Sort by:"
 msgstr "Sortieren nach:"
 
@@ -6767,7 +6770,7 @@ msgstr "Sortieren/Gruppieren"
 msgid "Source code on GitHub"
 msgstr "Quellcode auf GitHub"
 
-#: crates/core/src/model.rs:1583
+#: crates/core/src/model.rs:1586
 msgid "South"
 msgstr "Süden"
 
@@ -6926,7 +6929,7 @@ msgstr "Bügel"
 msgid "Straight"
 msgstr "Gerade"
 
-#: crates/core/src/schedule.rs:254
+#: crates/core/src/schedule.rs:292
 msgid "Structural"
 msgstr "Tragend"
 
@@ -6997,7 +7000,7 @@ msgstr "Oberflächenmuster"
 msgid "Surface Transparency"
 msgstr "Oberflächentransparenz"
 
-#: crates/core/src/model.rs:2158
+#: crates/core/src/model.rs:2161
 msgid "Swing"
 msgstr "Aufschlagrichtung"
 
@@ -7050,7 +7053,7 @@ msgstr "Symbole"
 msgid "Symbols are what the plan draws of the family besides its forms: lines, arcs, labels and dots."
 msgstr ""
 
-#: crates/core/src/schedule.rs:190
+#: crates/core/src/schedule.rs:199
 msgid "System"
 msgstr "System"
 
@@ -7368,7 +7371,7 @@ msgstr ""
 msgid "Theme"
 msgstr "Design"
 
-#: crates/ui-egui/src/properties.rs:2812
+#: crates/ui-egui/src/properties.rs:2813
 msgid "Then by:"
 msgstr "Dann nach:"
 
@@ -7481,7 +7484,7 @@ msgstr "Fliesenbreite"
 msgid "Timber"
 msgstr "Holz"
 
-#: crates/core/src/schedule.rs:474
+#: crates/core/src/schedule.rs:512
 msgid "Title"
 msgstr "Titel"
 
@@ -7566,7 +7569,7 @@ msgstr "Transparenz"
 msgid "Transparent"
 msgstr "Transparent"
 
-#: crates/core/src/schedule.rs:406
+#: crates/core/src/schedule.rs:444
 msgid "Tread"
 msgstr "Auftritt"
 
@@ -7612,10 +7615,10 @@ msgstr "Die Wand um ihre {} drehen: {}"
 msgid "Two {} are called {}."
 msgstr ""
 
-#: crates/core/src/model.rs:1244
+#: crates/core/src/model.rs:1247
 #: crates/ui-egui/src/editor.rs:666
 #: crates/ui-egui/src/editor.rs:672
-#: crates/ui-egui/src/properties.rs:2768
+#: crates/ui-egui/src/properties.rs:2769
 msgid "Type"
 msgstr "Typ"
 
@@ -7685,7 +7688,7 @@ msgstr "Typen"
 msgid "UP"
 msgstr "OBEN"
 
-#: crates/core/src/schedule.rs:215
+#: crates/core/src/schedule.rs:253
 #: crates/ui-egui/src/properties.rs:161
 msgid "Unbounded Height"
 msgstr ""
@@ -7769,7 +7772,7 @@ msgstr "Einheiten"
 msgid "Units Format"
 msgstr "Einheitenformat"
 
-#: crates/core/src/commands.rs:8013
+#: crates/core/src/commands.rs:8028
 msgid "Unnamed"
 msgstr "Unbenannt"
 
@@ -8004,7 +8007,7 @@ msgstr ""
 msgid "Voltages"
 msgstr ""
 
-#: crates/core/src/schedule.rs:200
+#: crates/core/src/schedule.rs:209
 msgid "Volume"
 msgstr "Volumen"
 
@@ -8036,7 +8039,7 @@ msgstr "Wandfundament"
 msgid "Wall Footing (FW): click its start and its end, or a chain of clicks, under a wall"
 msgstr "Wandfundament (FW): Anfang und Ende anklicken oder eine Klickkette unter einer Wand"
 
-#: crates/core/src/schedule.rs:119
+#: crates/core/src/schedule.rs:120
 msgid "Wall Schedule"
 msgstr "Wandtabelle"
 
@@ -8060,11 +8063,11 @@ msgstr "Waschbecken"
 msgid "Wave"
 msgstr "Welle"
 
-#: crates/core/src/schedule.rs:321
+#: crates/core/src/schedule.rs:359
 msgid "Weight"
 msgstr "Gewicht"
 
-#: crates/core/src/model.rs:1585
+#: crates/core/src/model.rs:1588
 msgid "West"
 msgstr "Westen"
 
@@ -8131,7 +8134,7 @@ msgstr "Fenster"
 msgid "Window (WN): click a wall"
 msgstr "Fenster (WN): eine Wand anklicken"
 
-#: crates/core/src/schedule.rs:118
+#: crates/core/src/schedule.rs:119
 msgid "Window Schedule"
 msgstr "Fenstertabelle"
 
@@ -8219,7 +8222,7 @@ msgstr "X"
 msgid "Y"
 msgstr "Y"
 
-#: crates/core/src/schedule.rs:1048
+#: crates/core/src/schedule.rs:1179
 msgid "Yes"
 msgstr "Ja"
 
@@ -8713,11 +8716,11 @@ msgstr "{} (nicht geladen)"
 msgid "{} (primary)"
 msgstr "{} (primär)"
 
-#: crates/core/src/schedule.rs:1038
+#: crates/core/src/schedule.rs:1169
 msgid "{} ({})"
 msgstr "{} ({})"
 
-#: crates/ui-egui/src/properties.rs:2571
+#: crates/ui-egui/src/properties.rs:2572
 msgid "{} Schedule"
 msgstr "{}tabelle"
 
@@ -9119,6 +9122,11 @@ msgctxt "category"
 msgid "Mass Floor"
 msgstr "Volumenkörpergeschoss"
 
+#: crates/ui-egui/src/lang.rs:278
+msgctxt "category"
+msgid "Multi-Category"
+msgstr ""
+
 #: crates/ui-egui/src/lang.rs:262
 msgctxt "category"
 msgid "Pipe"
@@ -9343,6 +9351,11 @@ msgstr "Volumenkörpergeschosse"
 msgctxt "category-plural"
 msgid "Masses"
 msgstr "Volumenkörper"
+
+#: crates/ui-egui/src/lang.rs:278
+msgctxt "category-plural"
+msgid "Multi-Category"
+msgstr ""
 
 #: crates/ui-egui/src/lang.rs:262
 msgctxt "category-plural"
