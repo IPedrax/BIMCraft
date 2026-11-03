@@ -11,7 +11,7 @@ fn first_tab(h: &Harness<BimApp>) -> f32 {
 fn the_compact_layout_puts_the_cards_flush_and_the_settings_file_keeps_it() {
     let file = std::env::temp_dir().join(format!("bimcraft-ui-look-{}", std::process::id())).join("settings.json");
     let _ = std::fs::remove_file(&file);
-    let mut h = app(BOX);
+    let mut h = bimcraft(BOX);
     h.state_mut().use_settings(file.clone());
     h.run();
     let floating = first_tab(&h);
@@ -24,7 +24,7 @@ fn the_compact_layout_puts_the_cards_flush_and_the_settings_file_keeps_it() {
     let kept: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
     assert_eq!(kept["layout"], "compact");
     // A window started on the same file is laid out as this one was left, and Floating puts the cards back.
-    let mut again = app(BOX);
+    let mut again = bimcraft(BOX);
     again.state_mut().use_settings(file.clone());
     again.run();
     assert!(again.state().compact);
@@ -38,7 +38,7 @@ fn the_compact_layout_puts_the_cards_flush_and_the_settings_file_keeps_it() {
 
 #[test]
 fn a_click_on_a_card_or_between_cards_is_no_click_on_the_view() {
-    let mut h = app(BOX);
+    let mut h = bimcraft(BOX);
     tool(&mut h, "Wall");
     let walls = ids(&h, "wall").len();
     let view = h.state().view_rect;
@@ -53,7 +53,7 @@ fn a_click_on_a_card_or_between_cards_is_no_click_on_the_view() {
 
 #[test]
 fn the_views_tabs_and_its_control_bar_float_over_it_and_a_click_on_them_is_no_click_on_the_view() {
-    let mut h = app(BOX);
+    let mut h = bimcraft(BOX);
     let view = h.state().view_rect;
     let tab = h.state().tab_rects.first().map(|(_, r)| *r).unwrap();
     let bar = h.get_by_label("Temporary Hide/Isolate").rect().union(h.get_by_label("Reveal Hidden Elements").rect());
@@ -83,7 +83,7 @@ fn the_views_tabs_and_its_control_bar_float_over_it_and_a_click_on_them_is_no_cl
 
 #[test]
 fn the_options_bar_floats_over_the_view_while_it_has_something_on_it_and_the_view_never_moves() {
-    let mut h = app(BOX);
+    let mut h = bimcraft(BOX);
     let view = h.state().view_rect;
     assert!(h.query_by_label("Location Line:").is_none(), "with nothing to set there's no bar");
     tool(&mut h, "Wall");
@@ -99,7 +99,7 @@ fn the_options_bar_floats_over_the_view_while_it_has_something_on_it_and_the_vie
 
 #[test]
 fn a_click_on_the_floating_options_bar_is_no_click_on_the_view_under_it() {
-    let mut h = app(BOX);
+    let mut h = bimcraft(BOX);
     tool(&mut h, "Wall");
     let label = h.get_by_label("Location Line:").rect();
     // On the bar's label, and on the bar just left of it.
@@ -121,7 +121,7 @@ fn the_ground_under_the_cards_is_the_canvas_in_all_three_looks() {
     for (theme, light_canvas, paper) in
         [(ThemePreference::Light, false, true), (ThemePreference::Dark, false, false), (ThemePreference::Dark, true, true)]
     {
-        let mut h = app(BOX);
+        let mut h = bimcraft(BOX);
         h.state_mut().light_canvas = light_canvas;
         h.ctx.set_theme(theme);
         h.run();

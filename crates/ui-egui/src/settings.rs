@@ -225,6 +225,10 @@ impl BimApp {
         let kept = read(&path).map_or(now.clone(), |v| Settings::from_json(&v, now));
         (self.lang, self.ribbon_min, self.docking) = (kept.language, kept.ribbon_minimized, kept.docking.clone());
         (self.compact, self.profile) = (kept.compact, kept.profile);
+        // BIMCraft has no ribbon: it starts with its tools out, whatever a session in Rev left.
+        if self.profile == Profile::BimCraft {
+            self.docking.show(Palette::Tools, true);
+        }
         self.theme_wanted = Some(kept.theme);
         self.light_canvas = kept.light_canvas;
         self.autosave.interval_minutes = kept.autosave_minutes;
@@ -334,6 +338,7 @@ impl BimApp {
 
     fn interface_page(&mut self, ui: &mut Ui, ctx: &Context) {
         heading(ui, msg!("Profile"));
+        let before = self.profile;
         ui.horizontal(|ui| {
             for (profile, tip) in [
                 (Profile::BimCraft, msg!("BIMCraft's own look: a dark title bar, and the ribbon, the palettes and the bars laid out as Layout says")),
@@ -345,6 +350,10 @@ impl BimApp {
                 ui.radio_value(&mut self.profile, profile, profile.name()).on_hover_text(t(tip));
             }
         });
+        // Back in BIMCraft, its tools come back where they were: Rev, which has the ribbon, put them away.
+        if before != self.profile && self.profile == Profile::BimCraft {
+            self.docking.show(Palette::Tools, true);
+        }
         heading(ui, msg!("Theme"));
         self.theme_choices(ui, false);
         heading(ui, msg!("Layout"));
@@ -386,9 +395,14 @@ impl BimApp {
                 self.show_palette(p, on);
             }
         }
-        if ui.button(t("Reset Palette Layout")).on_hover_text(t("Properties over the Project Browser, on the left, as at first")).clicked()
-        {
-            self.docking = Docking::default();
+        let (tip, layout) = match self.profile {
+            Profile::BimCraft => {
+                (msg!("The tools on the left, the Inspector over the Navigator on the right, as at first"), Docking::default())
+            }
+            Profile::Rev => (msg!("Properties over the Project Browser, on the left, as at first"), Docking::revit()),
+        };
+        if ui.button(t("Reset Palette Layout")).on_hover_text(t(tip)).clicked() {
+            self.docking = layout;
         }
         later(ui, |ui| {
             let (mut scale, mut keys, mut reopen, mut views) = (100.0, true, false, false);

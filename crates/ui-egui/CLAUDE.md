@@ -25,6 +25,8 @@ startup, tags) is [the desktop](../../docs/areas/desktop.md).
 
 ## Testing
 
+- `app(script)` builds the window in Rev, the ribbon's profile, with Revit's palette layout: the tests of what the tools do were written
+  round the ribbon. `bimcraft(script)` builds it in BIMCraft's own (the Tools palette, no ribbon) for what BIMCraft's chrome does.
 - The app is driven as a user drives it (egui_kittest): `app(script)` builds one on a script's model, then `click(&mut h, P2(x, y))` at
   a model point, `press(&mut h, "Label")` for a button, `shortcut(&mut h, "EH")`, `key`, `type_into(&mut h, "Label:", "text")`, `pick`
   for a check box or radio button, and `h.state()` to read the app. New behaviour gets a test in `tests.rs` or, for an area, in `tests/<area>.rs`.

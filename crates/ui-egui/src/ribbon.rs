@@ -37,6 +37,10 @@ pub(crate) struct Seen {
 thread_local! {
     /// Whether the tools drawn now are a panel's list: rows of an icon and its name, not the ribbon's buttons.
     static LISTING: Cell<bool> = const { Cell::new(false) };
+    /// Whether the rows drawn now are BIMCraft's Tools palette, each panel's under its name ([`rows`]).
+    static IN_PALETTE: Cell<bool> = const { Cell::new(false) };
+    /// Whether the tabs' Select panel is left out: the Tools palette draws it once, over the tabs it shows.
+    static SKIP_SELECT: Cell<bool> = const { Cell::new(false) };
     /// How the panels of the tab being drawn fit, by name; one not named shows all its tools.
     static FITS: RefCell<Vec<(String, Fit)>> = const { RefCell::new(Vec::new()) };
     /// The panels of the tab being drawn, as they're drawn.
@@ -59,6 +63,34 @@ pub(crate) fn listing() -> bool {
     LISTING.with(Cell::get)
 }
 
+/// Whether the rows drawn now are the Tools palette's (not a panel's list, which is narrower and in a popup).
+pub(crate) fn in_palette() -> bool {
+    IN_PALETTE.with(Cell::get)
+}
+
+/// Draws a tab's panels, `add` drawing them, as rows down `ui`, each panel's under its name: BIMCraft's Tools palette, which
+/// shows as rows what the ribbon lays out as buttons. (After PR 194's tool palette, by PolyglotOpenstreetmap.)
+pub(crate) fn rows(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
+    LISTING.with(|l| l.set(true));
+    IN_PALETTE.with(|p| p.set(true));
+    ui.vertical(|ui| {
+        ui.spacing_mut().item_spacing.y = 0.0;
+        add(ui);
+    });
+    IN_PALETTE.with(|p| p.set(false));
+    LISTING.with(|l| l.set(false));
+}
+
+/// Leaves the tabs' Select panel out of what is drawn next, or puts it back.
+pub(crate) fn skip_select(skip: bool) {
+    SKIP_SELECT.with(|s| s.set(skip));
+}
+
+/// Whether the Select panel is being left out.
+pub(crate) fn skipping_select() -> bool {
+    SKIP_SELECT.with(Cell::get)
+}
+
 /// Counts a ribbon tool, and says whether its panel has handed it over to its list: then it isn't drawn on the ribbon. A
 /// handed-over tool takes no room and has no name, so it's found only in the list.
 pub(crate) fn handed_over(ui: &mut Ui) -> Option<Response> {
@@ -73,10 +105,13 @@ pub(crate) fn handed_over(ui: &mut Ui) -> Option<Response> {
 /// Draw a tab's panels, `add` drawing them, in `room`: those it can't hold make room from the right, as the last frame's
 /// widths say they must.
 pub(crate) fn tab(ui: &mut Ui, key: Id, room: f32, add: impl FnOnce(&mut Ui)) {
-    // The last frame's panels, and how wide the whole tab would have been with every tool shown.
-    let (seen, whole): (Vec<Seen>, f32) = ui.ctx().data(|d| d.get_temp(key)).unwrap_or_default();
-    FITTED.with(|f| f.set(!seen.is_empty()));
-    FITS.with(|f| *f.borrow_mut() = fits(&seen, whole, room - SLACK));
+    // The last frame's panels, how wide the whole tab would have been with every tool shown, and what the tools' average widths
+    // missed at the room it had then: asked of the panels again, so a tab they misjudged still ends up fitting.
+    let (seen, whole, missed, then): (Vec<Seen>, f32, f32, f32) = ui.ctx().data(|d| d.get_temp(key)).unwrap_or_default();
+    let missed = if (then - room).abs() < 0.5 { missed } else { 0.0 };
+    let fitted = !seen.is_empty();
+    FITTED.with(|f| f.set(fitted));
+    FITS.with(|f| *f.borrow_mut() = fits(&seen, whole + missed, room - SLACK));
     SEEN.with(|s| s.borrow_mut().clear());
     let left = ui.cursor().left();
     END.with(|e| e.set(left));
@@ -85,7 +120,14 @@ pub(crate) fn tab(ui: &mut Ui, key: Id, room: f32, add: impl FnOnce(&mut Ui)) {
     let drawn = END.with(Cell::get) - left - LAID.with(Cell::get).2;
     let seen = SEEN.with(|s| std::mem::take(&mut *s.borrow_mut()));
     let whole = drawn + seen.iter().map(|p| (p.natural - p.drawn).max(0.0)).sum::<f32>();
-    ui.ctx().data_mut(|d| d.insert_temp(key, (seen, whole)));
+    // Still over though fitted (a first frame lays out every tool): another frame, asking more of the panels, until it fits or all
+    // there is to ask is asked.
+    let over = if fitted { (drawn - (room - SLACK)).max(0.0) } else { 0.0 };
+    let missed = (missed + over).min(whole);
+    if over > 0.0 && missed < whole {
+        ui.ctx().request_repaint();
+    }
+    ui.ctx().data_mut(|d| d.insert_temp(key, (seen, whole, missed, room)));
     FITS.with(|f| f.borrow_mut().clear());
     FITTED.with(|f| f.set(true));
 }
@@ -124,7 +166,13 @@ pub(crate) fn fits(seen: &[Seen], whole: f32, room: f32) -> Vec<(String, Fit)> {
 /// A ribbon panel: its tools over its name, which lists them; or, folded, one button that does.
 pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
     if listing() {
-        // Inside another panel's list (a folded panel's): the tools as rows.
+        // Inside another panel's list (a folded panel's): the tools as rows; in the Tools palette, under the panel's name.
+        if in_palette() {
+            // Painted: a panel may be named as a tab is (the Structure tab's Structure panel), and its tools say the rest.
+            let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::hover());
+            let at = r.left_bottom() - vec2(0.0, 6.0);
+            ui.painter().text(at, Align2::LEFT_BOTTOM, t(title), FontId::proportional(11.5), pal().muted);
+        }
         add(ui);
         return;
     }
@@ -142,6 +190,8 @@ pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
         TOOLS.with(|t| t.set((0, 0)));
         ui.scope(|ui| {
             ui.set_invisible();
+            // Counted at no size and no spacing either: else each handed-over tool would widen the folded button's room.
+            ui.spacing_mut().item_spacing = Vec2::ZERO;
             add(ui);
         });
         open_if_asked(ui, &r);
@@ -206,7 +256,8 @@ fn open_if_asked(ui: &Ui, r: &Response) {
 /// with it itself, so in a list the choices are a submenu of it. A tool the panel has handed over or folded has no button on the
 /// ribbon to hang them from: a request to open them opens the panel's list, where its row is.
 pub(crate) fn choices(ui: &Ui, r: &Response, open: bool, content: impl FnOnce(&mut Ui)) -> bool {
-    if listing() {
+    // The Tools palette is in no popup: there a row's choices are a menu of its own, as a ribbon button's are.
+    if listing() && !in_palette() {
         egui::containers::menu::SubMenu::new().show(ui, r, content);
         return false;
     }

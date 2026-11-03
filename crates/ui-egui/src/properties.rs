@@ -605,7 +605,8 @@ pub(crate) fn group_header(ui: &mut Ui, group: &str, open: bool) -> bool {
 /// columns here, and one under each row ([`end_row`]).
 pub(crate) fn grid(ui: &mut Ui, id: impl egui::AsIdSalt, add: impl FnOnce(&mut Ui)) {
     Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
-        let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
+        // Room left for the palette's scroll bar: one that comes would otherwise push the rows past the card.
+        let half = (ui.available_width() - ui.spacing().item_spacing.x - ui.spacing().scroll.bar_width) / 2.0;
         let rows = Grid::new(id).num_columns(2).min_col_width(half).max_col_width(half).show(ui, add).response.rect;
         if crate::style::rev() {
             let x = rows.left() + half + ui.spacing().item_spacing.x / 2.0;

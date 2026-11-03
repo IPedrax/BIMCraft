@@ -163,6 +163,19 @@ state and its commands: the project's own types and a family's in `properties.rs
 pattern's … opens the Patterns tab. The dialogs are one width, and the table's body one height where the window has room, known from the first frame:
 a body that fitted its rows grew over a few frames, and a click meant for one row landed on the next. A refusal is said in the dialog.
 
+BIMCraft's tools and Find. BIMCraft has no ribbon: its tools are the Tools palette (`dock::Palette::Tools`, `BimApp::tool_column`), a
+palette like the others, so it docks on any side, floats and closes, and the settings file keeps where (one a file from before it never
+named docks first on the left). Down its left a rail of the ribbon's tabs (`TABS`, each with an icon); beside it, as rows under their panels'
+names (`ribbon::rows`, which draws a tab's own panel code in the list mode a folded panel uses), the Select panel once
+(`ribbon::skip_select`), the contextual tab's rows named for the tool in hand or the selection, and the open tab's. The rows scroll both ways
+and never widen the column. Rev never shows the palette (`show` puts it away each frame) and BIMCraft brings it back. BIMCraft's default
+layout (`Docking::default`) is the Tools palette on the left and Properties over the Project Browser on the right, which BIMCraft calls the
+Inspector and the Navigator (`Palette::label`); Rev resets to Revit's (`Docking::revit`). Find (`find.rs`, Ctrl+K in both profiles, and a
+button on BIMCraft's title bar) lists every action a shortcut can be given (`shortcuts::ACTIONS`, with its keys) and every view the browser
+opens (`BimApp::openable`), by every word typed (`find::matches`); Enter takes the first, a click the one clicked, Escape or a click beside it
+closes it. Keyboard shortcuts are the same in both profiles. The tests of what the tools do drive Rev's ribbon (`app` is Rev's, with Revit's
+layout); BIMCraft's own chrome is tested through `bimcraft` (`tests/profile.rs`, `tests/look.rs`, `tests/smallest.rs`).
+
 Properties' filter. With a selection of several categories, the line under the Type Selector is a drop-down of them, as Revit's is
 (`BimApp::selection_categories`): Multiple Categories first, then each category with its count. One picked is what the palette shows
 and edits, the selection staying as it is: `BimApp::palette_ids` is the selection narrowed to it, and the palette's subject, the Type

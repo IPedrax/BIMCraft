@@ -28,13 +28,27 @@ fn app(script: &str) -> Harness<'static, BimApp> {
 /// The app with frames `step` seconds apart. Each queued event runs a frame, so a double click
 /// (two clicks within 300 ms) needs short ones.
 fn app_at(script: &str, step: f32) -> Harness<'static, BimApp> {
+    harness(script, step, crate::style::Profile::Rev)
+}
+
+/// The app on a script in BIMCraft's own profile: no ribbon, the Tools palette down the left, the Inspector and the Navigator down
+/// the right. `app` is Rev's, with Revit's palette layout: the tests of what the tools do were written round the ribbon.
+fn bimcraft(script: &str) -> Harness<'static, BimApp> {
+    harness(script, 0.25, crate::style::Profile::BimCraft)
+}
+
+fn harness(script: &str, step: f32, profile: crate::style::Profile) -> Harness<'static, BimApp> {
     let mut s = Session::new();
     s.script(script).unwrap();
+    let mut app = BimApp::new(s);
+    if profile == crate::style::Profile::Rev {
+        (app.profile, app.docking) = (profile, crate::dock::Docking::revit());
+    }
     let mut h = Harness::builder()
         .with_size([1280.0, 800.0])
         .with_max_steps(32)
         .with_step_dt(step)
-        .build_ui_state(|ui, app: &mut BimApp| app.show(ui), BimApp::new(s));
+        .build_ui_state(|ui, app: &mut BimApp| app.show(ui), app);
     h.run();
     h
 }
@@ -2429,7 +2443,7 @@ fn dark_mode_turns_the_window_and_the_drawing_dark() {
     // Ink light on a dark ground, the grid still blue.
     let (ground, ink, grid) = (crate::canvas::color(PAPER), crate::canvas::color(Rgb(25, 25, 25)), crate::canvas::color(Rgb(60, 100, 150)));
     assert!(ground.r() < 40 && ink.r() > 200 && grid.b() > grid.r() + 40, "{ground:?} {ink:?} {grid:?}");
-    assert_eq!(crate::style::pal().surface, crate::style::DARK.surface);
+    assert_eq!(crate::style::pal().surface, crate::style::REV_DARK.surface, "Rev's dark");
     press(&mut h, "Dark Mode");
     pick(&mut h, Role::RadioButton, "Light");
     assert!(!crate::style::dark() && crate::canvas::color(PAPER) == egui::Color32::WHITE);
@@ -2444,7 +2458,7 @@ fn dark_ui_with_light_canvas_is_shared_with_settings_and_survives_new_projects()
     press(&mut h, "Dark Mode");
     pick(&mut h, Role::RadioButton, "Dark UI, Light Canvas");
     assert!(crate::style::dark() && h.ctx.theme() == egui::Theme::Dark);
-    assert_eq!(crate::style::pal().surface, crate::style::DARK.surface);
+    assert_eq!(crate::style::pal().surface, crate::style::REV_DARK.surface, "Rev's dark");
     assert_eq!(crate::canvas::color(PAPER), egui::Color32::WHITE);
     assert_eq!(crate::canvas::color(Rgb(25, 25, 25)), egui::Color32::from_gray(25));
     assert!(h.query_by_label("Dark UI, Light Canvas").is_none(), "menu closes after choosing");

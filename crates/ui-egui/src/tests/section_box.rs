@@ -58,8 +58,10 @@ fn a_plans_section_box_in_properties_makes_it_show_what_the_box_keeps() {
     let mut h = app(BOX);
     h.state_mut().run("section_box", json!({"min": [-1000, -1000, 500], "max": [4000, 7000, 1500]}));
     let level = h.state().session.model.levels()[0].0;
-    // Nothing selected on Level 1's plan, Properties is the plan's.
-    pick(&mut h, Role::CheckBox, "Section Box");
+    // Nothing selected on Level 1's plan, Properties is the plan's; its row is below the palette's fold, so it is pressed as a
+    // screen reader does.
+    h.get_by_role_and_label(Role::CheckBox, "Section Box").click_accesskit();
+    h.run();
     let m = &h.state().session.model;
     assert_eq!(m.shown_range(level).cut, 1500.0);
     assert_eq!(m.shown_crop(level), Some([P2(-1000.0, -1000.0), P2(4000.0, 7000.0)]));

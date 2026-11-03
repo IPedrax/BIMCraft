@@ -989,28 +989,35 @@ impl BimApp {
         }
     }
 
+    /// The alignment guides a pick that landed at `f` takes: a free point any, a point on an angle guide one that keeps it on that
+    /// guide (a wall drawn east whose end lines up with another wall's end).
+    fn alignments_for(&self, m: &Model, level: Id, v: &View, f: &Found, from: &[P2]) -> Vec<bimcraft_core::alignment::AlignmentResult> {
+        if !self.snaps_now().alignment_guides || from.is_empty() || !matches!(f.kind, Kind::Free | Kind::Angle) {
+            return Vec::new();
+        }
+        let on_guide = |p: P2| {
+            f.guide.is_none_or(|g| {
+                let (u, d) = (P2(g.angle.to_radians().cos(), g.angle.to_radians().sin()), p - g.from);
+                (u.0 * d.1 - u.1 * d.0).abs() <= 0.5
+            })
+        };
+        self.alignments(m, level, v, f.at, from.last().copied()).into_iter().filter(|a| on_guide(a.snapped_point)).collect()
+    }
+
     /// Where a point picked at pixel `at` lands, including temporary alignment guides.
     pub(crate) fn snap_point(&self, m: &Model, level: Id, v: &View, at: (f32, f32), from: &[P2], square: bool) -> P2 {
         let f = self.snap(m, level, v, at, from, square);
-        if self.snaps_now().alignment_guides && !from.is_empty() && f.kind == Kind::Free {
-            let alignments = self.alignments(m, level, v, f.at, from.last().copied());
-            if let Some(first) = alignments.first() {
-                return first.snapped_point;
-            }
-        }
-        f.at
+        self.alignments_for(m, level, v, &f, from).first().map_or(f.at, |a| a.snapped_point)
     }
 
     /// What a pick at pixel `q` would land on, shown: its marker and what it is, and the guide it
     /// follows. The point.
     fn found(&self, sc: &Scene, q: (f32, f32), from: &[P2], square: bool) -> P2 {
         let mut f = self.snap(sc.m, sc.level, sc.v, q, from, square);
-        if self.snaps_now().alignment_guides && !from.is_empty() && f.kind == Kind::Free {
-            let alignments = self.alignments(sc.m, sc.level, sc.v, f.at, from.last().copied());
-            if let Some(first) = alignments.first() {
-                f.at = first.snapped_point;
-                self.show_alignments(sc, &alignments);
-            }
+        let alignments = self.alignments_for(sc.m, sc.level, sc.v, &f, from);
+        if let Some(first) = alignments.first() {
+            f.at = first.snapped_point;
+            self.show_alignments(sc, &alignments);
         }
         self.show_snap(sc, &f);
         self.canvas.found.set(Some(f));
