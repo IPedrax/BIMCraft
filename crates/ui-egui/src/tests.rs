@@ -5456,6 +5456,7 @@ mod themes;
 mod titlebar;
 mod tools;
 mod trim;
+mod typed;
 mod typeprops;
 mod window;
 
