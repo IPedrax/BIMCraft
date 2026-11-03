@@ -851,7 +851,7 @@ msgstr "背景填充圖案"
 msgid "Background of the 3D view"
 msgstr "3D視圖背景"
 
-#: crates/ui-egui/src/lang.rs:22
+#: crates/ui-egui/src/lang.rs:25
 msgid "Backups kept"
 msgstr "保留的備份數"
 
@@ -1787,7 +1787,7 @@ msgstr ""
 msgid "Click where the stair starts: the middle of its first riser."
 msgstr "單擊樓梯的起點：即第一級踢面的中點。"
 
-#: crates/ui-egui/src/lang.rs:25
+#: crates/ui-egui/src/lang.rs:28
 msgid "Click which way it climbs: its risers take it up to the level above. Esc cancels."
 msgstr "單擊上行方向：踢面將其帶到上一標高。按 Esc 取消。"
 
@@ -2505,7 +2505,7 @@ msgid "Diameter Symbol"
 msgstr "直徑符號"
 
 #: crates/ui-egui/src/dimtypes.rs:94
-#: crates/ui-egui/src/lang.rs:28
+#: crates/ui-egui/src/lang.rs:31
 msgid "Dimension"
 msgstr "尺寸標注"
 
@@ -2533,7 +2533,7 @@ msgstr "尺寸文字對齊:"
 msgid "Dimension lines, witness lines, terminators, text placement, and level marker symbols."
 msgstr "尺寸線、尺寸界線、端點符號、文字對齊及標高符號。"
 
-#: crates/ui-egui/src/lang.rs:29
+#: crates/ui-egui/src/lang.rs:32
 #: crates/ui-egui/src/properties.rs:440
 msgid "Dimensions"
 msgstr "尺寸標注"
@@ -4962,7 +4962,7 @@ msgstr "未應用任何過濾器。"
 msgid "No filters yet: New makes one."
 msgstr "尚無過濾器：點擊“新建”創建一個。"
 
-#: crates/ui-egui/src/lang.rs:154
+#: crates/ui-egui/src/lang.rs:165
 msgid "No font with Chinese characters was found on this system: install one (such as Noto Sans CJK) and choose Chinese again."
 msgstr ""
 
@@ -5194,7 +5194,7 @@ msgstr "最近開啟"
 msgid "Open a plan to pick the pattern's lines in: detail lines are drawn in plans."
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:26
+#: crates/ui-egui/src/lang.rs:29
 msgid "Open a schedule"
 msgstr "開啟明細表"
 
@@ -7426,7 +7426,7 @@ msgstr "樓梯"
 msgid "Stair: click where it starts, then where its run ends; a landing turns it"
 msgstr "樓梯：單擊起點，再單擊梯段終點；平台使其轉向"
 
-#: crates/ui-egui/src/lang.rs:27
+#: crates/ui-egui/src/lang.rs:30
 msgid "Stair: click where it starts, then which way it climbs"
 msgstr "樓梯：單擊起點，再單擊上行方向"
 
@@ -7685,7 +7685,7 @@ msgstr "與 {} 合併為選項卡"
 msgid "Table"
 msgstr "桌子"
 
-#: crates/ui-egui/src/lang.rs:30
+#: crates/ui-egui/src/lang.rs:33
 msgid "Tag"
 msgstr "標記"
 
@@ -8854,7 +8854,7 @@ msgstr "窗 (WN)：單擊一面牆"
 msgid "Window Schedule"
 msgstr "窗明細表"
 
-#: crates/ui-egui/src/lang.rs:31
+#: crates/ui-egui/src/lang.rs:34
 msgid "Windows"
 msgstr "視窗"
 
@@ -9194,7 +9194,7 @@ msgstr ""
 msgid "ellipse"
 msgstr "橢圓"
 
-#: crates/ui-egui/src/lang.rs:24
+#: crates/ui-egui/src/lang.rs:27
 msgid "end"
 msgstr "終點"
 
@@ -9436,7 +9436,7 @@ msgstr "標準間距"
 msgid "standard overshoot"
 msgstr "標準延伸量"
 
-#: crates/ui-egui/src/lang.rs:23
+#: crates/ui-egui/src/lang.rs:26
 msgid "start"
 msgstr "起點"
 
@@ -9843,632 +9843,632 @@ msgctxt "cad"
 msgid "Layers"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:292
+#: crates/ui-egui/src/lang.rs:303
 msgctxt "category"
 msgid "3D View"
 msgstr "3D視圖"
 
-#: crates/ui-egui/src/lang.rs:257
+#: crates/ui-egui/src/lang.rs:268
 msgctxt "category"
 msgid "Air Terminal"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:276
+#: crates/ui-egui/src/lang.rs:287
 msgctxt "category"
 msgid "Beam"
 msgstr "梁"
 
-#: crates/ui-egui/src/lang.rs:295
+#: crates/ui-egui/src/lang.rs:306
 msgctxt "category"
 msgid "CAD Import"
 msgstr "CAD 導入"
 
-#: crates/ui-egui/src/lang.rs:285
+#: crates/ui-egui/src/lang.rs:296
 msgctxt "category"
 msgid "Cable"
 msgstr "電纜"
 
-#: crates/ui-egui/src/lang.rs:283
+#: crates/ui-egui/src/lang.rs:294
 msgctxt "category"
 msgid "Cable Tray"
 msgstr "電纜橋架"
 
-#: crates/ui-egui/src/lang.rs:249
+#: crates/ui-egui/src/lang.rs:260
 msgctxt "category"
 msgid "Casework"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:268
+#: crates/ui-egui/src/lang.rs:279
 msgctxt "category"
 msgid "Ceiling"
 msgstr "天花板"
 
-#: crates/ui-egui/src/lang.rs:246
+#: crates/ui-egui/src/lang.rs:257
 msgctxt "category"
 msgid "Column"
 msgstr "柱"
 
-#: crates/ui-egui/src/lang.rs:247
+#: crates/ui-egui/src/lang.rs:258
 msgctxt "category"
 msgid "Component"
 msgstr "構件"
 
-#: crates/ui-egui/src/lang.rs:282
+#: crates/ui-egui/src/lang.rs:293
 msgctxt "category"
 msgid "Conduit"
 msgstr "線管"
 
-#: crates/ui-egui/src/lang.rs:262
+#: crates/ui-egui/src/lang.rs:273
 msgctxt "category"
 msgid "Data Outlet"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:289
+#: crates/ui-egui/src/lang.rs:300
 msgctxt "category"
 msgid "Detail Line"
 msgstr "詳圖線"
 
-#: crates/ui-egui/src/lang.rs:240
+#: crates/ui-egui/src/lang.rs:251
 msgctxt "category"
 msgid "Dimension"
 msgstr "尺寸標注"
 
-#: crates/ui-egui/src/lang.rs:234
+#: crates/ui-egui/src/lang.rs:245
 msgctxt "category"
 msgid "Door"
 msgstr "門"
 
-#: crates/ui-egui/src/lang.rs:286
+#: crates/ui-egui/src/lang.rs:297
 msgctxt "category"
 msgid "Down Conductor"
 msgstr "引下線"
 
-#: crates/ui-egui/src/lang.rs:251
+#: crates/ui-egui/src/lang.rs:262
 msgctxt "category"
 msgid "Drain"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:281
+#: crates/ui-egui/src/lang.rs:292
 msgctxt "category"
 msgid "Duct"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:287
+#: crates/ui-egui/src/lang.rs:298
 msgctxt "category"
 msgid "Earthing Conductor"
 msgstr "接地線"
 
-#: crates/ui-egui/src/lang.rs:258
+#: crates/ui-egui/src/lang.rs:269
 msgctxt "category"
 msgid "Earthing Electrode"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:254
+#: crates/ui-egui/src/lang.rs:265
 msgctxt "category"
 msgid "Electrical Equipment"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:243
+#: crates/ui-egui/src/lang.rs:254
 msgctxt "category"
 msgid "Elevation"
 msgstr "立面"
 
-#: crates/ui-egui/src/lang.rs:271
+#: crates/ui-egui/src/lang.rs:282
 msgctxt "category"
 msgid "Filled Region"
 msgstr "填充區域"
 
-#: crates/ui-egui/src/lang.rs:236
+#: crates/ui-egui/src/lang.rs:247
 msgctxt "category"
 msgid "Floor"
 msgstr "樓板"
 
-#: crates/ui-egui/src/lang.rs:278
+#: crates/ui-egui/src/lang.rs:289
 msgctxt "category"
 msgid "Footing"
 msgstr "獨立基礎"
 
-#: crates/ui-egui/src/lang.rs:248
+#: crates/ui-egui/src/lang.rs:259
 msgctxt "category"
 msgid "Furniture"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:261
+#: crates/ui-egui/src/lang.rs:272
 msgctxt "category"
 msgid "Generic Component"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:239
+#: crates/ui-egui/src/lang.rs:250
 msgctxt "category"
 msgid "Grid"
 msgstr "軸網"
 
-#: crates/ui-egui/src/lang.rs:259
+#: crates/ui-egui/src/lang.rs:270
 msgctxt "category"
 msgid "Inspection Box"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:238
+#: crates/ui-egui/src/lang.rs:249
 msgctxt "category"
 msgid "Level"
 msgstr "標高"
 
-#: crates/ui-egui/src/lang.rs:260
+#: crates/ui-egui/src/lang.rs:271
 msgctxt "category"
 msgid "Lighting Fixture"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:293
+#: crates/ui-egui/src/lang.rs:304
 msgctxt "category"
 msgid "Linked Model"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:270
+#: crates/ui-egui/src/lang.rs:281
 msgctxt "category"
 msgid "Mass"
 msgstr "體量"
 
-#: crates/ui-egui/src/lang.rs:272
+#: crates/ui-egui/src/lang.rs:283
 msgctxt "category"
 msgid "Mass Floor"
 msgstr "體量樓層"
 
-#: crates/ui-egui/src/lang.rs:255
+#: crates/ui-egui/src/lang.rs:266
 msgctxt "category"
 msgid "Outlet"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:264
+#: crates/ui-egui/src/lang.rs:275
 msgctxt "category"
 msgid "Patch Panel"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:280
+#: crates/ui-egui/src/lang.rs:291
 msgctxt "category"
 msgid "Pipe"
 msgstr "管道"
 
-#: crates/ui-egui/src/lang.rs:253
+#: crates/ui-egui/src/lang.rs:264
 msgctxt "category"
 msgid "Pipe Accessory"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:252
+#: crates/ui-egui/src/lang.rs:263
 msgctxt "category"
 msgid "Pipe Fitting"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:250
+#: crates/ui-egui/src/lang.rs:261
 msgctxt "category"
 msgid "Plumbing Fixture"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:294
+#: crates/ui-egui/src/lang.rs:305
 msgctxt "category"
 msgid "Point Cloud"
 msgstr "點雲"
 
-#: crates/ui-egui/src/lang.rs:265
+#: crates/ui-egui/src/lang.rs:276
 msgctxt "category"
 msgid "Rack"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:274
+#: crates/ui-egui/src/lang.rs:285
 msgctxt "category"
 msgid "Railing"
 msgstr "欄杆扶手"
 
-#: crates/ui-egui/src/lang.rs:273
+#: crates/ui-egui/src/lang.rs:284
 msgctxt "category"
 msgid "Ramp"
 msgstr "坡道"
 
-#: crates/ui-egui/src/lang.rs:267
+#: crates/ui-egui/src/lang.rs:278
 msgctxt "category"
 msgid "Roof"
 msgstr "屋頂"
 
-#: crates/ui-egui/src/lang.rs:237
+#: crates/ui-egui/src/lang.rs:248
 msgctxt "category"
 msgid "Room"
 msgstr "房間"
 
-#: crates/ui-egui/src/lang.rs:275
+#: crates/ui-egui/src/lang.rs:286
 msgctxt "category"
 msgid "Room Separator"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:291
+#: crates/ui-egui/src/lang.rs:302
 msgctxt "category"
 msgid "Schedule"
 msgstr "明細表"
 
-#: crates/ui-egui/src/lang.rs:242
+#: crates/ui-egui/src/lang.rs:253
 msgctxt "category"
 msgid "Section"
 msgstr "剖面"
 
-#: crates/ui-egui/src/lang.rs:269
+#: crates/ui-egui/src/lang.rs:280
 msgctxt "category"
 msgid "Shaft Opening"
 msgstr "豎井洞口"
 
-#: crates/ui-egui/src/lang.rs:244
+#: crates/ui-egui/src/lang.rs:255
 msgctxt "category"
 msgid "Sheet"
 msgstr "圖紙"
 
-#: crates/ui-egui/src/lang.rs:290
+#: crates/ui-egui/src/lang.rs:301
 msgctxt "category"
 msgid "Spot Elevation"
 msgstr "高程點"
 
-#: crates/ui-egui/src/lang.rs:266
+#: crates/ui-egui/src/lang.rs:277
 msgctxt "category"
 msgid "Stair"
 msgstr "樓梯"
 
-#: crates/ui-egui/src/lang.rs:279
+#: crates/ui-egui/src/lang.rs:290
 msgctxt "category"
 msgid "Strip Footing"
 msgstr "條形基礎"
 
-#: crates/ui-egui/src/lang.rs:277
+#: crates/ui-egui/src/lang.rs:288
 msgctxt "category"
 msgid "Structural Column"
 msgstr "結構柱"
 
-#: crates/ui-egui/src/lang.rs:256
+#: crates/ui-egui/src/lang.rs:267
 msgctxt "category"
 msgid "Switch"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:241
+#: crates/ui-egui/src/lang.rs:252
 msgctxt "category"
 msgid "Tag"
 msgstr "標記"
 
-#: crates/ui-egui/src/lang.rs:288
+#: crates/ui-egui/src/lang.rs:299
 msgctxt "category"
 msgid "Text Note"
 msgstr "文字註釋"
 
-#: crates/ui-egui/src/lang.rs:245
+#: crates/ui-egui/src/lang.rs:256
 msgctxt "category"
 msgid "Viewport"
 msgstr "視口"
 
-#: crates/ui-egui/src/lang.rs:263
+#: crates/ui-egui/src/lang.rs:274
 msgctxt "category"
 msgid "Voice Outlet"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:233
+#: crates/ui-egui/src/lang.rs:244
 msgctxt "category"
 msgid "Wall"
 msgstr "牆"
 
-#: crates/ui-egui/src/lang.rs:235
+#: crates/ui-egui/src/lang.rs:246
 msgctxt "category"
 msgid "Window"
 msgstr "窗"
 
-#: crates/ui-egui/src/lang.rs:284
+#: crates/ui-egui/src/lang.rs:295
 msgctxt "category"
 msgid "Wire"
 msgstr "導線"
 
-#: crates/ui-egui/src/lang.rs:292
+#: crates/ui-egui/src/lang.rs:303
 msgctxt "category-plural"
 msgid "3D Views"
 msgstr "3D視圖"
 
-#: crates/ui-egui/src/lang.rs:257
+#: crates/ui-egui/src/lang.rs:268
 msgctxt "category-plural"
 msgid "Air Terminals"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:276
+#: crates/ui-egui/src/lang.rs:287
 msgctxt "category-plural"
 msgid "Beams"
 msgstr "梁"
 
-#: crates/ui-egui/src/lang.rs:295
+#: crates/ui-egui/src/lang.rs:306
 msgctxt "category-plural"
 msgid "CAD Imports"
 msgstr "CAD 導入"
 
-#: crates/ui-egui/src/lang.rs:283
+#: crates/ui-egui/src/lang.rs:294
 msgctxt "category-plural"
 msgid "Cable Trays"
 msgstr "電纜橋架"
 
-#: crates/ui-egui/src/lang.rs:285
+#: crates/ui-egui/src/lang.rs:296
 msgctxt "category-plural"
 msgid "Cables"
 msgstr "電纜"
 
-#: crates/ui-egui/src/lang.rs:249
+#: crates/ui-egui/src/lang.rs:260
 msgctxt "category-plural"
 msgid "Casework"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:268
+#: crates/ui-egui/src/lang.rs:279
 msgctxt "category-plural"
 msgid "Ceilings"
 msgstr "天花板"
 
-#: crates/ui-egui/src/lang.rs:246
+#: crates/ui-egui/src/lang.rs:257
 msgctxt "category-plural"
 msgid "Columns"
 msgstr "柱"
 
-#: crates/ui-egui/src/lang.rs:247
+#: crates/ui-egui/src/lang.rs:258
 msgctxt "category-plural"
 msgid "Components"
 msgstr "構件"
 
-#: crates/ui-egui/src/lang.rs:282
+#: crates/ui-egui/src/lang.rs:293
 msgctxt "category-plural"
 msgid "Conduits"
 msgstr "線管"
 
-#: crates/ui-egui/src/lang.rs:262
+#: crates/ui-egui/src/lang.rs:273
 msgctxt "category-plural"
 msgid "Data Outlets"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:240
+#: crates/ui-egui/src/lang.rs:251
 msgctxt "category-plural"
 msgid "Dimensions"
 msgstr "尺寸標注"
 
-#: crates/ui-egui/src/lang.rs:234
+#: crates/ui-egui/src/lang.rs:245
 msgctxt "category-plural"
 msgid "Doors"
 msgstr "門"
 
-#: crates/ui-egui/src/lang.rs:286
+#: crates/ui-egui/src/lang.rs:297
 msgctxt "category-plural"
 msgid "Down Conductors"
 msgstr "引下線"
 
-#: crates/ui-egui/src/lang.rs:251
+#: crates/ui-egui/src/lang.rs:262
 msgctxt "category-plural"
 msgid "Drains"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:281
+#: crates/ui-egui/src/lang.rs:292
 msgctxt "category-plural"
 msgid "Ducts"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:287
+#: crates/ui-egui/src/lang.rs:298
 msgctxt "category-plural"
 msgid "Earthing Conductors"
 msgstr "接地線"
 
-#: crates/ui-egui/src/lang.rs:258
+#: crates/ui-egui/src/lang.rs:269
 msgctxt "category-plural"
 msgid "Earthing Electrodes"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:254
+#: crates/ui-egui/src/lang.rs:265
 msgctxt "category-plural"
 msgid "Electrical Equipment"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:243
+#: crates/ui-egui/src/lang.rs:254
 msgctxt "category-plural"
 msgid "Elevations"
 msgstr "立面"
 
-#: crates/ui-egui/src/lang.rs:271
+#: crates/ui-egui/src/lang.rs:282
 msgctxt "category-plural"
 msgid "Filled Regions"
 msgstr "填充區域"
 
-#: crates/ui-egui/src/lang.rs:236
+#: crates/ui-egui/src/lang.rs:247
 msgctxt "category-plural"
 msgid "Floors"
 msgstr "樓板"
 
-#: crates/ui-egui/src/lang.rs:278
+#: crates/ui-egui/src/lang.rs:289
 msgctxt "category-plural"
 msgid "Footings"
 msgstr "獨立基礎"
 
-#: crates/ui-egui/src/lang.rs:248
+#: crates/ui-egui/src/lang.rs:259
 msgctxt "category-plural"
 msgid "Furniture"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:261
+#: crates/ui-egui/src/lang.rs:272
 msgctxt "category-plural"
 msgid "Generic Components"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:239
+#: crates/ui-egui/src/lang.rs:250
 msgctxt "category-plural"
 msgid "Grids"
 msgstr "軸網"
 
-#: crates/ui-egui/src/lang.rs:259
+#: crates/ui-egui/src/lang.rs:270
 msgctxt "category-plural"
 msgid "Inspection Boxes"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:238
+#: crates/ui-egui/src/lang.rs:249
 msgctxt "category-plural"
 msgid "Levels"
 msgstr "標高"
 
-#: crates/ui-egui/src/lang.rs:260
+#: crates/ui-egui/src/lang.rs:271
 msgctxt "category-plural"
 msgid "Lighting Fixtures"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:289
+#: crates/ui-egui/src/lang.rs:300
 msgctxt "category-plural"
 msgid "Lines"
 msgstr "詳圖線"
 
-#: crates/ui-egui/src/lang.rs:293
+#: crates/ui-egui/src/lang.rs:304
 msgctxt "category-plural"
 msgid "Linked Models"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:272
+#: crates/ui-egui/src/lang.rs:283
 msgctxt "category-plural"
 msgid "Mass Floors"
 msgstr "體量樓層"
 
-#: crates/ui-egui/src/lang.rs:270
+#: crates/ui-egui/src/lang.rs:281
 msgctxt "category-plural"
 msgid "Masses"
 msgstr "體量"
 
-#: crates/ui-egui/src/lang.rs:255
+#: crates/ui-egui/src/lang.rs:266
 msgctxt "category-plural"
 msgid "Outlets"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:264
+#: crates/ui-egui/src/lang.rs:275
 msgctxt "category-plural"
 msgid "Patch Panels"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:253
+#: crates/ui-egui/src/lang.rs:264
 msgctxt "category-plural"
 msgid "Pipe Accessories"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:252
+#: crates/ui-egui/src/lang.rs:263
 msgctxt "category-plural"
 msgid "Pipe Fittings"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:280
+#: crates/ui-egui/src/lang.rs:291
 msgctxt "category-plural"
 msgid "Pipes"
 msgstr "管道"
 
-#: crates/ui-egui/src/lang.rs:250
+#: crates/ui-egui/src/lang.rs:261
 msgctxt "category-plural"
 msgid "Plumbing Fixtures"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:294
+#: crates/ui-egui/src/lang.rs:305
 msgctxt "category-plural"
 msgid "Point Clouds"
 msgstr "點雲"
 
-#: crates/ui-egui/src/lang.rs:265
+#: crates/ui-egui/src/lang.rs:276
 msgctxt "category-plural"
 msgid "Racks"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:274
+#: crates/ui-egui/src/lang.rs:285
 msgctxt "category-plural"
 msgid "Railings"
 msgstr "欄杆扶手"
 
-#: crates/ui-egui/src/lang.rs:273
+#: crates/ui-egui/src/lang.rs:284
 msgctxt "category-plural"
 msgid "Ramps"
 msgstr "坡道"
 
-#: crates/ui-egui/src/lang.rs:267
+#: crates/ui-egui/src/lang.rs:278
 msgctxt "category-plural"
 msgid "Roofs"
 msgstr "屋頂"
 
-#: crates/ui-egui/src/lang.rs:275
+#: crates/ui-egui/src/lang.rs:286
 msgctxt "category-plural"
 msgid "Room Separators"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:237
+#: crates/ui-egui/src/lang.rs:248
 msgctxt "category-plural"
 msgid "Rooms"
 msgstr "房間"
 
-#: crates/ui-egui/src/lang.rs:291
+#: crates/ui-egui/src/lang.rs:302
 msgctxt "category-plural"
 msgid "Schedules"
 msgstr "明細表"
 
-#: crates/ui-egui/src/lang.rs:242
+#: crates/ui-egui/src/lang.rs:253
 msgctxt "category-plural"
 msgid "Sections"
 msgstr "剖面"
 
-#: crates/ui-egui/src/lang.rs:269
+#: crates/ui-egui/src/lang.rs:280
 msgctxt "category-plural"
 msgid "Shaft Openings"
 msgstr "豎井洞口"
 
-#: crates/ui-egui/src/lang.rs:244
+#: crates/ui-egui/src/lang.rs:255
 msgctxt "category-plural"
 msgid "Sheets"
 msgstr "圖紙"
 
-#: crates/ui-egui/src/lang.rs:290
+#: crates/ui-egui/src/lang.rs:301
 msgctxt "category-plural"
 msgid "Spot Elevations"
 msgstr "高程點"
 
-#: crates/ui-egui/src/lang.rs:266
+#: crates/ui-egui/src/lang.rs:277
 msgctxt "category-plural"
 msgid "Stairs"
 msgstr "樓梯"
 
-#: crates/ui-egui/src/lang.rs:279
+#: crates/ui-egui/src/lang.rs:290
 msgctxt "category-plural"
 msgid "Strip Footings"
 msgstr "條形基礎"
 
-#: crates/ui-egui/src/lang.rs:277
+#: crates/ui-egui/src/lang.rs:288
 msgctxt "category-plural"
 msgid "Structural Columns"
 msgstr "結構柱"
 
-#: crates/ui-egui/src/lang.rs:256
+#: crates/ui-egui/src/lang.rs:267
 msgctxt "category-plural"
 msgid "Switches"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:241
+#: crates/ui-egui/src/lang.rs:252
 msgctxt "category-plural"
 msgid "Tags"
 msgstr "標記"
 
-#: crates/ui-egui/src/lang.rs:288
+#: crates/ui-egui/src/lang.rs:299
 msgctxt "category-plural"
 msgid "Text Notes"
 msgstr "文字註釋"
 
-#: crates/ui-egui/src/lang.rs:245
+#: crates/ui-egui/src/lang.rs:256
 msgctxt "category-plural"
 msgid "Viewports"
 msgstr "視口"
 
-#: crates/ui-egui/src/lang.rs:263
+#: crates/ui-egui/src/lang.rs:274
 msgctxt "category-plural"
 msgid "Voice Outlets"
 msgstr ""
 
-#: crates/ui-egui/src/lang.rs:233
+#: crates/ui-egui/src/lang.rs:244
 msgctxt "category-plural"
 msgid "Walls"
 msgstr "牆"
 
-#: crates/ui-egui/src/lang.rs:235
+#: crates/ui-egui/src/lang.rs:246
 msgctxt "category-plural"
 msgid "Windows"
 msgstr "窗"
 
-#: crates/ui-egui/src/lang.rs:284
+#: crates/ui-egui/src/lang.rs:295
 msgctxt "category-plural"
 msgid "Wires"
 msgstr "導線"
