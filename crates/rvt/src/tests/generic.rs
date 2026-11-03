@@ -65,6 +65,74 @@ fn a_placed_element_of_another_category_comes_in_as_a_box_of_a_family_of_its_cat
 }
 
 #[test]
+fn a_placed_element_of_a_category_with_no_name_comes_in_as_a_box_of_a_family_named_by_the_categorys_id() {
+    for release in [2019, 2024] {
+        let mut p = base(release);
+        // Two categories the table has no name for: boxes as in the test above, one flat, and a symbol that is no element.
+        p.recs.push(Rec::new(300, -2_008_123).at([1.0, 2.0, 10.0, 2.0, 3.0, 11.0], &[]));
+        p.recs.push(Rec::new(301, -2_008_123).at([0.0, 0.0, 0.0, 2.0, 1.0, 3.0], &[]));
+        p.recs.push(Rec::new(302, -2_002_000).at([4.0, 4.0, 15.0, 5.0, 6.0, 16.0], &[]));
+        p.recs.push(Rec::new(303, -2_002_000).at([0.0, 0.0, 0.0, 1.0, 1.0, 0.0], &[]));
+        p.recs.push(Rec { placed: false, ..Rec::new(304, -2_002_000) });
+        // A category with a name and no reader is left out as ever: only a category the reader cannot name is read by its id.
+        p.recs.push(Rec::new(305, -2_009_000).at([0.0, 0.0, 0.0, 1.0, 1.0, 1.0], &[]));
+        p.recs.push(Rec::new(306, -2_000_051).at([0.0, 0.0, 0.0, 1.0, 1.0, 1.0], &[]));
+        let i = import(&p);
+        let (l1, l2) = (level_named(&i, "Level 1"), level_named(&i, "Level 2"));
+        let got: Vec<(&str, f64, f64, f64, bimcraft_core::ids::Guid)> =
+            components(&i).iter().map(|c| (c.family.as_str(), c.at.0, c.at.1, c.offset, c.level)).collect();
+        assert_eq!(
+            got,
+            [
+                ("Category -2008123", 457.2, 762.0, 0.0, l2),
+                ("Category -2008123", 304.8, 152.4, 0.0, l1),
+                ("Category -2002000", 1371.6, 1524.0, 1524.0, l2),
+            ],
+            "Revit {release}"
+        );
+        let size = |c: &Component| ["Width", "Depth", "Height"].map(|n| c.params[n].as_f64().unwrap_or(f64::NAN));
+        let sizes: Vec<[f64; 3]> = components(&i).iter().map(|c| size(c)).collect();
+        assert_eq!(sizes, [[304.8, 304.8, 304.8], [609.6, 304.8, 914.4], [304.8, 609.6, 304.8]], "Revit {release}");
+        assert_eq!(i.model.families["Category -2008123"].category, Category::Generic);
+        assert!(i.model.check().is_ok());
+        let says = |what: &str| i.skipped.iter().any(|s| s.contains(what));
+        assert!(
+            says("2 category -2008123 elements: comes in as a box") && says("1 category -2002000 element: comes in as a box"),
+            "{:?}",
+            i.skipped
+        );
+        assert!(says("its category has no name here"), "{:?}", i.skipped);
+        assert!(says("1 category -2002000 element left out, it has no volume") && says("ids 303"), "{:?}", i.skipped);
+        let unread: Vec<&str> = i.skipped.iter().map(String::as_str).filter(|s| s.contains("no reader")).collect();
+        assert_eq!(unread.len(), 2, "{unread:?}");
+        assert!(unread.iter().any(|s| s.contains("Structural Rebar")) && unread.iter().any(|s| s.contains("Lines")), "{unread:?}");
+    }
+}
+
+#[test]
+fn an_element_of_a_category_with_no_name_that_has_the_box_of_a_named_elements_is_its_companion_and_is_left_out() {
+    for release in [2019, 2024] {
+        let mut p = base(release);
+        let b = [8.0, 8.0, 0.0, 9.0, 9.0, 1.0];
+        p.recs.push(Rec::new(300, GENERIC_MODELS).at(b, &[]));
+        // The same box to the micron (the noise of a float) is the same body; a millimetre off is another element.
+        p.recs.push(Rec::new(301, -2_008_072).at(b.map(|x| x + 1e-10), &[]));
+        p.recs.push(Rec::new(302, -2_008_072).at([8.0, 8.0, 0.0, 9.0, 9.0, 1.0 + 1.0 / 304.8], &[]));
+        let i = import(&p);
+        let got: Vec<&str> = components(&i).iter().map(|c| c.family.as_str()).collect();
+        assert_eq!(got, ["Generic Models", "Category -2008072"], "Revit {release}");
+        let says = |what: &str| i.skipped.iter().any(|s| s.contains(what));
+        assert!(
+            says("1 category -2008072 element left out, its box is that of an element of a category the reader knows") && says("ids 301)"),
+            "{:?}",
+            i.skipped
+        );
+        assert!(says("1 category -2008072 element: comes in as a box") && says("ids 302)"), "{:?}", i.skipped);
+        assert!(i.model.check().is_ok());
+    }
+}
+
+#[test]
 fn a_family_of_a_category_is_one_family_for_all_its_elements_and_names_a_single_type() {
     let mut p = base(2024);
     for (k, id) in (300..306).enumerate() {
@@ -85,9 +153,10 @@ fn a_mutation_sweep_over_a_project_of_boxes_never_panics_and_what_comes_in_check
         p.recs.push(Rec::new(300, PIPE_FITTINGS).at([1.0, 2.0, 10.0, 2.0, 3.0, 11.0], &[]));
         p.recs.push(Rec::new(301, PLUMBING_FIXTURES).at([0.0, 0.0, 0.0, 2.0, 1.0, 3.0], &[]));
         p.recs.push(Rec::new(302, GENERIC_MODELS).at([4.0, 4.0, 15.0, 5.0, 6.0, 16.0], &[]));
+        p.recs.push(Rec::new(303, -2_008_123).at([4.0, 4.0, 15.0, 5.0, 6.0, 16.0], &[]));
         p.members = 3;
         super::sweep(&p, 0x2e3d_4c5b_6a79_8897 ^ u64::from(release), 800, |i, round| {
-            assert!(components(i).len() <= 3, "round {round}");
+            assert!(components(i).len() <= 4, "round {round}");
         });
     }
 }
