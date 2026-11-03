@@ -237,6 +237,11 @@ its wall (as placed, hand flipped, facing flipped, both), the one the selected d
 `flip_facing` through `modify`. For rooms, their colour on plans (`room_colour`): swatches, No fill first, and any
 other colour; a pick sets the room's `colour` (`Room::colour`, red, green and blue, none for no fill), which plans draw as a fill of
 the room's region under its name (`render.rs`) and a file keeps (an optional field an older version leaves out, so no format step).
+For floors, their slope (`floor_slope`): a short section of the slab at its true angle from its slope arrow's tail, a dashed line
+level with the tail, and the angle written on it in degrees and percent (its accessible label too); under it the steps Flat, 1%, 2%
+and 5%, the one they share lit, a click setting `slope` through `modify` as the Slope field does, a falling floor kept falling. A
+floor with no slope arrow says it is flat and how to slope it, with a button that starts the Slope Arrow tool for it: the picture
+never makes up an arrow, since `Model::check` refuses a sloped floor without one.
 
 Properties' filter. With a selection of several categories, the line under the Type Selector is a drop-down of them, as Revit's is
 (`BimApp::selection_categories`): Multiple Categories first, then each category with its count. One picked is what the palette shows

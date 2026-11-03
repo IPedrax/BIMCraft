@@ -1,4 +1,5 @@
-//! The Inspector's pictures, the same in both profiles: a type's layers drawn to their thicknesses, a wall's location line on them.
+//! The Inspector's pictures, the same in both profiles: a type's layers drawn to their thicknesses, a wall's location line on them,
+//! which way a door opens, a room's colour, a floor's slope.
 
 use super::*;
 
@@ -57,5 +58,35 @@ fn a_rooms_colour_on_plans_is_picked_from_swatches_in_both_profiles() {
         h.get_by_role_and_label(Role::RadioButton, "No fill").click();
         h.run();
         assert!(field(&h, room, "colour").is_null(), "rev {rev}");
+    }
+}
+
+#[test]
+fn a_floors_slope_is_drawn_at_its_angle_and_stepped_on_its_picture_in_both_profiles() {
+    for rev in [false, true] {
+        let script = format!("{BOX}\nfloor {{\"slope\": 2, \"arrow\": [[0, 3000], [8000, 3000]]}}\nfloor {{\"offset\": 3000}}");
+        let mut h = if rev { app(&script) } else { bimcraft(&script) };
+        let [sloped, flat] = ids(&h, "floor")[..] else { panic!("two floors") };
+        h.state_mut().selection = vec![sloped];
+        h.run();
+        // Its section at its angle, which the picture says.
+        assert!(h.query_by_label("Floor slope: 2° (3.49%)").is_some(), "rev {rev}");
+        let slope = |h: &Harness<BimApp>| field(h, sloped, "slope").as_f64().unwrap_or(0.0);
+        // A step sets it, through the command the Slope field runs.
+        press(&mut h, "1%");
+        assert!((slope(&h).to_radians().tan() - 0.01).abs() < 1e-9, "rev {rev}: {}", slope(&h));
+        press(&mut h, "Flat");
+        assert_eq!(slope(&h), 0.0, "rev {rev}");
+        // One that falls toward its arrow's head keeps falling.
+        h.state_mut().session.execute("modify", &json!({"id": sloped, "slope": -3})).unwrap();
+        h.run();
+        press(&mut h, "2%");
+        assert!((slope(&h).to_radians().tan() + 0.02).abs() < 1e-9, "rev {rev}: {}", slope(&h));
+        // With no slope arrow it is flat, and the picture starts the tool that draws one.
+        h.state_mut().selection = vec![flat];
+        h.run();
+        assert!(h.query_by_label("1%").is_none(), "rev {rev}");
+        press(&mut h, "Draw a slope arrow");
+        assert!(matches!(h.state().tool, Tool::SlopeArrow(None)), "rev {rev}");
     }
 }

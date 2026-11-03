@@ -1072,6 +1072,7 @@ impl BimApp {
         self.layer_picture(ui, &model);
         self.opening_picker(ui, &model);
         self.room_colour(ui, &model);
+        self.floor_slope(ui, &model);
         if !ids.is_empty() {
             self.parameters(ui, &model, &ids, rows);
             self.component_parameters(ui, &model, &ids);
@@ -1263,6 +1264,62 @@ impl BimApp {
         });
         if let Some(c) = pick {
             self.run("modify", json!({"ids": ids, "colour": c}));
+        }
+    }
+
+    /// The slope of the floors the palette shows: a short section of the slab at its angle from its slope arrow's tail, the
+    /// angle written on it, and steps that set it through `modify`, as the Slope field does; one that falls keeps falling. A
+    /// floor with no slope arrow is flat until one is drawn, which the Slope Arrow tool does.
+    fn floor_slope(&mut self, ui: &mut Ui, model: &Model) {
+        let ids = self.palette_ids();
+        let floor = |id: &Id| match model.elements.get(id) {
+            Some(Element::Floor(f)) => Some((f.slope, f.arrow.is_some())),
+            _ => None,
+        };
+        let Some(floors) = ids.iter().map(floor).collect::<Option<Vec<_>>>().filter(|f| !f.is_empty()) else { return };
+        ui.label(RichText::new(t("Slope")).strong());
+        if !floors.iter().all(|(_, arrow)| *arrow) {
+            ui.label(
+                RichText::new(t("Flat: it has no slope arrow. Draw one from where its top stays toward where it rises."))
+                    .color(pal().muted),
+            );
+            if self.selected_floor().is_some() && ui.button(t("Draw a slope arrow")).clicked() {
+                self.set_tool(Tool::SlopeArrow(None));
+            }
+            return;
+        }
+        let slope = floors[0].0;
+        let shared = floors.iter().all(|(s, _)| *s == slope);
+        if shared {
+            let said = format!("{}° ({}%)", text(&json!(slope)), text(&json!(slope.to_radians().tan() * 100.0)));
+            let (rect, r) = ui.allocate_exact_size(vec2(ui.available_width(), 48.0), Sense::hover());
+            r.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, tf("Floor slope: {}", &[&said])));
+            // The slab's top from the arrow's tail, rising (or falling) at its angle, as long as the picture holds; its
+            // thickness square to it.
+            let (thick, room) = (8.0, rect.shrink(8.0));
+            let a = slope.to_radians() as f32;
+            let fits = (room.height() - thick) / a.sin().abs().max(1e-6);
+            let tail = if a >= 0.0 { pos2(room.left(), room.bottom() - thick) } else { room.left_top() };
+            let (along, across) = (vec2(a.cos(), -a.sin()), vec2(a.sin(), a.cos()) * thick);
+            let head = tail + along * room.width().min(fits);
+            let p = ui.painter();
+            p.extend(Shape::dashed_line(&[tail, pos2(room.right(), tail.y)], Stroke::new(1.0, pal().muted), 4.0, 3.0));
+            let slab = vec![tail, head, head + across, tail + across];
+            p.add(Shape::convex_polygon(slab, pal().control, Stroke::new(1.0, pal().icon)));
+            p.text(rect.right_top() + vec2(-4.0, 4.0), Align2::RIGHT_TOP, said, FontId::proportional(12.0), pal().text);
+        }
+        let sign = if slope < 0.0 { -1.0 } else { 1.0 };
+        let mut pick = None;
+        ui.horizontal(|ui| {
+            for (label, percent) in [(msg!("Flat"), 0.0), ("1%", 1.0), ("2%", 2.0), ("5%", 5.0)] {
+                let degrees = sign * f64::atan(percent / 100.0).to_degrees();
+                if ui.selectable_label(shared && (slope - degrees).abs() < 1e-9, t(label)).clicked() {
+                    pick = Some(degrees);
+                }
+            }
+        });
+        if let Some(degrees) = pick {
+            self.run("modify", json!({"ids": ids, "slope": degrees}));
         }
     }
 
