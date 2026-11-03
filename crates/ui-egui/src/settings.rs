@@ -209,7 +209,7 @@ impl BimApp {
     /// speaks. Chinese needs its glyphs: where the system has none the language stays as it was, and the status says why.
     pub(crate) fn set_lang(&mut self, ctx: &Context, lang: Lang) {
         let hanzi = crate::lang::use_cjk_font(ctx, self.font_finder);
-        if lang == Lang::Chinese && !hanzi {
+        if lang.is_chinese() && !hanzi {
             self.status = failed(t(crate::lang::NO_CHINESE_FONT).to_string());
         } else {
             self.lang = lang;

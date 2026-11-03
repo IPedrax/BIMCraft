@@ -1301,7 +1301,7 @@ impl BimApp {
         // name from a Korean file — is not the interface's. Chinese needs its glyphs, which the system may not have: then the
         // window stays in English and says why.
         let hanzi = lang::use_cjk_font(&ctx, self.font_finder);
-        if self.lang == Lang::Chinese && !hanzi {
+        if self.lang.is_chinese() && !hanzi {
             self.lang = Lang::English;
             self.status = updates::failed(t(lang::NO_CHINESE_FONT).to_string());
         }

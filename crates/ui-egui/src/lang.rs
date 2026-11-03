@@ -37,7 +37,7 @@ use bimcraft_core::language::Language;
 use egui::epaint::text::{FontInsert, FontPriority, InsertFontFamily};
 use egui::{Context, FontData, Id};
 
-/// The interface's language: one of a project's languages, or Simplified Chinese.
+/// The interface's language: one of a project's languages, or Simplified or Traditional Chinese.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Lang {
     #[default]
@@ -49,16 +49,31 @@ pub enum Lang {
     German,
     Dutch,
     Chinese,
+    TraditionalChinese,
 }
 
 impl Lang {
-    pub const ALL: [Lang; 8] =
-        [Lang::English, Lang::Portuguese, Lang::Spanish, Lang::Czech, Lang::French, Lang::German, Lang::Dutch, Lang::Chinese];
+    pub const ALL: [Lang; 9] = [
+        Lang::English,
+        Lang::Portuguese,
+        Lang::Spanish,
+        Lang::Czech,
+        Lang::French,
+        Lang::German,
+        Lang::Dutch,
+        Lang::Chinese,
+        Lang::TraditionalChinese,
+    ];
 
-    /// The project language that goes with it, which new projects are named in: Chinese has none, so English.
+    /// Whether it is drawn in hanzi, which the window's own fonts have none of.
+    pub fn is_chinese(self) -> bool {
+        matches!(self, Lang::Chinese | Lang::TraditionalChinese)
+    }
+
+    /// The project language that goes with it, which new projects are named in: Chinese, either kind, has none, so English.
     pub fn project(self) -> Language {
         match self {
-            Lang::English | Lang::Chinese => Language::English,
+            Lang::English | Lang::Chinese | Lang::TraditionalChinese => Language::English,
             Lang::Portuguese => Language::Portuguese,
             Lang::Spanish => Language::Spanish,
             Lang::Czech => Language::Czech,
@@ -68,10 +83,11 @@ impl Lang {
         }
     }
 
-    /// Its code in the settings file: en, pt, es, zh.
+    /// Its code in the settings file: en, pt, es, zh, zh_TW (also the name of its catalog).
     pub fn code(self) -> &'static str {
         match self {
             Lang::Chinese => "zh",
+            Lang::TraditionalChinese => "zh_TW",
             other => other.project().code(),
         }
     }
@@ -81,18 +97,20 @@ impl Lang {
         match self {
             Lang::Chinese if get() == Lang::Chinese => "简体中文",
             Lang::Chinese => "Chinese (Simplified)",
+            Lang::TraditionalChinese if get() == Lang::TraditionalChinese => "繁體中文",
+            Lang::TraditionalChinese => "Chinese (Traditional)",
             other => other.project().label(),
         }
     }
 
-    /// A language by its code or name, or from a locale as systems give one: pt-BR, es_419.UTF-8, zh-CN. Only Simplified
-    /// Chinese is here: zh-TW, zh-HK and the other Traditional locales are none.
+    /// A language by its code or name, or from a locale as systems give one: pt-BR, es_419.UTF-8, zh-CN, zh-TW. The
+    /// Traditional locales (zh-TW, zh-HK, zh-MO, zh-Hant) are Traditional Chinese, the others Simplified.
     pub fn from_code(code: &str) -> Option<Lang> {
         let lower = code.trim().to_lowercase();
         let parts: Vec<&str> = lower.split(['-', '_', '.', '@']).collect();
-        if matches!(parts[0], "zh" | "chinese") || lower == "简体中文" {
-            let traditional = parts.iter().any(|p| matches!(*p, "tw" | "hk" | "mo" | "hant"));
-            return (!traditional).then_some(Lang::Chinese);
+        if matches!(parts[0], "zh" | "chinese") || matches!(lower.as_str(), "简体中文" | "繁體中文") {
+            let traditional = lower == "繁體中文" || parts.iter().any(|p| matches!(*p, "tw" | "hk" | "mo" | "hant"));
+            return Some(if traditional { Lang::TraditionalChinese } else { Lang::Chinese });
         }
         Language::from_code(code).map(Lang::from)
     }
@@ -186,7 +204,7 @@ pub fn t(english: &str) -> &str {
 /// `english` in `lang`, when a non-English interface catalog has a finished translation.
 pub fn translated_in(lang: Lang, english: &str) -> Option<&'static str> {
     match lang {
-        Lang::Chinese => bimcraft_i18n::translated(CATALOGS, lang.code(), "", english),
+        Lang::Chinese | Lang::TraditionalChinese => bimcraft_i18n::translated(CATALOGS, lang.code(), "", english),
         other => translated(other.project(), english),
     }
 }
@@ -303,6 +321,18 @@ mod tests {
     }
 
     #[test]
+    fn traditional_chinese_has_its_own_words_apart_from_the_simplified() {
+        set(Lang::TraditionalChinese);
+        assert_eq!((t("File"), t("Copy"), t("Architecture"), t("Wall Schedule")), ("檔案", "複製", "建築", "牆明細表"));
+        assert_eq!(tf("Save changes to {}?", &["house"]), "是否將更改儲存到 house？");
+        assert_eq!(Lang::TraditionalChinese.label(), "繁體中文");
+        set(Lang::Chinese);
+        assert_eq!((t("File"), t("Copy")), ("文件", "复制"), "Simplified is not touched");
+        set(Lang::English);
+        assert_eq!(Lang::TraditionalChinese.label(), "Chinese (Traditional)", "hanzi only once the window can draw them");
+    }
+
+    #[test]
     fn missing_catalog_entries_fall_back_and_categories_use_their_own_contexts() {
         for language in Lang::ALL {
             set(language);
@@ -317,12 +347,12 @@ mod tests {
     }
 
     #[test]
-    fn the_codes_and_locales_that_mean_simplified_chinese_and_the_ones_that_do_not() {
+    fn the_codes_and_locales_that_mean_simplified_chinese_and_the_ones_that_mean_traditional() {
         for code in ["zh", "zh-CN", "zh_CN.UTF-8", "zh-Hans", "zh_Hans_CN", "zh-SG", "ZH", "chinese", "简体中文"] {
             assert_eq!(Lang::from_code(code), Some(Lang::Chinese), "{code}");
         }
-        for code in ["zh-TW", "zh_HK.UTF-8", "zh-Hant", "zh-Hant-TW", "zh_MO"] {
-            assert_eq!(Lang::from_code(code), None, "{code}: Traditional is not what is here");
+        for code in ["zh-TW", "zh_TW", "zh_HK.UTF-8", "zh-Hant", "zh-Hant-TW", "zh_MO", "繁體中文"] {
+            assert_eq!(Lang::from_code(code), Some(Lang::TraditionalChinese), "{code}");
         }
         assert_eq!(
             ["pt-BR", "es_419.UTF-8", "nl-BE", "nl_NL.UTF-8", "en-US", "de", ""].map(Lang::from_code),
@@ -338,6 +368,7 @@ mod tests {
         );
         assert_eq!((Lang::Chinese.code(), Lang::Chinese.project()), ("zh", Language::English), "a project is never in Chinese");
         assert_eq!(Lang::from(Language::Swedish), Lang::English, "Swedish is a project language until its interface catalog is added");
+        assert_eq!((Lang::TraditionalChinese.code(), Lang::TraditionalChinese.project()), ("zh_TW", Language::English));
         assert_eq!((Lang::Dutch.code(), Lang::Dutch.label(), Lang::Dutch.project()), ("nl", "Nederlands", Language::Dutch));
         assert_eq!(Lang::ALL.map(|l| Lang::from_code(l.code())), Lang::ALL.map(Some));
     }

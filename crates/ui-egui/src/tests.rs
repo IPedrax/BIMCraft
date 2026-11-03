@@ -2748,7 +2748,7 @@ mass {"boundary": [[1000, 1000], [3000, 1000], [3000, 2000], [1000, 2000]], "nam
     h.run();
     // The probe finds what it looks for: in English, the same labels are all English.
     assert!(english(&h, Lang::Spanish).contains(&"Architecture".to_string()));
-    for l in [Lang::Portuguese, Lang::Spanish, Lang::French, Lang::Dutch, Lang::Chinese] {
+    for l in [Lang::Portuguese, Lang::Spanish, Lang::French, Lang::Dutch, Lang::Chinese, Lang::TraditionalChinese] {
         // A machine has the fonts it has: a window is told it has one for Chinese.
         crate::lang::assume_cjk_font(&h.ctx);
         h.state_mut().lang = l;

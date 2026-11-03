@@ -171,7 +171,7 @@ msgid "Elbow 90"
 msgstr "Bogen 90"
 
 #: crates/core/src/commands.rs:7635
-#: crates/core/src/commands.rs:9580
+#: crates/core/src/commands.rs:9592
 msgid "Elevation"
 msgstr "Ansicht"
 
@@ -454,7 +454,7 @@ msgid "Seat Height"
 msgstr "Sitzhöhe"
 
 #: crates/core/src/commands.rs:7612
-#: crates/core/src/commands.rs:9579
+#: crates/core/src/commands.rs:9591
 msgid "Section"
 msgstr "Schnitt"
 

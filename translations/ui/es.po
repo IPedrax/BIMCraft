@@ -4553,7 +4553,7 @@ msgstr "Ningún filtro aplicado."
 msgid "No filters yet: New makes one."
 msgstr "Aún no hay filtros: Nuevo crea uno."
 
-#: crates/ui-egui/src/lang.rs:136
+#: crates/ui-egui/src/lang.rs:154
 msgid "No font with Chinese characters was found on this system: install one (such as Noto Sans CJK) and choose Chinese again."
 msgstr "No se encontró en este sistema ninguna fuente con caracteres chinos: instale una (como Noto Sans CJK) y elija el chino otra vez."
 
@@ -8928,442 +8928,442 @@ msgctxt "cad"
 msgid "Layers"
 msgstr "Capas"
 
-#: crates/ui-egui/src/lang.rs:255
+#: crates/ui-egui/src/lang.rs:273
 msgctxt "category"
 msgid "3D View"
 msgstr "Vista 3D"
 
-#: crates/ui-egui/src/lang.rs:240
+#: crates/ui-egui/src/lang.rs:258
 msgctxt "category"
 msgid "Beam"
 msgstr "Viga"
 
-#: crates/ui-egui/src/lang.rs:258
+#: crates/ui-egui/src/lang.rs:276
 msgctxt "category"
 msgid "CAD Import"
 msgstr "Importación CAD"
 
-#: crates/ui-egui/src/lang.rs:248
+#: crates/ui-egui/src/lang.rs:266
 msgctxt "category"
 msgid "Cable"
 msgstr "Cable"
 
-#: crates/ui-egui/src/lang.rs:246
+#: crates/ui-egui/src/lang.rs:264
 msgctxt "category"
 msgid "Cable Tray"
 msgstr "Bandeja portacables"
 
-#: crates/ui-egui/src/lang.rs:232
+#: crates/ui-egui/src/lang.rs:250
 msgctxt "category"
 msgid "Ceiling"
 msgstr "Cielo raso"
 
-#: crates/ui-egui/src/lang.rs:228
+#: crates/ui-egui/src/lang.rs:246
 msgctxt "category"
 msgid "Column"
 msgstr "Columna"
 
-#: crates/ui-egui/src/lang.rs:229
+#: crates/ui-egui/src/lang.rs:247
 msgctxt "category"
 msgid "Component"
 msgstr "Componente"
 
-#: crates/ui-egui/src/lang.rs:245
+#: crates/ui-egui/src/lang.rs:263
 msgctxt "category"
 msgid "Conduit"
 msgstr "Tubo conduit"
 
-#: crates/ui-egui/src/lang.rs:252
+#: crates/ui-egui/src/lang.rs:270
 msgctxt "category"
 msgid "Detail Line"
 msgstr "Línea de detalle"
 
-#: crates/ui-egui/src/lang.rs:222
+#: crates/ui-egui/src/lang.rs:240
 msgctxt "category"
 msgid "Dimension"
 msgstr "Cota"
 
-#: crates/ui-egui/src/lang.rs:216
+#: crates/ui-egui/src/lang.rs:234
 msgctxt "category"
 msgid "Door"
 msgstr "Puerta"
 
-#: crates/ui-egui/src/lang.rs:249
+#: crates/ui-egui/src/lang.rs:267
 msgctxt "category"
 msgid "Down Conductor"
 msgstr "Conductor de bajada"
 
-#: crates/ui-egui/src/lang.rs:250
+#: crates/ui-egui/src/lang.rs:268
 msgctxt "category"
 msgid "Earthing Conductor"
 msgstr "Conductor de puesta a tierra"
 
-#: crates/ui-egui/src/lang.rs:225
+#: crates/ui-egui/src/lang.rs:243
 msgctxt "category"
 msgid "Elevation"
 msgstr "Elevación"
 
-#: crates/ui-egui/src/lang.rs:235
+#: crates/ui-egui/src/lang.rs:253
 msgctxt "category"
 msgid "Filled Region"
 msgstr "Región rellena"
 
-#: crates/ui-egui/src/lang.rs:218
+#: crates/ui-egui/src/lang.rs:236
 msgctxt "category"
 msgid "Floor"
 msgstr "Piso"
 
-#: crates/ui-egui/src/lang.rs:242
+#: crates/ui-egui/src/lang.rs:260
 msgctxt "category"
 msgid "Footing"
 msgstr "Zapata"
 
-#: crates/ui-egui/src/lang.rs:221
+#: crates/ui-egui/src/lang.rs:239
 msgctxt "category"
 msgid "Grid"
 msgstr "Eje"
 
-#: crates/ui-egui/src/lang.rs:220
+#: crates/ui-egui/src/lang.rs:238
 msgctxt "category"
 msgid "Level"
 msgstr "Nivel"
 
-#: crates/ui-egui/src/lang.rs:256
+#: crates/ui-egui/src/lang.rs:274
 msgctxt "category"
 msgid "Linked Model"
 msgstr "Modelo vinculado"
 
-#: crates/ui-egui/src/lang.rs:234
+#: crates/ui-egui/src/lang.rs:252
 msgctxt "category"
 msgid "Mass"
 msgstr "Masa"
 
-#: crates/ui-egui/src/lang.rs:236
+#: crates/ui-egui/src/lang.rs:254
 msgctxt "category"
 msgid "Mass Floor"
 msgstr "Piso de masa"
 
-#: crates/ui-egui/src/lang.rs:244
+#: crates/ui-egui/src/lang.rs:262
 msgctxt "category"
 msgid "Pipe"
 msgstr "Tubería"
 
-#: crates/ui-egui/src/lang.rs:257
+#: crates/ui-egui/src/lang.rs:275
 msgctxt "category"
 msgid "Point Cloud"
 msgstr "Nube de puntos"
 
-#: crates/ui-egui/src/lang.rs:238
+#: crates/ui-egui/src/lang.rs:256
 msgctxt "category"
 msgid "Railing"
 msgstr "Barandal"
 
-#: crates/ui-egui/src/lang.rs:237
+#: crates/ui-egui/src/lang.rs:255
 msgctxt "category"
 msgid "Ramp"
 msgstr "Rampa"
 
-#: crates/ui-egui/src/lang.rs:231
+#: crates/ui-egui/src/lang.rs:249
 msgctxt "category"
 msgid "Roof"
 msgstr "Cubierta"
 
-#: crates/ui-egui/src/lang.rs:219
+#: crates/ui-egui/src/lang.rs:237
 msgctxt "category"
 msgid "Room"
 msgstr "Habitación"
 
-#: crates/ui-egui/src/lang.rs:239
+#: crates/ui-egui/src/lang.rs:257
 msgctxt "category"
 msgid "Room Separator"
 msgstr "Separador de habitaciones"
 
-#: crates/ui-egui/src/lang.rs:254
+#: crates/ui-egui/src/lang.rs:272
 msgctxt "category"
 msgid "Schedule"
 msgstr "Tabla"
 
-#: crates/ui-egui/src/lang.rs:224
+#: crates/ui-egui/src/lang.rs:242
 msgctxt "category"
 msgid "Section"
 msgstr "Sección"
 
-#: crates/ui-egui/src/lang.rs:233
+#: crates/ui-egui/src/lang.rs:251
 msgctxt "category"
 msgid "Shaft Opening"
 msgstr "Abertura de ducto"
 
-#: crates/ui-egui/src/lang.rs:226
+#: crates/ui-egui/src/lang.rs:244
 msgctxt "category"
 msgid "Sheet"
 msgstr "Plano"
 
-#: crates/ui-egui/src/lang.rs:253
+#: crates/ui-egui/src/lang.rs:271
 msgctxt "category"
 msgid "Spot Elevation"
 msgstr "Cota de nivel"
 
-#: crates/ui-egui/src/lang.rs:230
+#: crates/ui-egui/src/lang.rs:248
 msgctxt "category"
 msgid "Stair"
 msgstr "Escalera"
 
-#: crates/ui-egui/src/lang.rs:243
+#: crates/ui-egui/src/lang.rs:261
 msgctxt "category"
 msgid "Strip Footing"
 msgstr "Zapata corrida"
 
-#: crates/ui-egui/src/lang.rs:241
+#: crates/ui-egui/src/lang.rs:259
 msgctxt "category"
 msgid "Structural Column"
 msgstr "Columna estructural"
 
-#: crates/ui-egui/src/lang.rs:223
+#: crates/ui-egui/src/lang.rs:241
 msgctxt "category"
 msgid "Tag"
 msgstr "Etiqueta"
 
-#: crates/ui-egui/src/lang.rs:251
+#: crates/ui-egui/src/lang.rs:269
 msgctxt "category"
 msgid "Text Note"
 msgstr "Nota de texto"
 
-#: crates/ui-egui/src/lang.rs:227
+#: crates/ui-egui/src/lang.rs:245
 msgctxt "category"
 msgid "Viewport"
 msgstr "Vista en plano"
 
-#: crates/ui-egui/src/lang.rs:215
+#: crates/ui-egui/src/lang.rs:233
 msgctxt "category"
 msgid "Wall"
 msgstr "Muro"
 
-#: crates/ui-egui/src/lang.rs:217
+#: crates/ui-egui/src/lang.rs:235
 msgctxt "category"
 msgid "Window"
 msgstr "Ventana"
 
-#: crates/ui-egui/src/lang.rs:247
+#: crates/ui-egui/src/lang.rs:265
 msgctxt "category"
 msgid "Wire"
 msgstr "Cable"
 
-#: crates/ui-egui/src/lang.rs:255
+#: crates/ui-egui/src/lang.rs:273
 msgctxt "category-plural"
 msgid "3D Views"
 msgstr "Vistas 3D"
 
-#: crates/ui-egui/src/lang.rs:240
+#: crates/ui-egui/src/lang.rs:258
 msgctxt "category-plural"
 msgid "Beams"
 msgstr "Vigas"
 
-#: crates/ui-egui/src/lang.rs:258
+#: crates/ui-egui/src/lang.rs:276
 msgctxt "category-plural"
 msgid "CAD Imports"
 msgstr "Importaciones CAD"
 
-#: crates/ui-egui/src/lang.rs:246
+#: crates/ui-egui/src/lang.rs:264
 msgctxt "category-plural"
 msgid "Cable Trays"
 msgstr "Bandejas portacables"
 
-#: crates/ui-egui/src/lang.rs:248
+#: crates/ui-egui/src/lang.rs:266
 msgctxt "category-plural"
 msgid "Cables"
 msgstr "Cables"
 
-#: crates/ui-egui/src/lang.rs:232
+#: crates/ui-egui/src/lang.rs:250
 msgctxt "category-plural"
 msgid "Ceilings"
 msgstr "Cielos rasos"
 
-#: crates/ui-egui/src/lang.rs:228
+#: crates/ui-egui/src/lang.rs:246
 msgctxt "category-plural"
 msgid "Columns"
 msgstr "Columnas"
 
-#: crates/ui-egui/src/lang.rs:229
+#: crates/ui-egui/src/lang.rs:247
 msgctxt "category-plural"
 msgid "Components"
 msgstr "Componentes"
 
-#: crates/ui-egui/src/lang.rs:245
+#: crates/ui-egui/src/lang.rs:263
 msgctxt "category-plural"
 msgid "Conduits"
 msgstr "Tubos conduit"
 
-#: crates/ui-egui/src/lang.rs:222
+#: crates/ui-egui/src/lang.rs:240
 msgctxt "category-plural"
 msgid "Dimensions"
 msgstr "Cotas"
 
-#: crates/ui-egui/src/lang.rs:216
+#: crates/ui-egui/src/lang.rs:234
 msgctxt "category-plural"
 msgid "Doors"
 msgstr "Puertas"
 
-#: crates/ui-egui/src/lang.rs:249
+#: crates/ui-egui/src/lang.rs:267
 msgctxt "category-plural"
 msgid "Down Conductors"
 msgstr "Conductores de bajada"
 
-#: crates/ui-egui/src/lang.rs:250
+#: crates/ui-egui/src/lang.rs:268
 msgctxt "category-plural"
 msgid "Earthing Conductors"
 msgstr "Conductores de puesta a tierra"
 
-#: crates/ui-egui/src/lang.rs:225
+#: crates/ui-egui/src/lang.rs:243
 msgctxt "category-plural"
 msgid "Elevations"
 msgstr "Elevaciones"
 
-#: crates/ui-egui/src/lang.rs:235
+#: crates/ui-egui/src/lang.rs:253
 msgctxt "category-plural"
 msgid "Filled Regions"
 msgstr "Regiones rellenas"
 
-#: crates/ui-egui/src/lang.rs:218
+#: crates/ui-egui/src/lang.rs:236
 msgctxt "category-plural"
 msgid "Floors"
 msgstr "Pisos"
 
-#: crates/ui-egui/src/lang.rs:242
+#: crates/ui-egui/src/lang.rs:260
 msgctxt "category-plural"
 msgid "Footings"
 msgstr "Zapatas"
 
-#: crates/ui-egui/src/lang.rs:221
+#: crates/ui-egui/src/lang.rs:239
 msgctxt "category-plural"
 msgid "Grids"
 msgstr "Ejes"
 
-#: crates/ui-egui/src/lang.rs:220
+#: crates/ui-egui/src/lang.rs:238
 msgctxt "category-plural"
 msgid "Levels"
 msgstr "Niveles"
 
-#: crates/ui-egui/src/lang.rs:252
+#: crates/ui-egui/src/lang.rs:270
 msgctxt "category-plural"
 msgid "Lines"
 msgstr "Líneas"
 
-#: crates/ui-egui/src/lang.rs:256
+#: crates/ui-egui/src/lang.rs:274
 msgctxt "category-plural"
 msgid "Linked Models"
 msgstr "Modelos vinculados"
 
-#: crates/ui-egui/src/lang.rs:236
+#: crates/ui-egui/src/lang.rs:254
 msgctxt "category-plural"
 msgid "Mass Floors"
 msgstr "Pisos de masa"
 
-#: crates/ui-egui/src/lang.rs:234
+#: crates/ui-egui/src/lang.rs:252
 msgctxt "category-plural"
 msgid "Masses"
 msgstr "Masas"
 
-#: crates/ui-egui/src/lang.rs:244
+#: crates/ui-egui/src/lang.rs:262
 msgctxt "category-plural"
 msgid "Pipes"
 msgstr "Tuberías"
 
-#: crates/ui-egui/src/lang.rs:257
+#: crates/ui-egui/src/lang.rs:275
 msgctxt "category-plural"
 msgid "Point Clouds"
 msgstr "Nubes de puntos"
 
-#: crates/ui-egui/src/lang.rs:238
+#: crates/ui-egui/src/lang.rs:256
 msgctxt "category-plural"
 msgid "Railings"
 msgstr "Barandales"
 
-#: crates/ui-egui/src/lang.rs:237
+#: crates/ui-egui/src/lang.rs:255
 msgctxt "category-plural"
 msgid "Ramps"
 msgstr "Rampas"
 
-#: crates/ui-egui/src/lang.rs:231
+#: crates/ui-egui/src/lang.rs:249
 msgctxt "category-plural"
 msgid "Roofs"
 msgstr "Cubiertas"
 
-#: crates/ui-egui/src/lang.rs:239
+#: crates/ui-egui/src/lang.rs:257
 msgctxt "category-plural"
 msgid "Room Separators"
 msgstr "Separadores de habitaciones"
 
-#: crates/ui-egui/src/lang.rs:219
+#: crates/ui-egui/src/lang.rs:237
 msgctxt "category-plural"
 msgid "Rooms"
 msgstr "Habitaciones"
 
-#: crates/ui-egui/src/lang.rs:254
+#: crates/ui-egui/src/lang.rs:272
 msgctxt "category-plural"
 msgid "Schedules"
 msgstr "Tablas"
 
-#: crates/ui-egui/src/lang.rs:224
+#: crates/ui-egui/src/lang.rs:242
 msgctxt "category-plural"
 msgid "Sections"
 msgstr "Secciones"
 
-#: crates/ui-egui/src/lang.rs:233
+#: crates/ui-egui/src/lang.rs:251
 msgctxt "category-plural"
 msgid "Shaft Openings"
 msgstr "Aberturas de ducto"
 
-#: crates/ui-egui/src/lang.rs:226
+#: crates/ui-egui/src/lang.rs:244
 msgctxt "category-plural"
 msgid "Sheets"
 msgstr "Planos"
 
-#: crates/ui-egui/src/lang.rs:253
+#: crates/ui-egui/src/lang.rs:271
 msgctxt "category-plural"
 msgid "Spot Elevations"
 msgstr "Cotas de nivel"
 
-#: crates/ui-egui/src/lang.rs:230
+#: crates/ui-egui/src/lang.rs:248
 msgctxt "category-plural"
 msgid "Stairs"
 msgstr "Escaleras"
 
-#: crates/ui-egui/src/lang.rs:243
+#: crates/ui-egui/src/lang.rs:261
 msgctxt "category-plural"
 msgid "Strip Footings"
 msgstr "Zapatas corridas"
 
-#: crates/ui-egui/src/lang.rs:241
+#: crates/ui-egui/src/lang.rs:259
 msgctxt "category-plural"
 msgid "Structural Columns"
 msgstr "Columnas estructurales"
 
-#: crates/ui-egui/src/lang.rs:223
+#: crates/ui-egui/src/lang.rs:241
 msgctxt "category-plural"
 msgid "Tags"
 msgstr "Etiquetas"
 
-#: crates/ui-egui/src/lang.rs:251
+#: crates/ui-egui/src/lang.rs:269
 msgctxt "category-plural"
 msgid "Text Notes"
 msgstr "Notas de texto"
 
-#: crates/ui-egui/src/lang.rs:227
+#: crates/ui-egui/src/lang.rs:245
 msgctxt "category-plural"
 msgid "Viewports"
 msgstr "Vistas en plano"
 
-#: crates/ui-egui/src/lang.rs:215
+#: crates/ui-egui/src/lang.rs:233
 msgctxt "category-plural"
 msgid "Walls"
 msgstr "Muros"
 
-#: crates/ui-egui/src/lang.rs:217
+#: crates/ui-egui/src/lang.rs:235
 msgctxt "category-plural"
 msgid "Windows"
 msgstr "Ventanas"
 
-#: crates/ui-egui/src/lang.rs:247
+#: crates/ui-egui/src/lang.rs:265
 msgctxt "category-plural"
 msgid "Wires"
 msgstr "Cables"

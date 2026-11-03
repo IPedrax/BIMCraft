@@ -37,6 +37,36 @@ fn the_window_speaks_chinese_once_it_is_put_in_it_and_keeps_to_it() {
 }
 
 #[test]
+fn the_window_speaks_traditional_chinese_apart_from_the_simplified_and_keeps_to_it() {
+    let file = settings_file("traditional");
+    let mut h = app(BOX);
+    h.state_mut().use_settings(file.clone());
+    lang::assume_cjk_font(&h.ctx);
+    let ctx = h.ctx.clone();
+    h.state_mut().set_lang(&ctx, Lang::TraditionalChinese);
+    h.run();
+    assert_eq!(h.state().lang, Lang::TraditionalChinese);
+    for word in ["檔案", "建築", "註釋", "體量建模", "視圖", "管理", "修改"] {
+        assert!(h.query_all_by_label(word).next().is_some(), "the ribbon's tab `{word}`");
+    }
+    assert!(h.query_all_by_label("建筑").next().is_none(), "no Simplified word on a Traditional window");
+    assert!(h.query_by_label("Architecture").is_none());
+    // The settings file has its code, and a window started on the file is in it.
+    assert_eq!(language_in(&file), Some(Lang::TraditionalChinese));
+    let mut again = app(BOX);
+    again.state_mut().use_settings(file.clone());
+    assert_eq!(again.state().lang, Lang::TraditionalChinese);
+    let _ = std::fs::remove_dir_all(file.parent().unwrap());
+    // Without a font for hanzi it is held back as Simplified is.
+    let mut none = app_of(lang::no_fonts);
+    let ctx = none.ctx.clone();
+    none.state_mut().set_lang(&ctx, Lang::TraditionalChinese);
+    none.run();
+    assert_eq!(none.state().lang, Lang::English);
+    assert!(none.state().status.error);
+}
+
+#[test]
 fn without_a_font_for_hanzi_the_window_stays_as_it_was_and_says_why() {
     let mut h = app_of(lang::no_fonts);
     let ctx = h.ctx.clone();
