@@ -70,7 +70,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 .ok_or("the walls imported do not enclose its box (curtain walls and room separation lines are not imported)")?;
             let (number, name) = g.rooms.get(&r.id).cloned().unwrap_or_default();
             let name = if name.trim().is_empty() { "Room".to_string() } else { clip(&name) };
-            Ok(Room { level, point, name, number: clip(&number), params: Default::default() })
+            Ok(Room::new(level, point, name, clip(&number)))
         })();
         match made {
             Ok(room) => {

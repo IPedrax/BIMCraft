@@ -5400,6 +5400,7 @@ mod popup;
 mod purge;
 mod reinforce;
 mod revit;
+mod rooms;
 mod section_box;
 mod sketch;
 mod smallest;
