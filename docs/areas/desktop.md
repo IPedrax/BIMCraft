@@ -236,6 +236,17 @@ window draws): `accent` is for fills, strokes and the drawing, `accent_ink` for 
 (`style::focus_ring`, which on the app bar is the bar's lettering colour), `on_context` for the open contextual tab's lettering. A new pair of
 colours goes in that test.
 
+Profiles. File > Settings > User Interface > Profile picks the interface the window wears (`style::Profile`, kept in `settings.json` as
+`profile`, a name this version doesn't know read as the default): BIMCraft's own, the default, or Rev, laid out as the ribbon tool its
+users know. Rev has palettes of its own (`style::REV_LIGHT`, `REV_DARK`: the title bar and the ribbon's tabs in the ribbon's greys, where
+BIMCraft's bar is dark; the accent, its tints and the drawing's colours are the same), square corners (`style::corner`, and the widgets'
+own, which `style::follow` sets again when the profile changes), and one layout, flush, so the Layout choice is BIMCraft's and greyed while
+Rev is on. Its File is the ribbon's first tab, white on blue (`style::FILE_TAB`), and leaves the app bar; its open tab is outlined but
+along its foot, where it opens onto the panels; the panels' names sit on bands along the ribbon's foot (`ribbon::panel`); and the Options
+Bar is docked under the ribbon (`BimApp::show`), there with or without a tool's options, so the view never moves under it. Each difference
+is read in the frame through `style::rev()`, never a second copy of a widget. Rev copies a layout, never another program's pictures or
+words: its icons are the ones `icons.rs` draws. `tests/profile.rs` drives it, and `tests/smallest.rs` runs the least window in both.
+
 The title bar (`titlebar.rs`). On Windows and Linux the window draws its own (`BimApp::own_title_bar`, set by `main`, which opens
 the window without the system's decorations): the app bar is the title bar. Its bare ground moves the window and a double-click
 there maximizes or restores it (`titlebar::drag_area`, laid out before the bar's buttons so they keep their presses), Minimize,

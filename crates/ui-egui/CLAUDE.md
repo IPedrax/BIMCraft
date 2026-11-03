@@ -35,4 +35,5 @@ startup, tags) is [the desktop](../../docs/areas/desktop.md).
   inside itself; a field inside a `Grid` comes out narrow, so use `ui.add_sized`.
 - A texture's pixels (the 3D view's picture, a section's) are not in the context, and the harness hands each frame's uploads to a renderer
   that keeps none: `tests/light_canvas.rs`'s `Uploads` is one that does (`Harness::builder().renderer(..)`).
-- After a change to how the window looks, look at it in the three looks (Light, Dark, Dark UI with a Light Canvas): [looking at the result](../../docs/areas/looking-at-results.md).
+- After a change to how the window looks, look at it in the three looks (Light, Dark, Dark UI with a Light Canvas) and in both profiles
+  (BIMCraft and Rev, `style::Profile`): [looking at the result](../../docs/areas/looking-at-results.md).

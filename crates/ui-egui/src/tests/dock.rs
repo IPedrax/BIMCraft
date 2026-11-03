@@ -248,9 +248,10 @@ fn settings_open_from_the_file_menu_and_set_the_theme_the_ribbon_and_the_palette
     assert!(crate::style::dark());
     pick(&mut h, Role::CheckBox, "Minimize the ribbon to its tabs");
     assert!(h.state().ribbon_min);
-    pick(&mut h, Role::CheckBox, "Project Browser");
+    // The page runs below the fold now, so these are pressed as a screen reader does.
+    h.get_by_role_and_label(Role::CheckBox, "Project Browser").click_accesskit();
+    h.run();
     assert!(!docking(&h).shown(Palette::Browser));
-    // The page runs below the fold now, so it is pressed as a screen reader does.
     h.get_by_label("Reset Palette Layout").click_accesskit();
     h.run();
     assert_eq!(*docking(&h), Docking::default());

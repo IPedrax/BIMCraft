@@ -1,7 +1,7 @@
 //! File > Settings (Ctrl+,): the window's own settings, the user's and never a project's. They live in
 //! `settings.json` beside the favorites and the update settings ([`beside`]), which the desktop's `main` hands the app
 //! ([`BimApp::use_settings`]); a window that wasn't given the file (every test's) keeps them for as long as it's open.
-//! What it keeps: the theme and whether the drawing stays light in a dark one, the layout, interface language, ribbon, palettes, the
+//! What it keeps: the theme and whether the drawing stays light in a dark one, the profile, the layout, interface language, ribbon, palettes, the
 //! window's size, the background autosave interval, and the colour High Contrast Point Clouds draws scans in.
 //! The pages for what is still to come (performance and graphics) show what they will hold, greyed out.
 
@@ -17,7 +17,7 @@ use serde_json::{Value, json};
 use crate::BimApp;
 use crate::dock::{Docking, Palette};
 use crate::lang::{Lang, t};
-use crate::style::pal;
+use crate::style::{Profile, pal};
 use crate::updates::failed;
 
 /// The settings file's name, in the folder of the favorites.
@@ -83,6 +83,7 @@ pub struct Settings {
     pub light_canvas: bool,
     /// The Compact layout: the bars and palettes flush to the window's edges, not floating cards.
     pub compact: bool,
+    pub profile: Profile,
     pub language: Lang,
     pub ribbon_minimized: bool,
     pub docking: Docking,
@@ -109,6 +110,7 @@ impl Settings {
             "theme": theme,
             "light_canvas": self.light_canvas,
             "layout": if self.compact { "compact" } else { "floating" },
+            "profile": self.profile.code(),
             "language": self.language.code(),
             "ribbon_minimized": self.ribbon_minimized,
             "palettes": self.docking.to_json(),
@@ -138,6 +140,7 @@ impl Settings {
                 Some("floating") => false,
                 _ => base.compact,
             },
+            profile: v["profile"].as_str().and_then(Profile::from_code).unwrap_or(base.profile),
             language: v["language"].as_str().and_then(Lang::from_code).unwrap_or(base.language),
             ribbon_minimized: v["ribbon_minimized"].as_bool().unwrap_or(base.ribbon_minimized),
             docking: if v["palettes"].is_object() { Docking::from_json(&v["palettes"]) } else { base.docking },
@@ -221,7 +224,7 @@ impl BimApp {
         let now = self.settings_now(ThemePreference::System);
         let kept = read(&path).map_or(now.clone(), |v| Settings::from_json(&v, now));
         (self.lang, self.ribbon_min, self.docking) = (kept.language, kept.ribbon_minimized, kept.docking.clone());
-        self.compact = kept.compact;
+        (self.compact, self.profile) = (kept.compact, kept.profile);
         self.theme_wanted = Some(kept.theme);
         self.light_canvas = kept.light_canvas;
         self.autosave.interval_minutes = kept.autosave_minutes;
@@ -244,6 +247,7 @@ impl BimApp {
             theme,
             light_canvas: self.light_canvas,
             compact: self.compact,
+            profile: self.profile,
             language: self.lang,
             ribbon_minimized: self.ribbon_min,
             docking: self.docking.clone(),
@@ -329,14 +333,29 @@ impl BimApp {
     }
 
     fn interface_page(&mut self, ui: &mut Ui, ctx: &Context) {
+        heading(ui, msg!("Profile"));
+        ui.horizontal(|ui| {
+            for (profile, tip) in [
+                (Profile::BimCraft, msg!("BIMCraft's own look: a dark title bar, and the ribbon, the palettes and the bars laid out as Layout says")),
+                (
+                    Profile::Rev,
+                    msg!("Flat and square, the title bar in the ribbon's greys: the File tab leads the ribbon's tabs and the Options Bar is docked under the ribbon"),
+                ),
+            ] {
+                ui.radio_value(&mut self.profile, profile, profile.name()).on_hover_text(t(tip));
+            }
+        });
         heading(ui, msg!("Theme"));
         self.theme_choices(ui, false);
         heading(ui, msg!("Layout"));
-        ui.horizontal(|ui| {
-            let tip = msg!("The ribbon, the palettes and the bars as cards floating over the view");
-            ui.radio_value(&mut self.compact, false, t("Floating")).on_hover_text(t(tip));
-            let tip = msg!("The ribbon, the palettes and the bars flush to the window's edges");
-            ui.radio_value(&mut self.compact, true, t("Compact")).on_hover_text(t(tip));
+        // Rev has one layout, flush: the choice is BIMCraft's, and kept for it.
+        ui.add_enabled_ui(self.profile == Profile::BimCraft, |ui| {
+            ui.horizontal(|ui| {
+                let tip = msg!("The ribbon, the palettes and the bars as cards floating over the view");
+                ui.radio_value(&mut self.compact, false, t("Floating")).on_hover_text(t(tip));
+                let tip = msg!("The ribbon, the palettes and the bars flush to the window's edges");
+                ui.radio_value(&mut self.compact, true, t("Compact")).on_hover_text(t(tip));
+            });
         });
         heading(ui, "Language");
         ComboBox::from_id_salt("settings-language").selected_text(self.lang.label()).width(200.0).show_ui(ui, |ui| {

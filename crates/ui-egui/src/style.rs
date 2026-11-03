@@ -4,6 +4,8 @@
 //! same pieces flush and square (Compact). One blue accent for the active tool, selection and focus; IBM Plex for the
 //! lettering; the icons are drawn in `icons.rs`.
 //! A dark interface may keep the drawing canvas light; canvas painters use `canvas_dark`, chrome uses `dark`.
+//! The Rev profile (`Profile`) wears palettes of its own (`REV_LIGHT`, `REV_DARK`: the chrome in the ribbon's greys), square
+//! corners (`corner`) and the Compact layout; the drawing's colours (`canvas_pal`) are the same in both profiles.
 
 use std::cell::Cell;
 use std::sync::Arc;
@@ -114,6 +116,35 @@ pub const DARK: Palette = Palette {
     shadow: Color32::from_rgba_premultiplied(0, 0, 0, 110),
 };
 
+/// Rev's light palette: the chrome (the title bar and the ribbon's tabs) and the cards in the ribbon's own light greys, where
+/// BIMCraft's bar is dark. The accent, its tints and the drawing's colours are [`LIGHT`]'s.
+pub const REV_LIGHT: Palette = Palette {
+    panel: rgb(0xF7F8F9),
+    bar: rgb(0xE8EAED),
+    control: rgb(0xE0E3E7),
+    border: rgb(0xC9CDD2),
+    app_bar: rgb(0xE3E6EA),
+    app_bar_text: rgb(0x262A32),
+    app_bar_muted: rgb(0x555A63),
+    app_bar_hover: rgb(0xD3D7DD),
+    ..LIGHT
+};
+
+/// Rev's dark palette: neutral greys, the chrome a step darker than the cards. The accent and its tints are [`DARK`]'s.
+pub const REV_DARK: Palette = Palette {
+    panel: rgb(0x2B2F36),
+    bar: rgb(0x2F333A),
+    control: rgb(0x3D424B),
+    border: rgb(0x454B55),
+    surface: rgb(0x202328),
+    app_bar: rgb(0x1F2227),
+    app_bar_hover: rgb(0x30353D),
+    ..DARK
+};
+
+/// Rev's File tab, white on it in both themes.
+pub const FILE_TAB: Color32 = rgb(0x2064B5);
+
 /// How far the cards stand off the window's edges and each other, in the Floating layout.
 pub const GAP: i8 = 7;
 /// A card's corners, and a menu's or a dialog's.
@@ -127,6 +158,8 @@ thread_local! {
     static CANVAS_DARK: Cell<bool> = const { Cell::new(false) };
     /// Whether this frame lays the window out flush (Compact) rather than in cards (Floating).
     static COMPACT: Cell<bool> = const { Cell::new(false) };
+    /// Whether this frame wears the Rev profile.
+    static REV: Cell<bool> = const { Cell::new(false) };
     /// Whether what's drawn now is on the dark app bar, where icons are light.
     static ON_APP_BAR: Cell<bool> = const { Cell::new(false) };
     /// Whether the window has its semibold lettering yet: fonts set take effect a frame later.
@@ -152,9 +185,19 @@ pub fn icon_inks() -> (Color32, Color32) {
     if ON_APP_BAR.with(Cell::get) { (pal().app_bar_text, pal().app_bar_hover) } else { (pal().icon, pal().hover_fill) }
 }
 
-/// The colours of the theme this frame is drawn in.
+/// The colours of the theme and the profile this frame is drawn in.
 pub fn pal() -> &'static Palette {
-    if dark() { &DARK } else { &LIGHT }
+    match (dark(), rev()) {
+        (false, false) => &LIGHT,
+        (true, false) => &DARK,
+        (false, true) => &REV_LIGHT,
+        (true, true) => &REV_DARK,
+    }
+}
+
+/// A button's or a tab's corners, `r` in BIMCraft's look: Rev's are all but square.
+pub fn corner(r: f32) -> f32 {
+    if rev() { r.min(2.0) } else { r }
 }
 
 /// Whether the interface is dark this frame (the chrome around the drawing; the drawing's own is [`canvas_dark`]).
@@ -174,6 +217,39 @@ pub fn canvas_pal() -> &'static Palette {
     if canvas_dark() { &DARK } else { &CANVAS_LIGHT }
 }
 
+/// Which interface the window wears: BIMCraft's own (the default), or Rev, laid out as the ribbon tool its users know: flat and
+/// square, the chrome in the ribbon's own greys, the File tab leading the ribbon's tabs and the Options Bar docked under the ribbon.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Profile {
+    #[default]
+    BimCraft,
+    Rev,
+}
+
+impl Profile {
+    pub const ALL: [Profile; 2] = [Profile::BimCraft, Profile::Rev];
+
+    /// Its name, which is its label too: a name, so never translated.
+    pub fn name(self) -> &'static str {
+        match self {
+            Profile::BimCraft => "BIMCraft",
+            Profile::Rev => "Rev",
+        }
+    }
+
+    /// What the settings file keeps.
+    pub fn code(self) -> &'static str {
+        match self {
+            Profile::BimCraft => "bimcraft",
+            Profile::Rev => "rev",
+        }
+    }
+
+    pub fn from_code(code: &str) -> Option<Profile> {
+        Profile::ALL.into_iter().find(|p| p.code() == code)
+    }
+}
+
 /// How the window is drawn beyond the theme: what the user kept on the View tab and in Settings.
 #[derive(Clone, Copy, Default)]
 pub struct Look {
@@ -181,6 +257,7 @@ pub struct Look {
     pub light_canvas: bool,
     /// The cards sit flush and square (Compact) rather than floating.
     pub compact: bool,
+    pub profile: Profile,
 }
 
 /// Draw this frame in the theme egui shows: the system's, unless the user picked one; in the look the user kept.
@@ -188,12 +265,25 @@ pub fn follow(ctx: &Context, look: Look) {
     DARK_ON.with(|d| d.set(ctx.theme() == Theme::Dark));
     CANVAS_DARK.with(|d| d.set(dark() && !look.light_canvas));
     COMPACT.with(|c| c.set(look.compact));
+    REV.with(|r| r.set(look.profile == Profile::Rev));
+    // The widgets' look is the context's, set for both themes: again only when the profile changes.
+    let styled = egui::Id::new("styled-profile");
+    if ctx.data(|d| d.get_temp::<Profile>(styled)) != Some(look.profile) {
+        visuals(ctx, look.profile);
+        ctx.data_mut(|d| d.insert_temp(styled, look.profile));
+    }
     let semibold = ctx.fonts(|f| f.definitions().families.contains_key(&FontFamily::Name(SEMIBOLD.into())));
     SEMIBOLD_ON.with(|s| s.set(semibold));
 }
 
+/// Whether this frame is laid out flush: the Compact layout, and Rev, which has no other.
 pub fn compact() -> bool {
-    COMPACT.with(Cell::get)
+    COMPACT.with(Cell::get) || rev()
+}
+
+/// Whether this frame wears the Rev profile.
+pub fn rev() -> bool {
+    REV.with(Cell::get)
 }
 
 /// The gap round the cards: none in the Compact layout.
@@ -275,13 +365,21 @@ fn fonts() -> FontDefinitions {
     fonts
 }
 
+/// The fonts and the theme's preference, once: the widgets' look follows the profile ([`follow`]).
 pub fn apply(ctx: &Context) {
     ctx.set_fonts(fonts());
     ctx.options_mut(|o| {
         o.theme_preference = ThemePreference::System;
         o.fallback_theme = Theme::Light;
     });
-    for (theme, pal) in [(Theme::Light, &LIGHT), (Theme::Dark, &DARK)] {
+}
+
+/// The lettering's sizes, the spacing and the widgets' colours and corners, in both themes, for `profile`.
+fn visuals(ctx: &Context, profile: Profile) {
+    let rev = profile == Profile::Rev;
+    let palettes = if rev { [&REV_LIGHT, &REV_DARK] } else { [&LIGHT, &DARK] };
+    let (widget, window) = if rev { (2, 3) } else { (4, WINDOW_RADIUS) };
+    for (theme, pal) in [Theme::Light, Theme::Dark].into_iter().zip(palettes) {
         ctx.style_mut_of(theme, |s| {
             for (style, size) in [(TextStyle::Heading, 15.0), (TextStyle::Body, 13.0), (TextStyle::Button, 13.0), (TextStyle::Small, 11.0)]
             {
@@ -299,15 +397,15 @@ pub fn apply(ctx: &Context) {
             v.extreme_bg_color = pal.surface;
             v.faint_bg_color = pal.bar;
             v.window_stroke = Stroke::new(1.0, pal.border);
-            v.window_corner_radius = CornerRadius::same(WINDOW_RADIUS);
-            v.menu_corner_radius = CornerRadius::same(WINDOW_RADIUS);
+            v.window_corner_radius = CornerRadius::same(window);
+            v.menu_corner_radius = CornerRadius::same(window);
             v.window_shadow = Shadow { offset: [0, 10], blur: 32, spread: 0, color: pal.shadow };
             v.popup_shadow = Shadow { offset: [0, 8], blur: 24, spread: 0, color: pal.shadow };
             v.hyperlink_color = pal.accent;
             v.selection.bg_fill = pal.select_fill;
             v.selection.stroke = Stroke::new(1.0, pal.accent);
             v.text_cursor.stroke = Stroke::new(2.0, pal.accent);
-            let radius = CornerRadius::same(4);
+            let radius = CornerRadius::same(widget);
             for w in
                 [&mut v.widgets.noninteractive, &mut v.widgets.inactive, &mut v.widgets.hovered, &mut v.widgets.active, &mut v.widgets.open]
             {
@@ -360,8 +458,14 @@ mod tests {
     #[test]
     fn what_is_read_holds_its_contrast_on_what_it_sits_on_in_both_themes() {
         let mut fails = Vec::new();
-        for (theme, p) in [("light", &LIGHT), ("dark", &DARK)] {
-            DARK_ON.with(|d| d.set(theme == "dark"));
+        for (theme, p, dark, rev) in [
+            ("light", &LIGHT, false, false),
+            ("dark", &DARK, true, false),
+            ("Rev light", &REV_LIGHT, false, true),
+            ("Rev dark", &REV_DARK, true, true),
+        ] {
+            DARK_ON.with(|d| d.set(dark));
+            REV.with(|r| r.set(rev));
             let (ring, ring_on_bar) = (focus_ring().color, on_app_bar(|| focus_ring().color));
             // Text, on a card, a band, a field and a hovered row; some also on the open tab's tint.
             let on_cards = [p.panel, p.bar, p.surface, p.hover_fill];
@@ -387,6 +491,15 @@ mod tests {
                 ("a caption button's focus ring and glyph", p.app_bar_text, p.app_bar_hover, 3.0),
                 ("Close's focus ring and glyph", Color32::WHITE, crate::titlebar::CLOSE_HOVER, 3.0),
             ]);
+            // Rev's ribbon tabs and the button that folds the ribbon sit on the chrome, and File is white on its blue.
+            if rev {
+                rows.extend([
+                    ("a ribbon tab's lettering on the chrome", p.text, p.app_bar, 4.5),
+                    ("a hovered ribbon tab's lettering", p.text, p.hover_fill, 4.5),
+                    ("an icon on the chrome", p.icon, p.app_bar, 3.0),
+                    ("the File tab's lettering", Color32::WHITE, FILE_TAB, 4.5),
+                ]);
+            }
             for (what, ink, ground, least) in rows {
                 let c = contrast(ink, ground);
                 if c < least {
@@ -394,6 +507,7 @@ mod tests {
                 }
             }
         }
+        REV.with(|r| r.set(false));
         assert!(fails.is_empty(), "{fails:#?}");
     }
 
