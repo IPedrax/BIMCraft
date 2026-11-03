@@ -375,6 +375,7 @@ impl BimApp {
                                     self.open_display();
                                 }
                             });
+                            self.work_plane_button(ui);
                             ui.separator();
                         }
                         _ => {}

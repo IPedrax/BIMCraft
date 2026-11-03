@@ -41,7 +41,7 @@ and at 1 : 100 the pens' own widths, `Pen::mm`). A drawing keeps each line's pen
 (`Look::dress`), and the last step of drawing a plan, a section, a sketch or a sheet's own lines sizes each line (`Drawing::weigh`),
 as annotation where its owner is a dimension, tag, text, spot elevation, grid, level, room or mark (`annotates`), else as the model;
 a view on a sheet takes the line weights at its viewport's scale. Cut outlines are inked over the poché: `cut_edges` keeps of each
-outline what isn't against another's on its outer side, so joins stay clean. Where two runs meet (two walls at a corner), `turn_corners` carries each a pixel on round the corner into the other, so the corner is a join inside a line, mitred square, not two ends with a notch between them; an outline nothing lies against is one closed line (`ink_cut`), no corner of it an end. PNG, SVG and PDF join a pen's lines mitred and lettering's round (`Part::mitred`), so a V's point doesn't stick out. A pen is as wide as on the paper however far the view is zoomed (`paper_of`, not clamped as lettering's size is), and a tool's preview draws its pens as the plan it is in does. The desktop draws a line its pixels at the zoom, at least one (`canvas::on_screen`); Thin Lines draws every line one. A
+outline what isn't against another's on its outer side, so joins stay clean. Where two runs meet (two walls at a corner), `turn_corners` carries each a pixel on round the corner into the other, so the corner is a join inside a line, mitred square, not two ends with a notch between them; an outline nothing lies against is one closed line (`ink_cut`), no corner of it an end. A column the plan cuts is solid poché: a compound wall's layers (their fills and patterns, and the lines between them) are cut back to outside its outline (`outside_columns`, `geom::subtract_convex` and `geom::line_outside_convex`, for outlines are convex), so a wall that runs into or through a column shows nothing of itself inside it. PNG, SVG and PDF join a pen's lines mitred and lettering's round (`Part::mitred`), so a V's point doesn't stick out. A pen is as wide as on the paper however far the view is zoomed (`paper_of`, not clamped as lettering's size is), and a tool's preview draws its pens as the plan it is in does. The desktop draws a line its pixels at the zoom, at least one (`canvas::on_screen`); Thin Lines draws every line one. A
 file from before pens (format 3) held weights in pixels of a sheet's drawing, and opens with each the nearest pen (`pens_from_pixels`).
 Which pen each kind of line draws with is named once, in `pen.rs` (`Pen::CUT`, `Pen::PROJECTION`, `Pen::HEAVY` and the rest), never a number at the draw site: a cut is `Pen::CUT` in plan and in section alike. A category's own lines are its Object Styles'
 (`styles.rs`, `Model::object_styles`, the `object_styles` command, Manage > Object Styles in the desktop, `objectstyles.rs`): the
@@ -232,6 +232,21 @@ controls groups of the views that follow it (categories, filters, a plan's view 
 Instances and the framing of sections and 3D views take what `Look` shows too. A level's ceiling plan is its plan's view;
 transparency shows in 3D only. A surface is seen through as much as the greater of its material's `transparency` (`Tri::alpha`, in
 plain views too) and the view's override for its element (not in a plain view); both painters take it from `Tri::alpha`.
+
+A 3D view sketches on its work plane (`workplane.rs`), as Revit's Work Plane > Set and more: `View3D::work_plane`, a `WorkPlane` on a
+`level` (a GUID, in `visit_refs!`), through three `points`, or on a `surface` picked on the model (a point and a normal), each moved
+`offset` mm along its normal; with none, the lowest level (`Model::work_plane`). `WorkPlane::resolve` gives it as a `workplane::Frame`,
+a point and a unit normal, at any angle, upright too: three points along a line are refused (`workplane::through`, facing up unless
+upright), and `Model::check` resolves it. `Frame::over_plan` is it as a `walls::Plane` over the plan, as a floor's top is, for a sketch
+that stays plan lines raised onto it (none for an upright one); `Frame::axes` are its level and up directions. The `work_plane` command
+sets it (making the default 3D view, as `section_box` does), moves the plane as it is given only `offset`, or, given nothing, clears it;
+deleting its level clears it too. `workplane::host` is the level what is made on it stands on: the highest at or below the plane, else
+the lowest; a floor, a ceiling, a roof or a shaft is made only on a level one (`workplane::is_level`, the desktop's check). The scene
+says what a work plane is picked from: `Scene::face_at`, the face under a pixel (where, which way toward the camera, and the element's
+triangles in its plane), and `Scene::corner_near`, the corner within so many pixels that nothing nearer hides, both of what the view's
+look shows and inside its section box.
+`Camera::on_slope` finds the point of such a plane under a pixel, `Camera::at_depth` a pixel's point at a depth, and the 3D pictures
+say what point of the model a pixel shows (`Image::point`, from the depth the processor's picture now keeps; `gpu::Mesh::point`).
 
 A 3D view may be cut to a section box (fork issue 1), as Revit's Section Box: `View3D::section_box`, a `SectionBox` of six planes
 square to the axes from `min` to `max`, `on` or off (off, it keeps its extents), set by the `section_box` command (which makes the

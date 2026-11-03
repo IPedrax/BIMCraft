@@ -33,6 +33,7 @@ pub mod electrical;
 #[cfg(test)]
 mod electrical_tests;
 pub mod engine;
+pub mod falls;
 pub mod family;
 pub mod favorites;
 pub mod fills;
@@ -82,6 +83,8 @@ pub mod schedule;
 #[cfg(test)]
 mod section_box_tests;
 pub mod selection;
+#[cfg(test)]
+mod shape_tests;
 pub mod sheet;
 pub mod skeleton;
 pub mod sketch;
@@ -94,11 +97,14 @@ pub mod styles;
 pub mod symbol_set;
 pub mod text;
 pub mod texture;
+pub mod triangulation;
 pub mod units;
 pub mod view3d;
 pub mod walls;
 pub mod water;
 pub mod workplane;
+#[cfg(test)]
+mod workplane_tests;
 pub mod xlsx;
 
 pub use commands::{command_of, element_json, floor_outline, opening_of, roof_footprint, run_category_of, runs_of, stood_of};

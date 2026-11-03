@@ -283,6 +283,104 @@ fn top_of(faces: &[Vec<P3>]) -> Option<(Plane, geom::Region, f64)> {
     Some((top, shape, top.at(q) - under.at(q)))
 }
 
+/// A slab's top that isn't one plane, as a shape reads it (MOD-16).
+struct ShapedTop {
+    /// Its highest point's height.
+    high: f64,
+    /// The outline in plan of its faces turned up, and the holes in it.
+    region: geom::Region,
+    /// Each corner of those faces under `high`, or inside the outline: a point, with how far under it lies.
+    points: Vec<(P2, f64)>,
+    /// Each edge two of them share at an angle.
+    creases: Vec<(P2, P2)>,
+    /// How thick it is under its highest corner, plumb.
+    depth: f64,
+    /// The corners of its faces turned up, which the shape must meet.
+    corners: Vec<P3>,
+    /// Whether its underside is level: a layer of it tapers.
+    level_under: bool,
+}
+
+/// A slab's top that isn't one plane, as a shape reads it. None when its faces turned up lie in one plane, or it has none.
+fn shaped_top(faces: &[Vec<P3>]) -> Option<ShapedTop> {
+    let up: Vec<&Vec<P3>> = faces.iter().filter(|f| f.len() >= 3 && normal(f)[2] >= 0.2).collect();
+    let plane = Plane::of(up.iter().max_by(|a, b| area3(a).total_cmp(&area3(b)))?)?;
+    if up.iter().flat_map(|f| f.iter()).all(|p| (p[2] - plane.at(P2(p[0], p[1]))).abs() <= 0.5) {
+        return None;
+    }
+    let mut rings: Vec<Vec<P2>> = loops(up.iter().copied()).into_iter().map(|l| geom::corners(&l)).filter(|l| l.len() >= 3).collect();
+    rings.sort_by(|a, b| geom::area(b).abs().total_cmp(&geom::area(a).abs()));
+    let mut rings = rings.into_iter();
+    let mut outer = rings.next()?;
+    if geom::area(&outer) < 0.0 {
+        outer.reverse();
+    }
+    let holes: Vec<Vec<P2>> = rings.filter(|h| geom::area(h) < 0.0 && h.iter().all(|p| geom::contains(&outer, *p))).collect();
+    let high = up.iter().flat_map(|f| f.iter()).map(|p| p[2]).fold(f64::NEG_INFINITY, f64::max);
+    let corner = |q: P2| outer.iter().chain(holes.iter().flatten()).any(|c| c.dist(q) <= 0.5);
+    let mut points: Vec<(P2, f64)> = Vec::new();
+    for p in up.iter().flat_map(|f| f.iter()) {
+        let (q, z) = (P2(p[0], p[1]), p[2] - high);
+        if (z.abs() > 0.05 || !corner(q)) && !points.iter().any(|(r, _)| r.dist(q) <= 0.5) {
+            points.push((q, z));
+        }
+    }
+    // A crease: an edge two faces turned up share, their planes apart.
+    let key = |p: &P3| ((p[0] * 10.0).round() as i64, (p[1] * 10.0).round() as i64);
+    type Ends = ((i64, i64), (i64, i64));
+    let mut edges: BTreeMap<Ends, (P2, P2, Vec<P3>)> = BTreeMap::new();
+    for f in &up {
+        let n = normal(f);
+        for (a, b) in f.iter().zip(f.iter().cycle().skip(1)) {
+            let k = if key(a) <= key(b) { (key(a), key(b)) } else { (key(b), key(a)) };
+            edges.entry(k).or_insert_with(|| (P2(a[0], a[1]), P2(b[0], b[1]), Vec::new())).2.push(n);
+        }
+    }
+    let creases = edges
+        .into_values()
+        .filter(|(a, b, ns)| a.dist(*b) > 1.0 && ns.len() == 2 && dot(ns[0], ns[1]) < 1.0 - 1e-9)
+        .map(|(a, b, _)| (a, b))
+        .collect();
+    // Under its highest corner, the face turned down there.
+    let top_at = up.iter().flat_map(|f| f.iter()).find(|p| (p[2] - high).abs() <= 0.05)?;
+    let under = faces
+        .iter()
+        .filter(|f| f.len() >= 3 && normal(f)[2] <= -0.2)
+        .flat_map(|f| f.iter())
+        .filter(|p| (p[0] - top_at[0]).abs() <= 0.5 && (p[1] - top_at[1]).abs() <= 0.5)
+        .map(|p| p[2])
+        .fold(f64::INFINITY, f64::min);
+    let corners = up.iter().flat_map(|f| f.iter()).copied().collect();
+    let down: Vec<f64> = faces.iter().filter(|f| f.len() >= 3 && normal(f)[2] <= -0.2).flatten().map(|p| p[2]).collect();
+    let level_under = down.iter().all(|z| (z - under).abs() <= 0.5);
+    under.is_finite().then_some(ShapedTop {
+        high,
+        region: geom::Region { outer, holes },
+        points,
+        creases,
+        depth: high - under,
+        corners,
+        level_under,
+    })
+}
+
+/// `layers` (from the top down) with one marked variable where a shaped slab's underside is level and none says it is: the
+/// insulation nearest the top, else the substrate (a screed), else none.
+fn guess_variable(layers: &mut [Layer], level_under: bool) {
+    if !level_under || layers.iter().any(|l| l.variable) {
+        return;
+    }
+    let pick = layers
+        .iter()
+        .position(|l| l.function == Function::Thermal)
+        .or_else(|| layers.iter().position(|l| l.function == Function::Substrate));
+    if let Some(k) = pick
+        && let Some(l) = layers.get_mut(k)
+    {
+        l.variable = true;
+    }
+}
+
 /// A point well inside a ring: the middle of the largest of the triangles that make it up.
 fn inside(ring: &[P2]) -> Option<P2> {
     let pt = |i: usize| ring.get(i).copied();
@@ -1077,14 +1175,21 @@ fn layers_of(r: &Reader, l: &Links, id: u64, t: f64) -> Vec<Layer> {
                 Some(msg!("Membrane")) => Function::Membrane,
                 _ => Function::Substrate,
             };
+            // A layer named or described as variable is the one a shaped slab's fall tapers (MOD-16).
+            let variable = [3, 4].iter().any(|&k| text(x.args.get(k)).is_some_and(|t| t.trim().eq_ignore_ascii_case("variable")));
             Layer {
                 function,
                 material: r.at(x.args.first()).and_then(|m| text(m.args.first())).map(clip).unwrap_or_default(),
                 thickness,
+                variable,
                 ..Layer::default()
             }
         })
         .collect();
+    // One at most.
+    if let Some(first) = layers.iter().position(|l| l.variable) {
+        layers.iter_mut().skip(first + 1).for_each(|l| l.variable = false);
+    }
     let sum: f64 = layers.iter().map(|l| l.thickness).sum();
     if layers.is_empty()
         || layers.len() > MAX_LAYERS
@@ -1644,6 +1749,59 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
             continue;
         };
+        // A top of several planes: a level floor at its highest point, its shape's points under it and its creases.
+        if let Some(ShapedTop { high, region: geom::Region { outer, holes }, points, creases, depth, corners, level_under }) =
+            shaped_top(&faces)
+        {
+            let flat = |p: P2| micron(r.flat([p.0, p.1, 0.0]));
+            let t = (depth * 100.0).round() / 100.0;
+            let base = label(id).unwrap_or_else(|| format!("Imported - {}mm", num(t)));
+            let (t, mut layers) = top_down(id, t);
+            guess_variable(&mut layers, level_under);
+            let type_name = kind(
+                &mut m.types.floor,
+                &base,
+                |k| (k.thickness - t).abs() < 0.05 && k.layers == layers,
+                FloorType { thickness: t, layers: layers.clone() },
+            );
+            let level = level_near(high).unwrap_or_else(|| level_for(id, high));
+            let shape = crate::model::Shape {
+                points: points
+                    .into_iter()
+                    .map(|(q, z)| crate::model::ShapePoint { at: flat(q), z: (z * 1000.0).round() / 1000.0, ..Default::default() })
+                    .collect(),
+                lines: creases.into_iter().map(|(a, b)| crate::model::SplitLine { a: flat(a), b: flat(b), ..Default::default() }).collect(),
+            };
+            let floor = Floor {
+                params: Default::default(),
+                sketch: Vec::new(),
+                shape,
+                type_name,
+                level,
+                boundary: outer.into_iter().map(flat).collect(),
+                openings: openings_of(id, holes),
+                offset: ((high - elevation(level)) * 1000.0).round() / 1000.0 + 0.0,
+                slope: 0.0,
+                arrow: None,
+                structural: bearing.contains(&id),
+                pattern_origin: P2(0.0, 0.0),
+                pattern_angle: 0.0,
+            };
+            // What doesn't fold into planes, or folds into others (a step, which a shape can't make), comes in as before: by
+            // its largest face turned up.
+            let meets = |p: &P3| {
+                let q = flat(P2(p[0], p[1]));
+                (m.floor_top(&floor).at(q) + m.shape_height(&floor, q) - p[2]).abs() <= 1.0
+            };
+            if m.shape_planes(&floor).is_ok() && corners.iter().all(meets) {
+                let fid = m.insert(Element::Floor(floor));
+                from.insert(fid, who(id));
+                origin.entry(id).or_insert(fid);
+                elements_from.entry(id).or_default().push(fid);
+                seen.insert(id);
+                continue;
+            }
+        }
         // Level at its highest, or sloped: then its slope arrow runs up it from its lowest corner,
         // all the way across.
         let shape = outline(&faces, Plane::flat(z1), true).map(|shape| (Plane::flat(z1), shape, z1 - z0)).or_else(|| top_of(&faces));
@@ -1672,6 +1830,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let floor = Floor {
             params: Default::default(),
             sketch: Vec::new(),
+            shape: Default::default(),
             type_name,
             level,
             boundary: ring.into_iter().map(flat).collect(),
@@ -1741,7 +1900,92 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             }
         }
         seen.insert(id);
-        match roof_from(&r, &faces, &voided(id)) {
+        let read = roof_from(&r, &faces, &voided(id));
+        // A flat roof whose top isn't one plane (MOD-16): shaped, unless its footprint and pitch make that top already.
+        if let Some(sh) = shaped_top(&faces) {
+            // An extruded one is read by its profile, as before.
+            let pitched_fits = read.as_ref().is_ok_and(|rd| rd.extrusion.is_some())
+                || read.as_ref().is_ok_and(|rd| {
+                    let roof = Roof {
+                        boundary: rd.boundary.clone(),
+                        courtyards: rd.courtyards.clone(),
+                        slope: rd.slope,
+                        gables: rd.gables.clone(),
+                        extrusion: rd.extrusion.clone(),
+                        ..Roof::default()
+                    };
+                    let pieces = m.roof_faces(&roof).unwrap_or_default();
+                    let top_at = |q: P2| {
+                        let near =
+                            |l: &Vec<P2>| geom::contains(l, q) || geom::ring_edges(l).any(|(a, b)| geom::dist_to_segment(q, a, b) <= 1.0);
+                        pieces
+                            .iter()
+                            .find(|(loops, _)| loops.first().is_some_and(near))
+                            .map(|(_, plane)| plane.at(q) + rd.t * plane.g.dot(plane.g).sqrt().hypot(1.0))
+                    };
+                    // Its base where its lowest eave is: the shapes compare up to where each sits.
+                    let lift = sh.corners.iter().filter_map(|p| top_at(P2(p[0], p[1])).map(|z| p[2] - z)).fold(f64::NAN, f64::min);
+                    sh.corners.iter().all(|p| top_at(P2(p[0], p[1])).is_some_and(|z| (z + lift - p[2]).abs() <= 1.0))
+                });
+            if !pitched_fits {
+                let ShapedTop { high, region: geom::Region { outer, holes }, points, creases, depth, corners, level_under } = sh;
+                let flat = |p: P2| micron(r.flat([p.0, p.1, 0.0]));
+                let t = (depth * 100.0).round() / 100.0;
+                let base = label(id).unwrap_or_else(|| format!("Imported - {}mm", num(t)));
+                let (t, mut layers) = top_down(id, t);
+                guess_variable(&mut layers, level_under);
+                let type_name = kind(
+                    &mut m.types.roof,
+                    &base,
+                    |k| (k.thickness - t).abs() < 0.05 && k.layers == layers,
+                    RoofType { thickness: t, layers: layers.clone() },
+                );
+                let level = level_near(high - t).unwrap_or_else(|| level_for(id, high - t));
+                let tidy_ring = |h: Vec<P2>| tidy(&h.into_iter().map(flat).collect::<Vec<P2>>());
+                let cut = voided(id);
+                let (openings, courtyards): (Vec<Vec<P2>>, Vec<Vec<P2>>) =
+                    holes.into_iter().map(tidy_ring).partition(|h| cut.iter().any(|c| same(h, c)));
+                let roof = Roof {
+                    params: Default::default(),
+                    sketch: Vec::new(),
+                    type_name,
+                    level,
+                    boundary: outer.into_iter().map(flat).collect(),
+                    courtyards,
+                    slope: 0.0,
+                    overhang: 0.0,
+                    gable: false,
+                    gables: Vec::new(),
+                    offset: ((high - t - elevation(level)) * 1000.0).round() / 1000.0 + 0.0,
+                    openings,
+                    join: None,
+                    extrusion: None,
+                    shape: crate::model::Shape {
+                        points: points
+                            .into_iter()
+                            .map(|(q, z)| crate::model::ShapePoint { at: flat(q), z: (z * 1000.0).round() / 1000.0, ..Default::default() })
+                            .collect(),
+                        lines: creases
+                            .into_iter()
+                            .map(|(a, b)| crate::model::SplitLine { a: flat(a), b: flat(b), ..Default::default() })
+                            .collect(),
+                    },
+                };
+                let proxy = m.roof_as_floor(&roof);
+                let meets = |p: &P3| {
+                    let q = flat(P2(p[0], p[1]));
+                    (m.floor_top(&proxy).at(q) + m.shape_height(&proxy, q) - p[2]).abs() <= 1.0
+                };
+                if m.shape_planes(&proxy).is_ok() && corners.iter().all(meets) {
+                    let rid = m.insert(Element::Roof(roof));
+                    from.insert(rid, who(id));
+                    origin.entry(id).or_insert(rid);
+                    elements_from.entry(id).or_default().push(rid);
+                    continue;
+                }
+            }
+        }
+        match read {
             Ok(rd) => {
                 let base = label(id).unwrap_or_else(|| format!("Imported - {}mm", num(rd.t)));
                 let (t, layers) = top_down(id, rd.t);
@@ -1773,6 +2017,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
                     openings: rd.openings,
                     join: None,
                     extrusion: rd.extrusion,
+                    shape: Default::default(),
                 };
                 match m.roof_faces(&roof) {
                     Ok(_) => {

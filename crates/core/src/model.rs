@@ -69,7 +69,11 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 12: a project's language may be German (`de`) or
+/// The version of the project file this build writes, and the newest it reads. 13: a floor or a flat roof may have a shape
+/// (`shape`: points and split lines on its top, parts), a floor's or roof's type a `variable` layer, and a spot a `slope`;
+/// nothing in a file of 12 changes, but a build that reads up to 12 would answer a spot slope or a variable layer with a
+/// serde error and leave a shape out as a field it doesn't know, drawing the floor flat, not "saved by a newer BIMCraft".
+/// 12: a project's language may be German (`de`) or
 /// Dutch (`nl`), a wall may bound no rooms (`room_bounding: false`, written only then) and a family holds `connectors` (an
 /// electrical device's load, a switch); nothing in a file of 11 changes, but a build that reads up to 11 would answer one of 12
 /// with a serde error ("unknown variant") or, for such a wall, leave the setting out and bound rooms by it again, and for such a
@@ -91,7 +95,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 12;
+pub const FORMAT: u32 = 13;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -395,6 +399,52 @@ pub struct Layer {
     #[serde(default)]
     pub material: String,
     pub thickness: f64,
+    /// A floor's or a roof's layer that takes up a shaped top's falls (IDEAS MOD-16): its `thickness` where the top is
+    /// where it would be without its shape, more or less elsewhere, the layers above it following the top and those below
+    /// it the level underside. One a type at most.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub variable: bool,
+}
+
+/// Where a layer of a type is variable: its index, and how thick the layers above it and below it are, mm.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Variable {
+    pub index: usize,
+    pub above: f64,
+    pub thickness: f64,
+    pub below: f64,
+}
+
+impl Variable {
+    /// The variable layer of `layers`, if one is.
+    pub fn of(layers: &[Layer]) -> Option<Variable> {
+        let index = layers.iter().position(|l| l.variable)?;
+        let sum = |ls: &[Layer]| ls.iter().map(|l| l.thickness).sum::<f64>();
+        Some(Variable {
+            index,
+            above: sum(layers.get(..index)?),
+            thickness: layers.get(index)?.thickness,
+            below: sum(layers.get(index + 1..)?),
+        })
+    }
+
+    /// From the top down, mm, where each layer of `layers` starts and the last ends, through `depth` there: the layers
+    /// above the variable one from the top, those below it from the bottom, the variable one between.
+    pub fn bounds(v: Option<Variable>, layers: &[Layer], depth: f64) -> Vec<f64> {
+        let total: f64 = layers.iter().map(|l| l.thickness).sum();
+        let mut out = Vec::with_capacity(layers.len() + 1);
+        let mut above = 0.0;
+        for (k, l) in layers.iter().enumerate() {
+            out.push(match v {
+                Some(v) if k > v.index => depth - (total - above),
+                _ if total > 0.0 && v.is_none() => depth * above / total,
+                _ => above,
+            });
+            above += l.thickness;
+        }
+        out.push(depth);
+        out
+    }
 }
 
 /// Layers a type may have.
@@ -509,10 +559,139 @@ pub struct Floor {
     /// was made another way (over the walls, from a file); Edit Boundary then starts from its outline.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sketch: Vec<crate::sketch::SketchLine>,
+    /// Points and split lines on its top, which fold it into planes (falls to a drain, a ridge, a valley); none, it's flat
+    /// or one slope.
+    #[serde(default, skip_serializing_if = "Shape::is_empty")]
+    pub shape: Shape,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
 }
+
+/// A floor's top folded into planes: points raised or lowered on it, and split lines it folds along. Between them it's
+/// triangles (`triangulation::constrained`), its outline's and its openings' corners at their height unless a point is
+/// there, and neighbours in one plane are one piece (`Model::floor_faces`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Shape {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub points: Vec<ShapePoint>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lines: Vec<SplitLine>,
+}
+
+impl Shape {
+    pub fn is_empty(&self) -> bool {
+        self.points.is_empty() && self.lines.is_empty()
+    }
+
+    /// The nearest of its points within `reach` of `q`, where a grip takes hold of one.
+    pub fn point_near(&self, q: P2, reach: f64) -> Option<P2> {
+        self.points.iter().map(|p| p.at).filter(|p| p.dist(q) <= reach).min_by(|a, b| a.dist(q).total_cmp(&b.dist(q)))
+    }
+
+    /// It with its point at `from` dragged to `to`, at the same height, the split lines ending there going with it; the
+    /// same shape when no point is at `from`.
+    pub fn moved(&self, from: P2, to: P2) -> Shape {
+        let mut s = self.clone();
+        if !s.points.iter().any(|p| p.at.dist(from) <= TOL) {
+            return s;
+        }
+        let near = |q: P2| q.dist(from) <= TOL;
+        for p in s.points.iter_mut().filter(|p| near(p.at)) {
+            p.at = to;
+        }
+        for l in &mut s.lines {
+            for end in [&mut l.a, &mut l.b] {
+                if near(*end) {
+                    *end = to;
+                }
+            }
+        }
+        s
+    }
+
+    /// It with its point at `at` given height `z`, or with a corner there, a new point at that height.
+    pub fn raised(&self, at: P2, z: f64) -> Shape {
+        let mut s = self.clone();
+        match s.points.iter_mut().find(|p| p.at.dist(at) <= TOL) {
+            Some(p) => p.z = z,
+            None => s.points.push(ShapePoint { at, z, ..Default::default() }),
+        }
+        s
+    }
+}
+
+impl Floor {
+    /// What of its shape lies within `reach` of `q`, as Modify Sub Elements picks it: the nearest of its shape's points and
+    /// its outline's and openings' corners; else both ends of the nearest edge, a split line's, the outline's or an
+    /// opening's; else nothing.
+    pub fn shape_pick(&self, q: P2, reach: f64) -> Vec<P2> {
+        let rings = || std::iter::once(&self.boundary).chain(&self.openings);
+        let corners = self.shape.points.iter().map(|p| p.at).chain(rings().flatten().copied());
+        if let Some(c) = corners.filter(|c| c.dist(q) <= reach).min_by(|a, b| a.dist(q).total_cmp(&b.dist(q))) {
+            return vec![c];
+        }
+        let edges = self.shape.lines.iter().map(|l| (l.a, l.b)).chain(rings().flat_map(|r| geom::ring_edges(r)));
+        let off = |(a, b): &(P2, P2)| geom::dist_to_segment(q, *a, *b);
+        edges.filter(|e| off(e) <= reach).min_by(|x, y| off(x).total_cmp(&off(y))).map_or_else(Vec::new, |(a, b)| vec![a, b])
+    }
+}
+
+/// A point on a floor's top, `z` mm above (negative, below) where the top would be without its shape. A part, with an id
+/// and a GUID of its own.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ShapePoint {
+    #[serde(default, skip_serializing_if = "crate::ids::unset")]
+    pub id: crate::ids::Id,
+    #[serde(default, skip_serializing_if = "crate::ids::Guid::is_nil")]
+    pub guid: crate::ids::Guid,
+    pub at: P2,
+    pub z: f64,
+}
+
+/// A line a floor's top folds along, from `a` to `b`, each end one of its shape's points or a corner of its outline or an
+/// opening. A part, with an id and a GUID of its own.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SplitLine {
+    #[serde(default, skip_serializing_if = "crate::ids::unset")]
+    pub id: crate::ids::Id,
+    #[serde(default, skip_serializing_if = "crate::ids::Guid::is_nil")]
+    pub guid: crate::ids::Guid,
+    pub a: P2,
+    pub b: P2,
+}
+
+/// A closed solid: its corners, and each face as loops of indices into them, its outline first and then its holes,
+/// counter-clockwise seen from outside.
+pub type Polyhedron = (Vec<[f64; 3]>, Vec<Vec<Vec<usize>>>);
+
+/// How much a closed solid holds, mm³: by the divergence theorem, each face's loops fanned into triangles, each with the
+/// origin a tetrahedron, signed by the way it turns.
+pub fn volume((corners, faces): &Polyhedron) -> f64 {
+    let at = |i: &usize| corners.get(*i).copied().unwrap_or_default();
+    let det = |a: [f64; 3], b: [f64; 3], c: [f64; 3]| {
+        a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])
+    };
+    let six: f64 = faces
+        .iter()
+        .flatten()
+        .filter_map(|l| {
+            let first = at(l.first()?);
+            Some(l.windows(2).skip(1).map(|w| det(first, at(&w[0]), at(&w[1]))).sum::<f64>())
+        })
+        .sum();
+    six / 6.0
+}
+
+/// A shaped floor's top triangulated: the triangles, each corner lifted to its height, and each triangle's plane.
+type ShapeMesh = (crate::triangulation::Triangulation, Vec<[f64; 3]>, Vec<walls::Plane>);
+
+/// The most points a shape has, and the most split lines.
+pub const MAX_SHAPE_POINTS: usize = 2_000;
+pub const MAX_SPLIT_LINES: usize = 2_000;
 
 /// A ceiling along `boundary` (counter-clockwise), open through its `openings` (holes inside it,
 /// apart), its underside `offset` mm above its level, its type's thickness over that.
@@ -1067,7 +1246,8 @@ pub const MAX_HIDDEN: usize = 10_000;
 pub const CAD_SCALE: std::ops::RangeInclusive<f64> = 1e-6..=1e7;
 
 /// A spot elevation in a view: in a level's plan, the height of the top of `host` at `at`; in a
-/// section or an elevation, of its point `at`, along and up.
+/// section or an elevation, of its point `at`, along and up. With `slope`, a spot slope: in a plan, how steeply the top of
+/// `host` (a floor or a roof) falls at `at`, and which way.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Spot {
@@ -1075,6 +1255,8 @@ pub struct Spot {
     pub at: P2,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host: Option<Guid>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub slope: bool,
 }
 
 /// Another project shown in this one, a reference that can't be edited: Revit's linked model. The file stays where it is;
@@ -1165,6 +1347,9 @@ pub struct View3D {
     /// Its Graphic Display Options: edges, silhouettes and ambient shadows.
     #[serde(default, skip_serializing_if = "crate::view3d::DisplayOptions::is_default")]
     pub display: crate::view3d::DisplayOptions,
+    /// What it sketches on (`workplane.rs`): the lowest level when it has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_plane: Option<crate::workplane::WorkPlane>,
 }
 
 /// A 3D view's camera: the model point its eye stands at, and the model point it looks at, in mm. The view is seen in
@@ -1205,6 +1390,7 @@ impl View3D {
             perspective: None,
             camera: None,
             display: Default::default(),
+            work_plane: None,
         }
     }
 }
@@ -1484,6 +1670,10 @@ pub struct Roof {
     /// was made another way (over the walls, from a file); Edit Boundary then starts from its outline.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sketch: Vec<crate::sketch::SketchLine>,
+    /// Points and split lines on its top, as a floor's (`Floor::shape`): only a flat roof by footprint has them, its
+    /// underside following its top.
+    #[serde(default, skip_serializing_if = "Shape::is_empty")]
+    pub shape: Shape,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -1502,6 +1692,23 @@ impl Element {
         }
     }
 
+    /// Its shape, when it's of a kind that has one: a floor's or a roof's.
+    pub fn shape(&self) -> Option<&Shape> {
+        match self {
+            Element::Floor(f) => Some(&f.shape),
+            Element::Roof(r) => Some(&r.shape),
+            _ => None,
+        }
+    }
+
+    pub fn shape_mut(&mut self) -> Option<&mut Shape> {
+        match self {
+            Element::Floor(f) => Some(&mut f.shape),
+            Element::Roof(r) => Some(&mut r.shape),
+            _ => None,
+        }
+    }
+
     pub fn sketch_mut(&mut self) -> Option<&mut Vec<crate::sketch::SketchLine>> {
         match self {
             Element::Floor(f) => Some(&mut f.sketch),
@@ -1515,6 +1722,22 @@ impl Element {
 }
 
 impl Roof {
+    /// Why it can't take a shape: only a flat roof by footprint, joining none, has its top folded by points and split
+    /// lines. None when it can.
+    pub fn unshapeable(&self) -> Option<&'static str> {
+        if self.extrusion.is_some() {
+            Some("an extruded roof takes its shape from its profile: only a flat roof by footprint takes points and split lines")
+        } else if self.slope != 0.0 {
+            Some(
+                "a pitched roof's slopes come from its `slope`: only a flat roof takes points and split lines: `modify` its `slope` to 0, or `reset_shape`",
+            )
+        } else if self.join.is_some() {
+            Some("a roof joining another ends at that one's top: only a flat roof joining none takes points and split lines")
+        } else {
+            None
+        }
+    }
+
     /// Its footprint's edges as `gables` numbers them: its boundary's, then each courtyard's.
     pub fn edges(&self) -> impl Iterator<Item = (P2, P2)> + '_ {
         geom::ring_edges(&self.boundary).chain(self.courtyards.iter().flat_map(|c| geom::ring_edges(c)))
@@ -1680,7 +1903,14 @@ macro_rules! visit_refs {
         let f: &mut dyn FnMut(& $($m)? Guid) = $f;
         match $e {
             // A view's graphics, as `views_graphics` gives them.
-            Element::Level(_) | Element::Section(_) | Element::Elevation(_) | Element::View3D(_) => {}
+            Element::Level(_) | Element::Section(_) | Element::Elevation(_) => {}
+            Element::View3D(v) => {
+                if let Some(wp) = & $($m)? v.work_plane
+                    && let Some(g) = & $($m)? wp.level
+                {
+                    f(g)
+                }
+            }
             Element::Grid(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) => {}
             Element::PlanView(v) => {
                 f(& $($m)? v.level);
@@ -3019,6 +3249,7 @@ impl Model {
         // 11 to 12 (German and Dutch as a project's language, a wall that bounds no rooms, a family's connectors) has no step either: a
         // file of 11 holds none. The electrical settings (voltages, distribution systems, wire types) have none within 11 or 12: a file
         // without them reads with the starter set, and one that has them is read by an older version with them left out.
+        // 12 to 13 (a floor's or flat roof's shape, a variable layer, a spot slope) has none either: a file of 12 holds none.
         self.format = FORMAT;
     }
 
@@ -3801,9 +4032,45 @@ impl Model {
         }
     }
 
-    /// How far a roof's top lies over its underside where that's in `plane`: its type's thickness, plumb.
+    /// How far a roof's top lies over its underside where that's in `plane`: its type's thickness, square to the plane; a
+    /// shaped roof's, plumb, so its planes meet underneath as they do on top.
     pub fn roof_rise(&self, r: &Roof, plane: &walls::Plane) -> f64 {
-        self.types.roof.get(&r.type_name).map_or(0.0, |t| t.thickness) * plane.g.dot(plane.g).sqrt().hypot(1.0)
+        let thickness = self.types.roof.get(&r.type_name).map_or(0.0, |t| t.thickness);
+        if r.shape.is_empty() { thickness * plane.g.dot(plane.g).sqrt().hypot(1.0) } else { thickness }
+    }
+
+    /// A flat roof's top as shape editing sees it: a floor over its footprint, its courtyards and openings as openings, at
+    /// its top (its type's thickness over its base), with its shape. Its points' heights, picks, labels and checks are then
+    /// a floor's; `roof_faces` lays its underside the thickness below.
+    pub fn roof_as_floor(&self, r: &Roof) -> Floor {
+        Floor {
+            type_name: String::new(),
+            level: r.level,
+            boundary: ccw(&r.boundary),
+            openings: r.courtyards.iter().chain(&r.openings).cloned().collect(),
+            offset: r.offset + self.types.roof.get(&r.type_name).map_or(0.0, |t| t.thickness),
+            slope: 0.0,
+            arrow: None,
+            structural: false,
+            pattern_origin: P2::default(),
+            pattern_angle: 0.0,
+            sketch: Vec::new(),
+            shape: r.shape.clone(),
+            params: BTreeMap::new(),
+        }
+    }
+
+    /// Element `id` as shape editing works on it: a floor as it is, or a flat roof by footprint as `roof_as_floor` sees it.
+    /// None for anything else, or with why for a roof that can't take a shape.
+    pub fn shapeable(&self, id: impl Key) -> Result<Floor, String> {
+        match self.elements.get(id) {
+            Some(Element::Floor(f)) => Ok(f.clone()),
+            Some(Element::Roof(r)) => match r.unshapeable() {
+                Some(why) => Err(why.into()),
+                None => Ok(self.roof_as_floor(r)),
+            },
+            _ => Err("only floors and flat roofs have shapes".into()),
+        }
     }
 
     /// A roof's slopes. Over its footprint, flat at its base, or each edge but its gables sloping
@@ -3827,6 +4094,14 @@ impl Model {
                         _ => None,
                     })
                     .collect()
+            }
+            // A shaped one's top in planes (as a floor's, through `roof_as_floor`), its underside its thickness below.
+            None if r.slope == 0.0
+                && !r.shape.is_empty()
+                && let Ok(planes) = self.shape_planes(&self.roof_as_floor(r)) =>
+            {
+                let thickness = self.types.roof.get(&r.type_name).map_or(0.0, |t| t.thickness);
+                planes.into_iter().map(|(loops, plane)| (loops, walls::Plane { z: plane.z - thickness, ..plane })).collect()
             }
             None if r.slope == 0.0 => {
                 let courtyards = r.courtyards.iter().map(|c| ccw(c).into_iter().rev().collect());
@@ -3956,9 +4231,61 @@ impl Model {
             .map(|(_, id, i)| (id, i))
     }
 
-    /// A roof's slabs: each piece's underside in space, and how far its top lies over it.
+    /// A roof's slabs: each piece's underside in space, and how far its top lies over it (at most, over a level underside).
     pub fn roof_slabs(&self, r: &Roof) -> Vec<(Vec<[f64; 3]>, f64)> {
-        self.roof_pieces(r).unwrap_or_default().into_iter().map(|(ring, p)| (p.lift(&ring), self.roof_rise(r, &p))).collect()
+        self.roof_prisms(r)
+            .into_iter()
+            .map(|(ring, bottom, top)| {
+                let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
+                (bottom.lift(&ring), rise)
+            })
+            .collect()
+    }
+
+    /// A roof's slabs as prisms: each of its pieces (`roof_pieces`) in plan, from its underside's plane up to its top's,
+    /// `roof_rise` over it; a shaped one's underside level at its base under a variable layer (`roof_under`).
+    pub fn roof_prisms(&self, r: &Roof) -> Vec<(Vec<P2>, walls::Plane, walls::Plane)> {
+        let under = self.roof_under(r).map(|(p, _)| p);
+        self.roof_pieces(r)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(ring, p)| {
+                let top = walls::Plane { z: p.z + self.roof_rise(r, &p), ..p };
+                (ring, under.unwrap_or(p), top)
+            })
+            .collect()
+    }
+
+    /// A shaped flat roof's underside, level at its base, when its type has a variable layer, and that layer: the layers
+    /// over it follow its top, those under it stay level, as a shaped floor's do (`floor_under`). None otherwise: its
+    /// underside follows its top.
+    pub fn roof_under(&self, r: &Roof) -> Option<(walls::Plane, Variable)> {
+        if r.shape.is_empty() || r.unshapeable().is_some() {
+            return None;
+        }
+        let v = Variable::of(self.type_layers("roof", &r.type_name))?;
+        Some((walls::Plane::flat(self.elevation(r.level) + r.offset), v))
+    }
+
+    /// The variable layer element `id` keeps its underside level under: a shaped floor's (`floor_under`) or a shaped flat
+    /// roof's (`roof_under`).
+    pub fn variable_under(&self, id: impl Key) -> Option<Variable> {
+        match self.elements.get(id) {
+            Some(Element::Floor(f)) => self.floor_under(f).map(|(_, v)| v),
+            Some(Element::Roof(r)) => self.roof_under(r).map(|(_, v)| v),
+            _ => None,
+        }
+    }
+
+    /// A shaped flat roof's slab as one closed solid, as a shaped floor's (`shape_solid`): its top's planes, its underside
+    /// its thickness under them or level under a variable layer, and plumb sides. None unshaped.
+    pub fn roof_solid(&self, r: &Roof) -> Option<Polyhedron> {
+        if r.shape.is_empty() || r.unshapeable().is_some() {
+            return None;
+        }
+        let f = self.roof_as_floor(r);
+        let thickness = self.types.roof.get(&r.type_name).map_or(0.0, |t| t.thickness);
+        self.shaped_solid(&f, &f.openings, thickness, self.roof_under(r).map(|(p, _)| p))
     }
 
     /// A roof's slopes less the holes in them and its openings, in convex pieces where a hole cuts one.
@@ -3983,17 +4310,226 @@ impl Model {
         }
     }
 
-    /// How far a floor's underside lies below its top, plumb: its type's thickness across its slope.
+    /// The plane an element's sketch lies on in a model view, where Edit Boundary draws its lines in 3D: a floor's top (a
+    /// sloped one's slope with it), a ceiling's underside, a roof's base, a shaft's bottom. None for anything else: a filled
+    /// region is a view's, and an extruded roof is sketched in elevation.
+    pub fn sketch_plane(&self, id: impl Key) -> Option<walls::Plane> {
+        let p = match self.elements.get(id)? {
+            Element::Floor(f) => self.floor_top(f),
+            Element::Ceiling(c) => walls::Plane::flat(self.elevation(c.level) + c.offset),
+            Element::Roof(r) if r.extrusion.is_none() => walls::Plane::flat(self.elevation(r.level) + r.offset),
+            Element::Shaft(s) => walls::Plane::flat(self.elevation(s.level) + s.base_offset),
+            _ => return None,
+        };
+        (p.z.is_finite() && p.g.0.is_finite() && p.g.1.is_finite()).then_some(p)
+    }
+
+    /// How far a floor's underside lies below its top, plumb: its type's thickness across its slope. A shaped floor has
+    /// no slope, so it's its type's thickness plumb, and its planes meet underneath as they do on top.
     pub fn floor_depth(&self, f: &Floor) -> f64 {
         self.types.floor.get(&f.type_name).map_or(0.0, |t| t.thickness) / f.slope.to_radians().cos()
+    }
+
+    /// A shaped floor's underside, level, when its type has a variable layer: its type's thickness under where its top would
+    /// be without its shape (`floor_top`, level for a shaped floor), and that layer. None otherwise: its underside follows
+    /// its top.
+    pub fn floor_under(&self, f: &Floor) -> Option<(walls::Plane, Variable)> {
+        if f.shape.is_empty() {
+            return None;
+        }
+        let v = Variable::of(self.type_layers("floor", &f.type_name))?;
+        let top = self.floor_top(f);
+        Some((walls::Plane { z: top.z - self.floor_depth(f), ..top }, v))
+    }
+
+    /// A floor's top in pieces, less its openings, each counter-clockwise with the plane it lies in: its outline over
+    /// `floor_top` (in convex pieces once an opening cuts it), or a shaped floor's planes (`shape_planes`), each in convex
+    /// pieces. A shape that doesn't triangulate (a file's; a command's is checked) leaves the floor as it would be without.
+    pub fn floor_faces(&self, f: &Floor) -> Vec<(Vec<P2>, walls::Plane)> {
+        if !f.shape.is_empty()
+            && let Ok(planes) = self.shape_planes(f)
+        {
+            return planes.into_iter().flat_map(|(loops, plane)| solid(&loops, &[]).into_iter().map(move |r| (r, plane))).collect();
+        }
+        let top = self.floor_top(f);
+        solid(&[ccw(&f.boundary)], &f.openings).into_iter().map(|ring| (ring, top)).collect()
+    }
+
+    /// A shaped floor's planes: its top triangulated (`shape_mesh`), and neighbouring triangles in one plane (within
+    /// 0.01 mm) made one. Each plane is the loops round it, its outline counter-clockwise first and then its holes
+    /// clockwise; a plane whose edges don't make such loops (it touches itself at a corner) stays its triangles.
+    pub fn shape_planes(&self, f: &Floor) -> Result<Vec<Slope>, String> {
+        let (t, lifted, planes) = self.shape_mesh(f, &f.openings)?;
+        let at = |i: usize| lifted.get(i).copied().unwrap_or_default();
+        Ok(crate::triangulation::merge(&t, &planes, &|plane: &walls::Plane, i: usize| {
+            (plane.at(P2(at(i)[0], at(i)[1])) - at(i)[2]).abs() <= 0.01
+        }))
+    }
+
+    /// A shaped floor's slab as one closed solid: its top's planes (`shape_planes`), under them the same planes
+    /// `floor_depth` down or its level underside (`floor_under`), and plumb sides round its outline and its openings, each edge between two of the triangulation's corners. Its
+    /// corners, and each face as loops of indices into them, its outline first and then its holes, counter-clockwise seen
+    /// from outside. None without a shape, or for one that doesn't triangulate.
+    pub fn shape_solid(&self, f: &Floor) -> Option<Polyhedron> {
+        self.shape_solid_over(f, &f.openings)
+    }
+
+    /// [`shape_solid`](Self::shape_solid), open through `openings` only: none for its whole outline.
+    pub fn shape_solid_over(&self, f: &Floor, openings: &[Vec<P2>]) -> Option<Polyhedron> {
+        self.shaped_solid(f, openings, self.floor_depth(f), self.floor_under(f).map(|(p, _)| p))
+    }
+
+    /// A shaped top's slab as one closed solid (`shape_solid_over`), `depth` under its top, plumb, or down to `under`.
+    fn shaped_solid(&self, f: &Floor, openings: &[Vec<P2>], depth: f64, under: Option<walls::Plane>) -> Option<Polyhedron> {
+        if f.shape.is_empty() {
+            return None;
+        }
+        let (t, lifted, planes) = self.shape_mesh(f, openings).ok()?;
+        let n = lifted.len();
+        let down = |p: &[f64; 3]| [p[0], p[1], under.map_or(p[2] - depth, |u| u.at(P2(p[0], p[1])))];
+        let corners: Vec<[f64; 3]> = lifted.iter().copied().chain(lifted.iter().map(down)).collect();
+        let index: BTreeMap<(u64, u64), usize> = t.points.iter().enumerate().map(|(i, q)| ((q.0.to_bits(), q.1.to_bits()), i)).collect();
+        let at = |i: usize| lifted.get(i).copied().unwrap_or_default();
+        let pieces = crate::triangulation::merge(&t, &planes, &|plane: &walls::Plane, i: usize| {
+            (plane.at(P2(at(i)[0], at(i)[1])) - at(i)[2]).abs() <= 0.01
+        });
+        let mut faces = Vec::new();
+        for (loops, _) in pieces {
+            let top: Option<Vec<Vec<usize>>> =
+                loops.iter().map(|l| l.iter().map(|q| index.get(&(q.0.to_bits(), q.1.to_bits())).copied()).collect()).collect();
+            let top = top?;
+            let bottom = top.iter().map(|l| l.iter().rev().map(|i| i + n).collect()).collect();
+            faces.push(top);
+            faces.push(bottom);
+        }
+        // An edge only one triangle runs along, counter-clockwise round it, is on the outline or an opening's: a side there.
+        let sides: BTreeSet<(usize, usize)> = t.triangles.iter().flat_map(|k| [(k[0], k[1]), (k[1], k[2]), (k[2], k[0])]).collect();
+        let edges = sides.iter().filter(|(a, b)| !sides.contains(&(*b, *a)));
+        faces.extend(edges.map(|&(a, b)| vec![vec![a + n, b + n, b, a]]));
+        Some((corners, faces))
+    }
+
+    /// A shaped floor's top over its whole outline, its openings as if closed, as triangles in plan with their planes:
+    /// what a wall attached to it follows, as a slope arrow's plane runs on over an opening. None for a shape that doesn't
+    /// triangulate.
+    pub fn shape_triangles(&self, f: &Floor) -> Vec<(Vec<P2>, walls::Plane)> {
+        let Ok((t, _, planes)) = self.shape_mesh(f, &[]) else { return Vec::new() };
+        let corner = |i: usize| t.points.get(i).copied().unwrap_or_default();
+        t.triangles.iter().zip(planes).map(|(k, plane)| (k.map(corner).to_vec(), plane)).collect()
+    }
+
+    /// A shaped floor's top triangulated (`triangulation::constrained`: its outline and `openings`, its points as corners
+    /// and its split lines as edges), each corner lifted to `floor_top` plus the height of the point there (within `TOL`; a
+    /// corner with none, 0), and each triangle's plane.
+    fn shape_mesh(&self, f: &Floor, openings: &[Vec<P2>]) -> Result<ShapeMesh, String> {
+        let points: Vec<P2> = f.shape.points.iter().map(|p| p.at).collect();
+        let lines: Vec<(P2, P2)> = f.shape.lines.iter().map(|l| (l.a, l.b)).collect();
+        let t = crate::triangulation::constrained(&f.boundary, openings, &points, &lines)?;
+        let top = self.floor_top(f);
+        let height = |q: P2| {
+            f.shape.points.iter().filter(|p| p.at.dist(q) <= TOL).min_by(|a, b| a.at.dist(q).total_cmp(&b.at.dist(q))).map_or(0.0, |p| p.z)
+        };
+        let lifted: Vec<[f64; 3]> = t.points.iter().map(|&q| [q.0, q.1, top.at(q) + height(q)]).collect();
+        let at = |i: usize| lifted.get(i).copied().unwrap_or_default();
+        let planes: Vec<walls::Plane> =
+            t.triangles.iter().map(|k| walls::Plane::of(&k.map(at)).unwrap_or_else(|| walls::Plane::flat(at(k[0])[2]))).collect();
+        Ok((t, lifted, planes))
+    }
+
+    /// A shaped floor's creases: each edge of its top's planes (`shape_planes`) once, its ends where the top is, the outline's
+    /// edges among them. What a drag of its shape previews, given the floor with the shape it would have. None without a
+    /// shape, or for one that doesn't triangulate.
+    pub fn shape_creases(&self, f: &Floor) -> Vec<[[f64; 3]; 2]> {
+        if f.shape.is_empty() {
+            return Vec::new();
+        }
+        let key = |p: [f64; 3]| [p[0], p[1], p[2]].map(|v| (v * 100.0).round() as i64);
+        let mut seen = BTreeSet::new();
+        let mut creases = Vec::new();
+        for (loops, plane) in self.shape_planes(f).unwrap_or_default() {
+            for ring in &loops {
+                for (a, b) in geom::ring_edges(ring) {
+                    let (a, b) = ([a.0, a.1, plane.at(a)], [b.0, b.1, plane.at(b)]);
+                    let k = if key(a) <= key(b) { (key(a), key(b)) } else { (key(b), key(a)) };
+                    if seen.insert(k) {
+                        creases.push([a, b]);
+                    }
+                }
+            }
+        }
+        creases
+    }
+
+    /// A shaped floor's folding lines, as Revit calls them: the creases between its planes (`shape_creases`) that no split
+    /// line makes and that aren't its outline's or an opening's edges, in plan. What Convert Lines makes split lines.
+    pub fn shape_folds(&self, f: &Floor) -> Vec<(P2, P2)> {
+        let rings: Vec<(P2, P2)> = std::iter::once(&f.boundary).chain(&f.openings).flat_map(|r| geom::ring_edges(r)).collect();
+        let lines: Vec<(P2, P2)> = f.shape.lines.iter().map(|l| (l.a, l.b)).collect();
+        let on = |segs: &[(P2, P2)], q: P2| segs.iter().any(|&(a, b)| geom::dist_to_segment(q, a, b) <= TOL);
+        self.shape_creases(f)
+            .into_iter()
+            .map(|[a, b]| (P2(a[0], a[1]), P2(b[0], b[1])))
+            .filter(|&(a, b)| !on(&rings, (a + b) * 0.5) && !on(&lines, (a + b) * 0.5))
+            .collect()
+    }
+
+    /// How far a floor's top lies above where it would be without its shape at `q`, mm: by the piece of its top over `q`,
+    /// or within `TOL` of one's edge; 0 off it, or without a shape.
+    pub fn shape_height(&self, f: &Floor, q: P2) -> f64 {
+        if f.shape.is_empty() {
+            return 0.0;
+        }
+        let top = self.floor_top(f);
+        let near = |r: &[P2]| geom::contains(r, q) || geom::ring_edges(r).any(|(a, b)| geom::dist_to_segment(q, a, b) <= TOL);
+        self.floor_faces(f).iter().find(|(r, _)| near(r)).map_or(0.0, |(_, plane)| plane.at(q) - top.at(q))
+    }
+
+    /// A shaped floor's points with the heights shape editing labels them with in plan: each above (negative, below) the
+    /// top as it would be without the shape, or with `absolute`, above the floor's level, as the Options Bar's Elevation
+    /// reads.
+    pub fn shape_labels(&self, f: &Floor, absolute: bool) -> Vec<(P2, f64)> {
+        let top = self.floor_top(f);
+        let level = self.elevation(f.level);
+        f.shape.points.iter().map(|p| (p.at, if absolute { p.z + top.at(p.at) - level } else { p.z })).collect()
     }
 
     /// A floor's slabs: its underside less its openings (in convex pieces once one cuts it), each a
     /// flat polygon in space, counter-clockwise; and how far its top lies above that.
     pub fn floor_slabs(&self, f: &Floor) -> Vec<(Vec<[f64; 3]>, f64)> {
-        let (top, depth) = (self.floor_top(f), self.floor_depth(f));
-        let under = walls::Plane { z: top.z - depth, ..top };
-        solid(&[ccw(&f.boundary)], &f.openings).into_iter().map(|ring| (under.lift(&ring), depth)).collect()
+        self.floor_prisms(f)
+            .into_iter()
+            .map(|(ring, bottom, top)| {
+                let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
+                (bottom.lift(&ring), rise)
+            })
+            .collect()
+    }
+
+    /// A floor's slabs as prisms: each piece of its top (`floor_faces`) in plan, from its underside's plane up to its
+    /// top's. The underside is the top `floor_depth` down, or level under a variable layer (`floor_under`).
+    pub fn floor_prisms(&self, f: &Floor) -> Vec<(Vec<P2>, walls::Plane, walls::Plane)> {
+        let depth = self.floor_depth(f);
+        let under = self.floor_under(f).map(|(p, _)| p);
+        self.floor_faces(f).into_iter().map(|(ring, top)| (ring, under.unwrap_or(walls::Plane { z: top.z - depth, ..top }), top)).collect()
+    }
+
+    /// How much a floor holds, mm³: each of its prisms (`floor_prisms`), less the shafts through it, its plan through how
+    /// far its top lies over its underside at its middle, as both are planes.
+    pub fn floor_volume(&self, f: &Floor) -> f64 {
+        self.floor_prisms(f)
+            .into_iter()
+            .map(|(ring, bottom, top)| {
+                let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
+                self.less_shafts(&bottom.lift(&ring), rise)
+                    .0
+                    .iter()
+                    .map(|piece| {
+                        let (a, c) = (geom::area(piece).abs(), geom::centroid(piece));
+                        a * (top.at(c) - bottom.at(c))
+                    })
+                    .sum::<f64>()
+            })
+            .sum()
     }
 
     /// A ceiling's slabs: its underside less its openings (in convex pieces once one cuts it), each
@@ -4076,6 +4612,18 @@ impl Model {
             Some(Element::View3D(View3D { section_box: Some(b), .. })) if b.on => Some((b.min, b.max)),
             _ => None,
         }
+    }
+
+    /// What 3D view `view` sketches on: its own work plane, else the lowest level's (none in a project without levels).
+    pub fn work_plane(&self, view: Option<Id>) -> crate::workplane::WorkPlane {
+        let own = view.and_then(|v| match self.elements.get(v) {
+            Some(Element::View3D(v3)) => v3.work_plane.clone(),
+            _ => None,
+        });
+        own.unwrap_or_else(|| {
+            let lowest = self.levels().first().map(|(id, _)| self.guid(*id));
+            crate::workplane::WorkPlane { level: lowest, ..Default::default() }
+        })
     }
 
     /// The default 3D view, `{3D}`: the 3D view of that name, once something has made it.
@@ -4715,6 +5263,27 @@ impl Model {
         }
     }
 
+    /// What a spot slope reads: in a plan, how steeply its host's top falls at its point, %, and which way, a unit vector
+    /// downhill in plan (none on the level). None while its host isn't a floor or a roof there, or out of a plan.
+    pub fn spot_slope(&self, sp: &Spot) -> Option<(f64, Option<P2>)> {
+        if !matches!(self.elements.get(sp.view)?, Element::Level(_) | Element::PlanView(_)) {
+            return None;
+        }
+        let plane = self.top_plane_at(sp.host?, sp.at)?;
+        let fall = plane.g.length();
+        Some((fall * 100.0, (fall > 1e-9).then(|| plane.g * (-1.0 / fall))))
+    }
+
+    /// The plane of floor or roof `id`'s top over plan point `q`: of the piece over it, or within a millimetre of one.
+    pub fn top_plane_at(&self, id: impl Key, q: P2) -> Option<walls::Plane> {
+        let near = |r: &[P2]| geom::contains(r, q) || geom::ring_edges(r).any(|(a, b)| geom::dist_to_segment(q, a, b) <= TOL);
+        match self.elements.get(id)? {
+            Element::Floor(f) => self.floor_faces(f).into_iter().find(|(r, _)| near(r)).map(|(_, p)| p),
+            Element::Roof(r) => self.roof_prisms(r).into_iter().find(|(ring, ..)| near(ring)).map(|(_, _, top)| top),
+            _ => None,
+        }
+    }
+
     /// What bounds the rooms of `level`: the centre lines of its walls, arcs as chords, and its room separation lines. A
     /// separation line drawn to a wall's face, as one drawn on a plan usually is, runs on to the wall's centre line, so it
     /// splits rooms measured there too.
@@ -5164,6 +5733,14 @@ impl Model {
                     _ => size(&format!("{what} thickness"), l.thickness)?,
                 }
             }
+            match layers.iter().filter(|l| l.variable).count() {
+                0 => {}
+                _ if matches!(cat, "wall" | "ceiling") => {
+                    return Err(format!("{who}: only a floor's or a roof's layer can be variable, to take up a shaped top's falls"));
+                }
+                1 => {}
+                n => return Err(format!("{who}: {n} variable layers; a type has one variable layer at most")),
+            }
             let sum: f64 = layers.iter().map(|l| l.thickness).sum();
             if !layers.is_empty() && (sum - thickness).abs() > 1e-6 {
                 return Err(format!("{who}: its layers add up to {sum} mm, not its thickness, {thickness} mm"));
@@ -5389,6 +5966,7 @@ impl Model {
                         }
                         None => {}
                     }
+                    shape_ok(&who, f, Variable::of(self.type_layers("floor", &f.type_name)))?;
                 }
                 Element::Ceiling(c) => {
                     known(&who, &c.type_name, &self.types.ceiling)?;
@@ -5807,6 +6385,12 @@ impl Model {
                         let most = crate::view3d::MAX_SILHOUETTE;
                         return Err(format!("{who}: a silhouette {} px wide is wider than the {most} px one may be", v.display.silhouette));
                     }
+                    if let Some(wp) = &v.work_plane {
+                        if !wp.offset.is_finite() || wp.offset.abs() > MAX_COORD {
+                            return Err(format!("{who}: its work plane's offset {} isn't a length", wp.offset));
+                        }
+                        wp.resolve(self).map_err(|e| format!("{who}: {e}"))?;
+                    }
                     if !view_names.insert(v.name.as_str()) {
                         return Err(format!("{who}: another view is already named `{}`", v.name));
                     }
@@ -6003,6 +6587,12 @@ impl Model {
                     }
                     holes(&who, "courtyard", &r.boundary, &r.courtyards)?;
                     crate::sketch::check(&who, &r.sketch)?;
+                    if !r.shape.is_empty() {
+                        if let Some(why) = r.unshapeable() {
+                            return Err(format!("{who}: {why}"));
+                        }
+                        shape_ok(&who, &self.roof_as_floor(r), Variable::of(self.type_layers("roof", &r.type_name)))?;
+                    }
                     self.roof_pieces(r).map_err(|e| format!("{who}: {e}"))?;
                 }
                 Element::Sheet(sh) => {
@@ -6233,6 +6823,78 @@ fn ccw(ring: &[P2]) -> Vec<P2> {
 fn solid(loops: &[Vec<P2>], holes: &[Vec<P2>]) -> Vec<Vec<P2>> {
     let Some((outline, inner)) = loops.split_first() else { return Vec::new() };
     inner.iter().chain(holes).fold(vec![outline.clone()], |parts, hole| walls::minus(&parts, hole))
+}
+
+/// A floor's shape: no more points and lines than it may have, each point finite and in range, inside the outline and in
+/// no opening, none within a millimetre of another, each line's ends points or corners, no slope arrow, and the whole
+/// triangulating (no line crossing another, an opening or the outline).
+fn shape_ok(who: &str, f: &Floor, variable: Option<Variable>) -> Result<(), String> {
+    let sh = &f.shape;
+    if sh.is_empty() {
+        return Ok(());
+    }
+    if sh.points.len() > MAX_SHAPE_POINTS || sh.lines.len() > MAX_SPLIT_LINES {
+        return Err(format!("{who}: a shape has at most {MAX_SHAPE_POINTS} points and {MAX_SPLIT_LINES} split lines"));
+    }
+    if f.slope != 0.0 {
+        return Err(format!(
+            "{who}: a shaped floor takes its falls from its points, not a slope arrow too: `modify` its `slope` to 0, or `reset_shape`"
+        ));
+    }
+    let at = |p: P2| format!("({:.0}, {:.0})", p.0, p.1);
+    let near = |r: &[P2], q: P2| geom::ring_edges(r).any(|(a, b)| geom::dist_to_segment(q, a, b) <= TOL);
+    for x in &sh.points {
+        point(&format!("{who} shape point"), x.at)?;
+        if !(x.z.is_finite() && x.z.abs() <= MAX_COORD) {
+            return Err(format!("{who}: the shape point at {} has a height `z` of {}: it must be a number in mm", at(x.at), x.z));
+        }
+        if !geom::contains(&f.boundary, x.at) && !near(&f.boundary, x.at) {
+            return Err(format!("{who}: the shape point at {} is outside its outline", at(x.at)));
+        }
+        if f.openings.iter().any(|o| geom::contains(o, x.at) && !near(o, x.at)) {
+            return Err(format!("{who}: the shape point at {} is in an opening", at(x.at)));
+        }
+        // The top is flat between its corners, so the variable layer is thinnest at one of them.
+        if let Some(v) = variable
+            && v.thickness + x.z < -0.01
+        {
+            let left = ((v.thickness + x.z) * 10.0).round() / 10.0;
+            return Err(format!(
+                "{who}: at the shape point at {} the variable layer would be {left} mm: raise the point by {} mm, or thicken the \
+                 variable layer",
+                at(x.at),
+                -left
+            ));
+        }
+    }
+    for (k, x) in sh.points.iter().enumerate() {
+        if let Some(y) = sh.points.iter().skip(k + 1).find(|y| y.at.dist(x.at) <= TOL) {
+            return Err(format!(
+                "{who}: the shape points at {} and {} are within a millimetre of each other: one is enough",
+                at(x.at),
+                at(y.at)
+            ));
+        }
+    }
+    let corners: Vec<P2> = f.boundary.iter().chain(f.openings.iter().flatten()).copied().collect();
+    for l in &sh.lines {
+        line(&format!("{who} split line"), l.a, l.b)?;
+        let known = |q: P2| sh.points.iter().any(|x| x.at.dist(q) <= TOL) || corners.iter().any(|c| c.dist(q) <= TOL);
+        if let Some(end) = [l.a, l.b].into_iter().find(|q| !known(*q)) {
+            return Err(format!(
+                "{who}: the split line from {} to {} ends at {}, which is no point of its shape and no corner: add a point there",
+                at(l.a),
+                at(l.b),
+                at(end)
+            ));
+        }
+    }
+    let points: Vec<P2> = sh.points.iter().map(|x| x.at).collect();
+    let lines: Vec<(P2, P2)> = sh.lines.iter().map(|l| (l.a, l.b)).collect();
+    crate::triangulation::constrained(&f.boundary, &f.openings, &points, &lines).map(|_| ()).map_err(|why| {
+        let why = why.replace("the line", "the split line").replace("of a hole", "of an opening").replace("a hole", "an opening");
+        format!("{who}: {why}")
+    })
 }
 
 /// An outline: 3 to [`MAX_POINTS`] points around some area.

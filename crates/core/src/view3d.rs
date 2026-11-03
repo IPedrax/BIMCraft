@@ -11,7 +11,7 @@ use std::sync::{Arc, OnceLock};
 
 use crate::geom::{self, P2};
 use crate::graphics::{Look, VisualStyle};
-use crate::model::{Element, Id, Layer, Model};
+use crate::model::{Element, Id, Layer, Model, TOL};
 use crate::paint;
 use crate::render::{PAPER, Rgb, clip};
 use crate::stairs;
@@ -556,6 +556,15 @@ fn solids_in(m: &Model, elements: &[(Id, &Element)], index: Option<&walls::Index
                 top: p.top,
                 curve: p.curve,
             })),
+            // Under a variable layer, a shaped floor's underside is level: each piece a prism from it up to its top.
+            Element::Floor(f) if m.floor_under(f).is_some() => {
+                for (ring, bottom, top) in m.floor_prisms(f) {
+                    let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
+                    for piece in m.less_shafts(&bottom.lift(&ring), rise).0 {
+                        out.push(Solid::Prism { owner: id, color: SLAB, tex: 0, ring: piece, bottom, top, curve: None });
+                    }
+                }
+            }
             Element::Floor(f) => {
                 for (face, rise) in m.floor_slabs(f) {
                     slabs(&mut out, m, id, SLAB, face, rise);
@@ -657,6 +666,15 @@ fn solids_in(m: &Model, elements: &[(Id, &Element)], index: Option<&walls::Index
                 top,
                 curve: None,
             })),
+            // Under a variable layer, a shaped roof's underside is level: each piece a prism from it up to its top.
+            Element::Roof(r) if m.roof_under(r).is_some() => {
+                for (ring, bottom, top) in m.roof_prisms(r) {
+                    let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
+                    for piece in m.less_shafts(&bottom.lift(&ring), rise).0 {
+                        out.push(Solid::Prism { owner: id, color: ROOF, tex: 0, ring: piece, bottom, top, curve: None });
+                    }
+                }
+            }
             Element::Roof(r) => {
                 for (face, rise) in m.roof_slabs(r) {
                     slabs(&mut out, m, id, ROOF, face, rise);
@@ -814,6 +832,31 @@ fn layered(m: &Model, s: Solid) -> Vec<Solid> {
             }
             out
         }
+        // A shaped floor's or roof's over a level underside: from the top down, the layers above its variable one following
+        // its top, those below it level over its underside, and the variable one between.
+        Solid::Prism { owner, color, tex, ring, bottom, top, curve: None } if let Some(v) = m.variable_under(owner) => {
+            let depth = top.z - bottom.z;
+            let b = crate::model::Variable::bounds(Some(v), layers, depth);
+            // Where layer `k` starts, from the top down: over the variable layer, under the top; under it, over the bottom.
+            let at = |k: usize| {
+                let from_top = b.get(k).copied().unwrap_or(depth);
+                if k <= v.index { Plane { z: top.z - from_top, ..top } } else { Plane { z: bottom.z + (depth - from_top), ..bottom } }
+            };
+            layers
+                .iter()
+                .enumerate()
+                .filter(|(_, l)| l.thickness > 1e-9 || l.variable)
+                .map(|(k, l)| Solid::Prism {
+                    owner,
+                    color: colour(l, color),
+                    tex: over(skin(m, &l.material), tex),
+                    ring: ring.clone(),
+                    bottom: at(k + 1),
+                    top: at(k),
+                    curve: None,
+                })
+                .collect()
+        }
         // Across the wall from its exterior face in, each layer between two of its boundaries; the
         // outermost and innermost reach whatever lies past them.
         Solid::Prism { owner, color, tex, ring, bottom, top, curve } => {
@@ -957,6 +1000,20 @@ fn basis(t: &Tri) -> [P3; 2] {
     [across, unit(cross(n, across))]
 }
 
+/// Whether `p` is inside `look`'s section box, or there is none.
+fn kept(look: &Look, p: P3) -> bool {
+    look.section_box().is_none_or(|(lo, hi)| (0..3).all(|k| p[k] >= lo[k] - TOL && p[k] <= hi[k] + TOL))
+}
+
+/// A face of the model under a pixel ([`Scene::face_at`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Face {
+    pub at: P3,
+    pub normal: P3,
+    pub owner: Id,
+    pub tris: Vec<[P3; 3]>,
+}
+
 /// Where a level's name goes in a 3D view: a vertical plane, unseen, past the right end of its
 /// plane's far edges and in line with the one that ends there, lettered with the name. It is where an
 /// elevation marker (an annotation family, later) will stand.
@@ -1082,6 +1139,104 @@ impl Scene {
     }
 
     /// Each level's head as `cam` sees it: see [`LevelHead`].
+    /// The elements a selection box between pixels `a` and `b` of the picture through `cam` picks, of those `look` shows: from
+    /// the left (`crossing` false) those wholly inside it, from the right those it touches too. As Revit's, it goes by where
+    /// the model is, not what's in front: what lies behind something else is boxed as well.
+    pub fn in_box(&self, cam: &Camera, a: (f64, f64), b: (f64, f64), crossing: bool, look: &Look) -> Vec<Id> {
+        let (lo, hi) = (P2(a.0.min(b.0), a.1.min(b.1)), P2(a.0.max(b.0), a.1.max(b.1)));
+        let inside = |q: P2| q.0 >= lo.0 && q.0 <= hi.0 && q.1 >= lo.1 && q.1 <= hi.1;
+        let corners = [lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)];
+        // Whether triangle `t`, on screen, overlaps the box: a corner of either in the other, or an edge of each across.
+        let touches = |t: &[P2; 3]| {
+            t.iter().any(|q| inside(*q))
+                || corners.iter().any(|c| geom::contains(t, *c))
+                || geom::ring_edges(t).any(|(p, q)| {
+                    geom::ring_edges(&corners).any(|(c, d)| {
+                        geom::line_intersection(p, q, c, d).is_some_and(|x| {
+                            let on = |a: P2, b: P2| geom::dist_to_segment(x, a, b) <= 1e-9 * a.dist(b).max(1.0);
+                            on(p, q) && on(c, d)
+                        })
+                    })
+                })
+        };
+        // Each element: whether all of it is inside, and whether any of it is.
+        let mut seen: BTreeMap<Id, (bool, bool)> = BTreeMap::new();
+        for t in self.tris.iter().filter(|t| look.shows(t.owner) && !crate::link::is_linked(t.owner)) {
+            let on = t.p.map(|p| {
+                let (x, y, _) = cam.project(p);
+                P2(x, y)
+            });
+            if on.iter().any(|q| !(q.0.is_finite() && q.1.is_finite())) {
+                continue;
+            }
+            let e = seen.entry(t.owner).or_insert((true, false));
+            *e = (e.0 && on.iter().all(|q| inside(*q)), e.1 || (crossing && touches(&on)) || on.iter().any(|q| inside(*q)));
+        }
+        seen.into_iter().filter(|(_, (all, any))| if crossing { *any } else { *all }).map(|(id, _)| id).collect()
+    }
+
+    /// The triangle of what `look` shows nearest the camera at pixel `at`, and how near (as `project` says): none where
+    /// nothing is, or only what the section box cuts away.
+    fn hit(&self, cam: &Camera, at: (f64, f64), look: &Look) -> Option<(f64, usize)> {
+        let mut best: Option<(f64, usize)> = None;
+        for (i, t) in self.tris.iter().enumerate().filter(|(_, t)| look.shows(t.owner) && !crate::link::is_linked(t.owner)) {
+            let [a, b, c] = t.p.map(|p| cam.project(p));
+            let area = (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
+            if area.is_nan() || area.abs() <= 1e-12 {
+                continue;
+            }
+            // Its share of each corner at the pixel: all three at least none, it's inside.
+            let wa = ((b.0 - at.0) * (c.1 - at.1) - (b.1 - at.1) * (c.0 - at.0)) / area;
+            let wb = ((c.0 - at.0) * (a.1 - at.1) - (c.1 - at.1) * (a.0 - at.0)) / area;
+            let wc = 1.0 - wa - wb;
+            if wa < -1e-9 || wb < -1e-9 || wc < -1e-9 {
+                continue;
+            }
+            let z = wa * a.2 + wb * b.2 + wc * c.2;
+            if z.is_finite() && best.is_none_or(|(d, _)| z > d) && kept(look, cam.at_depth(at, z)) {
+                best = Some((z, i));
+            }
+        }
+        best
+    }
+
+    /// The face of the model at pixel `at` through `cam`, of what `look` shows: where on it, which way it faces (toward the
+    /// camera), whose it is, and its triangles: those of the element lying in its plane. As a work plane is set on a surface.
+    pub fn face_at(&self, cam: &Camera, at: (f64, f64), look: &Look) -> Option<Face> {
+        let (z, i) = self.hit(cam, at, look)?;
+        let t = self.tris.get(i)?;
+        let n = unit(cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0])));
+        let (back, ..) = cam.axes();
+        let normal = if dot(n, back) < 0.0 { mul(n, -1.0) } else { n };
+        let plane = self.planes.get(i).copied();
+        let tris = self.tris.iter().zip(&self.planes).filter(|(o, k)| o.owner == t.owner && Some(**k) == plane).map(|(o, _)| o.p).collect();
+        Some(Face { at: cam.at_depth(at, z), normal, owner: t.owner, tris })
+    }
+
+    /// The corner of what `look` shows nearest pixel `at`, within `reach` pixels, that the camera sees (nothing nearer hides
+    /// it): what a picked point snaps to, as a dimension's ends snap to corners in plan.
+    pub fn corner_near(&self, cam: &Camera, at: (f64, f64), reach: f64, look: &Look) -> Option<P3> {
+        let mut near: Vec<(f64, P3)> = self
+            .tris
+            .iter()
+            .filter(|t| look.shows(t.owner) && !crate::link::is_linked(t.owner))
+            .flat_map(|t| t.p)
+            .filter_map(|p| {
+                let (x, y, _) = cam.project(p);
+                let d = ((x - at.0).powi(2) + (y - at.1).powi(2)).sqrt();
+                (d <= reach).then_some((d, p))
+            })
+            .collect();
+        near.sort_by(|a, b| a.0.total_cmp(&b.0));
+        near.dedup_by(|a, b| sub(a.1, b.1).iter().all(|v| v.abs() < TOL));
+        // Seen where what's in front at its pixel is it, or no nearer than it: to a millimetre, and a little more for
+        // the pixel's slant across a face seen edge on.
+        near.into_iter().take(16).map(|(_, p)| p).find(|p| {
+            let (x, y, z) = cam.project(*p);
+            kept(look, *p) && self.hit(cam, (x, y), look).is_none_or(|(d, _)| d <= z + 1.0 + 2.0 / cam.scale.max(1e-9))
+        })
+    }
+
     pub fn level_heads(&self, cam: &Camera) -> Vec<LevelHead> {
         heads(&self.levels, cam)
     }
@@ -1361,6 +1516,7 @@ impl Scene {
             height: h as u32,
             rgba,
             hit,
+            depth: Vec::new(),
             owners: self.tris.iter().map(|t| t.owner).collect(),
             faces: Arc::clone(&self.faces),
         }
@@ -1642,7 +1798,7 @@ impl Scene {
                 }
             }
         }
-        Image { width: w as u32, height: h as u32, rgba, hit, owners, faces: Arc::clone(&self.faces) }
+        Image { width: w as u32, height: h as u32, rgba, hit, depth, owners, faces: Arc::clone(&self.faces) }
     }
 }
 
@@ -2240,6 +2396,27 @@ impl Camera {
         (along[2].abs() > 1e-9 && t.is_finite() && (self.lens.is_none() || t > 0.0)).then(|| add(from, mul(along, t)))
     }
 
+    /// The point at pixel `(x, y)` on `plane`, level or sloped; none where the view runs along it, or in perspective where it
+    /// is behind the eye there.
+    pub fn on_slope(&self, at: (f64, f64), plane: Plane) -> Option<P3> {
+        let (back, ..) = self.axes();
+        let p = self.unproject(at);
+        let (from, along) = match self.eye() {
+            Some(eye) => (eye, unit(sub(p, eye))),
+            None => (p, back),
+        };
+        // Along the ray, the height left over the plane falls by `rate` a mm.
+        let rate = along[2] - plane.g.0 * along[0] - plane.g.1 * along[1];
+        let t = (plane.at(P2(from[0], from[1])) - from[2]) / rate;
+        (rate.abs() > 1e-9 && t.is_finite() && (self.lens.is_none() || t > 0.0)).then(|| add(from, mul(along, t)))
+    }
+
+    /// The model point at pixel `at`, `z` toward the camera from the plane through the target (as `project` says it).
+    pub fn at_depth(&self, at: (f64, f64), z: f64) -> P3 {
+        let (back, ..) = self.axes();
+        add(self.unproject(at), mul(back, z))
+    }
+
     /// The model point at pixel `(x, y)` on the plane through the target, square to the view.
     pub fn unproject(&self, (x, y): (f64, f64)) -> P3 {
         let (_, right, up) = self.axes();
@@ -2334,8 +2511,10 @@ pub struct Image {
     pub height: u32,
     /// Row by row: red, green, blue and alpha.
     pub rgba: Vec<u8>,
-    /// Each pixel's triangle (`u32::MAX` for none), and each triangle's element.
+    /// Each pixel's triangle (`u32::MAX` for none), how near the camera the opaque surface there is (none in a wireframe),
+    /// and each triangle's element.
     hit: Vec<u32>,
+    depth: Vec<f32>,
     owners: Vec<Id>,
     faces: Arc<Vec<&'static str>>,
 }
@@ -2350,6 +2529,13 @@ impl Image {
     /// without named faces. Canvas backgrounds may show through only where this is false.
     pub fn covered(&self, x: f64, y: f64) -> bool {
         self.index(x, y).and_then(|i| self.hit.get(i)).is_some_and(|t| *t != u32::MAX)
+    }
+
+    /// The point of the model's surface the pixel at `(x, y)` shows, through `cam`, the camera it was taken through: the
+    /// nearest opaque surface there. None where nothing is, and in a wireframe, which has no surfaces.
+    pub fn point(&self, cam: &Camera, x: f64, y: f64) -> Option<P3> {
+        let z = *self.depth.get(self.index(x, y)?)?;
+        (z.is_finite()).then(|| cam.at_depth((x.floor() + 0.5, y.floor() + 0.5), f64::from(z)))
     }
 
     /// The element the pixel at `(x, y)` shows.
@@ -2401,6 +2587,173 @@ impl Image {
     }
 }
 
+/// A shaped floor's handles in the 3D view: its points and corners, in plan and in the model; and its edges, as plan pairs.
+pub type ShapeHandles = (Vec<(P2, P3)>, Vec<(P2, P2)>);
+
+/// A floor's shape as the 3D view edits it: each of its shape's points and its outline's and openings' corners, in plan and
+/// where its top is there; and the edges between them (split lines, the outline's and the openings'), as pairs of those.
+pub fn shape_handles(m: &Model, f: &crate::model::Floor) -> ShapeHandles {
+    let faces = m.floor_faces(f);
+    let top = |q: P2| {
+        let near = |r: &[P2]| geom::contains(r, q) || geom::ring_edges(r).any(|(a, b)| geom::dist_to_segment(q, a, b) <= crate::model::TOL);
+        faces.iter().find(|(r, _)| near(r)).map_or_else(|| m.floor_top(f).at(q), |(_, plane)| plane.at(q))
+    };
+    let rings = || std::iter::once(&f.boundary).chain(&f.openings);
+    let mut handles: Vec<(P2, P3)> = Vec::new();
+    for q in f.shape.points.iter().map(|p| p.at).chain(rings().flatten().copied()) {
+        if !handles.iter().any(|(h, _)| h.dist(q) <= crate::model::TOL) {
+            handles.push((q, [q.0, q.1, top(q)]));
+        }
+    }
+    let edges = f.shape.lines.iter().map(|l| (l.a, l.b)).chain(rings().flat_map(|r| geom::ring_edges(r))).collect();
+    (handles, edges)
+}
+
+/// Where a shape snap lands in plan, the edge it's on (in plan, or in the model) to light up, and which it was.
+pub type PlanSnap = (P2, Option<(P2, P2)>, ShapeSnap);
+pub type ModelSnap = (P2, Option<[P3; 2]>, ShapeSnap);
+
+/// What a shape snap found, by priority: a point or corner, an edge's middle, or the nearest point along an edge. (Its
+/// edges meet only at its points, being one triangulation's, so an intersection is always an endpoint.)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShapeSnap {
+    Endpoint,
+    Midpoint,
+    Nearest,
+}
+
+/// Where Add Point or Add Split Line snaps near plan point `q` on floor `f`'s top in a plan, within `reach` mm: the nearest
+/// point or corner; else the middle of an edge (its outline's, an opening's, a split line, or a crease between its planes);
+/// else the nearest point on the nearest edge; with the edge to light up, and which it was. None away from them all.
+pub fn shape_snap_plan(m: &Model, f: &crate::model::Floor, q: P2, reach: f64) -> Option<PlanSnap> {
+    let (handles, mut edges) = shape_handles(m, f);
+    if let Some((c, _)) = handles.iter().map(|(c, _)| (*c, c.dist(q))).filter(|(_, d)| *d <= reach).min_by(|a, b| a.1.total_cmp(&b.1)) {
+        return Some((c, None, ShapeSnap::Endpoint));
+    }
+    edges.extend(m.shape_creases(f).into_iter().map(|[a, b]| (P2(a[0], a[1]), P2(b[0], b[1]))));
+    let mid = |(a, b): (P2, P2)| (a + b) * 0.5;
+    if let Some(&e) = edges.iter().filter(|e| mid(**e).dist(q) <= reach).min_by(|x, y| mid(**x).dist(q).total_cmp(&mid(**y).dist(q))) {
+        return Some((mid(e), Some(e), ShapeSnap::Midpoint));
+    }
+    let (a, b) = edges
+        .into_iter()
+        .map(|(a, b)| (a, b, geom::dist_to_segment(q, a, b)))
+        .filter(|(.., d)| *d <= reach)
+        .min_by(|x, y| x.2.total_cmp(&y.2))
+        .map(|(a, b, _)| (a, b))?;
+    let t = geom::param_on_segment(q, a, b).clamp(0.0, 1.0);
+    Some((a + (b - a) * t, Some((a, b)), ShapeSnap::Nearest))
+}
+
+/// Where Add Point or Add Split Line snaps near pixel `at` on floor `f`'s top in the 3D view through `cam`, within `reach`
+/// pixels, as in a plan (`shape_snap_plan`): the nearest point or corner; else an edge's middle; else the point under the
+/// cursor on the nearest edge; with that edge in the model to light up, and which it was. None away from them all.
+pub fn shape_snap_3d(m: &Model, f: &crate::model::Floor, cam: &Camera, at: (f64, f64), reach: f64) -> Option<ModelSnap> {
+    let (handles, edges) = shape_handles(m, f);
+    let q = P2(at.0, at.1);
+    let shown = |p: P3| {
+        let (x, y, z) = cam.project(p);
+        (x.is_finite() && y.is_finite() && z.is_finite()).then_some(P2(x, y))
+    };
+    let corner =
+        handles.iter().filter_map(|(c, p)| Some((*c, shown(*p)?.dist(q)))).filter(|(_, d)| *d <= reach).min_by(|a, b| a.1.total_cmp(&b.1));
+    if let Some((c, _)) = corner {
+        return Some((c, None, ShapeSnap::Endpoint));
+    }
+    // The edges in the model: the creases between its planes (its outline's and openings' edges among them), and its split
+    // lines, where its top is.
+    let height = |p: P2| m.floor_top(f).at(p) + m.shape_height(f, p);
+    let lift = |p: P2| [p.0, p.1, height(p)];
+    let mut lines: Vec<[P3; 2]> = m.shape_creases(f);
+    lines.extend(edges.iter().map(|&(a, b)| [lift(a), lift(b)]));
+    let lerp = |[a, b]: [P3; 2], t: f64| [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+    let mid_off = |e: [P3; 2]| shown(lerp(e, 0.5)).map_or(f64::INFINITY, |s| s.dist(q));
+    if let Some(&e) = lines.iter().filter(|e| mid_off(**e) <= reach).min_by(|x, y| mid_off(**x).total_cmp(&mid_off(**y))) {
+        let p = lerp(e, 0.5);
+        return Some((P2(p[0], p[1]), Some(e), ShapeSnap::Midpoint));
+    }
+    let off = |e: [P3; 2], t: f64| shown(lerp(e, t)).map_or(f64::INFINITY, |s| s.dist(q));
+    // Along an edge, how far its picture lies from the cursor falls then rises, even in perspective: narrowed down to it.
+    let nearest = |e: [P3; 2]| {
+        let (mut lo, mut hi) = (0.0, 1.0);
+        for _ in 0..60 {
+            let (a, b) = (lo + (hi - lo) / 3.0, hi - (hi - lo) / 3.0);
+            if off(e, a) < off(e, b) { hi = b } else { lo = a }
+        }
+        let t = (lo + hi) / 2.0;
+        (t, off(e, t))
+    };
+    let (e, t, _) = lines
+        .into_iter()
+        .map(|e| {
+            let (t, d) = nearest(e);
+            (e, t, d)
+        })
+        .filter(|(.., d)| *d <= reach)
+        .min_by(|a, b| a.2.total_cmp(&b.2))?;
+    let p = lerp(e, t);
+    Some((P2(p[0], p[1]), Some(e), ShapeSnap::Nearest))
+}
+
+/// Where pixel `at` meets floor `f`'s top in the 3D view through `cam`, in plan: on the nearest of its planes there.
+pub fn on_floor_top(m: &Model, f: &crate::model::Floor, cam: &Camera, at: (f64, f64)) -> Option<P2> {
+    let mut best: Option<(f64, P2)> = None;
+    for (ring, plane) in m.floor_faces(f) {
+        let Some(p) = cam.on_slope(at, plane) else { continue };
+        let q = P2(p[0], p[1]);
+        let inside = geom::contains(&ring, q) || geom::ring_edges(&ring).any(|(a, b)| geom::dist_to_segment(q, a, b) <= crate::model::TOL);
+        let near = cam.project(p).2;
+        if inside && near.is_finite() && best.is_none_or(|(n, _)| near > n) {
+            best = Some((near, q));
+        }
+    }
+    best.map(|(_, q)| q)
+}
+
+/// What of floor `f`'s shape a click at plan point `q` picks in a plan, within `reach` mm, as `Floor::shape_pick` does, its
+/// folding lines among its edges (`Model::shape_folds`): the nearest point or corner; else both ends of the nearest edge.
+pub fn shape_pick_plan(m: &Model, f: &crate::model::Floor, q: P2, reach: f64) -> Vec<P2> {
+    let picked = f.shape_pick(q, reach);
+    if picked.len() == 1 {
+        return picked;
+    }
+    let off = |(a, b): &(P2, P2)| geom::dist_to_segment(q, *a, *b);
+    let fold = m.shape_folds(f).into_iter().filter(|e| off(e) <= reach).min_by(|x, y| off(x).total_cmp(&off(y)));
+    let edge = match *picked.as_slice() {
+        [a, b] => Some((a, b)),
+        _ => None,
+    };
+    match (edge, fold) {
+        (Some(e), Some(g)) if off(&g) < off(&e) => vec![g.0, g.1],
+        (None, Some(g)) => vec![g.0, g.1],
+        _ => picked,
+    }
+}
+
+/// What of floor `f`'s shape a click at pixel `at` picks in the 3D view through `cam`, as `Floor::shape_pick` does in plan,
+/// within `reach` pixels: the nearest point or corner; else both ends of the nearest edge; else nothing.
+pub fn shape_pick_3d(m: &Model, f: &crate::model::Floor, cam: &Camera, at: (f64, f64), reach: f64) -> Vec<P2> {
+    let (handles, mut edges) = shape_handles(m, f);
+    edges.extend(m.shape_folds(f));
+    let q = P2(at.0, at.1);
+    let shown = |p: P3| {
+        let (x, y, z) = cam.project(p);
+        (x.is_finite() && y.is_finite() && z.is_finite()).then_some(P2(x, y))
+    };
+    let near = handles.iter().filter_map(|(plan, p)| Some((*plan, shown(*p)?.dist(q)))).filter(|(_, d)| *d <= reach);
+    if let Some((plan, _)) = near.min_by(|a, b| a.1.total_cmp(&b.1)) {
+        return vec![plan];
+    }
+    let lift = |plan: P2| handles.iter().find(|(h, _)| h.dist(plan) <= crate::model::TOL).map(|(_, p)| *p);
+    let off = |(a, b): &(P2, P2)| Some(geom::dist_to_segment(q, shown(lift(*a)?)?, shown(lift(*b)?)?));
+    edges
+        .iter()
+        .filter_map(|e| Some((*e, off(e)?)))
+        .filter(|(_, d)| *d <= reach)
+        .min_by(|x, y| x.1.total_cmp(&y.1))
+        .map_or_else(Vec::new, |((a, b), _)| vec![a, b])
+}
+
 /// A surface the line of sight through a pixel meets: the element it is of, the point it meets it at, and the surface's unit
 /// normal, turned toward the camera. What the 3D view orbits about and zooms toward, and what its tools draw on (`workplane`).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -2449,8 +2802,15 @@ mod tests {
 
     #[test]
     fn background_coverage_includes_geometry_without_a_named_face() {
-        let image =
-            Image { width: 2, height: 1, rgba: vec![255; 8], hit: vec![0, u32::MAX], owners: vec![Id::MAX], faces: Arc::new(vec![""]) };
+        let image = Image {
+            width: 2,
+            height: 1,
+            rgba: vec![255; 8],
+            hit: vec![0, u32::MAX],
+            depth: vec![1.0, f32::INFINITY],
+            owners: vec![Id::MAX],
+            faces: Arc::new(vec![""]),
+        };
         assert!(image.covered(0.0, 0.0));
         assert_eq!(image.face(0.0, 0.0), None);
         assert_eq!(image.pick(0.0, 0.0), None, "linked geometry is covered even though it cannot be picked");

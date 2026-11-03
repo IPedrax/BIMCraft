@@ -1,4 +1,4 @@
-//! The start page, which the window opens on when it is given no project: New and Open, the recent files as tiles with a picture of
+//! The start page, which the window opens on when it is given no project: New, Open and the sample house, the recent files as tiles with a picture of
 //! each (its 3D view, drawn on a thread of its own), and along the bottom the source code's page and whether an update is out. The
 //! quick access bar's Home brings it back over a project, which it leaves as it was.
 
@@ -129,6 +129,8 @@ fn ago(when: SystemTime) -> String {
 enum Click {
     New,
     Open,
+    /// The sample house, as an unsaved project.
+    Sample,
     Recent(PathBuf),
     Forget(PathBuf),
     Back,
@@ -258,6 +260,7 @@ impl BimApp {
         match click {
             Click::New => self.guard(Pending::New, &ctx),
             Click::Open => self.guard(Pending::Open, &ctx),
+            Click::Sample => self.guard(Pending::Sample, &ctx),
             Click::Recent(path) => self.guard(Pending::OpenPath(path), &ctx),
             Click::Forget(path) => {
                 self.recent.remove(&path);
@@ -309,6 +312,10 @@ impl BimApp {
         };
         if action(ui, Icon::Open, "Open…", what, &format!("{cmd}O")).clicked() {
             *click = Some(Click::Open);
+        }
+        ui.add_space(10.0);
+        if action(ui, Icon::Plan, msg!("Sample Project"), msg!("A small house to look around in."), "").clicked() {
+            *click = Some(Click::Sample);
         }
         if self.home.over {
             ui.add_space(10.0);

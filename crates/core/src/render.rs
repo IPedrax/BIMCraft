@@ -876,6 +876,7 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         Element::FilledRegion(r) => filled_region(&mut d, m, r),
         Element::DetailGroup(g) => detail_group(&mut d, m, g),
         Element::RepeatingDetail(r) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
+        Element::Spot(sp) if sp.slope => slope_mark(&mut d, sp.at, m.spot_slope(sp)),
         Element::Spot(sp) => spot_mark(&mut d, view.px(sp.at), m.spot_value(sp), m.units),
         Element::Section(v) => section_mark(&mut d, v),
         Element::Elevation(v) => elevation_mark(&mut d, v),
@@ -1255,22 +1256,32 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
         if total <= 0.0 {
             continue;
         }
+        // A shaped floor's or roof's over a level underside: the layers above its variable one from the top, those below it
+        // from the bottom, the variable one between; any other's in proportion to their thicknesses.
+        let variable = m.variable_under(owner);
         d.owner = Some(owner);
         for r in rings {
             let &[a0, b0, b1, a1] = r.as_slice() else { continue };
-            // The line a fraction of the way down from its top to its bottom.
-            let at = |f: f64| (a1 + (a0 - a1) * f, b1 + (b0 - b1) * f);
-            let mut above = 0.0;
+            // Where each layer starts down from the top at each end.
+            let down = |top: P2, bottom: P2| {
+                let depth = top.1 - bottom.1;
+                crate::model::Variable::bounds(variable, layers, depth)
+                    .into_iter()
+                    .map(|x| if depth.abs() > 1e-9 { top + (bottom - top) * (x / depth) } else { top })
+                    .collect::<Vec<P2>>()
+            };
+            let (at_a, at_b) = (down(a1, a0), down(b1, b0));
             for (k, layer) in layers.iter().enumerate() {
-                let ((p, q), (p2, q2)) = (at(above / total), at((above + layer.thickness) / total));
-                let room = (p.1 - p2.1).abs() * d.view.scale;
+                let (Some(&p), Some(&q), Some(&p2), Some(&q2)) = (at_a.get(k), at_b.get(k), at_a.get(k + 1), at_b.get(k + 1)) else {
+                    continue;
+                };
+                let room = (p.1 - p2.1).abs().min((q.1 - q2.1).abs()) * d.view.scale;
                 cut_layer(&mut d, m, layer, &[p2, q2, q, p], (q - p).unit(), room);
                 if k > 0 {
                     d.part(Part::Pattern);
                     d.line(&[p, q], Pen::PROJECTION, INK, false);
                     d.part(Part::Cut);
                 }
-                above += layer.thickness;
             }
         }
     }
@@ -1348,7 +1359,8 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
             Element::DetailLine(l) if m.same(l.view, id) => detail_line(&mut d, m, l),
             Element::DetailGroup(g) if m.same(g.view, id) => detail_group(&mut d, m, g),
             Element::RepeatingDetail(r) if m.same(r.view, id) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
-            Element::Spot(sp) if m.same(sp.view, id) => {
+            // A spot slope reads a plan's floor or roof; a section has none to show.
+            Element::Spot(sp) if m.same(sp.view, id) && !sp.slope => {
                 let z = m.spot_value(sp).unwrap_or(sp.at.1);
                 spot_mark(&mut d, view.px(P2(sp.at.0, z)), Some(z), m.units);
             }
@@ -1632,6 +1644,14 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         for ring in std::iter::once(&f.boundary).chain(&f.openings) {
             d.line(ring, BY_CATEGORY, FAINT, true);
         }
+        // A shaped one's creases: the edges of each of its planes, as thin as its outline.
+        if !f.shape.is_empty() {
+            for (loops, _) in m.shape_planes(f).unwrap_or_default() {
+                for ring in &loops {
+                    d.line(ring, BY_CATEGORY, FAINT, true);
+                }
+            }
+        }
         holes(&mut d, m, &m.floor_slabs(f));
         if let Some([tail, head]) = f.arrow.filter(|_| f.slope != 0.0) {
             slope_arrow(&mut d, tail, head, f.slope);
@@ -1735,7 +1755,10 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         }
     }
     // A compound wall's layers: each its material's cut pattern where it's wide enough to hold it,
-    // else lighter where it isn't the wall's structure; a thin line between each two.
+    // else lighter where it isn't the wall's structure; a thin line between each two. A column the plan cuts stands in the wall's
+    // way: its poche is solid, so the layers stop at its outline.
+    let columns: Vec<&[P2]> =
+        outlines.iter().filter(|(id, _)| m.elements.get(*id).is_some_and(|e| e.column().is_some())).map(|(_, o)| o.as_slice()).collect();
     for (&id, e) in &m.elements {
         let Element::Wall(w) = e else { continue };
         let layers = m.type_layers("wall", &w.type_name);
@@ -1749,12 +1772,16 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
             let (Some(a), Some(b)) = (lines.get(k), lines.get(k + 1)) else { continue };
             let ring: Vec<P2> = a.iter().chain(b.iter().rev()).copied().collect();
             let room = layer.thickness * d.view.scale;
-            cut_layer(&mut d, m, layer, &ring, along, room);
+            for piece in outside_columns(vec![ring], &columns) {
+                cut_layer(&mut d, m, layer, &piece, along, room);
+            }
         }
         // The lines between the layers are detail, as the hatching is: a cut's weight is its outline's.
         d.part(Part::Pattern);
         for line in lines.iter().skip(1).take(lines.len().saturating_sub(2)) {
-            d.line(line, Pen::PROJECTION, INK, false);
+            for part in lines_outside_columns(line, &columns) {
+                d.line(&part, Pen::PROJECTION, INK, false);
+            }
         }
         d.part(Part::Cut);
     }
@@ -1938,6 +1965,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
             Element::DetailLine(l) if m.annotation_in(e, key) => detail_line(&mut d, m, l),
             Element::DetailGroup(g) if m.annotation_in(e, key) => detail_group(&mut d, m, g),
             Element::RepeatingDetail(r) if m.annotation_in(e, key) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
+            Element::Spot(sp) if sp.slope && m.annotation_in(e, key) && inside(sp.at) => slope_mark(&mut d, sp.at, m.spot_slope(sp)),
             Element::Spot(sp) if m.annotation_in(e, key) && inside(sp.at) => spot_mark(&mut d, view.px(sp.at), m.spot_value(sp), m.units),
             // A section's line is cropped as a line is.
             Element::Section(v) => section_mark(&mut d, v),
@@ -2091,6 +2119,32 @@ const GAP: f64 = 6.0;
 const MODULE: f64 = 100.0;
 /// How wide a layer is to be, px, to show its pattern: narrower, it's filled instead.
 const PATTERN_ROOM: f64 = 10.0;
+
+/// Whether the boxes round two sets of points overlap: the quick test before the exact one.
+fn boxes_meet(a: &[P2], b: &[P2]) -> bool {
+    let bounds = |pts: &[P2]| {
+        pts.iter().fold((P2(f64::INFINITY, f64::INFINITY), P2(f64::NEG_INFINITY, f64::NEG_INFINITY)), |(lo, hi), q| {
+            (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1)))
+        })
+    };
+    let ((alo, ahi), (blo, bhi)) = (bounds(a), bounds(b));
+    alo.0 <= bhi.0 && blo.0 <= ahi.0 && alo.1 <= bhi.1 && blo.1 <= ahi.1
+}
+
+/// `rings` less the outlines of the columns the plan cuts (convex, a rectangle or a round one's polygon): what of a wall's layer
+/// is not inside one.
+fn outside_columns(rings: Vec<Vec<P2>>, columns: &[&[P2]]) -> Vec<Vec<P2>> {
+    columns.iter().fold(rings, |rings, hole| {
+        rings.into_iter().flat_map(|r| if boxes_meet(&r, hole) { geom::subtract_convex(&r, hole) } else { vec![r] }).collect()
+    })
+}
+
+/// The parts of `line` outside the columns' outlines.
+fn lines_outside_columns(line: &[P2], columns: &[&[P2]]) -> Vec<Vec<P2>> {
+    columns.iter().fold(vec![line.to_vec()], |lines, hole| {
+        lines.into_iter().flat_map(|l| if boxes_meet(&l, hole) { geom::line_outside_convex(&l, hole) } else { vec![l] }).collect()
+    })
+}
 
 /// A layer where it's cut, along `ring`: where it's `room` px wide or more, its material's cut
 /// pattern over the paper, its courses along unit `u`; else, unless it's its element's structure
@@ -2569,9 +2623,16 @@ fn arrow(d: &mut Drawing, a: (f32, f32), b: (f32, f32)) -> (f32, f32) {
 // ponytail: openings aren't drawn; a dormer's roof covers its own. Draw them for skylights.
 fn roof(d: &mut Drawing, m: &Model, r: &Roof) {
     let faces = m.roof_faces(r).map_or_else(|_| vec![m.roof_outline(r)], |f| f.into_iter().flat_map(|(loops, _)| loops).collect());
+    // A shaped one's creases thin, as a shaped floor's are, its outline and courtyards as any roof's.
+    let shaped = !r.shape.is_empty();
     for f in faces {
         override_patterns(d, m, std::slice::from_ref(&f), false, (P2(0.0, 0.0), 0.0));
-        d.line(&f, BY_CATEGORY, INK, true);
+        d.line(&f, BY_CATEGORY, if shaped { FAINT } else { INK }, true);
+    }
+    if shaped {
+        for ring in std::iter::once(&r.boundary).chain(&r.courtyards) {
+            d.line(ring, BY_CATEGORY, INK, true);
+        }
     }
 }
 
@@ -3066,6 +3127,36 @@ fn spot_mark(d: &mut Drawing, (x, y): (f32, f32), z: Option<f64>, units: Units) 
     d.grow(from, (x, y));
 }
 
+/// A spot slope: from its point an arrow 24 px long pointing downhill, and the fall over it, as `1.5%`; on the level, `0%`
+/// alone; `?` while its host has no top there.
+fn slope_mark(d: &mut Drawing, at: P2, read: Option<(f64, Option<P2>)>) {
+    let from = d.prims.len();
+    let (x, y) = d.view.px(at);
+    let text = read.map_or_else(|| "?".into(), |(f, _)| format!("{}%", figure(f)));
+    let w = font::width(&text, 10.0);
+    match read.and_then(|(_, way)| way) {
+        Some(way) => {
+            // Downhill on paper: the way in plan, as the view turns it, 24 px long.
+            let (fx, fy) = d.view.px(at + way * 1000.0);
+            let (dx, dy) = (fx - x, fy - y);
+            let n = dx.hypot(dy).max(1e-6);
+            let (ux, uy) = (dx / n, dy / n);
+            let tip = (x + ux * 24.0, y + uy * 24.0);
+            d.stroke(vec![(x, y), tip], Pen::PROJECTION, INK, None, false);
+            let back = (tip.0 - ux * 6.0, tip.1 - uy * 6.0);
+            let side = (-uy * 3.0, ux * 3.0);
+            d.push(Prim::Fill {
+                rings: vec![vec![tip, (back.0 + side.0, back.1 + side.1), (back.0 - side.0, back.1 - side.1)]],
+                color: INK,
+            });
+            // Its fall beside the arrow's middle, upright.
+            d.text(&text, (x + ux * 12.0 + w / 2.0 + 4.0 * uy.abs(), y + uy * 12.0 - 8.0), 10.0, INK);
+        }
+        None => d.text(&text, (x + w / 2.0 + 4.0, y - 8.0), 10.0, INK),
+    }
+    d.grow(from, (x, y));
+}
+
 /// A height as a spot elevation reads it, signed: ±0, +3000, -600, +9'-10 1/8".
 fn height(units: Units, z: f64) -> String {
     let shown = units.length(z);
@@ -3391,6 +3482,58 @@ mod tests {
         // Where the top and right walls overlap, and the square their ends stretch over, inside their outline.
         assert_eq!(pixel(&png, d.view.px(P2(8000.0, 6000.0))), (POCHE.0, POCHE.1, POCHE.2));
         assert_eq!(pixel(&png, d.view.px(P2(8020.0, 6020.0))), (POCHE.0, POCHE.1, POCHE.2));
+    }
+
+    /// Every pixel of the plan inside `outline` (`MARGIN` mm in from its edge, where its own inked edge ends) is poche: nothing is
+    /// drawn inside a column.
+    fn solid_inside(d: &Drawing, png: &[u8], outline: &[P2], what: &str) {
+        let (lo, hi) = outline.iter().fold((P2(f64::MAX, f64::MAX), P2(f64::MIN, f64::MIN)), |(lo, hi), q| {
+            (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1)))
+        });
+        // Decoded once: `pixel` would decode the picture for each point.
+        let pm = tiny_skia::Pixmap::decode_png(png).unwrap();
+        let (mut x, mut seen) = (lo.0 + MARGIN, 0);
+        while x < hi.0 - MARGIN {
+            let mut y = lo.1 + MARGIN;
+            while y < hi.1 - MARGIN {
+                if geom::contains(outline, P2(x, y)) {
+                    let (px, py) = d.view.px(P2(x, y));
+                    let c = pm.pixel(px as u32, py as u32).unwrap();
+                    assert_eq!((c.red(), c.green(), c.blue()), (POCHE.0, POCHE.1, POCHE.2), "{what}: ({x}, {y}) is inked");
+                    seen += 1;
+                }
+                y += 10.0;
+            }
+            x += 10.0;
+        }
+        assert!(seen > 100, "{what}: only {seen} points were looked at");
+    }
+
+    #[test]
+    fn a_wall_that_meets_a_column_leaves_the_column_solid_and_unlined() {
+        let mut s = Session::new();
+        // A 300 x 300 column at 3000, 0. A plain wall runs into it from the west, ending at its centre; a layered one (a finish layer
+        // and a structure layer, 150 mm each, which draw a line between them) starts at its right edge's middle, flush with it, and runs east;
+        // a third runs right through it, north to south.
+        s.script(
+            r#"type {"category": "wall", "name": "Cavity", "layers": [{"function": "finish", "thickness": 150}, {"function": "structure", "thickness": 150}]}
+               type {"category": "column", "name": "Square 300", "width": 300, "depth": 300}
+               column {"at": [3000, 0], "type": "Square 300"}
+               wall {"points": [[0, 0], [3000, 0]], "type": "Generic - 200mm"}
+               wall {"points": [[3150, 0], [6000, 0]], "type": "Cavity"}
+               wall {"points": [[3000, -2000], [3000, 2000]], "type": "Cavity"}"#,
+        )
+        .unwrap();
+        let column = s.model.elements.values().find(|e| e.column().is_some()).unwrap();
+        let outline = s.model.column_outline(column);
+        let d = plan(&s.model, 100000, 1600, 500);
+        let png = png(&d).unwrap();
+        solid_inside(&d, &png, &outline, "the column");
+        // And where the flush wall's end meets the column's edge there is no seam either, on its structure side (the finish side is
+        // the layer's own tint, and the line between the layers, at 0, starts there).
+        for (x, y) in [(3140.0, -100.0), (3140.0, -50.0), (3150.0, -100.0), (3150.0, -50.0)] {
+            assert_eq!(pixel(&png, d.view.px(P2(x, y))), (POCHE.0, POCHE.1, POCHE.2), "no seam at {x}, {y}");
+        }
     }
 
     #[test]
@@ -4055,7 +4198,7 @@ mod tests {
     fn a_tools_sketch_of_annotation_is_the_size_its_view_would_draw_it() {
         let mut s = house();
         let view = View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
-        let spot = Element::Spot(crate::model::Spot { view: s.model.guid(100000), at: P2(4000.0, 3000.0), host: None });
+        let spot = Element::Spot(crate::model::Spot { view: s.model.guid(100000), at: P2(4000.0, 3000.0), host: None, slope: false });
         let text = |s: &Session| lettering(&sketch(&s.model, view, 99, &spot), 99);
         s.execute("scale", &serde_json::json!({"view": 100000, "scale": 50})).unwrap();
         let none = text(&s);
