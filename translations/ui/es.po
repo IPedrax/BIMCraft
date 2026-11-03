@@ -30,7 +30,7 @@ msgstr "1 elemento"
 
 #: crates/ui-egui/src/templates.rs:46
 msgid "3D"
-msgstr ""
+msgstr "3D"
 
 #: crates/ui-egui/src/lib.rs:3373
 #: crates/ui-egui/src/properties.rs:1101
@@ -80,7 +80,7 @@ msgstr "<Ninguno>"
 
 #: crates/ui-egui/src/templates.rs:459
 msgid "<None>: the view follows no template, and its settings are its own."
-msgstr ""
+msgstr "<Ninguno>: la vista no sigue ninguna plantilla y sus ajustes son propios."
 
 #: crates/ui-egui/src/graphics.rs:1121
 msgid "<Pick>"
@@ -104,7 +104,7 @@ msgstr "Los puntos de un círculo, una elipse o un arco a lo largo de sus ejes: 
 
 #: crates/ui-egui/src/electrical.rs:394
 msgid "A conductor's material, insulation and working temperature, and the ampacity of each section, in mm²."
-msgstr ""
+msgstr "El material, el aislamiento y la temperatura de trabajo de un conductor, y la capacidad de corriente de cada sección, en mm²."
 
 #: crates/ui-egui/src/properties.rs:2222
 msgid "A direction from the last point sticks to multiples of this angle, from east and from the line before; a dashed guide shows it"
@@ -160,7 +160,7 @@ msgstr "La línea central de un muro, para que un muro dibujado sobre ella se en
 
 #: crates/ui-egui/src/electrical.rs:181
 msgid "A {} needs a name."
-msgstr ""
+msgstr "Cada {} necesita un nombre."
 
 #: crates/ui-egui/src/standards.rs:162
 msgid "ASME / AIA: 180 mm"
@@ -247,11 +247,11 @@ msgstr "Añadir cilindro"
 
 #: crates/ui-egui/src/electrical.rs:387
 msgid "Add Distribution System"
-msgstr ""
+msgstr "Añadir sistema de distribución"
 
 #: crates/ui-egui/src/editor.rs:923
 msgid "Add Dot"
-msgstr ""
+msgstr "Añadir punto"
 
 #: crates/ui-egui/src/properties.rs:2347
 msgid "Add Filter"
@@ -293,7 +293,7 @@ msgstr "Añadir atajo"
 
 #: crates/ui-egui/src/electrical.rs:462
 msgid "Add Size"
-msgstr ""
+msgstr "Añadir tamaño"
 
 #: crates/ui-egui/src/properties.rs:2842
 msgid "Add Sort"
@@ -301,7 +301,7 @@ msgstr "Añadir orden"
 
 #: crates/ui-egui/src/editor.rs:923
 msgid "Add Text"
-msgstr ""
+msgstr "Añadir texto"
 
 #: crates/ui-egui/src/editor.rs:671
 msgid "Add Type"
@@ -321,11 +321,11 @@ msgstr "Añadir vacío"
 
 #: crates/ui-egui/src/electrical.rs:315
 msgid "Add Voltage"
-msgstr ""
+msgstr "Añadir tensión"
 
 #: crates/ui-egui/src/electrical.rs:407
 msgid "Add Wire Type"
-msgstr ""
+msgstr "Añadir tipo de cable"
 
 #: crates/ui-egui/src/phasing.rs:476
 msgid "Add at End"
@@ -417,7 +417,7 @@ msgstr "A lo largo del ancho"
 
 #: crates/ui-egui/src/electrical.rs:444
 msgid "Ampacity"
-msgstr ""
+msgstr "Capacidad de corriente"
 
 #: crates/ui-egui/src/linestyles/creator.rs:187
 msgid "Amplitude"
@@ -492,7 +492,7 @@ msgstr "Plumilla de anotación {}"
 #: crates/ui-egui/src/footer.rs:420
 #: crates/ui-egui/src/properties.rs:2239
 msgid "Applies to all views; snaps to the active view's enabled main grid or subgrid, even when hidden"
-msgstr ""
+msgstr "Se aplica a todas las vistas; se ajusta a la cuadrícula principal o a la subcuadrícula que estén habilitadas en la vista activa, aunque estén ocultas"
 
 #: crates/ui-egui/src/background_grid.rs:112
 #: crates/ui-egui/src/editor.rs:1070
@@ -566,7 +566,7 @@ msgstr "Pregunta si guardar, si hay cambios sin guardar; después cierra BIMCraf
 
 #: crates/ui-egui/src/templates.rs:225
 msgid "Assign View Template"
-msgstr ""
+msgstr "Asignar plantilla de vista"
 
 #: crates/ui-egui/src/properties.rs:395
 msgid "Associated Level"
@@ -714,7 +714,7 @@ msgstr "Color de fondo"
 #: crates/ui-egui/src/graphics.rs:591
 #: crates/ui-egui/src/templates.rs:623
 msgid "Background Grids"
-msgstr ""
+msgstr "Cuadrículas de fondo"
 
 #: crates/ui-egui/src/fillpatterns.rs:467
 msgid "Background Pattern"
@@ -884,7 +884,7 @@ msgstr "Por vista"
 
 #: crates/core/src/library.rs:74
 msgid "CAD drawing"
-msgstr ""
+msgstr "dibujo CAD"
 
 #: crates/ui-egui/src/cad.rs:51
 msgid "CAD drawings (DWG, DXF)"
@@ -933,7 +933,7 @@ msgstr "Cámara"
 
 #: crates/ui-egui/src/lib.rs:3397
 msgid "Camera: click where its eye stands, then what it looks at: a 3D view in perspective from there"
-msgstr ""
+msgstr "Cámara: haz clic donde está el ojo y luego en lo que mira: una vista 3D en perspectiva desde ese punto"
 
 #: crates/ui-egui/src/background_grid.rs:111
 #: crates/ui-egui/src/cad.rs:131
@@ -1380,7 +1380,7 @@ msgstr "Pulse el final de la línea; la siguiente empieza ahí. El primer punto 
 
 #: crates/ui-egui/src/lib.rs:4249
 msgid "Click the line's next point; each click places a line. Esc ends the chain."
-msgstr ""
+msgstr "Haz clic en el siguiente punto de la línea; cada clic coloca una línea. Esc termina la cadena."
 
 #: crates/ui-egui/src/lib.rs:4344
 msgid "Click the next corner; Enter, or the first corner again, finishes the mass. Esc cancels."
@@ -1492,7 +1492,7 @@ msgstr "Haga clic para dar tamaño al arco. Esc cancela."
 
 #: crates/ui-egui/src/lib.rs:4309
 msgid "Click what the camera looks at; its eye and target heights are the Options Bar's."
-msgstr ""
+msgstr "Haz clic en lo que mira la cámara; las alturas del ojo y del destino son las de la barra de opciones."
 
 #: crates/ui-egui/src/draw.rs:568
 msgid "Click where a corner goes. Esc cancels."
@@ -1536,7 +1536,7 @@ msgstr "Haz clic donde va el punto base, o escribe una distancia y presiona Ente
 
 #: crates/ui-egui/src/lib.rs:4308
 msgid "Click where the camera's eye stands: it looks at the point you click next."
-msgstr ""
+msgstr "Haz clic donde está el ojo de la cámara: mira hacia el punto en el que hagas clic después."
 
 #: crates/ui-egui/src/lib.rs:4312
 msgid "Click where the component goes; Space turns it a quarter turn."
@@ -1739,7 +1739,7 @@ msgstr "Restricciones"
 
 #: crates/ui-egui/src/properties.rs:437
 msgid "Construction"
-msgstr ""
+msgstr "Construcción"
 
 #: crates/ui-egui/src/dimtypes.rs:108
 msgid "Continuous"
@@ -1955,6 +1955,10 @@ msgstr "Recortar vista"
 msgid "Crop View: show only the crop region; drag its edges by their grips"
 msgstr "Recortar vista: mostrar solo la región de recorte; arrastra sus bordes por los tiradores"
 
+#: crates/ui-egui/src/electrical.rs:444
+msgid "Cross-Section"
+msgstr "Sección"
+
 #: crates/core/src/fills.rs:409
 #: crates/ui-egui/src/properties.rs:628
 msgid "Crosshatch"
@@ -2125,19 +2129,19 @@ msgstr "Suprimir vértice: haga clic en un vértice de polilínea o un punto de 
 
 #: crates/ui-egui/src/electrical.rs:410
 msgid "Delete Wire Type"
-msgstr ""
+msgstr "Eliminar tipo de cable"
 
 #: crates/ui-egui/src/electrical.rs:452
 msgid "Delete size {}"
-msgstr ""
+msgstr "Eliminar tamaño {}"
 
 #: crates/ui-egui/src/electrical.rs:377
 msgid "Delete system {}"
-msgstr ""
+msgstr "Eliminar sistema {}"
 
 #: crates/ui-egui/src/electrical.rs:305
 msgid "Delete voltage {}"
-msgstr ""
+msgstr "Eliminar tensión {}"
 
 #: crates/ui-egui/src/lib.rs:911
 #: crates/ui-egui/src/lineweights.rs:56
@@ -2325,7 +2329,7 @@ msgstr "Cuadro de distribución"
 
 #: crates/ui-egui/src/electrical.rs:21
 msgid "Distribution Systems"
-msgstr ""
+msgstr "Sistemas de distribución"
 
 #: crates/ui-egui/src/dock.rs:712
 msgid "Dock Bottom"
@@ -2491,7 +2495,7 @@ msgstr "Duplicar…"
 
 #: crates/ui-egui/src/templates.rs:699
 msgid "Each is a length, and Top may be left empty for the level above."
-msgstr ""
+msgstr "Cada uno es una longitud, y Superior puede dejarse vacío para el nivel de arriba."
 
 #: crates/ui-egui/src/fillpatterns.rs:574
 msgid "Each line's angle, origin and spacing"
@@ -2541,7 +2545,7 @@ msgstr "Editar"
 
 #: crates/ui-egui/src/graphics.rs:593
 msgid "Edit Background Grids"
-msgstr ""
+msgstr "Editar cuadrículas de fondo"
 
 #: crates/ui-egui/src/sketch.rs:727
 msgid "Edit Boundary"
@@ -2612,11 +2616,11 @@ msgstr "Equipo eléctrico (EE): un cuadro de distribución, donde hagas clic en 
 #: crates/ui-egui/src/electrical.rs:478
 #: crates/ui-egui/src/lib.rs:3563
 msgid "Electrical Settings"
-msgstr ""
+msgstr "Configuración eléctrica"
 
 #: crates/ui-egui/src/lib.rs:3561
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
-msgstr ""
+msgstr "Configuración eléctrica: las tensiones, los sistemas de distribución y los tipos de cable a los que se refieren los circuitos y los cuadros; secciones en mm²"
 
 #: crates/core/src/commands.rs:1764
 msgid "Elements"
@@ -2633,7 +2637,7 @@ msgstr "Elevación (°)"
 
 #: crates/ui-egui/src/templates.rs:45
 msgid "Elevation/Section"
-msgstr ""
+msgstr "Elevación/Sección"
 
 #: crates/ui-egui/src/lib.rs:3393
 msgid "Elevation: click beside the building, on the side to look at"
@@ -2759,7 +2763,7 @@ msgstr "Inicio de extrusión"
 
 #: crates/ui-egui/src/camera.rs:116
 msgid "Eye"
-msgstr ""
+msgstr "Ojo"
 
 #: crates/ui-egui/src/camera.rs:100
 msgid "Eye Elevation"
@@ -2767,7 +2771,7 @@ msgstr "Altura del ojo"
 
 #: crates/ui-egui/src/lib.rs:4023
 msgid "Eye Height:"
-msgstr ""
+msgstr "Altura del ojo:"
 
 #: crates/core/src/family.rs:1692
 msgid "Fabric"
@@ -3262,7 +3266,7 @@ msgstr "Tarjeta gráfica"
 
 #: crates/ui-egui/src/background_grid.rs:45
 msgid "Graphics follow parent view {}"
-msgstr ""
+msgstr "Los gráficos siguen a la vista principal {}"
 
 #: crates/core/src/commands.rs:128
 msgid "Grid"
@@ -3274,20 +3278,20 @@ msgstr "Eje (GR): haz clic en sus dos extremos"
 
 #: crates/ui-egui/src/background_grid.rs:171
 msgid "Grid rotation"
-msgstr ""
+msgstr "Rotación de la cuadrícula"
 
 #: crates/ui-egui/src/footer.rs:413
 msgid "Grid settings…"
-msgstr ""
+msgstr "Configuración de la cuadrícula…"
 
 #: crates/ui-egui/src/footer.rs:419
 #: crates/ui-egui/src/properties.rs:2238
 msgid "Grid snapping"
-msgstr ""
+msgstr "Ajuste a la cuadrícula"
 
 #: crates/ui-egui/src/background_grid.rs:142
 msgid "Grids start at 0, 0 in each view and rotate together."
-msgstr ""
+msgstr "Las cuadrículas empiezan en 0, 0 en cada vista y giran juntas."
 
 #: crates/core/src/schedule.rs:443
 msgid "Gross Floor Area"
@@ -3445,7 +3449,7 @@ msgstr "Cuántas barras, de qué diámetro y a qué distancia lo decide usted; u
 
 #: crates/ui-egui/src/electrical.rs:335
 msgid "How many phases and wires each system has (the line conductors and the neutral), the voltages it supplies, and how it is earthed."
-msgstr ""
+msgstr "Cuántas fases e hilos tiene cada sistema (los conductores de fase y el neutro), las tensiones que suministra y cómo se pone a tierra."
 
 #: crates/ui-egui/src/inquiry.rs:165
 msgid "ID"
@@ -3554,7 +3558,7 @@ msgstr "Pulgadas"
 
 #: crates/ui-egui/src/templates.rs:489
 msgid "Include"
-msgstr ""
+msgstr "Incluir"
 
 #: crates/ui-egui/src/lib.rs:3642
 msgid "Inquiry"
@@ -3615,7 +3619,7 @@ msgstr "Ancho del aislamiento"
 
 #: crates/ui-egui/src/electrical.rs:434
 msgid "Insulation:"
-msgstr ""
+msgstr "Aislamiento:"
 
 #: crates/ui-egui/src/draw.rs:644
 msgid "Insulation: batt insulation drawn along each line, its width on the Options Bar"
@@ -3720,7 +3724,7 @@ msgstr "Fregadero de cocina"
 
 #: crates/ui-egui/src/electrical.rs:444
 msgid "Label"
-msgstr ""
+msgstr "Etiqueta"
 
 #: crates/ui-egui/src/lib.rs:4088
 msgid "Label:"
@@ -3769,7 +3773,7 @@ msgstr "Espesor de la hoja"
 
 #: crates/ui-egui/src/editor.rs:901
 msgid "Left"
-msgstr ""
+msgstr "Izquierda"
 
 #: crates/ui-egui/src/standards.rs:131
 msgid "Left Filing / Binding Margin:"
@@ -3803,7 +3807,7 @@ msgstr "Longitudes y tamaños en mm sobre papel. El eje define la geometría y l
 
 #: crates/ui-egui/src/lib.rs:4027
 msgid "Lens:"
-msgstr ""
+msgstr "Lente:"
 
 #: crates/core/src/commands.rs:120
 msgid "Level"
@@ -3917,15 +3921,15 @@ msgstr "Guiones de línea"
 
 #: crates/ui-egui/src/electrical.rs:349
 msgid "Line to earth"
-msgstr ""
+msgstr "Fase a tierra"
 
 #: crates/ui-egui/src/electrical.rs:347
 msgid "Line to line"
-msgstr ""
+msgstr "Fase a fase"
 
 #: crates/ui-egui/src/electrical.rs:348
 msgid "Line to neutral"
-msgstr ""
+msgstr "Fase a neutro"
 
 #: crates/ui-egui/src/graphics.rs:1362
 msgid "Line weight"
@@ -4010,7 +4014,7 @@ msgstr "Listar {}"
 
 #: crates/core/src/fixtures.rs:247
 msgid "Load"
-msgstr ""
+msgstr "Carga"
 
 #: crates/ui-egui/src/mep.rs:193
 msgid "Load AREI Symbols"
@@ -4076,23 +4080,23 @@ msgstr "Modelo principal"
 #: crates/ui-egui/src/background_grid.rs:145
 #: crates/ui-egui/src/footer.rs:411
 msgid "Main grid"
-msgstr ""
+msgstr "Cuadrícula principal"
 
 #: crates/ui-egui/src/background_grid.rs:159
 msgid "Main grid colour"
-msgstr ""
+msgstr "Color de la cuadrícula principal"
 
 #: crates/ui-egui/src/background_grid.rs:159
 msgid "Main grid pen"
-msgstr ""
+msgstr "Plumilla de la cuadrícula principal"
 
 #: crates/ui-egui/src/background_grid.rs:146
 msgid "Main spacing X"
-msgstr ""
+msgstr "Separación principal X"
 
 #: crates/ui-egui/src/background_grid.rs:146
 msgid "Main spacing Y"
-msgstr ""
+msgstr "Separación principal Y"
 
 #: crates/ui-egui/src/phasing.rs:315
 msgid "Make Primary"
@@ -4197,7 +4201,7 @@ msgstr "Maximizar"
 
 #: crates/ui-egui/src/electrical.rs:298
 msgid "Maximum"
-msgstr ""
+msgstr "Máximo"
 
 #: crates/ui-egui/src/properties.rs:316
 msgid "Maximum Riser Height"
@@ -4247,7 +4251,7 @@ msgstr "Metros"
 
 #: crates/ui-egui/src/editor.rs:874
 msgid "Middle of the text"
-msgstr ""
+msgstr "Medio del texto"
 
 #: crates/core/src/snap.rs:59
 msgid "Midpoint"
@@ -4271,7 +4275,7 @@ msgstr "Minimizar la cinta de opciones a sus pestañas"
 
 #: crates/ui-egui/src/electrical.rs:298
 msgid "Minimum"
-msgstr ""
+msgstr "Mínimo"
 
 #: crates/ui-egui/src/lib.rs:325
 msgid "Mirror Draw Axis"
@@ -4441,7 +4445,7 @@ msgstr "Nueva construcción"
 
 #: crates/ui-egui/src/electrical.rs:137
 msgid "New Distribution System"
-msgstr ""
+msgstr "Nuevo sistema de distribución"
 
 #: crates/ui-egui/src/editor.rs:414
 #: crates/ui-egui/src/lib.rs:3626
@@ -4479,11 +4483,11 @@ msgstr "Nuevo estilo"
 
 #: crates/ui-egui/src/electrical.rs:117
 msgid "New Voltage"
-msgstr ""
+msgstr "Nueva tensión"
 
 #: crates/ui-egui/src/electrical.rs:153
 msgid "New Wire Type"
-msgstr ""
+msgstr "Nuevo tipo de cable"
 
 #: crates/ui-egui/src/phasing.rs:168
 msgid "New elements are made in this option; the view on screen shows it"
@@ -4495,7 +4499,7 @@ msgstr "Nuevo filtro:"
 
 #: crates/ui-egui/src/templates.rs:407
 msgid "New from This View…"
-msgstr ""
+msgstr "Crear desde esta vista…"
 
 #: crates/ui-egui/src/sketch.rs:240
 msgid "New line {}"
@@ -4571,7 +4575,7 @@ msgstr "Aún no hay filas: la {} está vacía."
 
 #: crates/ui-egui/src/templates.rs:461
 msgid "No template picked."
-msgstr ""
+msgstr "No se ha elegido ninguna plantilla."
 
 #: crates/ui-egui/src/favorites.rs:138
 msgid "No texture"
@@ -4579,11 +4583,11 @@ msgstr "Sin textura"
 
 #: crates/ui-egui/src/templates.rs:375
 msgid "No {} templates yet: New from This View makes one from a view of the kind."
-msgstr ""
+msgstr "Aún no hay plantillas de {}: Crear desde esta vista crea una a partir de una vista de ese tipo."
 
 #: crates/ui-egui/src/electrical.rs:298
 msgid "Nominal"
-msgstr ""
+msgstr "Nominal"
 
 #: crates/ui-egui/src/standards.rs:252
 msgid "Nominal Text Height:"
@@ -4625,7 +4629,7 @@ msgstr "Nota"
 
 #: crates/ui-egui/src/electrical.rs:437
 msgid "Note:"
-msgstr ""
+msgstr "Nota:"
 
 #: crates/ui-egui/src/revit.rs:82
 #: crates/ui-egui/src/revit.rs:250
@@ -4723,7 +4727,7 @@ msgstr "Desfase:"
 
 #: crates/ui-egui/src/templates.rs:674
 msgid "Offsets from the plan's level."
-msgstr ""
+msgstr "Desfases respecto al nivel de la planta."
 
 #: crates/ui-egui/src/draw.rs:1115
 msgid "Only a polyline or a spline takes a vertex, and a line keeps its two ends."
@@ -4744,7 +4748,7 @@ msgstr "Flecha abierta"
 
 #: crates/ui-egui/src/context.rs:62
 msgid "Open Camera View"
-msgstr ""
+msgstr "Abrir vista de cámara"
 
 #: crates/ui-egui/src/recent.rs:130
 #: crates/ui-egui/src/recent.rs:134
@@ -4761,7 +4765,7 @@ msgstr "Abrir una tabla"
 
 #: crates/ui-egui/src/templates.rs:411
 msgid "Open a view of the kind ({}) to make a template from it."
-msgstr ""
+msgstr "Abre una vista de este tipo ({}) para crear una plantilla a partir de ella."
 
 #: crates/ui-egui/src/lib.rs:3373
 msgid "Open the default 3D view"
@@ -5075,7 +5079,7 @@ msgstr "Filtro de fase:"
 
 #: crates/ui-egui/src/electrical.rs:345
 msgid "Phases"
-msgstr ""
+msgstr "Fases"
 
 #: crates/ui-egui/src/phasing.rs:460
 msgid "Phases, in order:"
@@ -5128,11 +5132,11 @@ msgstr "Elija un muro curvo o un arco."
 
 #: crates/ui-egui/src/sketch.rs:826
 msgid "Pick a highlighted model edge or sketch line as the alignment reference."
-msgstr ""
+msgstr "Elige una arista del modelo resaltada o una línea del boceto como referencia de alineación."
 
 #: crates/ui-egui/src/lib.rs:4262
 msgid "Pick a reference edge or centre line; the line under the cursor is highlighted."
-msgstr ""
+msgstr "Elige una arista de referencia o una línea central; la línea bajo el cursor se resalta."
 
 #: crates/ui-egui/src/lib.rs:4243
 msgid "Pick a roof or a floor: the selected walls' bases stand on it."
@@ -5148,11 +5152,11 @@ msgstr "Elija un pilar redondo, un muro curvo, un círculo o un arco."
 
 #: crates/ui-egui/src/sketch.rs:830
 msgid "Pick a sketch line as the trim/extend boundary."
-msgstr ""
+msgstr "Elige una línea del boceto como límite para recortar o alargar."
 
 #: crates/ui-egui/src/sketch.rs:831
 msgid "Pick a sketch line to trim or extend, on the part to keep. Esc clears the boundary."
-msgstr ""
+msgstr "Elige una línea del boceto que recortar o alargar, en la parte que se conserva. Esc borra el límite."
 
 #: crates/ui-egui/src/lib.rs:4283
 msgid "Pick a wall face, centre line or end, a door, a window, a grid, or an endpoint to measure from."
@@ -5176,7 +5180,7 @@ msgstr "Seleccione líneas del boceto (un recuadro selecciona varias); arrastre 
 
 #: crates/ui-egui/src/lib.rs:4263
 msgid "Pick the element's highlighted edge to move and turn onto the reference."
-msgstr ""
+msgstr "Elige la arista resaltada del elemento para moverla y girarla hasta la referencia."
 
 #: crates/ui-egui/src/draw.rs:581
 msgid "Pick the first line to round."
@@ -5184,7 +5188,7 @@ msgstr "Elija la primera línea que redondear."
 
 #: crates/ui-egui/src/sketch.rs:828
 msgid "Pick the first sketch line, on the part to keep."
-msgstr ""
+msgstr "Elige la primera línea del boceto, en la parte que se conserva."
 
 #: crates/ui-egui/src/lib.rs:4264
 msgid "Pick the first wall or line, on the part to keep."
@@ -5192,7 +5196,7 @@ msgstr "Elija el primer muro o línea, en la parte que conservar."
 
 #: crates/ui-egui/src/sketch.rs:827
 msgid "Pick the highlighted sketch line to move and turn onto the reference; joined ends follow."
-msgstr ""
+msgstr "Elige la línea del boceto resaltada para moverla y girarla hasta la referencia; los extremos unidos la siguen."
 
 #: crates/ui-egui/src/lib.rs:4266
 msgid "Pick the line to trim or extend to: a line, a wall or a grid."
@@ -5216,7 +5220,7 @@ msgstr "Elija el segundo punto en el arco. Esc cancela."
 
 #: crates/ui-egui/src/sketch.rs:829
 msgid "Pick the second sketch line, on the part to keep."
-msgstr ""
+msgstr "Elige la segunda línea del boceto, en la parte que se conserva."
 
 #: crates/ui-egui/src/lib.rs:4265
 msgid "Pick the second wall or line, on the part to keep."
@@ -5441,7 +5445,7 @@ msgstr "Liso"
 
 #: crates/ui-egui/src/templates.rs:44
 msgid "Plan"
-msgstr ""
+msgstr "Planta"
 
 #: crates/core/src/schedule.rs:269
 msgid "Plan Area"
@@ -5814,7 +5818,7 @@ msgstr "Redibujar las vistas en segundo plano"
 
 #: crates/core/src/graphics.rs:78
 msgid "Reference"
-msgstr ""
+msgstr "Referencia"
 
 #: crates/ui-egui/src/properties.rs:302
 msgid "Reference Level"
@@ -6021,7 +6025,7 @@ msgstr "Cinta de opciones"
 
 #: crates/ui-egui/src/editor.rs:901
 msgid "Right"
-msgstr ""
+msgstr "Derecha"
 
 #: crates/core/src/schedule.rs:404
 msgid "Riser Height"
@@ -6094,7 +6098,7 @@ msgstr "Líneas de separación de habitaciones"
 
 #: crates/ui-egui/src/lib.rs:3159
 msgid "Room Separator: lines that bound rooms as walls do, to split an open space; click from point to point"
-msgstr ""
+msgstr "Separador de habitaciones: líneas que delimitan habitaciones como los muros, para dividir un espacio abierto; haz clic de punto en punto"
 
 #: crates/core/src/commands.rs:1022
 msgid "Rotate"
@@ -6246,7 +6250,6 @@ msgstr "Buscar…"
 msgid "Seat Height"
 msgstr "Altura del asiento"
 
-#: crates/ui-egui/src/electrical.rs:444
 #: crates/ui-egui/src/lib.rs:3390
 msgid "Section"
 msgstr "Sección"
@@ -6497,12 +6500,12 @@ msgstr "Mostrar anterior + nuevo"
 
 #: crates/ui-egui/src/footer.rs:403
 msgid "Show background grids, change their settings, or toggle grid snapping"
-msgstr ""
+msgstr "Mostrar las cuadrículas de fondo, cambiar su configuración o activar el ajuste a la cuadrícula"
 
 #: crates/ui-egui/src/background_grid.rs:143
 #: crates/ui-egui/src/footer.rs:410
 msgid "Show grids"
-msgstr ""
+msgstr "Mostrar cuadrículas"
 
 #: crates/ui-egui/src/lib.rs:3457
 msgid "Show or hide the palettes, and pick the interface's language"
@@ -6559,15 +6562,15 @@ msgstr "Tamaño"
 
 #: crates/ui-egui/src/electrical.rs:448
 msgid "Size {} ampacity"
-msgstr ""
+msgstr "Capacidad de corriente del tamaño {}"
 
 #: crates/ui-egui/src/electrical.rs:450
 msgid "Size {} label"
-msgstr ""
+msgstr "Etiqueta del tamaño {}"
 
 #: crates/ui-egui/src/electrical.rs:447
 msgid "Size {} section"
-msgstr ""
+msgstr "Sección del tamaño {}"
 
 #: crates/ui-egui/src/sketch.rs:748
 msgid "Sketch Ceiling"
@@ -6891,23 +6894,23 @@ msgstr "Estilos"
 #: crates/ui-egui/src/background_grid.rs:161
 #: crates/ui-egui/src/footer.rs:412
 msgid "Subgrid"
-msgstr ""
+msgstr "Subcuadrícula"
 
 #: crates/ui-egui/src/background_grid.rs:168
 msgid "Subgrid colour"
-msgstr ""
+msgstr "Color de la subcuadrícula"
 
 #: crates/ui-egui/src/background_grid.rs:162
 msgid "Subgrid divisions X"
-msgstr ""
+msgstr "Divisiones de la subcuadrícula X"
 
 #: crates/ui-egui/src/background_grid.rs:162
 msgid "Subgrid divisions Y"
-msgstr ""
+msgstr "Divisiones de la subcuadrícula Y"
 
 #: crates/ui-egui/src/background_grid.rs:168
 msgid "Subgrid pen"
-msgstr ""
+msgstr "Plumilla de la subcuadrícula"
 
 #: crates/core/src/import.rs:1076
 #: crates/ui-egui/src/properties.rs:684
@@ -6968,7 +6971,7 @@ msgstr "Radio del símbolo"
 
 #: crates/ui-egui/src/editor.rs:896
 msgid "Symbol Text"
-msgstr ""
+msgstr "Texto del símbolo"
 
 #: crates/ui-egui/src/editor.rs:887
 msgid "Symbol To"
@@ -6985,7 +6988,7 @@ msgstr "Símbolos"
 
 #: crates/ui-egui/src/editor.rs:853
 msgid "Symbols are what the plan draws of the family besides its forms: lines, arcs, labels and dots."
-msgstr ""
+msgstr "Los símbolos son lo que la planta dibuja de la familia además de sus formas: líneas, arcos, etiquetas y puntos."
 
 #: crates/core/src/schedule.rs:190
 msgid "System"
@@ -7000,31 +7003,31 @@ msgstr "Familia de sistema: {}"
 
 #: crates/ui-egui/src/electrical.rs:376
 msgid "System {} earthing"
-msgstr ""
+msgstr "Puesta a tierra del sistema {}"
 
 #: crates/ui-egui/src/electrical.rs:368
 msgid "System {} line to earth"
-msgstr ""
+msgstr "Fase a tierra del sistema {}"
 
 #: crates/ui-egui/src/electrical.rs:366
 msgid "System {} line to line"
-msgstr ""
+msgstr "Fase a fase del sistema {}"
 
 #: crates/ui-egui/src/electrical.rs:367
 msgid "System {} line to neutral"
-msgstr ""
+msgstr "Fase a neutro del sistema {}"
 
 #: crates/ui-egui/src/electrical.rs:356
 msgid "System {} name"
-msgstr ""
+msgstr "Nombre del sistema {}"
 
 #: crates/ui-egui/src/electrical.rs:363
 msgid "System {} phases"
-msgstr ""
+msgstr "Fases del sistema {}"
 
 #: crates/ui-egui/src/electrical.rs:365
 msgid "System {} wires"
-msgstr ""
+msgstr "Hilos del sistema {}"
 
 #: crates/ui-egui/src/dock.rs:720
 msgid "Tab with {}"
@@ -7084,11 +7087,11 @@ msgstr "Arco tangente: haga clic en el extremo de una línea y luego donde termi
 
 #: crates/ui-egui/src/camera.rs:121
 msgid "Target"
-msgstr ""
+msgstr "Destino"
 
 #: crates/ui-egui/src/lib.rs:4025
 msgid "Target Height:"
-msgstr ""
+msgstr "Altura del destino:"
 
 #: crates/ui-egui/src/lib.rs:3557
 #: crates/ui-egui/src/standards.rs:271
@@ -7105,7 +7108,7 @@ msgstr "Te"
 
 #: crates/ui-egui/src/electrical.rs:431
 msgid "Temperature:"
-msgstr ""
+msgstr "Temperatura:"
 
 #: crates/ui-egui/src/phasing.rs:61
 msgid "Temporary"
@@ -7299,7 +7302,7 @@ msgstr "La barra de título y el marco del propio sistema, en lugar de los de la
 
 #: crates/ui-egui/src/electrical.rs:294
 msgid "The voltages of the project, in volts, and the band a device may read within. A distribution system names them."
-msgstr ""
+msgstr "Las tensiones del proyecto, en voltios, y el margen dentro del cual puede leer un dispositivo. Un sistema de distribución las nombra."
 
 #: crates/ui-egui/src/settings.rs:332
 msgid "Theme"
@@ -7376,7 +7379,7 @@ msgstr "Tres o más líneas se encuentran en un punto ({}): un bucle pasa por ca
 
 #: crates/core/src/fixtures.rs:326
 msgid "Three-Phase Outlet"
-msgstr ""
+msgstr "Tomacorriente trifásico"
 
 #: crates/ui-egui/src/dimtypes.rs:115
 msgid "Tick Mark"
@@ -7547,7 +7550,7 @@ msgstr "Girar el muro alrededor de su {}: {}"
 
 #: crates/ui-egui/src/electrical.rs:184
 msgid "Two {} are called {}."
-msgstr ""
+msgstr "Dos {} se llaman {}."
 
 #: crates/core/src/model.rs:1244
 #: crates/ui-egui/src/editor.rs:666
@@ -7766,11 +7769,11 @@ msgstr "Interfaz de usuario"
 
 #: crates/ui-egui/src/templates.rs:620
 msgid "V/G Filters"
-msgstr ""
+msgstr "Filtros de V/G"
 
 #: crates/ui-egui/src/templates.rs:619
 msgid "V/G Overrides"
-msgstr ""
+msgstr "Reemplazos de V/G"
 
 #: crates/ui-egui/src/templates.rs:489
 #: crates/ui-egui/src/typeprops.rs:164
@@ -7807,7 +7810,7 @@ msgstr "Nombre de la vista"
 
 #: crates/ui-egui/src/templates.rs:473
 msgid "View Properties"
-msgstr ""
+msgstr "Propiedades de la vista"
 
 #: crates/ui-egui/src/graphics.rs:119
 #: crates/ui-egui/src/templates.rs:622
@@ -7831,7 +7834,7 @@ msgstr "Plantilla de vista"
 
 #: crates/ui-egui/src/graphics.rs:162
 msgid "View Template: {}"
-msgstr ""
+msgstr "Plantilla de vista: {}"
 
 #: crates/ui-egui/src/lib.rs:3339
 #: crates/ui-egui/src/templates.rs:225
@@ -7848,7 +7851,7 @@ msgstr "Vista como PNG…"
 
 #: crates/ui-egui/src/background_grid.rs:95
 msgid "View template {}"
-msgstr ""
+msgstr "Plantilla de vista {}"
 
 #: crates/ui-egui/src/browser.rs:42
 msgid "Views"
@@ -7860,7 +7863,7 @@ msgstr "Vistas (todas)"
 
 #: crates/ui-egui/src/templates.rs:475
 msgid "Views following it: {}"
-msgstr ""
+msgstr "Vistas que la siguen: {}"
 
 #: crates/ui-egui/src/graphics.rs:797
 msgid "Visibility"
@@ -7919,27 +7922,27 @@ msgstr "Vacío"
 
 #: crates/ui-egui/src/electrical.rs:126
 msgid "Voltage {} is supplied by distribution system {}: change that first."
-msgstr ""
+msgstr "La tensión {} la suministra el sistema de distribución {}: cambia eso primero."
 
 #: crates/ui-egui/src/electrical.rs:304
 msgid "Voltage {} maximum"
-msgstr ""
+msgstr "Máximo de la tensión {}"
 
 #: crates/ui-egui/src/electrical.rs:303
 msgid "Voltage {} minimum"
-msgstr ""
+msgstr "Mínimo de la tensión {}"
 
 #: crates/ui-egui/src/electrical.rs:301
 msgid "Voltage {} name"
-msgstr ""
+msgstr "Nombre de la tensión {}"
 
 #: crates/ui-egui/src/electrical.rs:302
 msgid "Voltage {} nominal"
-msgstr ""
+msgstr "Valor nominal de la tensión {}"
 
 #: crates/ui-egui/src/electrical.rs:21
 msgid "Voltages"
-msgstr ""
+msgstr "Tensiones"
 
 #: crates/core/src/schedule.rs:200
 msgid "Volume"
@@ -8086,31 +8089,31 @@ msgstr "Cable (EW): haz clic en el inicio y el final; una cadena de clics hace u
 
 #: crates/ui-egui/src/electrical.rs:21
 msgid "Wire Types"
-msgstr ""
+msgstr "Tipos de cable"
 
 #: crates/ui-egui/src/electrical.rs:435
 msgid "Wire insulation"
-msgstr ""
+msgstr "Aislamiento del cable"
 
 #: crates/ui-egui/src/electrical.rs:429
 msgid "Wire material"
-msgstr ""
+msgstr "Material del cable"
 
 #: crates/ui-egui/src/electrical.rs:438
 msgid "Wire note"
-msgstr ""
+msgstr "Nota del cable"
 
 #: crates/ui-egui/src/electrical.rs:432
 msgid "Wire temperature"
-msgstr ""
+msgstr "Temperatura del cable"
 
 #: crates/ui-egui/src/electrical.rs:418
 msgid "Wire type name"
-msgstr ""
+msgstr "Nombre del tipo de cable"
 
 #: crates/ui-egui/src/electrical.rs:398
 msgid "Wire type:"
-msgstr ""
+msgstr "Tipo de cable:"
 
 #: crates/core/src/graphics.rs:171
 msgid "Wireframe"
@@ -8118,7 +8121,7 @@ msgstr "Estructura alámbrica"
 
 #: crates/ui-egui/src/electrical.rs:346
 msgid "Wires"
-msgstr ""
+msgstr "Hilos"
 
 #: crates/ui-egui/src/dimtypes.rs:131
 msgid "Witness Line Control"
@@ -8268,7 +8271,7 @@ msgstr "una longitud"
 
 #: crates/ui-egui/src/camera.rs:138
 msgid "a point is three lengths, `x, y, z`"
-msgstr ""
+msgstr "un punto son tres longitudes, `x, y, z`"
 
 #: crates/ui-egui/src/reinforce.rs:249
 msgid "a size in mm"
@@ -8288,7 +8291,7 @@ msgstr "todos los puntos"
 
 #: crates/ui-egui/src/electrical.rs:24
 msgid "aluminium"
-msgstr ""
+msgstr "aluminio"
 
 #: crates/core/src/curves.rs:125
 msgid "arc"
@@ -8324,7 +8327,7 @@ msgstr "contiene"
 
 #: crates/ui-egui/src/electrical.rs:24
 msgid "copper"
-msgstr ""
+msgstr "cobre"
 
 #: crates/ui-egui/src/editor.rs:81
 msgid "corner {}: each corner is `x, y`"
@@ -8344,11 +8347,11 @@ msgstr "conjunto de opciones de diseño"
 
 #: crates/ui-egui/src/electrical.rs:190
 msgid "distribution system"
-msgstr ""
+msgstr "sistema de distribución"
 
 #: crates/ui-egui/src/electrical.rs:190
 msgid "distribution systems"
-msgstr ""
+msgstr "sistemas de distribución"
 
 #: crates/ui-egui/src/properties.rs:2414
 msgid "does not begin with"
@@ -8604,11 +8607,11 @@ msgstr "vacío"
 
 #: crates/ui-egui/src/electrical.rs:189
 msgid "voltage"
-msgstr ""
+msgstr "tensión"
 
 #: crates/ui-egui/src/electrical.rs:189
 msgid "voltages"
-msgstr ""
+msgstr "tensiones"
 
 #: crates/ui-egui/src/canvas.rs:2576
 msgid "wall: {}"
@@ -8620,11 +8623,11 @@ msgstr "lo que dice la nota"
 
 #: crates/ui-egui/src/electrical.rs:191
 msgid "wire type"
-msgstr ""
+msgstr "tipo de cable"
 
 #: crates/ui-egui/src/electrical.rs:191
 msgid "wire types"
-msgstr ""
+msgstr "tipos de cable"
 
 #: apps/bimcraft/src/startup.rs:143
 msgid "{}\n\nThe details are in {}."
@@ -8656,7 +8659,7 @@ msgstr "{} Omitidos: {}."
 
 #: crates/ui-egui/src/templates.rs:414
 msgid "{} Template"
-msgstr ""
+msgstr "Plantilla de {}"
 
 #: crates/ui-egui/src/fillpatterns.rs:921
 msgid "{} already exists: save under a name ending in .pat to replace it."
@@ -8812,7 +8815,7 @@ msgstr "{}: patrón"
 
 #: crates/ui-egui/src/fillpatterns.rs:570
 msgid "{}: Redefine"
-msgstr ""
+msgstr "{}: Redefinir"
 
 #: crates/ui-egui/src/fillpatterns.rs:543
 msgid "{}: Type"

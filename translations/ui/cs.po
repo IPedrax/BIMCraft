@@ -1954,6 +1954,10 @@ msgstr "Oříznout pohled"
 msgid "Crop View: show only the crop region; drag its edges by their grips"
 msgstr "Oříznout pohled: zobrazit pouze oblast oříznutí; přetáhněte její hrany pomocí uzlů"
 
+#: crates/ui-egui/src/electrical.rs:444
+msgid "Cross-Section"
+msgstr "Průřez"
+
 #: crates/core/src/fills.rs:409
 #: crates/ui-egui/src/properties.rs:628
 msgid "Crosshatch"
@@ -6245,7 +6249,6 @@ msgstr "Hledat…"
 msgid "Seat Height"
 msgstr "Výška sedáku"
 
-#: crates/ui-egui/src/electrical.rs:444
 #: crates/ui-egui/src/lib.rs:3390
 msgid "Section"
 msgstr "Řez"

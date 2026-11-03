@@ -1954,6 +1954,10 @@ msgstr "Ansicht zuschneiden"
 msgid "Crop View: show only the crop region; drag its edges by their grips"
 msgstr "Ansicht zuschneiden: nur den Zuschneidebereich anzeigen; Kanten an ihren Griffen ziehen"
 
+#: crates/ui-egui/src/electrical.rs:444
+msgid "Cross-Section"
+msgstr "Querschnitt"
+
 #: crates/core/src/fills.rs:409
 #: crates/ui-egui/src/properties.rs:628
 msgid "Crosshatch"
@@ -6245,7 +6249,6 @@ msgstr "Suchen…"
 msgid "Seat Height"
 msgstr "Sitzhöhe"
 
-#: crates/ui-egui/src/electrical.rs:444
 #: crates/ui-egui/src/lib.rs:3390
 msgid "Section"
 msgstr "Schnitt"

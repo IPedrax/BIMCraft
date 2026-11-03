@@ -441,7 +441,7 @@ fn wires_tab(ui: &mut Ui, d: &mut ElectricalDialog) {
     ui.add_space(8.0);
     let mut delete = None;
     Grid::new("electrical-wire-sizes").striped(true).spacing([8.0, 4.0]).show(ui, |ui| {
-        heads(ui, &[msg!("Section"), msg!("Ampacity"), msg!("Label"), ""]);
+        heads(ui, &[msg!("Cross-Section"), msg!("Ampacity"), msg!("Label"), ""]);
         for (i, s) in r.value.sizes.iter_mut().enumerate() {
             let n = (i + 1).to_string();
             number_field(ui, &mut s.section, 0.01..=10_000.0, " mm²", tf("Size {} section", &[&n]));

@@ -37,7 +37,7 @@ msgstr "Brique 225 x 75"
 
 #: crates/core/src/commands.rs:3642
 msgid "Camera"
-msgstr ""
+msgstr "Caméra"
 
 #: crates/core/src/family.rs:2047
 msgid "Casement Window"
@@ -300,7 +300,7 @@ msgstr "Nomenclature des niveaux"
 
 #: crates/core/src/fixtures.rs:247
 msgid "Load"
-msgstr ""
+msgstr "Charge"
 
 #: crates/core/src/lines.rs:178
 msgid "Long Dash"
@@ -404,7 +404,7 @@ msgstr "Projet"
 
 #: crates/core/src/render.rs:1807
 msgid "REDUNDANT"
-msgstr ""
+msgstr "REDONDANTE"
 
 #: crates/core/src/family.rs:104
 msgid "Rack"
@@ -549,7 +549,7 @@ msgstr "Lignes fines"
 
 #: crates/core/src/fixtures.rs:326
 msgid "Three-Phase Outlet"
-msgstr ""
+msgstr "Prise triphasée"
 
 #: crates/core/src/fills.rs:422
 msgid "Tile 300"
@@ -577,7 +577,7 @@ msgstr "MONTE"
 
 #: crates/core/src/schedule.rs:215
 msgid "Unbounded Height"
-msgstr ""
+msgstr "Hauteur non délimitée"
 
 #: crates/core/src/commands.rs:7992
 msgid "Unnamed"
@@ -645,13 +645,13 @@ msgstr "Oui"
 
 #: crates/core/src/loads.rs:78
 msgid "bath"
-msgstr ""
+msgstr "salle de bain"
 
 #: crates/core/src/loads.rs:78
 msgid "bwc"
-msgstr ""
+msgstr "sdb wc"
 
 #: crates/core/src/loads.rs:78
 msgid "wc"
-msgstr ""
+msgstr "wc"
 

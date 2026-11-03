@@ -37,7 +37,7 @@ msgstr "Tijolo 225 x 75"
 
 #: crates/core/src/commands.rs:3642
 msgid "Camera"
-msgstr ""
+msgstr "Câmera"
 
 #: crates/core/src/family.rs:2047
 msgid "Casement Window"
@@ -300,7 +300,7 @@ msgstr "Tabela de níveis"
 
 #: crates/core/src/fixtures.rs:247
 msgid "Load"
-msgstr ""
+msgstr "Carga"
 
 #: crates/core/src/lines.rs:178
 msgid "Long Dash"
@@ -549,7 +549,7 @@ msgstr "Linhas finas"
 
 #: crates/core/src/fixtures.rs:326
 msgid "Three-Phase Outlet"
-msgstr ""
+msgstr "Tomada trifásica"
 
 #: crates/core/src/fills.rs:422
 msgid "Tile 300"
@@ -577,7 +577,7 @@ msgstr "SOBE"
 
 #: crates/core/src/schedule.rs:215
 msgid "Unbounded Height"
-msgstr ""
+msgstr "Altura não delimitada"
 
 #: crates/core/src/commands.rs:7992
 msgid "Unnamed"
@@ -645,13 +645,13 @@ msgstr "Sim"
 
 #: crates/core/src/loads.rs:78
 msgid "bath"
-msgstr ""
+msgstr "banheiro"
 
 #: crates/core/src/loads.rs:78
 msgid "bwc"
-msgstr ""
+msgstr "BWC"
 
 #: crates/core/src/loads.rs:78
 msgid "wc"
-msgstr ""
+msgstr "sanitário"
 

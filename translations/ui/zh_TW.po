@@ -1955,6 +1955,10 @@ msgstr "裁剪視圖"
 msgid "Crop View: show only the crop region; drag its edges by their grips"
 msgstr "裁剪視圖：僅顯示裁剪區域；拖動其夾點調整邊緣"
 
+#: crates/ui-egui/src/electrical.rs:444
+msgid "Cross-Section"
+msgstr "截面積"
+
 #: crates/core/src/fills.rs:409
 #: crates/ui-egui/src/properties.rs:628
 msgid "Crosshatch"
@@ -6246,7 +6250,6 @@ msgstr "搜索…"
 msgid "Seat Height"
 msgstr "座面高度"
 
-#: crates/ui-egui/src/electrical.rs:444
 #: crates/ui-egui/src/lib.rs:3390
 msgid "Section"
 msgstr "剖面"
