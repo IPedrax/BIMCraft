@@ -23,6 +23,9 @@ pub const MAX_BYTES: usize = 32 << 20;
 const MAX_PIXELS: u64 = 16_000_000;
 /// The side of a pattern drawn in code, px.
 const SIDE: usize = 256;
+/// How far a pixel may be from the mean, in each of its channels, for a picture to count as one colour: what compression leaves
+/// of a flat one.
+const FLAT_TOLERANCE: f64 = 6.0;
 /// The longest a tile of a texture may be, mm, and the shortest.
 const LONGEST: f64 = 1e6;
 const SHORTEST: f64 = 1.0;
@@ -271,6 +274,19 @@ impl Picture {
     /// Its width and height, px.
     pub fn size(&self) -> (usize, usize) {
         self.levels.first().map_or((0, 0), |l| (l.w, l.h))
+    }
+
+    /// The colour every pixel has, give or take [`FLAT_TOLERANCE`], if there is one. A map service's tile for a place it has no
+    /// imagery of is often one flat colour, and is not imagery.
+    pub fn flat(&self) -> Option<[u8; 3]> {
+        let pixels = self.levels.first()?.rgb.as_chunks::<3>().0;
+        if pixels.is_empty() {
+            return None;
+        }
+        let n = pixels.len() as f64;
+        let mean: [f64; 3] = std::array::from_fn(|k| pixels.iter().map(|p| f64::from(p[k])).sum::<f64>() / n);
+        let one = pixels.iter().all(|p| (0..3).all(|k| (f64::from(p[k]) - mean[k]).abs() <= FLAT_TOLERANCE));
+        one.then(|| mean.map(|m| m.round() as u8))
     }
 
     /// An id for it among a project's pictures: the same for the same bytes, so the same picture comes in once.
@@ -597,6 +613,24 @@ mod tests {
     fn png(w: u32, h: u32, color: [u8; 4]) -> Vec<u8> {
         let rgba: Vec<u8> = (0..w * h).flat_map(|_| color).collect();
         tiny_skia::Pixmap::from_vec(rgba, tiny_skia::IntSize::from_wh(w, h).unwrap()).unwrap().encode_png().unwrap()
+    }
+
+    #[test]
+    fn a_picture_of_one_colour_says_which_and_one_of_many_does_not() {
+        let pixmap =
+            |rgba: Vec<u8>| tiny_skia::Pixmap::from_vec(rgba, tiny_skia::IntSize::from_wh(32, 32).unwrap()).unwrap().encode_png().unwrap();
+        let flat = Picture::import("flat", &png(32, 32, [200, 100, 50, 255])).unwrap();
+        assert_eq!(flat.flat(), Some([200, 100, 50]));
+        assert_eq!(Picture::import("gradient", JPEG).unwrap().flat(), None);
+        // A little noise round one colour is still one colour: what a JPEG of a flat tile comes back as.
+        let noisy = pixmap((0..32 * 32).flat_map(|i| if i % 2 == 0 { [100, 100, 100, 255] } else { [104, 98, 101, 255] }).collect());
+        assert_eq!(Picture::import("noisy", &noisy).unwrap().flat(), Some([102, 99, 101]));
+        // One pixel in a thousand far from the rest is not, and neither are two plain colours.
+        let mut spot: Vec<u8> = (0..32 * 32).flat_map(|_| [100, 100, 100, 255]).collect();
+        spot[500 * 4..500 * 4 + 3].copy_from_slice(&[250, 100, 100]);
+        assert_eq!(Picture::import("spot", &pixmap(spot)).unwrap().flat(), None);
+        let halves = pixmap((0..32 * 32).flat_map(|i| if i % 32 < 16 { [255, 0, 0, 255] } else { [0, 0, 255, 255] }).collect());
+        assert_eq!(Picture::import("halves", &halves).unwrap().flat(), None);
     }
 
     #[test]

@@ -81,13 +81,31 @@ a box, a graticule); `Prefetched` hands `tile` on to the real fetcher.
 Aerial imagery for the terrain is built in stages, each tried on a real machine, because the sandbox that writes the code cannot reach
 the services. Stage 0 is `examples/imagery.rs` over `probe.rs`, whose pure, tested helpers make a tile address from a template
 (`{z}`, `{x}`, `{y}`, `{-y}`, and WMTS's `{TileMatrix}`, `{TileCol}`, `{TileRow}`), tell a reply from its first bytes, give the ground a
-pixel stands for, and read a WMTS capabilities document. `imagery probe` fetches tiles of the four sources meant to be used (Flanders'
-and the Netherlands' orthophotos, USGS imagery, EOX's Sentinel-2 cloudless 2016) at a place in each and prints a table; `imagery caps URL`
-prints a service's layers, tile sizes, tile addresses, fees and constraints; `imagery tile` tries any address. Its addresses are guesses
-from memory and its licence column is what the research found: verify both at each service. Two limits shape what can be used:
-`net::Allow` takes no query string, so a service that only answers WMS or WMTS by query cannot be fetched as it stands, and
-`tiles::decode` reads only 256 x 256 PNG, while aerial tiles are usually JPEG. Bing, Esri, Maxar, Mapbox and Google are left out: as far
-as the research found, their terms do not allow fetching them into a project.
+pixel stands for, and read a WMTS capabilities document (layers with their descriptions, styles, formats and sets; each set's levels, and
+whether it is the ordinary Web Mercator pyramid; the tile addresses; fees and constraints). `imagery probe` fetches tiles of the sources
+meant to be used (Flanders' and the Netherlands' orthophotos, USGS imagery, EOX's Sentinel-2 cloudless) at a place in each and prints a
+table, flagging a tile that is one flat colour; `imagery caps URL|FILE [DIR] [LAYER]` prints what a service's document says, and the
+address to try for a service that is asked by query; `imagery tile` tries any address. An address with a query string is fetched with a
+plain client and the row says so, because the app's client refuses it (see below).
+
+What the first runs on a real machine found (2026-11-03; they are the only checks of these services, and none is repeated by a test):
+
+- **PDOK** (`service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0/{layer}/EPSG:3857/{z}/{x}/{y}.jpeg`, layers `Actueel_orthoHR`, `Actueel_ortho25`
+  and one for each year): 256 px JPEG, down to zoom 19 and probably 20 (`z22` answers 400). A tile outside the coverage is an ordinary
+  200 with a small JPEG, so "no imagery" is not an error status. Fees and constraints in the document: none; the licence (CC-BY 4.0) is
+  on PDOK's dataset page.
+- **USGS** (`basemap.nationalmap.gov/.../USGSImageryOnly/MapServer/tile/{z}/{y}/{x}`): 256 px JPEG, but 404 beyond zoom 16 at Washington
+  DC (about 1.9 m a pixel), though its document lists 24 levels: a document does not say how fine the tiles really go, only a probe does.
+- **EOX** (`tiles.maps.eox.at/wmts/1.0.0/{layer}/default/GoogleMapsCompatible/{z}/{y}/{x}.jpg`, https): layers are `s2cloudless_3857`
+  (no year) and one for each year from 2018. Attribution is mandatory and carries links, and "additional restrictions may apply for
+  individual layers as indicated in the respective abstract", so a layer's abstract is read before it is used.
+- **Flanders** (`geo.api.vlaanderen.be/OMWRGBMRVL/wmts`, layer `omwrgbmrvl`, set `GoogleMapsVL`, 23 levels, 256 px): free of charge,
+  with the terms on a Digitaal Vlaanderen page, and **no tile addresses of its own: it is asked by query string** (WMTS GetTile).
+
+Two limits of this crate shape what can be used: `net::Allow` takes no query string, so Flanders cannot be fetched as it stands (the
+plan is a strict rule for that one source, never a general opening), and `tiles::decode` reads only 256 x 256 PNG, while aerial tiles
+are JPEG. Bing, Esri, Maxar, Mapbox and Google are left out: as far as the research found, their terms do not allow fetching them into
+a project.
 
 ## Not yet
 

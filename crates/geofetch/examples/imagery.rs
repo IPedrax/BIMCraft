@@ -4,13 +4,15 @@
 //! ```text
 //! cargo run -p bimcraft-geofetch --example imagery -- probe [OUT_DIR]
 //! cargo run -p bimcraft-geofetch --example imagery -- tile 'ADDRESS_WITH_{z}_{x}_{y}' LAT LON ZOOM [OUT_DIR]
-//! cargo run -p bimcraft-geofetch --example imagery -- caps 'CAPABILITIES_URL' [OUT_DIR]
+//! cargo run -p bimcraft-geofetch --example imagery -- caps 'CAPABILITIES_URL' [OUT_DIR] [LAYER]
 //! ```
 //!
-//! `probe` fetches tiles of the four sources BIMCraft means to use, at a place in each, and prints a table; the addresses it tries
-//! are guesses from memory (see `CANDIDATES`), and `caps` is how to find the right ones. A tile goes through the same client the
-//! app uses (`Ureq` under an `Allow` of exactly that address), so a redirect to another host is refused by name and an address with a
-//! query string is refused as the app would. The tiles are saved in OUT_DIR (the temp folder's `bimcraft-imagery-spike`) to be looked at.
+//! `probe` fetches tiles of the sources BIMCraft means to use, at a place in each, and prints a table; the addresses it tries are
+//! guesses from memory unless a capabilities document gave them (see `CANDIDATES`), and `caps` is how to find the right ones. A tile
+//! goes through the same client the app uses (`Ureq` under an `Allow` of exactly that address), so a redirect to another host is
+//! refused by name. An address with a query string is something the app's client refuses; here it is fetched with a plain client
+//! and the row says so, so a service that can only be asked by query can be tried before the app's rules are changed. The tiles are
+//! saved in OUT_DIR (the temp folder's `bimcraft-imagery-spike`) to be looked at.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -18,74 +20,97 @@ use std::time::Duration;
 
 use bimcraft_core::texture::Picture;
 use bimcraft_geofetch::net::{Allow, Net, Ureq};
-use bimcraft_geofetch::probe::{Format, expand, metres_per_pixel, scan_capabilities, tile_at};
+use bimcraft_geofetch::probe::{Format, expand, kvp_address, metres_per_pixel, scan_capabilities, tile_at};
 
 /// The most a tile may be, bytes, and the most of a capabilities document that is read.
 const MAX_TILE: u64 = 2 << 20;
 const MAX_CAPS: u64 = 4 << 20;
-/// A pause between two requests to one service: a handful of tiles is a light load, and still no hurry.
+/// A pause between two requests: a handful of tiles is a light load, and still no hurry.
 const PAUSE: Duration = Duration::from_millis(300);
 
-/// A source to try. Everything here is from memory and unchecked, because the sandbox that wrote it cannot reach the services.
+/// A source to try.
 struct Candidate {
     name: &'static str,
-    /// A tile address with `{z}`, `{x}` and `{y}`; none where there is no guess, and `caps` is how to find it.
-    template: Option<&'static str>,
+    /// A tile address with `{z}`, `{x}` and `{y}`. Those of PDOK, USGS and EOX answered or were corrected from their capabilities
+    /// documents; Flanders' is built from its document the way a query-only WMTS service is asked, and its style is a guess.
+    template: &'static str,
     place: &'static str,
     longitude: f64,
     latitude: f64,
-    /// Four zooms to try there, and one finer than the service is expected to go.
-    zooms: [u8; 4],
+    /// Zooms to try there, and one finer than the service is expected to go.
+    zooms: &'static [u8],
     beyond: u8,
     caps: &'static str,
-    /// What the research found about its terms. To verify against the service's own words.
+    /// What the research and the capabilities documents found about its terms. To verify at the service.
     licence: &'static str,
 }
 
-const CANDIDATES: [Candidate; 4] = [
+const CANDIDATES: [Candidate; 6] = [
     Candidate {
         name: "flanders",
-        template: None,
+        template: "https://geo.api.vlaanderen.be/OMWRGBMRVL/wmts?service=WMTS&request=GetTile&version=1.0.0&layer=omwrgbmrvl&style=default&tilematrixset=GoogleMapsVL&tilematrix={z}&tilerow={y}&tilecol={x}&format=image/jpeg",
         place: "Ghent",
         longitude: 3.7174,
         latitude: 51.0543,
-        zooms: [16, 17, 18, 19],
-        beyond: 22,
+        zooms: &[16, 17, 18, 19],
+        beyond: 23,
         caps: "https://geo.api.vlaanderen.be/OMWRGBMRVL/wmts?request=GetCapabilities&service=WMTS",
-        licence: "Flemish open data licence (v1.2 on the 2025 notice, 'modellicentie' on the 2022 one): which applies to which layer?",
+        licence: "free of charge; the usage right is on Digitaal Vlaanderen's 'gebruiksrecht en privacyverklaring geografische webdiensten' page: what credit does it ask for?",
     },
     Candidate {
         name: "pdok",
-        template: Some("https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0/Actueel_orthoHR/EPSG:3857/{z}/{x}/{y}.jpeg"),
+        template: "https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0/Actueel_orthoHR/EPSG:3857/{z}/{x}/{y}.jpeg",
         place: "Amsterdam",
         longitude: 4.9041,
         latitude: 52.3676,
-        zooms: [16, 17, 18, 19],
+        zooms: &[17, 19, 20, 21],
         beyond: 22,
         caps: "https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0?request=GetCapabilities&service=WMTS",
-        licence: "CC-BY 4.0 (older years may say 'unknown licence'): what wording does it ask for?",
+        licence: "CC-BY 4.0 per PDOK's dataset page (the document says fees and constraints: none): what wording does it ask for?",
     },
     Candidate {
-        name: "naip",
-        template: Some("https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}"),
+        name: "pdok25",
+        template: "https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0/Actueel_ortho25/EPSG:3857/{z}/{x}/{y}.jpeg",
+        place: "Amsterdam",
+        longitude: 4.9041,
+        latitude: 52.3676,
+        zooms: &[15, 16, 17, 18],
+        beyond: 22,
+        caps: "https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0?request=GetCapabilities&service=WMTS",
+        licence: "as pdok; the 25 cm layer",
+    },
+    Candidate {
+        name: "pdok2024",
+        template: "https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0/2024_orthoHR/EPSG:3857/{z}/{x}/{y}.jpeg",
+        place: "Amsterdam",
+        longitude: 4.9041,
+        latitude: 52.3676,
+        zooms: &[17, 18, 19, 20],
+        beyond: 22,
+        caps: "https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0?request=GetCapabilities&service=WMTS",
+        licence: "as pdok; one year's layer, so a project can name the year it shows",
+    },
+    Candidate {
+        name: "usgs",
+        template: "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}",
         place: "Washington DC",
         longitude: -77.0369,
         latitude: 38.9072,
-        zooms: [14, 16, 17, 18],
-        beyond: 21,
+        zooms: &[12, 14, 15, 16],
+        beyond: 17,
         caps: "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/WMTS/1.0.0/WMTSCapabilities.xml",
-        licence: "US public domain; USGS asks for a credit, and this layer mixes NAIP with other imagery: is it all NAIP here?",
+        licence: "US public domain, and USGS asks for a credit; the document states no terms. The cache stopped at zoom 16 at DC.",
     },
     Candidate {
         name: "eox2016",
-        template: Some("https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2016_3857/default/g/{z}/{y}/{x}.jpg"),
+        template: "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/GoogleMapsCompatible/{z}/{y}/{x}.jpg",
         place: "Brussels",
         longitude: 4.3517,
         latitude: 50.8503,
-        zooms: [10, 12, 13, 14],
+        zooms: &[10, 12, 13, 14],
         beyond: 17,
         caps: "https://tiles.maps.eox.at/wmts/1.0.0/WMTSCapabilities.xml",
-        licence: "CC BY 4.0 for the 2016 layer only; 2018 on is non-commercial share-alike",
+        licence: "attribution with links is mandatory, and 'additional restrictions may apply for individual layers as indicated in the respective abstract': read the layer's with `caps URL DIR s2cloudless_3857`; is this the 2016 mosaic?",
     },
 ];
 
@@ -158,21 +183,61 @@ fn print_table(rows: &[Row]) {
     }
 }
 
-/// The size of a picture BIMCraft can read, or why it cannot.
-fn decoded(bytes: &[u8], format: Format) -> String {
+/// The host of an address, for a message and a file name.
+fn host_of(url: &str) -> String {
+    let host = url.trim_start_matches("https://").split(['/', '?']).next().unwrap_or("service");
+    host.chars().map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '-' { c } else { '_' }).collect()
+}
+
+/// A plain GET, with none of the app's rules: its status (an error status is an answer), content type and body, cut at `limit`.
+/// For what the app's client refuses (an address with a query string) and for capabilities documents.
+fn plain_get(url: &str, limit: u64) -> Result<(u16, Option<String>, Vec<u8>), String> {
+    if !url.starts_with("https://") || url.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        return Err("an https:// address without spaces is wanted".into());
+    }
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .https_only(true)
+        .http_status_as_error(false)
+        .user_agent(format!("BIMCraft-imagery-spike/{} (+https://github.com/IPedrax/BIMCraft)", env!("CARGO_PKG_VERSION")))
+        .build()
+        .into();
+    let response = agent
+        .get(url)
+        .config()
+        .timeout_global(Some(Duration::from_secs(60)))
+        .build()
+        .call()
+        .map_err(|e| format!("{}: {e}", host_of(url)))?;
+    let status = response.status().as_u16();
+    let content_type = response.headers().get("content-type").and_then(|v| v.to_str().ok()).map(str::to_string);
+    let mut body = Vec::new();
+    response
+        .into_body()
+        .into_with_config()
+        .limit(limit.saturating_add(2))
+        .reader()
+        .take(limit)
+        .read_to_end(&mut body)
+        .map_err(|e| format!("{}: {e}", host_of(url)))?;
+    Ok((status, content_type, body))
+}
+
+/// The size of a picture BIMCraft can read and the one colour it is made of, if it is, or why it cannot be read.
+fn decoded(bytes: &[u8], format: Format) -> (String, Option<[u8; 3]>) {
     match format {
         Format::Png | Format::Jpeg => match Picture::import("probe", bytes) {
             Ok(picture) => {
                 let (w, h) = picture.size();
-                format!("{w}x{h}")
+                (format!("{w}x{h}"), picture.flat())
             }
-            Err(why) => format!("unreadable: {why}"),
+            Err(why) => (format!("unreadable: {why}"), None),
         },
-        _ => "-".into(),
+        _ => ("-".into(), None),
     }
 }
 
-/// The tile of `template` that `longitude` and `latitude` are on at `zoom`, fetched through the app's own client and saved in `out`.
+/// The tile of `template` that `longitude` and `latitude` are on at `zoom`, fetched and saved in `out`. An address without a query
+/// goes through the app's own client; one with a query string is fetched plainly, and the row says so.
 fn try_tile(source: &str, template: &str, longitude: f64, latitude: f64, zoom: u8, out: &Path, why: &str) -> Row {
     let metres = metres_per_pixel(latitude, zoom);
     let Some((x, y)) = tile_at(longitude, latitude, zoom) else {
@@ -182,48 +247,47 @@ fn try_tile(source: &str, template: &str, longitude: f64, latitude: f64, zoom: u
         Ok(url) => url,
         Err(e) => return Row::failed(source, zoom, metres, format!("bad address: {e}"), why),
     };
-    let allow = match Allow::default().with_endpoint(&url) {
-        Ok(allow) => allow,
-        Err(_) => {
-            let note = format!(
-                "{why} geofetch's client takes no query string, port or credentials: a service that needs one cannot be used as it is"
-            );
-            return Row::failed(source, zoom, metres, "refused by the allow-list".into(), note.trim());
-        }
+    let plain = url.contains('?');
+    let reply: Result<(Option<String>, Vec<u8>), String> = if plain {
+        plain_get(&url, MAX_TILE).and_then(|(status, content_type, body)| {
+            if status >= 400 { Err(format!("{}: HTTP {status}", host_of(&url))) } else { Ok((content_type, body)) }
+        })
+    } else {
+        Allow::default()
+            .with_endpoint(&url)
+            .map_err(|_| "the app's allow-list would not take this address".to_string())
+            .and_then(|allow| Ureq::new(allow).get(&url, MAX_TILE).map(|r| (r.content_type, r.body)).map_err(|e| e.message))
     };
-    let reply = Ureq::new(allow).get(&url, MAX_TILE);
     std::thread::sleep(PAUSE);
-    let reply = match reply {
+    let (content_type, body) = match reply {
         Ok(reply) => reply,
-        Err(e) => return Row::failed(source, zoom, metres, e.message, why),
+        Err(e) => return Row::failed(source, zoom, metres, e, why),
     };
-    let format = Format::sniff(&reply.body);
-    let decoded = decoded(&reply.body, format);
+    let format = Format::sniff(&body);
+    let (decoded, flat) = decoded(&body, format);
+    let content_type = content_type.unwrap_or_default();
     let mut notes = vec![why.to_string()];
-    let content_type = reply.content_type.clone().unwrap_or_default();
+    if plain {
+        notes.push("plain client: the app's allow-list refuses a query string".into());
+    }
     match format {
         Format::Text => notes.push("a text reply, not a picture: see the saved file".into()),
         Format::Webp => notes.push("WebP: BIMCraft cannot read it yet".into()),
-        Format::Png | Format::Jpeg if reply.body.len() < 1500 => notes.push("very small: blank?".into()),
+        Format::Png | Format::Jpeg if body.len() < 1500 => notes.push("very small: blank?".into()),
         _ => {}
+    }
+    if let Some([r, g, b]) = flat {
+        notes.push(format!("one flat colour ({r}, {g}, {b}): no imagery here?"));
     }
     if content_type.starts_with("image/") && format == Format::Text {
         notes.push("says it is an image".into());
     }
     let file = out.join(format!("{source}-z{zoom}-{x}-{y}.{}", format.extension()));
-    if let Err(e) = std::fs::write(&file, &reply.body) {
+    if let Err(e) = std::fs::write(&file, &body) {
         notes.push(format!("not saved: {e}"));
     }
     let note = notes.into_iter().filter(|n| !n.is_empty()).collect::<Vec<_>>().join("; ");
-    Row {
-        result: "ok".into(),
-        content_type,
-        format: format.name(),
-        bytes: reply.body.len(),
-        decoded,
-        note,
-        ..Row::new(source, zoom, metres)
-    }
+    Row { result: "ok".into(), content_type, format: format.name(), bytes: body.len(), decoded, note, ..Row::new(source, zoom, metres) }
 }
 
 fn out_dir(arg: Option<&String>) -> Result<PathBuf, String> {
@@ -241,24 +305,21 @@ fn probe(args: &[String]) -> Result<(), String> {
     let mut rows = Vec::new();
     for c in &CANDIDATES {
         eprintln!("{} ({})...", c.name, c.place);
-        let Some(template) = c.template else {
-            rows.push(Row::failed(c.name, c.zooms[0], None, "no address guessed".into(), "run the caps command below"));
-            continue;
-        };
         for zoom in c.zooms {
-            rows.push(try_tile(c.name, template, c.longitude, c.latitude, zoom, &out, c.place));
+            rows.push(try_tile(c.name, c.template, c.longitude, c.latitude, *zoom, &out, c.place));
         }
-        rows.push(try_tile(c.name, template, -30.0, 0.0, c.zooms[1], &out, "far outside any coverage (mid-Atlantic)"));
-        rows.push(try_tile(c.name, template, c.longitude, c.latitude, c.beyond, &out, "finer than the service is expected to go"));
+        let far = c.zooms.get(1).copied().unwrap_or(16);
+        rows.push(try_tile(c.name, c.template, -30.0, 0.0, far, &out, "far outside any coverage (mid-Atlantic)"));
+        rows.push(try_tile(c.name, c.template, c.longitude, c.latitude, c.beyond, &out, "finer than the service is expected to go"));
     }
     println!();
     print_table(&rows);
-    println!("\nThe tiles are in {}. Terms, as the research found them (verify at the service):", out.display());
+    println!("\nThe tiles are in {}. Terms, as found so far (verify at the service):", out.display());
     for c in &CANDIDATES {
         println!("- {}: {}", c.name, c.licence);
     }
-    println!("\nThe addresses above are guesses. Each service's own capabilities document gives the right ones, and its terms:");
-    for c in &CANDIDATES {
+    println!("\nEach service's own capabilities document gives its layers, addresses and terms:");
+    for c in CANDIDATES.iter().filter(|c| c.name != "pdok25" && c.name != "pdok2024") {
         println!("  cargo run -p bimcraft-geofetch --example imagery -- caps '{}'", c.caps);
     }
     Ok(())
@@ -274,63 +335,74 @@ fn tile(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// The host of an address, for a file name.
-fn host_of(url: &str) -> String {
-    let host = url.trim_start_matches("https://").split(['/', '?']).next().unwrap_or("service");
-    host.chars().map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '-' { c } else { '_' }).collect()
-}
-
 fn caps(args: &[String]) -> Result<(), String> {
-    let url = args.first().ok_or("the address of a capabilities document is wanted")?;
-    if !url.starts_with("https://") || url.chars().any(|c| c.is_control() || c.is_whitespace()) {
-        return Err("an https:// address without spaces is wanted".into());
-    }
+    let url = args.first().ok_or("the address of a capabilities document, or the file of one saved before, is wanted")?;
     let out = out_dir(args.get(1))?;
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .https_only(true)
-        .http_status_as_error(false)
-        .user_agent(format!("BIMCraft-imagery-spike/{} (+https://github.com/IPedrax/BIMCraft)", env!("CARGO_PKG_VERSION")))
-        .build()
-        .into();
-    let response = agent
-        .get(url.as_str())
-        .config()
-        .timeout_global(Some(Duration::from_secs(60)))
-        .build()
-        .call()
-        .map_err(|e| format!("{}: {e}", host_of(url)))?;
-    let status = response.status().as_u16();
-    let content_type = response.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
-    let mut body = Vec::new();
-    response
-        .into_body()
-        .into_with_config()
-        .limit(MAX_CAPS + 2)
-        .reader()
-        .take(MAX_CAPS)
-        .read_to_end(&mut body)
-        .map_err(|e| format!("{}: {e}", host_of(url)))?;
-    let file = out.join(format!("caps-{}.xml", host_of(url)));
-    let saved = std::fs::write(&file, &body).map_or_else(|e| format!("not saved: {e}"), |()| format!("saved to {}", file.display()));
-    println!("HTTP {status}, {content_type}, {} bytes ({}), {saved}", body.len(), Format::sniff(&body).name());
+    // From the network (and saved), or from a file saved before: no request, and the endpoint a query address would use is a stand-in.
+    let (heading, body, endpoint) = if url.starts_with("https://") {
+        let (status, content_type, body) = plain_get(url, MAX_CAPS)?;
+        let file = out.join(format!("caps-{}.xml", host_of(url)));
+        let saved = std::fs::write(&file, &body).map_or_else(|e| format!("not saved: {e}"), |()| format!("saved to {}", file.display()));
+        let heading =
+            format!("HTTP {status}, {}, {} bytes ({}), {saved}", content_type.unwrap_or_default(), body.len(), Format::sniff(&body).name());
+        (heading, body, url.split('?').next().unwrap_or(url).to_string())
+    } else {
+        let mut body = Vec::new();
+        std::fs::File::open(url).and_then(|f| f.take(MAX_CAPS).read_to_end(&mut body)).map_err(|e| format!("{url}: {e}"))?;
+        (format!("read from {url}, {} bytes ({})", body.len(), Format::sniff(&body).name()), body, "https://ENDPOINT".to_string())
+    };
+    println!("{heading}");
     let text = String::from_utf8_lossy(&body);
     let c = scan_capabilities(&text);
-    let list = |name: &str, items: &[String], show: usize| {
-        let more = if items.len() > show { format!(" ... ({} in all)", items.len()) } else { String::new() };
-        println!("{name}: {}{more}", items.iter().take(show).cloned().collect::<Vec<_>>().join(", "));
-    };
+    let list = |name: &str, items: &[String]| println!("{name}: {}", if items.is_empty() { "-".to_string() } else { items.join(" | ") });
     println!("title: {}", c.title.as_deref().unwrap_or("-"));
-    list("fees", &c.fees, 5);
-    list("access constraints", &c.constraints, 5);
-    list("layers", &c.layers, 12);
-    list("tile matrix sets", &c.matrix_sets, 12);
-    list("tile matrices", &c.matrices, 3);
+    list("fees", &c.fees);
+    list("access constraints", &c.constraints);
+    let names: Vec<&str> = c.layers.iter().map(|l| l.name.as_str()).collect();
+    println!(
+        "layers ({}): {}{}",
+        names.len(),
+        names.iter().take(14).copied().collect::<Vec<_>>().join(", "),
+        if names.len() > 14 { ", ..." } else { "" }
+    );
+    // The layer asked for (a third argument), else the first.
+    let chosen = args.get(2).and_then(|w| c.layers.iter().find(|l| l.name.eq_ignore_ascii_case(w))).or(c.layers.first());
+    if let Some(l) = chosen {
+        println!("\nlayer {}:", l.name);
+        println!("  description: {}", if l.description.is_empty() { "-" } else { l.description.as_str() });
+        println!("  styles: {}", l.styles.join(", "));
+        println!("  formats: {}", l.formats.join(", "));
+        println!("  offered in: {}", l.sets.join(", "));
+    } else {
+        println!("no layers found");
+    }
+    println!("\ntile matrix sets:");
+    for s in &c.matrix_sets {
+        let first: Vec<&str> = s.matrices.iter().take(3).map(|m| m.id.as_str()).collect();
+        let verdict = s.web_mercator().map_or_else(|why| format!("no: {why}"), |()| "yes".to_string());
+        println!("  {} ({}): {} levels, first {}; ordinary Web Mercator: {verdict}", s.name, s.crs, s.matrices.len(), first.join(", "));
+    }
     println!("tile sizes: {}", c.tile_sizes.iter().map(u32::to_string).collect::<Vec<_>>().join(", "));
     println!("tile addresses ({}):", c.resource_urls.len());
     for u in c.resource_urls.iter().take(20) {
         println!("  {u}");
     }
-    if c.layers.is_empty() && c.resource_urls.is_empty() {
+    if c.resource_urls.iter().any(|u| u.contains(" http://")) {
+        println!("(the document writes http://: the app fetches over https only, so try the same address with https://)");
+    }
+    if let (true, Some(l)) = (c.resource_urls.is_empty(), chosen) {
+        // No addresses of its own: it is asked by query. Offer the addresses for the sets that are ordinary Web Mercator.
+        let style = l.styles.first().map_or("default", String::as_str);
+        let format = l.formats.first().map_or("image/jpeg", String::as_str);
+        for set in l.sets.iter().filter(|name| c.matrix_sets.iter().any(|s| &s.name == *name && s.web_mercator().is_ok())) {
+            match kvp_address(&endpoint, &l.name, style, set, format) {
+                Ok(address) => println!(
+                    "\nasked by query ({set}); try it with:\n  cargo run -p bimcraft-geofetch --example imagery -- tile '{address}' LAT LON ZOOM"
+                ),
+                Err(why) => println!("\nno address for {set}: {why}"),
+            }
+        }
+    } else if c.layers.is_empty() && c.resource_urls.is_empty() {
         println!("no layers or addresses found. It began:\n{}", text.chars().take(400).collect::<String>());
     } else {
         println!(

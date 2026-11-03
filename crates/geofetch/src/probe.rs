@@ -147,15 +147,102 @@ pub fn tile_at(longitude: f64, latitude: f64, zoom: u8) -> Option<(u32, u32)> {
     Some((x.floor() as u32, y.floor() as u32))
 }
 
+/// A layer of a capabilities document. Its `description` is the document's abstract, where a service may put restrictions that
+/// apply to this layer alone.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Layer {
+    pub name: String,
+    pub description: String,
+    pub styles: Vec<String>,
+    pub formats: Vec<String>,
+    /// The tile matrix sets it is offered in.
+    pub sets: Vec<String>,
+}
+
+/// A level of a tile matrix set, as the document writes it: `scale` and `top_left` are kept as text.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Matrix {
+    pub id: String,
+    pub scale: String,
+    pub top_left: String,
+    pub columns: u32,
+    pub rows: u32,
+}
+
+/// A tile matrix set: its coordinate system and its levels, in the document's order.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MatrixSet {
+    pub name: String,
+    pub crs: String,
+    pub matrices: Vec<Matrix>,
+}
+
+/// What Web Mercator's first level is: one tile, whose top left corner is the corner of the map, at the scale of 256-pixel tiles.
+const MERCATOR_EDGE: f64 = 20_037_508.342_789_244;
+const MERCATOR_SCALE: f64 = 559_082_264.028_717_8;
+
+impl MatrixSet {
+    /// Whether this is the ordinary Web Mercator pyramid that OpenStreetMap's tiles are numbered by (so a tile `z/x/y` is the same
+    /// place), or in what way it is not.
+    pub fn web_mercator(&self) -> Result<(), String> {
+        let first = self.matrices.first().ok_or("it has no levels")?;
+        if (first.columns, first.rows) != (1, 1) {
+            return Err(format!("its first level is {} x {} tiles, not 1 x 1", first.columns, first.rows));
+        }
+        match first.scale.trim().parse::<f64>() {
+            Ok(scale) if scale.is_finite() && (scale / MERCATOR_SCALE - 1.0).abs() < 1e-6 => {}
+            _ => {
+                return Err(format!(
+                    "its first level has scale denominator `{}`, where Web Mercator's is {MERCATOR_SCALE:.2}",
+                    first.scale
+                ));
+            }
+        }
+        let corner: Vec<f64> = first.top_left.split_whitespace().filter_map(|n| n.parse().ok()).collect();
+        match corner.as_slice() {
+            [x, y] if (x + MERCATOR_EDGE).abs() < 1.0 && (y - MERCATOR_EDGE).abs() < 1.0 => Ok(()),
+            [x, y] if (x - MERCATOR_EDGE).abs() < 1.0 && (y + MERCATOR_EDGE).abs() < 1.0 => {
+                Err("its top left corner is written with the axis order swapped (north first)".into())
+            }
+            _ => Err(format!("its top left corner is `{}`, where Web Mercator's is -20037508.34 20037508.34", first.top_left)),
+        }
+    }
+}
+
+/// The most characters a value in a tile address's query may have, and the characters it may have. The same rule is the network
+/// layer's for a service that can only be asked by query.
+pub const QUERY_VALUE_MAX: usize = 48;
+
+/// Whether `value` is one the query of a tile address may carry.
+pub fn query_value_ok(value: &str) -> bool {
+    (1..=QUERY_VALUE_MAX).contains(&value.len())
+        && value.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b':' | b'/' | b'-'))
+}
+
+/// The address of a tile of a WMTS service that has no tile addresses of its own and is asked by query: `endpoint` (without a
+/// query), then the layer, style, tile matrix set and format, and `{z}`, `{y}` and `{x}` to be put in by [`expand`].
+pub fn kvp_address(endpoint: &str, layer: &str, style: &str, set: &str, format: &str) -> Result<String, String> {
+    if !endpoint.starts_with("https://") || endpoint.contains(['?', '#']) || endpoint.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        return Err(format!("the endpoint is an https:// address without a query, a fragment or spaces, not `{endpoint}`"));
+    }
+    for (what, value) in [("layer", layer), ("style", style), ("tile matrix set", set), ("format", format)] {
+        if !query_value_ok(value) {
+            return Err(format!("the {what} `{value}` is not 1 to {QUERY_VALUE_MAX} letters, digits and . _ : / -"));
+        }
+    }
+    Ok(format!(
+        "{endpoint}?service=WMTS&request=GetTile&version=1.0.0&layer={layer}&style={style}&tilematrixset={set}&tilematrix={{z}}&tilerow={{y}}&tilecol={{x}}&format={format}"
+    ))
+}
+
 /// What a WMTS capabilities document says that matters for fetching from it.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Capabilities {
     pub title: Option<String>,
     pub fees: Vec<String>,
     pub constraints: Vec<String>,
-    pub layers: Vec<String>,
-    pub matrix_sets: Vec<String>,
-    pub matrices: Vec<String>,
+    pub layers: Vec<Layer>,
+    pub matrix_sets: Vec<MatrixSet>,
     pub tile_sizes: Vec<u32>,
     pub resource_urls: Vec<String>,
 }
@@ -284,6 +371,8 @@ pub fn scan_capabilities(xml: &str) -> Capabilities {
     }
     let mut caps = Capabilities::default();
     let mut stack: Vec<&str> = Vec::new();
+    // Which layer, which matrix set and which of its levels the tags being read are inside.
+    let (mut in_layer, mut in_set, mut in_matrix): (Option<usize>, Option<usize>, Option<usize>) = (None, None, None);
     for token in tokens(xml.get(..end).unwrap_or_default()) {
         match token {
             Token::Start { name, attrs, empty } => {
@@ -294,12 +383,35 @@ pub fn scan_capabilities(xml: &str) -> Capabilities {
                     keep(&mut caps.resource_urls, format!("{format} {template}").trim(), false);
                 }
                 if !empty {
+                    match name {
+                        "Layer" => {
+                            in_layer = (caps.layers.len() < MAX_ITEMS).then_some(caps.layers.len());
+                            if in_layer.is_some() {
+                                caps.layers.push(Layer::default());
+                            }
+                        }
+                        "TileMatrix" => {
+                            in_matrix = in_set.and_then(|s| caps.matrix_sets.get_mut(s)).and_then(|set| {
+                                (set.matrices.len() < MAX_ITEMS).then(|| {
+                                    set.matrices.push(Matrix::default());
+                                    set.matrices.len() - 1
+                                })
+                            });
+                        }
+                        _ => {}
+                    }
                     stack.push(name);
                 }
             }
             Token::End { name } => {
                 if stack.last() == Some(&name) {
                     stack.pop();
+                    match name {
+                        "Layer" => in_layer = None,
+                        "TileMatrix" => in_matrix = None,
+                        "TileMatrixSet" => (in_set, in_matrix) = (None, None),
+                        _ => {}
+                    }
                 }
             }
             Token::Text(text) => {
@@ -312,9 +424,58 @@ pub fn scan_capabilities(xml: &str) -> Capabilities {
                     (Some("Title"), _) if caps.title.is_none() => caps.title = Some(clip(text)),
                     (Some("Fees"), _) => keep(&mut caps.fees, text, false),
                     (Some("AccessConstraints"), _) => keep(&mut caps.constraints, text, false),
-                    (Some("Identifier"), Some("Layer")) => keep(&mut caps.layers, text, false),
-                    (Some("Identifier"), Some("TileMatrixSet")) => keep(&mut caps.matrix_sets, text, true),
-                    (Some("Identifier"), Some("TileMatrix")) => keep(&mut caps.matrices, text, true),
+                    (Some("Identifier"), Some("Layer")) => {
+                        if let Some(layer) = in_layer.and_then(|i| caps.layers.get_mut(i)) {
+                            layer.name = clip(text);
+                        }
+                    }
+                    (Some("Abstract"), Some("Layer")) => {
+                        if let Some(layer) = in_layer.and_then(|i| caps.layers.get_mut(i)) {
+                            layer.description = clip(text);
+                        }
+                    }
+                    (Some("Identifier"), Some("Style")) => {
+                        if let Some(layer) = in_layer.and_then(|i| caps.layers.get_mut(i)) {
+                            keep(&mut layer.styles, text, true);
+                        }
+                    }
+                    (Some("Format"), Some("Layer")) => {
+                        if let Some(layer) = in_layer.and_then(|i| caps.layers.get_mut(i)) {
+                            keep(&mut layer.formats, text, true);
+                        }
+                    }
+                    (Some("TileMatrixSet"), Some("TileMatrixSetLink")) => {
+                        if let Some(layer) = in_layer.and_then(|i| caps.layers.get_mut(i)) {
+                            keep(&mut layer.sets, text, true);
+                        }
+                    }
+                    (Some("Identifier"), Some("TileMatrixSet")) => {
+                        in_set = (caps.matrix_sets.len() < MAX_ITEMS).then_some(caps.matrix_sets.len());
+                        if in_set.is_some() {
+                            caps.matrix_sets.push(MatrixSet { name: clip(text), ..MatrixSet::default() });
+                        }
+                    }
+                    (Some("SupportedCRS"), Some("TileMatrixSet")) => {
+                        if let Some(set) = in_set.and_then(|i| caps.matrix_sets.get_mut(i)) {
+                            set.crs = clip(text);
+                        }
+                    }
+                    (
+                        Some(field @ ("Identifier" | "ScaleDenominator" | "TopLeftCorner" | "MatrixWidth" | "MatrixHeight")),
+                        Some("TileMatrix"),
+                    ) => {
+                        if let Some(matrix) =
+                            in_set.and_then(|s| caps.matrix_sets.get_mut(s)).and_then(|set| in_matrix.and_then(|m| set.matrices.get_mut(m)))
+                        {
+                            match field {
+                                "Identifier" => matrix.id = clip(text),
+                                "ScaleDenominator" => matrix.scale = clip(text),
+                                "TopLeftCorner" => matrix.top_left = clip(text),
+                                "MatrixWidth" => matrix.columns = text.parse().unwrap_or(0),
+                                _ => matrix.rows = text.parse().unwrap_or(0),
+                            }
+                        }
+                    }
                     (Some("TileWidth"), _) => {
                         if let Ok(width) = text.parse::<u32>()
                             && caps.tile_sizes.len() < MAX_ITEMS
@@ -453,7 +614,9 @@ mod tests {
  <Contents>
   <Layer>
    <ows:Title>Actueel</ows:Title>
+   <ows:Abstract>Aerial photographs, 7.5 cm</ows:Abstract>
    <ows:Identifier>Actueel_orthoHR</ows:Identifier>
+   <Style isDefault="true"><ows:Identifier>default</ows:Identifier></Style>
    <Format>image/jpeg</Format>
    <TileMatrixSetLink><TileMatrixSet>EPSG:3857</TileMatrixSet></TileMatrixSetLink>
    <ResourceURL format="image/jpeg" resourceType="tile" template="https://example.org/wmts/Actueel_orthoHR/EPSG:3857/{TileMatrix}/{TileCol}/{TileRow}.jpeg"/>
@@ -461,8 +624,8 @@ mod tests {
   <TileMatrixSet>
    <ows:Identifier>EPSG:3857</ows:Identifier>
    <ows:SupportedCRS>urn:ogc:def:crs:EPSG::3857</ows:SupportedCRS>
-   <TileMatrix><ows:Identifier>0</ows:Identifier><TileWidth>256</TileWidth><TileHeight>256</TileHeight></TileMatrix>
-   <TileMatrix><ows:Identifier>1</ows:Identifier><TileWidth>256</TileWidth><TileHeight>256</TileHeight></TileMatrix>
+   <TileMatrix><ows:Identifier>0</ows:Identifier><ScaleDenominator>559082264.0287178</ScaleDenominator><TopLeftCorner>-20037508.342789244 20037508.342789244</TopLeftCorner><TileWidth>256</TileWidth><TileHeight>256</TileHeight><MatrixWidth>1</MatrixWidth><MatrixHeight>1</MatrixHeight></TileMatrix>
+   <TileMatrix><ows:Identifier>1</ows:Identifier><ScaleDenominator>279541132.0143589</ScaleDenominator><TopLeftCorner>-20037508.342789244 20037508.342789244</TopLeftCorner><TileWidth>256</TileWidth><TileHeight>256</TileHeight><MatrixWidth>2</MatrixWidth><MatrixHeight>2</MatrixHeight></TileMatrix>
   </TileMatrixSet>
  </Contents>
 </Capabilities>"#;
@@ -473,9 +636,22 @@ mod tests {
         assert_eq!(caps.title.as_deref(), Some("Luchtfoto"), "the service's, not a layer's");
         assert_eq!(caps.fees, ["none"]);
         assert_eq!(caps.constraints, ["CC-BY 4.0"]);
-        assert_eq!(caps.layers, ["Actueel_orthoHR"], "the layer's name, not the set it links to");
-        assert_eq!(caps.matrix_sets, ["EPSG:3857"], "the set that is defined, once");
-        assert_eq!(caps.matrices, ["0", "1"]);
+        assert_eq!(caps.layers.len(), 1);
+        let layer = &caps.layers[0];
+        assert_eq!(layer.name, "Actueel_orthoHR", "the layer's name, not the set it links to");
+        assert_eq!(layer.description, "Aerial photographs, 7.5 cm", "the layer's abstract, not the service's");
+        assert_eq!(
+            (layer.styles.as_slice(), layer.formats.as_slice(), layer.sets.as_slice()),
+            (&["default".to_string()][..], &["image/jpeg".to_string()][..], &["EPSG:3857".to_string()][..])
+        );
+        assert_eq!(caps.matrix_sets.len(), 1, "the set that is defined, once, not the link to it");
+        let set = &caps.matrix_sets[0];
+        assert_eq!((set.name.as_str(), set.crs.as_str()), ("EPSG:3857", "urn:ogc:def:crs:EPSG::3857"));
+        assert_eq!(set.matrices.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), ["0", "1"]);
+        assert_eq!(set.matrices.iter().map(|m| (m.columns, m.rows)).collect::<Vec<_>>(), [(1, 1), (2, 2)]);
+        assert_eq!(set.matrices[0].top_left, "-20037508.342789244 20037508.342789244");
+        assert_eq!(set.matrices[1].scale, "279541132.0143589");
+        assert_eq!(set.web_mercator(), Ok(()));
         assert_eq!(caps.tile_sizes, [256], "each size once");
         assert_eq!(
             caps.resource_urls,
@@ -490,13 +666,119 @@ mod tests {
           <wmts:ResourceURL format='image/png' template='https://example.org/t?layer=a&amp;z={TileMatrix}'/></wmts:Layer></wmts:Contents>
           <ows:Fees>free &amp; open</ows:Fees><!-- <ows:Fees>not this</ows:Fees> --></wmts:Capabilities>"#;
         let caps = scan_capabilities(xml);
-        assert_eq!(caps.layers, ["ortho"]);
+        assert_eq!(caps.layers.iter().map(|l| l.name.as_str()).collect::<Vec<_>>(), ["ortho"]);
         assert_eq!(caps.fees, ["free & open"], "entities undone, comments skipped");
         assert_eq!(caps.resource_urls, ["image/png https://example.org/t?layer=a&z={TileMatrix}"]);
         // An attribute whose name ends the same is not the one asked for.
         let other =
             r#"<ResourceURL format="image/png" subtemplate="https://wrong.example/" template="https://right.example/{TileMatrix}"/>"#;
         assert_eq!(scan_capabilities(other).resource_urls, ["image/png https://right.example/{TileMatrix}"]);
+    }
+
+    #[test]
+    fn each_layer_keeps_its_own_description_styles_formats_and_sets() {
+        // The abstract may come before the name, and the next layer's is not this one's.
+        let xml = r#"<Contents>
+          <Layer><ows:Abstract>Free: CC BY 4.0</ows:Abstract><ows:Identifier>a</ows:Identifier>
+            <Style><ows:Identifier>s1</ows:Identifier></Style><Style><ows:Identifier>s2</ows:Identifier></Style>
+            <Format>image/png</Format><Format>image/jpeg</Format>
+            <TileMatrixSetLink><TileMatrixSet>g</TileMatrixSet></TileMatrixSetLink>
+            <TileMatrixSetLink><TileMatrixSet>w</TileMatrixSet></TileMatrixSetLink></Layer>
+          <Layer><ows:Identifier>b</ows:Identifier><ows:Abstract>Non-commercial &amp; share-alike</ows:Abstract></Layer>
+          </Contents>"#;
+        let caps = scan_capabilities(xml);
+        let [a, b] = caps.layers.as_slice() else { panic!("two layers wanted: {:?}", caps.layers) };
+        assert_eq!((a.name.as_str(), a.description.as_str()), ("a", "Free: CC BY 4.0"));
+        assert_eq!(
+            (&a.styles, &a.formats, &a.sets),
+            (
+                &["s1", "s2"].map(String::from).to_vec(),
+                &["image/png", "image/jpeg"].map(String::from).to_vec(),
+                &["g", "w"].map(String::from).to_vec()
+            )
+        );
+        assert_eq!((b.name.as_str(), b.description.as_str()), ("b", "Non-commercial & share-alike"));
+        assert!(b.styles.is_empty() && b.formats.is_empty() && b.sets.is_empty());
+        // A service's own abstract is not a layer's.
+        let own =
+            scan_capabilities("<ows:ServiceIdentification><ows:Abstract>about the service</ows:Abstract></ows:ServiceIdentification>");
+        assert!(own.layers.is_empty());
+    }
+
+    #[test]
+    fn matrices_are_listed_under_the_set_they_belong_to() {
+        let xml = r#"<Contents>
+          <TileMatrixSet><ows:Identifier>RD</ows:Identifier>
+            <TileMatrix><ows:Identifier>00</ows:Identifier><MatrixWidth>1</MatrixWidth><MatrixHeight>1</MatrixHeight></TileMatrix>
+            <TileMatrix><ows:Identifier>01</ows:Identifier></TileMatrix></TileMatrixSet>
+          <TileMatrixSet><ows:Identifier>EPSG:3857</ows:Identifier>
+            <TileMatrix><ows:Identifier>16</ows:Identifier></TileMatrix></TileMatrixSet></Contents>"#;
+        let caps = scan_capabilities(xml);
+        let names: Vec<(&str, Vec<&str>)> =
+            caps.matrix_sets.iter().map(|s| (s.name.as_str(), s.matrices.iter().map(|m| m.id.as_str()).collect())).collect();
+        assert_eq!(names, [("RD", vec!["00", "01"]), ("EPSG:3857", vec!["16"])]);
+        assert_eq!(caps.matrix_sets[0].matrices[1].columns, 0, "what the document leaves out is nothing");
+    }
+
+    fn matrix(scale: &str, corner: &str, columns: u32, rows: u32) -> Matrix {
+        Matrix { id: "0".into(), scale: scale.into(), top_left: corner.into(), columns, rows }
+    }
+
+    fn set_of(first: Matrix) -> MatrixSet {
+        MatrixSet { name: "s".into(), crs: String::new(), matrices: vec![first] }
+    }
+
+    #[test]
+    fn a_set_is_web_mercator_or_says_how_it_is_not() {
+        let good = matrix("559082264.0287178", "-20037508.342789244 20037508.342789244", 1, 1);
+        assert_eq!(set_of(good.clone()).web_mercator(), Ok(()));
+        // The same numbers as other services round them.
+        assert_eq!(set_of(matrix("559082264.029", "-20037508.34 20037508.34", 1, 1)).web_mercator(), Ok(()));
+        let why = |m: Matrix| set_of(m).web_mercator().unwrap_err();
+        assert!(why(matrix("559082264.0287178", "20037508.342789244 -20037508.342789244", 1, 1)).contains("order"));
+        assert!(why(Matrix { columns: 2, ..good.clone() }).contains("2 x 1"));
+        assert!(why(matrix("279541132.0143589", "-20037508.342789244 20037508.342789244", 1, 1)).contains("scale"));
+        assert!(why(matrix("x", "-20037508.342789244 20037508.342789244", 1, 1)).contains("scale"));
+        assert!(why(matrix("559082264.0287178", "-180 90", 1, 1)).contains("corner"));
+        assert!(why(matrix("559082264.0287178", "garbage", 1, 1)).contains("corner"));
+        assert!(MatrixSet::default().web_mercator().unwrap_err().contains("no levels"));
+    }
+
+    #[test]
+    fn a_value_in_a_query_is_short_and_plain() {
+        for ok in ["omwrgbmrvl", "GoogleMapsVL", "EPSG:3857", "image/jpeg", "1.0.0", "a-b_c.d"] {
+            assert!(query_value_ok(ok), "{ok}");
+        }
+        let long = "a".repeat(QUERY_VALUE_MAX + 1);
+        for bad in ["", " ", "a b", "a&b", "a=b", "a%20b", "a+b", "a;b", "a#b", "a?b", "a\nb", "é", "{z}", long.as_str()] {
+            assert!(!query_value_ok(bad), "{bad:?}");
+        }
+        assert!(query_value_ok(&"a".repeat(QUERY_VALUE_MAX)));
+    }
+
+    #[test]
+    fn a_service_asked_by_query_gets_an_address_made_of_plain_parts() {
+        let url = kvp_address("https://geo.example/wmts", "omwrgbmrvl", "default", "GoogleMapsVL", "image/jpeg").unwrap();
+        assert_eq!(
+            url,
+            "https://geo.example/wmts?service=WMTS&request=GetTile&version=1.0.0&layer=omwrgbmrvl&style=default&tilematrixset=GoogleMapsVL&tilematrix={z}&tilerow={y}&tilecol={x}&format=image/jpeg"
+        );
+        let tile = expand(&url, 17, 67146, 43905).unwrap();
+        assert!(tile.ends_with("&tilematrix=17&tilerow=43905&tilecol=67146&format=image/jpeg"), "{tile}");
+        let long = "a".repeat(QUERY_VALUE_MAX + 1);
+        for (what, endpoint, layer, style, set, format) in [
+            ("an endpoint with a query", "https://geo.example/wmts?a=b", "l", "s", "m", "image/png"),
+            ("an endpoint with a fragment", "https://geo.example/wmts#x", "l", "s", "m", "image/png"),
+            ("an endpoint that is not https", "http://geo.example/wmts", "l", "s", "m", "image/png"),
+            ("an endpoint with a space", "https://geo.example/w mts", "l", "s", "m", "image/png"),
+            ("a space in the layer", "https://geo.example/wmts", "a b", "s", "m", "image/png"),
+            ("an ampersand in the style", "https://geo.example/wmts", "l", "s&x=1", "m", "image/png"),
+            ("a percent in the set", "https://geo.example/wmts", "l", "s", "a%20b", "image/png"),
+            ("an empty format", "https://geo.example/wmts", "l", "s", "m", ""),
+            ("a long layer", "https://geo.example/wmts", long.as_str(), "s", "m", "image/png"),
+        ] {
+            assert!(kvp_address(endpoint, layer, style, set, format).is_err(), "{what}");
+        }
     }
 
     #[test]
