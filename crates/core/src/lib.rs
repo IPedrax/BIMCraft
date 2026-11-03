@@ -24,6 +24,7 @@ mod constraints;
 mod csg;
 pub mod curves;
 pub mod dims;
+pub mod dr;
 pub mod drainage;
 pub mod draw;
 pub mod dxf;

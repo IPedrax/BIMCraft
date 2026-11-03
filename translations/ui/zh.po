@@ -2208,7 +2208,7 @@ msgstr "拆除 (DW)：单击图元，在视图阶段中将其拆除；再次单�
 msgid "Demolished"
 msgstr "已拆除"
 
-#: crates/core/src/commands.rs:7872
+#: crates/core/src/commands.rs:7971
 msgid "Dependent"
 msgstr "相关"
 
@@ -2685,7 +2685,7 @@ msgstr "电气设置"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "电气设置：电路和配电箱所引用的电压、配电系统和导线类型；截面积单位为 mm²"
 
-#: crates/core/src/commands.rs:1775
+#: crates/core/src/commands.rs:1793
 msgid "Elements"
 msgstr "图元"
 
@@ -7917,7 +7917,7 @@ msgstr "单位"
 msgid "Units Format"
 msgstr "单位格式"
 
-#: crates/core/src/commands.rs:8013
+#: crates/core/src/commands.rs:8112
 msgid "Unnamed"
 msgstr "未命名"
 

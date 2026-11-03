@@ -2208,7 +2208,7 @@ msgstr "Slopen (DW): klik op een element om het in de fase van de weergave te sl
 msgid "Demolished"
 msgstr "Gesloopt"
 
-#: crates/core/src/commands.rs:7872
+#: crates/core/src/commands.rs:7971
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -2685,7 +2685,7 @@ msgstr ""
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr ""
 
-#: crates/core/src/commands.rs:1775
+#: crates/core/src/commands.rs:1793
 msgid "Elements"
 msgstr "Elementen"
 
@@ -7917,7 +7917,7 @@ msgstr "Eenheden"
 msgid "Units Format"
 msgstr "Eenhedenformaat"
 
-#: crates/core/src/commands.rs:8013
+#: crates/core/src/commands.rs:8112
 msgid "Unnamed"
 msgstr "Naamloos"
 
