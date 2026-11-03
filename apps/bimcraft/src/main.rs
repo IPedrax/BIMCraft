@@ -23,7 +23,8 @@ const USAGE: &str = "USAGE: bimcraft [FILE] [--sample | --highrise] [--control P
   --sample   start on the sample house
   --highrise start on the original 20-storey performance sample
   --control  let an agent work on this window's project: `bimcraft-cli mcp --connect PORT` (0: any free port). Only this
-             machine can reach it, and the port and a token are in bridge.json beside the favorites
+             machine can reach it, and the port and a token are in bridge.json beside the favorites. File > Settings >
+             Agents opens it too, and may let agents only read the project
   --version  the release
 
 It looks for a newer version when it starts (File > Check for updates at startup switches that off).
@@ -137,7 +138,9 @@ fn main() -> ExitCode {
             app.note_recent(file);
         }
     }
-    // An agent can work on the window's project through the control port, when it was started with one.
+    // An agent can work on the window's project through the control port, when it was started with one, or else when Settings >
+    // Agents keeps it open; the bridge file, with its port and token, sits beside the favorites either way.
+    app.use_bridge_file(bimcraft_core::bridge::entry_path());
     if let Some(port) = control {
         match Control::start(port, bimcraft_core::bridge::entry_path()) {
             Ok(control) => {
@@ -146,6 +149,8 @@ fn main() -> ExitCode {
             }
             Err(e) => problem = Some(format!("couldn't listen on port {port} for an agent: {e}")),
         }
+    } else if let Err(e) = app.listen_as_kept() {
+        problem = Some(e);
     }
     if let Some(text) = problem {
         app.status = Status { text, error: true };

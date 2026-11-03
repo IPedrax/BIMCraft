@@ -191,6 +191,12 @@ fn refs(ids: &[u64]) -> String {
     ids.iter().map(|i| format!("#{i}")).collect::<Vec<_>>().join(",")
 }
 
+/// What IFC4 puts ahead of the predefined type of a component's type object (each with its comma): a furniture type's
+/// assembly place, which it requires, and nothing for the other classes.
+fn component_type_before(entity: &str) -> &'static str {
+    if entity == "IFCFURNITURE" { ",.NOTDEFINED." } else { "" }
+}
+
 struct Step {
     out: String,
     next: u64,
@@ -206,8 +212,17 @@ struct Step {
     materials: BTreeMap<String, (u64, Option<u64>)>,
     /// What goes in each element's `Pset_*Common`: its entity, the set's name and its properties, written once at the end.
     common: BTreeMap<Id, (u64, &'static str, Vec<u64>)>,
-    /// The occurrences of each type object: its IFC class, its predefined type and its name, written once at the end.
-    typed: BTreeMap<(&'static str, &'static str, String), Vec<u64>>,
+    /// The occurrences of each type object, by its key (see `TypeKey`). Written once at the end.
+    typed: BTreeMap<TypeKey, TypeBuild>,
+}
+
+/// A type object's key: its IFC class, what comes ahead of and after its predefined type (each with its comma) and its name.
+type TypeKey = (String, String, String, String);
+
+/// A type object as the export builds it: the predefined type its occurrences share, and their ids.
+struct TypeBuild {
+    predefined: &'static str,
+    occurrences: Vec<u64>,
 }
 
 impl Step {
@@ -246,17 +261,32 @@ impl Step {
     }
 
     /// Says `ent` is an occurrence of the type object `class` (with its `predefined` type) named `name`.
-    fn typed(&mut self, class: &'static str, predefined: &'static str, name: &str, ent: u64) {
-        self.typed.entry((class, predefined, name.to_string())).or_default().push(ent);
+    fn typed(&mut self, class: &str, predefined: &'static str, name: &str, ent: u64) {
+        self.typed_with(class, "", predefined, "", name, ent);
+    }
+
+    /// As `typed`, for a type with attributes beside its PredefinedType: `before` it and `after` it, each with its comma (a
+    /// furniture type's assembly place comes before; a door's operation after). Occurrences whose predefined types differ make
+    /// their type's NOTDEFINED: a roof type is flat only when every roof of it is.
+    fn typed_with(&mut self, class: &str, before: &str, predefined: &'static str, after: &str, name: &str, ent: u64) {
+        let build = self
+            .typed
+            .entry((class.to_string(), before.to_string(), after.to_string(), name.to_string()))
+            .or_insert_with(|| TypeBuild { predefined, occurrences: Vec::new() });
+        if build.predefined != predefined {
+            build.predefined = ".NOTDEFINED.";
+        }
+        build.occurrences.push(ent);
     }
 
     /// Writes each type object once, with its `IfcRelDefinesByType` to its occurrences. Both GlobalIds come from the
     /// class and the name, so they are the same on every export.
     fn write_types(&mut self) {
-        for ((class, predefined, name), occurrences) in std::mem::take(&mut self.typed) {
+        for ((class, before, after, name), TypeBuild { predefined, occurrences }) in std::mem::take(&mut self.typed) {
             let key =
                 name.bytes().chain(class.bytes()).fold(0xCBF2_9CE4_8422_2325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3));
-            let kind = self.add(format!("{class}({},$,{},$,$,$,$,$,$,{predefined})", self.guid(TYPES, key), s(&name)));
+            // Six attributes after the name (description to element type), then `before`, the predefined type and `after`.
+            let kind = self.add(format!("{class}({},$,{},$,$,$,$,$,${before},{predefined}{after})", self.guid(TYPES, key), s(&name)));
             self.add(format!("IFCRELDEFINESBYTYPE({},$,$,$,({}),#{kind})", self.guid(TYPE_DEFINES, key), refs(&occurrences)));
         }
     }
@@ -812,6 +842,7 @@ pub fn export(m: &Model) -> String {
                 ));
                 contained.entry(c.level).or_default().push(ent);
                 products.insert(id, ent);
+                w.typed("IFCCOVERINGTYPE", ".CEILING.", &c.type_name, ent);
                 hosts.insert(id, (ent, at, m.elevation(c.level)));
             }
             Element::Room(r) => {
@@ -950,7 +981,8 @@ pub fn export(m: &Model) -> String {
                         w.quantities(ent, "Qto_BeamBaseQuantities", &values, id);
                     }
                     Element::StripFooting(_) => w.load_bearing(ent, "Pset_FootingCommon", id),
-                    _ => {}
+                    // A pipe, duct, conduit, tray, wire or cable: its type is of the segment class it is written as.
+                    _ => w.typed(&format!("{class}TYPE"), kind, &r.type_name, ent),
                 }
                 if !t.material.is_empty() {
                     let material = w.material(m, &t.material);
@@ -990,11 +1022,14 @@ pub fn export(m: &Model) -> String {
                 let shape = w.tessellated(&items);
                 // A door's or a window's family is placed in a wall, never as a component.
                 let (entity, kind, object_type) = f.category.ifc();
-                let name = s(&format!("{}:{}", cp.family, cp.type_name));
+                let label = format!("{}:{}", cp.family, cp.type_name);
+                let name = s(&label);
                 let object = object_type.map_or_else(|| name.clone(), s);
                 let ent = w.add(format!("{entity}({},$,{name},$,{object},#{at},#{shape},'{id}',{kind})", w.guid(ELEMENT, id)));
                 contained.entry(cp.level).or_default().push(ent);
                 products.insert(id, ent);
+                // Its type object, of the class it is written as, its predefined type not defined.
+                w.typed_with(&format!("{entity}TYPE"), component_type_before(entity), ".NOTDEFINED.", "", &label, ent);
                 // What it's made of: its material, or the set of them.
                 let relating = match made_of.as_slice() {
                     [] => None,
@@ -1139,6 +1174,9 @@ pub fn export(m: &Model) -> String {
                 ));
                 contained.entry(r.level).or_default().push(ent);
                 products.insert(id, ent);
+                // Its type is flat only where the roof is (the test its own kind takes above), else NOTDEFINED.
+                let flat = r.extrusion.is_none() && r.slope == 0.0;
+                w.typed("IFCROOFTYPE", if flat { ".FLAT_ROOF." } else { ".NOTDEFINED." }, &r.type_name, ent);
                 hosts.insert(id, (ent, at, m.elevation(r.level)));
             }
             _ => {}
@@ -1245,7 +1283,8 @@ pub fn export(m: &Model) -> String {
         };
         let (h, wd) = (real(t.height), real(t.width));
         // Named `Family:Type` as Revit names them; a project's own type, by its name.
-        let name = s(&o.family.as_ref().map_or_else(|| o.type_name.clone(), |f| format!("{f}:{}", o.type_name)));
+        let label = o.family.as_ref().map_or_else(|| o.type_name.clone(), |f| format!("{f}:{}", o.type_name));
+        let name = s(&label);
         // How it opens, as its family or its type says; a door that says nothing swings.
         let ent = if matches!(e, Element::Door(_)) {
             let operation = Operation::ifc_door(t.operation, o.flip_hand);
@@ -1262,6 +1301,14 @@ pub fn export(m: &Model) -> String {
                 s(&o.mark)
             ))
         };
+        // Its type object: after its PredefinedType, the operation (a door's) or partitioning (a window's) its type has, that
+        // the occurrence's own sizes take precedence over the type's, and no user-defined operation.
+        let (class, predefined, how) = if matches!(e, Element::Door(_)) {
+            ("IFCDOORTYPE", ".DOOR.", Operation::ifc_door(t.operation, false))
+        } else {
+            ("IFCWINDOWTYPE", ".WINDOW.", Operation::ifc_window_partitioning(t.operation))
+        };
+        w.typed_with(class, "", predefined, &format!(",{how},.T.,$"), &label, ent);
         w.add(format!("IFCRELFILLSELEMENT({},$,$,$,#{opening},#{ent})", w.guid(FILLS, id)));
         let qto = if matches!(e, Element::Door(_)) { "Qto_DoorBaseQuantities" } else { "Qto_WindowBaseQuantities" };
         let values = [
@@ -1870,6 +1917,221 @@ mod tests {
         // The same on every export, so a diff of two shows only what changed.
         assert_eq!(f, export(&s.model));
         dangling(&f);
+    }
+
+    /// The entity lines of kind `class` in `f`, as written.
+    fn entities(f: &str, class: &str) -> Vec<String> {
+        f.lines().filter(|l| l.contains(&format!("={class}("))).map(str::to_string).collect()
+    }
+
+    /// The attributes of an entity line, as the STEP text spells them (strings with their quotes), split at the commas
+    /// that are outside strings.
+    fn attributes(line: &str) -> Vec<String> {
+        let body = line.split_once('(').unwrap().1.strip_suffix(");").unwrap();
+        let (mut out, mut cur, mut quoted) = (Vec::new(), String::new(), false);
+        for c in body.chars() {
+            match c {
+                '\'' => {
+                    quoted = !quoted;
+                    cur.push(c);
+                }
+                ',' if !quoted => out.push(std::mem::take(&mut cur)),
+                _ => cur.push(c),
+            }
+        }
+        out.push(cur);
+        out
+    }
+
+    /// The attributes of the type object of `class` named `name` in `f`; there is one.
+    fn type_object(f: &str, class: &str, name: &str) -> Vec<String> {
+        let named: Vec<Vec<String>> =
+            entities(f, class).iter().map(|l| attributes(l.as_str())).filter(|a| a[2] == format!("'{name}'")).collect();
+        assert_eq!(named.len(), 1, "one {class} named {name}");
+        named.into_iter().next().unwrap()
+    }
+
+    /// The type name of the first element of `category` in the model: a door's, window's, ceiling's or roof's.
+    fn type_name_of(s: &Session, category: &str) -> String {
+        s.model
+            .elements
+            .values()
+            .filter(|e| e.category() == category)
+            .find_map(|e| match e {
+                Element::Door(o) | Element::Window(o) => Some(o.type_name.clone()),
+                Element::Ceiling(c) => Some(c.type_name.clone()),
+                Element::Roof(r) => Some(r.type_name.clone()),
+                _ => None,
+            })
+            .unwrap()
+    }
+
+    /// The type objects of `type_class` in `f`, once every `class` occurrence in `f` is related to one of them and to no
+    /// other: each occurrence listed by exactly one `IfcRelDefinesByType`.
+    fn typed_once(f: &str, class: &str, type_class: &str) -> Vec<u64> {
+        let types = of_kind(f, type_class);
+        let mut related: Vec<u64> = types.iter().flat_map(|t| occurrences_of(f, *t)).collect();
+        related.sort_unstable();
+        let mut all = of_kind(f, class);
+        all.sort_unstable();
+        assert_eq!(related, all, "each {class} related to exactly one {type_class}");
+        types
+    }
+
+    #[test]
+    fn doors_windows_roofs_and_ceilings_get_type_objects_each_occurrence_related_once() {
+        use crate::graphics::testing::{house, run};
+        let mut s = Session::new();
+        house(&mut s);
+        run(&mut s, "door", json!({"at": [2000, 0]}));
+        run(&mut s, "door", json!({"at": [5000, 0]}));
+        run(&mut s, "window", json!({"at": [8000, 3000]}));
+        run(&mut s, "ceiling", json!({"point": [4000, 3000]}));
+        run(&mut s, "roof", json!({}));
+        let f = export(&s.model);
+        dangling(&f);
+        // A door's type carries, after its PredefinedType, its OperationType, whether the occurrence's own parameters take
+        // precedence (its sizes are its own: yes) and a user-defined operation (none).
+        assert_eq!(typed_once(&f, "IFCDOOR", "IFCDOORTYPE").len(), 1, "one type for both doors");
+        let door = type_object(&f, "IFCDOORTYPE", &type_name_of(&s, "door"));
+        assert_eq!(door.len(), 13, "IfcDoorType's attributes");
+        assert_eq!(door[9..].join(","), ".DOOR.,.SINGLE_SWING_LEFT.,.T.,$");
+        // A window's type carries its PartitioningType the same way.
+        assert_eq!(typed_once(&f, "IFCWINDOW", "IFCWINDOWTYPE").len(), 1);
+        let window = type_object(&f, "IFCWINDOWTYPE", &type_name_of(&s, "window"));
+        assert_eq!(window.len(), 13, "IfcWindowType's attributes");
+        assert_eq!(window[9..].join(","), ".WINDOW.,.SINGLE_PANEL.,.T.,$");
+        assert_eq!(typed_once(&f, "IFCCOVERING", "IFCCOVERINGTYPE").len(), 1);
+        let ceiling = type_object(&f, "IFCCOVERINGTYPE", &type_name_of(&s, "ceiling"));
+        assert_eq!((ceiling.len(), ceiling[9].as_str()), (10, ".CEILING."));
+        assert_eq!(typed_once(&f, "IFCROOF", "IFCROOFTYPE").len(), 1);
+        let roof = type_object(&f, "IFCROOFTYPE", &type_name_of(&s, "roof"));
+        assert_eq!((roof.len(), roof[9].as_str()), (10, ".NOTDEFINED."), "a roof sloping 30 degrees, the default");
+    }
+
+    #[test]
+    fn a_roof_type_is_flat_only_when_every_roof_of_it_is_flat() {
+        use crate::graphics::testing::run;
+        let mut s = Session::new();
+        run(&mut s, "roof", json!({"boundary": [[0, 0], [4000, 0], [4000, 4000], [0, 4000]], "slope": 0}));
+        let f = export(&s.model);
+        dangling(&f);
+        assert_eq!(typed_once(&f, "IFCROOF", "IFCROOFTYPE").len(), 1);
+        assert_eq!(type_object(&f, "IFCROOFTYPE", &type_name_of(&s, "roof"))[9], ".FLAT_ROOF.");
+        // A sloped roof of the same type: the type is no longer flat, and both roofs are of it.
+        run(&mut s, "roof", json!({"boundary": [[10000, 0], [14000, 0], [14000, 4000], [10000, 4000]]}));
+        let f = export(&s.model);
+        dangling(&f);
+        assert_eq!(typed_once(&f, "IFCROOF", "IFCROOFTYPE").len(), 1, "one type for both roofs");
+        assert_eq!(type_object(&f, "IFCROOFTYPE", &type_name_of(&s, "roof"))[9], ".NOTDEFINED.");
+    }
+
+    #[test]
+    fn components_get_type_objects_of_the_class_each_is_written_as_with_their_attribute_counts() {
+        use crate::graphics::testing::run;
+        // A starter family of each class a component is written as.
+        let families = [
+            ("Table", "IFCFURNITURE"),
+            ("Kitchen Sink", "IFCSANITARYTERMINAL"),
+            ("Floor Drain", "IFCWASTETERMINAL"),
+            ("Elbow 90", "IFCPIPEFITTING"),
+            ("Gate Valve", "IFCVALVE"),
+            ("Distribution Board", "IFCELECTRICDISTRIBUTIONBOARD"),
+            ("Outlet", "IFCOUTLET"),
+            ("Switch", "IFCSWITCHINGDEVICE"),
+            ("Ceiling Luminaire", "IFCLIGHTFIXTURE"),
+            ("Air Terminal", "IFCBUILDINGELEMENTPROXY"),
+        ];
+        let mut s = Session::new();
+        for (i, (family, _)) in families.iter().enumerate() {
+            run(&mut s, "component", json!({"family": family, "at": [i as f64 * 2000.0, 0.0]}));
+        }
+        let f = export(&s.model);
+        dangling(&f);
+        for (family, class) in families {
+            let type_class = format!("{class}TYPE");
+            typed_once(&f, class, &type_class);
+            let type_name = s
+                .model
+                .elements
+                .values()
+                .find_map(|e| match e {
+                    Element::Component(cp) if cp.family == family => Some(cp.type_name.clone()),
+                    _ => None,
+                })
+                .unwrap();
+            let attrs = type_object(&f, &type_class, &format!("{family}:{type_name}"));
+            // Furniture's type has its AssemblyPlace (mandatory) ahead of its PredefinedType; the others have ten attributes.
+            let count = if class == "IFCFURNITURE" { 11 } else { 10 };
+            assert_eq!((attrs.len(), attrs[count - 1].as_str()), (count, ".NOTDEFINED."), "{type_class}");
+            if class == "IFCFURNITURE" {
+                assert_eq!(attrs[9], ".NOTDEFINED.", "its assembly place");
+            }
+        }
+    }
+
+    #[test]
+    fn discipline_runs_get_the_type_objects_of_their_segment_classes() {
+        use crate::graphics::testing::run;
+        let mut s = Session::new();
+        run(&mut s, "pipe", json!({"points": [[0, 6000], [6000, 6000]], "offset": 500}));
+        run(&mut s, "duct", json!({"points": [[0, 7000], [6000, 7000]], "offset": 2500}));
+        run(&mut s, "conduit", json!({"points": [[0, 8000], [6000, 8000]], "offset": 2500}));
+        run(&mut s, "cable_tray", json!({"points": [[0, 9000], [6000, 9000]], "offset": 2700}));
+        run(&mut s, "wire", json!({"points": [[0, 10000], [6000, 10000]], "offset": 2500}));
+        run(&mut s, "cabling", json!({"points": [[0, 11000], [6000, 11000]], "offset": 2500}));
+        let f = export(&s.model);
+        dangling(&f);
+        // The PredefinedType of each type is the one its runs are written with (the last attribute of each type object).
+        let kinds = |class: &str| -> Vec<String> { entities(&f, class).iter().map(|l| attributes(l).pop().unwrap()).collect() };
+        typed_once(&f, "IFCPIPESEGMENT", "IFCPIPESEGMENTTYPE");
+        assert_eq!(kinds("IFCPIPESEGMENTTYPE"), [".RIGIDSEGMENT."]);
+        typed_once(&f, "IFCDUCTSEGMENT", "IFCDUCTSEGMENTTYPE");
+        assert_eq!(kinds("IFCDUCTSEGMENTTYPE"), [".RIGIDSEGMENT."]);
+        // A conduit and a cable tray are both cable carrier segments, each its own type.
+        assert_eq!(typed_once(&f, "IFCCABLECARRIERSEGMENT", "IFCCABLECARRIERSEGMENTTYPE").len(), 2);
+        let mut carriers = kinds("IFCCABLECARRIERSEGMENTTYPE");
+        carriers.sort();
+        assert_eq!(carriers, [".CABLETRAYSEGMENT.", ".CONDUITSEGMENT."]);
+        // A wire and structured cabling are both cable segments.
+        typed_once(&f, "IFCCABLESEGMENT", "IFCCABLESEGMENTTYPE");
+        let cables = kinds("IFCCABLESEGMENTTYPE");
+        assert!(!cables.is_empty() && cables.iter().all(|k| k == ".CABLESEGMENT."), "{cables:?}");
+    }
+
+    #[test]
+    fn every_type_object_of_the_sample_house_relates_occurrences_of_its_class_once() {
+        let f = sample_ifc();
+        dangling(&f);
+        let type_classes: BTreeSet<String> = f
+            .lines()
+            .filter_map(|l| {
+                let class = l.split_once('=')?.1.split_once('(')?.0;
+                (class.starts_with("IFC") && !class.starts_with("IFCREL") && class.ends_with("TYPE")).then(|| class.to_string())
+            })
+            .collect();
+        let expected = ["IFCCOVERINGTYPE", "IFCDOORTYPE", "IFCFURNITURETYPE", "IFCROOFTYPE", "IFCSLABTYPE", "IFCWALLTYPE", "IFCWINDOWTYPE"];
+        assert_eq!(type_classes, expected.map(str::to_string).into_iter().collect::<BTreeSet<_>>());
+        let mut listed = BTreeSet::new();
+        for class in &type_classes {
+            let occurrence = class.strip_suffix("TYPE").unwrap();
+            let of_class = of_kind(&f, occurrence);
+            for t in of_kind(&f, class) {
+                for o in occurrences_of(&f, t) {
+                    assert!(of_class.contains(&o), "#{o} is listed by {class} but is not a {occurrence}");
+                    assert!(listed.insert(o), "#{o} is related to more than one type");
+                }
+            }
+            // Attributes IFC4 gives the type: thirteen for a door's or a window's, eleven for a furniture's, else ten.
+            let count = match class.as_str() {
+                "IFCDOORTYPE" | "IFCWINDOWTYPE" => 13,
+                "IFCFURNITURETYPE" => 11,
+                _ => 10,
+            };
+            for line in entities(&f, class) {
+                assert_eq!(attributes(&line).len(), count, "{line}");
+            }
+        }
     }
 
     #[test]

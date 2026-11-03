@@ -775,8 +775,10 @@ pub struct BimApp {
     /// The reader of Revit files, which the desktop app attaches (`bimcraft-rvt` is Apache-2.0 only, so this crate never depends on
     /// it): a window starts without one, so it offers no `.rvt` and a test never reads a real one.
     pub revit: Option<revit::Importer>,
-    /// The control port, when the window was started with one: agents work on this project through it.
+    /// The control port, when the window was started with one or Settings opened it: agents work on this project through it.
     control: Option<control::Control>,
+    /// File > Settings > Agents: whether the window opens the port, on which, and whether agents may edit or only read.
+    agents: control::Agents,
     /// The Revit file being read, on a thread of its own.
     revit_job: Option<revit::Job>,
     /// Files to open at the next frame: the command line's, and what the system asked for while a Revit file was being read.
@@ -1335,6 +1337,7 @@ impl BimApp {
             updates: None,
             revit: None,
             control: None,
+            agents: control::Agents::default(),
             revit_job: None,
             opens: Vec::new(),
             dialog: None,
@@ -2856,7 +2859,7 @@ impl BimApp {
 
     // ---------- files ----------
 
-    /// Save the project (`.bimcraft`, or any other name) or export by extension: `.ifc`, or the
+    /// Save the project (`.bimcraft`, or any other name) or export by extension: `.ifc`, the 3D scene as `.glb`, or the
     /// view on screen as `.png` (a plan or the 3D view) or `.svg` (a plan). Whether it worked; the
     /// warning box says why not.
     pub fn save_to(&mut self, path: &Path) -> bool {
@@ -2878,8 +2881,8 @@ impl BimApp {
             return self.run("render", p).is_some();
         }
         let saved = self.run("save", json!({"path": file})).is_some();
-        // Exports (IFC, the sheets' PDF) leave the project unsaved.
-        if saved && !matches!(ext.as_str(), "ifc" | "pdf") {
+        // Exports (IFC, glTF, the sheets' PDF) leave the project unsaved.
+        if saved && !matches!(ext.as_str(), "ifc" | "glb" | "pdf") {
             self.saved = Arc::clone(&self.session.model);
             self.note_recent(path);
             self.autosave_saved();
@@ -2995,6 +2998,7 @@ impl BimApp {
         fresh.window = std::mem::take(&mut self.window);
         (fresh.updates, fresh.revit) = (self.updates.take(), self.revit.take());
         fresh.control = self.control.take();
+        fresh.agents = std::mem::take(&mut self.agents);
         fresh.opens = std::mem::take(&mut self.opens);
         (fresh.recent, fresh.recent_path) = (std::mem::take(&mut self.recent), self.recent_path.take());
         fresh.autosave = std::mem::take(&mut self.autosave);
@@ -3448,6 +3452,9 @@ impl BimApp {
             }
             if ui.button(t("Sheets as PDF…")).clicked() {
                 self.export(ctx, "PDF", "pdf");
+            }
+            if ui.button(t("3D Scene as glTF…")).clicked() {
+                self.export(ctx, msg!("glTF binary"), "glb");
             }
         });
         self.report_menu(ui);

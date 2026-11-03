@@ -57,3 +57,6 @@ edit_shape {"id": 100343, "points": [{"at": [52000,3000], "z": -40}, {"at": [560
 type {"category": "roof", "name": "Terrace Roof", "layers": [{"function": "finish", "thickness": 10}, {"function": "substrate", "thickness": 100, "variable": true}, {"function": "structure", "thickness": 200}]}
 roof {"level": 100001, "slope": 0, "type": "Terrace Roof", "boundary": [[60000,0],[68000,0],[68000,6000],[60000,6000]]}
 edit_shape {"id": 100344, "points": [{"at": [64000,3000], "z": -40}]}
+# Runs whose IFC types (IfcDuctSegmentType, IfcCableSegmentType) the export writes; last, so the ids above stay put.
+duct {"points": [[0,8000],[6000,8000]], "offset": 2500, "system": "Supply air"}
+cabling {"points": [[0,8500],[6000,8500]], "offset": 2500, "system": "Network"}

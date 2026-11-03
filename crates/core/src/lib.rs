@@ -40,6 +40,7 @@ pub mod fills;
 mod fixtures;
 pub mod font;
 pub mod geom;
+pub mod gltf;
 pub mod graphics;
 pub mod groups;
 pub mod hydrant;
@@ -62,6 +63,8 @@ pub mod pat;
 pub mod pdf;
 pub mod pen;
 pub mod phasing;
+#[cfg(test)]
+mod read_only_tests;
 pub mod rebar;
 #[cfg(test)]
 mod rebar_tests;
