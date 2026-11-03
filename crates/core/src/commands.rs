@@ -1702,6 +1702,25 @@ pub static ALL: &[Command] = &[
         load_points,
     ),
     other(
+        "dps_check",
+        "Check Surge Protection",
+        "{region: AQ1|AQ2|AQ3, overhead?, accepted_risk?, risk_to_people?, purpose?: line|direct|both, earthing?: TT|TN-S|TN-C|IT, \
+         neutral?, phases?: 1|3, existing?, signal_lines?: [telephone|data|video|tv|antenna|interconnection]} surge protection (DPS) of \
+         a power line as NBR 5410:2004 asks. It is required where the line is `overhead` (wholly or partly, or the installation has an \
+         overhead line itself) and the `region` is AQ2 (more than 25 days of thunderstorms a year), or in any AQ3 region (5.4.2.1.1); \
+         `accepted_risk` is the project taking a calculated risk the standard allows, never where the omission may put people at risk \
+         (`risk_to_people`), and `exempt` says it was taken. When it is required the reply gives where it stands by its `purpose` \
+         (line, the default: surges the line carries and switching surges, at the entry or the main board; direct: lightning on the \
+         building, at the entry; both; `existing` adds the meter box of an existing individual unit), with `earthing` (and whether the \
+         line has a `neutral`, yes by default) the connection scheme or schemes of Figure 13, with `phases` (3 by default) the least \
+         nominal discharge current (5 kA for each mode; 20 kA three-phase or 10 kA single-phase between the neutral and the PE of \
+         scheme 3) and impulse current (12.5 kA; 50 or 25 kA there), and the connecting conductors (4 mm² copper at least, 16 mm² \
+         against direct lightning, 0.5 m in all). `signal_lines` are the external signal lines, each protected at the entry. Not \
+         covered: the least Uc of Table 49, the level Up of Table 31, the short-circuit withstand and overcurrent protection of the \
+         DPS, and coordination (`not_covered`). It has no shortcut: Revit has no tool for it. It changes nothing",
+        dps_check,
+    ),
+    other(
         "water_size",
         "Size Cold Water Pipes",
         "{fixtures?: {wc, lav, sink, shower, laundry: count}, flow?, method?: weights|sum, dn?, length?, fittings?: {elbow90, elbow45, \
@@ -4504,6 +4523,97 @@ fn vent_size(_: &mut Session, p: &Value) -> R {
         out.insert("trap_to_vent_mm".into(), json!(mm));
     }
     Ok(Value::Object(out))
+}
+
+fn dps_check(_: &mut Session, p: &Value) -> R {
+    use crate::dps::{self, EARTHINGS, Earthing, PURPOSES, Purpose, REGIONS, Region, SIGNALS};
+    let c = "dps_check";
+    if !p.is_object() {
+        return Err(bad(c, "params must be an object"));
+    }
+    only(
+        c,
+        p,
+        &["region", "overhead", "accepted_risk", "risk_to_people", "purpose", "earthing", "neutral", "phases", "existing", "signal_lines"],
+    )?;
+    let Some(region) = Region::parse(choice(c, p, "region", REGIONS, "")?) else {
+        return Err(bad(c, format!("`region` is required: {}", REGIONS.join(", "))));
+    };
+    let line = dps::Line {
+        overhead: flag(c, p, "overhead")?,
+        region,
+        accepted_risk: flag(c, p, "accepted_risk")?,
+        risk_to_people: flag(c, p, "risk_to_people")?,
+    };
+    let purpose = Purpose::parse(choice(c, p, "purpose", PURPOSES, "line")?).unwrap_or(Purpose::Line);
+    let earthing = match choice(c, p, "earthing", EARTHINGS, "")? {
+        "" => None,
+        name => Earthing::parse(name),
+    };
+    let neutral = if absent(p.get("neutral")) { true } else { flag(c, p, "neutral")? };
+    let phases = match p.get("phases").filter(|v| !v.is_null()) {
+        None => 3,
+        Some(v) => match v.as_u64() {
+            Some(n @ (1 | 3)) => n as u32,
+            _ => return Err(bad(c, format!("`phases` is 1 or 3, got {v}"))),
+        },
+    };
+    let existing = flag(c, p, "existing")?;
+    let mut signals = Vec::new();
+    match p.get("signal_lines").filter(|v| !v.is_null()) {
+        None => {}
+        Some(Value::Array(a)) if a.len() <= 1000 => {
+            for v in a {
+                let kind = v.as_str().filter(|k| dps::signal_required(k).is_some());
+                let Some(kind) = kind else {
+                    return Err(bad(c, format!("`signal_lines` holds {}, got {v}", SIGNALS.join(", "))));
+                };
+                signals.push(
+                    json!({"kind": kind, "required": true, "why": dps::signal_required(kind), "where": "at the building's entry or exit"}),
+                );
+            }
+        }
+        Some(v) => return Err(bad(c, format!("`signal_lines` is a list of {}, got {v}", SIGNALS.join(", ")))),
+    }
+    let v = dps::required(&line);
+    let mut power = Map::new();
+    power.insert("required".into(), json!(v.required));
+    power.insert("exempt".into(), json!(v.exempt));
+    power.insert("reasons".into(), json!(v.reasons));
+    if v.required {
+        power.insert("purpose".into(), json!(PURPOSES[purpose as usize]));
+        power.insert("where".into(), json!(dps::place(purpose, existing)));
+        let mut three = false;
+        if let Some(e) = earthing {
+            let list = dps::schemes(e, neutral);
+            three = list.contains(&3);
+            let text: Vec<Value> = list.iter().map(|s| json!({"scheme": s, "connects": dps::scheme_text(*s, e)})).collect();
+            power.insert(
+                "connection".into(),
+                json!({"earthing": EARTHINGS[e as usize], "neutral": neutral, "schemes": list, "connects": text}),
+            );
+        }
+        let extra = |each: f64, special: f64| {
+            let mut o = Map::new();
+            o.insert("each_mode".into(), json!(each));
+            if three {
+                o.insert("neutral_to_pe_in_scheme_3".into(), json!(special));
+            }
+            Value::Object(o)
+        };
+        if purpose != Purpose::Direct {
+            power.insert("discharge_ka".into(), extra(dps::discharge(purpose, false, phases), dps::discharge(purpose, true, phases)));
+        }
+        if purpose != Purpose::Line {
+            power.insert("impulse_ka".into(), extra(dps::impulse(false, phases), dps::impulse(true, phases)));
+        }
+        power.insert("conductor".into(), json!({"section_mm2": dps::conductor_section(purpose), "max_length_m": dps::CONDUCTOR_LENGTH}));
+    }
+    Ok(json!({
+        "power": power,
+        "signal": signals,
+        "not_covered": "the least Uc of Table 49, the protection level Up (category II of Table 31), the short-circuit withstand and the overcurrent protection of the DPS (6.3.5.2.5), and the coordination between DPS",
+    }))
 }
 
 fn load_points(s: &mut Session, p: &Value) -> R {

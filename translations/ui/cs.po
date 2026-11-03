@@ -2207,7 +2207,7 @@ msgstr "Zbourat (DW): klikněte na prvek, který chcete zbourat ve fázi pohledu
 msgid "Demolished"
 msgstr "Zbourané"
 
-#: crates/core/src/commands.rs:7872
+#: crates/core/src/commands.rs:7982
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -2684,7 +2684,7 @@ msgstr ""
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr ""
 
-#: crates/core/src/commands.rs:1775
+#: crates/core/src/commands.rs:1794
 msgid "Elements"
 msgstr "Prvky"
 
@@ -7916,7 +7916,7 @@ msgstr "Jednotky"
 msgid "Units Format"
 msgstr ""
 
-#: crates/core/src/commands.rs:8013
+#: crates/core/src/commands.rs:8123
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 
