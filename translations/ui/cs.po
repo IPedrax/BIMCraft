@@ -8495,6 +8495,92 @@ msgctxt "category-plural"
 msgid "Wires"
 msgstr "Vodiče"
 
+#: crates/ui-egui/src/footer.rs:418 crates/ui-egui/src/properties.rs:2182
+msgid "Applies to all views; snaps to the active view's enabled main grid or subgrid, even when hidden"
+msgstr ""
+
+#: crates/ui-egui/src/background_grid.rs:95 crates/ui-egui/src/footer.rs:399
+#: crates/ui-egui/src/graphics.rs:126 crates/ui-egui/src/graphics.rs:541
+#: crates/ui-egui/src/graphics.rs:671
+msgid "Background Grids"
+msgstr ""
+
+#: crates/ui-egui/src/graphics.rs:543 crates/ui-egui/src/graphics.rs:673
+msgid "Edit Background Grids"
+msgstr ""
+
+#: crates/ui-egui/src/background_grid.rs:45
+msgid "Graphics follow parent view {}"
+msgstr ""
+
+#: crates/ui-egui/src/background_grid.rs:163
+msgid "Grid rotation"
+msgstr ""
+
+#: crates/ui-egui/src/footer.rs:411
+msgid "Grid settings…"
+msgstr ""
+
+#: crates/ui-egui/src/footer.rs:417 crates/ui-egui/src/properties.rs:2181
+msgid "Grid snapping"
+msgstr ""
+
+#: crates/ui-egui/src/background_grid.rs:134
+msgid "Grids start at 0, 0 in each view and rotate together."
+msgstr ""
+
+#: crates/ui-egui/src/background_grid.rs:137 crates/ui-egui/src/footer.rs:409
+msgid "Main grid"
+msgstr ""
+
+#: crates/ui-egui/src/background_grid.rs:151
+msgid "Main grid colour"
+msgstr ""
+
+#: crates/ui-egui/src/background_grid.rs:151
+msgid "Main grid pen"
+msgstr ""
+
+#: crates/ui-egui/src/background_grid.rs:138
+msgid "Main spacing X"
+msgstr ""
+
+#: crates/ui-egui/src/background_grid.rs:138
+msgid "Main spacing Y"
+msgstr ""
+
+#: crates/ui-egui/src/footer.rs:401
+msgid "Show background grids, change their settings, or toggle grid snapping"
+msgstr ""
+
+#: crates/ui-egui/src/background_grid.rs:135 crates/ui-egui/src/footer.rs:408
+msgid "Show grids"
+msgstr ""
+
+#: crates/ui-egui/src/background_grid.rs:153 crates/ui-egui/src/footer.rs:410
+msgid "Subgrid"
+msgstr ""
+
+#: crates/ui-egui/src/background_grid.rs:160
+msgid "Subgrid colour"
+msgstr ""
+
+#: crates/ui-egui/src/background_grid.rs:154
+msgid "Subgrid divisions X"
+msgstr ""
+
+#: crates/ui-egui/src/background_grid.rs:154
+msgid "Subgrid divisions Y"
+msgstr ""
+
+#: crates/ui-egui/src/background_grid.rs:160
+msgid "Subgrid pen"
+msgstr ""
+
+#: crates/ui-egui/src/background_grid.rs:92
+msgid "View template {}"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3039
 #~ msgid "Aligned Dimension (DI): pick parallel wall faces, wall ends, doors, windows or grids, then click where the dimension line goes"
 #~ msgstr "Zarovnaná kóta (DI): vyberte rovnoběžné plochy stěn, konce stěn, dveře, okna nebo osnovy a potom klikněte do místa vynášecí čáry"

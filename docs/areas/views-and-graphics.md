@@ -16,6 +16,14 @@ placed with no scale takes the view's. The units name the scales and list the on
 1" = 200'-0"), and 1 : n for any other. The Scale menu, Properties, templates and sheets' titles name them so, and a scale is typed
 as n, 1 : n, or two lengths (`1/4" = 1'-0"`).
 
+Background grids are view-owned graphics (`Graphics::background_grid`), controlled by a view template through the
+`background_grid` group. `graphics` and `template` accept a grid patch (spacing in millimetres, divisions, rotation, two
+styles and visibility), or null to reset it. `Graphics::resolved` supplies the effective grid, and both the
+commands and `check_followed` protect template-controlled values. Instance Properties and the bottom view control bar
+open the view's grid editor; View Templates edits the template's grid. The controls are disabled in a follower, with the
+template named on hover. Grid snapping is a separate global preference in Manage > Snaps and the bottom grid menu,
+and is never controlled by a view template. Details: [background grids](desktop.md#background-grids).
+
 The view control bar's High Contrast Point Clouds (`footer.rs`, wherever the project or a link holds a scan, in a plan, a section, an elevation
 and the 3D view) fills the view's `pointcloud` category with one colour, the user's, in one `graphics` command; how it behaves is in
 [point clouds](point-clouds.md).

@@ -30,6 +30,7 @@ icon_names! {
     Room,
     Level,
     Grid,
+    BackgroundGrid,
     Undo,
     Redo,
     Open,
@@ -241,6 +242,12 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             // The level head is clear of the datum until its tip, with a balanced line.
             g.line(&[(3.0, 16.0), (21.0, 16.0)]);
             g.closed(&[(12.0, 7.0), (20.0, 7.0), (16.0, 16.0)]);
+        }
+        Icon::BackgroundGrid => {
+            for at in [4.0, 12.0, 20.0] {
+                g.line(&[(at, 4.0), (at, 20.0)]);
+                g.line(&[(4.0, at), (20.0, at)]);
+            }
         }
         Icon::Grid => {
             // A centered grid bubble on its datum axis.

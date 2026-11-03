@@ -123,6 +123,7 @@ fn group_name(g: Group) -> &'static str {
         Group::Scale => "View Scale",
         Group::Detail => "Detail Level",
         Group::Style => "Visual Style",
+        Group::BackgroundGrid => msg!("Background Grids"),
     }
 }
 
@@ -304,7 +305,12 @@ impl BimApp {
                     if let Some(name) = &d.draft.template {
                         let what: Vec<&str> = followed
                             .iter()
-                            .filter(|g| !matches!(g, Group::Range | Group::Phase | Group::Scale | Group::Detail | Group::Style))
+                            .filter(|g| {
+                                !matches!(
+                                    g,
+                                    Group::Range | Group::Phase | Group::Scale | Group::Detail | Group::Style | Group::BackgroundGrid
+                                )
+                            })
                             .map(|g| t(group_name(*g)))
                             .collect();
                         if !what.is_empty() {
@@ -483,6 +489,7 @@ impl BimApp {
         let view = self.graphic_view();
         let own = self.graphics_now();
         let (mut close, mut run, mut assign, mut picked) = (false, None::<Value>, None::<Value>, None::<String>);
+        let mut edit_grid = None;
         let r = Modal::new(UiId::new("view-templates"), t("View Templates")).width(520.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
                 ui.add_space(6.0);
@@ -531,6 +538,13 @@ impl BimApp {
                             run = Some(json!({"name": d.picked, "visual_style": v.name()}));
                         }
                         ui.end_row();
+                        ui.label(t("Background Grids"));
+                        let r = ui.button(t("Edit…"));
+                        r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, t("Edit Background Grids")));
+                        if r.clicked() {
+                            edit_grid = Some(d.picked.clone());
+                        }
+                        ui.end_row();
                     });
                     if let Some(view) = &view {
                         let now = own.template.as_ref() == Some(&d.picked);
@@ -564,6 +578,9 @@ impl BimApp {
                 ui.with_layout(Layout::right_to_left(Align::Min), |ui| close = ui.button(t("Close")).clicked());
             });
         });
+        if let Some(name) = edit_grid {
+            self.open_template_background_grid(name);
+        }
         if let Some(p) = run
             && self.run("template", p).is_none()
         {
@@ -647,6 +664,19 @@ impl BimApp {
                             set = Some(("visual_style", json!({"style": v.name()})));
                         }
                     });
+                    ui.end_row();
+                }
+                if let Some(id) = own_id {
+                    let note = self.grid_controlled(id);
+                    ui.add_enabled(note.is_none(), egui::Label::new(t("Background Grids")));
+                    let r = ui.add_enabled(note.is_none(), Button::new(t("Edit…")));
+                    r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, note.is_none(), t("Edit Background Grids")));
+                    if r.clicked() {
+                        self.open_background_grid();
+                    }
+                    if let Some(note) = note {
+                        r.on_disabled_hover_text(note);
+                    }
                     ui.end_row();
                 }
                 let label = ui.label(t("View Template"));

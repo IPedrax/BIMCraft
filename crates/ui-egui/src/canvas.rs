@@ -894,7 +894,7 @@ impl BimApp {
     pub(crate) fn snap(&self, m: &Model, level: Id, v: &View, at: (f32, f32), from: &[P2], square: bool) -> Found {
         let reach = Reach { point: SNAP / v.scale, line: f64::from(PICK) / v.scale };
         let view = self.plan_key().unwrap_or(level);
-        match &self.sketch {
+        let found = match &self.sketch {
             Some(sk) => {
                 let editing = match sk.of {
                     crate::sketch::Of::Edit(id) => Some(id),
@@ -903,7 +903,16 @@ impl BimApp {
                 snap::in_sketch(m, snap::Sketch { view, lines: &sk.lines, editing }, v.mm(at), reach, from, square, &self.snaps_now())
             }
             None => snap::snap(m, view, v.mm(at), reach, from, square, &self.snaps_now()),
+        };
+        if matches!(found.kind, Kind::Free | Kind::Angle)
+            && !square
+            && self.snap_once.is_none()
+            && self.grid_snapping
+            && let Some(at) = self.background_grid().nearest(v.mm(at))
+        {
+            return Found { at, kind: Kind::Intersection, guide: None };
         }
+        found
     }
 
     /// Finds alignment guides (smart snapping) to reference points of existing elements when drawing.
@@ -1279,6 +1288,7 @@ impl BimApp {
 
         let p = ui.painter_at(rect);
         p.rect_filled(rect, 0.0, color(render::PAPER));
+        self.paint_background_grid(&p, rect, view);
         let mut marked = self.selection.clone();
         if let Tool::Trim(Some((first, _))) | Tool::TrimTo { boundary: Some(first), .. } = self.tool {
             marked.push(first);

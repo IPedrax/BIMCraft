@@ -9,6 +9,7 @@ pub mod alignment;
 pub mod autosave;
 #[cfg(test)]
 mod autosave_tests;
+pub mod background_grid;
 pub mod bridge;
 pub mod cad;
 #[cfg(test)]
