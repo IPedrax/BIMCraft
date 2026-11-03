@@ -1705,7 +1705,7 @@ pub static ALL: &[Command] = &[
         "dps_check",
         "Check Surge Protection",
         "{region: AQ1|AQ2|AQ3, overhead?, accepted_risk?, risk_to_people?, purpose?: line|direct|both, earthing?: TT|TN-S|TN-C|IT, \
-         uo?, system?: 120/208|127/220|220/380|230/400|277/480|400/690, neutral?, phases?: 1|3, existing?, signal_lines?: [telephone|data|video|tv|antenna|interconnection]} surge protection (DPS) of \
+         uo?, before_dr?, system?: 120/208|127/220|220/380|230/400|277/480|400/690, neutral?, phases?: 1|3, existing?, signal_lines?: [telephone|data|video|tv|antenna|interconnection]} surge protection (DPS) of \
          a power line as NBR 5410:2004 asks. It is required where the line is `overhead` (wholly or partly, or the installation has an \
          overhead line itself) and the `region` is AQ2 (more than 25 days of thunderstorms a year), or in any AQ3 region (5.4.2.1.1); \
          `accepted_risk` is the project taking a calculated risk the standard allows, never where the omission may put people at risk \
@@ -1718,8 +1718,9 @@ pub static ALL: &[Command] = &[
          against direct lightning, 0.5 m in all). With `earthing`, `uc_min` is the least continuous operating voltage Uc of Tabela 49 for \
          each pair of points the device connects (1.1 Uo; Uo between the neutral and the PE; √3 Uo phase to PE in IT; U in IT without a \
          neutral), in volts when `uo`, the phase-to-neutral voltage, is given. `signal_lines` are the external signal lines, each protected at the entry. Not \
-         covered: the short-circuit withstand and overcurrent protection of the \
-         DPS, and coordination (`not_covered`). It has no shortcut: Revit has no tool for it. It changes nothing",
+         covered: the overcurrent device of the DPS (6.3.5.2.5) and coordination (`not_covered`). `before_dr` is for a DPS upstream of \
+         a DR, which in TT takes scheme 3 only (6.3.5.2.6 b); with `earthing` the reply also gives the follow current between neutral \
+         and PE and the short-circuit the DPS must withstand (6.3.5.2.4 e). It has no shortcut: Revit has no tool for it. It changes nothing",
         dps_check,
     ),
     other(
@@ -4549,6 +4550,7 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
             "signal_lines",
             "uo",
             "system",
+            "before_dr",
         ],
     )?;
     let Some(region) = Region::parse(choice(c, p, "region", REGIONS, "")?) else {
@@ -4574,6 +4576,7 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
         },
     };
     let existing = flag(c, p, "existing")?;
+    let before_dr = flag(c, p, "before_dr")?;
     let system = match p.get("system").filter(|v| !v.is_null()) {
         None => None,
         Some(v) => match v.as_str().filter(|x| dps::withstand(x).is_some()) {
@@ -4613,6 +4616,10 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
     if v.required {
         power.insert("purpose".into(), json!(PURPOSES[purpose as usize]));
         power.insert("where".into(), json!(dps::place(purpose, existing)));
+        power.insert(
+            "short_circuit".into(),
+            json!("the DPS withstands the short-circuit current presumed where it is installed, with the overcurrent device that goes with it, and a DPS with spark gaps interrupts the follow current of that point (6.3.5.2.4 e)"),
+        );
         if let Some(w) = system.as_deref().and_then(|x| dps::withstand(x).map(|w| (x, w))) {
             power.insert(
                 "up".into(),
@@ -4626,7 +4633,7 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
         }
         let mut three = false;
         if let Some(e) = earthing {
-            let list = dps::schemes(e, neutral);
+            let list = if before_dr { dps::schemes_before_dr(e, neutral) } else { dps::schemes(e, neutral) };
             three = list.contains(&3);
             let text: Vec<Value> = list.iter().map(|s| json!({"scheme": s, "connects": dps::scheme_text(*s, e)})).collect();
             let modes: Vec<Value> = dps::uc_min(e, neutral, uo.unwrap_or(1.0))
@@ -4637,6 +4644,15 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
                 })
                 .collect();
             power.insert("uc_min".into(), json!({"uo_v": uo, "modes": modes}));
+            match dps::subsequent_current(e) {
+                Some(dps::Subsequent::AtLeastA(a)) => {
+                    power.insert("subsequent_current".into(), json!({"neutral_pe_min_a": a}));
+                }
+                Some(dps::Subsequent::LikePhaseNeutral) => {
+                    power.insert("subsequent_current".into(), json!({"neutral_pe": "the same as the DPS between phase and neutral"}));
+                }
+                None => {}
+            }
             power.insert(
                 "connection".into(),
                 json!({"earthing": EARTHINGS[e as usize], "neutral": neutral, "schemes": list, "connects": text}),
@@ -4661,7 +4677,7 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
     Ok(json!({
         "power": power,
         "signal": signals,
-        "not_covered": "the short-circuit withstand and the overcurrent protection of the DPS (6.3.5.2.5), and the coordination between DPS",
+        "not_covered": "the overcurrent device of the DPS and where it stands (6.3.5.2.5), and the coordination between DPS",
     }))
 }
 

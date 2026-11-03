@@ -142,6 +142,21 @@ fn tabela_31_is_as_printed() {
     assert_eq!(SIGNAL_ENTRY_WITHSTAND_KV, 1.5);
 }
 
+#[test]
+fn the_subsequent_current_between_neutral_and_pe() {
+    assert_eq!(subsequent_current(Earthing::Tt), Some(Subsequent::AtLeastA(100.0)));
+    assert_eq!(subsequent_current(Earthing::TnS), Some(Subsequent::AtLeastA(100.0)));
+    assert_eq!(subsequent_current(Earthing::It), Some(Subsequent::LikePhaseNeutral));
+    assert_eq!(subsequent_current(Earthing::TnC), None, "TN-C has no neutral-PE device");
+}
+
+#[test]
+fn a_tt_installation_with_the_dps_before_the_dr_takes_scheme_3_only() {
+    assert_eq!(schemes_before_dr(Earthing::Tt, true), vec![3]);
+    assert_eq!(schemes_before_dr(Earthing::TnS, true), vec![2, 3]);
+    assert_eq!(schemes_before_dr(Earthing::Tt, false), vec![1]);
+}
+
 mod command {
     use crate::engine::Session;
     use serde_json::{Value, json};
@@ -163,7 +178,7 @@ mod command {
         assert_eq!(p["conductor"]["max_length_m"], 0.5);
         assert!(p["where"].as_array().is_some_and(|w| w.len() == 2), "{r}");
         assert!(
-            r["not_covered"].as_str().is_some_and(|n| !n.contains("Table 31") && !n.contains("Table 49") && n.contains("short-circuit")),
+            r["not_covered"].as_str().is_some_and(|n| !n.contains("Table 31") && !n.contains("Table 49") && n.contains("coordination")),
             "{r}"
         );
         assert_eq!(crate::engine::find("dps_check").map(|c| c.undoable), Some(false));
@@ -201,6 +216,20 @@ mod command {
         for bad in [json!({"region": "AQ3", "system": "110"}), json!({"region": "AQ3", "system": 220})] {
             assert!(s.execute("dps_check", &bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn the_subsequent_current_the_short_circuit_and_the_dr_come_with_the_connection() {
+        let mut s = Session::new();
+        let r = run(&mut s, json!({"region": "AQ3", "earthing": "TT"}));
+        assert_eq!(r["power"]["subsequent_current"], json!({"neutral_pe_min_a": 100.0}));
+        assert!(r["power"]["short_circuit"].as_str().is_some_and(|t| t.contains("presumed")), "{r}");
+        assert_eq!(r["power"]["connection"]["schemes"], json!([2, 3]));
+        let r = run(&mut s, json!({"region": "AQ3", "earthing": "TT", "before_dr": true}));
+        assert_eq!(r["power"]["connection"]["schemes"], json!([3]), "{r}");
+        let r = run(&mut s, json!({"region": "AQ3", "earthing": "IT"}));
+        assert_eq!(r["power"]["subsequent_current"], json!({"neutral_pe": "the same as the DPS between phase and neutral"}));
+        assert!(s.execute("dps_check", &json!({"region": "AQ3", "before_dr": 3})).is_err());
     }
 
     #[test]

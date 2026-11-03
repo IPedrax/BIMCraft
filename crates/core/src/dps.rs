@@ -165,6 +165,31 @@ pub fn schemes(earthing: Earthing, neutral: bool) -> Vec<u8> {
     }
 }
 
+/// The follow current a DPS with spark gaps must be able to interrupt between the neutral and the PE (6.3.5.2.4 e).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Subsequent {
+    AtLeastA(f64),
+    LikePhaseNeutral,
+}
+
+/// 6.3.5.2.4 e: 100 A at least in TN and TT, and that of the DPS between phase and neutral in IT; `None` where there is no neutral-PE
+/// device (TN-C).
+pub fn subsequent_current(earthing: Earthing) -> Option<Subsequent> {
+    match earthing {
+        Earthing::TnC => None,
+        Earthing::It => Some(Subsequent::LikePhaseNeutral),
+        Earthing::Tt | Earthing::TnS => Some(Subsequent::AtLeastA(100.0)),
+    }
+}
+
+/// 6.3.5.2.6 b: where the DPS stand upstream of a DR in a TT installation they are connected by scheme 3; otherwise as `schemes`.
+pub fn schemes_before_dr(earthing: Earthing, neutral: bool) -> Vec<u8> {
+    if earthing == Earthing::Tt && neutral {
+        return vec![3];
+    }
+    schemes(earthing, neutral)
+}
+
 /// What a connection scheme connects.
 pub fn scheme_text(scheme: u8, earthing: Earthing) -> String {
     match (scheme, earthing) {

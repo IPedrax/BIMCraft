@@ -2208,7 +2208,7 @@ msgstr ""
 msgid "Demolished"
 msgstr ""
 
-#: crates/core/src/commands.rs:8031
+#: crates/core/src/commands.rs:8047
 msgid "Dependent"
 msgstr ""
 
@@ -2685,7 +2685,7 @@ msgstr ""
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr ""
 
-#: crates/core/src/commands.rs:1796
+#: crates/core/src/commands.rs:1797
 msgid "Elements"
 msgstr ""
 
@@ -7917,7 +7917,7 @@ msgstr ""
 msgid "Units Format"
 msgstr ""
 
-#: crates/core/src/commands.rs:8172
+#: crates/core/src/commands.rs:8188
 msgid "Unnamed"
 msgstr ""
 
