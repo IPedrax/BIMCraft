@@ -437,4 +437,65 @@ mod tests {
         assert_eq!(sheet_name("[]"), "Sheet1");
         assert_eq!(escape("a\u{1}b\tc"), "ab\tc");
     }
+
+    /// A zip of `parts`, stored: what a spreadsheet writes, in the way a reader must take it.
+    fn zipped(parts: &[(&str, &str)]) -> Vec<u8> {
+        let (mut out, mut central) = (Vec::new(), Vec::new());
+        for (name, body) in parts {
+            let at = out.len() as u32;
+            let (n, b) = (name.len() as u16, body.len() as u32);
+            out.extend(b"PK\x03\x04\x14\0\0\0\0\0\0\0\0\0\0\0\0\0");
+            out.extend(b.to_le_bytes());
+            out.extend(b.to_le_bytes());
+            out.extend(n.to_le_bytes());
+            out.extend(0u16.to_le_bytes());
+            out.extend(name.as_bytes());
+            out.extend(body.as_bytes());
+            central.extend(b"PK\x01\x02\x14\0\x14\0\0\0\0\0\0\0\0\0\0\0\0\0");
+            central.extend(b.to_le_bytes());
+            central.extend(b.to_le_bytes());
+            central.extend(n.to_le_bytes());
+            central.extend([0u8; 10]);
+            central.extend([0u8; 2]);
+            central.extend(at.to_le_bytes());
+            central.extend(name.as_bytes());
+        }
+        let start = out.len() as u32;
+        let size = central.len() as u32;
+        out.extend(central);
+        out.extend(b"PK\x05\x06\0\0\0\0");
+        out.extend((parts.len() as u16).to_le_bytes());
+        out.extend((parts.len() as u16).to_le_bytes());
+        out.extend(size.to_le_bytes());
+        out.extend(start.to_le_bytes());
+        out.extend(0u16.to_le_bytes());
+        out
+    }
+
+    #[test]
+    fn a_spreadsheets_own_workbook_is_read_with_its_shared_strings_and_the_cells_it_skips() {
+        let shared = r#"<sst xmlns="x"><si><t>Name</t></si><si><t xml:space="preserve">Fire &amp; Smoke</t></si><si><r><t>Ri</t></r><r><rPr><b/></rPr><t>ch</t></r></si></sst>"#;
+        let sheet = r#"<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="C1" t="s"><v>2</v></c></row><row r="2" spans="1:3"><c r="A2" s="1" t="s"><v>1</v></c><c r="B2"/><c r="C2"><v>12.5</v></c><c r="D2" t="inlineStr"><is><t>in&#x41;</t></is></c></row><row r="3"/></sheetData></worksheet>"#;
+        let book = zipped(&[
+            ("xl/workbook.xml", "<workbook/>"),
+            ("xl/sharedStrings.xml", shared),
+            ("xl/worksheets/sheet10.xml", "<worksheet/>"),
+            ("xl/worksheets/sheet1.xml", sheet),
+        ]);
+        let rows = read(&book).unwrap();
+        assert_eq!(rows[0], ["Name", "", "Rich"]);
+        assert_eq!(rows[1], ["Fire & Smoke", "", "12.5", "inA"]);
+    }
+
+    #[test]
+    fn what_isnt_a_workbook_is_an_error_and_ours_reads_back() {
+        for junk in [&b""[..], b"PK", b"PK\x05\x06", &[0xFF; 100]] {
+            assert!(read(junk).is_err());
+        }
+        let bad_offset = zipped(&[("xl/worksheets/sheet1.xml", "<x/>")]);
+        let cut = bad_offset.get(..bad_offset.len() - 30).unwrap();
+        assert!(read(cut).is_err(), "cut short");
+        let ours = workbook("S", &["A".to_string(), "B".to_string()], &[vec![Cell::Text("x".into()), Cell::Number(2.0)]]);
+        assert_eq!(read(&ours).unwrap()[1], ["x", "2"]);
+    }
 }
