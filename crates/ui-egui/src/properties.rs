@@ -1070,6 +1070,7 @@ impl BimApp {
         });
         ui.add_space(4.0);
         self.layer_picture(ui, &model);
+        self.opening_picker(ui, &model);
         if !ids.is_empty() {
             self.parameters(ui, &model, &ids, rows);
             self.component_parameters(ui, &model, &ids);
@@ -1162,6 +1163,57 @@ impl BimApp {
             if let Some(loc) = near {
                 self.run("modify", json!({"ids": ids, "location": loc.name()}));
             }
+        }
+    }
+
+    /// Which way the doors the palette shows open, as four plans of a door in its wall: as placed, its hand flipped, its facing
+    /// flipped, both. The one they share is lit; a click sets their `flip_hand` and `flip_facing` to another.
+    fn opening_picker(&mut self, ui: &mut Ui, model: &Model) {
+        let Some(("door", _, ids)) = self.type_subject() else { return };
+        if ids.is_empty() {
+            return;
+        }
+        let flag = |id: Id, key: &str| element_json(model, id)[key].as_bool().unwrap_or(false);
+        let now: Vec<(bool, bool)> = ids.iter().map(|id| (flag(*id, "flip_hand"), flag(*id, "flip_facing"))).collect();
+        let shared = now.first().copied().filter(|f| now.iter().all(|g| g == f));
+        ui.label(RichText::new(t("Opens")).strong());
+        let mut pick = None;
+        ui.horizontal(|ui| {
+            let w = (ui.available_width() - 3.0 * ui.spacing().item_spacing.x) / 4.0;
+            for (label, hand, facing) in [
+                (msg!("As placed"), false, false),
+                (msg!("Flipped hand"), true, false),
+                (msg!("Flipped facing"), false, true),
+                (msg!("Flipped both"), true, true),
+            ] {
+                let (rect, r) = ui.allocate_exact_size(vec2(w, 46.0), Sense::click());
+                let on = shared == Some((hand, facing));
+                r.widget_info(|| WidgetInfo::selected(WidgetType::RadioButton, true, on, t(label)));
+                let p = ui.painter();
+                let (fill, edge) = if on { (pal().select_fill, pal().accent) } else { (pal().surface, pal().border) };
+                p.rect(rect, crate::style::corner(4.0), fill, Stroke::new(1.0, edge), StrokeKind::Inside);
+                // The wall across the tile with its opening in the middle; the leaf from its hinge and the arc it sweeps.
+                let ink = Stroke::new(1.5, if on { pal().accent_ink } else { pal().icon });
+                let (c, half) = (rect.center(), (w * 0.2).min(10.0));
+                let wall = Stroke::new(3.0, ink.color);
+                p.line_segment([pos2(rect.left() + 4.0, c.y), pos2(c.x - half, c.y)], wall);
+                p.line_segment([pos2(c.x + half, c.y), pos2(rect.right() - 4.0, c.y)], wall);
+                let (dx, sy) = (if hand { -1.0 } else { 1.0 }, if facing { 1.0 } else { -1.0 });
+                let hinge = pos2(c.x - dx * half, c.y);
+                let radius = 2.0 * half;
+                p.line_segment([hinge, hinge + vec2(0.0, sy * radius)], ink);
+                let arc = (0..=8).map(|k| {
+                    let a = k as f32 / 8.0 * std::f32::consts::FRAC_PI_2;
+                    hinge + vec2(dx * radius * a.cos(), sy * radius * a.sin())
+                });
+                p.add(Shape::line(arc.collect(), Stroke::new(1.0, ink.color)));
+                if r.on_hover_text(t(label)).clicked() {
+                    pick = Some((hand, facing));
+                }
+            }
+        });
+        if let Some((hand, facing)) = pick {
+            self.run("modify", json!({"ids": ids, "flip_hand": hand, "flip_facing": facing}));
         }
     }
 

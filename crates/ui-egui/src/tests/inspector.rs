@@ -18,3 +18,27 @@ fn a_walls_layers_are_drawn_and_a_click_on_them_sets_its_location_line_in_both_p
         assert!(field(&h, wall, "location").as_str().is_none_or(|l| l == "centre"), "rev {rev}: {}", field(&h, wall, "location"));
     }
 }
+
+#[test]
+fn which_way_a_door_opens_is_picked_from_four_pictures_in_both_profiles() {
+    for rev in [false, true] {
+        let script = format!("{BOX}\ndoor {{\"at\": [2000, 0]}}");
+        let mut h = if rev { app(&script) } else { bimcraft(&script) };
+        let door = ids(&h, "door")[0];
+        h.state_mut().selection = vec![door];
+        h.run();
+        let flips = |h: &Harness<BimApp>| {
+            let on = |key: &str| field(h, door, key).as_bool().unwrap_or(false);
+            (on("flip_hand"), on("flip_facing"))
+        };
+        h.get_by_role_and_label(Role::RadioButton, "Flipped both").click();
+        h.run();
+        assert_eq!(flips(&h), (true, true), "rev {rev}");
+        h.get_by_role_and_label(Role::RadioButton, "Flipped facing").click();
+        h.run();
+        assert_eq!(flips(&h), (false, true), "rev {rev}");
+        h.get_by_role_and_label(Role::RadioButton, "As placed").click();
+        h.run();
+        assert_eq!(flips(&h), (false, false), "rev {rev}");
+    }
+}

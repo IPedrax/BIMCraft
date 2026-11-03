@@ -202,7 +202,9 @@ The Inspector's pictures, the same in both profiles. Under the filter row, the t
 (`properties::layer_picture`, for walls, floors, roofs and ceilings, `LAYERED`): each layer to its thickness in its material's colour, a
 type without layers as one band. A wall's run from its exterior face to its interior one, with the location line the selected walls share
 dashed where it runs (`walls::depth`, the core's own rule) and named under it; a click on the picture sets the line nearest it, through
-`modify`. A floor's, a roof's or a ceiling's run from the top down.
+`modify`. A floor's, a roof's or a ceiling's run from the top down. Under it, for doors, which way they open (`opening_picker`): four plans of a door in
+its wall (as placed, hand flipped, facing flipped, both), the one the selected doors share lit, a click setting their `flip_hand` and
+`flip_facing` through `modify`.
 
 Properties' filter. With a selection of several categories, the line under the Type Selector is a drop-down of them, as Revit's is
 (`BimApp::selection_categories`): Multiple Categories first, then each category with its count. One picked is what the palette shows
