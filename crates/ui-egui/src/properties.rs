@@ -416,18 +416,18 @@ fn type_json<'a>(types: &'a Value, category: &str, name: &str) -> &'a Value {
 
 /// A type's parameters, as its Type Properties list them: the group it's under, its field, its label.
 fn type_rows(category: &str) -> &'static [(&'static str, &'static str, &'static str)] {
-    const C: &str = "Construction";
-    const D: &str = "Dimensions";
+    const C: &str = msg!("Construction");
+    const D: &str = msg!("Dimensions");
     match category {
-        "wall" => &[(C, "thickness", "Width")],
+        "wall" => &[(C, "thickness", msg!("Width"))],
         "floor" => &[(C, "thickness", msg!("Default Thickness"))],
-        "door" => &[(D, "width", "Width"), (D, "height", "Height")],
-        "window" => &[(D, "width", "Width"), (D, "height", "Height"), (C, "sill", msg!("Default Sill Height"))],
-        "column" | "structuralcolumn" | "footing" => &[(D, "width", "Width"), (D, "depth", "Depth")],
-        run if bimcraft_core::model::RUN_CATEGORIES.contains(&run) => &[(D, "width", "Width"), (D, "depth", "Depth")],
-        "roof" => &[(C, "thickness", "Thickness")],
-        "ceiling" => &[(C, "thickness", "Thickness"), (C, "grid", msg!("Tile Size"))],
-        "railing" => &[(C, "height", "Height"), (C, "spacing", msg!("Baluster Spacing"))],
+        "door" => &[(D, "width", msg!("Width")), (D, "height", msg!("Height"))],
+        "window" => &[(D, "width", msg!("Width")), (D, "height", msg!("Height")), (C, "sill", msg!("Default Sill Height"))],
+        "column" | "structuralcolumn" | "footing" => &[(D, "width", msg!("Width")), (D, "depth", msg!("Depth"))],
+        run if bimcraft_core::model::RUN_CATEGORIES.contains(&run) => &[(D, "width", msg!("Width")), (D, "depth", msg!("Depth"))],
+        "roof" => &[(C, "thickness", msg!("Thickness"))],
+        "ceiling" => &[(C, "thickness", msg!("Thickness")), (C, "grid", msg!("Tile Size"))],
+        "railing" => &[(C, "height", msg!("Height")), (C, "spacing", msg!("Baluster Spacing"))],
         _ => &[],
     }
 }
@@ -657,11 +657,11 @@ impl MaterialsDialog {
 
 /// What a layer does, as the layer editor names it.
 const FUNCTIONS: [(Function, &str); 5] = [
-    (Function::Structure, "Structure"),
-    (Function::Substrate, "Substrate"),
+    (Function::Structure, msg!("Structure")),
+    (Function::Substrate, msg!("Substrate")),
     (Function::Thermal, msg!("Thermal")),
-    (Function::Membrane, "Membrane"),
-    (Function::Finish, "Finish"),
+    (Function::Membrane, msg!("Membrane")),
+    (Function::Finish, msg!("Finish")),
 ];
 
 fn function_name(f: Function) -> &'static str {

@@ -601,9 +601,12 @@ mod tests {
             assert_eq!(resolve_action(desc), Some(action), "{desc}");
         }
         // What a substring match took for a tool: a word inside a longer one, or a sentence that mentions one.
-        for desc in ["ou", "Patch", "Filter", "the wall of the house", "Walls and doors", "", "x"] {
+        // "Filter" is not among them: German names Filters "Filter", its plural being the same word, so that is a
+        // name the action answers to, not a part of one.
+        for desc in ["ou", "Patch", "Filte", "the wall of the house", "Walls and doors", "", "x"] {
             assert_eq!(resolve_action(desc), None, "{desc}");
         }
+        assert_eq!(resolve_action("Filter"), Some("Filters"), "as German names it");
     }
 
     #[test]
