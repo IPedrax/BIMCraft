@@ -2894,14 +2894,14 @@ fn shape_editing_raises_points_draws_split_lines_and_resets_a_floor() {
     let floor = ids(&h, "floor");
     // A drain 30 mm down in its middle, from Shape Editing's Add Point at the Options Bar's elevation.
     press(&mut h, "Add Point");
-    type_into(&mut h, "Elevation:", "-30");
+    type_into(&mut h, "Offset from Surface:", "-30");
     click(&mut h, P2(4000.0, 3000.0));
     let shape = field(&h, floor[0], "shape");
     assert_eq!((shape["points"][0]["at"].clone(), shape["points"][0]["z"].clone()), (json!([4000.0, 3000.0]), json!(-30.0)), "{shape}");
     assert_eq!(field(&h, floor[0], "top"), json!([-30.0, 0.0]));
     assert_eq!((h.state().selection.as_slice(), &h.state().tool), (floor.as_slice(), &Tool::AddPoint), "ready for the next point");
     // With Absolute, an elevation above the level, not the top: 10 mm under the level is 10 mm under the top here.
-    pick(&mut h, Role::CheckBox, "Absolute");
+    pick(&mut h, Role::RadioButton, "Absolute");
     type_into(&mut h, "Elevation:", "-10");
     click(&mut h, P2(2000.0, 1500.0));
     assert_eq!(field(&h, floor[0], "shape")["points"].as_array().map(Vec::len), Some(2));
@@ -2925,7 +2925,7 @@ fn modify_sub_elements_selects_then_sets_a_points_height_or_an_edges_both_ends_a
     click(&mut h, P2(4000.0, 3000.0));
     let floor = ids(&h, "floor");
     press(&mut h, "Add Point");
-    type_into(&mut h, "Elevation:", "-30");
+    type_into(&mut h, "Offset from Surface:", "-30");
     click(&mut h, P2(4000.0, 3000.0));
     let id = field(&h, floor[0], "shape")["points"][0]["id"].clone();
     // Nothing picked, the Elevation is blank; the drain picked, a little off it, it reads its height, and what's typed
@@ -2969,7 +2969,7 @@ fn modify_sub_elements_drags_a_point_with_its_split_lines_and_labels_its_height(
     click(&mut h, P2(4000.0, 3000.0));
     let floor = ids(&h, "floor");
     press(&mut h, "Add Point");
-    type_into(&mut h, "Elevation:", "-30");
+    type_into(&mut h, "Offset from Surface:", "-30");
     click(&mut h, P2(4000.0, 3000.0));
     press(&mut h, "Add Split Line");
     click(&mut h, P2(40.0, 5960.0));
@@ -3020,26 +3020,37 @@ fn a_shape_points_grip_held_mid_drag_previews_where_it_and_its_creases_will_go()
 }
 
 #[test]
-fn absolute_elevations_are_above_the_floors_level_on_any_level() {
-    let mut h = app(r#"floor {"level": 100001, "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}"#);
+fn elevations_read_from_the_elevation_base_the_unshaped_top_the_level_or_the_project_zero() {
+    // On Level 2, 3000 mm up, its top 50 mm over the level.
+    let mut h = app(r#"floor {"level": 100001, "offset": 50, "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}"#);
     topmost(&mut h, "Level 2");
     let floor = ids(&h, "floor");
     click(&mut h, P2(4000.0, 0.0));
     assert_eq!(h.state().selection, floor);
-    // 30 mm under Level 2, which is 3000 mm up: 30 mm under its top.
+    // Absolute over the level: 30 mm under Level 2, 80 mm under the top.
     press(&mut h, "Add Point");
-    pick(&mut h, Role::CheckBox, "Absolute");
+    pick(&mut h, Role::RadioButton, "Absolute");
+    h.state_mut().shape_base = crate::shape::Base::Level;
     type_into(&mut h, "Elevation:", "-30");
     click(&mut h, P2(4000.0, 3000.0));
-    assert_eq!(field(&h, floor[0], "shape")["points"][0]["z"], json!(-30.0), "{}", field(&h, floor[0], "shape"));
-    assert!(painted(&h).iter().any(|t| t == "-30"), "{:?}", painted(&h));
-    // Modify Sub Elements reads it the same way.
+    assert_eq!(field(&h, floor[0], "shape")["points"][0]["z"], json!(-80.0), "{}", field(&h, floor[0], "shape"));
+    // Modify Sub Elements reads it from each base: 30 under the level, 2970 over the project's zero, 80 under the top.
     press(&mut h, "Modify Sub Elements");
+    h.state_mut().shape_base = crate::shape::Base::Level;
     click(&mut h, P2(4000.0, 3000.0));
     assert_eq!(h.state().shape_z, "-30");
-    type_into(&mut h, "Elevation:", "-50");
+    h.state_mut().shape_base = crate::shape::Base::Project;
+    h.state_mut().shape_refresh();
+    assert_eq!(h.state().shape_z, "2970");
+    h.state_mut().shape_base = crate::shape::Base::Floor;
+    h.state_mut().shape_refresh();
+    assert_eq!(h.state().shape_z, "-80");
+    // Typed over the project's zero, set so.
+    h.state_mut().shape_base = crate::shape::Base::Project;
+    type_into(&mut h, "Elevation:", "3000");
     key(&mut h, Key::Enter);
     assert_eq!(field(&h, floor[0], "shape")["points"][0]["z"], json!(-50.0));
+    assert!(h.query_by_label("Elevation Base:").is_some());
 }
 
 #[test]

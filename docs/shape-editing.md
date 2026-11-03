@@ -46,7 +46,17 @@ Status, on the branch `mod-16-shape-editing` (raised upstream as IPedrax/BIMCraf
   types it too, an edge's at its middle with ▲/▼ in 3D that drag all of it (`shape_raise_all`); Delete takes selected
   points and split lines off (`shape_delete`). Edit mode colours as Revit's (`shape::draw_marks`): points on an edge green,
   inner ones blue, the outline's and openings' edges dashed green, split lines blue, generated creases grey (tests
-  `modify_sub_elements_selects_then_sets_*`, `in_3d_a_picked_edges_arrow_*`).
+  `modify_sub_elements_selects_then_sets_*`, `in_3d_a_picked_edges_arrow_*`). Add Point has Revit's two modes on the
+  Options Bar: Along Surface (the default), an offset over the top as it is there now (`add_point`'s `offset`), so a
+  point on a part that already slopes stays on it; or Absolute, an elevation above the floor's level. While Add Point or
+  Add Split Line is on, the cursor reads how high above the level a click would land (`BimApp::landing_height`; tests
+  `add_point_with_an_offset_*`, `add_point_along_the_surface_*`). Both tools' Elevation Base says what elevations
+  count from (`shape::Base`): the top as it would be without the shape, the floor's level, or the project's zero, Revit's
+  Internal Origin (its Project Base Point and Survey Point wait for shared coordinates); test
+  `elevations_read_from_the_elevation_base_*`. Add Point and Add Split Line snap, by priority, to the shape's points and
+  corners, an edge's middle, else the nearest point along an edge (`view3d::ShapeSnap`), each with the plan's marker in both
+  views: an intersection is always one of its points, its edges being one triangulation's. In 3D a selected point is
+  dimensioned plumb from where the top would be without the shape (`in_3d_a_selected_point_is_dimensioned_*`).
 - **Phase 4**, flat roofs, is built: a flat roof by footprint takes a shape through the same commands and tools
   (`Model::shapeable` sees its top as a floor's, `Model::roof_as_floor`), its underside following its top plumb
   (`roof_faces`, `roof_rise`), walls attached under it following its falls, its plan creases thin, its points snapped,

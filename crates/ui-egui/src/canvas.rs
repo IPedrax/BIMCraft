@@ -995,26 +995,17 @@ impl BimApp {
     /// reach, else the nearest point on an edge within reach (`shape_snap_plan`), else where the ordinary snaps put it.
     pub(crate) fn shape_landing(&self, m: &Model, level: Id, v: &View, q: (f32, f32), from: &[P2], square: bool) -> (P2, Option<(P2, P2)>) {
         let shaped = self.floor_selected().and_then(|(_, f)| shape_snap_plan(m, &f, v.mm(q), f64::from(PICK) / v.scale));
-        shaped.unwrap_or_else(|| (self.snap(m, level, v, q, from, square).at, None))
+        shaped.map_or_else(|| (self.snap(m, level, v, q, from, square).at, None), |(p, edge, _)| (p, edge))
     }
 
     /// [`shape_landing`](Self::shape_landing) as a tool's preview shows it: the edge it snaps to lit, and its marker.
     fn shape_found(&self, sc: &Scene, q: (f32, f32), from: &[P2], square: bool) -> P2 {
         let shaped = self.floor_selected().and_then(|(_, f)| shape_snap_plan(sc.m, &f, sc.v.mm(q), f64::from(PICK) / sc.v.scale));
-        let Some((p, edge)) = shaped else { return self.found(sc, q, from, square) };
-        let (stroke, at) = (Stroke::new(2.0, pal().accent), sc.screen(p));
-        match edge {
-            Some((a, b)) => {
-                sc.p.line_segment([sc.screen(a), sc.screen(b)], Stroke::new(3.0, pal().accent));
-                sc.p.add(Shape::closed_line(
-                    vec![at + vec2(0.0, -6.0), at + vec2(6.0, 0.0), at + vec2(0.0, 6.0), at + vec2(-6.0, 0.0)],
-                    stroke,
-                ));
-            }
-            None => {
-                sc.p.rect_stroke(Rect::from_center_size(at, vec2(11.0, 11.0)), 0.0, stroke, StrokeKind::Middle);
-            }
+        let Some((p, edge, kind)) = shaped else { return self.found(sc, q, from, square) };
+        if let Some((a, b)) = edge {
+            sc.p.line_segment([sc.screen(a), sc.screen(b)], Stroke::new(3.0, pal().accent));
         }
+        crate::shape::snap_marker(sc.p, sc.screen(p), kind);
         p
     }
 
@@ -3087,23 +3078,31 @@ impl BimApp {
             | Tool::SlopeArrow(None)
             | Tool::Measure(_) => start_of(&self.tool),
             // The point a click would add, and its elevation.
+            // The point a click would add, and how high above the level it would be.
             Tool::AddPoint => {
-                let at = sc.screen(self.shape_found(sc, q, &[], shift));
-                p.circle_stroke(at, 4.0, stroke);
-                let z = self.shape_z.trim();
-                label(cursor, if z.is_empty() { t("Top").to_string() } else { format!("{z} {}", m.units.name()) });
+                let to = self.shape_found(sc, q, &[], shift);
+                p.circle_stroke(sc.screen(to), 4.0, stroke);
+                if let Some(z) = self.landing_height(to) {
+                    label(cursor, m.units.length(z));
+                }
                 return;
             }
-            // The split line a click would make.
+            // The split line a click would make, and how high its end would be.
             &Tool::AddSplitLine(Some(start)) => {
-                let (a, b) = (sc.screen(start), sc.screen(self.shape_found(sc, q, &[start], shift)));
-                p.line_segment([a, b], stroke);
+                let to = self.shape_found(sc, q, &[start], shift);
+                p.line_segment([sc.screen(start), sc.screen(to)], stroke);
+                if let Some(z) = self.landing_height(to) {
+                    label(cursor, m.units.length(z));
+                }
                 return;
             }
-            // Where a split line would start.
+            // Where a split line would start, and how high.
             Tool::AddSplitLine(None) => {
-                let at = sc.screen(self.shape_found(sc, q, &[], shift));
-                p.circle_stroke(at, 4.0, stroke);
+                let to = self.shape_found(sc, q, &[], shift);
+                p.circle_stroke(sc.screen(to), 4.0, stroke);
+                if let Some(z) = self.landing_height(to) {
+                    label(cursor, m.units.length(z));
+                }
                 return;
             }
             // The section a click would end, and the elevation a click would place.
@@ -3594,7 +3593,9 @@ impl BimApp {
         let lit = hover.filter(|_| self.shape_grip.is_none()).and_then(|h| {
             marks.points.iter().map(|(q, ..)| (*q, at(*q).distance(h))).filter(|(_, d)| *d <= 8.0).min_by(|a, b| a.1.total_cmp(&b.1))
         });
-        crate::shape::draw_marks(&p, &marks, |a| at(P2(a[0], a[1])), &self.shape_picked, lit.map(|(q, _)| q));
+        // Modify Sub Elements' selection, shown only while it's on.
+        let picked = if self.tool == Tool::ModifySubElements { self.shape_picked.clone() } else { Vec::new() };
+        crate::shape::draw_marks(&p, &marks, |a| at(P2(a[0], a[1])), &picked, lit.map(|(q, _)| q));
         // The creases the drag would leave, dashed over the ones there are.
         for [a, b] in self.shape_preview.as_ref().map(|f| m.shape_creases(f)).unwrap_or_default() {
             p.extend(egui::Shape::dashed_line(&[at(P2(a[0], a[1])), at(P2(b[0], b[1]))], Stroke::new(1.5, pal().accent), 6.0, 4.0));
@@ -3602,7 +3603,7 @@ impl BimApp {
         // Each point's height beside it, and the selection's (an edge's at its middle): a click on one types it. A point held
         // follows the cursor.
         let mut labels: Vec<(P2, Vec<P2>)> = f.shape.points.iter().map(|x| (x.at, vec![x.at])).collect();
-        for s in self.shape_picked.clone() {
+        for s in picked {
             if !labels.iter().any(|(q, _)| q.dist(s.at()) <= TOL) {
                 labels.push((s.at(), s.ends()));
             }

@@ -518,7 +518,12 @@ pub struct BimApp {
     /// Add Point's elevation: above the floor's top as it would be without its shape, or with `shape_absolute`, above its
     /// level; empty, the top's height where it's clicked.
     shape_z: String,
-    shape_absolute: bool,
+    /// What the Options Bar's elevations count from.
+    pub(crate) shape_base: crate::shape::Base,
+    /// Add Point's mode, as Revit's: along the surface as it is, `shape_offset` over it; else Absolute, at `shape_z` above
+    /// the floor's level.
+    pub(crate) shape_along: bool,
+    pub(crate) shape_offset: String,
     /// The selected floor's shape point a drag under Modify Sub Elements holds, where it was.
     shape_grip: Option<P2>,
     /// The selected floor as a grip's drag would leave it, plan or 3D, while it's dragged: its creases drawn over it.
@@ -1021,7 +1026,9 @@ impl BimApp {
             ceiling_height: units.length(CEILING_HEIGHT),
             floor_slope: "5".into(),
             shape_z: String::new(),
-            shape_absolute: false,
+            shape_base: crate::shape::Base::default(),
+            shape_along: true,
+            shape_offset: "0".into(),
             shape_grip: None,
             shape_preview: None,
             shape_label_edit: None,
@@ -2236,6 +2243,24 @@ impl BimApp {
                 }
             });
         });
+    }
+
+    /// Shape Editing's Elevation Base on the Options Bar, as Revit's: what its elevations count from.
+    fn elevation_base(&mut self, ui: &mut Ui) {
+        let l = ui.label(t("Elevation Base:"));
+        let now = self.shape_base;
+        egui::ComboBox::from_id_salt("shape-elevation-base")
+            .selected_text(t(now.name()))
+            .show_ui(ui, |ui| {
+                for b in crate::shape::Base::ALL {
+                    ui.selectable_value(&mut self.shape_base, b, t(b.name()));
+                }
+            })
+            .response
+            .labelled_by(l.id);
+        if self.shape_base != now {
+            self.shape_refresh();
+        }
     }
 
     /// What Shape Editing works on, when it's all that's selected: a floor, or a flat roof by footprint.
@@ -4043,7 +4068,21 @@ impl BimApp {
                     let l = ui.label(t("Slope:"));
                     ui.add(TextEdit::singleline(&mut self.floor_slope).desired_width(48.0).hint_text("°")).labelled_by(l.id);
                 }
-                Tool::AddPoint | Tool::ModifySubElements => {
+                // Add Point along the surface as it is, an offset over it; or Absolute, an elevation above the level.
+                Tool::AddPoint => {
+                    ui.radio_value(&mut self.shape_along, true, t("Along Surface"));
+                    ui.radio_value(&mut self.shape_along, false, t("Absolute"));
+                    let hint = self.session.model.units.name();
+                    if self.shape_along {
+                        let l = ui.label(t("Offset from Surface:"));
+                        ui.add(TextEdit::singleline(&mut self.shape_offset).desired_width(64.0).hint_text(hint)).labelled_by(l.id);
+                    } else {
+                        let l = ui.label(t("Elevation:"));
+                        ui.add(TextEdit::singleline(&mut self.shape_z).desired_width(64.0).hint_text(hint)).labelled_by(l.id);
+                        self.elevation_base(ui);
+                    }
+                }
+                Tool::ModifySubElements => {
                     let l = ui.label(t("Elevation:"));
                     let hint = self.session.model.units.name();
                     let field = ui.add(TextEdit::singleline(&mut self.shape_z).desired_width(64.0).hint_text(hint)).labelled_by(l.id);
@@ -4051,9 +4090,7 @@ impl BimApp {
                     if self.tool == Tool::ModifySubElements && field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
                         self.shape_apply();
                     }
-                    if ui.checkbox(&mut self.shape_absolute, t("Absolute")).changed() {
-                        self.shape_refresh();
-                    }
+                    self.elevation_base(ui);
                 }
                 Tool::Stair(_) => {
                     let l = ui.label(t("Width:"));
@@ -4371,7 +4408,9 @@ impl BimApp {
                     "Click a point, a corner or an edge to select it (Shift adds), then type its height; drag a point to move it; Delete removes it."
                 )
             }
-            Tool::AddPoint => msg!("Click on the top: a point there at the Options Bar's elevation, or the top's height if none."),
+            Tool::AddPoint => {
+                msg!("Click on the top: a point there, the Options Bar's offset over the surface, or at its Absolute elevation.")
+            }
             Tool::AddSplitLine(None) => msg!("Click where the split line starts: a point, a corner or an edge of the top."),
             Tool::AddSplitLine(Some(_)) => msg!("Click where it ends: the top folds along it. Esc cancels."),
             Tool::SketchLine(_) | Tool::SketchPick => msg!("Click where the line starts."),

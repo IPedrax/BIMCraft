@@ -199,9 +199,14 @@ impl BimApp {
             _ => None,
         };
         let adding = shaping.is_some() && matches!(self.tool, Tool::AddPoint | Tool::AddSplitLine(_));
+        // How high above the level a click would land: Add Point's point as the Options Bar says, a split line's end on the top.
+        let (point_tool, along) = (self.tool == Tool::AddPoint, self.shape_along);
+        let offset = model.units.parse(&self.shape_offset).unwrap_or(0.0);
+        let typed_z = model.units.parse(&self.shape_z);
         let handles = shaping.as_ref().map(|f| shape_handles(&model, f).0).unwrap_or_default();
-        let absolute = self.shape_absolute;
-        let picked = self.shape_picked.clone();
+        let base = self.shape_base;
+        // Modify Sub Elements' selection, shown only while it's on.
+        let picked = if self.tool == Tool::ModifySubElements { self.shape_picked.clone() } else { Vec::new() };
         let shaped = self.shaping();
         // Where the floor's top is over plan point `q`; an edge's middle, between its ends.
         let top_at = |q: P2| -> Option<P3> {
@@ -466,12 +471,13 @@ impl BimApp {
         }
         // Where a click lands on the floor being shaped, in plan: a point or corner within reach of it, else on an edge within
         // reach (the edge, to light up), else its top there.
-        let snapped = |at: Pos2| -> Option<(P2, Option<[P3; 2]>)> {
+        let snapped = |at: Pos2| -> Option<(P2, Option<[P3; 2]>, Option<bimcraft_core::view3d::ShapeSnap>)> {
             let f = shaping.as_ref()?;
             shape_snap_3d(&model, f, &cam, px(at), 8.0 * f64::from(ppp))
-                .or_else(|| on_floor_top(&model, f, &cam, px(at)).map(|q| (q, None)))
+                .map(|(q, e, k)| (q, e, Some(k)))
+                .or_else(|| on_floor_top(&model, f, &cam, px(at)).map(|q| (q, None, None)))
         };
-        let landing = |at: Pos2| snapped(at).map(|(q, _)| q);
+        let landing = |at: Pos2| snapped(at).map(|(q, ..)| q);
         // The grip under the cursor, lit.
         let lit = hover.filter(|_| lifting && o.lift.is_none()).and_then(|h| {
             let off = |p: &P3| on_screen(&cam, rect, ppp, *p).distance(h);
@@ -496,6 +502,28 @@ impl BimApp {
             crate::shape::draw_marks(&p, &crate::shape::marks(&model, f), screen, &picked, lit);
             let held: Vec<P2> = o.lift.as_ref().map(|(qs, ..)| qs.clone()).unwrap_or_default();
             let by = lifted_by.unwrap_or(0.0);
+            // A selected point's offset from the top as it would be without the shape, as Revit dimensions it: plumb, an
+            // arrow at each end, the distance beside it.
+            for s in &picked {
+                let crate::shape::Sub::Point(q) = *s else { continue };
+                let (flat, up) = (model.floor_top(f).at(q), model.shape_height(f, q));
+                if up.abs() < 0.5 {
+                    continue;
+                }
+                let (a, b) = (screen([q.0, q.1, flat]), screen([q.0, q.1, flat + up]));
+                if !(a.is_finite() && b.is_finite()) || a.distance(b) < 12.0 {
+                    continue;
+                }
+                // Left of its ▲/▼, clear of its label on the right.
+                let (a, b) = (a + vec2(-26.0, 0.0), b + vec2(-26.0, 0.0));
+                p.line_segment([a, b], Stroke::new(1.0, pal().accent));
+                for (tip, from) in [(a, b), (b, a)] {
+                    let u = (tip - from).normalized();
+                    let n = vec2(-u.y, u.x) * 3.0;
+                    p.add(egui::Shape::convex_polygon(vec![tip, tip - u * 7.0 + n, tip - u * 7.0 - n], pal().accent, Stroke::NONE));
+                }
+                crate::canvas::tag(&p, a + (b - a) * 0.5 + vec2(-6.0, 0.0), egui::Align2::RIGHT_CENTER, model.units.length(up.abs()));
+            }
             // What's held, where the drag takes it.
             for at in held.iter().filter_map(|q| top_at(*q)) {
                 let (from, to) = (screen(at), screen([at[0], at[1], at[2] + by]));
@@ -520,7 +548,7 @@ impl BimApp {
                 if !to.is_finite() {
                     continue;
                 }
-                let text = crate::shape::heights_text(&model, f, &ends, absolute, lift);
+                let text = crate::shape::heights_text(&model, f, &ends, base, lift);
                 if is_held {
                     crate::canvas::tag(&p, to + vec2(8.0, -8.0), egui::Align2::LEFT_BOTTOM, text);
                 } else {
@@ -531,7 +559,7 @@ impl BimApp {
                 }
             }
             // Where a click would add a point, or end the split line begun; the edge it snaps to lit.
-            if adding && let Some((q, edge)) = hover.and_then(snapped) {
+            if adding && let Some((q, edge, kind)) = hover.and_then(snapped) {
                 if let Some([a, b]) = edge {
                     let (a, b) = (screen(a), screen(b));
                     if a.is_finite() && b.is_finite() {
@@ -540,13 +568,24 @@ impl BimApp {
                 }
                 if let Some(at) = on_top(q) {
                     let to = screen(at);
+                    let surface = at[2] - base.at(&model, f, q);
+                    let z = match (point_tool, along) {
+                        (true, true) => surface + offset,
+                        (true, false) => typed_z.unwrap_or(surface),
+                        _ => surface,
+                    };
+                    crate::canvas::tag(&p, to + vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM, model.units.length(z));
                     match split_start.and_then(on_top) {
                         Some(start) => {
                             p.line_segment([screen(start), to], Stroke::new(1.5, pal().accent));
                         }
-                        None => {
+                        None if kind.is_none() => {
                             p.circle_stroke(to, 4.0, Stroke::new(1.5, pal().accent));
                         }
+                        None => {}
+                    }
+                    if let Some(kind) = kind {
+                        crate::shape::snap_marker(&p, to, kind);
                     }
                 }
             }
