@@ -13,8 +13,8 @@ use bimcraft_core::engine::Session;
 use bimcraft_core::graphics::{self, ANNOTATION, Detail, Group, MODEL, VisualStyle};
 use bimcraft_core::model::{Id, Model};
 use egui::{
-    Align, Color32, FontId, Frame, Key, Layout, Margin, Popup, Response, RichText, Sense, Shape, Stroke, StrokeKind, TextEdit, Ui,
-    UiBuilder, WidgetInfo, WidgetType, pos2, vec2,
+    Color32, FontId, Frame, Key, Margin, Popup, Rect, Response, RichText, Sense, Shape, Stroke, StrokeKind, TextEdit, Ui, UiBuilder,
+    WidgetInfo, WidgetType, pos2, vec2,
 };
 use serde_json::{Value, json};
 
@@ -342,9 +342,11 @@ impl BimApp {
             false => (Frame::NONE, card),
         };
         let (id, over) = (egui::Id::new(("view-control", self.sheet)), self.view_rect);
+        // How tall the card is: a row, or more where the view is narrower than the bar.
         let mut controls = |ui: &mut Ui| {
             card.show(ui, |ui| {
-                ui.horizontal(|ui| {
+                // Onto a second row where the view is narrower than the bar, never under the palettes beside it.
+                ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
                     match (self.graphic_view(), self.sheet == Sheet::View3D) {
                         (Some(view), false) => self.scale_and_detail(ui, &view),
@@ -370,6 +372,7 @@ impl BimApp {
                         _ => {}
                     }
                     self.renovation_menu(ui);
+                    self.visibility_sets(ui);
                     let tip = msg!(
                         "Temporary Hide/Isolate: hide or isolate what is selected, or its categories, in this view until you reset it"
                     );
@@ -464,13 +467,20 @@ impl BimApp {
                         ui.label(RichText::new(tf("{} (HR resets)", &[t(note)])).color(FRAME));
                     }
                 })
-            });
+            })
+            .response
+            .rect
+            .height()
         };
         if compact {
             egui::Panel::bottom(id).frame(panel).show_separator_line(false).show(ui, controls);
         } else {
-            // A child that takes no room of the view's: over it, not after it.
-            controls(&mut ui.new_child(UiBuilder::new().id_salt(id).max_rect(over).layout(Layout::bottom_up(Align::Min))));
+            // A child that takes no room of the view's: over it, not after it, its foot on the view's foot. Its rows run down,
+            // so it starts as high as it was tall last frame.
+            let tall = ui.ctx().data(|d| d.get_temp::<f32>(id.with("tall"))).unwrap_or(crate::FLOATING_CARD);
+            let rect = Rect::from_min_max(pos2(over.left(), over.bottom() - tall), over.max);
+            let tall = controls(&mut ui.new_child(UiBuilder::new().id_salt(id).max_rect(rect)));
+            ui.ctx().data_mut(|d| d.insert_temp(id.with("tall"), tall));
         }
     }
 

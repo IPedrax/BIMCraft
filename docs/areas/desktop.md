@@ -255,6 +255,16 @@ drawing's layers, which are a view's own; its OK puts the categories, filters an
 its four offsets, and Background Grids the grid editor. A view's Properties name its template on a button (`properties::wide_button`, as wide as the drop-downs, as Edit… is), which
 opens the same dialog as Assign View Template: <None> first, the view's kind's tab showing, and OK also sets the template the view follows.
 
+Visibility sets (`BimApp::visibility_sets`, `templates.rs`, the same in both profiles) are view templates, switched from the view control bar: no
+layer is given to an element, and no new kind of entry was needed, because a template already holds what a view shows and its phase and a view
+that stops following one has its own settings back as they were. The bar's Visibility Set menu names the template the view follows (<None> for
+its own), lists <None> and the templates of the view's kind (`listed`), and a pick is one `graphics {template}`. Its Save as field makes one from
+the view as it is that controls only what it shows and its phase (`SET`: categories, filters, phase with its phase filter; `template {from,
+controls}`), and the view follows it, the two in one transaction and one undo step; a name a template has already is said and makes nothing, as
+`template` would change that one. The Sketch scale leaves the menu out with View Templates, and a long name is cut short on the bar. The bar
+runs onto a second row where the view is narrower than it, never under the palettes beside the view: its rows run down, so `footer.rs` starts
+it as high as it was tall the frame before, and its foot stays on the view's.
+
 The palette's rows are not striped: a stripe is `bar`, the group headers' colour. Buttons and drop-downs fill with `Palette::control`, a step past
 `bar` (darker on light, lighter on dark), so a control never reads as a heading beside it.
 

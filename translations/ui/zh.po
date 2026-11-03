@@ -28,7 +28,7 @@ msgstr "0.75 英寸 (19.05 mm) 装订边距"
 msgid "1 element"
 msgstr "1 个图元"
 
-#: crates/ui-egui/src/templates.rs:46
+#: crates/ui-egui/src/templates.rs:47
 msgid "3D"
 msgstr ""
 
@@ -75,12 +75,13 @@ msgstr "<不可见线>"
 #: crates/ui-egui/src/graphics.rs:1411
 #: crates/ui-egui/src/phasing.rs:439
 #: crates/ui-egui/src/phasing.rs:480
-#: crates/ui-egui/src/templates.rs:361
-#: crates/ui-egui/src/templates.rs:625
+#: crates/ui-egui/src/templates.rs:214
+#: crates/ui-egui/src/templates.rs:439
+#: crates/ui-egui/src/templates.rs:703
 msgid "<None>"
 msgstr "<无>"
 
-#: crates/ui-egui/src/templates.rs:459
+#: crates/ui-egui/src/templates.rs:537
 msgid "<None>: the view follows no template, and its settings are its own."
 msgstr "<无>：视图不跟随任何样板，其设置为自身所有。"
 
@@ -159,6 +160,10 @@ msgstr "平面的剖切面切过扫描处的点，用于描绘测得的内容"
 #: crates/ui-egui/src/graphics.rs:560
 msgid "A view always has a scale"
 msgstr "视图始终有比例"
+
+#: crates/ui-egui/src/templates.rs:252
+msgid "A view template is named {} already: give the set another name"
+msgstr ""
 
 #: crates/ui-egui/src/properties.rs:2433
 msgid "A wall's centre line, so a wall drawn on it meets it"
@@ -518,7 +523,7 @@ msgstr "注释笔 {}"
 msgid "Another colour"
 msgstr ""
 
-#: crates/ui-egui/src/footer.rs:428
+#: crates/ui-egui/src/footer.rs:431
 #: crates/ui-egui/src/properties.rs:2467
 msgid "Applies to all views; snaps to the active view's enabled main grid or subgrid, even when hidden"
 msgstr "适用于所有视图；捕捉到当前视图中已启用的主网格或子网格，即使它们已隐藏"
@@ -537,7 +542,7 @@ msgstr "适用于所有视图；捕捉到当前视图中已启用的主网格或
 msgid "Apply"
 msgstr "应用"
 
-#: crates/ui-egui/src/footer.rs:394
+#: crates/ui-egui/src/footer.rs:397
 msgid "Apply Hide/Isolate to View"
 msgstr "将隐藏/隔离应用到视图"
 
@@ -598,7 +603,7 @@ msgstr "升序"
 msgid "Asks to save first if there are unsaved changes, then closes BIMCraft, installs the update and starts it again."
 msgstr "如有未保存的更改，会先询问是否保存，然后关闭 BIMCraft，安装更新并重新启动。"
 
-#: crates/ui-egui/src/templates.rs:225
+#: crates/ui-egui/src/templates.rs:303
 msgid "Assign View Template"
 msgstr "指定视图样板"
 
@@ -747,10 +752,10 @@ msgid "Background Color"
 msgstr "背景颜色"
 
 #: crates/ui-egui/src/background_grid.rs:98
-#: crates/ui-egui/src/footer.rs:409
+#: crates/ui-egui/src/footer.rs:412
 #: crates/ui-egui/src/graphics.rs:125
 #: crates/ui-egui/src/graphics.rs:589
-#: crates/ui-egui/src/templates.rs:623
+#: crates/ui-egui/src/templates.rs:701
 msgid "Background Grids"
 msgstr "背景网格"
 
@@ -864,7 +869,7 @@ msgstr "边框线宽"
 
 #: crates/ui-egui/src/properties.rs:401
 #: crates/ui-egui/src/reinforce.rs:182
-#: crates/ui-egui/src/templates.rs:666
+#: crates/ui-egui/src/templates.rs:744
 msgid "Bottom"
 msgstr "底"
 
@@ -998,7 +1003,7 @@ msgstr "相机：单击视点所在位置，再单击其观察的目标：创建
 #: crates/ui-egui/src/shortcuts.rs:401
 #: crates/ui-egui/src/shortcuts.rs:529
 #: crates/ui-egui/src/standards.rs:334
-#: crates/ui-egui/src/templates.rs:679
+#: crates/ui-egui/src/templates.rs:757
 #: crates/ui-egui/src/typeprops.rs:310
 msgid "Cancel"
 msgstr "取消"
@@ -1942,7 +1947,7 @@ msgid "Cover"
 msgstr "保护层"
 
 #: crates/ui-egui/src/lib.rs:4467
-#: crates/ui-egui/src/templates.rs:419
+#: crates/ui-egui/src/templates.rs:497
 #: crates/ui-egui/src/typeprops.rs:100
 msgid "Create"
 msgstr "创建"
@@ -2068,7 +2073,7 @@ msgid "Cut Pen"
 msgstr "剖切笔号"
 
 #: crates/ui-egui/src/properties.rs:400
-#: crates/ui-egui/src/templates.rs:666
+#: crates/ui-egui/src/templates.rs:744
 msgid "Cut Plane"
 msgstr "剖切面"
 
@@ -2160,7 +2165,7 @@ msgstr "默认厚度"
 #: crates/ui-egui/src/properties.rs:2005
 #: crates/ui-egui/src/properties.rs:2226
 #: crates/ui-egui/src/properties.rs:2711
-#: crates/ui-egui/src/templates.rs:399
+#: crates/ui-egui/src/templates.rs:477
 msgid "Delete"
 msgstr "删除"
 
@@ -2253,7 +2258,7 @@ msgstr "设计选项"
 
 #: crates/ui-egui/src/lib.rs:3949
 #: crates/ui-egui/src/phasing.rs:318
-#: crates/ui-egui/src/templates.rs:621
+#: crates/ui-egui/src/templates.rs:699
 msgid "Design Options"
 msgstr "设计选项"
 
@@ -2287,7 +2292,7 @@ msgstr "详图组：单击以放置选项栏中的组"
 
 #: crates/ui-egui/src/graphics.rs:568
 #: crates/ui-egui/src/graphics.rs:819
-#: crates/ui-egui/src/templates.rs:604
+#: crates/ui-egui/src/templates.rs:682
 msgid "Detail Level"
 msgstr "详细程度"
 
@@ -2571,12 +2576,12 @@ msgstr "作为相关视图复制"
 msgid "Duplicate with Detailing"
 msgstr "带详图复制"
 
-#: crates/ui-egui/src/templates.rs:390
+#: crates/ui-egui/src/templates.rs:468
 #: crates/ui-egui/src/typeprops.rs:93
 msgid "Duplicate…"
 msgstr "复制…"
 
-#: crates/ui-egui/src/templates.rs:699
+#: crates/ui-egui/src/templates.rs:777
 msgid "Each is a length, and Top may be left empty for the level above."
 msgstr "每项都是长度，顶部可留空，此时取上方标高。"
 
@@ -2674,14 +2679,14 @@ msgstr "编辑类型"
 
 #: crates/ui-egui/src/graphics.rs:613
 #: crates/ui-egui/src/properties.rs:1827
-#: crates/ui-egui/src/templates.rs:579
+#: crates/ui-egui/src/templates.rs:657
 msgid "Edit {}"
 msgstr "编辑 {}"
 
 #: crates/ui-egui/src/graphics.rs:590
 #: crates/ui-egui/src/graphics.rs:612
 #: crates/ui-egui/src/properties.rs:1825
-#: crates/ui-egui/src/templates.rs:581
+#: crates/ui-egui/src/templates.rs:659
 msgid "Edit…"
 msgstr "编辑…"
 
@@ -2723,7 +2728,7 @@ msgstr "立面"
 msgid "Elevation (°)"
 msgstr "仰角 (°)"
 
-#: crates/ui-egui/src/templates.rs:45
+#: crates/ui-egui/src/templates.rs:46
 msgid "Elevation/Section"
 msgstr "立面/剖面"
 
@@ -3374,7 +3379,7 @@ msgstr "钢种"
 msgid "Graphic Display Options"
 msgstr ""
 
-#: crates/ui-egui/src/footer.rs:364
+#: crates/ui-egui/src/footer.rs:366
 msgid "Graphic Display Options..."
 msgstr ""
 
@@ -3410,11 +3415,11 @@ msgstr "轴网 (GR)：单击其两端"
 msgid "Grid rotation"
 msgstr "网格旋转"
 
-#: crates/ui-egui/src/footer.rs:421
+#: crates/ui-egui/src/footer.rs:424
 msgid "Grid settings…"
 msgstr "网格设置…"
 
-#: crates/ui-egui/src/footer.rs:427
+#: crates/ui-egui/src/footer.rs:430
 #: crates/ui-egui/src/properties.rs:2466
 msgid "Grid snapping"
 msgstr "网格捕捉"
@@ -3503,7 +3508,7 @@ msgstr "隐藏线"
 msgid "Hide Category"
 msgstr "隐藏类别"
 
-#: crates/ui-egui/src/footer.rs:382
+#: crates/ui-egui/src/footer.rs:385
 msgid "Hide Category (HC)"
 msgstr "隐藏类别 (HC)"
 
@@ -3519,15 +3524,15 @@ msgstr "隐藏图元"
 msgid "Hide Element (EH): leave the selected elements out of this view"
 msgstr "隐藏图元 (EH)：将所选图元从此视图中排除"
 
-#: crates/ui-egui/src/footer.rs:381
+#: crates/ui-egui/src/footer.rs:384
 msgid "Hide Element (HH)"
 msgstr "隐藏图元 (HH)"
 
-#: crates/ui-egui/src/footer.rs:450
+#: crates/ui-egui/src/footer.rs:453
 msgid "High Contrast Point Clouds"
 msgstr "高对比度点云"
 
-#: crates/ui-egui/src/footer.rs:445
+#: crates/ui-egui/src/footer.rs:448
 msgid "High Contrast Point Clouds: draw this view's scans in one strong colour, so what they show reads; again for their own colours. A scan given a colour of its own in Visibility/Graphics keeps it."
 msgstr "高对比度点云：以一种醒目的颜色绘制此视图中的扫描，使其内容清晰可读；再次点击恢复其原有颜色。在“可见性/图形”中被赋予专属颜色的扫描会保留该颜色。"
 
@@ -3690,7 +3695,7 @@ msgstr "未启用 (平放归档)"
 msgid "Inches"
 msgstr "英寸"
 
-#: crates/ui-egui/src/templates.rs:489
+#: crates/ui-egui/src/templates.rs:567
 msgid "Include"
 msgstr "包含"
 
@@ -3775,11 +3780,11 @@ msgstr "交点"
 msgid "Invert"
 msgstr "反选"
 
-#: crates/ui-egui/src/footer.rs:384
+#: crates/ui-egui/src/footer.rs:387
 msgid "Isolate Category (IC)"
 msgstr "隔离类别 (IC)"
 
-#: crates/ui-egui/src/footer.rs:383
+#: crates/ui-egui/src/footer.rs:386
 msgid "Isolate Element (HI)"
 msgstr "隔离图元 (HI)"
 
@@ -3965,7 +3970,7 @@ msgid "Level (LL): a new level at an elevation"
 msgstr "标高 (LL)：在指定高程处创建新标高"
 
 #: crates/ui-egui/src/properties.rs:399
-#: crates/ui-egui/src/templates.rs:666
+#: crates/ui-egui/src/templates.rs:744
 msgid "Level Above"
 msgstr "上方标高"
 
@@ -4237,7 +4242,7 @@ msgid "Main Model"
 msgstr "主模型"
 
 #: crates/ui-egui/src/background_grid.rs:145
-#: crates/ui-egui/src/footer.rs:419
+#: crates/ui-egui/src/footer.rs:422
 msgid "Main grid"
 msgstr "主网格"
 
@@ -4599,7 +4604,7 @@ msgstr "名称"
 #: crates/ui-egui/src/phasing.rs:350
 #: crates/ui-egui/src/phasing.rs:535
 #: crates/ui-egui/src/properties.rs:2810
-#: crates/ui-egui/src/templates.rs:425
+#: crates/ui-egui/src/templates.rs:503
 #: crates/ui-egui/src/typeprops.rs:100
 #: crates/ui-egui/src/typeprops.rs:101
 msgid "Name:"
@@ -4677,7 +4682,7 @@ msgstr "新图元创建于此选项中；当前屏幕上的视图显示该选项
 msgid "New filter:"
 msgstr "新过滤器："
 
-#: crates/ui-egui/src/templates.rs:407
+#: crates/ui-egui/src/templates.rs:485
 msgid "New from This View…"
 msgstr "从此视图新建…"
 
@@ -4757,7 +4762,7 @@ msgstr "尚无最近的项目"
 msgid "No rows yet: the {} is empty."
 msgstr "暂无数据行：{}为空。"
 
-#: crates/ui-egui/src/templates.rs:461
+#: crates/ui-egui/src/templates.rs:539
 msgid "No template picked."
 msgstr "未选择样板。"
 
@@ -4765,7 +4770,7 @@ msgstr "未选择样板。"
 msgid "No texture"
 msgstr "无纹理"
 
-#: crates/ui-egui/src/templates.rs:375
+#: crates/ui-egui/src/templates.rs:453
 msgid "No {} templates yet: New from This View makes one from a view of the kind."
 msgstr "尚无{}样板：“从此视图新建”可由同类视图创建一个。"
 
@@ -4877,7 +4882,7 @@ msgstr "编号"
 #: crates/ui-egui/src/properties.rs:3009
 #: crates/ui-egui/src/reinforce.rs:537
 #: crates/ui-egui/src/standards.rs:335
-#: crates/ui-egui/src/templates.rs:680
+#: crates/ui-egui/src/templates.rs:758
 #: crates/ui-egui/src/typeprops.rs:311
 msgid "OK"
 msgstr "确定"
@@ -4921,7 +4926,7 @@ msgstr "偏移 (OF)：拾取一面墙或一条线；副本放在光标所在的�
 msgid "Offset:"
 msgstr "偏移："
 
-#: crates/ui-egui/src/templates.rs:674
+#: crates/ui-egui/src/templates.rs:752
 msgid "Offsets from the plan's level."
 msgstr "相对平面所在标高的偏移。"
 
@@ -4959,7 +4964,7 @@ msgstr "请打开平面图以选取图案的线：详图线绘制在平面图中
 msgid "Open a schedule"
 msgstr "打开明细表"
 
-#: crates/ui-egui/src/templates.rs:411
+#: crates/ui-egui/src/templates.rs:489
 msgid "Open a view of the kind ({}) to make a template from it."
 msgstr "打开该类视图（{}），即可由其创建样板。"
 
@@ -5124,7 +5129,7 @@ msgstr "按角度和间距排列的平行线，可交叉或不交叉"
 
 #: crates/ui-egui/src/editor.rs:656
 #: crates/ui-egui/src/properties.rs:2705
-#: crates/ui-egui/src/templates.rs:489
+#: crates/ui-egui/src/templates.rs:567
 #: crates/ui-egui/src/typeprops.rs:164
 msgid "Parameter"
 msgstr "参数"
@@ -5252,7 +5257,7 @@ msgid "Perspective: see the 3D view as through a camera, its eye standing back a
 msgstr "透视：像透过相机一样查看三维视图，视点的远近由镜头和缩放决定"
 
 #: crates/ui-egui/src/phasing.rs:449
-#: crates/ui-egui/src/templates.rs:633
+#: crates/ui-egui/src/templates.rs:711
 msgid "Phase"
 msgstr "阶段"
 
@@ -5265,7 +5270,7 @@ msgid "Phase Demolished"
 msgstr "拆除的阶段"
 
 #: crates/ui-egui/src/phasing.rs:438
-#: crates/ui-egui/src/templates.rs:626
+#: crates/ui-egui/src/templates.rs:704
 msgid "Phase Filter"
 msgstr "阶段过滤器"
 
@@ -5651,7 +5656,7 @@ msgstr "放置："
 msgid "Plain"
 msgstr "纯色"
 
-#: crates/ui-egui/src/templates.rs:44
+#: crates/ui-egui/src/templates.rs:45
 msgid "Plan"
 msgstr "平面"
 
@@ -6118,7 +6123,7 @@ msgid "Removed {} bars."
 msgstr "已删除 {} 根钢筋。"
 
 #: crates/ui-egui/src/phasing.rs:553
-#: crates/ui-egui/src/templates.rs:420
+#: crates/ui-egui/src/templates.rs:498
 #: crates/ui-egui/src/typeprops.rs:101
 msgid "Rename"
 msgstr "重命名"
@@ -6131,7 +6136,7 @@ msgstr "重命名选项"
 msgid "Rename Set"
 msgstr "重命名选项集"
 
-#: crates/ui-egui/src/templates.rs:395
+#: crates/ui-egui/src/templates.rs:473
 #: crates/ui-egui/src/typeprops.rs:133
 msgid "Rename…"
 msgstr "重命名…"
@@ -6198,7 +6203,7 @@ msgstr ""
 msgid "Reset Temporary Hide/Isolate"
 msgstr "重设临时隐藏/隔离"
 
-#: crates/ui-egui/src/footer.rs:397
+#: crates/ui-egui/src/footer.rs:400
 msgid "Reset Temporary Hide/Isolate (HR)"
 msgstr "重设临时隐藏/隔离 (HR)"
 
@@ -6223,15 +6228,15 @@ msgstr "恢复默认设置"
 msgid "Restore Down"
 msgstr "向下还原"
 
-#: crates/ui-egui/src/footer.rs:436
+#: crates/ui-egui/src/footer.rs:439
 msgid "Reveal Hidden Elements"
 msgstr "显示隐藏的图元"
 
-#: crates/ui-egui/src/footer.rs:435
+#: crates/ui-egui/src/footer.rs:438
 msgid "Reveal Hidden Elements (RH): draw what this view hides in magenta; again to hide it"
 msgstr "显示隐藏的图元 (RH)：以洋红色绘制此视图中隐藏的内容；再次点击可将其隐藏"
 
-#: crates/ui-egui/src/footer.rs:463
+#: crates/ui-egui/src/footer.rs:466
 msgid "Revealing hidden elements"
 msgstr "正在显示隐藏的图元"
 
@@ -6420,6 +6425,10 @@ msgstr "保存模板"
 #: crates/ui-egui/src/settings.rs:608
 msgid "Save a recovery copy every"
 msgstr "每隔多久保存一次恢复副本"
+
+#: crates/ui-egui/src/templates.rs:230
+msgid "Save as"
+msgstr ""
 
 #: crates/ui-egui/src/reinforce.rs:465
 msgid "Save as:"
@@ -6770,12 +6779,12 @@ msgstr "显示以前阶段 + 拆除"
 msgid "Show Previous + New"
 msgstr "显示以前阶段 + 新建"
 
-#: crates/ui-egui/src/footer.rs:411
+#: crates/ui-egui/src/footer.rs:414
 msgid "Show background grids, change their settings, or toggle grid snapping"
 msgstr "显示背景网格、更改其设置，或切换网格捕捉"
 
 #: crates/ui-egui/src/background_grid.rs:143
-#: crates/ui-egui/src/footer.rs:418
+#: crates/ui-egui/src/footer.rs:421
 msgid "Show grids"
 msgstr "显示网格"
 
@@ -7198,7 +7207,7 @@ msgid "Styles"
 msgstr "样式"
 
 #: crates/ui-egui/src/background_grid.rs:161
-#: crates/ui-egui/src/footer.rs:420
+#: crates/ui-egui/src/footer.rs:423
 msgid "Subgrid"
 msgstr "子网格"
 
@@ -7432,11 +7441,11 @@ msgstr "临时隐藏类别"
 msgid "Temporary Hide Element"
 msgstr "临时隐藏图元"
 
-#: crates/ui-egui/src/footer.rs:376
+#: crates/ui-egui/src/footer.rs:379
 msgid "Temporary Hide/Isolate"
 msgstr "临时隐藏/隔离"
 
-#: crates/ui-egui/src/footer.rs:374
+#: crates/ui-egui/src/footer.rs:377
 msgid "Temporary Hide/Isolate: hide or isolate what is selected, or its categories, in this view until you reset it"
 msgstr "临时隐藏/隔离：在此视图中隐藏或隔离所选图元或其类别，直到重设"
 
@@ -7797,7 +7806,7 @@ msgstr ""
 
 #: crates/ui-egui/src/lib.rs:4404
 #: crates/ui-egui/src/reinforce.rs:182
-#: crates/ui-egui/src/templates.rs:666
+#: crates/ui-egui/src/templates.rs:744
 msgid "Top"
 msgstr "顶"
 
@@ -8122,15 +8131,15 @@ msgstr "使用系统标题栏"
 msgid "User Interface"
 msgstr "用户界面"
 
-#: crates/ui-egui/src/templates.rs:620
+#: crates/ui-egui/src/templates.rs:698
 msgid "V/G Filters"
 msgstr "V/G 替换过滤器"
 
-#: crates/ui-egui/src/templates.rs:619
+#: crates/ui-egui/src/templates.rs:697
 msgid "V/G Overrides"
 msgstr "V/G 替换"
 
-#: crates/ui-egui/src/templates.rs:489
+#: crates/ui-egui/src/templates.rs:567
 #: crates/ui-egui/src/typeprops.rs:164
 msgid "Value"
 msgstr "值"
@@ -8150,7 +8159,7 @@ msgid "View"
 msgstr "视图"
 
 #: crates/ui-egui/src/properties.rs:402
-#: crates/ui-egui/src/templates.rs:666
+#: crates/ui-egui/src/templates.rs:744
 msgid "View Depth"
 msgstr "视图深度"
 
@@ -8163,18 +8172,18 @@ msgstr "视图过滤器"
 msgid "View Name"
 msgstr "视图名称"
 
-#: crates/ui-egui/src/templates.rs:473
+#: crates/ui-egui/src/templates.rs:551
 msgid "View Properties"
 msgstr "视图属性"
 
 #: crates/ui-egui/src/graphics.rs:119
-#: crates/ui-egui/src/templates.rs:622
-#: crates/ui-egui/src/templates.rs:662
+#: crates/ui-egui/src/templates.rs:700
+#: crates/ui-egui/src/templates.rs:740
 msgid "View Range"
 msgstr "视图范围"
 
 #: crates/ui-egui/src/graphics.rs:547
-#: crates/ui-egui/src/templates.rs:596
+#: crates/ui-egui/src/templates.rs:674
 msgid "View Scale"
 msgstr "视图比例"
 
@@ -8192,7 +8201,7 @@ msgid "View Template: {}"
 msgstr "视图样板：{}"
 
 #: crates/ui-egui/src/lib.rs:3623
-#: crates/ui-egui/src/templates.rs:225
+#: crates/ui-egui/src/templates.rs:303
 msgid "View Templates"
 msgstr "视图样板"
 
@@ -8216,13 +8225,22 @@ msgstr "视图"
 msgid "Views (all)"
 msgstr "视图（全部）"
 
-#: crates/ui-egui/src/templates.rs:475
+#: crates/ui-egui/src/templates.rs:553
 msgid "Views following it: {}"
 msgstr "跟随它的视图：{}"
 
 #: crates/ui-egui/src/graphics.rs:794
 msgid "Visibility"
 msgstr "可见性"
+
+#: crates/ui-egui/src/templates.rs:210
+#: crates/ui-egui/src/templates.rs:256
+msgid "Visibility Set"
+msgstr ""
+
+#: crates/ui-egui/src/templates.rs:204
+msgid "Visibility Set: the view template this view follows, to switch what it shows at a click; <None> for its own"
+msgstr ""
 
 #: crates/ui-egui/src/lib.rs:3612
 msgid "Visibility/Graphics"
@@ -8251,11 +8269,11 @@ msgid "Visible when"
 msgstr "可见条件"
 
 #: crates/ui-egui/src/graphics.rs:578
-#: crates/ui-egui/src/templates.rs:612
+#: crates/ui-egui/src/templates.rs:690
 msgid "Visual Style"
 msgstr "视觉样式"
 
-#: crates/ui-egui/src/footer.rs:354
+#: crates/ui-egui/src/footer.rs:356
 msgid "Visual Style: how the 3D view draws surfaces: Shaded, Hidden Line (WF, HL and SD set them) or Wireframe"
 msgstr "视觉样式：三维视图绘制表面的方式：着色、隐藏线（WF、HL 和 SD 设置它们）或线框"
 
@@ -9033,7 +9051,7 @@ msgstr "导线类型"
 msgid "{}\n\nThe details are in {}."
 msgstr "{}\n\n详细信息见 {}。"
 
-#: crates/ui-egui/src/footer.rs:464
+#: crates/ui-egui/src/footer.rs:467
 msgid "{} (HR resets)"
 msgstr "{}（按 HR 重设）"
 
@@ -9057,7 +9075,7 @@ msgstr "{}明细表"
 msgid "{} Skipped {}."
 msgstr "{} 已跳过 {} 个。"
 
-#: crates/ui-egui/src/templates.rs:414
+#: crates/ui-egui/src/templates.rs:492
 msgid "{} Template"
 msgstr "{}样板"
 

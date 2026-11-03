@@ -3,7 +3,8 @@
 //! picked, its settings in a table of Parameter, Value and Include in the look Type Properties has. Its settings wait in a draft
 //! until OK or Apply sends each template's as one `template` command; New, Duplicate, Rename and Delete run at once, as Type
 //! Properties' Duplicate and Rename do. Visibility/Graphics and Background Grids open on a template's draft from here. Opened from a view's
-//! Properties, the list starts with <None>, and OK also sets the template the view follows.
+//! Properties, the list starts with <None>, and OK also sets the template the view follows. The view control bar's Visibility
+//! Set switches the view between the templates of its kind at a click, and saves one of what it shows.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -13,8 +14,8 @@ use bimcraft_core::model::{Model, ViewRange};
 use bimcraft_i18n::msg;
 use egui::text::{CCursor, CCursorRange};
 use egui::{
-    Align, Button, Checkbox, ComboBox, Context, Frame, Id as UiId, Key, Label, Layout, Rect, RichText, ScrollArea, Sense, Stroke, TextEdit,
-    Ui, UiBuilder, WidgetInfo, WidgetType, pos2, vec2,
+    Align, Button, Checkbox, ComboBox, Context, Frame, Id as UiId, Key, Label, Layout, Popup, Rect, RichText, ScrollArea, Sense, Stroke,
+    TextEdit, Ui, UiBuilder, WidgetInfo, WidgetType, pos2, vec2,
 };
 use serde_json::{Value, json};
 
@@ -22,7 +23,7 @@ use crate::graphics::{FILTERS_TAB, OPTIONS_TAB, VgDialog, detail_combo, group_na
 use crate::lang::{t, tf};
 use crate::popup::Modal;
 use crate::style::{pal, semibold};
-use crate::{BimApp, Sheet};
+use crate::{BimApp, Sheet, Status};
 
 /// The dialog's width, and its list's.
 const WIDTH: f32 = 860.0;
@@ -72,6 +73,10 @@ pub(crate) struct TemplatesDialog {
 fn listed(t: &ViewTemplate, kind: ViewKind) -> bool {
     t.kind.is_none_or(|k| k == kind)
 }
+
+/// What a visibility set saved from the bar holds of a view: what it shows (its categories and its filters) and the phase it
+/// shows them in, with the phase filter; the rest stays the view's own.
+const SET: [Group; 3] = [Group::Categories, Group::Filters, Group::Phase];
 
 /// The settings of a template, Revit's order: how it draws, what it shows, then its range and phase.
 const ORDER: [Group; 9] = [
@@ -183,6 +188,79 @@ impl BimApp {
             Sheet::View3D => Some(ViewKind::ThreeD),
             _ => None,
         }
+    }
+
+    /// The view control bar's Visibility Set: the view templates a view of its kind can follow, to switch it between at a
+    /// click (`graphics {template}`), and <None>, its own settings, which following one leaves as they were. Save as makes one
+    /// from the view as it is, of what it shows and its phase ([`SET`]), and the view follows it: one undo step. Left out
+    /// where the project's scale leaves out view templates.
+    pub(crate) fn visibility_sets(&mut self, ui: &mut Ui) {
+        let (Some(view), Some(kind)) = (self.graphic_view(), self.view_kind()) else { return };
+        if crate::ribbon::scale_hides("View Templates") {
+            return;
+        }
+        let m = Arc::clone(&self.session.model);
+        let now = self.graphics_now().template;
+        let tip = msg!("Visibility Set: the view template this view follows, to switch what it shows at a click; <None> for its own");
+        // A long name cut short, so the bar fits a narrow view.
+        let shown = now.as_deref().map_or_else(
+            || "<None>".to_string(),
+            |n| if n.chars().count() > 24 { format!("{}…", n.chars().take(23).collect::<String>()) } else { n.to_string() },
+        );
+        let r = crate::footer::menu_button(ui, msg!("Visibility Set"), &shown, tip, None);
+        let (mut follow, mut save) = (None, None);
+        Popup::menu(&r).show(|ui| {
+            ui.set_min_width(180.0);
+            if ui.selectable_label(now.is_none(), t("<None>")).clicked() {
+                follow = Some(Value::Null);
+            }
+            for name in m.view_templates.iter().filter(|(_, t)| listed(t, kind)).map(|(n, _)| n) {
+                if ui.selectable_label(now.as_ref() == Some(name), name).clicked() {
+                    follow = Some(json!(name));
+                }
+            }
+            ui.separator();
+            ui.horizontal(|ui| {
+                // A menu draws its widgets bare: the field gets its box back.
+                ui.visuals_mut().extreme_bg_color = pal().surface;
+                ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(1.0, pal().border);
+                // The name being typed, the menu's own: egui keeps it between frames.
+                let id = ui.id().with("set-name");
+                let mut name: String = ui.data_mut(|d| d.get_temp(id)).unwrap_or_default();
+                let l = ui.label(t("Save as"));
+                let edit = ui.add(TextEdit::singleline(&mut name).desired_width(120.0)).labelled_by(l.id);
+                if edit.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
+                    save = Some(std::mem::take(&mut name).trim().to_string());
+                    ui.close();
+                }
+                ui.data_mut(|d| d.insert_temp(id, name));
+            });
+        });
+        if let Some(template) = follow {
+            self.run("graphics", json!({"view": view, "template": template}));
+        }
+        if let Some(name) = save {
+            self.save_visibility_set(&view, &name);
+        }
+        ui.separator();
+    }
+
+    /// A visibility set named `name` made from `view` as it is, and followed by it, in one undo step; a name a template has
+    /// already is said and makes nothing, as `template` would change that one.
+    fn save_visibility_set(&mut self, view: &Value, name: &str) {
+        if self.session.model.view_templates.contains_key(name) {
+            let text = tf("A view template is named {} already: give the set another name", &[name]);
+            self.status = Status { text, error: true };
+            return;
+        }
+        let done = self.session.transaction(msg!("Visibility Set"), |s| {
+            s.execute("template", &json!({"name": name, "from": view, "controls": SET}))?;
+            s.execute("graphics", &json!({"view": view, "template": name}))
+        });
+        self.status = match done {
+            Ok(_) => Status::default(),
+            Err(text) => Status { text, error: true },
+        };
     }
 
     /// View Templates (VT): the project's templates, on the tab for the active view's kind, the one it follows picked.

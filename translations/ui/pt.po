@@ -28,7 +28,7 @@ msgstr "0,75 pol (19,05 mm) margem de fixação"
 msgid "1 element"
 msgstr "1 elemento"
 
-#: crates/ui-egui/src/templates.rs:46
+#: crates/ui-egui/src/templates.rs:47
 msgid "3D"
 msgstr ""
 
@@ -75,12 +75,13 @@ msgstr "<Linhas invisíveis>"
 #: crates/ui-egui/src/graphics.rs:1411
 #: crates/ui-egui/src/phasing.rs:439
 #: crates/ui-egui/src/phasing.rs:480
-#: crates/ui-egui/src/templates.rs:361
-#: crates/ui-egui/src/templates.rs:625
+#: crates/ui-egui/src/templates.rs:214
+#: crates/ui-egui/src/templates.rs:439
+#: crates/ui-egui/src/templates.rs:703
 msgid "<None>"
 msgstr "<Nenhum>"
 
-#: crates/ui-egui/src/templates.rs:459
+#: crates/ui-egui/src/templates.rs:537
 msgid "<None>: the view follows no template, and its settings are its own."
 msgstr "<Nenhum>: a vista não segue nenhum modelo, e seus ajustes são só dela."
 
@@ -159,6 +160,10 @@ msgstr "Os pontos de um escaneamento onde o plano de corte da planta o corta, pa
 #: crates/ui-egui/src/graphics.rs:560
 msgid "A view always has a scale"
 msgstr "Uma vista sempre tem uma escala"
+
+#: crates/ui-egui/src/templates.rs:252
+msgid "A view template is named {} already: give the set another name"
+msgstr ""
 
 #: crates/ui-egui/src/properties.rs:2433
 msgid "A wall's centre line, so a wall drawn on it meets it"
@@ -518,7 +523,7 @@ msgstr "Pena de anotação {}"
 msgid "Another colour"
 msgstr ""
 
-#: crates/ui-egui/src/footer.rs:428
+#: crates/ui-egui/src/footer.rs:431
 #: crates/ui-egui/src/properties.rs:2467
 msgid "Applies to all views; snaps to the active view's enabled main grid or subgrid, even when hidden"
 msgstr "Vale para todas as vistas; faz snap na grade principal ou na subgrade ativada da vista ativa, mesmo quando oculta"
@@ -537,7 +542,7 @@ msgstr "Vale para todas as vistas; faz snap na grade principal ou na subgrade at
 msgid "Apply"
 msgstr "Aplicar"
 
-#: crates/ui-egui/src/footer.rs:394
+#: crates/ui-egui/src/footer.rs:397
 msgid "Apply Hide/Isolate to View"
 msgstr "Aplicar Ocultar/Isolar à Vista"
 
@@ -598,7 +603,7 @@ msgstr "Crescente"
 msgid "Asks to save first if there are unsaved changes, then closes BIMCraft, installs the update and starts it again."
 msgstr "Pergunta se quer salvar, se houver alterações não salvas; depois fecha o BIMCraft, instala a atualização e o abre de novo."
 
-#: crates/ui-egui/src/templates.rs:225
+#: crates/ui-egui/src/templates.rs:303
 msgid "Assign View Template"
 msgstr "Atribuir modelo de vista"
 
@@ -747,10 +752,10 @@ msgid "Background Color"
 msgstr "Cor de fundo"
 
 #: crates/ui-egui/src/background_grid.rs:98
-#: crates/ui-egui/src/footer.rs:409
+#: crates/ui-egui/src/footer.rs:412
 #: crates/ui-egui/src/graphics.rs:125
 #: crates/ui-egui/src/graphics.rs:589
-#: crates/ui-egui/src/templates.rs:623
+#: crates/ui-egui/src/templates.rs:701
 msgid "Background Grids"
 msgstr "Grades de fundo"
 
@@ -864,7 +869,7 @@ msgstr "Espessura da linha da borda"
 
 #: crates/ui-egui/src/properties.rs:401
 #: crates/ui-egui/src/reinforce.rs:182
-#: crates/ui-egui/src/templates.rs:666
+#: crates/ui-egui/src/templates.rs:744
 msgid "Bottom"
 msgstr "Inferior"
 
@@ -998,7 +1003,7 @@ msgstr "Câmera: clique onde fica o olho e depois no ponto para onde ela olha: u
 #: crates/ui-egui/src/shortcuts.rs:401
 #: crates/ui-egui/src/shortcuts.rs:529
 #: crates/ui-egui/src/standards.rs:334
-#: crates/ui-egui/src/templates.rs:679
+#: crates/ui-egui/src/templates.rs:757
 #: crates/ui-egui/src/typeprops.rs:310
 msgid "Cancel"
 msgstr "Cancelar"
@@ -1942,7 +1947,7 @@ msgid "Cover"
 msgstr "Cobrimento"
 
 #: crates/ui-egui/src/lib.rs:4467
-#: crates/ui-egui/src/templates.rs:419
+#: crates/ui-egui/src/templates.rs:497
 #: crates/ui-egui/src/typeprops.rs:100
 msgid "Create"
 msgstr "Criar"
@@ -2068,7 +2073,7 @@ msgid "Cut Pen"
 msgstr "Pena de corte"
 
 #: crates/ui-egui/src/properties.rs:400
-#: crates/ui-egui/src/templates.rs:666
+#: crates/ui-egui/src/templates.rs:744
 msgid "Cut Plane"
 msgstr "Plano de corte"
 
@@ -2160,7 +2165,7 @@ msgstr "Espessura padrão"
 #: crates/ui-egui/src/properties.rs:2005
 #: crates/ui-egui/src/properties.rs:2226
 #: crates/ui-egui/src/properties.rs:2711
-#: crates/ui-egui/src/templates.rs:399
+#: crates/ui-egui/src/templates.rs:477
 msgid "Delete"
 msgstr "Excluir"
 
@@ -2253,7 +2258,7 @@ msgstr "Opção de projeto"
 
 #: crates/ui-egui/src/lib.rs:3949
 #: crates/ui-egui/src/phasing.rs:318
-#: crates/ui-egui/src/templates.rs:621
+#: crates/ui-egui/src/templates.rs:699
 msgid "Design Options"
 msgstr "Opções de projeto"
 
@@ -2287,7 +2292,7 @@ msgstr "Grupo de detalhes: clique para inserir o grupo da Barra de opções"
 
 #: crates/ui-egui/src/graphics.rs:568
 #: crates/ui-egui/src/graphics.rs:819
-#: crates/ui-egui/src/templates.rs:604
+#: crates/ui-egui/src/templates.rs:682
 msgid "Detail Level"
 msgstr "Nível de detalhe"
 
@@ -2571,12 +2576,12 @@ msgstr "Duplicar como dependente"
 msgid "Duplicate with Detailing"
 msgstr "Duplicar com detalhamento"
 
-#: crates/ui-egui/src/templates.rs:390
+#: crates/ui-egui/src/templates.rs:468
 #: crates/ui-egui/src/typeprops.rs:93
 msgid "Duplicate…"
 msgstr "Duplicar…"
 
-#: crates/ui-egui/src/templates.rs:699
+#: crates/ui-egui/src/templates.rs:777
 msgid "Each is a length, and Top may be left empty for the level above."
 msgstr "Cada campo é um comprimento, e Superior pode ficar vazio para o nível acima."
 
@@ -2674,14 +2679,14 @@ msgstr "Editar o tipo"
 
 #: crates/ui-egui/src/graphics.rs:613
 #: crates/ui-egui/src/properties.rs:1827
-#: crates/ui-egui/src/templates.rs:579
+#: crates/ui-egui/src/templates.rs:657
 msgid "Edit {}"
 msgstr "Editar {}"
 
 #: crates/ui-egui/src/graphics.rs:590
 #: crates/ui-egui/src/graphics.rs:612
 #: crates/ui-egui/src/properties.rs:1825
-#: crates/ui-egui/src/templates.rs:581
+#: crates/ui-egui/src/templates.rs:659
 msgid "Edit…"
 msgstr "Editar…"
 
@@ -2723,7 +2728,7 @@ msgstr "Elevação"
 msgid "Elevation (°)"
 msgstr "Elevação (°)"
 
-#: crates/ui-egui/src/templates.rs:45
+#: crates/ui-egui/src/templates.rs:46
 msgid "Elevation/Section"
 msgstr "Elevação/Corte"
 
@@ -3374,7 +3379,7 @@ msgstr "Categoria"
 msgid "Graphic Display Options"
 msgstr ""
 
-#: crates/ui-egui/src/footer.rs:364
+#: crates/ui-egui/src/footer.rs:366
 msgid "Graphic Display Options..."
 msgstr ""
 
@@ -3410,11 +3415,11 @@ msgstr "Eixo (GR): clique nas duas extremidades"
 msgid "Grid rotation"
 msgstr "Rotação da grade"
 
-#: crates/ui-egui/src/footer.rs:421
+#: crates/ui-egui/src/footer.rs:424
 msgid "Grid settings…"
 msgstr "Configurações da grade…"
 
-#: crates/ui-egui/src/footer.rs:427
+#: crates/ui-egui/src/footer.rs:430
 #: crates/ui-egui/src/properties.rs:2466
 msgid "Grid snapping"
 msgstr "Snap na grade"
@@ -3503,7 +3508,7 @@ msgstr "Linhas ocultas"
 msgid "Hide Category"
 msgstr "Ocultar categoria"
 
-#: crates/ui-egui/src/footer.rs:382
+#: crates/ui-egui/src/footer.rs:385
 msgid "Hide Category (HC)"
 msgstr "Ocultar Categoria (HC)"
 
@@ -3519,15 +3524,15 @@ msgstr "Ocultar elemento"
 msgid "Hide Element (EH): leave the selected elements out of this view"
 msgstr "Ocultar elemento (EH): deixa os elementos selecionados fora desta vista"
 
-#: crates/ui-egui/src/footer.rs:381
+#: crates/ui-egui/src/footer.rs:384
 msgid "Hide Element (HH)"
 msgstr "Ocultar Elemento (HH)"
 
-#: crates/ui-egui/src/footer.rs:450
+#: crates/ui-egui/src/footer.rs:453
 msgid "High Contrast Point Clouds"
 msgstr "Nuvens de pontos em alto contraste"
 
-#: crates/ui-egui/src/footer.rs:445
+#: crates/ui-egui/src/footer.rs:448
 msgid "High Contrast Point Clouds: draw this view's scans in one strong colour, so what they show reads; again for their own colours. A scan given a colour of its own in Visibility/Graphics keeps it."
 msgstr "Nuvens de pontos em alto contraste: desenha as nuvens desta vista em uma só cor forte, para que se leia o que mostram; de novo para as suas próprias cores. Uma nuvem com cor própria em Visibilidade/Gráficos a mantém."
 
@@ -3690,7 +3695,7 @@ msgstr "Inativas (armazenamento plano)"
 msgid "Inches"
 msgstr "Polegadas"
 
-#: crates/ui-egui/src/templates.rs:489
+#: crates/ui-egui/src/templates.rs:567
 msgid "Include"
 msgstr "Incluir"
 
@@ -3775,11 +3780,11 @@ msgstr "Interseção"
 msgid "Invert"
 msgstr "Inverter"
 
-#: crates/ui-egui/src/footer.rs:384
+#: crates/ui-egui/src/footer.rs:387
 msgid "Isolate Category (IC)"
 msgstr "Isolar Categoria (IC)"
 
-#: crates/ui-egui/src/footer.rs:383
+#: crates/ui-egui/src/footer.rs:386
 msgid "Isolate Element (HI)"
 msgstr "Isolar Elemento (HI)"
 
@@ -3965,7 +3970,7 @@ msgid "Level (LL): a new level at an elevation"
 msgstr "Nível (LL): um novo nível numa elevação"
 
 #: crates/ui-egui/src/properties.rs:399
-#: crates/ui-egui/src/templates.rs:666
+#: crates/ui-egui/src/templates.rs:744
 msgid "Level Above"
 msgstr "Nível acima"
 
@@ -4237,7 +4242,7 @@ msgid "Main Model"
 msgstr "Modelo principal"
 
 #: crates/ui-egui/src/background_grid.rs:145
-#: crates/ui-egui/src/footer.rs:419
+#: crates/ui-egui/src/footer.rs:422
 msgid "Main grid"
 msgstr "Grade principal"
 
@@ -4599,7 +4604,7 @@ msgstr "Nome"
 #: crates/ui-egui/src/phasing.rs:350
 #: crates/ui-egui/src/phasing.rs:535
 #: crates/ui-egui/src/properties.rs:2810
-#: crates/ui-egui/src/templates.rs:425
+#: crates/ui-egui/src/templates.rs:503
 #: crates/ui-egui/src/typeprops.rs:100
 #: crates/ui-egui/src/typeprops.rs:101
 msgid "Name:"
@@ -4677,7 +4682,7 @@ msgstr "Os novos elementos são feitos nesta opção; a vista na tela a mostra"
 msgid "New filter:"
 msgstr "Novo filtro:"
 
-#: crates/ui-egui/src/templates.rs:407
+#: crates/ui-egui/src/templates.rs:485
 msgid "New from This View…"
 msgstr "Novo a partir desta vista…"
 
@@ -4757,7 +4762,7 @@ msgstr "Nenhum projeto recente ainda"
 msgid "No rows yet: the {} is empty."
 msgstr "Ainda sem linhas: a {} está vazia."
 
-#: crates/ui-egui/src/templates.rs:461
+#: crates/ui-egui/src/templates.rs:539
 msgid "No template picked."
 msgstr "Nenhum modelo escolhido."
 
@@ -4765,7 +4770,7 @@ msgstr "Nenhum modelo escolhido."
 msgid "No texture"
 msgstr "Sem textura"
 
-#: crates/ui-egui/src/templates.rs:375
+#: crates/ui-egui/src/templates.rs:453
 msgid "No {} templates yet: New from This View makes one from a view of the kind."
 msgstr "Ainda não há modelos de {}: Novo a partir desta vista cria um a partir de uma vista desse tipo."
 
@@ -4877,7 +4882,7 @@ msgstr "Número"
 #: crates/ui-egui/src/properties.rs:3009
 #: crates/ui-egui/src/reinforce.rs:537
 #: crates/ui-egui/src/standards.rs:335
-#: crates/ui-egui/src/templates.rs:680
+#: crates/ui-egui/src/templates.rs:758
 #: crates/ui-egui/src/typeprops.rs:311
 msgid "OK"
 msgstr "OK"
@@ -4921,7 +4926,7 @@ msgstr "Deslocamento (OF): escolha uma parede ou linha; uma cópia vai para o la
 msgid "Offset:"
 msgstr "Deslocamento:"
 
-#: crates/ui-egui/src/templates.rs:674
+#: crates/ui-egui/src/templates.rs:752
 msgid "Offsets from the plan's level."
 msgstr "Deslocamentos a partir do nível da planta."
 
@@ -4959,7 +4964,7 @@ msgstr "Abra uma planta para escolher as linhas do padrão: linhas de detalhe s�
 msgid "Open a schedule"
 msgstr "Abrir uma tabela"
 
-#: crates/ui-egui/src/templates.rs:411
+#: crates/ui-egui/src/templates.rs:489
 msgid "Open a view of the kind ({}) to make a template from it."
 msgstr "Abra uma vista deste tipo ({}) para criar um modelo a partir dela."
 
@@ -5124,7 +5129,7 @@ msgstr "Linhas paralelas com um ângulo e um espaçamento, cruzadas ou não"
 
 #: crates/ui-egui/src/editor.rs:656
 #: crates/ui-egui/src/properties.rs:2705
-#: crates/ui-egui/src/templates.rs:489
+#: crates/ui-egui/src/templates.rs:567
 #: crates/ui-egui/src/typeprops.rs:164
 msgid "Parameter"
 msgstr "Parâmetro"
@@ -5252,7 +5257,7 @@ msgid "Perspective: see the 3D view as through a camera, its eye standing back a
 msgstr "Perspectiva: ver a vista 3D como através de uma câmera, com o olho tão afastado quanto a lente e o zoom indicam"
 
 #: crates/ui-egui/src/phasing.rs:449
-#: crates/ui-egui/src/templates.rs:633
+#: crates/ui-egui/src/templates.rs:711
 msgid "Phase"
 msgstr "Fase"
 
@@ -5265,7 +5270,7 @@ msgid "Phase Demolished"
 msgstr "Fase de demolição"
 
 #: crates/ui-egui/src/phasing.rs:438
-#: crates/ui-egui/src/templates.rs:626
+#: crates/ui-egui/src/templates.rs:704
 msgid "Phase Filter"
 msgstr "Filtro de fase"
 
@@ -5651,7 +5656,7 @@ msgstr "Colocar:"
 msgid "Plain"
 msgstr "Liso"
 
-#: crates/ui-egui/src/templates.rs:44
+#: crates/ui-egui/src/templates.rs:45
 msgid "Plan"
 msgstr "Planta"
 
@@ -6118,7 +6123,7 @@ msgid "Removed {} bars."
 msgstr "{} barras removidas."
 
 #: crates/ui-egui/src/phasing.rs:553
-#: crates/ui-egui/src/templates.rs:420
+#: crates/ui-egui/src/templates.rs:498
 #: crates/ui-egui/src/typeprops.rs:101
 msgid "Rename"
 msgstr "Renomear"
@@ -6131,7 +6136,7 @@ msgstr "Renomear opção"
 msgid "Rename Set"
 msgstr "Renomear conjunto"
 
-#: crates/ui-egui/src/templates.rs:395
+#: crates/ui-egui/src/templates.rs:473
 #: crates/ui-egui/src/typeprops.rs:133
 msgid "Rename…"
 msgstr "Renomear…"
@@ -6198,7 +6203,7 @@ msgstr ""
 msgid "Reset Temporary Hide/Isolate"
 msgstr "Redefinir Ocultar/Isolar Temporário"
 
-#: crates/ui-egui/src/footer.rs:397
+#: crates/ui-egui/src/footer.rs:400
 msgid "Reset Temporary Hide/Isolate (HR)"
 msgstr "Redefinir Ocultar/Isolar Temporário (HR)"
 
@@ -6223,15 +6228,15 @@ msgstr "Restaurar padrões"
 msgid "Restore Down"
 msgstr "Restaurar tamanho"
 
-#: crates/ui-egui/src/footer.rs:436
+#: crates/ui-egui/src/footer.rs:439
 msgid "Reveal Hidden Elements"
 msgstr "Revelar Elementos Ocultos"
 
-#: crates/ui-egui/src/footer.rs:435
+#: crates/ui-egui/src/footer.rs:438
 msgid "Reveal Hidden Elements (RH): draw what this view hides in magenta; again to hide it"
 msgstr "Revelar Elementos Ocultos (RH): desenha em magenta o que esta vista oculta; de novo para ocultar"
 
-#: crates/ui-egui/src/footer.rs:463
+#: crates/ui-egui/src/footer.rs:466
 msgid "Revealing hidden elements"
 msgstr "Revelando elementos ocultos"
 
@@ -6420,6 +6425,10 @@ msgstr "Salvar modelo"
 #: crates/ui-egui/src/settings.rs:608
 msgid "Save a recovery copy every"
 msgstr "Salvar uma cópia de recuperação a cada"
+
+#: crates/ui-egui/src/templates.rs:230
+msgid "Save as"
+msgstr ""
 
 #: crates/ui-egui/src/reinforce.rs:465
 msgid "Save as:"
@@ -6770,12 +6779,12 @@ msgstr "Mostrar anterior + demolido"
 msgid "Show Previous + New"
 msgstr "Mostrar anterior + novo"
 
-#: crates/ui-egui/src/footer.rs:411
+#: crates/ui-egui/src/footer.rs:414
 msgid "Show background grids, change their settings, or toggle grid snapping"
 msgstr "Mostrar as grades de fundo, mudar suas configurações ou ligar e desligar o snap na grade"
 
 #: crates/ui-egui/src/background_grid.rs:143
-#: crates/ui-egui/src/footer.rs:418
+#: crates/ui-egui/src/footer.rs:421
 msgid "Show grids"
 msgstr "Mostrar grades"
 
@@ -7198,7 +7207,7 @@ msgid "Styles"
 msgstr "Estilos"
 
 #: crates/ui-egui/src/background_grid.rs:161
-#: crates/ui-egui/src/footer.rs:420
+#: crates/ui-egui/src/footer.rs:423
 msgid "Subgrid"
 msgstr "Subgrade"
 
@@ -7432,11 +7441,11 @@ msgstr "Ocultar Categoria Temporariamente"
 msgid "Temporary Hide Element"
 msgstr "Ocultar Elemento Temporariamente"
 
-#: crates/ui-egui/src/footer.rs:376
+#: crates/ui-egui/src/footer.rs:379
 msgid "Temporary Hide/Isolate"
 msgstr "Ocultar/Isolar Temporariamente"
 
-#: crates/ui-egui/src/footer.rs:374
+#: crates/ui-egui/src/footer.rs:377
 msgid "Temporary Hide/Isolate: hide or isolate what is selected, or its categories, in this view until you reset it"
 msgstr "Ocultar/Isolar Temporariamente: oculta ou isola o que está selecionado, ou as suas categorias, nesta vista até você redefinir"
 
@@ -7797,7 +7806,7 @@ msgstr ""
 
 #: crates/ui-egui/src/lib.rs:4404
 #: crates/ui-egui/src/reinforce.rs:182
-#: crates/ui-egui/src/templates.rs:666
+#: crates/ui-egui/src/templates.rs:744
 msgid "Top"
 msgstr "Superior"
 
@@ -8122,15 +8131,15 @@ msgstr "Usar a barra de título do sistema"
 msgid "User Interface"
 msgstr "Interface do usuário"
 
-#: crates/ui-egui/src/templates.rs:620
+#: crates/ui-egui/src/templates.rs:698
 msgid "V/G Filters"
 msgstr "Filtros de V/G"
 
-#: crates/ui-egui/src/templates.rs:619
+#: crates/ui-egui/src/templates.rs:697
 msgid "V/G Overrides"
 msgstr "Substituições de V/G"
 
-#: crates/ui-egui/src/templates.rs:489
+#: crates/ui-egui/src/templates.rs:567
 #: crates/ui-egui/src/typeprops.rs:164
 msgid "Value"
 msgstr "Valor"
@@ -8150,7 +8159,7 @@ msgid "View"
 msgstr "Vista"
 
 #: crates/ui-egui/src/properties.rs:402
-#: crates/ui-egui/src/templates.rs:666
+#: crates/ui-egui/src/templates.rs:744
 msgid "View Depth"
 msgstr "Profundidade da vista"
 
@@ -8163,18 +8172,18 @@ msgstr "Filtros de vista"
 msgid "View Name"
 msgstr "Nome da vista"
 
-#: crates/ui-egui/src/templates.rs:473
+#: crates/ui-egui/src/templates.rs:551
 msgid "View Properties"
 msgstr "Propriedades da vista"
 
 #: crates/ui-egui/src/graphics.rs:119
-#: crates/ui-egui/src/templates.rs:622
-#: crates/ui-egui/src/templates.rs:662
+#: crates/ui-egui/src/templates.rs:700
+#: crates/ui-egui/src/templates.rs:740
 msgid "View Range"
 msgstr "Intervalo da vista"
 
 #: crates/ui-egui/src/graphics.rs:547
-#: crates/ui-egui/src/templates.rs:596
+#: crates/ui-egui/src/templates.rs:674
 msgid "View Scale"
 msgstr "Escala da vista"
 
@@ -8192,7 +8201,7 @@ msgid "View Template: {}"
 msgstr "Modelo de vista: {}"
 
 #: crates/ui-egui/src/lib.rs:3623
-#: crates/ui-egui/src/templates.rs:225
+#: crates/ui-egui/src/templates.rs:303
 msgid "View Templates"
 msgstr "Modelos de vista"
 
@@ -8216,13 +8225,22 @@ msgstr "Vistas"
 msgid "Views (all)"
 msgstr "Vistas (todas)"
 
-#: crates/ui-egui/src/templates.rs:475
+#: crates/ui-egui/src/templates.rs:553
 msgid "Views following it: {}"
 msgstr "Vistas que o seguem: {}"
 
 #: crates/ui-egui/src/graphics.rs:794
 msgid "Visibility"
 msgstr "Visibilidade"
+
+#: crates/ui-egui/src/templates.rs:210
+#: crates/ui-egui/src/templates.rs:256
+msgid "Visibility Set"
+msgstr ""
+
+#: crates/ui-egui/src/templates.rs:204
+msgid "Visibility Set: the view template this view follows, to switch what it shows at a click; <None> for its own"
+msgstr ""
 
 #: crates/ui-egui/src/lib.rs:3612
 msgid "Visibility/Graphics"
@@ -8251,11 +8269,11 @@ msgid "Visible when"
 msgstr "Visível quando"
 
 #: crates/ui-egui/src/graphics.rs:578
-#: crates/ui-egui/src/templates.rs:612
+#: crates/ui-egui/src/templates.rs:690
 msgid "Visual Style"
 msgstr "Estilo visual"
 
-#: crates/ui-egui/src/footer.rs:354
+#: crates/ui-egui/src/footer.rs:356
 msgid "Visual Style: how the 3D view draws surfaces: Shaded, Hidden Line (WF, HL and SD set them) or Wireframe"
 msgstr "Estilo visual: como a vista 3D desenha as superfícies: Sombreado, Linhas ocultas (WF, HL e SD os definem) ou Estrutura de arame"
 
@@ -9033,7 +9051,7 @@ msgstr "tipos de fio"
 msgid "{}\n\nThe details are in {}."
 msgstr "{}\n\nOs detalhes estão em {}."
 
-#: crates/ui-egui/src/footer.rs:464
+#: crates/ui-egui/src/footer.rs:467
 msgid "{} (HR resets)"
 msgstr "{} (HR redefine)"
 
@@ -9057,7 +9075,7 @@ msgstr "Tabela de {}"
 msgid "{} Skipped {}."
 msgstr "{} Ignorados: {}."
 
-#: crates/ui-egui/src/templates.rs:414
+#: crates/ui-egui/src/templates.rs:492
 msgid "{} Template"
 msgstr "Modelo de {}"
 
