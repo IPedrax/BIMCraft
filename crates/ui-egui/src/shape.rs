@@ -435,6 +435,29 @@ impl BimApp {
         self.shape_refresh();
     }
 
+    /// The selected edges that are folding lines (`Model::shape_folds`): what Convert Lines would make split lines.
+    pub(crate) fn shape_picked_folds(&self) -> Vec<(P2, P2)> {
+        let Some((_, f)) = self.floor_selected() else { return Vec::new() };
+        let folds = self.session.model.shape_folds(&f);
+        self.shape_picked
+            .iter()
+            .filter_map(|s| match *s {
+                Sub::Edge(a, b) if folds.iter().any(|&(c, d)| Sub::Edge(c, d).same(Sub::Edge(a, b))) => Some((a, b)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Convert Lines, as Revit's: the selected folding lines made split lines, in one `edit_shape`, so the top keeps folding
+    /// along them whatever its points do; one way (a split line goes back only by being deleted).
+    pub(crate) fn shape_convert_lines(&mut self) {
+        let folds = self.shape_picked_folds();
+        let Some((floor, f)) = self.floor_selected().filter(|_| !folds.is_empty()) else { return };
+        let mut shape = f.shape.clone();
+        shape.lines.extend(folds.into_iter().map(|(a, b)| bimcraft_core::model::SplitLine { a, b, ..Default::default() }));
+        self.edit_shape(floor, &shape);
+    }
+
     /// Delete under Modify Sub Elements: the selected shape points and split lines taken off, and the lines that ended at a
     /// point taken; a selected corner back at the top's height, an outline's edge left. Whether there was a selection.
     pub(crate) fn shape_delete(&mut self) -> bool {

@@ -95,6 +95,7 @@ icon_names! {
     Text,
     Spot,
     SpotSlope,
+    ConvertLines,
     Angular,
     Radial,
     Linear,
@@ -856,6 +857,15 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(5.0, 8.0), (13.0, 8.0), (9.0, 16.0)]);
             g.line(&[(15.0, 7.0), (21.0, 7.0)]);
             g.line(&[(15.0, 11.0), (19.0, 11.0)]);
+        }
+        Icon::ConvertLines => {
+            // A dashed folding line, an arrow, and the split line it becomes.
+            g.line(&[(3.0, 6.0), (6.0, 6.0)]);
+            g.line(&[(9.0, 6.0), (12.0, 6.0)]);
+            g.line(&[(15.0, 6.0), (18.0, 6.0)]);
+            g.line(&[(12.0, 10.0), (12.0, 15.0)]);
+            g.line(&[(9.0, 12.5), (12.0, 15.5), (15.0, 12.5)]);
+            g.line(&[(3.0, 19.0), (21.0, 19.0)]);
         }
         Icon::SpotSlope => {
             // A falling top, an arrow down it, and its fall written over.

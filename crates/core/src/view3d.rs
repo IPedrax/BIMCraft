@@ -2397,10 +2397,31 @@ pub fn on_floor_top(m: &Model, f: &crate::model::Floor, cam: &Camera, at: (f64, 
     best.map(|(_, q)| q)
 }
 
+/// What of floor `f`'s shape a click at plan point `q` picks in a plan, within `reach` mm, as `Floor::shape_pick` does, its
+/// folding lines among its edges (`Model::shape_folds`): the nearest point or corner; else both ends of the nearest edge.
+pub fn shape_pick_plan(m: &Model, f: &crate::model::Floor, q: P2, reach: f64) -> Vec<P2> {
+    let picked = f.shape_pick(q, reach);
+    if picked.len() == 1 {
+        return picked;
+    }
+    let off = |(a, b): &(P2, P2)| geom::dist_to_segment(q, *a, *b);
+    let fold = m.shape_folds(f).into_iter().filter(|e| off(e) <= reach).min_by(|x, y| off(x).total_cmp(&off(y)));
+    let edge = match *picked.as_slice() {
+        [a, b] => Some((a, b)),
+        _ => None,
+    };
+    match (edge, fold) {
+        (Some(e), Some(g)) if off(&g) < off(&e) => vec![g.0, g.1],
+        (None, Some(g)) => vec![g.0, g.1],
+        _ => picked,
+    }
+}
+
 /// What of floor `f`'s shape a click at pixel `at` picks in the 3D view through `cam`, as `Floor::shape_pick` does in plan,
 /// within `reach` pixels: the nearest point or corner; else both ends of the nearest edge; else nothing.
 pub fn shape_pick_3d(m: &Model, f: &crate::model::Floor, cam: &Camera, at: (f64, f64), reach: f64) -> Vec<P2> {
-    let (handles, edges) = shape_handles(m, f);
+    let (handles, mut edges) = shape_handles(m, f);
+    edges.extend(m.shape_folds(f));
     let q = P2(at.0, at.1);
     let shown = |p: P3| {
         let (x, y, z) = cam.project(p);

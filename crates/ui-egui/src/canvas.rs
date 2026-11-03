@@ -2127,7 +2127,7 @@ impl BimApp {
             // opening's): selected, or with Shift or Ctrl added to the selection; the Options Bar's Elevation then reads it.
             Tool::ModifySubElements => {
                 let (q, reach) = (v.mm(at), 2.0 * f64::from(PICK) / v.scale);
-                self.shape_select(|f| f.shape_pick(q, reach), mods.shift || mods.command);
+                self.shape_select(|f| bimcraft_core::view3d::shape_pick_plan(m, f, q, reach), mods.shift || mods.command);
             }
             // A split line across the selected floor's top, from one click to the next; then ready for another.
             &Tool::AddSplitLine(start) => {

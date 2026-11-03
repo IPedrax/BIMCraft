@@ -550,7 +550,9 @@ fn in_3d_a_click_lands_on_the_shaped_top_and_picks_points_corners_and_edges() {
     assert_eq!(shape_pick_3d(&s.model, fl, &cam, (dx + 3.0, dy - 2.0), 8.0), [P2(4000.0, 3000.0)]);
     assert_eq!(shape_pick_3d(&s.model, fl, &cam, px([8000.0, 0.0, 0.0]), 8.0), [P2(8000.0, 0.0)]);
     assert_eq!(shape_pick_3d(&s.model, fl, &cam, px([2000.0, 4500.0, -150.0]), 8.0), [P2(0.0, 6000.0), P2(4000.0, 3000.0)]);
-    assert!(shape_pick_3d(&s.model, fl, &cam, px([6000.0, 1500.0, -150.0]), 2.0).is_empty());
+    // On a folding line, its ends; out in a plane, nothing.
+    assert_eq!(shape_pick_3d(&s.model, fl, &cam, px([6000.0, 1500.0, -150.0]), 2.0).len(), 2);
+    assert!(shape_pick_3d(&s.model, fl, &cam, px([7000.0, 3000.0, -75.0]), 2.0).is_empty());
     // Off the floor, no hit.
     assert_eq!(on_floor_top(&s.model, fl, &cam, px([12000.0, 3000.0, 0.0])), None);
     // In perspective too, from the eye.
@@ -1176,4 +1178,28 @@ fn add_point_with_an_offset_lands_that_far_over_the_top_as_it_is_there() {
     // Not both.
     let e = fails(&mut s, "add_point", json!({"id": f, "at": [6000, 1500], "offset": 20, "z": 5}));
     assert!(e.contains("offset"), "{e}");
+}
+
+#[test]
+fn a_shapes_folding_lines_are_its_creases_no_split_line_makes_and_they_can_be_picked() {
+    use crate::view3d::{shape_pick_3d, shape_pick_plan};
+    let mut s = Session::new();
+    let f = slab(&mut s);
+    run(&mut s, "edit_shape", json!({"id": f, "points": [{"at": [4000, 3000], "z": -300}], "lines": [{"a": [0, 0], "b": [4000, 3000]}]}));
+    let fl = s.model.shapeable(f).unwrap();
+    // A drain with a split line to one corner: the creases to the other three fold of themselves.
+    let folds = s.model.shape_folds(&fl);
+    assert_eq!(folds.len(), 3, "{folds:?}");
+    assert!(!folds.iter().any(|(a, b)| [a, b].contains(&&P2(0.0, 0.0))), "the split line isn't one");
+    // Picked in plan off one's middle, its ends; a split line and an outline edge as before.
+    let mut ends = shape_pick_plan(&s.model, &fl, P2(6030.0, 1480.0), 100.0);
+    ends.sort_by(|a, b| a.0.total_cmp(&b.0));
+    assert_eq!(ends, [P2(4000.0, 3000.0), P2(8000.0, 0.0)]);
+    assert_eq!(shape_pick_plan(&s.model, &fl, P2(4000.0, 40.0), 100.0).len(), 2);
+    // And in 3D.
+    let cam = camera(&s);
+    let (x, y, _) = cam.project([6000.0, 1500.0, -150.0]);
+    let mut ends = shape_pick_3d(&s.model, &fl, &cam, (x + 1.0, y + 1.0), 8.0);
+    ends.sort_by(|a, b| a.0.total_cmp(&b.0));
+    assert_eq!(ends, [P2(4000.0, 3000.0), P2(8000.0, 0.0)]);
 }
