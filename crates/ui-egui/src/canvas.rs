@@ -1314,7 +1314,9 @@ impl BimApp {
 
         let p = ui.painter_at(rect);
         p.rect_filled(rect, 0.0, color(render::PAPER));
-        let mut marked = self.selection.clone();
+        // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
+        let shaped = self.shaping();
+        let mut marked: Vec<Id> = self.selection.iter().copied().filter(|id| Some(*id) != shaped).collect();
         if let Tool::Trim(Some((first, _))) | Tool::TrimTo { boundary: Some(first), .. } = self.tool {
             marked.push(first);
         }
@@ -2131,10 +2133,10 @@ impl BimApp {
                 self.shape_add_point(p);
             }
             // A point of the selected floor's shape or a corner picked, or else an edge (a split line's, the outline's or an
-            // opening's) and both its ends: each to the Options Bar's elevation, in one `edit_shape`.
+            // opening's): selected, or with Shift or Ctrl added to the selection; the Options Bar's Elevation then reads it.
             Tool::ModifySubElements => {
                 let (q, reach) = (v.mm(at), 2.0 * f64::from(PICK) / v.scale);
-                self.shape_modify(|f| f.shape_pick(q, reach));
+                self.shape_select(|f| f.shape_pick(q, reach), mods.shift || mods.command);
             }
             // A split line across the selected floor's top, from one click to the next; then ready for another.
             &Tool::AddSplitLine(start) => {
@@ -3572,6 +3574,7 @@ impl BimApp {
         self.shape_label_rects.clear();
         let Some(f) = self.shaping().and_then(|id| m.shapeable(id).ok()) else {
             self.shape_label_edit = None;
+            self.shape_picked.clear();
             return;
         };
         let f = &f;
@@ -3584,32 +3587,35 @@ impl BimApp {
             .shape_grip
             .and_then(|_| ui.input(|i| i.pointer.latest_pos()))
             .map(|q| self.snap(m, level, view, (q.x - rect.min.x, q.y - rect.min.y), &[], false).at);
-        let grips = self.tool == Tool::ModifySubElements;
+        // Its points, edges, split lines and creases as edit mode colours them; the grip under the cursor lit, the selection
+        // thick.
+        let marks = crate::shape::marks(m, f);
+        let hover = ui.input(|i| i.pointer.hover_pos()).filter(|h| rect.contains(*h));
+        let lit = hover.filter(|_| self.shape_grip.is_none()).and_then(|h| {
+            marks.points.iter().map(|(q, ..)| (*q, at(*q).distance(h))).filter(|(_, d)| *d <= 8.0).min_by(|a, b| a.1.total_cmp(&b.1))
+        });
+        crate::shape::draw_marks(&p, &marks, |a| at(P2(a[0], a[1])), &self.shape_picked, lit.map(|(q, _)| q));
         // The creases the drag would leave, dashed over the ones there are.
         for [a, b] in self.shape_preview.as_ref().map(|f| m.shape_creases(f)).unwrap_or_default() {
             p.extend(egui::Shape::dashed_line(&[at(P2(a[0], a[1])), at(P2(b[0], b[1]))], Stroke::new(1.5, pal().accent), 6.0, 4.0));
         }
-        let hover = ui.input(|i| i.pointer.hover_pos()).filter(|h| rect.contains(*h));
-        let labels = m.shape_labels(f, self.shape_absolute);
-        // The grip under the cursor, lit as the held one is.
-        let lit = hover.and_then(|h| {
-            labels.iter().map(|(q, _)| (*q, at(*q).distance(h))).filter(|(_, d)| *d <= 8.0).min_by(|a, b| a.1.total_cmp(&b.1))
-        });
-        for (q, z) in labels {
-            let held = self.shape_grip.is_some_and(|g| g.dist(q) <= TOL);
-            let q = cursor.filter(|_| held).unwrap_or(q);
-            let hovered = lit.is_some_and(|(l, _)| l.dist(q) <= TOL);
-            if grips {
-                let r = Rect::from_center_size(at(q), vec2(if hovered { 12.0 } else { 9.0 }, if hovered { 12.0 } else { 9.0 }));
-                p.rect_filled(r, 1.0, if held || hovered { pal().accent } else { canvas_pal().surface });
-                p.rect_stroke(r, 1.0, Stroke::new(1.5, pal().accent), StrokeKind::Middle);
+        // Each point's height beside it, and the selection's (an edge's at its middle): a click on one types it. A point held
+        // follows the cursor.
+        let mut labels: Vec<(P2, Vec<P2>)> = f.shape.points.iter().map(|x| (x.at, vec![x.at])).collect();
+        for s in self.shape_picked.clone() {
+            if !labels.iter().any(|(q, _)| q.dist(s.at()) <= TOL) {
+                labels.push((s.at(), s.ends()));
             }
-            // Held, its label follows it; else a click on it types its height.
-            let text = m.units.length(z);
+        }
+        for (q, ends) in labels {
+            let text = self.heights_text(f, &ends);
+            let held = self.shape_grip.is_some_and(|g| g.dist(q) <= TOL);
             if held {
-                tag(&p, at(q) + vec2(8.0, -8.0), Align2::LEFT_BOTTOM, text);
+                let c = at(cursor.unwrap_or(q));
+                p.circle_filled(c, 5.5, pal().accent);
+                tag(&p, c + vec2(8.0, -8.0), Align2::LEFT_BOTTOM, text);
             } else {
-                let r = self.shape_label(ui, at(q) + vec2(8.0, -8.0), q, &text);
+                let r = self.shape_label(ui, at(q) + vec2(8.0, -8.0), q, &ends, &text);
                 self.shape_label_rects.push(r);
             }
         }
