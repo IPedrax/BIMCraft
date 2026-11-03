@@ -103,3 +103,58 @@ fn rev_is_flush_light_chrome_whatever_layout_bimcraft_keeps() {
     let floating = h.get_by_role_and_label(Role::RadioButton, "Floating");
     assert!(floating.accesskit_node().is_disabled(), "Rev has one layout: the choice is BIMCraft's");
 }
+
+/// The hairlines in the border's colour the window drew by the row whose value's field is at `field`: (under it, running across
+/// the row from its name to the field's end; between the name and the field, running down past it).
+fn rules_by(h: &Harness<BimApp>, field: egui::Rect) -> (usize, usize) {
+    fn walk(s: &Shape, out: &mut Vec<[egui::Pos2; 2]>) {
+        match s {
+            Shape::LineSegment { points, stroke } if stroke.color == crate::style::pal().border => out.push(*points),
+            Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
+            _ => {}
+        }
+    }
+    let mut lines = Vec::new();
+    h.output().shapes.iter().for_each(|c| walk(&c.shape, &mut lines));
+    let under = lines
+        .iter()
+        .filter(|[a, b]| {
+            (a.y - b.y).abs() < 0.5
+                && a.y > field.bottom()
+                && a.y < field.bottom() + 8.0
+                && a.x.min(b.x) < field.left() - 60.0
+                && a.x.max(b.x) >= field.right() - 1.0
+        })
+        .count();
+    let beside = lines
+        .iter()
+        .filter(|[a, b]| {
+            (a.x - b.x).abs() < 0.5
+                && a.x < field.left()
+                && a.x > field.left() - 20.0
+                && a.y.min(b.y) < field.top()
+                && a.y.max(b.y) > field.bottom()
+        })
+        .count();
+    (under, beside)
+}
+
+#[test]
+fn revs_properties_are_a_ruled_grid_and_apply_stays_at_the_palettes_foot_while_the_rows_scroll() {
+    let mut h = app(BOX);
+    click(&mut h, P2(0.0, 3000.0));
+    assert_eq!(h.state().selection.len(), 1, "a wall, whose rows run past the palette");
+    // The row's field, which its name labels.
+    let field = h.get_by_label("Base Offset").rect();
+    assert_eq!(rules_by(&h, field), (0, 0), "BIMCraft's rows are not ruled");
+    h.state_mut().profile = Profile::Rev;
+    h.run();
+    h.run();
+    let field = h.get_by_label("Base Offset").rect();
+    let (under, beside) = rules_by(&h, field);
+    assert!(under == 1 && beside >= 1, "a line under the row and one between its name and its value: {under}, {beside}");
+    // Apply is at the palette's foot, over the Project Browser's title, though the rows run on past it.
+    let (apply, browser) = (h.get_by_label("Apply").rect(), h.get_by_label_contains("Project Browser ·").rect());
+    assert!(apply.bottom() <= browser.top() && browser.top() - apply.bottom() < 16.0, "{apply:?} over {browser:?}");
+    assert!(field.bottom() < apply.top());
+}

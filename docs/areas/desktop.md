@@ -243,7 +243,10 @@ BIMCraft's bar is dark; the accent, its tints and the drawing's colours are the 
 own, which `style::follow` sets again when the profile changes), and one layout, flush, so the Layout choice is BIMCraft's and greyed while
 Rev is on. Its File is the ribbon's first tab, white on blue (`style::FILE_TAB`), and leaves the app bar; its open tab is outlined but
 along its foot, where it opens onto the panels; the panels' names sit on bands along the ribbon's foot (`ribbon::panel`); and the Options
-Bar is docked under the ribbon (`BimApp::show`), there with or without a tool's options, so the view never moves under it. Each difference
+Bar is docked under the ribbon (`BimApp::show`), there with or without a tool's options, so the view never moves under it. In Properties
+each group is a ruled property grid (every group's rows go through `properties::grid`, which draws the line between the columns, and
+`properties::end_row`, which draws one under each row), the group headers are semibold, and Apply stays at the palette's foot over a line
+(`palette_body`), the rows scrolling above it. Each difference
 is read in the frame through `style::rev()`, never a second copy of a widget. Rev copies a layout, never another program's pictures or
 words: its icons are the ones `icons.rs` draws. `tests/profile.rs` drives it, and `tests/smallest.rs` runs the least window in both.
 

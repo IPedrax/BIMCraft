@@ -587,7 +587,8 @@ pub(crate) fn group_header(ui: &mut Ui, group: &str, open: bool) -> bool {
     response.widget_info(|| WidgetInfo::selected(WidgetType::CollapsingHeader, true, open, group));
     let p = ui.painter();
     p.rect_filled(r, 0.0, if response.hovered() { pal().hover_fill } else { pal().bar });
-    p.text(r.left_center() + vec2(8.0, 0.0), Align2::LEFT_CENTER, group, FontId::proportional(13.0), pal().text);
+    let font = if crate::style::rev() { crate::style::semibold(13.0) } else { FontId::proportional(13.0) };
+    p.text(r.left_center() + vec2(8.0, 0.0), Align2::LEFT_CENTER, group, font, pal().text);
     // A chevron on the right, pointing down while the group is open.
     let c = pos2(r.right() - 12.0, r.center().y);
     let chevron =
@@ -597,6 +598,34 @@ pub(crate) fn group_header(ui: &mut Ui, group: &str, open: bool) -> bool {
         p.rect_stroke(r, 0.0, crate::style::focus_ring(), StrokeKind::Inside);
     }
     response.clicked()
+}
+
+/// A group's rows under its header: names on the left and values on the right, half the palette each, as Revit's columns, so a
+/// long name wraps rather than pushing its field past the palette's edge. Rev rules it as its property grid is: a line between the
+/// columns here, and one under each row ([`end_row`]).
+pub(crate) fn grid(ui: &mut Ui, id: impl egui::AsIdSalt, add: impl FnOnce(&mut Ui)) {
+    Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
+        let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
+        let rows = Grid::new(id).num_columns(2).min_col_width(half).max_col_width(half).show(ui, add).response.rect;
+        if crate::style::rev() {
+            let x = rows.left() + half + ui.spacing().item_spacing.x / 2.0;
+            ui.painter().vline(x, rows.y_range(), Stroke::new(1.0, pal().border));
+        }
+    });
+}
+
+/// The palette's Apply. Fields commit on Enter or when they lose the keyboard, which a click here does.
+pub(crate) fn apply(ui: &mut Ui) {
+    let _ = ui.button(t("Apply"));
+}
+
+/// Ends a row of a [`grid`]; Rev draws the line under it.
+pub(crate) fn end_row(ui: &mut Ui) {
+    ui.end_row();
+    if crate::style::rev() {
+        let y = ui.cursor().top() - ui.spacing().item_spacing.y / 2.0;
+        ui.painter().hline(ui.max_rect().x_range(), y, Stroke::new(1.0, pal().border));
+    }
 }
 
 /// What the palette shows.
@@ -1020,11 +1049,11 @@ impl BimApp {
             self.graphics_properties(ui);
             self.phasing_properties(ui);
         }
-        ui.add_space(8.0);
-        // Fields commit on Enter or when they lose the keyboard, which a click here does.
-        ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-            let _ = ui.button(t("Apply"));
-        });
+        // Rev's Apply is at the palette's foot, out of the rows (`palette_body`).
+        if !crate::style::rev() {
+            ui.add_space(8.0);
+            ui.with_layout(Layout::right_to_left(Align::Min), apply);
+        }
     }
 
     /// The Type Selector: the category and the type of what the palette shows, a drop-down of
@@ -1087,7 +1116,7 @@ impl BimApp {
         let p = ui.painter();
         p.rect(
             rect,
-            3.0,
+            crate::style::corner(3.0),
             pal().surface,
             Stroke::new(1.0, if r.hovered() && enabled { pal().hover } else { pal().border }),
             StrokeKind::Inside,
@@ -1117,7 +1146,7 @@ impl BimApp {
             p.add(Shape::convex_polygon(vec![c + vec2(-4.0, -2.0), c + vec2(4.0, -2.0), c + vec2(0.0, 3.0)], pal().icon, Stroke::NONE));
         }
         if r.has_focus() {
-            p.rect_stroke(rect, 3.0, crate::style::focus_ring(), StrokeKind::Inside);
+            p.rect_stroke(rect, crate::style::corner(3.0), crate::style::focus_ring(), StrokeKind::Inside);
         }
         let mut picked = None;
         // A component's list holds every family's types, more than a window has room for (issue 64): it scrolls, as tall as
@@ -1212,158 +1241,152 @@ impl BimApp {
             if !open {
                 continue;
             }
-            Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
-                // Half the palette each, as Revit's columns: a long label wraps rather than pushing
-                // its field past the palette's edge.
-                let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-                Grid::new(("properties", id, group)).num_columns(2).min_col_width(half).max_col_width(half).show(ui, |ui| {
-                    for &(_, key, label, kind) in rows.iter().filter(|r| r.0 == group) {
-                        let val = &v[key];
-                        // A length one element hasn't got (a straight wall's radius): no row.
-                        if ids.len() == 1 && matches!(kind, LengthShown | LengthIf) && val.is_null() {
-                            continue;
-                        }
-                        if ids.len() == 1 && !relevant(&first, key) {
-                            continue;
-                        }
-                        let kind = match kind {
-                            Height if !v["top_level"].is_null() => LengthShown,
-                            Point if paper => PaperPoint,
-                            kind => kind,
-                        };
-                        let label = t(label);
-                        let name = ui.label(label);
-                        match kind {
-                            Shown => {
-                                let said = text(val);
-                                ui.label(RichText::new(t(&said)).color(pal().muted));
-                            }
-                            // An angle's degrees; else lengths.
-                            Values if v["kind"] == "angular" => {
-                                ui.label(RichText::new(format!("{}°", text(val))).color(pal().muted));
-                            }
-                            LengthShown | AreaShown | MetresShown | Values => {
-                                ui.label(RichText::new(shown(kind, val, units)).color(pal().muted));
-                            }
-                            LevelName => {
-                                ui.label(RichText::new(level_name(val)).color(pal().muted));
-                            }
-                            ViewName => {
-                                let name = id_of(val).and_then(|v| model.view_name(v)).unwrap_or_default();
-                                ui.label(RichText::new(name).color(pal().muted));
-                            }
-                            Crop => {
-                                let mut on = !val.is_null();
-                                let r = ui.checkbox(&mut on, "");
-                                r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, label));
-                                if r.labelled_by(name.id).changed() {
-                                    crop = Some(on);
-                                }
-                            }
-                            Flag => {
-                                let mut on = val.as_bool().unwrap_or(false);
-                                let r = ui.checkbox(&mut on, "");
-                                // A checkbox without text names itself "" for screen readers: give it its row's name.
-                                r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, label));
-                                if r.labelled_by(name.id).changed() {
-                                    change = Some((key, Ok(json!(on))));
-                                }
-                            }
-                            Level => {
-                                if let Some(l) = combo(ui, (id, key), name.id, &level_name(val), &levels) {
-                                    change = Some((key, Ok(json!(l))));
-                                }
-                            }
-                            UpperLimit => {
-                                let none = t("Not Bounded");
-                                let options: Vec<String> = std::iter::once(none.to_string()).chain(levels.iter().cloned()).collect();
-                                let now = if val.is_null() { none.to_string() } else { level_name(val) };
-                                if let Some(l) = combo(ui, (id, key), name.id, &now, &options) {
-                                    let upper =
-                                        levels.iter().position(|n| *n == l).and_then(|i| model.levels().get(i).map(|(lid, _)| *lid));
-                                    // One room: its top stays where it is, its Limit Offset now measured from the new limit.
-                                    if let ([_], Some(Element::Room(r))) = (ids, model.elements.get(id)) {
-                                        let (_, top) = model.room_span(r);
-                                        let from = upper.map_or_else(|| model.elevation(r.level), |u| model.elevation(u));
-                                        also = Some(("limit_offset", json!(top - from)));
-                                    }
-                                    change = Some((key, Ok(if l == none { Value::Null } else { json!(l) })));
-                                }
-                            }
-                            TopLevel => {
-                                let none = t("Unconnected");
-                                let options: Vec<String> = std::iter::once(none.to_string()).chain(levels.iter().cloned()).collect();
-                                let current = if val.is_null() { none.to_string() } else { level_name(val) };
-                                if let Some(l) = combo(ui, (id, key), name.id, &current, &options) {
-                                    change = Some((key, Ok(if l == none { Value::Null } else { json!(l) })));
-                                }
-                            }
-                            // Shown by its label; a centre line by default, which the wall's JSON leaves out.
-                            LocationLine => {
-                                let now = val.as_str().and_then(Location::from_name).unwrap_or_default();
-                                let options: Vec<String> = Location::ALL.iter().map(|l| t(l.label()).to_string()).collect();
-                                if let Some(l) = combo(ui, (id, key), name.id, t(now.label()), &options)
-                                    && let Some(loc) = Location::ALL.iter().find(|loc| t(loc.label()) == l)
-                                {
-                                    change = Some((key, Ok(json!(loc.name()))));
-                                }
-                            }
-                            LineStyle => {
-                                let options: Vec<String> = model.line_styles.keys().cloned().collect();
-                                if let Some(s) = combo(ui, (id, key), name.id, val.as_str().unwrap_or_default(), &options) {
-                                    change = Some((key, Ok(json!(s))));
-                                }
-                            }
-                            // Invisible lines first, then the styles; picked, none is null.
-                            RegionLines => {
-                                let invisible = t("<Invisible lines>").to_string();
-                                let options: Vec<String> =
-                                    std::iter::once(invisible.clone()).chain(model.line_styles.keys().cloned()).collect();
-                                let now = val.as_str().map_or(invisible.clone(), str::to_string);
-                                if let Some(s) = combo(ui, (id, key), name.id, &now, &options) {
-                                    change = Some((key, Ok(if s == invisible { Value::Null } else { json!(s) })));
-                                }
-                            }
-                            Justification => {
-                                let names = [("top", "Top"), ("centre", "Centre"), ("bottom", "Bottom")];
-                                let now = names.iter().find(|(k, _)| val.as_str() == Some(k)).map_or("Centre", |(_, n)| n);
-                                let options: Vec<String> = names.iter().map(|(_, n)| t(n).to_string()).collect();
-                                if let Some(j) = combo(ui, (id, key), name.id, t(now), &options)
-                                    && let Some((k, _)) = names.iter().find(|(_, n)| t(n) == j)
-                                {
-                                    change = Some((key, Ok(json!(k))));
-                                }
-                            }
-                            Choice(names) => {
-                                let now = names.iter().find(|(k, _)| val.as_str() == Some(k)).or(names.first()).map_or("", |(_, n)| n);
-                                let options: Vec<String> = names.iter().map(|(_, n)| t(n).to_string()).collect();
-                                if let Some(j) = combo(ui, (id, key), name.id, t(now), &options)
-                                    && let Some((k, _)) = names.iter().find(|(_, n)| t(n) == j)
-                                {
-                                    change = Some((key, Ok(json!(k))));
-                                }
-                            }
-                            // Revit's greyed checkbox: Attach Top/Base and Detach Top/Base change it.
-                            Attached => {
-                                let mut on = !val.is_null();
-                                let r = ui.add_enabled(false, Checkbox::new(&mut on, ""));
-                                r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, false, on, label));
-                                r.labelled_by(name.id);
-                            }
-                            Text | Number | Length | LengthIf | Point | PaperPoint | Outline | Height | Limit(_) => {
-                                // Blank across a selection may be values that differ, not nothing.
-                                let hint = match kind {
-                                    Limit(hint) if ids.len() == 1 => t(hint),
-                                    _ => "",
-                                };
-                                if let Some(typed) = self.field(ui, id, key, shown(kind, val, units), name.id, hint) {
-                                    change = Some((key, parse(kind, &typed, units)));
-                                }
-                            }
-                        }
-                        ui.end_row();
+            grid(ui, ("properties", id, group), |ui| {
+                for &(_, key, label, kind) in rows.iter().filter(|r| r.0 == group) {
+                    let val = &v[key];
+                    // A length one element hasn't got (a straight wall's radius): no row.
+                    if ids.len() == 1 && matches!(kind, LengthShown | LengthIf) && val.is_null() {
+                        continue;
                     }
-                });
+                    if ids.len() == 1 && !relevant(&first, key) {
+                        continue;
+                    }
+                    let kind = match kind {
+                        Height if !v["top_level"].is_null() => LengthShown,
+                        Point if paper => PaperPoint,
+                        kind => kind,
+                    };
+                    let label = t(label);
+                    let name = ui.label(label);
+                    match kind {
+                        Shown => {
+                            let said = text(val);
+                            ui.label(RichText::new(t(&said)).color(pal().muted));
+                        }
+                        // An angle's degrees; else lengths.
+                        Values if v["kind"] == "angular" => {
+                            ui.label(RichText::new(format!("{}°", text(val))).color(pal().muted));
+                        }
+                        LengthShown | AreaShown | MetresShown | Values => {
+                            ui.label(RichText::new(shown(kind, val, units)).color(pal().muted));
+                        }
+                        LevelName => {
+                            ui.label(RichText::new(level_name(val)).color(pal().muted));
+                        }
+                        ViewName => {
+                            let name = id_of(val).and_then(|v| model.view_name(v)).unwrap_or_default();
+                            ui.label(RichText::new(name).color(pal().muted));
+                        }
+                        Crop => {
+                            let mut on = !val.is_null();
+                            let r = ui.checkbox(&mut on, "");
+                            r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, label));
+                            if r.labelled_by(name.id).changed() {
+                                crop = Some(on);
+                            }
+                        }
+                        Flag => {
+                            let mut on = val.as_bool().unwrap_or(false);
+                            let r = ui.checkbox(&mut on, "");
+                            // A checkbox without text names itself "" for screen readers: give it its row's name.
+                            r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, label));
+                            if r.labelled_by(name.id).changed() {
+                                change = Some((key, Ok(json!(on))));
+                            }
+                        }
+                        Level => {
+                            if let Some(l) = combo(ui, (id, key), name.id, &level_name(val), &levels) {
+                                change = Some((key, Ok(json!(l))));
+                            }
+                        }
+                        UpperLimit => {
+                            let none = t("Not Bounded");
+                            let options: Vec<String> = std::iter::once(none.to_string()).chain(levels.iter().cloned()).collect();
+                            let now = if val.is_null() { none.to_string() } else { level_name(val) };
+                            if let Some(l) = combo(ui, (id, key), name.id, &now, &options) {
+                                let upper = levels.iter().position(|n| *n == l).and_then(|i| model.levels().get(i).map(|(lid, _)| *lid));
+                                // One room: its top stays where it is, its Limit Offset now measured from the new limit.
+                                if let ([_], Some(Element::Room(r))) = (ids, model.elements.get(id)) {
+                                    let (_, top) = model.room_span(r);
+                                    let from = upper.map_or_else(|| model.elevation(r.level), |u| model.elevation(u));
+                                    also = Some(("limit_offset", json!(top - from)));
+                                }
+                                change = Some((key, Ok(if l == none { Value::Null } else { json!(l) })));
+                            }
+                        }
+                        TopLevel => {
+                            let none = t("Unconnected");
+                            let options: Vec<String> = std::iter::once(none.to_string()).chain(levels.iter().cloned()).collect();
+                            let current = if val.is_null() { none.to_string() } else { level_name(val) };
+                            if let Some(l) = combo(ui, (id, key), name.id, &current, &options) {
+                                change = Some((key, Ok(if l == none { Value::Null } else { json!(l) })));
+                            }
+                        }
+                        // Shown by its label; a centre line by default, which the wall's JSON leaves out.
+                        LocationLine => {
+                            let now = val.as_str().and_then(Location::from_name).unwrap_or_default();
+                            let options: Vec<String> = Location::ALL.iter().map(|l| t(l.label()).to_string()).collect();
+                            if let Some(l) = combo(ui, (id, key), name.id, t(now.label()), &options)
+                                && let Some(loc) = Location::ALL.iter().find(|loc| t(loc.label()) == l)
+                            {
+                                change = Some((key, Ok(json!(loc.name()))));
+                            }
+                        }
+                        LineStyle => {
+                            let options: Vec<String> = model.line_styles.keys().cloned().collect();
+                            if let Some(s) = combo(ui, (id, key), name.id, val.as_str().unwrap_or_default(), &options) {
+                                change = Some((key, Ok(json!(s))));
+                            }
+                        }
+                        // Invisible lines first, then the styles; picked, none is null.
+                        RegionLines => {
+                            let invisible = t("<Invisible lines>").to_string();
+                            let options: Vec<String> =
+                                std::iter::once(invisible.clone()).chain(model.line_styles.keys().cloned()).collect();
+                            let now = val.as_str().map_or(invisible.clone(), str::to_string);
+                            if let Some(s) = combo(ui, (id, key), name.id, &now, &options) {
+                                change = Some((key, Ok(if s == invisible { Value::Null } else { json!(s) })));
+                            }
+                        }
+                        Justification => {
+                            let names = [("top", "Top"), ("centre", "Centre"), ("bottom", "Bottom")];
+                            let now = names.iter().find(|(k, _)| val.as_str() == Some(k)).map_or("Centre", |(_, n)| n);
+                            let options: Vec<String> = names.iter().map(|(_, n)| t(n).to_string()).collect();
+                            if let Some(j) = combo(ui, (id, key), name.id, t(now), &options)
+                                && let Some((k, _)) = names.iter().find(|(_, n)| t(n) == j)
+                            {
+                                change = Some((key, Ok(json!(k))));
+                            }
+                        }
+                        Choice(names) => {
+                            let now = names.iter().find(|(k, _)| val.as_str() == Some(k)).or(names.first()).map_or("", |(_, n)| n);
+                            let options: Vec<String> = names.iter().map(|(_, n)| t(n).to_string()).collect();
+                            if let Some(j) = combo(ui, (id, key), name.id, t(now), &options)
+                                && let Some((k, _)) = names.iter().find(|(_, n)| t(n) == j)
+                            {
+                                change = Some((key, Ok(json!(k))));
+                            }
+                        }
+                        // Revit's greyed checkbox: Attach Top/Base and Detach Top/Base change it.
+                        Attached => {
+                            let mut on = !val.is_null();
+                            let r = ui.add_enabled(false, Checkbox::new(&mut on, ""));
+                            r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, false, on, label));
+                            r.labelled_by(name.id);
+                        }
+                        Text | Number | Length | LengthIf | Point | PaperPoint | Outline | Height | Limit(_) => {
+                            // Blank across a selection may be values that differ, not nothing.
+                            let hint = match kind {
+                                Limit(hint) if ids.len() == 1 => t(hint),
+                                _ => "",
+                            };
+                            if let Some(typed) = self.field(ui, id, key, shown(kind, val, units), name.id, hint) {
+                                change = Some((key, parse(kind, &typed, units)));
+                            }
+                        }
+                    }
+                    end_row(ui);
+                }
             });
         }
         if ids.len() == 1 && v["enclosed"] == json!(false) {
@@ -1518,34 +1541,31 @@ impl BimApp {
         }
         let units = model.units;
         let mut change: Option<(String, Result<Value, String>)> = None;
-        Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
-            let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-            Grid::new(("project-parameters", id)).num_columns(2).min_col_width(half).max_col_width(half).show(ui, |ui| {
-                for (name, kind) in &params {
-                    let val = value(name);
-                    let label = ui.label(name.as_str());
-                    let field = match kind {
-                        ParameterKind::YesNo => {
-                            let mut on = val.as_bool().unwrap_or(false);
-                            let r = ui.checkbox(&mut on, "");
-                            r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, name.as_str()));
-                            if r.labelled_by(label.id).changed() {
-                                change = Some((name.to_string(), Ok(json!(on))));
-                            }
-                            ui.end_row();
-                            continue;
+        grid(ui, ("project-parameters", id), |ui| {
+            for (name, kind) in &params {
+                let val = value(name);
+                let label = ui.label(name.as_str());
+                let field = match kind {
+                    ParameterKind::YesNo => {
+                        let mut on = val.as_bool().unwrap_or(false);
+                        let r = ui.checkbox(&mut on, "");
+                        r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, name.as_str()));
+                        if r.labelled_by(label.id).changed() {
+                            change = Some((name.to_string(), Ok(json!(on))));
                         }
-                        ParameterKind::Length => Length,
-                        ParameterKind::Number => Number,
-                        ParameterKind::Text => Text,
-                    };
-                    if let Some(typed) = self.field(ui, id, &format!("params.{name}"), shown(field, &val, units), label.id, "") {
-                        let v = if typed.trim().is_empty() { Ok(Value::Null) } else { parse(field, &typed, units) };
-                        change = Some((name.to_string(), v));
+                        end_row(ui);
+                        continue;
                     }
-                    ui.end_row();
+                    ParameterKind::Length => Length,
+                    ParameterKind::Number => Number,
+                    ParameterKind::Text => Text,
+                };
+                if let Some(typed) = self.field(ui, id, &format!("params.{name}"), shown(field, &val, units), label.id, "") {
+                    let v = if typed.trim().is_empty() { Ok(Value::Null) } else { parse(field, &typed, units) };
+                    change = Some((name.to_string(), v));
                 }
-            });
+                end_row(ui);
+            }
         });
         match change {
             Some((name, Ok(v))) => {
@@ -1570,39 +1590,36 @@ impl BimApp {
             if !unfolded {
                 continue;
             }
-            Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
-                let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-                Grid::new(("schedule-properties", group)).num_columns(2).min_col_width(half).max_col_width(half).show(ui, |ui| {
-                    if group == "Identity Data" {
-                        let label = ui.label(t("View Name"));
-                        match made {
-                            Some(id) => {
-                                if let Some(typed) = self.field(ui, id, "name", sc.name.clone(), label.id, "") {
-                                    rename = Some((id, typed));
-                                }
-                            }
-                            // Every project's, as it is: named as the project's once it's changed.
-                            None => {
-                                ui.label(RichText::new(&sc.name).color(pal().muted));
+            grid(ui, ("schedule-properties", group), |ui| {
+                if group == "Identity Data" {
+                    let label = ui.label(t("View Name"));
+                    match made {
+                        Some(id) => {
+                            if let Some(typed) = self.field(ui, id, "name", sc.name.clone(), label.id, "") {
+                                rename = Some((id, typed));
                             }
                         }
-                        ui.end_row();
-                        return;
-                    }
-                    ui.label(t("Category"));
-                    ui.label(RichText::new(lang::category(&sc.of, true)).color(pal().muted));
-                    ui.end_row();
-                    for (tab, label) in SCHEDULE_TABS.iter().enumerate() {
-                        ui.label(t(label));
-                        let r = wide_button(ui, t("Edit…"));
-                        // Named for what it edits, for screen readers.
-                        r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf("Edit {}", &[t(label)])));
-                        if r.clicked() {
-                            open = Some(tab);
+                        // Every project's, as it is: named as the project's once it's changed.
+                        None => {
+                            ui.label(RichText::new(&sc.name).color(pal().muted));
                         }
-                        ui.end_row();
                     }
-                });
+                    end_row(ui);
+                    return;
+                }
+                ui.label(t("Category"));
+                ui.label(RichText::new(lang::category(&sc.of, true)).color(pal().muted));
+                end_row(ui);
+                for (tab, label) in SCHEDULE_TABS.iter().enumerate() {
+                    ui.label(t(label));
+                    let r = wide_button(ui, t("Edit…"));
+                    // Named for what it edits, for screen readers.
+                    r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf("Edit {}", &[t(label)])));
+                    if r.clicked() {
+                        open = Some(tab);
+                    }
+                    end_row(ui);
+                }
             });
         }
         // Named otherwise, one every project has is just the project's: its tab follows it.

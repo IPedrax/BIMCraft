@@ -14,7 +14,7 @@ use std::sync::Arc;
 use bimcraft_core::graphics::{Group, Override};
 use bimcraft_core::model::{Element, Id, Model};
 use bimcraft_core::phasing::{self, Presentation, Status};
-use egui::{Align, Button, ComboBox, Context, Frame, Grid, Id as UiId, Layout, Margin, RichText, ScrollArea, TextEdit, Ui, vec2};
+use egui::{Align, Button, ComboBox, Context, Grid, Id as UiId, Layout, RichText, ScrollArea, TextEdit, Ui, vec2};
 use serde_json::{Value, json};
 
 use crate::BimApp;
@@ -363,34 +363,31 @@ impl BimApp {
             return;
         }
         let mut set = None::<Value>;
-        Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
-            let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-            Grid::new("phasing-properties").num_columns(2).min_col_width(half).max_col_width(half).show(ui, |ui| {
-                let label = ui.label(t("Phase Filter"));
-                let none = t("<None>").to_string();
-                let now = g.phase_filter.clone().unwrap_or_else(|| none.clone());
-                let options: Vec<String> = std::iter::once(none.clone()).chain(model.phase_filters.keys().cloned()).collect();
-                ui.add_enabled_ui(!follows, |ui| {
-                    if let Some(picked) = combo(ui, (0, "phase-filter"), label.id, &now, &options) {
-                        set = Some(json!({"view": view, "phase_filter": if picked == none { Value::Null } else { json!(picked) }}));
+        crate::properties::grid(ui, "phasing-properties", |ui| {
+            let label = ui.label(t("Phase Filter"));
+            let none = t("<None>").to_string();
+            let now = g.phase_filter.clone().unwrap_or_else(|| none.clone());
+            let options: Vec<String> = std::iter::once(none.clone()).chain(model.phase_filters.keys().cloned()).collect();
+            ui.add_enabled_ui(!follows, |ui| {
+                if let Some(picked) = combo(ui, (0, "phase-filter"), label.id, &now, &options) {
+                    set = Some(json!({"view": view, "phase_filter": if picked == none { Value::Null } else { json!(picked) }}));
+                }
+            });
+            crate::properties::end_row(ui);
+            // The phase it shows now is the last unless it says; any phase picked, that one too, is its own.
+            let label = ui.label(t("Phase"));
+            let shown = g.phase.clone().or_else(|| model.phases.last().cloned()).unwrap_or_default();
+            ui.add_enabled_ui(!follows, |ui| {
+                let c = ComboBox::from_id_salt((0, "phase")).selected_text(&shown).width(ui.available_width()).show_ui(ui, |ui| {
+                    for p in &model.phases {
+                        if ui.selectable_label(*p == shown, p).clicked() && g.phase.as_ref() != Some(p) {
+                            set = Some(json!({"view": view, "phase": p}));
+                        }
                     }
                 });
-                ui.end_row();
-                // The phase it shows now is the last unless it says; any phase picked, that one too, is its own.
-                let label = ui.label(t("Phase"));
-                let shown = g.phase.clone().or_else(|| model.phases.last().cloned()).unwrap_or_default();
-                ui.add_enabled_ui(!follows, |ui| {
-                    let c = ComboBox::from_id_salt((0, "phase")).selected_text(&shown).width(ui.available_width()).show_ui(ui, |ui| {
-                        for p in &model.phases {
-                            if ui.selectable_label(*p == shown, p).clicked() && g.phase.as_ref() != Some(p) {
-                                set = Some(json!({"view": view, "phase": p}));
-                            }
-                        }
-                    });
-                    c.response.labelled_by(label.id);
-                });
-                ui.end_row();
+                c.response.labelled_by(label.id);
             });
+            crate::properties::end_row(ui);
         });
         if let Some(p) = set {
             self.run("graphics", p);
@@ -423,31 +420,28 @@ impl BimApp {
             return;
         }
         let mut change: Option<(&str, Value)> = None;
-        Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
-            let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-            Grid::new(("phasing-parameters", id)).num_columns(2).min_col_width(half).max_col_width(half).show(ui, |ui| {
-                let label = ui.label(t("Phase Created"));
-                // Written out even for the first phase: a door with none follows its wall.
-                if let Some(p) = combo(ui, (id, "phase-created"), label.id, &created, &model.phases) {
-                    change = Some((phasing::CREATED, json!(p)));
+        crate::properties::grid(ui, ("phasing-parameters", id), |ui| {
+            let label = ui.label(t("Phase Created"));
+            // Written out even for the first phase: a door with none follows its wall.
+            if let Some(p) = combo(ui, (id, "phase-created"), label.id, &created, &model.phases) {
+                change = Some((phasing::CREATED, json!(p)));
+            }
+            crate::properties::end_row(ui);
+            let label = ui.label(t("Phase Demolished"));
+            let phases: Vec<String> = std::iter::once(none.clone()).chain(model.phases.iter().cloned()).collect();
+            if let Some(p) = combo(ui, (id, "phase-demolished"), label.id, &demolished, &phases) {
+                change = Some((phasing::DEMOLISHED, if p == none { Value::Null } else { json!(p) }));
+            }
+            crate::properties::end_row(ui);
+            if !model.option_sets.is_empty() {
+                let label = ui.label(t("Design Option"));
+                let all = model.option_sets.iter().flat_map(|(set, s)| s.options.iter().map(move |o| format!("{set}: {o}")));
+                let options: Vec<String> = std::iter::once(main.clone()).chain(all).collect();
+                if let Some(p) = combo(ui, (id, "design-option"), label.id, &option, &options) {
+                    change = Some((phasing::OPTION, if p == main { Value::Null } else { json!(p) }));
                 }
-                ui.end_row();
-                let label = ui.label(t("Phase Demolished"));
-                let phases: Vec<String> = std::iter::once(none.clone()).chain(model.phases.iter().cloned()).collect();
-                if let Some(p) = combo(ui, (id, "phase-demolished"), label.id, &demolished, &phases) {
-                    change = Some((phasing::DEMOLISHED, if p == none { Value::Null } else { json!(p) }));
-                }
-                ui.end_row();
-                if !model.option_sets.is_empty() {
-                    let label = ui.label(t("Design Option"));
-                    let all = model.option_sets.iter().flat_map(|(set, s)| s.options.iter().map(move |o| format!("{set}: {o}")));
-                    let options: Vec<String> = std::iter::once(main.clone()).chain(all).collect();
-                    if let Some(p) = combo(ui, (id, "design-option"), label.id, &option, &options) {
-                        change = Some((phasing::OPTION, if p == main { Value::Null } else { json!(p) }));
-                    }
-                    ui.end_row();
-                }
-            });
+                crate::properties::end_row(ui);
+            }
         });
         if let Some((key, v)) = change {
             self.run("modify", json!({"ids": ids, "params": {key: v}}));

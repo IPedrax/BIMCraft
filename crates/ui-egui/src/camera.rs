@@ -6,7 +6,7 @@
 
 use bimcraft_i18n::msg;
 
-use egui::{Grid, Ui};
+use egui::Ui;
 use serde_json::json;
 
 use bimcraft_core::model::{Element, Id};
@@ -58,88 +58,83 @@ impl BimApp {
         let widget = view.unwrap_or_default();
         let eye_elevation = self.orbit.camera.and_then(|c| c.eye_elevation());
         let (mut set, mut raise, mut moved, mut renamed) = (None, None, None, None);
-        egui::Frame::new().inner_margin(egui::Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
-            let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-            Grid::new("camera-properties").num_columns(2).min_col_width(half).max_col_width(half).show(ui, |ui| {
-                // A view that exists has its name typed here, as on the plan's symbol: the engine frees the old one and
-                // refuses a name another view has.
-                if let Some(name) = name {
-                    let label = ui.label(t("View Name"));
-                    if let Some(typed) = self.field(ui, widget, "name", name, label.id, "") {
-                        renamed = Some(typed);
-                    }
-                    ui.end_row();
+        crate::properties::grid(ui, "camera-properties", |ui| {
+            // A view that exists has its name typed here, as on the plan's symbol: the engine frees the old one and
+            // refuses a name another view has.
+            if let Some(name) = name {
+                let label = ui.label(t("View Name"));
+                if let Some(typed) = self.field(ui, widget, "name", name, label.id, "") {
+                    renamed = Some(typed);
                 }
-                if is_default {
-                    let label = ui.label(t("Projection")).on_hover_text(t(TIP));
-                    let options: Vec<String> = PROJECTIONS.iter().map(|p| t(p).to_string()).collect();
-                    let current = &options[usize::from(lens.is_some())];
-                    if let Some(picked) = crate::properties::combo(ui, (widget, "camera.projection"), label.id, current, &options) {
-                        set = Some(json!({"on": picked == options[1]}));
-                    }
-                    ui.end_row();
+                crate::properties::end_row(ui);
+            }
+            if is_default {
+                let label = ui.label(t("Projection")).on_hover_text(t(TIP));
+                let options: Vec<String> = PROJECTIONS.iter().map(|p| t(p).to_string()).collect();
+                let current = &options[usize::from(lens.is_some())];
+                if let Some(picked) = crate::properties::combo(ui, (widget, "camera.projection"), label.id, current, &options) {
+                    set = Some(json!({"on": picked == options[1]}));
                 }
-                // Focal Length: the lens it is seen through (its angle of view). The default view's own (`perspective`) or,
-                // for a camera view, its camera's, set with the eye and target it keeps.
-                if let Some(lens) = lens {
-                    let label = ui.label(t("Focal Length"));
-                    if let Some(typed) = self.field(ui, widget, "camera.lens", format!("{lens} mm"), label.id, "") {
-                        match typed.trim().trim_end_matches("mm").trim().parse::<f64>() {
-                            Ok(mm) => match camera {
-                                Some(cam) => moved = Some(json!({"eye": cam.eye, "target": cam.target, "lens": mm})),
-                                None => set = Some(json!({"lens": mm})),
-                            },
-                            Err(_) => {
-                                self.status = crate::Status { text: crate::lang::tf("`{}` is not a length", &[typed.trim()]), error: true }
-                            }
-                        }
-                    }
-                    ui.end_row();
-                }
-                if is_default {
-                    let label = ui.label(t("Eye Elevation"));
-                    let shown = eye_elevation.map(|z| units.length(z)).unwrap_or_default();
-                    if let Some(typed) = self.field(ui, widget, "camera.eye", shown, label.id, "") {
-                        match units.parse(&typed) {
-                            Some(mm) => raise = Some(mm),
-                            None => {
-                                self.status = crate::Status { text: crate::lang::tf("`{}` is not a length", &[typed.trim()]), error: true }
-                            }
-                        }
-                    }
-                    ui.end_row();
-                }
-                // A camera view: where its eye stands and what it looks at, each `x, y, z`.
-                if let Some(cam) = camera {
-                    let as_text = |p: [f64; 3]| p.map(|v| units.length(v)).join(", ");
-                    let mut typed = (None, None);
-                    let label = ui.label(t("Eye"));
-                    if let Some(s) = self.field(ui, widget, "camera.eye_point", as_text(cam.eye), label.id, "") {
-                        typed.0 = Some(s);
-                    }
-                    ui.end_row();
-                    let label = ui.label(t("Target"));
-                    if let Some(s) = self.field(ui, widget, "camera.target_point", as_text(cam.target), label.id, "") {
-                        typed.1 = Some(s);
-                    }
-                    ui.end_row();
-                    if typed.0.is_some() || typed.1.is_some() {
-                        // A point typed must read; one left alone keeps the camera's.
-                        let eye = match typed.0.as_deref() {
-                            Some(s) => point3(s, units),
-                            None => Some(cam.eye),
-                        };
-                        let target = match typed.1.as_deref() {
-                            Some(s) => point3(s, units),
-                            None => Some(cam.target),
-                        };
-                        match (eye, target) {
-                            (Some(eye), Some(target)) => moved = Some(json!({"eye": eye, "target": target})),
-                            _ => self.status = crate::Status { text: t("a point is three lengths, `x, y, z`").to_string(), error: true },
+                crate::properties::end_row(ui);
+            }
+            // Focal Length: the lens it is seen through (its angle of view). The default view's own (`perspective`) or,
+            // for a camera view, its camera's, set with the eye and target it keeps.
+            if let Some(lens) = lens {
+                let label = ui.label(t("Focal Length"));
+                if let Some(typed) = self.field(ui, widget, "camera.lens", format!("{lens} mm"), label.id, "") {
+                    match typed.trim().trim_end_matches("mm").trim().parse::<f64>() {
+                        Ok(mm) => match camera {
+                            Some(cam) => moved = Some(json!({"eye": cam.eye, "target": cam.target, "lens": mm})),
+                            None => set = Some(json!({"lens": mm})),
+                        },
+                        Err(_) => {
+                            self.status = crate::Status { text: crate::lang::tf("`{}` is not a length", &[typed.trim()]), error: true }
                         }
                     }
                 }
-            });
+                crate::properties::end_row(ui);
+            }
+            if is_default {
+                let label = ui.label(t("Eye Elevation"));
+                let shown = eye_elevation.map(|z| units.length(z)).unwrap_or_default();
+                if let Some(typed) = self.field(ui, widget, "camera.eye", shown, label.id, "") {
+                    match units.parse(&typed) {
+                        Some(mm) => raise = Some(mm),
+                        None => self.status = crate::Status { text: crate::lang::tf("`{}` is not a length", &[typed.trim()]), error: true },
+                    }
+                }
+                crate::properties::end_row(ui);
+            }
+            // A camera view: where its eye stands and what it looks at, each `x, y, z`.
+            if let Some(cam) = camera {
+                let as_text = |p: [f64; 3]| p.map(|v| units.length(v)).join(", ");
+                let mut typed = (None, None);
+                let label = ui.label(t("Eye"));
+                if let Some(s) = self.field(ui, widget, "camera.eye_point", as_text(cam.eye), label.id, "") {
+                    typed.0 = Some(s);
+                }
+                crate::properties::end_row(ui);
+                let label = ui.label(t("Target"));
+                if let Some(s) = self.field(ui, widget, "camera.target_point", as_text(cam.target), label.id, "") {
+                    typed.1 = Some(s);
+                }
+                crate::properties::end_row(ui);
+                if typed.0.is_some() || typed.1.is_some() {
+                    // A point typed must read; one left alone keeps the camera's.
+                    let eye = match typed.0.as_deref() {
+                        Some(s) => point3(s, units),
+                        None => Some(cam.eye),
+                    };
+                    let target = match typed.1.as_deref() {
+                        Some(s) => point3(s, units),
+                        None => Some(cam.target),
+                    };
+                    match (eye, target) {
+                        (Some(eye), Some(target)) => moved = Some(json!({"eye": eye, "target": target})),
+                        _ => self.status = crate::Status { text: t("a point is three lengths, `x, y, z`").to_string(), error: true },
+                    }
+                }
+            }
         });
         if let (Some(id), Some(new)) = (view, renamed) {
             self.run("modify", json!({"id": id, "name": new}));
