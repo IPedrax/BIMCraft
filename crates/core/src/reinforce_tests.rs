@@ -492,6 +492,8 @@ fn hostile_parameters_for_every_kind_of_host_are_refused_or_made_never_a_crash()
         hostile.push(
             json!({"cover": 25, "bottom": {"x": pitch(json!(8), json!(150)), "hook": n.clone()}, "top": {"y": pitch(json!(8), json!(150)), "hook": n.clone()}}),
         );
+        hostile.push(json!({"cover": 25, "bottom": {"count": 4, "diameter": 16, "bent": {"count": n.clone(), "angle": n.clone(), "top": n.clone()}}, "bars": {"diameter": 16, "x": 3, "y": 3, "jog": {"by": n.clone(), "from_top": n.clone(), "slope": n.clone()}}, "stirrup": pitch(json!(5), json!(150))}));
+        hostile.push(json!({"cover": 25, "bottom": row(json!(2), json!(16)), "bars": {"diameter": 16}, "check": n.clone(), "aggressiveness": n.clone(), "fck": n.clone()}));
         hostile.push(json!({"cover": 25, "bars": {"diameter": 16}, "anchor": {"start": n.clone(), "end": n.clone(), "below": n.clone(), "above": n.clone()}, "skin": pitch(json!(8), n.clone()), "clearance": n}));
     }
     for host in hosts {
@@ -1015,4 +1017,225 @@ fn a_bar_lying_in_a_sections_plane_is_drawn_along_it_and_one_it_crosses_as_a_dot
         })
         .collect();
     assert!(dots.iter().any(|w| (10.0..30.0).contains(w)), "{dots:?}");
+}
+
+fn near_to(x: f64, y: f64) -> bool {
+    (x - y).abs() < 0.01
+}
+
+#[test]
+fn some_bottom_bars_bend_up_at_each_end_to_the_top_and_run_on_there() {
+    let mut s = Session::new();
+    let host = beam(&mut s);
+    let r = run(
+        &mut s,
+        "reinforce",
+        json!({"host": host, "cover": 25, "bottom": {"count": 4, "diameter": 16, "bent": {"count": 2, "top": 500}}, "stirrup": {"diameter": 5, "spacing": 150}}),
+    );
+    // Four bottom bars, the two inner ones bent: no longer one of the "bottom" layer.
+    let (bent, bottom) = (on(&s, host, "bent"), on(&s, host, "bottom"));
+    assert_eq!((bent.len(), bottom.len(), r["count"].as_u64()), (2, 2, Some(2 + 2 + 41)));
+    // Inside the stirrup the bar's centre is 212 mm either side of the beam's axis: z -462 at the bottom, -38 at the top, a rise of
+    // 424 mm, so a slope at 45 degrees runs 424 mm along. Along the top for 500 from the end 25 mm short of the face.
+    let b = &bent[0];
+    let at: Vec<(f64, f64)> = (0..6).map(|i| (xy(b, i).0, xy(b, i).2)).collect();
+    let want = [(25.0, -38.0), (525.0, -38.0), (949.0, -462.0), (5051.0, -462.0), (5475.0, -38.0), (5975.0, -38.0)];
+    assert!(at.iter().zip(want).all(|(p, q)| near_to(p.0, q.0) && near_to(p.1, q.1)), "{at:?}");
+    // 500 + 424 * sqrt 2 + 4102 + 424 * sqrt 2 + 500.
+    assert!(near_to(b["length"].as_f64().unwrap(), 6301.253), "{b}");
+    // They are the inner two, and the corner bars stay straight.
+    let mut ys: Vec<f64> = bent.iter().map(|b| xy(b, 0).1).collect();
+    ys.sort_by(f64::total_cmp);
+    assert!(near_to(ys[0], -20.667) && near_to(ys[1], 20.667), "{ys:?}");
+    assert!(bottom.iter().all(|b| near_to(xy(b, 0).1.abs(), 62.0) && b["path"].as_array().map(Vec::len) == Some(2)), "{bottom:?}");
+    // A steeper angle makes a shorter slope: 60 degrees, 424 / tan 60 = 244.8 mm.
+    run(
+        &mut s,
+        "reinforce",
+        json!({"host": host, "cover": 25, "bottom": {"count": 3, "diameter": 16, "bent": {"count": 1, "angle": 60, "top": 400}}, "stirrup": {"diameter": 5, "spacing": 150}}),
+    );
+    let b = &on(&s, host, "bent")[0];
+    assert!(near_to(xy(b, 2).0 - xy(b, 1).0, 244.8) && near_to(xy(b, 1).0, 425.0), "{b}");
+    // By default the bar runs along the top for a fifth of the length between its ends.
+    run(
+        &mut s,
+        "reinforce",
+        json!({"host": host, "cover": 25, "bottom": {"count": 3, "diameter": 16, "bent": {"count": 1}}, "stirrup": {"diameter": 5, "spacing": 150}}),
+    );
+    assert!(near_to(xy(&on(&s, host, "bent")[0], 1).0 - 25.0, 5950.0 / 5.0));
+}
+
+#[test]
+fn bent_up_bars_that_cannot_be_made_are_refused_and_say_what_to_change() {
+    let mut s = Session::new();
+    let host = beam(&mut s);
+    let mut with = |bottom: Value, top: Option<Value>| {
+        let mut p = json!({"host": host, "cover": 25, "bottom": bottom});
+        if let Some(t) = top {
+            p["top"] = t;
+        }
+        fails(&mut s, "reinforce", p)
+    };
+    let bent = |count: u64, extra: Value| {
+        let mut b = json!({"count": count});
+        b.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        json!({"count": 4, "diameter": 16, "bent": b})
+    };
+    assert!(with(bent(3, json!({})), None).contains("1 to 2"));
+    assert!(with(bent(0, json!({})), None).contains("1 to 2"));
+    assert!(with(json!({"count": 2, "diameter": 16, "bent": {"count": 1}}), None).contains("1 to 0"));
+    assert!(with(bent(1, json!({"angle": 10})), None).contains("15 and 75"));
+    assert!(with(bent(1, json!({"top": 2800})), None).contains("meet in the middle"));
+    assert!(with(bent(1, json!({"top": -1})), None).contains("`bent top`"));
+    assert!(
+        with(json!({"count": 4, "diameter": 16}), Some(json!({"count": 2, "diameter": 12.5, "bent": {"count": 1}})))
+            .contains("only bottom bars")
+    );
+    // At the top the bent bars come to the top bars' level: three top bars leave 6 mm to a bent one; two leave room.
+    assert!(with(bent(2, json!({})), Some(json!({"count": 3, "diameter": 12.5}))).contains("bent-up bar meets a top bar"));
+    run(&mut s, "reinforce", json!({"host": host, "cover": 25, "bottom": bent(2, json!({})), "top": {"count": 2, "diameter": 12.5}}));
+}
+
+#[test]
+fn a_columns_bars_step_in_near_the_top_to_leave_room_for_the_ones_above() {
+    let mut s = Session::new();
+    let host = column(&mut s, 0.0);
+    run(
+        &mut s,
+        "reinforce",
+        json!({"host": host, "cover": 25, "bars": {"diameter": 16, "x": 3, "y": 3, "jog": {"by": 30, "from_top": 400}}, "stirrup": {"diameter": 5, "spacing": 150}}),
+    );
+    let bars = on(&s, host, "bars");
+    assert_eq!(bars.len(), 8);
+    // A corner bar: 112 mm from the axis each way, straight up to 2600, in 30 mm each way over 6 x 30 = 180 mm, then straight on.
+    let corner = bars.iter().find(|b| near_to(xy(b, 0).0, 1112.0) && near_to(xy(b, 0).1, 2112.0)).unwrap();
+    let want = [(1112.0, 2112.0, 25.0), (1112.0, 2112.0, 2600.0), (1082.0, 2082.0, 2780.0), (1082.0, 2082.0, 2975.0)];
+    let got: Vec<_> = (0..4).map(|i| xy(corner, i)).collect();
+    assert!(got.iter().zip(want).all(|(p, q)| near_to(p.0, q.0) && near_to(p.1, q.1) && near_to(p.2, q.2)), "{got:?}");
+    // A bar in the middle of a face steps in across that face only.
+    let side = bars.iter().find(|b| near_to(xy(b, 0).0, 1000.0) && near_to(xy(b, 0).1, 2112.0)).unwrap();
+    assert!(near_to(xy(side, 3).0, 1000.0) && near_to(xy(side, 3).1, 2082.0), "{side}");
+    // A gentler slope runs further: 1 in 10 over 300 mm.
+    run(&mut s, "reinforce", json!({"host": host, "cover": 25, "bars": {"diameter": 16, "jog": {"by": 30, "from_top": 500, "slope": 10}}}));
+    let b = &on(&s, host, "bars")[0];
+    assert!(near_to(xy(b, 1).2, 2500.0) && near_to(xy(b, 2).2, 2800.0), "{b}");
+}
+
+#[test]
+fn a_jog_that_does_not_fit_or_squeezes_the_bars_together_is_refused() {
+    let mut s = Session::new();
+    let host = column(&mut s, 0.0);
+    let mut jog =
+        |j: Value| fails(&mut s, "reinforce", json!({"host": host, "cover": 25, "bars": {"diameter": 16, "x": 3, "y": 3, "jog": j}}));
+    assert!(jog(json!({"by": 30, "from_top": 3000})).contains("doesn't fit"));
+    assert!(jog(json!({"by": 30, "from_top": 100})).contains("doesn't fit"));
+    assert!(jog(json!({"by": 30, "from_top": 400, "slope": 0.5})).contains("slope"));
+    assert!(jog(json!({"by": 0, "from_top": 400})).contains("`jog by`"));
+    // 100 mm in from 112 leaves the bars of opposite faces 24 mm apart centre to centre, under a bar's own thickness and the gap.
+    assert!(jog(json!({"by": 100, "from_top": 800})).contains("after the jog"));
+}
+
+#[test]
+fn a_round_columns_bars_step_in_toward_the_axis() {
+    let mut s = Session::new();
+    let host =
+        run(&mut s, "structural_column", json!({"at": [0, 0], "type": "Concrete Round 400", "height": 3000}))["id"].as_u64().unwrap();
+    run(
+        &mut s,
+        "reinforce",
+        json!({"host": host, "cover": 25, "bars": {"diameter": 16, "count": 8, "jog": {"by": 20, "from_top": 400}}, "stirrup": {"diameter": 5, "spacing": 150}}),
+    );
+    for b in on(&s, host, "bars") {
+        let (low, high) = (xy(&b, 0), xy(&b, 3));
+        assert!(near_to(low.0.hypot(low.1) - high.0.hypot(high.1), 20.0), "{b}");
+    }
+}
+
+#[test]
+fn a_check_names_what_the_bars_made_do_not_meet_and_changes_nothing_else() {
+    let mut s = Session::new();
+    let host = beam(&mut s);
+    let arm = json!({
+        "host": host, "cover": 25, "bottom": {"count": 3, "diameter": 16}, "top": {"count": 2, "diameter": 12.5},
+        "stirrup": {"diameter": 5, "spacing": 150}
+    });
+    // No check, no notes.
+    assert_eq!(run(&mut s, "reinforce", arm.clone())["notes"], json!([]));
+    let with = |extra: Value| {
+        let mut p = arm.clone();
+        p.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        p
+    };
+    // A beam's cover is 25 mm for class I and 30 for II.
+    let r = run(&mut s, "reinforce", with(json!({"check": "NBR 6118", "aggressiveness": 1})));
+    assert_eq!(r["notes"], json!([]), "{r}");
+    let r = run(&mut s, "reinforce", with(json!({"check": "nbr6118:2014", "aggressiveness": 2})));
+    let notes = r["notes"].as_array().unwrap();
+    assert_eq!(notes.len(), 3, "{notes:?}");
+    assert!(notes.iter().all(|n| n.as_str().unwrap().contains("7.4.7.2") && n.as_str().unwrap().contains("class II")), "{notes:?}");
+    // The bars are made all the same: a note is not a refusal.
+    assert_eq!(r["count"].as_u64(), Some(46));
+    // Thin stirrups too far apart for a 500 mm beam: 0.6 d is 277 mm.
+    let r = run(&mut s, "reinforce", with(json!({"check": "NBR 6118", "stirrup": {"diameter": 4, "spacing": 400}})));
+    let text = r["notes"].to_string();
+    assert!(text.contains("17.4.1.1") && text.contains("under the 5 mm") && text.contains("apart"), "{text}");
+    // A beam over 600 mm deep wants skin bars; with them the note goes.
+    let deep_type = crate::model::RunType { width: 200.0, depth: 800.0, ..Default::default() };
+    s.model_mut().types.runs.entry("beam".into()).or_default().insert("Deep".into(), deep_type);
+    let tall = ids(&run(&mut s, "beam", json!({"points": [[0, 8000], [6000, 8000]], "type": "Deep"})))[0];
+    let deep = |skin: Option<Value>| {
+        let mut p = json!({
+            "host": tall, "cover": 25, "bottom": {"count": 3, "diameter": 16}, "stirrup": {"diameter": 5, "spacing": 150}, "check": "NBR 6118"
+        });
+        if let Some(k) = skin {
+            p["skin"] = k;
+        }
+        p
+    };
+    let r = run(&mut s, "reinforce", deep(None));
+    assert!(r["notes"].to_string().contains("skin bars"), "{r}");
+    let r = run(&mut s, "reinforce", deep(Some(json!({"diameter": 8, "spacing": 150}))));
+    assert_eq!(r["notes"], json!([]), "{r}");
+    // Only the checks that were asked for run: `aggressiveness` and `fck` go with `check`, and the standard must be one it knows.
+    assert!(fails(&mut s, "reinforce", with(json!({"aggressiveness": 2}))).contains("go with `check`"));
+    assert!(fails(&mut s, "reinforce", with(json!({"check": "NBR 9999"}))).contains("NBR 6118"));
+    assert!(fails(&mut s, "reinforce", with(json!({"check": "NBR 6118", "aggressiveness": 5}))).contains("1 to 4"));
+    assert!(fails(&mut s, "reinforce", with(json!({"check": "NBR 6118", "fck": 5}))).contains("MPa"));
+}
+
+#[test]
+fn a_check_of_a_column_and_a_floor_names_what_is_off() {
+    let mut s = Session::new();
+    let host = column(&mut s, 0.0);
+    let r = run(
+        &mut s,
+        "reinforce",
+        json!({
+            "host": host, "cover": 25, "check": "NBR 6118",
+            "bars": {"diameter": 8, "x": 2, "y": 2}, "stirrup": {"diameter": 4, "spacing": 300}
+        }),
+    );
+    let text = r["notes"].to_string();
+    // 8 mm bars are under 10; 4 bars of 8 mm are 0.22 % of 90000 mm2; 4 mm stirrups are under 5; 300 apart is over 12 bars' worth.
+    for want in ["under the 10 mm", "0.22 %", "stirrups of 4 mm", "stirrups 295 mm apart"] {
+        assert!(text.contains(want), "{want}: {text}");
+    }
+    // Sound bars get no notes.
+    let r = run(
+        &mut s,
+        "reinforce",
+        json!({"host": host, "cover": 25, "check": "NBR 6118", "bars": {"diameter": 16, "x": 3, "y": 3}, "stirrup": {"diameter": 5, "spacing": 150}}),
+    );
+    assert_eq!(r["notes"], json!([]), "{r}");
+    // A floor with thick bars far apart.
+    let fl = slab(&mut s, json!({}));
+    let r = run(
+        &mut s,
+        "reinforce",
+        json!({"host": fl, "cover": 20, "check": "NBR 6118", "aggressiveness": 4, "bottom": {"x": {"diameter": 32, "spacing": 300}}}),
+    );
+    let text = r["notes"].to_string();
+    for want in ["20.1", "an eighth", "293 mm apart", "7.4.7.2"] {
+        assert!(text.contains(want), "{want}: {text}");
+    }
 }

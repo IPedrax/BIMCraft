@@ -171,8 +171,8 @@ msgid "ASME Y14.2 & AIA CAD National CAD Standard (NCS):"
 msgstr "ASME Y14.2 & AIA CAD National CAD Standard (NCS):"
 
 #: crates/ui-egui/src/properties.rs:211
-#: crates/ui-egui/src/reinforce.rs:103
-#: crates/ui-egui/src/reinforce.rs:119
+#: crates/ui-egui/src/reinforce.rs:121
+#: crates/ui-egui/src/reinforce.rs:145
 msgid "Above"
 msgstr "Acima"
 
@@ -352,6 +352,10 @@ msgstr "Adicionar à seleção"
 msgid "Added {} to the project"
 msgstr "{} adicionado ao projeto"
 
+#: crates/ui-egui/src/reinforce.rs:514
+msgid "Aggressiveness class"
+msgstr "Classe de agressividade"
+
 #: crates/core/src/fixtures.rs:364
 msgid "Air Terminal"
 msgstr "Captor"
@@ -407,11 +411,15 @@ msgstr "Guias de alinhamento ativadas"
 msgid "All"
 msgstr "Tudo"
 
-#: crates/ui-egui/src/reinforce.rs:92
+#: crates/ui-egui/src/reinforce.rs:102
 msgid "Along depth"
 msgstr "Ao longo da profundidade"
 
-#: crates/ui-egui/src/reinforce.rs:91
+#: crates/ui-egui/src/reinforce.rs:84
+msgid "Along the top"
+msgstr "Ao longo do topo"
+
+#: crates/ui-egui/src/reinforce.rs:101
 msgid "Along width"
 msgstr "Ao longo da largura"
 
@@ -431,9 +439,9 @@ msgstr "Um agente pode trabalhar neste projeto: bimcraft-cli mcp --connect {}"
 msgid "An empty project to model in."
 msgstr "Um projeto vazio para modelar."
 
-#: crates/ui-egui/src/reinforce.rs:82
-#: crates/ui-egui/src/reinforce.rs:102
-#: crates/ui-egui/src/reinforce.rs:118
+#: crates/ui-egui/src/reinforce.rs:92
+#: crates/ui-egui/src/reinforce.rs:120
+#: crates/ui-egui/src/reinforce.rs:144
 msgid "Anchor"
 msgstr "Ancoragem"
 
@@ -442,6 +450,7 @@ msgid "And:"
 msgstr "E:"
 
 #: crates/core/src/snap.rs:67
+#: crates/ui-egui/src/reinforce.rs:83
 msgid "Angle"
 msgstr "Ângulo"
 
@@ -732,8 +741,8 @@ msgstr "Cópias de segurança guardadas"
 msgid "Baluster Spacing"
 msgstr "Espaçamento dos balaústres"
 
-#: crates/ui-egui/src/reinforce.rs:88
-#: crates/ui-egui/src/reinforce.rs:109
+#: crates/ui-egui/src/reinforce.rs:98
+#: crates/ui-egui/src/reinforce.rs:127
 msgid "Bars"
 msgstr "Barras"
 
@@ -786,14 +795,18 @@ msgid "Bed"
 msgstr "Cama"
 
 #: crates/ui-egui/src/properties.rs:212
-#: crates/ui-egui/src/reinforce.rs:103
-#: crates/ui-egui/src/reinforce.rs:119
+#: crates/ui-egui/src/reinforce.rs:121
+#: crates/ui-egui/src/reinforce.rs:145
 msgid "Below"
 msgstr "Abaixo"
 
 #: crates/ui-egui/src/dimtypes.rs:258
 msgid "Below:"
 msgstr "Abaixo:"
+
+#: crates/ui-egui/src/reinforce.rs:80
+msgid "Bent-up bars"
+msgstr "Barras dobradas"
 
 #: crates/ui-egui/src/cad.rs:21
 msgid "Black and White"
@@ -821,24 +834,24 @@ msgid "Border Line Weight"
 msgstr "Espessura da linha da borda"
 
 #: crates/ui-egui/src/properties.rs:401
-#: crates/ui-egui/src/reinforce.rs:156
+#: crates/ui-egui/src/reinforce.rs:182
 #: crates/ui-egui/src/templates.rs:666
 msgid "Bottom"
 msgstr "Inferior"
 
-#: crates/ui-egui/src/reinforce.rs:46
+#: crates/ui-egui/src/reinforce.rs:48
 msgid "Bottom bars"
 msgstr "Barras inferiores"
 
-#: crates/ui-egui/src/reinforce.rs:134
+#: crates/ui-egui/src/reinforce.rs:160
 msgid "Bottom ends turned up"
 msgstr "Pontas de baixo dobradas para cima"
 
-#: crates/ui-egui/src/reinforce.rs:137
+#: crates/ui-egui/src/reinforce.rs:163
 msgid "Bottom, bars along east"
 msgstr "Inferior, barras para leste"
 
-#: crates/ui-egui/src/reinforce.rs:141
+#: crates/ui-egui/src/reinforce.rs:167
 msgid "Bottom, bars along north"
 msgstr "Inferior, barras para norte"
 
@@ -951,7 +964,7 @@ msgstr "Câmera: clique onde fica o olho e depois no ponto para onde ela olha: u
 #: crates/ui-egui/src/properties.rs:2588
 #: crates/ui-egui/src/properties.rs:2783
 #: crates/ui-egui/src/purge.rs:77
-#: crates/ui-egui/src/reinforce.rs:469
+#: crates/ui-egui/src/reinforce.rs:536
 #: crates/ui-egui/src/shortcuts.rs:401
 #: crates/ui-egui/src/shortcuts.rs:529
 #: crates/ui-egui/src/standards.rs:334
@@ -1084,6 +1097,10 @@ msgstr "Cadeira"
 msgid "Changes to a type affect every filled region of that type."
 msgstr "Alterações em um tipo afetam todas as regiões preenchidas desse tipo."
 
+#: crates/ui-egui/src/reinforce.rs:501
+msgid "Check"
+msgstr "Verificação"
+
 #: crates/ui-egui/src/filter.rs:104
 msgid "Check All"
 msgstr "Marcar todos"
@@ -1107,6 +1124,14 @@ msgstr "Procurar atualizações"
 #: crates/ui-egui/src/updates.rs:159
 msgid "Check for updates at startup"
 msgstr "Verificar atualizações ao iniciar"
+
+#: crates/ui-egui/src/reinforce.rs:514
+msgid "Check: Aggressiveness class"
+msgstr "Verificação: Classe de agressividade"
+
+#: crates/ui-egui/src/reinforce.rs:515
+msgid "Check: fck"
+msgstr "Verificação: fck"
 
 #: crates/ui-egui/src/start.rs:478
 msgid "Checking for updates…"
@@ -1153,7 +1178,7 @@ msgstr "Limpar arquivos recentes"
 msgid "Clear the Search"
 msgstr "Limpar a pesquisa"
 
-#: crates/ui-egui/src/reinforce.rs:453
+#: crates/ui-egui/src/reinforce.rs:497
 msgid "Clearance"
 msgstr "Folga livre"
 
@@ -1860,16 +1885,17 @@ msgstr "Não foi possível salvar a configuração: {}"
 #: crates/core/src/schedule.rs:196
 #: crates/ui-egui/src/filter.rs:84
 #: crates/ui-egui/src/linestyles/creator.rs:178
-#: crates/ui-egui/src/reinforce.rs:48
-#: crates/ui-egui/src/reinforce.rs:56
-#: crates/ui-egui/src/reinforce.rs:112
+#: crates/ui-egui/src/reinforce.rs:50
+#: crates/ui-egui/src/reinforce.rs:58
+#: crates/ui-egui/src/reinforce.rs:82
+#: crates/ui-egui/src/reinforce.rs:130
 msgid "Count"
 msgstr "Contagem"
 
-#: crates/ui-egui/src/reinforce.rs:156
-#: crates/ui-egui/src/reinforce.rs:306
-#: crates/ui-egui/src/reinforce.rs:308
-#: crates/ui-egui/src/reinforce.rs:421
+#: crates/ui-egui/src/reinforce.rs:182
+#: crates/ui-egui/src/reinforce.rs:339
+#: crates/ui-egui/src/reinforce.rs:341
+#: crates/ui-egui/src/reinforce.rs:477
 msgid "Cover"
 msgstr "Cobrimento"
 
@@ -2103,7 +2129,7 @@ msgstr "Excluir (DE) a seleção"
 msgid "Delete Option"
 msgstr "Excluir opção"
 
-#: crates/ui-egui/src/reinforce.rs:413
+#: crates/ui-egui/src/reinforce.rs:469
 msgid "Delete Preset"
 msgstr "Excluir modelo"
 
@@ -2160,7 +2186,7 @@ msgstr "Demolir (DW): clique num elemento para demoli-lo na fase da vista; cliqu
 msgid "Demolished"
 msgstr "Demolido"
 
-#: crates/core/src/commands.rs:7867
+#: crates/core/src/commands.rs:7872
 msgid "Dependent"
 msgstr "Dependente"
 
@@ -2257,19 +2283,19 @@ msgstr "Diagonal para cima"
 
 #: crates/core/src/fixtures.rs:186
 #: crates/ui-egui/src/lib.rs:3229
-#: crates/ui-egui/src/reinforce.rs:49
-#: crates/ui-egui/src/reinforce.rs:57
-#: crates/ui-egui/src/reinforce.rs:64
-#: crates/ui-egui/src/reinforce.rs:79
-#: crates/ui-egui/src/reinforce.rs:90
-#: crates/ui-egui/src/reinforce.rs:99
-#: crates/ui-egui/src/reinforce.rs:111
-#: crates/ui-egui/src/reinforce.rs:125
+#: crates/ui-egui/src/reinforce.rs:51
+#: crates/ui-egui/src/reinforce.rs:59
+#: crates/ui-egui/src/reinforce.rs:66
+#: crates/ui-egui/src/reinforce.rs:89
+#: crates/ui-egui/src/reinforce.rs:100
+#: crates/ui-egui/src/reinforce.rs:117
 #: crates/ui-egui/src/reinforce.rs:129
-#: crates/ui-egui/src/reinforce.rs:138
-#: crates/ui-egui/src/reinforce.rs:142
-#: crates/ui-egui/src/reinforce.rs:146
-#: crates/ui-egui/src/reinforce.rs:150
+#: crates/ui-egui/src/reinforce.rs:151
+#: crates/ui-egui/src/reinforce.rs:155
+#: crates/ui-egui/src/reinforce.rs:164
+#: crates/ui-egui/src/reinforce.rs:168
+#: crates/ui-egui/src/reinforce.rs:172
+#: crates/ui-egui/src/reinforce.rs:176
 msgid "Diameter"
 msgstr "Diâmetro"
 
@@ -2664,7 +2690,7 @@ msgid "Ellipse: click its centre, the end of one axis, then how far the other re
 msgstr "Elipse: clique no centro, na extremidade de um eixo e depois até onde vai o outro"
 
 #: crates/ui-egui/src/properties.rs:136
-#: crates/ui-egui/src/reinforce.rs:83
+#: crates/ui-egui/src/reinforce.rs:93
 msgid "End"
 msgstr "Fim"
 
@@ -2672,11 +2698,11 @@ msgstr "Fim"
 msgid "End Level Offset"
 msgstr "Deslocamento final do nível"
 
-#: crates/ui-egui/src/reinforce.rs:66
+#: crates/ui-egui/src/reinforce.rs:68
 msgid "End zone length"
 msgstr "Comprimento nas pontas"
 
-#: crates/ui-egui/src/reinforce.rs:67
+#: crates/ui-egui/src/reinforce.rs:69
 msgid "End zone spacing"
 msgstr "Espaçamento nas pontas"
 
@@ -2684,7 +2710,7 @@ msgstr "Espaçamento nas pontas"
 msgid "Endpoint"
 msgstr "Extremidade"
 
-#: crates/ui-egui/src/reinforce.rs:131
+#: crates/ui-egui/src/reinforce.rs:157
 msgid "Ends turned up"
 msgstr "Pontas dobradas para cima"
 
@@ -3248,7 +3274,7 @@ msgstr "Vidro"
 msgid "Governing Body:"
 msgstr "Órgão normalizador:"
 
-#: crates/ui-egui/src/reinforce.rs:445
+#: crates/ui-egui/src/reinforce.rs:495
 msgid "Grade"
 msgstr "Categoria"
 
@@ -3417,15 +3443,15 @@ msgstr "Início"
 msgid "Home View"
 msgstr "Vista inicial"
 
-#: crates/ui-egui/src/reinforce.rs:50
-#: crates/ui-egui/src/reinforce.rs:58
-#: crates/ui-egui/src/reinforce.rs:68
-#: crates/ui-egui/src/reinforce.rs:93
-#: crates/ui-egui/src/reinforce.rs:99
-#: crates/ui-egui/src/reinforce.rs:113
+#: crates/ui-egui/src/reinforce.rs:52
+#: crates/ui-egui/src/reinforce.rs:60
+#: crates/ui-egui/src/reinforce.rs:70
+#: crates/ui-egui/src/reinforce.rs:103
+#: crates/ui-egui/src/reinforce.rs:117
 #: crates/ui-egui/src/reinforce.rs:131
-#: crates/ui-egui/src/reinforce.rs:134
-#: crates/ui-egui/src/reinforce.rs:135
+#: crates/ui-egui/src/reinforce.rs:157
+#: crates/ui-egui/src/reinforce.rs:160
+#: crates/ui-egui/src/reinforce.rs:161
 msgid "Hook"
 msgstr "Gancho"
 
@@ -3447,7 +3473,7 @@ msgstr "Parede hospedeira"
 msgid "How it shows what is, in the view's phase:"
 msgstr "Como mostra o que há, na fase da vista:"
 
-#: crates/ui-egui/src/reinforce.rs:397
+#: crates/ui-egui/src/reinforce.rs:453
 msgid "How many bars, how thick and how far apart is yours to say; a field left empty is not used. A spacing is the most between bars."
 msgstr "Quantas barras, de que diâmetro e a que distância é você quem diz; um campo vazio não é usado. Um espaçamento é o máximo entre barras."
 
@@ -3689,6 +3715,11 @@ msgstr "Sua origem na origem do projeto, onde as coordenadas do arquivo o coloca
 #: crates/ui-egui/src/standards.rs:99
 msgid "JIS Z 8310 / JIS A 0150 Line Standards:"
 msgstr "Normas de linhas JIS Z 8310 / JIS A 0150:"
+
+#: crates/ui-egui/src/reinforce.rs:107
+#: crates/ui-egui/src/reinforce.rs:135
+msgid "Jog"
+msgstr "Desvio"
 
 #: crates/ui-egui/src/lib.rs:3841
 msgid "Join into Polyline"
@@ -4237,11 +4268,11 @@ msgstr "Membrana"
 msgid "Mesh"
 msgstr "Malha"
 
-#: crates/ui-egui/src/reinforce.rs:128
+#: crates/ui-egui/src/reinforce.rs:154
 msgid "Mesh along depth"
 msgstr "Malha ao longo da profundidade"
 
-#: crates/ui-egui/src/reinforce.rs:124
+#: crates/ui-egui/src/reinforce.rs:150
 msgid "Mesh along width"
 msgstr "Malha ao longo da largura"
 
@@ -4600,6 +4631,8 @@ msgstr "Altura nominal do texto:"
 #: crates/ui-egui/src/dimtypes.rs:122
 #: crates/ui-egui/src/properties.rs:1838
 #: crates/ui-egui/src/properties.rs:1840
+#: crates/ui-egui/src/reinforce.rs:504
+#: crates/ui-egui/src/reinforce.rs:506
 msgid "None"
 msgstr "Nenhum"
 
@@ -4639,6 +4672,10 @@ msgstr "Observação:"
 #: crates/ui-egui/src/revit.rs:250
 msgid "Noted"
 msgstr "Anotações"
+
+#: crates/ui-egui/src/reinforce.rs:520
+msgid "Notes of the check, the bars are made:"
+msgstr "Observações da verificação (as barras foram feitas):"
 
 #: crates/ui-egui/src/inquiry.rs:90
 msgid "Nothing has that ID or GUID: {}"
@@ -4684,7 +4721,7 @@ msgstr "Número"
 #: crates/ui-egui/src/objectstyles.rs:80
 #: crates/ui-egui/src/properties.rs:2589
 #: crates/ui-egui/src/properties.rs:2782
-#: crates/ui-egui/src/reinforce.rs:470
+#: crates/ui-egui/src/reinforce.rs:537
 #: crates/ui-egui/src/standards.rs:335
 #: crates/ui-egui/src/templates.rs:680
 #: crates/ui-egui/src/typeprops.rs:311
@@ -5561,11 +5598,11 @@ msgstr "Prefixo:"
 msgid "Preserve"
 msgstr "Preservar"
 
-#: crates/ui-egui/src/reinforce.rs:400
+#: crates/ui-egui/src/reinforce.rs:456
 msgid "Preset:"
 msgstr "Modelo:"
 
-#: crates/ui-egui/src/reinforce.rs:410
+#: crates/ui-egui/src/reinforce.rs:466
 msgid "Preset: Name"
 msgstr "Modelo: nome"
 
@@ -5848,12 +5885,12 @@ msgstr "Armar"
 msgid "Reinforce (RF): bars by rules for the selected beam, column, footing or floor"
 msgstr "Armar (RF): barras por regras para a viga, o pilar, a sapata ou a laje selecionados"
 
-#: crates/ui-egui/src/reinforce.rs:391
-#: crates/ui-egui/src/reinforce.rs:392
+#: crates/ui-egui/src/reinforce.rs:447
+#: crates/ui-egui/src/reinforce.rs:448
 msgid "Reinforce {} {}"
 msgstr "Armar {} {}"
 
-#: crates/ui-egui/src/reinforce.rs:518
+#: crates/ui-egui/src/reinforce.rs:585
 msgid "Reinforced: {} bars, {} kg of steel."
 msgstr "Armado: {} barras, {} kg de aço."
 
@@ -5883,7 +5920,7 @@ msgstr "Recarregar CAD"
 msgid "Remove"
 msgstr "Remover"
 
-#: crates/ui-egui/src/reinforce.rs:466
+#: crates/ui-egui/src/reinforce.rs:533
 msgid "Remove Bars"
 msgstr "Remover barras"
 
@@ -5899,7 +5936,7 @@ msgstr "Remover pintura: tira a pintura da face clicada na vista 3D"
 msgid "Remove from List"
 msgstr "Remover da lista"
 
-#: crates/ui-egui/src/reinforce.rs:532
+#: crates/ui-egui/src/reinforce.rs:605
 msgid "Removed {} bars."
 msgstr "{} barras removidas."
 
@@ -6165,7 +6202,7 @@ msgstr "Salvar família…"
 msgid "Save Pattern"
 msgstr "Salvar padrão"
 
-#: crates/ui-egui/src/reinforce.rs:411
+#: crates/ui-egui/src/reinforce.rs:467
 msgid "Save Preset"
 msgstr "Salvar modelo"
 
@@ -6173,7 +6210,7 @@ msgstr "Salvar modelo"
 msgid "Save a recovery copy every"
 msgstr "Salvar uma cópia de recuperação a cada"
 
-#: crates/ui-egui/src/reinforce.rs:409
+#: crates/ui-egui/src/reinforce.rs:465
 msgid "Save as:"
 msgstr "Salvar como:"
 
@@ -6335,7 +6372,7 @@ msgstr "Selecionar"
 msgid "Select All Instances"
 msgstr "Selecionar todas as instâncias"
 
-#: crates/ui-egui/src/reinforce.rs:352
+#: crates/ui-egui/src/reinforce.rs:407
 msgid "Select a beam, a column, a footing or a floor to reinforce first."
 msgstr "Selecione primeiro uma viga, um pilar, uma sapata ou uma laje para armar."
 
@@ -6360,7 +6397,7 @@ msgstr "Selecionar por ID"
 msgid "Select by ID: select elements by their IDs, GUIDs or IFC GlobalIds, as many as you paste, and show them"
 msgstr "Selecionar por ID: seleciona elementos por seus IDs, GUIDs ou GlobalIds IFC, quantos você colar, e os mostra"
 
-#: crates/ui-egui/src/reinforce.rs:357
+#: crates/ui-egui/src/reinforce.rs:412
 msgid "Select elements of one kind: all beams, all columns, all footings or all floors."
 msgstr "Selecione elementos de um só tipo: só vigas, só pilares, só sapatas ou só lajes."
 
@@ -6539,7 +6576,7 @@ msgstr "Chuveiro"
 msgid "Side"
 msgstr "Lado"
 
-#: crates/ui-egui/src/reinforce.rs:156
+#: crates/ui-egui/src/reinforce.rs:182
 msgid "Sides"
 msgstr "Laterais"
 
@@ -6588,7 +6625,7 @@ msgstr "Desenhar forro"
 msgid "Sketch Ceiling: sketch the ceiling's outline, and any openings in it"
 msgstr "Desenhar forro: desenhar o contorno do forro e as aberturas nele"
 
-#: crates/ui-egui/src/reinforce.rs:78
+#: crates/ui-egui/src/reinforce.rs:88
 msgid "Skin bars"
 msgstr "Armadura de pele"
 
@@ -6613,6 +6650,8 @@ msgid "Sliding Window"
 msgstr "Janela de correr"
 
 #: crates/core/src/schedule.rs:268
+#: crates/ui-egui/src/reinforce.rs:111
+#: crates/ui-egui/src/reinforce.rs:139
 msgid "Slope"
 msgstr "Inclinação"
 
@@ -6735,14 +6774,14 @@ msgstr "Sul"
 
 #: crates/ui-egui/src/fillpatterns.rs:380
 #: crates/ui-egui/src/linestyles/creator.rs:181
-#: crates/ui-egui/src/reinforce.rs:65
-#: crates/ui-egui/src/reinforce.rs:79
-#: crates/ui-egui/src/reinforce.rs:125
-#: crates/ui-egui/src/reinforce.rs:129
-#: crates/ui-egui/src/reinforce.rs:138
-#: crates/ui-egui/src/reinforce.rs:142
-#: crates/ui-egui/src/reinforce.rs:146
-#: crates/ui-egui/src/reinforce.rs:150
+#: crates/ui-egui/src/reinforce.rs:67
+#: crates/ui-egui/src/reinforce.rs:89
+#: crates/ui-egui/src/reinforce.rs:151
+#: crates/ui-egui/src/reinforce.rs:155
+#: crates/ui-egui/src/reinforce.rs:164
+#: crates/ui-egui/src/reinforce.rs:168
+#: crates/ui-egui/src/reinforce.rs:172
+#: crates/ui-egui/src/reinforce.rs:176
 msgid "Spacing"
 msgstr "Espaçamento"
 
@@ -6812,6 +6851,10 @@ msgstr "Escada: clique onde ela começa e depois onde o lance termina; um patama
 msgid "Stair: click where it starts, then which way it climbs"
 msgstr "Escada: clique onde ela começa e depois na direção em que sobe"
 
+#: crates/ui-egui/src/reinforce.rs:502
+msgid "Standard"
+msgstr "Norma"
+
 #: crates/ui-egui/src/standards.rs:293
 msgid "Standard Preset"
 msgstr "Conjunto de normas"
@@ -6829,7 +6872,7 @@ msgid "Standards Included in this Preset:"
 msgstr "Normas incluídas neste conjunto:"
 
 #: crates/ui-egui/src/properties.rs:135
-#: crates/ui-egui/src/reinforce.rs:83
+#: crates/ui-egui/src/reinforce.rs:93
 msgid "Start"
 msgstr "Início"
 
@@ -6845,28 +6888,38 @@ msgstr "Arco início-fim-raio"
 msgid "Start-End-Radius Arc: click its start, its end, then a point it passes through"
 msgstr "Arco início-fim-raio: clique no início, no fim e depois num ponto por onde ele passa"
 
-#: crates/ui-egui/src/reinforce.rs:443
+#: crates/ui-egui/src/reinforce.rs:110
+#: crates/ui-egui/src/reinforce.rs:138
+msgid "Starts below the top"
+msgstr "Começa abaixo do topo"
+
+#: crates/ui-egui/src/reinforce.rs:494
 msgid "Steel"
 msgstr "Aço"
 
-#: crates/ui-egui/src/reinforce.rs:329
-#: crates/ui-egui/src/reinforce.rs:454
+#: crates/ui-egui/src/reinforce.rs:362
+#: crates/ui-egui/src/reinforce.rs:497
 msgid "Steel: Clearance"
 msgstr "Aço: folga livre"
 
-#: crates/ui-egui/src/reinforce.rs:446
+#: crates/ui-egui/src/reinforce.rs:495
 msgid "Steel: Grade"
 msgstr "Aço: categoria"
 
-#: crates/ui-egui/src/reinforce.rs:450
+#: crates/ui-egui/src/reinforce.rs:496
 msgid "Steel: Stirrup grade"
 msgstr "Aço: categoria dos estribos"
 
-#: crates/ui-egui/src/reinforce.rs:449
+#: crates/ui-egui/src/reinforce.rs:109
+#: crates/ui-egui/src/reinforce.rs:137
+msgid "Step in"
+msgstr "Deslocamento para dentro"
+
+#: crates/ui-egui/src/reinforce.rs:496
 msgid "Stirrup grade"
 msgstr "Categoria dos estribos"
 
-#: crates/ui-egui/src/reinforce.rs:62
+#: crates/ui-egui/src/reinforce.rs:64
 msgid "Stirrups"
 msgstr "Estribos"
 
@@ -7069,7 +7122,7 @@ msgstr "Identificar as portas e janelas desta vista que não têm identificador"
 msgid "Tagged Element"
 msgstr "Elemento identificado"
 
-#: crates/ui-egui/src/reinforce.rs:466
+#: crates/ui-egui/src/reinforce.rs:533
 msgid "Take away the bars this command made for the element: bars drawn by hand stay"
 msgstr "Tira as barras que este comando fez para o elemento: as barras desenhadas à mão ficam"
 
@@ -7401,7 +7454,7 @@ msgstr "Espessura de linha da marca de cota"
 msgid "Tick Mark Size"
 msgstr "Tamanho da marca de cota"
 
-#: crates/ui-egui/src/reinforce.rs:98
+#: crates/ui-egui/src/reinforce.rs:116
 msgid "Ties"
 msgstr "Grampos"
 
@@ -7454,7 +7507,7 @@ msgid "Too dense to preview at this size."
 msgstr "Denso demais para pré-visualizar neste tamanho."
 
 #: crates/ui-egui/src/lib.rs:4116
-#: crates/ui-egui/src/reinforce.rs:156
+#: crates/ui-egui/src/reinforce.rs:182
 #: crates/ui-egui/src/templates.rs:666
 msgid "Top"
 msgstr "Superior"
@@ -7476,11 +7529,11 @@ msgstr "Deslocamento do topo:"
 msgid "Top Outline"
 msgstr "Contorno superior"
 
-#: crates/ui-egui/src/reinforce.rs:54
+#: crates/ui-egui/src/reinforce.rs:56
 msgid "Top bars"
 msgstr "Barras superiores"
 
-#: crates/ui-egui/src/reinforce.rs:135
+#: crates/ui-egui/src/reinforce.rs:161
 msgid "Top ends turned down"
 msgstr "Pontas de cima dobradas para baixo"
 
@@ -7488,11 +7541,11 @@ msgstr "Pontas de cima dobradas para baixo"
 msgid "Top is Attached"
 msgstr "Topo anexado"
 
-#: crates/ui-egui/src/reinforce.rs:145
+#: crates/ui-egui/src/reinforce.rs:171
 msgid "Top, bars along east"
 msgstr "Superior, barras para leste"
 
-#: crates/ui-egui/src/reinforce.rs:149
+#: crates/ui-egui/src/reinforce.rs:175
 msgid "Top, bars along north"
 msgstr "Superior, barras para norte"
 
@@ -7592,7 +7645,7 @@ msgstr "Seletor de tipo"
 msgid "Type Value"
 msgstr "Valor do tipo"
 
-#: crates/ui-egui/src/reinforce.rs:487
+#: crates/ui-egui/src/reinforce.rs:554
 msgid "Type a name for the preset first."
 msgstr "Digite primeiro um nome para o modelo."
 
@@ -7717,7 +7770,7 @@ msgstr "Unidades"
 msgid "Units Format"
 msgstr "Formato de unidades"
 
-#: crates/core/src/commands.rs:8008
+#: crates/core/src/commands.rs:8013
 msgid "Unnamed"
 msgstr "Sem nome"
 
@@ -8273,19 +8326,23 @@ msgstr "uma família precisa de um tipo"
 msgid "a field, such as Type or Height"
 msgstr "um campo, como Type ou Height"
 
-#: crates/ui-egui/src/reinforce.rs:250
+#: crates/ui-egui/src/reinforce.rs:278
 msgid "a length"
 msgstr "um comprimento"
+
+#: crates/ui-egui/src/reinforce.rs:277
+msgid "a number"
+msgstr "um número"
 
 #: crates/ui-egui/src/camera.rs:138
 msgid "a point is three lengths, `x, y, z`"
 msgstr "um ponto são três comprimentos, `x, y, z`"
 
-#: crates/ui-egui/src/reinforce.rs:249
+#: crates/ui-egui/src/reinforce.rs:277
 msgid "a size in mm"
 msgstr "uma medida em mm"
 
-#: crates/ui-egui/src/reinforce.rs:242
+#: crates/ui-egui/src/reinforce.rs:270
 msgid "a whole number"
 msgstr "um número inteiro"
 
@@ -8400,6 +8457,10 @@ msgstr "é igual a"
 #: crates/core/src/library.rs:75
 msgid "family"
 msgstr "família"
+
+#: crates/ui-egui/src/reinforce.rs:515
+msgid "fck (MPa)"
+msgstr ""
 
 #: crates/core/src/curves.rs:135
 msgid "fitted spline"
@@ -8705,7 +8766,7 @@ msgstr "há {} h"
 msgid "{} holds no parameters, so it has no phase to demolish"
 msgstr "{} não tem parâmetros, então não tem fase a demolir"
 
-#: crates/ui-egui/src/reinforce.rs:240
+#: crates/ui-egui/src/reinforce.rs:268
 msgid "{} is not {}: `{}`"
 msgstr "{} não é {}: `{}`"
 
@@ -8781,7 +8842,7 @@ msgstr "{} de subida"
 msgid "{} years ago"
 msgstr "há {} anos"
 
-#: crates/ui-egui/src/reinforce.rs:423
+#: crates/ui-egui/src/reinforce.rs:478
 msgid "{}:"
 msgstr "{}:"
 

@@ -387,23 +387,23 @@ pub static ALL: &[Command] = &[
         "Reinforce",
         &[],
         "{host | hosts: [id, …], preset?, cover?, grade?, grade_stirrup?, clearance?, …} bars by rules for a beam, a column, a footing or a floor: the engineer \
-         says how many, how thick and how far apart (no standard's table is in it) and it lays them inside the cover and checks \
+         says how many, how thick and how far apart (no standard's number sets them) and it lays them inside the cover and checks \
          that they fit, saying what to change. All: `cover` (mm: one number, or {top, bottom, sides}, top and bottom the faces of a \
          beam, a footing or a floor and the ends of a column; else the host's Cobrimento or ConcreteCover parameter), `grade` \
          (CA-50), `grade_stirrup` (the stirrups' and ties'), `clearance` (least mm between bars; their thickness, at least 20, \
          unless told). A spacing is the most between bars: they are spread evenly, so the last is where the first is from the \
-         other end. Beam: `bottom` and `top` {count, diameter, hook?} (`hook`, the straight leg in mm turned up from the bottom bars and down from the top ones at both ends, or {start, end}); `stirrup` {diameter, spacing, ends?: {length, spacing}, hook?} \
+         other end. Beam: `bottom` and `top` {count, diameter, hook?} (`hook`, the straight leg in mm turned up from the bottom bars and down from the top ones at both ends, or {start, end}); `bottom.bent` {count, angle?, top?} bends `count` of the inner bottom bars up at each end (layer `bent`): they run `top` mm along the top face from each end (a fifth of the length unless told), slope down `angle` degrees (15 to 75, 45 unless told) and run along the bottom, and have no hook; `stirrup` {diameter, spacing, ends?: {length, spacing}, hook?} \
          (`ends` closer in the first and last `length` mm; `hook` a tail in mm at the ends); `skin` {diameter, spacing} up each \
          side between the rows; `anchor` {start?, end?} mm the bars run past the ends (0 flush, none a cover short). Column: \
-         `bars` {diameter, x?, y?, hook?} (`hook`, a leg turned into the section at the foot and the top, or {below, above}; bars along each face across its width and across its depth, corners counted, \
+         `bars` {diameter, x?, y?, hook?, jog?} (`hook`, a leg turned into the section at the foot and the top, or {below, above}; `jog` {by, from_top, slope?} steps the bars in `by` mm toward the axis, starting `from_top` mm below the top and running `slope` mm up for each mm across (6 unless told), to leave room for the column above; bars along each face across its width and across its depth, corners counted, \
          2 each; a round column takes `count` instead of x and y, evenly round its circle, with hoops of 24 sides), `stirrup`, `ties` {diameter, hook?} \
          across a rectangular section between bars that are not at a corner (`hook`, a tail in mm at each end), `anchor` {below?, above?}. \
          Footing: `mesh` {x?, y?: {diameter, spacing}, hook?} (hook turns the ends up; a round footing's bars stop at its circle). Floor: `bottom` and \
          `top` {x?, y?: {diameter, spacing}, hook?} (bars along east and north; `hook`, a leg turned up from a bottom mesh and down from a top one), \
          stopping a cover short of its outline and its openings; a sloped floor's bars follow its top, the cover square to it. \
          The bars are `rebar` elements of the host, each on a `layer`; reinforcing again replaces the ones it made and leaves \
-         any drawn by hand. `preset` names a `reinforcement_preset` of the host's kind, whose parameters stand for the ones not given here. `hosts` arms each of a list alike (up to 1000, and 20000 bars in all); if one refuses, none is armed, \
-         and the refusal names it. Returns ids, count, hosts, removed and weight_kg",
+         any drawn by hand. `check` \"NBR 6118\" (with `aggressiveness` 1 to 4 for the cover, and `fck` in MPa) adds `notes` to the reply where the bars made fall short of that standard's usual limits (cover, bar sizes and spacings, stirrups, least and most steel, skin bars): they are notes, never a refusal, the numbers typed from handbooks and not the standard's text, so check one against a copy before relying on it. `preset` names a `reinforcement_preset` of the host's kind, whose parameters stand for the ones not given here. `hosts` arms each of a list alike (up to 1000, and 20000 bars in all); if one refuses, none is armed, \
+         and the refusal names it. Returns ids, count, hosts, removed, weight_kg and notes",
         reinforce_host,
     ),
     edit(
@@ -5534,6 +5534,7 @@ fn reinforce_host(s: &mut Session, p: &Value) -> R {
     };
     let several = hosts.len() > 1;
     let mut made = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
     let mut total = 0;
     for id in &hosts {
         let element = m.elements.get(*id).ok_or_else(|| bad(c, format!("no element {id}")))?;
@@ -5541,8 +5542,9 @@ fn reinforce_host(s: &mut Session, p: &Value) -> R {
         if let Some((name, kind)) = kind.filter(|(_, k)| crate::reinforce::kind_of(element) != Some(*k)) {
             return Err(bad(c, format!("preset `{name}` is for a {kind}, and {id} is a {}", element.category())));
         }
-        let bars = crate::reinforce::bars(m, element, p)
+        let crate::reinforce::Made { bars, notes: its } = crate::reinforce::bars(m, element, p)
             .map_err(|e| if several { format!("{e} (for the {} {id})", element.category()) } else { e })?;
+        notes.extend(its.into_iter().map(|n| if several { format!("{n} (for the {} {id})", element.category()) } else { n }));
         total += bars.len();
         if total > rebar::MAX_BARS_ALL {
             return Err(bad(
@@ -5581,7 +5583,10 @@ fn reinforce_host(s: &mut Session, p: &Value) -> R {
             })));
         }
     }
-    Ok(json!({"ids": ids, "count": ids.len(), "hosts": hosts.len(), "removed": old.len(), "weight_kg": (weight * 1000.0).round() / 1000.0}))
+    notes.truncate(rebar::MAX_NOTES);
+    Ok(
+        json!({"ids": ids, "count": ids.len(), "hosts": hosts.len(), "removed": old.len(), "weight_kg": (weight * 1000.0).round() / 1000.0, "notes": notes}),
+    )
 }
 
 fn reinforcement_preset(s: &mut Session, p: &Value) -> R {

@@ -107,7 +107,7 @@ msgstr "Streep-punt"
 msgid "Data Outlet"
 msgstr "Data-aansluiting"
 
-#: crates/core/src/commands.rs:7867
+#: crates/core/src/commands.rs:7872
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -171,8 +171,8 @@ msgstr "Oost"
 msgid "Elbow 90"
 msgstr "Bocht 90"
 
-#: crates/core/src/commands.rs:7651
-#: crates/core/src/commands.rs:9608
+#: crates/core/src/commands.rs:7656
+#: crates/core/src/commands.rs:9613
 msgid "Elevation"
 msgstr "Gevel"
 
@@ -314,7 +314,7 @@ msgstr "Merkteken"
 msgid "Masking"
 msgstr "Maskering"
 
-#: crates/core/src/commands.rs:6154
+#: crates/core/src/commands.rs:6159
 msgid "Mass"
 msgstr "Massa"
 
@@ -426,7 +426,7 @@ msgstr "Optreden"
 msgid "Roof tiles"
 msgstr "Dakpannen"
 
-#: crates/core/src/commands.rs:6379
+#: crates/core/src/commands.rs:6384
 msgid "Room"
 msgstr "Ruimte"
 
@@ -454,8 +454,8 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Zithoogte"
 
-#: crates/core/src/commands.rs:7628
-#: crates/core/src/commands.rs:9607
+#: crates/core/src/commands.rs:7633
+#: crates/core/src/commands.rs:9612
 msgid "Section"
 msgstr "Doorsnede"
 
@@ -579,7 +579,7 @@ msgstr "OMHOOG"
 msgid "Unbounded Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:8008
+#: crates/core/src/commands.rs:8013
 msgid "Unnamed"
 msgstr "Naamloos"
 

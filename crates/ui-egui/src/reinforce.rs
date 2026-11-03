@@ -17,11 +17,13 @@ use crate::popup::{self, Modal};
 use crate::style::pal;
 use crate::{BimApp, Status};
 
-/// How a field's text is read: a whole number, a bar size in mm, or a length in the project's units.
+/// How a field's text is read: a whole number, a bar size in mm, a plain number (an angle, a slope, a strength) or a length in
+/// the project's units.
 #[derive(Clone, Copy)]
 enum Kind {
     Count,
     Diameter,
+    Number,
     Length,
 }
 
@@ -75,6 +77,14 @@ const BEAM: &[Group] = &[
     TOP,
     STIRRUPS,
     Group {
+        name: msg!("Bent-up bars"),
+        fields: &[
+            field("bottom.bent.count", msg!("Count"), Kind::Count),
+            field("bottom.bent.angle", msg!("Angle"), Kind::Number),
+            field("bottom.bent.top", msg!("Along the top"), Kind::Length),
+        ],
+    },
+    Group {
         name: msg!("Skin bars"),
         fields: &[field("skin.diameter", msg!("Diameter"), Kind::Diameter), field("skin.spacing", msg!("Spacing"), Kind::Length)],
     },
@@ -91,6 +101,14 @@ const COLUMN: &[Group] = &[
             field("bars.x", msg!("Along width"), Kind::Count),
             field("bars.y", msg!("Along depth"), Kind::Count),
             field("bars.hook", msg!("Hook"), Kind::Length),
+        ],
+    },
+    Group {
+        name: msg!("Jog"),
+        fields: &[
+            field("bars.jog.by", msg!("Step in"), Kind::Length),
+            field("bars.jog.from_top", msg!("Starts below the top"), Kind::Length),
+            field("bars.jog.slope", msg!("Slope"), Kind::Number),
         ],
     },
     STIRRUPS,
@@ -111,6 +129,14 @@ const ROUND_COLUMN: &[Group] = &[
             field("bars.diameter", msg!("Diameter"), Kind::Diameter),
             field("bars.count", msg!("Count"), Kind::Count),
             field("bars.hook", msg!("Hook"), Kind::Length),
+        ],
+    },
+    Group {
+        name: msg!("Jog"),
+        fields: &[
+            field("bars.jog.by", msg!("Step in"), Kind::Length),
+            field("bars.jog.from_top", msg!("Starts below the top"), Kind::Length),
+            field("bars.jog.slope", msg!("Slope"), Kind::Number),
         ],
     },
     STIRRUPS,
@@ -210,6 +236,8 @@ pub(crate) struct ReinforceDialog {
     /// The preset the fields were last filled from, and the name typed to save them under.
     preset: String,
     save_as: String,
+    /// What the standard it was told to check said of the bars the last OK made.
+    pub(crate) notes: Vec<String>,
 }
 
 /// `value` at the dotted `path` of `p`, the objects on the way made.
@@ -240,13 +268,13 @@ impl ReinforceDialog {
         let not = |what: &str| tf("{} is not {}: `{}`", &[name, what, text]);
         match kind {
             Kind::Count => text.parse::<u32>().map(|n| Some(json!(n))).map_err(|_| not(t("a whole number"))),
-            Kind::Diameter => text
+            Kind::Diameter | Kind::Number => text
                 .replace(',', ".")
                 .parse::<f64>()
                 .ok()
                 .filter(|x| x.is_finite())
                 .map(|x| Some(json!(x)))
-                .ok_or_else(|| not(t("a size in mm"))),
+                .ok_or_else(|| not(if matches!(kind, Kind::Number) { t("a number") } else { t("a size in mm") })),
             Kind::Length => units.parse(text).map(|x| Some(json!(x))).ok_or_else(|| not(t("a length"))),
         }
     }
@@ -260,7 +288,7 @@ impl ReinforceDialog {
                 if let Some(v) = f.path.split('.').try_fold(&p, |v, k| v.get(k)).and_then(Value::as_f64) {
                     let text = match f.kind {
                         Kind::Count => format!("{}", v.round()),
-                        Kind::Diameter => format!("{v}"),
+                        Kind::Diameter | Kind::Number => format!("{v}"),
                         Kind::Length => units.length(v),
                     };
                     self.values.insert(f.path, text);
@@ -282,9 +310,14 @@ impl ReinforceDialog {
             }
             None => {}
         }
-        for key in ["grade", "grade_stirrup"] {
+        for key in ["grade", "grade_stirrup", "check"] {
             if let Some(g) = p.get(key).and_then(Value::as_str) {
                 self.values.insert(key, g.to_string());
+            }
+        }
+        for key in ["aggressiveness", "fck"] {
+            if let Some(v) = p.get(key).and_then(Value::as_f64) {
+                self.values.insert(key, format!("{v}"));
             }
         }
         if let Some(v) = p.get("clearance").and_then(Value::as_f64) {
@@ -329,8 +362,30 @@ impl ReinforceDialog {
         if let Some(v) = self.read(units, "clearance", Kind::Length, t("Steel: Clearance"))? {
             p["clearance"] = v;
         }
+        if !self.text("check").is_empty() {
+            p["check"] = json!(self.text("check"));
+        }
+        for (key, kind, label) in [("aggressiveness", Kind::Count, "Check: Aggressiveness class"), ("fck", Kind::Number, "Check: fck")] {
+            if let Some(v) = self.read(units, key, kind, t(label))? {
+                p[key] = v;
+            }
+        }
         Ok(p)
     }
+}
+
+/// A label and its text field as one unit of a wrapping row: it goes to a new line when it would not fit the rest of this one (a
+/// nested layout does not wrap, and squeezes its field to nothing at the edge, as long Spanish or Portuguese labels showed).
+fn labelled(ui: &mut Ui, label: &str, text: &mut String, name: String, width: f32, hint: &str) {
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    let wide = ui.painter().layout_no_wrap(label.to_string(), font, ui.visuals().text_color()).size().x;
+    if ui.available_size_before_wrap().x < wide + width + 3.0 * ui.spacing().item_spacing.x + 12.0 {
+        ui.end_row();
+    }
+    ui.horizontal(|ui| {
+        ui.label(label);
+        edit(ui, text, name, width, hint);
+    });
 }
 
 /// A text field named `name` for screen readers, `width` wide.
@@ -375,6 +430,7 @@ impl BimApp {
             made,
             preset: String::new(),
             save_as: String::new(),
+            notes: Vec::new(),
         });
     }
 
@@ -419,10 +475,8 @@ impl BimApp {
                     for (key, label) in COVER {
                         // The first field is the cover, the others its faces; its label has a colon so no two nodes carry its name.
                         let name = if key == "cover" { t(label).to_string() } else { format!("{}: {}", t("Cover"), t(label)) };
-                        ui.horizontal(|ui| {
-                            ui.label(if key == "cover" { tf("{}:", &[t(label)]) } else { t(label).to_string() });
-                            edit(ui, d.values.entry(key).or_default(), name, 56.0, hint);
-                        });
+                        let shown = if key == "cover" { tf("{}:", &[t(label)]) } else { t(label).to_string() };
+                        labelled(ui, &shown, d.values.entry(key).or_default(), name, 56.0, hint);
                     }
                 });
                 for g in d.form.groups() {
@@ -430,30 +484,43 @@ impl BimApp {
                     ui.horizontal_wrapped(|ui| {
                         ui.label(RichText::new(t(g.name)).strong());
                         for f in g.fields {
-                            ui.horizontal(|ui| {
-                                ui.label(t(f.label));
-                                let h = if matches!(f.kind, Kind::Length) { hint } else { "" };
-                                edit(ui, d.values.entry(f.path).or_default(), format!("{}: {}", t(g.name), t(f.label)), 56.0, h);
-                            });
+                            let h = if matches!(f.kind, Kind::Length) { hint } else { "" };
+                            labelled(ui, t(f.label), d.values.entry(f.path).or_default(), format!("{}: {}", t(g.name), t(f.label)), 56.0, h);
                         }
                     });
                 }
                 ui.add_space(4.0);
                 ui.horizontal_wrapped(|ui| {
                     ui.label(RichText::new(t("Steel")).strong());
-                    ui.horizontal(|ui| {
-                        ui.label(t("Grade"));
-                        edit(ui, d.values.entry("grade").or_default(), t("Steel: Grade").to_string(), 64.0, "CA-50");
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label(t("Stirrup grade"));
-                        edit(ui, d.values.entry("grade_stirrup").or_default(), t("Steel: Stirrup grade").to_string(), 64.0, "");
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label(t("Clearance"));
-                        edit(ui, d.values.entry("clearance").or_default(), t("Steel: Clearance").to_string(), 56.0, hint);
-                    });
+                    labelled(ui, t("Grade"), d.values.entry("grade").or_default(), t("Steel: Grade").to_string(), 64.0, "CA-50");
+                    labelled(ui, t("Stirrup grade"), d.values.entry("grade_stirrup").or_default(), t("Steel: Stirrup grade").to_string(), 64.0, "");
+                    labelled(ui, t("Clearance"), d.values.entry("clearance").or_default(), t("Steel: Clearance").to_string(), 56.0, hint);
                 });
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(RichText::new(t("Check")).strong());
+                    let l = ui.label(t("Standard"));
+                    let now = d.values.get("check").cloned().unwrap_or_default();
+                    let shown = if now.is_empty() { t("None").to_string() } else { now.clone() };
+                    let c = ComboBox::from_id_salt("reinforce-check").selected_text(shown).width(110.0).show_ui(ui, |ui| {
+                        if ui.selectable_label(now.is_empty(), t("None")).clicked() {
+                            d.values.insert("check", String::new());
+                        }
+                        if ui.selectable_label(now == "NBR 6118", "NBR 6118").clicked() {
+                            d.values.insert("check", "NBR 6118".into());
+                        }
+                    });
+                    c.response.labelled_by(l.id);
+                    labelled(ui, t("Aggressiveness class"), d.values.entry("aggressiveness").or_default(), t("Check: Aggressiveness class").to_string(), 40.0, "1 - 4");
+                    labelled(ui, t("fck (MPa)"), d.values.entry("fck").or_default(), t("Check: fck").to_string(), 48.0, "");
+                });
+            }
+            if !d.notes.is_empty() {
+                ui.add_space(6.0);
+                ui.label(RichText::new(t("Notes of the check, the bars are made:")).strong());
+                for n in &d.notes {
+                    ui.label(format!("\u{2022} {n}"));
+                }
             }
             if !d.error.is_empty() {
                 ui.add_space(6.0);
@@ -518,6 +585,12 @@ impl BimApp {
                             text: tf("Reinforced: {} bars, {} kg of steel.", &[&count.to_string(), &kg.to_string()]),
                             error: false,
                         };
+                        // What the check found stays in the dialog, with the bars made: change a field and OK again to remake them.
+                        d.notes = reply["notes"].as_array().into_iter().flatten().filter_map(|n| n.as_str().map(String::from)).collect();
+                        if !d.notes.is_empty() {
+                            d.made = reply["ids"].as_array().into_iter().flatten().filter_map(Value::as_u64).collect();
+                            keep = true;
+                        }
                     }
                     None => {
                         // The command's words, in the dialog: a status box in the view's corner can lie over its buttons.

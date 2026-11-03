@@ -121,6 +121,25 @@ and lets any given with it replace them, key by key; a preset of another kind th
 is drawn from above, solid when the cut plane is over its lowest point and dashed when it is over the plane and under the view range's top, a bar
 that stands (a column's) as a dot, and bars that lie on one another (a column's stirrups, one over the next) once.
 
+Bends beyond a hook. `bottom.bent` `{count, angle?, top?}` (`Bent`, `bent_up`) takes `count` of a beam's inner bottom bars (the two at the corners hold the
+stirrups and stay straight; the others are picked evenly) and bends them up at each end: along the top face for `top` mm from the end (a fifth of the
+length unless told), down a slope of `angle` degrees (15 to 75, 45 unless told) to the bottom row's level and along it. They are on the layer `bent`,
+have no hook, count as bottom steel in the check, and are refused where the slopes meet in the middle, where the section is too shallow to rise
+in, and where one comes within the clearance of a top bar at the top. `bars.jog` `{by, from_top, slope?}` (`Jog`, `step`, `stepped`) steps a column's
+bars `by` mm toward the axis (a corner bar along both faces, a face bar across its own, a round column's radially), the step starting `from_top` mm below
+the top and running `slope` mm up for each mm across (6 unless told); the points of the bar above the step move with it, including a hook's leg, and
+the bars at their new places are checked against one another for the clearance.
+
+The check (`reinforce/norm.rs`). `check` `"NBR 6118"`, with `aggressiveness` (1 to 4) and `fck` (MPa), makes `reinforce` return `notes`: where the bars
+made fall short of the usual limits for the kind of host (Table 7.2's cover by class; for a beam the 4 % most, the 0.15 % least up to C30, skin bars over 600 mm
+deep, stirrups of 5 mm to a tenth of the width at most min(0.6 d, 300) apart; for a column bars of 10 mm to an eighth of the side, 4 bars or 6 round,
+centres at most min(2 sides, 400), 0.4 to 8 % of steel, stirrups of 5 mm or a quarter of the bars' at most min(200, the side, 12 bars) apart; for a floor
+bars of at most an eighth of the thickness at most min(2 h, 200) apart). A note never refuses: an engineer may know better, and the bars are made.
+It reads only the bars made, so a limit that needs shear, the load or the aggregate is not in it. The numbers are typed from handbooks and course material
+that print them, not from the standard's text, which is paid for, and the item numbers are the 2014 edition's at the level of the chapter's item: check
+one against a copy before relying on it. The desktop's Check row (Standard, Aggressiveness class, fck) shows the notes inside the dialog, which stays
+open, with the bars made, so a field can change and OK remake them.
+
 The Reinforce dialog (`crates/ui-egui/src/reinforce.rs`, Structure > Reinforcement, RF; tests in `tests/reinforce.rs`). It opens on the one beam, column,
 structural column, footing or floor selected (anything else says what to select), with the form of its kind (`BEAM`, `COLUMN`, `FOOTING`, `FLOOR`: tables of
 groups of fields, each field the path of the parameter it sets, such as `bottom.count`). Every field is text: a count is a whole number, a bar size is mm,

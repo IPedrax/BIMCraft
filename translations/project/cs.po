@@ -107,7 +107,7 @@ msgstr "Čerchovaná"
 msgid "Data Outlet"
 msgstr "Datová zásuvka"
 
-#: crates/core/src/commands.rs:7867
+#: crates/core/src/commands.rs:7872
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -171,8 +171,8 @@ msgstr "Východ"
 msgid "Elbow 90"
 msgstr "Koleno 90°"
 
-#: crates/core/src/commands.rs:7651
-#: crates/core/src/commands.rs:9608
+#: crates/core/src/commands.rs:7656
+#: crates/core/src/commands.rs:9613
 msgid "Elevation"
 msgstr "Pohled"
 
@@ -314,7 +314,7 @@ msgstr "Označení"
 msgid "Masking"
 msgstr "Maskovací"
 
-#: crates/core/src/commands.rs:6154
+#: crates/core/src/commands.rs:6159
 msgid "Mass"
 msgstr "Objem"
 
@@ -426,7 +426,7 @@ msgstr "Počet stupňů"
 msgid "Roof tiles"
 msgstr "Střešní tašky"
 
-#: crates/core/src/commands.rs:6379
+#: crates/core/src/commands.rs:6384
 msgid "Room"
 msgstr "Místnost"
 
@@ -454,8 +454,8 @@ msgstr "Potěr"
 msgid "Seat Height"
 msgstr "Výška sedáku"
 
-#: crates/core/src/commands.rs:7628
-#: crates/core/src/commands.rs:9607
+#: crates/core/src/commands.rs:7633
+#: crates/core/src/commands.rs:9612
 msgid "Section"
 msgstr "Řez"
 
@@ -579,7 +579,7 @@ msgstr "NAHORU"
 msgid "Unbounded Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:8008
+#: crates/core/src/commands.rs:8013
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 
