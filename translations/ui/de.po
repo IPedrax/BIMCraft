@@ -2169,7 +2169,7 @@ msgstr "Schnittebene"
 msgid "Cylinder"
 msgstr "Zylinder"
 
-#: crates/core/src/render.rs:2567
+#: crates/core/src/render.rs:2600
 msgid "DN"
 msgstr "DN"
 
@@ -4719,7 +4719,7 @@ msgstr "NBR 17068: 2 bis 3 mm Überstand"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: Zielmarke im Plan (±0.00), gleichseitiges Dreieck im Schnitt"
 
-#: crates/core/src/render.rs:1832
+#: crates/core/src/render.rs:1839
 msgid "NOT ENCLOSED"
 msgstr "NICHT UMSCHLOSSEN"
 
@@ -6113,7 +6113,7 @@ msgstr "Eine Ansicht auf diesen Plan legen: eine, die noch auf keinem Plan liegt
 msgid "Quadrant"
 msgstr "Quadrant"
 
-#: crates/core/src/render.rs:1832
+#: crates/core/src/render.rs:1839
 msgid "REDUNDANT"
 msgstr ""
 
@@ -8237,7 +8237,7 @@ msgstr "Typ:"
 msgid "Types"
 msgstr "Typen"
 
-#: crates/core/src/render.rs:2567
+#: crates/core/src/render.rs:2600
 msgid "UP"
 msgstr "OBEN"
 

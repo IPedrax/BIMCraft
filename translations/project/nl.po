@@ -47,7 +47,7 @@ msgstr "Draairaam"
 msgid "Ceiling Luminaire"
 msgstr "Plafondarmatuur"
 
-#: crates/core/src/render.rs:2001
+#: crates/core/src/render.rs:2008
 msgid "Ceiling Plan"
 msgstr "Plafondplan"
 
@@ -91,7 +91,7 @@ msgstr "Aantal"
 msgid "Crosshatch"
 msgstr "Kruisarcering"
 
-#: crates/core/src/render.rs:2567
+#: crates/core/src/render.rs:2600
 msgid "DN"
 msgstr "DN"
 
@@ -334,7 +334,7 @@ msgstr "Metaal"
 msgid "Mounting Height"
 msgstr "Montagehoogte"
 
-#: crates/core/src/render.rs:1832
+#: crates/core/src/render.rs:1839
 msgid "NOT ENCLOSED"
 msgstr "NIET OMSLOTEN"
 
@@ -402,7 +402,7 @@ msgstr "Porselein"
 msgid "Project"
 msgstr "Project"
 
-#: crates/core/src/render.rs:1832
+#: crates/core/src/render.rs:1839
 msgid "REDUNDANT"
 msgstr ""
 
@@ -571,7 +571,7 @@ msgstr "Aantrede"
 msgid "Type"
 msgstr "Type"
 
-#: crates/core/src/render.rs:2567
+#: crates/core/src/render.rs:2600
 msgid "UP"
 msgstr "OMHOOG"
 

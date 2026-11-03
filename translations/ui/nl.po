@@ -2170,7 +2170,7 @@ msgstr "Snijvlak"
 msgid "Cylinder"
 msgstr "Cilinder"
 
-#: crates/core/src/render.rs:2567
+#: crates/core/src/render.rs:2600
 msgid "DN"
 msgstr "DN"
 
@@ -4720,7 +4720,7 @@ msgstr "NBR 17068: 2 tot 3 mm verlenging"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: doelwit in plattegrond (±0,00), gelijkzijdige driehoek in doorsnede"
 
-#: crates/core/src/render.rs:1832
+#: crates/core/src/render.rs:1839
 msgid "NOT ENCLOSED"
 msgstr "NIET OMSLOTEN"
 
@@ -6114,7 +6114,7 @@ msgstr "Zet een weergave op dit blad: een die nog op geen blad staat"
 msgid "Quadrant"
 msgstr "Kwadrant"
 
-#: crates/core/src/render.rs:1832
+#: crates/core/src/render.rs:1839
 msgid "REDUNDANT"
 msgstr ""
 
@@ -8238,7 +8238,7 @@ msgstr "Type:"
 msgid "Types"
 msgstr "Types"
 
-#: crates/core/src/render.rs:2567
+#: crates/core/src/render.rs:2600
 msgid "UP"
 msgstr "OMHOOG"
 

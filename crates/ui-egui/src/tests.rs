@@ -3774,6 +3774,23 @@ fn degrees(a: P2, b: P2) -> f64 {
 }
 
 #[test]
+fn a_wall_is_drawn_to_a_columns_edge_and_not_only_to_its_centre() {
+    use bimcraft_core::snap::Kind;
+    // A 400 x 400 column at 4000, 3000: its left edge is at 3800 (issue #88 asked for a wall flush with one).
+    let mut h = app(&format!("{BOX}\ncolumn {{\"at\": [4000, 3000], \"type\": \"Rectangular 400 x 400\"}}"));
+    tool(&mut h, "Wall");
+    let at = |h: &mut Harness<BimApp>, p: P2| hover(h, p).map(|f| (f.kind, f.at));
+    assert_eq!(at(&mut h, P2(3790.0, 3020.0)), Some((Kind::Midpoint, P2(3800.0, 3000.0))), "the middle of its left edge");
+    assert_eq!(at(&mut h, P2(3790.0, 2790.0)), Some((Kind::Endpoint, P2(3800.0, 2800.0))), "its corner");
+    assert_eq!(at(&mut h, P2(4030.0, 3020.0)), Some((Kind::Centre, P2(4000.0, 3000.0))), "and still its centre");
+    // A wall from the west ends on the edge.
+    click(&mut h, P2(1000.0, 3000.0));
+    click(&mut h, P2(3790.0, 3020.0));
+    key(&mut h, Key::Enter);
+    assert_eq!(walls(&h).last(), Some(&(P2(1000.0, 3000.0), P2(3800.0, 3000.0))));
+}
+
+#[test]
 fn walls_drawn_near_an_angle_guide_snap_onto_it_and_turn_exact_corners() {
     let mut h = app("");
     tool(&mut h, "Wall");

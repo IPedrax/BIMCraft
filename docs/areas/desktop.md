@@ -119,7 +119,7 @@ Multiple Trim keeps the boundary across successive target edits while that index
 another edit removes, renumbers or changes it. Escape clears the first pick; Ctrl+Z takes back each trim as one draft step.
 
 A point picked in a plan lands where `snap::snap` says, the core's so every front end agrees: on the end, middle or centre of
-what's drawn (`Scene::of`), a round detail line's quadrants (`rounds`: a circle's, an ellipse's or an arc's points along its axes),
+what's drawn (`Scene::of`; a column, structural column or footing gives its centre, the ends of its outline's corners and the middles of its edges from `Model::column_outline`, a round one's four quadrants), a round detail line's quadrants (`rounds`: a circle's, an ellipse's or an arc's points along its axes),
 where two straight lines (walls, grids; not arcs) or a detail line's chords cross (never a line's chords with each other), where a
 line from the last point touches a circle or an arc (`tangents`), else a scan's point where the cut plane cuts it
 ([point clouds](point-clouds.md)), the foot of the perpendicular from the last point

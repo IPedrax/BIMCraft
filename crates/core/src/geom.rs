@@ -231,6 +231,95 @@ pub fn clip(ring: &[P2], f: impl Fn(P2) -> f64) -> Vec<P2> {
     kept
 }
 
+/// The half-planes of a convex ring, as (point, edge) pairs for which the ring lies to the left, whichever way round it was given.
+fn convex_sides(hole: &[P2]) -> Vec<(P2, P2)> {
+    let turned: Vec<P2>;
+    let hole = if area(hole) < 0.0 {
+        turned = hole.iter().rev().copied().collect();
+        &turned
+    } else {
+        hole
+    };
+    ring_edges(hole).filter(|(a, b)| a.dist(*b) > 0.0).map(|(a, b)| (a, b - a)).collect()
+}
+
+/// `ring` less the convex ring `hole`, as convex pieces if `ring` is, side by side (each clipped to outside one of the hole's edges
+/// and inside those before it): none when the hole covers it, itself when the hole misses it.
+pub fn subtract_convex(ring: &[P2], hole: &[P2]) -> Vec<Vec<P2>> {
+    let sides = convex_sides(hole);
+    let mut pieces = Vec::new();
+    // What lies inside the sides before this one, narrowing as the sides go.
+    let mut inside = ring.to_vec();
+    for (a, d) in &sides {
+        let left = |q: P2| d.cross(q - *a);
+        let out = clip(&inside, |q| -left(q));
+        if out.len() >= 3 && area(&out).abs() > 0.0 {
+            pieces.push(out);
+        }
+        inside = clip(&inside, left);
+        if inside.len() < 3 {
+            break;
+        }
+    }
+    // A hole that misses the ring cut nothing out of it: the first side took it all as outside, or the pieces are the ring in two.
+    if inside.len() < 3 || area(&inside).abs() <= 0.0 {
+        return vec![ring.to_vec()];
+    }
+    pieces
+}
+
+/// The parts of the polyline `line` outside the convex ring `hole`, each a polyline: a line the hole cuts is two, one it
+/// misses is itself, one inside it is none.
+pub fn line_outside_convex(line: &[P2], hole: &[P2]) -> Vec<Vec<P2>> {
+    let sides = convex_sides(hole);
+    let mut out: Vec<Vec<P2>> = Vec::new();
+    let mut now: Vec<P2> = Vec::new();
+    for w in line.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        // The stretch of a→b inside the hole, as fractions of its length: where it is on the left of every side.
+        let (mut t0, mut t1) = (0.0f64, 1.0f64);
+        for (p, d) in &sides {
+            let (fa, fb) = (d.cross(a - *p), d.cross(b - *p));
+            if fa < 0.0 && fb < 0.0 {
+                (t0, t1) = (1.0, 0.0);
+                break;
+            }
+            if fa < 0.0 {
+                t0 = t0.max(fa / (fa - fb));
+            } else if fb < 0.0 {
+                t1 = t1.min(fa / (fa - fb));
+            }
+        }
+        let missed = t0 >= t1;
+        let push = |now: &mut Vec<P2>, q: P2| {
+            if now.last() != Some(&q) {
+                now.push(q);
+            }
+        };
+        if missed {
+            push(&mut now, a);
+            push(&mut now, b);
+            continue;
+        }
+        if t0 > 0.0 {
+            push(&mut now, a);
+            push(&mut now, a + (b - a) * t0);
+        }
+        if now.len() >= 2 {
+            out.push(std::mem::take(&mut now));
+        }
+        now.clear();
+        if t1 < 1.0 {
+            push(&mut now, a + (b - a) * t1);
+            push(&mut now, b);
+        }
+    }
+    if now.len() >= 2 {
+        out.push(now);
+    }
+    out
+}
+
 /// How far along `a`→`b` the point nearest `p` lies, from 0 at `a` to 1 at `b`.
 pub fn param_on_segment(p: P2, a: P2, b: P2) -> f64 {
     let d = b - a;
@@ -405,6 +494,43 @@ mod tests {
         assert_eq!(area(&left), 4.0);
         assert!(clip(&sq, |p| -1.0 - p.0).is_empty());
         assert_eq!(clip(&sq, |p| 9.0 - p.0), sq);
+    }
+
+    #[test]
+    fn a_convex_hole_is_cut_out_of_a_ring_in_pieces_that_never_overlap_it() {
+        let square = |lo: f64, hi: f64| vec![P2(lo, lo), P2(hi, lo), P2(hi, hi), P2(lo, hi)];
+        let (ring, hole) = (square(0.0, 4.0), square(1.0, 3.0));
+        let pieces = subtract_convex(&ring, &hole);
+        assert!((pieces.iter().map(|p| area(p)).sum::<f64>() - 12.0).abs() < 1e-9, "16 less the hole's 4");
+        // Nothing of any piece lies inside the hole, and the rest of the ring is covered.
+        for (x, y) in [(2.0, 2.0), (1.5, 2.5), (2.9, 1.1)] {
+            assert!(!pieces.iter().any(|p| contains(p, P2(x, y))), "({x}, {y}) is in the hole");
+        }
+        for (x, y) in [(0.5, 0.5), (3.5, 3.5), (2.0, 0.5), (0.5, 2.0), (3.5, 2.0), (2.0, 3.5)] {
+            assert!(pieces.iter().any(|p| contains(p, P2(x, y))), "({x}, {y}) is lost");
+        }
+        // A hole turned the other way round cuts the same; one that is not there, or covers the ring, is nothing or everything.
+        let turned: Vec<P2> = hole.iter().rev().copied().collect();
+        assert!((subtract_convex(&ring, &turned).iter().map(|p| area(p)).sum::<f64>() - 12.0).abs() < 1e-9);
+        assert_eq!(subtract_convex(&ring, &square(10.0, 12.0)), vec![ring.clone()]);
+        assert!(subtract_convex(&ring, &square(-1.0, 5.0)).is_empty());
+        // Half over the edge: what is left is the other half.
+        let edge = vec![P2(2.0, -1.0), P2(6.0, -1.0), P2(6.0, 5.0), P2(2.0, 5.0)];
+        assert!((subtract_convex(&ring, &edge).iter().map(|p| area(p)).sum::<f64>() - 8.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_line_through_a_convex_hole_keeps_the_parts_outside_it() {
+        let hole = [P2(1.0, 1.0), P2(3.0, 1.0), P2(3.0, 3.0), P2(1.0, 3.0)];
+        let line = [P2(-2.0, 2.0), P2(6.0, 2.0)];
+        assert_eq!(line_outside_convex(&line, &hole), vec![vec![P2(-2.0, 2.0), P2(1.0, 2.0)], vec![P2(3.0, 2.0), P2(6.0, 2.0)]]);
+        // A line that misses it stays whole; one inside it is gone; a bend outside stays one line.
+        assert_eq!(line_outside_convex(&[P2(-2.0, 5.0), P2(6.0, 5.0)], &hole), vec![vec![P2(-2.0, 5.0), P2(6.0, 5.0)]]);
+        assert!(line_outside_convex(&[P2(1.5, 2.0), P2(2.5, 2.0)], &hole).is_empty());
+        let bent = [P2(0.0, 0.0), P2(0.0, 5.0), P2(5.0, 5.0)];
+        assert_eq!(line_outside_convex(&bent, &hole), vec![bent.to_vec()]);
+        // One that ends inside the hole stops at its edge.
+        assert_eq!(line_outside_convex(&[P2(-2.0, 2.0), P2(2.0, 2.0)], &hole), vec![vec![P2(-2.0, 2.0), P2(1.0, 2.0)]]);
     }
 
     #[test]

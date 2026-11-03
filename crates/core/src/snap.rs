@@ -314,8 +314,24 @@ impl<'a> Scene<'a> {
                     s.points.extend([(g.start, Kind::Endpoint, of), (g.end, Kind::Endpoint, of)]);
                     s.lines.push((g.start, g.end, of));
                 }
-                Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) if c.level == level && near(&[c.at]) => {
-                    s.points.push((c.at, Kind::Centre, of))
+                Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) if c.level == level => {
+                    // Only the columns near the cursor are worked out: the box its type can fill, turned any way. One whose type is
+                    // gone has no outline and keeps its centre, as it always had.
+                    let half = m.column_type(e).map_or(0.0, |t| t.width.hypot(t.depth) / 2.0);
+                    if !near(&[c.at - P2(half, half), c.at + P2(half, half)]) {
+                        continue;
+                    }
+                    let outline = m.column_outline(e);
+                    s.points.push((c.at, Kind::Centre, of));
+                    if m.column_type(e).is_some_and(|t| t.round) {
+                        // A round one has no corners: the 24-gon's vertices due east, north, west and south of its centre.
+                        s.points.extend(outline.iter().step_by(6).map(|q| (*q, Kind::Quadrant, of)));
+                    } else {
+                        // The corners of its outline, and the middles of its edges, which a wall can start from or run along.
+                        s.points.extend(outline.iter().map(|q| (*q, Kind::Endpoint, of)));
+                        s.points
+                            .extend(outline.iter().zip(outline.iter().cycle().skip(1)).map(|(a, b)| ((*a + *b) * 0.5, Kind::Midpoint, of)));
+                    }
                 }
                 crate::model::run_arm!(r) if r.level == level && near(&[r.start, r.end]) => {
                     s.points.extend([
@@ -968,6 +984,100 @@ mod tests {
         assert_eq!((f.at, f.kind), (P2(1230.0, 0.0), Kind::Nearest));
         let f = at(&m, P2(1234.0, 900.0), &[], &o);
         assert_eq!((f.at, f.kind), (P2(1230.0, 900.0), Kind::Free));
+    }
+
+    /// A project with a 300 x 300 column centred at 2000, 1000 (its left edge at x = 1850), as issue #88 draws one.
+    const COLUMN: &str = r#"type {"category": "column", "name": "Square 300", "width": 300, "depth": 300}
+        column {"at": [2000,1000], "type": "Square 300"}"#;
+
+    #[test]
+    fn points_snap_to_the_corners_and_edge_midpoints_of_a_column() {
+        let m = model(COLUMN);
+        let o = Snaps::default();
+        let column = m.elements.iter().find(|(_, e)| matches!(e, Element::Column(_))).map(|(id, _)| *id);
+        // The corners are its outline's: ends.
+        for (near, corner) in [
+            (P2(1830.0, 840.0), P2(1850.0, 850.0)),
+            (P2(2170.0, 860.0), P2(2150.0, 850.0)),
+            (P2(2160.0, 1140.0), P2(2150.0, 1150.0)),
+            (P2(1840.0, 1160.0), P2(1850.0, 1150.0)),
+        ] {
+            let f = at(&m, near, &[], &o);
+            assert_eq!((f.at, f.kind), (corner, Kind::Endpoint), "near {near:?}");
+            assert_eq!(f.source, column, "the column's");
+        }
+        // The middles of its edges, so a 250 mm wall can run along the left edge or start from it.
+        for (near, middle) in [
+            (P2(1840.0, 1020.0), P2(1850.0, 1000.0)),
+            (P2(2020.0, 840.0), P2(2000.0, 850.0)),
+            (P2(2160.0, 980.0), P2(2150.0, 1000.0)),
+            (P2(1980.0, 1160.0), P2(2000.0, 1150.0)),
+        ] {
+            let f = at(&m, near, &[], &o);
+            assert_eq!((f.at, f.kind), (middle, Kind::Midpoint), "near {near:?}");
+        }
+        // The centre is still there, and each snap obeys its switch.
+        assert_eq!((at(&m, P2(2030.0, 1020.0), &[], &o).at, at(&m, P2(2030.0, 1020.0), &[], &o).kind), (P2(2000.0, 1000.0), Kind::Centre));
+        assert_ne!(at(&m, P2(1830.0, 840.0), &[], &Snaps::only(Kind::Midpoint)).at, P2(1850.0, 850.0));
+        assert_eq!(at(&m, P2(1830.0, 840.0), &[], &Snaps::only(Kind::Endpoint)).at, P2(1850.0, 850.0));
+    }
+
+    #[test]
+    fn a_turned_column_snaps_at_its_turned_corners_and_a_round_one_at_its_quadrants() {
+        let m = model(
+            r#"type {"category": "column", "name": "Square 300", "width": 300, "depth": 300}
+               column {"at": [0,0], "type": "Square 300", "angle": 45}
+               column {"at": [5000,0], "type": "Round 300"}"#,
+        );
+        let o = Snaps::default();
+        // A square turned 45 degrees stands on a corner: 150 * sqrt 2 east of its centre.
+        let reach = 150.0 * std::f64::consts::SQRT_2;
+        let f = at(&m, P2(reach + 20.0, 20.0), &[], &o);
+        assert_eq!((f.kind, (f.at.0 * 1e3).round() / 1e3, f.at.1.abs() < 1e-6), (Kind::Endpoint, (reach * 1e3).round() / 1e3, true));
+        // A round column has its four quadrant points, not corners.
+        for (near, quadrant) in [
+            (P2(5170.0, 20.0), P2(5150.0, 0.0)),
+            (P2(5020.0, 170.0), P2(5000.0, 150.0)),
+            (P2(4830.0, -20.0), P2(4850.0, 0.0)),
+            (P2(4980.0, -170.0), P2(5000.0, -150.0)),
+        ] {
+            let f = at(&m, near, &[], &o);
+            assert_eq!((f.kind, f.at.dist(quadrant) < 1e-6), (Kind::Quadrant, true), "near {near:?}: {f:?}");
+        }
+        assert_eq!(at(&m, P2(5170.0, 20.0), &[], &Snaps::only(Kind::Endpoint)).kind, Kind::Free, "no corners on a round one");
+    }
+
+    #[test]
+    fn structural_columns_and_footings_snap_at_their_edges_too() {
+        let m = model(
+            r#"structural_column {"at": [0,0]}
+               footing {"at": [6000,0]}"#,
+        );
+        let o = Snaps::default();
+        let ids: Vec<Id> = m.elements.iter().filter(|(_, e)| e.column().is_some()).map(|(id, _)| *id).collect();
+        assert_eq!(ids.len(), 2);
+        for id in ids {
+            let Some(e) = m.elements.get(id) else { panic!("{id} is there") };
+            let outline = m.column_outline(e);
+            assert_eq!(outline.len(), 4);
+            let corner = outline[2];
+            let f = at(&m, corner + P2(15.0, 15.0), &[], &o);
+            assert_eq!((f.at.dist(corner) < 1e-6, f.kind, f.source), (true, Kind::Endpoint, Some(id)));
+        }
+    }
+
+    #[test]
+    fn a_wall_drawn_from_a_columns_edge_middle_starts_there() {
+        let mut s = Session::new();
+        s.script(COLUMN).unwrap();
+        // Picked near the left edge's middle: it lands on the edge, 150 mm from the centre.
+        let start = at(&s.model, P2(1842.0, 1013.0), &[], &Snaps::default());
+        assert_eq!((start.at, start.kind), (P2(1850.0, 1000.0), Kind::Midpoint));
+        // And a wall to the west of it ends flush with the column, on the edge itself.
+        let end = at(&s.model, P2(-1000.0, 1000.0), &[start.at], &Snaps::default());
+        s.execute("wall", &serde_json::json!({"points": [[end.at.0, end.at.1], [start.at.0, start.at.1]]})).unwrap();
+        let wall = s.model.elements.values().find_map(|e| if let Element::Wall(w) = e { Some(w.clone()) } else { None }).unwrap();
+        assert_eq!(wall.end, P2(1850.0, 1000.0));
     }
 
     #[test]

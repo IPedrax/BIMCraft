@@ -1755,7 +1755,10 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         }
     }
     // A compound wall's layers: each its material's cut pattern where it's wide enough to hold it,
-    // else lighter where it isn't the wall's structure; a thin line between each two.
+    // else lighter where it isn't the wall's structure; a thin line between each two. A column the plan cuts stands in the wall's
+    // way: its poche is solid, so the layers stop at its outline.
+    let columns: Vec<&[P2]> =
+        outlines.iter().filter(|(id, _)| m.elements.get(*id).is_some_and(|e| e.column().is_some())).map(|(_, o)| o.as_slice()).collect();
     for (&id, e) in &m.elements {
         let Element::Wall(w) = e else { continue };
         let layers = m.type_layers("wall", &w.type_name);
@@ -1769,12 +1772,16 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
             let (Some(a), Some(b)) = (lines.get(k), lines.get(k + 1)) else { continue };
             let ring: Vec<P2> = a.iter().chain(b.iter().rev()).copied().collect();
             let room = layer.thickness * d.view.scale;
-            cut_layer(&mut d, m, layer, &ring, along, room);
+            for piece in outside_columns(vec![ring], &columns) {
+                cut_layer(&mut d, m, layer, &piece, along, room);
+            }
         }
         // The lines between the layers are detail, as the hatching is: a cut's weight is its outline's.
         d.part(Part::Pattern);
         for line in lines.iter().skip(1).take(lines.len().saturating_sub(2)) {
-            d.line(line, Pen::PROJECTION, INK, false);
+            for part in lines_outside_columns(line, &columns) {
+                d.line(&part, Pen::PROJECTION, INK, false);
+            }
         }
         d.part(Part::Cut);
     }
@@ -2112,6 +2119,32 @@ const GAP: f64 = 6.0;
 const MODULE: f64 = 100.0;
 /// How wide a layer is to be, px, to show its pattern: narrower, it's filled instead.
 const PATTERN_ROOM: f64 = 10.0;
+
+/// Whether the boxes round two sets of points overlap: the quick test before the exact one.
+fn boxes_meet(a: &[P2], b: &[P2]) -> bool {
+    let bounds = |pts: &[P2]| {
+        pts.iter().fold((P2(f64::INFINITY, f64::INFINITY), P2(f64::NEG_INFINITY, f64::NEG_INFINITY)), |(lo, hi), q| {
+            (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1)))
+        })
+    };
+    let ((alo, ahi), (blo, bhi)) = (bounds(a), bounds(b));
+    alo.0 <= bhi.0 && blo.0 <= ahi.0 && alo.1 <= bhi.1 && blo.1 <= ahi.1
+}
+
+/// `rings` less the outlines of the columns the plan cuts (convex, a rectangle or a round one's polygon): what of a wall's layer
+/// is not inside one.
+fn outside_columns(rings: Vec<Vec<P2>>, columns: &[&[P2]]) -> Vec<Vec<P2>> {
+    columns.iter().fold(rings, |rings, hole| {
+        rings.into_iter().flat_map(|r| if boxes_meet(&r, hole) { geom::subtract_convex(&r, hole) } else { vec![r] }).collect()
+    })
+}
+
+/// The parts of `line` outside the columns' outlines.
+fn lines_outside_columns(line: &[P2], columns: &[&[P2]]) -> Vec<Vec<P2>> {
+    columns.iter().fold(vec![line.to_vec()], |lines, hole| {
+        lines.into_iter().flat_map(|l| if boxes_meet(&l, hole) { geom::line_outside_convex(&l, hole) } else { vec![l] }).collect()
+    })
+}
 
 /// A layer where it's cut, along `ring`: where it's `room` px wide or more, its material's cut
 /// pattern over the paper, its courses along unit `u`; else, unless it's its element's structure
@@ -3449,6 +3482,58 @@ mod tests {
         // Where the top and right walls overlap, and the square their ends stretch over, inside their outline.
         assert_eq!(pixel(&png, d.view.px(P2(8000.0, 6000.0))), (POCHE.0, POCHE.1, POCHE.2));
         assert_eq!(pixel(&png, d.view.px(P2(8020.0, 6020.0))), (POCHE.0, POCHE.1, POCHE.2));
+    }
+
+    /// Every pixel of the plan inside `outline` (`MARGIN` mm in from its edge, where its own inked edge ends) is poche: nothing is
+    /// drawn inside a column.
+    fn solid_inside(d: &Drawing, png: &[u8], outline: &[P2], what: &str) {
+        let (lo, hi) = outline.iter().fold((P2(f64::MAX, f64::MAX), P2(f64::MIN, f64::MIN)), |(lo, hi), q| {
+            (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1)))
+        });
+        // Decoded once: `pixel` would decode the picture for each point.
+        let pm = tiny_skia::Pixmap::decode_png(png).unwrap();
+        let (mut x, mut seen) = (lo.0 + MARGIN, 0);
+        while x < hi.0 - MARGIN {
+            let mut y = lo.1 + MARGIN;
+            while y < hi.1 - MARGIN {
+                if geom::contains(outline, P2(x, y)) {
+                    let (px, py) = d.view.px(P2(x, y));
+                    let c = pm.pixel(px as u32, py as u32).unwrap();
+                    assert_eq!((c.red(), c.green(), c.blue()), (POCHE.0, POCHE.1, POCHE.2), "{what}: ({x}, {y}) is inked");
+                    seen += 1;
+                }
+                y += 10.0;
+            }
+            x += 10.0;
+        }
+        assert!(seen > 100, "{what}: only {seen} points were looked at");
+    }
+
+    #[test]
+    fn a_wall_that_meets_a_column_leaves_the_column_solid_and_unlined() {
+        let mut s = Session::new();
+        // A 300 x 300 column at 3000, 0. A plain wall runs into it from the west, ending at its centre; a layered one (a finish layer
+        // and a structure layer, 150 mm each, which draw a line between them) starts at its right edge's middle, flush with it, and runs east;
+        // a third runs right through it, north to south.
+        s.script(
+            r#"type {"category": "wall", "name": "Cavity", "layers": [{"function": "finish", "thickness": 150}, {"function": "structure", "thickness": 150}]}
+               type {"category": "column", "name": "Square 300", "width": 300, "depth": 300}
+               column {"at": [3000, 0], "type": "Square 300"}
+               wall {"points": [[0, 0], [3000, 0]], "type": "Generic - 200mm"}
+               wall {"points": [[3150, 0], [6000, 0]], "type": "Cavity"}
+               wall {"points": [[3000, -2000], [3000, 2000]], "type": "Cavity"}"#,
+        )
+        .unwrap();
+        let column = s.model.elements.values().find(|e| e.column().is_some()).unwrap();
+        let outline = s.model.column_outline(column);
+        let d = plan(&s.model, 100000, 1600, 500);
+        let png = png(&d).unwrap();
+        solid_inside(&d, &png, &outline, "the column");
+        // And where the flush wall's end meets the column's edge there is no seam either, on its structure side (the finish side is
+        // the layer's own tint, and the line between the layers, at 0, starts there).
+        for (x, y) in [(3140.0, -100.0), (3140.0, -50.0), (3150.0, -100.0), (3150.0, -50.0)] {
+            assert_eq!(pixel(&png, d.view.px(P2(x, y))), (POCHE.0, POCHE.1, POCHE.2), "no seam at {x}, {y}");
+        }
     }
 
     #[test]
