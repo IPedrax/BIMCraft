@@ -73,8 +73,8 @@ msgstr "<Líneas invisibles>"
 #: crates/ui-egui/src/graphics.rs:602
 #: crates/ui-egui/src/graphics.rs:1409
 #: crates/ui-egui/src/graphics.rs:1411
-#: crates/ui-egui/src/phasing.rs:368
-#: crates/ui-egui/src/phasing.rs:409
+#: crates/ui-egui/src/phasing.rs:439
+#: crates/ui-egui/src/phasing.rs:480
 #: crates/ui-egui/src/templates.rs:361
 #: crates/ui-egui/src/templates.rs:625
 msgid "<None>"
@@ -144,7 +144,7 @@ msgstr "Un contorno necesita tres líneas: haga clic en un punto que no sea el i
 msgid "A new sheet, with a title block"
 msgstr "Un plano nuevo, con cajetín"
 
-#: crates/ui-egui/src/phasing.rs:562
+#: crates/ui-egui/src/phasing.rs:633
 msgid "A phase filter draws a status this way where it says Overridden."
 msgstr "Un filtro de fase dibuja un estado de este modo donde dice Con reemplazo."
 
@@ -194,11 +194,11 @@ msgstr "Encima:"
 msgid "Accent colour"
 msgstr ""
 
-#: crates/ui-egui/src/phasing.rs:300
+#: crates/ui-egui/src/phasing.rs:371
 msgid "Accept Primary"
 msgstr "Aceptar la principal"
 
-#: crates/ui-egui/src/phasing.rs:299
+#: crates/ui-egui/src/phasing.rs:370
 msgid "Accept Primary: the primary option's elements stay in the model; the others' elements and the set go"
 msgstr "Aceptar la principal: los elementos de la opción principal quedan en el modelo; los de las otras y el conjunto salen"
 
@@ -206,7 +206,7 @@ msgstr "Aceptar la principal: los elementos de la opción principal quedan en el
 msgid "Active (NBR 17067: A4 module folding with ear)"
 msgstr "Activas (NBR 17067: plegado en módulo A4 con pestaña)"
 
-#: crates/ui-egui/src/phasing.rs:164
+#: crates/ui-egui/src/phasing.rs:235
 msgid "Active design option:"
 msgstr "Opción de diseño activa:"
 
@@ -272,7 +272,7 @@ msgstr "Añadir filtro"
 msgid "Add Line"
 msgstr "Añadir línea"
 
-#: crates/ui-egui/src/phasing.rs:306
+#: crates/ui-egui/src/phasing.rs:377
 msgid "Add Option"
 msgstr "Añadir opción"
 
@@ -338,7 +338,7 @@ msgstr "Añadir tensión"
 msgid "Add Wire Type"
 msgstr "Añadir tipo de cable"
 
-#: crates/ui-egui/src/phasing.rs:470
+#: crates/ui-egui/src/phasing.rs:541
 msgid "Add at End"
 msgstr "Añadir al final"
 
@@ -419,6 +419,7 @@ msgstr "Guías de alineación activadas"
 
 #: crates/ui-egui/src/browser.rs:41
 #: crates/ui-egui/src/cad.rs:101
+#: crates/ui-egui/src/phasing.rs:72
 msgid "All"
 msgstr "Todo"
 
@@ -517,7 +518,7 @@ msgstr "Plumilla de anotación {}"
 msgid "Another colour"
 msgstr ""
 
-#: crates/ui-egui/src/footer.rs:424
+#: crates/ui-egui/src/footer.rs:428
 #: crates/ui-egui/src/properties.rs:2467
 msgid "Applies to all views; snaps to the active view's enabled main grid or subgrid, even when hidden"
 msgstr "Se aplica a todas las vistas; se ajusta a la cuadrícula principal o a la subcuadrícula que estén habilitadas en la vista activa, aunque estén ocultas"
@@ -536,11 +537,11 @@ msgstr "Se aplica a todas las vistas; se ajusta a la cuadrícula principal o a l
 msgid "Apply"
 msgstr "Aplicar"
 
-#: crates/ui-egui/src/footer.rs:390
+#: crates/ui-egui/src/footer.rs:394
 msgid "Apply Hide/Isolate to View"
 msgstr "Aplicar ocultar/aislar a la vista"
 
-#: crates/ui-egui/src/phasing.rs:568
+#: crates/ui-egui/src/phasing.rs:639
 msgid "Apply Overrides"
 msgstr "Aplicar reemplazos"
 
@@ -746,7 +747,7 @@ msgid "Background Color"
 msgstr "Color de fondo"
 
 #: crates/ui-egui/src/background_grid.rs:98
-#: crates/ui-egui/src/footer.rs:405
+#: crates/ui-egui/src/footer.rs:409
 #: crates/ui-egui/src/graphics.rs:125
 #: crates/ui-egui/src/graphics.rs:589
 #: crates/ui-egui/src/templates.rs:623
@@ -915,7 +916,7 @@ msgstr "Construir"
 msgid "Building information modelling, open and free."
 msgstr "Modelado de información de construcción, abierto y libre."
 
-#: crates/ui-egui/src/phasing.rs:67
+#: crates/ui-egui/src/phasing.rs:108
 msgid "By Category"
 msgstr "Por categoría"
 
@@ -1664,8 +1665,8 @@ msgstr "Haz clic hacia donde sigue el siguiente tramo desde el descanso: de fren
 #: crates/ui-egui/src/graphics.rs:504
 #: crates/ui-egui/src/inquiry.rs:203
 #: crates/ui-egui/src/lib.rs:4752
-#: crates/ui-egui/src/phasing.rs:207
-#: crates/ui-egui/src/phasing.rs:329
+#: crates/ui-egui/src/phasing.rs:278
+#: crates/ui-egui/src/phasing.rs:400
 #: crates/ui-egui/src/popup.rs:90
 #: crates/ui-egui/src/properties.rs:2143
 #: crates/ui-egui/src/properties.rs:2470
@@ -1725,15 +1726,15 @@ msgstr "Columna"
 msgid "Column (CL): click where it stands"
 msgstr "Columna (CL): haz clic donde va"
 
-#: crates/ui-egui/src/phasing.rs:492
+#: crates/ui-egui/src/phasing.rs:563
 msgid "Combine with Next"
 msgstr "Combinar con la siguiente"
 
-#: crates/ui-egui/src/phasing.rs:492
+#: crates/ui-egui/src/phasing.rs:563
 msgid "Combine with Previous"
 msgstr "Combinar con la anterior"
 
-#: crates/ui-egui/src/phasing.rs:491
+#: crates/ui-egui/src/phasing.rs:562
 msgid "Combine: what was made, taken down and shown in this phase goes to the neighbouring one, and this one goes"
 msgstr "Combinar: lo que se hizo, se demolió y se muestra en esta fase pasa a la vecina, y esta sale"
 
@@ -2040,7 +2041,7 @@ msgid "Curve preview"
 msgstr "Vista previa en curva"
 
 #: crates/ui-egui/src/fillpatterns.rs:612
-#: crates/ui-egui/src/footer.rs:290
+#: crates/ui-egui/src/footer.rs:293
 msgid "Custom"
 msgstr "Personalizada"
 
@@ -2154,7 +2155,7 @@ msgstr "Espesor predeterminado"
 #: crates/ui-egui/src/linestyles.rs:176
 #: crates/ui-egui/src/linestyles.rs:211
 #: crates/ui-egui/src/lineweights.rs:55
-#: crates/ui-egui/src/phasing.rs:515
+#: crates/ui-egui/src/phasing.rs:586
 #: crates/ui-egui/src/presets.rs:204
 #: crates/ui-egui/src/properties.rs:2005
 #: crates/ui-egui/src/properties.rs:2226
@@ -2167,7 +2168,7 @@ msgstr "Eliminar"
 msgid "Delete (DE) the selection"
 msgstr "Eliminar (DE) la selección"
 
-#: crates/ui-egui/src/phasing.rs:318
+#: crates/ui-egui/src/phasing.rs:389
 msgid "Delete Option"
 msgstr "Eliminar opción"
 
@@ -2175,11 +2176,11 @@ msgstr "Eliminar opción"
 msgid "Delete Preset"
 msgstr "Eliminar modelo"
 
-#: crates/ui-egui/src/phasing.rs:296
+#: crates/ui-egui/src/phasing.rs:367
 msgid "Delete Set"
 msgstr "Eliminar conjunto"
 
-#: crates/ui-egui/src/phasing.rs:295
+#: crates/ui-egui/src/phasing.rs:366
 msgid "Delete Set: the set goes, and every element in its options"
 msgstr "Eliminar conjunto: el conjunto sale, con todos los elementos de sus opciones"
 
@@ -2228,6 +2229,10 @@ msgstr "Demoler (DW): haga clic en un elemento para demolerlo en la fase de la v
 msgid "Demolished"
 msgstr "Demolido"
 
+#: crates/ui-egui/src/phasing.rs:75
+msgid "Demolition"
+msgstr ""
+
 #: crates/core/src/commands.rs:7939
 msgid "Dependent"
 msgstr "Dependiente"
@@ -2242,12 +2247,12 @@ msgstr "Profundidad"
 msgid "Descending"
 msgstr "Descendente"
 
-#: crates/ui-egui/src/phasing.rs:437
+#: crates/ui-egui/src/phasing.rs:508
 msgid "Design Option"
 msgstr "Opción de diseño"
 
 #: crates/ui-egui/src/lib.rs:3949
-#: crates/ui-egui/src/phasing.rs:247
+#: crates/ui-egui/src/phasing.rs:318
 #: crates/ui-egui/src/templates.rs:621
 msgid "Design Options"
 msgstr "Opciones de diseño"
@@ -2286,7 +2291,7 @@ msgstr "Grupo de detalle: haga clic para colocar el grupo de la Barra de opcione
 msgid "Detail Level"
 msgstr "Nivel de detalle"
 
-#: crates/ui-egui/src/footer.rs:304
+#: crates/ui-egui/src/footer.rs:307
 msgid "Detail Level: Coarse draws what is cut in one poché, Medium adds the layers and the symbols of openings, Fine the patterns"
 msgstr "Nivel de detalle: Bajo dibuja lo cortado en un solo relleno, Medio añade las capas y los símbolos de las aberturas, Alto las tramas"
 
@@ -2646,11 +2651,11 @@ msgstr "Editar familia: la familia de lo seleccionado, o del componente que se c
 msgid "Edit Lines"
 msgstr "Editar líneas"
 
-#: crates/ui-egui/src/phasing.rs:323
+#: crates/ui-egui/src/phasing.rs:394
 msgid "Edit Option"
 msgstr "Editar opción"
 
-#: crates/ui-egui/src/phasing.rs:322
+#: crates/ui-egui/src/phasing.rs:393
 msgid "Edit Option: new elements are made in this option, and the view on screen shows it"
 msgstr "Editar opción: los elementos nuevos se hacen en esta opción, y la vista en pantalla la muestra"
 
@@ -2799,6 +2804,10 @@ msgstr "Error"
 #: crates/ui-egui/src/lib.rs:3720
 msgid "Every view is on a sheet."
 msgstr "Todas las vistas están en planos."
+
+#: crates/ui-egui/src/phasing.rs:72
+msgid "Everything the project has, as its categories draw it"
+msgstr ""
 
 #: crates/core/src/phasing.rs:117
 msgid "Existing"
@@ -3365,7 +3374,7 @@ msgstr "Categoría"
 msgid "Graphic Display Options"
 msgstr ""
 
-#: crates/ui-egui/src/footer.rs:361
+#: crates/ui-egui/src/footer.rs:364
 msgid "Graphic Display Options..."
 msgstr ""
 
@@ -3401,11 +3410,11 @@ msgstr "Eje (GR): haz clic en sus dos extremos"
 msgid "Grid rotation"
 msgstr "Rotación de la cuadrícula"
 
-#: crates/ui-egui/src/footer.rs:417
+#: crates/ui-egui/src/footer.rs:421
 msgid "Grid settings…"
 msgstr "Configuración de la cuadrícula…"
 
-#: crates/ui-egui/src/footer.rs:423
+#: crates/ui-egui/src/footer.rs:427
 #: crates/ui-egui/src/properties.rs:2466
 msgid "Grid snapping"
 msgstr "Ajuste a la cuadrícula"
@@ -3494,7 +3503,7 @@ msgstr "Líneas ocultas"
 msgid "Hide Category"
 msgstr "Ocultar categoría"
 
-#: crates/ui-egui/src/footer.rs:378
+#: crates/ui-egui/src/footer.rs:382
 msgid "Hide Category (HC)"
 msgstr "Ocultar categoría (HC)"
 
@@ -3510,15 +3519,15 @@ msgstr "Ocultar elemento"
 msgid "Hide Element (EH): leave the selected elements out of this view"
 msgstr "Ocultar elemento (EH): deja los elementos seleccionados fuera de esta vista"
 
-#: crates/ui-egui/src/footer.rs:377
+#: crates/ui-egui/src/footer.rs:381
 msgid "Hide Element (HH)"
 msgstr "Ocultar elemento (HH)"
 
-#: crates/ui-egui/src/footer.rs:446
+#: crates/ui-egui/src/footer.rs:450
 msgid "High Contrast Point Clouds"
 msgstr "Nubes de puntos en alto contraste"
 
-#: crates/ui-egui/src/footer.rs:441
+#: crates/ui-egui/src/footer.rs:445
 msgid "High Contrast Point Clouds: draw this view's scans in one strong colour, so what they show reads; again for their own colours. A scan given a colour of its own in Visibility/Graphics keeps it."
 msgstr "Nubes de puntos en alto contraste: dibuja las nubes de esta vista en un solo color intenso, para que se lea lo que muestran; otra vez para sus propios colores. Una nube con color propio en Visibilidad/Gráficos lo conserva."
 
@@ -3564,7 +3573,7 @@ msgstr "Anfitrión"
 msgid "Host Wall"
 msgstr "Muro anfitrión"
 
-#: crates/ui-egui/src/phasing.rs:531
+#: crates/ui-egui/src/phasing.rs:602
 msgid "How it shows what is, in the view's phase:"
 msgstr "Cómo muestra lo que hay, en la fase de la vista:"
 
@@ -3701,11 +3710,11 @@ msgstr "Polígono inscrito: haga clic en el centro y luego en una esquina; Lados
 msgid "Insert"
 msgstr "Insertar"
 
-#: crates/ui-egui/src/phasing.rs:478
+#: crates/ui-egui/src/phasing.rs:549
 msgid "Insert After"
 msgstr "Insertar después"
 
-#: crates/ui-egui/src/phasing.rs:474
+#: crates/ui-egui/src/phasing.rs:545
 msgid "Insert Before"
 msgstr "Insertar antes"
 
@@ -3766,11 +3775,11 @@ msgstr "Intersección"
 msgid "Invert"
 msgstr "Invertir"
 
-#: crates/ui-egui/src/footer.rs:380
+#: crates/ui-egui/src/footer.rs:384
 msgid "Isolate Category (IC)"
 msgstr "Aislar categoría (IC)"
 
-#: crates/ui-egui/src/footer.rs:379
+#: crates/ui-egui/src/footer.rs:383
 msgid "Isolate Element (HI)"
 msgstr "Aislar elemento (HI)"
 
@@ -4222,13 +4231,13 @@ msgstr "Trazo largo"
 msgid "Made of detail lines picked in the plan, repeating the rectangle between two corners"
 msgstr "Hecho de líneas de detalle elegidas en la planta, repitiendo el rectángulo entre dos esquinas"
 
-#: crates/ui-egui/src/phasing.rs:145
-#: crates/ui-egui/src/phasing.rs:409
+#: crates/ui-egui/src/phasing.rs:216
+#: crates/ui-egui/src/phasing.rs:480
 msgid "Main Model"
 msgstr "Modelo principal"
 
 #: crates/ui-egui/src/background_grid.rs:145
-#: crates/ui-egui/src/footer.rs:415
+#: crates/ui-egui/src/footer.rs:419
 msgid "Main grid"
 msgstr "Cuadrícula principal"
 
@@ -4248,7 +4257,7 @@ msgstr "Separación principal X"
 msgid "Main spacing Y"
 msgstr "Separación principal Y"
 
-#: crates/ui-egui/src/phasing.rs:315
+#: crates/ui-egui/src/phasing.rs:386
 msgid "Make Primary"
 msgstr "Hacer principal"
 
@@ -4587,8 +4596,8 @@ msgid "Name"
 msgstr "Nombre"
 
 #: crates/ui-egui/src/electrical.rs:417
-#: crates/ui-egui/src/phasing.rs:279
-#: crates/ui-egui/src/phasing.rs:464
+#: crates/ui-egui/src/phasing.rs:350
+#: crates/ui-egui/src/phasing.rs:535
 #: crates/ui-egui/src/properties.rs:2810
 #: crates/ui-egui/src/templates.rs:425
 #: crates/ui-egui/src/typeprops.rs:100
@@ -4627,7 +4636,7 @@ msgstr "Nueva familia"
 msgid "New Family: start a family of your own, of a category, to edit its parameters, types and forms"
 msgstr "Nueva familia: empiece una familia propia, de una categoría, para editar sus parámetros, tipos y formas"
 
-#: crates/ui-egui/src/phasing.rs:524
+#: crates/ui-egui/src/phasing.rs:595
 msgid "New Filter"
 msgstr "Nuevo filtro"
 
@@ -4644,7 +4653,7 @@ msgstr "Nuevo proyecto"
 msgid "New Schedule"
 msgstr "Nueva tabla"
 
-#: crates/ui-egui/src/phasing.rs:287
+#: crates/ui-egui/src/phasing.rs:358
 msgid "New Set"
 msgstr "Nuevo conjunto"
 
@@ -4660,11 +4669,11 @@ msgstr "Nueva tensión"
 msgid "New Wire Type"
 msgstr "Nuevo tipo de cable"
 
-#: crates/ui-egui/src/phasing.rs:168
+#: crates/ui-egui/src/phasing.rs:239
 msgid "New elements are made in this option; the view on screen shows it"
 msgstr "Los elementos nuevos se hacen en esta opción; la vista en pantalla la muestra"
 
-#: crates/ui-egui/src/phasing.rs:521
+#: crates/ui-egui/src/phasing.rs:592
 msgid "New filter:"
 msgstr "Nuevo filtro:"
 
@@ -4704,7 +4713,7 @@ msgstr "Sin recorte"
 msgid "No category has that name."
 msgstr "Ninguna categoría tiene ese nombre."
 
-#: crates/ui-egui/src/phasing.rs:274
+#: crates/ui-egui/src/phasing.rs:345
 msgid "No design option sets yet: New Set makes one."
 msgstr "Aún no hay conjuntos de opciones: Nuevo conjunto crea uno."
 
@@ -4784,7 +4793,7 @@ msgstr "Norte"
 msgid "Not Bounded"
 msgstr "No delimitado"
 
-#: crates/ui-egui/src/phasing.rs:69
+#: crates/ui-egui/src/phasing.rs:110
 msgid "Not Displayed"
 msgstr "No mostrado"
 
@@ -4992,15 +5001,15 @@ msgstr "Abrir…"
 msgid "Operation"
 msgstr "Operación"
 
-#: crates/ui-egui/src/phasing.rs:288
+#: crates/ui-egui/src/phasing.rs:359
 msgid "Option"
 msgstr "Opción"
 
-#: crates/ui-egui/src/phasing.rs:251
+#: crates/ui-egui/src/phasing.rs:322
 msgid "Option set:"
 msgstr "Conjunto de opciones:"
 
-#: crates/ui-egui/src/phasing.rs:264
+#: crates/ui-egui/src/phasing.rs:335
 msgid "Options:"
 msgstr "Opciones:"
 
@@ -5056,7 +5065,7 @@ msgstr "Voladizo:"
 msgid "Overhead Lines"
 msgstr "Líneas superiores"
 
-#: crates/ui-egui/src/phasing.rs:68
+#: crates/ui-egui/src/phasing.rs:109
 msgid "Overridden"
 msgstr "Con reemplazo"
 
@@ -5242,20 +5251,20 @@ msgstr "Perspectiva"
 msgid "Perspective: see the 3D view as through a camera, its eye standing back as far as the lens and the zoom say"
 msgstr "Perspectiva: ver la vista 3D como a través de una cámara, con el ojo tan lejos como dicen la lente y el zoom"
 
-#: crates/ui-egui/src/phasing.rs:378
+#: crates/ui-egui/src/phasing.rs:449
 #: crates/ui-egui/src/templates.rs:633
 msgid "Phase"
 msgstr "Fase"
 
-#: crates/ui-egui/src/phasing.rs:424
+#: crates/ui-egui/src/phasing.rs:495
 msgid "Phase Created"
 msgstr "Fase de creación"
 
-#: crates/ui-egui/src/phasing.rs:430
+#: crates/ui-egui/src/phasing.rs:501
 msgid "Phase Demolished"
 msgstr "Fase de demolición"
 
-#: crates/ui-egui/src/phasing.rs:367
+#: crates/ui-egui/src/phasing.rs:438
 #: crates/ui-egui/src/templates.rs:626
 msgid "Phase Filter"
 msgstr "Filtro de fase"
@@ -5268,7 +5277,7 @@ msgstr "Filtros de fase"
 msgid "Phase and Phase Filter"
 msgstr "Fase y filtro de fase"
 
-#: crates/ui-egui/src/phasing.rs:506
+#: crates/ui-egui/src/phasing.rs:577
 msgid "Phase filter:"
 msgstr "Filtro de fase:"
 
@@ -5276,12 +5285,12 @@ msgstr "Filtro de fase:"
 msgid "Phases"
 msgstr "Fases"
 
-#: crates/ui-egui/src/phasing.rs:454
+#: crates/ui-egui/src/phasing.rs:525
 msgid "Phases, in order:"
 msgstr "Fases, en orden:"
 
 #: crates/ui-egui/src/lib.rs:3943
-#: crates/ui-egui/src/phasing.rs:187
+#: crates/ui-egui/src/phasing.rs:258
 msgid "Phasing"
 msgstr "Fases"
 
@@ -6108,17 +6117,17 @@ msgstr "Quitar de la lista"
 msgid "Removed {} bars."
 msgstr "{} barras quitadas."
 
-#: crates/ui-egui/src/phasing.rs:482
+#: crates/ui-egui/src/phasing.rs:553
 #: crates/ui-egui/src/templates.rs:420
 #: crates/ui-egui/src/typeprops.rs:101
 msgid "Rename"
 msgstr "Renombrar"
 
-#: crates/ui-egui/src/phasing.rs:311
+#: crates/ui-egui/src/phasing.rs:382
 msgid "Rename Option"
 msgstr "Renombrar opción"
 
-#: crates/ui-egui/src/phasing.rs:291
+#: crates/ui-egui/src/phasing.rs:362
 msgid "Rename Set"
 msgstr "Renombrar conjunto"
 
@@ -6126,6 +6135,14 @@ msgstr "Renombrar conjunto"
 #: crates/ui-egui/src/typeprops.rs:133
 msgid "Rename…"
 msgstr "Renombrar…"
+
+#: crates/ui-egui/src/phasing.rs:189
+msgid "Renovation"
+msgstr ""
+
+#: crates/ui-egui/src/phasing.rs:187
+msgid "Renovation: which phase of the work this view shows: all of it, what stood before, what comes down, or what is built"
+msgstr ""
 
 #: crates/ui-egui/src/settings.rs:522
 msgid "Reopen the views that were open"
@@ -6181,7 +6198,7 @@ msgstr ""
 msgid "Reset Temporary Hide/Isolate"
 msgstr "Restablecer ocultar/aislar temporal"
 
-#: crates/ui-egui/src/footer.rs:393
+#: crates/ui-egui/src/footer.rs:397
 msgid "Reset Temporary Hide/Isolate (HR)"
 msgstr "Restablecer ocultar/aislar temporal (HR)"
 
@@ -6206,15 +6223,15 @@ msgstr "Restaurar valores predeterminados"
 msgid "Restore Down"
 msgstr "Restaurar"
 
-#: crates/ui-egui/src/footer.rs:432
+#: crates/ui-egui/src/footer.rs:436
 msgid "Reveal Hidden Elements"
 msgstr "Revelar elementos ocultos"
 
-#: crates/ui-egui/src/footer.rs:431
+#: crates/ui-egui/src/footer.rs:435
 msgid "Reveal Hidden Elements (RH): draw what this view hides in magenta; again to hide it"
 msgstr "Revelar elementos ocultos (RH): dibuja en magenta lo que esta vista oculta; otra vez para ocultarlo"
 
-#: crates/ui-egui/src/footer.rs:459
+#: crates/ui-egui/src/footer.rs:463
 msgid "Revealing hidden elements"
 msgstr "Revelando elementos ocultos"
 
@@ -6421,7 +6438,7 @@ msgstr "Guardar en Favoritos"
 msgid "Saved {} to your Favorites"
 msgstr "{} guardado en sus Favoritos"
 
-#: crates/ui-egui/src/footer.rs:276
+#: crates/ui-egui/src/footer.rs:279
 msgid "Scale"
 msgstr "Escala"
 
@@ -6429,7 +6446,7 @@ msgstr "Escala"
 msgid "Scale Value 1:"
 msgstr "Valor de la escala 1:"
 
-#: crates/ui-egui/src/footer.rs:274
+#: crates/ui-egui/src/footer.rs:277
 msgid "Scale: the paper this view stands for, 1 : n of the model: its annotation and its line weights are that paper's"
 msgstr "Escala: el papel que esta vista representa, 1 : n del modelo: su anotación y sus grosores de línea son los de ese papel"
 
@@ -6753,12 +6770,12 @@ msgstr "Mostrar anterior + demolido"
 msgid "Show Previous + New"
 msgstr "Mostrar anterior + nuevo"
 
-#: crates/ui-egui/src/footer.rs:407
+#: crates/ui-egui/src/footer.rs:411
 msgid "Show background grids, change their settings, or toggle grid snapping"
 msgstr "Mostrar las cuadrículas de fondo, cambiar su configuración o activar el ajuste a la cuadrícula"
 
 #: crates/ui-egui/src/background_grid.rs:143
-#: crates/ui-egui/src/footer.rs:414
+#: crates/ui-egui/src/footer.rs:418
 msgid "Show grids"
 msgstr "Mostrar cuadrículas"
 
@@ -7181,7 +7198,7 @@ msgid "Styles"
 msgstr "Estilos"
 
 #: crates/ui-egui/src/background_grid.rs:161
-#: crates/ui-egui/src/footer.rs:416
+#: crates/ui-egui/src/footer.rs:420
 msgid "Subgrid"
 msgstr "Subcuadrícula"
 
@@ -7415,11 +7432,11 @@ msgstr "Ocultar categoría temporalmente"
 msgid "Temporary Hide Element"
 msgstr "Ocultar elemento temporalmente"
 
-#: crates/ui-egui/src/footer.rs:372
+#: crates/ui-egui/src/footer.rs:376
 msgid "Temporary Hide/Isolate"
 msgstr "Ocultar/Aislar temporalmente"
 
-#: crates/ui-egui/src/footer.rs:370
+#: crates/ui-egui/src/footer.rs:374
 msgid "Temporary Hide/Isolate: hide or isolate what is selected, or its categories, in this view until you reset it"
 msgstr "Ocultar/Aislar temporalmente: oculta o aísla lo seleccionado, o sus categorías, en esta vista hasta que lo restablezca"
 
@@ -7584,6 +7601,10 @@ msgstr "El proyecto no tiene dibujos CAD: Insertar > Importar CAD trae uno."
 msgid "The project has no design options: Manage > Design Options makes them."
 msgstr "El proyecto no tiene opciones de diseño: Gestionar > Opciones de diseño las crea."
 
+#: crates/ui-egui/src/phasing.rs:195
+msgid "The project has no phase filter that shows this: make one in Manage > Phasing"
+msgstr ""
+
 #: crates/ui-egui/src/start.rs:316
 msgid "The project stays as you left it."
 msgstr "El proyecto queda como lo dejaste."
@@ -7683,14 +7704,14 @@ msgstr "Este proyecto no tiene niveles. Agrega uno con la herramienta Nivel."
 msgid "This tool works in plan views: open one from the Project Browser."
 msgstr "Esta herramienta funciona en plantas: abre una desde el navegador de proyectos."
 
-#: crates/ui-egui/src/footer.rs:213
+#: crates/ui-egui/src/footer.rs:216
 #: crates/ui-egui/src/graphics.rs:220
 #: crates/ui-egui/src/graphics.rs:264
 #: crates/ui-egui/src/lib.rs:3367
 msgid "This view has no graphics to override."
 msgstr "Esta vista no tiene gráficos que reemplazar."
 
-#: crates/ui-egui/src/phasing.rs:166
+#: crates/ui-egui/src/phasing.rs:237
 msgid "This view shows another option of that set: pick it again to show it here"
 msgstr "Esta vista muestra otra opción de ese conjunto: elíjala de nuevo para mostrarla aquí"
 
@@ -8234,7 +8255,7 @@ msgstr "Visible cuando"
 msgid "Visual Style"
 msgstr "Estilo visual"
 
-#: crates/ui-egui/src/footer.rs:351
+#: crates/ui-egui/src/footer.rs:354
 msgid "Visual Style: how the 3D view draws surfaces: Shaded, Hidden Line (WF, HL and SD set them) or Wireframe"
 msgstr "Estilo visual: cómo dibuja la vista 3D las superficies: Sombreado, Líneas ocultas (WF, HL y SD los fijan) o Estructura alámbrica"
 
@@ -8358,8 +8379,20 @@ msgstr "Con qué se dibujan las líneas de detalle: una pluma, un color y un pat
 msgid "What is picked and what has focus are drawn in it, in every theme; its lettering is made dark or light enough to read"
 msgstr ""
 
+#: crates/ui-egui/src/phasing.rs:76
+msgid "What stands before the work and what it takes down, drawn as the phases' overrides say"
+msgstr ""
+
+#: crates/ui-egui/src/phasing.rs:73
+msgid "What stands before the work: the project's first phase"
+msgstr ""
+
 #: crates/ui-egui/src/settings.rs:438
 msgid "What the views are drawn on; the drawing's lines turn light on a dark one and dark on a light one"
+msgstr ""
+
+#: crates/ui-egui/src/phasing.rs:82
+msgid "What the work builds, over what stood before"
 msgstr ""
 
 #: crates/ui-egui/src/updates.rs:109
@@ -8586,7 +8619,7 @@ msgstr "`{}` no es un punto; escribe x, y"
 msgid "`{}` is not a point; type x, y in mm"
 msgstr "`{}` no es un punto; escribe x, y en mm"
 
-#: crates/ui-egui/src/footer.rs:297
+#: crates/ui-egui/src/footer.rs:300
 #: crates/ui-egui/src/graphics.rs:562
 msgid "`{}` is not a scale"
 msgstr "`{}` no es una escala"
@@ -8885,7 +8918,7 @@ msgstr "selecciona primero el piso que quieres inclinar"
 msgid "select the walls to attach first"
 msgstr "selecciona primero los muros que quieres unir"
 
-#: crates/ui-egui/src/footer.rs:217
+#: crates/ui-egui/src/footer.rs:220
 msgid "select what to hide or isolate first"
 msgstr "seleccione primero qué ocultar o aislar"
 
@@ -8964,7 +8997,7 @@ msgstr "filtro de vista"
 msgid "view template"
 msgstr "plantilla de vista"
 
-#: crates/ui-egui/src/footer.rs:323
+#: crates/ui-egui/src/footer.rs:326
 msgid "visual styles are for the 3D view: open it from the Project Browser"
 msgstr "los estilos visuales son de la vista 3D: ábrala desde el Explorador de proyectos"
 
@@ -9000,7 +9033,7 @@ msgstr "tipos de cable"
 msgid "{}\n\nThe details are in {}."
 msgstr "{}\n\nLos detalles están en {}."
 
-#: crates/ui-egui/src/footer.rs:460
+#: crates/ui-egui/src/footer.rs:464
 msgid "{} (HR resets)"
 msgstr "{} (HR restablece)"
 
@@ -9008,7 +9041,7 @@ msgstr "{} (HR restablece)"
 msgid "{} (not loaded)"
 msgstr "{} (no cargado)"
 
-#: crates/ui-egui/src/phasing.rs:266
+#: crates/ui-egui/src/phasing.rs:337
 msgid "{} (primary)"
 msgstr "{} (principal)"
 
@@ -9052,7 +9085,7 @@ msgstr "{} archivos, traídos como las estaciones de un solo escaneo"
 msgid "{} follow view template {}: change them there."
 msgstr "{} siguen la plantilla de vista {}: cámbielos allí."
 
-#: crates/ui-egui/src/phasing.rs:101
+#: crates/ui-egui/src/phasing.rs:142
 msgid "{} follows its wall, which comes down in {}: take the wall back instead"
 msgstr "{} acompaña al muro, que se demuele en {}: deshaga la demolición del muro"
 
@@ -9060,7 +9093,7 @@ msgstr "{} acompaña al muro, que se demuele en {}: deshaga la demolición del m
 msgid "{} h ago"
 msgstr "hace {} h"
 
-#: crates/ui-egui/src/phasing.rs:94
+#: crates/ui-egui/src/phasing.rs:135
 msgid "{} holds no parameters, so it has no phase to demolish"
 msgstr "{} no tiene parámetros, así que no tiene fase que demoler"
 

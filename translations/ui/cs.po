@@ -72,8 +72,8 @@ msgstr "<Neviditelné čáry>"
 #: crates/ui-egui/src/graphics.rs:602
 #: crates/ui-egui/src/graphics.rs:1409
 #: crates/ui-egui/src/graphics.rs:1411
-#: crates/ui-egui/src/phasing.rs:368
-#: crates/ui-egui/src/phasing.rs:409
+#: crates/ui-egui/src/phasing.rs:439
+#: crates/ui-egui/src/phasing.rs:480
 #: crates/ui-egui/src/templates.rs:361
 #: crates/ui-egui/src/templates.rs:625
 msgid "<None>"
@@ -143,7 +143,7 @@ msgstr "Smyčka vyžaduje tři čáry: klikněte na bod, který není počátkem
 msgid "A new sheet, with a title block"
 msgstr "Nový výkres s rozpiskou"
 
-#: crates/ui-egui/src/phasing.rs:562
+#: crates/ui-egui/src/phasing.rs:633
 msgid "A phase filter draws a status this way where it says Overridden."
 msgstr "Filtr fází vykresluje stav tímto způsobem, pokud je nastaveno Přepsáno."
 
@@ -193,11 +193,11 @@ msgstr ""
 msgid "Accent colour"
 msgstr ""
 
-#: crates/ui-egui/src/phasing.rs:300
+#: crates/ui-egui/src/phasing.rs:371
 msgid "Accept Primary"
 msgstr "Přijmout primární"
 
-#: crates/ui-egui/src/phasing.rs:299
+#: crates/ui-egui/src/phasing.rs:370
 msgid "Accept Primary: the primary option's elements stay in the model; the others' elements and the set go"
 msgstr "Přijmout primární: prvky primární varianty zůstanou v modelu; prvky ostatních variant a celá sada budou odstraněny"
 
@@ -205,7 +205,7 @@ msgstr "Přijmout primární: prvky primární varianty zůstanou v modelu; prvk
 msgid "Active (NBR 17067: A4 module folding with ear)"
 msgstr ""
 
-#: crates/ui-egui/src/phasing.rs:164
+#: crates/ui-egui/src/phasing.rs:235
 msgid "Active design option:"
 msgstr "Aktivní varianta návrhu:"
 
@@ -271,7 +271,7 @@ msgstr "Přidat filtr"
 msgid "Add Line"
 msgstr "Přidat čáru"
 
-#: crates/ui-egui/src/phasing.rs:306
+#: crates/ui-egui/src/phasing.rs:377
 msgid "Add Option"
 msgstr "Přidat variantu"
 
@@ -337,7 +337,7 @@ msgstr ""
 msgid "Add Wire Type"
 msgstr ""
 
-#: crates/ui-egui/src/phasing.rs:470
+#: crates/ui-egui/src/phasing.rs:541
 msgid "Add at End"
 msgstr "Přidat na konec"
 
@@ -418,6 +418,7 @@ msgstr ""
 
 #: crates/ui-egui/src/browser.rs:41
 #: crates/ui-egui/src/cad.rs:101
+#: crates/ui-egui/src/phasing.rs:72
 msgid "All"
 msgstr "Vše"
 
@@ -516,7 +517,7 @@ msgstr "Pero poznámek {}"
 msgid "Another colour"
 msgstr ""
 
-#: crates/ui-egui/src/footer.rs:424
+#: crates/ui-egui/src/footer.rs:428
 #: crates/ui-egui/src/properties.rs:2467
 msgid "Applies to all views; snaps to the active view's enabled main grid or subgrid, even when hidden"
 msgstr ""
@@ -535,11 +536,11 @@ msgstr ""
 msgid "Apply"
 msgstr "Použít"
 
-#: crates/ui-egui/src/footer.rs:390
+#: crates/ui-egui/src/footer.rs:394
 msgid "Apply Hide/Isolate to View"
 msgstr "Použít skrytí/izolování na pohled"
 
-#: crates/ui-egui/src/phasing.rs:568
+#: crates/ui-egui/src/phasing.rs:639
 msgid "Apply Overrides"
 msgstr "Použít přepsání"
 
@@ -745,7 +746,7 @@ msgid "Background Color"
 msgstr "Barva pozadí"
 
 #: crates/ui-egui/src/background_grid.rs:98
-#: crates/ui-egui/src/footer.rs:405
+#: crates/ui-egui/src/footer.rs:409
 #: crates/ui-egui/src/graphics.rs:125
 #: crates/ui-egui/src/graphics.rs:589
 #: crates/ui-egui/src/templates.rs:623
@@ -914,7 +915,7 @@ msgstr "Sestavit"
 msgid "Building information modelling, open and free."
 msgstr "Informační modelování staveb (BIM), otevřené a svobodné."
 
-#: crates/ui-egui/src/phasing.rs:67
+#: crates/ui-egui/src/phasing.rs:108
 msgid "By Category"
 msgstr "Podle kategorie"
 
@@ -1663,8 +1664,8 @@ msgstr "Klikněte pro určení směru dalšího ramene z podesty: rovně, vlevo,
 #: crates/ui-egui/src/graphics.rs:504
 #: crates/ui-egui/src/inquiry.rs:203
 #: crates/ui-egui/src/lib.rs:4752
-#: crates/ui-egui/src/phasing.rs:207
-#: crates/ui-egui/src/phasing.rs:329
+#: crates/ui-egui/src/phasing.rs:278
+#: crates/ui-egui/src/phasing.rs:400
 #: crates/ui-egui/src/popup.rs:90
 #: crates/ui-egui/src/properties.rs:2143
 #: crates/ui-egui/src/properties.rs:2470
@@ -1724,15 +1725,15 @@ msgstr "Sloup"
 msgid "Column (CL): click where it stands"
 msgstr "Sloup (CL): klikněte do místa umístění"
 
-#: crates/ui-egui/src/phasing.rs:492
+#: crates/ui-egui/src/phasing.rs:563
 msgid "Combine with Next"
 msgstr "Sloučit s následující"
 
-#: crates/ui-egui/src/phasing.rs:492
+#: crates/ui-egui/src/phasing.rs:563
 msgid "Combine with Previous"
 msgstr "Sloučit s předchozí"
 
-#: crates/ui-egui/src/phasing.rs:491
+#: crates/ui-egui/src/phasing.rs:562
 msgid "Combine: what was made, taken down and shown in this phase goes to the neighbouring one, and this one goes"
 msgstr "Sloučit: prvky vytvořené, demolované a zobrazené v této fázi přejdou do sousední fáze a tato fáze bude odstraněna"
 
@@ -2039,7 +2040,7 @@ msgid "Curve preview"
 msgstr "Náhled křivky"
 
 #: crates/ui-egui/src/fillpatterns.rs:612
-#: crates/ui-egui/src/footer.rs:290
+#: crates/ui-egui/src/footer.rs:293
 msgid "Custom"
 msgstr "Vlastní"
 
@@ -2153,7 +2154,7 @@ msgstr "Výchozí tloušťka"
 #: crates/ui-egui/src/linestyles.rs:176
 #: crates/ui-egui/src/linestyles.rs:211
 #: crates/ui-egui/src/lineweights.rs:55
-#: crates/ui-egui/src/phasing.rs:515
+#: crates/ui-egui/src/phasing.rs:586
 #: crates/ui-egui/src/presets.rs:204
 #: crates/ui-egui/src/properties.rs:2005
 #: crates/ui-egui/src/properties.rs:2226
@@ -2166,7 +2167,7 @@ msgstr "Odstranit"
 msgid "Delete (DE) the selection"
 msgstr "Odstranit (DE) výběr"
 
-#: crates/ui-egui/src/phasing.rs:318
+#: crates/ui-egui/src/phasing.rs:389
 msgid "Delete Option"
 msgstr "Odstranit variantu"
 
@@ -2174,11 +2175,11 @@ msgstr "Odstranit variantu"
 msgid "Delete Preset"
 msgstr ""
 
-#: crates/ui-egui/src/phasing.rs:296
+#: crates/ui-egui/src/phasing.rs:367
 msgid "Delete Set"
 msgstr "Odstranit sadu"
 
-#: crates/ui-egui/src/phasing.rs:295
+#: crates/ui-egui/src/phasing.rs:366
 msgid "Delete Set: the set goes, and every element in its options"
 msgstr "Odstranit sadu: sada bude odstraněna včetně všech prvků v jejích variantách"
 
@@ -2227,6 +2228,10 @@ msgstr "Zbourat (DW): klikněte na prvek, který chcete zbourat ve fázi pohledu
 msgid "Demolished"
 msgstr "Zbourané"
 
+#: crates/ui-egui/src/phasing.rs:75
+msgid "Demolition"
+msgstr ""
+
 #: crates/core/src/commands.rs:7939
 msgid "Dependent"
 msgstr "Závislý"
@@ -2241,12 +2246,12 @@ msgstr "Hloubka"
 msgid "Descending"
 msgstr "Sestupně"
 
-#: crates/ui-egui/src/phasing.rs:437
+#: crates/ui-egui/src/phasing.rs:508
 msgid "Design Option"
 msgstr "Varianta návrhu"
 
 #: crates/ui-egui/src/lib.rs:3949
-#: crates/ui-egui/src/phasing.rs:247
+#: crates/ui-egui/src/phasing.rs:318
 #: crates/ui-egui/src/templates.rs:621
 msgid "Design Options"
 msgstr "Varianty návrhu"
@@ -2285,7 +2290,7 @@ msgstr "Skupina detailu: kliknutím umístíte skupinu z panelu možností"
 msgid "Detail Level"
 msgstr "Úroveň detailu"
 
-#: crates/ui-egui/src/footer.rs:304
+#: crates/ui-egui/src/footer.rs:307
 msgid "Detail Level: Coarse draws what is cut in one poché, Medium adds the layers and the symbols of openings, Fine the patterns"
 msgstr "Úroveň detailu: Hrubá vykreslí řez v plné výplni, Střední přidá vrstvy a symboly otvorů, Jemná vzory"
 
@@ -2645,11 +2650,11 @@ msgstr "Upravit rodinu: rodina vybraného prvku nebo právě umísťované kompo
 msgid "Edit Lines"
 msgstr "Upravit čáry"
 
-#: crates/ui-egui/src/phasing.rs:323
+#: crates/ui-egui/src/phasing.rs:394
 msgid "Edit Option"
 msgstr "Upravit variantu"
 
-#: crates/ui-egui/src/phasing.rs:322
+#: crates/ui-egui/src/phasing.rs:393
 msgid "Edit Option: new elements are made in this option, and the view on screen shows it"
 msgstr "Upravit variantu: nové prvky se vytvářejí v této variantě a pohled na obrazovce ji zobrazuje"
 
@@ -2798,6 +2803,10 @@ msgstr "Chyba"
 #: crates/ui-egui/src/lib.rs:3720
 msgid "Every view is on a sheet."
 msgstr "Každý pohled je na výkresu."
+
+#: crates/ui-egui/src/phasing.rs:72
+msgid "Everything the project has, as its categories draw it"
+msgstr ""
 
 #: crates/core/src/phasing.rs:117
 msgid "Existing"
@@ -3364,7 +3373,7 @@ msgstr ""
 msgid "Graphic Display Options"
 msgstr ""
 
-#: crates/ui-egui/src/footer.rs:361
+#: crates/ui-egui/src/footer.rs:364
 msgid "Graphic Display Options..."
 msgstr ""
 
@@ -3400,11 +3409,11 @@ msgstr "Modulová osa (GR): klikněte na oba její konce"
 msgid "Grid rotation"
 msgstr ""
 
-#: crates/ui-egui/src/footer.rs:417
+#: crates/ui-egui/src/footer.rs:421
 msgid "Grid settings…"
 msgstr ""
 
-#: crates/ui-egui/src/footer.rs:423
+#: crates/ui-egui/src/footer.rs:427
 #: crates/ui-egui/src/properties.rs:2466
 msgid "Grid snapping"
 msgstr ""
@@ -3493,7 +3502,7 @@ msgstr "Skryté čáry"
 msgid "Hide Category"
 msgstr "Skrýt kategorii"
 
-#: crates/ui-egui/src/footer.rs:378
+#: crates/ui-egui/src/footer.rs:382
 msgid "Hide Category (HC)"
 msgstr "Skrýt kategorii (HC)"
 
@@ -3509,15 +3518,15 @@ msgstr "Skrýt prvek"
 msgid "Hide Element (EH): leave the selected elements out of this view"
 msgstr "Skrýt prvek (EH): vynechá vybrané prvky z tohoto pohledu"
 
-#: crates/ui-egui/src/footer.rs:377
+#: crates/ui-egui/src/footer.rs:381
 msgid "Hide Element (HH)"
 msgstr "Skrýt prvek (HH)"
 
-#: crates/ui-egui/src/footer.rs:446
+#: crates/ui-egui/src/footer.rs:450
 msgid "High Contrast Point Clouds"
 msgstr "Vysoký kontrast mračen bodů"
 
-#: crates/ui-egui/src/footer.rs:441
+#: crates/ui-egui/src/footer.rs:445
 msgid "High Contrast Point Clouds: draw this view's scans in one strong colour, so what they show reads; again for their own colours. A scan given a colour of its own in Visibility/Graphics keeps it."
 msgstr "Vysoký kontrast mračen bodů: vykreslí skeny v tomto pohledu jednou výraznou barvou pro lepší čitelnost; dalším kliknutím vrátí původní barvy. Sken s vlastní barvou nastavenou ve Viditelnosti/Zobrazení si ji zachová."
 
@@ -3563,7 +3572,7 @@ msgstr "Hostitel"
 msgid "Host Wall"
 msgstr "Hostitelská stěna"
 
-#: crates/ui-egui/src/phasing.rs:531
+#: crates/ui-egui/src/phasing.rs:602
 msgid "How it shows what is, in the view's phase:"
 msgstr "Způsob zobrazení prvků ve fázi pohledu:"
 
@@ -3700,11 +3709,11 @@ msgstr "Vepsaný mnohoúhelník: klikněte na střed a potom na vrchol; počet s
 msgid "Insert"
 msgstr "Vložit"
 
-#: crates/ui-egui/src/phasing.rs:478
+#: crates/ui-egui/src/phasing.rs:549
 msgid "Insert After"
 msgstr "Vložit za"
 
-#: crates/ui-egui/src/phasing.rs:474
+#: crates/ui-egui/src/phasing.rs:545
 msgid "Insert Before"
 msgstr "Vložit před"
 
@@ -3765,11 +3774,11 @@ msgstr "Průsečík"
 msgid "Invert"
 msgstr "Invertovat"
 
-#: crates/ui-egui/src/footer.rs:380
+#: crates/ui-egui/src/footer.rs:384
 msgid "Isolate Category (IC)"
 msgstr "Izolovat kategorii (IC)"
 
-#: crates/ui-egui/src/footer.rs:379
+#: crates/ui-egui/src/footer.rs:383
 msgid "Isolate Element (HI)"
 msgstr "Izolovat prvek (HI)"
 
@@ -4221,13 +4230,13 @@ msgstr "Dlouhá čárkovaná"
 msgid "Made of detail lines picked in the plan, repeating the rectangle between two corners"
 msgstr ""
 
-#: crates/ui-egui/src/phasing.rs:145
-#: crates/ui-egui/src/phasing.rs:409
+#: crates/ui-egui/src/phasing.rs:216
+#: crates/ui-egui/src/phasing.rs:480
 msgid "Main Model"
 msgstr "Hlavní model"
 
 #: crates/ui-egui/src/background_grid.rs:145
-#: crates/ui-egui/src/footer.rs:415
+#: crates/ui-egui/src/footer.rs:419
 msgid "Main grid"
 msgstr ""
 
@@ -4247,7 +4256,7 @@ msgstr ""
 msgid "Main spacing Y"
 msgstr ""
 
-#: crates/ui-egui/src/phasing.rs:315
+#: crates/ui-egui/src/phasing.rs:386
 msgid "Make Primary"
 msgstr "Nastavit jako primární"
 
@@ -4586,8 +4595,8 @@ msgid "Name"
 msgstr "Název"
 
 #: crates/ui-egui/src/electrical.rs:417
-#: crates/ui-egui/src/phasing.rs:279
-#: crates/ui-egui/src/phasing.rs:464
+#: crates/ui-egui/src/phasing.rs:350
+#: crates/ui-egui/src/phasing.rs:535
 #: crates/ui-egui/src/properties.rs:2810
 #: crates/ui-egui/src/templates.rs:425
 #: crates/ui-egui/src/typeprops.rs:100
@@ -4626,7 +4635,7 @@ msgstr "Nová rodina"
 msgid "New Family: start a family of your own, of a category, to edit its parameters, types and forms"
 msgstr "Nová rodina: vytvořte vlastní rodinu dané kategorie a upravte její parametry, typy a tvary"
 
-#: crates/ui-egui/src/phasing.rs:524
+#: crates/ui-egui/src/phasing.rs:595
 msgid "New Filter"
 msgstr "Nový filtr"
 
@@ -4643,7 +4652,7 @@ msgstr "Nový projekt"
 msgid "New Schedule"
 msgstr "Nový výkaz"
 
-#: crates/ui-egui/src/phasing.rs:287
+#: crates/ui-egui/src/phasing.rs:358
 msgid "New Set"
 msgstr "Nová sada"
 
@@ -4659,11 +4668,11 @@ msgstr ""
 msgid "New Wire Type"
 msgstr ""
 
-#: crates/ui-egui/src/phasing.rs:168
+#: crates/ui-egui/src/phasing.rs:239
 msgid "New elements are made in this option; the view on screen shows it"
 msgstr "V této možnosti se vytvářejí nové prvky; pohled na obrazovce ji zobrazuje"
 
-#: crates/ui-egui/src/phasing.rs:521
+#: crates/ui-egui/src/phasing.rs:592
 msgid "New filter:"
 msgstr "Nový filtr:"
 
@@ -4703,7 +4712,7 @@ msgstr "Bez oříznutí"
 msgid "No category has that name."
 msgstr "Žádná kategorie nemá tento název."
 
-#: crates/ui-egui/src/phasing.rs:274
+#: crates/ui-egui/src/phasing.rs:345
 msgid "No design option sets yet: New Set makes one."
 msgstr "Dosud žádné sady možností návrhu: tlačítkem Nová sada ji vytvoříte."
 
@@ -4783,7 +4792,7 @@ msgstr "Sever"
 msgid "Not Bounded"
 msgstr ""
 
-#: crates/ui-egui/src/phasing.rs:69
+#: crates/ui-egui/src/phasing.rs:110
 msgid "Not Displayed"
 msgstr "Nezobrazeno"
 
@@ -4991,15 +5000,15 @@ msgstr "Otevřít…"
 msgid "Operation"
 msgstr "Způsob otevírání"
 
-#: crates/ui-egui/src/phasing.rs:288
+#: crates/ui-egui/src/phasing.rs:359
 msgid "Option"
 msgstr "Možnost"
 
-#: crates/ui-egui/src/phasing.rs:251
+#: crates/ui-egui/src/phasing.rs:322
 msgid "Option set:"
 msgstr "Sada možností:"
 
-#: crates/ui-egui/src/phasing.rs:264
+#: crates/ui-egui/src/phasing.rs:335
 msgid "Options:"
 msgstr "Možnosti:"
 
@@ -5055,7 +5064,7 @@ msgstr "Přesah:"
 msgid "Overhead Lines"
 msgstr "Promítnuté horní obrysy"
 
-#: crates/ui-egui/src/phasing.rs:68
+#: crates/ui-egui/src/phasing.rs:109
 msgid "Overridden"
 msgstr "Přepsáno"
 
@@ -5241,20 +5250,20 @@ msgstr ""
 msgid "Perspective: see the 3D view as through a camera, its eye standing back as far as the lens and the zoom say"
 msgstr ""
 
-#: crates/ui-egui/src/phasing.rs:378
+#: crates/ui-egui/src/phasing.rs:449
 #: crates/ui-egui/src/templates.rs:633
 msgid "Phase"
 msgstr "Fáze"
 
-#: crates/ui-egui/src/phasing.rs:424
+#: crates/ui-egui/src/phasing.rs:495
 msgid "Phase Created"
 msgstr "Vytvořená fáze"
 
-#: crates/ui-egui/src/phasing.rs:430
+#: crates/ui-egui/src/phasing.rs:501
 msgid "Phase Demolished"
 msgstr "Fáze demolice"
 
-#: crates/ui-egui/src/phasing.rs:367
+#: crates/ui-egui/src/phasing.rs:438
 #: crates/ui-egui/src/templates.rs:626
 msgid "Phase Filter"
 msgstr "Filtr fází"
@@ -5267,7 +5276,7 @@ msgstr "Filtry fází"
 msgid "Phase and Phase Filter"
 msgstr "Fáze a filtr fází"
 
-#: crates/ui-egui/src/phasing.rs:506
+#: crates/ui-egui/src/phasing.rs:577
 msgid "Phase filter:"
 msgstr "Filtr fází:"
 
@@ -5275,12 +5284,12 @@ msgstr "Filtr fází:"
 msgid "Phases"
 msgstr ""
 
-#: crates/ui-egui/src/phasing.rs:454
+#: crates/ui-egui/src/phasing.rs:525
 msgid "Phases, in order:"
 msgstr "Fáze, v pořadí:"
 
 #: crates/ui-egui/src/lib.rs:3943
-#: crates/ui-egui/src/phasing.rs:187
+#: crates/ui-egui/src/phasing.rs:258
 msgid "Phasing"
 msgstr "Fázování"
 
@@ -6107,17 +6116,17 @@ msgstr "Odebrat ze seznamu"
 msgid "Removed {} bars."
 msgstr ""
 
-#: crates/ui-egui/src/phasing.rs:482
+#: crates/ui-egui/src/phasing.rs:553
 #: crates/ui-egui/src/templates.rs:420
 #: crates/ui-egui/src/typeprops.rs:101
 msgid "Rename"
 msgstr "Přejmenovat"
 
-#: crates/ui-egui/src/phasing.rs:311
+#: crates/ui-egui/src/phasing.rs:382
 msgid "Rename Option"
 msgstr "Přejmenovat možnost"
 
-#: crates/ui-egui/src/phasing.rs:291
+#: crates/ui-egui/src/phasing.rs:362
 msgid "Rename Set"
 msgstr "Přejmenovat sadu"
 
@@ -6125,6 +6134,14 @@ msgstr "Přejmenovat sadu"
 #: crates/ui-egui/src/typeprops.rs:133
 msgid "Rename…"
 msgstr "Přejmenovat…"
+
+#: crates/ui-egui/src/phasing.rs:189
+msgid "Renovation"
+msgstr ""
+
+#: crates/ui-egui/src/phasing.rs:187
+msgid "Renovation: which phase of the work this view shows: all of it, what stood before, what comes down, or what is built"
+msgstr ""
 
 #: crates/ui-egui/src/settings.rs:522
 msgid "Reopen the views that were open"
@@ -6180,7 +6197,7 @@ msgstr ""
 msgid "Reset Temporary Hide/Isolate"
 msgstr "Obnovit dočasné skrytí/izolování"
 
-#: crates/ui-egui/src/footer.rs:393
+#: crates/ui-egui/src/footer.rs:397
 msgid "Reset Temporary Hide/Isolate (HR)"
 msgstr "Obnovit dočasné skrytí/izolování (HR)"
 
@@ -6205,15 +6222,15 @@ msgstr "Obnovit výchozí hodnoty"
 msgid "Restore Down"
 msgstr "Obnovit dolů"
 
-#: crates/ui-egui/src/footer.rs:432
+#: crates/ui-egui/src/footer.rs:436
 msgid "Reveal Hidden Elements"
 msgstr "Zobrazit skryté prvky"
 
-#: crates/ui-egui/src/footer.rs:431
+#: crates/ui-egui/src/footer.rs:435
 msgid "Reveal Hidden Elements (RH): draw what this view hides in magenta; again to hide it"
 msgstr "Zobrazit skryté prvky (RH): vykreslit skryté prvky tohoto pohledu purpurově; opětovným stisknutím je skryjete"
 
-#: crates/ui-egui/src/footer.rs:459
+#: crates/ui-egui/src/footer.rs:463
 msgid "Revealing hidden elements"
 msgstr "Zobrazují se skryté prvky"
 
@@ -6420,7 +6437,7 @@ msgstr "Uložit do oblíbených"
 msgid "Saved {} to your Favorites"
 msgstr "Položka {} byla uložena do vašich oblíbených"
 
-#: crates/ui-egui/src/footer.rs:276
+#: crates/ui-egui/src/footer.rs:279
 msgid "Scale"
 msgstr "Měřítko"
 
@@ -6428,7 +6445,7 @@ msgstr "Měřítko"
 msgid "Scale Value 1:"
 msgstr "Hodnota měřítka 1:"
 
-#: crates/ui-egui/src/footer.rs:274
+#: crates/ui-egui/src/footer.rs:277
 msgid "Scale: the paper this view stands for, 1 : n of the model: its annotation and its line weights are that paper's"
 msgstr "Měřítko: velikost papíru odpovídající tomuto pohledu, 1 : n modelu: jeho popisy a tloušťky čar odpovídají tomuto papíru"
 
@@ -6752,12 +6769,12 @@ msgstr "Zobrazit předchozí + bourané"
 msgid "Show Previous + New"
 msgstr "Zobrazit předchozí + nové"
 
-#: crates/ui-egui/src/footer.rs:407
+#: crates/ui-egui/src/footer.rs:411
 msgid "Show background grids, change their settings, or toggle grid snapping"
 msgstr ""
 
 #: crates/ui-egui/src/background_grid.rs:143
-#: crates/ui-egui/src/footer.rs:414
+#: crates/ui-egui/src/footer.rs:418
 msgid "Show grids"
 msgstr ""
 
@@ -7180,7 +7197,7 @@ msgid "Styles"
 msgstr "Styly"
 
 #: crates/ui-egui/src/background_grid.rs:161
-#: crates/ui-egui/src/footer.rs:416
+#: crates/ui-egui/src/footer.rs:420
 msgid "Subgrid"
 msgstr ""
 
@@ -7414,11 +7431,11 @@ msgstr "Dočasně skrýt kategorii"
 msgid "Temporary Hide Element"
 msgstr "Dočasně skrýt prvek"
 
-#: crates/ui-egui/src/footer.rs:372
+#: crates/ui-egui/src/footer.rs:376
 msgid "Temporary Hide/Isolate"
 msgstr "Dočasně skrýt/izolovat"
 
-#: crates/ui-egui/src/footer.rs:370
+#: crates/ui-egui/src/footer.rs:374
 msgid "Temporary Hide/Isolate: hide or isolate what is selected, or its categories, in this view until you reset it"
 msgstr "Dočasně skrýt/izolovat: skryje nebo izoluje vybrané prvky nebo jejich kategorie v tomto pohledu, dokud nastavení neobnovíte"
 
@@ -7583,6 +7600,10 @@ msgstr "Projekt neobsahuje žádné výkresy CAD: načtěte výkres pomocí Vlo�
 msgid "The project has no design options: Manage > Design Options makes them."
 msgstr "Projekt neobsahuje žádné možnosti návrhu: vytvořte je pomocí Správa > Možnosti návrhu."
 
+#: crates/ui-egui/src/phasing.rs:195
+msgid "The project has no phase filter that shows this: make one in Manage > Phasing"
+msgstr ""
+
 #: crates/ui-egui/src/start.rs:316
 msgid "The project stays as you left it."
 msgstr "Projekt zůstane ve stavu, v jakém jste jej opustili."
@@ -7682,14 +7703,14 @@ msgstr "Tento projekt nemá žádná podlaží. Přidejte podlaží pomocí nás
 msgid "This tool works in plan views: open one from the Project Browser."
 msgstr "Tento nástroj funguje v půdorysných pohledech: otevřete některý z Prohlížeče projektu."
 
-#: crates/ui-egui/src/footer.rs:213
+#: crates/ui-egui/src/footer.rs:216
 #: crates/ui-egui/src/graphics.rs:220
 #: crates/ui-egui/src/graphics.rs:264
 #: crates/ui-egui/src/lib.rs:3367
 msgid "This view has no graphics to override."
 msgstr "Tento pohled nemá žádná grafická zobrazení k přepsání."
 
-#: crates/ui-egui/src/phasing.rs:166
+#: crates/ui-egui/src/phasing.rs:237
 msgid "This view shows another option of that set: pick it again to show it here"
 msgstr "Tento pohled zobrazuje jinou možnost této sady: dalším výběrem ji zobrazíte zde"
 
@@ -8233,7 +8254,7 @@ msgstr "Viditelný když"
 msgid "Visual Style"
 msgstr "Vizuální styl"
 
-#: crates/ui-egui/src/footer.rs:351
+#: crates/ui-egui/src/footer.rs:354
 msgid "Visual Style: how the 3D view draws surfaces: Shaded, Hidden Line (WF, HL and SD set them) or Wireframe"
 msgstr "Vizuální styl: jak 3D pohled vykresluje povrchy: Stínovaný, Skryté čáry (klávesové zkratky WF, HL a SD) nebo Drátový model"
 
@@ -8357,8 +8378,20 @@ msgstr "Čím se kreslí čáry detailu: pero, barva a vzor čáry."
 msgid "What is picked and what has focus are drawn in it, in every theme; its lettering is made dark or light enough to read"
 msgstr ""
 
+#: crates/ui-egui/src/phasing.rs:76
+msgid "What stands before the work and what it takes down, drawn as the phases' overrides say"
+msgstr ""
+
+#: crates/ui-egui/src/phasing.rs:73
+msgid "What stands before the work: the project's first phase"
+msgstr ""
+
 #: crates/ui-egui/src/settings.rs:438
 msgid "What the views are drawn on; the drawing's lines turn light on a dark one and dark on a light one"
+msgstr ""
+
+#: crates/ui-egui/src/phasing.rs:82
+msgid "What the work builds, over what stood before"
 msgstr ""
 
 #: crates/ui-egui/src/updates.rs:109
@@ -8585,7 +8618,7 @@ msgstr "`{}` není bod; zadejte x, y"
 msgid "`{}` is not a point; type x, y in mm"
 msgstr "`{}` není bod; zadejte x, y v mm"
 
-#: crates/ui-egui/src/footer.rs:297
+#: crates/ui-egui/src/footer.rs:300
 #: crates/ui-egui/src/graphics.rs:562
 msgid "`{}` is not a scale"
 msgstr "`{}` není platné měřítko"
@@ -8884,7 +8917,7 @@ msgstr "nejprve vyberte podlahu pro vytvoření sklonu"
 msgid "select the walls to attach first"
 msgstr "nejprve vyberte stěny k připojení"
 
-#: crates/ui-egui/src/footer.rs:217
+#: crates/ui-egui/src/footer.rs:220
 msgid "select what to hide or isolate first"
 msgstr "nejprve vyberte prvky ke skrytí nebo izolování"
 
@@ -8963,7 +8996,7 @@ msgstr "filtr pohledu"
 msgid "view template"
 msgstr "šablona pohledu"
 
-#: crates/ui-egui/src/footer.rs:323
+#: crates/ui-egui/src/footer.rs:326
 msgid "visual styles are for the 3D view: open it from the Project Browser"
 msgstr "vizuální styly jsou určeny pro 3D pohled: otevřete jej z Prohlížeče projektu"
 
@@ -8999,7 +9032,7 @@ msgstr ""
 msgid "{}\n\nThe details are in {}."
 msgstr "{}\n\nPodrobnosti naleznete v {}."
 
-#: crates/ui-egui/src/footer.rs:460
+#: crates/ui-egui/src/footer.rs:464
 msgid "{} (HR resets)"
 msgstr "{} (HR obnoví)"
 
@@ -9007,7 +9040,7 @@ msgstr "{} (HR obnoví)"
 msgid "{} (not loaded)"
 msgstr "{} (nenačteno)"
 
-#: crates/ui-egui/src/phasing.rs:266
+#: crates/ui-egui/src/phasing.rs:337
 msgid "{} (primary)"
 msgstr "{} (hlavní)"
 
@@ -9051,7 +9084,7 @@ msgstr "{} souborů, načteno jako stanoviska jednoho skenu"
 msgid "{} follow view template {}: change them there."
 msgstr "{} se řídí šablonou pohledu {}: změňte je tam."
 
-#: crates/ui-egui/src/phasing.rs:101
+#: crates/ui-egui/src/phasing.rs:142
 msgid "{} follows its wall, which comes down in {}: take the wall back instead"
 msgstr "{} sleduje svou stěnu, která bude odstraněna ve fázi {}: místo toho vraťte stěnu zpět"
 
@@ -9059,7 +9092,7 @@ msgstr "{} sleduje svou stěnu, která bude odstraněna ve fázi {}: místo toho
 msgid "{} h ago"
 msgstr "Před {} h"
 
-#: crates/ui-egui/src/phasing.rs:94
+#: crates/ui-egui/src/phasing.rs:135
 msgid "{} holds no parameters, so it has no phase to demolish"
 msgstr "{} neobsahuje žádné parametry, nemá tedy žádnou fázi k demolici"
 

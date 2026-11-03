@@ -50,15 +50,18 @@ pub(crate) struct Shadow {
     model: Arc<Model>,
 }
 
-/// A button of the bar that opens a menu: named `label` for screen readers, and showing `shown`, the setting it holds. Greyed
-/// out, and saying so, when view template `set_by` sets it.
-fn menu_button(ui: &mut Ui, label: &str, shown: &str, tip: &str, set_by: Option<&str>) -> Response {
-    let (label, tip) = (t(label), t(tip));
-    let galley = ui.painter().layout_no_wrap(t(shown).to_string(), FontId::proportional(12.0), pal().text);
+/// A button of the bar that opens a menu: named `label` for screen readers, and showing `shown`, the setting it holds, which
+/// they read as its value. Greyed out, and saying so, when view template `set_by` sets it.
+pub(crate) fn menu_button(ui: &mut Ui, label: &str, shown: &str, tip: &str, set_by: Option<&str>) -> Response {
+    let (label, tip, shown) = (t(label), t(tip), t(shown));
+    let galley = ui.painter().layout_no_wrap(shown.to_string(), FontId::proportional(12.0), pal().text);
     ui.add_enabled_ui(set_by.is_none(), |ui| {
         let (rect, r) = ui.allocate_exact_size(vec2(galley.size().x + 28.0, 25.0), Sense::click());
         let enabled = ui.is_enabled();
-        r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label));
+        r.widget_info(|| WidgetInfo {
+            current_text_value: Some(shown.to_string()),
+            ..WidgetInfo::labeled(WidgetType::Button, enabled, label)
+        });
         let p = ui.painter();
         if r.hovered() {
             p.rect_filled(rect, 4.0, pal().hover_fill);
@@ -366,6 +369,7 @@ impl BimApp {
                         }
                         _ => {}
                     }
+                    self.renovation_menu(ui);
                     let tip = msg!(
                         "Temporary Hide/Isolate: hide or isolate what is selected, or its categories, in this view until you reset it"
                     );
