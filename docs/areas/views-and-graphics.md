@@ -53,6 +53,24 @@ would: a compound element's layer lines, an opening's jambs and glass, a stair's
 holds only the categories set apart from `styles::default_of` (which draws as before: cut pen 10, seen pen 4). What's next on this
 foundation: annotation categories' object styles and subcategories, viewports as windows onto their views, and printing.
 
+Family components are split by category. A component is of its family's category (`graphics::category_of`; `component_category` names
+each `family::Category`: `furniture`, `casework`, `plumbing`, `drain`, `pipefitting`, `pipeaccessory`, `equipment`, `outlet`, `switch`,
+`airterminal`, `earthing`, `inspectionbox`, `lighting`, `generic`, `dataoutlet`, `voiceoutlet`, `patchpanel`, `rack`; `graphics::COMPONENTS`),
+and each is a row of `graphics::MODEL`, so of Visibility/Graphics, Object Styles and `object_styles`: a power plan hides the luminaires
+and a lighting plan the outlets. A door's or a window's family is placed in a wall as a door or a window and has no row. `component`
+(`graphics::COMPONENT`) is no row but still a name, for every one of them: `drawn` and `styles::known` accept it, `Graphics::hides` takes
+a family category as hidden when it is, and `Look::with` lays a category's own override over the one `component` says (hidden if
+either is), as `styles::inherited` lays an object style over it, so a project from before (a view, a template or Object Styles that
+names `component`) opens and draws as it did. A view filter and a schedule still name `component`; both pick every family component.
+The desktop splits `component` into its rows in a dialog's draft (`Graphics::split_component`), so the rows show what the view does and a
+click shows one again. A new `family::Category` is a compile error in `component_category` until it has its row; the key is the name it
+goes by in a file (a test compares them), and a new one goes in `MODEL` and `COMPONENTS`, and a name in the desktop's `lang::category`.
+A new project starts with three plan templates for the electrical disciplines that control the categories alone
+(`graphics::starter_templates`, named by the project's language through `Language::word`): Electrical Power (luminaires in halftone),
+Electrical Lighting (outlets hidden) and Electrical Ceiling (the devices that stand on the floor or the wall hidden, luminaires and cable
+trays kept). A project from before has none. File format 13 is the one that has these rows: a build that reads up to 12 refuses it on
+opening, with an error about a category, not "saved by a newer BIMCraft".
+
 Detail lines and their line styles (`lines.rs`): a `LinePattern` is a freely ordered sequence of 1–32 graphic segments, each length mm
 on paper, so it reads the same at any scale (`Solid` is none, a name no pattern takes); a `LineStyle` is a pen, a colour and a
 pattern; both are library entries (`Kind::LinePattern`, `Kind::LineStyle`), so a style names its pattern and a detail line its style

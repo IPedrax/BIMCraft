@@ -9932,3 +9932,195 @@ msgstr ""
 #: crates/ui-egui/src/control.rs:375
 msgid "The control port, through which an agent works on this project (bimcraft-cli mcp --connect): whether it is open, how many agents are connected, and whether they may only read. Click for File > Settings > Agents"
 msgstr ""
+
+#: crates/core/src/graphics.rs:934
+msgid "Electrical Ceiling"
+msgstr ""
+
+#: crates/core/src/graphics.rs:933
+msgid "Electrical Lighting"
+msgstr ""
+
+#: crates/core/src/graphics.rs:932
+msgid "Electrical Power"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:257
+msgctxt "category"
+msgid "Air Terminal"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:249
+msgctxt "category"
+msgid "Casework"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:262
+msgctxt "category"
+msgid "Data Outlet"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:251
+msgctxt "category"
+msgid "Drain"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:258
+msgctxt "category"
+msgid "Earthing Electrode"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:254
+msgctxt "category"
+msgid "Electrical Equipment"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:248
+msgctxt "category"
+msgid "Furniture"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:261
+msgctxt "category"
+msgid "Generic Component"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:259
+msgctxt "category"
+msgid "Inspection Box"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:260
+msgctxt "category"
+msgid "Lighting Fixture"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:255
+msgctxt "category"
+msgid "Outlet"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:264
+msgctxt "category"
+msgid "Patch Panel"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:253
+msgctxt "category"
+msgid "Pipe Accessory"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:252
+msgctxt "category"
+msgid "Pipe Fitting"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:250
+msgctxt "category"
+msgid "Plumbing Fixture"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:265
+msgctxt "category"
+msgid "Rack"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:256
+msgctxt "category"
+msgid "Switch"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:263
+msgctxt "category"
+msgid "Voice Outlet"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:257
+msgctxt "category-plural"
+msgid "Air Terminals"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:249
+msgctxt "category-plural"
+msgid "Casework"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:262
+msgctxt "category-plural"
+msgid "Data Outlets"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:251
+msgctxt "category-plural"
+msgid "Drains"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:258
+msgctxt "category-plural"
+msgid "Earthing Electrodes"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:254
+msgctxt "category-plural"
+msgid "Electrical Equipment"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:248
+msgctxt "category-plural"
+msgid "Furniture"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:261
+msgctxt "category-plural"
+msgid "Generic Components"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:259
+msgctxt "category-plural"
+msgid "Inspection Boxes"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:260
+msgctxt "category-plural"
+msgid "Lighting Fixtures"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:255
+msgctxt "category-plural"
+msgid "Outlets"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:264
+msgctxt "category-plural"
+msgid "Patch Panels"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:253
+msgctxt "category-plural"
+msgid "Pipe Accessories"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:252
+msgctxt "category-plural"
+msgid "Pipe Fittings"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:250
+msgctxt "category-plural"
+msgid "Plumbing Fixtures"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:265
+msgctxt "category-plural"
+msgid "Racks"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:256
+msgctxt "category-plural"
+msgid "Switches"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:263
+msgctxt "category-plural"
+msgid "Voice Outlets"
+msgstr ""
