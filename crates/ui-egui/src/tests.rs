@@ -3084,6 +3084,85 @@ fn rotate_turns_a_component_about_its_own_point() {
 }
 
 #[test]
+fn rotate_turns_a_camera_about_its_eye_by_default() {
+    let mut h = app(&format!("{BOX}\ncamera {{\"eye\": [5000, 5000, 1500], \"target\": [6000, 5000, 1200]}}"));
+    let camera = ids(&h, "view3d")[0];
+    click(&mut h, P2(5000.0, 5000.0));
+    assert_eq!(h.state().selection, [camera]);
+    press(&mut h, "Rotate");
+    assert!(
+        matches!(h.state().tool, Tool::Rotate { centre, .. } if centre == P2(5000.0, 5000.0)),
+        "the camera turns about its eye: {:?}",
+        h.state().tool
+    );
+}
+
+#[test]
+fn rotating_a_camera_about_its_eye_keeps_the_eye_and_turns_the_target() {
+    let mut h = app(&format!("{BOX}\ncamera {{\"eye\": [5000, 5000, 1500], \"target\": [6000, 5000, 1200]}}"));
+    let camera = ids(&h, "view3d")[0];
+    click(&mut h, P2(5000.0, 5000.0));
+    press(&mut h, "Rotate");
+    click(&mut h, P2(6000.0, 5000.0));
+    click(&mut h, P2(5000.0, 6000.0));
+    let cam = field(&h, camera, "camera");
+    assert_eq!(cam["eye"], json!([5000.0, 5000.0, 1500.0]), "the eye stays");
+    let target = cam["target"].as_array().unwrap();
+    assert!((target[0].as_f64().unwrap() - 5000.0).abs() < 0.01 && (target[1].as_f64().unwrap() - 6000.0).abs() < 0.01, "{cam}");
+    assert_eq!(target[2], json!(1200.0), "the target keeps its height");
+}
+
+#[test]
+fn rotate_centre_shows_a_walls_snap_before_the_click_and_takes_it() {
+    use bimcraft_core::snap::Kind;
+    let mut h = app(BOX);
+    click(&mut h, P2(4000.0, 0.0));
+    press(&mut h, "Rotate");
+    press(&mut h, "Place Centre");
+    let f = hover(&mut h, P2(8030.0, 20.0)).expect("a snap marker before the click");
+    assert_eq!((f.kind, f.at), (Kind::Endpoint, P2(8000.0, 0.0)), "{f:?}");
+    click(&mut h, P2(8030.0, 20.0));
+    assert!(matches!(h.state().tool, Tool::Rotate { centre, .. } if centre == P2(8000.0, 0.0)), "{:?}", h.state().tool);
+}
+
+#[test]
+fn rotate_centre_snaps_to_a_notes_anchor() {
+    use bimcraft_core::snap::Kind;
+    let mut h = app(&format!("{BOX}\ntext {{\"text\": \"Note\", \"at\": [4000, 3000], \"leader\": [5000, 3000]}}"));
+    click(&mut h, P2(4000.0, 0.0));
+    press(&mut h, "Rotate");
+    press(&mut h, "Place Centre");
+    let f = hover(&mut h, P2(4020.0, 3020.0)).expect("the note's anchor");
+    assert_eq!((f.kind, f.at), (Kind::Anchor, P2(4000.0, 3000.0)), "{f:?}");
+    click(&mut h, P2(4020.0, 3020.0));
+    assert!(matches!(h.state().tool, Tool::Rotate { centre, .. } if centre == P2(4000.0, 3000.0)), "{:?}", h.state().tool);
+}
+
+#[test]
+fn a_click_on_a_cameras_mark_takes_its_eye() {
+    let mut h = app(&format!("{BOX}\ncamera {{\"eye\": [5000, 5000, 1500], \"target\": [6000, 5000, 1200]}}"));
+    click(&mut h, P2(4000.0, 0.0));
+    press(&mut h, "Rotate");
+    press(&mut h, "Place Centre");
+    // The body stands behind the eye, against the way the camera looks: ten pixels west of it.
+    let eye = h.state().screen(P2(5000.0, 5000.0));
+    click_at(&mut h, eye - vec2(10.0, 0.0));
+    assert!(matches!(h.state().tool, Tool::Rotate { centre, .. } if centre == P2(5000.0, 5000.0)), "{:?}", h.state().tool);
+}
+
+#[test]
+fn manage_snaps_has_annotation_anchors() {
+    let mut h = app(BOX);
+    assert!(h.state().snaps.annotation);
+    press(&mut h, "Manage");
+    press(&mut h, "Snaps");
+    assert!(h.query_by_label("Annotation Anchor").is_some());
+    pick(&mut h, Role::CheckBox, "Annotation Anchor");
+    press(&mut h, "Close");
+    assert!(!h.state().snaps.annotation);
+}
+
+#[test]
 fn properties_and_type_properties_edit_a_components_parameters() {
     let stool = r#"family {"name": "Stool", "parameters": [{"name": "Seat", "instance": true, "value": 450}, {"name": "Size", "value": 400}], "types": {"A": {}}, "forms": [{"profile": [[0, 0], ["Size", 0], ["Size", "Size"], [0, "Size"]], "to": "Seat"}]}
 component {"family": "Stool", "at": [3000, 2000]}"#;

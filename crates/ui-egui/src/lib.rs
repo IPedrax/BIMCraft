@@ -2239,6 +2239,8 @@ impl BimApp {
                 }
                 Some(Element::Railing(rl)) => pts.extend(stairs::railing(m, rl).into_iter().map(|(p, _)| p)),
                 Some(Element::Roof(r)) => pts.extend(&r.boundary),
+                // A camera stands on the plan at its eye: turning it turns it about that point unless Place Centre says otherwise.
+                Some(Element::View3D(v)) => pts.extend(v.camera.map(|c| P2(c.eye[0], c.eye[1]))),
                 _ => {}
             }
         }

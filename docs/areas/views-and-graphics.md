@@ -436,7 +436,9 @@ what lies under it (Revit has no regions on sheets).
 
 Sketch snapping (`snap::in_sketch`) combines the visible model's wall faces and slab edges, detail lines and existing
 region boundaries in the active view, and the draft's own lines. It supports endpoints, midpoints (of each segment of a
-polyline), intersections (where two walls meet is one too), perpendiculars, nearest points and angle guides, honoring Manage > Snaps
+polyline), intersections (where two walls meet is one too), perpendiculars, nearest points and angle guides, the anchors of
+annotation (a note's insertion point and leader, a tag's head, a dimension's stations, a spot elevation, section and elevation
+marks, detail groups and repeating details), and a camera's eye and target rather than its mark's body or name, honoring Manage > Snaps
 and one-point overrides. An element being edited is omitted as a model snap target; its draft supplies the boundary instead.
 Rectangle and arc previews use the same origin points and Shift constraint as a click. Annotation in another independent view,
 or hidden by Visibility/Graphics, is excluded. A plan view cuts where its own view range says (`plan_range` of the view, not of its

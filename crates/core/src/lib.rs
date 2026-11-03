@@ -37,7 +37,7 @@ pub mod family;
 pub mod favorites;
 pub mod fills;
 mod fixtures;
-mod font;
+pub mod font;
 pub mod geom;
 pub mod graphics;
 pub mod groups;

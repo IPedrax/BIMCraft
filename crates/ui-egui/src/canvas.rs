@@ -15,7 +15,7 @@ use bimcraft_core::model::{
 use bimcraft_core::render::{self, Drawing, Prim, Rgb, View};
 use bimcraft_core::snap::{self, Found, Kind, Reach};
 use bimcraft_core::walls::{self, Axis};
-use bimcraft_core::{floor_outline, opening_of, roof_footprint};
+use bimcraft_core::{floor_outline, font, opening_of, roof_footprint};
 use egui::{
     Align, Align2, Color32, ColorImage, Event, FontId, Key, Layout, Mesh, Modifiers, Painter, PointerButton, Pos2, Rect, Response, Sense,
     Shape, Stroke, StrokeKind, TextEdit, TextureHandle, TextureId, TextureOptions, Ui, UiBuilder, Vec2, WidgetInfo, WidgetType, pos2, vec2,
@@ -852,6 +852,22 @@ pub(crate) fn click_modifiers(ui: &Ui) -> Modifiers {
     })
 }
 
+/// Whether `p` lies inside `polygon`, by the even-odd rule. A camera's mark is a turned box, so its corners are not
+/// axis-aligned.
+fn inside_polygon(p: (f32, f32), polygon: &[(f32, f32)]) -> bool {
+    let mut inside = false;
+    let mut j = polygon.len().saturating_sub(1);
+    for i in 0..polygon.len() {
+        let (xi, yi) = polygon[i];
+        let (xj, yj) = polygon[j];
+        if (yi > p.1) != (yj > p.1) && p.0 < (xj - xi) * (p.1 - yi) / (yj - yi) + xi {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
+}
+
 impl BimApp {
     /// Where `response` was clicked this frame: a press and release a few points apart, as egui has
     /// it. A press that travels further before the button comes up is no click to egui (a drag if
@@ -897,6 +913,13 @@ impl BimApp {
     /// vertical.
     pub(crate) fn snap(&self, m: &Model, level: Id, v: &View, at: (f32, f32), from: &[P2], square: bool) -> Found {
         let reach = Reach { point: SNAP / v.scale, line: f64::from(PICK) / v.scale };
+        let snaps = self.snaps_now();
+        // A camera's mark is a symbol, not a set of snap points: anywhere on it lands on its eye.
+        if snaps.endpoint
+            && let Some(eye) = self.camera_head(m, level, v, at)
+        {
+            return Found { at: eye, kind: Kind::Endpoint, guide: None };
+        }
         let view = self.plan_key().unwrap_or(level);
         let found = match &self.sketch {
             Some(sk) => {
@@ -904,9 +927,9 @@ impl BimApp {
                     crate::sketch::Of::Edit(id) => Some(id),
                     _ => None,
                 };
-                snap::in_sketch(m, snap::Sketch { view, lines: &sk.lines, editing }, v.mm(at), reach, from, square, &self.snaps_now())
+                snap::in_sketch(m, snap::Sketch { view, lines: &sk.lines, editing }, v.mm(at), reach, from, square, &snaps)
             }
-            None => snap::snap(m, view, v.mm(at), reach, from, square, &self.snaps_now()),
+            None => snap::snap(m, view, v.mm(at), reach, from, square, &snaps),
         };
         if matches!(found.kind, Kind::Free | Kind::Angle)
             && !square
@@ -917,6 +940,48 @@ impl BimApp {
             return Found { at, kind: Kind::Intersection, guide: None };
         }
         found
+    }
+
+    /// The eye of the nearest camera whose mark (body, lens or name) the cursor at pixel `at` is over, so that a click on
+    /// the mark lands on the camera's eye, never on a corner of its symbol. None off a camera's mark. The body, lens and
+    /// name sizes are those `render::camera_mark` draws with.
+    fn camera_head(&self, m: &Model, level: Id, v: &View, at: (f32, f32)) -> Option<P2> {
+        let (x, y) = at;
+        let plan = m.plan_level(level).unwrap_or(level);
+        m.elements
+            .iter()
+            .filter_map(|(_, e)| {
+                let Element::View3D(view) = e else { return None };
+                let c = view.camera?;
+                if m.camera_level(c.eye[2]) != Some(plan) {
+                    return None;
+                }
+                let eye = P2(c.eye[0], c.eye[1]);
+                let target = P2(c.target[0], c.target[1]);
+                let a = v.px(eye);
+                let b = v.px(target);
+                let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+                let len = (dx * dx + dy * dy).sqrt();
+                let (ux, uy) = if len > 1e-6 { (dx / len, dy / len) } else { (1.0, 0.0) };
+                let (px, py) = (-uy, ux);
+                let (back, half, depth) = (-7.0, 9.0, 8.0);
+                let c = (a.0 + ux * back, a.1 + uy * back);
+                let body = [
+                    (c.0 - ux * depth + px * half, c.1 - uy * depth + py * half),
+                    (c.0 + ux * depth + px * half, c.1 + uy * depth + py * half),
+                    (c.0 + ux * depth - px * half, c.1 + uy * depth - py * half),
+                    (c.0 - ux * depth - px * half, c.1 - uy * depth - py * half),
+                ];
+                let lens = (c.0 + ux * (depth + 3.0), c.1 + uy * (depth + 3.0));
+                let w = font::width(&view.name, 10.0);
+                let name = (a.0 - ux * (14.0 + w / 2.0), a.1 - uy * (14.0 + w / 2.0));
+                let on_body = inside_polygon((x, y), &body);
+                let on_lens = (x - lens.0).powi(2) + (y - lens.1).powi(2) <= 5.5f32.powi(2);
+                let on_name = (x - name.0).abs() <= w / 2.0 + 2.0 && (y - name.1).abs() <= 7.0;
+                (on_body || on_lens || on_name).then_some(((x - a.0).powi(2) + (y - a.1).powi(2), eye))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, eye)| eye)
     }
 
     /// Finds alignment guides (smart snapping) to reference points of existing elements when drawing.
@@ -1077,6 +1142,10 @@ impl BimApp {
             Kind::Tangent => {
                 p.circle_stroke(at + vec2(0.0, 5.0), 5.0, stroke);
                 p.line_segment([at + vec2(-8.0, 0.0), at + vec2(8.0, 0.0)], stroke);
+            }
+            Kind::Anchor => {
+                p.circle_stroke(at, 6.0, stroke);
+                p.circle_filled(at, 2.0, pal().accent);
             }
             Kind::Angle => {
                 p.circle_filled(at, 3.0, pal().accent);
@@ -3135,7 +3204,9 @@ impl BimApp {
                 return;
             }
             &Tool::Rotate { centre, start, place } => {
-                let c = if place { cursor } else { sc.screen(centre) };
+                // Placing the centre, the cross sits where a click would put it, with its snap's marker.
+                let at = if place { self.found(sc, q, &[], false) } else { centre };
+                let c = sc.screen(at);
                 p.circle_stroke(c, 5.0, stroke);
                 p.line_segment([c - vec2(8.0, 0.0), c + vec2(8.0, 0.0)], thin);
                 p.line_segment([c - vec2(0.0, 8.0), c + vec2(0.0, 8.0)], thin);
