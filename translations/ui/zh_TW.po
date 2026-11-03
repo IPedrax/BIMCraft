@@ -5310,7 +5310,7 @@ msgstr "拆除的階段"
 msgid "Phase Filter"
 msgstr "階段過濾器"
 
-#: crates/core/src/ifc.rs:1421
+#: crates/core/src/ifc.rs:1432
 msgid "Phase Filters"
 msgstr "階段過濾器列表"
 
