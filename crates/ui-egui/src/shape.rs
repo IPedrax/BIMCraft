@@ -155,9 +155,10 @@ pub(crate) fn marks(m: &Model, f: &Floor) -> Marks {
 }
 
 /// `marks` drawn on `p` through `to` (the model to the screen), as Revit's edit mode colours them: the creases grey, the
-/// split lines blue, the outline's and openings' edges dashed green; the points as dots, green on an edge, blue inside, `lit`
-/// one larger; what's `picked` thick, or filled, in the accent.
-pub(crate) fn draw_marks(p: &Painter, marks: &Marks, to: impl Fn(P3) -> Pos2, picked: &[Sub], lit: Option<P2>) {
+/// split lines blue, the outline's and openings' edges dashed green; the points as dots, green on an edge, blue inside; the
+/// point or edge under the cursor (`lit`) larger, or thick in the hover colour; what's `picked` thick, or filled, in the
+/// accent.
+pub(crate) fn draw_marks(p: &Painter, marks: &Marks, to: impl Fn(P3) -> Pos2, picked: &[Sub], lit: Option<Sub>) {
     let seg = |[a, b]: [P3; 2]| Some([to(a), to(b)]).filter(|[a, b]| a.is_finite() && b.is_finite());
     let green = pal().context;
     for e in marks.creases.iter().filter_map(|e| seg(*e)) {
@@ -170,6 +171,12 @@ pub(crate) fn draw_marks(p: &Painter, marks: &Marks, to: impl Fn(P3) -> Pos2, pi
         p.extend(egui::Shape::dashed_line(&e, Stroke::new(1.5, green), 6.0, 4.0));
     }
     let lift = |q: P2| marks.points.iter().find(|(r, ..)| r.dist(q) <= TOL).map(|(_, at, _)| *at);
+    if let Some(Sub::Edge(a, b)) = lit
+        && let (Some(a), Some(b)) = (lift(a), lift(b))
+        && let Some(e) = seg([a, b])
+    {
+        p.line_segment(e, Stroke::new(3.0, pal().hover));
+    }
     for s in picked {
         if let Sub::Edge(a, b) = s
             && let (Some(a), Some(b)) = (lift(*a), lift(*b))
@@ -184,7 +191,7 @@ pub(crate) fn draw_marks(p: &Painter, marks: &Marks, to: impl Fn(P3) -> Pos2, pi
             continue;
         }
         let chosen = picked.iter().any(|s| matches!(s, Sub::Point(r) if r.dist(q) <= TOL));
-        let lit = lit.is_some_and(|l| l.dist(q) <= TOL);
+        let lit = matches!(lit, Some(Sub::Point(l)) if l.dist(q) <= TOL);
         if chosen {
             p.circle_filled(c, 5.5, pal().accent);
             p.circle_stroke(c, 5.5, Stroke::new(1.5, pal().surface));

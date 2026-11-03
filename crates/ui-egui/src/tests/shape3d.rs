@@ -299,3 +299,36 @@ fn convert_lines_makes_a_selected_folding_line_a_split_line() {
     assert_eq!(lines.as_array().map(Vec::len), Some(1), "{lines}");
     assert_eq!(ends(&lines[0]), ends(&json!({"a": [0.0, 0.0], "b": [4000.0, 3000.0]})), "{lines}");
 }
+
+#[test]
+fn under_modify_sub_elements_the_edge_under_the_cursor_is_what_a_click_would_pick() {
+    let mut h = app(r#"floor {"boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}"#);
+    let floor = ids(&h, "floor")[0];
+    h.state_mut().run("edit_shape", json!({"id": floor, "points": [{"at": [4000, 3000], "z": -300}]}));
+    click(&mut h, P2(4000.0, 0.0));
+    press(&mut h, "Modify Sub Elements");
+    // The lines drawn thick: what's lit or selected.
+    fn thick(h: &Harness<BimApp>) -> Vec<[egui::Pos2; 2]> {
+        fn walk(s: &egui::Shape, out: &mut Vec<[egui::Pos2; 2]>) {
+            match s {
+                egui::Shape::LineSegment { points, stroke } if stroke.width >= 2.9 => out.push(*points),
+                egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        h.output().shapes.iter().for_each(|c| walk(&c.shape, &mut out));
+        out
+    }
+    let (a, b) = (h.state().screen(P2(0.0, 0.0)), h.state().screen(P2(4000.0, 3000.0)));
+    let along = |h: &Harness<BimApp>| {
+        thick(h).iter().any(|[p, q]| (p.distance(a) < 1.0 && q.distance(b) < 1.0) || (p.distance(b) < 1.0 && q.distance(a) < 1.0))
+    };
+    assert!(!along(&h));
+    // Hovering off the middle of the crease to the drain lights it; a click there picks the same edge.
+    h.hover_at(h.state().screen(P2(2030.0, 1480.0)));
+    h.run();
+    assert!(along(&h), "the crease lit");
+    click(&mut h, P2(2030.0, 1480.0));
+    assert!(matches!(h.state().shape_picked.as_slice(), [crate::shape::Sub::Edge(..)]));
+}

@@ -573,11 +573,10 @@ impl BimApp {
                 .or_else(|| on_floor_top(&model, f, &cam, px(at)).map(|q| (q, None, None)))
         };
         let landing = |at: Pos2| snapped(at).map(|(q, ..)| q);
-        // The grip under the cursor, lit.
-        let lit = hover.filter(|_| lifting && o.lift.is_none()).and_then(|h| {
-            let off = |p: &P3| on_screen(&cam, rect, ppp, *p).distance(h);
-            handles.iter().filter(|(_, p)| off(p) <= 8.0).min_by(|a, b| off(&a.1).total_cmp(&off(&b.1))).map(|(q, _)| *q)
-        });
+        // What a click there would pick, lit: a point or an edge.
+        let lit = hover
+            .filter(|_| lifting && o.lift.is_none())
+            .and_then(|h| crate::shape::Sub::of(&shape_pick_3d(&model, shaping.as_ref()?, &cam, px(h), 8.0 * f64::from(ppp))));
         let mut labels: Vec<(Pos2, P2, Vec<P2>, String)> = Vec::new();
         // Where the floor's top is over plan point `q`.
         let on_top = |q: P2| -> Option<P3> {

@@ -3673,12 +3673,19 @@ impl BimApp {
         // thick.
         let marks = crate::shape::marks(m, f);
         let hover = ui.input(|i| i.pointer.hover_pos()).filter(|h| rect.contains(*h));
+        // Under Modify Sub Elements, what a click there would pick, a point or an edge; under the others, the point.
         let lit = hover.filter(|_| self.shape_grip.is_none()).and_then(|h| {
-            marks.points.iter().map(|(q, ..)| (*q, at(*q).distance(h))).filter(|(_, d)| *d <= 8.0).min_by(|a, b| a.1.total_cmp(&b.1))
+            if self.tool == Tool::ModifySubElements {
+                let q = view.mm((h.x - rect.min.x, h.y - rect.min.y));
+                crate::shape::Sub::of(&bimcraft_core::view3d::shape_pick_plan(m, f, q, 2.0 * f64::from(PICK) / view.scale))
+            } else {
+                let near = marks.points.iter().map(|(q, ..)| (*q, at(*q).distance(h))).filter(|(_, d)| *d <= 8.0);
+                near.min_by(|a, b| a.1.total_cmp(&b.1)).map(|(q, _)| crate::shape::Sub::Point(q))
+            }
         });
         // Modify Sub Elements' selection, shown only while it's on.
         let picked = if self.tool == Tool::ModifySubElements { self.shape_picked.clone() } else { Vec::new() };
-        crate::shape::draw_marks(&p, &marks, |a| at(P2(a[0], a[1])), &picked, lit.map(|(q, _)| q));
+        crate::shape::draw_marks(&p, &marks, |a| at(P2(a[0], a[1])), &picked, lit);
         // The creases the drag would leave, dashed over the ones there are.
         for [a, b] in self.shape_preview.as_ref().map(|f| m.shape_creases(f)).unwrap_or_default() {
             p.extend(egui::Shape::dashed_line(&[at(P2(a[0], a[1])), at(P2(b[0], b[1]))], Stroke::new(1.5, pal().accent), 6.0, 4.0));
