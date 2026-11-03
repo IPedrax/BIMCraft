@@ -540,82 +540,79 @@ impl BimApp {
             Sheet::Plan(id) | Sheet::Ceiling(id) | Sheet::Section(id) => Some(id),
             _ => None,
         };
-        egui::Frame::new().inner_margin(egui::Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
-            let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-            Grid::new("graphics-properties").num_columns(2).min_col_width(half).max_col_width(half).show(ui, |ui| {
-                let controlled = |g: Group| own.controlled_by(&model, g).map(controlled_note);
-                if let Some(id) = own_id {
-                    let note = controlled(Group::Scale);
-                    let label = ui.label(t("View Scale"));
-                    let label = if let Some(n) = &note { label.on_hover_text(n) } else { label };
-                    ui.add_enabled_ui(note.is_none(), |ui| {
-                        if let Some(n) = scale_combo(ui, "view-scale", label.id, shown.scale_n(model.units), model.units) {
-                            set = Some(("scale", json!({"view": view, "scale": n})));
-                        }
-                    });
-                    ui.end_row();
-                    let label = ui.label(t("Scale Value 1:"));
-                    let label = if let Some(n) = &note { label.on_hover_text(n) } else { label };
-                    ui.add_enabled_ui(note.is_none(), |ui| {
-                        if let Some(typed) = self.field(ui, id, "scale", shown.scale_n(model.units).to_string(), label.id, "") {
-                            match (typed.trim().is_empty(), model.units.parse_scale(&typed)) {
-                                (true, _) => self.status = Status { text: t("A view always has a scale").into(), error: true },
-                                (_, Some(n)) => set = Some(("scale", json!({"view": view, "scale": n}))),
-                                _ => self.status = Status { text: tf("`{}` is not a scale", &[typed.trim()]), error: true },
-                            }
-                        }
-                    });
-                    ui.end_row();
-                    let note = controlled(Group::Detail);
-                    let label = ui.label(t("Detail Level"));
-                    let label = if let Some(n) = &note { label.on_hover_text(n) } else { label };
-                    ui.add_enabled_ui(note.is_none(), |ui| {
-                        if let Some(level) = detail_combo(ui, "detail-level", label.id, shown.detail) {
-                            set = Some(("detail", json!({"view": view, "detail": level.name()})));
-                        }
-                    });
-                    ui.end_row();
-                } else if self.sheet == Sheet::View3D {
-                    let note = controlled(Group::Style);
-                    let label = ui.label(t("Visual Style"));
-                    let label = if let Some(n) = &note { label.on_hover_text(n) } else { label };
-                    ui.add_enabled_ui(note.is_none(), |ui| {
-                        if let Some(v) = style_combo(ui, "visual-style", label.id, shown.style) {
-                            set = Some(("visual_style", json!({"view": view, "style": v.name()})));
-                        }
-                    });
-                    ui.end_row();
-                }
-                if let Some(id) = own_id {
-                    let note = self.grid_controlled(id);
-                    ui.add_enabled(note.is_none(), egui::Label::new(t("Background Grids")));
-                    let r = ui.add_enabled_ui(note.is_none(), |ui| crate::properties::wide_button(ui, t("Edit…"))).inner;
-                    r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, note.is_none(), t("Edit Background Grids")));
-                    if r.clicked() {
-                        self.open_background_grid();
+        crate::properties::grid(ui, "graphics-properties", |ui| {
+            let controlled = |g: Group| own.controlled_by(&model, g).map(controlled_note);
+            if let Some(id) = own_id {
+                let note = controlled(Group::Scale);
+                let label = ui.label(t("View Scale"));
+                let label = if let Some(n) = &note { label.on_hover_text(n) } else { label };
+                ui.add_enabled_ui(note.is_none(), |ui| {
+                    if let Some(n) = scale_combo(ui, "view-scale", label.id, shown.scale_n(model.units), model.units) {
+                        set = Some(("scale", json!({"view": view, "scale": n})));
                     }
-                    if let Some(note) = note {
-                        r.on_disabled_hover_text(note);
-                    }
-                    ui.end_row();
-                }
-                // A button naming the template, as Revit's: it opens the dialog to pick another, or none.
-                ui.label(t("View Template"));
-                let now = own.template.clone().unwrap_or_else(|| t("<None>").to_string());
-                let r = crate::properties::wide_button(ui, &now);
-                r.widget_info(|| {
-                    let mut info = WidgetInfo::labeled(WidgetType::Button, true, t("View Template"));
-                    info.current_text_value = Some(now.clone());
-                    info
                 });
-                assign |= r.clicked();
-                ui.end_row();
-                ui.label(t("Visibility/Graphics Overrides"));
-                let r = crate::properties::wide_button(ui, t("Edit…"));
-                r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf("Edit {}", &[t("Visibility/Graphics Overrides")])));
-                edit |= r.clicked();
-                ui.end_row();
+                crate::properties::end_row(ui);
+                let label = ui.label(t("Scale Value 1:"));
+                let label = if let Some(n) = &note { label.on_hover_text(n) } else { label };
+                ui.add_enabled_ui(note.is_none(), |ui| {
+                    if let Some(typed) = self.field(ui, id, "scale", shown.scale_n(model.units).to_string(), label.id, "") {
+                        match (typed.trim().is_empty(), model.units.parse_scale(&typed)) {
+                            (true, _) => self.status = Status { text: t("A view always has a scale").into(), error: true },
+                            (_, Some(n)) => set = Some(("scale", json!({"view": view, "scale": n}))),
+                            _ => self.status = Status { text: tf("`{}` is not a scale", &[typed.trim()]), error: true },
+                        }
+                    }
+                });
+                crate::properties::end_row(ui);
+                let note = controlled(Group::Detail);
+                let label = ui.label(t("Detail Level"));
+                let label = if let Some(n) = &note { label.on_hover_text(n) } else { label };
+                ui.add_enabled_ui(note.is_none(), |ui| {
+                    if let Some(level) = detail_combo(ui, "detail-level", label.id, shown.detail) {
+                        set = Some(("detail", json!({"view": view, "detail": level.name()})));
+                    }
+                });
+                crate::properties::end_row(ui);
+            } else if self.sheet == Sheet::View3D {
+                let note = controlled(Group::Style);
+                let label = ui.label(t("Visual Style"));
+                let label = if let Some(n) = &note { label.on_hover_text(n) } else { label };
+                ui.add_enabled_ui(note.is_none(), |ui| {
+                    if let Some(v) = style_combo(ui, "visual-style", label.id, shown.style) {
+                        set = Some(("visual_style", json!({"view": view, "style": v.name()})));
+                    }
+                });
+                crate::properties::end_row(ui);
+            }
+            if let Some(id) = own_id {
+                let note = self.grid_controlled(id);
+                ui.add_enabled(note.is_none(), egui::Label::new(t("Background Grids")));
+                let r = ui.add_enabled_ui(note.is_none(), |ui| crate::properties::wide_button(ui, t("Edit…"))).inner;
+                r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, note.is_none(), t("Edit Background Grids")));
+                if r.clicked() {
+                    self.open_background_grid();
+                }
+                if let Some(note) = note {
+                    r.on_disabled_hover_text(note);
+                }
+                crate::properties::end_row(ui);
+            }
+            // A button naming the template, as Revit's: it opens the dialog to pick another, or none.
+            ui.label(t("View Template"));
+            let now = own.template.clone().unwrap_or_else(|| t("<None>").to_string());
+            let r = crate::properties::wide_button(ui, &now);
+            r.widget_info(|| {
+                let mut info = WidgetInfo::labeled(WidgetType::Button, true, t("View Template"));
+                info.current_text_value = Some(now.clone());
+                info
             });
+            assign |= r.clicked();
+            crate::properties::end_row(ui);
+            ui.label(t("Visibility/Graphics Overrides"));
+            let r = crate::properties::wide_button(ui, t("Edit…"));
+            r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf("Edit {}", &[t("Visibility/Graphics Overrides")])));
+            edit |= r.clicked();
+            crate::properties::end_row(ui);
         });
         if let Some((command, p)) = set {
             self.run(command, p);

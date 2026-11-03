@@ -28,13 +28,27 @@ fn app(script: &str) -> Harness<'static, BimApp> {
 /// The app with frames `step` seconds apart. Each queued event runs a frame, so a double click
 /// (two clicks within 300 ms) needs short ones.
 fn app_at(script: &str, step: f32) -> Harness<'static, BimApp> {
+    harness(script, step, crate::style::Profile::Rev)
+}
+
+/// The app on a script in BIMCraft's own profile: no ribbon, the Tools palette down the left, the Inspector and the Navigator down
+/// the right. `app` is Rev's, with Revit's palette layout: the tests of what the tools do were written round the ribbon.
+fn bimcraft(script: &str) -> Harness<'static, BimApp> {
+    harness(script, 0.25, crate::style::Profile::BimCraft)
+}
+
+fn harness(script: &str, step: f32, profile: crate::style::Profile) -> Harness<'static, BimApp> {
     let mut s = Session::new();
     s.script(script).unwrap();
+    let mut app = BimApp::new(s);
+    if profile == crate::style::Profile::Rev {
+        (app.profile, app.docking) = (profile, crate::dock::Docking::revit());
+    }
     let mut h = Harness::builder()
         .with_size([1280.0, 800.0])
         .with_max_steps(32)
         .with_step_dt(step)
-        .build_ui_state(|ui, app: &mut BimApp| app.show(ui), BimApp::new(s));
+        .build_ui_state(|ui, app: &mut BimApp| app.show(ui), app);
     h.run();
     h
 }
@@ -636,6 +650,34 @@ fn properties_edit_through_modify_and_undo_puts_them_back() {
     assert_eq!(field(&h, room, "name"), json!("Living"));
     press(&mut h, "Redo");
     assert_eq!(field(&h, room, "name"), json!("Lounge"));
+}
+
+#[test]
+fn a_selection_of_several_categories_is_narrowed_to_one_in_properties_and_its_edits_reach_only_that_one() {
+    let mut h = app(&format!("{BOX}\ndoor {{\"at\": [2000, 0]}}"));
+    let (walls, doors) = (ids(&h, "wall"), ids(&h, "door"));
+    let all: Vec<Id> = walls.iter().chain(&doors).copied().collect();
+    h.state_mut().selection = all.clone();
+    h.run();
+    assert!(h.query_by_label("Base Offset").is_none(), "of two categories, no rows");
+    // The palette's filter lists the selection's categories, as Revit's does; picking one shows its rows.
+    h.get_by_value("Multiple Categories (5)").click();
+    h.run();
+    h.get_by_label("Walls (4)").click();
+    h.run();
+    assert_eq!(h.state().selection, all, "the selection stays as it was");
+    assert!(h.query_by_value("Walls (4)").is_some(), "the filter says what it shows");
+    assert_eq!(h.state().type_subject().map(|(c, _, ids)| (c, ids)), Some(("wall", walls.clone())), "and Edit Type opens the walls' type");
+    type_into(&mut h, "Base Offset", "100");
+    key(&mut h, Key::Enter);
+    assert!(walls.iter().all(|w| field(&h, *w, "base_offset") == json!(100.0)), "{:?}", h.state().status.text);
+    assert_eq!(h.state().selection, all);
+    // A new selection starts it over.
+    h.state_mut().selection = walls.clone();
+    h.run();
+    h.state_mut().selection = all;
+    h.run();
+    assert!(h.query_by_value("Multiple Categories (5)").is_some());
 }
 
 #[test]
@@ -2401,7 +2443,7 @@ fn dark_mode_turns_the_window_and_the_drawing_dark() {
     // Ink light on a dark ground, the grid still blue.
     let (ground, ink, grid) = (crate::canvas::color(PAPER), crate::canvas::color(Rgb(25, 25, 25)), crate::canvas::color(Rgb(60, 100, 150)));
     assert!(ground.r() < 40 && ink.r() > 200 && grid.b() > grid.r() + 40, "{ground:?} {ink:?} {grid:?}");
-    assert_eq!(crate::style::pal().surface, crate::style::DARK.surface);
+    assert_eq!(crate::style::pal().surface, crate::style::REV_DARK.surface, "Rev's dark");
     press(&mut h, "Dark Mode");
     pick(&mut h, Role::RadioButton, "Light");
     assert!(!crate::style::dark() && crate::canvas::color(PAPER) == egui::Color32::WHITE);
@@ -2416,7 +2458,7 @@ fn dark_ui_with_light_canvas_is_shared_with_settings_and_survives_new_projects()
     press(&mut h, "Dark Mode");
     pick(&mut h, Role::RadioButton, "Dark UI, Light Canvas");
     assert!(crate::style::dark() && h.ctx.theme() == egui::Theme::Dark);
-    assert_eq!(crate::style::pal().surface, crate::style::DARK.surface);
+    assert_eq!(crate::style::pal().surface, crate::style::REV_DARK.surface, "Rev's dark");
     assert_eq!(crate::canvas::color(PAPER), egui::Color32::WHITE);
     assert_eq!(crate::canvas::color(Rgb(25, 25, 25)), egui::Color32::from_gray(25));
     assert!(h.query_by_label("Dark UI, Light Canvas").is_none(), "menu closes after choosing");
@@ -3527,6 +3569,19 @@ wall {"points": [[3000,5500],[4000,5500]]}"#);
     let f = hover(&mut h, P2(2130.0, 680.0)).unwrap();
     assert_eq!(f.kind, Kind::Perpendicular);
     assert!(f.at.dist(P2(2100.0, 700.0)) < 1e-3, "{:?}", f.at);
+}
+
+#[test]
+fn a_snaps_tag_names_the_element_it_came_from_by_its_id() {
+    use bimcraft_core::snap::Kind;
+    let mut h = app(r#"wall {"points": [[0,0],[6000,0]]}
+wall {"points": [[0,4000],[6000,4000]]}"#);
+    let wall = ids(&h, "wall")[0];
+    tool(&mut h, "Wall");
+    let f = hover(&mut h, P2(6020.0, 10.0)).unwrap();
+    assert_eq!((f.kind, f.source), (Kind::Endpoint, Some(wall)));
+    let text = painted_text(&h);
+    assert!(text.contains(&format!("Endpoint of Wall {wall}")), "{text:?}");
 }
 
 #[test]
@@ -5348,6 +5403,7 @@ mod fonts;
 mod gpu;
 mod graphics;
 mod groups;
+mod inspector;
 mod korean;
 mod light_canvas;
 mod lines;
@@ -5362,6 +5418,8 @@ mod patterns;
 mod perspective;
 mod planviews;
 mod popup;
+mod presets;
+mod profile;
 mod purge;
 mod reinforce;
 mod revit;
@@ -5372,9 +5430,11 @@ mod smallest;
 mod standards;
 mod start;
 mod templates;
+mod themes;
 mod titlebar;
 mod tools;
 mod trim;
+mod typed;
 mod typeprops;
 mod window;
 

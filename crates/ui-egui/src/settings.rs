@@ -1,7 +1,7 @@
 //! File > Settings (Ctrl+,): the window's own settings, the user's and never a project's. They live in
 //! `settings.json` beside the favorites and the update settings ([`beside`]), which the desktop's `main` hands the app
 //! ([`BimApp::use_settings`]); a window that wasn't given the file (every test's) keeps them for as long as it's open.
-//! What it keeps: the theme and whether the drawing stays light in a dark one, the layout, interface language, ribbon, palettes, the
+//! What it keeps: the theme and whether the drawing stays light in a dark one, the profile, the layout, interface language, ribbon, palettes, the
 //! window's size, the background autosave interval, and the colour High Contrast Point Clouds draws scans in.
 //! The pages for what is still to come (performance and graphics) show what they will hold, greyed out.
 
@@ -17,8 +17,10 @@ use serde_json::{Value, json};
 use crate::BimApp;
 use crate::dock::{Docking, Palette};
 use crate::lang::{Lang, t};
-use crate::style::pal;
+use crate::presets::{Preset, Scale, hidden_from_json, presets_from_json};
+use crate::style::{Profile, Scheme, pal};
 use crate::updates::failed;
+use std::collections::BTreeSet;
 
 /// The settings file's name, in the folder of the favorites.
 pub const FILE: &str = "settings.json";
@@ -83,6 +85,14 @@ pub struct Settings {
     pub light_canvas: bool,
     /// The Compact layout: the bars and palettes flush to the window's edges, not floating cards.
     pub compact: bool,
+    pub profile: Profile,
+    /// A preset's colours when dark, and the user's accent.
+    pub scheme: Scheme,
+    pub accent: Option<[u8; 3]>,
+    /// The project's scale, the tools taken out of the ribbon and the Tools palette, and the presets (`presets.rs`).
+    pub scale: Scale,
+    pub tools_hidden: BTreeSet<String>,
+    pub presets: Vec<Preset>,
     pub language: Lang,
     pub ribbon_minimized: bool,
     pub docking: Docking,
@@ -109,6 +119,12 @@ impl Settings {
             "theme": theme,
             "light_canvas": self.light_canvas,
             "layout": if self.compact { "compact" } else { "floating" },
+            "profile": self.profile.code(),
+            "scheme": self.scheme.code(),
+            "accent": self.accent,
+            "scale": self.scale.code(),
+            "tools_hidden": self.tools_hidden,
+            "presets": self.presets.iter().map(Preset::to_json).collect::<Vec<_>>(),
             "language": self.language.code(),
             "ribbon_minimized": self.ribbon_minimized,
             "palettes": self.docking.to_json(),
@@ -138,6 +154,12 @@ impl Settings {
                 Some("floating") => false,
                 _ => base.compact,
             },
+            profile: v["profile"].as_str().and_then(Profile::from_code).unwrap_or(base.profile),
+            scheme: v["scheme"].as_str().and_then(Scheme::from_code).unwrap_or(base.scheme),
+            accent: if v.get("accent").is_some() { colour(&v["accent"]) } else { base.accent },
+            scale: v["scale"].as_str().and_then(Scale::from_code).unwrap_or(base.scale),
+            tools_hidden: if v["tools_hidden"].is_array() { hidden_from_json(&v["tools_hidden"]) } else { base.tools_hidden },
+            presets: if v["presets"].is_array() { presets_from_json(&v["presets"]) } else { base.presets },
             language: v["language"].as_str().and_then(Lang::from_code).unwrap_or(base.language),
             ribbon_minimized: v["ribbon_minimized"].as_bool().unwrap_or(base.ribbon_minimized),
             docking: if v["palettes"].is_object() { Docking::from_json(&v["palettes"]) } else { base.docking },
@@ -221,7 +243,13 @@ impl BimApp {
         let now = self.settings_now(ThemePreference::System);
         let kept = read(&path).map_or(now.clone(), |v| Settings::from_json(&v, now));
         (self.lang, self.ribbon_min, self.docking) = (kept.language, kept.ribbon_minimized, kept.docking.clone());
-        self.compact = kept.compact;
+        (self.compact, self.profile, self.scale) = (kept.compact, kept.profile, kept.scale);
+        (self.scheme, self.accent) = (kept.scheme, kept.accent);
+        (self.tools_hidden, self.presets) = (kept.tools_hidden.clone(), kept.presets.clone());
+        // BIMCraft has no ribbon: it starts with its tools out, whatever a session in Rev left.
+        if self.profile == Profile::BimCraft {
+            self.docking.show(Palette::Tools, true);
+        }
         self.theme_wanted = Some(kept.theme);
         self.light_canvas = kept.light_canvas;
         self.autosave.interval_minutes = kept.autosave_minutes;
@@ -244,6 +272,12 @@ impl BimApp {
             theme,
             light_canvas: self.light_canvas,
             compact: self.compact,
+            profile: self.profile,
+            scheme: self.scheme,
+            accent: self.accent,
+            scale: self.scale,
+            tools_hidden: self.tools_hidden.clone(),
+            presets: self.presets.clone(),
             language: self.lang,
             ribbon_minimized: self.ribbon_min,
             docking: self.docking.clone(),
@@ -311,15 +345,27 @@ impl BimApp {
     /// The same choices in the ribbon's popup and File > Settings.
     pub(crate) fn theme_choices(&mut self, ui: &mut Ui, menu: bool) {
         let current = (ui.ctx().options(|o| o.theme_preference), self.light_canvas);
+        let own = self.scheme == Scheme::Own;
         for (label, theme, light_canvas) in [
             (msg!("As the System"), ThemePreference::System, false),
             (msg!("Light"), ThemePreference::Light, false),
             (msg!("Dark"), ThemePreference::Dark, false),
             (msg!("Dark UI, Light Canvas"), ThemePreference::Dark, true),
         ] {
-            if ui.radio(current == (theme, light_canvas), t(label)).clicked() {
-                self.light_canvas = light_canvas;
+            if ui.radio(own && current == (theme, light_canvas), t(label)).clicked() {
+                (self.light_canvas, self.scheme) = (light_canvas, Scheme::Own);
                 ui.ctx().set_theme(theme);
+                ui.ctx().request_repaint();
+                if menu {
+                    ui.close();
+                }
+            }
+        }
+        // The presets, dark ones: one picked puts the window dark in its colours.
+        for scheme in Scheme::PRESETS {
+            if ui.radio(self.scheme == scheme, scheme.name()).clicked() {
+                (self.light_canvas, self.scheme) = (false, scheme);
+                ui.ctx().set_theme(ThemePreference::Dark);
                 ui.ctx().request_repaint();
                 if menu {
                     ui.close();
@@ -329,14 +375,50 @@ impl BimApp {
     }
 
     fn interface_page(&mut self, ui: &mut Ui, ctx: &Context) {
+        heading(ui, msg!("Profile"));
+        let before = self.profile;
+        ui.horizontal(|ui| {
+            for (profile, tip) in [
+                (Profile::BimCraft, msg!("BIMCraft's own look: a dark title bar, and the ribbon, the palettes and the bars laid out as Layout says")),
+                (
+                    Profile::Rev,
+                    msg!("Flat and square, the title bar in the ribbon's greys: the File tab leads the ribbon's tabs and the Options Bar is docked under the ribbon"),
+                ),
+            ] {
+                ui.radio_value(&mut self.profile, profile, profile.name()).on_hover_text(t(tip));
+            }
+        });
+        // Back in BIMCraft, its tools come back where they were: Rev, which has the ribbon, put them away.
+        if before != self.profile && self.profile == Profile::BimCraft {
+            self.docking.show(Palette::Tools, true);
+        }
+        heading(ui, msg!("Presets"));
+        self.presets_section(ui);
         heading(ui, msg!("Theme"));
         self.theme_choices(ui, false);
-        heading(ui, msg!("Layout"));
         ui.horizontal(|ui| {
-            let tip = msg!("The ribbon, the palettes and the bars as cards floating over the view");
-            ui.radio_value(&mut self.compact, false, t("Floating")).on_hover_text(t(tip));
-            let tip = msg!("The ribbon, the palettes and the bars flush to the window's edges");
-            ui.radio_value(&mut self.compact, true, t("Compact")).on_hover_text(t(tip));
+            let label = ui.label(t("Accent colour"));
+            let now = pal().accent;
+            let mut rgb = self.accent.unwrap_or([now.r(), now.g(), now.b()]);
+            let tip = msg!(
+                "What is picked and what has focus are drawn in it, in every theme; its lettering is made dark or light enough to read"
+            );
+            if ui.color_edit_button_srgb(&mut rgb).labelled_by(label.id).on_hover_text(t(tip)).changed() {
+                self.accent = Some(rgb);
+            }
+            if self.accent.is_some() && ui.button(t("Reset Accent")).clicked() {
+                self.accent = None;
+            }
+        });
+        heading(ui, msg!("Layout"));
+        // Rev has one layout, flush: the choice is BIMCraft's, and kept for it.
+        ui.add_enabled_ui(self.profile == Profile::BimCraft, |ui| {
+            ui.horizontal(|ui| {
+                let tip = msg!("The ribbon, the palettes and the bars as cards floating over the view");
+                ui.radio_value(&mut self.compact, false, t("Floating")).on_hover_text(t(tip));
+                let tip = msg!("The ribbon, the palettes and the bars flush to the window's edges");
+                ui.radio_value(&mut self.compact, true, t("Compact")).on_hover_text(t(tip));
+            });
         });
         heading(ui, "Language");
         ComboBox::from_id_salt("settings-language").selected_text(self.lang.label()).width(200.0).show_ui(ui, |ui| {
@@ -367,9 +449,14 @@ impl BimApp {
                 self.show_palette(p, on);
             }
         }
-        if ui.button(t("Reset Palette Layout")).on_hover_text(t("Properties over the Project Browser, on the left, as at first")).clicked()
-        {
-            self.docking = Docking::default();
+        let (tip, layout) = match self.profile {
+            Profile::BimCraft => {
+                (msg!("The tools on the left, the Inspector over the Navigator on the right, as at first"), Docking::default())
+            }
+            Profile::Rev => (msg!("Properties over the Project Browser, on the left, as at first"), Docking::revit()),
+        };
+        if ui.button(t("Reset Palette Layout")).on_hover_text(t(tip)).clicked() {
+            self.docking = layout;
         }
         later(ui, |ui| {
             let (mut scale, mut keys, mut reopen, mut views) = (100.0, true, false, false);

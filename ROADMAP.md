@@ -5,7 +5,7 @@ Revit among them, but it shares no content or text with any of them, and reads R
 principle 5. This roadmap is based on what the
 code does today: what is missing, and the order that makes sense to build it in. What works now is in the
 [README](README.md), and the rules every change follows are in [CLAUDE.md](CLAUDE.md). Ideas not scheduled yet, from
-other BIM tools and users' wishes, are pooled in [IDEAS.md](IDEAS.md).
+other BIM tools and users' wishes, are discussed in [Discussions](https://github.com/IPedrax/BIMCraft/discussions/categories/ideas).
 
 Sizes are rough effort for one developer working with agents: **S** a few days, **M** one to two weeks, **L** a month,
 **XL** several months. There are no calendar dates. A release ships when its exit criteria are met.

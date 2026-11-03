@@ -914,7 +914,7 @@ impl BimApp {
             && self.grid_snapping
             && let Some(at) = self.background_grid().nearest(v.mm(at))
         {
-            return Found { at, kind: Kind::Intersection, guide: None };
+            return Found { at, kind: Kind::Intersection, guide: None, source: None };
         }
         found
     }
@@ -985,32 +985,41 @@ impl BimApp {
             sc.p.rect_stroke(Rect::from_center_size(a, vec2(7.0, 7.0)), 0.0, marker_stroke, StrokeKind::Middle);
         }
         if let Some(first) = alignments.first() {
-            tag(sc.p, sc.screen(first.snapped_point) + vec2(12.0, 14.0), Align2::LEFT_TOP, t("align"));
+            // Why it lined up: with which wall, by its id, as Select by ID finds it.
+            let why = first.wall_id.map_or_else(|| t("align").to_string(), |w| tf("Lines up with wall {}", &[&w.to_string()]));
+            tag(sc.p, sc.screen(first.snapped_point) + vec2(12.0, 14.0), Align2::LEFT_TOP, &why);
         }
+    }
+
+    /// The alignment guides a pick that landed at `f` takes: a free point any, a point on an angle guide one that keeps it on that
+    /// guide (a wall drawn east whose end lines up with another wall's end).
+    fn alignments_for(&self, m: &Model, level: Id, v: &View, f: &Found, from: &[P2]) -> Vec<bimcraft_core::alignment::AlignmentResult> {
+        if !self.snaps_now().alignment_guides || from.is_empty() || !matches!(f.kind, Kind::Free | Kind::Angle) {
+            return Vec::new();
+        }
+        let on_guide = |p: P2| {
+            f.guide.is_none_or(|g| {
+                let (u, d) = (P2(g.angle.to_radians().cos(), g.angle.to_radians().sin()), p - g.from);
+                (u.0 * d.1 - u.1 * d.0).abs() <= 0.5
+            })
+        };
+        self.alignments(m, level, v, f.at, from.last().copied()).into_iter().filter(|a| on_guide(a.snapped_point)).collect()
     }
 
     /// Where a point picked at pixel `at` lands, including temporary alignment guides.
     pub(crate) fn snap_point(&self, m: &Model, level: Id, v: &View, at: (f32, f32), from: &[P2], square: bool) -> P2 {
         let f = self.snap(m, level, v, at, from, square);
-        if self.snaps_now().alignment_guides && !from.is_empty() && f.kind == Kind::Free {
-            let alignments = self.alignments(m, level, v, f.at, from.last().copied());
-            if let Some(first) = alignments.first() {
-                return first.snapped_point;
-            }
-        }
-        f.at
+        self.alignments_for(m, level, v, &f, from).first().map_or(f.at, |a| a.snapped_point)
     }
 
     /// What a pick at pixel `q` would land on, shown: its marker and what it is, and the guide it
     /// follows. The point.
     fn found(&self, sc: &Scene, q: (f32, f32), from: &[P2], square: bool) -> P2 {
         let mut f = self.snap(sc.m, sc.level, sc.v, q, from, square);
-        if self.snaps_now().alignment_guides && !from.is_empty() && f.kind == Kind::Free {
-            let alignments = self.alignments(sc.m, sc.level, sc.v, f.at, from.last().copied());
-            if let Some(first) = alignments.first() {
-                f.at = first.snapped_point;
-                self.show_alignments(sc, &alignments);
-            }
+        let alignments = self.alignments_for(sc.m, sc.level, sc.v, &f, from);
+        if let Some(first) = alignments.first() {
+            f.at = first.snapped_point;
+            self.show_alignments(sc, &alignments);
         }
         self.show_snap(sc, &f);
         self.canvas.found.set(Some(f));
@@ -1086,7 +1095,16 @@ impl BimApp {
             }
         }
         if !matches!(f.kind, Kind::Free | Kind::Angle) {
-            tag(p, at + vec2(12.0, 14.0), Align2::LEFT_TOP, t(f.kind.name()));
+            // And of which element, by its id, as Select by ID finds it.
+            let name = match f.source.and_then(|id| Some((id, sc.m.elements.get(id)?))) {
+                Some((id, e)) => {
+                    let of = crate::lang::category(e.category(), false);
+                    // TRANSLATORS: what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
+                    tf("{} of {} {}", &[t(f.kind.name()), &of, &id.to_string()])
+                }
+                None => t(f.kind.name()).to_string(),
+            };
+            tag(p, at + vec2(12.0, 14.0), Align2::LEFT_TOP, name);
         }
     }
 
@@ -1128,8 +1146,8 @@ impl BimApp {
         if tabbed && !c.under.is_empty() {
             c.cycle = (c.cycle + 1) % c.under.len();
         }
-        // While a rectangle is drawn, Tab moves between its width and its height.
-        if tabbed && self.typed_fields() == 2 {
+        // While a rectangle is drawn, Tab moves between its width and its height; a line's or a wall's, its length and its angle.
+        if tabbed && (self.typed_fields() == 2 || self.line_angle_field()) {
             std::mem::swap(&mut self.typed_length, &mut self.drawing.other);
             self.drawing.field = 1 - self.drawing.field.min(1);
         }
@@ -2532,9 +2550,24 @@ impl BimApp {
         }
         let typed = std::mem::take(&mut self.typed_length);
         let Some(base) = self.base() else { return };
-        let toward = match self.canvas.found.get() {
-            Some(f) if f.at.dist(base) > TOL => (f.at - base).unit(),
+        // The length and the angle, whichever Tab left in `drawing.other`.
+        let other = std::mem::take(&mut self.drawing.other);
+        let (typed, angle) = if std::mem::take(&mut self.drawing.field) == 1 { (other, typed) } else { (typed, other) };
+        let toward = match (angle.trim().trim_end_matches('°').trim().parse::<f64>(), self.canvas.found.get()) {
+            (Ok(a), _) if a.is_finite() => P2(a.to_radians().cos(), a.to_radians().sin()),
+            (Err(_), _) if !angle.trim().is_empty() => {
+                self.status = Status { text: tf("`{}` is not an angle", &[angle.trim()]), error: true };
+                return;
+            }
+            (_, Some(f)) if f.at.dist(base) > TOL => (f.at - base).unit(),
             _ => snap_angle(cursor - base, self.snaps.angle),
+        };
+        // An angle with no length: as far along it as the cursor is.
+        let typed = if typed.trim().is_empty() {
+            let d = cursor - base;
+            self.session.model.units.length(d.0 * toward.0 + d.1 * toward.1)
+        } else {
+            typed
         };
         match self.session.model.units.parse(&typed) {
             Some(len) if len > 0.0 && len <= MAX_COORD => self.put(level, micron(base + toward * len)),
@@ -2947,10 +2980,29 @@ impl BimApp {
         }
         let Some(&last) = chain.last() else { return Vec::new() };
         if names.is_empty() {
-            let text = if self.typed_length.is_empty() {
-                m.units.with_unit(last.dist(next))
-            } else {
-                format!("{} (Enter)", self.typed_length.trim())
+            // The length and, once Tab has been pressed, the angle: the one being typed in brackets.
+            let angled = self.drawing.field == 1 || !self.drawing.other.is_empty();
+            let text = match (self.typed_length.is_empty(), angled) {
+                (true, false) => m.units.with_unit(last.dist(next)),
+                (false, false) => format!("{} (Enter)", self.typed_length.trim()),
+                _ => {
+                    let (len, ang) = if self.drawing.field == 1 {
+                        (&self.drawing.other, &self.typed_length)
+                    } else {
+                        (&self.typed_length, &self.drawing.other)
+                    };
+                    let d = next - last;
+                    let len = if len.is_empty() { m.units.with_unit(last.dist(next)) } else { len.trim().to_string() };
+                    let ang = if ang.is_empty() {
+                        format!("{:.0}°", d.1.atan2(d.0).to_degrees().rem_euclid(360.0))
+                    } else {
+                        format!("{}°", ang.trim())
+                    };
+                    match self.drawing.field {
+                        1 => format!("{len}  [{ang}] (Enter)"),
+                        _ => format!("[{len}]  {ang} (Enter)"),
+                    }
+                }
             };
             return vec![(next, text)];
         }
