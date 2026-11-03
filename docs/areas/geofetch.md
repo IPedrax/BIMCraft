@@ -76,6 +76,19 @@ shipping**: the sandbox that built this could not open it, and heavy use (many u
 The pure part is `bimcraft_core::map` (a view of the map, its pixels, pan, zoom about a point, the tiles that cover a window, a drag as
 a box, a graticule); `Prefetched` hands `tile` on to the real fetcher.
 
+## Aerial imagery (being built)
+
+Aerial imagery for the terrain is built in stages, each tried on a real machine, because the sandbox that writes the code cannot reach
+the services. Stage 0 is `examples/imagery.rs` over `probe.rs`, whose pure, tested helpers make a tile address from a template
+(`{z}`, `{x}`, `{y}`, `{-y}`, and WMTS's `{TileMatrix}`, `{TileCol}`, `{TileRow}`), tell a reply from its first bytes, give the ground a
+pixel stands for, and read a WMTS capabilities document. `imagery probe` fetches tiles of the four sources meant to be used (Flanders'
+and the Netherlands' orthophotos, USGS imagery, EOX's Sentinel-2 cloudless 2016) at a place in each and prints a table; `imagery caps URL`
+prints a service's layers, tile sizes, tile addresses, fees and constraints; `imagery tile` tries any address. Its addresses are guesses
+from memory and its licence column is what the research found: verify both at each service. Two limits shape what can be used:
+`net::Allow` takes no query string, so a service that only answers WMS or WMTS by query cannot be fetched as it stands, and
+`tiles::decode` reads only 256 x 256 PNG, while aerial tiles are usually JPEG. Bing, Esri, Maxar, Mapbox and Google are left out: as far
+as the research found, their terms do not allow fetching them into a project.
+
 ## Not yet
 
 A bundled world outline for the picker with no network (it has its lines of latitude and longitude instead: the outline would have

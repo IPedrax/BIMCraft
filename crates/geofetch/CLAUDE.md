@@ -11,7 +11,7 @@ and what is kept on disk is checked again when it is read. The write-up is [geof
 are in the root `CLAUDE.md`.
 
 - The network stays behind `net::Net` (`testing::Fake` for a table of answers; `net::Ureq::loopback` against a server on this
-  machine). **No test touches a real service**, and the sandbox cannot reach them: `examples/fetch.rs` is how a person tries them.
+  machine). **No test touches a real service**, and the sandbox cannot reach them: `examples/fetch.rs` (buildings, heights) and `examples/imagery.rs` (aerial imagery; its pure helpers are `probe.rs`) are how a person tries them.
 - The Copernicus reader is tested against GeoTIFFs the tests write themselves (`copernicus.rs`), not a real tile; that is why
   Terrarium is the default source. Check it against a real tile before making it the default.
 - Credits are part of the data: `GeoSource::attribution` for each source, and `fetch_osm` and `fetch_terrain` put them in their

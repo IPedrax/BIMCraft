@@ -133,7 +133,7 @@ One line per module: what it owns. Read the module's file and, for the areas it 
 `crates/i18n` (`bimcraft-i18n`; [notes](crates/i18n/CLAUDE.md)): embedded lookup, build-time PO compilation and the
 `cargo i18n` extraction, merge and validation tools. Area: [translations](docs/areas/translations.md).
 
-`crates/geofetch` (`bimcraft-geofetch`, the fetcher for OpenStreetMap and elevation, which the core never depends on; notes: [crates/geofetch/CLAUDE.md](crates/geofetch/CLAUDE.md); area: [geofetch](docs/areas/geofetch.md)): `net.rs` HTTPS to named hosts, `cache.rs`, `overpass.rs`, `terrarium.rs` and `copernicus.rs` (elevation tiles), `tiles.rs` (the picker's map), `layout.rs`.
+`crates/geofetch` (`bimcraft-geofetch`, the fetcher for OpenStreetMap and elevation, which the core never depends on; notes: [crates/geofetch/CLAUDE.md](crates/geofetch/CLAUDE.md); area: [geofetch](docs/areas/geofetch.md)): `net.rs` HTTPS to named hosts, `cache.rs`, `overpass.rs`, `terrarium.rs` and `copernicus.rs` (elevation tiles), `tiles.rs` (the picker's map), `layout.rs`, `probe.rs` (the pure helpers of the `imagery` example that tries aerial imagery services).
 
 `crates/update` (the updater, with geofetch the only code that phones home; notes: [crates/update/CLAUDE.md](crates/update/CLAUDE.md); area: [updates](docs/areas/updates.md)): `updater.rs` the state the banner draws; `net.rs` HTTPS to GitHub; `detect.rs` which install this is; `install.rs` Windows, `appimage.rs` Linux, `macos.rs` macOS; `exec.rs`, `prefs.rs`, `testing.rs`.
 

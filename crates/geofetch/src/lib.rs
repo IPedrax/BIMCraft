@@ -12,6 +12,7 @@ pub mod copernicus;
 pub mod layout;
 pub mod net;
 pub mod overpass;
+pub mod probe;
 pub mod terrarium;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
