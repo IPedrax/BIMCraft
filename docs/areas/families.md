@@ -19,7 +19,7 @@ partitions, built and walked with a worklist rather than recursion and bounded b
 a cut piece keeps its uncut outline in plan). A family of category `door` or `window` is hosted: its `Width` and `Height` (English
 names, whatever the project's language) size the wall's opening, `Sill Height` is a window's default sill, its forms are drawn in
 the opening's axes (x along the wall from the middle of the opening, y across it from the wall's middle plane and + toward its
-exterior, z up from the sill) and its formulas read `Wall Thickness`; its `symbols` are the plan lines (a door's swing). An
+exterior, z up from the sill) and its formulas read `Wall Thickness`; its `symbols` also draw in plan (a door's swing). An
 `Opening` holds a `family`, or none (one of the project's own types): `Model::opening_dims` gives its size either way
 (`opening_type` returns it by value), its flips are mirrors (`opening_local`), and `Element::family()` is the one way to ask what
 family a component or an opening is of. Sections show a family opening's forms beyond their line and never cut them.
@@ -74,3 +74,47 @@ project's materials and images, a wall of `wall_thickness` mm for a hosted famil
 in it, then `render_view` on that model — `3d`, `plan` (what its symbols draw) or `elevation` (front-on) — and the project keeps no
 element and no undo step from it, the way the Family Editor's own preview already worked (`editor.rs::scratch`).
 
+
+## Plan symbols
+
+A family's `symbols`, of any category, are what its plan draws besides its forms, in its own axes: each is exactly one of a
+`line` (up to `MAX_PROFILE` points), an `arc`, a `text` or a `dot`, with `visible` (a yes/no parameter or a formula) for any.
+`Family::marks` works them out, for a type's values, as `Mark`s: a `Mark::Line` (an arc as chords of `ARC_STEP` degrees; a
+label as a `Mark::Label`, lettered with `font.rs` by `lettering` where it is drawn) or a `Mark::Dot`. A `text` is `{at, height, value, align?}`: capitals `height` mm
+tall, `at` the middle of the line, started, centred or ended there (`Align`); `{Parameter Name}` in `value` reads that parameter
+(`said_text`: a number as plainly as it reads, a material by its name), an unknown name or an unclosed `{` is refused by
+`Family::check`, and the lettered text is at most `MAX_TEXT` characters. `at` is the middle of the line of text vertically, and `align`
+sets the horizontal anchor. A `dot` is a `Circle`, drawn solid in ink. Everything
+numeric is checked finite and within `MAX_COORD`; a label's height and a dot's radius must be above zero.
+
+`Model::component_marks` places a component's marks (mirrored, then turned and moved) and `Model::opening_marks` an opening's,
+and `render::marks` draws them: lines in the category's pen (`BY_CATEGORY`, so Object Styles and Visibility/Graphics apply), dots
+as filled discs. Coarse detail leaves them out. A label's anchor is placed with the component (turned, mirrored, moved) but its
+letters never are: they are always drawn at 0 degrees in the view, left to right with a horizontal baseline, however the component
+stands (the simplest rule; no flipping by quadrant). Symbols are annotation of the component's level: they draw in that level's
+plan and its ceiling plan whatever height the component's forms reach (a ceiling light shows its symbols in the floor plan) and
+on no other level's; the forms are outlined by the old rule (whole while any of them is between the view's depth and cut plane,
+and not in ceiling plans). A component with no forms draws its symbols the same way. IFC export ignores symbols (they are plan notation, not geometry); the Family Editor's Symbols tab lists
+all four parts. Library parts: a symbol of any kind has its own id and GUID (`HasPart`, `keep_parts`). A file written with
+`text` or `dot` symbols, or symbols on a category other than a door or a window, is read by an older version only with them left
+out or refused, so the file format is unchanged.
+
+
+## Symbol sets
+
+A symbol set (`symbol_set.rs`) is families that are a plan symbol and nothing else, loaded on demand and never part of a new
+project: the starter fixtures (`fixtures.rs`) are in every project, and 76 more would crowd every family list. The
+`symbol_set {set, names?}` command adds a set's families to the project (the Electrical tab's Symbols > Load AREI Symbols
+button runs it); a family the project has by that name stays as it is, so loading twice changes nothing and an edited family is
+never overwritten (`loaded` and `kept` in the reply). Each family has one type, `Standard`, no forms, and the symbols of
+`crates/core/data/arei-symbols.json`, in the family `symbols` schema (mm, y up, the origin at the symbol's own origin): a
+switch is in category `switch`, a socket in `outlet`, a data socket in `dataoutlet`, a light point or luminaire in `lighting`
+and everything else (appliances, consumers, sources, domotics, protection) in `generic`, so the Device and Lighting Fixture
+tools list their own kinds and the others are placed with the Component tool. They have no connectors, loads or 3D forms: they
+are plan symbols only for now, and a family without a connector raises no warning in `inspect`.
+
+The `arei` set is the graphical symbols of Table 2.23 of the AREI/RGIE (FOD Economie, Book 1), redrawn originally. The names
+are those printed in its Dutch and French versions (`name_nl`, `name_fr` in the data), the English ones are working names. The
+symbols are drawn at about 30 mm per drawing point, so a socket is about 25 cm wide on a plan. `names` (`en`, `nl`, `fr`) picks
+the language of the family names; as given none, a French project gets the French wording, a Dutch project the Dutch
+and every other language the English.

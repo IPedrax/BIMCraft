@@ -818,7 +818,16 @@ pub(crate) fn plan_shows(m: &Model, plan: impl Key) -> Vec<P2> {
             }
             Element::Room(r) if r.level == level => extent.push(r.point),
             Element::Mass(ms) if m.mass_cut_by(ms, r.cut) => extent.extend(m.mass_outline(ms, r.cut)),
-            Element::Component(c) if c.level == level => extent.extend(m.component_pieces(c).into_iter().flat_map(|p| p.outline)),
+            Element::Component(c) if c.level == level => {
+                extent.extend(m.component_pieces(c).into_iter().flat_map(|p| p.outline));
+                for mark in m.component_marks(c) {
+                    match mark {
+                        crate::family::Mark::Line(pts) => extent.extend(pts),
+                        crate::family::Mark::Dot { centre, .. } => extent.push(centre),
+                        crate::family::Mark::Label { at, .. } => extent.push(at),
+                    }
+                }
+            }
             Element::Grid(g) => extent.extend([g.start, g.end]),
             Element::RoomSeparator(rs) if rs.level == level => extent.extend([rs.start, rs.end]),
             Element::Dimension(dm) if m.annotation_in(e, key) => extent.push(dm.at),
@@ -876,7 +885,12 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
                 d.line(&g.footprint(), Pen::HEAVY, INK, true)
             }
         }
-        Element::Component(c) => component(&mut d, m, &m.component_pieces(c)),
+        Element::Component(c) => {
+            component(&mut d, m, &m.component_pieces(c));
+            if d.detail != Detail::Coarse {
+                marks(&mut d, &m.component_marks(c));
+            }
+        }
         // Drawn at its sill, where the cut plane would pass through it whatever the plan's cut is.
         Element::Door(o) | Element::Window(o) => {
             if let Some(w) = m.wall(o.host) {
@@ -1624,14 +1638,21 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         }
     }
     // Components it sees, in projection, as Revit draws furniture: whole while any of one is under
-    // the cut plane and over the view depth.
+    // the cut plane and over the view depth; and the symbols of those on its level.
     let mut components = crate::component_geometry::Components::new(m);
-    for (&id, e) in m.elements.iter().filter(|_| !up).filter(|(id, _)| shown(**id)) {
+    for (&id, e) in m.elements.iter().filter(|(id, _)| shown(**id)) {
         let Element::Component(c) = e else { continue };
-        let (bottom, top) = components.heights(c);
-        if bottom < range.cut && top > range.depth {
-            d.owner = Some(id);
-            component(&mut d, m, &components.pieces(c));
+        let pieces = components.pieces(c);
+        d.owner = Some(id);
+        if !up && !pieces.is_empty() {
+            let (bottom, top) = components.heights(c);
+            if bottom < range.cut && top > range.depth {
+                component(&mut d, m, &pieces);
+            }
+        }
+        // Its symbols are annotation of its level: in that level's plan and ceiling plan, whatever height its forms reach.
+        if c.level == level && d.detail != Detail::Coarse {
+            marks(&mut d, &m.component_marks(c));
         }
     }
     // Walls and columns below the cut plane, as seen from it; past the bottom, faint.
@@ -1921,6 +1942,31 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         d.text_turned(&title, at, 16.0, 0.0, INK);
     }
     d
+}
+
+/// A family's plan marks, in the model's axes: its lines and lettering in the category's pen, its dots solid ink.
+fn marks(d: &mut Drawing, marks: &[crate::family::Mark]) {
+    use crate::family::Mark;
+    for mark in marks {
+        match mark {
+            Mark::Line(pts) => d.line(pts, BY_CATEGORY, INK, false),
+            Mark::Label { at, height, text, align } => {
+                for line in crate::family::lettering(text, *at, *height, *align) {
+                    d.line(&line, BY_CATEGORY, INK, false);
+                }
+            }
+            Mark::Dot { centre, radius } => {
+                const SIDES: usize = 24;
+                let ring = (0..SIDES)
+                    .map(|k| {
+                        let (s, c) = (std::f64::consts::TAU * k as f64 / SIDES as f64).sin_cos();
+                        P2(centre.0 + radius * c, centre.1 + radius * s)
+                    })
+                    .collect::<Vec<_>>();
+                d.fill(&[ring], INK);
+            }
+        }
+    }
 }
 
 /// A component seen from above: each of its forms' outlines, but where a higher form covers it (a
@@ -2332,9 +2378,7 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
             d.line(&piece.outline, BY_CATEGORY, INK, true);
         }
         d.part(Part::Projection);
-        for stroke in m.opening_strokes(e) {
-            d.line(&stroke, BY_CATEGORY, INK, false);
-        }
+        marks(d, &m.opening_marks(e));
         d.part(Part::Cut);
         return;
     }

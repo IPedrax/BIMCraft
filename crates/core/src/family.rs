@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::csg;
+use crate::font;
 use crate::geom::P2;
 use crate::model::{MAX_COORD, MAX_TEXT};
 use crate::view3d::{P3, add, cross, mul};
@@ -229,8 +230,58 @@ pub struct Curve {
     pub to: Expr,
 }
 
-/// A line a door's or a window's plan draws, in its own axes (a swing, a sill), and no view shows
-/// otherwise: a `line` through points, or an `arc`; `visible` (a yes/no parameter, or a formula) whether it's there.
+/// Which side of its point a label's lettering starts, is centred or ends.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Align {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
+
+impl Align {
+    fn is_left(&self) -> bool {
+        *self == Align::Left
+    }
+}
+
+/// A label a symbol letters: capitals `height` mm tall, `at` the middle of the line of text vertically, where `{Parameter Name}` in `value` reads
+/// that parameter of the family, started, centred or ended (`align`) at `at`; it is drawn upright and unmirrored whatever the component does.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Label {
+    pub at: [Expr; 2],
+    pub height: Expr,
+    pub value: String,
+    #[serde(default, skip_serializing_if = "Align::is_left")]
+    pub align: Align,
+}
+
+/// A mark a family's plan draws in its own axes, sized by its parameters: the polyline of a `line` or an `arc`, a solid
+/// disc, or a label: its anchor, which is placed with the component, and its lettering, which never is (it is drawn upright,
+/// by [`lettering`], wherever it ends up).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Mark {
+    Line(Vec<P2>),
+    Dot { centre: P2, radius: f64 },
+    Label { at: P2, height: f64, text: String, align: Align },
+}
+
+impl Mark {
+    /// The same mark with every point taken through `f`.
+    pub fn map(&self, f: impl Fn(P2) -> P2) -> Mark {
+        match self {
+            Mark::Line(pts) => Mark::Line(pts.iter().map(|p| f(*p)).collect()),
+            Mark::Dot { centre, radius } => Mark::Dot { centre: f(*centre), radius: *radius },
+            Mark::Label { at, height, text, align } => Mark::Label { at: f(*at), height: *height, text: text.clone(), align: *align },
+        }
+    }
+}
+
+/// A mark a family's plan draws in its own axes, and no view shows otherwise (a door's swing, a socket's circle): a `line`
+/// through points, an `arc`, a `text` label or a `dot`, a solid disc; `visible` (a yes/no parameter, or a formula) whether it's
+/// there.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Symbol {
@@ -243,6 +294,10 @@ pub struct Symbol {
     pub line: Vec<[Expr; 2]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub arc: Option<Curve>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<Label>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dot: Option<Circle>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visible: Option<Expr>,
 }
@@ -303,7 +358,7 @@ pub struct Family {
     pub types: BTreeMap<String, BTreeMap<String, Value>>,
     #[serde(default)]
     pub forms: Vec<Form>,
-    /// What a door's or a window's plan draws besides its forms: lines of its own.
+    /// What its plan draws besides its forms: lines, arcs, labels and dots of its own, in any category.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub symbols: Vec<Symbol>,
     /// How a door's or a window's leaves open, which IFC and schedules say; none, a door swings.
@@ -873,8 +928,6 @@ impl Family {
             if self.parameters.iter().any(|p| p.name == WALL) {
                 return Err(format!("`{WALL}` is the wall's, which a door or a window reads; name the parameter otherwise"));
             }
-        } else if !self.symbols.is_empty() {
-            return Err("symbols are the lines a door's or a window's plan draws; this family isn't one".into());
         }
         let material_ok = |who: &str, m: &str| {
             if m.is_empty() || has_material(m) {
@@ -945,8 +998,24 @@ impl Family {
                 return Err(format!("{who}: a formula of it is longer than {MAX_FORMULA} characters"));
             }
         }
+        for (i, y) in self.symbols.iter().enumerate() {
+            let Some(label) = &y.text else { continue };
+            for name in fields(&label.value).map_err(|e| format!("symbol {}: {e}", i + 1))? {
+                if !self.parameters.iter().any(|p| p.name == name) {
+                    return Err(format!("symbol {}: its text reads `{{{name}}}`, which isn't one of the family's parameters", i + 1));
+                }
+            }
+        }
         let symbol_exprs = self.symbols.iter().flat_map(|y| {
-            y.line.iter().flatten().chain(&y.visible).chain(y.arc.iter().flat_map(|c| c.centre.iter().chain([&c.radius, &c.from, &c.to])))
+            let label = y.text.iter().flat_map(|l| l.at.iter().chain([&l.height]));
+            let dot = y.dot.iter().flat_map(|c| c.centre.iter().chain([&c.radius]));
+            y.line
+                .iter()
+                .flatten()
+                .chain(&y.visible)
+                .chain(y.arc.iter().flat_map(|c| c.centre.iter().chain([&c.radius, &c.from, &c.to])))
+                .chain(label)
+                .chain(dot)
         });
         if symbol_exprs.into_iter().any(|e| matches!(e, Expr::Formula(f) if long(f))) {
             return Err(format!("a formula of a symbol is longer than {MAX_FORMULA} characters"));
@@ -957,7 +1026,7 @@ impl Family {
             let pieces = self
                 .values(t, &BTreeMap::new())
                 .and_then(|v| {
-                    self.strokes(&v)?;
+                    self.marks(&v)?;
                     self.build(&v, &mut read, &mut cuts)
                 })
                 .map_err(|e| format!("type `{t}`: {e}"))?;
@@ -974,27 +1043,48 @@ impl Family {
         self.build(values, &mut HashMap::new(), &mut csg::Meter::default())
     }
 
-    /// The lines of its visible symbols, sized by `values`, in its own axes: an arc as a polyline of short chords.
-    pub fn strokes<'a>(&'a self, values: &BTreeMap<String, Val>) -> Result<Vec<Vec<P2>>, String> {
+    /// The marks of its visible symbols, sized by `values`, in its own axes: an arc as a polyline of short chords, a label
+    /// a label as its anchor (lettered by [`lettering`] where it is placed), a dot as it is.
+    pub fn marks<'a>(&'a self, values: &BTreeMap<String, Val>) -> Result<Vec<Mark>, String> {
         let mut read = HashMap::new();
         let mut out = Vec::new();
         for (i, sym) in self.symbols.iter().enumerate() {
             let said = |e: String| format!("symbol {}: {e}", i + 1);
+            let ways = usize::from(!sym.line.is_empty())
+                + usize::from(sym.arc.is_some())
+                + usize::from(sym.text.is_some())
+                + usize::from(sym.dot.is_some());
+            if ways != 1 || sym.line.len() > MAX_PROFILE {
+                return Err(said(format!("it takes a `line` of up to {MAX_PROFILE} points, an `arc`, a `text` or a `dot`, one of them")));
+            }
             if let Some(v) = &sym.visible
                 && number(v, values, &mut read).map_err(said)? == 0.0
             {
                 continue;
             }
-            let ways = usize::from(!sym.line.is_empty()) + usize::from(sym.arc.is_some());
-            if ways != 1 || sym.line.len() > MAX_PROFILE {
-                return Err(said(format!("it takes a `line` of up to {MAX_PROFILE} points, or an `arc`, one of them")));
+            let mut n = |e: &'a Expr| number(e, values, &mut read).map_err(said);
+            if let Some(c) = &sym.dot {
+                let (centre, r) = (P2(n(&c.centre[0])?, n(&c.centre[1])?), n(&c.radius)?);
+                if r <= 0.0 {
+                    return Err(said(format!("its dot has radius {r}; it needs a radius above zero")));
+                }
+                out.push(Mark::Dot { centre, radius: r });
+                continue;
+            }
+            if let Some(l) = &sym.text {
+                let (at, height) = (P2(n(&l.at[0])?, n(&l.at[1])?), n(&l.height)?);
+                if height <= 0.0 {
+                    return Err(said(format!("its text has height {height}; it needs a height above zero")));
+                }
+                let text = said_text(&l.value, values).map_err(said)?;
+                out.push(Mark::Label { at, height, text, align: l.align });
+                continue;
             }
             let mut pts = Vec::new();
             for [a, b] in &sym.line {
-                pts.push(P2(number(a, values, &mut read).map_err(said)?, number(b, values, &mut read).map_err(said)?));
+                pts.push(P2(n(a)?, n(b)?));
             }
             if let Some(c) = &sym.arc {
-                let mut n = |e: &'a Expr| number(e, values, &mut read).map_err(said);
                 let (centre, r, from, to) = (P2(n(&c.centre[0])?, n(&c.centre[1])?), n(&c.radius)?, n(&c.from)?, n(&c.to)?);
                 if r <= 0.0 || (to - from).abs() > 360.0 || to == from {
                     return Err(said(format!(
@@ -1007,7 +1097,7 @@ impl Family {
                     P2(centre.0 + r * c, centre.1 + r * s)
                 }));
             }
-            out.push(pts);
+            out.push(Mark::Line(pts));
         }
         Ok(out)
     }
@@ -1165,6 +1255,68 @@ impl Family {
 }
 
 /// `e` as a number: itself, or its formula worked out over `values`; `read`, the formulas as read already.
+/// The names between braces in a label's `value`: `{Circuit}` reads the parameter `Circuit`.
+fn fields(value: &str) -> Result<Vec<&str>, String> {
+    let (mut out, mut rest) = (Vec::new(), value);
+    while let Some(open) = rest.find('{') {
+        let Some(close) = rest[open..].find('}') else {
+            return Err("its text has a `{` with no `}` to close it".into());
+        };
+        out.push(rest[open + 1..open + close].trim());
+        rest = &rest[open + close + 1..];
+    }
+    Ok(out)
+}
+
+/// A label's `value` with each `{Parameter}` replaced by that parameter's value: a number as plainly as it reads (3, 2.5), a
+/// material by its name.
+fn said_text(value: &str, values: &BTreeMap<String, Val>) -> Result<String, String> {
+    let mut out = String::new();
+    let mut rest = value;
+    for name in fields(value)? {
+        let Some(open) = rest.find('{') else { break };
+        out.push_str(&rest[..open]);
+        let close = rest[open..].find('}').unwrap_or(0) + open;
+        rest = &rest[close + 1..];
+        match values.get(name) {
+            Some(Val::Number(x)) => {
+                let plain = format!("{x:.3}");
+                out.push_str(plain.trim_end_matches('0').trim_end_matches('.'));
+            }
+            Some(Val::Text(t)) => out.push_str(t),
+            None => return Err(format!("its text reads `{{{name}}}`, which isn't one of the family's parameters")),
+        }
+        if out.chars().count() > MAX_TEXT {
+            break;
+        }
+    }
+    out.push_str(rest);
+    if out.trim().is_empty() {
+        return Err("its text is empty; give it a `value` with something to letter".into());
+    }
+    if out.chars().count() > MAX_TEXT {
+        return Err(format!("its text is longer than {MAX_TEXT} characters"));
+    }
+    Ok(out)
+}
+
+/// `text` in our lettering, capitals `height` tall, `at` the middle of its line vertically and, as `align` says, its start,
+/// middle or end (y up), as polylines.
+pub fn lettering(text: &str, at: P2, height: f64, align: Align) -> Vec<Vec<P2>> {
+    let h = height as f32;
+    let width = f64::from(font::width(text, h));
+    let left = at.0
+        - match align {
+            Align::Left => 0.0,
+            Align::Center => width / 2.0,
+            Align::Right => width,
+        };
+    font::strokes(text, 0.0, 0.0, h)
+        .into_iter()
+        .map(|line| line.into_iter().map(|(x, y)| P2(left + f64::from(x), at.1 - height / 2.0 - f64::from(y))).collect())
+        .collect()
+}
+
 fn number<'a>(e: &'a Expr, values: &BTreeMap<String, Val>, read: &mut HashMap<&'a str, Result<Node, String>>) -> Result<f64, String> {
     let x = match e {
         Expr::Number(x) => *x,

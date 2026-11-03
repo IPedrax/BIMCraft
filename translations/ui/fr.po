@@ -8651,6 +8651,42 @@ msgctxt "category-plural"
 msgid "Wires"
 msgstr "Câbles"
 
+#: crates/ui-egui/src/editor.rs:920
+msgid "Add Dot"
+msgstr ""
+
+#: crates/ui-egui/src/editor.rs:920
+msgid "Add Text"
+msgstr ""
+
+#: crates/ui-egui/src/editor.rs:898
+msgid "Left"
+msgstr ""
+
+#: crates/ui-egui/src/mep.rs:193
+msgid "Load AREI Symbols"
+msgstr "Charger les symboles RGIE"
+
+#: crates/ui-egui/src/mep.rs:191
+msgid "Load AREI Symbols: the Belgian AREI/RGIE's plan symbols (Table 2.23) as families, named in the project's language; loading them again changes nothing"
+msgstr "Charger les symboles RGIE: les symboles de plan du RGIE belge (tableau 2.23) en familles, nommées dans la langue du projet; les recharger ne change rien"
+
+#: crates/ui-egui/src/editor.rs:871
+msgid "Middle of the text"
+msgstr ""
+
+#: crates/ui-egui/src/editor.rs:898
+msgid "Right"
+msgstr ""
+
+#: crates/ui-egui/src/editor.rs:893
+msgid "Symbol Text"
+msgstr ""
+
+#: crates/ui-egui/src/editor.rs:850
+msgid "Symbols are what the plan draws of the family besides its forms: lines, arcs, labels and dots."
+msgstr ""
+
 #: crates/ui-egui/src/fillpatterns.rs:634
 #~ msgid "A pattern of the file replaces the one of its name in this list; else it is left out"
 #~ msgstr "Un motif du fichier remplace celui du même nom dans cette liste; sinon il est omis"

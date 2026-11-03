@@ -1974,6 +1974,9 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"family": "nowhere", "at": [0, 0]}),
         json!({"family": 5, "type": [], "at": [1e300, 0], "angle": f64::MAX, "offset": -1e300, "params": "x"}),
         json!({"name": "F", "types": {"A": {}}, "forms": [{"profile": [[0, 0], [1e300, 0], [0, 1]], "to": 1}]}),
+        json!({"name": "F", "types": {"A": {}}, "symbols": [{"text": {"at": [0, 0], "height": 1e300, "value": "{}"}}, {"dot": {"centre": [1e300, 0], "radius": 5e-324}}]}),
+        json!({"name": "F", "types": {"A": {}}, "symbols": [{"text": {"at": "x", "height": -1, "value": 5, "align": []}}, {"dot": 5}, {"text": {"at": [0, 0], "height": 1, "value": "{{{{"}}]}),
+        json!({"name": "F", "types": {"A": {}}, "symbols": [{"text": {"at": [0, 0], "height": 1e-300, "value": "ÿ\u{0}😀 {W}", "align": "right"}}, {"dot": {"centre": [0, 0], "radius": "W"}}]}),
         json!({"name": "F", "types": {"A": {}}, "parameters": [{"name": "W", "formula": "W + 1"}], "forms": [{"circle": {"centre": [0, 0], "radius": "W"}, "to": 1}]}),
         json!({"name": "F", "types": {"A": {"Nope": 1}}, "forms": [{"profile": "x"}]}),
         json!({"name": "F", "types": {"A": {}}, "forms": [{"mesh": [[[0, 0, 0], [1e300, 0, 0], [0, 1, 0]]]}]}),
@@ -4249,7 +4252,10 @@ fn a_door_familys_instance_parameters_are_its_own_and_its_type_parameters_its_ty
             json!({"name": "Bad", "category": "window", "types": {"A": {}}, "parameters": [{"name": "Width", "value": 1}, {"name": "Height", "value": 1}, {"name": "Wall Thickness", "value": 1}]}),
             "Wall Thickness",
         ),
-        (json!({"name": "Bad", "category": "furniture", "types": {"A": {}}, "symbols": [{"line": [[0, 0], [1, 1]]}]}), "symbols"),
+        (
+            json!({"name": "Bad", "category": "furniture", "types": {"A": {}}, "symbols": [{"line": [[0, 0], [1, 1]], "dot": {"centre": [0, 0], "radius": 1}}]}),
+            "one of them",
+        ),
         (
             json!({"name": "Bad", "category": "door", "types": {"A": {}}, "parameters": [{"name": "Width", "value": 1}, {"name": "Height", "value": 1}], "symbols": [{"arc": {"centre": [0, 0], "radius": 0, "to": 90}}]}),
             "radius",
@@ -5983,4 +5989,221 @@ fn a_pattern_made_of_lines_remembers_its_scale_and_turned_drafting_by_fill_patte
     run(&mut s, "fill_pattern", json!({"name": "Course", "drawn": null, "target": "model"}));
     assert!((s.model.fill_patterns["Course"].lines[0].spacing - 100.0 / k).abs() < 1e-9);
     assert!(s.execute("fill_pattern", &json!({"name": "Course", "drawn": -1})).is_err());
+}
+
+// ---- plan symbols on every category ----
+
+/// A socket-like family: a short line, a half circle (when `Show` is on), a label reading its `Circuit` and a solid dot.
+fn socket(category: &str) -> Value {
+    json!({"name": "Socket", "category": category,
+    "parameters": [{"name": "Show", "kind": "yesno", "value": 1, "instance": true}, {"name": "Circuit", "kind": "number", "value": 3, "instance": true}],
+    "types": {"A": {}},
+    "forms": [{"profile": [[300, 300], [400, 300], [400, 400], [300, 400]], "to": 100}],
+    "symbols": [
+        {"line": [[0, 0], [100, 0]]},
+        {"arc": {"centre": [0, 0], "radius": 50, "from": 0, "to": 180}, "visible": "Show"},
+        {"text": {"at": [0, -150], "height": 60, "value": "C{Circuit}"}},
+        {"dot": {"centre": [200, 100], "radius": 20}}
+    ]})
+}
+
+/// What component `id` draws in the plan of level 100000 as model points: its open polylines (symbols), and its fills (dots).
+fn symbol_ink(s: &Session, id: u64) -> (Vec<Vec<P2>>, Vec<Vec<P2>>) {
+    let view = crate::render::View { scale: 0.5, cx: 1000.0, cy: 1000.0, width: 1000, height: 800 };
+    let d = crate::render::draw(&s.model, 100000, view);
+    let (mut lines, mut fills) = (Vec::new(), Vec::new());
+    for (p, o) in d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(id)) {
+        let _ = o;
+        match p {
+            crate::render::Prim::Line { pts, closed: false, .. } => lines.push(pts.iter().map(|q| view.mm(*q)).collect()),
+            crate::render::Prim::Fill { rings, .. } => fills.extend(rings.iter().map(|r| r.iter().map(|q| view.mm(*q)).collect())),
+            _ => {}
+        }
+    }
+    (lines, fills)
+}
+
+fn centre(ring: &[P2]) -> P2 {
+    let n = ring.len() as f64;
+    P2(ring.iter().map(|p| p.0).sum::<f64>() / n, ring.iter().map(|p| p.1).sum::<f64>() / n)
+}
+
+#[test]
+fn every_category_carries_plan_symbols_drawn_with_the_component() {
+    for category in ["lighting", "furniture", "generic", "casework", "plumbing"] {
+        let mut s = Session::new();
+        run(&mut s, "family", socket(category));
+        let id = run(&mut s, "component", json!({"family": "Socket", "at": [1000, 1000]}))["id"].as_u64().unwrap();
+        let (lines, fills) = symbol_ink(&s, id);
+        // The line, the arc, and the label's strokes.
+        assert!(lines.len() >= 4, "{category}: {}", lines.len());
+        let at = P2(1000.0, 1000.0);
+        assert!(
+            lines.iter().any(|l| l.len() == 2 && (l[0].dist(P2(1000.0, 1000.0)) < 2.0) && (l[1].dist(P2(1100.0, 1000.0)) < 2.0)),
+            "{category}: the line"
+        );
+        assert!(
+            lines.iter().any(|l| l.len() > 10 && l.iter().all(|p| (p.dist(at) - 50.0).abs() < 1.5 && p.1 >= 998.0)),
+            "{category}: the arc, on its upper side"
+        );
+        // The label: capitals 60 tall centred 150 below, "C3" 95 wide from the left.
+        let text: Vec<&P2> = lines.iter().filter(|l| l.iter().all(|p| p.1 < 920.0)).flatten().collect();
+        assert!(!text.is_empty(), "{category}: label");
+        assert!(text.iter().all(|p| (819.0..=881.0).contains(&p.1) && (998.0..=1097.0).contains(&p.0)), "{category}: {text:?}");
+        // The dot: a disc 20 across the radius, 200 along and 100 to the left of the component.
+        assert_eq!(fills.len(), 1, "{category}");
+        let c = centre(&fills[0]);
+        assert!(c.dist(P2(1200.0, 1100.0)) < 1.0 && fills[0].iter().all(|p| (p.dist(c) - 20.0).abs() < 1.5), "{category}: {:?}", fills[0]);
+    }
+}
+
+#[test]
+fn symbols_turn_with_a_rotated_component_and_follow_a_mirrored_one() {
+    let mut s = Session::new();
+    run(&mut s, "family", socket("lighting"));
+    let id = run(&mut s, "component", json!({"family": "Socket", "at": [1000, 1000], "angle": 90}))["id"].as_u64().unwrap();
+    let (lines, fills) = symbol_ink(&s, id);
+    // Turned a quarter: the dot's 200 along is now north, its 100 to the left now west.
+    assert!(centre(&fills[0]).dist(P2(900.0, 1200.0)) < 1.0, "{:?}", centre(&fills[0]));
+    assert!(lines.iter().any(|l| l.len() == 2 && l[1].dist(P2(1000.0, 1100.0)) < 2.0), "the line runs north");
+    // The label's anchor turned with it, to (1150, 1000), but its letters stay upright: 95 wide and 60 tall, left to right.
+    let text: Vec<&P2> =
+        lines.iter().filter(|l| l.len() != 2).flatten().filter(|p| p.0 >= 1149.0 && (960.0..=1040.0).contains(&p.1)).collect();
+    assert!(text.len() > 4, "{}", text.len());
+    assert!(text.iter().all(|p| (969.0..=1031.0).contains(&p.1) && (1149.0..=1247.0).contains(&p.0)), "{text:?}");
+    run(&mut s, "modify", json!({"id": id, "angle": 0, "mirrored": true}));
+    let (lines, fills) = symbol_ink(&s, id);
+    assert!(centre(&fills[0]).dist(P2(1200.0, 900.0)) < 1.0, "the dot across the x axis: {:?}", centre(&fills[0]));
+    assert!(lines.iter().any(|l| l.len() > 10 && l.iter().all(|p| p.1 <= 1002.0)), "the arc below, mirrored");
+    // The label's anchor is mirrored to (1000, 1150) and its letters are not: same width, same side up.
+    let text: Vec<&P2> =
+        lines.iter().filter(|l| l.len() != 2).flatten().filter(|p| p.1 >= 1100.0 && p.1 < 1200.0 && p.0 < 1200.0).collect();
+    assert!(text.len() > 4 && text.iter().all(|p| (1119.0..=1181.0).contains(&p.1) && (998.0..=1097.0).contains(&p.0)), "{text:?}");
+}
+
+#[test]
+fn a_symbols_visible_formula_hides_it_and_a_label_reads_a_parameter() {
+    let mut s = Session::new();
+    run(&mut s, "family", socket("generic"));
+    let id = run(&mut s, "component", json!({"family": "Socket", "at": [1000, 1000]}))["id"].as_u64().unwrap();
+    let arcs = |s: &Session| {
+        symbol_ink(s, id).0.iter().filter(|l| l.len() > 10 && l.iter().all(|p| (p.dist(P2(1000.0, 1000.0)) - 50.0).abs() < 1.5)).count()
+    };
+    let width = |s: &Session| {
+        let pts: Vec<f64> = symbol_ink(s, id).0.iter().filter(|l| l.iter().all(|p| p.1 < 920.0)).flatten().map(|p| p.0).collect();
+        pts.iter().cloned().fold(f64::MIN, f64::max) - pts.iter().cloned().fold(f64::MAX, f64::min)
+    };
+    assert_eq!(arcs(&s), 1);
+    let w3 = width(&s);
+    run(&mut s, "modify", json!({"id": id, "params": {"Show": 0, "Circuit": 12}}));
+    assert_eq!(arcs(&s), 0, "hidden");
+    assert!(width(&s) > w3 + 40.0, "C12 is wider than C3: {} {w3}", width(&s));
+}
+
+#[test]
+fn a_labels_align_moves_it_about_its_point_and_coarse_detail_takes_symbols_away() {
+    let mut s = Session::new();
+    let mut f = socket("lighting");
+    f["symbols"] =
+        json!([{"text": {"at": [500, 0], "height": 60, "value": "AB", "align": "center"}}, {"dot": {"centre": [0, 0], "radius": 10}}]);
+    run(&mut s, "family", f);
+    let id = run(&mut s, "component", json!({"family": "Socket", "at": [1000, 1000]}))["id"].as_u64().unwrap();
+    let (lines, fills) = symbol_ink(&s, id);
+    let (lo, hi) =
+        lines.iter().filter(|l| l.iter().all(|p| p.1 < 1200.0)).flatten().fold((f64::MAX, f64::MIN), |(l, h), p| (l.min(p.0), h.max(p.0)));
+    assert!((((lo + hi) / 2.0) - 1500.0).abs() < 2.0, "centred on 500: {lo} {hi}");
+    assert_eq!(fills.len(), 1);
+    run(&mut s, "detail", json!({"view": 100000, "detail": "coarse"}));
+    let (lines, fills) = symbol_ink(&s, id);
+    let symbols = lines.iter().filter(|l| l.iter().all(|p| p.1 < 1200.0)).count();
+    assert!(symbols == 0 && fills.is_empty(), "{symbols} {}", fills.len());
+    assert_eq!(lines.len(), 4, "the form's outline stays");
+}
+
+#[test]
+fn symbols_that_cant_be_drawn_are_refused_saying_what_to_fix() {
+    let mut s = Session::new();
+    let bad = |symbols: Value| {
+        let mut f = socket("lighting");
+        f["symbols"] = symbols;
+        f
+    };
+    for (symbols, says) in [
+        (json!([{"text": {"at": [0, 0], "height": 60, "value": "  "}}]), "text"),
+        (json!([{"text": {"at": [0, 0], "height": 0, "value": "A"}}]), "height"),
+        (json!([{"text": {"at": [0, 0], "height": -4, "value": "A"}}]), "height"),
+        (json!([{"text": {"at": [0, 0], "height": "sqrt(0 - 1)", "value": "A"}}]), "symbol 1"),
+        (json!([{"text": {"at": [0, 0], "height": 1e300, "value": "A"}}]), "symbol 1"),
+        (json!([{"text": {"at": [0, 0], "height": 60, "value": "{Nope}"}}]), "Nope"),
+        (json!([{"text": {"at": [0, 0], "height": 60, "value": "{Circuit"}}]), "}"),
+        (json!([{"text": {"at": [0, 0], "height": 60, "value": "x".repeat(300)}}]), "characters"),
+        (json!([{"text": {"at": [0, 0], "height": 60, "value": "A", "align": "up"}}]), "up"),
+        (json!([{"text": {"at": [0, 0], "height": 60, "value": "A", "size": 1}}]), "size"),
+        (json!([{"dot": {"centre": [0, 0], "radius": 0}}]), "radius"),
+        (json!([{"dot": {"centre": [0, 0], "radius": -3}}]), "radius"),
+        (json!([{"dot": {"centre": [0, 0], "radius": 1e300}}]), "symbol 1"),
+        (json!([{"dot": {"centre": [0, 0], "radius": 1}, "text": {"at": [0, 0], "height": 5, "value": "A"}}]), "one of them"),
+        (json!([{}]), "one of them"),
+    ] {
+        let e = s.execute("family", &bad(symbols.clone())).unwrap_err();
+        assert!(e.contains(says), "{symbols}: {e}");
+    }
+    assert!(!s.model.families.contains_key("Socket"), "none of them was kept");
+}
+
+#[test]
+fn a_family_with_every_symbol_kind_round_trips_through_its_file_and_leaves_ifc_alone() {
+    let mut s = Session::new();
+    run(&mut s, "family", socket("lighting"));
+    let id = run(&mut s, "component", json!({"family": "Socket", "at": [1000, 1000]}))["id"].as_u64().unwrap();
+    let before = symbol_ink(&s, id);
+    let text = s.model.to_json().unwrap();
+    let (back, left_out) = Model::read(&text).unwrap();
+    assert!(left_out.is_empty(), "{left_out:?}");
+    assert_eq!(back.families["Socket"], s.model.families["Socket"]);
+    let mut t = Session::new();
+    t.reset(back, None);
+    assert_eq!(symbol_ink(&t, id), before);
+    // Symbols are plan notation: IFC says nothing of them.
+    let file = crate::ifc::export(&s.model);
+    assert!(!file.contains("IFCTEXTLITERAL") && !file.contains("'C3'"), "plan symbols aren't exported");
+    // The parts keep their ids through an edit that leaves them.
+    let ids = |s: &Session| s.model.families["Socket"].symbols.iter().map(|y| (y.id, y.guid)).collect::<Vec<_>>();
+    let first = ids(&s);
+    assert!(first.iter().all(|(i, g)| *i > 0 && !g.is_nil()));
+    let mut again = socket("lighting");
+    again["symbols"] = socket("lighting")["symbols"].clone();
+    run(&mut s, "family", again);
+    assert_eq!(ids(&s), first);
+}
+
+#[test]
+fn a_family_of_symbols_alone_is_seen_in_plan_where_it_stands() {
+    let mut s = Session::new();
+    let mut f = socket("lighting");
+    f["forms"] = json!([]);
+    run(&mut s, "family", f);
+    let id = run(&mut s, "component", json!({"family": "Socket", "at": [1000, 1000]}))["id"].as_u64().unwrap();
+    let (lines, fills) = symbol_ink(&s, id);
+    assert!(lines.len() >= 4 && fills.len() == 1, "{} {}", lines.len(), fills.len());
+}
+
+#[test]
+fn symbols_draw_in_the_plan_and_ceiling_plan_of_their_level_whatever_height_the_component_has() {
+    let mut s = Session::new();
+    run(&mut s, "family", socket("lighting"));
+    let id = run(&mut s, "component", json!({"family": "Socket", "at": [1000, 1000], "offset": 2600}))["id"].as_u64().unwrap();
+    // A ceiling light: its form is over the cut plane, so the floor plan doesn't outline it, but its symbols are there.
+    let (lines, fills) = symbol_ink(&s, id);
+    assert!(lines.iter().all(|l| l.len() != 2 || l[0].1 < 1200.0), "no outline of the form: {}", lines.len());
+    assert!(lines.len() >= 3 && fills.len() == 1, "{} {}", lines.len(), fills.len());
+    let view = crate::render::View { scale: 0.5, cx: 1000.0, cy: 1000.0, width: 1000, height: 800 };
+    let up = crate::render::draw_ceiling(&s.model, 100000, view);
+    assert!(
+        up.owners.iter().zip(&up.prims).any(|(o, p)| *o == Some(id) && matches!(p, crate::render::Prim::Fill { .. })),
+        "the ceiling plan has the dot"
+    );
+    // Not on another level's plan.
+    let d = crate::render::draw(&s.model, 100001, view);
+    assert!(!d.owners.contains(&Some(id)));
 }

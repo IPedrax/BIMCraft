@@ -8651,6 +8651,42 @@ msgctxt "category-plural"
 msgid "Wires"
 msgstr "导线"
 
+#: crates/ui-egui/src/editor.rs:920
+msgid "Add Dot"
+msgstr ""
+
+#: crates/ui-egui/src/editor.rs:920
+msgid "Add Text"
+msgstr ""
+
+#: crates/ui-egui/src/editor.rs:898
+msgid "Left"
+msgstr ""
+
+#: crates/ui-egui/src/mep.rs:193
+msgid "Load AREI Symbols"
+msgstr ""
+
+#: crates/ui-egui/src/mep.rs:191
+msgid "Load AREI Symbols: the Belgian AREI/RGIE's plan symbols (Table 2.23) as families, named in the project's language; loading them again changes nothing"
+msgstr ""
+
+#: crates/ui-egui/src/editor.rs:871
+msgid "Middle of the text"
+msgstr ""
+
+#: crates/ui-egui/src/editor.rs:898
+msgid "Right"
+msgstr ""
+
+#: crates/ui-egui/src/editor.rs:893
+msgid "Symbol Text"
+msgstr ""
+
+#: crates/ui-egui/src/editor.rs:850
+msgid "Symbols are what the plan draws of the family besides its forms: lines, arcs, labels and dots."
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3433
 #~ msgid "Click a point the arc passes through: it sets the radius. Esc cancels."
 #~ msgstr "单击圆弧经过的一点：由此确定半径。按 Esc 取消。"

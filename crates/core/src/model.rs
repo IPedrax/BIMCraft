@@ -2643,6 +2643,19 @@ impl Model {
             .collect()
     }
 
+    /// Component `c`'s plan marks in the model: its family's symbols in its own axes, mirrored if it is, turned and moved to
+    /// where it stands. A label is lettered upright in the family's axes, so it turns (and mirrors) with the component.
+    pub fn component_marks(&self, c: &Component) -> Vec<crate::family::Mark> {
+        let Some(f) = self.families.get(&c.family) else { return Vec::new() };
+        if f.symbols.is_empty() {
+            return Vec::new();
+        }
+        let Ok(marks) = f.values(&c.type_name, &c.params).and_then(|v| f.marks(&v)) else { return Vec::new() };
+        let (sin, cos) = c.angle.to_radians().sin_cos();
+        let flip = if c.mirrored { -1.0 } else { 1.0 };
+        marks.iter().map(|k| k.map(|q| P2(c.at.0 + q.0 * cos - flip * q.1 * sin, c.at.1 + q.0 * sin + flip * q.1 * cos))).collect()
+    }
+
     /// Component `c`'s solids in the model: its own, turned and moved to where it stands.
     pub fn component_pieces(&self, c: &Component) -> Vec<Piece> {
         let base = self.elevation(c.level) + c.offset;
@@ -3416,11 +3429,11 @@ impl Model {
     /// A door's or window's family's solids and the lines its plan draws, in the family's own axes, turned out with
     /// the opening's flips as mirror images (its hinge on the other jamb, its swing to the wall's other side);
     /// none for one that isn't of a family, or doesn't build.
-    pub fn opening_local(&self, e: &Element) -> Option<(Vec<Piece>, Vec<Vec<P2>>)> {
+    pub fn opening_local(&self, e: &Element) -> Option<(Vec<Piece>, Vec<crate::family::Mark>)> {
         let (Element::Door(o) | Element::Window(o)) = e else { return None };
         let f = self.families.get(o.family.as_ref()?)?;
         let values = f.values_in(&o.type_name, &o.params, self.thickness(self.wall(o.host)?)).ok()?;
-        let (pieces, strokes) = (f.pieces(&values).ok()?, f.strokes(&values).ok()?);
+        let (pieces, marks) = (f.pieces(&values).ok()?, f.marks(&values).ok()?);
         let (fx, fy) = (if o.flip_hand { -1.0 } else { 1.0 }, if o.flip_facing { -1.0 } else { 1.0 });
         let mirrored = fx * fy < 0.0;
         let flip = |p: [f64; 3]| [fx * p[0] + 0.0, fy * p[1] + 0.0, p[2]];
@@ -3433,8 +3446,8 @@ impl Model {
                 Piece { tris: tris.collect(), outline: if mirrored { outline.into_iter().rev().collect() } else { outline }, ..pc }
             })
             .collect();
-        let strokes = strokes.into_iter().map(|l| l.into_iter().map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0)).collect()).collect();
-        Some((pieces, strokes))
+        let marks = marks.iter().map(|k| k.map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0))).collect();
+        Some((pieces, marks))
     }
 
     /// A door's or window's family's solids where it stands, in the model's own axes: each form's triangles, its
@@ -3458,11 +3471,11 @@ impl Model {
             .collect()
     }
 
-    /// The lines a door's or window's family draws in plan, where it stands.
-    pub fn opening_strokes(&self, e: &Element) -> Vec<Vec<P2>> {
+    /// The marks a door's or window's family draws in plan, where it stands.
+    pub fn opening_marks(&self, e: &Element) -> Vec<crate::family::Mark> {
         let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
-        let (Some((_, strokes)), Some((at, u, _))) = (self.opening_local(e), self.opening_frame(o)) else { return Vec::new() };
-        strokes.into_iter().map(|l| l.into_iter().map(|q| at + u * q.0 + u.perp() * q.1).collect()).collect()
+        let (Some((_, marks)), Some((at, u, _))) = (self.opening_local(e), self.opening_frame(o)) else { return Vec::new() };
+        marks.iter().map(|k| k.map(|q| at + u * q.0 + u.perp() * q.1)).collect()
     }
 
     /// The level an element stands on: a door's or window's is its wall's, a tag's its door's or
@@ -5083,7 +5096,7 @@ impl Model {
                     if let Some(f) = o.family.as_ref().and_then(|n| self.families.get(n)) {
                         self.family_values_ok(&who, o.family.as_deref().unwrap_or_default(), f, &o.params)?;
                         let values = f.values_in(&o.type_name, &o.params, self.thickness(w)).map_err(|e| format!("{who}: {e}"))?;
-                        f.pieces(&values).and_then(|_| f.strokes(&values)).map_err(|e| format!("{who}: {e}"))?;
+                        f.pieces(&values).and_then(|_| f.marks(&values)).map_err(|e| format!("{who}: {e}"))?;
                         size(&format!("{who} width"), t.width)?;
                         size(&format!("{who} height"), t.height)?;
                     }
@@ -5466,7 +5479,7 @@ impl Model {
                     coord(&format!("{who} angle"), c.angle)?;
                     coord(&format!("{who} offset"), c.offset)?;
                     self.family_values_ok(&who, &c.family, f, &c.params)?;
-                    f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v)).map_err(|e| format!("{who}: {e}"))?;
+                    f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v).and(f.marks(&v))).map_err(|e| format!("{who}: {e}"))?;
                 }
                 Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
                     let types = match e {
