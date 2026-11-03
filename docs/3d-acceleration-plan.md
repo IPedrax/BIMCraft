@@ -160,7 +160,7 @@ diffuser) in the see-through pass, under the copy's second owner. A pick walks o
 shape's own with each box placed, and tests the very triangles the scene holds. Ties go to the first in the scene, so picking
 is unchanged: the processor-picture tests pass as they did.
 
-`copies_placed_draw_the_pixels_of_their_own_triangles` holds the instanced picture to `Mesh::flat` (every copy its own triangles, the
+`copies_placed_draw_the_pixels_of_their_own_triangles_and_tubes_of_their_runs` holds the instanced picture to `Mesh::flat` (every copy its own triangles, the
 picture before this piece) byte for byte, on the sample house with three lamps that are seen through in part, parallel, in perspective and
 from inside, with a copy tinted and without. The core's `copies_hold_the_flat_triangles` checks each copy's placed vertices against the
 flat ones.
@@ -180,6 +180,35 @@ The annotated 10-storey tower, 1920 × 1080, release, RTX 2060, through the work
 `Scene::tris` still holds every copy's triangles for the processor, sections and planes, so memory is mostly the scene's now. Making the
 scene keep copies as placements, its planes found per shape, is what stands between this and 100 storeys, along with piece 4.
 
+## Piece 4: the same for runs (2026-11-03)
+
+A round run's tube is now made as one tube placed: `runs::unit_tube` (length 1, radius 1, along x) and `Geom::tube_place`, its line along x
+and its radius along y and z, so `Geom::tube` is the placed unit tube to the last bit and the scene notes every round run as a copy, of one
+tube for each material. A copy's place became a point and three axes square to each other (`ComponentInstance::axes`) instead of a turn
+about the vertical; a component's is still exactly the turn its pieces are placed by, since the terms it adds are zero. On the card a normal
+goes along each axis by its share over the axis's length squared, which keeps it square to a stretched surface. The caps' and sides' face
+normals and the scene's curved normals hold within the 1e-6 a copy is checked to. Rectangular runs (cable trays, ducts) stay their own triangles: a sloped one's ends are
+upright, which is a shear, and they are few here.
+
+`round_runs_are_one_tube_placed_stretched_and_turned` (core: level, sloped, upright and at an angle in plan; picking as the picture) and
+`copies_placed_draw_the_pixels_of_their_own_triangles_and_tubes_of_their_runs` (the card, byte for byte against `Mesh::flat`) hold it.
+
+The same tower, picture and card:
+
+| What | Piece 3 | Now |
+|---|---:|---:|
+| Copies drawn from a shape | 62,020, from 20 shapes | **78,990** (every component and round run), from 21 shapes of 2,941 triangles |
+| Triangles the card holds one by one | 2,183,880 | 554,760 |
+| Scene, fit, mesh and pick hierarchy, on the worker | 11.80 s | 11.85 s |
+| Upload, on the worker | 0.61 s | 0.19 s |
+| A frame | 7.7 to 8.2 ms median | 8.8 to 9.1 ms median, 12.3 to 13.1 ms p95 |
+| A pick | 1.3 to 1.4 ms | 1.1 to 2.5 ms, across three runs |
+| The process's peak memory | 4.9 GB | 3.9 GB |
+
+A frame is about a millisecond slower: 1.6 million more triangles go through the copies' vertex shader, which places each normal through
+three axes. It's still drawing all 9.3 million each frame; piece 5 is what takes the frame down. What the card holds is now mostly the scene's
+own: `Scene::tris` still keeps every copy's triangles, as piece 3 says.
+
 ## What isn't decided yet
 
 - **How far a card gets.** Piece 1's measurement decides how much of piece 5 is on the processor's side, and whether piece 6 needs coarser
@@ -194,7 +223,7 @@ scene keep copies as placements, its planes found per shape, is what stands betw
 - [x] 1. No cap, and the card's real limits
 - [x] 2. Scene and mesh off the interface's thread
 - [x] 3. One shape, many places: components
-- [ ] 4. The same for runs
+- [x] 4. The same for runs
 - [ ] 5. Draw what the view can see
 - [ ] 6. A frame never waits for all of it
 - [ ] 7. An edit changes only what it changed

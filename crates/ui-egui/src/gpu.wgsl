@@ -171,25 +171,34 @@ fn vs_scene(v: SceneIn) -> SceneOut {
     return scene_out(v.position, v.normal.xyz, v.face.xyz, v.color, vec2<u32>(v.plane, v.owner), v.tex);
 }
 
-// A copy of a shape: where its family's origin is from the mesh's origin, the sine and cosine of its turn, its element, and
-// where its planes are (less a third of where its shape's vertices start, so that this and the vertex's index find its own).
+// A copy of a shape: where its shape's origin is from the mesh's origin, where its axes go (square to each other: turned, and a
+// run's tube stretched), its element, and where its planes are (less a third of where its shape's vertices start, so that this
+// and the vertex's index find its own).
 struct InstanceIn {
     @location(7) at: vec3<f32>,
-    @location(8) turn: vec2<f32>,
-    @location(9) owner: u32,
-    @location(10) planes: u32,
+    @location(8) x: vec3<f32>,
+    @location(9) y: vec3<f32>,
+    @location(10) z: vec3<f32>,
+    @location(11) owner: u32,
+    @location(12) planes: u32,
     // Its element as the part of it seen through.
-    @location(11) clear_owner: u32,
+    @location(13) clear_owner: u32,
 }
 
-fn turned(v: vec3<f32>, turn: vec2<f32>) -> vec3<f32> {
-    return vec3<f32>(v.x * turn.y - v.y * turn.x, v.x * turn.x + v.y * turn.y, v.z);
+fn moved(v: vec3<f32>, c: InstanceIn) -> vec3<f32> {
+    return v.x * c.x + v.y * c.y + v.z * c.z;
+}
+
+// A normal along each axis by its share over the axis's length squared: square to the surface however it is stretched.
+fn normal_of(n: vec3<f32>, c: InstanceIn) -> vec3<f32> {
+    let w = vec3<f32>(1.0 / dot(c.x, c.x), 1.0 / dot(c.y, c.y), 1.0 / dot(c.z, c.z));
+    return normalize(moved(n * w, c));
 }
 
 fn placed(v: SceneIn, c: InstanceIn, k: u32, owner: u32) -> SceneOut {
     let plane = planes[c.planes + k / 3u];
-    let position = turned(v.position, c.turn) + c.at;
-    return scene_out(position, turned(v.normal.xyz, c.turn), turned(v.face.xyz, c.turn), v.color, vec2<u32>(plane, owner), v.tex);
+    let position = moved(v.position, c) + c.at;
+    return scene_out(position, normal_of(v.normal.xyz, c), normal_of(v.face.xyz, c), v.color, vec2<u32>(plane, owner), v.tex);
 }
 
 @vertex

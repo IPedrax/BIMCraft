@@ -17,22 +17,47 @@ pub(crate) struct SharedComponents {
     pub(crate) instances: Vec<ComponentInstance>,
 }
 
-#[derive(Clone, Copy)]
+/// A copy of a local shape: `owner`'s, at `at`, its shape's axes taken to `axes` (each square to the others, any length, so a
+/// copy may be turned, and stretched along an axis as a run's tube is along its line).
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ComponentInstance {
     pub(crate) owner: Id,
     pub(crate) shape: usize,
     pub(crate) at: [f64; 3],
-    pub(crate) sin: f64,
-    pub(crate) cos: f64,
+    pub(crate) axes: [[f64; 3]; 3],
 }
 
 impl ComponentInstance {
-    pub(crate) fn place(&self, p: [f64; 3]) -> [f64; 3] {
-        [self.at[0] + p[0] * self.cos - p[1] * self.sin, self.at[1] + p[0] * self.sin + p[1] * self.cos, self.at[2] + p[2]]
+    /// A component's: turned about the vertical by the angle whose sine and cosine these are.
+    pub(crate) fn turned(owner: Id, shape: usize, at: [f64; 3], sin: f64, cos: f64) -> Self {
+        Self { owner, shape, at, axes: [[cos, sin, 0.0], [-sin, cos, 0.0], [0.0, 0.0, 1.0]] }
     }
 
-    pub(crate) fn rotate(&self, n: [f64; 3]) -> [f64; 3] {
-        [n[0] * self.cos - n[1] * self.sin, n[0] * self.sin + n[1] * self.cos, n[2]]
+    /// `p` placed. For a turn this is, to the last bit, `at + (x cos - y sin, x sin + y cos, z)` as a component's pieces are
+    /// placed: what the extra terms add is zero.
+    pub(crate) fn place(&self, p: [f64; 3]) -> [f64; 3] {
+        let [a, b, c] = self.axes;
+        std::array::from_fn(|i| self.at[i] + p[0] * a[i] + p[1] * b[i] + p[2] * c[i])
+    }
+
+    /// A normal (unit) of the shape, of the copy: square to the copy's surfaces however it is stretched.
+    pub(crate) fn normal(&self, n: [f64; 3]) -> [f64; 3] {
+        let [a, b, c] = self.axes;
+        let w = |v: [f64; 3]| 1.0 / (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+        let (wa, wb, wc) = (n[0] * w(a), n[1] * w(b), n[2] * w(c));
+        crate::view3d::unit(std::array::from_fn(|i| a[i] * wa + b[i] * wb + c[i] * wc))
+    }
+
+    /// The other way: a normal of the copy, of its shape.
+    pub(crate) fn local_normal(&self, n: [f64; 3]) -> [f64; 3] {
+        let dot = |v: [f64; 3]| v[0] * n[0] + v[1] * n[1] + v[2] * n[2];
+        let [a, b, c] = self.axes;
+        crate::view3d::unit([dot(a), dot(b), dot(c)])
+    }
+
+    /// Whether its axes span space, so a normal can be placed.
+    pub(crate) fn solid(&self) -> bool {
+        self.axes.iter().all(|v| (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).is_normal()) && self.at.iter().all(|v| v.is_finite())
     }
 
     pub(crate) fn bounds(&self, local: [[f64; 3]; 2]) -> [[f64; 3]; 2] {
@@ -92,7 +117,7 @@ impl SharedComponents {
                 }
             };
             let (sin, cos) = c.angle.to_radians().sin_cos();
-            instances.push(ComponentInstance { owner: *owner, shape, at: [c.at.0, c.at.1, model.elevation(c.level) + c.offset], sin, cos });
+            instances.push(ComponentInstance::turned(*owner, shape, [c.at.0, c.at.1, model.elevation(c.level) + c.offset], sin, cos));
         }
         (!cancelled()).then_some(Self { shapes, bounds, instances })
     }
@@ -314,8 +339,8 @@ mod tests {
                         let v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
                         [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]
                     };
-                    let expected = instance.rotate(normal(local));
-                    let actual = normal(world);
+                    let expected = instance.normal(normal(local));
+                    let actual = crate::view3d::unit(normal(world));
                     for axis in 0..3 {
                         assert!((actual[axis] - expected[axis]).abs() <= expected[axis].abs().max(1.0) * 1e-9);
                     }

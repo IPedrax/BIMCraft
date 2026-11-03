@@ -31,7 +31,7 @@ const SKIN: u64 = 48;
 const SEGMENT: u64 = 48;
 /// A copy of a shape (see `Instance`): where it is as three floats, its turn as two, its owner, where its planes are, and its
 /// owner seen through.
-const INSTANCE: u64 = 32;
+const INSTANCE: u64 = 60;
 
 /// The window's use of the card: whether the user asked for it, the wgpu state it would be made on (none where the window has
 /// no wgpu device, as in every test), the card once it's made, and why the last picture was drawn on the processor, if it was.
@@ -362,7 +362,7 @@ impl Gpu {
         };
         let vertex_layout =
             wgpu::VertexBufferLayout { array_stride: STRIDE, step_mode: wgpu::VertexStepMode::Vertex, attributes: &attributes };
-        let copy_attributes = wgpu::vertex_attr_array![7 => Float32x3, 8 => Float32x2, 9 => Uint32, 10 => Uint32, 11 => Uint32];
+        let copy_attributes = wgpu::vertex_attr_array![7 => Float32x3, 8 => Float32x3, 9 => Float32x3, 10 => Float32x3, 11 => Uint32, 12 => Uint32, 13 => Uint32];
         let instance_layout =
             wgpu::VertexBufferLayout { array_stride: INSTANCE, step_mode: wgpu::VertexStepMode::Instance, attributes: &copy_attributes };
         let instanced = pipeline(
@@ -812,7 +812,8 @@ impl Gpu {
             }
             bytes.clear();
             for (c, start) in part.iter().zip(starts) {
-                put(&mut bytes, &[c.at[0], c.at[1], c.at[2], c.turn[0], c.turn[1]]);
+                put(&mut bytes, &c.at);
+                c.axes.iter().for_each(|v| put(&mut bytes, v));
                 put_words(&mut bytes, &[c.owner, c.planes.wrapping_sub(*start), c.clear_owner]);
             }
             instances.push(vertex_buffer("bimcraft-3d-instances", &bytes));
@@ -1036,7 +1037,7 @@ mod tests {
     }
 
     #[test]
-    fn copies_placed_draw_the_pixels_of_their_own_triangles() {
+    fn copies_placed_draw_the_pixels_of_their_own_triangles_and_tubes_of_their_runs() {
         let Some(mut gpu) = headless() else { return };
         let mut s = sample();
         // And three lamps, each a frame and a lens seen through.
@@ -1051,9 +1052,18 @@ mod tests {
         for (x, angle) in [(2000, 0), (5000, 30), (8000, 90)] {
             s.execute("component", &serde_json::json!({"family": "Lamp", "at": [x, 3000], "angle": angle})).unwrap();
         }
+        // And round runs, one tube stretched and turned: level, sloped, upright and at an angle in plan.
+        for (command, points, offset, end) in [
+            ("pipe", [[1000, 1000], [7000, 1000]], 2600, 2600),
+            ("pipe", [[1000, 2000], [6000, 5000]], 2700, 2200),
+            ("pipe", [[3000, 3000], [3000, 3000]], 0, 2800),
+            ("conduit", [[2000, 6000], [2000, 1000]], 2800, 2500),
+        ] {
+            s.execute(command, &serde_json::json!({"points": points, "offset": offset, "end_offset": end})).unwrap();
+        }
         let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
         let (mesh, flat) = (Arc::new(Mesh::new(&scene, &look).unwrap()), Arc::new(Mesh::flat(&scene, &look).unwrap()));
-        assert!(mesh.instances.len() > 4 && flat.instances.is_empty());
+        assert!(mesh.instances.len() > 8 && flat.instances.is_empty());
         assert!(mesh.instances.iter().any(|i| i.clear_owner != 0), "the lamps' lenses are copies too");
         let chair = mesh.owners[mesh.instances[0].owner as usize - 1].id;
         let parallel = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);

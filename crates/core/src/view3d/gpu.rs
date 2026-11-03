@@ -89,10 +89,11 @@ struct Tri {
 /// A copy of one of [`Mesh::shapes`], as the card places it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Instance {
-    /// Where its family's origin is, from [`Mesh::origin`], mm.
+    /// Where its shape's origin is, from [`Mesh::origin`], mm.
     pub at: [f32; 3],
-    /// The sine and cosine of its turn about the vertical.
-    pub turn: [f32; 2],
+    /// Where its shape's x, y and z axes go, each square to the others: turned, and for a run's tube stretched. A normal
+    /// goes along each by its share over the axis's length squared, which keeps it square to a stretched surface.
+    pub axes: [[f32; 3]; 3],
     /// One more than the place of its element in [`Mesh::owners`]; and of its element as the part seen through (with how
     /// see-through), 0 where none is.
     pub owner: u32,
@@ -295,13 +296,12 @@ impl Mesh {
             let smooth_at = |k: usize| scene.smooth.get(first + k).and_then(Option::as_deref).map(|c| c.map(unit));
             let fits = match templates.get(place.shape) {
                 Some(None) => {
-                    let unturn = |n: P3| [n[0] * place.cos + n[1] * place.sin, -n[0] * place.sin + n[1] * place.cos, n[2]];
                     let template = Template {
                         alpha: tris.iter().map(alpha_of).collect(),
                         color: tris.iter().map(packed).collect(),
                         tex: tris.iter().map(tex_of).collect(),
                         face: (0..tris.len()).map(face_at).collect(),
-                        smooth: (0..tris.len()).map(|k| smooth_at(k).map(|c| c.map(unturn))).collect(),
+                        smooth: (0..tris.len()).map(|k| smooth_at(k).map(|c| c.map(|n| place.local_normal(n)))).collect(),
                     };
                     if let Some(slot) = templates.get_mut(place.shape) {
                         *slot = Some(template);
@@ -312,7 +312,7 @@ impl Mesh {
                     let near = |a: P3, b: P3| (0..3).all(|i| (a[i] - b[i]).abs() <= 1e-6);
                     let curved = match (template.smooth.get(k).copied().flatten(), smooth_at(k)) {
                         (None, None) => true,
-                        (Some(own), Some(seen)) => (0..3).all(|c| near(place.rotate(own[c]), seen[c])),
+                        (Some(own), Some(seen)) => (0..3).all(|c| near(place.normal(own[c]), seen[c])),
                         _ => false,
                     };
                     template.alpha.get(k) == Some(&alpha_of(t))
@@ -439,7 +439,8 @@ impl Mesh {
                     mesh.instance_planes.push(scene.planes.get(i).map_or(i, |p| *p) as u32 + 1);
                 }
                 let at = sub(place.at, origin).map(|v| v as f32);
-                mesh.instances.push(Instance { at, turn: [place.sin as f32, place.cos as f32], owner, clear_owner, planes });
+                let axes = place.axes.map(|v| v.map(|x| x as f32));
+                mesh.instances.push(Instance { at, axes, owner, clear_owner, planes });
                 mesh.copies.push(Copy { place, shape: index, key: first });
             }
             let end = mesh.shape_vertices.len();
@@ -843,13 +844,21 @@ mod tests {
                 let clear = flat.vertices.iter().filter(|v| inst.clear_owner != 0 && v.owner == inst.clear_owner);
                 let own: Vec<&Vertex> = own.into_iter().chain(clear).collect();
                 assert_eq!(own.len(), local.len());
-                let [sin, cos] = inst.turn;
-                let turn = |v: [f32; 3]| [v[0] * cos - v[1] * sin, v[0] * sin + v[1] * cos, v[2]];
+                let [a, b, c] = inst.axes;
+                let turn = |v: [f32; 3]| -> [f32; 3] { std::array::from_fn(|i| v[0] * a[i] + v[1] * b[i] + v[2] * c[i]) };
+                let w = |v: [f32; 3]| 1.0 / (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+                let normal = |n: [f32; 3]| {
+                    let v = turn([n[0] * w(a), n[1] * w(b), n[2] * w(c)]);
+                    let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+                    v.map(|x| x / l)
+                };
                 for (k, (l, f)) in local.iter().zip(own).enumerate() {
                     let p = turn(l.position);
                     let plane = mesh.instance_planes[inst.planes as usize + k / 3];
                     assert!((0..3).all(|i| (p[i] + inst.at[i] - f.position[i]).abs() < 0.01), "{k}: {p:?} {:?}", f.position);
-                    assert!((0..3).all(|i| (turn(l.normal)[i] - f.normal[i]).abs() < 1e-4 && (turn(l.face)[i] - f.face[i]).abs() < 1e-4));
+                    assert!(
+                        (0..3).all(|i| (normal(l.normal)[i] - f.normal[i]).abs() < 1e-4 && (normal(l.face)[i] - f.face[i]).abs() < 1e-4)
+                    );
                     assert_eq!((l.color, l.tex, plane), (f.color, f.tex, f.plane));
                 }
             }
@@ -917,6 +926,37 @@ mod tests {
         let copy_of = |id: Id| mesh.instances.iter().any(|i| mesh.owners[i.owner as usize - 1].id == id);
         assert!(copy_of(chairs[0]) && !copy_of(chairs[1]), "the painted chair is its own");
         assert!(!copy_of(chairs[2]), "and the one seen through, which its shape isn't");
+        copies_hold_the_flat_triangles(&mesh, &flat);
+        picks_as_the_picture(&s);
+    }
+
+    /// The sample with round runs of two materials: level, sloped, upright and at an angle in plan.
+    pub(crate) fn with_runs() -> Session {
+        let mut s = sample();
+        for (command, points, offset, end) in [
+            ("pipe", [[1000, 1000], [7000, 1000]], 2600, 2600),
+            ("pipe", [[1000, 2000], [6000, 5000]], 2700, 2200),
+            ("pipe", [[3000, 3000], [3000, 3000]], 0, 2800),
+            ("conduit", [[1000, 4000], [8000, 4000]], 2900, 2900),
+            ("conduit", [[2000, 6000], [2000, 1000]], 2800, 2500),
+        ] {
+            s.execute(command, &json!({"points": points, "offset": offset, "end_offset": end})).unwrap();
+        }
+        s
+    }
+
+    #[test]
+    fn round_runs_are_one_tube_placed_stretched_and_turned() {
+        let s = with_runs();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let (mesh, flat) = (Mesh::new(&scene, &look).unwrap(), Mesh::flat(&scene, &look).unwrap());
+        let copy_of = |id: Id| mesh.instances.iter().any(|i| mesh.owners[i.owner as usize - 1].id == id);
+        let runs: Vec<Id> =
+            s.model.elements.iter().filter(|(_, e)| matches!(e.category(), "pipe" | "conduit")).map(|(id, _)| *id).collect();
+        assert_eq!(runs.len(), 5);
+        assert!(runs.iter().all(|id| copy_of(*id)), "every round run a copy");
+        let tube = 3 * 4 * crate::runs::SIDES;
+        assert!(mesh.shapes.iter().any(|sh| sh.vertices.len() == tube && sh.instances.len() == 5), "one tube: {:?}", mesh.shapes);
         copies_hold_the_flat_triangles(&mesh, &flat);
         picks_as_the_picture(&s);
     }

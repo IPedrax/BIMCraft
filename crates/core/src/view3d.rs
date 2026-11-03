@@ -1497,9 +1497,29 @@ fn placements(
     cancelled: &(dyn Fn() -> bool + Sync),
 ) -> Option<(Vec<Vec<[P3; 3]>>, Vec<(usize, crate::component_geometry::ComponentInstance)>)> {
     let shared = crate::component_geometry::SharedComponents::new(m, cancelled)?;
-    let shapes: Vec<Vec<[P3; 3]>> =
+    let mut shapes: Vec<Vec<[P3; 3]>> =
         shared.shapes.iter().map(|pieces| pieces.iter().flat_map(|p| p.tris.iter().copied()).collect()).collect();
-    let copies: HashMap<Id, crate::component_geometry::ComponentInstance> = shared.instances.iter().map(|i| (i.owner, *i)).collect();
+    let mut copies: HashMap<Id, crate::component_geometry::ComponentInstance> = shared.instances.iter().map(|i| (i.owner, *i)).collect();
+    // Each round run a copy of one tube, a tube for each material, so a copy takes its shape's colour and texture.
+    let tube = crate::runs::unit_tube().0;
+    let mut tubes: HashMap<&str, usize> = HashMap::new();
+    for (n, (id, e)) in m.elements.iter().enumerate() {
+        if n % 4096 == 0 && cancelled() {
+            return None;
+        }
+        let (Some(t), Some(g)) = (m.run_type(e), m.run_geom(e)) else { continue };
+        if !g.round {
+            continue;
+        }
+        let shape = *tubes.entry(t.material.as_str()).or_insert_with(|| {
+            shapes.push(tube.clone());
+            shapes.len() - 1
+        });
+        let place = g.tube_place(*id, shape);
+        if place.solid() {
+            copies.insert(*id, place);
+        }
+    }
     let mut out = Vec::new();
     let mut i = 0;
     let mut runs = 0usize;
