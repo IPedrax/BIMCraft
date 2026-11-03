@@ -163,6 +163,12 @@ state and its commands: the project's own types and a family's in `properties.rs
 pattern's … opens the Patterns tab. The dialogs are one width, and the table's body one height where the window has room, known from the first frame:
 a body that fitted its rows grew over a few frames, and a click meant for one row landed on the next. A refusal is said in the dialog.
 
+Properties' filter. With a selection of several categories, the line under the Type Selector is a drop-down of them, as Revit's is
+(`BimApp::selection_categories`): Multiple Categories first, then each category with its count. One picked is what the palette shows
+and edits, the selection staying as it is: `BimApp::palette_ids` is the selection narrowed to it, and the palette's subject, the Type
+Selector, Edit Type (from the palette, the ribbon or the right-click menu) and every edit the palette sends read it, never the selection.
+`palette_filter` keeps the selection it was picked for, so a new selection starts it over.
+
 View Templates (`templates.rs`). VT and View > View Templates open it as Revit's does, in the look Type Properties has: on the left a tab for each
 kind of view (`ViewKind`: Plan, Elevation/Section, 3D; a template of no kind is on every tab), the templates of the one showing, and Duplicate…,
 Rename… and Delete, with New from This View… (enabled on the tab of the active view's kind) under them, each opening a Name row; they run at once

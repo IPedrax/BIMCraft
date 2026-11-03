@@ -464,6 +464,9 @@ pub struct BimApp {
     compact: bool,
     /// Which interface the window wears (File > Settings): BIMCraft's own, or Rev.
     profile: style::Profile,
+    /// The category the Properties palette's filter narrows a selection of several to, and the selection it was picked for: a new
+    /// selection drops it (`BimApp::palette_ids`).
+    palette_filter: Option<(&'static str, Vec<Id>)>,
     /// File > Settings, while open, at its page; the settings file, when the app was given one, and what it holds; the
     /// theme it asks for, put in force on the next frame.
     settings_page: Option<settings::Page>,
@@ -1002,6 +1005,7 @@ impl BimApp {
             ribbon_min: false,
             compact: false,
             profile: style::Profile::default(),
+            palette_filter: None,
             ribbon_peek: false,
             scan_contrast: footer::HIGH_CONTRAST,
             background_grid_dialog: None,

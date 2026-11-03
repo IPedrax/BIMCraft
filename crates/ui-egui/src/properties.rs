@@ -8,7 +8,7 @@ use crate::popup::Modal;
 
 use bimcraft_i18n::msg;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use bimcraft_core::element_json;
@@ -802,19 +802,41 @@ impl TypeDialog {
 }
 
 impl BimApp {
+    /// What the palette shows and edits: the selection, or, while its filter is on one of the selection's categories, the part of the
+    /// selection of that category. The selection itself stays as it is.
+    pub(crate) fn palette_ids(&self) -> Vec<Id> {
+        let m = &self.session.model;
+        let narrowed = match &self.palette_filter {
+            Some((category, picked_for)) if *picked_for == self.selection => {
+                self.selection.iter().copied().filter(|id| m.elements.get(id).is_some_and(|e| e.category() == *category)).collect()
+            }
+            _ => Vec::new(),
+        };
+        if narrowed.is_empty() { self.selection.clone() } else { narrowed }
+    }
+
+    /// The selection's categories and how many of each.
+    fn selection_categories(&self) -> BTreeMap<&'static str, usize> {
+        let mut counts = BTreeMap::new();
+        for e in self.selection.iter().filter_map(|id| self.session.model.elements.get(id)) {
+            *counts.entry(e.category()).or_insert(0) += 1;
+        }
+        counts
+    }
+
     fn subject(&self) -> Subject {
         let m = &self.session.model;
         if matches!(self.sketch.as_ref().map(|sk| sk.of), Some(crate::sketch::Of::Region { .. })) {
             return Subject::New("region");
         }
-        match (self.selection.as_slice(), &self.tool, self.sheet) {
+        let ids = self.palette_ids();
+        match (ids.as_slice(), &self.tool, self.sheet) {
             (&[id], _, _) => Subject::Element(id),
             ([_, _, ..], _, _) => {
-                let categories: BTreeSet<&'static str> =
-                    self.selection.iter().filter_map(|id| m.elements.get(id)).map(|e| e.category()).collect();
+                let categories: BTreeSet<&'static str> = ids.iter().filter_map(|id| m.elements.get(id)).map(|e| e.category()).collect();
                 match categories.first() {
                     Some(c) if categories.len() == 1 => Subject::Elements(c),
-                    _ => Subject::Mixed(self.selection.len()),
+                    _ => Subject::Mixed(ids.len()),
                 }
             }
             ([], Tool::Wall(_), _) => Subject::New("wall"),
@@ -853,14 +875,14 @@ impl BimApp {
         }
     }
 
-    /// The type the selected elements share, if they do.
+    /// The type the elements the palette shows share, if they do.
     fn shared_type(&self, m: &Model) -> Option<String> {
         let names: BTreeSet<String> =
-            self.selection.iter().filter_map(|id| element_json(m, *id)["type"].as_str().map(String::from)).collect();
+            self.palette_ids().iter().filter_map(|id| element_json(m, *id)["type"].as_str().map(String::from)).collect();
         if names.len() == 1 { names.into_iter().next() } else { None }
     }
 
-    /// The family and type of the selected components, while they share them; with none selected,
+    /// The family and type of the components the palette shows, while they share them; with none selected,
     /// the Component tool's.
     pub(crate) fn component_type(&self) -> Option<(String, String)> {
         let m = &self.session.model;
@@ -868,7 +890,7 @@ impl BimApp {
             return self.placing();
         }
         let types: BTreeSet<(String, String)> = self
-            .selection
+            .palette_ids()
             .iter()
             .map(|id| match m.elements.get(id) {
                 Some(Element::Component(c)) => Some((c.family.clone(), c.type_name.clone())),
@@ -897,18 +919,19 @@ impl BimApp {
             Subject::Elements(category) | Subject::New(category) => category,
             Subject::Mixed(_) | Subject::Plan(_) | Subject::CeilingPlan | Subject::View3D | Subject::Schedule => return None,
         };
+        let ids = self.palette_ids();
         if category == "component" {
-            return self.component_type().map(|(_, ty)| (category, ty, self.selection.clone()));
+            return self.component_type().map(|(_, ty)| (category, ty, ids));
         }
         // A door or window of a family: that family's type.
         if let Some((_, ty)) = self.opening_pair(m, self.subject(), category) {
-            return Some((category, ty, self.selection.clone()));
+            return Some((category, ty, ids));
         }
-        let name = match self.selection.is_empty() {
+        let name = match ids.is_empty() {
             false => self.shared_type(m),
             true => self.types.get(category).cloned().or_else(|| m.default_type(category).map(String::from)),
         };
-        Some((category, name?, self.selection.clone()))
+        Some((category, name?, ids))
     }
 
     /// The family and type a door or window is of: the selected ones', while they share them; with none selected, what the tool places.
@@ -920,7 +943,7 @@ impl BimApp {
         match subject {
             Subject::Element(id) => of(&id),
             Subject::Elements(_) => {
-                let pairs: BTreeSet<Option<(String, String)>> = self.selection.iter().map(of).collect();
+                let pairs: BTreeSet<Option<(String, String)>> = self.palette_ids().iter().map(of).collect();
                 if pairs.len() == 1 { pairs.into_iter().next().flatten() } else { None }
             }
             Subject::New(c) if c == category => {
@@ -975,6 +998,10 @@ impl BimApp {
     }
 
     pub(crate) fn properties(&mut self, ui: &mut Ui) {
+        // A new selection starts the filter over.
+        if self.palette_filter.as_ref().is_some_and(|(_, picked_for)| *picked_for != self.selection) {
+            self.palette_filter = None;
+        }
         let model = Arc::clone(&self.session.model);
         let subject = self.subject();
         // A camera view picked on a plan: its Properties are its camera's, the same panel the 3D tab shows for it.
@@ -994,7 +1021,8 @@ impl BimApp {
                 None => return,
             },
             Subject::Elements(category) => {
-                (format!("{} ({})", lang::category(category, true), self.selection.len()), self.selection.clone(), rows(category))
+                let ids = self.palette_ids();
+                (format!("{} ({})", lang::category(category, true), ids.len()), ids, rows(category))
             }
             Subject::Mixed(n) => (tf("Multiple Categories ({})", &[&n.to_string()]), Vec::new(), &[][..]),
             Subject::New(category) => (tf("New {}", &[&lang::category(category, true)]), Vec::new(), &[][..]),
@@ -1008,11 +1036,34 @@ impl BimApp {
             }
             Subject::CeilingPlan | Subject::View3D | Subject::Schedule => (self.view_title(self.sheet), Vec::new(), &[][..]),
         };
+        let categories = self.selection_categories();
         ui.horizontal(|ui| {
-            ui.label(filter);
+            if categories.len() < 2 {
+                ui.label(&filter);
+            }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if ui.add_enabled(self.type_subject().is_some(), Button::new(t("Edit Type"))).clicked() {
                     self.edit_type();
+                }
+                // Of several categories, the filter is a drop-down of them, as Revit's is: one picked is what the palette shows
+                // and edits, the selection staying as it is.
+                if categories.len() > 1 {
+                    let all = tf("Multiple Categories ({})", &[&self.selection.len().to_string()]);
+                    let mut pick = None;
+                    ComboBox::from_id_salt("properties-filter").selected_text(&filter).width(ui.available_width()).show_ui(ui, |ui| {
+                        if ui.selectable_label(self.palette_filter.is_none(), &all).clicked() {
+                            pick = Some(None);
+                        }
+                        for (&category, n) in &categories {
+                            let on = self.palette_filter.as_ref().is_some_and(|(c, _)| *c == category);
+                            if ui.selectable_label(on, format!("{} ({n})", lang::category(category, true))).clicked() {
+                                pick = Some(Some(category));
+                            }
+                        }
+                    });
+                    if let Some(category) = pick {
+                        self.palette_filter = category.map(|c| (c, self.selection.clone()));
+                    }
                 }
             });
         });
@@ -1166,7 +1217,7 @@ impl BimApp {
         match (picked, subject) {
             (Some(n), Subject::Element(_) | Subject::Elements(_)) if current.as_ref() != Some(&n) && pair.is_some() => {
                 if let Some((f, t)) = pair {
-                    self.run("modify", json!({"ids": self.selection, "family": f, "type": t}));
+                    self.run("modify", json!({"ids": self.palette_ids(), "family": f, "type": t}));
                 }
             }
             (Some(_), Subject::New("component")) => self.component = pair,
@@ -1178,7 +1229,7 @@ impl BimApp {
             }
             (Some(n), Subject::Element(_) | Subject::Elements(_)) if current.as_ref() != Some(&n) => {
                 // One of the project's own types takes a door or window off the family it was of.
-                let mut p = json!({"ids": self.selection, "type": n});
+                let mut p = json!({"ids": self.palette_ids(), "type": n});
                 if hosted.is_some() {
                     p["family"] = Value::Null;
                 }

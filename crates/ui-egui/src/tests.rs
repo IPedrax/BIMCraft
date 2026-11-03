@@ -639,6 +639,34 @@ fn properties_edit_through_modify_and_undo_puts_them_back() {
 }
 
 #[test]
+fn a_selection_of_several_categories_is_narrowed_to_one_in_properties_and_its_edits_reach_only_that_one() {
+    let mut h = app(&format!("{BOX}\ndoor {{\"at\": [2000, 0]}}"));
+    let (walls, doors) = (ids(&h, "wall"), ids(&h, "door"));
+    let all: Vec<Id> = walls.iter().chain(&doors).copied().collect();
+    h.state_mut().selection = all.clone();
+    h.run();
+    assert!(h.query_by_label("Base Offset").is_none(), "of two categories, no rows");
+    // The palette's filter lists the selection's categories, as Revit's does; picking one shows its rows.
+    h.get_by_value("Multiple Categories (5)").click();
+    h.run();
+    h.get_by_label("Walls (4)").click();
+    h.run();
+    assert_eq!(h.state().selection, all, "the selection stays as it was");
+    assert!(h.query_by_value("Walls (4)").is_some(), "the filter says what it shows");
+    assert_eq!(h.state().type_subject().map(|(c, _, ids)| (c, ids)), Some(("wall", walls.clone())), "and Edit Type opens the walls' type");
+    type_into(&mut h, "Base Offset", "100");
+    key(&mut h, Key::Enter);
+    assert!(walls.iter().all(|w| field(&h, *w, "base_offset") == json!(100.0)), "{:?}", h.state().status.text);
+    assert_eq!(h.state().selection, all);
+    // A new selection starts it over.
+    h.state_mut().selection = walls.clone();
+    h.run();
+    h.state_mut().selection = all;
+    h.run();
+    assert!(h.query_by_value("Multiple Categories (5)").is_some());
+}
+
+#[test]
 fn the_wheel_zooms_about_the_cursor_and_the_middle_button_pans() {
     let mut h = app(SAMPLE);
     let (p, q) = (P2(8000.0, 3500.0), P2(0.0, 0.0));
