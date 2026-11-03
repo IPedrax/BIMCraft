@@ -7948,6 +7948,10 @@ fn family(s: &mut Session, p: &Value) -> R {
             .filter_map(|k| fields.remove(k).map(|v| (k.to_string(), v)))
             .collect();
         family.insert("name".into(), name);
+        // `dry_run` is the caller's, not the file's: a dry run of a file loads nothing.
+        if let Some(dry) = p.get("dry_run") {
+            family.insert("dry_run".into(), dry.clone());
+        }
         p = Value::Object(family);
     }
     // The family to read, change or delete; without a name, the project's families are listed.
@@ -7956,6 +7960,9 @@ fn family(s: &mut Session, p: &Value) -> R {
     if let Some(file) = string(c, &p, "save")? {
         let name = name.ok_or_else(|| bad(c, "`name` is required: the family to save"))?;
         let f = s.model.families.get(&name).ok_or_else(|| bad(c, format!("there's no family `{name}` to save")))?;
+        if flag(c, &p, "dry_run")? {
+            return Ok(json!({"name": name, "dry_run": true, "ok": true, "path": file, "saved": false}));
+        }
         let mut v = serde_json::to_value(f).map_err(|e| bad(c, e))?;
         v["name"] = json!(name);
         let text = serde_json::to_string_pretty(&v).map_err(|e| bad(c, e))?;

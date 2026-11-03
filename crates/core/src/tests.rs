@@ -1314,6 +1314,31 @@ fn reading_a_family_adds_no_undo_step() {
     assert_eq!(s.history(), before, "not even a failed read costs an undo step");
 }
 
+/// `dry_run` holds when the family comes from a file (`path`) and when it is saved to one (`save`): neither loads nor writes.
+#[test]
+fn dry_run_holds_for_a_family_loaded_from_a_file_and_one_saved_to_a_file() {
+    let mut s = Session::new();
+    desk(&mut s);
+    let file = temp("desk-dry-run.json");
+    let _ = std::fs::remove_file(&file);
+    let file_name = file.to_string_lossy().to_string();
+    // Saved for real once, the file the loads below read.
+    run(&mut s, "family", json!({"name": "Work Desk", "save": file_name}));
+    assert!(file.exists());
+    let before = s.history();
+    // Loaded under another name with `dry_run`: it says what it would make, and the project has no such family.
+    let dry = run(&mut s, "family", json!({"path": file_name, "name": "Loaded Desk", "dry_run": true}));
+    assert_eq!(dry["dry_run"], json!(true), "{dry}");
+    assert!(!s.model.families.contains_key("Loaded Desk"), "a dry run of a file makes nothing");
+    assert_eq!(s.history(), before);
+    // Saved with `dry_run`: the file is not written.
+    let _ = std::fs::remove_file(&file);
+    let dry = run(&mut s, "family", json!({"name": "Work Desk", "save": file_name, "dry_run": true}));
+    assert_eq!(dry["dry_run"], json!(true), "{dry}");
+    assert!(!file.exists(), "a dry run of a save writes no file");
+    let _ = std::fs::remove_file(&file);
+}
+
 /// `dry_run` works the whole change out and says what it comes to, and leaves the project as it was.
 #[test]
 fn dry_run_reports_changes_and_keeps_the_model() {
