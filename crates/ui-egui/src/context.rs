@@ -18,6 +18,8 @@ pub(crate) enum Action {
     Cancel,
     /// Enter: a spline or a polyline made of the points clicked so far.
     Finish,
+    /// Enter: the detail lines selected are a custom fill pattern's (Fill Patterns' New Pattern > Custom).
+    FinishPick,
     ZoomToFit,
     ZoomIn,
     ZoomOut,
@@ -41,6 +43,7 @@ impl Action {
         match self {
             Action::Cancel => "Cancel",
             Action::Finish => msg!("Finish Drawing"),
+            Action::FinishPick => "Finish",
             Action::ZoomToFit => "Zoom to Fit",
             Action::ZoomIn => "Zoom In",
             Action::ZoomOut => "Zoom Out",
@@ -61,7 +64,7 @@ impl Action {
     pub(crate) fn shortcut(self) -> Option<&'static str> {
         match self {
             Action::Cancel => Some("Esc"),
-            Action::Finish => Some("Enter"),
+            Action::Finish | Action::FinishPick => Some("Enter"),
             Action::ZoomToFit => Some("ZF"),
             Action::SelectAllInstances => Some("SA"),
             Action::HideElement => Some("EH"),
@@ -118,6 +121,9 @@ impl BimApp {
         if self.finishable() {
             first.insert(0, Item::new(Action::Finish, true));
         }
+        if self.picking_pattern_lines() {
+            first.insert(0, Item::new(Action::FinishPick, true));
+        }
         let mut groups = vec![first];
         if some {
             groups.push(vec![
@@ -157,6 +163,7 @@ impl BimApp {
         match action {
             Action::Cancel => self.escape(),
             Action::Finish => self.finish_open_shape(),
+            Action::FinishPick => self.finish_pattern_lines(),
             Action::ZoomToFit => self.fit(),
             Action::ZoomIn => self.zoom_view(1.25),
             Action::ZoomOut => self.zoom_view(0.8),

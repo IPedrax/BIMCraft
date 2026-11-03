@@ -8653,6 +8653,119 @@ msgstr ""
 msgid "{} Template"
 msgstr ""
 
+#: crates/ui-egui/src/lib.rs:3451
+msgid "Annotation Settings"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:3450
+msgid "Annotation Settings: line weights, line styles, line patterns and fill patterns"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4115 crates/ui-egui/src/lib.rs:4255
+msgid "Click on Bottom Left Corner"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4116
+msgid "Click on Top Right Corner"
+msgstr ""
+
+#: crates/ui-egui/src/fillpatterns.rs:574
+msgid "Each line's angle, origin and spacing"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:3468
+msgid "Fill Patterns: the patterns filled regions and materials fill with, simple or made from lines drawn"
+msgstr ""
+
+#: crates/ui-egui/src/fillpatterns.rs:780
+msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
+msgstr ""
+
+#: crates/ui-egui/src/fillpatterns.rs:632
+msgid "Import: a pattern of the file replaces the one of its name in this list; unchecked, it is left out"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:3464
+msgid "Line Patterns: the dashes, dots, spaces and shapes lines are drawn with"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:3460
+msgid "Line Styles: the pen, colour and line pattern detail lines draw in"
+msgstr ""
+
+#: crates/ui-egui/src/fillpatterns.rs:374
+msgid "Lines of {}"
+msgstr ""
+
+#: crates/ui-egui/src/fillpatterns.rs:611
+msgid "Made of detail lines picked in the plan, repeating the rectangle between two corners"
+msgstr ""
+
+#: crates/ui-egui/src/fillpatterns.rs:945
+msgid "New pattern from lines"
+msgstr ""
+
+#: crates/ui-egui/src/fillpatterns.rs:782
+msgid "Open a plan to pick the pattern's lines in: detail lines are drawn in plans."
+msgstr ""
+
+#: crates/ui-egui/src/fillpatterns.rs:610
+msgid "Parallel lines at an angle and a spacing, crosshatched or not"
+msgstr ""
+
+#: crates/ui-egui/src/fillpatterns.rs:952
+msgid "Pattern preview"
+msgstr ""
+
+#: crates/ui-egui/src/fillpatterns.rs:986
+msgid "Pick Again"
+msgstr ""
+
+#: crates/ui-egui/src/fillpatterns.rs:569
+msgid "Pick the lines and the tile's corners again: the pattern keeps its name"
+msgstr ""
+
+#: crates/ui-egui/src/fillpatterns.rs:527
+#: crates/ui-egui/src/fillpatterns.rs:570
+msgid "Redefine"
+msgstr ""
+
+#: crates/ui-egui/src/fillpatterns.rs:631
+msgid "Replace imported by same name"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4112
+msgid "Select fill pattern lines then press Enter"
+msgstr ""
+
+#: crates/ui-egui/src/fillpatterns.rs:810
+msgid "Select the detail lines the pattern is made of, then press Enter."
+msgstr ""
+
+#: crates/ui-egui/src/fillpatterns.rs:610
+msgid "Simple Lines"
+msgstr ""
+
+#: crates/ui-egui/src/fillpatterns.rs:973
+msgid "Too dense to preview at this size."
+msgstr ""
+
+#: crates/ui-egui/src/fillpatterns.rs:949
+msgid "{} line families, repeating a tile {} × {} (outlined)."
+msgstr ""
+
+#: crates/ui-egui/src/fillpatterns.rs:387
+msgid "{} line {}: {}"
+msgstr ""
+
+#: crates/ui-egui/src/fillpatterns.rs:945
+msgid "{} redefined from lines"
+msgstr ""
+
+#: crates/ui-egui/src/fillpatterns.rs:570
+msgid "{}: Redefine"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3039
 #~ msgid "Aligned Dimension (DI): pick parallel wall faces, wall ends, doors, windows or grids, then click where the dimension line goes"
 #~ msgstr "Zarovnaná kóta (DI): vyberte rovnoběžné plochy stěn, konce stěn, dveře, okna nebo osnovy a potom klikněte do místa vynášecí čáry"

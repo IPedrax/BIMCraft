@@ -8653,6 +8653,119 @@ msgstr ""
 msgid "{} Template"
 msgstr ""
 
+#: crates/ui-egui/src/lib.rs:3451
+msgid "Annotation Settings"
+msgstr "注释设置"
+
+#: crates/ui-egui/src/lib.rs:3450
+msgid "Annotation Settings: line weights, line styles, line patterns and fill patterns"
+msgstr "注释设置：线宽、线样式、线型图案和填充图案"
+
+#: crates/ui-egui/src/lib.rs:4115 crates/ui-egui/src/lib.rs:4255
+msgid "Click on Bottom Left Corner"
+msgstr "单击左下角"
+
+#: crates/ui-egui/src/lib.rs:4116
+msgid "Click on Top Right Corner"
+msgstr "单击右上角"
+
+#: crates/ui-egui/src/fillpatterns.rs:574
+msgid "Each line's angle, origin and spacing"
+msgstr "每条线的角度、原点和间距"
+
+#: crates/ui-egui/src/lib.rs:3468
+msgid "Fill Patterns: the patterns filled regions and materials fill with, simple or made from lines drawn"
+msgstr "填充图案：填充区域和材质使用的图案，简单图案或由绘制的线生成"
+
+#: crates/ui-egui/src/fillpatterns.rs:780
+msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
+msgstr "请先完成或取消草图：图案的线在平面图中选取。"
+
+#: crates/ui-egui/src/fillpatterns.rs:632
+msgid "Import: a pattern of the file replaces the one of its name in this list; unchecked, it is left out"
+msgstr "导入：文件中的图案替换此列表中的同名图案；不勾选则跳过"
+
+#: crates/ui-egui/src/lib.rs:3464
+msgid "Line Patterns: the dashes, dots, spaces and shapes lines are drawn with"
+msgstr "线型图案：绘制线条所用的划线、点、空格和形状"
+
+#: crates/ui-egui/src/lib.rs:3460
+msgid "Line Styles: the pen, colour and line pattern detail lines draw in"
+msgstr "线样式：详图线使用的笔、颜色和线型图案"
+
+#: crates/ui-egui/src/fillpatterns.rs:374
+msgid "Lines of {}"
+msgstr "{} 的线"
+
+#: crates/ui-egui/src/fillpatterns.rs:611
+msgid "Made of detail lines picked in the plan, repeating the rectangle between two corners"
+msgstr "由在平面图中选取的详图线生成，重复两个角点之间的矩形"
+
+#: crates/ui-egui/src/fillpatterns.rs:945
+msgid "New pattern from lines"
+msgstr "由线生成的新图案"
+
+#: crates/ui-egui/src/fillpatterns.rs:782
+msgid "Open a plan to pick the pattern's lines in: detail lines are drawn in plans."
+msgstr "请打开平面图以选取图案的线：详图线绘制在平面图中。"
+
+#: crates/ui-egui/src/fillpatterns.rs:610
+msgid "Parallel lines at an angle and a spacing, crosshatched or not"
+msgstr "按角度和间距排列的平行线，可交叉或不交叉"
+
+#: crates/ui-egui/src/fillpatterns.rs:952
+msgid "Pattern preview"
+msgstr "图案预览"
+
+#: crates/ui-egui/src/fillpatterns.rs:986
+msgid "Pick Again"
+msgstr "重新选取"
+
+#: crates/ui-egui/src/fillpatterns.rs:569
+msgid "Pick the lines and the tile's corners again: the pattern keeps its name"
+msgstr "重新选取线和单元的角点：图案保留其名称"
+
+#: crates/ui-egui/src/fillpatterns.rs:527
+#: crates/ui-egui/src/fillpatterns.rs:570
+msgid "Redefine"
+msgstr "重新定义"
+
+#: crates/ui-egui/src/fillpatterns.rs:631
+msgid "Replace imported by same name"
+msgstr "替换同名导入项"
+
+#: crates/ui-egui/src/lib.rs:4112
+msgid "Select fill pattern lines then press Enter"
+msgstr "选择填充图案的线，然后按 Enter"
+
+#: crates/ui-egui/src/fillpatterns.rs:810
+msgid "Select the detail lines the pattern is made of, then press Enter."
+msgstr "选择构成图案的详图线，然后按 Enter。"
+
+#: crates/ui-egui/src/fillpatterns.rs:610
+msgid "Simple Lines"
+msgstr "简单线"
+
+#: crates/ui-egui/src/fillpatterns.rs:973
+msgid "Too dense to preview at this size."
+msgstr "图案过密，无法以此尺寸预览。"
+
+#: crates/ui-egui/src/fillpatterns.rs:949
+msgid "{} line families, repeating a tile {} × {} (outlined)."
+msgstr "{} 个线族，重复一个 {} × {} 的单元（已框出）。"
+
+#: crates/ui-egui/src/fillpatterns.rs:387
+msgid "{} line {}: {}"
+msgstr "{} 线 {}：{}"
+
+#: crates/ui-egui/src/fillpatterns.rs:945
+msgid "{} redefined from lines"
+msgstr "由线重新定义的 {}"
+
+#: crates/ui-egui/src/fillpatterns.rs:570
+msgid "{}: Redefine"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3433
 #~ msgid "Click a point the arc passes through: it sets the radius. Esc cancels."
 #~ msgstr "单击圆弧经过的一点：由此确定半径。按 Esc 取消。"

@@ -8653,6 +8653,119 @@ msgstr ""
 msgid "{} Template"
 msgstr ""
 
+#: crates/ui-egui/src/lib.rs:3451
+msgid "Annotation Settings"
+msgstr "Configurações de anotação"
+
+#: crates/ui-egui/src/lib.rs:3450
+msgid "Annotation Settings: line weights, line styles, line patterns and fill patterns"
+msgstr "Configurações de anotação: espessuras, estilos e padrões de linha e padrões de preenchimento"
+
+#: crates/ui-egui/src/lib.rs:4115 crates/ui-egui/src/lib.rs:4255
+msgid "Click on Bottom Left Corner"
+msgstr "Clique no canto inferior esquerdo"
+
+#: crates/ui-egui/src/lib.rs:4116
+msgid "Click on Top Right Corner"
+msgstr "Clique no canto superior direito"
+
+#: crates/ui-egui/src/fillpatterns.rs:574
+msgid "Each line's angle, origin and spacing"
+msgstr "O ângulo, a origem e o espaçamento de cada linha"
+
+#: crates/ui-egui/src/lib.rs:3468
+msgid "Fill Patterns: the patterns filled regions and materials fill with, simple or made from lines drawn"
+msgstr "Padrões de preenchimento: os padrões com que regiões preenchidas e materiais são preenchidos, simples ou feitos de linhas desenhadas"
+
+#: crates/ui-egui/src/fillpatterns.rs:780
+msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
+msgstr "Termine ou cancele o esboço primeiro: as linhas de um padrão são escolhidas na planta."
+
+#: crates/ui-egui/src/fillpatterns.rs:632
+msgid "Import: a pattern of the file replaces the one of its name in this list; unchecked, it is left out"
+msgstr "Importar: um padrão do arquivo substitui o de mesmo nome nesta lista; desmarcado, ele fica de fora"
+
+#: crates/ui-egui/src/lib.rs:3464
+msgid "Line Patterns: the dashes, dots, spaces and shapes lines are drawn with"
+msgstr "Padrões de linha: os traços, pontos, espaços e formas com que as linhas são desenhadas"
+
+#: crates/ui-egui/src/lib.rs:3460
+msgid "Line Styles: the pen, colour and line pattern detail lines draw in"
+msgstr "Estilos de linha: a pena, a cor e o padrão de linha com que as linhas de detalhe são desenhadas"
+
+#: crates/ui-egui/src/fillpatterns.rs:374
+msgid "Lines of {}"
+msgstr "Linhas de {}"
+
+#: crates/ui-egui/src/fillpatterns.rs:611
+msgid "Made of detail lines picked in the plan, repeating the rectangle between two corners"
+msgstr "Feito de linhas de detalhe escolhidas na planta, repetindo o retângulo entre dois cantos"
+
+#: crates/ui-egui/src/fillpatterns.rs:945
+msgid "New pattern from lines"
+msgstr "Novo padrão a partir de linhas"
+
+#: crates/ui-egui/src/fillpatterns.rs:782
+msgid "Open a plan to pick the pattern's lines in: detail lines are drawn in plans."
+msgstr "Abra uma planta para escolher as linhas do padrão: linhas de detalhe são desenhadas em plantas."
+
+#: crates/ui-egui/src/fillpatterns.rs:610
+msgid "Parallel lines at an angle and a spacing, crosshatched or not"
+msgstr "Linhas paralelas com um ângulo e um espaçamento, cruzadas ou não"
+
+#: crates/ui-egui/src/fillpatterns.rs:952
+msgid "Pattern preview"
+msgstr "Pré-visualização do padrão"
+
+#: crates/ui-egui/src/fillpatterns.rs:986
+msgid "Pick Again"
+msgstr "Escolher novamente"
+
+#: crates/ui-egui/src/fillpatterns.rs:569
+msgid "Pick the lines and the tile's corners again: the pattern keeps its name"
+msgstr "Escolha de novo as linhas e os cantos do módulo: o padrão mantém o nome"
+
+#: crates/ui-egui/src/fillpatterns.rs:527
+#: crates/ui-egui/src/fillpatterns.rs:570
+msgid "Redefine"
+msgstr "Redefinir"
+
+#: crates/ui-egui/src/fillpatterns.rs:631
+msgid "Replace imported by same name"
+msgstr "Substituir importados de mesmo nome"
+
+#: crates/ui-egui/src/lib.rs:4112
+msgid "Select fill pattern lines then press Enter"
+msgstr "Selecione as linhas do padrão de preenchimento e pressione Enter"
+
+#: crates/ui-egui/src/fillpatterns.rs:810
+msgid "Select the detail lines the pattern is made of, then press Enter."
+msgstr "Selecione as linhas de detalhe de que o padrão é feito e pressione Enter."
+
+#: crates/ui-egui/src/fillpatterns.rs:610
+msgid "Simple Lines"
+msgstr "Linhas simples"
+
+#: crates/ui-egui/src/fillpatterns.rs:973
+msgid "Too dense to preview at this size."
+msgstr "Denso demais para pré-visualizar neste tamanho."
+
+#: crates/ui-egui/src/fillpatterns.rs:949
+msgid "{} line families, repeating a tile {} × {} (outlined)."
+msgstr "{} famílias de linhas, repetindo um módulo de {} × {} (contornado)."
+
+#: crates/ui-egui/src/fillpatterns.rs:387
+msgid "{} line {}: {}"
+msgstr "{} linha {}: {}"
+
+#: crates/ui-egui/src/fillpatterns.rs:945
+msgid "{} redefined from lines"
+msgstr "{} redefinido a partir de linhas"
+
+#: crates/ui-egui/src/fillpatterns.rs:570
+msgid "{}: Redefine"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3433
 #~ msgid "Click a point the arc passes through: it sets the radius. Esc cancels."
 #~ msgstr "Clique num ponto por onde o arco passa: ele define o raio. Esc cancela."

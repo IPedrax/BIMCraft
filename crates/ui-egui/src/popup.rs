@@ -109,8 +109,12 @@ pub(crate) struct Response<R> {
 }
 
 impl<R> Response<R> {
+    /// The corner's × or Escape (when this is the dialog on top and no list of it is open). A click beside the dialog, on the
+    /// dimmed window behind it, does nothing: a draft is dropped only by asking.
     pub(crate) fn should_close(&self) -> bool {
-        self.closable && (self.close || self.response.should_close())
+        let r = &self.response;
+        let escape = || r.response.ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+        self.closable && (self.close || r.response.should_close() || (r.is_top_modal && !r.any_popup_open && escape()))
     }
 }
 

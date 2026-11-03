@@ -20,35 +20,35 @@ fn said(h: &Harness<BimApp>, text: &str) -> bool {
     h.query_all_by_label_contains(text).count() > 0
 }
 
+/// Manage > Annotation Settings > Fill Patterns: the patterns, all the dialog shows there.
 fn fill_patterns(h: &mut Harness<BimApp>) {
-    press(h, "Manage");
-    press(h, "Fill Patterns");
+    annotation(h, "Fill Patterns");
 }
 
 fn patterns_tab(h: &mut Harness<BimApp>) {
     fill_patterns(h);
-    press(h, "Patterns");
+}
+
+/// New Pattern > Simple Lines: a row of 45°, 2 mm.
+fn new_simple(h: &mut Harness<BimApp>) {
+    press(h, "New Pattern");
+    press(h, "Simple Lines");
 }
 
 #[test]
-fn a_pattern_or_a_type_deleted_and_made_again_under_its_name_is_the_new_one() {
+fn a_pattern_deleted_and_made_again_under_its_name_is_the_new_one() {
     let mut h = app(BOX);
     patterns_tab(&mut h);
     press(&mut h, "Sand: Delete");
-    press(&mut h, "New Pattern");
+    new_simple(&mut h);
     type_into(&mut h, "Pattern 1: Name", "Sand");
-    type_into(&mut h, "Sand: Angle", "30");
-    press(&mut h, "Region Types");
-    press(&mut h, "Brick: Delete");
-    press(&mut h, "New Type");
-    type_into(&mut h, "Region Type 1: Name", "Brick");
-    choose(&mut h, "Brick: Foreground", "Tile 300");
+    press(&mut h, "Sand: Edit Lines");
+    type_into(&mut h, "Sand line 1: Angle", "30");
     press(&mut h, "OK");
     assert!(h.state().fill_patterns_dialog.is_none(), "{}", h.state().status.text);
     let m = &h.state().session.model;
     assert_eq!(m.fill_patterns["Sand"].lines, vec![HatchLine::simple(30.0, 2.0)], "the new pattern, not gone with the old");
     assert_eq!(m.region_types["Sand"].foreground, None, "the type that had the old one has none");
-    assert_eq!(m.region_types["Brick"].foreground.as_deref(), Some("Tile 300"), "the new type, not gone with the old");
 }
 
 #[test]
@@ -92,15 +92,6 @@ fn renames_that_chain_swap_or_take_a_deleted_name_are_done_in_an_order_the_core_
     let m = &h.state().session.model;
     assert_eq!((angle(&h, "Bb"), m.fill_patterns.contains_key("Aa")), (10.0, false));
     assert!(m.fill_patterns.keys().all(|n| !n.contains("deleted")), "{:?}", m.fill_patterns.keys().collect::<Vec<_>>());
-    // Types too: two region types swap names.
-    let mut h = app(&format!("{script}\nfilled_region_type {{\"name\": \"Tb\", \"foreground\": \"Bb\"}}"));
-    fill_patterns(&mut h);
-    type_into(&mut h, "Tb: Name", "Uses Aa");
-    type_into_nth(&mut h, "Uses Aa: Name", 1, "Tb");
-    press(&mut h, "OK");
-    assert!(h.state().fill_patterns_dialog.is_none(), "{}", h.state().status.text);
-    let m = &h.state().session.model;
-    assert_eq!((m.region_types["Tb"].foreground.as_deref(), m.region_types["Uses Aa"].foreground.as_deref()), (Some("Aa"), Some("Bb")));
 }
 
 #[test]
@@ -115,14 +106,14 @@ fn apply_is_refused_when_the_project_changed_while_the_draft_was_open() {
     assert!(h.state().fill_patterns_dialog.is_some(), "it stays open to say why");
     assert!(said(&h, "changed"), "the dialog says it itself");
     let m = &h.state().session.model;
-    assert!(m.region_types.contains_key("Agent Type") && m.region_types.contains_key("Crosshatch"), "nothing of the draft was done");
+    assert!(m.region_types.contains_key("Agent Type") && m.fill_patterns.contains_key("Crosshatch"), "nothing of the draft was done");
     // Cancelled and opened again, it is the project as it is.
     press(&mut h, "Cancel");
     fill_patterns(&mut h);
     type_into(&mut h, "Crosshatch: Name", "Grid");
     press(&mut h, "OK");
     let m = &h.state().session.model;
-    assert!(m.region_types.contains_key("Grid") && m.region_types.contains_key("Agent Type"));
+    assert!(m.fill_patterns.contains_key("Grid") && m.region_types.contains_key("Agent Type"));
 }
 
 #[test]
@@ -130,7 +121,7 @@ fn blank_and_repeated_names_are_refused_inside_the_dialog_and_nothing_is_done() 
     let mut h = app(BOX);
     patterns_tab(&mut h);
     let before = h.state().session.model.to_json().unwrap();
-    press(&mut h, "New Pattern");
+    new_simple(&mut h);
     type_into(&mut h, "Pattern 1: Name", "  ");
     press(&mut h, "OK");
     assert!(h.state().fill_patterns_dialog.is_some() && said(&h, "Enter a name"));
@@ -229,11 +220,13 @@ fn a_crosshatch_that_is_not_square_the_way_angle_plus_90_is_is_left_as_it_is() {
     press(&mut h, "OK");
     assert_eq!(h.state().session.history().len(), steps, "looking at it sent no command");
     assert_eq!(h.state().session.model.fill_patterns["Odd"], before);
-    // Touching its angle does rewrite it.
+    // Touching one line's angle changes that line alone.
     patterns_tab(&mut h);
-    type_into(&mut h, "Odd: Angle", "30");
+    press(&mut h, "Odd: Edit Lines");
+    type_into(&mut h, "Odd line 1: Angle", "30");
     press(&mut h, "OK");
-    assert_eq!(h.state().session.model.fill_patterns["Odd"].lines[1].angle, 120.0);
+    let lines = &h.state().session.model.fill_patterns["Odd"].lines;
+    assert_eq!((lines[0].angle, lines[1].angle), (30.0, 0.0));
 }
 
 /// The button named `label` pressed as a screen reader does: the dialog's rows shift as a long note changes its height, and a
@@ -262,8 +255,8 @@ fn the_import_and_export_buttons_ask_for_a_file_and_work_on_the_draft_not_the_pr
     // The pattern the project lacks came in; the one it has was kept, and the dialog says it was left out, in itself.
     assert!(h.query_by_label("Wicker: Name").is_some() && said(&h, "left out") && said(&h, "Sand"));
     assert!(!h.state().session.model.fill_patterns.contains_key("Wicker"), "a draft until OK");
-    // With Replace Same Name, the file's Sand takes the place of the draft's.
-    press(&mut h, "Replace Same Name");
+    // With Replace imported by same name, the file's Sand takes the place of the draft's.
+    press(&mut h, "Replace imported by same name");
     activate(&mut h, "Import...");
     answer(&mut h, &file);
     // Export writes what the draft holds, which the project doesn't yet.
@@ -364,7 +357,6 @@ fn a_solid_fill_is_told_solid_in_portuguese_and_spanish_not_as_a_continuous_line
         let model = h.state().session.model.clone();
         h.state_mut().fill_patterns_dialog = Some(crate::fillpatterns::FillPatternsDialog::new(&model));
         h.run();
-        press(&mut h, translated_in(l, "Patterns").unwrap_or("Patterns"));
         let (fill, line) = (translated_in(l, "Solid Fill").unwrap(), translated_in(l, "Solid").unwrap());
         assert_ne!(fill, line, "{l:?}: a fill and a line pattern are two words");
         assert!(h.query_all_by_label(fill).next().is_some(), "{l:?}: the solid fill is `{fill}`");
@@ -374,7 +366,7 @@ fn a_solid_fill_is_told_solid_in_portuguese_and_spanish_not_as_a_continuous_line
 
 fn line_styles(h: &mut Harness<BimApp>) {
     press(h, "Manage");
-    press(h, "Line Styles");
+    annotation(h, "Line Styles");
 }
 
 #[test]
@@ -491,19 +483,18 @@ fn a_duplicate_made_in_edit_type_goes_to_the_regions_selected_and_not_to_the_oth
 #[test]
 fn an_apply_that_fails_part_way_does_nothing_and_says_why_inside_the_dialog() {
     let mut h = app(&format!(
-        "{BOX}\nfilled_region {{\"sketch\": [[[1000,1000],[2000,1000]],[[2000,1000],[2000,2000]],[[2000,2000],[1000,1000]]], \"type\": \"Sand\"}}"
+        "{BOX}\nfill_pattern {{\"name\": \"Gravel\", \"lines\": [{{\"angle\": 30, \"spacing\": 4}}]}}\nmaterial {{\"name\": \"Ballast\", \"cut\": \"Gravel\"}}"
     ));
+    assert_eq!(h.state().session.model.materials["Ballast"].cut_pattern.as_deref(), Some("Gravel"));
     let before = h.state().session.model.to_json().unwrap();
-    fill_patterns(&mut h);
-    // The first command of the draft would do; the last (deleting the type a region is of) is refused.
+    // The first command of the draft would do; the last (deleting the pattern a material shows) is refused.
     patterns_tab(&mut h);
     type_into(&mut h, "Crosshatch: Name", "Grid");
-    press(&mut h, "Region Types");
-    press(&mut h, "Sand: Delete");
+    press(&mut h, "Gravel: Delete");
     let steps = h.state().session.history().len();
     press(&mut h, "OK");
     assert!(h.state().fill_patterns_dialog.is_some(), "it stays open to fix it");
-    assert!(said(&h, "filled region"), "and says why");
+    assert!(said(&h, "material"), "and says why");
     assert_eq!(h.state().session.model.to_json().unwrap(), before, "the rename that came first is undone");
     assert_eq!(h.state().session.history().len(), steps, "and no step is left");
 }
@@ -520,26 +511,4 @@ fn the_detail_panels_create_group_button_groups_what_is_selected() {
     press(&mut h, "Create Group");
     assert_eq!((ids(&h, "detailgroup").len(), ids(&h, "line").len()), (1, 0));
     assert_eq!(h.state().selection, ids(&h, "detailgroup"));
-}
-
-#[test]
-fn the_type_swatches_stand_on_the_canvas_paper_in_every_look() {
-    // Ink is the canvas's colour, so it needs the canvas's ground: in a dark interface with a light canvas, black on the dialog's
-    // own dark ground would be lost.
-    for (dark, light_canvas) in [(false, false), (true, false), (true, true)] {
-        let mut h = app(BOX);
-        h.state_mut().light_canvas = light_canvas;
-        h.ctx.set_theme(if dark { egui::Theme::Dark } else { egui::Theme::Light });
-        h.run();
-        fill_patterns(&mut h);
-        h.run();
-        let paper = crate::canvas::color(bimcraft_core::render::PAPER);
-        let swatches = painted(&h)
-            .iter()
-            .filter(|s| matches!(s, egui::Shape::Rect(r) if r.fill == paper && (r.rect.width() - 60.0).abs() < 0.5 && (r.rect.height() - 22.0).abs() < 0.5))
-            .count();
-        // Six types, each with a foreground and a background.
-        assert_eq!(swatches, 12, "dark {dark}, light canvas {light_canvas}");
-        assert_eq!(paper == egui::Color32::WHITE, !dark || light_canvas, "the canvas is as light as the look says");
-    }
 }
