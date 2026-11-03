@@ -490,6 +490,31 @@ impl Step {
         self.shell(&ring(0.0), &ring(rise))
     }
 
+    /// A closed solid's shell (`model::Polyhedron`): each corner written once, so its faces share their edges; heights
+    /// from `base`.
+    fn polyhedron(&mut self, (corners, faces): &crate::model::Polyhedron, base: f64) -> u64 {
+        let pts: Vec<u64> =
+            corners.iter().map(|p| self.add(format!("IFCCARTESIANPOINT(({},{},{}))", real(p[0]), real(p[1]), real(p[2] - base)))).collect();
+        let faces: Vec<u64> = faces
+            .iter()
+            .map(|loops| {
+                let bounds: Vec<u64> = loops
+                    .iter()
+                    .enumerate()
+                    .map(|(k, l)| {
+                        let refs_: Vec<u64> = l.iter().filter_map(|&i| pts.get(i).copied()).collect();
+                        let lp = self.add(format!("IFCPOLYLOOP(({}))", refs(&refs_)));
+                        let kind = if k == 0 { "IFCFACEOUTERBOUND" } else { "IFCFACEBOUND" };
+                        self.add(format!("{kind}(#{lp},.T.)"))
+                    })
+                    .collect();
+                self.add(format!("IFCFACE(({}))", refs(&bounds)))
+            })
+            .collect();
+        let shell = self.add(format!("IFCCLOSEDSHELL(({}))", refs(&faces)));
+        self.add(format!("IFCFACETEDBREP(#{shell})"))
+    }
+
     /// A closed shell from the counter-clockwise `bottom` ring up to `top`, the same points above
     /// it: its faces turned out.
     fn shell(&mut self, bottom: &[[f64; 3]], top: &[[f64; 3]]) -> u64 {
@@ -719,12 +744,17 @@ pub fn export(m: &Model) -> String {
             Element::Floor(f) => {
                 let Some(&(_, storey)) = storeys.get(&f.level) else { continue };
                 let at = w.place(Some(storey), (0.0, 0.0, 0.0), None);
-                // Level, its outline less its openings swept up to its top; sloped, a shell round each
+                // Level, its outline less its openings swept up to its top; sloped or shaped, a shell round each
                 // piece of it.
                 let depth = m.floor_depth(f);
-                let shape = if m.floor_top(f).g == P2(0.0, 0.0) {
+                let level = m.floor_top(f).g == P2(0.0, 0.0) && f.shape.is_empty();
+                let solid = m.shape_solid(f);
+                let shape = if level {
                     let profile = w.profile(&f.boundary, &f.openings);
                     w.body(profile, f.offset - depth, depth, &[])
+                } else if let Some(solid) = &solid {
+                    let brep = w.polyhedron(solid, m.elevation(f.level));
+                    w.solid(&[brep], &[])
                 } else {
                     let faces: Vec<Vec<P3>> = m.floor_slabs(f).into_iter().map(|(face, _)| face).collect();
                     w.breps(&faces, m.elevation(f.level), depth)
@@ -742,10 +772,12 @@ pub fn export(m: &Model) -> String {
                 if f.structural {
                     w.load_bearing(ent, "Pset_SlabCommon", id);
                 }
-                // A level slab measures as its outline less its openings, through its depth; a sloped one has no plan
-                // area to give, so only its depth.
-                let net = geom::area(&f.boundary).abs() - f.openings.iter().map(|o| geom::area(o).abs()).sum::<f64>();
-                let values = if m.floor_top(f).g == P2(0.0, 0.0) {
+                // A level slab measures as its outline less its openings, through its depth; a sloped or shaped one has no
+                // one plan area to give, so its depth, and its volumes: its plan through its depth plumb, as its underside
+                // follows its top.
+                let gross = geom::area(&f.boundary).abs();
+                let net = gross - f.openings.iter().map(|o| geom::area(o).abs()).sum::<f64>();
+                let values = if level {
                     vec![
                         ("Width", "LENGTH", depth),
                         ("Perimeter", "LENGTH", perimeter(&f.boundary)),
@@ -755,7 +787,14 @@ pub fn export(m: &Model) -> String {
                         ("NetVolume", "VOLUME", net * depth / 1e9),
                     ]
                 } else {
-                    vec![("Width", "LENGTH", depth)]
+                    // A shaped one's, its solid's: under a variable layer its underside is level, so its depth isn't one.
+                    let (gross, net) = match &solid {
+                        Some(solid) => {
+                            (m.shape_solid_over(f, &[]).map_or(gross * depth, |s| crate::model::volume(&s)), crate::model::volume(solid))
+                        }
+                        None => (gross * depth, net * depth),
+                    };
+                    vec![("Width", "LENGTH", depth), ("GrossVolume", "VOLUME", gross / 1e9), ("NetVolume", "VOLUME", net / 1e9)]
                 };
                 w.quantities(ent, "Qto_SlabBaseQuantities", &values, id);
             }
@@ -1080,7 +1119,11 @@ pub fn export(m: &Model) -> String {
             Element::Roof(r) => {
                 let (Some(&(_, storey)), pieces) = (storeys.get(&r.level), m.roof_slabs(r)) else { continue };
                 let at = w.place(Some(storey), (0.0, 0.0, 0.0), None);
-                let breps: Vec<u64> = pieces.iter().map(|(face, rise)| w.brep(face, m.elevation(r.level), *rise)).collect();
+                // A shaped one is one closed faceted Brep, as a shaped floor is; any other a shell round each piece.
+                let breps: Vec<u64> = match m.roof_solid(r) {
+                    Some(solid) => vec![w.polyhedron(&solid, m.elevation(r.level))],
+                    None => pieces.iter().map(|(face, rise)| w.brep(face, m.elevation(r.level), *rise)).collect(),
+                };
                 let shape = w.solid(&breps, &[]);
                 let kind = match (&r.extrusion, r.slope == 0.0, r.gable || !r.gables.is_empty()) {
                     (Some(x), ..) => [".SHED_ROOF.", ".GABLE_ROOF."].get(x.profile.len().saturating_sub(2)).unwrap_or(&".FREEFORM."),
@@ -1260,7 +1303,9 @@ pub fn export(m: &Model) -> String {
                 Function::Substrate => "'Substrate'",
                 Function::Membrane => "'Membrane'",
             };
-            ids.push(w.add(format!("IFCMATERIALLAYER({material},{},$,$,$,{category},$)", real(l.thickness))));
+            // The variable layer (MOD-16) says so in its description: IFC has no word of its own for a layer that tapers.
+            let description = if l.variable { "'Variable'" } else { "$" };
+            ids.push(w.add(format!("IFCMATERIALLAYER({material},{},$,$,{description},{category},$)", real(l.thickness))));
         }
         w.add(format!("IFCMATERIALLAYERSET(({}),{},$)", refs(&ids), s(name)))
     };
@@ -2026,5 +2071,90 @@ mod tests {
         attached.attach_top = Some(m.guid(walls[1]));
         let names: Vec<&str> = wall_quantities(m, &attached, &[]).iter().map(|(n, _, _)| *n).collect();
         assert_eq!(names, ["Length", "Width"]);
+    }
+
+    /// Every closed shell in `f` is closed: each edge of its faces, from one point to the next round a bound, is run once
+    /// each way, so the shell has no gap and its faces turn one way.
+    fn closed(f: &str) {
+        let bodies: BTreeMap<u64, &str> = f
+            .lines()
+            .filter(|l| l.starts_with('#'))
+            .filter_map(|l| {
+                let (head, body) = l.split_once('=')?;
+                Some((head[1..].parse().ok()?, body.trim_end_matches(';')))
+            })
+            .collect();
+        let list = |body: &str| -> Vec<u64> {
+            let inner = body.split_once("((").map_or("", |(_, r)| r.split("))").next().unwrap_or(""));
+            inner.split(',').filter_map(|r| r.trim().trim_start_matches('#').parse().ok()).collect()
+        };
+        let shells: Vec<&str> = bodies.values().copied().filter(|b| b.starts_with("IFCCLOSEDSHELL(")).collect();
+        assert!(!shells.is_empty(), "no closed shell");
+        for shell in shells {
+            let mut edges: BTreeMap<(u64, u64), usize> = BTreeMap::new();
+            for face in list(shell) {
+                for bound in list(bodies[&face]) {
+                    let b = bodies[&bound];
+                    assert!(b.ends_with(",.T.)"), "{b}");
+                    let lp: u64 = b.split_once("(#").unwrap().1.split(',').next().unwrap().parse().unwrap();
+                    let pts = list(bodies[&lp]);
+                    for (a, z) in pts.iter().zip(pts.iter().cycle().skip(1)) {
+                        *edges.entry((*a, *z)).or_default() += 1;
+                    }
+                }
+            }
+            for (&(a, z), &n) in &edges {
+                assert_eq!(n, 1, "edge #{a} to #{z} run {n} times");
+                assert!(edges.contains_key(&(z, a)), "edge #{a} to #{z} has no face the other side: {shell}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_shaped_slab_is_one_closed_brep_and_sloped_and_shaped_slabs_give_their_volumes() {
+        use crate::graphics::testing::run;
+        let near = |a: f64, b: f64| (a - b).abs() < 1e-6 * b.abs().max(1.0);
+        let boundary = json!([[0, 0], [8000, 0], [8000, 6000], [0, 6000]]);
+        let mut s = Session::new();
+        let f = run(&mut s, "floor", json!({"boundary": boundary, "openings": [[[1000, 1000], [2000, 1000], [2000, 2000], [1000, 2000]]]}))
+            ["id"]
+            .as_u64()
+            .unwrap();
+        let shape = json!({"id": f, "points": [{"at": [5000, 3000], "z": -30}], "lines": [{"a": [5000, 3000], "b": [8000, 6000]}]});
+        run(&mut s, "edit_shape", shape);
+        let text = export(&s.model);
+        // One solid: its top's planes, the same planes under them, and its sides round its outline and its opening.
+        assert_eq!(of_kind(&text, "IFCFACETEDBREP").len(), 1, "one solid for the slab");
+        closed(&text);
+        dangling(&text);
+        let q = quantities_of(&text, *of_kind(&text, "IFCSLAB").last().unwrap(), "Qto_SlabBaseQuantities");
+        let depth = q["Width"];
+        assert!(depth > 0.0 && near(q["NetVolume"], 47.0 * depth / 1e3) && near(q["GrossVolume"], 48.0 * depth / 1e3), "{q:?}");
+        // A sloped slab: its plan area through its depth plumb.
+        let mut s = Session::new();
+        run(&mut s, "floor", json!({"boundary": boundary, "slope": 10, "arrow": [[0, 0], [8000, 0]]}));
+        let text = export(&s.model);
+        let q = quantities_of(&text, *of_kind(&text, "IFCSLAB").last().unwrap(), "Qto_SlabBaseQuantities");
+        let plumb = q["Width"];
+        assert!(near(q["NetVolume"], 48.0 * plumb / 1e3) && near(q["GrossVolume"], 48.0 * plumb / 1e3), "{q:?}");
+    }
+
+    #[test]
+    fn a_shaped_slab_over_a_variable_layer_has_a_level_underside_in_ifc() {
+        use crate::graphics::testing::run;
+        let mut s = Session::new();
+        let layers = json!([{"function": "finish", "thickness": 10}, {"function": "substrate", "thickness": 60, "variable": true}, {"thickness": 200}]);
+        run(&mut s, "type", json!({"category": "floor", "name": "Terrace", "layers": layers}));
+        let boundary = json!([[0, 0], [8000, 0], [8000, 6000], [0, 6000]]);
+        let f = run(&mut s, "floor", json!({"boundary": boundary, "type": "Terrace"}))["id"].as_u64().unwrap();
+        run(&mut s, "edit_shape", json!({"id": f, "points": [{"at": [4000, 3000], "z": -30}]}));
+        let text = export(&s.model);
+        closed(&text);
+        // 48 m² of 270 mm less the pyramid the drain takes out of its top: 48 m² by 30 mm over 3.
+        let q = quantities_of(&text, *of_kind(&text, "IFCSLAB").last().unwrap(), "Qto_SlabBaseQuantities");
+        let want = 48.0 * 0.270 - 48.0 * 0.030 / 3.0;
+        assert!((q["NetVolume"] - want).abs() < 1e-6 && (q["GrossVolume"] - want).abs() < 1e-6, "{q:?}");
+        // Every corner of its underside is at -270 mm.
+        assert!(text.contains("IFCCARTESIANPOINT((0.,0.,-270.))") && !text.contains("IFCCARTESIANPOINT((4000.,3000.,-300.))"));
     }
 }

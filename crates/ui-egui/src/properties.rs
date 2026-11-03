@@ -657,8 +657,8 @@ enum Subject {
     Schedule,
 }
 
-/// A type's layer as typed: what it does, what it's made of, how thick.
-type LayerRow = (Function, String, String);
+/// A type's layer as typed: what it does, what it's made of, how thick, and whether it's variable (a floor's or a roof's).
+type LayerRow = (Function, String, String, bool);
 
 /// The categories whose types have layers: a wall's from its exterior in, the others' from the top down.
 const LAYERED: [&str; 4] = ["wall", "floor", "roof", "ceiling"];
@@ -781,9 +781,9 @@ impl TypeDialog {
     /// A layered type's layers, as typed: one structure layer as thick as it, without any.
     fn layers(m: &Model, category: &str, name: &str) -> Vec<LayerRow> {
         let Some((.., thickness, layers)) = m.layered_types().find(|(c, n, ..)| *c == category && *n == name) else { return Vec::new() };
-        let typed = |l: &Layer| (l.function, l.material.clone(), m.units.length(l.thickness));
+        let typed = |l: &Layer| (l.function, l.material.clone(), m.units.length(l.thickness), l.variable);
         match layers {
-            [] => vec![(Function::Structure, String::new(), m.units.length(thickness))],
+            [] => vec![(Function::Structure, String::new(), m.units.length(thickness), false)],
             layers => layers.iter().map(typed).collect(),
         }
     }
@@ -794,9 +794,13 @@ impl TypeDialog {
         let mut p = json!({"category": self.category, "name": name});
         let layered = copy || self.layers != self.layers_were;
         if layered {
-            let layers = self.layers.iter().map(|(function, material, typed)| {
+            let layers = self.layers.iter().map(|(function, material, typed, variable)| {
                 let thickness = units.parse(typed).ok_or_else(|| tf("{}: `{}` is not a length", &[t("Thickness"), typed]))?;
-                Ok(json!({"function": function, "material": material.trim(), "thickness": thickness}))
+                let mut l = json!({"function": function, "material": material.trim(), "thickness": thickness});
+                if *variable {
+                    l["variable"] = json!(true);
+                }
+                Ok(l)
             });
             p["layers"] = Value::Array(layers.collect::<Result<_, String>>()?);
         }
@@ -861,7 +865,7 @@ impl BimApp {
             ([], Tool::Dimension(..) | Tool::Angular(_) | Tool::Round(..), _) => Subject::New("dimension"),
             ([], Tool::Text, _) => Subject::New("text"),
             ([], Tool::DetailLine(_), _) => Subject::New("line"),
-            ([], Tool::Spot, _) => Subject::New("spot"),
+            ([], Tool::Spot | Tool::SpotSlope, _) => Subject::New("spot"),
             ([], Tool::Tag, _) => Subject::New("tag"),
             ([], Tool::Section(_), _) => Subject::New("section"),
             ([], Tool::Elevation, _) => Subject::New("elevation"),
@@ -2023,7 +2027,8 @@ impl BimApp {
                         }
                         if g == "Construction" && layered {
                             let (out, inward) = if d.category == "wall" { (msg!("Out"), msg!("In")) } else { ("Up", "Down") };
-                            tb.full(|ui| layer_editor(ui, &mut d.layers, model.units, &materials, (out, inward)));
+                            let variable = matches!(d.category, "floor" | "roof");
+                            tb.full(|ui| layer_editor(ui, &mut d.layers, model.units, &materials, (out, inward), variable));
                         }
                     }
                 });
@@ -2316,18 +2321,23 @@ impl BimApp {
 }
 
 /// A type's layers, exterior or top first: what each does, what it's made of (from the library),
-/// how thick; a new one on the outside, or on top, and each moved, or taken away.
-fn layer_editor(ui: &mut Ui, layers: &mut Vec<LayerRow>, units: Units, materials: &[String], (out, inward): (&str, &str)) {
+/// how thick; with `variable` (a floor's or a roof's), which one takes up a shaped top's falls; a new one on the outside, or on
+/// top, and each moved, or taken away.
+fn layer_editor(ui: &mut Ui, layers: &mut Vec<LayerRow>, units: Units, materials: &[String], (out, inward): (&str, &str), variable: bool) {
     ui.label(RichText::new(t("Layers")).strong());
     let mut action: Option<(usize, i8)> = None;
-    Grid::new("type-layers").num_columns(4).striped(true).spacing(vec2(8.0, 4.0)).show(ui, |ui| {
+    let mut varied: Option<usize> = None;
+    Grid::new("type-layers").num_columns(if variable { 5 } else { 4 }).striped(true).spacing(vec2(8.0, 4.0)).show(ui, |ui| {
         let function = ui.label(RichText::new(t("Function")).color(pal().muted));
         let material = ui.label(RichText::new(t("Material")).color(pal().muted));
         let thickness = ui.label(RichText::new(t("Thickness")).color(pal().muted));
+        if variable {
+            ui.label(RichText::new(t("Variable")).color(pal().muted));
+        }
         ui.label("");
         ui.end_row();
         let last = layers.len().saturating_sub(1);
-        for (k, (f, mat, typed)) in layers.iter_mut().enumerate() {
+        for (k, (f, mat, typed, var)) in layers.iter_mut().enumerate() {
             let c = ComboBox::from_id_salt(("layer-function", k)).selected_text(t(function_name(*f))).width(110.0).show_ui(ui, |ui| {
                 for (g, n) in FUNCTIONS {
                     if ui.selectable_label(*f == g, t(n)).clicked() {
@@ -2350,6 +2360,12 @@ fn layer_editor(ui: &mut Ui, layers: &mut Vec<LayerRow>, units: Units, materials
             });
             c.response.labelled_by(material.id);
             ui.add_sized([70.0, 20.0], TextEdit::singleline(typed).hint_text(units.name())).labelled_by(thickness.id);
+            if variable
+                && ui.checkbox(var, t("Variable")).on_hover_text(t("Takes up a shaped top's falls: one layer at most")).changed()
+                && *var
+            {
+                varied = Some(k);
+            }
             ui.horizontal(|ui| {
                 if ui.add_enabled(k > 0, Button::new(t(out)).small()).clicked() {
                     action = Some((k, -1));
@@ -2372,9 +2388,15 @@ fn layer_editor(ui: &mut Ui, layers: &mut Vec<LayerRow>, units: Units, materials
         Some((k, _)) if k + 1 < layers.len() => layers.swap(k, k + 1),
         _ => {}
     }
+    // One variable layer at most: the one just ticked.
+    if let Some(k) = varied {
+        for (j, row) in layers.iter_mut().enumerate() {
+            row.3 = j == k;
+        }
+    }
     // A finish 10 mm thick, on the exterior side.
     if ui.button(t("Insert Layer")).clicked() {
-        layers.insert(0, (Function::Finish, String::new(), units.length(10.0)));
+        layers.insert(0, (Function::Finish, String::new(), units.length(10.0), false));
     }
 }
 

@@ -876,6 +876,7 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         Element::FilledRegion(r) => filled_region(&mut d, m, r),
         Element::DetailGroup(g) => detail_group(&mut d, m, g),
         Element::RepeatingDetail(r) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
+        Element::Spot(sp) if sp.slope => slope_mark(&mut d, sp.at, m.spot_slope(sp)),
         Element::Spot(sp) => spot_mark(&mut d, view.px(sp.at), m.spot_value(sp), m.units),
         Element::Section(v) => section_mark(&mut d, v),
         Element::Elevation(v) => elevation_mark(&mut d, v),
@@ -1255,22 +1256,32 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
         if total <= 0.0 {
             continue;
         }
+        // A shaped floor's or roof's over a level underside: the layers above its variable one from the top, those below it
+        // from the bottom, the variable one between; any other's in proportion to their thicknesses.
+        let variable = m.variable_under(owner);
         d.owner = Some(owner);
         for r in rings {
             let &[a0, b0, b1, a1] = r.as_slice() else { continue };
-            // The line a fraction of the way down from its top to its bottom.
-            let at = |f: f64| (a1 + (a0 - a1) * f, b1 + (b0 - b1) * f);
-            let mut above = 0.0;
+            // Where each layer starts down from the top at each end.
+            let down = |top: P2, bottom: P2| {
+                let depth = top.1 - bottom.1;
+                crate::model::Variable::bounds(variable, layers, depth)
+                    .into_iter()
+                    .map(|x| if depth.abs() > 1e-9 { top + (bottom - top) * (x / depth) } else { top })
+                    .collect::<Vec<P2>>()
+            };
+            let (at_a, at_b) = (down(a1, a0), down(b1, b0));
             for (k, layer) in layers.iter().enumerate() {
-                let ((p, q), (p2, q2)) = (at(above / total), at((above + layer.thickness) / total));
-                let room = (p.1 - p2.1).abs() * d.view.scale;
+                let (Some(&p), Some(&q), Some(&p2), Some(&q2)) = (at_a.get(k), at_b.get(k), at_a.get(k + 1), at_b.get(k + 1)) else {
+                    continue;
+                };
+                let room = (p.1 - p2.1).abs().min((q.1 - q2.1).abs()) * d.view.scale;
                 cut_layer(&mut d, m, layer, &[p2, q2, q, p], (q - p).unit(), room);
                 if k > 0 {
                     d.part(Part::Pattern);
                     d.line(&[p, q], Pen::PROJECTION, INK, false);
                     d.part(Part::Cut);
                 }
-                above += layer.thickness;
             }
         }
     }
@@ -1348,7 +1359,8 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
             Element::DetailLine(l) if m.same(l.view, id) => detail_line(&mut d, m, l),
             Element::DetailGroup(g) if m.same(g.view, id) => detail_group(&mut d, m, g),
             Element::RepeatingDetail(r) if m.same(r.view, id) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
-            Element::Spot(sp) if m.same(sp.view, id) => {
+            // A spot slope reads a plan's floor or roof; a section has none to show.
+            Element::Spot(sp) if m.same(sp.view, id) && !sp.slope => {
                 let z = m.spot_value(sp).unwrap_or(sp.at.1);
                 spot_mark(&mut d, view.px(P2(sp.at.0, z)), Some(z), m.units);
             }
@@ -1631,6 +1643,14 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         }
         for ring in std::iter::once(&f.boundary).chain(&f.openings) {
             d.line(ring, BY_CATEGORY, FAINT, true);
+        }
+        // A shaped one's creases: the edges of each of its planes, as thin as its outline.
+        if !f.shape.is_empty() {
+            for (loops, _) in m.shape_planes(f).unwrap_or_default() {
+                for ring in &loops {
+                    d.line(ring, BY_CATEGORY, FAINT, true);
+                }
+            }
         }
         holes(&mut d, m, &m.floor_slabs(f));
         if let Some([tail, head]) = f.arrow.filter(|_| f.slope != 0.0) {
@@ -1938,6 +1958,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
             Element::DetailLine(l) if m.annotation_in(e, key) => detail_line(&mut d, m, l),
             Element::DetailGroup(g) if m.annotation_in(e, key) => detail_group(&mut d, m, g),
             Element::RepeatingDetail(r) if m.annotation_in(e, key) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
+            Element::Spot(sp) if sp.slope && m.annotation_in(e, key) && inside(sp.at) => slope_mark(&mut d, sp.at, m.spot_slope(sp)),
             Element::Spot(sp) if m.annotation_in(e, key) && inside(sp.at) => spot_mark(&mut d, view.px(sp.at), m.spot_value(sp), m.units),
             // A section's line is cropped as a line is.
             Element::Section(v) => section_mark(&mut d, v),
@@ -2569,9 +2590,16 @@ fn arrow(d: &mut Drawing, a: (f32, f32), b: (f32, f32)) -> (f32, f32) {
 // ponytail: openings aren't drawn; a dormer's roof covers its own. Draw them for skylights.
 fn roof(d: &mut Drawing, m: &Model, r: &Roof) {
     let faces = m.roof_faces(r).map_or_else(|_| vec![m.roof_outline(r)], |f| f.into_iter().flat_map(|(loops, _)| loops).collect());
+    // A shaped one's creases thin, as a shaped floor's are, its outline and courtyards as any roof's.
+    let shaped = !r.shape.is_empty();
     for f in faces {
         override_patterns(d, m, std::slice::from_ref(&f), false, (P2(0.0, 0.0), 0.0));
-        d.line(&f, BY_CATEGORY, INK, true);
+        d.line(&f, BY_CATEGORY, if shaped { FAINT } else { INK }, true);
+    }
+    if shaped {
+        for ring in std::iter::once(&r.boundary).chain(&r.courtyards) {
+            d.line(ring, BY_CATEGORY, INK, true);
+        }
     }
 }
 
@@ -3063,6 +3091,36 @@ fn spot_mark(d: &mut Drawing, (x, y): (f32, f32), z: Option<f64>, units: Units) 
     let w = font::width(&text, 10.0);
     d.stroke(vec![(x - 5.0, y - 8.0), (x + 9.0 + w, y - 8.0)], Pen::PROJECTION, INK, None, false);
     d.text(&text, (x + 7.0 + w / 2.0, y - 16.0), 10.0, INK);
+    d.grow(from, (x, y));
+}
+
+/// A spot slope: from its point an arrow 24 px long pointing downhill, and the fall over it, as `1.5%`; on the level, `0%`
+/// alone; `?` while its host has no top there.
+fn slope_mark(d: &mut Drawing, at: P2, read: Option<(f64, Option<P2>)>) {
+    let from = d.prims.len();
+    let (x, y) = d.view.px(at);
+    let text = read.map_or_else(|| "?".into(), |(f, _)| format!("{}%", figure(f)));
+    let w = font::width(&text, 10.0);
+    match read.and_then(|(_, way)| way) {
+        Some(way) => {
+            // Downhill on paper: the way in plan, as the view turns it, 24 px long.
+            let (fx, fy) = d.view.px(at + way * 1000.0);
+            let (dx, dy) = (fx - x, fy - y);
+            let n = dx.hypot(dy).max(1e-6);
+            let (ux, uy) = (dx / n, dy / n);
+            let tip = (x + ux * 24.0, y + uy * 24.0);
+            d.stroke(vec![(x, y), tip], Pen::PROJECTION, INK, None, false);
+            let back = (tip.0 - ux * 6.0, tip.1 - uy * 6.0);
+            let side = (-uy * 3.0, ux * 3.0);
+            d.push(Prim::Fill {
+                rings: vec![vec![tip, (back.0 + side.0, back.1 + side.1), (back.0 - side.0, back.1 - side.1)]],
+                color: INK,
+            });
+            // Its fall beside the arrow's middle, upright.
+            d.text(&text, (x + ux * 12.0 + w / 2.0 + 4.0 * uy.abs(), y + uy * 12.0 - 8.0), 10.0, INK);
+        }
+        None => d.text(&text, (x + w / 2.0 + 4.0, y - 8.0), 10.0, INK),
+    }
     d.grow(from, (x, y));
 }
 
@@ -4055,7 +4113,7 @@ mod tests {
     fn a_tools_sketch_of_annotation_is_the_size_its_view_would_draw_it() {
         let mut s = house();
         let view = View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
-        let spot = Element::Spot(crate::model::Spot { view: s.model.guid(100000), at: P2(4000.0, 3000.0), host: None });
+        let spot = Element::Spot(crate::model::Spot { view: s.model.guid(100000), at: P2(4000.0, 3000.0), host: None, slope: false });
         let text = |s: &Session| lettering(&sketch(&s.model, view, 99, &spot), 99);
         s.execute("scale", &serde_json::json!({"view": 100000, "scale": 50})).unwrap();
         let none = text(&s);

@@ -3207,6 +3207,176 @@ fn floors_go_under_the_walls_and_a_slope_arrow_slopes_them() {
 }
 
 #[test]
+fn shape_editing_raises_points_draws_split_lines_and_resets_a_floor() {
+    let mut h = app(BOX);
+    tool(&mut h, "Floor");
+    press(&mut h, "Walls' Outline");
+    press(&mut h, "Finish Edit Mode");
+    let floor = ids(&h, "floor");
+    // A drain 30 mm down in its middle, from Shape Editing's Add Point at the Options Bar's elevation.
+    press(&mut h, "Add Point");
+    type_into(&mut h, "Offset from Surface:", "-30");
+    click(&mut h, P2(4000.0, 3000.0));
+    let shape = field(&h, floor[0], "shape");
+    assert_eq!((shape["points"][0]["at"].clone(), shape["points"][0]["z"].clone()), (json!([4000.0, 3000.0]), json!(-30.0)), "{shape}");
+    assert_eq!(field(&h, floor[0], "top"), json!([-30.0, 0.0]));
+    assert_eq!((h.state().selection.as_slice(), &h.state().tool), (floor.as_slice(), &Tool::AddPoint), "ready for the next point");
+    // With Absolute, an elevation above the level, not the top: 10 mm under the level is 10 mm under the top here.
+    pick(&mut h, Role::RadioButton, "Absolute");
+    type_into(&mut h, "Elevation:", "-10");
+    click(&mut h, P2(2000.0, 1500.0));
+    assert_eq!(field(&h, floor[0], "shape")["points"].as_array().map(Vec::len), Some(2));
+    // A split line from a corner to the drain, each click snapping to them.
+    press(&mut h, "Add Split Line");
+    click(&mut h, P2(40.0, 5960.0));
+    click(&mut h, P2(3970.0, 3030.0));
+    let lines = field(&h, floor[0], "shape")["lines"].clone();
+    assert_eq!((lines[0]["a"].clone(), lines[0]["b"].clone()), (json!([0.0, 6000.0]), json!([4000.0, 3000.0])), "{lines}");
+    assert_eq!(h.state().tool, Tool::AddSplitLine(None), "ready for the next line");
+    // Reset Shape takes it all off, the floor still selected.
+    press(&mut h, "Reset Shape");
+    assert_eq!(field(&h, floor[0], "shape"), json!(null));
+    assert_eq!(h.state().selection, floor);
+}
+
+#[test]
+fn modify_sub_elements_selects_then_sets_a_points_height_or_an_edges_both_ends_and_deletes() {
+    let mut h = app(BOX);
+    tool(&mut h, "Floor");
+    press(&mut h, "Walls' Outline");
+    press(&mut h, "Finish Edit Mode");
+    let floor = ids(&h, "floor");
+    press(&mut h, "Add Point");
+    type_into(&mut h, "Offset from Surface:", "-30");
+    click(&mut h, P2(4000.0, 3000.0));
+    let id = field(&h, floor[0], "shape")["points"][0]["id"].clone();
+    // Nothing picked, the Elevation is blank; the drain picked, a little off it, it reads its height, and what's typed
+    // there, Enter, lowers it: the same point.
+    press(&mut h, "Modify Sub Elements");
+    assert_eq!(h.state().shape_z, "");
+    click(&mut h, P2(4030.0, 2970.0));
+    assert_eq!((h.state().shape_picked.len(), h.state().shape_z.as_str()), (1, "-30"));
+    type_into(&mut h, "Elevation:", "-50");
+    key(&mut h, Key::Enter);
+    let points = field(&h, floor[0], "shape")["points"].clone();
+    assert_eq!((points.as_array().map(Vec::len), points[0]["id"].clone(), points[0]["z"].clone()), (Some(1), id, json!(-50.0)), "{points}");
+    // An edge of the outline: both its corners, each a point now.
+    click(&mut h, P2(4000.0, 20.0));
+    assert_eq!(h.state().shape_z, "0");
+    type_into(&mut h, "Elevation:", "20");
+    key(&mut h, Key::Enter);
+    let points = field(&h, floor[0], "shape")["points"].clone();
+    let at = |x: f64, y: f64| points.as_array().unwrap().iter().find(|p| p["at"] == json!([x, y])).map(|p| p["z"].clone());
+    assert_eq!((at(0.0, 0.0), at(8000.0, 0.0)), (Some(json!(20.0)), Some(json!(20.0))), "{points}");
+    assert_eq!(field(&h, floor[0], "top"), json!([-50.0, 20.0]));
+    // The drain added with Shift: two heights, the Elevation blank; one typed sets them all.
+    click_with(&mut h, P2(4000.0, 3000.0), Modifiers::SHIFT);
+    assert_eq!((h.state().shape_picked.len(), h.state().shape_z.as_str()), (2, ""));
+    type_into(&mut h, "Elevation:", "5");
+    key(&mut h, Key::Enter);
+    let zs: Vec<Value> = field(&h, floor[0], "shape")["points"].as_array().unwrap().iter().map(|p| p["z"].clone()).collect();
+    assert!(zs.iter().all(|z| *z == json!(5.0)), "{zs:?}");
+    // Delete takes the drain off, the floor kept; its corners go back to the top's height.
+    click(&mut h, P2(4000.0, 3000.0));
+    key(&mut h, Key::Delete);
+    let shape = field(&h, floor[0], "shape");
+    assert!(!shape["points"].as_array().unwrap().iter().any(|p| p["at"] == json!([4000.0, 3000.0])), "{shape}");
+    assert_eq!((ids(&h, "floor"), &h.state().tool), (floor.clone(), &Tool::ModifySubElements));
+}
+
+#[test]
+fn modify_sub_elements_drags_a_point_with_its_split_lines_and_labels_its_height() {
+    let mut h = app(BOX);
+    tool(&mut h, "Floor");
+    press(&mut h, "Walls' Outline");
+    press(&mut h, "Finish Edit Mode");
+    let floor = ids(&h, "floor");
+    press(&mut h, "Add Point");
+    type_into(&mut h, "Offset from Surface:", "-30");
+    click(&mut h, P2(4000.0, 3000.0));
+    press(&mut h, "Add Split Line");
+    click(&mut h, P2(40.0, 5960.0));
+    click(&mut h, P2(3970.0, 3030.0));
+    // While shaping, the point's height beside it.
+    assert!(painted(&h).iter().any(|t| t == "-30"), "{:?}", painted(&h));
+    let id = field(&h, floor[0], "shape")["points"][0]["id"].clone();
+    // Its grip dragged: the same point, at its height, somewhere else, and the split line ending there with it.
+    press(&mut h, "Modify Sub Elements");
+    drag(&mut h, P2(4000.0, 3000.0), P2(5000.0, 2000.0));
+    let shape = field(&h, floor[0], "shape");
+    let p = &shape["points"][0];
+    assert_eq!((p["id"].clone(), p["at"].clone(), p["z"].clone()), (id, json!([5000.0, 2000.0]), json!(-30.0)), "{shape}");
+    assert_eq!(shape["lines"][0]["b"], json!([5000.0, 2000.0]), "{shape}");
+    assert_eq!((h.state().selection.as_slice(), &h.state().tool), (floor.as_slice(), &Tool::ModifySubElements));
+    // Away from shaping, no labels.
+    key(&mut h, Key::Escape);
+    key(&mut h, Key::Escape);
+    assert!(!painted(&h).iter().any(|t| t == "-30"), "{:?}", painted(&h));
+}
+
+#[test]
+fn a_shape_points_grip_held_mid_drag_previews_where_it_and_its_creases_will_go() {
+    let mut h = app(r#"floor {"boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}"#);
+    let floor = ids(&h, "floor")[0];
+    h.state_mut().run("edit_shape", json!({"id": floor, "points": [{"at": [4000, 3000], "z": -30}]}));
+    click(&mut h, P2(4000.0, 0.0));
+    press(&mut h, "Modify Sub Elements");
+    let (a, b) = (h.state().screen(P2(4000.0, 3000.0)), h.state().screen(P2(5000.0, 2000.0)));
+    h.hover_at(a);
+    h.run();
+    h.event(Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run();
+    for t in [0.5, 1.0] {
+        h.hover_at(a + (b - a) * t);
+        h.run();
+    }
+    // Held: the model as it was; the preview with the drain where the cursor is, the creases running to it.
+    assert_eq!(field(&h, floor, "shape")["points"][0]["at"], json!([4000.0, 3000.0]));
+    let preview = h.state().shape_preview.clone().expect("a preview while the grip is held");
+    assert_eq!((preview.shape.points[0].at, preview.shape.points[0].z), (P2(5000.0, 2000.0), -30.0));
+    let creases = h.state().session.model.shape_creases(&preview);
+    assert_eq!(creases.iter().flatten().filter(|p| (p[0], p[1]) == (5000.0, 2000.0)).count(), 4, "{creases:?}");
+    h.event(Event::PointerButton { pos: b, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run();
+    assert_eq!(field(&h, floor, "shape")["points"][0]["at"], json!([5000.0, 2000.0]));
+    assert!(h.state().shape_preview.is_none());
+}
+
+#[test]
+fn elevations_read_from_the_elevation_base_the_unshaped_top_the_level_or_the_project_zero() {
+    // On Level 2, 3000 mm up, its top 50 mm over the level.
+    let mut h = app(r#"floor {"level": 100001, "offset": 50, "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}"#);
+    topmost(&mut h, "Level 2");
+    let floor = ids(&h, "floor");
+    click(&mut h, P2(4000.0, 0.0));
+    assert_eq!(h.state().selection, floor);
+    // Absolute over the level: 30 mm under Level 2, 80 mm under the top.
+    press(&mut h, "Add Point");
+    pick(&mut h, Role::RadioButton, "Absolute");
+    h.state_mut().shape_base = crate::shape::Base::Level;
+    type_into(&mut h, "Elevation:", "-30");
+    click(&mut h, P2(4000.0, 3000.0));
+    assert_eq!(field(&h, floor[0], "shape")["points"][0]["z"], json!(-80.0), "{}", field(&h, floor[0], "shape"));
+    // Modify Sub Elements reads it from each base: 30 under the level, 2970 over the project's zero, 80 under the top.
+    press(&mut h, "Modify Sub Elements");
+    h.state_mut().shape_base = crate::shape::Base::Level;
+    click(&mut h, P2(4000.0, 3000.0));
+    assert_eq!(h.state().shape_z, "-30");
+    h.state_mut().shape_base = crate::shape::Base::Project;
+    h.state_mut().shape_refresh();
+    assert_eq!(h.state().shape_z, "2970");
+    h.state_mut().shape_base = crate::shape::Base::Floor;
+    h.state_mut().shape_refresh();
+    assert_eq!(h.state().shape_z, "-80");
+    // Typed over the project's zero, set so.
+    h.state_mut().shape_base = crate::shape::Base::Project;
+    type_into(&mut h, "Elevation:", "3000");
+    key(&mut h, Key::Enter);
+    assert_eq!(field(&h, floor[0], "shape")["points"][0]["z"], json!(-50.0));
+    assert!(h.query_by_label("Elevation Base:").is_some());
+}
+
+#[test]
 fn the_floor_tool_leaves_a_courtyard_open_inside_a_loop_of_walls_standing_free() {
     let mut h = app(r#"wall {"points": [[0, 0], [16000, 0], [16000, 16000], [0, 16000]], "closed": true}
 wall {"points": [[6000, 6000], [10000, 6000], [10000, 10000], [6000, 10000]], "closed": true}"#);
@@ -3417,10 +3587,20 @@ fn a_floor_types_layers_go_from_its_top_down() {
     h.get_by(|n| n.id() == thick).type_text("10");
     h.run();
     assert!(h.get_all_by_label("Down").count() > 0 && h.query_by_label("In").is_none(), "a floor's layers move up and down");
+    // A floor's layer may be variable, to take up a shaped top's falls: one at most, so ticking another unticks it.
+    let boxes = |h: &Harness<BimApp>| {
+        h.query_all(By::new().role(Role::CheckBox).label("Variable")).map(|n| n.accesskit_node().id()).collect::<Vec<_>>()
+    };
+    let (top, under) = (boxes(&h)[0], boxes(&h)[1]);
+    h.get_by(|n| n.id() == under).click();
+    h.run();
+    h.get_by(|n| n.id() == top).click();
+    h.run();
     press(&mut h, "OK");
     let t = &h.state().session.model.types.floor["Generic - 200mm"];
     assert_eq!((t.thickness, t.layers.len()), (210.0, 2));
     assert_eq!((t.layers[0].material.as_str(), t.layers[0].thickness), ("Ceramic tile", 10.0));
+    assert_eq!((t.layers[0].variable, t.layers[1].variable), (true, false));
 }
 
 #[test]
@@ -5498,6 +5678,7 @@ mod reinforce;
 mod revit;
 mod rooms;
 mod section_box;
+mod shape3d;
 mod sketch;
 mod sketch3d;
 mod smallest;

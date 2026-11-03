@@ -99,6 +99,23 @@ pub fn area(ring: &[P2]) -> f64 {
     ring_edges(ring).map(|(a, b)| a.cross(b)).sum::<f64>() / 2.0
 }
 
+/// The centre of a ring's area; its corners' average when it has none.
+pub fn centroid(ring: &[P2]) -> P2 {
+    let a = area(ring);
+    if a.abs() < 1e-9 {
+        let n = ring.len().max(1) as f64;
+        return P2(ring.iter().map(|p| p.0).sum::<f64>() / n, ring.iter().map(|p| p.1).sum::<f64>() / n);
+    }
+    // About the first corner, so far-off coordinates keep their precision.
+    let o = ring.first().copied().unwrap_or_default();
+    let (x, y) = ring_edges(ring).fold((0.0, 0.0), |(x, y), (p, q)| {
+        let (p, q) = (p - o, q - o);
+        let c = p.cross(q);
+        (x + (p.0 + q.0) * c, y + (p.1 + q.1) * c)
+    });
+    P2(o.0 + x / (6.0 * a), o.1 + y / (6.0 * a))
+}
+
 pub fn perimeter(ring: &[P2]) -> f64 {
     ring_edges(ring).map(|(a, b)| a.dist(b)).sum()
 }
