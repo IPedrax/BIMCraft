@@ -886,13 +886,13 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(15.0, 11.0), (19.0, 11.0)]);
         }
         Icon::ConvertLines => {
-            // A dashed folding line, an arrow, and the split line it becomes.
-            g.line(&[(3.0, 6.0), (6.0, 6.0)]);
-            g.line(&[(9.0, 6.0), (12.0, 6.0)]);
-            g.line(&[(15.0, 6.0), (18.0, 6.0)]);
-            g.line(&[(12.0, 10.0), (12.0, 15.0)]);
-            g.line(&[(9.0, 12.5), (12.0, 15.5), (15.0, 12.5)]);
-            g.line(&[(3.0, 19.0), (21.0, 19.0)]);
+            // As Add Split Line's: a slab's top, a crease across it, dashed where it's a folding line, solid where it's
+            // become a split line, its end ringed.
+            g.closed(&[(3.0, 5.0), (21.0, 5.0), (21.0, 19.0), (3.0, 19.0)]);
+            g.line(&[(5.0, 17.0), (7.0, 15.6)]);
+            g.line(&[(9.0, 14.2), (11.0, 12.8)]);
+            g.line(&[(13.0, 11.4), (19.0, 7.0)]);
+            g.circle((19.0, 7.0), 1.6);
         }
         Icon::SpotSlope => {
             // A falling top, an arrow down it, and its fall written over.
