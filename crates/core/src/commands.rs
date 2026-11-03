@@ -1704,13 +1704,18 @@ pub static ALL: &[Command] = &[
     other(
         "demand",
         "Demand and Service Category",
-        "{utility: CPFL, building?: residential|other, system?: 127/220|220/380, area?, outlets?, lighting_points?, \
+        "{utility: CPFL|ENEL, building?: residential|other, system?: 127/220|220/380, area?, outlets?, lighting_points?, \
          lighting_outlets?: {use, kw, pf?}, heaters?, boilers?, appliances?, stoves?: [{w, count?}], air_conditioners?: [{btu | va and w, \
          count?}], air_use?: residential|commercial, motors?: [{cv, phases: 1|3 | kva and kw, count?}], special?: [{kind: arc_weld|\
          resistance_weld|xray, kw, count?}], hydromassage?: [{w, count?}]} the demand D (kVA) of an installation and the category of \
          service it asks of the `utility`, by that utility's own standard, since NBR 5410 gives no demand factors. `utility` is \
-         required and is CPFL only (GED 13 version 2.24, 18/09/2020: CPFL Paulista, Piratininga, Santa Cruz and RGE); any other is \
-         refused until its tables are added. `D = a + b + c + d + e + f + g + h + i`: a lighting and outlets (in a dwelling, `area` m² \
+         required: CPFL (GED 13 version 2.24, 18/09/2020: CPFL Paulista, Piratininga, Santa Cruz and RGE) or ENEL (ET 1569 version 01, \
+         29/01/2024); any other is refused until its tables are added. ENEL does not work out a demand, for its specification leaves it \
+         to the designer (item 7.7.2): `{utility: ENEL, network: aerial|underground, installed_kw, phases?: 1|2|3, demand_kva?}` frames \
+         the supply by the installed load in kW, in Anexo A (aerial, 127/220 V) or D (underground, surface, 127/220 V): the category (A1 to \
+         C8; A1 to C5), the power it makes available, the breaker, the connection and entry branches, the earthing conductor and the \
+         measurement; where two categories hold the load (B2 and C1) `candidates` names both and `phases` picks one; `demand_kva` is \
+         carried as the designer gives it. For CPFL: `D = a + b + c + d + e + f + g + h + i`: a lighting and outlets (in a dwelling, `area` m² \
          gives the least outlets of Tabela 2, or `outlets` above 250 m² (100 W each, and the kitchen's 3 of 600 W), and `lighting_points` of \
          100 W; in another building `lighting_outlets` declares its `use` (auditorium, shop, barbershop, club, school, office, garage, hospital, \
          hotel, church, industry, restaurant), kW and power factor, by Tabela 18), b `heaters` (showers, taps, instant heaters, irons: Tabela 4 \
@@ -4529,6 +4534,79 @@ fn vent_size(_: &mut Session, p: &Value) -> R {
     Ok(Value::Object(out))
 }
 
+/// `demand` for Enel: ET 1569 leaves the demand to the designer (item 7.7.2), so it frames the supply by the installed load, in its
+/// Anexo A (aerial) or D (underground), and carries the designer's demand if one is given.
+fn demand_enel(p: &Value, utility: &str, source: &str) -> R {
+    use crate::demand::{self as d, Network};
+    let c = "demand";
+    const KEYS: &[&str] = &["utility", "network", "installed_kw", "phases", "demand_kva"];
+    if let Some(k) = p.as_object().and_then(|o| o.keys().find(|k| !KEYS.contains(&k.as_str()))) {
+        return Err(bad(c, format!("`{k}` isn't one of ENEL's parameters: {}", KEYS.join(", "))));
+    }
+    let network = Network::parse(choice(c, p, "network", &["aerial", "underground"], "")?)
+        .ok_or_else(|| bad(c, "`network` is required: aerial (Anexo A) or underground (Anexo D)"))?;
+    if absent(p.get("installed_kw")) {
+        return Err(bad(c, "`installed_kw` (the installed load in kW) is required"));
+    }
+    let kw = within(c, p, "installed_kw", 0.0, 0.0, 1.0e6)?;
+    let phases = match p.get("phases").filter(|v| !v.is_null()) {
+        None => None,
+        Some(v) => match v.as_u64() {
+            Some(n @ 1..=3) => Some(n as u8),
+            _ => return Err(bad(c, format!("`phases` is 1, 2 or 3, got {v}"))),
+        },
+    };
+    let demand_kva = match p.get("demand_kva").filter(|v| !v.is_null()) {
+        None => None,
+        Some(_) => Some(within(c, p, "demand_kva", 0.0, 0.0, 1.0e6)?),
+    };
+    let pick = d::enel_pick(network, kw, phases);
+    let (category, candidates, note) = match &pick {
+        Some(k) => {
+            let r = k.rows[0];
+            let conn = json!({"conductors_per_phase": r.connection.0, "phase": r.connection.1, "neutral": r.connection.2});
+            let cat = json!({
+                "name": r.name,
+                "available_kw": r.available_kw,
+                "breaker_a": r.breaker,
+                "connection_mm2": conn,
+                "entry_mm2": {"phase": r.entry.0, "neutral": r.entry.1},
+                "earthing_mm2": r.earth,
+                "measurement": r.measurement,
+            });
+            (cat, json!(k.rows.iter().map(|r| r.name).collect::<Vec<_>>()), Value::Null)
+        }
+        None if kw > 75.0 => (
+            Value::Null,
+            json!([]),
+            json!("above 75 kW the unit is served at primary voltage (item 7.3.2), which this specification does not cover"),
+        ),
+        None => (
+            Value::Null,
+            json!([]),
+            json!(format!(
+                "above the last category of Anexo {}: up to {} kW of installed load",
+                network.annex(),
+                if network == Network::Aerial { 63 } else { 72 }
+            )),
+        ),
+    };
+    Ok(json!({
+        "utility": utility,
+        "source": source,
+        "annex": network.annex(),
+        "network": if network == Network::Aerial { "aerial" } else { "underground" },
+        "installed_kw": kw,
+        "phases": phases,
+        "category": category,
+        "candidates": candidates,
+        "category_note": note,
+        "demand_kva": demand_kva,
+        "demand_note": "ET 1569 (item 7.7.2) leaves the demand to the designer, who may use the methods the utilities recommend: it is carried as given, never worked out here",
+        "not_covered": "the conduits, the poles and the type of meter box of Anexos A and D, the other annexes (B and C, 120/240 V; E, submersible), and the limits of supply of Tabela 2 by motors, welding machines and X-ray sets",
+    }))
+}
+
 fn demand(_: &mut Session, p: &Value) -> R {
     use crate::demand::{self as d, Air, Load, Motor, OtherUse, SPECIAL_KINDS, Special, SpecialKind, System, USES};
     let c = "demand";
@@ -4555,6 +4633,10 @@ fn demand(_: &mut Session, p: &Value) -> R {
             "motors",
             "special",
             "hydromassage",
+            "network",
+            "installed_kw",
+            "phases",
+            "demand_kva",
         ],
     )?;
     let utility = string(c, p, "utility")?.ok_or_else(|| bad(c, format!("`utility` is required: {}", d::UTILITIES.join(", "))))?;
@@ -4568,6 +4650,15 @@ fn demand(_: &mut Session, p: &Value) -> R {
         ));
     };
     let residential = choice(c, p, "building", &["residential", "other"], "residential")? == "residential";
+    if utility == "ENEL" {
+        return demand_enel(p, &utility, source);
+    }
+    if let Some(k) = ["network", "installed_kw", "phases", "demand_kva"].iter().find(|k| p.get(**k).is_some()) {
+        return Err(bad(
+            c,
+            format!("`{k}` is for utility ENEL: {utility}'s standard takes the loads of its examples, not a category by installed load"),
+        ));
+    }
     let system = System::parse(choice(c, p, "system", &["127/220", "220/380"], "127/220")?).unwrap_or(System::S127_220);
     let area = match p.get("area").filter(|v| !v.is_null()) {
         None => None,

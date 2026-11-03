@@ -205,9 +205,9 @@ mod command {
     #[test]
     fn another_utility_is_refused_and_named() {
         let mut s = Session::new();
-        for u in ["ENEL", "Light", "xx"] {
+        for u in ["Light", "CELESC", "xx"] {
             let e = s.execute("demand", &json!({"utility": u, "area": 40})).unwrap_err();
-            assert!(e.contains("CPFL") && e.contains(u), "{e}");
+            assert!(e.contains("CPFL") && e.contains("ENEL") && e.contains(u), "{e}");
         }
         let e = s.execute("demand", &json!({"area": 40})).unwrap_err();
         assert!(e.contains("utility"), "{e}");
@@ -247,6 +247,130 @@ mod command {
             bad.push(p);
         }
         for p in bad {
+            assert!(s.execute("demand", &p).is_err(), "{p}");
+        }
+    }
+}
+
+#[test]
+fn enel_anexo_a_is_as_printed() {
+    let r = |n: &str| enel_row(Network::Aerial, n).map(|r| (r.available_kw, r.breaker, r.connection, r.entry, r.earth));
+    assert_eq!(r("A1"), Some((5.0, 40.0, (Some(1), 10.0, 10.0), (10.0, 10.0), 10.0)));
+    assert_eq!(r("B2"), Some((14.0, 63.0, (Some(2), 16.0, 10.0), (16.0, 10.0), 16.0)));
+    assert_eq!(r("C3"), Some((24.0, 63.0, (Some(3), 16.0, 16.0), (25.0, 25.0), 16.0)));
+    assert_eq!(r("C4"), Some((30.0, 80.0, (Some(3), 35.0, 54.6), (35.0, 25.0), 16.0)));
+    assert_eq!(r("C6"), Some((48.0, 125.0, (Some(3), 35.0, 54.6), (50.0, 25.0), 25.0)));
+    assert_eq!(r("C8"), Some((75.0, 200.0, (Some(3), 95.0, 54.6), (95.0, 50.0), 50.0)));
+    assert!(enel_row(Network::Aerial, "C9").is_none());
+}
+
+#[test]
+fn enel_anexo_d_is_as_printed() {
+    let r = |n: &str| enel_row(Network::Underground, n).map(|r| (r.available_kw, r.breaker, r.connection, r.entry, r.earth));
+    assert_eq!(r("A1"), Some((8.0, 63.0, (None, 16.0, 16.0), (16.0, 16.0), 16.0)));
+    assert_eq!(r("B2"), Some((18.0, 80.0, (None, 25.0, 25.0), (25.0, 25.0), 16.0)));
+    assert_eq!(r("C3"), Some((48.0, 125.0, (None, 50.0, 25.0), (50.0, 25.0), 25.0)));
+    assert_eq!(r("C4"), Some((57.0, 150.0, (None, 95.0, 25.0), (50.0, 25.0), 50.0)));
+    assert_eq!(r("C5"), Some((75.0, 200.0, (None, 150.0, 95.0), (150.0, 95.0), 95.0)));
+    assert!(enel_row(Network::Underground, "C6").is_none());
+}
+
+#[test]
+fn enel_picks_the_row_whose_range_holds_the_load() {
+    let name = |n: Network, c: f64, ph: Option<u8>| enel_pick(n, c, ph).map(|p| p.rows.iter().map(|r| r.name).collect::<Vec<_>>());
+    assert_eq!(name(Network::Aerial, 3.0, None), Some(vec!["A1"]));
+    assert_eq!(name(Network::Aerial, 5.0, None), Some(vec!["A2"]));
+    // 10 < C <= 14 is B2 and C1: both, the first being the smaller supply.
+    assert_eq!(name(Network::Aerial, 12.0, None), Some(vec!["B2", "C1"]));
+    assert_eq!(name(Network::Aerial, 12.0, Some(3)), Some(vec!["C1"]));
+    assert_eq!(name(Network::Aerial, 12.0, Some(2)), Some(vec!["B2"]));
+    // In the gap between two ranges, the next one up.
+    assert_eq!(name(Network::Aerial, 20.5, None), Some(vec!["C4"]));
+    assert_eq!(name(Network::Aerial, 3.5, None), Some(vec!["A2"]));
+    assert_eq!(name(Network::Aerial, 63.0, None), Some(vec!["C8"]));
+    assert_eq!(name(Network::Aerial, 63.1, None), None);
+    assert_eq!(name(Network::Underground, 72.0, None), Some(vec!["C5"]));
+    assert_eq!(name(Network::Underground, 72.5, None), None);
+    assert_eq!(name(Network::Underground, 8.5, None), Some(vec!["A2"]));
+    assert_eq!(name(Network::Underground, 0.0, None), Some(vec!["A1"]));
+}
+
+mod enel {
+    use crate::engine::Session;
+    use serde_json::{Value, json};
+
+    fn run(s: &mut Session, p: Value) -> Value {
+        s.execute("demand", &p).unwrap_or_else(|e| panic!("demand {p}: {e}"))
+    }
+
+    #[test]
+    fn an_aerial_supply_is_framed_by_its_installed_load() {
+        let mut s = Session::new();
+        let r = run(&mut s, json!({"utility": "ENEL", "network": "aerial", "installed_kw": 22, "phases": 3}));
+        assert_eq!(r["utility"], "ENEL");
+        assert_eq!(r["category"]["name"], "C4", "{r}");
+        assert_eq!(r["category"]["breaker_a"], 80.0);
+        assert_eq!(r["category"]["entry_mm2"], json!({"phase": 35.0, "neutral": 25.0}));
+        assert_eq!(r["category"]["available_kw"], 30.0);
+        assert!(r["source"].as_str().is_some_and(|x| x.contains("1569") && x.contains("29/01/2024")), "{r}");
+        assert_eq!(r["demand_kva"], Value::Null, "the ET leaves the demand to the designer");
+        assert!(r["demand_note"].as_str().is_some_and(|x| x.contains("7.7.2")), "{r}");
+        assert_eq!(crate::engine::find("demand").map(|c| c.undoable), Some(false));
+    }
+
+    #[test]
+    fn an_underground_supply_has_its_own_annex() {
+        let mut s = Session::new();
+        let r = run(&mut s, json!({"utility": "ENEL", "network": "underground", "installed_kw": 40}));
+        assert_eq!(r["category"]["name"], "C3");
+        assert_eq!(r["category"]["measurement"], "indirect");
+        assert_eq!(r["annex"], "D");
+    }
+
+    #[test]
+    fn the_designers_demand_is_carried_and_never_worked_out() {
+        let mut s = Session::new();
+        let r = run(&mut s, json!({"utility": "ENEL", "network": "aerial", "installed_kw": 10, "demand_kva": 7.5}));
+        assert_eq!(r["demand_kva"], 7.5);
+    }
+
+    #[test]
+    fn two_candidates_are_both_named() {
+        let mut s = Session::new();
+        let r = run(&mut s, json!({"utility": "ENEL", "network": "aerial", "installed_kw": 12}));
+        assert_eq!(r["candidates"], json!(["B2", "C1"]));
+        assert_eq!(r["category"]["name"], "B2");
+    }
+
+    #[test]
+    fn above_the_table_the_reply_says_where_it_ends() {
+        let mut s = Session::new();
+        let r = run(&mut s, json!({"utility": "ENEL", "network": "aerial", "installed_kw": 70}));
+        assert_eq!(r["category"], Value::Null);
+        assert!(r["category_note"].as_str().is_some_and(|n| n.contains("63")), "{r}");
+        let r = run(&mut s, json!({"utility": "ENEL", "network": "aerial", "installed_kw": 80}));
+        assert!(r["category_note"].as_str().is_some_and(|n| n.contains("75") && n.contains("primary")), "{r}");
+    }
+
+    #[test]
+    fn hostile_or_misplaced_input_is_refused() {
+        let mut s = Session::new();
+        for p in [
+            json!({"utility": "ENEL"}),
+            json!({"utility": "ENEL", "network": "aerial"}),
+            json!({"utility": "ENEL", "installed_kw": 5}),
+            json!({"utility": "ENEL", "network": "sky", "installed_kw": 5}),
+            json!({"utility": "ENEL", "network": "aerial", "installed_kw": -1}),
+            json!({"utility": "ENEL", "network": "aerial", "installed_kw": 1e300}),
+            json!({"utility": "ENEL", "network": "aerial", "installed_kw": "x"}),
+            json!({"utility": "ENEL", "network": "aerial", "installed_kw": 5, "phases": 2.5}),
+            json!({"utility": "ENEL", "network": "aerial", "installed_kw": 5, "phases": 4}),
+            json!({"utility": "ENEL", "network": "aerial", "installed_kw": 5, "demand_kva": -2}),
+            json!({"utility": "ENEL", "network": "aerial", "installed_kw": 5, "area": 40}),
+            json!({"utility": "ENEL", "network": "aerial", "installed_kw": 5, "units": 1}),
+            json!({"utility": "CPFL", "area": 40, "network": "aerial"}),
+            json!({"utility": "CPFL", "area": 40, "installed_kw": 5}),
+        ] {
             assert!(s.execute("demand", &p).is_err(), "{p}");
         }
     }

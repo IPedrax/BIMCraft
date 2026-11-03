@@ -15,12 +15,17 @@
 //! beyond the one given.
 
 /// The utilities there are tables for.
-pub const UTILITIES: &[&str] = &["CPFL"];
+pub const UTILITIES: &[&str] = &["CPFL", "ENEL"];
 
 /// Where the numbers come from, for each utility.
 pub fn source(utility: &str) -> Option<&'static str> {
-    (utility == "CPFL")
-        .then_some("CPFL Energia, Norma Técnica GED 13 'Fornecimento em Tensão Secundária de Distribuição', version 2.24, 18/09/2020")
+    match utility {
+        "CPFL" => Some("CPFL Energia, Norma Técnica GED 13 'Fornecimento em Tensão Secundária de Distribuição', version 2.24, 18/09/2020"),
+        "ENEL" => Some(
+            "Enel Grids Brasil, Especificação Técnica 1569 (CNC-OMBR-MAT-24-1569-EDBR) 'Fornecimento de Energia Elétrica em Tensão Secundária de Distribuição até 1 kV - Conexão Individual', version 01, 29/01/2024: Anexos A and D",
+        ),
+        _ => None,
+    }
 }
 
 /// The supply voltages of Tabelas 1A and 1B.
@@ -391,6 +396,133 @@ pub fn category(system: System, c: f64, d: f64) -> Option<Category> {
             _ => None,
         },
     }
+}
+
+/// The kind of network a supply is made from, for the utility's annexes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Network {
+    Aerial,
+    Underground,
+}
+
+impl Network {
+    pub fn parse(s: &str) -> Option<Network> {
+        match s {
+            "aerial" => Some(Network::Aerial),
+            "underground" => Some(Network::Underground),
+            _ => None,
+        }
+    }
+
+    /// The annex of ET 1569 that holds its table.
+    pub fn annex(self) -> &'static str {
+        match self {
+            Network::Aerial => "A",
+            Network::Underground => "D",
+        }
+    }
+}
+
+/// One row of Enel's Anexo A or D (ET 1569): a category of supply for a range of installed load.
+#[derive(Clone, Copy, Debug)]
+pub struct EnelRow {
+    pub name: &'static str,
+    /// The installed load (kW) it covers: over `lo`, up to `hi`.
+    pub lo: f64,
+    pub hi: f64,
+    /// The power it makes available, kW.
+    pub available_kw: f64,
+    /// The general breaker, A.
+    pub breaker: f64,
+    /// The connection branch: the number of conductors a phase has (`None` where the annex prints none), the phase's section and the
+    /// neutral's, mm².
+    pub connection: (Option<u8>, f64, f64),
+    /// The entry branch: the phase's section and the neutral's, mm².
+    pub entry: (f64, f64),
+    /// The earthing conductor, copper, mm².
+    pub earth: f64,
+    pub measurement: &'static str,
+}
+
+#[allow(clippy::too_many_arguments)]
+const fn row(
+    name: &'static str,
+    lo: f64,
+    hi: f64,
+    available_kw: f64,
+    breaker: f64,
+    connection: (Option<u8>, f64, f64),
+    entry: (f64, f64),
+    earth: f64,
+    measurement: &'static str,
+) -> EnelRow {
+    EnelRow { name, lo, hi, available_kw, breaker, connection, entry, earth, measurement }
+}
+
+/// Anexo A: aerial network, 127/220 V.
+const ENEL_A: &[EnelRow] = &[
+    row("A1", 0.0, 3.0, 5.0, 40.0, (Some(1), 10.0, 10.0), (10.0, 10.0), 10.0, "direct"),
+    row("A2", 4.0, 6.0, 8.0, 63.0, (Some(1), 16.0, 10.0), (16.0, 10.0), 16.0, "direct"),
+    row("B1", 6.0, 10.0, 10.0, 50.0, (Some(2), 10.0, 10.0), (10.0, 10.0), 16.0, "direct"),
+    row("B2", 10.0, 14.0, 14.0, 63.0, (Some(2), 16.0, 10.0), (16.0, 10.0), 16.0, "direct"),
+    row("C1", 10.0, 15.0, 15.0, 40.0, (Some(3), 10.0, 10.0), (10.0, 10.0), 16.0, "direct"),
+    row("C2", 15.0, 19.0, 19.0, 50.0, (Some(3), 10.0, 10.0), (10.0, 10.0), 16.0, "direct"),
+    row("C3", 19.0, 20.0, 24.0, 63.0, (Some(3), 16.0, 16.0), (25.0, 25.0), 16.0, "direct"),
+    row("C4", 21.0, 24.0, 30.0, 80.0, (Some(3), 35.0, 54.6), (35.0, 25.0), 16.0, "direct"),
+    row("C5", 25.0, 30.0, 38.0, 100.0, (Some(3), 35.0, 54.6), (35.0, 25.0), 16.0, "direct"),
+    row("C6", 31.0, 38.0, 48.0, 125.0, (Some(3), 35.0, 54.6), (50.0, 25.0), 25.0, "direct or indirect"),
+    row("C7", 39.0, 45.0, 57.0, 150.0, (Some(3), 50.0, 54.6), (70.0, 35.0), 35.0, "direct or indirect"),
+    row("C8", 46.0, 63.0, 75.0, 200.0, (Some(3), 95.0, 54.6), (95.0, 50.0), 50.0, "direct or indirect"),
+];
+
+/// Anexo D: underground network, surface standard, 127/220 V.
+const ENEL_D: &[EnelRow] = &[
+    row("A1", 0.0, 7.0, 8.0, 63.0, (None, 16.0, 16.0), (16.0, 16.0), 16.0, "direct"),
+    row("A2", 8.0, 9.0, 10.0, 80.0, (None, 25.0, 16.0), (25.0, 16.0), 16.0, "direct"),
+    row("B1", 10.0, 12.0, 14.0, 63.0, (None, 16.0, 16.0), (16.0, 16.0), 16.0, "direct"),
+    row("B2", 13.0, 16.0, 18.0, 80.0, (None, 25.0, 25.0), (25.0, 25.0), 16.0, "direct"),
+    row("C1", 17.0, 22.0, 24.0, 63.0, (None, 16.0, 16.0), (16.0, 16.0), 16.0, "direct"),
+    row("C2", 23.0, 28.0, 30.0, 80.0, (None, 25.0, 16.0), (25.0, 16.0), 16.0, "direct"),
+    row("C3", 29.0, 42.0, 48.0, 125.0, (None, 50.0, 25.0), (50.0, 25.0), 25.0, "indirect"),
+    row("C4", 43.0, 53.0, 57.0, 150.0, (None, 95.0, 25.0), (50.0, 25.0), 50.0, "indirect"),
+    row("C5", 54.0, 72.0, 75.0, 200.0, (None, 150.0, 95.0), (150.0, 95.0), 95.0, "direct (a 200 A meter) or indirect"),
+];
+
+fn enel_rows(n: Network) -> &'static [EnelRow] {
+    match n {
+        Network::Aerial => ENEL_A,
+        Network::Underground => ENEL_D,
+    }
+}
+
+/// A row of Enel's annex by its name.
+pub fn enel_row(n: Network, name: &str) -> Option<&'static EnelRow> {
+    enel_rows(n).iter().find(|r| r.name == name)
+}
+
+/// The rows that fit an installed load.
+pub struct Pick {
+    /// The first is the smaller supply.
+    pub rows: Vec<&'static EnelRow>,
+}
+
+fn phases_of(r: &EnelRow) -> u8 {
+    match r.name.as_bytes().first() {
+        Some(b'A') => 1,
+        Some(b'B') => 2,
+        _ => 3,
+    }
+}
+
+/// The rows of an annex whose range holds `kw` (over `lo`, up to `hi`), those of `phases` phases if given; where none holds it (the
+/// annex prints whole kilowatts, so there is a gap between two ranges) the first that is higher. `None` above the table.
+pub fn enel_pick(n: Network, kw: f64, phases: Option<u8>) -> Option<Pick> {
+    let rows: Vec<&'static EnelRow> = enel_rows(n).iter().filter(|r| phases.is_none_or(|p| phases_of(r) == p)).collect();
+    let holding: Vec<&'static EnelRow> = rows.iter().copied().filter(|r| kw > r.lo && kw <= r.hi || (r.lo == 0.0 && kw <= r.hi)).collect();
+    if !holding.is_empty() {
+        return Some(Pick { rows: holding });
+    }
+    rows.iter().copied().find(|r| r.hi >= kw).map(|r| Pick { rows: vec![r] })
 }
 
 fn total(loads: &[Load]) -> (u32, f64) {
