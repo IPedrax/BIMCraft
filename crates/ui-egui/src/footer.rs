@@ -1,6 +1,6 @@
 //! The view control bar under a view, as Revit's has it: the view's Scale and Detail Level, or the 3D view's Visual Style, which
 //! the project keeps (the `scale`, `detail` and `visual_style` commands), then Temporary Hide/Isolate and Reveal Hidden Elements. What is hidden or revealed here is
-//! the window's, per view: it isn't in the project, saved or undone. The view draws a copy of the model with its graphics
+//! the window's, per view: it isn't in the project, saved or undone. Last on the bar, the control port's state (`control.rs`). The view draws a copy of the model with its graphics
 //! changed ([`BimApp::view_model`]), made once for each model and each setting, through the same `graphics` command the
 //! project's own changes go through; Apply to View makes the same change for good.
 
@@ -483,6 +483,9 @@ impl BimApp {
                         let note = if temp.reveal && !temp.hides() { msg!("Revealing hidden elements") } else { "Temporary Hide/Isolate" };
                         ui.label(RichText::new(tf("{} (HR resets)", &[t(note)])).color(FRAME));
                     }
+                    // The control port: off, listening, the agents connected, read-only.
+                    ui.separator();
+                    self.agents_indicator(ui);
                 })
             })
             .response

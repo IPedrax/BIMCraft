@@ -23,9 +23,11 @@ const USAGE: &str = "USAGE:
                                  .rfa file, its release, last save, levels and element counts by category
   bimcraft-cli convert IN OUT    a project, an IFC file or a Revit .rvt file to .ifc, .svg, .png or .bimcraft
   bimcraft-cli commands          every command and its parameters
-  bimcraft-cli mcp [--connect [PORT]]
-                                 an MCP server on stdio, for agents: on a headless project of its own, or with --connect on the
-                                 project open in a window started with `bimcraft --control PORT` (without PORT, the last one)
+  bimcraft-cli mcp [--read-only] [FILE | --connect [PORT]]
+                                 an MCP server on stdio, for agents: on a headless project of its own (FILE, opened first, or an
+                                 empty one), or with --connect on the project open in a window whose control port is open
+                                 (`bimcraft --control PORT` or File > Settings > Agents; without PORT, the last one). With
+                                 --read-only the agent may read the project, never change it or write over its file
   bimcraft-cli --version         the release";
 
 fn print(out: &mut impl Write, v: &Value) -> Result<(), String> {
@@ -84,16 +86,53 @@ fn cli(args: &[String], out: &mut impl Write) -> Result<(), String> {
     }
 }
 
-/// What follows `mcp`: nothing, or `--connect` with a port or without. The inner None is a window, whichever the bridge file names.
-fn connect_option(args: &[String]) -> Result<Option<Option<u16>>, String> {
-    match args {
-        [] => Ok(None),
-        [flag] if flag == "--connect" => Ok(Some(None)),
-        [flag, port] if flag == "--connect" => {
-            port.parse().map(|p| Some(Some(p))).map_err(|_| format!("`{port}` is not a port: a number up to 65535"))
+/// What follows `mcp`.
+#[derive(Debug, Default, PartialEq)]
+struct McpArgs {
+    /// `--connect`, with a port or without: none inside is a window, whichever the bridge file names.
+    connect: Option<Option<u16>>,
+    /// `--read-only`: the agent may read the project and never change it.
+    read_only: bool,
+    /// The project a headless server opens before it answers.
+    file: Option<String>,
+}
+
+const MCP_USAGE: &str = "usage: bimcraft-cli mcp [--read-only] [FILE | --connect [PORT]]";
+
+fn mcp_args(args: &[String]) -> Result<McpArgs, String> {
+    let mut a = McpArgs::default();
+    let mut rest = args.iter().peekable();
+    while let Some(arg) = rest.next() {
+        match arg.as_str() {
+            "--read-only" => a.read_only = true,
+            "--connect" if a.connect.is_none() => {
+                let port = rest.next_if(|p| !p.starts_with("--"));
+                a.connect = Some(port.map(|p| p.parse().map_err(|_| format!("`{p}` is not a port: a number up to 65535"))).transpose()?);
+            }
+            flag if flag.starts_with('-') => return Err(format!("`{flag}`: {MCP_USAGE}")),
+            file if a.file.is_none() => a.file = Some(file.to_string()),
+            _ => return Err(MCP_USAGE.into()),
         }
-        _ => Err("usage: bimcraft-cli mcp [--connect [PORT]]".into()),
     }
+    if a.connect.is_some() && a.file.is_some() {
+        return Err(format!("a window has its own project: --connect takes no FILE ({MCP_USAGE})"));
+    }
+    Ok(a)
+}
+
+/// The MCP server `args` asks for: attached to a window, or on a session of its own with its file open, and read-only when asked.
+fn mcp_server(args: McpArgs) -> Result<mcp::Server, String> {
+    let mut server = match args.connect {
+        Some(port) => mcp::Server::attached(window::Window::connect(port)?),
+        None => mcp::Server::new(),
+    };
+    if let Some(file) = &args.file {
+        server.open(file)?;
+    }
+    if args.read_only {
+        server.read_only();
+    }
+    Ok(server)
 }
 
 /// The DWG reader a session is given: `bimcraft-dwg`'s, which reads a drawing in a child process of this program, behind the
@@ -125,9 +164,8 @@ fn main() -> ExitCode {
         return code;
     }
     if args.first().is_some_and(|a| a == "mcp") {
-        let mut server = match connect_option(&args[1..]).and_then(|port| port.map(window::Window::connect).transpose()) {
-            Ok(Some(window)) => mcp::Server::attached(window),
-            Ok(None) => mcp::Server::new(),
+        let mut server = match mcp_args(&args[1..]).and_then(mcp_server) {
+            Ok(server) => server,
             Err(e) => {
                 eprintln!("bimcraft-cli mcp: {e}");
                 return ExitCode::FAILURE;
@@ -162,14 +200,37 @@ mod tests {
     }
 
     #[test]
-    fn mcp_is_headless_or_connects_to_a_window_with_a_port_or_without() {
+    fn mcp_is_headless_on_a_file_or_none_or_connects_to_a_window_and_may_only_read_either() {
         let args = |text: &str| text.split_whitespace().map(String::from).collect::<Vec<_>>();
-        assert_eq!(connect_option(&args("")), Ok(None));
-        assert_eq!(connect_option(&args("--connect")), Ok(Some(None)));
-        assert_eq!(connect_option(&args("--connect 7000")), Ok(Some(Some(7000))));
-        for bad in ["--connect x", "--connect 70000", "--connect 1 2", "--attach", "7000"] {
-            assert!(connect_option(&args(bad)).is_err(), "{bad}");
+        let mcp = |connect, read_only, file: Option<&str>| Ok(McpArgs { connect, read_only, file: file.map(String::from) });
+        assert_eq!(mcp_args(&args("")), mcp(None, false, None));
+        assert_eq!(mcp_args(&args("--connect")), mcp(Some(None), false, None));
+        assert_eq!(mcp_args(&args("--connect 7000")), mcp(Some(Some(7000)), false, None));
+        assert_eq!(mcp_args(&args("--read-only house.bimcraft")), mcp(None, true, Some("house.bimcraft")));
+        assert_eq!(mcp_args(&args("house.ifc --read-only")), mcp(None, true, Some("house.ifc")));
+        assert_eq!(mcp_args(&args("--connect --read-only")), mcp(Some(None), true, None));
+        assert_eq!(mcp_args(&args("--read-only --connect 7000")), mcp(Some(Some(7000)), true, None));
+        for bad in ["--connect x", "--connect 70000", "--connect 1 2", "--attach", "a.bimcraft b.bimcraft", "--connect 7000 --connect"] {
+            assert!(mcp_args(&args(bad)).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn a_read_only_mcp_server_starts_on_the_file_it_is_given_and_a_file_that_is_not_there_stops_it() {
+        let dir = std::env::temp_dir().join(format!("bimcraft-cli-mcp-file-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("house.bimcraft");
+        let mut s = Session::new();
+        s.execute("wall", &json!({"points": [[0, 0], [4000, 0]]})).unwrap();
+        s.execute("save", &json!({"path": file})).unwrap();
+        let given = McpArgs { connect: None, read_only: true, file: Some(file.to_string_lossy().into_owned()) };
+        let mut server = mcp_server(given).unwrap();
+        let line = json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "inspect_model", "arguments": {}}});
+        let reply: Value = serde_json::from_str(&server.handle_line(&line.to_string()).unwrap()).unwrap();
+        assert!(reply["result"]["content"][0]["text"].as_str().unwrap().contains("\"wall\": 1"), "{reply}");
+        let missing = McpArgs { connect: None, read_only: true, file: Some(dir.join("gone.bimcraft").to_string_lossy().into_owned()) };
+        assert!(mcp_server(missing).is_err());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

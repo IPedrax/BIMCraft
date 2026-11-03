@@ -73,6 +73,18 @@ request wakes the window (`Context::request_repaint`, from the context the first
 most; ten seconds, in all, to say the first line whole (a byte now and then does not count), and what is not a request, a web page's
 HTTP say, is answered with an error and closed. A test (`tests/control.rs`) plays the agent on a real connection while the harness runs frames.
 
+File > Settings > Agents opens the same port without `--control`: Let agents work on this project, and its Port (0 for any free one),
+both kept in `settings.json` (`agents`), so the window opens it again at its next start once `--control` has had its say
+(`listen_as_kept`), with the same bridge file and the same rules. Unticked, the port is closed: a `Control` dropped stops listening
+(its accept thread is woken by a connection of its own and lets the port go) and hangs up on its agents, so it can be opened again.
+Allow agents to edit this project (on by default, kept too) is `bridge::Access`: off, `answer_agents` runs each request read-only
+(`Session::reading`), so an edit, an undo or a redo, a script holding one, or a save over the project's own file comes back as an
+error that names the box, and what reads (inspect, schedules, render, exports to new files, the sheets to PDF) still answers; the
+user's own commands are never read-only. An agent may ask to only read as well (`"read_only": true` in a request, which
+`mcp --connect --read-only` sends). The view control bar ends with the port's state, in both profiles (`agents_indicator`): Agents:
+off, Agents: port N, or Agents: N connected (a connection counts once it has said a request with the token), with read-only when edits
+are off; a click opens Settings at Agents.
+
 The interface's language is `lang::Lang`: a project's language, or Simplified Chinese (issue 38), which only the window speaks
 (a drawing's lettering, `font.rs`, is drawn in code and has no hanzi, so a project is never in Chinese and `Lang::project()` gives
 it English). Its words, including the schedule headings shown in the window, are in `translations/ui/*.po`;

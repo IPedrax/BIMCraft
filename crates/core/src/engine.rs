@@ -2,7 +2,7 @@
 //! Every user-visible action is a [`Command`]; the CLI, scripts and MCP all reach the same ones.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde_json::{Value, json};
@@ -80,6 +80,12 @@ impl Step {
     }
 }
 
+/// The commands that put another project in the session's place: a session that may only read, and a window's agent, never runs them.
+pub const REPLACES: &[&str] = &["new", "open", "recover", "highrise"];
+
+/// What a refusal of a session that may only read says, after what the command would do and before what would let it edit.
+pub const READ_ONLY: &str = "which is read-only for agents";
+
 /// The commands that copy what stands: a copy is made in the session's phase and isn't taken down with its original.
 const COPIES: [&str; 3] = ["copy", "mirror", "rotate"];
 
@@ -98,6 +104,13 @@ pub struct Session {
     resets: usize,
     /// What reads a DWG drawing, when the app has one (`cad::DwgReader`); none says to save it as DXF.
     pub dwg: Option<crate::cad::DwgReader>,
+    /// Whether the session may only read its project, and if so what would let it edit, which each refusal ends with: an agent's,
+    /// when the user lets agents only read (the window's File > Settings > Agents, `bimcraft-cli mcp --read-only`). Then a command
+    /// that would replace the project, undo or redo, or write over its own file is refused before it runs, and one that changed the
+    /// project, its history or the phase and option the session makes things in is taken back and refused ([`Session::execute`]).
+    /// What reads it (inspect, schedules, render, exports to new files, the sheets to PDF) answers; a copy saved as another file
+    /// leaves the session with its own.
+    pub read_only: Option<&'static str>,
 }
 
 impl Default for Session {
@@ -131,6 +144,7 @@ impl Session {
             redo: Vec::new(),
             resets: 0,
             dwg: None,
+            read_only: None,
         }
     }
 
@@ -161,9 +175,41 @@ impl Session {
     }
 
     /// Run a command by id or alias with JSON parameters. A command that fails, panics, or leaves
-    /// the model failing [`Model::check`] changes nothing.
+    /// the model failing [`Model::check`] changes nothing. In a session that may only read ([`Session::read_only`]), one that would
+    /// change the project is refused, and changes nothing either.
     pub fn execute(&mut self, name: &str, params: &Value) -> Result<Value, String> {
         let cmd = find(name).ok_or_else(|| format!("unknown command `{name}`; list_commands shows them"))?;
+        let Some(how) = self.read_only else { return self.perform(cmd, params) };
+        self.may_read(cmd, params).map_err(|what| format!("`{}` would {what}, {READ_ONLY}: {how}", cmd.id))?;
+        let kept = Kept::of(self);
+        let result = self.perform(cmd, params);
+        kept.keep(self).map_err(|()| format!("`{}` would change the project, {READ_ONLY}: {how}", cmd.id)).and(result)
+    }
+
+    /// What a session that may only read refuses `cmd` before it runs, by what it would do: replace the project, step through its
+    /// history, or write over its own file (`save` with no path saves there, and no command is given it as its `path` or `save`).
+    fn may_read(&self, cmd: &Command, params: &Value) -> Result<(), String> {
+        if REPLACES.contains(&cmd.id) {
+            return Err("replace the project".into());
+        }
+        if matches!(cmd.id, "undo" | "redo") {
+            return Err("change the project".into());
+        }
+        let Some(own) = self.path.as_deref() else { return Ok(()) };
+        if cmd.id == "save" && params.get("path").is_none_or(Value::is_null) {
+            return Err("write over the project's own file".into());
+        }
+        let given =
+            ["path", "save"].into_iter().find(|key| params.get(key).and_then(Value::as_str).is_some_and(|p| same_file(own, Path::new(p))));
+        match given {
+            Some(_) if cmd.id == "save" => Err("write over the project's own file".into()),
+            Some(key) => Err(format!("use the project's own file (`{key}`)")),
+            None => Ok(()),
+        }
+    }
+
+    /// [`Session::execute`] of a command found, as any session runs it.
+    fn perform(&mut self, cmd: &'static Command, params: &Value) -> Result<Value, String> {
         // A library entry's GUID, wherever a command takes a name, is that name.
         let named = named(&self.model, params);
         let params = named.as_ref().unwrap_or(params);
@@ -232,6 +278,19 @@ impl Session {
                 Ok(v)
             }
         }
+    }
+
+    /// Runs `f` as a session that may only read ([`Session::read_only`]), `how` saying what would let it edit, unless the
+    /// session already says; then gives the session back as it was. What `f` changed of the project, however it got at it, is
+    /// taken back and refused too.
+    pub fn reading<T>(&mut self, how: &'static str, f: impl FnOnce(&mut Session) -> Result<T, String>) -> Result<T, String> {
+        let was = self.read_only;
+        let how = *self.read_only.get_or_insert(how);
+        let kept = Kept::of(self);
+        let result = catch_unwind(AssertUnwindSafe(|| f(self)))
+            .unwrap_or_else(|p| Err(format!("internal error while reading: {}", panic_text(p.as_ref()))));
+        self.read_only = was;
+        kept.keep(self).map_err(|()| format!("that would change the project, {READ_ONLY}: {how}")).and(result)
     }
 
     /// Run a script: one command per line, `id` or `id {json params}`; `#` starts a comment.
@@ -346,6 +405,51 @@ impl Session {
             to.push((step, std::mem::replace(&mut self.model, model)));
         }
         Ok(json!({ key: label, "count": count }))
+    }
+}
+
+/// What a session that may only read keeps through a command: its project, its history, its file, the phase and option it makes
+/// things in, and how many times it was replaced.
+struct Kept {
+    model: Arc<Model>,
+    path: Option<PathBuf>,
+    phase: Option<String>,
+    option: Option<String>,
+    undo: Vec<(Step, Arc<Model>)>,
+    redo: Vec<(Step, Arc<Model>)>,
+    resets: usize,
+}
+
+impl Kept {
+    fn of(s: &Session) -> Kept {
+        Kept {
+            model: Arc::clone(&s.model),
+            path: s.path.clone(),
+            phase: s.phase.clone(),
+            option: s.option.clone(),
+            undo: s.undo.clone(),
+            redo: s.redo.clone(),
+            resets: s.resets,
+        }
+    }
+
+    /// Puts the session back as it was kept, and says whether anything had changed but its file: a copy saved as another file
+    /// leaves the session with its own, and is no change.
+    fn keep(self, s: &mut Session) -> Result<(), ()> {
+        let same = (Arc::ptr_eq(&self.model, &s.model) || *self.model == *s.model)
+            && (s.phase == self.phase && s.option == self.option && s.resets == self.resets)
+            && (s.undo.len() == self.undo.len() && s.redo.len() == self.redo.len());
+        (s.model, s.path, s.phase, s.option) = (self.model, self.path, self.phase, self.option);
+        (s.undo, s.redo, s.resets) = (self.undo, self.redo, self.resets);
+        if same { Ok(()) } else { Err(()) }
+    }
+}
+
+/// Whether two paths name the same file: as the system resolves them where both are there, else as they are written.
+fn same_file(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
     }
 }
 

@@ -463,6 +463,13 @@ machine's own address only, a connection that does not say the token in its firs
 the file. The tools are the same, except `new_model` and `open`, which would replace your project: start or open another in
 the window. The window answers between its frames, so a long command holds the window as it would from a button.
 
+File > Settings > Agents opens the same port without `--control` (and again at each start), on a port you choose or any free one,
+and closes it. With **Allow agents to edit this project** off, an agent only reads your project: it inspects it, reads its schedules,
+renders its views and exports it to new files (the sheets to PDF among them), and every change it asks for comes back as an error
+that says so. The view control bar shows the port: off, listening on its number, or how many agents are connected, and read-only.
+An agent's own side can ask the same: `bimcraft-cli mcp --connect --read-only`, or `bimcraft-cli mcp --read-only house.bimcraft`
+for a headless server that opens the file and then only reads it.
+
 ## Commands
 
 | Command | Shortcut | Parameters |
