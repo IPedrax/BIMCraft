@@ -53,7 +53,7 @@ fn the_project_browser_scrolls_from_anywhere_across_its_palette() {
 #[test]
 fn palettes_dock_left_right_or_bottom_float_and_close_by_their_menus() {
     let mut h = app(BOX);
-    assert_eq!(*docking(&h), Docking::default(), "Properties over the Project Browser, on the left");
+    assert_eq!(*docking(&h), Docking::revit(), "Rev's: Properties over the Project Browser, on the left");
     dock_by_menu(&mut h, "Properties", "Dock Right");
     assert_eq!(docking(&h).docked(Palette::Properties), Some(Side::Right));
     assert!(at(&h, "Dock Properties").x > 1000.0, "drawn down the right side");
@@ -246,14 +246,16 @@ fn settings_open_from_the_file_menu_and_set_the_theme_the_ribbon_and_the_palette
     assert!(h.query_by_label("User Interface").is_some() && h.query_by_label("Performance").is_some());
     pick(&mut h, Role::RadioButton, "Dark");
     assert!(crate::style::dark());
-    pick(&mut h, Role::CheckBox, "Minimize the ribbon to its tabs");
+    // The page runs below the fold now, so these are pressed as a screen reader does.
+    h.get_by_role_and_label(Role::CheckBox, "Minimize the ribbon to its tabs").click_accesskit();
+    h.run();
     assert!(h.state().ribbon_min);
-    pick(&mut h, Role::CheckBox, "Project Browser");
+    h.get_by_role_and_label(Role::CheckBox, "Project Browser").click_accesskit();
+    h.run();
     assert!(!docking(&h).shown(Palette::Browser));
-    // The page runs below the fold now, so it is pressed as a screen reader does.
     h.get_by_label("Reset Palette Layout").click_accesskit();
     h.run();
-    assert_eq!(*docking(&h), Docking::default());
+    assert_eq!(*docking(&h), Docking::revit(), "Rev's layout, in Rev");
     // What is still to come shows, greyed out.
     press(&mut h, "Performance");
     assert!(h.get_by_label("Smooth lines (anti-aliasing)").accesskit_node().is_disabled());
@@ -339,8 +341,9 @@ fn a_layout_reads_back_as_written_and_a_hostile_one_reads_as_sense() {
         "floats": [{"tabs": ["Project Browser"], "at": [1e300, -1e300], "size": [0, 1e9]}, {"tabs": ["Properties"], "at": [0, 0], "size": [100, 100]}],
     });
     let d = Docking::from_json(&hostile);
-    assert_eq!(d.left.len(), 1);
-    assert_eq!((d.left[0].tabs.as_slice(), d.left[0].active), ([Palette::Properties].as_slice(), 0));
+    assert_eq!(d.left.len(), 2, "and the Tools palette, which the file doesn't name, first");
+    assert_eq!(d.left[0].tabs, [Palette::Tools]);
+    assert_eq!((d.left[1].tabs.as_slice(), d.left[1].active), ([Palette::Properties].as_slice(), 0));
     let f = d.float_of(Palette::Browser).unwrap();
     assert!(f.at.x <= 20_000.0 && f.at.y >= -20_000.0 && f.size.x >= 120.0 && f.size.y <= 4000.0, "{f:?}");
     assert_eq!(d.floats.len(), 1, "Properties is placed once");

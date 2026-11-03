@@ -386,6 +386,26 @@ impl BimApp {
         out
     }
 
+    /// Every view the browser opens (plans, 3D views, sections, schedules, sheets), in its order, as Find lists them.
+    pub(crate) fn openable(&self) -> Vec<(String, crate::find::Found)> {
+        use crate::find::Found;
+        fn walk(app: &BimApp, nodes: &[Node], out: &mut Vec<(String, Found)>) {
+            for n in nodes {
+                match &n.act {
+                    Act::Open(sheet) => out.push((app.view_title(*sheet), Found::View(*sheet))),
+                    Act::Open3D(id) => out.push((format!("{}: {}", t("3D View"), n.label), Found::View3D(*id))),
+                    _ => {}
+                }
+                walk(app, &n.kids, out);
+            }
+        }
+        let sheets = self.sheets().into_iter().map(|(id, name)| self.view_leaf(&name, Sheet::Paper(id)));
+        let nodes: Vec<Node> = [self.views_node(), self.schedules_node()].into_iter().chain(sheets).collect();
+        let mut out = Vec::new();
+        walk(self, &nodes, &mut out);
+        out
+    }
+
     fn view_leaf(&self, name: &str, sheet: Sheet) -> Node {
         Node::leaf(name, Act::Open(sheet), self.sheet == sheet)
     }

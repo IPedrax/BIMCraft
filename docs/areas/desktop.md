@@ -101,7 +101,8 @@ the draft curve, keeps its id, GUID and style, and moves joined endpoints so a c
 reference stays fixed. Changes use the sketch's Ctrl+Z history and reach the model only through Finish Edit Mode; Cancel
 leaves the model as it was. Invalid geometry leaves the draft and reference intact, and undo or Escape drops stale picks.
 
-The sketch's contextual ribbon includes Align, Trim/Extend to Corner, Trim/Extend Single/Multiple Elements, Split and
+A sketch line picked alone in Modify has a small palette over the view at its middle (`BimApp::edge_palette`, both profiles): Add
+Vertex (which no panel offers while sketching), Split Element, Offset and Trim/Extend to Corner, each starting its tool. The sketch's contextual ribbon includes Align, Trim/Extend to Corner, Trim/Extend Single/Multiple Elements, Split and
 Offset. Trim highlights sketch candidates and keeps its first pick lit; its prompt says which line to pick and to click
 the part to keep. A failed trim leaves that first pick available for another target; a successful edit clears the error.
 Multiple Trim keeps the boundary across successive target edits while that indexed line is unchanged, and drops it if
@@ -123,7 +124,9 @@ is an endpoint, and its sight line gives no nearest point. Rotate's Place Centre
 Revit's Quadrants (SQ) and Tangents (ST) are snaps of their own, in Manage > Snaps with the rest. The desktop's `BimApp::snap` gives
 it the reach in px (`SNAP`, `PICK`) and the snaps in force (Manage > Snaps, kept while the window is open, or for one point
 a shortcut's override: `snap_once`, `Snaps::only`, `Snaps::none`); `found` and
-`show_snap` draw what a pick would land on, and a point that moves with the cursor goes through them. A selected wall's ends are
+`show_snap` draw what a pick would land on (a line's or a wall's length is typed at the cursor, and after Tab its angle, degrees counter-clockwise from east, `line_angle_field`;
+Enter places the point along it; a point lined up with a wall says which: "Lines up with wall 100231", the core's
+`AlignmentResult::wall_id`), and a point that moves with the cursor goes through them. A selected wall's ends are
 grips (`grip_drag`): a drag runs `move` with `end`, Ctrl keeps the length; the angle beside each end runs `rotate` about it. A
 wall joined at the end that moves keeps its joint, which slides along the wall it meets, so lengths change.
 
@@ -167,6 +170,57 @@ state and its commands: the project's own types and a family's in `properties.rs
 `notes.rs` (`text_type`, with `rename`), filled region types in `fillpatterns.rs`, where Duplicate and Rename change the draft OK applies and a
 pattern's … opens the Patterns tab. The dialogs are one width, and the table's body one height where the window has room, known from the first frame:
 a body that fitted its rows grew over a few frames, and a click meant for one row landed on the next. A refusal is said in the dialog.
+
+BIMCraft's tools and Find. BIMCraft has no ribbon: its tools are the Tools palette (`dock::Palette::Tools`, `BimApp::tool_column`), a
+palette like the others, so it docks on any side, floats and closes, and the settings file keeps where (one a file from before it never
+named docks first on the left). Down its left a rail of the ribbon's tabs (`TABS`, each with an icon); beside it, as rows under their panels'
+names (`ribbon::rows`, which draws a tab's own panel code in the list mode a folded panel uses), the Select panel once
+(`ribbon::skip_select`), the contextual tab's rows named for the tool in hand or the selection, and the open tab's. The rows scroll both ways
+and never widen the column. Rev never shows the palette (`show` puts it away each frame) and BIMCraft brings it back. BIMCraft's default
+layout (`Docking::default`) is the Tools palette on the left and Properties over the Project Browser on the right, which BIMCraft calls the
+Inspector and the Navigator (`Palette::label`); Rev resets to Revit's (`Docking::revit`). Find (`find.rs`, Ctrl+K in both profiles, and a
+button on BIMCraft's title bar) lists every action a shortcut can be given (`shortcuts::ACTIONS`, with its keys) and every view the browser
+opens (`BimApp::openable`), by every word typed (`find::matches`); Enter takes the first, a click the one clicked, Escape or a click beside it
+closes it. Keyboard shortcuts are the same in both profiles. The tests of what the tools do drive Rev's ribbon (`app` is Rev's, with Revit's
+layout); BIMCraft's own chrome is tested through `bimcraft` (`tests/profile.rs`, `tests/look.rs`, `tests/smallest.rs`).
+
+The profiles differ in looks only: every feature one has, the other has too, the way its look shows it (Find is a wide button on
+BIMCraft's title bar and an icon among Rev's; the tools are the Tools palette or the ribbon). Scale, Edit Tools and presets (`presets.rs`)
+are window settings in `settings.json`, never in a project, and work the same on both. The project's scale (`presets::Scale`: Sketch,
+Studio, Team, Team the default so nobody loses a tool) leaves out panels and tools a project doesn't need yet (`Scale::hides`, by English
+name: below Team design options, links and inquiry, in Sketch also sheets, phasing and view templates); a chip on the title bar of both
+profiles switches it at any time and lists the presets, Edit Tools and Manage Presets. Edit Tools turns every tool, a ribbon button or a
+palette row, into a box to tick (`edit_tool`): a click ticks or clears it and takes no tool, and what is cleared is `tools_hidden`, left
+out of the ribbon and the palette (Find still lists it). The ribbon and the palette read both through `ribbon::tool_rules`, set each frame;
+`ribbon::panel` leaves out a panel the scale does, `big_button`, `small_button`, `stacked_button` and `list_row` a tool. A preset
+(`presets::Preset`) keeps, by name, where the palettes are, the tools shown, the scale and the layout; Settings > User Interface > Presets
+saves the layout now under a name, uses or deletes one, and shows every tool again. A settings file's presets are read as hostile: unnamed,
+over-long or repeated ones are left out, 32 at most.
+
+Themes, the same in both profiles. The window follows the system's light or dark until the user picks (Settings > User Interface >
+Theme, or View > Dark Mode); beside the profile's own light, dark and dark-with-a-light-canvas are three presets, dark ones (`style::Scheme`:
+Dracula, after the open theme of that name, Midnight and AMOLED), and an accent colour of the user's own over any of them. `style::palette`
+works out the frame's colours from the profile, light or dark, the scheme and the accent, `style::follow` puts them in force each frame (and
+the widgets' look once they change) and `pal()` returns them, by value. An accent (`with_accent`) is the fills and strokes, a quarter of it
+over the card for what is picked, and its lettering stepped toward the text's colour until it holds 4.5:1 on every ground it is read on, so
+any accent stays legible; the contrast test runs every theme and an accent of every kind on each. The drawing keeps its own colours
+(`canvas_pal`). `settings.json` keeps the scheme and the accent beside the theme.
+
+The Inspector's pictures, the same in both profiles. Under the filter row, the type the palette shows is drawn when it has layers
+(`properties::layer_picture`, for walls, floors, roofs and ceilings, `LAYERED`): each layer to its thickness in its material's colour, a
+type without layers as one band. A wall's run from its exterior face to its interior one, with the location line the selected walls share
+dashed where it runs (`walls::depth`, the core's own rule) and named under it; a click on the picture sets the line nearest it, through
+`modify`. A floor's, a roof's or a ceiling's run from the top down. Under it, for doors, which way they open (`opening_picker`): four plans of a door in
+its wall (as placed, hand flipped, facing flipped, both), the one the selected doors share lit, a click setting their `flip_hand` and
+`flip_facing` through `modify`. For rooms, their colour on plans (`room_colour`): swatches, No fill first, and any
+other colour; a pick sets the room's `colour` (`Room::colour`, red, green and blue, none for no fill), which plans draw as a fill of
+the room's region under its name (`render.rs`) and a file keeps (an optional field an older version leaves out, so no format step).
+
+Properties' filter. With a selection of several categories, the line under the Type Selector is a drop-down of them, as Revit's is
+(`BimApp::selection_categories`): Multiple Categories first, then each category with its count. One picked is what the palette shows
+and edits, the selection staying as it is: `BimApp::palette_ids` is the selection narrowed to it, and the palette's subject, the Type
+Selector, Edit Type (from the palette, the ribbon or the right-click menu) and every edit the palette sends read it, never the selection.
+`palette_filter` keeps the selection it was picked for, so a new selection starts it over.
 
 View Templates (`templates.rs`). VT and View > View Templates open it as Revit's does, in the look Type Properties has: on the left a tab for each
 kind of view (`ViewKind`: Plan, Elevation/Section, 3D; a template of no kind is on every tab), the templates of the one showing, and Duplicate…,
@@ -240,6 +294,20 @@ Text holds 4.5:1 and a focus ring or an icon 3:1 on what it sits on, in both the
 window draws): `accent` is for fills, strokes and the drawing, `accent_ink` for the accent as text, an icon or a focus ring
 (`style::focus_ring`, which on the app bar is the bar's lettering colour), `on_context` for the open contextual tab's lettering. A new pair of
 colours goes in that test.
+
+Profiles. File > Settings > User Interface > Profile picks the interface the window wears (`style::Profile`, kept in `settings.json` as
+`profile`, a name this version doesn't know read as the default): BIMCraft's own, the default, or Rev, laid out as the ribbon tool its
+users know. Rev has palettes of its own (`style::REV_LIGHT`, `REV_DARK`: the title bar and the ribbon's tabs in the ribbon's greys, where
+BIMCraft's bar is dark; the accent, its tints and the drawing's colours are the same), square corners (`style::corner`, and the widgets'
+own, which `style::follow` sets again when the profile changes), and one layout, flush, so the Layout choice is BIMCraft's and greyed while
+Rev is on. Its File is the ribbon's first tab, white on blue (`style::FILE_TAB`), and leaves the app bar; its open tab is outlined but
+along its foot, where it opens onto the panels; the panels' names sit on bands along the ribbon's foot (`ribbon::panel`); and the Options
+Bar is docked under the ribbon (`BimApp::show`), there with or without a tool's options, so the view never moves under it. In Properties
+each group is a ruled property grid (every group's rows go through `properties::grid`, which draws the line between the columns, and
+`properties::end_row`, which draws one under each row), the group headers are semibold, and Apply stays at the palette's foot over a line
+(`palette_body`), the rows scrolling above it. Each difference
+is read in the frame through `style::rev()`, never a second copy of a widget. Rev copies a layout, never another program's pictures or
+words: its icons are the ones `icons.rs` draws. `tests/profile.rs` drives it, and `tests/smallest.rs` runs the least window in both.
 
 The title bar (`titlebar.rs`). On Windows and Linux the window draws its own (`BimApp::own_title_bar`, set by `main`, which opens
 the window without the system's decorations): the app bar is the title bar. Its bare ground moves the window and a double-click

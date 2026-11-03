@@ -149,7 +149,7 @@ pub fn sweep_through(a: P2, p: P2, b: P2) -> f64 {
 
 /// How far from the exterior face of a wall of `thickness` with `layers` its location line `loc`
 /// lies. The core runs from the first structure layer to the last; without one, it's all of it.
-fn depth(thickness: f64, layers: &[Layer], loc: Location) -> f64 {
+pub fn depth(thickness: f64, layers: &[Layer], loc: Location) -> f64 {
     let mut core: Option<(f64, f64)> = None;
     let mut at = 0.0;
     for l in layers {

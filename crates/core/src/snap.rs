@@ -181,6 +181,9 @@ pub struct Found {
     pub at: P2,
     pub kind: Kind,
     pub guide: Option<Guide>,
+    /// The element it came from, by the id Select by ID finds it by: none for a sketch's own lines, the points picked so far,
+    /// a scan, a guide's angle or nothing.
+    pub source: Option<Id>,
 }
 
 /// `a` degrees turned into [0, 360).
@@ -204,14 +207,15 @@ fn micron(p: P2) -> P2 {
 }
 
 /// What the plan of a level has to snap to.
+/// Each point, line and curve holds the element it comes from, none for a sketch's own lines.
 struct Scene<'a> {
-    points: Vec<(P2, Kind)>,
+    points: Vec<(P2, Kind, Option<Id>)>,
     /// Straight lines: walls' centre lines, and grids.
-    lines: Vec<(P2, P2)>,
-    /// The walls, with their thickness.
-    walls: Vec<(Axis, f64)>,
+    lines: Vec<(P2, P2, Option<Id>)>,
+    /// The walls, with their thickness and their ids.
+    walls: Vec<(Axis, f64, Id)>,
     /// The detail lines near, of any shape.
-    curves: Vec<Curve>,
+    curves: Vec<(Curve, Option<Id>)>,
     /// Their chords near, each with its line's place in `curves`: crossed with other lines, never with their own.
     chords: Vec<(P2, P2, usize)>,
     /// Where a scan's points can be had: the model, the plan asked for and what its view shows.
@@ -219,22 +223,22 @@ struct Scene<'a> {
 }
 
 impl<'a> Scene<'a> {
-    fn segment(&mut self, a: P2, b: P2) {
-        self.points.extend([(a, Kind::Endpoint), (b, Kind::Endpoint), ((a + b) * 0.5, Kind::Midpoint)]);
-        self.lines.push((a, b));
+    fn segment(&mut self, a: P2, b: P2, of: Option<Id>) {
+        self.points.extend([(a, Kind::Endpoint, of), (b, Kind::Endpoint, of), ((a + b) * 0.5, Kind::Midpoint, of)]);
+        self.lines.push((a, b, of));
     }
 
-    fn polyline(&mut self, points: &[P2], closed: bool) {
+    fn polyline(&mut self, points: &[P2], closed: bool, of: Option<Id>) {
         for w in points.windows(2) {
-            self.segment(w[0], w[1]);
+            self.segment(w[0], w[1], of);
         }
         if closed && let (Some(a), Some(b)) = (points.last(), points.first()) {
-            self.segment(*a, *b);
+            self.segment(*a, *b, of);
         }
     }
 
     /// One real curve supplies its own points and chords, retaining the curve identity for crossings and tangents.
-    fn curve(&mut self, curve: &Curve, p: P2, window: f64) {
+    fn curve(&mut self, curve: &Curve, p: P2, window: f64, of: Option<Id>) {
         let pts = curve.points();
         let (lo, hi) = pts.iter().fold((P2(f64::INFINITY, f64::INFINITY), P2(f64::NEG_INFINITY, f64::NEG_INFINITY)), |(lo, hi), q| {
             (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1)))
@@ -243,19 +247,19 @@ impl<'a> Scene<'a> {
             return;
         }
         if !curve.is_closed() {
-            self.points.extend([(curve.start(), Kind::Endpoint), (curve.end(), Kind::Endpoint)]);
+            self.points.extend([(curve.start(), Kind::Endpoint, of), (curve.end(), Kind::Endpoint, of)]);
         }
-        self.points.extend(curve.vertices().into_iter().filter(|_| curve.is_poly()).map(|q| (q, Kind::Endpoint)));
+        self.points.extend(curve.vertices().into_iter().filter(|_| curve.is_poly()).map(|q| (q, Kind::Endpoint, of)));
         // A polyline's middles are its segments' own; another curve's is half way along it.
         if curve.is_poly() {
-            self.points.extend(curve.segments().iter().map(|seg| (seg.at(seg.length() / 2.0, 0.0), Kind::Midpoint)));
+            self.points.extend(curve.segments().iter().map(|seg| (seg.at(seg.length() / 2.0, 0.0), Kind::Midpoint, of)));
         } else {
-            self.points.push((curve.middle(), Kind::Midpoint));
+            self.points.push((curve.middle(), Kind::Midpoint, of));
         }
-        self.points.extend(rounds(curve));
+        self.points.extend(rounds(curve).into_iter().map(|(q, k)| (q, k, of)));
         let n = self.curves.len();
         self.chords.extend(pts.windows(2).filter(|w| geom::dist_to_segment(p, w[0], w[1]) <= window).map(|w| (w[0], w[1], n)));
-        self.curves.push(curve.clone());
+        self.curves.push((curve.clone(), of));
     }
 
     /// What `level`'s plan has within `window` mm of `p`, but for what `look` hides: a cheap look at
@@ -282,51 +286,52 @@ impl<'a> Scene<'a> {
             });
             p.0 >= lo.0 - window && p.0 <= hi.0 + window && p.1 >= lo.1 - window && p.1 <= hi.1 + window
         };
-        let ring = |pts: &[P2]| if near(pts) { pts.iter().map(|q| (*q, Kind::Endpoint)).collect::<Vec<_>>() } else { Vec::new() };
-        for e in m.elements.iter().filter(|(id, _)| look.shows(**id) && skip != Some(**id)).map(|(_, e)| e) {
+        for (&id, e) in m.elements.iter().filter(|(id, _)| look.shows(**id) && skip != Some(**id)) {
+            let of = Some(id);
+            let ring = |pts: &[P2]| if near(pts) { pts.iter().map(|q| (*q, Kind::Endpoint, of)).collect::<Vec<_>>() } else { Vec::new() };
             match e {
                 // What a view draws of its own, in a section as in a plan.
                 Element::FilledRegion(r) if m.annotation_in(e, view) => {
                     for line in &r.sketch {
-                        s.curve(&line.curve, p, window);
+                        s.curve(&line.curve, p, window, of);
                     }
                 }
-                Element::DetailLine(l) if m.annotation_in(e, view) => s.curve(&l.curve, p, window),
+                Element::DetailLine(l) if m.annotation_in(e, view) => s.curve(&l.curve, p, window, of),
                 // The rest is a plan's: a section has none of it.
                 _ if !plan => {}
                 // Annotation's anchors: where it is placed, and the points its leader or dimension line reaches.
                 Element::Text(n) if m.annotation_in(e, view) => {
-                    s.points.push((n.at, Kind::Anchor));
+                    s.points.push((n.at, Kind::Anchor, of));
                     if let Some(to) = n.leader {
-                        s.points.push((to, Kind::Anchor));
+                        s.points.push((to, Kind::Anchor, of));
                     }
                 }
-                Element::Spot(sp) if m.annotation_in(e, view) => s.points.push((sp.at, Kind::Anchor)),
+                Element::Spot(sp) if m.annotation_in(e, view) => s.points.push((sp.at, Kind::Anchor, of)),
                 Element::Tag(t) if m.annotation_in(e, view) && m.elements.id(t.host).is_some_and(|id| look.shows(id)) => {
                     if let Some(host) = m.anchor(t.host) {
-                        s.points.push((host + t.offset, Kind::Anchor));
+                        s.points.push((host + t.offset, Kind::Anchor, of));
                         if t.leader {
-                            s.points.push((host, Kind::Anchor));
+                            s.points.push((host, Kind::Anchor, of));
                         }
                     }
                 }
                 Element::Dimension(d) if m.annotation_in(e, view) => {
-                    s.points.push((d.at, Kind::Anchor));
+                    s.points.push((d.at, Kind::Anchor, of));
                     let (along, stations) = m.stations(d);
                     for (at, _, _) in stations {
-                        s.points.push((d.at + along * at, Kind::Anchor));
+                        s.points.push((d.at + along * at, Kind::Anchor, of));
                     }
                 }
-                Element::DetailGroup(g) if m.annotation_in(e, view) => s.points.push((g.at, Kind::Anchor)),
+                Element::DetailGroup(g) if m.annotation_in(e, view) => s.points.push((g.at, Kind::Anchor, of)),
                 Element::RepeatingDetail(r) if m.annotation_in(e, view) => {
-                    s.points.extend([(r.start, Kind::Anchor), (r.end, Kind::Anchor)]);
+                    s.points.extend([(r.start, Kind::Anchor, of), (r.end, Kind::Anchor, of)]);
                     if let Some(places) = r.places() {
-                        s.points.extend(places.into_iter().map(|(at, _)| (at, Kind::Anchor)).filter(|(at, _)| near(&[*at])));
+                        s.points.extend(places.into_iter().map(|(at, _)| (at, Kind::Anchor, of)).filter(|(at, _, _)| near(&[*at])));
                     }
                 }
                 // Their marks stand on every plan.
                 Element::Section(v) | Element::Elevation(v) => {
-                    s.points.extend([(v.start, Kind::Anchor), (v.end, Kind::Anchor), ((v.start + v.end) * 0.5, Kind::Anchor)]);
+                    s.points.extend([(v.start, Kind::Anchor, of), (v.end, Kind::Anchor, of), ((v.start + v.end) * 0.5, Kind::Anchor, of)]);
                 }
                 // A camera gives its eye and target, never the mark's body, lens, name or sight line.
                 Element::View3D(v) => {
@@ -336,9 +341,9 @@ impl<'a> Scene<'a> {
                     {
                         let eye = P2(c.eye[0], c.eye[1]);
                         let target = P2(c.target[0], c.target[1]);
-                        s.points.push((eye, Kind::Endpoint));
+                        s.points.push((eye, Kind::Endpoint, of));
                         if eye.dist(target) > TOL {
-                            s.points.push((target, Kind::Endpoint));
+                            s.points.push((target, Kind::Endpoint, of));
                         }
                     }
                 }
@@ -352,29 +357,33 @@ impl<'a> Scene<'a> {
                     if !near(&reach) || !m.cut_by(w, view) {
                         continue;
                     }
-                    s.points.extend([(a.start, Kind::Endpoint), (a.end, Kind::Endpoint), (a.at(a.length() / 2.0, 0.0), Kind::Midpoint)]);
+                    s.points.extend([
+                        (a.start, Kind::Endpoint, of),
+                        (a.end, Kind::Endpoint, of),
+                        (a.at(a.length() / 2.0, 0.0), Kind::Midpoint, of),
+                    ]);
                     match a.centre() {
-                        Some(c) => s.points.push((c, Kind::Centre)),
-                        None => s.lines.push((a.start, a.end)),
+                        Some(c) => s.points.push((c, Kind::Centre, of)),
+                        None => s.lines.push((a.start, a.end, of)),
                     }
-                    s.walls.push((a, m.thickness(w)));
+                    s.walls.push((a, m.thickness(w), id));
                 }
                 Element::Grid(g) if near(&[g.start, g.end]) => {
-                    s.points.extend([(g.start, Kind::Endpoint), (g.end, Kind::Endpoint)]);
-                    s.lines.push((g.start, g.end));
+                    s.points.extend([(g.start, Kind::Endpoint, of), (g.end, Kind::Endpoint, of)]);
+                    s.lines.push((g.start, g.end, of));
                 }
                 Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) if c.level == level && near(&[c.at]) => {
-                    s.points.push((c.at, Kind::Centre))
+                    s.points.push((c.at, Kind::Centre, of))
                 }
                 crate::model::run_arm!(r) if r.level == level && near(&[r.start, r.end]) => {
                     s.points.extend([
-                        (r.start, Kind::Endpoint),
-                        (r.end, Kind::Endpoint),
-                        (r.start + (r.end - r.start) * 0.5, Kind::Midpoint),
+                        (r.start, Kind::Endpoint, of),
+                        (r.end, Kind::Endpoint, of),
+                        (r.start + (r.end - r.start) * 0.5, Kind::Midpoint, of),
                     ]);
-                    s.lines.push((r.start, r.end));
+                    s.lines.push((r.start, r.end, of));
                 }
-                Element::Component(c) if c.level == level && near(&[c.at]) => s.points.push((c.at, Kind::Centre)),
+                Element::Component(c) if c.level == level && near(&[c.at]) => s.points.push((c.at, Kind::Centre, of)),
                 Element::Floor(f) if f.level == level => {
                     s.points.extend(ring(&f.boundary));
                     f.openings.iter().for_each(|o| s.points.extend(ring(o)));
@@ -389,10 +398,10 @@ impl<'a> Scene<'a> {
                 }
                 Element::Shaft(sh) if sh.level == level => s.points.extend(ring(&sh.boundary)),
                 Element::Mass(ms) if m.mass_cut_by(ms, cut) => s.points.extend(ring(&m.mass_outline(ms, cut))),
-                Element::Stair(st) if st.level == level && near(&[st.start]) => s.points.push((st.start, Kind::Endpoint)),
-                Element::Ramp(r) if r.level == level && near(&[r.start]) => s.points.push((r.start, Kind::Endpoint)),
+                Element::Stair(st) if st.level == level && near(&[st.start]) => s.points.push((st.start, Kind::Endpoint, of)),
+                Element::Ramp(r) if r.level == level && near(&[r.start]) => s.points.push((r.start, Kind::Endpoint, of)),
                 Element::Railing(r) if r.level == level => s.points.extend(ring(&r.path)),
-                Element::CadImport(ci) if ci.level == level => cad_scene(&mut s, m, ci, p, window, look),
+                Element::CadImport(ci) if ci.level == level => cad_scene(&mut s, m, ci, p, window, look, id),
                 _ => {}
             }
         }
@@ -401,9 +410,10 @@ impl<'a> Scene<'a> {
 }
 
 /// What of a CAD import lies within `window` mm of `p`, of the layers it and the view show: its lines' ends and middles, its
-/// arcs' and circles' centres, and its straight segments, so a wall can be traced over it.
-fn cad_scene(s: &mut Scene, m: &Model, ci: &crate::model::CadImport, p: P2, window: f64, look: &Look) {
+/// arcs' and circles' centres, and its straight segments, so a wall can be traced over it. They are the import's, `id`.
+fn cad_scene(s: &mut Scene, m: &Model, ci: &crate::model::CadImport, p: P2, window: f64, look: &Look, id: Id) {
     use crate::dxf::Shape;
+    let of = Some(id);
     let Some(cad) = m.cads.get(&ci.cad) else { return };
     let place = crate::model::cad_place(ci);
     // The window in the drawing's own units: the box round its corners, turned back.
@@ -419,9 +429,9 @@ fn cad_scene(s: &mut Scene, m: &Model, ci: &crate::model::CadImport, p: P2, wind
             continue;
         }
         match &e.shape {
-            Shape::Circle { c, .. } => s.points.push((place(*c), Kind::Centre)),
-            Shape::Arc { c, .. } => s.points.push((place(*c), Kind::Centre)),
-            Shape::Point(q) => s.points.push((place(*q), Kind::Endpoint)),
+            Shape::Circle { c, .. } => s.points.push((place(*c), Kind::Centre, of)),
+            Shape::Arc { c, .. } => s.points.push((place(*c), Kind::Centre, of)),
+            Shape::Point(q) => s.points.push((place(*q), Kind::Endpoint, of)),
             Shape::Text { .. } => continue,
             _ => {}
         }
@@ -432,9 +442,9 @@ fn cad_scene(s: &mut Scene, m: &Model, ci: &crate::model::CadImport, p: P2, wind
             if !straight {
                 // A curve: its ends, and its middle point.
                 if let (Some(a), Some(b), false) = (pts.first(), pts.last(), closed) {
-                    s.points.extend([(place(*a), Kind::Endpoint), (place(*b), Kind::Endpoint)]);
+                    s.points.extend([(place(*a), Kind::Endpoint, of), (place(*b), Kind::Endpoint, of)]);
                     if let Some(mid) = pts.get(pts.len() / 2) {
-                        s.points.push((place(*mid), Kind::Midpoint));
+                        s.points.push((place(*mid), Kind::Midpoint, of));
                     }
                 }
                 continue;
@@ -443,9 +453,7 @@ fn cad_scene(s: &mut Scene, m: &Model, ci: &crate::model::CadImport, p: P2, wind
                 if !near(crate::dxf::union([[a, a], [b, b]]).unwrap_or_default()) {
                     continue;
                 }
-                let (a, b) = (place(a), place(b));
-                s.points.extend([(a, Kind::Endpoint), (b, Kind::Endpoint), ((a + b) * 0.5, Kind::Midpoint)]);
-                s.lines.push((a, b));
+                s.segment(place(a), place(b), of);
             }
         }
     }
@@ -515,10 +523,10 @@ pub(crate) fn rounds(c: &Curve) -> Vec<(P2, Kind)> {
     }
 }
 
-/// Where lines from `from` touch the circles and arcs of `curves`: the tangent points.
-fn tangents(curves: &[Curve], from: P2) -> Vec<P2> {
+/// Where lines from `from` touch the circles and arcs of `curves`: the tangent points, each with its curve's element.
+fn tangents(curves: &[(Curve, Option<Id>)], from: P2) -> Vec<(P2, Option<Id>)> {
     let mut out = Vec::new();
-    for c in curves {
+    for (c, of) in curves {
         let rounds: Vec<(P2, f64)> = match c {
             Curve::Circle { centre, radius } => vec![(*centre, *radius)],
             Curve::Poly { .. } => c.segments().iter().filter_map(|s| Some((s.centre()?, s.radius()?))).collect(),
@@ -535,7 +543,7 @@ fn tangents(curves: &[Curve], from: P2) -> Vec<P2> {
             for t in [base + a, base - a] {
                 let q = o + P2(t.cos(), t.sin()) * r;
                 if c.nearest(q).1 < 1e-3 {
-                    out.push(q);
+                    out.push((q, *of));
                 }
             }
         }
@@ -543,17 +551,18 @@ fn tangents(curves: &[Curve], from: P2) -> Vec<P2> {
     out
 }
 
-/// Where the segments `lines` cross each other.
-fn crossings(lines: &[(P2, P2)]) -> Vec<P2> {
+/// Where the segments `lines` cross each other, each with the element of the first of the two: the nearer, as `solve`
+/// sorts them.
+fn crossings(lines: &[(P2, P2, Option<Id>)]) -> Vec<(P2, Option<Id>)> {
     let on = |q: P2, (a, b): (P2, P2)| geom::dist_to_segment(q, a, b) <= TOL;
     let mut out = Vec::new();
-    for (i, &(a, b)) in lines.iter().enumerate() {
-        for &(c, d) in lines.iter().skip(i + 1) {
+    for (i, &(a, b, of)) in lines.iter().enumerate() {
+        for &(c, d, _) in lines.iter().skip(i + 1) {
             if let Some(q) = geom::line_intersection(a, b, c, d)
                 && on(q, (a, b))
                 && on(q, (c, d))
             {
-                out.push(q);
+                out.push((q, of));
             }
         }
     }
@@ -674,11 +683,11 @@ pub fn in_sketch(m: &Model, sk: Sketch<'_>, p: P2, reach: Reach, from: &[P2], sq
             #[cfg(test)]
             BUILT.with(|n| n.set(n.get() + 1));
             match m.elements.get(id) {
-                Some(Element::Wall(_)) => scene.polyline(&crate::walls::outline_in(m, id, index.as_ref()), true),
+                Some(Element::Wall(_)) => scene.polyline(&crate::walls::outline_in(m, id, index.as_ref()), true, Some(id)),
                 Some(Element::Floor(Floor { boundary, openings, .. }) | Element::Ceiling(Ceiling { boundary, openings, .. })) => {
-                    scene.polyline(boundary, true);
+                    scene.polyline(boundary, true, Some(id));
                     for hole in openings {
-                        scene.polyline(hole, true);
+                        scene.polyline(hole, true, Some(id));
                     }
                 }
                 _ => {}
@@ -686,7 +695,7 @@ pub fn in_sketch(m: &Model, sk: Sketch<'_>, p: P2, reach: Reach, from: &[P2], sq
         }
     }
     for l in sk.lines {
-        scene.curve(&l.curve, p, window);
+        scene.curve(&l.curve, p, window, None);
     }
     solve(scene, p, reach, from, square, o, true)
 }
@@ -705,7 +714,8 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
     }
     let by_distance = |a: &P2, b: &P2| a.dist(p).total_cmp(&b.dist(p));
     // The lines that pass near the cursor: what it can cross, or stand square to.
-    let mut near: Vec<(P2, P2)> = scene.lines.iter().copied().filter(|(a, b)| geom::dist_to_segment(p, *a, *b) <= reach.point).collect();
+    let mut near: Vec<(P2, P2, Option<Id>)> =
+        scene.lines.iter().copied().filter(|(a, b, _)| geom::dist_to_segment(p, *a, *b) <= reach.point).collect();
     near.sort_by(|x, y| geom::dist_to_segment(p, x.0, x.1).total_cmp(&geom::dist_to_segment(p, y.0, y.1)));
     near.truncate(MAX_NEAR);
     // The detail lines' chords near it: crossed with the lines and with other detail lines' chords, and stood square to.
@@ -723,42 +733,47 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
         Kind::Anchor => o.annotation,
         _ => true,
     };
-    let mut points: Vec<(P2, Kind)> = scene.points.iter().copied().filter(|(_, k)| wanted(*k)).collect();
+    // A chord is its curve's element's.
+    let chord_of = |k: usize| scene.curves.get(k).and_then(|(_, of)| *of);
+    let mut points: Vec<(P2, Kind, Option<Id>)> = scene.points.iter().copied().filter(|(_, k, _)| wanted(*k)).collect();
     if o.endpoint {
-        points.extend(from.iter().map(|q| (*q, Kind::Endpoint)));
+        points.extend(from.iter().map(|q| (*q, Kind::Endpoint, None)));
     }
     if o.intersection {
-        points.extend(crossings(&near).into_iter().map(|q| (q, Kind::Intersection)));
+        points.extend(crossings(&near).into_iter().map(|(q, of)| (q, Kind::Intersection, of)));
         let on = |q: P2, a: P2, b: P2| geom::dist_to_segment(q, a, b) <= TOL;
         for (i, &(a, b, k)) in chords.iter().enumerate() {
-            let others = near.iter().map(|&(c, d)| (c, d)).chain(chords.iter().skip(i + 1).filter(|x| x.2 != k).map(|&(c, d, _)| (c, d)));
+            let others =
+                near.iter().map(|&(c, d, _)| (c, d)).chain(chords.iter().skip(i + 1).filter(|x| x.2 != k).map(|&(c, d, _)| (c, d)));
             for (c, d) in others {
                 if let Some(q) = geom::line_intersection(a, b, c, d)
                     && on(q, a, b)
                     && on(q, c, d)
                 {
-                    points.push((q, Kind::Intersection));
+                    points.push((q, Kind::Intersection, chord_of(k)));
                 }
             }
         }
     }
-    near.extend(chords.iter().map(|&(a, b, _)| (a, b)));
+    near.extend(chords.iter().map(|&(a, b, k)| (a, b, chord_of(k))));
     if o.tangent
         && let Some(l) = last
     {
-        points.extend(tangents(&scene.curves, l).into_iter().map(|q| (micron(q), Kind::Tangent)));
+        points.extend(tangents(&scene.curves, l).into_iter().map(|(q, of)| (micron(q), Kind::Tangent, of)));
     }
-    let hit =
-        points.into_iter().filter(|(q, _)| q.dist(p) <= reach.point).min_by(|a, b| by_distance(&a.0, &b.0).then(rank(a.1).cmp(&rank(b.1))));
-    if let Some((at, kind)) = hit {
-        return Found { at, kind, guide: None };
+    let hit = points
+        .into_iter()
+        .filter(|(q, _, _)| q.dist(p) <= reach.point)
+        .min_by(|a, b| by_distance(&a.0, &b.0).then(rank(a.1).cmp(&rank(b.1))));
+    if let Some((at, kind, source)) = hit {
+        return Found { at, kind, guide: None, source };
     }
     // Else a scan's point where the cut plane cuts it.
     if o.cloud
         && let Some((m, level, look)) = scene.cloud
         && let Some(at) = cloud_point(m, level, p, reach.point, look)
     {
-        return Found { at: micron(at), kind: Kind::Point, guide: None };
+        return Found { at: micron(at), kind: Kind::Point, guide: None, source: None };
     }
 
     // The foot of the perpendicular from the last point.
@@ -767,16 +782,16 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
     {
         let foot = near
             .iter()
-            .filter_map(|&(a, b)| {
+            .filter_map(|&(a, b, of)| {
                 let (len, u) = ((b - a).length(), (b - a).unit());
                 let t = (l - a).dot(u);
-                (len > 0.0 && (0.0..=len).contains(&t)).then(|| a + u * t)
+                (len > 0.0 && (0.0..=len).contains(&t)).then(|| (a + u * t, of))
             })
-            .filter(|f| f.dist(p) <= reach.point && f.dist(l) > STEP)
-            .min_by(by_distance);
-        if let Some(f) = foot {
+            .filter(|(f, _)| f.dist(p) <= reach.point && f.dist(l) > STEP)
+            .min_by(|x, y| by_distance(&x.0, &y.0));
+        if let Some((f, source)) = foot {
             let guide = Guide { from: l, angle: bearing(f - l), corner: corner_on(from, f - l) };
-            return Found { at: micron(f), kind: Kind::Perpendicular, guide: Some(guide) };
+            return Found { at: micron(f), kind: Kind::Perpendicular, guide: Some(guide), source };
         }
     }
 
@@ -798,14 +813,18 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
         if let Some((angle, u, along, _)) = best {
             let guide = Some(Guide { from: l, angle, corner: corner_on(from, u) });
             // Where it crosses a wall or a grid near the cursor.
-            let cross = near.iter().filter_map(|&(a, b)| ray_hit(l, u, a, b)).filter(|q| q.dist(p) <= reach.point).min_by(by_distance);
+            let cross = near
+                .iter()
+                .filter_map(|&(a, b, of)| Some((ray_hit(l, u, a, b)?, of)))
+                .filter(|(q, _)| q.dist(p) <= reach.point)
+                .min_by(|x, y| by_distance(&x.0, &y.0));
             // Else the grid point that lies on it, if one does, else as long as the nearest 10 mm.
             let grid = round(p);
             let on_grid = u.cross(grid - l).abs() <= 1e-3 && u.dot(grid - l) > 0.0;
             return match cross {
-                Some(q) if o.intersection => Found { at: micron(q), kind: Kind::Intersection, guide },
-                _ if on_grid => Found { at: grid, kind: Kind::Angle, guide },
-                _ => Found { at: micron(l + u * ((along / STEP).round().max(1.0) * STEP)), kind: Kind::Angle, guide },
+                Some((q, source)) if o.intersection => Found { at: micron(q), kind: Kind::Intersection, guide, source },
+                _ if on_grid => Found { at: grid, kind: Kind::Angle, guide, source: None },
+                _ => Found { at: micron(l + u * ((along / STEP).round().max(1.0) * STEP)), kind: Kind::Angle, guide, source: None },
             };
         }
     }
@@ -814,19 +833,19 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
         let nearest = scene
             .lines
             .iter()
-            .filter_map(|(a, b)| {
-                let d = *b - *a;
+            .filter_map(|&(a, b, of)| {
+                let d = b - a;
                 let length = d.dot(d);
-                (length > 0.0).then(|| *a + d * ((p - *a).dot(d) / length).clamp(0.0, 1.0))
+                (length > 0.0).then(|| (a + d * ((p - a).dot(d) / length).clamp(0.0, 1.0), of))
             })
-            .chain(scene.curves.iter().map(|c| {
+            .chain(scene.curves.iter().map(|(c, of)| {
                 let (t, _) = c.nearest(p);
-                c.at(t)
+                (c.at(t), *of)
             }))
-            .filter(|q| q.dist(p) <= reach.line)
-            .min_by(by_distance);
-        if let Some(at) = nearest {
-            return Found { at: micron(at), kind: Kind::Nearest, guide: None };
+            .filter(|(q, _)| q.dist(p) <= reach.line)
+            .min_by(|x, y| by_distance(&x.0, &y.0));
+        if let Some((at, source)) = nearest {
+            return Found { at: micron(at), kind: Kind::Nearest, guide: None, source };
         }
     }
 
@@ -835,17 +854,22 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
         let on = scene
             .walls
             .iter()
-            .map(|(a, t)| (a, a.distance(p, 0.0) - t / 2.0))
-            .filter(|(_, d)| *d <= reach.line)
+            .map(|(a, t, id)| (a, a.distance(p, 0.0) - t / 2.0, *id))
+            .filter(|(_, d, _)| *d <= reach.line)
             .min_by(|x, y| x.1.total_cmp(&y.1));
-        if let Some((a, _)) = on {
-            return Found { at: micron(a.at((a.project(p).0 / STEP).round() * STEP, 0.0)), kind: Kind::Nearest, guide: None };
+        if let Some((a, _, id)) = on {
+            let at = micron(a.at((a.project(p).0 / STEP).round() * STEP, 0.0));
+            return Found { at, kind: Kind::Nearest, guide: None, source: Some(id) };
         }
         // A line: the point of it nearest the cursor.
-        let on =
-            scene.curves.iter().map(|c| (c, c.nearest(p))).filter(|(_, (_, d))| *d <= reach.line).min_by(|x, y| x.1.1.total_cmp(&y.1.1));
-        if let Some((c, (t, _))) = on {
-            return Found { at: micron(c.at(t)), kind: Kind::Nearest, guide: None };
+        let on = scene
+            .curves
+            .iter()
+            .map(|(c, of)| (c, c.nearest(p), *of))
+            .filter(|(_, (_, d), _)| *d <= reach.line)
+            .min_by(|x, y| x.1.1.total_cmp(&y.1.1));
+        if let Some((c, (t, _), source)) = on {
+            return Found { at: micron(c.at(t)), kind: Kind::Nearest, guide: None, source };
         }
     }
     // Rounded, but not off the line a square step keeps to.
@@ -855,7 +879,7 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
         Some((false, x)) => at.0 = x,
         None => {}
     }
-    Found { at, kind: Kind::Free, guide: None }
+    Found { at, kind: Kind::Free, guide: None, source: None }
 }
 
 /// A length, its parts and its angle.
@@ -1076,6 +1100,33 @@ mod tests {
         assert_eq!(f.kind, Kind::Intersection);
         assert!(f.at.dist(P2(3000.0, 3000.0 * 30f64.to_radians().tan())) < 1e-2, "{:?}", f.at);
         assert!(f.guide.is_some());
+    }
+
+    #[test]
+    fn a_snap_names_the_element_it_came_from() {
+        let m = model(
+            r#"wall {"points": [[0,0],[6000,0]]}
+               wall {"points": [[2000,-1000],[2000,3000]]}"#,
+        );
+        let walls: Vec<Id> = m.elements.iter().filter(|(_, e)| matches!(e, Element::Wall(_))).map(|(id, _)| *id).collect();
+        let o = Snaps::default();
+        let f = at(&m, P2(5970.0, -20.0), &[], &o);
+        assert_eq!((f.kind, f.source), (Kind::Endpoint, Some(walls[0])));
+        let f = at(&m, P2(2030.0, 2020.0), &[], &o);
+        assert_eq!((f.kind, f.source), (Kind::Nearest, Some(walls[1])));
+        // Where two cross, the one nearer the cursor.
+        let f = at(&m, P2(2040.0, 30.0), &[], &o);
+        assert_eq!((f.kind, f.source), (Kind::Intersection, Some(walls[0])));
+        let f = at(&m, P2(4000.0, 2000.0), &[], &o);
+        assert_eq!((f.kind, f.source), (Kind::Free, None));
+        // In a sketch, a wall's outline is the wall's; the sketch's own lines are no element's.
+        use crate::sketch::SketchLine;
+        let lines = [SketchLine::new(P2(4000.0, 2000.0), P2(5000.0, 2000.0))];
+        let sketch = |p| in_sketch(&m, Sketch { view: 100000, lines: &lines, editing: None }, p, REACH, &[], false, &o);
+        let f = sketch(P2(4030.0, 2020.0));
+        assert_eq!((f.kind, f.source), (Kind::Endpoint, None));
+        let f = sketch(P2(3500.0, 120.0));
+        assert_eq!((f.kind, f.source), (Kind::Nearest, Some(walls[0])));
     }
 
     #[test]
@@ -1353,11 +1404,26 @@ mod tests {
         )
         .unwrap();
         let o = Snaps::default();
+        let text_id = *s.model.elements.iter().find(|(_, e)| matches!(e, Element::Text(_))).unwrap().0;
+        let section_id = *s.model.elements.iter().find(|(_, e)| matches!(e, Element::Section(_))).unwrap().0;
+        let camera_id = *s.model.elements.iter().find(|(_, e)| matches!(e, Element::View3D(_))).unwrap().0;
         assert_eq!(at(&s.model, P2(1030.0, 1020.0), &[], &o).kind, Kind::Anchor);
-        assert_eq!(at(&s.model, P2(2030.0, 1520.0), &[], &o), Found { at: P2(2000.0, 1500.0), kind: Kind::Anchor, guide: None });
-        assert_eq!(at(&s.model, P2(-980.0, 3020.0), &[], &o), Found { at: P2(-1000.0, 3000.0), kind: Kind::Anchor, guide: None });
-        assert_eq!(at(&s.model, P2(5030.0, 5020.0), &[], &o), Found { at: P2(5000.0, 5000.0), kind: Kind::Endpoint, guide: None });
-        assert_eq!(at(&s.model, P2(6030.0, 5020.0), &[], &o), Found { at: P2(6000.0, 5000.0), kind: Kind::Endpoint, guide: None });
+        assert_eq!(
+            at(&s.model, P2(2030.0, 1520.0), &[], &o),
+            Found { at: P2(2000.0, 1500.0), kind: Kind::Anchor, guide: None, source: Some(text_id) }
+        );
+        assert_eq!(
+            at(&s.model, P2(-980.0, 3020.0), &[], &o),
+            Found { at: P2(-1000.0, 3000.0), kind: Kind::Anchor, guide: None, source: Some(section_id) }
+        );
+        assert_eq!(
+            at(&s.model, P2(5030.0, 5020.0), &[], &o),
+            Found { at: P2(5000.0, 5000.0), kind: Kind::Endpoint, guide: None, source: Some(camera_id) }
+        );
+        assert_eq!(
+            at(&s.model, P2(6030.0, 5020.0), &[], &o),
+            Found { at: P2(6000.0, 5000.0), kind: Kind::Endpoint, guide: None, source: Some(camera_id) }
+        );
         // The annotation's switch turns its anchors off; endpoints keep the camera's eye and target.
         let off = Snaps { annotation: false, ..o };
         assert_eq!(at(&s.model, P2(1030.0, 1020.0), &[], &off).kind, Kind::Free);
@@ -1377,9 +1443,19 @@ mod tests {
                dimension {"refs": [[0, 3000], [4000, 3000]], "at": [2000, 5000]}"#,
         );
         let o = Snaps::default();
-        assert_eq!(at(&m, P2(30.0, 5020.0), &[], &o), Found { at: P2(0.0, 5000.0), kind: Kind::Anchor, guide: None });
-        assert_eq!(at(&m, P2(2000.0, 5010.0), &[], &o), Found { at: P2(2000.0, 5000.0), kind: Kind::Anchor, guide: None });
-        assert_eq!(at(&m, P2(4030.0, 5020.0), &[], &o), Found { at: P2(4000.0, 5000.0), kind: Kind::Anchor, guide: None });
+        let dimension_id = *m.elements.iter().find(|(_, e)| matches!(e, Element::Dimension(_))).unwrap().0;
+        assert_eq!(
+            at(&m, P2(30.0, 5020.0), &[], &o),
+            Found { at: P2(0.0, 5000.0), kind: Kind::Anchor, guide: None, source: Some(dimension_id) }
+        );
+        assert_eq!(
+            at(&m, P2(2000.0, 5010.0), &[], &o),
+            Found { at: P2(2000.0, 5000.0), kind: Kind::Anchor, guide: None, source: Some(dimension_id) }
+        );
+        assert_eq!(
+            at(&m, P2(4030.0, 5020.0), &[], &o),
+            Found { at: P2(4000.0, 5000.0), kind: Kind::Anchor, guide: None, source: Some(dimension_id) }
+        );
         assert_eq!(at(&m, P2(2000.0, 5010.0), &[], &Snaps { annotation: false, ..o }).kind, Kind::Free);
     }
 
@@ -1393,20 +1469,20 @@ mod tests {
         .unwrap();
         let door = *s.model.elements.iter().find(|(_, e)| matches!(e, Element::Door(_))).unwrap().0;
         s.execute("tag", &serde_json::json!({"ids": [door], "leader": true})).unwrap();
-        let tag = s
+        let (tag_id, tag) = s
             .model
             .elements
-            .values()
-            .find_map(|e| match e {
-                Element::Tag(t) => Some(t),
+            .iter()
+            .find_map(|(&id, e)| match e {
+                Element::Tag(t) => Some((id, t)),
                 _ => None,
             })
-            .unwrap();
+            .expect("the tag the command made");
         let host = s.model.anchor(tag.host).unwrap();
         let head = host + tag.offset;
         let o = Snaps::default();
-        assert_eq!(at(&s.model, host + P2(20.0, 20.0), &[], &o), Found { at: host, kind: Kind::Anchor, guide: None });
-        assert_eq!(at(&s.model, head + P2(20.0, 20.0), &[], &o), Found { at: head, kind: Kind::Anchor, guide: None });
+        assert_eq!(at(&s.model, host + P2(20.0, 20.0), &[], &o), Found { at: host, kind: Kind::Anchor, guide: None, source: Some(tag_id) });
+        assert_eq!(at(&s.model, head + P2(20.0, 20.0), &[], &o), Found { at: head, kind: Kind::Anchor, guide: None, source: Some(tag_id) });
         // Without a leader the place it holds is not drawn, so it is no anchor.
         let mut s = Session::new();
         s.script(
@@ -1447,10 +1523,21 @@ mod tests {
         s.execute("repeating_detail", &serde_json::json!({"type": "G", "start": [2000, 3000], "end": [4000, 3000], "spacing": 1000}))
             .unwrap();
         let o = Snaps::default();
+        let group_id = *s.model.elements.iter().find(|(_, e)| matches!(e, Element::DetailGroup(_))).unwrap().0;
+        let repeating_id = *s.model.elements.iter().find(|(_, e)| matches!(e, Element::RepeatingDetail(_))).unwrap().0;
         assert_eq!(at(&s.model, P2(3020.0, 2020.0), &[], &o).kind, Kind::Anchor);
-        assert_eq!(at(&s.model, P2(1020.0, 1020.0), &[], &o), Found { at: P2(1000.0, 1000.0), kind: Kind::Anchor, guide: None });
-        assert_eq!(at(&s.model, P2(2020.0, 3020.0), &[], &o), Found { at: P2(2000.0, 3000.0), kind: Kind::Anchor, guide: None });
-        assert_eq!(at(&s.model, P2(3020.0, 3020.0), &[], &o), Found { at: P2(3000.0, 3000.0), kind: Kind::Anchor, guide: None });
+        assert_eq!(
+            at(&s.model, P2(1020.0, 1020.0), &[], &o),
+            Found { at: P2(1000.0, 1000.0), kind: Kind::Anchor, guide: None, source: Some(group_id) }
+        );
+        assert_eq!(
+            at(&s.model, P2(2020.0, 3020.0), &[], &o),
+            Found { at: P2(2000.0, 3000.0), kind: Kind::Anchor, guide: None, source: Some(repeating_id) }
+        );
+        assert_eq!(
+            at(&s.model, P2(3020.0, 3020.0), &[], &o),
+            Found { at: P2(3000.0, 3000.0), kind: Kind::Anchor, guide: None, source: Some(repeating_id) }
+        );
     }
 
     #[test]

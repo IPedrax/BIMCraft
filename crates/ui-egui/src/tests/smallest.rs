@@ -5,6 +5,7 @@ use egui::{Rect, Shape, pos2, vec2};
 
 use super::titlebar::own;
 use super::*;
+use crate::style::Profile;
 use crate::window::MIN_SIZE;
 
 fn least() -> egui::Vec2 {
@@ -20,7 +21,7 @@ fn window(size: egui::Vec2) -> Rect {
 fn cards(h: &Harness<BimApp>) -> Vec<Rect> {
     fn walk(s: &Shape, out: &mut Vec<Rect>) {
         match s {
-            Shape::Rect(r) if r.fill == crate::style::pal().panel && r.rect.width() >= 250.0 && r.rect.height() >= 24.0 => out.push(r.rect),
+            Shape::Rect(r) if r.fill == crate::style::pal().panel && r.rect.width() >= 200.0 && r.rect.height() >= 24.0 => out.push(r.rect),
             Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
             _ => {}
         }
@@ -30,10 +31,14 @@ fn cards(h: &Harness<BimApp>) -> Vec<Rect> {
     out
 }
 
+/// The looks the window is laid out in: BIMCraft's Floating and Compact layouts, and the Rev profile, which has one.
+const LOOKS: [(bool, Profile); 3] = [(false, Profile::BimCraft), (true, Profile::BimCraft), (false, Profile::Rev)];
+
 /// The window brought down to the least a window can be: from the start, or from a bigger one the palettes were sized in.
-fn at_the_least(compact: bool, from_bigger: bool) -> Harness<'static, BimApp> {
+fn at_the_least((compact, profile): (bool, Profile), from_bigger: bool) -> Harness<'static, BimApp> {
     let mut h = own(BOX);
     h.state_mut().compact = compact;
+    h.state_mut().profile = profile;
     if from_bigger {
         h.run();
     } else {
@@ -47,19 +52,19 @@ fn at_the_least(compact: bool, from_bigger: bool) -> Harness<'static, BimApp> {
 
 #[test]
 fn no_card_runs_under_another_or_off_the_window_at_the_least_a_window_can_be() {
-    for compact in [false, true] {
+    for look in LOOKS {
         for from_bigger in [false, true] {
-            let h = at_the_least(compact, from_bigger);
+            let h = at_the_least(look, from_bigger);
             let cards = cards(&h);
-            assert!(cards.len() >= 4, "the ribbon, two palettes and the status bar (compact={compact}): {cards:?}");
+            assert!(cards.len() >= 4, "the ribbon or the Tools palette, two palettes and the status bar ({look:?}): {cards:?}");
             let w = window(least());
             for (i, a) in cards.iter().enumerate() {
-                assert!(w.expand(0.5).contains_rect(*a), "{a:?} is off the window (compact={compact}, from_bigger={from_bigger})");
+                assert!(w.expand(0.5).contains_rect(*a), "{a:?} is off the window ({look:?}, from_bigger={from_bigger})");
                 for b in &cards[i + 1..] {
                     let both = a.intersect(*b);
                     assert!(
                         !(both.is_positive() && both.width() > 1.0 && both.height() > 1.0),
-                        "{a:?} runs under {b:?} (compact={compact}, from_bigger={from_bigger})"
+                        "{a:?} runs under {b:?} ({look:?}, from_bigger={from_bigger})"
                     );
                 }
             }
@@ -107,55 +112,65 @@ fn the_title_stays_between_the_quick_access_and_the_caption_buttons_whatever_the
 
 #[test]
 fn the_tab_just_picked_is_in_view_though_the_tabs_run_past_the_window() {
-    let mut h = own(BOX);
-    h.set_size(least());
-    h.run();
-    let in_view = |h: &Harness<BimApp>, label: &str| {
-        let (tab, fold) = (h.get_by_label(label).rect(), h.get_by_label("Minimize the Ribbon").rect());
-        assert!(
-            tab.left() >= 0.0 && tab.right() <= fold.left(),
-            "`{label}` {tab:?} is in the tabs, which end where the fold button {fold:?} starts"
-        );
-    };
-    // A tab far along the row.
-    h.state_mut().tab = crate::Tab::Manage;
-    h.run();
-    h.run();
-    in_view(&h, "Manage");
-    // And a tool's contextual tab, which comes after them all.
-    h.state_mut().tab = crate::Tab::Architecture;
-    h.run();
-    tool(&mut h, "Wall");
-    h.run();
-    in_view(&h, "Modify | Place Wall");
+    // The ribbon's tabs: BIMCraft has none.
+    {
+        let profile = Profile::Rev;
+        let mut h = own(BOX);
+        h.state_mut().profile = profile;
+        h.set_size(least());
+        h.run();
+        let in_view = |h: &Harness<BimApp>, label: &str| {
+            let (tab, fold) = (h.get_by_label(label).rect(), h.get_by_label("Minimize the Ribbon").rect());
+            // Rev's File tab leads the row and doesn't scroll with it.
+            let start = if profile == Profile::Rev { h.get_by_label("File").rect().right() } else { 0.0 };
+            assert!(
+                tab.left() >= start && tab.right() <= fold.left(),
+                "`{label}` {tab:?} is in the tabs, which run from {start} to where the fold button {fold:?} starts ({profile:?})"
+            );
+        };
+        // A tab far along the row.
+        h.state_mut().tab = crate::Tab::Manage;
+        h.run();
+        h.run();
+        in_view(&h, "Manage");
+        // And a tool's contextual tab, which comes after them all.
+        h.state_mut().tab = crate::Tab::Architecture;
+        h.run();
+        tool(&mut h, "Wall");
+        h.run();
+        in_view(&h, "Modify | Place Wall");
+    }
 }
 
 #[test]
 fn the_options_bar_stays_clear_of_the_zoom_buttons_and_inside_the_window_at_the_least_a_window_can_be() {
-    let mut h = own(BOX);
-    h.set_size(least());
-    h.run();
-    tool(&mut h, "Wall");
-    h.run();
-    // The bar itself, and each of its fields, are in the window; none of the view's zoom buttons is under any of them.
-    let bar = h.state().options_rect;
-    let w = window(least());
-    assert!(w.contains_rect(bar), "the bar {bar:?} is off the window");
-    for (label, role) in [("Height:", Role::Label), ("Location Line:", Role::Label), ("Chain", Role::CheckBox)] {
-        let r = h.get_by_role_and_label(role, label).rect();
-        assert!(bar.contains_rect(r), "`{label}` {r:?} is out of the bar {bar:?}");
-    }
-    for label in ["Zoom to Fit", "Zoom In", "Zoom Out"] {
-        let button = h.get_by_label(label).rect();
-        assert!(!button.intersect(bar).is_positive(), "`{label}` {button:?} is under the Options Bar {bar:?}");
-        assert!(w.contains_rect(button), "`{label}` {button:?} is off the window");
+    for profile in [Profile::BimCraft, Profile::Rev] {
+        let mut h = own(BOX);
+        h.state_mut().profile = profile;
+        h.set_size(least());
+        h.run();
+        tool(&mut h, "Wall");
+        h.run();
+        // The bar itself, and each of its fields, are in the window; none of the view's zoom buttons is under any of them.
+        let bar = h.state().options_rect;
+        let w = window(least());
+        assert!(w.contains_rect(bar), "the bar {bar:?} is off the window ({profile:?})");
+        for (label, role) in [("Height:", Role::Label), ("Location Line:", Role::Label), ("Chain", Role::CheckBox)] {
+            let r = h.get_by_role_and_label(role, label).rect();
+            assert!(bar.contains_rect(r), "`{label}` {r:?} is out of the bar {bar:?} ({profile:?})");
+        }
+        for label in ["Zoom to Fit", "Zoom In", "Zoom Out"] {
+            let button = h.get_by_label(label).rect();
+            assert!(!button.intersect(bar).is_positive(), "`{label}` {button:?} is under the Options Bar {bar:?} ({profile:?})");
+            assert!(w.contains_rect(button), "`{label}` {button:?} is off the window ({profile:?})");
+        }
     }
 }
 
 /// A project with forty fill patterns, forty region types, forty line patterns and forty line styles, on the window at the least
 /// a window can be.
 fn crowded() -> Harness<'static, BimApp> {
-    let mut h = at_the_least(false, false);
+    let mut h = at_the_least(LOOKS[0], false);
     let s = &mut h.state_mut().session;
     for i in 0..40 {
         let angle = f64::from(i) * 4.0;
