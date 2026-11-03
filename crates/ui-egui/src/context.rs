@@ -37,6 +37,8 @@ pub(crate) enum Action {
     ReloadCad,
     /// The camera selected in a plan: open its 3D view.
     OpenView,
+    /// The 3D view's Work Plane dialog.
+    WorkPlane,
 }
 
 impl Action {
@@ -60,6 +62,7 @@ impl Action {
             Action::Delete => "Delete",
             Action::ReloadCad => msg!("Reload CAD"),
             Action::OpenView => msg!("Open Camera View"),
+            Action::WorkPlane => msg!("Set Work Plane…"),
         }
     }
 
@@ -162,7 +165,10 @@ impl BimApp {
         let zoom = vec![Item::new(Action::ZoomToFit, true), Item::new(Action::ZoomIn, true), Item::new(Action::ZoomOut, true)];
         match self.sheet {
             Sheet::Plan(_) | Sheet::Ceiling(_) | Sheet::Section(_) | Sheet::Paper(_) => groups.push(zoom),
-            Sheet::View3D => groups.push([vec![Item::new(Action::HomeView, true)], zoom].concat()),
+            Sheet::View3D => {
+                groups.push(vec![Item::new(Action::WorkPlane, self.sketch.is_none())]);
+                groups.push([vec![Item::new(Action::HomeView, true)], zoom].concat());
+            }
             Sheet::Schedule(_) | Sheet::Table(_) => {}
         }
         groups
@@ -186,6 +192,7 @@ impl BimApp {
             Action::CreateGroup => self.create_group(),
             Action::Ungroup => self.ungroup(),
             Action::Delete => self.delete(),
+            Action::WorkPlane => self.open_work_plane(),
             Action::ReloadCad => {
                 for cad in self.linked_cads() {
                     self.run("reload_cad", serde_json::json!({"cad": cad}));
