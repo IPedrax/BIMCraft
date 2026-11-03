@@ -101,7 +101,8 @@ the draft curve, keeps its id, GUID and style, and moves joined endpoints so a c
 reference stays fixed. Changes use the sketch's Ctrl+Z history and reach the model only through Finish Edit Mode; Cancel
 leaves the model as it was. Invalid geometry leaves the draft and reference intact, and undo or Escape drops stale picks.
 
-The sketch's contextual ribbon includes Align, Trim/Extend to Corner, Trim/Extend Single/Multiple Elements, Split and
+A sketch line picked alone in Modify has a small palette over the view at its middle (`BimApp::edge_palette`, both profiles): Add
+Vertex (which no panel offers while sketching), Split Element, Offset and Trim/Extend to Corner, each starting its tool. The sketch's contextual ribbon includes Align, Trim/Extend to Corner, Trim/Extend Single/Multiple Elements, Split and
 Offset. Trim highlights sketch candidates and keeps its first pick lit; its prompt says which line to pick and to click
 the part to keep. A failed trim leaves that first pick available for another target; a successful edit clears the error.
 Multiple Trim keeps the boundary across successive target edits while that indexed line is unchanged, and drops it if

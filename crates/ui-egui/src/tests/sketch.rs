@@ -327,3 +327,15 @@ fn a_project_put_in_the_sessions_place_under_a_sketch_or_a_dialog_takes_both_wit
     assert_eq!(h.state().tool, Tool::Modify);
     assert!(ids(&h, "region").is_empty());
 }
+
+#[test]
+fn a_sketch_line_picked_alone_has_a_palette_of_what_can_be_done_to_it() {
+    let (mut h, _) = floored();
+    press(&mut h, "Edit Boundary");
+    key(&mut h, Key::Escape);
+    assert!(h.query_by_label("Add Vertex").is_none(), "nothing picked, no palette");
+    click(&mut h, P2(4000.0, 6000.0));
+    assert_eq!(picked(&h).len(), 1);
+    press(&mut h, "Add Vertex");
+    assert!(matches!(h.state().tool, Tool::Vertex { delete: false }));
+}

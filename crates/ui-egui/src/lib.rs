@@ -1560,6 +1560,7 @@ impl BimApp {
             self.work = self.pane.with_min_y(self.pane.top().max(self.tabs_foot));
         });
         self.options_bar(&ctx);
+        self.edge_palette(&ctx);
         if self.ribbon_min && self.ribbon_peek {
             self.ribbon_peek(&ctx);
         }
