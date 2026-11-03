@@ -2780,7 +2780,7 @@ msgstr "请为每个类型和图案输入名称。"
 msgid "Entities"
 msgstr "图元数"
 
-#: crates/ui-egui/src/canvas.rs:2887
+#: crates/ui-egui/src/canvas.rs:2891
 msgid "Equal"
 msgstr "相等"
 
@@ -3534,7 +3534,7 @@ msgstr "高亮显示光标下的对象"
 msgid "Home"
 msgstr "主页"
 
-#: crates/ui-egui/src/orbit.rs:512
+#: crates/ui-egui/src/orbit.rs:600
 msgid "Home View"
 msgstr "主视图"
 
@@ -4210,7 +4210,7 @@ msgstr "定位线："
 msgid "Location line: {}"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2854
+#: crates/ui-egui/src/canvas.rs:2858
 msgid "Lock segment {}"
 msgstr "锁定第 {} 段"
 
@@ -7431,7 +7431,7 @@ msgstr "临时隔离类别"
 msgid "Temporary Isolate Element"
 msgstr "临时隔离图元"
 
-#: crates/ui-egui/src/canvas.rs:2816
+#: crates/ui-egui/src/canvas.rs:2820
 msgid "Temporary dimension {}"
 msgstr "临时尺寸标注 {}"
 
@@ -7524,7 +7524,7 @@ msgstr "墙、轴网及其他已绘制对象的端点，以及迄今已拾取的
 msgid "The foot of the perpendicular from the last point to a wall or grid"
 msgstr "从上一点向墙或轴网所作垂线的垂足"
 
-#: crates/ui-egui/src/orbit.rs:399
+#: crates/ui-egui/src/orbit.rs:452
 msgid "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor"
 msgstr "显卡无法绘制三维视图（{}）：改由处理器绘制"
 
@@ -7874,7 +7874,7 @@ msgstr "修剪/延伸为角 (TR)：拾取两面墙或两条线，在要保留的
 msgid "Turn Snap Override Off"
 msgstr "关闭捕捉替换"
 
-#: crates/ui-egui/src/canvas.rs:2767
+#: crates/ui-egui/src/canvas.rs:2771
 msgid "Turn the wall about its {}: {}"
 msgstr "绕墙的{}旋转墙：{}"
 
@@ -8542,7 +8542,7 @@ msgid "Zoom Out"
 msgstr "缩小"
 
 #: crates/ui-egui/src/canvas.rs:1476
-#: crates/ui-egui/src/orbit.rs:516
+#: crates/ui-egui/src/orbit.rs:604
 msgid "Zoom to Fit"
 msgstr "缩放以适应"
 
@@ -8553,9 +8553,9 @@ msgstr "`{}` 不是有效的高度"
 #: crates/ui-egui/src/camera.rs:91
 #: crates/ui-egui/src/camera.rs:103
 #: crates/ui-egui/src/canvas.rs:2585
-#: crates/ui-egui/src/canvas.rs:2965
-#: crates/ui-egui/src/canvas.rs:3058
-#: crates/ui-egui/src/canvas.rs:3078
+#: crates/ui-egui/src/canvas.rs:2969
+#: crates/ui-egui/src/canvas.rs:3062
+#: crates/ui-egui/src/canvas.rs:3082
 #: crates/ui-egui/src/draw.rs:258
 #: crates/ui-egui/src/draw.rs:259
 #: crates/ui-egui/src/draw.rs:260
@@ -8600,7 +8600,7 @@ msgid "`{}` is not a spacing"
 msgstr "`{}` 不是间距"
 
 #: crates/ui-egui/src/canvas.rs:2570
-#: crates/ui-egui/src/canvas.rs:2794
+#: crates/ui-egui/src/canvas.rs:2798
 msgid "`{}` is not an angle"
 msgstr "`{}` 不是有效的角度"
 
@@ -8768,6 +8768,10 @@ msgstr "有值"
 msgid "has no value"
 msgstr "无值"
 
+#: crates/ui-egui/src/orbit.rs:578
+msgid "in the 3D view this tool draws on a level face: the top of a floor, a flat roof or a level"
+msgstr ""
+
 #: crates/ui-egui/src/properties.rs:2635
 msgid "is greater than"
 msgstr "大于"
@@ -8921,7 +8925,7 @@ msgstr "起点"
 msgid "the next free name"
 msgstr "下一个可用名称"
 
-#: crates/ui-egui/src/canvas.rs:3057
+#: crates/ui-egui/src/canvas.rs:3061
 msgid "the opening has to stay on its wall"
 msgstr "洞口必须保留在其所在的墙上"
 
@@ -8930,7 +8934,7 @@ msgstr "洞口必须保留在其所在的墙上"
 msgid "there's no detail group yet: select detail lines and Create Group"
 msgstr "还没有详图组：请选择详图线并创建组"
 
-#: crates/ui-egui/src/orbit.rs:206
+#: crates/ui-egui/src/orbit.rs:234
 msgid "there's no face to paint there"
 msgstr "该处没有可上漆的面"
 
@@ -8938,7 +8942,7 @@ msgstr "该处没有可上漆的面"
 msgid "there's no folder to keep favorites in here"
 msgstr "这里没有可存放收藏夹的文件夹"
 
-#: crates/ui-egui/src/orbit.rs:496
+#: crates/ui-egui/src/orbit.rs:584
 #: crates/ui-egui/src/paper.rs:158
 #: crates/ui-egui/src/section.rs:199
 msgid "this tool works in plan views: open one from the Project Browser"
@@ -8976,7 +8980,7 @@ msgstr "电压"
 msgid "voltages"
 msgstr "电压"
 
-#: crates/ui-egui/src/canvas.rs:2620
+#: crates/ui-egui/src/canvas.rs:2624
 msgid "wall: {}"
 msgstr "墙：{}"
 
@@ -9092,12 +9096,13 @@ msgstr "A2-A4 为 {} mm"
 msgid "{} months ago"
 msgstr "{} 个月前"
 
-#: crates/ui-egui/src/canvas.rs:3148
+#: crates/ui-egui/src/canvas.rs:3152
 msgid "{} of {} risers"
 msgstr "{} 个踢面（共 {} 个）"
 
 #: crates/ui-egui/src/canvas.rs:1114
 #. what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
+#: crates/ui-egui/src/orbit.rs:558
 msgid "{} of {} {}"
 msgstr "{}：{} {}"
 
@@ -9137,7 +9142,7 @@ msgstr "已选择 {}。"
 msgid "{} triangles, from a file"
 msgstr "来自文件的 {} 个三角形"
 
-#: crates/ui-egui/src/canvas.rs:3150
+#: crates/ui-egui/src/canvas.rs:3154
 msgid "{} up"
 msgstr "上行 {}"
 

@@ -2780,7 +2780,7 @@ msgstr "Insira um nome para cada tipo e padrão."
 msgid "Entities"
 msgstr "Entidades"
 
-#: crates/ui-egui/src/canvas.rs:2887
+#: crates/ui-egui/src/canvas.rs:2891
 msgid "Equal"
 msgstr "Igual"
 
@@ -3534,7 +3534,7 @@ msgstr "Destacar o que está sob o cursor"
 msgid "Home"
 msgstr "Início"
 
-#: crates/ui-egui/src/orbit.rs:512
+#: crates/ui-egui/src/orbit.rs:600
 msgid "Home View"
 msgstr "Vista inicial"
 
@@ -4210,7 +4210,7 @@ msgstr "Linha de localização:"
 msgid "Location line: {}"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2854
+#: crates/ui-egui/src/canvas.rs:2858
 msgid "Lock segment {}"
 msgstr "Bloquear segmento {}"
 
@@ -7431,7 +7431,7 @@ msgstr "Isolar Categoria Temporariamente"
 msgid "Temporary Isolate Element"
 msgstr "Isolar Elemento Temporariamente"
 
-#: crates/ui-egui/src/canvas.rs:2816
+#: crates/ui-egui/src/canvas.rs:2820
 msgid "Temporary dimension {}"
 msgstr "Cota temporária {}"
 
@@ -7524,7 +7524,7 @@ msgstr "As extremidades de paredes, eixos e do que mais estiver desenhado, e os 
 msgid "The foot of the perpendicular from the last point to a wall or grid"
 msgstr "O pé da perpendicular do último ponto até uma parede ou eixo"
 
-#: crates/ui-egui/src/orbit.rs:399
+#: crates/ui-egui/src/orbit.rs:452
 msgid "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor"
 msgstr "A placa de vídeo não conseguiu desenhar a vista 3D ({}): ela é desenhada no processador"
 
@@ -7874,7 +7874,7 @@ msgstr "Aparar/Estender para canto (TR): escolha duas paredes ou duas linhas, na
 msgid "Turn Snap Override Off"
 msgstr "Cancelar a exceção de snap"
 
-#: crates/ui-egui/src/canvas.rs:2767
+#: crates/ui-egui/src/canvas.rs:2771
 msgid "Turn the wall about its {}: {}"
 msgstr "Girar a parede em torno do seu {}: {}"
 
@@ -8542,7 +8542,7 @@ msgid "Zoom Out"
 msgstr "Afastar"
 
 #: crates/ui-egui/src/canvas.rs:1476
-#: crates/ui-egui/src/orbit.rs:516
+#: crates/ui-egui/src/orbit.rs:604
 msgid "Zoom to Fit"
 msgstr "Zoom para ajustar"
 
@@ -8553,9 +8553,9 @@ msgstr "`{}` não é uma altura"
 #: crates/ui-egui/src/camera.rs:91
 #: crates/ui-egui/src/camera.rs:103
 #: crates/ui-egui/src/canvas.rs:2585
-#: crates/ui-egui/src/canvas.rs:2965
-#: crates/ui-egui/src/canvas.rs:3058
-#: crates/ui-egui/src/canvas.rs:3078
+#: crates/ui-egui/src/canvas.rs:2969
+#: crates/ui-egui/src/canvas.rs:3062
+#: crates/ui-egui/src/canvas.rs:3082
 #: crates/ui-egui/src/draw.rs:258
 #: crates/ui-egui/src/draw.rs:259
 #: crates/ui-egui/src/draw.rs:260
@@ -8600,7 +8600,7 @@ msgid "`{}` is not a spacing"
 msgstr "`{}` não é um espaçamento"
 
 #: crates/ui-egui/src/canvas.rs:2570
-#: crates/ui-egui/src/canvas.rs:2794
+#: crates/ui-egui/src/canvas.rs:2798
 msgid "`{}` is not an angle"
 msgstr "`{}` não é um ângulo"
 
@@ -8768,6 +8768,10 @@ msgstr "tem um valor"
 msgid "has no value"
 msgstr "não tem valor"
 
+#: crates/ui-egui/src/orbit.rs:578
+msgid "in the 3D view this tool draws on a level face: the top of a floor, a flat roof or a level"
+msgstr ""
+
 #: crates/ui-egui/src/properties.rs:2635
 msgid "is greater than"
 msgstr "é maior que"
@@ -8921,7 +8925,7 @@ msgstr "início"
 msgid "the next free name"
 msgstr "o próximo nome livre"
 
-#: crates/ui-egui/src/canvas.rs:3057
+#: crates/ui-egui/src/canvas.rs:3061
 msgid "the opening has to stay on its wall"
 msgstr "a abertura tem de ficar na parede"
 
@@ -8930,7 +8934,7 @@ msgstr "a abertura tem de ficar na parede"
 msgid "there's no detail group yet: select detail lines and Create Group"
 msgstr "ainda não há grupo de detalhes: selecione linhas de detalhe e Criar grupo"
 
-#: crates/ui-egui/src/orbit.rs:206
+#: crates/ui-egui/src/orbit.rs:234
 msgid "there's no face to paint there"
 msgstr "não há face para pintar ali"
 
@@ -8938,7 +8942,7 @@ msgstr "não há face para pintar ali"
 msgid "there's no folder to keep favorites in here"
 msgstr "não há pasta para guardar favoritos aqui"
 
-#: crates/ui-egui/src/orbit.rs:496
+#: crates/ui-egui/src/orbit.rs:584
 #: crates/ui-egui/src/paper.rs:158
 #: crates/ui-egui/src/section.rs:199
 msgid "this tool works in plan views: open one from the Project Browser"
@@ -8976,7 +8980,7 @@ msgstr "tensão"
 msgid "voltages"
 msgstr "tensões"
 
-#: crates/ui-egui/src/canvas.rs:2620
+#: crates/ui-egui/src/canvas.rs:2624
 msgid "wall: {}"
 msgstr "parede: {}"
 
@@ -9092,12 +9096,13 @@ msgstr "{} mm para A2-A4"
 msgid "{} months ago"
 msgstr "há {} meses"
 
-#: crates/ui-egui/src/canvas.rs:3148
+#: crates/ui-egui/src/canvas.rs:3152
 msgid "{} of {} risers"
 msgstr "{} de {} espelhos"
 
 #: crates/ui-egui/src/canvas.rs:1114
 #. what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
+#: crates/ui-egui/src/orbit.rs:558
 msgid "{} of {} {}"
 msgstr "{} de {} {}"
 
@@ -9137,7 +9142,7 @@ msgstr "{} selecionados."
 msgid "{} triangles, from a file"
 msgstr "{} triângulos, de um arquivo"
 
-#: crates/ui-egui/src/canvas.rs:3150
+#: crates/ui-egui/src/canvas.rs:3154
 msgid "{} up"
 msgstr "{} de subida"
 

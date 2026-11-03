@@ -2612,6 +2612,10 @@ impl BimApp {
         if let Some(t) = self.types.get("wall") {
             p["type"] = json!(t);
         }
+        // Drawn in the 3D view, on the face their base stands on.
+        if let Some(offset) = self.orbit.wall_base {
+            p["base_offset"] = json!(offset);
+        }
         // The Options Bar's Height: up to a level, or unconnected at a height.
         match top_params(&self.session.model, level, self.wall_top, &self.wall_height) {
             Ok(Value::Object(top)) => p.as_object_mut().into_iter().for_each(|p| p.extend(top.clone())),

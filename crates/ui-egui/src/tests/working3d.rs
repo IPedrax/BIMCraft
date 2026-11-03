@@ -1,5 +1,6 @@
-//! The 3D view as a working view: a drag orbits round the point under the cursor and the wheel zooms toward it. In both
-//! profiles, on the processor's picture and, where the machine has a graphics adapter, on the card's.
+//! The 3D view as a working view: a drag orbits round the point under the cursor and the wheel zooms toward it, and the Wall
+//! tool and a component take their points on the face under the cursor. In both profiles, on the processor's picture and,
+//! where the machine has a graphics adapter, on the card's.
 
 use super::*;
 use crate::gpu::{Card, headless};
@@ -75,5 +76,39 @@ fn in_perspective_the_wheel_zooms_toward_the_point_under_the_cursor() {
         let far = |c: bimcraft_core::view3d::Camera| c.eye().map(|e| (0..3).map(|i| (e[i] - FACE[i]).powi(2)).sum::<f64>().sqrt());
         let (d0, d1) = (far(before).unwrap(), far(cam).unwrap());
         assert!((d0 / d1 - k).abs() < 1e-6 * k, "{name}: {d0} mm from the face, then {d1}, zoomed by {k}");
+    }
+}
+
+#[test]
+fn the_wall_tool_and_a_component_draw_on_a_floors_top_in_the_3d_view_and_stand_on_it() {
+    let script = format!("{BOX}\nfloor {{\"offset\": 500}}");
+    for (name, mut h) in views(&script) {
+        let level = h.state().session.model.levels()[0].0;
+        shortcut(&mut h, "WA");
+        // A wall's face stands up: nothing to draw on, and the status line says so.
+        let at = h.state().screen3(FACE);
+        click_at(&mut h, at);
+        assert!(h.state().status.error && matches!(&h.state().tool, Tool::Wall(c) if c.is_empty()), "{name}: {:?}", h.state().tool);
+        for p in [[1500.0, 5000.0, 500.0], [4500.0, 5000.0, 500.0]] {
+            let at = h.state().screen3(p);
+            click_at(&mut h, at);
+        }
+        key(&mut h, Key::Escape);
+        let m = &h.state().session.model;
+        let walls = m.elements.values().filter_map(|e| if let Element::Wall(w) = e { Some(w) } else { None });
+        // Not one of the box's, which all start on its corners.
+        let made: Vec<_> = walls.filter(|w| w.start.0 > 0.0 && w.start.0 < 8000.0).collect();
+        let w = made.first().unwrap_or_else(|| panic!("{name}: no wall: {}", h.state().status.text));
+        assert_eq!((w.start, w.end, made.len()), (P2(1500.0, 5000.0), P2(4500.0, 5000.0), 1), "{name}");
+        assert_eq!((m.elements.id(w.level), w.base_offset, m.own_base(w)), (Some(level), 500.0, 500.0), "{name}: on the floor's top");
+        // A component on it too: on the floor's level, 500 up.
+        key(&mut h, Key::Escape);
+        shortcut(&mut h, "CM");
+        let at = h.state().screen3([3000.0, 4000.0, 500.0]);
+        click_at(&mut h, at);
+        let m = &h.state().session.model;
+        let placed: Vec<_> = m.elements.values().filter_map(|e| if let Element::Component(c) = e { Some(c) } else { None }).collect();
+        let c = placed.first().unwrap_or_else(|| panic!("{name}: no component: {}", h.state().status.text));
+        assert_eq!((c.at, m.elements.id(c.level), c.offset), (P2(3000.0, 4000.0), Some(level), 500.0), "{name}");
     }
 }

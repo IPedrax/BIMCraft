@@ -365,6 +365,17 @@ nothing is; the wheel zooms toward it (`Camera::zoom_about` closes the target an
 cursor zooms about the cursor as before. `the_surface_under_a_pixel_is_the_same_through_the_mesh_as_the_picture_and_an_orbit_or_a_zoom_about_it_keeps_it_there`
 checks the two painters agree, and `tests/working3d.rs` drives it in both profiles, on the card where the machine has one.
 
+The 3D view's tools draw on a **work plane**, as Revit's (`workplane.rs`): `work_plane` takes the surface under the cursor and,
+for a face that is level and turned up (a floor's top, a flat roof's, a level's plane), gives the level its points go on (the face's
+element's own level, a level's plane that level, else the highest level at or below it) and the offset over it, to the micron;
+with nothing under the cursor, the lowest level's plane, the ground. A face that isn't level, or is turned down, gives none, and
+the status line says what the tool draws on. In the 3D view the Wall tool (WA) takes its points so (`orbit.rs`'s `aim`, to the 10 mm
+as a plan's free point): the first point's plane holds for the rest of the chain, whatever the cursor passes over, and each wall
+goes through `place` as in a plan, with `base_offset` from `Orbit::wall_base`, which `wall_params` reads while the 3D view places a
+point; Component (CM) and the MEP fixtures run `component` with that level and offset. The point under the cursor is drawn as a
+plan's Nearest snap, naming the element whose face it is, with the wall from the chain's last point. Floor, sketches and faces
+that aren't level are not drawn on in 3D yet.
+
 A level's own plan is the level (its `view_range`, `crop` and `graphics` are the level's); every other plan of it is an `Element::PlanView`
 (Revit's Duplicate View: `duplicate_view`, which only plans take). A plan has a key: the level's id, or a plan view's. `Model::plan_level` says
 which level a key shows, and everything that draws or measures the model takes that level (`draw_plan`, `plan_shows`, the canvas's tools), while

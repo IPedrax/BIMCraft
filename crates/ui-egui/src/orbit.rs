@@ -15,6 +15,7 @@ use bimcraft_core::model::{Id, Model, ViewCamera};
 use bimcraft_core::render::{self, Rgb};
 use bimcraft_core::view3d::gpu::{Hit, Mesh};
 use bimcraft_core::view3d::{AZIMUTH, Camera, ELEVATION, Image, MAX_SIDE, P3, Scene, Surface, box_grips, move_box_face};
+use bimcraft_core::workplane::{WorkPlane, work_plane};
 use egui::{
     Align, Color32, ColorImage, Layout, PointerButton, Pos2, Rect, Sense, Stroke, StrokeKind, TextureHandle, TextureOptions, Ui, UiBuilder,
     pos2, vec2,
@@ -90,6 +91,11 @@ pub struct Orbit {
     pub(crate) built: Option<(Id, ViewCamera, Option<f64>)>,
     /// Each room's solid as the model shown last has it: its outline, bottom and top. Found once for each model.
     rooms: Option<(Arc<Model>, std::collections::BTreeMap<Id, RoomSolid>)>,
+    /// The work plane the Wall tool's chain under way is drawn on, which its first point found.
+    plane: Option<WorkPlane>,
+    /// While the Wall tool places a point in the 3D view, the base offset its walls take there: the height of the face they
+    /// stand on over their level, which `BimApp::wall_params` puts in.
+    pub(crate) wall_base: Option<f64>,
 }
 
 /// A room as the 3D view draws it: its outline in plan (an unbounded one's square), swept from `bottom` to `top`.
@@ -113,8 +119,19 @@ impl Default for Orbit {
             boxing: None,
             built: None,
             rooms: None,
+            plane: None,
+            wall_base: None,
         }
     }
+}
+
+/// Where a tool drawing in the 3D view puts its point for pixel `at`, through `cam`: on `held`, the plane of the chain under
+/// way, else on the work plane of `under`, the surface the view shows there; to the 10 mm, as a plan's free point is.
+fn aim(m: &Model, cam: &Camera, at: (f64, f64), held: Option<WorkPlane>, under: Option<Surface>) -> Option<(P3, WorkPlane)> {
+    let plane = held.or_else(|| work_plane(m, cam, at, under))?;
+    let q = cam.on_plane(at, plane.z)?;
+    let round = |v: f64| (v / 10.0).round() * 10.0 + 0.0;
+    Some(([round(q[0]), round(q[1]), plane.z], plane))
 }
 
 /// A room as a see-through solid, drawn over the 3D view's picture in the selection's colour: its outline swept from its
@@ -223,6 +240,21 @@ impl BimApp {
             (false, None) => return,
         };
         self.run("paint", json!({"id": id, "face": face, "material": material}));
+    }
+
+    /// A drawing tool's click in the 3D view, its point `q` on work plane `plane`: the Wall tool's next point, its walls going
+    /// on the plane's level with their base on the plane (`place`, as in a plan); a component placed there.
+    fn draw3d(&mut self, q: P3, plane: WorkPlane) {
+        let at = P2(q[0], q[1]);
+        if matches!(self.tool, Tool::Wall(_)) {
+            (self.orbit.plane, self.orbit.wall_base) = (Some(plane), Some(plane.offset));
+            self.place(plane.level, at);
+            self.orbit.wall_base = None;
+        } else if let Some((family, ty)) = self.placing() {
+            let p = json!({"family": family, "type": ty, "at": [at.0, at.1], "level": plane.level, "offset": plane.offset,
+                           "angle": self.component_angle});
+            self.run("component", p);
+        }
     }
 
     /// The 3D view, filling `ui`.
@@ -500,18 +532,53 @@ impl BimApp {
         if let Some(b) = reboxed.or(boxed) {
             crate::section_box::draw(&p, &cam, b, modify, o.boxing.map(|(k, _)| k), screen);
         }
+        // The Wall tool and a component take their points on the face under the cursor (`workplane`), a wall chain under way
+        // on the plane its first point found; the point is shown as a plan shows a snap, and the wall from the chain's last.
+        let drawing = matches!(self.tool, Tool::Wall(_) | Tool::Component | Tool::Fixture(_));
+        let held = o.plane.filter(|_| matches!(&self.tool, Tool::Wall(chain) if !chain.is_empty()));
+        let aimed = |picker: &Option<Picker>, at: Pos2| {
+            let under = picker.as_ref().and_then(|k| k.surface(Some(scene), &cam, px(at)));
+            aim(&model, &cam, px(at), held, under)
+        };
+        if let Some((q, plane)) = hover.filter(|_| drawing && o.drag.is_none()).and_then(|at| aimed(&o.picker, at))
+            && let at = screen(q)
+            && at.is_finite()
+        {
+            let from = match &self.tool {
+                Tool::Wall(chain) => chain.last().map(|a| screen([a.0, a.1, plane.z])).filter(|a| a.is_finite()),
+                _ => None,
+            };
+            if let Some(from) = from {
+                p.line_segment([from, at], Stroke::new(1.0, pal().accent));
+            }
+            let diamond = [vec2(0.0, -6.0), vec2(6.0, 0.0), vec2(0.0, 6.0), vec2(-6.0, 0.0)].map(|d| at + d).to_vec();
+            p.add(egui::Shape::closed_line(diamond, Stroke::new(2.0, pal().accent)));
+            if let Some(e) = model.elements.get(plane.on) {
+                let (near, of) = (crate::lang::t(bimcraft_core::snap::Kind::Nearest.name()), crate::lang::category(e.category(), false));
+                let name = crate::lang::tf("{} of {} {}", &[near, &of, &plane.on.to_string()]);
+                crate::canvas::tag(&p, at + vec2(12.0, 14.0), egui::Align2::LEFT_TOP, name);
+            }
+        }
         // A click on a grip picks nothing behind it.
         let click = response.clicked().then(|| response.interact_pointer_pos()).flatten().or(self.canvas.quick_press());
         let click = click.filter(|at| !boxed.is_some_and(|b| modify && crate::section_box::grip_at(b, *at, screen).is_some()));
         let clicked = click.map(|at| pick(&o.picker, at).map(|h| h.id));
         // The face of what's clicked, as paint names the faces of an element.
         let face = click.and_then(|at| pick(&o.picker, at).map(|h| h.face).filter(|f| !f.is_empty()));
+        let target = click.filter(|_| drawing).and_then(|at| aimed(&o.picker, at));
         match clicked {
             Some(found) if modify => self.pick_up(found.into_iter().collect(), click_modifiers(ui)),
             Some(Some(id)) if demolish => self.demolish(id),
             Some(Some(id)) if paint || unpaint => self.paint_face(id, face, unpaint),
             // Nothing under the cursor: nothing to take down, or to paint.
             Some(None) if demolish || paint || unpaint => {}
+            Some(_) if drawing => match target {
+                Some((q, plane)) => self.draw3d(q, plane),
+                None => {
+                    let why = crate::lang::t("in the 3D view this tool draws on a level face: the top of a floor, a flat roof or a level");
+                    self.status = Status { text: why.into(), error: true };
+                }
+            },
             Some(_) => {
                 self.status =
                     Status { text: crate::lang::t("this tool works in plan views: open one from the Project Browser").into(), error: true }
