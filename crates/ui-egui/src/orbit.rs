@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use bimcraft_core::geom::{self, P2};
 use bimcraft_core::graphics::{Look, VisualStyle};
-use bimcraft_core::model::{Id, Model, TOL};
+use bimcraft_core::model::{Id, Model, TOL, ViewCamera};
 use bimcraft_core::render::{self, Rgb};
 use bimcraft_core::view3d::gpu::{Hit, Mesh};
 use bimcraft_core::view3d::{
@@ -81,7 +81,15 @@ pub struct Orbit {
     /// A shaped floor's point or corner being dragged up or down: where it is in plan and in the model, and where the drag
     /// began.
     lift: Option<(Vec<P2>, P3, Pos2)>,
+    /// The view and the camera its model held when the picture on screen was built from it or written back as: a difference
+    /// means the camera changed elsewhere (dragged on a plan, a command, undo), so the picture stands from the model anew.
+    pub(crate) built: Option<(Id, ViewCamera, Option<f64>)>,
+    /// Each room's solid as the model shown last has it: its outline, bottom and top. Found once for each model.
+    rooms: Option<(Arc<Model>, std::collections::BTreeMap<Id, RoomSolid>)>,
 }
+
+/// A room as the 3D view draws it: its outline in plan (an unbounded one's square), swept from `bottom` to `top`.
+type RoomSolid = (Vec<P2>, f64, f64);
 
 impl Default for Orbit {
     fn default() -> Orbit {
@@ -100,7 +108,54 @@ impl Default for Orbit {
             grip: None,
             boxing: None,
             lift: None,
+            built: None,
+            rooms: None,
         }
+    }
+}
+
+/// A room as a see-through solid, drawn over the 3D view's picture in the selection's colour: its outline swept from its
+/// bottom to its top (`Model::room_span`), its faces filled faintly and its edges drawn. Nothing of it behind the eye.
+/// A selected one stronger than one only shown.
+fn room_solid(p: &egui::Painter, (outline, bottom, top): &RoomSolid, selected: bool, screen: &dyn Fn(P3) -> Pos2) {
+    let (bottom, top) = (*bottom, *top);
+    let n = outline.len();
+    if n < 3 || top.partial_cmp(&bottom) != Some(std::cmp::Ordering::Greater) {
+        return;
+    }
+    let low: Vec<Pos2> = outline.iter().map(|q| screen([q.0, q.1, bottom])).collect();
+    let high: Vec<Pos2> = outline.iter().map(|q| screen([q.0, q.1, top])).collect();
+    if low.iter().chain(&high).any(|q| !q.is_finite()) {
+        return;
+    }
+    let accent = canvas_pal().accent;
+    let (alpha, width) = if selected { (34, 1.5) } else { (14, 0.75) };
+    let fill = Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), alpha);
+    let mut mesh = egui::Mesh::default();
+    let mut tri = |a: Pos2, b: Pos2, c: Pos2| {
+        let i = mesh.vertices.len() as u32;
+        for q in [a, b, c] {
+            mesh.colored_vertex(q, fill);
+        }
+        mesh.add_triangle(i, i + 1, i + 2);
+    };
+    for [a, b, c] in geom::triangulate(outline) {
+        if a.max(b).max(c) < n {
+            tri(low[a], low[b], low[c]);
+            tri(high[a], high[b], high[c]);
+        }
+    }
+    for i in 0..n {
+        let j = (i + 1) % n;
+        tri(low[i], low[j], high[j]);
+        tri(low[i], high[j], high[i]);
+    }
+    p.add(egui::Shape::mesh(mesh));
+    let edge = Stroke::new(width, accent);
+    p.add(egui::Shape::closed_line(low.clone(), edge));
+    p.add(egui::Shape::closed_line(high.clone(), edge));
+    for (a, b) in low.iter().zip(&high) {
+        p.line_segment([*a, *b], edge);
     }
 }
 
@@ -120,14 +175,6 @@ pub(crate) fn scene_of<'a>(slot: &'a mut Option<(Arc<Model>, Scene)>, model: &Ar
         *slot = None;
     }
     &slot.get_or_insert_with(|| (Arc::clone(model), Scene::new(model))).1
-}
-
-/// The lens the default 3D view is seen through while it's in perspective.
-pub(crate) fn lens_of(model: &Model) -> Option<f64> {
-    match model.default_3d().and_then(|v| model.elements.get(v)) {
-        Some(bimcraft_core::model::Element::View3D(v)) => v.lens(),
-        _ => None,
-    }
 }
 
 /// The mesh of `scene` for the card, built again when the model changed; or why the card can't draw it.
@@ -218,18 +265,42 @@ impl BimApp {
             let n = tops.len().max(1) as f64;
             (!tops.is_empty()).then(|| [0, 1, 2].map(|k| tops.iter().map(|t| t[k]).sum::<f64>() / n))
         };
+        // The 3D view on screen: a camera view stands where its camera looks from; the default is fitted over the model,
+        // and its lens is the one it is seen through.
+        let active = self.active_3d();
+        let three_d = active.and_then(|id| match self.session.model.elements.get(id) {
+            Some(bimcraft_core::model::Element::View3D(v)) => Some((v.camera, v.lens())),
+            _ => None,
+        });
+        let lens = three_d.and_then(|(_, l)| l);
+        let stored = three_d.and_then(|(c, _)| c);
         let o = &mut self.orbit;
         (o.rect, o.ppp) = (rect, ppp);
+        // The camera changed elsewhere than by the hand in this view (dragged on a plan, a command, undo): the picture stands
+        // from the model afresh, so the old one it showed isn't written back over the change.
+        let elsewhere = match (o.built, active, stored) {
+            (Some((id, cam, l)), Some(active), Some(stored)) => id != active || cam != stored || l != lens,
+            _ => false,
+        };
+        if elsewhere && o.camera.is_some() && o.drag.is_none() && wheel == 0.0 && pinch == 1.0 {
+            o.camera = None;
+        }
         let scene = scene_of(&mut o.scene, &model);
         // Through the view's lens while it's in perspective: the eye stays where it stood as the lens or the picture changes.
-        let lens = lens_of(&model);
+        let from_model = o.camera.is_none();
         let mut cam = match o.camera {
             Some(c) => c.sized(w, h, lens),
             None => {
                 let look = Look::of_3d(&model);
-                scene.fit_from(Camera { lens, ..scene.fit_in(AZIMUTH, ELEVATION, w, h, &look) }, &look)
+                match (three_d.and_then(|(c, _)| c), lens) {
+                    (Some(cam), Some(lens)) => Camera::at(cam.eye, cam.target, lens, w, h),
+                    _ => scene.fit_from(Camera { lens, ..scene.fit_in(AZIMUTH, ELEVATION, w, h, &look) }, &look),
+                }
             }
         };
+        if from_model {
+            o.built = active.zip(stored).map(|(id, cam)| (id, cam, lens));
+        }
         if let Some(at) = hover {
             // A wheel notch (about 50 points) zooms by a fifth.
             let factor = (f64::from(wheel) * 0.004).exp() * f64::from(pinch);
@@ -370,6 +441,8 @@ impl BimApp {
             }
         }
         o.camera = Some(cam);
+        // The hand and the wheel have let the camera be: a camera view's position is written back then (below).
+        let settled = o.drag.is_none() && wheel == 0.0 && pinch == 1.0;
         // On the card when the user asked for it and it can draw what the view shows; else on the processor.
         let mesh = match self.card.ready().is_some().then(|| mesh_of(&mut o.mesh, &model, scene)) {
             Some(Ok(mesh)) => Some(Arc::clone(mesh)),
@@ -448,6 +521,28 @@ impl BimApp {
         let shown = if o.on_card { self.card.gpu.as_ref().and_then(|g| g.texture()) } else { o.texture.as_ref().map(|t| t.id()) };
         if let Some(id) = shown {
             p.image(id, rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+        }
+        // Rooms aren't seen in 3D but while selected: then a see-through solid in the selection's colour, from their bottom to
+        // their top, over their boundary (an unbounded one's square).
+        // With Rooms shown in the view's Visibility/Graphics (they are off in every new 3D view), all of them so.
+        let all_rooms = model
+            .default_3d()
+            .and_then(|v| bimcraft_core::graphics::graphics_of(&model, v))
+            .is_some_and(|g| g.resolved(&model).shows_in_3d("room"));
+        let look = all_rooms.then(|| Look::of_3d(&model));
+        if !o.rooms.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, &model)) {
+            o.rooms = None;
+        }
+        let solids = &mut o.rooms.get_or_insert_with(|| (Arc::clone(&model), std::collections::BTreeMap::new())).1;
+        for (id, e) in model.elements.iter() {
+            let shown = selection.contains(id) || look.as_ref().is_some_and(|l| l.shows(*id));
+            if let (true, bimcraft_core::model::Element::Room(r)) = (shown, e) {
+                let solid = solids.entry(*id).or_insert_with(|| {
+                    let (bottom, top) = model.room_span(r);
+                    (model.room_outline(r).0, bottom, top)
+                });
+                room_solid(&p, solid, selection.contains(id), &|q: P3| on_screen(&cam, rect, ppp, q));
+            }
         }
         // The selected level's grips, and its plane as the held one would leave it.
         if let Some((_, z, extent)) = level {
@@ -653,6 +748,7 @@ impl BimApp {
             ui.spacing_mut().item_spacing.y = 2.0;
             if icon_button(ui, Icon::View3D, "Home View").clicked() {
                 self.orbit.camera = None;
+                self.orbit.built = None;
             }
             if icon_button(ui, Icon::Fit, "Zoom to Fit").clicked() {
                 self.fit3d();
@@ -665,5 +761,26 @@ impl BimApp {
                 }
             }
         });
+        // A camera view remembers where the hand and the wheel left it: once they let it be, its eye and target are written
+        // back, so leaving the view and returning comes back to the same place (and Properties shows them). A view drawn
+        // beside the active one (a floating window) writes nothing: the hand is working in the active view.
+        if settled
+            && !self.passive
+            && matches!(three_d, Some((Some(_), _)))
+            && let (Some(eye), Some(lens)) = (cam.eye(), lens)
+            && let Some(id) = active
+        {
+            let stored = match self.session.model.elements.get(id) {
+                Some(bimcraft_core::model::Element::View3D(v)) => v.camera,
+                _ => None,
+            };
+            let near = |a: [f64; 3], b: [f64; 3]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 0.01);
+            if !stored.is_some_and(|c| near(c.eye, eye) && near(c.target, cam.target))
+                && self.run("camera", json!({"view": id, "eye": eye, "target": cam.target, "lens": lens})).is_some()
+            {
+                // What the model holds now is what the picture shows.
+                self.orbit.built = Some((id, ViewCamera { eye, target: cam.target }, Some(lens)));
+            }
+        }
     }
 }

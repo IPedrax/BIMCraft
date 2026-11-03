@@ -22,6 +22,25 @@ pub struct Command {
     pub run: Run,
     /// Whether a change it makes is an undo step.
     pub undoable: bool,
+    /// Where the command sits in the ribbon: `"Manage > Family Editor"`. `None` for what has no
+    /// place in the interface (a shortcut, or a command no menu reaches) — the field is always
+    /// read, filled in as the catalog learns the interface.
+    pub menu: Option<&'static str>,
+}
+
+impl Command {
+    /// The same command, reached from a menu: `edit("family", …).menu("Manage > Family Editor")`.
+    pub const fn menu(self, menu: &'static str) -> Command {
+        Command {
+            id: self.id,
+            label: self.label,
+            aliases: self.aliases,
+            params: self.params,
+            run: self.run,
+            undoable: self.undoable,
+            menu: Some(menu),
+        }
+    }
 }
 
 pub const UNDO_LIMIT: usize = 200;
@@ -98,7 +117,7 @@ pub fn find(name: &str) -> Option<&'static Command> {
 
 /// The command catalog as agents read it.
 pub fn catalog() -> Value {
-    commands().iter().map(|c| json!({"id": c.id, "label": c.label, "aliases": c.aliases, "params": c.params})).collect()
+    commands().iter().map(|c| json!({"id": c.id, "label": c.label, "aliases": c.aliases, "params": c.params, "menu": c.menu})).collect()
 }
 
 impl Session {
@@ -181,6 +200,10 @@ impl Session {
                 // What a command was given by id points at the element's GUID; what it put in the library has an id and a GUID.
                 self.model_mut().resolve();
                 self.model_mut().sync_library();
+                // A room frozen keeps the boundary it has now; one thawed lets it go.
+                if self.model.elements.values().any(|e| matches!(e, Element::Room(r) if r.frozen != r.kept.is_some())) {
+                    self.model_mut().keep_rooms();
+                }
                 // Locked and equal dimensions moved what they measure to as the command moved it.
                 if cmd.undoable {
                     crate::constraints::keep(self, &before)?;

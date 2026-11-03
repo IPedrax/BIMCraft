@@ -69,9 +69,15 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 12: a floor may have a shape (`shape`: points
-/// and split lines on its top, parts); nothing in a file of 11 changes, but a build that reads up to 11 would leave a shape
-/// out as a field it doesn't know and draw the floor flat. 11: a project's language may be Swedish,
+/// The version of the project file this build writes, and the newest it reads. 13: a floor or a flat roof may have a shape
+/// (`shape`: points and split lines on its top, parts), a floor's or roof's type a `variable` layer, and a spot a `slope`;
+/// nothing in a file of 12 changes, but a build that reads up to 12 would answer a spot slope or a variable layer with a
+/// serde error and leave a shape out as a field it doesn't know, drawing the floor flat, not "saved by a newer BIMCraft".
+/// 12: a project's language may be German (`de`) or
+/// Dutch (`nl`), a wall may bound no rooms (`room_bounding: false`, written only then) and a family holds `connectors` (an
+/// electrical device's load, a switch); nothing in a file of 11 changes, but a build that reads up to 11 would answer one of 12
+/// with a serde error ("unknown variant") or, for such a wall, leave the setting out and bound rooms by it again, and for such a
+/// family drop the connectors and place the device as a load of zero, not "saved by a newer BIMCraft". 11: a project's language may be Swedish,
 /// Czech or French (`sv`, `cs`, `fr`); nothing in a file of 10 changes, but a build that reads up to 10 would answer one of
 /// 11 with a serde error ("unknown variant"), not "saved by a newer BIMCraft". 8: text types (`text_types`, library
 /// entries of kind `text-type`); a note names its type, which holds its size, and may override parts of its formatting
@@ -89,7 +95,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 12;
+pub const FORMAT: u32 = 13;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -116,6 +122,18 @@ pub struct Level {
     /// range and its sides as its crop.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub section_box: bool,
+    /// Revit's Computation Height: how far above it (mm) its rooms find the walls that bound them. Room separation lines
+    /// bound them whatever it is.
+    #[serde(default = "computation_height", skip_serializing_if = "is_computation_height")]
+    pub computation_height: f64,
+}
+
+fn computation_height() -> f64 {
+    CUT_HEIGHT
+}
+
+fn is_computation_height(x: &f64) -> bool {
+    *x == CUT_HEIGHT
 }
 
 impl Level {
@@ -128,6 +146,7 @@ impl Level {
             extent: None,
             graphics: Graphics::default(),
             section_box: false,
+            computation_height: CUT_HEIGHT,
         }
     }
 }
@@ -232,9 +251,52 @@ pub struct Wall {
     pub attach_top: Option<Guid>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attach_base: Option<Guid>,
+    /// Whether it bounds rooms (Revit's Room Bounding): on unless turned off, as for a low wall or a balustrade a room
+    /// runs past.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub room_bounding: bool,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+}
+
+/// A room's Limit Offset unless it says: its top 2500 mm over its own level.
+pub const ROOM_LIMIT_OFFSET: f64 = 2500.0;
+/// Where the level above bounds a new room: its top this far over it (under it, being negative).
+pub const ROOM_BELOW_ABOVE: f64 = -300.0;
+/// The side of the square an unbounded room covers round its point, mm.
+pub const UNBOUNDED_ROOM: f64 = 1000.0;
+
+/// Why a room has no boundary: no loop of walls and separation lines closes round its point, or a room placed before it
+/// (this one) has the space it is in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Unbound {
+    NotEnclosed,
+    Shared(Id),
+}
+
+/// The square an unbounded room covers round its point `p`, [`UNBOUNDED_ROOM`] mm a side, counter-clockwise.
+pub fn unbounded_square(p: P2) -> Vec<P2> {
+    let h = UNBOUNDED_ROOM / 2.0;
+    let P2(x, y) = p;
+    vec![P2(x - h, y - h), P2(x + h, y - h), P2(x + h, y + h), P2(x - h, y + h)]
+}
+
+/// Whether `p` lies in region `g`: inside its outer ring, in none of its islands.
+pub fn region_holds(g: &Region, p: P2) -> bool {
+    geom::contains(&g.outer, p) && !g.holes.iter().any(|h| geom::contains(h, p))
+}
+
+fn room_limit_offset() -> f64 {
+    ROOM_LIMIT_OFFSET
+}
+
+fn is_room_limit_offset(x: &f64) -> bool {
+    *x == ROOM_LIMIT_OFFSET
+}
+
+fn is_yes(b: &bool) -> bool {
+    *b
 }
 
 fn is_zero(x: &f64) -> bool {
@@ -767,6 +829,76 @@ pub struct Room {
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// Revit's Base Offset: its bottom, this far above its level (mm).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub base_offset: f64,
+    /// Revit's Upper Limit: the level its top is measured from; none, its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_level: Option<Guid>,
+    /// Revit's Limit Offset: its top, this far above its upper limit (mm).
+    #[serde(default = "room_limit_offset", skip_serializing_if = "is_room_limit_offset")]
+    pub limit_offset: f64,
+    /// Frozen, it keeps the boundary it had when frozen (`kept`) and the walls are never searched for it again: it keeps its
+    /// size whatever the walls do, and a project of many rooms is drawn and scheduled without finding each one.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub frozen: bool,
+    /// What a frozen room keeps, given it after the command that froze it (`Model::keep_rooms`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kept: Option<Kept>,
+}
+
+impl Room {
+    /// A room at `point` on `level`, its height Revit's unless it says (up to [`ROOM_LIMIT_OFFSET`] over its level), not
+    /// frozen.
+    pub fn new(level: Guid, point: P2, name: impl Into<String>, number: impl Into<String>) -> Room {
+        Room {
+            level,
+            point,
+            name: name.into(),
+            number: number.into(),
+            params: BTreeMap::new(),
+            base_offset: 0.0,
+            top_level: None,
+            limit_offset: ROOM_LIMIT_OFFSET,
+            frozen: false,
+            kept: None,
+        }
+    }
+}
+
+/// A frozen room's boundary, measured both ways the project may measure rooms (`room_area`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Kept {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub centre: Option<Region>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finish: Option<Region>,
+}
+
+impl Kept {
+    pub fn at(&self, at: RoomArea) -> Option<&Region> {
+        match at {
+            RoomArea::Centre => self.centre.as_ref(),
+            RoomArea::Finish => self.finish.as_ref(),
+        }
+    }
+
+    /// Each of its rings moved by `f`; a mirror image turned back counter-clockwise, its holes clockwise.
+    pub fn map(&mut self, f: impl Fn(P2) -> P2) {
+        for g in self.centre.iter_mut().chain(self.finish.iter_mut()) {
+            g.outer.iter_mut().for_each(|q| *q = f(*q));
+            if geom::area(&g.outer) < 0.0 {
+                g.outer.reverse();
+            }
+            for h in &mut g.holes {
+                h.iter_mut().for_each(|q| *q = f(*q));
+                if geom::area(h) > 0.0 {
+                    h.reverse();
+                }
+            }
+        }
+    }
 }
 
 /// Which of an element's lines a dimension measures to: a wall's centre line, its face on the
@@ -1204,6 +1336,21 @@ pub struct View3D {
     /// Seen in perspective, as through a camera, rather than parallel (axonometric): kept, with its lens, when it's turned off.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub perspective: Option<Perspective>,
+    /// Where the view's camera stands and what it looks at, when it was placed as Revit's Camera tool does (an eye and a
+    /// target in the model). None for a view that is fitted over the model rather than through a camera of its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub camera: Option<ViewCamera>,
+}
+
+/// A 3D view's camera: the model point its eye stands at, and the model point it looks at, in mm. The view is seen in
+/// perspective through its lens, from `eye` toward `target`.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ViewCamera {
+    /// Where the camera's eye stands, [x, y, z] mm.
+    pub eye: [f64; 3],
+    /// What the camera looks at, [x, y, z] mm; never the eye itself.
+    pub target: [f64; 3],
 }
 
 /// A 3D view's perspective: the focal length of the lens it is seen through, mm on a 35 mm camera (whose film is the
@@ -1231,6 +1378,7 @@ impl View3D {
             graphics: Graphics::default(),
             section_box: None,
             perspective: None,
+            camera: None,
         }
     }
 }
@@ -1300,6 +1448,10 @@ pub struct Column {
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// Revit's Room Bounding: whether it bounds rooms (where it stands at its level's Computation Height). Off, rooms
+    /// run through it.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub room_bounding: bool,
 }
 
 /// Which line of a run's section its heights are: the top of it, its middle, or its bottom.
@@ -1722,6 +1874,7 @@ macro_rules! run_arm {
         Element::Beam($r)
             | Element::StripFooting($r)
             | Element::Pipe($r)
+            | Element::Duct($r)
             | Element::Conduit($r)
             | Element::CableTray($r)
             | Element::Wire($r)
@@ -1750,7 +1903,11 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? w.attach_top { f(g) }
                 if let Some(g) = & $($m)? w.attach_base { f(g) }
             }
-            Element::Floor(Floor { level, .. }) | Element::Ceiling(Ceiling { level, .. }) | Element::Room(Room { level, .. }) => f(level),
+            Element::Floor(Floor { level, .. }) | Element::Ceiling(Ceiling { level, .. }) => f(level),
+            Element::Room(Room { level, top_level, .. }) => {
+                f(level);
+                if let Some(g) = top_level { f(g) }
+            }
             Element::Shaft(Shaft { level, top_level, .. })
             | Element::Mass(Mass { level, top_level, .. })
             | Element::Column(Column { level, top_level, .. })
@@ -1840,6 +1997,7 @@ pub enum Element {
     Beam(Run),
     StripFooting(Run),
     Pipe(Run),
+    Duct(Run),
     Conduit(Run),
     CableTray(Run),
     Wire(Run),
@@ -1981,6 +2139,7 @@ impl Element {
             "beam" => Some(Element::Beam(r)),
             "stripfooting" => Some(Element::StripFooting(r)),
             "pipe" => Some(Element::Pipe(r)),
+            "duct" => Some(Element::Duct(r)),
             "conduit" => Some(Element::Conduit(r)),
             "cabletray" => Some(Element::CableTray(r)),
             "wire" => Some(Element::Wire(r)),
@@ -2071,6 +2230,7 @@ impl Element {
             Element::Beam(_) => "beam",
             Element::StripFooting(_) => "stripfooting",
             Element::Pipe(_) => "pipe",
+            Element::Duct(_) => "duct",
             Element::Conduit(_) => "conduit",
             Element::CableTray(_) => "cabletray",
             Element::Wire(_) => "wire",
@@ -2151,8 +2311,8 @@ pub struct RunType {
 }
 
 /// The categories whose elements are runs, as `Element::run` returns them.
-pub const RUN_CATEGORIES: [&str; 9] =
-    ["beam", "stripfooting", "pipe", "conduit", "cabletray", "wire", "downconductor", "groundconductor", "cable"];
+pub const RUN_CATEGORIES: [&str; 10] =
+    ["beam", "stripfooting", "pipe", "duct", "conduit", "cabletray", "wire", "downconductor", "groundconductor", "cable"];
 
 /// A roof type: how thick its roofs are across their slope and, a compound one, its layers from
 /// the top down.
@@ -2319,7 +2479,7 @@ pub struct ProjectParameter {
 pub const MAX_PROJECT_PARAMETERS: usize = 256;
 
 /// The categories project parameters are for.
-pub const PARAMETER_CATEGORIES: [&str; 24] = [
+pub const PARAMETER_CATEGORIES: [&str; 25] = [
     "wall",
     "floor",
     "ceiling",
@@ -2338,6 +2498,7 @@ pub const PARAMETER_CATEGORIES: [&str; 24] = [
     "beam",
     "stripfooting",
     "pipe",
+    "duct",
     "conduit",
     "cabletray",
     "wire",
@@ -2487,6 +2648,15 @@ pub struct Model {
     /// Its reinforcement presets, by name: the parameters `reinforce` takes for a kind of host, kept to arm others alike.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub reinforcement: BTreeMap<String, crate::reinforce::Preset>,
+    /// Its electrical voltages, by name, each with the band a device may read within.
+    #[serde(default = "crate::electrical::voltages")]
+    pub voltages: BTreeMap<String, crate::electrical::Voltage>,
+    /// Its distribution systems, by name: phases, wires and the voltages each supplies.
+    #[serde(default = "crate::electrical::distribution_systems")]
+    pub distribution_systems: BTreeMap<String, crate::electrical::DistributionSystem>,
+    /// Its wire types, by name: material, insulation, temperature and the ampacity of each section, mm².
+    #[serde(default = "crate::electrical::wire_types")]
+    pub wire_types: BTreeMap<String, crate::electrical::WireType>,
     pub elements: Elements,
     /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
     /// templates, phases, phase filters and design options.
@@ -2577,6 +2747,9 @@ impl Model {
             dimension_types: crate::dims::types(),
             detail_groups: BTreeMap::new(),
             reinforcement: BTreeMap::new(),
+            voltages: crate::electrical::voltages(),
+            distribution_systems: crate::electrical::distribution_systems(),
+            wire_types: crate::electrical::wire_types(),
             elements: Elements::new(),
             library: crate::library::Library::default(),
             loaded: BTreeMap::new(),
@@ -2674,6 +2847,12 @@ impl Model {
             ("Perforated 300 x 100", run(300.0, 100.0, false, "Metal")),
         ];
         m.types.runs.insert("cabletray".into(), trays.into_iter().map(|(n, t)| (n.to_string(), t)).collect());
+        let ducts = [
+            ("Rectangular 400 x 300", run(400.0, 300.0, false, "Metal")),
+            ("Rectangular 600 x 400", run(600.0, 400.0, false, "Metal")),
+            ("Round 300", run(300.0, 300.0, true, "Metal")),
+        ];
+        m.types.runs.insert("duct".into(), ducts.into_iter().map(|(n, t)| (n.to_string(), t)).collect());
         let wires = [
             ("Wire 2.5", run(4.0, 4.0, true, "Copper")),
             ("Wire 4", run(5.0, 5.0, true, "Copper")),
@@ -2707,6 +2886,12 @@ impl Model {
             ("Perforated 300 x 100", run(300.0, 100.0, false, "Metal")),
         ];
         m.types.runs.insert("cabletray".into(), trays.into_iter().map(|(n, t)| (n.to_string(), t)).collect());
+        let ducts = [
+            ("Rectangular 400 x 300", run(400.0, 300.0, false, "Metal")),
+            ("Rectangular 600 x 400", run(600.0, 400.0, false, "Metal")),
+            ("Round 300", run(300.0, 300.0, true, "Metal")),
+        ];
+        m.types.runs.insert("duct".into(), ducts.into_iter().map(|(n, t)| (n.to_string(), t)).collect());
         let wires = [
             ("Wire 2.5", run(4.0, 4.0, true, "Copper")),
             ("Wire 4", run(5.0, 5.0, true, "Copper")),
@@ -2847,6 +3032,19 @@ impl Model {
                 ..pc
             })
             .collect()
+    }
+
+    /// Component `c`'s plan marks in the model: its family's symbols in its own axes, mirrored if it is, turned and moved to
+    /// where it stands. A label is lettered upright in the family's axes, so it turns (and mirrors) with the component.
+    pub fn component_marks(&self, c: &Component) -> Vec<crate::family::Mark> {
+        let Some(f) = self.families.get(&c.family) else { return Vec::new() };
+        if f.symbols.is_empty() {
+            return Vec::new();
+        }
+        let Ok(marks) = f.values(&c.type_name, &c.params).and_then(|v| f.marks(&v)) else { return Vec::new() };
+        let (sin, cos) = c.angle.to_radians().sin_cos();
+        let flip = if c.mirrored { -1.0 } else { 1.0 };
+        marks.iter().map(|k| k.map(|q| P2(c.at.0 + q.0 * cos - flip * q.1 * sin, c.at.1 + q.0 * sin + flip * q.1 * cos))).collect()
     }
 
     /// Component `c`'s solids in the model: its own, turned and moved to where it stands.
@@ -3029,7 +3227,10 @@ impl Model {
         // dimension type; one of 10 read by 9 would measure its points as lines. A dimension of 9 gets its kind's type.
         self.typed_dimensions();
         // 10 to 11 (Swedish, Czech and French as a project's language) has no step: a file of 10 holds none of them.
-        // 11 to 12 (a floor's shape) has none either: a file of 11 holds no shape.
+        // 11 to 12 (German and Dutch as a project's language, a wall that bounds no rooms, a family's connectors) has no step either: a
+        // file of 11 holds none. The electrical settings (voltages, distribution systems, wire types) have none within 11 or 12: a file
+        // without them reads with the starter set, and one that has them is read by an older version with them left out.
+        // 12 to 13 (a floor's or flat roof's shape, a variable layer, a spot slope) has none either: a file of 12 holds none.
         self.format = FORMAT;
     }
 
@@ -3353,10 +3554,33 @@ impl Model {
         self.spans(w, self.plan_range(level).cut)
     }
 
-    /// Whether the wall bounds the rooms of `level`: it spans the height rooms are found at,
-    /// [`CUT_HEIGHT`] above the level, whatever the level's plan cuts at.
+    /// Whether the wall bounds the rooms of `level`: it spans the height rooms are found at, the level's Computation Height
+    /// ([`CUT_HEIGHT`] unless set) above it, whatever the level's plan cuts at.
     pub fn bounding(&self, w: &Wall, level: impl Key) -> bool {
-        self.spans(w, self.elevation(level) + CUT_HEIGHT)
+        let up = self.level(level).map_or(CUT_HEIGHT, |l| l.computation_height);
+        self.spans(w, self.elevation(level) + up)
+    }
+
+    /// Whether the wall bounds the rooms of `level`: [`Model::bounding`], and its Room Bounding on.
+    pub fn room_bounding(&self, w: &Wall, level: impl Key) -> bool {
+        w.room_bounding && self.bounding(w, level)
+    }
+
+    /// The outlines of the columns (and structural columns) that bound the rooms of `level`: Room Bounding on, standing at
+    /// the level's Computation Height.
+    pub fn bounding_columns(&self, level: impl Key) -> Vec<Vec<P2>> {
+        let z = self.elevation(level) + self.level(level).map_or(CUT_HEIGHT, |l| l.computation_height);
+        self.elements
+            .values()
+            .filter(|e| {
+                matches!(e, Element::Column(c) | Element::StructuralColumn(c) if c.room_bounding && {
+                    let (bottom, top) = self.span(c.level, c.base_offset, c.top_level, c.height);
+                    bottom <= z && z < top
+                })
+            })
+            .map(|e| self.column_outline(e))
+            .filter(|o| o.len() >= 3)
+            .collect()
     }
 
     /// Whether the wall spans height `z`.
@@ -3541,6 +3765,7 @@ impl Model {
             "beam" => "Beam 200 x 500",
             "stripfooting" => "Strip 600 x 300",
             "pipe" => "PVC 50",
+            "duct" => "Rectangular 400 x 300",
             "conduit" => "PVC 25",
             "cabletray" => "Perforated 100 x 50",
             "wire" => "Wire 2.5",
@@ -3622,11 +3847,11 @@ impl Model {
     /// A door's or window's family's solids and the lines its plan draws, in the family's own axes, turned out with
     /// the opening's flips as mirror images (its hinge on the other jamb, its swing to the wall's other side);
     /// none for one that isn't of a family, or doesn't build.
-    pub fn opening_local(&self, e: &Element) -> Option<(Vec<Piece>, Vec<Vec<P2>>)> {
+    pub fn opening_local(&self, e: &Element) -> Option<(Vec<Piece>, Vec<crate::family::Mark>)> {
         let (Element::Door(o) | Element::Window(o)) = e else { return None };
         let f = self.families.get(o.family.as_ref()?)?;
         let values = f.values_in(&o.type_name, &o.params, self.thickness(self.wall(o.host)?)).ok()?;
-        let (pieces, strokes) = (f.pieces(&values).ok()?, f.strokes(&values).ok()?);
+        let (pieces, marks) = (f.pieces(&values).ok()?, f.marks(&values).ok()?);
         let (fx, fy) = (if o.flip_hand { -1.0 } else { 1.0 }, if o.flip_facing { -1.0 } else { 1.0 });
         let mirrored = fx * fy < 0.0;
         let flip = |p: [f64; 3]| [fx * p[0] + 0.0, fy * p[1] + 0.0, p[2]];
@@ -3639,8 +3864,8 @@ impl Model {
                 Piece { tris: tris.collect(), outline: if mirrored { outline.into_iter().rev().collect() } else { outline }, ..pc }
             })
             .collect();
-        let strokes = strokes.into_iter().map(|l| l.into_iter().map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0)).collect()).collect();
-        Some((pieces, strokes))
+        let marks = marks.iter().map(|k| k.map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0))).collect();
+        Some((pieces, marks))
     }
 
     /// A door's or window's family's solids where it stands, in the model's own axes: each form's triangles, its
@@ -3664,11 +3889,11 @@ impl Model {
             .collect()
     }
 
-    /// The lines a door's or window's family draws in plan, where it stands.
-    pub fn opening_strokes(&self, e: &Element) -> Vec<Vec<P2>> {
+    /// The marks a door's or window's family draws in plan, where it stands.
+    pub fn opening_marks(&self, e: &Element) -> Vec<crate::family::Mark> {
         let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
-        let (Some((_, strokes)), Some((at, u, _))) = (self.opening_local(e), self.opening_frame(o)) else { return Vec::new() };
-        strokes.into_iter().map(|l| l.into_iter().map(|q| at + u * q.0 + u.perp() * q.1).collect()).collect()
+        let (Some((_, marks)), Some((at, u, _))) = (self.opening_local(e), self.opening_frame(o)) else { return Vec::new() };
+        marks.iter().map(|k| k.map(|q| at + u * q.0 + u.perp() * q.1)).collect()
     }
 
     /// The level an element stands on: a door's or window's is its wall's, a tag's its door's or
@@ -4354,6 +4579,13 @@ impl Model {
         self.elements.iter().find_map(|(id, e)| matches!(e, Element::View3D(v) if v.name == "{3D}").then_some(*id))
     }
 
+    /// The level a point at height `z` stands on: the highest level at or below it, else the lowest. A camera stands on the
+    /// plan of that level.
+    pub fn camera_level(&self, z: f64) -> Option<Id> {
+        let levels = self.levels();
+        levels.iter().rev().find(|(_, l)| l.elevation <= z + TOL).or_else(|| levels.first()).map(|(id, _)| *id)
+    }
+
     /// The name of view `id`: a level's plan, a section, an elevation, a schedule or a 3D view;
     /// none for another element.
     pub fn view_name(&self, id: impl Key) -> Option<&str> {
@@ -5004,7 +5236,7 @@ impl Model {
     /// separation line drawn to a wall's face, as one drawn on a plan usually is, runs on to the wall's centre line, so it
     /// splits rooms measured there too.
     pub fn bounding_lines(&self, level: impl Key) -> Vec<(P2, P2)> {
-        let walls = self.wall_segments(level);
+        let walls = self.wall_segments(level, true);
         let mut lines: Vec<(P2, P2)> = walls.iter().map(|&(a, b, _)| (a, b)).collect();
         lines.extend(self.separators(level).into_iter().map(|(a, b)| (to_centre(b, a, &walls), to_centre(a, b, &walls))));
         lines
@@ -5012,15 +5244,16 @@ impl Model {
 
     /// Centre lines of the walls that bound the rooms of `level`, arcs as chords.
     pub fn wall_lines(&self, level: impl Key) -> Vec<(P2, P2)> {
-        self.wall_segments(level).into_iter().map(|(a, b, _)| (a, b)).collect()
+        self.wall_segments(level, false).into_iter().map(|(a, b, _)| (a, b)).collect()
     }
 
     /// The segments of [`Model::wall_lines`], each with half its wall's thickness.
-    fn wall_segments(&self, level: impl Key) -> Vec<(P2, P2, f64)> {
+    /// With `rooms`, of the walls whose Room Bounding is on.
+    fn wall_segments(&self, level: impl Key, rooms: bool) -> Vec<(P2, P2, f64)> {
         self.elements
             .iter()
             .filter_map(|(&id, e)| match e {
-                Element::Wall(w) if self.bounding(w, level) => Some((id, self.thickness(w) / 2.0)),
+                Element::Wall(w) if self.bounding(w, level) && (!rooms || w.room_bounding) => Some((id, self.thickness(w) / 2.0)),
                 _ => None,
             })
             .flat_map(|(id, half)| {
@@ -5060,10 +5293,41 @@ impl Model {
     /// A room's boundary measured at `at`: the walls' centre lines (Revit's "At wall centerline") or their faces ("At wall
     /// finish": the area inside the walls, which Brazilian codes call área útil).
     pub fn room_region_at(&self, r: &Room, at: RoomArea) -> Option<Region> {
-        if self.wall_holding(r, at).is_some() {
-            return None;
+        self.room_bound(r, at).ok()
+    }
+
+    /// A room's boundary measured at `at`, or why it has none. A frozen room's is the one it keeps, found from nothing; else
+    /// the loop round its point, unless a room placed before it already has its point in that loop: two rooms can't share a
+    /// space, so the later is left unbounded, as Revit's redundant room.
+    pub fn room_bound(&self, r: &Room, at: RoomArea) -> Result<Region, Unbound> {
+        if let Some(k) = &r.kept {
+            return k.at(at).cloned().ok_or(Unbound::NotEnclosed);
         }
-        geom::region_at(&self.room_lines(r.level, at), r.point, TOL)
+        if self.wall_holding(r, at).is_some() {
+            return Err(Unbound::NotEnclosed);
+        }
+        let g = geom::region_at(&self.room_lines(r.level, at), r.point, TOL).ok_or(Unbound::NotEnclosed)?;
+        self.room_before(r, &g).map_or(Ok(g), |id| Err(Unbound::Shared(id)))
+    }
+
+    /// The room on `r`'s level, placed before it (of a lower id; any, for a room not yet in the model), whose point lies in
+    /// `g`: the room that has the space `g` is.
+    pub fn room_before(&self, r: &Room, g: &Region) -> Option<Id> {
+        let me = self.elements.iter().find(|(_, e)| matches!(e, Element::Room(o) if std::ptr::eq(o, r))).map(|(id, _)| *id);
+        self.elements
+            .iter()
+            .take_while(|(id, _)| me.is_none_or(|m| **id < m))
+            .find(|(_, e)| matches!(e, Element::Room(o) if self.same(o.level, r.level) && region_holds(g, o.point)))
+            .map(|(id, _)| *id)
+    }
+
+    /// What a room covers in plan: its boundary's outer ring where the project measures rooms, or, unbounded, a square
+    /// [`UNBOUNDED_ROOM`] mm a side round its point, as Revit shows a room in no enclosed region. Whether it is bounded.
+    pub fn room_outline(&self, r: &Room) -> (Vec<P2>, bool) {
+        match self.room_region(r) {
+            Some(g) => (g.outer, true),
+            None => (unbounded_square(r.point), false),
+        }
     }
 
     /// The room-bounding wall whose body a room's point lies in, when rooms are measured at `at` the finish faces. There the
@@ -5075,21 +5339,66 @@ impl Model {
         }
         self.elements
             .iter()
-            .filter(|(_, e)| matches!(e, Element::Wall(w) if self.bounding(w, r.level)))
+            .filter(|(_, e)| matches!(e, Element::Wall(w) if self.room_bounding(w, r.level)))
             .find(|&(&id, _)| geom::contains(&walls::outline(self, id), r.point))
             .map(|(&id, _)| id)
     }
 
+    /// A room's bottom and top: its level's elevation plus its base offset, and its upper limit's (its level's, when it
+    /// has none) plus its limit offset.
+    pub fn room_span(&self, r: &Room) -> (f64, f64) {
+        (self.elevation(r.level) + r.base_offset, self.elevation(r.top_level.unwrap_or(r.level)) + r.limit_offset)
+    }
+
+    /// A room's Unbounded Height: from its bottom up to its top (`room_span`).
+    pub fn room_height(&self, r: &Room) -> f64 {
+        let (bottom, top) = self.room_span(r);
+        top - bottom
+    }
+
+    /// Frozen rooms that keep no boundary yet are given the one they have now; rooms no longer frozen let theirs go. The
+    /// engine calls it after every command, so freezing is a field like any other (`modify {frozen: true}`).
+    pub fn keep_rooms(&mut self) {
+        let changed: Vec<(Id, Option<Kept>)> = self
+            .elements
+            .iter()
+            .filter_map(|(&id, e)| match e {
+                Element::Room(r) if r.frozen && r.kept.is_none() => Some((
+                    id,
+                    Some(Kept { centre: self.room_region_at(r, RoomArea::Centre), finish: self.room_region_at(r, RoomArea::Finish) }),
+                )),
+                Element::Room(r) if !r.frozen && r.kept.is_some() => Some((id, None)),
+                _ => None,
+            })
+            .collect();
+        for (id, kept) in changed {
+            if let Some(Element::Room(r)) = self.elements.get_mut(id) {
+                r.kept = kept;
+            }
+        }
+    }
+
     /// The lines rooms on `level` are found among, measured at `at`.
+    /// Room-bounding walls (their centre lines, or their faces) and separation lines, and the faces of room-bounding
+    /// columns either way, a column having no centre line to measure to.
     pub fn room_lines(&self, level: impl Key, at: RoomArea) -> Vec<(P2, P2)> {
-        match at {
+        let mut lines = match at {
             RoomArea::Centre => self.bounding_lines(level),
             RoomArea::Finish => {
-                let mut lines = self.face_lines(level);
+                let mut lines: Vec<(P2, P2)> = self
+                    .elements
+                    .iter()
+                    .filter(|(_, e)| matches!(e, Element::Wall(w) if self.room_bounding(w, level)))
+                    .flat_map(|(&id, _)| geom::ring_edges(&walls::outline(self, id)).collect::<Vec<_>>())
+                    .collect();
                 lines.extend(self.separators(level));
                 lines
             }
+        };
+        for o in self.bounding_columns(level) {
+            lines.extend(geom::ring_edges(&o));
         }
+        lines
     }
 
     /// What a detail line, a filled region or a text note must be, wherever it is: in a view or in a detail group.
@@ -5158,6 +5467,52 @@ impl Model {
         Ok(())
     }
 
+    /// What is amiss in the model but doesn't make it wrong: soft issues, said so they can be fixed. `check` refuses a model;
+    /// these it accepts. A room the walls no longer close; a family of lighting, outlets or switches in use that holds no
+    /// connector, so its devices count as a load of zero (a family of plan symbols alone, a symbol set's, is no device).
+    pub fn warnings(&self) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .elements
+            .iter()
+            .filter_map(|(id, e)| match e {
+                Element::Room(r) => match self.room_bound(r, self.room_area) {
+                    Ok(_) => None,
+                    Err(Unbound::NotEnclosed) => {
+                        Some(format!("room {id} ({} {}) is not enclosed: the walls around it no longer close", r.number, r.name))
+                    }
+                    Err(Unbound::Shared(other)) => Some(format!(
+                        "room {id} ({} {}) is in the space room {} has; two rooms can't share one, so it is unbounded: delete one, \
+                         or part them with a room separation line",
+                        r.number,
+                        r.name,
+                        self.shown(other)
+                    )),
+                },
+                _ => None,
+            })
+            .collect();
+        let mut bare: BTreeMap<&str, usize> = BTreeMap::new();
+        for e in self.elements.values() {
+            if let Element::Component(c) = e
+                && let Some(f) = self.families.get(&c.family)
+                && f.category.electrical_device()
+                && f.connectors.is_empty()
+                // A family of plan symbols alone (a symbol set's) is notation, not a device that draws a load.
+                && !(f.forms.is_empty() && !f.symbols.is_empty())
+            {
+                *bare.entry(c.family.as_str()).or_default() += 1;
+            }
+        }
+        out.extend(bare.into_iter().map(|(n, k)| {
+            format!(
+                "family `{n}` has no connector, so its {k} placed device{} count{} as a load of zero: give it one with `family` `connectors`",
+                if k == 1 { "" } else { "s" },
+                if k == 1 { "s" } else { "" }
+            )
+        }));
+        out
+    }
+
     /// Everything that must hold between commands: references resolve, geometry is finite and
     /// not degenerate, doors and windows fit their walls and don't overlap.
     pub fn check(&self) -> Result<(), String> {
@@ -5199,6 +5554,7 @@ impl Model {
         for (n, t) in &self.dimension_types {
             t.check(n)?;
         }
+        crate::electrical::check(self)?;
         for (n, x) in &self.materials {
             for p in [&x.cut_pattern, &x.surface_pattern].into_iter().flatten() {
                 if !self.fill_patterns.contains_key(p) {
@@ -5442,6 +5798,7 @@ impl Model {
                 Element::Level(l) => {
                     text(&who, "name", &l.name)?;
                     coord(&format!("{who} elevation"), l.elevation)?;
+                    coord(&format!("{who} computation height"), l.computation_height)?;
                     if !level_names.insert(l.name.as_str()) {
                         return Err(format!("{who}: another level is already named `{}`", l.name));
                     }
@@ -5610,7 +5967,7 @@ impl Model {
                     if let Some(f) = o.family.as_ref().and_then(|n| self.families.get(n)) {
                         self.family_values_ok(&who, o.family.as_deref().unwrap_or_default(), f, &o.params)?;
                         let values = f.values_in(&o.type_name, &o.params, self.thickness(w)).map_err(|e| format!("{who}: {e}"))?;
-                        f.pieces(&values).and_then(|_| f.strokes(&values)).map_err(|e| format!("{who}: {e}"))?;
+                        f.pieces(&values).and_then(|_| f.marks(&values)).map_err(|e| format!("{who}: {e}"))?;
                         size(&format!("{who} width"), t.width)?;
                         size(&format!("{who} height"), t.height)?;
                     }
@@ -5647,6 +6004,23 @@ impl Model {
                     point(&who, r.point)?;
                     text(&who, "name", &r.name)?;
                     text(&who, "number", &r.number)?;
+                    kept(&who, r)?;
+                    if let Some(t) = r.top_level {
+                        level_ok(t)?;
+                    }
+                    coord(&format!("{who} base offset"), r.base_offset)?;
+                    coord(&format!("{who} limit offset"), r.limit_offset)?;
+                    let (bottom, top) = self.room_span(r);
+                    if top <= bottom + TOL {
+                        return Err(format!(
+                            "{who}: the room's top (its upper limit {} + limit offset {}) must be above its bottom (its level {} + \
+                             base offset {}); raise the limit offset or lower the base offset",
+                            self.elevation(r.top_level.unwrap_or(r.level)),
+                            r.limit_offset,
+                            self.elevation(r.level),
+                            r.base_offset
+                        ));
+                    }
                 }
                 Element::Dimension(d) => {
                     level_ok(d.level)?;
@@ -5952,6 +6326,9 @@ impl Model {
                         let (lo, hi) = (crate::view3d::MIN_LENS, crate::view3d::MAX_LENS);
                         return Err(format!("{who}: a {} mm lens is no camera's; a perspective's lens is {lo} to {hi} mm", p.lens));
                     }
+                    if let Some(cam) = &v.camera {
+                        camera_ok(&who, cam)?;
+                    }
                     if !view_names.insert(v.name.as_str()) {
                         return Err(format!("{who}: another view is already named `{}`", v.name));
                     }
@@ -5993,7 +6370,7 @@ impl Model {
                     coord(&format!("{who} angle"), c.angle)?;
                     coord(&format!("{who} offset"), c.offset)?;
                     self.family_values_ok(&who, &c.family, f, &c.params)?;
-                    f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v)).map_err(|e| format!("{who}: {e}"))?;
+                    f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v).and(f.marks(&v))).map_err(|e| format!("{who}: {e}"))?;
                 }
                 Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
                     let types = match e {
@@ -6269,6 +6646,21 @@ fn section_box_ok(who: &str, b: &SectionBox) -> Result<(), String> {
     Ok(())
 }
 
+/// Whether `cam` is a camera a view can stand at: an eye and a target that are usable numbers, apart, so the view has a
+/// direction to look in.
+fn camera_ok(who: &str, cam: &ViewCamera) -> Result<(), String> {
+    for (what, p) in [("eye", cam.eye), ("target", cam.target)] {
+        for (axis, v) in ["x", "y", "z"].into_iter().zip(p) {
+            coord(&format!("{who} camera {what} {axis}"), v)?;
+        }
+    }
+    let across = |a: [f64; 3], b: [f64; 3]| (0..3).map(|k| a[k] - b[k]).fold(0.0, |s, d| s + d * d).sqrt();
+    if across(cam.eye, cam.target) <= TOL {
+        return Err(format!("{who}: its camera's eye is on its target, so it has nothing to look at; give them two points a little apart"));
+    }
+    Ok(())
+}
+
 /// Whether `r` is a view range that makes sense: usable numbers running top ≥ cut plane ≥ bottom ≥
 /// view depth.
 pub(crate) fn range_ok(who: &str, r: &ViewRange) -> Result<(), String> {
@@ -6444,6 +6836,29 @@ fn shape_ok(who: &str, f: &Floor, variable: Option<Variable>) -> Result<(), Stri
 }
 
 /// An outline: 3 to [`MAX_POINTS`] points around some area.
+/// A frozen room's kept boundary: rings of usable points, and some boundary to keep.
+fn kept(who: &str, r: &Room) -> Result<(), String> {
+    let Some(k) = &r.kept else { return Ok(()) };
+    if k.centre.is_none() && k.finish.is_none() {
+        return Err(format!(
+            "{who}: the room is frozen but unbounded (not enclosed, or in a space another room has); a room is frozen with \
+             the boundary it has, so give it one first (walls or room separation lines round it, the other room deleted or \
+             parted from it), or leave it unfrozen"
+        ));
+    }
+    for (at, g) in [("centre", &k.centre), ("finish", &k.finish)] {
+        let Some(g) = g else { continue };
+        if g.holes.iter().map(Vec::len).sum::<usize>().saturating_add(g.outer.len()) > MAX_POINTS {
+            return Err(format!("{who}: its kept {at} boundary has more than {MAX_POINTS} points"));
+        }
+        boundary(&format!("{who} (room) kept {at} boundary"), &g.outer)?;
+        for h in &g.holes {
+            boundary(&format!("{who} (room) kept {at} island"), h)?;
+        }
+    }
+    Ok(())
+}
+
 fn boundary(who: &str, ring: &[P2]) -> Result<(), String> {
     if ring.len() < 3 || ring.len() > MAX_POINTS {
         return Err(format!("{who}: a boundary needs 3 to {MAX_POINTS} points"));
@@ -6587,6 +7002,7 @@ mod tests {
             location: Location::Centre,
             attach_top: None,
             attach_base: None,
+            room_bounding: true,
         })
     }
 
@@ -6666,8 +7082,14 @@ mod tests {
     fn rooms_are_bounded_by_the_walls_their_level_cuts() {
         let mut m = Model::new("t");
         boxed(&mut m);
-        let room =
-            Room { params: Default::default(), level: m.guid(100000), point: P2(3000.0, 2000.0), name: "Hall".into(), number: "1".into() };
+        let room = Room {
+            params: Default::default(),
+            level: m.guid(100000),
+            point: P2(3000.0, 2000.0),
+            name: "Hall".into(),
+            number: "1".into(),
+            ..Room::new(m.guid(100000), P2(0.0, 0.0), "", "")
+        };
         assert_eq!(m.room_region(&room).map(|r| r.area()), Some(24e6));
         let upstairs = Room { level: m.guid(100001), ..room };
         assert_eq!(m.room_region(&upstairs), None, "Level 2 has no walls");

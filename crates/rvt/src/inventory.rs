@@ -31,8 +31,8 @@ use crate::data::{Data, category_materials, column_bottoms, column_nodes, elemen
 use crate::error::{Error, Result};
 use crate::names::{Latest, entries_32, entries_64};
 use crate::records::{
-    CATEGORY_AT, CONTAINER_AT, HEADER_TAG_AFTER_ID, KIND_AT, KIND_PLACED, MARKER_AT, NO_CONTAINER, Record, Tags, TypeRecord, chain,
-    declared, enclosing, f64_at, no_id, records_32, records_64, types_32, types_64, u16_at, u32_at, u64_at,
+    CATEGORY_AT, CONTAINER_AT, KIND_AT, KIND_PLACED, MARKER_AT, NO_CONTAINER, Record, Tags, TypeRecord, chain, declared, enclosing, f64_at,
+    id_before, no_id, records_32, records_64, types_32, types_64, u16_at, u32_at, u64_at,
 };
 use crate::types::first_name;
 
@@ -244,13 +244,13 @@ fn levels_64(buf: &[u8], tags: &Tags, release: u32, ids: &[u32], found: &mut Fou
     }
 }
 
-/// Level records of a partition up to 2023: the id 14 bytes before the category, the marker 38 after it.
+/// Level records of a partition up to 2023: the id 14 bytes before the category (and 14 more for each item of a workshared file's
+/// list), the marker 38 after it.
 fn levels_32(buf: &[u8], tags: &Tags, release: u32, ids: &[u32], found: &mut Found) {
     let marker = tags.marker();
     for hit in memchr::memmem::find_iter(buf, &OST_LEVELS.to_le_bytes()) {
-        let Some(id_at) = hit.checked_sub(14) else { continue };
-        let Some(id) = u32_at(buf, id_at).filter(|&id| declared(ids, id)) else { continue };
-        if u16_at(buf, id_at + HEADER_TAG_AFTER_ID) != Some(tags.header) || buf.get(hit + 38..hit + 44) != Some(&marker[2..]) {
+        let Some((id, _)) = id_before(buf, hit, tags.header, ids) else { continue };
+        if buf.get(hit + 38..hit + 44) != Some(&marker[2..]) {
             continue;
         }
         let container = u32_at(buf, hit + 16);

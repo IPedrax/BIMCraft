@@ -212,6 +212,8 @@ const OWN: &[(&str, usize, &[Own])] = &[
             AREA,
             (msg!("Perimeter"), Kind::Length, From::Metres("perimeter_m")),
             COUNT,
+            (msg!("Unbounded Height"), Kind::Length, From::Key("unbounded_height")),
+            VOLUME,
             PHASE_CREATED,
             PHASE_DEMOLISHED,
             DESIGN_OPTION,
@@ -355,6 +357,7 @@ const OWN: &[(&str, usize, &[Own])] = &[
         ],
     ),
     ("cabletray", 7, &[ID, TYPE, LEVEL, SYSTEM, LENGTH, WIDTH, DEPTH, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    ("duct", 7, &[ID, TYPE, LEVEL, SYSTEM, LENGTH, WIDTH, DEPTH, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
     (
         "cable",
         6,

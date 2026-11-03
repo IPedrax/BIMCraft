@@ -3,7 +3,7 @@
 use super::*;
 use crate::fixture;
 use crate::inventory::{Count, OST_LEVELS, category_name};
-use crate::project_fixture::{Lev, Project, Rec};
+use crate::project_fixture::{Lev, Project, Rec, TypeRec};
 
 const WALLS: i64 = -2_000_011;
 const WINDOWS: i64 = -2_000_014;
@@ -292,7 +292,8 @@ fn the_element_table_is_read_in_both_layouts_and_what_does_not_fit_is_refused() 
     }
     let table = project(2024).element_table();
     let mut falling = table.clone();
-    falling[6 + 20..6 + 24].copy_from_slice(&u32::MAX.to_le_bytes()); // the first id above the second
+    falling[6 + 20..6 + 24].copy_from_slice(&u32::MAX.to_le_bytes()); // the first record's ids above the second's, in both columns
+    falling[6..6 + 4].copy_from_slice(&u32::MAX.to_le_bytes());
     let mut huge = table.clone();
     huge[2..6].copy_from_slice(&u32::MAX.to_le_bytes()); // a count the table cannot hold
     let mut zero = table.clone();
@@ -301,6 +302,54 @@ fn the_element_table_is_read_in_both_layouts_and_what_does_not_fit_is_refused() 
         [(falling, "rise"), (huge, "rise"), (zero, "no elements"), (table[..4].to_vec(), "too short"), (Vec::new(), "too short")]
     {
         assert!(crate::elem_table::parse(&bad).unwrap_err().to_string().contains(says), "{says}");
+    }
+}
+
+#[test]
+fn a_workshared_table_whose_second_ids_do_not_rise_lists_the_ids_of_both_columns() {
+    // A workshared table: its second ids repeat, fall and differ from the first in places, its first ids rise all the way, and an
+    // element's record may carry either id.
+    for release in [2023, 2024] {
+        let table = project(release).element_table();
+        let (size, id_at) = if release >= 2024 { (40, 20) } else { (28, 4) };
+        let plain = crate::elem_table::parse(&table).unwrap();
+        let with = |extra: u32| {
+            let mut ids = plain.clone();
+            ids.push(extra);
+            ids.sort_unstable();
+            ids
+        };
+        let set = |bytes: &mut Vec<u8>, record: usize, at: usize, id: u32| {
+            bytes[6 + record * size + at..6 + record * size + at + 4].copy_from_slice(&id.to_le_bytes());
+        };
+        let mut worked = table.clone();
+        set(&mut worked, 1, id_at, plain[0]); // a repeat
+        set(&mut worked, 3, id_at, 1); // a fall
+        assert_eq!(crate::elem_table::parse(&worked).unwrap(), with(1), "Revit {release}");
+        // Where both columns rise they are listed too, and the ids stay ascending.
+        let mut apart = table.clone();
+        set(&mut apart, 0, 0, 7);
+        assert_eq!(crate::elem_table::parse(&apart).unwrap(), with(7), "Revit {release}");
+    }
+}
+
+#[test]
+fn the_records_of_a_workshared_file_are_found_with_the_list_after_their_header_tag() {
+    // A workshared file's record holds a counted list of 14-byte items after its header tag; the count of another file's is 0.
+    for items in [1, 2, 6, 40] {
+        let mut p = project(2018);
+        p.types = vec![TypeRec::new(500, WALLS)];
+        let want = counts(&p);
+        let plain = open(&p).survey(&|_| true).unwrap();
+        let shape = |s: &crate::inventory::Survey| (s.records.len(), s.types.len(), s.inventory.levels.len());
+        assert_eq!((plain.records.len(), plain.inventory.levels.len()), (4, 3));
+        assert!(plain.types.iter().any(|t| t.id == 500), "the type is found without a list");
+        p.recs.iter_mut().for_each(|r| r.items = items);
+        p.levels.iter_mut().for_each(|l| l.items = items);
+        p.types.iter_mut().for_each(|t| t.items = items);
+        assert_eq!(counts(&p), want, "{items} items");
+        let got = open(&p).survey(&|_| true).unwrap();
+        assert_eq!(shape(&got), shape(&plain), "{items} items");
     }
 }
 

@@ -9,6 +9,7 @@ pub mod alignment;
 pub mod autosave;
 #[cfg(test)]
 mod autosave_tests;
+pub mod background_grid;
 pub mod bridge;
 pub mod cad;
 #[cfg(test)]
@@ -28,6 +29,9 @@ pub mod draw;
 pub mod dxf;
 #[cfg(test)]
 mod eberick_tests;
+pub mod electrical;
+#[cfg(test)]
+mod electrical_tests;
 pub mod engine;
 pub mod falls;
 pub mod family;
@@ -49,6 +53,7 @@ pub mod lenient;
 pub mod library;
 pub mod lines;
 pub mod link;
+pub mod loads;
 pub mod massing;
 pub mod model;
 pub mod nbr5410;
@@ -66,6 +71,12 @@ mod reinforce_tests;
 pub mod render;
 #[cfg(test)]
 mod room_area_tests;
+#[cfg(test)]
+mod room_bounds_tests;
+#[cfg(test)]
+mod room_freeze_tests;
+#[cfg(test)]
+mod room_height_tests;
 pub mod runs;
 pub mod sample;
 pub mod schedule;
@@ -83,6 +94,7 @@ pub mod standards;
 pub mod step;
 pub mod storm;
 pub mod styles;
+pub mod symbol_set;
 pub mod text;
 pub mod texture;
 pub mod triangulation;

@@ -9,6 +9,7 @@ use crate::popup::Modal;
 
 use bimcraft_i18n::msg;
 
+mod background_grid;
 mod browser;
 mod cad;
 mod camera;
@@ -21,6 +22,7 @@ mod dimtypes;
 mod dock;
 mod draw;
 mod editor;
+mod electrical;
 mod favorites;
 mod fillpatterns;
 mod filter;
@@ -58,6 +60,7 @@ mod standards;
 mod start;
 mod structure;
 mod style;
+mod templates;
 #[cfg(test)]
 mod tests;
 mod titlebar;
@@ -121,6 +124,8 @@ pub enum Tool {
     Door,
     Window,
     Room,
+    /// Room separation lines, one a click from the point before: the last point clicked, while the chain goes on.
+    RoomSeparator(Option<P2>),
     /// The Options Bar asks for the new level's elevation.
     Level,
     /// The grid's start, once clicked.
@@ -193,6 +198,9 @@ pub enum Tool {
     Section(Option<P2>),
     /// An elevation, looking at the side of the building clicked beside.
     Elevation,
+    /// A camera: the point its eye stands at, once clicked; then its target. The eye and target heights
+    /// are the Options Bar's over the plan's level (Revit's Camera tool).
+    Camera(Option<P2>),
     /// A column where clicked.
     Column,
     /// A run (a beam, a pipe, a conduit…, by category, as `beam` and `pipe` name them): its first point, once clicked.
@@ -248,6 +256,8 @@ pub enum Tool {
     SketchLine(Vec<P2>),
     /// Sketch mode's Pick Walls: a line along each wall clicked.
     SketchPick,
+    /// Fill Patterns' New Pattern > Custom: the tile's corners, the first once clicked (the lines are picked already).
+    PatternCorner(Option<P2>),
 }
 
 /// Why the last command failed, shown in a box over the view.
@@ -456,6 +466,9 @@ pub struct BimApp {
     ribbon_peek: bool,
     /// What High Contrast Point Clouds fills a view's scans with: the user's (Settings > Graphics), crimson at first.
     scan_contrast: [u8; 3],
+    background_grid_dialog: Option<background_grid::GridDialog>,
+    /// Global grid snapping preference, independent of view graphics and templates.
+    grid_snapping: bool,
     ribbon_bottom: Pos2,
     /// The Compact layout (File > Settings): the bars and palettes flush to the edges, not floating cards.
     compact: bool,
@@ -539,6 +552,10 @@ pub struct BimApp {
     /// The Mass tool's top, as the Shaft tool's.
     mass_top: Option<Option<Id>>,
     mass_height: String,
+    /// The Camera tool's eye and target heights over the plan's level, and its lens, as typed.
+    camera_eye_height: String,
+    camera_target_height: String,
+    camera_lens: String,
     /// Each click ends a wall and starts the next; off, two clicks make one wall.
     chain: bool,
     /// The line the Wall tool's walls stand on.
@@ -627,6 +644,9 @@ pub struct BimApp {
     options_rect: Rect,
     canvas: canvas::Canvas,
     orbit: orbit::Orbit,
+    /// Which 3D view the 3D tab shows: a view's id, or none for the default `{3D}` (made when it is first changed). Set by
+    /// opening a camera view (`open_3d`), as Revit's 3D views each have their own tab.
+    active_3d: Option<Id>,
     /// The graphics card the 3D view may be drawn on (Settings > Performance).
     card: gpu::Card,
     cut: section::Cut,
@@ -659,7 +679,7 @@ pub struct BimApp {
     /// Visibility/Graphics, Filters and View Templates, while they're open.
     vg_dialog: Option<graphics::VgDialog>,
     filters_dialog: Option<graphics::FiltersDialog>,
-    templates_dialog: Option<graphics::TemplatesDialog>,
+    templates_dialog: Option<templates::TemplatesDialog>,
     /// Phasing and Design Options, while they're open, and the design option (`set: option`) new
     /// elements are made in: none is the main model.
     phasing_dialog: Option<phasing::PhasingDialog>,
@@ -682,6 +702,8 @@ pub struct BimApp {
     mode_width: f32,
     /// Manage > Technical Standards, while open.
     standards_dialog: Option<standards::StandardsDialog>,
+    /// Manage > Electrical Settings, while open.
+    electrical_dialog: Option<electrical::ElectricalDialog>,
     options_dialog: Option<phasing::OptionsDialog>,
     purge_dialog: Option<purge::PurgeDialog>,
     /// Manage > Select by ID and IDs of Selection, while open.
@@ -987,6 +1009,8 @@ impl BimApp {
             compact: false,
             ribbon_peek: false,
             scan_contrast: footer::HIGH_CONTRAST,
+            background_grid_dialog: None,
+            grid_snapping: false,
             ribbon_bottom: Pos2::ZERO,
             settings_page: None,
             settings_path: None,
@@ -1038,6 +1062,9 @@ impl BimApp {
             shaft_height: units.length(3000.0),
             mass_top: None,
             mass_height: units.length(3000.0),
+            camera_eye_height: units.length(1600.0),
+            camera_target_height: units.length(1200.0),
+            camera_lens: "35".into(),
             chain: true,
             wall_location: Location::Centre,
             attach_base: false,
@@ -1064,7 +1091,7 @@ impl BimApp {
             drawing: draw::Drawing::default(),
             units,
             lang: Lang::English,
-            font_finder: lang::chinese_font,
+            font_finder: lang::cjk_fonts,
             typed_length: String::new(),
             dim_edit: None,
             temporary: HashMap::new(),
@@ -1089,6 +1116,7 @@ impl BimApp {
             options_rect: Rect::NOTHING,
             canvas: canvas::Canvas::default(),
             orbit: orbit::Orbit::default(),
+            active_3d: None,
             card: gpu::Card::default(),
             cut: section::Cut::default(),
             paper: paper::Papers::default(),
@@ -1121,6 +1149,7 @@ impl BimApp {
             sketch: None,
             mode_width: 0.0,
             standards_dialog: None,
+            electrical_dialog: None,
             options_dialog: None,
             purge_dialog: None,
             select_by_id: None,
@@ -1202,13 +1231,15 @@ impl BimApp {
             | Tool::AddPoint
             | Tool::AddSplitLine(_)
             | Tool::SketchLine(_)
-            | Tool::SketchPick => None,
+            | Tool::SketchPick
+            | Tool::PatternCorner(_) => None,
             Tool::Wall(_) => Some(msg!("Place Wall")),
             Tool::Paint => Some("Paint"),
             Tool::Unpaint => Some("Remove Paint"),
             Tool::Door => Some(msg!("Place Door")),
             Tool::Window => Some(msg!("Place Window")),
             Tool::Room => Some(msg!("Place Room")),
+            Tool::RoomSeparator(_) => Some(msg!("Place Room Separation")),
             Tool::Level => Some(msg!("Place Level")),
             Tool::Grid(_) => Some(msg!("Place Grid")),
             Tool::Dimension(..) | Tool::Angular(_) | Tool::Round(..) => Some(msg!("Place Dimensions")),
@@ -1224,6 +1255,7 @@ impl BimApp {
             Tool::Tag => Some("Tag"),
             Tool::Section(_) => Some("Section"),
             Tool::Elevation => Some("Elevation"),
+            Tool::Camera(_) => Some("Camera"),
             Tool::Column => Some(msg!("Place Column")),
             Tool::Run(..) | Tool::Stand(_) => structure::title(&self.tool),
             Tool::Component => Some(msg!("Place Component")),
@@ -1262,7 +1294,9 @@ impl BimApp {
     fn view_name(&self, sheet: Sheet) -> String {
         match sheet {
             Sheet::Plan(key) | Sheet::Ceiling(key) => self.session.model.view_name(key).map_or_else(|| "Floor Plan".into(), String::from),
-            Sheet::View3D => "{3D}".into(),
+            Sheet::View3D => {
+                self.active_3d().and_then(|id| self.session.model.view_name(id).map(String::from)).unwrap_or_else(|| "{3D}".into())
+            }
             Sheet::Section(id) => self.session.model.section(id).map_or_else(|| "Section".into(), |v| v.name.clone()),
             Sheet::Paper(id) => self.session.model.sheet(id).map_or_else(|| "Sheet".into(), |s| format!("{} - {}", s.number, s.name)),
             Sheet::Schedule(cat) => match schedule::standard(&self.session.model, cat) {
@@ -1305,8 +1339,11 @@ impl BimApp {
             ctx.set_theme(theme);
         }
         style::follow(&ctx, style::Look { light_canvas: self.light_canvas, compact: self.compact });
-        // Chinese needs a font with its glyphs, which the system may not have: then the window stays in English and says why.
-        if self.lang == Lang::Chinese && !lang::use_chinese_font(&ctx, self.font_finder) {
+        // The fonts with the hanzi and the Hangul go behind the window's own whatever language it speaks: content — a floor's
+        // name from a Korean file — is not the interface's. Chinese needs its glyphs, which the system may not have: then the
+        // window stays in English and says why.
+        let hanzi = lang::use_cjk_font(&ctx, self.font_finder);
+        if self.lang.is_chinese() && !hanzi {
             self.lang = Lang::English;
             self.status = updates::failed(t(lang::NO_CHINESE_FONT).to_string());
         }
@@ -1576,9 +1613,10 @@ impl BimApp {
             || self.phasing_dialog.is_some()
             || self.reinforce_dialog.is_some()
             || self.line_weights_dialog.is_some()
+            || self.electrical_dialog.is_some()
             || self.object_styles_dialog.is_some()
             || self.line_styles_dialog.is_some()
-            || self.fill_patterns_dialog.is_some()
+            || self.fill_patterns_dialog.as_ref().is_some_and(|d| d.picking.is_none())
             || self.options_dialog.is_some()
             || self.purge_dialog.is_some()
             || self.select_by_id.is_some()
@@ -1636,7 +1674,8 @@ impl BimApp {
         } else if pressed(Modifiers::COMMAND, Key::Z) {
             self.run("undo", json!({}));
         }
-        if pressed(Modifiers::NONE, Key::Escape) {
+        // Esc while a custom fill pattern is picked brings its dialog back.
+        if pressed(Modifiers::NONE, Key::Escape) && !self.cancel_pattern_pick() {
             self.escape();
         }
         // Enter places a typed length, else builds the wall chain.
@@ -1644,6 +1683,7 @@ impl BimApp {
             && let Some(level) = self.plan_level()
         {
             match (&self.tool, self.typed_length.is_empty() && self.drawing.other.is_empty()) {
+                _ if self.picking_pattern_lines() => self.finish_pattern_lines(),
                 (Tool::Railing(_), true) => self.finish_railing(level),
                 (Tool::Mass(_), true) => self.finish_mass(level),
                 (Tool::DetailLine(_), true) => self.finish_detail_line(level),
@@ -1717,7 +1757,7 @@ impl BimApp {
         }
         let tool = match self.typed.as_str() {
             "3D" => {
-                self.open_sheet(Sheet::View3D);
+                self.open_3d(None);
                 return true;
             }
             "MD" => Tool::Modify,
@@ -1835,7 +1875,7 @@ impl BimApp {
                 return true;
             }
             "VT" => {
-                self.templates_dialog = Some(graphics::TemplatesDialog::default());
+                self.open_templates();
                 return true;
             }
             "PH" => {
@@ -1869,6 +1909,7 @@ impl BimApp {
                 Some("door") => Tool::Door,
                 Some("window") => Tool::Window,
                 Some("room") => Tool::Room,
+                Some("room_separator") => Tool::RoomSeparator(None),
                 Some("level") => Tool::Level,
                 Some("grid") => Tool::Grid(None),
                 Some("move") => Tool::Move(None),
@@ -2001,6 +2042,7 @@ impl BimApp {
             Some(Element::Ramp(_)) => Tool::Ramp(Vec::new()),
             Some(Element::Railing(_)) => Tool::Railing(Vec::new()),
             Some(Element::Room(_)) => Tool::Room,
+            Some(Element::RoomSeparator(_)) => Tool::RoomSeparator(None),
             Some(Element::Level(_)) => Tool::Level,
             Some(Element::Grid(_)) => Tool::Grid(None),
             Some(Element::Dimension(d)) => match d.kind {
@@ -2328,6 +2370,7 @@ impl BimApp {
             Tool::Wall(chain) => chain.last().copied(),
             Tool::Run(_, start) => *start,
             Tool::Grid(start)
+            | Tool::RoomSeparator(start)
             | Tool::Move(start)
             | Tool::Copy(start)
             | Tool::Section(start)
@@ -2367,6 +2410,7 @@ impl BimApp {
         self.tool = match std::mem::replace(&mut self.tool, Tool::Modify) {
             Tool::Wall(chain) if !chain.is_empty() => Tool::Wall(Vec::new()),
             Tool::Grid(Some(_)) => Tool::Grid(None),
+            Tool::RoomSeparator(Some(_)) => Tool::RoomSeparator(None),
             Tool::Run(c, Some(_)) => Tool::Run(c, None),
             Tool::Mirror { draw, start: Some(_) } => Tool::Mirror { draw, start: None },
             Tool::Align(Some(_)) => {
@@ -2452,6 +2496,22 @@ impl BimApp {
         }
     }
 
+    /// The 3D view the 3D tab shows: one opened on it (a camera view, or `{3D}` itself), else the default `{3D}` — none
+    /// while the project has neither.
+    pub(crate) fn active_3d(&self) -> Option<Id> {
+        let m = &self.session.model;
+        self.active_3d.filter(|id| matches!(m.elements.get(id), Some(Element::View3D(_)))).or_else(|| m.default_3d())
+    }
+
+    /// Open a 3D view in the 3D tab: the default `{3D}` (none), or a camera view by id. Its camera stands the view where
+    /// it looks from the next time it is drawn.
+    pub(crate) fn open_3d(&mut self, id: Option<Id>) {
+        self.active_3d = id;
+        self.orbit.camera = None;
+        self.orbit.built = None;
+        self.open_sheet(Sheet::View3D);
+    }
+
     /// Open a view in a tab, or bring its tab forward.
     fn open_sheet(&mut self, sheet: Sheet) {
         if !self.views.contains(&sheet) && !self.floats(sheet) {
@@ -2481,10 +2541,10 @@ impl BimApp {
         }
         match &mut self.tool {
             Tool::Wall(chain) => chain.clear(),
-            Tool::Grid(start) | Tool::Run(_, start) => *start = None,
+            Tool::Grid(start) | Tool::RoomSeparator(start) | Tool::Run(_, start) => *start = None,
             Tool::Dimension(_, refs) | Tool::Angular(refs) => refs.clear(),
             Tool::Round(_, picked) => picked.clear(),
-            Tool::Section(start) | Tool::Shaft(start) | Tool::Measure(start) => *start = None,
+            Tool::Section(start) | Tool::Shaft(start) | Tool::Measure(start) | Tool::Camera(start) => *start = None,
             Tool::Stair(pts)
             | Tool::Ramp(pts)
             | Tool::Railing(pts)
@@ -2684,6 +2744,7 @@ impl BimApp {
         fresh.compact = self.compact;
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
+        fresh.grid_snapping = self.grid_snapping;
         fresh.light_canvas = self.light_canvas;
         fresh.styled = self.styled;
         fresh.theme_wanted = self.theme_wanted.take();
@@ -2797,7 +2858,7 @@ impl BimApp {
                 ui.spacing_mut().item_spacing.x = 8.0;
                 ui.separator();
                 if icon_button(ui, Icon::View3D, "Default 3D View").clicked() {
-                    self.open_sheet(Sheet::View3D);
+                    self.open_3d(None);
                 }
                 ui.separator();
                 if icon_button(ui, Icon::Settings, "Settings").clicked() {
@@ -3216,7 +3277,19 @@ impl BimApp {
                 ),
             ],
         );
-        self.tools(ui, msg!("Room & Area"), &[(Icon::Room, "Room", msg!("Room (RM): click inside walls"), Tool::Room)]);
+        self.tools(
+            ui,
+            msg!("Room & Area"),
+            &[
+                (Icon::Room, "Room", msg!("Room (RM): click inside walls"), Tool::Room),
+                (
+                    Icon::RoomSeparator,
+                    "Room Separator",
+                    msg!("Room Separator: lines that bound rooms as walls do, to split an open space; click from point to point"),
+                    Tool::RoomSeparator(None),
+                ),
+            ],
+        );
         self.tools(
             ui,
             msg!("Opening"),
@@ -3399,7 +3472,7 @@ impl BimApp {
             }
             let tip = msg!("View Templates (VT): a view's settings under a name, for other views to follow");
             if big_button(ui, Icon::Template, "View Templates", self.templates_dialog.is_some(), tip).clicked() {
-                self.templates_dialog = Some(graphics::TemplatesDialog::default());
+                self.open_templates();
             }
             if big_button(ui, Icon::ThinLines, "Thin Lines", self.thin, "Thin Lines (TL): every line one pixel wide").clicked() {
                 self.thin = !self.thin;
@@ -3433,7 +3506,7 @@ impl BimApp {
         });
         panel(ui, "Create", |ui| {
             if big_button(ui, Icon::View3D, "3D View", self.sheet == Sheet::View3D, "Open the default 3D view").clicked() {
-                self.open_sheet(Sheet::View3D);
+                self.open_3d(None);
             }
             let tip = msg!(
                 "Duplicate View (DP): a new plan of this level with its own annotation; with detailing, it starts with this plan's; as a dependent, it follows this plan's range and graphics"
@@ -3455,6 +3528,10 @@ impl BimApp {
             let tip = msg!("Elevation: click beside the building, on the side to look at");
             if big_button(ui, Icon::Elevation, "Elevation", self.tool == Tool::Elevation, tip).clicked() {
                 self.set_tool(Tool::Elevation);
+            }
+            let tip = msg!("Camera: click where its eye stands, then what it looks at: a 3D view in perspective from there");
+            if big_button(ui, Icon::Camera, "Camera", matches!(self.tool, Tool::Camera(_)), tip).clicked() {
+                self.set_tool(Tool::Camera(None));
             }
             let r = big_button(ui, Icon::Schedule, "Schedules", false, "Make a schedule, or open one");
             ribbon::choices(ui, &r, false, |ui| {
@@ -3579,20 +3656,29 @@ impl BimApp {
             if big_button(ui, Icon::Parameters, "Project Parameters", self.parameters_dialog.is_some(), tip).clicked() {
                 self.parameters_dialog = Some(properties::ParametersDialog::new(&self.session.model));
             }
-            // Pens and lines, stacked: Line Weights, Object Styles, Line Styles.
-            stacked(ui, |ui| {
+            // What annotation draws with: pens, line styles and patterns, fill patterns; one button that lists them.
+            let open = self.line_weights_dialog.is_some() || self.line_styles_dialog.is_some() || self.fill_patterns_dialog.is_some();
+            let tip = msg!("Annotation Settings: line weights, line styles, line patterns and fill patterns");
+            let r = big_button(ui, Icon::AnnotationSettings, "Annotation Settings", open, tip);
+            ribbon::choices(ui, &r, false, |ui| {
+                // As wide as its longest name, not the window.
+                ui.set_width(200.0);
+                ui.spacing_mut().item_spacing.y = 0.0;
                 let tip = msg!("Line Weights: what each pen draws on paper, the model's at each scale and the annotation's at any");
-                if stacked_button(ui, Icon::LineWeights, "Line Weights", self.line_weights_dialog.is_some(), tip).clicked() {
+                if list_row(ui, Icon::LineWeights, "Line Weights", false, tip).clicked() {
                     self.line_weights_dialog = Some(lineweights::LineWeightsDialog::new(&self.session.model));
                 }
-                let tip = msg!("Object Styles: the pen each category draws in, seen and cut, in every view");
-                if stacked_button(ui, Icon::ObjectStyles, "Object Styles", self.object_styles_dialog.is_some(), tip).clicked() {
-                    self.object_styles_dialog = Some(objectstyles::ObjectStylesDialog::new(&self.session.model));
-                }
-                let tip =
-                    msg!("Line Styles: the pen, colour and line pattern detail lines draw in, and the patterns' dashes, dots and spaces");
-                if stacked_button(ui, Icon::ThinLines, "Line Styles", self.line_styles_dialog.is_some(), tip).clicked() {
+                let tip = msg!("Line Styles: the pen, colour and line pattern detail lines draw in");
+                if list_row(ui, Icon::ThinLines, "Line Styles", false, tip).clicked() {
                     self.line_styles_dialog = Some(linestyles::LineStylesDialog::new(&self.session.model));
+                }
+                let tip = msg!("Line Patterns: the dashes, dots, spaces and shapes lines are drawn with");
+                if list_row(ui, Icon::LinePatterns, "Line Patterns", false, tip).clicked() {
+                    self.line_styles_dialog = Some(linestyles::LineStylesDialog::patterns(&self.session.model));
+                }
+                let tip = msg!("Fill Patterns: the patterns filled regions and materials fill with, simple or made from lines drawn");
+                if list_row(ui, Icon::FillPatterns, "Fill Patterns", false, tip).clicked() {
+                    self.fill_patterns_dialog = Some(fillpatterns::FillPatternsDialog::new(&self.session.model));
                 }
             });
             let tip = msg!(
@@ -3606,11 +3692,17 @@ impl BimApp {
             if big_button(ui, Icon::Settings, "Technical Standards", self.standards_dialog.is_some(), &tip).clicked() {
                 self.standards_dialog = Some(standards::StandardsDialog::new(&self.session.model));
             }
-            // Fills, snaps and units, stacked.
+            let tip = msg!(
+                "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
+            );
+            if big_button(ui, Icon::Wire, "Electrical Settings", self.electrical_dialog.is_some(), tip).clicked() {
+                self.electrical_dialog = Some(electrical::ElectricalDialog::new(&self.session.model));
+            }
+            // Object styles, snaps and units, stacked.
             stacked(ui, |ui| {
-                let tip = msg!("Fill Patterns: the patterns filled regions fill with, and the filled region types");
-                if stacked_button(ui, Icon::FillPatterns, "Fill Patterns", self.fill_patterns_dialog.is_some(), tip).clicked() {
-                    self.fill_patterns_dialog = Some(fillpatterns::FillPatternsDialog::new(&self.session.model));
+                let tip = msg!("Object Styles: the pen each category draws in, seen and cut, in every view");
+                if stacked_button(ui, Icon::ObjectStyles, "Object Styles", self.object_styles_dialog.is_some(), tip).clicked() {
+                    self.object_styles_dialog = Some(objectstyles::ObjectStylesDialog::new(&self.session.model));
                 }
                 let tip = msg!(
                     "Snaps: what a picked point sticks to (ends, middles, crossings, centres, perpendiculars), and the angles it steps by; SE, SM, SI, SC, SP and SN take one alone for the next point, SO none"
@@ -4070,6 +4162,15 @@ impl BimApp {
                     let hint = self.session.model.units.name();
                     ui.add(TextEdit::singleline(&mut self.ceiling_height).desired_width(64.0).hint_text(hint)).labelled_by(l.id);
                 }
+                Tool::Camera(_) => {
+                    let hint = self.session.model.units.name();
+                    let l = ui.label(t("Eye Height:"));
+                    ui.add(TextEdit::singleline(&mut self.camera_eye_height).desired_width(64.0).hint_text(hint)).labelled_by(l.id);
+                    let l = ui.label(t("Target Height:"));
+                    ui.add(TextEdit::singleline(&mut self.camera_target_height).desired_width(64.0).hint_text(hint)).labelled_by(l.id);
+                    let l = ui.label(t("Lens:"));
+                    ui.add(TextEdit::singleline(&mut self.camera_lens).desired_width(48.0).hint_text("mm")).labelled_by(l.id);
+                }
                 Tool::SlopeArrow(_) => {
                     let l = ui.label(t("Slope:"));
                     ui.add(TextEdit::singleline(&mut self.floor_slope).desired_width(48.0).hint_text("°")).labelled_by(l.id);
@@ -4266,6 +4367,14 @@ impl BimApp {
         if let Some(hint) = self.sketch_prompt() {
             return hint;
         }
+        if self.picking_pattern_lines() {
+            return msg!("Select fill pattern lines then press Enter");
+        }
+        match self.tool {
+            Tool::PatternCorner(None) => return msg!("Click on Bottom Left Corner"),
+            Tool::PatternCorner(Some(_)) => return msg!("Click on Top Right Corner"),
+            _ => {}
+        }
         match (self.sheet, &self.tool) {
             (Sheet::View3D, Tool::Modify) => {
                 return msg!("Click to select. Drag to orbit (or Shift and the middle button), the middle button pans, the wheel zooms.");
@@ -4311,6 +4420,8 @@ impl BimApp {
             Tool::Door => msg!("Click a wall to place the door."),
             Tool::Window => msg!("Click a wall to place the window."),
             Tool::Room => msg!("Click inside walls to place a room; the outline shows the room you'd get."),
+            Tool::RoomSeparator(None) => msg!("Click the separation line's start."),
+            Tool::RoomSeparator(Some(_)) => msg!("Click the line's next point; each click places a line. Esc ends the chain."),
             Tool::Level => "Type the new level's elevation in the Options Bar, then Create.",
             Tool::Grid(None) => msg!("Click to enter the grid's start point."),
             Tool::Grid(Some(_)) => msg!("Click to enter the grid's end point."),
@@ -4370,6 +4481,8 @@ impl BimApp {
             Tool::Section(None) => msg!("Click the section's start: it looks to the left of the line you draw."),
             Tool::Section(Some(_)) => msg!("Click the section's end."),
             Tool::Elevation => msg!("Click beside the building: the elevation looks at the side you click by."),
+            Tool::Camera(None) => msg!("Click where the camera's eye stands: it looks at the point you click next."),
+            Tool::Camera(Some(_)) => msg!("Click what the camera looks at; its eye and target heights are the Options Bar's."),
             Tool::Column => msg!("Click to place a column, as high as the Options Bar says."),
             Tool::Run(..) | Tool::Stand(_) => structure::hint(&self.tool).unwrap_or_default(),
             Tool::Component | Tool::Fixture(_) => msg!("Click where the component goes; Space turns it a quarter turn."),
@@ -4420,6 +4533,7 @@ impl BimApp {
             Tool::AddSplitLine(None) => msg!("Click where the split line starts: a point, a corner or an edge of the top."),
             Tool::AddSplitLine(Some(_)) => msg!("Click where it ends: the top folds along it. Esc cancels."),
             Tool::SketchLine(_) | Tool::SketchPick => msg!("Click where the line starts."),
+            Tool::PatternCorner(_) => msg!("Click on Bottom Left Corner"),
         }
     }
 
@@ -4662,6 +4776,7 @@ impl BimApp {
         self.dimension_type_window(ctx);
         self.dimension_text_window(ctx);
         self.standards_window(ctx);
+        self.electrical_window(ctx);
         self.options_window(ctx);
         self.purge_window(ctx);
         if std::mem::take(&mut self.link_dialog) {
@@ -4680,6 +4795,7 @@ impl BimApp {
         self.selection_filter_window(ctx);
         self.shortcuts_window(ctx);
         self.settings_window(ctx);
+        self.background_grid_window(ctx);
         self.installing_box(ctx);
         self.importing_box(ctx);
         self.report_window(ctx);

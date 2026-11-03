@@ -14,10 +14,10 @@ use bimcraft_core::ids::Guid;
 use bimcraft_core::import::Imported;
 use bimcraft_core::model::{Element, Id, Level, MAX_TEXT, Model, culprit};
 
-use crate::inventory::{Inventory, Survey, Wants};
+use crate::inventory::{Inventory, OST_LEVELS, Survey, Wants, category_name};
 use crate::records::{Record, TypeRecord};
 use crate::{Limits, Revit};
-use crate::{columns, floors, openings, roofs, rooms, walls};
+use crate::{columns, ducts, floors, generic, openings, pipes, roofs, rooms, walls};
 
 /// `OST_Materials`.
 pub(crate) const OST_MATERIALS: i64 = -2_000_700;
@@ -200,7 +200,7 @@ fn has_volume(r: &Record) -> bool {
 }
 
 /// The categories whose records the first pass keeps.
-const CATEGORIES: [i64; 10] = [
+const CATEGORIES: [i64; 13] = [
     walls::OST_WALLS,
     floors::OST_FLOORS,
     floors::OST_CEILINGS,
@@ -211,6 +211,9 @@ const CATEGORIES: [i64; 10] = [
     columns::OST_STRUCTURAL_COLUMNS,
     rooms::OST_ROOMS,
     roofs::OST_ROOFS,
+    pipes::OST_PIPES,
+    ducts::OST_DUCTS,
+    ducts::OST_CABLE_TRAYS,
 ];
 
 /// Reads the Revit project in `bytes` into a model named after its title (or `name`).
@@ -236,7 +239,7 @@ pub fn import_path_with_origins(path: &Path, name: &str) -> Result<(Imported, Ha
 /// The import, and what each element made was in the file.
 pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<Id, String>), String> {
     let e = |e: crate::Error| e.to_string();
-    let survey = revit.survey(&|c| CATEGORIES.contains(&c)).map_err(e)?;
+    let survey = revit.survey(&|c| CATEGORIES.contains(&c) || generic::reads(c)).map_err(e)?;
     let title = revit.document_atom().ok().flatten().and_then(|a| a.title).filter(|t| !t.trim().is_empty());
     let mut m = Model::new(&clip(title.as_deref().unwrap_or(name)));
     m.elements.clear();
@@ -254,6 +257,7 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     let release = survey.release;
     let (facts, inv) = Facts::of(survey);
     levels(&mut cx, &inv);
+    unread(&mut cx, &inv);
     let mut wants = Wants { materials: facts.materials.clone(), ..Wants::default() };
     walls::wanted(&facts, &mut wants.data);
     floors::wanted(&facts, &mut wants.data);
@@ -261,6 +265,8 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     openings::wanted(&facts, &mut wants.data);
     columns::wanted(&facts, &mut wants);
     rooms::wanted(&facts, &mut wants);
+    pipes::wanted(&facts, &mut wants.data);
+    ducts::wanted(&facts, &mut wants.data);
     let gathered = revit.gather(release, &facts.tags, &facts.ids, &wants).map_err(e)?;
     walls::import(&mut cx, &facts, &gathered);
     floors::import(&mut cx, &facts, &gathered);
@@ -269,6 +275,9 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     openings::import(&mut cx, &facts, &gathered);
     columns::import(&mut cx, &facts, &gathered);
     rooms::import(&mut cx, &facts, &gathered);
+    pipes::import(&mut cx, &facts, &gathered);
+    ducts::import(&mut cx, &facts, &gathered);
+    generic::import(&mut cx, &facts, &inv);
     let from = cx.from.clone();
     finish(cx, format!("Revit {release}")).map(|i| (i, from))
 }
@@ -300,6 +309,19 @@ fn attached(cx: &mut Import, facts: &Facts) {
     }
 }
 
+/// The highest project level at or below `z` feet (a millimetre of slack), else the lowest, and its elevation in feet.
+pub(crate) fn level_at(cx: &Import, f: &Facts, z: f64) -> Result<(Guid, f64), String> {
+    let (id, elevation) = f
+        .elevations
+        .iter()
+        .filter(|&(_, &e)| e <= z + 1.0 / 304.8)
+        .max_by(|x, y| x.1.total_cmp(y.1))
+        .or_else(|| f.elevations.iter().min_by(|x, y| x.1.total_cmp(y.1)))
+        .map(|(&id, &e)| (id, e))
+        .ok_or("it stands on no level")?;
+    cx.levels.get(&id).map(|&level| (level, elevation)).ok_or_else(|| "it stands on no level".to_string())
+}
+
 /// The project's levels, lowest first. A level of a name another has takes `(2)`; none at all gives the project one at zero.
 fn levels(cx: &mut Import, inv: &Inventory) {
     let mut taken = BTreeSet::new();
@@ -322,6 +344,30 @@ fn levels(cx: &mut Import, inv: &Inventory) {
         let n = inv.unread_levels;
         let plural = if n == 1 { "" } else { "s" };
         cx.skipped.push(format!("{n} level{plural} left out, no name or elevation the reader can find (its block is missing or damaged)"));
+    }
+}
+
+/// The categories of the file the importer has no reader for, one note each, with how many placed elements of it the file holds (the
+/// symbols of a type are no elements). They count as left out, since they are in the file and not in the model.
+fn unread(cx: &mut Import, inv: &Inventory) {
+    let mut by: BTreeMap<i64, Vec<u32>> = BTreeMap::new();
+    for e in inv
+        .elements
+        .iter()
+        .filter(|e| e.placed && e.category != OST_LEVELS && !CATEGORIES.contains(&e.category) && !generic::reads(e.category))
+    {
+        by.entry(e.category).or_default().push(e.id);
+    }
+    let mut by: Vec<(i64, Vec<u32>)> = by.into_iter().collect();
+    by.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.0.cmp(&b.0)));
+    for (category, mut ids) in by {
+        ids.sort_unstable();
+        let n = ids.len();
+        let name = category_name(category)
+            .map_or_else(|| format!("element{} of category {category}", if n == 1 { "" } else { "s" }), str::to_string);
+        let list: Vec<String> = ids.iter().take(8).map(u32::to_string).collect();
+        let more = if n > list.len() { ", …" } else { "" };
+        cx.skipped.push(format!("{n} {name} left out, the importer has no reader for this category (ids {}{more})", list.join(", ")));
     }
 }
 
