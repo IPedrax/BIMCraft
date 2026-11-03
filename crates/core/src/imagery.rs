@@ -5,6 +5,7 @@
 
 use crate::geo::{Bbox, tile_xy};
 use crate::geom::P2;
+use crate::georef::Grid;
 
 /// The side of a tile, px. Every service in the table gives 256 px tiles.
 pub const TILE: usize = 256;
@@ -366,6 +367,19 @@ pub fn envelope(extent: [f64; 4], lonlat: &dyn Fn(P2) -> Result<(f64, f64), Stri
         }
     }
     Bbox::new(low.1, low.0, high.1, high.0)
+}
+
+/// The six numbers of the world file of a picture made by [`warp`] over `extent` with `width` by `height` pixels, in the order the
+/// file has them: A, D, B, E, C, F. With a column and a row they give the easting and northing, in the grid, of the middle of that
+/// pixel: easting = A column + B row + C, northing = D column + E row + F. The grid is the project's CRS; a world file does not say so.
+pub fn world_file(grid: &Grid, extent: [f64; 4], width: u32, height: u32) -> [f64; 6] {
+    let [west, south, east, north] = extent;
+    // A pixel's size in the project's plane, metres; the plane is turned on the grid by `rotation` and its metre is `scale` of the grid's.
+    let (px, py) = ((east - west) / 1000.0 / f64::from(width.max(1)), (north - south) / 1000.0 / f64::from(height.max(1)));
+    let (s, c) = grid.rotation.to_radians().sin_cos();
+    let at = |x: f64, y: f64| (grid.easting + grid.scale * (x * c - y * s), grid.northing + grid.scale * (x * s + y * c));
+    let (easting, northing) = at(west / 1000.0 + px / 2.0, north / 1000.0 - py / 2.0);
+    [grid.scale * px * c, grid.scale * px * s, grid.scale * py * s, -grid.scale * py * c, easting, northing]
 }
 
 /// A picture in the project's axes: RGBA, the first row the north one, clear where there is no imagery.

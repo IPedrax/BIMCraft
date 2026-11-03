@@ -249,6 +249,33 @@ fn where_there_is_no_imagery_the_picture_is_clear() {
 }
 
 #[test]
+fn a_world_file_puts_each_pixel_where_the_grid_says() {
+    use crate::georef::lonlat_of_grid;
+    // The picture is in the project's axes, which are turned and moved on the grid: a world file says how, so a GIS can place it.
+    for l in [Location { crs: Some(32631), ..at(50.85, 4.35, 30.0) }, at(-23.5505, -46.6333, -75.0)] {
+        let (grid, projector) = (l.grid().unwrap(), l.projector().unwrap());
+        let extent = [-30_000.0, -20_000.0, 31_500.0, 21_000.0];
+        let (width, height) = (615_u32, 410_u32); // 100 mm a pixel each way
+        let [a, d, b, e, c, f] = world_file(&grid, extent, width, height);
+        for (col, row) in [(0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1), (300, 200), (17, 311)] {
+            let (col_f, row_f) = (f64::from(col), f64::from(row));
+            let (easting, northing) = (a * col_f + b * row_f + c, d * col_f + e * row_f + f);
+            let (lon, lat) = lonlat_of_grid(grid.epsg, easting, northing).unwrap();
+            // The middle of that pixel in the project's plane, 100 mm across, and where the project puts it.
+            let p = P2(extent[0] + (col_f + 0.5) * 100.0, extent[3] - (row_f + 0.5) * 100.0);
+            let (lon2, lat2) = projector.lonlat(p).unwrap();
+            // Within a centimetre (1e-7 degrees): two transforms of one CRS agree to a millimetre, and a wrong turn is metres out.
+            assert!(
+                (lon - lon2).abs() < 1e-7 && (lat - lat2).abs() < 1e-7,
+                "{l:?} pixel ({col}, {row}): {lon} {lat} against {lon2} {lat2}"
+            );
+        }
+        // A step along a row is a step along the project's x: as long as the pixel, and turned as the project is.
+        assert!(((a * a + d * d).sqrt() - grid.scale * 0.1).abs() < 1e-9 && ((b * b + e * e).sqrt() - grid.scale * 0.1).abs() < 1e-9);
+    }
+}
+
+#[test]
 fn a_warp_refuses_what_it_cannot_do_and_never_runs_off() {
     let (location, extent, plan, mosaic) = site(at(50.85, 4.35, 0.0), "pdok");
     let projector = location.projector().unwrap();

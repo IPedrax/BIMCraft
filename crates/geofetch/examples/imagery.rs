@@ -5,7 +5,13 @@
 //! cargo run -p bimcraft-geofetch --example imagery -- probe [OUT_DIR]
 //! cargo run -p bimcraft-geofetch --example imagery -- tile 'ADDRESS_WITH_{z}_{x}_{y}' LAT LON ZOOM [OUT_DIR]
 //! cargo run -p bimcraft-geofetch --example imagery -- caps 'CAPABILITIES_URL' [OUT_DIR] [LAYER]
+//! cargo run -p bimcraft-geofetch --example imagery -- warp SOURCE LAT LON WIDTH_M HEIGHT_M [TRUE_NORTH] [MAX_SIDE] [OUT_DIR]
 //! ```
+//!
+//! `warp` is what BIMCraft will do for the terrain, on its own: it puts a project's origin at LAT LON, turned TRUE_NORTH degrees,
+//! fetches the tiles of SOURCE (`auto`: the first of the table that has the place) over WIDTH_M by HEIGHT_M metres round it, and
+//! lays them into the project's own axes, north up. It writes the picture, the picture with a 100 m grid, a world file (`.pgw`) and
+//! a note of the grid it is in, so the result can be set beside a map or opened in a GIS.
 //!
 //! `probe` fetches tiles of the sources BIMCraft means to use, at a place in each, and prints a table; the addresses it tries are
 //! guesses from memory unless a capabilities document gave them (see `CANDIDATES`), and `caps` is how to find the right ones. A tile
@@ -18,9 +24,17 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use std::sync::Arc;
+
+use bimcraft_core::geo::GeoSource;
+use bimcraft_core::geom::P2;
+use bimcraft_core::georef::Location;
+use bimcraft_core::imagery;
 use bimcraft_core::texture::Picture;
-use bimcraft_geofetch::net::{Allow, Net, Ureq};
-use bimcraft_geofetch::probe::{Format, expand, kvp_address, metres_per_pixel, scan_capabilities, tile_at};
+use bimcraft_geofetch::Geofetch;
+use bimcraft_geofetch::cache::Cache;
+use bimcraft_geofetch::net::{Allow, Net, OVERPASS, Ureq};
+use bimcraft_geofetch::probe::{Format, encode_png, expand, grid_overlay, kvp_address, metres_per_pixel, scan_capabilities, tile_at};
 
 /// The most a tile may be, bytes, and the most of a capabilities document that is read.
 const MAX_TILE: u64 = 2 << 20;
@@ -414,13 +428,97 @@ fn caps(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// The optional number at `args[i]`, or `default` if there is none.
+fn number_or(args: &[String], i: usize, what: &str, default: f64) -> Result<f64, String> {
+    if args.get(i).is_some() { number(args, i, what) } else { Ok(default) }
+}
+
+fn warp(args: &[String]) -> Result<(), String> {
+    let wanted = args.first().ok_or("a source is wanted: auto, flanders, pdok, usgs or eox2016")?;
+    let (latitude, longitude) = (number(args, 1, "latitude")?, number(args, 2, "longitude")?);
+    let (width_m, height_m) = (number(args, 3, "width in metres")?, number(args, 4, "height in metres")?);
+    let true_north = number_or(args, 5, "true north in degrees", 0.0)?;
+    let max_side = number_or(args, 6, "pixels along the long side", f64::from(imagery::DEFAULT_SIDE))? as u32;
+    let out = out_dir(args.get(7))?;
+    // The project: its origin at the place, turned as asked; the picture covers the box round the origin.
+    let location = Location { latitude, longitude, elevation: 0.0, true_north, crs: None };
+    let projector = location.projector()?;
+    let lonlat = |p: P2| projector.lonlat(p);
+    let extent = [-width_m * 500.0, -height_m * 500.0, width_m * 500.0, height_m * 500.0];
+    let envelope = imagery::envelope(extent, &lonlat)?;
+    let cache = Arc::new(Cache::new(Some(std::env::temp_dir().join("bimcraft-geofetch-cache"))));
+    let fetcher = Geofetch::new(Arc::new(Ureq::new(Allow::standard())), cache, OVERPASS);
+    let sources: Vec<&imagery::Source> = if wanted == "auto" {
+        imagery::candidates(&envelope)
+    } else {
+        vec![imagery::source(wanted).ok_or_else(|| format!("there is no source `{wanted}`: auto, or one of the table's ids"))?]
+    };
+    let mut last = "no source of the table has this place".to_string();
+    for source in sources {
+        let plan = imagery::plan(source, &envelope, width_m, height_m, max_side)?;
+        eprintln!("{}: zoom {} ({:.2} m a pixel), {} x {} tiles...", source.name, plan.zoom, plan.metres_per_pixel, plan.cols, plan.rows);
+        let got = match fetcher.imagery(source.id, &plan) {
+            Ok(got) => got,
+            Err(why) => {
+                eprintln!("  {why}");
+                last = why;
+                continue;
+            }
+        };
+        let raster = imagery::warp(&got.mosaic, extent, plan.width, plan.height, &lonlat)?;
+        let name = out.join(format!("{}-warp", source.id));
+        let save = |suffix: &str, bytes: &[u8]| {
+            let path = PathBuf::from(format!("{}{suffix}", name.display()));
+            std::fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display())).map(|()| path)
+        };
+        let plain = save(".png", &encode_png(raster.width, raster.height, &raster.rgba)?)?;
+        let gridded = save(
+            "-grid.png",
+            &encode_png(raster.width, raster.height, &grid_overlay(&raster.rgba, raster.width, raster.height, extent, 100.0))?,
+        )?;
+        let grid = location.grid()?;
+        let [a, d, b, e, c, f] = imagery::world_file(&grid, extent, raster.width, raster.height);
+        let world = save(".pgw", format!("{a:.10}\n{d:.10}\n{b:.10}\n{e:.10}\n{c:.4}\n{f:.4}\n").as_bytes())?;
+        let clear = raster.rgba.chunks_exact(4).filter(|p| p[3] == 0).count();
+        let note = format!(
+            "source: {} ({})\ncredit: {}\nterms: {}\nfetched from the cache: {}\nzoom {}, tiles of {:.3} m a pixel, {} x {} tiles\npicture: {} x {} px over {width_m} x {height_m} m, {:.1}% without imagery\nproject: origin at {latitude}, {longitude}, true north {true_north} degrees\ngrid of the world file: EPSG:{} ({}); the file has no CRS of its own, name it when opening\nextent in the project's plane, mm: west {}, south {}, east {}, north {}\n",
+            source.name,
+            source.id,
+            source.credit,
+            source.terms,
+            got.cached,
+            plan.zoom,
+            plan.metres_per_pixel,
+            plan.cols,
+            plan.rows,
+            raster.width,
+            raster.height,
+            100.0 * clear as f64 / (raster.width as f64 * raster.height as f64),
+            grid.epsg,
+            grid.name,
+            extent[0],
+            extent[1],
+            extent[2],
+            extent[3],
+        );
+        let notes = save(".txt", note.as_bytes())?;
+        println!("{note}\nwritten:\n  {}\n  {}\n  {}\n  {}", plain.display(), gridded.display(), world.display(), notes.display());
+        println!(
+            "\nTo check it: north is up where the project is not turned; the lines of the grid are 100 m apart from the origin (the middle);\nroads and buildings should sit where a map puts them to a few metres."
+        );
+        return Ok(());
+    }
+    Err(last)
+}
+
 fn run(args: &[String]) -> Result<(), String> {
     let rest = args.get(1..).unwrap_or_default();
     match args.first().map(String::as_str) {
         Some("probe") => probe(rest),
         Some("tile") => tile(rest),
         Some("caps") => caps(rest),
-        _ => Err("the first argument is probe, tile or caps (see the top of examples/imagery.rs)".into()),
+        Some("warp") => warp(rest),
+        _ => Err("the first argument is probe, tile, caps or warp (see the top of examples/imagery.rs)".into()),
     }
 }
 

@@ -107,6 +107,22 @@ plan is a strict rule for that one source, never a general opening), and `tiles:
 are JPEG. Bing, Esri, Maxar, Mapbox and Google are left out: as far as the research found, their terms do not allow fetching them into
 a project.
 
+**The parts that are built** (stage 1; nothing yet draws the picture or has a command): `bimcraft_core::imagery` is the table of
+sources that are allowed (those whose terms permit fetching their tiles into a project, each with its credit and where its terms are,
+the finest and most local first), the plan (the finest zoom whose pixels are no smaller than the picture's, within the source's zooms
+and a hundred tiles), the mosaic (checked before it is used), and the warp, which lays the mosaic into the project's own axes, north
+up, clear where there is no imagery, by a lattice of mapped points (`Projector::lonlat` is the way back from degrees), tested against a
+ground whose colour is a plain function of longitude and latitude with the project turned. `GeoSource::imagery` is the hook, and
+`Prefetched` hands imagery back for the source and plan it was fetched for and no other. `imagery::ImageryTiles` asks at most four
+tiles at once, takes a tile only if its bytes are a PNG or a JPEG of 256 by 256 pixels (told by the bytes), keeps what decodes for
+thirty days, leaves a tile clear when the service has none (a 404, or a tile of one flat colour: PDOK sends white and EOX the ocean's
+blue for places it has none of) and fails the fetch, naming the tile, for any other trouble. `net::Allow` takes each source's
+addresses and no others: a REST address by its text and its numbers (one to ten digits) with nothing before, between or after, and an
+address that can only be asked by query (Flanders) by its exact path and its whole query, pair by pair, in order, each value as
+written or a number. `imagery warp` in the example does the whole of it for a place and writes the picture, the picture with a 100 m
+grid, a world file (`world_file` gives its six numbers; it has no CRS, so a note says which) and a note of the source and its terms.
+Not yet: the `fetch_imagery` command, `Texture.planar`, the drawing in 3D and in plans, the Site tab.
+
 ## Not yet
 
 A bundled world outline for the picker with no network (it has its lines of latitude and longitude instead: the outline would have

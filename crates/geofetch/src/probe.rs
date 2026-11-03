@@ -177,6 +177,60 @@ pub fn kvp_address(endpoint: &str, layer: &str, style: &str, set: &str, format: 
     ))
 }
 
+/// `rgba` (a picture of `width` by `height` pixels covering `extent`, west, south, east, north in the project's plane, mm) with a line
+/// on every pixel that a multiple of `every_m` metres, in x or in y, passes through: a grid to check a picture against a map.
+pub fn grid_overlay(rgba: &[u8], width: u32, height: u32, extent: [f64; 4], every_m: f64) -> Vec<u8> {
+    let (w, h) = (width as usize, height as usize);
+    let [west, south, east, north] = extent;
+    let sound = extent.iter().all(|v| v.is_finite())
+        && west < east
+        && south < north
+        && every_m.is_finite()
+        && every_m > 0.0
+        && w.checked_mul(h).and_then(|n| n.checked_mul(4)).is_some_and(|n| n > 0 && n == rgba.len());
+    let mut out = rgba.to_vec();
+    if !sound {
+        return out;
+    }
+    // The metres a pixel is across each way, and where the picture's west and north edges are.
+    let (px, py) = ((east - west) / 1000.0 / w as f64, (north - south) / 1000.0 / h as f64);
+    let (west_m, north_m) = (west / 1000.0, north / 1000.0);
+    let mut paint = |x: usize, y: usize| {
+        if let Some(pixel) = out.get_mut((y * w + x) * 4..(y * w + x) * 4 + 4) {
+            pixel.copy_from_slice(&[255, 0, 255, 255]);
+        }
+    };
+    for x in 0..w {
+        let (a, b) = ((west_m + x as f64 * px) / every_m, (west_m + (x + 1) as f64 * px) / every_m);
+        if a.floor() != b.floor() {
+            (0..h).for_each(|y| paint(x, y));
+        }
+    }
+    for y in 0..h {
+        let (a, b) = ((north_m - y as f64 * py) / every_m, (north_m - (y + 1) as f64 * py) / every_m);
+        if a.floor() != b.floor() {
+            (0..w).for_each(|x| paint(x, y));
+        }
+    }
+    out
+}
+
+/// `rgba` (`width` by `height` pixels) as the bytes of a PNG file.
+pub fn encode_png(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, String> {
+    let wanted = (width as usize).checked_mul(height as usize).and_then(|n| n.checked_mul(4));
+    if width == 0 || height == 0 || wanted != Some(rgba.len()) {
+        return Err(format!("a {width} x {height} picture is {wanted:?} bytes of RGBA, not {}", rgba.len()));
+    }
+    let mut out = Vec::new();
+    let mut encoder = png::Encoder::new(&mut out, width, height);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header().map_err(|e| e.to_string())?;
+    writer.write_image_data(rgba).map_err(|e| e.to_string())?;
+    writer.finish().map_err(|e| e.to_string())?;
+    Ok(out)
+}
+
 /// What a WMTS capabilities document says that matters for fetching from it.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Capabilities {
@@ -720,6 +774,46 @@ mod tests {
             ("a long layer", "https://geo.example/wmts", long.as_str(), "s", "m", "image/png"),
         ] {
             assert!(kvp_address(endpoint, layer, style, set, format).is_err(), "{what}");
+        }
+    }
+
+    #[test]
+    fn a_grid_is_drawn_on_the_pixels_a_multiple_of_the_distance_passes_through() {
+        let magenta = [255, 0, 255, 255];
+        let plain = vec![10u8; 100 * 100 * 4];
+        let at = |img: &[u8], x: usize, y: usize| img[(y * 100 + x) * 4..][..4].to_vec();
+        // 100 m each way, a metre a pixel, the origin in the middle: the lines through it every 100 m are one column and one row.
+        let one = grid_overlay(&plain, 100, 100, [-50_000.0, -50_000.0, 50_000.0, 50_000.0], 100.0);
+        assert_eq!(one.len(), plain.len());
+        let columns: Vec<usize> = (0..100).filter(|x| at(&one, *x, 3) == magenta).collect();
+        let rows: Vec<usize> = (0..100).filter(|y| at(&one, 3, *y) == magenta).collect();
+        assert_eq!((columns.len(), rows.len()), (1, 1), "{columns:?} {rows:?}");
+        assert!((48..=50).contains(&columns[0]) && (48..=50).contains(&rows[0]), "through the middle: {columns:?} {rows:?}");
+        assert_eq!(at(&one, 3, 3), vec![10, 10, 10, 10], "the rest is as it was");
+        // 300 m across: lines at -100, 0 and 100.
+        let three = grid_overlay(&plain, 100, 100, [-150_000.0, -150_000.0, 150_000.0, 150_000.0], 100.0);
+        assert_eq!((0..100).filter(|x| at(&three, *x, 3) == magenta).count(), 3);
+        // Nothing to draw on, or no distance, leaves the picture alone; a picture that is not its size is given back as it is.
+        assert_eq!(grid_overlay(&plain, 100, 100, [0.0, 0.0, 1.0, 1.0], 0.0), plain);
+        assert_eq!(grid_overlay(&plain, 100, 100, [f64::NAN, 0.0, 1.0, 1.0], 100.0), plain);
+        assert_eq!(grid_overlay(&plain[..40], 100, 100, [-50_000.0, -50_000.0, 50_000.0, 50_000.0], 100.0), plain[..40].to_vec());
+    }
+
+    #[test]
+    fn a_picture_is_encoded_as_a_png_that_reads_back() {
+        let rgba: Vec<u8> = (0..4 * 3).flat_map(|i| [i as u8 * 20, 100, 200 - i as u8, 255]).collect();
+        let bytes = encode_png(4, 3, &rgba).unwrap();
+        assert_eq!(Format::sniff(&bytes), Format::Png);
+        let (w, h, rgb) = bimcraft_core::texture::decode_rgb(&bytes).unwrap();
+        assert_eq!((w, h), (4, 3));
+        assert_eq!(&rgb[..6], &[0, 100, 200, 20, 100, 199]);
+        for (what, w, h, data) in [
+            ("no width", 0, 3, rgba.clone()),
+            ("no height", 4, 0, rgba.clone()),
+            ("too few bytes", 4, 3, vec![0; 47]),
+            ("too many", 4, 3, vec![0; 49]),
+        ] {
+            assert!(encode_png(w, h, &data).is_err(), "{what}");
         }
     }
 
