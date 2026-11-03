@@ -53,7 +53,10 @@ import reads it from there. Data (NBR 14565): `cable` (CB, `cabling`), a run lik
 the Cable Tray tool is the Electrical tab's, on the Data tab too. A fixture or a
 device is a component of a family whose `family::Category` says what it is (a sanitary fixture, a floor drain, a pipe fitting, a pipe
 accessory…); `Category::ifc` is its IFC class, predefined type and, where IFC has no class (lightning protection), the object type a
-proxy carries, and `Category::from_ifc` reads the same table back, so a category is one row, in `family.rs`. The starter families are
+proxy carries, and `Category::from_ifc` reads the same table back, so a category is one row, in `family.rs`. A family's `kind`
+(`Category::kinds`: `wc`, `lav`, `sink`… for a sanitary fixture, `floor_drain`… for a drain, `bend`, `tee`… for a fitting, the names the
+sizing commands count fixtures by) says which one it is, and `Family::ifc` writes that kind's predefined type in place of the
+category's `.NOTDEFINED.`; the import reads it back with `Category::kind_of`, the first kind of a predefined type two share. The starter families are
 `fixtures.rs` (original forms, named in the project's language; a fitting or a valve is centred on its pipe, along x, so placing it at the
 pipe's height lines them up; a wall device, a board and a luminaire carry their `Mounting Height` in their type, so the Fixture tool
 places them at the level and they stand where they hang). The desktop's `mep.rs` has one tool for every fixture and device, `Tool::Fixture(key)`: the families of the

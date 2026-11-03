@@ -909,6 +909,8 @@ pub static ALL: &[Command] = &[
          void?}], symbols?: [{line?: [[x, y], …] | arc?: {centre: [x, y], radius, from?, to} | text?: {at: [x, y], height, value, align?: left|center|right} | dot?: {centre: [x, y], radius}, visible?}], form?: {id | guid, …a \
          form's fields}, symbol?: {id | guid, …a symbol's fields}, delete_form?: [id | guid, …], delete_symbol?: [id | guid, …], \
          operation?: swing|double-swing|sliding|double-sliding|folding|fixed (a door's or window's, for IFC and schedules), \
+         kind?: which fixture or fitting it is, for IFC's predefined type (plumbing: wc|lav|sink|laundry|shower|bath|bidet|urinal; \
+         drain: floor_drain|floor_waste|roof_drain; pipefitting: bend|tee|cross|transition|coupling; \"\" clears it), \
          connectors?: [{kind: power|switch, system: power-balanced|power-unbalanced|switch, poles?: 1-3, voltage?, load_va?, \
          power_factor?, classification?}], rename?, delete?: true, dry_run?, path?, save?} a family of \
          the project's, BIMCraft's own parametric component: created, changed, read, or loaded from the .json file at `path` (a \
@@ -8480,7 +8482,7 @@ fn family(s: &mut Session, p: &Value) -> R {
         let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let name = p.get("name").filter(|v| !v.is_null()).cloned().or_else(|| fields.remove("name")).unwrap_or(json!(stem));
         // Only the family it holds: what a file says to rename or delete isn't for it to say.
-        let mut family: Map<String, Value> = ["category", "parameters", "types", "forms", "symbols", "operation", "connectors"]
+        let mut family: Map<String, Value> = ["category", "kind", "parameters", "types", "forms", "symbols", "operation", "connectors"]
             .into_iter()
             .filter_map(|k| fields.remove(k).map(|v| (k.to_string(), v)))
             .collect();
@@ -8545,6 +8547,7 @@ fn family(s: &mut Session, p: &Value) -> R {
     // worked out, and what's worth knowing. `dry_run` reads it the same way and says it changed nothing.
     let keys = [
         "category",
+        "kind",
         "parameters",
         "forms",
         "symbols",
@@ -8628,6 +8631,11 @@ fn family(s: &mut Session, p: &Value) -> R {
     }
     if let Some(op) = string(c, &p, "operation")? {
         f.operation = operation(c, &op)?;
+    }
+    // Which fixture or fitting it is; an empty one takes it away. `Family::check` says the kinds its category has.
+    if let Some(kind) = string(c, &p, "kind")? {
+        let kind = kind.trim();
+        f.kind = (!kind.is_empty()).then(|| kind.to_string());
     }
     if let Some(v) = p.get("types").filter(|v| !v.is_null()) {
         let mut types = serde_json::to_value(&f.types).map_err(|e| bad(c, e))?;

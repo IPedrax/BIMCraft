@@ -950,7 +950,7 @@ pub fn export(m: &Model) -> String {
                 }
                 let shape = w.tessellated(&items);
                 // A door's or a window's family is placed in a wall, never as a component.
-                let (entity, kind, object_type) = f.category.ifc();
+                let (entity, kind, object_type) = f.ifc();
                 let name = s(&format!("{}:{}", cp.family, cp.type_name));
                 let object = object_type.map_or_else(|| name.clone(), s);
                 let ent = w.add(format!("{entity}({},$,{name},$,{object},#{at},#{shape},'{id}',{kind})", w.guid(ELEMENT, id)));

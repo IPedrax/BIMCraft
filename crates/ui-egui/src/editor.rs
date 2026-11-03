@@ -347,6 +347,8 @@ pub(crate) struct FamilyEditor {
     symbols: Vec<SymbolText>,
     /// Its connectors, as the family has them: the editor has no tab for them yet, and keeps them as they are.
     connectors: Vec<Connector>,
+    /// Which fixture or fitting it is, as the family has it: set with the `family` command, kept as it is here.
+    kind: Option<String>,
     /// How a door's or a window's leaves open; none, not said.
     operation: Option<Operation>,
     tab: Tab,
@@ -386,6 +388,7 @@ impl FamilyEditor {
             forms: f.forms.iter().map(FormText::of).collect(),
             symbols: f.symbols.iter().map(SymbolText::of).collect(),
             connectors: f.connectors.clone(),
+            kind: f.kind.clone(),
             operation: f.operation,
             tab: Tab::Parameters,
             picked: 0,
@@ -439,7 +442,17 @@ impl FamilyEditor {
         let forms = self.forms.iter().map(FormText::form).collect::<Result<_, _>>()?;
         let symbols = self.symbols.iter().map(SymbolText::symbol).collect::<Result<_, _>>()?;
         let operation = self.operation.filter(|_| self.category.hosted());
-        Ok(Family { category: self.category, parameters, types, forms, symbols, operation, connectors: self.connectors.clone() })
+        Ok(Family {
+            category: self.category,
+            // A kind the category it now is has no row for goes with the change of category.
+            kind: self.kind.clone().filter(|k| self.category.kinds().iter().any(|(n, _)| n == k)),
+            parameters,
+            types,
+            forms,
+            symbols,
+            operation,
+            connectors: self.connectors.clone(),
+        })
     }
 
     /// The `family` command's parameters making the project's family what's typed: its name, its own and the type it drops.
