@@ -2874,6 +2874,40 @@ fn a_project_in_swedish_names_what_it_makes_in_swedish() {
     assert_eq!(element(&mut s, vp)["title"], "Rumsförteckning");
 }
 
+#[test]
+fn a_project_in_dutch_names_what_it_makes_in_dutch_and_keeps_its_language_in_a_file() {
+    let mut s = Session::new();
+    run(&mut s, "new", json!({"language": "nl"}));
+    let i = run(&mut s, "inspect", json!({}));
+    assert_eq!(
+        [&i["name"], &i["levels"][0]["name"], &i["levels"][1]["name"], &i["language"]],
+        [&json!("Project"), &json!("Niveau 1"), &json!("Niveau 2"), &json!("nl")]
+    );
+    house(&mut s);
+    assert_eq!(run(&mut s, "section", json!({"start": [-1000, 3000], "end": [9000, 3000]}))["name"], "Doorsnede 1");
+    let ids = run(&mut s, "elevation", json!({}))["ids"].clone();
+    let names: Vec<Value> = ids.as_array().unwrap().iter().map(|id| element(&mut s, id.as_u64().unwrap())["name"].clone()).collect();
+    assert_eq!(names, ["Noord", "Zuid", "Oost", "West"]);
+    let room = run(&mut s, "room", json!({"point": [4000, 3000]}))["id"].as_u64().unwrap();
+    assert_eq!(element(&mut s, room)["name"], "Ruimte");
+    let sheet = run(&mut s, "sheet", json!({}))["id"].as_u64().unwrap();
+    assert_eq!(element(&mut s, sheet)["name"], "Naamloos");
+    let vp = run(&mut s, "place", json!({"sheet": "A101", "view": "ruimtelijst"}))["id"].as_u64().unwrap();
+    assert_eq!(element(&mut s, vp)["title"], "Ruimtelijst");
+    // Sides are named in any language there is.
+    assert_eq!([Facing::parse("Zuid"), Facing::parse("oost")], [Some(Facing::South), Some(Facing::East)]);
+    // The language is the file's `nl`, and a file of it opens in Dutch again.
+    let path = temp("dutch.bimcraft");
+    run(&mut s, "save", json!({"path": path}));
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(serde_json::from_str::<Value>(&text).unwrap()["language"], "nl");
+    let mut t = Session::new();
+    run(&mut t, "open", json!({"path": path}));
+    assert_eq!(run(&mut t, "inspect", json!({}))["language"], "nl");
+    assert_eq!(run(&mut t, "level", json!({"elevation": 6000}))["name"], "Niveau 3");
+    let _ = std::fs::remove_file(path);
+}
+
 /// A cavity wall type, outside in: brick, insulation, block and plaster, 300 mm in all; its
 /// insulation a material of its own.
 fn cavity(s: &mut Session) {
@@ -5173,7 +5207,7 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
 fn a_project_is_saved_as_format_12_and_one_of_format_4_to_11_opens_as_it_is_and_one_of_format_13_is_refused() {
     use crate::model::Model;
     // 5 added the scans a project holds and the point clouds that place them; 6 added detailing (lines, regions, groups,
-    // repeating details, line and fill styles); 7 its CAD drawings and the imports that place them; 8 text types; 9 graphic line patterns; 10 dimensions to points and linear ones. Nothing in a file of 4
+    // repeating details, line and fill styles); 7 its CAD drawings and the imports that place them; 8 text types; 9 graphic line patterns; 10 dimensions to points and linear ones; 11 and 12 the project languages Swedish, Czech and French, and Dutch. Nothing in a file of 4
     // to 7 that holds no notes changes.
     let mut s = Session::new();
     let empty = serde_json::to_value(&*s.model).unwrap();
@@ -5190,6 +5224,11 @@ fn a_project_is_saved_as_format_12_and_one_of_format_4_to_11_opens_as_it_is_and_
         }
     }
     assert!(full["elements"].as_object().unwrap().len() > 5);
+    // A project in Dutch is saved as format 12, which is what tells a build that doesn't know `nl` to refuse it.
+    let mut dutch = Session::new();
+    run(&mut dutch, "new", json!({"language": "nl"}));
+    let v = serde_json::to_value(&*dutch.model).unwrap();
+    assert_eq!((v["format"].clone(), v["language"].clone()), (json!(12), json!("nl")));
     // A newer file says what it is and what to do, even when nothing else in it is wrong.
     let mut newer = empty.clone();
     newer["format"] = json!(13);

@@ -1,4 +1,4 @@
-//! The interface's language: English, as the code writes it, Brazilian Portuguese, Spanish, Czech, French, German or
+//! The interface's language: English, as the code writes it, Brazilian Portuguese, Spanish, Czech, French, German, Dutch or
 //! Simplified Chinese. What
 //! the window shows goes through [`t`], English being its own key; the widget helpers translate
 //! their labels and tips, so most call sites pass English and read it back translated. What a
@@ -44,11 +44,13 @@ pub enum Lang {
     Czech,
     French,
     German,
+    Dutch,
     Chinese,
 }
 
 impl Lang {
-    pub const ALL: [Lang; 7] = [Lang::English, Lang::Portuguese, Lang::Spanish, Lang::Czech, Lang::French, Lang::German, Lang::Chinese];
+    pub const ALL: [Lang; 8] =
+        [Lang::English, Lang::Portuguese, Lang::Spanish, Lang::Czech, Lang::French, Lang::German, Lang::Dutch, Lang::Chinese];
 
     /// The project language that goes with it, which new projects are named in: Chinese has none, so English.
     pub fn project(self) -> Language {
@@ -59,6 +61,7 @@ impl Lang {
             Lang::Czech => Language::Czech,
             Lang::French => Language::French,
             Lang::German => Language::German,
+            Lang::Dutch => Language::Dutch,
         }
     }
 
@@ -101,6 +104,7 @@ impl From<Language> for Lang {
             Language::Czech => Lang::Czech,
             Language::French => Lang::French,
             Language::German => Lang::German,
+            Language::Dutch => Lang::Dutch,
         }
     }
 }
@@ -309,11 +313,20 @@ mod tests {
             assert_eq!(Lang::from_code(code), None, "{code}: Traditional is not what is here");
         }
         assert_eq!(
-            ["pt-BR", "es_419.UTF-8", "en-US", "de", ""].map(Lang::from_code),
-            [Some(Lang::Portuguese), Some(Lang::Spanish), Some(Lang::English), Some(Lang::German), None]
+            ["pt-BR", "es_419.UTF-8", "nl-BE", "nl_NL.UTF-8", "en-US", "de", ""].map(Lang::from_code),
+            [
+                Some(Lang::Portuguese),
+                Some(Lang::Spanish),
+                Some(Lang::Dutch),
+                Some(Lang::Dutch),
+                Some(Lang::English),
+                Some(Lang::German),
+                None
+            ]
         );
         assert_eq!((Lang::Chinese.code(), Lang::Chinese.project()), ("zh", Language::English), "a project is never in Chinese");
         assert_eq!(Lang::from(Language::Swedish), Lang::English, "Swedish is a project language until its interface catalog is added");
+        assert_eq!((Lang::Dutch.code(), Lang::Dutch.label(), Lang::Dutch.project()), ("nl", "Nederlands", Language::Dutch));
         assert_eq!(Lang::ALL.map(|l| Lang::from_code(l.code())), Lang::ALL.map(Some));
     }
 }

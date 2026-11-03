@@ -2475,6 +2475,25 @@ fn the_interface_speaks_spanish() {
 }
 
 #[test]
+fn the_interface_speaks_dutch() {
+    let mut h = app(BOX);
+    press(&mut h, "View");
+    press(&mut h, "User Interface");
+    press(&mut h, "Nederlands");
+    assert_eq!(h.state().lang, crate::lang::Lang::Dutch);
+    for label in ["Architectuur", "Annoteren", "Beheren", "Wijzigen", "Eigenschappen", "Plattegronden", "Weergavebereik"] {
+        assert!(h.query_by_label(label).is_some(), "{label}");
+    }
+    // A new project, in the interface's language: its levels named in Dutch.
+    key(&mut h, Key::Escape);
+    press(&mut h, "Bestand");
+    h.get_by_label_contains("Nieuw").click();
+    h.run();
+    let levels: Vec<String> = h.state().session.model.levels().iter().map(|(_, l)| l.name.clone()).collect();
+    assert_eq!(levels, ["Niveau 1", "Niveau 2"]);
+}
+
+#[test]
 fn nothing_a_translated_interface_shows_is_left_in_english() {
     use crate::lang::Lang;
     use egui_kittest::kittest::{By, NodeT};
@@ -2510,7 +2529,7 @@ mass {"boundary": [[1000, 1000], [3000, 1000], [3000, 2000], [1000, 2000]], "nam
     h.run();
     // The probe finds what it looks for: in English, the same labels are all English.
     assert!(english(&h, Lang::Spanish).contains(&"Architecture".to_string()));
-    for l in [Lang::Portuguese, Lang::Spanish, Lang::French, Lang::Chinese] {
+    for l in [Lang::Portuguese, Lang::Spanish, Lang::French, Lang::Dutch, Lang::Chinese] {
         // A machine has the fonts it has: a window is told it has one for Chinese.
         crate::lang::assume_chinese_font(&h.ctx);
         h.state_mut().lang = l;
@@ -4479,6 +4498,7 @@ fn a_tool_with_choices_of_its_own_opens_them_from_a_panels_list() {
     for (tab, panel, tool, choice) in [
         (Tab::Manage, "Settings", "Project Units", "Feet and inches"),
         (Tab::Manage, "Settings", "Project Language", "Español"),
+        (Tab::Manage, "Settings", "Project Language", "Nederlands"),
         (Tab::Manage, "Family Editor", "New Family", "Furniture"),
         (Tab::View, "Create", "Schedules", "Schedule/Quantities…"),
         (Tab::View, "Create", "Duplicate View", "Duplicate with Detailing"),

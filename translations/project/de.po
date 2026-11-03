@@ -621,3 +621,4 @@ msgstr "Arbeitsplatte"
 #: crates/core/src/schedule.rs:1045
 msgid "Yes"
 msgstr "Ja"
+

@@ -54,8 +54,8 @@ pub static ALL: &[Command] = &[
     other(
         "new",
         "New",
-        "{name?, language?: en|pt|es|sv} an empty project with Level 1 (0) and Level 2 (3000), named in its language (Nível 1, \
-         Nível 2 in Portuguese; Nivel 1, Nivel 2 in Spanish; Nivå 1, Nivå 2 in Swedish)",
+        "{name?, language?: en|pt|es|sv|cs|fr|nl} an empty project with Level 1 (0) and Level 2 (3000), named in its language (Nível 1, \
+         Nível 2 in Portuguese; Nivel 1, Nivel 2 in Spanish; Nivå 1, Nivå 2 in Swedish; Niveau 1, Niveau 2 in Dutch)",
         new,
     ),
     other("open", "Open", "{path} a .bimcraft project", open),
@@ -1260,9 +1260,9 @@ pub static ALL: &[Command] = &[
         "language",
         "Project Language",
         &[],
-        "{code?: en|pt|es|sv} the language the project's drawings speak (a stair's UP, a title block's SCALE, a schedule's \
+        "{code?: en|pt|es|sv|cs|fr|nl} the language the project's drawings speak (a stair's UP, a title block's SCALE, a schedule's \
          headings) and new names come in (levels, sections, elevations, sheets, rooms, schedules): English, Brazilian \
-         Portuguese, Spanish or Swedish. What's already named stays named",
+         Portuguese, Spanish, Swedish, Czech, French or Dutch. What's already named stays named",
         language,
     ),
     edit(

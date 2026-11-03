@@ -69,8 +69,8 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 12: a project's language may be German
-/// (`de`); nothing in a file of 11 changes, but a build that reads up to 11 would answer one of 12 with a serde error
+/// The version of the project file this build writes, and the newest it reads. 12: a project's language may be German (`de`) or
+/// Dutch (`nl`); nothing in a file of 11 changes, but a build that reads up to 11 would answer one of 12 with a serde error
 /// ("unknown variant"), not "saved by a newer BIMCraft". 11: a project's language may be Swedish,
 /// Czech or French (`sv`, `cs`, `fr`); nothing in a file of 10 changes, but a build that reads up to 10 would answer one of
 /// 11 with a serde error ("unknown variant"), not "saved by a newer BIMCraft". 8: text types (`text_types`, library
@@ -2814,7 +2814,7 @@ impl Model {
         // dimension type; one of 10 read by 9 would measure its points as lines. A dimension of 9 gets its kind's type.
         self.typed_dimensions();
         // 10 to 11 (Swedish, Czech and French as a project's language) has no step: a file of 10 holds none of them.
-        // 11 to 12 (German as a project's language) has no step either: a file of 11 holds none of it.
+        // 11 to 12 (German and Dutch as a project's language) has no step either: a file of 11 holds none of them.
         self.format = FORMAT;
     }
 
