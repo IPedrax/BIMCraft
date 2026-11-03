@@ -401,15 +401,26 @@ pub fn category(system: System, c: f64, d: f64) -> Option<Category> {
 /// The kind of network a supply is made from, for the utility's annexes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Network {
+    /// Anexo A: aerial, 127/220 V.
     Aerial,
+    /// Anexo C: aerial, 120/240 V.
+    Aerial120240,
+    /// Anexo D: underground, surface standard, 127/220 V.
     Underground,
+    /// Anexo E: underground, submersible.
+    Submersible,
 }
+
+/// The networks of the annexes that frame a supply by its installed load; Anexo B (`aerial_delta`) goes by the current instead.
+pub const NETWORKS: &[&str] = &["aerial", "aerial_delta", "aerial_120_240", "underground", "underground_submersible"];
 
 impl Network {
     pub fn parse(s: &str) -> Option<Network> {
         match s {
             "aerial" => Some(Network::Aerial),
+            "aerial_120_240" => Some(Network::Aerial120240),
             "underground" => Some(Network::Underground),
+            "underground_submersible" => Some(Network::Submersible),
             _ => None,
         }
     }
@@ -418,7 +429,18 @@ impl Network {
     pub fn annex(self) -> &'static str {
         match self {
             Network::Aerial => "A",
+            Network::Aerial120240 => "C",
             Network::Underground => "D",
+            Network::Submersible => "E",
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Network::Aerial => "aerial",
+            Network::Aerial120240 => "aerial_120_240",
+            Network::Underground => "underground",
+            Network::Submersible => "underground_submersible",
         }
     }
 }
@@ -442,6 +464,8 @@ pub struct EnelRow {
     /// The earthing conductor, copper, mm².
     pub earth: f64,
     pub measurement: &'static str,
+    /// The junction box (caixa de passagem) of Anexo E.
+    pub junction_box: Option<&'static str>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -456,7 +480,7 @@ const fn row(
     earth: f64,
     measurement: &'static str,
 ) -> EnelRow {
-    EnelRow { name, lo, hi, available_kw, breaker, connection, entry, earth, measurement }
+    EnelRow { name, lo, hi, available_kw, breaker, connection, entry, earth, measurement, junction_box: None }
 }
 
 /// Anexo A: aerial network, 127/220 V.
@@ -488,10 +512,62 @@ const ENEL_D: &[EnelRow] = &[
     row("C5", 54.0, 72.0, 75.0, 200.0, (None, 150.0, 95.0), (150.0, 95.0), 95.0, "direct (a 200 A meter) or indirect"),
 ];
 
+/// Anexo C: aerial network, 120/240 V.
+const ENEL_C: &[EnelRow] = &[
+    row("A1", 0.0, 3.0, 5.0, 40.0, (Some(1), 10.0, 10.0), (10.0, 10.0), 10.0, "direct"),
+    row("A2", 4.0, 5.0, 6.0, 50.0, (Some(1), 16.0, 16.0), (16.0, 16.0), 16.0, "direct"),
+    row("B1", 6.0, 11.0, 12.0, 50.0, (Some(2), 16.0, 16.0), (16.0, 16.0), 16.0, "direct"),
+];
+
+/// A row of Anexo E: it prints no power made available, and its junction box.
+#[allow(clippy::too_many_arguments)]
+const fn row_e(
+    name: &'static str,
+    lo: f64,
+    hi: f64,
+    breaker: f64,
+    boxed: &'static str,
+    conn: f64,
+    entry: f64,
+    earth: f64,
+    m: &'static str,
+) -> EnelRow {
+    EnelRow {
+        name,
+        lo,
+        hi,
+        available_kw: f64::NAN,
+        breaker,
+        connection: (None, conn, conn),
+        entry: (entry, entry),
+        earth,
+        measurement: m,
+        junction_box: Some(boxed),
+    }
+}
+
+/// Anexo E: underground network, submersible.
+const ENEL_E: &[EnelRow] = &[
+    row_e("B1", 10.0, 12.0, 63.0, "type 2", 16.0, 16.0, 16.0, "direct"),
+    row_e("B2", 13.0, 16.0, 80.0, "type 2", 25.0, 25.0, 16.0, "direct"),
+    row_e("B3", 16.0, 20.0, 100.0, "type 2", 35.0, 35.0, 16.0, "direct"),
+    row_e("C1", 18.0, 20.0, 63.0, "type 2", 16.0, 16.0, 16.0, "direct"),
+    row_e("C2", 20.0, 28.0, 80.0, "type 2", 25.0, 25.0, 16.0, "direct"),
+    row_e("C3", 29.0, 36.0, 100.0, "type 2", 35.0, 35.0, 16.0, "direct"),
+    row_e("C4", 37.0, 45.0, 125.0, "type 3", 50.0, 50.0, 25.0, "indirect"),
+    row_e("C5", 46.0, 54.0, 160.0, "type 3", 95.0, 70.0, 35.0, "indirect"),
+    row_e("C6", 54.0, 65.0, 200.0, "type 3", 150.0, 95.0, 50.0, "indirect"),
+    row_e("C7", 66.0, 80.0, 225.0, "type 3", 150.0, 120.0, 70.0, "indirect"),
+    row_e("C8", 81.0, 90.0, 275.0, "type 3", 150.0, 150.0, 95.0, "indirect"),
+    row_e("C9", 91.0, 100.0, 300.0, "type 3", 185.0, 185.0, 95.0, "indirect"),
+];
+
 fn enel_rows(n: Network) -> &'static [EnelRow] {
     match n {
         Network::Aerial => ENEL_A,
+        Network::Aerial120240 => ENEL_C,
         Network::Underground => ENEL_D,
+        Network::Submersible => ENEL_E,
     }
 }
 
@@ -523,6 +599,59 @@ pub fn enel_pick(n: Network, kw: f64, phases: Option<u8>) -> Option<Pick> {
         return Some(Pick { rows: holding });
     }
     rows.iter().copied().find(|r| r.hi >= kw).map(|r| Pick { rows: vec![r] })
+}
+
+/// One row of Enel's Anexo B (aerial, 120/240 V, delta with a neutral): a supply by the breaker, which the designer's demand current
+/// must not exceed. Types A, B and C are one, two and three phases; a row can serve two types.
+#[derive(Clone, Copy, Debug)]
+pub struct DeltaRow {
+    pub names: &'static [&'static str],
+    pub breaker: f64,
+    pub connection: (Option<u8>, f64, f64),
+    /// The entry branch's phase conductor, mm².
+    pub entry: f64,
+    pub earth: f64,
+    pub measurement: &'static str,
+}
+
+const fn delta(names: &'static [&'static str], breaker: f64, conn: (u8, f64, f64), entry: f64, earth: f64, m: &'static str) -> DeltaRow {
+    DeltaRow { names, breaker, connection: (Some(conn.0), conn.1, conn.2), entry, earth, measurement: m }
+}
+
+/// Anexo B.
+const ENEL_B: &[DeltaRow] = &[
+    delta(&["A1"], 50.0, (1, 10.0, 10.0), 10.0, 10.0, "direct"),
+    delta(&["B3"], 50.0, (2, 10.0, 10.0), 10.0, 10.0, "direct"),
+    delta(&["C3"], 50.0, (3, 10.0, 10.0), 10.0, 10.0, "direct"),
+    delta(&["A2"], 63.0, (1, 16.0, 10.0), 16.0, 16.0, "direct"),
+    delta(&["B4"], 63.0, (2, 25.0, 25.0), 16.0, 16.0, "direct"),
+    delta(&["C4"], 63.0, (3, 25.0, 25.0), 16.0, 16.0, "direct"),
+    delta(&["B5"], 80.0, (2, 25.0, 25.0), 25.0, 16.0, "direct"),
+    delta(&["C5"], 80.0, (3, 25.0, 25.0), 25.0, 16.0, "direct"),
+    delta(&["B6", "C6"], 100.0, (3, 35.0, 54.6), 35.0, 16.0, "direct"),
+    delta(&["B7", "C7"], 125.0, (3, 35.0, 54.6), 50.0, 25.0, "indirect"),
+    delta(&["B8", "C8"], 160.0, (3, 50.0, 54.6), 70.0, 35.0, "indirect"),
+    delta(&["B9", "C9"], 200.0, (3, 95.0, 54.6), 95.0, 70.0, "indirect"),
+    delta(&["B10", "C10"], 225.0, (3, 95.0, 54.6), 120.0, 70.0, "indirect"),
+    delta(&["B11", "C11"], 275.0, (3, 150.0, 80.0), 150.0, 95.0, "indirect"),
+    delta(&["B12", "C12"], 300.0, (3, 150.0, 80.0), 185.0, 95.0, "indirect"),
+];
+
+/// The rows of Anexo B with the smallest breaker that holds `amps` (those of `phases` phases if given), the smaller supply first;
+/// `None` above the table.
+pub fn delta_pick(amps: f64, phases: Option<u8>) -> Option<Vec<&'static DeltaRow>> {
+    let serves = |r: &DeltaRow| {
+        phases.is_none_or(|p| {
+            r.names.iter().any(|n| match n.as_bytes().first() {
+                Some(b'A') => p == 1,
+                Some(b'B') => p == 2,
+                _ => p == 3,
+            })
+        })
+    };
+    let breaker = ENEL_B.iter().filter(|r| serves(r) && r.breaker >= amps).map(|r| r.breaker).fold(f64::INFINITY, f64::min);
+    let rows: Vec<&DeltaRow> = ENEL_B.iter().filter(|r| serves(r) && r.breaker == breaker).collect();
+    (!rows.is_empty()).then_some(rows)
 }
 
 fn total(loads: &[Load]) -> (u32, f64) {

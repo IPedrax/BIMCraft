@@ -1723,11 +1723,13 @@ pub static ALL: &[Command] = &[
          service it asks of the `utility`, by that utility's own standard, since NBR 5410 gives no demand factors. `utility` is \
          required: CPFL (GED 13 version 2.24, 18/09/2020: CPFL Paulista, Piratininga, Santa Cruz and RGE) or ENEL (ET 1569 version 01, \
          29/01/2024); any other is refused until its tables are added. ENEL does not work out a demand, for its specification leaves it \
-         to the designer (item 7.7.2): `{utility: ENEL, network: aerial|underground, installed_kw, phases?: 1|2|3, demand_kva?}` frames \
-         the supply by the installed load in kW, in Anexo A (aerial, 127/220 V) or D (underground, surface, 127/220 V): the category (A1 to \
-         C8; A1 to C5), the power it makes available, the breaker, the connection and entry branches, the earthing conductor and the \
-         measurement; where two categories hold the load (B2 and C1) `candidates` names both and `phases` picks one; `demand_kva` is \
-         carried as the designer gives it. For CPFL: `D = a + b + c + d + e + f + g + h + i`: a lighting and outlets (in a dwelling, `area` m² \
+         to the designer (item 7.7.2): `{utility: ENEL, network: aerial|aerial_120_240|underground|underground_submersible, installed_kw, \
+         phases?: 1|2|3, demand_kva?}` frames the supply by the installed load in kW: Anexo A (aerial, 127/220 V), C (aerial, 120/240 V), \
+         D (underground, surface, 127/220 V) or E (underground, submersible): the category, the power it makes available (E prints none and \
+         gives the junction box), the breaker, the connection and entry branches, the earthing conductor and the measurement; where two \
+         categories hold the load (B2 and C1 of A) `candidates` names both and `phases` picks one. `network: aerial_delta` (Anexo B, 120/240 V \
+         delta with a neutral) goes by `demand_current_a`, the designer's demand current in A, and gives the smallest breaker that holds it. \
+         `demand_kva` is carried as the designer gives it. For CPFL: `D = a + b + c + d + e + f + g + h + i`: a lighting and outlets (in a dwelling, `area` m² \
          gives the least outlets of Tabela 2, or `outlets` above 250 m² (100 W each, and the kitchen's 3 of 600 W), and `lighting_points` of \
          100 W; in another building `lighting_outlets` declares its `use` (auditorium, shop, barbershop, club, school, office, garage, hospital, \
          hotel, church, industry, restaurant), kW and power factor, by Tabela 18), b `heaters` (showers, taps, instant heaters, irons: Tabela 4 \
@@ -4604,18 +4606,16 @@ fn vent_size(_: &mut Session, p: &Value) -> R {
 /// `demand` for Enel: ET 1569 leaves the demand to the designer (item 7.7.2), so it frames the supply by the installed load, in its
 /// Anexo A (aerial) or D (underground), and carries the designer's demand if one is given.
 fn demand_enel(p: &Value, utility: &str, source: &str) -> R {
-    use crate::demand::{self as d, Network};
+    use crate::demand::{self as d, NETWORKS, Network};
     let c = "demand";
-    const KEYS: &[&str] = &["utility", "network", "installed_kw", "phases", "demand_kva"];
+    const KEYS: &[&str] = &["utility", "network", "installed_kw", "demand_current_a", "phases", "demand_kva"];
     if let Some(k) = p.as_object().and_then(|o| o.keys().find(|k| !KEYS.contains(&k.as_str()))) {
         return Err(bad(c, format!("`{k}` isn't one of ENEL's parameters: {}", KEYS.join(", "))));
     }
-    let network = Network::parse(choice(c, p, "network", &["aerial", "underground"], "")?)
-        .ok_or_else(|| bad(c, "`network` is required: aerial (Anexo A) or underground (Anexo D)"))?;
-    if absent(p.get("installed_kw")) {
-        return Err(bad(c, "`installed_kw` (the installed load in kW) is required"));
+    let name = choice(c, p, "network", NETWORKS, "")?;
+    if name.is_empty() {
+        return Err(bad(c, format!("`network` is required: {}", NETWORKS.join(", "))));
     }
-    let kw = within(c, p, "installed_kw", 0.0, 0.0, 1.0e6)?;
     let phases = match p.get("phases").filter(|v| !v.is_null()) {
         None => None,
         Some(v) => match v.as_u64() {
@@ -4627,6 +4627,59 @@ fn demand_enel(p: &Value, utility: &str, source: &str) -> R {
         None => None,
         Some(_) => Some(within(c, p, "demand_kva", 0.0, 0.0, 1.0e6)?),
     };
+    let note_demand = "ET 1569 (item 7.7.2) leaves the demand to the designer, who may use the methods the utilities recommend: it is carried as given, never worked out here";
+    let not_covered = "the conduits, the poles and the type of meter box of the annexes, Anexo A to E's other columns, and the limits of supply of Tabela 2 by motors, welding machines and X-ray sets";
+    if name == "aerial_delta" {
+        // Anexo B goes by the current the designer's demand draws, not by the installed load.
+        if p.get("installed_kw").is_some_and(|v| !v.is_null()) {
+            return Err(bad(c, "Anexo B (`aerial_delta`) goes by `demand_current_a`, not by `installed_kw`"));
+        }
+        if absent(p.get("demand_current_a")) {
+            return Err(bad(c, "`demand_current_a` (the designer's demand current, A) is required for `aerial_delta`"));
+        }
+        let amps = within(c, p, "demand_current_a", 0.0, 0.0, 1.0e6)?;
+        let rows = d::delta_pick(amps, phases);
+        let (category, note) = match &rows {
+            Some(rows) => {
+                let r = rows[0];
+                let conn = json!({"conductors_per_phase": r.connection.0, "phase": r.connection.1, "neutral": r.connection.2});
+                let cat = json!({
+                    "names": r.names,
+                    "breaker_a": r.breaker,
+                    "connection_mm2": conn,
+                    "entry_mm2": r.entry,
+                    "earthing_mm2": r.earth,
+                    "measurement": r.measurement,
+                });
+                (cat, Value::Null)
+            }
+            None => (Value::Null, json!("above the last breaker of Anexo B: 300 A")),
+        };
+        let candidates: Vec<&str> = rows.iter().flatten().flat_map(|r| r.names.iter().copied()).collect();
+        return Ok(json!({
+            "utility": utility,
+            "source": source,
+            "annex": "B",
+            "network": name,
+            "installed_kw": Value::Null,
+            "demand_current_a": amps,
+            "phases": phases,
+            "category": category,
+            "candidates": candidates,
+            "category_note": note,
+            "demand_kva": demand_kva,
+            "demand_note": note_demand,
+            "not_covered": not_covered,
+        }));
+    }
+    let network = Network::parse(name).ok_or_else(|| bad(c, format!("`network` is one of {}", NETWORKS.join(", "))))?;
+    if p.get("demand_current_a").is_some_and(|v| !v.is_null()) {
+        return Err(bad(c, "`demand_current_a` is for `aerial_delta` (Anexo B); the other networks go by `installed_kw`"));
+    }
+    if absent(p.get("installed_kw")) {
+        return Err(bad(c, "`installed_kw` (the installed load in kW) is required"));
+    }
+    let kw = within(c, p, "installed_kw", 0.0, 0.0, 1.0e6)?;
     let pick = d::enel_pick(network, kw, phases);
     let (category, candidates, note) = match &pick {
         Some(k) => {
@@ -4634,43 +4687,48 @@ fn demand_enel(p: &Value, utility: &str, source: &str) -> R {
             let conn = json!({"conductors_per_phase": r.connection.0, "phase": r.connection.1, "neutral": r.connection.2});
             let cat = json!({
                 "name": r.name,
-                "available_kw": r.available_kw,
+                "available_kw": if r.available_kw.is_nan() { Value::Null } else { json!(r.available_kw) },
                 "breaker_a": r.breaker,
                 "connection_mm2": conn,
                 "entry_mm2": {"phase": r.entry.0, "neutral": r.entry.1},
                 "earthing_mm2": r.earth,
                 "measurement": r.measurement,
+                "junction_box": r.junction_box,
             });
             (cat, json!(k.rows.iter().map(|r| r.name).collect::<Vec<_>>()), Value::Null)
         }
-        None if kw > 75.0 => (
+        None if kw > 75.0 && network != Network::Submersible => (
             Value::Null,
             json!([]),
             json!("above 75 kW the unit is served at primary voltage (item 7.3.2), which this specification does not cover"),
         ),
-        None => (
-            Value::Null,
-            json!([]),
-            json!(format!(
-                "above the last category of Anexo {}: up to {} kW of installed load",
-                network.annex(),
-                if network == Network::Aerial { 63 } else { 72 }
-            )),
-        ),
+        None => {
+            let last = match network {
+                Network::Aerial => 63,
+                Network::Aerial120240 => 11,
+                Network::Underground => 72,
+                Network::Submersible => 100,
+            };
+            (
+                Value::Null,
+                json!([]),
+                json!(format!("above the last category of Anexo {}: up to {last} kW of installed load", network.annex())),
+            )
+        }
     };
     Ok(json!({
         "utility": utility,
         "source": source,
         "annex": network.annex(),
-        "network": if network == Network::Aerial { "aerial" } else { "underground" },
+        "network": network.name(),
         "installed_kw": kw,
         "phases": phases,
         "category": category,
         "candidates": candidates,
         "category_note": note,
         "demand_kva": demand_kva,
-        "demand_note": "ET 1569 (item 7.7.2) leaves the demand to the designer, who may use the methods the utilities recommend: it is carried as given, never worked out here",
-        "not_covered": "the conduits, the poles and the type of meter box of Anexos A and D, the other annexes (B and C, 120/240 V; E, submersible), and the limits of supply of Tabela 2 by motors, welding machines and X-ray sets",
+        "demand_note": note_demand,
+        "not_covered": not_covered,
     }))
 }
 
@@ -4702,6 +4760,7 @@ fn demand(_: &mut Session, p: &Value) -> R {
             "hydromassage",
             "network",
             "installed_kw",
+            "demand_current_a",
             "phases",
             "demand_kva",
         ],
@@ -4720,7 +4779,7 @@ fn demand(_: &mut Session, p: &Value) -> R {
     if utility == "ENEL" {
         return demand_enel(p, &utility, source);
     }
-    if let Some(k) = ["network", "installed_kw", "phases", "demand_kva"].iter().find(|k| p.get(**k).is_some()) {
+    if let Some(k) = ["network", "installed_kw", "demand_current_a", "phases", "demand_kva"].iter().find(|k| p.get(**k).is_some()) {
         return Err(bad(
             c,
             format!("`{k}` is for utility ENEL: {utility}'s standard takes the loads of its examples, not a category by installed load"),

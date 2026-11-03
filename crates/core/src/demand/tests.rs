@@ -375,3 +375,83 @@ mod enel {
         }
     }
 }
+
+#[test]
+fn enel_anexo_c_and_e_are_as_printed() {
+    let r = |n: Network, c: &str| enel_row(n, c).map(|r| (r.breaker, r.connection, r.entry, r.earth));
+    assert_eq!(r(Network::Aerial120240, "A1"), Some((40.0, (Some(1), 10.0, 10.0), (10.0, 10.0), 10.0)));
+    assert_eq!(r(Network::Aerial120240, "A2"), Some((50.0, (Some(1), 16.0, 16.0), (16.0, 16.0), 16.0)));
+    assert_eq!(r(Network::Aerial120240, "B1"), Some((50.0, (Some(2), 16.0, 16.0), (16.0, 16.0), 16.0)));
+    assert!(enel_row(Network::Aerial120240, "C1").is_none());
+    assert_eq!(r(Network::Submersible, "B1"), Some((63.0, (None, 16.0, 16.0), (16.0, 16.0), 16.0)));
+    assert_eq!(r(Network::Submersible, "C5"), Some((160.0, (None, 95.0, 95.0), (70.0, 70.0), 35.0)));
+    assert_eq!(r(Network::Submersible, "C7"), Some((225.0, (None, 150.0, 150.0), (120.0, 120.0), 70.0)));
+    assert_eq!(r(Network::Submersible, "C9"), Some((300.0, (None, 185.0, 185.0), (185.0, 185.0), 95.0)));
+    assert_eq!(enel_row(Network::Submersible, "C4").and_then(|r| r.junction_box), Some("type 3"));
+    assert_eq!(enel_row(Network::Submersible, "C3").and_then(|r| r.junction_box), Some("type 2"));
+    let name = |n: Network, c: f64| enel_pick(n, c, None).map(|p| p.rows.iter().map(|r| r.name).collect::<Vec<_>>());
+    assert_eq!(name(Network::Aerial120240, 5.0), Some(vec!["A2"]));
+    assert_eq!(name(Network::Aerial120240, 11.0), Some(vec!["B1"]));
+    assert_eq!(name(Network::Aerial120240, 11.5), None);
+    assert_eq!(name(Network::Submersible, 100.0), Some(vec!["C9"]));
+    assert_eq!(name(Network::Submersible, 100.5), None);
+    assert_eq!(name(Network::Submersible, 19.0), Some(vec!["B3", "C1"]));
+}
+
+#[test]
+fn enel_anexo_b_is_picked_by_the_current_of_the_demand() {
+    let p = |a: f64, ph: Option<u8>| delta_pick(a, ph).map(|rows| rows.iter().map(|r| (r.names.join("/"), r.breaker)).collect::<Vec<_>>());
+    assert_eq!(p(40.0, None), Some(vec![("A1".into(), 50.0), ("B3".into(), 50.0), ("C3".into(), 50.0)]));
+    assert_eq!(p(40.0, Some(2)), Some(vec![("B3".into(), 50.0)]));
+    assert_eq!(p(40.0, Some(3)), Some(vec![("C3".into(), 50.0)]));
+    assert_eq!(p(90.0, Some(3)), Some(vec![("B6/C6".into(), 100.0)]));
+    assert_eq!(p(300.0, None).map(|r| r[0].1), Some(300.0));
+    assert_eq!(p(300.1, None), None);
+    let r = delta_pick(250.0, None).and_then(|r| r.first().copied());
+    assert_eq!(
+        r.map(|r| (r.breaker, r.connection, r.entry, r.earth, r.measurement)),
+        Some((275.0, (Some(3), 150.0, 80.0), 150.0, 95.0, "indirect"))
+    );
+}
+
+mod enel_more {
+    use crate::engine::Session;
+    use serde_json::{Value, json};
+
+    fn run(s: &mut Session, p: Value) -> Value {
+        s.execute("demand", &p).unwrap_or_else(|e| panic!("demand {p}: {e}"))
+    }
+
+    #[test]
+    fn the_other_networks_have_their_annexes() {
+        let mut s = Session::new();
+        let r = run(&mut s, json!({"utility": "ENEL", "network": "aerial_120_240", "installed_kw": 8}));
+        assert_eq!((&r["annex"], &r["category"]["name"]), (&json!("C"), &json!("B1")));
+        let r = run(&mut s, json!({"utility": "ENEL", "network": "underground_submersible", "installed_kw": 40}));
+        assert_eq!((&r["annex"], &r["category"]["name"], &r["category"]["junction_box"]), (&json!("E"), &json!("C4"), &json!("type 3")));
+        assert_eq!(r["category"]["available_kw"], Value::Null);
+        let r = run(&mut s, json!({"utility": "ENEL", "network": "aerial_delta", "demand_current_a": 70, "phases": 3}));
+        assert_eq!(r["annex"], "B");
+        assert_eq!(r["category"]["names"], json!(["C5"]));
+        assert_eq!(r["category"]["breaker_a"], 80.0);
+        assert_eq!(r["category"]["entry_mm2"], 25.0);
+        assert_eq!(r["installed_kw"], Value::Null);
+    }
+
+    #[test]
+    fn the_delta_network_goes_by_current_and_the_others_by_load() {
+        let mut s = Session::new();
+        for p in [
+            json!({"utility": "ENEL", "network": "aerial_delta", "installed_kw": 10}),
+            json!({"utility": "ENEL", "network": "aerial_delta"}),
+            json!({"utility": "ENEL", "network": "aerial_delta", "demand_current_a": -1}),
+            json!({"utility": "ENEL", "network": "aerial_delta", "demand_current_a": 1e300}),
+            json!({"utility": "ENEL", "network": "aerial", "installed_kw": 10, "demand_current_a": 40}),
+        ] {
+            assert!(s.execute("demand", &p).is_err(), "{p}");
+        }
+        let r = run(&mut s, json!({"utility": "ENEL", "network": "aerial_delta", "demand_current_a": 400}));
+        assert_eq!(r["category"], Value::Null);
+        assert!(r["category_note"].as_str().is_some_and(|n| n.contains("300")), "{r}");
+    }
+}
