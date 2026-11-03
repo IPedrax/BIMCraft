@@ -255,7 +255,7 @@ impl BimApp {
     pub(crate) fn execute_shortcut_action(&mut self, action: &str) -> bool {
         match action {
             "Modify" => self.set_tool(Tool::Modify),
-            "3D View" => self.open_sheet(crate::Sheet::View3D),
+            "3D View" => self.open_3d(None),
             "Wall" => self.set_tool(Tool::Wall(Vec::new())),
             "Door" => self.set_tool(Tool::Door),
             "Window" => self.set_tool(Tool::Window),
