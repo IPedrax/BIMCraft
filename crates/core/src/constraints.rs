@@ -10,7 +10,7 @@
 use std::collections::BTreeMap;
 
 use crate::engine::Session;
-use crate::ids::Guid;
+use crate::ids::{Guid, Key};
 use crate::model::{DimKind, Dimension, Element, Id, Model};
 
 /// How far a station may be from where its constraint puts it, mm.
@@ -145,5 +145,55 @@ pub(crate) fn keep(s: &mut Session, before: &Model) -> Result<(), String> {
     match unkept {
         Some(id) => Err(format!("dimension {id}'s constraints can't be kept with the others: unlock one, or take its equality off")),
         None => Ok(()),
+    }
+}
+
+impl Model {
+    /// The locked or equal dimensions that hold element `k`, by id: a dimension kept equal that measures to it, or one with
+    /// a locked segment that ends at it.
+    pub fn held_by(&self, k: impl Key) -> Vec<Id> {
+        let Some(g) = self.elements.guid(k) else { return Vec::new() };
+        let holds = |d: &Dimension| {
+            let at = |i: usize| d.equal || d.locked.iter().any(|l| l.segment == i || l.segment + 1 == i);
+            self.stations(d).1.iter().enumerate().any(|(i, (_, _, r))| r.id == g && at(i))
+        };
+        self.elements.iter().filter(|(_, e)| matches!(e, Element::Dimension(d) if constrained(d) && holds(d))).map(|(id, _)| *id).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{Value, json};
+
+    use crate::engine::Session;
+    use crate::model::Id;
+
+    fn run(s: &mut Session, c: &str, p: Value) -> Value {
+        s.execute(c, &p).unwrap_or_else(|e| panic!("{c} {p}: {e}"))
+    }
+
+    #[test]
+    fn an_element_is_held_by_the_dimensions_whose_locked_or_equal_segments_end_at_it() {
+        let mut s = Session::new();
+        let w = run(&mut s, "wall", json!({"points": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "closed": true}));
+        let w: Vec<Id> = w["ids"].as_array().map(|a| a.iter().filter_map(Value::as_u64).collect()).unwrap_or_default();
+        let g = run(&mut s, "grid", json!({"start": [2000, -2000], "end": [2000, 8000]}))["id"].as_u64().unwrap_or_default();
+        // West wall to grid, then grid to east wall: the first segment locked.
+        let d = run(&mut s, "dimension", json!({"refs": [{"id": w[3]}, {"id": g}, {"id": w[1]}], "at": [0, -1000]}))["id"].as_u64();
+        let d = d.unwrap_or_default();
+        run(&mut s, "dimension_constraint", json!({"id": d, "locked": [0]}));
+        let held = |s: &Session, id: Id| s.model.held_by(id);
+        let none: Vec<Id> = Vec::new();
+        assert_eq!((held(&s, w[3]), held(&s, g)), (vec![d], vec![d]));
+        assert_eq!(
+            (held(&s, w[1]), held(&s, w[0])),
+            (none.clone(), none.clone()),
+            "the east wall's segment is free; the south wall isn't measured"
+        );
+        // Equal, it holds all it measures to; with no constraint, nothing.
+        run(&mut s, "dimension_constraint", json!({"id": d, "locked": [], "equal": true}));
+        assert_eq!(held(&s, w[1]), vec![d]);
+        run(&mut s, "dimension_constraint", json!({"id": d, "equal": false}));
+        assert_eq!(held(&s, g), none);
     }
 }

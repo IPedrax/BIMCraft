@@ -179,7 +179,8 @@ impl Default for Canvas {
 }
 
 impl Canvas {
-    fn view(&self, level: Id) -> Option<View> {
+    /// View `level` (a plan's key, a section or an elevation) as it was last shown: its zoom, its middle and its size.
+    pub(crate) fn view(&self, level: Id) -> Option<View> {
         let c = self.cams.get(&level)?;
         Some(View {
             scale: c.scale,
@@ -307,6 +308,13 @@ impl Canvas {
         }
     }
 
+    /// Model point `p` in the middle of view `id`, at the zoom it has: where the minimap is clicked or dragged to.
+    pub(crate) fn centre(&mut self, id: Id, p: P2) {
+        if let Some(v) = self.view(id) {
+            self.hold(id, p, self.rect.size() / 2.0, v.scale);
+        }
+    }
+
     /// Zoom by `factor` about the middle of the view.
     pub(crate) fn zoom(&mut self, level: Id, factor: f64) {
         if let Some(v) = self.view(level) {
@@ -328,8 +336,11 @@ impl Canvas {
 }
 
 /// A drawing's colour on screen: as drawn, or in the dark theme with its lightness turned over,
-/// so ink reads light on a dark ground and the grid stays blue.
+/// so ink reads light on a dark ground and the grid stays blue. Its paper is the user's canvas colour when there is one.
 pub(crate) fn color(c: Rgb) -> Color32 {
+    if let Some(ground) = crate::style::canvas_ground().filter(|_| c == render::PAPER) {
+        return ground;
+    }
     if !crate::style::canvas_dark() {
         return Color32::from_rgb(c.0, c.1, c.2);
     }
@@ -2669,6 +2680,10 @@ impl BimApp {
         });
         if let Some(t) = self.types.get("wall") {
             p["type"] = json!(t);
+        }
+        // Drawn in the 3D view, on the face their base stands on.
+        if let Some(offset) = self.orbit.wall_base {
+            p["base_offset"] = json!(offset);
         }
         // The Options Bar's Height: up to a level, or unconnected at a height.
         match top_params(&self.session.model, level, self.wall_top, &self.wall_height) {

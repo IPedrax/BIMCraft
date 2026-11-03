@@ -1,6 +1,7 @@
 //! The 3D view: the core's picture of the model (`view3d::Scene`), orbited, panned and zoomed as
 //! in Revit. Shift and the middle button orbit, and so does a drag with the primary button (for
-//! a hand without a middle button); the middle button pans; the wheel zooms about the cursor. A
+//! a hand without a middle button), round the point under the pointer where the drag began; the
+//! middle button pans; the wheel zooms toward the point under the cursor. A
 //! click picks the element the picture shows there, and so does a press let go quickly, however
 //! far the hand went with it (`Canvas::quick_press`): the camera it turned goes back. A level
 //! selected alone has a grip at the middle of each edge of its plane, which a drag moves over it. A section box is drawn
@@ -13,7 +14,8 @@ use bimcraft_core::graphics::{Look, VisualStyle};
 use bimcraft_core::model::{Id, Model, ViewCamera};
 use bimcraft_core::render::{self, Rgb};
 use bimcraft_core::view3d::gpu::{Hit, Mesh};
-use bimcraft_core::view3d::{AZIMUTH, Camera, ELEVATION, Image, MAX_SIDE, P3, Scene, box_grips, move_box_face};
+use bimcraft_core::view3d::{AZIMUTH, Camera, ELEVATION, Image, MAX_SIDE, P3, Scene, Surface, box_grips, move_box_face};
+use bimcraft_core::workplane::{WorkPlane, work_plane};
 use egui::{
     Align, Color32, ColorImage, Layout, PointerButton, Pos2, Rect, Sense, Stroke, StrokeKind, TextureHandle, TextureOptions, Ui, UiBuilder,
     pos2, vec2,
@@ -25,9 +27,9 @@ use crate::icons::Icon;
 use crate::style::{canvas_pal, pal};
 use crate::{BimApp, Status, Tool, icon_button};
 
-/// What a picture is of: the model, the camera, the elements tinted, whether the theme is dark, whether the card drew it, and
-/// the section box it is cut to while one is dragged.
-type Shot = (Arc<Model>, Camera, Vec<(Id, Rgb)>, bool, bool, Option<(P3, P3)>);
+/// What a picture is of: the model, the camera, the elements tinted, the ground it is drawn on (which says whether it is dark
+/// too), whether the card drew it, and the section box it is cut to while one is dragged.
+type Shot = (Arc<Model>, Camera, Vec<(Id, Rgb)>, Color32, bool, Option<(P3, P3)>);
 
 /// A model's mesh for the card, or why the card can't draw it.
 type Meshed = (Arc<Model>, Result<Arc<Mesh>, String>);
@@ -44,6 +46,15 @@ impl Picker {
         match self {
             Picker::Image(i) => Some(Hit { id: i.pick(x, y)?, face: i.face(x, y).unwrap_or("") }),
             Picker::Mesh(m, tints) => m.pick(cam, tints, x, y),
+        }
+    }
+
+    /// The surface the picture shows at pixel `at`, taken through `cam`, and the point on it there; the processor's picture
+    /// finds it in `scene`, the one it was drawn from (none while the picture on screen is of another model).
+    fn surface(&self, scene: Option<&Scene>, cam: &Camera, at: (f64, f64)) -> Option<Surface> {
+        match self {
+            Picker::Image(i) => scene?.surface_in(i, cam, at),
+            Picker::Mesh(m, tints) => m.surface(cam, tints, at.0, at.1),
         }
     }
 }
@@ -65,8 +76,9 @@ pub struct Orbit {
     pub(crate) on_card: bool,
     /// The mesh of the scene shown last, for the card: or why it can't draw it.
     mesh: Option<Meshed>,
-    /// A drag under way: whether it orbits (else it pans), and where the pointer was last.
-    drag: Option<(bool, Pos2)>,
+    /// A drag under way: whether it orbits (else it pans), where the pointer was last, and the model point it orbits about,
+    /// the one under the pointer where it began (none: the target).
+    drag: Option<(bool, Pos2, Option<P3>)>,
     /// The camera as that drag found it, for a drag that turns out a click.
     before: Option<Camera>,
     /// A selected level's grip being dragged: the level, and which edge of its plane (as
@@ -79,6 +91,11 @@ pub struct Orbit {
     pub(crate) built: Option<(Id, ViewCamera, Option<f64>)>,
     /// Each room's solid as the model shown last has it: its outline, bottom and top. Found once for each model.
     rooms: Option<(Arc<Model>, std::collections::BTreeMap<Id, RoomSolid>)>,
+    /// The work plane the Wall tool's chain under way is drawn on, which its first point found.
+    plane: Option<WorkPlane>,
+    /// While the Wall tool places a point in the 3D view, the base offset its walls take there: the height of the face they
+    /// stand on over their level, which `BimApp::wall_params` puts in.
+    pub(crate) wall_base: Option<f64>,
 }
 
 /// A room as the 3D view draws it: its outline in plan (an unbounded one's square), swept from `bottom` to `top`.
@@ -102,8 +119,19 @@ impl Default for Orbit {
             boxing: None,
             built: None,
             rooms: None,
+            plane: None,
+            wall_base: None,
         }
     }
+}
+
+/// Where a tool drawing in the 3D view puts its point for pixel `at`, through `cam`: on `held`, the plane of the chain under
+/// way, else on the work plane of `under`, the surface the view shows there; to the 10 mm, as a plan's free point is.
+fn aim(m: &Model, cam: &Camera, at: (f64, f64), held: Option<WorkPlane>, under: Option<Surface>) -> Option<(P3, WorkPlane)> {
+    let plane = held.or_else(|| work_plane(m, cam, at, under))?;
+    let q = cam.on_plane(at, plane.z)?;
+    let round = |v: f64| (v / 10.0).round() * 10.0 + 0.0;
+    Some(([round(q[0]), round(q[1]), plane.z], plane))
 }
 
 /// A room as a see-through solid, drawn over the 3D view's picture in the selection's colour: its outline swept from its
@@ -214,6 +242,21 @@ impl BimApp {
         self.run("paint", json!({"id": id, "face": face, "material": material}));
     }
 
+    /// A drawing tool's click in the 3D view, its point `q` on work plane `plane`: the Wall tool's next point, its walls going
+    /// on the plane's level with their base on the plane (`place`, as in a plan); a component placed there.
+    fn draw3d(&mut self, q: P3, plane: WorkPlane) {
+        let at = P2(q[0], q[1]);
+        if matches!(self.tool, Tool::Wall(_)) {
+            (self.orbit.plane, self.orbit.wall_base) = (Some(plane), Some(plane.offset));
+            self.place(plane.level, at);
+            self.orbit.wall_base = None;
+        } else if let Some((family, ty)) = self.placing() {
+            let p = json!({"family": family, "type": ty, "at": [at.0, at.1], "level": plane.level, "offset": plane.offset,
+                           "angle": self.component_angle});
+            self.run("component", p);
+        }
+    }
+
     /// The 3D view, filling `ui`.
     pub(crate) fn view3d(&mut self, ui: &mut Ui) {
         let (rect, response) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
@@ -265,11 +308,18 @@ impl BimApp {
         if from_model {
             o.built = active.zip(stored).map(|(id, cam)| (id, cam, lens));
         }
+        // What the picture on screen shows at a point, as the view picks: its scene is this model's while it's of this model.
+        let fresh = o.shown.as_ref().is_some_and(|s| Arc::ptr_eq(&s.0, &model));
+        let surface = |picker: &Option<Picker>, cam: &Camera, at: Pos2| picker.as_ref()?.surface(fresh.then_some(scene), cam, px(at));
         if let Some(at) = hover {
-            // A wheel notch (about 50 points) zooms by a fifth.
+            // A wheel notch (about 50 points) zooms by a fifth, toward what's under the cursor.
             let factor = (f64::from(wheel) * 0.004).exp() * f64::from(pinch);
             if factor.is_finite() && factor != 1.0 {
-                cam = cam.zoom(factor.clamp(0.2, 5.0), px(at));
+                let factor = factor.clamp(0.2, 5.0);
+                cam = match surface(&o.picker, &cam, at) {
+                    Some(s) => cam.zoom_about(factor, s.at),
+                    None => cam.zoom(factor, px(at)),
+                };
             }
         }
         // A level selected alone has a grip at the middle of each edge of its plane: a drag from one
@@ -332,22 +382,25 @@ impl BimApp {
         {
             boxed_to = Some(to);
         }
-        // The primary button, or Shift and the middle button, orbit, 0.4° a point; the middle
-        // button alone pans.
+        // The primary button, or Shift and the middle button, orbit, 0.4° a point, round the point under the pointer where
+        // the drag began (the target, where nothing is); the middle button alone pans.
         if response.drag_started()
             && o.grip.is_none()
             && o.boxing.is_none()
             && let Some(origin) = ui.input(|i| i.pointer.press_origin())
         {
-            o.drag = Some((response.dragged_by(PointerButton::Primary) || shift, origin));
+            let orbit = response.dragged_by(PointerButton::Primary) || shift;
+            let pivot = orbit.then(|| surface(&o.picker, &cam, origin)).flatten().map(|s| s.at);
+            o.drag = Some((orbit, origin, pivot));
             o.before = Some(cam);
         }
-        if let (Some((orbit, last)), Some(now)) = (o.drag, latest)
+        if let (Some((orbit, last, pivot)), Some(now)) = (o.drag, latest)
             && response.dragged()
         {
             let d = now - last;
-            cam = if orbit { cam.orbit(-f64::from(d.x) * 0.4, f64::from(d.y) * 0.4) } else { cam.pan(px(last), px(now)) };
-            o.drag = Some((orbit, now));
+            let (around, up) = (-f64::from(d.x) * 0.4, f64::from(d.y) * 0.4);
+            cam = if orbit { cam.orbit_about(around, up, pivot.unwrap_or(cam.target)) } else { cam.pan(px(last), px(now)) };
+            o.drag = Some((orbit, now, pivot));
         }
         if response.drag_stopped() {
             o.drag = None;
@@ -382,7 +435,8 @@ impl BimApp {
             .map(|id| (*id, rgb(canvas_pal().accent)))
             .chain(hovered.filter(|id| !selection.contains(id)).map(|id| (id, rgb(canvas_pal().hover))))
             .collect();
-        let dark = crate::style::canvas_dark();
+        // The ground, which a canvas colour of the user's changes without making the drawing dark or light.
+        let dark = color(render::PAPER);
         if !matches!(&o.shown, Some((m, c, t, k, g, b)) if Arc::ptr_eq(m, &model) && *c == cam && *t == tints && *k == dark && *g == mesh.is_some() && *b == reboxed)
         {
             // The card's picture, if it makes one; the processor's if not, and if the card fails it for good.
@@ -478,18 +532,53 @@ impl BimApp {
         if let Some(b) = reboxed.or(boxed) {
             crate::section_box::draw(&p, &cam, b, modify, o.boxing.map(|(k, _)| k), screen);
         }
+        // The Wall tool and a component take their points on the face under the cursor (`workplane`), a wall chain under way
+        // on the plane its first point found; the point is shown as a plan shows a snap, and the wall from the chain's last.
+        let drawing = matches!(self.tool, Tool::Wall(_) | Tool::Component | Tool::Fixture(_));
+        let held = o.plane.filter(|_| matches!(&self.tool, Tool::Wall(chain) if !chain.is_empty()));
+        let aimed = |picker: &Option<Picker>, at: Pos2| {
+            let under = picker.as_ref().and_then(|k| k.surface(Some(scene), &cam, px(at)));
+            aim(&model, &cam, px(at), held, under)
+        };
+        if let Some((q, plane)) = hover.filter(|_| drawing && o.drag.is_none()).and_then(|at| aimed(&o.picker, at))
+            && let at = screen(q)
+            && at.is_finite()
+        {
+            let from = match &self.tool {
+                Tool::Wall(chain) => chain.last().map(|a| screen([a.0, a.1, plane.z])).filter(|a| a.is_finite()),
+                _ => None,
+            };
+            if let Some(from) = from {
+                p.line_segment([from, at], Stroke::new(1.0, pal().accent));
+            }
+            let diamond = [vec2(0.0, -6.0), vec2(6.0, 0.0), vec2(0.0, 6.0), vec2(-6.0, 0.0)].map(|d| at + d).to_vec();
+            p.add(egui::Shape::closed_line(diamond, Stroke::new(2.0, pal().accent)));
+            if let Some(e) = model.elements.get(plane.on) {
+                let (near, of) = (crate::lang::t(bimcraft_core::snap::Kind::Nearest.name()), crate::lang::category(e.category(), false));
+                let name = crate::lang::tf("{} of {} {}", &[near, &of, &plane.on.to_string()]);
+                crate::canvas::tag(&p, at + vec2(12.0, 14.0), egui::Align2::LEFT_TOP, name);
+            }
+        }
         // A click on a grip picks nothing behind it.
         let click = response.clicked().then(|| response.interact_pointer_pos()).flatten().or(self.canvas.quick_press());
         let click = click.filter(|at| !boxed.is_some_and(|b| modify && crate::section_box::grip_at(b, *at, screen).is_some()));
         let clicked = click.map(|at| pick(&o.picker, at).map(|h| h.id));
         // The face of what's clicked, as paint names the faces of an element.
         let face = click.and_then(|at| pick(&o.picker, at).map(|h| h.face).filter(|f| !f.is_empty()));
+        let target = click.filter(|_| drawing).and_then(|at| aimed(&o.picker, at));
         match clicked {
             Some(found) if modify => self.pick_up(found.into_iter().collect(), click_modifiers(ui)),
             Some(Some(id)) if demolish => self.demolish(id),
             Some(Some(id)) if paint || unpaint => self.paint_face(id, face, unpaint),
             // Nothing under the cursor: nothing to take down, or to paint.
             Some(None) if demolish || paint || unpaint => {}
+            Some(_) if drawing => match target {
+                Some((q, plane)) => self.draw3d(q, plane),
+                None => {
+                    let why = crate::lang::t("in the 3D view this tool draws on a level face: the top of a floor, a flat roof or a level");
+                    self.status = Status { text: why.into(), error: true };
+                }
+            },
             Some(_) => {
                 self.status =
                     Status { text: crate::lang::t("this tool works in plan views: open one from the Project Browser").into(), error: true }

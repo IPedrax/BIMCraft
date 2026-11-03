@@ -81,6 +81,27 @@ fn what_the_card_cant_draw_is_drawn_on_the_processor_and_the_page_says_why() {
 }
 
 #[test]
+fn the_card_keeps_the_3d_view_when_graphic_display_options_change_it() {
+    let Some(gpu) = headless() else {
+        eprintln!("no graphics adapter here: the card's 3D view is not driven");
+        return;
+    };
+    let mut h = app(BOX);
+    h.state_mut().card = Card::with(gpu);
+    press(&mut h, "Default 3D View");
+    shortcut(&mut h, "GD");
+    pick(&mut h, Role::CheckBox, "Show Edges");
+    pick(&mut h, Role::CheckBox, "Show Ambient Shadows");
+    press(&mut h, "OK");
+    let d = h.state().session.model.default_3d().and_then(|v| match h.state().session.model.elements.get(v) {
+        Some(Element::View3D(v)) => Some(v.display),
+        _ => None,
+    });
+    assert_eq!(d.map(|d| (d.edges, d.ambient_shadows)), Some((false, true)));
+    assert!(h.state().orbit.on_card, "the card draws them: {:?}", h.state().card.note);
+}
+
+#[test]
 fn what_the_view_sees_through_is_drawn_on_the_card_and_picked_through_its_mesh() {
     let Some(gpu) = headless() else {
         eprintln!("no graphics adapter here: the card's 3D view is not driven");
