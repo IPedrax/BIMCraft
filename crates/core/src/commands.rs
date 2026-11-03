@@ -1519,6 +1519,24 @@ pub static ALL: &[Command] = &[
         hydrant_size,
     ),
     other(
+        "load_points",
+        "Residential Load Points",
+        "{rooms?: [{name, area, perimeter, kind?: bath|kitchen|service|dry|veranda|other, points?}], alternative?} the lighting and the \
+         general-use outlets (TUG) of a dwelling's rooms as NBR 5410:2004 item 9.5.2 asks. The rooms are `rooms` (`area` in m², \
+         `perimeter` in millimetres, `points` the outlets the room has, the least it needs when absent) or, without it, the rooms of the \
+         model, measured inside the walls' finish. A room's kind is known by its name (Portuguese or English: banheiro, cozinha, copa, \
+         área de serviço, lavanderia, sala, dormitório, varanda…) unless `kind` gives it; a name that says none is `other`. Lighting: 1 \
+         ceiling point of 100 VA up to 6 m² and 60 VA more for each whole 4 m² above. Outlets: a bathroom 1; kitchen, pantry, service \
+         area, laundry one for each 3.5 m of perimeter; room, bedroom one for each 5 m; veranda 1; the others 1 up to 6 m² and one \
+         for each 5 m above. Power: in a bathroom, kitchen, pantry, service area or laundry 600 VA for each of the first 3 points and \
+         100 VA for the others; elsewhere 100 VA a point; on the points a room has. Where those rooms have more than 6 points \
+         together `alternative: true` takes 600 VA for the first 2 of each (`alternative_possible` says when). A kitchen or pantry \
+         also needs 2 outlets over the sink's counter (`counter_outlets`). Not applied: the exceptions to the lighting point and to \
+         a veranda's outlet, the placement of the outlets and the TUE (`not_covered`). It has no shortcut: Revit has no tool for it. \
+         It changes nothing",
+        load_points,
+    ),
+    other(
         "water_size",
         "Size Cold Water Pipes",
         "{fixtures?: {wc, lav, sink, shower, laundry: count}, flow?, method?: weights|sum, dn?, length?, fittings?: {elbow90, elbow45, \
@@ -4015,6 +4033,100 @@ fn vent_size(_: &mut Session, p: &Value) -> R {
         out.insert("trap_to_vent_mm".into(), json!(mm));
     }
     Ok(Value::Object(out))
+}
+
+fn load_points(s: &mut Session, p: &Value) -> R {
+    use crate::loads::{self, KINDS, Kind};
+    let c = "load_points";
+    if !p.is_object() {
+        return Err(bad(c, "params must be an object"));
+    }
+    only(c, p, &["rooms", "alternative"])?;
+    let alternative = flag(c, p, "alternative")?;
+    let round = |x: f64| (x * 100.0).round() / 100.0 + 0.0;
+    // (name, kind, area m2, perimeter m, points, kind given)
+    let mut input: Vec<(String, Kind, f64, f64, Option<u32>, bool)> = Vec::new();
+    let mut skipped = Vec::new();
+    match p.get("rooms").filter(|v| !absent(Some(v))) {
+        None => {
+            let m = &s.model;
+            for (id, e) in m.elements.iter() {
+                let Element::Room(r) = e else { continue };
+                match m.room_region_at(r, RoomArea::Finish) {
+                    Some(g) => input.push((r.name.clone(), loads::kind_of(&r.name), g.area() / 1.0e6, g.perimeter() / 1000.0, None, false)),
+                    None => skipped.push(json!({"id": id, "name": r.name, "why": "not enclosed by walls"})),
+                }
+            }
+        }
+        Some(Value::Array(a)) if a.len() <= 5000 => {
+            for (i, r) in a.iter().enumerate() {
+                let at = |e: String| format!("rooms[{i}]: {e}");
+                let o = r.as_object().ok_or_else(|| bad(c, format!("rooms[{i}] must be an object")))?;
+                if let Some(k) = o.keys().find(|k| !["name", "area", "perimeter", "kind", "points"].contains(&k.as_str())) {
+                    return Err(bad(c, format!("rooms[{i}]: unknown parameter `{k}`")));
+                }
+                let name = string(c, r, "name").map_err(at)?.unwrap_or_default();
+                if name.chars().count() > MAX_TEXT {
+                    return Err(bad(c, format!("rooms[{i}]: `name` is longer than {MAX_TEXT} characters")));
+                }
+                let area = within(c, r, "area", f64::NAN, 0.0, 1.0e6).map_err(at)?;
+                let perimeter = within(c, r, "perimeter", f64::NAN, 0.0, MAX_COORD).map_err(at)?;
+                if area.is_nan() || perimeter.is_nan() {
+                    return Err(bad(c, format!("rooms[{i}]: `area` (m²) and `perimeter` (mm) are required")));
+                }
+                let given = choice(c, r, "kind", KINDS, "").map_err(at)?;
+                let points = match r.get("points") {
+                    v if absent(v) => None,
+                    Some(v) => Some(
+                        v.as_u64()
+                            .filter(|n| *n <= 1000)
+                            .ok_or_else(|| bad(c, format!("rooms[{i}]: `points` must be a whole number from 0 to 1000, got {v}")))?
+                            as u32,
+                    ),
+                    None => None,
+                };
+                let kind = Kind::parse(given).unwrap_or_else(|| loads::kind_of(&name));
+                input.push((name, kind, area, perimeter / 1000.0, points, !given.is_empty()));
+            }
+        }
+        Some(v) => return Err(bad(c, format!("`rooms` must be a list of at most 5000 rooms, got {v}"))),
+    }
+    let rooms: Vec<loads::Room> =
+        input.iter().map(|r| loads::Room { name: &r.0, kind: r.1, area: r.2, perimeter: r.3, provided: r.4 }).collect();
+    let t = loads::total(&rooms, alternative);
+    let mut list = Vec::new();
+    for (r, sh) in input.iter().zip(&t.rooms) {
+        let mut o = Map::new();
+        o.insert("name".into(), json!(r.0));
+        o.insert("kind".into(), json!(r.1.key()));
+        o.insert("area_m2".into(), json!(round(r.2)));
+        o.insert("perimeter_m".into(), json!(round(r.3)));
+        o.insert("lighting_points".into(), json!(1));
+        o.insert("lighting_va".into(), json!(sh.lighting_va));
+        o.insert("tug_minimum".into(), json!(sh.minimum));
+        o.insert("tug_points".into(), json!(sh.points));
+        o.insert("tug_va".into(), json!(sh.tug_va));
+        if sh.counter_outlets > 0 {
+            o.insert("counter_outlets".into(), json!(sh.counter_outlets));
+        }
+        o.insert("ok".into(), json!(sh.points >= sh.minimum));
+        if r.1 == Kind::Other && !r.5 {
+            o.insert("note".into(), json!("the name says no kind of room: treated as `other`; give `kind`"));
+        }
+        list.push(Value::Object(o));
+    }
+    Ok(json!({
+        "rooms": list,
+        "skipped": skipped,
+        "lighting_va": t.lighting_va,
+        "tug_va": t.tug_va,
+        "total_va": t.lighting_va + t.tug_va,
+        "wet_points": t.wet_points,
+        "alternative_possible": t.alternative_possible,
+        "alternative_applied": t.alternative_applied,
+        "ok": t.rooms.iter().all(|sh| sh.points >= sh.minimum),
+        "not_covered": "the exceptions to the lighting point and to a veranda's outlet, the placement of the outlets (near the lavatory, over a counter, up to 0.80 m outside the door of a room of 2.25 m² or less) and the TUE",
+    }))
 }
 
 fn hydrant_size(_: &mut Session, p: &Value) -> R {
