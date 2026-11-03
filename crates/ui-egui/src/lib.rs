@@ -44,6 +44,7 @@ mod orbit;
 mod paper;
 mod phasing;
 mod popup;
+mod presets;
 mod properties;
 mod purge;
 pub mod recent;
@@ -473,6 +474,14 @@ pub struct BimApp {
     settings_page: Option<settings::Page>,
     /// Find (Ctrl+K), while it's open: what is typed in it.
     find: Option<String>,
+    /// The project's scale, the tools the user took out, whether Edit Tools is on, and the kept presets (`presets.rs`); with what
+    /// Settings' preset name field holds and why the last save was refused.
+    scale: presets::Scale,
+    tools_hidden: BTreeSet<String>,
+    editing_tools: bool,
+    presets: Vec<presets::Preset>,
+    preset_name: String,
+    preset_note: Option<String>,
     settings_path: Option<PathBuf>,
     settings_kept: Option<settings::Settings>,
     /// The window's size, kept and brought within its screen (`window.rs`).
@@ -765,6 +774,10 @@ fn top_params(m: &Model, level: Id, top: Option<Option<Id>>, height: &str) -> Re
 /// when one would make it wider than `WIDE`.
 fn big_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
     const WIDE: f32 = 78.0;
+    if ribbon::left_out(label) {
+        return ui.allocate_response(egui::Vec2::ZERO, Sense::hover());
+    }
+    let name = label;
     if ribbon::listing() {
         return list_row(ui, icon, label, active, tip);
     }
@@ -802,11 +815,18 @@ fn big_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> 
     for (i, line) in lines.iter().enumerate() {
         p.text(rect.center_top() + vec2(0.0, 40.0 + 13.0 * i as f32), Align2::CENTER_CENTER, line, font.clone(), text);
     }
+    if ribbon::editing_tools() {
+        return edit_tool(ui, r, rect, name);
+    }
     r.on_hover_text(tip)
 }
 
 /// A small ribbon button: an icon alone, as in Revit's Modify panel; its name in its tooltip.
 fn small_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
+    if ribbon::left_out(label) {
+        return ui.allocate_response(egui::Vec2::ZERO, Sense::hover());
+    }
+    let name = label;
     if ribbon::listing() {
         return list_row(ui, icon, label, active, tip);
     }
@@ -825,11 +845,18 @@ fn small_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -
     let stroke = if r.has_focus() { style::focus_ring() } else { stroke };
     ui.painter().rect(rect, style::corner(6.0), fill, stroke, StrokeKind::Inside);
     icons::paint(ui.painter(), icon, Rect::from_center_size(rect.center(), vec2(19.0, 19.0)), ink);
+    if ribbon::editing_tools() {
+        return edit_tool(ui, r, rect, name);
+    }
     r.on_hover_text(tip)
 }
 
 /// A ribbon button in its panel's list: a row of its icon and its name.
 fn list_row(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
+    if ribbon::left_out(label) {
+        return ui.allocate_response(egui::Vec2::ZERO, Sense::hover());
+    }
+    let name = label;
     let (label, tip) = (t(label), t(tip));
     // A panel's list is at least a menu wide; the Tools palette's rows are as wide as its column.
     let width = if ribbon::in_palette() { ui.available_width() } else { ui.available_width().max(200.0) };
@@ -851,7 +878,32 @@ fn list_row(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Re
     icons::paint(p, icon, Rect::from_center_size(rect.left_center() + vec2(18.0, 0.0), vec2(20.0, 20.0)), dim(ink));
     let text = if active { pal().accent_ink } else { pal().text };
     p.text(rect.left_center() + vec2(38.0, 0.0), Align2::LEFT_CENTER, label, FontId::proportional(13.0), dim(text));
+    if ribbon::editing_tools() {
+        return edit_tool(ui, r, rect, name);
+    }
     r.on_hover_text(tip)
+}
+
+/// In Edit Tools a tool's button or row is a box to tick, what the ribbon or the Tools palette shows: a click ticks or clears it and
+/// takes no tool. `name` is its English name, which the settings file keeps.
+fn edit_tool(ui: &Ui, r: Response, rect: Rect, name: &str) -> Response {
+    let shown = !ribbon::tool_hidden(name);
+    let label = t(name);
+    r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, shown, label));
+    let p = ui.painter();
+    if !shown {
+        p.rect_filled(rect, style::corner(6.0), pal().panel.gamma_multiply(0.7));
+    }
+    let tick = Rect::from_min_size(pos2(rect.right() - 15.0, rect.top() + 3.0), vec2(12.0, 12.0));
+    p.rect(tick, 2.0, if shown { pal().accent } else { pal().surface }, Stroke::new(1.0, pal().accent_ink), StrokeKind::Inside);
+    if shown {
+        let ends = vec![tick.left_center() + vec2(2.5, 0.0), tick.center_bottom() - vec2(1.0, 3.0), tick.right_top() + vec2(-2.5, 3.0)];
+        p.line(ends, Stroke::new(1.5, Color32::WHITE));
+    }
+    if r.clicked() {
+        ribbon::toggle(name);
+    }
+    ui.interact(rect, r.id.with("edit-tool"), Sense::hover()).on_hover_text(label)
 }
 
 /// Buttons stacked three high in a panel, as Revit's Settings panel stacks them; in the panel's list they are rows like any other.
@@ -866,6 +918,10 @@ pub(crate) fn stacked(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
 
 /// A button stacked three high in a panel (see [`stacked`]): its icon and its name in a row.
 pub(crate) fn stacked_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
+    if ribbon::left_out(label) {
+        return ui.allocate_response(egui::Vec2::ZERO, Sense::hover());
+    }
+    let name = label;
     if ribbon::listing() {
         return list_row(ui, icon, label, active, tip);
     }
@@ -891,6 +947,9 @@ pub(crate) fn stacked_button(ui: &mut Ui, icon: Icon, label: &str, active: bool,
     }
     icons::paint(ui.painter(), icon, Rect::from_center_size(rect.left_center() + vec2(10.0, 0.0), vec2(14.0, 14.0)), dim(ink));
     ui.painter().text(rect.left_center() + vec2(22.0, 0.0), Align2::LEFT_CENTER, label, font, dim(text));
+    if ribbon::editing_tools() {
+        return edit_tool(ui, r, rect, name);
+    }
     r.on_hover_text(tip)
 }
 
@@ -1053,6 +1112,12 @@ impl BimApp {
             ribbon_bottom: Pos2::ZERO,
             settings_page: None,
             find: None,
+            scale: presets::Scale::default(),
+            tools_hidden: BTreeSet::new(),
+            editing_tools: false,
+            presets: Vec::new(),
+            preset_name: String::new(),
+            preset_note: None,
             settings_path: None,
             settings_kept: None,
             window: window::Tracker::default(),
@@ -1366,6 +1431,7 @@ impl BimApp {
             ctx.set_theme(theme);
         }
         style::follow(&ctx, style::Look { light_canvas: self.light_canvas, compact: self.compact, profile: self.profile });
+        ribbon::tool_rules(self.tools_hidden.clone(), self.scale, self.editing_tools);
         // The fonts with the hanzi and the Hangul go behind the window's own whatever language it speaks: content — a floor's
         // name from a Korean file — is not the interface's. Chinese needs its glyphs, which the system may not have: then the
         // window stays in English and says why.
@@ -1491,6 +1557,12 @@ impl BimApp {
         self.warning(&ctx);
         self.dialogs(&ctx);
         self.find_window(&ctx);
+        // What Edit Tools ticked or cleared, on the ribbon or in the Tools palette.
+        for name in ribbon::take_toggled() {
+            if !self.tools_hidden.remove(&name) {
+                self.tools_hidden.insert(name);
+            }
+        }
         self.keep_settings(&ctx);
         self.track_sketch();
         if self.own_bar() {
@@ -2696,7 +2768,8 @@ impl BimApp {
         fresh.os_events = self.os_events.take();
         (fresh.own_title_bar, fresh.system_title_bar) = (self.own_title_bar, self.system_title_bar);
         (fresh.thin, fresh.lang, fresh.snaps, fresh.ribbon_min) = (self.thin, self.lang, self.snaps, self.ribbon_min);
-        (fresh.compact, fresh.profile) = (self.compact, self.profile);
+        (fresh.compact, fresh.profile, fresh.scale) = (self.compact, self.profile, self.scale);
+        (fresh.tools_hidden, fresh.presets) = (std::mem::take(&mut self.tools_hidden), std::mem::take(&mut self.presets));
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
         fresh.grid_snapping = self.grid_snapping;
@@ -2823,13 +2896,13 @@ impl BimApp {
                 if icon_button(ui, Icon::Settings, "Settings").clicked() {
                     self.settings_page = Some(settings::Page::Interface);
                 }
-                // BIMCraft's way to every tool and view (Ctrl+K opens it in both profiles).
-                if !style::rev() {
-                    ui.separator();
-                    if find::button(ui).clicked() {
-                        self.find = Some(String::new());
-                    }
+                // Find and the project's scale, in both profiles: BIMCraft's Find a field's width, Rev's an icon among the others.
+                ui.separator();
+                let find = if style::rev() { icon_button(ui, Icon::Search, "Find") } else { find::button(ui) };
+                if find.clicked() {
+                    self.find = Some(String::new());
                 }
+                self.scale_chip(ui);
             })
             .response
             .rect;
@@ -2982,6 +3055,10 @@ impl BimApp {
                     if icon_button(ui, icon, label).clicked() {
                         self.fold_ribbon(!self.ribbon_min);
                     }
+                    // Edit Tools on: the ribbon's buttons are boxes to tick until this.
+                    if self.editing_tools && ui.button(t("Done")).clicked() {
+                        self.editing_tools = false;
+                    }
                 });
             });
         });
@@ -3070,6 +3147,11 @@ impl BimApp {
         ui.scope_builder(UiBuilder::new().max_rect(rows), |ui| {
             ScrollArea::both().id_salt("tool-column").auto_shrink([false, false]).show(ui, |ui| {
                 ui.set_max_width(rows.width() - 12.0);
+                let edit = if self.editing_tools { msg!("Done") } else { msg!("Edit Tools") };
+                let tip = msg!("Tick the tools this palette shows; Find still has the others");
+                if ui.button(t(edit)).on_hover_text(t(tip)).clicked() {
+                    self.editing_tools = !self.editing_tools;
+                }
                 ribbon::rows(ui, |ui| self.select_panel(ui));
                 ribbon::skip_select(true);
                 let context = self.context();

@@ -246,9 +246,10 @@ fn settings_open_from_the_file_menu_and_set_the_theme_the_ribbon_and_the_palette
     assert!(h.query_by_label("User Interface").is_some() && h.query_by_label("Performance").is_some());
     pick(&mut h, Role::RadioButton, "Dark");
     assert!(crate::style::dark());
-    pick(&mut h, Role::CheckBox, "Minimize the ribbon to its tabs");
-    assert!(h.state().ribbon_min);
     // The page runs below the fold now, so these are pressed as a screen reader does.
+    h.get_by_role_and_label(Role::CheckBox, "Minimize the ribbon to its tabs").click_accesskit();
+    h.run();
+    assert!(h.state().ribbon_min);
     h.get_by_role_and_label(Role::CheckBox, "Project Browser").click_accesskit();
     h.run();
     assert!(!docking(&h).shown(Palette::Browser));

@@ -17,8 +17,10 @@ use serde_json::{Value, json};
 use crate::BimApp;
 use crate::dock::{Docking, Palette};
 use crate::lang::{Lang, t};
+use crate::presets::{Preset, Scale, hidden_from_json, presets_from_json};
 use crate::style::{Profile, pal};
 use crate::updates::failed;
+use std::collections::BTreeSet;
 
 /// The settings file's name, in the folder of the favorites.
 pub const FILE: &str = "settings.json";
@@ -84,6 +86,10 @@ pub struct Settings {
     /// The Compact layout: the bars and palettes flush to the window's edges, not floating cards.
     pub compact: bool,
     pub profile: Profile,
+    /// The project's scale, the tools taken out of the ribbon and the Tools palette, and the presets (`presets.rs`).
+    pub scale: Scale,
+    pub tools_hidden: BTreeSet<String>,
+    pub presets: Vec<Preset>,
     pub language: Lang,
     pub ribbon_minimized: bool,
     pub docking: Docking,
@@ -111,6 +117,9 @@ impl Settings {
             "light_canvas": self.light_canvas,
             "layout": if self.compact { "compact" } else { "floating" },
             "profile": self.profile.code(),
+            "scale": self.scale.code(),
+            "tools_hidden": self.tools_hidden,
+            "presets": self.presets.iter().map(Preset::to_json).collect::<Vec<_>>(),
             "language": self.language.code(),
             "ribbon_minimized": self.ribbon_minimized,
             "palettes": self.docking.to_json(),
@@ -141,6 +150,9 @@ impl Settings {
                 _ => base.compact,
             },
             profile: v["profile"].as_str().and_then(Profile::from_code).unwrap_or(base.profile),
+            scale: v["scale"].as_str().and_then(Scale::from_code).unwrap_or(base.scale),
+            tools_hidden: if v["tools_hidden"].is_array() { hidden_from_json(&v["tools_hidden"]) } else { base.tools_hidden },
+            presets: if v["presets"].is_array() { presets_from_json(&v["presets"]) } else { base.presets },
             language: v["language"].as_str().and_then(Lang::from_code).unwrap_or(base.language),
             ribbon_minimized: v["ribbon_minimized"].as_bool().unwrap_or(base.ribbon_minimized),
             docking: if v["palettes"].is_object() { Docking::from_json(&v["palettes"]) } else { base.docking },
@@ -224,7 +236,8 @@ impl BimApp {
         let now = self.settings_now(ThemePreference::System);
         let kept = read(&path).map_or(now.clone(), |v| Settings::from_json(&v, now));
         (self.lang, self.ribbon_min, self.docking) = (kept.language, kept.ribbon_minimized, kept.docking.clone());
-        (self.compact, self.profile) = (kept.compact, kept.profile);
+        (self.compact, self.profile, self.scale) = (kept.compact, kept.profile, kept.scale);
+        (self.tools_hidden, self.presets) = (kept.tools_hidden.clone(), kept.presets.clone());
         // BIMCraft has no ribbon: it starts with its tools out, whatever a session in Rev left.
         if self.profile == Profile::BimCraft {
             self.docking.show(Palette::Tools, true);
@@ -252,6 +265,9 @@ impl BimApp {
             light_canvas: self.light_canvas,
             compact: self.compact,
             profile: self.profile,
+            scale: self.scale,
+            tools_hidden: self.tools_hidden.clone(),
+            presets: self.presets.clone(),
             language: self.lang,
             ribbon_minimized: self.ribbon_min,
             docking: self.docking.clone(),
@@ -354,6 +370,8 @@ impl BimApp {
         if before != self.profile && self.profile == Profile::BimCraft {
             self.docking.show(Palette::Tools, true);
         }
+        heading(ui, msg!("Presets"));
+        self.presets_section(ui);
         heading(ui, msg!("Theme"));
         self.theme_choices(ui, false);
         heading(ui, msg!("Layout"));

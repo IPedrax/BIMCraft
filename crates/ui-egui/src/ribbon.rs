@@ -6,6 +6,7 @@ use std::cell::{Cell, RefCell};
 use egui::{Align2, FontId, Id, Popup, Rect, Response, Sense, Shape, Stroke, StrokeKind, Ui, Vec2, WidgetInfo, WidgetType, pos2, vec2};
 
 use crate::lang::t;
+use crate::presets::Scale;
 use crate::style::pal;
 
 /// How wide a folded panel is.
@@ -41,6 +42,13 @@ thread_local! {
     static IN_PALETTE: Cell<bool> = const { Cell::new(false) };
     /// Whether the tabs' Select panel is left out: the Tools palette draws it once, over the tabs it shows.
     static SKIP_SELECT: Cell<bool> = const { Cell::new(false) };
+    /// What the ribbon and the Tools palette leave out this frame, and whether Edit Tools is on (`presets.rs`).
+    static TOOL_RULES: RefCell<(std::collections::BTreeSet<String>, Scale, bool)> = RefCell::new(Default::default());
+    /// Whether a tab's tools are being drawn, on the ribbon or in the Tools palette: the rules apply there alone, not to the view
+    /// control bar's buttons, which are drawn the same way.
+    static IN_TOOLS: Cell<bool> = const { Cell::new(false) };
+    /// The tools whose box was ticked or cleared in Edit Tools this frame, by name.
+    static TOGGLED: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     /// How the panels of the tab being drawn fit, by name; one not named shows all its tools.
     static FITS: RefCell<Vec<(String, Fit)>> = const { RefCell::new(Vec::new()) };
     /// The panels of the tab being drawn, as they're drawn.
@@ -73,12 +81,49 @@ pub(crate) fn in_palette() -> bool {
 pub(crate) fn rows(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
     LISTING.with(|l| l.set(true));
     IN_PALETTE.with(|p| p.set(true));
+    IN_TOOLS.with(|i| i.set(true));
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
         add(ui);
     });
+    IN_TOOLS.with(|i| i.set(false));
     IN_PALETTE.with(|p| p.set(false));
     LISTING.with(|l| l.set(false));
+}
+
+/// What the tools drawn this frame leave out (the user's hidden tools, the project's scale), and whether Edit Tools is on.
+pub(crate) fn tool_rules(hidden: std::collections::BTreeSet<String>, scale: Scale, editing: bool) {
+    TOOL_RULES.with(|r| *r.borrow_mut() = (hidden, scale, editing));
+}
+
+/// Whether Edit Tools is on, for a tool of a tab being drawn: every one is a box to tick, what it shows.
+pub(crate) fn editing_tools() -> bool {
+    IN_TOOLS.with(Cell::get) && TOOL_RULES.with(|r| r.borrow().2)
+}
+
+/// Whether the user took the tool named `name` (its English name) out.
+pub(crate) fn tool_hidden(name: &str) -> bool {
+    TOOL_RULES.with(|r| r.borrow().0.contains(name))
+}
+
+/// Whether the project's scale leaves out the panel or the tool named `name`.
+pub(crate) fn scale_hides(name: &str) -> bool {
+    TOOL_RULES.with(|r| r.borrow().1.hides(name))
+}
+
+/// Whether the tool named `name` is left out of what is drawn: the scale's, or the user's but in Edit Tools, where it shows unticked.
+pub(crate) fn left_out(name: &str) -> bool {
+    IN_TOOLS.with(Cell::get) && (scale_hides(name) || (tool_hidden(name) && !editing_tools()))
+}
+
+/// Ticks or clears the tool named `name` in Edit Tools.
+pub(crate) fn toggle(name: &str) {
+    TOGGLED.with(|t| t.borrow_mut().push(name.to_string()));
+}
+
+/// The tools ticked or cleared since the last call.
+pub(crate) fn take_toggled() -> Vec<String> {
+    TOGGLED.with(|t| std::mem::take(&mut *t.borrow_mut()))
 }
 
 /// Leaves the tabs' Select panel out of what is drawn next, or puts it back.
@@ -116,7 +161,9 @@ pub(crate) fn tab(ui: &mut Ui, key: Id, room: f32, add: impl FnOnce(&mut Ui)) {
     let left = ui.cursor().left();
     END.with(|e| e.set(left));
     LAID.with(|l| l.set((room - SLACK, left, 0.0)));
+    IN_TOOLS.with(|i| i.set(true));
     add(ui);
+    IN_TOOLS.with(|i| i.set(false));
     let drawn = END.with(Cell::get) - left - LAID.with(Cell::get).2;
     let seen = SEEN.with(|s| std::mem::take(&mut *s.borrow_mut()));
     let whole = drawn + seen.iter().map(|p| (p.natural - p.drawn).max(0.0)).sum::<f32>();
@@ -165,6 +212,10 @@ pub(crate) fn fits(seen: &[Seen], whole: f32, room: f32) -> Vec<(String, Fit)> {
 
 /// A ribbon panel: its tools over its name, which lists them; or, folded, one button that does.
 pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
+    // A panel the project's scale leaves out: not drawn, on the ribbon or in the Tools palette.
+    if scale_hides(title) {
+        return;
+    }
     if listing() {
         // Inside another panel's list (a folded panel's): the tools as rows; in the Tools palette, under the panel's name.
         if in_palette() {

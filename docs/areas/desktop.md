@@ -176,6 +176,19 @@ opens (`BimApp::openable`), by every word typed (`find::matches`); Enter takes t
 closes it. Keyboard shortcuts are the same in both profiles. The tests of what the tools do drive Rev's ribbon (`app` is Rev's, with Revit's
 layout); BIMCraft's own chrome is tested through `bimcraft` (`tests/profile.rs`, `tests/look.rs`, `tests/smallest.rs`).
 
+The profiles differ in looks only: every feature one has, the other has too, the way its look shows it (Find is a wide button on
+BIMCraft's title bar and an icon among Rev's; the tools are the Tools palette or the ribbon). Scale, Edit Tools and presets (`presets.rs`)
+are window settings in `settings.json`, never in a project, and work the same on both. The project's scale (`presets::Scale`: Sketch,
+Studio, Team, Team the default so nobody loses a tool) leaves out panels and tools a project doesn't need yet (`Scale::hides`, by English
+name: below Team design options, links and inquiry, in Sketch also sheets, phasing and view templates); a chip on the title bar of both
+profiles switches it at any time and lists the presets, Edit Tools and Manage Presets. Edit Tools turns every tool, a ribbon button or a
+palette row, into a box to tick (`edit_tool`): a click ticks or clears it and takes no tool, and what is cleared is `tools_hidden`, left
+out of the ribbon and the palette (Find still lists it). The ribbon and the palette read both through `ribbon::tool_rules`, set each frame;
+`ribbon::panel` leaves out a panel the scale does, `big_button`, `small_button`, `stacked_button` and `list_row` a tool. A preset
+(`presets::Preset`) keeps, by name, where the palettes are, the tools shown, the scale and the layout; Settings > User Interface > Presets
+saves the layout now under a name, uses or deletes one, and shows every tool again. A settings file's presets are read as hostile: unnamed,
+over-long or repeated ones are left out, 32 at most.
+
 Properties' filter. With a selection of several categories, the line under the Type Selector is a drop-down of them, as Revit's is
 (`BimApp::selection_categories`): Multiple Categories first, then each category with its count. One picked is what the palette shows
 and edits, the selection staying as it is: `BimApp::palette_ids` is the selection narrowed to it, and the palette's subject, the Type

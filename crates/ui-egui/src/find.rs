@@ -32,7 +32,7 @@ pub(crate) fn matches(label: &str, query: &str) -> bool {
 
 /// The Find button on BIMCraft's title bar: a search icon, its name, and Ctrl K.
 pub(crate) fn button(ui: &mut egui::Ui) -> egui::Response {
-    let (rect, r) = ui.allocate_exact_size(vec2(132.0, 24.0), Sense::click());
+    let (rect, r) = ui.allocate_exact_size(vec2(116.0, 24.0), Sense::click());
     let name = t("Find");
     r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, name));
     let p = ui.painter();
