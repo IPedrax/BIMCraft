@@ -1940,6 +1940,44 @@ fn draw_plans(m: &Model) {
     }
 }
 
+#[test]
+fn a_materials_texture_can_be_a_picture_laid_over_the_ground() {
+    let mut s = Session::new();
+    let file = temp("planar.png");
+    let png = tiny_skia::Pixmap::from_vec(vec![255, 0, 0, 255, 0, 0, 255, 255], tiny_skia::IntSize::from_wh(2, 1).unwrap())
+        .unwrap()
+        .encode_png()
+        .unwrap();
+    std::fs::write(&file, png).unwrap();
+    let r = run(
+        &mut s,
+        "material",
+        json!({"name": "Ground", "texture": {"kind": "image", "path": file.to_string_lossy(), "size": [10000, 6000], "offset": [-500, 6000], "planar": true}}),
+    );
+    assert_eq!(r["material"]["texture"]["planar"], json!(true), "{r}");
+    assert_eq!(
+        (&r["material"]["texture"]["size"], &r["material"]["texture"]["offset"]),
+        (&json!([10000.0, 6000.0]), &json!([-500.0, 6000.0]))
+    );
+    // It is kept: a change of the size leaves it, and `false` takes it off, after which it is written no more.
+    let r = run(&mut s, "material", json!({"name": "Ground", "texture": {"size": [12000, 6000]}}));
+    assert_eq!(r["material"]["texture"]["planar"], json!(true));
+    let r = run(&mut s, "material", json!({"name": "Ground", "texture": {"planar": false}}));
+    assert!(r["material"]["texture"].get("planar").is_none(), "{r}");
+    run(&mut s, "material", json!({"name": "Ground", "texture": {"planar": true}}));
+    // A pattern drawn in code cannot be laid over the ground, and the flag is a flag.
+    for (texture, says) in [
+        (json!({"kind": "brick", "planar": true}), "picture"),
+        (json!({"planar": "yes"}), "planar"),
+        (json!({"planar": 1}), "planar"),
+        (json!({"planar": true, "size": [1e12, 1e12]}), "mm"),
+    ] {
+        let why = s.execute("material", &json!({"name": "Ground", "texture": texture})).unwrap_err();
+        assert!(why.contains(says), "{texture}: {why}");
+    }
+    std::fs::remove_file(file).unwrap();
+}
+
 fn temp(name: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("bimcraft-test-{}-{name}", std::process::id()))
 }

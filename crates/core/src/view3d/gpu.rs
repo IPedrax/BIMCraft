@@ -47,6 +47,8 @@ pub struct Skin {
     pub turn: [f32; 2],
     pub offset: [f32; 2],
     pub levels: Vec<(u32, u32, u32)>,
+    /// Laid over the ground by where it is, once, not across and up the plane of its face ([`texture::Texture::planar`]).
+    pub planar: bool,
     /// Millimetres a pixel of the finest level covers.
     texel: f64,
 }
@@ -227,6 +229,7 @@ impl Mesh {
                 turn: [f(plan.turn.0), f(plan.turn.1)],
                 offset: plan.offset.map(f),
                 levels,
+                planar: plan.planar,
                 texel: plan.texel,
             };
         }
@@ -234,7 +237,8 @@ impl Mesh {
     }
 
     /// Each skin as a card reads it for pictures of `cam`: its size, turn and offset, then (as words) where in
-    /// [`texels`](Self::texels) the level a pixel looks up in starts, its width and its height, and a spare.
+    /// [`texels`](Self::texels) the level a pixel looks up in starts, its width and its height, and a spare; the first of the two
+    /// words after the offset is 1 for a picture laid over the ground and 0 for a texture that repeats.
     pub fn lookups(&self, cam: &Camera) -> Vec<[u32; 12]> {
         let foot = 1.0 / cam.scale.max(1e-9);
         self.skins
@@ -243,7 +247,20 @@ impl Mesh {
                 let level = crate::texture::level_for(s.texel, foot, s.levels.len());
                 let (start, w, h) = s.levels.get(level).copied().unwrap_or_default();
                 let f = |v: f32| v.to_bits();
-                [f(s.size[0]), f(s.size[1]), f(s.turn[0]), f(s.turn[1]), f(s.offset[0]), f(s.offset[1]), 0, 0, start, w, h, 0]
+                [
+                    f(s.size[0]),
+                    f(s.size[1]),
+                    f(s.turn[0]),
+                    f(s.turn[1]),
+                    f(s.offset[0]),
+                    f(s.offset[1]),
+                    f(if s.planar { 1.0 } else { 0.0 }),
+                    0,
+                    start,
+                    w,
+                    h,
+                    0,
+                ]
             })
             .collect()
     }
@@ -446,6 +463,42 @@ mod tests {
             }
         }
         assert_eq!(agree, total, "only {agree} of {total} pixels pick what the picture shows");
+    }
+
+    #[test]
+    fn a_picture_laid_over_the_ground_tells_the_card_so_and_a_repeating_texture_does_not() {
+        let mut s = Session::new();
+        let file = std::env::temp_dir().join(format!("bimcraft-gpu-planar-{}.png", std::process::id()));
+        let png = tiny_skia::Pixmap::from_vec(vec![255, 0, 0, 255, 0, 0, 255, 255], tiny_skia::IntSize::from_wh(2, 1).unwrap())
+            .unwrap()
+            .encode_png()
+            .unwrap();
+        std::fs::write(&file, png).unwrap();
+        let material = |planar: bool| json!({"name": "Aerial", "color": "#808080", "texture": {"kind": "image", "path": file.to_string_lossy(), "size": [10000, 10000], "offset": [0, 10000], "planar": planar}});
+        s.execute("material", &material(true)).unwrap();
+        s.execute(
+            "toposurface",
+            &json!({"points": [[0, 0, 0], [10000, 0, 2000], [10000, 10000, 2000], [0, 10000, 0]], "material": "Aerial"}),
+        )
+        .unwrap();
+        // The words a card reads for the one skin the scene has: its size, then its offset, then the spare that says how it is laid.
+        let words = |s: &Session| {
+            let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+            let mesh = Mesh::new(&scene, &look).unwrap();
+            let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+            let skins: Vec<(Skin, [u32; 12])> =
+                mesh.skins.iter().cloned().zip(mesh.lookups(&cam)).filter(|(skin, _)| !skin.levels.is_empty()).collect();
+            assert_eq!(skins.len(), 1);
+            skins[0].clone()
+        };
+        let (skin, word) = words(&s);
+        assert!(skin.planar);
+        assert_eq!(word[6], 1.0f32.to_bits(), "the first spare word says it is laid over the ground");
+        assert_eq!((word[0], word[1], word[4], word[5]), (10000f32.to_bits(), 10000f32.to_bits(), 0f32.to_bits(), 10000f32.to_bits()));
+        s.execute("material", &material(false)).unwrap();
+        let (skin, word) = words(&s);
+        assert!(!skin.planar && word[6] == 0.0f32.to_bits(), "a texture that repeats leaves it clear");
+        std::fs::remove_file(file).unwrap();
     }
 
     #[test]

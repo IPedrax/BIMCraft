@@ -728,6 +728,17 @@ mod tests {
         s
     }
 
+    /// The shader parsed and validated as a card's driver would first do it: a mistake in it is found here, without a card, and not
+    /// by someone whose window then falls back to the processor.
+    #[test]
+    fn the_shader_is_valid_wgsl_without_a_card() {
+        let source = include_str!("gpu.wgsl");
+        let module = naga::front::wgsl::parse_str(source).unwrap_or_else(|e| panic!("{}", e.emit_to_string(source)));
+        naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::all())
+            .validate(&module)
+            .unwrap_or_else(|e| panic!("{}", e.emit_to_string(source)));
+    }
+
     #[test]
     fn the_card_draws_what_the_processor_does() {
         let Some(mut gpu) = headless() else {
@@ -738,6 +749,44 @@ mod tests {
         let level = s.model.levels().first().unwrap().0;
         let wall = s.model.elements.iter().find(|(_, e)| e.category() == "wall").unwrap().0;
         draws_as_the_processor(&mut gpu, &s, &[(level, Rgb(0, 120, 215)), (*wall, Rgb(255, 160, 0))]);
+    }
+
+    #[test]
+    fn the_card_lays_a_picture_over_sloping_ground_as_the_processor_does() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        // A tilted plane of terrain with a picture of four colours laid over it by where it is, a little of it hanging over the
+        // east side of the terrain's edge so that the picture's own edge is seen too.
+        let file = std::env::temp_dir().join(format!("bimcraft-card-planar-{}.png", std::process::id()));
+        let rgba = [[255, 0, 0, 255], [0, 0, 255, 255], [0, 255, 0, 255], [255, 255, 0, 255]].concat();
+        std::fs::write(&file, tiny_skia_png(&rgba, 2, 2)).unwrap();
+        let mut s = Session::new();
+        s.execute(
+            "material",
+            &serde_json::json!({"name": "Aerial", "color": "#808080", "texture": {"kind": "image", "path": file.to_string_lossy(), "size": [8000, 10000], "offset": [0, 10000], "planar": true}}),
+        )
+        .unwrap();
+        s.execute(
+            "toposurface",
+            &serde_json::json!({"points": [[0, 0, 0], [10000, 0, 2000], [10000, 10000, 2000], [0, 10000, 0]], "material": "Aerial"}),
+        )
+        .unwrap();
+        draws_as_the_processor(&mut gpu, &s, &[]);
+        std::fs::remove_file(file).unwrap();
+    }
+
+    /// The bytes of a PNG of `w` by `h` pixels of RGBA.
+    fn tiny_skia_png(rgba: &[u8], w: u32, h: u32) -> Vec<u8> {
+        let mut out = Vec::new();
+        let mut encoder = png::Encoder::new(&mut out, w, h);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().unwrap();
+        writer.write_image_data(rgba).unwrap();
+        writer.finish().unwrap();
+        out
     }
 
     fn inside(s: &Session, cam: Camera) -> Camera {

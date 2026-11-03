@@ -119,18 +119,31 @@ pub struct Texture {
     pub offset: [f64; 2],
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub image: String,
+    /// A picture laid over the ground by where it is, once: `size` is the ground it covers, `offset` its west and north corner, and a
+    /// point beyond it shows its edge. The terrain's aerial imagery is one. Not repeated, so not for a face that is not the ground.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub planar: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 impl Texture {
     /// A texture of `kind`, at its natural size.
     pub fn new(kind: Kind) -> Texture {
-        Texture { kind, size: kind.natural(), angle: 0.0, offset: [0.0; 2], image: String::new() }
+        Texture { kind, size: kind.natural(), angle: 0.0, offset: [0.0; 2], image: String::new(), planar: false }
     }
 
     /// Whether it's sound: a tile of a usable size, turned and moved by numbers, and of a picture `images` holds.
     pub fn check(&self, images: &BTreeMap<String, Picture>) -> Result<(), String> {
-        if !self.size.iter().all(|s| (SHORTEST..=LONGEST).contains(s)) {
-            return Err(format!("a tile of it is {} by {} mm; each side is {SHORTEST} to {LONGEST} mm", self.size[0], self.size[1]));
+        // A tile that repeats is a few metres at most; a picture laid over the ground is as big as the ground.
+        let longest = if self.planar { MAX_COORD } else { LONGEST };
+        if !self.size.iter().all(|s| (SHORTEST..=longest).contains(s)) {
+            return Err(format!("a tile of it is {} by {} mm; each side is {SHORTEST} to {longest} mm", self.size[0], self.size[1]));
+        }
+        if self.planar && self.kind != Kind::Image {
+            return Err("only a picture can be laid over the ground (planar): a pattern drawn in code repeats".into());
         }
         if !(self.angle.is_finite() && self.angle.abs() <= 1e6 && self.offset.iter().all(|x| x.is_finite() && x.abs() <= MAX_COORD)) {
             return Err("its angle and its offset need to be numbers".into());
@@ -541,6 +554,8 @@ pub struct Plan<'a> {
     pub offset: [f64; 2],
     /// Millimetres a pixel of the finest level covers.
     pub texel: f64,
+    /// Laid over the ground by where it is, by the ground's x and y, once ([`Texture::planar`]).
+    pub planar: bool,
     pub levels: Vec<(usize, usize, &'a [u8])>,
 }
 
@@ -558,6 +573,7 @@ pub struct Sampler {
     offset: [f64; 2],
     /// Millimetres a pixel of the finest level covers.
     texel: f64,
+    planar: bool,
 }
 
 impl Sampler {
@@ -570,7 +586,19 @@ impl Sampler {
         let base = levels.first()?;
         let texel = (texture.size[0] / base.w as f64).max(texture.size[1] / base.h as f64);
         let (s, c) = texture.angle.to_radians().sin_cos();
-        (texel.is_finite() && texel > 0.0).then_some(Sampler { levels, size: texture.size, turn: (s, c), offset: texture.offset, texel })
+        (texel.is_finite() && texel > 0.0).then_some(Sampler {
+            levels,
+            size: texture.size,
+            turn: (s, c),
+            offset: texture.offset,
+            texel,
+            planar: texture.planar,
+        })
+    }
+
+    /// Whether it is laid over the ground by where it is: a face is then looked up by its x and y, not across and up its own plane.
+    pub fn planar(&self) -> bool {
+        self.planar
     }
 
     /// The colour at `(u, v)` mm over its face, for a pixel that covers `foot` mm of it: the coarser level of the picture
@@ -579,8 +607,15 @@ impl Sampler {
         let (x, y) = (u - self.offset[0], v - self.offset[1]);
         let (x, y) = (x * self.turn.1 + y * self.turn.0, y * self.turn.1 - x * self.turn.0);
         let (fu, fv) = (x / self.size[0], -y / self.size[1]);
-        let (fu, fv) = (fu - fu.floor(), fv - fv.floor());
         let Some(l) = self.levels.get(self.level_for(foot)) else { return Rgb(128, 128, 128) };
+        let (fu, fv) = if self.planar {
+            // Beyond the picture its edge goes on: held half a pixel in, where the blend of the four pixels round a point has none
+            // from the far side.
+            let (half_u, half_v) = (0.5 / l.w as f64, 0.5 / l.h as f64);
+            (fu.clamp(half_u, 1.0 - half_u), fv.clamp(half_v, 1.0 - half_v))
+        } else {
+            (fu - fu.floor(), fv - fv.floor())
+        };
         let [r, g, b] = l.bilinear(fu, fv);
         Rgb(r.clamp(0.0, 255.0) as u8, g.clamp(0.0, 255.0) as u8, b.clamp(0.0, 255.0) as u8)
     }
@@ -597,6 +632,7 @@ impl Sampler {
             turn: self.turn,
             offset: self.offset,
             texel: self.texel,
+            planar: self.planar,
             levels: self.levels.iter().map(|l| (l.w, l.h, l.rgb.as_slice())).collect(),
         }
     }
@@ -643,6 +679,66 @@ mod tests {
         assert_eq!(Picture::import("spot", &pixmap(spot)).unwrap().flat(), None);
         let halves = pixmap((0..32 * 32).flat_map(|i| if i % 32 < 16 { [255, 0, 0, 255] } else { [0, 0, 255, 255] }).collect());
         assert_eq!(Picture::import("halves", &halves).unwrap().flat(), None);
+    }
+
+    /// A picture of 2 by 2 pixels: red and blue above, green and yellow under.
+    fn quarters() -> Picture {
+        let rgba: Vec<u8> = [[255, 0, 0, 255], [0, 0, 255, 255], [0, 255, 0, 255], [255, 255, 0, 255]].concat();
+        let png = tiny_skia::Pixmap::from_vec(rgba, tiny_skia::IntSize::from_wh(2, 2).unwrap()).unwrap().encode_png().unwrap();
+        Picture::import("quarters", &png).unwrap()
+    }
+
+    /// The picture as a texture over the 2 m square whose west and north corner is at x = 0, y = 2000.
+    fn over_the_ground(planar: bool) -> Sampler {
+        let picture = quarters();
+        let id = picture.id();
+        let images = BTreeMap::from([(id.clone(), picture)]);
+        let texture = Texture { kind: Kind::Image, size: [2000.0, 2000.0], angle: 0.0, offset: [0.0, 2000.0], image: id, planar };
+        Sampler::new(&texture, [128, 128, 128], &images).unwrap()
+    }
+
+    #[test]
+    fn a_planar_texture_lies_over_its_ground_once_and_its_edge_goes_on_beyond_it() {
+        let s = over_the_ground(true);
+        let (red, blue, green, yellow) = (Rgb(255, 0, 0), Rgb(0, 0, 255), Rgb(0, 255, 0), Rgb(255, 255, 0));
+        // North is up the picture and east across it.
+        assert_eq!([s.at(500.0, 1500.0, 1.0), s.at(1500.0, 1500.0, 1.0)], [red, blue], "the north half");
+        assert_eq!([s.at(500.0, 500.0, 1.0), s.at(1500.0, 500.0, 1.0)], [green, yellow], "the south half");
+        // Beyond it, its edge goes on: nothing is repeated, and the far side does not bleed in.
+        assert_eq!([s.at(-9000.0, 1500.0, 1.0), s.at(9000.0, 1500.0, 1.0)], [red, blue]);
+        assert_eq!([s.at(500.0, 9000.0, 1.0), s.at(500.0, -9000.0, 1.0)], [red, green]);
+        // And at its edge it is the picture's own colour, not a blend with the other side.
+        assert_eq!([s.at(0.0, 1500.0, 1.0), s.at(2000.0, 1500.0, 1.0)], [red, blue]);
+        assert_eq!([s.at(500.0, 2000.0, 1.0), s.at(500.0, 0.0, 1.0)], [red, green]);
+        // A texture that is not planar repeats, as it always did.
+        let wrapped = over_the_ground(false);
+        assert_eq!([wrapped.at(-500.0, 1500.0, 1.0), wrapped.at(2500.0, 1500.0, 1.0)], [blue, red]);
+        assert!(s.planar() && !wrapped.planar() && s.plan().planar && !wrapped.plan().planar);
+    }
+
+    #[test]
+    fn a_planar_texture_is_a_picture_over_any_ground_and_only_a_picture() {
+        let picture = quarters();
+        let id = picture.id();
+        let images = BTreeMap::from([(id.clone(), picture)]);
+        let image = |size: f64, planar: bool| Texture { size: [size, size], planar, image: id.clone(), ..Texture::new(Kind::Image) };
+        // Two kilometres across is the ground of a terrain; a tile that repeats is not so big.
+        assert_eq!(image(2_000_000.0, true).check(&images), Ok(()));
+        assert!(image(2_000_000.0, false).check(&images).is_err());
+        assert!(image(MAX_COORD * 2.0, true).check(&images).is_err() && image(0.5, true).check(&images).is_err());
+        // A pattern drawn in code has no ground to lie on.
+        let brick = Texture { planar: true, ..Texture::new(Kind::Brick) };
+        assert!(brick.check(&images).unwrap_err().contains("picture"));
+    }
+
+    #[test]
+    fn planar_is_written_only_when_it_is_true_and_older_files_have_none() {
+        assert!(!serde_json::to_string(&Texture::new(Kind::Brick)).unwrap().contains("planar"));
+        let laid = Texture { planar: true, ..Texture::new(Kind::Image) };
+        let text = serde_json::to_string(&laid).unwrap();
+        assert!(text.contains(r#""planar":true"#), "{text}");
+        assert_eq!(serde_json::from_str::<Texture>(&text).unwrap(), laid);
+        assert!(!serde_json::from_str::<Texture>(r#"{"kind":"brick","size":[900,600]}"#).unwrap().planar);
     }
 
     #[test]

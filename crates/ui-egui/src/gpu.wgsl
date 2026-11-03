@@ -93,18 +93,25 @@ fn texel(s: Skin, x: i32, y: i32) -> vec3<f32> {
 }
 
 // What `Sampler::at` gives: the texture laid over the face's plane at the point `world` (from the mesh's origin), across
-// the plane's level direction and up it, wrapping and blended between the four pixels round it.
+// the plane's level direction and up it (or by the ground's east and north, once, for a picture laid over the ground), wrapping and
+// blended between the four pixels round it.
 fn skin_color(id: u32, world: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
     let s = skins[id];
     if s.level.y == 0u || s.level.z == 0u {
         return vec3<f32>(128.0);
     }
-    let level = vec3<f32>(-n.y, n.x, 0.0);
+    // A picture laid over the ground (spare.x is 1) is looked up by the ground's east and north whatever the slope under it; any
+    // other across and up the plane of its face.
+    let planar = s.spare.x > 0.5;
     var across = vec3<f32>(1.0, 0.0, 0.0);
-    if dot(level, level) >= 0.0001 {
-        across = normalize(level);
+    var up = vec3<f32>(0.0, 1.0, 0.0);
+    if !planar {
+        let level = vec3<f32>(-n.y, n.x, 0.0);
+        if dot(level, level) >= 0.0001 {
+            across = normalize(level);
+        }
+        up = normalize(cross(n, across));
     }
-    let up = normalize(cross(n, across));
     let p = world + g.origin.xyz;
     let ox = dot(p, across) - s.offset.x;
     let oy = dot(p, up) - s.offset.y;
@@ -112,8 +119,18 @@ fn skin_color(id: u32, world: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
     let y = oy * s.turn.y - ox * s.turn.x;
     let fu = x / s.size.x;
     let fv = -y / s.size.y;
-    let px = (fu - floor(fu)) * f32(s.level.y) - 0.5;
-    let py = (fv - floor(fv)) * f32(s.level.z) - 0.5;
+    var px: f32;
+    var py: f32;
+    if planar {
+        // Beyond the picture its edge goes on: held half a pixel in, where the four pixels round a point have none from the far side.
+        let hu = 0.5 / f32(s.level.y);
+        let hv = 0.5 / f32(s.level.z);
+        px = clamp(fu, hu, 1.0 - hu) * f32(s.level.y) - 0.5;
+        py = clamp(fv, hv, 1.0 - hv) * f32(s.level.z) - 0.5;
+    } else {
+        px = (fu - floor(fu)) * f32(s.level.y) - 0.5;
+        py = (fv - floor(fv)) * f32(s.level.z) - 0.5;
+    }
     let x0 = floor(px);
     let y0 = floor(py);
     let tx = px - x0;

@@ -32,6 +32,8 @@ tiny-skia = { version = "0.11", default-features = false, features = ["std", "si
 flate2 = "1"
 # Reads the JPEGs a texture is made of; the PNGs come in through tiny-skia.
 zune-jpeg = "0.5"
+# The shader is parsed and validated in a test, which needs no graphics card.
+naga = { version = "30", default-features = false, features = ["wgsl-in"] }
 bimcraft-ui-egui = { path = "crates/ui-egui" }
 bimcraft-update = { path = "crates/update" }
 # Fetching OpenStreetMap and elevation data: the other code that phones home, and only the desktop app attaches it.

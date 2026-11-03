@@ -924,6 +924,9 @@ impl Rule {
     }
 }
 
+/// What a planar texture lies across and up: east and north, whatever the slope under it.
+const GROUND: [P3; 2] = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+
 /// Two unit vectors across a triangle's plane, the way a texture's across and up lie on it: across is level (to the
 /// right of someone looking at the face from outside, east where it lies flat), up goes up it (north where it lies flat).
 fn basis(t: &Tri) -> [P3; 2] {
@@ -976,7 +979,11 @@ impl Scene {
                 *slot = x.texture.as_ref().and_then(|t| Sampler::new(t, x.color, &m.images));
             }
         }
-        let bases = tris.iter().map(|t| skins.get(t.texture() as usize).is_some_and(Option::is_some).then(|| basis(t))).collect();
+        // A picture laid over the ground is looked up by the ground's x and y; any other across and up the plane of its face.
+        let bases = tris
+            .iter()
+            .map(|t| skins.get(t.texture() as usize).and_then(Option::as_ref).map(|s| if s.planar() { GROUND } else { basis(t) }))
+            .collect();
         let (planes, smooth) = (planes(&tris), corner_normals(&tris));
         let masses = m.elements.iter().filter(|(_, e)| matches!(e, Element::Mass(_))).map(|(id, _)| *id).collect();
         let default = std::cell::OnceCell::new();
@@ -2714,6 +2721,46 @@ mod tests {
         let path = std::env::temp_dir().join(format!("bimcraft-{name}-{}.png", std::process::id()));
         std::fs::write(&path, png).unwrap();
         path.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn a_picture_laid_over_the_ground_follows_the_ground_on_a_slope_not_the_slope() {
+        // A tilted plane of terrain, 10 m each way, rising 2 m from west to east, with a picture over it: red in the west half, blue
+        // in the east. Laid by where it is, the colour follows x whatever the slope; laid across the tilted face, it would run along y.
+        let mut s = Session::new();
+        let path = halves("terrain");
+        s.script(&format!(
+            r##"material {{"name": "Aerial", "color": "#808080", "texture": {{"kind": "image", "path": {path:?}, "size": [10000, 10000], "offset": [0, 10000], "planar": true}}}}
+               toposurface {{"points": [[0, 0, 0], [10000, 0, 2000], [10000, 10000, 2000], [0, 10000, 0]], "material": "Aerial"}}"##
+        ))
+        .unwrap();
+        let (scene, close) = closeup(&s, [5000.0, 5000.0, 1000.0], 0.1);
+        let img = scene.render(&close, &[]);
+        let colour = |x: f64, y: f64| {
+            let (px, py) = at(&close, [x, y, x / 5.0]);
+            img.color(px, py)
+        };
+        let (red, blue) = (|c: Rgb| i32::from(c.0) - i32::from(c.2), |c: Rgb| i32::from(c.2) - i32::from(c.0));
+        for y in [2000.0, 5000.0, 8000.0] {
+            for x in [1500.0, 2500.0, 3500.0, 4500.0] {
+                let c = colour(x, y);
+                assert!(red(c) > 80, "({x}, {y}) is in the west half, red: {c:?}");
+            }
+            for x in [5500.0, 6500.0, 7500.0, 8500.0] {
+                let c = colour(x, y);
+                assert!(blue(c) > 80, "({x}, {y}) is in the east half, blue: {c:?}");
+            }
+        }
+        // Moved west by 4 m, the colours go with it: x = 2500 is now over the picture's middle, and blue.
+        s.execute("material", &serde_json::json!({"name": "Aerial", "texture": {"offset": [-4000, 10000]}})).unwrap();
+        let (scene, close) = closeup(&s, [5000.0, 5000.0, 1000.0], 0.1);
+        let img = scene.render(&close, &[]);
+        let (px, py) = at(&close, [2500.0, 5000.0, 500.0]);
+        assert!(blue(img.color(px, py)) > 80, "{:?}", img.color(px, py));
+        // And beyond the picture its edge goes on: x = 9500 is 4 m past its east edge, and still blue; nothing wraps to red.
+        let (px, py) = at(&close, [9500.0, 5000.0, 1900.0]);
+        assert!(blue(img.color(px, py)) > 80, "{:?}", img.color(px, py));
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]

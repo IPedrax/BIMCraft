@@ -898,7 +898,7 @@ pub static ALL: &[Command] = &[
         "Materials",
         &[],
         "{name, color?: \"#rrggbb\" | [r, g, b], transparency?: 0-100, cut?, surface?, texture?: {kind?, size?: [w, h], angle?, offset?: [x, y], path?, \
-         image?} | null, rename?, delete?: true} a material of the project's library, created or changed: its colour in shaded 3D \
+         image?, planar?} | null, rename?, delete?: true} a material of the project's library, created or changed: its colour in shaded 3D \
          views, its `transparency` there (percent of what lies behind it that shows through, 0 opaque; the starter Glass has 70), \
          the pattern its cut shows in plans and sections (where a layer is wide enough to hold it), and the one its \
          surfaces show at its size in the building (a floor's top in plan, a ceiling's underside in its ceiling plan). Patterns: \
@@ -907,8 +907,9 @@ pub static ALL: &[Command] = &[
          surfaces look like in the 3D view, over its colour, a tile of it `size` mm across and up, turned `angle` degrees and \
          moved `offset` mm: a pattern drawn in code, `kind` brick, block, boards, concrete, plaster, tile, roof, fabric, metal \
          or insulation (at its natural size unless `size` says); or `image`, a picture: the PNG or JPEG file at `path`, taken \
-         into the project (up to 1024 px a side, 24 pictures), or one the project holds (`image`, its id from `inspect`); null \
-         takes the texture away. `rename` renames it, the layers using it following; `delete` takes it away, while no layer \
+         into the project (up to 1024 px a side, 24 pictures), or one the project holds (`image`, its id from `inspect`); with \
+         `planar` true a picture is laid over the ground by where it is, once: `size` is the ground it covers and `offset` its west and \
+         north corner (a point beyond shows its edge), as the terrain's aerial imagery is; null takes the texture away. `rename` renames it, the layers using it following; `delete` takes it away, while no layer \
          uses it. `inspect` lists the library and the pictures",
         material,
     ),
@@ -8768,8 +8769,8 @@ fn pair(c: &str, key: &str, v: &Value) -> Result<[f64; 2], String> {
 /// A material's texture as the JSON `p` says over its `old` one: kind, size, angle, offset, and for a picture the file to take
 /// into the project (`path`) or the project's own picture (`image`).
 fn texture_param(c: &str, m: &mut Model, p: &Map<String, Value>, old: Option<Texture>) -> Result<Texture, String> {
-    if let Some(k) = p.keys().find(|k| !["kind", "size", "angle", "offset", "path", "image"].contains(&k.as_str())) {
-        return Err(bad(c, format!("texture: `{k}` isn't one of kind, size, angle, offset, path, image")));
+    if let Some(k) = p.keys().find(|k| !["kind", "size", "angle", "offset", "path", "image", "planar"].contains(&k.as_str())) {
+        return Err(bad(c, format!("texture: `{k}` isn't one of kind, size, angle, offset, path, image, planar")));
     }
     let kinds: Vec<&str> = Kind::ALL.iter().map(|k| k.name()).collect();
     let kind = match p.get("kind").filter(|v| !v.is_null()) {
@@ -8787,6 +8788,9 @@ fn texture_param(c: &str, m: &mut Model, p: &Map<String, Value>, old: Option<Tex
     }
     if let Some(v) = p.get("angle").filter(|v| !v.is_null()) {
         t.angle = v.as_f64().ok_or_else(|| bad(c, format!("texture `angle` is a number of degrees, not {v}")))?;
+    }
+    if let Some(v) = p.get("planar").filter(|v| !v.is_null()) {
+        t.planar = v.as_bool().ok_or_else(|| bad(c, format!("texture `planar` is true or false, not {v}")))?;
     }
     match (kind, p.get("path").filter(|v| !v.is_null()), p.get("image").filter(|v| !v.is_null())) {
         (Kind::Image, Some(path), _) => {
