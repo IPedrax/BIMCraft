@@ -1127,6 +1127,11 @@ pub struct Scene {
     levels: Vec<(Id, String, [P3; 4])>,
     /// The scans point clouds place, drawn as dots over the surfaces.
     scans: Vec<Scan>,
+    /// The components whose triangles are a shape of [`Scene::shapes`] placed, exactly: where in `tris` the copy starts, and
+    /// how it is placed. A card draws each shape once and places it for each copy.
+    placements: Vec<(usize, crate::component_geometry::ComponentInstance)>,
+    /// Each component shape's triangles in its family's own axes, in the order a copy's are in `tris`.
+    shapes: Vec<Vec<[P3; 3]>>,
 }
 
 /// A scan as a point cloud places it: its points and colours (shared with the model's), and where they go.
@@ -1228,6 +1233,8 @@ impl Scene {
             levels: Vec::new(),
             scans: Vec::new(),
             edges: OnceLock::new(),
+            placements: Vec::new(),
+            shapes: Vec::new(),
         })
     }
 
@@ -1295,7 +1302,21 @@ impl Scene {
             })
             .collect();
         let scans = scans_of(m);
-        Some(Scene { tris, planes, smooth, faces: Arc::new(faces), skins, bases, masses, levels, scans, edges: OnceLock::new() })
+        let (shapes, placements) = placements(m, &tris, cancelled)?;
+        Some(Scene {
+            tris,
+            planes,
+            smooth,
+            faces: Arc::new(faces),
+            skins,
+            bases,
+            masses,
+            levels,
+            scans,
+            edges: OnceLock::new(),
+            placements,
+            shapes,
+        })
     }
 
     /// The scene a section's or an elevation's picture through `cam` and `clip` is drawn from, of what `look` shows: only
@@ -1460,8 +1481,46 @@ impl Scene {
             levels: Vec::new(),
             scans: Vec::new(),
             edges: OnceLock::new(),
+            placements: Vec::new(),
+            shapes: Vec::new(),
         }
     }
+}
+
+/// The components among `tris` that are a shape placed, to the last bit: each shape's triangles in its own axes, and for each
+/// copy where its run of triangles starts and how it is placed. A copy whose triangles aren't exactly its shape's placed (or
+/// aren't together) is left out, and is drawn from its own triangles as any element is.
+#[allow(clippy::type_complexity)]
+fn placements(
+    m: &Model,
+    tris: &[Tri],
+    cancelled: &(dyn Fn() -> bool + Sync),
+) -> Option<(Vec<Vec<[P3; 3]>>, Vec<(usize, crate::component_geometry::ComponentInstance)>)> {
+    let shared = crate::component_geometry::SharedComponents::new(m, cancelled)?;
+    let shapes: Vec<Vec<[P3; 3]>> =
+        shared.shapes.iter().map(|pieces| pieces.iter().flat_map(|p| p.tris.iter().copied()).collect()).collect();
+    let copies: HashMap<Id, crate::component_geometry::ComponentInstance> = shared.instances.iter().map(|i| (i.owner, *i)).collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    let mut runs = 0usize;
+    while i < tris.len() {
+        runs += 1;
+        if runs.is_multiple_of(4096) && cancelled() {
+            return None;
+        }
+        let owner = tris[i].owner;
+        let end = i + tris[i..].iter().take_while(|t| t.owner == owner).count();
+        if let Some(copy) = copies.get(&owner)
+            && let Some(local) = shapes.get(copy.shape)
+            && !local.is_empty()
+            && local.len() == end - i
+            && local.iter().zip(&tris[i..end]).all(|(l, t)| l.map(|q| copy.place(q)) == t.p)
+        {
+            out.push((i, *copy));
+        }
+        i = end;
+    }
+    Some((shapes, out))
 }
 
 /// How many elements a thread makes the triangles of at a time.

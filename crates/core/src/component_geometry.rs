@@ -9,15 +9,14 @@ type Key = (String, String, bool, String);
 
 /// One local family shape and every component that places it. Mirroring and instance parameters
 /// are part of the shape key; rotation and translation belong to the placement.
-#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) struct SharedComponents {
     pub(crate) shapes: Vec<Vec<Piece>>,
     /// Local triangle bounds for each shape, used to bound placed instances without expanding triangles.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) bounds: Vec<Option<[[f64; 3]; 2]>>,
     pub(crate) instances: Vec<ComponentInstance>,
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Clone, Copy)]
 pub(crate) struct ComponentInstance {
     pub(crate) owner: Id,
@@ -27,7 +26,6 @@ pub(crate) struct ComponentInstance {
     pub(crate) cos: f64,
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 impl ComponentInstance {
     pub(crate) fn place(&self, p: [f64; 3]) -> [f64; 3] {
         [self.at[0] + p[0] * self.cos - p[1] * self.sin, self.at[1] + p[0] * self.sin + p[1] * self.cos, self.at[2] + p[2]]
@@ -51,7 +49,6 @@ impl ComponentInstance {
     }
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 impl SharedComponents {
     fn key(model: &Model, c: &Component) -> Key {
         // Paint, phase and design-option metadata live in `params` too. Only names that the family

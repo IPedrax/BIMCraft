@@ -804,5 +804,35 @@ mod worker_measurements {
             std::thread::sleep(Duration::from_millis(16));
         }
         eprintln!("upload complete: {:.2} s", started.elapsed().as_secs_f64());
+        let unique: usize = mesh.shapes.iter().map(|s| s.vertices.len() / 3).sum();
+        eprintln!(
+            "{} triangles drawn: {} of their own, {} copies of {} shapes ({unique} triangles)",
+            mesh.triangles(),
+            mesh.vertices.len() / 3,
+            mesh.instances.len(),
+            mesh.shapes.len()
+        );
+        // Frames as an orbit draws them, timed back to back once the card is awake.
+        let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
+        let mut frames = Vec::new();
+        for i in 0..40 {
+            let cam = Camera { azimuth: done.fitted.azimuth + f64::from(i) * 3.0, ..done.fitted };
+            let t = Instant::now();
+            gpu.draw(&mesh, &cam, &[], bimcraft_core::render::PAPER).unwrap();
+            gpu.wait();
+            if i >= 5 {
+                frames.push(ms(t));
+            }
+        }
+        frames.sort_by(f64::total_cmp);
+        eprintln!("frame: median {:.1} ms, p95 {:.1} ms", frames[frames.len() / 2], frames[frames.len() * 95 / 100]);
+        let t = Instant::now();
+        for i in 0..100 {
+            std::hint::black_box(mesh.pick(&done.fitted, &[], 400.0 + f64::from(i) * 10.0, 540.0));
+        }
+        eprintln!("pick: {:.3} ms each", ms(t) / 100.0);
+        if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+            eprintln!("{}", status.lines().filter(|l| l.starts_with("VmHWM") || l.starts_with("VmRSS")).collect::<Vec<_>>().join(", "));
+        }
     }
 }

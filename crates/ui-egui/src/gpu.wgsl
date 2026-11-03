@@ -1,7 +1,7 @@
 // The 3D view on the graphics card: the passes that make the picture the processor's rasterizer makes (core `view3d.rs`).
 //   1. vs_scene / fs_scene: the opaque surfaces into a colour target (shaded and textured) and an id target (the plane a pixel
-//      shows and its element), with their depth.
-//   2. vs_scene / fs_clear: the surfaces seen through, the nearest of them where it is nearer than anything opaque, into a
+//      shows and its element), with their depth; then vs_instanced / fs_scene, each shape's copies, placed.
+//   2. vs_scene and vs_instanced_clear / fs_clear: the surfaces seen through, the nearest of them where it is nearer than anything opaque, into a
 //      colour target and an element target of their own (only when the view sees through something).
 //   3. vs_full / fs_post: an edge wherever the opaque plane changes between a pixel and the one to its right or below it, else
 //      the shaded colour (tinted halfway where selected), else the ground; and over it what is seen through, blended.
@@ -71,6 +71,8 @@ struct Seg {
 @group(0) @binding(2) var<storage, read> segs: array<Seg>;
 @group(0) @binding(3) var<storage, read> skins: array<Skin>;
 @group(0) @binding(4) var<storage, read> texels: array<u32>;
+// Each copy's triangles' plane numbers, from where its instance says.
+@group(0) @binding(5) var<storage, read> planes: array<u32>;
 
 @group(1) @binding(0) var scene_color: texture_2d<f32>;
 @group(1) @binding(1) var scene_ids: texture_2d<u32>;
@@ -150,18 +152,55 @@ struct SceneOut {
     @location(5) @interpolate(flat) tex: u32,
 }
 
+// A surface's corner: where it is from the mesh's origin, its normal and its face's, and the rest as a vertex holds them.
+fn scene_out(position: vec3<f32>, normal: vec3<f32>, face: vec3<f32>, color: u32, ids: vec2<u32>, tex: u32) -> SceneOut {
+    var o: SceneOut;
+    o.clip = to_clip(position - g.aim.xyz);
+    let n = normalize(normal);
+    o.light = vec2<f32>(lit(n), lit(-n));
+    o.base = vec3<f32>(f32(color & 255u), f32((color >> 8u) & 255u), f32((color >> 16u) & 255u));
+    o.ids = ids;
+    o.world = position;
+    o.face = normalize(face);
+    o.tex = tex;
+    return o;
+}
+
 @vertex
 fn vs_scene(v: SceneIn) -> SceneOut {
-    var o: SceneOut;
-    o.clip = to_clip(v.position - g.aim.xyz);
-    let n = normalize(v.normal.xyz);
-    o.light = vec2<f32>(lit(n), lit(-n));
-    o.base = vec3<f32>(f32(v.color & 255u), f32((v.color >> 8u) & 255u), f32((v.color >> 16u) & 255u));
-    o.ids = vec2<u32>(v.plane, v.owner);
-    o.world = v.position;
-    o.face = normalize(v.face.xyz);
-    o.tex = v.tex;
-    return o;
+    return scene_out(v.position, v.normal.xyz, v.face.xyz, v.color, vec2<u32>(v.plane, v.owner), v.tex);
+}
+
+// A copy of a shape: where its family's origin is from the mesh's origin, the sine and cosine of its turn, its element, and
+// where its planes are (less a third of where its shape's vertices start, so that this and the vertex's index find its own).
+struct InstanceIn {
+    @location(7) at: vec3<f32>,
+    @location(8) turn: vec2<f32>,
+    @location(9) owner: u32,
+    @location(10) planes: u32,
+    // Its element as the part of it seen through.
+    @location(11) clear_owner: u32,
+}
+
+fn turned(v: vec3<f32>, turn: vec2<f32>) -> vec3<f32> {
+    return vec3<f32>(v.x * turn.y - v.y * turn.x, v.x * turn.x + v.y * turn.y, v.z);
+}
+
+fn placed(v: SceneIn, c: InstanceIn, k: u32, owner: u32) -> SceneOut {
+    let plane = planes[c.planes + k / 3u];
+    let position = turned(v.position, c.turn) + c.at;
+    return scene_out(position, turned(v.normal.xyz, c.turn), turned(v.face.xyz, c.turn), v.color, vec2<u32>(plane, owner), v.tex);
+}
+
+@vertex
+fn vs_instanced(v: SceneIn, c: InstanceIn, @builtin(vertex_index) k: u32) -> SceneOut {
+    return placed(v, c, k, c.owner);
+}
+
+// What is seen through of a copy, drawn with those seen through (fs_clear).
+@vertex
+fn vs_instanced_clear(v: SceneIn, c: InstanceIn, @builtin(vertex_index) k: u32) -> SceneOut {
+    return placed(v, c, k, c.clear_owner);
 }
 
 struct SceneTargets {

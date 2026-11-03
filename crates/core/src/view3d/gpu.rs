@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use super::{Camera, DATUM, EDGE, LevelMarks, NEAR, P3, Scene, add, cross, dot, level_marks, mul, sub, unit, weighed};
+use crate::component_geometry::ComponentInstance;
 use crate::geom::{self, P2};
 use crate::graphics::{Look, VisualStyle};
 use crate::model::Id;
@@ -81,6 +82,72 @@ struct Tri {
     hit: Hit,
     /// Seen through: the nearest of these in front of what is opaque is what a pixel shows.
     clear: bool,
+    /// Its place in the scene: of triangles as near, the first there is what a pick finds.
+    key: usize,
+}
+
+/// A copy of one of [`Mesh::shapes`], as the card places it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Instance {
+    /// Where its family's origin is, from [`Mesh::origin`], mm.
+    pub at: [f32; 3],
+    /// The sine and cosine of its turn about the vertical.
+    pub turn: [f32; 2],
+    /// One more than the place of its element in [`Mesh::owners`]; and of its element as the part seen through (with how
+    /// see-through), 0 where none is.
+    pub owner: u32,
+    pub clear_owner: u32,
+    /// Where its first triangle's plane number is in [`Mesh::instance_planes`].
+    pub planes: u32,
+}
+
+/// A shape the card holds once: its vertices in [`Mesh::shape_vertices`] (in its family's axes, each vertex's owner and plane
+/// 0, as each copy has its own), those that are opaque first and from `clear_from` those seen through, and its copies in
+/// [`Mesh::instances`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct Shape {
+    pub vertices: std::ops::Range<usize>,
+    pub clear_from: usize,
+    pub instances: std::ops::Range<usize>,
+}
+
+/// A copy, as a pick places it: the triangles it finds are those the scene holds, to the last bit.
+struct Copy {
+    place: ComponentInstance,
+    /// Its shape's place in [`Mesh::shapes`], and its first triangle's in the scene.
+    shape: usize,
+    key: usize,
+}
+
+/// A shape, as a pick reads it: its triangles in its family's axes, the face each is on, and a hierarchy over them.
+struct Local {
+    tris: Vec<[P3; 3]>,
+    faces: Vec<&'static str>,
+    /// Each triangle's place among a copy's in the scene, and whether it is seen through.
+    keys: Vec<usize>,
+    clear: Vec<bool>,
+    bvh: OnceLock<Bvh>,
+}
+
+impl Local {
+    fn boxes(&self) -> Vec<(P3, P3)> {
+        self.tris.iter().map(|t| bounds(t.iter()).unwrap_or_default()).collect()
+    }
+
+    fn bvh(&self) -> &Bvh {
+        self.bvh.get_or_init(|| Bvh::over(&self.boxes(), &|| false).unwrap_or_else(Bvh::empty))
+    }
+}
+
+/// What every copy of a shape must share to be drawn from one: each triangle's colour, texture and face, and its corners'
+/// normals where it is curved, in the shape's axes.
+struct Template {
+    /// How see-through each is: those seen through all alike.
+    alpha: Vec<u8>,
+    color: Vec<u32>,
+    tex: Vec<u32>,
+    face: Vec<&'static str>,
+    smooth: Vec<Option<[P3; 3]>>,
 }
 
 /// An element a vertex belongs to: the colour its edges are drawn in, and how see-through the view makes it, percent.
@@ -114,9 +181,19 @@ pub struct Mesh {
     pub origin: P3,
     /// From [`origin`](Self::origin) to the furthest of it, mm.
     pub radius: f64,
-    /// The opaque surfaces' vertices, then from [`clear_from`](Self::clear_from) on those seen through.
+    /// The opaque surfaces' vertices, then from [`clear_from`](Self::clear_from) on those seen through: all but the copies of
+    /// [`shapes`](Self::shapes).
     pub vertices: Vec<Vertex>,
     pub clear_from: usize,
+    /// The components drawn as one shape placed many times, each opaque: the shapes, their vertices, their copies, and each
+    /// copy's triangles' plane numbers (one more than the plane's, as a vertex holds it), which the scene numbers across the
+    /// whole model, so the edges between copies, and between a copy and what it touches, are where they are without them.
+    pub shapes: Vec<Shape>,
+    pub shape_vertices: Vec<Vertex>,
+    pub instances: Vec<Instance>,
+    pub instance_planes: Vec<u32>,
+    copies: Vec<Copy>,
+    locals: Vec<Local>,
     /// Each element a vertex belongs to.
     pub owners: Vec<Owner>,
     /// The textures, by the number a vertex holds (the first, 0, is none), and their pixels: each a word of red, green and blue.
@@ -141,8 +218,23 @@ impl Mesh {
         Self::new_cancellable(scene, look, &|| false).and_then(|mesh| mesh.ok_or_else(|| "mesh build was cancelled".into()))
     }
 
+    /// The same mesh with no shapes: every copy's triangles its own, as they were before the card placed copies. What the
+    /// placed copies are held to.
+    pub fn flat(scene: &Scene, look: &Look) -> Result<Mesh, String> {
+        Self::build(scene, look, &|| false, false).and_then(|mesh| mesh.ok_or_else(|| "mesh build was cancelled".into()))
+    }
+
     /// The same mesh, abandoning a superseded view between batches of triangles.
     pub fn new_cancellable(scene: &Scene, look: &Look, cancelled: &dyn Fn() -> bool) -> Result<Option<Mesh>, String> {
+        Self::build(scene, look, cancelled, true)
+    }
+
+    /// How many triangles it draws, each copy's counted.
+    pub fn triangles(&self) -> usize {
+        self.vertices.len() / 3 + self.shapes.iter().map(|s| s.vertices.len() / 3 * s.instances.len()).sum::<usize>()
+    }
+
+    fn build(scene: &Scene, look: &Look, cancelled: &dyn Fn() -> bool, instancing: bool) -> Result<Option<Mesh>, String> {
         if cancelled() {
             return Ok(None);
         }
@@ -168,10 +260,77 @@ impl Mesh {
         // What the view sees through is drawn after what it doesn't, each in the order the processor draws it.
         let clear = |i: usize| scene.tris[i].alpha(look) > 0;
         let shown: Vec<usize> = shown.iter().copied().filter(|&i| !clear(i)).chain(shown.iter().copied().filter(|&i| clear(i))).collect();
-        let clear_from = shown.iter().take_while(|&&i| !clear(i)).count() * 3;
         // A texture is looked up as the CPU does unless the view colours its surface another way.
         let colour = |t: &super::Tri| if plain { t.color } else { look.surface(t.owner, t.color) };
         let textured = |t: &super::Tri| scene.skins.get(t.texture() as usize).is_some_and(Option::is_some) && colour(t) == t.color;
+        let packed = |t: &super::Tri| {
+            let Rgb(r, g, b) = colour(t);
+            u32::from(r) | u32::from(g) << 8 | u32::from(b) << 16
+        };
+        let tex_of = |t: &super::Tri| if textured(t) { t.texture() } else { 0 };
+        // The copies drawn from their shape: shown, opaque, and in every triangle coloured, textured, faced and curved as the
+        // first such copy of the shape is.
+        let mut templates: Vec<Option<Template>> = (0..scene.shapes.len()).map(|_| None).collect();
+        let mut chosen: Vec<(usize, ComponentInstance)> = Vec::new();
+        let mut taken = vec![false; if instancing && !scene.placements.is_empty() { scene.tris.len() } else { 0 }];
+        for (n, &(first, place)) in scene.placements.iter().enumerate() {
+            if !instancing {
+                break;
+            }
+            if n % 256 == 0 && cancelled() {
+                return Ok(None);
+            }
+            let Some(local) = scene.shapes.get(place.shape) else { continue };
+            let Some(tris) = scene.tris.get(first..first + local.len()) else { continue };
+            let alpha_of = |t: &super::Tri| t.alpha(look).min(100);
+            if !(plain || look.shows(place.owner)) {
+                continue;
+            }
+            // One owner for what is seen through of a copy, so one way see-through.
+            let mut clear_alphas = tris.iter().map(alpha_of).filter(|a| *a > 0);
+            if clear_alphas.next().is_some_and(|a| clear_alphas.any(|b| b != a)) {
+                continue;
+            }
+            let face_at = |k: usize| scene.faces.get(first + k).copied().filter(|f| !f.is_empty()).unwrap_or("");
+            let smooth_at = |k: usize| scene.smooth.get(first + k).and_then(Option::as_deref).map(|c| c.map(unit));
+            let fits = match templates.get(place.shape) {
+                Some(None) => {
+                    let unturn = |n: P3| [n[0] * place.cos + n[1] * place.sin, -n[0] * place.sin + n[1] * place.cos, n[2]];
+                    let template = Template {
+                        alpha: tris.iter().map(alpha_of).collect(),
+                        color: tris.iter().map(packed).collect(),
+                        tex: tris.iter().map(tex_of).collect(),
+                        face: (0..tris.len()).map(face_at).collect(),
+                        smooth: (0..tris.len()).map(|k| smooth_at(k).map(|c| c.map(unturn))).collect(),
+                    };
+                    if let Some(slot) = templates.get_mut(place.shape) {
+                        *slot = Some(template);
+                    }
+                    true
+                }
+                Some(Some(template)) => tris.iter().enumerate().all(|(k, t)| {
+                    let near = |a: P3, b: P3| (0..3).all(|i| (a[i] - b[i]).abs() <= 1e-6);
+                    let curved = match (template.smooth.get(k).copied().flatten(), smooth_at(k)) {
+                        (None, None) => true,
+                        (Some(own), Some(seen)) => (0..3).all(|c| near(place.rotate(own[c]), seen[c])),
+                        _ => false,
+                    };
+                    template.alpha.get(k) == Some(&alpha_of(t))
+                        && template.color.get(k) == Some(&packed(t))
+                        && template.tex.get(k) == Some(&tex_of(t))
+                        && template.face.get(k) == Some(&face_at(k))
+                        && curved
+                }),
+                None => false,
+            };
+            if fits {
+                taken.get_mut(first..first + local.len()).into_iter().flatten().for_each(|t| *t = true);
+                chosen.push((first, place));
+            }
+        }
+        let is_taken = |i: usize| taken.get(i).copied().unwrap_or(false);
+        let clear_from = shown.iter().filter(|&&i| !clear(i) && !is_taken(i)).count() * 3;
+        let drawn = shown.iter().filter(|&&i| !is_taken(i)).count();
         let levels: Vec<_> = scene.levels.iter().filter(|(id, ..)| plain || look.shows(*id)).cloned().collect();
         let corners = levels.iter().flat_map(|(.., c)| c.iter());
         let points = shown.iter().flat_map(|&i| scene.tris[i].p.iter()).chain(corners);
@@ -183,6 +342,12 @@ impl Mesh {
             radius,
             vertices: Vec::new(),
             clear_from,
+            shapes: Vec::new(),
+            shape_vertices: Vec::new(),
+            instances: Vec::new(),
+            instance_planes: Vec::new(),
+            copies: Vec::new(),
+            locals: Vec::new(),
             owners: Vec::new(),
             skins: vec![Skin::default(); scene.skins.len()],
             texels: Vec::new(),
@@ -193,35 +358,106 @@ impl Mesh {
         };
         // However many there are: a model too big for this machine's memory is said, not an abort.
         let room = |_| "more than this machine's memory holds".to_string();
-        mesh.vertices.try_reserve_exact(shown.len().saturating_mul(3)).map_err(room)?;
-        mesh.tris.try_reserve_exact(shown.len()).map_err(room)?;
+        mesh.vertices.try_reserve_exact(drawn.saturating_mul(3)).map_err(room)?;
+        mesh.tris.try_reserve_exact(drawn).map_err(room)?;
         let mut owners: BTreeMap<(Id, u8), u32> = BTreeMap::new();
+        let mut owner_of = |mesh: &mut Mesh, id: Id, alpha: u8| {
+            *owners.entry((id, alpha)).or_insert_with(|| {
+                mesh.owners.push(Owner { id, edge: look.edge(id, EDGE), transparency: alpha });
+                mesh.owners.len() as u32
+            })
+        };
         for (k, i) in shown.into_iter().enumerate() {
             if k % 8192 == 0 && cancelled() {
                 return Ok(None);
             }
             let t = &scene.tris[i];
             let alpha = t.alpha(look).min(100);
-            let owner = *owners.entry((t.owner, alpha)).or_insert_with(|| {
-                let transparency = alpha;
-                mesh.owners.push(Owner { id: t.owner, edge: look.edge(t.owner, EDGE), transparency });
-                mesh.owners.len() as u32
-            });
-            let Rgb(r, g, b) = colour(t);
-            let color = u32::from(r) | u32::from(g) << 8 | u32::from(b) << 16;
+            // The owners numbered in the order they are met, a copy's among them.
+            let owner = owner_of(&mut mesh, t.owner, alpha);
+            if is_taken(i) {
+                continue;
+            }
+            let color = packed(t);
             let face = unit(cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0])));
             let smooth = scene.smooth.get(i).and_then(Option::as_deref);
             let plane = scene.planes.get(i).map_or(i, |p| *p) as u32 + 1;
-            let tex = if textured(t) { t.texture() } else { 0 };
+            let tex = tex_of(t);
             for (k, p) in t.p.iter().enumerate() {
                 let normal = smooth.map_or(face, |n| unit(n[k])).map(|v| v as f32);
                 let position = sub(*p, origin).map(|v| v as f32);
                 mesh.vertices.push(Vertex { position, normal, face: face.map(|v| v as f32), color, owner, plane, tex });
             }
             let face = scene.faces.get(i).copied().filter(|f| !f.is_empty()).unwrap_or("");
-            mesh.tris.push(Tri { p: t.p, hit: Hit { id: t.owner, face }, clear: clear(i) });
+            mesh.tris.push(Tri { p: t.p, hit: Hit { id: t.owner, face }, clear: clear(i), key: i });
         }
-        let used: std::collections::BTreeSet<u32> = mesh.vertices.iter().map(|v| v.tex).filter(|t| *t > 0).collect();
+        // Each shape once, in its family's axes, and its copies, in the order of the scene.
+        let too_many = || "more copies' triangles than the card counts".to_string();
+        for (shape, template) in templates.into_iter().enumerate() {
+            if cancelled() {
+                return Ok(None);
+            }
+            let (Some(template), Some(local)) = (template, scene.shapes.get(shape)) else { continue };
+            let copies: Vec<&(usize, ComponentInstance)> = chosen.iter().filter(|(_, c)| c.shape == shape).collect();
+            if copies.is_empty() {
+                continue;
+            }
+            let start = mesh.shape_vertices.len();
+            // What is opaque, then what is seen through, each in the scene's order.
+            let seen_through = |k: &usize| template.alpha.get(*k).is_some_and(|a| *a > 0);
+            let order: Vec<usize> = (0..local.len()).filter(|k| !seen_through(k)).chain((0..local.len()).filter(seen_through)).collect();
+            let clear_alpha = template.alpha.iter().copied().find(|a| *a > 0);
+            let mut clear_from = None;
+            for &k in &order {
+                let Some(t) = local.get(k) else { continue };
+                if seen_through(&k) && clear_from.is_none() {
+                    clear_from = Some(mesh.shape_vertices.len());
+                }
+                let face = unit(cross(sub(t[1], t[0]), sub(t[2], t[0])));
+                let smooth = template.smooth.get(k).copied().flatten();
+                for (c, p) in t.iter().enumerate() {
+                    let normal = smooth.map_or(face, |n| n[c]).map(|v| v as f32);
+                    mesh.shape_vertices.push(Vertex {
+                        position: p.map(|v| v as f32),
+                        normal,
+                        face: face.map(|v| v as f32),
+                        color: template.color.get(k).copied().unwrap_or(0),
+                        owner: 0,
+                        plane: 0,
+                        tex: template.tex.get(k).copied().unwrap_or(0),
+                    });
+                }
+            }
+            let index = mesh.shapes.len();
+            let first_instance = mesh.instances.len();
+            for &&(first, place) in &copies {
+                let owner = owner_of(&mut mesh, place.owner, 0);
+                let clear_owner = clear_alpha.map_or(0, |a| owner_of(&mut mesh, place.owner, a));
+                let planes = u32::try_from(mesh.instance_planes.len()).map_err(|_| too_many())?;
+                mesh.instance_planes.try_reserve(local.len()).map_err(room)?;
+                for i in order.iter().map(|k| first + k) {
+                    mesh.instance_planes.push(scene.planes.get(i).map_or(i, |p| *p) as u32 + 1);
+                }
+                let at = sub(place.at, origin).map(|v| v as f32);
+                mesh.instances.push(Instance { at, turn: [place.sin as f32, place.cos as f32], owner, clear_owner, planes });
+                mesh.copies.push(Copy { place, shape: index, key: first });
+            }
+            let end = mesh.shape_vertices.len();
+            mesh.shapes.push(Shape {
+                vertices: start..end,
+                clear_from: clear_from.unwrap_or(end),
+                instances: first_instance..mesh.instances.len(),
+            });
+            mesh.locals.push(Local {
+                tris: order.iter().filter_map(|k| local.get(*k).copied()).collect(),
+                faces: order.iter().map(|k| template.face.get(*k).copied().unwrap_or("")).collect(),
+                clear: order.iter().map(seen_through).collect(),
+                keys: order,
+                bvh: OnceLock::new(),
+            });
+        }
+        let used: std::collections::BTreeSet<u32> =
+            mesh.vertices.iter().chain(&mesh.shape_vertices).map(|v| v.tex).filter(|t| *t > 0).collect();
         for id in used {
             if cancelled() {
                 return Ok(None);
@@ -286,14 +522,19 @@ impl Mesh {
         level_marks(&self.levels, cam, &color)
     }
 
+    /// What the hierarchy is over: each triangle drawn of its own, then each copy, as boxes.
+    fn boxes(&self) -> Vec<(P3, P3)> {
+        let own = self.tris.iter().map(|t| bounds(t.p.iter()).unwrap_or_default());
+        let copies = self.copies.iter().map(|c| {
+            let local = self.locals.get(c.shape).and_then(|l| bounds(l.tris.iter().flatten())).unwrap_or_default();
+            let [lo, hi] = c.place.bounds([local.0, local.1]);
+            (lo, hi)
+        });
+        own.chain(copies).collect()
+    }
+
     fn bvh(&self) -> &Bvh {
-        self.bvh.get_or_init(|| {
-            let mut bvh = Bvh { nodes: Vec::new(), order: (0..self.tris.len()).collect() };
-            if !self.tris.is_empty() {
-                bvh.build(&self.tris, 0, self.tris.len(), &|| false);
-            }
-            bvh
-        })
+        self.bvh.get_or_init(|| Bvh::over(&self.boxes(), &|| false).unwrap_or_else(Bvh::empty))
     }
 
     /// Build the picking hierarchy while the mesh is still on a view worker.
@@ -309,10 +550,13 @@ impl Mesh {
         if cancelled() {
             return false;
         }
-        let mut bvh = Bvh { nodes: Vec::new(), order: (0..self.tris.len()).collect() };
-        if !self.tris.is_empty() && bvh.build(&self.tris, 0, self.tris.len(), cancelled).is_none() {
-            return false;
+        for local in &self.locals {
+            if local.bvh.get().is_none() {
+                let Some(bvh) = Bvh::over(&local.boxes(), cancelled) else { return false };
+                let _ = local.bvh.set(bvh);
+            }
         }
+        let Some(bvh) = Bvh::over(&self.boxes(), cancelled) else { return false };
         if cancelled() {
             return false;
         }
@@ -349,55 +593,69 @@ impl Mesh {
     }
 
     /// The nearest opaque triangle covering the centre of a pixel, and the nearest seen through, as the CPU's rasterizer finds
-    /// them: how near, as an f32 as it keeps it, and which. The first of triangles as near wins.
+    /// them: how near, as an f32 as it keeps it, and which. The first of triangles as near, in the scene, wins.
     fn nearest(&self, cam: &Camera, (x, y): (f64, f64)) -> (Found, Found) {
         let Some(bvh) = Some(self.bvh()).filter(|b| !b.nodes.is_empty()) else { return (None, None) };
         // Opaque, then seen through.
-        let mut found: [Option<(f32, usize)>; 2] = [None, None];
+        let mut found: [Option<(f32, usize, Hit)>; 2] = [None, None];
         let project = cam.projector();
-        let mut stack = vec![0usize];
-        while let Some(n) = stack.pop() {
-            let Some(node) = bvh.nodes.get(n) else { continue };
-            // The box's picture is inside the rectangle its corners make, where all of it is in front of the eye.
-            let corners = (0..8).map(|k| [0, 1, 2].map(|a| if k >> a & 1 == 0 { node.lo[a] } else { node.hi[a] }));
-            if corners.clone().all(|p| project.ahead(p) >= NEAR) {
-                let (lo, hi) =
-                    corners.map(|p| project.at(p)).fold((P2(f64::MAX, f64::MAX), P2(f64::MIN, f64::MIN)), |(lo, hi), (cx, cy, _)| {
-                        (P2(lo.0.min(cx), lo.1.min(cy)), P2(hi.0.max(cx), hi.1.max(cy)))
-                    });
-                if x < lo.0 - 1e-6 || x > hi.0 + 1e-6 || y < lo.1 - 1e-6 || y > hi.1 + 1e-6 {
+        // Whether the pixel is outside a box's picture, which is inside the rectangle its corners make where all of it is in
+        // front of the eye.
+        let misses = |(lo, hi): (P3, P3)| {
+            let corners = (0..8).map(|k| [0, 1, 2].map(|a| if k >> a & 1 == 0 { lo[a] } else { hi[a] }));
+            if !corners.clone().all(|p| project.ahead(p) >= NEAR) {
+                return false;
+            }
+            let (lo, hi) =
+                corners.map(|p| project.at(p)).fold((P2(f64::MAX, f64::MAX), P2(f64::MIN, f64::MIN)), |(lo, hi), (cx, cy, _)| {
+                    (P2(lo.0.min(cx), lo.1.min(cy)), P2(hi.0.max(cx), hi.1.max(cy)))
+                });
+            x < lo.0 - 1e-6 || x > hi.0 + 1e-6 || y < lo.1 - 1e-6 || y > hi.1 + 1e-6
+        };
+        let mut test = |p: &[P3; 3], clear: bool, key: usize, hit: Hit| {
+            // In front of the eye, as the processor cuts it.
+            let (parts, count) = project.in_front(p);
+            for part in parts.iter().take(count) {
+                let [a, b, c] = weighed(p, part).map(|q| project.at(q));
+                let area = (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
+                if area.is_nan() || area.abs() <= 1e-12 {
                     continue;
                 }
-            }
-            if let Some(children) = node.children {
-                stack.extend(children);
-                continue;
-            }
-            for &i in bvh.order.get(node.first..node.first + node.count).unwrap_or_default() {
-                let Some(t) = self.tris.get(i) else { continue };
-                // In front of the eye, as the processor cuts it.
-                let (parts, count) = project.in_front(&t.p);
-                for part in parts.iter().take(count) {
-                    let [a, b, c] = weighed(&t.p, part).map(|p| project.at(p));
-                    let area = (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
-                    if area.is_nan() || area.abs() <= 1e-12 {
-                        continue;
-                    }
-                    let wa = ((b.0 - x) * (c.1 - y) - (b.1 - y) * (c.0 - x)) / area;
-                    let wb = ((c.0 - x) * (a.1 - y) - (c.1 - y) * (a.0 - x)) / area;
-                    let wc = 1.0 - wa - wb;
-                    if wa < -1e-9 || wb < -1e-9 || wc < -1e-9 {
-                        continue;
-                    }
-                    let z = (wa * a.2 + wb * b.2 + wc * c.2) as f32;
-                    let found = &mut found[usize::from(t.clear)];
-                    if found.is_none_or(|(d, j)| z > d || z == d && i < j) {
-                        *found = Some((z, i));
-                    }
+                let wa = ((b.0 - x) * (c.1 - y) - (b.1 - y) * (c.0 - x)) / area;
+                let wb = ((c.0 - x) * (a.1 - y) - (c.1 - y) * (a.0 - x)) / area;
+                let wc = 1.0 - wa - wb;
+                if wa < -1e-9 || wb < -1e-9 || wc < -1e-9 {
+                    continue;
+                }
+                let z = (wa * a.2 + wb * b.2 + wc * c.2) as f32;
+                let found = &mut found[usize::from(clear)];
+                if found.is_none_or(|(d, j, _)| z > d || z == d && key < j) {
+                    *found = Some((z, key, hit));
                 }
             }
-        }
-        let hit = |f: Option<(f32, usize)>| f.and_then(|(z, i)| Some((z, self.tris.get(i)?.hit)));
+        };
+        let own = self.tris.len();
+        bvh.walk(&|n| (n.lo, n.hi), &misses, &mut |i| {
+            if let Some(t) = self.tris.get(i) {
+                test(&t.p, t.clear, t.key, t.hit);
+            } else if let Some(copy) = i.checked_sub(own).and_then(|k| self.copies.get(k))
+                && let Some(local) = self.locals.get(copy.shape)
+            {
+                // Its shape's hierarchy, each box placed as the copy is.
+                let placed = |n: &Node| {
+                    let [lo, hi] = copy.place.bounds([n.lo, n.hi]);
+                    (lo, hi)
+                };
+                local.bvh().walk(&placed, &misses, &mut |k| {
+                    if let Some(t) = local.tris.get(k) {
+                        let hit = Hit { id: copy.place.owner, face: local.faces.get(k).copied().unwrap_or("") };
+                        let (clear, key) = (local.clear.get(k).copied().unwrap_or(false), local.keys.get(k).copied().unwrap_or(k));
+                        test(&t.map(|q| copy.place.place(q)), clear, copy.key + key, hit);
+                    }
+                });
+            }
+        });
+        let hit = |f: Option<(f32, usize, Hit)>| f.map(|(z, _, hit)| (z, hit));
         (hit(found[0]), hit(found[1]))
     }
 }
@@ -430,24 +688,56 @@ fn covers((a, b): ((f64, f64, f64), (f64, f64, f64)), wide: u8, (x, y): (f64, f6
 }
 
 impl Bvh {
+    fn empty() -> Bvh {
+        Bvh { nodes: Vec::new(), order: Vec::new() }
+    }
+
+    /// The hierarchy over `boxes`; none when `cancelled`.
+    fn over(boxes: &[(P3, P3)], cancelled: &dyn Fn() -> bool) -> Option<Bvh> {
+        let mut bvh = Bvh { nodes: Vec::new(), order: (0..boxes.len()).collect() };
+        if !boxes.is_empty() {
+            bvh.build(boxes, 0, boxes.len(), cancelled)?;
+        }
+        Some(bvh)
+    }
+
     /// The node for `order[first..first + count]`, split in two at the middle of its longest side while it holds more than 8.
-    fn build(&mut self, tris: &[Tri], first: usize, count: usize, cancelled: &dyn Fn() -> bool) -> Option<usize> {
+    fn build(&mut self, boxes: &[(P3, P3)], first: usize, count: usize, cancelled: &dyn Fn() -> bool) -> Option<usize> {
         if cancelled() {
             return None;
         }
         let range = first..first + count;
-        let (lo, hi) = bounds(self.order[range.clone()].iter().flat_map(|&i| tris[i].p.iter())).unwrap_or(([0.0; 3], [0.0; 3]));
+        let corners = self.order[range.clone()].iter().filter_map(|&i| boxes.get(i)).flat_map(|(lo, hi)| [lo, hi]);
+        let (lo, hi) = bounds(corners).unwrap_or(([0.0; 3], [0.0; 3]));
         let id = self.nodes.len();
         self.nodes.push(Node { lo, hi, first, count, children: None });
         if count > 8 {
             let axis = (0..3).max_by(|&a, &b| (hi[a] - lo[a]).total_cmp(&(hi[b] - lo[b]))).unwrap_or(0);
-            let centre = |i: usize| tris[i].p.iter().map(|p| p[axis]).sum::<f64>();
+            let centre = |i: usize| boxes.get(i).map_or(0.0, |(lo, hi)| lo[axis] + hi[axis]);
             self.order[range].select_nth_unstable_by(count / 2, |&a, &b| centre(a).total_cmp(&centre(b)).then(a.cmp(&b)));
             let half = count / 2;
-            let children = [self.build(tris, first, half, cancelled)?, self.build(tris, first + half, count - half, cancelled)?];
+            let children = [self.build(boxes, first, half, cancelled)?, self.build(boxes, first + half, count - half, cancelled)?];
             self.nodes[id].children = Some(children);
         }
         Some(id)
+    }
+
+    /// Each item in a leaf whose box, as `bounds` gives it, the pixel isn't outside of (`misses`).
+    fn walk(&self, bounds: &dyn Fn(&Node) -> (P3, P3), misses: &dyn Fn((P3, P3)) -> bool, leaf: &mut dyn FnMut(usize)) {
+        let mut stack = if self.nodes.is_empty() { Vec::new() } else { vec![0usize] };
+        while let Some(n) = stack.pop() {
+            let Some(node) = self.nodes.get(n) else { continue };
+            if misses(bounds(node)) {
+                continue;
+            }
+            if let Some(children) = node.children {
+                stack.extend(children);
+                continue;
+            }
+            for &i in self.order.get(node.first..node.first + node.count).unwrap_or_default() {
+                leaf(i);
+            }
+        }
     }
 }
 
@@ -539,12 +829,104 @@ mod tests {
         picks_as_the_picture(&s);
     }
 
+    /// Each copy of each shape, placed, against the flat mesh's own triangles of that element: the same count, owner, plane,
+    /// colour and texture, the corners within a hundredth of a millimetre and the normals within a 16-bit fraction.
+    fn copies_hold_the_flat_triangles(mesh: &Mesh, flat: &Mesh) {
+        assert_eq!(mesh.triangles(), flat.triangles());
+        assert_eq!(mesh.owners, flat.owners, "the owners numbered alike");
+        assert!(flat.shapes.is_empty() && flat.instances.is_empty());
+        for shape in &mesh.shapes {
+            let local = &mesh.shape_vertices[shape.vertices.clone()];
+            for inst in &mesh.instances[shape.instances.clone()] {
+                // The flat mesh's opaque ones first, then those seen through: the shape's order.
+                let own: Vec<&Vertex> = flat.vertices.iter().filter(|v| v.owner == inst.owner).collect();
+                let clear = flat.vertices.iter().filter(|v| inst.clear_owner != 0 && v.owner == inst.clear_owner);
+                let own: Vec<&Vertex> = own.into_iter().chain(clear).collect();
+                assert_eq!(own.len(), local.len());
+                let [sin, cos] = inst.turn;
+                let turn = |v: [f32; 3]| [v[0] * cos - v[1] * sin, v[0] * sin + v[1] * cos, v[2]];
+                for (k, (l, f)) in local.iter().zip(own).enumerate() {
+                    let p = turn(l.position);
+                    let plane = mesh.instance_planes[inst.planes as usize + k / 3];
+                    assert!((0..3).all(|i| (p[i] + inst.at[i] - f.position[i]).abs() < 0.01), "{k}: {p:?} {:?}", f.position);
+                    assert!((0..3).all(|i| (turn(l.normal)[i] - f.normal[i]).abs() < 1e-4 && (turn(l.face)[i] - f.face[i]).abs() < 1e-4));
+                    assert_eq!((l.color, l.tex, plane), (f.color, f.tex, f.plane));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_sample_s_chairs_are_one_shape_placed_again_and_again() {
+        let s = sample();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let (mesh, flat) = (Mesh::new(&scene, &look).unwrap(), Mesh::flat(&scene, &look).unwrap());
+        assert!(mesh.shapes.iter().any(|sh| sh.instances.len() >= 4), "{:?}", mesh.shapes);
+        let components = s.model.elements.values().filter(|e| matches!(e, crate::model::Element::Component(_))).count();
+        assert_eq!(mesh.instances.len(), components, "every component a copy");
+        assert!(mesh.vertices.len() < flat.vertices.len());
+        copies_hold_the_flat_triangles(&mesh, &flat);
+    }
+
+    /// The sample with three lamps: a frame, and a lens seen through.
+    fn with_lamps() -> Session {
+        let mut s = sample();
+        s.execute("material", &json!({"name": "Lens", "color": [250, 250, 230], "transparency": 60})).unwrap();
+        s.execute(
+            "family",
+            &json!({"name": "Lamp", "types": {"A": {}}, "forms": [
+                {"profile": [[0,0],[600,0],[600,600],[0,600]], "from": 2400, "to": 2500, "material": "Concrete"},
+                {"profile": [[50,50],[550,50],[550,550],[50,550]], "from": 2300, "to": 2400, "material": "Lens"}]}),
+        )
+        .unwrap();
+        for (x, angle) in [(2000, 0), (5000, 30), (8000, 90)] {
+            s.execute("component", &json!({"family": "Lamp", "at": [x, 3000], "angle": angle})).unwrap();
+        }
+        s
+    }
+
+    #[test]
+    fn a_copy_seen_through_in_part_is_a_copy_with_two_owners() {
+        let s = with_lamps();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let (mesh, flat) = (Mesh::new(&scene, &look).unwrap(), Mesh::flat(&scene, &look).unwrap());
+        let lamps: Vec<&Instance> = mesh.instances.iter().filter(|i| i.clear_owner != 0).collect();
+        assert_eq!(lamps.len(), 3);
+        let shape = mesh.shapes.iter().find(|sh| sh.instances.len() == 3 && sh.clear_from < sh.vertices.end).unwrap();
+        assert!(shape.clear_from > shape.vertices.start, "the frame first, then the lens");
+        assert!(lamps.iter().all(|l| mesh.owners[l.clear_owner as usize - 1].transparency == 60));
+        copies_hold_the_flat_triangles(&mesh, &flat);
+        picks_as_the_picture(&s);
+    }
+
+    #[test]
+    fn a_painted_or_hidden_copy_is_drawn_of_its_own() {
+        let mut s = sample();
+        let chairs: Vec<Id> = s
+            .model
+            .elements
+            .iter()
+            .filter(|(_, e)| matches!(e, crate::model::Element::Component(c) if c.family == "Chair"))
+            .map(|(id, _)| *id)
+            .collect();
+        s.execute("material", &json!({"name": "Test paint", "color": [90, 120, 150]})).unwrap();
+        s.execute("paint", &json!({"id": chairs[1], "face": "all", "material": "Test paint"})).unwrap();
+        s.execute("graphics", &json!({"view": "{3D}", "elements": {chairs[2].to_string(): {"transparency": 40}}})).unwrap();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let (mesh, flat) = (Mesh::new(&scene, &look).unwrap(), Mesh::flat(&scene, &look).unwrap());
+        let copy_of = |id: Id| mesh.instances.iter().any(|i| mesh.owners[i.owner as usize - 1].id == id);
+        assert!(copy_of(chairs[0]) && !copy_of(chairs[1]), "the painted chair is its own");
+        assert!(!copy_of(chairs[2]), "and the one seen through, which its shape isn't");
+        copies_hold_the_flat_triangles(&mesh, &flat);
+        picks_as_the_picture(&s);
+    }
+
     #[test]
     fn a_mesh_holds_a_tower_however_many_triangles_it_has() {
         let m = crate::sample::tower::drawn(crate::sample::tower::Plate::REFERENCE, 2, crate::sample::tower::Drawings::default()).unwrap();
         let scene = Scene::new(&m);
         let mesh = Mesh::new(&scene, &Look::of_3d(&m)).unwrap();
-        assert!(mesh.vertices.len() / 3 > 1_600_000, "{} triangles, more than it was once given", mesh.vertices.len() / 3);
+        assert!(mesh.triangles() > 1_600_000, "{} triangles, more than it was once given", mesh.triangles());
     }
 
     #[test]

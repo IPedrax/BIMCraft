@@ -29,6 +29,9 @@ const GLOBALS: u64 = 8 * 16;
 const OWNER: u64 = 32;
 const SKIN: u64 = 48;
 const SEGMENT: u64 = 48;
+/// A copy of a shape (see `Instance`): where it is as three floats, its turn as two, its owner, where its planes are, and its
+/// owner seen through.
+const INSTANCE: u64 = 32;
 
 /// The window's use of the card: whether the user asked for it, the wgpu state it would be made on (none where the window has
 /// no wgpu device, as in every test), the card once it's made, and why the last picture was drawn on the processor, if it was.
@@ -121,6 +124,12 @@ struct Uploaded {
     count: u64,
     /// Where the vertices seen through start.
     clear_from: u64,
+    /// The shapes' vertices, in one buffer; their copies, as many buffers as they take, each but the last holding
+    /// [`Uploaded::instances_per`]; and the copies' planes.
+    shape_vertices: Option<wgpu::Buffer>,
+    instances: Vec<wgpu::Buffer>,
+    instances_per: u64,
+    planes: wgpu::Buffer,
     owners: wgpu::Buffer,
     skins: wgpu::Buffer,
     texels: wgpu::Buffer,
@@ -159,6 +168,8 @@ pub struct Gpu {
     queue: wgpu::Queue,
     state: Option<RenderState>,
     scene: wgpu::RenderPipeline,
+    instanced: wgpu::RenderPipeline,
+    instanced_clear: wgpu::RenderPipeline,
     clear: wgpu::RenderPipeline,
     post: wgpu::RenderPipeline,
     lines: wgpu::RenderPipeline,
@@ -286,6 +297,7 @@ impl Gpu {
                 buffer(storage, 2, vertex),
                 buffer(storage, 3, fragment),
                 buffer(storage, 4, fragment),
+                buffer(storage, 5, vertex),
             ],
         });
         let texture = |binding: u32, sample_type| wgpu::BindGroupLayoutEntry {
@@ -350,6 +362,27 @@ impl Gpu {
         };
         let vertex_layout =
             wgpu::VertexBufferLayout { array_stride: STRIDE, step_mode: wgpu::VertexStepMode::Vertex, attributes: &attributes };
+        let copy_attributes = wgpu::vertex_attr_array![7 => Float32x3, 8 => Float32x2, 9 => Uint32, 10 => Uint32, 11 => Uint32];
+        let instance_layout =
+            wgpu::VertexBufferLayout { array_stride: INSTANCE, step_mode: wgpu::VertexStepMode::Instance, attributes: &copy_attributes };
+        let instanced = pipeline(
+            "bimcraft-3d-instanced",
+            &surface_layout,
+            "vs_instanced",
+            "fs_scene",
+            &[Some(vertex_layout.clone()), Some(instance_layout.clone())],
+            &[target(COLOR), target(IDS)],
+            true,
+        );
+        let instanced_clear = pipeline(
+            "bimcraft-3d-instanced-clear",
+            &targets_layout,
+            "vs_instanced_clear",
+            "fs_clear",
+            &[Some(vertex_layout.clone()), Some(instance_layout)],
+            &[target(COLOR), target(CLEAR_IDS)],
+            true,
+        );
         let scene = pipeline(
             "bimcraft-3d-scene",
             &surface_layout,
@@ -383,6 +416,8 @@ impl Gpu {
             queue,
             state: None,
             scene,
+            instanced,
+            instanced_clear,
             clear,
             post,
             lines,
@@ -476,6 +511,12 @@ impl Gpu {
         Ok(false)
     }
 
+    /// Waits for what was sent to the card to be done, for a measurement.
+    #[cfg(test)]
+    pub(crate) fn wait(&self) {
+        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
+    }
+
     pub(crate) fn suspend_upload(&mut self) {
         self.upload_worker = None;
         self.upload_requested = None;
@@ -543,7 +584,7 @@ impl Gpu {
         // The view: scaled so that a mm is as many pixels in clip space as in the picture, and the mesh's depth is 0 to 1.
         let view = mesh.view(cam);
         let (width, height) = (w as f32, h as f32);
-        let through = up.clear_from < up.count;
+        let through = up.clear_from < up.count || mesh.shapes.iter().any(|s| s.clear_from < s.vertices.end && !s.instances.is_empty());
         let mut globals = Words::new();
         // In perspective, a mm a mm in front of the eye: the focal length.
         let across = view.perspective.map_or(view.scale, |p| p.focal);
@@ -569,6 +610,7 @@ impl Gpu {
                     entry(2, &self.segments.0),
                     entry(3, &up.skins),
                     entry(4, &up.texels),
+                    entry(5, &up.planes),
                 ],
             })
         });
@@ -619,6 +661,30 @@ impl Gpu {
                     if let Some(buffer) = up.vertices.get(k) {
                         pass.set_vertex_buffer(0, buffer.slice(..));
                         pass.draw(part, 0..1);
+                    }
+                }
+            }
+            // Each shape's copies: what is opaque of them, or what is seen through.
+            if let Some(shapes) = &up.shape_vertices
+                && !mesh.instances.is_empty()
+            {
+                pass.set_pipeline(if through_pass { &self.instanced_clear } else { &self.instanced });
+                pass.set_bind_group(0, &*bind, &[]);
+                if through_pass {
+                    pass.set_bind_group(1, &targets.bind, &[]);
+                }
+                pass.set_vertex_buffer(0, shapes.slice(..));
+                for shape in &mesh.shapes {
+                    let corners = if through_pass { shape.clear_from..shape.vertices.end } else { shape.vertices.start..shape.clear_from };
+                    if corners.is_empty() {
+                        continue;
+                    }
+                    let corners = corners.start as u32..corners.end as u32;
+                    for (k, part) in spans(up.instances_per, shape.instances.start as u64..shape.instances.end as u64) {
+                        if let Some(buffer) = up.instances.get(k) {
+                            pass.set_vertex_buffer(1, buffer.slice(..));
+                            pass.draw(corners.clone(), part);
+                        }
                     }
                 }
             }
@@ -673,8 +739,14 @@ impl Gpu {
         cancelled: &dyn Fn() -> bool,
     ) -> Result<Uploaded, String> {
         let binding = device.limits().max_storage_buffer_binding_size;
-        if mesh.texels.len() as u64 * 4 > binding || mesh.owners.len() as u64 * OWNER > binding {
+        if mesh.texels.len() as u64 * 4 > binding
+            || mesh.owners.len() as u64 * OWNER > binding
+            || mesh.instance_planes.len() as u64 * 4 > binding
+        {
             return Err("the model is bigger than the card holds".into());
+        }
+        if mesh.shape_vertices.len() as u64 * STRIDE > device.limits().max_buffer_size {
+            return Err("the model's shapes are bigger than a buffer the card holds".into());
         }
         // Whole triangles to a buffer, written and sent one at a time, so that what waits to go up is one buffer's.
         let per = (vertex_bytes.min(device.limits().max_buffer_size) / STRIDE / 3).max(1) * 3;
@@ -708,6 +780,50 @@ impl Gpu {
         if cancelled() {
             return Err("3D upload was cancelled".into());
         }
+        let vertex_buffer = |label: &str, bytes: &[u8]| {
+            let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size: bytes.len() as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            queue.write_buffer(&buffer, 0, bytes);
+            buffer
+        };
+        // The shapes, each vertex in its family's axes.
+        let shape_vertices = (!mesh.shape_vertices.is_empty()).then(|| {
+            bytes.clear();
+            for Vertex { position, normal, face, color, owner, plane, tex } in &mesh.shape_vertices {
+                put(&mut bytes, position);
+                put_unit(&mut bytes, normal);
+                put_unit(&mut bytes, face);
+                put_words(&mut bytes, &[*color, *owner, *plane, *tex]);
+            }
+            vertex_buffer("bimcraft-3d-shapes", &bytes)
+        });
+        // The copies, each knowing where its shape's vertices start, so that a vertex's index finds its triangle's plane.
+        let instances_per = (vertex_bytes.min(device.limits().max_buffer_size) / INSTANCE).max(3);
+        let mut instances = Vec::new();
+        let starts: Vec<u32> =
+            mesh.shapes.iter().flat_map(|s| std::iter::repeat_n((s.vertices.start / 3) as u32, s.instances.len())).collect();
+        for (part, starts) in mesh.instances.chunks(instances_per as usize).zip(starts.chunks(instances_per as usize)) {
+            if cancelled() {
+                return Err("3D upload was cancelled".into());
+            }
+            bytes.clear();
+            for (c, start) in part.iter().zip(starts) {
+                put(&mut bytes, &[c.at[0], c.at[1], c.at[2], c.turn[0], c.turn[1]]);
+                put_words(&mut bytes, &[c.owner, c.planes.wrapping_sub(*start), c.clear_owner]);
+            }
+            instances.push(vertex_buffer("bimcraft-3d-instances", &bytes));
+            queue.submit([]);
+        }
+        let planes = Gpu::storage(device, mesh.instance_planes.len() as u64 * 4);
+        if !mesh.instance_planes.is_empty() {
+            let mut words = Words::with_capacity(mesh.instance_planes.len() * 4);
+            put_words(&mut words, &mesh.instance_planes);
+            queue.write_buffer(&planes, 0, &words);
+        }
         let texels = Gpu::storage(device, mesh.texels.len() as u64 * 4);
         let mut words = Words::with_capacity(mesh.texels.len() * 4);
         put_words(&mut words, &mesh.texels);
@@ -720,6 +836,10 @@ impl Gpu {
             per,
             count: mesh.vertices.len() as u64,
             clear_from: mesh.clear_from.min(mesh.vertices.len()) as u64,
+            shape_vertices,
+            instances,
+            instances_per,
+            planes,
             tints: None,
             lookups: Vec::new(),
             bind: None,
@@ -913,6 +1033,41 @@ mod tests {
         assert_eq!(read(&gpu), pixels);
         gpu.draw(&latest, &perspective, &[], PAPER).unwrap();
         assert_eq!(read(&gpu), perspective_pixels);
+    }
+
+    #[test]
+    fn copies_placed_draw_the_pixels_of_their_own_triangles() {
+        let Some(mut gpu) = headless() else { return };
+        let mut s = sample();
+        // And three lamps, each a frame and a lens seen through.
+        s.execute("material", &serde_json::json!({"name": "Lens", "color": [250, 250, 230], "transparency": 60})).unwrap();
+        s.execute(
+            "family",
+            &serde_json::json!({"name": "Lamp", "types": {"A": {}}, "forms": [
+                {"profile": [[0,0],[600,0],[600,600],[0,600]], "from": 2400, "to": 2500, "material": "Concrete"},
+                {"profile": [[50,50],[550,50],[550,550],[50,550]], "from": 2300, "to": 2400, "material": "Lens"}]}),
+        )
+        .unwrap();
+        for (x, angle) in [(2000, 0), (5000, 30), (8000, 90)] {
+            s.execute("component", &serde_json::json!({"family": "Lamp", "at": [x, 3000], "angle": angle})).unwrap();
+        }
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let (mesh, flat) = (Arc::new(Mesh::new(&scene, &look).unwrap()), Arc::new(Mesh::flat(&scene, &look).unwrap()));
+        assert!(mesh.instances.len() > 4 && flat.instances.is_empty());
+        assert!(mesh.instances.iter().any(|i| i.clear_owner != 0), "the lamps' lenses are copies too");
+        let chair = mesh.owners[mesh.instances[0].owner as usize - 1].id;
+        let parallel = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let perspective = scene.fit_from(Camera { lens: Some(bimcraft_core::view3d::LENS), ..parallel }, &look);
+        for (name, cam) in [("parallel", parallel), ("perspective", perspective), ("inside", inside(&s, perspective))] {
+            for tints in [vec![], vec![(chair, Rgb(255, 160, 0))]] {
+                gpu.draw(&flat, &cam, &tints, PAPER).unwrap();
+                let own = read(&gpu);
+                gpu.draw(&mesh, &cam, &tints, PAPER).unwrap();
+                let placed = read(&gpu);
+                let differ = own.chunks(4).zip(placed.chunks(4)).filter(|(a, b)| a != b).count();
+                assert_eq!(differ, 0, "{name}, {} tints: {differ} pixels differ", tints.len());
+            }
+        }
     }
 
     #[test]

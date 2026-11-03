@@ -291,6 +291,15 @@ from the origin would overflow f32), each with its colour, normal, face normal, 
 words (`Skin`; `Mesh::lookups` gives the level a zoom looks up, as `Sampler::level_for` does); and a bounding volume hierarchy built on
 the view worker before the first pick. The first card upload runs on a worker too; the view waits with progress until the scene and
 upload are both ready. Zoom to Fit and Home fit on a worker. Surfaces seen through come after the opaque ones (`Mesh::clear_from`), each element's transparency in its `Owner` (an element whose layers differ in transparency has an `Owner` for each).
+A component is held once for each shape and placed for each copy (`Mesh::shapes`, `shape_vertices`, `instances`): the scene notes which
+runs of its triangles are a family shape placed to the last bit (`Scene::placements`, from `component_geometry::SharedComponents`), and the
+mesh draws a copy from its shape when every triangle has the colour, texture, face, curved normals and transparency that the shape's first
+copy has. A painted copy, or one the view colours or makes see-through on its own, is drawn from its own triangles. Each copy's plane numbers
+are the scene's (`instance_planes`, read by `vs_instanced`), because the scene numbers planes across the whole model and an edge is
+drawn where the number changes. A shape's opaque triangles come first and those seen through after (`Shape::clear_from`, drawn by
+`vs_instanced_clear` with the copy's `clear_owner`). A pick goes through a hierarchy of triangles and copies, then the copy's shape's own,
+each box placed as the copy is, and it tests the triangles the scene holds, so ties go to the first in the scene as before. `Mesh::flat` is
+the mesh with no shapes, and `copies_placed_draw_the_pixels_of_their_own_triangles` holds the two pictures equal, byte for byte.
 `Mesh::new` refuses, with a reason, what the card doesn't draw (hidden line, wireframe, a section box, a point cloud), never for its size: `Gpu::upload` puts it in as many buffers as it takes (`limits_for` asks for the adapter's own limits), and the processor draws those as before, and sections and sheets always. `Mesh::pick` is `Image::pick` without a picture: the
 same projection and barycentric test for triangles (the nearest seen through where it is nearer than the nearest opaque one), and for levels the same `LevelMarks` that `Scene::picture` draws (`level_marks`: one
 definition of a level's lines and head). The desktop's `gpu.rs` and `gpu.wgsl` draw it in passes into a texture egui shows like the

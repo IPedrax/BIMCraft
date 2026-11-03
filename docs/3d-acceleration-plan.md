@@ -146,15 +146,39 @@ The UI library's 636 tests passed, including the card's picture and picking comp
 `worker_upload_keeps_only_the_latest_mesh_and_draws_the_same_pixels` compares synchronous and worker uploads byte for byte in
 parallel and perspective; the mesh cancellation test checks that a discarded hierarchy can be built again.
 
-## Piece 3 in progress
+## Piece 3: one shape, many places (2026-11-03)
 
-`component_geometry::SharedComponents` now groups component instances by local family shape, including mirroring and the parameters
-the family evaluates in the key, while paint and phase metadata do not split a shape. Each instance keeps its owner and placement
-transform. Its test checks that placing every shared triangle gives the same coordinates and face normals as the existing full
-component geometry. Each shape's local bounds transform into a conservative world box for the instance hierarchy. The card still receives expanded triangles: shader
-instancing, per-instance plane and owner numbers, world-position textures and hierarchical picking are next.
-On the annotated 10-storey tower it finds **62,020 instances of 20 shapes**: 7,118,800 placed component triangles come from **2,845
-unique local triangles**. This is geometry reuse potential, before the instance buffer and picking hierarchy are counted.
+`component_geometry::SharedComponents` groups component instances by local family shape (mirroring and the parameters the family
+evaluates are in the key; paint and phase metadata aren't). `Scene::new` keeps the shapes and notes each component whose run of triangles
+is its shape placed, compared to the last bit (`Scene::placements`). `Mesh::new` draws a copy from its shape when each of its triangles has
+the colour, texture, face, curved normals and transparency of the shape's first copy, so a painted copy, or one that the view colours or
+makes see-through on its own, is drawn from its own triangles as before. On the card a copy is an instance: its place, turn, owner,
+owner seen through, and where its plane numbers start. The plane numbers stay the scene's, one word per placed triangle
+(`instance_planes`), because the scene numbers planes across the whole model and an edge is drawn where the number changes: two touching
+copies, or a copy on a floor, keep the edges they had. A shape's opaque triangles go in the opaque pass and its see-through ones (a lamp's
+diffuser) in the see-through pass, under the copy's second owner. A pick walks one hierarchy over the triangles and copies, then the copy's
+shape's own with each box placed, and tests the very triangles the scene holds. Ties go to the first in the scene, so picking
+is unchanged: the processor-picture tests pass as they did.
+
+`copies_placed_draw_the_pixels_of_their_own_triangles` holds the instanced picture to `Mesh::flat` (every copy its own triangles, the
+picture before this piece) byte for byte, on the sample house with three lamps that are seen through in part, parallel, in perspective and
+from inside, with a copy tinted and without. The core's `copies_hold_the_flat_triangles` checks each copy's placed vertices against the
+flat ones.
+
+The annotated 10-storey tower, 1920 × 1080, release, RTX 2060, through the worker path:
+
+| What | Piece 2 | Now |
+|---|---:|---:|
+| Copies drawn from a shape | none | **all 62,020**, from 20 shapes of 2,845 triangles |
+| Triangles the card holds one by one | 9,302,680 | 2,183,880 |
+| Scene, fit, mesh and pick hierarchy, on the worker | 16.58 s | 11.80 s |
+| Upload, on the worker | 1.78 s | 0.61 s |
+| A frame (piece 1's: 55 ms median, 149 ms p95) | | **7.7 ms** median, 11.3 ms p95 |
+| A pick | 2.0 ms | 1.4 ms |
+| The process's peak memory | 5.4 GB | 4.9 GB |
+
+`Scene::tris` still holds every copy's triangles for the processor, sections and planes, so memory is mostly the scene's now. Making the
+scene keep copies as placements, its planes found per shape, is what stands between this and 100 storeys, along with piece 4.
 
 ## What isn't decided yet
 
@@ -169,7 +193,7 @@ unique local triangles**. This is geometry reuse potential, before the instance 
 - [x] Measure
 - [x] 1. No cap, and the card's real limits
 - [x] 2. Scene and mesh off the interface's thread
-- [ ] 3. One shape, many places: components
+- [x] 3. One shape, many places: components
 - [ ] 4. The same for runs
 - [ ] 5. Draw what the view can see
 - [ ] 6. A frame never waits for all of it
