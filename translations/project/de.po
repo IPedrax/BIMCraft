@@ -106,7 +106,7 @@ msgstr "Strich-Punkt"
 msgid "Data Outlet"
 msgstr "Datenanschluss"
 
-#: crates/core/src/commands.rs:8008
+#: crates/core/src/commands.rs:8031
 msgid "Dependent"
 msgstr "Abhängig"
 
@@ -170,8 +170,8 @@ msgstr "Osten"
 msgid "Elbow 90"
 msgstr "Bogen 90"
 
-#: crates/core/src/commands.rs:7792
-#: crates/core/src/commands.rs:9749
+#: crates/core/src/commands.rs:7815
+#: crates/core/src/commands.rs:9772
 msgid "Elevation"
 msgstr "Ansicht"
 
@@ -288,7 +288,7 @@ msgstr "Beinbreite"
 msgid "Length"
 msgstr "Länge"
 
-#: crates/core/src/commands.rs:5053
+#: crates/core/src/commands.rs:5076
 #: crates/core/src/model.rs:2686
 msgid "Level"
 msgstr "Geschoss"
@@ -313,7 +313,7 @@ msgstr "Marke"
 msgid "Masking"
 msgstr "Maskierung"
 
-#: crates/core/src/commands.rs:6295
+#: crates/core/src/commands.rs:6318
 msgid "Mass"
 msgstr "Volumenkörper"
 
@@ -425,7 +425,7 @@ msgstr "Steigungen"
 msgid "Roof tiles"
 msgstr "Dachziegel"
 
-#: crates/core/src/commands.rs:6520
+#: crates/core/src/commands.rs:6543
 msgid "Room"
 msgstr "Raum"
 
@@ -453,8 +453,8 @@ msgstr "Estrich"
 msgid "Seat Height"
 msgstr "Sitzhöhe"
 
-#: crates/core/src/commands.rs:7769
-#: crates/core/src/commands.rs:9748
+#: crates/core/src/commands.rs:7792
+#: crates/core/src/commands.rs:9771
 msgid "Section"
 msgstr "Schnitt"
 
@@ -578,7 +578,7 @@ msgstr "AUF"
 msgid "Unbounded Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:8149
+#: crates/core/src/commands.rs:8172
 msgid "Unnamed"
 msgstr "Unbenannt"
 

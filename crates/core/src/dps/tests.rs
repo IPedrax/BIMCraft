@@ -129,6 +129,19 @@ fn tabela_49_the_least_uc_by_earthing_and_connection() {
     assert!(near(t[0].1, 139.7));
 }
 
+#[test]
+fn tabela_31_is_as_printed() {
+    // [category IV, III, II, I] in kV
+    assert_eq!(withstand("120/208"), Some([4.0, 2.5, 1.5, 0.8]));
+    assert_eq!(withstand("127/220"), Some([4.0, 2.5, 1.5, 0.8]));
+    for system in ["220/380", "230/400", "277/480"] {
+        assert_eq!(withstand(system), Some([6.0, 4.0, 2.5, 1.5]), "{system}");
+    }
+    assert_eq!(withstand("400/690"), Some([8.0, 6.0, 4.0, 2.5]));
+    assert_eq!(withstand("110/190"), None);
+    assert_eq!(SIGNAL_ENTRY_WITHSTAND_KV, 1.5);
+}
+
 mod command {
     use crate::engine::Session;
     use serde_json::{Value, json};
@@ -149,7 +162,10 @@ mod command {
         assert_eq!(p["conductor"]["section_mm2"], 4.0);
         assert_eq!(p["conductor"]["max_length_m"], 0.5);
         assert!(p["where"].as_array().is_some_and(|w| w.len() == 2), "{r}");
-        assert!(r["not_covered"].as_str().is_some_and(|n| n.contains("Table 31") && !n.contains("Table 49")), "{r}");
+        assert!(
+            r["not_covered"].as_str().is_some_and(|n| !n.contains("Table 31") && !n.contains("Table 49") && n.contains("short-circuit")),
+            "{r}"
+        );
         assert_eq!(crate::engine::find("dps_check").map(|c| c.undoable), Some(false));
     }
 
@@ -168,6 +184,23 @@ mod command {
         assert!(r["power"]["uc_min"]["modes"][0].get("volts").is_none(), "{r}");
         let e = s.execute("dps_check", &json!({"region": "AQ3", "uo": -1})).unwrap_err();
         assert!(e.contains("uo"), "{e}");
+    }
+
+    #[test]
+    fn the_up_comes_from_the_category_of_equipment_in_tabela_31() {
+        let mut s = Session::new();
+        let r = run(&mut s, json!({"region": "AQ3", "system": "220/380", "signal_lines": ["telephone"]}));
+        let up = &r["power"]["up"];
+        assert_eq!((&up["system"], &up["max_up_kv"]), (&json!("220/380"), &json!(2.5)));
+        assert_eq!(up["withstand_kv"], json!({"IV": 6.0, "III": 4.0, "II": 2.5, "I": 1.5}));
+        let r = run(&mut s, json!({"region": "AQ3", "system": "127/220"}));
+        assert_eq!(r["power"]["up"]["max_up_kv"], 1.5);
+        // A signal line at the entry: 1.5 kV at least (note 3, IEC 61663-2).
+        let r = run(&mut s, json!({"region": "AQ1", "signal_lines": ["data"]}));
+        assert_eq!(r["signal"][0]["min_impulse_withstand_kv"], 1.5);
+        for bad in [json!({"region": "AQ3", "system": "110"}), json!({"region": "AQ3", "system": 220})] {
+            assert!(s.execute("dps_check", &bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

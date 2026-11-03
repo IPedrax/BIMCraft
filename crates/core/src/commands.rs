@@ -1705,7 +1705,7 @@ pub static ALL: &[Command] = &[
         "dps_check",
         "Check Surge Protection",
         "{region: AQ1|AQ2|AQ3, overhead?, accepted_risk?, risk_to_people?, purpose?: line|direct|both, earthing?: TT|TN-S|TN-C|IT, \
-         uo?, neutral?, phases?: 1|3, existing?, signal_lines?: [telephone|data|video|tv|antenna|interconnection]} surge protection (DPS) of \
+         uo?, system?: 120/208|127/220|220/380|230/400|277/480|400/690, neutral?, phases?: 1|3, existing?, signal_lines?: [telephone|data|video|tv|antenna|interconnection]} surge protection (DPS) of \
          a power line as NBR 5410:2004 asks. It is required where the line is `overhead` (wholly or partly, or the installation has an \
          overhead line itself) and the `region` is AQ2 (more than 25 days of thunderstorms a year), or in any AQ3 region (5.4.2.1.1); \
          `accepted_risk` is the project taking a calculated risk the standard allows, never where the omission may put people at risk \
@@ -1718,7 +1718,7 @@ pub static ALL: &[Command] = &[
          against direct lightning, 0.5 m in all). With `earthing`, `uc_min` is the least continuous operating voltage Uc of Tabela 49 for \
          each pair of points the device connects (1.1 Uo; Uo between the neutral and the PE; √3 Uo phase to PE in IT; U in IT without a \
          neutral), in volts when `uo`, the phase-to-neutral voltage, is given. `signal_lines` are the external signal lines, each protected at the entry. Not \
-         covered: the level Up of Table 31, the short-circuit withstand and overcurrent protection of the \
+         covered: the short-circuit withstand and overcurrent protection of the \
          DPS, and coordination (`not_covered`). It has no shortcut: Revit has no tool for it. It changes nothing",
         dps_check,
     ),
@@ -4548,6 +4548,7 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
             "existing",
             "signal_lines",
             "uo",
+            "system",
         ],
     )?;
     let Some(region) = Region::parse(choice(c, p, "region", REGIONS, "")?) else {
@@ -4573,6 +4574,13 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
         },
     };
     let existing = flag(c, p, "existing")?;
+    let system = match p.get("system").filter(|v| !v.is_null()) {
+        None => None,
+        Some(v) => match v.as_str().filter(|x| dps::withstand(x).is_some()) {
+            Some(x) => Some(x.to_string()),
+            None => return Err(bad(c, format!("`system` is one of {}, got {v}", dps::SYSTEMS.join(", ")))),
+        },
+    };
     let uo = match p.get("uo").filter(|v| !v.is_null()) {
         None => None,
         Some(_) => Some(within(c, p, "uo", 0.0, 1.0, 1.0e5)?),
@@ -4586,9 +4594,13 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
                 let Some(kind) = kind else {
                     return Err(bad(c, format!("`signal_lines` holds {}, got {v}", SIGNALS.join(", "))));
                 };
-                signals.push(
-                    json!({"kind": kind, "required": true, "why": dps::signal_required(kind), "where": "at the building's entry or exit"}),
-                );
+                signals.push(json!({
+                    "kind": kind,
+                    "required": true,
+                    "why": dps::signal_required(kind),
+                    "where": "at the building's entry or exit",
+                    "min_impulse_withstand_kv": dps::SIGNAL_ENTRY_WITHSTAND_KV,
+                }));
             }
         }
         Some(v) => return Err(bad(c, format!("`signal_lines` is a list of {}, got {v}", SIGNALS.join(", ")))),
@@ -4601,6 +4613,17 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
     if v.required {
         power.insert("purpose".into(), json!(PURPOSES[purpose as usize]));
         power.insert("where".into(), json!(dps::place(purpose, existing)));
+        if let Some(w) = system.as_deref().and_then(|x| dps::withstand(x).map(|w| (x, w))) {
+            power.insert(
+                "up".into(),
+                json!({
+                    "system": w.0,
+                    "withstand_kv": {"IV": w.1[0], "III": w.1[1], "II": w.1[2], "I": w.1[3]},
+                    "max_up_kv": w.1[2],
+                    "why": "the protection level Up must stay under what the equipment of use (category II of Tabela 31) withstands",
+                }),
+            );
+        }
         let mut three = false;
         if let Some(e) = earthing {
             let list = dps::schemes(e, neutral);
@@ -4638,7 +4661,7 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
     Ok(json!({
         "power": power,
         "signal": signals,
-        "not_covered": "the protection level Up (category II of Table 31), the short-circuit withstand and the overcurrent protection of the DPS (6.3.5.2.5), and the coordination between DPS",
+        "not_covered": "the short-circuit withstand and the overcurrent protection of the DPS (6.3.5.2.5), and the coordination between DPS",
     }))
 }
 

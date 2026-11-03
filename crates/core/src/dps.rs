@@ -203,6 +203,25 @@ pub fn uc_min(earthing: Earthing, neutral: bool, uo: f64) -> Vec<Uc> {
     }
 }
 
+/// The nominal voltages of Tabela 31's three-phase systems.
+pub const SYSTEMS: &[&str] = &["120/208", "127/220", "220/380", "230/400", "277/480", "400/690"];
+
+/// Tabela 31: the impulse withstand voltage (kV) required of the components of an installation of a nominal voltage, by category of
+/// product: `[IV, III, II, I]`, IV for a product at the origin of the installation, III for the distribution and final circuits, II
+/// for the equipment of use and I for the specially protected. `None` for a system the table does not list.
+pub fn withstand(system: &str) -> Option<[f64; 4]> {
+    match system {
+        "120/208" | "127/220" => Some([4.0, 2.5, 1.5, 0.8]),
+        "220/380" | "230/400" | "277/480" => Some([6.0, 4.0, 2.5, 1.5]),
+        "400/690" => Some([8.0, 6.0, 4.0, 2.5]),
+        _ => None,
+    }
+}
+
+/// The least impulse withstand (kV) of the components tied to a signal line at the entry of the installation (note 3 of Tabela 31,
+/// IEC 61663-2).
+pub const SIGNAL_ENTRY_WITHSTAND_KV: f64 = 1.5;
+
 /// The least nominal discharge current (kA, 8/20 µs) for each mode of protection; for the neutral–PE mode of connection 3
 /// (`neutral_pe`) it is more. Nothing is asked of a device that is only against direct lightning.
 pub fn discharge(purpose: Purpose, neutral_pe: bool, phases: u32) -> f64 {
