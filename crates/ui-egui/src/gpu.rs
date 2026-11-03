@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use bimcraft_core::model::Id;
 use bimcraft_core::render::Rgb;
-use bimcraft_core::view3d::gpu::{Mesh, Vertex};
+use bimcraft_core::view3d::gpu::{Instance, Mesh, Vertex, Visible};
 use bimcraft_core::view3d::{Camera, MAX_SIDE};
 use eframe::egui_wgpu::{RenderState, wgpu};
 use egui::TextureId;
@@ -129,6 +129,11 @@ struct Uploaded {
     shape_vertices: Option<wgpu::Buffer>,
     instances: Vec<wgpu::Buffer>,
     instances_per: u64,
+    /// The copies a view sees, gathered in their order into one buffer (and how many it has room for) when it doesn't see them
+    /// all: which they are, and where each shape's are in it.
+    seen: Option<(wgpu::Buffer, u64)>,
+    seen_runs: Vec<std::ops::Range<usize>>,
+    seen_shapes: Vec<std::ops::Range<u32>>,
     planes: wgpu::Buffer,
     owners: wgpu::Buffer,
     skins: wgpu::Buffer,
@@ -186,6 +191,9 @@ pub struct Gpu {
     adapter: String,
     /// The most bytes of vertices in one buffer.
     vertex_bytes: u64,
+    /// Whether what a view can't see is left out ([`Mesh::visible`]); off only to test that the picture is the same, and to
+    /// measure what it saves.
+    pub(crate) cull: bool,
 }
 
 /// The most bytes a buffer of vertices holds, whatever the card allows: some drivers place a very large buffer badly.
@@ -215,6 +223,25 @@ fn spans(per: u64, range: std::ops::Range<u64>) -> Vec<(usize, std::ops::Range<u
 
 /// The bytes of a buffer, 32-bit words as the card's byte order has them.
 type Words = Vec<u8>;
+
+/// A copy as the card reads it: where, its axes, its element, where its planes are less where its shape's vertices `start`, a
+/// third, and its element as seen through.
+fn put_copy(into: &mut Words, c: &Instance, start: u32) {
+    put(into, &c.at);
+    c.axes.iter().for_each(|v| put(into, v));
+    put_words(into, &[c.owner, c.planes.wrapping_sub(start), c.clear_owner]);
+}
+
+/// What of `span` the runs `seen` (in order, apart) hold, in order.
+fn within(seen: &[std::ops::Range<usize>], span: std::ops::Range<usize>) -> Vec<std::ops::Range<usize>> {
+    let first = seen.partition_point(|r| r.end <= span.start);
+    seen[first..]
+        .iter()
+        .take_while(|r| r.start < span.end)
+        .map(|r| r.start.max(span.start)..r.end.min(span.end))
+        .filter(|r| !r.is_empty())
+        .collect()
+}
 
 fn put(into: &mut Words, floats: &[f32]) {
     into.extend(floats.iter().flat_map(|f| f.to_ne_bytes()));
@@ -433,6 +460,7 @@ impl Gpu {
             texture: None,
             adapter: String::new(),
             vertex_bytes: VERTEX_BUFFER,
+            cull: true,
         })
     }
 
@@ -534,6 +562,15 @@ impl Gpu {
         }
         self.upload(mesh)?;
         self.size(w, h);
+        // What the view can see, the rest left out as leaving no pixel; in the order it is drawn either way.
+        let seen = if self.cull {
+            mesh.visible(cam)
+        } else {
+            Visible {
+                vertices: std::iter::once(0..mesh.vertices.len()).collect(),
+                instances: std::iter::once(0..mesh.instances.len()).collect(),
+            }
+        };
         let (device, queue) = (&self.device, &self.queue);
         let write = |buffer: &wgpu::Buffer, bytes: &[u8]| {
             if !bytes.is_empty() {
@@ -600,6 +637,42 @@ impl Gpu {
         let lens = view.perspective.map_or([0.0; 4], |p| [p.focal, p.eye, p.a, p.b]);
         put(&mut globals, &lens);
         write(&self.globals, &globals);
+        // The copies the view sees, when it doesn't see them all, gathered into one buffer in their order: one draw a shape.
+        let all = seen.instances.len() == 1 && seen.instances.first() == Some(&(0..mesh.instances.len()));
+        let gathered = seen.instances.iter().map(|r| r.len() as u64).sum::<u64>();
+        let gather = !all && gathered > 0 && gathered * INSTANCE <= self.vertex_bytes.min(device.limits().max_buffer_size);
+        if !gather {
+            up.seen_runs.clear();
+        } else if up.seen_runs != seen.instances {
+            let mut bytes = Words::with_capacity(gathered as usize * INSTANCE as usize);
+            up.seen_shapes.clear();
+            let mut at = 0u32;
+            for shape in &mesh.shapes {
+                let start = (shape.vertices.start / 3) as u32;
+                let first = at;
+                for run in within(&seen.instances, shape.instances.clone()) {
+                    for c in mesh.instances.get(run).unwrap_or_default() {
+                        put_copy(&mut bytes, c, start);
+                        at += 1;
+                    }
+                }
+                up.seen_shapes.push(first..at);
+            }
+            if up.seen.as_ref().is_none_or(|(_, room)| *room < gathered) {
+                let room = gathered.max(1024).next_power_of_two();
+                let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("bimcraft-3d-seen-copies"),
+                    size: (room * INSTANCE).min(self.vertex_bytes.min(device.limits().max_buffer_size)),
+                    usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+                up.seen = Some((buffer, room));
+            }
+            if let Some((buffer, _)) = &up.seen {
+                write(buffer, &bytes);
+            }
+            up.seen_runs.clone_from(&seen.instances);
+        }
         let bind = up.bind.get_or_insert_with(|| {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("bimcraft-3d-buffers"),
@@ -657,10 +730,12 @@ impl Gpu {
                 if through_pass {
                     pass.set_bind_group(1, &targets.bind, &[]);
                 }
-                for (k, part) in spans(up.per, vertices) {
-                    if let Some(buffer) = up.vertices.get(k) {
-                        pass.set_vertex_buffer(0, buffer.slice(..));
-                        pass.draw(part, 0..1);
+                for run in within(&seen.vertices, vertices.start as usize..vertices.end as usize) {
+                    for (k, part) in spans(up.per, run.start as u64..run.end as u64) {
+                        if let Some(buffer) = up.vertices.get(k) {
+                            pass.set_vertex_buffer(0, buffer.slice(..));
+                            pass.draw(part, 0..1);
+                        }
                     }
                 }
             }
@@ -674,16 +749,28 @@ impl Gpu {
                     pass.set_bind_group(1, &targets.bind, &[]);
                 }
                 pass.set_vertex_buffer(0, shapes.slice(..));
-                for shape in &mesh.shapes {
+                let gathered = up.seen.as_ref().filter(|_| gather).map(|(buffer, _)| buffer);
+                if let Some(buffer) = gathered {
+                    pass.set_vertex_buffer(1, buffer.slice(..));
+                }
+                for (n, shape) in mesh.shapes.iter().enumerate() {
                     let corners = if through_pass { shape.clear_from..shape.vertices.end } else { shape.vertices.start..shape.clear_from };
                     if corners.is_empty() {
                         continue;
                     }
                     let corners = corners.start as u32..corners.end as u32;
-                    for (k, part) in spans(up.instances_per, shape.instances.start as u64..shape.instances.end as u64) {
-                        if let Some(buffer) = up.instances.get(k) {
-                            pass.set_vertex_buffer(1, buffer.slice(..));
-                            pass.draw(corners.clone(), part);
+                    if gathered.is_some() {
+                        if let Some(copies) = up.seen_shapes.get(n).filter(|c| !c.is_empty()) {
+                            pass.draw(corners, copies.clone());
+                        }
+                        continue;
+                    }
+                    for run in within(&seen.instances, shape.instances.clone()) {
+                        for (k, part) in spans(up.instances_per, run.start as u64..run.end as u64) {
+                            if let Some(buffer) = up.instances.get(k) {
+                                pass.set_vertex_buffer(1, buffer.slice(..));
+                                pass.draw(corners.clone(), part);
+                            }
                         }
                     }
                 }
@@ -812,9 +899,7 @@ impl Gpu {
             }
             bytes.clear();
             for (c, start) in part.iter().zip(starts) {
-                put(&mut bytes, &c.at);
-                c.axes.iter().for_each(|v| put(&mut bytes, v));
-                put_words(&mut bytes, &[c.owner, c.planes.wrapping_sub(*start), c.clear_owner]);
+                put_copy(&mut bytes, c, *start);
             }
             instances.push(vertex_buffer("bimcraft-3d-instances", &bytes));
             queue.submit([]);
@@ -840,6 +925,9 @@ impl Gpu {
             shape_vertices,
             instances,
             instances_per,
+            seen: None,
+            seen_runs: Vec::new(),
+            seen_shapes: Vec::new(),
             planes,
             tints: None,
             lookups: Vec::new(),
@@ -1036,9 +1124,9 @@ mod tests {
         assert_eq!(read(&gpu), perspective_pixels);
     }
 
-    #[test]
-    fn copies_placed_draw_the_pixels_of_their_own_triangles_and_tubes_of_their_runs() {
-        let Some(mut gpu) = headless() else { return };
+    /// The sample with copies of every kind: three lamps, each a frame and a lens seen through, and round runs, one tube
+    /// stretched and turned (level, sloped, upright and at an angle in plan).
+    fn with_copies() -> Session {
         let mut s = sample();
         // And three lamps, each a frame and a lens seen through.
         s.execute("material", &serde_json::json!({"name": "Lens", "color": [250, 250, 230], "transparency": 60})).unwrap();
@@ -1061,6 +1149,13 @@ mod tests {
         ] {
             s.execute(command, &serde_json::json!({"points": points, "offset": offset, "end_offset": end})).unwrap();
         }
+        s
+    }
+
+    #[test]
+    fn copies_placed_draw_the_pixels_of_their_own_triangles_and_tubes_of_their_runs() {
+        let Some(mut gpu) = headless() else { return };
+        let s = with_copies();
         let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
         let (mesh, flat) = (Arc::new(Mesh::new(&scene, &look).unwrap()), Arc::new(Mesh::flat(&scene, &look).unwrap()));
         assert!(mesh.instances.len() > 8 && flat.instances.is_empty());
@@ -1076,6 +1171,45 @@ mod tests {
                 let placed = read(&gpu);
                 let differ = own.chunks(4).zip(placed.chunks(4)).filter(|(a, b)| a != b).count();
                 assert_eq!(differ, 0, "{name}, {} tints: {differ} pixels differ", tints.len());
+            }
+        }
+    }
+
+    #[test]
+    fn leaving_out_what_the_view_cannot_see_draws_the_same_pixels() {
+        let Some(mut all) = headless() else { return };
+        let Some(mut culled) = headless() else { return };
+        all.cull = false;
+        // A few triangles to a buffer, so that what is left out falls across buffers too.
+        culled.vertex_bytes = STRIDE * 3 * 25;
+        let mut s = with_copies();
+        for seen_through in [false, true] {
+            if seen_through {
+                s.execute("graphics", &serde_json::json!({"view": "{3D}", "categories": {"walls": {"transparency": 50}}})).unwrap();
+            }
+            let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+            let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+            let chair = mesh.owners[mesh.instances[0].owner as usize - 1].id;
+            let parallel = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+            let near =
+                Camera { scale: parallel.scale * 8.0, target: [parallel.target[0] - 3000.0, parallel.target[1] - 2000.0, 0.0], ..parallel };
+            let perspective = scene.fit_from(Camera { lens: Some(bimcraft_core::view3d::LENS), ..parallel }, &look);
+            for (name, cam) in [("parallel", parallel), ("near", near), ("perspective", perspective), ("inside", inside(&s, perspective))] {
+                let seen = mesh.visible(&cam);
+                let drawn = seen.vertices.iter().map(|r| r.len()).sum::<usize>() + seen.instances.iter().map(|r| r.len()).sum::<usize>();
+                if matches!(name, "near" | "inside") {
+                    assert!(drawn < mesh.vertices.len() + mesh.instances.len(), "{name}: something is left out");
+                    let copies: usize = seen.instances.iter().map(|r| r.len()).sum();
+                    assert!(0 < copies && copies < mesh.instances.len(), "{name}: {copies} of {} copies gathered", mesh.instances.len());
+                }
+                for tints in [vec![], vec![(chair, Rgb(255, 160, 0))]] {
+                    for gpu in [&mut all, &mut culled] {
+                        gpu.draw(&mesh, &cam, &tints, PAPER).unwrap();
+                    }
+                    let (a, b) = (read(&all), read(&culled));
+                    let differ = a.chunks(4).zip(b.chunks(4)).filter(|(a, b)| a != b).count();
+                    assert_eq!(differ, 0, "{name}, seen through {seen_through}, {} tints: {differ} pixels differ", tints.len());
+                }
             }
         }
     }
@@ -1164,6 +1298,16 @@ mod tests {
     /// `cargo test -p bimcraft-ui-egui --release gpu_speed -- --ignored --nocapture`: the 20-storey tower at 1920 x 1080, orbited.
     /// The card's frames are timed back to back, apart from the processor's: timed straight after a processor's picture, a frame
     /// waits for the card to wake from idle (24 ms on an RTX 2060 for a 1.5 ms frame), which a window turning the view never does.
+    #[test]
+    fn within_finds_what_of_a_span_is_seen_in_order() {
+        let seen = [0..3, 6..12, 15..30];
+        assert_eq!(within(&seen, 0..30), vec![0..3, 6..12, 15..30]);
+        assert_eq!(within(&seen, 3..6), vec![]);
+        assert_eq!(within(&seen, 9..18), vec![9..12, 15..18]);
+        assert_eq!(within(&seen, 30..40), vec![]);
+        assert_eq!(within(&[], 0..9), vec![]);
+    }
+
     #[test]
     fn spans_are_whole_and_in_order_across_buffers() {
         assert_eq!(spans(6, 0..15), vec![(0, 0..6), (1, 0..6), (2, 0..3)]);

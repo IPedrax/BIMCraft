@@ -209,6 +209,42 @@ A frame is about a millisecond slower: 1.6 million more triangles go through the
 three axes. It's still drawing all 9.3 million each frame; piece 5 is what takes the frame down. What the card holds is now mostly the scene's
 own: `Scene::tris` still keeps every copy's triangles, as piece 3 says.
 
+## Piece 5: draw what the view can see (2026-11-03)
+
+A frame draws only what can reach its picture (`Mesh::visible`). What's left out lies wholly past one side of the clip volume, so it leaves
+no pixel; what's drawn keeps the order it had, because a tie between touching faces goes to the first drawn, and picking (which settles ties
+by the scene's order) is untouched. The triangles drawn of their own are grouped in runs as they are drawn (`Mesh::groups`: at most 1,024
+triangles and a sixteenth of the mesh's width, never across `clear_from`). Each copy is tested on its own: a shape's copies follow the
+scene's order, which skips about a floor, so a run of them is as wide as the floor and groups of them left out almost nothing. Each group
+and copy is a sphere, tested against the six sides as planes and padded for the card's f32; a coarse grid of cells (12 across the mesh's
+box) settles first what lies wholly in view or wholly out, and the whole mesh in view is taken whole. The card draws the runs of triangles,
+joined across gaps of up to 2,048 left out, and gathers the copies a view sees, in their order, into one buffer (`Uploaded::seen`), so a
+shape is still one draw; it is written again only when what's seen changes. The shader is as it was.
+
+The plan said grouping by tile and storey from `derived.rs`; that would have reordered what is drawn, and so the ties. Groups in the order
+drawn and copies one by one leave out as much without it.
+
+`groups_hold_what_is_drawn_in_order_and_a_view_leaves_out_only_what_it_cannot_see` (core: every triangle and copy left out lies past one
+side, in clip space as the shader puts it; seen whole, nothing is left out) and `leaving_out_what_the_view_cannot_see_draws_the_same_pixels`
+(the card, byte for byte against drawing all of it, near, from inside, in both projections, seen through and tinted) hold it. Made to leave
+out too much, by shrinking the boxes or misplacing a gathered copy's planes, the second fails by hundreds of pixels.
+
+The same tower and card, the camera turning 3° a frame, median of 35 frames, on a quiet machine:
+
+| View | All drawn | Left out | Drawn, of 633,750 triangles and copies (with the gaps a run joins across) |
+|---|---:|---:|---:|
+| The whole tower, fitted | 10.0 ms | 9.6 ms | all |
+| 4 × nearer, on a corner | 10.6 ms | 10.7 ms | 328,012 |
+| 16 × nearer, on a corner | | 6.4 ms | 158,034 |
+| From inside, in perspective | 7.4 ms | 3.8 ms | 189,328 |
+| Nothing in view | | 0.3 ms | none |
+
+What's left out is where the frame goes down: from inside it halves. Nearer in an axonometric view the corner still sees a slanted column
+through every storey, so it leaves out half and saves nothing; what a frame spends there is drawing what is seen, which is piece 6's.
+Working out what is seen takes 0.7 to 1.7 ms of the processor's a frame where the view's edge crosses the model, and 0.04 ms where nothing
+is in view. The frame with everything drawn was 8.8 to 9.1 ms in piece 4's runs; frames on this machine vary by about a millisecond from
+run to run, so the two columns here were measured in the same run.
+
 ## What isn't decided yet
 
 - **How far a card gets.** Piece 1's measurement decides how much of piece 5 is on the processor's side, and whether piece 6 needs coarser
@@ -224,7 +260,7 @@ own: `Scene::tris` still keeps every copy's triangles, as piece 3 says.
 - [x] 2. Scene and mesh off the interface's thread
 - [x] 3. One shape, many places: components
 - [x] 4. The same for runs
-- [ ] 5. Draw what the view can see
+- [x] 5. Draw what the view can see
 - [ ] 6. A frame never waits for all of it
 - [ ] 7. An edit changes only what it changed
 - [ ] 8. What only the processor draws now

@@ -112,6 +112,92 @@ pub struct Shape {
     pub instances: std::ops::Range<usize>,
 }
 
+/// A run of [`Mesh::vertices`] (whole triangles), in the order the card draws them, and a box round it, from [`Mesh::origin`],
+/// mm. A view leaves out a run that lies wholly outside it, which can't reach a pixel, and draws the rest in the same order, so
+/// the picture stays the same to the pixel. Copies are left out each on its own ([`Mesh::visible`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Group {
+    pub range: std::ops::Range<usize>,
+    pub lo: P3,
+    pub hi: P3,
+}
+
+/// What of a mesh a view can see: runs of [`Mesh::vertices`] and of [`Mesh::instances`], in order, each apart from the next.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Visible {
+    pub vertices: Vec<std::ops::Range<usize>>,
+    pub instances: Vec<std::ops::Range<usize>>,
+}
+
+/// At most this many triangles to a group, and at most this part of the mesh's width across.
+const GROUP_TRIANGLES: usize = 1024;
+const GROUP_WIDE: f64 = 1.0 / 16.0;
+/// What a view draws of the triangles drawn of their own is one run across a gap of at most this many left out: what is
+/// between draws nothing in view, and fewer draws cost less than it does.
+const GAP_TRIANGLES: usize = 2048;
+
+/// Cells across the mesh's box, along each axis, that a view judges first: one wholly in view or wholly out settles all in it.
+const CELLS: f64 = 12.0;
+
+/// What lies in one cell of the mesh's box: a sphere round all of it, and the groups and copies whose middles are in it.
+#[derive(Default)]
+struct Cell {
+    middle: P3,
+    reach: f64,
+    groups: Vec<u32>,
+    copies: Vec<u32>,
+}
+
+/// The middle of a box and how far its corners are from it.
+fn sphere((lo, hi): (P3, P3)) -> (P3, f64) {
+    let half = mul(sub(hi, lo), 0.5);
+    (add(lo, half), dot(half, half).sqrt())
+}
+
+/// The groups and copies (spheres from the origin) by the cell of the mesh's box (`radius` round the origin) their middles
+/// are in, each cell with a sphere round all it holds.
+fn cells(groups: &[(P3, f64)], copies: &[(P3, f64)], radius: f64) -> Vec<Cell> {
+    let side = (2.0 * radius / CELLS).max(1.0);
+    let key = |p: P3| p.map(|v| ((v + radius) / side).floor().clamp(0.0, CELLS) as i64);
+    // Each cell's box so far, its groups and its copies.
+    type Bin = (Option<(P3, P3)>, Vec<u32>, Vec<u32>);
+    let mut by: BTreeMap<[i64; 3], Bin> = BTreeMap::new();
+    let mut add_to = |(middle, reach): (P3, f64), k: u32, copy: bool| {
+        let cell = by.entry(key(middle)).or_default();
+        let (lo, hi) = (middle.map(|v| v - reach), middle.map(|v| v + reach));
+        cell.0 =
+            Some(cell.0.map_or((lo, hi), |(l, h)| (std::array::from_fn(|i| l[i].min(lo[i])), std::array::from_fn(|i| h[i].max(hi[i])))));
+        if copy { cell.2.push(k) } else { cell.1.push(k) }
+    };
+    groups.iter().enumerate().for_each(|(k, s)| add_to(*s, k as u32, false));
+    copies.iter().enumerate().for_each(|(k, s)| add_to(*s, k as u32, true));
+    by.into_values()
+        .filter_map(|(b, groups, copies)| {
+            let (middle, reach) = sphere(b?);
+            Some(Cell { middle, reach, groups, copies })
+        })
+        .collect()
+}
+
+/// Runs of triangles in order, each with its box: a run ends where `starts` says a new one starts, and when it holds `most` or
+/// would grow wider than `wide` across any axis.
+fn grouped(boxes: impl Iterator<Item = (P3, P3)>, starts: impl Fn(usize) -> bool, most: usize, wide: f64) -> Vec<Group> {
+    let size = 3;
+    let mut groups: Vec<Group> = Vec::new();
+    for (k, (lo, hi)) in boxes.enumerate() {
+        let item = k * size..(k + 1) * size;
+        if let Some(g) = groups.last_mut().filter(|_| !starts(k)) {
+            let (l, h): (P3, P3) = (std::array::from_fn(|i| g.lo[i].min(lo[i])), std::array::from_fn(|i| g.hi[i].max(hi[i])));
+            if g.range.len() < most * size && (0..3).all(|i| h[i] - l[i] <= wide) {
+                *g = Group { range: g.range.start..item.end, lo: l, hi: h };
+                continue;
+            }
+        }
+        groups.push(Group { range: item, lo, hi });
+    }
+    groups
+}
+
 /// A copy, as a pick places it: the triangles it finds are those the scene holds, to the last bit.
 struct Copy {
     place: ComponentInstance,
@@ -200,6 +286,13 @@ pub struct Mesh {
     /// The textures, by the number a vertex holds (the first, 0, is none), and their pixels: each a word of red, green and blue.
     pub skins: Vec<Skin>,
     pub texels: Vec<u32>,
+    /// The triangles drawn of their own, in runs a view can leave out.
+    pub groups: Vec<Group>,
+    /// Each group's and each copy's middle, from the origin, and how far from it it reaches (a copy's shape as the card places
+    /// it), and the cells they lie in.
+    group_spheres: Vec<(P3, f64)>,
+    copy_spheres: Vec<(P3, f64)>,
+    cells: Vec<Cell>,
     levels: Vec<(Id, String, [P3; 4])>,
     level_colors: BTreeMap<Id, Rgb>,
     tris: Vec<Tri>,
@@ -351,6 +444,10 @@ impl Mesh {
             owners: Vec::new(),
             skins: vec![Skin::default(); scene.skins.len()],
             texels: Vec::new(),
+            groups: Vec::new(),
+            group_spheres: Vec::new(),
+            copy_spheres: Vec::new(),
+            cells: Vec::new(),
             level_colors: levels.iter().map(|(id, ..)| (*id, look.edge(*id, DATUM))).collect(),
             levels,
             tris: Vec::new(),
@@ -481,6 +578,50 @@ impl Mesh {
                 texel: plan.texel,
             };
         }
+        if cancelled() {
+            return Ok(None);
+        }
+        let f = |p: [f32; 3]| p.map(f64::from);
+        let wide = radius * 2.0 * GROUP_WIDE;
+        let triangles =
+            mesh.vertices.chunks(3).map(|t| bounds(t.iter().map(|v| f(v.position)).collect::<Vec<_>>().iter()).unwrap_or_default());
+        mesh.groups = grouped(triangles, |k| k * 3 == mesh.clear_from, GROUP_TRIANGLES, wide);
+        if cancelled() {
+            return Ok(None);
+        }
+        // A copy's reach: its shape's box as the card places it.
+        let local: Vec<(P3, P3)> = mesh
+            .shapes
+            .iter()
+            .map(|sh| {
+                bounds(
+                    mesh.shape_vertices
+                        .get(sh.vertices.clone())
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|v| f(v.position))
+                        .collect::<Vec<_>>()
+                        .iter(),
+                )
+                .unwrap_or_default()
+            })
+            .collect();
+        let shape_of: Vec<usize> = mesh.shapes.iter().enumerate().flat_map(|(n, sh)| std::iter::repeat_n(n, sh.instances.len())).collect();
+        mesh.copy_spheres = mesh
+            .instances
+            .iter()
+            .zip(&shape_of)
+            .map(|(c, &n)| {
+                let (middle, half) =
+                    local.get(n).map_or(([0.0; 3], [0.0; 3]), |(lo, hi)| (mul(add(*lo, *hi), 0.5), mul(sub(*hi, *lo), 0.5)));
+                let axes = c.axes.map(f);
+                let at: P3 = std::array::from_fn(|i| f64::from(c.at[i]) + (0..3).map(|a| middle[a] * axes[a][i]).sum::<f64>());
+                let reach: P3 = std::array::from_fn(|i| (0..3).map(|a| half[a] * axes[a][i].abs()).sum::<f64>());
+                (at, dot(reach, reach).sqrt())
+            })
+            .collect();
+        mesh.group_spheres = mesh.groups.iter().map(|g| sphere((g.lo, g.hi))).collect();
+        mesh.cells = cells(&mesh.group_spheres, &mesh.copy_spheres, radius);
         if cancelled() { Ok(None) } else { Ok(Some(mesh)) }
     }
 
@@ -511,6 +652,94 @@ impl Mesh {
             Perspective { focal: focal as f32, eye: eye as f32, a: (-NEAR / (far - NEAR)) as f32, b: b as f32 }
         });
         View { right: f(right), up: f(up), back: f(back), target: f(target), scale: cam.scale as f32, depth: depth as f32, perspective }
+    }
+
+    /// What a card draws of the mesh through `cam`: every group and copy but those wholly past one side of what the picture
+    /// reaches, which leave no pixel, each tested as a sphere round it, padded for the card's f32 arithmetic.
+    pub fn visible(&self, cam: &Camera) -> Visible {
+        let view = self.view(cam);
+        let f = |v: [f32; 3]| v.map(f64::from);
+        let (right, up, back, target) = (f(view.right), f(view.up), f(view.back), f(view.target));
+        let across = view.perspective.map_or(f64::from(view.scale), |p| f64::from(p.focal));
+        let (sx, sy) = (2.0 * across / f64::from(cam.width.max(1)), 2.0 * across / f64::from(cam.height.max(1)));
+        let pad = 1e-4 * (self.radius + dot(target, target).sqrt()) + 1.0;
+        // Each side of the clip volume as a plane: a point `d` from the aim is past it where d·n > k.
+        let (r, u) = (mul(right, sx), mul(up, sy));
+        let planes: Vec<(P3, f64)> = match view.perspective {
+            // Across, past the eye's sight: x > w, with w how far ahead of the eye; in depth, nearer than the near plane
+            // (a·ahead + b > ahead) or beyond the far one (a·ahead + b < 0).
+            Some(lens) => {
+                let (eye, a, b) = (f64::from(lens.eye), f64::from(lens.a), f64::from(lens.b));
+                let mut planes =
+                    vec![(add(r, back), eye), (add(mul(r, -1.0), back), eye), (add(u, back), eye), (add(mul(u, -1.0), back), eye)];
+                planes.push((back, eye - b / (1.0 - a)));
+                if a < 0.0 {
+                    planes.push((mul(back, -1.0), -b / a - eye));
+                }
+                planes
+            }
+            None => {
+                let depth = f64::from(view.depth);
+                vec![(r, 1.0), (mul(r, -1.0), 1.0), (u, 1.0), (mul(u, -1.0), 1.0), (back, depth), (mul(back, -1.0), depth)]
+            }
+        };
+        let planes: Vec<(P3, f64, f64)> = planes.into_iter().map(|(n, k)| (n, k, dot(n, n).sqrt())).collect();
+        // Out, in, or neither: past one side, or within every side.
+        let judge = |(middle, reach): (P3, f64)| {
+            let d = sub(middle, target);
+            let mut within = true;
+            for (n, k, len) in &planes {
+                let (along, room) = (dot(d, *n) - k, (reach + pad) * len);
+                if along > room + 1e-6 * (along.abs() + k.abs()) {
+                    return Some(false);
+                }
+                within &= along < -room;
+            }
+            within.then_some(true)
+        };
+        // All of it within every side: all of it is drawn, as an orbit round the whole model draws it, without looking further.
+        if judge(([0.0; 3], self.radius)) == Some(true) {
+            return Visible {
+                vertices: (!self.vertices.is_empty()).then_some(0..self.vertices.len()).into_iter().collect(),
+                instances: (!self.instances.is_empty()).then_some(0..self.instances.len()).into_iter().collect(),
+            };
+        }
+        let (mut own, mut copies) = (vec![false; self.groups.len()], vec![false; self.instances.len()]);
+        for cell in &self.cells {
+            match judge((cell.middle, cell.reach)) {
+                Some(false) => {}
+                Some(true) => {
+                    cell.groups.iter().for_each(|&g| own.get_mut(g as usize).into_iter().for_each(|s| *s = true));
+                    cell.copies.iter().for_each(|&c| copies.get_mut(c as usize).into_iter().for_each(|s| *s = true));
+                }
+                None => {
+                    for (list, spheres, seen) in
+                        [(&cell.groups, &self.group_spheres, &mut own), (&cell.copies, &self.copy_spheres, &mut copies)]
+                    {
+                        for &k in list {
+                            if let (Some(s), Some(flag)) = (spheres.get(k as usize), seen.get_mut(k as usize)) {
+                                *flag = judge(*s) != Some(false);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let mut vertices: Vec<std::ops::Range<usize>> = Vec::new();
+        for g in self.groups.iter().zip(&own).filter(|(_, seen)| **seen).map(|(g, _)| g) {
+            match vertices.last_mut() {
+                Some(prev) if g.range.start <= prev.end + GAP_TRIANGLES * 3 => prev.end = g.range.end,
+                _ => vertices.push(g.range.clone()),
+            }
+        }
+        let mut instances: Vec<std::ops::Range<usize>> = Vec::new();
+        for (k, _) in copies.iter().enumerate().filter(|(_, seen)| **seen) {
+            match instances.last_mut() {
+                Some(prev) if prev.end == k => prev.end = k + 1,
+                _ => instances.push(k..k + 1),
+            }
+        }
+        Visible { vertices, instances }
     }
 
     /// The marks drawn over the surfaces: each shown level's plane and head, `tints` colouring (and showing all four edges of)
@@ -959,6 +1188,86 @@ mod tests {
         assert!(mesh.shapes.iter().any(|sh| sh.vertices.len() == tube && sh.instances.len() == 5), "one tube: {:?}", mesh.shapes);
         copies_hold_the_flat_triangles(&mesh, &flat);
         picks_as_the_picture(&s);
+    }
+
+    /// Where a card puts `d` (from the mesh's origin) in clip space, in f64: as `to_clip` in the shader.
+    fn clip_of(mesh: &Mesh, cam: &Camera, d: P3) -> [f64; 4] {
+        let view = mesh.view(cam);
+        let f = |v: [f32; 3]| v.map(f64::from);
+        let d = sub(d, f(view.target));
+        let (x, y, z) = (dot(d, f(view.right)), dot(d, f(view.up)), dot(d, f(view.back)));
+        let across = view.perspective.map_or(f64::from(view.scale), |p| f64::from(p.focal));
+        let (sx, sy) = (2.0 * across / f64::from(cam.width), 2.0 * across / f64::from(cam.height));
+        match view.perspective {
+            Some(p) => {
+                let ahead = f64::from(p.eye) - z;
+                [x * sx, y * sy, f64::from(p.a) * ahead + f64::from(p.b), ahead]
+            }
+            None => [x * sx, y * sy, 0.5 + z * 0.5 / f64::from(view.depth), 1.0],
+        }
+    }
+
+    /// Whether every one of `points` lies past the same side of the clip volume, so none of what they bound reaches a pixel.
+    fn all_outside(clips: &[[f64; 4]]) -> bool {
+        let sides: [fn(&[f64; 4]) -> bool; 6] =
+            [|c| c[0] > c[3], |c| c[0] < -c[3], |c| c[1] > c[3], |c| c[1] < -c[3], |c| c[2] < 0.0, |c| c[2] > c[3]];
+        sides.iter().any(|side| clips.iter().all(side))
+    }
+
+    #[test]
+    fn groups_hold_what_is_drawn_in_order_and_a_view_leaves_out_only_what_it_cannot_see() {
+        let s = with_runs();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let mesh = Mesh::new(&scene, &look).unwrap();
+        let within = |g: &Group, p: P3| (0..3).all(|i| g.lo[i] - 1e-6 <= p[i] && p[i] <= g.hi[i] + 1e-6);
+        // The triangles drawn of their own: whole triangles, in the order drawn, never across where those seen through start.
+        let mut at = 0;
+        for g in &mesh.groups {
+            assert_eq!(g.range.start, at);
+            assert!(g.range.end > at && g.range.len() % 3 == 0, "{:?}", g.range);
+            assert!(!(g.range.start < mesh.clear_from && mesh.clear_from < g.range.end), "{:?} across {}", g.range, mesh.clear_from);
+            assert!(mesh.vertices[g.range.clone()].iter().all(|v| within(g, v.position.map(f64::from))));
+            at = g.range.end;
+        }
+        assert_eq!(at, mesh.vertices.len());
+        assert!(mesh.groups.len() > 1, "{} groups", mesh.groups.len());
+        // What a view leaves out lies wholly past one side of what it sees; seen whole, nothing is left out.
+        let fitted = scene.fit_in(AZIMUTH, ELEVATION, 800, 600, &look);
+        let near = Camera { scale: fitted.scale * 8.0, target: add(fitted.target, [-3000.0, -2000.0, 0.0]), ..fitted };
+        let inside = crate::view3d::inside(&s.model, Camera { lens: Some(35.0), ..fitted });
+        let expanded = |ranges: &[std::ops::Range<usize>]| ranges.iter().flat_map(Clone::clone).collect::<std::collections::BTreeSet<_>>();
+        for (name, cam) in
+            [("fitted", fitted), ("near", near), ("inside", inside), ("fitted in perspective", Camera { lens: Some(35.0), ..fitted })]
+        {
+            let seen = mesh.visible(&cam);
+            let (own, copies) = (expanded(&seen.vertices), expanded(&seen.instances));
+            for w in seen.vertices.windows(2).chain(seen.instances.windows(2)) {
+                assert!(w[0].end < w[1].start, "{name}: {w:?} in order and apart");
+            }
+            for t in mesh.vertices.chunks(3).enumerate().filter(|(k, _)| !own.contains(&(k * 3))) {
+                let clips: Vec<_> = t.1.iter().map(|v| clip_of(&mesh, &cam, v.position.map(f64::from))).collect();
+                assert!(all_outside(&clips), "{name}: triangle {} left out but seen: {clips:?}", t.0);
+                assert!((0..3).all(|c| !own.contains(&(t.0 * 3 + c))), "{name}: a triangle split");
+            }
+            for (k, c) in mesh.instances.iter().enumerate().filter(|(k, _)| !copies.contains(k)) {
+                let shape = mesh.shapes.iter().find(|sh| sh.instances.contains(&k)).unwrap();
+                let clips: Vec<_> = mesh.shape_vertices[shape.vertices.clone()]
+                    .iter()
+                    .map(|v| {
+                        let p: P3 = std::array::from_fn(|i| {
+                            f64::from(c.at[i]) + (0..3).map(|a| f64::from(v.position[a]) * f64::from(c.axes[a][i])).sum::<f64>()
+                        });
+                        clip_of(&mesh, &cam, p)
+                    })
+                    .collect();
+                assert!(all_outside(&clips), "{name}: copy {k} left out but seen");
+            }
+            let left_out = mesh.vertices.len() - own.len() + mesh.instances.len() - copies.len();
+            match name {
+                "fitted" | "fitted in perspective" => assert_eq!(left_out, 0, "{name}: all of it is in view"),
+                _ => assert!(left_out > 0, "{name}: something is out of view"),
+            }
+        }
     }
 
     #[test]

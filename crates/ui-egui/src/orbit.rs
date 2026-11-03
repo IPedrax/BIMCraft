@@ -772,6 +772,7 @@ mod worker_measurements {
     #[ignore = "measures the annotated ten-storey tower in release"]
     fn tower_scene_and_upload_leave_the_requesting_thread_free() {
         let model = Arc::new(bimcraft_core::sample::tower::annotated(bimcraft_core::sample::tower::Plate::REFERENCE, 10).unwrap());
+        let model_for_inside = Arc::clone(&model);
         let (send, receive) = mpsc::channel();
         let worker = crate::view_worker::Latest::new(build_scene, move || {
             let _ = send.send(());
@@ -812,20 +813,53 @@ mod worker_measurements {
             mesh.instances.len(),
             mesh.shapes.len()
         );
-        // Frames as an orbit draws them, timed back to back once the card is awake.
+        eprintln!("{} groups of their own triangles, and {} copies each on its own", mesh.groups.len(), mesh.instances.len());
+        // Frames as an orbit draws them, timed back to back once the card is awake: the whole tower, then nearer, then from inside.
         let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
-        let mut frames = Vec::new();
-        for i in 0..40 {
-            let cam = Camera { azimuth: done.fitted.azimuth + f64::from(i) * 3.0, ..done.fitted };
-            let t = Instant::now();
-            gpu.draw(&mesh, &cam, &[], bimcraft_core::render::PAPER).unwrap();
-            gpu.wait();
-            if i >= 5 {
-                frames.push(ms(t));
+        let fitted = done.fitted;
+        let corner = [fitted.target[0] - 15000.0, fitted.target[1] - 10000.0, fitted.target[2]];
+        let inside = bimcraft_core::view3d::inside(&model_for_inside, Camera { lens: Some(bimcraft_core::view3d::LENS), ..fitted });
+        for (name, base, cull) in [
+            ("whole, all drawn", fitted, false),
+            ("4x nearer, all drawn", Camera { scale: fitted.scale * 4.0, target: corner, ..fitted }, false),
+            ("inside, all drawn", inside, false),
+            ("whole", fitted, true),
+            ("4x nearer", Camera { scale: fitted.scale * 4.0, target: corner, ..fitted }, true),
+            ("16x nearer", Camera { scale: fitted.scale * 16.0, target: corner, ..fitted }, true),
+            ("inside", inside, true),
+            ("nothing", Camera { target: [fitted.target[0] + 1e7, fitted.target[1], fitted.target[2]], ..fitted }, true),
+        ] {
+            gpu.cull = cull;
+            let mut frames = Vec::new();
+            let mut drawn = 0usize;
+            for i in 0..40 {
+                let cam = Camera { azimuth: base.azimuth + f64::from(i) * 3.0, ..base };
+                let t = Instant::now();
+                gpu.draw(&mesh, &cam, &[], bimcraft_core::render::PAPER).unwrap();
+                gpu.wait();
+                if i >= 5 {
+                    frames.push(ms(t));
+                }
+                if i == 0 {
+                    let t = Instant::now();
+                    for _ in 0..20 {
+                        std::hint::black_box(mesh.visible(&cam));
+                    }
+                    let seen = mesh.visible(&cam);
+                    eprintln!("  visible: {:.2} ms, {} runs of own, {} of copies", ms(t) / 21.0, seen.vertices.len(), seen.instances.len());
+                    let own: usize = seen.vertices.iter().map(|r| r.len() / 3).sum();
+                    let copies: usize = seen.instances.iter().map(|r| r.len()).sum();
+                    drawn = own + copies;
+                }
             }
+            frames.sort_by(f64::total_cmp);
+            eprintln!(
+                "frame, {name}: median {:.1} ms, p95 {:.1} ms; drawn {drawn} of {} triangles and copies",
+                frames[frames.len() / 2],
+                frames[frames.len() * 95 / 100],
+                mesh.vertices.len() / 3 + mesh.instances.len()
+            );
         }
-        frames.sort_by(f64::total_cmp);
-        eprintln!("frame: median {:.1} ms, p95 {:.1} ms", frames[frames.len() / 2], frames[frames.len() * 95 / 100]);
         let t = Instant::now();
         for i in 0..100 {
             std::hint::black_box(mesh.pick(&done.fitted, &[], 400.0 + f64::from(i) * 10.0, 540.0));

@@ -309,7 +309,8 @@ scene) and doesn't finish at 100, as the 3D view doesn't; and the schedules' she
 `view3d::gpu::Mesh` keeps a view's shown triangles for the card (retained geometry, uploaded once for each model on a view worker), and
 `crates/ui-egui/src/gpu.rs` draws them in passes (components and round runs as one shape placed for each copy: on the annotated 10-storey tower all
 62,020 components and 16,970 runs come from 21 shapes, and a frame on an RTX 2060 is about 9 ms, against 55 ms with each copy's
-triangles its own; [the plan](3d-acceleration-plan.md#piece-4-the-same-for-runs-2026-11-03)): the opaque surfaces, those seen through (only when the view sees through any),
+triangles its own; [the plan](3d-acceleration-plan.md#piece-4-the-same-for-runs-2026-11-03); a frame leaves out what the view can't see, so from inside the
+tower it is about 4 ms: [piece 5](3d-acceleration-plan.md#piece-5-draw-what-the-view-can-see-2026-11-03)): the opaque surfaces, those seen through (only when the view sees through any),
 edges, ground and the blend, then the levels' lines. It was opt-in then
 (File > Settings > Performance). Release build on Linux, an NVIDIA GeForce RTX 3060 over Vulkan, the 20-storey tower
 (427,280 triangles, 1,281,840 vertices) at 1920 × 1080 with the camera turning 3° a frame, median of nine:

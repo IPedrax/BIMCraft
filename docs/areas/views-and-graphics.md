@@ -304,6 +304,14 @@ drawn where the number changes. A shape's opaque triangles come first and those 
 `vs_instanced_clear` with the copy's `clear_owner`). A pick goes through a hierarchy of triangles and copies, then the copy's shape's own,
 each box placed as the copy is, and it tests the triangles the scene holds, so ties go to the first in the scene as before. `Mesh::flat` is
 the mesh with no shapes, and `copies_placed_draw_the_pixels_of_their_own_triangles_and_tubes_of_their_runs` holds the two pictures equal, byte for byte.
+A frame draws only what can reach its picture (`Mesh::visible`). The triangles drawn of their own come in runs (`Mesh::groups`: at most
+1,024 triangles and a sixteenth of the mesh's width, never across `clear_from`), and each copy stands on its own. Each is tested as a sphere
+against the six sides of the clip volume, padded for the card's f32, after a coarse grid of cells has settled what lies wholly in view or
+wholly out. What is left out lies past one side, so it can't reach a pixel; what is drawn keeps its order, since a tie between touching
+faces goes to the first drawn. So the picture is the same to the pixel. The card draws the runs of triangles (joined across gaps of up to
+2,048, which draw nothing in view) and gathers the copies a view sees, in their order, into one buffer (`Uploaded::seen`), one draw a shape.
+`groups_hold_what_is_drawn_in_order_and_a_view_leaves_out_only_what_it_cannot_see` (core) and
+`leaving_out_what_the_view_cannot_see_draws_the_same_pixels` (the card, byte for byte against drawing all of it) hold it.
 `Mesh::new` refuses, with a reason, what the card doesn't draw (hidden line, wireframe, a section box, a point cloud), never for its size: `Gpu::upload` puts it in as many buffers as it takes (`limits_for` asks for the adapter's own limits), and the processor draws those as before, and sections and sheets always. `Mesh::pick` is `Image::pick` without a picture: the
 same projection and barycentric test for triangles (the nearest seen through where it is nearer than the nearest opaque one), and for levels the same `LevelMarks` that `Scene::picture` draws (`level_marks`: one
 definition of a level's lines and head). The desktop's `gpu.rs` and `gpu.wgsl` draw it in passes into a texture egui shows like the
