@@ -189,6 +189,15 @@ out of the ribbon and the palette (Find still lists it). The ribbon and the pale
 saves the layout now under a name, uses or deletes one, and shows every tool again. A settings file's presets are read as hostile: unnamed,
 over-long or repeated ones are left out, 32 at most.
 
+Themes, the same in both profiles. The window follows the system's light or dark until the user picks (Settings > User Interface >
+Theme, or View > Dark Mode); beside the profile's own light, dark and dark-with-a-light-canvas are three presets, dark ones (`style::Scheme`:
+Dracula, after the open theme of that name, Midnight and AMOLED), and an accent colour of the user's own over any of them. `style::palette`
+works out the frame's colours from the profile, light or dark, the scheme and the accent, `style::follow` puts them in force each frame (and
+the widgets' look once they change) and `pal()` returns them, by value. An accent (`with_accent`) is the fills and strokes, a quarter of it
+over the card for what is picked, and its lettering stepped toward the text's colour until it holds 4.5:1 on every ground it is read on, so
+any accent stays legible; the contrast test runs every theme and an accent of every kind on each. The drawing keeps its own colours
+(`canvas_pal`). `settings.json` keeps the scheme and the accent beside the theme.
+
 Properties' filter. With a selection of several categories, the line under the Type Selector is a drop-down of them, as Revit's is
 (`BimApp::selection_categories`): Multiple Categories first, then each category with its count. One picked is what the palette shows
 and edits, the selection staying as it is: `BimApp::palette_ids` is the selection narrowed to it, and the palette's subject, the Type

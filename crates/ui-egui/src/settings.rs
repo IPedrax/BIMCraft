@@ -18,7 +18,7 @@ use crate::BimApp;
 use crate::dock::{Docking, Palette};
 use crate::lang::{Lang, t};
 use crate::presets::{Preset, Scale, hidden_from_json, presets_from_json};
-use crate::style::{Profile, pal};
+use crate::style::{Profile, Scheme, pal};
 use crate::updates::failed;
 use std::collections::BTreeSet;
 
@@ -86,6 +86,9 @@ pub struct Settings {
     /// The Compact layout: the bars and palettes flush to the window's edges, not floating cards.
     pub compact: bool,
     pub profile: Profile,
+    /// A preset's colours when dark, and the user's accent.
+    pub scheme: Scheme,
+    pub accent: Option<[u8; 3]>,
     /// The project's scale, the tools taken out of the ribbon and the Tools palette, and the presets (`presets.rs`).
     pub scale: Scale,
     pub tools_hidden: BTreeSet<String>,
@@ -117,6 +120,8 @@ impl Settings {
             "light_canvas": self.light_canvas,
             "layout": if self.compact { "compact" } else { "floating" },
             "profile": self.profile.code(),
+            "scheme": self.scheme.code(),
+            "accent": self.accent,
             "scale": self.scale.code(),
             "tools_hidden": self.tools_hidden,
             "presets": self.presets.iter().map(Preset::to_json).collect::<Vec<_>>(),
@@ -150,6 +155,8 @@ impl Settings {
                 _ => base.compact,
             },
             profile: v["profile"].as_str().and_then(Profile::from_code).unwrap_or(base.profile),
+            scheme: v["scheme"].as_str().and_then(Scheme::from_code).unwrap_or(base.scheme),
+            accent: if v.get("accent").is_some() { colour(&v["accent"]) } else { base.accent },
             scale: v["scale"].as_str().and_then(Scale::from_code).unwrap_or(base.scale),
             tools_hidden: if v["tools_hidden"].is_array() { hidden_from_json(&v["tools_hidden"]) } else { base.tools_hidden },
             presets: if v["presets"].is_array() { presets_from_json(&v["presets"]) } else { base.presets },
@@ -237,6 +244,7 @@ impl BimApp {
         let kept = read(&path).map_or(now.clone(), |v| Settings::from_json(&v, now));
         (self.lang, self.ribbon_min, self.docking) = (kept.language, kept.ribbon_minimized, kept.docking.clone());
         (self.compact, self.profile, self.scale) = (kept.compact, kept.profile, kept.scale);
+        (self.scheme, self.accent) = (kept.scheme, kept.accent);
         (self.tools_hidden, self.presets) = (kept.tools_hidden.clone(), kept.presets.clone());
         // BIMCraft has no ribbon: it starts with its tools out, whatever a session in Rev left.
         if self.profile == Profile::BimCraft {
@@ -265,6 +273,8 @@ impl BimApp {
             light_canvas: self.light_canvas,
             compact: self.compact,
             profile: self.profile,
+            scheme: self.scheme,
+            accent: self.accent,
             scale: self.scale,
             tools_hidden: self.tools_hidden.clone(),
             presets: self.presets.clone(),
@@ -335,15 +345,27 @@ impl BimApp {
     /// The same choices in the ribbon's popup and File > Settings.
     pub(crate) fn theme_choices(&mut self, ui: &mut Ui, menu: bool) {
         let current = (ui.ctx().options(|o| o.theme_preference), self.light_canvas);
+        let own = self.scheme == Scheme::Own;
         for (label, theme, light_canvas) in [
             (msg!("As the System"), ThemePreference::System, false),
             (msg!("Light"), ThemePreference::Light, false),
             (msg!("Dark"), ThemePreference::Dark, false),
             (msg!("Dark UI, Light Canvas"), ThemePreference::Dark, true),
         ] {
-            if ui.radio(current == (theme, light_canvas), t(label)).clicked() {
-                self.light_canvas = light_canvas;
+            if ui.radio(own && current == (theme, light_canvas), t(label)).clicked() {
+                (self.light_canvas, self.scheme) = (light_canvas, Scheme::Own);
                 ui.ctx().set_theme(theme);
+                ui.ctx().request_repaint();
+                if menu {
+                    ui.close();
+                }
+            }
+        }
+        // The presets, dark ones: one picked puts the window dark in its colours.
+        for scheme in Scheme::PRESETS {
+            if ui.radio(self.scheme == scheme, scheme.name()).clicked() {
+                (self.light_canvas, self.scheme) = (false, scheme);
+                ui.ctx().set_theme(ThemePreference::Dark);
                 ui.ctx().request_repaint();
                 if menu {
                     ui.close();
@@ -374,6 +396,20 @@ impl BimApp {
         self.presets_section(ui);
         heading(ui, msg!("Theme"));
         self.theme_choices(ui, false);
+        ui.horizontal(|ui| {
+            let label = ui.label(t("Accent colour"));
+            let now = pal().accent;
+            let mut rgb = self.accent.unwrap_or([now.r(), now.g(), now.b()]);
+            let tip = msg!(
+                "What is picked and what has focus are drawn in it, in every theme; its lettering is made dark or light enough to read"
+            );
+            if ui.color_edit_button_srgb(&mut rgb).labelled_by(label.id).on_hover_text(t(tip)).changed() {
+                self.accent = Some(rgb);
+            }
+            if self.accent.is_some() && ui.button(t("Reset Accent")).clicked() {
+                self.accent = None;
+            }
+        });
         heading(ui, msg!("Layout"));
         // Rev has one layout, flush: the choice is BIMCraft's, and kept for it.
         ui.add_enabled_ui(self.profile == Profile::BimCraft, |ui| {

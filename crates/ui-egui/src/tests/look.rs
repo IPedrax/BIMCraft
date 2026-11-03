@@ -16,7 +16,9 @@ fn the_compact_layout_puts_the_cards_flush_and_the_settings_file_keeps_it() {
     h.run();
     let floating = first_tab(&h);
     press(&mut h, "Settings");
-    pick(&mut h, Role::RadioButton, "Compact");
+    // Below the Settings page's fold: pressed as a screen reader does.
+    h.get_by_role_and_label(Role::RadioButton, "Compact").click_accesskit();
+    h.run();
     press(&mut h, "Close");
     assert!(h.state().compact);
     let flush = first_tab(&h);
@@ -30,7 +32,8 @@ fn the_compact_layout_puts_the_cards_flush_and_the_settings_file_keeps_it() {
     assert!(again.state().compact);
     assert_eq!(first_tab(&again), flush);
     press(&mut again, "Settings");
-    pick(&mut again, Role::RadioButton, "Floating");
+    again.get_by_role_and_label(Role::RadioButton, "Floating").click_accesskit();
+    again.run();
     press(&mut again, "Close");
     assert_eq!(first_tab(&again), floating);
     let _ = std::fs::remove_dir_all(file.parent().unwrap());
@@ -74,7 +77,9 @@ fn the_views_tabs_and_its_control_bar_float_over_it_and_a_click_on_them_is_no_cl
     assert!(north.y > tab.bottom() && south.y < bar.top(), "{north:?} {south:?}");
     // Compact, they are bars round the view again.
     press(&mut h, "Settings");
-    pick(&mut h, Role::RadioButton, "Compact");
+    // Below the Settings page's fold: pressed as a screen reader does.
+    h.get_by_role_and_label(Role::RadioButton, "Compact").click_accesskit();
+    h.run();
     press(&mut h, "Close");
     let view = h.state().view_rect;
     let tab = h.state().tab_rects.first().map(|(_, r)| *r).unwrap();

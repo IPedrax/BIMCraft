@@ -5451,6 +5451,7 @@ mod smallest;
 mod standards;
 mod start;
 mod templates;
+mod themes;
 mod titlebar;
 mod tools;
 mod trim;

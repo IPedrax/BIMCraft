@@ -17,6 +17,7 @@ use egui::{
 };
 
 /// A theme's colours.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Palette {
     pub accent: Color32,
     /// The accent where it must be read, as text or an icon or the ring round what has focus, on a card, a tint or a hovered
@@ -142,6 +143,162 @@ pub const REV_DARK: Palette = Palette {
     ..DARK
 };
 
+/// Dracula's colours (the open theme by Zeno Rocha, MIT): its purple for the accent, its ground and lines for the cards.
+pub const DRACULA: Palette = Palette {
+    accent: rgb(0xBD93F9),
+    accent_ink: rgb(0xD4B5FF),
+    hover: rgb(0xD6B8FF),
+    select_fill: rgb(0x4B3F6E),
+    hover_fill: rgb(0x343746),
+    text: rgb(0xF8F8F2),
+    muted: rgb(0xB0B5CF),
+    icon: rgb(0xE0E0E8),
+    panel: rgb(0x282A36),
+    bar: rgb(0x343746),
+    control: rgb(0x3F4256),
+    border: rgb(0x4D5068),
+    error: rgb(0xFF7B7B),
+    context: rgb(0x50FA7B),
+    context_fill: rgb(0x1F3A2A),
+    on_context: rgb(0x13151C),
+    surface: rgb(0x21222C),
+    desk: rgb(0x1E1F29),
+    app_bar: rgb(0x191A21),
+    app_bar_text: rgb(0xF8F8F2),
+    app_bar_muted: rgb(0xB8BCD6),
+    app_bar_hover: rgb(0x2C2E3B),
+    ..DARK
+};
+
+/// Midnight: deep blues, the accent a brighter one.
+pub const MIDNIGHT: Palette = Palette {
+    accent: rgb(0x4C8DFF),
+    accent_ink: rgb(0x8DB6FF),
+    hover: rgb(0x6FA2FF),
+    select_fill: rgb(0x1F3B6B),
+    hover_fill: rgb(0x1A2944),
+    text: rgb(0xE3E9F5),
+    muted: rgb(0x9FB0CE),
+    icon: rgb(0xCFD9EC),
+    panel: rgb(0x0F1A2E),
+    bar: rgb(0x16233B),
+    control: rgb(0x1E2D48),
+    border: rgb(0x2A3B5C),
+    error: rgb(0xFF7A7A),
+    context_fill: rgb(0x12301F),
+    on_context: rgb(0x0B1A12),
+    surface: rgb(0x0B1424),
+    desk: rgb(0x0A1220),
+    app_bar: rgb(0x08101E),
+    app_bar_text: rgb(0xE3E9F5),
+    app_bar_muted: rgb(0x9FB0CE),
+    app_bar_hover: rgb(0x18263F),
+    ..DARK
+};
+
+/// AMOLED: black, so an OLED screen's pixels are off round the drawing.
+pub const AMOLED: Palette = Palette {
+    select_fill: rgb(0x12305A),
+    hover_fill: rgb(0x1A1A1A),
+    text: rgb(0xE6E6E6),
+    muted: rgb(0xA3A3A3),
+    icon: rgb(0xD0D0D0),
+    panel: rgb(0x000000),
+    bar: rgb(0x0D0D0D),
+    control: rgb(0x1C1C1C),
+    border: rgb(0x2E2E2E),
+    context_fill: rgb(0x0E2416),
+    on_context: rgb(0x000000),
+    surface: rgb(0x000000),
+    desk: rgb(0x000000),
+    app_bar: rgb(0x000000),
+    app_bar_text: rgb(0xE6E6E6),
+    app_bar_muted: rgb(0xA3A3A3),
+    app_bar_hover: rgb(0x1F1F1F),
+    ..DARK
+};
+
+/// The colours a user picks over the profile's own: one of the presets (dark ones), or the profile's light and dark.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Scheme {
+    #[default]
+    Own,
+    Dracula,
+    Midnight,
+    Amoled,
+}
+
+impl Scheme {
+    pub const PRESETS: [Scheme; 3] = [Scheme::Dracula, Scheme::Midnight, Scheme::Amoled];
+
+    /// Its name, which is its label too: names, so never translated.
+    pub fn name(self) -> &'static str {
+        match self {
+            Scheme::Own => "Own",
+            Scheme::Dracula => "Dracula",
+            Scheme::Midnight => "Midnight",
+            Scheme::Amoled => "AMOLED",
+        }
+    }
+
+    /// What the settings file keeps.
+    pub fn code(self) -> &'static str {
+        match self {
+            Scheme::Own => "own",
+            Scheme::Dracula => "dracula",
+            Scheme::Midnight => "midnight",
+            Scheme::Amoled => "amoled",
+        }
+    }
+
+    pub fn from_code(code: &str) -> Option<Scheme> {
+        [Scheme::Own].into_iter().chain(Scheme::PRESETS).find(|s| s.code() == code)
+    }
+}
+
+/// The colours a frame is drawn in: the profile's own, light or dark, or the scheme picked when dark (the presets are dark ones),
+/// with the user's accent over them when there is one.
+pub fn palette(dark: bool, rev: bool, scheme: Scheme, accent: Option<[u8; 3]>) -> Palette {
+    let base = match (dark, scheme, rev) {
+        (true, Scheme::Dracula, _) => DRACULA,
+        (true, Scheme::Midnight, _) => MIDNIGHT,
+        (true, Scheme::Amoled, _) => AMOLED,
+        (false, _, false) => LIGHT,
+        (true, _, false) => DARK,
+        (false, _, true) => REV_LIGHT,
+        (true, _, true) => REV_DARK,
+    };
+    accent.map_or(base, |[r, g, b]| with_accent(base, Color32::from_rgb(r, g, b)))
+}
+
+/// `a` and `b` mixed, `t` of the way to `b`.
+fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
+    let m = |x: u8, y: u8| (f32::from(x) + (f32::from(y) - f32::from(x)) * t).round().clamp(0.0, 255.0) as u8;
+    Color32::from_rgb(m(a.r(), b.r()), m(a.g(), b.g()), m(a.b(), b.b()))
+}
+
+/// `p` with `accent` for its fills and strokes, a tint of it for what is picked, and its ink: the accent stepped toward the
+/// text's colour until it holds 4.5:1 on every ground it is read on (WCAG 1.4.3), whatever the accent is.
+fn with_accent(p: Palette, accent: Color32) -> Palette {
+    let select_fill = mix(p.panel, accent, 0.25);
+    let grounds = [p.panel, p.bar, p.surface, p.hover_fill, select_fill, p.control];
+    let ink = (0..=20).map(|i| mix(accent, p.text, i as f32 / 20.0)).find(|ink| grounds.iter().all(|g| contrast(*ink, *g) >= 4.5));
+    Palette { accent, accent_ink: ink.unwrap_or(p.text), hover: mix(accent, p.text, 0.3), select_fill, ..p }
+}
+
+/// WCAG 2.x's contrast ratio of two opaque colours: (L1 + 0.05) / (L2 + 0.05), L the relative luminance.
+pub fn contrast(a: Color32, b: Color32) -> f32 {
+    let lum = |c: Color32| {
+        let lin = |v: u8| {
+            let v = f32::from(v) / 255.0;
+            if v <= 0.03928 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+        };
+        0.2126 * lin(c.r()) + 0.7152 * lin(c.g()) + 0.0722 * lin(c.b())
+    };
+    let (a, b) = (lum(a), lum(b));
+    (a.max(b) + 0.05) / (a.min(b) + 0.05)
+}
+
 /// Rev's File tab, white on it in both themes.
 pub const FILE_TAB: Color32 = rgb(0x2064B5);
 
@@ -160,6 +317,8 @@ thread_local! {
     static COMPACT: Cell<bool> = const { Cell::new(false) };
     /// Whether this frame wears the Rev profile.
     static REV: Cell<bool> = const { Cell::new(false) };
+    /// The colours this frame is drawn in (`palette`), set by `follow`.
+    static CURRENT: Cell<Palette> = const { Cell::new(LIGHT) };
     /// Whether what's drawn now is on the dark app bar, where icons are light.
     static ON_APP_BAR: Cell<bool> = const { Cell::new(false) };
     /// Whether the window has its semibold lettering yet: fonts set take effect a frame later.
@@ -185,14 +344,9 @@ pub fn icon_inks() -> (Color32, Color32) {
     if ON_APP_BAR.with(Cell::get) { (pal().app_bar_text, pal().app_bar_hover) } else { (pal().icon, pal().hover_fill) }
 }
 
-/// The colours of the theme and the profile this frame is drawn in.
-pub fn pal() -> &'static Palette {
-    match (dark(), rev()) {
-        (false, false) => &LIGHT,
-        (true, false) => &DARK,
-        (false, true) => &REV_LIGHT,
-        (true, true) => &REV_DARK,
-    }
+/// The colours this frame is drawn in: the profile's, light or dark, or a preset, with the user's accent (`palette`).
+pub fn pal() -> Palette {
+    CURRENT.with(Cell::get)
 }
 
 /// A button's or a tab's corners, `r` in BIMCraft's look: Rev's are all but square.
@@ -258,6 +412,9 @@ pub struct Look {
     /// The cards sit flush and square (Compact) rather than floating.
     pub compact: bool,
     pub profile: Profile,
+    /// A preset's colours when dark, and the user's accent.
+    pub scheme: Scheme,
+    pub accent: Option<[u8; 3]>,
 }
 
 /// Draw this frame in the theme egui shows: the system's, unless the user picked one; in the look the user kept.
@@ -266,11 +423,12 @@ pub fn follow(ctx: &Context, look: Look) {
     CANVAS_DARK.with(|d| d.set(dark() && !look.light_canvas));
     COMPACT.with(|c| c.set(look.compact));
     REV.with(|r| r.set(look.profile == Profile::Rev));
-    // The widgets' look is the context's, set for both themes: again only when the profile changes.
-    let styled = egui::Id::new("styled-profile");
-    if ctx.data(|d| d.get_temp::<Profile>(styled)) != Some(look.profile) {
-        visuals(ctx, look.profile);
-        ctx.data_mut(|d| d.insert_temp(styled, look.profile));
+    CURRENT.with(|c| c.set(palette(dark(), rev(), look.scheme, look.accent)));
+    // The widgets' look is the context's, set for both themes: again only when the profile or the colours change.
+    let (styled, now) = (egui::Id::new("styled-look"), (look.profile, look.scheme, look.accent));
+    if ctx.data(|d| d.get_temp::<(Profile, Scheme, Option<[u8; 3]>)>(styled)) != Some(now) {
+        visuals(ctx, look);
+        ctx.data_mut(|d| d.insert_temp(styled, now));
     }
     let semibold = ctx.fonts(|f| f.definitions().families.contains_key(&FontFamily::Name(SEMIBOLD.into())));
     SEMIBOLD_ON.with(|s| s.set(semibold));
@@ -375,9 +533,9 @@ pub fn apply(ctx: &Context) {
 }
 
 /// The lettering's sizes, the spacing and the widgets' colours and corners, in both themes, for `profile`.
-fn visuals(ctx: &Context, profile: Profile) {
-    let rev = profile == Profile::Rev;
-    let palettes = if rev { [&REV_LIGHT, &REV_DARK] } else { [&LIGHT, &DARK] };
+fn visuals(ctx: &Context, look: Look) {
+    let rev = look.profile == Profile::Rev;
+    let palettes = [false, true].map(|dark| palette(dark, rev, look.scheme, look.accent));
     let (widget, window) = if rev { (2, 3) } else { (4, WINDOW_RADIUS) };
     for (theme, pal) in [Theme::Light, Theme::Dark].into_iter().zip(palettes) {
         ctx.style_mut_of(theme, |s| {
@@ -432,19 +590,6 @@ fn visuals(ctx: &Context, profile: Profile) {
 mod tests {
     use super::*;
 
-    /// WCAG 2.x's contrast ratio of two opaque colours: (L1 + 0.05) / (L2 + 0.05), L the relative luminance.
-    fn contrast(a: Color32, b: Color32) -> f32 {
-        let lum = |c: Color32| {
-            let lin = |v: u8| {
-                let v = f32::from(v) / 255.0;
-                if v <= 0.03928 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
-            };
-            0.2126 * lin(c.r()) + 0.7152 * lin(c.g()) + 0.0722 * lin(c.b())
-        };
-        let (a, b) = (lum(a), lum(b));
-        (a.max(b) + 0.05) / (a.min(b) + 0.05)
-    }
-
     #[test]
     fn contrast_is_wcags_ratio() {
         assert!((contrast(Color32::BLACK, Color32::WHITE) - 21.0).abs() < 0.01);
@@ -458,14 +603,28 @@ mod tests {
     #[test]
     fn what_is_read_holds_its_contrast_on_what_it_sits_on_in_both_themes() {
         let mut fails = Vec::new();
-        for (theme, p, dark, rev) in [
-            ("light", &LIGHT, false, false),
-            ("dark", &DARK, true, false),
-            ("Rev light", &REV_LIGHT, false, true),
-            ("Rev dark", &REV_DARK, true, true),
-        ] {
+        let mut looks: Vec<(String, Palette, bool, bool)> = vec![
+            ("light".into(), LIGHT, false, false),
+            ("dark".into(), DARK, true, false),
+            ("Rev light".into(), REV_LIGHT, false, true),
+            ("Rev dark".into(), REV_DARK, true, true),
+        ];
+        for s in Scheme::PRESETS {
+            looks.push((s.name().into(), palette(true, false, s, None), true, false));
+        }
+        // An accent of every kind on every ground: a pale yellow, a dark navy, a mid grey, pure red.
+        let bases = [(false, false, Scheme::Own), (true, false, Scheme::Own), (false, true, Scheme::Own), (true, true, Scheme::Own)];
+        for accent in [[255, 255, 0], [0, 17, 51], [128, 128, 128], [255, 0, 0]] {
+            for (dark, rev, scheme) in bases.into_iter().chain(Scheme::PRESETS.map(|s| (true, false, s))) {
+                let name = format!("{accent:?} over {scheme:?}, dark {dark}, Rev {rev}");
+                looks.push((name, palette(dark, rev, scheme, Some(accent)), dark, rev));
+            }
+        }
+        for (theme, p, dark, rev) in &looks {
+            let (dark, rev) = (*dark, *rev);
             DARK_ON.with(|d| d.set(dark));
             REV.with(|r| r.set(rev));
+            CURRENT.with(|c| c.set(*p));
             let (ring, ring_on_bar) = (focus_ring().color, on_app_bar(|| focus_ring().color));
             // Text, on a card, a band, a field and a hovered row; some also on the open tab's tint.
             let on_cards = [p.panel, p.bar, p.surface, p.hover_fill];

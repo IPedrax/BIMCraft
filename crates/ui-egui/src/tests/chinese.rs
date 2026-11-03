@@ -96,9 +96,10 @@ fn the_language_list_offers_chinese_and_picking_it_puts_the_window_in_it() {
     lang::assume_cjk_font(&h.ctx);
     h.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
     h.run();
-    h.get_all_by_role(Role::ComboBox).find(|n| n.value().as_deref() == Some("English")).expect("the language list").click();
+    // Below the Settings page's fold: pressed as a screen reader does.
+    h.get_all_by_role(Role::ComboBox).find(|n| n.value().as_deref() == Some("English")).expect("the language list").click_accesskit();
     h.run();
-    h.get_by_label("Chinese (Simplified)").click();
+    h.get_by_label("Chinese (Simplified)").click_accesskit();
     h.run();
     assert_eq!(h.state().lang, Lang::Chinese);
     // The list shows its name in itself once the window can draw it.

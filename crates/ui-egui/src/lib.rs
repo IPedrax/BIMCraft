@@ -466,6 +466,9 @@ pub struct BimApp {
     compact: bool,
     /// Which interface the window wears (File > Settings): BIMCraft's own, or Rev.
     profile: style::Profile,
+    /// A preset's colours when dark, and the user's accent (Settings > User Interface > Theme).
+    scheme: style::Scheme,
+    accent: Option<[u8; 3]>,
     /// The category the Properties palette's filter narrows a selection of several to, and the selection it was picked for: a new
     /// selection drops it (`BimApp::palette_ids`).
     palette_filter: Option<(&'static str, Vec<Id>)>,
@@ -1104,6 +1107,8 @@ impl BimApp {
             ribbon_min: false,
             compact: false,
             profile: style::Profile::default(),
+            scheme: style::Scheme::default(),
+            accent: None,
             palette_filter: None,
             ribbon_peek: false,
             scan_contrast: footer::HIGH_CONTRAST,
@@ -1430,7 +1435,14 @@ impl BimApp {
         if let Some(theme) = self.theme_wanted.take() {
             ctx.set_theme(theme);
         }
-        style::follow(&ctx, style::Look { light_canvas: self.light_canvas, compact: self.compact, profile: self.profile });
+        let look = style::Look {
+            light_canvas: self.light_canvas,
+            compact: self.compact,
+            profile: self.profile,
+            scheme: self.scheme,
+            accent: self.accent,
+        };
+        style::follow(&ctx, look);
         ribbon::tool_rules(self.tools_hidden.clone(), self.scale, self.editing_tools);
         // The fonts with the hanzi and the Hangul go behind the window's own whatever language it speaks: content — a floor's
         // name from a Korean file — is not the interface's. Chinese needs its glyphs, which the system may not have: then the
@@ -2773,7 +2785,7 @@ impl BimApp {
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
         fresh.grid_snapping = self.grid_snapping;
-        fresh.light_canvas = self.light_canvas;
+        (fresh.light_canvas, fresh.scheme, fresh.accent) = (self.light_canvas, self.scheme, self.accent);
         fresh.styled = self.styled;
         fresh.theme_wanted = self.theme_wanted.take();
         fresh.docking = std::mem::take(&mut self.docking);
