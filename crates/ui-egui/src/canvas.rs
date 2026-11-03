@@ -179,7 +179,8 @@ impl Default for Canvas {
 }
 
 impl Canvas {
-    fn view(&self, level: Id) -> Option<View> {
+    /// View `level` (a plan's key, a section or an elevation) as it was last shown: its zoom, its middle and its size.
+    pub(crate) fn view(&self, level: Id) -> Option<View> {
         let c = self.cams.get(&level)?;
         Some(View {
             scale: c.scale,
@@ -307,6 +308,13 @@ impl Canvas {
         }
     }
 
+    /// Model point `p` in the middle of view `id`, at the zoom it has: where the minimap is clicked or dragged to.
+    pub(crate) fn centre(&mut self, id: Id, p: P2) {
+        if let Some(v) = self.view(id) {
+            self.hold(id, p, self.rect.size() / 2.0, v.scale);
+        }
+    }
+
     /// Zoom by `factor` about the middle of the view.
     pub(crate) fn zoom(&mut self, level: Id, factor: f64) {
         if let Some(v) = self.view(level) {
@@ -328,8 +336,11 @@ impl Canvas {
 }
 
 /// A drawing's colour on screen: as drawn, or in the dark theme with its lightness turned over,
-/// so ink reads light on a dark ground and the grid stays blue.
+/// so ink reads light on a dark ground and the grid stays blue. Its paper is the user's canvas colour when there is one.
 pub(crate) fn color(c: Rgb) -> Color32 {
+    if let Some(ground) = crate::style::canvas_ground().filter(|_| c == render::PAPER) {
+        return ground;
+    }
     if !crate::style::canvas_dark() {
         return Color32::from_rgb(c.0, c.1, c.2);
     }
@@ -914,7 +925,7 @@ impl BimApp {
             && self.grid_snapping
             && let Some(at) = self.background_grid().nearest(v.mm(at))
         {
-            return Found { at, kind: Kind::Intersection, guide: None };
+            return Found { at, kind: Kind::Intersection, guide: None, source: None };
         }
         found
     }
@@ -985,7 +996,9 @@ impl BimApp {
             sc.p.rect_stroke(Rect::from_center_size(a, vec2(7.0, 7.0)), 0.0, marker_stroke, StrokeKind::Middle);
         }
         if let Some(first) = alignments.first() {
-            tag(sc.p, sc.screen(first.snapped_point) + vec2(12.0, 14.0), Align2::LEFT_TOP, t("align"));
+            // Why it lined up: with which wall, by its id, as Select by ID finds it.
+            let why = first.wall_id.map_or_else(|| t("align").to_string(), |w| tf("Lines up with wall {}", &[&w.to_string()]));
+            tag(sc.p, sc.screen(first.snapped_point) + vec2(12.0, 14.0), Align2::LEFT_TOP, &why);
         }
     }
 
@@ -1093,7 +1106,16 @@ impl BimApp {
             }
         }
         if !matches!(f.kind, Kind::Free | Kind::Angle) {
-            tag(p, at + vec2(12.0, 14.0), Align2::LEFT_TOP, t(f.kind.name()));
+            // And of which element, by its id, as Select by ID finds it.
+            let name = match f.source.and_then(|id| Some((id, sc.m.elements.get(id)?))) {
+                Some((id, e)) => {
+                    let of = crate::lang::category(e.category(), false);
+                    // TRANSLATORS: what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
+                    tf("{} of {} {}", &[t(f.kind.name()), &of, &id.to_string()])
+                }
+                None => t(f.kind.name()).to_string(),
+            };
+            tag(p, at + vec2(12.0, 14.0), Align2::LEFT_TOP, name);
         }
     }
 
@@ -1135,8 +1157,8 @@ impl BimApp {
         if tabbed && !c.under.is_empty() {
             c.cycle = (c.cycle + 1) % c.under.len();
         }
-        // While a rectangle is drawn, Tab moves between its width and its height.
-        if tabbed && self.typed_fields() == 2 {
+        // While a rectangle is drawn, Tab moves between its width and its height; a line's or a wall's, its length and its angle.
+        if tabbed && (self.typed_fields() == 2 || self.line_angle_field()) {
             std::mem::swap(&mut self.typed_length, &mut self.drawing.other);
             self.drawing.field = 1 - self.drawing.field.min(1);
         }
@@ -2539,9 +2561,24 @@ impl BimApp {
         }
         let typed = std::mem::take(&mut self.typed_length);
         let Some(base) = self.base() else { return };
-        let toward = match self.canvas.found.get() {
-            Some(f) if f.at.dist(base) > TOL => (f.at - base).unit(),
+        // The length and the angle, whichever Tab left in `drawing.other`.
+        let other = std::mem::take(&mut self.drawing.other);
+        let (typed, angle) = if std::mem::take(&mut self.drawing.field) == 1 { (other, typed) } else { (typed, other) };
+        let toward = match (angle.trim().trim_end_matches('°').trim().parse::<f64>(), self.canvas.found.get()) {
+            (Ok(a), _) if a.is_finite() => P2(a.to_radians().cos(), a.to_radians().sin()),
+            (Err(_), _) if !angle.trim().is_empty() => {
+                self.status = Status { text: tf("`{}` is not an angle", &[angle.trim()]), error: true };
+                return;
+            }
+            (_, Some(f)) if f.at.dist(base) > TOL => (f.at - base).unit(),
             _ => snap_angle(cursor - base, self.snaps.angle),
+        };
+        // An angle with no length: as far along it as the cursor is.
+        let typed = if typed.trim().is_empty() {
+            let d = cursor - base;
+            self.session.model.units.length(d.0 * toward.0 + d.1 * toward.1)
+        } else {
+            typed
         };
         match self.session.model.units.parse(&typed) {
             Some(len) if len > 0.0 && len <= MAX_COORD => self.put(level, micron(base + toward * len)),
@@ -2574,6 +2611,10 @@ impl BimApp {
         });
         if let Some(t) = self.types.get("wall") {
             p["type"] = json!(t);
+        }
+        // Drawn in the 3D view, on the face their base stands on.
+        if let Some(offset) = self.orbit.wall_base {
+            p["base_offset"] = json!(offset);
         }
         // The Options Bar's Height: up to a level, or unconnected at a height.
         match top_params(&self.session.model, level, self.wall_top, &self.wall_height) {
@@ -2954,10 +2995,29 @@ impl BimApp {
         }
         let Some(&last) = chain.last() else { return Vec::new() };
         if names.is_empty() {
-            let text = if self.typed_length.is_empty() {
-                m.units.with_unit(last.dist(next))
-            } else {
-                format!("{} (Enter)", self.typed_length.trim())
+            // The length and, once Tab has been pressed, the angle: the one being typed in brackets.
+            let angled = self.drawing.field == 1 || !self.drawing.other.is_empty();
+            let text = match (self.typed_length.is_empty(), angled) {
+                (true, false) => m.units.with_unit(last.dist(next)),
+                (false, false) => format!("{} (Enter)", self.typed_length.trim()),
+                _ => {
+                    let (len, ang) = if self.drawing.field == 1 {
+                        (&self.drawing.other, &self.typed_length)
+                    } else {
+                        (&self.typed_length, &self.drawing.other)
+                    };
+                    let d = next - last;
+                    let len = if len.is_empty() { m.units.with_unit(last.dist(next)) } else { len.trim().to_string() };
+                    let ang = if ang.is_empty() {
+                        format!("{:.0}°", d.1.atan2(d.0).to_degrees().rem_euclid(360.0))
+                    } else {
+                        format!("{}°", ang.trim())
+                    };
+                    match self.drawing.field {
+                        1 => format!("{len}  [{ang}] (Enter)"),
+                        _ => format!("[{len}]  {ang} (Enter)"),
+                    }
+                }
             };
             return vec![(next, text)];
         }
