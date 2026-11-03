@@ -25,9 +25,9 @@ use crate::icons::Icon;
 use crate::style::{canvas_pal, pal};
 use crate::{BimApp, Status, Tool, icon_button};
 
-/// What a picture is of: the model, the camera, the elements tinted, whether the theme is dark, whether the card drew it, and
-/// the section box it is cut to while one is dragged.
-type Shot = (Arc<Model>, Camera, Vec<(Id, Rgb)>, bool, bool, Option<(P3, P3)>);
+/// What a picture is of: the model, the camera, the elements tinted, the ground it is drawn on (which says whether it is dark
+/// too), whether the card drew it, and the section box it is cut to while one is dragged.
+type Shot = (Arc<Model>, Camera, Vec<(Id, Rgb)>, Color32, bool, Option<(P3, P3)>);
 
 /// A model's mesh for the card, or why the card can't draw it.
 type Meshed = (Arc<Model>, Result<Arc<Mesh>, String>);
@@ -382,7 +382,8 @@ impl BimApp {
             .map(|id| (*id, rgb(canvas_pal().accent)))
             .chain(hovered.filter(|id| !selection.contains(id)).map(|id| (id, rgb(canvas_pal().hover))))
             .collect();
-        let dark = crate::style::canvas_dark();
+        // The ground, which a canvas colour of the user's changes without making the drawing dark or light.
+        let dark = color(render::PAPER);
         if !matches!(&o.shown, Some((m, c, t, k, g, b)) if Arc::ptr_eq(m, &model) && *c == cam && *t == tints && *k == dark && *g == mesh.is_some() && *b == reboxed)
         {
             // The card's picture, if it makes one; the processor's if not, and if the card fails it for good.

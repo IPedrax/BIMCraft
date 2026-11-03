@@ -469,6 +469,10 @@ pub struct BimApp {
     /// A preset's colours when dark, and the user's accent (Settings > User Interface > Theme).
     scheme: style::Scheme,
     accent: Option<[u8; 3]>,
+    /// The user's own panel, canvas and text colours over any scheme (the same page).
+    panel_colour: Option<[u8; 3]>,
+    canvas_colour: Option<[u8; 3]>,
+    text_colour: Option<[u8; 3]>,
     /// The category the Properties palette's filter narrows a selection of several to, and the selection it was picked for: a new
     /// selection drops it (`BimApp::palette_ids`).
     palette_filter: Option<(&'static str, Vec<Id>)>,
@@ -1109,6 +1113,9 @@ impl BimApp {
             profile: style::Profile::default(),
             scheme: style::Scheme::default(),
             accent: None,
+            panel_colour: None,
+            canvas_colour: None,
+            text_colour: None,
             palette_filter: None,
             ribbon_peek: false,
             scan_contrast: footer::HIGH_CONTRAST,
@@ -1441,6 +1448,9 @@ impl BimApp {
             profile: self.profile,
             scheme: self.scheme,
             accent: self.accent,
+            panel_colour: self.panel_colour,
+            canvas_colour: self.canvas_colour,
+            text_colour: self.text_colour,
         };
         style::follow(&ctx, look);
         ribbon::tool_rules(self.tools_hidden.clone(), self.scale, self.editing_tools);
@@ -2787,6 +2797,7 @@ impl BimApp {
         fresh.scan_contrast = self.scan_contrast;
         fresh.grid_snapping = self.grid_snapping;
         (fresh.light_canvas, fresh.scheme, fresh.accent) = (self.light_canvas, self.scheme, self.accent);
+        (fresh.panel_colour, fresh.canvas_colour, fresh.text_colour) = (self.panel_colour, self.canvas_colour, self.text_colour);
         fresh.styled = self.styled;
         fresh.theme_wanted = self.theme_wanted.take();
         fresh.docking = std::mem::take(&mut self.docking);

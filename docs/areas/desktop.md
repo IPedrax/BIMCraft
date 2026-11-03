@@ -201,6 +201,23 @@ over the card for what is picked, and its lettering stepped toward the text's co
 any accent stays legible; the contrast test runs every theme and an accent of every kind on each. The drawing keeps its own colours
 (`canvas_pal`). `settings.json` keeps the scheme and the accent beside the theme.
 
+Own colours over any theme, the same in both profiles. Beside the accent, Settings > User Interface > Theme takes a panel colour, a
+canvas colour and a text colour of the user's own (`style::Look::panel_colour`, `canvas_colour`, `text_colour`), each with a Reset
+that brings back the scheme's; `settings.json` keeps them as `panel_colour`, `canvas_colour` and `text_colour`, read as the accent is
+(`colour()`), so one this version can't read is left out and the scheme's stands. Two grounds, because the window has two: the
+cards' and the drawing's, which already part in Dark UI, Light Canvas. The panel colour (`with_ground`) is the cards' ground, with
+their bands, buttons and hovered rows a step toward the ink that reads on it (black or white, `ink_on`, whichever holds more: one
+always holds 4.5:1) and never so far that the ink stops reading; in Rev the chrome too, a step darker, as Rev's own is. What is read
+on it (the text, the muted text, icons, errors, the contextual tabs) is stepped toward that ink until it holds, and the accent's
+tints are made again over it (`with_accent`, whose tint of what is picked now steps back toward the card while the text would not
+read on it). The text colour (`with_text`) is stepped the same way on every ground it is read on (in Rev the chrome's lettering is the
+text's), and the dialog says so when it had to. The canvas colour is the paper the views draw on (`style::canvas_ground`, which
+`canvas::color` returns for the drawing's white), and the drawing's ink follows it rather than the interface: dark ink on a light
+one, light on a dark one (`canvas_dark`, from its luminance), so never black on black; a section's and the 3D view's pictures are
+kept by their ground's colour, so a new one draws them again. `style::follow` restyles the widgets when anything in `Look` changes.
+The contrast test runs every base with these colours at their worst (white, black, the grey both inks read worst on, a pale yellow,
+a navy, pure red, and a text the panel's own colour).
+
 The Inspector's pictures, the same in both profiles. Under the filter row, the type the palette shows is drawn when it has layers
 (`properties::layer_picture`, for walls, floors, roofs and ceilings, `LAYERED`): each layer to its thickness in its material's colour, a
 type without layers as one band. A wall's run from its exterior face to its interior one, with the location line the selected walls share

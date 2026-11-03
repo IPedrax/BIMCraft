@@ -328,8 +328,11 @@ impl Canvas {
 }
 
 /// A drawing's colour on screen: as drawn, or in the dark theme with its lightness turned over,
-/// so ink reads light on a dark ground and the grid stays blue.
+/// so ink reads light on a dark ground and the grid stays blue. Its paper is the user's canvas colour when there is one.
 pub(crate) fn color(c: Rgb) -> Color32 {
+    if let Some(ground) = crate::style::canvas_ground().filter(|_| c == render::PAPER) {
+        return ground;
+    }
     if !crate::style::canvas_dark() {
         return Color32::from_rgb(c.0, c.1, c.2);
     }
