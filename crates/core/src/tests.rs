@@ -6276,3 +6276,18 @@ fn symbols_draw_in_the_plan_and_ceiling_plan_of_their_level_whatever_height_the_
     let d = crate::render::draw(&s.model, 100001, view);
     assert!(!d.owners.contains(&Some(id)));
 }
+
+#[test]
+fn a_door_or_window_refused_for_a_wall_the_level_does_not_cut_says_so() {
+    let mut s = Session::new();
+    // The project's own "Level 2" at 3000 stands over "First floor", so a wall of it is 250 mm high.
+    run(&mut s, "level", json!({"name": "First floor", "elevation": 2750}));
+    let square = json!([[0, 0], [8000, 0], [8000, 6000], [0, 6000]]);
+    run(&mut s, "wall", json!({"points": square, "closed": true, "level": "First floor"}));
+    let e = s.execute("window", &json!({"at": [2000, 0], "level": "First floor"})).unwrap_err();
+    assert!(e.contains("no wall at [2000, 0] on First floor"), "{e}");
+    assert!(e.contains("wall 100") && e.contains("2750") && e.contains("3000") && e.contains("cuts at 3950"), "{e}");
+    // Where no wall stands at all, it is still just that.
+    let e = s.execute("window", &json!({"at": [4000, 3000], "level": "First floor"})).unwrap_err();
+    assert!(!e.contains("cuts at"), "{e}");
+}

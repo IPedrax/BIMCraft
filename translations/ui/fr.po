@@ -2190,7 +2190,7 @@ msgstr "Démolir (DW): cliquer sur un élément pour le démolir dans la phase d
 msgid "Demolished"
 msgstr "Démoli"
 
-#: crates/core/src/commands.rs:7872
+#: crates/core/src/commands.rs:7898
 msgid "Dependent"
 msgstr "Dépendante"
 
@@ -7781,7 +7781,7 @@ msgstr "Unités"
 msgid "Units Format"
 msgstr "Format des unités"
 
-#: crates/core/src/commands.rs:8013
+#: crates/core/src/commands.rs:8039
 msgid "Unnamed"
 msgstr "Sans nom"
 

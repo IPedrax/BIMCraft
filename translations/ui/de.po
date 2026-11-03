@@ -2189,7 +2189,7 @@ msgstr "Abbrechen (DW): ein Element anklicken, um es in der Phase der Ansicht ab
 msgid "Demolished"
 msgstr "Abgebrochen"
 
-#: crates/core/src/commands.rs:7872
+#: crates/core/src/commands.rs:7898
 msgid "Dependent"
 msgstr "Abhängig"
 
@@ -7780,7 +7780,7 @@ msgstr "Einheiten"
 msgid "Units Format"
 msgstr "Einheitenformat"
 
-#: crates/core/src/commands.rs:8013
+#: crates/core/src/commands.rs:8039
 msgid "Unnamed"
 msgstr "Unbenannt"
 

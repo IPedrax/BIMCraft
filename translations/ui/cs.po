@@ -2189,7 +2189,7 @@ msgstr "Zbourat (DW): klikněte na prvek, který chcete zbourat ve fázi pohledu
 msgid "Demolished"
 msgstr "Zbourané"
 
-#: crates/core/src/commands.rs:7872
+#: crates/core/src/commands.rs:7898
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -7780,7 +7780,7 @@ msgstr "Jednotky"
 msgid "Units Format"
 msgstr ""
 
-#: crates/core/src/commands.rs:8013
+#: crates/core/src/commands.rs:8039
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 
