@@ -3504,7 +3504,7 @@ msgstr ""
 msgid "Home"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:749
+#: crates/ui-egui/src/orbit.rs:748
 msgid "Home View"
 msgstr ""
 
@@ -5631,7 +5631,7 @@ msgstr ""
 msgid "Point clouds"
 msgstr ""
 
-#: crates/ui-egui/src/shape.rs:347
+#: crates/ui-egui/src/shape.rs:354
 msgid "Point height {}"
 msgstr ""
 
@@ -8370,7 +8370,7 @@ msgid "Zoom Out"
 msgstr ""
 
 #: crates/ui-egui/src/canvas.rs:1476
-#: crates/ui-egui/src/orbit.rs:753
+#: crates/ui-egui/src/orbit.rs:752
 msgid "Zoom to Fit"
 msgstr ""
 
@@ -8463,7 +8463,7 @@ msgstr ""
 msgid "a whole number"
 msgstr ""
 
-#: crates/ui-egui/src/shape.rs:258
+#: crates/ui-egui/src/shape.rs:265
 msgid "add point: `{}` is not {}"
 msgstr ""
 
@@ -8499,7 +8499,7 @@ msgstr ""
 msgid "click its line's end"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:741
+#: crates/ui-egui/src/orbit.rs:740
 msgid "click on the floor's top"
 msgstr ""
 
@@ -8631,7 +8631,7 @@ msgstr ""
 msgid "material"
 msgstr ""
 
-#: crates/ui-egui/src/shape.rs:294
+#: crates/ui-egui/src/shape.rs:301
 msgid "modify sub elements: `{}` is not an elevation"
 msgstr ""
 
@@ -8696,7 +8696,7 @@ msgstr ""
 msgid "select a detail group to ungroup"
 msgstr ""
 
-#: crates/ui-egui/src/shape.rs:429
+#: crates/ui-egui/src/shape.rs:436
 msgid "select a point, a corner or an edge first"
 msgstr ""
 
@@ -8781,7 +8781,7 @@ msgstr ""
 msgid "there's no folder to keep favorites in here"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:709
+#: crates/ui-egui/src/orbit.rs:708
 #: crates/ui-egui/src/paper.rs:158
 #: crates/ui-egui/src/section.rs:199
 msgid "this tool works in plan views: open one from the Project Browser"
@@ -8795,7 +8795,7 @@ msgstr ""
 msgid "two types are named `{}`"
 msgstr ""
 
-#: crates/ui-egui/src/shape.rs:292
+#: crates/ui-egui/src/shape.rs:299
 msgid "type the elevation first"
 msgstr ""
 

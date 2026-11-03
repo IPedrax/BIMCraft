@@ -3503,7 +3503,7 @@ msgstr "Zvýraznit prvek pod kurzorem"
 msgid "Home"
 msgstr "Domů"
 
-#: crates/ui-egui/src/orbit.rs:749
+#: crates/ui-egui/src/orbit.rs:748
 msgid "Home View"
 msgstr "Výchozí pohled"
 
@@ -5630,7 +5630,7 @@ msgstr "Mračno bodů: laserové skeny (PTS, XYZ, PLY, LAS nebo E57) načtené d
 msgid "Point clouds"
 msgstr "Mračna bodů"
 
-#: crates/ui-egui/src/shape.rs:347
+#: crates/ui-egui/src/shape.rs:354
 msgid "Point height {}"
 msgstr ""
 
@@ -8369,7 +8369,7 @@ msgid "Zoom Out"
 msgstr "Oddálit"
 
 #: crates/ui-egui/src/canvas.rs:1476
-#: crates/ui-egui/src/orbit.rs:753
+#: crates/ui-egui/src/orbit.rs:752
 msgid "Zoom to Fit"
 msgstr "Přizpůsobit oknu"
 
@@ -8462,7 +8462,7 @@ msgstr ""
 msgid "a whole number"
 msgstr ""
 
-#: crates/ui-egui/src/shape.rs:258
+#: crates/ui-egui/src/shape.rs:265
 msgid "add point: `{}` is not {}"
 msgstr ""
 
@@ -8498,7 +8498,7 @@ msgstr "kružnice"
 msgid "click its line's end"
 msgstr "klikněte na konec její čáry"
 
-#: crates/ui-egui/src/orbit.rs:741
+#: crates/ui-egui/src/orbit.rs:740
 msgid "click on the floor's top"
 msgstr ""
 
@@ -8630,7 +8630,7 @@ msgstr "objem: {}"
 msgid "material"
 msgstr "materiál"
 
-#: crates/ui-egui/src/shape.rs:294
+#: crates/ui-egui/src/shape.rs:301
 msgid "modify sub elements: `{}` is not an elevation"
 msgstr ""
 
@@ -8695,7 +8695,7 @@ msgstr "otočit: `{}` není úhel ve stupních"
 msgid "select a detail group to ungroup"
 msgstr "nejprve vyberte skupinu detailů k oddělení"
 
-#: crates/ui-egui/src/shape.rs:429
+#: crates/ui-egui/src/shape.rs:436
 msgid "select a point, a corner or an edge first"
 msgstr ""
 
@@ -8780,7 +8780,7 @@ msgstr "zde není žádná plocha k aplikaci barvy"
 msgid "there's no folder to keep favorites in here"
 msgstr "zde není žádná složka pro ukládání oblíbených položek"
 
-#: crates/ui-egui/src/orbit.rs:709
+#: crates/ui-egui/src/orbit.rs:708
 #: crates/ui-egui/src/paper.rs:158
 #: crates/ui-egui/src/section.rs:199
 msgid "this tool works in plan views: open one from the Project Browser"
@@ -8794,7 +8794,7 @@ msgstr "otočeno kolem osy"
 msgid "two types are named `{}`"
 msgstr "dva typy mají název `{}`"
 
-#: crates/ui-egui/src/shape.rs:292
+#: crates/ui-egui/src/shape.rs:299
 msgid "type the elevation first"
 msgstr ""
 
