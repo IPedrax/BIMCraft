@@ -2268,6 +2268,25 @@ impl Camera {
         zoomed.pan(zoomed.project_xy(p), at)
     }
 
+    /// Turned as [`orbit`](Self::orbit) turns it, but about `pivot` rather than the target: the whole camera turns round
+    /// `pivot` as its axes turn, so `pivot` stays on the pixel it showed at, in perspective too.
+    pub fn orbit_about(self, around: f64, up: f64, pivot: P3) -> Camera {
+        let turned = self.orbit(around, up);
+        let ((b0, r0, u0), (b1, r1, u1)) = (self.axes(), turned.axes());
+        let v = sub(self.target, pivot);
+        let target = add(pivot, add(add(mul(b1, dot(v, b0)), mul(r1, dot(v, r0))), mul(u1, dot(v, u0))));
+        if target.iter().all(|x| x.is_finite()) { Camera { target, ..turned } } else { turned }
+    }
+
+    /// Zoomed by `factor` toward `pivot`, which stays on the pixel it showed at: everything closes in on it, the target and
+    /// (in perspective) the eye, as [`zoom`](Self::zoom) closes in on the point on the plane through the target.
+    pub fn zoom_about(self, factor: f64, pivot: P3) -> Camera {
+        let scale = (self.scale * factor).clamp(1e-6, 50.0);
+        let k = scale / self.scale;
+        let target = add(pivot, mul(sub(self.target, pivot), 1.0 / k));
+        if k.is_finite() && k > 0.0 && target.iter().all(|x| x.is_finite()) { Camera { scale, target, ..self } } else { self }
+    }
+
     /// How far, mm, a drag on the picture from pixel `from` to pixel `to` moves model point `at` along the model's axis `axis`
     /// (0 for x, 1 for y, 2 for z): the drag's part along that axis as the picture shows it there. None where the axis points
     /// at the camera.
@@ -2379,6 +2398,48 @@ impl Image {
         let size = tiny_skia::IntSize::from_wh(self.width, self.height).ok_or("the picture's size is out of range")?;
         let pm = tiny_skia::Pixmap::from_vec(self.rgba.clone(), size).ok_or("the picture's size is out of range")?;
         pm.encode_png().map_err(|e| e.to_string())
+    }
+}
+
+/// A surface the line of sight through a pixel meets: the element it is of, the point it meets it at, and the surface's unit
+/// normal, turned toward the camera. What the 3D view orbits about and zooms toward, and what its tools draw on (`workplane`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Surface {
+    pub id: Id,
+    pub at: P3,
+    pub normal: P3,
+}
+
+/// Where the line of sight through pixel `at` meets the plane of triangle `p`, element `id`'s: in perspective, in front of the eye.
+pub(crate) fn surface_of(cam: &Camera, at: (f64, f64), id: Id, p: &[P3; 3]) -> Option<Surface> {
+    let n = unit(cross(sub(p[1], p[0]), sub(p[2], p[0])));
+    let on = cam.unproject(at);
+    let eye = cam.eye();
+    let (from, along) = match eye {
+        Some(eye) => (eye, unit(sub(on, eye))),
+        None => (on, mul(cam.axes().0, -1.0)),
+    };
+    let facing = dot(along, n);
+    let t = dot(sub(p[0], from), n) / facing;
+    let normal = if facing > 0.0 { mul(n, -1.0) } else { n };
+    (facing.abs() > 1e-9 && t.is_finite() && (eye.is_none() || t > 0.0)).then(|| Surface { id, at: add(from, mul(along, t)), normal })
+}
+
+/// Where the line of sight through pixel `at` meets level `id`'s plane, of `levels` (each a level, its name and its plane's corners).
+pub(crate) fn on_level(levels: &[(Id, String, [P3; 4])], cam: &Camera, at: (f64, f64), id: Id) -> Option<Surface> {
+    let (.., c) = levels.iter().find(|(l, ..)| *l == id)?;
+    surface_of(cam, at, id, &[c[0], c[1], c[2]])
+}
+
+impl Scene {
+    /// The surface pixel `at` of `image`, a picture of this scene through `cam`, shows: a triangle's, or a level's plane where it
+    /// shows the level's mark; none where it shows nothing, or a scan's point.
+    pub fn surface_in(&self, image: &Image, cam: &Camera, at: (f64, f64)) -> Option<Surface> {
+        let t = *image.hit.get(image.index(at.0, at.1)?)? as usize;
+        match self.tris.get(t) {
+            Some(tri) => surface_of(cam, at, tri.owner, &tri.p),
+            None => on_level(&self.levels, cam, at, *image.owners.get(t)?),
+        }
     }
 }
 

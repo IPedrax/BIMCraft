@@ -8,7 +8,9 @@
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-use super::{Camera, DATUM, EDGE, LevelMarks, NEAR, P3, Scene, add, cross, dot, level_marks, mul, sub, unit, weighed};
+use super::{
+    Camera, DATUM, EDGE, LevelMarks, NEAR, P3, Scene, Surface, add, cross, dot, level_marks, mul, on_level, sub, surface_of, unit, weighed,
+};
 use crate::geom::{self, P2};
 use crate::graphics::{Look, VisualStyle};
 use crate::model::Id;
@@ -106,8 +108,8 @@ struct Node {
     children: Option<[usize; 2]>,
 }
 
-/// How near a pixel's surface is, as the CPU keeps it (an f32), and what it shows.
-type Found = Option<(f32, Hit)>;
+/// How near a pixel's surface is, as the CPU keeps it (an f32), and the triangle it is.
+type Found = Option<(f32, usize)>;
 
 struct Bvh {
     nodes: Vec<Node>,
@@ -288,6 +290,21 @@ impl Mesh {
     /// What the picture shows at pixel `(x, y)`: the nearest surface there (the first drawn where two are as near), and over it
     /// a level's mark where nothing nearer hides it, as the CPU picture's picks do.
     pub fn pick(&self, cam: &Camera, tints: &[(Id, Rgb)], x: f64, y: f64) -> Option<Hit> {
+        self.seen(cam, tints, x, y).map(|(hit, _)| hit).filter(|h| !crate::link::is_linked(h.id))
+    }
+
+    /// The surface the line of sight through pixel `(x, y)` meets where the picture shows it, as
+    /// [`Scene::surface_in`](super::Scene::surface_in) finds it in the processor's picture: a triangle's, or a level's plane where
+    /// what [`pick`](Self::pick) finds is the level's mark.
+    pub fn surface(&self, cam: &Camera, tints: &[(Id, Rgb)], x: f64, y: f64) -> Option<Surface> {
+        match self.seen(cam, tints, x, y)? {
+            (hit, Some(i)) => surface_of(cam, (x, y), hit.id, &self.tris.get(i)?.p),
+            (hit, None) => on_level(&self.levels, cam, (x, y), hit.id),
+        }
+    }
+
+    /// What the picture shows at pixel `(x, y)`, linked or not, and the triangle it is (none for a level's mark).
+    fn seen(&self, cam: &Camera, tints: &[(Id, Rgb)], x: f64, y: f64) -> Option<(Hit, Option<usize>)> {
         let (w, h) = (f64::from(cam.width), f64::from(cam.height));
         if !(x >= 0.0 && y >= 0.0 && x < w && y < h) {
             return None;
@@ -298,7 +315,7 @@ impl Mesh {
         let behind = opaque.map_or(f64::NEG_INFINITY, |(z, _)| f64::from(z));
         // A surface seen through shows where it is nearer than anything opaque.
         let seen = clear.filter(|(z, _)| opaque.is_none_or(|(d, _)| *z > d)).or(opaque);
-        let mut hit = seen.map(|(_, hit)| hit);
+        let mut hit = seen.and_then(|(_, i)| Some((self.tris.get(i)?.hit, Some(i))));
         for marks in self.marks(cam, tints) {
             let at = P2(centre.0, centre.1);
             let on_line = marks.lines.iter().find_map(|([a, b], wide)| covers((cam.project(*a), cam.project(*b)), *wide, centre));
@@ -307,10 +324,10 @@ impl Mesh {
             let whole = ring.iter().all(|q| q.0.is_finite() && q.1.is_finite());
             let on_head = (whole && geom::contains(&ring, at)).then(|| head.iter().map(|p| p.2).sum::<f64>() / 4.0);
             if on_line.or(on_head).is_some_and(|z| behind <= z + cam.slack(1.5, z)) {
-                hit = Some(Hit { id: marks.id, face: "" });
+                hit = Some((Hit { id: marks.id, face: "" }, None));
             }
         }
-        hit.filter(|h| !crate::link::is_linked(h.id))
+        hit
     }
 
     /// The nearest opaque triangle covering the centre of a pixel, and the nearest seen through, as the CPU's rasterizer finds
@@ -362,8 +379,7 @@ impl Mesh {
                 }
             }
         }
-        let hit = |f: Option<(f32, usize)>| f.and_then(|(z, i)| Some((z, self.tris.get(i)?.hit)));
-        (hit(found[0]), hit(found[1]))
+        (found[0], found[1])
     }
 }
 
@@ -465,6 +481,43 @@ mod tests {
         picks_through(&s, cam);
         // The eye inside the house, 1.6 m up, through a wide lens: what is behind it is cut away alike.
         picks_through(&s, crate::view3d::inside(&s.model, cam));
+    }
+
+    #[test]
+    fn the_surface_under_a_pixel_is_the_same_through_the_mesh_as_the_picture_and_an_orbit_or_a_zoom_about_it_keeps_it_there() {
+        let s = sample();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let mesh = Mesh::new(&scene, &look).unwrap();
+        let flat = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let near = |a: P3, b: P3, d: f64| (0..3).all(|i| (a[i] - b[i]).abs() <= d);
+        for cam in [flat, scene.fit_from(Camera { lens: Some(crate::view3d::LENS), ..flat }, &look)] {
+            let image = scene.render_in(&cam, &[], &look);
+            let (mut found, mut levels) = (0, 0);
+            for y in (0..480).step_by(5) {
+                for x in (0..640).step_by(5) {
+                    let at = (f64::from(x) + 0.5, f64::from(y) + 0.5);
+                    match (scene.surface_in(&image, &cam, at), mesh.surface(&cam, &[], at.0, at.1)) {
+                        (Some(a), Some(b)) => {
+                            assert_eq!(a.id, b.id, "at {at:?}");
+                            assert!(near(a.at, b.at, 1e-3) && near(a.normal, b.normal, 1e-9), "{a:?} {b:?}");
+                            found += 1;
+                            levels += usize::from(s.model.level(a.id).is_some());
+                            // The point is on the line of sight through the pixel, and its normal faces the camera.
+                            let shown = |c: Camera| {
+                                let (px, py, _) = c.project(a.at);
+                                (px - at.0).abs() < 1e-6 && (py - at.1).abs() < 1e-6
+                            };
+                            assert!(shown(cam) && dot(a.normal, cam.toward(a.at)) > 0.0, "{a:?} at {at:?}");
+                            assert!(shown(cam.orbit_about(30.0, -10.0, a.at)), "orbited about it, it stays at {at:?}");
+                            assert!(shown(cam.zoom_about(1.7, a.at)) && shown(cam.zoom_about(0.4, a.at)), "zoomed toward it");
+                        }
+                        (None, None) => {}
+                        other => panic!("at {at:?} the picture and the mesh differ: {other:?}"),
+                    }
+                }
+            }
+            assert!(found > 500 && levels > 0, "{found} surfaces, {levels} on a level's plane");
+        }
     }
 
     #[test]

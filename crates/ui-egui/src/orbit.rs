@@ -1,6 +1,7 @@
 //! The 3D view: the core's picture of the model (`view3d::Scene`), orbited, panned and zoomed as
 //! in Revit. Shift and the middle button orbit, and so does a drag with the primary button (for
-//! a hand without a middle button); the middle button pans; the wheel zooms about the cursor. A
+//! a hand without a middle button), round the point under the pointer where the drag began; the
+//! middle button pans; the wheel zooms toward the point under the cursor. A
 //! click picks the element the picture shows there, and so does a press let go quickly, however
 //! far the hand went with it (`Canvas::quick_press`): the camera it turned goes back. A level
 //! selected alone has a grip at the middle of each edge of its plane, which a drag moves over it. A section box is drawn
@@ -13,7 +14,7 @@ use bimcraft_core::graphics::{Look, VisualStyle};
 use bimcraft_core::model::{Id, Model, ViewCamera};
 use bimcraft_core::render::{self, Rgb};
 use bimcraft_core::view3d::gpu::{Hit, Mesh};
-use bimcraft_core::view3d::{AZIMUTH, Camera, ELEVATION, Image, MAX_SIDE, P3, Scene, box_grips, move_box_face};
+use bimcraft_core::view3d::{AZIMUTH, Camera, ELEVATION, Image, MAX_SIDE, P3, Scene, Surface, box_grips, move_box_face};
 use egui::{
     Align, Color32, ColorImage, Layout, PointerButton, Pos2, Rect, Sense, Stroke, StrokeKind, TextureHandle, TextureOptions, Ui, UiBuilder,
     pos2, vec2,
@@ -46,6 +47,15 @@ impl Picker {
             Picker::Mesh(m, tints) => m.pick(cam, tints, x, y),
         }
     }
+
+    /// The surface the picture shows at pixel `at`, taken through `cam`, and the point on it there; the processor's picture
+    /// finds it in `scene`, the one it was drawn from (none while the picture on screen is of another model).
+    fn surface(&self, scene: Option<&Scene>, cam: &Camera, at: (f64, f64)) -> Option<Surface> {
+        match self {
+            Picker::Image(i) => scene?.surface_in(i, cam, at),
+            Picker::Mesh(m, tints) => m.surface(cam, tints, at.0, at.1),
+        }
+    }
 }
 
 /// The 3D view between frames.
@@ -65,8 +75,9 @@ pub struct Orbit {
     pub(crate) on_card: bool,
     /// The mesh of the scene shown last, for the card: or why it can't draw it.
     mesh: Option<Meshed>,
-    /// A drag under way: whether it orbits (else it pans), and where the pointer was last.
-    drag: Option<(bool, Pos2)>,
+    /// A drag under way: whether it orbits (else it pans), where the pointer was last, and the model point it orbits about,
+    /// the one under the pointer where it began (none: the target).
+    drag: Option<(bool, Pos2, Option<P3>)>,
     /// The camera as that drag found it, for a drag that turns out a click.
     before: Option<Camera>,
     /// A selected level's grip being dragged: the level, and which edge of its plane (as
@@ -265,11 +276,18 @@ impl BimApp {
         if from_model {
             o.built = active.zip(stored).map(|(id, cam)| (id, cam, lens));
         }
+        // What the picture on screen shows at a point, as the view picks: its scene is this model's while it's of this model.
+        let fresh = o.shown.as_ref().is_some_and(|s| Arc::ptr_eq(&s.0, &model));
+        let surface = |picker: &Option<Picker>, cam: &Camera, at: Pos2| picker.as_ref()?.surface(fresh.then_some(scene), cam, px(at));
         if let Some(at) = hover {
-            // A wheel notch (about 50 points) zooms by a fifth.
+            // A wheel notch (about 50 points) zooms by a fifth, toward what's under the cursor.
             let factor = (f64::from(wheel) * 0.004).exp() * f64::from(pinch);
             if factor.is_finite() && factor != 1.0 {
-                cam = cam.zoom(factor.clamp(0.2, 5.0), px(at));
+                let factor = factor.clamp(0.2, 5.0);
+                cam = match surface(&o.picker, &cam, at) {
+                    Some(s) => cam.zoom_about(factor, s.at),
+                    None => cam.zoom(factor, px(at)),
+                };
             }
         }
         // A level selected alone has a grip at the middle of each edge of its plane: a drag from one
@@ -332,22 +350,25 @@ impl BimApp {
         {
             boxed_to = Some(to);
         }
-        // The primary button, or Shift and the middle button, orbit, 0.4° a point; the middle
-        // button alone pans.
+        // The primary button, or Shift and the middle button, orbit, 0.4° a point, round the point under the pointer where
+        // the drag began (the target, where nothing is); the middle button alone pans.
         if response.drag_started()
             && o.grip.is_none()
             && o.boxing.is_none()
             && let Some(origin) = ui.input(|i| i.pointer.press_origin())
         {
-            o.drag = Some((response.dragged_by(PointerButton::Primary) || shift, origin));
+            let orbit = response.dragged_by(PointerButton::Primary) || shift;
+            let pivot = orbit.then(|| surface(&o.picker, &cam, origin)).flatten().map(|s| s.at);
+            o.drag = Some((orbit, origin, pivot));
             o.before = Some(cam);
         }
-        if let (Some((orbit, last)), Some(now)) = (o.drag, latest)
+        if let (Some((orbit, last, pivot)), Some(now)) = (o.drag, latest)
             && response.dragged()
         {
             let d = now - last;
-            cam = if orbit { cam.orbit(-f64::from(d.x) * 0.4, f64::from(d.y) * 0.4) } else { cam.pan(px(last), px(now)) };
-            o.drag = Some((orbit, now));
+            let (around, up) = (-f64::from(d.x) * 0.4, f64::from(d.y) * 0.4);
+            cam = if orbit { cam.orbit_about(around, up, pivot.unwrap_or(cam.target)) } else { cam.pan(px(last), px(now)) };
+            o.drag = Some((orbit, now, pivot));
         }
         if response.drag_stopped() {
             o.drag = None;

@@ -355,6 +355,16 @@ no pass is added: `the_card_draws_edges_silhouettes_and_ambient_shadows_as_the_p
 from a sun are not drawn yet. The desktop's dialog (`display.rs`) opens by GD and from the view control bar's Visual Style
 menu, alike in both looks of the window, and runs the command on the 3D view on screen.
 
+The 3D view works round what is under the cursor, on both painters. What a pick finds has a point: `view3d::Surface` is the
+element, the model point where the line of sight through the pixel meets the surface the picture shows there, and its normal turned
+toward the camera. The processor's picture finds it from the triangle its pixel holds (`Scene::surface_in`), the card's mesh from
+the triangle its pick finds (`Mesh::surface`), and on a level's mark it is the level's plane; `orbit.rs`'s `Picker::surface` asks
+whichever drew the picture on screen. A drag orbits round the surface's point under the pointer where it began
+(`Camera::orbit_about` turns the whole camera about it, so the point keeps its pixel, in perspective too), round the target where
+nothing is; the wheel zooms toward it (`Camera::zoom_about` closes the target and the eye in on it), and with nothing under the
+cursor zooms about the cursor as before. `the_surface_under_a_pixel_is_the_same_through_the_mesh_as_the_picture_and_an_orbit_or_a_zoom_about_it_keeps_it_there`
+checks the two painters agree, and `tests/working3d.rs` drives it in both profiles, on the card where the machine has one.
+
 A level's own plan is the level (its `view_range`, `crop` and `graphics` are the level's); every other plan of it is an `Element::PlanView`
 (Revit's Duplicate View: `duplicate_view`, which only plans take). A plan has a key: the level's id, or a plan view's. `Model::plan_level` says
 which level a key shows, and everything that draws or measures the model takes that level (`draw_plan`, `plan_shows`, the canvas's tools), while
