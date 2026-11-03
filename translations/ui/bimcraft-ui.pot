@@ -10124,3 +10124,11 @@ msgstr ""
 msgctxt "category-plural"
 msgid "Voice Outlets"
 msgstr ""
+
+#: crates/ui-egui/src/lib.rs:3277
+msgid "3D Scene as glTF…"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:3278
+msgid "glTF binary"
+msgstr ""

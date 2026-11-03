@@ -929,6 +929,19 @@ pub struct Scene {
     scans: Vec<Scan>,
 }
 
+/// A triangle of the scene as a file takes it ([`Scene::facets`]).
+pub(crate) struct Facet {
+    pub owner: Id,
+    pub corners: [P3; 3],
+    /// Unit, at the corners: the curve's where the triangle is on a curved surface, else its own, turned out as its corners wind.
+    /// All zero for a triangle with no area.
+    pub normals: [P3; 3],
+    /// As the view shades it.
+    pub color: Rgb,
+    /// How see-through, percent: as much as its material, or the view makes it.
+    pub clearness: u8,
+}
+
 /// A scan as a point cloud places it: its points and colours (shared with the model's), and where they go.
 struct Scan {
     owner: Id,
@@ -1085,6 +1098,28 @@ impl Scene {
             })
             .collect();
         Scene { tris, planes, smooth, faces: Arc::new(faces), skins, bases, masses, levels, scans, edges: OnceLock::new() }
+    }
+
+    /// How many triangles `look` shows: the number [`facets`](Self::facets) yields.
+    pub(crate) fn shown(&self, look: &Look) -> usize {
+        let plain = look.is_plain();
+        self.tris.iter().filter(|t| plain || look.shows(t.owner)).count()
+    }
+
+    /// The triangles `look` shows, in the scene's order and as a picture shades them, for a file to hold: what the card's mesh
+    /// is made of, less the textures and the edges.
+    pub(crate) fn facets<'a>(&'a self, look: &'a Look) -> impl Iterator<Item = Facet> + 'a {
+        let plain = look.is_plain();
+        self.tris.iter().enumerate().filter(move |(_, t)| plain || look.shows(t.owner)).map(move |(i, t)| {
+            let face = unit(cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0])));
+            let curve = self.smooth.get(i).and_then(Option::as_deref);
+            // A curve's corners shade across their facets; one that comes out to nothing takes the triangle's own.
+            let normals = std::array::from_fn(|k| {
+                let n = curve.map_or(face, |n| unit(n[k]));
+                if dot(n, n) > 0.5 { n } else { face }
+            });
+            Facet { owner: t.owner, corners: t.p, normals, color: look.surface(t.owner, t.color), clearness: t.alpha(look).min(100) }
+        })
     }
 
     /// A view of the whole model from `azimuth` and `elevation` (degrees), fitted into the picture.

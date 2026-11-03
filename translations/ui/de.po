@@ -10122,6 +10122,14 @@ msgctxt "category-plural"
 msgid "Voice Outlets"
 msgstr ""
 
+#: crates/ui-egui/src/lib.rs:3277
+msgid "3D Scene as glTF…"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:3278
+msgid "glTF binary"
+msgstr ""
+
 #: crates/ui-egui/src/fillpatterns.rs:634
 #~ msgid "A pattern of the file replaces the one of its name in this list; else it is left out"
 #~ msgstr "Ein Muster der Datei ersetzt das gleichnamige in dieser Liste; sonst wird es ausgelassen"

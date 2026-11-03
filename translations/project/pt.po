@@ -1,7 +1,12 @@
 # BIMCraft project translations.
 # SPDX-License-Identifier: MIT OR Apache-2.0
 msgid ""
-msgstr "Project-Id-Version: BIMCraft\nLanguage: pt\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n"
+msgstr ""
+"Project-Id-Version: BIMCraft\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
 
 #: crates/core/src/fixtures.rs:364
 msgid "Air Terminal"
@@ -183,8 +188,7 @@ msgstr ""
 msgid "Electrical Power"
 msgstr ""
 
-#: crates/core/src/commands.rs:8204
-#: crates/core/src/commands.rs:10167
+#: crates/core/src/commands.rs:8204 crates/core/src/commands.rs:10167
 msgid "Elevation"
 msgstr "Elevação"
 
@@ -236,8 +240,7 @@ msgstr "Largura do batente"
 msgid "Gate Valve"
 msgstr "Registro de gaveta"
 
-#: crates/core/src/family.rs:1898
-#: crates/core/src/view3d.rs:702
+#: crates/core/src/family.rs:1898 crates/core/src/view3d.rs:702
 msgid "Glass"
 msgstr "Vidro"
 
@@ -301,8 +304,7 @@ msgstr "Largura da perna"
 msgid "Length"
 msgstr "Comprimento"
 
-#: crates/core/src/commands.rs:5128
-#: crates/core/src/model.rs:2928
+#: crates/core/src/commands.rs:5128 crates/core/src/model.rs:2928
 msgid "Level"
 msgstr "Nível"
 
@@ -466,8 +468,7 @@ msgstr "Contrapiso"
 msgid "Seat Height"
 msgstr "Altura do assento"
 
-#: crates/core/src/commands.rs:8181
-#: crates/core/src/commands.rs:10166
+#: crates/core/src/commands.rs:8181 crates/core/src/commands.rs:10166
 msgid "Section"
 msgstr "Corte"
 
@@ -666,4 +667,3 @@ msgstr "BWC"
 #: crates/core/src/loads.rs:78
 msgid "wc"
 msgstr "sanitário"
-

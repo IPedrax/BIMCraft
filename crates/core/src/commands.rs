@@ -110,8 +110,9 @@ pub static ALL: &[Command] = &[
     other(
         "save",
         "Save",
-        "{path?} .bimcraft saves the project (Save As with a path); .ifc exports IFC4; .svg or .png exports the lowest level's \
-         plan; .pdf prints every sheet, a page each",
+        "{path?} .bimcraft saves the project (Save As with a path); .ifc exports IFC4; .glb exports the default 3D view's scene as \
+         glTF 2.0 (metres, y up, a node for each element named by its id, GUID and category in `extras`; returns `elements` and \
+         `triangles`); .svg or .png exports the lowest level's plan; .pdf prints every sheet, a page each",
         save,
     ),
     other("undo", "Undo", "{count?} takes back the last `count` steps (1 by default)", undo),
@@ -2837,6 +2838,11 @@ fn save(s: &mut Session, p: &Value) -> R {
     if format == "ifc" {
         std::fs::write(&path, crate::ifc::export(&s.model)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         return Ok(json!({"path": path, "format": "IFC4"}));
+    }
+    if format == "glb" {
+        let out = crate::gltf::export(&crate::link::seen(&s.model)).map_err(|e| bad(c, e))?;
+        std::fs::write(&path, &out.bytes).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        return Ok(json!({"path": path, "format": "glTF 2.0", "elements": out.nodes, "triangles": out.triangles}));
     }
     if format == "pdf" {
         let seen = crate::link::seen(&s.model);

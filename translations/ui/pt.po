@@ -10125,6 +10125,14 @@ msgctxt "category-plural"
 msgid "Voice Outlets"
 msgstr ""
 
+#: crates/ui-egui/src/lib.rs:3277
+msgid "3D Scene as glTF…"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:3278
+msgid "glTF binary"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3433
 #~ msgid "Click a point the arc passes through: it sets the radius. Esc cancels."
 #~ msgstr "Clique num ponto por onde o arco passa: ele define o raio. Esc cancela."
