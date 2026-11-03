@@ -30,7 +30,7 @@ msgstr "1 élément"
 
 #: crates/ui-egui/src/templates.rs:46
 msgid "3D"
-msgstr "3D"
+msgstr ""
 
 #: crates/ui-egui/src/lib.rs:3373
 #: crates/ui-egui/src/properties.rs:1101
@@ -1739,7 +1739,7 @@ msgstr "Contraintes"
 
 #: crates/ui-egui/src/properties.rs:437
 msgid "Construction"
-msgstr "Construction"
+msgstr ""
 
 #: crates/ui-egui/src/dimtypes.rs:108
 msgid "Continuous"
@@ -4201,7 +4201,7 @@ msgstr "Agrandir"
 
 #: crates/ui-egui/src/electrical.rs:298
 msgid "Maximum"
-msgstr "Maximum"
+msgstr ""
 
 #: crates/ui-egui/src/properties.rs:316
 msgid "Maximum Riser Height"
@@ -4275,7 +4275,7 @@ msgstr "Réduire le ruban à ses onglets"
 
 #: crates/ui-egui/src/electrical.rs:298
 msgid "Minimum"
-msgstr "Minimum"
+msgstr ""
 
 #: crates/ui-egui/src/lib.rs:325
 msgid "Mirror Draw Axis"
@@ -4629,7 +4629,7 @@ msgstr "Note"
 
 #: crates/ui-egui/src/electrical.rs:437
 msgid "Note:"
-msgstr "Note:"
+msgstr ""
 
 #: crates/ui-egui/src/revit.rs:82
 #: crates/ui-egui/src/revit.rs:250
@@ -5079,7 +5079,7 @@ msgstr "Filtre de phase:"
 
 #: crates/ui-egui/src/electrical.rs:345
 msgid "Phases"
-msgstr "Phases"
+msgstr ""
 
 #: crates/ui-egui/src/phasing.rs:460
 msgid "Phases, in order:"
@@ -5445,7 +5445,7 @@ msgstr "Simple"
 
 #: crates/ui-egui/src/templates.rs:44
 msgid "Plan"
-msgstr "Plan"
+msgstr ""
 
 #: crates/core/src/schedule.rs:269
 msgid "Plan Area"
@@ -8291,7 +8291,7 @@ msgstr "tous les points"
 
 #: crates/ui-egui/src/electrical.rs:24
 msgid "aluminium"
-msgstr "aluminium"
+msgstr ""
 
 #: crates/core/src/curves.rs:125
 msgid "arc"

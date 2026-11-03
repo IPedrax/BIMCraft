@@ -653,5 +653,5 @@ msgstr "aseo"
 
 #: crates/core/src/loads.rs:78
 msgid "wc"
-msgstr "wc"
+msgstr ""
 

@@ -342,7 +342,8 @@ mod tests {
         }
         set(Lang::Chinese);
         assert_eq!((t("Copy"), tc("missing-context", "Copy")), ("复制", "Copy"));
-        assert_eq!(category("link", true), "Linked Models");
+        // The plural has its own context: it was English until its entry was translated, and is now Chinese.
+        assert_eq!((category("link", false), category("link", true)), ("链接模型".to_string(), "链接模型".to_string()));
         set(Lang::English);
     }
 

@@ -30,7 +30,7 @@ msgstr "1 个图元"
 
 #: crates/ui-egui/src/templates.rs:46
 msgid "3D"
-msgstr "三维"
+msgstr ""
 
 #: crates/ui-egui/src/lib.rs:3373
 #: crates/ui-egui/src/properties.rs:1101

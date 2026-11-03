@@ -30,7 +30,7 @@ msgstr "1 elemento"
 
 #: crates/ui-egui/src/templates.rs:46
 msgid "3D"
-msgstr "3D"
+msgstr ""
 
 #: crates/ui-egui/src/lib.rs:3373
 #: crates/ui-egui/src/properties.rs:1101
@@ -4587,7 +4587,7 @@ msgstr "Aún no hay plantillas de {}: Crear desde esta vista crea una a partir d
 
 #: crates/ui-egui/src/electrical.rs:298
 msgid "Nominal"
-msgstr "Nominal"
+msgstr ""
 
 #: crates/ui-egui/src/standards.rs:252
 msgid "Nominal Text Height:"
