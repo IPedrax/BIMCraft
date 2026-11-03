@@ -2229,6 +2229,12 @@ impl BimApp {
                 if small_button(ui, Icon::AddPoint, "Add Point", self.tool == Tool::AddPoint, tip).clicked() {
                     self.set_tool(Tool::AddPoint);
                 }
+                // Convert Lines, as Revit's: on while Modify Sub Elements has folding lines selected.
+                let tip = msg!("Convert Lines: make the selected folding lines split lines, so the top keeps folding along them");
+                let can = self.tool == Tool::ModifySubElements && !self.shape_picked_folds().is_empty();
+                if ui.add_enabled_ui(can, |ui| small_button(ui, Icon::ConvertLines, msg!("Convert Lines"), false, tip)).inner.clicked() {
+                    self.shape_convert_lines();
+                }
             });
             ui.horizontal(|ui| {
                 let tip = msg!("Add Split Line: click two points; the top folds along the line between them");

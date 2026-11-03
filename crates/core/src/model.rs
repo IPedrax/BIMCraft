@@ -4195,6 +4195,19 @@ impl Model {
         creases
     }
 
+    /// A shaped floor's folding lines, as Revit calls them: the creases between its planes (`shape_creases`) that no split
+    /// line makes and that aren't its outline's or an opening's edges, in plan. What Convert Lines makes split lines.
+    pub fn shape_folds(&self, f: &Floor) -> Vec<(P2, P2)> {
+        let rings: Vec<(P2, P2)> = std::iter::once(&f.boundary).chain(&f.openings).flat_map(|r| geom::ring_edges(r)).collect();
+        let lines: Vec<(P2, P2)> = f.shape.lines.iter().map(|l| (l.a, l.b)).collect();
+        let on = |segs: &[(P2, P2)], q: P2| segs.iter().any(|&(a, b)| geom::dist_to_segment(q, a, b) <= TOL);
+        self.shape_creases(f)
+            .into_iter()
+            .map(|[a, b]| (P2(a[0], a[1]), P2(b[0], b[1])))
+            .filter(|&(a, b)| !on(&rings, (a + b) * 0.5) && !on(&lines, (a + b) * 0.5))
+            .collect()
+    }
+
     /// How far a floor's top lies above where it would be without its shape at `q`, mm: by the piece of its top over `q`,
     /// or within `TOL` of one's edge; 0 off it, or without a shape.
     pub fn shape_height(&self, f: &Floor, q: P2) -> f64 {

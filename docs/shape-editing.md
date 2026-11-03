@@ -57,6 +57,10 @@ Status, on the branch `mod-16-shape-editing` (raised upstream as IPedrax/BIMCraf
   corners, an edge's middle, else the nearest point along an edge (`view3d::ShapeSnap`), each with the plan's marker in both
   views: an intersection is always one of its points, its edges being one triangulation's. In 3D a selected point is
   dimensioned plumb from where the top would be without the shape (`in_3d_a_selected_point_is_dimensioned_*`).
+  Modify Sub Elements picks folding lines too, Revit's name for the creases no split line makes (`Model::shape_folds`,
+  `view3d::shape_pick_plan`, `shape_pick_3d`), and Convert Lines makes the selected ones split lines, one way, as Revit's
+  does (`SlabShapeEditor.CreateCreasesFromFoldingLines` in its API); tests `a_shapes_folding_lines_*`,
+  `convert_lines_makes_a_selected_folding_line_a_split_line`.
 - **Phase 4**, flat roofs, is built: a flat roof by footprint takes a shape through the same commands and tools
   (`Model::shapeable` sees its top as a floor's, `Model::roof_as_floor`), its underside following its top plumb
   (`roof_faces`, `roof_rise`), walls attached under it following its falls, its plan creases thin, its points snapped,

@@ -275,3 +275,27 @@ fn in_3d_a_selected_point_is_dimensioned_from_where_the_top_would_be() {
     click_at(&mut h, at);
     assert!(painted(&h).iter().any(|t| t == "300"), "{:?}", painted(&h));
 }
+
+#[test]
+fn convert_lines_makes_a_selected_folding_line_a_split_line() {
+    let mut h = app(r#"floor {"boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}"#);
+    let floor = ids(&h, "floor")[0];
+    h.state_mut().run("edit_shape", json!({"id": floor, "points": [{"at": [4000, 3000], "z": -300}]}));
+    click(&mut h, P2(4000.0, 0.0));
+    press(&mut h, "Modify Sub Elements");
+    // Nothing folding selected: Convert Lines does nothing.
+    press(&mut h, "Convert Lines");
+    assert_eq!(field(&h, floor, "shape")["lines"], json!(null));
+    // The crease from the south-west corner to the drain, picked off its middle, made a split line.
+    click(&mut h, P2(2030.0, 1480.0));
+    assert!(matches!(h.state().shape_picked.as_slice(), [crate::shape::Sub::Edge(..)]), "{:?}", h.state().shape_picked);
+    press(&mut h, "Convert Lines");
+    let lines = field(&h, floor, "shape")["lines"].clone();
+    let ends = |l: &Value| {
+        let mut e = [l["a"].clone(), l["b"].clone()];
+        e.sort_by_key(|v| v.to_string());
+        e
+    };
+    assert_eq!(lines.as_array().map(Vec::len), Some(1), "{lines}");
+    assert_eq!(ends(&lines[0]), ends(&json!({"a": [0.0, 0.0], "b": [4000.0, 3000.0]})), "{lines}");
+}
