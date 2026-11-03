@@ -1,5 +1,6 @@
 //! The view control bar's view controls, the same in both profiles: the renovation filter, which phase of the work a view
-//! shows in plain words, and visibility sets, view templates of what a view shows switched at a click.
+//! shows in plain words; visibility sets, view templates of what a view shows switched at a click; and the 3D view linked to
+//! the plan, cut to what the plan shows.
 
 use super::*;
 
@@ -99,4 +100,69 @@ fn a_visibility_set_saved_on_the_bar_switches_a_view_at_a_click_in_both_profiles
         assert!(h.query_by_label("No walls").is_none(), "rev {rev}");
         key(&mut h, Key::Escape);
     }
+}
+
+/// The section box the 3D view is drawn cut to, if it is.
+fn drawn_box(h: &mut Harness<BimApp>) -> Option<([f64; 3], [f64; 3])> {
+    let app = h.state_mut();
+    let was = std::mem::replace(&mut app.sheet, Sheet::View3D);
+    let model = app.view_model();
+    app.sheet = was;
+    bimcraft_core::graphics::Look::of_3d(&model).section_box()
+}
+
+#[test]
+fn the_linked_3d_view_floats_beside_the_plan_cut_to_what_the_plan_shows_in_both_profiles() {
+    for rev in [false, true] {
+        let mut h = if rev { app(BOX) } else { bimcraft(BOX) };
+        let project = Arc::clone(&h.state().session.model);
+        assert!(drawn_box(&mut h).is_none(), "rev {rev}");
+        press(&mut h, "Linked 3D View");
+        // Beside the plan, which stays the view the tools work in.
+        assert!(h.state().floats(Sheet::View3D) && h.state().sheet == Sheet::Plan(100000), "rev {rev}");
+        // Cut from Level 1 to its view range's top, Level 2, and round what the plan shows: the house, fitted in it.
+        let (lo, hi) = drawn_box(&mut h).expect("the 3D view cut to the plan");
+        assert_eq!((lo[2], hi[2]), (0.0, 3000.0), "rev {rev}");
+        assert!(lo[0] < 0.0 && hi[0] > 8000.0 && lo[1] < 0.0 && hi[1] > 6000.0, "rev {rev}: {lo:?} {hi:?}");
+        // The plan panned off the house: the box goes with it.
+        h.state_mut().canvas.show(100000, P2(40000.0, 40000.0), P2(50000.0, 46000.0));
+        h.run();
+        let (lo, hi) = drawn_box(&mut h).expect("still cut");
+        assert!(lo[0] > 8000.0 && lo[0] < 45000.0 && hi[0] > 45000.0 && lo[1] > 6000.0, "rev {rev}: {lo:?} {hi:?}");
+        // Another level's plan: that level, and up to the model's top over the highest.
+        h.state_mut().open_sheet(Sheet::Plan(100001));
+        h.run();
+        let (lo, hi) = drawn_box(&mut h).expect("still cut");
+        assert!(lo[2] == 3000.0 && hi[2] > lo[2], "rev {rev}: {lo:?} {hi:?}");
+        // Off: the 3D view as it was, closed again and never cut; the project was never changed.
+        press(&mut h, "Linked 3D View");
+        assert!(!h.state().floats(Sheet::View3D) && !h.state().views.contains(&Sheet::View3D), "rev {rev}");
+        assert!(drawn_box(&mut h).is_none(), "rev {rev}");
+        assert!(Arc::ptr_eq(&project, &h.state().session.model), "rev {rev}: no command ran");
+    }
+}
+
+#[test]
+fn the_linked_3d_view_keeps_its_own_section_box_and_its_tab_for_when_the_link_ends() {
+    let mut h = app(BOX);
+    h.state_mut().run("section_box", json!({"min": [-500, -500, -500], "max": [500, 500, 500]}));
+    h.state_mut().open_sheet(Sheet::View3D);
+    h.state_mut().open_sheet(Sheet::Plan(100000));
+    h.run();
+    press(&mut h, "Linked 3D View");
+    assert!(h.state().floats(Sheet::View3D));
+    assert_eq!(drawn_box(&mut h).map(|b| b.1[2]), Some(3000.0), "cut to the plan, not to its own box");
+    // Closed by its window's close button, the link ends with it.
+    press(&mut h, "Close {3D}");
+    assert!(h.state().linked_3d.is_none());
+    // On again from a tab, and off: back on its tab, its own box as it was.
+    h.state_mut().open_sheet(Sheet::View3D);
+    h.state_mut().open_sheet(Sheet::Plan(100000));
+    h.run();
+    press(&mut h, "Linked 3D View");
+    assert!(h.state().floats(Sheet::View3D) && !h.state().views.contains(&Sheet::View3D));
+    press(&mut h, "Linked 3D View");
+    assert!(!h.state().floats(Sheet::View3D) && h.state().views.contains(&Sheet::View3D));
+    assert_eq!(h.state().sheet, Sheet::Plan(100000), "the plan still the view the tools work in");
+    assert_eq!(drawn_box(&mut h), Some(([-500.0; 3], [500.0; 3])));
 }

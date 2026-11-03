@@ -34,6 +34,8 @@ pub(crate) struct Temp {
     categories: BTreeSet<String>,
     /// What the view hides for good is drawn instead, in magenta.
     reveal: bool,
+    /// The 3D view's section box for now, Linked 3D View's: what the plan it follows shows (`section_box.rs`).
+    pub(crate) section_box: Option<([f64; 3], [f64; 3])>,
 }
 
 impl Temp {
@@ -129,7 +131,12 @@ fn shadowed(base: &Arc<Model>, sheet: Sheet, three_d: Option<Id>, temp: &Temp) -
     }
     let mut s = Session::new();
     s.reset((**base).clone(), None);
-    s.execute("graphics", &p)?;
+    if temp.hides() || temp.reveal {
+        s.execute("graphics", &p)?;
+    }
+    if let Some((min, max)) = temp.section_box {
+        s.execute("section_box", &json!({"view": p["view"], "min": min, "max": max}))?;
+    }
     Ok(s.model)
 }
 
@@ -143,7 +150,7 @@ impl BimApp {
     /// graphics refuse (categories that follow a view template) ends it, and says why.
     pub(crate) fn view_model(&mut self) -> Arc<Model> {
         let base = self.linked_model();
-        let Some(temp) = self.temporary().filter(|t| t.hides() || t.reveal).cloned() else { return base };
+        let Some(temp) = self.temporary().filter(|t| t.hides() || t.reveal || t.section_box.is_some()).cloned() else { return base };
         if let Some(s) = &self.shadow
             && s.sheet == self.sheet
             && s.temp == temp
@@ -329,6 +336,7 @@ impl BimApp {
 
     /// The bar, when the view has one: a plan, a ceiling plan, a section or an elevation, the 3D view.
     pub(crate) fn view_control_bar(&mut self, ui: &mut Ui) {
+        self.follow_plan(ui);
         if self.graphic_view().is_none() {
             return;
         }
@@ -373,6 +381,15 @@ impl BimApp {
                     }
                     self.renovation_menu(ui);
                     self.visibility_sets(ui);
+                    if matches!(self.sheet, Sheet::Plan(_)) {
+                        let tip = msg!(
+                            "Linked 3D View: the 3D view beside this plan, cut to its level and to what it shows as it pans or changes \
+                             level; again to put the 3D view back as it was"
+                        );
+                        if small_button(ui, Icon::View3D, "Linked 3D View", self.linked_3d.is_some(), tip).clicked() {
+                            self.toggle_linked_3d();
+                        }
+                    }
                     let tip = msg!(
                         "Temporary Hide/Isolate: hide or isolate what is selected, or its categories, in this view until you reset it"
                     );

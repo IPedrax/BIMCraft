@@ -603,6 +603,8 @@ pub struct BimApp {
     /// What each view hides or reveals for now (not the project's), and the model it is drawn from.
     temporary: HashMap<Sheet, footer::Temp>,
     shadow: Option<footer::Shadow>,
+    /// Linked 3D View, while it's on: where the 3D view was before it floated beside the plan.
+    linked_3d: Option<section_box::Was>,
     /// The project, and what the views draw of it with its links built in: see [`BimApp::view_model`].
     seen: Option<(Arc<Model>, Arc<Model>)>,
     /// Link Model was asked for: its file dialog opens on the next frame, so a shortcut typed alone never waits on one.
@@ -1210,6 +1212,7 @@ impl BimApp {
             dim_edit: None,
             temporary: HashMap::new(),
             shadow: None,
+            linked_3d: None,
             seen: None,
             link_dialog: false,
             cloud_dialog: false,

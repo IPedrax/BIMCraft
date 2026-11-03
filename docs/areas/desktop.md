@@ -284,6 +284,17 @@ for a face square to the screen); a primary drag from one (`section_box::grip_at
 runs `section_box` when the drag ends. The grip takes the drag, not the camera, and a click on a grip picks nothing behind it. A
 plan's (and a plan view's) Properties have Section Box under Extents too, a `Flag` row: ticked, the plan shows what the box keeps.
 
+Linked 3D View (VIEW-13; `section_box.rs`, a button on a plan's view control bar in both profiles). On, the 3D view floats beside the plan
+(`float_view`, the plan staying the view the tools work in) and is cut to what the plan shows (`plan_box`): its level, from its view range's
+bottom (the level, unless the range says) up to its top (the model's top over the highest level, which has none), across the part of the plan
+the canvas shows (`Canvas::view`). `BimApp::follow_plan`, run with the active plan's bar, sets it again when the hand rests (no button down,
+no wheel turning), so the 3D view follows a pan when it ends and another level's plan when one is opened. The box is the window's, like
+Temporary Hide/Isolate: `footer::Temp::section_box` on the 3D view's sheet, which `BimApp::view_model` puts through `section_box` on the copy
+of the model the 3D view draws, so the project, its undo and its file never hold it, and the 3D view's own box stays as it was. Off, the 3D
+view goes back where it was (`section_box::Was`: closed, its tab at its place, or floating) and is drawn as the project has it; closing its
+window ends the link. The selection is the model's, so the plan and the 3D view share it already. The plan's own Section Box flag reads the
+project's box, never the link's, so a plan that follows the box and a 3D view that follows the plan never chase each other.
+
 Unhide. Only Reveal Hidden Elements lets what a view hides be picked, so the Modify tab's View panel offers Unhide Element and Unhide Category (EU, VU) for a selection
 `BimApp::hidden_selection` finds the active view hiding: the elements hidden one by one, and the categories hidden whole. They run `graphics` with `show_elements` or `show`
 (`unhide_selection`), the selection stays, and with nothing of it hidden EU opens the Elements tab as before and VU says so.
