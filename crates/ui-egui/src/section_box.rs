@@ -6,7 +6,7 @@ use bimcraft_i18n::msg;
 
 use bimcraft_core::model::{Element, SectionBox};
 use bimcraft_core::view3d::{Camera, P3, box_edges, box_grips};
-use egui::{Grid, Painter, Pos2, Rect, Shape, Stroke, StrokeKind, Ui, WidgetInfo, WidgetType, vec2};
+use egui::{Painter, Pos2, Rect, Shape, Stroke, StrokeKind, Ui, WidgetInfo, WidgetType, vec2};
 use serde_json::json;
 
 use crate::lang::t;
@@ -52,43 +52,38 @@ impl BimApp {
         let units = self.session.model.units;
         let view = self.session.model.default_3d().unwrap_or_default();
         let mut set = None;
-        egui::Frame::new().inner_margin(egui::Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
-            let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
-            Grid::new("section-box-properties").num_columns(2).min_col_width(half).max_col_width(half).show(ui, |ui| {
-                let name = t("Section Box");
-                let label = ui.label(name);
-                let mut on = b.is_some_and(|b| b.on);
-                let r = ui.checkbox(&mut on, "");
-                // A checkbox without text names itself "" for screen readers: give it its row's name.
-                r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, name));
-                if r.labelled_by(label.id).on_hover_text(t(TIP)).changed() {
-                    set = Some(json!({"on": on}));
-                }
-                ui.end_row();
-                let Some(b) = b.filter(|b| b.on) else { return };
-                for (k, face) in FACES.into_iter().enumerate() {
-                    let (axis, max) = (k / 2, !k.is_multiple_of(2));
-                    let now = if max { b.max[axis] } else { b.min[axis] };
-                    let label = ui.label(t(face));
-                    if let Some(typed) = self.field(ui, view, &format!("section_box.{k}"), units.length(now), label.id, "") {
-                        match units.parse(&typed) {
-                            Some(mm) => {
-                                let (mut lo, mut hi) = (b.min, b.max);
-                                if max {
-                                    hi[axis] = mm;
-                                } else {
-                                    lo[axis] = mm;
-                                }
-                                set = Some(json!({"min": lo, "max": hi}));
+        crate::properties::grid(ui, "section-box-properties", |ui| {
+            let name = t("Section Box");
+            let label = ui.label(name);
+            let mut on = b.is_some_and(|b| b.on);
+            let r = ui.checkbox(&mut on, "");
+            // A checkbox without text names itself "" for screen readers: give it its row's name.
+            r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, name));
+            if r.labelled_by(label.id).on_hover_text(t(TIP)).changed() {
+                set = Some(json!({"on": on}));
+            }
+            crate::properties::end_row(ui);
+            let Some(b) = b.filter(|b| b.on) else { return };
+            for (k, face) in FACES.into_iter().enumerate() {
+                let (axis, max) = (k / 2, !k.is_multiple_of(2));
+                let now = if max { b.max[axis] } else { b.min[axis] };
+                let label = ui.label(t(face));
+                if let Some(typed) = self.field(ui, view, &format!("section_box.{k}"), units.length(now), label.id, "") {
+                    match units.parse(&typed) {
+                        Some(mm) => {
+                            let (mut lo, mut hi) = (b.min, b.max);
+                            if max {
+                                hi[axis] = mm;
+                            } else {
+                                lo[axis] = mm;
                             }
-                            None => {
-                                self.status = crate::Status { text: crate::lang::tf("`{}` is not a length", &[typed.trim()]), error: true }
-                            }
+                            set = Some(json!({"min": lo, "max": hi}));
                         }
+                        None => self.status = crate::Status { text: crate::lang::tf("`{}` is not a length", &[typed.trim()]), error: true },
                     }
-                    ui.end_row();
                 }
-            });
+                crate::properties::end_row(ui);
+            }
         });
         if let Some(p) = set {
             self.run("section_box", p);

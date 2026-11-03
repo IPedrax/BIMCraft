@@ -10,6 +10,8 @@ use crate::style::pal;
 
 /// How wide a folded panel is.
 const FOLDED: f32 = 72.0;
+/// How tall a big ribbon button is (`big_button`).
+const BIG: f32 = 60.0;
 /// The hairline between panels, with its room.
 const RULE: f32 = 9.0;
 /// What's kept clear at the tab's end, so a fit judged on last frame's widths isn't a pixel over.
@@ -149,12 +151,19 @@ pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
         let shown = ui.vertical(|ui| {
             let row = ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
+                // Rev's bands make one line along the ribbon's foot: each panel as tall as a big button.
+                if crate::style::rev() {
+                    ui.set_min_height(BIG);
+                }
                 add(ui);
             });
             let font = FontId::proportional(11.5);
             let text = ui.painter().layout_no_wrap(name.to_string(), font.clone(), pal().muted).size().x;
             let (r, title_row) = ui.allocate_exact_size(vec2(row.response.rect.width().max(text + 24.0), 16.0), Sense::click());
-            if title_row.hovered() {
+            if crate::style::rev() {
+                // Rev's name is on a band as wide as the panel, along the ribbon's foot.
+                ui.painter().rect_filled(r, 0.0, if title_row.hovered() { pal().hover_fill } else { pal().bar });
+            } else if title_row.hovered() {
                 ui.painter().rect_filled(Rect::from_center_size(r.center(), vec2(text + 22.0, 16.0)), 4.0, pal().hover_fill);
             }
             ui.painter().text(r.center() - vec2(5.0, 0.0), Align2::CENTER_CENTER, name, font, pal().muted);
@@ -177,9 +186,10 @@ pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
         Some(_) => ui.ctx().data(|d| d.get_temp::<f32>(id)).unwrap_or(drawn),
     };
     SEEN.with(|s| s.borrow_mut().push(Seen { name: title.to_string(), natural, drawn, tools }));
-    // A hairline between panels, short of the card's edges.
+    // A hairline between panels, short of the card's edges (Rev's runs its height, down to the bands).
     let (rule, _) = ui.allocate_exact_size(vec2(RULE, ui.available_height().max(70.0)), Sense::hover());
-    ui.painter().vline(rule.center().x, rule.y_range().shrink(4.0), Stroke::new(1.0, pal().border));
+    let short = if crate::style::rev() { 0.0 } else { 4.0 };
+    ui.painter().vline(rule.center().x, rule.y_range().shrink(short), Stroke::new(1.0, pal().border));
     END.with(|e| e.set(rule.right()));
 }
 
@@ -229,11 +239,12 @@ fn folded_button(ui: &mut Ui, name: &str) -> Response {
     let label = format!("{name} ▾");
     r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &label));
     let open = Popup::is_id_open(ui.ctx(), Popup::default_response_id(&r));
+    let corner = crate::style::corner(6.0);
     if r.hovered() || open {
-        ui.painter().rect(rect.shrink2(vec2(0.0, 2.0)), 6.0, pal().hover_fill, Stroke::NONE, StrokeKind::Inside);
+        ui.painter().rect(rect.shrink2(vec2(0.0, 2.0)), corner, pal().hover_fill, Stroke::NONE, StrokeKind::Inside);
     }
     if r.has_focus() {
-        ui.painter().rect_stroke(rect, 6.0, crate::style::focus_ring(), StrokeKind::Inside);
+        ui.painter().rect_stroke(rect, corner, crate::style::focus_ring(), StrokeKind::Inside);
     }
     let font = FontId::proportional(12.0);
     let galley = ui.painter().layout(name.to_string(), font, pal().text, FOLDED - 8.0);

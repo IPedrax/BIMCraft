@@ -560,6 +560,18 @@ impl BimApp {
     pub(crate) fn palette_body(&mut self, ui: &mut Ui, p: Palette) {
         let scroll = egui::ScrollArea::vertical().auto_shrink([false, false]).min_scrolled_height(0.0);
         match p {
+            // Rev's Apply stays at the palette's foot, over a line, the rows scrolling above it.
+            Palette::Properties if crate::style::rev() => {
+                let all = ui.available_rect_before_wrap();
+                let foot = all.with_min_y(all.bottom() - ui.spacing().interact_size.y - 12.0);
+                ui.scope_builder(UiBuilder::new().max_rect(all.with_max_y(foot.top())), |ui| {
+                    scroll.id_salt("properties").show(ui, |ui| Frame::new().inner_margin(8.0).show(ui, |ui| self.properties(ui)));
+                });
+                ui.painter().hline(foot.x_range(), foot.top(), Stroke::new(1.0, pal().border));
+                ui.scope_builder(UiBuilder::new().max_rect(foot.shrink(6.0)).layout(Layout::right_to_left(Align::Center)), |ui| {
+                    crate::properties::apply(ui)
+                });
+            }
             Palette::Properties => {
                 scroll.id_salt("properties").show(ui, |ui| Frame::new().inner_margin(8.0).show(ui, |ui| self.properties(ui)));
             }
