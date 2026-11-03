@@ -8581,6 +8581,78 @@ msgstr ""
 msgid "View template {}"
 msgstr ""
 
+#: crates/ui-egui/src/templates.rs:46
+msgid "3D"
+msgstr ""
+
+#: crates/ui-egui/src/templates.rs:459
+msgid "<None>: the view follows no template, and its settings are its own."
+msgstr ""
+
+#: crates/ui-egui/src/templates.rs:225
+msgid "Assign View Template"
+msgstr ""
+
+#: crates/ui-egui/src/templates.rs:699
+msgid "Each is a length, and Top may be left empty for the level above."
+msgstr ""
+
+#: crates/ui-egui/src/templates.rs:45
+msgid "Elevation/Section"
+msgstr ""
+
+#: crates/ui-egui/src/templates.rs:489
+msgid "Include"
+msgstr ""
+
+#: crates/ui-egui/src/templates.rs:407
+msgid "New from This View…"
+msgstr ""
+
+#: crates/ui-egui/src/templates.rs:461
+msgid "No template picked."
+msgstr ""
+
+#: crates/ui-egui/src/templates.rs:375
+msgid "No {} templates yet: New from This View makes one from a view of the kind."
+msgstr ""
+
+#: crates/ui-egui/src/templates.rs:674
+msgid "Offsets from the plan's level."
+msgstr ""
+
+#: crates/ui-egui/src/templates.rs:411
+msgid "Open a view of the kind ({}) to make a template from it."
+msgstr ""
+
+#: crates/ui-egui/src/templates.rs:44
+msgid "Plan"
+msgstr ""
+
+#: crates/ui-egui/src/templates.rs:620
+msgid "V/G Filters"
+msgstr ""
+
+#: crates/ui-egui/src/templates.rs:619
+msgid "V/G Overrides"
+msgstr ""
+
+#: crates/ui-egui/src/templates.rs:473
+msgid "View Properties"
+msgstr ""
+
+#: crates/ui-egui/src/graphics.rs:160
+msgid "View Template: {}"
+msgstr ""
+
+#: crates/ui-egui/src/templates.rs:475
+msgid "Views following it: {}"
+msgstr ""
+
+#: crates/ui-egui/src/templates.rs:414
+msgid "{} Template"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3433
 #~ msgid "Click a point the arc passes through: it sets the radius. Esc cancels."
 #~ msgstr "Haz clic en un punto por el que pasa el arco: define el radio. Esc cancela."

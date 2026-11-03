@@ -162,6 +162,20 @@ state and its commands: the project's own types and a family's in `properties.rs
 pattern's … opens the Patterns tab. The dialogs are one width, and the table's body one height where the window has room, known from the first frame:
 a body that fitted its rows grew over a few frames, and a click meant for one row landed on the next. A refusal is said in the dialog.
 
+View Templates (`templates.rs`). VT and View > View Templates open it as Revit's does, in the look Type Properties has: on the left a tab for each
+kind of view (`ViewKind`: Plan, Elevation/Section, 3D; a template of no kind is on every tab), the templates of the one showing, and Duplicate…,
+Rename… and Delete, with New from This View… (enabled on the tab of the active view's kind) under them, each opening a Name row; they run at once
+(`template` with `like`, `rename`, `delete`, `from`). On the right the template picked: a table of Parameter, Value and Include, its rows the groups
+its kind holds (`ViewKind::groups`), each group's Include box named for the group. Its settings edit a draft (`TemplatesDialog::drafts`, one per
+template, kept through Duplicate and Rename); OK and Apply send each template's difference as one `template` command, Cancel drops them.
+V/G Overrides, V/G Filters and Design Options open Visibility/Graphics on the template's draft (`VgDialog::for_template`: no Elements tab nor a
+drawing's layers, which are a view's own; its OK puts the categories, filters and options back in the draft), View Range a small dialog of
+its four offsets, and Background Grids the grid editor. A view's Properties name its template on a button (`properties::wide_button`, as wide as the drop-downs, as Edit… is), which
+opens the same dialog as Assign View Template: <None> first, the view's kind's tab showing, and OK also sets the template the view follows.
+
+The palette's rows are not striped: a stripe is `bar`, the group headers' colour. Buttons and drop-downs fill with `Palette::control`, a step past
+`bar` (darker on light, lighter on dark), so a control never reads as a heading beside it.
+
 The camera (`camera.rs`). The 3D view's Properties have a Camera group: Projection, a drop-down of Axonometric and Perspective that runs
 `perspective` (off or on), and in perspective the Focal Length (a camera's mm, whatever the project's units) and the Eye Elevation, a length in the project's units. Focal
 Length runs `perspective` with its `lens`; Eye Elevation is the camera's on screen, not the project's, and moves `Orbit::camera` by
@@ -329,8 +343,9 @@ Hide/Isolate (the glasses) keeps Show grids, independent Main grid and Subgrid c
 The editor uses a draft: Apply/OK save one undo step, Cancel discards unapplied changes. File > Settings has no grid page;
 application settings files from the earlier global implementation no longer affect views.
 
-View templates can control Background Grids as a group (`Group::BackgroundGrid`, JSON `background_grid`). Create from This
-View copies the effective grid. View Templates offers its own Edit… button to change the template's grid. Followers use the
+View templates can control Background Grids as a group (`Group::BackgroundGrid`, JSON `background_grid`), for plans and
+elevations and sections. New from This View copies the effective grid. View Templates has a Background Grids row whose Edit… opens
+the grid editor on the template's draft (`open_template_background_grid`; its OK hands the grid back, the templates' OK sends it). Followers use the
 template's values and gray out their instance Edit button, bottom menu grid settings and any open editor; removing template
 control restores each view's own grid. The engine rejects bypasses through `graphics` and `modify` too.
 

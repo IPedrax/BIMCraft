@@ -322,7 +322,7 @@ impl BimApp {
             "Link Model" => self.link_dialog = true,
             "Duplicate View" => self.duplicate_plan("duplicate"),
             "Filters" => self.filters_dialog = Some(graphics::FiltersDialog::default()),
-            "View Templates" => self.templates_dialog = Some(graphics::TemplatesDialog::default()),
+            "View Templates" => self.open_templates(),
             "Phasing" => self.phasing_dialog = Some(phasing::PhasingDialog::default()),
             "Design Options" => self.options_dialog = Some(phasing::OptionsDialog::default()),
             "Wireframe" => self.set_visual_style(bimcraft_core::graphics::VisualStyle::Wireframe),
