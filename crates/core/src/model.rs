@@ -2254,8 +2254,23 @@ pub enum ParameterKind {
     Angle,
 }
 
+/// Whose value a project parameter is: each element's, or its type's, which every element of the type reads.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Scope {
+    #[default]
+    Instance,
+    Type,
+}
+
+impl Scope {
+    fn is_instance(&self) -> bool {
+        *self == Scope::Instance
+    }
+}
+
 /// A project parameter, as Revit's Manage > Project Parameters makes one: a value of its kind each
-/// element of its categories may have of its own. There is no separate shared kind: any parameter has a GUID, and can be
+/// element of its categories, or each of their types, may have of its own. There is no separate shared kind: any parameter has a GUID, and can be
 /// scheduled and tagged; one from a dictionary says so in `dictionary`.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -2269,15 +2284,15 @@ pub struct ProjectParameter {
     /// The group of Properties it shows under; none for Project Parameters.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub group: String,
-    /// Not shown in Properties.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub hidden: bool,
     /// Shown in Properties and not changed there; commands still can.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub read_only: bool,
-    /// Not shown in Properties for an element with no value.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub hide_when_empty: bool,
+    /// Each element's, or its type's.
+    #[serde(default, skip_serializing_if = "Scope::is_instance")]
+    pub scope: Scope,
+    /// A type parameter's values, by the GUID of the type (a library entry), so a type renamed keeps its value.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub type_values: BTreeMap<Guid, serde_json::Value>,
     /// The dictionary it came from, which makes it shared; a name in memory, its GUID in a file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dictionary: Option<String>,
@@ -2801,6 +2816,7 @@ impl Model {
                 return Err(format!("{who}: `{k}` is worked out by its formula"));
             }
             if let crate::family::Val::Text(m) = crate::family::read(p, v).map_err(|e| format!("{who}: {e}"))?
+                && p.kind == crate::family::Kind::Material
                 && !m.is_empty()
                 && !self.materials.contains_key(&m)
             {
@@ -5174,9 +5190,21 @@ impl Model {
                 return Err(format!("{who}: {c}s have a `{n}` of their own; name it otherwise"));
             }
             if p.categories.iter().any(|c| c == "component")
-                && let Some((f, _)) = self.families.iter().find(|(_, f)| f.parameters.iter().any(|q| q.name == *n))
+                && let Some(f) = crate::parameters::family_clash(self, n, p)
             {
                 return Err(format!("{who}: family `{f}` has a parameter of that name; name it otherwise"));
+            }
+            if p.scope == Scope::Type {
+                if let Some(c) = p.categories.iter().find(|c| crate::parameters::TYPELESS.contains(&c.as_str())) {
+                    return Err(format!(
+                        "{who}: {c}s have no types, so it can't be a type parameter for them; make it an instance parameter or take {c} off"
+                    ));
+                }
+            } else if !p.type_values.is_empty() {
+                return Err(format!("{who}: it holds values of types and isn't a type parameter"));
+            }
+            if let Some(v) = p.type_values.values().find(|v| !p.holds(v)) {
+                return Err(format!("{who}: a type's value {v} isn't what it holds"));
             }
         }
         graphics::check_project(self)?;
@@ -5292,6 +5320,9 @@ impl Model {
                     .get(k)
                     .filter(|p| p.categories.iter().any(|c| c == e.category()))
                     .ok_or_else(|| format!("{who}: `{k}` isn't a parameter of {}s; add it with `parameter`", e.category()))?;
+                if p.scope == Scope::Type {
+                    return Err(format!("{who}: `{k}` is a type parameter: its value is the type's, set with `type_parameter`"));
+                }
                 if !p.holds(v) {
                     let what = match p.kind {
                         ParameterKind::Text => "text",

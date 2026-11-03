@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use super::{DICTIONARY_EXTENSION, DICTIONARY_FORMAT, Definition, Dictionary, kind_word};
 use crate::ids::Guid;
-use crate::model::{MAX_TEXT, ParameterKind};
+use crate::model::{MAX_TEXT, ParameterKind, Scope};
 use crate::xlsx::{self, Cell};
 
 /// The largest file read.
@@ -19,7 +19,7 @@ pub const MAX_ROWS: usize = 65_536;
 const MAX_LEFT_OUT: usize = 200;
 
 /// The columns of a table, in the order written.
-const HEADINGS: [&str; 9] = ["GUID", "Name", "Kind", "Categories", "Group", "Description", "Visible", "User Modifiable", "Hide When Empty"];
+const HEADINGS: [&str; 8] = ["GUID", "Name", "Kind", "Categories", "Group", "Description", "Instance/Type", "User Modifiable"];
 
 /// The dictionary a file is, or stands for.
 #[derive(Clone, Debug, PartialEq)]
@@ -27,6 +27,7 @@ pub struct Source {
     pub name: String,
     pub version: String,
     pub guid: Option<Guid>,
+    pub revision: u64,
 }
 
 /// What a file holds.
@@ -34,6 +35,8 @@ pub struct Source {
 pub struct Read {
     pub definitions: Vec<Definition>,
     pub dictionary: Option<Source>,
+    /// The day a dictionary last changed.
+    pub changed: String,
     pub left_out: Vec<String>,
 }
 
@@ -87,6 +90,8 @@ pub fn read_dictionary_file(path: &str) -> Result<Dictionary, String> {
         format: DICTIONARY_FORMAT,
         guid: source.as_ref().and_then(|s| s.guid),
         name: source.as_ref().map_or_else(|| stem(path), |s| s.name.clone()),
+        revision: source.as_ref().map_or(0, |s| s.revision),
+        changed: read.changed,
         version: source.map(|s| s.version).unwrap_or_default(),
         parameters: read.definitions,
     })
@@ -135,6 +140,15 @@ fn yes(cell: &str, default: bool) -> bool {
     }
 }
 
+/// Instance or type, as a table says it; none where it doesn't.
+fn scope_from(cell: &str) -> Option<Scope> {
+    match cell.trim().to_lowercase().as_str() {
+        "instance" | "instancia" | "instância" => Some(Scope::Instance),
+        "type" | "tipo" => Some(Scope::Type),
+        _ => None,
+    }
+}
+
 fn clip(t: &str) -> String {
     t.trim().chars().take(MAX_TEXT).collect()
 }
@@ -160,9 +174,8 @@ pub fn from_rows(rows: &[Vec<String>]) -> Read {
     let cats_at = at(&["categories", "category"]);
     let group_at = at(&["group", "groupunder"]);
     let desc_at = at(&["description", "tooltip"]);
-    let vis_at = at(&["visible"]);
-    let user_at = at(&["usermodifiable"]);
-    let hide_at = at(&["hidewhenempty", "hidewhennovalue"]);
+    let scope_at = at(&["instancetype", "typeinstance", "scope", "binding"]);
+    let user_at = at(&["usermodifiable", "editable"]);
     let cell = |row: &'_ Vec<String>, i: Option<usize>| -> String { i.and_then(|i| row.get(i)).cloned().unwrap_or_default() };
     for (n, row) in body.iter().enumerate().take(MAX_ROWS) {
         let name = clip(&cell(row, Some(name_at)));
@@ -188,9 +201,8 @@ pub fn from_rows(rows: &[Vec<String>]) -> Read {
             kind,
             description: clip(&cell(row, desc_at)),
             group: clip(&cell(row, group_at)),
-            hidden: !yes(&cell(row, vis_at), true),
             read_only: !yes(&cell(row, user_at), true),
-            hide_when_empty: yes(&cell(row, hide_at), false),
+            scope: scope_from(&cell(row, scope_at)),
             categories: cell(row, cats_at).split([';', '|', '\n']).map(clip).filter(|c| !c.is_empty()).collect(),
         });
     }
@@ -255,7 +267,8 @@ pub fn read_csv(text: &str) -> Vec<Vec<String>> {
 /// A Revit shared parameter file. Its GUIDs are kept, which is why it is worth reading. It says nothing of categories, so each
 /// row comes in with none, for the import to give it.
 pub fn read_shared(text: &str, name: &str) -> Result<Read, String> {
-    let mut read = Read { dictionary: Some(Source { name: name.to_string(), version: String::new(), guid: None }), ..Read::default() };
+    let mut read =
+        Read { dictionary: Some(Source { name: name.to_string(), version: String::new(), guid: None, revision: 0 }), ..Read::default() };
     let mut groups: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
     let mut columns: Vec<String> = Vec::new();
     let mut group_columns: Vec<String> = Vec::new();
@@ -306,9 +319,9 @@ pub fn read_shared(text: &str, name: &str) -> Result<Read, String> {
                     kind,
                     description: clip(at("DESCRIPTION")),
                     group: groups.get(at("GROUP").trim()).cloned().unwrap_or_default(),
-                    hidden: !yes(at("VISIBLE"), true),
                     read_only: !yes(at("USERMODIFIABLE"), true),
-                    hide_when_empty: yes(at("HIDEWHENNOVALUE"), false),
+                    // A shared parameter file doesn't say: the import asks.
+                    scope: None,
                     categories: Vec::new(),
                 });
             }
@@ -333,7 +346,9 @@ pub fn read_dictionary(text: &str) -> Result<Read, String> {
         v.get("name").and_then(Value::as_str).map(clip).filter(|n| !n.is_empty()).ok_or("it isn't a dictionary: it has no `name`")?;
     let text_of = |k: &str| v.get(k).and_then(Value::as_str).map(clip).unwrap_or_default();
     let guid = guid_of(&text_of("guid"));
-    let mut read = Read { dictionary: Some(Source { name, version: text_of("version"), guid }), ..Read::default() };
+    let revision = v.get("revision").and_then(Value::as_u64).unwrap_or(0);
+    let source = Source { name, version: text_of("version"), guid, revision };
+    let mut read = Read { dictionary: Some(source), changed: text_of("changed"), ..Read::default() };
     let list = v.get("parameters").and_then(Value::as_array).map_or(&[][..], Vec::as_slice);
     for (i, row) in list.iter().enumerate().take(MAX_ROWS) {
         match serde_json::from_value::<Definition>(row.clone()) {
@@ -364,9 +379,12 @@ fn row_of(d: &Definition) -> Vec<String> {
         d.categories.join("; "),
         d.group.clone(),
         d.description.clone(),
-        yes_no(!d.hidden),
+        match d.scope {
+            Some(Scope::Type) => "Type".to_string(),
+            Some(Scope::Instance) => "Instance".to_string(),
+            None => String::new(),
+        },
         yes_no(!d.read_only),
-        yes_no(d.hide_when_empty),
     ]
 }
 

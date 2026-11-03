@@ -11,7 +11,7 @@ fn open(h: &mut Harness<BimApp>) {
 
 /// Clicks `label` where it's on top: the window's, over a ribbon or a browser that says the same.
 fn press(h: &mut Harness<BimApp>, label: &str) {
-    let nodes: Vec<_> = h.get_all_by_label(label).collect();
+    let nodes: Vec<_> = h.query_all_by_label(label).collect();
     nodes.last().unwrap_or_else(|| panic!("no `{label}`")).click();
     h.run();
 }
@@ -50,22 +50,12 @@ fn a_parameter_is_made_in_the_table_applied_at_once_and_given_values_in_properti
     type_role(&mut h, Role::TextInput, "Finish Height", "");
     assert_eq!(field(&h, wall, "params"), Value::Null);
     key(&mut h, Key::Escape);
-    h.state_mut().run("parameter", json!({"name": "Finish Height", "hide_when_empty": true}));
-    h.run();
-    click(&mut h, P2(4000.0, 0.0));
-    assert!(h.query_by_label("Finish Height").is_none(), "hidden while it's empty");
-    key(&mut h, Key::Escape);
-    h.state_mut().run("parameter", json!({"name": "Finish Height", "hide_when_empty": false, "read_only": true}));
+    h.state_mut().run("parameter", json!({"name": "Finish Height", "read_only": true}));
     h.state_mut().run("modify", json!({"id": wall, "params": {"Finish Height": 2400}}));
     h.run();
     click(&mut h, P2(4000.0, 0.0));
     assert!(h.query_by_role_and_label(Role::TextInput, "Finish Height").is_none(), "shown, not editable");
     assert!(h.query_by_label("Finish Height").is_some());
-    key(&mut h, Key::Escape);
-    h.state_mut().run("parameter", json!({"name": "Finish Height", "hidden": true}));
-    h.run();
-    click(&mut h, P2(4000.0, 0.0));
-    assert!(h.query_by_label("Finish Height").is_none() && h.query_by_label("Finishes").is_none(), "no group for it");
 }
 
 #[test]
@@ -188,6 +178,7 @@ fn a_dictionary_is_made_filled_and_taken_from_in_the_window() {
     h.state_mut().parameters_open_dictionary(&path);
     h.run();
     assert!(std::path::Path::new(&path).exists());
+    press(&mut h, "Edit");
     press(&mut h, "Add Checked Project Parameters");
     let read = bimcraft_core::parameters::table::read_dictionary_file(&path).unwrap();
     assert_eq!(read.parameters[0].name, "Fire Rating");
@@ -223,13 +214,235 @@ fn a_table_is_exported_and_a_familys_parameters_are_transferred() {
     h.run();
     let text = std::fs::read_to_string(&path).unwrap();
     assert!(text.contains("Fire Rating") && !text.contains("Other"), "what's checked: {text}");
-    press(&mut h, "Families");
+    press(&mut h, "Transfer");
     h.get_by_role_and_label(Role::ComboBox, "Family").click();
     h.run();
     press(&mut h, "Aaa");
     pick(&mut h, Role::CheckBox, "Check Reach");
-    pick(&mut h, Role::CheckBox, "Bbb");
-    press(&mut h, "Transfer");
+    pick(&mut h, Role::CheckBox, "Transfer to Bbb");
+    press(&mut h, "Transfer Checked");
     assert!(h.state().session.model.families["Bbb"].parameters.iter().any(|p| p.name == "Reach"));
     assert!(h.query_by_label("1 added, 0 skipped: their names are taken.").is_some());
+}
+
+fn pick_in(h: &mut Harness<BimApp>, combo: &str, option: &str) {
+    h.get_by_role_and_label(Role::ComboBox, combo).click();
+    h.run();
+    press(h, option);
+}
+
+#[test]
+fn a_parameter_made_a_type_s_is_wiped_off_elements_and_set_in_type_properties() {
+    use bimcraft_core::model::Scope;
+    let mut h = app(BOX);
+    let wall = ids(&h, "wall")[0];
+    h.state_mut().run("parameter", json!({"name": "Rating", "categories": ["wall"]}));
+    h.state_mut().run("modify", json!({"id": wall, "params": {"Rating": "mine"}}));
+    h.run();
+    open(&mut h);
+    pick_in(&mut h, "Instance or Type of Rating", "Type");
+    assert!(h.query_by_label("Apply wipes the values 1 elements have of Rating.").is_some(), "says so before it happens");
+    assert_eq!(h.state().session.model.parameters["Rating"].scope, Scope::Instance, "staged until Apply");
+    press(&mut h, "Apply");
+    assert_eq!(h.state().session.model.parameters["Rating"].scope, Scope::Type);
+    assert_eq!(field(&h, wall, "params"), Value::Null, "wiped");
+    press(&mut h, "Close");
+
+    click(&mut h, P2(4000.0, 0.0));
+    assert!(h.query_by_role_and_label(Role::TextInput, "Rating").is_none(), "not an element's to set in Properties");
+    press(&mut h, "Edit Type");
+    type_role(&mut h, Role::TextInput, "Rating", "EI60");
+    press(&mut h, "OK");
+    assert_eq!(bimcraft_core::schedule::field_text(&h.state().session.model, wall, "Rating").as_deref(), Some("EI60"));
+    key(&mut h, Key::Escape);
+
+    // And back: each type's value comes down to its elements.
+    open(&mut h);
+    pick_in(&mut h, "Instance or Type of Rating", "Instance");
+    assert!(h.query_by_label("Apply copies each type's value of Rating to its elements.").is_some());
+    press(&mut h, "Apply");
+    assert_eq!(field(&h, wall, "params"), json!({"Rating": "EI60"}));
+}
+
+#[test]
+fn many_categories_break_onto_new_lines_and_the_window_stays_its_width() {
+    let mut h = app(BOX);
+    let all: Vec<&str> = bimcraft_core::model::PARAMETER_CATEGORIES.to_vec();
+    h.state_mut().run("parameter", json!({"name": "Few", "categories": ["wall"]}));
+    open(&mut h);
+    let right = |h: &Harness<BimApp>| h.get_by_role_and_label(Role::Button, "Close").rect().right();
+    let before = right(&h);
+    press(&mut h, "Close");
+    h.state_mut().run("parameter", json!({"name": "Many", "categories": all}));
+    h.state_mut().run("parameter", json!({"name": "After", "categories": ["wall"]}));
+    h.state_mut().run("parameter", json!({"name": "Zed", "categories": ["wall"]}));
+    open(&mut h);
+    press(&mut h, "Categories");
+    for _ in 0..4 {
+        h.run();
+    }
+    assert!((right(&h) - before).abs() < 2.0, "the window keeps its width: {} against {before}", right(&h));
+    // A row is as tall as its text, and the next starts under it.
+    let row = |h: &Harness<BimApp>, n: &str| h.get_by_label(n).rect();
+    let walls = h.get_by_label_contains("Beams, Cables").rect();
+    assert!(walls.height() > row(&h, "After").height() * 2.0, "it breaks onto new lines: {walls:?}");
+    assert!(row(&h, "Zed").top() >= walls.bottom() - 1.0, "not over the next row: {:?} under {walls:?}", row(&h, "Zed"));
+    // Its two sides don't stretch the window down either.
+    let close = h.get_by_role_and_label(Role::Button, "Close").rect();
+    assert!(close.bottom() < 720.0, "{close:?}");
+    assert!(h.query_by_label("Name").is_some() && h.query_by_label("Type of Parameter").is_some(), "a table, with headers");
+}
+
+fn two_families(h: &mut Harness<BimApp>) {
+    for name in ["Aaa", "Bbb"] {
+        h.state_mut().run(
+            "family",
+            json!({"name": name, "category": "furniture", "parameters": [{"name": "Width", "value": 900}], "types": {"Small": {}, "Big": {"Width": 1800}},
+                   "forms": [{"profile": [[0, 0], [100, 0], [100, 100], [0, 100]], "from": 0, "to": 100}]}),
+        );
+    }
+}
+
+#[test]
+fn the_families_tab_adds_parameters_to_the_families_checked_in_bulk() {
+    use bimcraft_core::family::Val;
+    let mut h = app(BOX);
+    two_families(&mut h);
+    h.state_mut().run("parameter", json!({"name": "Code", "kind": "text", "categories": ["component"]}));
+    open(&mut h);
+    press(&mut h, "Families");
+    pick(&mut h, Role::CheckBox, "Check family Aaa");
+    pick(&mut h, Role::CheckBox, "Check family Bbb");
+    press(&mut h, "Add Parameter");
+    press(&mut h, "Family Parameter");
+    assert!(h.query_by_label("2 parameters will be created in 2 families").is_some());
+    type_role(&mut h, Role::TextInput, "Name of Parameter 1", "Mark");
+    type_role(&mut h, Role::TextInput, "Group of Mark", "Identity");
+    type_role(&mut h, Role::TextInput, "Value of Mark", "M1");
+    // A shared one, tied to the project's.
+    press(&mut h, "Add Parameter");
+    press(&mut h, "From a Project Parameter ⏵");
+    press(&mut h, "Code");
+    type_role(&mut h, Role::TextInput, "Value of Code", "C1");
+    assert!(h.query_by_label("4 parameters will be created in 2 families").is_some());
+    press(&mut h, "Apply");
+    let m = &h.state().session.model;
+    for family in ["Aaa", "Bbb"] {
+        let f = &m.families[family];
+        for ty in ["Small", "Big"] {
+            assert_eq!(f.values(ty, &Default::default()).unwrap()["Mark"], Val::Text("M1".into()), "{family} {ty}: on every type");
+        }
+        let code = f.parameters.iter().find(|q| q.name == "Code").unwrap();
+        assert_eq!(code.definition, m.library.guid(&bimcraft_core::library::Kind::Parameter, "Code"));
+    }
+    assert!(h.query_by_label("0 parameters will be created in 2 families").is_some(), "the table is empty again");
+    press(&mut h, "Clear");
+    assert!(h.query_by_label("0 parameters will be created in 0 families").is_some());
+}
+
+#[test]
+fn a_dictionary_s_parameter_is_edited_saved_as_a_revision_and_pushed_to_the_project() {
+    use bimcraft_core::model::Scope;
+    let path = temp("office.bimparams");
+    let mut h = app(BOX);
+    h.state_mut().run("dictionary", json!({"path": path, "add": [{"name": "Code", "kind": "text", "categories": ["wall"]}]}));
+    h.state_mut().run("parameter_import", json!({"path": path}));
+    h.run();
+    open(&mut h);
+    press(&mut h, "Dictionaries");
+    assert!(h.query_by_label("1, up to date").is_some(), "the project has what the file has");
+    h.state_mut().parameters_open_dictionary(&path);
+    h.run();
+    // Its categories, and instance or type, edited in the table.
+    press(&mut h, "Categories of Code");
+    pick(&mut h, Role::CheckBox, "Floors");
+    key(&mut h, Key::Escape);
+    pick_in(&mut h, "Instance or Type of Code", "Type");
+    press(&mut h, "Save Dictionary");
+    let read = bimcraft_core::parameters::table::read_dictionary_file(&path).unwrap();
+    assert_eq!(read.revision, 2);
+    assert_eq!(read.parameters[0].categories, vec!["floor", "wall"]);
+    assert_eq!(read.parameters[0].scope, Some(Scope::Type));
+    assert_eq!(h.state().session.model.parameters["Code"].categories, vec!["wall"], "the project is untouched");
+    assert!(h.query_by_label("This project has 1, the file 2").is_some(), "and is told it's behind");
+
+    press(&mut h, "Update Project");
+    assert!(h.query_by_label("create 0 | modify 1 | existing 0 | conflict 0 | skip 0").is_some());
+    press(&mut h, "Import");
+    let p = &h.state().session.model.parameters["Code"];
+    assert_eq!((p.categories.clone(), p.scope), (vec!["floor".to_string(), "wall".to_string()], Scope::Type));
+    assert_eq!(h.state().session.model.dictionaries["office"].revision, 2);
+}
+
+#[test]
+fn an_import_shows_instance_or_type_and_lets_it_be_picked_row_by_row_or_for_all() {
+    use bimcraft_core::model::Scope;
+    let path = temp("rows.csv");
+    std::fs::write(&path, "Name,Kind,Categories\nOne,text,wall\nTwo,text,wall\nThree,text,wall\n").unwrap();
+    let mut h = app(BOX);
+    open(&mut h);
+    h.state_mut().parameters_import_from(&path);
+    h.run();
+    pick_in(&mut h, "Instance or Type of One", "Type");
+    press(&mut h, "Import");
+    let scope = |h: &Harness<BimApp>, n: &str| h.state().session.model.parameters[n].scope;
+    assert_eq!((scope(&h, "One"), scope(&h, "Two")), (Scope::Type, Scope::Instance));
+
+    let all = temp("all.csv");
+    std::fs::write(&all, "Name,Kind,Categories\nFour,text,wall\nFive,text,wall\n").unwrap();
+    h.state_mut().parameters_import_from(&all);
+    h.run();
+    // The "Type" of Make All, the first of the name in the window's order.
+    let nodes: Vec<_> = h.get_all_by_label("Type").collect();
+    nodes.first().unwrap().click();
+    h.run();
+    press(&mut h, "Import");
+    assert_eq!((scope(&h, "Four"), scope(&h, "Five")), (Scope::Type, Scope::Type));
+}
+
+#[test]
+fn dictionaries_stay_loaded_after_the_window_closes_and_one_is_picked_from_a_dropdown() {
+    let (one, two) = (temp("one.bimparams"), temp("two.bimparams"));
+    let mut h = app(BOX);
+    h.state_mut().run("dictionary", json!({"path": two, "add": [{"name": "Mark", "kind": "text"}]}));
+    h.state_mut().run("parameter", json!({"name": "Rating", "categories": ["wall"]}));
+    open(&mut h);
+    press(&mut h, "Dictionaries");
+    h.state_mut().parameters_open_dictionary(&one);
+    h.run();
+    h.state_mut().parameters_open_dictionary(&two);
+    h.run();
+    assert!(h.query_by_role_and_label(Role::TextInput, "Name of Mark").is_some(), "the one opened last is shown");
+
+    // Closed and opened again, both are there, and the one in use is the one it was.
+    press(&mut h, "Close");
+    assert_eq!(h.state().session.model.dictionaries.len(), 2, "kept in the project");
+    open(&mut h);
+    press(&mut h, "Dictionaries");
+    assert!(h.query_by_role_and_label(Role::TextInput, "Name of Mark").is_some());
+    pick_in(&mut h, "Dictionary in use", "one");
+    assert!(h.query_by_role_and_label(Role::TextInput, "Name of Mark").is_none(), "one has no such parameter");
+
+    // The buttons went into Edit: the menu stays open while categories are ticked.
+    press(&mut h, "Edit");
+    press(&mut h, "Add Parameter");
+    pick(&mut h, Role::CheckBox, "Check Parameter 1");
+    assert!(h.query_by_label("Remove Checked").is_none(), "closed again");
+    press(&mut h, "Edit");
+    press(&mut h, "Categories of Checked ⏵");
+    pick(&mut h, Role::CheckBox, "Walls");
+    pick(&mut h, Role::CheckBox, "Floors");
+    key(&mut h, Key::Escape);
+    assert!(
+        h.get_by_role_and_label(Role::ComboBox, "Dictionary in use").accesskit_node().is_disabled(),
+        "not while there are changes to save"
+    );
+    press(&mut h, "Save Dictionary");
+    let read = bimcraft_core::parameters::table::read_dictionary_file(&one).unwrap();
+    assert_eq!(read.parameters[0].categories, vec!["floor", "wall"]);
+    press(&mut h, "Edit");
+    pick(&mut h, Role::CheckBox, "Check Parameter 1");
+    press(&mut h, "Remove from Project");
+    assert_eq!(h.state().session.model.dictionaries.keys().collect::<Vec<_>>(), ["two"]);
+    assert!(h.query_by_role_and_label(Role::TextInput, "Name of Mark").is_some(), "the other is shown");
 }

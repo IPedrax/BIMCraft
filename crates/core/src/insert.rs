@@ -91,6 +91,7 @@ pub(crate) fn insert_as(to: &mut Model, from: &Model, ids: &[Id], linked: bool, 
     for (old, new) in &param_renames {
         renames.insert((Kind::Parameter, old.clone()), new.clone());
     }
+    bring_type_values(to, from, &renames, &mut out.left_out);
     let mut names = Names::of(to);
     for &id in &take {
         let (Some(e), Some(g)) = (from.elements.get(id), from.elements.guid(id)) else { continue };
@@ -271,6 +272,13 @@ fn bring_parameters(
     let mut holders: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for &id in take {
         let Some(e) = from.elements.get(id) else { continue };
+        // A type parameter comes along with an element whose type has a value of it.
+        if let Some(g) = crate::parameters::type_guid(from, e) {
+            for (name, _) in from.parameters.iter().filter(|(_, p)| p.type_values.contains_key(&g)) {
+                used.insert(name.clone());
+                holders.entry(name.clone()).or_default().insert(e.category().to_string());
+            }
+        }
         for name in e.params().into_iter().flat_map(|p| p.keys()) {
             if from.parameters.contains_key(name) && !e_family_holds(from, id, name) {
                 used.insert(name.clone());
@@ -319,6 +327,8 @@ fn bring_parameters(
                     .unwrap_or_else(|| name.clone());
                 let mut copy = p.clone();
                 copy.same_as.clear();
+                // Its values are its types', which come in with what's inserted ([`bring_type_values`]).
+                copy.type_values.clear();
                 if let Some(d) = copy.dictionary.clone() {
                     match from.dictionaries.get(&d) {
                         Some(r) => {
@@ -359,6 +369,26 @@ fn bring_parameters(
     Ok(renames)
 }
 
+/// The values of type parameters of `from`, set on the types they're on as `to` has them. A type's GUID may differ here, so a
+/// type is found by its name, after `renames`. A parameter that is an instance one here takes none, and says so.
+fn bring_type_values(to: &mut Model, from: &Model, renames: &Renames, why: &mut Vec<String>) {
+    to.sync_library();
+    for (name, p) in from.parameters.iter().filter(|(_, p)| !p.type_values.is_empty()) {
+        let here = renames.get(&(Kind::Parameter, name.clone())).unwrap_or(name).clone();
+        for (g, v) in &p.type_values {
+            let Some((_, entry)) = from.library.by_guid(*g) else { continue };
+            let there = renames.get(&(entry.kind.clone(), entry.name.clone())).unwrap_or(&entry.name);
+            let Some(type_here) = to.library.guid(&entry.kind, there) else { continue };
+            let Some(q) = to.parameters.get_mut(&here) else { continue };
+            if q.scope != crate::model::Scope::Type {
+                why.push(format!("`{here}` is an instance parameter here, so type `{there}`'s value {v} was left off"));
+            } else if q.holds(v) {
+                q.type_values.entry(type_here).or_insert_with(|| v.clone());
+            }
+        }
+    }
+}
+
 /// The values `e` holds that its parameter here can't hold, taken off it; why, for each. (The kind there and here can differ
 /// even by GUID: each project keeps its copy of the definition.)
 fn values_here(to: &Model, from: &Model, id: Id, e: &mut Element) -> Vec<String> {
@@ -370,6 +400,12 @@ fn values_here(to: &Model, from: &Model, id: Id, e: &mut Element) -> Vec<String>
             continue;
         }
         let Some(params) = e.params_mut() else { continue };
+        if q.scope == crate::model::Scope::Type {
+            if let Some(v) = params.remove(&name) {
+                why.push(format!("`{name}` is a type parameter here, so its value {v} was left off"));
+            }
+            continue;
+        }
         if params.get(&name).is_some_and(|v| !q.holds(v))
             && let Some(v) = params.remove(&name)
         {

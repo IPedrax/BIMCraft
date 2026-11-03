@@ -18,9 +18,10 @@ use serde_json::{Value, json};
 
 use crate::commands::{bad, category, flag, only, parameter, string};
 use crate::engine::Session;
+use crate::family::{self, Category};
 use crate::ids::Guid;
 use crate::library::{Entry, Kind as LibKind};
-use crate::model::{Element, MAX_TEXT, Model, PARAMETER_CATEGORIES, ParameterKind, ProjectParameter};
+use crate::model::{Element, MAX_TEXT, Model, PARAMETER_CATEGORIES, ParameterKind, ProjectParameter, Scope};
 
 type R = Result<Value, String>;
 
@@ -46,11 +47,10 @@ pub struct Definition {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub group: String,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub hidden: bool,
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub read_only: bool,
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub hide_when_empty: bool,
+    /// Each element's or each type's, where the file says: where it doesn't, a project keeps what it has, and a new one is an instance's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<Scope>,
     /// The categories it is usually for, as the file names them; a project may take others.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub categories: Vec<String>,
@@ -64,8 +64,15 @@ pub struct Dictionary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guid: Option<Guid>,
     pub name: String,
+    /// A label of the team's own: `2026 standard`. Nothing compares it.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub version: String,
+    /// Counts up with every change to the file: what tells a project it is behind.
+    #[serde(default)]
+    pub revision: u64,
+    /// The day it last changed, `YYYY-MM-DD`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub changed: String,
     #[serde(default)]
     pub parameters: Vec<Definition>,
 }
@@ -78,6 +85,148 @@ pub struct DictionaryRef {
     pub path: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub version: String,
+    /// The file's revision when it was last imported.
+    #[serde(default)]
+    pub revision: u64,
+}
+
+/// The categories whose elements have no type: a type parameter can't be for them.
+pub const TYPELESS: [&str; 4] = ["room", "stair", "ramp", "mass"];
+
+/// The category of project parameters a family's elements are.
+pub fn family_category(c: Category) -> &'static str {
+    match c {
+        Category::Door => "door",
+        Category::Window => "window",
+        _ => "component",
+    }
+}
+
+/// The library entry of the type `e` is of: a system type's, or its family's. None for what has no type.
+pub fn type_entry(e: &Element) -> Option<(LibKind, String)> {
+    use crate::model::run_arm;
+    if let Some((f, t)) = e.family() {
+        return Some((LibKind::FamilyType, format!("{f}: {t}")));
+    }
+    let name = match e {
+        Element::Wall(w) => &w.type_name,
+        Element::Floor(x) => &x.type_name,
+        Element::Ceiling(x) => &x.type_name,
+        Element::Roof(x) => &x.type_name,
+        Element::Railing(x) => &x.type_name,
+        Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) => &c.type_name,
+        Element::Door(o) | Element::Window(o) => &o.type_name,
+        run_arm!(r) => &r.type_name,
+        _ => return None,
+    };
+    Some((LibKind::Type(e.category().to_string()), name.clone()))
+}
+
+/// The GUID of the type `e` is of.
+pub fn type_guid(m: &Model, e: &Element) -> Option<Guid> {
+    let (kind, name) = type_entry(e)?;
+    m.library.guid(&kind, &name)
+}
+
+/// What `e` reads of project parameter `name`, which is `p`: its own, or its type's.
+pub fn value_of<'a>(m: &Model, e: &'a Element, name: &str, p: &'a ProjectParameter) -> Option<&'a serde_json::Value> {
+    match p.scope {
+        Scope::Instance => e.params()?.get(name),
+        Scope::Type => p.type_values.get(&type_guid(m, e)?),
+    }
+}
+
+/// The category of parameters the library's type entry `kind` and `name` is for.
+fn category_of_type(m: &Model, kind: &LibKind, name: &str) -> Option<String> {
+    match kind {
+        LibKind::Type(c) => Some(c.clone()),
+        LibKind::FamilyType => {
+            let (family, _) = name.split_once(": ")?;
+            Some(family_category(m.families.get(family)?.category).to_string())
+        }
+        _ => None,
+    }
+}
+
+/// A family with a parameter of `name` that isn't tied to `p`, the project's of that name.
+pub(crate) fn family_clash<'a>(m: &'a Model, name: &str, p: &ProjectParameter) -> Option<&'a str> {
+    let own = m.library.guid(&LibKind::Parameter, name);
+    let ours = |g: Guid| Some(g) == own || p.same_as.contains(&g);
+    m.families.iter().find(|(_, f)| f.parameters.iter().any(|q| q.name == name && !q.definition.is_some_and(ours))).map(|(n, _)| n.as_str())
+}
+
+/// A family with a parameter tied to the project's `name`.
+pub(crate) fn family_tied<'a>(m: &'a Model, name: &str) -> Option<&'a str> {
+    let own = m.library.guid(&LibKind::Parameter, name)?;
+    m.families.iter().find(|(_, f)| f.parameters.iter().any(|q| q.definition == Some(own))).map(|(n, _)| n.as_str())
+}
+
+/// `p`'s values of types no longer of its categories, taken off.
+pub(crate) fn keep_type_values_of_categories(m: &Model, p: &mut ProjectParameter) {
+    if p.type_values.is_empty() {
+        return;
+    }
+    let categories = p.categories.clone();
+    p.type_values.retain(|g, _| {
+        m.library.by_guid(*g).and_then(|(_, e)| category_of_type(m, &e.kind, &e.name)).is_some_and(|c| categories.contains(&c))
+    });
+}
+
+/// `p`, the parameter `name`, made `scope`: to a type's, its elements' values are wiped; to an instance's, each type's value is
+/// copied onto its elements. What happened and to how many.
+pub(crate) fn switch_scope(m: &mut Model, name: &str, p: &mut ProjectParameter, scope: Scope) -> (&'static str, usize) {
+    let families = m.families.clone();
+    let theirs = |e: &Element| e.family().and_then(|(f, _)| families.get(f)).is_some_and(|f| f.parameters.iter().any(|q| q.name == name));
+    let mut n = 0;
+    p.scope = scope;
+    if scope == Scope::Type {
+        for e in m.elements.values_mut() {
+            if p.categories.iter().any(|c| c == e.category())
+                && !theirs(e)
+                && let Some(params) = e.params_mut()
+                && params.remove(name).is_some()
+            {
+                n += 1;
+            }
+        }
+        return ("wiped", n);
+    }
+    let held = std::mem::take(&mut p.type_values);
+    let guids: Vec<(crate::ids::Id, Guid)> = m
+        .elements
+        .iter()
+        .filter(|(_, e)| p.categories.iter().any(|c| c == e.category()) && !theirs(e))
+        .filter_map(|(id, e)| Some((*id, type_guid(m, e)?)))
+        .collect();
+    for (id, g) in guids {
+        if let (Some(v), Some(params)) = (held.get(&g), m.elements.get_mut(id).and_then(Element::params_mut)) {
+            params.insert(name.to_string(), v.clone());
+            n += 1;
+        }
+    }
+    ("copied", n)
+}
+
+/// A parameter's kind, as a family's parameter holds it: an integer, an area and a volume go in a family as numbers.
+pub fn family_kind(k: ParameterKind) -> family::Kind {
+    match k {
+        ParameterKind::Text => family::Kind::Text,
+        ParameterKind::Length => family::Kind::Length,
+        ParameterKind::Angle => family::Kind::Angle,
+        ParameterKind::YesNo => family::Kind::YesNo,
+        ParameterKind::Number | ParameterKind::Integer | ParameterKind::Area | ParameterKind::Volume => family::Kind::Number,
+    }
+}
+
+/// A family's parameter's kind, as a definition holds it: a material's name as text.
+pub fn definition_kind(k: family::Kind) -> ParameterKind {
+    match k {
+        family::Kind::Text | family::Kind::Material => ParameterKind::Text,
+        family::Kind::Length => ParameterKind::Length,
+        family::Kind::Angle => ParameterKind::Angle,
+        family::Kind::YesNo => ParameterKind::YesNo,
+        family::Kind::Number => ParameterKind::Number,
+    }
 }
 
 /// The word a table gives a kind.
@@ -214,6 +363,8 @@ pub struct Planned {
     pub here: String,
     pub guid: Option<Guid>,
     pub kind: ParameterKind,
+    /// Each element's or each type's, as it will be.
+    pub scope: Scope,
     /// `create`, `modify`, `existing`, `conflict` or `skip`.
     pub status: &'static str,
     /// What changes, or what stands in the way.
@@ -245,12 +396,14 @@ pub struct Choices {
     pub categories: Vec<String>,
     /// Take off the categories the file doesn't list.
     pub replace_categories: bool,
+    /// Instance or type, by the file's name, over what the file says.
+    pub scopes: BTreeMap<String, Scope>,
     /// Only these, by the file's name.
     pub names: Option<BTreeSet<String>>,
 }
 
 /// The parameter here that `guid` is: its own, or one it has been said to be the same as.
-fn here_by_guid(m: &Model, guid: Guid) -> Option<String> {
+pub fn here_by_guid(m: &Model, guid: Guid) -> Option<String> {
     if let Some((_, e)) = m.library.by_guid(guid)
         && e.kind == LibKind::Parameter
     {
@@ -276,6 +429,9 @@ pub fn plan(m: &Model, rows: &[Definition], choices: &Choices) -> Vec<Planned> {
             continue;
         }
         let mut one = Planned { name: row.name.clone(), guid: row.guid, kind: row.kind, definition: row.clone(), ..Default::default() };
+        let said = choices.scopes.get(&row.name).copied().or(row.scope);
+        // A row that stops short still says what it would be.
+        one.scope = said.unwrap_or_default();
         // The categories, through the map, then by their names.
         let mut cats: BTreeSet<String> = BTreeSet::new();
         for raw in &row.categories {
@@ -378,13 +534,20 @@ pub fn plan(m: &Model, rows: &[Definition], choices: &Choices) -> Vec<Planned> {
                 for (word, changed) in [
                     ("description", !row.description.is_empty() && row.description != p.description),
                     ("group", !row.group.is_empty() && row.group != p.group),
-                    ("visibility", row.hidden != p.hidden),
                     ("whether it can be changed", row.read_only != p.read_only),
-                    ("hide when empty", row.hide_when_empty != p.hide_when_empty),
                 ] {
                     if changed {
                         one.notes.push(format!("its {word}"));
                     }
+                }
+                one.scope = said.unwrap_or(p.scope);
+                if one.scope != p.scope {
+                    one.notes.push(match one.scope {
+                        Scope::Type => "a type parameter instead of an instance one: its elements' values are wiped".to_string(),
+                        Scope::Instance => {
+                            "an instance parameter instead of a type one: each type's value is copied to its elements".to_string()
+                        }
+                    });
                 }
                 let now: BTreeSet<String> = p.categories.iter().cloned().collect();
                 let added: Vec<&String> = wanted.difference(&now).collect();
@@ -407,6 +570,7 @@ pub fn plan(m: &Model, rows: &[Definition], choices: &Choices) -> Vec<Planned> {
                 one.categories = wanted.into_iter().collect();
             }
             None => {
+                one.scope = said.unwrap_or_default();
                 one.here = free_name(m, &clean, &taken);
                 if one.here != clean {
                     one.notes.push(format!("kept apart from `{clean}` here, as `{}`", one.here));
@@ -419,6 +583,14 @@ pub fn plan(m: &Model, rows: &[Definition], choices: &Choices) -> Vec<Planned> {
                 }
                 one.categories = cats.into_iter().collect();
             }
+        }
+        if one.status != "conflict"
+            && one.scope == Scope::Type
+            && let Some(c) = one.categories.iter().find(|c| TYPELESS.contains(&c.as_str()))
+        {
+            let note = format!("{c}s have no types: make it an instance parameter, or take {c} off");
+            one.status = "conflict";
+            one.notes.push(note);
         }
         if one.status != "conflict"
             && (crate::paint::reserved(&one.here) || crate::phasing::reserved(&one.here) || crate::massing::reserved(&one.here))
@@ -435,7 +607,10 @@ pub fn plan(m: &Model, rows: &[Definition], choices: &Choices) -> Vec<Planned> {
         }
         if one.status != "conflict"
             && one.categories.iter().any(|c| c == "component")
-            && let Some((f, _)) = m.families.iter().find(|(_, f)| f.parameters.iter().any(|q| q.name == one.here))
+            && let Some(f) = m.families.iter().find_map(|(n, f)| {
+                let tied = |g: Guid| Some(g) == row.guid || m.library.guid(&LibKind::Parameter, &one.here) == Some(g);
+                f.parameters.iter().any(|q| q.name == one.here && !q.definition.is_some_and(tied)).then_some(n)
+            })
         {
             let note = format!("family `{f}` has a parameter `{}`; rename it in the file", one.here);
             one.status = "conflict";
@@ -454,7 +629,7 @@ fn join<S: std::fmt::Display>(items: &[S]) -> String {
 /// Whether an element of its categories holds a value of project parameter `name`.
 fn has_values(m: &Model, name: &str) -> bool {
     let Some(p) = m.parameters.get(name) else { return false };
-    m.elements.values().any(|e| holds_value(m, e, name) && p.categories.iter().any(|c| c == e.category()))
+    !p.type_values.is_empty() || m.elements.values().any(|e| holds_value(m, e, name) && p.categories.iter().any(|c| c == e.category()))
 }
 
 /// Whether `e` holds a value of `name` that's the project parameter's, not its family's parameter of that name.
@@ -472,7 +647,7 @@ fn report(rows: &[Planned], read: &table::Read, dry_run: bool) -> Value {
     };
     json!({
         "dry_run": dry_run,
-        "dictionary": read.dictionary.as_ref().map(|d| json!({"name": d.name, "version": d.version})),
+        "dictionary": read.dictionary.as_ref().map(|d| json!({"name": d.name, "version": d.version, "revision": d.revision})),
         "rows": rows,
         "create": count("create"),
         "modify": count("modify"),
@@ -488,7 +663,7 @@ fn report(rows: &[Planned], read: &table::Read, dry_run: bool) -> Value {
 /// The `parameter_import` command.
 pub(crate) fn import(s: &mut Session, p: &Value) -> R {
     let c = "parameter_import";
-    only(c, p, &["path", "names", "map", "resolve", "categories", "replace_categories", "skip_conflicts", "dry_run"])?;
+    only(c, p, &["path", "names", "map", "resolve", "scopes", "categories", "replace_categories", "skip_conflicts", "dry_run"])?;
     let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required"))?;
     let read = table::read_file(&path).map_err(|e| bad(c, e))?;
     let mut choices = Choices { replace_categories: flag(c, p, "replace_categories")?, ..Choices::default() };
@@ -504,6 +679,9 @@ pub(crate) fn import(s: &mut Session, p: &Value) -> R {
         if let Some((n, what)) = choices.resolve.iter().find(|(_, w)| !matches!(w.as_str(), "same" | "separate" | "skip")) {
             return Err(bad(c, format!("`{n}`: `{what}` isn't `same`, `separate` or `skip`")));
         }
+    }
+    if let Some(v) = p.get("scopes").filter(|v| !v.is_null()) {
+        choices.scopes = serde_json::from_value(v.clone()).map_err(|_| bad(c, "`scopes` gives a name `instance` or `type`"))?;
     }
     if let Some(v) = p.get("categories").filter(|v| !v.is_null()) {
         choices.categories = serde_json::from_value(v.clone()).map_err(|_| bad(c, "`categories` is a list of categories"))?;
@@ -542,7 +720,7 @@ fn apply(s: &mut Session, rows: &[Planned], dictionary: Option<&table::Source>, 
     let dict_name = dictionary.map(|d| d.name.clone());
     if let Some(d) = dictionary {
         let m = s.model_mut();
-        m.dictionaries.insert(d.name.clone(), DictionaryRef { path: path.to_string(), version: d.version.clone() });
+        m.dictionaries.insert(d.name.clone(), DictionaryRef { path: path.to_string(), version: d.version.clone(), revision: d.revision });
         // Its GUID, when the file has one, is what the library knows it by.
         if let Some(g) = d.guid
             && m.library.id(&LibKind::Dictionary, &d.name).is_none()
@@ -568,9 +746,9 @@ fn apply(s: &mut Session, rows: &[Planned], dictionary: Option<&table::Source>, 
                         categories: r.categories.clone(),
                         description: clip(&d.description),
                         group: clip(&d.group),
-                        hidden: d.hidden,
                         read_only: d.read_only,
-                        hide_when_empty: d.hide_when_empty,
+                        scope: r.scope,
+                        type_values: BTreeMap::new(),
                         dictionary: dict_name.clone(),
                         same_as: Vec::new(),
                     },
@@ -587,7 +765,7 @@ fn apply(s: &mut Session, rows: &[Planned], dictionary: Option<&table::Source>, 
             "modify" => {
                 let Some(old) = r.existing.clone() else { continue };
                 let d = &r.definition;
-                let mut edit = json!({"name": old, "kind": d.kind, "categories": r.categories});
+                let mut edit = json!({"name": old, "kind": d.kind, "categories": r.categories, "scope": r.scope});
                 if r.here != old {
                     edit["rename"] = json!(r.here);
                 }
@@ -600,9 +778,7 @@ fn apply(s: &mut Session, rows: &[Planned], dictionary: Option<&table::Source>, 
                     if !d.group.is_empty() {
                         q.group = clip(&d.group);
                     }
-                    q.hidden = d.hidden;
                     q.read_only = d.read_only;
-                    q.hide_when_empty = d.hide_when_empty;
                     if dict_name.is_some() {
                         q.dictionary = dict_name.clone();
                     }
@@ -648,9 +824,8 @@ pub fn definition(m: &Model, name: &str) -> Option<Definition> {
         kind: p.kind,
         description: p.description.clone(),
         group: p.group.clone(),
-        hidden: p.hidden,
         read_only: p.read_only,
-        hide_when_empty: p.hide_when_empty,
+        scope: Some(p.scope),
         categories: p.categories.clone(),
     })
 }
@@ -667,11 +842,14 @@ fn chosen(c: &str, m: &Model, p: &Value) -> Result<Vec<Definition>, String> {
 /// The `parameter_export` command.
 pub(crate) fn export(s: &mut Session, p: &Value) -> R {
     let c = "parameter_export";
-    only(c, p, &["path", "names", "name", "version"])?;
+    only(c, p, &["path", "names", "definitions", "name", "version"])?;
     let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required"))?;
     let mut m = (*s.model).clone();
     m.sync_library();
-    let defs = chosen(c, &m, p)?;
+    let defs = match p.get("definitions").filter(|v| !v.is_null()) {
+        Some(v) => serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`definitions`: {e}")))?,
+        None => chosen(c, &m, p)?,
+    };
     let lower = path.to_lowercase();
     let bytes = if lower.ends_with(".txt") {
         return Err(bad(c, "BIMCraft reads Revit's shared parameter files and doesn't write them; export .xlsx, .csv or .bimparams"));
@@ -682,7 +860,15 @@ pub(crate) fn export(s: &mut Session, p: &Value) -> R {
     } else if lower.ends_with(&format!(".{DICTIONARY_EXTENSION}")) {
         let name = string(c, p, "name")?.unwrap_or_else(|| table::stem(&path));
         let version = string(c, p, "version")?.unwrap_or_default();
-        let d = Dictionary { format: DICTIONARY_FORMAT, guid: Some(Guid::new()), name, version, parameters: defs.clone() };
+        let d = Dictionary {
+            format: DICTIONARY_FORMAT,
+            guid: Some(Guid::new()),
+            name,
+            version,
+            revision: 1,
+            changed: today(),
+            parameters: defs.clone(),
+        };
         serde_json::to_vec_pretty(&d).map_err(|e| bad(c, e))?
     } else {
         return Err(bad(c, "a path ending .xlsx, .csv or .bimparams"));
@@ -699,11 +885,13 @@ pub(crate) fn dictionary(s: &mut Session, p: &Value) -> R {
     if !path.to_lowercase().ends_with(&format!(".{DICTIONARY_EXTENSION}")) {
         return Err(bad(c, format!("a dictionary's path ends .{DICTIONARY_EXTENSION}")));
     }
-    let mut d = if std::path::Path::new(&path).exists() {
+    let fresh = !std::path::Path::new(&path).exists();
+    let mut d = if !fresh {
         table::read_dictionary_file(&path).map_err(|e| bad(c, e))?
     } else {
         Dictionary { format: DICTIONARY_FORMAT, guid: Some(Guid::new()), name: table::stem(&path), ..Dictionary::default() }
     };
+    let was = d.clone();
     if let Some(n) = string(c, p, "name")? {
         d.name = clip(&n);
     }
@@ -763,9 +951,23 @@ pub(crate) fn dictionary(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("a dictionary holds up to {} parameters", table::MAX_ROWS)));
     }
     d.parameters.sort_by(|a, b| a.name.cmp(&b.name));
-    let text = serde_json::to_vec_pretty(&d).map_err(|e| bad(c, e))?;
-    std::fs::write(&path, text).map_err(|e| bad(c, format!("{path}: {e}")))?;
-    Ok(json!({"path": path, "name": d.name, "version": d.version, "guid": d.guid, "parameters": d.parameters}))
+    if let Some(w) = d.parameters.windows(2).find(|w| w[0].name == w[1].name) {
+        return Err(bad(c, format!("two definitions would be called `{}`", w[0].name)));
+    }
+    // Only a change counts.
+    let mut before = was;
+    before.parameters.sort_by(|a, b| a.name.cmp(&b.name));
+    if fresh || d != before {
+        d.revision += 1;
+        d.changed = today();
+    }
+    if fresh || d != before {
+        let text = serde_json::to_vec_pretty(&d).map_err(|e| bad(c, e))?;
+        std::fs::write(&path, text).map_err(|e| bad(c, format!("{path}: {e}")))?;
+    }
+    Ok(
+        json!({"path": path, "name": d.name, "version": d.version, "revision": d.revision, "changed": d.changed, "guid": d.guid, "parameters": d.parameters}),
+    )
 }
 
 /// The `parameter_batch` command: several changes at once, all or none.
@@ -803,7 +1005,8 @@ pub(crate) fn batch(s: &mut Session, p: &Value) -> R {
                 let base = body.get("as").and_then(Value::as_str).map_or_else(|| format!("{name} Copy"), str::to_string);
                 let new = free_name(m, &base, &BTreeSet::new());
                 // A duplicate is a parameter of its own: its own GUID (made by the sync), and from no dictionary.
-                m.parameters.insert(new.clone(), ProjectParameter { dictionary: None, same_as: Vec::new(), ..was });
+                m.parameters
+                    .insert(new.clone(), ProjectParameter { dictionary: None, same_as: Vec::new(), type_values: BTreeMap::new(), ..was });
                 done.push(json!({"op": "duplicate", "name": name, "as": new}));
             }
             "rename" => {
@@ -868,6 +1071,7 @@ pub fn usage(m: &Model, name: &str) -> Usage {
             _ => u.values += usize::from(holds_value(m, e, name)),
         }
     }
+    u.values += m.parameters.get(name).map_or(0, |p| p.type_values.len());
     u
 }
 
@@ -924,6 +1128,16 @@ pub(crate) fn merge(s: &mut Session, p: &Value) -> R {
     if a.kind != b.kind {
         return Err(bad(c, format!("`{from}` holds {} and `{into}` holds {}", kind_word(a.kind), kind_word(b.kind))));
     }
+    if a.scope != b.scope {
+        return Err(bad(
+            c,
+            format!("one of `{from}` and `{into}` is a type parameter and the other an instance one; make them the same first"),
+        ));
+    }
+    if let Some((g, _)) = a.type_values.iter().find(|(g, v)| !overwrite && b.type_values.get(*g).is_some_and(|w| w != *v)) {
+        let ty = model.library.by_guid(*g).map_or_else(|| g.to_string(), |(_, e)| e.name.clone());
+        return Err(bad(c, format!("type `{ty}` holds both, with different values; `overwrite` takes `{from}`'s, or change it first")));
+    }
     let guid = model.library.guid(&LibKind::Parameter, &from);
     // Values that differ stop it, unless told.
     let mut differ = 0;
@@ -979,6 +1193,13 @@ pub(crate) fn merge(s: &mut Session, p: &Value) -> R {
     }
     m.parameters.remove(&from);
     if let Some(q) = m.parameters.get_mut(&into) {
+        for (g, v) in a.type_values {
+            if overwrite {
+                q.type_values.insert(g, v);
+            } else {
+                q.type_values.entry(g).or_insert(v);
+            }
+        }
         q.categories.extend(a.categories);
         q.categories.sort();
         q.categories.dedup();
@@ -1061,4 +1282,226 @@ pub(crate) fn family_transfer(s: &mut Session, p: &Value) -> R {
         report.push(json!({"family": family, "added": added, "skipped": skipped}));
     }
     Ok(json!({"families": report}))
+}
+
+/// Today, `YYYY-MM-DD`, in UTC.
+fn today() -> String {
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    // Days to a civil date, after Howard Hinnant's `civil_from_days`.
+    let z = (secs / 86_400) as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
+/// The type a command names: `{category, type}`, or `{family, type}`.
+fn named_type(c: &str, m: &Model, p: &Value, name: &str) -> Result<(LibKind, String, Guid), String> {
+    let (kind, entry) = match string(c, p, "family")? {
+        Some(f) => {
+            let fam = m.families.get(&f).ok_or_else(|| bad(c, format!("there's no family `{f}`")))?;
+            if !fam.types.contains_key(name) {
+                return Err(bad(c, format!("family `{f}` has no type `{name}`")));
+            }
+            (LibKind::FamilyType, format!("{f}: {name}"))
+        }
+        None => {
+            let cat = string(c, p, "category")?.ok_or_else(|| bad(c, "`category` or `family` is required"))?;
+            let cat = category(&cat);
+            if !m.type_names(&cat).contains(&name) {
+                return Err(bad(c, format!("{cat} has no type `{name}`")));
+            }
+            (LibKind::Type(cat), name.to_string())
+        }
+    };
+    let guid = m.library.guid(&kind, &entry).ok_or_else(|| bad(c, format!("`{entry}` has no GUID yet")))?;
+    Ok((kind, entry, guid))
+}
+
+/// The `type_parameter` command: a type's values of the project's type parameters.
+pub(crate) fn type_parameter(s: &mut Session, p: &Value) -> R {
+    let c = "type_parameter";
+    only(c, p, &["category", "family", "type", "values", "copy_to"])?;
+    let name = string(c, p, "type")?.ok_or_else(|| bad(c, "`type` is required"))?;
+    let values = p.get("values").filter(|v| !v.is_null());
+    let copy_to = string(c, p, "copy_to")?;
+    let mut synced = (*s.model).clone();
+    synced.sync_library();
+    let (kind, entry, guid) = named_type(c, &synced, p, &name)?;
+    let cat = category_of_type(&synced, &kind, &entry).unwrap_or_default();
+    let held = |m: &Model, g: Guid| -> BTreeMap<String, Value> {
+        m.parameters.iter().filter_map(|(n, q)| Some((n.clone(), q.type_values.get(&g)?.clone()))).collect()
+    };
+    if values.is_none() && copy_to.is_none() {
+        return Ok(json!({"type": entry, "values": held(&synced, guid)}));
+    }
+    let mut set: Vec<(String, Guid, Value)> = Vec::new();
+    if let Some(v) = values {
+        let map = v.as_object().ok_or_else(|| bad(c, "`values` gives each parameter a value, or null"))?;
+        for (n, value) in map {
+            let q = synced.parameters.get(n).ok_or_else(|| bad(c, format!("there's no parameter `{n}`")))?;
+            if q.scope != Scope::Type {
+                return Err(bad(c, format!("`{n}` is an instance parameter: its value is each element's, set with `modify`")));
+            }
+            if !q.categories.contains(&cat) {
+                return Err(bad(c, format!("`{n}` isn't for {cat}s")));
+            }
+            if !value.is_null() && !q.holds(value) {
+                return Err(bad(c, format!("`{n}` holds {}, not {value}", kind_word(q.kind))));
+            }
+            set.push((n.clone(), guid, value.clone()));
+        }
+    }
+    if let Some(to) = &copy_to {
+        let (_, _, there) = named_type(c, &synced, p, to)?;
+        for (n, v) in held(&synced, guid) {
+            set.push((n, there, v));
+        }
+    }
+    *s.model_mut() = synced;
+    let m = s.model_mut();
+    for (n, g, v) in set {
+        if let Some(q) = m.parameters.get_mut(&n) {
+            if v.is_null() {
+                q.type_values.remove(&g);
+            } else {
+                q.type_values.insert(g, v);
+            }
+        }
+    }
+    Ok(json!({"type": entry, "values": held(m, guid)}))
+}
+
+/// A parameter a family is to have, as `family_parameter_add` takes it.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NewFamilyParameter {
+    name: String,
+    #[serde(default)]
+    kind: family::Kind,
+    #[serde(default)]
+    instance: bool,
+    #[serde(default)]
+    value: Value,
+    #[serde(default)]
+    formula: Option<String>,
+    #[serde(default)]
+    group: String,
+    #[serde(default)]
+    definition: Option<Guid>,
+}
+
+/// The `family_parameter_add` command: new parameters for several families at once. All or none: [`Model::check`] goes over each
+/// family after, and the engine takes the lot back when one can't hold them.
+pub(crate) fn family_add(s: &mut Session, p: &Value) -> R {
+    let c = "family_parameter_add";
+    only(c, p, &["families", "parameters"])?;
+    let families: Vec<String> = p
+        .get("families")
+        .cloned()
+        .and_then(|v| serde_json::from_value(v).ok())
+        .filter(|l: &Vec<String>| !l.is_empty())
+        .ok_or_else(|| bad(c, "`families` is a list of families"))?;
+    let new: Vec<NewFamilyParameter> = p
+        .get("parameters")
+        .cloned()
+        .ok_or_else(|| bad(c, "`parameters` is a list of parameters"))
+        .and_then(|v| serde_json::from_value(v).map_err(|e| bad(c, format!("`parameters`: {e}"))))?;
+    if new.len() > MAX_OPS {
+        return Err(bad(c, format!("up to {MAX_OPS} parameters at once")));
+    }
+    if let Some(f) = families.iter().find(|f| !s.model.families.contains_key(*f)) {
+        return Err(bad(c, format!("there's no family `{f}`")));
+    }
+    for q in &new {
+        if !family::nameable(&q.name) {
+            return Err(bad(c, format!("`{}`: a name starts with a letter and holds letters, digits, `_` and spaces", q.name)));
+        }
+    }
+    let m = s.model_mut();
+    let mut report = Vec::new();
+    for name in &families {
+        let Some(f) = m.families.get_mut(name) else { continue };
+        let (mut added, mut skipped) = (Vec::new(), Vec::new());
+        for q in &new {
+            if f.parameters.iter().any(|t| t.name == q.name) {
+                skipped.push(q.name.clone());
+                continue;
+            }
+            f.parameters.push(family::Parameter {
+                name: q.name.clone(),
+                kind: q.kind,
+                instance: q.instance,
+                value: q.value.clone(),
+                formula: q.formula.clone().filter(|t| !t.trim().is_empty()),
+                group: clip(&q.group),
+                definition: q.definition,
+            });
+            added.push(q.name.clone());
+        }
+        report.push(json!({"family": name, "added": added, "skipped": skipped}));
+    }
+    Ok(json!({"families": report}))
+}
+
+/// The most dictionaries a project keeps loaded.
+const MAX_DICTIONARIES: usize = 256;
+
+/// The `dictionary_mount` command: a dictionary's file kept with the project, or taken off it.
+pub(crate) fn dictionary_mount(s: &mut Session, p: &Value) -> R {
+    let c = "dictionary_mount";
+    only(c, p, &["path", "name", "remove"])?;
+    if flag(c, p, "remove")? {
+        let name = string(c, p, "name")?.ok_or_else(|| bad(c, "`name` is required"))?;
+        if !s.model.dictionaries.contains_key(&name) {
+            return Err(bad(c, format!("no dictionary `{name}` is loaded")));
+        }
+        let using: Vec<&str> = s
+            .model
+            .parameters
+            .iter()
+            .filter(|(_, q)| q.dictionary.as_deref() == Some(&name))
+            .map(|(n, _)| n.as_str())
+            .take(NAMED)
+            .collect();
+        if !using.is_empty() {
+            return Err(bad(c, format!("these come from `{name}`; make them project parameters first: {}", using.join(", "))));
+        }
+        s.model_mut().dictionaries.remove(&name);
+        return Ok(json!({"removed": name}));
+    }
+    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required"))?;
+    let d = table::read_dictionary_file(&path).map_err(|e| bad(c, e))?;
+    // The same dictionary by its GUID, whatever the file is called now and wherever it is.
+    let known = d
+        .guid
+        .and_then(|g| s.model.library.by_guid(g))
+        .filter(|(_, e)| e.kind == LibKind::Dictionary && s.model.dictionaries.contains_key(&e.name))
+        .map(|(_, e)| e.name.clone());
+    if known.is_none()
+        && let Some(r) = s.model.dictionaries.get(&d.name).filter(|r| r.path != path)
+    {
+        return Err(bad(c, format!("a dictionary `{}` is loaded already, from {}: name this one otherwise", d.name, r.path)));
+    }
+    let name = known.unwrap_or_else(|| d.name.clone());
+    if !s.model.dictionaries.contains_key(&name) && s.model.dictionaries.len() >= MAX_DICTIONARIES {
+        return Err(bad(c, format!("a project keeps up to {MAX_DICTIONARIES} dictionaries")));
+    }
+    let m = s.model_mut();
+    let was = m.dictionaries.get(&name).map_or(0, |r| r.revision);
+    m.dictionaries.insert(name.clone(), DictionaryRef { path: path.clone(), version: d.version.clone(), revision: was });
+    if let Some(g) = d.guid
+        && m.library.id(&LibKind::Dictionary, &name).is_none()
+        && m.library.by_guid(g).is_none()
+        && !m.elements.contains_key(g)
+    {
+        let id = m.fresh_library_id();
+        m.library.insert(id, Entry { kind: LibKind::Dictionary, name: name.clone(), guid: g })?;
+    }
+    Ok(json!({"name": name, "path": path, "revision": d.revision}))
 }

@@ -806,6 +806,12 @@ impl Model {
         let keep: std::collections::BTreeSet<&(Kind, String)> = now.iter().collect();
         let gone: Vec<Id> =
             self.library.entries().filter(|(_, e)| !keep.contains(&(e.kind.clone(), e.name.clone()))).map(|(id, _)| id).collect();
+        // A type's values of project parameters go with it.
+        let gone_guids: Vec<Guid> =
+            gone.iter().filter_map(|id| self.library.entries().find(|(i, _)| i == id).map(|(_, e)| e.guid)).collect();
+        for q in self.parameters.values_mut().filter(|q| !q.type_values.is_empty()) {
+            q.type_values.retain(|g, _| !gone_guids.contains(g));
+        }
         for id in gone {
             self.library.remove(id);
         }

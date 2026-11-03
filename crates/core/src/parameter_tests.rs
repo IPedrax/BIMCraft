@@ -217,7 +217,7 @@ fn a_revit_shared_parameter_file_is_read_with_its_guids_and_given_categories_and
     assert_eq!(rating.dictionary.as_deref(), Some("office"), "from a file, so shared");
     assert_eq!(m.library.guid(&Kind::Parameter, "Fire Rating").unwrap().to_string(), "1f2e3d4c-5b6a-4789-8abc-def012345678");
     let panels = &m.parameters["Panel Count"];
-    assert!(panels.hidden && panels.read_only && panels.hide_when_empty);
+    assert!(panels.read_only);
     assert_eq!(panels.kind, ParameterKind::Integer);
     assert!(m.parameters.contains_key("Depth mm"), "made nameable");
     assert_eq!(m.parameters["Load"].kind, ParameterKind::Number, "said in left_out");
@@ -552,4 +552,377 @@ fn hostile_files_are_refused_or_read_as_far_as_they_go() {
     assert_eq!((r["skip"].clone(), r["conflict"].clone()), (json!(1), json!(2)), "{r}");
     assert!(s.execute("parameter_export", &json!({"path": "/nonexistent/dir/out.csv"})).is_err());
     assert!(s.execute("parameter_export", &json!({"path": file("out.doc")})).is_err());
+}
+
+// Type parameters.
+
+/// A project with a wall of each of two types, and `Rating`, for walls.
+fn two_types() -> (Session, u64, u64) {
+    let mut s = Session::new();
+    run(&mut s, "type", json!({"category": "wall", "name": "A", "thickness": 100}));
+    run(&mut s, "type", json!({"category": "wall", "name": "B", "thickness": 200}));
+    let a = run(&mut s, "wall", json!({"points": [[0, 0], [4000, 0]], "type": "A"}))["ids"][0].as_u64().unwrap();
+    let b = run(&mut s, "wall", json!({"points": [[0, 3000], [4000, 3000]], "type": "B"}))["ids"][0].as_u64().unwrap();
+    run(&mut s, "parameter", json!({"name": "Rating", "categories": ["wall"]}));
+    (s, a, b)
+}
+
+fn typed(s: &mut Session, ty: &str, value: Value) {
+    run(s, "type_parameter", json!({"category": "wall", "type": ty, "values": {"Rating": value}}));
+}
+
+fn field(s: &Session, id: u64, name: &str) -> Option<String> {
+    crate::schedule::field_text(&s.model, id, name)
+}
+
+#[test]
+fn a_type_parameter_has_one_value_for_each_type_read_by_every_element_of_it() {
+    let (mut s, a, b) = two_types();
+    run(&mut s, "parameter", json!({"name": "Rating", "scope": "type"}));
+    typed(&mut s, "A", json!("EI60"));
+    typed(&mut s, "B", json!("EI90"));
+    assert_eq!(field(&s, a, "Rating").as_deref(), Some("EI60"));
+    assert_eq!(field(&s, b, "Rating").as_deref(), Some("EI90"));
+    // An element moved to the other type reads that type's.
+    run(&mut s, "modify", json!({"id": a, "type": "B"}));
+    assert_eq!(field(&s, a, "Rating").as_deref(), Some("EI90"));
+    // Taken away, and of the wrong kind.
+    typed(&mut s, "B", Value::Null);
+    assert_eq!(field(&s, b, "Rating"), None);
+    let e = s.execute("type_parameter", &json!({"category": "wall", "type": "A", "values": {"Rating": 5}})).unwrap_err();
+    assert!(e.contains("Rating"), "{e}");
+    let e = s.execute("modify", &json!({"id": a, "params": {"Rating": "x"}})).unwrap_err();
+    assert!(e.contains("type parameter"), "says where it goes: {e}");
+    let e = s.execute("type_parameter", &json!({"category": "wall", "type": "Nope", "values": {"Rating": "x"}})).unwrap_err();
+    assert!(e.contains("Nope"), "{e}");
+    let e = s
+        .execute("type_parameter", &json!({"category": "floor", "type": s.model.type_names("floor")[0], "values": {"Rating": "x"}}))
+        .unwrap_err();
+    assert!(e.contains("Rating"), "not for floors: {e}");
+}
+
+#[test]
+fn instance_to_type_wipes_the_values_and_type_to_instance_copies_them_down() {
+    let (mut s, a, b) = two_types();
+    run(&mut s, "modify", json!({"id": a, "params": {"Rating": "mine"}}));
+    let r = run(&mut s, "parameter", json!({"name": "Rating", "scope": "type"}));
+    assert_eq!(r["wiped"], 1, "{r}");
+    assert_eq!(field(&s, a, "Rating"), None, "wiped");
+    assert!(!params_of(&s, a).contains_key("Rating"));
+
+    typed(&mut s, "A", json!("EI60"));
+    let r = run(&mut s, "parameter", json!({"name": "Rating", "scope": "instance"}));
+    assert_eq!(r["copied"], 1, "only the type with a value: {r}");
+    assert_eq!(params_of(&s, a)["Rating"], "EI60", "copied onto its element");
+    assert!(!params_of(&s, b).contains_key("Rating"));
+    assert!(s.model.parameters["Rating"].type_values.is_empty());
+    // Each element then goes its own way.
+    run(&mut s, "modify", json!({"id": a, "params": {"Rating": "changed"}}));
+    assert_eq!(field(&s, a, "Rating").as_deref(), Some("changed"));
+    run(&mut s, "undo", json!({}));
+    run(&mut s, "undo", json!({}));
+    assert_eq!(s.model.parameters["Rating"].scope, crate::model::Scope::Type, "undone as one step");
+    assert_eq!(field(&s, a, "Rating").as_deref(), Some("EI60"));
+}
+
+#[test]
+fn a_category_with_no_types_can_t_hold_a_type_parameter() {
+    let (mut s, ..) = two_types();
+    run(&mut s, "parameter", json!({"name": "Rating", "categories": ["wall", "room"]}));
+    let e = s.execute("parameter", &json!({"name": "Rating", "scope": "type"})).unwrap_err();
+    assert!(e.contains("room") && e.contains("types"), "{e}");
+    assert_eq!(s.model.parameters["Rating"].scope, crate::model::Scope::Instance, "refused whole");
+}
+
+#[test]
+fn a_type_s_values_follow_it_through_a_rename_a_delete_a_copy_and_a_file() {
+    let (mut s, a, _) = two_types();
+    run(&mut s, "parameter", json!({"name": "Rating", "scope": "type"}));
+    typed(&mut s, "A", json!("EI60"));
+    run(&mut s, "rename_type", json!({"category": "wall", "type": "A", "name": "A2"}));
+    assert_eq!(field(&s, a, "Rating").as_deref(), Some("EI60"), "by GUID, whatever it's called");
+    // Duplicating asks for what the type has.
+    run(&mut s, "type", json!({"category": "wall", "name": "A3", "thickness": 100}));
+    run(&mut s, "type_parameter", json!({"category": "wall", "type": "A2", "copy_to": "A3"}));
+    let r = run(&mut s, "type_parameter", json!({"category": "wall", "type": "A3"}));
+    assert_eq!(r["values"]["Rating"], "EI60", "{r}");
+
+    let path = saved(&mut s, "typed.bimcraft");
+    let mut opened = Session::new();
+    run(&mut opened, "open", json!({"path": path}));
+    assert_eq!(field(&opened, a, "Rating").as_deref(), Some("EI60"), "through a file");
+
+    run(&mut s, "delete_type", json!({"category": "wall", "type": "A3"}));
+    assert_eq!(s.model.parameters["Rating"].type_values.len(), 1, "gone with its type");
+    // A category taken off takes its types' values with it.
+    run(&mut s, "parameter", json!({"name": "Rating", "categories": ["floor"]}));
+    assert!(s.model.parameters["Rating"].type_values.is_empty());
+}
+
+#[test]
+fn a_family_s_types_and_a_schedule_and_a_kind_change_go_by_the_type_s_value() {
+    let (mut s, a, _) = two_types();
+    let family = s.model.families.keys().next().cloned();
+    run(&mut s, "parameter", json!({"name": "Rating", "scope": "type"}));
+    typed(&mut s, "A", json!("EI60"));
+    let e = s.execute("parameter", &json!({"name": "Rating", "kind": "number"})).unwrap_err();
+    assert!(e.contains("values"), "a value on a type is a value: {e}");
+    assert_eq!(crate::parameters::usage(&s.model, "Rating").values, 1);
+    let e = s.execute("parameter_purge", &json!({"dry_run": true})).unwrap();
+    assert_eq!(e["purged"], json!([]), "a value on a type is a use");
+    let _ = (a, family);
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Plinth", "category": "furniture", "parameters": [{"name": "Width", "value": 900}], "types": {"Small": {}, "Big": {"Width": 1800}},
+               "forms": [{"profile": [[0, 0], [100, 0], [100, 100], [0, 100]], "from": 0, "to": 100}]}),
+    );
+    run(&mut s, "parameter", json!({"name": "Code", "categories": ["component"], "scope": "type"}));
+    run(&mut s, "type_parameter", json!({"family": "Plinth", "type": "Big", "values": {"Code": "D2"}}));
+    let c = run(&mut s, "component", json!({"family": "Plinth", "type": "Big", "at": [1000, 1000]}))["id"].as_u64().unwrap();
+    assert_eq!(field(&s, c, "Code").as_deref(), Some("D2"));
+}
+
+#[test]
+fn a_type_parameter_goes_out_in_ifc_on_each_element_of_the_type() {
+    let (mut s, ..) = two_types();
+    run(&mut s, "parameter", json!({"name": "Rating", "scope": "type"}));
+    typed(&mut s, "A", json!("EI60"));
+    let path = file("typed.ifc");
+    run(&mut s, "save", json!({"path": path}));
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("IFCPROPERTYSINGLEVALUE('Rating',$,IFCTEXT('EI60'),$)"), "its value, in the property set");
+}
+
+#[test]
+fn insert_from_file_brings_a_type_s_values_and_leaves_off_a_value_that_is_a_type_s_here() {
+    let (mut there, a, _) = two_types();
+    run(&mut there, "parameter", json!({"name": "Rating", "scope": "type"}));
+    typed(&mut there, "A", json!("EI60"));
+    let path = saved(&mut there, "types_there.bimcraft");
+    let mut here = Session::new();
+    run(&mut here, "insert", json!({"path": path, "ids": [a]}));
+    let copy = *walls(&here).last().unwrap();
+    assert_eq!(field(&here, copy, "Rating").as_deref(), Some("EI60"));
+
+    // Instance there, type here: the value has nowhere to go on the element, and the reply says so.
+    let (mut other, b, _) = two_types();
+    run(&mut other, "modify", json!({"id": b, "params": {"Rating": "mine"}}));
+    let guid = other.model.library.guid(&crate::library::Kind::Parameter, "Rating").unwrap();
+    let path = saved(&mut other, "instance_there.bimcraft");
+    let mut here = Session::new();
+    here.reset((*other.model).clone(), None);
+    run(&mut here, "parameter", json!({"name": "Rating", "scope": "type"}));
+    assert_eq!(here.model.library.guid(&crate::library::Kind::Parameter, "Rating"), Some(guid));
+    let r = run(&mut here, "insert", json!({"path": path, "ids": [b]}));
+    assert!(r["left_out"].to_string().contains("Rating"), "{r}");
+}
+
+#[test]
+fn an_import_says_instance_or_type_a_person_can_change_it_and_a_table_that_doesn_t_say_changes_nothing() {
+    let (mut s, a, _) = two_types();
+    let path = file("scoped.csv");
+    std::fs::write(&path, "Name,Kind,Categories,Instance/Type\nMade,text,wall,type\nPlain,text,wall,\nBoth,text,wall,instance\n").unwrap();
+    let r = run(&mut s, "parameter_import", json!({"path": path, "dry_run": true}));
+    let scope = |r: &Value, n: &str| r["rows"].as_array().unwrap().iter().find(|x| x["name"] == n).unwrap()["scope"].clone();
+    assert_eq!((scope(&r, "Made"), scope(&r, "Plain"), scope(&r, "Both")), (json!("type"), json!("instance"), json!("instance")));
+    let r = run(&mut s, "parameter_import", json!({"path": path, "dry_run": true, "scopes": {"Plain": "type"}}));
+    assert_eq!(scope(&r, "Plain"), "type", "the person's choice");
+    run(&mut s, "parameter_import", json!({"path": path, "scopes": {"Plain": "type"}}));
+    assert_eq!(s.model.parameters["Made"].scope, crate::model::Scope::Type);
+    assert_eq!(s.model.parameters["Plain"].scope, crate::model::Scope::Type);
+
+    // A table with no such column leaves it as it is.
+    let bare = file("bare.csv");
+    std::fs::write(&bare, "Name,Kind,Categories\nMade,text,wall\n").unwrap();
+    let r = run(&mut s, "parameter_import", json!({"path": bare, "dry_run": true}));
+    assert_eq!(r["rows"][0]["status"], "existing", "{r}");
+    // A file saying otherwise is a change, and says what happens to the values.
+    run(&mut s, "type_parameter", json!({"category": "wall", "type": "A", "values": {"Made": "x"}}));
+    let other = file("other.csv");
+    std::fs::write(&other, "Name,Kind,Categories,Instance/Type\nMade,text,wall,instance\n").unwrap();
+    let r = run(&mut s, "parameter_import", json!({"path": other, "dry_run": true}));
+    assert_eq!(r["rows"][0]["status"], "modify", "{r}");
+    assert!(r["rows"][0]["notes"].to_string().contains("copied"), "{r}");
+    run(&mut s, "parameter_import", json!({"path": other}));
+    assert_eq!(params_of(&s, a)["Made"], "x");
+    // A room can't take a type parameter.
+    let room = file("room.csv");
+    std::fs::write(&room, "Name,Kind,Categories,Instance/Type\nArea Code,text,room,type\n").unwrap();
+    let r = run(&mut s, "parameter_import", json!({"path": room, "dry_run": true}));
+    assert_eq!(r["rows"][0]["status"], "conflict", "{r}");
+}
+
+#[test]
+fn hidden_and_hide_when_empty_are_gone_and_editable_stays() {
+    let (mut s, ..) = two_types();
+    let e = s.execute("parameter", &json!({"name": "Rating", "hidden": true})).unwrap_err();
+    assert!(e.contains("hidden"), "{e}");
+    let e = s.execute("parameter", &json!({"name": "Rating", "hide_when_empty": true})).unwrap_err();
+    assert!(e.contains("hide_when_empty"), "{e}");
+    run(&mut s, "parameter", json!({"name": "Rating", "read_only": true}));
+    assert!(s.model.parameters["Rating"].read_only);
+    let path = file("columns.csv");
+    run(&mut s, "parameter_export", json!({"path": path}));
+    let text = std::fs::read_to_string(&path).unwrap();
+    let head = text.lines().next().unwrap();
+    assert!(head.contains("Instance/Type") && head.contains("User Modifiable"), "{head}");
+    assert!(!head.contains("Visible") && !head.contains("Hide"), "{head}");
+}
+
+// Dictionaries.
+
+#[test]
+fn a_dictionary_counts_its_revisions_and_a_project_remembers_the_one_it_took() {
+    let (mut s, ..) = two_types();
+    let path = file("rev.bimparams");
+    let r = run(
+        &mut s,
+        "dictionary",
+        json!({"path": path, "add": [{"name": "Code", "kind": "text", "categories": ["wall"], "scope": "type"}]}),
+    );
+    assert_eq!(r["revision"], 1, "{r}");
+    assert_eq!(r["changed"].as_str().unwrap().len(), 10, "a date: {r}");
+    let guid = r["parameters"][0]["guid"].clone();
+    // Nothing changed, nothing counted.
+    assert_eq!(run(&mut s, "dictionary", json!({"path": path}))["revision"], 1);
+    run(&mut s, "parameter_import", json!({"path": path}));
+    assert_eq!(s.model.parameters["Code"].scope, crate::model::Scope::Type, "the dictionary's");
+    assert_eq!(s.model.dictionaries["rev"].revision, 1);
+
+    // A definition's categories updated by its GUID: a new revision, and the project unchanged until it's imported.
+    let r = run(
+        &mut s,
+        "dictionary",
+        json!({"path": path, "add": [{"guid": guid, "name": "Code", "kind": "text", "categories": ["floor"], "scope": "type"}]}),
+    );
+    assert_eq!(r["revision"], 2);
+    assert_eq!(s.model.parameters["Code"].categories, vec!["wall"]);
+    // Pushed, with the categories the file no longer lists taken off.
+    let r = run(&mut s, "parameter_import", json!({"path": path, "replace_categories": true, "dry_run": true}));
+    assert!(r["rows"][0]["notes"].to_string().contains("no longer for"), "{r}");
+    run(&mut s, "parameter_import", json!({"path": path, "replace_categories": true}));
+    assert_eq!(s.model.parameters["Code"].categories, vec!["floor"]);
+    assert_eq!(s.model.dictionaries["rev"].revision, 2);
+    // Two definitions can't end up with one name.
+    run(&mut s, "dictionary", json!({"path": path, "add": [{"name": "Other", "kind": "text"}]}));
+    let e = s.execute("dictionary", &json!({"path": path, "add": [{"guid": guid, "name": "Other"}]})).unwrap_err();
+    assert!(e.contains("Other"), "{e}");
+}
+
+// Families in bulk.
+
+fn desk(s: &mut Session, name: &str) {
+    run(
+        s,
+        "family",
+        json!({"name": name, "category": "furniture", "parameters": [{"name": "Width", "value": 900}], "types": {"Small": {}, "Big": {"Width": 1800}},
+               "forms": [{"profile": [[0, 0], [100, 0], [100, 100], [0, 100]], "from": 0, "to": 100}]}),
+    );
+}
+
+#[test]
+fn parameters_are_added_to_families_in_bulk_a_type_s_value_going_on_all_its_types() {
+    let mut s = Session::new();
+    desk(&mut s, "Plinth");
+    desk(&mut s, "Kerb");
+    let r = run(
+        &mut s,
+        "family_parameter_add",
+        json!({"families": ["Plinth", "Kerb"], "parameters": [
+            {"name": "Code", "kind": "text", "value": "X1", "group": "Identity"},
+            {"name": "Top", "kind": "length", "instance": true, "value": 30},
+            {"name": "Twice", "kind": "length", "formula": "Width * 2"},
+            {"name": "Width", "kind": "length"},
+        ]}),
+    );
+    assert_eq!(r["families"][0]["added"], json!(["Code", "Top", "Twice"]), "{r}");
+    assert_eq!(r["families"][0]["skipped"], json!(["Width"]), "a name it has already");
+    for (family, ty) in [("Plinth", "Small"), ("Plinth", "Big"), ("Kerb", "Big")] {
+        let f = &s.model.families[family];
+        let v = f.values(ty, &Default::default()).unwrap();
+        assert_eq!(v["Code"], crate::family::Val::Text("X1".into()), "{family} {ty}");
+    }
+    assert_eq!(s.model.families["Plinth"].values("Big", &Default::default()).unwrap()["Twice"], crate::family::Val::Number(3600.0));
+    let code = s.model.families["Plinth"].parameters.iter().find(|q| q.name == "Code").unwrap();
+    assert_eq!((code.group.as_str(), code.instance), ("Identity", false));
+    let top = s.model.families["Plinth"].parameters.iter().find(|q| q.name == "Top").unwrap();
+    assert!(top.instance);
+    // All or none: a formula that can't be worked out stops the lot.
+    let before = s.model.families["Kerb"].parameters.len();
+    let e = s.execute("family_parameter_add", &json!({"families": ["Kerb"], "parameters": [{"name": "A", "kind": "length"}, {"name": "B", "kind": "length", "formula": "Nope + 1"}]}));
+    assert!(e.is_err());
+    assert_eq!(s.model.families["Kerb"].parameters.len(), before);
+    assert!(s.execute("family_parameter_add", &json!({"families": ["Nope"], "parameters": [{"name": "A"}]})).is_err());
+    assert!(
+        s.execute("family_parameter_add", &json!({"families": ["Plinth"], "parameters": [{"name": "Z", "kind": "text", "formula": "1"}]}))
+            .is_err()
+    );
+}
+
+#[test]
+fn a_family_parameter_tied_to_a_definition_is_one_parameter_with_the_project_s() {
+    let mut s = Session::new();
+    desk(&mut s, "Plinth");
+    run(&mut s, "parameter", json!({"name": "Code", "kind": "text", "categories": ["component", "wall"]}));
+    let guid = s.model.library.guid(&crate::library::Kind::Parameter, "Code").unwrap();
+    // Of that name and not tied, it clashes; tied, it's the same parameter.
+    let e =
+        s.execute("family_parameter_add", &json!({"families": ["Plinth"], "parameters": [{"name": "Code", "kind": "text"}]})).unwrap_err();
+    assert!(e.contains("Code"), "{e}");
+    run(
+        &mut s,
+        "family_parameter_add",
+        json!({"families": ["Plinth"], "parameters": [{"name": "Code", "kind": "text", "value": "D1", "definition": guid}]}),
+    );
+    let c = run(&mut s, "component", json!({"family": "Plinth", "type": "Big", "at": [0, 0]}))["id"].as_u64().unwrap();
+    assert_eq!(field(&s, c, "Code").as_deref(), Some("D1"), "the family's value, under the one field");
+    let fields = crate::schedule::fields(&s.model, "component");
+    assert_eq!(fields.iter().filter(|(n, _)| n == "Code").count(), 1, "one column");
+    // It keeps the name its definition has.
+    let e = s.execute("parameter", &json!({"name": "Code", "rename": "Mark Code"})).unwrap_err();
+    assert!(e.contains("Plinth"), "{e}");
+    // And comes through a file, tied.
+    let path = saved(&mut s, "tied.bimcraft");
+    let mut opened = Session::new();
+    run(&mut opened, "open", json!({"path": path}));
+    let q = opened.model.families["Plinth"].parameters.iter().find(|q| q.name == "Code").unwrap();
+    assert_eq!(q.definition, Some(guid));
+}
+
+#[test]
+fn a_dictionary_loaded_stays_with_the_project_and_several_can_be() {
+    let (mut s, ..) = two_types();
+    let (one, two) = (file("one.bimparams"), file("two.bimparams"));
+    run(&mut s, "dictionary", json!({"path": one, "add": [{"name": "Code"}]}));
+    run(&mut s, "dictionary", json!({"path": two, "add": [{"name": "Mark"}]}));
+    assert_eq!(run(&mut s, "dictionary_mount", json!({"path": one}))["name"], "one");
+    run(&mut s, "dictionary_mount", json!({"path": two}));
+    assert_eq!(s.model.dictionaries.keys().collect::<Vec<_>>(), ["one", "two"]);
+    assert_eq!(s.model.dictionaries["one"].revision, 0, "nothing taken from it yet");
+    assert!(!s.model.parameters.contains_key("Code"), "loading takes nothing into the project");
+
+    // Through a file.
+    let path = saved(&mut s, "mounted.bimcraft");
+    let mut opened = Session::new();
+    run(&mut opened, "open", json!({"path": path}));
+    assert_eq!(opened.model.dictionaries["two"].path, two);
+
+    // The same file moved is the same dictionary, by its GUID; another of the name is refused.
+    let moved = file("one.bimparams");
+    std::fs::copy(&one, &moved).unwrap();
+    run(&mut s, "dictionary_mount", json!({"path": moved}));
+    assert_eq!((s.model.dictionaries.len(), s.model.dictionaries["one"].path.as_str()), (2, moved.as_str()));
+    let other = file("one.bimparams");
+    run(&mut s, "dictionary", json!({"path": other}));
+    let e = s.execute("dictionary_mount", &json!({"path": other})).unwrap_err();
+    assert!(e.contains("one"), "{e}");
+
+    // Taken out, unless a parameter comes from it.
+    run(&mut s, "parameter_import", json!({"path": two, "categories": ["wall"]}));
+    let e = s.execute("dictionary_mount", &json!({"name": "two", "remove": true})).unwrap_err();
+    assert!(e.contains("Mark"), "says which: {e}");
+    run(&mut s, "dictionary_mount", json!({"name": "one", "remove": true}));
+    assert!(!s.model.dictionaries.contains_key("one"));
+    assert!(s.execute("dictionary_mount", &json!({"path": "/nonexistent/x.bimparams"})).is_err());
 }

@@ -26,8 +26,8 @@ use crate::model::{
     Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, Id, Key, Landing, Layer, Level, Line, Location, MAX_COORD, MAX_POINTS,
     MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind, Pattern, Perspective,
     PlanView, PointCloud, ProjectParameter, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp, Rebar, Reference, Roof, RoofType,
-    Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox, Shaft, Sheet, Side, Spot, Stair, TOL, TREAD, Tag, Unbound,
-    View3D, Viewport, Wall, WallType, heading, paper,
+    Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section, SectionBox, Shaft, Sheet, Side, Spot, Stair, TOL, TREAD, Tag,
+    Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
@@ -892,12 +892,14 @@ pub static ALL: &[Command] = &[
         "Project Parameters",
         &[],
         "{name, kind?: text|number|integer|length|area|volume|angle|yesno, categories?: [wall|floor|ceiling|roof|door|window|room|\
-         column|component|stair|ramp|railing|mass, …], rename?, delete?: true, description?, group?, hidden?: bool, read_only?: bool, \
-         hide_when_empty?: bool, dictionary?: null} a project parameter, as Revit's Manage > Project Parameters makes one: a value \
-         of its kind each element of its categories may have of its own, set with `modify {id, params: {name: value}}` (lengths \
+         column|component|stair|ramp|railing|mass, …], rename?, delete?: true, description?, group?, read_only?: bool, \
+         scope?: instance|type, dictionary?: null} a project parameter, as Revit's Manage > Project Parameters makes one: a value \
+         of its kind each element of its categories may have of its own, set with `modify {id, params: {name: value}}`, or, `scope` \
+         type, each of their types, set with `type_parameter`. Rooms, stairs, ramps and masses have no types. Made a type parameter, its \
+         elements' values are wiped (answers `wiped`); made an instance parameter, each type's value is copied to its elements (`copied`). (Lengths \
          in mm, areas in m², volumes in m³, angles in degrees, yes or no as true or false). Off a category, that category's elements \
          lose their values of it; deleted, every element does; renamed, they follow it, as schedules, their formulas, filters and \
-         tags do. `group`, `hidden`, `read_only` and `hide_when_empty` are how Properties shows it. `dictionary` null makes one from \
+         tags do. `group` and `read_only` are how Properties shows it. `dictionary` null makes one from \
          a dictionary a project parameter again. `parameter_list` lists them",
         parameter,
     )
@@ -924,8 +926,8 @@ pub static ALL: &[Command] = &[
         "Import Parameters",
         &[],
         "{path, dry_run?: true, map?: {their category: ours | null}, categories?: [..], resolve?: {name: same|separate|skip}, \
-         names?: [..], replace_categories?: true, skip_conflicts?: true} parameter definitions from a .xlsx or .csv table (columns GUID, \
-         Name, Kind, Categories, Group, Description, Visible, User Modifiable, Hide When Empty), a .bimparams dictionary or a Revit \
+         scopes?: {name: instance|type}, names?: [..], replace_categories?: true, skip_conflicts?: true} parameter definitions from a .xlsx \
+         or .csv table (columns GUID, Name, Kind, Categories, Group, Description, Instance/Type, User Modifiable), a .bimparams dictionary or a Revit \
          shared parameter .txt. Answers each row's status: `create`, `modify`, `existing`, `conflict` or `skip`, with notes; `dry_run` \
          stops there. A row is matched by GUID first, so it follows a rename; one of a name taken by another GUID is a conflict until \
          `resolve` says `same` (the file's GUID means that parameter from now on), `separate` (it comes in as `name 2`) or `skip`. \
@@ -938,19 +940,29 @@ pub static ALL: &[Command] = &[
     other(
         "parameter_export",
         "Export Parameters",
-        "{path, names?: [..], name?, version?} the project's parameters, or those named, to a .xlsx or .csv table or a .bimparams \
+        "{path, names?: [..], definitions?: [..], name?, version?} the project's parameters, those named, or the `definitions` given, to a .xlsx or .csv table or a .bimparams \
          dictionary (with its `name` and `version`). Definitions only, not values. Revit's shared parameter .txt is read, not written",
         crate::parameters::export,
     ),
     other(
         "dictionary",
         "Parameter Dictionary",
-        "{path, name?, version?, add?: [{name, kind?, description?, group?, categories?, guid?, hidden?, read_only?, hide_when_empty?}], \
+        "{path, name?, version?, add?: [{name, kind?, description?, group?, categories?, guid?, read_only?, scope?: instance|type}], \
          names?: [project parameters], merge?: [paths], remove?: [names or GUIDs], skip_conflicts?: true} makes or changes the \
          dictionary file at `path` (.bimparams); the project isn't changed. A definition with a GUID the file has replaces it; a new one \
          gets a GUID; another GUID under a name the file has stops it unless `skip_conflicts`. `merge` takes in other files of any kind \
-         `parameter_import` reads. Answers what the file now holds",
+         `parameter_import` reads. A change counts up its `revision` and dates it `changed`. `version` is a label of the team's own. \
+         Answers what the file now holds",
         crate::parameters::dictionary,
+    ),
+    edit(
+        "dictionary_mount",
+        "Load Parameter Dictionary",
+        &[],
+        "{path} or {name, remove: true}: a dictionary's file loaded in the project, which remembers it and saves it as part of the \
+         project; several can be. Nothing comes into the project until `parameter_import`. A dictionary moved is found by its GUID, and \
+         takes its new path; another dictionary of a name already loaded is refused. `remove` is refused while a parameter comes from it",
+        crate::parameters::dictionary_mount,
     ),
     edit(
         "parameter_merge",
@@ -976,6 +988,25 @@ pub static ALL: &[Command] = &[
         "{from, to: [families], names: [..], prefix?, suffix?, find?, replace?} a family's parameters copied to other families, with the \
          parameters their formulas read, optionally renamed. A name a family has already is skipped and listed",
         crate::parameters::family_transfer,
+    ),
+    edit(
+        "family_parameter_add",
+        "Add Family Parameters",
+        &[],
+        "{families: [..], parameters: [{name, kind?: length|number|angle|yesno|material|text, instance?: true, value?, formula?, group?, \
+         definition?: GUID}]} new parameters added to each family, all or none. A type parameter's `value` is every type's until a type \
+         sets its own. `definition` ties it to a dictionary's or a project parameter's GUID, so a family's and the project's are one \
+         parameter. A name a family has already is skipped and listed",
+        crate::parameters::family_add,
+    ),
+    edit(
+        "type_parameter",
+        "Type Parameter Values",
+        &[],
+        "{category, type, values?: {parameter: value | null}, copy_to?: type} or {family, type, ...}: a type's values of the project's \
+         type parameters (scope `type`), which every element of the type reads; null takes one away. `copy_to` gives another type of \
+         the same category the values this one has. With neither, answers the values it has",
+        crate::parameters::type_parameter,
     ),
     edit(
         "family",
@@ -8344,11 +8375,7 @@ fn paint(s: &mut Session, p: &Value) -> R {
 
 pub(crate) fn parameter(s: &mut Session, p: &Value) -> R {
     let c = "parameter";
-    only(
-        c,
-        p,
-        &["name", "kind", "categories", "rename", "delete", "description", "group", "hidden", "read_only", "hide_when_empty", "dictionary"],
-    )?;
+    only(c, p, &["name", "kind", "categories", "rename", "delete", "description", "group", "read_only", "scope", "dictionary"])?;
     let name = string(c, p, "name")?.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).ok_or_else(|| bad(c, "`name` is required"))?;
     let m = s.model_mut();
     // Off the categories `gone`, the ones it was for: their elements' values of `name`, and their
@@ -8398,11 +8425,8 @@ pub(crate) fn parameter(s: &mut Session, p: &Value) -> R {
             *slot = v.as_str().ok_or_else(|| bad(c, format!("`{key}` is text")))?.to_string();
         }
     }
-    for (key, slot) in [("hidden", &mut param.hidden), ("read_only", &mut param.read_only), ("hide_when_empty", &mut param.hide_when_empty)]
-    {
-        if let Some(v) = p.get(key).filter(|v| !v.is_null()) {
-            *slot = v.as_bool().ok_or_else(|| bad(c, format!("`{key}` is true or false")))?;
-        }
+    if let Some(v) = p.get("read_only").filter(|v| !v.is_null()) {
+        param.read_only = v.as_bool().ok_or_else(|| bad(c, "`read_only` is true or false"))?;
     }
     match p.get("dictionary") {
         Some(Value::Null) => param.dictionary = None,
@@ -8425,7 +8449,7 @@ pub(crate) fn parameter(s: &mut Session, p: &Value) -> R {
         let valued = elements.values().any(|e| {
             let theirs = e.family().and_then(|(f, _)| families.get(f)).is_some_and(|f| f.parameters.iter().any(|q| q.name == name));
             param.categories.iter().any(|k| k == e.category()) && !theirs && e.params().is_some_and(|ps| ps.contains_key(&name))
-        });
+        }) || !param.type_values.is_empty();
         if kind != param.kind && valued {
             return Err(bad(c, format!("`{name}` has values of its kind; take them away before it holds another")));
         }
@@ -8446,6 +8470,15 @@ pub(crate) fn parameter(s: &mut Session, p: &Value) -> R {
         }
         clear(m, &name, &gone);
         param.categories = list;
+        crate::parameters::keep_type_values_of_categories(m, &mut param);
+    }
+    let mut reply = json!({});
+    if let Some(v) = p.get("scope").filter(|v| !v.is_null()) {
+        let scope: Scope = serde_json::from_value(v.clone()).map_err(|_| bad(c, format!("`scope` is instance or type, not {v}")))?;
+        if scope != param.scope {
+            let (word, n) = crate::parameters::switch_scope(m, &name, &mut param, scope);
+            reply[word] = json!(n);
+        }
     }
     let name = match string(c, p, "rename")? {
         Some(to) => {
@@ -8455,6 +8488,11 @@ pub(crate) fn parameter(s: &mut Session, p: &Value) -> R {
             }
             if to != name && m.parameters.contains_key(&to) {
                 return Err(bad(c, format!("there's a parameter `{to}` already")));
+            }
+            if to != name
+                && let Some(f) = crate::parameters::family_tied(m, &name)
+            {
+                return Err(bad(c, format!("family `{f}` has `{name}` tied to its definition, under this name; it has to keep it")));
             }
             m.parameters.remove(&name);
             m.library.renamed(&LibKind::Parameter, &name, &to);
@@ -8498,7 +8536,9 @@ pub(crate) fn parameter(s: &mut Session, p: &Value) -> R {
         None => name,
     };
     m.parameters.insert(name.clone(), param.clone());
-    Ok(json!({"name": name, "parameter": param}))
+    reply["name"] = json!(name);
+    reply["parameter"] = json!(param);
+    Ok(reply)
 }
 
 /// What `form`, `symbol`, `delete_form` and `delete_symbol` did, for `dry_run`'s `changes`.
