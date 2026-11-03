@@ -2208,7 +2208,7 @@ msgstr "Demolir (DW): clique num elemento para demoli-lo na fase da vista; cliqu
 msgid "Demolished"
 msgstr "Demolido"
 
-#: crates/core/src/commands.rs:7982
+#: crates/core/src/commands.rs:8008
 msgid "Dependent"
 msgstr "Dependente"
 
@@ -2685,7 +2685,7 @@ msgstr "Configurações elétricas"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Configurações elétricas: as tensões, os sistemas de distribuição e os tipos de fio a que circuitos e quadros se referem; seções em mm²"
 
-#: crates/core/src/commands.rs:1794
+#: crates/core/src/commands.rs:1796
 msgid "Elements"
 msgstr "Elementos"
 
@@ -7917,7 +7917,7 @@ msgstr "Unidades"
 msgid "Units Format"
 msgstr "Formato de unidades"
 
-#: crates/core/src/commands.rs:8123
+#: crates/core/src/commands.rs:8149
 msgid "Unnamed"
 msgstr "Sem nome"
 

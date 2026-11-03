@@ -20,7 +20,10 @@
 //!   worked out by IEC 61312-1). Connecting conductors of 4 mm² copper at least (16 mm² against direct lightning), no more than
 //!   0.5 m in all.
 //!
-//! What is not here: the least continuous operating voltage Uc (Table 49), the protection level Up (category II of Table 31), the
+//! - Uc, the least continuous operating voltage (Table 49): 1.1 Uo for a mode with a phase in TT, TN-S and TN-C; Uo between the neutral
+//!   and the PE; in IT with a neutral, √3 Uo between phase and PE; in IT without one, U.
+//!
+//! What is not here: the protection level Up (category II of Table 31), the
 //! short-circuit withstand and the overcurrent protection of the DPS (6.3.5.2.5), and coordination between DPS.
 
 /// The most the connecting conductors' total length may be, m.
@@ -169,6 +172,34 @@ pub fn scheme_text(scheme: u8, earthing: Earthing) -> String {
         (1, _) => "each phase to the PE".into(),
         (2, _) => "each phase to the PE, and the neutral to the PE".into(),
         _ => "each phase to the neutral, and the neutral to the PE".into(),
+    }
+}
+
+/// One row of Tabela 49: the least continuous operating voltage Uc of a device between two points.
+#[derive(Clone, Copy, Debug)]
+pub struct Uc {
+    pub between: &'static str,
+    /// As the table prints it: `1.1 Uo`, `√3 Uo`, `Uo` or `U`.
+    pub formula: &'static str,
+    pub volts: f64,
+}
+
+/// Tabela 49: the least Uc by the earthing scheme and the connection, `uo` being the phase-to-neutral voltage (V) and `U`, the
+/// voltage between phases, √3 `uo`. A line with no neutral on TT or TN-S has the phase-to-PE row; IT without a neutral
+/// distributed has `U`.
+pub fn uc_min(earthing: Earthing, neutral: bool, uo: f64) -> Vec<Uc> {
+    let (k, root) = (1.1 * uo, 3f64.sqrt() * uo);
+    let row = |between, formula, volts| Uc { between, formula, volts };
+    match (earthing, neutral) {
+        (Earthing::TnC, _) => vec![row("phase-PEN", "1.1 Uo", k)],
+        (Earthing::Tt | Earthing::TnS, true) => {
+            vec![row("phase-neutral", "1.1 Uo", k), row("phase-PE", "1.1 Uo", k), row("neutral-PE", "Uo", uo)]
+        }
+        (Earthing::Tt | Earthing::TnS, false) => vec![row("phase-PE", "1.1 Uo", k)],
+        (Earthing::It, true) => {
+            vec![row("phase-neutral", "1.1 Uo", k), row("phase-PE", "√3 Uo", root), row("neutral-PE", "Uo", uo)]
+        }
+        (Earthing::It, false) => vec![row("phase-PE", "U", root)],
     }
 }
 

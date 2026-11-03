@@ -103,6 +103,32 @@ fn the_connecting_conductors() {
     assert_eq!(CONDUCTOR_LENGTH, 0.5);
 }
 
+#[test]
+fn tabela_49_the_least_uc_by_earthing_and_connection() {
+    let row = |e: Earthing, neutral: bool| -> Vec<(&'static str, f64)> {
+        uc_min(e, neutral, 127.0).into_iter().map(|u| (u.between, u.volts)).collect()
+    };
+    let near = |a: f64, b: f64| (a - b).abs() < 1e-9;
+    let tt = row(Earthing::Tt, true);
+    assert_eq!(tt.iter().map(|x| x.0).collect::<Vec<_>>(), ["phase-neutral", "phase-PE", "neutral-PE"]);
+    assert!(near(tt[0].1, 139.7) && near(tt[1].1, 139.7) && near(tt[2].1, 127.0), "{tt:?}");
+    assert_eq!(row(Earthing::TnS, true), tt.clone());
+    let c = row(Earthing::TnC, true);
+    assert_eq!(c.iter().map(|x| x.0).collect::<Vec<_>>(), ["phase-PEN"]);
+    assert!(near(c[0].1, 139.7));
+    let it = row(Earthing::It, true);
+    assert_eq!(it.iter().map(|x| x.0).collect::<Vec<_>>(), ["phase-neutral", "phase-PE", "neutral-PE"]);
+    assert!(near(it[0].1, 139.7) && near(it[1].1, 127.0 * 3f64.sqrt()) && near(it[2].1, 127.0), "{it:?}");
+    // IT with no neutral distributed: phase to PE at U, the voltage between phases.
+    let n = row(Earthing::It, false);
+    assert_eq!(n.iter().map(|x| x.0).collect::<Vec<_>>(), ["phase-PE"]);
+    assert!(near(n[0].1, 127.0 * 3f64.sqrt()));
+    // A line with no neutral on TT or TN-S has no neutral modes: phase to PE only.
+    let t = row(Earthing::Tt, false);
+    assert_eq!(t.iter().map(|x| x.0).collect::<Vec<_>>(), ["phase-PE"]);
+    assert!(near(t[0].1, 139.7));
+}
+
 mod command {
     use crate::engine::Session;
     use serde_json::{Value, json};
@@ -123,8 +149,25 @@ mod command {
         assert_eq!(p["conductor"]["section_mm2"], 4.0);
         assert_eq!(p["conductor"]["max_length_m"], 0.5);
         assert!(p["where"].as_array().is_some_and(|w| w.len() == 2), "{r}");
-        assert!(r["not_covered"].as_str().is_some_and(|n| n.contains("Table 49") && n.contains("Table 31")), "{r}");
+        assert!(r["not_covered"].as_str().is_some_and(|n| n.contains("Table 31") && !n.contains("Table 49")), "{r}");
         assert_eq!(crate::engine::find("dps_check").map(|c| c.undoable), Some(false));
+    }
+
+    #[test]
+    fn the_least_uc_comes_with_the_earthing_and_the_voltage() {
+        let mut s = Session::new();
+        let r = run(&mut s, json!({"region": "AQ3", "earthing": "TN-S", "uo": 127}));
+        let uc = &r["power"]["uc_min"];
+        assert_eq!(uc["uo_v"], 127.0);
+        assert_eq!(uc["modes"][0]["between"], "phase-neutral");
+        assert!(uc["modes"][0]["volts"].as_f64().is_some_and(|x| (x - 139.7).abs() < 1e-9), "{r}");
+        assert_eq!(uc["modes"][2]["between"], "neutral-PE");
+        // Without uo, it is the formulas.
+        let r = run(&mut s, json!({"region": "AQ3", "earthing": "IT", "neutral": false}));
+        assert_eq!(r["power"]["uc_min"]["modes"][0]["formula"], "U");
+        assert!(r["power"]["uc_min"]["modes"][0].get("volts").is_none(), "{r}");
+        let e = s.execute("dps_check", &json!({"region": "AQ3", "uo": -1})).unwrap_err();
+        assert!(e.contains("uo"), "{e}");
     }
 
     #[test]
