@@ -3,7 +3,8 @@
 //! ([`BimApp::use_settings`]); a window that wasn't given the file (every test's) keeps them for as long as it's open.
 //! What it keeps: the theme and whether the drawing stays light in a dark one, the user's own accent, panel, canvas and text colours,
 //! the profile, the layout, interface language, ribbon, palettes, the
-//! window's size, the background autosave interval, and the colour High Contrast Point Clouds draws scans in.
+//! window's size, the background autosave interval, the colour High Contrast Point Clouds draws scans in, and the control port
+//! for agents (whether the window opens it, on which port, and whether agents may edit the project or only read it).
 //! The pages for what is still to come (performance and graphics) show what they will hold, greyed out.
 
 use crate::popup::Modal;
@@ -17,7 +18,7 @@ use serde_json::{Value, json};
 
 use crate::BimApp;
 use crate::dock::{Docking, Palette};
-use crate::lang::{Lang, t};
+use crate::lang::{Lang, t, tf};
 use crate::presets::{Preset, Scale, hidden_from_json, presets_from_json};
 use crate::style::{Profile, Scheme, pal};
 use crate::updates::failed;
@@ -111,6 +112,10 @@ pub struct Settings {
     pub grid_snapping: bool,
     /// The system's title bar rather than the window's own, where the window can draw its own.
     pub system_title_bar: bool,
+    /// Agents: the window opens the control port (on `agents_port`, 0 for any free one), and they may edit or only read.
+    pub agents_listen: bool,
+    pub agents_port: u16,
+    pub agents_edit: bool,
 }
 
 impl Settings {
@@ -142,6 +147,7 @@ impl Settings {
             "high_contrast": self.high_contrast,
             "grid_snapping": self.grid_snapping,
             "system_title_bar": self.system_title_bar,
+            "agents": {"listen": self.agents_listen, "port": self.agents_port, "edit": self.agents_edit},
         })
     }
 
@@ -182,6 +188,9 @@ impl Settings {
             high_contrast: colour(&v["high_contrast"]).unwrap_or(base.high_contrast),
             grid_snapping: v["grid_snapping"].as_bool().unwrap_or(base.grid_snapping),
             system_title_bar: v["system_title_bar"].as_bool().unwrap_or(base.system_title_bar),
+            agents_listen: v["agents"]["listen"].as_bool().unwrap_or(base.agents_listen),
+            agents_port: v["agents"]["port"].as_u64().and_then(|p| u16::try_from(p).ok()).unwrap_or(base.agents_port),
+            agents_edit: v["agents"]["edit"].as_bool().unwrap_or(base.agents_edit),
         }
     }
 }
@@ -222,11 +231,12 @@ pub enum Page {
     Performance,
     Graphics,
     Files,
+    Agents,
     Updates,
 }
 
 impl Page {
-    pub const ALL: [Page; 5] = [Page::Interface, Page::Performance, Page::Graphics, Page::Files, Page::Updates];
+    pub const ALL: [Page; 6] = [Page::Interface, Page::Performance, Page::Graphics, Page::Files, Page::Agents, Page::Updates];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -234,6 +244,7 @@ impl Page {
             Page::Performance => msg!("Performance"),
             Page::Graphics => "Graphics",
             Page::Files => msg!("Files"),
+            Page::Agents => msg!("Agents"),
             Page::Updates => msg!("Updates"),
         }
     }
@@ -272,6 +283,7 @@ impl BimApp {
         self.scan_contrast = kept.high_contrast;
         self.grid_snapping = kept.grid_snapping;
         self.system_title_bar = kept.system_title_bar;
+        (self.agents.listen, self.agents.port, self.agents.edit) = (kept.agents_listen, kept.agents_port, kept.agents_edit);
         self.settings_kept = Some(kept);
         self.settings_path = Some(path);
     }
@@ -304,6 +316,9 @@ impl BimApp {
             high_contrast: self.scan_contrast,
             grid_snapping: self.grid_snapping,
             system_title_bar: self.system_title_bar,
+            agents_listen: self.agents.listen,
+            agents_port: self.agents.port,
+            agents_edit: self.agents.edit,
         }
     }
 
@@ -347,6 +362,7 @@ impl BimApp {
                             Page::Performance => self.performance_page(ui),
                             Page::Graphics => self.graphics_page(ui),
                             Page::Files => self.files_page(ui),
+                            Page::Agents => self.agents_page(ui),
                             Page::Updates => self.updates_page(ui),
                         });
                     });
@@ -620,6 +636,59 @@ impl BimApp {
                 ui.add(egui::TextEdit::singleline(&mut folder).desired_width(220.0));
             });
         });
+    }
+}
+
+impl BimApp {
+    /// Agents: the control port, through which an agent works on this project (`bimcraft-cli mcp --connect`), opened and closed
+    /// here as `--control PORT` opens it at the start, and whether agents may change the project or only read it.
+    fn agents_page(&mut self, ui: &mut Ui) {
+        let muted = |ui: &mut Ui, text: &str| ui.label(RichText::new(text).color(pal().muted));
+        heading(ui, msg!("Control port"));
+        let mut on = self.control.is_some();
+        let tip =
+            t("Opens the control port now and whenever BIMCraft starts: an agent connects with bimcraft-cli mcp --connect. Only this \
+             machine can reach it, and only with the token in bridge.json beside your favorites");
+        if ui.checkbox(&mut on, t("Let agents work on this project")).on_hover_text(tip).changed() {
+            self.agents.listen = on;
+            if on {
+                self.open_control();
+            } else {
+                self.close_control();
+            }
+        }
+        ui.horizontal(|ui| {
+            let l = ui.label(t("Port"));
+            let r = ui
+                .add(egui::DragValue::new(&mut self.agents.port).range(0..=u16::MAX).update_while_editing(false))
+                .labelled_by(l.id)
+                .on_hover_text(t("0 for any port that is free; an open port moves to a new one"));
+            if (r.changed() && !r.dragged()) || r.drag_stopped() {
+                self.control_port_changed();
+            }
+            muted(ui, t("0: any free port"));
+        });
+        let state = match (&self.control, &self.agents.failed) {
+            (Some(c), _) => {
+                let port = c.entry.port.to_string();
+                tf("Listening on 127.0.0.1, port {}: agents connect with bimcraft-cli mcp --connect {}", &[&port, &port])
+            }
+            (None, Some(why)) => why.clone(),
+            (None, None) => t("Off: no agent can reach this window").to_string(),
+        };
+        muted(ui, &state);
+        if let Some(c) = &self.control {
+            muted(ui, &tf("Agents connected: {}", &[&c.agents().to_string()]));
+        }
+        heading(ui, msg!("Editing"));
+        ui.checkbox(&mut self.agents.edit, t("Allow agents to edit this project")).on_hover_text(t(
+            "Off, agents only read the project: they inspect it, read its schedules, render its views and export it to new files \
+             (its sheets to PDF among them), and whatever they ask that would change it, undo it, replace it or save over its file \
+             is refused",
+        ));
+        if !self.agents.edit {
+            muted(ui, t("Agents may only read this project."));
+        }
     }
 }
 

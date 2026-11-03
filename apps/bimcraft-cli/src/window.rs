@@ -18,6 +18,10 @@ pub struct Window {
     reader: BufReader<TcpStream>,
     writer: TcpStream,
     token: String,
+    /// Each request asks the window to only read the project (`mcp --connect --read-only`).
+    pub read_only: bool,
+    /// The window said, when it was connected to, that it lets agents only read its project.
+    pub window_read_only: bool,
 }
 
 /// Whether an error of the connection says the window has gone: a close with the request unread is a reset, not an end.
@@ -54,17 +58,22 @@ impl Window {
         })?;
         stream.set_nodelay(true).map_err(|e| e.to_string())?;
         let reader = BufReader::new(stream.try_clone().map_err(|e| e.to_string())?);
-        let mut window = Window { reader, writer: stream, token: entry.token.clone() };
+        let mut window = Window { reader, writer: stream, token: entry.token.clone(), read_only: false, window_read_only: false };
         let hello = window.ask(json!({"op": "hello"}))?;
         if hello["app"] != "bimcraft" {
             return Err(format!("port {} is not a BIMCraft window", entry.port));
         }
+        window.window_read_only = hello["read_only"].as_bool().unwrap_or(false);
         Ok(window)
     }
 
-    /// Sends a request and waits for its reply: the value it gives, or the error it says.
+    /// Sends a request and waits for its reply: the value it gives, or the error it says. A connection that may only read asks so
+    /// in each request, and the window runs it read-only.
     pub fn ask(&mut self, mut request: Value) -> Result<Value, String> {
         request["token"] = json!(self.token);
+        if self.read_only {
+            request["read_only"] = json!(true);
+        }
         writeln!(self.writer, "{request}")
             .and_then(|()| self.writer.flush())
             .map_err(|e| format!("the window closed the connection ({e})"))?;
@@ -87,12 +96,18 @@ impl Window {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use bimcraft_core::bridge::Access;
     use bimcraft_core::engine::Session;
     use std::net::TcpListener;
 
     /// A window's control port for a test: a thread that answers each line as the desktop does, on a session of its own, until
     /// the agent hangs up or `after` requests have been answered (the window closing).
     pub(crate) fn stand_in(after: usize) -> Entry {
+        stand_in_with(after, Access::Edit)
+    }
+
+    /// [`stand_in`] for a window that lets its agents do what `access` says.
+    pub(crate) fn stand_in_with(after: usize, access: Access) -> Entry {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let entry = Entry { port: listener.local_addr().unwrap().port(), token: "test-token".into() };
         let token = entry.token.clone();
@@ -106,7 +121,7 @@ pub(crate) mod tests {
                 if reader.read_line(&mut line).unwrap_or(0) == 0 {
                     break;
                 }
-                let result = bridge::parse(&line, &token).map_err(|e| e.to_string()).and_then(|r| bridge::run(&mut session, &r));
+                let result = bridge::parse(&line, &token).map_err(|e| e.to_string()).and_then(|r| bridge::run(&mut session, &r, access));
                 if writeln!(writer, "{}", bridge::reply(result)).is_err() {
                     break;
                 }

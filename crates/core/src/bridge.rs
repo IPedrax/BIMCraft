@@ -2,20 +2,23 @@
 //! listens on a local port; `bimcraft-cli mcp --connect` is the MCP server of a headless session, and with a port it runs
 //! its tools on the window's session instead. One JSON request a line, one JSON reply a line:
 //!
-//! - `{"token": T, "op": "hello"}` asks which app is there and what project it has open;
+//! - `{"token": T, "op": "hello"}` asks which app is there, what project it has open and whether agents may only read it;
 //! - `{"token": T, "op": "execute", "command": "wall", "params": {...}}` runs a command, as `Session::execute` does;
 //! - `{"token": T, "op": "script", "text": "...", "atomic": false}` runs a script (`Session::script`, or all or nothing).
 //!
-//! The reply is `{"ok": value}` or `{"error": text}`. The token is made when the window starts and kept in a file only the user
-//! can read ([`Entry`]), so another user's process on the machine, or a web page that tries the port, is turned away. This is
-//! the engine's side: the parts that need a thread or a window are in the apps.
+//! `execute` and `script` may say `"read_only": true`: the agent's side asks to only read (`bimcraft-cli mcp --connect
+//! --read-only`). The reply is `{"ok": value}` or `{"error": text}`. The token is made when the window starts and kept in a file
+//! only the user can read ([`Entry`]), so another user's process on the machine, or a web page that tries the port, is turned
+//! away. An agent never replaces the window's project ([`REFUSED`]), and while the user lets agents only read it
+//! ([`Access::Read`]) the session runs its requests read-only ([`Session::reading`]): what would change the project is refused,
+//! however it is asked. This is the engine's side: the parts that need a thread or a window are in the apps.
 
 use std::io;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-use crate::engine::{Session, find};
+use crate::engine::{REPLACES, Session, find};
 use crate::favorites;
 
 /// The longest request line read: a script of a whole building is a few megabytes.
@@ -23,7 +26,22 @@ pub const MAX_LINE: usize = 16 << 20;
 
 /// What a window's agent may not do to its project: replace it. It is the user's, and the window starts another or opens one by
 /// its own menus, which ask about unsaved changes first.
-pub const REFUSED: &[&str] = &["new", "open", "recover", "highrise"];
+pub const REFUSED: &[&str] = REPLACES;
+
+/// What the window lets its agents do to its project: change it, as the user does, or only read it (File > Settings > Agents,
+/// Allow agents to edit this project).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Access {
+    Edit,
+    Read,
+}
+
+/// What a refusal says lets the window's agents edit, when the window lets them only read.
+pub const LET_EDIT: &str = "the user lets agents edit it in the window, with File > Settings > Agents > Allow agents to edit this project";
+
+/// What a refusal says when the agent's own side asked to only read.
+pub const ASKED: &str =
+    "this agent's connection asked to only read it (bimcraft-cli mcp --connect --read-only): connect without --read-only to edit";
 
 /// The file the window leaves its port and token in, in the folder of the user's favorites.
 pub const FILE: &str = "bridge.json";
@@ -32,8 +50,17 @@ pub const FILE: &str = "bridge.json";
 #[derive(Debug, PartialEq)]
 pub enum Request {
     Hello,
-    Execute { command: String, params: Value },
-    Script { text: String, atomic: bool },
+    /// `read_only`: the agent's side asks to only read, whatever the window lets.
+    Execute {
+        command: String,
+        params: Value,
+        read_only: bool,
+    },
+    Script {
+        text: String,
+        atomic: bool,
+        read_only: bool,
+    },
 }
 
 /// Why a request line was not taken.
@@ -67,6 +94,11 @@ pub fn parse(line: &str, token: &str) -> Result<Request, Error> {
     if !o.get("token").and_then(Value::as_str).is_some_and(|t| same(t, token)) {
         return Err(Error::Token);
     }
+    let read_only = match o.get("read_only") {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return Err(bad("`read_only` is true or false")),
+    };
     match o.get("op").and_then(Value::as_str) {
         Some("hello") => Ok(Request::Hello),
         Some("execute") => {
@@ -76,7 +108,7 @@ pub fn parse(line: &str, token: &str) -> Result<Request, Error> {
                 Some(p @ Value::Object(_)) => p.clone(),
                 Some(_) => return Err(bad("`params` is an object")),
             };
-            Ok(Request::Execute { command: command.to_string(), params })
+            Ok(Request::Execute { command: command.to_string(), params, read_only })
         }
         Some("script") => {
             let text = o.get("text").and_then(Value::as_str).ok_or_else(|| bad("`script` needs `text`, a string"))?;
@@ -85,7 +117,7 @@ pub fn parse(line: &str, token: &str) -> Result<Request, Error> {
                 Some(Value::Bool(b)) => *b,
                 Some(_) => return Err(bad("`atomic` is true or false")),
             };
-            Ok(Request::Script { text: text.to_string(), atomic })
+            Ok(Request::Script { text: text.to_string(), atomic, read_only })
         }
         Some(other) => Err(Error::Request(format!("unknown op `{other}`: hello, execute or script"))),
         None => Err(bad("a request has an `op`")),
@@ -96,23 +128,42 @@ pub fn parse(line: &str, token: &str) -> Result<Request, Error> {
 fn refuse(command: &str) -> Result<(), String> {
     match find(command) {
         Some(c) if REFUSED.contains(&c.id) => Err(format!(
-            "`{}` would replace the project the window has open, which is the user's: start or open another in the window",
+            "`{}` would replace the project the window has open, which is the user's: an agent never starts, opens or recovers \
+             a project in a window; the user does, with File > New and File > Open",
             c.id
         )),
         _ => Ok(()),
     }
 }
 
-/// Runs a request on `session`. A script is read through before it runs, so a line that would replace the project stops it
-/// before any line has.
-pub fn run(session: &mut Session, request: &Request) -> Result<Value, String> {
+/// Runs a request on `session`, as `access` lets the window's agents: read-only ([`Session::reading`]) when the window lets
+/// them only read or the request asks to. A script is read through before it runs, so a line that would replace the project
+/// stops it before any line has.
+pub fn run(session: &mut Session, request: &Request, access: Access) -> Result<Value, String> {
+    let how = match (access, request) {
+        (Access::Read, _) => Some(LET_EDIT),
+        (_, Request::Execute { read_only: true, .. } | Request::Script { read_only: true, .. }) => Some(ASKED),
+        _ => None,
+    };
+    match how {
+        Some(how) => session.reading(how, |s| answer(s, request, access)),
+        None => answer(session, request, access),
+    }
+}
+
+fn answer(session: &mut Session, request: &Request, access: Access) -> Result<Value, String> {
     match request {
-        Request::Hello => Ok(json!({"app": "bimcraft", "version": env!("CARGO_PKG_VERSION"), "project": session.model.name})),
-        Request::Execute { command, params } => {
+        Request::Hello => Ok(json!({
+            "app": "bimcraft",
+            "version": env!("CARGO_PKG_VERSION"),
+            "project": session.model.name,
+            "read_only": access == Access::Read,
+        })),
+        Request::Execute { command, params, .. } => {
             refuse(command)?;
             session.execute(command, params)
         }
-        Request::Script { text, atomic } => {
+        Request::Script { text, atomic, .. } => {
             for (n, line) in text.lines().map(str::trim).enumerate() {
                 if let Some(id) = line.split_whitespace().next().filter(|id| !id.starts_with('#')) {
                     refuse(id).map_err(|e| format!("line {}: {e}", n + 1))?;
@@ -188,21 +239,30 @@ mod tests {
         v.to_string()
     }
 
+    fn execute(command: &str, params: Value) -> Request {
+        Request::Execute { command: command.into(), params, read_only: false }
+    }
+
+    /// A wall along y.
+    fn wall(y: i32) -> Request {
+        execute("wall", json!({"points": [[0, y], [4000, y]]}))
+    }
+
     #[test]
     fn a_request_is_read_with_its_token_and_what_is_wrong_with_one_is_said() {
         assert_eq!(parse(&line(json!({"token": T, "op": "hello"})), T), Ok(Request::Hello));
         assert_eq!(
             parse(&line(json!({"token": T, "op": "execute", "command": "wall", "params": {"points": [[0, 0], [1000, 0]]}})), T),
-            Ok(Request::Execute { command: "wall".into(), params: json!({"points": [[0, 0], [1000, 0]]}) })
+            Ok(execute("wall", json!({"points": [[0, 0], [1000, 0]]})))
         );
         assert_eq!(
             parse(&line(json!({"token": T, "op": "execute", "command": "undo"})), T),
-            Ok(Request::Execute { command: "undo".into(), params: json!({}) }),
+            Ok(execute("undo", json!({}))),
             "no params is none"
         );
         assert_eq!(
             parse(&line(json!({"token": T, "op": "script", "text": "inspect", "atomic": true})), T),
-            Ok(Request::Script { text: "inspect".into(), atomic: true })
+            Ok(Request::Script { text: "inspect".into(), atomic: true, read_only: false })
         );
         // The token first: a request without it, or with another, says nothing else.
         for request in [
@@ -238,54 +298,109 @@ mod tests {
     #[test]
     fn a_request_runs_on_the_session_as_a_command_does_and_the_reply_says_how_it_went() {
         let mut s = Session::new();
-        let wall = Request::Execute { command: "wall".into(), params: json!({"points": [[0, 0], [4000, 0]]}) };
-        let ok: Value = serde_json::from_str(&reply(run(&mut s, &wall))).unwrap();
+        let ok: Value = serde_json::from_str(&reply(run(&mut s, &wall(0), Access::Edit))).unwrap();
         assert!(ok["ok"]["id"].is_u64() || ok["ok"].is_object(), "{ok}");
         assert_eq!(walls(&s), 1, "the wall is in the session");
         // A command that fails is an error reply, and the model stays.
-        let door = Request::Execute { command: "door".into(), params: json!({"at": [99000, 99000]}) };
-        let err: Value = serde_json::from_str(&reply(run(&mut s, &door))).unwrap();
+        let door = execute("door", json!({"at": [99000, 99000]}));
+        let err: Value = serde_json::from_str(&reply(run(&mut s, &door, Access::Edit))).unwrap();
         assert!(err["error"].as_str().is_some_and(|e| e.contains("no wall")), "{err}");
         assert_eq!(walls(&s), 1);
         // hello says what is there.
-        let hello = run(&mut s, &Request::Hello).unwrap();
+        let hello = run(&mut s, &Request::Hello, Access::Edit).unwrap();
         assert_eq!((hello["app"].as_str(), hello["project"].as_str()), (Some("bimcraft"), Some(s.model.name.as_str())));
         // undo is a step like the others.
-        run(&mut s, &Request::Execute { command: "undo".into(), params: json!({}) }).unwrap();
+        run(&mut s, &execute("undo", json!({})), Access::Edit).unwrap();
         assert_eq!(walls(&s), 0);
     }
 
     #[test]
     fn what_would_replace_the_project_is_refused_by_any_name_and_a_script_is_read_before_it_runs() {
         let mut s = Session::new();
-        run(&mut s, &Request::Execute { command: "wall".into(), params: json!({"points": [[0, 0], [4000, 0]]}) }).unwrap();
+        run(&mut s, &wall(0), Access::Edit).unwrap();
         let kept = std::sync::Arc::clone(&s.model);
         for name in REFUSED {
             assert!(find(name).is_some_and(|c| c.id == *name), "`{name}` is a command id");
             for spelled in [name.to_string(), name.to_uppercase()] {
-                let e = run(&mut s, &Request::Execute { command: spelled, params: json!({}) }).unwrap_err();
+                let e = run(&mut s, &execute(&spelled, json!({})), Access::Edit).unwrap_err();
                 assert!(e.contains("would replace the project"), "{name}: {e}");
             }
         }
         // By a shortcut: whatever an alias of a refused command is.
         for c in REFUSED.iter().filter_map(|n| find(n)) {
             for alias in c.aliases {
-                let e = run(&mut s, &Request::Execute { command: alias.to_string(), params: json!({}) }).unwrap_err();
+                let e = run(&mut s, &execute(alias, json!({})), Access::Edit).unwrap_err();
                 assert!(e.contains("would replace the project"), "{alias}: {e}");
             }
         }
         // A script with one such line runs none of its lines, and says which.
         let text = "wall {\"points\": [[0, 5000], [4000, 5000]]}\n# a comment\nnew {}\n";
         for atomic in [false, true] {
-            let e = run(&mut s, &Request::Script { text: text.into(), atomic }).unwrap_err();
+            let e = run(&mut s, &Request::Script { text: text.into(), atomic, read_only: false }, Access::Edit).unwrap_err();
             assert!(e.starts_with("line 3: ") && e.contains("`new`"), "{e}");
         }
         assert!(std::sync::Arc::ptr_eq(&kept, &s.model), "nothing ran");
         // The rest of a script runs, and the reply is each line's.
-        let ok =
-            run(&mut s, &Request::Script { text: "wall {\"points\": [[0, 5000], [4000, 5000]]}\ninspect".into(), atomic: true }).unwrap();
+        let ok = run(
+            &mut s,
+            &Request::Script { text: "wall {\"points\": [[0, 5000], [4000, 5000]]}\ninspect".into(), atomic: true, read_only: false },
+            Access::Edit,
+        )
+        .unwrap();
         assert_eq!(ok.as_array().map(Vec::len), Some(2));
         assert_eq!(walls(&s), 2);
+    }
+
+    #[test]
+    fn a_window_that_lets_agents_only_read_refuses_their_edits_says_why_and_still_answers_what_reads() {
+        let mut s = Session::new();
+        run(&mut s, &wall(0), Access::Edit).unwrap();
+        let kept = std::sync::Arc::clone(&s.model);
+        // The hello says so, and an edit, an undo, a script holding one, by any name, are refused and name the Settings box.
+        assert_eq!(run(&mut s, &Request::Hello, Access::Read).unwrap()["read_only"], true);
+        assert_eq!(run(&mut s, &Request::Hello, Access::Edit).unwrap()["read_only"], false);
+        let script = |text: &str, atomic| Request::Script { text: text.into(), atomic, read_only: false };
+        for request in [
+            wall(5000),
+            execute("WA", json!({"points": [[0, 5000], [4000, 5000]]})),
+            execute("undo", json!({})),
+            script("inspect\nwall {\"points\": [[0, 5000], [4000, 5000]]}", false),
+            script("inspect\nwall {\"points\": [[0, 5000], [4000, 5000]]}", true),
+        ] {
+            let e = run(&mut s, &request, Access::Read).unwrap_err();
+            assert!(e.contains("read-only for agents") && e.contains("File > Settings > Agents"), "{request:?}: {e}");
+        }
+        assert!(std::sync::Arc::ptr_eq(&kept, &s.model), "nothing changed");
+        assert_eq!(s.history(), ["Wall"], "nor the history");
+        assert_eq!(s.read_only, None, "the window's own commands stay the user's");
+        // What reads answers.
+        assert_eq!(run(&mut s, &execute("inspect", json!({})), Access::Read).unwrap()["counts"]["wall"], 1);
+        assert!(run(&mut s, &script("inspect\nschedule {\"category\": \"walls\"}", true), Access::Read).is_ok());
+        // Replacing the project is refused whatever the window lets, and says what the user does instead.
+        for access in [Access::Edit, Access::Read] {
+            let e = run(&mut s, &execute("open", json!({"path": "/nowhere.bimcraft"})), access).unwrap_err();
+            assert!(e.contains("would replace the project") && e.contains("File > Open"), "{e}");
+        }
+        // Let edit, the same agent's edit goes through.
+        run(&mut s, &wall(5000), Access::Edit).unwrap();
+        assert_eq!(walls(&s), 2);
+    }
+
+    #[test]
+    fn an_agent_may_ask_to_only_read_a_window_that_lets_it_edit() {
+        let mut s = Session::new();
+        let asked = |text: &str| parse(&line(json!({"token": T, "op": "execute", "command": text, "read_only": true})), T).unwrap();
+        assert_eq!(asked("wall"), Request::Execute { command: "wall".into(), params: json!({}), read_only: true });
+        assert!(
+            matches!(parse(&line(json!({"token": T, "op": "execute", "command": "x", "read_only": "yes"})), T), Err(Error::Request(why)) if why.contains("`read_only`"))
+        );
+        let script = parse(&line(json!({"token": T, "op": "script", "text": "inspect", "read_only": true})), T).unwrap();
+        assert_eq!(script, Request::Script { text: "inspect".into(), atomic: false, read_only: true });
+        let ask = Request::Execute { command: "wall".into(), params: json!({"points": [[0, 0], [4000, 0]]}), read_only: true };
+        let e = run(&mut s, &ask, Access::Edit).unwrap_err();
+        assert!(e.contains("read-only for agents") && e.contains("--read-only"), "it says the agent's side asked: {e}");
+        assert_eq!(walls(&s), 0);
+        assert!(run(&mut s, &script, Access::Edit).is_ok());
     }
 
     #[test]
