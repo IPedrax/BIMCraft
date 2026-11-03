@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use bimcraft_core::engine::Session;
 use bimcraft_core::family::{
-    Align as LabelAlign, Category, Circle, Curve, Expr, Family, Form, Kind as Holds, Label, Parameter, Plane, Symbol,
+    Align as LabelAlign, Category, Circle, Connector, Curve, Expr, Family, Form, Kind as Holds, Label, Parameter, Plane, Symbol,
 };
 use bimcraft_core::model::{Model, Operation};
 use bimcraft_core::view3d::{AZIMUTH, ELEVATION, Scene};
@@ -345,6 +345,8 @@ pub(crate) struct FamilyEditor {
     types: Vec<(String, BTreeMap<String, String>)>,
     forms: Vec<FormText>,
     symbols: Vec<SymbolText>,
+    /// Its connectors, as the family has them: the editor has no tab for them yet, and keeps them as they are.
+    connectors: Vec<Connector>,
     /// How a door's or a window's leaves open; none, not said.
     operation: Option<Operation>,
     tab: Tab,
@@ -383,6 +385,7 @@ impl FamilyEditor {
             types,
             forms: f.forms.iter().map(FormText::of).collect(),
             symbols: f.symbols.iter().map(SymbolText::of).collect(),
+            connectors: f.connectors.clone(),
             operation: f.operation,
             tab: Tab::Parameters,
             picked: 0,
@@ -436,7 +439,7 @@ impl FamilyEditor {
         let forms = self.forms.iter().map(FormText::form).collect::<Result<_, _>>()?;
         let symbols = self.symbols.iter().map(SymbolText::symbol).collect::<Result<_, _>>()?;
         let operation = self.operation.filter(|_| self.category.hosted());
-        Ok(Family { category: self.category, parameters, types, forms, symbols, operation })
+        Ok(Family { category: self.category, parameters, types, forms, symbols, operation, connectors: self.connectors.clone() })
     }
 
     /// The `family` command's parameters making the project's family what's typed: its name, its own and the type it drops.
