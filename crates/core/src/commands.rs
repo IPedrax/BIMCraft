@@ -5583,7 +5583,7 @@ fn fetch_bbox(c: &str, p: &Value, m: &Model) -> Result<crate::geo::Bbox, String>
 
 fn fetch_osm(s: &mut Session, p: &Value) -> R {
     let c = "fetch_osm";
-    only(c, p, &["bbox", "radius", "level", "level_height", "default_height", "parts", "terrain", "detail", "replace"])?;
+    only(c, p, &["bbox", "radius", "level", "level_height", "default_height", "parts", "entrances", "terrain", "detail", "replace"])?;
     let Some(geo) = s.geo.clone() else {
         return Err(bad(
             c,
@@ -5593,7 +5593,7 @@ fn fetch_osm(s: &mut Session, p: &Value) -> R {
     };
     // What goes on to the import, checked now, by importing nothing: a refusal should not cost a fetch.
     let mut forward = serde_json::Map::new();
-    for key in ["level", "level_height", "default_height", "parts", "terrain", "detail", "replace"] {
+    for key in ["level", "level_height", "default_height", "parts", "entrances", "terrain", "detail", "replace"] {
         if let Some(v) = p.get(key).filter(|v| !v.is_null()) {
             forward.insert(key.into(), v.clone());
         }
@@ -5602,7 +5602,7 @@ fn fetch_osm(s: &mut Session, p: &Value) -> R {
     check.insert("data".into(), json!({"elements": []}));
     import_osm(s, &Value::Object(check)).map_err(|why| why.replacen("import_osm", c, 1))?;
     let bbox = fetch_bbox(c, p, &s.model)?;
-    let layers = crate::geo::Layers { parts: flag_or(c, p, "parts", true)? };
+    let layers = crate::geo::Layers { parts: flag_or(c, p, "parts", true)?, entrances: flag_or(c, p, "entrances", true)? };
     let query = crate::geo::overpass_query(&bbox, layers);
     let reply = geo.overpass(&bbox, &query).map_err(|why| bad(c, why))?;
     if reply.text.len() as u64 > MAX_FILE {
@@ -5709,7 +5709,7 @@ const MAX_DETAIL: usize = MAX_SHELL;
 /// The most mass ids `import_osm` lists in its reply.
 const MAX_LISTED: usize = 1000;
 /// The parameters `import_osm` keeps what it knew of a building in.
-const OSM_PARAMETERS: [&str; 14] = [
+const OSM_PARAMETERS: [&str; 15] = [
     "OSM Id",
     "OSM Building",
     "OSM Name",
@@ -5724,7 +5724,10 @@ const OSM_PARAMETERS: [&str; 14] = [
     "OSM Roof Colour",
     "OSM Roof Material",
     "OSM Cut Edges",
+    "OSM Entrances",
 ];
+/// How far from a building's edge an entrance may lie to be its, mm.
+const ENTRANCE_REACH: f64 = 1500.0;
 /// The most corners (outline and courtyards together) of a building that is cut into pieces round its courtyards.
 const MAX_SPLIT_CORNERS: usize = 200;
 /// The parameter that says which outline a building part belongs to.
@@ -5742,7 +5745,7 @@ fn read_text_file(s: &Session, c: &str, path: &str) -> Result<String, String> {
 
 fn import_osm(s: &mut Session, p: &Value) -> R {
     let c = "import_osm";
-    only(c, p, &["path", "data", "bbox", "level", "level_height", "default_height", "parts", "terrain", "detail", "replace"])?;
+    only(c, p, &["path", "data", "bbox", "level", "level_height", "default_height", "parts", "entrances", "terrain", "detail", "replace"])?;
     let text = match (p.get("path").filter(|v| !v.is_null()), p.get("data").filter(|v| !v.is_null())) {
         (Some(_), Some(_)) => return Err(bad(c, "give `path` or `data`, not both")),
         (None, None) => return Err(bad(c, "`path`, an OpenStreetMap file, or `data`, its text or Overpass's JSON, is required")),
@@ -5795,6 +5798,7 @@ fn import_osm(s: &mut Session, p: &Value) -> R {
     };
     let options = crate::osm::Options {
         parts: flag_or(c, p, "parts", true)?,
+        entrances: flag_or(c, p, "entrances", true)?,
         level_height: ranged("level_height", 1000.0, 10_000.0, 3000.0)?,
         default_height: ranged("default_height", 1000.0, 1_000_000.0, 6000.0)?,
         bbox,
@@ -5863,6 +5867,8 @@ fn import_osm(s: &mut Session, p: &Value) -> R {
     let mut skipped: Vec<(String, String)> = found.skipped.iter().map(|k| (k.osm_id.clone(), k.why.clone())).collect();
     let mut ids: Vec<Id> = Vec::new();
     let mut by_osm: std::collections::HashMap<String, Vec<Id>> = std::collections::HashMap::new();
+    // What was made, for the entrances: the mass, its footprint, whether a wall can stand on it, and its area.
+    let mut placed: Vec<(Id, Vec<P2>, bool, f64)> = Vec::new();
     // A ring in longitude and latitude as project points, corners a millimetre apart or less taken for one.
     let project_ring = |lonlat: &[(f64, f64)]| -> Result<Vec<P2>, String> {
         let mut ring: Vec<P2> = Vec::with_capacity(lonlat.len());
@@ -5956,6 +5962,7 @@ fn import_osm(s: &mut Session, p: &Value) -> R {
                     params.insert(key.into(), json!(cut(value)));
                 }
             }
+            placed.push((0, piece.clone(), !column && b.kind != "roof", geom::area(&piece).abs()));
             let mass = Mass {
                 name: if b.name.is_empty() { cut(&b.osm_id) } else { cut(&b.name) },
                 level,
@@ -5986,6 +5993,9 @@ fn import_osm(s: &mut Session, p: &Value) -> R {
             };
             by_osm.entry(b.osm_id.clone()).or_default().push(id);
             ids.push(id);
+            if let Some(last) = placed.last_mut() {
+                last.0 = id;
+            }
         }
         // Pieces of an earlier import that this one does not make (it needs fewer, or none) are taken away.
         if replace {
@@ -5998,6 +6008,83 @@ fn import_osm(s: &mut Session, p: &Value) -> R {
                 .collect();
             if !stale.is_empty() {
                 delete_elements(s, &stale)?;
+            }
+        }
+    }
+    // The entrances: each goes to the mass whose edge is nearest, within reach, kept in its `OSM Entrances` for the shell to cut doors by.
+    let (mut entrances_placed, mut entrances_dropped) = (0usize, 0usize);
+    let mut entrances_unplaced: Vec<String> = Vec::new();
+    let mut by_kind: BTreeMap<String, usize> = BTreeMap::new();
+    if !found.entrances.is_empty() || options.entrances {
+        // What an import knew of its masses' entrances is replaced, not added to.
+        for (mass, ..) in &placed {
+            if let Some(Element::Mass(ms)) = s.model_mut().elements.get_mut(*mass) {
+                ms.params.remove("OSM Entrances");
+            }
+        }
+        // A grid of cells 5 m across over the footprints, so an entrance meets only those near it.
+        const CELL: f64 = 5000.0;
+        let cell = |v: f64| (v / CELL).floor() as i64;
+        let mut grid: std::collections::HashMap<(i64, i64), Vec<usize>> = std::collections::HashMap::new();
+        let mut big: Vec<usize> = Vec::new();
+        for (i, (_, ring, walls, _)) in placed.iter().enumerate().filter(|(_, p)| p.2) {
+            let _ = walls;
+            let (x0, x1) = ring.iter().fold((f64::MAX, f64::MIN), |(lo, hi), q| (lo.min(q.0), hi.max(q.0)));
+            let (y0, y1) = ring.iter().fold((f64::MAX, f64::MIN), |(lo, hi), q| (lo.min(q.1), hi.max(q.1)));
+            let (cx0, cx1, cy0, cy1) =
+                (cell(x0 - ENTRANCE_REACH), cell(x1 + ENTRANCE_REACH), cell(y0 - ENTRANCE_REACH), cell(y1 + ENTRANCE_REACH));
+            if (cx1 - cx0 + 1) * (cy1 - cy0 + 1) > 400 {
+                big.push(i);
+                continue;
+            }
+            for cx in cx0..=cx1 {
+                for cy in cy0..=cy1 {
+                    grid.entry((cx, cy)).or_default().push(i);
+                }
+            }
+        }
+        let mut held: std::collections::BTreeMap<Id, Vec<String>> = std::collections::BTreeMap::new();
+        for e in &found.entrances {
+            let Ok(at) = projector.point(e.at.0, e.at.1) else { continue };
+            if at.0.abs() > MAX_COORD || at.1.abs() > MAX_COORD {
+                continue;
+            }
+            let near = grid.get(&(cell(at.0), cell(at.1))).into_iter().flatten().chain(big.iter());
+            let mut best: Option<(f64, f64, usize)> = None;
+            for &i in near {
+                let (_, ring, _, area) = &placed[i];
+                let d = geom::ring_edges(ring).map(|(a, b)| geom::dist_to_segment(at, a, b)).fold(f64::MAX, f64::min);
+                // The nearest edge; between two as near (a part on its outline's own edge), the smaller building.
+                if d <= ENTRANCE_REACH && best.is_none_or(|(bd, ba, _)| d < bd - 1.0 || ((d - bd).abs() <= 1.0 && *area < ba)) {
+                    best = Some((d, *area, i));
+                }
+            }
+            match best {
+                Some((_, _, i)) => {
+                    let num = |x: Option<f64>| x.map_or(String::new(), |v| format!("{v:.0}"));
+                    let entry = format!("{:.0},{:.0},{},{},{},{}", at.0, at.1, e.kind, num(e.width), num(e.height), e.door);
+                    held.entry(placed[i].0).or_default().push(entry);
+                    *by_kind.entry(e.kind.clone()).or_default() += 1;
+                    entrances_placed += 1;
+                }
+                None => entrances_unplaced.push(e.osm_id.clone()),
+            }
+        }
+        // As many as the parameter holds (256 characters, whole entries).
+        for (mass, entries) in held {
+            let (mut text, mut kept) = (String::new(), 0usize);
+            for entry in &entries {
+                let next = if text.is_empty() { entry.clone() } else { format!("{text};{entry}") };
+                if next.chars().count() > MAX_TEXT.min(256) {
+                    break;
+                }
+                text = next;
+                kept += 1;
+            }
+            entrances_dropped += entries.len() - kept;
+            entrances_placed -= entries.len() - kept;
+            if let Some(Element::Mass(ms)) = s.model_mut().elements.get_mut(mass) {
+                ms.params.insert("OSM Entrances".into(), json!(text));
             }
         }
     }
@@ -6045,6 +6132,8 @@ fn import_osm(s: &mut Session, p: &Value) -> R {
         "made": made, "updated": updated, "skipped": skipped.len(), "skipped_by_reason": reasons, "skipped_list": listed,
         "courtyards_filled": courtyards, "off_terrain": off_terrain, "defaulted_height": found.defaulted,
         "outlines_replaced": found.replaced, "outlines_kept": found.kept, "pieces": pieces_made, "pieces_of": cut_buildings,
+        "entrances": entrances_placed, "entrances_by_kind": by_kind, "entrances_unplaced": entrances_unplaced.len(),
+        "entrances_unplaced_list": entrances_unplaced.iter().take(20).collect::<Vec<_>>(), "entrances_dropped": entrances_dropped,
         "ids": ids, "ids_truncated": truncated,
         "attribution": "Data (c) OpenStreetMap contributors, under the Open Database Licence (ODbL): https://www.openstreetmap.org/copyright",
     });
@@ -6574,9 +6663,117 @@ fn roof_peak(m: &Model, r: &Roof) -> Result<f64, String> {
     if top.is_finite() { Ok(top - base) } else { Err("it has no slopes".into()) }
 }
 
+/// A text project parameter for `category`, declared if the project has none of the name.
+fn declare_text(m: &mut Model, name: &str, category: &str) -> Result<(), String> {
+    let full = m.parameters.len() >= crate::model::MAX_PROJECT_PARAMETERS;
+    match m.parameters.get_mut(name) {
+        Some(existing) if existing.kind != ParameterKind::Text => Err(format!("the project parameter `{name}` exists and is not text")),
+        Some(existing) => {
+            if !existing.categories.iter().any(|k| k == category) {
+                existing.categories.push(category.into());
+            }
+            Ok(())
+        }
+        None if full => Err("the project has as many parameters as it holds".into()),
+        None => {
+            m.parameters.insert(name.into(), ProjectParameter { kind: ParameterKind::Text, categories: vec![category.into()] });
+            Ok(())
+        }
+    }
+}
+
+/// The door type of this size and way of opening: one the project has, else a new one named for it.
+fn door_type_for(m: &mut Model, width: f64, height: f64, operation: Option<crate::model::Operation>) -> String {
+    if let Some((name, _)) =
+        m.types.door.iter().find(|(_, t)| (t.width - width).abs() < 1.0 && (t.height - height).abs() < 1.0 && t.operation == operation)
+    {
+        return name.clone();
+    }
+    let name = format!("OSM {width:.0} x {height:.0}{}", if operation.is_some() { " sliding" } else { "" });
+    m.types.door.entry(name.clone()).or_insert(crate::model::OpeningType { width, height, sill: 0.0, operation });
+    name
+}
+
+/// A door cut into the wall nearest each entrance a mass holds (`OSM Entrances`, `x,y,kind,width,height,door;...`), in the walls
+/// `wall_ids` just made on it, its facade `facade` mm tall: how many were made, and a note for each that could not be.
+fn shell_doors(s: &mut Session, ms: &Mass, wall_ids: &[Id], facade: f64) -> (usize, Vec<String>) {
+    const REACH: f64 = 400.0;
+    const MAX_TYPES: usize = 64;
+    let Some(text) = ms.params.get("OSM Entrances").and_then(Value::as_str) else { return (0, Vec::new()) };
+    let (mut made, mut notes) = (0usize, Vec::new());
+    let mut on_wall: Vec<(Id, f64, f64)> = Vec::new();
+    for entry in text.split(';').filter(|e| !e.trim().is_empty()) {
+        let f: Vec<&str> = entry.split(',').collect();
+        let number = |i: usize| f.get(i).and_then(|t| t.trim().parse::<f64>().ok()).filter(|x| x.is_finite());
+        let (Some(x), Some(y)) = (number(0), number(1)) else {
+            notes.push(format!("an entrance (`{}`) has no place: no door", entry.chars().take(40).collect::<String>()));
+            continue;
+        };
+        if x.abs() > MAX_COORD || y.abs() > MAX_COORD {
+            continue;
+        }
+        let kind = f.get(2).map(|k| k.trim()).filter(|k| !k.is_empty()).unwrap_or("yes");
+        let opening = f.get(5).map(|d| d.trim()).unwrap_or("");
+        let height = number(4).filter(|h| (1800.0..=3500.0).contains(h)).unwrap_or(2100.0);
+        let width = number(3).filter(|w| (600.0..=4000.0).contains(w)).unwrap_or(if kind == "main" { 1000.0 } else { 900.0 });
+        if facade < height + 100.0 {
+            notes.push(format!("the entrance at ({x:.0}, {y:.0}) has no door: the facade is lower than a door of {height:.0} mm"));
+            continue;
+        }
+        // The wall nearest it, within reach.
+        let at = P2(x, y);
+        let nearest = wall_ids
+            .iter()
+            .filter_map(|id| match s.model.elements.get(*id) {
+                Some(Element::Wall(w)) => Some((*id, w.start, w.end, geom::dist_to_segment(at, w.start, w.end))),
+                _ => None,
+            })
+            .filter(|(.., d)| *d <= REACH)
+            .min_by(|a, b| a.3.total_cmp(&b.3));
+        let Some((wall_id, start, end, _)) = nearest else {
+            notes.push(format!("the entrance at ({x:.0}, {y:.0}) has no door: no wall near it"));
+            continue;
+        };
+        let length = start.dist(end);
+        if length < width + 100.0 {
+            notes.push(format!("the entrance at ({x:.0}, {y:.0}) has no door: its wall is shorter than the door"));
+            continue;
+        }
+        let along = (at - start).dot((end - start).unit()).clamp(width / 2.0 + 50.0, length - width / 2.0 - 50.0);
+        if on_wall.iter().any(|(id, o, w)| *id == wall_id && (o - along).abs() < (w + width) / 2.0) {
+            notes.push(format!("the entrance at ({x:.0}, {y:.0}) has no door: it overlaps another on its wall"));
+            continue;
+        }
+        let operation = (opening == "sliding").then_some(crate::model::Operation::Sliding);
+        if s.model.types.door.len() >= MAX_TYPES + 8 {
+            notes.push("the project has as many door types as a shell makes: no more doors".into());
+            break;
+        }
+        if declare_text(s.model_mut(), "OSM Entrance", "door").and_then(|_| declare_text(s.model_mut(), "OSM Door", "door")).is_err() {
+            notes.push("the project's parameters `OSM Entrance` and `OSM Door` are not text: no doors".into());
+            break;
+        }
+        let type_name = door_type_for(s.model_mut(), width, height, operation);
+        match door(s, &json!({"wall": wall_id, "offset": along, "type": type_name, "mark": kind})) {
+            Ok(v) => {
+                if let Some(Element::Door(d)) = v["id"].as_u64().and_then(|id| s.model_mut().elements.get_mut(id)) {
+                    d.params.insert("OSM Entrance".into(), json!(kind));
+                    if !opening.is_empty() {
+                        d.params.insert("OSM Door".into(), json!(opening.chars().take(64).collect::<String>()));
+                    }
+                }
+                on_wall.push((wall_id, along, width));
+                made += 1;
+            }
+            Err(why) => notes.push(format!("the entrance at ({x:.0}, {y:.0}) has no door: {why}")),
+        }
+    }
+    (made, notes)
+}
+
 fn building_shell(s: &mut Session, p: &Value) -> R {
     let c = "building_shell";
-    only(c, p, &["ids", "id", "storeys", "storey_height", "walls", "floors", "roof", "shape", "angle", "height", "orientation"])?;
+    only(c, p, &["ids", "id", "storeys", "storey_height", "walls", "floors", "roof", "doors", "shape", "angle", "height", "orientation"])?;
     let ids = ids_param(c, &s.model, p)?;
     if ids.is_empty() {
         return Err(bad(c, "`ids` [id, …] is required: the masses to build a shell for"));
@@ -6588,6 +6785,7 @@ fn building_shell(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("{not} isn't a mass")));
     }
     let (walls, floors, roof) = (flag_or(c, p, "walls", true)?, flag_or(c, p, "floors", true)?, flag_or(c, p, "roof", true)?);
+    let doors = flag_or(c, p, "doors", true)?;
     let storeys = match num(c, p, "storeys")? {
         None => None,
         Some(n) if n.fract() == 0.0 && (1.0..=massing::MAX_STOREYS as f64).contains(&n) => Some(n as usize),
@@ -6613,7 +6811,7 @@ fn building_shell(s: &mut Session, p: &Value) -> R {
     // The masses that have walls, floors or a roof made by face already.
     let held: BTreeSet<Guid> = s.model.elements.values().filter_map(|e| massing::face_of(e).map(|(mass, _)| mass)).collect();
     let (mut made, mut skipped, mut notes) = (Vec::new(), Vec::new(), Vec::new());
-    let (mut wall_count, mut floor_count, mut roof_count) = (0, 0, 0);
+    let (mut wall_count, mut floor_count, mut roof_count, mut door_count) = (0, 0, 0, 0);
     for id in ids {
         if held.contains(&s.model.guid(id)) {
             skipped.push(
@@ -6626,6 +6824,7 @@ fn building_shell(s: &mut Session, p: &Value) -> R {
         let facade = top - bottom;
         let mut mine: Vec<String> = Vec::new();
         let mut report = json!({"mass": id});
+        let mut wall_ids: Vec<Id> = Vec::new();
         if walls {
             // Where the cut of a building with courtyards was made there is no wall: the piece goes on into the next.
             let cut: Vec<usize> = ms
@@ -6645,6 +6844,13 @@ fn building_shell(s: &mut Session, p: &Value) -> R {
                     let n = v["ids"].as_array().map_or(0, Vec::len);
                     wall_count += n;
                     report["walls"] = json!(n);
+                    wall_ids = v["ids"].as_array().into_iter().flatten().filter_map(Value::as_u64).collect();
+                    if doors {
+                        let made = shell_doors(s, &ms, &wall_ids, facade);
+                        door_count += made.0;
+                        report["doors"] = json!(made.0);
+                        mine.extend(made.1);
+                    }
                 }
                 Err(why) => mine.push(why.replacen("wall_by_face", "walls", 1)),
             }
@@ -6730,6 +6936,18 @@ fn building_shell(s: &mut Session, p: &Value) -> R {
             }
             let made_roof = self::roof(s, &q)?;
             mark(s, &made_roof["id"], massing::FACE, json!({"mass": mass, "face": "top"}));
+            // The walls at a gabled roof's upright ends rise into its gable: their tops follow the roof's underside.
+            if !gables.is_empty()
+                && let Some(roof_id) = made_roof["id"].as_u64()
+            {
+                let roof_guid = s.model.guid(roof_id);
+                for id in &wall_ids {
+                    let on_gable = matches!(s.model.elements.get(*id).and_then(massing::face_of), Some((_, massing::Face::Edge(f))) if gables.contains(&f));
+                    if on_gable && let Some(Element::Wall(w)) = s.model_mut().elements.get_mut(*id) {
+                        w.attach_top = Some(roof_guid);
+                    }
+                }
+            }
             roof_count += 1;
             report["roof"] = made_roof["id"].clone();
             report["slope"] = json!(slope);
@@ -6746,7 +6964,9 @@ fn building_shell(s: &mut Session, p: &Value) -> R {
         report["notes"] = json!(mine);
         made.push(report);
     }
-    Ok(json!({"shells": made, "walls": wall_count, "floors": floor_count, "roofs": roof_count, "skipped": skipped, "notes": notes}))
+    Ok(
+        json!({"shells": made, "walls": wall_count, "floors": floor_count, "roofs": roof_count, "doors": door_count, "skipped": skipped, "notes": notes}),
+    )
 }
 
 fn update_by_face(s: &mut Session, p: &Value) -> R {

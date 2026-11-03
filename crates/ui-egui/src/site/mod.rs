@@ -23,6 +23,7 @@ use serde_json::{Value, json};
 use crate::lang::{t, tf};
 use crate::popup::Modal;
 use crate::properties::number;
+use crate::settings::Place;
 use crate::style::pal;
 use crate::{BimApp, Icon, Status, big_button, panel};
 
@@ -67,6 +68,8 @@ pub(crate) struct LocationBox {
     crs: String,
     /// What the project's grid is, once placed.
     grid: Option<String>,
+    /// What the place is called in the list of recent places; blank is its coordinates.
+    name: String,
     error: Option<String>,
 }
 
@@ -136,6 +139,23 @@ fn text_field(ui: &mut Ui, label: &str, value: &mut String, hint: &str) -> Respo
     let r = ui.add_sized([220.0, 20.0], TextEdit::singleline(value).hint_text(hint)).labelled_by(l.id);
     ui.end_row();
     r
+}
+
+/// How a recent place is listed: its name and where, or just where.
+fn place_label(p: &Place) -> String {
+    let at = format!("{:.6}, {:.6}", p.latitude, p.longitude);
+    if p.name.is_empty() { at } else { format!("{} ({at})", p.name) }
+}
+
+/// The place a located project is at.
+fn place_of(l: &bimcraft_core::georef::Location) -> Place {
+    Place {
+        latitude: l.latitude,
+        longitude: l.longitude,
+        true_north: l.true_north,
+        crs: l.crs.map_or_else(|| "utm".to_string(), |c| c.to_string()),
+        name: String::new(),
+    }
 }
 
 /// A number typed, or what to say about it.
@@ -217,18 +237,35 @@ impl BimApp {
                 true_north: l.true_north.to_string(),
                 crs: l.crs.map_or_else(|| "utm".to_string(), |c| c.to_string()),
                 grid: l.grid().ok().map(|g| format!("{} (EPSG:{})", g.name, g.epsg)),
+                name: self.places.iter().find(|p| p.same_as(&place_of(&l))).map(|p| p.name.clone()).unwrap_or_default(),
                 error: None,
             },
-            None => LocationBox {
-                coordinates: String::new(),
-                coordinates_note: None,
-                latitude: String::new(),
-                longitude: String::new(),
-                elevation: units.length(0.0),
-                true_north: "0".into(),
-                crs: "utm".into(),
-                grid: None,
-                error: None,
+            // A project with no place starts at the last one set.
+            None => match self.places.first() {
+                Some(p) => LocationBox {
+                    coordinates: String::new(),
+                    coordinates_note: None,
+                    latitude: p.latitude.to_string(),
+                    longitude: p.longitude.to_string(),
+                    elevation: units.length(0.0),
+                    true_north: p.true_north.to_string(),
+                    crs: p.crs.clone(),
+                    grid: None,
+                    name: p.name.clone(),
+                    error: None,
+                },
+                None => LocationBox {
+                    coordinates: String::new(),
+                    coordinates_note: None,
+                    latitude: String::new(),
+                    longitude: String::new(),
+                    elevation: units.length(0.0),
+                    true_north: "0".into(),
+                    crs: "utm".into(),
+                    grid: None,
+                    name: String::new(),
+                    error: None,
+                },
             },
         };
         self.site.location = Some(b);
@@ -238,6 +275,8 @@ impl BimApp {
         let Some(b) = self.site.location.as_mut() else { return };
         let (mut ok, mut close) = (false, false);
         let mut pick = None;
+        let (mut chosen, mut forget) = (None, None);
+        let places = &self.places;
         let unit = self.session.model.units.name();
         let r = Modal::new(UiId::new("site-location"), t("Location")).width(440.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
@@ -266,8 +305,23 @@ impl BimApp {
                     text_field(ui, "Ground height", &mut b.elevation, unit);
                     text_field(ui, "True north (°)", &mut b.true_north, "0");
                     text_field(ui, "Grid", &mut b.crs, "utm");
-                    ui.end_row();
+                    text_field(ui, "Name", &mut b.name, t("Kept in the recent places"));
                 });
+                if !places.is_empty() {
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(t("Recent places")).strong());
+                    for (i, p) in places.iter().enumerate() {
+                        ui.horizontal(|ui| {
+                            if ui.button(place_label(p)).clicked() {
+                                chosen = Some(i);
+                            }
+                            if ui.small_button("✕").on_hover_text(t("Forget this place")).clicked() {
+                                forget = Some(i);
+                            }
+                        });
+                    }
+                    ui.add_space(4.0);
+                }
                 if let Some(note) = &b.coordinates_note {
                     ui.label(RichText::new(note).color(pal().muted));
                 }
@@ -290,6 +344,15 @@ impl BimApp {
                 });
             });
         });
+        if let Some(i) = forget {
+            self.places.remove(i);
+        }
+        if let (Some(i), Some(b)) = (chosen, self.site.location.as_mut())
+            && let Some(p) = self.places.get(i)
+        {
+            (b.latitude, b.longitude, b.true_north) = (p.latitude.to_string(), p.longitude.to_string(), p.true_north.to_string());
+            (b.crs, b.name, b.coordinates, b.coordinates_note, b.error) = (p.crs.clone(), p.name.clone(), String::new(), None, None);
+        }
         if ok {
             self.apply_location();
         } else if close || r.should_close() {
@@ -323,8 +386,23 @@ impl BimApp {
                 return;
             }
         };
+        // What the project is put at is kept for next time, when the command takes it.
+        let place = self.site.location.as_ref().and_then(|b| {
+            Some(Place {
+                latitude: params["latitude"].as_f64()?,
+                longitude: params["longitude"].as_f64()?,
+                true_north: params["true_north"].as_f64()?,
+                crs: params["crs"].as_str().unwrap_or("utm").chars().take(16).collect(),
+                name: b.name.trim().chars().take(80).collect(),
+            })
+        });
         match self.run("geolocate", params) {
-            Some(_) => self.site.location = None,
+            Some(_) => {
+                self.site.location = None;
+                if let Some(p) = place {
+                    crate::settings::remember(&mut self.places, p);
+                }
+            }
             None => {
                 let e = std::mem::take(&mut self.status).text;
                 if let Some(b) = self.site.location.as_mut() {
@@ -634,6 +712,12 @@ impl BimApp {
                 }
                 if n("outlines_replaced") > 0 {
                     lines.push(tf("{} outlines replaced by their building parts", &[&n("outlines_replaced").to_string()]));
+                }
+                if n("entrances") > 0 {
+                    lines.push(tf("{} entrances and exits placed on their buildings", &[&n("entrances").to_string()]));
+                }
+                if n("entrances_unplaced") > 0 {
+                    lines.push(tf("{} entrances are not on any building", &[&n("entrances_unplaced").to_string()]));
                 }
                 if n("outlines_kept") > 0 {
                     lines.push(tf("{} outlines kept: their parts cover too little of them", &[&n("outlines_kept").to_string()]));

@@ -531,3 +531,112 @@ fn a_church_with_its_parts_outside_and_no_relation_still_comes_in_as_its_parts()
     let r = run(&mut s, "import_osm", json!({"data": big}));
     assert_eq!((r["made"].as_u64(), r["outlines_replaced"].as_u64()), (Some(1), Some(1)), "{r}");
 }
+
+// ---- 7c: entrances, doors and exits ----
+
+/// An entrance node `east` and `north` metres from `HOME` (as `square` measures metres).
+fn entrance(id: i64, east: f64, north: f64, tags: &str) -> String {
+    format!(r#"{{"type":"node","id":{id},"lat":{},"lon":{},"tags":{{{tags}}}}}"#, HOME.1 + north * 9e-6, HOME.0 + east * 1e-5)
+}
+
+fn entrances_of(s: &Session, osm: &str) -> Vec<String> {
+    masses(s)
+        .iter()
+        .filter(|(_, m)| osm_id(m) == osm)
+        .flat_map(|(_, m)| {
+            m.params
+                .get("OSM Entrances")
+                .and_then(Value::as_str)
+                .map(|t| t.split(';').map(str::to_string).collect::<Vec<_>>())
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
+#[test]
+fn an_entrance_on_a_buildings_edge_is_kept_on_its_mass_with_its_kind_width_and_door() {
+    let mut s = placed();
+    let data = file(&[
+        way(1, &square(0.0, 0.0, 20.0), r#""building":"yes","height":"6""#),
+        entrance(10, 10.0, 0.0, r#""entrance":"main","door":"hinged","width":"1.2","height":"2.1""#),
+        entrance(11, 20.0, 10.0, r#""entrance":"exit""#),
+    ]);
+    let r = run(&mut s, "import_osm", json!({"data": data}));
+    assert_eq!(
+        (r["entrances"].as_u64(), r["entrances_unplaced"].as_u64(), r["entrances_dropped"].as_u64()),
+        (Some(2), Some(0), Some(0)),
+        "{r}"
+    );
+    assert_eq!(r["entrances_by_kind"], json!({"main": 1, "exit": 1}), "{r}");
+    let held = entrances_of(&s, "way/1");
+    assert_eq!(held.len(), 2, "{held:?}");
+    let first: Vec<&str> = held[0].split(',').collect();
+    assert_eq!(first.len(), 6, "{held:?}");
+    let (x, y): (f64, f64) = (first[0].parse().unwrap(), first[1].parse().unwrap());
+    assert!((9000.0..11500.0).contains(&x) && y.abs() < 300.0, "{x} {y}: on the south edge, 10 m along");
+    assert_eq!(&first[2..], ["main", "1200", "2100", "hinged"]);
+    assert!(held[1].contains(",exit,"), "{held:?}");
+}
+
+#[test]
+fn an_entrance_goes_to_the_mass_whose_edge_is_nearest_and_never_to_a_column_or_a_roof_slab() {
+    let mut s = placed();
+    // A big house, and a small part inside it; the entrance is on the part's own edge, 5 m in from the house's.
+    let data = file(&[
+        way(1, &square(0.0, 0.0, 40.0), r#""building":"yes","height":"6""#),
+        way(2, &square(0.00005, 0.00005, 6.0), r#""building:part":"yes","height":"9""#),
+        entrance(10, 5.0, 5.0, r#""entrance":"yes""#),
+    ]);
+    let r = run(&mut s, "import_osm", json!({"data": data}));
+    assert_eq!(r["entrances"], 1, "{r}");
+    assert_eq!((entrances_of(&s, "way/1").len(), entrances_of(&s, "way/2").len()), (0, 1));
+    // A column's edge is no wall: an entrance on it finds no mass.
+    let mut s = placed();
+    let data = file(&[
+        way(1, &disc(0.0, 0.0, 1.0, 12), r#""man_made":"column","height":"6","min_height":"4""#),
+        entrance(10, 0.5, 0.0, r#""entrance":"yes""#),
+    ]);
+    let r = run(&mut s, "import_osm", json!({"data": data}));
+    assert_eq!((r["entrances"].as_u64(), r["entrances_unplaced"].as_u64()), (Some(0), Some(1)), "{r}");
+}
+
+#[test]
+fn an_entrance_far_from_every_building_is_listed_unplaced_and_too_many_for_the_parameter_are_counted() {
+    let mut s = placed();
+    let mut e =
+        vec![way(1, &square(0.0, 0.0, 40.0), r#""building":"yes","height":"6""#), entrance(99, 100.0, 100.0, r#""entrance":"yes""#)];
+    for k in 0..40 {
+        e.push(entrance(100 + k, 1.0 + f64::from(k as u8), 0.0, r#""entrance":"service","width":"0.9""#));
+    }
+    let r = run(&mut s, "import_osm", json!({"data": file(&e)}));
+    assert_eq!(r["entrances_unplaced"], 1, "{r}");
+    assert_eq!(r["entrances_unplaced_list"], json!(["node/99"]), "{r}");
+    let text = masses(&s)[0].1.params.get("OSM Entrances").and_then(Value::as_str).unwrap().to_string();
+    assert!(text.chars().count() <= 256, "{}", text.len());
+    assert!(r["entrances_dropped"].as_u64().unwrap() > 0, "{r}");
+    assert_eq!(r["entrances"].as_u64().unwrap() as usize + r["entrances_dropped"].as_u64().unwrap() as usize, 40, "{r}");
+}
+
+#[test]
+fn entrances_are_replaced_by_a_second_import_and_left_out_when_asked() {
+    let mut s = placed();
+    let with =
+        file(&[way(1, &square(0.0, 0.0, 20.0), r#""building":"yes","height":"6""#), entrance(10, 10.0, 0.0, r#""entrance":"main""#)]);
+    run(&mut s, "import_osm", json!({"data": with}));
+    assert_eq!(entrances_of(&s, "way/1").len(), 1);
+    // The door moved: the old place is not kept besides the new one.
+    let moved =
+        file(&[way(1, &square(0.0, 0.0, 20.0), r#""building":"yes","height":"6""#), entrance(10, 5.0, 0.0, r#""entrance":"main""#)]);
+    run(&mut s, "import_osm", json!({"data": moved}));
+    assert_eq!(entrances_of(&s, "way/1").len(), 1);
+    // None in the file: none kept.
+    let none = file(&[way(1, &square(0.0, 0.0, 20.0), r#""building":"yes","height":"6""#)]);
+    run(&mut s, "import_osm", json!({"data": none}));
+    assert!(entrances_of(&s, "way/1").is_empty());
+    // `entrances: false` reads none.
+    let mut s = placed();
+    let r = run(&mut s, "import_osm", json!({"data": with, "entrances": false}));
+    assert_eq!(r["entrances"], 0, "{r}");
+    assert!(entrances_of(&s, "way/1").is_empty());
+    assert!(refused(&mut s, json!({"data": with, "entrances": "yes"})).contains("entrances"));
+}

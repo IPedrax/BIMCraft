@@ -60,5 +60,11 @@ flat roof and is said in the reply's `notes`. The slope is `angle` (else `OSM Ro
 degrees, said), else 30. A gabled roof stands the footprint's two edges across its ridge upright (the ridge runs along the smallest
 enclosing rectangle's longer side, or across it with `orientation: "across"`); a footprint that is not near a rectangle (under 80% of
 its rectangle) or has no edge across the ridge at each end gets a hipped roof, said. A footprint of more than 256 corners gets a flat
-roof. A mass that has walls, floors or a roof made by face already is skipped (`skipped` in the reply), so a second run never doubles.
+roof. **A gabled roof's upright ends** reach into its gable: the walls on the edges it stands upright get `attach_top` to that roof, so
+their tops follow its underside to the ridge. **Doors** (`doors`, true, with walls): each entry of the mass's `OSM Entrances`
+([OSM import](osm-import.md#entrances-doors-and-exits)) is cut into the wall nearest it (within 300 mm) with `door {wall, offset}`, of
+the project's door type nearest the entrance's `width` (else 900, main 1000; a note when it is over 100 mm off, and a sliding type for
+`door=sliding` or `revolving` when the project has one), its `Mark` the kind (`main`, `exit`, `emergency`, `service`), and the project
+parameters `OSM Entrance` and `OSM Door`. None where the facade is lower than the door, where no wall is near (a cut edge, a part with no
+walls) or where a door stands already: each is a note. The reply's `doors` counts them. A mass that has walls, floors or a roof made by face already is skipped (`skipped` in the reply), so a second run never doubles.
 

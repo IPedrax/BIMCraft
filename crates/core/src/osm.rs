@@ -12,6 +12,8 @@ use crate::geom::P2;
 
 /// The most elements (nodes, ways and relations) one file may hold.
 pub const MAX_ELEMENTS: usize = 3_000_000;
+/// The most entrances (nodes tagged `entrance` or `door`) one file may hold.
+pub const MAX_ENTRANCES: usize = 100_000;
 /// The most points one way may have.
 pub const MAX_WAY_POINTS: usize = 20_000;
 /// The most buildings one import makes.
@@ -57,6 +59,8 @@ struct Relation {
 #[derive(Clone, Debug, Default)]
 pub struct Osm {
     nodes: HashMap<i64, LonLat>,
+    /// The nodes that are entrances or doors: their id, place and tags.
+    entrances: Vec<(i64, LonLat, Tags)>,
     ways: BTreeMap<i64, Way>,
     relations: BTreeMap<i64, Relation>,
 }
@@ -72,11 +76,13 @@ pub struct Options {
     pub default_height: f64,
     /// Only buildings with a corner inside: south, west, north, east, degrees.
     pub bbox: Option<[f64; 4]>,
+    /// The entrances, doors and exits mapped as nodes are read too.
+    pub entrances: bool,
 }
 
 impl Default for Options {
     fn default() -> Options {
-        Options { parts: true, level_height: 3000.0, default_height: 6000.0, bbox: None }
+        Options { parts: true, level_height: 3000.0, default_height: 6000.0, bbox: None, entrances: true }
     }
 }
 
@@ -116,6 +122,25 @@ pub struct Building {
     pub is_part: bool,
 }
 
+/// An entrance, a door or an exit mapped as a node, usually on a building's outline.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Entrance {
+    /// `node/123`.
+    pub osm_id: String,
+    pub at: LonLat,
+    /// `main`, `service`, `exit`, `emergency`, `home`, `staircase` or `yes`.
+    pub kind: String,
+    /// What `door` says (`hinged`, `sliding`, `revolving`, `overhead`, `no`), as given.
+    pub door: String,
+    /// Its width and height, mm, when they are given and believable.
+    pub width: Option<f64>,
+    pub height: Option<f64>,
+    /// `automatic_door` is not `no`.
+    pub automatic: bool,
+    /// `wheelchair`, as given.
+    pub wheelchair: String,
+}
+
 /// A feature that is not a building here, and why.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Skipped {
@@ -134,6 +159,8 @@ pub struct Found {
     pub replaced: usize,
     /// How many outlines were kept although they have parts, because the parts cover too little of them.
     pub kept: usize,
+    /// The entrances, doors and exits in the file (inside the box, if there is one).
+    pub entrances: Vec<Entrance>,
 }
 
 /// A coordinate that is on the Earth, or NaN, which nothing built from it will accept.
@@ -164,6 +191,23 @@ fn json_tags(v: Option<&serde_json::Value>) -> Tags {
         .unwrap_or_default()
 }
 
+/// Whether a node's tags make it an entrance: `entrance` (not `no`), `door` (not `no`) or `barrier=entrance`.
+fn is_entrance(tags: &Tags) -> bool {
+    let set = |k: &str| tags.get(k).is_some_and(|v| v.trim() != "no" && !v.trim().is_empty());
+    set("entrance") || set("door") || tags.get("barrier").map(String::as_str) == Some("entrance")
+}
+
+/// Keeps the node as an entrance if it is one (read lazily: most nodes have no tags), within the cap and on the Earth.
+fn note_entrance(osm: &mut Osm, id: i64, at: LonLat, tags: impl FnOnce() -> Tags) {
+    if osm.entrances.len() >= MAX_ENTRANCES || !(at.0.is_finite() && at.1.is_finite()) {
+        return;
+    }
+    let tags = tags();
+    if is_entrance(&tags) {
+        osm.entrances.push((id, at, tags));
+    }
+}
+
 fn json_geometry(v: Option<&serde_json::Value>) -> (Vec<LonLat>, bool) {
     let Some(a) = v.and_then(serde_json::Value::as_array) else { return (Vec::new(), false) };
     let points = a
@@ -189,7 +233,9 @@ fn from_json(text: &str) -> Result<Osm, String> {
         let Some(id) = el.get("id").and_then(Value::as_i64) else { continue };
         match el.get("type").and_then(Value::as_str) {
             Some("node") => {
-                osm.nodes.insert(id, coordinate(el.get("lat").and_then(Value::as_f64), el.get("lon").and_then(Value::as_f64)));
+                let at = coordinate(el.get("lat").and_then(Value::as_f64), el.get("lon").and_then(Value::as_f64));
+                osm.nodes.insert(id, at);
+                note_entrance(&mut osm, id, at, || json_tags(el.get("tags")));
             }
             Some("way") => {
                 let refs = el.get("nodes").and_then(Value::as_array);
@@ -263,7 +309,9 @@ fn from_xml(text: &str) -> Result<Osm, String> {
         let Some(id) = int(el, "id") else { continue };
         match el.tag_name().name() {
             "node" => {
-                osm.nodes.insert(id, coordinate(num(el, "lat"), num(el, "lon")));
+                let at = coordinate(num(el, "lat"), num(el, "lon"));
+                osm.nodes.insert(id, at);
+                note_entrance(&mut osm, id, at, || tags(el));
             }
             "way" => {
                 let (refs, inline, too_long) = nds(el);
@@ -294,7 +342,7 @@ fn from_xml(text: &str) -> Result<Osm, String> {
 /// The most a length may be, mm: a kilometre.
 const MAX_LENGTH: f64 = 1_000_000.0;
 
-/// A length as OSM writes it, in mm: `12`, `12.5`, `12 m`, `12,5 m`, `40 ft`, `40'`, `40' 6"`.
+/// A length as OSM writes it, in mm: `12`, `12.5`, `12 m`, `12,5 m`, `40 ft`, `40'`, `40' 6"`, and `900 mm`, `90 cm` for doors.
 pub fn length(text: &str) -> Option<f64> {
     let t = text.trim().to_lowercase();
     let number = |s: &str| s.trim().replace(',', ".").parse::<f64>().ok().filter(|v| v.is_finite() && *v >= 0.0);
@@ -308,6 +356,8 @@ pub fn length(text: &str) -> Option<f64> {
         match t[split..].trim() {
             "" | "m" | "meter" | "meters" | "metre" | "metres" => value * 1000.0,
             "ft" | "foot" | "feet" => value * 304.8,
+            "mm" => value,
+            "cm" => value * 10.0,
             _ => return None,
         }
     };
@@ -655,6 +705,14 @@ pub fn buildings(osm: &Osm, o: &Options) -> Found {
     if o.parts {
         assign_parts(&mut found, &groups);
     }
+    if o.entrances {
+        found.entrances = osm
+            .entrances
+            .iter()
+            .filter(|(_, at, _)| o.bbox.is_none_or(|[s, w, n, e]| at.1 >= s && at.1 <= n && at.0 >= w && at.0 <= e))
+            .map(|(id, at, tags)| entrance_of(*id, *at, tags))
+            .collect();
+    }
     found
 }
 
@@ -677,6 +735,24 @@ fn interior(ring: &[LonLat]) -> LonLat {
     match best {
         Some(t) => ((pts[t[0]].0 + pts[t[1]].0 + pts[t[2]].0) / 3.0, (pts[t[0]].1 + pts[t[1]].1 + pts[t[2]].1) / 3.0),
         None => mean(),
+    }
+}
+
+/// The entrance a node's tags describe.
+fn entrance_of(id: i64, at: LonLat, tags: &Tags) -> Entrance {
+    let kind = tags.get("entrance").map(|k| k.trim().to_lowercase()).unwrap_or_default();
+    let kind =
+        if ["main", "service", "exit", "emergency", "home", "staircase"].contains(&kind.as_str()) { kind } else { "yes".to_string() };
+    let size = |keys: &[&str]| keys.iter().find_map(|k| tags.get(*k)).and_then(|t| length(t)).filter(|x| (100.0..=10_000.0).contains(x));
+    Entrance {
+        osm_id: format!("node/{id}"),
+        at,
+        kind,
+        door: text(tags, &["door"]).to_lowercase(),
+        width: size(&["width", "door:width"]),
+        height: size(&["height", "door:height"]),
+        automatic: tags.get("automatic_door").is_some_and(|v| v.trim() != "no" && !v.trim().is_empty()),
+        wheelchair: text(tags, &["wheelchair"]).to_lowercase(),
     }
 }
 
@@ -1373,5 +1449,100 @@ mod tests {
         // A roof slab over the whole of it, or columns, are not its walls: it stays.
         let f = at(&[(2, &outline, r#""building:part":"roof","height":"9","roof:height":"0.2""#)]);
         assert_eq!((f.buildings.len(), f.replaced, f.kept), (2, 0, 1), "{:?}", f.skipped);
+    }
+
+    // ---- 7c: entrances, doors and exits ----
+
+    fn node(id: i64, at: LonLat, tags: &str) -> String {
+        format!(r#"{{"type":"node","id":{id},"lat":{},"lon":{},"tags":{{{tags}}}}}"#, at.1, at.0)
+    }
+
+    fn entrances(elements: &[String], o: &Options) -> Vec<Entrance> {
+        buildings(&parse(&file(elements)).unwrap(), o).entrances
+    }
+
+    #[test]
+    fn entrance_nodes_are_read_with_their_kind_door_width_and_height() {
+        let at = |dx: f64| (HOUSE.0 + dx, HOUSE.1);
+        let e = entrances(
+            &[
+                node(
+                    1,
+                    at(0.0),
+                    r#""entrance":"main","door":"hinged","width":"1.2","height":"2.1","automatic_door":"no","wheelchair":"yes""#,
+                ),
+                node(2, at(0.00001), r#""entrance":"exit""#),
+                node(3, at(0.00002), r#""entrance":"emergency","door":"sliding","automatic_door":"button""#),
+                node(4, at(0.00003), r#""entrance":"service","width":"900 mm""#),
+                node(5, at(0.00004), r#""entrance":"yes","door:width":"0.8""#),
+                node(6, at(0.00005), r#""door":"revolving""#),
+                node(7, at(0.00006), r#""barrier":"entrance""#),
+                node(8, at(0.00007), r#""entrance":"Weird Thing""#),
+                node(9, at(0.00008), r#""entrance":"no""#),
+                node(10, at(0.00009), r#""highway":"crossing""#),
+            ],
+            &Options::default(),
+        );
+        let ids: Vec<&str> = e.iter().map(|x| x.osm_id.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["node/1", "node/2", "node/3", "node/4", "node/5", "node/6", "node/7", "node/8"],
+            "no, and nodes of other things, are left out"
+        );
+        let main = &e[0];
+        assert_eq!((main.kind.as_str(), main.door.as_str(), main.width, main.height), ("main", "hinged", Some(1200.0), Some(2100.0)));
+        assert_eq!((main.automatic, main.wheelchair.as_str()), (false, "yes"));
+        assert_eq!((e[1].kind.as_str(), e[2].kind.as_str(), e[3].kind.as_str()), ("exit", "emergency", "service"));
+        assert_eq!((e[2].door.as_str(), e[2].automatic), ("sliding", true));
+        assert_eq!(e[3].width, Some(900.0));
+        assert_eq!(e[4].width, Some(800.0), "door:width too");
+        assert_eq!((e[5].kind.as_str(), e[5].door.as_str()), ("yes", "revolving"), "a door with no entrance tag is an entrance");
+        assert_eq!(e[6].kind, "yes");
+        assert_eq!(e[7].kind, "yes", "a kind that is not known is a plain entrance");
+    }
+
+    #[test]
+    fn entrances_come_from_xml_too_and_from_nodes_among_other_things() {
+        let xml = r#"<?xml version="1.0"?><osm version="0.6">
+            <node id="1" lat="-23.5505" lon="-46.6333"><tag k="entrance" v="main"/><tag k="width" v="1"/></node>
+            <node id="2" lat="-23.5506" lon="-46.6334"/>
+            <node id="3" lat="-23.5507" lon="-46.6335"><tag k="shop" v="bakery"/></node>
+            </osm>"#;
+        let f = buildings(&parse(xml).unwrap(), &Options::default());
+        assert_eq!(f.entrances.len(), 1);
+        assert_eq!((f.entrances[0].osm_id.as_str(), f.entrances[0].kind.as_str(), f.entrances[0].width), ("node/1", "main", Some(1000.0)));
+        assert_eq!(f.entrances[0].at, (-46.6333, -23.5505));
+    }
+
+    #[test]
+    fn hostile_entrances_lose_a_number_not_the_entrance() {
+        let at = HOUSE;
+        for (width, height) in [("1e999", "-3"), ("tall", "nan"), ("-1", "0"), ("99999999", "1e300")] {
+            let e = entrances(&[node(1, at, &format!(r#""entrance":"yes","width":"{width}","height":"{height}""#))], &Options::default());
+            assert_eq!(e.len(), 1, "{width} {height}");
+            assert_eq!((e[0].width, e[0].height), (None, None), "{width} {height}");
+        }
+        // A node with no place, or one that is not on the Earth, is no entrance.
+        let bad = [
+            r#"{"type":"node","id":1,"tags":{"entrance":"yes"}}"#.to_string(),
+            r#"{"type":"node","id":2,"lat":999,"lon":2,"tags":{"entrance":"yes"}}"#.to_string(),
+            r#"{"type":"node","id":3,"lat":"x","lon":2,"tags":{"entrance":"yes"}}"#.to_string(),
+        ];
+        assert!(entrances(&bad, &Options::default()).is_empty());
+        // A long value is cut; a thousand tags are read to a limit.
+        let long = "x".repeat(5000);
+        let e = entrances(&[node(1, at, &format!(r#""entrance":"yes","door":"{long}","wheelchair":"{long}""#))], &Options::default());
+        assert!(e[0].door.chars().count() <= 256 && e[0].wheelchair.chars().count() <= 256);
+    }
+
+    #[test]
+    fn entrances_outside_the_box_or_switched_off_are_not_read() {
+        let inside = HOUSE;
+        let outside = (HOUSE.0 + 0.1, HOUSE.1);
+        let els = [node(1, inside, r#""entrance":"main""#), node(2, outside, r#""entrance":"main""#)];
+        let o = Options { bbox: Some([HOUSE.1 - 0.001, HOUSE.0 - 0.001, HOUSE.1 + 0.001, HOUSE.0 + 0.001]), ..Options::default() };
+        let e = entrances(&els, &o);
+        assert_eq!(e.iter().map(|x| x.osm_id.as_str()).collect::<Vec<_>>(), ["node/1"]);
+        assert!(entrances(&els, &Options { entrances: false, ..Options::default() }).is_empty());
     }
 }

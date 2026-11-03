@@ -19,6 +19,8 @@ pub(crate) struct ShellBox {
     walls: bool,
     floors: bool,
     roof: bool,
+    /// The doors at the entrances OpenStreetMap maps on the buildings.
+    doors: bool,
     error: Option<String>,
 }
 
@@ -35,7 +37,8 @@ impl BimApp {
             self.status = crate::Status { text: t("Select the buildings (masses) first.").to_string(), error: true };
             return;
         }
-        self.site.shell = Some(ShellBox { masses, storey_height: String::new(), walls: true, floors: true, roof: true, error: None });
+        self.site.shell =
+            Some(ShellBox { masses, storey_height: String::new(), walls: true, floors: true, roof: true, doors: true, error: None });
     }
 
     pub(crate) fn shell_window(&mut self, ctx: &Context) {
@@ -57,6 +60,7 @@ impl BimApp {
                 ui.checkbox(&mut b.walls, t("Outer walls"));
                 ui.checkbox(&mut b.floors, t("Floors at each storey"));
                 ui.checkbox(&mut b.roof, t("Roof (the shape the OpenStreetMap tags give, else flat)"));
+                ui.add_enabled(b.walls, egui::Checkbox::new(&mut b.doors, t("Doors at the entrances")));
                 if let Some(e) = &b.error {
                     ui.add_space(6.0);
                     ui.label(RichText::new(e).color(pal().error));
@@ -80,7 +84,7 @@ impl BimApp {
     fn build_shell(&mut self) {
         let Some(b) = self.site.shell.as_ref() else { return };
         let units = self.session.model.units;
-        let mut params = json!({"ids": b.masses, "walls": b.walls, "floors": b.floors, "roof": b.roof});
+        let mut params = json!({"ids": b.masses, "walls": b.walls, "floors": b.floors, "roof": b.roof, "doors": b.doors && b.walls});
         if !b.storey_height.trim().is_empty() {
             match units.parse(&b.storey_height) {
                 Some(h) => params["storey_height"] = json!(h),
@@ -111,6 +115,9 @@ impl BimApp {
     fn say_shell(&mut self, v: &Value) {
         let n = |k: &str| v[k].as_u64().unwrap_or(0).to_string();
         let mut lines = vec![tf("{} walls, {} floors and {} roofs", &[&n("walls"), &n("floors"), &n("roofs")])];
+        if v["doors"].as_u64().unwrap_or(0) > 0 {
+            lines.push(tf("{} doors at the entrances", &[&n("doors")]));
+        }
         let skipped = v["skipped"].as_array().map_or(0, Vec::len);
         if skipped > 0 {
             lines.push(tf(

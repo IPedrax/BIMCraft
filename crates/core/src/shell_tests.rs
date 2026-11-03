@@ -259,3 +259,140 @@ fn many_buildings_are_one_command_one_check_and_one_undo_step() {
     run(&mut s, "undo", json!({}));
     assert!(of(&s, "wall").is_empty());
 }
+
+// ---- 7c: doors at the entrances ----
+
+/// A house 10 m by 6 m, `height` mm tall, holding `entrances` (`x,y,kind,width,height,door;...`) as an import leaves them.
+fn house_with(s: &mut Session, height: i32, entrances: &str) -> Id {
+    run(s, "parameter", json!({"name": "OSM Entrances", "kind": "text", "categories": ["mass"]}));
+    let m = mass(s, &[[0, 0], [10000, 0], [10000, 6000], [0, 6000]], height);
+    run(s, "modify", json!({"id": m, "params": {"OSM Entrances": entrances}}));
+    m
+}
+
+fn doors(s: &Session) -> Vec<crate::model::Opening> {
+    s.model.elements.values().filter_map(|e| if let Element::Door(d) = e { Some(d.clone()) } else { None }).collect()
+}
+
+/// The wall a door is in: its start and end.
+fn host(s: &Session, d: &crate::model::Opening) -> (P2, P2) {
+    let Some(Element::Wall(w)) = s.model.elements.get(d.host) else { panic!("a wall") };
+    (w.start, w.end)
+}
+
+#[test]
+fn an_entrance_becomes_a_door_in_the_wall_nearest_it_sized_by_its_tags() {
+    let mut s = Session::new();
+    let m = house_with(&mut s, 3000, "2000,0,main,1200,2100,hinged");
+    let r = run(&mut s, "building_shell", json!({"ids": [m]}));
+    assert_eq!(r["doors"], 1, "{r}");
+    let d = doors(&s);
+    assert_eq!(d.len(), 1);
+    let (start, end) = host(&s, &d[0]);
+    // The south wall: both ends at y = 0 (its axis is half a wall's thickness in, so within 150 mm of it).
+    assert!(start.1.abs() < 200.0 && end.1.abs() < 200.0, "{start:?} {end:?}");
+    // It runs east to west from its start, so 2 m from the west end is 8 m from the start.
+    let along = (2000.0f64 - end.0).abs().min((2000.0f64 - start.0).abs());
+    assert!(along < 200.0 || d[0].offset > 0.0, "{along}");
+    assert!(((d[0].offset - (start.0 - 2000.0).abs()).abs()) < 200.0, "offset {} from {start:?}", d[0].offset);
+    // A type of its own size, since the project has none of 1200: the door is as wide as the tag says.
+    let t = s.model.types.door.get(&d[0].type_name).expect("its type");
+    assert_eq!((t.width, t.height), (1200.0, 2100.0));
+    assert_eq!(d[0].mark, "main");
+    assert_eq!(d[0].params.get("OSM Entrance").and_then(Value::as_str), Some("main"));
+    assert_eq!(d[0].params.get("OSM Door").and_then(Value::as_str), Some("hinged"));
+    // One undo step.
+    run(&mut s, "undo", json!({}));
+    assert!(doors(&s).is_empty() && of(&s, "wall").is_empty());
+}
+
+#[test]
+fn a_size_the_project_has_is_reused_exits_are_marked_and_a_sliding_door_slides() {
+    let mut s = Session::new();
+    let m = house_with(&mut s, 3000, "2000,0,exit,900,2100,;8000,0,service,,,;5000,6000,emergency,1500,2100,sliding");
+    run(&mut s, "building_shell", json!({"ids": [m]}));
+    let d = doors(&s);
+    assert_eq!(d.len(), 3);
+    let types: std::collections::BTreeSet<&str> = d.iter().map(|x| x.type_name.as_str()).collect();
+    assert!(types.contains("Single 900 x 2100"), "900 x 2100 is a type the project has: {types:?}");
+    let marks: std::collections::BTreeSet<&str> = d.iter().map(|x| x.mark.as_str()).collect();
+    assert_eq!(marks, ["emergency", "exit", "service"].into_iter().collect());
+    let slider = d.iter().find(|x| x.mark == "emergency").unwrap();
+    let t = s.model.types.door.get(&slider.type_name).unwrap();
+    assert_eq!((t.width, t.operation), (1500.0, Some(crate::model::Operation::Sliding)));
+    // The north wall for the one at y = 6000.
+    let (a, b) = host(&s, slider);
+    assert!((a.1 - 6000.0).abs() < 200.0 && (b.1 - 6000.0).abs() < 200.0, "{a:?} {b:?}");
+}
+
+#[test]
+fn an_entrance_that_cannot_have_a_door_is_a_note_not_a_failure() {
+    let mut s = Session::new();
+    // Too low for a door; inside the house with no wall near; and two on the same stretch of wall.
+    let m = house_with(&mut s, 1800, "2000,0,main,,,");
+    let r = run(&mut s, "building_shell", json!({"ids": [m], "floors": false, "roof": false}));
+    assert_eq!(r["doors"], 0, "{r}");
+    assert!(r["notes"].to_string().contains("lower than"), "{r}");
+    let mut s = Session::new();
+    let m = house_with(&mut s, 3000, "5000,3000,main,,,");
+    let r = run(&mut s, "building_shell", json!({"ids": [m]}));
+    assert_eq!(r["doors"], 0, "{r}");
+    assert!(r["notes"].to_string().contains("no wall"), "{r}");
+    let mut s = Session::new();
+    let m = house_with(&mut s, 3000, "5000,0,main,1000,,;5300,0,yes,1000,,");
+    let r = run(&mut s, "building_shell", json!({"ids": [m]}));
+    assert_eq!(r["doors"], 1, "{r}");
+    assert!(r["notes"].to_string().contains("overlaps"), "{r}");
+    // Absurd sizes take the default size; junk in the text is skipped.
+    let mut s = Session::new();
+    let m = house_with(&mut s, 3000, "5000,0,main,99999,1,;x,y,z;,,;1e999,0,main,,,");
+    let r = run(&mut s, "building_shell", json!({"ids": [m]}));
+    assert_eq!(r["doors"], 1, "{r}");
+    assert_eq!(
+        s.model.types.door.get(&doors(&s)[0].type_name).map(|t| (t.width, t.height)),
+        Some((1000.0, 2100.0)),
+        "a main door with no width is 1 m"
+    );
+}
+
+#[test]
+fn doors_are_left_out_when_asked_and_when_there_are_no_walls() {
+    let mut s = Session::new();
+    let m = house_with(&mut s, 3000, "2000,0,main,,,");
+    let r = run(&mut s, "building_shell", json!({"ids": [m], "doors": false}));
+    assert_eq!((r["doors"].as_u64(), doors(&s).len()), (Some(0), 0), "{r}");
+    let mut s = Session::new();
+    let m = house_with(&mut s, 3000, "2000,0,main,,,");
+    let r = run(&mut s, "building_shell", json!({"ids": [m], "walls": false}));
+    assert_eq!(r["doors"], 0, "{r}");
+    assert!(refused(&mut s, json!({"ids": [m], "doors": "yes"})).contains("doors"));
+    // A house with no entrances has the same shell as before.
+    let mut s = Session::new();
+    let m = house(&mut s);
+    let r = run(&mut s, "building_shell", json!({"ids": [m]}));
+    assert_eq!((r["doors"].as_u64(), of(&s, "wall").len()), (Some(0), 4));
+}
+
+#[test]
+fn the_walls_at_a_gabled_roofs_ends_rise_into_its_gable_and_the_others_stay_under_the_eaves() {
+    let mut s = Session::new();
+    let m = house(&mut s);
+    run(&mut s, "building_shell", json!({"ids": [m], "shape": "gabled", "height": 2000, "floors": false}));
+    let (roof, rf) = roof_of(&s);
+    assert_eq!(rf.gables, [1, 3]);
+    let roof_guid = s.model.guid(roof);
+    let walls: Vec<(Id, crate::model::Wall)> =
+        s.model.elements.iter().filter_map(|(id, e)| if let Element::Wall(w) = e { Some((*id, w.clone())) } else { None }).collect();
+    let attached: Vec<&(Id, crate::model::Wall)> = walls.iter().filter(|(_, w)| w.attach_top == Some(roof_guid)).collect();
+    assert_eq!(attached.len(), 2, "the two at the ends");
+    // The east end wall (x = 10 m) reaches the ridge, 2 m over the eaves, in the middle of its length; the long walls stay at the eaves.
+    let tops = |p: P2| crate::view3d::tops_at(&s.model, p);
+    let end = attached.iter().find(|(_, w)| w.start.0 > 9000.0 && w.end.0 > 9000.0).expect("the east wall").0;
+    assert!((tops(P2(9900.0, 3000.0))[&end] - 11000.0).abs() < 5.0, "{}", tops(P2(9900.0, 3000.0))[&end]);
+    let long = walls.iter().find(|(id, _)| !attached.iter().any(|(a, _)| a == id)).unwrap().0;
+    let top = tops(P2(5000.0, 100.0))[&long];
+    assert!((9000.0..9500.0).contains(&top), "{top}");
+    // And the shell is as valid as ever: undone, it is gone.
+    run(&mut s, "undo", json!({}));
+    assert!(of(&s, "wall").is_empty());
+}

@@ -90,8 +90,10 @@ fn overpass_reply() -> String {
     let way = |id: u32, east: f64, north: f64, tags: &str| {
         format!(r#"{{"type":"way","id":{id},"geometry":[{}],"tags":{{{tags}}}}}"#, square(east, north, 20.0))
     };
+    // The house's main door, on the middle of its south wall.
+    let door = format!(r#"{{"type":"node","id":9,"lat":{},"lon":{},"tags":{{"entrance":"main"}}}}"#, HOME.1, HOME.0 + 0.0001);
     format!(
-        r#"{{"version":0.6,"elements":[{},{}]}}"#,
+        r#"{{"version":0.6,"elements":[{},{},{door}]}}"#,
         way(1, 0.0, 0.0, r#""building":"house","height":"12""#),
         way(2, 0.0003, 0.0002, r#""building":"yes","building:levels":"3""#)
     )
@@ -666,4 +668,136 @@ fn build_shell_needs_buildings_selected_and_a_storey_height_that_is_a_length() {
     assert_eq!(count(&h, "wall"), 4 + 8);
     // 4 m storeys: the 12 m house has three, and the three-level building keeps its levels (3), 4 m apart.
     assert_eq!(count(&h, "floor"), 6);
+}
+
+#[test]
+fn an_import_says_how_many_entrances_it_placed_and_build_shell_cuts_them_as_doors() {
+    let mut h = located(Arc::new(Fake::new()));
+    press(&mut h, "Site");
+    press(&mut h, "Import from OpenStreetMap");
+    fetch(&mut h);
+    until_fetched(&mut h);
+    assert!(h.query_by_label_contains("1 entrances and exits placed").is_some(), "the box says what it placed");
+    press(&mut h, "Close");
+    h.state_mut().selection = masses_of(&h);
+    h.run();
+    press(&mut h, "Build Shell");
+    press(&mut h, "OK");
+    assert_eq!(count(&h, "door"), 1);
+    assert!(h.query_by_label_contains("1 doors at the entrances").is_some());
+    press(&mut h, "Close");
+    // Without the check there is a shell and no door.
+    h.state_mut().session.execute("undo", &json!({})).unwrap();
+    assert_eq!(count(&h, "door"), 0);
+    press(&mut h, "Build Shell");
+    pick(&mut h, Role::CheckBox, "Doors at the entrances");
+    press(&mut h, "OK");
+    assert_eq!((count(&h, "wall"), count(&h, "door")), (4 + 8, 0));
+}
+
+/// Sets the project's place by the Location box.
+fn place_at(h: &mut Harness<BimApp>, pair: &str) {
+    press(h, "Site");
+    press(h, "Location");
+    type_into(h, "Coordinates", pair);
+    press(h, "OK");
+}
+
+#[test]
+fn the_places_set_are_listed_newest_first_and_picking_one_fills_the_box() {
+    let mut h = app(BOX);
+    place_at(&mut h, "51.2254809, 6.7700762");
+    place_at(&mut h, "-23.5505, -46.6333");
+    place_at(&mut h, "51.2254809, 6.7700762");
+    let seen: Vec<(f64, f64)> = h.state().places.iter().map(|p| (p.latitude, p.longitude)).collect();
+    assert_eq!(seen, [(51.2254809, 6.7700762), (-23.5505, -46.6333)], "a repeat moves up, it is not listed twice");
+    press(&mut h, "Location");
+    // The box starts at where the project is; the other place is in the list.
+    assert!(h.query_by_label_contains("Recent places").is_some());
+    h.get_by_label_contains("-23.550500, -46.633300").click();
+    h.run();
+    press(&mut h, "OK");
+    let l = h.state().session.model.location.expect("placed");
+    assert_eq!((l.latitude, l.longitude), (-23.5505, -46.6333));
+    assert_eq!(h.state().places[0].latitude, -23.5505, "and it is the newest");
+}
+
+#[test]
+fn a_project_with_no_place_starts_the_box_at_the_last_one_and_a_name_is_kept() {
+    let mut h = app(BOX);
+    press(&mut h, "Site");
+    press(&mut h, "Location");
+    type_into(&mut h, "Coordinates", "51.2254809, 6.7700762");
+    type_into(&mut h, "Name", "Bell tower");
+    press(&mut h, "OK");
+    assert_eq!(h.state().places[0].name, "Bell tower");
+    // Another project with no place.
+    let mut other = app(BOX);
+    other.state_mut().places = h.state().places.clone();
+    press(&mut other, "Site");
+    press(&mut other, "Location");
+    press(&mut other, "OK");
+    let l = other.state().session.model.location.expect("placed at once");
+    assert_eq!((l.latitude, l.longitude), (51.2254809, 6.7700762));
+    assert_eq!(other.state().places[0].name, "Bell tower", "the name came with the place");
+}
+
+#[test]
+fn at_most_ten_places_are_kept_and_one_can_be_forgotten() {
+    let mut h = app(BOX);
+    for i in 0..12 {
+        place_at(&mut h, &format!("{}.5, 10.25", i + 10));
+    }
+    let places = &h.state().places;
+    assert_eq!(places.len(), 10);
+    assert_eq!(places[0].latitude, 21.5, "newest first");
+    assert_eq!(places[9].latitude, 12.5, "the two oldest are gone");
+    press(&mut h, "Location");
+    h.get_all_by_label("✕").next().expect("a forget button").click();
+    h.run();
+    assert_eq!(h.state().places.len(), 9);
+    assert_eq!(h.state().places[0].latitude, 20.5);
+    assert_eq!(h.state().session.model.location.map(|l| l.latitude), Some(21.5), "forgetting does not move the project");
+}
+
+#[test]
+fn the_places_are_kept_in_the_settings_file_and_a_damaged_one_is_read_kindly() {
+    let dir = std::env::temp_dir().join(format!("bimcraft-ui-places-{}", std::process::id()));
+    let file = dir.join("settings.json");
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut h = app(BOX);
+    h.state_mut().use_settings(file.clone());
+    h.run();
+    place_at(&mut h, "51.2254809, 6.7700762");
+    h.run();
+    let kept: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    assert_eq!(kept["recent_places"][0]["latitude"].as_f64(), Some(51.2254809));
+    let mut again = app(BOX);
+    again.state_mut().use_settings(file.clone());
+    assert_eq!(again.state().places.len(), 1);
+    assert_eq!(again.state().places[0].longitude, 6.7700762);
+    // Hostile values in the file: numbers off the Earth, text for numbers, repeats, too many, and a list that is not one.
+    let mut list: Vec<Value> = vec![
+        json!({"latitude": 200.0, "longitude": 1.0}),
+        json!({"latitude": "x", "longitude": 1.0}),
+        json!({"latitude": 1.0}),
+        json!({"latitude": 1.0, "longitude": 2.0, "name": "n".repeat(500), "crs": "x".repeat(500), "true_north": 1e308}),
+        json!({"latitude": 1.0, "longitude": 2.0}),
+        json!(7),
+    ];
+    list.extend((0..40).map(|i| json!({"latitude": 10.0 + f64::from(i), "longitude": 3.0})));
+    std::fs::write(&file, json!({"recent_places": list}).to_string()).unwrap();
+    let mut hostile = app(BOX);
+    hostile.state_mut().use_settings(file.clone());
+    let p = &hostile.state().places;
+    assert_eq!(p.len(), 10, "capped, repeats and impossible places dropped");
+    assert_eq!((p[0].latitude, p[0].longitude), (1.0, 2.0));
+    assert!(p[0].name.chars().count() <= 80 && p[0].crs.chars().count() <= 16 && p[0].true_north == 0.0, "{:?}", p[0]);
+    for text in ["", "{", "[1,2]", r#"{"recent_places": "no"}"#] {
+        std::fs::write(&file, text).unwrap();
+        let mut damaged = app(BOX);
+        damaged.state_mut().use_settings(file.clone());
+        assert!(damaged.state().places.is_empty(), "{text}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
 }

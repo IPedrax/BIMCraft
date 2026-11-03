@@ -381,7 +381,7 @@ fn fetch_osm_reports_the_query_it_asked_with() {
         let asked = fake.asked.lock().unwrap();
         let (bbox, query) = &asked[0];
         assert_eq!(r["fetched"]["query"], json!(query), "parts {parts}");
-        assert_eq!(*query, crate::geo::overpass_query(bbox, crate::geo::Layers { parts }));
+        assert_eq!(*query, crate::geo::overpass_query(bbox, crate::geo::Layers { parts, entrances: true }));
         assert_eq!(query.contains("building:part"), parts);
     }
 }

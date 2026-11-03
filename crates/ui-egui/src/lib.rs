@@ -458,6 +458,8 @@ pub struct BimApp {
     settings_page: Option<settings::Page>,
     settings_path: Option<PathBuf>,
     settings_kept: Option<settings::Settings>,
+    /// The places the Location box has set, newest first: kept in the settings file.
+    places: Vec<settings::Place>,
     /// The window's size, kept and brought within its screen (`window.rs`).
     window: window::Tracker,
     theme_wanted: Option<egui::ThemePreference>,
@@ -971,6 +973,7 @@ impl BimApp {
             settings_page: None,
             settings_path: None,
             settings_kept: None,
+            places: Vec::new(),
             window: window::Tracker::default(),
             theme_wanted: None,
             light_canvas: false,
@@ -2578,6 +2581,7 @@ impl BimApp {
         fresh.theme_wanted = self.theme_wanted.take();
         fresh.docking = std::mem::take(&mut self.docking);
         (fresh.settings_path, fresh.settings_kept) = (self.settings_path.take(), self.settings_kept.take());
+        fresh.places = std::mem::take(&mut self.places);
         fresh.window = std::mem::take(&mut self.window);
         (fresh.updates, fresh.revit) = (self.updates.take(), self.revit.take());
         fresh.control = self.control.take();

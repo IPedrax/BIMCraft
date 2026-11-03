@@ -79,6 +79,17 @@ link; what you added to its parameters stays); `replace: false` makes new ones. 
 **Walls on request**: `detail: ["way/123", …]` (up to 200) also runs `building_shell` on those masses (the reply's `detail` says what
 was made, what was skipped because it has a shell already, and the notes). Everything else stays a mass: a district of thousands is one command, one model check, one undo step.
 
+## Entrances, doors and exits
+
+OSM maps them as tagged **nodes** on a building's outline: `entrance=yes|main|service|exit|emergency|home|staircase|...`, `door=hinged|
+sliding|revolving|overhead|no`, `barrier=entrance`, with `width` and `height` (`entrance=no` and `door=no` are not entrances). The Overpass
+query asks for them (`Layers.entrances`, with `parts`; `entrances: false` turns them off). Each is projected and given to the mass made by
+the import whose outline edge is nearest, within 1.5 m (a column or a roof slab never gets one; a tie goes to the part, the smaller
+outline) and **kept on the mass** in the text parameter `OSM Entrances`: `x,y,kind,width,height,door;...` in project mm, at most 256
+characters. The reply counts `entrances` (placed), `entrances_by_kind`, `entrances_unplaced` (with `entrances_unplaced_list`, the first
+20) and `entrances_dropped` (what did not fit the parameter). Bad numbers (`1e999`, `-1`, `tall`) leave the number out, not the entrance.
+`building_shell` then cuts each into the wall nearest it as a door ([masses](massing.md#building-shell)).
+
 ## Seeing them in plans
 
 A plan draws a mass (dashed) where its cut plane passes through it, as Revit's does. The masses of a sloping site stand at the
@@ -94,6 +105,7 @@ Fetching a box from Overpass instead of a file is `fetch_osm` ([geofetch](geofet
 
 ## Not yet
 
-Roads, water and land use (a CAD-style drawing with layers is the likely route: the CAD import holds thousands of polylines as one
+Doors mapped as ways, steps and ramps at entrances, which way a door swings, and moving the doors when the mass moves
+(`update_by_face` leaves them). Roads, water and land use (a CAD-style drawing with layers is the likely route: the CAD import holds thousands of polylines as one
 element with layer visibility); GeoJSON; the other roof shapes; and a shell for a whole district in one go (a pitched roof is laid out
 again by every check after it, so thousands would slow every edit: a cache of roof faces would come first).
