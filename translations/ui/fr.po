@@ -3504,7 +3504,7 @@ msgstr "Mettre en surbrillance ce qui est sous le curseur"
 msgid "Home"
 msgstr "Accueil"
 
-#: crates/ui-egui/src/orbit.rs:749
+#: crates/ui-egui/src/orbit.rs:748
 msgid "Home View"
 msgstr "Vue d'accueil"
 
@@ -5631,7 +5631,7 @@ msgstr "Nuage de points: scans laser (PTS, XYZ, PLY, LAS ou E57) importés dans 
 msgid "Point clouds"
 msgstr "Nuages de points"
 
-#: crates/ui-egui/src/shape.rs:347
+#: crates/ui-egui/src/shape.rs:354
 msgid "Point height {}"
 msgstr ""
 
@@ -8370,7 +8370,7 @@ msgid "Zoom Out"
 msgstr "Zoom arrière"
 
 #: crates/ui-egui/src/canvas.rs:1476
-#: crates/ui-egui/src/orbit.rs:753
+#: crates/ui-egui/src/orbit.rs:752
 msgid "Zoom to Fit"
 msgstr "Zoom adapté"
 
@@ -8463,7 +8463,7 @@ msgstr "une taille en mm"
 msgid "a whole number"
 msgstr "un nombre entier"
 
-#: crates/ui-egui/src/shape.rs:258
+#: crates/ui-egui/src/shape.rs:265
 msgid "add point: `{}` is not {}"
 msgstr ""
 
@@ -8499,7 +8499,7 @@ msgstr "cercle"
 msgid "click its line's end"
 msgstr "cliquer sur l'extrémité de sa ligne"
 
-#: crates/ui-egui/src/orbit.rs:741
+#: crates/ui-egui/src/orbit.rs:740
 msgid "click on the floor's top"
 msgstr ""
 
@@ -8631,7 +8631,7 @@ msgstr "volume: {}"
 msgid "material"
 msgstr "matériau"
 
-#: crates/ui-egui/src/shape.rs:294
+#: crates/ui-egui/src/shape.rs:301
 msgid "modify sub elements: `{}` is not an elevation"
 msgstr ""
 
@@ -8696,7 +8696,7 @@ msgstr "rotation: `{}` n'est pas un angle en degrés"
 msgid "select a detail group to ungroup"
 msgstr "sélectionner un groupe de détails à dissocier"
 
-#: crates/ui-egui/src/shape.rs:429
+#: crates/ui-egui/src/shape.rs:436
 msgid "select a point, a corner or an edge first"
 msgstr ""
 
@@ -8781,7 +8781,7 @@ msgstr "aucune face à peindre à cet endroit"
 msgid "there's no folder to keep favorites in here"
 msgstr "aucun dossier pour conserver les favoris ici"
 
-#: crates/ui-egui/src/orbit.rs:709
+#: crates/ui-egui/src/orbit.rs:708
 #: crates/ui-egui/src/paper.rs:158
 #: crates/ui-egui/src/section.rs:199
 msgid "this tool works in plan views: open one from the Project Browser"
@@ -8795,7 +8795,7 @@ msgstr "tourné autour d'un axe"
 msgid "two types are named `{}`"
 msgstr "deux types portent le nom `{}`"
 
-#: crates/ui-egui/src/shape.rs:292
+#: crates/ui-egui/src/shape.rs:299
 msgid "type the elevation first"
 msgstr ""
 

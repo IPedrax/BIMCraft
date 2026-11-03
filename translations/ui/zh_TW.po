@@ -3504,7 +3504,7 @@ msgstr "高亮顯示游標下的對象"
 msgid "Home"
 msgstr "主頁"
 
-#: crates/ui-egui/src/orbit.rs:749
+#: crates/ui-egui/src/orbit.rs:748
 msgid "Home View"
 msgstr "主視圖"
 
@@ -5631,7 +5631,7 @@ msgstr "點云：將激光掃瞄（PTS、XYZ、PLY、LAS 或 E57）引入項目�
 msgid "Point clouds"
 msgstr "點雲"
 
-#: crates/ui-egui/src/shape.rs:347
+#: crates/ui-egui/src/shape.rs:354
 msgid "Point height {}"
 msgstr ""
 
@@ -8370,7 +8370,7 @@ msgid "Zoom Out"
 msgstr "縮小"
 
 #: crates/ui-egui/src/canvas.rs:1476
-#: crates/ui-egui/src/orbit.rs:753
+#: crates/ui-egui/src/orbit.rs:752
 msgid "Zoom to Fit"
 msgstr "縮放以適應"
 
@@ -8463,7 +8463,7 @@ msgstr "以 mm 計的尺寸"
 msgid "a whole number"
 msgstr "整數"
 
-#: crates/ui-egui/src/shape.rs:258
+#: crates/ui-egui/src/shape.rs:265
 msgid "add point: `{}` is not {}"
 msgstr ""
 
@@ -8499,7 +8499,7 @@ msgstr "圓"
 msgid "click its line's end"
 msgstr "單擊其直線的終點"
 
-#: crates/ui-egui/src/orbit.rs:741
+#: crates/ui-egui/src/orbit.rs:740
 msgid "click on the floor's top"
 msgstr ""
 
@@ -8631,7 +8631,7 @@ msgstr "體量：{}"
 msgid "material"
 msgstr "材質"
 
-#: crates/ui-egui/src/shape.rs:294
+#: crates/ui-egui/src/shape.rs:301
 msgid "modify sub elements: `{}` is not an elevation"
 msgstr ""
 
@@ -8696,7 +8696,7 @@ msgstr "旋轉：`{}` 不是以度為單位的角度"
 msgid "select a detail group to ungroup"
 msgstr "請選擇要解組的詳圖組"
 
-#: crates/ui-egui/src/shape.rs:429
+#: crates/ui-egui/src/shape.rs:436
 msgid "select a point, a corner or an edge first"
 msgstr ""
 
@@ -8781,7 +8781,7 @@ msgstr "該處沒有可上漆的面"
 msgid "there's no folder to keep favorites in here"
 msgstr "這裡沒有可存放收藏夾的資料夾"
 
-#: crates/ui-egui/src/orbit.rs:709
+#: crates/ui-egui/src/orbit.rs:708
 #: crates/ui-egui/src/paper.rs:158
 #: crates/ui-egui/src/section.rs:199
 msgid "this tool works in plan views: open one from the Project Browser"
@@ -8795,7 +8795,7 @@ msgstr "繞軸旋轉而成"
 msgid "two types are named `{}`"
 msgstr "有兩個類型都名為 `{}`"
 
-#: crates/ui-egui/src/shape.rs:292
+#: crates/ui-egui/src/shape.rs:299
 msgid "type the elevation first"
 msgstr ""
 
