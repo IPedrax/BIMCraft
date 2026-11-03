@@ -348,6 +348,128 @@ pub fn region_in(all: &[Vec<P2>], p: P2, tol: f64) -> Option<Region> {
     Some(Region { outer: outer.clone(), holes })
 }
 
+/// The most pieces [`split_holes`] makes of one footprint.
+pub const MAX_PIECES: usize = 64;
+
+/// One of the pieces a footprint with courtyards is cut into: a convex ring, counter-clockwise, and its edges (numbered from its first
+/// point, edge `i` running to point `i + 1`) that the cut made, which lie along no edge of the footprint.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Piece {
+    pub ring: Vec<P2>,
+    pub cut: Vec<usize>,
+}
+
+/// A footprint with courtyards cut into convex pieces that leave the courtyards open, or none where it cannot be: a ring that is not
+/// simple, a courtyard that is not inside it or crosses another, more pieces than [`MAX_PIECES`], or anything not finite. The footprint is
+/// cut along the vertical through each of its corners, which leaves trapezoids, and trapezoids that make a convex piece together are
+/// joined. The pieces fill exactly the area of the footprint less its courtyards, which is checked.
+pub fn split_holes(outer: &[P2], holes: &[Vec<P2>]) -> Option<Vec<Piece>> {
+    const EPS: f64 = 1e-6;
+    // Corners closer across than this are on one vertical (a footprint turned a hair off the grid has corners a thousandth of a
+    // millimetre apart, and a strip that thin is no piece); a strip loses at most this much of the area, which the check allows.
+    const STRIP: f64 = 0.5;
+    let rings: Vec<&[P2]> = std::iter::once(outer).chain(holes.iter().map(Vec::as_slice)).collect();
+    if rings.iter().any(|r| r.len() < 3 || r.iter().any(|p| !p.is_finite() || p.0.abs() > 1e9 || p.1.abs() > 1e9)) {
+        return None;
+    }
+    let edges: Vec<(P2, P2)> = rings.iter().flat_map(|r| ring_edges(r)).collect();
+    let want = area(outer).abs() - holes.iter().map(|h| area(h).abs()).sum::<f64>();
+    if want.is_nan() || want <= 0.0 {
+        return None;
+    }
+    let mut xs: Vec<f64> = edges.iter().flat_map(|(a, b)| [a.0, b.0]).collect();
+    xs.sort_by(f64::total_cmp);
+    xs.dedup_by(|a, b| (*a - *b).abs() < STRIP);
+    // Between two verticals, the edges that cross the strip whole, in order from the bottom: they pair up (inside, outside, ...).
+    let y_at = |(a, b): (P2, P2), x: f64| a.1 + (b.1 - a.1) * (x - a.0) / (b.0 - a.0);
+    let mut pieces: Vec<Vec<P2>> = Vec::new();
+    for w in xs.windows(2) {
+        let (x0, x1) = (w[0], w[1]);
+        let xm = (x0 + x1) / 2.0;
+        let mut across: Vec<(P2, P2)> = edges
+            .iter()
+            .copied()
+            .filter(|(a, b)| (b.0 - a.0).abs() > STRIP && a.0.min(b.0) <= x0 + STRIP && a.0.max(b.0) >= x1 - STRIP)
+            .collect();
+        across.sort_by(|a, b| y_at(*a, xm).total_cmp(&y_at(*b, xm)));
+        if across.len() % 2 == 1 {
+            return None;
+        }
+        for pair in across.chunks_exact(2) {
+            let (lo, hi) = (pair[0], pair[1]);
+            let mut ring = vec![P2(x0, y_at(lo, x0)), P2(x1, y_at(lo, x1)), P2(x1, y_at(hi, x1)), P2(x0, y_at(hi, x0))];
+            ring.dedup_by(|a, b| a.dist(*b) < EPS);
+            if ring.len() > 1 && ring[0].dist(ring[ring.len() - 1]) < EPS {
+                ring.pop();
+            }
+            if ring.len() >= 3 && area(&ring) > 100.0 {
+                pieces.push(ring);
+            }
+            if pieces.len() > 20 * MAX_PIECES {
+                return None;
+            }
+        }
+    }
+    // Joined where two share a whole edge and the result is still convex.
+    let convex = |r: &[P2]| {
+        let n = r.len();
+        (0..n).all(|i| (r[(i + 1) % n] - r[i]).cross(r[(i + 2) % n] - r[(i + 1) % n]) >= -EPS)
+    };
+    // `a` and `b` joined along the edge they share, if they share a whole one and the result is convex.
+    let join = |a: &[P2], b: &[P2]| -> Option<Vec<P2>> {
+        for (ai, (_, q)) in ring_edges(a).enumerate() {
+            let p = a[ai];
+            let Some(bi) = ring_edges(b).position(|(u, v)| u.dist(q) < EPS && v.dist(p) < EPS) else { continue };
+            // a runs p -> q along the shared edge, b runs q -> p: round a from q back to p, then round b from p on to q.
+            let (na, nb) = (a.len(), b.len());
+            let mut ring: Vec<P2> = (0..na).map(|k| a[(ai + 1 + k) % na]).collect();
+            ring.extend((2..nb).map(|k| b[(bi + k) % nb]));
+            ring.dedup_by(|x, y| x.dist(*y) < EPS);
+            let n = ring.len();
+            let kept: Vec<P2> = (0..n)
+                .filter(|k| (ring[*k] - ring[(k + n - 1) % n]).cross(ring[(k + 1) % n] - ring[*k]).abs() > EPS * 1e-3)
+                .map(|k| ring[k])
+                .collect();
+            if kept.len() >= 3 && convex(&kept) && (area(&kept) - area(a) - area(b)).abs() <= 1e-6 * area(&kept).abs().max(1.0) {
+                return Some(kept);
+            }
+        }
+        None
+    };
+    loop {
+        let mut found = None;
+        'search: for i in 0..pieces.len() {
+            for j in i + 1..pieces.len() {
+                if let Some(joined) = join(&pieces[i], &pieces[j]) {
+                    found = Some((i, j, joined));
+                    break 'search;
+                }
+            }
+        }
+        let Some((i, j, joined)) = found else { break };
+        pieces[i] = joined;
+        pieces.remove(j);
+    }
+    if pieces.is_empty() || pieces.len() > MAX_PIECES {
+        return None;
+    }
+    let got: f64 = pieces.iter().map(|r| area(r)).sum();
+    if (got - want).abs() > 1e-3 * want.max(1.0) {
+        return None;
+    }
+    // The edges of a piece that lie along no edge of the footprint were made by the cut.
+    let on_edge = |a: P2, b: P2| edges.iter().any(|(u, v)| dist_to_segment(a, *u, *v) < 1e-3 && dist_to_segment(b, *u, *v) < 1e-3);
+    Some(
+        pieces
+            .into_iter()
+            .map(|ring| {
+                let cut = ring_edges(&ring).enumerate().filter(|(_, (a, b))| !on_edge(*a, *b)).map(|(i, _)| i).collect();
+                Piece { ring, cut }
+            })
+            .collect(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -489,5 +611,90 @@ mod tests {
         ];
         let r = region_at(&segs, P2(2000.0, 1500.0), 1.0).unwrap();
         assert!((r.area() - 12e6).abs() < 3000.0, "{}", r.area());
+    }
+
+    fn sq(x0: f64, y0: f64, x1: f64, y1: f64) -> Vec<P2> {
+        vec![P2(x0, y0), P2(x1, y0), P2(x1, y1), P2(x0, y1)]
+    }
+
+    fn circle(cx: f64, cy: f64, r: f64, n: usize) -> Vec<P2> {
+        (0..n)
+            .map(|i| {
+                P2(
+                    cx + r * (i as f64 / n as f64 * std::f64::consts::TAU).cos(),
+                    cy + r * (i as f64 / n as f64 * std::f64::consts::TAU).sin(),
+                )
+            })
+            .collect()
+    }
+
+    /// Checks what every cut must give: convex counter-clockwise pieces whose area is the footprint's less its courtyards, none holding a
+    /// point of a courtyard.
+    fn assert_cut(outer: &[P2], holes: &[Vec<P2>], pieces: &[Piece]) {
+        let want = area(outer).abs() - holes.iter().map(|h| area(h).abs()).sum::<f64>();
+        let got: f64 = pieces.iter().map(|p| area(&p.ring)).sum();
+        assert!((got - want).abs() < 1e-6 * want, "{got} {want}");
+        for p in pieces {
+            assert!(area(&p.ring) > 0.0, "counter-clockwise");
+            let n = p.ring.len();
+            assert!((0..n).all(|i| (p.ring[(i + 1) % n] - p.ring[i]).cross(p.ring[(i + 2) % n] - p.ring[(i + 1) % n]) >= -1e-6), "convex");
+            for h in holes {
+                let c = h.iter().fold(P2(0.0, 0.0), |a, q| a + *q * (1.0 / h.len() as f64));
+                assert!(!contains(&p.ring, c), "the courtyard's middle is inside a piece");
+            }
+        }
+    }
+
+    #[test]
+    fn a_ring_with_an_opening_is_cut_into_convex_pieces_that_leave_it_open() {
+        let (outer, hole) = (sq(0.0, 0.0, 7400.0, 7400.0), sq(2200.0, 2200.0, 5200.0, 5200.0));
+        let pieces = split_holes(&outer, std::slice::from_ref(&hole)).unwrap();
+        assert_cut(&outer, std::slice::from_ref(&hole), &pieces);
+        assert!((4..=8).contains(&pieces.len()), "{}", pieces.len());
+        // The edges along the footprint's own sides are not cut; the others are.
+        assert!(pieces.iter().all(|p| p.cut.len() < p.ring.len()));
+        assert!(pieces.iter().any(|p| !p.cut.is_empty()));
+        let total_cut: f64 = pieces.iter().flat_map(|p| p.cut.iter().map(|i| p.ring[*i].dist(p.ring[(i + 1) % p.ring.len()]))).sum();
+        assert!(total_cut > 0.0);
+    }
+
+    #[test]
+    fn round_rings_two_openings_and_a_hole_by_a_corner_are_cut_without_losing_area() {
+        let outer = circle(0.0, 0.0, 3700.0, 22);
+        let hole = circle(0.0, 0.0, 1500.0, 16);
+        let pieces = split_holes(&outer, std::slice::from_ref(&hole)).unwrap();
+        assert_cut(&outer, &[hole], &pieces);
+        assert!(pieces.len() <= MAX_PIECES);
+        let two = [sq(1000.0, 1000.0, 3000.0, 3000.0), sq(5000.0, 4000.0, 8000.0, 8000.0)];
+        let big = sq(0.0, 0.0, 10000.0, 10000.0);
+        assert_cut(&big, &two, &split_holes(&big, &two).unwrap());
+        // A courtyard against a side of the footprint is a notch, cut all the same.
+        let notch = sq(0.0, 3000.0, 2000.0, 5000.0);
+        assert!(
+            split_holes(&big, std::slice::from_ref(&notch))
+                .is_none_or(|p| (p.iter().map(|x| area(&x.ring)).sum::<f64>() - (1e8 - 4e6)).abs() < 1.0)
+        );
+        // No courtyard: the footprint, in the pieces it takes to make it convex.
+        let plain = split_holes(&sq(0.0, 0.0, 4000.0, 3000.0), &[]).unwrap();
+        assert_eq!((plain.len(), plain[0].cut.len()), (1, 0));
+    }
+
+    #[test]
+    fn what_cannot_be_cut_is_none_and_never_a_panic() {
+        let big = sq(0.0, 0.0, 10000.0, 10000.0);
+        // Outside the footprint, across its side, inside another courtyard, as large as it, and empty.
+        assert!(split_holes(&big, &[sq(20000.0, 0.0, 22000.0, 2000.0)]).is_none());
+        assert!(split_holes(&big, &[sq(8000.0, 8000.0, 12000.0, 12000.0)]).is_none());
+        assert!(split_holes(&big, &[sq(1000.0, 1000.0, 9000.0, 9000.0), sq(2000.0, 2000.0, 3000.0, 3000.0)]).is_none());
+        assert!(split_holes(&big, std::slice::from_ref(&big)).is_none());
+        assert!(split_holes(&[], &[]).is_none());
+        assert!(split_holes(&big, &[vec![P2(1.0, 1.0)]]).is_none());
+        for bad in [f64::NAN, f64::INFINITY, 1e300] {
+            assert!(split_holes(&[P2(0.0, 0.0), P2(bad, 0.0), P2(0.0, 5.0)], &[]).is_none());
+        }
+        // A bow tie.
+        assert!(split_holes(&[P2(0.0, 0.0), P2(10.0, 10.0), P2(10.0, 0.0), P2(0.0, 10.0)], &[]).is_none_or(|p| p.len() <= MAX_PIECES));
+        // A courtyard with very many corners makes too many pieces.
+        assert!(split_holes(&circle(0.0, 0.0, 50000.0, 200), &[circle(0.0, 0.0, 20000.0, 150)]).is_none_or(|p| p.len() <= MAX_PIECES));
     }
 }

@@ -165,8 +165,12 @@ fn courtyards_are_counted_and_buildings_outside_the_box_are_left_out() {
         "import_osm",
         json!({"data": file(&[rel, way(7, &square(0.5, 0.0, 20.0), r#""building":"yes""#)]), "bbox": [-23.56, -46.64, -23.54, -46.62]}),
     );
-    assert_eq!((r["made"].clone(), r["courtyards_filled"].clone()), (json!(1), json!(1)), "{r}");
-    assert_eq!(masses(&s).len(), 1);
+    // The courtyard is not filled: the building is cut into masses that leave it open, and the one outside the box is left out.
+    assert_eq!(r["courtyards_filled"], 0, "{r}");
+    let pieces = r["pieces"].as_u64().unwrap();
+    assert!(pieces >= 4 && r["made"].as_u64() == Some(pieces), "{r}");
+    assert_eq!(masses(&s).len() as u64, pieces);
+    assert!(masses(&s).iter().all(|(_, m)| osm_id(m).starts_with("relation/5~")));
 }
 
 #[test]
@@ -295,10 +299,10 @@ fn building_parts_replace_their_outline_and_say_whose_they_are() {
         way(3, &rect(dx / 2.0, dx), r#""building:part":"yes","height":"14","roof:shape":"gabled","roof:height":"3""#),
     ]);
     // Without parts wanted the outline is the building, as before.
-    let r = run(&mut s, "import_osm", json!({"data": data}));
+    let r = run(&mut s, "import_osm", json!({"data": data, "parts": false}));
     assert_eq!((r["made"].as_u64(), r["outlines_replaced"].as_u64()), (Some(1), Some(0)), "{r}");
     let mut s = placed();
-    let r = run(&mut s, "import_osm", json!({"data": data, "parts": true}));
+    let r = run(&mut s, "import_osm", json!({"data": data}));
     assert_eq!((r["made"].as_u64(), r["outlines_replaced"].as_u64()), (Some(2), Some(1)), "{r}");
     assert_eq!(r["skipped_by_reason"]["replaced by its building parts"], 1, "{r}");
     let ms = masses(&s);
@@ -353,4 +357,177 @@ fn the_shell_of_a_building_follows_its_tags_storeys_roof_shape_and_height() {
     let r = run(&mut s, "import_osm", json!({"data": data, "detail": ["way/1"]}));
     assert_eq!(s.model.elements.len(), before, "{r}");
     assert_eq!(r["detail"]["skipped"], json!(["way/1"]));
+}
+
+// ---- 7b: the bell tower files ----
+
+/// A circle of `n` corners `size` metres across at (`east`, `north`) degrees from `HOME`, closed.
+fn disc(east: f64, north: f64, size: f64, n: usize) -> Vec<(f64, f64)> {
+    let mut ring: Vec<(f64, f64)> = (0..n)
+        .map(|i| {
+            let a = i as f64 / n as f64 * std::f64::consts::TAU;
+            (HOME.0 + east + size / 2.0 * 0.000_01 * a.cos(), HOME.1 + north + size / 2.0 * 0.000_009 * a.sin())
+        })
+        .collect();
+    ring.push(ring[0]);
+    ring
+}
+
+/// The small tower: a kiosk that is its own part, a roof disc over it with no min_height, and seven 5 cm columns.
+fn small_tower() -> String {
+    let mut e = vec![
+        way(1, &disc(0.0, 0.0, 1.0, 12), r#""building":"kiosk","building:part":"yes","height":"4","material":"concrete""#),
+        way(
+            2,
+            &disc(0.0, 0.0, 1.6, 12),
+            r#""building:part":"roof","height":"6","roof:height":"0.05","roof:shape":"flat","roof:material":"concrete""#,
+        ),
+    ];
+    for k in 0..7 {
+        let (dx, dy) = (0.2 * f64::from(k).cos() * 0.000_01, 0.2 * f64::from(k).sin() * 0.000_009);
+        e.push(way(
+            10 + i64::from(k),
+            &disc(dx, dy, 0.05, 8),
+            r#""man_made":"column","column:shape":"circle","height":"6","min_height":"4","material":"metal""#,
+        ));
+    }
+    file(&e)
+}
+
+#[test]
+fn the_small_tower_is_a_cylinder_with_columns_under_a_roof_disc() {
+    let mut s = placed();
+    let r = run(&mut s, "import_osm", json!({"data": small_tower()}));
+    assert_eq!((r["made"].as_u64(), r["skipped"].as_u64(), r["outlines_replaced"].as_u64()), (Some(9), Some(0), Some(0)), "{r}");
+    let ms = masses(&s);
+    let by = |id: &str| ms.iter().find(|(_, m)| osm_id(m) == id).map(|(_, m)| m.clone()).unwrap();
+    let kiosk = by("way/1");
+    assert_eq!((kiosk.height, kiosk.base_offset), (4000.0, 0.0));
+    assert_eq!(kiosk.params.get("OSM Building").and_then(Value::as_str), Some("kiosk"));
+    // The roof is a disc 50 mm thick at 6 m, not a prism from the ground.
+    let roof = by("way/2");
+    assert_eq!((roof.height, roof.base_offset), (50.0, 5950.0));
+    // Seven columns from 4 m to 6 m, however thin.
+    let columns: Vec<_> = ms.iter().filter(|(_, m)| m.params.get("OSM Building").and_then(Value::as_str) == Some("column")).collect();
+    assert_eq!(columns.len(), 7);
+    assert!(
+        columns.iter().all(|(_, m)| m.height == 2000.0 && m.base_offset == 4000.0),
+        "{:?}",
+        columns.iter().map(|(_, m)| (m.height, m.base_offset)).collect::<Vec<_>>()
+    );
+    // Again: the same nine, in place.
+    let r = run(&mut s, "import_osm", json!({"data": small_tower()}));
+    assert_eq!((r["made"].as_u64(), r["updated"].as_u64()), (Some(0), Some(9)), "{r}");
+    assert_eq!(masses(&s).len(), 9);
+    // With parts off, the kiosk alone.
+    let mut s = placed();
+    let r = run(&mut s, "import_osm", json!({"data": small_tower(), "parts": false}));
+    assert_eq!(r["made"], 1, "{r}");
+}
+
+/// A ring 7.4 m across with a 3 m opening in it, as a multipolygon `building:part=roof` slab between `min` and `top` m.
+fn slab(id: i64, min: f64, top: f64) -> String {
+    let outer = square(0.0, 0.0, 7.4);
+    let hole = square(0.000_02, 0.000_02, 3.0);
+    format!(
+        r#"{{"type":"relation","id":{id},"members":[{{"type":"way","ref":{id}1,"role":"outer","geometry":[{}]}},{{"type":"way","ref":{id}2,"role":"inner","geometry":[{}]}}],"tags":{{"type":"multipolygon","building:part":"roof","height":"{top}","min_height":"{min}"}}}}"#,
+        geometry(&outer),
+        geometry(&hole)
+    )
+}
+
+#[test]
+fn a_slab_with_an_opening_is_cut_into_pieces_that_leave_it_open() {
+    let mut s = placed();
+    let r = run(&mut s, "import_osm", json!({"data": file(&[slab(9, 6.9, 7.1)])}));
+    assert_eq!(r["courtyards_filled"], 0, "{r}");
+    let pieces = r["pieces"].as_u64().unwrap();
+    assert!((4..=12).contains(&pieces), "{r}");
+    let ms = masses(&s);
+    assert_eq!(ms.len() as u64, pieces);
+    assert!(ms.iter().all(|(_, m)| osm_id(m).starts_with("relation/9~") && m.height == 200.0 && m.base_offset == 6900.0));
+    // Together they are the ring and not the opening.
+    let area: f64 = ms.iter().map(|(_, m)| crate::geom::area(&m.boundary)).sum();
+    let loc = s.model.location.unwrap().projector().unwrap();
+    let project = |r: Vec<(f64, f64)>| r.iter().map(|(lo, la)| loc.point(*lo, *la).unwrap()).collect::<Vec<_>>();
+    let (outer, hole) =
+        (crate::geom::area(&project(square(0.0, 0.0, 7.4))).abs(), crate::geom::area(&project(square(0.000_02, 0.000_02, 3.0))).abs());
+    assert!((area - (outer - hole)).abs() < 0.002 * outer, "{area} {}", outer - hole);
+    // The same again replaces the pieces by their ids, and a smaller opening that needs fewer leaves none stale.
+    let r = run(&mut s, "import_osm", json!({"data": file(&[slab(9, 6.9, 7.1)])}));
+    assert_eq!((r["made"].as_u64(), r["updated"].as_u64()), (Some(0), Some(pieces)), "{r}");
+    assert_eq!(masses(&s).len() as u64, pieces);
+}
+
+#[test]
+fn the_shell_of_a_cut_building_has_no_wall_where_the_cut_was_made() {
+    let mut s = placed();
+    run(&mut s, "import_osm", json!({"data": file(&[slab(9, 0.0, 3.0)]), "detail": ["relation/9"]}));
+    let walls: Vec<_> = s.model.elements.values().filter_map(|e| if let Element::Wall(w) = e { Some(w.clone()) } else { None }).collect();
+    assert!(!walls.is_empty());
+    // Every wall lies along the outer side or the opening, none across the ring.
+    let outer = {
+        let r = square(0.0, 0.0, 7.4);
+        let loc = s.model.location.unwrap().projector().unwrap();
+        r.iter().take(4).map(|(lo, la)| loc.point(*lo, *la).unwrap()).collect::<Vec<_>>()
+    };
+    let hole: Vec<_> = {
+        let r = square(0.000_02, 0.000_02, 3.0);
+        let loc = s.model.location.unwrap().projector().unwrap();
+        r.iter().take(4).map(|(lo, la)| loc.point(*lo, *la).unwrap()).collect()
+    };
+    for w in &walls {
+        let mid = (w.start + w.end) * 0.5;
+        let near = |ring: &[crate::geom::P2]| crate::geom::ring_edges(ring).any(|(a, b)| crate::geom::dist_to_segment(mid, a, b) < 2.0);
+        assert!(near(&outer) || near(&hole), "a wall across the slab at {mid:?}");
+    }
+}
+
+#[test]
+fn a_cone_part_gets_a_conical_roof_of_the_height_its_tag_says() {
+    let mut s = placed();
+    let round = disc(0.0, 0.0, 14.0, 20);
+    let data =
+        file(&[way(1, &round, r#""building:part":"yes","building:levels":"1","height":"6.5","roof:height":"2","roof:shape":"cone""#)]);
+    let r = run(&mut s, "import_osm", json!({"data": data, "detail": ["way/1"]}));
+    assert!(r["detail"]["notes"].as_array().is_none_or(|n| n.is_empty()), "{r}");
+    let roofs: Vec<_> = s.model.elements.values().filter_map(|e| if let Element::Roof(r) = e { Some(r.clone()) } else { None }).collect();
+    assert_eq!(roofs.len(), 1);
+    assert!(roofs[0].slope > 0.0 && roofs[0].gables.is_empty());
+    let top = s
+        .model
+        .roof_faces(&roofs[0])
+        .unwrap()
+        .iter()
+        .flat_map(|(loops, plane)| loops.iter().flatten().map(move |q| plane.at(*q)))
+        .fold(f64::MIN, f64::max);
+    let base = s.model.elevation(roofs[0].level) + roofs[0].offset;
+    assert!((top - base - 2000.0).abs() < 1.0, "{}", top - base);
+}
+
+#[test]
+fn a_church_with_its_parts_outside_and_no_relation_still_comes_in_as_its_parts() {
+    // An outline, two columns and a roof slab outside it, a gabled part inside: no relation anywhere.
+    let mut s = placed();
+    let outline = square(0.0, 0.0, 30.0);
+    let data = file(&[
+        way(1, &outline, r#""building":"church","name":"Our Lady""#),
+        way(2, &square(0.000_01, 0.000_01, 20.0), r#""building:part":"yes","height":"5","roof:height":"2","roof:shape":"gabled""#),
+        way(3, &disc(-0.000_1, 0.0, 1.0, 10), r#""building:part":"column","height":"17.3""#),
+        way(4, &disc(-0.000_1, 0.0, 7.0, 16), r#""building:part":"roof","height":"17.1","min_height":"16.9","name":"Belltower""#),
+    ]);
+    let r = run(&mut s, "import_osm", json!({"data": data}));
+    // The nave part covers 20 x 20 of the 30 x 30 outline (44%): the outline stays, and the tower pieces stand on their own.
+    assert_eq!(r["made"], 4, "{r}");
+    assert_eq!(r["outlines_kept"], 1, "{r}");
+    let ids: Vec<String> = masses(&s).iter().map(|(_, m)| osm_id(m)).collect();
+    assert!(ids.contains(&"way/3".to_string()) && ids.contains(&"way/4".to_string()), "{ids:?}");
+    // A bigger nave covers it, and the outline goes.
+    let mut s = placed();
+    let big = file(&[
+        way(1, &outline, r#""building":"church","name":"Our Lady""#),
+        way(2, &square(0.0, 0.0, 30.0), r#""building:part":"yes","height":"5""#),
+    ]);
+    let r = run(&mut s, "import_osm", json!({"data": big}));
+    assert_eq!((r["made"].as_u64(), r["outlines_replaced"].as_u64()), (Some(1), Some(1)), "{r}");
 }

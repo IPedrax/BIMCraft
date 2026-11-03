@@ -64,7 +64,7 @@ pub struct Osm {
 /// What to make of the buildings.
 #[derive(Clone, Debug)]
 pub struct Options {
-    /// Parts of buildings (`building:part`) are buildings too.
+    /// Parts of buildings (`building:part`) and columns (`man_made=column`) are buildings too: the default, as a building is its parts.
     pub parts: bool,
     /// How tall a level is where only `building:levels` says, mm.
     pub level_height: f64,
@@ -76,7 +76,7 @@ pub struct Options {
 
 impl Default for Options {
     fn default() -> Options {
-        Options { parts: false, level_height: 3000.0, default_height: 6000.0, bbox: None }
+        Options { parts: true, level_height: 3000.0, default_height: 6000.0, bbox: None }
     }
 }
 
@@ -112,6 +112,8 @@ pub struct Building {
     pub roof_material: String,
     /// For a part: the outline it belongs to (`way/1`), when there is one.
     pub part_of: String,
+    /// It is a part of a building (tagged `building:part`, or a column), not an outline.
+    pub is_part: bool,
 }
 
 /// A feature that is not a building here, and why.
@@ -130,6 +132,8 @@ pub struct Found {
     pub defaulted: usize,
     /// How many outlines were left out because their building parts stand in their place.
     pub replaced: usize,
+    /// How many outlines were kept although they have parts, because the parts cover too little of them.
+    pub kept: usize,
 }
 
 /// A coordinate that is on the Earth, or NaN, which nothing built from it will accept.
@@ -356,7 +360,10 @@ fn clean(points: &[LonLat]) -> Result<Vec<LonLat>, String> {
             }
         }
     }
-    let twice: f64 = (0..ring.len()).map(|i| ring[i].0 * ring[(i + 1) % ring.len()].1 - ring[(i + 1) % ring.len()].0 * ring[i].1).sum();
+    // From the first corner: the corners of a column are a hair apart, a long way from (0, 0), and the sum would lose them.
+    let (ox, oy) = ring.first().copied().unwrap_or_default();
+    let at = |i: usize| (ring[i % ring.len()].0 - ox, ring[i % ring.len()].1 - oy);
+    let twice: f64 = (0..ring.len()).map(|i| at(i).0 * at(i + 1).1 - at(i + 1).0 * at(i).1).sum();
     if twice.abs() < 1e-14 {
         return Err("it encloses no area".into());
     }
@@ -426,7 +433,7 @@ fn roof_shape(tags: &Tags) -> String {
     text(tags, &["roof:shape"]).to_lowercase()
 }
 
-fn heights(tags: &Tags, o: &Options) -> Result<Heights, String> {
+fn heights(tags: &Tags, o: &Options, roof_only: bool) -> Result<Heights, String> {
     let level_height = if o.level_height.is_finite() && o.level_height > 0.0 { o.level_height } else { 3000.0 };
     let levels = |key: &str| {
         tags.get(key).and_then(|t| t.trim().replace(',', ".").parse::<f64>().ok()).filter(|n| n.is_finite() && (0.0..=500.0).contains(n))
@@ -459,10 +466,40 @@ fn heights(tags: &Tags, o: &Options) -> Result<Heights, String> {
     };
     // A roof is believed only if the facade under it stays above what the building is lifted by.
     let (facade, roof) = if roof > 0.0 && facade - min >= 1.0 { (facade, roof) } else { (plain, 0.0) };
+    // A part that is a roof (`building:part=roof`) has no walls: with no `min_height` it is the roof's own slab at the top, 100 mm thick
+    // (a flat roof: as thick as `roof:height` says), and a pitched roof's slab is at the eaves, with the roof on it.
+    let lifted = tags.contains_key("min_height") || tags.contains_key("building:min_level");
+    let (facade, roof, min) = if roof_only && !lifted {
+        const SLAB: f64 = 100.0;
+        if pitched && roof > 0.0 {
+            (facade, roof, (facade - SLAB).max(0.0))
+        } else {
+            let top = facade + roof;
+            let thickness = if roof > 0.0 { roof } else { SLAB };
+            (top, 0.0, (top - thickness).max(0.0))
+        }
+    } else {
+        (facade, roof, min)
+    };
     if min >= facade - 1.0 {
         return Err(format!("its min_height ({min} mm) is not below its height ({facade} mm)"));
     }
     Ok(Heights { facade, roof, min, defaulted })
+}
+
+/// What an `OSM Building` parameter says: the `building` tag; for a part with none, its `building:part` value, or `part`; `column`.
+fn kind_of(tags: &Tags, part: bool) -> String {
+    if let Some(b) = tags.get("building").filter(|b| b.as_str() != "no") {
+        return b.clone();
+    }
+    if tags.get("man_made").map(String::as_str) == Some("column") {
+        return "column".into();
+    }
+    match tags.get("building:part").map(|v| v.trim()) {
+        Some(v) if part && !v.is_empty() && v != "yes" => clip(v, MAX_TAG),
+        _ if part => "part".into(),
+        _ => String::new(),
+    }
 }
 
 /// `roof:angle` in degrees, when it is between 0 and 90 (exclusive).
@@ -480,7 +517,8 @@ pub fn buildings(osm: &Osm, o: &Options) -> Found {
     // Whether this is a building (or a part, if parts are wanted): `Ok(true)` a part only; `Err`, to be passed over.
     let wanted = |id: &str, tags: &Tags, found: &mut Found| -> Option<bool> {
         let (building, part) = (named(tags, "building"), named(tags, "building:part"));
-        if !building && !part {
+        let column = tags.get("man_made").map(String::as_str) == Some("column");
+        if !building && !part && !(column && o.parts) {
             return None;
         }
         if !building && !o.parts {
@@ -490,7 +528,8 @@ pub fn buildings(osm: &Osm, o: &Options) -> Found {
             });
             return None;
         }
-        Some(!building)
+        // A feature tagged as a part is a part, whatever else it is tagged (a kiosk that is its own only part).
+        Some(o.parts && (part || column))
     };
     let make = |found: &mut Found, id: String, tags: &Tags, part: bool, outer: Vec<LonLat>, holes: Vec<Vec<LonLat>>| {
         if !in_box(&outer) {
@@ -504,7 +543,8 @@ pub fn buildings(osm: &Osm, o: &Options) -> Found {
             }
             return;
         }
-        match heights(tags, o) {
+        let roof_only = part && tags.get("building:part").is_some_and(|v| v.trim() == "roof");
+        match heights(tags, o, roof_only) {
             Ok(h) => {
                 found.defaulted += usize::from(h.defaulted);
                 found.buildings.push(Building {
@@ -514,7 +554,7 @@ pub fn buildings(osm: &Osm, o: &Options) -> Found {
                     height: h.facade,
                     min_height: h.min,
                     name: tags.get("name").cloned().unwrap_or_default(),
-                    kind: if part { "part".into() } else { tags.get("building").cloned().unwrap_or_default() },
+                    kind: kind_of(tags, part),
                     levels: tags.get("building:levels").cloned().unwrap_or_default(),
                     roof_height: h.roof,
                     roof_shape: roof_shape(tags),
@@ -528,6 +568,7 @@ pub fn buildings(osm: &Osm, o: &Options) -> Found {
                     roof_colour: text(tags, &["roof:colour"]),
                     roof_material: text(tags, &["roof:material"]),
                     part_of: String::new(),
+                    is_part: part,
                 });
             }
             Err(why) => found.skipped.push(Skipped { osm_id: id, why }),
@@ -542,7 +583,7 @@ pub fn buildings(osm: &Osm, o: &Options) -> Found {
         }
     }
     // The outline and parts a `type=building` relation groups, by the ids the buildings made from them go by.
-    let mut groups: Vec<(String, Vec<String>)> = Vec::new();
+    let mut groups: Vec<Group> = Vec::new();
     for (id, r) in &osm.relations {
         let osm_id = format!("relation/{id}");
         if r.tags.get("type").map(String::as_str) == Some("building") {
@@ -554,7 +595,7 @@ pub fn buildings(osm: &Osm, o: &Options) -> Found {
                     .collect()
             };
             if let Some(outline) = member("outline").into_iter().next() {
-                groups.push((outline, member("part")));
+                groups.push(Group { outline, parts: member("part"), name: text(&r.tags, &["name"]) });
             }
             continue;
         }
@@ -639,20 +680,49 @@ fn interior(ring: &[LonLat]) -> LonLat {
     }
 }
 
+/// What a `type=building` relation groups: the outline, its parts, and the name it gives them.
+struct Group {
+    outline: String,
+    parts: Vec<String>,
+    name: String,
+}
+
+/// How much of an outline its parts cover, 0 to 1: the share of a grid of places in it (24 by 24) that lie in some part.
+fn coverage(outline: &Building, parts: &[&Building]) -> f64 {
+    const N: usize = 24;
+    let (x0, x1) = outline.outer.iter().fold((f64::MAX, f64::MIN), |(lo, hi), p| (lo.min(p.0), hi.max(p.0)));
+    let (y0, y1) = outline.outer.iter().fold((f64::MAX, f64::MIN), |(lo, hi), p| (lo.min(p.1), hi.max(p.1)));
+    let in_building = |b: &Building, p: LonLat| inside(&b.outer, p) && !b.holes.iter().any(|h| inside(h, p));
+    let (mut within, mut covered) = (0usize, 0usize);
+    for i in 0..N {
+        for j in 0..N {
+            let p = (x0 + (i as f64 + 0.5) / N as f64 * (x1 - x0), y0 + (j as f64 + 0.5) / N as f64 * (y1 - y0));
+            if !in_building(outline, p) {
+                continue;
+            }
+            within += 1;
+            covered += usize::from(parts.iter().any(|q| in_building(q, p)));
+        }
+    }
+    if within == 0 { 1.0 } else { covered as f64 / within as f64 }
+}
+
 /// Parts say whose they are, and an outline with parts is left out: its parts are its 3D (the scheme's rule). A `type=building`
 /// relation names the outline and the parts wherever they lie; otherwise a part belongs to the outline it stands inside.
-fn assign_parts(found: &mut Found, groups: &[(String, Vec<String>)]) {
+fn assign_parts(found: &mut Found, groups: &[Group]) {
     let base = |id: &str| id.split('#').next().unwrap_or(id).to_string();
     // By the relations.
     let by_relation: HashMap<String, String> =
-        groups.iter().flat_map(|(outline, parts)| parts.iter().map(move |p| (p.clone(), outline.clone()))).collect();
+        groups.iter().flat_map(|g| g.parts.iter().map(move |p| (p.clone(), g.outline.clone()))).collect();
+    let group_name: HashMap<&str, &str> =
+        groups.iter().filter(|g| !g.name.is_empty()).map(|g| (g.outline.as_str(), g.name.as_str())).collect();
     // By place: the outlines in a grid of cells about 55 m across, so a part meets only those near it.
     const CELL: f64 = 0.0005;
     const MAX_CELLS: i64 = 400;
     let cell = |v: f64| (v / CELL).floor() as i64;
     let mut grid: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
     let mut big: Vec<usize> = Vec::new();
-    for (i, b) in found.buildings.iter().enumerate().filter(|(_, b)| b.kind != "part") {
+    for (i, b) in found.buildings.iter().enumerate().filter(|(_, b)| !b.is_part) {
         let (x0, x1) = b.outer.iter().fold((f64::MAX, f64::MIN), |(lo, hi), p| (lo.min(p.0), hi.max(p.0)));
         let (y0, y1) = b.outer.iter().fold((f64::MAX, f64::MIN), |(lo, hi), p| (lo.min(p.1), hi.max(p.1)));
         let (nx, ny) = (cell(x1) - cell(x0) + 1, cell(y1) - cell(y0) + 1);
@@ -668,18 +738,22 @@ fn assign_parts(found: &mut Found, groups: &[(String, Vec<String>)]) {
     }
     let mut owner: Vec<Option<usize>> = vec![None; found.buildings.len()];
     let mut named: Vec<String> = vec![String::new(); found.buildings.len()];
+    let mut grouped: Vec<Option<String>> = vec![None; found.buildings.len()];
     let position: HashMap<String, usize> =
-        found.buildings.iter().enumerate().filter(|(_, b)| b.kind != "part").map(|(i, b)| (b.osm_id.clone(), i)).collect();
+        found.buildings.iter().enumerate().filter(|(_, b)| !b.is_part).map(|(i, b)| (b.osm_id.clone(), i)).collect();
     // By index: a part is set while the outlines it is matched with are read.
     #[allow(clippy::needless_range_loop)]
     for i in 0..found.buildings.len() {
-        if found.buildings[i].kind != "part" {
+        if !found.buildings[i].is_part {
             continue;
         }
         let part = &found.buildings[i];
         if let Some(outline) = by_relation.get(&base(&part.osm_id)) {
             found.buildings[i].part_of = outline.clone();
             owner[i] = position.get(outline).copied();
+            if owner[i].is_none() {
+                grouped[i] = group_name.get(outline.as_str()).map(|n| n.to_string());
+            }
             continue;
         }
         let p = interior(&part.outer);
@@ -693,26 +767,45 @@ fn assign_parts(found: &mut Found, groups: &[(String, Vec<String>)]) {
             found.buildings[i].part_of = found.buildings[k].osm_id.clone();
         }
     }
-    // An outline with parts is replaced by them; a part without a name has its outline's.
-    let mut parts_of: HashMap<usize, usize> = HashMap::new();
+    // A part without a name has its outline's, or its group's.
     for (i, k) in owner.iter().enumerate() {
-        if let Some(k) = k {
-            *parts_of.entry(*k).or_default() += 1;
-            named[i] = found.buildings[*k].name.clone();
-        }
+        let name = match k {
+            Some(k) => found.buildings[*k].name.clone(),
+            None => grouped[i].clone().unwrap_or_default(),
+        };
+        named[i] = name;
     }
-    // A relation may name an outline that is not in the file's buildings (it lies outside the box): the parts still say whose.
     for (i, name) in named.into_iter().enumerate() {
-        if found.buildings[i].name.is_empty() {
+        if found.buildings[i].name.is_empty() && found.buildings[i].is_part {
             found.buildings[i].name = name;
         }
     }
-    if parts_of.is_empty() {
+    // An outline is replaced by its parts when a relation says it is theirs, or they cover half of it; a column or a roof slab is
+    // no part of its walls.
+    let mut parts_of: HashMap<usize, Vec<usize>> = HashMap::new();
+    for (i, k) in owner.iter().enumerate() {
+        if let Some(k) = k {
+            parts_of.entry(*k).or_default().push(i);
+        }
+    }
+    let mut drop: HashMap<usize, usize> = HashMap::new();
+    for (k, parts) in &parts_of {
+        let outline = &found.buildings[*k];
+        let related = parts.iter().any(|i| by_relation.get(&base(&found.buildings[*i].osm_id)).is_some_and(|o| *o == outline.osm_id));
+        let volumes: Vec<&Building> =
+            parts.iter().map(|i| &found.buildings[*i]).filter(|b| b.kind != "column" && b.kind != "roof").collect();
+        if related || coverage(outline, &volumes) >= 0.5 {
+            drop.insert(*k, parts.len());
+        } else {
+            found.kept += 1;
+        }
+    }
+    if drop.is_empty() {
         return;
     }
     let mut kept = Vec::with_capacity(found.buildings.len());
     for (i, b) in std::mem::take(&mut found.buildings).into_iter().enumerate() {
-        match parts_of.get(&i) {
+        match drop.get(&i) {
             Some(n) => {
                 found.replaced += 1;
                 found.skipped.push(Skipped { osm_id: b.osm_id, why: format!("replaced by its building parts ({n} parts)") });
@@ -801,7 +894,7 @@ mod tests {
     fn a_part_lifted_off_the_ground_has_a_min_height() {
         let tags = r#""building:part":"yes","height":"20","min_height":"8""#;
         let osm = parse(&file(&[way(1, &square(HOUSE.0, HOUSE.1, 20.0), tags)])).unwrap();
-        let none = buildings(&osm, &Options::default());
+        let none = buildings(&osm, &Options { parts: false, ..Options::default() });
         assert!(none.buildings.is_empty() && none.skipped[0].why.contains("part"), "{:?}", none.skipped);
         let with = buildings(&osm, &Options { parts: true, ..Options::default() });
         assert_eq!((with.buildings[0].height, with.buildings[0].min_height), (20000.0, 8000.0));
@@ -1120,7 +1213,7 @@ mod tests {
         // The outline's own attributes are not lost: the parts carry the name if they have none.
         assert!(f.buildings.iter().all(|b| b.name == "Hall"));
         // Without parts wanted the outline stays, and the parts are the skipped ones.
-        let f = buildings(&osm, &Options::default());
+        let f = buildings(&osm, &Options { parts: false, ..Options::default() });
         assert_eq!(f.buildings.len(), 1);
         assert_eq!((f.replaced, f.buildings[0].osm_id.as_str(), f.buildings[0].part_of.as_str()), (0, "way/1", ""));
     }
@@ -1184,5 +1277,101 @@ mod tests {
         let f = buildings(&osm, &with_parts());
         assert_eq!((f.buildings.len(), f.replaced), (2000, 2000));
         assert!(start.elapsed().as_secs_f64() < 5.0, "{:?}", start.elapsed());
+    }
+
+    // ---- 7b: the bell tower: columns, roof slabs, a kiosk that is its own part ----
+
+    /// A circle of `n` corners round (`lon`, `lat`), `size` metres across, closed.
+    fn disc(lon: f64, lat: f64, size: f64, n: usize) -> Vec<LonLat> {
+        let mut ring: Vec<LonLat> = (0..n)
+            .map(|i| {
+                let a = i as f64 / n as f64 * std::f64::consts::TAU;
+                (lon + size / 2.0 * 0.000_01 * a.cos(), lat + size / 2.0 * 0.000_009 * a.sin())
+            })
+            .collect();
+        ring.push(ring[0]);
+        ring
+    }
+
+    fn tower() -> String {
+        let mut elements = vec![
+            way(1, &disc(HOUSE.0, HOUSE.1, 1.0, 12), r#""building":"kiosk","building:part":"yes","height":"4","material":"concrete""#),
+            way(2, &disc(HOUSE.0, HOUSE.1, 1.6, 12), r#""building:part":"roof","height":"6","roof:height":"0.05","roof:shape":"flat""#),
+        ];
+        for k in 0..7 {
+            let (dx, dy) = (0.2 * f64::from(k).cos(), 0.2 * f64::from(k).sin());
+            elements.push(way(
+                10 + i64::from(k),
+                &disc(HOUSE.0 + dx * 0.000_01, HOUSE.1 + dy * 0.000_009, 0.05, 8),
+                r#""man_made":"column","column:shape":"circle","height":"6","min_height":"4""#,
+            ));
+        }
+        file(&elements)
+    }
+
+    #[test]
+    fn a_kiosk_tagged_as_its_own_part_a_roof_over_it_and_columns_are_all_kept() {
+        let f = buildings(&parse(&tower()).unwrap(), &Options::default());
+        assert_eq!(f.buildings.len(), 9, "{:?}", f.skipped);
+        assert_eq!((f.replaced, f.kept), (0, 0));
+        let kiosk = f.buildings.iter().find(|b| b.osm_id == "way/1").unwrap();
+        assert_eq!((kiosk.kind.as_str(), kiosk.is_part, kiosk.height, kiosk.min_height), ("kiosk", true, 4000.0, 0.0));
+        let columns: Vec<&Building> = f.buildings.iter().filter(|b| b.kind == "column").collect();
+        assert_eq!(columns.len(), 7);
+        assert!(columns.iter().all(|c| c.is_part && c.height == 6000.0 && c.min_height == 4000.0));
+        let roof = f.buildings.iter().find(|b| b.osm_id == "way/2").unwrap();
+        assert_eq!(
+            (roof.kind.as_str(), roof.height, roof.min_height, roof.roof_height),
+            ("roof", 6000.0, 5950.0, 0.0),
+            "a slab, as thick as the roof is"
+        );
+        // With parts left out the kiosk is the building, and the roof and columns are not read.
+        let f = buildings(&parse(&tower()).unwrap(), &Options { parts: false, ..Options::default() });
+        assert_eq!(f.buildings.len(), 1);
+        assert_eq!((f.buildings[0].osm_id.as_str(), f.buildings[0].is_part), ("way/1", false));
+    }
+
+    #[test]
+    fn a_roof_part_is_a_slab_at_the_top_or_at_the_eaves_not_a_volume() {
+        let o = Options::default();
+        let part = |tags: &str| {
+            let osm = parse(&file(&[way(1, &square(HOUSE.0, HOUSE.1, 20.0), tags)])).unwrap();
+            buildings(&osm, &o).buildings.remove(0)
+        };
+        let b = part(r#""building:part":"roof","height":"6""#);
+        assert_eq!((b.height, b.min_height, b.roof_height), (6000.0, 5900.0, 0.0), "100 mm thick by default");
+        let b = part(r#""building:part":"roof","height":"6","roof:height":"0.3""#);
+        assert_eq!((b.height, b.min_height), (6000.0, 5700.0), "a flat roof is as thick as roof:height says");
+        // A pitched roof: the slab is at the eaves and the roof stands on it.
+        let b = part(r#""building:part":"roof","height":"6","roof:height":"2","roof:shape":"cone""#);
+        assert_eq!((b.height, b.min_height, b.roof_height, b.roof_shape.as_str()), (4000.0, 3900.0, 2000.0, "cone"));
+        // With a min_height it is the slab between the two, as mapped.
+        let b = part(r#""building:part":"roof","height":"17.1","min_height":"16.9""#);
+        assert_eq!((b.height, b.min_height), (17100.0, 16900.0));
+        // Any other part keeps its walls from the ground.
+        let b = part(r#""building:part":"yes","height":"6""#);
+        assert_eq!((b.height, b.min_height, b.kind.as_str()), (6000.0, 0.0, "part"));
+        assert_eq!(part(r#""building:part":"corridor","height":"3""#).kind, "corridor");
+    }
+
+    #[test]
+    fn an_outline_is_left_out_only_when_its_parts_cover_it() {
+        let (outline, left, right) = halves();
+        let small = square(HOUSE.0 + 0.00005, HOUSE.1 + 0.00002, 5.0);
+        let at = |parts: &[(i64, &Vec<LonLat>, &str)]| {
+            let mut e = vec![way(1, &outline, r#""building":"yes","name":"Hall""#)];
+            e.extend(parts.iter().map(|(id, r, tags)| way(*id, r, tags)));
+            buildings(&parse(&file(&e)).unwrap(), &Options::default())
+        };
+        // One small part inside: the house stays, and the part is a mass of its own.
+        let f = at(&[(2, &small, r#""building:part":"yes","height":"9""#)]);
+        assert_eq!((f.buildings.len(), f.replaced, f.kept), (2, 0, 1), "{:?}", f.skipped);
+        assert!(f.buildings.iter().any(|b| b.osm_id == "way/1" && !b.is_part));
+        // Parts that cover it replace it.
+        let f = at(&[(2, &left, r#""building:part":"yes","height":"8""#), (3, &right, r#""building:part":"yes","height":"14""#)]);
+        assert_eq!((f.buildings.len(), f.replaced, f.kept), (2, 1, 0));
+        // A roof slab over the whole of it, or columns, are not its walls: it stays.
+        let f = at(&[(2, &outline, r#""building:part":"roof","height":"9","roof:height":"0.2""#)]);
+        assert_eq!((f.buildings.len(), f.replaced, f.kept), (2, 0, 1), "{:?}", f.skipped);
     }
 }

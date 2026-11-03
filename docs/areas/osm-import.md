@@ -25,7 +25,7 @@ reply, never a failure.
 
 A closed way tagged `building` (not `no`), or a `type=multipolygon` relation tagged `building`. A relation's outer ways are joined
 end to end (either direction) into rings; its inner ways are courtyards; two outlines are two buildings (`relation/5`,
-`relation/5#2`). `building:part` is left out unless `parts` is true (see Simple 3D Buildings below). Outlines must close, have three corners, enclose area and not
+`relation/5#2`). `building:part` areas and `man_made=column` ways are buildings too (`parts`, true unless an agent says `parts: false`: a building is its parts; see Simple 3D Buildings below). Outlines must close, have three corners, enclose area and not
 cross themselves (`Model::check` does not look for crossing in a mass; `osm.rs` does, up to 2,000 corners).
 
 **Height**, mm: `height` (`12`, `12.5`, `12 m`, `12,5`, `40 ft`, `40'`, `40' 6"`), else `building:levels` times `level_height`
@@ -36,11 +36,25 @@ cross themselves (`Model::check` does not look for crossing in a mass; `osm.rs` 
 
 The scheme at https://wiki.openstreetmap.org/wiki/Simple_3D_Buildings, as far as a basic building goes.
 
-- **Parts replace their outline** (`parts: true`): an outline with `building:part` areas inside it (a part's own middle, a point certainly in
-  it, is inside the outline and not in a courtyard) is left out and reported "replaced by its building parts" (`outlines_replaced` in the
-  reply); the parts are the masses, each with `OSM Part Of` (the outline's id) and, with no name of its own, the outline's. A
-  `type=building` relation groups its `outline` and its `part`s wherever they lie. Parts are matched to outlines by place on a grid of
-  cells, not pair by pair. A part given only inline by a relation (not in the file as a way) is not read.
+- **Parts are masses, wherever they lie, with no relation needed.** A feature tagged `building:part` is a part, even if it is also tagged
+  `building` (a kiosk that is its own only part): it is never an outline and never left out. A part belongs to the outline its own
+  interior point (a point certainly in it) lies in, found on a grid of cells, not pair by pair; a `type=building` relation, where there
+  is one, also names parts that lie elsewhere (a bell tower beside the church) and gives parts with no name its name. Each part mass
+  carries `OSM Part Of` (the outline's id) and `OSM Building` = its `building:part` value (`roof`, `corridor`, `column`; `part` for `yes`).
+- **An outline is left out only when its parts cover it**: half of a 24 by 24 grid of places in it lie in a part that is a volume (columns
+  and roof slabs are not its walls), or a relation names it the outline. Then the reply says `outlines_replaced`; otherwise
+  `outlines_kept`, and the outline and its small parts are all masses.
+- **`building:part=roof` is a roof, not a volume**: with no `min_height` it is a slab at the top (`roof:height` thick for a flat roof,
+  else 100 mm), and for a pitched `roof:shape` a 100 mm slab at the eaves (`height` less `roof:height`) for `building_shell` to put the
+  roof on; with a `min_height` it is the slab between the two, as mapped.
+- **Columns**: a way tagged `man_made=column` (and a `building:part=column`) is a mass from `min_height` to `height`, thin as it may be
+  (ten square centimetres, where other things need a tenth of a square metre). A node tagged `man_made=column` is not read.
+- **Courtyards stay open**: a building or part with courtyards (a multipolygon with inner rings, such as a tower's slab with its
+  opening) is cut into convex masses (`geom::split_holes`: the footprint is cut along the verticals through its corners and the
+  trapezoids that make a convex piece are joined; the area is checked), each `way/1~1`, `way/1~2`, ... holding `OSM Cut Edges`
+  (the edges the cut made, which `building_shell` leaves without walls). The reply counts `pieces` and the buildings cut (`pieces_of`);
+  a building of more than 200 corners, or of more than 64 pieces, is filled as before (`courtyards_filled`). Importing again finds the
+  pieces by those ids and takes away ones it no longer makes; `detail: ["relation/9"]` shells all its pieces.
 - **Facade and roof**: `height` is the whole. `roof:height` is the roof's share; else, for a pitched `roof:shape`, `height` less
   `building:levels` times the level height; with no `height`, the storeys are the facade and `roof:height` (else `roof:levels`) comes on
   top. **The mass is the facade**; the roof's height, `roof:shape`, `roof:angle`, `roof:orientation`, `roof:direction`, the colours and
@@ -49,7 +63,7 @@ The scheme at https://wiki.openstreetmap.org/wiki/Simple_3D_Buildings, as far as
   stands on, is not believed.
 - **The shell**: `building_shell` ([masses](massing.md#building-shell)) makes the outer walls, a floor at each storey and a roof by those
   tags, for the masses chosen (`detail` here, or Site > Build Shell on the desktop). Not read yet: skillion, half-hipped, gambrel,
-  mansard, dome, onion, round and saltbox roofs (flat roofs, said in the reply), colours and materials as BIMCraft materials.
+  mansard, dome, onion, round and saltbox roofs (flat roofs, said in the reply; `cone` is a hipped roof, a cone over a round footprint), colours and materials as BIMCraft materials.
 
 ## What it makes
 

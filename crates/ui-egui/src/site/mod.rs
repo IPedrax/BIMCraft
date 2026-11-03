@@ -81,7 +81,6 @@ pub(crate) struct AreaBox {
     north: String,
     east: String,
     // Buildings.
-    parts: bool,
     default_height: String,
     level_height: String,
     // Terrain.
@@ -347,7 +346,6 @@ impl BimApp {
             west: String::new(),
             north: String::new(),
             east: String::new(),
-            parts: false,
             default_height: units.length(6000.0),
             level_height: units.length(3000.0),
             spacing: String::new(),
@@ -443,13 +441,8 @@ impl BimApp {
                         }
                     }
                 });
-                match kind {
-                    Kind::Osm => {
-                        ui.checkbox(&mut b.parts, t("Parts of buildings too"));
-                    }
-                    Kind::Terrain => {
-                        ui.checkbox(&mut b.set_elevation, t("Take the project's ground height from the data, when it has none"));
-                    }
+                if kind == Kind::Terrain {
+                    ui.checkbox(&mut b.set_elevation, t("Take the project's ground height from the data, when it has none"));
                 }
                 ui.add_space(6.0);
                 match &live {
@@ -463,7 +456,7 @@ impl BimApp {
                 if kind == Kind::Osm {
                     ui.add_space(6.0);
                     egui::CollapsingHeader::new(t("Overpass query")).id_salt("site-query").default_open(true).show(ui, |ui| match area {
-                        Some(x) => query_view(ui, &geo::overpass_query(&x, Layers { parts: b.parts })),
+                        Some(x) => query_view(ui, &geo::overpass_query(&x, Layers::default())),
                         None => {
                             ui.label(RichText::new(t("Give the area first: the query is made from its box.")).color(pal().muted));
                         }
@@ -501,7 +494,6 @@ impl BimApp {
             let mut params = json!({"bbox": bbox.as_array()});
             match b.kind {
                 Kind::Osm => {
-                    params["parts"] = json!(b.parts);
                     if !b.default_height.trim().is_empty() {
                         params["default_height"] = json!(
                             units
@@ -550,7 +542,7 @@ impl BimApp {
             return;
         }
         let (send, answer) = channel();
-        let layers = Layers { parts: params["parts"].as_bool().unwrap_or(false) };
+        let layers = Layers::default();
         let wake = ctx.clone();
         let spawned = std::thread::Builder::new().name("site-fetch".into()).spawn(move || {
             let got = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match heights {
@@ -633,6 +625,18 @@ impl BimApp {
                 }
                 if n("courtyards_filled") > 0 {
                     lines.push(tf("{} courtyards filled in", &[&n("courtyards_filled").to_string()]));
+                }
+                if n("pieces") > 0 {
+                    lines.push(tf(
+                        "{} buildings with courtyards cut into {} pieces that leave them open",
+                        &[&n("pieces_of").to_string(), &n("pieces").to_string()],
+                    ));
+                }
+                if n("outlines_replaced") > 0 {
+                    lines.push(tf("{} outlines replaced by their building parts", &[&n("outlines_replaced").to_string()]));
+                }
+                if n("outlines_kept") > 0 {
+                    lines.push(tf("{} outlines kept: their parts cover too little of them", &[&n("outlines_kept").to_string()]));
                 }
                 if let Some(r) = v["skipped_by_reason"].as_object() {
                     for (why, count) in r {

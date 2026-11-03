@@ -77,7 +77,8 @@ pub fn plan(ring: &[P2], tag: &str, orientation: &str) -> Plan {
     let made = |shape, gables: Vec<usize>, notes: Vec<String>| Plan { shape, gables, notes };
     match tag.as_str() {
         "" | "flat" => made(Shape::Flat, Vec::new(), Vec::new()),
-        "hipped" | "pyramidal" => made(Shape::Hipped, Vec::new(), Vec::new()),
+        // A cone is a hip over a round footprint: the skeleton of a many-sided ring.
+        "hipped" | "pyramidal" | "cone" => made(Shape::Hipped, Vec::new(), Vec::new()),
         "gabled" => gabled(ring, orientation),
         other => {
             let shown: String = other.chars().take(40).collect();

@@ -87,7 +87,7 @@ msgstr "Projekt BIMCraft, soubor IFC nebo soubor aplikace Revit."
 msgid "A blank value is the family's own, as the Parameters tab has it."
 msgstr "Prázdná hodnota znamená výchozí hodnotu rodiny, jak je uvedeno na kartě Parametry."
 
-#: crates/ui-egui/src/site/mod.rs:412
+#: crates/ui-egui/src/site/mod.rs:410
 msgid "A box of degrees"
 msgstr ""
 
@@ -99,7 +99,7 @@ msgstr "Body kružnice, elipsy nebo oblouku podél jejích os: východ, sever, z
 msgid "A direction from the last point sticks to multiples of this angle, from east and from the line before; a dashed guide shows it"
 msgstr "Směr od posledního bodu se přichytává k násobkům tohoto úhlu od východu a od předchozí čáry; čárkované vodítko jej znázorňuje"
 
-#: crates/ui-egui/src/site/mod.rs:411
+#: crates/ui-egui/src/site/mod.rs:409
 msgid "A distance round the project's origin"
 msgstr ""
 
@@ -155,7 +155,7 @@ msgstr "Filtr fází vykresluje stav tímto způsobem, pokud je nastaveno Přeps
 msgid "A scan's points where the plan's cut plane cuts it, to trace what was measured"
 msgstr "Body mračna bodů v místě protnutí rovinou řezu půdorysu pro obkreslení naměřených dat"
 
-#: crates/ui-egui/src/site/mod.rs:646
+#: crates/ui-egui/src/site/mod.rs:650
 msgid "A toposurface of {} points, every {} m, from {}"
 msgstr ""
 
@@ -390,7 +390,7 @@ msgstr ""
 msgid "All"
 msgstr "Vše"
 
-#: crates/ui-egui/src/site/mod.rs:799
+#: crates/ui-egui/src/site/mod.rs:803
 msgid "All: cut {} m³, fill {} m³; net {} m³ (positive is earth to bring in)"
 msgstr ""
 
@@ -833,13 +833,13 @@ msgstr "Cihla 225 x 75"
 msgid "Build"
 msgstr "Sestavit"
 
-#: crates/ui-egui/src/site/mod.rs:201
+#: crates/ui-egui/src/site/mod.rs:200
 #: crates/ui-egui/src/site/shell.rs:45
 #: crates/ui-egui/src/site/shell.rs:127
 msgid "Build Shell"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:199
+#: crates/ui-egui/src/site/mod.rs:198
 msgid "Build Shell: the outer walls, a floor at each storey and the roof of the selected buildings, as their OpenStreetMap tags describe them"
 msgstr ""
 
@@ -924,9 +924,9 @@ msgstr "Kamera"
 #: crates/ui-egui/src/shortcuts.rs:398
 #: crates/ui-egui/src/shortcuts.rs:526
 #: crates/ui-egui/src/site/map.rs:306
-#: crates/ui-egui/src/site/mod.rs:289
-#: crates/ui-egui/src/site/mod.rs:479
-#: crates/ui-egui/src/site/mod.rs:688
+#: crates/ui-egui/src/site/mod.rs:288
+#: crates/ui-egui/src/site/mod.rs:472
+#: crates/ui-egui/src/site/mod.rs:692
 #: crates/ui-egui/src/site/shell.rs:67
 #: crates/ui-egui/src/standards.rs:334
 #: crates/ui-egui/src/typeprops.rs:310
@@ -1381,7 +1381,7 @@ msgstr "Klikněte na další bod trasy. Klávesa Enter operaci dokončí, kláve
 msgid "Click the place: it becomes the project's origin."
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:275
+#: crates/ui-egui/src/site/mod.rs:274
 msgid "Click the project's origin on a map"
 msgstr ""
 
@@ -1580,7 +1580,7 @@ msgstr "Klikněte pro určení směru dalšího ramene z podesty: rovně, vlevo,
 #: crates/ui-egui/src/revit.rs:259
 #: crates/ui-egui/src/settings.rs:298
 #: crates/ui-egui/src/shortcuts.rs:564
-#: crates/ui-egui/src/site/mod.rs:719
+#: crates/ui-egui/src/site/mod.rs:723
 msgid "Close"
 msgstr "Zavřít"
 
@@ -1702,7 +1702,7 @@ msgstr "Omezit"
 msgid "Constraints"
 msgstr "Vazby"
 
-#: crates/ui-egui/src/site/mod.rs:191
+#: crates/ui-egui/src/site/mod.rs:190
 msgid "Context"
 msgstr ""
 
@@ -1714,7 +1714,7 @@ msgstr ""
 msgid "Contour Interval"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:531
+#: crates/ui-egui/src/site/mod.rs:523
 msgid "Contour interval: `{}` is not a length"
 msgstr ""
 
@@ -1759,7 +1759,7 @@ msgstr "Měď"
 #: crates/ui-egui/src/lib.rs:4004
 #: crates/ui-egui/src/lib.rs:4054
 #: crates/ui-egui/src/lib.rs:4091
-#: crates/ui-egui/src/site/mod.rs:130
+#: crates/ui-egui/src/site/mod.rs:129
 msgid "Copy"
 msgstr "Kopie"
 
@@ -1984,12 +1984,12 @@ msgstr ""
 msgid "Cut Plane"
 msgstr "Rovina řezu"
 
-#: crates/ui-egui/src/site/mod.rs:187
-#: crates/ui-egui/src/site/mod.rs:802
+#: crates/ui-egui/src/site/mod.rs:186
+#: crates/ui-egui/src/site/mod.rs:806
 msgid "Cut/Fill"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:186
+#: crates/ui-egui/src/site/mod.rs:185
 msgid "Cut/Fill: the earth the selected pads take out of the terrain and put in (all the pads when none is selected)"
 msgstr ""
 
@@ -2137,7 +2137,7 @@ msgstr "Zbourat (DW): klikněte na prvek, který chcete zbourat ve fázi pohledu
 msgid "Demolished"
 msgstr "Zbourané"
 
-#: crates/core/src/commands.rs:8179
+#: crates/core/src/commands.rs:8258
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -2435,7 +2435,7 @@ msgstr "Nakreslete jeden obrys s případnými otvory uvnitř: tyto čáry tvoř
 msgid "Draw the 3D view on the graphics card"
 msgstr "Vykreslovat 3D pohled na grafické kartě"
 
-#: crates/ui-egui/src/site/mod.rs:413
+#: crates/ui-egui/src/site/mod.rs:411
 msgid "Draw the box on a map"
 msgstr ""
 
@@ -2595,7 +2595,7 @@ msgstr "Pohled"
 msgid "Elevation (°)"
 msgstr "Výškový úhel (°)"
 
-#: crates/ui-egui/src/site/mod.rs:434
+#: crates/ui-egui/src/site/mod.rs:432
 msgid "Elevation data"
 msgstr ""
 
@@ -2787,19 +2787,19 @@ msgstr "Stopy"
 msgid "Feet and inches"
 msgstr "Stopy a palce"
 
-#: crates/ui-egui/src/site/mod.rs:480
+#: crates/ui-egui/src/site/mod.rs:473
 msgid "Fetch"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:673
+#: crates/ui-egui/src/site/mod.rs:677
 msgid "Fetching"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:668
+#: crates/ui-egui/src/site/mod.rs:672
 msgid "Fetching buildings from OpenStreetMap…"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:669
+#: crates/ui-egui/src/site/mod.rs:673
 msgid "Fetching elevation data…"
 msgstr ""
 
@@ -3207,7 +3207,7 @@ msgstr "Obecný"
 msgid "Geometry"
 msgstr "Geometrie"
 
-#: crates/ui-egui/src/site/mod.rs:468
+#: crates/ui-egui/src/site/mod.rs:461
 msgid "Give the area first: the query is made from its box."
 msgstr ""
 
@@ -3255,7 +3255,7 @@ msgstr "Modulová osa"
 msgid "Grid (GR): click its two ends"
 msgstr "Modulová osa (GR): klikněte na oba její konce"
 
-#: crates/ui-egui/src/site/mod.rs:278
+#: crates/ui-egui/src/site/mod.rs:277
 msgid "Grid: utm, for the place's own zone, or an EPSG code such as 31983."
 msgstr ""
 
@@ -3263,7 +3263,7 @@ msgstr ""
 msgid "Gross Floor Area"
 msgstr "Hrubá podlažní plocha"
 
-#: crates/ui-egui/src/site/mod.rs:308
+#: crates/ui-egui/src/site/mod.rs:307
 msgid "Ground height: `{}` is not a length"
 msgstr ""
 
@@ -3315,11 +3315,11 @@ msgstr "Výškové odsazení od podlaží"
 msgid "Height Offset:"
 msgstr "Výškové odsazení:"
 
-#: crates/ui-egui/src/site/mod.rs:509
+#: crates/ui-egui/src/site/mod.rs:501
 msgid "Height of a building with none: `{}` is not a length"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:516
+#: crates/ui-egui/src/site/mod.rs:508
 msgid "Height of a level: `{}` is not a length"
 msgstr ""
 
@@ -3487,13 +3487,13 @@ msgstr "Importovat CAD"
 msgid "Import CAD: a DWG or DXF drawing brought into the project, drawn under the model in the plans of a level, its layers, colours and linetypes kept, and snapped to"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:193
-#: crates/ui-egui/src/site/mod.rs:388
-#: crates/ui-egui/src/site/mod.rs:642
+#: crates/ui-egui/src/site/mod.rs:192
+#: crates/ui-egui/src/site/mod.rs:386
+#: crates/ui-egui/src/site/mod.rs:646
 msgid "Import from OpenStreetMap"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:192
+#: crates/ui-egui/src/site/mod.rs:191
 msgid "Import from OpenStreetMap: the buildings round the origin, fetched from Overpass, as masses on the ground"
 msgstr ""
 
@@ -3525,7 +3525,7 @@ msgstr "V knihovně, nikoli v prvcích k výběru: {}"
 msgid "In this plan only, not in every plan of its level"
 msgstr "Pouze v tomto půdorysu, nikoli ve všech půdorysech daného podlaží"
 
-#: crates/ui-egui/src/site/mod.rs:280
+#: crates/ui-egui/src/site/mod.rs:279
 msgid "In {}"
 msgstr ""
 
@@ -3978,8 +3978,8 @@ msgid "Loaded {} shortcuts from file."
 msgstr "Ze souboru bylo načteno {} klávesových zkratek."
 
 #: crates/ui-egui/src/properties.rs:157
-#: crates/ui-egui/src/site/mod.rs:160
-#: crates/ui-egui/src/site/mod.rs:243
+#: crates/ui-egui/src/site/mod.rs:159
+#: crates/ui-egui/src/site/mod.rs:242
 msgid "Location"
 msgstr "Umístění"
 
@@ -3991,7 +3991,7 @@ msgstr "Čára umístění"
 msgid "Location Line:"
 msgstr "Čára umístění:"
 
-#: crates/ui-egui/src/site/mod.rs:158
+#: crates/ui-egui/src/site/mod.rs:157
 msgid "Location: where the project's origin is on Earth: latitude, longitude, ground height, true north and the grid it is in"
 msgstr ""
 
@@ -4563,7 +4563,7 @@ msgstr "Číslo"
 #: crates/ui-egui/src/properties.rs:2548
 #: crates/ui-egui/src/properties.rs:2741
 #: crates/ui-egui/src/reinforce.rs:470
-#: crates/ui-egui/src/site/mod.rs:290
+#: crates/ui-egui/src/site/mod.rs:289
 #: crates/ui-egui/src/site/shell.rs:68
 #: crates/ui-egui/src/standards.rs:335
 #: crates/ui-egui/src/typeprops.rs:311
@@ -4604,7 +4604,7 @@ msgstr "Odsazení (OF): vyberte stěnu nebo čáru; kopie se umístí na stranu 
 
 #: crates/ui-egui/src/draw.rs:338
 #: crates/ui-egui/src/lib.rs:4051
-#: crates/ui-egui/src/site/mod.rs:742
+#: crates/ui-egui/src/site/mod.rs:746
 #: crates/ui-egui/src/structure.rs:145
 msgid "Offset:"
 msgstr "Odsazení:"
@@ -4737,8 +4737,8 @@ msgstr "Přesah:"
 msgid "Overhead Lines"
 msgstr "Promítnuté horní obrysy"
 
-#: crates/ui-egui/src/site/mod.rs:465
-#: crates/ui-egui/src/site/mod.rs:682
+#: crates/ui-egui/src/site/mod.rs:458
+#: crates/ui-egui/src/site/mod.rs:686
 msgid "Overpass query"
 msgstr ""
 
@@ -4775,11 +4775,11 @@ msgstr "Obrázek PNG"
 msgid "PVC"
 msgstr "PVC"
 
-#: crates/ui-egui/src/site/mod.rs:178
+#: crates/ui-egui/src/site/mod.rs:177
 msgid "Pad"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:177
+#: crates/ui-egui/src/site/mod.rs:176
 msgid "Pad: click the corners of a building pad's outline; Enter, or the first corner again, finishes; Esc cancels"
 msgstr ""
 
@@ -4842,10 +4842,6 @@ msgstr "Částečná elipsa"
 #: crates/ui-egui/src/draw.rs:154
 msgid "Partial Ellipse: click the ends of its axis, then how far it bulges"
 msgstr "Částečná elipsa: klikněte na konce její osy a poté určete její vyklenutí"
-
-#: crates/ui-egui/src/site/mod.rs:448
-msgid "Parts of buildings too"
-msgstr ""
 
 #: crates/core/src/fixtures.rs:408
 msgid "Patch Panel"
@@ -5047,8 +5043,8 @@ msgstr ""
 msgid "Pick more references, or click away from them where the dimension line goes; Space steps Auto, Aligned, Horizontal, Vertical. Esc cancels."
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:275
-#: crates/ui-egui/src/site/mod.rs:413
+#: crates/ui-egui/src/site/mod.rs:274
+#: crates/ui-egui/src/site/mod.rs:411
 msgid "Pick on Map…"
 msgstr ""
 
@@ -5308,11 +5304,11 @@ msgstr "Umístit okno"
 msgid "Place Wire"
 msgstr "Umístit vodič"
 
-#: crates/ui-egui/src/site/mod.rs:183
+#: crates/ui-egui/src/site/mod.rs:182
 msgid "Place on Terrain"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:182
+#: crates/ui-egui/src/site/mod.rs:181
 msgid "Place on Terrain: stands the selected masses, columns, footings, components and walls on the ground under them"
 msgstr ""
 
@@ -5487,7 +5483,7 @@ msgstr "Jazyk projektu"
 msgid "Project Language: what the drawings say and how new things are named; now {}"
 msgstr "Jazyk projektu: jazyk popisů výkresů a pojmenování nových prvků; aktuálně {}"
 
-#: crates/ui-egui/src/site/mod.rs:156
+#: crates/ui-egui/src/site/mod.rs:155
 msgid "Project Location"
 msgstr ""
 
@@ -5576,7 +5572,7 @@ msgstr "Umístit pohled na tento výkres: pohled, který dosud není na žádné
 msgid "Quadrant"
 msgstr "Kvadrant"
 
-#: crates/ui-egui/src/site/mod.rs:709
+#: crates/ui-egui/src/site/mod.rs:713
 msgid "Query used"
 msgstr ""
 
@@ -6231,7 +6227,7 @@ msgstr ""
 msgid "Select the buildings (masses) first."
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:768
+#: crates/ui-egui/src/site/mod.rs:772
 msgid "Select what is to stand on the terrain first."
 msgstr ""
 
@@ -6879,7 +6875,7 @@ msgstr "Opatřený prvek popiskou"
 msgid "Take away the bars this command made for the element: bars drawn by hand stay"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:451
+#: crates/ui-egui/src/site/mod.rs:445
 msgid "Take the project's ground height from the data, when it has none"
 msgstr ""
 
@@ -6952,17 +6948,17 @@ msgstr "Dočasně izolovat prvek"
 msgid "Temporary dimension {}"
 msgstr "Dočasná kóta {}"
 
-#: crates/ui-egui/src/site/mod.rs:164
+#: crates/ui-egui/src/site/mod.rs:163
 msgid "Terrain"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:169
-#: crates/ui-egui/src/site/mod.rs:389
-#: crates/ui-egui/src/site/mod.rs:656
+#: crates/ui-egui/src/site/mod.rs:168
+#: crates/ui-egui/src/site/mod.rs:387
+#: crates/ui-egui/src/site/mod.rs:660
 msgid "Terrain from Elevation Data"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:165
+#: crates/ui-egui/src/site/mod.rs:164
 msgid "Terrain from Elevation Data: the ground round the origin, fetched from an elevation service, as a toposurface"
 msgstr ""
 
@@ -7097,8 +7093,8 @@ msgstr "Projekt neobsahuje žádné výkresy CAD: načtěte výkres pomocí Vlo�
 msgid "The project has no design options: Manage > Design Options makes them."
 msgstr "Projekt neobsahuje žádné možnosti návrhu: vytvořte je pomocí Správa > Možnosti návrhu."
 
-#: crates/ui-egui/src/site/mod.rs:365
-#: crates/ui-egui/src/site/mod.rs:544
+#: crates/ui-egui/src/site/mod.rs:363
+#: crates/ui-egui/src/site/mod.rs:536
 msgid "The project has no location yet: set it with Location first."
 msgstr ""
 
@@ -7106,7 +7102,7 @@ msgstr ""
 msgid "The project stays as you left it."
 msgstr "Projekt zůstane ve stavu, v jakém jste jej opustili."
 
-#: crates/ui-egui/src/site/mod.rs:654
+#: crates/ui-egui/src/site/mod.rs:658
 msgid "The project's ground height is now {} m above sea level"
 msgstr ""
 
@@ -7169,7 +7165,7 @@ msgstr "Tyto vzory do souboru PAT, kromě plných"
 msgid "Thickness"
 msgstr "Tloušťka"
 
-#: crates/ui-egui/src/site/mod.rs:744
+#: crates/ui-egui/src/site/mod.rs:748
 #: crates/ui-egui/src/structure.rs:170
 msgid "Thickness:"
 msgstr "Tloušťka:"
@@ -7183,12 +7179,12 @@ msgstr "Tenké čáry"
 msgid "Thin Lines (TL): every line one pixel wide"
 msgstr "Tenké čáry (TL): každá čára má šířku jeden pixel"
 
-#: crates/ui-egui/src/site/mod.rs:405
+#: crates/ui-egui/src/site/mod.rs:403
 msgid "This BIMCraft has no network access (BIMCRAFT_NO_NETWORK is set, or it runs in a sandbox that has none)."
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:547
-#: crates/ui-egui/src/site/mod.rs:598
+#: crates/ui-egui/src/site/mod.rs:539
+#: crates/ui-egui/src/site/mod.rs:590
 msgid "This BIMCraft has no network access."
 msgstr ""
 
@@ -7534,7 +7530,7 @@ msgstr "Jednotky"
 msgid "Units Format"
 msgstr ""
 
-#: crates/core/src/commands.rs:8320
+#: crates/core/src/commands.rs:8399
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 
@@ -7813,7 +7809,7 @@ msgstr "Kde se čára z posledního bodu dotýká kružnice nebo oblouku"
 msgid "Where its file's coordinates put it, as the survey placed it"
 msgstr "Kde jej umísťují souřadnice jeho souboru podle zaměření"
 
-#: crates/ui-egui/src/site/mod.rs:246
+#: crates/ui-egui/src/site/mod.rs:245
 msgid "Where the project's origin is on Earth. Everything fetched is placed from it."
 msgstr ""
 
@@ -8186,7 +8182,7 @@ msgstr "odsazení: `{}` není platná vzdálenost"
 msgid "offset: it offsets straight walls"
 msgstr "odsazení: odsadí přímé stěny"
 
-#: crates/ui-egui/src/site/mod.rs:758
+#: crates/ui-egui/src/site/mod.rs:762
 msgid "pad: the offset and the thickness are lengths"
 msgstr ""
 
@@ -8393,7 +8389,7 @@ msgstr "{} Přeskočeno {}."
 msgid "{} already exists: save under a name ending in .pat to replace it."
 msgstr "{} již existuje: chcete-li jej nahradit, uložte jej pod názvem s příponou .pat."
 
-#: crates/ui-egui/src/site/mod.rs:632
+#: crates/ui-egui/src/site/mod.rs:624
 msgid "{} are not over the terrain: they stand at the level"
 msgstr ""
 
@@ -8405,11 +8401,15 @@ msgstr "{} v poloze x {}, y {}"
 msgid "{} buildings already have walls, floors or a roof made by face: Update to Face makes them follow the mass"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:628
+#: crates/ui-egui/src/site/mod.rs:620
 msgid "{} buildings made, {} updated, {} left out"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:635
+#: crates/ui-egui/src/site/mod.rs:631
+msgid "{} buildings with courtyards cut into {} pieces that leave them open"
+msgstr ""
+
+#: crates/ui-egui/src/site/mod.rs:627
 msgid "{} courtyards filled in"
 msgstr ""
 
@@ -8449,12 +8449,12 @@ msgstr "{} neobsahuje žádné parametry, nemá tedy žádnou fázi k demolici"
 msgid "{} is not {}: `{}`"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:671
+#: crates/ui-egui/src/site/mod.rs:675
 msgid "{} km²"
 msgstr ""
 
 #: crates/ui-egui/src/site/map.rs:517
-#: crates/ui-egui/src/site/mod.rs:457
+#: crates/ui-egui/src/site/mod.rs:450
 msgid "{} km² (at most {})"
 msgstr ""
 
@@ -8486,6 +8486,14 @@ msgstr "{} z {} stupňů"
 msgid "{} opened without {} fields this version doesn't know; saving it leaves them out."
 msgstr "{} byl otevřen bez {} polí, která tato verze nezná; při uložení budou vynechána."
 
+#: crates/ui-egui/src/site/mod.rs:639
+msgid "{} outlines kept: their parts cover too little of them"
+msgstr ""
+
+#: crates/ui-egui/src/site/mod.rs:636
+msgid "{} outlines replaced by their building parts"
+msgstr ""
+
 #: crates/ui-egui/src/fillpatterns.rs:156
 msgid "{} pattern imported."
 msgstr "Importován {} vzor."
@@ -8506,11 +8514,11 @@ msgstr "Importováno {} vzorů; vynecháno: {}"
 msgid "{} selected."
 msgstr "Vybráno: {}."
 
-#: crates/ui-egui/src/site/mod.rs:775
+#: crates/ui-egui/src/site/mod.rs:779
 msgid "{} stand on the terrain"
 msgstr ""
 
-#: crates/ui-egui/src/site/mod.rs:777
+#: crates/ui-egui/src/site/mod.rs:781
 msgid "{} stand on the terrain; {} are not over it"
 msgstr ""
 
@@ -8604,7 +8612,7 @@ msgid "{}: `{}` is not a length"
 msgstr "{}: `{}` není platná délka"
 
 #: crates/ui-egui/src/properties.rs:2030
-#: crates/ui-egui/src/site/mod.rs:144
+#: crates/ui-egui/src/site/mod.rs:143
 msgid "{}: `{}` is not a number"
 msgstr "{}: `{}` není číslo"
 
@@ -8612,7 +8620,7 @@ msgstr "{}: `{}` není číslo"
 msgid "{}: `{}` isn't a number"
 msgstr "{}: `{}` není číslo"
 
-#: crates/ui-egui/src/site/mod.rs:793
+#: crates/ui-egui/src/site/mod.rs:797
 msgid "{}: cut {} m³, fill {} m³ (net {} m³)"
 msgstr ""
 
@@ -9178,3 +9186,6 @@ msgstr "Vodiče"
 #: crates/ui-egui/src/lib.rs:3393
 #~ msgid "Link CAD: a DXF drawing shown in the plans of a level, read again from its file on Reload and when the project opens"
 #~ msgstr "Připojit CAD: výkres DXF zobrazený v půdorysech podlaží, znovu načítaný ze souboru při opětovném načtení a při otevření projektu"
+#: crates/ui-egui/src/site/mod.rs:448
+#~ msgid "Parts of buildings too"
+#~ msgstr ""

@@ -393,9 +393,9 @@ fn the_import_box_shows_the_overpass_query_that_will_be_asked() {
     press(&mut h, "Site");
     press(&mut h, "Import from OpenStreetMap");
     assert!(h.query_by_label_contains("[out:json]").is_some(), "the query is there before anything is fetched");
-    assert!(h.query_by_label_contains("building:part").is_none());
-    pick(&mut h, Role::CheckBox, "Parts of buildings too");
-    assert!(h.query_by_label_contains("building:part").is_some(), "it follows the options");
+    // A building is its parts: the parts and the columns that hold a roof up are always in it.
+    assert!(h.query_by_label_contains("building:part").is_some() && h.query_by_label_contains("man_made").is_some());
+    assert!(h.query_by_label_contains("type\"=\"building").is_some());
     // And the area: 10 times the distance, a box 10 times as wide.
     let before = query_shown(&h);
     type_into(&mut h, "Distance round the origin (m)", "900");

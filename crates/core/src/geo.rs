@@ -136,10 +136,16 @@ pub fn zoom_for(b: &Bbox, metres_per_pixel: f64) -> u8 {
 }
 
 /// What to ask Overpass for.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Layers {
-    /// Parts of buildings too.
+    /// Parts of buildings too (and the columns that hold them up): a building is its parts, so by default.
     pub parts: bool,
+}
+
+impl Default for Layers {
+    fn default() -> Layers {
+        Layers { parts: true }
+    }
 }
 
 /// A degree as the query writes it: seven places at most, no trailing zeros, no exponent.
@@ -156,7 +162,7 @@ pub fn overpass_query(b: &Bbox, layers: Layers) -> String {
         format!("[out:json][timeout:60][maxsize:67108864];(way[\"building\"]{at};relation[\"building\"][\"type\"=\"multipolygon\"]{at};");
     if layers.parts {
         q.push_str(&format!(
-            "way[\"building:part\"]{at};relation[\"building:part\"][\"type\"=\"multipolygon\"]{at};relation[\"type\"=\"building\"]{at};"
+            "way[\"building:part\"]{at};relation[\"building:part\"][\"type\"=\"multipolygon\"]{at};relation[\"type\"=\"building\"]{at};way[\"man_made\"=\"column\"]{at};"
         ));
     }
     q.push_str(");out geom;");
