@@ -2919,7 +2919,7 @@ fn shape_editing_raises_points_draws_split_lines_and_resets_a_floor() {
 }
 
 #[test]
-fn modify_sub_elements_sets_a_points_height_or_an_edges_both_ends() {
+fn modify_sub_elements_selects_then_sets_a_points_height_or_an_edges_both_ends_and_deletes() {
     let mut h = app(BOX);
     tool(&mut h, "Floor");
     click(&mut h, P2(4000.0, 3000.0));
@@ -2928,20 +2928,38 @@ fn modify_sub_elements_sets_a_points_height_or_an_edges_both_ends() {
     type_into(&mut h, "Elevation:", "-30");
     click(&mut h, P2(4000.0, 3000.0));
     let id = field(&h, floor[0], "shape")["points"][0]["id"].clone();
-    // The drain picked again, a little off it: lower, the same point.
+    // Nothing picked, the Elevation is blank; the drain picked, a little off it, it reads its height, and what's typed
+    // there, Enter, lowers it: the same point.
     press(&mut h, "Modify Sub Elements");
-    type_into(&mut h, "Elevation:", "-50");
+    assert_eq!(h.state().shape_z, "");
     click(&mut h, P2(4030.0, 2970.0));
+    assert_eq!((h.state().shape_picked.len(), h.state().shape_z.as_str()), (1, "-30"));
+    type_into(&mut h, "Elevation:", "-50");
+    key(&mut h, Key::Enter);
     let points = field(&h, floor[0], "shape")["points"].clone();
     assert_eq!((points.as_array().map(Vec::len), points[0]["id"].clone(), points[0]["z"].clone()), (Some(1), id, json!(-50.0)), "{points}");
     // An edge of the outline: both its corners, each a point now.
-    type_into(&mut h, "Elevation:", "20");
     click(&mut h, P2(4000.0, 20.0));
+    assert_eq!(h.state().shape_z, "0");
+    type_into(&mut h, "Elevation:", "20");
+    key(&mut h, Key::Enter);
     let points = field(&h, floor[0], "shape")["points"].clone();
     let at = |x: f64, y: f64| points.as_array().unwrap().iter().find(|p| p["at"] == json!([x, y])).map(|p| p["z"].clone());
     assert_eq!((at(0.0, 0.0), at(8000.0, 0.0)), (Some(json!(20.0)), Some(json!(20.0))), "{points}");
     assert_eq!(field(&h, floor[0], "top"), json!([-50.0, 20.0]));
-    assert_eq!(h.state().tool, Tool::ModifySubElements);
+    // The drain added with Shift: two heights, the Elevation blank; one typed sets them all.
+    click_with(&mut h, P2(4000.0, 3000.0), Modifiers::SHIFT);
+    assert_eq!((h.state().shape_picked.len(), h.state().shape_z.as_str()), (2, ""));
+    type_into(&mut h, "Elevation:", "5");
+    key(&mut h, Key::Enter);
+    let zs: Vec<Value> = field(&h, floor[0], "shape")["points"].as_array().unwrap().iter().map(|p| p["z"].clone()).collect();
+    assert!(zs.iter().all(|z| *z == json!(5.0)), "{zs:?}");
+    // Delete takes the drain off, the floor kept; its corners go back to the top's height.
+    click(&mut h, P2(4000.0, 3000.0));
+    key(&mut h, Key::Delete);
+    let shape = field(&h, floor[0], "shape");
+    assert!(!shape["points"].as_array().unwrap().iter().any(|p| p["at"] == json!([4000.0, 3000.0])), "{shape}");
+    assert_eq!((ids(&h, "floor"), &h.state().tool), (floor.clone(), &Tool::ModifySubElements));
 }
 
 #[test]
@@ -3017,8 +3035,10 @@ fn absolute_elevations_are_above_the_floors_level_on_any_level() {
     assert!(painted(&h).iter().any(|t| t == "-30"), "{:?}", painted(&h));
     // Modify Sub Elements reads it the same way.
     press(&mut h, "Modify Sub Elements");
-    type_into(&mut h, "Elevation:", "-50");
     click(&mut h, P2(4000.0, 3000.0));
+    assert_eq!(h.state().shape_z, "-30");
+    type_into(&mut h, "Elevation:", "-50");
+    key(&mut h, Key::Enter);
     assert_eq!(field(&h, floor[0], "shape")["points"][0]["z"], json!(-50.0));
 }
 

@@ -29,7 +29,11 @@ fn in_3d_a_points_grip_drags_it_up_or_down_and_a_corners_makes_it_a_point() {
     let (mut h, floor) = drained();
     press(&mut h, "Modify Sub Elements");
     assert!(painted(&h).iter().any(|t| t == "-300"), "the drain's height beside it: {:?}", painted(&h));
-    assert!(painted(&h).iter().any(|t| t.starts_with("Drag a grip up or down")), "the 3D view's prompt: {:?}", painted(&h));
+    assert!(
+        painted(&h).iter().any(|t| t.starts_with("Click a point, a corner or an edge to select it")),
+        "the 3D view's prompt: {:?}",
+        painted(&h)
+    );
     let before = h.state().orbit.camera;
     // The drain dragged up to 100 mm down.
     let (a, b) = (h.state().screen3([4000.0, 3000.0, -300.0]), h.state().screen3([4000.0, 3000.0, -100.0]));
@@ -73,13 +77,15 @@ fn in_3d_a_grip_held_mid_drag_previews_the_creases_its_release_will_leave() {
 }
 
 #[test]
-fn in_3d_a_click_sets_what_it_picks_to_the_elevation_and_adds_points_and_split_lines_on_the_top() {
+fn in_3d_a_click_picks_what_the_elevation_then_sets_and_adds_points_and_split_lines_on_the_top() {
     let (mut h, floor) = drained();
-    // Modify Sub Elements: the drain clicked, a little off it, to the Options Bar's elevation.
+    // Modify Sub Elements: the drain clicked, a little off it, picked; the Options Bar's Elevation typed, Enter.
     press(&mut h, "Modify Sub Elements");
-    type_into(&mut h, "Elevation:", "-40");
     let at = h.state().screen3([4000.0, 3000.0, -300.0]) + vec2(3.0, -2.0);
     click_at(&mut h, at);
+    assert_eq!(h.state().shape_z, "-300");
+    type_into(&mut h, "Elevation:", "-40");
+    key(&mut h, Key::Enter);
     assert_eq!(point_near(&h, floor, 4000.0, 3000.0, 0.0).map(|p| p.1), Some(-40.0));
     // Add Point: on the top where it's clicked.
     press(&mut h, "Add Point");
@@ -216,4 +222,24 @@ fn in_plan_add_point_snaps_onto_an_edge_near_the_cursor() {
     click(&mut h, P2(2040.0, 1480.0));
     let (p, z) = point_near(&h, floor, 2040.0, 1480.0, 100.0).expect("a point on the crease");
     assert!((p.1 - 0.75 * p.0).abs() < 1.0 && z == -10.0, "{p:?} {z}");
+}
+
+#[test]
+fn in_3d_a_picked_edges_arrow_drags_both_its_ends_up_together() {
+    let (mut h, floor) = drained();
+    press(&mut h, "Modify Sub Elements");
+    // The south edge picked at its middle: its height on the Options Bar, its label there.
+    let mid = h.state().screen3([4000.0, 0.0, 0.0]);
+    click_at(&mut h, mid + vec2(0.0, 2.0));
+    assert!(matches!(h.state().shape_picked.as_slice(), [crate::shape::Sub::Edge(..)]), "{:?}", h.state().shape_picked);
+    assert_eq!(h.state().shape_z, "0");
+    // Its ▲, beside the middle, dragged 100 mm up: both corners up, each a point now.
+    let up = mid + vec2(-12.0, -9.0);
+    let by = h.state().screen3([4000.0, 0.0, 100.0]) - mid;
+    drag_screen(&mut h, up, up + by, PointerButton::Primary);
+    for x in [0.0, 8000.0] {
+        let (_, z) = point_near(&h, floor, x, 0.0, 0.0).expect("a point at the corner");
+        assert!((z - 100.0).abs() <= 2.0, "{x}: {z}");
+    }
+    assert!((h.state().shape_z.parse::<f64>().unwrap() - 100.0).abs() <= 2.0, "{}", h.state().shape_z);
 }

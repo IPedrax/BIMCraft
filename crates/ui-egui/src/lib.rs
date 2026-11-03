@@ -523,6 +523,8 @@ pub struct BimApp {
     shape_grip: Option<P2>,
     /// The selected floor as a grip's drag would leave it, plan or 3D, while it's dragged: its creases drawn over it.
     pub(crate) shape_preview: Option<bimcraft_core::model::Floor>,
+    /// What Modify Sub Elements has selected of the shaped floor's shape.
+    pub(crate) shape_picked: Vec<crate::shape::Sub>,
     /// A shape point's height label clicked into a field: the point, and what's typed.
     pub(crate) shape_label_edit: Option<(P2, String)>,
     /// Where the plan drew the shape's height labels, last frame: a click there is the label's, not the tool's.
@@ -1023,6 +1025,7 @@ impl BimApp {
             shape_grip: None,
             shape_preview: None,
             shape_label_edit: None,
+            shape_picked: Vec::new(),
             shape_label_rects: Vec::new(),
             shaft_top: None,
             shaft_height: units.length(3000.0),
@@ -2149,6 +2152,11 @@ impl BimApp {
             self.status = Status { text: t("select the floor or flat roof to shape first").into(), error: true };
             return;
         }
+        // Modify Sub Elements starts with nothing of the shape picked, its Elevation blank until something is.
+        if tool == Tool::ModifySubElements && self.tool != Tool::ModifySubElements {
+            self.shape_picked.clear();
+            self.shape_z.clear();
+        }
         if let Tool::Rotate { centre, .. } = &mut tool
             && let Some(middle) = self.middle()
         {
@@ -2205,7 +2213,7 @@ impl BimApp {
             ui.spacing_mut().item_spacing.y = 2.0;
             ui.horizontal(|ui| {
                 let tip =
-                    msg!("Modify Sub Elements: click a point, a corner or an edge of the top to set it to the Options Bar's elevation");
+                    msg!("Modify Sub Elements: select a point, a corner or an edge of the top, then type its height on the Options Bar or its label");
                 let active = self.tool == Tool::ModifySubElements;
                 if small_button(ui, Icon::ModifySubElements, "Modify Sub Elements", active, tip).clicked() {
                     self.set_tool(Tool::ModifySubElements);
@@ -2379,6 +2387,10 @@ impl BimApp {
     }
 
     fn delete(&mut self) {
+        // Under Modify Sub Elements, what of the shape is selected.
+        if self.shape_delete() {
+            return;
+        }
         if self.sketch.is_some() {
             self.delete_sketch_lines();
             return;
@@ -4034,8 +4046,14 @@ impl BimApp {
                 Tool::AddPoint | Tool::ModifySubElements => {
                     let l = ui.label(t("Elevation:"));
                     let hint = self.session.model.units.name();
-                    ui.add(TextEdit::singleline(&mut self.shape_z).desired_width(64.0).hint_text(hint)).labelled_by(l.id);
-                    ui.checkbox(&mut self.shape_absolute, t("Absolute"));
+                    let field = ui.add(TextEdit::singleline(&mut self.shape_z).desired_width(64.0).hint_text(hint)).labelled_by(l.id);
+                    // Under Modify Sub Elements, Enter sets the selection to it.
+                    if self.tool == Tool::ModifySubElements && field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
+                        self.shape_apply();
+                    }
+                    if ui.checkbox(&mut self.shape_absolute, t("Absolute")).changed() {
+                        self.shape_refresh();
+                    }
                 }
                 Tool::Stair(_) => {
                     let l = ui.label(t("Width:"));
@@ -4227,7 +4245,7 @@ impl BimApp {
             // Shape Editing works on the floor's top in the 3D view too.
             (Sheet::View3D, Tool::ModifySubElements) => {
                 return msg!(
-                    "Drag a grip up or down to set its height, or click a point, a corner or an edge: it goes to the Options Bar's elevation."
+                    "Click a point, a corner or an edge to select it (Shift adds), then type its height or drag its arrows; Delete removes it."
                 );
             }
             (Sheet::View3D, Tool::AddPoint | Tool::AddSplitLine(_)) => {}
@@ -4350,7 +4368,7 @@ impl BimApp {
             Tool::SlopeArrow(Some(_)) => msg!("Click its head: the floor rises toward it at the Options Bar's slope. Esc cancels."),
             Tool::ModifySubElements => {
                 msg!(
-                    "Click a point, a corner or an edge of the top: it goes to the Options Bar's elevation; drag a point's grip to move it."
+                    "Click a point, a corner or an edge to select it (Shift adds), then type its height; drag a point to move it; Delete removes it."
                 )
             }
             Tool::AddPoint => msg!("Click on the top: a point there at the Options Bar's elevation, or the top's height if none."),

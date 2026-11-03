@@ -80,7 +80,7 @@ pub struct Orbit {
     boxing: Option<(usize, Pos2)>,
     /// A shaped floor's point or corner being dragged up or down: where it is in plan and in the model, and where the drag
     /// began.
-    lift: Option<(P2, P3, Pos2)>,
+    lift: Option<(Vec<P2>, P3, Pos2)>,
 }
 
 impl Default for Orbit {
@@ -201,6 +201,18 @@ impl BimApp {
         let adding = shaping.is_some() && matches!(self.tool, Tool::AddPoint | Tool::AddSplitLine(_));
         let handles = shaping.as_ref().map(|f| shape_handles(&model, f).0).unwrap_or_default();
         let absolute = self.shape_absolute;
+        let picked = self.shape_picked.clone();
+        let shaped = self.shaping();
+        // Where the floor's top is over plan point `q`; an edge's middle, between its ends.
+        let top_at = |q: P2| -> Option<P3> {
+            let f = shaping.as_ref()?;
+            Some([q.0, q.1, model.floor_top(f).at(q) + model.shape_height(f, q)])
+        };
+        let anchor = |ends: &[P2]| -> Option<P3> {
+            let tops: Vec<P3> = ends.iter().filter_map(|q| top_at(*q)).collect();
+            let n = tops.len().max(1) as f64;
+            (!tops.is_empty()).then(|| [0, 1, 2].map(|k| tops.iter().map(|t| t[k]).sum::<f64>() / n))
+        };
         let o = &mut self.orbit;
         (o.rect, o.ppp) = (rect, ppp);
         let scene = scene_of(&mut o.scene, &model);
@@ -289,30 +301,42 @@ impl BimApp {
             && let Some(origin) = ui.input(|i| i.pointer.press_origin())
         {
             let off = |p: &P3| on_screen(&cam, rect, ppp, *p).distance(origin);
-            o.lift =
-                handles.iter().filter(|(_, p)| off(p) <= 8.0).min_by(|a, b| off(&a.1).total_cmp(&off(&b.1))).map(|(q, p)| (*q, *p, origin));
+            // A selected point's or edge's ▲ or ▼ takes all of it; else the grip there.
+            let arrows = picked.iter().find_map(|s| {
+                let at = anchor(&s.ends())?;
+                let c = on_screen(&cam, rect, ppp, at);
+                let near = [c + vec2(-12.0, -9.0), c + vec2(-12.0, 9.0)].iter().any(|g| g.distance(origin) <= 9.0);
+                near.then(|| (s.ends(), at, origin))
+            });
+            o.lift = arrows.or_else(|| {
+                handles
+                    .iter()
+                    .filter(|(_, p)| off(p) <= 8.0)
+                    .min_by(|a, b| off(&a.1).total_cmp(&off(&b.1)))
+                    .map(|(q, p)| (vec![*q], *p, origin))
+            });
         }
         if !lifting {
             o.lift = None;
         }
         let lift_held = o.lift.is_some();
-        let lifted_by = match (o.lift, latest) {
-            (Some((_, at, from)), Some(now)) => cam.along(2, at, px(from), px(now)).map(f64::round),
+        let lifted_by = match (&o.lift, latest) {
+            (Some((_, at, from)), Some(now)) => cam.along(2, *at, px(*from), px(now)).map(f64::round),
             _ => None,
         };
-        // While it's dragged, the floor as it would be with that point or corner there.
-        let preview = match (&shaping, o.lift, lifted_by) {
-            (Some(f), Some((q, ..)), Some(by)) => {
-                crate::shape::raised(&model, f, q, by).map(|shape| bimcraft_core::model::Floor { shape, ..f.clone() })
+        // While it's dragged, the floor as it would be with those points or corners there.
+        let preview = match (&shaping, &o.lift, lifted_by) {
+            (Some(f), Some((qs, ..)), Some(by)) => {
+                crate::shape::raised_all(&model, f, qs, by).map(|shape| bimcraft_core::model::Floor { shape, ..f.clone() })
             }
             _ => None,
         };
         let mut raise = None;
         if response.drag_stopped()
-            && let Some((q, ..)) = o.lift.take()
+            && let Some((qs, ..)) = o.lift.take()
             && !self.canvas.quick()
         {
-            raise = lifted_by.map(|by| (q, by));
+            raise = lifted_by.map(|by| (qs, by));
         }
         let still = o.lift.is_some();
         // The primary button, or Shift and the middle button, orbit, 0.4° a point; the middle
@@ -359,8 +383,10 @@ impl BimApp {
         };
         let hovered =
             hover.filter(|_| (modify || demolish || paint || unpaint) && o.drag.is_none()).and_then(|at| pick(&o.picker, at)).map(|h| h.id);
+        // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
         let tints: Vec<(Id, Rgb)> = selection
             .iter()
+            .filter(|id| Some(**id) != shaped)
             .map(|id| (*id, rgb(canvas_pal().accent)))
             .chain(hovered.filter(|id| !selection.contains(id)).map(|id| (id, rgb(canvas_pal().hover))))
             .collect();
@@ -451,14 +477,13 @@ impl BimApp {
             let off = |p: &P3| on_screen(&cam, rect, ppp, *p).distance(h);
             handles.iter().filter(|(_, p)| off(p) <= 8.0).min_by(|a, b| off(&a.1).total_cmp(&off(&b.1))).map(|(q, _)| *q)
         });
-        let mut labels: Vec<(Pos2, P2, String)> = Vec::new();
+        let mut labels: Vec<(Pos2, P2, Vec<P2>, String)> = Vec::new();
         // Where the floor's top is over plan point `q`.
         let on_top = |q: P2| -> Option<P3> {
             let f = shaping.as_ref()?;
             Some([q.0, q.1, model.floor_top(f).at(q) + model.shape_height(f, q)])
         };
         if let Some(f) = &shaping {
-            let (base, level) = (model.floor_top(f), model.elevation(f.level));
             // The creases the drag would leave, dashed over the ones there are.
             for [a, b] in preview.as_ref().map(|f| model.shape_creases(f)).unwrap_or_default() {
                 let (a, b) = (screen(a), screen(b));
@@ -466,35 +491,43 @@ impl BimApp {
                     p.extend(egui::Shape::dashed_line(&[a, b], Stroke::new(1.5, pal().accent), 6.0, 4.0));
                 }
             }
-            let held = o.lift.map(|(q, ..)| q);
-            for (q, at) in &handles {
-                let is_held = held.is_some_and(|h| h.dist(*q) <= TOL);
-                let by = if is_held { lifted_by.unwrap_or(0.0) } else { 0.0 };
-                let (from, to) = (screen(*at), screen([at[0], at[1], at[2] + by]));
+            // Its points, edges, split lines and creases as edit mode colours them; the grip under the cursor lit, the
+            // selection thick.
+            crate::shape::draw_marks(&p, &crate::shape::marks(&model, f), screen, &picked, lit);
+            let held: Vec<P2> = o.lift.as_ref().map(|(qs, ..)| qs.clone()).unwrap_or_default();
+            let by = lifted_by.unwrap_or(0.0);
+            // What's held, where the drag takes it.
+            for at in held.iter().filter_map(|q| top_at(*q)) {
+                let (from, to) = (screen(at), screen([at[0], at[1], at[2] + by]));
+                if from.is_finite() && to.is_finite() {
+                    p.line_segment([from, to], Stroke::new(1.5, pal().accent));
+                    p.circle_filled(to, 5.5, pal().accent);
+                }
+            }
+            // Each point's height beside it, and the selection's (an edge's at its middle, ▲/▼ beside it): a click on one
+            // types it; a held one's follows the drag.
+            let mut items: Vec<(P2, Vec<P2>)> = f.shape.points.iter().map(|x| (x.at, vec![x.at])).collect();
+            for s in &picked {
+                if !items.iter().any(|(q, _)| q.dist(s.at()) <= TOL) {
+                    items.push((s.at(), s.ends()));
+                }
+            }
+            for (q, ends) in items {
+                let Some(at) = anchor(&ends) else { continue };
+                let is_held = !held.is_empty() && ends.iter().all(|e| held.iter().any(|h| h.dist(*e) <= TOL));
+                let lift = if is_held { by } else { 0.0 };
+                let to = screen([at[0], at[1], at[2] + lift]);
                 if !to.is_finite() {
                     continue;
                 }
+                let text = crate::shape::heights_text(&model, f, &ends, absolute, lift);
                 if is_held {
-                    p.line_segment([from, to], Stroke::new(1.5, pal().accent));
+                    crate::canvas::tag(&p, to + vec2(8.0, -8.0), egui::Align2::LEFT_BOTTOM, text);
+                } else {
+                    labels.push((to + vec2(8.0, -8.0), q, ends.clone(), text));
                 }
-                let is_lit = lit.is_some_and(|l| l.dist(*q) <= TOL);
-                if lifting {
-                    let side = if is_lit { 12.0 } else { 9.0 };
-                    let r = Rect::from_center_size(to, vec2(side, side));
-                    p.rect_filled(r, 1.0, if is_held || is_lit { pal().accent } else { canvas_pal().surface });
-                    p.rect_stroke(r, 1.0, Stroke::new(1.5, pal().accent), StrokeKind::Middle);
-                }
-                // Its height as the Options Bar's Elevation reads it: a shape point's always, a corner's while it's held; a
-                // still one's a label to click and type.
-                let point = f.shape.points.iter().any(|s| s.at.dist(*q) <= TOL);
-                if point || is_held {
-                    let z = at[2] + by - if absolute { level } else { base.at(*q) };
-                    let text = model.units.length(z);
-                    if is_held {
-                        crate::canvas::tag(&p, to + vec2(8.0, -8.0), egui::Align2::LEFT_BOTTOM, text);
-                    } else {
-                        labels.push((to + vec2(8.0, -8.0), *q, text));
-                    }
+                if lifting && picked.iter().any(|s| s.at().dist(q) <= TOL) {
+                    crate::shape::arrows(&p, to);
                 }
             }
             // Where a click would add a point, or end the split line begun; the edge it snaps to lit.
@@ -523,7 +556,7 @@ impl BimApp {
         let click = click.filter(|at| !boxed.is_some_and(|b| modify && crate::section_box::grip_at(b, *at, screen).is_some()));
         // Shape Editing's clicks are the floor's, not the picture's; one on a height label is the label's.
         let label_rects: Vec<Rect> =
-            labels.iter().map(|(at, _, text)| crate::shape::label_rect(ui, *at, text).expand2(vec2(18.0, 2.0))).collect();
+            labels.iter().map(|(at, _, _, text)| crate::shape::label_rect(ui, *at, text).expand2(vec2(18.0, 2.0))).collect();
         let shape_click = click.filter(|at| shaping.is_some() && !label_rects.iter().any(|r| r.contains(*at)));
         let shape_reach = 8.0 * f64::from(ppp);
         let landed = shape_click.map(|at| (landing(at), px(at)));
@@ -557,15 +590,18 @@ impl BimApp {
         if shaping.is_none() {
             self.shape_label_edit = None;
         }
-        for (at, q, text) in labels {
-            self.shape_label(ui, at, q, &text);
+        for (at, q, ends, text) in labels {
+            self.shape_label(ui, at, q, &ends, &text);
         }
-        if let Some((q, by)) = raise {
-            self.shape_raise(q, by);
+        if let Some((qs, by)) = raise {
+            self.shape_raise_all(&qs, by);
         }
         if let Some((landed, at)) = landed {
             match (&self.tool, landed) {
-                (Tool::ModifySubElements, _) => self.shape_modify(|f| shape_pick_3d(&model, f, &cam, at, shape_reach)),
+                (Tool::ModifySubElements, _) => {
+                    let mods = click_modifiers(ui);
+                    self.shape_select(|f| shape_pick_3d(&model, f, &cam, at, shape_reach), mods.shift || mods.command);
+                }
                 (Tool::AddPoint, Some(q)) => self.shape_add_point(q),
                 (Tool::AddSplitLine(_), Some(q)) => self.shape_split(q),
                 _ => self.status = Status { text: crate::lang::t("click on the floor's top").into(), error: true },

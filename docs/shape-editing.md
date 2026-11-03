@@ -40,7 +40,13 @@ Status, on the branch `mod-16-shape-editing` (raised upstream as IPedrax/BIMCraf
   Enter sets it as the Options Bar's Elevation reads it, Esc keeps it, and a click on a label is never the tool's), and
   Add Point and Add Split Line snap onto the shape's points and corners, else onto the nearest edge (outline, openings,
   split lines, creases), the edge lit (`view3d::shape_snap_plan`, `shape_snap_3d`; tests
-  `a_points_height_label_clicked_*`, `in_plan_add_point_snaps_*`, `in_3d_add_point_snaps_*`).
+  `a_points_height_label_clicked_*`, `in_plan_add_point_snaps_*`, `in_3d_add_point_snaps_*`). Modify Sub Elements works
+  as Revit's: a click selects a point, a corner or an edge (Shift or Ctrl adds; `shape::Sub`), the Options Bar's
+  Elevation then reads its height (blank for none or mixed) and Enter sets it, an edge's both ends; the selection's label
+  types it too, an edge's at its middle with ▲/▼ in 3D that drag all of it (`shape_raise_all`); Delete takes selected
+  points and split lines off (`shape_delete`). Edit mode colours as Revit's (`shape::draw_marks`): points on an edge green,
+  inner ones blue, the outline's and openings' edges dashed green, split lines blue, generated creases grey (tests
+  `modify_sub_elements_selects_then_sets_*`, `in_3d_a_picked_edges_arrow_*`).
 - **Phase 4**, flat roofs, is built: a flat roof by footprint takes a shape through the same commands and tools
   (`Model::shapeable` sees its top as a floor's, `Model::roof_as_floor`), its underside following its top plumb
   (`roof_faces`, `roof_rise`), walls attached under it following its falls, its plan creases thin, its points snapped,
