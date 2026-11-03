@@ -1285,6 +1285,292 @@ fn a_family_loads_from_its_file() {
     let _ = std::fs::remove_file(&path);
 }
 
+/// Reading a family is a read: no undo step, no file, and every form there with its id and GUID.
+#[test]
+fn reading_a_family_adds_no_undo_step() {
+    let mut s = Session::new();
+    desk(&mut s);
+    let before = s.history();
+    let read = run(&mut s, "family", json!({"name": "Work Desk"}));
+    assert_eq!(s.history(), before, "reading costs no undo step");
+    // What it is, whole: its forms with their ids and GUIDs, its types, its values worked out.
+    assert_eq!(read["name"], json!("Work Desk"));
+    let form = &read["family"]["forms"][0];
+    assert!(form["id"].as_u64().is_some() && form["guid"].as_str().is_some(), "{form}");
+    assert_eq!(read["family"]["category"], json!("furniture"));
+    assert_eq!(read["values"]["1600 x 800"]["Top"], json!(710.0), "its formula worked out");
+    assert!(read["warnings"].as_array().is_some_and(|w| w.is_empty()), "a sound family warns of nothing: {}", read["warnings"]);
+    // Without a name: the project's families, each its category and how much of it there is.
+    let list = run(&mut s, "family", json!({}));
+    let list = list["families"].as_array().unwrap();
+    let desk = list.iter().find(|f| f["name"] == json!("Work Desk")).expect("Work Desk in the list");
+    assert_eq!(desk["category"], json!("furniture"));
+    assert_eq!((&desk["types"], &desk["forms"], &desk["symbols"]), (&json!(2), &json!(1), &json!(0)));
+    assert!(list.len() > 1, "the project's own families are there with the starter's");
+    // A family there is none of says so, without making one.
+    let e = s.execute("family", &json!({"name": "Nope"})).unwrap_err();
+    assert!(e.contains("there's no family `Nope`"), "{e}");
+    assert!(!s.model.families.contains_key("Nope"));
+    assert_eq!(s.history(), before, "not even a failed read costs an undo step");
+}
+
+/// `dry_run` works the whole change out and says what it comes to, and leaves the project as it was.
+#[test]
+fn dry_run_reports_changes_and_keeps_the_model() {
+    let mut s = Session::new();
+    desk(&mut s);
+    let before = s.history();
+    let change = json!({
+        "name": "Work Desk", "dry_run": true,
+        "parameters": [
+            {"name": "Width", "value": 1200}, {"name": "Depth", "value": 600}, {"name": "Height", "instance": true, "value": 740},
+            {"name": "Top", "formula": "Height - 30"}, {"name": "Shelf", "value": 300}
+        ],
+        "types": {"1600 x 800": {"Depth": 900}, "1800 x 900": {"Width": 1800, "Depth": 900}}
+    });
+    let dry = run(&mut s, "family", change.clone());
+    assert_eq!((&dry["dry_run"], &dry["ok"]), (&json!(true), &json!(true)));
+    let changes = &dry["changes"];
+    assert_eq!(changes["parameters"]["added"], json!(["Shelf"]), "the rest are as they were");
+    assert!(changes["parameters"]["removed"].as_array().is_some_and(|a| a.is_empty()));
+    assert_eq!(changes["types"]["added"], json!(["1800 x 900"]));
+    assert_eq!(changes["types"]["changed"], json!(["1600 x 800"]), "its Depth 800 comes to 900");
+    assert_eq!(changes["rename"], json!(null));
+    assert_eq!(changes["deleted"], json!(false));
+    // What it comes to: the definition the change makes, and the model still as it was.
+    assert!(!s.model.families["Work Desk"].types.contains_key("1800 x 900"), "the model is as it was");
+    assert!(s.model.families["Work Desk"].parameters.iter().all(|p| p.name != "Shelf"));
+    let proposed = &dry["family"];
+    assert_eq!(proposed["types"]["1800 x 900"]["Width"], json!(1800));
+    assert!(proposed["parameters"].as_array().unwrap().iter().any(|p| p["name"] == json!("Shelf")));
+    assert_eq!(proposed["forms"], run(&mut s, "family", json!({"name": "Work Desk"}))["family"]["forms"], "its forms are as they stand");
+    // A `dry_run` of nothing to change reads the family as reading it does.
+    let plain = run(&mut s, "family", json!({"name": "Work Desk"}));
+    assert_eq!(run(&mut s, "family", json!({"name": "Work Desk", "dry_run": true}))["family"], plain["family"]);
+    assert_eq!(s.history(), before, "dry_run costs no undo step");
+    // The same change without `dry_run` makes it: one undo step, and the family as it said it would be.
+    let mut change = change;
+    change["dry_run"] = Value::Null;
+    run(&mut s, "family", change);
+    assert!(!s.model.families["Work Desk"].types.contains_key("1800 x 800"), "nothing named that");
+    assert_eq!(s.model.families["Work Desk"].types["1800 x 900"]["Width"], json!(1800));
+    assert_eq!(s.history().len(), before.len() + 1);
+    // A change that's refused comes back as an error without `dry_run` too, and makes nothing.
+    let before = s.history();
+    let e = s.execute("family", &json!({"name": "Work Desk", "dry_run": true, "types": {"1800 x 900": {"Width": 0}}})).unwrap_err();
+    assert!(e.contains("no area"), "{e}");
+    assert_eq!(s.model.families["Work Desk"].types["1800 x 900"]["Width"], json!(1800));
+    assert_eq!(s.history(), before);
+}
+
+/// One form patched by its id: every other form keeps its id, its GUID and its place.
+#[test]
+fn patching_one_form_keeps_every_other_guid() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Shelf", "types": {"A": {}}, "forms": [
+            {"profile": [[0, 0], [600, 0], [600, 400], [0, 400]], "to": 30},
+            {"profile": [[50, 50], [150, 50], [150, 150], [50, 150]], "to": 600},
+            {"circle": {"centre": [500, 300], "radius": 25}, "to": 600}
+        ]}),
+    );
+    // Each form's id, GUID and index, as `library` lists them (its parts are by id, which counts down).
+    let parts = |s: &mut Session| -> Vec<(u64, String, u64)> {
+        let mut parts: Vec<(u64, String, u64)> = run(s, "library", json!({"kind": "form", "name": "Shelf"}))["parts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| (p["id"].as_u64().unwrap(), p["guid"].as_str().unwrap().to_string(), p["index"].as_u64().unwrap()))
+            .collect();
+        parts.sort_by_key(|p| p.2);
+        parts
+    };
+    let before = parts(&mut s);
+    assert_eq!(before.iter().map(|p| p.2).collect::<Vec<_>>(), [0, 1, 2]);
+    // The middle form, by id, its height alone changed: nothing else about it, and nothing of the rest.
+    run(&mut s, "family", json!({"name": "Shelf", "form": {"id": before[1].0, "to": 900}}));
+    assert_eq!(parts(&mut s), before, "every form keeps its id, its GUID and its place");
+    assert_eq!(s.model.families["Shelf"].forms[1].to, crate::family::Expr::Number(900.0));
+    // By GUID, a material over the form's own: it names a material the project has.
+    run(&mut s, "family", json!({"name": "Shelf", "form": {"guid": before[2].1.clone(), "material": "Timber"}}));
+    assert_eq!(s.model.families["Shelf"].forms[2].material, "Timber");
+    assert_eq!(parts(&mut s), before);
+    // A field given as null is taken away; the ones left alone are as they were.
+    run(&mut s, "family", json!({"name": "Shelf", "form": {"id": before[2].0, "material": null}}));
+    assert_eq!(s.model.families["Shelf"].forms[2].material, "");
+    assert_eq!(s.model.families["Shelf"].forms[2].circle.as_ref().map(|c| c.radius.clone()), Some(crate::family::Expr::Number(25.0)));
+    // One taken away: the others keep their ids and GUIDs, and close up over its place.
+    run(&mut s, "family", json!({"name": "Shelf", "delete_form": [before[0].0]}));
+    let left: Vec<(u64, String)> = parts(&mut s).into_iter().map(|(id, guid, _)| (id, guid)).collect();
+    assert_eq!(left, vec![(before[1].0, before[1].1.clone()), (before[2].0, before[2].1.clone())]);
+    assert_eq!(s.model.families["Shelf"].forms.len(), 2);
+    // A form of another family, or none at all, says so exactly, and changes nothing.
+    for (p, says) in [
+        (json!({"name": "Shelf", "form": {"id": 999580, "to": 1}}), "form 999580 is not of family \"Shelf\""),
+        (json!({"name": "Shelf", "symbol": {"guid": before[1].1.clone()}}), "is not of family \"Shelf\""),
+        (json!({"name": "Shelf", "delete_form": [999580]}), "form 999580 is not of family \"Shelf\""),
+        (json!({"name": "Shelf", "form": {"to": 1}}), "needs the form's `id` or `guid`"),
+    ] {
+        let e = s.execute("family", &p).unwrap_err();
+        assert!(e.contains(says), "{p}: {e}");
+        assert_eq!(parts(&mut s).into_iter().map(|(id, guid, _)| (id, guid)).collect::<Vec<_>>(), left);
+    }
+}
+
+/// Two defects that don't stop each other: both come back at once, not one after the other.
+#[test]
+fn warnings_are_collected_not_stopped_at_the_first() {
+    let mut s = Session::new();
+    // A door with a void that reaches no solid, a form up above its opening, and nothing drawn on its plan.
+    let p = json!({
+        "name": "Odd Door", "category": "door",
+        "parameters": [{"name": "Width", "value": 900}, {"name": "Height", "value": 2100}],
+        "types": {"900 x 2100": {}},
+        "forms": [
+            {"profile": [["-Width / 2", "-40"], ["Width / 2", "-40"], ["Width / 2", "40"], ["-Width / 2", 40]], "to": "Height"},
+            {"void": true, "profile": [[3000, 3000], [3200, 3000], [3200, 3200], [3000, 3200]], "to": 100},
+            {"profile": [[0, 0], [200, 0], [200, 200], [0, 200]], "from": 5000, "to": 5200}
+        ]
+    });
+    run(&mut s, "family", p);
+    let read = run(&mut s, "family", json!({"name": "Odd Door"}));
+    let warnings: Vec<String> = read["warnings"].as_array().unwrap().iter().filter_map(|w| w.as_str().map(String::from)).collect();
+    let said = |what: &str| warnings.iter().any(|w| w.contains(what));
+    assert!(said("form 2") && said("cuts nothing"), "{warnings:?}");
+    assert!(said("form 3") && said("outside the opening"), "{warnings:?}");
+    assert!(said("no symbols"), "{warnings:?}");
+    // What a type's geometry says names the type it's of; the family's own fault needs no type.
+    assert!(warnings.iter().filter(|w| w.contains("form ")).all(|w| w.contains("(in type `900 x 2100`)")), "{warnings:?}");
+    // A formula that reads a parameter there is none of, and one that doesn't read at all: both, in
+    // one reply, each its own. Its geometry can't be worked out while its values can't be, and the
+    // error says that instead of guessing at it.
+    let e = s
+        .execute(
+            "family",
+            &json!({"name": "Odd Door", "parameters": [
+                {"name": "Width", "value": 900}, {"name": "Height", "value": 2100},
+                {"name": "A", "formula": "Width + Nowhere"}, {"name": "B", "formula": "Height / -"}
+            ]}),
+        )
+        .unwrap_err();
+    assert!(e.contains("reads `Nowhere`") && e.contains("`Height / -`"), "{e}");
+    // A profile with no area is refused as it always was, and its void is named with it.
+    let e = s
+        .execute(
+            "family",
+            &json!({"name": "Odd Door", "forms": [
+                {"profile": [[0, 0], [1, 0]], "to": 100},
+                {"void": true, "profile": [[3000, 3000], [3200, 3000], [3200, 3200], [3000, 3200]], "to": 100}
+            ]}),
+        )
+        .unwrap_err();
+    assert!(e.contains("no area") && e.contains("cuts nothing"), "{e}");
+}
+
+/// What a family is in a file: its own fields, no more and no less, and a project written here read
+/// back whole — the file format didn't grow a field this release (ТЗ-003 §6.8).
+#[test]
+fn a_family_is_saved_with_the_fields_it_has_always_had() {
+    let mut s = Session::new();
+    desk(&mut s);
+    let f = serde_json::to_value(&s.model.families["Work Desk"]).unwrap();
+    fn keys(v: &Value) -> Vec<String> {
+        let mut keys: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        keys
+    }
+    assert_eq!(keys(&f), ["category", "forms", "parameters", "types"], "`symbols` and `operation` are only there when they are");
+    assert_eq!(keys(&f["forms"][0]), ["from", "guid", "id", "material", "plane", "profile", "to"], "every other field is unset");
+    let path = temp("family-format.bimcraft");
+    run(&mut s, "save", json!({"path": path}));
+    let mut back = Session::new();
+    run(&mut back, "open", json!({"path": path}));
+    assert_eq!(back.model.families, s.model.families, "a family reads back exactly as it was saved");
+    assert_eq!(back.model.check(), Ok(()), "and the project it comes back in is sound");
+    let _ = std::fs::remove_file(path);
+}
+
+/// A family drawn on its own, in a model of its own: drawn in every mode, the same picture as the
+/// model the expensive way builds, and the project left exactly as it was.
+#[test]
+fn a_family_is_drawn_on_its_own_and_the_project_is_left_alone() {
+    let mut s = family_house();
+    let before = s.history();
+    let counts = run(&mut s, "inspect", json!({}))["counts"].clone();
+    // The model the expensive way: a wall, the door in it, drawn by `render` on that model itself.
+    let mut hand = Session::new();
+    {
+        let m = hand.model_mut();
+        m.materials = s.model.materials.clone();
+        m.images = s.model.images.clone();
+        m.families.insert("Single Door".into(), s.model.families["Single Door"].clone());
+    }
+    run(&mut hand, "type", json!({"category": "wall", "name": "Family Preview Wall", "thickness": 200}));
+    run(&mut hand, "wall", json!({"points": [[-2000, 0], [2000, 0]], "type": "Family Preview Wall", "height": 3000}));
+    run(&mut hand, "door", json!({"at": [0, 0], "family": "Single Door", "type": "800 x 2100"}));
+    for (mode, view) in
+        [("3d", json!({"view": "{3D}"})), ("plan", json!({})), ("elevation", json!({"view": "{3D}", "azimuth": 90.0, "elevation": 0.0}))]
+    {
+        let mut asked = json!({"family": "Single Door", "type": "800 x 2100", "width": 400, "height": 300});
+        asked["mode"] = json!(mode);
+        let mut over = json!({"width": 400, "height": 300});
+        if let (Value::Object(view), Value::Object(over)) = (view, &mut over) {
+            over.extend(view);
+        }
+        let mine = run(&mut s, "render", asked);
+        let theirs = run(&mut hand, "render", over);
+        assert!(mine["pngBase64"].as_str().is_some_and(|b| !b.is_empty()), "{mode}: {mine}");
+        assert_eq!(mine["pngBase64"], theirs["pngBase64"], "{mode}: the same model drawn the same way");
+        assert_eq!(
+            (&mine["kind"], &mine["family"], &mine["type"], &mine["view"]),
+            (&Value::String(format!("family {mode} preview")), &json!("Single Door"), &json!("800 x 2100"), &json!("Single Door")),
+            "{mode}"
+        );
+    }
+    // The project: no element made, no step of history, nothing of it drawn on.
+    assert_eq!(run(&mut s, "inspect", json!({}))["counts"], counts, "a preview makes no element");
+    assert_eq!(s.history(), before, "a preview makes no undo step");
+    // A family never placed anywhere draws as well: it's drawn from what it is, not from what stands.
+    let never = json!({"name": "Stool", "types": {"A": {}}, "forms": [
+        {"profile": [[0, 0], [320, 0], [320, 320], [0, 320]], "from": 420, "to": 450, "material": "Timber"},
+        {"profile": [[20, 20], [60, 20], [60, 60], [20, 60]], "to": 420, "material": "Timber"},
+        {"profile": [[260, 20], [300, 20], [300, 60], [260, 60]], "to": 420, "material": "Timber"},
+        {"profile": [[260, 260], [300, 260], [300, 300], [260, 300]], "to": 420, "material": "Timber"},
+        {"profile": [[20, 260], [60, 260], [60, 300], [20, 300]], "to": 420, "material": "Timber"}
+    ]});
+    run(&mut s, "family", never);
+    assert!(s.model.families.contains_key("Stool"));
+    let stool = run(&mut s, "render", json!({"family": "Stool", "width": 300, "height": 300}));
+    assert!(stool["pngBase64"].as_str().is_some_and(|b| !b.is_empty()), "{stool}");
+    assert_eq!((&stool["type"], &stool["kind"]), (&json!("A"), &json!("family 3d preview")));
+    // The first type when `type` isn't given: a family's types are by name in a `BTreeMap`, so say which.
+    assert_eq!(run(&mut s, "render", json!({"family": "Single Door"}))["type"], json!("1000 x 2100"));
+    // Written to a path: a PNG on disk, and no picture sent back.
+    let path = std::env::temp_dir().join(format!("bimcraft-family-preview-{}.png", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+    let written = run(&mut s, "render", json!({"family": "Single Door", "mode": "plan", "path": path}));
+    assert_eq!(written["path"], json!(path.to_string_lossy()));
+    assert!(written.get("pngBase64").is_none(), "{written}");
+    let bytes = std::fs::read(&path).unwrap();
+    assert_eq!(&bytes[..8], &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A], "a PNG was written");
+    let _ = std::fs::remove_file(&path);
+    // What's refused says so and draws nothing: no such family, no such type, no such mode.
+    // (The history grew once above, when `Stool` was made: a real change, as it should be.)
+    let before = s.history();
+    for (p, says) in [
+        (json!({"family": "Nowhere"}), "there's no family `Nowhere`"),
+        (json!({"family": "Single Door", "type": "9 x 9"}), "no type `9 x 9`"),
+        (json!({"family": "Single Door", "mode": "plan view"}), "`mode` is 3d, plan or elevation"),
+        (json!({"type": "900 x 2100"}), "`family` is required"),
+    ] {
+        let e = s.execute("render", &p).unwrap_err();
+        assert!(e.contains(says), "{p}: {e}");
+    }
+    assert_eq!(s.history(), before, "not even a refused preview costs an undo step");
+}
+
 /// A table: a top 750 mm up over two legs, one square at a corner, one round.
 fn table(s: &mut Session) {
     run(
@@ -1796,6 +2082,28 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"id": 100006, "boundary": [[0, 0], [1e300, 1e300], [0, 1]]}),
         json!({"id": 100006, "level": 1e300, "base_offset": f64::MAX}),
         json!({"id": 100006, "params": {"Phase Created": "Existing"}}),
+        // The `family` patch keys and `dry_run`: an id nothing has, a patch that isn't one, a field
+        // no form has, and a dry run of a change that can't be made.
+        json!({"name": "Single Door", "form": {"id": 999580, "to": 1e300}}),
+        json!({"name": "Single Door", "form": "x"}),
+        json!({"name": "Single Door", "form": {"to": 1}}),
+        json!({"name": "Single Door", "form": {"id": 100000, "profile": "x"}}),
+        json!({"name": "Single Door", "form": {"id": 999580, "mesh": "x"}}),
+        json!({"name": "Single Door", "symbol": {"guid": "nope", "line": [[0, 0]]}}),
+        json!({"name": "Single Door", "symbol": {"id": null, "visible": 1e300}}),
+        json!({"name": "Single Door", "delete_form": "x"}),
+        json!({"name": "Single Door", "delete_form": [1e300]}),
+        json!({"name": "Single Door", "delete_symbol": [[]]}),
+        json!({"name": "Single Door", "dry_run": "yes", "types": {"A": {}}}),
+        json!({"name": "Single Door", "dry_run": true, "forms": [[0, 0]]}),
+        json!({"name": "Single Door", "dry_run": true, "delete": true}),
+        json!({"name": "Single Door", "dry_run": true, "parameters": [{"name": "", "formula": "1 +"}]}),
+        // A family's preview: a mode that isn't one, a wall nothing is that thick, a type there is none of.
+        json!({"family": "Single Door", "mode": "plan view"}),
+        json!({"family": "Single Door", "wall_thickness": -5}),
+        json!({"family": "Single Door", "type": 1e300}),
+        json!({"family": "Single Door", "type": "9 x 9", "mode": "plan"}),
+        json!({"family": [], "mode": "elevation"}),
     ];
     let mut base = Session::new();
     house(&mut base);
