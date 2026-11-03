@@ -488,18 +488,22 @@ mod tests {
 
     #[test]
     fn the_overpass_query_asks_for_buildings_in_the_box() {
-        let q = overpass_query(&block(), Layers::default());
+        // Without parts, the outlines alone (an agent may ask for that).
+        let q = overpass_query(&block(), Layers { parts: false });
         assert_eq!(
             q,
             "[out:json][timeout:60][maxsize:67108864];(way[\"building\"](-23.56,-46.64,-23.54,-46.62);\
              relation[\"building\"][\"type\"=\"multipolygon\"](-23.56,-46.64,-23.54,-46.62););out geom;"
         );
-        let with = overpass_query(&block(), Layers { parts: true });
+        // By default a building is its parts: they, and the columns that hold a roof up, are in the query.
+        assert_eq!(overpass_query(&block(), Layers::default()), overpass_query(&block(), Layers { parts: true }));
+        let with = overpass_query(&block(), Layers::default());
+        assert!(with.contains("way[\"man_made\"=\"column\"](-23.56,-46.64,-23.54,-46.62)"), "{with}");
         assert!(with.contains("way[\"building:part\"](-23.56,-46.64,-23.54,-46.62)"), "{with}");
         assert!(with.contains("relation[\"building:part\"][\"type\"=\"multipolygon\"]"), "{with}");
         // A relation that groups an outline with its parts, too.
         assert!(with.contains("relation[\"type\"=\"building\"](-23.56,-46.64,-23.54,-46.62)"), "{with}");
-        assert!(!overpass_query(&block(), Layers::default()).contains("type\"=\"building"));
+        assert!(!overpass_query(&block(), Layers { parts: false }).contains("type\"=\"building"));
         // Numbers are written plainly: no exponent, no trailing zeros.
         let tiny = Bbox::new(0.000_001, 0.5, 0.000_002, 1.0).unwrap();
         assert!(
