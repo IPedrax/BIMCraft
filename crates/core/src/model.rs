@@ -2298,6 +2298,15 @@ pub struct Model {
     /// Its reinforcement presets, by name: the parameters `reinforce` takes for a kind of host, kept to arm others alike.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub reinforcement: BTreeMap<String, crate::reinforce::Preset>,
+    /// Its electrical voltages, by name, each with the band a device may read within.
+    #[serde(default = "crate::electrical::voltages")]
+    pub voltages: BTreeMap<String, crate::electrical::Voltage>,
+    /// Its distribution systems, by name: phases, wires and the voltages each supplies.
+    #[serde(default = "crate::electrical::distribution_systems")]
+    pub distribution_systems: BTreeMap<String, crate::electrical::DistributionSystem>,
+    /// Its wire types, by name: material, insulation, temperature and the ampacity of each section, mm².
+    #[serde(default = "crate::electrical::wire_types")]
+    pub wire_types: BTreeMap<String, crate::electrical::WireType>,
     pub elements: Elements,
     /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
     /// templates, phases, phase filters and design options.
@@ -2388,6 +2397,9 @@ impl Model {
             dimension_types: crate::dims::types(),
             detail_groups: BTreeMap::new(),
             reinforcement: BTreeMap::new(),
+            voltages: crate::electrical::voltages(),
+            distribution_systems: crate::electrical::distribution_systems(),
+            wire_types: crate::electrical::wire_types(),
             elements: Elements::new(),
             library: crate::library::Library::default(),
             loaded: BTreeMap::new(),
@@ -2854,7 +2866,8 @@ impl Model {
         self.typed_dimensions();
         // 10 to 11 (Swedish, Czech and French as a project's language) has no step: a file of 10 holds none of them.
         // 11 to 12 (German and Dutch as a project's language, a wall that bounds no rooms, a family's connectors) has no step either: a
-        // file of 11 holds none.
+        // file of 11 holds none. The electrical settings (voltages, distribution systems, wire types) have none within 11 or 12: a file
+        // without them reads with the starter set, and one that has them is read by an older version with them left out.
         self.format = FORMAT;
     }
 
@@ -4753,6 +4766,7 @@ impl Model {
         for (n, t) in &self.dimension_types {
             t.check(n)?;
         }
+        crate::electrical::check(self)?;
         for (n, x) in &self.materials {
             for p in [&x.cut_pattern, &x.surface_pattern].into_iter().flatten() {
                 if !self.fill_patterns.contains_key(p) {

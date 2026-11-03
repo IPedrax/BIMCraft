@@ -1,0 +1,538 @@
+{
+ "voltages": {
+  "127 V": {
+   "nominal": 127,
+   "min": 114.3,
+   "max": 139.7
+  },
+  "220 V": {
+   "nominal": 220,
+   "min": 198,
+   "max": 242
+  },
+  "230 V": {
+   "nominal": 230,
+   "min": 207,
+   "max": 253
+  },
+  "277 V": {
+   "nominal": 277,
+   "min": 249.3,
+   "max": 304.7
+  },
+  "380 V": {
+   "nominal": 380,
+   "min": 342,
+   "max": 418
+  },
+  "400 V": {
+   "nominal": 400,
+   "min": 360,
+   "max": 440
+  },
+  "480 V": {
+   "nominal": 480,
+   "min": 432,
+   "max": 528
+  }
+ },
+ "distribution_systems": {
+  "230/400 V": {
+   "phases": 3,
+   "wires": 4,
+   "l_l": "400 V",
+   "l_n": "230 V",
+   "l_g": "230 V",
+   "ground": "TN-S"
+  },
+  "127/220 V": {
+   "phases": 3,
+   "wires": 4,
+   "l_l": "220 V",
+   "l_n": "127 V",
+   "l_g": "127 V",
+   "ground": "TN-S"
+  },
+  "220/380 V": {
+   "phases": 3,
+   "wires": 4,
+   "l_l": "380 V",
+   "l_n": "220 V",
+   "l_g": "220 V",
+   "ground": "TN-S"
+  },
+  "277/480 V": {
+   "phases": 3,
+   "wires": 4,
+   "l_l": "480 V",
+   "l_n": "277 V",
+   "l_g": "277 V"
+  }
+ },
+ "wire_types": {
+  "Cu PVC 70 °C": {
+   "material": "copper",
+   "temperature": 70,
+   "insulation": "PVC",
+   "note": "NBR 5410:2004 Tabela 36, reference method B1 (insulated conductors in conduit on a wall), two loaded conductors, 30 °C ambient. The same family as IEC 60364-5-52; check a design against the standard in force.",
+   "sizes": [
+    {
+     "section": 0.5,
+     "ampacity": 9
+    },
+    {
+     "section": 0.75,
+     "ampacity": 11
+    },
+    {
+     "section": 1,
+     "ampacity": 14
+    },
+    {
+     "section": 1.5,
+     "ampacity": 17.5
+    },
+    {
+     "section": 2.5,
+     "ampacity": 24
+    },
+    {
+     "section": 4,
+     "ampacity": 32
+    },
+    {
+     "section": 6,
+     "ampacity": 41
+    },
+    {
+     "section": 10,
+     "ampacity": 57
+    },
+    {
+     "section": 16,
+     "ampacity": 76
+    },
+    {
+     "section": 25,
+     "ampacity": 101
+    },
+    {
+     "section": 35,
+     "ampacity": 125
+    },
+    {
+     "section": 50,
+     "ampacity": 151
+    },
+    {
+     "section": 70,
+     "ampacity": 192
+    },
+    {
+     "section": 95,
+     "ampacity": 232
+    },
+    {
+     "section": 120,
+     "ampacity": 269
+    },
+    {
+     "section": 150,
+     "ampacity": 309
+    },
+    {
+     "section": 185,
+     "ampacity": 353
+    },
+    {
+     "section": 240,
+     "ampacity": 415
+    },
+    {
+     "section": 300,
+     "ampacity": 477
+    },
+    {
+     "section": 400,
+     "ampacity": 571
+    },
+    {
+     "section": 500,
+     "ampacity": 656
+    },
+    {
+     "section": 630,
+     "ampacity": 758
+    },
+    {
+     "section": 800,
+     "ampacity": 881
+    },
+    {
+     "section": 1000,
+     "ampacity": 1012
+    }
+   ]
+  },
+  "Cu XLPE/EPR 90 °C": {
+   "material": "copper",
+   "temperature": 90,
+   "insulation": "XLPE/EPR",
+   "note": "NBR 5410:2004 Tabela 37, reference method B1 (insulated conductors in conduit on a wall), two loaded conductors, 30 °C ambient. The same family as IEC 60364-5-52; check a design against the standard in force.",
+   "sizes": [
+    {
+     "section": 0.5,
+     "ampacity": 12
+    },
+    {
+     "section": 0.75,
+     "ampacity": 15
+    },
+    {
+     "section": 1,
+     "ampacity": 18
+    },
+    {
+     "section": 1.5,
+     "ampacity": 23
+    },
+    {
+     "section": 2.5,
+     "ampacity": 31
+    },
+    {
+     "section": 4,
+     "ampacity": 42
+    },
+    {
+     "section": 6,
+     "ampacity": 54
+    },
+    {
+     "section": 10,
+     "ampacity": 75
+    },
+    {
+     "section": 16,
+     "ampacity": 100
+    },
+    {
+     "section": 25,
+     "ampacity": 133
+    },
+    {
+     "section": 35,
+     "ampacity": 164
+    },
+    {
+     "section": 50,
+     "ampacity": 198
+    },
+    {
+     "section": 70,
+     "ampacity": 253
+    },
+    {
+     "section": 95,
+     "ampacity": 306
+    },
+    {
+     "section": 120,
+     "ampacity": 354
+    },
+    {
+     "section": 150,
+     "ampacity": 407
+    },
+    {
+     "section": 185,
+     "ampacity": 464
+    },
+    {
+     "section": 240,
+     "ampacity": 546
+    },
+    {
+     "section": 300,
+     "ampacity": 628
+    },
+    {
+     "section": 400,
+     "ampacity": 751
+    },
+    {
+     "section": 500,
+     "ampacity": 864
+    },
+    {
+     "section": 630,
+     "ampacity": 998
+    },
+    {
+     "section": 800,
+     "ampacity": 1158
+    },
+    {
+     "section": 1000,
+     "ampacity": 1332
+    }
+   ]
+  },
+  "Cu THHN 90 °C": {
+   "material": "copper",
+   "temperature": 90,
+   "insulation": "THHN",
+   "note": "NFPA 70 (NEC) Table 310.16, 90 °C column, 30 °C ambient, up to three current-carrying conductors in a raceway. Sizes are AWG or kcmil, kept in mm².",
+   "sizes": [
+    {
+     "section": 2.08,
+     "ampacity": 25,
+     "label": "14 AWG"
+    },
+    {
+     "section": 3.31,
+     "ampacity": 30,
+     "label": "12 AWG"
+    },
+    {
+     "section": 5.26,
+     "ampacity": 40,
+     "label": "10 AWG"
+    },
+    {
+     "section": 8.37,
+     "ampacity": 55,
+     "label": "8 AWG"
+    },
+    {
+     "section": 13.3,
+     "ampacity": 75,
+     "label": "6 AWG"
+    },
+    {
+     "section": 21.2,
+     "ampacity": 95,
+     "label": "4 AWG"
+    },
+    {
+     "section": 26.7,
+     "ampacity": 115,
+     "label": "3 AWG"
+    },
+    {
+     "section": 33.6,
+     "ampacity": 130,
+     "label": "2 AWG"
+    },
+    {
+     "section": 42.4,
+     "ampacity": 145,
+     "label": "1 AWG"
+    },
+    {
+     "section": 53.5,
+     "ampacity": 170,
+     "label": "1/0 AWG"
+    },
+    {
+     "section": 67.4,
+     "ampacity": 195,
+     "label": "2/0 AWG"
+    },
+    {
+     "section": 85,
+     "ampacity": 225,
+     "label": "3/0 AWG"
+    },
+    {
+     "section": 107.2,
+     "ampacity": 260,
+     "label": "4/0 AWG"
+    },
+    {
+     "section": 126.7,
+     "ampacity": 290,
+     "label": "250 kcmil"
+    },
+    {
+     "section": 152,
+     "ampacity": 320,
+     "label": "300 kcmil"
+    },
+    {
+     "section": 177.3,
+     "ampacity": 350,
+     "label": "350 kcmil"
+    },
+    {
+     "section": 202.7,
+     "ampacity": 380,
+     "label": "400 kcmil"
+    },
+    {
+     "section": 253.4,
+     "ampacity": 430,
+     "label": "500 kcmil"
+    },
+    {
+     "section": 304,
+     "ampacity": 475,
+     "label": "600 kcmil"
+    },
+    {
+     "section": 354.7,
+     "ampacity": 520,
+     "label": "700 kcmil"
+    },
+    {
+     "section": 380,
+     "ampacity": 535,
+     "label": "750 kcmil"
+    },
+    {
+     "section": 405.4,
+     "ampacity": 555,
+     "label": "800 kcmil"
+    },
+    {
+     "section": 456,
+     "ampacity": 585,
+     "label": "900 kcmil"
+    },
+    {
+     "section": 506.7,
+     "ampacity": 615,
+     "label": "1000 kcmil"
+    }
+   ]
+  },
+  "Cu THW 75 °C": {
+   "material": "copper",
+   "temperature": 75,
+   "insulation": "THW",
+   "note": "NFPA 70 (NEC) Table 310.16, 75 °C column, 30 °C ambient, up to three current-carrying conductors in a raceway. Sizes are AWG or kcmil, kept in mm².",
+   "sizes": [
+    {
+     "section": 2.08,
+     "ampacity": 20,
+     "label": "14 AWG"
+    },
+    {
+     "section": 3.31,
+     "ampacity": 25,
+     "label": "12 AWG"
+    },
+    {
+     "section": 5.26,
+     "ampacity": 35,
+     "label": "10 AWG"
+    },
+    {
+     "section": 8.37,
+     "ampacity": 50,
+     "label": "8 AWG"
+    },
+    {
+     "section": 13.3,
+     "ampacity": 65,
+     "label": "6 AWG"
+    },
+    {
+     "section": 21.2,
+     "ampacity": 85,
+     "label": "4 AWG"
+    },
+    {
+     "section": 26.7,
+     "ampacity": 100,
+     "label": "3 AWG"
+    },
+    {
+     "section": 33.6,
+     "ampacity": 115,
+     "label": "2 AWG"
+    },
+    {
+     "section": 42.4,
+     "ampacity": 130,
+     "label": "1 AWG"
+    },
+    {
+     "section": 53.5,
+     "ampacity": 150,
+     "label": "1/0 AWG"
+    },
+    {
+     "section": 67.4,
+     "ampacity": 175,
+     "label": "2/0 AWG"
+    },
+    {
+     "section": 85,
+     "ampacity": 200,
+     "label": "3/0 AWG"
+    },
+    {
+     "section": 107.2,
+     "ampacity": 230,
+     "label": "4/0 AWG"
+    },
+    {
+     "section": 126.7,
+     "ampacity": 255,
+     "label": "250 kcmil"
+    },
+    {
+     "section": 152,
+     "ampacity": 285,
+     "label": "300 kcmil"
+    },
+    {
+     "section": 177.3,
+     "ampacity": 310,
+     "label": "350 kcmil"
+    },
+    {
+     "section": 202.7,
+     "ampacity": 335,
+     "label": "400 kcmil"
+    },
+    {
+     "section": 253.4,
+     "ampacity": 380,
+     "label": "500 kcmil"
+    },
+    {
+     "section": 304,
+     "ampacity": 420,
+     "label": "600 kcmil"
+    },
+    {
+     "section": 354.7,
+     "ampacity": 460,
+     "label": "700 kcmil"
+    },
+    {
+     "section": 380,
+     "ampacity": 475,
+     "label": "750 kcmil"
+    },
+    {
+     "section": 405.4,
+     "ampacity": 490,
+     "label": "800 kcmil"
+    },
+    {
+     "section": 456,
+     "ampacity": 520,
+     "label": "900 kcmil"
+    },
+    {
+     "section": 506.7,
+     "ampacity": 545,
+     "label": "1000 kcmil"
+    }
+   ]
+  }
+ }
+}

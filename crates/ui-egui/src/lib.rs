@@ -22,6 +22,7 @@ mod dimtypes;
 mod dock;
 mod draw;
 mod editor;
+mod electrical;
 mod favorites;
 mod fillpatterns;
 mod filter;
@@ -670,6 +671,8 @@ pub struct BimApp {
     mode_width: f32,
     /// Manage > Technical Standards, while open.
     standards_dialog: Option<standards::StandardsDialog>,
+    /// Manage > Electrical Settings, while open.
+    electrical_dialog: Option<electrical::ElectricalDialog>,
     options_dialog: Option<phasing::OptionsDialog>,
     purge_dialog: Option<purge::PurgeDialog>,
     /// Manage > Select by ID and IDs of Selection, while open.
@@ -1106,6 +1109,7 @@ impl BimApp {
             sketch: None,
             mode_width: 0.0,
             standards_dialog: None,
+            electrical_dialog: None,
             options_dialog: None,
             purge_dialog: None,
             select_by_id: None,
@@ -1564,6 +1568,7 @@ impl BimApp {
             || self.phasing_dialog.is_some()
             || self.reinforce_dialog.is_some()
             || self.line_weights_dialog.is_some()
+            || self.electrical_dialog.is_some()
             || self.object_styles_dialog.is_some()
             || self.line_styles_dialog.is_some()
             || self.fill_patterns_dialog.as_ref().is_some_and(|d| d.picking.is_none())
@@ -3529,6 +3534,12 @@ impl BimApp {
             if big_button(ui, Icon::Settings, "Technical Standards", self.standards_dialog.is_some(), &tip).clicked() {
                 self.standards_dialog = Some(standards::StandardsDialog::new(&self.session.model));
             }
+            let tip = msg!(
+                "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
+            );
+            if big_button(ui, Icon::Wire, "Electrical Settings", self.electrical_dialog.is_some(), tip).clicked() {
+                self.electrical_dialog = Some(electrical::ElectricalDialog::new(&self.session.model));
+            }
             // Object styles, snaps and units, stacked.
             stacked(ui, |ui| {
                 let tip = msg!("Object Styles: the pen each category draws in, seen and cut, in every view");
@@ -4554,6 +4565,7 @@ impl BimApp {
         self.dimension_type_window(ctx);
         self.dimension_text_window(ctx);
         self.standards_window(ctx);
+        self.electrical_window(ctx);
         self.options_window(ctx);
         self.purge_window(ctx);
         if std::mem::take(&mut self.link_dialog) {
