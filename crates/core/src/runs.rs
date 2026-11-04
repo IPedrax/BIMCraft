@@ -11,6 +11,8 @@ use crate::walls::Plane;
 mod connections;
 mod device_exit;
 
+pub(crate) use connections::bend_fits;
+
 impl Model {
     /// Origin on the named host face, unit tangent, outward normal. Curved
     /// walls need a different contact representation and cannot use a single plane.
@@ -362,7 +364,7 @@ impl Model {
                             updated.landing = Some(solved.target);
                         }
                     }
-                    (solved.device, solved.target, solved.target, Some(solved.normal))
+                    (solved.device, solved.target, solved.elbow, Some(solved.normal))
                 } else {
                     let [x, mut y, z] = connection.point;
                     if component.mirrored {

@@ -2017,3 +2017,202 @@ fn stage4_bend_radius_rejects_short_carrier_entry_atomically() {
     assert_eq!(s.model, model);
     assert_eq!(s.history(), history);
 }
+
+#[test]
+fn stage41_split_route_can_place_a_bend_in_one_edit() {
+    for (command, category) in [("wire", "wire"), ("cable_carrier", "cablecarrier")] {
+        let mut s = Session::new();
+        let original = run(&mut s, command, json!({"points":[[0,0],[4000,0]],"offset":1000,"end_offset":2000,"justify":"centre"}))["ids"]
+            [0]
+        .as_u64()
+        .unwrap();
+        let guid = s.model.guid(original);
+        let result = run(&mut s, "split", json!({"id":original,"at":[2000,0],"to":[2000,1000],"dz":250}));
+        let second = result["ids"][1].as_u64().unwrap();
+        assert_eq!(result["ids"][0], original);
+        assert_eq!(s.model.guid(original), guid);
+        assert_ne!(s.model.guid(second), guid);
+        let geometry = |id| {
+            let e = s.model.elements.get(id).unwrap();
+            assert_eq!(e.category(), category);
+            s.model.run_geom(e).unwrap()
+        };
+        assert_eq!(geometry(original).a, [0.0, 0.0, 1000.0]);
+        assert_eq!(geometry(original).b, [2000.0, 1000.0, 1750.0]);
+        assert_eq!(geometry(second).a, geometry(original).b);
+        assert_eq!(geometry(second).b, [4000.0, 0.0, 2000.0]);
+        let saved = s.model.to_json().unwrap();
+        let (opened, left_out) = crate::model::Model::read(&saved).unwrap();
+        assert!(left_out.is_empty());
+        assert_eq!(opened.guid(original), guid);
+        assert_eq!(opened.guid(second), s.model.guid(second));
+        assert_eq!(opened.to_json().unwrap(), saved);
+    }
+}
+
+#[test]
+fn stage41_split_vertical_route_at_fraction() {
+    let mut s = Session::new();
+    let original = made(&mut s, "wire", json!({"points":[[0,0],[0,0]],"offset":1000,"end_offset":3000,"justify":"centre"}));
+    let result = run(&mut s, "split", json!({"id":original,"fraction":0.25,"to":[500,0]}));
+    let first = s.model.run_geom(s.model.elements.get(original).unwrap()).unwrap();
+    let second = s.model.run_geom(s.model.elements.get(ids(&result)[1]).unwrap()).unwrap();
+    assert_eq!(first.b, [500.0, 0.0, 1500.0]);
+    assert_eq!(second.a, first.b);
+    assert_eq!(second.b, [0.0, 0.0, 3000.0]);
+}
+
+#[test]
+fn stage41_move_carrier_can_disconnect_equipment_atomically() {
+    let mut s = Session::new();
+    let wire = made(&mut s, "wire", json!({"points":[[0,0],[3000,0]],"offset":3000}));
+    let carrier = made(&mut s, "cable_carrier", json!({"from_wire":wire,"type":"Tray 100 x 50"}));
+    let device = made(&mut s, "component", json!({"family":"Fire Alarm Panel","at":[0,0],"offset":1000}));
+    run(&mut s, "wire_connect", json!({"wire":wire,"device":device,"point":[0,0,0],"in_carrier":true}));
+    let before = s.model.clone();
+    let old_height = s.model.run_geom(s.model.elements.get(wire).unwrap()).unwrap().a[2];
+    run(&mut s, "move", json!({"ids":[carrier],"by":[0,100],"dz":200,"disconnect_equipment":true}));
+    let e = s.model.elements.get(wire).unwrap();
+    assert!(e.run().unwrap().connections.is_empty());
+    assert_eq!(e.run().unwrap().carrier, Some(s.model.guid(carrier)));
+    assert_eq!(s.model.run_geom(e).unwrap().a[1], 100.0);
+    assert_eq!(s.model.run_geom(e).unwrap().a[2], old_height + 200.0);
+    assert_eq!(s.model.elements.get(device), before.elements.get(device));
+    let after = s.model.clone();
+    run(&mut s, "undo", json!({}));
+    assert_eq!(s.model, before);
+    run(&mut s, "redo", json!({}));
+    assert_eq!(s.model, after);
+}
+
+#[test]
+fn stage41_free_lead_has_a_vertical_transition() {
+    for (side, height, contact_height) in [("top", 3000, 1900.0), ("bottom", 800, 1500.0)] {
+        let (mut s, wall, device, _, _) = free_exit_fixture();
+        run(&mut s, "modify", json!({"id":device,"connection_sides":[side]}));
+        let wire = made(&mut s, "wire", json!({"points":[[2000,-102],[4000,-102]],"offset":height}));
+        let result = run(&mut s, "wire_connect", json!({"wire":wire,"device":device,"surface":{"host":wall,"face":"interior"}}));
+        let feeders = ids(&result);
+        assert_eq!(feeders.len(), 2);
+        let vertical = s.model.run_geom(s.model.elements.get(feeders[0]).unwrap()).unwrap();
+        let horizontal = s.model.run_geom(s.model.elements.get(feeders[1]).unwrap()).unwrap();
+        assert_eq!(vertical.a, [1150.0, -102.0, contact_height]);
+        assert_eq!(vertical.b, [1150.0, -102.0, f64::from(height)]);
+        assert_eq!(horizontal.a, vertical.b);
+        assert_eq!(horizontal.b, [2000.0, -102.0, f64::from(height)]);
+        let before = s.model.to_json().unwrap();
+        let error = s
+            .execute("wire_connect", &json!({"wire":wire,"device":device,"surface":{"host":wall,"face":"interior"},"min_bend_radius":1000}))
+            .unwrap_err();
+        assert!(error.to_string().contains("vertical transition"));
+        assert_eq!(s.model.to_json().unwrap(), before);
+        let carrier = made(&mut s, "cable_carrier", json!({"points":[[2000,-300],[4000,-300]],"offset":height,"type":"Tray 100 x 50"}));
+        run(&mut s, "run_mount", json!({"id":carrier,"host":wall,"face":"interior"}));
+        let result = run(
+            &mut s,
+            "wire_connect",
+            json!({"wire":wire,"device":device,"carrier":carrier,"in_carrier":true,
+                "surface":{"host":wall,"face":"interior"},"min_bend_radius":100}),
+        );
+        let branches = result["carriers"].as_array().unwrap();
+        assert_eq!(branches.len(), 2);
+        let riser = s.model.run_geom(s.model.elements.get(branches[0].as_u64().unwrap()).unwrap()).unwrap();
+        assert_eq!(riser.a[0..2], riser.b[0..2]);
+        assert_eq!(riser.a[2], contact_height);
+        assert_eq!(riser.b[2], f64::from(height));
+        let saved = s.model.to_json().unwrap();
+        let (opened, left_out) = crate::model::Model::read(&saved).unwrap();
+        assert!(left_out.is_empty());
+        assert_eq!(opened.to_json().unwrap(), saved);
+    }
+    let (mut s, wall, device, _, _) = free_exit_fixture();
+    run(&mut s, "modify", json!({"id":device,"connection_sides":["right"]}));
+    let wire = made(&mut s, "wire", json!({"points":[[2000,-102],[4000,-102]],"offset":1700}));
+    let feeders = ids(&run(&mut s, "wire_connect", json!({"wire":wire,"device":device,"surface":{"host":wall,"face":"interior"}})));
+    assert_eq!(feeders.len(), 1);
+    let lead = s.model.run_geom(s.model.elements.get(feeders[0]).unwrap()).unwrap();
+    assert_eq!(lead.a[2], lead.b[2]);
+}
+
+#[test]
+fn stage41_split_wire_keeps_carrier_fill_and_links() {
+    let mut s = Session::new();
+    let carrier = made(&mut s, "cable_carrier", json!({"points":[[1000,1000],[4000,1000]],"type":"Tray 100 x 50"}));
+    let axis = s.model.run_geom(s.model.elements.get(carrier).unwrap()).unwrap();
+    let wire = made(&mut s, "wire", json!({"points":[axis.a[..2],axis.b[..2]],"offset":axis.a[2],"carrier":carrier}));
+    let guid = s.model.guid(carrier);
+    let before = s.model.to_json().unwrap();
+    let fill = s.model.carrier_sections()[&guid];
+    let parts = ids(&run(&mut s, "split", json!({"id":wire,"fraction":0.5})));
+    for id in parts {
+        assert_eq!(s.model.elements.get(id).unwrap().run().unwrap().carrier, Some(guid));
+    }
+    assert_eq!(s.model.carrier_sections()[&guid], fill);
+    let after = s.model.to_json().unwrap();
+    run(&mut s, "undo", json!({}));
+    assert_eq!(s.model.to_json().unwrap(), before);
+    run(&mut s, "redo", json!({}));
+    assert_eq!(s.model.to_json().unwrap(), after);
+}
+
+#[test]
+fn stage41_split_carrier_reassigns_equipment_by_landing() {
+    let (mut s, wall, device, _, wire) = free_exit_fixture();
+    let carrier =
+        made(&mut s, "cable_carrier", json!({"points":[[1040,-300],[1040,-300]],"offset":2000,"end_offset":5000,"type":"Tray 100 x 50"}));
+    run(&mut s, "run_mount", json!({"id":carrier,"host":wall,"face":"interior"}));
+    run(&mut s, "modify", json!({"id":device,"connection_sides":["bottom"]}));
+    run(&mut s, "move", json!({"ids":[device],"by":[0,0],"dz":3800}));
+    let feeder =
+        ids(&run(&mut s, "wire_connect", json!({"wire":wire,"device":device,"carrier":carrier,"surface":{"host":wall,"face":"interior"}})))
+            [0];
+    let before = s.model.to_json().unwrap();
+    let second = ids(&run(&mut s, "split", json!({"id":carrier,"fraction":0.5})))[1];
+    assert_eq!(s.model.elements.get(wire).unwrap().run().unwrap().connections[0].carrier, Some(s.model.guid(second)));
+    assert!(s.model.elements.get(feeder).is_some());
+    let after = s.model.to_json().unwrap();
+    run(&mut s, "undo", json!({}));
+    assert_eq!(s.model.to_json().unwrap(), before);
+    run(&mut s, "redo", json!({}));
+    assert_eq!(s.model.to_json().unwrap(), after);
+}
+
+#[test]
+fn stage41_carrier_bend_carries_the_wire_and_recomputes_fill() {
+    let mut s = Session::new();
+    let carrier = made(&mut s, "cable_carrier", json!({"points":[[1000,1000],[5000,1000]],"type":"Tray 100 x 50","justify":"centre"}));
+    let wire = made(&mut s, "wire", json!({"points":[[1500,1000],[4500,1000]],"carrier":carrier}));
+    let device = made(&mut s, "component", json!({"family":"Fire Alarm Panel","type":"300 x 400","at":[4300,2500]}));
+    let feeders = ids(&run(&mut s, "wire_connect", json!({"wire":wire,"device":device,"point":[0,0,0]})));
+    let fill = s.model.carrier_sections()[&s.model.guid(carrier)];
+    let parts = ids(&run(&mut s, "split", json!({"id":carrier,"fraction":0.5,"to":[3000,2000]})));
+    let cables: Vec<_> =
+        s.model.elements.iter().filter(|(_, element)| matches!(element, Element::Wire(run) if run.feeder.is_none())).collect();
+    assert_eq!(cables.len(), 2);
+    assert_eq!(*cables[0].0, wire);
+    for ((_, cable), carrier) in cables.iter().zip(parts) {
+        let guid = s.model.guid(carrier);
+        assert_eq!(cable.run().unwrap().carrier, Some(guid));
+        assert_eq!(s.model.carrier_sections()[&guid], fill);
+    }
+    let a = s.model.run_geom(cables[0].1).unwrap();
+    let b = s.model.run_geom(cables[1].1).unwrap();
+    assert_eq!(a.b, b.a);
+    assert_eq!(a.b[..2], [3000.0, 2000.0]);
+    let owner = s.model.guid(*cables[1].0);
+    for id in feeders {
+        assert_eq!(s.model.elements.get(id).unwrap().run().unwrap().feeder.as_ref().unwrap().wire, owner);
+    }
+}
+
+#[test]
+fn stage41_route_vertex_rejects_a_bend_without_room() {
+    let (mut s, wall, device, _, _) = free_exit_fixture();
+    run(&mut s, "modify", json!({"id":device,"connection_sides":["top"]}));
+    let wire = made(&mut s, "wire", json!({"points":[[500,-102],[1500,-102]],"offset":3000}));
+    run(&mut s, "wire_connect", json!({"wire":wire,"device":device,"surface":{"host":wall,"face":"interior"},"min_bend_radius":100}));
+    let before = s.model.to_json().unwrap();
+    let result = s.execute("split", &json!({"id":wire,"fraction":0.5,"to":[2000,-101]}));
+    assert!(result.unwrap_err().contains("route vertex does not have room"));
+    assert_eq!(s.model.to_json().unwrap(), before);
+}

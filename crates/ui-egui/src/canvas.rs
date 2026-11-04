@@ -922,6 +922,9 @@ impl BimApp {
         let under_at = |q: (f32, f32)| match &tool {
             Tool::Modify if sketching => None,
             Tool::Modify => d.pick(q, PICK),
+            Tool::Run("wire", None) => {
+                d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(*id), Some(Element::Component(_))))
+            }
             Tool::SketchPick => d.pick(q, PICK).filter(|id| model.wall(*id).is_some()),
             // A line to draw along, or to round.
             Tool::DetailLine(_) | Tool::Wall(_) | Tool::SketchLine(_) if shape == draw::Shape::PickLines => {
@@ -933,9 +936,12 @@ impl BimApp {
             Tool::DetailLine(_) if shape == draw::Shape::Fillet => {
                 d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::DetailLine(_))))
             }
-            Tool::Split => {
-                d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Wall(_) | Element::DetailLine(_))))
-            }
+            Tool::Split => d.pick_all(q, PICK).into_iter().find(|id| {
+                matches!(
+                    model.elements.get(id),
+                    Some(Element::Wall(_) | Element::DetailLine(_) | Element::Wire(_) | Element::CableCarrier(_))
+                )
+            }),
             Tool::Trim(_) | Tool::Offset => {
                 d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Wall(_) | Element::DetailLine(_))))
             }
@@ -1064,7 +1070,10 @@ impl BimApp {
                 Drag::Move(from) => {
                     let by = self.dragged(&model, &view, from, view.mm(q));
                     if by.length() > 0.0 {
-                        self.run("move", json!({"ids": self.selection, "by": point(by)}));
+                        let params = json!({"ids": self.selection, "by": point(by)});
+                        if !self.offer_carrier_move(&params) {
+                            self.run("move", params);
+                        }
                     }
                 }
                 Drag::Box(from) => self.pick_up(d.in_box(from, q, q.0 < from.0), click_modifiers(ui)),
@@ -1432,6 +1441,9 @@ impl BimApp {
                 }
             }
             Tool::Wall(_) | Tool::Grid(_) | Tool::Move(_) | Tool::Copy(_) | Tool::Section(_) | Tool::Run(..) => {
+                if self.start_wire_at_device(level, hovered) {
+                    return;
+                }
                 let chain: Vec<P2> = match &self.tool {
                     Tool::Wall(chain) => chain.clone(),
                     Tool::Grid(start) | Tool::Move(start) | Tool::Copy(start) | Tool::Section(start) | Tool::Run(_, start) => {
@@ -1506,9 +1518,21 @@ impl BimApp {
             },
             Tool::Split => {
                 if let Some(id) = hovered {
-                    self.run("split", json!({"id": id, "at": point(self.snap(m, level, v, at, &[], false).at)}));
+                    let at = self.snap(m, level, v, at, &[], false).at;
+                    if matches!(m.elements.get(id), Some(Element::Wire(_) | Element::CableCarrier(_))) {
+                        self.tool = Tool::SplitRoute(id, at);
+                    } else {
+                        self.run("split", json!({"id": id, "at": point(at)}));
+                    }
                 }
             }
+            &Tool::SplitRoute(id, from) => {
+                let to = self.snap(m, level, v, at, &[], false).at;
+                if self.run("split", json!({"id": id, "at": point(from), "to": point(to)})).is_some() {
+                    self.tool = Tool::Split;
+                }
+            }
+            Tool::SplitRoute3D { .. } => {}
             Tool::Offset => {
                 if let Some(id) = hovered.filter(|id| matches!(m.elements.get(*id), Some(Element::DetailLine(_)))) {
                     match m.units.parse(&self.offset).filter(|d| *d > 0.0) {
@@ -2214,7 +2238,7 @@ impl BimApp {
 
     /// The Move and Copy tools' second point: the selection moved or copied by `to - from`. A copy
     /// is selected afterwards; with Multiple, the tool goes on copying from the same base point.
-    fn shift_selection(&mut self, from: P2, to: P2) {
+    pub(crate) fn shift_selection(&mut self, from: P2, to: P2) {
         let copy = matches!(self.tool, Tool::Copy(_));
         let again = if copy { Tool::Copy(Some(from)) } else { Tool::Move(Some(from)) };
         if from.dist(to) <= TOL {
@@ -2222,6 +2246,9 @@ impl BimApp {
             return;
         }
         let params = json!({"ids": self.selection, "by": point(to - from)});
+        if !copy && self.offer_carrier_move(&params) {
+            return;
+        }
         match self.run(if copy { "copy" } else { "move" }, params) {
             None => self.tool = again,
             Some(_) if copy && self.multiple => self.tool = again,
@@ -2811,6 +2838,14 @@ impl BimApp {
                     let at = sc.screen(self.found(sc, q, &[], false));
                     p.line_segment([at - vec2(0.0, 9.0), at + vec2(0.0, 9.0)], stroke);
                     p.line_segment([at - vec2(9.0, 0.0), at + vec2(9.0, 0.0)], stroke);
+                }
+                return;
+            }
+            &Tool::SplitRoute(id, ..) => {
+                if let Some(run) = m.elements.get(id).and_then(Element::run) {
+                    let at = sc.screen(self.found(sc, q, &[], false));
+                    p.line_segment([sc.screen(run.start), at], stroke);
+                    p.line_segment([at, sc.screen(run.end)], stroke);
                 }
                 return;
             }

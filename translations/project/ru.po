@@ -87,7 +87,7 @@ msgstr "Бетонный блок"
 msgid "Copper"
 msgstr "Медь"
 
-#: crates/core/src/commands.rs:965
+#: crates/core/src/commands.rs:966
 msgid "Copy"
 msgstr "Копия"
 
@@ -115,7 +115,7 @@ msgstr "Штрихпунктирная"
 msgid "Data Outlet"
 msgstr "Розетка информационная"
 
-#: crates/core/src/commands.rs:6429
+#: crates/core/src/commands.rs:6432
 msgid "Dependent"
 msgstr "Зависимый"
 
@@ -176,8 +176,8 @@ msgstr "Восток"
 msgid "Elbow 90"
 msgstr "Отвод 90"
 
-#: crates/core/src/commands.rs:6213
-#: crates/core/src/commands.rs:8038
+#: crates/core/src/commands.rs:6216
+#: crates/core/src/commands.rs:8041
 msgid "Elevation"
 msgstr "Фасад"
 
@@ -297,7 +297,7 @@ msgstr "Ширина ножки"
 msgid "Length"
 msgstr "Длина"
 
-#: crates/core/src/commands.rs:3927
+#: crates/core/src/commands.rs:3930
 #: crates/core/src/model.rs:2245
 msgid "Level"
 msgstr "Уровень"
@@ -322,7 +322,7 @@ msgstr "Марка"
 msgid "Masking"
 msgstr "Маскировка"
 
-#: crates/core/src/commands.rs:4771
+#: crates/core/src/commands.rs:4774
 msgid "Mass"
 msgstr "Масса"
 
@@ -342,7 +342,7 @@ msgstr "Металл"
 msgid "Motion Detector"
 msgstr "Извещатель охранный объёмный"
 
-#: crates/core/src/commands.rs:5178
+#: crates/core/src/commands.rs:5181
 #: crates/core/src/fixtures.rs:233
 msgid "Mounting Height"
 msgstr "Высота установки"
@@ -424,7 +424,7 @@ msgstr "Штукатурка"
 msgid "Porcelain"
 msgstr "Фаянс"
 
-#: crates/core/src/commands.rs:2380
+#: crates/core/src/commands.rs:2383
 msgid "Project"
 msgstr "Проект"
 
@@ -448,7 +448,7 @@ msgstr "Подступенки"
 msgid "Roof tiles"
 msgstr "Черепица"
 
-#: crates/core/src/commands.rs:4996
+#: crates/core/src/commands.rs:4999
 msgid "Room"
 msgstr "Помещение"
 
@@ -476,8 +476,8 @@ msgstr "Стяжка"
 msgid "Seat Height"
 msgstr "Высота сиденья"
 
-#: crates/core/src/commands.rs:6190
-#: crates/core/src/commands.rs:8037
+#: crates/core/src/commands.rs:6193
+#: crates/core/src/commands.rs:8040
 msgid "Section"
 msgstr "Разрез"
 
@@ -545,7 +545,7 @@ msgstr "Источник"
 msgid "South"
 msgstr "Юг"
 
-#: crates/core/src/commands.rs:7129
+#: crates/core/src/commands.rs:7132
 msgid "Specification Items"
 msgstr "Позиции спецификации"
 
@@ -597,7 +597,7 @@ msgstr "Тип"
 msgid "UP"
 msgstr "ВВЕРХ"
 
-#: crates/core/src/commands.rs:6570
+#: crates/core/src/commands.rs:6573
 msgid "Unnamed"
 msgstr "Без имени"
 

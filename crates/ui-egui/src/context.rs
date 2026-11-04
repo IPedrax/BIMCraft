@@ -531,6 +531,53 @@ impl BimApp {
         }
     }
 
+    pub(crate) fn offer_carrier_move(&mut self, params: &serde_json::Value) -> bool {
+        use bimcraft_core::model::Element;
+        let model = &self.session.model;
+        let Some(ids) = params["ids"].as_array() else { return false };
+        let carriers: std::collections::BTreeSet<_> = ids
+            .iter()
+            .filter_map(serde_json::Value::as_u64)
+            .filter(|id| matches!(model.elements.get(*id), Some(Element::CableCarrier(_))))
+            .map(|id| model.guid(id))
+            .collect();
+        if carriers.is_empty()
+            || !model.elements.values().filter_map(Element::run).any(|run| {
+                run.connections.iter().any(|connection| connection.carrier.or(run.carrier).is_some_and(|route| carriers.contains(&route)))
+            })
+        {
+            return false;
+        }
+        self.carrier_move = Some(params.clone());
+        true
+    }
+
+    pub(crate) fn carrier_move_window(&mut self, ctx: &egui::Context) {
+        let Some(mut params) = self.carrier_move.take() else { return };
+        let mut choice = None;
+        let mut cancel = false;
+        let response = egui::Modal::new(egui::Id::new("move-connected-carrier")).show(ctx, |ui| {
+            ui.heading(t(msg!("Move Connected Cable Carrier")));
+            ui.horizontal(|ui| {
+                if ui.button(t(msg!("Keep Connection"))).clicked() {
+                    choice = Some(false);
+                }
+                if ui.button(t(msg!("Disconnect Equipment"))).clicked() {
+                    choice = Some(true);
+                }
+                cancel = ui.button(t("Cancel")).clicked();
+            });
+        });
+        if let Some(disconnect) = choice {
+            params["disconnect_equipment"] = disconnect.into();
+            if self.run("move", params).is_some() {
+                self.tool = Tool::Modify;
+            }
+        } else if !cancel && !response.should_close() {
+            self.carrier_move = Some(params);
+        }
+    }
+
     pub(crate) fn offer_carrier_attachment(&mut self, carrier: bimcraft_core::model::Id) {
         let m = &self.session.model;
         if let Ok(wires) = m.carrier_wire_candidates(carrier)

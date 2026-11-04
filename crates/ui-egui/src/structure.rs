@@ -200,6 +200,26 @@ impl BimApp {
         Ok(self.typed(category, p))
     }
 
+    /// Pick the first point of a wire at a device and seed the editable routing offset.
+    pub(crate) fn start_wire_at_device(&mut self, level: Id, picked: Option<Id>) -> bool {
+        if !matches!(self.tool, Tool::Run("wire", None)) {
+            return false;
+        }
+        let m = &self.session.model;
+        let Some(Element::Component(device)) = picked.and_then(|id| m.elements.get(id)) else { return false };
+        let mounting = m.families.get(&device.family).and_then(|family| {
+            let values = family.values(&device.type_name, &device.params).ok()?;
+            match values.get(m.language.word(msg!("Mounting Height"))) {
+                Some(bimcraft_core::family::Val::Number(height)) => Some(*height),
+                _ => None,
+            }
+        });
+        let offset = m.elevation(device.level) + device.offset + mounting.unwrap_or_default() - m.elevation(m.guid(level));
+        self.beam_offset = format!("{offset:.3} mm");
+        self.tool = Tool::Run("wire", Some(device.at));
+        true
+    }
+
     /// A click of a run's tool at `p`: the start, then the end, which makes it, and with Chain starts the next there.
     pub(crate) fn place_run(&mut self, level: Id, p: P2) {
         let Tool::Run(category, start) = self.tool.clone() else { return };

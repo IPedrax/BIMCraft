@@ -262,7 +262,8 @@ existing `point` input still selects a fixed local contact.
 The solver chooses a contact along the allowed sides of the equipment envelope
 and a landing on the finite route. It then offsets the cable axis by the outside
 radius along the wall normal. Each connection end can name a separate carrier.
-Its straight lead stays tangent to the wall and must fit the selected carrier
-section at the landing. Openings that interrupt the lead cause the command to
-roll back. This check covers the straight lead and landing geometry. Bend radius
-verification at the transition remains pending.
+The lead exits the selected side and uses a vertical transition when the route
+height differs. Each leg stays tangent to the wall. The cable must fit the
+selected carrier section at the landing. Openings that interrupt either leg
+cause the command to roll back. A specified minimum bend radius checks the
+available tangent lengths at the turn and at the carrier entry.

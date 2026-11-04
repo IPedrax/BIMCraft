@@ -148,6 +148,12 @@ pub enum Tool {
     },
     /// Split the wall picked.
     Split,
+    SplitRoute(Id, P2),
+    SplitRoute3D {
+        id: Id,
+        fraction: f64,
+        origin: bimcraft_core::view3d::P3,
+    },
     /// Copy (or move) the wall picked to the cursor's side, by the Options Bar's distance.
     Offset,
     /// Take the element picked down in the phase of the view on screen, or, if it comes down in it already, back up.
@@ -639,6 +645,7 @@ pub struct BimApp {
     carrier_attachment: Option<context::CarrierAttachmentDialog>,
     mount_run: Option<u64>,
     carrier_from_wire: Option<context::CarrierFromWireDialog>,
+    carrier_move: Option<Value>,
     ids_of_selection: Option<inquiry::IdsOfSelection>,
     selection_filter: Option<filter::SelectionFilter>,
     /// What was last put on the clipboard.
@@ -652,6 +659,9 @@ pub struct BimApp {
     component_angle: f64,
     component_offset: String,
     work_level: Option<Guid>,
+    work_axis: usize,
+    work_coordinate: String,
+    place_on_face: bool,
     /// The Properties palette's folded groups.
     collapsed: BTreeSet<&'static str>,
     /// Where views show, last frame.
@@ -1070,6 +1080,7 @@ impl BimApp {
             carrier_attachment: None,
             mount_run: None,
             carrier_from_wire: None,
+            carrier_move: None,
             ids_of_selection: None,
             selection_filter: None,
             copied: None,
@@ -1079,6 +1090,9 @@ impl BimApp {
             component_angle: 0.0,
             component_offset: "0".into(),
             work_level: None,
+            work_axis: 2,
+            work_coordinate: "0".into(),
+            place_on_face: false,
             collapsed: BTreeSet::new(),
             view_rect: Rect::ZERO,
             pane: Rect::ZERO,
@@ -1147,6 +1161,8 @@ impl BimApp {
             | Tool::TrimTo { .. }
             | Tool::Vertex { .. }
             | Tool::Split
+            | Tool::SplitRoute(..)
+            | Tool::SplitRoute3D { .. }
             | Tool::Offset
             | Tool::Demolish
             | Tool::Linework
@@ -1501,6 +1517,7 @@ impl BimApp {
             || self.carrier_attachment.is_some()
             || self.mount_run.is_some()
             || self.carrier_from_wire.is_some()
+            || self.carrier_move.is_some()
             || self.ids_of_selection.is_some()
             || self.selection_filter.is_some()
             || self.settings_page.is_some()
@@ -2186,6 +2203,7 @@ impl BimApp {
             Tool::Wall(chain) if !chain.is_empty() => Tool::Wall(Vec::new()),
             Tool::Grid(Some(_)) => Tool::Grid(None),
             Tool::Run(c, Some(_)) => Tool::Run(c, None),
+            Tool::SplitRoute(..) | Tool::SplitRoute3D { .. } => Tool::Split,
             Tool::Mirror { draw, start: Some(_) } => Tool::Mirror { draw, start: None },
             Tool::Align(Some(_)) => Tool::Align(None),
             Tool::Trim(Some(_)) => Tool::Trim(None),
@@ -2282,7 +2300,17 @@ impl BimApp {
             Sheet::Plan(_) | Sheet::Ceiling(_) => true,
             Sheet::Section(_) => matches!(self.tool, Tool::Text | Tool::Spot | Tool::Demolish),
             Sheet::View3D => {
-                matches!(self.tool, Tool::Demolish | Tool::Paint | Tool::Unpaint | Tool::Run(..) | Tool::Component | Tool::Fixture(_))
+                matches!(
+                    self.tool,
+                    Tool::Demolish
+                        | Tool::Paint
+                        | Tool::Unpaint
+                        | Tool::Run(..)
+                        | Tool::Component
+                        | Tool::Fixture(_)
+                        | Tool::Split
+                        | Tool::Move(None)
+                )
             }
             Sheet::Paper(_) => self.tool == Tool::Text,
             _ => false,
@@ -4023,6 +4051,10 @@ impl BimApp {
             (Sheet::Section(_), Tool::Spot) => return msg!("Click a point to mark its height."),
             // Demolish picks in these views as it does in a plan; Paint in the 3D view alone.
             (Sheet::View3D | Sheet::Section(_), Tool::Demolish) | (Sheet::View3D, Tool::Paint | Tool::Unpaint) => {}
+            (
+                Sheet::View3D,
+                Tool::Component | Tool::Fixture(_) | Tool::Run(..) | Tool::Move(_) | Tool::Split | Tool::SplitRoute3D { .. },
+            ) => {}
             (Sheet::View3D | Sheet::Section(_) | Sheet::Paper(_), _) => {
                 return msg!("This tool works in plan views: open one from the Project Browser.");
             }
@@ -4065,7 +4097,8 @@ impl BimApp {
             }
             Tool::Vertex { delete: false } => msg!("Click a polyline or a spline where a vertex goes."),
             Tool::Vertex { delete: true } => msg!("Click a polyline's corner or a spline's point to take it out."),
-            Tool::Split => msg!("Click a wall or a line where to split it."),
+            Tool::Split => msg!("Click a wall, line or route where to split it."),
+            Tool::SplitRoute(..) | Tool::SplitRoute3D { .. } => msg!("Click where to place the new route vertex."),
             Tool::Offset => msg!("Point to a wall or a line: the offset goes to the cursor's side. Click to place it."),
             Tool::Demolish => msg!("Click an element to take it down in the view's phase; click it again to take it back."),
             Tool::Linework => msg!("Click an edge to draw it in the line style in the Options Bar; <By Category> puts it back."),
@@ -4355,6 +4388,7 @@ impl BimApp {
         self.carrier_attachment_window(ctx);
         self.mount_run_window(ctx);
         self.carrier_from_wire_window(ctx);
+        self.carrier_move_window(ctx);
         self.type_properties(ctx);
         self.family_type_properties(ctx);
         self.materials_window(ctx);

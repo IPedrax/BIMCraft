@@ -10,6 +10,7 @@ const CONTACT_TOL: f64 = 0.002;
 
 pub(super) struct Solved {
     pub device: P3,
+    pub elbow: P3,
     pub target: P3,
     pub normal: P3,
     pub point: P3,
@@ -108,6 +109,9 @@ impl Model {
         let world = |p: [f64; 2]| add(base, add(mul(right, p[0]), mul(up, p[1])));
         let contact = world(exit.contact);
         let landing = world(exit.landing);
+        // Exit outwards first, so the turn cannot send the lead through the device.
+        let corner = if exit.side < 2 { [exit.contact[0], exit.landing[1]] } else { [exit.landing[0], exit.contact[1]] };
+        let elbow = world(corner);
         let radius = wire.width / 2.0;
         let device = add(contact, mul(normal, radius));
         let target = add(landing, mul(normal, radius));
@@ -115,17 +119,26 @@ impl Model {
             if !minimum.is_finite() || minimum <= 0.0 || minimum > MAX_COORD {
                 return Err("invalid minimum cable bend radius".into());
             }
-            if connection.carrier.is_some() {
-                let incoming = sub(landing, contact);
+            let first = sub(elbow, contact);
+            let second = sub(landing, elbow);
+            let first_length = dot(first, first).sqrt();
+            let second_length = dot(second, second).sqrt();
+            let has_turn = first_length > TOL && second_length > TOL;
+            if has_turn && !bend_fits(minimum, first_length, second_length, 0.0) {
+                return Err(format!("the vertical transition does not have room for a {minimum} mm cable bend"));
+            }
+            if !frozen {
+                let incoming = if second_length > TOL { second } else { first };
                 let length = dot(incoming, incoming).sqrt();
                 let fits = length <= TOL
                     || [route.a, route.b].into_iter().any(|endpoint| {
                         let outgoing = sub(world(project(endpoint)), landing);
                         let available = dot(outgoing, outgoing).sqrt();
-                        available > TOL && bend_fits(minimum, length, available, dot(incoming, outgoing) / (length * available))
+                        let remaining = if has_turn { length - minimum } else { length };
+                        available > TOL && bend_fits(minimum, remaining, available, dot(incoming, outgoing) / (length * available))
                     });
                 if !fits {
-                    return Err(format!("the lead and carrier do not have room for a {minimum} mm cable bend"));
+                    return Err(format!("the lead and route do not have room for a {minimum} mm cable bend"));
                 }
             }
         }
@@ -148,14 +161,16 @@ impl Model {
         }
         if let Some(host) = surface.host {
             let host = self.elements.id(host).ok_or("mounting wall is missing")?;
-            if dot(sub(landing, contact), sub(landing, contact)) > TOL * TOL
-                && !crate::view3d::Scene::new(self).supports_segment(host, &surface.face, contact, landing, normal)?
-            {
-                return Err("the equipment lead crosses an opening or leaves the mounting wall face".into());
+            let scene = crate::view3d::Scene::new(self);
+            for (a, b) in [(contact, elbow), (elbow, landing)] {
+                if dot(sub(b, a), sub(b, a)) > TOL * TOL && !scene.supports_segment(host, &surface.face, a, b, normal)? {
+                    return Err("the equipment lead crosses an opening or leaves the mounting wall face".into());
+                }
             }
         }
         Ok(Solved {
             device,
+            elbow: add(elbow, mul(normal, radius)),
             target,
             normal,
             point: unrotate(c, sub(contact, at)),
@@ -234,7 +249,7 @@ fn right_angle_bend_needs_radius_on_both_legs() {
 }
 
 // For unit directions, tan(turn / 2) = sqrt((1 - cos(turn)) / (1 + cos(turn))).
-fn bend_fits(radius: f64, incoming: f64, outgoing: f64, cosine: f64) -> bool {
+pub(crate) fn bend_fits(radius: f64, incoming: f64, outgoing: f64, cosine: f64) -> bool {
     let cosine = cosine.clamp(-1.0, 1.0);
     let trim = radius * ((1.0 - cosine) / (1.0 + cosine)).sqrt();
     trim.is_finite() && trim <= incoming.min(outgoing) + 1e-8

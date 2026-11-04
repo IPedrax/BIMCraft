@@ -87,7 +87,7 @@ msgstr "Bloco de concreto"
 msgid "Copper"
 msgstr "Cobre"
 
-#: crates/core/src/commands.rs:965
+#: crates/core/src/commands.rs:966
 msgid "Copy"
 msgstr "Cópia"
 
@@ -115,7 +115,7 @@ msgstr "Traço e ponto"
 msgid "Data Outlet"
 msgstr "Ponto de dados"
 
-#: crates/core/src/commands.rs:6429
+#: crates/core/src/commands.rs:6432
 msgid "Dependent"
 msgstr "Dependente"
 
@@ -176,8 +176,8 @@ msgstr "Leste"
 msgid "Elbow 90"
 msgstr "Joelho 90"
 
-#: crates/core/src/commands.rs:6213
-#: crates/core/src/commands.rs:8038
+#: crates/core/src/commands.rs:6216
+#: crates/core/src/commands.rs:8041
 msgid "Elevation"
 msgstr "Elevação"
 
@@ -297,7 +297,7 @@ msgstr "Largura da perna"
 msgid "Length"
 msgstr "Comprimento"
 
-#: crates/core/src/commands.rs:3927
+#: crates/core/src/commands.rs:3930
 #: crates/core/src/model.rs:2245
 msgid "Level"
 msgstr "Nível"
@@ -322,7 +322,7 @@ msgstr "Marca"
 msgid "Masking"
 msgstr "Máscara"
 
-#: crates/core/src/commands.rs:4771
+#: crates/core/src/commands.rs:4774
 msgid "Mass"
 msgstr "Massa"
 
@@ -342,7 +342,7 @@ msgstr "Metal"
 msgid "Motion Detector"
 msgstr "Detector de movimento"
 
-#: crates/core/src/commands.rs:5178
+#: crates/core/src/commands.rs:5181
 #: crates/core/src/fixtures.rs:233
 msgid "Mounting Height"
 msgstr "Altura de instalação"
@@ -424,7 +424,7 @@ msgstr "Reboco"
 msgid "Porcelain"
 msgstr "Porcelana"
 
-#: crates/core/src/commands.rs:2380
+#: crates/core/src/commands.rs:2383
 msgid "Project"
 msgstr "Projeto"
 
@@ -448,7 +448,7 @@ msgstr "Espelhos"
 msgid "Roof tiles"
 msgstr "Telhas"
 
-#: crates/core/src/commands.rs:4996
+#: crates/core/src/commands.rs:4999
 msgid "Room"
 msgstr "Ambiente"
 
@@ -476,8 +476,8 @@ msgstr "Contrapiso"
 msgid "Seat Height"
 msgstr "Altura do assento"
 
-#: crates/core/src/commands.rs:6190
-#: crates/core/src/commands.rs:8037
+#: crates/core/src/commands.rs:6193
+#: crates/core/src/commands.rs:8040
 msgid "Section"
 msgstr "Corte"
 
@@ -545,7 +545,7 @@ msgstr "Origem"
 msgid "South"
 msgstr "Sul"
 
-#: crates/core/src/commands.rs:7129
+#: crates/core/src/commands.rs:7132
 msgid "Specification Items"
 msgstr ""
 
@@ -597,7 +597,7 @@ msgstr "Tipo"
 msgid "UP"
 msgstr "SOBE"
 
-#: crates/core/src/commands.rs:6570
+#: crates/core/src/commands.rs:6573
 msgid "Unnamed"
 msgstr "Sem nome"
 

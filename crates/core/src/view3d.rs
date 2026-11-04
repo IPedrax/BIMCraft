@@ -1049,7 +1049,20 @@ impl Scene {
         if length <= 1e-12 {
             return Err("surface ray: direction must be nonzero".into());
         }
-        let direction = mul(direction, 1.0 / length);
+        Ok(self.cast_surface(host, origin, mul(direction, 1.0 / length), 0.0..=reach))
+    }
+
+    /// World contact on the visible host picked by the rendered view.
+    pub fn surface_at(&self, host: Id, cam: &Camera, at: (f64, f64)) -> Option<SurfaceHit> {
+        let (back, ..) = cam.axes();
+        self.cast_surface(host, cam.unproject(at), mul(back, -1.0), f64::NEG_INFINITY..=f64::INFINITY)
+    }
+
+    pub fn face_triangles<'a>(&'a self, hit: &'a SurfaceHit) -> impl Iterator<Item = [P3; 3]> + 'a {
+        self.tris.iter().zip(self.faces.iter()).filter_map(move |(tri, face)| (tri.owner == hit.host && *face == hit.face).then_some(tri.p))
+    }
+
+    fn cast_surface(&self, host: Id, origin: P3, direction: P3, range: std::ops::RangeInclusive<f64>) -> Option<SurfaceHit> {
         let mut nearest: Option<SurfaceHit> = None;
         for (t, &face) in self.tris.iter().zip(self.faces.iter()) {
             if t.owner != host || face.is_empty() {
@@ -1069,7 +1082,7 @@ impl Scene {
             let q = cross(from, e1);
             let v = dot(direction, q) / determinant;
             let distance = dot(e2, q) / determinant;
-            if u < -1e-10 || v < -1e-10 || u + v > 1.0 + 1e-10 || distance < 0.0 || distance > reach {
+            if u < -1e-10 || v < -1e-10 || u + v > 1.0 + 1e-10 || !range.contains(&distance) {
                 continue;
             }
             if nearest.as_ref().is_none_or(|hit| distance < hit.distance) {
@@ -1082,7 +1095,7 @@ impl Scene {
                 });
             }
         }
-        Ok(nearest)
+        nearest
     }
 
     pub fn new(m: &Model) -> Scene {
@@ -2001,10 +2014,16 @@ impl Camera {
     /// The point at pixel `(x, y)` on the horizontal plane at height `z`; none where the view is
     /// level with it.
     pub fn on_plane(&self, at: (f64, f64), z: f64) -> Option<P3> {
+        self.on_axis_plane(at, 2, z)
+    }
+
+    /// Intersect the cursor ray with the plane whose coordinate on `axis` is fixed.
+    pub fn on_axis_plane(&self, at: (f64, f64), axis: usize, coordinate: f64) -> Option<P3> {
         let (back, ..) = self.axes();
         let p = self.unproject(at);
-        let t = (z - p[2]) / back[2];
-        (back[2].abs() > 1e-9 && t.is_finite()).then(|| add(p, mul(back, t)))
+        let normal = *back.get(axis)?;
+        let t = (coordinate - p[axis]) / normal;
+        (normal.abs() > 1e-9 && t.is_finite()).then(|| add(p, mul(back, t)))
     }
 
     /// The model point at pixel `(x, y)` on the plane through the target, square to the view.
@@ -2204,6 +2223,20 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn stage41_camera_projects_and_picks_each_work_plane() {
+        let camera = Camera { azimuth: -45.0, elevation: 30.0, scale: 0.15, target: [0.0; 3], width: 800, height: 600 };
+        let point = [1200.0, 450.0, 2600.0];
+        let (x, y, _) = camera.project(point);
+        for axis in 0..3 {
+            let picked = camera.on_axis_plane((x, y), axis, point[axis]).unwrap();
+            let error = sub(picked, point);
+            assert!(dot(error, error) < 1e-16);
+        }
+        let front = Camera { azimuth: 0.0, elevation: 0.0, ..camera };
+        assert!(front.on_axis_plane((x, y), 2, point[2]).is_none());
+    }
 
     #[test]
     fn stage4_surface_patch_detects_openings_even_with_all_corners_supported() {

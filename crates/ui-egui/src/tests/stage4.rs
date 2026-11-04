@@ -124,6 +124,13 @@ fn stage4_visual_acceptance() {
         h.state_mut().act(crate::context::Action::CreateCarrierFromWire);
         h.run();
         h.render().unwrap().save(output.join(format!("carrier-placement-{name}.png"))).unwrap();
+        press(&mut h, "Cancel");
+        shortcut(&mut h, "FA");
+        press(&mut h, "Place on Face");
+        let at = h.state().screen3([4000.0, -100.0, 1800.0]);
+        h.hover_at(at);
+        h.run();
+        h.render().unwrap().save(output.join(format!("equipment-face-preview-{name}.png"))).unwrap();
     }
 }
 
@@ -573,4 +580,270 @@ fn stage4_shift_drag_mounts_carrier_on_plan_floor() {
     let mount = model.elements.get(carrier).unwrap().run().unwrap().mount.as_ref().expect("Shift-drag mounts the selected carrier");
     assert_eq!(mount.host, model.guid(floor));
     assert_eq!(mount.face, "top");
+}
+
+#[test]
+fn stage41_wire_chain_starts_at_equipment_height() {
+    for (three_d, manual) in [(false, false), (true, false), (false, true), (true, true)] {
+        let mut h = app(r#"floor {"boundary":[[0,0],[8000,0],[8000,6000],[0,6000]]}"#);
+        let level = h.state().plan_level().unwrap();
+        h.state_mut().run("modify", json!({"id":level,"view_range":{"top":3000,"cut":2300,"bottom":0,"depth":0}})).unwrap();
+        h.state_mut().run("component", json!({"family":"Fire Alarm Panel","at":[1000,1000],"offset":200})).unwrap();
+        if three_d {
+            press(&mut h, "Default 3D View");
+        }
+        shortcut(&mut h, "EW");
+        h.state_mut().beam_offset = "3000".into();
+        h.state_mut().run_justify = bimcraft_core::model::Justify::Centre;
+        h.state_mut().chain = true;
+        h.run();
+        stage4_click_world(&mut h, [1000.0, 950.0, 1850.0], three_d);
+        assert_eq!(h.state().beam_offset, "1700.000 mm", "3D view: {three_d}");
+        let height = if manual {
+            h.state_mut().beam_offset = "2200".into();
+            2200.0
+        } else {
+            1700.0
+        };
+        for point in [[3000.0, 1000.0, height], [5000.0, 1000.0, height]] {
+            stage4_click_world(&mut h, point, three_d);
+        }
+        let wires = ids(&h, "wire");
+        assert_eq!(wires.len(), 2);
+        let model = &h.state().session.model;
+        for id in wires {
+            let g = model.run_geom(model.elements.get(id).unwrap()).unwrap();
+            assert_eq!([g.a[2], g.b[2]], [height; 2]);
+        }
+    }
+}
+
+#[test]
+fn stage41_split_places_a_route_bend_and_undoes_in_one_step() {
+    for (command, category, plane) in [
+        ("wire", "wire", None),
+        ("cable_carrier", "cablecarrier", None),
+        ("wire", "wire", Some(2)),
+        ("cable_carrier", "cablecarrier", Some(2)),
+        ("wire", "wire", Some(1)),
+    ] {
+        let three_d = plane.is_some();
+        let mut h = app(&format!(
+            r#"floor {{"boundary":[[0,0],[8000,0],[8000,6000],[0,6000]]}}
+{command} {{"points":[[1000,1000],[5000,1000]],"offset":1000,"justify":"centre"}}"#
+        ));
+        if let Some(axis) = plane {
+            press(&mut h, "Default 3D View");
+            h.state_mut().work_axis = axis;
+        }
+        let before = h.state().session.model.to_json().unwrap();
+        shortcut(&mut h, "SL");
+        stage4_click_world(&mut h, [3000.0, 1000.0, 1000.0], three_d);
+        assert_eq!(ids(&h, category).len(), 1);
+        assert!(
+            matches!(h.state().tool, Tool::SplitRoute(..) | Tool::SplitRoute3D { .. }),
+            "{category}, 3D={three_d}: {:?}",
+            h.state().tool
+        );
+        let target = if plane == Some(1) { [3000.0, 1000.0, 2000.0] } else { [3000.0, 2000.0, 1000.0] };
+        stage4_click_world(&mut h, target, three_d);
+        let pieces = ids(&h, category);
+        assert_eq!(pieces.len(), 2, "{category}, 3D={three_d}: {}", h.state().status.text);
+        let m = &h.state().session.model;
+        let joint = m.run_geom(m.elements.get(pieces[0]).unwrap()).unwrap().b;
+        assert_eq!(joint, m.run_geom(m.elements.get(pieces[1]).unwrap()).unwrap().a);
+        assert!(joint.into_iter().zip(target).all(|(actual, expected)| (actual - expected).abs() < 20.0), "{joint:?} != {target:?}");
+        let after = m.to_json().unwrap();
+        h.state_mut().run("undo", json!({})).unwrap();
+        assert_eq!(h.state().session.model.to_json().unwrap(), before);
+        h.state_mut().run("redo", json!({})).unwrap();
+        assert_eq!(h.state().session.model.to_json().unwrap(), after);
+    }
+}
+
+#[test]
+fn stage41_connected_carrier_move_dialog_commits_only_the_chosen_edit() {
+    for (three_d, choice) in
+        [false, true].into_iter().flat_map(|view| ["Cancel", "Keep Connection", "Disconnect Equipment"].map(|choice| (view, choice)))
+    {
+        let mut h = app(r#"wire {"points":[[0,0],[3000,0]],"offset":3000}"#);
+        let wire = ids(&h, "wire")[0];
+        let carrier =
+            h.state_mut().run("cable_carrier", json!({"from_wire":wire,"type":"Tray 100 x 50"})).unwrap()["ids"][0].as_u64().unwrap();
+        let device =
+            h.state_mut().run("component", json!({"family":"Fire Alarm Panel","at":[0,0],"offset":1000})).unwrap()["id"].as_u64().unwrap();
+        h.state_mut().run("wire_connect", json!({"wire":wire,"device":device,"point":[0,0,0],"in_carrier":true})).unwrap();
+        let before = h.state().session.model.to_json().unwrap();
+        let before_device = h.state().session.model.elements.get(device).unwrap().clone();
+        if three_d {
+            press(&mut h, "Default 3D View");
+        }
+        h.state_mut().selection = vec![carrier];
+        shortcut(&mut h, "MV");
+        stage4_click_world(&mut h, [1500.0, 0.0, 3000.0], three_d);
+        stage4_click_world(&mut h, [1500.0, 300.0, 3000.0], three_d);
+        h.run();
+        assert_eq!(h.state().session.model.to_json().unwrap(), before);
+        press(&mut h, choice);
+        let m = &h.state().session.model;
+        if choice == "Cancel" {
+            assert_eq!(m.to_json().unwrap(), before);
+        } else {
+            assert!(!h.state().status.error, "{}", h.state().status.text);
+            let run = m.elements.get(wire).unwrap().run().unwrap();
+            assert!((run.start.1 - 300.0).abs() < 15.0, "3D={three_d}: {}", run.start.1);
+            assert_eq!(run.connections.is_empty(), choice == "Disconnect Equipment");
+            assert_eq!(m.elements.get(device), Some(&before_device));
+            let after = m.to_json().unwrap();
+            let (opened, left_out) = bimcraft_core::model::Model::read(&after).unwrap();
+            assert!(left_out.is_empty());
+            for id in [wire, carrier] {
+                let expected = m.elements.get(id).unwrap();
+                let actual = opened.elements.get(id).unwrap();
+                assert_eq!(opened.guid(id), m.guid(id));
+                assert_eq!(actual.run().unwrap().carrier, expected.run().unwrap().carrier);
+                assert_eq!(actual.run().unwrap().connections, expected.run().unwrap().connections);
+                let actual = opened.run_geom(actual).unwrap();
+                let expected = m.run_geom(expected).unwrap();
+                for (a, b) in actual.a.into_iter().chain(actual.b).zip(expected.a.into_iter().chain(expected.b)) {
+                    assert!((a - b).abs() < 1e-6);
+                }
+            }
+            h.state_mut().run("undo", json!({})).unwrap();
+            assert_eq!(h.state().session.model.to_json().unwrap(), before);
+            h.state_mut().run("redo", json!({})).unwrap();
+            assert_eq!(h.state().session.model.to_json().unwrap(), after);
+        }
+    }
+}
+
+#[test]
+fn stage41_3d_move_raises_a_run_in_each_vertical_work_plane() {
+    for axis in [0, 1] {
+        let mut h = app(r#"wire {"points":[[0,0],[3000,0]],"offset":3000,"justify":"centre"}"#);
+        let wire = ids(&h, "wire")[0];
+        press(&mut h, "Default 3D View");
+        h.state_mut().selection = vec![wire];
+        h.state_mut().work_axis = axis;
+        shortcut(&mut h, "MV");
+        stage4_click_world(&mut h, [1500.0, 0.0, 3000.0], true);
+        stage4_click_world(&mut h, [1500.0, 0.0, 3200.0], true);
+        let model = &h.state().session.model;
+        let geometry = model.run_geom(model.elements.get(wire).unwrap()).unwrap();
+        assert!((geometry.a[2] - 3200.0).abs() < 15.0, "axis {axis}: {:?}", geometry.a);
+    }
+}
+
+#[test]
+fn stage41_3d_places_equipment_on_visible_wall_face() {
+    let mut h = app(r#"wall {"points":[[0,0],[8000,0]],"height":3000}"#);
+    press(&mut h, "Default 3D View");
+    shortcut(&mut h, "FA");
+    press(&mut h, "Place on Face");
+    let before = h.state().session.model.to_json().unwrap();
+    stage4_click_world(&mut h, [4000.0, -100.0, 1800.0], true);
+    let device = ids(&h, "component")[0];
+    let model = &h.state().session.model;
+    let Some(Element::Component(component)) = model.elements.get(device) else { panic!("expected wall equipment") };
+    assert!((component.at.1 + 100.0).abs() < 1.0);
+    assert!((component.offset - 300.0).abs() < 15.0);
+    assert!(component.angle.abs() < 0.01);
+    let after = model.to_json().unwrap();
+    let (opened, left_out) = bimcraft_core::model::Model::read(&after).unwrap();
+    assert!(left_out.is_empty());
+    assert_eq!(opened.guid(device), model.guid(device));
+    let Some(Element::Component(saved)) = opened.elements.get(device) else { panic!("expected saved equipment") };
+    assert!((saved.at - component.at).length() < 1e-6);
+    assert!((saved.offset - component.offset).abs() < 1e-6);
+    assert!((saved.angle - component.angle).abs() < 1e-6);
+    h.state_mut().run("undo", json!({})).unwrap();
+    assert_eq!(h.state().session.model.to_json().unwrap(), before);
+    h.state_mut().run("redo", json!({})).unwrap();
+    assert_eq!(h.state().session.model.to_json().unwrap(), after);
+}
+
+#[test]
+fn stage41_3d_places_equipment_on_floor_top() {
+    let mut h = app(r#"floor {"boundary":[[0,0],[8000,0],[8000,6000],[0,6000]]}"#);
+    press(&mut h, "Default 3D View");
+    shortcut(&mut h, "FA");
+    press(&mut h, "Place on Face");
+    stage4_click_world(&mut h, [4000.0, 3000.0, 0.0], true);
+    let model = &h.state().session.model;
+    let device = ids(&h, "component")[0];
+    let Some(Element::Component(component)) = model.elements.get(device) else { panic!("expected floor equipment") };
+    let bottom = model.component_local_pieces(component).iter().map(|piece| piece.bottom).min_by(f64::total_cmp).unwrap();
+    assert!((component.at.0 - 4000.0).abs() < 20.0);
+    assert!((component.at.1 - 3000.0).abs() < 20.0);
+    assert!((model.elevation(component.level) + component.offset + bottom).abs() < 1e-6);
+}
+
+#[test]
+fn stage41_3d_places_equipment_under_ceiling() {
+    let mut h = app(r#"ceiling {"boundary":[[0,0],[8000,0],[8000,6000],[0,6000]],"offset":2600}"#);
+    press(&mut h, "Default 3D View");
+    let state = h.state_mut();
+    let camera = state.orbit.camera.unwrap();
+    let scene = bimcraft_core::view3d::Scene::new(&state.session.model);
+    state.orbit.camera = Some(scene.fit(camera.azimuth, -35.0, camera.width, camera.height));
+    h.run();
+    shortcut(&mut h, "FA");
+    press(&mut h, "Place on Face");
+    stage4_click_world(&mut h, [4000.0, 3000.0, 2600.0], true);
+    let model = &h.state().session.model;
+    let device = ids(&h, "component")[0];
+    let Some(Element::Component(component)) = model.elements.get(device) else { panic!("expected ceiling equipment") };
+    let top = model.component_local_pieces(component).iter().map(|piece| piece.top).max_by(f64::total_cmp).unwrap();
+    assert!((component.at.0 - 4000.0).abs() < 20.0);
+    assert!((component.at.1 - 3000.0).abs() < 20.0);
+    assert!((model.elevation(component.level) + component.offset + top - 2600.0).abs() < 1e-6);
+}
+
+#[test]
+fn stage41_3d_draws_a_wire_in_each_work_plane() {
+    for (axis, ortho) in [(0, false), (1, false), (0, true), (1, true), (2, true)] {
+        let mut h = app(r#"floor {"boundary":[[0,0],[8000,0],[8000,6000],[0,6000]]}"#);
+        press(&mut h, "Default 3D View");
+        shortcut(&mut h, "EW");
+        h.state_mut().work_axis = axis;
+        h.state_mut().work_coordinate = "1000".into();
+        h.state_mut().beam_offset = "1000".into();
+        h.state_mut().constrain = ortho;
+        h.state_mut().run_justify = bimcraft_core::model::Justify::Centre;
+        h.run();
+        let a = [1000.0, 1000.0, 1000.0];
+        let mut b = [1000.0, 1000.0, 2000.0];
+        if axis == 2 {
+            b = [3000.0, 2000.0, 1000.0];
+        } else {
+            b[1 - axis] = 3000.0;
+        }
+        stage4_click_world(&mut h, a, true);
+        assert!(ids(&h, "wire").is_empty());
+        let clicked = b;
+        if ortho {
+            b[if axis == 2 { 1 } else { 2 }] = 1000.0;
+        }
+        let at = h.state().screen3(clicked);
+        h.hover_at(at);
+        h.run();
+        let expected = [h.state().screen3(a), h.state().screen3(b)];
+        assert!(
+            h.output().shapes.iter().any(|shape| matches!(
+                &shape.shape,
+                egui::Shape::LineSegment { points, stroke }
+                    if (stroke.width - 1.5).abs() < f32::EPSILON
+                        && points.iter().zip(expected).all(|(actual, expected)| actual.distance(expected) < 2.0)
+            )),
+            "missing route preview on axis {axis}, Ortho={ortho}"
+        );
+        assert!(ids(&h, "wire").is_empty());
+        stage4_click_world(&mut h, clicked, true);
+        let wire = ids(&h, "wire")[0];
+        let m = &h.state().session.model;
+        let g = m.run_geom(m.elements.get(wire).unwrap()).unwrap();
+        for (actual, expected) in g.a.into_iter().chain(g.b).zip(a.into_iter().chain(b)) {
+            assert!((actual - expected).abs() < 20.0, "axis {axis}: {actual} != {expected}");
+        }
+    }
 }

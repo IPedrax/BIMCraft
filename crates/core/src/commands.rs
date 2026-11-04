@@ -582,7 +582,7 @@ pub static ALL: &[Command] = &[
         "wire_connect",
         ui_msg!("Connect Wire"),
         &[],
-        "{wire: id|GUID, device: id|GUID, end?: 0|1, point?: [x,y,z], surface?: {host: id|GUID, face: interior|exterior}, carrier?: id|GUID|null, in_carrier?: bool, min_bend_radius?: mm|null} choose exactly one of a fixed local point or a free wall-surface contact. Free contacts slide on the device connection_sides (bottom/top/right/left, empty means any), independent of cable diameter; the physical cable is tangent to the wall. end defaults to 0 and distinguishes returning cable ends. An explicit carrier selects this end's route independently; omitted/null uses the main wire route. Deleting an explicit carrier preserves the last landing and detaches its carrier branches; reconnect to choose a route again. Creates and updates physical feeder legs without duplicating them. With a free surface and explicit carrier, min_bend_radius checks tangent lengths at the entry; the lead geometry remains straight. Reconnecting a free end to a carrier keeps the previous radius if omitted; null clears it",
+        "{wire: id|GUID, device: id|GUID, end?: 0|1, point?: [x,y,z], surface?: {host: id|GUID, face: interior|exterior}, carrier?: id|GUID|null, in_carrier?: bool, min_bend_radius?: mm|null} choose exactly one of a fixed local point or a free wall-surface contact. Free contacts slide on the device connection_sides (bottom/top/right/left, empty means any), independent of cable diameter; the physical cable is tangent to the wall. end defaults to 0 and distinguishes returning cable ends. An explicit carrier selects this end's route independently; omitted/null uses the main wire route. Deleting an explicit carrier preserves the last landing and detaches its carrier branches; reconnect to choose a route again. Creates and updates physical feeder legs without duplicating them. A free surface lead follows the wall with a vertical transition when needed. min_bend_radius checks space for the transition and at the route entry. Reconnecting a free end keeps the previous radius if omitted; null clears it",
         wire_connect,
     ),
     edit(
@@ -956,8 +956,9 @@ pub static ALL: &[Command] = &[
         "move",
         ui_msg!("Move"),
         &["MV"],
-        "{ids: [id,…], by: [dx, dy], end?: start|end} moves elements in plan; walls joined to a moved wall stretch to stay \
-         joined, and doors and windows slide along their walls. With `end`, only that end of one wall moves",
+        "{ids: [id,…], by: [dx, dy], dz?: mm, end?: start|end, disconnect_equipment?: bool} moves elements; walls joined to a moved wall stretch to stay \
+         joined, and doors and windows slide along their walls. With `end`, only that end of one wall moves. \
+         `dz` raises or lowers runs and components. With `disconnect_equipment`, remove connections served by moved cable carriers in the same edit",
         move_elements,
     ),
     edit(
@@ -1016,7 +1017,9 @@ pub static ALL: &[Command] = &[
         "{id, at: [x, y]} splits a wall or a detail line in two at `at`: a wall's doors and windows go with their part; a \
          detail line of any shape splits where it passes nearest `at` (a spline by its control points exactly, one through \
          points into two through points within 0.05 mm of it), and a closed one (a circle, a whole ellipse, a closed \
-         polyline) opens there instead, into one that starts and ends at `at`",
+         polyline) opens there instead, into one that starts and ends at `at`. For a wire or cable carrier, \
+         use `at` on its plan axis or `fraction` along its 3D axis (0 at the start, 1 at the end). \
+         Optional `to: [x,y]` and `dz: mm` move the new junction in the same edit",
         split,
     ),
     edit(
@@ -5513,8 +5516,8 @@ fn wire_connect(s: &mut Session, p: &Value) -> R {
                 .ok_or_else(|| bad(c, "min_bend_radius must be a positive length in mm"))?,
         ),
     };
-    if min_bend_radius.is_some() && (surface.is_none() || carrier.is_none()) {
-        return Err(bad(c, "min_bend_radius requires a free surface and a carrier"));
+    if min_bend_radius.is_some() && surface.is_none() {
+        return Err(bad(c, "min_bend_radius requires a free surface"));
     }
     let mut connection = crate::model::WireConnection {
         min_bend_radius,
@@ -5534,7 +5537,7 @@ fn wire_connect(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, "select the main wire, not an owned feeder"));
     }
     if let Some(existing) = wire.connections.iter_mut().find(|v| v.device == connection.device && v.end == connection.end) {
-        if p.get("min_bend_radius").is_none() && connection.surface.is_some() && connection.carrier.is_some() {
+        if p.get("min_bend_radius").is_none() && connection.surface.is_some() {
             connection.min_bend_radius = existing.min_bend_radius;
         }
         *existing = connection;
@@ -8117,6 +8120,8 @@ fn move_elements(s: &mut Session, p: &Value) -> R {
     let c = "move";
     let ids = ids_param(c, &s.model, p)?;
     let by = point_req(c, p, "by")?;
+    let disconnect = flag(c, p, "disconnect_equipment")?;
+    let dz = num(c, p, "dz")?.unwrap_or_default();
     // Moving one end: `Some(true)` the start, `Some(false)` the end.
     let end = match string(c, p, "end")?.as_deref() {
         None => None,
@@ -8128,6 +8133,68 @@ fn move_elements(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, "`end` moves an end of one wall; give `ids` one wall"));
     }
     relocate(c, s, &ids, &Motion { map: &|q| q + by, slide: Some(by), mirror: false }, end)?;
+    if disconnect || dz != 0.0 {
+        let carriers: BTreeSet<_> = ids
+            .iter()
+            .filter(|id| matches!(s.model.elements.get(**id), Some(Element::CableCarrier(_))))
+            .map(|id| s.model.guid(*id))
+            .collect();
+        let m = s.model_mut();
+        if dz != 0.0 {
+            let selected: BTreeSet<_> = ids.iter().copied().collect();
+            for (id, element) in m.elements.iter_mut() {
+                if selected.contains(id)
+                    || matches!(element, Element::Wire(run) if run.carrier.is_some_and(|carrier| carriers.contains(&carrier)))
+                {
+                    if let Some(run) = element.run_mut() {
+                        run.offset += dz;
+                        run.end_offset = run.end_offset.map(|offset| offset + dz);
+                    } else if let Element::Component(component) = element {
+                        component.offset += dz;
+                    } else {
+                        return Err(bad(c, "vertical move requires runs or components"));
+                    }
+                }
+            }
+        }
+        if disconnect {
+            let mut removed = BTreeSet::new();
+            let affected: Vec<_> = m
+                .elements
+                .iter()
+                .filter_map(|(id, element)| {
+                    let Element::Wire(wire) = element else { return None };
+                    wire.connections
+                        .iter()
+                        .any(|connection| connection.carrier.or(wire.carrier).is_some_and(|route| carriers.contains(&route)))
+                        .then_some((*id, m.guid(*id)))
+                })
+                .collect();
+            for (id, guid) in affected {
+                if let Some(Element::Wire(wire)) = m.elements.get_mut(id) {
+                    let carrier = wire.carrier;
+                    wire.connections.retain(|connection| {
+                        let drop = connection.carrier.or(carrier).is_some_and(|route| carriers.contains(&route));
+                        if drop {
+                            removed.insert((guid, connection.device, connection.end));
+                        }
+                        !drop
+                    });
+                }
+            }
+            let feeders: Vec<_> = m
+                .elements
+                .iter()
+                .filter_map(|(id, element)| {
+                    let owner = element.run()?.feeder.as_ref()?;
+                    removed.contains(&(owner.wire, owner.device, owner.end)).then_some(*id)
+                })
+                .collect();
+            for id in feeders {
+                m.elements.remove(id);
+            }
+        }
+    }
     Ok(json!({"moved": ids}))
 }
 
@@ -8231,7 +8298,12 @@ fn corner(s: &mut Session, p: &Value) -> R {
 fn split(s: &mut Session, p: &Value) -> R {
     let c = "split";
     let m = &s.model;
-    let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, a wall or a detail line, is required"))?;
+    let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id` is required"))?;
+    if let Some(id) = m.elements.id(id)
+        && let Some(e @ (Element::Wire(_) | Element::CableCarrier(_))) = m.elements.get(id)
+    {
+        return split_route(s, id, e.clone(), p);
+    }
     if let Some(lid) = m.elements.id(id)
         && let Some(Element::DetailLine(l)) = m.elements.get(lid)
     {
@@ -8287,6 +8359,216 @@ fn split(s: &mut Session, p: &Value) -> R {
         }
     }
     Ok(json!({"ids": [id, new]}))
+}
+
+fn split_route(s: &mut Session, id: Id, mut first: Element, p: &Value) -> R {
+    let c = "split";
+    only(c, p, &["id", "at", "fraction", "to", "dz"])?;
+    let guid = s.model.guid(id);
+    let mut second = first.clone();
+    let (Some(a), Some(b)) = (first.run_mut(), second.run_mut()) else {
+        return Err(bad(c, "select a wire or cable carrier"));
+    };
+    if a.feeder.is_some() || a.source.is_some() || !a.devices.is_empty() {
+        return Err(bad(c, "this route has links that need to be reassigned before it can be split"));
+    }
+    let axis = a.end - a.start;
+    let end_offset = a.end_offset.unwrap_or(a.offset);
+    let length = axis.length().hypot(end_offset - a.offset);
+    let fraction = if let Some(value) = p.get("fraction") {
+        if p.get("at").is_some() {
+            return Err(bad(c, "give either at or fraction"));
+        }
+        value.as_f64().filter(|v| v.is_finite()).ok_or_else(|| bad(c, "fraction must be a finite number"))?
+    } else {
+        let at = point_req(c, p, "at")?;
+        if axis.length() <= TOL {
+            return Err(bad(c, "use fraction to split a vertical route"));
+        }
+        (at - a.start).dot(axis) / axis.dot(axis)
+    };
+    if fraction * length <= TOL || (1.0 - fraction) * length <= TOL {
+        return Err(bad(c, "split between the route's ends"));
+    }
+    let on_axis = a.start + axis * fraction;
+    let joint = point_opt(c, p, "to")?.unwrap_or(on_axis);
+    let dz = num(c, p, "dz")?.unwrap_or_default();
+    if a.carrier.is_some() && (joint - on_axis).length().hypot(dz) > TOL {
+        return Err(bad(c, "move the carrier with its cable to bend a linked route"));
+    }
+    let offset = a.offset + (end_offset - a.offset) * fraction + dz;
+    let geometry = s.model.elements.get(id).and_then(|e| s.model.run_geom(e)).ok_or_else(|| bad(c, "route has no physical axis"))?;
+    let direction = crate::view3d::sub(geometry.b, geometry.a);
+    let split_distance = crate::view3d::dot(direction, direction) * fraction;
+    a.end = joint;
+    a.end_offset = Some(offset);
+    b.start = joint;
+    b.offset = offset;
+    b.end_offset = Some(end_offset);
+    b.connections.clear();
+    let transferred = split_wire_connections(&s.model, guid, a, b, geometry, fraction);
+    check_split_bend(&s.model, &first, &second)?;
+    let m = s.model_mut();
+    m.elements.insert(id, first);
+    let second = m.insert(second);
+    let second_guid = m.guid(second);
+    transfer_feeders(m, guid, second_guid, &transferred);
+    if matches!(m.elements.get(id), Some(Element::CableCarrier(_))) {
+        split_carried_wires(m, [id, second], geometry, fraction)?;
+    }
+    for (_, e) in m.elements.iter_mut() {
+        let Element::Wire(wire) = e else { continue };
+        for connection in &mut wire.connections {
+            if connection.carrier == Some(guid)
+                && connection
+                    .landing
+                    .is_some_and(|landing| crate::view3d::dot(crate::view3d::sub(landing, geometry.a), direction) > split_distance)
+            {
+                connection.carrier = Some(second_guid);
+            }
+        }
+    }
+    Ok(json!({"ids":[id,second]}))
+}
+
+fn check_split_bend(m: &Model, first: &Element, second: &Element) -> Result<(), String> {
+    use crate::view3d::{dot, sub, unit};
+    let minimum = [first, second]
+        .into_iter()
+        .filter_map(Element::run)
+        .flat_map(|run| &run.connections)
+        .filter_map(|connection| connection.min_bend_radius)
+        .max_by(f64::total_cmp);
+    if let (Some(minimum), Some(a), Some(b)) = (minimum, m.run_geom(first), m.run_geom(second)) {
+        let cosine = dot(unit(sub(a.b, a.a)), unit(sub(b.b, b.a)));
+        if !crate::runs::bend_fits(minimum, a.length(), b.length(), cosine) {
+            return Err(bad("split", format!("the route vertex does not have room for a {minimum} mm cable bend")));
+        }
+    }
+    Ok(())
+}
+
+fn split_wire_connections(
+    m: &Model,
+    guid: Guid,
+    first: &mut crate::model::Run,
+    second: &mut crate::model::Run,
+    geometry: crate::runs::Geom,
+    fraction: f64,
+) -> BTreeSet<(Guid, u8)> {
+    use crate::view3d::{dot, sub};
+    let direction = sub(geometry.b, geometry.a);
+    let boundary = dot(direction, direction) * fraction;
+    first.connections.retain(|connection| {
+        let landing = connection.landing.or_else(|| {
+            m.elements
+                .values()
+                .filter_map(|element| {
+                    let Element::Wire(wire) = element else { return None };
+                    let owner = wire.feeder.as_ref()?;
+                    (owner.wire == guid && owner.device == connection.device && owner.end == connection.end)
+                        .then(|| m.run_geom(element).map(|g| (owner.leg, g.b)))?
+                })
+                .max_by_key(|(leg, _)| *leg)
+                .map(|(_, point)| point)
+        });
+        let move_to_second = landing.is_some_and(|point| dot(sub(point, geometry.a), direction) > boundary);
+        if move_to_second {
+            second.connections.push(connection.clone());
+        }
+        !move_to_second
+    });
+    second.connections.iter().map(|connection| (connection.device, connection.end)).collect()
+}
+
+fn transfer_feeders(m: &mut Model, from: Guid, to: Guid, connections: &BTreeSet<(Guid, u8)>) {
+    if connections.is_empty() {
+        return;
+    }
+    for (_, element) in m.elements.iter_mut() {
+        if let Some(owner) = element.run_mut().and_then(|run| run.feeder.as_mut())
+            && owner.wire == from
+            && connections.contains(&(owner.device, owner.end))
+        {
+            owner.wire = to;
+        }
+    }
+}
+
+fn split_carried_wires(m: &mut Model, carriers: [Id; 2], old: crate::runs::Geom, fraction: f64) -> Result<(), String> {
+    use crate::view3d::{P3, add, dot, mul, sub};
+    let [first, second] = carriers.map(|id| m.guid(id));
+    let [Some(a), Some(b)] = carriers.map(|id| m.elements.get(id).and_then(|e| m.run_geom(e))) else {
+        return Err(bad("split", "carrier parts have no physical axis"));
+    };
+    let direction = sub(old.b, old.a);
+    let length2 = dot(direction, direction);
+    let project = |p| dot(sub(p, old.a), direction) / length2;
+    let changes: Vec<_> = m
+        .elements
+        .iter()
+        .filter_map(|(&id, e)| {
+            let Element::Wire(wire) = e else { return None };
+            if wire.carrier != Some(first) {
+                return None;
+            }
+            m.run_geom(e).map(|g| (id, wire.clone(), g))
+        })
+        .collect();
+    for (id, wire, geometry) in changes {
+        if wire.feeder.is_some() || wire.source.is_some() || !wire.devices.is_empty() {
+            return Err(bad("split", "disconnect the equipment from the cable inside this carrier before splitting"));
+        }
+        let start = project(geometry.a);
+        let end = project(geometry.b);
+        let map = |point: P3, t: f64, part| {
+            let (g, local) = if part == first { (a, t / fraction) } else { (b, (t - fraction) / (1.0 - fraction)) };
+            let lateral = sub(point, add(old.a, mul(direction, t)));
+            add(add(g.a, mul(sub(g.b, g.a), local)), lateral)
+        };
+        let make = |part, from: P3, to: P3| {
+            let mut wire = wire.clone();
+            let base = m.elevation(wire.level);
+            wire.start = P2(from[0], from[1]);
+            wire.end = P2(to[0], to[1]);
+            wire.offset = from[2] - base;
+            wire.end_offset = Some(to[2] - base);
+            wire.justify = crate::model::Justify::Centre;
+            wire.mount = None;
+            wire.carrier = Some(part);
+            Element::Wire(wire)
+        };
+        let first_part = if start.min(end) < fraction { first } else { second };
+        let (mut edited, extra) = if start.min(end) < fraction && fraction < start.max(end) {
+            let gap = sub(a.b, b.a);
+            if dot(gap, gap) > TOL * TOL {
+                return Err(bad("split", "use centre justification so the carrier axes meet at the bend"));
+            }
+            let part = if start < end { first } else { second };
+            let next = if part == first { second } else { first };
+            let cable_fraction = (fraction - start) / (end - start);
+            let at = add(geometry.a, mul(sub(geometry.b, geometry.a), cable_fraction));
+            (
+                make(part, map(geometry.a, start, part), map(at, fraction, part)),
+                Some((make(next, map(at, fraction, next), map(geometry.b, end, next)), cable_fraction)),
+            )
+        } else {
+            (make(first_part, map(geometry.a, start, first_part), map(geometry.b, end, first_part)), None)
+        };
+        if let Some((mut extra, cable_fraction)) = extra {
+            check_split_bend(m, &edited, &extra)?;
+            let (Element::Wire(first), Element::Wire(second)) = (&mut edited, &mut extra) else {
+                return Err(bad("split", "expected two cable parts"));
+            };
+            let guid = m.guid(id);
+            second.connections.clear();
+            let transferred = split_wire_connections(m, guid, first, second, geometry, cable_fraction);
+            let extra = m.insert(extra);
+            transfer_feeders(m, guid, m.guid(extra), &transferred);
+        }
+        m.elements.insert(id, edited);
+    }
+    Ok(())
 }
 
 /// Detail line `id` split where it passes nearest `at`, or a closed one opened there.
