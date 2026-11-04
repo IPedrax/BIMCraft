@@ -21,10 +21,72 @@ pub(super) struct Layers {
     /// whether it showed more than [`MAX_RUNS`] of them.
     runs: Option<(Vec<Prim>, bool)>,
     ink: Option<Vec<Ink>>,
+    /// Each ink's stroke, px, and the grid of their boxes: found with the ink.
+    near: Option<(Vec<f32>, Grid)>,
     masks: Vec<Mask>,
 }
 
+/// Cells of a [`Grid`], mm on a side, and the most one box goes in (a bigger one is near everything).
+const CELL: f64 = 2000.0;
+const MAX_CELLS: i64 = 256;
+
+/// Boxes in a grid of cells, so an area asks only for those near it.
+#[derive(Default)]
+struct Grid {
+    cells: std::collections::HashMap<(i64, i64), Vec<usize>>,
+    /// Those in too many cells, or not in finite numbers: near every area.
+    wide: Vec<usize>,
+}
+
+impl Grid {
+    fn cells_of((lo, hi): Extent) -> Option<[i64; 4]> {
+        let c = [lo.0, lo.1, hi.0, hi.1].map(|v| (v / CELL).floor());
+        if !c.iter().all(|v| v.is_finite() && v.abs() < 1e12) {
+            return None;
+        }
+        let c = c.map(|v| v as i64);
+        ((c[2] - c[0] + 1).saturating_mul(c[3] - c[1] + 1) <= MAX_CELLS).then_some(c)
+    }
+
+    /// Box `k` of `boxes` in the cells it reaches; none, in none.
+    fn new(boxes: &[Option<Extent>]) -> Grid {
+        let mut g = Grid::default();
+        for (k, b) in boxes.iter().enumerate() {
+            let Some(b) = b else { continue };
+            match Grid::cells_of(*b) {
+                Some([x0, y0, x1, y1]) => {
+                    for x in x0..=x1 {
+                        for y in y0..=y1 {
+                            g.cells.entry((x, y)).or_default().push(k);
+                        }
+                    }
+                }
+                None => g.wide.push(k),
+            }
+        }
+        g
+    }
+
+    /// In order, each box that may overlap `area`: every one that does, and others in its cells.
+    fn near(&self, area: Extent, all: usize) -> Vec<usize> {
+        let Some([x0, y0, x1, y1]) = Grid::cells_of(area) else { return (0..all).collect() };
+        let mut out = self.wide.clone();
+        for x in x0..=x1 {
+            for y in y0..=y1 {
+                out.extend(self.cells.get(&(x, y)).into_iter().flatten());
+            }
+        }
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+}
+
 impl Layers {
+    pub(super) fn end(&self) -> usize {
+        self.end
+    }
+
     pub(super) fn new(end: usize, section: Option<Id>) -> Self {
         Self { on: true, end, section, ..Self::default() }
     }
@@ -37,7 +99,8 @@ impl Layers {
 
 /// Whether view `view` has a region that keeps the model's ink above it, which wants the picture of a section.
 pub(super) fn wanted(m: &Model, view: Id) -> bool {
-    m.elements.values().any(|e| match e {
+    // What is drawn in it points at it.
+    m.lookup().referrers(&m.guid(view)).filter_map(|id| m.elements.get(id)).any(|e| match e {
         Element::FilledRegion(r) => m.same(r.view, view) && m.region_types.get(&r.type_name).is_some_and(|t| !t.masking),
         Element::DetailGroup(g) => m.same(g.view, view),
         Element::RepeatingDetail(r) => m.same(r.view, view),
@@ -59,6 +122,16 @@ thread_local! {
 #[cfg(test)]
 fn spend(n: usize) {
     SPENT.with(|s| s.set(s.get().saturating_add(n)));
+}
+
+/// `f` done without counting what it spends or the pictures it draws: a twin that tests run beside the work they count.
+#[cfg(test)]
+pub(super) fn uncounted<T>(f: impl FnOnce() -> T) -> T {
+    let (spent, pictures) = (SPENT.with(std::cell::Cell::get), PICTURES.with(std::cell::Cell::get));
+    let out = f();
+    SPENT.with(|s| s.set(spent));
+    PICTURES.with(|p| p.set(pictures));
+    out
 }
 
 struct Ink {
@@ -99,30 +172,50 @@ pub(super) fn foreground(d: &mut Drawing, m: &Model, rings: &[Vec<P2>]) {
         }
         d.regions.ink = Some(ink);
     }
+    if d.regions.near.is_none() {
+        // Each ink's stroke as wide as it will be drawn: its pen's, which its owner's object style gives while it is not
+        // yet set; and the box it reaches, which an area's clip asks first.
+        let ink = d.regions.ink.as_deref().unwrap_or_default();
+        let strokes: Vec<f32> = ink
+            .iter()
+            .map(|ink| {
+                let pen = ink.pen.map(|p| {
+                    let st = style_of(m, ink.owner);
+                    if p == BY_CATEGORY { if ink.part == Part::Cut { st.cut } else { st.projection } } else { p }
+                });
+                match (&ink.prim, pen) {
+                    (Prim::Line { width, .. }, None) => *width,
+                    (_, Some(pen)) => d.width(pen),
+                    _ => 0.0,
+                }
+            })
+            .collect();
+        let boxes: Vec<Option<Extent>> = ink.iter().zip(&strokes).map(|(ink, stroke)| reach(&ink.prim, d.view, *stroke)).collect();
+        d.regions.near = Some((strokes, Grid::new(&boxes)));
+    }
     let Some(area) = Area::new(rings, &d.regions.masks) else { return };
     let (owner, view) = (d.owner, d.view);
-    let restored: Vec<Ink> = d
-        .regions
-        .ink
-        .as_deref()
-        .unwrap_or_default()
-        .iter()
-        .flat_map(|ink| {
-            // As wide as it will be drawn: its pen's, which its owner's object style gives while it is not yet set.
-            let pen = ink.pen.map(|p| {
-                let st = style_of(m, ink.owner);
-                if p == BY_CATEGORY { if ink.part == Part::Cut { st.cut } else { st.projection } } else { p }
-            });
-            let stroke = match (&ink.prim, pen) {
-                (Prim::Line { width, .. }, None) => *width,
-                (_, Some(pen)) => d.width(pen),
-                _ => 0.0,
-            };
+    let ink = d.regions.ink.as_deref().unwrap_or_default();
+    let Some((strokes, grid)) = d.regions.near.as_ref() else { return };
+    let restored: Vec<Ink> = grid
+        .near((area.lo, area.hi), ink.len())
+        .into_iter()
+        .filter_map(|k| Some((ink.get(k)?, *strokes.get(k)?)))
+        .flat_map(|(ink, stroke)| {
             // A section's picture is no element's: its ink is the region's now, as its pattern is.
             let (owner, part) = if ink.owner.is_some() { (ink.owner, ink.part) } else { (owner, Part::Pattern) };
             area.clip(&ink.prim, view, stroke).into_iter().map(move |prim| Ink { prim, owner, part, pen: ink.pen })
         })
         .collect();
+    // Its twin, which tests hold it to: every ink clipped, the same lines and fills in the same order.
+    #[cfg(test)]
+    {
+        let every: Vec<Vec<(f32, f32)>> = uncounted(|| {
+            ink.iter().zip(strokes).flat_map(|(ink, stroke)| area.clip(&ink.prim, view, *stroke)).map(|p| p.points()).collect()
+        });
+        let kept: Vec<Vec<(f32, f32)>> = restored.iter().map(|i| i.prim.points()).collect();
+        assert!(every == kept, "a region keeps other ink through the grid than among all of it");
+    }
     for ink in restored {
         keep(d, ink.prim, ink.owner, ink.part, ink.pen);
     }
@@ -210,6 +303,8 @@ fn visible(d: &Drawing, m: &Model, picture: Option<(Vec<Prim>, bool)>) -> (Vec<I
         index: usize,
         owner: Option<Id>,
         rings: Vec<Vec<P2>>,
+        /// Each ring's box.
+        boxes: Vec<Option<Extent>>,
         lo: P2,
         hi: P2,
     }
@@ -222,11 +317,17 @@ fn visible(d: &Drawing, m: &Model, picture: Option<(Vec<Prim>, bool)>) -> (Vec<I
             let Prim::Fill { rings, .. } = p else { return None };
             let rings: Vec<Vec<P2>> = rings.iter().map(|r| r.iter().map(|p| d.view.mm(*p)).collect()).collect();
             let (lo, hi) = bounds(&rings.iter().flatten().copied().collect::<Vec<_>>())?;
-            Some(Cover { index: i, owner: d.owners.get(i).copied().flatten(), rings, lo, hi })
+            let boxes = rings.iter().map(|r| bounds(r)).collect();
+            Some(Cover { index: i, owner: d.owners.get(i).copied().flatten(), rings, boxes, lo, hi })
         })
         .collect();
     let extent = |p: &Prim| bounds(&p.points().into_iter().map(|p| d.view.mm(p)).collect::<Vec<_>>());
     let near = |extent: Option<(P2, P2)>, cover: &Cover| extent.is_some_and(|e| overlap(e, (cover.lo, cover.hi)));
+    // The fills in a grid of their boxes: each line asks only those near it, in their order.
+    let grid = Grid::new(&fills.iter().map(|c| Some((c.lo, c.hi))).collect::<Vec<_>>());
+    let candidates = |extent: Option<(P2, P2)>| -> Vec<&Cover> {
+        extent.map_or_else(Vec::new, |e| grid.near(e, fills.len()).into_iter().filter_map(|k| fills.get(k)).collect())
+    };
     let mut out = Vec::new();
     // A section's projection is a hidden-line image. Its only non-paper pixels are already-visible edges; keep these as
     // pixel runs, without lifting the paper-coloured faces.
@@ -242,8 +343,8 @@ fn visible(d: &Drawing, m: &Model, picture: Option<(Vec<Prim>, bool)>) -> (Vec<I
     for prim in picture {
         let span = extent(&prim);
         let mut parts = vec![prim];
-        for cover in fills.iter().filter(|cover| near(span, cover)) {
-            parts = parts.into_iter().flat_map(|p| outside(&p, d.view, &cover.rings)).collect();
+        for cover in candidates(span).into_iter().filter(|cover| near(span, cover)) {
+            parts = parts.into_iter().flat_map(|p| outside(&p, d.view, &cover.rings, &cover.boxes)).collect();
         }
         out.extend(parts.into_iter().map(|prim| Ink { prim, owner: None, part: Part::Projection, pen: None }));
     }
@@ -257,8 +358,8 @@ fn visible(d: &Drawing, m: &Model, picture: Option<(Vec<Prim>, bool)>) -> (Vec<I
         }
         let span = extent(prim);
         let mut parts = vec![prim.clone()];
-        for cover in fills.iter().filter(|c| c.index > i && c.owner != *owner && near(span, c)) {
-            parts = parts.into_iter().flat_map(|p| outside(&p, d.view, &cover.rings)).collect();
+        for cover in candidates(span).into_iter().filter(|c| c.index > i && c.owner != *owner && near(span, c)) {
+            parts = parts.into_iter().flat_map(|p| outside(&p, d.view, &cover.rings, &cover.boxes)).collect();
             if parts.is_empty() {
                 break;
             }
@@ -335,12 +436,13 @@ fn less(spans: Vec<(f64, f64)>, holes: &[(f64, f64)]) -> Vec<(f64, f64)> {
 }
 
 /// The part of `prim` outside `rings` (what a later fill leaves of it), as pieces.
-fn outside(prim: &Prim, view: View, rings: &[Vec<P2>]) -> Vec<Prim> {
-    struct Outside<'a>(&'a [Vec<P2>]);
+/// `prim`, less where it is inside one of `rings` (whose boxes are `boxes`).
+fn outside(prim: &Prim, view: View, rings: &[Vec<P2>], boxes: &[Option<Extent>]) -> Vec<Prim> {
+    struct Outside<'a>(Vec<&'a Vec<P2>>);
     impl Keep for Outside<'_> {
         fn spans(&self, a: P2, u: P2, len: f64) -> Vec<(f64, f64)> {
             #[cfg(test)]
-            spend(self.0.iter().map(Vec::len).sum());
+            spend(self.0.iter().map(|r| r.len()).sum());
             let over = self.0.iter().flat_map(|r| view3d::crossings(r, a, u)).map(|(lo, hi)| (lo.max(0.0), hi.min(len)));
             gaps(joined(over.filter(|(lo, hi)| hi - lo > EPS).collect()), len)
         }
@@ -350,12 +452,14 @@ fn outside(prim: &Prim, view: View, rings: &[Vec<P2>]) -> Vec<Prim> {
     }
     // Reject disjoint extents before polygon work; most model primitives do not overlap a fill.
     let points: Vec<P2> = prim.points().into_iter().map(|p| view.mm(p)).collect();
-    let overlaps = bounds(&points).is_some_and(|b| rings.iter().filter_map(|r| bounds(r)).any(|c| overlap(b, c)));
-    if !overlaps {
+    let Some(b) = bounds(&points) else { return vec![prim.clone()] };
+    // The rings whose boxes reach it: one clear of a line's box crosses none of its segments and holds none of its points.
+    let near: Vec<&Vec<P2>> = rings.iter().zip(boxes).filter(|(_, c)| c.is_some_and(|c| overlap(b, c))).map(|(r, _)| r).collect();
+    if near.is_empty() {
         return vec![prim.clone()];
     }
     match prim {
-        Prim::Line { .. } => cut(prim, view, &Outside(rings)),
+        Prim::Line { .. } => cut(prim, view, &Outside(near)),
         Prim::Fill { rings: source, color } => {
             let source: Vec<Vec<P2>> = source.iter().map(|r| r.iter().map(|p| view.mm(*p)).collect()).collect();
             fill(
@@ -493,6 +597,20 @@ fn along(pts: &[(f32, f32)], from: f32, to: f32) -> Vec<(f32, f32)> {
         out = vec![p, p];
     }
     out
+}
+
+/// The box `prim` reaches as [`Area::clip`] asks, mm: a line's grown by half its `stroke`, a fill's; none for a picture,
+/// which no area keeps.
+fn reach(prim: &Prim, view: View, stroke: f32) -> Option<Extent> {
+    let points: Vec<P2> = prim.points().into_iter().map(|p| view.mm(p)).collect();
+    match prim {
+        Prim::Line { .. } => {
+            let grow = f64::from(stroke.max(1.0)) / 2.0 / view.scale;
+            bounds(&points).map(|(lo, hi)| (P2(lo.0 - grow, lo.1 - grow), P2(hi.0 + grow, hi.1 + grow)))
+        }
+        Prim::Fill { .. } => bounds(&points),
+        Prim::Image { .. } => None,
+    }
 }
 
 /// The area a region keeps ink in: its rings (the outline and its holes: inside an odd number of them), less the masks

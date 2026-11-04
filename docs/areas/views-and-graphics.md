@@ -275,8 +275,9 @@ is square on, so `Boxed` turns a pixel and its depth into a model point with one
 is in the box (a triangle wholly past one plane is passed over first), `dots` a scan's point only where it is, and the wireframe each
 edge as far as it runs inside (`within`, Liang and Barsky's clipping). What it cuts away isn't drawn, so it isn't picked; the edge
 where a cut face meets paper is drawn as any edge is, and cut faces aren't capped yet. A level whose plane is above or below the box is
-left out, and the rest are cut to its sides. A section's picture has its own clip and ignores the box. The card doesn't cut yet:
-`Mesh::new` refuses a boxed view, and the processor draws it. Its grips are the core's: `box_grips` (the middle of each face: west,
+left out, and the rest are cut to its sides. A section's picture has its own clip and ignores the box. The card cuts to it too: the mesh holds all it would hold without a box
+(`Mesh::section_box`), a pixel outside it is discarded by the point it shows (`fs_scene_cut`, `fs_clear`), `Mesh::visible_cut` leaves out what lies wholly past a side,
+and a pick asks `Boxed` as the picture does. So a face being dragged is a uniform (`Gpu::draw_cut`), and builds nothing. Its grips are the core's: `box_grips` (the middle of each face: west,
 east, south, north, bottom, top), `box_edges`, `move_box_face` (a face moved along its axis to 10 mm, stopping short of the face across
 from it) and `Camera::along` (how far, mm, a drag on the picture moves a point along an axis; none for an axis pointing at the camera).
 A plan may follow the box (`section_box` on a `Level` or a `PlanView`, set by `modify`; a dependent view follows its parent's,
@@ -348,12 +349,48 @@ model anew instead of its old camera being written back over the move; a floatin
 view, writes nothing.
 
 
-The 3D view can be drawn on the graphics card (File > Settings > Performance; off until asked for: `BimApp::card`, `settings.json`'s
+The 3D view is drawn on the graphics card where there is one ([where this is going](../3d-acceleration-plan.md): no limit on size) (File > Settings > Performance turns it off: `BimApp::card`, `settings.json`'s
 `gpu_3d`). `view3d::gpu::Mesh` is the triangles a view shows as f32 vertices relative to the middle of what is drawn (millimetres far
 from the origin would overflow f32), each with its colour, normal, face normal, plane, element and texture; the textures' mip levels as
 words (`Skin`; `Mesh::lookups` gives the level a zoom looks up, as `Sampler::level_for` does); and a bounding volume hierarchy built on
-the first pick. Surfaces seen through come after the opaque ones (`Mesh::clear_from`), each element's transparency in its `Owner` (an element whose layers differ in transparency has an `Owner` for each).
-`Mesh::new` refuses, with a reason, what the card doesn't draw (hidden line, wireframe, more than `MAX_TRIS`), and the processor draws those as before, and sections and sheets always. `Mesh::pick` is `Image::pick` without a picture: the
+the view worker before the first pick. The first card upload runs on a worker too; the view waits with progress until the scene and
+upload are both ready. Zoom to Fit and Home fit on a worker. Surfaces seen through come after the opaque ones (`Mesh::clear_from`), each element's transparency in its `Owner` (an element whose layers differ in transparency has an `Owner` for each).
+A component is held once for each shape and placed for each copy (`Mesh::shapes`, `shape_vertices`, `instances`): the scene notes which
+runs of its triangles are a family shape placed to the last bit (`Scene::placements`, from `component_geometry::SharedComponents`), and the
+mesh draws a copy from its shape when every triangle has the colour, texture, face, curved normals and transparency that the shape's first
+copy has. A round run (a pipe, a conduit) is a copy too: `runs::Geom::tube` is `runs::unit_tube` placed by `Geom::tube_place`, its line
+along the tube's x and its radius along y and z, so one tube for each material serves every round run. A copy's place is a point and three
+axes square to each other (`ComponentInstance`: a component's turned, a tube's stretched), and a normal goes along each axis by its share
+over the axis's length squared, which keeps it square to a stretched surface. A painted copy, or one the view colours or makes see-through
+on its own, is drawn from its own triangles. Each copy's plane numbers
+are the scene's (`instance_planes`, read by `vs_instanced`), because the scene numbers planes across the whole model and an edge is
+drawn where the number changes. A shape's opaque triangles come first and those seen through after (`Shape::clear_from`, drawn by
+`vs_instanced_clear` with the copy's `clear_owner`). A pick goes through a hierarchy of triangles and copies, then the copy's shape's own,
+each box placed as the copy is, and it tests the triangles the scene holds, so ties go to the first in the scene as before. `Mesh::flat` is
+the mesh with no shapes, and `copies_placed_draw_the_pixels_of_their_own_triangles_and_tubes_of_their_runs` holds the two pictures equal, byte for byte.
+A frame draws only what can reach its picture (`Mesh::visible`). The triangles drawn of their own come in runs (`Mesh::groups`: at most
+1,024 triangles and a sixteenth of the mesh's width, never across `clear_from`), and each copy stands on its own. Each is tested as a sphere
+against the six sides of the clip volume, padded for the card's f32, after a coarse grid of cells has settled what lies wholly in view or
+wholly out. What is left out lies past one side, so it can't reach a pixel; what is drawn keeps its order, since a tie between touching
+faces goes to the first drawn. So the picture is the same to the pixel. The card draws the runs of triangles (joined across gaps of up to
+2,048, which draw nothing in view) and gathers the copies a view sees, in their order, into one buffer (`Uploaded::seen`), one draw a shape.
+`groups_hold_what_is_drawn_in_order_and_a_view_leaves_out_only_what_it_cannot_see` (core) and
+`leaving_out_what_the_view_cannot_see_draws_the_same_pixels` (the card, byte for byte against drawing all of it) hold it.
+A frame draws at most a budget of triangles (`FRAME_TRIANGLES`, `Mesh::cost`). Past it, while the camera moves, it draws the nearest within
+the budget (`Mesh::nearest_first`) and a grey box for each of the rest; when the camera stops, the next frames draw the exact picture a part at
+a time into the same targets, and the post pass runs only when it is whole, so the settled picture is the one drawn in one go. `Gpu::draw`
+says whether it drew the exact picture, and the 3D view asks for frames until it has
+(`past_a_frame_s_budget_the_view_stands_in_while_moving_and_settles_on_the_exact_picture`).
+After an edit the 3D view's worker brings the last scene up to date (`Scene::update`, `view3d/update.rs`) instead of making it whole: the
+triangles of what the edit touched are made again, with what points at it either way, what touches it (its box grown a little) and, for a
+wall, the walls whose location lines come within the thickest wall of it, round after round from each element that came out otherwise;
+every other element's run of triangles (`Scene::spans`), planes, faces and normals is kept. A plane is numbered against the planes the
+scene found before (`PlaneTable`), a curve by its element alone (`local_curves`), a copy by the shape its key names (`ShapeKey`). An edit
+of the library or the project's settings, or one that touches a quarter of the elements, is the whole scene again. `Scene::new` stays the
+whole computation, and `a_scene_brought_up_to_date_by_an_edit_is_the_scene_made_whole` and
+`random_edits_of_a_tower_bring_its_scene_up_to_date_as_made_whole` hold the update to it: the same triangles, planes shared alike, the
+same copies and the same picture.
+`Mesh::new` refuses only what the machine can't hold, with a reason, never for what a view shows or its size (a scan's points are `Mesh::dots`, in the opaque surfaces' targets and depth under their own plane number, which the post pass draws no edge at; hidden line is the same passes, surfaces and ground paper: `Mesh::lines`, `Gpu::swapped_ink`; wireframe has no surfaces, only `Mesh::wires`, each a line whose pixels `fs_wire` finds by the steps `wire_pixels` takes, and `Mesh::pick` finds the last drawn within two pixels, tinted ones last): `Gpu::upload` puts it in as many buffers as it takes (`limits_for` asks for the adapter's own limits; a card that runs out holds fewer of its triangles of their own, a wireframe's lines and a scan's points at once, letting go and bringing back as views want them: `Gpu::card_bytes`, `Uploaded::bring_in`, [the 3D plan](../3d-acceleration-plan.md); a change of the section box alone keeps the mesh: `Orbit::keep_for_a_new_box`), and the processor draws those as before, and sections and sheets always. `Mesh::pick` is `Image::pick` without a picture: the
 same projection and barycentric test for triangles (the nearest seen through where it is nearer than the nearest opaque one), and for levels the same `LevelMarks` that `Scene::picture` draws (`level_marks`: one
 definition of a level's lines and head). The desktop's `gpu.rs` and `gpu.wgsl` draw it in passes into a texture egui shows like the
 processor's picture: the opaque surfaces (lit as `picture` lights them, textured as `Sampler::at` looks up), those seen through (the

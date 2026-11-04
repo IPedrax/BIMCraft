@@ -17,6 +17,7 @@ use crate::geom::P2;
 use crate::model::{MAX_COORD, MAX_TEXT};
 use crate::view3d::{P3, add, cross, mul};
 
+mod bounds;
 mod validate;
 
 /// What a family is: how IFC names its components; a door or a window is hosted in a wall, which

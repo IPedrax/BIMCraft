@@ -623,7 +623,12 @@ impl Model {
     /// id of the command that ran, which words what to change.
     pub fn check_edits(&self, before: &Model, command: &str, params: &serde_json::Value) -> Result<(), String> {
         let (mut work, given) = (0, given(before, params));
-        for (&id, e) in &self.elements {
+        // Only what the command changed can differ from what was there.
+        let changed: Box<dyn Iterator<Item = (Id, &Element)>> = match self.changed_since(before) {
+            crate::model::Changed::Ids(ids) => Box::new(ids.into_iter().filter_map(|id| Some((id, self.elements.get(id)?)))),
+            crate::model::Changed::All => Box::new(self.elements.iter().map(|(id, e)| (*id, e))),
+        };
+        for (id, e) in changed {
             let Some(now) = rings_of(e) else { continue };
             if before.elements.get(id).and_then(rings_of).is_some_and(|was| was == now) {
                 continue;

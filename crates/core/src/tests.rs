@@ -331,6 +331,30 @@ fn undo_and_redo_step_through_commands() {
 }
 
 #[test]
+fn undo_and_redo_back_to_a_model_that_passed_the_check_dont_check_it_again() {
+    let mut s = Session::new();
+    house(&mut s);
+    run(&mut s, "door", json!({"at": [2000, 0]}));
+    let checks = s.checks;
+    run(&mut s, "undo", json!({}));
+    run(&mut s, "redo", json!({}));
+    run(&mut s, "undo", json!({"count": 1}));
+    assert_eq!(s.checks, checks, "each model undo and redo went back to had passed");
+    // A model that never passed (one opened, which is checked only by the first command after it) is checked when undo
+    // comes back to it.
+    let opened = s.model.as_ref().clone();
+    s.reset(opened, None);
+    run(&mut s, "door", json!({"at": [5000, 0]}));
+    let checks = s.checks;
+    run(&mut s, "undo", json!({}));
+    assert_eq!(s.checks, checks + 1);
+    // And once it has passed, not again.
+    run(&mut s, "redo", json!({}));
+    run(&mut s, "undo", json!({}));
+    assert_eq!(s.checks, checks + 1);
+}
+
+#[test]
 fn rooms_need_walls_around_them_and_follow_the_walls() {
     let mut s = Session::new();
     house(&mut s);

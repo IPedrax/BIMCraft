@@ -58,8 +58,8 @@ or the colour the view's projection fill gives. A picture draws at most `DRAWN` 
 that, as Revit's density does. The view fits round its scans, and a level's plane reaches past them (`Model::model_extent`).
 A 3D view's section box keeps a scan's points inside it and no others, so its floors and ceilings can be cut away to show the walls to
 model against ([views and graphics](views-and-graphics.md)); in a plan the view range does it, or the box itself when the plan follows it. Views hide and override point clouds by element or by the category `pointcloud` (`graphics::SCANS`, apart from `MODEL`:
-Revit has a tab of its own for them in Visibility/Graphics, and Object Styles no row). The graphics card doesn't draw them
-yet: `gpu::Mesh::new` refuses a view that shows one, and the processor draws it. The wireframe style leaves them out.
+Revit has a tab of its own for them in Visibility/Graphics, and Object Styles no row). The graphics card draws them as the
+processor does (`Mesh::dots`, the same every so many points, [the 3D plan](../3d-acceleration-plan.md)). The wireframe style leaves them out.
 
 A section's or an elevation's picture is the same rasteriser with a `Clip`, and `Scene::dots` keeps a point as `raster` keeps a
 pixel: between the line and the far clip, inside the crop. A plan draws what its view range sees, from the cut plane down to

@@ -417,12 +417,7 @@ impl BimApp {
         let levels: Vec<(Id, String)> = m.levels().iter().map(|(id, l)| (*id, l.name.clone())).collect();
         // Sections and elevations, by name.
         let views = |category: &str| {
-            let mut v: Vec<(Id, String)> = m
-                .elements
-                .iter()
-                .filter(|(_, e)| e.category() == category)
-                .filter_map(|(id, _)| Some((*id, m.section(*id)?.name.clone())))
-                .collect();
+            let mut v: Vec<(Id, String)> = m.rare(category).into_iter().filter_map(|id| Some((id, m.section(id)?.name.clone()))).collect();
             v.sort_by(|a, b| a.1.cmp(&b.1));
             v
         };
@@ -504,13 +499,13 @@ impl BimApp {
     fn links_node(&self) -> Option<Node> {
         let m = &self.session.model;
         let kids: Vec<Node> = m
-            .elements
-            .iter()
-            .filter_map(|(id, e)| match e {
-                Element::Link(l) => {
+            .rare("link")
+            .into_iter()
+            .filter_map(|id| match m.elements.get(id) {
+                Some(Element::Link(l)) => {
                     let label = if m.loaded.contains_key(&l.path) { l.name.clone() } else { tf("{} (not loaded)", &[&l.name]) };
-                    let menu = vec![(msg!("Reload"), Act::Do("reload", serde_json::json!({"id": id}))), ("Remove", Act::Delete(vec![*id]))];
-                    Some(Node::leaf(&label, Act::Select(*id), self.selection == [*id]).with_menu(menu))
+                    let menu = vec![(msg!("Reload"), Act::Do("reload", serde_json::json!({"id": id}))), ("Remove", Act::Delete(vec![id]))];
+                    Some(Node::leaf(&label, Act::Select(id), self.selection == [id]).with_menu(menu))
                 }
                 _ => None,
             })
@@ -524,7 +519,7 @@ impl BimApp {
     fn sheets(&self) -> Vec<(Id, String)> {
         let m = &self.session.model;
         let mut sheets: Vec<(Id, String)> =
-            m.elements.keys().filter_map(|id| m.sheet(*id).map(|s| (*id, format!("{} - {}", s.number, s.name)))).collect();
+            m.rare("sheet").into_iter().filter_map(|id| m.sheet(id).map(|s| (id, format!("{} - {}", s.number, s.name)))).collect();
         sheets.sort_by(|a, b| a.1.cmp(&b.1));
         sheets
     }

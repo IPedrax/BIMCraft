@@ -183,7 +183,7 @@ impl BimApp {
             Action::ZoomToFit => self.fit(),
             Action::ZoomIn => self.zoom_view(1.25),
             Action::ZoomOut => self.zoom_view(0.8),
-            Action::HomeView => self.orbit.camera = None,
+            Action::HomeView => self.home3d(),
             Action::EditType => self.edit_type(),
             Action::SelectAllInstances => self.select_all_instances(),
             Action::HideElement => self.hide_selection(false),

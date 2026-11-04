@@ -5,7 +5,7 @@
 
 use crate::geom::P2;
 use crate::model::{Justify, MAX_SLOPE, Model, Run, RunType, TOL, heading};
-use crate::view3d::{P3, add, cross, mul, sub, unit};
+use crate::view3d::{P3, cross, mul, sub, unit};
 use crate::walls::Plane;
 
 /// Sides a round run's tube is drawn with.
@@ -163,32 +163,47 @@ impl Geom {
         (ring, Plane { z: z - self.half(), g }, Plane { z: z + self.half(), g })
     }
 
-    /// A round run as a tube of triangles turned out: its two caps' first, and how many they are.
+    /// A round run as a tube of triangles turned out: its two caps' first, and how many they are. It is [`unit_tube`]
+    /// placed by [`Geom::tube_place`], to the last bit, so the 3D view's card can draw every round run from one tube.
     pub fn tube(&self) -> (Vec<[P3; 3]>, usize) {
+        let (tris, caps) = unit_tube();
+        let place = self.tube_place(crate::model::Id::default(), 0);
+        (tris.iter().map(|t| t.map(|q| place.place(q))).collect(), caps)
+    }
+
+    /// Where [`unit_tube`] goes to be this run's, as `owner`'s copy of the `shape`th shape: its line along the tube's x, the
+    /// radius along y and z, round its line from east (from the north, upright).
+    pub(crate) fn tube_place(&self, owner: crate::model::Id, shape: usize) -> crate::component_geometry::ComponentInstance {
         let (d, r) = (unit(sub(self.b, self.a)), self.width / 2.0);
         let e1 = if self.vertical() { [1.0, 0.0, 0.0] } else { unit([-d[1], d[0], 0.0]) };
         let e2 = cross(d, e1);
-        let ring = |c: P3| -> Vec<P3> {
-            (0..SIDES)
-                .map(|k| {
-                    let t = std::f64::consts::TAU * k as f64 / SIDES as f64;
-                    add(c, add(mul(e1, r * t.cos()), mul(e2, r * t.sin())))
-                })
-                .collect()
-        };
-        let (ra, rb) = (ring(self.a), ring(self.b));
-        let next = |k: usize| (k + 1) % SIDES;
-        let mut tris = Vec::with_capacity(4 * SIDES);
-        for k in 0..SIDES {
-            tris.push([self.a, ra[next(k)], ra[k]]);
-            tris.push([self.b, rb[k], rb[next(k)]]);
-        }
-        for k in 0..SIDES {
-            tris.push([ra[k], ra[next(k)], rb[k]]);
-            tris.push([ra[next(k)], rb[next(k)], rb[k]]);
-        }
-        (tris, 2 * SIDES)
+        crate::component_geometry::ComponentInstance { owner, shape, at: self.a, axes: [sub(self.b, self.a), mul(e1, r), mul(e2, r)] }
     }
+}
+
+/// A round run of length 1 and radius 1, from the origin along x: its caps' triangles first, and how many they are.
+pub fn unit_tube() -> (Vec<[P3; 3]>, usize) {
+    let ring = |x: f64| -> Vec<P3> {
+        (0..SIDES)
+            .map(|k| {
+                let t = std::f64::consts::TAU * k as f64 / SIDES as f64;
+                [x, t.cos(), t.sin()]
+            })
+            .collect()
+    };
+    let (a, b) = ([0.0; 3], [1.0, 0.0, 0.0]);
+    let (ra, rb) = (ring(0.0), ring(1.0));
+    let next = |k: usize| (k + 1) % SIDES;
+    let mut tris = Vec::with_capacity(4 * SIDES);
+    for k in 0..SIDES {
+        tris.push([a, ra[next(k)], ra[k]]);
+        tris.push([b, rb[k], rb[next(k)]]);
+    }
+    for k in 0..SIDES {
+        tris.push([ra[k], ra[next(k)], rb[k]]);
+        tris.push([ra[next(k)], rb[next(k)], rb[k]]);
+    }
+    (tris, 2 * SIDES)
 }
 
 #[cfg(test)]

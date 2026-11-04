@@ -62,6 +62,18 @@ pub static ALL: &[Command] = &[
     other("open", "Open", "{path} a .bimcraft project", open),
     other("highrise", "Synthetic Highrise", "{storeys?: 20} replace the project with an original 1–80 storey performance sample", highrise),
     other(
+        "tower",
+        "Reference Tower",
+        "{storeys?: 100, plate?: reference|small, annotation?: false, sheets?: false} replace the project with the original reference tower \
+         of 1–100 storeys, about 10,000 elements and 195 rooms a storey: the baseline the core is measured on \
+         (docs/spatial-core-plan.md); the `small` plate, 36 × 36 m, is the one compared with Revit (tools/revit-crosscheck). \
+         With `annotation`, each storey's plan is detailed too: about 2,000 detail lines, text notes, filled regions and \
+         dimensions on its walls; with `sheets`, a drawing set: each storey's floor plan, ceiling plan and two enlarged \
+         halves on sheets of their own (A1-001 to A4-100), with general notes, and the project's 3D view, elevations, \
+         section and schedules (A0-000, A5- to A7-)",
+        tower,
+    ),
+    other(
         "autosave",
         ui_msg!("Autosave"),
         "{path} atomically write a recovery snapshot, keeping the project path and undo history",
@@ -1306,6 +1318,23 @@ pub static ALL: &[Command] = &[
         import_fill_patterns,
     ),
     other(
+        "export_crosscheck",
+        "Export Cross-Check",
+        "{path?} the project's levels, walls (by their centre lines), floors, shafts, doors, windows and rooms as plain \
+         numbers in mm, which tools/revit-crosscheck builds again in another BIM tool to hold its numbers against ours \
+         (compare_crosscheck): written to `path`, or returned as `description` without it",
+        export_crosscheck,
+    ),
+    other(
+        "compare_crosscheck",
+        "Compare Cross-Check",
+        "{path? | text?} another tool's numbers of the project export_crosscheck described, a table `kind,id,quantity,value` \
+         (rooms' enclosed, area_m2, perimeter_m; walls' length_m, openings; floors' area_m2, volume_m3), from the file at \
+         `path` or `text`, held against the project's own: how many were `compared`, those that `differ` (ours and \
+         theirs), and those `only_ours` and `only_theirs`, the first 100 of each with their counts",
+        compare_crosscheck,
+    ),
+    other(
         "export_fill_patterns",
         "Export Fill Patterns",
         "{path?, names?: [name, …]} the project's fill patterns (those `names` says, else all but the solid ones, which a PAT \
@@ -2088,13 +2117,15 @@ fn view_param(c: &str, m: &Model, p: &Value, sheets: bool) -> Result<Id, String>
     let plan = || plan_param(c, m, p, "level").map(|(level, view)| m.elements.id(view.unwrap_or(level)).unwrap_or_default());
     match p.get("view") {
         v if absent(v) => plan(),
-        Some(Value::String(n)) if Guid::parse(n).is_none() => m
-            .elements
-            .iter()
-            .find_map(|(id, e)| {
-                (m.view_name(*id) == Some(n.as_str()) || sheets && matches!(e, Element::Sheet(sh) if sh.number == *n)).then_some(*id)
-            })
-            .ok_or_else(|| bad(c, format!("no view named `{n}`"))),
+        Some(Value::String(n)) if Guid::parse(n).is_none() => {
+            let sheet = || m.sheets().into_iter().find(|id| m.sheet(*id).is_some_and(|sh| sh.number == *n));
+            // The first by id, a view or (with `sheets`) a sheet.
+            let found = match (m.view_named(n), if sheets { sheet() } else { None }) {
+                (Some(a), Some(b)) => Some(a.min(b)),
+                (a, b) => a.or(b),
+            };
+            found.ok_or_else(|| bad(c, format!("no view named `{n}`")))
+        }
         Some(v) => serde_json::from_value::<Guid>(v.clone())
             .ok()
             .and_then(|g| m.elements.id(g))
@@ -2291,6 +2322,11 @@ fn next_grid_name(m: &Model) -> String {
 
 /// An element as agents read it: its fields (what it points at by GUID) plus its `id`, its `guid` and derived values.
 pub fn element_json(m: &Model, id: Id) -> Value {
+    element_json_with(m, id, &crate::rooms::Rooms::new(m))
+}
+
+/// [`element_json`], a room's boundary found among `rooms`: what one look at many elements shares.
+pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Value {
     let Some(e) = m.elements.get(id) else { return Value::Null };
     let mut extra = Map::new();
     extra.insert("id".into(), json!(id));
@@ -2463,7 +2499,7 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             extra.insert("looking".into(), json!([l.0 + 0.0, l.1 + 0.0]));
         }
         Element::Tag(t) => {
-            extra.insert("text".into(), json!(m.tag_text(t)));
+            extra.insert("text".into(), json!(m.tag_text_with(t, rooms)));
             extra.insert("level".into(), json!(m.level_of(e)));
             extra.insert("at".into(), json!(m.anchor(t.host).map(|a| a + t.offset)));
         }
@@ -2503,7 +2539,7 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             extra.insert("levels".into(), json!(m.mass_slices(ms).iter().map(|(l, _, _)| *l).collect::<Vec<Id>>()));
         }
         Element::Room(r) => {
-            let bound = m.room_bound(r, m.room_area);
+            let bound = rooms.bound(r, m.room_area);
             if let Err(Unbound::Shared(other)) = bound {
                 extra.insert("shares_space_with".into(), json!(other));
             }
@@ -5197,6 +5233,31 @@ fn highrise(s: &mut Session, p: &Value) -> R {
     Ok(json!({"storeys": storeys, "elements": elements}))
 }
 
+fn tower(s: &mut Session, p: &Value) -> R {
+    let c = "tower";
+    let params = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
+    if let Some(key) = params.keys().find(|k| !["storeys", "plate", "annotation", "sheets"].contains(&k.as_str())) {
+        return Err(bad(c, format!("unknown parameter `{key}`")));
+    }
+    let plate = match p.get("plate") {
+        v if absent(v) => crate::sample::tower::Plate::REFERENCE,
+        Some(Value::String(s)) if s == "reference" => crate::sample::tower::Plate::REFERENCE,
+        Some(Value::String(s)) if s == "small" => crate::sample::tower::Plate::SMALL,
+        _ => return Err(bad(c, "`plate` must be `reference` or `small`")),
+    };
+    let max = crate::sample::tower::MAX_STOREYS;
+    let storeys = count_opt(c, p, "storeys", max as usize)?;
+    let storeys = u32::try_from(storeys)
+        .ok()
+        .filter(|n| (1..=max).contains(n))
+        .ok_or_else(|| bad(c, format!("`storeys` must be between 1 and {max}")))?;
+    let drawings = crate::sample::tower::Drawings { annotation: flag(c, p, "annotation")?, sheets: flag(c, p, "sheets")? };
+    let model = crate::sample::tower::drawn(plate, storeys, drawings)?;
+    let elements = model.elements.len();
+    s.reset(model, None);
+    Ok(json!({"storeys": storeys, "elements": elements}))
+}
+
 fn level(s: &mut Session, p: &Value) -> R {
     let c = "level";
     let elevation = num(c, p, "elevation")?.ok_or_else(|| bad(c, "`elevation` in mm is required"))?;
@@ -6751,42 +6812,86 @@ fn room(s: &mut Session, p: &Value) -> R {
     Ok(out)
 }
 
+/// The elements whose reference lines may come within `reach` mm of `p` in a plan of `level`, by id: the walls near it
+/// that span the plan's cut height (a wall's faces and caps stay within twice the thickest wall's thickness of its location
+/// line: a cap runs on no farther than the thickest wall meeting it, [`walls::cap`]), the doors and windows in them, and
+/// the grids.
+fn near_point(m: &Model, level: Guid, p: P2, reach: f64) -> BTreeSet<Id> {
+    let look = m.lookup();
+    let thickest = m.types.wall.values().map(|t| t.thickness).filter(|t| t.is_finite()).fold(0.0, f64::max);
+    // Of the walls the plan cuts: those that span its cut height.
+    let cut = m.plan_range(level).cut;
+    let walls = look.walls_near_at(&[([p.0, p.1, p.0, p.1], cut, cut)], reach + 2.0 * thickest + 1.0);
+    let mut out = BTreeSet::new();
+    for &w in &walls {
+        let g = m.guid(w);
+        out.extend(
+            look.referrers(&g).filter(|id| matches!(m.elements.get(*id), Some(Element::Door(o) | Element::Window(o)) if o.host == g)),
+        );
+    }
+    out.extend(walls);
+    out.extend(look.grids());
+    out
+}
+
 /// Of the lines a plan of `level` shows that `keep` takes (walls' faces, centre lines and ends,
 /// doors' and windows' centres and jambs, grids), the nearest `p`, within 100 mm.
-fn reference_near(m: &Model, level: impl Key, p: P2, keep: impl Fn(Line) -> bool) -> Option<Reference> {
+pub(crate) fn reference_near(m: &Model, level: impl Key, p: P2, keep: impl Fn(Line) -> bool) -> Option<Reference> {
+    let level = m.guid(level);
+    nearest_reference(m, level, p, keep, near_point(m, level, p, 100.0).into_iter())
+}
+
+/// [`reference_near`] among every element: its twin, which tests hold it to.
+#[cfg(test)]
+pub(crate) fn reference_near_everywhere(m: &Model, level: impl Key, p: P2, keep: impl Fn(Line) -> bool) -> Option<Reference> {
+    let level = m.guid(level);
+    nearest_reference(m, level, p, keep, m.elements.iter().map(|(id, _)| *id))
+}
+
+fn nearest_reference(m: &Model, level: Guid, p: P2, keep: impl Fn(Line) -> bool, ids: impl Iterator<Item = Id>) -> Option<Reference> {
     let cut = |w: Option<&Wall>| w.is_some_and(|w| m.cut_by(w, level));
-    m.elements
-        .iter()
-        .filter(|(_, e)| match e {
-            Element::Wall(w) => cut(Some(w)),
-            Element::Door(o) | Element::Window(o) => cut(m.wall(o.host)),
-            Element::Grid(_) => true,
-            _ => false,
-        })
-        .filter_map(|(&id, _)| m.reference_at(id, p, &keep))
-        .filter(|(_, d)| *d <= 100.0)
-        .min_by(|a, b| a.1.total_cmp(&b.1))
-        .map(|(r, _)| r)
+    ids.filter(|id| match m.elements.get(*id) {
+        Some(Element::Wall(w)) => cut(Some(w)),
+        Some(Element::Door(o) | Element::Window(o)) => cut(m.wall(o.host)),
+        Some(Element::Grid(_)) => true,
+        _ => false,
+    })
+    .filter_map(|id| m.reference_at(id, p, &keep))
+    .filter(|(_, d)| *d <= 100.0)
+    .min_by(|a, b| a.1.total_cmp(&b.1))
+    .map(|(r, _)| r)
 }
 
 /// Of the ends of the lines a plan of `level` (`view`, when not the level's own) shows (walls' centre lines and faces,
 /// doors' and windows' jambs, grids, its detail lines), the nearest `p`, within 100 mm.
-fn endpoint_near(m: &Model, level: Guid, view: Option<Guid>, p: P2) -> Option<Reference> {
+pub(crate) fn endpoint_near(m: &Model, level: Guid, view: Option<Guid>, p: P2) -> Option<Reference> {
+    let plan = view.unwrap_or(level);
+    let mut ids = near_point(m, level, p, 100.0);
+    // The view's detail lines: what points at it.
+    ids.extend(m.lookup().referrers(&m.guid(plan)).filter(|id| matches!(m.elements.get(*id), Some(Element::DetailLine(_)))));
+    nearest_end(m, level, view, p, ids.into_iter())
+}
+
+/// [`endpoint_near`] among every element: its twin, which tests hold it to.
+#[cfg(test)]
+pub(crate) fn endpoint_near_everywhere(m: &Model, level: Guid, view: Option<Guid>, p: P2) -> Option<Reference> {
+    nearest_end(m, level, view, p, m.elements.iter().map(|(id, _)| *id))
+}
+
+fn nearest_end(m: &Model, level: Guid, view: Option<Guid>, p: P2, ids: impl Iterator<Item = Id>) -> Option<Reference> {
     let cut = |w: Option<&Wall>| w.is_some_and(|w| m.cut_by(w, level));
     let plan = view.unwrap_or(level);
-    m.elements
-        .iter()
-        .filter(|(_, e)| match e {
-            Element::Wall(w) => cut(Some(w)),
-            Element::Door(o) | Element::Window(o) => cut(m.wall(o.host)),
-            Element::Grid(_) => true,
-            Element::DetailLine(l) => m.same(l.view, plan),
-            _ => false,
-        })
-        .filter_map(|(&id, _)| m.endpoint_at(id, p))
-        .filter(|(_, d)| *d <= 100.0)
-        .min_by(|a, b| a.1.total_cmp(&b.1))
-        .map(|(r, _)| r)
+    ids.filter(|id| match m.elements.get(*id) {
+        Some(Element::Wall(w)) => cut(Some(w)),
+        Some(Element::Door(o) | Element::Window(o)) => cut(m.wall(o.host)),
+        Some(Element::Grid(_)) => true,
+        Some(Element::DetailLine(l)) => m.same(l.view, plan),
+        _ => false,
+    })
+    .filter_map(|id| m.endpoint_at(id, p))
+    .filter(|(_, d)| *d <= 100.0)
+    .min_by(|a, b| a.1.total_cmp(&b.1))
+    .map(|(r, _)| r)
 }
 
 /// Of the arcs a plan of `level` (`view`, when not the level's own) shows (its curved walls' centre lines and faces, its
@@ -8762,19 +8867,15 @@ fn place(s: &mut Session, p: &Value) -> R {
     let c = "place";
     let m = &s.model;
     let sheet = match p.get("sheet") {
-        Some(Value::String(n)) => m
-            .elements
-            .iter()
-            .find_map(|(id, e)| matches!(e, Element::Sheet(sh) if sh.number == *n || sh.name == *n).then_some(*id))
-            .ok_or_else(|| bad(c, format!("no sheet numbered `{n}`")))?,
+        Some(Value::String(n)) => m.sheet_numbered(n).ok_or_else(|| bad(c, format!("no sheet numbered `{n}`")))?,
         Some(v) => v.as_u64().filter(|id| m.sheet(*id).is_some()).ok_or_else(|| bad(c, format!("`sheet`: {v} is not a sheet")))?,
         None => return Err(bad(c, "`sheet`, a sheet's number or id, is required")),
     };
     let scale = num(c, p, "scale")?;
     let at = point_opt(c, p, "at")?;
     let view = match p.get("view") {
-        Some(Value::String(n)) => match m.elements.keys().find(|id| m.view_name(**id) == Some(n.as_str())) {
-            Some(id) => *id,
+        Some(Value::String(n)) => match m.view_named(n) {
+            Some(id) => id,
             // A schedule, or the 3D view, comes to be as it's first placed: a schedule by its name in
             // English or in the project's language, named in the latter.
             None => {
@@ -10200,6 +10301,8 @@ fn place_tag(m: &mut Model, id: Id, head: P2) {
 /// With `end` (`Some(true)` the start, `Some(false)` the end), only that end of one wall goes.
 fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>) -> Result<(), String> {
     let m = &s.model;
+    // The walls, and what points at each: found among those, not every element.
+    let lookup = m.lookup();
     let f = mo.map;
     let moving: BTreeSet<Id> = ids.iter().copied().collect();
     let moving_guids: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
@@ -10229,9 +10332,10 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
         let Some(before) = old(id).filter(|b| b.arc == 0.0) else { continue };
         let line = (w.start, w.end);
         for (end, was) in [(&mut w.start, before.start), (&mut w.end, before.end)] {
-            let host = m.elements.iter().find_map(|(other, e)| match e {
-                Element::Wall(o)
-                    if !moving.contains(other)
+            let at = ([was.0, was.1, was.0, was.1], m.base_z(before), m.top_z(before));
+            let host = lookup.walls_near_at(&[at], 2.0 * TOL).into_iter().find_map(|other| match m.elements.get(other) {
+                Some(Element::Wall(o))
+                    if !moving.contains(&other)
                         && o.arc == 0.0
                         && stacked(m, o, before)
                         && geom::dist_to_segment(was, o.start, o.end) <= TOL =>
@@ -10248,8 +10352,11 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
     // Walls staying put stretch to keep their joins with the taken ones: an end on a taken wall's
     // end goes with it; an end on a taken wall's span slides along its own wall onto it.
     let moved: Vec<(Wall, Wall)> = walls.iter().filter_map(|(id, w)| Some((old(id)?.clone(), w.clone()))).collect();
-    for (&id, e) in &m.elements {
-        let Element::Wall(w) = e else { continue };
+    // The walls whose ends may lie on a taken wall's line as it was.
+    let boxes: Vec<_> = moved.iter().map(|(before, _)| (crate::derived::axis_box(before), m.base_z(before), m.top_z(before))).collect();
+    let near = if boxes.is_empty() { BTreeSet::new() } else { lookup.walls_near_at(&boxes, 2.0 * TOL) };
+    for id in near {
+        let Some(w) = m.wall(id) else { continue };
         if moving.contains(&id) {
             continue;
         }
@@ -10272,8 +10379,10 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
             walls.insert(id, n);
         }
     }
-    // Doors and windows in walls that changed keep their place, or go with their wall.
-    for (&id, e) in &m.elements {
+    // Doors and windows in walls that changed keep their place, or go with their wall: those pointing at them, by id.
+    let hosted: BTreeSet<Id> =
+        walls.keys().filter_map(|w| m.elements.guid(*w)).flat_map(|g| lookup.referrers(&g).collect::<Vec<_>>()).collect();
+    for (id, e) in hosted.into_iter().filter_map(|id| Some((id, m.elements.get(id)?))) {
         let (Element::Door(o) | Element::Window(o)) = e else { continue };
         let Some(host) = m.elements.id(o.host) else { continue };
         let (Some(before), Some(after)) = (old(&host), walls.get(&host)) else { continue };
@@ -11143,6 +11252,136 @@ fn purge(s: &mut Session, p: &Value) -> R {
 }
 
 fn delete(s: &mut Session, p: &Value) -> R {
+    #[cfg(test)]
+    let mut twin = s.clone();
+    let result = delete_indexed(s, p);
+    #[cfg(test)]
+    {
+        let expected = delete_from_scratch(&mut twin, p);
+        assert_eq!(result, expected, "indexed deletion returned a different reply");
+        assert_eq!(s.model, twin.model, "indexed deletion left a different model");
+    }
+    result
+}
+
+fn delete_indexed(s: &mut Session, p: &Value) -> R {
+    let m = &s.model;
+    let ids = ids_param("delete", m, p)?;
+    let lookup = m.lookup();
+    let mut gone: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
+    let mut frontier = gone.clone();
+    // Only referrers can be hosted by a deleted element. Keep the original cascade rules.
+    while !frontier.is_empty() {
+        let candidates: BTreeSet<Id> = frontier.iter().flat_map(|g| lookup.referrers(g)).collect();
+        let mut next = BTreeSet::new();
+        for id in candidates {
+            let guid = m.guid(id);
+            if gone.contains(&guid) {
+                continue;
+            }
+            let hosted = match m.elements.get(id) {
+                Some(Element::Door(o) | Element::Window(o)) => gone.contains(&o.host),
+                Some(Element::Railing(r)) => r.host.is_some_and(|h| gone.contains(&h)),
+                Some(Element::Rebar(rb)) => rb.host.is_some_and(|h| gone.contains(&h)),
+                Some(Element::PlanView(v)) => gone.contains(&v.level) || v.parent.is_some_and(|p| gone.contains(&p)),
+                Some(Element::Tag(t)) => gone.contains(&t.host) || t.view.is_some_and(|v| gone.contains(&v)),
+                Some(Element::Dimension(d)) => d.view.is_some_and(|v| gone.contains(&v)),
+                Some(Element::Viewport(v)) => gone.contains(&v.sheet) || gone.contains(&v.view),
+                Some(Element::Text(n)) => gone.contains(&n.view),
+                Some(Element::DetailLine(l)) => gone.contains(&l.view),
+                Some(Element::FilledRegion(r)) => gone.contains(&r.view),
+                Some(Element::DetailGroup(g)) => gone.contains(&g.view),
+                Some(Element::RepeatingDetail(r)) => gone.contains(&r.view),
+                Some(Element::Spot(sp)) => gone.contains(&sp.view) || sp.host.is_some_and(|h| gone.contains(&h)),
+                Some(Element::CadImport(ci)) => ci.view.is_some_and(|v| gone.contains(&v)),
+                _ => false,
+            };
+            if hosted {
+                next.insert(guid);
+            }
+        }
+        gone.extend(&next);
+        frontier = next;
+    }
+    let mut dimensions: BTreeSet<Id> =
+        gone.iter().flat_map(|g| lookup.referrers(g)).filter(|id| matches!(m.elements.get(*id), Some(Element::Dimension(_)))).collect();
+    let mut kept = Vec::new();
+    while let Some(id) = dimensions.pop_first() {
+        let guid = m.guid(id);
+        let Some(Element::Dimension(d)) = m.elements.get(id) else { continue };
+        if gone.contains(&guid) || !d.refs.iter().any(|r| gone.contains(&r.id)) {
+            continue;
+        }
+        let mut d = d.clone();
+        d.refs.retain(|r| !gone.contains(&r.id));
+        if d.refs.len() < 2 {
+            gone.insert(guid);
+            // The oracle visits dimensions once in id order; preserve that ordering even
+            // when a dimension references another dimension that has just gone.
+            dimensions.extend(
+                lookup.referrers(&guid).filter(|other| *other > id && matches!(m.elements.get(*other), Some(Element::Dimension(_)))),
+            );
+        } else {
+            kept.push((id, d));
+        }
+    }
+    let mut deleted: Vec<Id> = gone.iter().filter_map(|g| m.elements.id(*g)).collect();
+    deleted.sort_unstable();
+    let ties: BTreeSet<Id> = gone
+        .iter()
+        .flat_map(|g| lookup.referrers(g))
+        .filter(|id| match m.elements.get(*id) {
+            Some(Element::Wall(w)) => w.attach_top.is_some_and(|g| gone.contains(&g)) || w.attach_base.is_some_and(|g| gone.contains(&g)),
+            Some(Element::Roof(r)) => r.join.is_some_and(|g| gone.contains(&g)),
+            _ => false,
+        })
+        .collect();
+    // Linework is not currently part of Element::refs; inspect the small view index as
+    // well as graphics overrides, without mutably visiting every model element.
+    let views: BTreeSet<Id> = lookup
+        .levels()
+        .chain(["planview", "section", "elevation", "view3d"].into_iter().flat_map(|cat| lookup.rare(cat)))
+        .filter(|id| !gone.contains(&m.guid(*id)))
+        .filter(|id| {
+            m.elements
+                .get(*id)
+                .and_then(graphics::graphics_of_element)
+                .is_some_and(|g| g.elements.keys().any(|id| gone.contains(id)) || g.linework.iter().any(|l| gone.contains(&l.element)))
+        })
+        .collect();
+    let m = s.model_mut();
+    for id in &gone {
+        m.elements.remove(id);
+    }
+    massing::forget(m, &gone);
+    for id in views {
+        if let Some(g) = m.elements.get_mut(id).and_then(graphics::graphics_mut) {
+            g.elements.retain(|id, _| !gone.contains(id));
+            g.linework.retain(|l| !gone.contains(&l.element));
+        }
+    }
+    for (id, d) in kept {
+        m.elements.insert(id, Element::Dimension(d));
+    }
+    for id in ties {
+        match m.elements.get_mut(id) {
+            Some(Element::Wall(w)) => {
+                if w.attach_top.is_some_and(|g| gone.contains(&g)) {
+                    w.attach_top = None;
+                }
+                if w.attach_base.is_some_and(|g| gone.contains(&g)) {
+                    w.attach_base = None;
+                }
+            }
+            Some(Element::Roof(r)) if r.join.is_some_and(|g| gone.contains(&g)) => r.join = None,
+            _ => {}
+        }
+    }
+    Ok(json!({"deleted": deleted}))
+}
+
+#[cfg(test)]
+fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
     let c = "delete";
     let m = &s.model;
     let ids = ids_param(c, m, p)?;
@@ -11213,7 +11452,7 @@ fn delete(s: &mut Session, p: &Value) -> R {
         m.elements.remove(id);
     }
     // What was made from a mass that goes is ordinary from then on.
-    massing::forget(m, &gone);
+    massing::forget_from_scratch(m, &gone);
     // No view keeps an override for what isn't there.
     for g in m.elements.values_mut().filter_map(graphics::graphics_mut) {
         g.elements.retain(|id, _| !gone.contains(id));
@@ -11628,6 +11867,44 @@ fn import_fill_patterns(s: &mut Session, p: &Value) -> R {
     let room = crate::pat::MAX_LEFT_OUT.saturating_sub(left_out.len());
     left_out.extend(read.left_out.into_iter().take(room).map(|(name, why)| json!({"name": name, "why": why})));
     Ok(json!({"imported": imported, "left_out": left_out, "left_out_count": count}))
+}
+
+fn export_crosscheck(s: &mut Session, p: &Value) -> R {
+    let c = "export_crosscheck";
+    only(c, p, &["path"])?;
+    let description = crate::crosscheck::describe(&s.model);
+    match string(c, p, "path")? {
+        Some(path) => {
+            let text = serde_json::to_string_pretty(&description).map_err(|e| bad(c, e))?;
+            crate::autosave::atomic_write(&PathBuf::from(&path), &text).map_err(|e| bad(c, e))?;
+            Ok(json!({"path": path}))
+        }
+        None => Ok(json!({"description": description})),
+    }
+}
+
+fn compare_crosscheck(s: &mut Session, p: &Value) -> R {
+    let c = "compare_crosscheck";
+    only(c, p, &["path", "text"])?;
+    // A table's text is far longer than a name: `text` takes as much as a file does (`crosscheck::read` refuses more).
+    let text = match p.get("text") {
+        Some(Value::String(t)) => Some(t.clone()),
+        Some(v) if !v.is_null() => return Err(bad(c, "`text` must be the text of a table")),
+        _ => None,
+    };
+    let text = match (string(c, p, "path")?, text) {
+        (Some(path), None) => {
+            let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{path}: {e}")))?.len();
+            if size > crate::crosscheck::MAX_TEXT as u64 {
+                return Err(bad(c, format!("{path} is over {} MB", crate::crosscheck::MAX_TEXT >> 20)));
+            }
+            std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{path}: {e}")))?
+        }
+        (None, Some(text)) => text,
+        _ => return Err(bad(c, "give `path`, a table's file, or its `text`")),
+    };
+    let theirs = crate::crosscheck::read(&text).map_err(|e| bad(c, e))?;
+    Ok(crate::crosscheck::compare(&crate::crosscheck::ours(&s.model), &theirs).to_json(100))
 }
 
 fn export_fill_patterns(s: &mut Session, p: &Value) -> R {
@@ -12087,6 +12364,7 @@ fn elements(s: &mut Session, p: &Value) -> R {
         .filter(|(_, e)| level.is_none_or(|l| m.level_of(e) == Some(l)))
         .map(|(id, _)| *id)
         .collect();
-    let page: Vec<Value> = hits.iter().skip(offset).take(limit).map(|id| element_json(m, *id)).collect();
+    let rooms = crate::rooms::Rooms::new(m);
+    let page: Vec<Value> = hits.iter().skip(offset).take(limit).map(|id| element_json_with(m, *id, &rooms)).collect();
     Ok(json!({"count": hits.len(), "returned": page.len(), "elements": page}))
 }

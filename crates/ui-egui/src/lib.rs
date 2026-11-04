@@ -30,6 +30,7 @@ mod filter;
 mod find;
 mod footer;
 mod gpu;
+pub use gpu::limits_for;
 mod graphics;
 mod groups;
 pub mod icons;
@@ -52,10 +53,12 @@ mod purge;
 pub mod recent;
 mod reinforce;
 mod renames;
+mod retained;
 pub mod revit;
 mod ribbon;
 mod section;
 mod section_box;
+mod section_worker;
 pub mod settings;
 mod shape;
 pub mod shortcuts;
@@ -72,6 +75,7 @@ mod titlebar;
 mod triad;
 mod typeprops;
 mod updates;
+mod view_worker;
 pub mod window;
 mod workplane;
 
@@ -2749,6 +2753,16 @@ impl BimApp {
 
     /// Open a view in a tab, or bring its tab forward.
     fn open_sheet(&mut self, sheet: Sheet) {
+        if !matches!(sheet, Sheet::Section(_)) {
+            self.cut.suspend();
+        }
+        if !matches!(sheet, Sheet::View3D) {
+            self.orbit.suspend();
+            if let Some(gpu) = &mut self.card.gpu {
+                gpu.suspend_upload();
+            }
+        }
+        self.canvas.drawing.suspend();
         if !self.views.contains(&sheet) && !self.floats(sheet) {
             self.views.push(sheet);
         }
@@ -2833,10 +2847,10 @@ impl BimApp {
     pub(crate) fn schedules(&self) -> Vec<(Id, &str)> {
         let m = &self.session.model;
         let mut out: Vec<(Id, &str)> = m
-            .elements
-            .iter()
-            .filter_map(|(id, e)| match e {
-                Element::Schedule(sc) if schedule::builtin(Some(&sc.name), None).is_none() => Some((*id, sc.name.as_str())),
+            .rare("schedule")
+            .into_iter()
+            .filter_map(|id| match m.elements.get(id) {
+                Some(Element::Schedule(sc)) if schedule::builtin(Some(&sc.name), None).is_none() => Some((id, sc.name.as_str())),
                 _ => None,
             })
             .collect();
