@@ -412,14 +412,6 @@ pub(crate) fn rgb(c: Color32) -> Rgb {
     Rgb(c.r(), c.g(), c.b())
 }
 
-/// The scene of `model` in `slot`, built again when the model changed.
-pub(crate) fn scene_of<'a>(slot: &'a mut Option<(Arc<Model>, Arc<Scene>)>, model: &Arc<Model>) -> &'a Scene {
-    if let Some((before, scene)) = slot.take_if(|(m, _)| !Arc::ptr_eq(m, model)) {
-        *slot = Some((Arc::clone(model), Arc::new(scene.update(&before, model))));
-    }
-    &slot.get_or_insert_with(|| (Arc::clone(model), Arc::new(Scene::new(model)))).1
-}
-
 impl Orbit {
     pub(crate) fn suspend(&mut self) {
         self.worker = None;
