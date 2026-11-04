@@ -103,6 +103,7 @@ fn element_lines(m: &Model, e: &Element) -> Vec<Line> {
         | Element::Grid(_)
         | Element::Level(_)
         | Element::Dimension(_)
+        | Element::Dimension3D(_)
         | Element::Sheet(_)
         | Element::Viewport(_)
         | Element::Schedule(_)

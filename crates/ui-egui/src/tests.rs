@@ -5682,6 +5682,7 @@ mod clouds;
 mod control;
 mod dialog;
 mod dimensions;
+mod dims3d;
 mod display;
 mod dock;
 mod draw;

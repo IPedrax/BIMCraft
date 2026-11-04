@@ -452,7 +452,7 @@ msgstr "Vangstaaf (AT): een opvangpunt, waar je op het dak klikt; met de spatieb
 msgid "Air Terminals"
 msgstr "Vangstaven"
 
-#: crates/core/src/commands.rs:1073
+#: crates/core/src/commands.rs:1085
 #: crates/ui-egui/src/editor.rs:898
 #: crates/ui-egui/src/lib.rs:344
 #: crates/ui-egui/src/sketch.rs:709
@@ -480,6 +480,14 @@ msgstr "Uitgelijnde maatlijn"
 #: crates/ui-egui/src/lib.rs:3672
 msgid "Aligned Dimension (DI): pick parallel wall faces, wall ends, doors, windows or grids, or endpoints, then click where the dimension line goes"
 msgstr "Uitgelijnde maatlijn (DI): kies evenwijdige muurvlakken, muuruiteinden, deuren, ramen of rasters, of eindpunten, en klik waar de maatlijn komt"
+
+#: crates/core/src/commands.rs:708
+msgid "Aligned Dimension in 3D"
+msgstr ""
+
+#: crates/ui-egui/src/orbit.rs:373
+msgid "Aligned dimension: {}"
+msgstr ""
 
 #: crates/ui-egui/src/lib.rs:356
 #: crates/ui-egui/src/properties.rs:2612
@@ -691,11 +699,11 @@ msgstr ""
 msgid "Associated Level"
 msgstr "Gekoppeld niveau"
 
-#: crates/core/src/model.rs:2572
+#: crates/core/src/model.rs:2602
 msgid "At wall centre line"
 msgstr "Op de hartlijn van de muur"
 
-#: crates/core/src/model.rs:2573
+#: crates/core/src/model.rs:2603
 msgid "At wall finish"
 msgstr "Op de afwerking van de muur"
 
@@ -989,7 +997,7 @@ msgstr "Randlijn: schets de projectie van het dak, op het niveau erboven, en eve
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "Randlijn: schets de omtrek van de schachtopening"
 
-#: crates/core/src/model.rs:2782
+#: crates/core/src/model.rs:2812
 msgid "Brick"
 msgstr "Baksteen"
 
@@ -1055,7 +1063,7 @@ msgstr "Berekende waarde…"
 msgid "Came in: {}"
 msgstr "Binnengekomen: {}"
 
-#: crates/core/src/commands.rs:1587
+#: crates/core/src/commands.rs:1599
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3877
 #: crates/ui-egui/src/properties.rs:262
@@ -1203,7 +1211,7 @@ msgstr "Hartlijn"
 msgid "Centre Lines"
 msgstr "Hartlijnen"
 
-#: crates/core/src/model.rs:2790
+#: crates/core/src/model.rs:2820
 msgid "Ceramic tile"
 msgstr "Keramische tegel"
 
@@ -1830,7 +1838,7 @@ msgstr "Alle weergaven behalve deze sluiten"
 msgid "Close {}"
 msgstr "{} sluiten"
 
-#: crates/core/src/graphics.rs:229
+#: crates/core/src/graphics.rs:231
 msgid "Coarse"
 msgstr "Grof"
 
@@ -1889,7 +1897,7 @@ msgstr "Compact"
 msgid "Comparison"
 msgstr "Vergelijking"
 
-#: crates/core/src/commands.rs:1035
+#: crates/core/src/commands.rs:1047
 msgid "Component"
 msgstr "Onderdeel"
 
@@ -1909,7 +1917,7 @@ msgstr "Conceptuele massa"
 msgid "Concrete"
 msgstr "Beton"
 
-#: crates/core/src/model.rs:2784
+#: crates/core/src/model.rs:2814
 msgid "Concrete block"
 msgstr "Betonblok"
 
@@ -1990,11 +1998,11 @@ msgstr "{} IFC-GlobalId's gekopieerd."
 msgid "Copied {} rows, tab-separated."
 msgstr "{} rijen gekopieerd, gescheiden door tabs."
 
-#: crates/core/src/model.rs:2798
+#: crates/core/src/model.rs:2828
 msgid "Copper"
 msgstr "Koper"
 
-#: crates/core/src/commands.rs:1090
+#: crates/core/src/commands.rs:1102
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:4601
 #: crates/ui-egui/src/lib.rs:4651
@@ -2383,7 +2391,7 @@ msgstr "Gesloopt"
 msgid "Demolition"
 msgstr ""
 
-#: crates/core/src/commands.rs:8426
+#: crates/core/src/commands.rs:8492
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -2623,11 +2631,11 @@ msgstr "Gestippeld"
 msgid "Double Door"
 msgstr "Dubbele deur"
 
-#: crates/core/src/model.rs:2403
+#: crates/core/src/model.rs:2433
 msgid "Double Sliding"
 msgstr "Dubbel schuivend"
 
-#: crates/core/src/model.rs:2401
+#: crates/core/src/model.rs:2431
 msgid "Double Swing"
 msgstr "Dubbel draaiend"
 
@@ -2771,7 +2779,7 @@ msgstr "Aardingselektrode (EG): een staaf in de grond geslagen vanaf het niveau,
 msgid "Earthing Electrodes"
 msgstr "Aardingselektroden"
 
-#: crates/core/src/model.rs:1819
+#: crates/core/src/model.rs:1845
 msgid "East"
 msgstr "Oost"
 
@@ -2851,7 +2859,7 @@ msgstr "Bocht 90"
 msgid "Electrical"
 msgstr "Elektriciteit"
 
-#: crates/core/src/graphics.rs:934
+#: crates/core/src/graphics.rs:936
 msgid "Electrical Ceiling"
 msgstr ""
 
@@ -2863,11 +2871,11 @@ msgstr "Elektrische uitrusting"
 msgid "Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it"
 msgstr "Elektrische uitrusting (EE): een verdeelbord, waar je op de muur klikt; met de spatiebalk draai je het"
 
-#: crates/core/src/graphics.rs:933
+#: crates/core/src/graphics.rs:935
 msgid "Electrical Lighting"
 msgstr ""
 
-#: crates/core/src/graphics.rs:932
+#: crates/core/src/graphics.rs:934
 msgid "Electrical Power"
 msgstr ""
 
@@ -2880,7 +2888,7 @@ msgstr ""
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr ""
 
-#: crates/core/src/commands.rs:1866
+#: crates/core/src/commands.rs:1878
 msgid "Elements"
 msgstr "Elementen"
 
@@ -3156,7 +3164,7 @@ msgstr "Gevuld gebied (FR): schets een gebied gevuld met een patroon, in deze we
 msgid "Filled region"
 msgstr "Gevuld gebied"
 
-#: crates/core/src/commands.rs:1159
+#: crates/core/src/commands.rs:1171
 msgid "Fillet Arc"
 msgstr "Afrondingsboog"
 
@@ -3226,7 +3234,7 @@ msgstr "Vindt {}."
 msgid "Finds {}; nothing has these: {}"
 msgstr "Vindt {}; niets heeft deze: {}"
 
-#: crates/core/src/graphics.rs:231
+#: crates/core/src/graphics.rs:233
 msgid "Fine"
 msgstr "Fijn"
 
@@ -3264,7 +3272,7 @@ msgstr "Voltooi of annuleer de schets voor je het plan verlaat."
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr ""
 
-#: crates/core/src/model.rs:2405
+#: crates/core/src/model.rs:2435
 msgid "Fixed"
 msgstr "Vast"
 
@@ -3387,7 +3395,7 @@ msgstr ""
 msgid "Folder for new projects"
 msgstr "Map voor nieuwe projecten"
 
-#: crates/core/src/model.rs:2404
+#: crates/core/src/model.rs:2434
 msgid "Folding"
 msgstr "Vouwend"
 
@@ -3626,7 +3634,7 @@ msgstr "Groep"
 msgid "Group:"
 msgstr "Groep:"
 
-#: crates/core/src/model.rs:2789
+#: crates/core/src/model.rs:2819
 msgid "Gypsum board"
 msgstr "Gipsplaat"
 
@@ -3682,7 +3690,7 @@ msgstr ""
 msgid "Hidden"
 msgstr "Verborgen"
 
-#: crates/core/src/graphics.rs:259
+#: crates/core/src/graphics.rs:261
 msgid "Hidden Line"
 msgstr "Verborgen lijn"
 
@@ -3738,7 +3746,7 @@ msgstr "Markeer wat onder de cursor ligt"
 msgid "Home"
 msgstr "Startpagina"
 
-#: crates/ui-egui/src/orbit.rs:1028
+#: crates/ui-egui/src/orbit.rs:1152
 msgid "Home View"
 msgstr "Startweergave"
 
@@ -4486,7 +4494,7 @@ msgstr "Beheren"
 msgid "Manage Presets…"
 msgstr ""
 
-#: crates/core/src/model.rs:1440
+#: crates/core/src/model.rs:1466
 msgid "Mark"
 msgstr "Merk"
 
@@ -4523,7 +4531,7 @@ msgstr "Massavloeren (MF): een vloer op elk niveau dat de geselecteerde massa's 
 msgid "Massing"
 msgstr "Massastudie"
 
-#: crates/core/src/commands.rs:1065
+#: crates/core/src/commands.rs:1077
 msgid "Match Properties"
 msgstr "Eigenschappen overnemen"
 
@@ -4583,7 +4591,7 @@ msgstr ""
 msgid "Maximum Riser Height"
 msgstr "Maximale hoogte optrede"
 
-#: crates/core/src/commands.rs:1697
+#: crates/core/src/commands.rs:1709
 msgid "Measure"
 msgstr "Meten"
 
@@ -4591,7 +4599,7 @@ msgstr "Meten"
 msgid "Measure (ME): click two points; their length and angle read beside the ruler between them"
 msgstr "Meten (ME): klik op twee punten; hun lengte en hoek staan naast de liniaal ertussen"
 
-#: crates/core/src/graphics.rs:230
+#: crates/core/src/graphics.rs:232
 msgid "Medium"
 msgstr "Gemiddeld"
 
@@ -4737,7 +4745,7 @@ msgstr "Muur wijzigen"
 msgid "Mounting Height"
 msgstr "Montagehoogte"
 
-#: crates/core/src/commands.rs:1082
+#: crates/core/src/commands.rs:1094
 msgid "Move"
 msgstr "Verplaatsen"
 
@@ -4804,7 +4812,7 @@ msgstr "NBR 6492: doelwit in plattegrond (±0,00), gelijkzijdige driehoek in doo
 msgid "NOT ENCLOSED"
 msgstr "NIET OMSLOTEN"
 
-#: crates/core/src/model.rs:1441
+#: crates/core/src/model.rs:1467
 #: crates/ui-egui/src/cad.rs:85
 #: crates/ui-egui/src/clouds.rs:59
 #: crates/ui-egui/src/electrical.rs:298
@@ -5010,7 +5018,7 @@ msgstr "Nominale teksthoogte:"
 msgid "None"
 msgstr "Geen"
 
-#: crates/core/src/model.rs:1817
+#: crates/core/src/model.rs:1843
 msgid "North"
 msgstr "Noord"
 
@@ -5593,6 +5601,10 @@ msgstr "Muren kiezen"
 msgid "Pick Walls: a boundary line along each wall clicked"
 msgstr "Muren kiezen: een randlijn langs elke aangeklikte muur"
 
+#: crates/ui-egui/src/orbit.rs:377
+msgid "Pick a corner, an edge or a face of the model to dimension."
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:4821
 msgid "Pick a curved wall or an arc."
 msgstr "Kies een gebogen muur of een boog."
@@ -5778,12 +5790,12 @@ msgid "Place Centre"
 msgstr "Hartlijn plaatsen"
 
 #: crates/ui-egui/src/lib.rs:1426
-#: crates/ui-egui/src/orbit.rs:343
+#: crates/ui-egui/src/orbit.rs:392
 msgid "Place Column"
 msgstr "Kolom plaatsen"
 
 #: crates/ui-egui/src/lib.rs:1428
-#: crates/ui-egui/src/orbit.rs:345
+#: crates/ui-egui/src/orbit.rs:394
 msgid "Place Component"
 msgstr "Onderdeel plaatsen"
 
@@ -5916,7 +5928,7 @@ msgid "Place Voice Outlet"
 msgstr "Telefoonaansluiting plaatsen"
 
 #: crates/ui-egui/src/lib.rs:1403
-#: crates/ui-egui/src/orbit.rs:342
+#: crates/ui-egui/src/orbit.rs:391
 msgid "Place Wall"
 msgstr "Muur plaatsen"
 
@@ -6615,7 +6627,7 @@ msgstr "Dak op vlak (RB): een dak op de bovenvlakken van de geselecteerde massa'
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Dak door voetafdruk: klik binnen de muren om ze te voorzien van een dak, op het niveau erboven"
 
-#: crates/core/src/model.rs:2791
+#: crates/core/src/model.rs:2821
 msgid "Roof tiles"
 msgstr "Dakpannen"
 
@@ -6660,7 +6672,7 @@ msgstr ""
 msgid "Rose"
 msgstr ""
 
-#: crates/core/src/commands.rs:1097
+#: crates/core/src/commands.rs:1109
 msgid "Rotate"
 msgstr "Roteren"
 
@@ -6772,7 +6784,7 @@ msgstr "Schaal: het papier dat deze weergave voorstelt, 1 : n van het model: haa
 msgid "Scan"
 msgstr "Scan"
 
-#: crates/core/src/commands.rs:1496
+#: crates/core/src/commands.rs:1508
 msgid "Schedule"
 msgstr "Lijst"
 
@@ -6802,7 +6814,7 @@ msgstr "Lijsten"
 msgid "Schedules/Quantities (all)"
 msgstr "Lijsten/hoeveelheden (alle)"
 
-#: crates/core/src/model.rs:2787
+#: crates/core/src/model.rs:2817
 msgid "Screed"
 msgstr "Chape"
 
@@ -6975,7 +6987,7 @@ msgstr "Instellingen"
 msgid "Settings…"
 msgstr "Instellingen…"
 
-#: crates/core/src/graphics.rs:258
+#: crates/core/src/graphics.rs:260
 msgid "Shaded"
 msgstr "Gearceerd"
 
@@ -7203,7 +7215,7 @@ msgstr "Deze versie overslaan"
 msgid "Sky"
 msgstr "Lucht"
 
-#: crates/core/src/model.rs:2402
+#: crates/core/src/model.rs:2432
 msgid "Sliding"
 msgstr "Schuivend"
 
@@ -7339,7 +7351,7 @@ msgstr "Sorteren/groeperen"
 msgid "Source code on GitHub"
 msgstr "Broncode op GitHub"
 
-#: crates/core/src/model.rs:1818
+#: crates/core/src/model.rs:1844
 msgid "South"
 msgstr "Zuid"
 
@@ -7380,7 +7392,7 @@ msgstr "Spline door punten: klik op de punten waar ze doorheen loopt; Enter volt
 msgid "Spline: click its control points; Enter finishes it"
 msgstr "Spline: klik op de controlepunten; Enter voltooit ze"
 
-#: crates/core/src/commands.rs:1139
+#: crates/core/src/commands.rs:1151
 msgid "Split"
 msgstr "Splitsen"
 
@@ -7399,7 +7411,7 @@ msgstr "Element splitsen (SL): klik op een muur of een lijn waar je ze wilt spli
 msgid "Split between the line's ends."
 msgstr "Splitsen tussen de uiteinden van de lijn."
 
-#: crates/core/src/commands.rs:779
+#: crates/core/src/commands.rs:791
 msgid "Spot Elevation"
 msgstr "Hoogtepeil"
 
@@ -7407,7 +7419,7 @@ msgstr "Hoogtepeil"
 msgid "Spot Elevation (EL): click a floor, a roof or a stair; in a section, a point"
 msgstr "Hoogtepeil (EL): klik op een vloer, een dak of een trap; in een doorsnede een punt"
 
-#: crates/core/src/commands.rs:788
+#: crates/core/src/commands.rs:800
 #: crates/ui-egui/src/lib.rs:1420
 #: crates/ui-egui/src/lib.rs:3720
 msgid "Spot Slope"
@@ -7588,7 +7600,7 @@ msgstr "Doorzichtigheid van het oppervlak"
 msgid "Surface, {}°"
 msgstr ""
 
-#: crates/core/src/model.rs:2400
+#: crates/core/src/model.rs:2430
 msgid "Swing"
 msgstr "Draaiend"
 
@@ -7801,7 +7813,7 @@ msgstr "Element tijdelijk isoleren"
 msgid "Temporary dimension {}"
 msgstr "Tijdelijke maatlijn {}"
 
-#: crates/core/src/commands.rs:708
+#: crates/core/src/commands.rs:720
 #: crates/ui-egui/src/editor.rs:862
 #: crates/ui-egui/src/editor.rs:895
 #: crates/ui-egui/src/notes.rs:503
@@ -7894,7 +7906,7 @@ msgstr "De uiteinden van muren, rasters en wat nog getekend is, en de tot nu toe
 msgid "The foot of the perpendicular from the last point to a wall or grid"
 msgstr "De voet van de loodlijn vanaf het laatste punt op een muur of raster"
 
-#: crates/ui-egui/src/orbit.rs:666
+#: crates/ui-egui/src/orbit.rs:725
 msgid "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor"
 msgstr "De grafische kaart kon de 3D-weergave niet tekenen ({}): ze wordt op de processor getekend"
 
@@ -7997,6 +8009,10 @@ msgstr ""
 
 #: crates/ui-egui/src/sketch3d.rs:246
 msgid "The view is edge-on to the sketch's plane: turn it to pick on it."
+msgstr ""
+
+#: crates/ui-egui/src/orbit.rs:363
+msgid "The view runs along the dimension: turn it to place its line."
 msgstr ""
 
 #: crates/ui-egui/src/electrical.rs:294
@@ -8249,7 +8265,7 @@ msgstr "Eén element bijsnijden/verlengen"
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "Eén element bijsnijden/verlengen: kies de lijn om tot daar bij te snijden of te verlengen, daarna de lijn die verandert, op het deel dat blijft"
 
-#: crates/core/src/commands.rs:1113
+#: crates/core/src/commands.rs:1125
 #: crates/ui-egui/src/sketch.rs:712
 #: crates/ui-egui/src/sketch.rs:961
 msgid "Trim/Extend to Corner"
@@ -8272,7 +8288,7 @@ msgstr "Draai de muur rond zijn {}: {}"
 msgid "Two {} are called {}."
 msgstr ""
 
-#: crates/core/src/model.rs:1442
+#: crates/core/src/model.rs:1468
 #: crates/ui-egui/src/editor.rs:666
 #: crates/ui-egui/src/editor.rs:672
 #: crates/ui-egui/src/properties.rs:3151
@@ -8429,7 +8445,7 @@ msgstr "Eenheden"
 msgid "Units Format"
 msgstr "Eenhedenformaat"
 
-#: crates/core/src/commands.rs:8567
+#: crates/core/src/commands.rs:8633
 msgid "Unnamed"
 msgstr "Naamloos"
 
@@ -8762,7 +8778,7 @@ msgstr "Golf"
 msgid "Weight"
 msgstr "Gewicht"
 
-#: crates/core/src/model.rs:1820
+#: crates/core/src/model.rs:1846
 msgid "West"
 msgstr "West"
 
@@ -8897,7 +8913,7 @@ msgstr ""
 msgid "Wire type:"
 msgstr ""
 
-#: crates/core/src/graphics.rs:260
+#: crates/core/src/graphics.rs:262
 msgid "Wireframe"
 msgstr "Draadmodel"
 
@@ -8990,7 +9006,7 @@ msgid "Zoom Out"
 msgstr "Uitzoomen"
 
 #: crates/ui-egui/src/canvas.rs:1494
-#: crates/ui-egui/src/orbit.rs:1032
+#: crates/ui-egui/src/orbit.rs:1156
 msgid "Zoom to Fit"
 msgstr "Passend zoomen"
 
@@ -9125,7 +9141,7 @@ msgstr "cirkel"
 msgid "click its line's end"
 msgstr "klik op het einde van de lijn"
 
-#: crates/ui-egui/src/orbit.rs:1020
+#: crates/ui-egui/src/orbit.rs:1144
 msgid "click on the floor's top"
 msgstr ""
 
@@ -9456,7 +9472,7 @@ msgstr "de opening moet op haar muur blijven"
 msgid "there's no detail group yet: select detail lines and Create Group"
 msgstr "er is nog geen detailgroep: selecteer detaillijnen en kies Groep maken"
 
-#: crates/ui-egui/src/orbit.rs:294
+#: crates/ui-egui/src/orbit.rs:311
 msgid "there's no face to paint there"
 msgstr "daar is geen vlak om te verven"
 
@@ -9464,7 +9480,7 @@ msgstr "daar is geen vlak om te verven"
 msgid "there's no folder to keep favorites in here"
 msgstr "hier is geen map om favorieten in te bewaren"
 
-#: crates/ui-egui/src/orbit.rs:940
+#: crates/ui-egui/src/orbit.rs:1061
 #: crates/ui-egui/src/paper.rs:158
 #: crates/ui-egui/src/section.rs:199
 msgid "this tool works in plan views: open one from the Project Browser"
@@ -9482,11 +9498,11 @@ msgstr "twee types heten `{}`"
 msgid "type the elevation first"
 msgstr ""
 
-#: crates/core/src/graphics.rs:957
+#: crates/core/src/graphics.rs:959
 msgid "view filter"
 msgstr "weergavefilter"
 
-#: crates/core/src/graphics.rs:961
+#: crates/core/src/graphics.rs:963
 msgid "view template"
 msgstr "weergavesjabloon"
 
@@ -9632,7 +9648,7 @@ msgstr "{} van {} optreden"
 
 #: crates/ui-egui/src/canvas.rs:1133
 #. what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
-#: crates/ui-egui/src/orbit.rs:784
+#: crates/ui-egui/src/orbit.rs:900
 msgid "{} of {} {}"
 msgstr "{} van {} {}"
 
@@ -9747,11 +9763,11 @@ msgstr "{}: `{}` is geen getal"
 msgid "{}: `{}` isn't a number"
 msgstr "{}: `{}` is geen getal"
 
-#: crates/ui-egui/src/orbit.rs:353
+#: crates/ui-egui/src/orbit.rs:405
 msgid "{}: in the 3D view it stands on a level face (the top of a floor, a flat roof or a level): point at one"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:351
+#: crates/ui-egui/src/orbit.rs:401
 msgid "{}: in the 3D view its points go on a level face (the top of a floor, a column, a flat roof or a level): point at one"
 msgstr ""
 
