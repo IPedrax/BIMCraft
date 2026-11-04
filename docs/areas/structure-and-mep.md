@@ -30,7 +30,17 @@ the Structure tab's button; every other `set_tool` clears it); CL is the structu
 elsewhere, as in Revit. IFC writes a run as an extrusion along its own axis (`Step::body_along`, `aim`) of the class and predefined type
 the one table `runs::IFC` gives its category (import reads the same table back, `runs::from_ifc`), each structural element with
 `LoadBearing` in its `Pset_*Common`, a run's system as an `IfcSystem` (named for it, its GlobalIds following the name) the runs in it
-are assigned to by an `IfcRelAssignsToGroup`, its `Justification` and `Category` in `BIMCraft_Run`, and its material as an `IfcMaterial`.
+are assigned to by an `IfcRelAssignsToGroup`, its `Justification` and `Category` in `BIMCraft_Run`, and its material as an `IfcMaterial`. A beam, a column, a structural column and a
+pad footing carry their section on their type, the IFC4 way (`Step::typed_member`, `write_types`): the `IfcBeamType`, `IfcColumnType` or
+`IfcFootingType` is related by `IfcRelAssociatesMaterial` to an `IfcMaterialProfileSet` of one `IfcMaterialProfile`, holding the type's
+material (a beam type's; a column type has none, so the material is `$`) and its profile, an `IfcRectangleProfileDef` of the width by the
+depth or an `IfcCircleProfileDef` of half the width, in millimetres as every length is. Each occurrence is related to an
+`IfcMaterialProfileSetUsage` of that set (one for each cardinal point, shared by the occurrences placed by it): a beam's cardinal point is
+the line its heights are on, the top (8), the middle (5) or the bottom (2) of its section, a column's and a footing's the middle (5). The
+beam has no other material association, so the importer reads a run's material through the usage (`element_material`). The profile
+definition (`Step::section_profile`, keyed by `Section`) is written once for a section, and the type's profile and its occurrences' bodies
+share it; two types of one name and two sections (a column's and a structural column's) are two type objects. A strip footing, a pipe and
+the other runs have no profile set, only the plain material.
 Import (`import::run_in`) finds a run's axis as the direction its body's points spread furthest in (power iteration on their
 covariance), so a beam rolled about its axis comes in as the box round it; an axis that stands (a riser) has its width along east and
 runs up; the justification BIMCraft wrote puts the heights back on the line they were typed at (`Geom::half`), none meaning the middle;

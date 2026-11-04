@@ -44,7 +44,9 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   does the first two, as CI's IFC job does on the sample and on `ci/ifc-coverage.txt` (add a line there for a new kind of element).
 - Structure: after touching `runs.rs` or how a run, a footing or a structural column goes to IFC, export beams (level, sloped, round), footings, a strip
   footing, columns and a structural floor, validate with IfcOpenShell (`express_rules=True`), and compare each product's volume and bounding box
-  with a hand calculation (a round section is a polygon in IfcOpenShell's tessellation: a fraction of a percent short). Look at the plan, a
+  with a hand calculation (a round section is a polygon in IfcOpenShell's tessellation: a fraction of a percent short). Read the material profile
+  sets back (`ifcopenshell.util.element.get_type` and `get_material`: each beam, column and footing has an `IfcMaterialProfileSetUsage` of its type's
+  set, with the cardinal point, and the set's profile is the type's width and depth, or half its width as a radius). Look at the plan, a
   section across a beam, and the 3D view in the three looks.
 - Discipline tabs (Plumbing, Electrical, SPDA, Data): after touching `fixtures.rs`, `runs::IFC`, `Category::ifc` or the run arm of `ifc.rs`, script
   one of every run category (sloped, upright, each justification, in a system) and one of every starter family, `--save` the IFC, validate it with

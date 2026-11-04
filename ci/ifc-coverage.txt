@@ -60,3 +60,13 @@ edit_shape {"id": 100344, "points": [{"at": [64000,3000], "z": -40}]}
 # Runs whose IFC types (IfcDuctSegmentType, IfcCableSegmentType) the export writes; last, so the ids above stay put.
 duct {"points": [[0,8000],[6000,8000]], "offset": 2500, "system": "Supply air"}
 cabling {"points": [[0,8500],[6000,8500]], "offset": 2500, "system": "Network"}
+# Beam types hold their section as a material profile set (3.6b), each beam a usage of it by the line it is placed by: a bottom, a
+# centre and a top justified beam of a 150 x 600 type in concrete, a round one in metal, and one with no material; last, so the ids
+# above stay put.
+type {"category": "beam", "name": "B 150x600", "width": 150, "depth": 600, "material": "Concrete"}
+type {"category": "beam", "name": "B 120x300", "width": 120, "depth": 300}
+beam {"points": [[0,9000],[6000,9000]], "offset": 3000, "type": "B 150x600", "justify": "bottom"}
+beam {"points": [[0,9500],[6000,9500]], "offset": 3000, "type": "B 150x600", "justify": "centre"}
+beam {"points": [[0,10000],[6000,10000]], "offset": 3000, "type": "B 150x600"}
+beam {"points": [[0,10500],[6000,10500]], "offset": 3000, "end_offset": 3500, "type": "Steel Tube 150", "justify": "centre"}
+beam {"points": [[0,11000],[6000,11000]], "offset": 3000, "type": "B 120x300"}
