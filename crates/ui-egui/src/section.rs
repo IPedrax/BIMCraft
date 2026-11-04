@@ -44,6 +44,9 @@ pub struct Cut {
     /// pan or a zoom draws it once.
     #[cfg(test)]
     pub(crate) pictures: usize,
+    /// How many times the picture went into the texture, its paper in the canvas's colour.
+    #[cfg(test)]
+    pub(crate) uploads: usize,
     image: Option<Arc<Image>>,
     texture: Option<TextureHandle>,
     shown: Option<Shot>,
@@ -205,6 +208,10 @@ impl Cut {
         }
         self.grid_background = grid_background;
         self.ground = ground;
+        #[cfg(test)]
+        {
+            self.uploads += 1;
+        }
     }
 }
 
@@ -259,6 +266,10 @@ impl BimApp {
         let ground = color(render::PAPER);
         // Framing/model changes rebuild visibility; interaction changes only paint.
         let grid_background = self.background_grid().shown();
+        // A new canvas colour, or the background grid shown or hidden, paints the same picture's paper again.
+        if self.cut.ground != ground || self.cut.grid_background != grid_background {
+            self.cut.upload(ui.ctx(), ground, grid_background);
+        }
         let current =
             matches!(&self.cut.shown, Some((m, v, logical, f)) if Arc::ptr_eq(m, &model) && *v == id && *logical == view && *f == pixels);
         #[cfg(test)]

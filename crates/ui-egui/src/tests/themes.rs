@@ -213,7 +213,8 @@ fn a_new_canvas_colour_draws_a_sections_picture_again_on_it() {
         let mut h = window(rev, &format!("{BOX}\nsection {{\"start\": [-1000, 3000], \"end\": [9000, 3000]}}"));
         browse(&mut h, "Section 1");
         h.run();
-        let drawn = |h: &Harness<BimApp>| h.state().cut.pictures;
+        // The picture is the same; it goes into the texture again with its paper in the new colour.
+        let drawn = |h: &Harness<BimApp>| h.state().cut.uploads;
         let still = drawn(&h);
         // Two dark ones: the drawing stays dark, its ground is new.
         for canvas in [[16, 24, 48], [48, 16, 16]] {
