@@ -1585,7 +1585,7 @@ fn pale(v: u8) -> u8 {
 }
 
 /// A floor plan of `plan`, or `up`, its reflected ceiling plan; `titled`, with its name lettered at its bottom left (an image of
-/// it has it; a window shows the name in the view's tab, and a sheet under its viewport). Its annotation `k` times the size it
+/// it has it; a window letters it itself over the canvas, and shows it in the view's tab, and a sheet has it under its viewport). Its annotation `k` times the size it
 /// is laid out at, its pens the line weights' at 1 : `n`.
 fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, titled: bool) -> Drawing {
     // The plan's own guid says what it is: its graphics, range, crop and annotation; its level is what it shows of the model.

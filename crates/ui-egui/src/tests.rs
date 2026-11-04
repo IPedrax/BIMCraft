@@ -5703,6 +5703,7 @@ mod mep;
 mod minimap;
 mod notes;
 mod objectstyles;
+mod origin;
 mod patterns;
 mod perspective;
 mod planviews;
