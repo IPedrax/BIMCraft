@@ -60,6 +60,21 @@ Fit doesn't change what `layout` does with a length: at any length, what's left 
 `Justify` lays the pattern from the start, from the end, with whole modules centred (`Centre`) or with a grid line on the middle
 (`CentreLine`). What an end leaves over is the cut segment at that end.
 
+## Joins
+
+Where mullions meet, `CurtainLayout.continuous` says which run through: the others stop at their faces. A mitre is asked for on a
+mullion (`MullionPick.join`) and made only at a corner: exactly one vertical and one horizontal bar on the node, both asking, of the
+same width and depth and at the same offset. A T or a crossing stays butt whatever its bars ask for, and so does a corner of unlike
+bars. Both bars run out to the corner's outer point, cut on its diagonal; the panels are the same either way. A mitred bar is a
+`Shape` with a `face`, four corners round its centre, so shapes are still shared: the 3D scene makes it a mesh (`Shape::tris`) and IFC
+a closed `IfcTriangulatedFaceSet`, while a plan draws what bounds it. A bar too short for its two diagonals not to cross stays a box.
+
+A plain wall takes no mitre from a curtain wall (`Arm::butts` in `walls.rs`). Ending where one ends, it ends square at the curtain
+wall's far face; ending on one's side, it stops at the near face as on any wall. Rooms still close, as `centre_line` keeps every arm.
+
+The 3D view merges coplanar faces wherever they meet, so a joint between two mullions of one material shows no line: butt and mitre
+look alike from the front. That is the view's rule for all elements, left for the 3D work of PR #188.
+
 ## The desktop
 
 - **Curtain Wall tool:** the Wall tool drawing the first curtain type, in the Build panel's list and the Tools palette (the ribbon has no
@@ -77,4 +92,4 @@ Fit doesn't change what `layout` does with a length: at any length, what's left 
 ## What it can't be yet
 
 `curtain::check` refuses a curved curtain wall, an attached top or base, a location line other than the exterior or interior face, a
-wall of over `MAX_CELLS` cells, and a door or window hosted directly in one. Corner mullions are held for their own discussion.
+wall by face, a wall of over `MAX_CELLS` cells, and a door or window hosted directly in one. Corner mullions are held for their own discussion.

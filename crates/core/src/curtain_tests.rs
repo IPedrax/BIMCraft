@@ -642,3 +642,255 @@ fn a_malformed_wall_is_said_in_the_reply_and_the_warnings() {
     let out = run(&mut s, "wall", json!({"points": [[0, 5000], [3000, 5000]], "type": "CW", "height": 3000}));
     assert!(out.get("warning").is_none(), "{out}");
 }
+
+// Joins.
+
+/// A pattern of `columns` by `rows` with its four borders the given mullion joined as `join`.
+fn framed(s: &mut Session, name: &str, columns: &[f64], rows: &[f64], mullion: &str, join: &str) {
+    let edge = json!({"type": mullion, "join": join});
+    let verticals = vec![vec![Value::Null; columns.len()]; rows.len()];
+    let horizontals = verticals.clone();
+    let borders = json!({"left": edge, "right": edge, "bottom": edge, "top": edge});
+    grid(s, name, columns, rows, json!({"vertical": verticals, "horizontal": horizontals, "borders": borders}));
+}
+
+fn mullions(l: &Layout) -> Vec<&curtain::Part> {
+    l.parts.iter().filter(|p| l.shapes[p.shape as usize].kind == PartKind::Mullion).collect()
+}
+
+/// A part's face area on the wall.
+fn face_area(l: &Layout, p: &curtain::Part) -> f64 {
+    let s = &l.shapes[p.shape as usize];
+    match &s.face {
+        Some(q) => (0..4).map(|i| q[i][0] * q[(i + 1) % 4][1] - q[(i + 1) % 4][0] * q[i][1]).sum::<f64>() / 2.0,
+        None => s.size[0] * s.size[1],
+    }
+}
+
+#[test]
+fn a_butt_joint_is_a_box_and_who_runs_through_is_the_layouts_say() {
+    let mut s = session();
+    framed(&mut s, "Frame", &[4000.0], &[3000.0], "50 x 150", "butt");
+    let l = built(&mut s, "Frame", 4000.0, 3000.0);
+    let m = mullions(&l);
+    assert_eq!(m.len(), 4);
+    assert!(m.iter().all(|p| l.shapes[p.shape as usize].face.is_none()));
+    // Verticals run through by default: the horizontals stop between them.
+    let area: f64 = m.iter().map(|p| face_area(&l, p)).sum();
+    assert!((area - (2.0 * 50.0 * (4000.0 + 3000.0) - 4.0 * 2500.0)).abs() < 1e-6, "{area}");
+}
+
+#[test]
+fn a_mitre_cuts_both_mullions_on_the_corners_diagonal() {
+    let mut s = session();
+    framed(&mut s, "Frame", &[4000.0], &[3000.0], "50 x 150", "mitre");
+    let l = built(&mut s, "Frame", 4000.0, 3000.0);
+    let m = mullions(&l);
+    assert_eq!(m.len(), 4);
+    assert!(m.iter().all(|p| l.shapes[p.shape as usize].face.is_some()), "every end is at a corner");
+    // Nothing overlaps and nothing's missing: the frame's area exactly.
+    let area: f64 = m.iter().map(|p| face_area(&l, p)).sum();
+    assert!((area - (2.0 * 50.0 * (4000.0 + 3000.0) - 4.0 * 2500.0)).abs() < 1e-6, "{area}");
+    // Each runs out to the wall's corners.
+    for p in &m {
+        let s = &l.shapes[p.shape as usize];
+        if matches!(p.address, curtain::Address::Vertical { .. }) {
+            assert_eq!(s.size[1], 3000.0);
+        } else {
+            assert_eq!(s.size[0], 4000.0);
+        }
+    }
+    // The bottom left corner's diagonal is from the wall's corner to (50, 50), on both bars.
+    let left = m.iter().find(|p| matches!(p.address, curtain::Address::Vertical { .. }) && p.centre[0] < 100.0).unwrap();
+    let bottom = m.iter().find(|p| matches!(p.address, curtain::Address::Horizontal { .. }) && p.centre[1] < 100.0).unwrap();
+    for (part, way) in [(left, "left"), (bottom, "bottom")] {
+        let q = l.shapes[part.shape as usize].face.unwrap();
+        let at: Vec<[f64; 2]> = q.iter().map(|c| [c[0] + part.centre[0], c[1] + part.centre[1]]).collect();
+        for corner in [[0.0, 0.0], [50.0, 50.0]] {
+            assert!(at.iter().any(|c| (c[0] - corner[0]).abs() < 1e-6 && (c[1] - corner[1]).abs() < 1e-6), "{way}: {at:?}");
+        }
+    }
+    // The panel is what's inside the frame, as with a butt joint.
+    let panel = l.parts.iter().find(|p| l.shapes[p.shape as usize].kind == PartKind::Panel).unwrap();
+    assert_eq!(l.shapes[panel.shape as usize].size[..2], [3900.0, 2900.0]);
+}
+
+#[test]
+fn a_mitre_falls_back_to_butt_where_sizes_differ_or_only_one_asks() {
+    let mut s = session();
+    run(&mut s, "type", json!({"category": "mullion", "name": "Deep", "width": 50, "depth": 250}));
+    let pick = |t: &str, j: &str| json!({"type": t, "join": j});
+    let none = json!([[null]]);
+    let cases = [
+        // Another depth meets it, then the same mullion asking for butt.
+        (json!({"left": pick("50 x 150", "mitre"), "right": null, "bottom": pick("Deep", "mitre"), "top": null}), "Sizes"),
+        (json!({"left": pick("50 x 150", "mitre"), "right": null, "bottom": pick("50 x 150", "butt"), "top": null}), "One"),
+    ];
+    for (borders, name) in cases {
+        grid(&mut s, name, &[4000.0], &[3000.0], json!({"vertical": none, "horizontal": none, "borders": borders}));
+        let l = built(&mut s, name, 4000.0, 3000.0);
+        assert!(mullions(&l).iter().all(|p| l.shapes[p.shape as usize].face.is_none()), "{name}");
+    }
+}
+
+#[test]
+fn a_mitre_is_only_at_a_corner_a_t_or_a_crossing_stays_butt() {
+    let mut s = session();
+    let edge = json!({"type": "50 x 150", "join": "mitre"});
+    let borders = json!({"left": edge, "right": edge, "bottom": edge, "top": edge});
+    // Two columns: a vertical in the middle makes a T on the top and bottom borders.
+    grid(&mut s, "T", &[2000.0], &[3000.0], json!({"vertical": [[edge]], "horizontal": [[null]], "borders": borders}));
+    let l = built(&mut s, "T", 4000.0, 3000.0);
+    let middle = mullions(&l)
+        .into_iter()
+        .find(|p| matches!(p.address, curtain::Address::Vertical { .. }) && (p.centre[0] - 2000.0).abs() < 1.0)
+        .cloned()
+        .unwrap();
+    assert!(l.shapes[middle.shape as usize].face.is_none(), "the T's stem is square");
+    // The border runs on through the T, mitred only at the wall's corners, and nothing overlaps.
+    let area: f64 = mullions(&l).iter().map(|p| face_area(&l, p)).sum();
+    let frame = 2.0 * 50.0 * (4000.0 + 3000.0) - 4.0 * 2500.0;
+    assert!((area - (frame + 50.0 * (3000.0 - 100.0))).abs() < 1e-6, "{area}");
+}
+
+#[test]
+fn an_inner_corner_of_mullions_mitres_too() {
+    let mut s = session();
+    // Only the first cell's right and top edges: one L where they meet, inside the wall.
+    let edge = json!({"type": "50 x 150", "join": "mitre"});
+    grid(
+        &mut s,
+        "L",
+        &[1000.0, 3000.0],
+        &[1000.0, 2000.0],
+        json!({
+            "vertical": [[null, edge], [null, null]],
+            "horizontal": [[null, null], [edge, null]],
+            "borders": {"left": null, "right": null, "bottom": null, "top": null},
+        }),
+    );
+    let l = built(&mut s, "L", 4000.0, 3000.0);
+    let m = mullions(&l);
+    assert_eq!(m.len(), 2, "{:?}", l.parts);
+    assert!(m.iter().all(|p| l.shapes[p.shape as usize].face.is_some()));
+    // They reach the corner's outer face: 25 past the lines.
+    let v = m.iter().find(|p| matches!(p.address, curtain::Address::Vertical { .. })).unwrap();
+    let vs = &l.shapes[v.shape as usize];
+    assert!((v.centre[1] + vs.size[1] / 2.0 - 1025.0).abs() < 1e-6, "{v:?} {vs:?}");
+    let h = m.iter().find(|p| matches!(p.address, curtain::Address::Horizontal { .. })).unwrap();
+    let hs = &l.shapes[h.shape as usize];
+    assert!((h.centre[0] + hs.size[0] / 2.0 - 1025.0).abs() < 1e-6, "{h:?} {hs:?}");
+}
+
+#[test]
+fn mitred_parts_share_shapes_too_and_never_make_a_broken_shape() {
+    let mut s = session();
+    // Left and right mirror each other, so two shapes; every row of a tall wall's verticals share them.
+    framed(&mut s, "Frame", &[4000.0], &[3000.0], "50 x 150", "mitre");
+    let l = built(&mut s, "Frame", 4000.0, 3000.0);
+    let mitred: Vec<_> = l.shapes.iter().filter(|x| x.face.is_some()).collect();
+    assert_eq!(mitred.len(), 4);
+    // Barely taller than its bars: each bar's two diagonals would cross, so it's left a box rather than a bow tie.
+    run(&mut s, "type", json!({"category": "mullion", "name": "Fat", "width": 400, "depth": 100}));
+    framed(&mut s, "Tight", &[1000.0], &[1000.0], "Fat", "mitre");
+    let l = built(&mut s, "Tight", 1000.0, 700.0);
+    for shape in &l.shapes {
+        if let Some(q) = shape.face {
+            let area: f64 = (0..4).map(|i| q[i][0] * q[(i + 1) % 4][1] - q[(i + 1) % 4][0] * q[i][1]).sum();
+            assert!(area > 0.0, "{q:?}");
+            assert!(q.iter().all(|c| c[0].abs() <= shape.size[0] / 2.0 + 1e-6 && c[1].abs() <= shape.size[1] / 2.0 + 1e-6));
+        }
+    }
+}
+
+#[test]
+fn a_mitred_mullion_is_a_closed_solid_in_the_3d_scene() {
+    use crate::view3d::{self, Solid};
+    let mut s = session();
+    framed(&mut s, "Frame", &[4000.0], &[3000.0], "50 x 150", "mitre");
+    let id = wall(&mut s, "Frame", 4000.0, 3000.0);
+    let l = layout_of(&s, id);
+    let meshes: Vec<_> = view3d::solids(&s.model)
+        .into_iter()
+        .filter_map(|x| match x {
+            Solid::Mesh { tris, .. } => Some(tris),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(meshes.len(), 4);
+    // Outward and closed: the divergence theorem gives its bar's volume, the bars' faces times their depth.
+    let volume: f64 = meshes
+        .iter()
+        .flatten()
+        .map(|[a, b, c]| {
+            let cross = [b[1] * c[2] - b[2] * c[1], b[2] * c[0] - b[0] * c[2], b[0] * c[1] - b[1] * c[0]];
+            (a[0] * cross[0] + a[1] * cross[1] + a[2] * cross[2]) / 6.0
+        })
+        .sum();
+    let faces: f64 = mullions(&l).iter().map(|p| face_area(&l, p)).sum();
+    assert!((volume - faces * 150.0).abs() < 1.0, "{volume} {}", faces * 150.0);
+}
+
+#[test]
+fn a_mitred_mullion_goes_to_ifc_as_a_closed_face_set_each_shape_once() {
+    let mut s = session();
+    framed(&mut s, "Frame", &[4000.0], &[3000.0], "50 x 150", "mitre");
+    wall(&mut s, "Frame", 4000.0, 3000.0);
+    let text = crate::ifc::export(&s.model);
+    assert_eq!(text.matches("IFCMEMBER(").count(), 4);
+    assert_eq!(text.matches("IFCTRIANGULATEDFACESET(").count(), 4);
+}
+
+// Walls that meet one.
+
+#[test]
+fn a_plain_wall_ends_square_against_a_curtain_wall() {
+    use crate::geom;
+    let mut s = session();
+    grid(&mut s, "CW", &[1000.0], &[1000.0], json!({}));
+    let plain =
+        run(&mut s, "wall", json!({"points": [[-4000, 0], [0, 0]], "height": 3000, "location": "centre"}))["ids"][0].as_u64().unwrap();
+    let c = run(&mut s, "wall", json!({"points": [[0, 0], [0, 4000]], "type": "CW", "height": 3000}))["ids"][0].as_u64().unwrap();
+    let o = crate::walls::outline(&s.model, plain);
+    let w = wall_of(&s, plain);
+    let t = s.model.thickness(w);
+    // A rectangle, its end reaching the curtain wall's far face: no spike, no gap.
+    let far = crate::walls::outline(&s.model, c).iter().map(|p| p.0).fold(f64::MIN, f64::max);
+    let (xs, ys): (Vec<f64>, Vec<f64>) = o.iter().map(|p| (p.0, p.1)).unzip();
+    let max_x = xs.iter().copied().fold(f64::MIN, f64::max);
+    assert!((max_x - far).abs() < 1e-6, "{o:?} to {far}");
+    let (lo, hi) = (ys.iter().copied().fold(f64::MAX, f64::min), ys.iter().copied().fold(f64::MIN, f64::max));
+    assert!((geom::area(&o).abs() - (max_x + 4000.0) * (hi - lo)).abs() < 1e-3, "{o:?}");
+    assert!((hi - lo - t).abs() < 1e-6);
+    // Rooms still close on it: its centre line runs on to the curtain wall's.
+    let line = crate::walls::centre_line(&s.model, plain);
+    assert!(line.last().unwrap().0 != -4000.0);
+}
+
+#[test]
+fn a_plain_wall_ending_on_a_curtain_walls_side_stops_at_its_face() {
+    let mut s = session();
+    grid(&mut s, "CW", &[1000.0], &[1000.0], json!({}));
+    let c = run(&mut s, "wall", json!({"points": [[0, -2000], [0, 2000]], "type": "CW", "height": 3000}))["ids"][0].as_u64().unwrap();
+    let outline = crate::walls::outline(&s.model, c);
+    let (lo, hi) = outline.iter().fold((f64::MAX, f64::MIN), |(a, b), p| (a.min(p.0), b.max(p.0)));
+    let mid = (lo + hi) / 2.0;
+    let plain =
+        run(&mut s, "wall", json!({"points": [[-4000, 0], [mid, 0]], "height": 3000, "location": "centre"}))["ids"][0].as_u64().unwrap();
+    let reach = crate::walls::outline(&s.model, plain).iter().map(|p| p.0).fold(f64::MIN, f64::max);
+    assert!((reach - lo).abs() < 1e-6, "stops at the near face: {reach}, not {lo}");
+}
+
+#[test]
+fn walls_by_face_cant_be_curtain_walls_yet() {
+    let mut s = session();
+    grid(&mut s, "CW", &[1000.0], &[1000.0], json!({}));
+    let boundary = json!([[0, 0], [8000, 0], [8000, 6000], [0, 6000]]);
+    let mass = run(&mut s, "mass", json!({"boundary": boundary, "height": 3000}))["id"].as_u64().unwrap();
+    let why = fails(&mut s, "wall_by_face", json!({"mass": mass, "type": "CW", "faces": [0]}));
+    assert!(why.contains("by face"), "{why}");
+    // Nor can a wall made by face become one afterwards.
+    let plain = run(&mut s, "wall_by_face", json!({"mass": mass, "faces": [0]}))["ids"][0].as_u64().unwrap();
+    let why = fails(&mut s, "modify", json!({"id": plain, "type": "CW"}));
+    assert!(why.contains("by face"), "{why}");
+}

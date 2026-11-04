@@ -319,6 +319,28 @@ pub struct Shape {
     pub type_name: String,
     /// Its size along the wall, up it and across it, mm.
     pub size: [f64; 3],
+    /// A mitred mullion's face on the wall, counter-clockwise, as (along, up) from its centre; none for a box.
+    pub face: Option<Quad>,
+}
+
+/// Four corners on a wall's face.
+pub type Quad = [[f64; 2]; 4];
+
+impl Shape {
+    /// Its triangles from its centre, as (along, across, up), turned outward: for a shape with a [`Shape::face`].
+    pub fn tris(&self) -> Vec<[[f64; 3]; 3]> {
+        let Some(q) = self.face else { return Vec::new() };
+        let half = self.size[2] / 2.0;
+        let at = |c: [f64; 2], across: f64| [c[0], across, c[1]];
+        let (near, far) = (q.map(|c| at(c, -half)), q.map(|c| at(c, half)));
+        let mut out = vec![[near[0], near[1], near[2]], [near[0], near[2], near[3]], [far[0], far[2], far[1]], [far[0], far[3], far[2]]];
+        for i in 0..4 {
+            let j = (i + 1) % 4;
+            out.push([near[i], far[i], far[j]]);
+            out.push([near[i], far[j], near[j]]);
+        }
+        out
+    }
 }
 
 /// Where a part is on its pattern, its name while it has no id of its own: columns and rows by [`Span::index`]. A border is
@@ -455,6 +477,7 @@ pub fn divide(d: &Direction, length: f64) -> Vec<Span> {
 #[derive(Clone, Copy)]
 struct Bar<'a> {
     pick: &'a str,
+    join: Join,
     lo: f64,
     hi: f64,
     across: (f64, f64),
@@ -475,6 +498,7 @@ impl Bar<'_> {
         let half = t.depth() / 2.0;
         Some(Bar {
             pick: &pick.type_name,
+            join: pick.join,
             lo,
             hi: lo + w,
             across: (t.offset_y - half, t.offset_y + half),
@@ -486,6 +510,64 @@ impl Bar<'_> {
     fn middle(&self) -> f64 {
         (self.lo + self.hi) / 2.0
     }
+
+    /// Whether a mitre can join it to `o`: both ask for one and they're the same size in the same place across the wall.
+    fn mitres_with(&self, o: &Bar) -> bool {
+        self.join == Join::Mitre
+            && o.join == Join::Mitre
+            && (self.hi - self.lo - (o.hi - o.lo)).abs() < SAME
+            && (self.depth - o.depth).abs() < SAME
+            && (self.offset - o.offset).abs() < SAME
+    }
+}
+
+/// The diagonal two mullions meeting at a corner are cut on: its outer and inner points, as (along, up).
+#[derive(Clone, Copy)]
+struct Corner {
+    outer: [f64; 2],
+    inner: [f64; 2],
+}
+
+impl Corner {
+    /// Where the diagonal is at `along`, one of the vertical bar's two sides.
+    fn up_at(&self, along: f64) -> f64 {
+        if (along - self.outer[0]).abs() < (along - self.inner[0]).abs() { self.outer[1] } else { self.inner[1] }
+    }
+
+    /// Where the diagonal is at `up`, one of the horizontal bar's two sides.
+    fn along_at(&self, up: f64) -> f64 {
+        if (up - self.outer[1]).abs() < (up - self.inner[1]).abs() { self.outer[0] } else { self.inner[0] }
+    }
+}
+
+/// Where mullions meet in a mitre, by the lines they meet on: only at a corner, one vertical and one horizontal bar
+/// and nothing else, so that a T or a crossing stays butt whatever its bars ask for.
+fn corners(vertical: &Lines, horizontal: &Lines) -> HashMap<(usize, usize), Corner> {
+    let mut out = HashMap::new();
+    for (i, line) in vertical.iter().enumerate() {
+        for (j, across) in horizontal.iter().enumerate() {
+            let below = j.checked_sub(1).and_then(|r| line.get(r)).and_then(Option::as_ref);
+            let above = line.get(j).and_then(Option::as_ref);
+            let left = i.checked_sub(1).and_then(|c| across.get(c)).and_then(Option::as_ref);
+            let right = across.get(i).and_then(Option::as_ref);
+            let (v, goes_up) = match (below, above) {
+                (Some(b), None) => (b, false),
+                (None, Some(a)) => (a, true),
+                _ => continue,
+            };
+            let (h, goes_right) = match (left, right) {
+                (Some(l), None) => (l, false),
+                (None, Some(r)) => (r, true),
+                _ => continue,
+            };
+            if v.mitres_with(h) {
+                let (out_u, in_u) = if goes_right { (v.lo, v.hi) } else { (v.hi, v.lo) };
+                let (out_v, in_v) = if goes_up { (h.lo, h.hi) } else { (h.hi, h.lo) };
+                out.insert((i, j), Corner { outer: [out_u, out_v], inner: [in_u, in_v] });
+            }
+        }
+    }
+    out
 }
 
 /// Where a mullion's line is: within the wall, or at one of its ends, inside which it stands.
@@ -530,6 +612,16 @@ fn drop_clashes(lines: &mut Lines) {
     }
 }
 
+/// A mullion cut to `ring`, its corners on the wall's face: centred on what bounds them.
+fn cut_part(out: &mut Shapes, b: &Bar, ring: Quad, address: Address) -> Part {
+    let bound = |axis: usize| ring.iter().fold((f64::MAX, f64::MIN), |(lo, hi), c| (lo.min(c[axis]), hi.max(c[axis])));
+    let ((u0, u1), (v0, v1)) = (bound(0), bound(1));
+    let centre = [(u0 + u1) / 2.0, (v0 + v1) / 2.0];
+    let face = ring.map(|c| [c[0] - centre[0], c[1] - centre[1]]);
+    let shape = out.of(PartKind::Mullion, b.pick, [u1 - u0, v1 - v0, b.depth], Some(face));
+    Part { shape, centre: [centre[0], centre[1], b.offset], address }
+}
+
 /// What a wall `length` long and `height` tall is made of, its spans given.
 fn build(m: &Model, l: &CurtainLayout, columns: Vec<Span>, rows: Vec<Span>, length: f64, height: f64) -> Built {
     let (nc, nr) = (columns.len(), rows.len());
@@ -561,6 +653,7 @@ fn build(m: &Model, l: &CurtainLayout, columns: Vec<Span>, rows: Vec<Span>, leng
     }
     drop_clashes(&mut vertical);
     drop_clashes(&mut horizontal);
+    let mitres = corners(&vertical, &horizontal);
 
     // Those near line `i`'s side: a span's mullions are on its own lines or, one gone, the next.
     let near = |lines: &'_ [Vec<Option<Bar<'_>>>], i: usize| -> std::ops::RangeInclusive<usize> {
@@ -583,9 +676,16 @@ fn build(m: &Model, l: &CurtainLayout, columns: Vec<Span>, rows: Vec<Span>, leng
             } else {
                 span
             };
-            if v1 - v0 > SAME {
-                let shape = out.of(PartKind::Mullion, b.pick, [b.hi - b.lo, v1 - v0, b.depth]);
-                let address = Address::Vertical { column: index(&columns, i), row: rows[r].index };
+            let (low, high) = (mitres.get(&(i, r)), mitres.get(&(i, r + 1)));
+            let at = |along: f64| (low.map_or(v0, |c| c.up_at(along)), high.map_or(v1, |c| c.up_at(along)));
+            let (left, right) = (at(b.lo), at(b.hi));
+            let mitred = (low.is_some() || high.is_some()) && left.0 < left.1 - SAME && right.0 < right.1 - SAME;
+            let address = Address::Vertical { column: index(&columns, i), row: rows[r].index };
+            if mitred {
+                let ring = [[b.lo, left.0], [b.hi, right.0], [b.hi, right.1], [b.lo, left.1]];
+                parts.push(cut_part(&mut out, b, ring, address));
+            } else if v1 - v0 > SAME {
+                let shape = out.of(PartKind::Mullion, b.pick, [b.hi - b.lo, v1 - v0, b.depth], None);
                 parts.push(Part { shape, centre: [b.middle(), (v0 + v1) / 2.0, b.offset], address });
             }
         }
@@ -603,9 +703,16 @@ fn build(m: &Model, l: &CurtainLayout, columns: Vec<Span>, rows: Vec<Span>, leng
             } else {
                 span
             };
-            if u1 - u0 > SAME {
-                let shape = out.of(PartKind::Mullion, b.pick, [u1 - u0, b.hi - b.lo, b.depth]);
-                let address = Address::Horizontal { column: columns[c].index, row: index(&rows, j) };
+            let (first, last) = (mitres.get(&(c, j)), mitres.get(&(c + 1, j)));
+            let at = |up: f64| (first.map_or(u0, |x| x.along_at(up)), last.map_or(u1, |x| x.along_at(up)));
+            let (under, over) = (at(b.lo), at(b.hi));
+            let mitred = (first.is_some() || last.is_some()) && under.0 < under.1 - SAME && over.0 < over.1 - SAME;
+            let address = Address::Horizontal { column: columns[c].index, row: index(&rows, j) };
+            if mitred {
+                let ring = [[under.0, b.lo], [under.1, b.lo], [over.1, b.hi], [over.0, b.hi]];
+                parts.push(cut_part(&mut out, b, ring, address));
+            } else if u1 - u0 > SAME {
+                let shape = out.of(PartKind::Mullion, b.pick, [u1 - u0, b.hi - b.lo, b.depth], None);
                 parts.push(Part { shape, centre: [(u0 + u1) / 2.0, b.middle(), b.offset], address });
             }
         }
@@ -639,7 +746,7 @@ fn build(m: &Model, l: &CurtainLayout, columns: Vec<Span>, rows: Vec<Span>, leng
                 }
                 continue;
             }
-            let shape = out.of(PartKind::Panel, name, [u1 - u0, v1 - v0, t.thickness]);
+            let shape = out.of(PartKind::Panel, name, [u1 - u0, v1 - v0, t.thickness], None);
             let address = Address::Cell { column: column.index, row: row.index };
             parts.push(Part { shape, centre: [(u0 + u1) / 2.0, (v0 + v1) / 2.0, t.offset], address });
         }
@@ -657,21 +764,25 @@ struct Built {
     too_small: bool,
 }
 
+/// What makes two shapes one: kind, type, and size and face to within [`SAME`].
+type ShapeKey = (PartKind, String, [i64; 3], Option<[[i64; 2]; 4]>);
+
 /// The shapes of a wall's parts, each kept once: what makes a thousand identical panels one.
 #[derive(Default)]
 struct Shapes {
     shapes: Vec<Shape>,
-    known: HashMap<(PartKind, String, [i64; 3]), u32>,
+    known: HashMap<ShapeKey, u32>,
 }
 
 impl Shapes {
-    fn of(&mut self, kind: PartKind, name: &str, size: [f64; 3]) -> u32 {
-        let key = (kind, name.to_string(), size.map(|x| (x / SAME).round() as i64));
+    fn of(&mut self, kind: PartKind, name: &str, size: [f64; 3], face: Option<Quad>) -> u32 {
+        let rounded = |x: f64| (x / SAME).round() as i64;
+        let key = (kind, name.to_string(), size.map(rounded), face.map(|q| q.map(|c| c.map(rounded))));
         if let Some(&s) = self.known.get(&key) {
             return s;
         }
         let s = self.shapes.len() as u32;
-        self.shapes.push(Shape { kind, type_name: name.to_string(), size });
+        self.shapes.push(Shape { kind, type_name: name.to_string(), size, face });
         self.known.insert(key, s);
         s
     }
@@ -894,6 +1005,9 @@ fn check_wall(m: &Model, id: u64, w: &Wall, l: &CurtainLayout) -> Result<(), Str
     }
     if w.attach_top.is_some() || w.attach_base.is_some() {
         return Err(format!("curtain wall {id}: attaching its top or base to a roof or floor isn't supported yet; detach it"));
+    }
+    if w.params.contains_key(crate::massing::FACE) {
+        return Err(format!("curtain wall {id}: walls by face can't be curtain walls yet; draw it, or give it a plain type"));
     }
     if !matches!(w.location, Location::ExteriorFinish | Location::InteriorFinish) {
         return Err(format!("curtain wall {id}: its location line is its exterior or interior face (exterior-finish or interior-finish)"));

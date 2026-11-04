@@ -566,6 +566,15 @@ fn curtain_solids(out: &mut Vec<Solid>, m: &Model, id: Id, w: &crate::model::Wal
         let (Some(s), Some(&(color, tex))) = (l.shapes.get(p.shape as usize), looks.get(p.shape as usize)) else { continue };
         let [along, up, across] = p.centre;
         let [da, dz, dc] = s.size.map(|x| x / 2.0);
+        if s.face.is_some() {
+            let world = |c: [f64; 3]| {
+                let q = frame.o + frame.u * (along + c[0]) + frame.n * (plane + across + c[1]);
+                [q.0, q.1, base + up + c[2]]
+            };
+            let tris = s.tris().into_iter().map(|t| t.map(world)).collect();
+            out.push(Solid::Mesh { owner: id, color, tex, tris, caps: 0, round: false, cut: true });
+            continue;
+        }
         out.push(Solid::Box {
             owner: id,
             color,

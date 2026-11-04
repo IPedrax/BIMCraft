@@ -170,8 +170,16 @@ fn curtain_wall(w: &mut Step, m: &Model, id: Id, wl: &crate::model::Wall, storey
             None => {
                 let [da, dz, dc] = shape.size.map(|x| x / 2.0);
                 let style = (!material.is_empty()).then(|| w.material_style(m, &material).1).flatten();
-                let profile = w.profile(&[P2(-da, -dc), P2(da, -dc), P2(da, dc), P2(-da, dc)], &[]);
-                let body = w.bodies(&[(profile, -dz, shape.size[1])], &[], style);
+                let body = if shape.face.is_some() {
+                    let set = w.faceset(&shape.tris());
+                    if let Some(style) = style {
+                        w.add(format!("IFCSTYLEDITEM(#{set},(#{style}),$)"));
+                    }
+                    w.tessellated(&[set])
+                } else {
+                    let profile = w.profile(&[P2(-da, -dc), P2(da, -dc), P2(da, dc), P2(-da, dc)], &[]);
+                    w.bodies(&[(profile, -dz, shape.size[1])], &[], style)
+                };
                 if let Some(x) = shapes.get_mut(p.shape as usize) {
                     *x = Some(body);
                 }
