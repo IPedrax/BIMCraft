@@ -396,7 +396,7 @@ impl BimApp {
         heading(ui, msg!("Graphics card"));
         let found = self.card.available();
         ui.add_enabled(found, egui::Checkbox::new(&mut self.card.wanted, t("Draw the 3D view on the graphics card"))).on_hover_text(t(
-            "Faster for large models. Hidden line and wireframe are still drawn on the processor, and so is everything if the card fails",
+            "Faster for large models. Point clouds are still drawn on the processor, and so is everything if the card fails",
         ));
         let muted = |ui: &mut Ui, text: String| ui.label(RichText::new(text).color(pal().muted));
         let text = match (self.card.available(), &self.card.note) {
