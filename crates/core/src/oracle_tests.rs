@@ -198,7 +198,10 @@ pub(crate) fn edit_more(s: &mut Session, dice: &mut Dice) -> (String, Value) {
         levels.get(dice.below(levels.len())).map(|(id, _)| *id)
     };
     let new = ["dimension3d", "view3d", "roof", "rebar", "spot", "component", "schedule"];
-    match dice.below(24) {
+    // Free walls east of the plate, each a U: two walls 3 m apart joined at the top, which a dimension measures and a typed
+    // length moves apart.
+    let free = |k: i64| 42_000 + 7000 * k;
+    match dice.below(25) {
         0 => {
             let ([x, y], z) = (at(dice), dice.mm(2000) + 2000);
             let to = [x + dice.mm(6000), y, z];
@@ -252,12 +255,12 @@ pub(crate) fn edit_more(s: &mut Session, dice: &mut Dice) -> (String, Value) {
             let categories = json!(["walls", "doors", "rooms"]);
             ("schedule".into(), json!({"name": format!("Mixed {n}"), "category": "multicategory", "categories": categories}))
         }
-        // A length typed into a dimension; or, now and then, one across an office, from wall to wall.
+        // A length typed into a dimension; or, now and then, one from a free wall to the next.
         14 => match pick(s, dice, &["dimension"]) {
-            Some(d) if dice.below(3) > 0 => ("dimension_value".into(), json!({"id": d, "value": 1000 + dice.below(4000)})),
+            Some(d) if dice.below(3) > 0 => ("dimension_value".into(), json!({"id": d, "value": 2000 + dice.below(2000)})),
             _ => {
-                let k = dice.below(10) as i64;
-                ("dimension".into(), json!({"refs": [[3000 * k, 2000], [3000 * k + 3000, 2000]], "at": [3000 * k + 1500, 1500]}))
+                let x = free(dice.below(3) as i64);
+                ("dimension".into(), json!({"refs": [[x, 2000], [x + 3000, 2000]], "at": [x + 1500, 1500]}))
             }
         },
         15 => ("dimension_constraint".into(), json!({"id": pick(s, dice, &["dimension"]), "locked": [0]})),
@@ -290,6 +293,10 @@ pub(crate) fn edit_more(s: &mut Session, dice: &mut Dice) -> (String, Value) {
             }
         }
         22 => ("delete".into(), json!({"ids": [pick(s, dice, &new)]})),
+        23 => {
+            let x = free(dice.below(3) as i64);
+            ("wall".into(), json!({"points": [[x, 0], [x, 4000], [x + 3000, 4000], [x + 3000, 0]], "height": 3000}))
+        }
         _ => (if dice.below(2) == 0 { "undo" } else { "redo" }.into(), json!({})),
     }
 }
