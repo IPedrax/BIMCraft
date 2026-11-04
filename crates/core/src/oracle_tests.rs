@@ -252,9 +252,10 @@ pub(crate) fn edit_more(s: &mut Session, dice: &mut Dice) -> (String, Value) {
             let categories = json!(["walls", "doors", "rooms"]);
             ("schedule".into(), json!({"name": format!("Mixed {n}"), "category": "multicategory", "categories": categories}))
         }
-        // A length typed into a dimension; or, now and then, one across an office, from wall to wall.
+        // A length typed into a dimension (an office is 3000 wide, and less leaves its windows no room); or, now and then, one
+        // across an office, from wall to wall.
         14 => match pick(s, dice, &["dimension"]) {
-            Some(d) if dice.below(3) > 0 => ("dimension_value".into(), json!({"id": d, "value": 1000 + dice.below(4000)})),
+            Some(d) if dice.below(3) > 0 => ("dimension_value".into(), json!({"id": d, "value": 3000 + dice.below(3000)})),
             _ => {
                 let k = dice.below(10) as i64;
                 ("dimension".into(), json!({"refs": [[3000 * k, 2000], [3000 * k + 3000, 2000]], "at": [3000 * k + 1500, 1500]}))
