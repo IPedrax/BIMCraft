@@ -465,7 +465,10 @@ and a custom one is tried before the defaults. Each name in `ACTIONS` is a tool 
 carries Revit's name for a tool BIMCraft lacks (Sun Settings, Detail and Model Line, Split Face, Brace, Beam System, Reference Plane, the duct tools): it waits
 for the tool. Load File reads JSON (`{"WA": "Wall"}`), Revit's `<Shortcut CommandName=… Shortcuts="WA#W1">` lines, or `KEY - Name` lines, up to 64 KiB;
 a description is an action only by its whole name in one of the interface's languages (`resolve_action`), and a key that is not two characters, names no action or
-is another action's is skipped and counted in the message. Custom shortcuts last while the window is open. Match Properties (MA) is the `match_properties`
+is another action's is skipped and counted in the message. Custom shortcuts are kept in `settings.json` (`shortcuts`: key to the action's English name, as `Settings::shortcuts`), written when one is added, edited or loaded and
+read into `BimApp::custom_shortcuts` at startup (`use_settings`), so they last past the window; Restore Defaults is kept too, as an empty object, and New and Open keep them.
+`Settings::from_json` keeps only what the dialog could have made (a key of two letters or digits, in upper case whatever its case in the file, and a name in `ACTIONS`),
+at most `MAX_SHORTCUTS`; a value that isn't an object leaves what the window had. Tests: `tests/shortcuts_kept.rs`. Match Properties (MA) is the `match_properties`
 command; with one element selected the window remembers its type for the next one drawn, with several it gives the others of the first's category its type.
 
 Annotation dialogs and draw tools. Manage > Annotation Settings lists Line Weights, Line Styles, Line Patterns (Line Styles on its

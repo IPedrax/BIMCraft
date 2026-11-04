@@ -5716,6 +5716,7 @@ mod revit;
 mod rooms;
 mod section_box;
 mod shape3d;
+mod shortcuts_kept;
 mod sketch;
 mod sketch3d;
 mod smallest;
