@@ -442,6 +442,26 @@ impl BimApp {
         }
     }
 
+    /// A box for each palette, shown or closed, and the layout the profile starts in: Settings > User Interface's, and the
+    /// app bar's Palettes menu, which is the way back for the Tools palette, as it has no shortcut.
+    pub(crate) fn palette_switches(&mut self, ui: &mut Ui) {
+        for p in Palette::ALL {
+            let mut on = self.docking.shown(p);
+            if ui.checkbox(&mut on, t(p.name())).changed() {
+                self.show_palette(p, on);
+            }
+        }
+        let (tip, layout) = match self.profile {
+            Profile::BimCraft => {
+                (msg!("The tools on the left, the Inspector over the Navigator on the right, as at first"), Docking::default())
+            }
+            Profile::Rev => (msg!("Properties over the Project Browser, on the left, as at first"), Docking::revit()),
+        };
+        if ui.button(t("Reset Palette Layout")).on_hover_text(t(tip)).clicked() {
+            self.docking = layout;
+        }
+    }
+
     fn interface_page(&mut self, ui: &mut Ui, ctx: &Context) {
         heading(ui, msg!("Profile"));
         let before = self.profile;
@@ -547,21 +567,7 @@ impl BimApp {
             }
         }
         heading(ui, msg!("Palettes"));
-        for p in Palette::ALL {
-            let mut on = self.docking.shown(p);
-            if ui.checkbox(&mut on, t(p.name())).changed() {
-                self.show_palette(p, on);
-            }
-        }
-        let (tip, layout) = match self.profile {
-            Profile::BimCraft => {
-                (msg!("The tools on the left, the Inspector over the Navigator on the right, as at first"), Docking::default())
-            }
-            Profile::Rev => (msg!("Properties over the Project Browser, on the left, as at first"), Docking::revit()),
-        };
-        if ui.button(t("Reset Palette Layout")).on_hover_text(t(tip)).clicked() {
-            self.docking = layout;
-        }
+        self.palette_switches(ui);
         heading(ui, msg!("Plans"));
         ui.checkbox(&mut self.show_origin, t("Show the origin marker in plans")).on_hover_text(t(
             "A small marker at the project's 0, 0 with the directions of x (east) and y (north). It is drawn on the screen only: \

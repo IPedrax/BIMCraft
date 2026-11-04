@@ -229,3 +229,27 @@ fn find_runs_a_tool_or_opens_a_view_by_what_is_typed_in_both_profiles() {
     key(&mut h, Key::Escape);
     assert!(h.state().find.is_none(), "Escape closes it");
 }
+
+#[test]
+fn the_tools_rail_scrolls_when_the_palette_is_too_short_for_its_tabs() {
+    let mut h = bimcraft(BOX);
+    h.set_size(vec2(1280.0, 420.0));
+    h.run();
+    h.run();
+    // The rail's own Manage, down the left: the rows name their tab in paint, not with a button.
+    let manage = |h: &Harness<BimApp>| h.get_all_by_label("Manage").map(|n| n.rect()).find(|r| r.left() < 60.0).unwrap();
+    let before = manage(&h);
+    assert!(before.bottom() > 420.0, "the window is too short for every tab: {before:?}");
+    h.hover_at(pos2(before.center().x, 200.0));
+    h.event(Event::MouseWheel {
+        phase: TouchPhase::Move,
+        unit: MouseWheelUnit::Point,
+        delta: vec2(0.0, -600.0),
+        modifiers: Modifiers::NONE,
+    });
+    h.run();
+    let after = manage(&h);
+    assert!(after.bottom() < 400.0, "the wheel over the rail brings it into view: {after:?}");
+    click_at(&mut h, after.center());
+    assert_eq!(h.state().tab, Tab::Manage);
+}
