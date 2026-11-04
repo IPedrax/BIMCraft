@@ -1836,6 +1836,23 @@ pub static ALL: &[Command] = &[
         water_size,
     ),
     other(
+        "reservoir_size",
+        "Size Water Reservation",
+        "{daily_l? | people?, per_person_l?, days?, fire_l?, house?, lower_percent?, compartments?, fill_flow?, pumps?, towers?, \
+         smallest_l?, peak_l?} the reservation of a building as NBR 5626:2020 asks. The day's consumption is `daily_l` (litres), or \
+         `people` times `per_person_l`: the standard gives no litres per person, so it is the project's own assumption and the reply \
+         says so. The potable volume is `days` of it (1 by default, 24 h being the least; 3 at most unless the project shows how the \
+         quality is kept) and `fire_l` is kept apart and added (the project's and the fire brigade's, not the standard's). The reply \
+         has the refill flow (the day's consumption in 6 h, or 3 h with `house`, a single-family house) and checks each of one kind \
+         (current requirement, historical reference, engineering practice, configurable assumption): `fill_flow` (L/s) against that \
+         flow, `compartments` of an elevated reservoir (2 at least, a house excepted), `smallest_l` against `peak_l` (the greatest peak \
+         over a normal maintenance), `pumps` (2 independent at least) and, with `towers` of 2 or more, the spare pump. A check whose \
+         input is not given is `pending` and never stops the others; `ok` is that none failed. `lower_percent` splits the potable \
+         volume between the lower and the upper reservoir, a choice of the project's; the usual split is only a suggestion. It \
+         leaves out the pump's head and the recalque pipe. It changes nothing",
+        reservoir_size,
+    ),
+    other(
         "storm_size",
         "Size a Storm Drain",
         "{kind: downpipe|horizontal, area?, rainfall?, flow?, outlet?: edge|funnel, gutter?, length?, slope?, inside?} a storm drain as \
@@ -5042,6 +5059,116 @@ fn water_size(_: &mut Session, p: &Value) -> R {
         "end_kpa": end.map(|e| round(e, 100.0)),
         "ok": ok,
         "ok_covers": if end.is_some() { "the speed and the pressure left at the end" } else { "the speed alone: no pressure was given" },
+    }))
+}
+
+fn reservoir_size(_: &mut Session, p: &Value) -> R {
+    use crate::reservoir::{self, Input, Kind, Status};
+    let c = "reservoir_size";
+    let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
+    const KEYS: &[&str] = &[
+        "daily_l",
+        "people",
+        "per_person_l",
+        "days",
+        "fire_l",
+        "house",
+        "lower_percent",
+        "compartments",
+        "fill_flow",
+        "pumps",
+        "towers",
+        "smallest_l",
+        "peak_l",
+    ];
+    if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
+        return Err(bad(c, format!("unknown parameter `{key}`")));
+    }
+    let whole = |key: &str, lo: f64, hi: f64| -> Result<Option<u32>, String> {
+        match p.get(key) {
+            v if absent(v) => Ok(None),
+            Some(v) => v
+                .as_f64()
+                .filter(|n| n.is_finite() && *n >= lo && *n <= hi && n.fract() == 0.0)
+                .map(|n| Some(n as u32))
+                .ok_or_else(|| bad(c, format!("`{key}` must be a whole number from {lo} to {hi}, got {v}"))),
+            None => Ok(None),
+        }
+    };
+    let optional = |key: &str, hi: f64| -> Result<Option<f64>, String> {
+        if absent(p.get(key)) { Ok(None) } else { within(c, p, key, 0.0, f64::MIN_POSITIVE, hi).map(Some) }
+    };
+    let people = whole("people", 1.0, 1.0e6)?;
+    let per_person = optional("per_person_l", 10_000.0)?;
+    let (daily_l, source) = match (optional("daily_l", 1.0e9)?, people, per_person) {
+        (Some(_), Some(_), _) => return Err(bad(c, "`people` and `daily_l` are two ways to give the consumption: give one")),
+        (Some(_), None, Some(_)) => return Err(bad(c, "`per_person_l` goes with `people`, not with `daily_l`")),
+        (Some(d), None, None) => (d, "given as `daily_l`"),
+        (None, Some(n), Some(l)) => (f64::from(n) * l, "`people` times `per_person_l`"),
+        (None, Some(_), None) => {
+            return Err(bad(c, "`people` needs `per_person_l` (litres per person per day): the standard gives none, so it is yours"));
+        }
+        (None, None, Some(_)) => return Err(bad(c, "`per_person_l` needs `people`")),
+        (None, None, None) => return Err(bad(c, "`daily_l` (litres a day), or `people` and `per_person_l`, is required")),
+    };
+    let days = within(c, p, "days", 1.0, 0.01, 365.0)?;
+    let fire_l = within(c, p, "fire_l", 0.0, 0.0, 1.0e9)?;
+    let lower_percent = if absent(p.get("lower_percent")) { None } else { Some(within(c, p, "lower_percent", 0.0, 0.0, 100.0)?) };
+    let input = Input {
+        daily_l,
+        days,
+        fire_l,
+        house: flag(c, p, "house")?,
+        lower_percent,
+        compartments: whole("compartments", 0.0, 1000.0)?,
+        fill_flow_lps: optional("fill_flow", 1.0e6)?,
+        pumps: whole("pumps", 0.0, 1000.0)?,
+        towers: whole("towers", 1.0, 1000.0)?.unwrap_or(1),
+        smallest_l: optional("smallest_l", 1.0e9)?,
+        peak_l: optional("peak_l", 1.0e9)?,
+    };
+    let r = reservoir::size(&input);
+    let round = |x: f64, k: f64| (x * k).round() / k + 0.0;
+    let pending: Vec<&str> = r.checks.iter().filter(|k| k.status == Status::Pending).map(|k| k.id).collect();
+    Ok(json!({
+        "daily_consumption_l": round(daily_l, 100.0),
+        "consumption": {
+            "source": source,
+            "kind": Kind::Assumption.name(),
+            "note": "the standard gives no litres per person per day: the value is the project's, from a source it names",
+        },
+        "potable_volume_l": round(r.potable_l, 100.0),
+        "fire_reserve_l": round(fire_l, 100.0),
+        "total_volume_l": round(r.total_l, 100.0),
+        "calc": [
+            {"what": "potable volume", "formula": "days x daily consumption", "value": round(r.potable_l, 100.0), "unit": "L"},
+            {"what": "total volume", "formula": "potable volume + fire reserve", "value": round(r.total_l, 100.0), "unit": "L"},
+            {"what": "least supply flow", "formula": "daily consumption / (refill hours x 3600)", "value": round(r.min_fill_flow_lps, 1000.0), "unit": "L/s"},
+        ],
+        "refill": {"hours": r.refill_hours, "min_flow_lps": round(r.min_fill_flow_lps, 1000.0)},
+        "split": r.split.map(|s| json!({
+            "kind": Kind::Assumption.name(),
+            "lower_percent": s.lower_percent,
+            "lower_l": round(s.lower_l, 100.0),
+            "upper_l": round(s.upper_l, 100.0),
+            "note": "the standard fixes no share between the lower and the upper reservoir: this is the project's",
+        })),
+        "suggested_split": {
+            "kind": Kind::Practice.name(),
+            "lower_percent": r.suggested_lower_percent,
+            "note": "the usual share, a common practice and not a requirement; give `lower_percent` to choose",
+        },
+        "checks": r.checks.iter().map(|k| json!({
+            "id": k.id,
+            "kind": k.kind.name(),
+            "status": k.status.name(),
+            "text": k.text,
+            "source": k.source,
+        })).collect::<Vec<_>>(),
+        "pending": pending,
+        "ok": r.checks.iter().all(|k| k.status != Status::Fail),
+        "ok_covers": "the checks that could be made: none failed; `pending` lists what an input not given left open",
+        "not_covered": "the pump's head and power, the recalque pipe (Forchheimer is not the standard's and is not offered here), the fire reserve's own rules and the consumption per person",
     }))
 }
 

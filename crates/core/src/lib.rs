@@ -73,6 +73,7 @@ pub mod reinforce;
 #[cfg(test)]
 mod reinforce_tests;
 pub mod render;
+pub mod reservoir;
 #[cfg(test)]
 mod roof_slopes_tests;
 #[cfg(test)]
