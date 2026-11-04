@@ -3,7 +3,8 @@
 //! ([`BimApp::use_settings`]); a window that wasn't given the file (every test's) keeps them for as long as it's open.
 //! What it keeps: the theme and whether the drawing stays light in a dark one, the user's own accent, panel, canvas and text colours,
 //! the profile, the layout, interface language, ribbon, palettes, the
-//! window's size, the background autosave interval, the colour High Contrast Point Clouds draws scans in, and the control port
+//! window's size, the background autosave interval, the colour High Contrast Point Clouds draws scans in, whether plans show the
+//! origin marker and their view's name in the corner, and the control port
 //! for agents (whether the window opens it, on which port, and whether agents may edit the project or only read it).
 //! The pages for what is still to come (performance and graphics) show what they will hold, greyed out.
 
@@ -110,6 +111,9 @@ pub struct Settings {
     pub high_contrast: [u8; 3],
     /// Grid snapping applies to every view, using the active view's enabled lattice.
     pub grid_snapping: bool,
+    /// The plans' origin marker, and the view's name in their corner: working aids on the screen.
+    pub origin_marker: bool,
+    pub view_name: bool,
     /// The system's title bar rather than the window's own, where the window can draw its own.
     pub system_title_bar: bool,
     /// Agents: the window opens the control port (on `agents_port`, 0 for any free one), and they may edit or only read.
@@ -146,6 +150,8 @@ impl Settings {
             "window": self.window.to_json(),
             "high_contrast": self.high_contrast,
             "grid_snapping": self.grid_snapping,
+            "origin_marker": self.origin_marker,
+            "view_name": self.view_name,
             "system_title_bar": self.system_title_bar,
             "agents": {"listen": self.agents_listen, "port": self.agents_port, "edit": self.agents_edit},
         })
@@ -187,6 +193,8 @@ impl Settings {
             window: Window::from_json(&v["window"], base.window),
             high_contrast: colour(&v["high_contrast"]).unwrap_or(base.high_contrast),
             grid_snapping: v["grid_snapping"].as_bool().unwrap_or(base.grid_snapping),
+            origin_marker: v["origin_marker"].as_bool().unwrap_or(base.origin_marker),
+            view_name: v["view_name"].as_bool().unwrap_or(base.view_name),
             system_title_bar: v["system_title_bar"].as_bool().unwrap_or(base.system_title_bar),
             agents_listen: v["agents"]["listen"].as_bool().unwrap_or(base.agents_listen),
             agents_port: v["agents"]["port"].as_u64().and_then(|p| u16::try_from(p).ok()).unwrap_or(base.agents_port),
@@ -282,6 +290,7 @@ impl BimApp {
         self.window.kept = kept.window;
         self.scan_contrast = kept.high_contrast;
         self.grid_snapping = kept.grid_snapping;
+        (self.show_origin, self.show_view_name) = (kept.origin_marker, kept.view_name);
         self.system_title_bar = kept.system_title_bar;
         (self.agents.listen, self.agents.port, self.agents.edit) = (kept.agents_listen, kept.agents_port, kept.agents_edit);
         self.settings_kept = Some(kept);
@@ -315,6 +324,8 @@ impl BimApp {
             window: self.window.kept,
             high_contrast: self.scan_contrast,
             grid_snapping: self.grid_snapping,
+            origin_marker: self.show_origin,
+            view_name: self.show_view_name,
             system_title_bar: self.system_title_bar,
             agents_listen: self.agents.listen,
             agents_port: self.agents.port,
@@ -527,6 +538,15 @@ impl BimApp {
         if ui.button(t("Reset Palette Layout")).on_hover_text(t(tip)).clicked() {
             self.docking = layout;
         }
+        heading(ui, msg!("Plans"));
+        ui.checkbox(&mut self.show_origin, t("Show the origin marker in plans")).on_hover_text(t(
+            "A small marker at the project's 0, 0 with the directions of x (east) and y (north). It is drawn on the screen only: \
+             never in a printed drawing, a sheet or an export",
+        ));
+        ui.checkbox(&mut self.show_view_name, t("Show the view's name in the corner of plans")).on_hover_text(t(
+            "The name of the floor plan or ceiling plan in its bottom left corner. It is drawn on the screen only, and the view's tab \
+             names it too",
+        ));
         later(ui, |ui| {
             let (mut scale, mut keys, mut reopen, mut views) = (100.0, true, false, false);
             ui.horizontal(|ui| {

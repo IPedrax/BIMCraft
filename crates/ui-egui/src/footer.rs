@@ -510,6 +510,16 @@ impl BimApp {
         }
     }
 
+    /// How much of the view's foot the view control bar covers, in points: its card and the gap under it where it floats over the
+    /// view (as tall as it was drawn last, a row at first), nothing where (Compact) it is a bar under the view.
+    pub(crate) fn bar_cover(&self, ctx: &egui::Context) -> f32 {
+        if crate::style::compact() || self.graphic_view().is_none() {
+            return 0.0;
+        }
+        let tall = ctx.data(|d| d.get_temp::<f32>(egui::Id::new(("view-control", self.sheet)).with("tall")));
+        tall.unwrap_or(crate::FLOATING_CARD) + f32::from(crate::style::gap())
+    }
+
     /// The cyan frame round a view that hides, isolates or reveals for now, as Revit draws.
     pub(crate) fn temp_frame(&self, ui: &Ui) {
         if self.temporary().is_some_and(|t| t.hides() || t.reveal) {
