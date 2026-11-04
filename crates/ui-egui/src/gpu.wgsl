@@ -403,8 +403,6 @@ fn outlined(x: i32, y: i32) -> bool {
     return false;
 }
 
-}
-
 // A colour on a dark canvas, where paper and ink swap, as `canvas::color` has it.
 fn inked(c: vec3<f32>) -> vec3<f32> {
     if g.origin.w < 0.5 {
