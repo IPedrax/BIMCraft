@@ -38,7 +38,7 @@ msgstr "1 elemento"
 
 #: crates/ui-egui/src/templates.rs:47
 msgid "3D"
-msgstr ""
+msgstr "3D"
 
 #: crates/ui-egui/src/lib.rs:3463
 msgid "3D Scene as glTF…"
@@ -163,7 +163,7 @@ msgstr "Un filtro de fase dibuja un estado de este modo donde dice Con reemplazo
 
 #: crates/ui-egui/src/presets.rs:132
 msgid "A preset needs a name, of at most 64 letters"
-msgstr ""
+msgstr "Un modelo necesita un nombre de 64 letras como máximo"
 
 #: crates/ui-egui/src/properties.rs:2631
 msgid "A scan's points where the plan's cut plane cuts it, to trace what was measured"
@@ -183,7 +183,7 @@ msgstr "Una vista siempre tiene una escala"
 
 #: crates/ui-egui/src/templates.rs:252
 msgid "A view template is named {} already: give the set another name"
-msgstr ""
+msgstr "Ya existe una plantilla de vista llamada {}: ponga otro nombre al conjunto"
 
 #: crates/ui-egui/src/properties.rs:2630
 msgid "A wall's centre line, so a wall drawn on it meets it"
@@ -221,7 +221,7 @@ msgstr "Absoluta"
 
 #: crates/ui-egui/src/settings.rs:472
 msgid "Accent colour"
-msgstr ""
+msgstr "Color de énfasis"
 
 #: crates/ui-egui/src/phasing.rs:371
 msgid "Accept Primary"
@@ -550,7 +550,7 @@ msgstr "Un proyecto vacío para modelar."
 
 #: crates/ui-egui/src/display.rs:67
 msgid "An outline round what stands in front of what is behind it"
-msgstr ""
+msgstr "Un contorno alrededor de lo que está delante de lo que queda detrás"
 
 #: crates/ui-egui/src/reinforce.rs:92
 #: crates/ui-egui/src/reinforce.rs:120
@@ -613,7 +613,7 @@ msgstr "Plumilla de anotación {}"
 
 #: crates/ui-egui/src/properties.rs:1284
 msgid "Another colour"
-msgstr ""
+msgstr "Otro color"
 
 #: crates/ui-egui/src/footer.rs:454
 #: crates/ui-egui/src/properties.rs:2664
@@ -677,7 +677,7 @@ msgstr "Flecha"
 
 #: crates/ui-egui/src/properties.rs:1209
 msgid "As placed"
-msgstr ""
+msgstr "Como se colocó"
 
 #: crates/ui-egui/src/settings.rs:418
 msgid "As the System"
@@ -725,7 +725,7 @@ msgstr "Unir muro:"
 
 #: crates/ui-egui/src/properties.rs:1771
 msgid "Attached Walls"
-msgstr ""
+msgstr "Muros unidos"
 
 #: crates/ui-egui/src/lib.rs:4623
 msgid "Auto"
@@ -817,7 +817,7 @@ msgstr "BIMCraft {} está actualizado."
 
 #: crates/ui-egui/src/settings.rs:450
 msgid "BIMCraft's own look: a dark title bar, and the ribbon, the palettes and the bars laid out as Layout says"
-msgstr ""
+msgstr "El aspecto propio de BIMCraft: una barra de título oscura, y la cinta de opciones, las paletas y las barras dispuestas como indica Disposición"
 
 #: crates/ui-egui/src/start.rs:99
 msgid "Back"
@@ -1119,7 +1119,7 @@ msgstr "Cancelar patrón"
 
 #: crates/ui-egui/src/settings.rs:488
 msgid "Canvas colour"
-msgstr ""
+msgstr "Color del lienzo"
 
 #: crates/ui-egui/src/mep.rs:255
 msgid "Capture & Descent"
@@ -1770,7 +1770,7 @@ msgstr "Pulse donde empieza la línea."
 
 #: crates/ui-egui/src/properties.rs:1182
 msgid "Click where the location line should run"
-msgstr ""
+msgstr "Haz clic donde debe pasar la línea de ubicación"
 
 #: crates/ui-egui/src/draw.rs:588
 msgid "Click where the middle of a side goes. Esc cancels."
@@ -1863,7 +1863,7 @@ msgstr "Color"
 
 #: crates/ui-egui/src/properties.rs:1263
 msgid "Colour on plans"
-msgstr ""
+msgstr "Color en las plantas"
 
 #: crates/core/src/commands.rs:507
 msgid "Column"
@@ -2394,7 +2394,7 @@ msgstr "Demolido"
 
 #: crates/ui-egui/src/phasing.rs:75
 msgid "Demolition"
-msgstr ""
+msgstr "Demolición"
 
 #: crates/core/src/commands.rs:8563
 msgid "Dependent"
@@ -2608,7 +2608,7 @@ msgstr "Hecho"
 
 #: crates/ui-egui/src/presets.rs:176
 msgid "Done Editing Tools"
-msgstr ""
+msgstr "Terminar de editar herramientas"
 
 #: crates/core/src/commands.rs:198
 msgid "Door"
@@ -2696,7 +2696,7 @@ msgstr "Dibujar"
 
 #: crates/ui-egui/src/properties.rs:1309
 msgid "Draw a slope arrow"
-msgstr ""
+msgstr "Dibujar una flecha de pendiente"
 
 #: crates/ui-egui/src/sketch.rs:275
 msgid "Draw one outline, with any openings inside it: these lines make {} separate outlines."
@@ -2837,7 +2837,7 @@ msgstr "Editar opción: los elementos nuevos se hacen en esta opción, y la vist
 #: crates/ui-egui/src/lib.rs:3376
 #: crates/ui-egui/src/presets.rs:176
 msgid "Edit Tools"
-msgstr ""
+msgstr "Editar herramientas"
 
 #: crates/ui-egui/src/properties.rs:1065
 msgid "Edit Type"
@@ -3007,7 +3007,7 @@ msgstr "Todas las vistas están en planos."
 
 #: crates/ui-egui/src/phasing.rs:72
 msgid "Everything the project has, as its categories draw it"
-msgstr ""
+msgstr "Todo lo que tiene el proyecto, como lo dibujan sus categorías"
 
 #: crates/core/src/phasing.rs:117
 msgid "Existing"
@@ -3225,15 +3225,15 @@ msgstr "Filtros (FT): reglas que eligen elementos para que una vista los oculte 
 #: crates/ui-egui/src/find.rs:36
 #: crates/ui-egui/src/lib.rs:3127
 msgid "Find"
-msgstr ""
+msgstr "Buscar"
 
 #: crates/ui-egui/src/find.rs:80
 msgid "Find a tool, a view or a setting"
-msgstr ""
+msgstr "Buscar una herramienta, una vista o un ajuste"
 
 #: crates/ui-egui/src/find.rs:49
 msgid "Find a tool, a view or a setting (Ctrl+K)"
-msgstr ""
+msgstr "Buscar una herramienta, una vista o un ajuste (Ctrl+K)"
 
 #: crates/ui-egui/src/inquiry.rs:131
 msgid "Finds {} in the library, not elements."
@@ -3299,15 +3299,15 @@ msgstr "Fija a la línea de cota"
 
 #: crates/ui-egui/src/properties.rs:1337
 msgid "Flat"
-msgstr ""
+msgstr "Plano"
 
 #: crates/ui-egui/src/settings.rs:453
 msgid "Flat and square, the title bar in the ribbon's greys: the File tab leads the ribbon's tabs and the Options Bar is docked under the ribbon"
-msgstr ""
+msgstr "Plano y de esquinas rectas, con la barra de título en los grises de la cinta: la pestaña Archivo encabeza las pestañas de la cinta y la barra de opciones se acopla bajo la cinta"
 
 #: crates/ui-egui/src/properties.rs:1306
 msgid "Flat: it has no slope arrow. Draw one from where its top stays toward where it rises."
-msgstr ""
+msgstr "Plano: no tiene flecha de pendiente. Dibuja una desde donde su cara superior se mantiene hacia donde sube."
 
 #: crates/ui-egui/src/lib.rs:4345
 msgid "Flip"
@@ -3327,15 +3327,15 @@ msgstr "Invertir lado"
 
 #: crates/ui-egui/src/properties.rs:1212
 msgid "Flipped both"
-msgstr ""
+msgstr "Ambos invertidos"
 
 #: crates/ui-egui/src/properties.rs:1211
 msgid "Flipped facing"
-msgstr ""
+msgstr "Orientación invertida"
 
 #: crates/ui-egui/src/properties.rs:1210
 msgid "Flipped hand"
-msgstr ""
+msgstr "Lado invertido"
 
 #: crates/ui-egui/src/dock.rs:580
 #: crates/ui-egui/src/dock.rs:819
@@ -3382,7 +3382,7 @@ msgstr "Piso por cara (FB): un piso en la cara superior de las masas seleccionad
 
 #: crates/ui-egui/src/properties.rs:1319
 msgid "Floor slope: {}"
-msgstr ""
+msgstr "Pendiente del piso: {}"
 
 #: crates/ui-egui/src/structure.rs:98
 msgid "Floor: Structural"
@@ -3584,11 +3584,11 @@ msgstr "Categoría"
 
 #: crates/ui-egui/src/display.rs:53
 msgid "Graphic Display Options"
-msgstr ""
+msgstr "Opciones de visualización gráfica"
 
 #: crates/ui-egui/src/footer.rs:379
 msgid "Graphic Display Options..."
-msgstr ""
+msgstr "Opciones de visualización gráfica..."
 
 #: crates/ui-egui/src/phasing.rs:27
 msgid "Graphic Overrides"
@@ -3697,7 +3697,7 @@ msgstr "Altura:"
 
 #: crates/ui-egui/src/properties.rs:1771
 msgid "Held by Dimensions"
-msgstr ""
+msgstr "Fijado por cotas"
 
 #: crates/core/src/lines.rs:181
 msgid "Hidden"
@@ -3709,7 +3709,7 @@ msgstr "Líneas ocultas"
 
 #: crates/ui-egui/src/display.rs:59
 msgid "Hidden Line and Wireframe always draw their edges"
-msgstr ""
+msgstr "Líneas ocultas y Estructura alámbrica siempre dibujan sus aristas"
 
 #: crates/core/src/lines.rs:206
 msgid "Hidden Lines"
@@ -3952,7 +3952,7 @@ msgstr "Cajas de inspección"
 
 #: crates/ui-egui/src/dock.rs:51
 msgid "Inspector"
-msgstr ""
+msgstr "Inspector"
 
 #: crates/ui-egui/src/updates.rs:71
 msgid "Installing BIMCraft {}…"
@@ -4108,7 +4108,7 @@ msgstr "Capas que esta vista muestra de cada dibujo"
 
 #: crates/ui-egui/src/properties.rs:1155
 msgid "Layers, top down"
-msgstr ""
+msgstr "Capas, de arriba abajo"
 
 #: crates/ui-egui/src/settings.rs:517
 msgid "Layout"
@@ -4225,7 +4225,7 @@ msgstr "SPDA"
 
 #: crates/ui-egui/src/properties.rs:1254
 msgid "Lilac"
-msgstr ""
+msgstr "Lila"
 
 #: crates/ui-egui/src/properties.rs:162
 msgid "Limit Offset"
@@ -4342,7 +4342,7 @@ msgstr "Las líneas se solapan ({}): una va sobre otra, o una línea está dibuj
 
 #: crates/ui-egui/src/canvas.rs:1054
 msgid "Lines up with wall {}"
-msgstr ""
+msgstr "Se alinea con el muro {}"
 
 #: crates/ui-egui/src/lib.rs:4260
 msgid "Linework"
@@ -4375,11 +4375,11 @@ msgstr "Vincular modelo (LK): otro proyecto, un archivo BIMCraft o un IFC, mostr
 
 #: crates/ui-egui/src/footer.rs:395
 msgid "Linked 3D View"
-msgstr ""
+msgstr "Vista 3D vinculada"
 
 #: crates/ui-egui/src/footer.rs:392
 msgid "Linked 3D View: the 3D view beside this plan, cut to its level and to what it shows as it pans or changes level; again to put the 3D view back as it was"
-msgstr ""
+msgstr "Vista 3D vinculada: la vista 3D junto a esta planta, recortada a su nivel y a lo que muestra al desplazarse o cambiar de nivel; otra vez para dejar la vista 3D como estaba"
 
 #: crates/ui-egui/src/properties.rs:373
 msgid "Linked File"
@@ -4451,7 +4451,7 @@ msgstr "Línea de ubicación:"
 
 #: crates/ui-egui/src/properties.rs:1180
 msgid "Location line: {}"
-msgstr ""
+msgstr "Línea de ubicación: {}"
 
 #: crates/ui-egui/src/canvas.rs:3071
 msgid "Lock alignment"
@@ -4513,7 +4513,7 @@ msgstr "Gestionar"
 
 #: crates/ui-egui/src/presets.rs:181
 msgid "Manage Presets…"
-msgstr ""
+msgstr "Gestionar modelos…"
 
 #: crates/core/src/model.rs:1479
 msgid "Mark"
@@ -4668,11 +4668,11 @@ msgstr "Milímetros"
 
 #: crates/ui-egui/src/minimap.rs:70
 msgid "Minimap"
-msgstr ""
+msgstr "Minimapa"
 
 #: crates/ui-egui/src/minimap.rs:85
 msgid "Minimap of the view"
-msgstr ""
+msgstr "Minimapa de la vista"
 
 #: crates/ui-egui/src/titlebar.rs:83
 msgid "Minimize"
@@ -4724,7 +4724,7 @@ msgstr "Categorías del modelo"
 
 #: crates/ui-egui/src/display.rs:56
 msgid "Model Display"
-msgstr ""
+msgstr "Visualización del modelo"
 
 #: crates/ui-egui/src/lineweights.rs:18
 msgid "Model Line Weights"
@@ -4857,7 +4857,7 @@ msgstr "Nombre:"
 
 #: crates/ui-egui/src/dock.rs:52
 msgid "Navigator"
-msgstr ""
+msgstr "Navegador"
 
 #: crates/core/src/snap.rs:65
 msgid "Nearest"
@@ -4981,7 +4981,7 @@ msgstr "Todavía no hay materiales favoritos: guarde uno desde Administrar > Mat
 
 #: crates/ui-egui/src/properties.rs:1249
 msgid "No fill"
-msgstr ""
+msgstr "Sin relleno"
 
 #: crates/ui-egui/src/graphics.rs:1118
 msgid "No filters applied."
@@ -5025,7 +5025,7 @@ msgstr "Aún no hay plantillas de {}: Crear desde esta vista crea una a partir d
 
 #: crates/ui-egui/src/electrical.rs:298
 msgid "Nominal"
-msgstr ""
+msgstr "Nominal"
 
 #: crates/ui-egui/src/standards.rs:252
 msgid "Nominal Text Height:"
@@ -5082,7 +5082,7 @@ msgstr "Observaciones de la verificación (las barras se hicieron):"
 
 #: crates/ui-egui/src/find.rs:107
 msgid "Nothing by that name"
-msgstr ""
+msgstr "Nada con ese nombre"
 
 #: crates/ui-egui/src/inquiry.rs:90
 msgid "Nothing has that ID or GUID: {}"
@@ -5254,11 +5254,11 @@ msgstr "Abriendo un archivo de Revit: {}"
 
 #: crates/ui-egui/src/properties.rs:1771
 msgid "Openings"
-msgstr ""
+msgstr "Aberturas"
 
 #: crates/ui-egui/src/properties.rs:1204
 msgid "Opens"
-msgstr ""
+msgstr "Apertura"
 
 #: crates/ui-egui/src/settings.rs:694
 msgid "Opens the control port now and whenever BIMCraft starts: an agent connects with bimcraft-cli mcp --connect. Only this machine can reach it, and only with the token in bridge.json beside your favorites"
@@ -5388,7 +5388,7 @@ msgstr "Paletas"
 
 #: crates/ui-egui/src/settings.rs:481
 msgid "Panel colour"
-msgstr ""
+msgstr "Color de los paneles"
 
 #: crates/ui-egui/src/standards.rs:124
 msgid "Paper sizes, sheet borders, filing margins, title blocks, and folding specifications."
@@ -6098,7 +6098,7 @@ msgstr "Conservar"
 
 #: crates/ui-egui/src/presets.rs:213
 msgid "Preset name:"
-msgstr ""
+msgstr "Nombre del modelo:"
 
 #: crates/ui-egui/src/reinforce.rs:456
 msgid "Preset:"
@@ -6111,7 +6111,7 @@ msgstr "Modelo: nombre"
 #: crates/ui-egui/src/presets.rs:167
 #: crates/ui-egui/src/settings.rs:463
 msgid "Presets"
-msgstr ""
+msgstr "Modelos"
 
 #: crates/ui-egui/src/editor.rs:1035
 #: crates/ui-egui/src/graphics.rs:1432
@@ -6180,11 +6180,11 @@ msgstr "Cero del proyecto"
 
 #: crates/ui-egui/src/presets.rs:158
 msgid "Project scale"
-msgstr ""
+msgstr "Escala del proyecto"
 
 #: crates/ui-egui/src/presets.rs:192
 msgid "Project scale:"
-msgstr ""
+msgstr "Escala del proyecto:"
 
 #: crates/ui-egui/src/camera.rs:72
 #: crates/ui-egui/src/objectstyles.rs:56
@@ -6477,11 +6477,11 @@ msgstr "Renombrar…"
 
 #: crates/ui-egui/src/phasing.rs:189
 msgid "Renovation"
-msgstr ""
+msgstr "Renovación"
 
 #: crates/ui-egui/src/phasing.rs:187
 msgid "Renovation: which phase of the work this view shows: all of it, what stood before, what comes down, or what is built"
-msgstr ""
+msgstr "Renovación: qué fase de la obra muestra esta vista: toda, lo que había antes, lo que se demuele o lo que se construye"
 
 #: crates/ui-egui/src/settings.rs:582
 msgid "Reopen the views that were open"
@@ -6515,11 +6515,11 @@ msgstr "Restablecer"
 
 #: crates/ui-egui/src/settings.rs:476
 msgid "Reset Accent"
-msgstr ""
+msgstr "Restablecer énfasis"
 
 #: crates/ui-egui/src/settings.rs:490
 msgid "Reset Canvas"
-msgstr ""
+msgstr "Restablecer lienzo"
 
 #: crates/ui-egui/src/settings.rs:635
 msgid "Reset Colour"
@@ -6531,7 +6531,7 @@ msgstr "Restablecer la disposición de las paletas"
 
 #: crates/ui-egui/src/settings.rs:483
 msgid "Reset Panels"
-msgstr ""
+msgstr "Restablecer paneles"
 
 #: crates/ui-egui/src/lib.rs:2517
 msgid "Reset Shape"
@@ -6551,7 +6551,7 @@ msgstr "Restablecer ocultar/aislar temporal (HR)"
 
 #: crates/ui-egui/src/settings.rs:497
 msgid "Reset Text"
-msgstr ""
+msgstr "Restablecer texto"
 
 #: crates/ui-egui/src/standards.rs:325
 msgid "Reset to NBR Defaults"
@@ -6699,7 +6699,7 @@ msgstr "Separador de habitaciones: líneas que delimitan habitaciones como los m
 
 #: crates/ui-egui/src/properties.rs:1253
 msgid "Rose"
-msgstr ""
+msgstr "Rosa"
 
 #: crates/core/src/commands.rs:1125
 msgid "Rotate"
@@ -6731,7 +6731,7 @@ msgstr "Dibujo SVG"
 
 #: crates/ui-egui/src/properties.rs:1251
 msgid "Sage"
-msgstr ""
+msgstr "Salvia"
 
 #: crates/ui-egui/src/properties.rs:309
 msgid "Same as start"
@@ -6778,7 +6778,7 @@ msgstr "Guardar una copia de recuperación cada"
 
 #: crates/ui-egui/src/templates.rs:230
 msgid "Save as"
-msgstr ""
+msgstr "Guardar como"
 
 #: crates/ui-egui/src/reinforce.rs:465
 msgid "Save as:"
@@ -7022,7 +7022,7 @@ msgstr "Sombreado"
 
 #: crates/ui-egui/src/display.rs:70
 msgid "Shadows"
-msgstr ""
+msgstr "Sombras"
 
 #: crates/ui-egui/src/lib.rs:3646
 msgid "Shaft"
@@ -7099,7 +7099,7 @@ msgstr "Mostrar todo"
 
 #: crates/ui-egui/src/display.rs:71
 msgid "Show Ambient Shadows"
-msgstr ""
+msgstr "Mostrar sombras ambientales"
 
 #: crates/ui-egui/src/notes.rs:510
 msgid "Show Border"
@@ -7115,11 +7115,11 @@ msgstr "Mostrar completo"
 
 #: crates/ui-egui/src/display.rs:57
 msgid "Show Edges"
-msgstr ""
+msgstr "Mostrar aristas"
 
 #: crates/ui-egui/src/presets.rs:227
 msgid "Show Every Tool"
-msgstr ""
+msgstr "Mostrar todas las herramientas"
 
 #: crates/ui-egui/src/lib.rs:3521
 msgid "Show Mass"
@@ -7192,7 +7192,7 @@ msgstr "Lados:"
 
 #: crates/ui-egui/src/display.rs:61
 msgid "Silhouettes"
-msgstr ""
+msgstr "Siluetas"
 
 #: crates/core/src/schedule.rs:231
 msgid "Sill"
@@ -7229,7 +7229,7 @@ msgstr "Sección del tamaño {}"
 
 #: crates/ui-egui/src/presets.rs:40
 msgid "Sketch"
-msgstr ""
+msgstr "Boceto"
 
 #: crates/ui-egui/src/sketch.rs:821
 msgid "Sketch Ceiling"
@@ -7362,7 +7362,7 @@ msgstr "Sofá"
 
 #: crates/ui-egui/src/display.rs:72
 msgid "Soft shadows where faces meet inside a corner"
-msgstr ""
+msgstr "Sombras suaves donde las caras se encuentran en una esquina interior"
 
 #: crates/ui-egui/src/graphics.rs:1450
 msgid "Solid"
@@ -7582,7 +7582,7 @@ msgstr "Estructura"
 
 #: crates/ui-egui/src/presets.rs:41
 msgid "Studio"
-msgstr ""
+msgstr "Estudio"
 
 #: crates/ui-egui/src/linestyles.rs:188
 msgid "Style"
@@ -7804,7 +7804,7 @@ msgstr "Altura del destino:"
 
 #: crates/ui-egui/src/presets.rs:42
 msgid "Team"
-msgstr ""
+msgstr "Equipo"
 
 #: crates/ui-egui/src/lib.rs:4045
 #: crates/ui-egui/src/standards.rs:271
@@ -7886,7 +7886,7 @@ msgstr "Tamaño de texto"
 
 #: crates/ui-egui/src/settings.rs:495
 msgid "Text colour"
-msgstr ""
+msgstr "Color del texto"
 
 #: crates/ui-egui/src/lib.rs:4636
 msgid "Text:"
@@ -7918,7 +7918,7 @@ msgstr "Eso no se puede dibujar: el radio de un arco es al menos la mitad de la 
 
 #: crates/ui-egui/src/presets.rs:146
 msgid "That is as many presets as are kept: delete one first"
-msgstr ""
+msgstr "Ese es el máximo de modelos que se guardan: elimine uno primero"
 
 #: crates/ui-egui/src/shortcuts.rs:233
 msgid "That is too big to be a shortcuts file."
@@ -7954,11 +7954,11 @@ msgstr "La tarjeta gráfica no pudo dibujar la vista 3D ({}): se dibuja en el pr
 
 #: crates/ui-egui/src/settings.rs:482
 msgid "The ground of the ribbon, the palettes, the bars and the dialogs; their bands and buttons are a step off it"
-msgstr ""
+msgstr "El fondo de la cinta de opciones, las paletas, las barras y los diálogos; sus bandas y botones se diferencian de él en un paso de tono"
 
 #: crates/ui-egui/src/settings.rs:496
 msgid "The interface's lettering, made darker or lighter where it would not read at 4.5:1 on the panels"
-msgstr ""
+msgstr "Las letras de la interfaz, oscurecidas o aclaradas donde no se leerían a 4,5:1 sobre los paneles"
 
 #: crates/ui-egui/src/sketch.rs:290
 msgid "The lines are shown in red."
@@ -7970,7 +7970,7 @@ msgstr "Las líneas no se encuentran: son paralelas, o el círculo de un arco no
 
 #: crates/ui-egui/src/display.rs:58
 msgid "The lines where the surfaces meet"
-msgstr ""
+msgstr "Las líneas donde se unen las superficies"
 
 #: crates/ui-egui/src/sketch.rs:272
 msgid "The loop is open: {} line ends don't meet another line."
@@ -7993,7 +7993,7 @@ msgstr "El nombre de la planta o del plano de cielo raso en su esquina inferior 
 
 #: crates/ui-egui/src/presets.rs:217
 msgid "The palettes, the tools shown, the project scale and the layout, kept under this name"
-msgstr ""
+msgstr "Las paletas, las herramientas mostradas, la escala del proyecto y la disposición, guardadas con este nombre"
 
 #: crates/ui-egui/src/objectstyles.rs:50
 msgid "The pen each category draws its lines in, seen and cut, in every plan and section. A view's Visibility/Graphics overrides them."
@@ -8014,7 +8014,7 @@ msgstr "El proyecto no tiene opciones de diseño: Gestionar > Opciones de diseñ
 
 #: crates/ui-egui/src/phasing.rs:195
 msgid "The project has no phase filter that shows this: make one in Manage > Phasing"
-msgstr ""
+msgstr "El proyecto no tiene ningún filtro de fase que muestre esto: cree uno en Gestionar > Fases"
 
 #: crates/ui-egui/src/start.rs:323
 msgid "The project stays as you left it."
@@ -8051,7 +8051,7 @@ msgstr "La barra de título y el marco del propio sistema, en lugar de los de la
 
 #: crates/ui-egui/src/settings.rs:558
 msgid "The tools on the left, the Inspector over the Navigator on the right, as at first"
-msgstr ""
+msgstr "Las herramientas a la izquierda, el Inspector sobre el Navegador a la derecha, como al principio"
 
 #: crates/ui-egui/src/sketch3d.rs:246
 msgid "The view is edge-on to the sketch's plane: turn it to pick on it."
@@ -8168,11 +8168,11 @@ msgstr "Tamaño de marca de cota"
 
 #: crates/ui-egui/src/lib.rs:3377
 msgid "Tick the tools this palette shows; Find still has the others"
-msgstr ""
+msgstr "Marca las herramientas que muestra esta paleta; Buscar sigue teniendo las demás"
 
 #: crates/ui-egui/src/properties.rs:1775
 msgid "Tied To"
-msgstr ""
+msgstr "Ligado a"
 
 #: crates/ui-egui/src/reinforce.rs:116
 msgid "Ties"
@@ -8228,7 +8228,7 @@ msgstr "Demasiado denso para la vista previa a este tamaño."
 
 #: crates/ui-egui/src/dock.rs:43
 msgid "Tools"
-msgstr ""
+msgstr "Herramientas"
 
 #: crates/ui-egui/src/lib.rs:4642
 #: crates/ui-egui/src/reinforce.rs:182
@@ -8555,7 +8555,7 @@ msgstr "Límite superior"
 
 #: crates/ui-egui/src/presets.rs:201
 msgid "Use"
-msgstr ""
+msgstr "Usar"
 
 #: crates/ui-egui/src/dimtypes.rs:177
 msgid "Use Project Settings"
@@ -8679,11 +8679,11 @@ msgstr "Visibilidad"
 #: crates/ui-egui/src/templates.rs:210
 #: crates/ui-egui/src/templates.rs:256
 msgid "Visibility Set"
-msgstr ""
+msgstr "Conjunto de visibilidad"
 
 #: crates/ui-egui/src/templates.rs:204
 msgid "Visibility Set: the view template this view follows, to switch what it shows at a click; <None> for its own"
-msgstr ""
+msgstr "Conjunto de visibilidad: la plantilla de vista que sigue esta vista, para cambiar lo que muestra con un clic; <Ninguno> para ajustes propios"
 
 #: crates/ui-egui/src/lib.rs:3816
 msgid "Visibility/Graphics"
@@ -8806,7 +8806,7 @@ msgstr "Muro por cara (WB): un muro en cada arista de la huella de las masas sel
 
 #: crates/ui-egui/src/properties.rs:1155
 msgid "Wall layers"
-msgstr ""
+msgstr "Capas del muro"
 
 #: crates/ui-egui/src/sketch.rs:789
 msgid "Walls"
@@ -8850,15 +8850,15 @@ msgstr "Con qué se dibujan las líneas de detalle: una pluma, un color y un pat
 
 #: crates/ui-egui/src/settings.rs:474
 msgid "What is picked and what has focus are drawn in it, in every theme; its lettering is made dark or light enough to read"
-msgstr ""
+msgstr "Lo seleccionado y lo que tiene el foco se dibujan con él, en todos los temas; sus letras se oscurecen o aclaran lo suficiente para leerse"
 
 #: crates/ui-egui/src/phasing.rs:76
 msgid "What stands before the work and what it takes down, drawn as the phases' overrides say"
-msgstr ""
+msgstr "Lo que hay antes de la obra y lo que esta derriba, dibujado como indican los reemplazos de las fases"
 
 #: crates/ui-egui/src/phasing.rs:73
 msgid "What stands before the work: the project's first phase"
-msgstr ""
+msgstr "Lo que hay antes de la obra: la primera fase del proyecto"
 
 #: crates/ui-egui/src/workplane.rs:199
 msgid "What the 3D view sketches on."
@@ -8866,11 +8866,11 @@ msgstr "Sobre qué dibuja la vista 3D."
 
 #: crates/ui-egui/src/settings.rs:489
 msgid "What the views are drawn on; the drawing's lines turn light on a dark one and dark on a light one"
-msgstr ""
+msgstr "Sobre qué se dibujan las vistas; las líneas del dibujo se vuelven claras sobre un lienzo oscuro y oscuras sobre uno claro"
 
 #: crates/ui-egui/src/phasing.rs:82
 msgid "What the work builds, over what stood before"
-msgstr ""
+msgstr "Lo que construye la obra, sobre lo que había antes"
 
 #: crates/ui-egui/src/updates.rs:109
 msgid "What's new"
@@ -9051,7 +9051,7 @@ msgstr "Ayer"
 
 #: crates/ui-egui/src/settings.rs:514
 msgid "Your text colour was too close to the panels: it is made darker or lighter to read at 4.5:1"
-msgstr ""
+msgstr "El color de texto era demasiado parecido al de los paneles: se oscurece o se aclara para leerse a 4,5:1"
 
 #: crates/ui-egui/src/properties.rs:310
 msgid "Z Justification"
@@ -9312,7 +9312,7 @@ msgstr "familia"
 
 #: crates/ui-egui/src/reinforce.rs:515
 msgid "fck (MPa)"
-msgstr ""
+msgstr "fck (MPa)"
 
 #: crates/core/src/curves.rs:135
 msgid "fitted spline"
@@ -9324,7 +9324,7 @@ msgstr "glTF binario"
 
 #: crates/ui-egui/src/display.rs:43
 msgid "graphic display options are for the 3D view: open it from the Project Browser"
-msgstr ""
+msgstr "las opciones de visualización gráfica son de la vista 3D: ábrala desde el Navegador de proyectos"
 
 #: crates/ui-egui/src/properties.rs:2842
 msgid "has a value"
@@ -9743,7 +9743,7 @@ msgstr "{} patrones importados; omitidos: {}"
 
 #: crates/ui-egui/src/display.rs:25
 msgid "{} px"
-msgstr ""
+msgstr "{} px"
 
 #: crates/ui-egui/src/fillpatterns.rs:945
 msgid "{} redefined from lines"
