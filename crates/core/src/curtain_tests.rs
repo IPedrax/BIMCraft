@@ -478,3 +478,101 @@ fn hostile_curtain_params_never_panic() {
         }
     }
 }
+
+// ---------- plans ----------
+
+/// What a plan shows at a point of the model, as the PNG has it.
+fn plan_pixel(s: &Session, at: crate::geom::P2) -> (u8, u8, u8) {
+    let level = s.model.levels()[0].0;
+    let d = crate::render::plan(&s.model, level, 1600, 400);
+    let png = crate::render::png(&d).unwrap();
+    let (x, y) = d.view.px(at);
+    let c = tiny_skia::Pixmap::decode_png(&png).unwrap().pixel(x as u32, y as u32).unwrap();
+    (c.red(), c.green(), c.blue())
+}
+
+#[test]
+fn a_plan_fills_the_mullions_it_cuts_and_not_the_glass_between() {
+    use crate::geom::P2;
+    let mut s = session();
+    grid(&mut s, "CW", &[2000.0], &[3000.0], json!({}));
+    let id = wall(&mut s, "CW", 6000.0, 3000.0);
+    let plane = curtain::grid_plane(&s.model, wall_of(&s, id));
+    let dark = |c: (u8, u8, u8)| c.0 < 200 && c.1 < 200 && c.2 < 200;
+    assert!(dark(plan_pixel(&s, P2(2000.0, plane))), "the mullion on the grid line is cut");
+    // A little off the panel's plane, between its two faces and the wall's face: nothing is filled there.
+    let off = plan_pixel(&s, P2(1000.0, plane + 60.0));
+    assert!(!dark(off), "no poche across the glass: {off:?}");
+}
+
+#[test]
+fn a_click_on_a_curtain_walls_plan_picks_the_wall() {
+    use crate::geom::P2;
+    let mut s = session();
+    grid(&mut s, "CW", &[2000.0], &[3000.0], json!({}));
+    let id = wall(&mut s, "CW", 6000.0, 3000.0);
+    let plane = curtain::grid_plane(&s.model, wall_of(&s, id));
+    let level = s.model.levels()[0].0;
+    let d = crate::render::plan(&s.model, level, 1600, 400);
+    assert_eq!(d.pick(d.view.px(P2(2000.0, plane)), 2.0), Some(id));
+}
+
+#[test]
+fn a_plan_below_a_curtain_wall_shows_nothing_of_it_and_above_sees_it() {
+    let mut s = session();
+    grid(&mut s, "CW", &[2000.0], &[1000.0], json!({}));
+    let id = wall(&mut s, "CW", 6000.0, 800.0);
+    let level = s.model.levels()[0].0;
+    let d = crate::render::plan(&s.model, level, 1600, 400);
+    assert!(d.owners.contains(&Some(id)), "seen below the cut plane");
+}
+
+// ---------- IFC ----------
+
+fn lines_of(f: &str, entity: &str) -> Vec<String> {
+    f.lines().filter(|l| l.split_once('=').is_some_and(|(_, e)| e.starts_with(&format!("{entity}(")))).map(String::from).collect()
+}
+
+#[test]
+fn ifc_writes_a_curtain_wall_as_the_sum_of_its_members_and_plates() {
+    let mut s = session();
+    grid(&mut s, "CW", &[1000.0], &[1500.0], json!({"panels": [["Spandrel"]]}));
+    let id = wall(&mut s, "CW", 3000.0, 3000.0);
+    let l = layout_of(&s, id);
+    let f = crate::ifc::export(&s.model);
+    assert_eq!(lines_of(&f, "IFCWALL").len(), 0, "not a solid wall");
+    let wall = lines_of(&f, "IFCCURTAINWALL");
+    assert_eq!(wall.len(), 1);
+    assert!(wall[0].contains(",$,'"), "no body of its own: its parts are its shape: {}", wall[0]);
+    let (members, plates) = (lines_of(&f, "IFCMEMBER"), lines_of(&f, "IFCPLATE"));
+    assert_eq!(members.len(), count(&l, PartKind::Mullion));
+    assert_eq!(plates.len(), count(&l, PartKind::Panel));
+    assert!(members.iter().all(|m| m.ends_with(".MULLION.);")), "{}", members[0]);
+    assert!(plates.iter().all(|p| p.ends_with(".CURTAIN_PANEL.);")), "{}", plates[0]);
+    // The parts are aggregated into the wall.
+    let wall_ref = wall[0].split_once('=').unwrap().0;
+    assert!(f.lines().any(|x| x.contains("IFCRELAGGREGATES(") && x.contains(&format!(",{wall_ref},("))), "{wall_ref} aggregates its parts");
+    assert_eq!(lines_of(&f, "IFCCURTAINWALLTYPE").len(), 1);
+    assert_eq!(lines_of(&f, "IFCPLATETYPE").len(), 1);
+    assert_eq!(lines_of(&f, "IFCMEMBERTYPE").len(), 1);
+}
+
+#[test]
+fn ifc_writes_identical_parts_with_one_shape_and_each_its_own_lasting_global_id() {
+    let mut s = session();
+    grid(&mut s, "CW", &[1000.0], &[1000.0], json!({}));
+    let id = wall(&mut s, "CW", 20_000.0, 5000.0);
+    let l = layout_of(&s, id);
+    let f = crate::ifc::export(&s.model);
+    let plates = lines_of(&f, "IFCPLATE");
+    assert_eq!(plates.len(), 100);
+    let shape = |line: &str| line.split(',').nth(6).unwrap().to_string();
+    let shapes: std::collections::BTreeSet<String> = plates.iter().map(|p| shape(p)).collect();
+    assert!(shapes.len() < 10, "{} shapes for 100 plates", shapes.len());
+    assert!(lines_of(&f, "IFCPRODUCTDEFINITIONSHAPE").len() < l.shapes.len() + 10);
+    // Each has its own GlobalId, the same at every export.
+    let ids = |f: &str| lines_of(f, "IFCPLATE").iter().map(|p| p.split('\'').nth(1).unwrap().to_string()).collect::<Vec<_>>();
+    let once = ids(&f);
+    assert_eq!(once.iter().collect::<std::collections::BTreeSet<_>>().len(), 100);
+    assert_eq!(once, ids(&crate::ifc::export(&s.model)));
+}

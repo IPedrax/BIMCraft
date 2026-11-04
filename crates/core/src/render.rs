@@ -568,6 +568,8 @@ fn cut_outlines(m: &Model, z: f64, look: &Look, index: &walls::Index) -> Vec<(Id
         .iter()
         .filter(|(id, _)| look.shows(**id))
         .filter_map(|(&id, e)| match e {
+            // A curtain wall is drawn part by part: nothing fills it as a whole.
+            Element::Wall(w) if crate::curtain::pattern(m, w).is_some() => None,
             Element::Wall(w) if m.spans(w, z) => Some((id, walls::outline_in(m, id, Some(index)))),
             _ => stands(m, e).filter(|(_, bottom, top)| *bottom <= z && z < *top).map(|(outline, ..)| (id, outline)),
         })
@@ -594,6 +596,7 @@ fn seen_below(m: &Model, r: &PlanRange, look: &Look, index: &walls::Index) -> Ve
         .filter(|(id, _)| look.shows(**id))
         .filter_map(|(&id, e)| {
             let (outline, top) = match e {
+                Element::Wall(w) if crate::curtain::pattern(m, w).is_some() => return None,
                 Element::Wall(w) => {
                     let top = m.top_z(w);
                     // Joining a wall scans its neighbours. Reject other storeys before
@@ -627,6 +630,58 @@ fn cut_unions(look: &Look, outlines: impl Iterator<Item = (Id, Vec<P2>)>) -> Vec
         }
     }
     unions
+}
+
+/// A curtain wall in a plan: the mullions the cut plane passes through filled and inked, the panels it passes through thin
+/// (at coarse detail, a line down their middle), and what stands under it as seen from above, each place once however many
+/// parts stand there.
+fn curtain_plan(d: &mut Drawing, m: &Model, id: Id, w: &crate::model::Wall, range: &PlanRange, up: bool, fill: Rgb) {
+    use crate::curtain::{self, PartKind};
+    let (base, top) = (m.own_base(w), m.own_top(w));
+    if !(range.depth < top && base <= range.cut) {
+        return;
+    }
+    let l = curtain::layout(m, w);
+    let (axis, plane, cut) = (walls::Axis::of(w), curtain::grid_plane(m, w), range.cut - base);
+    let ring = |p: &curtain::Part, s: &curtain::Shape| -> Vec<P2> {
+        let [along, _, across] = p.centre;
+        let [da, _, dc] = s.size.map(|x| x / 2.0);
+        let c = plane + across;
+        vec![axis.at(along - da, c - dc), axis.at(along + da, c - dc), axis.at(along + da, c + dc), axis.at(along - da, c + dc)]
+    };
+    let coarse = d.detail == Detail::Coarse;
+    d.owner = Some(id);
+    let mut seen = std::collections::HashSet::new();
+    d.part(Part::Projection);
+    for p in l.parts.iter().filter(|_| !up) {
+        let Some(s) = l.shapes.get(p.shape as usize) else { continue };
+        if p.centre[1] + s.size[1] / 2.0 <= cut {
+            let r = ring(p, s);
+            let key = (s.kind, r.iter().map(|q| ((q.0 * 10.0) as i64, (q.1 * 10.0) as i64)).collect::<Vec<_>>());
+            if seen.insert(key) {
+                d.line(&r, Pen::PROJECTION, INK, true);
+            }
+        }
+    }
+    d.part(Part::Cut);
+    let crossing = |p: &curtain::Part, s: &curtain::Shape| (p.centre[1] - s.size[1] / 2.0 <= cut) && (cut < p.centre[1] + s.size[1] / 2.0);
+    // The panels first, for the mullions to stand over where they touch.
+    for p in &l.parts {
+        let Some(s) = l.shapes.get(p.shape as usize).filter(|s| s.kind == PartKind::Panel && crossing(p, s)) else { continue };
+        if coarse {
+            let [along, _, across] = p.centre;
+            let c = plane + across;
+            d.line(&[axis.at(along - s.size[0] / 2.0, c), axis.at(along + s.size[0] / 2.0, c)], Pen::PROJECTION, INK, false);
+        } else {
+            d.line(&ring(p, s), Pen::PROJECTION, INK, true);
+        }
+    }
+    for p in &l.parts {
+        let Some(s) = l.shapes.get(p.shape as usize).filter(|s| s.kind == PartKind::Mullion && crossing(p, s)) else { continue };
+        let r = ring(p, s);
+        d.fill(std::slice::from_ref(&r), fill);
+        d.line(&r, BY_CATEGORY, INK, true);
+    }
 }
 
 /// The object style of `owner`'s category; with no owner, what a project's categories start with.
@@ -804,6 +859,15 @@ pub(crate) fn plan_shows(m: &Model, plan: impl Key) -> Vec<P2> {
     let index = walls::Index::new(m);
     let mut extent: Vec<P2> = cut_outlines(m, r.cut, &look, &index).into_iter().flat_map(|(_, o)| o).collect();
     extent.extend(seen_below(m, &r, &look, &index).into_iter().flat_map(|(_, o, _)| o));
+    for (&id, e) in m.elements.iter().filter(|(id, _)| look.shows(**id)) {
+        if let Element::Wall(w) = e
+            && crate::curtain::pattern(m, w).is_some()
+            && r.depth < m.top_z(w)
+            && m.base_z(w) <= r.cut
+        {
+            extent.extend(walls::outline_in(m, id, Some(&index)));
+        }
+    }
     for (id, e) in m.elements.iter().filter(|(id, _)| look.shows(**id)) {
         match e {
             Element::CadImport(ci) if ci.level == level && ci.view.is_none_or(|v| v == key) => {
@@ -1752,6 +1816,13 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         d.owner = Some(id);
         for run in runs {
             ink_cut(&mut d, &run);
+        }
+    }
+    for (&id, e) in m.elements.iter().filter(|(id, _)| shown(**id)) {
+        if let Element::Wall(w) = e
+            && crate::curtain::pattern(m, w).is_some()
+        {
+            curtain_plan(&mut d, m, id, w, &range, up, look.cut_fill(id, POCHE));
         }
     }
     // A compound wall's layers: each its material's cut pattern where it's wide enough to hold it,
