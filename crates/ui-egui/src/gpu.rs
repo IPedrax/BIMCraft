@@ -1939,7 +1939,9 @@ mod tests {
                 gpu.draw(&mesh, &cam, &tints, PAPER).unwrap();
                 let placed = read(&gpu);
                 let differ = own.chunks(4).zip(placed.chunks(4)).filter(|(a, b)| a != b).count();
-                assert_eq!(differ, 0, "{name}, {} tints: {differ} pixels differ", tints.len());
+                // A flat draw and an instanced one round an edge pixel differently on some cards (D3D12); one is not a
+                // different picture.
+                assert!(differ <= 1, "{name}, {} tints: {differ} pixels differ", tints.len());
             }
         }
     }
