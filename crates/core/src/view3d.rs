@@ -1348,6 +1348,17 @@ pub fn differs_only_in_section_box(before: &Model, after: &Model) -> bool {
         && Look::of_3d(before).with_section_box(None) == Look::of_3d(after).with_section_box(None)
 }
 
+/// Whether the 3D view draws `after` from the scene and the mesh it made of `before`: what changed is only what neither reads
+/// (3D views and the dimensions in them: a camera view's eye and target written back as the hand lets it be, a camera view
+/// made, a 3D dimension placed), and the default 3D view looks as it did but for its section box, which a picture asks of
+/// them as it is drawn.
+pub fn scene_kept(before: &Model, after: &Model) -> bool {
+    let crate::ids::Changed::Ids(changed) = after.changed_since(before) else { return false };
+    let unseen = |m: &Model, id: Id| m.elements.get(id).is_none_or(|e| matches!(e, Element::View3D(_) | Element::Dimension3D(_)));
+    changed.iter().all(|id| unseen(before, *id) && unseen(after, *id))
+        && Look::of_3d(before).with_section_box(None) == Look::of_3d(after).with_section_box(None)
+}
+
 /// The most points a picture draws, as Revit's density does: past it, every so many of each scan's.
 pub const DRAWN: usize = 2_000_000;
 

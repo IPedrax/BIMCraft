@@ -431,11 +431,12 @@ impl Orbit {
         self.fitting = false;
     }
 
-    /// A model that differs from the last only in its section box has its scene and its mesh: a box is asked of them as they are
-    /// drawn and picked, so there is nothing to make again, or to wait for.
+    /// A model that differs from the last only in its section box, or in what the scene doesn't draw (a camera view's camera
+    /// written back, a 3D dimension), has its scene and its mesh: a box is asked of them as they are drawn and picked, so there
+    /// is nothing to make again, or to wait for.
     fn keep_for_a_new_box(&mut self, model: &Arc<Model>) {
         let Some((before, scene)) = &self.scene else { return };
-        if Arc::ptr_eq(before, model) || !bimcraft_core::view3d::differs_only_in_section_box(before, model) {
+        if Arc::ptr_eq(before, model) || !bimcraft_core::view3d::scene_kept(before, model) {
             return;
         }
         let scene = Arc::clone(scene);

@@ -93,6 +93,28 @@ fn only_a_change_of_the_section_box_is_said_to_leave_the_scene_as_it_was() {
 }
 
 #[test]
+fn a_camera_written_back_or_a_3d_dimension_leaves_the_scene_as_it_was_and_a_wall_does_not() {
+    use crate::view3d::scene_kept as kept;
+    let mut s = Session::new();
+    run(&mut s, "wall", json!({"points": [[0, 0], [3000, 0]]}));
+    let step = |s: &mut Session, id: &str, p: Value| {
+        let before = s.model.clone();
+        run(s, id, p);
+        kept(&before, &s.model)
+    };
+    assert!(step(&mut s, "camera", json!({"eye": [-5000, -5000, 1700], "target": [1500, 0, 1000], "name": "Corner"})), "a camera view");
+    // Its eye and target written back, as the 3D view does once the hand lets it be.
+    assert!(step(&mut s, "camera", json!({"view": "Corner", "eye": [-6000, -4000, 1700], "target": [1500, 0, 1200]})), "its camera");
+    assert!(
+        step(&mut s, "dimension_3d", json!({"refs": [{"at": [0, 0, 0]}, {"at": [3000, 0, 0]}], "at": [1500, -1000, 0]})),
+        "a 3D dimension"
+    );
+    assert!(step(&mut s, "section_box", json!({"on": true})), "the default view's box");
+    assert!(!step(&mut s, "wall", json!({"points": [[0, 2000], [3000, 2000]]})), "a wall");
+    assert!(!step(&mut s, "visual_style", json!({"style": "hidden_line"})), "the default view's style");
+}
+
+#[test]
 fn a_mesh_holds_a_scan_s_points_but_in_wireframe_which_draws_none() {
     let (mut s, _) = floor_and_ceiling("points_on_the_card");
     let shaded = gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).unwrap();
