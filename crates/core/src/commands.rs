@@ -334,14 +334,17 @@ pub static ALL: &[Command] = &[
         "fetch_terrain",
         "Fetch Terrain",
         &[],
-        "{bbox? | radius?, spacing?, source?, name?, set_elevation?, interval?} fetches the ground of an area and makes a toposurface of \
-         it: `bbox` [south, west, north, east] degrees, or `radius` metres each way round the project's origin (1000 by default); at \
+        "{bbox? | radius?, spacing?, source?, name?, set_elevation?, interval?, stand_buildings?} fetches the ground of an area and makes \
+         a toposurface of it: `bbox` [south, west, north, east] degrees, or `radius` metres each way round the project's origin (1000 by default); at \
          most 25 km². A node every `spacing` metres (by default as fine as keeps it under 50,000 points, at least 10 m), from `source` \
          (`terrarium` or `copernicus`; by default the best there is). The terrain is clipped to the box. Heights are made project \
          heights: if the project has no height above the sea yet and `set_elevation` is true (by default) the ground at the origin \
          becomes it, so z = 0 is there; otherwise the project's own is taken off. Needs a build with network access (the desktop app \
-         has it); without one, bring terrain in with `toposurface`. Reports the toposurface, the source, whether it came from the cache \
-         and the credit its data asks for",
+         has it); without one, bring terrain in with `toposurface`. The buildings `import_osm` made (the masses with an `OSM Id`) are \
+         stood on the new ground, each at the lowest ground under its footprint, and what was made from them by face (their walls, \
+         floors and roof) follows, unless `stand_buildings` is false; one that is not over the new ground stays where it is, and one \
+         whose shell cannot follow stands while its shell is left, named. Reports the toposurface, the source, whether it came from the \
+         cache, `stood` ({moved, off_terrain, shells_updated, shells_left}) and the credit its data asks for",
         fetch_terrain,
     ),
     edit(
@@ -5635,9 +5638,15 @@ fn fetch_osm(s: &mut Session, p: &Value) -> R {
 
 fn fetch_terrain(s: &mut Session, p: &Value) -> R {
     let c = "fetch_terrain";
-    only(c, p, &["bbox", "radius", "spacing", "source", "name", "set_elevation", "interval"])?;
+    only(c, p, &["bbox", "radius", "spacing", "source", "name", "set_elevation", "interval", "stand_buildings"])?;
     let Some(geo) = s.geo.clone() else {
         return Err(bad(c, "this BIMCraft has no network access built in: bring terrain in with `toposurface`, from points you have"));
+    };
+    let stand = match p.get("stand_buildings") {
+        v if absent(v) => true,
+        Some(Value::Bool(b)) => *b,
+        Some(v) => return Err(bad(c, format!("`stand_buildings` must be true or false, got {v}"))),
+        None => true,
     };
     let bbox = fetch_bbox(c, p, &s.model)?;
     let Some(location) = s.model.location else { return Err(bad(c, "the project has no location yet")) };
@@ -5718,6 +5727,10 @@ fn fetch_terrain(s: &mut Session, p: &Value) -> R {
     out["cached"] = json!(got.cached);
     out["elevation_set"] = if set { json!(base) } else { Value::Null };
     out["attribution"] = json!(geo.attribution(&got.source));
+    // The buildings the import made stand on this ground, whichever came first.
+    if stand && let Some(id) = out["id"].as_u64() {
+        out["stood"] = stand_buildings(s, c, id)?;
+    }
     Ok(out)
 }
 
@@ -6475,6 +6488,105 @@ fn cut_fill(s: &mut Session, p: &Value) -> R {
     }))
 }
 
+/// The field of an element that holds its height when it stands on the ground: a base offset from its level, or (a component's) an
+/// offset.
+#[derive(Clone, Copy)]
+enum Field {
+    Base,
+    Offset,
+}
+
+/// What `e` stands on the ground by: the points of its footprint, the level it is held to, the field that holds its height and what that
+/// holds now. Err: its category, when it is not something that stands on the ground.
+fn stands_by(m: &Model, e: &Element) -> Result<(Vec<P2>, Guid, Field, f64), &'static str> {
+    Ok(match e {
+        Element::Mass(ms) => (ms.footprint(), ms.level, Field::Base, ms.base_offset),
+        Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
+            let mut pts = m.column_outline(e);
+            pts.push(col.at);
+            (pts, col.level, Field::Base, col.base_offset)
+        }
+        Element::Component(comp) => (vec![comp.at], comp.level, Field::Offset, comp.offset),
+        Element::Wall(w) => {
+            // Along its axis, as a straight line from end to end: an arc's belly is not looked at.
+            let pts = (0..=10).map(|i| w.start + (w.end - w.start) * (f64::from(i) / 10.0)).collect();
+            (pts, w.level, Field::Base, w.base_offset)
+        }
+        other => return Err(other.category()),
+    })
+}
+
+/// Sets the height `field` holds of element `id` to `now`.
+fn set_stand(model: &mut Model, id: Id, field: Field, now: f64) {
+    match (model.elements.get_mut(id), field) {
+        (Some(Element::Mass(ms)), _) => ms.base_offset = now,
+        (Some(Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col)), _) => col.base_offset = now,
+        (Some(Element::Wall(w)), _) => w.base_offset = now,
+        (Some(Element::Component(comp)), Field::Offset) => comp.offset = now,
+        _ => {}
+    }
+}
+
+/// The buildings OpenStreetMap's import made: the masses that hold an `OSM Id`.
+fn imported_buildings(m: &Model) -> Vec<Id> {
+    m.elements
+        .iter()
+        .filter_map(|(id, e)| match e {
+            Element::Mass(ms) if ms.params.get("OSM Id").and_then(Value::as_str).is_some_and(|t| !t.is_empty()) => Some(*id),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Stands the imported buildings on toposurface `terrain`, each at the lowest ground under its footprint (as `place_on_terrain` does),
+/// and re-places what was made from each by face (its walls, floors and roof) on the new base. A building not over the terrain stays
+/// where it is, and is counted; a building whose shell cannot follow it (a face is gone) stands all the same and its shell is left as
+/// it was, whole, and named. What it did, as the reply of `fetch_terrain` gives it.
+fn stand_buildings(s: &mut Session, c: &str, terrain: Id) -> Result<Value, String> {
+    let m = &s.model;
+    let Some(Element::Toposurface(t)) = m.elements.get(terrain) else { return Err(bad(c, format!("{terrain} isn't a toposurface"))) };
+    let tin = t.tin().map_err(|why| bad(c, why))?;
+    let (mut changes, mut off_terrain) = (Vec::new(), 0usize);
+    for id in imported_buildings(m) {
+        let Some((points, level, field, _)) = m.elements.get(id).and_then(|e| stands_by(m, e).ok()) else { continue };
+        match lowest_ground(&tin, &points) {
+            Some(ground) => changes.push((id, field, ground - m.elevation(level))),
+            None => off_terrain += 1,
+        }
+    }
+    let stood: Vec<Id> = changes.iter().map(|(id, ..)| *id).collect();
+    let model = s.model_mut();
+    for (id, field, now) in changes {
+        set_stand(model, id, field, now);
+    }
+    // What was made from each, by face, re-placed on the base it has now: a mass's shell follows whole or not at all.
+    let m = &s.model;
+    let (mut followed, mut left) = (Vec::new(), Vec::new());
+    for mass in &stood {
+        let made: Vec<Id> =
+            m.elements.iter().filter_map(|(id, e)| massing::face_of(e).filter(|(of, _)| m.same(*of, *mass)).map(|_| *id)).collect();
+        let (mut now, mut why) = (Vec::new(), Vec::new());
+        for id in made {
+            match follow_one(m, id) {
+                Some(Ok((e, true))) => now.push((id, e)),
+                Some(Err(reason)) => why.push(reason),
+                _ => {}
+            }
+        }
+        if why.is_empty() {
+            followed.extend(now);
+        } else {
+            left.push(json!({"id": mass, "why": why.join("; ")}));
+        }
+    }
+    let shells_updated = followed.len();
+    for (id, e) in followed {
+        s.model_mut().elements.insert(id, e);
+    }
+    left.truncate(MAX_LISTED);
+    Ok(json!({"moved": stood.len(), "off_terrain": off_terrain, "shells_updated": shells_updated, "shells_left": left}))
+}
+
 fn place_on_terrain(s: &mut Session, p: &Value) -> R {
     let c = "place_on_terrain";
     only(c, p, &["ids", "terrain", "offset"])?;
@@ -6498,39 +6610,16 @@ fn place_on_terrain(s: &mut Session, p: &Value) -> R {
     let Some(tin) = terrain_tin(c, m, p, "terrain")? else {
         return Err(bad(c, "no terrain to stand them on: make one with `toposurface` or `fetch_terrain`"));
     };
-    // What each is: where its footprint is, how it is held (its level's elevation), and what field holds its height.
-    #[derive(Clone, Copy)]
-    enum Field {
-        Base,
-        Offset,
-    }
     let (mut moved, mut skipped, mut changes) = (Vec::new(), Vec::new(), Vec::new());
     for g in wanted {
         let Some(id) = m.elements.id(g) else { return Err(bad(c, format!("{g} isn't an element"))) };
         let Some(e) = m.elements.get(id) else { return Err(bad(c, format!("{g} isn't an element"))) };
-        let (points, level, field, was): (Vec<P2>, Guid, Field, f64) = match e {
-            Element::Mass(ms) => (ms.footprint(), ms.level, Field::Base, ms.base_offset),
-            Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
-                let mut pts = m.column_outline(e);
-                pts.push(col.at);
-                (pts, col.level, Field::Base, col.base_offset)
-            }
-            Element::Component(comp) => (vec![comp.at], comp.level, Field::Offset, comp.offset),
-            Element::Wall(w) => {
-                // Along its axis, as a straight line from end to end: an arc's belly is not looked at.
-                let pts = (0..=10).map(|i| w.start + (w.end - w.start) * (f64::from(i) / 10.0)).collect();
-                (pts, w.level, Field::Base, w.base_offset)
-            }
-            other => {
-                return Err(bad(
-                    c,
-                    format!(
-                        "{id} is a {}, which can't be stood on the terrain: masses, columns, footings, components and walls can",
-                        other.category()
-                    ),
-                ));
-            }
-        };
+        let (points, level, field, was) = stands_by(m, e).map_err(|category| {
+            bad(
+                c,
+                format!("{id} is a {category}, which can't be stood on the terrain: masses, columns, footings, components and walls can"),
+            )
+        })?;
         let Some(ground) = lowest_ground(&tin, &points) else {
             skipped.push(json!({"id": id, "why": "it is not over the terrain"}));
             continue;
@@ -6544,13 +6633,7 @@ fn place_on_terrain(s: &mut Session, p: &Value) -> R {
     }
     let model = s.model_mut();
     for (id, field, now) in changes {
-        match (model.elements.get_mut(id), field) {
-            (Some(Element::Mass(ms)), _) => ms.base_offset = now,
-            (Some(Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col)), _) => col.base_offset = now,
-            (Some(Element::Wall(w)), _) => w.base_offset = now,
-            (Some(Element::Component(comp)), Field::Offset) => comp.offset = now,
-            _ => {}
-        }
+        set_stand(model, id, field, now);
     }
     Ok(json!({"moved": moved, "skipped": skipped}))
 }
@@ -7162,6 +7245,23 @@ fn building_shell(s: &mut Session, p: &Value) -> R {
     )
 }
 
+/// Element `id`, made by face from a mass, as that mass has it now: what it becomes and whether that is any change; or why it cannot
+/// follow (its face is gone, or the mass). None when it was not made by face.
+fn follow_one(m: &Model, id: Id) -> Option<Result<(Element, bool), String>> {
+    let (e, (mass, face)) = m.elements.get(id).and_then(|e| Some((e, massing::face_of(e)?)))?;
+    let mut now = e.clone();
+    Some(match m.elements.get(mass) {
+        Some(Element::Mass(ms)) => match massing::follow(&mut now, ms, m.elements.id(mass).unwrap_or_default(), face) {
+            Ok(()) => {
+                let changed = now != *e;
+                Ok((now, changed))
+            }
+            Err(why) => Err(format!("{} {id} {why}", e.category())),
+        },
+        _ => Err(format!("{} {id} was made from mass {mass}, which isn't there", e.category())),
+    })
+}
+
 fn update_by_face(s: &mut Session, p: &Value) -> R {
     let c = "update_by_face";
     let m = &s.model;
@@ -7189,15 +7289,11 @@ fn update_by_face(s: &mut Session, p: &Value) -> R {
     }
     let (mut changed, mut same, mut gone) = (Vec::new(), Vec::new(), Vec::new());
     for id in ids {
-        let Some((e, (mass, face))) = m.elements.get(id).and_then(|e| Some((e, massing::face_of(e)?))) else { continue };
-        let mut now = e.clone();
-        match m.elements.get(mass) {
-            Some(Element::Mass(ms)) => match massing::follow(&mut now, ms, m.elements.id(mass).unwrap_or_default(), face) {
-                Ok(()) if now == *e => same.push(id),
-                Ok(()) => changed.push((id, now)),
-                Err(why) => gone.push(format!("{} {id} {why}", e.category())),
-            },
-            _ => gone.push(format!("{} {id} was made from mass {mass}, which isn't there", e.category())),
+        match follow_one(m, id) {
+            Some(Ok((_, false))) => same.push(id),
+            Some(Ok((now, true))) => changed.push((id, now)),
+            Some(Err(why)) => gone.push(why),
+            None => {}
         }
     }
     if !gone.is_empty() {

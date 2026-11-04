@@ -70,7 +70,7 @@ The scheme at https://wiki.openstreetmap.org/wiki/Simple_3D_Buildings, as far as
 A `Mass` for each building: its outline counter-clockwise in project mm (through `Projector`, built once for the whole import),
 `height` = height - min_height, `base_offset` = the lowest ground under the outline's corners and middle (`Tin::height_at` of the
 toposurface; the only one, or `terrain`) minus the level's elevation, plus `min_height`. With no terrain, or outside it
-(`off_terrain` in the reply), it stands at the level. A Mass cannot have a courtyard, so one is filled (`courtyards_filled`).
+(`off_terrain` in the reply), it stands at the level; terrain fetched afterwards (`fetch_terrain`) stands it on the ground then, with its walls, floors and roof if it has them. A Mass cannot have a courtyard, so one is filled (`courtyards_filled`).
 
 Each keeps the project parameters `OSM Id` (`way/123`), `OSM Building`, `OSM Name` and `OSM Levels` (text, declared for masses by
 the command). **Importing again** updates a mass with the same `OSM Id` in place (same id and GUID, so walls made from it keep their

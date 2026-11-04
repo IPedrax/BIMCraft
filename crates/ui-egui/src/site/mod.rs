@@ -105,6 +105,8 @@ pub(crate) struct AreaBox {
     source: usize,
     interval: String,
     set_elevation: bool,
+    /// Whether the buildings the import made are stood on the ground this fetch makes.
+    stand_buildings: bool,
     error: Option<String>,
 }
 
@@ -468,6 +470,7 @@ impl BimApp {
             source: 0,
             interval: units.length(1000.0),
             set_elevation: true,
+            stand_buildings: true,
             error: None,
         });
     }
@@ -562,6 +565,7 @@ impl BimApp {
                 });
                 if kind == Kind::Terrain {
                     ui.checkbox(&mut b.set_elevation, t("Take the project's ground height from the data, when it has none"));
+                    ui.checkbox(&mut b.stand_buildings, t("Stand the imported buildings on the new ground"));
                 }
                 ui.add_space(6.0);
                 match &live {
@@ -827,6 +831,7 @@ impl BimApp {
                         params["source"] = json!(s);
                     }
                     params["set_elevation"] = json!(b.set_elevation);
+                    params["stand_buildings"] = json!(b.stand_buildings);
                     if !b.interval.trim().is_empty() {
                         params["interval"] = json!(
                             units.parse(&b.interval).ok_or_else(|| tf("Contour interval: `{}` is not a length", &[b.interval.trim()]))?
@@ -998,6 +1003,28 @@ impl BimApp {
                 ));
                 if let Some(z) = v["elevation_set"].as_f64() {
                     lines.push(tf("The project's ground height is now {} m above sea level", &[&format!("{:.1}", z / 1000.0)]));
+                }
+                // What happened to the buildings the import made: they follow the ground, or are said not to.
+                let stood = &v["stood"];
+                let count = |k: &str| stood[k].as_u64().unwrap_or(0);
+                if count("moved") > 0 {
+                    lines.push(tf("{} buildings stand on the new ground", &[&count("moved").to_string()]));
+                }
+                if count("shells_updated") > 0 {
+                    lines.push(tf("{} of their walls, floors and roofs followed", &[&count("shells_updated").to_string()]));
+                }
+                if count("off_terrain") > 0 {
+                    lines.push(tf(
+                        "{} buildings are not over the new ground and stay where they were",
+                        &[&count("off_terrain").to_string()],
+                    ));
+                }
+                let left = stood["shells_left"].as_array().map(Vec::as_slice).unwrap_or_default();
+                if let Some(first) = left.first() {
+                    lines.push(tf(
+                        "The walls of {} buildings could not follow them and were left: {}",
+                        &[&left.len().to_string(), first["why"].as_str().unwrap_or("?")],
+                    ));
                 }
                 t("Terrain from Elevation Data").to_string()
             }

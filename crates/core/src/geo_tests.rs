@@ -664,3 +664,169 @@ impl GeoSource for TileFake {
         Ok(crate::geo::Tile { rgba: vec![1, 2, 3, 255], side: 1, cached: true })
     }
 }
+
+/// The base each building that came from OpenStreetMap stands at, by its OSM id.
+fn bases(s: &Session) -> std::collections::BTreeMap<String, f64> {
+    s.model
+        .elements
+        .values()
+        .filter_map(|e| match e {
+            Element::Mass(ms) => Some((ms.params.get("OSM Id")?.as_str()?.to_string(), ms.base_offset)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The lowest ground, mm, toposurface `terrain` has under the corners and middle of building `osm`: where it should stand.
+fn lowest_under(s: &mut Session, osm: &str, terrain: crate::ids::Id) -> f64 {
+    let ring = s
+        .model
+        .elements
+        .values()
+        .find_map(|e| match e {
+            Element::Mass(ms) if ms.params.get("OSM Id").and_then(Value::as_str) == Some(osm) => Some(ms.footprint()),
+            _ => None,
+        })
+        .unwrap();
+    let n = ring.len() as f64;
+    let middle = (ring.iter().map(|q| q.0).sum::<f64>() / n, ring.iter().map(|q| q.1).sum::<f64>() / n);
+    let at: Vec<Value> = ring.iter().map(|q| json!([q.0, q.1])).chain([json!([middle.0, middle.1])]).collect();
+    let got = run(s, "height_at", json!({"points": at, "id": terrain}));
+    got["heights"].as_array().unwrap().iter().filter_map(Value::as_f64).fold(f64::MAX, f64::min)
+}
+
+fn toposurface_ids(s: &Session) -> Vec<crate::ids::Id> {
+    s.model.elements.iter().filter_map(|(id, e)| matches!(e, Element::Toposurface(_)).then_some(*id)).collect()
+}
+
+#[test]
+fn terrain_fetched_after_the_buildings_stands_them_on_it_in_one_undo_step() {
+    let mut s = session(Arc::new(Fake::new(overpass_reply())));
+    run(&mut s, "fetch_osm", json!({"radius": 500}));
+    assert_eq!(bases(&s).values().copied().collect::<Vec<_>>(), [0.0, 0.0], "no ground yet: they stand at the level");
+    let r = run(&mut s, "fetch_terrain", json!({"radius": 500, "spacing": 10}));
+    let ground = toposurface_ids(&s)[0];
+    let now = bases(&s);
+    for osm in ["way/1", "way/2"] {
+        let want = lowest_under(&mut s, osm, ground);
+        assert!((now[osm] - want).abs() < 1.0, "{osm} stands at {} and the ground under it is at {want}", now[osm]);
+    }
+    assert!(now["way/2"] > 300.0, "the second house is up the slope: {now:?}");
+    assert_eq!((r["stood"]["moved"].clone(), r["stood"]["off_terrain"].clone()), (json!(2), json!(0)), "{r}");
+    // One step brings the buildings back with the terrain and the ground height.
+    s.execute("undo", &json!({})).unwrap();
+    assert_eq!(bases(&s).values().copied().collect::<Vec<_>>(), [0.0, 0.0]);
+    assert_eq!(terrain_count(&s), 0);
+}
+
+#[test]
+fn buildings_are_left_where_they_are_when_asked_to_be() {
+    let mut s = session(Arc::new(Fake::new(overpass_reply())));
+    run(&mut s, "fetch_osm", json!({"radius": 500}));
+    let r = run(&mut s, "fetch_terrain", json!({"radius": 500, "spacing": 10, "stand_buildings": false}));
+    assert!(r["stood"].is_null(), "{r}");
+    assert_eq!(bases(&s).values().copied().collect::<Vec<_>>(), [0.0, 0.0]);
+    // A value that is not true or false is refused, naming the key, and nothing is fetched or changed.
+    let before = s.model.clone();
+    for bad in [json!("yes"), json!(1), json!([true])] {
+        let why = refused(&mut s, "fetch_terrain", json!({"radius": 500, "stand_buildings": bad}));
+        assert!(why.contains("stand_buildings"), "{bad}: {why}");
+    }
+    assert_eq!(s.model, before);
+}
+
+#[test]
+fn only_the_imported_buildings_over_the_new_ground_are_stood_on_it_and_the_others_are_counted_or_left() {
+    let far = way(3, &square(0.01, 0.0, 20.0), r#""building":"yes","height":"6""#);
+    let osm = overpass_reply().replacen(r#"]}"#, &format!(",{far}]}}"), 1);
+    let mut s = session(Arc::new(Fake::new(osm)));
+    run(&mut s, "fetch_osm", json!({"radius": 2000}));
+    assert_eq!(bases(&s).len(), 3);
+    // One the user drew, over the ground to come.
+    let own = run(&mut s, "mass", json!({"boundary": [[40000, 40000], [46000, 40000], [46000, 46000], [40000, 46000]], "height": 3000}));
+    let own = own["id"].as_u64().unwrap();
+    let r = run(&mut s, "fetch_terrain", json!({"radius": 500, "spacing": 10}));
+    // The far building is a kilometre past the box: counted, and where it was.
+    assert_eq!((r["stood"]["moved"].clone(), r["stood"]["off_terrain"].clone()), (json!(2), json!(1)), "{r}");
+    let now = bases(&s);
+    assert_eq!(now["way/3"], 0.0);
+    assert!(now["way/2"] > 300.0, "{now:?}");
+    // What came from nowhere is not touched: only the buildings the import stood on terrain follow terrain.
+    let drawn = s.model.elements.iter().find_map(|(id, e)| match e {
+        Element::Mass(ms) if *id == own => Some(ms.base_offset),
+        _ => None,
+    });
+    assert_eq!(drawn, Some(0.0));
+}
+
+#[test]
+fn a_building_with_walls_floors_and_a_roof_keeps_them_on_its_new_base() {
+    let mut s = session(Arc::new(Fake::new(overpass_reply())));
+    run(&mut s, "fetch_osm", json!({"radius": 500, "detail": ["way/2"]}));
+    let walls = |s: &Session| -> Vec<f64> {
+        s.model.elements.values().filter_map(|e| if let Element::Wall(w) = e { Some(w.base_offset) } else { None }).collect()
+    };
+    assert_eq!(walls(&s), [0.0; 4]);
+    let r = run(&mut s, "fetch_terrain", json!({"radius": 500, "spacing": 10}));
+    let base = bases(&s)["way/2"];
+    assert!(base > 300.0);
+    assert_eq!(walls(&s), [base; 4], "the walls were re-placed with their mass");
+    assert!(r["stood"]["shells_updated"].as_u64().unwrap() >= 4, "{r}");
+    assert!(r["stood"]["shells_left"].as_array().unwrap().is_empty(), "{r}");
+    // Undo puts the walls back with the rest.
+    s.execute("undo", &json!({})).unwrap();
+    assert_eq!(walls(&s), [0.0; 4]);
+}
+
+#[test]
+fn a_shell_that_can_no_longer_follow_its_mass_is_named_and_the_buildings_still_stand() {
+    let mut s = session(Arc::new(Fake::new(overpass_reply())));
+    run(&mut s, "fetch_osm", json!({"radius": 500, "detail": ["way/2"]}));
+    // The user took a corner off the mass: the wall made on its last edge has no edge to follow.
+    let mass = s
+        .model
+        .elements
+        .iter()
+        .find_map(|(id, e)| match e {
+            Element::Mass(ms) if ms.params.get("OSM Id").and_then(Value::as_str) == Some("way/2") => Some(*id),
+            _ => None,
+        })
+        .unwrap();
+    if let Some(Element::Mass(ms)) = s.model_mut().elements.get_mut(mass) {
+        ms.boundary.pop();
+    }
+    let r = run(&mut s, "fetch_terrain", json!({"radius": 500, "spacing": 10}));
+    let left = r["stood"]["shells_left"].as_array().unwrap();
+    assert_eq!(left.len(), 1, "{r}");
+    assert_eq!(left[0]["id"].as_u64(), Some(mass), "{r}");
+    assert!(left[0]["why"].as_str().unwrap().contains("face"), "{r}");
+    // Both buildings stand on the new ground all the same, and the shell was left as it was, as a whole.
+    assert_eq!(r["stood"]["moved"], 2, "{r}");
+    assert!(bases(&s)["way/2"] > 300.0);
+    let walls: Vec<f64> =
+        s.model.elements.values().filter_map(|e| if let Element::Wall(w) = e { Some(w.base_offset) } else { None }).collect();
+    assert_eq!(walls, [0.0; 4]);
+}
+
+#[test]
+fn buildings_stand_on_the_toposurface_just_fetched_and_not_on_an_older_one() {
+    let mut s = session(Arc::new(Fake::new(overpass_reply())));
+    // An older, flat terrain 5 m up: the buildings come in standing on it.
+    run(
+        &mut s,
+        "toposurface",
+        json!({"points": [[-100000, -100000, 5000], [300000, -100000, 5000], [300000, 300000, 5000], [-100000, 300000, 5000]]}),
+    );
+    run(&mut s, "fetch_osm", json!({"radius": 500}));
+    assert!(bases(&s).values().all(|b| (b - 5000.0).abs() < 1e-6), "{:?}", bases(&s));
+    run(&mut s, "fetch_terrain", json!({"radius": 500, "spacing": 10}));
+    let ids = toposurface_ids(&s);
+    assert_eq!(ids.len(), 2);
+    let newest = ids[1];
+    let now = bases(&s);
+    for osm in ["way/1", "way/2"] {
+        let want = lowest_under(&mut s, osm, newest);
+        assert!((now[osm] - want).abs() < 1.0, "{osm}: {} against {want}", now[osm]);
+    }
+    assert!(now["way/1"] < 1000.0, "not on the old terrain's 5 m: {now:?}");
+}

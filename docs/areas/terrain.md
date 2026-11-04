@@ -56,7 +56,7 @@ toposurfaces over where both are, by the midpoint of cells (`cell`, about 250,00
 
 **`place_on_terrain {ids, terrain?, offset?}`** stands masses, columns, footings, components and walls on the ground: each at the lowest ground
 under its footprint (corners and middle; a wall along its axis as a straight line), `offset` mm above it (negative for an embedment), measured
-from the element's own level. What is not over the terrain is left and said. `import_osm` does the same for the masses it makes.
+from the element's own level. What is not over the terrain is left and said. `import_osm` does the same for the masses it makes, and `fetch_terrain` does it for the masses an import made earlier (and for their walls, floors and roof made by face), so the order of the two fetches does not matter ([geofetch](geofetch.md)); `stand_buildings: false` leaves them. Only the imported buildings follow a new terrain: what the user drew or placed by hand is theirs, and `place_on_terrain` stands it.
 
 ## Heights
 

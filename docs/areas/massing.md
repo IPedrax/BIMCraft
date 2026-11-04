@@ -33,7 +33,7 @@ for a floor or a roof. A wall stands plumb, so only on a face whose top edge is 
 and a roof lie on the top outline. `update_by_face` (UF; Revit's Update to Face has no default shortcut) rebuilds the geometry of the
 ones asked for, a mass's, or all of them (`massing::follow`: a wall's ends, level, offset and height or top level; a floor's or roof's
 boundary, level and offset; the type, a roof's slope and the rest stay) and refuses the lot, naming each, when a face is gone. A mass
-mirrored in place runs its outline round the other way, so `relocate` renumbers the faces its walls hold (`massing::mirrored`). Nothing
+mirrored in place runs its outline round the other way, so `relocate` renumbers the faces its walls hold (`massing::mirrored`). `fetch_terrain` runs the same step for the buildings it stands on new ground, mass by mass (a shell whose face is gone is left whole and named). Nothing
 else ties them to the mass, and IFC carries no mark: what comes back from a file is ordinary. `commands::category` reads `mass` and
 `masses` as `mass` (it trims every trailing `s`, which would make `ma`). IFC writes a mass as an `IFCBUILDINGELEMENTPROXY` of object type
 `Mass`, its footprint swept up; a lofted one is a closed `IFCTRIANGULATEDFACESET` with a `BIMCraft_Mass` property set (`ifc::LOFT`) whose

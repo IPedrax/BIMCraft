@@ -75,7 +75,7 @@ msgstr "Bloc de béton"
 msgid "Copper"
 msgstr "Cuivre"
 
-#: crates/core/src/commands.rs:1049
+#: crates/core/src/commands.rs:1052
 msgid "Copy"
 msgstr "Copie"
 
@@ -103,7 +103,7 @@ msgstr "Tiret point"
 msgid "Data Outlet"
 msgstr "Prise de données"
 
-#: crates/core/src/commands.rs:8671
+#: crates/core/src/commands.rs:8767
 msgid "Dependent"
 msgstr "Dépendant"
 
@@ -167,8 +167,8 @@ msgstr "Est"
 msgid "Elbow 90"
 msgstr "Coude 90"
 
-#: crates/core/src/commands.rs:8455
-#: crates/core/src/commands.rs:10142
+#: crates/core/src/commands.rs:8551
+#: crates/core/src/commands.rs:10238
 msgid "Elevation"
 msgstr "Élévation"
 
@@ -285,7 +285,7 @@ msgstr "Largeur du pied"
 msgid "Length"
 msgstr "Longueur"
 
-#: crates/core/src/commands.rs:4520
+#: crates/core/src/commands.rs:4523
 #: crates/core/src/model.rs:2604
 msgid "Level"
 msgstr "Niveau"
@@ -306,7 +306,7 @@ msgstr "Repère"
 msgid "Masking"
 msgstr "Masque"
 
-#: crates/core/src/commands.rs:5557
+#: crates/core/src/commands.rs:5560
 msgid "Mass"
 msgstr "Volume"
 
@@ -370,7 +370,7 @@ msgstr "Lignes aériennes"
 msgid "PVC"
 msgstr "PVC"
 
-#: crates/core/src/commands.rs:6566
+#: crates/core/src/commands.rs:6649
 msgid "Pad"
 msgstr "Plate-forme"
 
@@ -394,7 +394,7 @@ msgstr "Plâtre"
 msgid "Porcelain"
 msgstr "Porcelaine"
 
-#: crates/core/src/commands.rs:2406
+#: crates/core/src/commands.rs:2409
 msgid "Project"
 msgstr "Projet"
 
@@ -418,7 +418,7 @@ msgstr "Contremarches"
 msgid "Roof tiles"
 msgstr "Tuiles"
 
-#: crates/core/src/commands.rs:7218
+#: crates/core/src/commands.rs:7314
 msgid "Room"
 msgstr "Pièce"
 
@@ -446,8 +446,8 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Hauteur assise"
 
-#: crates/core/src/commands.rs:8432
-#: crates/core/src/commands.rs:10141
+#: crates/core/src/commands.rs:8528
+#: crates/core/src/commands.rs:10237
 msgid "Section"
 msgstr "Coupe"
 
@@ -547,7 +547,7 @@ msgstr "Carrelage 300"
 msgid "Timber"
 msgstr "Bois"
 
-#: crates/core/src/commands.rs:6602
+#: crates/core/src/commands.rs:6685
 msgid "Toposurface"
 msgstr "Surface topographique"
 
@@ -567,7 +567,7 @@ msgstr "Type"
 msgid "UP"
 msgstr "MONTE"
 
-#: crates/core/src/commands.rs:8812
+#: crates/core/src/commands.rs:8908
 msgid "Unnamed"
 msgstr "Sans nom"
 

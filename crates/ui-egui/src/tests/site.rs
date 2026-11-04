@@ -332,6 +332,58 @@ fn terrain_from_elevation_data_makes_a_toposurface_and_sets_the_project_height()
     assert_eq!(*fake.asked.lock().unwrap(), 1);
 }
 
+/// The base each building that came from OpenStreetMap stands at, by its OSM id.
+fn bases(h: &Harness<BimApp>) -> std::collections::BTreeMap<String, f64> {
+    h.state()
+        .session
+        .model
+        .elements
+        .values()
+        .filter_map(|e| match e {
+            bimcraft_core::model::Element::Mass(ms) => Some((ms.params.get("OSM Id")?.as_str()?.to_string(), ms.base_offset)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Buildings fetched first, with no ground yet, then the Terrain box opened with the radius typed.
+fn buildings_then_the_terrain_box(fake: Arc<Fake>) -> Harness<'static, BimApp> {
+    let mut h = located(fake);
+    press(&mut h, "Site");
+    press(&mut h, "Import from OpenStreetMap");
+    type_into(&mut h, "Distance round the origin (m)", "300");
+    fetch(&mut h);
+    until_fetched(&mut h);
+    press(&mut h, "Close");
+    assert!(bases(&h).values().all(|b| *b == 0.0), "no ground yet: {:?}", bases(&h));
+    press(&mut h, "Terrain from Elevation Data");
+    type_into(&mut h, "Distance round the origin (m)", "300");
+    h
+}
+
+#[test]
+fn terrain_fetched_after_the_buildings_stands_them_on_it_unless_the_box_is_unticked() {
+    let mut h = buildings_then_the_terrain_box(Arc::new(Fake::new()));
+    fetch(&mut h);
+    until_fetched(&mut h);
+    let now = bases(&h);
+    assert_eq!(now.len(), 2);
+    assert!(now["way/2"] > 300.0, "the second house is up the slope: {now:?}");
+    assert!(h.query_by_label_contains("buildings stand on the new ground").is_some(), "the result says so");
+    // One undo takes the ground and the buildings' new bases back together.
+    press(&mut h, "Close");
+    h.state_mut().session.execute("undo", &json!({})).unwrap();
+    assert!(bases(&h).values().all(|b| *b == 0.0));
+    // Unticked, they stay where they are.
+    let mut h = buildings_then_the_terrain_box(Arc::new(Fake::new()));
+    pick(&mut h, Role::CheckBox, "Stand the imported buildings on the new ground");
+    fetch(&mut h);
+    until_fetched(&mut h);
+    assert!(bases(&h).values().all(|b| *b == 0.0), "{:?}", bases(&h));
+    assert!(h.query_by_label_contains("buildings stand on the new ground").is_none());
+    assert_eq!(count(&h, "toposurface"), 1, "the ground was made all the same");
+}
+
 #[test]
 fn aerial_imagery_is_fetched_from_the_site_tab_and_laid_over_the_terrain_in_one_undo_step() {
     let fake = Arc::new(Fake::new());

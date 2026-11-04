@@ -26,7 +26,7 @@ server is `overpass-api.de`; the user may name another (https, a host name, no p
 36,000 points, no finer than 10 m; a spacing that makes more than 50,000 is refused before the fetch), projects them, and makes a
 [toposurface](terrain.md) clipped to the box. Heights are made **project heights**: with no height above the sea in the project and
 `set_elevation` true (the default) the ground at the origin becomes `Location.elevation`, so project z = 0 is there; otherwise the
-project's own is taken off (`z_mm = metres x 1000 - Location.elevation`). One undo step brings back the terrain and the height.
+project's own is taken off (`z_mm = metres x 1000 - Location.elevation`). **The buildings `import_osm` made** (the masses with an `OSM Id`) are stood on the new ground, whichever was fetched first (`stand_buildings`, true by default): each at the lowest ground under its footprint, as `place_on_terrain` does, and what was made from them by face follows (`update_by_face`'s step, `follow_one`); one not over the ground stays and is counted, one whose shell cannot follow (a face is gone) stands while its shell is left, named (`stood` in the reply: `moved`, `off_terrain`, `shells_updated`, `shells_left`). One undo step brings back the terrain, the height and the buildings' bases.
 
 - **Terrarium** (default): `s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png`, 256 x 256 PNGs, metres = R x 256 + G + B / 256
   - 32768; the zoom is the coarsest at or below the spacing in metres a pixel, a coarser one when the box needs more than 100 tiles; the
