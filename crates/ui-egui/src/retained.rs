@@ -201,6 +201,8 @@ pub(crate) struct Look {
     pixels_per_point: f32,
     options: TessellationOptions,
     dark: bool,
+    /// The paper's colour the user picked, which `canvas::color` paints the drawing's white in.
+    ground: Option<egui::Color32>,
     thin: bool,
     hide: Option<Id>,
 }
@@ -214,6 +216,7 @@ impl Look {
             pixels_per_point: ctx.pixels_per_point(),
             options: ctx.tessellation_options(|o| *o),
             dark: crate::style::canvas_dark(),
+            ground: crate::style::canvas_ground(),
             thin,
             hide,
         }
@@ -223,7 +226,7 @@ impl Look {
     fn same_ink(&self, o: &Look) -> bool {
         self.pixels_per_point == o.pixels_per_point
             && self.options == o.options
-            && (self.dark, self.thin, self.hide) == (o.dark, o.thin, o.hide)
+            && (self.dark, self.ground, self.thin, self.hide) == (o.dark, o.ground, o.thin, o.hide)
     }
 
     fn same_place(&self, o: &Look) -> bool {
@@ -420,7 +423,7 @@ fn build(pipeline: &Pipeline, key: &Key, selected: &[Id], hovered: Option<Id>, c
                 return Default::default();
             }
             // The canvas's look is kept per thread, and this may be another.
-            crate::style::set_canvas_dark(look.dark);
+            crate::style::set_canvas(look.dark, look.ground);
             // The shapes `canvas::paint` makes hold no circles or text, the only things that read the two last.
             let mut tessellator = Tessellator::new(look.pixels_per_point, look.options, [1, 1], Vec::new());
             tessellator.set_clip_rect(reach);
@@ -675,14 +678,17 @@ mod tests {
         let clips = [Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 640.0)), Rect::from_min_max(pos2(37.0, 21.0), pos2(611.0, 503.0))];
         for format in [wgpu::TextureFormat::Rgba8Unorm, wgpu::TextureFormat::Rgba8UnormSrgb] {
             let pipeline = Arc::new(Pipeline::new(&card.0, &card.1, format));
-            for (ppp, view, clip, selected, hovered, thin, dark) in [
-                (1.0, view, clips[0], vec![], None, false, false),
-                (1.0, view, clips[0], vec![], None, false, true),
-                (1.0, view, clips[1], vec![owner], None, false, false),
-                (1.0, zoomed, clips[1], vec![], Some(owner), true, true),
-                (1.5, zoomed, clips[0], vec![owner], None, false, false),
+            // A paper of the user's colour, which the canvas paints the drawing's white in.
+            let tan = Some(egui::Color32::from_rgb(232, 220, 196));
+            for (ppp, view, clip, selected, hovered, thin, dark, ground) in [
+                (1.0, view, clips[0], vec![], None, false, false, None),
+                (1.0, view, clips[0], vec![], None, false, true, None),
+                (1.0, view, clips[1], vec![owner], None, false, false, None),
+                (1.0, zoomed, clips[1], vec![], Some(owner), true, true, None),
+                (1.5, zoomed, clips[0], vec![owner], None, false, false, None),
+                (1.0, view, clips[0], vec![owner], None, false, false, tan),
             ] {
-                crate::style::set_canvas_dark(dark);
+                crate::style::set_canvas(dark, ground);
                 let d = Arc::new(render::draw(&m, level, view));
                 let at = Place::at(clip.min);
                 let today = frame(&card, format, ppp, clip, |p, _| canvas::paint(p, at, &d, &selected, hovered, thin, &[]));
@@ -711,7 +717,7 @@ mod tests {
                 assert_eq!(differs, 0, "{format:?} at {ppp}: {differs} pixels differ from egui's (dark {dark}, thin {thin})");
             }
         }
-        crate::style::set_canvas_dark(false);
+        crate::style::set_canvas(false, None);
     }
 
     /// The whole app's window on a plan, with a wall selected: `card` given or not.

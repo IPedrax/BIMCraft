@@ -440,9 +440,11 @@ pub fn canvas_ground() -> Option<Color32> {
     GROUND.with(Cell::get)
 }
 
-/// This thread's canvas, light or dark: a thread that paints for the interface's takes its look.
-pub(crate) fn set_canvas_dark(dark: bool) {
+/// This thread's canvas, light or dark, and the colour the user picked for its paper (none for the drawing's white): a thread
+/// that paints for the interface's takes both, as `canvas::color` reads them.
+pub(crate) fn set_canvas(dark: bool, ground: Option<Color32>) {
     CANVAS_DARK.with(|c| c.set(dark));
+    GROUND.with(|g| g.set(ground));
 }
 
 /// The colours the drawing paints with where they must read on its own ground (the fills of what is selected or hovered, a crop
