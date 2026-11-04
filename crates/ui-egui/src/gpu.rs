@@ -107,6 +107,8 @@ impl Card {
 struct Targets {
     size: (u32, u32),
     color: wgpu::TextureView,
+    /// The colour target itself, which a wireframe drawn in parts is copied from.
+    color_texture: wgpu::Texture,
     ids: wgpu::TextureView,
     depth: wgpu::TextureView,
     clear_color: wgpu::TextureView,
@@ -124,10 +126,9 @@ struct Targets {
 /// A mesh on the card, the buffers that change with the pictures, and what they were last written with.
 struct Uploaded {
     mesh: Arc<Mesh>,
-    /// Its vertices, as many buffers as they take, each but the last holding [`Uploaded::per`]: those the card holds now.
-    vertices: Vec<Option<wgpu::Buffer>>,
-    per: u64,
-    /// How many bytes of them it holds, and the most it may.
+    /// Its vertices, those the card holds now.
+    vertices: Store,
+    /// How many bytes of these, a wireframe's lines and a scan's points it holds, and the most it may.
     held: u64,
     room: u64,
     count: u64,
@@ -138,12 +139,11 @@ struct Uploaded {
     shape_vertices: Option<wgpu::Buffer>,
     instances: Vec<wgpu::Buffer>,
     instances_per: u64,
-    /// A wireframe's edges, as many buffers as they take, each but the last holding [`Uploaded::wires_per`].
-    wires: Vec<wgpu::Buffer>,
-    wires_per: u64,
-    /// A scan's points, as many buffers as they take, each but the last holding [`Uploaded::dots_per`].
-    dots: Vec<wgpu::Buffer>,
-    dots_per: u64,
+    /// A wireframe's edges, those the card holds now, and how far a picture too big to hold at once is drawn.
+    wires: Store,
+    wire_stream: Option<WireStream>,
+    /// A scan's points, those the card holds now.
+    dots: Store,
     /// The copies a view sees, gathered in their order into one buffer (and how many it has room for) when it doesn't see them
     /// all: which they are, and where each shape's are in it.
     seen: Option<(wgpu::Buffer, u64)>,
@@ -202,37 +202,115 @@ enum Hold {
 
 const TOO_LITTLE: &str = "more memory than the card has: it can't hold one buffer of the model's vertices";
 
-/// `part`, on the card in a buffer of its own, with `held` bytes there already.
-fn hold_vertices(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    part: &[Vertex],
-    held: u64,
-    full_at: Option<u64>,
-    cancelled: &dyn Fn() -> bool,
-) -> Result<wgpu::Buffer, Hold> {
-    let size = part.len() as u64 * STRIDE;
+/// What of a mesh the card can let go of and bring back.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Kind {
+    Own,
+    Wires,
+    Dots,
+}
+
+const KINDS: [Kind; 3] = [Kind::Own, Kind::Wires, Kind::Dots];
+
+/// One kind of it, in as many buffers as it takes, each but the last holding `per` items of `stride` bytes.
+struct Store {
+    buffers: Vec<Option<wgpu::Buffer>>,
+    per: u64,
+    count: u64,
+    stride: u64,
+}
+
+impl Store {
+    fn bytes_of(&self, k: usize) -> u64 {
+        self.count.saturating_sub(k as u64 * self.per).min(self.per) * self.stride
+    }
+
+    /// The buffers items `r` lie in.
+    fn of(&self, r: &std::ops::Range<usize>) -> std::ops::Range<usize> {
+        let per = self.per.max(1) as usize;
+        if r.is_empty() { 0..0 } else { r.start / per..(r.end - 1) / per + 1 }
+    }
+
+    fn holds(&self, r: &std::ops::Range<usize>) -> bool {
+        self.of(r).all(|k| matches!(self.buffers.get(k), Some(Some(_))))
+    }
+
+    /// How many buffers it holds now.
+    fn held(&self) -> usize {
+        self.buffers.iter().flatten().count()
+    }
+}
+
+/// A wireframe's picture drawn in parts because the card can't hold all its lines at once: what it is of, and how many parts
+/// are done (a part being one buffer's lines, once for all of them and again for what is tinted).
+struct WireStream {
+    key: (Camera, Cut, Vec<(Id, Rgb)>, bool),
+    done: usize,
+}
+
+/// The bytes of buffer `k` of a kind held `per` to a buffer, as the card reads them.
+fn store_bytes(mesh: &Mesh, kind: Kind, k: usize, per: usize, cancelled: &dyn Fn() -> bool) -> Result<Words, Hold> {
+    let stop = "3D upload was cancelled";
+    let mut bytes = Words::new();
+    let range = |len: usize| (k * per).min(len)..((k + 1) * per).min(len);
+    match kind {
+        Kind::Own => {
+            let part = mesh.vertices.get(range(mesh.vertices.len())).unwrap_or_default();
+            bytes.reserve(part.len() * STRIDE as usize);
+            for (n, Vertex { position, normal, face, color, owner, plane, tex }) in part.iter().enumerate() {
+                if n % 8192 == 0 && cancelled() {
+                    return Err(Hold::Failed(stop.into()));
+                }
+                put(&mut bytes, position);
+                put_unit(&mut bytes, normal);
+                put_unit(&mut bytes, face);
+                put_words(&mut bytes, &[*color, *owner, *plane, *tex]);
+            }
+        }
+        // From the origin so that f32 holds them.
+        Kind::Wires => {
+            let part = mesh.wires.get(range(mesh.wires.len())).unwrap_or_default();
+            bytes.reserve(part.len() * WIRE as usize);
+            for (n, wire) in part.iter().enumerate() {
+                if n % 8192 == 0 && cancelled() {
+                    return Err(Hold::Failed(stop.into()));
+                }
+                let [a, b] = wire.ends.map(|p| std::array::from_fn::<f32, 3, _>(|i| (p[i] - mesh.origin[i]) as f32));
+                put(&mut bytes, &a);
+                put(&mut bytes, &b);
+                put_words(&mut bytes, &[wire.owner]);
+            }
+        }
+        Kind::Dots => {
+            let part = mesh.dots.get(range(mesh.dots.len())).unwrap_or_default();
+            bytes.reserve(part.len() * DOT as usize);
+            for (n, dot) in part.iter().enumerate() {
+                if n % 8192 == 0 && cancelled() {
+                    return Err(Hold::Failed(stop.into()));
+                }
+                let at = std::array::from_fn::<f32, 3, _>(|i| (dot.at[i] - mesh.origin[i]) as f32);
+                put(&mut bytes, &at);
+                put_words(&mut bytes, &[dot.color, dot.owner]);
+            }
+        }
+    }
+    Ok(bytes)
+}
+
+/// `bytes`, on the card in a buffer of its own, with `held` bytes there already.
+fn hold(device: &wgpu::Device, queue: &wgpu::Queue, bytes: &[u8], held: u64, full_at: Option<u64>) -> Result<wgpu::Buffer, Hold> {
+    let size = bytes.len() as u64;
     if full_at.is_some_and(|at| held + size > at) {
         return Err(Hold::Full);
     }
-    let mut bytes = Words::with_capacity(size as usize);
-    for (k, Vertex { position, normal, face, color, owner, plane, tex }) in part.iter().enumerate() {
-        if k % 8192 == 0 && cancelled() {
-            return Err(Hold::Failed("3D upload was cancelled".into()));
-        }
-        put(&mut bytes, position);
-        put_unit(&mut bytes, normal);
-        put_unit(&mut bytes, face);
-        put_words(&mut bytes, &[*color, *owner, *plane, *tex]);
-    }
     let guard = scopes(device);
     let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("bimcraft-3d-vertices"),
+        label: Some("bimcraft-3d-held"),
         size,
         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     });
-    queue.write_buffer(&buffer, 0, &bytes);
+    queue.write_buffer(&buffer, 0, bytes);
     queue.submit([]);
     match out_of_memory(guard) {
         Ok(false) => Ok(buffer),
@@ -242,67 +320,86 @@ fn hold_vertices(
 }
 
 impl Uploaded {
-    fn bytes_of(&self, k: usize) -> u64 {
-        let all = self.count.div_ceil(self.per.max(1));
-        if (k as u64) + 1 < all { self.per * STRIDE } else { (self.count - (k as u64) * self.per.max(1)) * STRIDE }
+    fn store(&self, kind: Kind) -> &Store {
+        match kind {
+            Kind::Own => &self.vertices,
+            Kind::Wires => &self.wires,
+            Kind::Dots => &self.dots,
+        }
     }
 
-    /// The buffers vertices `r` lie in.
-    fn buffers_of(&self, r: &std::ops::Range<usize>) -> std::ops::Range<usize> {
-        let per = self.per.max(1) as usize;
-        if r.is_empty() { 0..0 } else { r.start / per..(r.end - 1) / per + 1 }
-    }
-
-    fn holds(&self, r: &std::ops::Range<usize>) -> bool {
-        self.buffers_of(r).all(|k| matches!(self.vertices.get(k), Some(Some(_))))
+    fn store_mut(&mut self, kind: Kind) -> &mut Store {
+        match kind {
+            Kind::Own => &mut self.vertices,
+            Kind::Wires => &mut self.wires,
+            Kind::Dots => &mut self.dots,
+        }
     }
 
     /// The buffers `draws` read, each once.
-    fn wanted_by(&self, draws: &[(bool, Draw)]) -> Vec<usize> {
-        let mut wanted = std::collections::BTreeSet::new();
+    fn wanted_by(&self, draws: &[(bool, Draw)]) -> Vec<(Kind, usize)> {
+        let mut wanted = Vec::new();
         for (_, draw) in draws {
-            if let Draw::Own(r) = draw {
-                wanted.extend(self.buffers_of(r));
+            let (kind, range) = match draw {
+                Draw::Own(r) => (Kind::Own, self.vertices.of(r)),
+                Draw::Dots(r) => (Kind::Dots, self.dots.of(r)),
+                Draw::Copies { .. } => continue,
+            };
+            for k in range {
+                if !wanted.contains(&(kind, k)) {
+                    wanted.push((kind, k));
+                }
             }
         }
-        wanted.into_iter().collect()
+        wanted
     }
 
-    /// Puts buffer `k` on the card, letting go of any it needn't `keep` to make room. False where there's none to be had.
+    /// Lets go of a buffer it needn't `keep`, the last of the last kind first. False where there's none.
+    fn let_go(&mut self, keep: &dyn Fn(Kind, usize) -> bool) -> bool {
+        for kind in KINDS.into_iter().rev() {
+            let store = self.store(kind);
+            let Some(k) = (0..store.buffers.len()).rev().find(|&k| !keep(kind, k) && matches!(store.buffers.get(k), Some(Some(_)))) else {
+                continue;
+            };
+            let size = store.bytes_of(k);
+            if let Some(slot) = self.store_mut(kind).buffers.get_mut(k) {
+                *slot = None;
+            }
+            self.held -= size;
+            return true;
+        }
+        false
+    }
+
+    /// Puts buffer `k` of `kind` on the card, letting go of any it needn't `keep` to make room. False where there's none to be
+    /// had.
     fn bring_in(
         &mut self,
         (device, queue): (&wgpu::Device, &wgpu::Queue),
         mesh: &Mesh,
-        k: usize,
-        keep: &dyn Fn(usize) -> bool,
+        (kind, k): (Kind, usize),
+        keep: &dyn Fn(Kind, usize) -> bool,
         full_at: Option<u64>,
     ) -> Result<bool, String> {
-        if !matches!(self.vertices.get(k), Some(None)) {
+        let store = self.store(kind);
+        if !matches!(store.buffers.get(k), Some(None)) {
             return Ok(true);
         }
-        let size = self.bytes_of(k);
-        let let_go = |up: &mut Uploaded| {
-            let Some(other) = (0..up.vertices.len()).rev().find(|&n| n != k && !keep(n) && matches!(up.vertices.get(n), Some(Some(_))))
-            else {
-                return false;
-            };
-            if let Some(slot) = up.vertices.get_mut(other) {
-                *slot = None;
+        let (size, per) = (store.bytes_of(k), store.per as usize);
+        let keeping = |n: Kind, m: usize| (n, m) == (kind, k) || keep(n, m);
+        while self.held + size > self.room {
+            if !self.let_go(&keeping) {
+                return Ok(false);
             }
-            up.held -= up.bytes_of(other);
-            true
-        };
+        }
+        let bytes = store_bytes(mesh, kind, k, per, &|| false).map_err(|e| match e {
+            Hold::Failed(e) => e,
+            Hold::Full => TOO_LITTLE.to_string(),
+        })?;
         loop {
-            while self.held + size > self.room {
-                if !let_go(self) {
-                    return Ok(false);
-                }
-            }
-            let per = self.per as usize;
-            let part = mesh.vertices.get(k * per..((k + 1) * per).min(mesh.vertices.len())).unwrap_or_default();
-            match hold_vertices(device, queue, part, self.held, full_at, &|| false) {
+            match hold(device, queue, &bytes, self.held, full_at) {
                 Ok(buffer) => {
-                    if let Some(slot) = self.vertices.get_mut(k) {
+                    if let Some(slot) = self.store_mut(kind).buffers.get_mut(k) {
                         *slot = Some(buffer);
                     }
                     self.held += size;
@@ -311,7 +408,7 @@ impl Uploaded {
                 Err(Hold::Full) => {
                     // The card has no more than it holds now: from here on, no more than that is asked of it.
                     self.room = self.held;
-                    if !let_go(self) {
+                    if !self.let_go(&keeping) {
                         return Ok(false);
                     }
                 }
@@ -931,21 +1028,15 @@ impl Gpu {
     /// Asks the card to hold half of what it does, and starts the picture again. False where it holds no more than one buffer.
     pub(crate) fn hold_less(&mut self) -> bool {
         let Some(up) = &mut self.mesh else { return false };
-        if up.vertices.iter().flatten().count() < 2 {
+        let buffers = |up: &Uploaded| KINDS.iter().map(|kind| up.store(*kind).held()).sum::<usize>();
+        if buffers(up) < 2 {
             return false;
         }
         up.room = up.held / 2;
-        for k in (0..up.vertices.len()).rev() {
-            if up.held <= up.room || up.vertices.iter().flatten().count() < 2 {
-                break;
-            }
-            if let Some(slot) = up.vertices.get_mut(k).filter(|slot| slot.is_some()) {
-                *slot = None;
-                up.held -= up.bytes_of(k);
-            }
-        }
+        while up.held > up.room && buffers(up) > 1 && up.let_go(&|_, _| false) {}
         up.room = up.room.max(up.held);
         up.progress = None;
+        up.wire_stream = None;
         self.card_bytes = self.card_bytes.min(up.room);
         true
     }
@@ -1112,7 +1203,12 @@ impl Gpu {
             Some((c, k, Stage::Exact { done, total })) if c == cam && *k == cut && done >= total => Frame::Picture,
             Some((c, k, Stage::Exact { done, .. })) if c == cam && *k == cut => Frame::Exact(*done),
             Some((c, k, Stage::Moving)) if c == cam && *k == cut => Frame::Exact(0),
-            _ if mesh.cost(&seen).saturating_add(dots) <= budget && seen.vertices.iter().all(|r| up.holds(r)) => Frame::Exact(0),
+            _ if mesh.cost(&seen).saturating_add(dots) <= budget
+                && seen.vertices.iter().all(|r| up.vertices.holds(r))
+                && up.dots.holds(&(0..mesh.dots.len())) =>
+            {
+                Frame::Exact(0)
+            }
             _ => Frame::Moving,
         };
         let limit = self.vertex_bytes.min(device.limits().max_buffer_size);
@@ -1127,12 +1223,12 @@ impl Gpu {
                 let part = loop {
                     let part = part_of(&all, done, end);
                     let wanted = up.wanted_by(&part);
-                    let bytes: u64 = wanted.iter().map(|&k| up.bytes_of(k)).sum();
+                    let bytes: u64 = wanted.iter().map(|(kind, k)| up.store(*kind).bytes_of(*k)).sum();
                     if bytes <= up.room {
-                        let keep = |k: usize| wanted.contains(&k);
+                        let keep = |kind: Kind, k: usize| wanted.contains(&(kind, k));
                         let mut whole = true;
-                        for &k in &wanted {
-                            whole &= up.bring_in((device, queue), mesh, k, &keep, full_at)?;
+                        for &one in &wanted {
+                            whole &= up.bring_in((device, queue), mesh, one, &keep, full_at)?;
                         }
                         if whole {
                             break part;
@@ -1147,15 +1243,20 @@ impl Gpu {
                 (part, done == 0)
             }
             Frame::Moving => {
-                // A buffer a frame, the nearest the view wants and the card doesn't hold, in place of one the view doesn't see.
-                if let Some(next) = mesh.nearest_not_held(cam, &seen, &|r| up.holds(r)) {
-                    let seen_now: std::collections::BTreeSet<usize> = seen.vertices.iter().flat_map(|r| up.buffers_of(r)).collect();
-                    let keep = |k: usize| seen_now.contains(&k);
-                    for k in up.buffers_of(&next) {
-                        up.bring_in((device, queue), mesh, k, &keep, full_at)?;
+                // A buffer a frame, the nearest the view wants and the card doesn't hold, in place of one the view doesn't see;
+                // then the points, where there's room with what the view sees.
+                let seen_now: Vec<usize> = seen.vertices.iter().flat_map(|r| up.vertices.of(r)).collect();
+                let keep = |kind: Kind, k: usize| kind == Kind::Own && seen_now.contains(&k);
+                let next = mesh.nearest_not_held(cam, &seen, &|r| up.vertices.holds(r));
+                if let Some(next) = next {
+                    for k in up.vertices.of(&next) {
+                        up.bring_in((device, queue), mesh, (Kind::Own, k), &keep, full_at)?;
                     }
+                } else if let Some(k) = up.dots.buffers.iter().position(Option::is_none) {
+                    let keep_points = |kind: Kind, n: usize| kind == Kind::Dots || keep(kind, n);
+                    up.bring_in((device, queue), mesh, (Kind::Dots, k), &keep_points, full_at)?;
                 }
-                let near = mesh.nearest_first_held(cam, &seen, budget.saturating_sub(dots), &|r| up.holds(r));
+                let near = mesh.nearest_first_held(cam, &seen, budget.saturating_sub(dots), &|r| up.vertices.holds(r));
                 up.progress = Some((*cam, cut, Stage::Moving));
                 (surfaces(mesh, up, queue, device, &near.seen, &near.stand_ins, limit), true)
             }
@@ -1164,20 +1265,23 @@ impl Gpu {
         // The picture is made again when the surfaces are whole, exact or standing in; while the exact ones are on their way it
         // stays what the camera last showed.
         let picture = complete || frame == Frame::Moving;
-        let bind = up.bind.get_or_insert_with(|| {
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("bimcraft-3d-buffers"),
-                layout: &self.group0,
-                entries: &[
-                    entry(0, &self.globals),
-                    entry(1, &up.owners),
-                    entry(2, &self.segments.0),
-                    entry(3, &up.skins),
-                    entry(4, &up.texels),
-                    entry(5, &up.planes),
-                ],
+        let bind = up
+            .bind
+            .get_or_insert_with(|| {
+                device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("bimcraft-3d-buffers"),
+                    layout: &self.group0,
+                    entries: &[
+                        entry(0, &self.globals),
+                        entry(1, &up.owners),
+                        entry(2, &self.segments.0),
+                        entry(3, &up.skins),
+                        entry(4, &up.texels),
+                        entry(5, &up.planes),
+                    ],
+                })
             })
-        });
+            .clone();
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("bimcraft-3d") });
         // The opaque surfaces, then (when the view sees through any) those seen through, the nearest in front of them: begun
         // afresh in a frame's first part, and carried on in the same targets in the next.
@@ -1221,7 +1325,7 @@ impl Gpu {
                 };
                 if set != Some(pipeline as *const wgpu::RenderPipeline) {
                     pass.set_pipeline(pipeline);
-                    pass.set_bind_group(0, &*bind, &[]);
+                    pass.set_bind_group(0, &bind, &[]);
                     // What is seen through reads the opaque depth, which the opaque pass wrote.
                     if clear {
                         pass.set_bind_group(1, &targets.bind, &[]);
@@ -1230,8 +1334,8 @@ impl Gpu {
                 }
                 match draw {
                     Draw::Own(range) => {
-                        for (k, part) in spans(up.per, range.start as u64..range.end as u64) {
-                            if let Some(Some(buffer)) = up.vertices.get(k) {
+                        for (k, part) in spans(up.vertices.per, range.start as u64..range.end as u64) {
+                            if let Some(Some(buffer)) = up.vertices.buffers.get(k) {
                                 pass.set_vertex_buffer(0, buffer.slice(..));
                                 pass.draw(part, 0..1);
                             }
@@ -1262,8 +1366,8 @@ impl Gpu {
                         }
                     }
                     Draw::Dots(range) => {
-                        for (k, part) in spans(up.dots_per, range.start as u64..range.end as u64) {
-                            if let Some(buffer) = up.dots.get(k) {
+                        for (k, part) in spans(up.dots.per, range.start as u64..range.end as u64) {
+                            if let Some(Some(buffer)) = up.dots.buffers.get(k) {
                                 pass.set_vertex_buffer(0, buffer.slice(..));
                                 pass.draw(0..6, part);
                             }
@@ -1275,6 +1379,98 @@ impl Gpu {
         if !picture {
             self.queue.submit([encoder.finish()]);
             return Ok(false);
+        }
+        // A wireframe past what the card holds: what it holds stands in on a moved view, and the exact picture is drawn a part at a
+        // time into the colour target, shown once it is whole.
+        let lines = mesh.wires.len() as u64;
+        let streams = mesh.wireframe && lines > 0 && up.wires.count * WIRE > up.room;
+        let mut stands_in = false;
+        if streams {
+            let key = (*cam, cut, tints.to_vec(), self.swapped_ink);
+            let passes: &[&wgpu::RenderPipeline] = if tints.is_empty() { &[&self.wires] } else { &[&self.wires, &self.wires_tinted] };
+            let buffers = up.wires.buffers.len();
+            let total = buffers * passes.len();
+            match up.wire_stream.as_ref().filter(|stream| stream.key == key).map(|stream| stream.done) {
+                Some(done) if done >= total => return Ok(true),
+                Some(done) => {
+                    // As many parts as it holds at once and a frame's budget lets it draw, what it has drawn let go.
+                    let (mut end, mut bytes, mut drawn) = (done, 0, 0);
+                    let mut wanted: Vec<usize> = Vec::new();
+                    while end < total {
+                        let k = end % buffers;
+                        let (size, count) = (up.wires.bytes_of(k), (up.wires.bytes_of(k) / WIRE) as usize);
+                        let fresh = !wanted.contains(&k);
+                        if end > done && ((fresh && bytes + size > up.room) || (drawn + count) * 2 > budget) {
+                            break;
+                        }
+                        if fresh {
+                            bytes += size;
+                            wanted.push(k);
+                        }
+                        drawn += count;
+                        end += 1;
+                    }
+                    let keep = |kind: Kind, k: usize| kind == Kind::Wires && wanted.contains(&k);
+                    for &k in &wanted {
+                        if !up.bring_in((device, queue), mesh, (Kind::Wires, k), &keep, full_at)? {
+                            // It held less than it said: try again, for less, next frame; a buffer alone it can't hold at all.
+                            if wanted.len() == 1 {
+                                return Err(TOO_LITTLE.into());
+                            }
+                            self.queue.submit([encoder.finish()]);
+                            return Ok(false);
+                        }
+                    }
+                    let paper = if swapped > 0.5 { 26.0 / 255.0 } else { 1.0 };
+                    let load = if done == 0 {
+                        wgpu::LoadOp::Clear(wgpu::Color { r: paper, g: paper, b: paper, a: 1.0 })
+                    } else {
+                        wgpu::LoadOp::Load
+                    };
+                    {
+                        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                            label: Some("wires, a part"),
+                            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                                view: &targets.color,
+                                depth_slice: None,
+                                resolve_target: None,
+                                ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
+                            })],
+                            depth_stencil_attachment: None,
+                            timestamp_writes: None,
+                            occlusion_query_set: None,
+                            multiview_mask: None,
+                        });
+                        pass.set_bind_group(0, &bind, &[]);
+                        for part in done..end {
+                            if let Some((pipeline, Some(Some(buffer)))) =
+                                passes.get(part / buffers).zip(Some(up.wires.buffers.get(part % buffers)))
+                            {
+                                pass.set_pipeline(pipeline);
+                                pass.set_vertex_buffer(0, buffer.slice(..));
+                                pass.draw(0..6, 0..(up.wires.bytes_of(part % buffers) / WIRE) as u32);
+                            }
+                        }
+                    }
+                    let whole = end >= total;
+                    if whole {
+                        let size = wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 };
+                        encoder.copy_texture_to_texture(targets.color_texture.as_image_copy(), targets.picture.as_image_copy(), size);
+                    }
+                    up.wire_stream = Some(WireStream { key, done: end });
+                    self.queue.submit([encoder.finish()]);
+                    return Ok(whole);
+                }
+                None => {
+                    up.wire_stream = Some(WireStream { key, done: 0 });
+                    stands_in = true;
+                }
+            }
+        } else if mesh.wireframe {
+            let keep = |kind: Kind, _: usize| kind == Kind::Wires;
+            for k in 0..up.wires.buffers.len() {
+                up.bring_in((device, queue), mesh, (Kind::Wires, k), &keep, full_at)?;
+            }
         }
         for (name, pipeline, load, instances) in
             [("edges", &self.post, wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), 1), ("levels", &self.lines, wgpu::LoadOp::Load, count)]
@@ -1296,7 +1492,7 @@ impl Gpu {
                 multiview_mask: None,
             });
             pass.set_pipeline(pipeline);
-            pass.set_bind_group(0, &*bind, &[]);
+            pass.set_bind_group(0, &bind, &[]);
             pass.set_bind_group(1, &targets.bind, &[]);
             if name == "edges" {
                 pass.set_bind_group(2, &targets.clear_bind, &[]);
@@ -1322,9 +1518,9 @@ impl Gpu {
             let passes: &[&wgpu::RenderPipeline] = if tints.is_empty() { &[&self.wires] } else { &[&self.wires, &self.wires_tinted] };
             for pipeline in passes {
                 pass.set_pipeline(pipeline);
-                pass.set_bind_group(0, &*bind, &[]);
-                for (k, part) in spans(up.wires_per, 0..mesh.wires.len() as u64) {
-                    if let Some(buffer) = up.wires.get(k) {
+                pass.set_bind_group(0, &bind, &[]);
+                for (k, part) in spans(up.wires.per, 0..lines) {
+                    if let Some(Some(buffer)) = up.wires.buffers.get(k) {
                         pass.set_vertex_buffer(0, buffer.slice(..));
                         pass.draw(0..6, part);
                     }
@@ -1332,7 +1528,7 @@ impl Gpu {
             }
         }
         self.queue.submit([encoder.finish()]);
-        Ok(complete)
+        Ok(complete && !stands_in)
     }
 
     /// Puts `mesh` on the card, unless it's there already.
@@ -1366,31 +1562,40 @@ impl Gpu {
         }
         // Whole triangles to a buffer, written and sent one at a time, so that what waits to go up is one buffer's.
         let per = (vertex_bytes.min(device.limits().max_buffer_size) / STRIDE / 3).max(1) * 3;
-        let mut vertices = Vec::with_capacity((mesh.vertices.len() as u64 / per + 1) as usize);
         // As many as the card holds; the rest come when a view wants them.
         let (mut held, mut most) = (0u64, room.bytes);
-        for part in mesh.vertices.chunks(per as usize) {
-            if cancelled() {
-                return Err("3D upload was cancelled".into());
-            }
-            let size = part.len() as u64 * STRIDE;
-            if held + size > most {
-                vertices.push(None);
-                continue;
-            }
-            match hold_vertices(device, queue, part, held, room.full_at, cancelled) {
-                Ok(buffer) => {
-                    vertices.push(Some(buffer));
-                    held += size;
+        let limit = vertex_bytes.min(device.limits().max_buffer_size);
+        let mut fill = |kind: Kind, count: usize, per: u64, stride: u64| -> Result<Store, String> {
+            let mut store = Store { buffers: Vec::new(), per, count: count as u64, stride };
+            for k in 0..count.div_ceil(per as usize) {
+                if cancelled() {
+                    return Err("3D upload was cancelled".into());
                 }
-                Err(Hold::Full) => {
-                    most = held;
-                    vertices.push(None);
+                let size = store.bytes_of(k);
+                if held + size > most {
+                    store.buffers.push(None);
+                    continue;
                 }
-                Err(Hold::Failed(e)) => return Err(e),
+                let made =
+                    store_bytes(mesh, kind, k, per as usize, cancelled).and_then(|bytes| hold(device, queue, &bytes, held, room.full_at));
+                match made {
+                    Ok(buffer) => {
+                        store.buffers.push(Some(buffer));
+                        held += size;
+                    }
+                    Err(Hold::Full) => {
+                        most = held;
+                        store.buffers.push(None);
+                    }
+                    Err(Hold::Failed(e)) => return Err(e),
+                }
             }
-        }
-        if held == 0 && !mesh.vertices.is_empty() {
+            Ok(store)
+        };
+        let vertices = fill(Kind::Own, mesh.vertices.len(), per, STRIDE)?;
+        let wires = fill(Kind::Wires, mesh.wires.len(), (limit / WIRE).max(3), WIRE)?;
+        let dots = fill(Kind::Dots, mesh.dots.len(), (limit / DOT).max(3), DOT)?;
+        if held == 0 && !(mesh.vertices.is_empty() && mesh.wires.is_empty() && mesh.dots.is_empty()) {
             return Err(TOO_LITTLE.into());
         }
         let mut bytes = Words::new();
@@ -1434,41 +1639,6 @@ impl Gpu {
             instances.push(vertex_buffer("bimcraft-3d-instances", &bytes));
             queue.submit([]);
         }
-        // A wireframe's edges, from the origin so that f32 holds them.
-        let wires_per = (vertex_bytes.min(device.limits().max_buffer_size) / WIRE).max(3);
-        let mut wires = Vec::new();
-        for part in mesh.wires.chunks(wires_per as usize) {
-            if cancelled() {
-                return Err("3D upload was cancelled".into());
-            }
-            bytes.clear();
-            bytes.reserve(part.len() * WIRE as usize);
-            for wire in part {
-                let [a, b] = wire.ends.map(|p| std::array::from_fn::<f32, 3, _>(|i| (p[i] - mesh.origin[i]) as f32));
-                put(&mut bytes, &a);
-                put(&mut bytes, &b);
-                put_words(&mut bytes, &[wire.owner]);
-            }
-            wires.push(vertex_buffer("bimcraft-3d-wires", &bytes));
-            queue.submit([]);
-        }
-        // A scan's points, from the origin so that f32 holds them.
-        let dots_per = (vertex_bytes.min(device.limits().max_buffer_size) / DOT).max(3);
-        let mut dots = Vec::new();
-        for part in mesh.dots.chunks(dots_per as usize) {
-            if cancelled() {
-                return Err("3D upload was cancelled".into());
-            }
-            bytes.clear();
-            bytes.reserve(part.len() * DOT as usize);
-            for dot in part {
-                let at = std::array::from_fn::<f32, 3, _>(|i| (dot.at[i] - mesh.origin[i]) as f32);
-                put(&mut bytes, &at);
-                put_words(&mut bytes, &[dot.color, dot.owner]);
-            }
-            dots.push(vertex_buffer("bimcraft-3d-dots", &bytes));
-            queue.submit([]);
-        }
         let planes = Gpu::storage(device, mesh.instance_planes.len() as u64 * 4);
         if !mesh.instance_planes.is_empty() {
             let mut words = Words::with_capacity(mesh.instance_planes.len() * 4);
@@ -1484,7 +1654,6 @@ impl Gpu {
         Ok(Uploaded {
             mesh: Arc::clone(mesh),
             vertices,
-            per,
             held,
             room: most,
             count: mesh.vertices.len() as u64,
@@ -1493,9 +1662,8 @@ impl Gpu {
             instances,
             instances_per,
             wires,
-            wires_per,
+            wire_stream: None,
             dots,
-            dots_per,
             seen: None,
             seen_runs: Vec::new(),
             seen_shapes: Vec::new(),
@@ -1520,6 +1688,7 @@ impl Gpu {
         // New targets hold no surfaces yet.
         if let Some(up) = &mut self.mesh {
             up.progress = None;
+            up.wire_stream = None;
         }
         let texture = |label: &str, format: wgpu::TextureFormat, usage: wgpu::TextureUsages| {
             self.device.create_texture(&wgpu::TextureDescriptor {
@@ -1535,8 +1704,9 @@ impl Gpu {
         };
         let (render, sampled) = (wgpu::TextureUsages::RENDER_ATTACHMENT, wgpu::TextureUsages::TEXTURE_BINDING);
         let view = |t: &wgpu::Texture| t.create_view(&wgpu::TextureViewDescriptor::default());
+        let color_texture = texture("bimcraft-3d-color", COLOR, render | sampled | wgpu::TextureUsages::COPY_SRC);
         let (color, ids, depth) = (
-            view(&texture("bimcraft-3d-color", COLOR, render | sampled)),
+            view(&color_texture),
             view(&texture("bimcraft-3d-ids", IDS, render | sampled)),
             view(&texture("bimcraft-3d-depth", DEPTH, render | sampled)),
         );
@@ -1545,7 +1715,8 @@ impl Gpu {
             view(&texture("bimcraft-3d-clear-ids", CLEAR_IDS, render | sampled)),
             view(&texture("bimcraft-3d-clear-depth", DEPTH, render)),
         );
-        let picture = texture("bimcraft-3d-picture", COLOR, render | sampled | wgpu::TextureUsages::COPY_SRC);
+        let picture =
+            texture("bimcraft-3d-picture", COLOR, render | sampled | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST);
         let picture_view = view(&picture);
         let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("bimcraft-3d-targets"),
@@ -1571,8 +1742,20 @@ impl Gpu {
                 None => self.texture = Some(renderer.register_native_texture(&self.device, &picture_view, wgpu::FilterMode::Nearest)),
             }
         }
-        self.targets =
-            Some(Targets { size: (w, h), color, ids, depth, clear_color, clear_ids, clear_depth, picture, picture_view, bind, clear_bind });
+        self.targets = Some(Targets {
+            size: (w, h),
+            color,
+            color_texture,
+            ids,
+            depth,
+            clear_color,
+            clear_ids,
+            clear_depth,
+            picture,
+            picture_view,
+            bind,
+            clear_bind,
+        });
     }
 }
 
@@ -2453,7 +2636,7 @@ mod tests {
         let moved = |i: u32| Camera { azimuth: near.azimuth + f64::from(i) * 1e-6, ..near };
         small.draw(&mesh, &fit, &[], PAPER).unwrap();
         let first: std::collections::BTreeSet<u64> =
-            small.mesh.as_ref().unwrap().vertices.iter().enumerate().filter(|(_, b)| b.is_some()).map(|(k, _)| k as u64).collect();
+            small.mesh.as_ref().unwrap().vertices.buffers.iter().enumerate().filter(|(_, b)| b.is_some()).map(|(k, _)| k as u64).collect();
         assert!(!seen.is_subset(&first), "seen {seen:?}, held at first {first:?}");
         let mut whole = false;
         for i in 0..seen.len() as u32 + 8 {
@@ -2464,7 +2647,7 @@ mod tests {
         assert!(whole, "all it sees is held, so a moved frame is drawn at once");
         let up = small.mesh.as_ref().unwrap();
         let held: std::collections::BTreeSet<u64> =
-            up.vertices.iter().enumerate().filter(|(_, b)| b.is_some()).map(|(k, _)| k as u64).collect();
+            up.vertices.buffers.iter().enumerate().filter(|(_, b)| b.is_some()).map(|(k, _)| k as u64).collect();
         assert!(chunks(&mesh.visible(&moved(0))).is_subset(&held), "held {held:?}");
     }
 
@@ -2508,6 +2691,88 @@ mod tests {
     }
 
     #[test]
+    fn a_wireframe_on_a_card_that_holds_little_settles_on_the_picture_of_one_that_holds_all() {
+        let Some(mut whole) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        let Some(mut small) = headless() else { return };
+        small.vertex_bytes = WIRE * 300;
+        let room = 2 * WIRE * 300;
+        small.card_bytes = room;
+        let mut s = sample();
+        s.execute("visual_style", &serde_json::json!({"style": "wireframe"})).unwrap();
+        let wall = *s.model.elements.iter().find(|(_, e)| e.category() == "wall").unwrap().0;
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+        assert!(mesh.wires.len() as u64 > 6 * 300, "far more than it holds: {} lines", mesh.wires.len());
+        let flat = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let cam = scene.fit_from(Camera { lens: Some(bimcraft_core::view3d::LENS), ..flat }, &look);
+        let tinted = [(wall, Rgb(255, 160, 0))];
+        for (cam, tints, dark) in [(flat, &[][..], false), (flat, &tinted[..], false), (cam, &[][..], false), (flat, &tinted[..], true)] {
+            (whole.swapped_ink, small.swapped_ink) = (dark, dark);
+            assert!(whole.draw(&mesh, &cam, tints, PAPER).unwrap());
+            let want = read(&whole);
+            // Come to from another camera: what the card holds stands in, and the picture says it isn't exact.
+            let turned = Camera { azimuth: cam.azimuth + 10.0, ..cam };
+            assert!(!small.draw(&mesh, &turned, tints, PAPER).unwrap(), "past what it holds, not whole");
+            assert!(small.holding() <= room, "{} bytes held, of {room}", small.holding());
+            assert!(!small.draw(&mesh, &cam, tints, PAPER).unwrap(), "the camera moved: this frame stands in as well");
+            let standing = read(&small);
+            assert_ne!(standing, want, "what stands in is not all of it");
+            let mut frames = 0;
+            while !small.draw(&mesh, &cam, tints, PAPER).unwrap() {
+                frames += 1;
+                assert!(frames < 200, "it never settles");
+                assert!(small.holding() <= room, "{} bytes held, of {room}", small.holding());
+                assert_eq!(read(&small), standing, "the picture changed before the exact one was whole");
+            }
+            assert!(frames >= 3, "{frames} frames");
+            assert!(read(&small) == want, "dark {dark}, {} tints: the same picture", tints.len());
+            // Settled, drawing it again does nothing and is exact at once.
+            assert!(small.draw(&mesh, &cam, tints, PAPER).unwrap());
+            assert!(read(&small) == want);
+        }
+        // Past what it holds a cut box settles on the same as well.
+        let cut = cut_through(&mut s, [0.6, 0.7, 0.45]);
+        whole.swapped_ink = false;
+        small.swapped_ink = false;
+        whole.draw_cut(&mesh, &flat, &[], PAPER, Some(cut)).unwrap();
+        let mut frames = 0;
+        while !small.draw_cut(&mesh, &flat, &[], PAPER, Some(cut)).unwrap() {
+            frames += 1;
+            assert!(frames < 200, "it never settles");
+        }
+        assert!(read(&small) == read(&whole));
+    }
+
+    #[test]
+    fn a_scan_on_a_card_that_holds_little_settles_on_the_picture_of_one_that_holds_all() {
+        let Some(mut whole) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        let Some(mut small) = headless() else { return };
+        small.vertex_bytes = CHUNK;
+        small.card_bytes = 2 * CHUNK;
+        let mut s = sample();
+        scanned(&mut s);
+        s.execute("graphics", &serde_json::json!({"view": "{3D}", "categories": {"roofs": {"hidden": true}}})).unwrap();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+        assert!(mesh.dots.len() as u64 * DOT > 8 * CHUNK, "{} points", mesh.dots.len());
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        whole.draw(&mesh, &cam, &[], PAPER).unwrap();
+        let turned = Camera { azimuth: cam.azimuth + 10.0, ..cam };
+        small.draw(&mesh, &turned, &[], PAPER).unwrap();
+        assert!(small.holding() <= 2 * CHUNK, "{} bytes held", small.holding());
+        settles(&mut small, &mesh, &cam, 2 * CHUNK);
+        let up = small.mesh.as_ref().unwrap();
+        assert!(up.dots.held() < up.dots.buffers.len(), "{} of {} buffers of points held", up.dots.held(), up.dots.buffers.len());
+        assert!(read(&small) == read(&whole), "the same picture, its points streamed through");
+    }
+
+    #[test]
     fn a_card_too_small_for_one_buffer_says_so_and_nothing_is_kept() {
         let Some(mut tiny) = headless() else { return };
         tiny.card_bytes = 16;
@@ -2542,8 +2807,8 @@ mod tests {
                     gpu.device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
                 }
                 let up = split.mesh.as_ref().unwrap();
-                assert!(up.vertices.len() > 3, "{} buffers", up.vertices.len());
-                assert_eq!(whole.mesh.as_ref().unwrap().vertices.len(), 1);
+                assert!(up.vertices.buffers.len() > 3, "{} buffers", up.vertices.buffers.len());
+                assert_eq!(whole.mesh.as_ref().unwrap().vertices.buffers.len(), 1);
                 assert_eq!(read(&whole), read(&split), "{name}, seen through {seen_through}");
             }
         }
