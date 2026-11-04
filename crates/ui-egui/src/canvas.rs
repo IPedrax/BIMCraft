@@ -991,7 +991,6 @@ impl BimApp {
         found
     }
 
-
     /// Finds alignment guides (smart snapping) to reference points of existing elements when drawing.
     pub(crate) fn alignments(
         &self,

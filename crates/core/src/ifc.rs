@@ -2163,7 +2163,10 @@ mod tests {
             let attrs = type_object(&f, &type_class, &format!("{family}:{type_name}"));
             // Furniture's type has its AssemblyPlace (mandatory) ahead of its PredefinedType; the others have ten attributes.
             let count = if class == "IFCFURNITURE" { 11 } else { 10 };
-            assert_eq!((attrs.len(), attrs[count - 1].as_str()), (count, ".NOTDEFINED."), "{type_class}");
+            // Its predefined type is its family's kind's (a kitchen sink's .SINK.), or not defined.
+            let fam = s.model.families.get(family).unwrap();
+            let predefined = if fam.kind.is_some() { fam.ifc().1 } else { ".NOTDEFINED." };
+            assert_eq!((attrs.len(), attrs[count - 1].as_str()), (count, predefined), "{type_class}");
             if class == "IFCFURNITURE" {
                 assert_eq!(attrs[9], ".NOTDEFINED.", "its assembly place");
             }
