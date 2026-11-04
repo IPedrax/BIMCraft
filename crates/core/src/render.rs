@@ -650,6 +650,8 @@ fn curtain_plan(d: &mut Drawing, m: &Model, id: Id, w: &crate::model::Wall, rang
         vec![axis.at(along - da, c - dc), axis.at(along + da, c - dc), axis.at(along + da, c + dc), axis.at(along - da, c + dc)]
     };
     let coarse = d.detail == Detail::Coarse;
+    let style = |kind: PartKind| m.object_style(if kind == PartKind::Mullion { "mullion" } else { "curtainpanel" });
+    let panel_cut = style(PartKind::Panel).cut;
     d.owner = Some(id);
     let mut seen = std::collections::HashSet::new();
     d.part(Part::Projection);
@@ -659,7 +661,7 @@ fn curtain_plan(d: &mut Drawing, m: &Model, id: Id, w: &crate::model::Wall, rang
             let r = ring(p, s);
             let key = (s.kind, r.iter().map(|q| ((q.0 * 10.0) as i64, (q.1 * 10.0) as i64)).collect::<Vec<_>>());
             if seen.insert(key) {
-                d.line(&r, Pen::PROJECTION, INK, true);
+                d.line(&r, style(s.kind).projection, INK, true);
             }
         }
     }
@@ -671,16 +673,16 @@ fn curtain_plan(d: &mut Drawing, m: &Model, id: Id, w: &crate::model::Wall, rang
         if coarse {
             let [along, _, across] = p.centre;
             let c = plane + across;
-            d.line(&[axis.at(along - s.size[0] / 2.0, c), axis.at(along + s.size[0] / 2.0, c)], Pen::PROJECTION, INK, false);
+            d.line(&[axis.at(along - s.size[0] / 2.0, c), axis.at(along + s.size[0] / 2.0, c)], panel_cut, INK, false);
         } else {
-            d.line(&ring(p, s), Pen::PROJECTION, INK, true);
+            d.line(&ring(p, s), panel_cut, INK, true);
         }
     }
     for p in &l.parts {
         let Some(s) = l.shapes.get(p.shape as usize).filter(|s| s.kind == PartKind::Mullion && crossing(p, s)) else { continue };
         let r = ring(p, s);
         d.fill(std::slice::from_ref(&r), fill);
-        d.line(&r, BY_CATEGORY, INK, true);
+        d.line(&r, style(PartKind::Mullion).cut, INK, true);
     }
 }
 

@@ -107,6 +107,9 @@ pub const SCANS: [&str; 1] = ["pointcloud"];
 /// The CAD imports, which views hide and override on a tab of their own too, as Revit's Imported Categories.
 pub const IMPORTED: [&str; 1] = ["cadimport"];
 
+/// The parts of a curtain wall, which Object Styles has a row each for, as Revit's Curtain Panels and Curtain Wall Mullions.
+pub const CURTAIN_PARTS: [&str; 2] = ["curtainpanel", "mullion"];
+
 /// A subcategory: a part of a category a view hides, shows and overrides apart from the rest, as Revit's (Rooms >
 /// Reference). It is held in a view's graphics by its `key`, as a category is; `off` ones are hidden unless the view shows
 /// them. A category hidden hides its subcategories. Some are a kind of element of their own (`roomseparator`), others a

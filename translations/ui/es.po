@@ -1892,7 +1892,7 @@ msgstr "Cerrar todas las vistas menos esta"
 msgid "Close {}"
 msgstr "Cerrar {}"
 
-#: crates/core/src/graphics.rs:231
+#: crates/core/src/graphics.rs:234
 msgid "Coarse"
 msgstr "Bajo"
 
@@ -2145,7 +2145,7 @@ msgstr "No se pudo abrir {}: {}"
 msgid "Couldn't save the setting: {}"
 msgstr "No se pudo guardar el ajuste: {}"
 
-#: crates/core/src/schedule.rs:196
+#: crates/core/src/schedule.rs:197
 #: crates/ui-egui/src/filter.rs:84
 #: crates/ui-egui/src/linestyles/creator.rs:178
 #: crates/ui-egui/src/reinforce.rs:50
@@ -2314,7 +2314,7 @@ msgstr "Plano de corte"
 msgid "Cylinder"
 msgstr "Cilindro"
 
-#: crates/core/src/render.rs:2671
+#: crates/core/src/render.rs:2673
 msgid "DN"
 msgstr "BAJA"
 
@@ -2957,7 +2957,7 @@ msgstr "Codo 90"
 msgid "Electrical"
 msgstr "Eléctrico"
 
-#: crates/core/src/graphics.rs:936
+#: crates/core/src/graphics.rs:939
 msgid "Electrical Ceiling"
 msgstr ""
 
@@ -2969,11 +2969,11 @@ msgstr "Equipo eléctrico"
 msgid "Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it"
 msgstr "Equipo eléctrico (EE): un cuadro de distribución, donde hagas clic en el muro; Espacio lo gira"
 
-#: crates/core/src/graphics.rs:935
+#: crates/core/src/graphics.rs:938
 msgid "Electrical Lighting"
 msgstr ""
 
-#: crates/core/src/graphics.rs:934
+#: crates/core/src/graphics.rs:937
 msgid "Electrical Power"
 msgstr ""
 
@@ -3333,7 +3333,7 @@ msgstr "Encuentra {}."
 msgid "Finds {}; nothing has these: {}"
 msgstr "Encuentra {}; nada tiene estos: {}"
 
-#: crates/core/src/graphics.rs:233
+#: crates/core/src/graphics.rs:236
 msgid "Fine"
 msgstr "Alto"
 
@@ -3729,7 +3729,7 @@ msgstr "Ajuste a la cuadrícula"
 msgid "Grids start at 0, 0 in each view and rotate together."
 msgstr "Las cuadrículas empiezan en 0, 0 en cada vista y giran juntas."
 
-#: crates/core/src/schedule.rs:444
+#: crates/core/src/schedule.rs:448
 msgid "Gross Floor Area"
 msgstr "Superficie bruta de planta"
 
@@ -3797,7 +3797,7 @@ msgstr ""
 msgid "Hidden"
 msgstr "Oculta"
 
-#: crates/core/src/graphics.rs:261
+#: crates/core/src/graphics.rs:264
 msgid "Hidden Line"
 msgstr "Líneas ocultas"
 
@@ -4740,7 +4740,7 @@ msgstr "Medir"
 msgid "Measure (ME): click two points; their length and angle read beside the ruler between them"
 msgstr "Medir (ME): haga clic en dos puntos; su longitud y su ángulo se leen junto a la regla entre ellos"
 
-#: crates/core/src/graphics.rs:232
+#: crates/core/src/graphics.rs:235
 msgid "Medium"
 msgstr "Medio"
 
@@ -4961,7 +4961,7 @@ msgstr "NBR 17068: prolongación de 2 a 3 mm"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: Diana en planta (±0,00), triángulo equilátero en sección"
 
-#: crates/core/src/render.rs:1910
+#: crates/core/src/render.rs:1912
 msgid "NOT ENCLOSED"
 msgstr "NO DELIMITADA"
 
@@ -5083,7 +5083,7 @@ msgstr "Tipo nuevo"
 msgid "New {}"
 msgstr "Colocar: {}"
 
-#: crates/core/src/schedule.rs:1048
+#: crates/core/src/schedule.rs:1085
 msgid "No"
 msgstr "No"
 
@@ -5244,7 +5244,7 @@ msgstr "Nada de lo seleccionado está oculto en esta vista. Revelar elementos oc
 msgid "Nothing was left out."
 msgstr "No se dejó nada fuera."
 
-#: crates/core/src/schedule.rs:209
+#: crates/core/src/schedule.rs:210
 msgid "Number"
 msgstr "Número"
 
@@ -5660,7 +5660,7 @@ msgstr "Plumilla {} a {}"
 msgid "Performance"
 msgstr "Rendimiento"
 
-#: crates/core/src/schedule.rs:213
+#: crates/core/src/schedule.rs:214
 msgid "Perimeter"
 msgstr "Perímetro"
 
@@ -6127,7 +6127,7 @@ msgstr "Liso"
 msgid "Plan"
 msgstr "Planta"
 
-#: crates/core/src/schedule.rs:269
+#: crates/core/src/schedule.rs:273
 msgid "Plan Area"
 msgstr "Área en planta"
 
@@ -6399,7 +6399,7 @@ msgstr "Poner en este plano una vista que aún no está en ninguno"
 msgid "Quadrant"
 msgstr "Cuadrante"
 
-#: crates/core/src/render.rs:1910
+#: crates/core/src/render.rs:1912
 msgid "REDUNDANT"
 msgstr "REDUNDANTE"
 
@@ -6530,7 +6530,7 @@ msgstr "Rehacer {} pasos"
 msgid "Redraw views in the background"
 msgstr "Redibujar las vistas en segundo plano"
 
-#: crates/core/src/graphics.rs:126
+#: crates/core/src/graphics.rs:129
 msgid "Reference"
 msgstr "Referencia"
 
@@ -6794,11 +6794,11 @@ msgstr "Cinta de opciones"
 msgid "Right"
 msgstr "Derecha"
 
-#: crates/core/src/schedule.rs:405
+#: crates/core/src/schedule.rs:409
 msgid "Riser Height"
 msgstr "Altura de contrahuella"
 
-#: crates/core/src/schedule.rs:404
+#: crates/core/src/schedule.rs:408
 msgid "Risers"
 msgstr "Contrahuellas"
 
@@ -6863,7 +6863,7 @@ msgstr "Delimitación de habitación"
 msgid "Room Schedule"
 msgstr "Tabla de habitaciones"
 
-#: crates/core/src/graphics.rs:127
+#: crates/core/src/graphics.rs:130
 msgid "Room Separation Lines"
 msgstr "Líneas de separación de habitaciones"
 
@@ -7202,7 +7202,7 @@ msgstr "Configuración"
 msgid "Settings…"
 msgstr "Configuración…"
 
-#: crates/core/src/graphics.rs:260
+#: crates/core/src/graphics.rs:263
 msgid "Shaded"
 msgstr "Sombreado"
 
@@ -7380,7 +7380,7 @@ msgstr "Lados:"
 msgid "Silhouettes"
 msgstr ""
 
-#: crates/core/src/schedule.rs:231
+#: crates/core/src/schedule.rs:232
 msgid "Sill"
 msgstr "Antepecho"
 
@@ -7450,7 +7450,7 @@ msgstr "Puerta corredera"
 msgid "Sliding Window"
 msgstr "Ventana corredera"
 
-#: crates/core/src/schedule.rs:268
+#: crates/core/src/schedule.rs:272
 #: crates/ui-egui/src/properties.rs:1363
 #: crates/ui-egui/src/properties.rs:1425
 #: crates/ui-egui/src/reinforce.rs:111
@@ -7754,7 +7754,7 @@ msgstr "Estribos"
 msgid "Straight"
 msgstr "Recto"
 
-#: crates/core/src/schedule.rs:254
+#: crates/core/src/schedule.rs:258
 msgid "Structural"
 msgstr "Estructural"
 
@@ -8395,7 +8395,7 @@ msgstr "Ancho de la baldosa"
 msgid "Timber"
 msgstr "Madera"
 
-#: crates/core/src/schedule.rs:474
+#: crates/core/src/schedule.rs:478
 msgid "Title"
 msgstr "Título"
 
@@ -8488,7 +8488,7 @@ msgstr "Transparencia"
 msgid "Transparent"
 msgstr "Transparente"
 
-#: crates/core/src/schedule.rs:406
+#: crates/core/src/schedule.rs:410
 msgid "Tread"
 msgstr "Huella"
 
@@ -8604,11 +8604,11 @@ msgstr "Tipo:"
 msgid "Types"
 msgstr "Tipos"
 
-#: crates/core/src/render.rs:2671
+#: crates/core/src/render.rs:2673
 msgid "UP"
 msgstr "SUBE"
 
-#: crates/core/src/schedule.rs:215
+#: crates/core/src/schedule.rs:216
 #: crates/ui-egui/src/properties.rs:166
 msgid "Unbounded Height"
 msgstr "Altura no delimitada"
@@ -8966,7 +8966,7 @@ msgstr "Valor nominal de la tensión {}"
 msgid "Voltages"
 msgstr "Tensiones"
 
-#: crates/core/src/schedule.rs:200
+#: crates/core/src/schedule.rs:201
 msgid "Volume"
 msgstr "Volumen"
 
@@ -9038,7 +9038,7 @@ msgstr "Lavabo"
 msgid "Wave"
 msgstr "Onda"
 
-#: crates/core/src/schedule.rs:321
+#: crates/core/src/schedule.rs:325
 msgid "Weight"
 msgstr "Peso"
 
@@ -9178,7 +9178,7 @@ msgstr "Nombre del tipo de cable"
 msgid "Wire type:"
 msgstr "Tipo de cable:"
 
-#: crates/core/src/graphics.rs:262
+#: crates/core/src/graphics.rs:265
 msgid "Wireframe"
 msgstr "Estructura alámbrica"
 
@@ -9252,7 +9252,7 @@ msgstr "Y"
 msgid "Y Offset"
 msgstr ""
 
-#: crates/core/src/schedule.rs:1048
+#: crates/core/src/schedule.rs:1085
 msgid "Yes"
 msgstr "Sí"
 
@@ -9784,11 +9784,11 @@ msgstr "dos tipos se llaman `{}`"
 msgid "type the elevation first"
 msgstr ""
 
-#: crates/core/src/graphics.rs:959
+#: crates/core/src/graphics.rs:962
 msgid "view filter"
 msgstr "filtro de vista"
 
-#: crates/core/src/graphics.rs:963
+#: crates/core/src/graphics.rs:966
 msgid "view template"
 msgstr "plantilla de vista"
 
@@ -9844,7 +9844,7 @@ msgstr "{} (no cargado)"
 msgid "{} (primary)"
 msgstr "{} (principal)"
 
-#: crates/core/src/schedule.rs:1038
+#: crates/core/src/schedule.rs:1075
 msgid "{} ({})"
 msgstr "{} ({})"
 

@@ -12238,6 +12238,7 @@ fn object_styles(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     let all: Vec<Value> = crate::graphics::MODEL
         .iter()
+        .chain(&crate::graphics::CURTAIN_PARTS)
         .map(|cat| {
             let st = m.object_style(cat);
             json!({"category": cat, "projection": st.projection, "cut": st.cut, "own": m.object_styles.contains_key(*cat)})

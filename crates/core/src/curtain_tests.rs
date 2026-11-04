@@ -1385,3 +1385,91 @@ fn a_butt_corner_of_mullions_leaves_no_notch_whichever_runs_through() {
         assert_eq!(size_of(&l, curtain::Address::Horizontal { column: 0, row: 1 })[0], horizontal, "{name}");
     }
 }
+
+// Schedules and Object Styles.
+
+#[test]
+fn a_curtain_panel_schedule_lists_each_panel_and_counts_them_by_type_and_size() {
+    let mut s = session();
+    let id = gridded(&mut s);
+    run(&mut s, "curtain_part", json!({"wall": id, "part": "panel", "column": 1, "row": 0, "type": "Spandrel"}));
+    let t = run(&mut s, "schedule", json!({"name": "Panels", "category": "curtainpanel"}));
+    let rows = t["rows"].as_array().unwrap();
+    assert_eq!(
+        rows.len(),
+        layout_of(&s, id).parts.iter().filter(|p| layout_of(&s, id).shapes[p.shape as usize].kind == PartKind::Panel).count(),
+        "{t}"
+    );
+    let headings: Vec<&str> = t["columns"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{t}"))
+        .iter()
+        .map(|c| c.as_str().or(c["heading"].as_str()).unwrap_or_else(|| panic!("{c}")))
+        .collect();
+    assert_eq!(headings, ["Type", "Width", "Height", "Area (m²)", "Wall"], "{t}");
+    // One row names the Spandrel, 1925 wide and 925 tall, in that wall.
+    let spandrel = rows.iter().find(|r| r[0] == "Spandrel").unwrap();
+    assert_eq!((spandrel[1].as_f64(), spandrel[2].as_f64(), spandrel[4].as_f64()), (Some(1925.0), Some(925.0), Some(id as f64)), "{t}");
+    // Grouped, the same size and type are one row with a count.
+    let g = run(
+        &mut s,
+        "schedule",
+        json!({"name": "By size", "category": "curtainpanel", "fields": ["Type", "Width", "Height", "Count"], "sort": ["Type", "Width", "Height"], "grouped": true}),
+    );
+    let row = g["rows"].as_array().unwrap().iter().find(|r| r[0] == "Spandrel").unwrap().clone();
+    assert_eq!(row[3].as_f64(), Some(1.0), "{g}");
+    let glazed: u64 = g["rows"].as_array().unwrap().iter().filter(|r| r[0] == "Glazed").map(|r| r[3].as_f64().unwrap() as u64).sum();
+    assert_eq!(glazed, rows.len() as u64 - 1, "{g}");
+}
+
+#[test]
+fn a_mullion_schedule_gives_each_ones_length() {
+    let mut s = session();
+    let id = gridded(&mut s);
+    let t = run(&mut s, "schedule", json!({"name": "Mullions", "category": "mullion"}));
+    let rows = t["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), mullions(&layout_of(&s, id)).len(), "{t}");
+    let headings: Vec<&str> = t["columns"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{t}"))
+        .iter()
+        .map(|c| c.as_str().or(c["heading"].as_str()).unwrap_or_else(|| panic!("{c}")))
+        .collect();
+    assert_eq!(headings, ["Type", "Length", "Wall"], "{t}");
+    assert!(rows.iter().all(|r| r[0] == "50 x 150" && r[1].as_f64().unwrap() > 0.0 && r[2].as_f64() == Some(id as f64)), "{t}");
+    // A vertical's length is up the wall: a horizontal's, along it.
+    assert!(rows.iter().any(|r| r[1].as_f64() == Some(1000.0)), "{t}");
+    assert!(rows.iter().any(|r| r[1].as_f64() == Some(1925.0)), "{t}");
+}
+
+#[test]
+fn a_part_replaced_by_a_wall_leaves_the_panel_schedule() {
+    let mut s = session();
+    let id = gridded(&mut s);
+    let before = run(&mut s, "schedule", json!({"name": "P", "category": "curtainpanel"}))["rows"].as_array().unwrap().len();
+    replaced(&mut s, id, 0, 0);
+    let after = run(&mut s, "schedule", json!({"name": "P", "category": "curtainpanel"}))["rows"].as_array().unwrap().len();
+    assert_eq!(after, before - 1);
+}
+
+#[test]
+fn panels_and_mullions_have_object_styles_of_their_own_which_plans_draw_in() {
+    let mut s = session();
+    let all = run(&mut s, "object_styles", json!({}));
+    let row = |all: &Value, c: &str| all["categories"].as_array().unwrap().iter().find(|r| r["category"] == c).cloned();
+    assert!(row(&all, "mullion").is_some() && row(&all, "curtainpanel").is_some(), "{all}");
+    assert_eq!(s.model.object_style("mullion").cut, s.model.object_style("wall").cut, "they start as what a wall's cut is");
+    grid(&mut s, "CW", &[2000.0], &[3000.0], json!({}));
+    wall(&mut s, "CW", 4000.0, 3000.0);
+    let level = s.model.levels()[0].0;
+    let pens = |s: &Session| -> std::collections::BTreeSet<u8> {
+        crate::render::plan(&s.model, level, 1600, 400).pens.iter().flatten().map(|p| p.0).collect()
+    };
+    run(&mut s, "object_styles", json!({"categories": {"mullion": {"cut": 13}}}));
+    assert!(pens(&s).contains(&13), "the mullions: {:?}", pens(&s));
+    run(&mut s, "object_styles", json!({"categories": {"mullion": {"cut": 10}, "curtainpanel": {"cut": 14}}}));
+    assert!(pens(&s).contains(&14) && !pens(&s).contains(&13), "the panels: {:?}", pens(&s));
+    // A part's pens are no wall's, and a bad one is refused as any is.
+    assert_ne!(s.model.object_style("wall").cut.0, 14);
+    assert!(fails(&mut s, "object_styles", json!({"categories": {"mullion": {"cut": 17}}})).contains("0 (a hairline)"));
+}

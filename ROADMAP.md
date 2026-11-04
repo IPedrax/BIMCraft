@@ -91,7 +91,7 @@ The goal is the editing tools a working architect reaches for every hour.
 | Wall openings (rectangular cuts) and wall profile editing (an elevation sketch) | M |
 | Wall sweeps and reveals as profiles along a wall | M |
 | ~~Room separation lines~~; ~~room bounding on and off per wall~~ | S | Room separation lines done (`room_separator`, an `IfcVirtualElement` in IFC); a wall's `room_bounding` turns off. Columns don't bound rooms yet |
-| **Curtain walls**: grid lines, mullion types, panel types (glass, solid, door panel); curtain systems on faces later | XL |
+| **Curtain walls**: ~~a grid pattern with panel and mullion types, an editor for it, fit and justification, butt and mitre joins, one part's own type, a wall in a panel's place~~. Left: corner mullions, which need their own discussion; rotated, diagonal and brick patterns; Fit Evenly; rows anchored to levels; merged cells; sizing by clear glass; embedding in a basic wall; curved walls and sloped tops; curtain systems on faces; custom mullion profiles; Curtain Panel door families; silicone joints between panels; saved patterns; Revit and IFC import of curtain walls; panels and mullions shown and hidden apart in Visibility/Graphics | XL |
 
 Not scheduled yet: stacked walls as a type, in-place elements, and floor and roof shape editing by sub-element.
 

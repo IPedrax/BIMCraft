@@ -193,6 +193,7 @@ const MARK: Own = ("Mark", Kind::Text, From::Key("mark"));
 const OPERATION: Own = (msg!("Operation"), Kind::Text, From::Operation);
 const NAME: Own = ("Name", Kind::Text, From::Key("name"));
 const HOST: Own = ("Wall", Kind::Number, From::Ref("host"));
+const HOST_WALL: Own = ("Wall", Kind::Number, From::Key("host"));
 const COUNT: Own = (msg!("Count"), Kind::Number, From::Count);
 const PHASE_CREATED: Own = ("Phase Created", Kind::Text, From::Param);
 const PHASE_DEMOLISHED: Own = ("Phase Demolished", Kind::Text, From::Param);
@@ -240,6 +241,9 @@ const OWN: &[(&str, usize, &[Own])] = &[
         ],
     ),
     ("wall", 6, &[ID, TYPE, LEVEL, LENGTH, HEIGHT, THICKNESS, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    // A curtain wall's parts have no ids of their own: `host` is its wall, what picking a row selects.
+    ("curtainpanel", 5, &[TYPE, WIDTH, HEIGHT, AREA, HOST_WALL, THICKNESS, COUNT]),
+    ("mullion", 3, &[TYPE, LENGTH, HOST_WALL, COUNT]),
     (
         "floor",
         5,
@@ -871,6 +875,9 @@ fn fine(x: f64) -> f64 {
 /// What a schedule of category `cat` has a row for, each with its JSON: an element of the category. Of mass floors, a mass
 /// at each level it crosses, with its floor area there, its perimeter and the volume up to the next such level or its top.
 fn sources<'a>(m: &'a Model, cat: &str) -> Vec<(Id, &'a Element, Value)> {
+    if matches!(cat, "curtainpanel" | "mullion") {
+        return curtain_parts(m, cat);
+    }
     if cat != "massfloor" {
         return m.elements.iter().filter(|(_, e)| e.category() == cat).map(|(id, e)| (*id, e, element_json(m, *id))).collect();
     }
@@ -888,6 +895,36 @@ fn sources<'a>(m: &'a Model, cat: &str) -> Vec<(Id, &'a Element, Value)> {
                     "perimeter_m": (perimeter / 10.0).round() / 100.0, "volume_m3": (m.mass_volume(ms, z, z + up) / 1e7).round() / 100.0,
                 }),
             ));
+        }
+    }
+    out
+}
+
+/// A row for each panel or each mullion of the project's curtain walls.
+fn curtain_parts<'a>(m: &'a Model, cat: &str) -> Vec<(Id, &'a Element, Value)> {
+    use crate::curtain::{self, Address, PartKind};
+    let kind = if cat == "mullion" { PartKind::Mullion } else { PartKind::Panel };
+    let mut out = Vec::new();
+    for (&id, e) in &m.elements {
+        let Element::Wall(w) = e else { continue };
+        if curtain::pattern(m, w).is_none() {
+            continue;
+        }
+        let laid = curtain::layout(m, w);
+        for p in &laid.parts {
+            let Some(s) = laid.shapes.get(p.shape as usize).filter(|s| s.kind == kind) else { continue };
+            let [along, up, across] = s.size;
+            let json = match kind {
+                PartKind::Panel => serde_json::json!({
+                    "id": id, "host": id, "type": s.type_name, "width": along, "height": up, "thickness": across,
+                    "area_m2": crate::commands::m2(along * up),
+                }),
+                PartKind::Mullion => {
+                    let length = if matches!(p.address, Address::Vertical { .. }) { up } else { along };
+                    serde_json::json!({"id": id, "host": id, "type": s.type_name, "length": length})
+                }
+            };
+            out.push((id, e, json));
         }
     }
     out

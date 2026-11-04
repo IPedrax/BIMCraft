@@ -47,7 +47,7 @@ msgstr "Slagfönster"
 msgid "Ceiling Luminaire"
 msgstr "Takarmatur"
 
-#: crates/core/src/render.rs:2079
+#: crates/core/src/render.rs:2081
 msgid "Ceiling Plan"
 msgstr "Undertaksplan"
 
@@ -83,7 +83,7 @@ msgstr "Koppar"
 msgid "Copy"
 msgstr "Kopiera"
 
-#: crates/core/src/schedule.rs:196
+#: crates/core/src/schedule.rs:197
 msgid "Count"
 msgstr "Antal"
 
@@ -91,7 +91,7 @@ msgstr "Antal"
 msgid "Crosshatch"
 msgstr "Korsskraffering"
 
-#: crates/core/src/render.rs:2671
+#: crates/core/src/render.rs:2673
 msgid "DN"
 msgstr "NED"
 
@@ -171,15 +171,15 @@ msgstr "Öster"
 msgid "Elbow 90"
 msgstr "Böj 90"
 
-#: crates/core/src/graphics.rs:936
+#: crates/core/src/graphics.rs:939
 msgid "Electrical Ceiling"
 msgstr ""
 
-#: crates/core/src/graphics.rs:935
+#: crates/core/src/graphics.rs:938
 msgid "Electrical Lighting"
 msgstr ""
 
-#: crates/core/src/graphics.rs:934
+#: crates/core/src/graphics.rs:937
 msgid "Electrical Power"
 msgstr ""
 
@@ -241,7 +241,7 @@ msgstr "Slidventil"
 msgid "Glass"
 msgstr "Glas"
 
-#: crates/core/src/schedule.rs:444
+#: crates/core/src/schedule.rs:448
 msgid "Gross Floor Area"
 msgstr "Bruttoarea"
 
@@ -346,7 +346,7 @@ msgstr "Metall"
 msgid "Mounting Height"
 msgstr "Montagehöjd"
 
-#: crates/core/src/render.rs:1910
+#: crates/core/src/render.rs:1912
 msgid "NOT ENCLOSED"
 msgstr "EJ OMSLUTET"
 
@@ -358,7 +358,7 @@ msgstr "Namn"
 msgid "New Construction"
 msgstr "Nybyggnad"
 
-#: crates/core/src/schedule.rs:1048
+#: crates/core/src/schedule.rs:1085
 msgid "No"
 msgstr "Nej"
 
@@ -366,7 +366,7 @@ msgstr "Nej"
 msgid "North"
 msgstr "Norr"
 
-#: crates/core/src/schedule.rs:209
+#: crates/core/src/schedule.rs:210
 msgid "Number"
 msgstr "Nummer"
 
@@ -394,11 +394,11 @@ msgstr "PVC"
 msgid "Patch Panel"
 msgstr "Patchpanel"
 
-#: crates/core/src/schedule.rs:213
+#: crates/core/src/schedule.rs:214
 msgid "Perimeter"
 msgstr "Omkrets"
 
-#: crates/core/src/schedule.rs:269
+#: crates/core/src/schedule.rs:273
 msgid "Plan Area"
 msgstr "Planarea"
 
@@ -414,7 +414,7 @@ msgstr "Porslin"
 msgid "Project"
 msgstr "Projekt"
 
-#: crates/core/src/render.rs:1910
+#: crates/core/src/render.rs:1912
 msgid "REDUNDANT"
 msgstr ""
 
@@ -426,11 +426,11 @@ msgstr "Rack"
 msgid "Recessed Luminaire"
 msgstr "Infälld armatur"
 
-#: crates/core/src/schedule.rs:405
+#: crates/core/src/schedule.rs:409
 msgid "Riser Height"
 msgstr "Sättstegshöjd"
 
-#: crates/core/src/schedule.rs:404
+#: crates/core/src/schedule.rs:408
 msgid "Risers"
 msgstr "Sättsteg"
 
@@ -495,7 +495,7 @@ msgstr "Visa tidigare + nytt"
 msgid "Shower"
 msgstr "Dusch"
 
-#: crates/core/src/schedule.rs:231
+#: crates/core/src/schedule.rs:232
 msgid "Sill"
 msgstr "Bröstningshöjd"
 
@@ -515,7 +515,7 @@ msgstr "Skjutdörr"
 msgid "Sliding Window"
 msgstr "Skjutfönster"
 
-#: crates/core/src/schedule.rs:268
+#: crates/core/src/schedule.rs:272
 msgid "Slope"
 msgstr "Lutning"
 
@@ -575,7 +575,7 @@ msgstr "Trä"
 msgid "Total"
 msgstr "Totalt"
 
-#: crates/core/src/schedule.rs:406
+#: crates/core/src/schedule.rs:410
 msgid "Tread"
 msgstr "Plansteg"
 
@@ -583,11 +583,11 @@ msgstr "Plansteg"
 msgid "Type"
 msgstr "Typ"
 
-#: crates/core/src/render.rs:2671
+#: crates/core/src/render.rs:2673
 msgid "UP"
 msgstr "UPP"
 
-#: crates/core/src/schedule.rs:215
+#: crates/core/src/schedule.rs:216
 msgid "Unbounded Height"
 msgstr ""
 
@@ -603,7 +603,7 @@ msgstr "Vertikal"
 msgid "Voice Outlet"
 msgstr "Teleuttag"
 
-#: crates/core/src/schedule.rs:200
+#: crates/core/src/schedule.rs:201
 msgid "Volume"
 msgstr "Volym"
 
@@ -627,7 +627,7 @@ msgstr "Garderob"
 msgid "Washbasin"
 msgstr "Tvättställ"
 
-#: crates/core/src/schedule.rs:321
+#: crates/core/src/schedule.rs:325
 msgid "Weight"
 msgstr "Vikt"
 
@@ -651,7 +651,7 @@ msgstr "Fönsterförteckning"
 msgid "Worktop"
 msgstr "Bänkskiva"
 
-#: crates/core/src/schedule.rs:1048
+#: crates/core/src/schedule.rs:1085
 msgid "Yes"
 msgstr "Ja"
 

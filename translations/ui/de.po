@@ -1891,7 +1891,7 @@ msgstr "Alle Ansichten außer dieser schließen"
 msgid "Close {}"
 msgstr "{} schließen"
 
-#: crates/core/src/graphics.rs:231
+#: crates/core/src/graphics.rs:234
 msgid "Coarse"
 msgstr "Grob"
 
@@ -2144,7 +2144,7 @@ msgstr "{} konnte nicht geöffnet werden: {}"
 msgid "Couldn't save the setting: {}"
 msgstr "Die Einstellung konnte nicht gespeichert werden: {}"
 
-#: crates/core/src/schedule.rs:196
+#: crates/core/src/schedule.rs:197
 #: crates/ui-egui/src/filter.rs:84
 #: crates/ui-egui/src/linestyles/creator.rs:178
 #: crates/ui-egui/src/reinforce.rs:50
@@ -2313,7 +2313,7 @@ msgstr "Schnittebene"
 msgid "Cylinder"
 msgstr "Zylinder"
 
-#: crates/core/src/render.rs:2671
+#: crates/core/src/render.rs:2673
 msgid "DN"
 msgstr "DN"
 
@@ -2956,7 +2956,7 @@ msgstr "Bogen 90°"
 msgid "Electrical"
 msgstr "Elektro"
 
-#: crates/core/src/graphics.rs:936
+#: crates/core/src/graphics.rs:939
 msgid "Electrical Ceiling"
 msgstr ""
 
@@ -2968,11 +2968,11 @@ msgstr "Elektrogeräte"
 msgid "Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it"
 msgstr "Elektrogeräte (EE): eine Verteilerbaugruppe an der angeklickten Wand; Leertaste dreht sie"
 
-#: crates/core/src/graphics.rs:935
+#: crates/core/src/graphics.rs:938
 msgid "Electrical Lighting"
 msgstr ""
 
-#: crates/core/src/graphics.rs:934
+#: crates/core/src/graphics.rs:937
 msgid "Electrical Power"
 msgstr ""
 
@@ -3332,7 +3332,7 @@ msgstr "Findet {}."
 msgid "Finds {}; nothing has these: {}"
 msgstr "Findet {}; nichts hat diese: {}"
 
-#: crates/core/src/graphics.rs:233
+#: crates/core/src/graphics.rs:236
 msgid "Fine"
 msgstr "Fein"
 
@@ -3728,7 +3728,7 @@ msgstr ""
 msgid "Grids start at 0, 0 in each view and rotate together."
 msgstr ""
 
-#: crates/core/src/schedule.rs:444
+#: crates/core/src/schedule.rs:448
 msgid "Gross Floor Area"
 msgstr "Bruttogrundfläche"
 
@@ -3796,7 +3796,7 @@ msgstr ""
 msgid "Hidden"
 msgstr "Ausgeblendet"
 
-#: crates/core/src/graphics.rs:261
+#: crates/core/src/graphics.rs:264
 msgid "Hidden Line"
 msgstr "Verdeckte Linie"
 
@@ -4739,7 +4739,7 @@ msgstr "Messen"
 msgid "Measure (ME): click two points; their length and angle read beside the ruler between them"
 msgstr "Messen (ME): zwei Punkte klicken; Länge und Winkel stehen neben dem Lineal zwischen ihnen"
 
-#: crates/core/src/graphics.rs:232
+#: crates/core/src/graphics.rs:235
 msgid "Medium"
 msgstr "Mittel"
 
@@ -4960,7 +4960,7 @@ msgstr "NBR 17068: 2 bis 3 mm Überstand"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: Zielmarke im Plan (±0.00), gleichseitiges Dreieck im Schnitt"
 
-#: crates/core/src/render.rs:1910
+#: crates/core/src/render.rs:1912
 msgid "NOT ENCLOSED"
 msgstr "NICHT UMSCHLOSSEN"
 
@@ -5082,7 +5082,7 @@ msgstr "Neuer Typ"
 msgid "New {}"
 msgstr "Neu: {}"
 
-#: crates/core/src/schedule.rs:1048
+#: crates/core/src/schedule.rs:1085
 msgid "No"
 msgstr "Nein"
 
@@ -5243,7 +5243,7 @@ msgstr "Nichts Ausgewähltes ist in dieser Ansicht ausgeblendet. Ausgeblendete E
 msgid "Nothing was left out."
 msgstr "Nichts wurde ausgelassen."
 
-#: crates/core/src/schedule.rs:209
+#: crates/core/src/schedule.rs:210
 msgid "Number"
 msgstr "Nummer"
 
@@ -5659,7 +5659,7 @@ msgstr "Stift {} bei {}"
 msgid "Performance"
 msgstr "Leistung"
 
-#: crates/core/src/schedule.rs:213
+#: crates/core/src/schedule.rs:214
 msgid "Perimeter"
 msgstr "Umfang"
 
@@ -6126,7 +6126,7 @@ msgstr "Einfach"
 msgid "Plan"
 msgstr ""
 
-#: crates/core/src/schedule.rs:269
+#: crates/core/src/schedule.rs:273
 msgid "Plan Area"
 msgstr "Planfläche"
 
@@ -6398,7 +6398,7 @@ msgstr "Eine Ansicht auf diesen Plan legen: eine, die noch auf keinem Plan liegt
 msgid "Quadrant"
 msgstr "Quadrant"
 
-#: crates/core/src/render.rs:1910
+#: crates/core/src/render.rs:1912
 msgid "REDUNDANT"
 msgstr ""
 
@@ -6529,7 +6529,7 @@ msgstr "{} Schritte wiederholen"
 msgid "Redraw views in the background"
 msgstr "Ansichten im Hintergrund neu zeichnen"
 
-#: crates/core/src/graphics.rs:126
+#: crates/core/src/graphics.rs:129
 msgid "Reference"
 msgstr ""
 
@@ -6793,11 +6793,11 @@ msgstr "Menüband"
 msgid "Right"
 msgstr ""
 
-#: crates/core/src/schedule.rs:405
+#: crates/core/src/schedule.rs:409
 msgid "Riser Height"
 msgstr "Steigungshöhe"
 
-#: crates/core/src/schedule.rs:404
+#: crates/core/src/schedule.rs:408
 msgid "Risers"
 msgstr "Steigungen"
 
@@ -6862,7 +6862,7 @@ msgstr ""
 msgid "Room Schedule"
 msgstr "Raumtabelle"
 
-#: crates/core/src/graphics.rs:127
+#: crates/core/src/graphics.rs:130
 msgid "Room Separation Lines"
 msgstr ""
 
@@ -7201,7 +7201,7 @@ msgstr "Einstellungen"
 msgid "Settings…"
 msgstr "Einstellungen…"
 
-#: crates/core/src/graphics.rs:260
+#: crates/core/src/graphics.rs:263
 msgid "Shaded"
 msgstr "Schattiert"
 
@@ -7379,7 +7379,7 @@ msgstr "Seiten:"
 msgid "Silhouettes"
 msgstr ""
 
-#: crates/core/src/schedule.rs:231
+#: crates/core/src/schedule.rs:232
 msgid "Sill"
 msgstr "Brüstung"
 
@@ -7449,7 +7449,7 @@ msgstr "Schiebetür"
 msgid "Sliding Window"
 msgstr "Schiebefenster"
 
-#: crates/core/src/schedule.rs:268
+#: crates/core/src/schedule.rs:272
 #: crates/ui-egui/src/properties.rs:1363
 #: crates/ui-egui/src/properties.rs:1425
 #: crates/ui-egui/src/reinforce.rs:111
@@ -7753,7 +7753,7 @@ msgstr "Bügel"
 msgid "Straight"
 msgstr "Gerade"
 
-#: crates/core/src/schedule.rs:254
+#: crates/core/src/schedule.rs:258
 msgid "Structural"
 msgstr "Tragend"
 
@@ -8394,7 +8394,7 @@ msgstr "Fliesenbreite"
 msgid "Timber"
 msgstr "Holz"
 
-#: crates/core/src/schedule.rs:474
+#: crates/core/src/schedule.rs:478
 msgid "Title"
 msgstr "Titel"
 
@@ -8487,7 +8487,7 @@ msgstr "Transparenz"
 msgid "Transparent"
 msgstr "Transparent"
 
-#: crates/core/src/schedule.rs:406
+#: crates/core/src/schedule.rs:410
 msgid "Tread"
 msgstr "Auftritt"
 
@@ -8603,11 +8603,11 @@ msgstr "Typ:"
 msgid "Types"
 msgstr "Typen"
 
-#: crates/core/src/render.rs:2671
+#: crates/core/src/render.rs:2673
 msgid "UP"
 msgstr "OBEN"
 
-#: crates/core/src/schedule.rs:215
+#: crates/core/src/schedule.rs:216
 #: crates/ui-egui/src/properties.rs:166
 msgid "Unbounded Height"
 msgstr ""
@@ -8965,7 +8965,7 @@ msgstr ""
 msgid "Voltages"
 msgstr ""
 
-#: crates/core/src/schedule.rs:200
+#: crates/core/src/schedule.rs:201
 msgid "Volume"
 msgstr "Volumen"
 
@@ -9037,7 +9037,7 @@ msgstr "Waschbecken"
 msgid "Wave"
 msgstr "Welle"
 
-#: crates/core/src/schedule.rs:321
+#: crates/core/src/schedule.rs:325
 msgid "Weight"
 msgstr "Gewicht"
 
@@ -9177,7 +9177,7 @@ msgstr ""
 msgid "Wire type:"
 msgstr ""
 
-#: crates/core/src/graphics.rs:262
+#: crates/core/src/graphics.rs:265
 msgid "Wireframe"
 msgstr "Drahtmodell"
 
@@ -9251,7 +9251,7 @@ msgstr "Y"
 msgid "Y Offset"
 msgstr ""
 
-#: crates/core/src/schedule.rs:1048
+#: crates/core/src/schedule.rs:1085
 msgid "Yes"
 msgstr "Ja"
 
@@ -9783,11 +9783,11 @@ msgstr "zwei Typen heißen `{}`"
 msgid "type the elevation first"
 msgstr ""
 
-#: crates/core/src/graphics.rs:959
+#: crates/core/src/graphics.rs:962
 msgid "view filter"
 msgstr "Ansichtsfilter"
 
-#: crates/core/src/graphics.rs:963
+#: crates/core/src/graphics.rs:966
 msgid "view template"
 msgstr "Ansichtsvorlage"
 
@@ -9843,7 +9843,7 @@ msgstr "{} (nicht geladen)"
 msgid "{} (primary)"
 msgstr "{} (primär)"
 
-#: crates/core/src/schedule.rs:1038
+#: crates/core/src/schedule.rs:1075
 msgid "{} ({})"
 msgstr "{} ({})"
 

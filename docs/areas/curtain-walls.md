@@ -110,6 +110,14 @@ Wall, and Delete takes the part, never the wall.
   with. Remove last interior grid sets `absorb_columns` or `absorb_rows`; I will fix it myself leaves the wall, and `inspect` keeps
   warning. Agents get the same words in the `wall` reply's `warning` and in `Model::warnings`.
 
+## Schedules and pens
+
+`curtainpanel` and `mullion` are schedule categories with a row per part (`schedule::curtain_parts`): type, sizes, area or length, and the
+`Wall` it is in, which is what its row selects, as a part has no id of its own. Grouped by type and size they count identical parts.
+
+`object_styles` has a row each (`graphics::CURTAIN_PARTS`), which plans draw panels and mullions in. Visibility/Graphics has none yet:
+hiding them apart wants the 3D scene to know a part from its wall, and it knows owners. Sections and the 3D view draw a wall's pens.
+
 ## What it can't be yet
 
 `curtain::check` refuses a curved curtain wall, an attached top or base, a location line other than the exterior or interior face, a
