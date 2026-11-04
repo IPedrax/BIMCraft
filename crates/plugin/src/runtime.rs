@@ -4,6 +4,11 @@
 //! a reply cap. It sees no files, no clock, no randomness and no network: those are not imported, so they are
 //! not there to be called. A trap, an out-of-fuel error, a memory limit or bad JSON is an error of the call;
 //! the application and the session stay up.
+//!
+//! A plugin that runs out of fuel or traps never gets to say where it was, and "all fuel consumed by
+//! WebAssembly" names nothing. So every call keeps the last steps the plugin took — each command with its
+//! parameters, each log line, `info` — with the fuel left when each began: a stopped call's error names the last,
+//! and the plugin log keeps the whole trail, which says what the fuel went on.
 
 use std::time::{Duration, Instant};
 
@@ -27,6 +32,10 @@ pub const MAX_REPLY: usize = 16 << 20;
 pub const MAX_LOG: usize = 4096;
 /// The most real time one call may take, checked at each host command and after the call.
 pub const WALL: Duration = Duration::from_secs(5);
+/// The most steps of a call the trace keeps: the last ones are the ones an error is about.
+const MAX_TRACE: usize = 8;
+/// The most of a step's text the trace keeps, characters: a command's parameters can be long.
+const MAX_STEP: usize = 160;
 
 /// The exports a plugin module must have.
 const EXPORTS: [&str; 3] = ["memory", "bimcraft_alloc", "bimcraft_run"];
@@ -66,6 +75,69 @@ struct HostState {
     started: Instant,
     log: std::sync::Arc<Log>,
     limits: StoreLimits,
+    /// The last things the plugin did, for the error and the log of a call the sandbox stops: a plugin that
+    /// runs out of fuel or traps never gets to say where it was.
+    trace: Vec<Step>,
+}
+
+/// What a plugin did in a call: the host function it called, with its arguments, and the fuel that was left
+/// when it called it. Two of them read together say what the first one used.
+#[derive(Clone, Debug)]
+struct Step {
+    /// `execute elements {"category":"wall"}`, `log …` or `info`.
+    text: String,
+    /// Fuel left when the step began.
+    fuel: u64,
+}
+
+/// Why a call failed: what to say, and whether the sandbox stopped it before the plugin could say anything
+/// itself, which is when the steps it took are worth showing.
+struct Failed {
+    why: String,
+    stopped: bool,
+}
+
+impl Failed {
+    /// The plugin's own error: it said why, so where it was adds nothing.
+    fn said(why: impl Into<String>) -> Failed {
+        Failed { why: why.into(), stopped: false }
+    }
+
+    /// The sandbox's: a trap, the fuel, the memory or the wall clock. The plugin never got to say where it was.
+    fn halted(why: impl Into<String>) -> Failed {
+        Failed { why: why.into(), stopped: true }
+    }
+}
+
+/// Keeps the last steps of a call, dropping the oldest, with a step's text cut so a long parameter list can't
+/// fill the log.
+fn remember(state: &mut HostState, text: String, fuel: u64) {
+    if state.trace.len() == MAX_TRACE {
+        state.trace.remove(0);
+    }
+    let text = if text.chars().count() <= MAX_STEP {
+        text
+    } else {
+        let mut short: String = text.chars().take(MAX_STEP).collect();
+        short.push('…');
+        short
+    };
+    state.trace.push(Step { text, fuel });
+}
+
+/// The steps of a failed call as one log line: how much of the call's fuel went, and what each of the last
+/// steps left.
+fn trail(trace: &[Step], calls: usize, left: u64) -> String {
+    let mut text = format!(
+        "the call ran {calls} command(s) and used {:.1} of {:.1} M fuel; the last steps, and the fuel left when each ran:",
+        FUEL.saturating_sub(left) as f64 / 1e6,
+        FUEL as f64 / 1e6
+    );
+    for step in trace {
+        text.push_str(&format!(" `{}` {:.1} M,", step.text, step.fuel as f64 / 1e6));
+    }
+    text.pop();
+    text
 }
 
 impl Runtime {
@@ -121,6 +193,7 @@ impl Runtime {
             started: Instant::now(),
             log: std::sync::Arc::clone(log),
             limits,
+            trace: Vec::new(),
         };
         let mut store = Store::new(&self.engine, state);
         store.limiter(|s: &mut HostState| &mut s.limits);
@@ -137,43 +210,59 @@ impl Runtime {
         }
         let mut outcome = self.run(&mut store, &linker, function, params);
         if outcome.is_ok() && store.data().started.elapsed() > WALL {
-            outcome = Err(format!("the call took more than {} s", WALL.as_secs()));
+            outcome = Err(Failed::halted(format!("the call took more than {} s", WALL.as_secs())));
         }
-        host = store.into_data().session;
+        let left = store.get_fuel().unwrap_or(0);
+        let HostState { session: host, trace, calls, log: call_log, .. } = store.into_data();
         *session = host;
-        outcome.map_err(|e| format!("plugin `{plugin}`, function `{function}`: {e}"))
+        outcome.map_err(|failed| {
+            // The log keeps what the sandbox's error can't: the steps the plugin took and what each cost, which
+            // is where a call that runs out of fuel or traps actually went. A plugin's own error said its why.
+            if failed.stopped && !trace.is_empty() {
+                call_log.note(plugin, crate::Level::Error, trail(&trace, calls, left));
+            }
+            let mut why = format!("plugin `{plugin}`, function `{function}`: {}", failed.why);
+            if failed.stopped
+                && let Some(last) = trace.last()
+            {
+                why.push_str(&format!("; it stopped at `{}`", last.text));
+            }
+            why
+        })
     }
 
-    fn run(&self, store: &mut Store<HostState>, linker: &Linker<HostState>, function: &str, params: &Value) -> Result<Value, String> {
-        let instance = linker.instantiate_and_start(&mut *store, &self.module).map_err(|e| format!("it didn't start: {e}"))?;
+    fn run(&self, store: &mut Store<HostState>, linker: &Linker<HostState>, function: &str, params: &Value) -> Result<Value, Failed> {
+        let instance =
+            linker.instantiate_and_start(&mut *store, &self.module).map_err(|e| Failed::halted(format!("it didn't start: {e}")))?;
         // A module may declare more memory than the limit asks for: the limit is on the instance, not only on growth.
         let memory = instance
             .get_export(&mut *store, "memory")
             .and_then(Extern::into_memory)
-            .ok_or_else(|| "it has no exported memory".to_string())?;
+            .ok_or_else(|| Failed::halted("it has no exported memory"))?;
         if memory.data(&*store).len() > MEMORY {
-            return Err(format!("it asks for more than {} MB of memory", MEMORY >> 20));
+            return Err(Failed::halted(format!("it asks for more than {} MB of memory", MEMORY >> 20)));
         }
-        let input = serde_json::to_string(params).map_err(|e| format!("the parameters aren't JSON: {e}"))?;
+        let input = serde_json::to_string(params).map_err(|e| Failed::halted(format!("the parameters aren't JSON: {e}")))?;
         if input.len() > MAX_REPLY {
-            return Err(format!("the parameters are over {} MB", MAX_REPLY >> 20));
+            return Err(Failed::halted(format!("the parameters are over {} MB", MAX_REPLY >> 20)));
         }
-        let (name_ptr, name_len) = write_guest(store, instance, function.as_bytes())?;
-        let (params_ptr, params_len) = write_guest(store, instance, input.as_bytes())?;
+        let (name_ptr, name_len) = write_guest(store, instance, function.as_bytes()).map_err(Failed::halted)?;
+        let (params_ptr, params_len) = write_guest(store, instance, input.as_bytes()).map_err(Failed::halted)?;
         let run = instance
             .get_typed_func::<(i32, i32, i32, i32), i64>(&mut *store, "bimcraft_run")
-            .map_err(|e| format!("`bimcraft_run` has the wrong signature: {e}"))?;
-        let packed = run.call(&mut *store, (name_ptr, name_len, params_ptr, params_len)).map_err(|e| format!("it failed: {e}"))?;
-        let (out_ptr, out_len) = unpack(packed)?;
-        let reply = read_guest(store, instance, out_ptr, out_len)?;
+            .map_err(|e| Failed::halted(format!("`bimcraft_run` has the wrong signature: {e}")))?;
+        let packed =
+            run.call(&mut *store, (name_ptr, name_len, params_ptr, params_len)).map_err(|e| Failed::halted(format!("it failed: {e}")))?;
+        let (out_ptr, out_len) = unpack(packed).map_err(Failed::halted)?;
+        let reply = read_guest(store, instance, out_ptr, out_len).map_err(Failed::halted)?;
         // The buffers are the guest's; give them back when it offers a free.
         free_guest(store, instance, name_ptr, name_len);
         free_guest(store, instance, params_ptr, params_len);
         free_guest(store, instance, out_ptr, out_len);
-        let value: Value = serde_json::from_slice(&reply).map_err(|e| format!("its reply isn't JSON: {e}"))?;
+        let value: Value = serde_json::from_slice(&reply).map_err(|e| Failed::halted(format!("its reply isn't JSON: {e}")))?;
         // A handler's error, as the SDK writes it: the call failed, so the transaction takes everything back.
         if let Some(e) = value.get("bimcraftError").and_then(Value::as_str) {
-            return Err(e.to_string());
+            return Err(Failed::said(e));
         }
         Ok(value)
     }
@@ -205,7 +294,9 @@ fn request(caller: &mut Caller<'_, HostState>, text: &str) -> Result<Value, Stri
         Some(p @ Value::Object(_)) => p.clone(),
         Some(_) => return Err("`params` is an object".to_string()),
     };
+    let fuel = caller.get_fuel().unwrap_or(0);
     let state = caller.data_mut();
+    remember(state, format!("{command} {params}"), fuel);
     if state.started.elapsed() > WALL {
         state.log.note(&state.plugin, crate::Level::Error, format!("`{command}` refused: the call is over {} s", WALL.as_secs()));
         return Err(format!("the call may take {} s of real time", WALL.as_secs()));
@@ -234,17 +325,21 @@ fn request(caller: &mut Caller<'_, HostState>, text: &str) -> Result<Value, Stri
 fn host_log(mut caller: Caller<'_, HostState>, level: i32, ptr: i32, len: i32) -> Result<(), Error> {
     let text = read_guest_caller(&mut caller, ptr, len, MAX_LOG)?;
     let text = text.chars().take(MAX_LOG).collect::<String>();
-    let state = caller.data();
+    let fuel = caller.get_fuel().unwrap_or(0);
+    let state = caller.data_mut();
     let level = match level {
         0 => crate::Level::Info,
         1 => crate::Level::Warning,
         _ => crate::Level::Error,
     };
+    remember(state, format!("log {text}"), fuel);
     state.log.note(&state.plugin, level, text);
     Ok(())
 }
 
 fn host_info(mut caller: Caller<'_, HostState>) -> Result<i64, Error> {
+    let fuel = caller.get_fuel().unwrap_or(0);
+    remember(caller.data_mut(), "info".to_string(), fuel);
     let info = {
         let state = caller.data();
         json!({

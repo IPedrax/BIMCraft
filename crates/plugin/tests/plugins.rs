@@ -61,6 +61,20 @@ fn a_hang_is_stopped_by_the_fuel_limit_and_the_session_stays_up() {
 }
 
 #[test]
+fn a_call_stopped_by_the_fuel_says_which_command_it_was_running() {
+    let rt = runtime("guzzler.wat");
+    let mut s = Session::new();
+    let log = Arc::new(Log::new());
+    let e = rt.invoke(&mut s, "test", "run", false, &level("Roof"), &log).unwrap_err();
+    assert!(e.contains("fuel"), "{e}");
+    assert!(e.contains("it stopped at `level "), "the last command is named: {e}");
+    // The log keeps the steps and the fuel left when each ran, which is what says where the fuel went.
+    let entries = log.of("test");
+    assert!(entries.iter().any(|l| l.level == Level::Error && l.text.contains("last steps")), "{entries:?}");
+    assert!(entries.iter().any(|l| l.text.contains("`level ")), "{entries:?}");
+}
+
+#[test]
 fn a_trap_is_an_error_not_a_crash() {
     let rt = runtime("trap.wat");
     let mut s = Session::new();

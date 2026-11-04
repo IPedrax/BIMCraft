@@ -4,14 +4,15 @@
 //! ([`BimApp::load_plugins_soon`]); the result is put into the session's command registry on the next frame. The window
 //! lists what was loaded, what was switched off and what failed and why, the plugin log, and a Refresh that reads the
 //! folder again without a restart. Plugin labels, tab names and log lines are the plugins' own data and are not translated;
-//! everything the window says around them is.
+//! everything the window says around them is. A function that answers with a `report` has its text shown in a dialog of
+//! its own ([`BimApp::plugin_report_window`]).
 
 use std::path::PathBuf;
 use std::sync::mpsc::TryRecvError;
 
 use bimcraft_i18n::msg;
 use bimcraft_plugin::{Broken, Entry, Level, Plugin, Plugins, RibbonTab, Status};
-use egui::{Align, Context, Id as UiId, Layout, RichText, ScrollArea, Ui};
+use egui::{Align, Context, Id as UiId, Label, Layout, RichText, ScrollArea, Ui};
 
 use crate::popup::Modal;
 use crate::{
@@ -24,6 +25,15 @@ use crate::{
 enum Asked {
     Refresh,
     Set(String, bool),
+}
+
+/// What a plugin's function asked the window to show: the text it wrote, under the label of the button that ran it, kept
+/// until it is closed. The title and the text are the plugin's own data, so they are not translated.
+pub(crate) struct PluginReport {
+    title: String,
+    text: String,
+    /// Copy was pressed: its button says so.
+    copied: bool,
 }
 
 impl BimApp {
@@ -110,8 +120,9 @@ impl BimApp {
         tab.name.clone().unwrap_or_else(|| t("Plugins").to_string())
     }
 
-    /// A plugin tab's panels: each of its functions a button, which runs it with no parameters. The labels are the
-    /// plugin's data, so they aren't translated.
+    /// A plugin tab's panels: each of its functions a button, which runs it with no parameters. A function that answers
+    /// with a `report` has that text opened on screen under the button's label. The labels are the plugin's data, so
+    /// they aren't translated.
     pub(crate) fn plugin_tab(&mut self, ui: &mut Ui, index: usize) {
         let Some(tab) = self.plugin_tabs.get(index).cloned() else { return };
         for panel in &tab.panels {
@@ -119,11 +130,57 @@ impl BimApp {
             crate::ribbon::panel(ui, &panel.name, |ui| {
                 for command in &commands {
                     let tip = msg!("Runs the plugin's command");
-                    if crate::plugin_button(ui, &command.label, tip).clicked() {
-                        self.run(&command.id, serde_json::json!({}));
+                    if crate::plugin_button(ui, &command.label, tip).clicked()
+                        && let Some(value) = self.run(&command.id, serde_json::json!({}))
+                        && let Some(report) = value.get("report").and_then(|v| v.as_str())
+                    {
+                        self.open_plugin_report(command.label.clone(), report);
                     }
                 }
             });
+        }
+    }
+
+    /// Keeps what a plugin's function asked the window to show, for
+    /// [`plugin_report_window`](Self::plugin_report_window) to draw on the next frame.
+    pub(crate) fn open_plugin_report(&mut self, title: String, text: &str) {
+        self.plugin_report = Some(PluginReport { title, text: text.to_string(), copied: false });
+    }
+
+    /// A plugin function's report, while it is open: the text it wrote, a line a row in the font a report is read in,
+    /// with Copy to take all of it to the clipboard. The corner's × and Escape close it, as any dialog does. A new or
+    /// opened project drops it with the model it was about.
+    pub(crate) fn plugin_report_window(&mut self, ctx: &Context) {
+        let Some(report) = self.plugin_report.as_ref() else { return };
+        let (mut close, mut copy) = (false, false);
+        let r = Modal::new(UiId::new("plugin-report"), report.title.clone()).width(680.0).show(ctx, |ui| {
+            crate::popup::body(ui, |ui| {
+                ui.add_space(6.0);
+                for line in report.text.lines() {
+                    if line.is_empty() {
+                        ui.add_space(6.0);
+                    } else {
+                        ui.add(Label::new(RichText::new(line).monospace()).selectable(true));
+                    }
+                }
+            });
+            crate::popup::footer(ui, |ui| {
+                ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                    close = ui.button(t("Close")).clicked();
+                    copy = ui.button(t(if report.copied { msg!("Copied") } else { msg!("Copy") })).clicked();
+                });
+            });
+        });
+        if copy {
+            ctx.copy_text(report.text.clone());
+            // The button says it was pressed in the next frame, which nothing else asks for.
+            ctx.request_repaint();
+        }
+        if let Some(report) = self.plugin_report.as_mut() {
+            report.copied |= copy;
+        }
+        if close || r.should_close() {
+            self.plugin_report = None;
         }
     }
 

@@ -774,6 +774,8 @@ pub struct BimApp {
     pub(crate) plugins: bimcraft_plugin::Plugins,
     pub(crate) plugin_tabs: Vec<bimcraft_plugin::RibbonTab>,
     pub(crate) plugins_dialog: bool,
+    /// A report a plugin's function asked the window to show, while it is open.
+    pub(crate) plugin_report: Option<plugins::PluginReport>,
     /// The folder being read on a thread of its own, so the first frame isn't kept waiting by it.
     plugins_job: Option<std::sync::mpsc::Receiver<bimcraft_plugin::Plugins>>,
     /// Manage > Electrical Settings, while open.
@@ -1420,6 +1422,7 @@ impl BimApp {
             plugins: bimcraft_plugin::Plugins::empty(),
             plugin_tabs: Vec::new(),
             plugins_dialog: false,
+            plugin_report: None,
             plugins_job: None,
             electrical_dialog: None,
             options_dialog: None,
@@ -5307,6 +5310,7 @@ impl BimApp {
         self.shortcuts_window(ctx);
         self.settings_window(ctx);
         self.plugins_window(ctx);
+        self.plugin_report_window(ctx);
         self.background_grid_window(ctx);
         self.installing_box(ctx);
         self.importing_box(ctx);
