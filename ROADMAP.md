@@ -10,6 +10,9 @@ other BIM tools and users' wishes, are pooled in [IDEAS.md](IDEAS.md).
 Sizes are rough effort for one developer working with agents: **S** a few days, **M** one to two weeks, **L** a month,
 **XL** several months. There are no calendar dates. A release ships when its exit criteria are met.
 
+**Deferred:** development of the compact desktop interface resumes only after the remaining work is implemented and accepted.
+Use the standard desktop interface for current development and feature acceptance.
+
 ---
 
 ## 1. Where it stands

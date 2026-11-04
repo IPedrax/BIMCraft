@@ -206,7 +206,8 @@ impl BimApp {
             return false;
         }
         let m = &self.session.model;
-        let Some(Element::Component(device)) = picked.and_then(|id| m.elements.get(id)) else { return false };
+        let Some(id) = picked else { return false };
+        let Some(Element::Component(device)) = m.elements.get(id) else { return false };
         let mounting = m.families.get(&device.family).and_then(|family| {
             let values = family.values(&device.type_name, &device.params).ok()?;
             match values.get(m.language.word(msg!("Mounting Height"))) {
@@ -216,6 +217,7 @@ impl BimApp {
         });
         let offset = m.elevation(device.level) + device.offset + mounting.unwrap_or_default() - m.elevation(m.guid(level));
         self.beam_offset = format!("{offset:.3} mm");
+        self.wire_start_connection = Some((m.guid(id), mounting.unwrap_or_default()));
         self.tool = Tool::Run("wire", Some(device.at));
         true
     }
@@ -234,8 +236,14 @@ impl BimApp {
         }
         let m = std::sync::Arc::clone(&self.session.model);
         match self.run_params(&m, category, level, a, p) {
-            Ok(params) => {
+            Ok(mut params) => {
+                if category == "wire"
+                    && let Some((device, height)) = self.wire_start_connection
+                {
+                    params["start_connection"] = json!({"device":device,"point":[0.0,0.0,height]});
+                }
                 if let Some(result) = self.run(command(category), params) {
+                    self.wire_start_connection = None;
                     self.tool = Tool::Run(category, self.chain.then_some(p));
                     if matches!(category, "wire" | "cablecarrier") && !self.run_end_offset.trim().is_empty() && self.chain {
                         self.beam_offset = self.run_end_offset.clone();

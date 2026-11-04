@@ -111,22 +111,10 @@ fn micron(mm: f64) -> f64 {
 fn equipment_pose(model: &Model, mut component: Component, hit: &SurfaceHit) -> Component {
     component.at = P2(micron(hit.point[0]), micron(hit.point[1]));
     let [nx, ny, _] = hit.normal;
-    let local_z = match hit.face {
-        "exterior" | "interior" => {
-            component.angle = nx.atan2(-ny).to_degrees();
-            model
-                .families
-                .get(&component.family)
-                .and_then(|family| family.values(&component.type_name, &component.params).ok())
-                .and_then(|values| match values.get(model.language.word("Mounting Height")) {
-                    Some(bimcraft_core::family::Val::Number(height)) => Some(*height),
-                    _ => None,
-                })
-                .unwrap_or_default()
-        }
-        "top" => model.component_local_pieces(&component).iter().map(|p| p.bottom).min_by(f64::total_cmp).unwrap_or_default(),
-        _ => model.component_local_pieces(&component).iter().map(|p| p.top).max_by(f64::total_cmp).unwrap_or_default(),
-    };
+    if matches!(hit.face, "interior" | "exterior") {
+        component.angle = nx.atan2(-ny).to_degrees();
+    }
+    let local_z = model.component_contact_height(&component, hit.face);
     component.offset = micron(hit.point[2] - model.elevation(component.level) - local_z);
     component
 }
@@ -186,6 +174,11 @@ impl BimApp {
         if self.sheet == Sheet::View3D
             && matches!(self.tool, Tool::Move(_) | Tool::Run("wire" | "cablecarrier", _) | Tool::Split | Tool::SplitRoute3D { .. })
         {
+            if let Tool::Run(category, _) = self.tool
+                && ui.checkbox(&mut self.free_run_3d, crate::lang::t(bimcraft_i18n::msg!("Free 3D"))).changed()
+            {
+                self.set_tool(Tool::Run(category, None));
+            }
             let label = ui.label(crate::lang::t(bimcraft_i18n::msg!("Work Plane")));
             let planes = ["YZ", "XZ", "XY"];
             egui::ComboBox::from_id_salt("3d-move-plane")
@@ -193,6 +186,8 @@ impl BimApp {
                 .show_ui(ui, |ui| {
                     for (axis, plane) in planes.into_iter().enumerate() {
                         if ui.selectable_value(&mut self.work_axis, axis, plane).changed() {
+                            self.free_run_start = None;
+                            self.wire_start_connection = None;
                             self.tool = match self.tool {
                                 Tool::Run(category, _) => Tool::Run(category, None),
                                 Tool::Move(_) => Tool::Move(None),
@@ -300,12 +295,19 @@ impl BimApp {
                 mirrored: false,
                 params: Default::default(),
                 provision: None,
+                mount: None,
                 connection_sides: Vec::new(),
             })
         } else {
             None
         };
         let work_axis = self.work_axis;
+        let free_run = self.free_run_3d && matches!(self.tool, Tool::Run("wire" | "cablecarrier", _));
+        let free_start = self.free_run_start.clone();
+        let free_type = match self.tool {
+            Tool::Run(category, _) if free_run => self.types.get(category).cloned(),
+            _ => None,
+        };
         let placement_level = self.placement_level();
         let constrain = self.constrain;
         let (u, v) = [(1, 2), (0, 2), (0, 1)][work_axis];
@@ -408,7 +410,7 @@ impl BimApp {
             && let [id] = selection.as_slice()
             && let Some(origin) = ui.input(|i| i.pointer.press_origin())
             && surface_at(origin).is_some_and(|hit| hit.id == *id)
-            && model.elements.get(*id).is_some_and(|element| model.run_geom(element).is_some())
+            && model.elements.get(*id).is_some_and(|element| matches!(element, Element::Component(_)) || model.run_geom(element).is_some())
         {
             o.mount_drag = Some(*id);
         }
@@ -558,14 +560,69 @@ impl BimApp {
         };
         let split_point =
             |at, origin: P3| move_point(at, Some(P2(origin[u], origin[v])), origin[work_axis]).map(|to| world(to, origin[work_axis]));
-        let vertical_run = matches!(self.tool, Tool::Run("wire" | "cablecarrier", _)) && work_axis != 2;
+        let free_point = |at: Pos2| {
+            let surface = pick(&o.picker, at).and_then(|hit| scene.surface_at(hit.id, &cam, px(at)));
+            let point = surface.as_ref().map(|hit| hit.point).or_else(|| {
+                let level = placement_level?;
+                let coordinate = match &free_start {
+                    Some((a, _)) => a[work_axis],
+                    None if work_axis == 2 => model.elevation(level) + model.units.parse(&self.beam_offset)?,
+                    None => model.units.parse(&self.work_coordinate)?,
+                };
+                cam.on_axis_plane(px(at), work_axis, coordinate)
+            })?;
+            let point = if let Some((start, _)) = free_start.as_ref().filter(|_| shift || constrain) {
+                let axis = (0..3).max_by(|&a, &b| (point[a] - start[a]).abs().total_cmp(&(point[b] - start[b]).abs()))?;
+                std::array::from_fn(|i| if i == axis { point[i] } else { start[i] })
+            } else {
+                point
+            };
+            Some((point, surface))
+        };
+        let free_params = |level, a: P3, b: P3, surface: Option<&SurfaceHit>| {
+            let base = model.elevation(level);
+            let mut params = json!({
+                "points":[[a[0],a[1]],[b[0],b[1]]],
+                "level":level,"offset":a[2]-base,"end_offset":b[2]-base,"justify":"centre"
+            });
+            if let Some(type_name) = &free_type {
+                params["type"] = json!(type_name);
+            }
+            if let Some(surface) = surface
+                && free_start
+                    .as_ref()
+                    .and_then(|(_, hit)| hit.as_ref())
+                    .is_some_and(|hit| hit.host == surface.host && hit.face == surface.face)
+                && match (model.elements.get(surface.host), surface.face) {
+                    (Some(Element::Wall(w)), "interior" | "exterior") => w.arc.abs() <= f64::EPSILON,
+                    (Some(Element::Floor(_) | Element::Ceiling(_)), "top" | "bottom") => true,
+                    _ => false,
+                }
+                && (0..3).map(|i| (b[i] - a[i]) * surface.normal[i]).sum::<f64>().abs() < 1e-5
+            {
+                params["mount"] = json!({"host":model.guid(surface.host),"face":surface.face});
+            }
+            params
+        };
+        if free_run
+            && let (Tool::Run(category, _), Some(level), Some((a, _)), Some((b, hit))) =
+                (&self.tool, placement_level, &free_start, hover.and_then(free_point))
+        {
+            let params = free_params(level, *a, b, hit.as_ref());
+            let geometry =
+                bimcraft_core::runs_of(&model, &params, category).ok().and_then(|runs| runs.first().and_then(|run| model.run_geom(run)));
+            let (a, b) = geometry.map_or((*a, b), |g| (g.a, g.b));
+            p.line_segment([screen(a), screen(b)], Stroke::new(1.5, canvas_pal().accent));
+        }
+        let vertical_run = !free_run && matches!(self.tool, Tool::Run("wire" | "cablecarrier", _)) && work_axis != 2;
         let run_plane = vertical_run.then(|| model.units.parse(&self.work_coordinate)).flatten();
         if let (Tool::Run(_, Some(from)), Some(coordinate), Some(at)) = (self.tool.clone(), run_plane, hover)
             && let Some(to) = move_point(at, Some(from), coordinate)
         {
             p.line_segment([screen(world(from, coordinate)), screen(world(to, coordinate))], Stroke::new(1.5, canvas_pal().accent));
         }
-        if work_axis == 2
+        if !free_run
+            && work_axis == 2
             && let (Tool::Run("wire" | "cablecarrier", Some(from)), Some(level), Some(at)) = (&self.tool, placement_level, hover)
             && let Some(start) = model.units.parse(&self.beam_offset)
             && let Some(end) =
@@ -643,8 +700,7 @@ impl BimApp {
         });
         // The face of what's clicked, as paint names the faces of an element.
         let face = click.and_then(|at| pick(&o.picker, at).map(|h| h.face).filter(|f| !f.is_empty()));
-        let surface_component = |at| {
-            let component = equipment.clone()?;
+        let surface_component = |component, at| {
             let hit = pick(&o.picker, at)?;
             let element = model.elements.get(hit.id)?;
             if !matches!(
@@ -654,9 +710,17 @@ impl BimApp {
                 return None;
             }
             let surface = scene.surface_at(hit.id, &cam, px(at))?;
-            (surface.face == hit.face).then(|| (equipment_pose(&model, component, &surface), surface))
+            (surface.face == hit.face).then(|| {
+                let mut component = equipment_pose(&model, component, &surface);
+                component.mount = Some(bimcraft_core::model::RunMount { host: model.guid(surface.host), face: surface.face.into() });
+                (component, surface)
+            })
         };
-        if let Some((component, hit)) = hover.and_then(surface_component) {
+        let preview_equipment = equipment.clone().or_else(|| match o.mount_drag.and_then(|id| model.elements.get(id)) {
+            Some(Element::Component(component)) => Some(component.clone()),
+            _ => None,
+        });
+        if let Some((component, hit)) = preview_equipment.and_then(|component| hover.and_then(|at| surface_component(component, at))) {
             let tint = canvas_pal().accent;
             for triangle in scene.face_triangles(&hit) {
                 p.add(egui::Shape::convex_polygon(triangle.map(screen).to_vec(), tint.gamma_multiply(0.2), Stroke::NONE));
@@ -668,8 +732,48 @@ impl BimApp {
                 }
             }
         }
-        let equipment_on_face = click.and_then(surface_component).map(|(component, _)| component);
+        let equipment_on_face =
+            equipment.clone().and_then(|component| click.and_then(|at| surface_component(component, at))).map(|(component, _)| component);
+        let moved_equipment = mounting.as_ref().and_then(|(id, _)| {
+            let Element::Component(component) = model.elements.get(*id)? else { return None };
+            let (component, _) = latest.and_then(|at| surface_component(component.clone(), at))?;
+            Some((*id, component))
+        });
         match clicked {
+            Some(found) if free_run => {
+                if let (Tool::Run(category, _), Some(level), Some((b, hit))) =
+                    (self.tool.clone(), placement_level, click.and_then(free_point))
+                {
+                    let base = model.elevation(level);
+                    if let Some((a, _)) = &free_start {
+                        let mut params = free_params(level, *a, b, hit.as_ref());
+                        if let Some((device, height)) = self.wire_start_connection {
+                            params["start_connection"] = json!({"device":device,"point":[0.0,0.0,height]});
+                        }
+                        if *a != b
+                            && let Some(result) = self.run(crate::structure::command(category), params)
+                        {
+                            self.wire_start_connection = None;
+                            self.free_run_start = self.chain.then_some((b, hit));
+                            self.tool = Tool::Run(category, self.chain.then_some(P2(b[0], b[1])));
+                            if category == "cablecarrier"
+                                && let Some(id) = result["ids"][0].as_u64()
+                            {
+                                self.offer_carrier_attachment(id);
+                            }
+                        }
+                    } else if self.start_wire_at_device(level, found) {
+                        if let Tool::Run(_, Some(at)) = self.tool
+                            && let Some(offset) = model.units.parse(&self.beam_offset)
+                        {
+                            self.free_run_start = Some(([at.0, at.1, base + offset], None));
+                        }
+                    } else {
+                        self.free_run_start = Some((b, hit));
+                        self.tool = Tool::Run(category, Some(P2(b[0], b[1])));
+                    }
+                }
+            }
             Some(_) if vertical_run => {
                 if let (Tool::Run(category, from), Some(coordinate), Some(at), Some(level)) =
                     (self.tool.clone(), run_plane, click, self.placement_level())
@@ -726,7 +830,7 @@ impl BimApp {
                     self.run(
                         "component",
                         json!({"family":c.family,"type":c.type_name,"level":c.level,
-                        "at":[c.at.0,c.at.1],"angle":c.angle,"offset":c.offset}),
+                        "at":[c.at.0,c.at.1],"angle":c.angle,"offset":c.offset,"mount":c.mount}),
                     );
                 }
             }
@@ -789,7 +893,11 @@ impl BimApp {
             None => {}
         }
         self.context_menu(&response);
-        if let Some((id, hit)) = mounting {
+        if let Some((id, c)) = moved_equipment {
+            self.run("modify", json!({"id":id,"at":[c.at.0,c.at.1],"angle":c.angle,"offset":c.offset,"mount":c.mount}));
+        } else if let Some((id, hit)) = mounting
+            && model.elements.get(id).is_some_and(|element| model.run_geom(element).is_some())
+        {
             self.run("run_mount", serde_json::json!({"id":id,"host":hit.id,"face":hit.face}));
         }
         if let Some((id, [lo, hi])) = moved {

@@ -2151,6 +2151,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             mirrored,
             params: BTreeMap::new(),
             provision: None,
+            mount: None,
             connection_sides: Vec::new(),
         };
         let cid = m.insert(Element::Component(c));

@@ -41,6 +41,7 @@ pub(crate) struct CarrierFromWireDialog {
 /// What an item of the menu does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Action {
+    AddRoutePoint,
     MountToSurface,
     /// Esc: the tool's points, else the tool, else the selection.
     Cancel,
@@ -70,6 +71,7 @@ impl Action {
     /// Its label, in English: the menu translates it.
     pub(crate) fn label(self) -> &'static str {
         match self {
+            Action::AddRoutePoint => msg!("Add Route Point"),
             Action::Cancel => "Cancel",
             Action::Finish => msg!("Finish Drawing"),
             Action::ZoomToFit => "Zoom to Fit",
@@ -166,6 +168,14 @@ impl BimApp {
             // Detail lines, regions and notes group; a group comes apart.
             let m = &self.session.model;
             if let [id] = self.selection.as_slice() {
+                if matches!(self.sheet, Sheet::Plan(_) | Sheet::Ceiling(_) | Sheet::View3D)
+                    && matches!(
+                        m.elements.get(*id),
+                        Some(bimcraft_core::model::Element::Wire(_) | bimcraft_core::model::Element::CableCarrier(_))
+                    )
+                {
+                    groups.push(vec![Item::new(Action::AddRoutePoint, true)]);
+                }
                 if m.elements.get(*id).is_some_and(|element| m.run_geom(element).is_some()) {
                     groups.push(vec![Item::new(Action::MountToSurface, true)]);
                 }
@@ -204,6 +214,7 @@ impl BimApp {
     /// Do what `action` says.
     pub(crate) fn act(&mut self, action: Action) {
         match action {
+            Action::AddRoutePoint => self.set_tool(Tool::Split),
             Action::Cancel => self.escape(),
             Action::Finish => self.finish_open_shape(),
             Action::ZoomToFit => self.fit(),

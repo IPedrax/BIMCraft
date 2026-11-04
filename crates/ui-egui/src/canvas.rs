@@ -2973,6 +2973,7 @@ impl BimApp {
                         mirrored: false,
                         params: Default::default(),
                         provision: None,
+                        mount: None,
                         connection_sides: Vec::new(),
                     };
                     let e = Element::Component(c);

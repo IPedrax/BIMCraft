@@ -82,7 +82,10 @@ creates a carrier around the selected wire's actual axis, including its slope or
 vertical span, and links the wire by GUID in the same undo step. Placement uses
 the section's local frame, keeping the wire fixed; its whole section must fit,
 including rectangular corners inside a round carrier. Already linked wires and
-owned equipment feeders are refused. Create Carrier from Wire opens an explicit
+owned equipment feeders are refused. On Low Voltage, Route Carriers on Level and Route Carriers in Project process uncarried main
+wires in one undo step. Compatible wires can share an overlapping, uncompartmented carrier when its envelope and simultaneous fill
+fit the selected profile. A new carrier uses the project's default type and must pass the same checks.
+Create Carrier from Wire opens an explicit
 type, placement and lateral-offset editor in plans and the 3D view.
 
 The run Options Bar exposes End Offset (blank means the start height) and Vertical
@@ -175,6 +178,13 @@ selected element's compartment settings. Checks highlight affected carriers;
 opening and ODS polling retain the feedback. See `docs/stage-3-progress.md` for
 current acceptance evidence and the pending Russian regulatory profile.
 # Surface query for mounting drafts
+
+In 3D, Free 3D on Wire and Cable Carrier takes points from visible faces, or from the chosen work plane in open space.
+Ortho keeps the dominant world axis. A segment whose endpoints lie on the same supported face is created with a mount
+in the same undo step. The preview draws the physical axis, including the offset from the face.
+
+Place on Face and Shift-drag in 3D store an equipment mount by host GUID and face. The contact follows edits to the host,
+and cable feeders follow the equipment in the same undo step. Removing the host detaches the equipment at its current pose.
 
 `run_mount {id, host, face, revision?}` persists round-run contact or a rectangular cable carrier's mounting back on a
 straight wall (`face: exterior|interior`), floor or ceiling (`face: top|bottom`).

@@ -566,7 +566,7 @@ pub static ALL: &[Command] = &[
          types as an IFC cable tray segment; `system` names the cable group it carries. Alternatively \
          {from_wire: id|GUID, type?, placement?: centre|top|bottom, local_offset?: mm} creates a carrier around the wire's \
          physical axis and links that wire in one undo step, preserving the wire's heights and slope. Placement and lateral \
-         offset must fit the section; already linked wires and owned equipment feeders are refused",
+         offset must fit the section; already linked wires and owned equipment feeders are refused. Use mount: {host: id|GUID, face} with points to create a supported contact line. +         {from_wires: {level?: name|id|GUID}} applies centre placement to all uncarried main wires on the given level, or throughout the project if level is omitted",
         cable_carrier,
     ),
     edit(
@@ -575,7 +575,7 @@ pub static ALL: &[Command] = &[
         &["EW"],
         "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?, source?, devices?: [id,…], cable?, reserve?, along_walls?, carrier?, local_offset?} a wire (the one \
          physical and logical cable) for each segment of the points, as `pipe` lays them: round, `width` its outside diameter; `system` \
-         names its circuit or shield; `source` and `devices` give the panel-to-device loop it carries; `carrier` is the cable carrier it runs in",
+         names its circuit or shield; `source` and `devices` give the panel-to-device loop it carries; `carrier` is the cable carrier it runs in. +         Optional `start_connection: {device: id|GUID, point: [x,y,z]}` connects equipment at a local point to the first segment; mount: {host: id|GUID, face} defines a supported contact line as for cable_carrier",
         wire,
     ),
     edit(
@@ -5221,6 +5221,7 @@ fn detectors(s: &mut Session, p: &Value) -> R {
                 mirrored: false,
                 params: BTreeMap::new(),
                 provision: None,
+                mount: None,
                 connection_sides: Vec::new(),
             }))
         })
@@ -5351,6 +5352,38 @@ fn pipe(s: &mut Session, p: &Value) -> R {
 }
 
 fn cable_carrier(s: &mut Session, p: &Value) -> R {
+    if let Some(scope) = p.get("from_wires") {
+        let c = "cable_carrier";
+        only(c, p, &["from_wires"])?;
+        only(c, scope, &["level"])?;
+        let level = scope.get("level").map(|_| level_param(c, &s.model, scope, "level")).transpose()?;
+        let wires: Vec<_> = s
+            .model
+            .elements
+            .iter()
+            .filter_map(|(id, element)| {
+                matches!(element, Element::Wire(w) if w.feeder.is_none() && w.carrier.is_none() && level.is_none_or(|l| w.level == l))
+                    .then_some(*id)
+            })
+            .take(MAX_POINTS + 1)
+            .collect();
+        if wires.len() > MAX_POINTS {
+            return Err(bad(c, "too many wires in one operation"));
+        }
+        let mut ids = Vec::with_capacity(wires.len());
+        for wire in wires {
+            if share_carrier(s.model_mut(), wire) {
+                continue;
+            }
+            let result = cable_carrier(s, &json!({"from_wire":wire})).map_err(|error| bad(c, format!("wire {wire}: {error}")))?;
+            let carrier = result["ids"][0].as_u64().ok_or_else(|| bad(c, "missing created carrier"))?;
+            if !carrier_fill_fits(&s.model, s.model.guid(carrier)) {
+                return Err(bad(c, format!("wire {wire}: the default carrier cannot be verified to fit under the selected fill rules")));
+            }
+            ids.push(result["ids"][0].clone());
+        }
+        return Ok(json!({"ids":ids}));
+    }
     if let Some(value) = p.get("from_wire") {
         let c = "cable_carrier";
         only(c, p, &["from_wire", "type", "placement", "local_offset"])?;
@@ -5455,6 +5488,48 @@ fn cable_carrier(s: &mut Session, p: &Value) -> R {
     chain(s, p, "cablecarrier")
 }
 
+fn carrier_fill_fits(m: &Model, carrier: Guid) -> bool {
+    let Some(Element::CableCarrier(run)) = m.elements.get(carrier) else { return false };
+    let profile = m.carrier_settings.as_ref().map_or(crate::carrier_limits::Profile::default(), |p| p.profile);
+    let percent = m.carrier_settings.as_ref().map_or(100.0, |p| p.fill_percent);
+    let used = m.carrier_sections().get(&carrier).copied().unwrap_or_default();
+    let envelope = m.carrier_envelopes().get(&carrier).copied().unwrap_or_default();
+    m.carrier_capacity(&run.type_name, profile, percent).is_ok_and(|allowed| used <= allowed)
+        && m.carrier_type_fits(&run.type_name, envelope, profile)
+}
+
+fn share_carrier(m: &mut Model, id: Id) -> bool {
+    let Some(Element::Wire(original)) = m.elements.get(id).cloned() else { return false };
+    if original.mount.is_some() {
+        return false;
+    }
+    let candidates: Vec<_> = m
+        .elements
+        .iter()
+        .filter_map(|(id, element)| {
+            matches!(element, Element::CableCarrier(run)
+            if run.level == original.level && run.system == original.system && run.compartments.is_empty())
+            .then_some(*id)
+        })
+        .collect();
+    for carrier in candidates {
+        let guid = m.guid(carrier);
+        let compatible = m.elements.values().all(|element| !matches!(element, Element::Wire(run)
+            if run.carrier == Some(guid) && (run.type_name != original.type_name || run.cable != original.cable || run.system != original.system)));
+        if !compatible || !m.carrier_wire_candidates(carrier).is_ok_and(|wires| wires.contains(&id)) {
+            continue;
+        }
+        let mut wire = original.clone();
+        wire.carrier = Some(guid);
+        m.elements.insert(id, Element::Wire(wire));
+        if carrier_fill_fits(m, guid) {
+            return true;
+        }
+        m.elements.insert(id, Element::Wire(original.clone()));
+    }
+    false
+}
+
 fn cable_carrier_candidates(s: &mut Session, p: &Value) -> R {
     let c = "cable_carrier_candidates";
     only(c, p, &["carrier"])?;
@@ -5464,7 +5539,15 @@ fn cable_carrier_candidates(s: &mut Session, p: &Value) -> R {
 }
 
 fn wire(s: &mut Session, p: &Value) -> R {
-    chain(s, p, "wire")
+    let Some(connection) = p.get("start_connection") else { return chain(s, p, "wire") };
+    only("wire", connection, &["device", "point"])?;
+    let mut params = p.clone();
+    if let Some(params) = params.as_object_mut() {
+        params.remove("start_connection");
+    }
+    let result = chain(s, &params, "wire")?;
+    wire_connect(s, &json!({"wire":result["ids"][0],"device":connection["device"],"point":connection["point"]}))?;
+    Ok(result)
 }
 
 fn wire_connect(s: &mut Session, p: &Value) -> R {
@@ -5631,8 +5714,18 @@ pub fn runs_of(m: &Model, p: &Value, category: &str) -> Result<Vec<Element>, Str
             "size_locked",
             "compartments",
             "compartment",
+            "mount",
         ],
     )?;
+    let mount = p
+        .get("mount")
+        .map(|value| {
+            if !matches!(category, "wire" | "cablecarrier") {
+                return Err(bad(c, "mount is supported for wire and cable carrier creation"));
+            }
+            serde_json::from_value::<crate::model::RunMount>(value.clone()).map_err(|e| bad(c, e))
+        })
+        .transpose()?;
     let mut pts = points(c, p, "points")?;
     if pts.len() < 2 {
         return Err(bad(c, "`points` needs at least 2 points"));
@@ -5691,7 +5784,7 @@ pub fn runs_of(m: &Model, p: &Value, category: &str) -> Result<Vec<Element>, Str
                 crate::model::Run {
                     square_ends: false,
                     section_roll: 0.0,
-                    mount: None,
+                    mount: mount.clone(),
                     connections: Vec::new(),
                     feeder: None,
                     type_name: type_name.clone(),
@@ -7076,6 +7169,7 @@ fn component(s: &mut Session, p: &Value) -> R {
         mirrored: flag(c, p, "mirrored")?,
         params,
         provision,
+        mount: p.get("mount").map(|v| serde_json::from_value(v.clone()).map_err(|e| bad(c, e))).transpose()?,
         connection_sides: p
             .get("connection_sides")
             .map(|v| serde_json::from_value(v.clone()).map_err(|e| bad(c, e)))

@@ -346,6 +346,22 @@ impl BimApp {
                     Tool::Run("wire", None),
                 )],
             );
+            if self.minimal {
+                return;
+            }
+            ui.menu_button(crate::lang::t(msg!("Route Carriers")), |ui| {
+                let level = self.plan_level();
+                if ui.add_enabled(level.is_some(), egui::Button::new(crate::lang::t(msg!("Route Carriers on Level")))).clicked()
+                    && let Some(level) = level
+                {
+                    self.run("cable_carrier", serde_json::json!({"from_wires":{"level":level}}));
+                    ui.close();
+                }
+                if ui.button(crate::lang::t(msg!("Route Carriers in Project"))).clicked() {
+                    self.run("cable_carrier", serde_json::json!({"from_wires":{}}));
+                    ui.close();
+                }
+            });
         });
     }
 

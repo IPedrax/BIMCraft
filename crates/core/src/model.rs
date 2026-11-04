@@ -1087,6 +1087,8 @@ pub struct Component {
     pub params: BTreeMap<String, serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provision: Option<Provision>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mount: Option<RunMount>,
     /// Empty means any side; directions belong to the equipment, not the view.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub connection_sides: Vec<DeviceSide>,
@@ -1486,6 +1488,7 @@ macro_rules! visit_refs {
             }
             Element::Component(c) => {
                 f(& $($m)? c.level);
+                if let Some(mount) = & $($m)? c.mount { f(& $($m)? mount.host); }
                 if let Some(p) = & $($m)? c.provision {
                     if let Some(g) = & $($m)? p.host { f(g); }
                 }
@@ -5811,6 +5814,7 @@ impl Model {
         }
         // Last, so what a rule above says of a reference comes first.
         self.check_ids()?;
+        self.check_component_mounts()?;
         self.check_run_mounts()
     }
 

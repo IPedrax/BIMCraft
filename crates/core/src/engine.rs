@@ -268,6 +268,7 @@ impl Session {
                 self.model_mut().sync_library();
                 if cmd.undoable {
                     self.model_mut().follow_run_mounts(&before)?;
+                    self.model_mut().follow_component_mounts(&before)?;
                     self.model_mut().follow_carrier_type_changes(&before);
                     self.model_mut().refresh_wire_connections(&before)?;
                 }

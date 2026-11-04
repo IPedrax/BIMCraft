@@ -4,8 +4,8 @@
 //! where its heights are); the plan, the section, the 3D view, the snaps and IFC ask it.
 
 use crate::geom::P2;
-use crate::model::{Justify, MAX_SLOPE, Model, Run, RunType, TOL, heading};
-use crate::view3d::{P3, add, cross, mul, sub, unit};
+use crate::model::{Component, Element, Justify, MAX_SLOPE, Model, Run, RunType, TOL, heading};
+use crate::view3d::{P3, add, cross, dot, mul, sub, unit};
 use crate::walls::Plane;
 
 mod connections;
@@ -14,6 +14,96 @@ mod device_exit;
 pub(crate) use connections::bend_fits;
 
 impl Model {
+    /// Local height of the point used when fitting a component to a named face.
+    pub fn component_contact_height(&self, component: &Component, face: &str) -> f64 {
+        match face {
+            "interior" | "exterior" => self
+                .families
+                .get(&component.family)
+                .and_then(|family| family.values(&component.type_name, &component.params).ok())
+                .and_then(|values| match values.get(self.language.word("Mounting Height")) {
+                    Some(crate::family::Val::Number(height)) => Some(*height),
+                    _ => None,
+                })
+                .unwrap_or_default(),
+            "top" => self.component_local_pieces(component).iter().map(|p| p.bottom).min_by(f64::total_cmp).unwrap_or_default(),
+            _ => self.component_local_pieces(component).iter().map(|p| p.top).max_by(f64::total_cmp).unwrap_or_default(),
+        }
+    }
+
+    fn component_contact(&self, c: &Component, face: &str) -> P3 {
+        [c.at.0, c.at.1, self.elevation(c.level) + c.offset + self.component_contact_height(c, face)]
+    }
+
+    pub(crate) fn follow_component_mounts(&mut self, before: &Self) -> Result<(), String> {
+        let mut updates = Vec::new();
+        for (id, element) in self.elements.iter() {
+            let Element::Component(c) = element else { continue };
+            let Some(mount) = &c.mount else { continue };
+            let Some(Element::Component(old)) = before.elements.get(*id) else { continue };
+            if old.mount != c.mount {
+                continue;
+            }
+            let mut updated = c.clone();
+            if self.elements.get(mount.host).is_none() && before.elements.get(mount.host).is_some() {
+                updated.mount = None;
+            } else {
+                if c.at != old.at || c.offset != old.offset || c.level != old.level || c.angle != old.angle {
+                    continue;
+                }
+                let previous = before.run_mount_frame(mount)?;
+                let current = self.run_mount_frame(mount)?;
+                let contact = before.component_contact(old, &mount.face);
+                if previous == current && contact == self.component_contact(c, &mount.face) {
+                    continue;
+                }
+                let delta = sub(contact, previous.0);
+                let mapped = add(
+                    add(current.0, mul(current.1, dot(delta, previous.1))),
+                    mul(cross(current.2, current.1), dot(delta, cross(previous.2, previous.1))),
+                );
+                updated.at = P2(mapped[0], mapped[1]);
+                updated.offset = mapped[2] - self.elevation(c.level) - self.component_contact_height(c, &mount.face);
+                let angle = |axis: P3| axis[1].atan2(axis[0]).to_degrees();
+                if previous.1 != current.1 {
+                    updated.angle = (c.angle + angle(current.1) - angle(previous.1)).rem_euclid(360.0);
+                }
+            }
+            if &updated != c {
+                updates.push((*id, updated));
+            }
+        }
+        for (id, updated) in updates {
+            self.elements.insert(id, Element::Component(updated));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn check_component_mounts(&self) -> Result<(), String> {
+        let mut scene = None;
+        for (id, element) in self.elements.iter() {
+            let Element::Component(c) = element else { continue };
+            let Some(mount) = &c.mount else { continue };
+            let (origin, tangent, normal) = self.run_mount_frame(mount)?;
+            let point = self.component_contact(c, &mount.face);
+            let projected = sub(point, mul(normal, dot(sub(point, origin), normal)));
+            let probe = mul(tangent, 0.001);
+            if !c.is_placed()
+                || dot(sub(point, origin), normal).abs() > 0.001
+                || !scene.get_or_insert_with(|| crate::view3d::Scene::new(self)).supports_segment(
+                    self.elements.id(mount.host).ok_or("mount host is missing")?,
+                    &mount.face,
+                    sub(projected, probe),
+                    add(projected, probe),
+                    normal,
+                )?
+            {
+                return Err(format!("{id}: equipment contact must stay on its mounting face"));
+            }
+        }
+        Ok(())
+    }
+
     /// Origin on the named host face, unit tangent, outward normal. Curved
     /// walls need a different contact representation and cannot use a single plane.
     pub(crate) fn run_mount_frame(&self, mount: &crate::model::RunMount) -> Result<(P3, P3, P3), String> {

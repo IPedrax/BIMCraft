@@ -589,6 +589,7 @@ fn stage41_wire_chain_starts_at_equipment_height() {
         let level = h.state().plan_level().unwrap();
         h.state_mut().run("modify", json!({"id":level,"view_range":{"top":3000,"cut":2300,"bottom":0,"depth":0}})).unwrap();
         h.state_mut().run("component", json!({"family":"Fire Alarm Panel","at":[1000,1000],"offset":200})).unwrap();
+        let device = ids(&h, "component")[0];
         if three_d {
             press(&mut h, "Default 3D View");
         }
@@ -609,13 +610,56 @@ fn stage41_wire_chain_starts_at_equipment_height() {
             stage4_click_world(&mut h, point, three_d);
         }
         let wires = ids(&h, "wire");
-        assert_eq!(wires.len(), 2);
         let model = &h.state().session.model;
-        for id in wires {
+        let mains: Vec<_> =
+            wires.into_iter().filter(|id| matches!(model.elements.get(*id), Some(Element::Wire(wire)) if wire.feeder.is_none())).collect();
+        assert_eq!(mains.len(), 2);
+        assert!(matches!(model.elements.get(mains[0]), Some(Element::Wire(wire)) if wire.connections.len() == 1));
+        for id in mains {
             let g = model.run_geom(model.elements.get(id).unwrap()).unwrap();
             assert_eq!([g.a[2], g.b[2]], [height; 2]);
         }
+        h.state_mut().run("move", json!({"ids":[device],"by":[0,500]})).unwrap();
+        let model = &h.state().session.model;
+        assert!(model.elements.iter().any(|(_, element)| {
+            matches!(element, Element::Wire(wire) if wire.feeder.as_ref().is_some_and(|f| f.leg == 0 || !manual))
+                && model.run_geom(element).is_some_and(|g| g.a == [1000.0, 1500.0, 1700.0])
+        }));
     }
+}
+
+#[test]
+fn carrier_ribbon_routes_current_level_then_remaining_project_wires() {
+    let mut h = app(r#"level {"name":"Upper","elevation":3000}
+wire {"points":[[0,0],[2000,0]]}
+wire {"points":[[0,0],[2000,0]]}
+wire {"level":"Upper","points":[[0,1000],[2000,1000]]}"#);
+    press(&mut h, "Low Voltage");
+    press(&mut h, "Route Carriers");
+    press(&mut h, "Route Carriers on Level");
+    assert_eq!(ids(&h, "cablecarrier").len(), 1);
+    press(&mut h, "Route Carriers");
+    press(&mut h, "Route Carriers in Project");
+    assert_eq!(ids(&h, "cablecarrier").len(), 2);
+    press(&mut h, "Route Carriers");
+    press(&mut h, "Route Carriers in Project");
+    assert_eq!(ids(&h, "cablecarrier").len(), 2);
+    h.state_mut().run("undo", json!({})).unwrap();
+    assert_eq!(ids(&h, "cablecarrier").len(), 1);
+}
+
+#[test]
+fn carrier_batch_keeps_wires_separate_when_combined_fill_exceeds_limit() {
+    let mut h = app(r#"type {"category":"wire","name":"Test wire","width":8,"round":true}
+type {"category":"cablecarrier","name":"Test tray","width":10,"depth":10,"round":false}
+cable_carrier_check {"mode":"warn","fill_percent":75,"configure":true,"default_type":"Test tray"}
+wire {"type":"Test wire","points":[[0,0],[2000,0]]}
+wire {"type":"Test wire","points":[[0,0],[2000,0]]}"#);
+    press(&mut h, "Low Voltage");
+    press(&mut h, "Route Carriers");
+    press(&mut h, "Route Carriers in Project");
+    assert_eq!(ids(&h, "cablecarrier").len(), 2, "{}", h.state().status.text);
+    assert!(h.state().session.model.carrier_warnings().is_empty());
 }
 
 #[test]
@@ -637,7 +681,10 @@ fn stage41_split_places_a_route_bend_and_undoes_in_one_step() {
             h.state_mut().work_axis = axis;
         }
         let before = h.state().session.model.to_json().unwrap();
-        shortcut(&mut h, "SL");
+        h.state_mut().selection = ids(&h, category);
+        let add_point =
+            h.state().context_items().into_iter().flatten().find(|item| item.enabled && item.action.label() == "Add Route Point").unwrap();
+        h.state_mut().act(add_point.action);
         stage4_click_world(&mut h, [3000.0, 1000.0, 1000.0], three_d);
         assert_eq!(ids(&h, category).len(), 1);
         assert!(
@@ -763,6 +810,51 @@ fn stage41_3d_places_equipment_on_visible_wall_face() {
 }
 
 #[test]
+fn equipment_placed_on_face_follows_its_wall_after_reopening() {
+    let mut h = app(r#"wall {"points":[[0,0],[8000,0]]}"#);
+    press(&mut h, "Default 3D View");
+    shortcut(&mut h, "FA");
+    press(&mut h, "Place on Face");
+    stage4_click_world(&mut h, [4000.0, -100.0, 1800.0], true);
+    let device = ids(&h, "component")[0];
+    let wall = ids(&h, "wall")[0];
+    let model = &h.state().session.model;
+    let (reopened, _) = bimcraft_core::model::Model::read(&model.to_json().unwrap()).unwrap();
+    let mut s = bimcraft_core::engine::Session::new();
+    s.reset(reopened, None);
+    let Some(Element::Component(before)) = s.model.elements.get(device).cloned() else { panic!("expected equipment") };
+    s.execute("move", &json!({"ids":[wall],"by":[250,500]})).unwrap();
+    let Some(Element::Component(after)) = s.model.elements.get(device) else { panic!("expected equipment") };
+    assert!((after.at - before.at - P2(250.0, 500.0)).length() < 1e-6);
+}
+
+#[test]
+fn shift_drag_reorients_equipment_on_a_perpendicular_wall() {
+    let mut h = app(r#"wall {"points":[[0,0],[0,6000]]}
+component {"family":"Fire Alarm Panel","at":[2500,2000],"offset":200}"#);
+    press(&mut h, "Default 3D View");
+    let device = ids(&h, "component")[0];
+    h.state_mut().selection = vec![device];
+    h.run();
+    let camera = h.state().orbit.camera;
+    let from = h.state().screen3([2500.0, 1950.0, 1850.0]);
+    let to = h.state().screen3([100.0, 3500.0, 2000.0]);
+    h.event(Event::ModifiersChanged(Modifiers::SHIFT));
+    h.event(Event::PointerButton { pos: from, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::SHIFT });
+    h.run();
+    for t in [0.25, 0.5, 0.75, 1.0] {
+        h.hover_at(from + (to - from) * t);
+        h.run();
+    }
+    h.event(Event::PointerButton { pos: to, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::SHIFT });
+    h.run();
+    let Some(Element::Component(component)) = h.state().session.model.elements.get(device) else { panic!("expected equipment") };
+    assert!((component.at.0 - 100.0).abs() < 1.0, "{:?}", component.at);
+    assert!((component.angle - 90.0).abs() < 0.01);
+    assert_eq!(h.state().orbit.camera, camera);
+}
+
+#[test]
 fn stage41_3d_places_equipment_on_floor_top() {
     let mut h = app(r#"floor {"boundary":[[0,0],[8000,0],[8000,6000],[0,6000]]}"#);
     press(&mut h, "Default 3D View");
@@ -797,6 +889,72 @@ fn stage41_3d_places_equipment_under_ceiling() {
     assert!((component.at.0 - 4000.0).abs() < 20.0);
     assert!((component.at.1 - 3000.0).abs() < 20.0);
     assert!((model.elevation(component.level) + component.offset + top - 2600.0).abs() < 1e-6);
+}
+
+#[test]
+fn free_3d_routes_snap_to_surfaces_and_share_the_ortho_preview() {
+    for (host, face, script, a, cursor, normal) in [
+        ("wall", "interior", r#"wall {"points":[[0,0],[8000,0]]}"#, [1500.0, -100.0, 1000.0], [4500.0, -100.0, 2200.0], [0.0, -1.0, 0.0]),
+        (
+            "floor",
+            "top",
+            r#"floor {"boundary":[[0,0],[8000,0],[8000,6000],[0,6000]]}"#,
+            [1500.0, 1500.0, 0.0],
+            [4500.0, 2500.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ),
+        (
+            "ceiling",
+            "bottom",
+            r#"ceiling {"boundary":[[0,0],[8000,0],[8000,6000],[0,6000]],"offset":2600}"#,
+            [1500.0, 1500.0, 2600.0],
+            [4500.0, 2500.0, 2600.0],
+            [0.0, 0.0, -1.0],
+        ),
+    ] {
+        for (key, category, ortho) in [("EW", "wire", false), ("CC", "cablecarrier", true)] {
+            let mut h = app(script);
+            press(&mut h, "Default 3D View");
+            if host == "ceiling" {
+                let state = h.state_mut();
+                let camera = state.orbit.camera.unwrap();
+                let scene = bimcraft_core::view3d::Scene::new(&state.session.model);
+                state.orbit.camera = Some(scene.fit(camera.azimuth, -35.0, camera.width, camera.height));
+                h.run();
+            }
+            shortcut(&mut h, key);
+            press(&mut h, "Free 3D");
+            h.state_mut().constrain = ortho;
+            let b = if ortho { [cursor[0], a[1], a[2]] } else { cursor };
+            stage4_click_world(&mut h, a, true);
+            h.hover_at(h.state().screen3(cursor));
+            h.run();
+            let preview: Vec<_> = h
+                .output()
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::LineSegment { points, stroke } if (stroke.width - 1.5).abs() < f32::EPSILON => Some(*points),
+                    _ => None,
+                })
+                .collect();
+            stage4_click_world(&mut h, cursor, true);
+            let id = ids(&h, category)[0];
+            let model = &h.state().session.model;
+            let element = model.elements.get(id).unwrap();
+            let mount = element.run().unwrap().mount.as_ref().unwrap();
+            assert_eq!(mount.host, model.guid(ids(&h, host)[0]));
+            assert_eq!(mount.face, face);
+            let g = model.run_geom(element).unwrap();
+            let expected = [h.state().screen3(g.a), h.state().screen3(g.b)];
+            assert!(preview.iter().any(|points| points.iter().zip(expected).all(|(actual, expected)| actual.distance(expected) < 2.0)));
+            let physical = |p: [f64; 3]| std::array::from_fn::<_, 3, _>(|i| p[i] + normal[i] * g.depth / 2.0);
+            let (a, b) = (physical(a), physical(b));
+            for (actual, expected) in g.a.into_iter().chain(g.b).zip(a.into_iter().chain(b)) {
+                assert!((actual - expected).abs() < 20.0, "{category}: {actual} != {expected}");
+            }
+        }
+    }
 }
 
 #[test]

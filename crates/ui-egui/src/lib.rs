@@ -471,6 +471,7 @@ pub struct BimApp {
     floor_structural: bool,
     run_justify: Justify,
     beam_offset: String,
+    wire_start_connection: Option<(Guid, f64)>,
     run_end_offset: String,
     run_vertical: bool,
     /// The Options Bar's justification and offset of the run tools not on screen, by category, and whose are.
@@ -660,6 +661,8 @@ pub struct BimApp {
     component_offset: String,
     work_level: Option<Guid>,
     work_axis: usize,
+    free_run_3d: bool,
+    free_run_start: Option<([f64; 3], Option<bimcraft_core::view3d::SurfaceHit>)>,
     work_coordinate: String,
     place_on_face: bool,
     /// The Properties palette's folded groups.
@@ -971,6 +974,7 @@ impl BimApp {
             floor_structural: false,
             run_justify: Justify::Top,
             beam_offset: units.length(0.0),
+            wire_start_connection: None,
             run_end_offset: String::new(),
             run_vertical: false,
             run_kept: BTreeMap::new(),
@@ -1091,6 +1095,8 @@ impl BimApp {
             component_offset: "0".into(),
             work_level: None,
             work_axis: 2,
+            free_run_3d: false,
+            free_run_start: None,
             work_coordinate: "0".into(),
             place_on_face: false,
             collapsed: BTreeSet::new(),
@@ -2035,6 +2041,8 @@ impl BimApp {
     }
 
     fn set_tool(&mut self, mut tool: Tool) {
+        self.free_run_start = None;
+        self.wire_start_connection = None;
         // Trim/Extend to Corner with two lines or walls selected (or picked, sketching) joins them at once, keeping the
         // parts toward their middles; with any other selection it asks for the picks.
         if tool == Tool::Trim(None) && self.corner_selected() {
@@ -2191,6 +2199,8 @@ impl BimApp {
     /// Escape: dismiss the error, drop the chain being drawn, else leave the tool, else clear the
     /// selection.
     fn escape(&mut self) {
+        self.free_run_start = None;
+        self.wire_start_connection = None;
         self.typed.clear();
         self.ribbon_peek = false;
         // A snap override waiting for its point goes first, leaving what's being drawn.
