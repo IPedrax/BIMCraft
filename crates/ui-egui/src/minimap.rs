@@ -14,7 +14,6 @@ use egui::{
 
 use crate::canvas::{Place, color, paint};
 use crate::lang::t;
-use crate::orbit::scene_of;
 use crate::style::{canvas_pal, pal};
 use crate::{BimApp, Sheet};
 
@@ -137,7 +136,7 @@ impl BimApp {
             Sheet::Ceiling(_) => (render::ceiling_plan(model, key, w, h), None),
             Sheet::Section(_) => {
                 let view = render::section_fit(model, key, w, h);
-                match render::section_image(model, scene_of(&mut self.orbit.scene, model), key, view, &[]) {
+                match render::section_picture(model, key, view, &[]) {
                     Some(image) => {
                         let (rgba, _) = image.rgba.as_chunks::<4>();
                         let pixels = rgba.iter().map(|[r, g, b, _]| color(Rgb(*r, *g, *b))).collect();

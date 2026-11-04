@@ -2358,10 +2358,9 @@ impl BimApp {
             Sheet::Ceiling(level) => owners(render::ceiling_plan(&m, level, w, h)),
             Sheet::Section(id) => {
                 let view = render::section_fit(&m, id, w, h);
-                let scene = orbit::scene_of(&mut self.orbit.scene, &m);
                 // ponytail: the picture leaves out what's hidden behind something nearer; test the
                 // solids against the view's extent if SA should find those too.
-                let seen = render::section_image(&m, scene, id, view, &[]).map(|i| i.shows()).unwrap_or_default();
+                let seen = render::section_picture(&m, id, view, &[]).map(|i| i.shows()).unwrap_or_default();
                 owners(render::section(&m, id, view)).into_iter().chain(seen).collect()
             }
             // The whole model, but for what the default 3D view hides.
