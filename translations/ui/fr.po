@@ -2964,7 +2964,7 @@ msgstr "Saisir un nom pour chaque type et motif."
 msgid "Entities"
 msgstr "Entités"
 
-#: crates/ui-egui/src/canvas.rs:2929
+#: crates/ui-egui/src/canvas.rs:2924
 msgid "Equal"
 msgstr "Égal"
 
@@ -3738,7 +3738,7 @@ msgstr "Mettre en surbrillance ce qui est sous le curseur"
 msgid "Home"
 msgstr "Accueil"
 
-#: crates/ui-egui/src/orbit.rs:929
+#: crates/ui-egui/src/orbit.rs:1028
 msgid "Home View"
 msgstr "Vue d'accueil"
 
@@ -4432,7 +4432,7 @@ msgstr "Ligne d'emplacement:"
 msgid "Location line: {}"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2896
+#: crates/ui-egui/src/canvas.rs:2891
 msgid "Lock segment {}"
 msgstr "Verrouiller le segment {}"
 
@@ -5778,10 +5778,12 @@ msgid "Place Centre"
 msgstr "Placer le centre"
 
 #: crates/ui-egui/src/lib.rs:1426
+#: crates/ui-egui/src/orbit.rs:343
 msgid "Place Column"
 msgstr "Placer une colonne"
 
 #: crates/ui-egui/src/lib.rs:1428
+#: crates/ui-egui/src/orbit.rs:345
 msgid "Place Component"
 msgstr "Placer un composant"
 
@@ -5914,6 +5916,7 @@ msgid "Place Voice Outlet"
 msgstr "Placer une prise téléphonique"
 
 #: crates/ui-egui/src/lib.rs:1403
+#: crates/ui-egui/src/orbit.rs:342
 msgid "Place Wall"
 msgstr "Placer un mur"
 
@@ -7794,7 +7797,7 @@ msgstr "Isoler temporairement la catégorie"
 msgid "Temporary Isolate Element"
 msgstr "Isoler temporairement l'élément"
 
-#: crates/ui-egui/src/canvas.rs:2858
+#: crates/ui-egui/src/canvas.rs:2853
 msgid "Temporary dimension {}"
 msgstr "Cote temporaire {}"
 
@@ -7891,7 +7894,7 @@ msgstr "Les extrémités des murs, quadrillages et autres éléments dessinés, 
 msgid "The foot of the perpendicular from the last point to a wall or grid"
 msgstr "Le pied de la perpendiculaire du dernier point à un mur ou un quadrillage"
 
-#: crates/ui-egui/src/orbit.rs:577
+#: crates/ui-egui/src/orbit.rs:666
 msgid "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor"
 msgstr "La carte graphique n'a pas pu dessiner la vue 3D ({}): elle est dessinée sur le processeur"
 
@@ -8261,7 +8264,7 @@ msgstr "Ajuster/Prolonger au coin (TR): choisir deux murs ou deux lignes, sur le
 msgid "Turn Snap Override Off"
 msgstr "Désactiver le remplacement d'accrochage"
 
-#: crates/ui-egui/src/canvas.rs:2809
+#: crates/ui-egui/src/canvas.rs:2804
 msgid "Turn the wall about its {}: {}"
 msgstr "Faire pivoter le mur depuis son extrémité ({}): {}"
 
@@ -8987,7 +8990,7 @@ msgid "Zoom Out"
 msgstr "Zoom arrière"
 
 #: crates/ui-egui/src/canvas.rs:1494
-#: crates/ui-egui/src/orbit.rs:933
+#: crates/ui-egui/src/orbit.rs:1032
 msgid "Zoom to Fit"
 msgstr "Zoom adapté"
 
@@ -8997,10 +9000,10 @@ msgstr "`{}` n'est pas une hauteur"
 
 #: crates/ui-egui/src/camera.rs:91
 #: crates/ui-egui/src/camera.rs:103
-#: crates/ui-egui/src/canvas.rs:2623
-#: crates/ui-egui/src/canvas.rs:3007
-#: crates/ui-egui/src/canvas.rs:3100
-#: crates/ui-egui/src/canvas.rs:3120
+#: crates/ui-egui/src/canvas.rs:2618
+#: crates/ui-egui/src/canvas.rs:3002
+#: crates/ui-egui/src/canvas.rs:3095
+#: crates/ui-egui/src/canvas.rs:3115
 #: crates/ui-egui/src/draw.rs:258
 #: crates/ui-egui/src/draw.rs:259
 #: crates/ui-egui/src/draw.rs:260
@@ -9045,8 +9048,8 @@ msgstr "`{}` n'est pas une taille, un angle ou un décalage"
 msgid "`{}` is not a spacing"
 msgstr "`{}` n'est pas un espacement"
 
-#: crates/ui-egui/src/canvas.rs:2608
-#: crates/ui-egui/src/canvas.rs:2836
+#: crates/ui-egui/src/canvas.rs:2603
+#: crates/ui-egui/src/canvas.rs:2831
 msgid "`{}` is not an angle"
 msgstr "`{}` n'est pas un angle"
 
@@ -9110,7 +9113,7 @@ msgstr "arc"
 msgid "begins with"
 msgstr "commence par"
 
-#: crates/ui-egui/src/canvas.rs:2137
+#: crates/ui-egui/src/canvas.rs:2132
 msgid "ceiling: `{}` is not a height"
 msgstr "plafond: `{}` n'est pas une hauteur"
 
@@ -9118,19 +9121,19 @@ msgstr "plafond: `{}` n'est pas une hauteur"
 msgid "circle"
 msgstr "cercle"
 
-#: crates/ui-egui/src/canvas.rs:2208
+#: crates/ui-egui/src/canvas.rs:2203
 msgid "click its line's end"
 msgstr "cliquer sur l'extrémité de sa ligne"
 
-#: crates/ui-egui/src/orbit.rs:921
+#: crates/ui-egui/src/orbit.rs:1020
 msgid "click on the floor's top"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2232
+#: crates/ui-egui/src/canvas.rs:2227
 msgid "click where its run ends"
 msgstr "cliquer là où son tronçon se termine"
 
-#: crates/ui-egui/src/canvas.rs:1968
+#: crates/ui-egui/src/structure.rs:276
 msgid "column: {}"
 msgstr "colonne: {}"
 
@@ -9182,7 +9185,7 @@ msgstr "ne finit pas par"
 msgid "does not equal"
 msgstr "est différent de"
 
-#: crates/ui-egui/src/canvas.rs:2101
+#: crates/ui-egui/src/canvas.rs:2096
 msgid "dormer: the width `{}`, the height `{}` and the slope `{}` must be numbers"
 msgstr "lucarne: la largeur `{}`, la hauteur `{}` et la pente `{}` doivent être des nombres"
 
@@ -9246,10 +9249,6 @@ msgstr "a une valeur"
 msgid "has no value"
 msgstr "n'a pas de valeur"
 
-#: crates/ui-egui/src/orbit.rs:835
-msgid "in the 3D view this tool draws on a level face: the top of a floor, a flat roof or a level"
-msgstr ""
-
 #: crates/ui-egui/src/properties.rs:2791
 msgid "is greater than"
 msgstr "est supérieur à"
@@ -9274,7 +9273,7 @@ msgstr "niveau: `{}` n'est pas une altitude"
 msgid "line"
 msgstr "ligne"
 
-#: crates/ui-egui/src/canvas.rs:2395
+#: crates/ui-egui/src/canvas.rs:2390
 msgid "mass: {}"
 msgstr "volume: {}"
 
@@ -9304,11 +9303,11 @@ msgid "north-west"
 msgstr ""
 
 #: crates/ui-egui/src/canvas.rs:1796
-#: crates/ui-egui/src/canvas.rs:2472
+#: crates/ui-egui/src/canvas.rs:2467
 msgid "offset: `{}` is not a distance"
 msgstr "décalage: `{}` n'est pas une distance"
 
-#: crates/ui-egui/src/canvas.rs:2468
+#: crates/ui-egui/src/canvas.rs:2463
 msgid "offset: it offsets straight walls"
 msgstr "décalage: il décale les murs droits"
 
@@ -9336,23 +9335,23 @@ msgstr "image"
 msgid "polyline"
 msgstr "polyligne"
 
-#: crates/ui-egui/src/canvas.rs:2250
+#: crates/ui-egui/src/canvas.rs:2245
 msgid "ramp: `{}` is not a slope"
 msgstr "rampe: `{}` n'est pas une pente"
 
-#: crates/ui-egui/src/canvas.rs:2251
+#: crates/ui-egui/src/canvas.rs:2246
 msgid "ramp: `{}` is not a width"
 msgstr "rampe: `{}` n'est pas une largeur"
 
-#: crates/ui-egui/src/canvas.rs:2252
+#: crates/ui-egui/src/canvas.rs:2247
 msgid "ramp: {}"
 msgstr "rampe: {}"
 
-#: crates/ui-egui/src/canvas.rs:2209
+#: crates/ui-egui/src/canvas.rs:2204
 msgid "roof: `{}` is not a slope"
 msgstr "toit: `{}` n'est pas une pente"
 
-#: crates/ui-egui/src/canvas.rs:2053
+#: crates/ui-egui/src/canvas.rs:2048
 msgid "roof: the slope `{}` and the overhang `{}` must be numbers"
 msgstr "toit: la pente `{}` et le débord `{}` doivent être des nombres"
 
@@ -9400,11 +9399,11 @@ msgstr "sélectionner d'abord ce qu'il faut masquer ou isoler"
 msgid "select what to move, copy, rotate or mirror first"
 msgstr "sélectionner d'abord ce qu'il faut déplacer, copier, faire pivoter ou mettre en miroir"
 
-#: crates/ui-egui/src/canvas.rs:2161
+#: crates/ui-egui/src/canvas.rs:2156
 msgid "shaft: {}"
 msgstr "trémie: {}"
 
-#: crates/ui-egui/src/canvas.rs:2179
+#: crates/ui-egui/src/canvas.rs:2174
 msgid "slope arrow: `{}` is not a slope"
 msgstr "flèche de pente: `{}` n'est pas une pente"
 
@@ -9424,7 +9423,7 @@ msgstr ""
 msgid "spline"
 msgstr "spline"
 
-#: crates/ui-egui/src/canvas.rs:2273
+#: crates/ui-egui/src/canvas.rs:2268
 msgid "stair: `{}` is not a width"
 msgstr "escalier: `{}` n'est pas une largeur"
 
@@ -9448,7 +9447,7 @@ msgstr ""
 msgid "the next free name"
 msgstr "le prochain nom libre"
 
-#: crates/ui-egui/src/canvas.rs:3099
+#: crates/ui-egui/src/canvas.rs:3094
 msgid "the opening has to stay on its wall"
 msgstr "l'ouverture doit rester sur son mur"
 
@@ -9457,7 +9456,7 @@ msgstr "l'ouverture doit rester sur son mur"
 msgid "there's no detail group yet: select detail lines and Create Group"
 msgstr "aucun groupe de détails pour l'instant: sélectionner des lignes de détail puis Créer un groupe"
 
-#: crates/ui-egui/src/orbit.rs:250
+#: crates/ui-egui/src/orbit.rs:294
 msgid "there's no face to paint there"
 msgstr "aucune face à peindre à cet endroit"
 
@@ -9465,7 +9464,7 @@ msgstr "aucune face à peindre à cet endroit"
 msgid "there's no folder to keep favorites in here"
 msgstr "aucun dossier pour conserver les favoris ici"
 
-#: crates/ui-egui/src/orbit.rs:841
+#: crates/ui-egui/src/orbit.rs:940
 #: crates/ui-egui/src/paper.rs:158
 #: crates/ui-egui/src/section.rs:199
 msgid "this tool works in plan views: open one from the Project Browser"
@@ -9507,7 +9506,7 @@ msgstr "tension"
 msgid "voltages"
 msgstr "tensions"
 
-#: crates/ui-egui/src/canvas.rs:2662
+#: crates/ui-egui/src/canvas.rs:2657
 msgid "wall: {}"
 msgstr "mur: {}"
 
@@ -9627,13 +9626,13 @@ msgstr "{} mm pour A2-A4"
 msgid "{} months ago"
 msgstr "il y a {} mois"
 
-#: crates/ui-egui/src/canvas.rs:3190
+#: crates/ui-egui/src/canvas.rs:3185
 msgid "{} of {} risers"
 msgstr "{} sur {} contremarches"
 
 #: crates/ui-egui/src/canvas.rs:1133
 #. what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
-#: crates/ui-egui/src/orbit.rs:683
+#: crates/ui-egui/src/orbit.rs:784
 msgid "{} of {} {}"
 msgstr "{} de {} {}"
 
@@ -9673,7 +9672,7 @@ msgstr "{} sélectionnés."
 msgid "{} triangles, from a file"
 msgstr "{} triangles, depuis un fichier"
 
-#: crates/ui-egui/src/canvas.rs:3192
+#: crates/ui-egui/src/canvas.rs:3187
 msgid "{} up"
 msgstr "{} de montée"
 
@@ -9730,7 +9729,7 @@ msgid "{}: Type"
 msgstr "{}: Type"
 
 #: crates/ui-egui/src/structure.rs:181
-#: crates/ui-egui/src/structure.rs:198
+#: crates/ui-egui/src/structure.rs:203
 msgid "{}: `{}` is not a height"
 msgstr "{}: `{}` n'est pas une hauteur"
 
@@ -9748,12 +9747,20 @@ msgstr "{}: `{}` n'est pas un nombre"
 msgid "{}: `{}` isn't a number"
 msgstr "{}: `{}` n'est pas un nombre"
 
+#: crates/ui-egui/src/orbit.rs:353
+msgid "{}: in the 3D view it stands on a level face (the top of a floor, a flat roof or a level): point at one"
+msgstr ""
+
+#: crates/ui-egui/src/orbit.rs:351
+msgid "{}: in the 3D view its points go on a level face (the top of a floor, a column, a flat roof or a level): point at one"
+msgstr ""
+
 #: crates/ui-egui/src/revit.rs:136
 msgid "{}: this build of BIMCraft was made without Revit support (`--no-default-features`); build with the default `rvt` feature to read Revit files"
 msgstr "{}: cette version de BIMCraft a été compilée sans prise en charge de Revit (`--no-default-features`); compiler avec la fonctionnalité `rvt` par défaut pour lire les fichiers Revit"
 
 #: crates/ui-egui/src/favorites.rs:162
-#: crates/ui-egui/src/structure.rs:196
+#: crates/ui-egui/src/structure.rs:197
 msgid "{}: {}"
 msgstr "{}: {}"
 
@@ -10575,3 +10582,6 @@ msgstr "Câbles"
 #: crates/ui-egui/src/lib.rs:4503
 #~ msgid "Click to select. Drag to orbit (or Shift and the middle button), the middle button pans, the wheel zooms."
 #~ msgstr "Cliquer pour sélectionner. Faire glisser pour orbiter (ou Maj et le bouton du milieu), le bouton du milieu fait un panoramique, la molette zoome."
+#: crates/ui-egui/src/orbit.rs:835
+#~ msgid "in the 3D view this tool draws on a level face: the top of a floor, a flat roof or a level"
+#~ msgstr ""

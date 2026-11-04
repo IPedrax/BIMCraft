@@ -1958,15 +1958,10 @@ impl BimApp {
                 let at = self.snap_point(m, level, v, at, &[], false);
                 self.place_stand(level, at, category);
             }
-            Tool::Column => match top_params(m, level, self.column_top, &self.column_height) {
-                Ok(mut p) => {
-                    p["at"] = point(self.snap_point(m, level, v, at, &[], false));
-                    p["level"] = json!(level);
-                    let p = self.typed("column", p);
-                    self.run("column", p);
-                }
-                Err(e) => self.status = Status { text: tf("column: {}", &[&e]), error: true },
-            },
+            Tool::Column => {
+                let at = self.snap_point(m, level, v, at, &[], false);
+                self.place_column(level, at, 0.0);
+            }
             // Its start, where its first run ends, and which way the next turns: done when it climbs all
             // the way.
             Tool::Stair(pts) | Tool::Ramp(pts) => {

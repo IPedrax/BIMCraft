@@ -417,12 +417,21 @@ The 3D view's tools draw on a **work plane**, as Revit's (`workplane.rs`): `work
 for a face that is level and turned up (a floor's top, a flat roof's, a level's plane), gives the level its points go on (the face's
 element's own level, a level's plane that level, else the highest level at or below it) and the offset over it, to the micron;
 with nothing under the cursor, the lowest level's plane, the ground. A face that isn't level, or is turned down, gives none, and
-the status line says what the tool draws on. In the 3D view the Wall tool (WA) takes its points so (`orbit.rs`'s `aim`, to the 10 mm
-as a plan's free point): the first point's plane holds for the rest of the chain, whatever the cursor passes over, and each wall
-goes through `place` as in a plan, with `base_offset` from `Orbit::wall_base`, which `wall_params` reads while the 3D view places a
-point; Component (CM) and the MEP fixtures run `component` with that level and offset. The point under the cursor is drawn as a
-plan's Nearest snap, naming the element whose face it is, with the wall from the chain's last point. Floor, sketches and faces
-that aren't level are not drawn on in 3D yet.
+the status line says what the tool draws on. Every drawing tool takes its points so in the 3D view (`orbit.rs`'s `aim`), and each
+point snaps as its level's plan snaps (`snap3d`: `snap::snap` on the plane's level, from the points the tool has picked, Shift squaring
+the step, within the snap's points as the plane is foreshortened there; else the nearest 10 mm). The Wall tool (WA): the first
+point's plane holds for the rest of the chain, whatever the cursor passes over, and each wall goes through `place` as in a plan, with
+`base_offset` from `Orbit::wall_base`, which `wall_params` reads while the 3D view places a point. A run's tool (beams, wall footings,
+pipes, ducts, conduits, cable trays, wires, conductors, cabling) takes each end on the face it is clicked on, so a run from a floor's
+top to a wall's or a column's top climbs (`place_run_lifted`: `offset` and `end_offset` over the start's level, the Options Bar's
+offset over each): that is a brace; where nothing is under the cursor, its end stays on its start's plane. Column (CL), Structural
+Column and Isolated Footing stand on the face (`place_column`, `place_stand_lifted`: `base_offset`, or a footing's top `offset`, its
+height over the level), and Component (CM) and the MEP fixtures run `component` with that level and offset. `Orbit::plane` keeps the
+last point clicked and its plane, which a chain or a run's end takes only while it is the tool's own point before. The point under the
+cursor is drawn as a plan's snap, naming what it snapped to (a free point: Nearest, of the element whose face it is), with the wall
+or run from the point before and its length. Where neither a level face nor the ground meets the line of sight, the tool says what
+it needs (`needs_face`, by the tool's title). Floor and Ceiling sketch on the view's work plane (below), which may be set on a level
+face picked on the model.
 
 A level's own plan is the level (its `view_range`, `crop` and `graphics` are the level's); every other plan of it is an `Element::PlanView`
 (Revit's Duplicate View: `duplicate_view`, which only plans take). A plan has a key: the level's id, or a plan view's. `Model::plan_level` says
