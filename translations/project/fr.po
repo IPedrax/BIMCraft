@@ -665,5 +665,5 @@ msgstr "sdb wc"
 
 #: crates/core/src/loads.rs:78
 msgid "wc"
-msgstr ""
+msgstr "wc"
 
