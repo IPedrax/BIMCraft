@@ -2994,6 +2994,7 @@ impl BimApp {
         fresh.scan_contrast = self.scan_contrast;
         fresh.grid_snapping = self.grid_snapping;
         (fresh.show_origin, fresh.show_view_name) = (self.show_origin, self.show_view_name);
+        fresh.custom_shortcuts = std::mem::take(&mut self.custom_shortcuts);
         (fresh.light_canvas, fresh.scheme, fresh.accent) = (self.light_canvas, self.scheme, self.accent);
         (fresh.panel_colour, fresh.canvas_colour, fresh.text_colour) = (self.panel_colour, self.canvas_colour, self.text_colour);
         fresh.styled = self.styled;

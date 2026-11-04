@@ -4,7 +4,7 @@
 //! What it keeps: the theme and whether the drawing stays light in a dark one, the user's own accent, panel, canvas and text colours,
 //! the profile, the layout, interface language, ribbon, palettes, the
 //! window's size, the background autosave interval, the colour High Contrast Point Clouds draws scans in, whether plans show the
-//! origin marker and their view's name in the corner, and the control port
+//! origin marker and their view's name in the corner, the shortcuts the user made, and the control port
 //! for agents (whether the window opens it, on which port, and whether agents may edit the project or only read it).
 //! The pages for what is still to come (performance and graphics) show what they will hold, greyed out.
 
@@ -12,6 +12,7 @@ use crate::popup::Modal;
 
 use bimcraft_i18n::msg;
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use egui::{Align, Color32, ComboBox, Context, Id as UiId, Layout, RichText, ScrollArea, ThemePreference, Ui, vec2};
@@ -29,6 +30,8 @@ use std::collections::BTreeSet;
 pub const FILE: &str = "settings.json";
 /// The most of it that's read: it's a few hundred bytes.
 const MAX_FILE: u64 = 64 * 1024;
+/// The most shortcuts of the user's own that are read back: the file is the user's, but also a hand's or a damage's.
+pub const MAX_SHORTCUTS: usize = 256;
 
 /// The settings file beside the favorites file at `favorites`.
 pub fn beside(favorites: &Path) -> PathBuf {
@@ -114,6 +117,8 @@ pub struct Settings {
     /// The plans' origin marker, and the view's name in their corner: working aids on the screen.
     pub origin_marker: bool,
     pub view_name: bool,
+    /// The shortcuts the user made (Keyboard Shortcuts): two-character key to the English name of an action.
+    pub shortcuts: BTreeMap<String, String>,
     /// The system's title bar rather than the window's own, where the window can draw its own.
     pub system_title_bar: bool,
     /// Agents: the window opens the control port (on `agents_port`, 0 for any free one), and they may edit or only read.
@@ -152,6 +157,7 @@ impl Settings {
             "grid_snapping": self.grid_snapping,
             "origin_marker": self.origin_marker,
             "view_name": self.view_name,
+            "shortcuts": self.shortcuts,
             "system_title_bar": self.system_title_bar,
             "agents": {"listen": self.agents_listen, "port": self.agents_port, "edit": self.agents_edit},
         })
@@ -195,12 +201,28 @@ impl Settings {
             grid_snapping: v["grid_snapping"].as_bool().unwrap_or(base.grid_snapping),
             origin_marker: v["origin_marker"].as_bool().unwrap_or(base.origin_marker),
             view_name: v["view_name"].as_bool().unwrap_or(base.view_name),
+            shortcuts: shortcuts_from(&v["shortcuts"], base.shortcuts),
             system_title_bar: v["system_title_bar"].as_bool().unwrap_or(base.system_title_bar),
             agents_listen: v["agents"]["listen"].as_bool().unwrap_or(base.agents_listen),
             agents_port: v["agents"]["port"].as_u64().and_then(|p| u16::try_from(p).ok()).unwrap_or(base.agents_port),
             agents_edit: v["agents"]["edit"].as_bool().unwrap_or(base.agents_edit),
         }
     }
+}
+
+/// The shortcuts a settings file holds: an object of key to action, of which only the entries that Keyboard Shortcuts could have made
+/// are kept (a key of two letters or digits, in upper case whatever its case in the file, and an action's English name), and no more
+/// than [`MAX_SHORTCUTS`]. A value that isn't an object leaves `base`'s; an empty object is none (Restore Defaults).
+fn shortcuts_from(v: &Value, base: BTreeMap<String, String>) -> BTreeMap<String, String> {
+    let Some(entries) = v.as_object() else { return base };
+    entries
+        .iter()
+        .filter_map(|(key, action)| {
+            let (key, action) = (key.to_ascii_uppercase(), action.as_str()?);
+            (crate::shortcuts::is_key(&key) && crate::shortcuts::ACTIONS.contains(&action)).then(|| (key, action.to_string()))
+        })
+        .take(MAX_SHORTCUTS)
+        .collect()
 }
 
 /// `[r, g, b]`, each 0 to 255: a colour; anything else, none.
@@ -291,6 +313,7 @@ impl BimApp {
         self.scan_contrast = kept.high_contrast;
         self.grid_snapping = kept.grid_snapping;
         (self.show_origin, self.show_view_name) = (kept.origin_marker, kept.view_name);
+        self.custom_shortcuts = kept.shortcuts.clone();
         self.system_title_bar = kept.system_title_bar;
         (self.agents.listen, self.agents.port, self.agents.edit) = (kept.agents_listen, kept.agents_port, kept.agents_edit);
         self.settings_kept = Some(kept);
@@ -326,6 +349,7 @@ impl BimApp {
             grid_snapping: self.grid_snapping,
             origin_marker: self.show_origin,
             view_name: self.show_view_name,
+            shortcuts: self.custom_shortcuts.clone(),
             system_title_bar: self.system_title_bar,
             agents_listen: self.agents.listen,
             agents_port: self.agents.port,
