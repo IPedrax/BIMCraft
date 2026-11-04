@@ -370,6 +370,7 @@ const PLAN: &[Row] = &[
     ("View Range", "view_range.cut", msg!("Cut Plane"), Length),
     ("View Range", "view_range.bottom", msg!("Bottom"), Length),
     ("View Range", "view_range.depth", msg!("View Depth"), Length),
+    ("Graphics", "graphics.engineering", msg!("Engineering Level Mode"), Flag),
 ];
 
 /// A plan view's parameters, read from and written to the plan view itself.
@@ -382,6 +383,7 @@ const PLAN_VIEW: &[Row] = &[
     ("View Range", "view_range.cut", "Cut Plane", Length),
     ("View Range", "view_range.bottom", "Bottom", Length),
     ("View Range", "view_range.depth", "View Depth", Length),
+    ("Graphics", "graphics.engineering", "Engineering Level Mode", Flag),
 ];
 
 /// A dependent view's: its view range and graphics are its parent's, so it shows the parent, and a crop of its own.
@@ -439,8 +441,7 @@ fn icon(category: &str) -> Icon {
         "footing" => Icon::Footing,
         "stripfooting" => Icon::WallFooting,
         "pipe" => Icon::Pipe,
-        "conduit" => Icon::Conduit,
-        "cabletray" => Icon::CableTray,
+        "cablecarrier" => Icon::CableTray,
         "wire" => Icon::Wire,
         "downconductor" => Icon::DownConductor,
         "groundconductor" => Icon::GroundConductor,
@@ -923,6 +924,31 @@ impl BimApp {
         });
         ui.add_space(4.0);
         if !ids.is_empty() {
+            if let [id] = ids.as_slice()
+                && let Some(Element::Component(component)) = model.elements.get(*id)
+            {
+                use bimcraft_core::model::DeviceSide;
+                let mut sides = component.connection_sides.clone();
+                ui.label(t("Cable entry sides (none selected allows any)"));
+                for (side, label) in [
+                    (DeviceSide::Top, t("Top cable entry")),
+                    (DeviceSide::Bottom, t("Bottom cable entry")),
+                    (DeviceSide::Left, t("Left cable entry")),
+                    (DeviceSide::Right, t("Right cable entry")),
+                ] {
+                    let mut enabled = sides.contains(&side);
+                    if ui.checkbox(&mut enabled, label).changed() {
+                        if enabled {
+                            sides.push(side);
+                        } else {
+                            sides.retain(|selected| *selected != side);
+                        }
+                    }
+                }
+                if sides != component.connection_sides {
+                    self.run("modify", json!({"id": id, "connection_sides": sides}));
+                }
+            }
             self.parameters(ui, &model, &ids, rows);
             self.component_parameters(ui, &model, &ids);
             self.project_parameters(ui, &model, &ids);

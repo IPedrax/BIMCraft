@@ -6,6 +6,8 @@
 //! - `{"token": T, "op": "execute", "command": "wall", "params": {...}}` runs a command, as `Session::execute` does;
 //! - `{"token": T, "op": "script", "text": "...", "atomic": false}` runs a script (`Session::script`, or all or nothing).
 //!
+//! - `{"token": T, "op": "capture", "revision": "..."}` returns the completed desktop frame as PNG with revision and digest.
+//!
 //! The reply is `{"ok": value}` or `{"error": text}`. The token is made when the window starts and kept in a file only the user
 //! can read ([`Entry`]), so another user's process on the machine, or a web page that tries the port, is turned away. This is
 //! the engine's side: the parts that need a thread or a window are in the apps.
@@ -32,6 +34,7 @@ pub const FILE: &str = "bridge.json";
 #[derive(Debug, PartialEq)]
 pub enum Request {
     Hello,
+    Capture { revision: String },
     Execute { command: String, params: Value },
     Script { text: String, atomic: bool },
 }
@@ -69,6 +72,14 @@ pub fn parse(line: &str, token: &str) -> Result<Request, Error> {
     }
     match o.get("op").and_then(Value::as_str) {
         Some("hello") => Ok(Request::Hello),
+        Some("capture") => {
+            let revision = o
+                .get("revision")
+                .and_then(Value::as_str)
+                .filter(|r| !r.is_empty() && r.len() <= 128)
+                .ok_or_else(|| bad("`capture` needs a nonempty revision of at most 128 bytes"))?;
+            Ok(Request::Capture { revision: revision.to_owned() })
+        }
         Some("execute") => {
             let command = o.get("command").and_then(Value::as_str).ok_or_else(|| bad("`execute` needs a `command`, a string"))?;
             let params = match o.get("params") {
@@ -87,7 +98,7 @@ pub fn parse(line: &str, token: &str) -> Result<Request, Error> {
             };
             Ok(Request::Script { text: text.to_string(), atomic })
         }
-        Some(other) => Err(Error::Request(format!("unknown op `{other}`: hello, execute or script"))),
+        Some(other) => Err(Error::Request(format!("unknown op `{other}`: hello, capture, execute or script"))),
         None => Err(bad("a request has an `op`")),
     }
 }
@@ -108,6 +119,7 @@ fn refuse(command: &str) -> Result<(), String> {
 pub fn run(session: &mut Session, request: &Request) -> Result<Value, String> {
     match request {
         Request::Hello => Ok(json!({"app": "bimcraft", "version": env!("CARGO_PKG_VERSION"), "project": session.model.name})),
+        Request::Capture { .. } => Err("capture requires a desktop window".into()),
         Request::Execute { command, params } => {
             refuse(command)?;
             session.execute(command, params)
@@ -312,4 +324,14 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
+}
+
+#[cfg(test)]
+#[test]
+fn capture_requires_a_revision() {
+    let request = r#"{"token":"local","op":"capture","revision":"current"}"#;
+    assert_eq!(parse(request, "local"), Ok(Request::Capture { revision: "current".into() }));
+    let missing = r#"{"token":"local","op":"capture"}"#;
+    assert!(matches!(parse(missing, "local"), Err(Error::Request(_))));
+    assert_eq!(parse(request, "wrong"), Err(Error::Token));
 }

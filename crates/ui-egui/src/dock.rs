@@ -88,6 +88,12 @@ impl Stack {
         Stack { tabs: vec![p], active: 0 }
     }
 
+    fn without_properties(&mut self) {
+        let shown = self.shown();
+        self.tabs.retain(|&tab| tab != Palette::Properties);
+        self.active = self.tabs.iter().position(|&tab| Some(tab) == shown).unwrap_or(0);
+    }
+
     /// The palette it shows.
     pub fn shown(&self) -> Option<Palette> {
         self.tabs.get(self.active).or(self.tabs.first()).copied()
@@ -393,7 +399,7 @@ impl BimApp {
         // The side holds the stacks' cards; between them and round them, the view's ground.
         let frame = Frame::NONE;
         for side in Side::ALL {
-            if self.docking.side(side).is_empty() {
+            if !self.docking.side(side).iter().any(|stack| stack.tabs.iter().any(|&tab| !self.minimal || tab != Palette::Properties)) {
                 continue;
             }
             let panel = match side {
@@ -407,7 +413,13 @@ impl BimApp {
 
     /// The stacks docked on a side: one over the other, or side by side along the bottom, each but the last resizable.
     fn dock_side(&mut self, ui: &mut Ui, side: Side) {
-        let stacks = self.docking.side(side).to_vec();
+        let mut stacks = self.docking.side(side).to_vec();
+        if self.minimal {
+            for stack in &mut stacks {
+                stack.without_properties();
+            }
+            stacks.retain(|stack| !stack.tabs.is_empty());
+        }
         let n = stacks.len();
         for (i, stack) in stacks.iter().enumerate() {
             // Each stack a card, standing off the window's edges and the next card: the last one off the bottom (or, along
@@ -451,7 +463,10 @@ impl BimApp {
 
     /// The palettes floating in windows of their own.
     pub(crate) fn palette_windows(&mut self, ctx: &Context) {
-        for f in self.docking.floats.clone() {
+        for mut f in self.docking.floats.clone() {
+            if self.minimal {
+                f.stack.without_properties();
+            }
             let Some(first) = f.stack.tabs.first().copied() else { continue };
             let frame = Frame::window(&ctx.global_style()).fill(pal().panel).inner_margin(0.0);
             let shown = egui::Window::new(t(first.name()))

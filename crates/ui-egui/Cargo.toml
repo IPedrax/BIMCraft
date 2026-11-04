@@ -21,6 +21,11 @@ pollster = "1"
 rfd = { workspace = true }
 sys-locale = { workspace = true }
 
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[features]
+visual-tests = ["egui_kittest/wgpu"]
+
 [dev-dependencies]
 tempfile = { workspace = true }
 egui_kittest = { workspace = true }

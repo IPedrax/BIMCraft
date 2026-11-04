@@ -19,8 +19,9 @@ use std::fmt::Write;
 
 use tiny_skia::{Color, FillRule, IntSize, LineCap, LineJoin, Paint, PathBuilder, Pixmap, PixmapPaint, Stroke, StrokeDash, Transform};
 
+use crate::engineering::{self, System};
 use crate::geom::{self, P2};
-use crate::graphics::{Detail, Look, scale_of};
+use crate::graphics::{Detail, Look, engineering_of, scale_of};
 use crate::model::{
     CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, FilledRegion, Floor, Function, Id, Key, Layer, Model, Note, Opening,
     Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, Wall,
@@ -44,6 +45,9 @@ pub const POCHE: Rgb = Rgb(168, 168, 168);
 pub const LIGHT_POCHE: Rgb = Rgb(212, 212, 212);
 const INK: Rgb = Rgb(25, 25, 25);
 const FAINT: Rgb = Rgb(120, 120, 120);
+/// In Engineering Level Mode, the architecture's lines and fills: a pale, thin backdrop under the systems.
+const BACKDROP: Rgb = Rgb(185, 185, 185);
+const BACKDROP_FILL: Rgb = Rgb(236, 236, 236);
 const GRID: Rgb = Rgb(60, 100, 150);
 /// A mass's outline, dashed.
 const MASS: Rgb = Rgb(88, 112, 168);
@@ -801,6 +805,7 @@ pub(crate) fn plan_shows(m: &Model, plan: impl Key) -> Vec<P2> {
             crate::model::run_arm!(_) if m.level_of(e) == Some(level) => {
                 extent.extend(m.run_geom(e).map(|g| g.footprint()).unwrap_or_default())
             }
+
             Element::Roof(r) if r.level == level || m.level_above(level) == Some(r.level) => extent.extend(m.roof_outline(r)),
             Element::Text(n) if m.annotation_in(e, key) => extent.extend([Some(n.at), n.leader].into_iter().flatten()),
             Element::DetailLine(l) if m.annotation_in(e, key) => extent.extend(l.curve.points()),
@@ -1500,6 +1505,9 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     (d.k, d.paper, d.detail, d.weights) = (k, paper_of(n, view.scale), detail_of(m, key), m.line_weights().at(n));
     let look = Look::of(m, key);
     let shown = |id: Id| look.shows(id);
+    // Engineering Level Mode: the engineering systems whole by their level, the architecture a pale backdrop.
+    let eng_mode = engineering_of(m, key);
+    let eng = |id: Id| eng_mode && m.elements.get(id).is_some_and(|e| engineering::system_of(m, e).is_some());
     d.pattern_styles = look.pattern_styles();
     // A ceiling plan looks up from its own cut, whatever box its floor plan follows.
     let mut range = if up { m.plan_range(key) } else { m.shown_range(key) };
@@ -1558,6 +1566,10 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     let mut components = crate::component_geometry::Components::new(m);
     for (&id, e) in m.elements.iter().filter(|_| !up).filter(|(id, _)| shown(**id)) {
         let Element::Component(c) = e else { continue };
+        // Engineering devices are drawn whole, by their level, over their routes, when the mode is on.
+        if eng(id) {
+            continue;
+        }
         let (bottom, top) = components.heights(c);
         if bottom < range.cut && top > range.depth {
             d.owner = Some(id);
@@ -1565,13 +1577,16 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         }
     }
     // Walls and columns below the cut plane, as seen from it; past the bottom, faint.
-    for (id, o, top) in seen_below(m, &range, &look, &index).into_iter().filter(|_| !up) {
+    for (id, o, top) in seen_below(m, &range, &look, &index).into_iter().filter(|(id, ..)| !eng(*id)).filter(|_| !up) {
         d.owner = Some(id);
         override_patterns(&mut d, m, std::slice::from_ref(&o), false, (P2(0.0, 0.0), 0.0));
         d.line(&o, BY_CATEGORY, if top > range.bottom - TOL { INK } else { FAINT }, true);
     }
     // A run's centre line, faint and dashed, where it is seen but not cut: Revit's mark of a beam, and where to pick it.
     for (&id, e) in m.elements.iter().filter(|_| !up).filter(|(id, _)| shown(**id)) {
+        if eng(id) {
+            continue;
+        }
         let Some(g) = m.run_geom(e).filter(|g| !g.vertical()) else { continue };
         let (lo, hi) = g.z_span();
         let seen = range.depth - TOL < hi && hi <= range.cut;
@@ -1583,7 +1598,8 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         }
     }
     d.part(Part::Cut);
-    let outlines = cut_outlines(m, range.cut, &look, &index);
+    // A plan in Engineering Level Mode cuts the architecture only: the engineering systems are drawn whole, below.
+    let outlines: Vec<(Id, Vec<P2>)> = cut_outlines(m, range.cut, &look, &index).into_iter().filter(|(id, _)| !eng(*id)).collect();
     // Poché first, then the outlines over it, but for where walls meet at their joins: only the edge
     // of their union is inked (`cut_edges`). The union is filled first, as one for each colour the
     // view fills them in, so no seam shows where two fills meet.
@@ -1705,6 +1721,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
                 d.stroke(pts, BY_CATEGORY, INK, None, false);
             }
             Element::Roof(r) if r.level == level => roof(&mut d, m, r),
+
             // Overhead, from below: its edges, round its courtyards too, dashed, while its eaves are under
             // the view range's top.
             Element::Roof(r) => {
@@ -1721,8 +1738,8 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
                     }
                 }
             }
-            // Overhead too: a run over the cut plane and under the view range's top, dashed.
-            crate::model::run_arm!(_) => {
+            // Overhead too: a run over the cut plane and under the view range's top, dashed; not an engineering one in the mode.
+            crate::model::run_arm!(_) if !eng(id) => {
                 if let Some(g) = m.run_geom(e).filter(|g| range.cut < g.z_span().0 && g.z_span().0 <= range.top) {
                     let pts = g.footprint().iter().map(|p| d.view.px(*p)).collect();
                     d.stroke(pts, BY_CATEGORY, INK, Some(vec![10.0, 5.0]), true);
@@ -1730,6 +1747,9 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
             }
             _ => {}
         }
+    }
+    if eng_mode {
+        engineering_overlay(&mut d, m, &mut components, level);
     }
     d.model_under_regions(None);
     // Regions replace model backgrounds; non-masking ones retain the visible model foreground.
@@ -1794,6 +1814,9 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     d.owner = None;
     d.by_category(|o| style_of(m, o));
     look.dress(&mut d);
+    if eng_mode {
+        engineering_backdrop(&mut d, m);
+    }
     if let Some(g) = crate::graphics::graphics_of(m, key) {
         linework(&mut d, m, &g.linework);
     }
@@ -1807,6 +1830,65 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         d.text_turned(&title, at, 16.0, 0.0, INK);
     }
     d
+}
+
+/// In Engineering Level Mode: the engineering systems of `level` drawn whole, whatever the cut plane and the view depth:
+/// each route thick in its system's colour, its wires as a plan labels them, and its devices over them.
+fn engineering_overlay(d: &mut Drawing, m: &Model, components: &mut crate::component_geometry::Components, level: crate::ids::Guid) {
+    d.part(Part::Projection);
+    // Routes first, so the devices lie over them.
+    for (&id, e) in &m.elements {
+        let Some(system) = engineering::system_of(m, e) else { continue };
+        if m.level_of(e) != Some(level) {
+            continue;
+        }
+        d.owner = Some(id);
+        match e {
+            crate::model::run_arm!(_) => {
+                if let Some(g) = m.run_geom(e).filter(|g| !g.vertical()) {
+                    let pts = vec![d.view.px(P2(g.a[0], g.a[1])), d.view.px(P2(g.b[0], g.b[1]))];
+                    d.stroke(pts, Pen::CUT, rgb_of(system), None, false);
+                }
+            }
+            _ => {}
+        }
+    }
+    // The devices over their routes.
+    for (&id, e) in &m.elements {
+        let Element::Component(c) = e else { continue };
+        if engineering::system_of(m, e).is_none() || c.level != level {
+            continue;
+        }
+        d.owner = Some(id);
+        component(d, m, &components.pieces(c));
+    }
+    d.owner = None;
+}
+
+/// A system's colour as the drawing takes it.
+fn rgb_of(system: System) -> Rgb {
+    let [r, g, b] = system.color();
+    Rgb(r, g, b)
+}
+
+/// In Engineering Level Mode, the architecture under the engineering: its lines pale and thin (0.18 mm on paper, pen
+/// [`Pen::PROJECTION`]), its fills paler, so the systems read over it. Annotation keeps its own.
+fn engineering_backdrop(d: &mut Drawing, m: &Model) {
+    for ((prim, owner), pen) in d.prims.iter_mut().zip(&d.owners).zip(d.pens.iter_mut()) {
+        let Some(id) = owner else { continue };
+        let Some(e) = m.elements.get(*id) else { continue };
+        if engineering::system_of(m, e).is_some() || annotates(m, Some(*id)) {
+            continue;
+        }
+        match prim {
+            Prim::Line { color, .. } => {
+                *color = BACKDROP;
+                *pen = Some(Pen::PROJECTION);
+            }
+            Prim::Fill { color, .. } => *color = BACKDROP_FILL,
+            Prim::Image { .. } => {}
+        }
+    }
 }
 
 /// A component seen from above: each of its forms' outlines, but where a higher form covers it (a
@@ -3408,6 +3490,38 @@ mod tests {
 
     fn png_of(d: &Drawing) -> Vec<u8> {
         png(d).unwrap()
+    }
+
+    #[test]
+    fn engineering_level_mode_backdrops_the_architecture_and_draws_the_systems_whole() {
+        let mut s = house();
+        // A cable carrier 5000 mm up, over the view range's top, so a plain plan doesn't draw it.
+        let r = s.execute("cable_carrier", &serde_json::json!({"points": [[1000, 1000], [7000, 1000]], "offset": 5000})).unwrap();
+        let carrier = r["ids"][0].as_u64().unwrap();
+        assert!(!plan(&s.model, 100000, 800, 600).owners.contains(&Some(carrier)), "over the view range, not drawn");
+        s.execute("modify", &serde_json::json!({"id": 100000, "graphics": {"engineering": true}})).unwrap();
+        let d = plan(&s.model, 100000, 800, 600);
+        // The carrier is drawn whole by its level, thick, in the electrical system's colour.
+        let line = d
+            .prims
+            .iter()
+            .zip(&d.owners)
+            .zip(&d.pens)
+            .find_map(|((p, o), pen)| match p {
+                Prim::Line { width, color, .. } if *o == Some(carrier) => Some((*width, *color, *pen)),
+                _ => None,
+            })
+            .expect("the carrier's route");
+        let [r, g, b] = System::Electrical.color();
+        assert_eq!((line.1, line.2), (Rgb(r, g, b), Some(Pen::CUT)));
+        assert!((line.0 - d.width(Pen::CUT)).abs() < 1e-4, "thick");
+        // The walls are a pale backdrop under it.
+        assert!(d.prims.iter().any(|p| matches!(p, Prim::Fill { color, .. } if *color == BACKDROP_FILL)), "the architecture pale");
+        // Off again, the architecture cuts as it did.
+        s.execute("modify", &serde_json::json!({"id": 100000, "graphics": {"engineering": false}})).unwrap();
+        let back = plan(&s.model, 100000, 800, 600);
+        assert!(back.prims.iter().any(|p| matches!(p, Prim::Fill { color, .. } if *color == POCHE)), "the walls cut");
+        assert!(!back.owners.contains(&Some(carrier)));
     }
 
     #[test]

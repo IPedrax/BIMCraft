@@ -3,7 +3,7 @@
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use serde_json::{Value, json};
 
@@ -67,6 +67,8 @@ const COPIES: [&str; 3] = ["copy", "mirror", "rotate"];
 #[cfg_attr(test, derive(Clone))]
 pub struct Session {
     pub model: Arc<Model>,
+    /// A weak snapshot also makes Arc::make_mut detach before an otherwise in-place edit.
+    revision_snapshot: Option<(Weak<Model>, crate::ids::Guid)>,
     /// Where the model was opened from or last saved to.
     pub path: Option<PathBuf>,
     /// The phase, and the design option (`set: option`), what a command makes is made in; none: the
@@ -77,6 +79,10 @@ pub struct Session {
     redo: Vec<(Step, Arc<Model>)>,
     /// How many times the project was replaced, so a transaction knows its history went with it.
     resets: usize,
+    /// GUIDs already owned by this document's catalogue, including types removed by Undo.
+    pub(crate) catalogue_owned: std::collections::BTreeSet<crate::ids::Guid>,
+    /// Last rows written to the catalogue, independent of undoable model history.
+    pub(crate) catalogue_baseline: Arc<std::collections::BTreeMap<crate::ids::Guid, Vec<String>>>,
 }
 
 impl Default for Session {
@@ -103,18 +109,80 @@ impl Session {
     pub fn new() -> Session {
         Session {
             model: Arc::new(Model::new("Project")),
+            revision_snapshot: None,
             path: None,
             phase: None,
             option: None,
             undo: Vec::new(),
             redo: Vec::new(),
             resets: 0,
+            catalogue_owned: Default::default(),
+            catalogue_baseline: Default::default(),
         }
     }
 
     /// The model to change, copied first when an undo step still shares it.
     pub fn model_mut(&mut self) -> &mut Model {
         Arc::make_mut(&mut self.model)
+    }
+
+    /// Opaque token for this live snapshot, not stored in project files or undo history.
+    /// Re-entering an older snapshot after an observed edit receives a new token too.
+    pub fn revision(&mut self) -> crate::ids::Guid {
+        let snapshot = Arc::downgrade(&self.model);
+        if let Some((previous, token)) = &self.revision_snapshot
+            && Weak::ptr_eq(previous, &snapshot)
+        {
+            return *token;
+        }
+        let token = crate::ids::Guid::new();
+        self.revision_snapshot = Some((snapshot, token));
+        token
+    }
+
+    /// Committed project state plus catalogue changes that must survive closing or recovery.
+    /// Saving does not edit the live model or add an undo step.
+    pub fn snapshot(&self) -> Arc<Model> {
+        let retired = if self.model.catalogue.is_some() {
+            let active: std::collections::BTreeSet<_> = self.model.library.entries().map(|(_, entry)| entry.guid).collect();
+            self.model.catalogue_retired.union(&self.catalogue_owned).copied().filter(|guid| !active.contains(guid)).collect()
+        } else {
+            Default::default()
+        };
+        let unexported = if self.model.catalogue.is_some() {
+            crate::ods::catalogue_rows(&self.model)
+                .iter()
+                .skip(1)
+                .filter_map(|row| row.first().and_then(|guid| crate::ids::Guid::parse(guid)))
+                .filter(|guid| self.model.catalogue_unexported.contains(guid) || !self.catalogue_owned.contains(guid))
+                .collect()
+        } else {
+            Default::default()
+        };
+        let pending_edits = if self.model.catalogue.is_some() {
+            crate::ods::catalogue_rows(&self.model)
+                .into_iter()
+                .skip(1)
+                .filter_map(|row| {
+                    let guid = crate::ids::Guid::parse(&row[0])?;
+                    let previous = self.catalogue_baseline.get(&guid)?;
+                    (previous != &row).then(|| (guid, previous.clone()))
+                })
+                .collect()
+        } else {
+            Default::default()
+        };
+        if retired == self.model.catalogue_retired
+            && unexported == self.model.catalogue_unexported
+            && pending_edits == self.model.catalogue_pending_edits
+        {
+            return Arc::clone(&self.model);
+        }
+        let mut model = (*self.model).clone();
+        model.catalogue_retired = retired;
+        model.catalogue_unexported = unexported;
+        model.catalogue_pending_edits = pending_edits;
+        Arc::new(model)
     }
 
     /// Replace the model (new, open), forgetting the history.
@@ -125,6 +193,27 @@ impl Session {
         self.resets += 1;
         self.undo.clear();
         self.redo.clear();
+        self.catalogue_owned.clear();
+        self.catalogue_baseline = Default::default();
+        if self.model.catalogue.is_some() {
+            self.remember_catalogue();
+        }
+    }
+
+    pub(crate) fn remember_catalogue(&mut self) {
+        let mut baseline: std::collections::BTreeMap<_, _> = crate::ods::catalogue_rows(&self.model)
+            .into_iter()
+            .skip(1)
+            .filter_map(|row| crate::ids::Guid::parse(&row[0]).map(|guid| (guid, row)))
+            .collect();
+        baseline.extend(self.model.catalogue_pending_edits.clone());
+        self.catalogue_baseline = Arc::new(baseline);
+        self.catalogue_owned = crate::ods::catalogue_rows(&self.model)
+            .iter()
+            .skip(1)
+            .filter_map(|row| crate::ids::Guid::parse(&row[0]))
+            .chain(self.model.catalogue_retired.iter().copied())
+            .collect();
     }
 
     /// Labels of the undo steps, oldest first.
@@ -147,9 +236,8 @@ impl Session {
         let params = named.as_ref().unwrap_or(params);
         let before = Arc::clone(&self.model);
         let (run, first_new, session) = (cmd.run, self.model.next_id, (self.phase.clone(), self.option.clone()));
-        let result = catch_unwind(AssertUnwindSafe(|| run(self, params)))
-            .unwrap_or_else(|p| Err(format!("internal error in `{}`: {}", cmd.id, panic_text(p.as_ref()))))
-            .and_then(|v| {
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            run(self, params).and_then(|mut v| {
                 if Arc::ptr_eq(&before, &self.model) {
                     return Ok(v);
                 }
@@ -178,12 +266,40 @@ impl Session {
                 // What a command was given by id points at the element's GUID; what it put in the library has an id and a GUID.
                 self.model_mut().resolve();
                 self.model_mut().sync_library();
+                if cmd.undoable {
+                    self.model_mut().follow_run_mounts(&before)?;
+                    self.model_mut().follow_carrier_type_changes(&before);
+                    self.model_mut().refresh_wire_connections(&before)?;
+                }
                 // What was made or changed must be as a sketch of it solves too (an outline that is simple), which a file
                 // from before may break; Insert from File brings in what it finds.
                 // (Before the check, which would name a bow tie of no area by that, not by what to redraw.)
                 let edited = if cmd.undoable && cmd.id != "insert" { self.model.check_edits(&before, cmd.id, params) } else { Ok(()) };
-                edited.and_then(|()| self.model.check()).map(|()| v)
-            });
+                edited.and_then(|()| self.model.check())?;
+                if (cmd.undoable || cmd.id == "open")
+                    && cmd.id != "cable_carrier_check"
+                    && let Some(policy) = self.model.carrier_settings.clone()
+                {
+                    let report = crate::commands::cable_carrier_check(
+                        self,
+                        &json!({"mode":if policy.auto {"auto"} else {"warn"},"fill_percent":policy.fill_percent}),
+                    )?;
+                    if let Some(object) = v.as_object_mut() {
+                        let warnings = object.entry("warnings").or_insert_with(|| json!([]));
+                        if let Some(warnings) = warnings.as_array_mut() {
+                            warnings.retain(|v| !v.as_str().is_some_and(|s| s.starts_with("cable carrier ")));
+                            if let Some(current) = report["warnings"].as_array() {
+                                warnings.extend(current.iter().cloned());
+                            }
+                        }
+                        object.insert("carrier_check".into(), report);
+                    }
+                    self.model.check()?;
+                }
+                Ok(v)
+            })
+        }))
+        .unwrap_or_else(|p| Err(format!("internal error in `{}`: {}", cmd.id, panic_text(p.as_ref()))));
         match result {
             Err(e) => {
                 // A refused command changes nothing: not the model, nor the phase and the option it asked the session for.
@@ -238,12 +354,18 @@ impl Session {
         let before = Arc::clone(&self.model);
         let (path, phase, option) = (self.path.clone(), self.phase.clone(), self.option.clone());
         let (mut undo, redo, resets) = (std::mem::take(&mut self.undo), std::mem::take(&mut self.redo), self.resets);
+        let catalogue_owned = self.catalogue_owned.clone();
+        let catalogue_baseline = self.catalogue_baseline.clone();
         let result = catch_unwind(AssertUnwindSafe(|| f(self)))
             .unwrap_or_else(|p| Err(format!("internal error in `{label}`: {}", panic_text(p.as_ref()))));
         match result {
             Err(e) => {
                 (self.model, self.path, self.phase, self.option) = (before, path, phase, option);
                 (self.undo, self.redo) = (undo, redo);
+                if self.resets != resets {
+                    self.catalogue_owned = catalogue_owned;
+                    self.catalogue_baseline = catalogue_baseline;
+                }
                 Err(e)
             }
             Ok(v) if self.resets != resets => Ok(v),

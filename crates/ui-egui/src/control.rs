@@ -39,6 +39,13 @@ pub(crate) struct Asked {
     pub(crate) abandoned: Arc<AtomicBool>,
 }
 
+pub(crate) struct Capture {
+    revision: String,
+    reply: Sender<String>,
+    tag: Option<egui::UserData>,
+    deadline: Instant,
+}
+
 /// The listening port and what it has taken.
 pub struct Control {
     /// Where agents find it: the port, and the token that lets them in.
@@ -223,6 +230,14 @@ impl BimApp {
             if abandoned.load(Ordering::SeqCst) {
                 continue;
             }
+            if let Request::Capture { revision } = request {
+                if self.capture.is_some() {
+                    let _ = reply.send(bridge::reply(Err("another capture is pending".into())));
+                } else {
+                    self.capture = Some(Capture { revision, reply, tag: None, deadline: Instant::now() + Duration::from_secs(10) });
+                }
+                continue;
+            }
             self.made_in();
             let result = bridge::run(&mut self.session, &request);
             // The core renames and drops the option with its set.
@@ -234,4 +249,75 @@ impl BimApp {
             ctx.request_repaint();
         }
     }
+}
+
+impl BimApp {
+    pub(crate) fn capture_frame(&mut self, ctx: &Context) {
+        let Some(mut capture) = self.capture.take() else { return };
+        let result = if self.session.revision().to_string() != capture.revision {
+            Err("stale revision; inspect the current project before capturing".into())
+        } else if Instant::now() >= capture.deadline {
+            Err("the desktop did not return a frame in time".into())
+        } else {
+            if let Some(tag) = &capture.tag {
+                let image = ctx.input(|input| {
+                    input.events.iter().find_map(|event| match event {
+                        egui::Event::Screenshot { viewport_id, user_data, image }
+                            if *viewport_id == egui::ViewportId::ROOT && user_data == tag =>
+                        {
+                            Some(image.clone())
+                        }
+                        _ => None,
+                    })
+                });
+                if let Some(image) = image {
+                    let _ = capture.reply.send(bridge::reply(capture_png(&capture.revision, &image)));
+                    return;
+                }
+            } else {
+                let tag = egui::UserData::new(());
+                ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Screenshot(tag.clone()));
+                capture.tag = Some(tag);
+            }
+            ctx.request_repaint_after(capture.deadline.saturating_duration_since(Instant::now()));
+            self.capture = Some(capture);
+            return;
+        };
+        let _ = capture.reply.send(bridge::reply(result));
+    }
+}
+
+fn capture_png(revision: &str, image: &egui::ColorImage) -> Result<serde_json::Value, String> {
+    use image::ImageEncoder as _;
+    let [width, height] = image.size;
+    if width == 0 || height == 0 || width.checked_mul(height) != Some(image.pixels.len()) || image.pixels.len() > 16_777_216 {
+        return Err("screenshot size is out of range".into());
+    }
+    let rgba: Vec<u8> = image.pixels.iter().flat_map(|color| color.to_srgba_unmultiplied()).collect();
+    let mut png = Vec::new();
+    image::codecs::png::PngEncoder::new(&mut png)
+        .write_image(&rgba, width as u32, height as u32, image::ExtendedColorType::Rgba8)
+        .map_err(|error| error.to_string())?;
+    if png.len() > (MAX_LINE - 1024) * 3 / 4 {
+        return Err("screenshot PNG exceeds the bridge reply limit".into());
+    }
+    let digest = bimcraft_update::sha256_of(&mut png.as_slice()).map_err(|error| error.to_string())?;
+    let sha256: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    Ok(serde_json::json!({
+        "revision": revision, "width": width, "height": height, "bytes": png.len(),
+        "sha256": sha256, "pngBase64": bimcraft_core::base64(&png)
+    }))
+}
+
+#[cfg(test)]
+#[test]
+fn capture_png_reports_the_encoded_frame() {
+    let frame = egui::ColorImage::filled([2, 3], egui::Color32::RED);
+    let result = capture_png("current", &frame).unwrap();
+    assert_eq!(result["revision"], "current");
+    assert_eq!(result["width"], 2);
+    assert_eq!(result["height"], 3);
+    assert!(result["bytes"].as_u64().is_some_and(|bytes| bytes > 8));
+    assert_eq!(result["sha256"].as_str().unwrap().len(), 64);
+    assert!(result["pngBase64"].as_str().unwrap().starts_with("iVBORw0KGgo"));
 }

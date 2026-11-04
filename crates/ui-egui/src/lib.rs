@@ -31,6 +31,7 @@ mod linestyles;
 mod lineweights;
 mod links;
 mod mep;
+mod minimal;
 mod objectstyles;
 mod orbit;
 mod paper;
@@ -61,7 +62,7 @@ use std::sync::Arc;
 
 use bimcraft_core::engine::{self, Session};
 use bimcraft_core::geom::P2;
-use bimcraft_core::model::{CEILING_HEIGHT, DimKind, Element, Id, Justify, Location, Model, RAMP_WIDTH, Reference, STAIR_WIDTH};
+use bimcraft_core::model::{CEILING_HEIGHT, DimKind, Element, Guid, Id, Justify, Location, Model, RAMP_WIDTH, Reference, STAIR_WIDTH};
 use bimcraft_core::snap::{Kind as Snap, Snaps};
 use bimcraft_core::units::Units;
 use bimcraft_core::{element_json, render, schedule, stairs};
@@ -75,6 +76,7 @@ use serde_json::{Value, json};
 
 use bimcraft_core::language::Language;
 mod autosave;
+mod catalogue;
 use icons::Icon;
 use lang::{Lang, t, tf};
 use ribbon::panel;
@@ -252,6 +254,7 @@ enum Tab {
     Electrical,
     Lightning,
     Data,
+    LowVoltage,
     Insert,
     Annotate,
     Massing,
@@ -431,6 +434,8 @@ pub struct BimApp {
     ribbon_bottom: Pos2,
     /// The Compact layout (File > Settings): the bars and palettes flush to the edges, not floating cards.
     compact: bool,
+    /// A narrow object toolbox instead of the ribbon, over the same model and tools.
+    minimal: bool,
     /// File > Settings, while open, at its page; the settings file, when the app was given one, and what it holds; the
     /// theme it asks for, put in force on the next frame.
     settings_page: Option<settings::Page>,
@@ -460,8 +465,10 @@ pub struct BimApp {
     floor_structural: bool,
     run_justify: Justify,
     beam_offset: String,
+    run_end_offset: String,
+    run_vertical: bool,
     /// The Options Bar's justification and offset of the run tools not on screen, by category, and whose are.
-    run_kept: BTreeMap<&'static str, (Justify, String)>,
+    run_kept: BTreeMap<&'static str, (Justify, String, String, bool)>,
     run_loaded: &'static str,
     footing_thickness: String,
     footing_top: String,
@@ -628,6 +635,10 @@ pub struct BimApp {
     purge_dialog: Option<purge::PurgeDialog>,
     /// Manage > Select by ID and IDs of Selection, while open.
     select_by_id: Option<inquiry::SelectById>,
+    wire_connection: Option<context::WireConnectionDialog>,
+    carrier_attachment: Option<context::CarrierAttachmentDialog>,
+    mount_run: Option<u64>,
+    carrier_from_wire: Option<context::CarrierFromWireDialog>,
     ids_of_selection: Option<inquiry::IdsOfSelection>,
     selection_filter: Option<filter::SelectionFilter>,
     /// What was last put on the clipboard.
@@ -639,6 +650,8 @@ pub struct BimApp {
     /// The family and type the Component tool places, as picked, and how far it's turned, degrees.
     component: Option<(String, String)>,
     component_angle: f64,
+    component_offset: String,
+    work_level: Option<Guid>,
     /// The Properties palette's folded groups.
     collapsed: BTreeSet<&'static str>,
     /// Where views show, last frame.
@@ -654,11 +667,15 @@ pub struct BimApp {
     styled: bool,
     /// The updater, which the desktop app attaches: a window starts without one, and so never phones home.
     pub updates: Option<bimcraft_update::Updater>,
+    catalogue: catalogue::State,
+    equipment_draft: catalogue::EquipmentDraft,
+    show_catalogue: bool,
     /// The reader of Revit files, which the desktop app attaches (`bimcraft-rvt` is Apache-2.0 only, so this crate never depends on
     /// it): a window starts without one, so it offers no `.rvt` and a test never reads a real one.
     pub revit: Option<revit::Importer>,
     /// The control port, when the window was started with one: agents work on this project through it.
     control: Option<control::Control>,
+    capture: Option<control::Capture>,
     /// The Revit file being read, on a thread of its own.
     revit_job: Option<revit::Job>,
     /// Files to open at the next frame: the command line's, and what the system asked for while a Revit file was being read.
@@ -922,6 +939,7 @@ impl BimApp {
             pointer: Pos2::ZERO,
             grab: egui::Vec2::ZERO,
             ribbon_min: false,
+            minimal: false,
             compact: false,
             ribbon_peek: false,
             scan_contrast: footer::HIGH_CONTRAST,
@@ -943,6 +961,8 @@ impl BimApp {
             floor_structural: false,
             run_justify: Justify::Top,
             beam_offset: units.length(0.0),
+            run_end_offset: String::new(),
+            run_vertical: false,
             run_kept: BTreeMap::new(),
             run_loaded: "beam",
             footing_thickness: units.length(400.0),
@@ -1046,6 +1066,10 @@ impl BimApp {
             options_dialog: None,
             purge_dialog: None,
             select_by_id: None,
+            wire_connection: None,
+            carrier_attachment: None,
+            mount_run: None,
+            carrier_from_wire: None,
             ids_of_selection: None,
             selection_filter: None,
             copied: None,
@@ -1053,6 +1077,8 @@ impl BimApp {
             new_schedule: None,
             component: None,
             component_angle: 0.0,
+            component_offset: "0".into(),
+            work_level: None,
             collapsed: BTreeSet::new(),
             view_rect: Rect::ZERO,
             pane: Rect::ZERO,
@@ -1062,8 +1088,12 @@ impl BimApp {
             title: String::new(),
             styled: false,
             updates: None,
+            catalogue: catalogue::State::default(),
+            equipment_draft: catalogue::EquipmentDraft::default(),
+            show_catalogue: false,
             revit: None,
             control: None,
+            capture: None,
             revit_job: None,
             opens: Vec::new(),
             dialog: None,
@@ -1089,6 +1119,9 @@ impl BimApp {
                 self.status = Status::default();
                 // The core renames and drops the option with its set.
                 self.active_option = self.session.option.clone();
+                if let Some(report) = v.get("carrier_check").or_else(|| (id == "cable_carrier_check").then_some(&v)) {
+                    self.carrier_feedback(report);
+                }
                 Some(v)
             }
             Err(e) => {
@@ -1242,6 +1275,7 @@ impl BimApp {
         self.poll_updates(&ctx);
         self.poll_revit(&ctx);
         self.poll_autosave(&ctx);
+        self.poll_catalogue(&ctx);
         self.keys(&ctx);
         self.os_requests(&ctx);
         self.dialog_answered();
@@ -1291,13 +1325,18 @@ impl BimApp {
                 titlebar::caption_buttons(ui, bar);
             }
         });
-        let card = style::card([true, true, true, false]);
-        Panel::top("ribbon").frame(card).show_separator_line(false).show(ui, |ui| self.ribbon(ui));
+        if !self.minimal {
+            let card = style::card([true, true, true, false]);
+            Panel::top("ribbon").frame(card).show_separator_line(false).show(ui, |ui| self.ribbon(ui));
+        }
         if self.has_update_banner() {
             Panel::top("update").frame(Frame::NONE).show_separator_line(false).show(ui, |ui| self.update_banner(ui));
         }
         let status = style::card([true, true, false, true]).inner_margin(Margin::symmetric(10, 2));
         Panel::bottom("status").frame(status).show_separator_line(false).show(ui, |ui| self.status_bar(ui));
+        if self.minimal {
+            self.minimal_tools(ui);
+        }
         self.docks(ui);
         CentralPanel::default().frame(Frame::NONE).show(ui, |ui| {
             let g = style::gap().max(4);
@@ -1312,7 +1351,7 @@ impl BimApp {
             self.work = self.pane;
         });
         self.options_bar(&ctx);
-        if self.ribbon_min && self.ribbon_peek {
+        if !self.minimal && self.ribbon_min && self.ribbon_peek {
             self.ribbon_peek(&ctx);
         }
         self.palette_windows(&ctx);
@@ -1458,12 +1497,17 @@ impl BimApp {
             || self.options_dialog.is_some()
             || self.purge_dialog.is_some()
             || self.select_by_id.is_some()
+            || self.wire_connection.is_some()
+            || self.carrier_attachment.is_some()
+            || self.mount_run.is_some()
+            || self.carrier_from_wire.is_some()
             || self.ids_of_selection.is_some()
             || self.selection_filter.is_some()
             || self.settings_page.is_some()
             || self.new_schedule.is_some()
             || self.show_shortcuts
             || self.show_snaps
+            || self.show_catalogue
             || self.pending.is_some()
             || self.autosave.show_recovery
             || self.installing()
@@ -2237,7 +2281,9 @@ impl BimApp {
         let works = match sheet {
             Sheet::Plan(_) | Sheet::Ceiling(_) => true,
             Sheet::Section(_) => matches!(self.tool, Tool::Text | Tool::Spot | Tool::Demolish),
-            Sheet::View3D => matches!(self.tool, Tool::Demolish | Tool::Paint | Tool::Unpaint),
+            Sheet::View3D => {
+                matches!(self.tool, Tool::Demolish | Tool::Paint | Tool::Unpaint | Tool::Run(..) | Tool::Component | Tool::Fixture(_))
+            }
             Sheet::Paper(_) => self.tool == Tool::Text,
             _ => false,
         };
@@ -2430,6 +2476,20 @@ impl BimApp {
                 tf("{} opened without {} fields this version doesn't know; saving it leaves them out.", &[&name, &count.to_string()]);
             self.status = Status { text, error: false };
         }
+        // Reopening recreates selection and dialog state; apply carrier feedback afterwards.
+        if let Some(report) = reply.get("carrier_check") {
+            self.carrier_feedback(report);
+        } else {
+            match self.session.execute("cable_carrier_check", &json!({"mode":"warn","fill_percent":100})) {
+                Ok(report) => self.carrier_feedback(&report),
+                Err(error) => {
+                    self.status = Status { text: tf("Cable carrier check failed: {}", &[&error]), error: true };
+                }
+            }
+        }
+        if let Some(error) = reply["catalogue_not_loaded"].as_str() {
+            self.status = Status { text: tf("Equipment catalogue could not be loaded: {}", &[error]), error: true };
+        }
         true
     }
 
@@ -2442,6 +2502,7 @@ impl BimApp {
         (fresh.own_title_bar, fresh.system_title_bar) = (self.own_title_bar, self.system_title_bar);
         (fresh.thin, fresh.lang, fresh.snaps, fresh.ribbon_min) = (self.thin, self.lang, self.snaps, self.ribbon_min);
         fresh.compact = self.compact;
+        fresh.minimal = self.minimal;
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
         fresh.light_canvas = self.light_canvas;
@@ -2559,9 +2620,19 @@ impl BimApp {
                 if icon_button(ui, Icon::View3D, "Default 3D View").clicked() {
                     self.open_sheet(Sheet::View3D);
                 }
+                let (icon, label) =
+                    if self.sheet == Sheet::View3D { (Icon::Plan, msg!("Switch to 2D")) } else { (Icon::View3D, msg!("Switch to 3D")) };
+                if icon_button(ui, icon, label).clicked() {
+                    self.toggle_design_view();
+                }
                 ui.separator();
                 if icon_button(ui, Icon::Settings, "Settings").clicked() {
                     self.settings_page = Some(settings::Page::Interface);
+                }
+                let label = if self.minimal { msg!("Revit interface") } else { msg!("Minimal interface") };
+                if ui.button(t(label)).clicked() {
+                    self.minimal = !self.minimal;
+                    self.ribbon_peek = false;
                 }
             })
             .response
@@ -2673,6 +2744,7 @@ impl BimApp {
                                 (Tab::Electrical, msg!("Electrical")),
                                 (Tab::Lightning, msg!("Lightning Protection")),
                                 (Tab::Data, msg!("Data")),
+                                (Tab::LowVoltage, msg!("Low Voltage")),
                                 (Tab::Insert, msg!("Insert")),
                                 (Tab::Annotate, msg!("Annotate")),
                                 (Tab::Massing, msg!("Massing")),
@@ -2767,6 +2839,7 @@ impl BimApp {
                         Tab::Electrical => self.electrical_tab(ui),
                         Tab::Lightning => self.lightning_tab(ui),
                         Tab::Data => self.data_tab(ui),
+                        Tab::LowVoltage => self.low_voltage_tab(ui),
                         Tab::Insert => self.insert_tab(ui),
                         Tab::Annotate => self.annotate_tab(ui),
                         Tab::Massing => self.massing_tab(ui),
@@ -3114,6 +3187,16 @@ impl BimApp {
             if big_button(ui, Icon::ThinLines, "Thin Lines", self.thin, "Thin Lines (TL): every line one pixel wide").clicked() {
                 self.thin = !self.thin;
             }
+            let engineering = self.graphics_shown().engineering;
+            let tip = msg!(
+                "Engineering Level Mode (Renga style): the architecture as a pale thin backdrop, and every engineering system whole by its level, its routes thick in its system's colour and its devices over them"
+            );
+            let plan = self.graphic_view().is_some() && self.plan_key().is_some();
+            if ui.add_enabled_ui(plan, |ui| big_button(ui, Icon::Visibility, "Engineering Level Mode", engineering, tip)).inner.clicked()
+                && let Some(key) = self.plan_key()
+            {
+                self.run("modify", json!({"id": key, "graphics": {"engineering": !engineering}}));
+            }
             let dark = style::dark();
             let tip = msg!("Choose a theme, including a dark interface with a light canvas");
             let r = big_button(ui, Icon::Theme, "Dark Mode", dark, tip);
@@ -3353,6 +3436,17 @@ impl BimApp {
             });
         });
         panel(ui, msg!("Links"), |ui| {
+            if big_button(
+                ui,
+                Icon::Schedule,
+                "Equipment Catalogue",
+                self.show_catalogue,
+                msg!("Link the project's editable ODS equipment catalogue"),
+            )
+            .clicked()
+            {
+                self.show_catalogue = true;
+            }
             let tip = "Link Model (LK): another project, a BIMCraft file or an IFC, shown in this one as a reference that can't be edited: halftone in the plans, the sections and the 3D view, and snapped to";
             if big_button(ui, Icon::Link, "Link Model", false, tip).clicked() {
                 self.link_dialog = true;
@@ -3603,6 +3697,7 @@ impl BimApp {
                 }
             });
         }
+        // A circuit selected: the devices joined to it.
         // A roof selected: which of its edges stand upright.
         if self.selected_roof().is_some() && matches!(self.tool, Tool::Modify | Tool::GableEdge) {
             panel(ui, msg!("Shape Editing"), |ui| {
@@ -3709,8 +3804,13 @@ impl BimApp {
                 }
                 return;
             }
+            self.workplane_options(ui);
             match self.tool {
                 Tool::Wall(_) => self.wall_options(ui),
+                Tool::Component | Tool::Fixture(_) => {
+                    let label = ui.label(t("Offset:"));
+                    ui.add(TextEdit::singleline(&mut self.component_offset).desired_width(80.0)).labelled_by(label.id);
+                }
                 Tool::Linework => self.linework_options(ui),
                 Tool::DetailGroup => self.group_options(ui),
                 Tool::RepeatingDetail(_) => {
@@ -4251,6 +4351,10 @@ impl BimApp {
     }
 
     fn dialogs(&mut self, ctx: &Context) {
+        self.wire_connection_window(ctx);
+        self.carrier_attachment_window(ctx);
+        self.mount_run_window(ctx);
+        self.carrier_from_wire_window(ctx);
         self.type_properties(ctx);
         self.family_type_properties(ctx);
         self.materials_window(ctx);
@@ -4265,6 +4369,7 @@ impl BimApp {
         self.templates_window(ctx);
         self.phasing_window(ctx);
         self.line_weights_window(ctx);
+        self.catalogue_window(ctx);
         self.object_styles_window(ctx);
         self.line_styles_window(ctx);
         self.fill_patterns_window(ctx);
@@ -4344,6 +4449,7 @@ impl BimApp {
 impl eframe::App for BimApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         self.show(ui);
+        self.capture_frame(ui.ctx());
     }
 
     /// Tab over the plan cycles through what's under the cursor, as in Revit (or moves between a shape's numbers),

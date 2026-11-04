@@ -1,4 +1,4 @@
-//! The interface's language: English, as the code writes it, Brazilian Portuguese, Spanish or Simplified Chinese. What
+//! The interface's language: English, as the code writes it, Brazilian Portuguese, Spanish, Russian or Simplified Chinese. What
 //! the window shows goes through [`t`], English being its own key; the widget helpers translate
 //! their labels and tips, so most call sites pass English and read it back translated. What a
 //! project holds (names, what its drawings say) follows the project's language instead, and the
@@ -40,11 +40,12 @@ pub enum Lang {
     English,
     Portuguese,
     Spanish,
+    Russian,
     Chinese,
 }
 
 impl Lang {
-    pub const ALL: [Lang; 4] = [Lang::English, Lang::Portuguese, Lang::Spanish, Lang::Chinese];
+    pub const ALL: [Lang; 5] = [Lang::English, Lang::Portuguese, Lang::Spanish, Lang::Russian, Lang::Chinese];
 
     /// The project language that goes with it, which new projects are named in: Chinese has none, so English.
     pub fn project(self) -> Language {
@@ -52,10 +53,11 @@ impl Lang {
             Lang::English | Lang::Chinese => Language::English,
             Lang::Portuguese => Language::Portuguese,
             Lang::Spanish => Language::Spanish,
+            Lang::Russian => Language::Russian,
         }
     }
 
-    /// Its code in the settings file: en, pt, es, zh.
+    /// Its code in the settings file: en, pt, es, ru, zh.
     pub fn code(self) -> &'static str {
         match self {
             Lang::Chinese => "zh",
@@ -91,6 +93,7 @@ impl From<Language> for Lang {
             Language::English => Lang::English,
             Language::Portuguese => Lang::Portuguese,
             Language::Spanish => Lang::Spanish,
+            Language::Russian => Lang::Russian,
         }
     }
 }
@@ -216,8 +219,7 @@ pub fn category(category: &str, several: bool) -> String {
         "footing" => (msg!("category", "Footing"), msg!("category-plural", "Footings")),
         "stripfooting" => (msg!("category", "Strip Footing"), msg!("category-plural", "Strip Footings")),
         "pipe" => (msg!("category", "Pipe"), msg!("category-plural", "Pipes")),
-        "conduit" => (msg!("category", "Conduit"), msg!("category-plural", "Conduits")),
-        "cabletray" => (msg!("category", "Cable Tray"), msg!("category-plural", "Cable Trays")),
+        "cablecarrier" => (msg!("category", "Cable Carrier"), msg!("category-plural", "Cable Carriers")),
         "wire" => (msg!("category", "Wire"), msg!("category-plural", "Wires")),
         "cable" => (msg!("category", "Cable"), msg!("category-plural", "Cables")),
         "downconductor" => (msg!("category", "Down Conductor"), msg!("category-plural", "Down Conductors")),

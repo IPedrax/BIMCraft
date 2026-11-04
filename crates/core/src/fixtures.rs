@@ -16,6 +16,7 @@ pub fn library(language: Language) -> Vec<(String, Value)> {
     out.extend(electrical(language));
     out.extend(lightning(language));
     out.extend(telecom(language));
+    out.extend(fire_and_security(language));
     out
 }
 
@@ -432,4 +433,88 @@ fn telecom(language: Language) -> Vec<(String, Value)> {
             }),
         ),
     ]
+}
+
+/// Fire alarm, voice evacuation, intruder alarm and CCTV (SP 484.1311500, SP 3.13130): a panel, detectors, a manual call point,
+/// sounders, a light sign, a speaker, a motion detector and a camera. A wall device stands as an electrical one does, centred on
+/// the height its type says (a panel on its bottom); a ceiling device hangs from it, the underside of the slab by default.
+fn fire_and_security(language: Language) -> Vec<(String, Value)> {
+    let w = |s: &str| language.word(s).to_string();
+    let (width, depth, height, mounting) = (w("Width"), w("Depth"), w("Height"), w("Mounting Height"));
+    let (mat, metal, plaster, glass) = (w("Material"), w("Metal"), w("Plaster"), w("Glass"));
+    let n = |x: f64| json!(x);
+    // The mounting height, and `d` mm over it.
+    let up = |d: f64| f(format!("{mounting} + ({d})"));
+    let (half_w, minus_half_w) = (format!("{width} / 2"), format!("-({width}) / 2"));
+    // A wall box `w` wide, `d` deep and `h` high, centred on the mounting height.
+    let wall_box = |w: f64, d: f64, h: f64, m: &str| block([n(-w / 2.0), n(-d), n(w / 2.0), n(0.0)], up(-h / 2.0), up(h / 2.0), m);
+    // A round body on the ceiling, `r` round and `h` deep, and its sensing head under it, `rr` round and `hh` deep.
+    let ceiling = |r: f64, h: f64, rr: f64, hh: f64| {
+        vec![post(n(0.0), n(0.0), n(r), up(-h), f(mounting.clone()), &plaster), post(n(0.0), n(0.0), n(rr), up(-h - hh), up(-h), &plaster)]
+    };
+    let one = |name: &str| json!({name: {}});
+    let mut out = Vec::new();
+
+    // A panel: a box on the wall, its door a little proud of it, a window for its display.
+    out.push((
+        w(msg!("Fire Alarm Panel")),
+        json!({
+            "category": "alarmpanel",
+            "parameters": [size(&width, 300.0), size(&height, 400.0), size(&depth, 100.0), size(&mounting, 1500.0), material(&mat, &metal)],
+            "types": {"300 x 400": {}, "500 x 600": {&width: 500, &height: 600, &depth: 120}},
+            "forms": [
+                block([f(minus_half_w.clone()), f(format!("-({depth})")), f(half_w.clone()), n(0.0)], f(mounting.clone()), f(format!("{mounting} + {height}")), &mat),
+                block(
+                    [f(format!("{minus_half_w} + 10")), f(format!("-({depth}) - 10")), f(format!("{half_w} - 10")), f(format!("-({depth})"))],
+                    up(10.0),
+                    f(format!("{mounting} + {height} - 10")),
+                    &mat
+                ),
+                block([n(-60.0), f(format!("-({depth}) - 12")), n(60.0), f(format!("-({depth}) - 10"))], f(format!("{mounting} + {height} - 120")), f(format!("{mounting} + {height} - 60")), &glass)
+            ]
+        }),
+    ));
+
+    // Point detectors on the ceiling: a round base and the head that senses.
+    for (name, category, forms) in [
+        (msg!("Smoke Detector"), "smokedetector", ceiling(50.0, 25.0, 40.0, 30.0)),
+        (msg!("Heat Detector"), "heatdetector", ceiling(45.0, 25.0, 15.0, 20.0)),
+        (msg!("Ceiling Speaker"), "speaker", vec![post(n(0.0), n(0.0), n(100.0), up(-15.0), f(mounting.clone()), &plaster)]),
+    ] {
+        out.push((
+            w(name),
+            json!({
+                "category": category,
+                "parameters": [size(&mounting, 3000.0)],
+                "types": one(if category == "speaker" { "6 W" } else { "3000" }),
+                "forms": forms
+            }),
+        ));
+    }
+
+    // A manual call point: a square box with its button behind a cut in its face.
+    let button = void(block([n(-25.0), n(-50.0), n(25.0), n(-40.0)], up(-25.0), up(25.0), ""));
+    // A sounder: a round body out from the wall, along -y.
+    let sounder =
+        json!({"plane": "xz", "circle": {"centre": [0, mounting.clone()], "radius": 50}, "from": -60, "to": 0, "material": plaster});
+    // A camera: its bracket out from the wall, and its body along it, under the bracket's end.
+    let camera_body = json!({"plane": "xz", "circle": {"centre": [0, format!("{mounting} - 40")], "radius": 40}, "from": -320, "to": -100, "material": plaster});
+    for (name, category, m, forms) in [
+        (msg!("Manual Call Point"), "callpoint", 1500.0, vec![wall_box(90.0, 50.0, 90.0, &plaster), button]),
+        (msg!("Sounder"), "sounder", 2300.0, vec![sounder]),
+        (msg!("Exit Sign"), "exitsign", 2300.0, vec![wall_box(300.0, 30.0, 150.0, &plaster), wall_box(260.0, 32.0, 110.0, &glass)]),
+        (msg!("Motion Detector"), "motiondetector", 2300.0, vec![wall_box(60.0, 50.0, 90.0, &plaster)]),
+        (msg!("Camera"), "camera", 2700.0, vec![wall_box(40.0, 120.0, 40.0, &metal), camera_body]),
+    ] {
+        out.push((
+            w(name),
+            json!({
+                "category": category,
+                "parameters": [size(&mounting, m)],
+                "types": one(&format!("{m}")),
+                "forms": forms
+            }),
+        ));
+    }
+    out
 }

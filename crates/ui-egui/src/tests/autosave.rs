@@ -34,6 +34,38 @@ fn fixture(dir: &std::path::Path) -> (std::path::PathBuf, std::path::PathBuf, Ve
 }
 
 #[test]
+fn background_autosave_remembers_undo_before_the_catalogue_poll_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    let catalogue = dir.path().join("catalogue.ods");
+    let mut h = app("");
+    enable(&mut h, &dir.path().join("temp"));
+    until(&mut h, |h| h.state().autosave.discovering == 0);
+    let s = &mut h.state_mut().session;
+    s.execute("catalogue_link", &json!({"path":catalogue})).unwrap();
+    s.execute("equipment", &json!({"name":"Cancelled software"})).unwrap();
+    s.execute("catalogue_sync", &json!({})).unwrap();
+    let rows = bimcraft_core::ods::catalogue_rows(&s.model);
+    let guid = rows.iter().find(|row| row[2].ends_with(": Cancelled software")).unwrap()[0].clone();
+    s.execute("undo", &json!({})).unwrap();
+    let original = Arc::clone(&s.model);
+    let ctx = h.ctx.clone();
+    h.state_mut().autosave.next_due = Instant::now();
+    // Queue recovery directly: the next ordinary UI frame would synchronize the external file first.
+    h.state_mut().poll_autosave(&ctx);
+    assert!(h.state().autosave.busy);
+    until(&mut h, |h| !h.state().autosave.busy);
+    assert!(Arc::ptr_eq(&original, &h.state().session.model));
+    let backup = h.state().autosave.active.as_ref().unwrap();
+    let text = std::fs::read_to_string(backup).unwrap();
+    let (snapshot, left_out) = bimcraft_core::model::Model::read(&text).unwrap();
+    assert!(left_out.is_empty());
+    assert!(snapshot.catalogue_retired.contains(&bimcraft_core::ids::Guid::parse(&guid).unwrap()));
+    due(&mut h);
+    assert!(!h.state().autosave.busy, "an unchanged editing snapshot must not be written repeatedly");
+    assert!(h.state().dirty());
+}
+
+#[test]
 fn background_autosave_keeps_the_editing_session_dirty_and_moves_out_of_temp_on_save() {
     let dir = tempfile::tempdir().unwrap();
     let mut h = app("");

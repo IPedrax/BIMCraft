@@ -13,7 +13,7 @@ Look at what each tab draws and there are three shapes, and BIMCraft has two of 
 | Shape | Examples | What builds it |
 |---|---|---|
 | A vertical or point thing with a type and a size | columns, footings; sanitary fixtures, panels, luminaires, outlets, racks, air terminals | `Column` (vertical members) and the families with `Component` (devices and fixtures) |
-| A straight thing between two points | beams, strip footings; pipes, conduits, cable trays, down conductors, data cabling | **`Run`**, new |
+| A straight thing between two points | beams, strip footings; pipes, cable carriers, wires, down conductors, data cabling | **`Run`**, new |
 | A slab or a region | structural floors, foundation slabs | `Floor`, with a `structural` flag |
 
 So the new element is one: the run. Everything else is a category added to something that exists.
@@ -48,16 +48,16 @@ section, and the 3D view draws it as a sloped prism, or a round one as a tube.
 
 A run is one Rust type serialized under several categories, as `Door` and `Window` share `Opening`. The category is the
 `Element` variant, so Visibility/Graphics, schedules, project parameters, phases, view filters and the IFC class all
-work per category without a line of per-category machinery. Today: `beam`, `stripfooting`, `pipe`, `conduit`, `cabletray`, `wire`, `downconductor`, `groundconductor` and `cable`. A tab adds a variant, a name
+work per category without a line of per-category machinery. Today: `beam`, `stripfooting`, `pipe`, `cablecarrier`, `wire`, `downconductor`, `groundconductor` and `cable`. A tab adds a variant, a name
 in `model::run_arm!` and a row to each table below:
 
 | Category | Tab | Revit's name |
 |---|---|---|
 | `beam`, `stripfooting` | Structure | Structural Framing, Structural Foundation: Wall |
 | `pipe` | Plumbing | Pipe |
-| `conduit`, `cabletray`, `wire` | Electrical | Conduit, Cable Tray, Wire |
+| `cablecarrier`, `wire` | Electrical | Cable Carrier (КНС), Wire |
 | `downconductor`, `groundconductor` | SPDA | (none: Revit has no lightning protection) |
-| `cable` | Data | Wire / Cable Tray |
+| `cable` | Data | Cabling / Cable Carrier |
 
 Types live in `Types::runs`, a map from category to type name to `RunType`, so a tab adds no field to `Types`. The model
 starts with a few (`Beam 200 x 500`…), and the `type` command creates and changes them. Geometry is in `runs.rs`: the
@@ -100,8 +100,7 @@ IFC4 (ISO 16739-1:2018). Class names are checked against the IFC4 and IFC4X3_ADD
 | structural `floor` | `IfcSlab` `.FLOOR.` (`.BASESLAB.` for a foundation slab) with `Pset_SlabCommon.LoadBearing` | yes |
 | `pipe` | `IfcPipeSegment` `.RIGIDSEGMENT.`; fittings `IfcPipeFitting`, valves `IfcValve` | yes |
 | sanitary fixtures | `IfcSanitaryTerminal` (`.NOTDEFINED.`: a family has one category and its forms, not a kind of fixture; `.WASHHANDBASIN.`, `.TOILETPAN.`, `.SINK.`, `.SHOWER.` would need one per kind); floor drains `IfcWasteTerminal` `.FLOORTRAP.` | yes |
-| `conduit` | `IfcCableCarrierSegment` `.CONDUITSEGMENT.` | yes |
-| `cabletray` | `IfcCableCarrierSegment` `.CABLETRAYSEGMENT.` (`.CABLELADDERSEGMENT.`, which only another tool writes, is read as a tray) | yes |
+| `cablecarrier` | `IfcCableCarrierSegment`: `.CONDUITSEGMENT.` for round sections, `.CABLETRAYSEGMENT.` for rectangular sections; imported `.CABLELADDERSEGMENT.` is also a carrier | yes |
 | `wire`, `cable` | `IfcCableSegment` `.CABLESEGMENT.`, which BIMCraft's `Category` tells apart | yes |
 | panels, boards | `IfcElectricDistributionBoard` `.DISTRIBUTIONBOARD.` | yes |
 | luminaires | `IfcLightFixture` | yes |
@@ -127,9 +126,9 @@ and says so.
 |---|---|---|
 | **Structure** / Estrutura / Estructura | Column CL, Beam BM, Floor (Structural) SB; Foundation: Isolated FI, Wall FW (Revit's FT is Filters here) | pilar, viga, laje, sapata, sapata corrida, baldrame |
 | **Plumbing** / Hidrossanitário / Fontanería | Pipe PI, Plumbing Fixture PX, Pipe Fitting PF, Pipe Accessory PA (built) | tubulação, peça sanitária, ramal, prumada, água fria (NBR 5626), esgoto (NBR 8160) |
-| **Electrical** / Elétrico / Eléctrico | Conduit CN, Cable Tray CT, Wire EW, Electrical Equipment EE, Lighting Fixture LF, Device DV (built) | eletroduto, eletrocalha, quadro de distribuição, luminária, tomada, circuito (NBR 5410) |
+| **Electrical** / Elétrico / Eléctrico | Cable Carrier CC, Wire EW, Electrical Equipment EE, Lighting Fixture LF, Device DV (built) | eletroduto, eletrocalha, quadro de distribuição, luminária, tomada, circuito (NBR 5410) |
 | **Lightning Protection (SPDA)** / SPDA / SPDA | Air Terminal AT, Down Conductor DC, Earthing Electrode EG, Inspection Box IB, Earthing Conductor GC (built) | captor, condutor de descida, haste de aterramento, caixa de inspeção, malha (NBR 5419) |
-| **Data** / Lógica, Dados e Voz / Datos y Voz | Data Outlet DT, Voice Outlet VO, Rack RK, Patch Panel PN, Cable Tray CT, Cabling CB (built) | ponto de dados, ponto de voz, rack, patch panel, cabeamento estruturado (NBR 14565) |
+| **Data** / Lógica, Dados e Voz / Datos y Voz | Data Outlet DT, Voice Outlet VO, Rack RK, Patch Panel PN, Cable Carrier CC, Wire EW, Cabling CB (built) | ponto de dados, ponto de voz, rack, patch panel, cabeamento estruturado (NBR 14565) |
 
 The English stays Revit's words; the Portuguese uses the terms the standards use. Revit has no SPDA, so its tools have
 no Autodesk shortcut, and take free letters.

@@ -507,6 +507,8 @@ fn solids_in(m: &Model, elements: &[(Id, &Element)], index: Option<&walls::Index
                     if g.round {
                         let (tris, caps) = g.tube();
                         out.push(Solid::Mesh { owner: id, color, tex, tris, caps, round: true, cut: true });
+                    } else if g.square_ends || g.roll.abs() > 1e-9 {
+                        out.push(Solid::Mesh { owner: id, color, tex, tris: g.box_triangles(), caps: 4, round: false, cut: true });
                     } else {
                         let (ring, bottom, top) = g.prism();
                         out.push(Solid::Prism { owner: id, color, tex, ring, bottom, top, curve: None });
@@ -797,6 +799,17 @@ pub struct Scene {
     scans: Vec<Scan>,
 }
 
+/// A world-space ray contact on an explicitly selected host in this scene snapshot.
+/// Face names survive tessellation changes; curved hosts return faceted normals.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SurfaceHit {
+    pub host: Id,
+    pub face: &'static str,
+    pub point: P3,
+    pub normal: P3,
+    pub distance: f64,
+}
+
 /// A scan as a point cloud places it: its points and colours (shared with the model's), and where they go.
 struct Scan {
     owner: Id,
@@ -851,8 +864,8 @@ impl Rule {
                     _ => "",
                 }
             }
-            Rule::Slab if n[2] > 0.5 => "top",
-            Rule::Slab if n[2] < -0.5 => "bottom",
+            Rule::Slab if n[2] > 1e-9 => "top",
+            Rule::Slab if n[2] < -1e-9 => "bottom",
             Rule::Slab => "",
             Rule::Whole => "all",
         }
@@ -883,7 +896,195 @@ pub struct LevelHead {
 const HEAD_TEXT: f32 = 11.0;
 const HEAD_PAD: f32 = 3.0;
 
+/// Validate the footprint even when a ray misses and there is no hit plane to check.
+pub(crate) fn surface_patch_frame(corners: [P3; 4]) -> Result<(P3, P3, f64, f64), String> {
+    if !corners.iter().flatten().all(|v| v.is_finite() && v.abs() <= crate::model::MAX_COORD) {
+        return Err("surface footprint: coordinates must be finite and bounded".into());
+    }
+    let edge = sub(corners[1], corners[0]);
+    let up = sub(corners[3], corners[0]);
+    let (width, height) = (dot(edge, edge).sqrt(), dot(up, up).sqrt());
+    let (x, y) = (unit(edge), unit(up));
+    let closing = sub(corners[2], add(corners[1], up));
+    if width < 0.001 || height < 0.001 || dot(x, y).abs() > 1e-10 || dot(closing, closing).sqrt() > 1e-6 {
+        return Err("surface footprint: provide a nondegenerate ordered rectangle".into());
+    }
+    Ok((x, y, width, height))
+}
+
 impl Scene {
+    /// Continuous support of a contact line, including openings between its endpoints.
+    pub(crate) fn supports_segment(&self, host: Id, face: &str, a: P3, b: P3, normal: P3) -> Result<bool, String> {
+        let delta = sub(b, a);
+        let length = dot(delta, delta).sqrt();
+        if !a.iter().chain(b.iter()).chain(normal.iter()).all(|v| v.is_finite() && v.abs() <= crate::model::MAX_COORD)
+            || length <= 1e-6
+            || dot(normal, normal) < 0.5
+        {
+            return Err("surface segment: invalid contact line or normal".into());
+        }
+        let x = unit(delta);
+        let y = unit(cross(normal, x));
+        let project = |p| {
+            let d = sub(p, a);
+            P2(dot(d, x), dot(d, y))
+        };
+        let mut spans = Vec::new();
+        for (tri, &named) in self.tris.iter().zip(self.faces.iter()) {
+            if tri.owner != host || named != face || tri.p.iter().any(|p| dot(sub(*p, a), normal).abs() > 1e-6) {
+                continue;
+            }
+            let mut triangle = tri.p.map(project);
+            let area = geom::area(&triangle);
+            if area.abs() < 1e-12 {
+                continue;
+            }
+            if area < 0.0 {
+                triangle.swap(1, 2);
+            }
+            let (mut lo, mut hi) = (0.0_f64, length);
+            for (p, q) in geom::ring_edges(&triangle) {
+                let inward = (q - p).perp().unit();
+                let from = (P2(0.0, 0.0) - p).dot(inward);
+                let to = (P2(length, 0.0) - p).dot(inward);
+                if from < 0.0 && to < 0.0 {
+                    hi = -1.0;
+                    break;
+                }
+                if from < 0.0 {
+                    lo = lo.max(length * from / (from - to));
+                }
+                if to < 0.0 {
+                    hi = hi.min(length * from / (from - to));
+                }
+            }
+            if hi >= lo {
+                spans.push((lo, hi));
+            }
+            if spans.len() > 100_000 {
+                return Err("surface segment: support check exceeded its complexity limit".into());
+            }
+        }
+        spans.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut end = 0.0_f64;
+        for (lo, hi) in spans {
+            if lo > end + 1e-6 {
+                return Ok(false);
+            }
+            end = end.max(hi);
+            if end >= length - 1e-6 {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// Whether a rectangular mounting back lies entirely on the hit's planar named face.
+    /// Subtract the union of its triangles, rather than accepting four supported corners
+    /// or adding overlapping areas. Fragmentation/work limits fail explicitly.
+    pub fn supports_patch(&self, hit: &SurfaceHit, corners: [P3; 4]) -> Result<bool, String> {
+        const EPS: f64 = 1e-6;
+        const AREA_EPS: f64 = 1e-8;
+        let (x, y, width, height) = surface_patch_frame(corners)?;
+        if !hit.point.iter().chain(hit.normal.iter()).all(|v| v.is_finite() && v.abs() <= crate::model::MAX_COORD) {
+            return Err("surface footprint: coordinates and normal must be finite and bounded".into());
+        }
+        let normal = unit(hit.normal);
+        if dot(normal, normal) < 0.5 || corners.iter().any(|p| dot(sub(*p, hit.point), normal).abs() > EPS) {
+            return Err("surface footprint: provide a nondegenerate rectangle in the hit plane".into());
+        }
+        let project = |p| {
+            let d = sub(p, corners[0]);
+            P2(dot(d, x), dot(d, y))
+        };
+        let mut remaining = vec![vec![P2(0.0, 0.0), P2(width, 0.0), P2(width, height), P2(0.0, height)]];
+        let mut work = 0usize;
+        for (tri, &face) in self.tris.iter().zip(self.faces.iter()) {
+            if tri.owner != hit.host || face != hit.face || tri.p.iter().any(|p| dot(sub(*p, hit.point), normal).abs() > EPS) {
+                continue;
+            }
+            let mut triangle = tri.p.map(project);
+            let area = geom::area(&triangle);
+            if area.abs() <= AREA_EPS {
+                continue;
+            }
+            if area < 0.0 {
+                triangle.swap(1, 2);
+            }
+            let mut uncovered = Vec::new();
+            for mut polygon in remaining {
+                for (a, b) in geom::ring_edges(&triangle) {
+                    work += polygon.len();
+                    if work > 1_000_000 || uncovered.len() > 4096 {
+                        return Err("surface footprint: support check exceeded its complexity limit".into());
+                    }
+                    let inward = (b - a).perp().unit();
+                    let outside = geom::clip(&polygon, |p| -(p - a).dot(inward));
+                    if geom::area(&outside).abs() > AREA_EPS {
+                        uncovered.push(outside);
+                    }
+                    polygon = geom::clip(&polygon, |p| (p - a).dot(inward));
+                    if polygon.len() < 3 {
+                        break;
+                    }
+                }
+            }
+            remaining = uncovered;
+            if remaining.is_empty() {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// Intersect a selected host's named faces, including holes in its actual solids.
+    /// Direction is normalized internally; reach and distance are millimetres. Other objects
+    /// do not occlude this host-specific query. This does not validate a mounting footprint.
+    pub fn surface_hit(&self, host: Id, origin: P3, direction: P3, reach: f64) -> Result<Option<SurfaceHit>, String> {
+        let bounded = |x: f64| x.is_finite() && x.abs() <= crate::model::MAX_COORD;
+        if !origin.into_iter().all(bounded) || !direction.into_iter().all(bounded) || !bounded(reach) || reach <= 0.0 {
+            return Err("surface ray: use bounded finite coordinates, direction and positive reach".into());
+        }
+        let length = dot(direction, direction).sqrt();
+        if length <= 1e-12 {
+            return Err("surface ray: direction must be nonzero".into());
+        }
+        let direction = mul(direction, 1.0 / length);
+        let mut nearest: Option<SurfaceHit> = None;
+        for (t, &face) in self.tris.iter().zip(self.faces.iter()) {
+            if t.owner != host || face.is_empty() {
+                continue;
+            }
+            let e1 = sub(t.p[1], t.p[0]);
+            let e2 = sub(t.p[2], t.p[0]);
+            let area = cross(e1, e2);
+            let area_length = dot(area, area).sqrt();
+            let h = cross(direction, e2);
+            let determinant = dot(e1, h);
+            if area_length <= 1e-12 || determinant.abs() <= 1e-12 * area_length {
+                continue;
+            }
+            let from = sub(origin, t.p[0]);
+            let u = dot(from, h) / determinant;
+            let q = cross(from, e1);
+            let v = dot(direction, q) / determinant;
+            let distance = dot(e2, q) / determinant;
+            if u < -1e-10 || v < -1e-10 || u + v > 1.0 + 1e-10 || distance < 0.0 || distance > reach {
+                continue;
+            }
+            if nearest.as_ref().is_none_or(|hit| distance < hit.distance) {
+                nearest = Some(SurfaceHit {
+                    host,
+                    face,
+                    point: add(origin, mul(direction, distance)),
+                    normal: mul(area, 1.0 / area_length),
+                    distance,
+                });
+            }
+        }
+        Ok(nearest)
+    }
+
     pub fn new(m: &Model) -> Scene {
         let mut tris = Vec::new();
         for solid in shaded(m) {
@@ -1918,7 +2119,157 @@ impl Image {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn stage4_along_slope_mount_preserves_square_section_and_detach() {
+        let mut s = crate::engine::Session::new();
+        let host = s
+            .execute("floor", &serde_json::json!({"boundary":[[0,0],[6000,0],[6000,4000],[0,4000]],"slope":35,"arrow":[[0,0],[6000,0]]}))
+            .unwrap()["id"]
+            .clone();
+        let id = s
+            .execute(
+                "cable_carrier",
+                &serde_json::json!({"points":[[1000,1000],[3000,1000]],"offset":1000,"end_offset":2400,"type":"Tray 100 x 50"}),
+            )
+            .unwrap()["ids"][0]
+            .as_u64()
+            .unwrap();
+        let legacy = s.model.run_geom(s.model.elements.get(id).unwrap()).unwrap();
+        let before = s.model.to_json().unwrap();
+        let mut old_file: serde_json::Value = serde_json::from_str(&before).unwrap();
+        old_file["format"] = serde_json::json!(18);
+        let (migrated, omitted) = crate::model::Model::read(&old_file.to_string()).unwrap();
+        assert!(omitted.is_empty());
+        assert_eq!(migrated.run_geom(migrated.elements.get(id).unwrap()).unwrap(), legacy);
+        s.execute("run_mount", &serde_json::json!({"id":id,"host":host,"face":"top"})).unwrap();
+        let mounted = s.model.run_geom(s.model.elements.get(id).unwrap()).unwrap();
+        assert!(mounted.roll.abs() < 1e-9, "this case must exercise the zero-roll branch");
+        let check = |model: &crate::model::Model| {
+            let g = model.run_geom(model.elements.get(id).unwrap()).unwrap();
+            let expected: Vec<_> = g.box_triangles().into_iter().flatten().collect();
+            let scene = super::Scene::new(model);
+            let actual: Vec<_> = scene.tris.iter().filter(|t| t.owner == id).flat_map(|t| t.p).collect();
+            assert!(!actual.is_empty());
+            for axis in 0..3 {
+                let low = expected.iter().map(|p| p[axis]).fold(f64::INFINITY, f64::min);
+                let high = expected.iter().map(|p| p[axis]).fold(f64::NEG_INFINITY, f64::max);
+                let actual_low = actual.iter().map(|p| p[axis]).fold(f64::INFINITY, f64::min);
+                let actual_high = actual.iter().map(|p| p[axis]).fold(f64::NEG_INFINITY, f64::max);
+                assert!(
+                    (actual_low - low).abs() < 1e-6 && (actual_high - high).abs() < 1e-6,
+                    "axis {axis}: Scene [{actual_low},{actual_high}], section [{low},{high}]"
+                );
+                if axis == 2 {
+                    let (z0, z1) = g.z_span();
+                    assert!((z0 - low).abs() < 1e-6 && (z1 - high).abs() < 1e-6);
+                } else {
+                    let footprint = g.footprint();
+                    let coord = |p: &crate::geom::P2| if axis == 0 { p.0 } else { p.1 };
+                    assert!((footprint.iter().map(coord).fold(f64::INFINITY, f64::min) - low).abs() < 1e-6);
+                    assert!((footprint.iter().map(coord).fold(f64::NEG_INFINITY, f64::max) - high).abs() < 1e-6);
+                }
+            }
+            g
+        };
+        check(&s.model);
+        s.execute("run_mount", &serde_json::json!({"id":id,"host":null})).unwrap();
+        assert_eq!(check(&s.model), mounted);
+        let saved = s.model.to_json().unwrap();
+        let (loaded, omitted) = crate::model::Model::read(&saved).unwrap();
+        assert!(omitted.is_empty());
+        assert_eq!(check(&loaded), mounted);
+        s.execute("undo", &serde_json::json!({})).unwrap();
+        s.execute("delete", &serde_json::json!({"ids":[host]})).unwrap();
+        assert_eq!(check(&s.model), mounted);
+        s.execute("undo", &serde_json::json!({})).unwrap();
+        s.execute("undo", &serde_json::json!({})).unwrap();
+        assert_eq!(s.model.to_json().unwrap(), before);
+        assert_eq!(s.model.run_geom(s.model.elements.get(id).unwrap()).unwrap(), legacy);
+    }
+
+    #[test]
+    fn stage4_mounted_rectangular_scene_has_the_physical_section() {
+        let mut session = crate::engine::Session::new();
+        let wall = session.execute("wall", &serde_json::json!({"points":[[0,0],[8000,0]]})).unwrap()["ids"][0].clone();
+        let carrier = session
+            .execute("cable_carrier", &serde_json::json!({"points":[[3000,-500],[5000,-500]],"offset":1500,"type":"Tray 100 x 50"}))
+            .unwrap()["ids"][0]
+            .as_u64()
+            .unwrap();
+        session.execute("run_mount", &serde_json::json!({"id":carrier,"host":wall,"face":"interior"})).unwrap();
+        let scene = super::Scene::new(&session.model);
+        let vertices: Vec<_> = scene.tris.iter().filter(|t| t.owner == carrier).flat_map(|t| t.p).collect();
+        assert!(!vertices.is_empty());
+        assert!(vertices.iter().all(|p| p[1] >= -150.000001 && p[1] <= -99.999999 && p[2] >= 1449.999999 && p[2] <= 1550.000001));
+    }
+
     use super::*;
+
+    #[test]
+    fn stage4_surface_patch_detects_openings_even_with_all_corners_supported() {
+        let s = house();
+        let mut scene = Scene::new(&s.model);
+        let hit = scene.surface_hit(100002, [5000.0, -1000.0, 1500.0], [0.0, 1.0, 0.0], 2000.0).unwrap().unwrap();
+        let patch = |x0, x1, z0, z1| [[x0, -100.0, z0], [x1, -100.0, z0], [x1, -100.0, z1], [x0, -100.0, z1]];
+        assert!(scene.supports_patch(&hit, patch(4000.0, 5000.0, 500.0, 2500.0)).unwrap());
+        assert!(!scene.supports_patch(&hit, patch(1500.0, 2500.0, 500.0, 2500.0)).unwrap());
+        for point in patch(1500.0, 2500.0, 500.0, 2500.0) {
+            assert!(scene.surface_hit(hit.host, [point[0], -1000.0, point[2]], [0.0, 1.0, 0.0], 2000.0).unwrap().is_some());
+        }
+        assert!(
+            scene
+                .supports_patch(
+                    &hit,
+                    [[4000.0, -100.0, 1500.0], [4500.0, -100.0, 2000.0], [5000.0, -100.0, 1500.0], [4500.0, -100.0, 1000.0]]
+                )
+                .unwrap()
+        );
+        assert!(!scene.supports_patch(&hit, patch(-500.0, 500.0, 500.0, 2500.0)).unwrap());
+        assert!(scene.supports_patch(&hit, patch(4000.0, 4000.0, 500.0, 2500.0)).is_err());
+        let mut displaced = patch(4000.0, 5000.0, 500.0, 2500.0);
+        displaced[0][1] += 1.0;
+        assert!(scene.supports_patch(&hit, displaced).is_err());
+        let invalid_normal = SurfaceHit { normal: [0.0; 3], ..hit.clone() };
+        assert!(scene.supports_patch(&invalid_normal, patch(4000.0, 5000.0, 500.0, 2500.0)).is_err());
+        // Overlaps must not compensate for the missing surface inside the opening.
+        let count = scene.tris.len();
+        for i in 0..count {
+            let tri = &scene.tris[i];
+            scene.tris.push(Tri { p: tri.p, owner: tri.owner, color: tri.color, tex: tri.tex, curve: tri.curve });
+            let face = scene.faces[i];
+            Arc::make_mut(&mut scene.faces).push(face);
+        }
+        assert!(!scene.supports_patch(&hit, patch(1500.0, 2500.0, 500.0, 2500.0)).unwrap());
+    }
+
+    #[test]
+    fn stage4_surface_ray_respects_wall_faces_openings_and_distance() {
+        let s = house();
+        let scene = Scene::new(&s.model);
+        let hit = scene.surface_hit(100002, [5000.0, -1000.0, 1500.0], [0.0, 7.0, 0.0], 2000.0).unwrap().unwrap();
+        assert_eq!(hit.host, 100002);
+        assert_eq!(hit.face, "interior");
+        assert_eq!(hit.point, [5000.0, -100.0, 1500.0]);
+        assert_eq!(hit.normal, [0.0, -1.0, 0.0]);
+        assert!((hit.distance - 900.0).abs() < 1e-8);
+        assert!(scene.surface_hit(100002, [5000.0, -1000.0, 1500.0], [0.0, 1.0, 0.0], 899.0).unwrap().is_none());
+        assert!(scene.surface_hit(100002, [2000.0, -1000.0, 1000.0], [0.0, 1.0, 0.0], 2000.0).unwrap().is_none());
+        assert!(scene.surface_hit(100002, [9000.0, -1000.0, 1000.0], [0.0, 1.0, 0.0], 2000.0).unwrap().is_none());
+        let inside = scene.surface_hit(100002, [5000.0, 1000.0, 1500.0], [0.0, -1.0, 0.0], 2000.0).unwrap().unwrap();
+        assert_eq!(inside.face, "exterior");
+        assert!(dot(sub(inside.normal, [0.0, 1.0, 0.0]), sub(inside.normal, [0.0, 1.0, 0.0])) < 1e-20);
+        let floor = scene.surface_hit(100008, [5000.0, 3000.0, 1000.0], [0.0, 0.0, -1.0], 2000.0).unwrap().unwrap();
+        assert_eq!(floor.face, "top");
+        assert!((floor.normal[2] - 1.0).abs() < 1e-10);
+        for (origin, direction, reach) in [
+            ([f64::NAN, 0.0, 0.0], [0.0, 1.0, 0.0], 1000.0),
+            ([0.0; 3], [0.0; 3], 1000.0),
+            ([0.0; 3], [0.0, f64::INFINITY, 0.0], 1000.0),
+            ([0.0; 3], [0.0, 1.0, 0.0], -1.0),
+        ] {
+            assert!(scene.surface_hit(100002, origin, direction, reach).is_err());
+        }
+    }
 
     #[test]
     fn a_picture_draws_every_point_up_to_its_budget_and_an_even_share_past_it() {
@@ -2581,7 +2932,8 @@ mod tests {
     fn a_section_cuts_a_tube_in_its_ring_an_oblique_one_in_an_ellipse_and_leaves_other_meshes_whole() {
         use crate::runs::Geom;
         // A pipe 200 across along east at 500 up, from x = 0 to 4000, and a section 2000 along it, level and then at 45°.
-        let g = Geom { a: [0.0, 0.0, 500.0], b: [4000.0, 0.0, 500.0], width: 200.0, depth: 200.0, round: true };
+        let g =
+            Geom { square_ends: false, roll: 0.0, a: [0.0, 0.0, 500.0], b: [4000.0, 0.0, 500.0], width: 200.0, depth: 200.0, round: true };
         let (tris, caps) = g.tube();
         let tube = |cut| Solid::Mesh { owner: 1, color: EDGE, tex: 0, tris: tris.clone(), caps, round: true, cut };
         let extent = |rings: &[Vec<P2>]| {

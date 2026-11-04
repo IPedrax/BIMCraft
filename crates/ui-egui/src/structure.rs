@@ -24,8 +24,7 @@ pub(crate) fn title(tool: &Tool) -> Option<&'static str> {
     match tool {
         Tool::Run("beam", _) => Some(msg!("Place Beam")),
         Tool::Run("pipe", _) => Some(msg!("Place Pipe")),
-        Tool::Run("conduit", _) => Some(msg!("Place Conduit")),
-        Tool::Run("cabletray", _) => Some(msg!("Place Cable Tray")),
+        Tool::Run("cablecarrier", _) => Some(msg!("Place Cable Carrier")),
         Tool::Run("wire", _) => Some(msg!("Place Wire")),
         Tool::Run("downconductor", _) => Some(msg!("Place Down Conductor")),
         Tool::Run("groundconductor", _) => Some(msg!("Place Earthing Conductor")),
@@ -63,11 +62,11 @@ impl BimApp {
         if self.run_loaded == category {
             return;
         }
-        let was = (self.run_justify, std::mem::take(&mut self.beam_offset));
+        let was = (self.run_justify, std::mem::take(&mut self.beam_offset), std::mem::take(&mut self.run_end_offset), self.run_vertical);
         self.run_kept.insert(self.run_loaded, was);
         let zero = self.session.model.units.length(0.0);
-        (self.run_justify, self.beam_offset) =
-            self.run_kept.remove(category).unwrap_or_else(|| (bimcraft_core::runs::default_justify(category), zero));
+        (self.run_justify, self.beam_offset, self.run_end_offset, self.run_vertical) =
+            self.run_kept.remove(category).unwrap_or_else(|| (bimcraft_core::runs::default_justify(category), zero, String::new(), false));
         self.run_loaded = category;
     }
 
@@ -139,6 +138,11 @@ impl BimApp {
             ui.add(TextEdit::singleline(&mut self.footing_top).desired_width(64.0).hint_text(hint)).labelled_by(l.id);
         }
         ui.checkbox(&mut self.chain, t("Chain"));
+        if matches!(category, "wire" | "cablecarrier") {
+            let l = ui.label(t(msg!("End Offset:")));
+            ui.add(TextEdit::singleline(&mut self.run_end_offset).desired_width(64.0).hint_text(hint)).labelled_by(l.id);
+            ui.checkbox(&mut self.run_vertical, t(msg!("Vertical")));
+        }
     }
 
     /// The Options Bar of a standing tool: a structural column's height; a footing's thickness and where its top is.
@@ -168,10 +172,14 @@ impl BimApp {
     pub(crate) fn run_params(&self, m: &Model, category: &str, level: Id, a: P2, b: P2) -> Result<Value, String> {
         let command = command(category);
         let height = |text: &str| m.units.parse(text).ok_or_else(|| tf("{}: `{}` is not a height", &[command, text]));
+        let b = if matches!(category, "wire" | "cablecarrier") && self.run_vertical { a } else { b };
         let mut p = json!({"points": [[a.0, a.1], [b.0, b.1]], "level": level});
         if category != "stripfooting" {
             p["justify"] = json!(self.run_justify);
             p["offset"] = json!(height(&self.beam_offset)?);
+            if matches!(category, "wire" | "cablecarrier") && !self.run_end_offset.trim().is_empty() {
+                p["end_offset"] = json!(height(&self.run_end_offset)?);
+            }
         } else {
             p["offset"] = json!(height(&self.footing_top)?);
         }
@@ -199,14 +207,24 @@ impl BimApp {
             self.tool = Tool::Run(category, Some(p));
             return;
         };
-        if a.dist(p) <= TOL {
+        let vertical = matches!(category, "wire" | "cablecarrier") && self.run_vertical;
+        let p = if vertical { a } else { p };
+        if a.dist(p) <= TOL && !vertical {
             return;
         }
         let m = std::sync::Arc::clone(&self.session.model);
         match self.run_params(&m, category, level, a, p) {
             Ok(params) => {
-                if self.run(command(category), params).is_some() {
+                if let Some(result) = self.run(command(category), params) {
                     self.tool = Tool::Run(category, self.chain.then_some(p));
+                    if matches!(category, "wire" | "cablecarrier") && !self.run_end_offset.trim().is_empty() && self.chain {
+                        self.beam_offset = self.run_end_offset.clone();
+                    }
+                    if category == "cablecarrier"
+                        && let Some(id) = result["ids"].as_array().and_then(|ids| ids.first()).and_then(Value::as_u64)
+                    {
+                        self.offer_carrier_attachment(id);
+                    }
                 }
             }
             Err(e) => self.status = Status { text: e, error: true },

@@ -81,6 +81,7 @@ pub struct Settings {
     pub light_canvas: bool,
     /// The Compact layout: the bars and palettes flush to the window's edges, not floating cards.
     pub compact: bool,
+    pub minimal: bool,
     pub language: Lang,
     pub ribbon_minimized: bool,
     pub docking: Docking,
@@ -105,6 +106,7 @@ impl Settings {
             "theme": theme,
             "light_canvas": self.light_canvas,
             "layout": if self.compact { "compact" } else { "floating" },
+            "interface": if self.minimal { "minimal" } else { "revit" },
             "language": self.language.code(),
             "ribbon_minimized": self.ribbon_minimized,
             "palettes": self.docking.to_json(),
@@ -127,6 +129,11 @@ impl Settings {
         };
         Settings {
             theme,
+            minimal: match v["interface"].as_str() {
+                Some("minimal") => true,
+                Some("revit") => false,
+                _ => base.minimal,
+            },
             light_canvas: theme == ThemePreference::Dark && v["light_canvas"].as_bool().unwrap_or(base.light_canvas),
             compact: match v["layout"].as_str() {
                 Some("compact") => true,
@@ -215,6 +222,7 @@ impl BimApp {
         let kept = read(&path).map_or(now.clone(), |v| Settings::from_json(&v, now));
         (self.lang, self.ribbon_min, self.docking) = (kept.language, kept.ribbon_minimized, kept.docking.clone());
         self.compact = kept.compact;
+        self.minimal = kept.minimal;
         self.theme_wanted = Some(kept.theme);
         self.light_canvas = kept.light_canvas;
         self.autosave.interval_minutes = kept.autosave_minutes;
@@ -236,6 +244,7 @@ impl BimApp {
             theme,
             light_canvas: self.light_canvas,
             compact: self.compact,
+            minimal: self.minimal,
             language: self.lang,
             ribbon_minimized: self.ribbon_min,
             docking: self.docking.clone(),
@@ -319,6 +328,11 @@ impl BimApp {
     }
 
     fn interface_page(&mut self, ui: &mut Ui, ctx: &Context) {
+        heading(ui, msg!("Interface"));
+        ui.horizontal(|ui| {
+            ui.radio_value(&mut self.minimal, false, t(msg!("Revit interface")));
+            ui.radio_value(&mut self.minimal, true, t(msg!("Minimal interface")));
+        });
         heading(ui, msg!("Theme"));
         self.theme_choices(ui, false);
         heading(ui, msg!("Layout"));

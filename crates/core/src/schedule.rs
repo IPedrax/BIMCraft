@@ -167,6 +167,8 @@ enum From {
     Metres(&'static str),
     PathLength,
     Count,
+    ComponentPlacement,
+    ComponentSystem,
     /// A yes or no in the element's JSON under a key (no where it has none).
     Flag(&'static str),
     /// A value among the element's parameters, under the field's own name (its phases, its design option).
@@ -320,22 +322,23 @@ const OWN: &[(&str, usize, &[Own])] = &[
         ],
     ),
     (
-        "conduit",
-        6,
+        "cablecarrier",
+        7,
         &[
             ID,
             TYPE,
             LEVEL,
             SYSTEM,
             LENGTH,
-            ("Diameter", Kind::Length, From::Key("width")),
+            WIDTH,
+            DEPTH,
             COUNT,
             PHASE_CREATED,
             PHASE_DEMOLISHED,
             DESIGN_OPTION,
+            (msg!("Diameter"), Kind::Length, From::Key("width")),
         ],
     ),
-    ("cabletray", 7, &[ID, TYPE, LEVEL, SYSTEM, LENGTH, WIDTH, DEPTH, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
     (
         "cable",
         6,
@@ -368,9 +371,27 @@ const OWN: &[(&str, usize, &[Own])] = &[
             PHASE_CREATED,
             PHASE_DEMOLISHED,
             DESIGN_OPTION,
+            (msg!("Source"), Kind::Number, From::Ref("source")),
+            (msg!("Devices"), Kind::Number, From::Key("device_count")),
+            (msg!("Cable"), Kind::Text, From::Key("cable")),
+            (msg!("Name"), Kind::Text, From::Key("system")),
         ],
     ),
-    ("component", 4, &[FAMILY, TYPE, LEVEL, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "component",
+        4,
+        &[
+            FAMILY,
+            TYPE,
+            LEVEL,
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+            (msg!("Placement"), Kind::Text, From::ComponentPlacement),
+            (msg!("System"), Kind::Text, From::ComponentSystem),
+        ],
+    ),
     (
         "stair",
         7,
@@ -801,7 +822,26 @@ impl Row<'_> {
                     let path: Vec<crate::geom::P2> = j.get("path").and_then(|p| serde_json::from_value(p.clone()).ok()).unwrap_or_default();
                     serde_json::json!(fine(path.windows(2).map(|w| w[0].dist(w[1])).sum::<f64>()))
                 }
-                From::Count => serde_json::json!(1.0),
+                From::Count => serde_json::json!(f64::from(match self.e {
+                    Element::Component(c) => c.provision.as_ref().map_or(1, |p| p.quantity),
+                    _ => 1,
+                })),
+                From::ComponentPlacement => match self.e {
+                    Element::Component(c) => {
+                        let placement = c.provision.as_ref().map_or(crate::model::Placement::Placed, |p| p.placement);
+                        let label = match placement {
+                            crate::model::Placement::Placed => msg!("Placed"),
+                            crate::model::Placement::Planned => msg!("Planned"),
+                            crate::model::Placement::Nonspatial => msg!("Placement not required"),
+                        };
+                        serde_json::json!(m.language.word(label))
+                    }
+                    _ => Value::Null,
+                },
+                From::ComponentSystem => match self.e {
+                    Element::Component(c) => serde_json::json!(c.provision.as_ref().map(|p| p.system.as_str()).unwrap_or_default()),
+                    _ => Value::Null,
+                },
                 From::Flag(k) => Value::Bool(j.get(k).and_then(Value::as_bool).unwrap_or(false)),
                 // Its parameter of that name, or its wall's for a door or window with none; a phase it holds none of
                 // is the project's first.
@@ -845,7 +885,12 @@ fn fine(x: f64) -> f64 {
 /// at each level it crosses, with its floor area there, its perimeter and the volume up to the next such level or its top.
 fn sources<'a>(m: &'a Model, cat: &str) -> Vec<(Id, &'a Element, Value)> {
     if cat != "massfloor" {
-        return m.elements.iter().filter(|(_, e)| e.category() == cat).map(|(id, e)| (*id, e, element_json(m, *id))).collect();
+        return m
+            .elements
+            .iter()
+            .filter(|(_, e)| e.category() == cat && !crate::ods::placeholder_element(m, e))
+            .map(|(id, e)| (*id, e, element_json(m, *id)))
+            .collect();
     }
     let mut out = Vec::new();
     for (&id, e) in &m.elements {

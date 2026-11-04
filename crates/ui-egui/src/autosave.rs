@@ -259,7 +259,7 @@ impl BimApp {
                 let same = self.autosave.snapshot.upgrade().is_some_and(|m| Arc::ptr_eq(&m, &self.session.model));
                 if !same && let Some(path) = self.autosave.active.clone() {
                     let snapshot = Arc::clone(&self.session.model);
-                    let result = self.autosave.worker.as_mut().map(|w| w.save(path, Arc::clone(&snapshot)));
+                    let result = self.autosave.worker.as_mut().map(|w| w.save_session(path, &self.session));
                     match result {
                         Some(Ok(true)) => {
                             self.autosave.snapshot = Arc::downgrade(&snapshot);

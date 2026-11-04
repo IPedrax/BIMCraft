@@ -104,8 +104,10 @@ fn tools() -> Value {
          "inputSchema": {"type": "object", "properties": {"category": {"type": "string"}, "level": {"type": ["string", "integer"]}, "limit": {"type": "integer"}, "offset": {"type": "integer"}}}},
         {"name": "schedule", "description": "A schedule's columns, rows and totals, and the fields it could show (`available`). `category` alone reads that category's own: rooms (number, name, level, area, perimeter), doors, windows, walls, floors, levels; ceilings, roofs, columns, components, stairs, ramps and railings too. `name` and `category` make a new one. `fields` (names, or {name, formula, kind, heading, total}: a calculated one such as Area * 120, lengths in mm and areas in m²), `filters` ([{field, op: equals, greater, contains, has-value…, value}]), `sort` ([field or {field, descending}]) and `grouped` change it, each list replacing the last.",
          "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}, "category": {"type": "string"}, "fields": {"type": "array"}, "filters": {"type": "array"}, "sort": {"type": "array"}, "grouped": {"type": "boolean"}}}},
+        {"name": "capture", "description": "Capture the completed desktop frame. Requires mcp --connect and the revision returned by inspect_model.",
+         "inputSchema": {"type": "object", "properties": {"revision": {"type": "string", "maxLength": 128}}, "required": ["revision"], "additionalProperties": false}},
         {"name": "render", "description": "Look at the model as a PNG: a level's floor plan (walls and columns with poché, doors with swings, windows, stairs, ramps and railings, roofs, room tags with areas, grids, dimensions, door and window tags), or with ceiling true its reflected ceiling plan, a section or elevation by name (the cut in poché, what's beyond, levels and grids), a sheet by number (its title block and the views on it), or with view \"{3D}\" the 3D view, seen from azimuth degrees round from east (counter-clockwise) and elevation degrees up; by default from the south-east, 30° up.",
-         "inputSchema": {"type": "object", "properties": {"view": {"type": ["string", "integer"]}, "ceiling": {"type": "boolean"}, "width": {"type": "integer"}, "height": {"type": "integer"}, "azimuth": {"type": "number"}, "elevation": {"type": "number"}}}},
+         "inputSchema": {"type": "object", "properties": {"view": {"type": ["string", "integer"]}, "ceiling": {"type": "boolean"}, "width": {"type": "integer"}, "height": {"type": "integer"}, "azimuth": {"type": "number"}, "elevation": {"type": "number"}, "revision": {"type": "string"}}}},
         {"name": "new_model", "description": "Start an empty project with Level 1 and Level 2.",
          "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}}},
         {"name": "open", "description": "Open a .bimcraft project, import a Revit .rvt file (read directly, no Revit needed: its levels, walls, floors, ceilings, doors and windows, columns, rooms and flat roofs come in, and the reply lists what was left out and why), or import an .ifc file (IFC2x3 or IFC4, from Revit or any BIM tool): its storeys, straight and curved walls with their doors and windows, floors (level or sloped) and ceilings, with their holes, rooms, columns, grids, stairs and ramps of straight runs with landings, railings, shafts and roofs (flat, sloping all round over any footprint with gable ends, courtyards and openings, or one profile swept across) come in measured from their geometry; the reply lists what was left out and why.",
@@ -253,9 +255,29 @@ impl Server {
             }
             "open" => b.own().and_then(|s| s.execute("open", &args)),
             "save" => b.execute("save", &args),
+            "capture" => {
+                let result = match b {
+                    Backend::Window(w) => w.ask(json!({"op": "capture", "revision": args["revision"]})),
+                    _ => Err("capture requires mcp --connect".into()),
+                };
+                return Ok(match result {
+                    Ok(mut frame) => {
+                        let png = frame["pngBase64"].take();
+                        if let Some(metadata) = frame.as_object_mut() {
+                            metadata.remove("pngBase64");
+                        }
+                        json!({"content": [
+                            {"type": "image", "data": png, "mimeType": "image/png"},
+                            {"type": "text", "text": frame.to_string()},
+                        ]})
+                    }
+                    Err(e) => tool_error(&e),
+                });
+            }
             "render" => {
-                let keys = ["view", "ceiling", "width", "height", "azimuth", "elevation"];
-                let view: serde_json::Map<String, Value> = keys.iter().map(|k| (k.to_string(), args[*k].clone())).collect();
+                let keys = ["view", "ceiling", "width", "height", "azimuth", "elevation", "revision"];
+                let view: serde_json::Map<String, Value> =
+                    keys.iter().filter_map(|k| args.get(*k).map(|value| (k.to_string(), value.clone()))).collect();
                 return Ok(match b.execute("render", &Value::Object(view)) {
                     Ok(v) => {
                         let name = v["view"].as_str().unwrap_or("");

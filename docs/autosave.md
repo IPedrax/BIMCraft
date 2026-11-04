@@ -19,6 +19,15 @@ continuous modeling must not starve autosave. There are no periodic dialogs, foc
 - Recovery files are independent of the saved project. Saving a snapshot leaves the project path, dirty state, selection,
   undo history, and saved project untouched. The background worker executes the ordinary `autosave {path}` command on
   its snapshot. Recovery uses `recover {path, project?}`, with the same migrations and validation as Open.
+  For a linked ODS catalogue, the worker also captures its exported GUID set. It records cancelled types when serializing,
+  even if Undo precedes the next catalogue poll, and newly created products awaiting their first export.
+  It also captures an Arc of the last synchronized rows, independent of undo history, so existing product edits
+  survive recovery before the next poll. Only changed products' comparison rows enter the recovery file;
+  opening compares the external and local versions before writing and preserves conflicts with a warning.
+  Model-only worker calls preserve existing metadata without inventing unexported products; editing frontends
+  use `save_session` to capture runtime ownership and the comparison basis. Serialization remains off the UI thread.
+  The completion notice still identifies the original editing snapshot,
+  so this metadata does not trigger repeated autosaves or mark a newer edit as already saved.
 
 These are full snapshots, rather than a new command journal: the existing native project reader can validate and migrate
 them, including after a process is killed. The worker retains a bounded amount of snapshot work, though serialization

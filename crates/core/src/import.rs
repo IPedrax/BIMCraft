@@ -1938,7 +1938,15 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read, or it stands (a column) or lies flat");
             continue;
         };
-        let geom = crate::runs::Geom { a: found.start, b: found.end, width: found.width, depth: found.depth, round: found.round };
+        let geom = crate::runs::Geom {
+            square_ends: false,
+            roll: 0.0,
+            a: found.start,
+            b: found.end,
+            width: found.width,
+            depth: found.depth,
+            round: found.round,
+        };
         if let Err(why) = crate::runs::check(&who(id), category, &geom) {
             leave(&mut skipped, &mut seen, id, why.split_once(": ").map_or(why.as_str(), |(_, w)| w));
             continue;
@@ -1965,7 +1973,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let height = |z: f64| ((z - elevation(level)) * 1000.0).round() / 1000.0 + 0.0;
         // The body is the centre line; the justification BIMCraft wrote puts the heights back on the line they were typed at.
         let justify = run_props.get(&id).and_then(|(j, _)| *j).unwrap_or(Justify::Centre);
-        let g = crate::runs::Geom { a: found.start, b: found.end, width: w, depth: d, round: found.round };
+        let g = crate::runs::Geom { square_ends: false, roll: 0.0, a: found.start, b: found.end, width: w, depth: d, round: found.round };
         let shift = match justify {
             Justify::Top => g.half(),
             Justify::Centre => 0.0,
@@ -1981,6 +1989,11 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             .map(clip)
             .unwrap_or_default();
         let run = Run {
+            square_ends: false,
+            section_roll: 0.0,
+            mount: None,
+            connections: Vec::new(),
+            feeder: None,
             type_name,
             level,
             start: micron(r.flat(found.start)),
@@ -1989,6 +2002,16 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             end_offset: ((z1 - z0).abs() > 1e-6).then_some(z1),
             justify,
             system,
+            source: None,
+            devices: Vec::new(),
+            cable: std::string::String::new(),
+            reserve: 0.0,
+            along_walls: false,
+            carrier: None,
+            local_offset: 0.0,
+            size_locked: false,
+            compartments: Default::default(),
+            compartment: String::new(),
             params: Default::default(),
         };
         let Some(made) = Element::of_run(category, run) else { continue };
@@ -2118,7 +2141,18 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         }
         let level = level_for(id, z);
         let offset = ((z - elevation(level)) * 1000.0).round() / 1000.0 + 0.0;
-        let c = Component { family, type_name, level, at: micron(at), angle, offset, mirrored, params: BTreeMap::new() };
+        let c = Component {
+            family,
+            type_name,
+            level,
+            at: micron(at),
+            angle,
+            offset,
+            mirrored,
+            params: BTreeMap::new(),
+            provision: None,
+            connection_sides: Vec::new(),
+        };
         let cid = m.insert(Element::Component(c));
         from.insert(cid, who(id));
         origin.entry(id).or_insert(cid);

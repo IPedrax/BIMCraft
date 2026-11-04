@@ -40,6 +40,93 @@ use crate::{pdf, render, schedule, sheet, snap, stairs, view3d};
 
 type R = Result<Value, String>;
 
+fn run_mount(s: &mut Session, p: &Value) -> R {
+    if p.get("host").is_none() {
+        return Err("run_mount: host is required; use null to detach explicitly".into());
+    }
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Params {
+        id: Guid,
+        host: Option<Guid>,
+        face: Option<String>,
+        revision: Option<Guid>,
+    }
+    let p: Params = serde_json::from_value(p.clone()).map_err(|e| bad("run_mount", e))?;
+    if p.revision.is_some_and(|token| token != s.revision()) {
+        return Err(bad("run_mount", "stale revision; query the current surface again"));
+    }
+    let id = s.model.elements.id(p.id).ok_or("run_mount: run does not exist")?;
+    let element = s.model.elements.get(id).ok_or("run_mount: missing run")?;
+    let geometry = s.model.run_geom(element).ok_or("run_mount: select a physical run")?;
+    let level = element.run().ok_or("run_mount: select a run")?.level;
+    let mount = p.host.map(|host| crate::model::RunMount { host, face: p.face.clone().unwrap_or_default() });
+    let (a, b) = if let Some(mount) = &mount {
+        let (origin, _, normal) = s.model.run_mount_frame(mount)?;
+        let project = |point| view3d::sub(point, view3d::mul(normal, view3d::dot(view3d::sub(point, origin), normal)));
+        (project(geometry.a), project(geometry.b))
+    } else {
+        (geometry.a, geometry.b)
+    };
+    let base = s.model.elevation(level);
+    let Some(run) = s.model_mut().elements.get_mut(id).and_then(Element::run_mut) else { return Err("run_mount: select a run".into()) };
+    run.mount = mount;
+    run.section_roll = geometry.roll;
+    run.square_ends = geometry.square_ends;
+    run.start = P2(a[0], a[1]);
+    run.end = P2(b[0], b[1]);
+    run.offset = a[2] - base;
+    run.end_offset = Some(b[2] - base);
+    run.justify = crate::model::Justify::Centre;
+    Ok(json!({"id":id}))
+}
+
+fn surface_query(s: &mut Session, p: &Value) -> R {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Params {
+        host: Guid,
+        origin: [f64; 3],
+        direction: [f64; 3],
+        reach: f64,
+        revision: Option<Guid>,
+        footprint: Option<[[f64; 3]; 4]>,
+    }
+    let c = "surface_query";
+    let p: Params = serde_json::from_value(p.clone()).map_err(|e| bad(c, e))?;
+    let id = s.model.elements.id(p.host).ok_or_else(|| bad(c, "host does not exist"))?;
+    if !matches!(s.model.elements.get(id), Some(Element::Wall(_) | Element::Floor(_) | Element::Roof(_) | Element::Ceiling(_))) {
+        return Err(bad(c, "host must be a wall, floor, roof or ceiling"));
+    }
+    let revision = s.revision();
+    if p.revision.is_some_and(|expected| expected != revision) {
+        return Err(bad(c, "stale revision; query the current surface again"));
+    }
+    if let Some(corners) = p.footprint {
+        view3d::surface_patch_frame(corners)?;
+    }
+    let scene = view3d::Scene::new(&s.model);
+    let hit = scene.surface_hit(id, p.origin, p.direction, p.reach)?;
+    let supported = p
+        .footprint
+        .map(|corners| match &hit {
+            Some(hit) => scene.supports_patch(hit, corners),
+            None => Ok(false),
+        })
+        .transpose()?;
+    let hit = hit.map(|hit| {
+        json!({
+            "host":s.model.guid(hit.host), "id":hit.host, "face":hit.face,
+            "point":hit.point, "normal":hit.normal, "distance":hit.distance,
+        })
+    });
+    let mut result = json!({"revision":revision,"hit":hit});
+    if let Some(supported) = supported {
+        result["supported"] = json!(supported);
+    }
+    Ok(result)
+}
+
 const fn edit(id: &'static str, label: &'static str, aliases: &'static [&'static str], params: &'static str, run: Run) -> Command {
     Command { id, label, aliases, params, run, undoable: true }
 }
@@ -50,6 +137,72 @@ const fn other(id: &'static str, label: &'static str, params: &'static str, run:
 }
 
 pub static ALL: &[Command] = &[
+    edit(
+        "run_mount",
+        "Mount Run",
+        &[],
+        "{id:run id|GUID, host:wall|floor|ceiling id|GUID|null, face?: exterior|interior|top|bottom, revision?:token} mount an independent round MEP run or rectangular cable carrier on a straight wall, floor or ceiling. Round outer surface is tangent; rectangular back lies flat with width along surface and depth outward. Follows host/section changes and rejects unsupported contact/back across openings. Null host detaches preserving physical axis and section orientation. Curved walls and roofs not yet supported",
+        run_mount,
+    ),
+    other(
+        "surface_query",
+        "Query Surface",
+        "{host: id|GUID, origin: [x,y,z], direction: [x,y,z], reach: positive mm, revision?: token, footprint?: [[x,y,z];4]} ray query on a selected wall/floor/roof/ceiling; returns snapshot revision and hit {host GUID, id, face, point, outward normal, distance} or null. Optional ordered rectangular footprint in hit plane adds supported: bool (false on ray miss); full area must lie on the named planar face, including holes. Other objects do not occlude selected host. Geometry is tessellated. A stale revision is rejected; no model/history changes",
+        surface_query,
+    ),
+    other(
+        "cable_carrier_candidates",
+        "Cable Carrier Candidates",
+        "{carrier: id|GUID} lists unlinked whole wire segments inside the carrier's actual 3D span and section; never attaches silently; ambiguous is true for multiple candidates. Confirm a selected wire through modify {id: wire, carrier}",
+        cable_carrier_candidates,
+    ),
+    edit(
+        "carrier_section",
+        bimcraft_i18n::ui_msg!("Carrier Type Properties"),
+        &[],
+        "{type: name|GUID|id, section: null|{enclosure?: blind_box|lidded_box|tray|ladder|conduit, clear_width?: mm, clear_depth?: mm}} replace measured cable-carrier product section; null clears it. Other product metadata and type identity remain unchanged; missing measurements mean unknown",
+        carrier_section,
+    ),
+    edit(
+        "cable_carrier_check",
+        "Check Cable Carrier",
+        &[],
+        "{mode?: warn|auto, fill_percent: number, profile?: project|ru_sp76_2016_max_fill, configure?: bool, default_type?: name|GUID|null} omitted profile inherits saved policy or project; configure persists policy; normative box maximum uses measured clear section (not complete compliance); check peak simultaneous cable sections; auto selects the smallest sufficient type of the same known manufacturer; percentage is explicit, not an assumed regulation",
+        cable_carrier_check,
+    ),
+    other(
+        "catalogue_pending",
+        "Unassigned Catalogue Products",
+        "{} list ODS-added types without model instances; built-in unused types and placeholders are excluded",
+        catalogue_pending,
+    ),
+    edit(
+        "catalogue_link",
+        "Link Catalogue",
+        &[],
+        "{path:string|null} bind an ODS catalogue (import existing or create new); null unlinks without deleting the file",
+        catalogue_link,
+    ),
+    edit(
+        "catalogue_sync",
+        "Synchronize Catalogue",
+        &[],
+        "{} protect existing model rows, accept new ODS rows, back up external edits before writing assigned GUIDs",
+        catalogue_sync,
+    ),
+    other(
+        "catalogue_export",
+        "Export Catalogue",
+        "{path} export cable, carrier and family type GUIDs, dimensions and product data to the first ODS sheet",
+        catalogue_export,
+    ),
+    edit(
+        "catalogue_import",
+        "Import Catalogue",
+        &[],
+        "{path, conflicts?: error|update|copy} import first ODS sheet; copied products receive local GUIDs; resolve conflicting products by update or separate copy",
+        catalogue_import,
+    ),
     other(
         "new",
         "New",
@@ -405,28 +558,32 @@ pub static ALL: &[Command] = &[
         pipe,
     ),
     edit(
-        "conduit",
-        ui_msg!("Conduit"),
-        &["CN"],
-        "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a conduit (eletroduto) \
-         for each segment of the points, as `pipe` lays them: round, `width` its outside diameter; `system` names its circuit",
-        conduit,
-    ),
-    edit(
-        "cable_tray",
-        ui_msg!("Cable Tray"),
-        &["CT"],
-        "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a cable tray (eletrocalha) \
-         for each segment of the points, as `pipe` lays them: its section the type's `width` across by `depth` deep",
-        cable_tray,
+        "cable_carrier",
+        ui_msg!("Cable Carrier"),
+        &["CC"],
+        "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a cable carrier \
+         (КНС) for each segment of the points, as `pipe` lays them: round types write as an IFC conduit segment, rectangular \
+         types as an IFC cable tray segment; `system` names the cable group it carries. Alternatively \
+         {from_wire: id|GUID, type?, placement?: centre|top|bottom, local_offset?: mm} creates a carrier around the wire's \
+         physical axis and links that wire in one undo step, preserving the wire's heights and slope. Placement and lateral \
+         offset must fit the section; already linked wires and owned equipment feeders are refused",
+        cable_carrier,
     ),
     edit(
         "wire",
         ui_msg!("Wire"),
         &["EW"],
-        "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?} a wire (condutor) for \
-         each segment of the points, as `pipe` lays them: round, `width` its outside diameter; `system` names its circuit",
+        "{points: [[x,y],…], closed?, type?, level?, offset?, end_offset?, justify?: top|centre|bottom, system?, source?, devices?: [id,…], cable?, reserve?, along_walls?, carrier?, local_offset?} a wire (the one \
+         physical and logical cable) for each segment of the points, as `pipe` lays them: round, `width` its outside diameter; `system` \
+         names its circuit or shield; `source` and `devices` give the panel-to-device loop it carries; `carrier` is the cable carrier it runs in",
         wire,
+    ),
+    edit(
+        "wire_connect",
+        ui_msg!("Connect Wire"),
+        &[],
+        "{wire: id|GUID, device: id|GUID, end?: 0|1, point?: [x,y,z], surface?: {host: id|GUID, face: interior|exterior}, carrier?: id|GUID|null, in_carrier?: bool, min_bend_radius?: mm|null} choose exactly one of a fixed local point or a free wall-surface contact. Free contacts slide on the device connection_sides (bottom/top/right/left, empty means any), independent of cable diameter; the physical cable is tangent to the wall. end defaults to 0 and distinguishes returning cable ends. An explicit carrier selects this end's route independently; omitted/null uses the main wire route. Deleting an explicit carrier preserves the last landing and detaches its carrier branches; reconnect to choose a route again. Creates and updates physical feeder legs without duplicating them. With a free surface and explicit carrier, min_bend_radius checks tangent lengths at the entry; the lead geometry remains straight. Reconnecting a free end to a carrier keeps the previous radius if omitted; null clears it",
+        wire_connect,
     ),
     edit(
         "down_conductor",
@@ -454,6 +611,17 @@ pub static ALL: &[Command] = &[
          (cabeamento estruturado, NBR 14565) for each segment of the points, as `pipe` lays them: round, `width` the cable's outside \
          diameter; `system` names the link or the network it belongs to",
         cabling,
+    ),
+    edit(
+        "detectors",
+        ui_msg!("Lay Detectors"),
+        &[],
+        "{room, kind?: smoke|heat, family?, type?, radius?, margin?} lays point fire detectors over a room (SP 484): a square \
+         grid that brings every point of it within `radius` mm of one (by default a smoke detector's 6400, a heat \
+         detector's 3500, and a reach that closes in proportion when the room's ceiling, to the level above, stands \
+         higher than the detector's mounting height); none nearer a wall than `margin` (500). `family` is by default the \
+         project's first of the `kind`'s (smoke), `type` its first; they stand on the room's level. Returns the new ids",
+        detectors,
     ),
     edit(
         "stair",
@@ -650,10 +818,10 @@ pub static ALL: &[Command] = &[
         "type",
         "Edit Type",
         &[],
-        "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|beam|stripfooting|pipe|conduit|\
-         cabletray|wire|downconductor|groundconductor|cable, name, thickness? | width?, height?, sill? | width?, depth?, round?, \
+        "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|beam|stripfooting|pipe|cablecarrier|\
+         wire|downconductor|groundconductor|cable, name, thickness? | width?, height?, sill? | width?, depth?, round?, \
          material? | height?, spacing?} creates the type, or changes it everywhere it's used. A column's, a structural column's or \
-         a footing's type is a `width` by `depth`, or `round` (`width` across); a run's (a beam's, a pipe's, a cable tray's…) too, \
+         a footing's type is a `width` by `depth`, or `round` (`width` across); a run's (a beam's, a pipe's, a cable carrier's…) too, \
          made of a `material` of the library. A wall type may have `layers` [{function?: structure|\
          substrate|thermal|membrane|finish, material?, thickness}, …] from its exterior side in: it's as thick as they are, \
          its core from its first structure layer to its last, and a new `thickness` goes to its structure. A ceiling type may \
@@ -744,11 +912,18 @@ pub static ALL: &[Command] = &[
         "component",
         ui_msg!("Component"),
         &["CM"],
-        "{family, type?, at: [x,y], level?, angle?, offset?, mirrored?, params?: {parameter: value}} a family's type placed, its \
+        "{family, type?, at?: [x,y], level?, angle?, offset?, mirrored?, connection_sides?: [bottom|top|right|left,...], params?: {parameter: value}, provision?: {placement: placed | planned | nonspatial, quantity: 1..1000000, system?: text, host?: id}} a family's type placed, its \
          first by default: at a point on a level, turned `angle` degrees counter-clockwise, `offset` mm up from the level, and \
          with `mirrored` flipped across its own x axis; `params` sets its instance parameters (`modify` merges into them, a null \
-         taking one back to the family's)",
+         taking one back to the family's). `provision` records billable quantities and a system: planned and nonspatial positions need no `at` and have no geometry or snaps; placed positions require `at` and quantity 1. An optional host is another component or run. connection_sides restricts free cable entries in equipment-local directions; omitted/empty permits any side",
         component,
+    ),
+    edit(
+        "equipment",
+        ui_msg!("Equipment"),
+        &[],
+        "{name? OR type?: existing family-type library name or GUID, quantity?: 1..1000000, system?: text, host?: id, product?: {description?, brand?, article?, manufacturer?, mass_kg?}} add a nonspatial bill position, such as fasteners or software. With name, creates or reuses a type in Specification Items; supplied product data updates that type for all its positions. With type, reuses that existing non-placeholder family type without changing its definition; name and product must be omitted. Quantities appear in component schedules; no plan, 3D or IFC geometry is produced",
+        equipment,
     ),
     edit(
         "flip",
@@ -1121,11 +1296,11 @@ pub static ALL: &[Command] = &[
         "render",
         "Render",
         "{view?: a level's, section's or elevation's name or id, a sheet's number, or {3D}, ceiling?, width?, height?, path?, \
-         azimuth?, elevation?} a level's floor plan (with `ceiling`, its reflected ceiling plan, looking up from 2300 mm), a section, an elevation, a sheet (at 5 px a paper mm), or the 3D view seen from \
+         azimuth?, elevation?, revision?: token} a level's floor plan (with `ceiling`, its reflected ceiling plan, looking up from 2300 mm), a section, an elevation, a sheet (at 5 px a paper mm), or the 3D view seen from \
          `azimuth` degrees round from east (counter-clockwise) and `elevation` degrees up (by default from the south-east, \
          30° up), as a PNG (pngBase64), or written to a path: .png, .svg for a plan, .pdf for a sheet. A plan, section, \
          elevation or sheet that could not draw something as asked (a fill pattern too dense for the view, more ink behind \
-         a region than is kept above it) says so in the reply's `notes`",
+         a region than is kept above it) says so in the reply's `notes`. Returns the model revision used to render. A supplied stale revision is rejected before writing output",
         render_view,
     ),
     edit(
@@ -1322,6 +1497,313 @@ pub static ALL: &[Command] = &[
     ),
 ];
 
+fn carrier_section(s: &mut Session, p: &Value) -> R {
+    let c = "carrier_section";
+    only(c, p, &["type", "section"])?;
+    let key = p.get("type").ok_or_else(|| bad(c, "type is required"))?;
+    let library = &s.model.library;
+    let kind = LibKind::Type("cablecarrier".into());
+    let entry = match key {
+        Value::String(name) => library
+            .entries()
+            .find_map(|(_, e)| (e.kind == kind && e.name == *name).then_some(e))
+            .or_else(|| Guid::parse(name).and_then(|g| library.by_guid(g).map(|(_, e)| e))),
+        _ => key.as_u64().and_then(|id| library.get(id)),
+    }
+    .ok_or_else(|| bad(c, "cable-carrier type was not found"))?
+    .clone();
+    if entry.kind != kind || entry.placeholder {
+        return Err(bad(c, "type must be an existing non-placeholder cable-carrier type"));
+    }
+    let value = p.get("section").ok_or_else(|| bad(c, "section is required; use null to clear it"))?;
+    let section = if value.is_null() {
+        None
+    } else {
+        Some(serde_json::from_value::<crate::carrier_limits::Section>(value.clone()).map_err(|e| bad(c, e))?)
+    };
+    let mut product = entry.product.unwrap_or_default();
+    product.carrier = section;
+    let product = (product != crate::library::Product::default()).then_some(product);
+    s.model_mut().library.set_product(&kind, &entry.name, product)?;
+    Ok(json!({"type":entry.name,"section":value}))
+}
+
+pub(crate) fn cable_carrier_check(s: &mut Session, p: &Value) -> R {
+    let c = "cable_carrier_check";
+    only(c, p, &["mode", "fill_percent", "configure", "default_type", "profile"])?;
+    let profile: crate::carrier_limits::Profile = match p.get("profile") {
+        Some(value) => serde_json::from_value(value.clone()).map_err(|e| bad(c, e))?,
+        None => s.model.carrier_settings.as_ref().map_or(crate::carrier_limits::Profile::default(), |p| p.profile),
+    };
+    let mode = string(c, p, "mode")?.unwrap_or_else(|| "warn".into());
+    if !matches!(mode.as_str(), "warn" | "auto") {
+        return Err(bad(c, "mode must be warn or auto"));
+    }
+    let percent = num(c, p, "fill_percent")?.ok_or_else(|| bad(c, "fill_percent is required"))?;
+    if !percent.is_finite() || percent <= 0.0 || percent > 100.0 {
+        return Err(bad(c, "fill_percent must be greater than 0 and at most 100"));
+    }
+    let configure = flag(c, p, "configure")?;
+    if p.get("default_type").is_some() && !configure {
+        return Err(bad(c, "default_type requires configure:true"));
+    }
+    let default_type = if p.get("default_type").is_some() {
+        string(c, p, "default_type")?.unwrap_or_default()
+    } else {
+        s.model.carrier_settings.as_ref().map(|p| p.default_type.clone()).unwrap_or_default()
+    };
+    let m = &s.model;
+    let area = |t: &crate::model::RunType| if t.round { std::f64::consts::PI * t.width * t.width / 4.0 } else { t.width * t.depth };
+    let maker = |name: &str| {
+        m.library.entries().find_map(|(_, e)| {
+            (e.kind == LibKind::Type("cablecarrier".into()) && e.name == name && !e.placeholder)
+                .then(|| e.product.as_ref().map(|p| p.manufacturer.trim()))
+                .flatten()
+                .filter(|s| !s.is_empty())
+        })
+    };
+    let mut changes = Vec::new();
+    let mut warnings = Vec::new();
+    let mut affected = Vec::new();
+    for (guid, notes) in m.carrier_compartment_warnings(if profile == crate::carrier_limits::Profile::Project { percent } else { 100.0 }) {
+        affected.push(guid);
+        warnings.extend(notes);
+    }
+    let sections = m.carrier_sections();
+    let envelopes = m.carrier_envelopes();
+    let carriers: Vec<_> = m
+        .elements
+        .iter()
+        .filter_map(|(id, e)| matches!(e, Element::CableCarrier(_)).then(|| m.run_geom(e).map(|g| (m.guid(*id), g))).flatten())
+        .collect();
+    let mut endpoints: std::collections::BTreeMap<[i64; 3], Vec<(usize, [f64; 3])>> = std::collections::BTreeMap::new();
+    let mut adjacent = vec![Vec::new(); carriers.len()];
+    for (i, (guid, g)) in carriers.iter().enumerate() {
+        if matches!(m.elements.get(*guid), Some(Element::CableCarrier(r)) if r.size_locked) {
+            continue;
+        }
+        for point in [g.a, g.b] {
+            let key = point.map(|v| (v / crate::model::TOL).floor() as i64);
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    for dz in -1..=1 {
+                        if let Some(previous) = endpoints.get(&[key[0] + dx, key[1] + dy, key[2] + dz]) {
+                            if previous.len() > 64 {
+                                return Err(bad(c, "too many carrier endpoints at one junction; separate the junction before sizing"));
+                            }
+                            for &(j, other) in previous {
+                                if i == j {
+                                    continue;
+                                }
+                                let distance = crate::view3d::sub(point, other).iter().map(|v| v * v).sum::<f64>().sqrt();
+                                let u = crate::view3d::sub(g.b, g.a);
+                                let h = &carriers[j].1;
+                                let v = crate::view3d::sub(h.b, h.a);
+                                let cross = crate::view3d::cross(u, v).iter().map(|x| x * x).sum::<f64>().sqrt();
+                                if distance <= crate::model::TOL && cross <= 1e-6 * g.length() * h.length() && g.round == h.round {
+                                    adjacent[i].push(j);
+                                    adjacent[j].push(i);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            endpoints.entry(key).or_default().push((i, point));
+        }
+    }
+    let mut seen = vec![false; carriers.len()];
+    for root in 0..carriers.len() {
+        if seen[root] {
+            continue;
+        }
+        let mut stack = vec![root];
+        let mut group = Vec::new();
+        while let Some(i) = stack.pop() {
+            if seen[i] {
+                continue;
+            }
+            seen[i] = true;
+            group.push(carriers[i].0);
+            stack.extend(adjacent[i].iter().copied().filter(|j| !seen[*j]));
+        }
+        let used = group.iter().filter_map(|g| sections.get(g)).copied().fold(0.0_f64, f64::max);
+        if used == 0.0 && group.iter().all(|g| matches!(m.elements.get(*g), Some(Element::CableCarrier(r)) if r.compartments.is_empty())) {
+            continue;
+        }
+        let Some(host @ Element::CableCarrier(run)) = m.elements.get(group[0]) else { continue };
+        let Some(current) = m.run_type(host) else { continue };
+        let required = group.iter().filter_map(|g| envelopes.get(g)).fold([0.0_f64; 3], |mut a, b| {
+            for i in 0..3 {
+                a[i] = a[i].max(b[i]);
+            }
+            a
+        });
+        let geometry_conflict = group.iter().any(|g| {
+            matches!(m.elements.get(*g), Some(Element::CableCarrier(r)) if !m.carrier_type_fits(&r.type_name, required, profile)
+                || !m.carrier_compartments_fit(&r.type_name, r, profile))
+        });
+        let insufficient =
+            group.iter().any(|guid| matches!(m.elements.get(*guid), Some(Element::CableCarrier(r)) if m.carrier_capacity(&r.type_name, profile, percent).map_or(true, |allowed| used > allowed)));
+        let uniform =
+            group.iter().all(|guid| matches!(m.elements.get(*guid), Some(Element::CableCarrier(r)) if r.type_name==run.type_name));
+        if !insufficient && !geometry_conflict && (mode != "auto" || uniform) {
+            continue;
+        }
+        let required_area = group
+            .iter()
+            .filter_map(|guid| m.elements.get(*guid).and_then(|e| m.run_type(e)))
+            .map(area)
+            .fold(if profile == crate::carrier_limits::Profile::Project { used * 100.0 / percent } else { 0.0 }, f64::max);
+        if run.size_locked {
+            affected.push(group[0]);
+            warnings.push(format!("cable carrier {}: size is manually locked; capacity or cable envelope cannot be satisfied", group[0]));
+            continue;
+        }
+        let selected = if mode == "auto" {
+            maker(&run.type_name).and_then(|manufacturer| {
+                if !group
+                    .iter()
+                    .all(|guid| matches!(m.elements.get(*guid), Some(Element::CableCarrier(r)) if maker(&r.type_name)==Some(manufacturer)))
+                {
+                    return None;
+                }
+                m.types
+                    .runs
+                    .get("cablecarrier")?
+                    .iter()
+                    .filter(|(name, t)| {
+                        maker(name) == Some(manufacturer)
+                            && t.round == current.round
+                            && area(t) >= required_area
+                            && m.carrier_capacity(name, profile, percent).is_ok_and(|allowed| used <= allowed)
+                            && m.carrier_type_fits(name, required, profile)
+                            && (profile == crate::carrier_limits::Profile::Project || m.carrier_section(&run.type_name).and_then(|s| s.enclosure).is_some_and(|kind|
+                                group.iter().all(|guid| matches!(m.elements.get(*guid), Some(Element::CableCarrier(r)) if m.carrier_section(&r.type_name).and_then(|s| s.enclosure)==Some(kind)))
+                                && m.carrier_section(name).and_then(|s| s.enclosure)==Some(kind)))
+                            && group.iter().all(|guid| matches!(m.elements.get(*guid), Some(Element::CableCarrier(r)) if m.carrier_compartments_fit(name, r, profile)))
+                    })
+                    .min_by(|a, b| area(a.1).total_cmp(&area(b.1)).then(a.0.cmp(b.0)))
+                    .map(|(name, _)| name.clone())
+            })
+        } else {
+            None
+        };
+        if let Some(name) = selected {
+            changes.extend(group.into_iter().map(|guid| (guid, name.clone())));
+        } else {
+            for guid in group {
+                affected.push(guid);
+                if let Some(Element::CableCarrier(r)) = m.elements.get(guid)
+                    && let Err(error) = m.carrier_capacity(&r.type_name, profile, percent)
+                {
+                    warnings.push(format!("cable carrier {guid}: {error}; capacity cannot be verified"));
+                }
+                if geometry_conflict {
+                    warnings.push(format!(
+                        "cable carrier {guid}: geometric conflict; cable envelope or measured compartment does not fit the carrier"
+                    ));
+                }
+                if let Some(Element::CableCarrier(r)) = m.elements.get(guid)
+                    && let Ok(allowed) = m.carrier_capacity(&r.type_name, profile, percent)
+                    && used > allowed
+                {
+                    warnings.push(format!("cable carrier {guid}: cable section {used:.1} mm2 exceeds allowed section {allowed:.1} mm2"));
+                }
+                warnings.push(format!("cable carrier {guid}: select a sufficient uniform type from the same manufacturer"));
+            }
+        }
+    }
+    changes.retain(|(guid, name)| matches!(m.elements.get(*guid), Some(Element::CableCarrier(r)) if r.type_name != *name));
+    if configure {
+        s.model_mut().carrier_settings =
+            Some(crate::model::CarrierSettings { profile, fill_percent: percent, auto: mode == "auto", default_type });
+    }
+    for (guid, name) in &changes {
+        // Use the same host-following geometry path as an explicit type edit.
+        modify(s, &json!({"id":guid,"type":name}))?;
+    }
+    affected.sort();
+    affected.dedup();
+    Ok(json!({"changed":changes.iter().map(|(guid,_)| guid).collect::<Vec<_>>(),"warnings":warnings,"elements":affected}))
+}
+
+fn catalogue_link(s: &mut Session, p: &Value) -> R {
+    only("catalogue_link", p, &["path"])?;
+    if p.get("path") == Some(&Value::Null) {
+        let model = s.model_mut();
+        model.catalogue = None;
+        model.catalogue_retired.clear();
+        model.catalogue_unexported.clear();
+        model.catalogue_pending_edits.clear();
+        return Ok(json!({"path":null}));
+    }
+    let path = string("catalogue_link", p, "path")?.ok_or("catalogue_link: path is required")?;
+    let path = std::path::absolute(&path).map_err(|e| e.to_string())?;
+    let mut model = (*s.model).clone();
+    let catalogue = path.to_str().ok_or("Catalogue path must be Unicode")?;
+    let already_linked = model.catalogue.as_deref() == Some(catalogue);
+    if !already_linked {
+        model.catalogue_retired.clear();
+        model.catalogue_unexported.clear();
+        model.catalogue_pending_edits.clear();
+    }
+    model.catalogue = Some(catalogue.into());
+    model.check()?;
+    let unowned = BTreeSet::new();
+    let reply = if path.try_exists().map_err(|e| e.to_string())? {
+        crate::ods::sync_bound(&mut model, already_linked, if already_linked { &s.catalogue_owned } else { &unowned })?
+    } else {
+        crate::autosave::atomic_write_bytes(&path, &crate::ods::write(&crate::ods::catalogue_rows(&model))?)?;
+        json!({"path":path,"updated":0})
+    };
+    if model != *s.model {
+        *s.model_mut() = model;
+    }
+    s.remember_catalogue();
+    Ok(reply)
+}
+
+fn catalogue_sync(s: &mut Session, p: &Value) -> R {
+    only("catalogue_sync", p, &[])?;
+    let mut model = (*s.model).clone();
+    let reply = crate::ods::sync_bound(&mut model, true, &s.catalogue_owned)?;
+    if model != *s.model {
+        *s.model_mut() = model;
+    }
+    s.remember_catalogue();
+    Ok(reply)
+}
+
+fn catalogue_pending(s: &mut Session, p: &Value) -> R {
+    only("catalogue_pending", p, &[])?;
+    let types: Vec<_> = crate::ods::pending_products(&s.model)
+        .into_iter()
+        .map(|(id, entry)| json!({"id":id,"guid":entry.guid,"name":entry.name,"kind":entry.kind}))
+        .collect();
+    Ok(json!({"types":types}))
+}
+
+fn catalogue_export(s: &mut Session, p: &Value) -> R {
+    only("catalogue_export", p, &["path"])?;
+    let path = string("catalogue_export", p, "path")?.ok_or("catalogue_export: path is required")?;
+    let bytes = crate::ods::write(&crate::ods::catalogue_rows(&s.model))?;
+    crate::autosave::atomic_write_bytes(Path::new(&path), &bytes)?;
+    Ok(json!({"path":path}))
+}
+
+fn catalogue_import(s: &mut Session, p: &Value) -> R {
+    only("catalogue_import", p, &["path", "conflicts"])?;
+    let path = string("catalogue_import", p, "path")?.ok_or("catalogue_import: path is required")?;
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(&path).map_err(|e| e.to_string())?.take((32 << 20) + 1).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    let rows = crate::ods::read(&bytes)?;
+    let rows = crate::ods::transfer_rows(&s.model, &rows, string("catalogue_import", p, "conflicts")?.as_deref())?;
+    let count = crate::ods::apply_catalogue(s.model_mut(), &rows)?;
+    Ok(json!({"updated":count}))
+}
+
 // ---------- parameters ----------
 
 fn bad(cmd: &str, msg: impl std::fmt::Display) -> String {
@@ -1411,6 +1893,14 @@ fn ids_param(c: &str, m: &Model, p: &Value) -> Result<Vec<Id>, String> {
     }
     let mut seen = BTreeSet::new();
     Ok(ids.into_iter().filter(|id| seen.insert(*id)).collect())
+}
+
+/// `v` under `key`, a list of elements of `m` by id or GUID: their GUIDs in the order given, twice where given twice.
+fn guids_param(c: &str, m: &Model, v: &Value, key: &str) -> Result<Vec<Guid>, String> {
+    match v {
+        Value::Array(a) if a.len() <= MAX_POINTS => a.iter().map(|v| element_id(c, m, v).map(|id| m.guid(id))).collect(),
+        _ => Err(bad(c, format!("`{key}` must be a list of at most {MAX_POINTS} element ids, got {v}"))),
+    }
 }
 
 /// `key`, an element by its id or its GUID, if given: as its GUID, or as the id given until the model resolves it.
@@ -1702,6 +2192,9 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             let base = m.elevation(cp.level) + cp.offset;
             let top = m.component_pieces(cp).iter().map(|p| p.top).fold(base, f64::max);
             extra.insert("height".into(), json!(hundredth(top - base)));
+            if let Some(a) = m.address(m.guid(id)) {
+                extra.insert("address".into(), json!(a));
+            }
         }
         Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
             let (bottom, top) = m.span(col.level, col.base_offset, col.top_level, col.height);
@@ -1713,13 +2206,21 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             }
         }
         // Its section, how long it runs along its axis, and the heights of its centre line's ends.
-        crate::model::run_arm!(_) => {
+        crate::model::run_arm!(r) => {
             if let (Some(t), Some(g)) = (m.run_type(e), m.run_geom(e)) {
                 extra.insert("width".into(), json!(t.width));
                 extra.insert("depth".into(), json!(t.depth));
                 extra.insert("round".into(), json!(t.round));
-                extra.insert("length".into(), json!(hundredth(g.length())));
+                let reserve = if e.category() == "wire" { 1.0 + r.reserve / 100.0 } else { 1.0 };
+                extra.insert("length".into(), json!(hundredth(g.length() * reserve)));
                 extra.insert("axis".into(), json!([g.a, g.b].map(|p| p.map(hundredth))));
+            }
+            // Its source and devices by id too, and its cable's length.
+            if e.category() == "wire" && r.connections.is_empty() && r.feeder.is_none() && (r.source.is_some() || !r.devices.is_empty()) {
+                extra.insert("source_id".into(), json!(r.source.map(|g| m.elements.id(g))));
+                extra.insert("device_ids".into(), json!(r.devices.iter().filter_map(|d| m.elements.id(*d)).collect::<Vec<_>>()));
+                extra.insert("device_count".into(), json!(r.devices.len()));
+                extra.insert("length".into(), json!(hundredth(m.circuit_length(r))));
             }
         }
         Element::Stair(st) => {
@@ -1772,6 +2273,7 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             // `+ 0.0`: no `-0`.
             extra.insert("looking".into(), json!([l.0 + 0.0, l.1 + 0.0]));
         }
+
         Element::Tag(t) => {
             extra.insert("text".into(), json!(m.tag_text(t)));
             extra.insert("level".into(), json!(m.level_of(e)));
@@ -1906,6 +2408,7 @@ fn open(s: &mut Session, p: &Value) -> R {
 
 /// `reply` of an open, with the links that couldn't be read once the project is read.
 fn with_links(s: &mut Session, mut reply: Value) -> Value {
+    reply["warnings"] = json!(s.model.carrier_warnings());
     let failed = relink(s);
     if !failed.is_empty() {
         reply["links_not_loaded"] = json!(failed);
@@ -1961,9 +2464,19 @@ fn open_file(s: &mut Session, p: &Value) -> R {
     }
     m.sync_library();
     m.check().map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+    let catalogue = m.catalogue.as_ref().map(|_| ()).map(|()| crate::ods::sync_bound(&mut m, false, &BTreeSet::new()));
     let name = m.name.clone();
     s.reset(m, Some(path.clone()));
     let mut reply = json!({"path": path, "name": name});
+    let missing: Vec<_> = s.model.library.entries().filter(|(_, entry)| entry.placeholder).map(|(_, entry)| entry.guid).collect();
+    if !missing.is_empty() {
+        reply["catalogue_placeholders"] = json!(missing);
+    }
+    match catalogue {
+        Some(Ok(result)) => reply["catalogue"] = result,
+        Some(Err(error)) => reply["catalogue_not_loaded"] = json!(error),
+        None => {}
+    }
     if !renamed.is_empty() {
         reply["renamed"] = json!(renamed);
     }
@@ -2211,7 +2724,9 @@ fn save(s: &mut Session, p: &Value) -> R {
         write_plan(&render::plan(&crate::link::seen(&s.model), level, 1600, 1000), &path)?;
         return Ok(json!({"path": path, "format": format}));
     }
-    let text = s.model.to_json().map_err(|e| bad(c, e))?;
+    let snapshot = s.snapshot();
+    snapshot.check().map_err(|e| bad(c, e))?;
+    let text = snapshot.to_json().map_err(|e| bad(c, e))?;
     crate::autosave::atomic_write(&path, &text).map_err(|e| bad(c, e))?;
     s.path = Some(path.clone());
     Ok(json!({"path": path, "format": "bimcraft"}))
@@ -2222,7 +2737,9 @@ fn autosave(s: &mut Session, p: &Value) -> R {
     if s.path.as_ref() == Some(&path) {
         return Err(bad("autosave", "the recovery file must differ from the saved project"));
     }
-    let text = s.model.to_json().map_err(|e| bad("autosave", e))?;
+    let snapshot = s.snapshot();
+    snapshot.check().map_err(|e| bad("autosave", e))?;
+    let text = snapshot.to_json().map_err(|e| bad("autosave", e))?;
     if text.len() as u64 >= MAX_FILE {
         return Err(bad("autosave", "the recovery snapshot exceeds the project file size limit"));
     }
@@ -2276,6 +2793,19 @@ fn png_reply(c: &str, p: &Value, png: Vec<u8>, mut info: Value) -> R {
 }
 
 fn render_view(s: &mut Session, p: &Value) -> R {
+    let revision = s.revision();
+    if let Some(value) = p.get("revision") {
+        let expected: Guid = serde_json::from_value(value.clone()).map_err(|e| bad("render", e))?;
+        if expected != revision {
+            return Err(bad("render", "stale revision; inspect the current project before rendering"));
+        }
+    }
+    let mut result = render_snapshot(s, p)?;
+    result["revision"] = json!(revision);
+    Ok(result)
+}
+
+fn render_snapshot(s: &Session, p: &Value) -> R {
     let c = "render";
     // What its links build is in the picture.
     let seen = crate::link::seen(&s.model);
@@ -2668,6 +3198,12 @@ fn edit_graphics(c: &str, m: &Model, p: &Value, g: &mut Graphics, of_template: b
         }
     }
     // The design option it shows of each set, null taking a choice back.
+    if let Some(v) = p.get("engineering") {
+        g.engineering = match v {
+            Value::Bool(b) => *b,
+            v => return Err(bad(c, format!("`engineering` is true or false, not {v}"))),
+        };
+    }
     match p.get("options") {
         v if absent(v) => {}
         Some(Value::Object(o)) if o.len() <= phasing::MAX_OPTION_SETS => {
@@ -2696,7 +3232,7 @@ fn graphics_reply(g: &Graphics) -> Value {
     json!({
         "hidden": hidden, "categories": g.categories, "filters": g.filters, "layers": g.layers,
         "phase": g.phase, "phase_filter": g.phase_filter, "options": g.options,
-        "scale": g.scale, "detail": g.detail, "visual_style": g.style,
+        "scale": g.scale, "detail": g.detail, "visual_style": g.style, "engineering": g.engineering,
     })
 }
 
@@ -4601,6 +5137,94 @@ fn tag(s: &mut Session, p: &Value) -> R {
     Ok(json!({"ids": ids}))
 }
 
+fn detectors(s: &mut Session, p: &Value) -> R {
+    let c = "detectors";
+    let m = &s.model;
+    let room = element_id(c, m, p.get("room").ok_or_else(|| bad(c, "`room` (the room's id) is required"))?)?;
+    let Some(Element::Room(r)) = m.elements.get(room) else {
+        return Err(bad(c, format!("{room} isn't a room")));
+    };
+    let region = m.room_region(r).ok_or_else(|| bad(c, format!("room {} isn't bound by walls any more", r.number)))?;
+    let kind = match string(c, p, "kind")?.as_deref() {
+        None | Some("smoke") => crate::family::Category::SmokeDetector,
+        Some("heat") => crate::family::Category::HeatDetector,
+        Some(k) => return Err(bad(c, format!("`kind` is smoke or heat, not `{k}`"))),
+    };
+    let family = match string(c, p, "family")? {
+        Some(f) => f,
+        None => m
+            .families
+            .iter()
+            .find(|(_, f)| f.category == kind)
+            .map(|(name, _)| name.clone())
+            .ok_or_else(|| bad(c, "the project has no family of that kind of detector: give `family`"))?,
+    };
+    let f = m.families.get(&family).ok_or_else(|| bad(c, format!("family `{family}` doesn't exist")))?;
+    let base = match f.category {
+        crate::family::Category::SmokeDetector => 6400.0,
+        crate::family::Category::HeatDetector => 3500.0,
+        _ => return Err(bad(c, format!("`{family}` isn't a smoke or heat detector"))),
+    };
+    let type_name = match string(c, p, "type")? {
+        Some(t) if f.types.contains_key(&t) => t,
+        Some(t) => return Err(bad(c, format!("family `{family}` has no type `{t}`"))),
+        None => f.types.keys().next().cloned().ok_or_else(|| bad(c, format!("family `{family}` has no type")))?,
+    };
+    // SP 484 lets a point detector sense within its reach only up to the height its type is made for:
+    // over a room whose ceiling stands higher, the plume is thinner and the reach closes in
+    // proportion. The ceiling is the room's level to the one above, or the height of a room without
+    // a level above; the height made for is the family's mounting height, its type's over it.
+    const MAX_DETECTORS: usize = 2000;
+    let mounting = m.language.word("Mounting Height");
+    let design = f
+        .types
+        .get(&type_name)
+        .and_then(|t| t.get(mounting).and_then(Value::as_f64))
+        .or_else(|| f.parameters.iter().find(|q| q.name == mounting).and_then(|q| q.value.as_f64()))
+        .filter(|d| d.is_finite() && *d > 0.0)
+        .unwrap_or(crate::model::DEFAULT_HEIGHT);
+    let ceiling = m.level_above(r.level).map_or(crate::model::DEFAULT_HEIGHT, |up| m.elevation(up) - m.elevation(r.level));
+    let reach = match num(c, p, "radius")? {
+        Some(r) => r,
+        None => base * (design / ceiling.max(1.0)).min(1.0),
+    };
+    if reach <= 0.0 {
+        return Err(bad(c, "`radius` is more than 0"));
+    }
+    let margin = num(c, p, "margin")?.unwrap_or(500.0).max(0.0);
+    // No grid tinier than what one command may lay in detectors.
+    let (x0, x1, y0, y1) = region
+        .outer
+        .iter()
+        .fold((f64::MAX, f64::MIN, f64::MAX, f64::MIN), |(x0, x1, y0, y1), q| (x0.min(q.0), x1.max(q.0), y0.min(q.1), y1.max(q.1)));
+    let step = reach * std::f64::consts::SQRT_2;
+    let cells = |span: f64| (span / step).ceil().max(1.0);
+    if cells(x1 - x0) * cells(y1 - y0) > MAX_DETECTORS as f64 {
+        return Err(bad(c, format!("this `radius` would need over {MAX_DETECTORS} detectors over the room: ask for a bigger one")));
+    }
+    let level = r.level;
+    let points = region.cover(reach, margin);
+    let model = s.model_mut();
+    let ids: Vec<Id> = points
+        .into_iter()
+        .map(|at| {
+            model.insert(Element::Component(Component {
+                family: family.clone(),
+                type_name: type_name.clone(),
+                level,
+                at,
+                angle: 0.0,
+                offset: 0.0,
+                mirrored: false,
+                params: BTreeMap::new(),
+                provision: None,
+                connection_sides: Vec::new(),
+            }))
+        })
+        .collect();
+    Ok(json!({"ids": ids}))
+}
+
 fn text_note(s: &mut Session, p: &Value) -> R {
     let c = "text";
     let m = &s.model;
@@ -4723,16 +5347,218 @@ fn pipe(s: &mut Session, p: &Value) -> R {
     chain(s, p, "pipe")
 }
 
-fn conduit(s: &mut Session, p: &Value) -> R {
-    chain(s, p, "conduit")
+fn cable_carrier(s: &mut Session, p: &Value) -> R {
+    if let Some(value) = p.get("from_wire") {
+        let c = "cable_carrier";
+        only(c, p, &["from_wire", "type", "placement", "local_offset"])?;
+        let m = &s.model;
+        let wire_id = element_id(c, m, value)?;
+        let element = m.elements.get(wire_id).ok_or_else(|| bad(c, "from_wire must name an existing wire"))?;
+        let Element::Wire(wire) = element else { return Err(bad(c, "from_wire must name a wire")) };
+        if wire.feeder.is_some() {
+            return Err(bad(c, "connect equipment in its main wire's carrier instead of editing an owned feeder"));
+        }
+        if wire.carrier.is_some() {
+            return Err(bad(c, "wire already has a carrier; detach it before creating another"));
+        }
+        let geometry = m.run_geom(element).ok_or_else(|| bad(c, "wire has no valid physical geometry"))?;
+        let type_name = if absent(p.get("type")) {
+            m.carrier_settings
+                .as_ref()
+                .map(|v| v.default_type.clone())
+                .filter(|v| !v.is_empty())
+                .map(Ok)
+                .unwrap_or_else(|| type_param(c, p, m, "cablecarrier"))?
+        } else {
+            type_param(c, p, m, "cablecarrier")?
+        };
+        let section = m
+            .types
+            .runs
+            .get("cablecarrier")
+            .and_then(|types| types.get(&type_name))
+            .ok_or_else(|| bad(c, "select an existing cable carrier type"))?;
+        let placement = string(c, p, "placement")?.unwrap_or_else(|| "centre".into());
+        let local_offset = num(c, p, "local_offset")?.unwrap_or(0.0);
+        let depth = if section.round { section.width } else { section.depth };
+        if geometry.width > section.width + TOL
+            || geometry.depth > depth + TOL
+            || local_offset.abs() + geometry.width / 2.0 > section.width / 2.0 + TOL
+        {
+            return Err(bad(c, "the wire and its lateral offset must fit the carrier section"));
+        }
+        let clearance = if section.round {
+            let (radius, lateral, half_depth) = if geometry.round {
+                ((section.width - geometry.width) / 2.0, local_offset.abs(), 0.0)
+            } else {
+                (section.width / 2.0, local_offset.abs() + geometry.width / 2.0, geometry.depth / 2.0)
+            };
+            let clearance = (radius * radius - lateral * lateral).max(0.0).sqrt() - half_depth;
+            if clearance < -TOL {
+                return Err(bad(c, "the wire corners must fit the round carrier section"));
+            }
+            clearance.max(0.0)
+        } else {
+            (depth - geometry.depth) / 2.0
+        };
+        let vertical = match placement.as_str() {
+            "centre" => 0.0,
+            "top" => clearance,
+            "bottom" => -clearance,
+            _ => return Err(bad(c, "placement must be centre, top or bottom")),
+        };
+        let (_, across, up) = geometry.frame();
+        let shift = view3d::add(view3d::mul(across, local_offset), view3d::mul(up, vertical));
+        let a = view3d::sub(geometry.a, shift);
+        let b = view3d::sub(geometry.b, shift);
+        let mut carrier = wire.clone();
+        carrier.mount = None;
+        carrier.square_ends = geometry.square_ends;
+        carrier.type_name = type_name;
+        carrier.start = P2(a[0], a[1]);
+        carrier.end = P2(b[0], b[1]);
+        carrier.offset = a[2] - m.elevation(wire.level);
+        carrier.end_offset = Some(b[2] - m.elevation(wire.level));
+        carrier.justify = crate::model::Justify::Centre;
+        carrier.source = None;
+        carrier.devices.clear();
+        carrier.cable.clear();
+        carrier.reserve = 0.0;
+        carrier.along_walls = false;
+        carrier.carrier = None;
+        carrier.local_offset = 0.0;
+        carrier.size_locked = false;
+        carrier.compartments.clear();
+        carrier.compartment.clear();
+        carrier.params.clear();
+        carrier.connections.clear();
+        carrier.feeder = None;
+        let mut wire = wire.clone();
+        // Transfer ownership to the new carrier without treating the saved contact line as an axis.
+        wire.mount = None;
+        wire.square_ends = geometry.square_ends;
+        wire.start = P2(geometry.a[0], geometry.a[1]);
+        wire.end = P2(geometry.b[0], geometry.b[1]);
+        wire.offset = geometry.a[2] - m.elevation(wire.level);
+        wire.end_offset = Some(geometry.b[2] - m.elevation(wire.level));
+        wire.justify = crate::model::Justify::Centre;
+        let m = s.model_mut();
+        let id = m.insert(Element::CableCarrier(carrier));
+        wire.carrier = Some(m.guid(id));
+        wire.local_offset = local_offset;
+        m.elements.insert(wire_id, Element::Wire(wire));
+        return Ok(json!({"ids": [id], "wire": wire_id}));
+    }
+    chain(s, p, "cablecarrier")
 }
 
-fn cable_tray(s: &mut Session, p: &Value) -> R {
-    chain(s, p, "cabletray")
+fn cable_carrier_candidates(s: &mut Session, p: &Value) -> R {
+    let c = "cable_carrier_candidates";
+    only(c, p, &["carrier"])?;
+    let carrier = element_id(c, &s.model, p.get("carrier").ok_or_else(|| bad(c, "carrier is required"))?)?;
+    let wires = s.model.carrier_wire_candidates(carrier)?;
+    Ok(json!({"carrier":carrier,"ambiguous":wires.len()>1,"wires":wires}))
 }
 
 fn wire(s: &mut Session, p: &Value) -> R {
     chain(s, p, "wire")
+}
+
+fn wire_connect(s: &mut Session, p: &Value) -> R {
+    let c = "wire_connect";
+    only(c, p, &["wire", "device", "end", "point", "surface", "carrier", "in_carrier", "min_bend_radius"])?;
+    let end = count_opt(c, p, "end", 0)?;
+    if end > 1 {
+        return Err(bad(c, "end must be 0 or 1"));
+    }
+    let end = end as u8;
+    let wire_id = element_id(c, &s.model, p.get("wire").ok_or_else(|| bad(c, "wire is required"))?)?;
+    let device_id = element_id(c, &s.model, p.get("device").ok_or_else(|| bad(c, "device is required"))?)?;
+    let surface = match p.get("surface") {
+        None => None,
+        Some(value) => {
+            only(c, value, &["host", "face"])?;
+            if p.get("point").is_some() {
+                return Err(bad(c, "choose a fixed point or a free surface, not both"));
+            }
+            let host = element_id(c, &s.model, value.get("host").ok_or_else(|| bad(c, "surface.host is required"))?)?;
+            let face = string(c, value, "face")?.ok_or_else(|| bad(c, "surface.face is required"))?;
+            Some(crate::model::ConnectionSurface { host: Some(s.model.guid(host)), face, origin: [0.0; 3], normal: [0.0, 1.0, 0.0] })
+        }
+    };
+    let mut point = [0.0; 3];
+    if surface.is_none() {
+        let values = p
+            .get("point")
+            .and_then(Value::as_array)
+            .filter(|a| a.len() == 3)
+            .ok_or_else(|| bad(c, "point must be a local [x,y,z] in mm, or provide surface"))?;
+        for (i, v) in values.iter().enumerate() {
+            point[i] = v
+                .as_f64()
+                .filter(|v| v.is_finite() && v.abs() <= MAX_COORD)
+                .ok_or_else(|| bad(c, "point must be finite and within coordinate limits"))?;
+        }
+    }
+    let carrier = match p.get("carrier") {
+        None | Some(Value::Null) => None,
+        Some(value) => Some(s.model.guid(element_id(c, &s.model, value)?)),
+    };
+    let min_bend_radius = match p.get("min_bend_radius") {
+        None | Some(Value::Null) => None,
+        Some(value) => Some(
+            value
+                .as_f64()
+                .filter(|r| r.is_finite() && *r > 0.0 && *r <= MAX_COORD)
+                .ok_or_else(|| bad(c, "min_bend_radius must be a positive length in mm"))?,
+        ),
+    };
+    if min_bend_radius.is_some() && (surface.is_none() || carrier.is_none()) {
+        return Err(bad(c, "min_bend_radius requires a free surface and a carrier"));
+    }
+    let mut connection = crate::model::WireConnection {
+        min_bend_radius,
+        device: s.model.guid(device_id),
+        end,
+        point,
+        in_carrier: flag(c, p, "in_carrier")?,
+        carrier,
+        landing: None,
+        surface,
+    };
+    let before = s.model.clone();
+    let Some(Element::Wire(wire)) = s.model_mut().elements.get_mut(wire_id) else {
+        return Err(bad(c, "wire must name an existing main wire"));
+    };
+    if wire.feeder.is_some() {
+        return Err(bad(c, "select the main wire, not an owned feeder"));
+    }
+    if let Some(existing) = wire.connections.iter_mut().find(|v| v.device == connection.device && v.end == connection.end) {
+        if p.get("min_bend_radius").is_none() && connection.surface.is_some() && connection.carrier.is_some() {
+            connection.min_bend_radius = existing.min_bend_radius;
+        }
+        *existing = connection;
+    } else {
+        if wire.connections.len() >= MAX_POINTS {
+            return Err(bad(c, "too many equipment connections"));
+        }
+        wire.connections.push(connection);
+    }
+    s.model_mut().refresh_wire_connections(&before)?;
+    let parent = s.model.guid(wire_id);
+    let device = s.model.guid(device_id);
+    let mut ids = Vec::new();
+    let mut carriers = Vec::new();
+    for (id, e) in s.model.elements.iter() {
+        if e.run().and_then(|r| r.feeder.as_ref()).is_some_and(|f| f.wire == parent && f.device == device && f.end == end) {
+            if e.category() == "wire" {
+                ids.push(*id);
+            } else {
+                carriers.push(*id);
+            }
+        }
+    }
+    Ok(json!({"ids":ids,"carriers":carriers,"wire":wire_id,"device":device_id,"end":end}))
 }
 
 fn down_conductor(s: &mut Session, p: &Value) -> R {
@@ -4754,7 +5580,7 @@ fn chain(s: &mut Session, p: &Value, category: &str) -> R {
     Ok(json!({"ids": ids}))
 }
 
-/// The run category a command makes, if it makes runs (`pipe`, `cable_tray`): `command_of`'s other way.
+/// The run category a command makes, if it makes runs (`pipe`, `cable_carrier`): `command_of`'s other way.
 pub fn run_category_of(command: &str) -> Option<&'static str> {
     crate::model::RUN_CATEGORIES.into_iter().find(|c| command_of(c) == command)
 }
@@ -4766,8 +5592,7 @@ pub fn command_of(category: &str) -> &'static str {
         "stripfooting" => "strip_footing",
         "beam" => "beam",
         "pipe" => "pipe",
-        "conduit" => "conduit",
-        "cabletray" => "cable_tray",
+        "cablecarrier" => "cable_carrier",
         "wire" => "wire",
         "downconductor" => "down_conductor",
         "groundconductor" => "ground_conductor",
@@ -4781,6 +5606,30 @@ pub fn command_of(category: &str) -> &'static str {
 /// makes them, not yet in the model: a tool previews what a click would make.
 pub fn runs_of(m: &Model, p: &Value, category: &str) -> Result<Vec<Element>, String> {
     let c = command_of(category);
+    only(
+        c,
+        p,
+        &[
+            "points",
+            "closed",
+            "type",
+            "level",
+            "offset",
+            "end_offset",
+            "justify",
+            "system",
+            "source",
+            "devices",
+            "cable",
+            "reserve",
+            "along_walls",
+            "carrier",
+            "local_offset",
+            "size_locked",
+            "compartments",
+            "compartment",
+        ],
+    )?;
     let mut pts = points(c, p, "points")?;
     if pts.len() < 2 {
         return Err(bad(c, "`points` needs at least 2 points"));
@@ -4803,11 +5652,45 @@ pub fn runs_of(m: &Model, p: &Value, category: &str) -> Result<Vec<Element>, Str
             .map_err(|_| bad(c, format!("`justify` is top, centre or bottom, not `{n}`")))?,
     };
     let system = string(c, p, "system")?.unwrap_or_default();
+    let wire = category == "wire";
+    for key in ["source", "devices", "cable", "reserve", "along_walls", "carrier", "local_offset"] {
+        if !wire && !absent(p.get(key)) {
+            return Err(bad(c, format!("`{key}` is a wire's, not a carrier's, beam's, pipe's or other run's")));
+        }
+    }
+    let source = if wire && !absent(p.get("source")) {
+        Some(m.guid(element_id(c, m, p.get("source").ok_or_else(|| bad(c, "`source` names no element in the model"))?)?))
+    } else {
+        None
+    };
+    let devices = if wire && !absent(p.get("devices")) {
+        guids_param(c, m, p.get("devices").ok_or_else(|| bad(c, "`devices` is an array of device ids"))?, "devices")?
+    } else {
+        Vec::new()
+    };
+    let carrier = if wire && !absent(p.get("carrier")) {
+        Some(m.guid(element_id(c, m, p.get("carrier").ok_or_else(|| bad(c, "`carrier` names no element in the model"))?)?))
+    } else {
+        None
+    };
+    let cable = string(c, p, "cable")?.unwrap_or_default();
+    let reserve = num(c, p, "reserve")?.unwrap_or(0.0);
+    let along_walls = flag(c, p, "along_walls")?;
+    let local_offset = num(c, p, "local_offset")?.unwrap_or(0.0);
+    let size_locked = flag(c, p, "size_locked")?;
+    let compartments: BTreeMap<String, crate::model::CarrierCompartment> =
+        serde_json::from_value(p.get("compartments").cloned().unwrap_or_else(|| json!({}))).map_err(|e| bad(c, e))?;
+    let compartment = string(c, p, "compartment")?.unwrap_or_default();
     pts.windows(2)
         .map(|seg| match seg {
             [a, b] => Element::of_run(
                 category,
                 crate::model::Run {
+                    square_ends: false,
+                    section_roll: 0.0,
+                    mount: None,
+                    connections: Vec::new(),
+                    feeder: None,
                     type_name: type_name.clone(),
                     level,
                     start: *a,
@@ -4816,6 +5699,16 @@ pub fn runs_of(m: &Model, p: &Value, category: &str) -> Result<Vec<Element>, Str
                     end_offset,
                     justify,
                     system: system.clone(),
+                    source,
+                    devices: devices.clone(),
+                    cable: cable.clone(),
+                    reserve,
+                    along_walls,
+                    carrier,
+                    local_offset,
+                    size_locked,
+                    compartments: compartments.clone(),
+                    compartment: compartment.clone(),
                     params: Default::default(),
                 },
             ),
@@ -6167,18 +7060,97 @@ fn component(s: &mut Session, p: &Value) -> R {
         v if absent(v) => BTreeMap::new(),
         v => return Err(bad(c, format!("`params` is {{parameter: value}}, not {}", v.unwrap_or(&Value::Null)))),
     };
+    let provision: Option<crate::model::Provision> =
+        p.get("provision").filter(|v| !v.is_null()).map(|v| serde_json::from_value(v.clone()).map_err(|e| bad(c, e))).transpose()?;
+    let placed = provision.as_ref().is_none_or(|p| p.placement == crate::model::Placement::Placed);
     let comp = Component {
         family,
         type_name,
         level: level_param(c, m, p, "level")?,
-        at: point_req(c, p, "at")?,
+        at: if placed || p.get("at").is_some() { point_req(c, p, "at")? } else { P2(0.0, 0.0) },
         angle: num(c, p, "angle")?.unwrap_or(0.0),
         offset: num(c, p, "offset")?.unwrap_or(0.0),
         mirrored: flag(c, p, "mirrored")?,
         params,
+        provision,
+        connection_sides: p
+            .get("connection_sides")
+            .map(|v| serde_json::from_value(v.clone()).map_err(|e| bad(c, e)))
+            .transpose()?
+            .unwrap_or_default(),
     };
     let id = s.model_mut().insert(Element::Component(comp));
     Ok(json!({"id": id}))
+}
+
+fn equipment(s: &mut Session, p: &Value) -> R {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Params {
+        name: Option<String>,
+        #[serde(rename = "type")]
+        type_name: Option<String>,
+        quantity: Option<u32>,
+        system: Option<String>,
+        host: Option<Guid>,
+        product: Option<crate::library::Product>,
+    }
+    let c = "equipment";
+    let params: Params = serde_json::from_value(p.clone()).map_err(|e| bad(c, e))?;
+    if params.type_name.is_some() {
+        if params.name.is_some() || params.product.is_some() {
+            return Err(bad(c, "with `type`, omit `name` and `product`; adding a position must not redefine its catalogue product"));
+        }
+        let selected = name_of(c, &p["type"], "type")?;
+        let model = &s.model;
+        let kind = crate::library::Kind::FamilyType;
+        if model.library.guid(&kind, &selected).is_none() || model.library.placeholder(&kind, &selected) {
+            return Err(bad(c, "`type` must name an existing non-placeholder family type"));
+        }
+        let (family, type_name) = model
+            .families
+            .iter()
+            .filter_map(|(name, family)| {
+                selected
+                    .strip_prefix(&format!("{name}: "))
+                    .filter(|ty| family.types.contains_key(*ty))
+                    .map(|ty| (name.clone(), ty.to_owned()))
+            })
+            .max_by_key(|(name, _)| name.len())
+            .ok_or_else(|| bad(c, "the catalogue type has no matching family definition"))?;
+        return component(
+            s,
+            &json!({"family":family,"type":type_name,
+            "provision":{"placement":"nonspatial","quantity":params.quantity.unwrap_or(1),"system":params.system.unwrap_or_default(),"host":params.host}}),
+        );
+    }
+    let name = name_of(c, &p["name"], "name")?;
+    let model = s.model_mut();
+    let family_name = model.language.word(msg!("Specification Items")).to_string();
+    let family = model
+        .families
+        .entry(family_name.clone())
+        .or_insert_with(|| crate::family::Family { category: crate::family::Category::Generic, ..Default::default() });
+    if family.category != crate::family::Category::Generic
+        || !family.parameters.is_empty()
+        || !family.forms.is_empty()
+        || !family.symbols.is_empty()
+    {
+        return Err(bad(c, "Specification Items must remain a catalogue-only generic family"));
+    }
+    family.types.entry(name.clone()).or_default();
+    model.sync_library();
+    if let Some(product) = params.product {
+        model
+            .library
+            .set_product(&crate::library::Kind::FamilyType, &format!("{family_name}: {name}"), Some(product))
+            .map_err(|e| bad(c, e))?;
+    }
+    component(
+        s,
+        &json!({"family":family_name,"type":name,
+        "provision":{"placement":"nonspatial","quantity":params.quantity.unwrap_or(1),"system":params.system.unwrap_or_default(),"host":params.host}}),
+    )
 }
 
 /// The project's pictures, each its name and its size in pixels.
@@ -6406,7 +7378,7 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
                 c,
                 format!(
                     "`{other}` has no types; use wall, floor, ceiling, door, window, column, structural column, footing, beam, \
-                     strip footing, pipe, conduit, cable tray, wire, down conductor, earthing conductor, cable, roof or railing"
+                     strip footing, pipe, cable carrier, wire, down conductor, earthing conductor, cable, roof or railing"
                 ),
             ));
         }
@@ -6481,6 +7453,28 @@ fn modify(s: &mut Session, p: &Value) -> R {
                 "category" if obj.get("category") == Some(val) => continue,
                 "category" => return Err(bad(c, "`category` can't change; delete the element and create another")),
                 "level" | "top_level" if val.is_string() => json!(level_param(c, m, p, k)?),
+                // A wire's source, devices and carrier, by id or GUID.
+                "source" if matches!(e, Element::Wire(_)) => {
+                    if val.is_null() {
+                        val.clone()
+                    } else {
+                        json!(m.guid(element_id(c, m, val)?))
+                    }
+                }
+                "devices" if matches!(e, Element::Wire(_)) => {
+                    if val.is_null() {
+                        json!([])
+                    } else {
+                        json!(guids_param(c, m, val, k)?)
+                    }
+                }
+                "carrier" if matches!(e, Element::Wire(_)) => {
+                    if val.is_null() {
+                        val.clone()
+                    } else {
+                        json!(m.guid(element_id(c, m, val)?))
+                    }
+                }
                 _ => val.clone(),
             };
             match obj.get_mut(k) {
@@ -6520,6 +7514,47 @@ fn modify(s: &mut Session, p: &Value) -> R {
             }
         }
         edited.push((id, e2));
+    }
+    // Carry the cable in the host's 3D frame, including upright and sloping runs.
+    for (host_id, after) in &edited {
+        use crate::runs::Geom;
+        use crate::view3d::{add, dot, mul, sub};
+        let (Some(Element::CableCarrier(before)), Element::CableCarrier(after)) = (m.elements.get(*host_id), after) else { continue };
+        let Some(types) = m.types.runs.get("cablecarrier") else { continue };
+        let (Some(old_type), Some(new_type)) = (types.get(&before.type_name), types.get(&after.type_name)) else { continue };
+        let (old, new) = (Geom::of(m, before, old_type), Geom::of(m, after, new_type));
+        if old == new {
+            continue;
+        }
+        let (old_u, old_x, old_y) = old.frame();
+        let (_, new_x, new_y) = new.frame();
+        let map = |point| {
+            let relative = sub(point, old.a);
+            let fraction = dot(relative, old_u) / old.length().max(TOL);
+            add(new.a, add(mul(sub(new.b, new.a), fraction), add(mul(new_x, dot(relative, old_x)), mul(new_y, dot(relative, old_y)))))
+        };
+        for (&wire_id, element) in &m.elements {
+            let Element::Wire(wire) = element else { continue };
+            if ids.contains(&wire_id) || !wire.carrier.is_some_and(|host| m.same(host, *host_id)) {
+                continue;
+            }
+            let Some(wire_type) = m.run_type(element) else { continue };
+            let geometry = Geom::of(m, wire, wire_type);
+            let (a, b) = (map(geometry.a), map(geometry.b));
+            let mut wire = wire.clone();
+            let base = m.elevation(wire.level);
+            wire.start = P2(a[0], a[1]);
+            wire.end = P2(b[0], b[1]);
+            wire.offset = a[2] - base;
+            wire.end_offset = if wire.end_offset.is_some() || a[2] != b[2] { Some(b[2] - base) } else { None };
+            // Heights name the justification line, not necessarily the centre line.
+            let shift = a[2] - Geom::of(m, &wire, wire_type).a[2];
+            wire.offset += shift;
+            if let Some(end) = &mut wire.end_offset {
+                *end += shift;
+            }
+            rescaled.push((wire_id, Element::Wire(wire)));
+        }
     }
     edited.extend(rescaled);
     let m = s.model_mut();
@@ -6605,6 +7640,7 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
     let f = mo.map;
     let within = |g: Guid| m.elements.id(g).is_some_and(|i| with.contains(&i));
     let category = e.category();
+    let run_geometry = m.run_geom(&e);
     // Its sketch goes with it, line for line.
     if let Some(lines) = e.sketch_mut() {
         lines.iter_mut().for_each(|l| *l = l.map(f));
@@ -6653,8 +7689,34 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         Element::Link(l) => (l.at, l.angle) = turned(f, l.at, l.angle),
         Element::Viewport(v) => v.at = f(v.at),
         Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => (col.at, col.angle) = turned(f, col.at, col.angle),
-        // A run keeps its heights at its ends; its section is the same either way round.
-        crate::model::run_arm!(r) => (r.start, r.end) = (f(r.start), f(r.end)),
+        // A run keeps its heights at its ends; its physical section follows the motion too.
+        crate::model::run_arm!(r) => {
+            (r.start, r.end) = (f(r.start), f(r.end));
+            if r.mount.is_none()
+                && mo.slide.is_none()
+                && let Some(g) = run_geometry
+                && !g.round
+                && (g.vertical() || (mo.mirror && (g.square_ends || g.roll.abs() > 1e-9)))
+            {
+                let (_, width, _) = g.frame();
+                // A long direction sample avoids amplifying the motion's micron rounding.
+                let origin = f(P2(0.0, 0.0));
+                let tip = f(P2(width[0] * 1e6, width[1] * 1e6));
+                let width = [(tip.0 - origin.0) / 1e6, (tip.1 - origin.1) / 1e6, width[2]];
+                let basis = crate::runs::Geom { a: [r.start.0, r.start.1, g.a[2]], b: [r.end.0, r.end.1, g.b[2]], roll: 0.0, ..g };
+                let (_, x, y) = basis.frame();
+                let angle = crate::view3d::dot(width, y).atan2(crate::view3d::dot(width, x)).to_degrees();
+                r.section_roll = degrees((angle + 90.0).rem_euclid(180.0) - 90.0);
+                // A reflected physical box must not become a legacy plumb-cut prism at roll zero.
+                r.square_ends = g.square_ends || g.roll.abs() > 1e-9;
+            }
+            for connection in &mut r.connections {
+                if let Some(point) = &mut connection.landing {
+                    let at = f(P2(point[0], point[1]));
+                    (point[0], point[1]) = (at.0, at.1);
+                }
+            }
+        }
         // A mirror image is the family's, flipped.
         Element::Component(cp) => {
             (cp.at, cp.angle) = turned(f, cp.at, cp.angle);
@@ -6850,6 +7912,17 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
             walls.insert(id, n);
         }
     }
+    // A carrier takes its linked wires with it; explicitly selected wires already moved above.
+    if end.is_none() {
+        for (&id, e) in &m.elements {
+            if let Element::Wire(wire) = e
+                && wire.carrier.is_some_and(|host| moving_guids.contains(&host))
+                && !moving.contains(&id)
+            {
+                others.push((id, transformed(c, m, id, mo, &moving)?));
+            }
+        }
+    }
     // Doors and windows in walls that changed keep their place, or go with their wall.
     for (&id, e) in &m.elements {
         let (Element::Door(o) | Element::Window(o)) = e else { continue };
@@ -6953,6 +8026,12 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
     let mut hosts = BTreeMap::new();
     for (from, mut e) in copies.into_iter().chain(hosted) {
         let door = matches!(e, Element::Door(_));
+        if let Some(run) = e.run_mut()
+            && run.feeder.as_ref().is_some_and(|owner| !copying_guids.contains(&owner.wire))
+        {
+            run.feeder = None;
+            run.carrier = None;
+        }
         match &mut e {
             Element::Grid(g) => g.name = next_grid_name(m),
             Element::Section(v) => v.name = m.free_view_name(m.language.word("Section"), true),
@@ -6984,6 +8063,25 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
     }
     // Copied walls attached to roofs or floors copied with them attach to the copies.
     for id in &made {
+        if let Some(run) = m.elements.get_mut(id).and_then(Element::run_mut) {
+            if let Some(mount) = &mut run.mount {
+                mount.host = hosts.get(&mount.host).copied().unwrap_or(mount.host);
+            }
+            for connection in &mut run.connections {
+                connection.device = hosts.get(&connection.device).copied().unwrap_or(connection.device);
+                connection.carrier = connection.carrier.map(|guid| hosts.get(&guid).copied().unwrap_or(guid));
+                if let Some(surface) = &mut connection.surface {
+                    surface.host = surface.host.map(|guid| hosts.get(&guid).copied().unwrap_or(guid));
+                }
+            }
+            if let Some(owner) = &mut run.feeder {
+                owner.wire = hosts.get(&owner.wire).copied().unwrap_or(owner.wire);
+                owner.device = hosts.get(&owner.device).copied().unwrap_or(owner.device);
+            }
+            if !run.connections.is_empty() || run.feeder.is_some() {
+                run.carrier = run.carrier.map(|guid| hosts.get(&guid).copied().unwrap_or(guid));
+            }
+        }
         if let Some(Element::Wall(w)) = m.elements.get_mut(id) {
             for at in [&mut w.attach_top, &mut w.attach_base] {
                 *at = at.map(|a| hosts.get(&a).copied().unwrap_or(a));
@@ -7610,6 +8708,11 @@ fn delete(s: &mut Session, p: &Value) -> R {
                         Element::Spot(sp) => gone.contains(&sp.view) || sp.host.is_some_and(|h| gone.contains(&h)),
                         // An import in one view only goes with it.
                         Element::CadImport(ci) => ci.view.is_some_and(|v| gone.contains(&v)),
+                        // A wired run goes when every component it names has gone.
+                        Element::Wire(w) => {
+                            (w.source.is_some() || !w.devices.is_empty())
+                                && w.source.into_iter().chain(w.devices.iter().copied()).all(|g| gone.contains(&g))
+                        }
                         _ => false,
                     }
             })
@@ -7632,8 +8735,43 @@ fn delete(s: &mut Session, p: &Value) -> R {
             if d.refs.len() < 2 {
                 gone.insert(guid);
             } else {
-                kept.push((id, d));
+                kept.push((id, Element::Dimension(d)));
             }
+        }
+        // A wired run loses the components it names that go; the run itself stays while it has a place.
+        if let Element::Wire(w) = e
+            && !gone.contains(&guid)
+            && w.source
+                .into_iter()
+                .chain(w.devices.iter().copied())
+                .chain(w.carrier)
+                .chain(w.connections.iter().filter_map(|connection| connection.carrier))
+                .any(|g| gone.contains(&g))
+        {
+            let mut w = w.clone();
+            if w.source.into_iter().any(|g| gone.contains(&g)) {
+                w.source = None;
+            }
+            w.devices.retain(|d| !gone.contains(d));
+            if w.source.is_none() || w.devices.is_empty() {
+                w.source = None;
+                w.devices.clear();
+            }
+            if w.carrier.is_some_and(|g| gone.contains(&g)) {
+                w.carrier = None;
+                for connection in &mut w.connections {
+                    if connection.carrier.is_none() {
+                        connection.in_carrier = false;
+                    }
+                }
+            }
+            for connection in &mut w.connections {
+                if connection.carrier.is_some_and(|guid| gone.contains(&guid)) {
+                    connection.carrier = None;
+                    connection.in_carrier = false;
+                }
+            }
+            kept.push((id, Element::Wire(w)));
         }
     }
     let deleted: Vec<Id> = m.elements.with_guids().filter(|(_, g, _)| gone.contains(g)).map(|(id, ..)| id).collect();
@@ -7648,8 +8786,8 @@ fn delete(s: &mut Session, p: &Value) -> R {
         g.elements.retain(|id, _| !gone.contains(id));
         g.linework.retain(|l| !gone.contains(&l.element));
     }
-    for (id, d) in kept {
-        m.elements.insert(id, Element::Dimension(d));
+    for (id, e) in kept {
+        m.elements.insert(id, e);
     }
     // Walls attached to a roof or a floor that goes come loose, and roofs running into one end nowhere.
     for e in m.elements.values_mut() {
@@ -8402,13 +9540,14 @@ fn object_styles(s: &mut Session, p: &Value) -> R {
 }
 
 fn inspect(s: &mut Session, _: &Value) -> R {
+    let revision = s.revision();
     let m = &s.model;
     let mut counts: BTreeMap<&str, u64> = BTreeMap::new();
     for e in m.elements.values() {
         *counts.entry(e.category()).or_default() += 1;
     }
     let levels: Vec<Value> = m.levels().iter().map(|(id, l)| json!({"id": id, "name": l.name, "elevation": l.elevation})).collect();
-    let warnings: Vec<String> = m
+    let mut warnings: Vec<String> = m
         .elements
         .iter()
         .filter_map(|(id, e)| match e {
@@ -8418,13 +9557,14 @@ fn inspect(s: &mut Session, _: &Value) -> R {
             _ => None,
         })
         .collect();
+    warnings.extend(m.carrier_warnings());
     Ok(json!({
         "name": m.name, "units": "mm", "project_units": m.units.name(), "language": m.language.code(), "path": s.path, "levels": levels,
         "counts": counts,
         "types": m.types, "materials": m.materials, "images": images(m), "families": families(m), "parameters": m.parameters,
         "view_filters": m.view_filters, "view_templates": m.view_templates, "phases": m.phases, "phase_filters": m.phase_filters,
         "phase_overrides": m.phase_overrides, "option_sets": m.option_sets, "warnings": warnings,
-        "history": s.history(),
+        "history": s.history(), "revision": revision,
     }))
 }
 

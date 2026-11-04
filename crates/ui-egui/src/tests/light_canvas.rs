@@ -49,6 +49,11 @@ impl Uploads {
 }
 
 impl egui_kittest::TestRenderer for Uploads {
+    #[cfg(feature = "visual-tests")]
+    fn render(&mut self, _ctx: &egui::Context, _output: &egui::FullOutput) -> Result<image::RgbaImage, String> {
+        Err("This renderer captures texture uploads only".into())
+    }
+
     fn handle_delta(&mut self, delta: &mut egui::TexturesDelta) {
         let mut kept = self.0.lock().unwrap();
         for (id, deltas) in &delta.set {

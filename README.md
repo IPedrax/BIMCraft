@@ -221,6 +221,26 @@ transparent). Hidden line, wireframe, sections and sheets are still drawn on the
 
 ## What works today
 
+Manage > Equipment Catalogue links an editable ODS type catalogue and adds equipment
+without placement, such as fasteners and software, by name, system and whole quantity.
+These positions count in schedules and stay out of plan, 3D and IFC geometry
+([details](docs/areas/schedules.md)). The Russian СПС/СОУЭ workflow is still in development;
+its scope and progress are tracked in the [roadmap](docs/low-voltage-roadmap.md).
+
+### Low-voltage roadmap, Stage 4
+
+- In plan and 3D, mount rectangular cable carriers flush against a wall or slab
+  face. Round conduits and cables stay tangent to the mounting surface.
+- Connect a cable anywhere along an allowed side of a wall-mounted device.
+  Devices can allow multiple sides and default to all sides. Cables can be
+  connected before carriers are placed. Each end follows its own carrier and
+  checks available clearance for the specified bend radius.
+- Moving a carrier updates its connected cable routes and fill in one undoable
+  operation. The desktop includes a minimal toolbox and contextual properties.
+
+See the [Stage 4 acceptance report](docs/stage-4-progress.md) and the
+[low-voltage roadmap](docs/low-voltage-roadmap.md).
+
 BIMCraft is in early, fast development. Honest status:
 
 | Area | Works today |

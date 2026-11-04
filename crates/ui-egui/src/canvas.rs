@@ -51,6 +51,7 @@ struct Camera {
 /// A drag with the primary button.
 #[derive(Clone, Copy, Debug)]
 enum Drag {
+    Mount(Id, P2),
     /// Moving the selection, from the model point first pressed.
     Move(P2),
     /// A selection box, from the pixel first pressed.
@@ -1004,8 +1005,16 @@ impl BimApp {
             self.canvas.prior = None;
             self.canvas.drag = Some(match d.pick(o, PICK) {
                 Some(id) => {
-                    self.grab(id);
-                    Drag::Move(view.mm(o))
+                    let from = view.mm(o);
+                    if ui.input(|i| i.modifiers.shift)
+                        && self.selection.as_slice() == [id]
+                        && model.elements.get(id).is_some_and(|element| model.run_geom(element).is_some())
+                    {
+                        Drag::Mount(id, from)
+                    } else {
+                        self.grab(id);
+                        Drag::Move(from)
+                    }
                 }
                 None => Drag::Box(o),
             });
@@ -1016,6 +1025,42 @@ impl BimApp {
             && self.finish_drag()
         {
             match drag {
+                Drag::Mount(id, from) => {
+                    let to = view.mm(q);
+                    if let Some(geometry) = model.elements.get(id).and_then(|element| model.run_geom(element)) {
+                        use bimcraft_core::model::Element;
+                        let z = (geometry.a[2] + geometry.b[2]) * 0.5;
+                        let delta = to - from;
+                        let scene = bimcraft_core::view3d::Scene::new(&model);
+                        let hit = if let Some(host) = d.pick_all(q, PICK).into_iter().find(|host| model.wall(*host).is_some()) {
+                            scene.surface_hit(host, [from.0, from.1, z], [delta.0, delta.1, 0.0], delta.length() + 250.0).ok().flatten()
+                        } else {
+                            let look = bimcraft_core::graphics::Look::of(&model, key);
+                            model
+                                .elements
+                                .iter()
+                                .filter(|(host, element)| {
+                                    look.shows(**host)
+                                        && match element {
+                                            Element::Floor(floor) => model.same(floor.level, level),
+                                            Element::Ceiling(ceiling) => model.same(ceiling.level, level),
+                                            _ => false,
+                                        }
+                                })
+                                .flat_map(|(host, _)| [-1.0, 1.0].map(move |dz| (host, dz)))
+                                .filter_map(|(host, dz)| {
+                                    scene
+                                        .surface_hit(*host, [to.0, to.1, z], [0.0, 0.0, dz], bimcraft_core::model::MAX_COORD)
+                                        .ok()
+                                        .flatten()
+                                })
+                                .min_by(|a, b| a.distance.total_cmp(&b.distance))
+                        };
+                        if let Some(hit) = hit {
+                            self.run("run_mount", json!({"id":id,"host":hit.host,"face":hit.face}));
+                        }
+                    }
+                }
                 Drag::Move(from) => {
                     let by = self.dragged(&model, &view, from, view.mm(q));
                     if by.length() > 0.0 {
@@ -1591,13 +1636,8 @@ impl BimApp {
                 }
             }
             Tool::Component | Tool::Fixture(_) => {
-                if let Some((family, ty)) = self.placing() {
-                    let at = self.snap(m, level, v, at, &[], false).at;
-                    self.run(
-                        "component",
-                        json!({"family": family, "type": ty, "at": point(at), "level": level, "angle": self.component_angle}),
-                    );
-                }
+                let at = self.snap(m, level, v, at, &[], false).at;
+                self.place_component(level, at);
             }
             &Tool::Stand(category) => {
                 let at = self.snap(m, level, v, at, &[], false).at;
@@ -2154,6 +2194,21 @@ impl BimApp {
                 Some(from) => self.shift_selection(from, p),
             },
             _ => {}
+        }
+    }
+
+    pub(crate) fn place_component(&mut self, level: Id, at: P2) {
+        if let Some((family, ty)) = self.placing() {
+            if let Some(offset) = self.session.model.units.parse(&self.component_offset) {
+                self.run(
+                    "component",
+                    json!({"family":family,"type":ty,"at":point(at),"level":level,
+                    "angle":self.component_angle,"offset":offset}),
+                );
+            } else {
+                self.status =
+                    Status { text: crate::lang::t(bimcraft_i18n::msg!("Enter a valid equipment height offset.")).into(), error: true };
+            }
         }
     }
 
@@ -2882,6 +2937,8 @@ impl BimApp {
                         offset: 0.0,
                         mirrored: false,
                         params: Default::default(),
+                        provision: None,
+                        connection_sides: Vec::new(),
                     };
                     let e = Element::Component(c);
                     sketched(&e);

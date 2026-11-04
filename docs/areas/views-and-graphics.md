@@ -350,3 +350,14 @@ them without knowing: `Look::with` makes a linked id halftone, and picking never
 `in_box`, `shows` and `Mesh::pick` leave them out). The commands that make an image (`render`, `save` to svg, png or pdf) draw `seen`; the desktop's
 `view_model` does, cached by the project's `Arc`. The schedules, `Model::check`, IFC and every command that edits work on the project itself.
 To do: shared coordinates, a link's graphics overrides and visibility per view, hosting on a linked wall, unloading.
+
+## Engineering Level Mode (Renga style)
+
+A plan view's `Graphics::engineering` (command `graphics {engineering: true}`, Properties' Engineering Level Mode, and the View tab's
+button) draws the architecture as a pale thin backdrop and the engineering systems whole, as Renga does. On, `render::draw_plan` keeps the
+walls, doors, windows, columns and stairs cut at the plan's cut plane as usual, then `engineering_backdrop` makes their lines a pale grey in
+`Pen::PROJECTION` (0.18 mm on paper) and their fills paler, while the annotation keeps its own. The engineering elements of the plan's level
+(`engineering::system_of`: plumbing's pipes and fixtures, electrical equipment, cable carriers and wires; data outlets and racks; and the
+low-voltage fire, voice, security and CCTV families and circuits) ignore the cut plane and the view depth: `engineering_overlay` draws each
+route thick in its system's colour (`Pen::CUT`; `engineering::System::color`) and each circuit as a plan labels it, then the devices over
+the routes. A plan that isn't in the mode is unchanged; the test is `render::tests::engineering_level_mode_backdrops_the_architecture_and_draws_the_systems_whole`.

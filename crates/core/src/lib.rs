@@ -9,6 +9,7 @@ pub mod bridge;
 pub mod cad;
 #[cfg(test)]
 mod cad_tests;
+pub mod carrier_limits;
 pub mod cloud;
 #[cfg(test)]
 mod cloud_tests;
@@ -19,6 +20,7 @@ pub mod curves;
 pub mod draw;
 pub mod dxf;
 pub mod engine;
+pub mod engineering;
 pub mod family;
 pub mod favorites;
 pub mod fills;
@@ -39,6 +41,13 @@ pub mod lines;
 pub mod link;
 pub mod massing;
 pub mod model;
+pub mod ods;
+#[cfg(test)]
+mod ods_device_tests;
+#[cfg(test)]
+mod ods_sync_tests;
+#[cfg(test)]
+mod ods_transfer_tests;
 pub mod paint;
 pub mod pat;
 pub mod pdf;
@@ -68,6 +77,8 @@ pub use commands::{command_of, element_json, floor_outline, opening_of, roof_foo
 #[cfg(test)]
 mod detail_tests;
 #[cfg(test)]
+mod detector_tests;
+#[cfg(test)]
 mod line_tests;
 #[cfg(test)]
 mod mep_tests;
@@ -79,3 +90,7 @@ mod purge_tests;
 mod structure_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod wire_tests;
+
+pub use commands::base64;

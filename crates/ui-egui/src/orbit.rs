@@ -23,7 +23,7 @@ use serde_json::json;
 use crate::canvas::{click_modifiers, color};
 use crate::icons::Icon;
 use crate::style::{canvas_pal, pal};
-use crate::{BimApp, Status, Tool, icon_button};
+use crate::{BimApp, Sheet, Status, Tool, icon_button};
 
 /// What a picture is of: the model, the camera, the elements tinted, whether the theme is dark, whether the card drew it, and
 /// the section box it is cut to while one is dragged.
@@ -67,6 +67,7 @@ pub struct Orbit {
     mesh: Option<Meshed>,
     /// A drag under way: whether it orbits (else it pans), and where the pointer was last.
     drag: Option<(bool, Pos2)>,
+    mount_drag: Option<Id>,
     /// The camera as that drag found it, for a drag that turns out a click.
     before: Option<Camera>,
     /// A selected level's grip being dragged: the level, and which edge of its plane (as
@@ -89,6 +90,7 @@ impl Default for Orbit {
             on_card: false,
             mesh: None,
             drag: None,
+            mount_drag: None,
             before: None,
             grip: None,
             boxing: None,
@@ -123,6 +125,60 @@ fn mesh_of<'a>(slot: &'a mut Option<Meshed>, model: &Arc<Model>, scene: &Scene) 
 }
 
 impl BimApp {
+    pub(crate) fn toggle_design_view(&mut self) {
+        if self.sheet == Sheet::View3D {
+            if let Some(level) = self.placement_level() {
+                self.open_sheet(Sheet::Plan(level));
+            }
+        } else {
+            if let Some(level) = self.plan_level() {
+                self.work_level = Some(self.session.model.guid(level));
+            }
+            self.open_sheet(Sheet::View3D);
+        }
+    }
+
+    pub(crate) fn placement_level(&self) -> Option<Id> {
+        let m = &self.session.model;
+        self.plan_level()
+            .or_else(|| {
+                self.work_level
+                    .and_then(|g| m.elements.id(g))
+                    .filter(|id| matches!(m.elements.get(*id), Some(bimcraft_core::model::Element::Level(_))))
+            })
+            .or_else(|| {
+                self.views.iter().rev().find_map(|view| match view {
+                    Sheet::Plan(key) | Sheet::Ceiling(key) => m.plan_level(*key),
+                    _ => None,
+                })
+            })
+            .or_else(|| m.levels().first().map(|(id, _)| *id))
+    }
+
+    pub(crate) fn workplane_options(&mut self, ui: &mut Ui) {
+        if self.sheet != Sheet::View3D || !matches!(self.tool, Tool::Run(..) | Tool::Component | Tool::Fixture(_)) {
+            return;
+        }
+        let selected = self.placement_level();
+        let levels: Vec<_> = self.session.model.levels().into_iter().map(|(id, level)| (id, level.name.clone())).collect();
+        let name = levels.iter().find(|(id, _)| Some(*id) == selected).map_or("", |(_, name)| name.as_str());
+        let label = ui.label(crate::lang::t(bimcraft_i18n::msg!("Work Level")));
+        egui::ComboBox::from_id_salt("3d-work-level")
+            .selected_text(name)
+            .show_ui(ui, |ui| {
+                for (id, name) in &levels {
+                    if ui.selectable_label(Some(*id) == selected, name).clicked() {
+                        self.work_level = Some(self.session.model.guid(*id));
+                        if let Tool::Run(category, _) = self.tool {
+                            self.tool = Tool::Run(category, None);
+                        }
+                    }
+                }
+            })
+            .response
+            .labelled_by(label.id);
+    }
+
     /// Where model point `p` shows on screen, in the 3D view as last shown.
     pub fn screen3(&self, p: P3) -> Pos2 {
         let o = &self.orbit;
@@ -245,9 +301,32 @@ impl BimApp {
         {
             boxed_to = Some(to);
         }
+        let surface_at = |at: Pos2| {
+            let (x, y) = px(at);
+            o.picker.as_ref().and_then(|picker| picker.at(&cam, x, y))
+        };
+        if shift
+            && modify
+            && response.drag_started_by(PointerButton::Primary)
+            && o.grip.is_none()
+            && o.boxing.is_none()
+            && let [id] = selection.as_slice()
+            && let Some(origin) = ui.input(|i| i.pointer.press_origin())
+            && surface_at(origin).is_some_and(|hit| hit.id == *id)
+            && model.elements.get(*id).is_some_and(|element| model.run_geom(element).is_some())
+        {
+            o.mount_drag = Some(*id);
+        }
+        let mounting = response
+            .drag_stopped()
+            .then(|| o.mount_drag.take())
+            .flatten()
+            .zip(latest.filter(|at| rect.contains(*at)).and_then(surface_at))
+            .filter(|(_, hit)| matches!(hit.face, "interior" | "exterior" | "top" | "bottom"));
         // The primary button, or Shift and the middle button, orbit, 0.4° a point; the middle
         // button alone pans.
         if response.drag_started()
+            && o.mount_drag.is_none()
             && o.grip.is_none()
             && o.boxing.is_none()
             && let Some(origin) = ui.input(|i| i.pointer.press_origin())
@@ -379,6 +458,31 @@ impl BimApp {
             Some(Some(id)) if paint || unpaint => self.paint_face(id, face, unpaint),
             // Nothing under the cursor: nothing to take down, or to paint.
             Some(None) if demolish || paint || unpaint => {}
+            Some(_) if matches!(self.tool, Tool::Run(..) | Tool::Component | Tool::Fixture(_)) => {
+                if let (Some(level), Some(at)) = (self.placement_level(), click) {
+                    let offset = match self.tool {
+                        Tool::Run("wire" | "cablecarrier", Some(_)) if !self.run_end_offset.trim().is_empty() => &self.run_end_offset,
+                        Tool::Run(..) => &self.beam_offset,
+                        _ => &self.component_offset,
+                    };
+                    if let Some(offset) = self.session.model.units.parse(offset) {
+                        let z = self.session.model.elevation(self.session.model.guid(level)) + offset;
+                        if let Some(point) = cam.on_plane(px(at), z) {
+                            let point = P2(point[0], point[1]);
+                            if matches!(self.tool, Tool::Run(..)) {
+                                self.place_run(level, point);
+                            } else {
+                                self.place_component(level, point);
+                            }
+                        }
+                    } else {
+                        self.status = Status {
+                            text: crate::lang::t(bimcraft_i18n::msg!("Enter a valid workplane height offset.")).into(),
+                            error: true,
+                        };
+                    }
+                }
+            }
             Some(_) => {
                 self.status =
                     Status { text: crate::lang::t("this tool works in plan views: open one from the Project Browser").into(), error: true }
@@ -386,6 +490,9 @@ impl BimApp {
             None => {}
         }
         self.context_menu(&response);
+        if let Some((id, hit)) = mounting {
+            self.run("run_mount", serde_json::json!({"id":id,"host":hit.id,"face":hit.face}));
+        }
         if let Some((id, [lo, hi])) = moved {
             self.run("modify", json!({"id": id, "extent": [[lo.0, lo.1], [hi.0, hi.1]]}));
         }

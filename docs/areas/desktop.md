@@ -1,5 +1,84 @@
 # The desktop app: browser, docking, settings, picking, snapping, clicks, startup, tags
 
+## Switchable workspace
+
+The application bar switches between Revit interface (the existing ribbon) and
+Minimal interface (a narrow object toolbox beside the canvas). `minimal.rs` reuses
+the same tool handlers and Options Bar; All Tools exposes every ribbon discipline
+on demand, including contextual editing. Switching keeps the current view, tool,
+selection and model. The preference lives in the user's `settings.json`, survives
+New/Open, and does not alter project files. Theme and Floating/Compact layout are
+independent preferences. Both workspaces support the stage 4 floor workflow in
+plans and 3D.
+
+Search tools filters the existing shortcut actions and equipment tools by English
+or translated label. Choosing a result uses the same handler as the ribbon or
+shortcut, then clears the query. The bounded query is temporary interface state;
+searching does not edit the project or add an undo step. All Tools remains the
+fallback for commands outside the shortcut action list. This is an intermediate
+workspace: a single contextual inspector is still pending.
+
+The minimal workspace is an independent implementation. The reference is Renga's
+documented object-tool workflow, not its source, SDK, icons, fonts or resources.
+The installed application's visible workspace was inspected on 2026-11-02;
+no project or application assets were extracted. Its
+[EULA](https://rengabim.com/files/eula_ru-ru.pdf), notably API/SDK subsection 3.5.5,
+does not establish permission to copy the appearance wholesale. Internet screenshots
+and cosmetic changes are not treated as such permission. The public
+[interface documentation](https://help.rengabim.com/ru/Content/interface.htm)
+describes the workflow; implementation and artwork remain BIMCraft's own.
+
+`catalogue.rs` polls a project's bound ODS every two seconds and after model changes.
+It runs the core `catalogue_sync` command, so existing rows remain model-owned while
+new rows receive GUIDs. File errors appear in the status bar without changing the model;
+a changed/repaired file is retried. Polling unchanged data keeps the undo history intact.
+Change detection uses file modification time and length, as produced by normal office saves.
+Manage > Equipment Catalogue opens the same dialog from plans and 3D: link an existing
+ODS, create a new one, synchronize, or unlink. File selection is asynchronous; cancelling
+does nothing, and unlinking leaves the external workbook intact.
+The same dialog adds equipment without placement: product name, optional system and
+whole quantity. It calls `equipment`; success clears the name and keeps the other
+fields for batch entry. The polling state is separate from this unsaved input, so
+catalogue synchronization does not discard it.
+New ODS types without model instances automatically open this dialog and appear in
+the virtualized Unassigned catalogue products list. Built-in unused types are omitted.
+Selecting a family type in that list fills the read-only product name in the entry
+form. Set quantity and system, then Add to specification to account for the existing
+type without placement or duplication. New product clears the selection for manual
+entry. Cable and carrier types remain listed without this component-only action.
+Closing the dialog acknowledges those GUIDs for the current document; further edits
+do not reopen it for the same types. Opening a document resets this acknowledgement.
+Types disappear from the list when an instance is placed or accounted for as a planned
+or nonspatial position. Unlinking the ODS does not lose their recorded provenance.
+Missing catalogue products produce a warning and are listed in this dialog, with
+their id and GUID on hover. The warning also appears when a project containing
+placeholders is opened without an ODS link; unlinking does not restore the products.
+The catalogue also imports a separate ODS without changing the current link. Choose
+Report conflict (the default), Update product, or Create separate product before
+Import Catalogue. Cancellation leaves the model unchanged; import runs the core
+`catalogue_import` command, preserving the source workbook and Undo/Redo.
+The conflict controls and selected unassigned product were inspected at 1280×800
+in all three looks on 2026-11-01, without clipped fields or buttons:
+`target/catalogue-ui-qa/stage2-selected-dialog-{light,dark,dark-light-canvas}.png`.
+The carrier controls share this dialog. Its body scrolls independently of the
+heading and footer; changes to the modal bounds request another frame so the
+centered layout settles before the next interaction. The ignored GPU acceptance
+test renders all three looks and checks that Close remains inside the viewport:
+`cargo test -p bimcraft-ui-egui --features visual-tests carrier_dialog_visual_acceptance -- --ignored --test-threads=1`.
+Set `DUMP` to an absolute output directory; the default is `target/stage3-visual`.
+The 1280×800 outputs `carrier-{light,dark,dark-light-canvas}.png` were inspected
+on 2026-11-01, with the expanded compartment form and conflict feedback visible.
+The stage acceptance and next-chat entry point are in
+[the ODS handoff](../stage-2-ods-handoff.md).
+
+The catalogue dialog and synchronization error were rendered and inspected in Light,
+Dark, and Dark UI with Light Canvas (`target/catalogue-ui-qa/` in the development workspace).
+The missing-product list and warning were inspected in all three looks too
+(`missing-dialog-*.png` in that folder).
+The equipment entry form was inspected in all three looks (`provisions-dialog-*.png`).
+The combined missing-product and unassigned-product lists were inspected in all three
+looks (`pending-dialog-*.png`).
+
 Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the map, and this file is read when the area is touched.
 
 The Project Browser (`browser.rs`) builds its tree as `Node`s and draws it through its tab (`browser::Tab`) and its search
@@ -252,3 +331,8 @@ pattern asks `Model::align_pattern` where the pattern then starts and sends the 
 no swatch, but each still lays out its widgets. A sketch's Ctrl+Z takes back at most the last 100 changes (`sketch::UNDO`); an older one is forgotten. The window tells a replaced project by its `uid`, so
 `open` of the very file the window already holds, put in the session's place by a script or an embedder, is not noticed: the file keeps its `uid`, and a sketch or a dialog's draft survives it
 (the core's `Session` counts its replacements in a private `resets`; a public reader of that count would let the window see this one too).
+
+For a desktop screenshot, call MCP `inspect_model` and pass its `revision` to `capture`.
+The result includes the completed main-window PNG plus its revision, pixel dimensions,
+encoded byte count and SHA-256. A model change before capture completes requires a
+new inspection. Capture leaves undo history untouched.
