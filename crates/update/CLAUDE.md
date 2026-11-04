@@ -1,10 +1,10 @@
 # bimcraft-update
 
-The updater, and the only code that phones home: the desktop's `main` attaches it, and the core, the CLI and the MCP server
-do not depend on it (a test reads their manifests). What it takes from the network is hostile: the reply and the download are
-capped, the installer's address is built from the release's tag and never read from the reply, an asset is taken only if it is named
-exactly for the version and the kind of install (`Target::asset_name`) and carries its `sha256:` digest, and nothing runs that
-failed a check. The write-up of each platform's sequence (Windows hand-over, AppImage, macOS app) is
+The updater, and the only code that phones home: `apps/bimcraft`'s `main` attaches it and starts the check on a thread, and the
+core, the CLI and the MCP server do not depend on it (a test reads their manifests). What it takes from the network is hostile:
+the reply and the download are capped, the installer's address is built from the release's tag and never read from the reply, an
+asset is taken only if it is named exactly for the version and the kind of install (`Target::asset_name`), uploaded, and carries its
+`sha256:` digest, and nothing runs that failed a check. The write-up of each platform's sequence (Windows hand-over, AppImage, macOS app) is
 [updates](../../docs/areas/updates.md); the modules are in the root `CLAUDE.md`.
 
 - A new check is a pure function with a test; the network stays behind `Net` (`testing::Fake` in tests; `net::Ureq` is tested

@@ -54,6 +54,26 @@ is in the root `CLAUDE.md`; the write-ups by area are in `docs/areas/`, which th
 (`edit("name"`, `fn name`), read the part, and anchor a scripted edit on text that is unique in the file: a doc comment is often
 repeated. A new area's tests go in their own file or module, not on the end of `tests.rs`.
 
+## The spatial core
+
+The core caches what it works out from the model and keeps the whole computation as the oracle of each cache
+([the plan](../../docs/spatial-core-plan.md), [performance](../../docs/performance.md)). Its modules:
+
+- `derived.rs`: what elements point at, both ways, the walls by plan tile and height, components and runs by height band, and the
+  kinds a project has few of, kept with each model and brought up to date by what changed (`Model::lookup`).
+- `rooms.rs`: rooms' boundaries, each level's found once. `shared.rs`: copy-on-write geometry definitions and allocation identities.
+- `ids/revisions.rs`: runtime revision columns. `bounds.rs`: byte-budgeted conservative primitive bounds. `family/bounds.rs`:
+  conservative form envelopes without triangulation.
+- `view3d/update.rs`: a scene brought up to date by what an edit changed. `view3d/fragments.rs`: bounded primitive fragment reuse.
+- `oracle_tests.rs`: random edits checked against the full computation: of walls and what is in them (`edit`), of 2D (`edit_2d`) and
+  of the other kinds (`edit_more`: 3D dimensions and cameras, shapes, roofs, schedules, bars, symbols).
+  `crosscheck.rs`: a project described for Revit, and Revit's numbers compared with ours ([schedules](../../docs/areas/schedules.md)).
+
+A new element kind or field reaches it in three places: its rules in `Model::check_element` (or the project rules round it), its
+references in `visit_refs!` (the lookup follows them both ways), and anything a cache reads that the element's own change doesn't
+say (a type, a level, a neighbour) as a dependency of that cache. A new part of an element (`HasPart`) goes in `library.rs`'s
+`element_parts` too, so a command's library is synced by what it changed.
+
 ## Shared geometry definitions
 
 `Model::types`, `materials` and `families` use `shared::Shared`: ordinary reads and mutable map/type access work through
