@@ -1607,7 +1607,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
                 &mut m.types.wall,
                 &base,
                 |k| (k.thickness - t).abs() < 0.05 && k.layers == layers,
-                WallType { thickness: t, layers: layers.clone() },
+                WallType { thickness: t, layers: layers.clone(), curtain: None },
             );
             let on = |x: P2| micron(c + (x - c).unit() * ((r0 + r1) / 2.0));
             let arc = (arc * 1e6).round() / 1e6;
@@ -1655,7 +1655,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             &mut m.types.wall,
             &base,
             |k| (k.thickness - t).abs() < 0.05 && k.layers == layers,
-            WallType { thickness: t, layers: layers.clone() },
+            WallType { thickness: t, layers: layers.clone(), curtain: None },
         );
         raw.push(RawWall {
             ifc: id,
@@ -1690,6 +1690,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             attach_top: None,
             attach_base: None,
             room_bounding: true,
+            curtain: None,
         };
         let id = m.insert(Element::Wall(wall));
         from.insert(id, who(w.ifc));

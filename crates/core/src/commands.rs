@@ -913,8 +913,10 @@ pub static ALL: &[Command] = &[
         "Edit Type",
         &[],
         "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|beam|stripfooting|pipe|duct|conduit|\
-         cabletray|wire|downconductor|groundconductor|cable, name, thickness? | width?, height?, sill?, operation? | width?, depth?, round?, \
-         material? | height?, spacing?} creates the type, or changes it everywhere it's used. A column's, a structural column's or \
+         cabletray|wire|downconductor|groundconductor|cable|curtainpanel|mullion, name, thickness? | width?, height?, sill?, operation? | width?, depth?, round?, \
+         material? | height?, spacing?} creates the type, or changes it everywhere it's used. A curtain panel's type is a `thickness`, a \
+         `material` and an `offset` from the grid's plane toward the exterior. A mullion's is a `width` along the wall's face, a `depth` \
+         across it, a `material`, and `offset_x` along the face and `offset_y` toward the exterior, both from its centre. A column's, a structural column's or \
          a footing's type is a `width` by `depth`, or `round` (`width` across); a run's (a beam's, a pipe's, a cable tray's…) too, \
          made of a `material` of the library. A wall type may have `layers` [{function?: structure|\
          substrate|thermal|membrane|finish, material?, thickness}, …] from its exterior side in: it's as thick as they are, \
@@ -6103,6 +6105,8 @@ fn wall(s: &mut Session, p: &Value) -> R {
     let arc = num(c, p, "arc")?.unwrap_or(0.0);
     let location = match string(c, p, "location")? {
         Some(n) => Location::from_name(&n).ok_or_else(|| bad(c, location_names(&n)))?,
+        // A curtain wall stands on a face, as it has no centre of its own to speak of.
+        None if m.types.wall.get(&type_name).is_some_and(|t| t.curtain.is_some()) => Location::ExteriorFinish,
         None => Location::Centre,
     };
     let (attach_top, attach_base) = (id_opt(c, p, "attach_top")?, id_opt(c, p, "attach_base")?);
@@ -6130,6 +6134,7 @@ fn wall(s: &mut Session, p: &Value) -> R {
                 attach_top,
                 attach_base,
                 room_bounding,
+                curtain: None,
             }))),
             _ => None,
         })
@@ -7769,6 +7774,7 @@ fn dormer(s: &mut Session, p: &Value) -> R {
             attach_top: Some(roof_guid),
             attach_base: Some(host),
             room_bounding: true,
+            curtain: None,
         })
     };
     let (l, r) = (micron(at + n * (w / 2.0)), micron(at - n * (w / 2.0)));
@@ -9633,8 +9639,26 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
     let m = s.model_mut();
     let t = match cat.as_str() {
         "wall" => {
-            let (thickness, layers) = layered(c, p, m.types.wall.get(&name).map(|t| (t.thickness, t.layers.as_slice())), thickness, &need)?;
-            let t = WallType { thickness, layers };
+            let given = p.get("curtain").filter(|v| !v.is_null());
+            let was = m.types.wall.get(&name).and_then(|t| t.curtain.clone());
+            let t = if given.is_some() || was.is_some() {
+                if thickness.is_some() || p.get("layers").is_some_and(|v| !v.is_null()) {
+                    return Err(bad(
+                        c,
+                        "a curtain wall's thickness is worked out from its panels and mullions: it has no `thickness` or `layers` to give",
+                    ));
+                }
+                let curtain = match given {
+                    Some(v) => crate::curtain::from_params(m, v).map_err(|e| bad(c, e))?,
+                    None => was.unwrap_or_default(),
+                };
+                let thickness = crate::curtain::envelope(m, &curtain).map_or(0.0, |(front, back)| front + back);
+                WallType { thickness, layers: Vec::new(), curtain: Some(curtain) }
+            } else {
+                let (thickness, layers) =
+                    layered(c, p, m.types.wall.get(&name).map(|t| (t.thickness, t.layers.as_slice())), thickness, &need)?;
+                WallType { thickness, layers, curtain: None }
+            };
             m.types.wall.insert(name.clone(), t.clone());
             json!(t)
         }
@@ -9708,6 +9732,30 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
             m.types.railing.insert(name.clone(), t.clone());
             json!(t)
         }
+        "curtainpanel" => {
+            let old = m.types.curtain_panel.get(&name).cloned();
+            let t = crate::curtain::CurtainPanelType {
+                thickness: thickness.or(old.as_ref().map(|t| t.thickness)).ok_or_else(|| need("thickness"))?,
+                material: string(c, p, "material")?.or(old.as_ref().map(|t| t.material.clone())).unwrap_or_default(),
+                offset: num(c, p, "offset")?.or(old.as_ref().map(|t| t.offset)).unwrap_or(0.0),
+            };
+            m.types.curtain_panel.insert(name.clone(), t.clone());
+            json!(t)
+        }
+        "mullion" => {
+            let old = m.types.mullion.get(&name).cloned();
+            let t = crate::curtain::MullionType {
+                profile: crate::curtain::MullionProfile::Rectangular {
+                    width: width.or(old.as_ref().map(|t| t.width())).ok_or_else(|| need("width"))?,
+                    depth: num(c, p, "depth")?.or(old.as_ref().map(|t| t.depth())).ok_or_else(|| need("depth"))?,
+                },
+                offset_x: num(c, p, "offset_x")?.or(old.as_ref().map(|t| t.offset_x)).unwrap_or(0.0),
+                offset_y: num(c, p, "offset_y")?.or(old.as_ref().map(|t| t.offset_y)).unwrap_or(0.0),
+                material: string(c, p, "material")?.or(old.as_ref().map(|t| t.material.clone())).unwrap_or_default(),
+            };
+            m.types.mullion.insert(name.clone(), t.clone());
+            json!(t)
+        }
         "ceiling" => {
             let old = m.types.ceiling.get(&name).cloned();
             let (thickness, layers) = layered(c, p, old.as_ref().map(|t| (t.thickness, t.layers.as_slice())), thickness, &need)?;
@@ -9720,7 +9768,8 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
                 c,
                 format!(
                     "`{other}` has no types; use wall, floor, ceiling, door, window, column, structural column, footing, beam, \
-                     strip footing, pipe, conduit, cable tray, wire, down conductor, earthing conductor, cable, roof or railing"
+                     strip footing, pipe, conduit, cable tray, wire, down conductor, earthing conductor, cable, roof, railing, \
+                     curtain panel or mullion"
                 ),
             ));
         }

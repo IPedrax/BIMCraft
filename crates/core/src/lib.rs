@@ -22,6 +22,9 @@ mod component_geometry;
 pub mod conduit;
 mod constraints;
 mod csg;
+pub mod curtain;
+#[cfg(test)]
+mod curtain_tests;
 pub mod curves;
 pub mod dims;
 pub mod dims3d;

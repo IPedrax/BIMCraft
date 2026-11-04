@@ -456,6 +456,8 @@ impl Model {
                 "roof" => self.types.roof.remove(name).is_some(),
                 "ceiling" => self.types.ceiling.remove(name).is_some(),
                 "railing" => self.types.railing.remove(name).is_some(),
+                "curtainpanel" => self.types.curtain_panel.remove(name).is_some(),
+                "mullion" => self.types.mullion.remove(name).is_some(),
                 "structuralcolumn" => self.types.structural_column.remove(name).is_some(),
                 "footing" => self.types.footing.remove(name).is_some(),
                 run if RUN_CATEGORIES.contains(&run) => self.types.runs.get_mut(run).is_some_and(|t| t.remove(name).is_some()),
@@ -496,6 +498,8 @@ impl Model {
                 "roof" => mv(&mut self.types.roof, from, to),
                 "ceiling" => mv(&mut self.types.ceiling, from, to),
                 "railing" => mv(&mut self.types.railing, from, to),
+                "curtainpanel" => mv(&mut self.types.curtain_panel, from, to),
+                "mullion" => mv(&mut self.types.mullion, from, to),
                 "structuralcolumn" => mv(&mut self.types.structural_column, from, to),
                 "footing" => mv(&mut self.types.footing, from, to),
                 run if RUN_CATEGORIES.contains(&run) => self.types.runs.get_mut(run).is_some_and(|t| mv(t, from, to)),
@@ -587,6 +591,8 @@ impl Model {
         add(Kind::Type("roof".into()), &mut t.roof.keys());
         add(Kind::Type("ceiling".into()), &mut t.ceiling.keys());
         add(Kind::Type("railing".into()), &mut t.railing.keys());
+        add(Kind::Type("curtainpanel".into()), &mut t.curtain_panel.keys());
+        add(Kind::Type("mullion".into()), &mut t.mullion.keys());
         add(Kind::Type("structuralcolumn".into()), &mut t.structural_column.keys());
         add(Kind::Type("footing".into()), &mut t.footing.keys());
         for (cat, types) in &t.runs {
@@ -1086,6 +1092,14 @@ impl Model {
         }
         for r in t.runs.values_mut().flat_map(|x| x.values_mut()).filter(|r| !r.material.is_empty()) {
             f(&Kind::Material, &mut r.material);
+        }
+        for l in t.wall.values_mut().filter_map(|x| x.curtain.as_mut()) {
+            l.names_mut(f);
+        }
+        for material in t.curtain_panel.values_mut().map(|x| &mut x.material).chain(t.mullion.values_mut().map(|x| &mut x.material)) {
+            if !material.is_empty() {
+                f(&Kind::Material, material);
+            }
         }
         for m in self.materials.values_mut() {
             if let Some(tx) = m.texture.as_mut().filter(|tx| !tx.image.is_empty()) {

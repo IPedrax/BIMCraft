@@ -246,6 +246,10 @@ impl Session {
                 // What a command was given by id points at the element's GUID; what it put in the library has an id and a GUID.
                 self.model_mut().resolve();
                 self.model_mut().sync_library();
+                // A curtain wall's thickness is what its panels and mullions make of it, which this may have changed.
+                if crate::curtain::out_of_date(&self.model) {
+                    crate::curtain::sync(self.model_mut());
+                }
                 // A room frozen keeps the boundary it has now; one thawed lets it go.
                 if self.model.elements.values().any(|e| matches!(e, Element::Room(r) if r.frozen != r.kept.is_some())) {
                     self.model_mut().keep_rooms();

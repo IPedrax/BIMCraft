@@ -61,3 +61,9 @@ The tools are run by absolute path (`macos::Tools`), so tests point them at shel
 AppImage; the one test that hands a file to the real `hdiutil` is skipped on a Mac, where nobody has seen what that does). Nothing of the macOS side has run on a Mac, and the AppImage side has run only against scripts that stand in for one.
 None of the Windows side runs here: its sequencing is tested with shell scripts for
 msiexec and the app (`tests::unix`), and what can't be tested is UAC, the real upgrade and the Program Files check on a real install.
+
+## What comes from the network is hostile
+
+Moved from the root `CLAUDE.md`. The reply and the download are capped, the installer's address is built from the release's tag and
+never read from the reply, an asset is taken only if it is named exactly for the version and the kind of install
+(`Target::asset_name`), uploaded, with a `sha256:` digest, and nothing runs that failed a check.

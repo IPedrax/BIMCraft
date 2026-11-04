@@ -62,3 +62,19 @@ fn the_tabs_keep_the_browser_to_one_kind_and_legends_are_still_to_come() {
     press(&mut h, "List All");
     assert!(h.query_by_label("Views (all)").is_some() && h.query_by_label("Families").is_some());
 }
+
+#[test]
+fn the_families_list_curtain_panels_and_mullions_under_their_system_families() {
+    let mut h = app(BOX);
+    press(&mut h, "List Families");
+    for label in ["Curtain Panels", "Generic Panel", "Spandrel"] {
+        h.get_by_label(label).click_accesskit();
+        h.run();
+    }
+    assert_eq!(h.state().types.get("curtainpanel").map(String::as_str), Some("Spandrel"));
+    for label in ["Mullions", "Rectangular Mullion", "50 x 150"] {
+        h.get_by_label(label).click_accesskit();
+        h.run();
+    }
+    assert_eq!(h.state().types.get("mullion").map(String::as_str), Some("50 x 150"));
+}

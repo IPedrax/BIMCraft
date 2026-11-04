@@ -542,11 +542,48 @@ pub(crate) fn solids(m: &Model) -> Vec<Solid> {
     solids_in(m, &elements, Some(&index))
 }
 
+/// A curtain wall as its panels and mullions, each in its type's material.
+fn curtain_solids(out: &mut Vec<Solid>, m: &Model, id: Id, w: &crate::model::Wall) {
+    use crate::curtain::{self, PartKind};
+    let l = curtain::layout(m, w);
+    let looks: Vec<(Rgb, u32)> = l
+        .shapes
+        .iter()
+        .map(|s| {
+            let material = match s.kind {
+                PartKind::Panel => m.types.curtain_panel.get(&s.type_name).map(|t| t.material.as_str()),
+                PartKind::Mullion => m.types.mullion.get(&s.type_name).map(|t| t.material.as_str()),
+            }
+            .unwrap_or("");
+            let color = m.materials.get(material).map_or(WALL, |x| Rgb(x.color[0], x.color[1], x.color[2]));
+            (color, skin(m, material))
+        })
+        .collect();
+    let u = (w.end - w.start).unit();
+    let frame = Frame { o: w.start, u, n: u.perp() };
+    let (base, plane) = (m.own_base(w), curtain::grid_plane(m, w));
+    for p in &l.parts {
+        let (Some(s), Some(&(color, tex))) = (l.shapes.get(p.shape as usize), looks.get(p.shape as usize)) else { continue };
+        let [along, up, across] = p.centre;
+        let [da, dz, dc] = s.size.map(|x| x / 2.0);
+        out.push(Solid::Box {
+            owner: id,
+            color,
+            tex,
+            frame,
+            a: (along - da, along + da),
+            c: (plane + across - dc, plane + across + dc),
+            z: (base + up - dz, base + up + dz),
+        });
+    }
+}
+
 fn solids_in(m: &Model, elements: &[(Id, &Element)], index: Option<&walls::Index>) -> Vec<Solid> {
     let mut out = Vec::new();
     let mut components = crate::component_geometry::Components::new(m);
     for &(id, e) in elements {
         match e {
+            Element::Wall(w) if crate::curtain::pattern(m, w).is_some() => curtain_solids(&mut out, m, id, w),
             Element::Wall(_) => out.extend(walls::prisms_in(m, id, true, index).into_iter().map(|p| Solid::Prism {
                 owner: id,
                 color: WALL,

@@ -69,7 +69,8 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 16: a 3D view may hold dimensions (the
+/// The version of the project file this build writes, and the newest it reads. 17: a curtain wall, which a build that reads up to
+/// 16 would read as a solid wall; a file of 16 gets the starter panels and mullions. 16: a 3D view may hold dimensions (the
 /// `dimension3d` category), which a build that reads up to 15 doesn't know and would refuse, and Align may leave a lock,
 /// which it would read as a dimension of nothing; nothing in a file of 15 changes. 15: a roof may have a slope for each edge of its
 /// footprint (`slopes`) and a wall a top offset from its top constraint (`top_offset`); nothing in a file of 14 changes, but a
@@ -104,7 +105,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 16;
+pub const FORMAT: u32 = 17;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -268,6 +269,9 @@ pub struct Wall {
     /// runs past.
     #[serde(default = "yes", skip_serializing_if = "is_yes")]
     pub room_bounding: bool,
+    /// A curtain wall's edits, apart from its type.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub curtain: Option<crate::curtain::CurtainEdits>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -2331,6 +2335,9 @@ pub struct WallType {
     pub thickness: f64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub layers: Vec<Layer>,
+    /// A curtain wall's pattern: its panels and mullions make it up, and its `thickness` is theirs, worked out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub curtain: Option<crate::curtain::CurtainLayout>,
 }
 
 /// A floor type: how thick its floors are and, a compound one, its layers from the top down.
@@ -2528,6 +2535,12 @@ pub struct Types {
     /// The types of the runs, by category, then name: `runs["beam"]["Beam 200 x 500"]`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub runs: BTreeMap<String, BTreeMap<String, RunType>>,
+    /// The types of the Generic Panel system family, what fills a curtain wall's cells.
+    #[serde(default)]
+    pub curtain_panel: BTreeMap<String, crate::curtain::CurtainPanelType>,
+    /// The types of the mullion system families, what runs along a curtain wall's grid lines.
+    #[serde(default)]
+    pub mullion: BTreeMap<String, crate::curtain::MullionType>,
 }
 
 /// What a project parameter holds: text, a number, a length (mm), or yes or no.
@@ -2857,7 +2870,7 @@ impl Model {
         }
         m.families = crate::family::library(language);
         for (n, t) in [("Generic - 200mm", 200.0), ("Interior - 100mm", 100.0)] {
-            m.types.wall.insert(n.into(), WallType { thickness: t, layers: Vec::new() });
+            m.types.wall.insert(n.into(), WallType { thickness: t, layers: Vec::new(), curtain: None });
         }
         // An exterior wall's layers, outside in: brick, insulation, a block core, plaster.
         let layer = |function, material: &str, thickness| Layer {
@@ -2872,7 +2885,7 @@ impl Model {
             layer(Function::Structure, "Concrete block", 140.0),
             layer(Function::Finish, "Plaster", 10.0),
         ];
-        m.types.wall.insert("Exterior - 300mm".into(), WallType { thickness: 300.0, layers });
+        m.types.wall.insert("Exterior - 300mm".into(), WallType { thickness: 300.0, layers, curtain: None });
         m.types.floor.insert("Generic - 200mm".into(), FloorType { thickness: 200.0, layers: Vec::new() });
         for (n, w) in [("Single 900 x 2100", 900.0), ("Single 800 x 2100", 800.0)] {
             m.types.door.insert(n.into(), OpeningType { width: w, height: 2100.0, sill: 0.0, operation: None });
@@ -2978,6 +2991,7 @@ impl Model {
         m.types.ceiling.insert("Generic - 20mm".into(), CeilingType { thickness: 20.0, grid: 0.0, layers: Vec::new() });
         m.types.ceiling.insert("Tile 600 x 600".into(), CeilingType { thickness: 20.0, grid: 600.0, layers: Vec::new() });
         m.types.railing.insert("Railing - 1000mm".into(), RailingType { height: 1000.0, spacing: 120.0 });
+        crate::curtain::starter_types(&mut m);
         let level = language.word("Level");
         m.insert(Element::Level(Level::new(format!("{level} 1"), 0.0)));
         m.insert(Element::Level(Level::new(format!("{level} 2"), 3000.0)));
@@ -3313,6 +3327,10 @@ impl Model {
         // roof's `slope` and to a top at its level, which is what a file of 14 holds.
         // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse; the locks Align leaves, which 15 would
         // read as dimensions of nothing) has no step: a file of 15 holds none.
+        // 16 to 17: curtain walls, which 16 would read as solid walls. A file of 16 gets the starter panels and mullions.
+        if self.format < 17 {
+            crate::curtain::starter_types(self);
+        }
         self.format = FORMAT;
     }
 
@@ -3832,6 +3850,8 @@ impl Model {
             "roof" => names(&self.types.roof),
             "ceiling" => names(&self.types.ceiling),
             "railing" => names(&self.types.railing),
+            "curtainpanel" => names(&self.types.curtain_panel),
+            "mullion" => names(&self.types.mullion),
             run if RUN_CATEGORIES.contains(&run) => self.types.runs.get(run).map(names).unwrap_or_default(),
             _ => Vec::new(),
         }
@@ -3850,6 +3870,8 @@ impl Model {
             "roof" => "Generic - 300mm",
             "ceiling" => "Generic - 20mm",
             "railing" => "Railing - 1000mm",
+            "curtainpanel" => crate::curtain::GLAZED,
+            "mullion" => crate::curtain::RECTANGULAR_MULLION,
             "structuralcolumn" => "Concrete 300 x 300",
             "footing" => "Footing 1200 x 1200",
             "beam" => "Beam 200 x 500",
@@ -3865,7 +3887,9 @@ impl Model {
             _ => "Fixed 1200 x 1500",
         };
         let names = self.type_names(category);
-        names.iter().find(|n| **n == preferred).or(names.first()).copied()
+        // A wall that names no type is a plain one, whatever curtain wall sorts first.
+        let plain = |n: &&&str| !self.types.wall.get(**n).is_some_and(|t| t.curtain.is_some());
+        names.iter().find(|n| **n == preferred).or(names.iter().find(plain)).or(names.first()).copied()
     }
 
     /// The family and type a new door or window gets in an interface that places families: the project's single door or fixed window
@@ -5803,6 +5827,7 @@ impl Model {
         }
         graphics::check_project(self)?;
         phasing::check_project(self)?;
+        crate::curtain::check(self)?;
         for (cat, n, thickness, layers) in self.layered_types() {
             let who = format!("{cat} type `{n}`");
             size(&format!("{who} thickness"), thickness)?;
@@ -7198,6 +7223,7 @@ mod tests {
             attach_top: None,
             attach_base: None,
             room_bounding: true,
+            curtain: None,
         })
     }
 

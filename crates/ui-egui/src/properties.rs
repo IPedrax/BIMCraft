@@ -431,6 +431,7 @@ const PLAN_DEPENDENT: &[Row] = &[
 fn type_json<'a>(types: &'a Value, category: &str, name: &str) -> &'a Value {
     let of = match category {
         "structuralcolumn" => &types["structural_column"],
+        "curtainpanel" => &types["curtain_panel"],
         run if bimcraft_core::model::RUN_CATEGORIES.contains(&run) => &types["runs"][category],
         other => &types[other],
     };
