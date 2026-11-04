@@ -1143,6 +1143,7 @@ impl BimApp {
             });
         });
         ui.add_space(4.0);
+        self.curtain_part_panel(ui, &model);
         self.layer_picture(ui, &model);
         self.opening_picker(ui, &model);
         self.room_colour(ui, &model);

@@ -236,6 +236,10 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> (Vec<Arm>, bo
     let Some(w) = m.wall(id) else { return (Vec::new(), false) };
     let node = if at_end { w.end } else { w.start };
     let mut arms = vec![arm(m, w, at_end, true)];
+    // A wall standing in a curtain wall's cell joins nothing, and nothing it.
+    if w.panel_of.is_some() {
+        return (arms, false);
+    }
     let mut through = false;
     let plain = crate::curtain::pattern(m, w).is_none();
     let butts = |o: &Wall| plain && crate::curtain::pattern(m, o).is_some();
@@ -249,7 +253,7 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> (Vec<Arm>, bo
     // Where they meet is asked first: whether they overlap in height takes both walls' heights, under any roof or floor
     // they're attached to.
     for (other, o) in candidates {
-        if other == id {
+        if other == id || o.panel_of.is_some() {
             continue;
         }
         if o.start.dist(node) <= TOL {

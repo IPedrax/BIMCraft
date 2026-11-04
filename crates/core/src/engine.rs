@@ -247,9 +247,7 @@ impl Session {
                 self.model_mut().resolve();
                 self.model_mut().sync_library();
                 // A curtain wall's thickness is what its panels and mullions make of it, which this may have changed.
-                if crate::curtain::out_of_date(&self.model) {
-                    crate::curtain::sync(self.model_mut());
-                }
+                let lost = if crate::curtain::out_of_date(&self.model) { crate::curtain::sync(self.model_mut()) } else { Vec::new() };
                 // A room frozen keeps the boundary it has now; one thawed lets it go.
                 if self.model.elements.values().any(|e| matches!(e, Element::Room(r) if r.frozen != r.kept.is_some())) {
                     self.model_mut().keep_rooms();
@@ -262,7 +260,7 @@ impl Session {
                 // from before may break; Insert from File brings in what it finds.
                 // (Before the check, which would name a bow tie of no area by that, not by what to redraw.)
                 let edited = if cmd.undoable && cmd.id != "insert" { self.model.check_edits(&before, cmd.id, params) } else { Ok(()) };
-                edited.and_then(|()| self.model.check()).map(|()| v)
+                edited.and_then(|()| self.model.check()).map(|()| crate::curtain::warn_of_lost(v, &lost))
             });
         match result {
             Err(e) => {

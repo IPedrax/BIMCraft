@@ -712,6 +712,17 @@ impl BimApp {
             .filter(|_| lit_dim.is_none())
             .and_then(|at| pick(&o.picker, at))
             .map(|h| h.id);
+        // On the selected curtain wall under the cursor, Tab goes through its parts there.
+        let tab = ui.input(|i| i.key_pressed(egui::Key::Tab));
+        if (std::mem::take(&mut self.tab_cycle) || tab)
+            && let (Some(at), Some(id)) = (hover, hovered)
+            && selection.as_slice() == [id]
+            && let Some(w) = model.wall(id)
+            && let Some((along, up)) = bimcraft_core::curtain::on_plane(&model, w, cam.point_at(px(at), 0.0), cam.point_at(px(at), 1000.0))
+        {
+            let list = bimcraft_core::curtain::layout(&model, w).at(along, up, crate::curtain::REACH);
+            self.curtain_part = crate::curtain::next_part(self.curtain_part, id, &list);
+        }
         // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
         let tints: Vec<(Id, Rgb)> = selection
             .iter()
@@ -870,6 +881,11 @@ impl BimApp {
         }
         // The section box's frame, as the held grip would leave it.
         let screen = |p: P3| on_screen(&cam, rect, ppp, p);
+        if let Some((id, part)) = self.curtain_part
+            && let Some(ring) = model.wall(id).and_then(|w| bimcraft_core::curtain::face_ring(&model, w, part))
+        {
+            p.add(egui::Shape::closed_line(ring.iter().map(|q| screen(*q)).collect(), egui::Stroke::new(2.0, pal().accent)));
+        }
         if let Some(b) = reboxed.or(boxed) {
             crate::section_box::draw(&p, &cam, b, modify, o.boxing.map(|(k, _)| k), screen);
         }

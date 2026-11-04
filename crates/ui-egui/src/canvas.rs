@@ -1228,7 +1228,13 @@ impl BimApp {
             });
         }
         let tabbed = std::mem::take(&mut self.tab_cycle) || tab;
-        if tabbed && !c.under.is_empty() {
+        // On a curtain wall that's selected and under the cursor, Tab goes through its parts there; else through what's under it.
+        let parts = local
+            .filter(|_| tabbed)
+            .and_then(|q| crate::curtain::parts_under(&model, key, &self.selection, &c.under, view.mm(q), view.scale));
+        if let Some((id, list)) = parts {
+            self.curtain_part = crate::curtain::next_part(self.curtain_part, id, &list);
+        } else if tabbed && !c.under.is_empty() {
             c.cycle = (c.cycle + 1) % c.under.len();
         }
         // While a rectangle is drawn, Tab moves between its width and its height; a line's or a wall's, its length and its angle.
@@ -1425,6 +1431,12 @@ impl BimApp {
         let sketch_trim = self.sketch.is_some() && matches!(self.tool, Tool::Trim(_) | Tool::TrimTo { .. });
         let painted_hover = if matches!(self.tool, Tool::Align(_)) || sketch_trim { None } else { hovered };
         paint(&p, Place { hide: self.writing(), ..Place::at(rect.min) }, &d, &marked, painted_hover, self.thin, &pictures);
+        if let Some((id, at)) = self.curtain_part
+            && let Some(ring) = model.wall(id).and_then(|w| bimcraft_core::curtain::plan_ring(&model, w, at))
+        {
+            let ring: Vec<Pos2> = ring.iter().map(|q| pos(rect.min, view.px(*q))).collect();
+            p.add(Shape::closed_line(ring, Stroke::new(2.0, pal().accent)));
+        }
         // The working aids: where the project's 0, 0 is, and which view this is. On the screen only; no drawing is made of them.
         if self.show_origin {
             let (x, y) = view.px(P2(0.0, 0.0));

@@ -680,6 +680,12 @@ impl Model {
                 add("shape point", e.category(), &owner, sh.points.iter().map(|x| (x.id, x.guid)).collect());
                 add("split line", e.category(), &owner, sh.lines.iter().map(|x| (x.id, x.guid)).collect());
             }
+            // A curtain wall's edited parts.
+            if let crate::model::Element::Wall(w) = e
+                && let Some(c) = w.curtain.as_ref().filter(|c| !c.parts.is_empty())
+            {
+                add("curtain part", e.category(), &self.guid(*id).to_string(), c.parts.iter().map(|x| (x.id, x.guid)).collect());
+            }
         }
         out
     }
@@ -807,6 +813,11 @@ impl Model {
                 sh.points.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
                 sh.lines.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
             }
+            if let crate::model::Element::Wall(w) = e
+                && let Some(c) = &mut w.curtain
+            {
+                c.parts.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
+            }
         }
         self.library.parts = self.parts_now().into_iter().collect();
         self.library.lowest = self.library.lowest_id().unwrap_or(0);
@@ -874,6 +885,11 @@ impl Model {
             g.members.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
         }
         for e in self.elements.values_mut() {
+            if let crate::model::Element::Wall(w) = e
+                && let Some(c) = &mut w.curtain
+            {
+                c.parts.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+            }
             if let Some(lines) = e.sketch_mut() {
                 lines.iter_mut().for_each(|l| (l.id, l.guid) = (0, Guid::default()));
             }
@@ -1010,7 +1026,12 @@ impl crate::model::Element {
         use crate::model::{Element, run_arm};
         let category = self.category().to_string();
         match self {
-            Element::Wall(w) => f(&Kind::Type(category), &mut w.type_name),
+            Element::Wall(w) => {
+                f(&Kind::Type(category), &mut w.type_name);
+                if let Some(c) = &mut w.curtain {
+                    c.names_mut(f);
+                }
+            }
             Element::Floor(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Ceiling(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Roof(x) => f(&Kind::Type(category), &mut x.type_name),

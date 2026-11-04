@@ -5,10 +5,12 @@
 use serde::{Deserialize, Serialize};
 
 use bimcraft_i18n::ui_msg;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde_json::{Value, json};
 
+use crate::geom::P2;
+use crate::ids::Guid;
 use crate::library::Kind;
 use crate::model::{Element, Location, MAX_COORD, Model, Wall, WallType};
 use crate::walls::Axis;
@@ -144,12 +146,14 @@ pub(crate) fn check(m: &Model) -> Result<(), String> {
         }
     }
     if any {
+        let mut taken = BTreeSet::new();
         for (id, e) in m.elements.iter() {
             match e {
                 Element::Wall(w) => {
                     if let Some(l) = pattern(m, w) {
                         check_wall(m, *id, w, l)?;
                     }
+                    check_panel_wall(m, *id, w, &mut taken)?;
                 }
                 Element::Door(o) | Element::Window(o) if m.wall(o.host).is_some_and(|w| pattern(m, w).is_some()) => {
                     return Err(format!(
@@ -295,6 +299,62 @@ pub struct CurtainEdits {
     pub absorb_columns: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub absorb_rows: bool,
+    /// The parts of this wall that aren't as its pattern says, each with an id and a GUID of its own. One whose place isn't on
+    /// the wall now sleeps, and wakes when the place comes back.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parts: Vec<PartEdit>,
+    /// The cells walls stand in ([`PanelOf`]): what the walls say, kept here so a layout doesn't look through the model.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub walled: Vec<(i64, i64)>,
+}
+
+impl CurtainEdits {
+    fn is_empty(&self) -> bool {
+        !self.absorb_columns && !self.absorb_rows && self.parts.is_empty() && self.walled.is_empty()
+    }
+}
+
+/// One part given another type, or with none, none at all.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PartEdit {
+    #[serde(default, skip_serializing_if = "crate::ids::unset")]
+    pub id: crate::ids::Id,
+    #[serde(default, skip_serializing_if = "crate::ids::Guid::is_nil")]
+    pub guid: crate::ids::Guid,
+    pub at: Address,
+    #[serde(rename = "type")]
+    pub type_name: Option<String>,
+}
+
+impl Default for Address {
+    fn default() -> Self {
+        Address::Cell { column: 0, row: 0 }
+    }
+}
+
+impl crate::library::HasPart for PartEdit {
+    fn ident(&mut self) -> (&mut crate::ids::Id, &mut crate::ids::Guid) {
+        (&mut self.id, &mut self.guid)
+    }
+}
+
+/// What makes a wall a curtain wall's panel: which wall and which cell. It stays fitted to the cell after every command
+/// ([`sync`]), joins nothing and bounds no room.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PanelOf {
+    pub host: Guid,
+    pub column: i64,
+    pub row: i64,
+}
+
+/// A cell a wall stands in, and what the mullions leave of it: along and up, from and to.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Hole {
+    pub column: i64,
+    pub row: i64,
+    pub clear: [f64; 4],
 }
 
 /// A stretch of a wall one segment of its pattern covers.
@@ -350,11 +410,22 @@ impl Shape {
 
 /// Where a part is on its pattern, its name while it has no id of its own: columns and rows by [`Span::index`]. A border is
 /// an edge past the last index.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(tag = "part", rename_all = "lowercase", deny_unknown_fields)]
 pub enum Address {
-    Cell { column: i64, row: i64 },
-    Vertical { column: i64, row: i64 },
-    Horizontal { column: i64, row: i64 },
+    #[serde(rename = "panel")]
+    Cell {
+        column: i64,
+        row: i64,
+    },
+    Vertical {
+        column: i64,
+        row: i64,
+    },
+    Horizontal {
+        column: i64,
+        row: i64,
+    },
 }
 
 /// A panel or a mullion placed.
@@ -377,6 +448,8 @@ pub enum Way {
 /// What a wall's panels and mullions are, worked out from its type and its size.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Layout {
+    /// The cells walls stand in.
+    pub walls: Vec<Hole>,
     pub columns: Vec<Span>,
     pub rows: Vec<Span>,
     pub shapes: Vec<Shape>,
@@ -491,9 +564,9 @@ struct Bar<'a> {
 }
 
 impl Bar<'_> {
-    fn of<'a>(m: &'a Model, pick: Option<&'a MullionPick>, at: At) -> Option<Bar<'a>> {
-        let pick = pick?;
-        let t = m.types.mullion.get(&pick.type_name)?;
+    fn of<'a>(m: &'a Model, name: Option<&'a str>, join: Join, at: At) -> Option<Bar<'a>> {
+        let name = name?;
+        let t = m.types.mullion.get(name)?;
         let (w, x) = (t.width(), t.offset_x);
         let lo = match at {
             At::Line(p) => p - w / 2.0,
@@ -501,15 +574,7 @@ impl Bar<'_> {
             At::End(length) => length - w,
         } + x;
         let half = t.depth() / 2.0;
-        Some(Bar {
-            pick: &pick.type_name,
-            join: pick.join,
-            lo,
-            hi: lo + w,
-            across: (t.offset_y - half, t.offset_y + half),
-            offset: t.offset_y,
-            depth: t.depth(),
-        })
+        Some(Bar { pick: name, join, lo, hi: lo + w, across: (t.offset_y - half, t.offset_y + half), offset: t.offset_y, depth: t.depth() })
     }
 
     fn middle(&self) -> f64 {
@@ -614,6 +679,20 @@ fn narrowed<'a>(range: (f64, f64), across: (f64, f64), bars: impl Iterator<Item 
 /// Mullions along lines `0..=spans.len()`, each a list of the runs across them.
 type Lines<'a> = Vec<Vec<Option<Bar<'a>>>>;
 
+/// How far what a mullion ending at a crossing crosses reaches, lengthwise of the mullion; none if any of it runs through the
+/// mullion instead, which then stops there, or none is in its way across the wall.
+fn past<'a, 'b: 'a>(b: &Bar, crossing: impl Iterator<Item = &'a Bar<'b>>, wins: impl Fn(&Bar) -> bool) -> Option<(f64, f64)> {
+    let mut reach = None;
+    for o in crossing.filter(|o| o.across.0 < b.across.1 && b.across.0 < o.across.1) {
+        if wins(o) {
+            return None;
+        }
+        let (lo, hi) = reach.unwrap_or((o.lo, o.hi));
+        reach = Some((o.lo.min(lo), o.hi.max(hi)));
+    }
+    reach
+}
+
 /// Two mullions can't share a place: one on a line between that would run into its neighbour goes.
 fn drop_clashes(lines: &mut Lines) {
     let last = lines.len().saturating_sub(1);
@@ -629,6 +708,20 @@ fn drop_clashes(lines: &mut Lines) {
     }
 }
 
+/// What a wall changes of its pattern: the types its edited parts take, by where they are, and the cells walls stand in.
+#[derive(Default)]
+struct Edits<'a> {
+    parts: HashMap<Address, Option<&'a str>>,
+    walled: Vec<(i64, i64)>,
+}
+
+impl<'a> Edits<'a> {
+    fn of(e: Option<&'a CurtainEdits>, walled: &[(i64, i64)]) -> Self {
+        let parts = e.map_or_else(HashMap::new, |e| e.parts.iter().map(|p| (p.at, p.type_name.as_deref())).collect());
+        Edits { parts, walled: walled.to_vec() }
+    }
+}
+
 /// A mullion cut to `ring`, its corners on the wall's face: centred on what bounds them.
 fn cut_part(out: &mut Shapes, b: &Bar, ring: Quad, address: Address) -> Part {
     let bound = |axis: usize| ring.iter().fold((f64::MAX, f64::MIN), |(lo, hi), c| (lo.min(c[axis]), hi.max(c[axis])));
@@ -640,8 +733,21 @@ fn cut_part(out: &mut Shapes, b: &Bar, ring: Quad, address: Address) -> Part {
 }
 
 /// What a wall `length` long and `height` tall is made of, its spans given.
-fn build(m: &Model, l: &CurtainLayout, columns: Vec<Span>, rows: Vec<Span>, length: f64, height: f64) -> Built {
+fn build<'a>(
+    m: &'a Model,
+    l: &'a CurtainLayout,
+    edits: &Edits<'a>,
+    columns: Vec<Span>,
+    rows: Vec<Span>,
+    length: f64,
+    height: f64,
+) -> Built {
     let (nc, nr) = (columns.len(), rows.len());
+    let index = |spans: &[Span], i: usize| spans.get(i).map_or_else(|| spans.last().map_or(0, |s| s.index + 1), |s| s.index);
+    let bar = |at: Address, p: Option<&'a MullionPick>, place: At| {
+        let name = edits.parts.get(&at).copied().unwrap_or(p.map(|x| x.type_name.as_str()));
+        Bar::of(m, name, p.map_or(Join::Butt, |x| x.join), place)
+    };
     let mut vertical: Lines = Vec::with_capacity(nc + 1);
     for i in 0..=nc {
         let mut runs = Vec::with_capacity(nr);
@@ -651,7 +757,7 @@ fn build(m: &Model, l: &CurtainLayout, columns: Vec<Span>, rows: Vec<Span>, leng
                 Some(c) => (l.vertical.get(r.seg).and_then(|x| x.get(c.seg)).and_then(Option::as_ref), At::Line(c.from)),
                 None => (l.borders.right.as_ref(), At::End(length)),
             };
-            runs.push(Bar::of(m, p, place));
+            runs.push(bar(Address::Vertical { column: index(&columns, i), row: r.index }, p, place));
         }
         vertical.push(runs);
     }
@@ -664,7 +770,7 @@ fn build(m: &Model, l: &CurtainLayout, columns: Vec<Span>, rows: Vec<Span>, leng
                 Some(r) => (l.horizontal.get(r.seg).and_then(|x| x.get(c.seg)).and_then(Option::as_ref), At::Line(r.from)),
                 None => (l.borders.top.as_ref(), At::End(height)),
             };
-            runs.push(Bar::of(m, p, place));
+            runs.push(bar(Address::Horizontal { column: c.index, row: index(&rows, j) }, p, place));
         }
         horizontal.push(runs);
     }
@@ -678,7 +784,7 @@ fn build(m: &Model, l: &CurtainLayout, columns: Vec<Span>, rows: Vec<Span>, leng
     };
     let mut out = Shapes::default();
     let mut parts = Vec::new();
-    let index = |spans: &[Span], i: usize| spans.get(i).map_or_else(|| spans.last().map_or(0, |s| s.index + 1), |s| s.index);
+    let mut walls = Vec::new();
 
     // Vertical mullions.
     for (i, line) in vertical.iter().enumerate() {
@@ -690,7 +796,22 @@ fn build(m: &Model, l: &CurtainLayout, columns: Vec<Span>, rows: Vec<Span>, leng
                 .flat_map(|c| near(&horizontal, r).filter_map(|j| horizontal[j][c].as_ref()).collect::<Vec<_>>())
                 .filter(|h| h.runs_through(b, l.continuous == Continuous::Horizontal))
                 .collect();
-            let (v0, v1) = narrowed(span, b.across, bars.iter().copied());
+            let (mut v0, mut v1) = narrowed(span, b.across, bars.iter().copied());
+            // Ending at a crossing it runs through, on to the far face of what it crosses.
+            let tie = l.continuous == Continuous::Horizontal;
+            let across = |j: usize| -> Vec<&Bar> {
+                (i.saturating_sub(1)..=i.min(nc.saturating_sub(1))).filter_map(|c| horizontal.get(j)?.get(c)?.as_ref()).collect()
+            };
+            if (r == 0 || line[r - 1].is_none())
+                && let Some((lo, _)) = past(b, across(r).into_iter(), |h| h.runs_through(b, tie))
+            {
+                v0 = v0.min(lo);
+            }
+            if line.get(r + 1).is_none_or(Option::is_none)
+                && let Some((_, hi)) = past(b, across(r + 1).into_iter(), |h| h.runs_through(b, tie))
+            {
+                v1 = v1.max(hi);
+            }
             let (low, high) = (mitres.get(&(i, r)), mitres.get(&(i, r + 1)));
             let at = |along: f64| (low.map_or(v0, |c| c.up_at(along)), high.map_or(v1, |c| c.up_at(along)));
             let (left, right) = (at(b.lo), at(b.hi));
@@ -715,7 +836,21 @@ fn build(m: &Model, l: &CurtainLayout, columns: Vec<Span>, rows: Vec<Span>, leng
                 .flat_map(|r| near(&vertical, c).filter_map(|i| vertical[i][r].as_ref()).collect::<Vec<_>>())
                 .filter(|v| v.runs_through(b, l.continuous == Continuous::Vertical))
                 .collect();
-            let (u0, u1) = narrowed(span, b.across, bars.iter().copied());
+            let (mut u0, mut u1) = narrowed(span, b.across, bars.iter().copied());
+            let tie = l.continuous == Continuous::Vertical;
+            let across = |i: usize| -> Vec<&Bar> {
+                (j.saturating_sub(1)..=j.min(nr.saturating_sub(1))).filter_map(|r| vertical.get(i)?.get(r)?.as_ref()).collect()
+            };
+            if (c == 0 || line[c - 1].is_none())
+                && let Some((lo, _)) = past(b, across(c).into_iter(), |v| v.runs_through(b, tie))
+            {
+                u0 = u0.min(lo);
+            }
+            if line.get(c + 1).is_none_or(Option::is_none)
+                && let Some((_, hi)) = past(b, across(c + 1).into_iter(), |v| v.runs_through(b, tie))
+            {
+                u1 = u1.max(hi);
+            }
             let (first, last) = (mitres.get(&(c, j)), mitres.get(&(c + 1, j)));
             let at = |up: f64| (first.map_or(u0, |x| x.along_at(up)), last.map_or(u1, |x| x.along_at(up)));
             let (under, over) = (at(b.lo), at(b.hi));
@@ -734,11 +869,25 @@ fn build(m: &Model, l: &CurtainLayout, columns: Vec<Span>, rows: Vec<Span>, leng
     let (mut short_columns, mut short_rows, mut too_small) = (Vec::new(), Vec::new(), false);
     for (r, row) in rows.iter().enumerate() {
         for (c, column) in columns.iter().enumerate() {
-            let name = l.panels.get(row.seg).and_then(|x| x.get(column.seg)).and_then(Option::as_ref);
-            let Some((name, t)) = name.and_then(|n| m.types.curtain_panel.get(n).map(|t| (n, t))) else { continue };
-            let across = (t.offset - t.thickness / 2.0, t.offset + t.thickness / 2.0);
             let by_columns = near(&vertical, c).filter_map(|i| vertical[i][r].as_ref()).collect::<Vec<_>>();
             let by_rows = near(&horizontal, r).filter_map(|j| horizontal[j][c].as_ref()).collect::<Vec<_>>();
+            // A wall stands between the mullions, however deep it is.
+            if edits.walled.contains(&(column.index, row.index)) {
+                let across = (f64::MIN, f64::MAX);
+                let (u0, u1) = narrowed((column.from, column.to), across, by_columns.into_iter());
+                let (v0, v1) = narrowed((row.from, row.to), across, by_rows.into_iter());
+                if u1 - u0 > l.min_panel && v1 - v0 > l.min_panel {
+                    walls.push(Hole { column: column.index, row: row.index, clear: [u0, u1, v0, v1] });
+                }
+                continue;
+            }
+            let at = Address::Cell { column: column.index, row: row.index };
+            let name = match edits.parts.get(&at) {
+                Some(name) => *name,
+                None => l.panels.get(row.seg).and_then(|x| x.get(column.seg)).and_then(|n| n.as_deref()),
+            };
+            let Some((name, t)) = name.and_then(|n| m.types.curtain_panel.get(n).map(|t| (n, t))) else { continue };
+            let across = (t.offset - t.thickness / 2.0, t.offset + t.thickness / 2.0);
             let (u0, u1) = narrowed((column.from, column.to), across, by_columns.into_iter());
             let (v0, v1) = narrowed((row.from, row.to), across, by_rows.into_iter());
             let (narrow, low) = (u1 - u0 <= l.min_panel, v1 - v0 <= l.min_panel);
@@ -764,7 +913,7 @@ fn build(m: &Model, l: &CurtainLayout, columns: Vec<Span>, rows: Vec<Span>, leng
             parts.push(Part { shape, centre: [(u0 + u1) / 2.0, (v0 + v1) / 2.0, t.offset], address });
         }
     }
-    Built { columns, rows, shapes: out.shapes, parts, short_columns, short_rows, too_small }
+    Built { columns, rows, shapes: out.shapes, parts, walls, short_columns, short_rows, too_small }
 }
 
 struct Built {
@@ -772,6 +921,7 @@ struct Built {
     rows: Vec<Span>,
     shapes: Vec<Shape>,
     parts: Vec<Part>,
+    walls: Vec<Hole>,
     short_columns: Vec<usize>,
     short_rows: Vec<usize>,
     too_small: bool,
@@ -827,6 +977,12 @@ fn absorbed(spans: &mut Vec<Span>, short: &[usize]) -> bool {
 
 /// What wall `w` is made of; nothing if it isn't a curtain wall, or isn't one that can be built.
 pub fn layout(m: &Model, w: &Wall) -> Layout {
+    let walled = w.curtain.as_ref().map_or(&[][..], |e| &e.walled[..]);
+    layout_with(m, w, walled)
+}
+
+/// As [`layout`], with walls standing in the cells `walled`.
+fn layout_with(m: &Model, w: &Wall, walled: &[(i64, i64)]) -> Layout {
     let Some(l) = pattern(m, w) else { return Layout::default() };
     if cells(m, l, w) > MAX_CELLS {
         return Layout::default();
@@ -836,12 +992,13 @@ pub fn layout(m: &Model, w: &Wall) -> Layout {
     if columns.is_empty() || rows.is_empty() {
         return Layout::default();
     }
-    let edits = w.curtain.clone().unwrap_or_default();
-    let mut built = build(m, l, columns.clone(), rows.clone(), length, height);
-    let again_columns = edits.absorb_columns && absorbed(&mut columns, &built.short_columns);
-    let again_rows = edits.absorb_rows && absorbed(&mut rows, &built.short_rows);
+    let edits = Edits::of(w.curtain.as_ref(), walled);
+    let (absorb_columns, absorb_rows) = w.curtain.as_ref().map_or((false, false), |e| (e.absorb_columns, e.absorb_rows));
+    let mut built = build(m, l, &edits, columns.clone(), rows.clone(), length, height);
+    let again_columns = absorb_columns && absorbed(&mut columns, &built.short_columns);
+    let again_rows = absorb_rows && absorbed(&mut rows, &built.short_rows);
     if again_columns || again_rows {
-        built = build(m, l, columns, rows, length, height);
+        built = build(m, l, &edits, columns, rows, length, height);
     }
     let mut malformed = Vec::new();
     if !built.short_columns.is_empty() {
@@ -850,7 +1007,7 @@ pub fn layout(m: &Model, w: &Wall) -> Layout {
     if !built.short_rows.is_empty() {
         malformed.push(Way::Rows);
     }
-    Layout { columns: built.columns, rows: built.rows, shapes: built.shapes, parts: built.parts, malformed }
+    Layout { walls: built.walls, columns: built.columns, rows: built.rows, shapes: built.shapes, parts: built.parts, malformed }
 }
 
 /// Where the grid's plane lies from the wall's location line, toward the exterior.
@@ -868,6 +1025,146 @@ pub fn envelope(m: &Model, l: &CurtainLayout) -> Option<(f64, f64)> {
         let (front, back) = (offset + size / 2.0, size / 2.0 - offset);
         Some(e.map_or((front, back), |(f, b)| (f.max(front), b.max(back))))
     })
+}
+
+impl CurtainEdits {
+    /// The types its edited parts name.
+    pub(crate) fn names_mut(&mut self, f: &mut dyn FnMut(&Kind, &mut String)) {
+        let (panel, mullion) = (Kind::Type("curtainpanel".into()), Kind::Type("mullion".into()));
+        for e in &mut self.parts {
+            let kind = if matches!(e.at, Address::Cell { .. }) { &panel } else { &mullion };
+            if let Some(n) = &mut e.type_name {
+                f(kind, n);
+            }
+        }
+    }
+}
+
+/// How wide a place with no mullion in it is marked, mm.
+const MARK: f64 = 50.0;
+
+/// Which place a part is, by what a command calls it.
+pub fn address(part: &str, column: i64, row: i64) -> Option<Address> {
+    match part {
+        "panel" => Some(Address::Cell { column, row }),
+        "vertical" => Some(Address::Vertical { column, row }),
+        "horizontal" => Some(Address::Horizontal { column, row }),
+        _ => None,
+    }
+}
+
+/// Where the line from `a` through `b` meets `w`'s grid plane: along the wall and up from its base.
+pub fn on_plane(m: &Model, w: &Wall, a: [f64; 3], b: [f64; 3]) -> Option<(f64, f64)> {
+    let axis = Axis::of(w);
+    let (o, u) = (axis.at(0.0, grid_plane(m, w)), axis.tangent(0.0));
+    let n = u.perp();
+    let off = |p: [f64; 3]| (P2(p[0], p[1]) - o).dot(n);
+    let (da, db) = (off(a), off(b));
+    if (da - db).abs() < 1e-9 {
+        return None;
+    }
+    let t = da / (da - db);
+    let at = |k: usize| a[k] + (b[k] - a[k]) * t;
+    Some(((P2(at(0), at(1)) - o).dot(u), at(2) - m.own_base(w)))
+}
+
+/// What marks a place on a plan: its part's or its extent's corners, from above.
+pub fn plan_ring(m: &Model, w: &Wall, at: Address) -> Option<[P2; 4]> {
+    let l = layout(m, w);
+    let [u0, u1, ..] = l.extent(at)?;
+    let part = l.parts.iter().find(|p| p.address == at);
+    let shape = part.and_then(|p| l.shapes.get(p.shape as usize));
+    let (middle, half) = match (part, shape) {
+        (Some(p), Some(s)) => (p.centre[2], s.size[2] / 2.0),
+        _ => (0.0, MARK / 2.0),
+    };
+    let (axis, plane) = (Axis::of(w), grid_plane(m, w));
+    let c = |along: f64, side: f64| axis.at(along, plane + middle + side);
+    Some([c(u0, -half), c(u1, -half), c(u1, half), c(u0, half)])
+}
+
+/// What marks a place in 3D: its extent's corners on the wall's grid plane.
+pub fn face_ring(m: &Model, w: &Wall, at: Address) -> Option<[[f64; 3]; 4]> {
+    let [u0, u1, v0, v1] = layout(m, w).extent(at)?;
+    let (axis, plane, base) = (Axis::of(w), grid_plane(m, w), m.own_base(w));
+    let c = |along: f64, up: f64| {
+        let q = axis.at(along, plane);
+        [q.0, q.1, base + up]
+    };
+    Some([c(u0, v0), c(u1, v0), c(u1, v1), c(u0, v1)])
+}
+
+impl Layout {
+    /// What's at a point of the wall, along it and up from its base: the mullions' places within `reach` of it, then its cell.
+    pub fn at(&self, along: f64, up: f64, reach: f64) -> Vec<Address> {
+        let within = |spans: &[Span], x: f64| {
+            spans.iter().position(|s| s.from <= x && x < s.to).or_else(|| spans.last().filter(|s| x == s.to).map(|_| spans.len() - 1))
+        };
+        let (Some(c), Some(r)) = (within(&self.columns, along), within(&self.rows, up)) else { return Vec::new() };
+        let (column, row) = (&self.columns[c], &self.rows[r]);
+        let next = |spans: &[Span], i: usize, s: &Span| spans.get(i + 1).map_or(s.index + 1, |n| n.index);
+        let mut out = Vec::new();
+        if (along - column.from).abs() <= reach {
+            out.push(Address::Vertical { column: column.index, row: row.index });
+        }
+        if (column.to - along).abs() <= reach {
+            out.push(Address::Vertical { column: next(&self.columns, c, column), row: row.index });
+        }
+        if (up - row.from).abs() <= reach {
+            out.push(Address::Horizontal { column: column.index, row: row.index });
+        }
+        if (row.to - up).abs() <= reach {
+            out.push(Address::Horizontal { column: column.index, row: next(&self.rows, r, row) });
+        }
+        out.push(Address::Cell { column: column.index, row: row.index });
+        out
+    }
+
+    /// What a place takes up: along, then up, from and to. Its part or the wall in it, or with neither, its cell or its stretch
+    /// of line.
+    pub fn extent(&self, at: Address) -> Option<[f64; 4]> {
+        if !self.has(at) {
+            return None;
+        }
+        if let Some(p) = self.parts.iter().find(|p| p.address == at)
+            && let Some(s) = self.shapes.get(p.shape as usize)
+        {
+            let [da, dv, _] = s.size.map(|x| x / 2.0);
+            return Some([p.centre[0] - da, p.centre[0] + da, p.centre[1] - dv, p.centre[1] + dv]);
+        }
+        let span = |spans: &'_ [Span], i: i64| spans.iter().find(|s| s.index == i).map(|s| (s.from, s.to));
+        let line = |spans: &'_ [Span], i: i64| span(spans, i).map(|s| s.0).or_else(|| spans.last().map(|s| s.to));
+        let half = MARK / 2.0;
+        Some(match at {
+            Address::Cell { column, row } => {
+                if let Some(h) = self.walls.iter().find(|h| (h.column, h.row) == (column, row)) {
+                    return Some(h.clear);
+                }
+                let ((u0, u1), (v0, v1)) = (span(&self.columns, column)?, span(&self.rows, row)?);
+                [u0, u1, v0, v1]
+            }
+            Address::Vertical { column, row } => {
+                let (x, (v0, v1)) = (line(&self.columns, column)?, span(&self.rows, row)?);
+                [x - half, x + half, v0, v1]
+            }
+            Address::Horizontal { column, row } => {
+                let ((u0, u1), y) = (span(&self.columns, column)?, line(&self.rows, row)?);
+                [u0, u1, y - half, y + half]
+            }
+        })
+    }
+
+    /// Whether the place is on the wall now, a part there or none.
+    pub fn has(&self, at: Address) -> bool {
+        let (columns, rows) = (&self.columns, &self.rows);
+        let on = |spans: &[Span], i: i64| spans.iter().any(|s| s.index == i);
+        let past = |spans: &[Span], i: i64| spans.last().is_some_and(|s| s.index + 1 == i);
+        match at {
+            Address::Cell { column, row } => on(columns, column) && on(rows, row),
+            Address::Vertical { column, row } => (on(columns, column) || past(columns, column)) && on(rows, row),
+            Address::Horizontal { column, row } => on(columns, column) && (on(rows, row) || past(rows, row)),
+        }
+    }
 }
 
 impl CurtainLayout {
@@ -949,6 +1246,7 @@ pub(crate) fn from_params(m: &Model, v: &Value) -> Result<CurtainLayout, String>
 /// Whether a curtain wall type's thickness isn't what its panels and mullions make it.
 pub(crate) fn out_of_date(m: &Model) -> bool {
     m.types.wall.values().any(|t| t.curtain.as_ref().is_some_and(|l| (t.thickness - thickness(m, l)).abs() > 1e-9))
+        || !panel_plan(m).is_empty()
 }
 
 fn thickness(m: &Model, l: &CurtainLayout) -> f64 {
@@ -956,7 +1254,7 @@ fn thickness(m: &Model, l: &CurtainLayout) -> f64 {
 }
 
 /// Each curtain wall type's thickness made what its panels and mullions make it.
-pub(crate) fn sync(m: &mut Model) {
+pub(crate) fn sync(m: &mut Model) -> Vec<u64> {
     let worked: Vec<(String, f64)> =
         m.types.wall.iter().filter_map(|(n, t)| t.curtain.as_ref().map(|l| (n.clone(), thickness(m, l)))).collect();
     for (n, t) in worked {
@@ -964,6 +1262,142 @@ pub(crate) fn sync(m: &mut Model) {
             x.thickness = t;
         }
     }
+    let plan = panel_plan(m);
+    for (id, fitted) in plan.fits {
+        if let Some(Element::Wall(w)) = m.elements.get_mut(id) {
+            *w = fitted;
+        }
+    }
+    for id in &plan.gone {
+        m.elements.remove(*id);
+    }
+    for (id, walled) in plan.walled {
+        if let Some(Element::Wall(w)) = m.elements.get_mut(id) {
+            let mut e = w.curtain.take().unwrap_or_default();
+            e.walled = walled;
+            w.curtain = (!e.is_empty()).then_some(e);
+        }
+    }
+    plan.gone
+}
+
+/// A command's reply, saying which walls went with their cells.
+pub(crate) fn warn_of_lost(mut v: serde_json::Value, lost: &[u64]) -> serde_json::Value {
+    if let (false, Some(o)) = (lost.is_empty(), v.as_object_mut()) {
+        let says = format!("the cells of walls {lost:?} are no longer on their curtain walls, so those walls were removed");
+        let warning = match o.get("warning").and_then(serde_json::Value::as_str) {
+            Some(was) => format!("{was}; {says}"),
+            None => says,
+        };
+        o.insert("warning".into(), warning.into());
+    }
+    v
+}
+
+/// What the walls standing in cells need done, after each command.
+#[derive(Default)]
+struct PanelPlan {
+    /// Walls not as their cells say, as they should be.
+    fits: Vec<(u64, Wall)>,
+    /// Walls whose cells went, with nothing on them.
+    gone: Vec<u64>,
+    /// Curtain walls whose `walled` is out of date, and what it should be.
+    walled: Vec<(u64, Vec<(i64, i64)>)>,
+}
+
+impl PanelPlan {
+    fn is_empty(&self) -> bool {
+        self.fits.is_empty() && self.gone.is_empty() && self.walled.is_empty()
+    }
+}
+
+fn panel_plan(m: &Model) -> PanelPlan {
+    let mut plan = PanelPlan::default();
+    let mut hosts: BTreeMap<Guid, Vec<(u64, &Wall, PanelOf)>> = BTreeMap::new();
+    let mut holding = Vec::new();
+    for (id, e) in m.elements.iter() {
+        let Element::Wall(w) = e else { continue };
+        if let Some(p) = w.panel_of {
+            hosts.entry(p.host).or_default().push((*id, w, p));
+        }
+        if w.curtain.as_ref().is_some_and(|c| !c.walled.is_empty()) {
+            holding.push(*id);
+        }
+    }
+    if hosts.is_empty() && holding.is_empty() {
+        return plan;
+    }
+    let held: BTreeSet<Guid> = if hosts.is_empty() { BTreeSet::new() } else { m.elements.values().flat_map(Element::refs).collect() };
+    for (guid, walls) in &hosts {
+        let Some(host_id) = m.elements.id(*guid) else { continue };
+        let Some(host) = m.wall(host_id).filter(|h| pattern(m, h).is_some()) else { continue };
+        let mut walled: Vec<(i64, i64)> = walls.iter().map(|(_, _, p)| (p.column, p.row)).collect();
+        walled.sort_unstable();
+        walled.dedup();
+        let laid = layout_with(m, host, &walled);
+        let (axis, plane) = (Axis::of(host), grid_plane(m, host));
+        let mut kept = Vec::new();
+        for (id, w, p) in walls {
+            match laid.walls.iter().find(|h| (h.column, h.row) == (p.column, p.row)) {
+                Some(h) => {
+                    let [u0, u1, v0, v1] = h.clear;
+                    let fitted = Wall {
+                        level: host.level,
+                        start: axis.at(u0, plane),
+                        end: axis.at(u1, plane),
+                        top_level: None,
+                        height: v1 - v0,
+                        base_offset: host.base_offset + v0,
+                        top_offset: 0.0,
+                        arc: 0.0,
+                        location: Location::Centre,
+                        attach_top: None,
+                        attach_base: None,
+                        room_bounding: false,
+                        curtain: None,
+                        ..(*w).clone()
+                    };
+                    if !same_fit(&fitted, w) {
+                        plan.fits.push((*id, fitted));
+                    }
+                    kept.push((p.column, p.row));
+                }
+                // With something on it, the wall stays for `check` to refuse the command.
+                None if held.contains(&m.guid(*id)) => kept.push((p.column, p.row)),
+                None => plan.gone.push(*id),
+            }
+        }
+        kept.sort_unstable();
+        kept.dedup();
+        if host.curtain.as_ref().map_or(&[][..], |e| &e.walled[..]) != kept {
+            plan.walled.push((host_id, kept));
+        }
+    }
+    // A curtain wall whose last wall went.
+    for id in holding {
+        if !hosts.contains_key(&m.guid(id)) {
+            plan.walled.push((id, Vec::new()));
+        }
+    }
+    plan
+}
+
+/// Whether two walls stand in the same place, closer than a part of a mm that a float's rounding reaches.
+fn same_fit(a: &Wall, b: &Wall) -> bool {
+    let near = |x: f64, y: f64| (x - y).abs() < 1e-6;
+    a.level == b.level
+        && a.start.dist(b.start) < 1e-6
+        && a.end.dist(b.end) < 1e-6
+        && a.top_level == b.top_level
+        && near(a.height, b.height)
+        && near(a.base_offset, b.base_offset)
+        && near(a.top_offset, b.top_offset)
+        && near(a.arc, b.arc)
+        && a.location == b.location
+        && a.attach_top == b.attach_top
+        && a.attach_base == b.attach_base
+        && a.room_bounding == b.room_bounding
+        && a.curtain == b.curtain
 }
 
 /// What's wrong with curtain wall type `n`'s pattern, saying what to fix.
@@ -1003,7 +1437,7 @@ fn check_pattern(m: &Model, n: &str, l: &CurtainLayout) -> Result<(), String> {
     let whole = |d: &Direction| Direction { segments: d.segments.clone(), fit: d.fit, justify: Justify::Start };
     let (cs, rs) = (whole(&l.columns), whole(&l.rows));
     let (w, h) = (cs.segments.iter().sum::<f64>() * 3.0, rs.segments.iter().sum::<f64>() * 3.0);
-    if build(m, l, divide(&cs, w), divide(&rs, h), w, h).too_small {
+    if build(m, l, &Edits::default(), divide(&cs, w), divide(&rs, h), w, h).too_small {
         return Err(format!(
             "{who}: a segment of its pattern is too small to hold a panel between its mullions; make it larger or take a mullion off"
         ));
@@ -1012,12 +1446,50 @@ fn check_pattern(m: &Model, n: &str, l: &CurtainLayout) -> Result<(), String> {
 }
 
 /// What curtain wall `id` can't be yet, or is too large to be.
+/// What's wrong with a wall standing in a cell. `taken`: the cells seen so far.
+fn check_panel_wall(m: &Model, id: u64, w: &Wall, taken: &mut BTreeSet<(Guid, i64, i64)>) -> Result<(), String> {
+    let Some(p) = w.panel_of else { return Ok(()) };
+    if m.types.wall.get(&w.type_name).is_some_and(|t| t.curtain.is_some()) {
+        return Err(format!("wall {id} stands in a curtain wall's cell: it takes a plain wall type, not `{}`", w.type_name));
+    }
+    let Some(host) = m.wall(p.host).filter(|h| pattern(m, h).is_some()) else {
+        return Err(format!("wall {id} stands in a panel's place, and {} isn't a curtain wall; delete the wall first", p.host));
+    };
+    if !taken.insert((p.host, p.column, p.row)) {
+        return Err(format!("wall {id}: column {}, row {} of its curtain wall already has a wall", p.column, p.row));
+    }
+    if !layout(m, host).walls.iter().any(|h| (h.column, h.row) == (p.column, p.row)) {
+        return Err(format!(
+            "this would lose column {}, row {} of curtain wall {}, and wall {id} there holds a door, a window or a tag; \
+             delete what it holds first",
+            p.column,
+            p.row,
+            m.elements.id(p.host).unwrap_or_default()
+        ));
+    }
+    Ok(())
+}
+
 fn check_wall(m: &Model, id: u64, w: &Wall, l: &CurtainLayout) -> Result<(), String> {
+    for e in w.curtain.iter().flat_map(|c| &c.parts) {
+        let Some(name) = &e.type_name else { continue };
+        let known = match e.at {
+            Address::Cell { .. } => m.types.curtain_panel.contains_key(name),
+            _ => m.types.mullion.contains_key(name),
+        };
+        if !known {
+            let family = if matches!(e.at, Address::Cell { .. }) { "curtain panel" } else { "mullion" };
+            return Err(format!("curtain wall {id}: an edited part names `{name}`, which isn't a {family} type; add it with `type`"));
+        }
+    }
     if w.arc != 0.0 {
         return Err(format!("curtain wall {id}: a curved curtain wall isn't supported yet; draw it straight"));
     }
     if w.attach_top.is_some() || w.attach_base.is_some() {
         return Err(format!("curtain wall {id}: attaching its top or base to a roof or floor isn't supported yet; detach it"));
+    }
+    if w.panel_of.is_some() {
+        return Err(format!("wall {id} stands in a curtain wall's cell, and can't be a curtain wall itself; give it a plain type"));
     }
     if w.params.contains_key(crate::massing::FACE) {
         return Err(format!("curtain wall {id}: walls by face can't be curtain walls yet; draw it, or give it a plain type"));

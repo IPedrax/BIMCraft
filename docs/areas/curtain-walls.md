@@ -63,7 +63,8 @@ Fit doesn't change what `layout` does with a length: at any length, what's left 
 ## Joins
 
 Where mullions meet, the bigger runs through and the other stops at its faces (`Bar::runs_through`): the deeper, of one depth the
-wider. `CurtainLayout.continuous` only fine-tunes a joint of one size, saying which runs through there. A mitre is asked for on a
+wider. `CurtainLayout.continuous` only fine-tunes a joint of one size, saying which runs through there. One that runs through and ends at the
+crossing runs on to the far face of what it crosses (`past`), so a T or a butt corner leaves no notch. A mitre is asked for on a
 mullion (`MullionPick.join`) and made only at a corner: exactly one vertical and one horizontal bar on the node, both asking, of the
 same width and depth and at the same offset. A T or a crossing stays butt whatever its bars ask for, and so does a corner of unlike
 bars. Both bars run out to the corner's outer point, cut on its diagonal; the panels are the same either way. A mitred bar is a
@@ -75,6 +76,25 @@ wall's far face; ending on one's side, it stops at the near face as on any wall.
 
 The 3D view merges coplanar faces wherever they meet, so a joint between two mullions of one material shows no line: butt and mitre
 look alike from the front. That is the view's rule for all elements, left for the 3D work of PR #188.
+
+## One part of one wall
+
+`curtain_part {wall, part, column, row, type | reset}` gives a part another type, or none. It is a `PartEdit` in `Wall.curtain.parts`,
+with an id and a GUID of its own (`HasPart`), keyed by its `Address`. An edit whose place leaves the wall sleeps and wakes when the place
+returns. `curtain_parts` lists the parts, the edits and the walls in the cells.
+
+`curtain_panel_wall {wall, column, row, type?}` makes a real `Wall` with `panel_of` in place of a panel. `curtain::sync`, after every
+command, fits it between the mullions on the grid plane (centre location, unconnected, no room bounding), so what it's told by hand
+doesn't last. It joins nothing (`walls::arms`). `CurtainEdits.walled` repeats its cell, so a layout needn't search the model. Delete it to
+have the panel back; deleting or copying its host takes it along, and its doors. It goes to IFC as an `IfcWall` beside the host.
+
+A cell that leaves the wall removes an empty wall, with a `warning` in the reply. If the wall holds anything the command is refused, by
+`check_panel_wall`. A door is 2100 mm high, so a row must leave at least that clear.
+
+On the desktop, Tab on the selected curtain wall under the cursor steps through its mullions there, its cell, and back to the whole wall
+(`parts_under`, `next_part`). A plan looks at its cut plane; the 3D view casts the cursor's ray on the grid plane (`on_plane`), which
+reaches every row. Sections and elevations don't offer it yet. Properties then shows the part's type, As in the Pattern and Replace with
+Wall, and Delete takes the part, never the wall.
 
 ## The desktop
 

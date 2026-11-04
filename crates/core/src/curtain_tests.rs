@@ -946,3 +946,442 @@ fn of_the_same_size_the_setting_says_which_runs_through() {
     assert_eq!(size_of(&l, V)[1], 925.0, "between the border and the horizontal");
     assert_eq!(size_of(&l, H)[0], 2000.0);
 }
+
+// Edits of one part of one wall.
+
+/// A wall 4 × 3 m of a 2 m × 1 m grid: two columns, three rows, the starter panels and mullions.
+fn gridded(s: &mut Session) -> u64 {
+    grid(s, "CW", &[2000.0], &[1000.0], json!({}));
+    wall(s, "CW", 4000.0, 3000.0)
+}
+
+fn panel_at(l: &Layout, column: i64, row: i64) -> Option<&curtain::Part> {
+    l.parts.iter().find(|p| p.address == curtain::Address::Cell { column, row })
+}
+
+fn part_type(l: &Layout, p: &curtain::Part) -> String {
+    l.shapes[p.shape as usize].type_name.clone()
+}
+
+#[test]
+fn one_panel_can_take_another_type_or_none_and_go_back() {
+    let mut s = session();
+    let id = gridded(&mut s);
+    run(&mut s, "curtain_part", json!({"wall": id, "part": "panel", "column": 1, "row": 0, "type": "Spandrel"}));
+    let l = layout_of(&s, id);
+    assert_eq!(part_type(&l, panel_at(&l, 1, 0).unwrap()), "Spandrel");
+    assert_eq!(part_type(&l, panel_at(&l, 0, 0).unwrap()), "Glazed", "the rest stay as the pattern says");
+    assert_eq!(part_type(&l, panel_at(&l, 1, 1).unwrap()), "Glazed");
+
+    run(&mut s, "curtain_part", json!({"wall": id, "part": "panel", "column": 1, "row": 0, "type": null}));
+    assert!(panel_at(&layout_of(&s, id), 1, 0).is_none());
+
+    run(&mut s, "curtain_part", json!({"wall": id, "part": "panel", "column": 1, "row": 0, "reset": true}));
+    let l = layout_of(&s, id);
+    assert_eq!(part_type(&l, panel_at(&l, 1, 0).unwrap()), "Glazed");
+    assert!(wall_of(&s, id).curtain.is_none(), "nothing left to hold");
+}
+
+#[test]
+fn one_mullion_can_take_another_type_or_none_and_the_panels_follow() {
+    let mut s = session();
+    let id = gridded(&mut s);
+    run(&mut s, "type", json!({"category": "mullion", "name": "Wide", "width": 100, "depth": 150}));
+    let width = |l: &Layout, c, r| l.shapes[panel_at(l, c, r).unwrap().shape as usize].size[0];
+    let before = layout_of(&s, id);
+    let was = width(&before, 0, 0);
+    run(&mut s, "curtain_part", json!({"wall": id, "part": "vertical", "column": 1, "row": 0, "type": "Wide"}));
+    let l = layout_of(&s, id);
+    assert_eq!(width(&l, 0, 0), was - 25.0, "cut back by what it grew");
+    assert_eq!(width(&l, 0, 1), was, "the next row is as it was");
+    run(&mut s, "curtain_part", json!({"wall": id, "part": "vertical", "column": 1, "row": 0, "type": null}));
+    let l = layout_of(&s, id);
+    assert!(!l.parts.iter().any(|p| p.address == curtain::Address::Vertical { column: 1, row: 0 }));
+    assert_eq!(width(&l, 0, 0), was + 25.0, "runs on to the line");
+    run(&mut s, "curtain_part", json!({"wall": id, "part": "horizontal", "column": 0, "row": 1, "type": "Wide"}));
+    let l = layout_of(&s, id);
+    let p = l.parts.iter().find(|p| p.address == curtain::Address::Horizontal { column: 0, row: 1 }).unwrap();
+    assert_eq!(part_type(&l, p), "Wide");
+}
+
+#[test]
+fn an_edited_part_has_an_id_and_a_guid_the_rest_only_an_address() {
+    let mut s = session();
+    let id = gridded(&mut s);
+    let made = run(&mut s, "curtain_part", json!({"wall": id, "part": "panel", "column": 1, "row": 0, "type": "Spandrel"}));
+    let part = made["id"].as_u64().unwrap();
+    assert!(s.model.library.part(part).is_some(), "{made}");
+    let guid = s.model.library.part(part).unwrap().guid;
+    // Editing it again keeps both.
+    let again = run(&mut s, "curtain_part", json!({"wall": id, "part": "panel", "column": 1, "row": 0, "type": null}));
+    assert_eq!(again["id"].as_u64(), Some(part));
+    assert_eq!(s.model.library.part(part).unwrap().guid, guid);
+    let listed = run(&mut s, "curtain_parts", json!({"wall": id}));
+    let edited: Vec<&Value> = listed["edits"].as_array().unwrap().iter().collect();
+    assert_eq!(edited.len(), 1, "{listed}");
+    assert_eq!(edited[0]["id"].as_u64(), Some(part));
+    // Every part is listed with where it is and what it is.
+    let parts = listed["parts"].as_array().unwrap();
+    assert_eq!(parts.len(), layout_of(&s, id).parts.len());
+    assert!(parts.iter().any(|p| p["part"] == "panel" && p["column"] == 0 && p["row"] == 0 && p["type"] == "Glazed"), "{listed}");
+}
+
+#[test]
+fn an_edit_stays_through_a_change_of_length_and_sleeps_while_its_cell_is_gone() {
+    let mut s = session();
+    let id = gridded(&mut s);
+    run(&mut s, "curtain_part", json!({"wall": id, "part": "panel", "column": 1, "row": 0, "type": "Spandrel"}));
+    run(&mut s, "modify", json!({"id": id, "end": [2000, 0]}));
+    let l = layout_of(&s, id);
+    assert!(panel_at(&l, 1, 0).is_none(), "no second column now");
+    assert_eq!(wall_of(&s, id).curtain.as_ref().unwrap().parts.len(), 1, "kept, asleep");
+    run(&mut s, "modify", json!({"id": id, "end": [4000, 0]}));
+    let l = layout_of(&s, id);
+    assert_eq!(part_type(&l, panel_at(&l, 1, 0).unwrap()), "Spandrel", "and back");
+}
+
+#[test]
+fn edits_are_refused_where_they_make_no_sense() {
+    let mut s = session();
+    let id = gridded(&mut s);
+    let plain = run(&mut s, "wall", json!({"points": [[0, 5000], [4000, 5000]]}))["ids"][0].as_u64().unwrap();
+    let edit =
+        |wall: u64, part: &str, column: i64, kind: Value| json!({"wall": wall, "part": part, "column": column, "row": 0, "type": kind});
+    assert!(fails(&mut s, "curtain_part", edit(plain, "panel", 0, json!("Glazed"))).contains("isn't a curtain wall"));
+    assert!(fails(&mut s, "curtain_part", edit(id, "panel", 0, json!("Nothing"))).contains("Nothing"));
+    assert!(fails(&mut s, "curtain_part", edit(id, "vertical", 1, json!("Glazed"))).contains("Glazed"), "a panel isn't a mullion");
+    assert!(fails(&mut s, "curtain_part", edit(id, "gusset", 0, json!("Glazed"))).contains("gusset"));
+    assert!(fails(&mut s, "curtain_part", edit(id, "panel", 40, json!("Glazed"))).contains("no such"), "off the wall");
+    // A type an edit uses can't be deleted, and a rename follows.
+    run(&mut s, "curtain_part", edit(id, "panel", 0, json!("Spandrel")));
+    assert!(fails(&mut s, "delete_type", json!({"category": "curtainpanel", "type": "Spandrel"})).contains("used"));
+    run(&mut s, "rename_type", json!({"category": "curtainpanel", "type": "Spandrel", "name": "Infill"}));
+    let l = layout_of(&s, id);
+    assert_eq!(part_type(&l, panel_at(&l, 0, 0).unwrap()), "Infill");
+}
+
+// A panel replaced by a wall.
+
+/// A wall 4 × 6 m of a 2 m × 3 m grid: a cell a door fits in.
+fn tall(s: &mut Session) -> u64 {
+    grid(s, "Tall", &[2000.0], &[3000.0], json!({}));
+    wall(s, "Tall", 4000.0, 6000.0)
+}
+
+fn replaced(s: &mut Session, wall: u64, column: i64, row: i64) -> u64 {
+    run(s, "curtain_panel_wall", json!({"wall": wall, "column": column, "row": row}))["id"].as_u64().unwrap()
+}
+
+#[test]
+fn a_panel_replaced_by_a_wall_is_a_real_wall_fitted_to_its_cell() {
+    let mut s = session();
+    let id = gridded(&mut s);
+    let plane = curtain::grid_plane(&s.model, wall_of(&s, id));
+    let in_place = replaced(&mut s, id, 0, 0);
+    let w = wall_of(&s, in_place).clone();
+    assert!(panel_at(&layout_of(&s, id), 0, 0).is_none(), "the wall is there instead");
+    // Between the mullions: 50 inside the wall's end, 25 either side of a line.
+    assert!((w.start.0 - 50.0).abs() < 1e-6 && (w.end.0 - 1975.0).abs() < 1e-6, "{:?} {:?}", w.start, w.end);
+    assert!((w.start.1 - plane).abs() < 1e-6, "{:?} on {plane}", w.start);
+    let (base, top) = (s.model.base_z(&w), s.model.top_z(&w));
+    assert!((base - 50.0).abs() < 1e-6 && (top - 975.0).abs() < 1e-6, "{base} {top}");
+    assert!(!w.room_bounding, "the curtain wall bounds rooms as a whole");
+    assert!(s.model.types.wall[&w.type_name].curtain.is_none());
+}
+
+#[test]
+fn a_panel_wall_takes_a_type_and_stays_out_of_every_join() {
+    let mut s = session();
+    let id = gridded(&mut s);
+    let a =
+        run(&mut s, "curtain_panel_wall", json!({"wall": id, "column": 0, "row": 0, "type": "Exterior - 300mm"}))["id"].as_u64().unwrap();
+    assert_eq!(wall_of(&s, a).type_name, "Exterior - 300mm");
+    let b = replaced(&mut s, id, 1, 0);
+    // Square ends, whatever stands next to them.
+    for x in [a, b] {
+        let o = crate::walls::outline(&s.model, x);
+        assert_eq!(o.len(), 4, "{o:?}");
+    }
+    // A plain wall ending on the curtain wall's line isn't joined to it either.
+    let plain =
+        run(&mut s, "wall", json!({"points": [[2000, -3000], [2000, 0]], "location": "centre", "height": 900}))["ids"][0].as_u64().unwrap();
+    let cap = crate::walls::outline(&s.model, a);
+    assert_eq!(cap.len(), 4);
+    assert!(crate::walls::outline(&s.model, plain).len() <= 5);
+}
+
+#[test]
+fn a_door_goes_in_a_panel_wall_but_not_in_the_curtain_wall() {
+    let mut s = session();
+    let id = tall(&mut s);
+    assert!(fails(&mut s, "door", json!({"wall": id, "offset": 1000})).contains("panel"));
+    let in_place = replaced(&mut s, id, 0, 0);
+    run(&mut s, "door", json!({"wall": in_place, "offset": 900}));
+    assert_eq!(s.model.elements.values().filter(|e| matches!(e, Element::Door(_))).count(), 1);
+}
+
+#[test]
+fn a_panel_wall_follows_its_cell_after_every_command() {
+    let mut s = session();
+    let id = gridded(&mut s);
+    let in_place = replaced(&mut s, id, 0, 0);
+    // A wider mullion cuts it back.
+    run(&mut s, "curtain_part", json!({"wall": id, "part": "vertical", "column": 1, "row": 0, "type": null}));
+    assert!((wall_of(&s, in_place).end.0 - 2000.0).abs() < 1e-6, "{:?}", wall_of(&s, in_place).end);
+    run(&mut s, "curtain_part", json!({"wall": id, "part": "vertical", "column": 1, "row": 0, "reset": true}));
+    assert!((wall_of(&s, in_place).end.0 - 1975.0).abs() < 1e-6);
+    // Moved with its wall, whichever way that is.
+    let plane = curtain::grid_plane(&s.model, wall_of(&s, id));
+    run(&mut s, "modify", json!({"id": id, "start": [0, 1000], "end": [4000, 1000]}));
+    let w = wall_of(&s, in_place);
+    assert!((w.start.1 - (1000.0 + plane)).abs() < 1e-6, "{:?}", w.start);
+    // What it's told to be by hand doesn't last, as its cell says where it is.
+    run(&mut s, "modify", json!({"id": in_place, "end": [500, 1000 + plane as i64]}));
+    assert!((wall_of(&s, in_place).end.0 - 1975.0).abs() < 1e-6);
+    // Its base and top follow the wall's.
+    run(&mut s, "modify", json!({"id": id, "base_offset": 500}));
+    let w = wall_of(&s, in_place).clone();
+    assert!((s.model.base_z(&w) - 550.0).abs() < 1e-6, "{}", s.model.base_z(&w));
+}
+
+#[test]
+fn a_cell_that_goes_removes_an_empty_wall_with_a_warning_and_refuses_with_a_door() {
+    let mut s = session();
+    let id = tall(&mut s);
+    let empty = replaced(&mut s, id, 1, 0);
+    let out = run(&mut s, "modify", json!({"id": id, "end": [2000, 0]}));
+    assert!(s.model.elements.get(empty).is_none(), "gone");
+    assert!(out["warning"].as_str().is_some_and(|w| w.contains(&empty.to_string())), "{out}");
+    // Back to the length it had: the panel, not the wall.
+    run(&mut s, "modify", json!({"id": id, "end": [4000, 0]}));
+    assert!(panel_at(&layout_of(&s, id), 1, 0).is_some());
+    // With a door in it the command that would lose the cell is refused.
+    let held = replaced(&mut s, id, 1, 0);
+    run(&mut s, "door", json!({"wall": held, "offset": 900}));
+    let why = fails(&mut s, "modify", json!({"id": id, "end": [2000, 0]}));
+    assert!(why.contains("door") && why.contains(&held.to_string()), "{why}");
+}
+
+#[test]
+fn deleting_a_panel_wall_brings_the_panel_back_and_deleting_the_host_takes_it() {
+    let mut s = session();
+    let id = tall(&mut s);
+    let in_place = replaced(&mut s, id, 0, 0);
+    run(&mut s, "delete", json!({"ids": [in_place]}));
+    assert!(panel_at(&layout_of(&s, id), 0, 0).is_some());
+    let in_place = replaced(&mut s, id, 0, 0);
+    let door = run(&mut s, "door", json!({"wall": in_place, "offset": 900}))["id"].as_u64().unwrap();
+    run(&mut s, "delete", json!({"ids": [id]}));
+    assert!(s.model.elements.get(in_place).is_none() && s.model.elements.get(door).is_none());
+}
+
+#[test]
+fn a_cell_holds_one_wall_of_a_plain_type() {
+    let mut s = session();
+    let id = gridded(&mut s);
+    let in_place = replaced(&mut s, id, 0, 0);
+    let again = json!({"wall": id, "column": 0, "row": 0});
+    assert!(fails(&mut s, "curtain_panel_wall", again).contains("already"));
+    let curtain = json!({"wall": id, "column": 1, "row": 0, "type": "CW"});
+    assert!(fails(&mut s, "curtain_panel_wall", curtain).contains("plain"));
+    assert!(fails(&mut s, "curtain_panel_wall", json!({"wall": id, "column": 40, "row": 0})).contains("no such"));
+    assert!(fails(&mut s, "copy", json!({"ids": [in_place], "by": [0, 5000]})).contains("already"));
+    // Its host's type can't become plain under it.
+    assert!(fails(&mut s, "modify", json!({"id": id, "type": "Generic - 200mm"})).contains("curtain"));
+}
+
+#[test]
+fn edits_and_panel_walls_go_through_a_file_and_undo() {
+    let mut s = session();
+    let id = gridded(&mut s);
+    run(&mut s, "curtain_part", json!({"wall": id, "part": "panel", "column": 1, "row": 0, "type": "Spandrel"}));
+    let in_place = replaced(&mut s, id, 0, 0);
+    let (text, _) = (s.model.to_json().unwrap(), ());
+    let back = Model::read(&text).unwrap().0;
+    assert_eq!(back.check(), Ok(()));
+    let w = match back.elements.get(id) {
+        Some(Element::Wall(w)) => w.clone(),
+        _ => panic!(),
+    };
+    let l = curtain::layout(&back, &w);
+    assert_eq!(part_type(&l, panel_at(&l, 1, 0).unwrap()), "Spandrel");
+    assert!(panel_at(&l, 0, 0).is_none());
+    assert!(matches!(back.elements.get(in_place), Some(Element::Wall(x)) if x.panel_of.is_some()));
+    run(&mut s, "undo", json!({}));
+    assert!(s.model.elements.get(in_place).is_none());
+    assert!(panel_at(&layout_of(&s, id), 0, 0).is_some());
+}
+
+#[test]
+fn ifc_writes_a_panel_wall_as_a_wall_with_its_door_in_place_of_a_plate() {
+    let mut s = session();
+    let id = tall(&mut s);
+    let plates = crate::ifc::export(&s.model).matches("IFCPLATE(").count();
+    let in_place = replaced(&mut s, id, 0, 0);
+    run(&mut s, "door", json!({"wall": in_place, "offset": 900}));
+    let f = crate::ifc::export(&s.model);
+    assert_eq!(f.matches("IFCPLATE(").count(), plates - 1);
+    assert_eq!(f.matches("IFCWALL(").count(), 1);
+    assert_eq!(f.matches("IFCDOOR(").count(), 1);
+}
+
+#[test]
+fn hostile_edits_change_nothing() {
+    let mut s = session();
+    let id = gridded(&mut s);
+    for bad in [
+        json!({"wall": id}),
+        json!({"wall": id, "part": "panel"}),
+        json!({"wall": id, "part": "panel", "column": "x", "row": 0, "type": "Glazed"}),
+        json!({"wall": id, "part": "panel", "column": 1e300, "row": 0, "type": "Glazed"}),
+        json!({"wall": id, "part": "panel", "column": 0, "row": 0}),
+        json!({"wall": id, "part": 3, "column": 0, "row": 0, "type": "Glazed"}),
+        json!({"wall": 999999, "part": "panel", "column": 0, "row": 0, "type": "Glazed"}),
+    ] {
+        fails(&mut s, "curtain_part", bad);
+    }
+    fails(&mut s, "curtain_panel_wall", json!({"wall": id, "column": i64::MAX, "row": i64::MIN}));
+    fails(&mut s, "curtain_parts", json!({"wall": 999999}));
+}
+
+#[test]
+fn a_copied_curtain_wall_brings_the_walls_in_its_cells_and_their_doors() {
+    let mut s = session();
+    let id = tall(&mut s);
+    let in_place = replaced(&mut s, id, 0, 0);
+    run(&mut s, "door", json!({"wall": in_place, "offset": 900}));
+    let made = run(&mut s, "copy", json!({"ids": [id], "by": [0, 5000]}));
+    assert_eq!(made["ids"].as_array().unwrap().len(), 3, "{made}");
+    let walled: Vec<_> = s.model.elements.values().filter(|e| matches!(e, Element::Wall(w) if w.panel_of.is_some())).collect();
+    assert_eq!(walled.len(), 2);
+    assert_eq!(s.model.elements.values().filter(|e| matches!(e, Element::Door(_))).count(), 2);
+    let copy = made["ids"][0].as_u64().unwrap();
+    assert!(panel_at(&layout_of(&s, copy), 0, 0).is_none(), "its wall stands there");
+}
+
+#[test]
+fn removing_the_last_interior_grid_keeps_a_walls_edits() {
+    let mut s = session();
+    let id = gridded(&mut s);
+    run(&mut s, "curtain_part", json!({"wall": id, "part": "panel", "column": 0, "row": 0, "type": "Spandrel"}));
+    run(&mut s, "modify", json!({"id": id, "curtain": {"absorb_columns": true}}));
+    let e = wall_of(&s, id).curtain.as_ref().unwrap();
+    assert!(e.absorb_columns);
+    assert_eq!(e.parts.len(), 1, "kept: {e:?}");
+}
+
+// What's under a point of a wall.
+
+#[test]
+fn what_is_at_a_point_is_its_mullions_then_its_cell() {
+    use curtain::Address::{Cell, Horizontal, Vertical};
+    let mut s = session();
+    let id = gridded(&mut s);
+    let l = layout_of(&s, id);
+    assert_eq!(l.at(1000.0, 500.0, 50.0), [Cell { column: 0, row: 0 }]);
+    assert_eq!(l.at(2000.0, 500.0, 50.0), [Vertical { column: 1, row: 0 }, Cell { column: 1, row: 0 }]);
+    assert_eq!(l.at(1000.0, 1000.0, 50.0), [Horizontal { column: 0, row: 1 }, Cell { column: 0, row: 1 }]);
+    // At a crossing, both; at the wall's far end, the border past the last column; off the wall, nothing.
+    assert_eq!(l.at(2000.0, 1000.0, 50.0).len(), 3);
+    assert_eq!(l.at(3990.0, 500.0, 50.0), [Vertical { column: 2, row: 0 }, Cell { column: 1, row: 0 }]);
+    assert!(l.at(5000.0, 500.0, 50.0).is_empty());
+    // A place with nothing in it can still be picked, to give it a part again.
+    run(&mut s, "curtain_part", json!({"wall": id, "part": "panel", "column": 0, "row": 0, "type": null}));
+    assert_eq!(layout_of(&s, id).at(1000.0, 500.0, 50.0), [Cell { column: 0, row: 0 }]);
+}
+
+#[test]
+fn a_places_extent_is_its_parts_or_its_span() {
+    use curtain::Address::{Cell, Vertical};
+    let mut s = session();
+    let id = gridded(&mut s);
+    let [u0, u1, v0, v1] = layout_of(&s, id).extent(Cell { column: 0, row: 0 }).unwrap();
+    assert_eq!([u0, u1, v0, v1], [50.0, 1975.0, 50.0, 975.0], "the panel");
+    run(&mut s, "curtain_part", json!({"wall": id, "part": "panel", "column": 0, "row": 0, "type": null}));
+    assert_eq!(layout_of(&s, id).extent(Cell { column: 0, row: 0 }), Some([0.0, 2000.0, 0.0, 1000.0]), "its cell");
+    run(&mut s, "curtain_part", json!({"wall": id, "part": "vertical", "column": 1, "row": 0, "type": null}));
+    assert_eq!(layout_of(&s, id).extent(Vertical { column: 1, row: 0 }), Some([1975.0, 2025.0, 0.0, 1000.0]), "its line");
+    assert_eq!(layout_of(&s, id).extent(Vertical { column: 40, row: 0 }), None);
+}
+
+#[test]
+fn a_ray_finds_where_it_meets_the_walls_plane() {
+    let mut s = session();
+    let id = gridded(&mut s);
+    let w = wall_of(&s, id).clone();
+    let plane = curtain::grid_plane(&s.model, &w);
+    // Straight through, from in front, at 1 m along and 2.5 m up.
+    let at = curtain::on_plane(&s.model, &w, [1000.0, plane + 5000.0, 2500.0], [1000.0, plane - 5000.0, 2500.0]).unwrap();
+    assert!((at.0 - 1000.0).abs() < 1e-6 && (at.1 - 2500.0).abs() < 1e-6, "{at:?}");
+    // Along the plane, it never does.
+    assert!(curtain::on_plane(&s.model, &w, [0.0, plane, 0.0], [10.0, plane, 0.0]).is_none());
+}
+
+#[test]
+fn insert_from_file_brings_a_curtain_wall_with_its_edits_and_panel_walls() {
+    let mut from = session();
+    let id = tall(&mut from);
+    run(&mut from, "curtain_part", json!({"wall": id, "part": "panel", "column": 1, "row": 0, "type": "Spandrel"}));
+    let in_place = replaced(&mut from, id, 0, 0);
+    let file = std::env::temp_dir().join(format!("bimcraft-curtain-{}-panelwall.bimcraft", std::process::id()));
+    std::fs::write(&file, from.model.to_json().unwrap()).unwrap();
+    let mut s = session();
+    let path = file.to_string_lossy().to_string();
+    run(&mut s, "insert", json!({"path": path, "ids": [id, in_place]}));
+    let _ = std::fs::remove_file(&file);
+    let host = s.model.elements.iter().find_map(|(i, e)| matches!(e, Element::Wall(w) if w.type_name == "Tall").then_some(*i)).unwrap();
+    let l = layout_of(&s, host);
+    assert_eq!(part_type(&l, panel_at(&l, 1, 0).unwrap()), "Spandrel");
+    assert!(panel_at(&l, 0, 0).is_none(), "its wall stands there: {:?}", l.walls);
+    assert_eq!(l.walls.len(), 1);
+}
+
+// Where a mullion ends at a crossing.
+
+/// Whether a mullion covers a point of the wall's face.
+fn covered(l: &Layout, along: f64, up: f64) -> bool {
+    l.parts.iter().filter(|p| l.shapes[p.shape as usize].kind == PartKind::Mullion).any(|p| {
+        let [du, dv, _] = l.shapes[p.shape as usize].size.map(|x| x / 2.0);
+        (along - p.centre[0]).abs() <= du && (up - p.centre[1]).abs() <= dv
+    })
+}
+
+#[test]
+fn a_mullion_that_ends_at_a_crossing_leaves_no_notch() {
+    let mut s = session();
+    grid(&mut s, "T", &[2000.0], &[1000.0], json!({}));
+    let id = wall(&mut s, "T", 4000.0, 2000.0);
+    // The vertical above the crossing taken away: the one below ends there, and the horizontals stop at it.
+    run(&mut s, "curtain_part", json!({"wall": id, "part": "vertical", "column": 1, "row": 1, "type": null}));
+    let l = layout_of(&s, id);
+    assert!(covered(&l, 2000.0, 1010.0), "the crossing is whole");
+    let v = size_of(&l, curtain::Address::Vertical { column: 1, row: 0 });
+    assert_eq!(v[1], 1025.0, "it runs on to the horizontal's far face");
+}
+
+#[test]
+fn a_butt_corner_of_mullions_leaves_no_notch_whichever_runs_through() {
+    let mut s = session();
+    let edge = json!({"type": "50 x 150"});
+    let nothing = json!({"left": null, "right": null, "bottom": null, "top": null});
+    for (name, continuous, vertical, horizontal) in [("A", "vertical", 1025.0, 975.0), ("B", "horizontal", 975.0, 1025.0)] {
+        grid(
+            &mut s,
+            name,
+            &[1000.0, 3000.0],
+            &[1000.0, 2000.0],
+            json!({
+                "vertical": [[null, edge], [null, null]],
+                "horizontal": [[null, null], [edge, null]],
+                "borders": nothing,
+                "continuous": continuous,
+            }),
+        );
+        let l = built(&mut s, name, 4000.0, 3000.0);
+        for (along, up) in [(990.0, 990.0), (1010.0, 1010.0), (990.0, 1010.0), (1010.0, 990.0)] {
+            assert!(covered(&l, along, up), "{name}: ({along}, {up}) in {:?}", l.parts);
+        }
+        assert_eq!(size_of(&l, curtain::Address::Vertical { column: 1, row: 0 })[1], vertical, "{name}");
+        assert_eq!(size_of(&l, curtain::Address::Horizontal { column: 0, row: 1 })[0], horizontal, "{name}");
+    }
+}

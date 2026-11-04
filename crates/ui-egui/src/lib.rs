@@ -623,6 +623,8 @@ pub struct BimApp {
     text_type_dialog: Option<notes::TextTypeDialog>,
     dimension_type_dialog: Option<dimtypes::DimensionTypeDialog>,
     curtain_editor: Option<curtain::CurtainEditor>,
+    /// The one part of the selected curtain wall Tab has gone to: what Properties and Delete then act on.
+    curtain_part: Option<(Id, bimcraft_core::curtain::Address)>,
     /// The model the malformed curtain walls were last looked for in, those it had, and those being asked about.
     curtain_seen: Option<Arc<Model>>,
     curtain_known: std::collections::BTreeSet<Id>,
@@ -1261,6 +1263,7 @@ impl BimApp {
             text_type_dialog: None,
             dimension_type_dialog: None,
             curtain_editor: None,
+            curtain_part: None,
             curtain_seen: None,
             curtain_known: Default::default(),
             curtain_asking: Default::default(),
@@ -1769,6 +1772,9 @@ impl BimApp {
         }
         let m = &self.session.model;
         self.selection.retain(|id| m.elements.contains_key(id));
+        let selected = self.selection.as_slice();
+        self.curtain_part =
+            self.curtain_part.filter(|(id, at)| selected == [*id] && m.wall(*id).is_some_and(|w| curtain::part_is_there(m, w, *at)));
         self.active_option = self.active_option.take().filter(|o| bimcraft_core::phasing::option_exists(m, o));
         let exists = |s: &Sheet| match s {
             Sheet::Plan(key) | Sheet::Ceiling(key) => m.plan_level(*key).is_some(),
@@ -2710,6 +2716,11 @@ impl BimApp {
     }
 
     fn delete(&mut self) {
+        // With one part of a curtain wall picked, that part, and never the wall.
+        if let Some((id, at)) = self.curtain_part {
+            self.delete_curtain_part(id, at);
+            return;
+        }
         // Under Modify Sub Elements, what of the shape is selected.
         if self.shape_delete() {
             return;

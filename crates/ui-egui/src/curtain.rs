@@ -4,9 +4,11 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use bimcraft_core::curtain::{self, Continuous, CurtainEdits, CurtainLayout, Direction, Fit, Join, Justify, MullionPick, Way};
+use bimcraft_core::curtain::{self, Address, Continuous, CurtainEdits, CurtainLayout, Direction, Fit, Join, Justify, MullionPick, Way};
+use bimcraft_core::geom::P2;
 use bimcraft_core::model::{Element, Id, Model};
 use bimcraft_core::units::Units;
+use bimcraft_core::walls;
 use bimcraft_i18n::msg;
 use egui::{Button, Color32, Context, Id as UiId, Rect, Sense, Stroke, TextEdit, Ui, WidgetInfo, WidgetType, pos2, vec2};
 use serde_json::json;
@@ -372,7 +374,95 @@ fn paint_edge(p: &egui::Painter, line: Rect, width: Option<f32>, selected: bool,
     p.line_segment([a, b], Stroke::new(w, colour));
 }
 
+/// How near a line, mm at least, the cursor must be for Tab to offer its mullion.
+pub(crate) const REACH: f64 = 60.0;
+
+/// Whether a place is on the wall: what stays picked while it is.
+pub(crate) fn part_is_there(m: &Model, w: &bimcraft_core::model::Wall, at: Address) -> bool {
+    curtain::pattern(m, w).is_some() && curtain::layout(m, w).has(at)
+}
+
+/// The curtain wall alone in `selection`, if it's in `under`, and what's at the plan's cut plane under `at`.
+pub(crate) fn parts_under(m: &Model, view: Id, selection: &[Id], under: &[Id], at: P2, scale: f64) -> Option<(Id, Vec<Address>)> {
+    let &[id] = selection else { return None };
+    let w = m.wall(id).filter(|w| curtain::pattern(m, w).is_some() && under.contains(&id))?;
+    let axis = walls::Axis::of(w);
+    let (along, _) = axis.project(at);
+    let up = m.plan_range(view).cut - m.own_base(w);
+    let reach = REACH.max(f64::from(crate::canvas::PICK) / scale.max(f64::MIN_POSITIVE));
+    Some((id, curtain::layout(m, w).at(along, up, reach)))
+}
+
+/// The part after `now` in `list`, then none: the whole wall again.
+pub(crate) fn next_part(now: Option<(Id, Address)>, id: Id, list: &[Address]) -> Option<(Id, Address)> {
+    let at = now.filter(|(of, _)| *of == id).and_then(|(_, at)| list.iter().position(|x| *x == at));
+    let next = at.map_or(0, |i| i + 1);
+    list.get(next).map(|a| (id, *a))
+}
+
 impl BimApp {
+    /// The part Tab went to: what it is, another type or none, what its pattern says, or a wall in its place.
+    pub(crate) fn curtain_part_panel(&mut self, ui: &mut Ui, model: &Model) {
+        let Some((id, at)) = self.curtain_part else { return };
+        let Some(w) = model.wall(id) else { return };
+        let l = curtain::layout(model, w);
+        let (word, column, row, names) = match at {
+            Address::Cell { column, row } => (t("Panel"), column, row, model.type_names("curtainpanel")),
+            Address::Vertical { column, row } => (t("Vertical Mullion"), column, row, model.type_names("mullion")),
+            Address::Horizontal { column, row } => (t("Horizontal Mullion"), column, row, model.type_names("mullion")),
+        };
+        ui.label(egui::RichText::new(tf("{}: column {}, row {}", &[word, &column.to_string(), &row.to_string()])).strong());
+        let walled = matches!(at, Address::Cell { column, row } if l.walls.iter().any(|h| (h.column, h.row) == (column, row)));
+        if walled {
+            ui.label(t("A wall stands here: select it, or delete it to have the panel back."));
+            ui.separator();
+            return;
+        }
+        let now = l.parts.iter().find(|p| p.address == at).and_then(|p| l.shapes.get(p.shape as usize)).map(|s| s.type_name.clone());
+        let none = t("None");
+        let mut pick: Option<Option<String>> = None;
+        egui::ComboBox::from_id_salt("curtain-part-type").selected_text(now.clone().unwrap_or_else(|| none.to_string())).show_ui(
+            ui,
+            |ui| {
+                if ui.selectable_label(now.is_none(), none).clicked() {
+                    pick = Some(None);
+                }
+                for n in &names {
+                    if ui.selectable_label(now.as_deref() == Some(*n), *n).clicked() {
+                        pick = Some(Some(n.to_string()));
+                    }
+                }
+            },
+        );
+        let edited = w.curtain.as_ref().is_some_and(|e| e.parts.iter().any(|x| x.at == at));
+        let reset = edited && ui.button(t("As in the Pattern")).clicked();
+        let replace = matches!(at, Address::Cell { .. }) && ui.button(t("Replace with Wall")).clicked();
+        ui.separator();
+        let mut params = serde_json::to_value(at).unwrap_or_default();
+        params["wall"] = json!(id);
+        if let Some(name) = pick {
+            params["type"] = json!(name);
+            self.run("curtain_part", params);
+        } else if reset {
+            params["reset"] = json!(true);
+            self.run("curtain_part", params);
+        } else if replace && let Address::Cell { column, row } = at {
+            let made = self.run("curtain_panel_wall", json!({"wall": id, "column": column, "row": row}));
+            if let Some(wall) = made.and_then(|v| v["id"].as_u64()) {
+                self.selection = vec![wall];
+                self.curtain_part = None;
+            }
+        }
+    }
+
+    /// Delete with a part picked: that part, and never the wall.
+    pub(crate) fn delete_curtain_part(&mut self, id: Id, at: Address) {
+        let mut params = serde_json::to_value(at).unwrap_or_default();
+        params["wall"] = json!(id);
+        params["type"] = serde_json::Value::Null;
+        self.run("curtain_part", params);
+    }
+
     /// Edit Pattern on wall type `name`, if it's a curtain wall's.
     pub(crate) fn open_curtain_editor(&mut self, name: &str) {
         self.curtain_editor = CurtainEditor::new(&self.session.model, name);

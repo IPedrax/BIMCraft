@@ -193,3 +193,119 @@ fn a_curtain_wall_shows_no_wall_layers_a_plain_one_does_in_both_profiles() {
         assert!(h.query_by_label("Wall layers").is_none(), "rev {rev}: not a curtain wall");
     }
 }
+
+// One part of a wall, picked with Tab.
+
+const TALL: &str = r#"type {"category":"wall","name":"Tall","curtain":{"columns":{"segments":[2000]},"rows":{"segments":[3000]}}}
+wall {"points":[[0,0],[4000,0]],"type":"Tall","height":6000}"#;
+
+fn tall_wall(h: &Harness<BimApp>) -> Id {
+    walls(h).iter().find(|w| w.1.type_name == "Tall").map(|w| w.0).unwrap()
+}
+
+/// The wall selected, the cursor on it at `along`, and Tab pressed `times` times.
+fn tab_to(h: &mut Harness<BimApp>, along: f64, times: usize) {
+    let id = tall_wall(h);
+    h.state_mut().selection = vec![id];
+    let at = h.state().screen(P2(along, 0.0));
+    h.hover_at(at);
+    h.run();
+    for _ in 0..times {
+        key(h, Key::Tab);
+    }
+}
+
+#[test]
+fn tab_goes_from_a_selected_curtain_wall_to_the_parts_under_the_cursor_and_back() {
+    use bimcraft_core::curtain::Address::{Cell, Vertical};
+    let mut h = app(TALL);
+    let id = tall_wall(&h);
+    tab_to(&mut h, 1000.0, 1);
+    assert_eq!(h.state().curtain_part, Some((id, Cell { column: 0, row: 0 })), "the panel at the cut plane");
+    assert_eq!(h.state().selection, [id], "the wall stays selected");
+    key(&mut h, Key::Tab);
+    assert_eq!(h.state().curtain_part, None, "and back to the whole wall");
+    // On a line, its mullion first.
+    let mut h = app(TALL);
+    tab_to(&mut h, 2000.0, 1);
+    assert_eq!(h.state().curtain_part, Some((id, Vertical { column: 1, row: 0 })));
+    key(&mut h, Key::Tab);
+    assert_eq!(h.state().curtain_part, Some((id, Cell { column: 1, row: 0 })));
+    // Selecting something else lets it go.
+    h.state_mut().selection.clear();
+    h.run();
+    assert_eq!(h.state().curtain_part, None);
+}
+
+#[test]
+fn properties_replaces_the_picked_panel_with_a_wall_that_takes_a_door() {
+    let mut h = app(TALL);
+    let id = tall_wall(&h);
+    tab_to(&mut h, 1000.0, 1);
+    press(&mut h, "Replace with Wall");
+    let w = walls(&h);
+    let (made, wall) = w.iter().find(|x| x.1.panel_of.is_some()).expect("a wall in the cell");
+    assert_eq!(wall.panel_of.unwrap().column, 0);
+    assert_eq!(h.state().selection, [*made], "the wall is what's selected now");
+    assert_eq!(h.state().curtain_part, None);
+    let m = &h.state().session.model;
+    let host = m.wall(id).unwrap();
+    assert!(
+        !bimcraft_core::curtain::layout(m, host)
+            .parts
+            .iter()
+            .any(|p| p.address == bimcraft_core::curtain::Address::Cell { column: 0, row: 0 })
+    );
+}
+
+#[test]
+fn delete_takes_only_the_picked_part_and_reset_brings_it_back() {
+    use bimcraft_core::curtain::{self, Address::Cell};
+    let mut h = app(TALL);
+    let id = tall_wall(&h);
+    tab_to(&mut h, 1000.0, 1);
+    key(&mut h, Key::Delete);
+    let panel = |h: &Harness<BimApp>| {
+        let m = &h.state().session.model;
+        m.wall(id).is_some_and(|w| curtain::layout(m, w).parts.iter().any(|p| p.address == Cell { column: 0, row: 0 }))
+    };
+    assert!(h.state().session.model.wall(id).is_some(), "the wall is still there");
+    assert!(!panel(&h), "the panel isn't");
+    assert_eq!(h.state().curtain_part, Some((id, Cell { column: 0, row: 0 })), "its place stays picked");
+    press(&mut h, "As in the Pattern");
+    assert!(panel(&h));
+}
+
+#[test]
+fn nothing_of_a_part_shows_for_a_plain_wall_and_tab_still_cycles() {
+    let mut h = app(r#"wall {"points":[[0,0],[4000,0]]}"#);
+    let id = walls(&h)[0].0;
+    h.state_mut().selection = vec![id];
+    let at = h.state().screen(P2(1000.0, 0.0));
+    h.hover_at(at);
+    h.run();
+    key(&mut h, Key::Tab);
+    assert_eq!(h.state().curtain_part, None);
+    assert!(h.query_by_label("Replace with Wall").is_none());
+}
+
+#[test]
+fn tab_in_3d_reaches_a_part_above_the_plans_cut_plane() {
+    use bimcraft_core::curtain::{self, Address::Cell};
+    let mut h = app(TALL);
+    let id = tall_wall(&h);
+    browse(&mut h, "{3D}");
+    h.run();
+    h.state_mut().selection = vec![id];
+    h.run();
+    let (m, w) = (&h.state().session.model, walls(&h).into_iter().find(|x| x.0 == id).unwrap().1);
+    let plane = curtain::grid_plane(m, &w);
+    let at = {
+        let q = bimcraft_core::walls::Axis::of(&w).at(1000.0, plane);
+        h.state().screen3([q.0, q.1, 4500.0])
+    };
+    h.hover_at(at);
+    h.run();
+    key(&mut h, Key::Tab);
+    assert_eq!(h.state().curtain_part, Some((id, Cell { column: 0, row: 1 })), "the upper row");
+}

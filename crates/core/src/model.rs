@@ -272,6 +272,9 @@ pub struct Wall {
     /// A curtain wall's edits, apart from its type.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub curtain: Option<crate::curtain::CurtainEdits>,
+    /// The curtain wall and cell it stands in place of a panel in: kept fitted to that, it joins nothing and bounds no room.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub panel_of: Option<crate::curtain::PanelOf>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -1978,6 +1981,7 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? w.top_level { f(g) }
                 if let Some(g) = & $($m)? w.attach_top { f(g) }
                 if let Some(g) = & $($m)? w.attach_base { f(g) }
+                if let Some(p) = & $($m)? w.panel_of { f(& $($m)? p.host) }
             }
             Element::Floor(Floor { level, .. }) | Element::Ceiling(Ceiling { level, .. }) => f(level),
             Element::Room(Room { level, top_level, .. }) => {
@@ -7225,6 +7229,7 @@ mod tests {
             attach_base: None,
             room_bounding: true,
             curtain: None,
+            panel_of: None,
         })
     }
 

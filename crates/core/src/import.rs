@@ -1691,6 +1691,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             attach_base: None,
             room_bounding: true,
             curtain: None,
+            panel_of: None,
         };
         let id = m.insert(Element::Wall(wall));
         from.insert(id, who(w.ifc));
