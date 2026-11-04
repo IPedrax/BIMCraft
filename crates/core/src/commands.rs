@@ -11286,6 +11286,7 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
                 Some(Element::PlanView(v)) => gone.contains(&v.level) || v.parent.is_some_and(|p| gone.contains(&p)),
                 Some(Element::Tag(t)) => gone.contains(&t.host) || t.view.is_some_and(|v| gone.contains(&v)),
                 Some(Element::Dimension(d)) => d.view.is_some_and(|v| gone.contains(&v)),
+                Some(Element::Dimension3D(d)) => gone.contains(&d.view),
                 Some(Element::Viewport(v)) => gone.contains(&v.sheet) || gone.contains(&v.view),
                 Some(Element::Text(n)) => gone.contains(&n.view),
                 Some(Element::DetailLine(l)) => gone.contains(&l.view),
@@ -11333,6 +11334,8 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
         .filter(|id| match m.elements.get(*id) {
             Some(Element::Wall(w)) => w.attach_top.is_some_and(|g| gone.contains(&g)) || w.attach_base.is_some_and(|g| gone.contains(&g)),
             Some(Element::Roof(r)) => r.join.is_some_and(|g| gone.contains(&g)),
+            // A 3D view whose work plane's level goes sketches on the lowest level again.
+            Some(Element::View3D(v)) => v.work_plane.as_ref().is_some_and(|wp| wp.level.is_some_and(|l| gone.contains(&l))),
             _ => false,
         })
         .collect();
@@ -11374,6 +11377,9 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
                 }
             }
             Some(Element::Roof(r)) if r.join.is_some_and(|g| gone.contains(&g)) => r.join = None,
+            Some(Element::View3D(v)) if v.work_plane.as_ref().is_some_and(|wp| wp.level.is_some_and(|l| gone.contains(&l))) => {
+                v.work_plane = None
+            }
             _ => {}
         }
     }
