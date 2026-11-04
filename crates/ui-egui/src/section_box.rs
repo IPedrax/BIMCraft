@@ -103,9 +103,27 @@ pub(crate) fn grip_at(b: (P3, P3), at: Pos2, screen: impl Fn(P3) -> Pos2) -> Opt
     box_grips(b).iter().position(|g| screen(*g).distance(at) <= GRIP)
 }
 
+/// The colours of grip `k`, its fill and its outline: as it is, under the pointer, and held.
+pub(crate) fn grip_colours(k: usize, held: Option<usize>, hot: Option<usize>) -> (egui::Color32, egui::Color32) {
+    if held == Some(k) {
+        (pal().accent, pal().accent)
+    } else if hot == Some(k) {
+        (pal().hover, pal().hover)
+    } else {
+        (pal().surface, pal().accent)
+    }
+}
+
 /// Section box `b` drawn over the 3D view: its edges, and with `grips` an arrow on each face pointing out along its axis (a
-/// square for a face square to the screen). `held` is the grip being dragged.
-pub(crate) fn draw(p: &Painter, cam: &Camera, b: (P3, P3), grips: bool, held: Option<usize>, screen: impl Fn(P3) -> Pos2) {
+/// square for a face square to the screen). `held` is the grip being dragged, and `hot` the one under the pointer.
+pub(crate) fn draw(
+    p: &Painter,
+    cam: &Camera,
+    b: (P3, P3),
+    grips: bool,
+    (held, hot): (Option<usize>, Option<usize>),
+    screen: impl Fn(P3) -> Pos2,
+) {
     let edge = Stroke::new(1.0, if held.is_some() { pal().accent } else { pal().muted });
     // In perspective, what of each edge is in front of the eye.
     for [a, z] in box_edges(b).into_iter().filter_map(|[a, z]| cam.in_front(a, z)) {
@@ -122,8 +140,8 @@ pub(crate) fn draw(p: &Painter, cam: &Camera, b: (P3, P3), grips: bool, held: Op
         let mut out = g;
         out[k / 2] += if k.is_multiple_of(2) { -1.0 } else { 1.0 } / cam.scale.max(1e-12);
         let d = screen(out) - at;
-        let fill = if held == Some(k) { pal().accent } else { pal().surface };
-        let stroke = Stroke::new(1.5, pal().accent);
+        let (fill, outline) = grip_colours(k, held, hot);
+        let stroke = Stroke::new(1.5, outline);
         if d.length() < 0.25 {
             let r = Rect::from_center_size(at, vec2(9.0, 9.0));
             p.rect_filled(r, 1.0, fill);

@@ -30,7 +30,7 @@ use crate::{BimApp, Status, Tool, icon_button};
 type Shot = (Arc<Model>, Camera, Vec<(Id, Rgb)>, bool, bool, Option<(P3, P3)>);
 
 /// A model's mesh for the card, or why the card can't draw it.
-type Meshed = (Arc<Model>, Result<Arc<Mesh>, String>);
+pub(crate) type Meshed = (Arc<Model>, Result<Arc<Mesh>, String>);
 
 struct SceneJob {
     model: Arc<Model>,
@@ -108,10 +108,11 @@ fn fit_scene(job: FitJob, cancel: &crate::view_worker::Cancel) -> Option<FitDone
     (!cancel.cancelled()).then_some(FitDone { model: job.model, scene: job.scene, from: job.from, target: job.camera, camera })
 }
 
-/// What picks in the picture on screen: the processor's own picture, or the mesh the card drew it from (with its tints).
+/// What picks in the picture on screen: the processor's own picture, or the mesh the card drew it from (with its tints and the
+/// section box it was cut to).
 enum Picker {
     Image(Image),
-    Mesh(Arc<Mesh>, Vec<(Id, Rgb)>),
+    Mesh(Arc<Mesh>, Vec<(Id, Rgb)>, Option<(P3, P3)>),
 }
 
 impl Picker {
@@ -119,10 +120,37 @@ impl Picker {
     fn at(&self, cam: &Camera, x: f64, y: f64) -> Option<Hit> {
         match self {
             Picker::Image(i) => Some(Hit { id: i.pick(x, y)?, face: i.face(x, y).unwrap_or("") }),
-            Picker::Mesh(m, tints) => m.pick(cam, tints, x, y),
+            Picker::Mesh(m, tints, cut) => m.pick_cut(cam, tints, *cut, x, y),
         }
     }
 }
+
+/// How the view shows while its scene or mesh is made.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Waiting {
+    /// The last picture as it was, as a short wait shouldn't flicker.
+    Quiet,
+    /// The last picture faded, with the words over it.
+    Faded,
+    /// No picture yet: the words on the paper.
+    Bare,
+}
+
+impl Waiting {
+    /// How a wait `elapsed` long shows: with a last `picture` or none, and whether it has something to say `now`.
+    pub(crate) fn after(elapsed: std::time::Duration, picture: bool, now: bool) -> Waiting {
+        match (picture, now || elapsed >= WAIT_QUIET) {
+            (false, _) => Waiting::Bare,
+            (true, false) => Waiting::Quiet,
+            (true, true) => Waiting::Faded,
+        }
+    }
+}
+
+/// How long a wait shows the last picture as it was, before it fades and says why.
+const WAIT_QUIET: std::time::Duration = std::time::Duration::from_millis(200);
+/// How much of the paper lies over the last picture in a longer wait.
+const WAIT_FADE: u8 = 150;
 
 /// The 3D view between frames.
 pub struct Orbit {
@@ -142,11 +170,13 @@ pub struct Orbit {
     texture: Option<TextureHandle>,
     pub(crate) on_card: bool,
     /// The mesh of the scene shown last, for the card: or why it can't draw it.
-    mesh: Option<Meshed>,
+    pub(crate) mesh: Option<Meshed>,
     worker: Option<crate::view_worker::Latest<SceneJob, SceneDone>>,
-    requested: Option<Arc<Model>>,
+    pub(crate) requested: Option<Arc<Model>>,
     requested_card: bool,
     loading_error: Option<String>,
+    /// How big the last picture was drawn, points, which a wait shows it at.
+    picture_size: Option<egui::Vec2>,
     fit_worker: Option<crate::view_worker::Latest<FitJob, FitDone>>,
     fit_target: Option<Camera>,
     fit_requested: Option<Camera>,
@@ -158,6 +188,13 @@ pub struct Orbit {
     /// A selected level's grip being dragged: the level, and which edge of its plane (as
     /// `geom::edge_grips` orders them).
     grip: Option<(Id, usize)>,
+    /// The section box's grip under the pointer, in Modify: which face.
+    pub(crate) hot_grip: Option<usize>,
+    /// What the view is showing while its scene or mesh is made, and since when it has been waiting.
+    pub(crate) waiting: Option<Waiting>,
+    pub(crate) waiting_since: Option<std::time::Instant>,
+    /// Holds a scene being made back, for a test to see the view wait.
+    pub(crate) hold_build: bool,
     /// A section box's grip being dragged: which face (as `view3d::box_grips` orders them), and where the drag began.
     boxing: Option<(usize, Pos2)>,
     /// Each room's solid as the model shown last has it: its outline, bottom and top. Found once for each model.
@@ -184,6 +221,7 @@ impl Default for Orbit {
             requested: None,
             requested_card: false,
             loading_error: None,
+            picture_size: None,
             fit_worker: None,
             fit_target: None,
             fit_requested: None,
@@ -191,6 +229,10 @@ impl Default for Orbit {
             drag: None,
             before: None,
             grip: None,
+            hot_grip: None,
+            waiting: None,
+            waiting_since: None,
+            hold_build: false,
             boxing: None,
             rooms: None,
         }
@@ -279,6 +321,21 @@ impl Orbit {
         self.fit_from = None;
     }
 
+    /// A model that differs from the last only in its section box has its scene and its mesh: a box is asked of them as they are
+    /// drawn and picked, so there is nothing to make again, or to wait for.
+    fn keep_for_a_new_box(&mut self, model: &Arc<Model>) {
+        let Some((before, scene)) = &self.scene else { return };
+        if Arc::ptr_eq(before, model) || !bimcraft_core::view3d::differs_only_in_section_box(before, model) {
+            return;
+        }
+        let scene = Arc::clone(scene);
+        self.scene = Some((Arc::clone(model), scene));
+        if let Some((held, _)) = &mut self.mesh {
+            *held = Arc::clone(model);
+        }
+        self.requested = Some(Arc::clone(model));
+    }
+
     /// Install a whole snapshot at once, so the picture and its picker cannot refer to different models.
     fn prepare(&mut self, ctx: &egui::Context, model: &Arc<Model>, width: u32, height: u32, card: bool) -> bool {
         if let Some(done) = self.worker.as_ref().and_then(crate::view_worker::Latest::take)
@@ -315,7 +372,8 @@ impl Orbit {
                     self.fit_from = None;
                 }
                 self.loading_error = None;
-                if cfg!(test) {
+                if self.hold_build {
+                } else if cfg!(test) {
                     if let Some(done) = build_scene(job, &crate::view_worker::Cancel::default()) {
                         if self.camera.is_none() {
                             self.camera = Some(done.fitted);
@@ -455,6 +513,7 @@ impl BimApp {
         let (paint, unpaint) = (self.tool == Tool::Paint, self.tool == Tool::Unpaint);
         let o = &mut self.orbit;
         (o.rect, o.ppp) = (rect, ppp);
+        o.keep_for_a_new_box(&model);
         if !o.scene.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, &model))
             && let Some(gpu) = &mut self.card.gpu
         {
@@ -462,15 +521,8 @@ impl BimApp {
         }
         let card_ready = self.card.ready().is_some();
         if !o.prepare(ui.ctx(), &model, w, h, card_ready) {
-            let p = ui.painter_at(rect);
-            p.rect_filled(rect, 0.0, color(render::PAPER));
-            p.text(
-                rect.center(),
-                egui::Align2::CENTER_CENTER,
-                o.loading_error.as_deref().unwrap_or("Building 3D view…"),
-                egui::FontId::proportional(16.0),
-                pal().text,
-            );
+            let error = o.loading_error.clone();
+            self.wait3d(ui, rect, &model, error.as_deref().unwrap_or(crate::lang::t("Building 3D view…")), error.is_some());
             return;
         }
         if let Some(error) = o.prepare_fit(ui.ctx(), &model) {
@@ -548,6 +600,10 @@ impl BimApp {
         {
             boxed_to = Some(to);
         }
+        // The grip under the pointer shows it: a press there moves that face, not the view.
+        o.hot_grip = boxed
+            .filter(|_| modify && o.grip.is_none() && o.boxing.is_none() && o.drag.is_none())
+            .and_then(|b| crate::section_box::grip_at(b, hover?, |p| on_screen(&cam, rect, ppp, p)));
         // The primary button, or Shift and the middle button, orbit, 0.4° a point; the middle
         // button alone pans.
         if response.drag_started()
@@ -584,15 +640,7 @@ impl BimApp {
             match gpu.prepare_upload(ui.ctx(), mesh_to_upload) {
                 Ok(true) => {}
                 Ok(false) => {
-                    let p = ui.painter_at(rect);
-                    p.rect_filled(rect, 0.0, color(render::PAPER));
-                    p.text(
-                        rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        "Loading 3D view onto the card…",
-                        egui::FontId::proportional(16.0),
-                        pal().text,
-                    );
+                    self.wait3d(ui, rect, &model, crate::lang::t("Loading 3D view onto the card…"), false);
                     return;
                 }
                 Err(e) => {
@@ -616,8 +664,10 @@ impl BimApp {
             let (x, y) = px(at);
             picker.as_ref().and_then(|p| p.at(&cam, x, y))
         };
-        let hovered =
-            hover.filter(|_| (modify || demolish || paint || unpaint) && o.drag.is_none()).and_then(|at| pick(&o.picker, at)).map(|h| h.id);
+        let hovered = hover
+            .filter(|_| (modify || demolish || paint || unpaint) && o.drag.is_none() && o.hot_grip.is_none())
+            .and_then(|at| pick(&o.picker, at))
+            .map(|h| h.id);
         let tints: Vec<(Id, Rgb)> = selection
             .iter()
             .map(|id| (*id, rgb(canvas_pal().accent)))
@@ -630,9 +680,11 @@ impl BimApp {
             let (mut drawn, mut exact) = (false, true);
             if let (Some(mesh), Some(gpu)) = (&mesh, self.card.gpu.as_mut()) {
                 gpu.swapped_ink = dark;
-                match gpu.draw_cut(mesh, &cam, &tints, rgb(color(render::PAPER)), reboxed.or(mesh.section_box)) {
+                // The model's box, whichever the mesh was made under.
+                let cut = reboxed.or(boxed);
+                match gpu.draw_cut(mesh, &cam, &tints, rgb(color(render::PAPER)), cut) {
                     Ok(whole) => {
-                        o.picker = Some(Picker::Mesh(Arc::clone(mesh), tints.clone()));
+                        o.picker = Some(Picker::Mesh(Arc::clone(mesh), tints.clone(), cut));
                         (drawn, exact) = (true, whole);
                     }
                     Err(e) => {
@@ -676,6 +728,8 @@ impl BimApp {
                 ui.ctx().request_repaint();
             }
         }
+        (o.waiting, o.waiting_since) = (None, None);
+        o.picture_size = Some(rect.size());
         let p = ui.painter_at(rect);
         p.rect_filled(rect, 0.0, color(render::PAPER));
         let shown = if o.on_card { self.card.gpu.as_ref().and_then(|g| g.texture()) } else { o.texture.as_ref().map(|t| t.id()) };
@@ -723,7 +777,7 @@ impl BimApp {
         // The section box's frame, as the held grip would leave it.
         let screen = |p: P3| on_screen(&cam, rect, ppp, p);
         if let Some(b) = reboxed.or(boxed) {
-            crate::section_box::draw(&p, &cam, b, modify, o.boxing.map(|(k, _)| k), screen);
+            crate::section_box::draw(&p, &cam, b, modify, (o.boxing.map(|(k, _)| k), o.hot_grip), screen);
         }
         // A click on a grip picks nothing behind it.
         let click = response.clicked().then(|| response.interact_pointer_pos()).flatten().or(self.canvas.quick_press());
@@ -750,7 +804,44 @@ impl BimApp {
         if let Some((lo, hi)) = boxed_to {
             self.run("section_box", json!({"min": lo, "max": hi}));
         }
-        // The navigation bar, at the view's top right: Home (Revit's default orientation), fit, zoom.
+        self.nav_bar3d(ui, &p, rect, &model);
+    }
+
+    /// The view while its scene or mesh is made: the last picture, still at first so that a short wait doesn't flicker, then faded
+    /// with `words` over it, and its bar as ever. With none yet, or with something wrong (`now`), the words at once.
+    fn wait3d(&mut self, ui: &mut Ui, rect: Rect, model: &Arc<Model>, words: &str, now: bool) {
+        let p = ui.painter_at(rect);
+        p.rect_filled(rect, 0.0, color(render::PAPER));
+        let o = &mut self.orbit;
+        let since = *o.waiting_since.get_or_insert_with(std::time::Instant::now);
+        let picture = match o.picture_size {
+            Some(size) if o.on_card => self.card.gpu.as_ref().and_then(|g| g.texture()).map(|id| (id, size)),
+            Some(size) => o.texture.as_ref().map(|t| (t.id(), size)),
+            None => None,
+        };
+        if let Some((id, size)) = picture {
+            p.image(id, Rect::from_min_size(rect.min, size), Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+        }
+        let shown = Waiting::after(since.elapsed(), picture.is_some(), now);
+        o.waiting = Some(shown);
+        if shown == Waiting::Quiet {
+            ui.ctx().request_repaint_after(WAIT_QUIET);
+        } else {
+            if shown == Waiting::Faded {
+                let c = color(render::PAPER);
+                p.rect_filled(rect, 0.0, Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), WAIT_FADE));
+            }
+            let galley = p.layout_no_wrap(words.to_string(), egui::FontId::proportional(14.0), pal().text);
+            let at = rect.center() - galley.size() / 2.0;
+            let card = Rect::from_min_size(at, galley.size()).expand2(vec2(12.0, 7.0));
+            p.rect(card, 6.0, pal().surface, Stroke::new(1.0, pal().border), StrokeKind::Inside);
+            p.galley(at, galley, pal().text);
+        }
+        self.nav_bar3d(ui, &p, rect, model);
+    }
+
+    /// The navigation bar, at the view's top right: Home (Revit's default orientation), fit, zoom.
+    fn nav_bar3d(&mut self, ui: &mut Ui, p: &egui::Painter, rect: Rect, model: &Arc<Model>) {
         let bar = Rect::from_min_size(self.nav_corner(rect), vec2(32.0, 104.0));
         p.rect(bar, 6.0, pal().surface, Stroke::new(1.0, pal().border), StrokeKind::Inside);
         ui.scope_builder(UiBuilder::new().max_rect(bar.shrink(3.0)).layout(Layout::top_down(Align::Center)), |ui| {
@@ -758,7 +849,7 @@ impl BimApp {
             if icon_button(ui, Icon::View3D, "Home View").clicked()
                 && let Some(c) = self.orbit.camera
             {
-                self.orbit.fit_target = Some(Camera { azimuth: AZIMUTH, elevation: ELEVATION, lens: lens_of(&model), ..c });
+                self.orbit.fit_target = Some(Camera { azimuth: AZIMUTH, elevation: ELEVATION, lens: lens_of(model), ..c });
                 self.orbit.fit_requested = None;
                 self.orbit.fit_from = None;
             }
@@ -840,6 +931,15 @@ mod worker_measurements {
         let mesh = Arc::new(bimcraft_core::view3d::gpu::Mesh::new(&scene, &look).unwrap());
         let fitted = scene.fit_in(30.0, 30.0, 1920, 1080, &look);
         eprintln!("{} MB of vertices of their own, in {} groups", (mesh.vertices.len() * 44) >> 20, mesh.groups.len());
+        eprintln!(
+            "on the card: shapes {} MB, copies {} MB ({}), copies' planes {} MB, texels {} MB, owners {} MB",
+            (mesh.shape_vertices.len() * 44) >> 20,
+            (mesh.instances.len() * 60) >> 20,
+            mesh.instances.len(),
+            (mesh.instance_planes.len() * 4) >> 20,
+            (mesh.texels.len() * 4) >> 20,
+            (mesh.owners.len() * 32) >> 20
+        );
         for (chunk, room) in [(256u64, u64::MAX >> 20), (16, 64), (16, 32)] {
             let Some(mut gpu) = crate::gpu::headless() else { return };
             gpu.vertex_bytes = chunk << 20;
@@ -863,6 +963,49 @@ mod worker_measurements {
                 "  moving: median {:.1} ms, p95 {:.1} ms, worst {:.1} ms",
                 frames[frames.len() / 2],
                 frames[frames.len() * 95 / 100],
+                frames[frames.len() - 1]
+            );
+            let cam = Camera { azimuth: fitted.azimuth + 100.0, ..fitted };
+            let (t, mut settle, mut worst) = (Instant::now(), 0, 0.0f64);
+            loop {
+                let one = Instant::now();
+                let whole = gpu.draw(&mesh, &cam, &[], bimcraft_core::render::PAPER).unwrap();
+                gpu.wait();
+                worst = worst.max(ms(one));
+                settle += 1;
+                if whole {
+                    break;
+                }
+            }
+            eprintln!("  settling: {settle} frames, {:.0} ms in all, the longest {worst:.1} ms", ms(t));
+        }
+        // A wireframe's lines, the most of a view the card holds.
+        let mut session = bimcraft_core::engine::Session::new();
+        session.model = model.into();
+        session.execute("visual_style", &serde_json::json!({"style": "wireframe"})).unwrap();
+        let look = Look::of_3d(&session.model);
+        let mesh = Arc::new(bimcraft_core::view3d::gpu::Mesh::new(&scene, &look).unwrap());
+        eprintln!("wireframe: {} MB of lines", (mesh.wires.len() * 28) >> 20);
+        for (chunk, room) in [(256u64, u64::MAX >> 20), (16, 64), (16, 32)] {
+            let Some(mut gpu) = crate::gpu::headless() else { return };
+            gpu.vertex_bytes = chunk << 20;
+            gpu.card_bytes = if room == u64::MAX >> 20 { u64::MAX } else { room << 20 };
+            gpu.draw(&mesh, &fitted, &[], bimcraft_core::render::PAPER).unwrap();
+            gpu.wait();
+            let mut frames = Vec::new();
+            for i in 0..30 {
+                let cam = Camera { azimuth: fitted.azimuth + f64::from(i) * 3.0, ..fitted };
+                let t = Instant::now();
+                gpu.draw(&mesh, &cam, &[], bimcraft_core::render::PAPER).unwrap();
+                gpu.wait();
+                if i >= 5 {
+                    frames.push(ms(t));
+                }
+            }
+            frames.sort_by(f64::total_cmp);
+            eprintln!(
+                "{chunk} MB buffers, room for {room} MB: moving median {:.1} ms, worst {:.1} ms",
+                frames[frames.len() / 2],
                 frames[frames.len() - 1]
             );
             let cam = Camera { azimuth: fitted.azimuth + 100.0, ..fitted };

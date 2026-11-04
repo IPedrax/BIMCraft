@@ -877,7 +877,7 @@ pub fn graphics_of(m: &Model, view: impl Key) -> Option<&Graphics> {
 }
 
 /// What a view's graphics come to for each element of the model.
-#[derive(Default)]
+#[derive(Default, PartialEq)]
 pub struct Look {
     hidden: BTreeSet<Id>,
     /// The layers of each CAD drawing it hides, by the drawing's name.

@@ -45,7 +45,7 @@ msgstr "Vista 3D: {3D}"
 msgid "3D Views"
 msgstr "Vistas 3D"
 
-#: crates/ui-egui/src/settings.rs:415
+#: crates/ui-egui/src/settings.rs:414
 msgid "3D view resolution"
 msgstr "Resolución de la vista 3D"
 
@@ -575,7 +575,7 @@ msgstr "Detección automática"
 msgid "Autosave"
 msgstr "Guardado automático"
 
-#: crates/ui-egui/src/settings.rs:462
+#: crates/ui-egui/src/settings.rs:461
 msgid "Autosave in the background"
 msgstr "Guardar automáticamente en segundo plano"
 
@@ -685,7 +685,7 @@ msgstr ""
 msgid "Background Pattern"
 msgstr "Patrón de fondo"
 
-#: crates/ui-egui/src/settings.rs:451
+#: crates/ui-egui/src/settings.rs:450
 msgid "Background of the 3D view"
 msgstr "Fondo de la vista 3D"
 
@@ -835,6 +835,10 @@ msgstr "Ladrillo 225 x 75"
 msgid "Build"
 msgstr "Construir"
 
+#: crates/ui-egui/src/orbit.rs:525
+msgid "Building 3D view…"
+msgstr ""
+
 #: crates/ui-egui/src/start.rs:292
 msgid "Building information modelling, open and free."
 msgstr "Modelado de información de construcción, abierto y libre."
@@ -934,7 +938,7 @@ msgstr "Cancelar patrón"
 msgid "Capture & Descent"
 msgstr "Captación y bajada"
 
-#: crates/ui-egui/src/settings.rs:405
+#: crates/ui-egui/src/settings.rs:404
 msgid "Card: {}"
 msgstr "Tarjeta: {}"
 
@@ -1612,7 +1616,7 @@ msgid "Combine: what was made, taken down and shown in this phase goes to the ne
 msgstr "Combinar: lo que se hizo, se demolió y se muestra en esta fase pasa a la vecina, y esta sale"
 
 #: crates/ui-egui/src/browser.rs:233
-#: crates/ui-egui/src/settings.rs:494
+#: crates/ui-egui/src/settings.rs:493
 msgid "Coming in a later version"
 msgstr "En una versión futura"
 
@@ -1769,7 +1773,7 @@ msgstr "Cara del núcleo: interior"
 msgid "Corners"
 msgstr "Vértices"
 
-#: crates/ui-egui/src/orbit.rs:477
+#: crates/ui-egui/src/orbit.rs:529
 msgid "Could not fit the 3D view: {}"
 msgstr ""
 
@@ -2958,7 +2962,7 @@ msgstr "Distancia focal"
 msgid "Fold"
 msgstr "Contraer"
 
-#: crates/ui-egui/src/settings.rs:478
+#: crates/ui-egui/src/settings.rs:477
 msgid "Folder for new projects"
 msgstr "Carpeta para proyectos nuevos"
 
@@ -3075,8 +3079,8 @@ msgstr "Desde (grados)"
 msgid "Frozen"
 msgstr "Congelada"
 
+#: crates/ui-egui/src/settings.rs:416
 #: crates/ui-egui/src/settings.rs:417
-#: crates/ui-egui/src/settings.rs:418
 msgid "Full"
 msgstr "Completa"
 
@@ -3206,7 +3210,7 @@ msgstr "Placa de yeso"
 msgid "Hairline"
 msgstr "Línea capilar"
 
-#: crates/ui-egui/src/settings.rs:418
+#: crates/ui-egui/src/settings.rs:417
 msgid "Half"
 msgstr "Mitad"
 
@@ -3285,11 +3289,11 @@ msgstr "Nubes de puntos en alto contraste"
 msgid "High Contrast Point Clouds: draw this view's scans in one strong colour, so what they show reads; again for their own colours. A scan given a colour of its own in Visibility/Graphics keeps it."
 msgstr "Nubes de puntos en alto contraste: dibuja las nubes de esta vista en un solo color intenso, para que se lea lo que muestran; otra vez para sus propios colores. Una nube con color propio en Visibilidad/Gráficos lo conserva."
 
-#: crates/ui-egui/src/settings.rs:430
+#: crates/ui-egui/src/settings.rs:429
 msgid "High contrast colour"
 msgstr "Color de alto contraste"
 
-#: crates/ui-egui/src/settings.rs:449
+#: crates/ui-egui/src/settings.rs:448
 msgid "Highlight what's under the cursor"
 msgstr "Resaltar lo que está bajo el cursor"
 
@@ -3297,7 +3301,7 @@ msgstr "Resaltar lo que está bajo el cursor"
 msgid "Home"
 msgstr "Inicio"
 
-#: crates/ui-egui/src/orbit.rs:758
+#: crates/ui-egui/src/orbit.rs:849
 msgid "Home View"
 msgstr "Vista inicial"
 
@@ -3884,6 +3888,10 @@ msgstr "Cargado"
 #: crates/ui-egui/src/shortcuts.rs:240
 msgid "Loaded {} shortcuts from file."
 msgstr "Cargados {} atajos del archivo."
+
+#: crates/ui-egui/src/orbit.rs:643
+msgid "Loading 3D view onto the card…"
+msgstr ""
 
 #: crates/ui-egui/src/properties.rs:165
 msgid "Location"
@@ -5204,8 +5212,8 @@ msgstr "Colocar cable"
 msgid "Place:"
 msgstr "Colocar:"
 
+#: crates/ui-egui/src/settings.rs:452
 #: crates/ui-egui/src/settings.rs:453
-#: crates/ui-egui/src/settings.rs:454
 msgid "Plain"
 msgstr "Liso"
 
@@ -5537,7 +5545,7 @@ msgstr "Recuperar guardado automático…"
 msgid "Recover opens the backup as unsaved work. Discard deletes it. Postpone keeps it for later without replacing it."
 msgstr "Recuperar abre la copia como trabajo sin guardar. Descartar la elimina. Posponer la conserva para después, sin reemplazarla."
 
-#: crates/ui-egui/src/settings.rs:474
+#: crates/ui-egui/src/settings.rs:473
 msgid "Recovery copies are kept beside saved projects; untitled projects use the temporary folder."
 msgstr "Las copias de recuperación se guardan junto a los proyectos guardados; los proyectos sin título usan la carpeta temporal."
 
@@ -5573,7 +5581,7 @@ msgstr "Rehacer {}"
 msgid "Redo {} steps"
 msgstr "Rehacer {} pasos"
 
-#: crates/ui-egui/src/settings.rs:421
+#: crates/ui-egui/src/settings.rs:420
 msgid "Redraw views in the background"
 msgstr "Redibujar las vistas en segundo plano"
 
@@ -5713,7 +5721,7 @@ msgstr "Reemplazar con texto:"
 msgid "Reset"
 msgstr "Restablecer"
 
-#: crates/ui-egui/src/settings.rs:434
+#: crates/ui-egui/src/settings.rs:433
 msgid "Reset Colour"
 msgstr "Restablecer color"
 
@@ -5926,7 +5934,7 @@ msgstr "Guardar patrón"
 msgid "Save Preset"
 msgstr "Guardar modelo"
 
-#: crates/ui-egui/src/settings.rs:467
+#: crates/ui-egui/src/settings.rs:466
 msgid "Save a recovery copy every"
 msgstr "Guardar una copia de recuperación cada"
 
@@ -6129,7 +6137,7 @@ msgstr "{} seleccionados."
 msgid "Selected {}; nothing has these: {}"
 msgstr "{} seleccionados; nada tiene estos: {}"
 
-#: crates/ui-egui/src/settings.rs:446
+#: crates/ui-egui/src/settings.rs:445
 msgid "Selection colour"
 msgstr "Color de la selección"
 
@@ -6333,7 +6341,7 @@ msgstr "Armadura de piel"
 msgid "Skip this version"
 msgstr "Omitir esta versión"
 
-#: crates/ui-egui/src/settings.rs:454
+#: crates/ui-egui/src/settings.rs:453
 msgid "Sky"
 msgstr "Cielo"
 
@@ -6373,7 +6381,7 @@ msgstr "Flecha de pendiente: haz clic en la cola y luego en la punta; el piso su
 msgid "Slope:"
 msgstr "Pendiente:"
 
-#: crates/ui-egui/src/settings.rs:420
+#: crates/ui-egui/src/settings.rs:419
 msgid "Smooth lines (anti-aliasing)"
 msgstr "Líneas suaves (antialiasing)"
 
@@ -6899,7 +6907,7 @@ msgstr "Eso no se puede dibujar: el radio de un arco es al menos la mitad de la 
 msgid "That is too big to be a shortcuts file."
 msgstr "Eso es demasiado grande para ser un archivo de atajos."
 
-#: crates/ui-egui/src/settings.rs:403
+#: crates/ui-egui/src/settings.rs:402
 msgid "The 3D view is drawn on the processor: {}"
 msgstr "La vista 3D se dibuja en el procesador: {}"
 
@@ -6919,8 +6927,8 @@ msgstr "Los extremos de muros, ejes y lo demás dibujado, y los puntos ya señal
 msgid "The foot of the perpendicular from the last point to a wall or grid"
 msgstr "El pie de la perpendicular desde el último punto a un muro o eje"
 
-#: crates/ui-egui/src/orbit.rs:600
-#: crates/ui-egui/src/orbit.rs:640
+#: crates/ui-egui/src/orbit.rs:648
+#: crates/ui-egui/src/orbit.rs:692
 msgid "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor"
 msgstr "La tarjeta gráfica no pudo dibujar la vista 3D ({}): se dibuja en el procesador"
 
@@ -7041,7 +7049,7 @@ msgstr "Líneas finas (TL): todas las líneas de un píxel de ancho"
 msgid "This copy doesn't look for updates."
 msgstr "Esta copia no busca actualizaciones."
 
-#: crates/ui-egui/src/settings.rs:404
+#: crates/ui-egui/src/settings.rs:403
 msgid "This copy has no graphics card it can draw the 3D view on"
 msgstr "Esta copia no tiene una tarjeta gráfica en la que dibujar la vista 3D"
 
@@ -7340,7 +7348,7 @@ msgstr "Deshacer"
 msgid "Undo History"
 msgstr "Historial de deshacer"
 
-#: crates/ui-egui/src/settings.rs:411
+#: crates/ui-egui/src/settings.rs:410
 msgid "Undo steps kept"
 msgstr "Pasos de deshacer guardados"
 
@@ -7662,7 +7670,7 @@ msgstr "Peso"
 msgid "West"
 msgstr "Oeste"
 
-#: crates/ui-egui/src/settings.rs:433
+#: crates/ui-egui/src/settings.rs:432
 msgid "What High Contrast Point Clouds, on the view control bar, draws a view's scans in"
 msgstr "El color en que Nubes de puntos en alto contraste, en la barra de control de vista, dibuja las nubes de una vista"
 
@@ -7813,7 +7821,7 @@ msgid "Zoom Out"
 msgstr "Alejar"
 
 #: crates/ui-egui/src/canvas.rs:1730
-#: crates/ui-egui/src/orbit.rs:765
+#: crates/ui-egui/src/orbit.rs:856
 msgid "Zoom to Fit"
 msgstr "Zoom para ajustar"
 
@@ -8168,7 +8176,7 @@ msgstr "la abertura tiene que quedar en su muro"
 msgid "there's no detail group yet: select detail lines and Create Group"
 msgstr "aún no hay grupo de detalle: seleccione líneas de detalle y Crear grupo"
 
-#: crates/ui-egui/src/orbit.rs:430
+#: crates/ui-egui/src/orbit.rs:488
 msgid "there's no face to paint there"
 msgstr "no hay cara que pintar ahí"
 
@@ -8176,7 +8184,7 @@ msgstr "no hay cara que pintar ahí"
 msgid "there's no folder to keep favorites in here"
 msgstr "no hay carpeta donde guardar favoritos aquí"
 
-#: crates/ui-egui/src/orbit.rs:742
+#: crates/ui-egui/src/orbit.rs:796
 #: crates/ui-egui/src/paper.rs:151
 #: crates/ui-egui/src/section.rs:389
 msgid "this tool works in plan views: open one from the Project Browser"

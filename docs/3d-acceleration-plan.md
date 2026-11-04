@@ -448,11 +448,45 @@ The annotated 10-storey tower, 1920 x 1080, release, RTX 2060, 69 MB of its vert
 |---|---:|---:|---|
 | 256 MB, all it wants | 11.5 ms | 12.9 ms | 1 frame, 9 ms |
 | 16 MB, room for 64 MB | 17.7 ms | 20.0 ms | 3 frames, 34 ms |
-| 16 MB, room for 32 MB | 18.4 ms | 20.4 ms | 5 frames, 71 ms |
+| 16 MB, room for 32 MB | 18.4 ms | 20.4 ms | 5 frames, 71 to 147 ms over two runs |
 
 What is brought in is written on the frame's own thread, a buffer at a time, unlike a first upload. At the real size of a buffer (256 MB, not these 16) that is a longer frame than this table shows, not measured.
 
-What's left is most of what a large model holds in practice. On this tower the vertices of their own are 69 MB, and the shapes, copies and planes aren't released at all, nor a wireframe's lines (28 bytes each, 164 MB here) or a scan's points (20 bytes each, 40 MB at most). If those don't fit, the upload fails and the processor draws, as before. The plan's other measure, boxes for the farthest copies, doesn't let go of the copies' buffers either.
+### The same for lines and points
+
+It was going to be the copies next, on the guess that they were most of what a card holds. Measured on this tower they are the least of it:
+
+| On the card | MB |
+|---|---:|
+| A wireframe's lines | 156 |
+| Vertices of their own | 69 |
+| A scan's points, at most | 38 |
+| Copies' plane numbers | 33 |
+| The copies themselves | 4 |
+| Textures, owners, shapes | 5, all told |
+
+So lines and points went next, through what the triangles use (`Store`, `Uploaded::bring_in`), a card's room shared among them. Points are part of the surfaces' drawing, so they needed only that. Lines are drawn over the picture, which a part can't be while it shows, so a wireframe past what the card holds draws its parts into the colour target and copies it to the picture when it is whole; while the view moves, the lines it holds are all that show, and none is brought in, as all of them are always wanted and a set that changed each frame would flicker. A wireframe that fits, as on any card that holds it, draws as it did.
+
+`a_wireframe_on_a_card_that_holds_little_settles_on_the_picture_of_one_that_holds_all` (byte for byte, parallel, perspective, tinted, on a dark canvas and cut to a box, with room for 2 of at least 7 buffers, the picture staying what stood in until it is whole) and `a_scan_on_a_card_that_holds_little_settles_on_the_picture_of_one_that_holds_all` hold it. Each was seen to catch its fault: the tinted parts, the dark paper, the last copy, drawing where it shows, and points not let go.
+
+| A wireframe on this tower | Moving, median | Settling | Its longest frame |
+|---|---:|---:|---:|
+| All it wants | 11.9 ms | 1 frame, 9 ms | 8.6 ms |
+| 16 MB buffers, room for 64 MB | 4.0 ms, part of the lines | 4 frames, 180 ms | **119 ms** |
+| 16 MB buffers, room for 32 MB | 2.3 ms, part of the lines | 6 frames, 256 ms | 66 ms |
+
+The longest frames are the writing, on the frame's own thread, of as much as the card holds. So settling past what a card holds stutters once, and at 256 MB buffers it will be longer. Bringing buffers in on the upload's worker is what would take that away, if a real card out of memory shows it matters.
+
+What's left: the copies, their planes, the shapes, the textures and the targets are all or nothing, and if they don't fit, the upload fails and the processor draws, as before. They are about 40 MB of this tower, scaling with its storeys as the rest does (330 MB of planes at 100, by proportion, not measured). The planes are bound for the whole frame, which is why they aren't simply a buffer to let go.
+
+## After using it: the wait, and a box that changes nothing (2026-11-04)
+
+From trying the package. The view blanked to paper and words whenever its scene or mesh was being made, and came back, which was distracting, and it did so even after a section box drag, when nothing had changed.
+
+- **A box alone makes nothing again.** `view3d::differs_only_in_section_box`: only the default 3D view's element changed, and its `Look` is the same but for the box. The scene and the mesh carry over to the new model (`Orbit::keep_for_a_new_box`), the box being asked of them as they are drawn and picked (`Gpu::draw_cut`, `Mesh::pick_cut`), which a drag had already shown they can. No upload, no wait, on or off, moved or undone.
+- **A wait keeps the last picture.** For 200 ms it is as it was, so a short wait shows nothing at all; then it is faded under the paper with the words over it in a small card. The view's bar stays. With no picture yet, the words on the paper, as before. It is a fade, not true grey: egui can only multiply a texture's colours, and greying the card's picture would need a pass of its own.
+
+`a_section_box_moved_keeps_the_mesh_and_picks_through_the_new_box_and_an_edit_makes_a_new_one`, `only_a_change_of_the_section_box_is_said_to_leave_the_scene_as_it_was`, `a_mesh_picks_through_any_box_it_is_asked_as_a_mesh_made_for_that_box_does` and `a_view_being_made_keeps_the_last_picture_quietly_then_faded_with_its_bar_and_goes_on_from_there` hold it. A section box's grip also takes the hover colour under the pointer, and nothing behind it is tinted then (`section_box::grip_colours`).
 
 ## What isn't decided yet
 
@@ -479,5 +513,6 @@ What's left is most of what a large model holds in practice. On this tower the v
   - [x] Point clouds
 - [ ] 9. When the card runs out
   - [x] The triangles drawn of their own: let go and brought back, and an allocation that fails holds less
-  - [ ] The copies, a wireframe's lines, a scan's points and the rest, which are still all or nothing
+  - [x] A wireframe's lines and a scan's points, the same way
+  - [ ] The copies, their planes and the rest, still all or nothing (`What's left` below says why they wait)
   - [ ] Seen once on a card really out of memory (`a_card_really_out_of_memory_still_settles_on_the_picture`, by hand)

@@ -1235,6 +1235,15 @@ fn dot_at((x, y, z): (f64, f64, f64), (w, h): (usize, usize)) -> Option<(i64, i6
     (x0 > -(DOT as f64) && y0 > -(DOT as f64) && x0 < w as f64 && y0 < h as f64 && z.is_finite()).then_some((x0 as i64, y0 as i64))
 }
 
+/// Whether all that changed from `before` to `after` is the section box of the default 3D view: then its scene and its mesh are
+/// as they were, a box being asked of them when they are drawn and picked.
+pub fn differs_only_in_section_box(before: &Model, after: &Model) -> bool {
+    let crate::ids::Changed::Ids(changed) = after.changed_since(before) else { return false };
+    let views = [before.default_3d(), after.default_3d()];
+    changed.iter().all(|id| views.contains(&Some(*id)))
+        && Look::of_3d(before).with_section_box(None) == Look::of_3d(after).with_section_box(None)
+}
+
 /// The most points a picture draws, as Revit's density does: past it, every so many of each scan's.
 pub const DRAWN: usize = 2_000_000;
 

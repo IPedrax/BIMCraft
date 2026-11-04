@@ -1156,21 +1156,26 @@ impl Mesh {
     /// What the picture shows at pixel `(x, y)`: the nearest surface there (the first drawn where two are as near), and over it
     /// a level's mark where nothing nearer hides it, as the CPU picture's picks do.
     pub fn pick(&self, cam: &Camera, tints: &[(Id, Rgb)], x: f64, y: f64) -> Option<Hit> {
+        self.pick_cut(cam, tints, self.section_box, x, y)
+    }
+
+    /// [`pick`](Self::pick) through section box `cut`, whichever box the mesh was made under.
+    pub fn pick_cut(&self, cam: &Camera, tints: &[(Id, Rgb)], cut: Option<(P3, P3)>, x: f64, y: f64) -> Option<Hit> {
         let (w, h) = (f64::from(cam.width), f64::from(cam.height));
         if !(x >= 0.0 && y >= 0.0 && x < w && y < h) {
             return None;
         }
         if self.wireframe {
-            return self.pick_wire(cam, tints, (x.floor() as i64, y.floor() as i64));
+            return self.pick_wire(cam, tints, cut, (x.floor() as i64, y.floor() as i64));
         }
         let centre = (x.floor() + 0.5, y.floor() + 0.5);
-        let (opaque, clear) = self.nearest(cam, centre);
+        let (opaque, clear) = self.nearest(cam, cut, centre);
         // A level's mark is hidden by what is opaque only, as the processor's are.
         let behind = opaque.map_or(f64::NEG_INFINITY, |(z, _)| f64::from(z));
         // A surface seen through shows where it is nearer than anything opaque.
         let seen = clear.filter(|(z, _)| opaque.is_none_or(|(d, _)| *z > d)).or(opaque);
         let mut hit = seen.map(|(_, hit)| hit);
-        for marks in self.marks(cam, tints) {
+        for marks in self.marks_cut(cam, tints, cut) {
             let at = P2(centre.0, centre.1);
             let on_line = marks.lines.iter().find_map(|([a, b], wide)| covers((cam.project(*a), cam.project(*b)), *wide, centre));
             let head: Vec<_> = marks.head.iter().map(|p| cam.project(*p)).collect();
@@ -1186,7 +1191,7 @@ impl Mesh {
 
     /// The line a wireframe's pixel `at` picks: of those drawn within two pixels of it, the last drawn, what is tinted being
     /// drawn after the rest, as the processor's picture finds it.
-    fn pick_wire(&self, cam: &Camera, tints: &[(Id, Rgb)], at: (i64, i64)) -> Option<Hit> {
+    fn pick_wire(&self, cam: &Camera, tints: &[(Id, Rgb)], cut: Option<(P3, P3)>, at: (i64, i64)) -> Option<Hit> {
         let size = (cam.width.clamp(1, super::MAX_SIDE) as usize, cam.height.clamp(1, super::MAX_SIDE) as usize);
         let centre = (at.0 as f64 + 0.5, at.1 as f64 + 0.5);
         let project = cam.projector();
@@ -1201,7 +1206,7 @@ impl Mesh {
             if best.is_some_and(|b| b >= key) {
                 return;
             }
-            let Some((p, q)) = super::wire_line(cam, self.section_box, wire.ends, size) else { return };
+            let Some((p, q)) = super::wire_line(cam, cut, wire.ends, size) else { return };
             if super::wire_pixels(p, q).any(|(px, py)| (px - at.0).abs() <= 2 && (py - at.1).abs() <= 2) {
                 best = Some(key);
             }
@@ -1212,13 +1217,13 @@ impl Mesh {
 
     /// The nearest opaque triangle covering the centre of a pixel, and the nearest seen through, as the CPU's rasterizer finds
     /// them: how near, as an f32 as it keeps it, and which. The first of triangles as near, in the scene, wins.
-    fn nearest(&self, cam: &Camera, (x, y): (f64, f64)) -> (Found, Found) {
+    fn nearest(&self, cam: &Camera, cut: Option<(P3, P3)>, (x, y): (f64, f64)) -> (Found, Found) {
         let bvh = self.bvh();
         // Opaque, then seen through.
         let mut found: [Option<(f32, usize, Hit)>; 2] = [None, None];
         let project = cam.projector();
         // What the section box keeps, asked as the processor's picture asks it.
-        let cut = self.section_box.map(|b| Boxed::new(cam, b));
+        let cut = cut.map(|b| Boxed::new(cam, b));
         let misses = |b: (P3, P3)| outside(&project, b, (x, y), 1e-6);
         let mut test = |p: &[P3; 3], clear: bool, key: usize, hit: Hit| {
             if cut.as_ref().is_some_and(|k| k.misses_corners(p)) {
@@ -1800,6 +1805,26 @@ mod tests {
             let inside = t.iter().any(|v| (0..3).all(|i| (lo[i]..=hi[i]).contains(&(f64::from(v.position[i]) + mesh.origin[i]))));
             assert!(!inside || seen.vertices.iter().any(|r| r.contains(&(n * 3))), "triangle {n} is in the box and left out");
         }
+    }
+
+    #[test]
+    fn a_mesh_picks_through_any_box_it_is_asked_as_a_mesh_made_for_that_box_does() {
+        let mut s = sample();
+        let (whole, whole_look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let kept = Mesh::new(&whole, &whole_look).unwrap();
+        let cam = whole.fit_in(AZIMUTH, ELEVATION, 640, 480, &whole_look);
+        let cut = cut_through(&mut s, [0.6, 0.7, 0.45]);
+        let own = Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).unwrap();
+        let mut differ_from_uncut = 0;
+        for y in (0..480).step_by(4) {
+            for x in (0..640).step_by(4) {
+                let (x, y) = (f64::from(x) + 0.5, f64::from(y) + 0.5);
+                let asked = kept.pick_cut(&cam, &[], Some(cut), x, y);
+                assert_eq!(asked, own.pick(&cam, &[], x, y), "at {x}, {y}");
+                differ_from_uncut += usize::from(asked != kept.pick(&cam, &[], x, y));
+            }
+        }
+        assert!(differ_from_uncut > 100, "the box changes what is picked: {differ_from_uncut}");
     }
 
     #[test]
