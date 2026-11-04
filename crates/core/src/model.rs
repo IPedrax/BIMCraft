@@ -4040,7 +4040,7 @@ impl Model {
     }
 
     /// Every shaft's span and plan box, as [`Model::less_shafts`] asks of them, by id.
-    fn shaft_table(&self) -> Vec<crate::derived::ShaftReach> {
+    pub(crate) fn shaft_table(&self) -> Vec<crate::derived::ShaftReach> {
         let mut table = Vec::new();
         for id in self.rare("shaft") {
             let Some(Element::Shaft(sh)) = self.elements.get(id) else { continue };

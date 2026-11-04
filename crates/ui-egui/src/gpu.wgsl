@@ -1,11 +1,14 @@
 // The 3D view on the graphics card: the passes that make the picture the processor's rasterizer makes (core `view3d.rs`).
 //   1. vs_scene / fs_scene: the opaque surfaces into a colour target (shaded and textured) and an id target (the plane a pixel
-//      shows and its element), with their depth; then vs_instanced / fs_scene, each shape's copies, placed.
+//      shows and its element), with their depth; then vs_instanced / fs_scene, each shape's copies, placed. Under a section box,
+//      fs_scene_cut, which keeps only what lies in it.
 //   2. vs_scene and vs_instanced_clear / fs_clear: the surfaces seen through, the nearest of them where it is nearer than anything opaque, into a
 //      colour target and an element target of their own (only when the view sees through something).
 //   3. vs_full / fs_post: an edge wherever the opaque plane changes between a pixel and the one to its right or below it, else
 //      the shaded colour (tinted halfway where selected), else the ground; and over it what is seen through, blended.
 //   4. vs_line / fs_line: each level's plane and name as lines, where nothing opaque nearer hides them.
+//   In wireframe, passes 1 and 2 have nothing to draw and pass 3 only paper, and vs_wire / fs_wire draw every edge over it; then
+//   vs_wire_tinted / fs_wire, those tinted, over the rest.
 // Lengths are mm. A colour is 0 to 255 in each channel, as the processor keeps it, and is divided down only on its way out.
 
 struct Globals {
@@ -17,9 +20,9 @@ struct Globals {
     back: vec4<f32>,
     // xyz: the model point in the middle of the picture, from the mesh's origin. w: pixels a mm.
     aim: vec4<f32>,
-    // xyz: the mesh's origin in the model, which a texture is laid by.
+    // xyz: the mesh's origin in the model, which a texture is laid by. w: 1 where paper and ink swap, on a dark canvas.
     origin: vec4<f32>,
-    // rgb: the ground the surfaces stand on.
+    // rgb: the ground the surfaces stand on. w: 1 in hidden line, where surfaces and ground are paper.
     ground: vec4<f32>,
     // xy: the picture's size, px. z: how much nearer a surface may be than a line and still leave it showing, in depth (in
     // perspective, that over the depth a line is past the far end, 1.5 px over the focal length). w: 1 where the view sees
@@ -29,6 +32,9 @@ struct Globals {
     // the aim, mm; and the depth (larger nearer, 1 at the near plane and 0 at the far one) z + w / ahead, for a point ahead mm
     // in front of the eye.
     lens: vec4<f32>,
+    // The section box from the mesh's origin: its least corner (w: 1 where there is one) and its greatest.
+    cut_lo: vec4<f32>,
+    cut_hi: vec4<f32>,
 }
 
 // A point `d` from the aim in clip space: parallel, or seen from the eye.
@@ -226,12 +232,29 @@ fn shaded(in: SceneOut, front: bool) -> vec3<f32> {
     return floor(c * select(in.light.y, in.light.x, front) + vec3<f32>(0.5));
 }
 
-@fragment
-fn fs_scene(in: SceneOut, @builtin(front_facing) front: bool) -> SceneTargets {
+fn scene_targets(in: SceneOut, front: bool) -> SceneTargets {
     var out: SceneTargets;
     out.color = vec4<f32>(shaded(in, front) / 255.0, 1.0);
     out.ids = in.ids;
     return out;
+}
+
+@fragment
+fn fs_scene(in: SceneOut, @builtin(front_facing) front: bool) -> SceneTargets {
+    return scene_targets(in, front);
+}
+
+// Whether a surface's point lies outside the section box, as `Boxed::holds` asks it.
+fn cut_away(world: vec3<f32>) -> bool {
+    return any(world < g.cut_lo.xyz) || any(world > g.cut_hi.xyz);
+}
+
+@fragment
+fn fs_scene_cut(in: SceneOut, @builtin(front_facing) front: bool) -> SceneTargets {
+    if cut_away(in.world) {
+        discard;
+    }
+    return scene_targets(in, front);
 }
 
 struct ClearTargets {
@@ -239,10 +262,13 @@ struct ClearTargets {
     @location(1) owner: u32,
 }
 
-// Only nearer than what is opaque there: as near is behind it.
+// Only nearer than what is opaque there: as near is behind it. Two surfaces in one plane, a wall's face and a copy's back flush
+// against it, come out apart here where the processor's depths are equal, as a card snaps each triangle's corners to 1/256 of a pixel:
+// so as near is within a sixty-fourth of how far the depth runs across a pixel, and a few of f32's steps.
 @fragment
 fn fs_clear(in: SceneOut, @builtin(front_facing) front: bool) -> ClearTargets {
-    if in.clip.z <= textureLoad(scene_depth, vec2<i32>(in.clip.xy), 0) {
+    let tie = max(fwidth(in.clip.z) / 64.0, 2.5e-7);
+    if in.clip.z <= textureLoad(scene_depth, vec2<i32>(in.clip.xy), 0) + tie || (g.cut_lo.w > 0.5 && cut_away(in.world)) {
         discard;
     }
     var out: ClearTargets;
@@ -270,6 +296,15 @@ fn bytes(c: vec4<f32>) -> vec3<f32> {
     return floor(c.xyz * 255.0 + vec3<f32>(0.5));
 }
 
+// A colour on a dark canvas, where paper and ink swap, as `canvas::color` has it.
+fn inked(c: vec3<f32>) -> vec3<f32> {
+    if g.origin.w < 0.5 {
+        return c;
+    }
+    let shift = 255.0 - max(c.x, max(c.y, c.z)) - min(c.x, min(c.y, c.z));
+    return floor(vec3<f32>(26.0) + floor(clamp(c + vec3<f32>(shift), vec3<f32>(0.0), vec3<f32>(255.0)) * 206.0 / 255.0));
+}
+
 @fragment
 fn fs_post(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let x = i32(frag.x);
@@ -279,7 +314,8 @@ fn fs_post(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let right = ids_at(x + 1, y);
     let below = ids_at(x, y + 1);
     let edge = (x + 1 < size.x && right.x != here.x) || (y + 1 < size.y && below.x != here.x);
-    var rgb = g.ground.xyz;
+    let lines = g.ground.w > 0.5;
+    var rgb = select(g.ground.xyz, vec3<f32>(255.0), lines);
     if edge {
         // In the tint where the pixel's own element is tinted, else in the edge colour of the first element of it, the pixel
         // to its right and the one below it that shows one.
@@ -295,7 +331,9 @@ fn fs_post(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
         }
         rgb = color;
     } else if here.y != 0u {
-        rgb = bytes(textureLoad(scene_color, vec2<i32>(x, y), 0));
+        if !lines {
+            rgb = bytes(textureLoad(scene_color, vec2<i32>(x, y), 0));
+        }
         if owners[here.y - 1u].tint.w > 0.5 {
             rgb = floor((rgb + owners[here.y - 1u].tint.xyz) / 2.0);
         }
@@ -315,7 +353,7 @@ fn fs_post(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
             rgb = floor(rgb + (s - rgb) * weight + vec3<f32>(0.5));
         }
     }
-    return vec4<f32>(rgb / 255.0, 1.0);
+    return vec4<f32>(inked(rgb) / 255.0, 1.0);
 }
 
 struct LineOut {
@@ -377,5 +415,139 @@ fn fs_line(in: LineOut) -> @location(0) vec4<f32> {
     if behind > 0.0 && behind > in.depth + slack {
         discard;
     }
-    return vec4<f32>(in.color / 255.0, 1.0);
+    return vec4<f32>(inked(in.color) / 255.0, 1.0);
+}
+
+struct WireIn {
+    @location(0) a: vec3<f32>,
+    @location(1) b: vec3<f32>,
+    @location(2) owner: u32,
+}
+
+struct WireOut {
+    @builtin(position) clip: vec4<f32>,
+    // The line's ends in the picture, as the processor's `wire_line` has them.
+    @location(0) @interpolate(flat) p: vec2<f32>,
+    @location(1) @interpolate(flat) q: vec2<f32>,
+    @location(2) @interpolate(flat) color: vec3<f32>,
+}
+
+// The core's `NEAR`: how far in front of the eye a line must be, mm.
+const NEAR: f32 = 10.0;
+
+// A clipping range (Liang and Barsky's) less what lies past one side, as the processor's `within` and `clip` have it. Empty is
+// a range that ends before it starts.
+fn narrowed(t: vec2<f32>, p: f32, q: f32) -> vec2<f32> {
+    if p == 0.0 {
+        return select(t, vec2<f32>(1.0, 0.0), q < 0.0);
+    }
+    if p < 0.0 {
+        return vec2<f32>(max(t.x, q / p), t.y);
+    }
+    return vec2<f32>(t.x, min(t.y, q / p));
+}
+
+// Two triangles a little wider and longer than the line, each pixel of which `fs_wire` asks of the line's steps: every pixel a
+// step lands in has its centre within a pixel of the line. One with nothing to draw is a point.
+fn wire_quad(w: WireIn, i: u32) -> WireOut {
+    var o: WireOut;
+    o.clip = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    var a = w.a;
+    var b = w.b;
+    if g.cut_lo.w > 0.5 {
+        let d = b - a;
+        var t = vec2<f32>(0.0, 1.0);
+        for (var k = 0; k < 3; k += 1) {
+            t = narrowed(t, -d[k], a[k] - g.cut_lo[k]);
+            t = narrowed(t, d[k], g.cut_hi[k] - a[k]);
+        }
+        if t.x > t.y {
+            return o;
+        }
+        let start = a;
+        a = start + d * t.x;
+        b = start + d * t.y;
+    }
+    if g.lens.x > 0.0 {
+        let da = g.lens.y - dot(a - g.aim.xyz, g.back.xyz) - NEAR;
+        let db = g.lens.y - dot(b - g.aim.xyz, g.back.xyz) - NEAR;
+        if da < 0.0 && db < 0.0 {
+            return o;
+        }
+        if da < 0.0 || db < 0.0 {
+            let cut = a + (b - a) * (da / (da - db));
+            if da >= 0.0 {
+                b = cut;
+            } else {
+                a = cut;
+            }
+        }
+    }
+    let pa = to_pixel(a).xy;
+    let d = to_pixel(b).xy - pa;
+    var t = vec2<f32>(0.0, 1.0);
+    t = narrowed(t, -d.x, pa.x);
+    t = narrowed(t, d.x, g.size.x - pa.x);
+    t = narrowed(t, -d.y, pa.y);
+    t = narrowed(t, d.y, g.size.y - pa.y);
+    if t.x > t.y {
+        return o;
+    }
+    let p = pa + d * t.x;
+    let q = pa + d * t.y;
+    var along = vec2<f32>(1.0, 0.0);
+    if length(q - p) > 0.0001 {
+        along = normalize(q - p);
+    }
+    var corners = array<u32, 6>(0u, 1u, 2u, 2u, 1u, 3u);
+    let c = corners[i];
+    let at_q = (c & 2u) != 0u;
+    let side = select(-1.0, 1.0, (c & 1u) == 0u);
+    let xy = select(p, q, at_q) + select(-along, along, at_q) + vec2<f32>(-along.y, along.x) * side;
+    o.clip = vec4<f32>(xy.x / g.size.x * 2.0 - 1.0, 1.0 - xy.y / g.size.y * 2.0, 0.5, 1.0);
+    o.p = p;
+    o.q = q;
+    let owner = owners[w.owner - 1u];
+    o.color = select(owner.edge.xyz, owner.tint.xyz, owner.tint.w > 0.5);
+    return o;
+}
+
+@vertex
+fn vs_wire(w: WireIn, @builtin(vertex_index) i: u32) -> WireOut {
+    return wire_quad(w, i);
+}
+
+// Only what is tinted, which is drawn over the rest. A point for the others.
+@vertex
+fn vs_wire_tinted(w: WireIn, @builtin(vertex_index) i: u32) -> WireOut {
+    if owners[w.owner - 1u].tint.w < 0.5 {
+        var o: WireOut;
+        o.clip = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+        return o;
+    }
+    return wire_quad(w, i);
+}
+
+// A pixel the line's steps land in, as the processor's `wire_pixels` takes them: a step no longer than a pixel, each point
+// floored. Only the few steps along its longer way that can land in this pixel are asked.
+@fragment
+fn fs_wire(in: WireOut) -> @location(0) vec4<f32> {
+    let at = floor(in.clip.xy);
+    let d = in.q - in.p;
+    let steps = max(ceil(length(d)), 1.0);
+    let way = select(0, 1, abs(d.y) > abs(d.x));
+    var first = 0.0;
+    var last = steps;
+    if abs(d[way]) > 0.000001 {
+        let i = (at[way] - in.p[way]) / d[way] * steps;
+        let j = (at[way] + 1.0 - in.p[way]) / d[way] * steps;
+        first = max(floor(min(i, j)), 0.0);
+        last = min(ceil(max(i, j)), steps);
+    }
+    for (var k = first; k <= last; k += 1.0) {
+        if all(floor(in.p + d * (k / steps)) == at) {
+            return vec4<f32>(inked(in.color) / 255.0, 1.0);
+        }
+    }
+    discard;
 }

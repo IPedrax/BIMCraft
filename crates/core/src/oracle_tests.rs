@@ -9,7 +9,7 @@ use crate::model::{Element, Id};
 use crate::sample::tower::{Plate, tower_on};
 
 /// xorshift64*: enough to pick edits, the same every run.
-struct Dice(u64);
+pub(crate) struct Dice(pub(crate) u64);
 
 impl Dice {
     fn next(&mut self) -> u64 {
@@ -34,7 +34,7 @@ fn pick(s: &Session, dice: &mut Dice, categories: &[&str]) -> Option<Id> {
     ids.get(dice.below(ids.len())).copied()
 }
 
-fn edit(s: &mut Session, dice: &mut Dice) -> (String, Value) {
+pub(crate) fn edit(s: &mut Session, dice: &mut Dice) -> (String, Value) {
     let any = ["wall", "door", "window", "component", "structuralcolumn", "beam", "pipe", "conduit", "room", "ceiling", "tag"];
     let by = |dice: &mut Dice| json!([dice.mm(3000), dice.mm(3000)]);
     match dice.below(9) {

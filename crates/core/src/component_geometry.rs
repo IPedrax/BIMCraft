@@ -5,7 +5,8 @@ use crate::family::Piece;
 use crate::geom::P2;
 use crate::model::{Component, Id, Model};
 
-type Key = (String, String, bool, String);
+/// What a shape is the shape of: its family, its type, whether it is mirrored, and the values its family evaluates.
+pub(crate) type Key = (String, String, bool, String);
 
 /// One local family shape and every component that places it. Mirroring and instance parameters
 /// are part of the shape key; rotation and translation belong to the placement.
@@ -15,6 +16,8 @@ pub(crate) struct SharedComponents {
     #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) bounds: Vec<Option<[[f64; 3]; 2]>>,
     pub(crate) instances: Vec<ComponentInstance>,
+    /// Each shape's key, and where it is in `shapes`.
+    pub(crate) keys: BTreeMap<Key, usize>,
 }
 
 /// A copy of a local shape: `owner`'s, at `at`, its shape's axes taken to `axes` (each square to the others, any length, so a
@@ -75,7 +78,7 @@ impl ComponentInstance {
 }
 
 impl SharedComponents {
-    fn key(model: &Model, c: &Component) -> Key {
+    pub(crate) fn key(model: &Model, c: &Component) -> Key {
         // Paint, phase and design-option metadata live in `params` too. Only names that the family
         // evaluates can change its local geometry; appearance is resolved per placement later.
         let params = model.families.get(&c.family).map(|family| {
@@ -119,7 +122,7 @@ impl SharedComponents {
             let (sin, cos) = c.angle.to_radians().sin_cos();
             instances.push(ComponentInstance::turned(*owner, shape, [c.at.0, c.at.1, model.elevation(c.level) + c.offset], sin, cos));
         }
-        (!cancelled()).then_some(Self { shapes, bounds, instances })
+        (!cancelled()).then_some(Self { shapes, bounds, instances, keys: indices })
     }
 }
 

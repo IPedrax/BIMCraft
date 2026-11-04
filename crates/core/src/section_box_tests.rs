@@ -64,6 +64,15 @@ fn picture(s: &Session, cam: &Camera) -> Image {
     Scene::new(&s.model).render_in(cam, &[], &Look::of_3d(&s.model))
 }
 
+#[test]
+fn a_scan_keeps_a_shaded_view_on_the_processor_and_a_wireframe_which_draws_no_points_on_the_card() {
+    let (mut s, _) = floor_and_ceiling("wireframe_on_the_card");
+    let err = gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).err().unwrap();
+    assert!(err.contains("point cloud"), "{err}");
+    run(&mut s, "visual_style", json!({"style": "wireframe"}));
+    assert!(gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).is_ok());
+}
+
 fn floor_and_ceiling(test: &str) -> (Session, Camera) {
     let mut s = Session::new();
     run(&mut s, "point_cloud", json!({"path": scan(test, &room()), "at": [1000, 1000]}));
@@ -168,13 +177,15 @@ fn a_section_box_goes_into_the_project_file_and_undo_takes_it_back() {
 }
 
 #[test]
-fn the_graphics_card_leaves_a_boxed_view_to_the_processor() {
+fn the_graphics_card_keeps_all_of_a_boxed_view_and_cuts_its_pixels() {
     let mut s = Session::new();
     run(&mut s, "wall", json!({"points": [[0, 0], [3000, 0]]}));
-    assert!(gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).is_ok());
+    let whole = gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).unwrap();
+    assert_eq!(whole.section_box, None);
     run(&mut s, "section_box", json!({"min": [0, -500, 0], "max": [3000, 500, 1000]}));
-    let err = gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).err().unwrap();
-    assert!(err.contains("section box"), "{err}");
+    let cut = gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).unwrap();
+    assert_eq!(cut.section_box, Some(([0.0, -500.0, 0.0], [3000.0, 500.0, 1000.0])));
+    assert_eq!(cut.triangles(), whole.triangles(), "moving a face makes no triangles");
 }
 
 #[test]

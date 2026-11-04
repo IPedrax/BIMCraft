@@ -194,7 +194,7 @@ fixtures and their results belong in the ignored `test_model/` folder.
 The 3D view uses the graphics card where one is available; File > Settings > Performance can turn it off. On that tower at 1920 × 1080 a changed frame took 1.3 ms on an NVIDIA GeForce RTX 3060, against 108 ms on the processor,
 and what is under the cursor is found in a bounding volume hierarchy instead of read from the picture. The card draws what the processor
 draws, with the same lighting, textures, edges, level lines and surfaces seen through (a mass, or what Visibility/Graphics makes
-transparent). Hidden line, wireframe, sections and sheets are still drawn on the processor, and so is everything when the card fails, when the window runs on OpenGL (the card is for Vulkan, Metal and DirectX 12) or when the computer has none; the Performance page says which.
+transparent), in hidden line and in wireframe too. Point clouds, sections and sheets are still drawn on the processor, and so is everything when the card fails, when the window runs on OpenGL (the card is for Vulkan, Metal and DirectX 12) or when the computer has none; the Performance page says which.
 
 ## Why BIMCraft
 

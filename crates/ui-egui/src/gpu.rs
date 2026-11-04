@@ -1,8 +1,8 @@
 //! The 3D view drawn on the graphics card: the core's `view3d::gpu::Mesh` uploaded once for a model, and the passes for each
 //! picture (the opaque surfaces; those seen through; edges, ground and the blend; the levels' lines), in `gpu.wgsl`, into a
 //! texture that egui shows as it shows the CPU picture. What changes between pictures is small: the camera, the levels' lines,
-//! and, only when they change, the selection's tints and the textures' mip levels. Opt-in (Settings > Performance); what the
-//! card can't draw (hidden line, wireframe) is the processor's, and so is everything when the card fails: a validation or out-of-memory error from the device is caught
+//! and, only when they change, the selection's tints and the textures' mip levels. A section box is a uniform each pixel is cut
+//! to, so a face being dragged builds nothing. Opt-in (Settings > Performance); what the card can't draw (wireframe, a point cloud) is the processor's, and so is everything when the card fails: a validation or out-of-memory error from the device is caught
 //! here, not left to the device's handler, and the window carries on without the card (`BimApp::gpu_failed`).
 
 use std::collections::BTreeMap;
@@ -24,7 +24,9 @@ const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 /// A vertex (see [`Vertex`]) as the card takes it: its position as three floats, its two normals as four 16-bit signed fractions
 /// each (the fourth 0), and its four words. 44 bytes, not the 52 of floats.
 const STRIDE: u64 = 44;
-const GLOBALS: u64 = 8 * 16;
+const GLOBALS: u64 = 10 * 16;
+/// A section box: its least corner and its greatest, in the model.
+type Cut = Option<([f64; 3], [f64; 3])>;
 /// An owner's edge and tint colours, a skin's parts and a segment's ends and colour: 2, 3 and 3 vec4s.
 const OWNER: u64 = 32;
 const SKIN: u64 = 48;
@@ -32,6 +34,8 @@ const SEGMENT: u64 = 48;
 /// A copy of a shape (see `Instance`): where it is as three floats, its turn as two, its owner, where its planes are, and its
 /// owner seen through.
 const INSTANCE: u64 = 60;
+/// An edge a wireframe draws (see `Wire`): its ends from the mesh's origin as three floats each, and its owner.
+const WIRE: u64 = 28;
 
 /// The window's use of the card: whether the user asked for it, the wgpu state it would be made on (none where the window has
 /// no wgpu device, as in every test), the card once it's made, and why the last picture was drawn on the processor, if it was.
@@ -129,11 +133,18 @@ struct Uploaded {
     shape_vertices: Option<wgpu::Buffer>,
     instances: Vec<wgpu::Buffer>,
     instances_per: u64,
+    /// A wireframe's edges, as many buffers as they take, each but the last holding [`Uploaded::wires_per`].
+    wires: Vec<wgpu::Buffer>,
+    wires_per: u64,
     /// The copies a view sees, gathered in their order into one buffer (and how many it has room for) when it doesn't see them
     /// all: which they are, and where each shape's are in it.
     seen: Option<(wgpu::Buffer, u64)>,
     seen_runs: Vec<std::ops::Range<usize>>,
     seen_shapes: Vec<std::ops::Range<u32>>,
+    /// The boxes standing in, in a frame of a moving view, and how many it has room for.
+    stand_ins: Option<(wgpu::Buffer, u64)>,
+    /// The camera and section box the surfaces in the targets are of, and how far they are drawn.
+    progress: Option<(Camera, Cut, Stage)>,
     planes: wgpu::Buffer,
     owners: wgpu::Buffer,
     skins: wgpu::Buffer,
@@ -173,11 +184,18 @@ pub struct Gpu {
     queue: wgpu::Queue,
     state: Option<RenderState>,
     scene: wgpu::RenderPipeline,
+    /// The opaque surfaces cut to a section box. Pipelines of their own, as a shader that may discard gives up what the depth
+    /// test saves before it runs, which a view with no box keeps.
+    scene_cut: wgpu::RenderPipeline,
+    instanced_cut: wgpu::RenderPipeline,
     instanced: wgpu::RenderPipeline,
     instanced_clear: wgpu::RenderPipeline,
     clear: wgpu::RenderPipeline,
     post: wgpu::RenderPipeline,
     lines: wgpu::RenderPipeline,
+    /// A wireframe's edges; then, over them, only those tinted.
+    wires: wgpu::RenderPipeline,
+    wires_tinted: wgpu::RenderPipeline,
     group0: wgpu::BindGroupLayout,
     group1: wgpu::BindGroupLayout,
     group2: wgpu::BindGroupLayout,
@@ -194,6 +212,10 @@ pub struct Gpu {
     /// Whether what a view can't see is left out ([`Mesh::visible`]); off only to test that the picture is the same, and to
     /// measure what it saves.
     pub(crate) cull: bool,
+    /// The most triangles a frame draws ([`FRAME_TRIANGLES`]; fewer in a test).
+    pub(crate) budget: usize,
+    /// Hidden line is drawn as a section is, paper and ink swapped on a dark canvas (`canvas::color`).
+    pub(crate) swapped_ink: bool,
 }
 
 /// The most bytes a buffer of vertices holds, whatever the card allows: some drivers place a very large buffer badly.
@@ -223,6 +245,177 @@ fn spans(per: u64, range: std::ops::Range<u64>) -> Vec<(usize, std::ops::Range<u
 
 /// The bytes of a buffer, 32-bit words as the card's byte order has them.
 type Words = Vec<u8>;
+
+/// The most triangles a frame draws: past it, while the view moves, the nearest of what it sees and a box for each of the
+/// rest, and once it stays, the exact picture over as many frames as it takes. About 12 ms of an RTX 2060.
+const FRAME_TRIANGLES: usize = 12_000_000;
+
+/// How far the surfaces in the targets are drawn for the camera they're of: what a moving frame drew, or the exact drawing up
+/// to `done` of its `total` triangles.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Stage {
+    Moving,
+    Exact { done: usize, total: usize },
+}
+
+/// What one frame does: the picture again over surfaces already whole, the next part of the exact drawing from a triangle,
+/// or a frame of a moving view.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Frame {
+    Picture,
+    Exact(usize),
+    Moving,
+}
+
+/// Where a draw's copies are read from: the buffers the mesh went up in (by their place in [`Mesh::instances`]), those a view
+/// sees gathered, or the boxes standing in (each by its place in its buffer).
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum From {
+    Mesh,
+    Seen,
+    StandIns,
+}
+
+/// One draw of the surfaces: triangles drawn of their own, by their vertices, or copies of the shape whose vertices are
+/// `corners`.
+#[derive(Clone, Debug, PartialEq)]
+enum Draw {
+    Own(std::ops::Range<usize>),
+    Copies { corners: std::ops::Range<u32>, from: From, copies: std::ops::Range<usize> },
+}
+
+impl Draw {
+    /// The triangles it draws.
+    fn cost(&self) -> usize {
+        match self {
+            Draw::Own(r) => r.len() / 3,
+            Draw::Copies { corners, copies, .. } => corners.len() / 3 * copies.len(),
+        }
+    }
+
+    /// What of it lies from triangle `a` to `b` of it: whole triangles, and of copies those that end there, so that parts
+    /// taken one after another draw each copy once.
+    fn part(&self, a: usize, b: usize) -> Draw {
+        match self {
+            Draw::Own(r) => Draw::Own((r.start + 3 * a).min(r.end)..(r.start + 3 * b).min(r.end)),
+            Draw::Copies { corners, from, copies } => {
+                let each = (corners.len() / 3).max(1);
+                let (first, last) = ((copies.start + a / each).min(copies.end), (copies.start + b / each).min(copies.end));
+                Draw::Copies { corners: corners.clone(), from: *from, copies: first..last }
+            }
+        }
+    }
+}
+
+/// What of `draws` lies from triangle `a` to `b` of them all, in order, with whether each is of what is seen through.
+fn part_of(draws: &[(bool, Draw)], a: usize, b: usize) -> Vec<(bool, Draw)> {
+    let mut at = 0;
+    let mut out = Vec::new();
+    for (clear, d) in draws {
+        let (start, end) = (at, at + d.cost());
+        at = end;
+        if end <= a || start >= b {
+            continue;
+        }
+        let part = d.part(a.max(start) - start, b.min(end) - start);
+        if part.cost() > 0 {
+            out.push((*clear, part));
+        }
+    }
+    out
+}
+
+/// The draws of what `seen` holds and of `stand_ins`, in the order the picture needs them: what is opaque of the triangles drawn
+/// of their own, then of each shape's copies, then the boxes; then what is seen through of each. The copies a view sees, when it
+/// doesn't see them all, are gathered into one buffer in their order (one draw a shape), and the boxes into another, each
+/// written again only when it changes.
+fn surfaces(
+    mesh: &Mesh,
+    up: &mut Uploaded,
+    queue: &wgpu::Queue,
+    device: &wgpu::Device,
+    seen: &Visible,
+    stand_ins: &[Instance],
+    limit: u64,
+) -> Vec<(bool, Draw)> {
+    let room_for = |up_slot: &mut Option<(wgpu::Buffer, u64)>, n: u64, label: &str| {
+        if up_slot.as_ref().is_none_or(|(_, room)| *room < n) {
+            let room = n.max(1024).next_power_of_two().min((limit / INSTANCE).max(1));
+            let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size: room * INSTANCE,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            *up_slot = Some((buffer, room));
+        }
+    };
+    let all = seen.instances.len() == 1 && seen.instances.first() == Some(&(0..mesh.instances.len()));
+    let gathered = seen.instances.iter().map(|r| r.len() as u64).sum::<u64>();
+    let gather = !all && gathered > 0 && gathered * INSTANCE <= limit;
+    if !gather {
+        up.seen_runs.clear();
+    } else if up.seen_runs != seen.instances {
+        let mut bytes = Words::with_capacity(gathered as usize * INSTANCE as usize);
+        up.seen_shapes.clear();
+        let mut at = 0u32;
+        for shape in &mesh.shapes {
+            let start = (shape.vertices.start / 3) as u32;
+            let first = at;
+            for run in within(&seen.instances, shape.instances.clone()) {
+                for c in mesh.instances.get(run).unwrap_or_default() {
+                    put_copy(&mut bytes, c, start);
+                    at += 1;
+                }
+            }
+            up.seen_shapes.push(first..at);
+        }
+        room_for(&mut up.seen, gathered, "bimcraft-3d-seen-copies");
+        if let Some((buffer, _)) = &up.seen
+            && !bytes.is_empty()
+        {
+            queue.write_buffer(buffer, 0, &bytes);
+        }
+        up.seen_runs.clone_from(&seen.instances);
+    }
+    // As many boxes as a buffer holds: they only stand in.
+    let boxes = stand_ins.len().min((limit / INSTANCE) as usize);
+    if boxes > 0 {
+        let start = (mesh.cube.start / 3) as u32;
+        let mut bytes = Words::with_capacity(boxes * INSTANCE as usize);
+        stand_ins.iter().take(boxes).for_each(|c| put_copy(&mut bytes, c, start));
+        room_for(&mut up.stand_ins, boxes as u64, "bimcraft-3d-stand-ins");
+        if let Some((buffer, _)) = &up.stand_ins {
+            queue.write_buffer(buffer, 0, &bytes);
+        }
+    }
+    let mut draws = Vec::new();
+    for clear in [false, true] {
+        let own = if clear { up.clear_from as usize..up.count as usize } else { 0..up.clear_from as usize };
+        draws.extend(within(&seen.vertices, own).into_iter().map(|r| (clear, Draw::Own(r))));
+        for (n, shape) in mesh.shapes.iter().enumerate() {
+            let corners = if clear { shape.clear_from..shape.vertices.end } else { shape.vertices.start..shape.clear_from };
+            if corners.is_empty() {
+                continue;
+            }
+            let corners = corners.start as u32..corners.end as u32;
+            if gather {
+                if let Some(copies) = up.seen_shapes.get(n).filter(|c| !c.is_empty()) {
+                    draws.push((clear, Draw::Copies { corners, from: From::Seen, copies: copies.start as usize..copies.end as usize }));
+                }
+            } else {
+                for run in within(&seen.instances, shape.instances.clone()) {
+                    draws.push((clear, Draw::Copies { corners: corners.clone(), from: From::Mesh, copies: run }));
+                }
+            }
+        }
+        if !clear && boxes > 0 {
+            let corners = mesh.cube.start as u32..mesh.cube.end as u32;
+            draws.push((false, Draw::Copies { corners, from: From::StandIns, copies: 0..boxes }));
+        }
+    }
+    draws
+}
 
 /// A copy as the card reads it: where, its axes, its element, where its planes are less where its shape's vertices `start`, a
 /// third, and its element as seen through.
@@ -401,6 +594,24 @@ impl Gpu {
             &[target(COLOR), target(IDS)],
             true,
         );
+        let instanced_cut = pipeline(
+            "bimcraft-3d-instanced-cut",
+            &surface_layout,
+            "vs_instanced",
+            "fs_scene_cut",
+            &[Some(vertex_layout.clone()), Some(instance_layout.clone())],
+            &[target(COLOR), target(IDS)],
+            true,
+        );
+        let scene_cut = pipeline(
+            "bimcraft-3d-scene-cut",
+            &surface_layout,
+            "vs_scene",
+            "fs_scene_cut",
+            &[Some(vertex_layout.clone())],
+            &[target(COLOR), target(IDS)],
+            true,
+        );
         let instanced_clear = pipeline(
             "bimcraft-3d-instanced-clear",
             &targets_layout,
@@ -430,6 +641,20 @@ impl Gpu {
         );
         let post = pipeline("bimcraft-3d-post", &picture_layout, "vs_full", "fs_post", &[], &[target(COLOR)], false);
         let lines = pipeline("bimcraft-3d-lines", &targets_layout, "vs_line", "fs_line", &[], &[target(COLOR)], false);
+        let wire_attributes = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Uint32];
+        let wire_layout =
+            wgpu::VertexBufferLayout { array_stride: WIRE, step_mode: wgpu::VertexStepMode::Instance, attributes: &wire_attributes };
+        let wires =
+            pipeline("bimcraft-3d-wires", &surface_layout, "vs_wire", "fs_wire", &[Some(wire_layout.clone())], &[target(COLOR)], false);
+        let wires_tinted = pipeline(
+            "bimcraft-3d-wires-tinted",
+            &surface_layout,
+            "vs_wire_tinted",
+            "fs_wire",
+            &[Some(wire_layout)],
+            &[target(COLOR)],
+            false,
+        );
         let globals = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("bimcraft-3d-globals"),
             size: GLOBALS,
@@ -443,11 +668,15 @@ impl Gpu {
             queue,
             state: None,
             scene,
+            scene_cut,
+            instanced_cut,
             instanced,
             instanced_clear,
             clear,
             post,
             lines,
+            wires,
+            wires_tinted,
             group0,
             group1,
             group2,
@@ -461,6 +690,8 @@ impl Gpu {
             adapter: String::new(),
             vertex_bytes: VERTEX_BUFFER,
             cull: true,
+            budget: FRAME_TRIANGLES,
+            swapped_ink: false,
         })
     }
 
@@ -489,16 +720,25 @@ impl Gpu {
         self.targets.as_ref().map(|t| &t.picture)
     }
 
-    /// Draws `mesh` as `cam` sees it, `tints` colouring (halfway, and the edges whole) what they name, on `ground` where nothing is.
-    /// The picture is in [`texture`](Self::texture). An error leaves the card with nothing kept: the caller does without it.
-    pub fn draw(&mut self, mesh: &Arc<Mesh>, cam: &Camera, tints: &[(Id, Rgb)], ground: Rgb) -> Result<(), String> {
+    /// [`draw_cut`](Self::draw_cut), to the mesh's own section box.
+    #[cfg(test)]
+    pub(crate) fn draw(&mut self, mesh: &Arc<Mesh>, cam: &Camera, tints: &[(Id, Rgb)], ground: Rgb) -> Result<bool, String> {
+        self.draw_cut(mesh, cam, tints, ground, mesh.section_box)
+    }
+
+    /// Draws `mesh` as `cam` sees it, `tints` colouring (halfway, and the edges whole) what they name, on `ground` where nothing is,
+    /// cut to section box `cut`: the mesh's own, or one being dragged, before its command runs. The picture is in
+    /// [`texture`](Self::texture). An error leaves the card with nothing kept: the caller does without it. True when the picture
+    /// is the exact one; false while it stands in, or the exact one is on its way: then draw again with the same camera on the
+    /// next frame, until it is.
+    pub fn draw_cut(&mut self, mesh: &Arc<Mesh>, cam: &Camera, tints: &[(Id, Rgb)], ground: Rgb, cut: Cut) -> Result<bool, String> {
         let guard = scopes(&self.device);
-        let drawn = self.encode(mesh, cam, tints, ground);
+        let drawn = self.encode(mesh, cam, tints, ground, cut);
         let caught = caught(guard);
         if drawn.is_err() || caught.is_err() {
             (self.mesh, self.targets) = (None, None);
         }
-        drawn.and(caught)
+        caught.and(drawn)
     }
 
     /// Starts the large first upload away from the interface thread. A result belongs to its exact mesh snapshot.
@@ -555,7 +795,7 @@ impl Gpu {
         self.mesh = None;
     }
 
-    fn encode(&mut self, mesh: &Arc<Mesh>, cam: &Camera, tints: &[(Id, Rgb)], ground: Rgb) -> Result<(), String> {
+    fn encode(&mut self, mesh: &Arc<Mesh>, cam: &Camera, tints: &[(Id, Rgb)], ground: Rgb, cut: Cut) -> Result<bool, String> {
         let (w, h) = (cam.width.clamp(1, MAX_SIDE), cam.height.clamp(1, MAX_SIDE));
         if w.max(h) > self.device.limits().max_texture_dimension_2d {
             return Err("the picture is bigger than the card draws".into());
@@ -564,7 +804,7 @@ impl Gpu {
         self.size(w, h);
         // What the view can see, the rest left out as leaving no pixel; in the order it is drawn either way.
         let seen = if self.cull {
-            mesh.visible(cam)
+            mesh.visible_cut(cam, cut)
         } else {
             Visible {
                 vertices: std::iter::once(0..mesh.vertices.len()).collect(),
@@ -604,7 +844,7 @@ impl Gpu {
         // Each mark's lines, from the mesh's origin so that f32 holds them.
         let mut lines = Words::new();
         let mut count = 0u32;
-        for marks in mesh.marks(cam, tints) {
+        for marks in mesh.marks_cut(cam, tints, cut) {
             let c = rgb(marks.color);
             for ([a, b], wide) in &marks.lines {
                 let rel = |p: &[f64; 3]| std::array::from_fn::<f32, 3, _>(|i| (p[i] - mesh.origin[i]) as f32);
@@ -629,50 +869,52 @@ impl Gpu {
         put(&mut globals, &[view.up[0], view.up[1], view.up[2], 2.0 * across / height]);
         put(&mut globals, &[view.back[0], view.back[1], view.back[2], 0.5 / view.depth]);
         put(&mut globals, &[view.target[0], view.target[1], view.target[2], view.scale]);
-        put(&mut globals, &[mesh.origin[0] as f32, mesh.origin[1] as f32, mesh.origin[2] as f32, 0.0]);
-        put(&mut globals, &[rgb(ground)[0], rgb(ground)[1], rgb(ground)[2], 0.0]);
+        let swapped = if mesh.lines && self.swapped_ink { 1.0 } else { 0.0 };
+        put(&mut globals, &[mesh.origin[0] as f32, mesh.origin[1] as f32, mesh.origin[2] as f32, swapped]);
+        put(&mut globals, &[rgb(ground)[0], rgb(ground)[1], rgb(ground)[2], if mesh.lines { 1.0 } else { 0.0 }]);
         // 1.5 px, as the processor lets a line show through a surface that near.
         let slack = view.perspective.map_or(1.5 / view.scale * 0.5 / view.depth, |p| 1.5 / p.focal);
         put(&mut globals, &[width, height, slack, if through { 1.0 } else { 0.0 }]);
         let lens = view.perspective.map_or([0.0; 4], |p| [p.focal, p.eye, p.a, p.b]);
         put(&mut globals, &lens);
+        // The section box from the mesh's origin, as a surface's point is.
+        let (lo, hi) = cut.unwrap_or_default();
+        let from = |p: [f64; 3]| std::array::from_fn::<f32, 3, _>(|i| (p[i] - mesh.origin[i]) as f32);
+        let (lo, hi) = (from(lo), from(hi));
+        put(&mut globals, &[lo[0], lo[1], lo[2], if cut.is_some() { 1.0 } else { 0.0 }]);
+        put(&mut globals, &[hi[0], hi[1], hi[2], 0.0]);
         write(&self.globals, &globals);
-        // The copies the view sees, when it doesn't see them all, gathered into one buffer in their order: one draw a shape.
-        let all = seen.instances.len() == 1 && seen.instances.first() == Some(&(0..mesh.instances.len()));
-        let gathered = seen.instances.iter().map(|r| r.len() as u64).sum::<u64>();
-        let gather = !all && gathered > 0 && gathered * INSTANCE <= self.vertex_bytes.min(device.limits().max_buffer_size);
-        if !gather {
-            up.seen_runs.clear();
-        } else if up.seen_runs != seen.instances {
-            let mut bytes = Words::with_capacity(gathered as usize * INSTANCE as usize);
-            up.seen_shapes.clear();
-            let mut at = 0u32;
-            for shape in &mesh.shapes {
-                let start = (shape.vertices.start / 3) as u32;
-                let first = at;
-                for run in within(&seen.instances, shape.instances.clone()) {
-                    for c in mesh.instances.get(run).unwrap_or_default() {
-                        put_copy(&mut bytes, c, start);
-                        at += 1;
-                    }
-                }
-                up.seen_shapes.push(first..at);
+        // What this frame draws of the surfaces: nothing where they are drawn already for this camera (a tint changes only the
+        // picture); the next part of the exact drawing while the camera stays; else, the camera moved, all it sees if that fits
+        // in a frame, or the nearest of it and a box for each of the rest, finished exactly once the camera stays.
+        let budget = self.budget.max(1);
+        let frame = match &up.progress {
+            Some((c, k, Stage::Exact { done, total })) if c == cam && *k == cut && done >= total => Frame::Picture,
+            Some((c, k, Stage::Exact { done, .. })) if c == cam && *k == cut => Frame::Exact(*done),
+            Some((c, k, Stage::Moving)) if c == cam && *k == cut => Frame::Exact(0),
+            _ if mesh.cost(&seen) <= budget => Frame::Exact(0),
+            _ => Frame::Moving,
+        };
+        let limit = self.vertex_bytes.min(device.limits().max_buffer_size);
+        let (draws, first) = match frame {
+            Frame::Picture => (Vec::new(), false),
+            Frame::Exact(done) => {
+                let all = surfaces(mesh, up, queue, device, &seen, &[], limit);
+                let total: usize = all.iter().map(|(_, d)| d.cost()).sum();
+                let end = done.saturating_add(budget).min(total);
+                up.progress = Some((*cam, cut, Stage::Exact { done: end, total }));
+                (part_of(&all, done, end), done == 0)
             }
-            if up.seen.as_ref().is_none_or(|(_, room)| *room < gathered) {
-                let room = gathered.max(1024).next_power_of_two();
-                let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("bimcraft-3d-seen-copies"),
-                    size: (room * INSTANCE).min(self.vertex_bytes.min(device.limits().max_buffer_size)),
-                    usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                    mapped_at_creation: false,
-                });
-                up.seen = Some((buffer, room));
+            Frame::Moving => {
+                let near = mesh.nearest_first(cam, &seen, budget);
+                up.progress = Some((*cam, cut, Stage::Moving));
+                (surfaces(mesh, up, queue, device, &near.seen, &near.stand_ins, limit), true)
             }
-            if let Some((buffer, _)) = &up.seen {
-                write(buffer, &bytes);
-            }
-            up.seen_runs.clone_from(&seen.instances);
-        }
+        };
+        let complete = matches!(up.progress, Some((_, _, Stage::Exact { done, total })) if done >= total);
+        // The picture is made again when the surfaces are whole, exact or standing in; while the exact ones are on their way it
+        // stays what the camera last showed.
+        let picture = complete || frame == Frame::Moving;
         let bind = up.bind.get_or_insert_with(|| {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("bimcraft-3d-buffers"),
@@ -688,93 +930,90 @@ impl Gpu {
             })
         });
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("bimcraft-3d") });
-        let attachment = |view| wgpu::RenderPassColorAttachment {
-            view,
-            depth_slice: None,
-            resolve_target: None,
-            ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Store },
-        };
-        let depth = |view| wgpu::RenderPassDepthStencilAttachment {
-            view,
-            depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0.0), store: wgpu::StoreOp::Store }),
-            stencil_ops: None,
-        };
-        // The opaque surfaces, then (when the view sees through any) those seen through, the nearest in front of them.
-        for (name, pipeline, color, ids, z, vertices) in [
-            ("bimcraft-3d-surfaces", &self.scene, &targets.color, &targets.ids, &targets.depth, 0..up.clear_from),
-            (
-                "bimcraft-3d-seen-through",
-                &self.clear,
-                &targets.clear_color,
-                &targets.clear_ids,
-                &targets.clear_depth,
-                up.clear_from..up.count,
-            ),
-        ] {
-            let through_pass = name == "bimcraft-3d-seen-through";
-            if through_pass && !through {
+        // The opaque surfaces, then (when the view sees through any) those seen through, the nearest in front of them: begun
+        // afresh in a frame's first part, and carried on in the same targets in the next.
+        let load = if first { wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT) } else { wgpu::LoadOp::Load };
+        let depth_load = if first { wgpu::LoadOp::Clear(0.0) } else { wgpu::LoadOp::Load };
+        for (clear, color, ids, z) in
+            [(false, &targets.color, &targets.ids, &targets.depth), (true, &targets.clear_color, &targets.clear_ids, &targets.clear_depth)]
+        {
+            if (clear && !through) || (!first && !draws.iter().any(|(c, _)| *c == clear)) {
                 continue;
             }
+            let attachment = |view| wgpu::RenderPassColorAttachment {
+                view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
+            };
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some(name),
+                label: Some(if clear { "bimcraft-3d-seen-through" } else { "bimcraft-3d-surfaces" }),
                 color_attachments: &[Some(attachment(color)), Some(attachment(ids))],
-                depth_stencil_attachment: Some(depth(z)),
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: z,
+                    depth_ops: Some(wgpu::Operations { load: depth_load, store: wgpu::StoreOp::Store }),
+                    stencil_ops: None,
+                }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            if !vertices.is_empty() {
-                pass.set_pipeline(pipeline);
-                pass.set_bind_group(0, &*bind, &[]);
-                // What is seen through reads the opaque depth, which the opaque pass is writing.
-                if through_pass {
-                    pass.set_bind_group(1, &targets.bind, &[]);
-                }
-                for run in within(&seen.vertices, vertices.start as usize..vertices.end as usize) {
-                    for (k, part) in spans(up.per, run.start as u64..run.end as u64) {
-                        if let Some(buffer) = up.vertices.get(k) {
-                            pass.set_vertex_buffer(0, buffer.slice(..));
-                            pass.draw(part, 0..1);
-                        }
+            let (own, copies) = match (clear, cut.is_some()) {
+                (true, _) => (&self.clear, &self.instanced_clear),
+                (false, true) => (&self.scene_cut, &self.instanced_cut),
+                (false, false) => (&self.scene, &self.instanced),
+            };
+            let mut set = None;
+            for (_, draw) in draws.iter().filter(|(c, _)| *c == clear) {
+                let pipeline = if matches!(draw, Draw::Own(_)) { own } else { copies };
+                if set != Some(pipeline as *const wgpu::RenderPipeline) {
+                    pass.set_pipeline(pipeline);
+                    pass.set_bind_group(0, &*bind, &[]);
+                    // What is seen through reads the opaque depth, which the opaque pass wrote.
+                    if clear {
+                        pass.set_bind_group(1, &targets.bind, &[]);
                     }
+                    set = Some(pipeline as *const wgpu::RenderPipeline);
                 }
-            }
-            // Each shape's copies: what is opaque of them, or what is seen through.
-            if let Some(shapes) = &up.shape_vertices
-                && !mesh.instances.is_empty()
-            {
-                pass.set_pipeline(if through_pass { &self.instanced_clear } else { &self.instanced });
-                pass.set_bind_group(0, &*bind, &[]);
-                if through_pass {
-                    pass.set_bind_group(1, &targets.bind, &[]);
-                }
-                pass.set_vertex_buffer(0, shapes.slice(..));
-                let gathered = up.seen.as_ref().filter(|_| gather).map(|(buffer, _)| buffer);
-                if let Some(buffer) = gathered {
-                    pass.set_vertex_buffer(1, buffer.slice(..));
-                }
-                for (n, shape) in mesh.shapes.iter().enumerate() {
-                    let corners = if through_pass { shape.clear_from..shape.vertices.end } else { shape.vertices.start..shape.clear_from };
-                    if corners.is_empty() {
-                        continue;
-                    }
-                    let corners = corners.start as u32..corners.end as u32;
-                    if gathered.is_some() {
-                        if let Some(copies) = up.seen_shapes.get(n).filter(|c| !c.is_empty()) {
-                            pass.draw(corners, copies.clone());
-                        }
-                        continue;
-                    }
-                    for run in within(&seen.instances, shape.instances.clone()) {
-                        for (k, part) in spans(up.instances_per, run.start as u64..run.end as u64) {
-                            if let Some(buffer) = up.instances.get(k) {
-                                pass.set_vertex_buffer(1, buffer.slice(..));
-                                pass.draw(corners.clone(), part);
+                match draw {
+                    Draw::Own(range) => {
+                        for (k, part) in spans(up.per, range.start as u64..range.end as u64) {
+                            if let Some(buffer) = up.vertices.get(k) {
+                                pass.set_vertex_buffer(0, buffer.slice(..));
+                                pass.draw(part, 0..1);
                             }
                         }
                     }
+                    Draw::Copies { corners, from, copies } => {
+                        let Some(shapes) = &up.shape_vertices else { continue };
+                        pass.set_vertex_buffer(0, shapes.slice(..));
+                        let one = match from {
+                            From::Mesh => None,
+                            From::Seen => up.seen.as_ref().map(|(b, _)| b),
+                            From::StandIns => up.stand_ins.as_ref().map(|(b, _)| b),
+                        };
+                        match (from, one) {
+                            (From::Mesh, _) => {
+                                for (k, part) in spans(up.instances_per, copies.start as u64..copies.end as u64) {
+                                    if let Some(buffer) = up.instances.get(k) {
+                                        pass.set_vertex_buffer(1, buffer.slice(..));
+                                        pass.draw(corners.clone(), part);
+                                    }
+                                }
+                            }
+                            (_, Some(buffer)) => {
+                                pass.set_vertex_buffer(1, buffer.slice(..));
+                                pass.draw(corners.clone(), copies.start as u32..copies.end as u32);
+                            }
+                            (_, None) => {}
+                        }
+                    }
                 }
             }
+        }
+        if !picture {
+            self.queue.submit([encoder.finish()]);
+            return Ok(false);
         }
         for (name, pipeline, load, instances) in
             [("edges", &self.post, wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), 1), ("levels", &self.lines, wgpu::LoadOp::Load, count)]
@@ -804,8 +1043,35 @@ impl Gpu {
             // The edges are one triangle over the whole picture; the levels' lines two to a segment.
             pass.draw(0..if name == "edges" { 3 } else { 6 }, 0..instances);
         }
+        // A wireframe's edges over the paper, in their order, and then those tinted over them.
+        if mesh.wireframe && !mesh.wires.is_empty() {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("wires"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &targets.picture_view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            let passes: &[&wgpu::RenderPipeline] = if tints.is_empty() { &[&self.wires] } else { &[&self.wires, &self.wires_tinted] };
+            for pipeline in passes {
+                pass.set_pipeline(pipeline);
+                pass.set_bind_group(0, &*bind, &[]);
+                for (k, part) in spans(up.wires_per, 0..mesh.wires.len() as u64) {
+                    if let Some(buffer) = up.wires.get(k) {
+                        pass.set_vertex_buffer(0, buffer.slice(..));
+                        pass.draw(0..6, part);
+                    }
+                }
+            }
+        }
         self.queue.submit([encoder.finish()]);
-        Ok(())
+        Ok(complete)
     }
 
     /// Puts `mesh` on the card, unless it's there already.
@@ -904,6 +1170,24 @@ impl Gpu {
             instances.push(vertex_buffer("bimcraft-3d-instances", &bytes));
             queue.submit([]);
         }
+        // A wireframe's edges, from the origin so that f32 holds them.
+        let wires_per = (vertex_bytes.min(device.limits().max_buffer_size) / WIRE).max(3);
+        let mut wires = Vec::new();
+        for part in mesh.wires.chunks(wires_per as usize) {
+            if cancelled() {
+                return Err("3D upload was cancelled".into());
+            }
+            bytes.clear();
+            bytes.reserve(part.len() * WIRE as usize);
+            for wire in part {
+                let [a, b] = wire.ends.map(|p| std::array::from_fn::<f32, 3, _>(|i| (p[i] - mesh.origin[i]) as f32));
+                put(&mut bytes, &a);
+                put(&mut bytes, &b);
+                put_words(&mut bytes, &[wire.owner]);
+            }
+            wires.push(vertex_buffer("bimcraft-3d-wires", &bytes));
+            queue.submit([]);
+        }
         let planes = Gpu::storage(device, mesh.instance_planes.len() as u64 * 4);
         if !mesh.instance_planes.is_empty() {
             let mut words = Words::with_capacity(mesh.instance_planes.len() * 4);
@@ -925,9 +1209,13 @@ impl Gpu {
             shape_vertices,
             instances,
             instances_per,
+            wires,
+            wires_per,
             seen: None,
             seen_runs: Vec::new(),
             seen_shapes: Vec::new(),
+            stand_ins: None,
+            progress: None,
             planes,
             tints: None,
             lookups: Vec::new(),
@@ -943,6 +1231,10 @@ impl Gpu {
     fn size(&mut self, w: u32, h: u32) {
         if self.targets.as_ref().is_some_and(|t| t.size == (w, h)) {
             return;
+        }
+        // New targets hold no surfaces yet.
+        if let Some(up) = &mut self.mesh {
+            up.progress = None;
         }
         let texture = |label: &str, format: wgpu::TextureFormat, usage: wgpu::TextureUsages| {
             self.device.create_texture(&wgpu::TextureDescriptor {
@@ -1003,7 +1295,12 @@ impl Gpu {
 /// and pass).
 #[cfg(test)]
 pub(crate) fn headless() -> Option<Gpu> {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    // Without the debug names a debug build gives each object: tests make cards side by side, and the Vulkan loader looks a name's
+    // device up in lists it doesn't lock against another thread making or dropping an instance, which crashes one run in a few.
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        flags: wgpu::InstanceFlags::empty(),
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
+    });
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())).ok()?;
     // OpenGL is not the card's (see `Gpu::new`).
     if adapter.get_info().backend == wgpu::Backend::Gl {
@@ -1215,6 +1512,52 @@ mod tests {
     }
 
     #[test]
+    fn past_a_frame_s_budget_the_view_stands_in_while_moving_and_settles_on_the_exact_picture() {
+        let Some(mut once) = headless() else { return };
+        let Some(mut parts) = headless() else { return };
+        let mut s = with_copies();
+        for seen_through in [false, true] {
+            if seen_through {
+                s.execute("graphics", &serde_json::json!({"view": "{3D}", "categories": {"walls": {"transparency": 50}}})).unwrap();
+            }
+            let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+            let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+            let chair = mesh.owners[mesh.instances[0].owner as usize - 1].id;
+            let parallel = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+            let perspective = scene.fit_from(Camera { lens: Some(bimcraft_core::view3d::LENS), ..parallel }, &look);
+            for (name, cam) in [("parallel", parallel), ("perspective", perspective), ("inside", inside(&s, perspective))] {
+                // A budget of a seventh of what the view sees: many frames to finish, each part's end inside a copy or a run.
+                parts.budget = mesh.cost(&mesh.visible(&cam)) / 7 + 1;
+                assert!(once.draw(&mesh, &cam, &[], PAPER).unwrap(), "{name}: within its budget, exact at once");
+                let exact = read(&once);
+                // Come to from another camera: the first frame stands in.
+                let turned = Camera { azimuth: cam.azimuth + 10.0, ..cam };
+                parts.draw(&mesh, &turned, &[], PAPER).unwrap();
+                let standing = parts.draw(&mesh, &cam, &[], PAPER).unwrap();
+                let first = read(&parts);
+                assert!(!standing, "{name}: past the budget, the first frame stands in");
+                let mut frames = 1;
+                while !parts.draw(&mesh, &cam, &[], PAPER).unwrap() {
+                    frames += 1;
+                    assert!(frames < 50, "{name}: never settles");
+                    // While the exact surfaces come, the picture stays what stood in.
+                    assert_eq!(read(&parts), first, "{name}: the picture changed before the exact one was whole");
+                }
+                assert!(frames >= 3, "{name}: {frames} frames");
+                let settled = read(&parts);
+                let differ = exact.chunks(4).zip(settled.chunks(4)).filter(|(a, b)| a != b).count();
+                assert_eq!(differ, 0, "{name}, seen through {seen_through}: {differ} pixels differ from the picture drawn at once");
+                assert_ne!(first, settled, "{name}: what stood in is not the exact picture");
+                // A tint over surfaces already whole is the picture again, at once and as if drawn afresh.
+                let tints = [(chair, Rgb(255, 160, 0))];
+                assert!(parts.draw(&mesh, &cam, &tints, PAPER).unwrap(), "{name}: a tint draws no surfaces");
+                once.draw(&mesh, &cam, &tints, PAPER).unwrap();
+                assert_eq!(read(&parts), read(&once), "{name}: tinted");
+            }
+        }
+    }
+
+    #[test]
     fn the_card_draws_what_the_processor_does() {
         let Some(mut gpu) = headless() else {
             eprintln!("no graphics adapter here: the card's picture is not compared");
@@ -1244,6 +1587,268 @@ mod tests {
         draws_through(&mut gpu, &s, &[(level, Rgb(0, 120, 215))], cam);
         // The eye inside the house, 1.6 m up, through a wide lens: what is behind it is cut away alike.
         draws_through(&mut gpu, &s, &[], inside(&s, cam));
+    }
+
+    /// The sample house with a section box through it: from its least corner to `(x, y, z)` of the way across what it holds.
+    fn cut_through(s: &mut Session, [x, y, z]: [f64; 3]) -> ([f64; 3], [f64; 3]) {
+        s.execute("section_box", &serde_json::json!({"on": true})).unwrap();
+        let (lo, hi) = Look::of_3d(&s.model).section_box().unwrap();
+        let to = [lo[0] + (hi[0] - lo[0]) * x, lo[1] + (hi[1] - lo[1]) * y, lo[2] + (hi[2] - lo[2]) * z];
+        s.execute("section_box", &serde_json::json!({"min": lo, "max": to})).unwrap();
+        Look::of_3d(&s.model).section_box().unwrap()
+    }
+
+    #[test]
+    fn the_card_cuts_to_a_section_box_as_the_processor_does() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        let mut s = sample();
+        cut_through(&mut s, [0.6, 0.7, 0.45]);
+        let wall = s.model.elements.iter().find(|(_, e)| e.category() == "wall").unwrap().0;
+        let level = s.model.levels().first().unwrap().0;
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let flat = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        draws_through(&mut gpu, &s, &[], flat);
+        draws_through(&mut gpu, &s, &[(*wall, Rgb(255, 160, 0)), (level, Rgb(0, 120, 215))], flat);
+        let cam = scene.fit_from(Camera { lens: Some(bimcraft_core::view3d::LENS), ..flat }, &look);
+        draws_through(&mut gpu, &s, &[], cam);
+        draws_through(&mut gpu, &s, &[], inside(&s, cam));
+        // What is seen through is cut too.
+        s.execute("graphics", &serde_json::json!({"view": "{3D}", "categories": {"walls": {"transparency": 50}}})).unwrap();
+        draws_through(&mut gpu, &s, &[], flat);
+    }
+
+    #[test]
+    fn what_is_seen_through_flush_against_what_is_opaque_lies_behind_it_as_on_the_processor() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        // A wardrobe's back in the plane of a wall's face, the box cutting away what stood in front of them.
+        let mut s = sample();
+        cut_through(&mut s, [0.6, 0.7, 0.45]);
+        s.execute("graphics", &serde_json::json!({"view": "{3D}", "categories": {"walls": {"transparency": 50}}})).unwrap();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+        let cpu = scene.render_in(&cam, &[], &look);
+        gpu.draw(&mesh, &cam, &[], PAPER).unwrap();
+        let pixels = read(&gpu);
+        // What differs lies along edges: a pixel whose four neighbours differ too is a surface drawn otherwise.
+        let differs = |k: usize| pixels[4 * k..4 * k + 3].iter().zip(&cpu.rgba[4 * k..4 * k + 3]).any(|(a, b)| a.abs_diff(*b) > 6);
+        let w = 640;
+        let solid = (w..w * 479).filter(|&k| [k, k - 1, k + 1, k - w, k + w].iter().all(|&n| differs(n))).count();
+        assert!(solid < 40, "{solid} pixels differ across an area of the picture");
+    }
+
+    #[test]
+    fn the_card_draws_hidden_line_as_the_processor_does() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        let mut s = sample();
+        s.execute("visual_style", &serde_json::json!({"style": "hidden_line"})).unwrap();
+        let wall = *s.model.elements.iter().find(|(_, e)| e.category() == "wall").unwrap().0;
+        let level = s.model.levels().first().unwrap().0;
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let flat = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let cam = scene.fit_from(Camera { lens: Some(bimcraft_core::view3d::LENS), ..flat }, &look);
+        draws_through(&mut gpu, &s, &[], flat);
+        draws_through(&mut gpu, &s, &[(wall, Rgb(255, 160, 0)), (level, Rgb(0, 120, 215))], flat);
+        draws_through(&mut gpu, &s, &[], cam);
+        draws_through(&mut gpu, &s, &[], inside(&s, cam));
+        // Paper and ink: nothing shaded is left on the card.
+        let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+        gpu.draw(&mesh, &flat, &[], PAPER).unwrap();
+        let pixels = read(&gpu);
+        let cpu = scene.render_in(&flat, &[], &look);
+        let far = |a: &[u8], b: &[u8]| a[..3].iter().zip(&b[..3]).any(|(x, y)| x.abs_diff(*y) > 6);
+        let wrong = (0..pixels.len() / 4).filter(|&k| far(&pixels[4 * k..4 * k + 4], &cpu.rgba[4 * k..4 * k + 4])).count();
+        assert!(wrong * 400 < pixels.len() / 4, "{wrong} pixels differ");
+        // And cut to a box.
+        cut_through(&mut s, [0.6, 0.7, 0.45]);
+        draws_through(&mut gpu, &s, &[], flat);
+    }
+
+    #[test]
+    fn in_a_dark_canvas_hidden_line_swaps_paper_and_ink_as_the_processor_s_picture_is_swapped() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        let mut s = sample();
+        s.execute("visual_style", &serde_json::json!({"style": "hidden_line"})).unwrap();
+        let wall = *s.model.elements.iter().find(|(_, e)| e.category() == "wall").unwrap().0;
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+        let tints = [(wall, Rgb(255, 160, 0))];
+        gpu.draw(&mesh, &cam, &tints, PAPER).unwrap();
+        let light = read(&gpu);
+        gpu.swapped_ink = true;
+        gpu.draw(&mesh, &cam, &tints, PAPER).unwrap();
+        let dark = read(&gpu);
+        // canvas::color, with its dark canvas, from the light picture.
+        let over = |c: [u8; 3]| {
+            let [r, g, b] = c.map(i32::from);
+            let shift = 255 - r.max(g).max(b) - r.min(g).min(b);
+            [r, g, b].map(|v| (26 + (v + shift).clamp(0, 255) * 206 / 255) as u8)
+        };
+        assert_eq!(over([255, 255, 255]), [26, 26, 26], "paper is the dark ground");
+        for (l, d) in light.as_chunks::<4>().0.iter().zip(dark.as_chunks::<4>().0) {
+            assert_eq!(over([l[0], l[1], l[2]]), [d[0], d[1], d[2]], "from {l:?}");
+        }
+    }
+
+    /// The pixels of the card's picture of `s` through `cam` that aren't the processor's, to the byte.
+    fn wire_differences(gpu: &mut Gpu, s: &Session, tints: &[(Id, Rgb)], cam: Camera) -> (usize, usize) {
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+        let cpu = scene.render_in(&cam, tints, &look);
+        gpu.draw(&mesh, &cam, tints, PAPER).unwrap();
+        let pixels = read(gpu);
+        assert_eq!(pixels.len(), cpu.rgba.len());
+        let (card, cpu) = (pixels.as_chunks::<4>().0, cpu.rgba.as_chunks::<4>().0);
+        let ink = cpu.iter().filter(|c| c[..3] != [255, 255, 255]).count();
+        (card.iter().zip(cpu).filter(|(a, b)| a[..3] != b[..3]).count(), ink)
+    }
+
+    #[test]
+    fn the_card_draws_wireframe_as_the_processor_does_a_pixel_at_a_time() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        let mut s = sample();
+        s.execute("visual_style", &serde_json::json!({"style": "wireframe"})).unwrap();
+        let wall = *s.model.elements.iter().find(|(_, e)| e.category() == "wall").unwrap().0;
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let flat = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let cam = scene.fit_from(Camera { lens: Some(bimcraft_core::view3d::LENS), ..flat }, &look);
+        let near = Camera { scale: flat.scale * 6.0, ..flat };
+        let check = |what: &str, gpu: &mut Gpu, s: &Session, tints: &[(Id, Rgb)], cam: Camera| {
+            let (wrong, ink) = wire_differences(gpu, s, tints, cam);
+            eprintln!("{what}: {wrong} pixels differ, of {ink} inked");
+            assert!(ink > 500, "{what}: a picture with lines in it, {ink}");
+            assert!(wrong * 500 < ink, "{what}: {wrong} of the {ink} pixels inked differ");
+        };
+        // DUMP=<folder> keeps a tinted picture to look at.
+        draws_through(&mut gpu, &s, &[(wall, Rgb(255, 160, 0))], flat);
+        check("parallel", &mut gpu, &s, &[], flat);
+        check("tinted", &mut gpu, &s, &[(wall, Rgb(255, 160, 0))], flat);
+        check("near, lines past the picture", &mut gpu, &s, &[], near);
+        check("perspective", &mut gpu, &s, &[], cam);
+        check("inside, lines past the eye", &mut gpu, &s, &[], inside(&s, cam));
+        // And cut to a box; then what the view hides.
+        cut_through(&mut s, [0.6, 0.7, 0.45]);
+        check("cut", &mut gpu, &s, &[], flat);
+        check("cut, perspective", &mut gpu, &s, &[], cam);
+        s.execute("section_box", &serde_json::json!({"on": false})).unwrap();
+        s.execute("graphics", &serde_json::json!({"view": "{3D}", "categories": {"walls": {"hidden": true}}})).unwrap();
+        check("hidden", &mut gpu, &s, &[], flat);
+    }
+
+    #[test]
+    fn in_a_dark_canvas_wireframe_swaps_paper_and_ink_and_a_box_being_dragged_cuts_its_lines() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        let mut s = sample();
+        s.execute("visual_style", &serde_json::json!({"style": "wireframe"})).unwrap();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+        gpu.draw(&mesh, &cam, &[], PAPER).unwrap();
+        let light = read(&gpu);
+        gpu.swapped_ink = true;
+        gpu.draw(&mesh, &cam, &[], PAPER).unwrap();
+        let dark = read(&gpu);
+        let over = |c: [u8; 3]| {
+            let [r, g, b] = c.map(i32::from);
+            let shift = 255 - r.max(g).max(b) - r.min(g).min(b);
+            [r, g, b].map(|v| (26 + (v + shift).clamp(0, 255) * 206 / 255) as u8)
+        };
+        for (l, d) in light.as_chunks::<4>().0.iter().zip(dark.as_chunks::<4>().0) {
+            assert_eq!(over([l[0], l[1], l[2]]), [d[0], d[1], d[2]], "from {l:?}");
+        }
+        gpu.swapped_ink = false;
+        // The mesh of the whole model cut as it is dragged: the picture of that box's own mesh.
+        let cut = cut_through(&mut s, [0.6, 0.7, 0.45]);
+        gpu.draw_cut(&mesh, &cam, &[], PAPER, Some(cut)).unwrap();
+        let dragged = read(&gpu);
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let own = Arc::new(Mesh::new(&scene, &look).unwrap());
+        gpu.draw(&own, &cam, &[], PAPER).unwrap();
+        let settled = read(&gpu);
+        // Its origin is its own, as both are the same model's, which is all f32 rounds differently by.
+        let wrong = dragged.iter().zip(&settled).filter(|(a, b)| a != b).count() / 3;
+        assert!(wrong < 20, "{wrong} pixels differ");
+        assert_ne!(dragged, light, "the box cut something away");
+    }
+
+    #[test]
+    fn a_box_being_dragged_draws_the_pixels_of_the_box_it_will_be_and_leaves_out_none_of_them() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        let mut s = sample();
+        let before = cut_through(&mut s, [0.8, 0.9, 0.6]);
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let held = Arc::new(Mesh::new(&scene, &look).unwrap());
+        let flat = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let perspective = scene.fit_from(Camera { lens: Some(bimcraft_core::view3d::LENS), ..flat }, &look);
+        let after = cut_through(&mut s, [0.5, 0.6, 0.4]);
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let made = Arc::new(Mesh::new(&scene, &look).unwrap());
+        assert_ne!(before, after);
+        for cam in [flat, perspective] {
+            gpu.draw(&made, &cam, &[], PAPER).unwrap();
+            let want = read(&gpu);
+            // The same camera, and the box moved: nothing of the last box's picture is kept.
+            gpu.draw(&held, &cam, &[], PAPER).unwrap();
+            let start = read(&gpu);
+            assert_ne!(start, want, "the two boxes differ in the picture");
+            gpu.draw_cut(&held, &cam, &[], PAPER, Some(after)).unwrap();
+            assert!(read(&gpu) == want, "the mesh of the box before, cut to the box after");
+            // Back to its own: exact, and with nothing left out that shows.
+            gpu.draw(&held, &cam, &[], PAPER).unwrap();
+            assert!(read(&gpu) == start);
+            gpu.cull = false;
+            gpu.draw(&made, &cam, &[], PAPER).unwrap();
+            assert!(read(&gpu) == want, "drawing all of it is the same picture");
+            gpu.cull = true;
+        }
+    }
+
+    #[test]
+    fn past_a_frame_s_budget_a_section_box_settles_on_the_picture_drawn_in_one_go() {
+        let Some(mut once) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        let Some(mut parts) = headless() else { return };
+        let mut s = sample();
+        cut_through(&mut s, [0.6, 0.7, 0.45]);
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        once.draw(&mesh, &cam, &[], PAPER).unwrap();
+        let want = read(&once);
+        parts.budget = mesh.cost(&mesh.visible(&cam)) / 5 + 1;
+        let turned = Camera { azimuth: cam.azimuth + 20.0, ..cam };
+        parts.draw(&mesh, &turned, &[], PAPER).unwrap();
+        let mut frames = 0;
+        while !parts.draw(&mesh, &cam, &[], PAPER).unwrap() {
+            frames += 1;
+            assert!(frames < 64, "it settles");
+        }
+        assert!(frames >= 2, "{frames} frames");
+        assert!(read(&parts) == want, "the settled picture is the one drawn in one go");
     }
 
     #[test]
@@ -1306,6 +1911,35 @@ mod tests {
         assert_eq!(within(&seen, 9..18), vec![9..12, 15..18]);
         assert_eq!(within(&seen, 30..40), vec![]);
         assert_eq!(within(&[], 0..9), vec![]);
+    }
+
+    #[test]
+    fn parts_taken_one_after_another_draw_each_triangle_and_copy_once() {
+        let draws = vec![
+            (false, Draw::Own(0..30)),
+            (false, Draw::Copies { corners: 6..18, from: From::Seen, copies: 2..9 }),
+            (true, Draw::Copies { corners: 0..9, from: From::Mesh, copies: 0..4 }),
+        ];
+        let total: usize = draws.iter().map(|(_, d)| d.cost()).sum();
+        assert_eq!(total, 10 + 28 + 12);
+        for step in [1, 3, 5, 7, 11, 50] {
+            let (mut own, mut copies) = (Vec::new(), Vec::new());
+            let mut a = 0;
+            while a < total {
+                let b = (a + step).min(total);
+                for (clear, d) in part_of(&draws, a, b) {
+                    match d {
+                        Draw::Own(r) => own.extend(r),
+                        Draw::Copies { copies: c, from, .. } => copies.extend(c.map(|k| (clear, from, k))),
+                    }
+                }
+                a = b;
+            }
+            assert_eq!(own, (0..30).collect::<Vec<_>>(), "step {step}");
+            let mut want: Vec<_> = (2..9).map(|k| (false, From::Seen, k)).collect();
+            want.extend((0..4).map(|k| (true, From::Mesh, k)));
+            assert_eq!(copies, want, "step {step}");
+        }
     }
 
     #[test]

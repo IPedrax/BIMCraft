@@ -35,6 +35,8 @@ type Meshed = (Arc<Model>, Result<Arc<Mesh>, String>);
 struct SceneJob {
     model: Arc<Model>,
     scene: Option<Arc<Scene>>,
+    /// The scene of a model before this one, which an edit brings up to date instead of making the whole scene again.
+    from: Option<(Arc<Model>, Arc<Scene>)>,
     width: u32,
     height: u32,
     lens: Option<f64>,
@@ -49,9 +51,10 @@ struct SceneDone {
 }
 
 fn build_scene(job: SceneJob, cancel: &crate::view_worker::Cancel) -> Option<SceneDone> {
-    let scene = match job.scene {
-        Some(scene) => scene,
-        None => Arc::new(Scene::new_cancellable(&job.model, &|| cancel.cancelled())?),
+    let scene = match (job.scene, job.from) {
+        (Some(scene), _) => scene,
+        (None, Some((model, scene))) => Arc::new(scene.update_cancellable(&model, &job.model, &|| cancel.cancelled())?),
+        (None, None) => Arc::new(Scene::new_cancellable(&job.model, &|| cancel.cancelled())?),
     };
     if cancel.cancelled() {
         return None;
@@ -130,6 +133,8 @@ pub struct Orbit {
     ppp: f32,
     /// The scene of the model shown last, in the 3D view or a section's.
     pub(crate) scene: Option<(Arc<Model>, Arc<Scene>)>,
+    /// The scene of a model before, kept while the scene of the model now is made from it.
+    last: Option<(Arc<Model>, Arc<Scene>)>,
     /// What picks in the picture on screen, and what the picture is of.
     picker: Option<Picker>,
     shown: Option<Shot>,
@@ -169,6 +174,7 @@ impl Default for Orbit {
             rect: Rect::ZERO,
             ppp: 1.0,
             scene: None,
+            last: None,
             picker: None,
             shown: None,
             texture: None,
@@ -248,8 +254,8 @@ pub(crate) fn rgb(c: Color32) -> Rgb {
 
 /// The scene of `model` in `slot`, built again when the model changed.
 pub(crate) fn scene_of<'a>(slot: &'a mut Option<(Arc<Model>, Arc<Scene>)>, model: &Arc<Model>) -> &'a Scene {
-    if !slot.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, model)) {
-        *slot = None;
+    if let Some((before, scene)) = slot.take_if(|(m, _)| !Arc::ptr_eq(m, model)) {
+        *slot = Some((Arc::clone(model), Arc::new(scene.update(&before, model))));
     }
     &slot.get_or_insert_with(|| (Arc::clone(model), Arc::new(Scene::new(model)))).1
 }
@@ -283,6 +289,7 @@ impl Orbit {
             }
             self.mesh = done.mesh.map(|m| (Arc::clone(model), m));
             self.scene = Some((done.model, done.scene));
+            self.last = None;
         }
         let current = self.scene.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, model));
         let needs_mesh = card && !self.mesh.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, model));
@@ -291,13 +298,14 @@ impl Orbit {
                 let job = SceneJob {
                     model: Arc::clone(model),
                     scene: self.scene.as_ref().filter(|(m, _)| Arc::ptr_eq(m, model)).map(|(_, s)| Arc::clone(s)),
+                    from: if current { None } else { self.scene.clone().or_else(|| self.last.clone()) },
                     width,
                     height,
                     lens: lens_of(model),
                     card,
                 };
                 if !current {
-                    self.scene = None;
+                    self.last = self.scene.take().or_else(|| self.last.take());
                     self.mesh = None;
                     self.picker = None;
                     self.shown = None;
@@ -314,6 +322,7 @@ impl Orbit {
                         }
                         self.mesh = done.mesh.map(|m| (Arc::clone(model), m));
                         self.scene = Some((done.model, done.scene));
+                        self.last = None;
                     }
                 } else {
                     let wake = ctx.clone();
@@ -618,12 +627,13 @@ impl BimApp {
         if !matches!(&o.shown, Some((m, c, t, k, g, b)) if Arc::ptr_eq(m, &model) && *c == cam && *t == tints && *k == dark && *g == mesh.is_some() && *b == reboxed)
         {
             // The card's picture, if it makes one; the processor's if not, and if the card fails it for good.
-            let mut drawn = false;
+            let (mut drawn, mut exact) = (false, true);
             if let (Some(mesh), Some(gpu)) = (&mesh, self.card.gpu.as_mut()) {
-                match gpu.draw(mesh, &cam, &tints, rgb(color(render::PAPER))) {
-                    Ok(()) => {
+                gpu.swapped_ink = dark;
+                match gpu.draw_cut(mesh, &cam, &tints, rgb(color(render::PAPER)), reboxed.or(mesh.section_box)) {
+                    Ok(whole) => {
                         o.picker = Some(Picker::Mesh(Arc::clone(mesh), tints.clone()));
-                        drawn = true;
+                        (drawn, exact) = (true, whole);
                     }
                     Err(e) => {
                         self.status = crate::updates::failed(crate::lang::tf(
@@ -660,7 +670,11 @@ impl BimApp {
                 }
                 o.picker = Some(Picker::Image(image));
             }
-            o.shown = Some((Arc::clone(&model), cam, tints, dark, drawn, reboxed));
+            // A picture that stands in, or whose exact surfaces are on their way, is drawn again next frame until it is exact.
+            o.shown = exact.then(|| (Arc::clone(&model), cam, tints, dark, drawn, reboxed));
+            if !exact {
+                ui.ctx().request_repaint();
+            }
         }
         let p = ui.painter_at(rect);
         p.rect_filled(rect, 0.0, color(render::PAPER));
@@ -763,10 +777,118 @@ impl BimApp {
 }
 
 #[cfg(test)]
+mod edits {
+    use super::*;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    #[test]
+    fn after_an_edit_the_worker_brings_the_last_scene_up_to_date_and_draws_the_whole_scene_s_picture() {
+        let mut s = bimcraft_core::engine::Session::new();
+        s.script(
+            r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}
+               door {"at": [2000, 0]}
+               floor {}"#,
+        )
+        .unwrap();
+        let before = Arc::clone(&s.model);
+        let scene = Arc::new(Scene::new(&before));
+        let wall = s.model.elements.iter().find(|(_, e)| e.category() == "wall").map(|(id, _)| *id).unwrap();
+        s.execute("move", &json!({"ids": [wall], "by": [0, -500]})).unwrap();
+        let after = Arc::clone(&s.model);
+        let (send, receive) = mpsc::channel();
+        let worker = crate::view_worker::Latest::new(build_scene, move || {
+            let _ = send.send(());
+        });
+        worker.request(SceneJob {
+            model: Arc::clone(&after),
+            scene: None,
+            from: Some((before, scene)),
+            width: 320,
+            height: 240,
+            lens: None,
+            card: false,
+        });
+        worker.start().unwrap();
+        let done = loop {
+            receive.recv_timeout(Duration::from_secs(60)).unwrap();
+            assert!(worker.take_error().is_none());
+            if let Some(done) = worker.take() {
+                break done;
+            }
+        };
+        let whole = Scene::new(&after);
+        assert!(Arc::ptr_eq(&done.model, &after));
+        let cam = whole.fit(AZIMUTH, ELEVATION, 320, 240);
+        assert_eq!(done.scene.render(&cam, &[]).png().unwrap(), whole.render(&cam, &[]).png().unwrap());
+    }
+}
+
+#[cfg(test)]
 mod worker_measurements {
     use super::*;
     use std::sync::mpsc;
     use std::time::{Duration, Instant};
+
+    #[test]
+    #[ignore]
+    fn tower_in_the_styles_of_lines() {
+        let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
+        let mut session = bimcraft_core::engine::Session::new();
+        session.model = bimcraft_core::sample::tower::annotated(bimcraft_core::sample::tower::Plate::REFERENCE, 10).unwrap().into();
+        let Some(mut gpu) = crate::gpu::headless() else { return };
+        let t = Instant::now();
+        let scene = bimcraft_core::view3d::Scene::new(&session.model);
+        eprintln!("scene: {:.0} ms", ms(t));
+        for style in ["hidden_line", "wireframe"] {
+            session.execute("visual_style", &serde_json::json!({"style": style})).unwrap();
+            let look = Look::of_3d(&session.model);
+            let t = Instant::now();
+            let mesh = Arc::new(bimcraft_core::view3d::gpu::Mesh::new(&scene, &look).unwrap());
+            eprintln!("{style}: mesh {:.0} ms, {} triangles, {} lines", ms(t), mesh.triangles(), mesh.wires.len());
+            let t = Instant::now();
+            mesh.prepare_picking();
+            eprintln!("  picking hierarchy: {:.0} ms", ms(t));
+            let fitted = scene.fit_in(30.0, 30.0, 1920, 1080, &look);
+            let t = Instant::now();
+            gpu.draw(&mesh, &fitted, &[], bimcraft_core::render::PAPER).unwrap();
+            gpu.wait();
+            eprintln!("  first frame, with the upload: {:.0} ms", ms(t));
+            let inside = bimcraft_core::view3d::inside(&session.model, Camera { lens: Some(bimcraft_core::view3d::LENS), ..fitted });
+            let wall = session.model.elements.iter().find(|(_, e)| e.category() == "wall").map(|(id, _)| *id);
+            let tinted: Vec<(Id, Rgb)> = wall.into_iter().map(|id| (id, Rgb(255, 160, 0))).collect();
+            for (name, base, tints) in
+                [("whole", fitted, &[][..]), ("whole, a wall selected", fitted, &tinted[..]), ("inside", inside, &[][..])]
+            {
+                let mut frames = Vec::new();
+                for i in 0..30 {
+                    let cam = Camera { azimuth: base.azimuth + f64::from(i) * 3.0, ..base };
+                    let t = Instant::now();
+                    while !gpu.draw(&mesh, &cam, tints, bimcraft_core::render::PAPER).unwrap() {}
+                    gpu.wait();
+                    if i >= 5 {
+                        frames.push(ms(t));
+                    }
+                }
+                frames.sort_by(f64::total_cmp);
+                eprintln!("  frame, {name}: median {:.1} ms, p95 {:.1} ms", frames[frames.len() / 2], frames[frames.len() * 95 / 100]);
+            }
+            let t = Instant::now();
+            for i in 0..100 {
+                std::hint::black_box(mesh.pick(&fitted, &[], 400.0 + f64::from(i) * 10.0, 540.0));
+            }
+            eprintln!("  pick: {:.3} ms each", ms(t) / 100.0);
+            let t = Instant::now();
+            std::hint::black_box(scene.render_in(&fitted, &[], &look));
+            eprintln!("  the processor's picture: {:.0} ms", ms(t));
+            if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+                eprintln!(
+                    "  {}",
+                    status.lines().filter(|l| l.starts_with("VmHWM") || l.starts_with("VmRSS")).collect::<Vec<_>>().join(", ")
+                );
+            }
+        }
+    }
 
     #[test]
     #[ignore = "measures the annotated ten-storey tower in release"]
@@ -778,7 +900,7 @@ mod worker_measurements {
             let _ = send.send(());
         });
         let started = Instant::now();
-        worker.request(SceneJob { model, scene: None, width: 1920, height: 1080, lens: None, card: true });
+        worker.request(SceneJob { model, scene: None, from: None, width: 1920, height: 1080, lens: None, card: true });
         worker.start().unwrap();
         eprintln!("scene request and start: {:.2} ms", started.elapsed().as_secs_f64() * 1000.0);
         let done = loop {
@@ -858,6 +980,33 @@ mod worker_measurements {
                 frames[frames.len() / 2],
                 frames[frames.len() * 95 / 100],
                 mesh.vertices.len() / 3 + mesh.instances.len()
+            );
+        }
+        // A section box: a storey's height through the middle, half the tower across, and a face dragged a little each frame.
+        gpu.cull = true;
+        let (o, far) = (mesh.origin, 1e7);
+        let storey = ([o[0] - far, o[1] - far, o[2]], [o[0] + far, o[1] + far, o[2] + 3700.0]);
+        let half = ([o[0] - far, o[1] - far, o[2] - far], [o[0], o[1] + far, o[2] + far]);
+        for (name, cut, drags) in [("a storey", storey, false), ("half the tower", half, false), ("a face dragged", half, true)] {
+            let mut frames = Vec::new();
+            for i in 0..40 {
+                let cam = if drags { fitted } else { Camera { azimuth: fitted.azimuth + f64::from(i) * 3.0, ..fitted } };
+                let at = if drags { ([cut.0[0], cut.0[1], cut.0[2]], [cut.1[0] + f64::from(i) * 200.0, cut.1[1], cut.1[2]]) } else { cut };
+                let t = Instant::now();
+                gpu.draw_cut(&mesh, &cam, &[], bimcraft_core::render::PAPER, Some(at)).unwrap();
+                gpu.wait();
+                if i >= 5 {
+                    frames.push(ms(t));
+                }
+            }
+            frames.sort_by(f64::total_cmp);
+            let seen = mesh.visible_cut(&fitted, Some(cut));
+            eprintln!(
+                "frame, section box, {name}: median {:.1} ms, p95 {:.1} ms; drawn {} of {} triangles",
+                frames[frames.len() / 2],
+                frames[frames.len() * 95 / 100],
+                mesh.cost(&seen),
+                mesh.triangles()
             );
         }
         let t = Instant::now();

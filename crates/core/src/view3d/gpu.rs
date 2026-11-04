@@ -1,14 +1,15 @@
 //! What a graphics card needs to draw the 3D view, and what picking needs when there is no picture to read: the scene's triangles
 //! as vertices relative to the middle of what is drawn (millimetres far from the origin would overflow f32's resolution, so the
 //! shader never sees them), and a bounding volume hierarchy to pick through. No graphics API is in here, so the core stays free
-//! of one; the desktop's `gpu.rs` draws it. What a card can't draw (hidden line and wireframe) is refused with a reason, and
-//! the CPU picture is drawn instead. Surfaces seen through come after the opaque ones (from [`Mesh::clear_from`]), as the
+//! of one; the desktop's `gpu.rs` draws it. What a card can't draw (point clouds) is refused with a reason, and
+//! the CPU picture is drawn instead. A section box is not built in: the mesh holds all it would hold without one, and a card cuts
+//! each pixel to the box, so moving a face builds nothing. Surfaces seen through come after the opaque ones (from [`Mesh::clear_from`]), as the
 //! processor draws them in a pass of their own.
 
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-use super::{Camera, DATUM, EDGE, LevelMarks, NEAR, P3, Scene, add, cross, dot, level_marks, mul, sub, unit, weighed};
+use super::{Boxed, Camera, DATUM, EDGE, LevelMarks, NEAR, P3, Scene, add, cross, dot, level_marks, levels_in, mul, sub, unit, weighed};
 use crate::component_geometry::ComponentInstance;
 use crate::geom::{self, P2};
 use crate::graphics::{Look, VisualStyle};
@@ -129,6 +130,17 @@ pub struct Visible {
     pub instances: Vec<std::ops::Range<usize>>,
 }
 
+/// What a frame draws while the view moves, when all it sees is more than it has time for: the nearest of it, and a box for each
+/// group or copy left over, drawn from [`Mesh::cube`].
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Nearest {
+    pub seen: Visible,
+    pub stand_ins: Vec<Instance>,
+}
+
+/// The colour a box standing in for what isn't drawn yet is drawn in.
+const STAND_IN: u32 = 200 | 200 << 8 | 200 << 16;
+
 /// At most this many triangles to a group, and at most this part of the mesh's width across.
 const GROUP_TRIANGLES: usize = 1024;
 const GROUP_WIDE: f64 = 1.0 / 16.0;
@@ -146,6 +158,30 @@ struct Cell {
     reach: f64,
     groups: Vec<u32>,
     copies: Vec<u32>,
+}
+
+/// A cube from 0 to 1 on each axis, as twelve triangles, two to a face.
+fn cube() -> Vec<[P3; 3]> {
+    let mut tris = Vec::with_capacity(12);
+    for axis in 0..3 {
+        for side in [0.0, 1.0] {
+            let corner = |a: f64, b: f64| {
+                let mut p = [0.0; 3];
+                p[axis] = side;
+                p[(axis + 1) % 3] = a;
+                p[(axis + 2) % 3] = b;
+                p
+            };
+            let (p, q, r, t) = (corner(0.0, 0.0), corner(1.0, 0.0), corner(1.0, 1.0), corner(0.0, 1.0));
+            // Each face turned outward, so its normal points away from the middle.
+            if side > 0.5 {
+                tris.extend([[p, q, r], [p, r, t]]);
+            } else {
+                tris.extend([[p, r, q], [p, t, r]]);
+            }
+        }
+    }
+    tris
 }
 
 /// The middle of a box and how far its corners are from it.
@@ -237,6 +273,15 @@ struct Template {
     smooth: Vec<Option<[P3; 3]>>,
 }
 
+/// An edge a wireframe draws: its ends in the model, the element it is of (numbered as a vertex's owner is), and the face it
+/// picks, as the triangle it is an edge of has it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Wire {
+    pub ends: [P3; 2],
+    pub owner: u32,
+    face: &'static str,
+}
+
 /// An element a vertex belongs to: the colour its edges are drawn in, and how see-through the view makes it, percent.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Owner {
@@ -290,9 +335,23 @@ pub struct Mesh {
     pub groups: Vec<Group>,
     /// Each group's and each copy's middle, from the origin, and how far from it it reaches (a copy's shape as the card places
     /// it), and the cells they lie in.
+    /// A cube from 0 to 1 on each axis, in [`shape_vertices`](Self::shape_vertices), opaque, and where its planes are in
+    /// [`instance_planes`](Self::instance_planes): what a box standing in for a group or a copy is placed from.
+    pub cube: std::ops::Range<usize>,
+    pub cube_planes: u32,
+    /// Each shape's box, in its axes.
+    shape_boxes: Vec<(P3, P3)>,
     group_spheres: Vec<(P3, f64)>,
     copy_spheres: Vec<(P3, f64)>,
     cells: Vec<Cell>,
+    /// The section box the view is cut to, least corner and greatest, in the model: what picks, the marks and a card's pixels keep.
+    pub section_box: Option<(P3, P3)>,
+    /// Hidden line or wireframe: a card paints every surface paper, and only its edges show.
+    pub lines: bool,
+    /// Wireframe: no surfaces and no level's marks, only [`wires`](Self::wires) on the paper.
+    pub wireframe: bool,
+    /// The edges a wireframe draws, in the order the processor draws them, which a later one is over an earlier by.
+    pub wires: Vec<Wire>,
     levels: Vec<(Id, String, [P3; 4])>,
     level_colors: BTreeMap<Id, Rgb>,
     tris: Vec<Tri>,
@@ -332,31 +391,66 @@ impl Mesh {
         if cancelled() {
             return Ok(None);
         }
-        if look.style() != VisualStyle::Shaded {
-            return Err("hidden line or wireframe".into());
-        }
-        if look.section_box().is_some() {
-            return Err("a section box, which only the processor cuts yet".into());
-        }
+        let wireframe = look.style() == VisualStyle::Wireframe;
+        // Only the shapes the surfaces are drawn from are of use.
+        let instancing = instancing && !wireframe;
+        // Paper faces with their edges: nothing lit, textured or seen through, as a section's picture.
+        let lines = look.style() != VisualStyle::Shaded;
         let plain = look.is_plain();
-        if scene.scans.iter().any(|s| plain || look.shows(s.owner)) {
+        // A wireframe draws a scan's points no more than the processor's does.
+        if !wireframe && scene.scans.iter().any(|s| plain || look.shows(s.owner)) {
             return Err("a point cloud, which only the processor draws yet".into());
         }
+        // What the view shows, an element's run of triangles at a time.
         let mut shown = Vec::new();
-        for i in 0..scene.tris.len() {
-            if i % 8192 == 0 && cancelled() {
+        let mut reach: Option<(P3, P3)> = None;
+        // How see-through each triangle shown is (`Tri::alpha`), the view asked once an element.
+        let mut alphas = vec![0u8; scene.tris.len()];
+        let found;
+        let spans = if scene.spans.is_empty() {
+            found = super::spans_of(&scene.tris);
+            &found
+        } else {
+            &scene.spans
+        };
+        for (n, span) in spans.iter().enumerate() {
+            if n % 1024 == 0 && cancelled() {
                 return Ok(None);
             }
-            if plain || look.shows(scene.tris[i].owner) {
-                shown.push(i);
+            if plain || look.shows(span.id) {
+                shown.extend(span.at.clone());
+                let view = if plain { 0 } else { look.transparency(span.id) };
+                for (a, t) in
+                    alphas.get_mut(span.at.clone()).unwrap_or_default().iter_mut().zip(scene.tris.get(span.at.clone()).unwrap_or_default())
+                {
+                    *a = if lines { 0 } else { t.clearness().max(view) };
+                }
+                let [lo, hi] = span.bounds;
+                reach = Some(match reach {
+                    None => (lo, hi),
+                    Some((a, b)) => (std::array::from_fn(|k| a[k].min(lo[k])), std::array::from_fn(|k| b[k].max(hi[k]))),
+                });
             }
         }
+        // A wireframe's box comes from the elements as any view's, and it draws none of their surfaces.
+        if wireframe {
+            shown.clear();
+        }
         // What the view sees through is drawn after what it doesn't, each in the order the processor draws it.
-        let clear = |i: usize| scene.tris[i].alpha(look) > 0;
+        let clear = |i: usize| alphas.get(i).is_some_and(|a| *a > 0);
         let shown: Vec<usize> = shown.iter().copied().filter(|&i| !clear(i)).chain(shown.iter().copied().filter(|&i| clear(i))).collect();
         // A texture is looked up as the CPU does unless the view colours its surface another way.
-        let colour = |t: &super::Tri| if plain { t.color } else { look.surface(t.owner, t.color) };
-        let textured = |t: &super::Tri| scene.skins.get(t.texture() as usize).is_some_and(Option::is_some) && colour(t) == t.color;
+        let colour = |t: &super::Tri| {
+            if lines {
+                crate::render::PAPER
+            } else if plain {
+                t.color
+            } else {
+                look.surface(t.owner, t.color)
+            }
+        };
+        let textured =
+            |t: &super::Tri| !lines && scene.skins.get(t.texture() as usize).is_some_and(Option::is_some) && colour(t) == t.color;
         let packed = |t: &super::Tri| {
             let Rgb(r, g, b) = colour(t);
             u32::from(r) | u32::from(g) << 8 | u32::from(b) << 16
@@ -365,8 +459,13 @@ impl Mesh {
         // The copies drawn from their shape: shown, opaque, and in every triangle coloured, textured, faced and curved as the
         // first such copy of the shape is.
         let mut templates: Vec<Option<Template>> = (0..scene.shapes.len()).map(|_| None).collect();
-        let mut chosen: Vec<(usize, ComponentInstance)> = Vec::new();
         let mut taken = vec![false; if instancing && !scene.placements.is_empty() { scene.tris.len() } else { 0 }];
+        let alpha_at = |i: usize| alphas.get(i).copied().unwrap_or(0).min(100);
+        let face_at = |i: usize| scene.faces.get(i).copied().filter(|f| !f.is_empty()).unwrap_or("");
+        let smooth_at = |i: usize| scene.smooth.get(i).and_then(Option::as_deref).map(|c| c.map(unit));
+        // The copies that may be drawn from their shape, in the scene's order, and whether each is its shape's first, which
+        // the others are held to.
+        let mut candidates: Vec<(usize, ComponentInstance, bool)> = Vec::new();
         for (n, &(first, place)) in scene.placements.iter().enumerate() {
             if !instancing {
                 break;
@@ -376,58 +475,78 @@ impl Mesh {
             }
             let Some(local) = scene.shapes.get(place.shape) else { continue };
             let Some(tris) = scene.tris.get(first..first + local.len()) else { continue };
-            let alpha_of = |t: &super::Tri| t.alpha(look).min(100);
             if !(plain || look.shows(place.owner)) {
                 continue;
             }
             // One owner for what is seen through of a copy, so one way see-through.
-            let mut clear_alphas = tris.iter().map(alpha_of).filter(|a| *a > 0);
+            let mut clear_alphas = (first..first + tris.len()).map(alpha_at).filter(|a| *a > 0);
             if clear_alphas.next().is_some_and(|a| clear_alphas.any(|b| b != a)) {
                 continue;
             }
-            let face_at = |k: usize| scene.faces.get(first + k).copied().filter(|f| !f.is_empty()).unwrap_or("");
-            let smooth_at = |k: usize| scene.smooth.get(first + k).and_then(Option::as_deref).map(|c| c.map(unit));
-            let fits = match templates.get(place.shape) {
-                Some(None) => {
-                    let template = Template {
-                        alpha: tris.iter().map(alpha_of).collect(),
+            let leads = match templates.get_mut(place.shape) {
+                Some(slot @ None) => {
+                    *slot = Some(Template {
+                        alpha: (first..first + tris.len()).map(alpha_at).collect(),
                         color: tris.iter().map(packed).collect(),
                         tex: tris.iter().map(tex_of).collect(),
-                        face: (0..tris.len()).map(face_at).collect(),
-                        smooth: (0..tris.len()).map(|k| smooth_at(k).map(|c| c.map(|n| place.local_normal(n)))).collect(),
-                    };
-                    if let Some(slot) = templates.get_mut(place.shape) {
-                        *slot = Some(template);
-                    }
+                        face: (first..first + tris.len()).map(face_at).collect(),
+                        smooth: (first..first + tris.len()).map(|i| smooth_at(i).map(|c| c.map(|n| place.local_normal(n)))).collect(),
+                    });
                     true
                 }
-                Some(Some(template)) => tris.iter().enumerate().all(|(k, t)| {
-                    let near = |a: P3, b: P3| (0..3).all(|i| (a[i] - b[i]).abs() <= 1e-6);
-                    let curved = match (template.smooth.get(k).copied().flatten(), smooth_at(k)) {
-                        (None, None) => true,
-                        (Some(own), Some(seen)) => (0..3).all(|c| near(place.normal(own[c]), seen[c])),
-                        _ => false,
-                    };
-                    template.alpha.get(k) == Some(&alpha_of(t))
-                        && template.color.get(k) == Some(&packed(t))
-                        && template.tex.get(k) == Some(&tex_of(t))
-                        && template.face.get(k) == Some(&face_at(k))
-                        && curved
-                }),
-                None => false,
+                Some(Some(_)) => false,
+                None => continue,
             };
-            if fits {
-                taken.get_mut(first..first + local.len()).into_iter().flatten().for_each(|t| *t = true);
+            candidates.push((first, place, leads));
+        }
+        // Each other copy against its shape's first: the same in every triangle's colour, texture, face, see-through and curve.
+        let fits = |&(first, place, leads): &(usize, ComponentInstance, bool)| {
+            leads
+                || templates.get(place.shape).and_then(Option::as_ref).is_some_and(|template| {
+                    let len = template.alpha.len();
+                    scene.tris.get(first..first + len).is_some_and(|tris| {
+                        tris.iter().enumerate().all(|(k, t)| {
+                            let near = |a: P3, b: P3| (0..3).all(|i| (a[i] - b[i]).abs() <= 1e-6);
+                            let curved = match (template.smooth.get(k).copied().flatten(), smooth_at(first + k)) {
+                                (None, None) => true,
+                                (Some(own), Some(seen)) => (0..3).all(|c| near(place.normal(own[c]), seen[c])),
+                                _ => false,
+                            };
+                            template.alpha.get(k) == Some(&alpha_at(first + k))
+                                && template.color.get(k) == Some(&packed(t))
+                                && template.tex.get(k) == Some(&tex_of(t))
+                                && template.face.get(k) == Some(&face_at(first + k))
+                                && curved
+                        })
+                    })
+                })
+        };
+        let fitting: Vec<bool> = match (candidates.len() >= 1000).then(super::render_pool).flatten() {
+            Some(pool) => {
+                use rayon::prelude::*;
+                pool.install(|| candidates.par_iter().map(fits).collect())
+            }
+            None => candidates.iter().map(fits).collect(),
+        };
+        if cancelled() {
+            return Ok(None);
+        }
+        let mut chosen: Vec<(usize, ComponentInstance)> = Vec::new();
+        for (&(first, place, _), fit) in candidates.iter().zip(fitting) {
+            let len = scene.shapes.get(place.shape).map_or(0, Vec::len);
+            if fit {
+                taken.get_mut(first..first + len).into_iter().flatten().for_each(|t| *t = true);
                 chosen.push((first, place));
             }
         }
         let is_taken = |i: usize| taken.get(i).copied().unwrap_or(false);
         let clear_from = shown.iter().filter(|&&i| !clear(i) && !is_taken(i)).count() * 3;
         let drawn = shown.iter().filter(|&&i| !is_taken(i)).count();
-        let levels: Vec<_> = scene.levels.iter().filter(|(id, ..)| plain || look.shows(*id)).cloned().collect();
+        let levels: Vec<_> = scene.levels.iter().filter(|(id, ..)| !wireframe && (plain || look.shows(*id))).cloned().collect();
+        // The box round what is shown (the box round its elements' boxes) and the levels.
         let corners = levels.iter().flat_map(|(.., c)| c.iter());
-        let points = shown.iter().flat_map(|&i| scene.tris[i].p.iter()).chain(corners);
-        let (lo, hi) = bounds(points).unwrap_or(([0.0; 3], [0.0; 3]));
+        let reached = reach.iter().flat_map(|(lo, hi)| [lo, hi]);
+        let (lo, hi) = bounds(reached.chain(corners)).unwrap_or(([0.0; 3], [0.0; 3]));
         let origin = mul(add(lo, hi), 0.5);
         let radius = dot(sub(hi, lo), sub(hi, lo)).sqrt() * 0.5;
         let mut mesh = Mesh {
@@ -445,9 +564,16 @@ impl Mesh {
             skins: vec![Skin::default(); scene.skins.len()],
             texels: Vec::new(),
             groups: Vec::new(),
+            cube: 0..0,
+            cube_planes: 0,
+            shape_boxes: Vec::new(),
             group_spheres: Vec::new(),
             copy_spheres: Vec::new(),
             cells: Vec::new(),
+            section_box: look.section_box(),
+            lines,
+            wireframe,
+            wires: Vec::new(),
             level_colors: levels.iter().map(|(id, ..)| (*id, look.edge(*id, DATUM))).collect(),
             levels,
             tris: Vec::new(),
@@ -458,18 +584,27 @@ impl Mesh {
         mesh.vertices.try_reserve_exact(drawn.saturating_mul(3)).map_err(room)?;
         mesh.tris.try_reserve_exact(drawn).map_err(room)?;
         let mut owners: BTreeMap<(Id, u8), u32> = BTreeMap::new();
+        // The last asked: the triangles of an element come together.
+        let mut last: Option<((Id, u8), u32)> = None;
         let mut owner_of = |mesh: &mut Mesh, id: Id, alpha: u8| {
-            *owners.entry((id, alpha)).or_insert_with(|| {
+            if let Some((key, n)) = last
+                && key == (id, alpha)
+            {
+                return n;
+            }
+            let n = *owners.entry((id, alpha)).or_insert_with(|| {
                 mesh.owners.push(Owner { id, edge: look.edge(id, EDGE), transparency: alpha });
                 mesh.owners.len() as u32
-            })
+            });
+            last = Some(((id, alpha), n));
+            n
         };
         for (k, i) in shown.into_iter().enumerate() {
             if k % 8192 == 0 && cancelled() {
                 return Ok(None);
             }
             let t = &scene.tris[i];
-            let alpha = t.alpha(look).min(100);
+            let alpha = alpha_at(i);
             // The owners numbered in the order they are met, a copy's among them.
             let owner = owner_of(&mut mesh, t.owner, alpha);
             if is_taken(i) {
@@ -554,6 +689,31 @@ impl Mesh {
                 bvh: OnceLock::new(),
             });
         }
+        if wireframe {
+            let Some(edges) = scene.edges_cancellable(cancelled) else { return Ok(None) };
+            mesh.wires.try_reserve_exact(edges.len()).map_err(room)?;
+            for (k, &(i, ends)) in edges.iter().enumerate() {
+                if k % 8192 == 0 && cancelled() {
+                    return Ok(None);
+                }
+                let Some(t) = scene.tris.get(i).filter(|t| look.shows(t.owner)) else { continue };
+                let owner = owner_of(&mut mesh, t.owner, 0);
+                mesh.wires.push(Wire { ends, owner, face: face_at(i) });
+            }
+        }
+        // The cube a box standing in is placed from, its faces' planes numbered past the scene's.
+        let start = mesh.shape_vertices.len();
+        let base = u32::try_from(scene.tris.len().max(scene.table.next)).map_err(|_| too_many())?.saturating_add(1);
+        mesh.cube_planes = u32::try_from(mesh.instance_planes.len()).map_err(|_| too_many())?;
+        for (k, t) in cube().iter().enumerate() {
+            let face = unit(cross(sub(t[1], t[0]), sub(t[2], t[0]))).map(|v| v as f32);
+            for p in t {
+                let position = p.map(|v| v as f32);
+                mesh.shape_vertices.push(Vertex { position, normal: face, face, color: STAND_IN, owner: 0, plane: 0, tex: 0 });
+            }
+            mesh.instance_planes.push(base.saturating_add(k as u32 / 2));
+        }
+        mesh.cube = start..mesh.shape_vertices.len();
         let used: std::collections::BTreeSet<u32> =
             mesh.vertices.iter().chain(&mesh.shape_vertices).map(|v| v.tex).filter(|t| *t > 0).collect();
         for id in used {
@@ -606,6 +766,7 @@ impl Mesh {
                 .unwrap_or_default()
             })
             .collect();
+        mesh.shape_boxes.clone_from(&local);
         let shape_of: Vec<usize> = mesh.shapes.iter().enumerate().flat_map(|(n, sh)| std::iter::repeat_n(n, sh.instances.len())).collect();
         mesh.copy_spheres = mesh
             .instances
@@ -657,6 +818,12 @@ impl Mesh {
     /// What a card draws of the mesh through `cam`: every group and copy but those wholly past one side of what the picture
     /// reaches, which leave no pixel, each tested as a sphere round it, padded for the card's f32 arithmetic.
     pub fn visible(&self, cam: &Camera) -> Visible {
+        self.visible_cut(cam, self.section_box)
+    }
+
+    /// [`visible`](Self::visible), cut to section box `cut` (a box being dragged, or the mesh's own): what lies wholly past one
+    /// of its sides leaves no pixel either.
+    pub fn visible_cut(&self, cam: &Camera, cut: Option<(P3, P3)>) -> Visible {
         let view = self.view(cam);
         let f = |v: [f32; 3]| v.map(f64::from);
         let (right, up, back, target) = (f(view.right), f(view.up), f(view.back), f(view.target));
@@ -683,6 +850,15 @@ impl Mesh {
                 vec![(r, 1.0), (mul(r, -1.0), 1.0), (u, 1.0), (mul(u, -1.0), 1.0), (back, depth), (mul(back, -1.0), depth)]
             }
         };
+        let mut planes = planes;
+        if let Some((lo, hi)) = cut {
+            for i in 0..3 {
+                let axis: P3 = std::array::from_fn(|j| if i == j { 1.0 } else { 0.0 });
+                let at = self.origin[i] + target[i];
+                planes.push((axis, hi[i] - at));
+                planes.push((mul(axis, -1.0), at - lo[i]));
+            }
+        }
         let planes: Vec<(P3, f64, f64)> = planes.into_iter().map(|(n, k)| (n, k, dot(n, n).sqrt())).collect();
         // Out, in, or neither: past one side, or within every side.
         let judge = |(middle, reach): (P3, f64)| {
@@ -742,14 +918,123 @@ impl Mesh {
         Visible { vertices, instances }
     }
 
+    /// How many triangles a card draws for `seen`, each copy's counted.
+    pub fn cost(&self, seen: &Visible) -> usize {
+        let own: usize = seen.vertices.iter().map(|r| r.len() / 3).sum();
+        let copies: usize = self
+            .shapes
+            .iter()
+            .map(|sh| {
+                let n: usize =
+                    seen.instances.iter().map(|r| r.start.max(sh.instances.start)..r.end.min(sh.instances.end)).map(|r| r.len()).sum();
+                n * (sh.vertices.len() / 3)
+            })
+            .sum();
+        own + copies
+    }
+
+    /// How far ahead of the camera the nearest of a sphere (from the origin) is: from the eye in perspective, else from the
+    /// front of what the view reaches.
+    fn nearness(&self, cam: &Camera, (middle, reach): (P3, f64)) -> f64 {
+        let view = self.view(cam);
+        let (back, target) = (view.back.map(f64::from), view.target.map(f64::from));
+        let from = view.perspective.map_or(f64::from(view.depth), |p| f64::from(p.eye));
+        from - dot(sub(middle, target), back) - reach
+    }
+
+    /// What a frame draws of `seen` in `budget` triangles: all of it if it fits; else the nearest groups and copies, in their
+    /// order, up to the first that doesn't fit, and a box for each of the rest (its groups', in order, then its copies').
+    pub fn nearest_first(&self, cam: &Camera, seen: &Visible, budget: usize) -> Nearest {
+        if self.cost(seen) <= budget {
+            return Nearest { seen: seen.clone(), stand_ins: Vec::new() };
+        }
+        let within = |runs: &[std::ops::Range<usize>], k: usize| {
+            let at = runs.partition_point(|r| r.end <= k);
+            runs.get(at).is_some_and(|r| r.contains(&k))
+        };
+        let shape_of = |k: usize| self.shapes.iter().position(|sh| sh.instances.contains(&k));
+        // Each group and copy seen: how near, which, and its triangles.
+        let mut items: Vec<(f64, bool, usize, usize)> = Vec::new();
+        for (k, g) in self.groups.iter().enumerate().filter(|(_, g)| within(&seen.vertices, g.range.start)) {
+            let sphere = self.group_spheres.get(k).copied().unwrap_or_default();
+            items.push((self.nearness(cam, sphere), false, k, g.range.len() / 3));
+        }
+        for r in &seen.instances {
+            for k in r.clone() {
+                let tris = shape_of(k).and_then(|n| self.shapes.get(n)).map_or(0, |sh| sh.vertices.len() / 3);
+                let sphere = self.copy_spheres.get(k).copied().unwrap_or_default();
+                items.push((self.nearness(cam, sphere), true, k, tris));
+            }
+        }
+        items.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let (mut own, mut copies) = (vec![false; self.groups.len()], vec![false; self.instances.len()]);
+        let mut spent = 0usize;
+        for &(_, copy, k, tris) in &items {
+            if spent + tris > budget {
+                break;
+            }
+            spent += tris;
+            if let Some(flag) = if copy { copies.get_mut(k) } else { own.get_mut(k) } {
+                *flag = true;
+            }
+        }
+        let runs = |flags: &[bool], range: &dyn Fn(usize) -> std::ops::Range<usize>| {
+            let mut out: Vec<std::ops::Range<usize>> = Vec::new();
+            for (k, _) in flags.iter().enumerate().filter(|(_, f)| **f) {
+                let r = range(k);
+                match out.last_mut() {
+                    Some(prev) if prev.end == r.start => prev.end = r.end,
+                    _ => out.push(r),
+                }
+            }
+            out
+        };
+        let vertices = runs(&own, &|k| self.groups.get(k).map_or(0..0, |g| g.range.clone()));
+        let instances = runs(&copies, &|k| k..k + 1);
+        // A box for each group and copy seen but not drawn: placed from the cube, at least a mm on each side.
+        let boxed = |lo: P3, hi: P3, at: P3, axes: [P3; 3], owner: u32| {
+            let size: P3 = std::array::from_fn(|a| (hi[a] - lo[a]).max(1.0 / dot(axes[a], axes[a]).sqrt().max(1e-9)));
+            let corner: P3 = std::array::from_fn(|i| at[i] + (0..3).map(|a| lo[a] * axes[a][i]).sum::<f64>());
+            Instance {
+                at: corner.map(|v| v as f32),
+                axes: std::array::from_fn(|a| mul(axes[a], size[a]).map(|v| v as f32)),
+                owner,
+                clear_owner: 0,
+                planes: self.cube_planes,
+            }
+        };
+        let mut stand_ins = Vec::new();
+        for (g, _) in self.groups.iter().zip(&own).filter(|(g, drawn)| within(&seen.vertices, g.range.start) && !**drawn) {
+            let owner = self.vertices.get(g.range.start).map_or(0, |v| v.owner);
+            stand_ins.push(boxed(g.lo, g.hi, [0.0; 3], [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], owner));
+        }
+        for r in &seen.instances {
+            for k in r.clone().filter(|k| !copies.get(*k).copied().unwrap_or(false)) {
+                let (Some(c), Some((lo, hi))) = (self.instances.get(k), shape_of(k).and_then(|n| self.shape_boxes.get(n))) else {
+                    continue;
+                };
+                stand_ins.push(boxed(*lo, *hi, c.at.map(f64::from), c.axes.map(|a| a.map(f64::from)), c.owner));
+            }
+        }
+        Nearest { seen: Visible { vertices, instances }, stand_ins }
+    }
+
     /// The marks drawn over the surfaces: each shown level's plane and head, `tints` colouring (and showing all four edges of)
     /// those selected.
     pub fn marks(&self, cam: &Camera, tints: &[(Id, Rgb)]) -> Vec<LevelMarks> {
+        self.marks_cut(cam, tints, self.section_box)
+    }
+
+    /// [`marks`](Self::marks), cut to section box `cut`, as the processor's picture cuts them.
+    pub fn marks_cut(&self, cam: &Camera, tints: &[(Id, Rgb)], cut: Option<(P3, P3)>) -> Vec<LevelMarks> {
         let color = |id: Id| {
             let own = tints.iter().find(|(t, _)| *t == id).map(|(_, c)| *c);
             own.map(|c| (c, true)).or_else(|| Some((*self.level_colors.get(&id)?, false)))
         };
-        level_marks(&self.levels, cam, &color)
+        match cut {
+            Some(b) => level_marks(&levels_in(&self.levels, b), cam, &color),
+            None => level_marks(&self.levels, cam, &color),
+        }
     }
 
     /// What the hierarchy is over: each triangle drawn of its own, then each copy, as boxes.
@@ -760,7 +1045,8 @@ impl Mesh {
             let [lo, hi] = c.place.bounds([local.0, local.1]);
             (lo, hi)
         });
-        own.chain(copies).collect()
+        let wires = self.wires.iter().map(|w| bounds(w.ends.iter()).unwrap_or_default());
+        own.chain(copies).chain(wires).collect()
     }
 
     fn bvh(&self) -> &Bvh {
@@ -801,6 +1087,9 @@ impl Mesh {
         if !(x >= 0.0 && y >= 0.0 && x < w && y < h) {
             return None;
         }
+        if self.wireframe {
+            return self.pick_wire(cam, tints, (x.floor() as i64, y.floor() as i64));
+        }
         let centre = (x.floor() + 0.5, y.floor() + 0.5);
         let (opaque, clear) = self.nearest(cam, centre);
         // A level's mark is hidden by what is opaque only, as the processor's are.
@@ -822,6 +1111,32 @@ impl Mesh {
         hit.filter(|h| !crate::link::is_linked(h.id))
     }
 
+    /// The line a wireframe's pixel `at` picks: of those drawn within two pixels of it, the last drawn, what is tinted being
+    /// drawn after the rest, as the processor's picture finds it.
+    fn pick_wire(&self, cam: &Camera, tints: &[(Id, Rgb)], at: (i64, i64)) -> Option<Hit> {
+        let size = (cam.width.clamp(1, super::MAX_SIDE) as usize, cam.height.clamp(1, super::MAX_SIDE) as usize);
+        let centre = (at.0 as f64 + 0.5, at.1 as f64 + 0.5);
+        let project = cam.projector();
+        // Two pixels and the one a line's point is floored in.
+        let misses = |b: (P3, P3)| outside(&project, b, centre, 3.0);
+        let owner = |w: &Wire| self.owners.get(w.owner.checked_sub(1)? as usize);
+        let tinted = |id: Id| tints.iter().any(|(t, _)| *t == id);
+        let mut best: Option<(bool, usize)> = None;
+        self.bvh().walk(&|n| (n.lo, n.hi), &misses, &mut |i| {
+            let Some(wire) = self.wires.get(i) else { return };
+            let key = (owner(wire).is_some_and(|o| tinted(o.id)), i);
+            if best.is_some_and(|b| b >= key) {
+                return;
+            }
+            let Some((p, q)) = super::wire_line(cam, self.section_box, wire.ends, size) else { return };
+            if super::wire_pixels(p, q).any(|(px, py)| (px - at.0).abs() <= 2 && (py - at.1).abs() <= 2) {
+                best = Some(key);
+            }
+        });
+        let wire = self.wires.get(best?.1)?;
+        Some(Hit { id: owner(wire)?.id, face: wire.face }).filter(|h| !crate::link::is_linked(h.id))
+    }
+
     /// The nearest opaque triangle covering the centre of a pixel, and the nearest seen through, as the CPU's rasterizer finds
     /// them: how near, as an f32 as it keeps it, and which. The first of triangles as near, in the scene, wins.
     fn nearest(&self, cam: &Camera, (x, y): (f64, f64)) -> (Found, Found) {
@@ -829,20 +1144,13 @@ impl Mesh {
         // Opaque, then seen through.
         let mut found: [Option<(f32, usize, Hit)>; 2] = [None, None];
         let project = cam.projector();
-        // Whether the pixel is outside a box's picture, which is inside the rectangle its corners make where all of it is in
-        // front of the eye.
-        let misses = |(lo, hi): (P3, P3)| {
-            let corners = (0..8).map(|k| [0, 1, 2].map(|a| if k >> a & 1 == 0 { lo[a] } else { hi[a] }));
-            if !corners.clone().all(|p| project.ahead(p) >= NEAR) {
-                return false;
-            }
-            let (lo, hi) =
-                corners.map(|p| project.at(p)).fold((P2(f64::MAX, f64::MAX), P2(f64::MIN, f64::MIN)), |(lo, hi), (cx, cy, _)| {
-                    (P2(lo.0.min(cx), lo.1.min(cy)), P2(hi.0.max(cx), hi.1.max(cy)))
-                });
-            x < lo.0 - 1e-6 || x > hi.0 + 1e-6 || y < lo.1 - 1e-6 || y > hi.1 + 1e-6
-        };
+        // What the section box keeps, asked as the processor's picture asks it.
+        let cut = self.section_box.map(|b| Boxed::new(cam, b));
+        let misses = |b: (P3, P3)| outside(&project, b, (x, y), 1e-6);
         let mut test = |p: &[P3; 3], clear: bool, key: usize, hit: Hit| {
+            if cut.as_ref().is_some_and(|k| k.misses_corners(p)) {
+                return;
+            }
             // In front of the eye, as the processor cuts it.
             let (parts, count) = project.in_front(p);
             for part in parts.iter().take(count) {
@@ -857,7 +1165,11 @@ impl Mesh {
                 if wa < -1e-9 || wb < -1e-9 || wc < -1e-9 {
                     continue;
                 }
-                let z = (wa * a.2 + wb * b.2 + wc * c.2) as f32;
+                let z = wa * a.2 + wb * b.2 + wc * c.2;
+                if cut.as_ref().is_some_and(|k| !k.keeps(x, y, z)) {
+                    continue;
+                }
+                let z = z as f32;
                 let found = &mut found[usize::from(clear)];
                 if found.is_none_or(|(d, j, _)| z > d || z == d && key < j) {
                     *found = Some((z, key, hit));
@@ -888,6 +1200,19 @@ impl Mesh {
         let hit = |f: Option<(f32, usize, Hit)>| f.map(|(z, _, hit)| (z, hit));
         (hit(found[0]), hit(found[1]))
     }
+}
+
+/// Whether the pixel at `(x, y)` is further than `margin` outside a box's picture, which is inside the rectangle its corners
+/// make where all of it is in front of the eye.
+fn outside(project: &super::Projector, (lo, hi): (P3, P3), (x, y): (f64, f64), margin: f64) -> bool {
+    let corners = (0..8).map(|k| [0, 1, 2].map(|a| if k >> a & 1 == 0 { lo[a] } else { hi[a] }));
+    if !corners.clone().all(|p| project.ahead(p) >= NEAR) {
+        return false;
+    }
+    let (lo, hi) = corners.map(|p| project.at(p)).fold((P2(f64::MAX, f64::MAX), P2(f64::MIN, f64::MIN)), |(lo, hi), (cx, cy, _)| {
+        (P2(lo.0.min(cx), lo.1.min(cy)), P2(hi.0.max(cx), hi.1.max(cy)))
+    });
+    x < lo.0 - margin || x > hi.0 + margin || y < lo.1 - margin || y > hi.1 + margin
 }
 
 /// How near the camera a line from `a` to `b` (each a pixel and its nearness) is where it covers the pixel whose centre is
@@ -1011,10 +1336,14 @@ mod tests {
 
     /// Whether picking `s`'s 3D view through its mesh, seen through `cam`, finds what the processor's picture shows.
     fn picks_through(s: &Session, cam: Camera) {
+        picks_tinted(s, cam, &[(s.model.levels().first().unwrap().0, Rgb(0, 120, 215))]);
+    }
+
+    /// [`picks_through`] with `tints`.
+    fn picks_tinted(s: &Session, cam: Camera, tints: &[(Id, Rgb)]) {
         let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
         let mesh = Mesh::new(&scene, &look).unwrap();
-        let tints = [(s.model.levels().first().unwrap().0, Rgb(0, 120, 215))];
-        let image = scene.render_in(&cam, &tints, &look);
+        let image = scene.render_in(&cam, tints, &look);
         let (mut agree, mut total) = (0, 0);
         for y in (0..480).step_by(3) {
             for x in (0..640).step_by(3) {
@@ -1022,7 +1351,7 @@ mod tests {
                 let cpu = image.pick(x, y).map(|id| Hit { id, face: image.face(x, y).unwrap_or("") });
                 total += 1;
                 // Where a level's mark is picked, the CPU has no face either.
-                agree += usize::from(mesh.pick(&cam, &tints, x, y) == cpu);
+                agree += usize::from(mesh.pick(&cam, tints, x, y) == cpu);
             }
         }
         assert_eq!(agree, total, "only {agree} of {total} pixels pick what the picture shows");
@@ -1271,6 +1600,198 @@ mod tests {
     }
 
     #[test]
+    fn nearest_first_draws_the_nearest_within_a_budget_and_a_box_for_each_of_the_rest() {
+        let s = with_runs();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let mesh = Mesh::new(&scene, &look).unwrap();
+        let fitted = scene.fit_in(AZIMUTH, ELEVATION, 800, 600, &look);
+        let expanded = |ranges: &[std::ops::Range<usize>]| ranges.iter().flat_map(Clone::clone).collect::<std::collections::BTreeSet<_>>();
+        let tris_of = |k: usize| mesh.shapes.iter().find(|sh| sh.instances.contains(&k)).map_or(0, |sh| sh.vertices.len() / 3);
+        // The cube a box is drawn from: twelve triangles, opaque, with planes of its own.
+        assert_eq!(mesh.cube.len(), 36);
+        for cam in [fitted, Camera { lens: Some(35.0), ..fitted }] {
+            let seen = mesh.visible(&cam);
+            let all = mesh.cost(&seen);
+            assert_eq!(
+                all,
+                seen.vertices.iter().map(|r| r.len() / 3).sum::<usize>()
+                    + seen.instances.iter().flat_map(Clone::clone).map(tris_of).sum::<usize>()
+            );
+            // Within the budget, all of it as it is.
+            let whole = mesh.nearest_first(&cam, &seen, all);
+            assert_eq!((whole.seen.clone(), whole.stand_ins.len()), (seen.clone(), 0));
+            // Past it, the nearest within it and a box for each group or copy left over, nearer ones never boxed before farther ones drawn.
+            let near = mesh.nearest_first(&cam, &seen, all / 3);
+            assert!(mesh.cost(&near.seen) <= all / 3 && mesh.cost(&near.seen) > 0, "{} of {all}", mesh.cost(&near.seen));
+            let (drawn_own, drawn_copies) = (expanded(&near.seen.vertices), expanded(&near.seen.instances));
+            let (seen_own, seen_copies) = (expanded(&seen.vertices), expanded(&seen.instances));
+            assert!(drawn_own.is_subset(&seen_own) && drawn_copies.is_subset(&seen_copies));
+            let left_groups: Vec<&Group> =
+                mesh.groups.iter().filter(|g| seen_own.contains(&g.range.start) && !drawn_own.contains(&g.range.start)).collect();
+            let left_copies: Vec<usize> = seen_copies.difference(&drawn_copies).copied().collect();
+            assert_eq!(near.stand_ins.len(), left_groups.len() + left_copies.len());
+            let far = |k: usize, copy: bool| mesh.nearness(&cam, if copy { mesh.copy_spheres[k] } else { mesh.group_spheres[k] });
+            let group_of = |start: usize| mesh.groups.iter().position(|g| g.range.start == start).unwrap();
+            let drawn_far = drawn_own.iter().filter(|v| mesh.groups.iter().any(|g| g.range.start == **v)).map(|v| far(group_of(*v), false));
+            let drawn_far = drawn_far.chain(drawn_copies.iter().map(|k| far(*k, true))).fold(f64::MIN, f64::max);
+            let boxed_near = left_groups.iter().map(|g| far(group_of(g.range.start), false));
+            let boxed_near = boxed_near.chain(left_copies.iter().map(|k| far(*k, true))).fold(f64::MAX, f64::min);
+            assert!(drawn_far <= boxed_near, "drawn as far as {drawn_far}, boxed from {boxed_near}");
+            assert!(!near.stand_ins.is_empty());
+            let placed = |c: &Instance, p: [f32; 3]| -> P3 {
+                std::array::from_fn(|i| f64::from(c.at[i]) + (0..3).map(|a| f64::from(p[a]) * f64::from(c.axes[a][i])).sum::<f64>())
+            };
+            let inside = |b: &Instance, p: P3| {
+                // The box's own coordinates of `p`: within 0 to 1 along each of its axes.
+                let d = sub(p, b.at.map(f64::from));
+                (0..3).all(|a| {
+                    let axis = b.axes[a].map(f64::from);
+                    let t = dot(d, axis) / dot(axis, axis);
+                    (-1e-3..=1.0 + 1e-3).contains(&t)
+                })
+            };
+            for (b, g) in near.stand_ins.iter().zip(&left_groups) {
+                assert_eq!(b.planes, mesh.cube_planes);
+                assert!(mesh.vertices[g.range.clone()].iter().all(|v| inside(b, v.position.map(f64::from))), "a group outside its box");
+            }
+            for (b, &k) in near.stand_ins[left_groups.len()..].iter().zip(&left_copies) {
+                let (c, shape) = (&mesh.instances[k], mesh.shapes.iter().find(|sh| sh.instances.contains(&k)).unwrap());
+                assert_eq!(b.owner, c.owner);
+                assert!(
+                    mesh.shape_vertices[shape.vertices.clone()].iter().all(|v| inside(b, placed(c, v.position))),
+                    "copy {k} outside its box"
+                );
+            }
+        }
+    }
+
+    /// The sample house with a section box through it: from its least corner to `(x, y, z)` of the way across what it holds.
+    fn cut_through(s: &mut Session, [x, y, z]: [f64; 3]) -> (P3, P3) {
+        s.execute("section_box", &json!({"on": true})).unwrap();
+        let (lo, hi) = Look::of_3d(&s.model).section_box().unwrap();
+        let to = [lo[0] + (hi[0] - lo[0]) * x, lo[1] + (hi[1] - lo[1]) * y, lo[2] + (hi[2] - lo[2]) * z];
+        s.execute("section_box", &json!({"min": lo, "max": to})).unwrap();
+        Look::of_3d(&s.model).section_box().unwrap()
+    }
+
+    #[test]
+    fn picking_the_mesh_through_a_section_box_finds_what_the_cpu_picture_shows() {
+        let mut s = sample();
+        cut_through(&mut s, [0.6, 0.7, 0.45]);
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let flat = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        picks_through(&s, flat);
+        let cam = scene.fit_from(Camera { lens: Some(crate::view3d::LENS), ..flat }, &look);
+        picks_through(&s, cam);
+        picks_through(&s, crate::view3d::inside(&s.model, cam));
+    }
+
+    #[test]
+    fn a_section_box_leaves_out_of_a_frame_only_what_lies_wholly_outside_it() {
+        let mut s = sample();
+        let whole = {
+            let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+            let mesh = Mesh::new(&scene, &look).unwrap();
+            mesh.cost(&mesh.visible(&scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look)))
+        };
+        let (lo, hi) = cut_through(&mut s, [0.3, 0.3, 0.3]);
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let mesh = Mesh::new(&scene, &look).unwrap();
+        let seen = mesh.visible(&scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look));
+        assert!(mesh.cost(&seen) < whole, "{} triangles drawn, of {whole}", mesh.cost(&seen));
+        // Any triangle with a corner in the box is drawn.
+        for (n, t) in mesh.vertices.as_chunks::<3>().0.iter().enumerate() {
+            let inside = t.iter().any(|v| (0..3).all(|i| (lo[i]..=hi[i]).contains(&(f64::from(v.position[i]) + mesh.origin[i]))));
+            assert!(!inside || seen.vertices.iter().any(|r| r.contains(&(n * 3))), "triangle {n} is in the box and left out");
+        }
+    }
+
+    #[test]
+    fn a_section_box_leaves_out_a_level_past_it_and_a_box_being_dragged_asks_of_the_same_mesh() {
+        let mut s = sample();
+        let (lo, hi) = cut_through(&mut s, [0.6, 0.7, 0.45]);
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let mesh = Mesh::new(&scene, &look).unwrap();
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let within = |(lo, hi): (P3, P3)| -> Vec<Id> {
+            scene.levels.iter().filter(|(.., c)| (lo[2]..=hi[2]).contains(&c[0][2])).map(|(id, ..)| *id).collect()
+        };
+        let ids = |marks: Vec<LevelMarks>| marks.iter().map(|m| m.id).collect::<Vec<Id>>();
+        let kept = ids(mesh.marks(&cam, &[]));
+        assert!(!kept.is_empty() && kept.len() < scene.levels.len(), "{} of {} levels", kept.len(), scene.levels.len());
+        assert_eq!(kept, within((lo, hi)));
+        let off = (
+            lo,
+            [
+                hi[0],
+                hi[1],
+                kept.iter().filter_map(|k| scene.levels.iter().find(|(id, ..)| id == k)).map(|(.., c)| c[0][2]).fold(f64::MAX, f64::min)
+                    - 1.0,
+            ],
+        );
+        assert!(ids(mesh.marks_cut(&cam, &[], Some(off))).len() < kept.len(), "a box dragged below a level leaves it out");
+    }
+
+    #[test]
+    fn picking_the_mesh_in_hidden_line_finds_what_the_cpu_picture_shows_glass_and_all() {
+        let mut s = sample();
+        s.execute("visual_style", &json!({"style": "hidden_line"})).unwrap();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let flat = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        picks_through(&s, flat);
+        picks_through(&s, scene.fit_from(Camera { lens: Some(crate::view3d::LENS), ..flat }, &look));
+        // A section's hidden line is opaque, glass too: nothing is drawn seen through.
+        let mesh = Mesh::new(&scene, &look).unwrap();
+        assert!(mesh.lines);
+        assert_eq!(mesh.clear_from, mesh.vertices.len());
+        assert!(mesh.owners.iter().all(|o| o.transparency == 0));
+        assert!(mesh.shapes.iter().all(|s| s.clear_from == s.vertices.end));
+        assert!(mesh.vertices.iter().all(|v| v.tex == 0), "no texture on a paper face");
+        cut_through(&mut s, [0.6, 0.7, 0.45]);
+        picks_through(&s, flat);
+    }
+
+    #[test]
+    fn picking_the_mesh_in_wireframe_finds_what_the_cpu_picture_shows_within_two_pixels_of_a_line() {
+        let mut s = sample();
+        s.execute("visual_style", &json!({"style": "wireframe"})).unwrap();
+        let wall = *s.model.elements.iter().find(|(_, e)| e.category() == "wall").unwrap().0;
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let flat = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let cam = scene.fit_from(Camera { lens: Some(crate::view3d::LENS), ..flat }, &look);
+        picks_tinted(&s, flat, &[]);
+        // What is tinted is drawn over the rest, so it is what a pixel near both picks.
+        picks_tinted(&s, flat, &[(wall, Rgb(255, 160, 0))]);
+        picks_tinted(&s, cam, &[]);
+        picks_tinted(&s, crate::view3d::inside(&s.model, cam), &[]);
+        // Nothing but lines is on the card, and no level's mark.
+        let mesh = Mesh::new(&scene, &look).unwrap();
+        assert!(mesh.wireframe && mesh.lines);
+        assert!(mesh.triangles() == 0 && !mesh.wires.is_empty());
+        assert!(mesh.marks(&flat, &[]).is_empty());
+        cut_through(&mut s, [0.6, 0.7, 0.45]);
+        picks_tinted(&s, flat, &[]);
+        // What the view hides has no lines to pick.
+        s.execute("graphics", &json!({"view": "{3D}", "categories": {"walls": {"hidden": true}}})).unwrap();
+        picks_tinted(&s, flat, &[]);
+    }
+
+    #[test]
+    fn a_wireframe_abandoned_while_its_edges_are_found_makes_no_mesh() {
+        let mut s = sample();
+        s.execute("visual_style", &json!({"style": "wireframe"})).unwrap();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let asked = Cell::new(0);
+        let later = || {
+            asked.set(asked.get() + 1);
+            asked.get() > 1
+        };
+        assert!(Mesh::new_cancellable(&scene, &look, &later).unwrap().is_none());
+        // What was abandoned isn't kept as the answer.
+        assert!(!Mesh::new(&scene, &look).unwrap().wires.is_empty());
+    }
+
+    #[test]
     fn a_mesh_holds_a_tower_however_many_triangles_it_has() {
         let m = crate::sample::tower::drawn(crate::sample::tower::Plate::REFERENCE, 2, crate::sample::tower::Drawings::default()).unwrap();
         let scene = Scene::new(&m);
@@ -1279,15 +1800,12 @@ mod tests {
     }
 
     #[test]
-    fn a_mesh_is_refused_for_what_only_the_processor_draws() {
+    fn a_mesh_draws_every_style_and_what_is_seen_through() {
         let mut s = sample();
-        let scene = Scene::new(&s.model);
-        assert!(Mesh::new(&scene, &Look::of_3d(&s.model)).is_ok());
-        s.execute("visual_style", &json!({"style": "wireframe"})).unwrap();
-        let scene = Scene::new(&s.model);
-        let err = Mesh::new(&scene, &Look::of_3d(&s.model)).err().unwrap();
-        assert!(err.contains("wireframe"), "{err}");
-        s.execute("visual_style", &json!({"style": "shaded"})).unwrap();
+        for style in ["wireframe", "hidden_line", "shaded"] {
+            s.execute("visual_style", &json!({"style": style})).unwrap();
+            assert!(Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).is_ok(), "{style}");
+        }
         s.execute("graphics", &json!({"view": "{3D}", "categories": {"walls": {"transparency": 50}}})).unwrap();
         assert!(Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).is_ok(), "the card draws what is seen through");
     }

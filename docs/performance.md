@@ -387,8 +387,8 @@ The measured next priorities are:
    latest-request queues and cancellation of obsolete views. The current parallel renderer still
    waits for its workers on the calling thread.
 4. Retained GPU geometry for orbit/pan/zoom is done for shaded, opaque views (above), with the processor as the
-   reference and the fallback, and for surfaces seen through. Still to do on the card: hidden line and wireframe, then viewport
-   culling, level of detail and instancing before pursuing full-size multi-million-triangle scenes.
+   reference and the fallback, and for surfaces seen through, hidden line and wireframe; what is left is followed in
+   [the 3D plan](3d-acceleration-plan.md).
 5. Profile IFC stages and reuse representation/placement decoding. Expand import coverage alongside
    speed work; never count skipped source geometry as a performance improvement.
 6. Introduce dependency-aware validation while retaining a full-check oracle and command rollback.

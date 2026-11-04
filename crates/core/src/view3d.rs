@@ -82,7 +82,7 @@ pub(crate) fn unit(a: P3) -> P3 {
 /// A triangle of an element's surface; on a curved one, which (its element's, and which of its
 /// curved surfaces: a wall's outside or inside, a component's by its first triangle's place in the
 /// scene), so the facets read as one.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct Tri {
     p: [P3; 3],
     owner: Id,
@@ -238,6 +238,7 @@ impl PreparedSolids {
 }
 
 mod fragments;
+mod update;
 pub use fragments::{FragmentStats, SectionCache};
 pub(crate) type PreparedMade = (Vec<Prepared>, Vec<(Id, Vec<P3>)>, Vec<Option<[P3; 2]>>);
 
@@ -497,7 +498,7 @@ fn facets(tris: &[[P3; 3]]) -> Vec<Option<usize>> {
 /// facets: the unit normals of that surface's triangles that meet at a corner, averaged by the angle
 /// each makes there (so a quad cut into two triangles weighs the same at every corner). A crease keeps
 /// its step: only a surface's own triangles are averaged. None for the rest, flat faces among them.
-fn corner_normals(tris: &[Tri]) -> Vec<Option<Box<[P3; 3]>>> {
+fn corner_normals(tris: &[Tri]) -> Vec<Option<Arc<[P3; 3]>>> {
     let face = |t: &Tri| unit(cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0])));
     // A corner of a surface, to a micron: its triangles' own corners are a file's roundings of it.
     let at = |key: (Id, usize), p: P3| (key, p.map(|x| (x * 1e3).round() as i64));
@@ -522,7 +523,7 @@ fn corner_normals(tris: &[Tri]) -> Vec<Option<Box<[P3; 3]>>> {
                 let m = sums.get(&at(key, p)).map_or([0.0; 3], |s| unit(*s));
                 if dot(m, n) > 0.0 { m } else { n }
             };
-            (dot(n, n) > 0.5).then(|| Box::new(t.p.map(corner)))
+            (dot(n, n) > 0.5).then(|| Arc::new(t.p.map(corner)))
         })
         .collect()
 }
@@ -964,50 +965,79 @@ fn prism(out: &mut Vec<Tri>, owner: Id, (color, tex): (Rgb, u32), face: &[P3], r
 /// Each triangle's plane, as an index the triangles lying in it (within half a millimetre) share;
 /// the facets of one curved surface (a curved wall's face, a mesh's curve) share one too.
 fn planes(tris: &[Tri]) -> Vec<usize> {
-    // Planes by their normal, in cells wider than the tolerance, and a millimetre's slab of distance;
-    // a match is looked for in the nearer neighbouring cell on each axis and the slabs either side,
-    // so the tolerance holds across a cell's edge.
-    let mut found: HashMap<[i64; 4], Vec<(P3, f64, usize)>> = HashMap::new();
-    let mut count = 0;
-    let mut curves: BTreeMap<(Id, usize), usize> = BTreeMap::new();
-    tris.iter()
-        .map(|t| {
-            if let Some(c) = t.curve {
-                let next = tris.len() + curves.len();
-                return *curves.entry(c).or_insert(next);
-            }
-            let n = unit(cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0])));
-            count += 1;
-            // No area, no plane to share: its own.
-            if dot(n, n) < 0.5 {
-                return count - 1;
-            }
-            let d = dot(n, t.p[0]);
-            // A plane and its flip are one: each faces where its first ratio that isn't zero is positive.
-            let (n, d) = if n.iter().find(|x| x.abs() > 1e-9).is_some_and(|x| *x < 0.0) { (mul(n, -1.0), -d) } else { (n, d) };
-            let cell = n.map(|x| x * 1e4);
-            let q = cell.map(|x| x.round() as i64);
-            let near = |k: usize| [q[k], q[k] + if cell[k] < q[k] as f64 { -1 } else { 1 }];
-            let slab = d.floor() as i64;
-            for a in near(0) {
-                for b in near(1) {
-                    for c in near(2) {
-                        for s in slab - 1..=slab + 1 {
-                            let same = found
-                                .get(&[a, b, c, s])
-                                .and_then(|v| v.iter().find(|(m, e, _)| dot(*m, n) > 1.0 - 1e-9 && (e - d).abs() < 0.5));
-                            if let Some(&(_, _, id)) = same {
-                                count -= 1;
-                                return id;
-                            }
+    let mut table = PlaneTable::default();
+    tris.iter().map(|t| table.assign(t)).collect()
+}
+
+/// The planes found so far, and the curved surfaces: what numbers a triangle's plane, kept with a scene so the triangles an
+/// edit makes are numbered among those it keeps.
+#[derive(Clone, Default)]
+struct PlaneTable {
+    /// Planes by their normal, in cells wider than the tolerance, and a millimetre's slab of distance: each plane's normal,
+    /// distance and number.
+    found: HashMap<[i64; 4], Vec<(P3, f64, usize)>>,
+    curves: HashMap<(Id, usize), usize>,
+    /// The next number to give.
+    next: usize,
+}
+
+impl PlaneTable {
+    /// The number of `t`'s plane: that of a plane found before within the tolerance, else a new one.
+    fn assign(&mut self, t: &Tri) -> usize {
+        if let Some(c) = t.curve {
+            let next = &mut self.next;
+            return *self.curves.entry(c).or_insert_with(|| {
+                *next += 1;
+                *next - 1
+            });
+        }
+        let n = unit(cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0])));
+        self.next += 1;
+        let made = self.next - 1;
+        // No area, no plane to share: its own.
+        if dot(n, n) < 0.5 {
+            return made;
+        }
+        let d = dot(n, t.p[0]);
+        // A plane and its flip are one: each faces where its first ratio that isn't zero is positive.
+        let (n, d) = if n.iter().find(|x| x.abs() > 1e-9).is_some_and(|x| *x < 0.0) { (mul(n, -1.0), -d) } else { (n, d) };
+        // A match is looked for in the nearer neighbouring cell on each axis and the slabs either side, so the tolerance
+        // holds across a cell's edge.
+        let cell = n.map(|x| x * 1e4);
+        let q = cell.map(|x| x.round() as i64);
+        let near = |k: usize| [q[k], q[k] + if cell[k] < q[k] as f64 { -1 } else { 1 }];
+        let slab = d.floor() as i64;
+        for a in near(0) {
+            for b in near(1) {
+                for c in near(2) {
+                    for s in slab - 1..=slab + 1 {
+                        let same = self
+                            .found
+                            .get(&[a, b, c, s])
+                            .and_then(|v| v.iter().find(|(m, e, _)| dot(*m, n) > 1.0 - 1e-9 && (e - d).abs() < 0.5));
+                        if let Some(&(_, _, id)) = same {
+                            self.next -= 1;
+                            return id;
                         }
                     }
                 }
             }
-            found.entry([q[0], q[1], q[2], slab]).or_default().push((n, d, count - 1));
-            count - 1
-        })
-        .collect()
+        }
+        self.found.entry([q[0], q[1], q[2], slab]).or_default().push((n, d, made));
+        made
+    }
+}
+
+/// Each element's curved surfaces numbered in the order its triangles meet them, so what names a curve depends on the element
+/// alone, never on where its triangles are in the scene: `tris` is one element's.
+fn local_curves(tris: &mut [Tri]) {
+    let mut seen: HashMap<usize, usize> = HashMap::new();
+    for t in tris {
+        if let Some((owner, k)) = t.curve {
+            let n = seen.len();
+            t.curve = Some((owner, *seen.entry(k).or_insert(n)));
+        }
+    }
 }
 
 /// What a library material gives what is made of it: in the low 24 bits the texture id, one more than where it is in the
@@ -1095,8 +1125,9 @@ fn layered(m: &Model, s: Solid) -> Vec<Solid> {
 /// Paint laid on the faces of elements: each triangle on a painted face takes the material it's painted, its colour and its
 /// texture, in place of what its type is made of.
 fn painted(m: &Model, tris: &mut [Tri], faces: &[&'static str]) {
+    let owners: BTreeSet<Id> = tris.iter().map(|t| t.owner).collect();
     let paints: HashMap<Id, &serde_json::Map<String, serde_json::Value>> =
-        m.elements.iter().filter_map(|(id, e)| Some((*id, e.params()?.get(paint::KEY)?.as_object()?))).collect();
+        owners.into_iter().filter_map(|id| Some((id, m.elements.get(id)?.params()?.get(paint::KEY)?.as_object()?))).collect();
     if paints.is_empty() {
         return;
     }
@@ -1113,12 +1144,11 @@ fn painted(m: &Model, tris: &mut [Tri], faces: &[&'static str]) {
 pub struct Scene {
     tris: Vec<Tri>,
     planes: Vec<usize>,
-    smooth: Vec<Option<Box<[P3; 3]>>>,
+    smooth: Vec<Option<Arc<[P3; 3]>>>,
     /// Each triangle's face, as paint names them: `exterior`, `interior`, `top`, `bottom`, `all`, or none.
     faces: Arc<Vec<&'static str>>,
-    /// Each texture the scene uses, by id; and each textured triangle's way across and up its plane.
+    /// Each texture the scene uses, by id. A textured triangle lies across its plane as [`basis`] says.
     skins: Vec<Option<Sampler>>,
-    bases: Vec<Option<[P3; 2]>>,
     /// The edges a wireframe draws, found when one is first asked for.
     edges: OnceLock<Vec<(usize, [P3; 2])>>,
     /// The masses, which a section's picture leaves out: it outlines where its line cuts them.
@@ -1132,6 +1162,41 @@ pub struct Scene {
     placements: Vec<(usize, crate::component_geometry::ComponentInstance)>,
     /// Each component shape's triangles in its family's own axes, in the order a copy's are in `tris`.
     shapes: Vec<Vec<[P3; 3]>>,
+    /// What each shape is the shape of, so a copy an edit makes finds its own.
+    shape_keys: HashMap<ShapeKey, usize>,
+    /// Each element's run of triangles and the box round them, in the elements' order: what an edit replaces.
+    spans: Vec<Span>,
+    /// What numbered the planes, so an edit numbers its triangles' among them.
+    table: PlaneTable,
+}
+
+/// An element's triangles in a scene: where they are in its `tris`, and the box round them.
+#[derive(Clone, Debug, PartialEq)]
+struct Span {
+    id: Id,
+    at: std::ops::Range<usize>,
+    bounds: [P3; 2],
+}
+
+/// What a shape of a scene is the shape of: a family's type, mirrored or not, with the values its family evaluates; or the
+/// tube the round runs of a material are.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum ShapeKey {
+    Family(crate::component_geometry::Key),
+    Tube(String),
+}
+
+/// Each element's run of `tris`, in their order: an element's triangles are made together.
+fn spans_of(tris: &[Tri]) -> Vec<Span> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while let Some(first) = tris.get(i) {
+        let end = i + tris[i..].iter().take_while(|t| t.owner == first.owner).count();
+        let bounds = bounds(tris[i..end].iter().flat_map(|t| t.p)).unwrap_or_default();
+        out.push(Span { id: first.owner, at: i..end, bounds });
+        i = end;
+    }
+    out
 }
 
 /// A scan as a point cloud places it: its points and colours (shared with the model's), and where they go.
@@ -1228,13 +1293,15 @@ impl Scene {
             smooth: Vec::new(),
             faces: Arc::default(),
             skins: Vec::new(),
-            bases: Vec::new(),
             masses: BTreeSet::new(),
             levels: Vec::new(),
             scans: Vec::new(),
             edges: OnceLock::new(),
             placements: Vec::new(),
             shapes: Vec::new(),
+            shape_keys: HashMap::new(),
+            spans: Vec::new(),
+            table: PlaneTable::default(),
         })
     }
 
@@ -1253,36 +1320,27 @@ impl Scene {
         if cancelled() {
             return None;
         }
+        let spans = spans_of(&tris);
+        for span in &spans {
+            if let Some(own) = tris.get_mut(span.at.clone()) {
+                local_curves(own);
+            }
+        }
         // Each paintable element's rule for naming the faces of its triangles; paint gives those it's laid on their material.
-        let rules: HashMap<Id, Rule> = m
-            .elements
-            .iter()
-            .filter_map(|(id, e)| match e {
-                Element::Wall(w) => Some((*id, Rule::Wall(Axis::of(w)))),
-                e if matches!(e.category(), "floor" | "roof" | "ceiling") => Some((*id, Rule::Slab)),
-                e if paint::faces(e.category()).contains(&"all") => Some((*id, Rule::Whole)),
-                _ => None,
-            })
-            .collect();
+        let rules = rules_of(m, spans.iter().map(|s| s.id));
         let faces: Vec<&'static str> = tris.iter().map(|t| rules.get(&t.owner).map_or("", |r| r.face(&t.p))).collect();
         painted(m, &mut tris, &faces);
         if cancelled() {
             return None;
         }
         // The textures the scene uses, ready to look up, and what each textured triangle lies across.
-        let used: BTreeSet<u32> = tris.iter().map(Tri::texture).filter(|t| *t > 0).collect();
         let mut skins: Vec<Option<Sampler>> = vec![None; m.materials.len() + 1];
-        for id in used {
-            let found = m.materials.values().nth(id as usize - 1);
-            if let (Some(x), Some(slot)) = (found, skins.get_mut(id as usize)) {
-                *slot = x.texture.as_ref().and_then(|t| Sampler::new(t, x.color, &m.images));
-            }
-        }
-        let bases = tris.iter().map(|t| skins.get(t.texture() as usize).is_some_and(Option::is_some).then(|| basis(t))).collect();
+        skins_for(m, &mut skins, &tris);
         if cancelled() {
             return None;
         }
-        let planes = planes(&tris);
+        let mut table = PlaneTable::default();
+        let planes = tris.iter().map(|t| table.assign(t)).collect();
         if cancelled() {
             return None;
         }
@@ -1290,32 +1348,23 @@ impl Scene {
         if cancelled() {
             return None;
         }
-        let masses = m.elements.iter().filter(|(_, e)| matches!(e, Element::Mass(_))).map(|(id, _)| *id).collect();
-        let default = std::cell::OnceCell::new();
-        let levels = m
-            .levels()
-            .into_iter()
-            .map(|(id, l)| {
-                let [lo, hi] = l.extent.unwrap_or_else(|| *default.get_or_init(|| m.model_extent()));
-                let z = l.elevation;
-                (id, l.name.clone(), [[lo.0, lo.1, z], [hi.0, lo.1, z], [hi.0, hi.1, z], [lo.0, hi.1, z]])
-            })
-            .collect();
-        let scans = scans_of(m);
-        let (shapes, placements) = placements(m, &tris, cancelled)?;
+        let (masses, levels, scans) = whole_model(m, &spans);
+        let (shapes, shape_keys, placements) = placements(m, &tris, cancelled)?;
         Some(Scene {
             tris,
             planes,
             smooth,
             faces: Arc::new(faces),
             skins,
-            bases,
             masses,
             levels,
             scans,
             edges: OnceLock::new(),
             placements,
             shapes,
+            shape_keys,
+            spans,
+            table,
         })
     }
 
@@ -1476,15 +1525,48 @@ impl Scene {
             smooth: Vec::new(),
             faces: Arc::new(Vec::new()),
             skins: Vec::new(),
-            bases: Vec::new(),
             masses: BTreeSet::new(),
             levels: Vec::new(),
             scans: Vec::new(),
             edges: OnceLock::new(),
             placements: Vec::new(),
             shapes: Vec::new(),
+            shape_keys: HashMap::new(),
+            spans: Vec::new(),
+            table: PlaneTable::default(),
         }
     }
+}
+
+/// The samplers of the textures among `tris` that `skins` hasn't yet.
+fn skins_for(m: &Model, skins: &mut [Option<Sampler>], tris: &[Tri]) {
+    let used: BTreeSet<u32> = tris.iter().map(Tri::texture).filter(|t| *t > 0).collect();
+    for id in used {
+        let found = m.materials.values().nth(id as usize - 1);
+        if let (Some(x), Some(slot @ None)) = (found, skins.get_mut(id as usize)) {
+            *slot = x.texture.as_ref().and_then(|t| Sampler::new(t, x.color, &m.images));
+        }
+    }
+}
+
+/// What a scene takes of the whole model, not of each element's triangles: the masses, each level's plane, and the scans. A
+/// level with no extent of its own spans the model's ([`Model::model_extent`]), found from the boxes round each element's
+/// triangles, `spans`, which hold the corners of its solids.
+#[allow(clippy::type_complexity)]
+fn whole_model(m: &Model, spans: &[Span]) -> (BTreeSet<Id>, Vec<(Id, String, [P3; 4])>, Vec<Scan>) {
+    let masses = m.elements.iter().filter(|(_, e)| matches!(e, Element::Mass(_))).map(|(id, _)| *id).collect();
+    let default = std::cell::OnceCell::new();
+    let extent = || m.model_extent_of(spans.iter().flat_map(|s| [P2(s.bounds[0][0], s.bounds[0][1]), P2(s.bounds[1][0], s.bounds[1][1])]));
+    let levels = m
+        .levels()
+        .into_iter()
+        .map(|(id, l)| {
+            let [lo, hi] = l.extent.unwrap_or_else(|| *default.get_or_init(extent));
+            let z = l.elevation;
+            (id, l.name.clone(), [[lo.0, lo.1, z], [hi.0, lo.1, z], [hi.0, hi.1, z], [lo.0, hi.1, z]])
+        })
+        .collect();
+    (masses, levels, scans_of(m))
 }
 
 /// The components among `tris` that are a shape placed, to the last bit: each shape's triangles in its own axes, and for each
@@ -1495,10 +1577,11 @@ fn placements(
     m: &Model,
     tris: &[Tri],
     cancelled: &(dyn Fn() -> bool + Sync),
-) -> Option<(Vec<Vec<[P3; 3]>>, Vec<(usize, crate::component_geometry::ComponentInstance)>)> {
+) -> Option<(Vec<Vec<[P3; 3]>>, HashMap<ShapeKey, usize>, Vec<(usize, crate::component_geometry::ComponentInstance)>)> {
     let shared = crate::component_geometry::SharedComponents::new(m, cancelled)?;
     let mut shapes: Vec<Vec<[P3; 3]>> =
         shared.shapes.iter().map(|pieces| pieces.iter().flat_map(|p| p.tris.iter().copied()).collect()).collect();
+    let mut keys: HashMap<ShapeKey, usize> = shared.keys.into_iter().map(|(k, n)| (ShapeKey::Family(k), n)).collect();
     let mut copies: HashMap<Id, crate::component_geometry::ComponentInstance> = shared.instances.iter().map(|i| (i.owner, *i)).collect();
     // Each round run a copy of one tube, a tube for each material, so a copy takes its shape's colour and texture.
     let tube = crate::runs::unit_tube().0;
@@ -1513,6 +1596,7 @@ fn placements(
         }
         let shape = *tubes.entry(t.material.as_str()).or_insert_with(|| {
             shapes.push(tube.clone());
+            keys.insert(ShapeKey::Tube(t.material.clone()), shapes.len() - 1);
             shapes.len() - 1
         });
         let place = g.tube_place(*id, shape);
@@ -1540,7 +1624,7 @@ fn placements(
         }
         i = end;
     }
-    Some((shapes, out))
+    Some((shapes, keys, out))
 }
 
 /// How many elements a thread makes the triangles of at a time.
@@ -1987,33 +2071,48 @@ impl Scene {
     /// The edges of the model's surfaces: where two meet at an angle (not in one plane, nor one curve) and where one ends,
     /// each as the triangle it is an edge of and its ends, in the order of their triangles.
     fn edges(&self) -> &[(usize, [P3; 2])] {
-        self.edges.get_or_init(|| {
-            // Each edge by its corners to a micron, as `facets` names them: the triangles on it, and where on each.
-            let corner = |t: &Tri, k: usize| t.p.get(k % 3).copied().unwrap_or_default();
-            let q = |p: P3| p.map(|x| (x * 1e3).round() as i64);
-            type Corner = [i64; 3];
-            let mut on: HashMap<(Corner, Corner), Vec<(usize, usize)>> = HashMap::new();
-            for (i, t) in self.tris.iter().enumerate() {
-                for k in 0..3 {
-                    let (qa, qb) = (q(corner(t, k)), q(corner(t, k + 1)));
-                    if qa != qb {
-                        on.entry((qa.min(qb), qa.max(qb))).or_default().push((i, k));
-                    }
+        self.edges_cancellable(&|| false).unwrap_or_default()
+    }
+
+    /// [`edges`](Self::edges), abandoned for a superseded view: none then, and nothing kept, so the next to ask finds them.
+    pub(crate) fn edges_cancellable(&self, cancelled: &dyn Fn() -> bool) -> Option<&[(usize, [P3; 2])]> {
+        if let Some(edges) = self.edges.get() {
+            return Some(edges);
+        }
+        if cancelled() {
+            return None;
+        }
+        // Each edge by its corners to a micron, as `facets` names them: the triangles on it, and where on each.
+        let corner = |t: &Tri, k: usize| t.p.get(k % 3).copied().unwrap_or_default();
+        let q = |p: P3| p.map(|x| (x * 1e3).round() as i64);
+        type Corner = [i64; 3];
+        let mut on: HashMap<(Corner, Corner), Vec<(usize, usize)>> = HashMap::new();
+        for (i, t) in self.tris.iter().enumerate() {
+            if i % 8192 == 0 && cancelled() {
+                return None;
+            }
+            for k in 0..3 {
+                let (qa, qb) = (q(corner(t, k)), q(corner(t, k + 1)));
+                if qa != qb {
+                    on.entry((qa.min(qb), qa.max(qb))).or_default().push((i, k));
                 }
             }
-            let plane = |i: usize| self.planes.get(i).copied();
-            let mut edges: Vec<(usize, [P3; 2])> = on
-                .into_values()
-                .filter(|on| !matches!(on.as_slice(), [(x, _), (y, _)] if plane(*x) == plane(*y)))
-                .filter_map(|on| {
-                    let &(i, k) = on.first()?;
-                    let t = self.tris.get(i)?;
-                    Some((i, [corner(t, k), corner(t, k + 1)]))
-                })
-                .collect();
-            edges.sort_by(|x, y| x.0.cmp(&y.0).then(x.1.partial_cmp(&y.1).unwrap_or(std::cmp::Ordering::Equal)));
-            edges
-        })
+        }
+        let plane = |i: usize| self.planes.get(i).copied();
+        let mut edges: Vec<(usize, [P3; 2])> = on
+            .into_values()
+            .filter(|on| !matches!(on.as_slice(), [(x, _), (y, _)] if plane(*x) == plane(*y)))
+            .filter_map(|on| {
+                let &(i, k) = on.first()?;
+                let t = self.tris.get(i)?;
+                Some((i, [corner(t, k), corner(t, k + 1)]))
+            })
+            .collect();
+        if cancelled() {
+            return None;
+        }
+        edges.sort_by(|x, y| x.0.cmp(&y.0).then(x.1.partial_cmp(&y.1).unwrap_or(std::cmp::Ordering::Equal)));
+        Some(self.edges.get_or_init(|| edges))
     }
 
     /// The picture `cam` takes in wireframe: paper, and every edge of what `look` shows, in the colour it gives them (a
@@ -2029,17 +2128,8 @@ impl Scene {
                     continue;
                 };
                 let Rgb(r, g, bl) = tints.get(&owner).copied().unwrap_or_else(|| look.edge(owner, EDGE));
-                let Some([a, b]) = look.section_box().map_or(Some([a, b]), |bx| within(a, b, bx)) else { continue };
-                let Some([a, b]) = cam.in_front(a, b) else { continue };
-                let (pa, pb) = (cam.project(a), cam.project(b));
-                if ![pa.0, pa.1, pb.0, pb.1].iter().all(|x| x.is_finite()) {
-                    continue;
-                }
-                let Some((p, q)) = clip(P2(pa.0, pa.1), P2(pb.0, pb.1), P2(0.0, 0.0), P2(w as f64, h as f64)) else { continue };
-                let steps = (p.dist(q).ceil() as usize).max(1);
-                for k in 0..=steps {
-                    let t = k as f64 / steps as f64;
-                    let (x, y) = ((p.0 + (q.0 - p.0) * t).floor() as i64, (p.1 + (q.1 - p.1) * t).floor() as i64);
+                let Some((p, q)) = wire_line(cam, look.section_box(), [a, b], (w, h)) else { continue };
+                for (x, y) in wire_pixels(p, q) {
                     for (dx, dy) in (-2..=2).flat_map(|dx| (-2..=2).map(move |dy| (dx, dy))) {
                         let (px, py) = (x + dx, y + dy);
                         if (0..w as i64).contains(&px) && (0..h as i64).contains(&py) {
@@ -2161,7 +2251,7 @@ impl Scene {
         let colour = |t: &Tri| if plain { t.color } else { look.surface(t.owner, t.color) };
         // A curve's corners are lit by their own normals, and its pixels take the blend of the three;
         // the faces of a section are paper.
-        let smooth: &[Option<Box<[P3; 3]>>] = if flat { &[] } else { &self.smooth };
+        let smooth: &[Option<Arc<[P3; 3]>>] = if flat { &[] } else { &self.smooth };
         // How lit each corner of a curve is: its normals turned to the viewer as its face is.
         let corner_light = |i: usize| {
             let (t, n) = (self.tris.get(i)?, smooth.get(i)?.as_deref()?);
@@ -2219,10 +2309,10 @@ impl Scene {
             if !plain && colour(tri) != tri.color {
                 return None;
             }
-            let [across, up] = (*self.bases.get(t)?).as_ref()?;
+            let [across, up] = basis(tri);
             let (x, y) = ((k % w) as f64 + 0.5, (k / w) as f64 + 0.5);
             let at = cam.point_at((x, y), f64::from(z));
-            Some(sampler.at(dot(at, *across), dot(at, *up), foot))
+            Some(sampler.at(dot(at, across), dot(at, up), foot))
         };
         // What triangle `t` shows at pixel `k`, whose surface is `depths` there: a curve's, the blend of its corners' lighting; a
         // flat face's, its own shade; a texture's colour lit as the face is.
@@ -2324,15 +2414,7 @@ impl Scene {
         if clip.is_none() {
             let color = |id: Id| (plain || look.shows(id)).then(|| tints.get(&id).map_or((look.edge(id, DATUM), false), |c| (*c, true)));
             // A section box leaves out a level whose plane is above or below it, and cuts the rest to its sides.
-            let levels: Vec<(Id, String, [P3; 4])> = match cut {
-                Some(k) => self
-                    .levels
-                    .iter()
-                    .filter(|(.., c)| (k.lo[2]..=k.hi[2]).contains(&c[0][2]))
-                    .map(|(id, name, c)| (*id, name.clone(), c.map(|p| [p[0].clamp(k.lo[0], k.hi[0]), p[1].clamp(k.lo[1], k.hi[1]), p[2]])))
-                    .collect(),
-                None => self.levels.clone(),
-            };
+            let levels = cut.map_or_else(|| self.levels.clone(), |k| levels_in(&self.levels, (k.lo, k.hi)));
             for marks in level_marks(&levels, cam, &color) {
                 let (c, slot) = (marks.color, owners.len() as u32);
                 owners.push(marks.id);
@@ -2535,8 +2617,22 @@ impl Boxed {
 
     /// Whether triangle `t` lies wholly outside one of the box's planes, so none of it is kept.
     fn misses(&self, t: &Tri) -> bool {
-        (0..3).any(|i| t.p.iter().all(|p| p[i] < self.lo[i]) || t.p.iter().all(|p| p[i] > self.hi[i]))
+        self.misses_corners(&t.p)
     }
+
+    /// Whether the triangle with these corners lies wholly outside one of the box's planes.
+    fn misses_corners(&self, corners: &[P3; 3]) -> bool {
+        (0..3).any(|i| corners.iter().all(|p| p[i] < self.lo[i]) || corners.iter().all(|p| p[i] > self.hi[i]))
+    }
+}
+
+/// What a section box from `lo` to `hi` keeps of `levels`: those whose plane lies within its height, cut to its sides.
+fn levels_in(levels: &[(Id, String, [P3; 4])], (lo, hi): (P3, P3)) -> Vec<(Id, String, [P3; 4])> {
+    levels
+        .iter()
+        .filter(|(.., c)| (lo[2]..=hi[2]).contains(&c[0][2]))
+        .map(|(id, name, c)| (*id, name.clone(), c.map(|p| [p[0].clamp(lo[0], hi[0]), p[1].clamp(lo[1], hi[1]), p[2]])))
+        .collect()
 }
 
 /// The middle of each face of section box `(lo, hi)`, where its grips are: west, east, south, north, bottom and top.
@@ -2568,6 +2664,28 @@ pub fn move_box_face((mut lo, mut hi): (P3, P3), k: usize, by: f64) -> (P3, P3) 
         }
     }
     (lo, hi)
+}
+
+/// What a wireframe draws of the edge from `a` to `b` in a picture of `(w, h)` pixels: its ends in the picture, what lies
+/// outside the section box, behind the eye and off the picture cut away.
+fn wire_line(cam: &Camera, section_box: Option<(P3, P3)>, [a, b]: [P3; 2], (w, h): (usize, usize)) -> Option<(P2, P2)> {
+    let [a, b] = section_box.map_or(Some([a, b]), |bx| within(a, b, bx))?;
+    let [a, b] = cam.in_front(a, b)?;
+    let (pa, pb) = (cam.project(a), cam.project(b));
+    if ![pa.0, pa.1, pb.0, pb.1].iter().all(|x| x.is_finite()) {
+        return None;
+    }
+    clip(P2(pa.0, pa.1), P2(pb.0, pb.1), P2(0.0, 0.0), P2(w as f64, h as f64))
+}
+
+/// The pixels a wireframe's line from `p` to `q` steps through, a step no longer than a pixel. The card's `fs_wire` takes the
+/// same steps.
+fn wire_pixels(p: P2, q: P2) -> impl Iterator<Item = (i64, i64)> {
+    let steps = (p.dist(q).ceil() as usize).max(1);
+    (0..=steps).map(move |k| {
+        let t = k as f64 / steps as f64;
+        ((p.0 + (q.0 - p.0) * t).floor() as i64, (p.1 + (q.1 - p.1) * t).floor() as i64)
+    })
 }
 
 /// What of the line from `a` to `b` lies within the box from `lo` to `hi`, if any (Liang and Barsky's clipping).
