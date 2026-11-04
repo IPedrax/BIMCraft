@@ -3470,7 +3470,15 @@ impl Model {
     /// in a wall, the walls attached to a roof or a floor, the dimensions and tags on it.
     pub fn referring(&self, k: impl Key) -> Vec<Id> {
         let Some(g) = self.elements.guid(k) else { return Vec::new() };
-        self.elements.iter().filter(|(_, e)| e.refs().contains(&g)).map(|(id, _)| *id).collect()
+        // What points at it, as the lookup keeps it, in the order of their ids.
+        let found: Vec<Id> = self.lookup().referrers(&g).collect();
+        #[cfg(test)]
+        assert_eq!(
+            found,
+            self.elements.iter().filter(|(_, e)| e.refs().contains(&g)).map(|(id, _)| *id).collect::<Vec<_>>(),
+            "what points at an element, from the lookup, isn't every element that does"
+        );
+        found
     }
 
     /// The GUID of the element `k` finds; the nil GUID, which is no element's, when there's none.

@@ -166,7 +166,23 @@ impl Model {
             let at = |i: usize| d.equal || d.locked.iter().any(|l| l.segment == i || l.segment + 1 == i);
             self.stations(d).1.iter().enumerate().any(|(i, (_, _, r))| r.id == g && at(i))
         };
-        self.elements.iter().filter(|(_, e)| matches!(e, Element::Dimension(d) if constrained(d) && holds(d))).map(|(id, _)| *id).collect()
+        // A dimension that measures to it points at it: those are its referrers, found in the lookup, in the order of their ids.
+        let lookup = self.lookup();
+        let held: Vec<Id> = lookup
+            .referrers(&g)
+            .filter(|id| matches!(self.elements.get(*id), Some(Element::Dimension(d)) if constrained(d) && holds(d)))
+            .collect();
+        #[cfg(test)]
+        assert_eq!(
+            held,
+            self.elements
+                .iter()
+                .filter(|(_, e)| matches!(e, Element::Dimension(d) if constrained(d) && holds(d)))
+                .map(|(id, _)| *id)
+                .collect::<Vec<_>>(),
+            "the dimensions holding an element, from the lookup, aren't every one that does"
+        );
+        held
     }
 }
 
