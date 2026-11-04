@@ -5724,6 +5724,7 @@ mod templates;
 mod themes;
 mod titlebar;
 mod tools;
+mod triad;
 mod trim;
 mod typed;
 mod typeprops;

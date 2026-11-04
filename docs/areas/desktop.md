@@ -357,6 +357,23 @@ sloped, or upright as a wall's face) its tool says the work plane must be horizo
 angle, for what comes to sketch on one later (an opening on a wall). A Line or Polyline sketched in 3D shows the line to come,
 from the last point to the cursor, with its length (`sketch3d_preview`; the other shapes' previews are `shape_preview`'s).
 
+The navigation triad (`triad.rs`; the core's `triad.rs` has what any front end needs of it). Left of the 3D view's navigation bar
+(`BimApp::triad_rect`, which steps under the Options Bar as the bar does) stand the x, y and z axes in red, green and blue, turning
+with the camera, each end a marker (the positive a disc with its letter, the negative a ring with a minus), the far ones fainter. It
+is a triad, not a cube (#154 argues about a patent on clickable cubes). A click on an end turns the camera to look from that side
+(`triad::turned`): +z the top, -z the bottom, -y the front, +y the back, -x the left, +x the right; the target, closeness and lens stay,
+and a second click on the end the camera already looks from turns to the opposite side. The camera never turns straight down
+(`Camera::orbit`), so the top and bottom views stand at 89 and -89 degrees, north up in the top view and the same turn in the bottom.
+A camera view's new position is written back to it as any turn is. Alt and a click on an end sets the work plane square to that axis
+(`triad::plane`, the `work_plane` command with a surface): through the point of the plane the view was on that is nearest the camera's
+target, to the millimetre, facing the way the end points (a plane square to z always faces up); Alt and a click on the triad's empty
+space clears the view's own plane, back to the lowest level (nothing is done, and there is no undo step, where it is there already).
+Hovering an end names the view a click turns to (`Top`, or `Bottom` when the camera is on top already), and with Alt held the plane it
+would set. `BimApp::triad_input` makes the widget over the view's, sensing clicks and drags, so a click or a drag that begins on it is
+its own and never reaches the model behind (the view under it is not hovered either); `view3d` turns the camera with what it asks, and
+`triad_draw` draws over the picture, so the processor's and the card's alike, and the pick uses the camera alone, so it picks the same
+on both. A floating or linked 3D view beside the active one draws it but takes no clicks.
+
 Floor goes into sketch mode at once, in a plan as in 3D, as Revit's does (`set_tool`); its sketch's ribbon has Walls' Outline
 (`walls_outline_panel`), which puts the outline the level's walls enclose, and its courtyards, in the sketch as lines to edit
 (`floor_outline`): what the tool's one click inside the walls made before.

@@ -58,7 +58,7 @@ https://github.com/user-attachments/assets/46488109-fdc4-4ce5-a6bd-92b3b95af16c
     <td width="50%"><img src="docs/images/sample-section.png" alt="Section 1 of the sample house: the walls it cuts with their brick and block layers hatched, the slab and hipped roof in grey poché, the sofa and the partition beyond, the partition with its door, the levels with their heights, and grids 1 to 3"></td>
   </tr>
   <tr>
-    <td><sub><b>3D view</b>: from the south-east, as Revit's default 3D view looks. Orbit, pan and zoom; click to select.</sub></td>
+    <td><sub><b>3D view</b>: from the south-east, as Revit's default 3D view looks. Orbit, pan and zoom; click to select; the axis triad in the corner turns it to look from the top, bottom, front, back, left or right.</sub></td>
     <td><sub><b>Section</b>: the cut in poché, the roof along its slope, what lies beyond in hidden line, levels and grids.</sub></td>
   </tr>
   <tr>

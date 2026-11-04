@@ -69,6 +69,7 @@ mod templates;
 #[cfg(test)]
 mod tests;
 mod titlebar;
+mod triad;
 mod typeprops;
 mod updates;
 pub mod window;
