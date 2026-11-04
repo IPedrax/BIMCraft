@@ -712,4 +712,5 @@ fn fs_wire(in: WireOut) -> @location(0) vec4<f32> {
         }
     }
     discard;
+    return vec4<f32>(0.0);
 }
