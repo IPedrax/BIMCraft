@@ -1272,6 +1272,31 @@ impl Scene {
         })
     }
 
+    /// The edge of what `look` shows that passes nearest pixel `at`, within `reach` pixels, where the camera sees it: its
+    /// ends, and its point nearest the pixel. What a dimension in a 3D view picks to measure square to.
+    pub fn edge_near(&self, cam: &Camera, at: (f64, f64), reach: f64, look: &Look) -> Option<([P3; 2], P3)> {
+        let mut near: Vec<(f64, [P3; 2], P3)> = self
+            .edges()
+            .iter()
+            .filter(|(i, _)| self.tris.get(*i).is_some_and(|t| look.shows(t.owner) && !crate::link::is_linked(t.owner)))
+            .filter_map(|&(_, [a, b])| {
+                let [a, b] = cam.in_front(a, b)?;
+                let ((ax, ay, _), (bx, by, _)) = (cam.project(a), cam.project(b));
+                let (dx, dy) = (bx - ax, by - ay);
+                let l = dx * dx + dy * dy;
+                let t = if l > 0.0 { (((at.0 - ax) * dx + (at.1 - ay) * dy) / l).clamp(0.0, 1.0) } else { 0.0 };
+                let d = (ax + dx * t - at.0).hypot(ay + dy * t - at.1);
+                (d.is_finite() && d <= reach).then(|| (d, [a, b], add(a, mul(sub(b, a), t))))
+            })
+            .collect();
+        near.sort_by(|a, b| a.0.total_cmp(&b.0));
+        // Seen where its point is: nothing nearer the camera there, as a corner is seen.
+        near.into_iter().take(16).map(|(_, e, p)| (e, p)).find(|(_, p)| {
+            let (x, y, z) = cam.project(*p);
+            kept(look, *p) && self.hit(cam, (x, y), look).is_none_or(|(d, _)| d <= z + 1.0 + 2.0 / cam.scale.max(1e-9))
+        })
+    }
+
     pub fn level_heads(&self, cam: &Camera) -> Vec<LevelHead> {
         heads(&self.levels, cam)
     }

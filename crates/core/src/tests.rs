@@ -1884,6 +1884,9 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"refs": [{"id": 100002}, {"id": 100003}], "at": [0, 0]}),
         json!({"refs": [{"id": 100002, "face": "up"}, {"id": 100004}], "at": [0, 0]}),
         json!({"refs": [{"id": u64::MAX}, [0, 6000]], "at": [0, 0]}),
+        json!({"refs": [{"at": [0, 0, 0]}, {"at": [8000, 0, 3000], "edge": [[0, 6000, 0], [0, 6000, 0]]}], "at": [0, -1000, 0]}),
+        json!({"refs": [{"at": [0, 0, 1e300]}, {"at": [8000, 0, 0]}], "at": [0, -1000, f64::MAX], "view": 100002}),
+        json!({"refs": [{"at": [0, 0, 0], "edge": "x"}, {"at": [8000, 0, 0], "id": 5}], "at": [], "type": 7}),
         json!({"ids": [100002], "offset": [1e300, 0]}),
         json!({"ids": [100002, 100003], "leader": 5}),
         json!({"view": "{3D}", "azimuth": 1e300}),
@@ -5702,7 +5705,7 @@ fn a_project_is_saved_in_the_current_format_and_one_of_format_4_up_opens_as_it_i
     // 5 added the scans a project holds and the point clouds that place them; 6 added detailing (lines, regions, groups,
     // repeating details, line and fill styles); 7 its CAD drawings and the imports that place them; 8 text types; 9 graphic line patterns; 10 dimensions to points and linear ones; 11 and 12 the project languages Swedish, Czech and French, and Dutch;
     // 13 floors' and flat roofs' shapes; 14 the categories of family components, which the starter view templates name; 15 a roof's slope for each
-    // edge and a wall's top offset. Nothing in a file of 4
+    // edge and a wall's top offset; 16 dimensions in 3D views and the locks Align leaves. Nothing in a file of 4
     // to 7 that holds no notes changes.
     let mut s = Session::new();
     let empty = serde_json::to_value(&*s.model).unwrap();

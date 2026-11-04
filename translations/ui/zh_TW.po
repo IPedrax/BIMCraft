@@ -10215,6 +10215,22 @@ msgctxt "side"
 msgid "Top"
 msgstr ""
 
+#: crates/core/src/commands.rs:708
+msgid "Aligned Dimension in 3D"
+msgstr ""
+
+#: crates/ui-egui/src/orbit.rs:373
+msgid "Aligned dimension: {}"
+msgstr ""
+
+#: crates/ui-egui/src/orbit.rs:377
+msgid "Pick a corner, an edge or a face of the model to dimension."
+msgstr ""
+
+#: crates/ui-egui/src/orbit.rs:363
+msgid "The view runs along the dimension: turn it to place its line."
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3433
 #~ msgid "Click a point the arc passes through: it sets the radius. Esc cancels."
 #~ msgstr "單擊圓弧經過的一點：由此確定半徑。按 Esc 取消。"

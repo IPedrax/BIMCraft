@@ -69,7 +69,9 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 15: a roof may have a slope for each edge of its
+/// The version of the project file this build writes, and the newest it reads. 16: a 3D view may hold dimensions (the
+/// `dimension3d` category); nothing in a file of 15 changes, but a build that reads up to 15 would refuse one of 16 on
+/// opening ("isn't a category"), not say "saved by a newer BIMCraft". 15: a roof may have a slope for each edge of its
 /// footprint (`slopes`) and a wall a top offset from its top constraint (`top_offset`); nothing in a file of 14 changes, but a
 /// build that reads up to 14 would leave either out as a field it doesn't know, drawing the roof at one slope and the wall short
 /// of its offset, not "saved by a newer BIMCraft". 14: a view's graphics, a view template and the
@@ -102,7 +104,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 15;
+pub const FORMAT: u32 = 16;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -1064,6 +1066,32 @@ pub struct Dimension {
     pub locked: Vec<Lock>,
 }
 
+/// A dimension in a 3D view, as Revit's aligned dimension there: the distance between two points of the model, or square
+/// from one to an edge (between two parallel edges, how far apart they are), its line through `at` (what it measures moved
+/// square off it), drawn in `view` and on a sheet that holds the view (`crate::dims3d`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Dimension3D {
+    /// The 3D view that holds it.
+    pub view: Guid,
+    pub refs: [Ref3; 2],
+    /// A point its line passes through, [x, y, z] mm.
+    pub at: [f64; 3],
+    /// Its dimension type (`crate::dims`), as a plan's dimensions have: how it draws and letters its number.
+    #[serde(rename = "type", default)]
+    pub type_name: String,
+}
+
+/// What a dimension in a 3D view measures to: a point of the model, [x, y, z] mm; on an edge, the edge's two ends too, which
+/// it measures square to.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Ref3 {
+    pub at: [f64; 3],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edge: Option<[[f64; 3]; 2]>,
+}
+
 /// A dimension's segment `segment` (counted as its values are) kept at `length` mm, Revit's padlock.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1970,6 +1998,7 @@ macro_rules! visit_refs {
                 f(& $($m)? t.host);
                 if let Some(g) = & $($m)? t.view { f(g) }
             }
+            Element::Dimension3D(d) => f(& $($m)? d.view),
             Element::Viewport(v) => {
                 f(& $($m)? v.sheet);
                 f(& $($m)? v.view);
@@ -2024,6 +2053,8 @@ pub enum Element {
     #[serde(rename = "roomseparator")]
     RoomSeparator(RoomSeparator),
     Dimension(Dimension),
+    /// A dimension in a 3D view, between points or edges of the model.
+    Dimension3D(Dimension3D),
     Tag(Tag),
     Section(Section),
     Elevation(Section),
@@ -2259,6 +2290,7 @@ impl Element {
             Element::RoomSeparator(_) => "roomseparator",
             Element::Rebar(_) => "rebar",
             Element::Dimension(_) => "dimension",
+            Element::Dimension3D(_) => "dimension3d",
             Element::Tag(_) => "tag",
             Element::Section(_) => "section",
             Element::Elevation(_) => "elevation",
@@ -3275,6 +3307,7 @@ impl Model {
         // `component` for them all, which still does, and has the templates it was given: none, unless the user made them.
         // 14 to 15 (a roof's slope for each edge, a wall's top offset) has no step: the new fields default, to every edge at the
         // roof's `slope` and to a top at its level, which is what a file of 14 holds.
+        // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse) has no step: a file of 15 holds none.
         self.format = FORMAT;
     }
 
@@ -3991,6 +4024,7 @@ impl Model {
             | Element::Viewport(_)
             | Element::Schedule(_)
             | Element::Link(_)
+            | Element::Dimension3D(_)
             | Element::View3D(_) => None,
         }
     }
@@ -6125,6 +6159,31 @@ impl Model {
                             self.elevation(r.level),
                             r.base_offset
                         ));
+                    }
+                }
+                Element::Dimension3D(d) => {
+                    if !matches!(self.elements.get(d.view), Some(Element::View3D(_))) {
+                        return Err(format!("{who}: view {} isn't a 3D view", self.shown(d.view)));
+                    }
+                    for q in
+                        std::iter::once(d.at).chain(d.refs.iter().flat_map(|r| std::iter::once(r.at).chain(r.edge.into_iter().flatten())))
+                    {
+                        for v in q {
+                            coord(&format!("{who} point"), v)?;
+                        }
+                    }
+                    if d.refs.iter().any(|r| r.edge.is_some_and(|[a, b]| (0..3).map(|i| (a[i] - b[i]).powi(2)).sum::<f64>().sqrt() <= TOL))
+                    {
+                        return Err(format!("{who}: an edge it measures to has its two ends in one place"));
+                    }
+                    if crate::dims3d::length(d) <= TOL {
+                        return Err(format!(
+                            "{who}: it measures nothing: its references are in one place, or one lies on the other's edge"
+                        ));
+                    }
+                    if !self.dimension_types.contains_key(&d.type_name) {
+                        let there: Vec<&str> = self.dimension_types.keys().map(String::as_str).collect();
+                        return Err(format!("{who}: there's no dimension type `{}` (there are: {})", d.type_name, there.join(", ")));
                     }
                 }
                 Element::Dimension(d) => {

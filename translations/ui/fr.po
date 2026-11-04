@@ -10215,6 +10215,22 @@ msgctxt "side"
 msgid "Top"
 msgstr ""
 
+#: crates/core/src/commands.rs:708
+msgid "Aligned Dimension in 3D"
+msgstr ""
+
+#: crates/ui-egui/src/orbit.rs:373
+msgid "Aligned dimension: {}"
+msgstr ""
+
+#: crates/ui-egui/src/orbit.rs:377
+msgid "Pick a corner, an edge or a face of the model to dimension."
+msgstr ""
+
+#: crates/ui-egui/src/orbit.rs:363
+msgid "The view runs along the dimension: turn it to place its line."
+msgstr ""
+
 #: crates/ui-egui/src/fillpatterns.rs:634
 #~ msgid "A pattern of the file replaces the one of its name in this list; else it is left out"
 #~ msgstr "Un motif du fichier remplace celui du même nom dans cette liste; sinon il est omis"

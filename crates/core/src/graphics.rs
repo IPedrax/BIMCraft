@@ -178,6 +178,8 @@ pub fn component_category(category: crate::family::Category) -> Option<&'static 
 pub fn category_of(m: &Model, e: &Element) -> &'static str {
     match e {
         Element::Component(c) => m.families.get(&c.family).and_then(|f| component_category(f.category)).unwrap_or(COMPONENT),
+        // A 3D view's dimensions are Dimensions to its Visibility/Graphics.
+        Element::Dimension3D(_) => "dimension",
         other => other.category(),
     }
 }
