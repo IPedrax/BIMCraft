@@ -446,7 +446,9 @@ fn a_beam_is_an_ifc_beam_swept_along_its_axis_in_its_material() {
     assert!(file.contains("IFCDIRECTION((1.,0.,0.))") && file.contains("IFCDIRECTION((0.,1.,0.))"));
     // Of concrete, load bearing, in a system.
     assert!(file.contains("IFCMATERIAL('Concrete'"));
-    assert_eq!(entities(&file, "IFCRELASSOCIATESMATERIAL").len(), 1);
+    // The material is in its type's material profile set: one association for the type, one for the beam's usage of the set.
+    assert_eq!(entities(&file, "IFCRELASSOCIATESMATERIAL").len(), 2);
+    assert_eq!(entities(&file, "IFCMATERIALPROFILE").len(), 1);
     assert!(
         file.contains("IFCPROPERTYSET(")
             && file.contains("'Pset_BeamCommon'")
@@ -610,6 +612,10 @@ fn the_structure_comes_back_from_ifc() {
     // The types they were of came with them, in the maps of their own.
     assert!(t.model.types.structural_column.contains_key("C 250 x 600") && t.model.types.footing.contains_key("F 1800"));
     assert!(t.model.types.runs["beam"].contains_key("B 250 x 600") && t.model.types.runs["stripfooting"].contains_key("S 900 x 350"));
+    // A beam's material is in its type's material profile set in the file, and comes back from it.
+    assert_eq!(t.model.types.runs["beam"]["B 250 x 600"].material, "Concrete");
+    assert_eq!(t.model.types.runs["beam"]["B 250 x 600"].material, s.model.types.runs["beam"]["B 250 x 600"].material);
+    assert!(t.model.types.runs["stripfooting"]["S 900 x 350"].material == s.model.types.runs["stripfooting"]["S 900 x 350"].material);
     // An architectural column stays one; a floor says whether it is structural.
     assert_eq!(described(&t.model, "column").len(), 1);
     // And the project they come into holds what they need.
