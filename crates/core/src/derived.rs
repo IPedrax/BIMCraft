@@ -191,7 +191,7 @@ fn own_heights(elements: &Elements, w: &crate::model::Wall) -> Option<(f64, f64)
         _ => 0.0,
     };
     let base = elevation(w.level) + w.base_offset;
-    Some((base, w.top_level.map_or(base + w.height, elevation)))
+    Some((base, w.top_level.map_or(base + w.height, |t| elevation(t) + w.top_offset)))
 }
 
 /// The tiles a box `[x0, y0, x1, y1]` reaches, if it's of finite numbers and not too big for them.
@@ -701,6 +701,20 @@ mod tests {
         let referrers: Vec<&str> =
             s.model.lookup().referrers(&guid).filter_map(|id| s.model.elements.get(id)).map(Element::category).collect();
         assert!(referrers.iter().all(|c| ["door", "window", "tag", "dimension", "room"].contains(c)), "{referrers:?}");
+    }
+
+    #[test]
+    fn a_wall_raised_past_its_top_level_by_its_top_offset_is_near_at_the_heights_it_reaches() {
+        let mut s = Session::new();
+        let level = s.model.levels()[0].0;
+        // Its top 3 m over its top level, the level it stands on: it reaches from 0 to 3000.
+        let made = s.execute("wall", &json!({"points": [[0, 0], [5000, 0]], "top_level": level, "top_offset": 3000})).unwrap();
+        let wall = made["ids"][0].as_u64().or_else(|| made["id"].as_u64()).unwrap();
+        let w = s.model.wall(wall).unwrap();
+        assert_eq!((s.model.base_z(w), s.model.top_z(w)), (0.0, 3000.0));
+        let near = s.model.lookup().walls_near_at(&[(axis_box(w), 2500.0, 2600.0)], 0.0);
+        assert!(near.contains(&wall), "a wall 3 m tall isn't near at 2.5 m");
+        assert_eq!(*s.model.lookup(), Lookup::of(&s.model.elements));
     }
 
     #[test]
