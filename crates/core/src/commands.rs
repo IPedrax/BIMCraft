@@ -2162,8 +2162,6 @@ fn off_centre(m: &Model, w: &Wall, p: P2) -> f64 {
     Axis::of(w).distance(p, walls::centre(m, w))
 }
 
-/// The wall a plan of `level` cuts nearest `at`, within its half thickness plus 100 mm of its centre
-/// line, and how far along it `at` lies.
 /// The nearest wall at `at` on any level, with the heights it spans: what a level that does not cut it should be told about.
 fn wall_elsewhere(m: &Model, at: P2) -> Option<(Id, f64, f64)> {
     m.elements
@@ -2177,6 +2175,8 @@ fn wall_elsewhere(m: &Model, at: P2) -> Option<(Id, f64, f64)> {
         .map(|(id, w, _)| (*id, m.base_z(w), m.top_z(w)))
 }
 
+/// The wall a plan of `level` cuts nearest `at`, within its half thickness plus 100 mm of its centre
+/// line, and how far along it `at` lies.
 fn wall_at(m: &Model, level: impl Key, at: P2) -> Option<(Guid, f64)> {
     m.elements
         .with_guids()
