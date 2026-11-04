@@ -10251,3 +10251,7 @@ msgstr ""
 #: crates/ui-egui/src/orbit.rs:578
 msgid "in the 3D view this tool draws on a level face: the top of a floor, a flat roof or a level"
 msgstr ""
+
+#: crates/ui-egui/src/dock.rs:555
+msgid "Project Browser · {}"
+msgstr ""

@@ -2152,6 +2152,19 @@ fn off_centre(m: &Model, w: &Wall, p: P2) -> f64 {
 
 /// The wall a plan of `level` cuts nearest `at`, within its half thickness plus 100 mm of its centre
 /// line, and how far along it `at` lies.
+/// The nearest wall at `at` on any level, with the heights it spans: what a level that does not cut it should be told about.
+fn wall_elsewhere(m: &Model, at: P2) -> Option<(Id, f64, f64)> {
+    m.elements
+        .iter()
+        .filter_map(|(id, e)| match e {
+            Element::Wall(w) => Some((id, w, off_centre(m, w, at))),
+            _ => None,
+        })
+        .filter(|(_, w, d)| *d <= m.thickness(w) / 2.0 + 100.0)
+        .min_by(|a, b| a.2.total_cmp(&b.2))
+        .map(|(id, w, _)| (*id, m.base_z(w), m.top_z(w)))
+}
+
 fn wall_at(m: &Model, level: impl Key, at: P2) -> Option<(Guid, f64)> {
     m.elements
         .with_guids()
@@ -6249,7 +6262,20 @@ fn build_opening(m: &Model, p: &Value, is_door: bool) -> Result<Opening, String>
         None => {
             let at = at.ok_or_else(|| bad(c, "give `at` [x, y] on a wall, or `wall` with `offset`"))?;
             let level = level_param(c, m, p, "level")?;
-            wall_at(m, level, at).ok_or_else(|| bad(c, format!("no wall at [{}, {}] on {}", at.0, at.1, level_name(m, level))))?
+            wall_at(m, level, at).ok_or_else(|| {
+                let none = format!("no wall at [{}, {}] on {}", at.0, at.1, level_name(m, level));
+                match wall_elsewhere(m, at) {
+                    Some((id, bottom, top)) => bad(
+                        c,
+                        format!(
+                            "{none}; wall {id} stands there but spans {bottom} to {top} mm and {} cuts at {} mm: give the wall that level, or a view range that cuts it",
+                            level_name(m, level),
+                            m.plan_range(level).cut
+                        ),
+                    ),
+                    None => bad(c, none),
+                }
+            })?
         }
     };
     let offset = num(c, p, "offset")?.unwrap_or(along_at);
