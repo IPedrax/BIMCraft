@@ -569,7 +569,7 @@ fn parse(kind: Kind, s: &str, units: Units) -> Result<Value, String> {
 /// A drop-down of `options`, named by `label`; the one picked, if it changed.
 pub(crate) fn combo(ui: &mut Ui, salt: (Id, &str), label: UiId, current: &str, options: &[String]) -> Option<String> {
     let mut picked = None;
-    let c = ComboBox::from_id_salt(salt).selected_text(current).width(ui.available_width()).show_ui(ui, |ui| {
+    let c = ComboBox::from_id_salt(salt).selected_text(current).width(ui.available_width()).truncate().show_ui(ui, |ui| {
         for o in options {
             if ui.selectable_label(o == current, o).clicked() && o != current {
                 picked = Some(o.clone());
@@ -602,8 +602,7 @@ pub(crate) fn group_header(ui: &mut Ui, group: &str, open: bool) -> bool {
     response.widget_info(|| WidgetInfo::selected(WidgetType::CollapsingHeader, true, open, group));
     let p = ui.painter();
     p.rect_filled(r, 0.0, if response.hovered() { pal().hover_fill } else { pal().bar });
-    let font = if crate::style::rev() { crate::style::semibold(13.0) } else { FontId::proportional(13.0) };
-    p.text(r.left_center() + vec2(8.0, 0.0), Align2::LEFT_CENTER, group, font, pal().text);
+    p.text(r.left_center() + vec2(8.0, 0.0), Align2::LEFT_CENTER, group, FontId::proportional(13.0), pal().text);
     // A chevron on the right, pointing down while the group is open.
     let c = pos2(r.right() - 12.0, r.center().y);
     let chevron =
@@ -616,32 +615,18 @@ pub(crate) fn group_header(ui: &mut Ui, group: &str, open: bool) -> bool {
 }
 
 /// A group's rows under its header: names on the left and values on the right, half the palette each, as Revit's columns, so a
-/// long name wraps rather than pushing its field past the palette's edge. Rev rules it as its property grid is: a line between the
-/// columns here, and one under each row ([`end_row`]).
+/// long name wraps rather than pushing its field past the palette's edge.
 pub(crate) fn grid(ui: &mut Ui, id: impl egui::AsIdSalt, add: impl FnOnce(&mut Ui)) {
     Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
         // Room left for the palette's scroll bar: one that comes would otherwise push the rows past the card.
         let half = (ui.available_width() - ui.spacing().item_spacing.x - ui.spacing().scroll.bar_width) / 2.0;
-        let rows = Grid::new(id).num_columns(2).min_col_width(half).max_col_width(half).show(ui, add).response.rect;
-        if crate::style::rev() {
-            let x = rows.left() + half + ui.spacing().item_spacing.x / 2.0;
-            ui.painter().vline(x, rows.y_range(), Stroke::new(1.0, pal().border));
-        }
+        Grid::new(id).num_columns(2).min_col_width(half).max_col_width(half).show(ui, add);
     });
 }
 
 /// The palette's Apply. Fields commit on Enter or when they lose the keyboard, which a click here does.
-pub(crate) fn apply(ui: &mut Ui) {
+fn apply(ui: &mut Ui) {
     let _ = ui.button(t("Apply"));
-}
-
-/// Ends a row of a [`grid`]; Rev draws the line under it.
-pub(crate) fn end_row(ui: &mut Ui) {
-    ui.end_row();
-    if crate::style::rev() {
-        let y = ui.cursor().top() - ui.spacing().item_spacing.y / 2.0;
-        ui.painter().hline(ui.max_rect().x_range(), y, Stroke::new(1.0, pal().border));
-    }
 }
 
 /// What the palette shows.
@@ -1128,11 +1113,8 @@ impl BimApp {
             self.graphics_properties(ui);
             self.phasing_properties(ui);
         }
-        // Rev's Apply is at the palette's foot, out of the rows (`palette_body`).
-        if !crate::style::rev() {
-            ui.add_space(8.0);
-            ui.with_layout(Layout::right_to_left(Align::Min), apply);
-        }
+        ui.add_space(8.0);
+        ui.with_layout(Layout::right_to_left(Align::Min), apply);
     }
 
     /// The layers of the type the palette shows, drawn to their thicknesses in their materials' colours: a wall's from its exterior
@@ -1216,7 +1198,7 @@ impl BimApp {
                 r.widget_info(|| WidgetInfo::selected(WidgetType::RadioButton, true, on, t(label)));
                 let p = ui.painter();
                 let (fill, edge) = if on { (pal().select_fill, pal().accent) } else { (pal().surface, pal().border) };
-                p.rect(rect, crate::style::corner(4.0), fill, Stroke::new(1.0, edge), StrokeKind::Inside);
+                p.rect(rect, 4.0, fill, Stroke::new(1.0, edge), StrokeKind::Inside);
                 // The wall across the tile with its opening in the middle; the leaf from its hinge and the arc it sweeps.
                 let ink = Stroke::new(1.5, if on { pal().accent_ink } else { pal().icon });
                 let (c, half) = (rect.center(), (w * 0.2).min(10.0));
@@ -1269,7 +1251,7 @@ impl BimApp {
                 r.widget_info(|| WidgetInfo::selected(WidgetType::RadioButton, true, on, t(label)));
                 let fill = c.map_or(pal().surface, |[red, green, blue]| egui::Color32::from_rgb(red, green, blue));
                 let edge = if on { Stroke::new(2.0, pal().accent_ink) } else { Stroke::new(1.0, pal().border) };
-                ui.painter().rect(rect, crate::style::corner(4.0), fill, edge, StrokeKind::Inside);
+                ui.painter().rect(rect, 4.0, fill, edge, StrokeKind::Inside);
                 if c.is_none() {
                     ui.painter().line_segment(
                         [rect.left_bottom() + vec2(4.0, -4.0), rect.right_top() + vec2(-4.0, 4.0)],
@@ -1364,7 +1346,7 @@ impl BimApp {
         grid(ui, ("sketch-slope", i), |ui| {
             let name = ui.label(t("Slope"));
             typed = self.field(ui, 1 + i as Id, "sketch-slope", current, name.id, t("Roof's slope"));
-            end_row(ui);
+            ui.end_row();
         });
         let Some(typed) = typed else { return };
         let max = bimcraft_core::model::MAX_SLOPE;
@@ -1443,7 +1425,7 @@ impl BimApp {
         let p = ui.painter();
         p.rect(
             rect,
-            crate::style::corner(3.0),
+            3.0,
             pal().surface,
             Stroke::new(1.0, if r.hovered() && enabled { pal().hover } else { pal().border }),
             StrokeKind::Inside,
@@ -1473,7 +1455,7 @@ impl BimApp {
             p.add(Shape::convex_polygon(vec![c + vec2(-4.0, -2.0), c + vec2(4.0, -2.0), c + vec2(0.0, 3.0)], pal().icon, Stroke::NONE));
         }
         if r.has_focus() {
-            p.rect_stroke(rect, crate::style::corner(3.0), crate::style::focus_ring(), StrokeKind::Inside);
+            p.rect_stroke(rect, 3.0, crate::style::focus_ring(), StrokeKind::Inside);
         }
         let mut picked = None;
         // A component's list holds every family's types, more than a window has room for (issue 64): it scrolls, as tall as
@@ -1728,7 +1710,7 @@ impl BimApp {
                             }
                         }
                     }
-                    end_row(ui);
+                    ui.end_row();
                 }
             });
         }
@@ -1791,7 +1773,7 @@ impl BimApp {
                         }
                     }
                 });
-                end_row(ui);
+                ui.end_row();
             }
         });
         if let Some(other) = select {
@@ -1942,7 +1924,7 @@ impl BimApp {
                         if r.labelled_by(label.id).changed() {
                             change = Some((name.to_string(), Ok(json!(on))));
                         }
-                        end_row(ui);
+                        ui.end_row();
                         continue;
                     }
                     ParameterKind::Length => Length,
@@ -1953,7 +1935,7 @@ impl BimApp {
                     let v = if typed.trim().is_empty() { Ok(Value::Null) } else { parse(field, &typed, units) };
                     change = Some((name.to_string(), v));
                 }
-                end_row(ui);
+                ui.end_row();
             }
         });
         match change {
@@ -1993,12 +1975,12 @@ impl BimApp {
                             ui.label(RichText::new(&sc.name).color(pal().muted));
                         }
                     }
-                    end_row(ui);
+                    ui.end_row();
                     return;
                 }
                 ui.label(t("Category"));
                 ui.label(RichText::new(lang::category(&sc.of, true)).color(pal().muted));
-                end_row(ui);
+                ui.end_row();
                 for (tab, label) in SCHEDULE_TABS.iter().enumerate() {
                     ui.label(t(label));
                     let r = wide_button(ui, t("Edit…"));
@@ -2007,7 +1989,7 @@ impl BimApp {
                     if r.clicked() {
                         open = Some(tab);
                     }
-                    end_row(ui);
+                    ui.end_row();
                 }
             });
         }

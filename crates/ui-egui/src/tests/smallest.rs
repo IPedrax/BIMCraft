@@ -31,8 +31,8 @@ fn cards(h: &Harness<BimApp>) -> Vec<Rect> {
     out
 }
 
-/// The looks the window is laid out in: BIMCraft's Floating and Compact layouts, and the Rev profile, which has one.
-const LOOKS: [(bool, Profile); 3] = [(false, Profile::BimCraft), (true, Profile::BimCraft), (false, Profile::Rev)];
+/// The looks the window is laid out in: each profile in the Floating and Compact layouts.
+const LOOKS: [(bool, Profile); 4] = [(false, Profile::BimCraft), (true, Profile::BimCraft), (false, Profile::Rev), (true, Profile::Rev)];
 
 /// The window brought down to the least a window can be: from the start, or from a bigger one the palettes were sized in.
 fn at_the_least((compact, profile): (bool, Profile), from_bigger: bool) -> Harness<'static, BimApp> {
@@ -121,11 +121,9 @@ fn the_tab_just_picked_is_in_view_though_the_tabs_run_past_the_window() {
         h.run();
         let in_view = |h: &Harness<BimApp>, label: &str| {
             let (tab, fold) = (h.get_by_label(label).rect(), h.get_by_label("Minimize the Ribbon").rect());
-            // Rev's File tab leads the row and doesn't scroll with it.
-            let start = if profile == Profile::Rev { h.get_by_label("File").rect().right() } else { 0.0 };
             assert!(
-                tab.left() >= start && tab.right() <= fold.left(),
-                "`{label}` {tab:?} is in the tabs, which run from {start} to where the fold button {fold:?} starts ({profile:?})"
+                tab.left() >= 0.0 && tab.right() <= fold.left(),
+                "`{label}` {tab:?} is in the tabs, which run to where the fold button {fold:?} starts ({profile:?})"
             );
         };
         // A tab far along the row.
