@@ -85,13 +85,26 @@ pub fn line_through(cam: &Camera, p: P3, q: P3, at: (f64, f64)) -> Option<P3> {
 /// What the 3D dimensions of `view` that `look` shows draw through `cam`, `mm` pixels to a millimetre of paper.
 pub fn marks(m: &Model, view: impl Key, cam: &Camera, look: &Look, mm: f64) -> Vec<Mark> {
     let Some(g) = m.elements.guid(view) else { return Vec::new() };
-    m.elements
-        .iter()
-        .filter_map(|(id, e)| match e {
-            Element::Dimension3D(d) if d.view == g && look.shows(*id) => Some((*id, d)),
+    let mine = |id: Id, e: &'_ Element| match e {
+        Element::Dimension3D(d) if d.view == g && look.shows(id) => Some(id),
+        _ => None,
+    };
+    // A dimension points at its view: the view's referrers, in the order of their ids, are its dimensions and more.
+    let lookup = m.lookup();
+    let found: Vec<Id> = lookup.referrers(&g).filter_map(|id| mine(id, m.elements.get(id)?)).collect();
+    #[cfg(test)]
+    assert_eq!(
+        found,
+        m.elements.iter().filter_map(|(id, e)| mine(*id, e)).collect::<Vec<_>>(),
+        "a 3D view's dimensions, from the lookup, aren't every one in it"
+    );
+    found
+        .into_iter()
+        .filter_map(|id| match m.elements.get(id) {
+            Some(Element::Dimension3D(d)) => Some(marks_of(m, id, d, cam, mm)),
             _ => None,
         })
-        .flat_map(|(id, d)| marks_of(m, id, d, cam, mm))
+        .flatten()
         .collect()
 }
 

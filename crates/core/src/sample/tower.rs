@@ -1,0 +1,996 @@
+//! The reference tower: an original procedural office tower of up to 100 storeys and about ten thousand elements a storey,
+//! a million in all, the baseline of the next core ([docs/spatial-core-plan.md]). Never derived from a customer's model.
+//!
+//! One storey is built through the ordinary commands, its repeated parts laid out with `copy` (doubling, so a row of 28 is
+//! five commands, not 28), then stacked: each storey's elements are fresh copies with ids and GUIDs of their own, their
+//! levels and hosts pointed at the storey's, and their rooms, doors and windows numbered by storey.
+//!
+//! The plate is 84 × 60 m of 6 m bays. Round the facade, 3 m offices; inside them a 2 m ring corridor, which has the
+//! inner block as an island; inside that a ring of 4 m meeting rooms; in the middle a core of service rooms divided by
+//! crossing walls, with four lift shafts. Every room bounds, has a ceiling and a tag, and is furnished. Above the
+//! ceilings run the services: luminaires with junction boxes and conduits, sprinklers with tees, hangers and branch
+//! pipes, air terminals, fan coils with their pipes and valves, smoke detectors, a cable tray and lights round the
+//! corridor, and the service rooms' water and drains.
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use serde_json::{Value, json};
+
+use crate::engine::Session;
+use crate::model::{Element, Guid, Id, Level, Model};
+
+/// The most storeys the tower has.
+pub const MAX_STOREYS: u32 = 100;
+/// Floor to floor, mm.
+pub const STOREY: i64 = 4000;
+
+/// A storey's plate, mm: a multiple of the 6 m bay each way, with room for the core's 4 × 8 m cells inside the rings (14 m
+/// in from the facade), each way 28 m and a multiple of 8 m more (so the lifts either side of the middle sit in cells).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Plate {
+    pub width: i64,
+    pub depth: i64,
+}
+
+impl Plate {
+    /// The reference: 84 × 60 m, 14 × 10 bays.
+    pub const REFERENCE: Plate = Plate { width: 84_000, depth: 60_000 };
+    /// The smallest the layout takes: 36 × 36 m, a core of two cells. A fixture tests can afford.
+    pub const SMALL: Plate = Plate { width: 36_000, depth: 36_000 };
+
+    fn check(self) -> Result<(), String> {
+        let fits = |n: i64, core: i64| n % 6000 == 0 && (36_000..=600_000).contains(&n) && (n - 28_000) % core == 0;
+        if fits(self.width, 8000) && fits(self.depth, 8000) {
+            Ok(())
+        } else {
+            Err(format!("tower: a plate of {} × {} mm doesn't take the layout's bays and core", self.width, self.depth))
+        }
+    }
+}
+/// The ceilings' height over their level, mm.
+const CEILING: i64 = 2700;
+const INTERIOR: &str = "Interior - 100mm";
+
+/// The reference tower of `storeys` storeys (1 to [`MAX_STOREYS`]).
+pub fn tower(storeys: u32) -> Result<Model, String> {
+    tower_on(Plate::REFERENCE, storeys)
+}
+
+/// The tower's layout on another plate: smaller ones make fixtures that tests can afford.
+pub fn tower_on(plate: Plate, storeys: u32) -> Result<Model, String> {
+    build(plate, storeys, Drawings::default())
+}
+
+/// The tower with its plans annotated and detailed, as a set of drawings is: about two thousand 2D elements in each
+/// storey's plan (detail lines, text notes, filled regions, and dimensions on its walls), two hundred thousand in all.
+pub fn annotated(plate: Plate, storeys: u32) -> Result<Model, String> {
+    build(plate, storeys, Drawings { annotation: true, sheets: false })
+}
+
+/// What the tower's drawings hold beside its model.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Drawings {
+    /// Each storey's plan annotated and detailed ([`annotated`]).
+    pub annotation: bool,
+    /// A drawing set: each storey's floor plan, ceiling plan and its two halves enlarged on sheets of their own, with
+    /// general notes; and the project's sheets: the 3D view, the elevations, a section and the schedules.
+    pub sheets: bool,
+}
+
+/// The tower with the drawings `d` asks for.
+pub fn drawn(plate: Plate, storeys: u32, d: Drawings) -> Result<Model, String> {
+    build(plate, storeys, d)
+}
+
+fn build(plate: Plate, storeys: u32, drawings: Drawings) -> Result<Model, String> {
+    if !(1..=MAX_STOREYS).contains(&storeys) {
+        return Err(format!("tower: `storeys` must be between 1 and {MAX_STOREYS}"));
+    }
+    plate.check()?;
+    let mut s = Session::new();
+    run(&mut s, "new", json!({"name": "Reference Tower"}))?;
+    families(&mut s)?;
+    structure(&mut s, plate)?;
+    facade(&mut s, plate)?;
+    partitions(&mut s, plate)?;
+    offices(&mut s, plate)?;
+    ring(&mut s, plate)?;
+    core(&mut s, plate)?;
+    services(&mut s, plate)?;
+    run(&mut s, "tag", json!({}))?;
+    run(&mut s, "tag", json!({"category": "room"}))?;
+    if drawings.annotation {
+        annotate(&mut s, plate)?;
+    }
+    if drawings.sheets {
+        storey_sheets(&mut s, plate)?;
+        project_sheets(&mut s, plate)?;
+    }
+    stack(&s.model, storeys)
+}
+
+fn run(s: &mut Session, cmd: &str, p: Value) -> Result<Value, String> {
+    s.execute(cmd, &p).map_err(|e| format!("tower: {cmd} {p}: {e}"))
+}
+
+/// The ids a command made.
+fn made(v: &Value) -> Vec<Id> {
+    match v["ids"].as_array() {
+        Some(a) => a.iter().filter_map(Value::as_u64).collect(),
+        None => v["id"].as_u64().into_iter().collect(),
+    }
+}
+
+fn make(s: &mut Session, cmd: &str, p: Value) -> Result<Vec<Id>, String> {
+    run(s, cmd, p).map(|v| made(&v))
+}
+
+/// `ids` and `count - 1` copies of them, each `step` on from the last; all their ids. Doubling: a row of `count` takes
+/// about 2 log₂ `count` commands.
+fn array(s: &mut Session, ids: Vec<Id>, step: [i64; 2], count: i64) -> Result<Vec<Id>, String> {
+    let by = |n: i64| [step[0] * n, step[1] * n];
+    // powers[k]: the first 2^k of them.
+    let mut powers = vec![ids.clone()];
+    let mut all = ids;
+    let mut have = 1;
+    while have * 2 <= count {
+        let copies = make(s, "copy", json!({"ids": all, "by": by(have)}))?;
+        all.extend(copies);
+        have *= 2;
+        powers.push(all.clone());
+    }
+    for (k, set) in powers.iter().enumerate().rev() {
+        let size = 1i64 << k;
+        if have + size <= count {
+            let copies = make(s, "copy", json!({"ids": set, "by": by(have)}))?;
+            all.extend(copies);
+            have += size;
+        }
+    }
+    Ok(all)
+}
+
+fn rect(x0: i64, y0: i64, x1: i64, y1: i64) -> Value {
+    json!([[x0, y0], [x1, y0], [x1, y1], [x0, y1]])
+}
+
+fn wall(s: &mut Session, a: [i64; 2], b: [i64; 2]) -> Result<Vec<Id>, String> {
+    make(s, "wall", json!({"points": [a, b], "height": STOREY, "type": INTERIOR}))
+}
+
+fn closed(s: &mut Session, x0: i64, y0: i64, x1: i64, y1: i64) -> Result<Vec<Id>, String> {
+    make(s, "wall", json!({"points": rect(x0, y0, x1, y1), "closed": true, "height": STOREY, "type": INTERIOR}))
+}
+
+/// The points from `a` to `b` every `step` mm, and `b`.
+fn line(a: [i64; 2], b: [i64; 2], step: i64) -> Vec<[i64; 2]> {
+    let length = (b[0] - a[0]).abs() + (b[1] - a[1]).abs();
+    let n = (length + step - 1) / step;
+    (0..=n).map(|k| [a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]).collect()
+}
+
+/// The tower's own families, simple original shapes: what the starter library has no family for.
+fn families(s: &mut Session) -> Result<(), String> {
+    let block = |x: i64, y: i64, h: i64| json!({"profile": rect(-x / 2, -y / 2, x / 2, y / 2), "from": 0, "to": h});
+    for (name, form) in [
+        ("Sprinkler", json!({"circle": {"centre": [0, 0], "radius": 30}, "from": 0, "to": 80})),
+        ("Hanger", block(40, 40, 300)),
+        ("Junction Box", block(100, 100, 60)),
+        ("Smoke Detector", json!({"circle": {"centre": [0, 0], "radius": 60}, "from": 0, "to": 40})),
+        ("Fan Coil", block(1000, 500, 300)),
+    ] {
+        run(s, "family", json!({"name": name, "category": "generic", "forms": [form], "types": {"Standard": {}}}))?;
+    }
+    Ok(())
+}
+
+/// The slab, a column at every grid crossing, a beam along every grid line, and the lift shafts.
+fn structure(s: &mut Session, plate: Plate) -> Result<(), String> {
+    let (w, d) = (plate.width, plate.depth);
+    run(s, "floor", json!({"boundary": rect(0, 0, w, d), "structural": true}))?;
+    let column = make(s, "structural_column", json!({"at": [0, 0], "height": STOREY}))?;
+    let row = array(s, column, [6000, 0], w / 6000 + 1)?;
+    array(s, row, [0, 6000], d / 6000 + 1)?;
+    for y in (0..=d).step_by(6000) {
+        run(s, "beam", json!({"points": line([0, y], [w, y], 6000), "offset": STOREY}))?;
+    }
+    for x in (0..=w).step_by(6000) {
+        run(s, "beam", json!({"points": line([x, 0], [x, d], 6000), "offset": STOREY}))?;
+    }
+    // Four lifts in the core's middle cells: the two middle rows' (or its one row's), either side of the middle.
+    let rows = (d - 28_000) / 8000;
+    let middle = |r: i64| 18_000 + 8000 * r;
+    let (low, high) = (middle((rows / 2 - 1).max(0)), middle(rows / 2).min(middle(rows - 1)));
+    let lifts = [(w / 2 - 2000, low), (w / 2 + 2000, low), (w / 2 - 2000, high), (w / 2 + 2000, high)];
+    let lifts: std::collections::BTreeSet<(i64, i64)> = lifts.into_iter().collect();
+    for (cx, cy) in lifts {
+        run(s, "shaft", json!({"boundary": rect(cx - 1300, cy - 1300, cx + 1300, cy + 1300), "height": STOREY}))?;
+    }
+    Ok(())
+}
+
+/// The facade, clockwise: 3 m panels, each with two windows.
+fn facade(s: &mut Session, plate: Plate) -> Result<(), String> {
+    let (w, d) = (plate.width, plate.depth);
+    for (a, b) in [([0, 0], [0, d]), ([0, d], [w, d]), ([w, d], [w, 0]), ([w, 0], [0, 0])] {
+        let length = (b[0] - a[0]).abs() + (b[1] - a[1]).abs();
+        let u = [(b[0] - a[0]).signum(), (b[1] - a[1]).signum()];
+        let at = |d: i64| [a[0] + u[0] * d, a[1] + u[1] * d];
+        let panel = make(s, "wall", json!({"points": [a, at(3000)], "height": STOREY, "type": "Exterior - 300mm"}))?;
+        run(s, "window", json!({"at": at(750)}))?;
+        run(s, "window", json!({"at": at(2250)}))?;
+        array(s, panel, [u[0] * 3000, u[1] * 3000], length / 3000)?;
+    }
+    Ok(())
+}
+
+/// The walls inside: the corridor's two rings, the core, and the walls between rooms.
+fn partitions(s: &mut Session, plate: Plate) -> Result<(), String> {
+    let (w, d) = (plate.width, plate.depth);
+    closed(s, 6000, 6000, w - 6000, d - 6000)?;
+    closed(s, 8000, 8000, w - 8000, d - 8000)?;
+    closed(s, 14_000, 14_000, w - 14_000, d - 14_000)?;
+    // Where the bands of rooms turn the corners.
+    for (a, b) in [(0, 6000), (w - 6000, w)] {
+        for y in [6000, d - 6000] {
+            wall(s, [a, y], [b, y])?;
+        }
+    }
+    for (a, b) in [(8000, 14_000), (w - 14_000, w - 8000)] {
+        for y in [14_000, d - 14_000] {
+            wall(s, [a, y], [b, y])?;
+        }
+    }
+    // Offices, every 3 m.
+    for (y0, y1) in [(0, 6000), (d - 6000, d)] {
+        let first = wall(s, [3000, y0], [3000, y1])?;
+        array(s, first, [3000, 0], w / 3000 - 1)?;
+    }
+    for (x0, x1) in [(0, 6000), (w - 6000, w)] {
+        let first = wall(s, [x0, 9000], [x1, 9000])?;
+        array(s, first, [0, 3000], (d - 12_000) / 3000 - 1)?;
+    }
+    // The ring of meeting rooms, every 4 m.
+    for (y0, y1) in [(8000, 14_000), (d - 14_000, d - 8000)] {
+        let first = wall(s, [12_000, y0], [12_000, y1])?;
+        array(s, first, [4000, 0], (w - 16_000) / 4000 - 1)?;
+    }
+    for (x0, x1) in [(8000, 14_000), (w - 14_000, w - 8000)] {
+        let first = wall(s, [x0, 18_000], [x1, 18_000])?;
+        array(s, first, [0, 4000], (d - 28_000) / 4000 - 1)?;
+    }
+    // The core: 4 m cells in rows of 8 m, the rows' walls crossing the cells'.
+    let first = wall(s, [18_000, 14_000], [18_000, d - 14_000])?;
+    array(s, first, [4000, 0], (w - 28_000) / 4000 - 1)?;
+    for y in (22_000..d - 14_000).step_by(8000) {
+        wall(s, [14_000, y], [w - 14_000, y])?;
+    }
+    Ok(())
+}
+
+/// What a room holds, in its own terms: `u` along its row, `v` in from the wall its row starts at.
+enum Item {
+    Room(&'static str, i64, i64),
+    Ceiling(i64, i64),
+    /// A family at a point, turned degrees, `offset` mm up.
+    Component(&'static str, i64, i64, f64, i64),
+    /// A pipe from one point to another, `offset` mm up.
+    Pipe(i64, i64, i64, i64, i64),
+}
+
+/// A row of rooms: its first room's corner, the way the row runs and the way into the rooms (unit steps), and how much
+/// what is placed turns.
+struct Row {
+    origin: [i64; 2],
+    along: [i64; 2],
+    inward: [i64; 2],
+    turn: f64,
+}
+
+impl Row {
+    fn at(&self, u: i64, v: i64) -> [i64; 2] {
+        [self.origin[0] + self.along[0] * u + self.inward[0] * v, self.origin[1] + self.along[1] * u + self.inward[1] * v]
+    }
+
+    /// The first room's `items` placed, then the row of `count`, `width` apart.
+    fn lay(&self, s: &mut Session, items: &[Item], width: i64, count: i64) -> Result<(), String> {
+        let mut ids = Vec::new();
+        for item in items {
+            ids.extend(match *item {
+                Item::Room(name, u, v) => make(s, "room", json!({"point": self.at(u, v), "name": name}))?,
+                Item::Ceiling(u, v) => make(s, "ceiling", json!({"point": self.at(u, v), "offset": CEILING}))?,
+                Item::Component(family, u, v, angle, offset) => make(
+                    s,
+                    "component",
+                    json!({"family": family, "at": self.at(u, v), "angle": (angle + self.turn) % 360.0, "offset": offset}),
+                )?,
+                Item::Pipe(u0, v0, u1, v1, offset) => {
+                    make(s, "pipe", json!({"points": [self.at(u0, v0), self.at(u1, v1)], "offset": offset}))?
+                }
+            });
+        }
+        array(s, ids, [self.along[0] * width, self.along[1] * width], count)?;
+        Ok(())
+    }
+
+    /// A door in the wall at `v`, `u` along the first room, then one for each of `count` rooms `width` apart.
+    fn doors(&self, s: &mut Session, u: i64, v: i64, width: i64, count: i64) -> Result<(), String> {
+        let door = make(s, "door", json!({"at": self.at(u, v)}))?;
+        array(s, door, [self.along[0] * width, self.along[1] * width], count)?;
+        Ok(())
+    }
+}
+
+/// The four sides' rows of 3 m offices, 6 m deep, and their doors onto the corridor.
+fn offices(s: &mut Session, plate: Plate) -> Result<(), String> {
+    use Item::*;
+    let (w, d) = (plate.width, plate.depth);
+    let office = [
+        Room("Office", 1500, 3000),
+        Ceiling(1500, 3000),
+        Component("Desk", 1500, 1400, 0.0, 0),
+        Component("Chair", 1500, 2200, 180.0, 0),
+        Component("Desk", 1500, 3800, 0.0, 0),
+        Component("Chair", 1500, 4600, 180.0, 0),
+        Component("Base Cabinet", 2300, 5500, 180.0, 0),
+        Component("Outlet", 300, 1400, 0.0, 300),
+        Component("Outlet", 2700, 1400, 0.0, 300),
+        Component("Outlet", 300, 3800, 0.0, 300),
+        Component("Outlet", 2700, 3800, 0.0, 300),
+        Component("Data Outlet", 300, 1700, 0.0, 300),
+        Component("Data Outlet", 300, 4100, 0.0, 300),
+        Component("Switch", 2500, 5900, 180.0, 1100),
+        Component("Smoke Detector", 1500, 3000, 0.0, CEILING),
+        Component("Fan Coil", 1500, 700, 0.0, 2900),
+        Pipe(1300, 1000, 1300, 5600, 3100),
+        Pipe(1700, 1000, 1700, 5600, 3100),
+        Component("Gate Valve", 1300, 5300, 90.0, 3100),
+        Component("Gate Valve", 1700, 5300, 90.0, 3100),
+    ];
+    let rows = [
+        (Row { origin: [0, 0], along: [1, 0], inward: [0, 1], turn: 0.0 }, w / 3000, 2),
+        (Row { origin: [0, d], along: [1, 0], inward: [0, -1], turn: 180.0 }, w / 3000, 2),
+        (Row { origin: [0, 6000], along: [0, 1], inward: [1, 0], turn: 270.0 }, (d - 12_000) / 3000, 0),
+        (Row { origin: [w, 6000], along: [0, 1], inward: [-1, 0], turn: 90.0 }, (d - 12_000) / 3000, 0),
+    ];
+    for (row, count, closed_off) in rows {
+        row.lay(s, &office, 3000, count)?;
+        // The corner offices on the long sides open off their neighbours, not the corridor.
+        let first = Row { origin: row.at(3000 * closed_off, 0), ..row };
+        first.doors(s, 1500, 6000, 3000, count - 2 * closed_off)?;
+    }
+    run(s, "room", json!({"point": [7000, 7000], "name": "Corridor"}))?;
+    run(s, "ceiling", json!({"point": [7000, 7000], "offset": CEILING}))?;
+    Ok(())
+}
+
+/// The ring of meeting rooms round the core, and their doors onto the corridor.
+fn ring(s: &mut Session, plate: Plate) -> Result<(), String> {
+    use Item::*;
+    let (w, d) = (plate.width, plate.depth);
+    let meeting = [
+        Room("Meeting", 2000, 3000),
+        Ceiling(2000, 3000),
+        Component("Table", 2000, 3000, 90.0, 0),
+        Component("Chair", 1400, 2200, 0.0, 0),
+        Component("Chair", 2600, 2200, 0.0, 0),
+        Component("Chair", 1400, 3800, 180.0, 0),
+        Component("Chair", 2600, 3800, 180.0, 0),
+        Component("Outlet", 600, 300, 0.0, 300),
+        Component("Outlet", 3400, 300, 0.0, 300),
+        Component("Data Outlet", 900, 300, 0.0, 300),
+        Component("Switch", 3000, 100, 0.0, 1100),
+        Component("Smoke Detector", 2000, 3000, 0.0, CEILING),
+    ];
+    for (row, count) in [
+        (Row { origin: [8000, 8000], along: [1, 0], inward: [0, 1], turn: 0.0 }, (w - 16_000) / 4000),
+        (Row { origin: [8000, d - 8000], along: [1, 0], inward: [0, -1], turn: 180.0 }, (w - 16_000) / 4000),
+        (Row { origin: [8000, 14_000], along: [0, 1], inward: [1, 0], turn: 270.0 }, (d - 28_000) / 4000),
+        (Row { origin: [w - 8000, 14_000], along: [0, 1], inward: [-1, 0], turn: 90.0 }, (d - 28_000) / 4000),
+    ] {
+        row.lay(s, &meeting, 4000, count)?;
+        row.doors(s, 2000, 0, 4000, count)?;
+    }
+    Ok(())
+}
+
+/// The core's service rooms, 4 × 8 m, in rows: the outer rows open onto the meeting rooms, the inner ones onto the outer.
+fn core(s: &mut Session, plate: Plate) -> Result<(), String> {
+    use Item::*;
+    let (w, d) = (plate.width, plate.depth);
+    let service = [
+        Room("Service", 2000, 4000),
+        Ceiling(2000, 4000),
+        Component("WC", 1000, 7500, 180.0, 0),
+        Component("WC", 3000, 7500, 180.0, 0),
+        Component("Kitchen Sink", 2000, 7600, 180.0, 0),
+        Component("Switch", 3000, 300, 0.0, 1100),
+        Component("Outlet", 3800, 2000, 90.0, 300),
+        Component("Data Outlet", 3800, 2400, 90.0, 300),
+        Component("Smoke Detector", 2000, 4000, 0.0, CEILING),
+        Component("Floor Drain", 2000, 6000, 0.0, 0),
+        Pipe(500, 7000, 3500, 7000, 600),
+        Component("Gate Valve", 700, 7000, 0.0, 600),
+        Pipe(500, 7800, 3500, 7800, 100),
+    ];
+    let count = (w - 28_000) / 4000;
+    for y in (14_000..d - 14_000).step_by(8000) {
+        let row = Row { origin: [14_000, y], along: [1, 0], inward: [0, 1], turn: 0.0 };
+        row.lay(s, &service, 4000, count)?;
+    }
+    let top = d - 14_000;
+    Row { origin: [14_000, 14_000], along: [1, 0], inward: [0, 1], turn: 0.0 }.doors(s, 1000, 0, 4000, count)?;
+    Row { origin: [14_000, top], along: [1, 0], inward: [0, 1], turn: 0.0 }.doors(s, 1000, 0, 4000, count)?;
+    // With three rows or more, the inner ones open onto the outer ones.
+    if (d - 28_000) / 8000 >= 3 {
+        Row { origin: [14_000, 22_000], along: [1, 0], inward: [0, 1], turn: 0.0 }.doors(s, 2000, 0, 4000, count)?;
+        Row { origin: [14_000, top - 8000], along: [1, 0], inward: [0, 1], turn: 0.0 }.doors(s, 2000, 0, 4000, count)?;
+    }
+    Ok(())
+}
+
+/// What runs above the ceilings over the whole plate.
+fn services(s: &mut Session, plate: Plate) -> Result<(), String> {
+    let (w, d) = (plate.width, plate.depth);
+    let component = |family: &str, at: [i64; 2], offset: i64| json!({"family": family, "at": at, "offset": offset});
+    // Luminaires on a 2.4 m grid, each with its junction box; a conduit along each row.
+    let (nx, ny) = (w / 2400, d / 2400);
+    let mut light = make(s, "component", component("Recessed Luminaire", [1200, 1200], CEILING))?;
+    light.extend(make(s, "component", component("Junction Box", [1200, 1500], 2900))?);
+    let row = array(s, light, [2400, 0], nx)?;
+    array(s, row, [0, 2400], ny)?;
+    let conduit = make(s, "conduit", json!({"points": line([1200, 1500], [1200 + 2400 * (nx - 1), 1500], 2400), "offset": 2950}))?;
+    array(s, conduit, [0, 2400], ny)?;
+    // Sprinklers on a 3 m grid, each on a tee with a hanger beside it; a branch pipe along each row, and a main.
+    let (nx, ny) = (w / 3000, d / 3000);
+    let mut head = make(s, "component", component("Sprinkler", [1500, 1500], 2620))?;
+    head.extend(make(s, "component", component("Tee", [1500, 1500], 3000))?);
+    head.extend(make(s, "component", component("Hanger", [3000, 1500], 3000))?);
+    let row = array(s, head, [3000, 0], nx)?;
+    array(s, row, [0, 3000], ny)?;
+    let branch = make(s, "pipe", json!({"points": line([1500, 1500], [1500 + 3000 * (nx - 1), 1500], 3000), "offset": 3000}))?;
+    array(s, branch, [0, 3000], ny)?;
+    run(s, "pipe", json!({"points": line([1500, 1500], [1500, 1500 + 3000 * (ny - 1)], 3000), "offset": 3000}))?;
+    // Supply and return air terminals in every bay.
+    let mut air = make(s, "component", component("Air Terminal", [3000, 1500], CEILING))?;
+    air.extend(make(s, "component", component("Air Terminal", [3000, 4500], CEILING))?);
+    let row = array(s, air, [6000, 0], w / 6000)?;
+    array(s, row, [0, 6000], d / 6000)?;
+    // A cable tray round the middle of the corridor, and its smoke detectors.
+    let (x0, y0, x1, y1) = (7000, 7000, w - 7000, d - 7000);
+    let mut ring = line([x0, y0], [x1, y0], 6000);
+    for (a, b) in [([x1, y0], [x1, y1]), ([x1, y1], [x0, y1]), ([x0, y1], [x0, y0])] {
+        ring.extend(line(a, b, 6000).into_iter().skip(1));
+    }
+    ring.pop();
+    run(s, "cable_tray", json!({"points": ring, "closed": true, "offset": 3300}))?;
+    for p in &ring {
+        run(s, "component", component("Smoke Detector", *p, CEILING))?;
+        run(s, "component", component("Ceiling Luminaire", [p[0] + 500, p[1] + 500], CEILING))?;
+    }
+    Ok(())
+}
+
+/// What a plan says of a room, in the room's terms as [`Item`]'s.
+enum Mark {
+    Note(&'static str, i64, i64),
+    /// A detail line from one point to the other.
+    Line(i64, i64, i64, i64),
+    /// A filled region of a type over a rectangle, its corners.
+    Region(&'static str, i64, i64, i64, i64),
+}
+
+impl Row {
+    /// The first room's `marks` drawn in the plan, then the row of `count`, `width` apart.
+    fn mark(&self, s: &mut Session, marks: &[Mark], width: i64, count: i64) -> Result<(), String> {
+        let mut ids = Vec::new();
+        for m in marks {
+            ids.extend(match *m {
+                Mark::Note(text, u, v) => make(s, "text", json!({"text": text, "at": self.at(u, v)}))?,
+                Mark::Line(u0, v0, u1, v1) => make(s, "detail_line", json!({"start": self.at(u0, v0), "end": self.at(u1, v1)}))?,
+                Mark::Region(kind, u0, v0, u1, v1) => {
+                    let [a, b, c, d] = [self.at(u0, v0), self.at(u1, v0), self.at(u1, v1), self.at(u0, v1)];
+                    make(s, "filled_region", json!({"sketch": [[a, b], [b, c], [c, d], [d, a]], "type": kind}))?
+                }
+            });
+        }
+        array(s, ids, [self.along[0] * width, self.along[1] * width], count)?;
+        Ok(())
+    }
+
+    /// Each of `count` rooms `width` wide dimensioned across, between its walls at `v`, and the row dimensioned as a
+    /// string through all of them. Made one by one: a copied dimension would measure the walls it was copied from.
+    fn dimension(&self, s: &mut Session, v: i64, width: i64, count: i64) -> Result<(), String> {
+        for k in 0..count {
+            let refs = [self.at(width * k, v), self.at(width * (k + 1), v)];
+            run(s, "dimension", json!({"refs": refs, "at": self.at(width * k + width / 2, v - 500)}))?;
+        }
+        let refs: Vec<[i64; 2]> = (0..=count).map(|k| self.at(width * k, v)).collect();
+        run(s, "dimension", json!({"refs": refs, "at": self.at(0, v + 500)}))?;
+        Ok(())
+    }
+}
+
+/// Each storey's plan annotated and detailed: the offices' and meeting rooms' notes, clear zones and dimensions, the
+/// service rooms' tiling, as a drawing set's plans are. All of it 2D: drawn in the level's plan only.
+fn annotate(s: &mut Session, plate: Plate) -> Result<(), String> {
+    use Mark::*;
+    let (w, d) = (plate.width, plate.depth);
+    let office = [
+        Note("2 workstations", 200, 2600),
+        Note("Keep clear", 600, 5100),
+        Line(400, 5000, 2600, 5000),
+        Line(2600, 5000, 2600, 5800),
+        Line(2600, 5800, 400, 5800),
+        Line(400, 5800, 400, 5000),
+        Region("Diagonal Up", 400, 5000, 2600, 5800),
+    ];
+    let rows = [
+        (Row { origin: [0, 0], along: [1, 0], inward: [0, 1], turn: 0.0 }, w / 3000),
+        (Row { origin: [0, d], along: [1, 0], inward: [0, -1], turn: 180.0 }, w / 3000),
+        (Row { origin: [0, 6000], along: [0, 1], inward: [1, 0], turn: 270.0 }, (d - 12_000) / 3000),
+        (Row { origin: [w, 6000], along: [0, 1], inward: [-1, 0], turn: 90.0 }, (d - 12_000) / 3000),
+    ];
+    for (row, count) in rows {
+        row.mark(s, &office, 3000, count)?;
+        row.dimension(s, 2000, 3000, count)?;
+    }
+    let meeting = [Note("Seats 4", 300, 1000), Region("Crosshatch", 1000, 1800, 3000, 4200)];
+    for (row, count) in [
+        (Row { origin: [8000, 8000], along: [1, 0], inward: [0, 1], turn: 0.0 }, (w - 16_000) / 4000),
+        (Row { origin: [8000, d - 8000], along: [1, 0], inward: [0, -1], turn: 180.0 }, (w - 16_000) / 4000),
+        (Row { origin: [8000, 14_000], along: [0, 1], inward: [1, 0], turn: 270.0 }, (d - 28_000) / 4000),
+        (Row { origin: [w - 8000, 14_000], along: [0, 1], inward: [-1, 0], turn: 90.0 }, (d - 28_000) / 4000),
+    ] {
+        row.mark(s, &meeting, 4000, count)?;
+    }
+    // The service rooms' floors tiled 600 × 600, and the wet area at the back.
+    let mut service = vec![Note("Floor tiled 600 × 600", 300, 600), Region("Sand", 200, 6400, 3800, 7800)];
+    service.extend((600..4000).step_by(600).map(|u| Line(u, 0, u, 8000)));
+    service.extend((600..8000).step_by(600).map(|v| Line(0, v, 4000, v)));
+    let count = (w - 28_000) / 4000;
+    for y in (14_000..d - 14_000).step_by(8000) {
+        Row { origin: [14_000, y], along: [1, 0], inward: [0, 1], turn: 0.0 }.mark(s, &service, 4000, count)?;
+    }
+    Ok(())
+}
+
+/// The first storey's sheets, numbered for it (`…-001`) and named for its level (`Level 1 …`): [`stack`] numbers and
+/// names each storey's copies for it. Each holds one view at 1 : 100, or its half at 1 : 50, and the general notes.
+fn storey_sheets(s: &mut Session, plate: Plate) -> Result<(), String> {
+    let (w, d) = (plate.width, plate.depth);
+    run(s, "duplicate_view", json!({"view": "Level 1", "name": "Level 1 - Ceiling Plan"}))?;
+    for (name, y0, y1) in [("Level 1 - North Half", d / 2 - 1000, d + 1000), ("Level 1 - South Half", -1000, d / 2 + 1000)] {
+        run(s, "duplicate_view", json!({"view": "Level 1", "mode": "dependent", "name": name}))?;
+        run(s, "crop", json!({"view": name, "region": [[-1000, y0], [w + 1000, y1]]}))?;
+    }
+    for (number, name, view, scale) in [
+        ("A1-001", "Level 1 - Floor Plan", "Level 1", 100),
+        ("A2-001", "Level 1 - Ceiling Plan", "Level 1 - Ceiling Plan", 100),
+        ("A3-001", "Level 1 - Enlarged North", "Level 1 - North Half", 50),
+        ("A4-001", "Level 1 - Enlarged South", "Level 1 - South Half", 50),
+    ] {
+        run(s, "sheet", json!({"number": number, "name": name, "size": "A0"}))?;
+        run(s, "place", json!({"sheet": number, "view": view, "scale": scale}))?;
+        notes(s, number)?;
+    }
+    Ok(())
+}
+
+/// The general notes down a sheet's right side.
+fn notes(s: &mut Session, sheet: &str) -> Result<(), String> {
+    const NOTES: [&str; 8] = [
+        "GENERAL NOTES",
+        "1. Dimensions are in millimetres.",
+        "2. Do not scale from this drawing.",
+        "3. Check dimensions on site.",
+        "4. Partitions are 100 mm unless noted.",
+        "5. Ceilings at 2700 mm unless noted.",
+        "6. Read with the services drawings.",
+        "7. Fire stopping at every penetration.",
+    ];
+    for (k, text) in (0i64..).zip(NOTES) {
+        run(s, "text", json!({"text": text, "at": [1080, 780 - 8 * k], "view": sheet}))?;
+    }
+    Ok(())
+}
+
+/// The sheets of the whole project, made once: the cover with the 3D view, the four elevations, a section through the
+/// middle, and the room, door and window schedules.
+fn project_sheets(s: &mut Session, plate: Plate) -> Result<(), String> {
+    let (w, d) = (plate.width, plate.depth);
+    for facing in ["north", "south", "east", "west"] {
+        let name = format!("{}{} Elevation", facing[..1].to_ascii_uppercase(), &facing[1..]);
+        run(s, "elevation", json!({"facing": facing, "name": name}))?;
+    }
+    run(s, "section", json!({"start": [-3000, d / 2 + 1500], "end": [w + 3000, d / 2 + 1500], "name": "Section A"}))?;
+    let sheets: [(&str, &str, &[&str], i64); 6] = [
+        ("A0-000", "Cover", &["{3D}"], 500),
+        ("A5-001", "Elevations", &["North Elevation", "South Elevation"], 500),
+        ("A5-002", "Elevations", &["East Elevation", "West Elevation"], 500),
+        ("A6-001", "Sections", &["Section A"], 500),
+        ("A7-001", "Room Schedule", &["Room Schedule"], 100),
+        ("A7-002", "Door and Window Schedules", &["Door Schedule", "Window Schedule"], 100),
+    ];
+    for (number, name, views, scale) in sheets {
+        run(s, "sheet", json!({"number": number, "name": name, "size": "A0"}))?;
+        for view in views {
+            run(s, "place", json!({"sheet": number, "view": view, "scale": scale}))?;
+        }
+        notes(s, number)?;
+    }
+    Ok(())
+}
+
+/// `storeys` storeys of `source`'s, which stand on its first level: fresh copies of its elements on each storey's
+/// level, with their references to each other pointed at each other, numbered by storey.
+fn stack(source: &Model, storeys: u32) -> Result<Model, String> {
+    let source_levels: Vec<Guid> = source.levels().iter().map(|(id, _)| source.guid(*id)).collect();
+    let mut m = source.clone();
+    m.elements.clear();
+    for floor in 0..=storeys {
+        m.insert(Element::Level(Level::new(format!("Level {}", floor + 1), (i64::from(floor) * STOREY) as f64)));
+    }
+    let levels: Vec<Guid> = m.levels().iter().map(|(id, _)| m.guid(*id)).collect();
+    // The project's own views and sheets, and what is placed or noted on them, made once, pointed at each other and at
+    // the first storey's levels.
+    let once = project_wide(source);
+    let mut map: BTreeMap<Guid, Guid> = source_levels.iter().copied().zip(levels.iter().copied()).collect();
+    let mut inserted = Vec::new();
+    for (&id, e) in &source.elements {
+        if once.contains(&source.guid(id)) {
+            let new = m.insert(e.clone());
+            map.insert(source.guid(id), m.guid(new));
+            inserted.push(new);
+        }
+    }
+    for id in inserted {
+        if let Some(e) = m.elements.get_mut(id) {
+            e.refs_mut(&mut |g| {
+                if let Some(new) = map.get(g) {
+                    *g = *new;
+                }
+            });
+        }
+    }
+    for storey in 0..storeys as usize {
+        let mut map: BTreeMap<Guid, Guid> = BTreeMap::new();
+        for (k, level) in source_levels.iter().enumerate() {
+            let to = levels.get(storey + k).ok_or("tower: a storey's elements reach past the top level")?;
+            map.insert(*level, *to);
+        }
+        let mut inserted = Vec::new();
+        let mut numbers: BTreeMap<&str, usize> = BTreeMap::new();
+        for (&old, e) in &source.elements {
+            if matches!(e, Element::Level(_)) || once.contains(&source.guid(old)) {
+                continue;
+            }
+            let mut e = e.clone();
+            let number = |kind: &'static str, numbers: &mut BTreeMap<&str, usize>| {
+                let n = numbers.entry(kind).or_default();
+                *n += 1;
+                format!("{}{:03}", storey + 1, n)
+            };
+            match &mut e {
+                Element::Room(r) => r.number = number("room", &mut numbers),
+                Element::Door(o) => o.mark = number("door", &mut numbers),
+                Element::Window(o) => o.mark = number("window", &mut numbers),
+                // `A1-001`, `Level 1 - Floor Plan`: the storey's.
+                Element::Sheet(sh) => {
+                    let series = sh.number.trim_end_matches(char::is_numeric).to_string();
+                    sh.number = format!("{series}{:03}", storey + 1);
+                    sh.name = for_storey(&sh.name, storey);
+                }
+                Element::PlanView(v) => v.name = for_storey(&v.name, storey),
+                _ => {}
+            }
+            let id = m.insert(e);
+            map.insert(source.guid(old), m.guid(id));
+            inserted.push(id);
+        }
+        for id in inserted {
+            if let Some(e) = m.elements.get_mut(id) {
+                e.refs_mut(&mut |g| {
+                    if let Some(new) = map.get(g) {
+                        *g = *new;
+                    }
+                });
+            }
+        }
+    }
+    m.sync_library();
+    Ok(m)
+}
+
+/// The first storey's `name` (`Level 1 …`) for storey `storey` (from 0).
+fn for_storey(name: &str, storey: usize) -> String {
+    match name.strip_prefix("Level 1 ") {
+        Some(rest) => format!("Level {} {rest}", storey + 1),
+        None => name.to_string(),
+    }
+}
+
+/// The elements of `source` that are the project's, not its storey's: its sections, elevations, schedules and 3D views;
+/// the viewports that place them, the sheets those are on, and what else is on those sheets. By GUID.
+fn project_wide(source: &Model) -> BTreeSet<Guid> {
+    let views = |e: &Element| matches!(e, Element::Section(_) | Element::Elevation(_) | Element::Schedule(_) | Element::View3D(_));
+    let mut once: BTreeSet<Guid> = source.elements.iter().filter(|(_, e)| views(e)).map(|(id, _)| source.guid(*id)).collect();
+    let sheets: BTreeSet<Guid> = source
+        .elements
+        .values()
+        .filter_map(|e| match e {
+            Element::Viewport(v) if once.contains(&v.view) => Some(v.sheet),
+            _ => None,
+        })
+        .collect();
+    for (&id, e) in &source.elements {
+        let mut on = false;
+        let mut e = e.clone();
+        e.refs_mut(&mut |g| on |= sheets.contains(g));
+        if on || sheets.contains(&source.guid(id)) {
+            once.insert(source.guid(id));
+        }
+    }
+    once
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::geom;
+    use crate::model::Room;
+
+    fn rooms(m: &Model) -> Vec<&Room> {
+        m.elements
+            .values()
+            .filter_map(|e| match e {
+                Element::Room(r) => Some(r),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_tower_storey_is_about_ten_thousand_elements_and_every_room_bounds() {
+        let m = tower(2).unwrap();
+        m.check().unwrap();
+        assert_eq!(m.levels().len(), 3);
+        let n = m.elements.len();
+        let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
+        for e in m.elements.values() {
+            *counts.entry(e.category()).or_default() += 1;
+        }
+        assert!((19_800..20_400).contains(&n), "{n} elements in two storeys: {counts:?}");
+        for category in [
+            "wall",
+            "window",
+            "door",
+            "room",
+            "ceiling",
+            "floor",
+            "structuralcolumn",
+            "beam",
+            "shaft",
+            "component",
+            "pipe",
+            "conduit",
+            "cabletray",
+            "tag",
+        ] {
+            assert!(m.elements.values().any(|e| e.category() == category), "{category}");
+        }
+        let all = rooms(&m);
+        assert_eq!(all.len(), 2 * 195);
+        for r in &all {
+            assert!(m.room_region(r).is_some(), "room {} ({}) isn't enclosed", r.number, r.name);
+        }
+        let numbers: std::collections::BTreeSet<&str> = all.iter().map(|r| r.number.as_str()).collect();
+        assert_eq!(numbers.len(), all.len(), "room numbers are the project's own");
+        assert!(numbers.contains("1001") && numbers.contains("2195"));
+        // The corridor runs round the inner block, an island of it: between the two rings' centre lines, less the columns
+        // standing on its outer ring, which bound rooms (as Revit's do): half of each along its sides, a quarter at its
+        // corners.
+        let corridor = all.iter().find(|r| r.name == "Corridor").unwrap();
+        let area = m.room_region(corridor).unwrap().area();
+        let Plate { width, depth } = Plate::REFERENCE;
+        let ring = (width - 12_000) * (depth - 12_000) - (width - 16_000) * (depth - 16_000);
+        let column = m.elements.values().find(|e| e.category() == "structuralcolumn").map(|e| geom::area(&m.column_outline(e)).abs());
+        let halves = 2 * ((width - 12_000) / 6000 - 1) + 2 * ((depth - 12_000) / 6000 - 1);
+        let expected = ring as f64 - column.unwrap() * (halves as f64 / 2.0 + 1.0);
+        assert!((area - expected).abs() < 1e3, "{area} mm² against {expected}");
+    }
+
+    /// Whether `e` is drawn in one view only: annotation and detailing.
+    fn two_d(e: &Element) -> bool {
+        matches!(e, Element::Text(_) | Element::DetailLine(_) | Element::FilledRegion(_) | Element::Dimension(_))
+    }
+
+    #[test]
+    fn an_annotated_storey_has_two_thousand_2d_elements_in_its_own_plan_and_dimensions_on_its_own_walls() {
+        let plain = tower(2).unwrap();
+        let m = annotated(Plate::REFERENCE, 2).unwrap();
+        m.check().unwrap();
+        // The same building, with the 2D on top of it.
+        assert_eq!(m.elements.values().filter(|e| !two_d(e)).count(), plain.elements.len());
+        let levels: Vec<Guid> = m.levels().iter().map(|(id, _)| m.guid(*id)).collect();
+        for (storey, level) in levels.iter().take(2).enumerate() {
+            let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
+            for e in m.elements.values() {
+                let view = match e {
+                    Element::Text(n) => n.view,
+                    Element::DetailLine(l) => l.view,
+                    Element::FilledRegion(r) => r.view,
+                    Element::Dimension(d) => d.view.unwrap_or(d.level),
+                    _ => continue,
+                };
+                if view == *level {
+                    *counts.entry(e.category()).or_default() += 1;
+                }
+            }
+            let all: usize = counts.values().sum();
+            assert!(all >= 1800, "storey {storey}: {counts:?}");
+            for (category, least) in [("line", 1000), ("text", 250), ("region", 100), ("dimension", 90)] {
+                assert!(counts.get(category).copied().unwrap_or(0) >= least, "storey {storey}: {category} in {counts:?}");
+            }
+        }
+        assert!(levels.get(2).is_some_and(|top| !m.elements.values().any(|e| match e {
+            Element::Text(n) => n.view == *top,
+            _ => false,
+        })));
+        // A dimension measures the walls of its own storey, as the storey it was copied from did.
+        for e in m.elements.values() {
+            let Element::Dimension(d) = e else { continue };
+            assert!(d.refs.len() >= 2);
+            for r in &d.refs {
+                let wall = m.wall(r.id).unwrap_or_else(|| panic!("a dimension measures {r:?}, not a wall"));
+                assert_eq!(wall.level, d.level);
+            }
+        }
+    }
+
+    #[test]
+    fn a_drawn_tower_has_each_storeys_sheets_and_the_projects_once() {
+        let plain = tower_on(Plate::SMALL, 3).unwrap();
+        let m = drawn(Plate::SMALL, 3, Drawings { annotation: false, sheets: true }).unwrap();
+        m.check().unwrap();
+        let sheets: BTreeMap<&str, Id> = m
+            .elements
+            .iter()
+            .filter_map(|(id, e)| if let Element::Sheet(sh) = e { Some((sh.number.as_str(), *id)) } else { None })
+            .collect();
+        let mut numbers: Vec<&str> = sheets.keys().copied().collect();
+        numbers.sort_unstable();
+        let mut expected = vec!["A0-000", "A5-001", "A5-002", "A6-001", "A7-001", "A7-002"];
+        for series in 1..=4 {
+            for storey in 1..=3 {
+                expected.push(Box::leak(format!("A{series}-{storey:03}").into_boxed_str()));
+            }
+        }
+        expected.sort_unstable();
+        assert_eq!(numbers, expected);
+        // What's on a sheet: storey 2's floor plan is Level 2's, its halves Level 2's dependents; the project's once.
+        let on = |number: &str| -> Vec<String> {
+            let g = m.guid(sheets[number]);
+            m.elements
+                .values()
+                .filter_map(|e| match e {
+                    Element::Viewport(v) if v.sheet == g => m.view_name(v.view).map(str::to_string),
+                    _ => None,
+                })
+                .collect()
+        };
+        assert_eq!(on("A1-002"), ["Level 2"]);
+        assert_eq!(on("A2-003"), ["Level 3 - Ceiling Plan"]);
+        assert_eq!(on("A3-002"), ["Level 2 - North Half"]);
+        assert_eq!(on("A5-001"), ["North Elevation", "South Elevation"]);
+        assert_eq!(on("A7-002"), ["Door Schedule", "Window Schedule"]);
+        for e in m.elements.values() {
+            if let Element::PlanView(v) = e {
+                let level = m.levels().into_iter().find(|(id, _)| m.guid(*id) == v.level).unwrap().1.name.clone();
+                assert!(v.name.starts_with(&format!("{level} ")), "{} of {level}", v.name);
+            }
+        }
+        assert_eq!(m.elements.values().filter(|e| matches!(e, Element::Schedule(_))).count(), 3);
+        let notes = m.elements.values().filter(|e| matches!(e, Element::Text(n) if sheets.values().any(|s| m.guid(*s) == n.view))).count();
+        assert_eq!(notes, 8 * sheets.len());
+        // The same building under the drawings.
+        let drawing = |e: &Element| {
+            matches!(
+                e,
+                Element::Sheet(_)
+                    | Element::Viewport(_)
+                    | Element::Text(_)
+                    | Element::PlanView(_)
+                    | Element::Section(_)
+                    | Element::Elevation(_)
+                    | Element::Schedule(_)
+                    | Element::View3D(_)
+            )
+        };
+        assert_eq!(m.elements.values().filter(|e| !drawing(e)).count(), plain.elements.values().filter(|e| !drawing(e)).count());
+        // A storey's sheet draws its plan.
+        let d = crate::sheet::draw(&m, sheets["A1-003"]).unwrap();
+        assert!(d.prims.len() > 1000, "{} primitives", d.prims.len());
+    }
+
+    #[test]
+    fn sheets_views_and_viewports_are_checked_with_the_drawing_set_not_the_whole_model() {
+        let mut s = Session::new();
+        s.reset(drawn(Plate::SMALL, 2, Drawings { annotation: false, sheets: true }).unwrap(), None);
+        let fallbacks = || crate::model::FALLBACKS.with(std::cell::Cell::get);
+        let before = fallbacks();
+        let viewport = s.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Viewport(_)).then_some(*id)).unwrap();
+        // The engine holds each to the full check's answer (`check_changed differs from check`).
+        s.execute("sheet", &json!({"number": "X-001", "name": "Extra"})).unwrap();
+        s.execute("place", &json!({"sheet": "X-001", "view": "Wall Schedule"})).unwrap();
+        s.execute("move", &json!({"ids": [viewport], "by": [10, 10]})).unwrap();
+        s.execute("duplicate_view", &json!({"view": "Level 2", "name": "Level 2 - Furniture"})).unwrap();
+        s.execute("text", &json!({"text": "Revised", "at": [100, 100], "view": "X-001"})).unwrap();
+        let err = |s: &mut Session, cmd: &str, p: Value| s.execute(cmd, &p).unwrap_err();
+        assert!(err(&mut s, "sheet", json!({"number": "A1-002"})).contains("already numbered `A1-002`"));
+        assert!(err(&mut s, "place", json!({"sheet": "X-001", "view": "Level 1"})).contains("is on sheet A1-001 already"));
+        let e = err(&mut s, "duplicate_view", json!({"view": "Level 2", "name": "Level 1"}));
+        assert!(e.contains("Level 1"), "{e}");
+        for id in s.model.sheets() {
+            s.execute("delete", &json!({"ids": [id]})).unwrap();
+            s.execute("undo", &json!({})).unwrap();
+        }
+        assert_eq!(fallbacks(), before, "a sheet's edit checked the whole model");
+    }
+
+    #[test]
+    fn every_plan_finds_from_the_lookup_what_reaches_it_from_other_storeys_and_after_a_type_grows() {
+        let mut s = Session::new();
+        s.reset(drawn(Plate::SMALL, 3, Drawings { annotation: true, sheets: true }).unwrap(), None);
+        let plans = |s: &Session| -> Vec<Id> {
+            s.model.elements.iter().filter(|(_, e)| matches!(e, Element::Level(_) | Element::PlanView(_))).map(|(id, _)| *id).collect()
+        };
+        // Each plan's elements are asked of every element too (the twin in `render::plan_elements`, and `plan_shows`').
+        let draw_all = |s: &Session| {
+            for id in plans(s) {
+                crate::render::plan(&s.model, id, 400, 300);
+            }
+        };
+        draw_all(&s);
+        for (cmd, p) in [
+            // A luminaire raised into the storey over its level, and one let down into the storey under.
+            ("component", json!({"family": "Ceiling Luminaire", "at": [3000, 3000], "level": "Level 1", "offset": 5200})),
+            ("component", json!({"family": "Ceiling Luminaire", "at": [3000, 9000], "level": "Level 3", "offset": -3000})),
+            // A riser through two storeys, and a pipe too steep to band.
+            ("pipe", json!({"points": [[1000, 1000], [1000, 1000]], "level": "Level 1", "offset": 0, "end_offset": 9000})),
+            ("pipe", json!({"points": [[2000, 2000], [2100, 2000]], "level": "Level 1", "offset": 0, "end_offset": 6000})),
+            // A beam deep enough to hang into the storey under its level.
+            ("type", json!({"category": "beam", "name": "Transfer", "width": 400, "depth": 2500})),
+            ("beam", json!({"points": [[0, 18_000], [36_000, 18_000]], "level": "Level 3", "type": "Transfer"})),
+        ] {
+            s.execute(cmd, &p).unwrap();
+        }
+        draw_all(&s);
+        // The library changes; what the lookup keeps of the elements doesn't.
+        s.execute("type", &json!({"category": "beam", "name": "Transfer", "width": 400, "depth": 5000})).unwrap();
+        draw_all(&s);
+        s.execute("move", &json!({"ids": [plans(&s)[0]], "by": [0, 0]})).ok();
+        draw_all(&s);
+    }
+
+    #[test]
+    fn a_tower_is_one_to_a_hundred_storeys_on_a_plate_its_layout_fits() {
+        assert!(tower(0).is_err() && tower(MAX_STOREYS + 1).is_err());
+        for (width, depth) in [(30_000, 36_000), (36_000, 42_000), (36_000, 30_000), (0, 0), (-36_000, 36_000), (606_000, 36_000)] {
+            assert!(tower_on(Plate { width, depth }, 1).is_err(), "{width} × {depth}");
+        }
+    }
+
+    #[test]
+    fn a_small_tower_has_the_same_layout() {
+        let m = tower_on(Plate::SMALL, 2).unwrap();
+        m.check().unwrap();
+        let all = rooms(&m);
+        // Offices: 12 a side and 8 an end; the corridor; meeting rooms: 5 a side, 2 an end; 2 in the core.
+        assert_eq!(all.len(), 2 * (40 + 1 + 14 + 2));
+        for r in &all {
+            assert!(m.room_region(r).is_some(), "room {} ({}) isn't enclosed", r.number, r.name);
+        }
+        assert_eq!(m.elements.values().filter(|e| e.category() == "shaft").count(), 2 * 2);
+    }
+}

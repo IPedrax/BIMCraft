@@ -356,10 +356,17 @@ pub(crate) fn crossing(a: P2, b: P2, c: P2, d: P2) -> Option<f64> {
 
 /// The segments cut wherever another one crosses them or ends on them.
 fn split(segs: &[(P2, P2)], tol: f64) -> Vec<(P2, P2)> {
+    let grid = SegGrid::new(segs, tol);
+    split_among(segs, tol, |i| grid.near(i))
+}
+
+/// [`split`] with each segment's others those `others` gives (in any order, each once: the cuts are sorted).
+fn split_among(segs: &[(P2, P2)], tol: f64, others: impl Fn(usize) -> Vec<usize>) -> Vec<(P2, P2)> {
     let mut out = Vec::new();
     for (i, &(a, b)) in segs.iter().enumerate() {
         let mut ts = vec![0.0, 1.0];
-        for (j, &(c, d)) in segs.iter().enumerate() {
+        for j in others(i) {
+            let Some(&(c, d)) = segs.get(j) else { continue };
             if i == j {
                 continue;
             }
@@ -381,21 +388,106 @@ fn split(segs: &[(P2, P2)], tol: f64) -> Vec<(P2, P2)> {
     out
 }
 
+/// Segments' boxes, grown by a tolerance, in a grid of cells: a segment's others that may touch it are those that share
+/// a cell with it. One whose box isn't in finite numbers, or spans too many cells, is with every other.
+struct SegGrid {
+    cells: std::collections::HashMap<(i64, i64), Vec<usize>>,
+    boxes: Vec<Option<[i64; 4]>>,
+    wide: Vec<usize>,
+    all: usize,
+}
+
+impl SegGrid {
+    const MAX_CELLS: i64 = 1024;
+
+    fn new(segs: &[(P2, P2)], tol: f64) -> SegGrid {
+        // Cells about as big as a segment is long, on average, so each holds a few.
+        let grow = tol.abs() + 1e-9;
+        let finite: Vec<&(P2, P2)> = segs.iter().filter(|(a, b)| a.is_finite() && b.is_finite()).collect();
+        let mean = finite.iter().map(|(a, b)| a.dist(*b)).sum::<f64>() / finite.len().max(1) as f64;
+        let cell = (mean.max(grow * 4.0)).max(1e-6);
+        let mut g = SegGrid { cells: Default::default(), boxes: Vec::with_capacity(segs.len()), wide: Vec::new(), all: segs.len() };
+        for (k, (a, b)) in segs.iter().enumerate() {
+            let c = [a.0.min(b.0) - grow, a.1.min(b.1) - grow, a.0.max(b.0) + grow, a.1.max(b.1) + grow].map(|v| (v / cell).floor());
+            let ok = c.iter().all(|v| v.is_finite() && v.abs() < 1e15);
+            let c = c.map(|v| v as i64);
+            let b = (ok && (c[2] - c[0] + 1).saturating_mul(c[3] - c[1] + 1) <= Self::MAX_CELLS).then_some(c);
+            match b {
+                Some([x0, y0, x1, y1]) => {
+                    for x in x0..=x1 {
+                        for y in y0..=y1 {
+                            g.cells.entry((x, y)).or_default().push(k);
+                        }
+                    }
+                }
+                None => g.wide.push(k),
+            }
+            g.boxes.push(b);
+        }
+        g
+    }
+
+    /// Segment `i`'s others that may touch it.
+    fn near(&self, i: usize) -> Vec<usize> {
+        let Some(Some([x0, y0, x1, y1])) = self.boxes.get(i) else { return (0..self.all).collect() };
+        let mut out = self.wide.clone();
+        for x in *x0..=*x1 {
+            for y in *y0..=*y1 {
+                out.extend(self.cells.get(&(x, y)).into_iter().flatten());
+            }
+        }
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+}
+
 /// Every face of the planar graph the segments make, with ends closer than `tol` joined: each
 /// bounded face counter-clockwise (positive area), and the outline of each connected piece
 /// clockwise (negative area).
 pub fn faces(segs: &[(P2, P2)], tol: f64) -> Vec<Vec<P2>> {
-    // ponytail: O(n²) splitting and node matching; a spatial grid once plans reach thousands of walls.
+    faces_of(split(segs, tol), tol)
+}
+
+/// [`faces`], the segments cut by every other: its twin, which tests hold it to.
+#[cfg(test)]
+pub(crate) fn faces_everywhere(segs: &[(P2, P2)], tol: f64) -> Vec<Vec<P2>> {
+    faces_of(split_among(segs, tol, |_| (0..segs.len()).collect()), tol)
+}
+
+/// The faces of the graph of `split` segments, ends closer than `tol` one node: the first node within `tol` of an end, in
+/// the order they were met, found among those of the grid cells round it.
+fn faces_of(split: Vec<(P2, P2)>, tol: f64) -> Vec<Vec<P2>> {
     let mut nodes: Vec<P2> = Vec::new();
-    let mut node = |p: P2| match nodes.iter().position(|q| q.dist(p) <= tol) {
-        Some(i) => i,
-        None => {
-            nodes.push(p);
-            nodes.len() - 1
+    let cell = if tol > 0.0 { tol } else { 0.0 };
+    let key = |p: P2| ((p.0 / cell).floor() as i64, (p.1 / cell).floor() as i64);
+    let mut grid: std::collections::HashMap<(i64, i64), Vec<usize>> = std::collections::HashMap::new();
+    let mut node = |p: P2| {
+        let found = if cell > 0.0 && p.is_finite() {
+            let (x, y) = key(p);
+            (x - 1..=x + 1)
+                .flat_map(|x| (y - 1..=y + 1).map(move |y| (x, y)))
+                .filter_map(|k| grid.get(&k))
+                .flatten()
+                .copied()
+                .filter(|&i| nodes.get(i).is_some_and(|q| q.dist(p) <= tol))
+                .min()
+        } else {
+            nodes.iter().position(|q| q.dist(p) <= tol)
+        };
+        match found {
+            Some(i) => i,
+            None => {
+                nodes.push(p);
+                if cell > 0.0 && p.is_finite() {
+                    grid.entry(key(p)).or_default().push(nodes.len() - 1);
+                }
+                nodes.len() - 1
+            }
         }
     };
     let mut edges = std::collections::BTreeSet::new();
-    for (a, b) in split(segs, tol) {
+    for (a, b) in split {
         let (i, j) = (node(a), node(b));
         if i != j {
             edges.insert((i.min(j), i.max(j)));
@@ -476,6 +568,36 @@ pub fn region_in(all: &[Vec<P2>], p: P2, tol: f64) -> Option<Region> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The faces of segments cut through a grid of their boxes are those of segments each cut by every other: random lines
+    /// on a 1 m lattice and off it, crossing, meeting end to end, ending on one another, overlapping and just missing.
+    #[test]
+    fn faces_found_through_a_grid_are_those_found_among_every_segment() {
+        let mut seed = 0x9e37_79b9_u64;
+        let mut next = |n: u64| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed % n
+        };
+        for round in 0..40 {
+            let mut segs = Vec::new();
+            for _ in 0..(20 + round * 5) {
+                let p = P2(next(20) as f64 * 1000.0, next(20) as f64 * 1000.0);
+                let q = if next(3) == 0 {
+                    p + P2(next(9000) as f64 - 4500.0, next(9000) as f64 - 4500.0)
+                } else {
+                    p + if next(2) == 0 { P2(next(8) as f64 * 1000.0, 0.0) } else { P2(0.0, next(8) as f64 * 1000.0) }
+                };
+                segs.push((p, q));
+                // Now and then one a hair off another's end.
+                if next(10) == 0 {
+                    segs.push((q + P2(0.0005, 0.0), q + P2(1500.0, 700.0)));
+                }
+            }
+            assert_eq!(faces(&segs, 1e-3), faces_everywhere(&segs, 1e-3), "round {round}");
+        }
+    }
 
     #[test]
     fn rings_grow_outward_at_every_edge() {

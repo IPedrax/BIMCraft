@@ -39,3 +39,26 @@ startup, tags) is [the desktop](../../docs/areas/desktop.md).
   that keeps none: `tests/light_canvas.rs`'s `Uploads` is one that does (`Harness::builder().renderer(..)`).
 - After a change to how the window looks, look at it in the three looks (Light, Dark, Dark UI with a Light Canvas) and in both profiles
   (BIMCraft and Rev, `style::Profile`): [looking at the result](../../docs/areas/looking-at-results.md).
+
+## The 2D canvas on the card
+
+A plan's triangles are egui's own, made once from `canvas::paint_to`'s shapes and kept on the card (`retained.rs`), so a frame that
+changes nothing is a draw call. A shape's look changes in `canvas::paint_prim`, for both paths. A new thing that decides what a plan
+looks like goes in `retained::Look`, or the canvas shows it late. The window's renderer's options must stay what `retained::Pipeline`
+assumes: no multisampling, no depth buffer, dithering on. The tests compare pixels with egui's renderer on a real card; a harness has no
+card, so it stays on `canvas::paint`. While a view moves, the frame shows the last drawing moved (`canvas::Shown`, which also picks through
+it, so use its `pick`s and `place`, not the view's pixels, for anything read from the drawing) and `PlanCache::moving` asks a worker for the
+exact one; an edit or another level is made in the frame. Plan and numbers: [canvas acceleration](../../docs/canvas-acceleration-plan.md).
+
+## Background view work
+
+Sections/elevations use `view_worker.rs` (bounded latest-request mailboxes) and `section_worker.rs` (snapshot-bound
+geometry, pictures and overlays). The UI installs each picture and its picking/display list together, and reprojects
+that completed generation during navigation. Never fall back to full geometry work on the UI thread when a job is late.
+Keep selected-level grip endpoints in the worker result too; `render::level_ends` builds whole-model work.
+The worker prepares with `SectionWork::new_deferred_cancellable` and fits with `section_fit_cancellable`; a job stopped part
+way publishes nothing, and what the renderer keeps of it is whole.
+
+Ordinary UI harnesses use inline section execution for deterministic tool tests. `section::worker_tests`,
+`section_worker::tests` and `view_worker::tests` exercise actual threaded publication, cancellation and navigation picking.
+New worker lifecycle behavior needs a real-worker test, not only an inline harness assertion.

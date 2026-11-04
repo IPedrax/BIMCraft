@@ -2319,6 +2319,8 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     #[derive(Default)]
     struct Made {
         category: Category,
+        // Which fixture or fitting it is, from the first of its products' predefined types that names one.
+        kind: Option<&'static str>,
         types: Vec<(String, Vec<Form>, u64)>,
         named: HashMap<String, Vec<usize>>,
         names: HashSet<String>,
@@ -2370,6 +2372,9 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             let family = clip(parts.next().unwrap_or_default());
             let base = clip(parts.next().unwrap_or(&family));
             let fam = made.entry(family.clone()).or_insert_with(|| Made { category, ..Made::default() });
+            if fam.kind.is_none() {
+                fam.kind = category.kind_of(enumeration(x.args.get(8)));
+            }
             // A type of that name and shape, or its mirror image, found by its shapes' key; a type the
             // file gives another shape is another type, while the family has room for its forms.
             let flipped = mirrored(&forms);
@@ -2405,10 +2410,10 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         }
     }
     let mut families: BTreeMap<String, Family> = BTreeMap::new();
-    for (name, Made { category, types, .. }) in made {
+    for (name, Made { category, kind, types, .. }) in made {
         // Several types: each its own forms, shown by a parameter only its type sets.
         let several = types.len() > 1;
-        let mut family = Family { category, ..Family::default() };
+        let mut family = Family { category, kind: kind.map(String::from), ..Family::default() };
         if several {
             family.parameters.push(Parameter { name: "Variant".into(), kind: crate::family::Kind::Number, ..Parameter::default() });
         }
@@ -2854,16 +2859,19 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     // program's, named for the property (less what a formula can't say, as the brackets of "Cargas (G2)"). Each one's kind from
     // its first value's, for the categories of the elements holding one; up to as many as a project holds, and as many values
     // as `MAX_VALUES`.
-    let (mut over, mut values) = (BTreeSet::new(), 0);
+    let (mut over, mut clash, mut values) = (BTreeSet::new(), BTreeSet::new(), 0);
     // Puts `value` as `name` on the elements the products `on` made; false once a project can hold no more values.
     let mut put = |m: &mut Model, skipped: &mut Vec<String>, on: &[u64], name: &str, kind: ParameterKind, value: &serde_json::Value| {
         for id in on.iter().filter_map(|x| elements_from.get(x)).flatten() {
             let Some(el) = m.elements.get(id) else { continue };
             let cat = el.category();
-            let theirs = |f: &str| m.families.get(f).is_some_and(|f| f.parameters.iter().any(|p| p.name == name));
+            // A component's parameter may not be one a family of the project has, whichever family it is: `Model::check` refuses it.
+            if cat == "component" && m.families.values().any(|f| f.parameters.iter().any(|p| p.name == name)) {
+                clash.insert(name.to_string());
+                continue;
+            }
             let fits = PARAMETER_CATEGORIES.contains(&cat)
                 && !crate::schedule::own_field(cat, name)
-                && !matches!(el, Element::Component(c) if theirs(&c.family))
                 && m.parameters.get(name).is_none_or(|p| p.kind == kind);
             let p = ProjectParameter { kind, categories: vec![cat.to_string()] };
             if !fits || !p.holds(value) {
@@ -2940,6 +2948,13 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
 
     if !over.is_empty() {
         skipped.push(format!("{} project parameters: past the {MAX_PROJECT_PARAMETERS} a project holds", over.len()));
+    }
+    if !clash.is_empty() {
+        let names: Vec<&str> = clash.iter().map(String::as_str).collect();
+        skipped.push(format!(
+            "{} on components: a family of the project has a parameter of that name, so it is not a project parameter too",
+            names.join(", ")
+        ));
     }
 
     // The project's phases, and what it changed of its phase filters, overrides and design option sets, from the
@@ -3053,6 +3068,26 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let Err(error) = m.check() else { break };
         let id = culprit(&error).filter(|id| from.contains_key(id)).ok_or_else(|| error.clone())?;
         let why = error.split_once(": ").map_or(error.as_str(), |(_, why)| why);
+        // A door or a window that rises past its wall's top, as Revit lets one: said with the file's wall and both heights.
+        let why = match (m.elements.get(id), why.starts_with("sill ")) {
+            (Some(e @ (Element::Door(o) | Element::Window(o))), true) => match (m.wall(o.host), m.opening_dims(e)) {
+                (Some(w), Ok(t)) => {
+                    let along = [o.offset - t.width / 2.0, o.offset, o.offset + t.width / 2.0];
+                    let top = along.map(|s| crate::walls::top_at(&m, w, s)).into_iter().fold(f64::INFINITY, f64::min);
+                    let wall = m.elements.id(o.host).and_then(|k| from.get(&k)).cloned().unwrap_or_default();
+                    format!(
+                        "sill {} + height {} reach {} mm, past its wall {wall}, {} mm high there; BIMCraft keeps a door or window \
+                         within its wall's height, where Revit lets one rise past the top",
+                        num(o.sill),
+                        num(t.height),
+                        num(o.sill + t.height),
+                        num(top - m.own_base(w))
+                    )
+                }
+                _ => why.to_string(),
+            },
+            _ => why.to_string(),
+        };
         skipped.push(format!("{}: {why}", from.get(&id).cloned().unwrap_or_default()));
         let gone = m.guid(id);
         m.elements.remove(id);
@@ -3720,6 +3755,57 @@ ENDSEC;END-ISO-10303-21;",
         let metres = file.replace(".MILLI.,.METRE.", "$,.METRE.").replace("IFCLENGTHMEASURE(2400.)", "IFCLENGTHMEASURE(2.4)");
         let i = ifc(metres.as_bytes(), "x").unwrap();
         assert_eq!(values(&i.model, "room").and_then(|p| p.get("Finish Height").cloned()), Some(json!(2400.0)));
+    }
+
+    #[test]
+    fn a_window_taller_than_its_wall_is_left_out_with_the_wall_and_both_heights_named() {
+        let mut s = crate::engine::Session::new();
+        s.script(
+            r#"wall {"points": [[0,0],[6000,0]], "height": 3000}
+               window {"at": [3000, 0]}"#,
+        )
+        .unwrap();
+        // Another program's window rises past its wall's top, as Revit lets one: its OverallHeight, the ninth attribute, is 5000.
+        let file: String = crate::ifc::export(&s.model)
+            .lines()
+            .map(|line| match line.split_once("=IFCWINDOW(") {
+                Some((at, args)) => {
+                    let mut parts: Vec<&str> = args.split(',').collect();
+                    parts[8] = "5000.";
+                    format!("{at}=IFCWINDOW({}", parts.join(","))
+                }
+                None => line.to_string(),
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let i = ifc(file.as_bytes(), "x").unwrap();
+        assert!(only(&i.model, "window").is_empty(), "BIMCraft keeps a window within its wall");
+        let note = i.skipped.iter().find(|n| n.starts_with("IFCWINDOW")).unwrap();
+        assert!(note.contains("past its wall IFCWALL #"), "names the file's wall, not BIMCraft's id for it: {note}");
+        assert!(note.contains("3000 mm high") && note.contains("height 5000"), "says both heights: {note}");
+        assert!(note.contains("Revit"), "says why another program allowed it: {note}");
+    }
+
+    #[test]
+    fn a_property_named_as_a_parameter_of_a_family_does_not_stop_the_file_from_opening() {
+        let mut s = crate::engine::Session::new();
+        s.script(
+            r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}
+               component {"family": "Chair", "at": [2000, 2000]}
+               parameter {"name": "Depth Of", "kind": "length", "categories": ["component"]}
+               parameter {"name": "Supplier", "categories": ["component"]}"#,
+        )
+        .unwrap();
+        let chair = s.model.elements.iter().find(|(_, e)| e.category() == "component").map(|(id, _)| *id).unwrap();
+        s.execute("modify", &json!({"id": chair, "params": {"Depth Of": 450, "Supplier": "Acme"}})).unwrap();
+        // Another program calls the property by the name of a parameter the starter "Base Cabinet" family has.
+        assert!(s.model.families.values().any(|f| f.parameters.iter().any(|p| p.name == "Depth")));
+        let file = crate::ifc::export(&s.model).replace("'Depth Of'", "'Depth'");
+        let i = ifc(file.as_bytes(), "x").unwrap();
+        assert!(!i.model.parameters.contains_key("Depth"), "a family's parameter is not a project parameter too");
+        let kept = i.model.elements.values().find(|e| e.category() == "component").and_then(Element::params).unwrap();
+        assert_eq!(kept.get("Supplier"), Some(&json!("Acme")), "the other values stay");
+        assert!(i.skipped.iter().any(|n| n.contains("Depth") && n.contains("family")), "{:?}", i.skipped);
     }
 
     #[test]

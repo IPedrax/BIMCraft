@@ -45,6 +45,9 @@ pub enum Kind {
     Nearest,
     /// A point of a scan where the plan's cut plane cuts it.
     Point,
+    /// Where an annotation is placed: a note, a dimension, a tag, a spot elevation, a section or elevation mark, a detail
+    /// group or a repeating detail.
+    Anchor,
     /// A point on an angle guide.
     Angle,
     /// Nothing to snap to: the nearest 10 mm.
@@ -64,6 +67,7 @@ impl Kind {
             Kind::Tangent => ui_msg!("Tangent"),
             Kind::Nearest => ui_msg!("Nearest"),
             Kind::Point => "Point Cloud",
+            Kind::Anchor => ui_msg!("Annotation Anchor"),
             Kind::Angle => ui_msg!("Angle"),
             Kind::Free => "",
         }
@@ -83,6 +87,9 @@ pub struct Snaps {
     pub nearest: bool,
     /// The points of a scan where the plan's cut plane cuts it.
     pub cloud: bool,
+    /// Where annotations are placed: notes, dimensions, tags, spot elevations, section and elevation marks, detail groups
+    /// and repeating details.
+    pub annotation: bool,
     /// Degrees between the angles a direction snaps to, from east and from the line before it,
     /// from 1 to 180; anything else for none.
     pub angle: f64,
@@ -105,6 +112,7 @@ impl Snaps {
             tangent: false,
             nearest: false,
             cloud: false,
+            annotation: false,
             angle: 0.0,
             alignment_guides: false,
             alignment_tolerance: 8.0,
@@ -125,6 +133,7 @@ impl Snaps {
             Kind::Tangent => Snaps { tangent: true, ..none },
             Kind::Nearest => Snaps { nearest: true, ..none },
             Kind::Point => Snaps { cloud: true, ..none },
+            Kind::Anchor => Snaps { annotation: true, ..none },
             Kind::Angle | Kind::Free => none,
         }
     }
@@ -142,6 +151,7 @@ impl Default for Snaps {
             tangent: true,
             nearest: true,
             cloud: true,
+            annotation: true,
             angle: 15.0,
             alignment_guides: true,
             alignment_tolerance: 8.0,
@@ -289,6 +299,54 @@ impl<'a> Scene<'a> {
                 Element::DetailLine(l) if m.annotation_in(e, view) => s.curve(&l.curve, p, window, of),
                 // The rest is a plan's: a section has none of it.
                 _ if !plan => {}
+                // Annotation's anchors: where it is placed, and the points its leader or dimension line reaches.
+                Element::Text(n) if m.annotation_in(e, view) => {
+                    s.points.push((n.at, Kind::Anchor, of));
+                    if let Some(to) = n.leader {
+                        s.points.push((to, Kind::Anchor, of));
+                    }
+                }
+                Element::Spot(sp) if m.annotation_in(e, view) => s.points.push((sp.at, Kind::Anchor, of)),
+                Element::Tag(t) if m.annotation_in(e, view) && m.elements.id(t.host).is_some_and(|id| look.shows(id)) => {
+                    if let Some(host) = m.anchor(t.host) {
+                        s.points.push((host + t.offset, Kind::Anchor, of));
+                        if t.leader {
+                            s.points.push((host, Kind::Anchor, of));
+                        }
+                    }
+                }
+                Element::Dimension(d) if m.annotation_in(e, view) => {
+                    s.points.push((d.at, Kind::Anchor, of));
+                    let (along, stations) = m.stations(d);
+                    for (at, _, _) in stations {
+                        s.points.push((d.at + along * at, Kind::Anchor, of));
+                    }
+                }
+                Element::DetailGroup(g) if m.annotation_in(e, view) => s.points.push((g.at, Kind::Anchor, of)),
+                Element::RepeatingDetail(r) if m.annotation_in(e, view) => {
+                    s.points.extend([(r.start, Kind::Anchor, of), (r.end, Kind::Anchor, of)]);
+                    if let Some(places) = r.places() {
+                        s.points.extend(places.into_iter().map(|(at, _)| (at, Kind::Anchor, of)).filter(|(at, _, _)| near(&[*at])));
+                    }
+                }
+                // Their marks stand on every plan.
+                Element::Section(v) | Element::Elevation(v) => {
+                    s.points.extend([(v.start, Kind::Anchor, of), (v.end, Kind::Anchor, of), ((v.start + v.end) * 0.5, Kind::Anchor, of)]);
+                }
+                // A camera gives its eye and target, never the mark's body, lens, name or sight line.
+                Element::View3D(v) => {
+                    if let Some(c) = v.camera
+                        && let Some(level_id) = m.elements.id(level)
+                        && m.camera_level(c.eye[2]) == Some(level_id)
+                    {
+                        let eye = P2(c.eye[0], c.eye[1]);
+                        let target = P2(c.target[0], c.target[1]);
+                        s.points.push((eye, Kind::Endpoint, of));
+                        if eye.dist(target) > TOL {
+                            s.points.push((target, Kind::Endpoint, of));
+                        }
+                    }
+                }
                 Element::Wall(w) => {
                     let a = Axis::of(w);
                     // An arc may bulge past its ends: take the box round its circle.
@@ -576,13 +634,15 @@ fn corner_on(from: &[P2], d: P2) -> Option<f64> {
     corner(*prev, *last, *last + d.unit() * (2.0 * TOL))
 }
 
-/// How points rank where two lie as near: an end before a crossing before a middle before a centre.
+/// How points rank where two lie as near: an end before a crossing before a middle before an annotation's anchor before
+/// a centre or any other point.
 fn rank(k: Kind) -> u8 {
     match k {
         Kind::Endpoint => 0,
         Kind::Intersection => 1,
         Kind::Midpoint => 2,
-        _ => 3,
+        Kind::Anchor => 3,
+        _ => 4,
     }
 }
 
@@ -692,6 +752,7 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
         Kind::Midpoint => o.midpoint,
         Kind::Centre => o.centre,
         Kind::Quadrant => o.quadrant,
+        Kind::Anchor => o.annotation,
         _ => true,
     };
     // A chord is its curve's element's.
@@ -1447,5 +1508,164 @@ mod tests {
         assert!(f.kind == Kind::Endpoint && f.at.dist(P2(18000.0, 12000.0)) < 400.0, "a corner of the core's walls: {f:?}");
         // The outlines of the walls near the cursor, not of the hundreds there are.
         assert!(built <= MAX_OUTLINES && built * 10 < walls, "{built} outlines built of {walls} walls");
+    }
+
+    #[test]
+    fn a_note_a_section_and_a_camera_snap_where_they_are_placed() {
+        let mut s = Session::new();
+        s.script(
+            r#"text {"text": "Note", "at": [1000, 1000], "leader": [2000, 1500]}
+               section {"start": [-1000, 3000], "end": [5000, 3000]}
+               camera {"eye": [5000, 5000, 1500], "target": [6000, 5000, 1200]}"#,
+        )
+        .unwrap();
+        let o = Snaps::default();
+        let text_id = *s.model.elements.iter().find(|(_, e)| matches!(e, Element::Text(_))).unwrap().0;
+        let section_id = *s.model.elements.iter().find(|(_, e)| matches!(e, Element::Section(_))).unwrap().0;
+        let camera_id = *s.model.elements.iter().find(|(_, e)| matches!(e, Element::View3D(_))).unwrap().0;
+        assert_eq!(at(&s.model, P2(1030.0, 1020.0), &[], &o).kind, Kind::Anchor);
+        assert_eq!(
+            at(&s.model, P2(2030.0, 1520.0), &[], &o),
+            Found { at: P2(2000.0, 1500.0), kind: Kind::Anchor, guide: None, source: Some(text_id) }
+        );
+        assert_eq!(
+            at(&s.model, P2(-980.0, 3020.0), &[], &o),
+            Found { at: P2(-1000.0, 3000.0), kind: Kind::Anchor, guide: None, source: Some(section_id) }
+        );
+        assert_eq!(
+            at(&s.model, P2(5030.0, 5020.0), &[], &o),
+            Found { at: P2(5000.0, 5000.0), kind: Kind::Endpoint, guide: None, source: Some(camera_id) }
+        );
+        assert_eq!(
+            at(&s.model, P2(6030.0, 5020.0), &[], &o),
+            Found { at: P2(6000.0, 5000.0), kind: Kind::Endpoint, guide: None, source: Some(camera_id) }
+        );
+        // The annotation's switch turns its anchors off; endpoints keep the camera's eye and target.
+        let off = Snaps { annotation: false, ..o };
+        assert_eq!(at(&s.model, P2(1030.0, 1020.0), &[], &off).kind, Kind::Free);
+        assert_eq!(at(&s.model, P2(2030.0, 1520.0), &[], &off).kind, Kind::Free);
+        assert_eq!(at(&s.model, P2(5030.0, 5020.0), &[], &off).kind, Kind::Endpoint);
+        assert_eq!(at(&s.model, P2(1030.0, 1020.0), &[], &Snaps::only(Kind::Anchor)).kind, Kind::Anchor);
+        assert_eq!(at(&s.model, P2(5030.0, 5020.0), &[], &Snaps::only(Kind::Anchor)).kind, Kind::Free);
+        assert_eq!(at(&s.model, P2(5030.0, 5020.0), &[], &Snaps::only(Kind::Endpoint)).kind, Kind::Endpoint);
+        assert_eq!(at(&s.model, P2(1030.0, 1020.0), &[], &Snaps::none()).kind, Kind::Free);
+    }
+
+    #[test]
+    fn a_dimension_snaps_at_its_line_and_its_stations() {
+        let m = model(
+            r#"wall {"points": [[0, 0], [0, 4000]]}
+               wall {"points": [[4000, 0], [4000, 4000]]}
+               dimension {"refs": [[0, 3000], [4000, 3000]], "at": [2000, 5000]}"#,
+        );
+        let o = Snaps::default();
+        let dimension_id = *m.elements.iter().find(|(_, e)| matches!(e, Element::Dimension(_))).unwrap().0;
+        assert_eq!(
+            at(&m, P2(30.0, 5020.0), &[], &o),
+            Found { at: P2(0.0, 5000.0), kind: Kind::Anchor, guide: None, source: Some(dimension_id) }
+        );
+        assert_eq!(
+            at(&m, P2(2000.0, 5010.0), &[], &o),
+            Found { at: P2(2000.0, 5000.0), kind: Kind::Anchor, guide: None, source: Some(dimension_id) }
+        );
+        assert_eq!(
+            at(&m, P2(4030.0, 5020.0), &[], &o),
+            Found { at: P2(4000.0, 5000.0), kind: Kind::Anchor, guide: None, source: Some(dimension_id) }
+        );
+        assert_eq!(at(&m, P2(2000.0, 5010.0), &[], &Snaps { annotation: false, ..o }).kind, Kind::Free);
+    }
+
+    #[test]
+    fn a_tag_snaps_at_its_head_and_where_its_leader_holds() {
+        let mut s = Session::new();
+        s.script(
+            r#"wall {"points": [[0, 1000], [6000, 1000]]}
+                   door {"wall": 100002, "offset": 2000}"#,
+        )
+        .unwrap();
+        let door = *s.model.elements.iter().find(|(_, e)| matches!(e, Element::Door(_))).unwrap().0;
+        s.execute("tag", &serde_json::json!({"ids": [door], "leader": true})).unwrap();
+        let (tag_id, tag) = s
+            .model
+            .elements
+            .iter()
+            .find_map(|(&id, e)| match e {
+                Element::Tag(t) => Some((id, t)),
+                _ => None,
+            })
+            .expect("the tag the command made");
+        let host = s.model.anchor(tag.host).unwrap();
+        let head = host + tag.offset;
+        let o = Snaps::default();
+        assert_eq!(at(&s.model, host + P2(20.0, 20.0), &[], &o), Found { at: host, kind: Kind::Anchor, guide: None, source: Some(tag_id) });
+        assert_eq!(at(&s.model, head + P2(20.0, 20.0), &[], &o), Found { at: head, kind: Kind::Anchor, guide: None, source: Some(tag_id) });
+        // Without a leader the place it holds is not drawn, so it is no anchor.
+        let mut s = Session::new();
+        s.script(
+            r#"wall {"points": [[0, 1000], [6000, 1000]]}
+                   door {"wall": 100002, "offset": 2000}"#,
+        )
+        .unwrap();
+        let door = *s.model.elements.iter().find(|(_, e)| matches!(e, Element::Door(_))).unwrap().0;
+        s.execute("tag", &serde_json::json!({"ids": [door]})).unwrap();
+        let host = s.model.anchor(door).unwrap();
+        assert_ne!(at(&s.model, host + P2(20.0, 20.0), &[], &o).kind, Kind::Anchor);
+    }
+
+    #[test]
+    fn a_spot_a_group_and_a_repeating_detail_snap_where_they_are_placed() {
+        let mut s = Session::new();
+        s.script(
+            r#"floor {"boundary": [[0, 0], [6000, 0], [6000, 4000], [0, 4000]]}
+               spot {"at": [3000, 2000]}"#,
+        )
+        .unwrap();
+        let member = crate::groups::Member {
+            id: 0,
+            guid: crate::ids::Guid::default(),
+            element: Element::DetailLine(crate::lines::DetailLine {
+                view: crate::ids::Guid::default(),
+                curve: Curve::line(P2(0.0, 0.0), P2(0.0, 5.0)),
+                style: "Thin Lines".into(),
+                insulation: None,
+                centre_mark: false,
+                cloud: None,
+                revision: None,
+            }),
+        };
+        s.model_mut().detail_groups.insert("G".into(), crate::groups::GroupType { members: vec![member] });
+        s.model_mut().sync_library();
+        s.execute("detail_group", &serde_json::json!({"type": "G", "at": [1000, 1000]})).unwrap();
+        s.execute("repeating_detail", &serde_json::json!({"type": "G", "start": [2000, 3000], "end": [4000, 3000], "spacing": 1000}))
+            .unwrap();
+        let o = Snaps::default();
+        let group_id = *s.model.elements.iter().find(|(_, e)| matches!(e, Element::DetailGroup(_))).unwrap().0;
+        let repeating_id = *s.model.elements.iter().find(|(_, e)| matches!(e, Element::RepeatingDetail(_))).unwrap().0;
+        assert_eq!(at(&s.model, P2(3020.0, 2020.0), &[], &o).kind, Kind::Anchor);
+        assert_eq!(
+            at(&s.model, P2(1020.0, 1020.0), &[], &o),
+            Found { at: P2(1000.0, 1000.0), kind: Kind::Anchor, guide: None, source: Some(group_id) }
+        );
+        assert_eq!(
+            at(&s.model, P2(2020.0, 3020.0), &[], &o),
+            Found { at: P2(2000.0, 3000.0), kind: Kind::Anchor, guide: None, source: Some(repeating_id) }
+        );
+        assert_eq!(
+            at(&s.model, P2(3020.0, 3020.0), &[], &o),
+            Found { at: P2(3000.0, 3000.0), kind: Kind::Anchor, guide: None, source: Some(repeating_id) }
+        );
+    }
+
+    #[test]
+    fn a_camera_on_another_level_has_no_points_here() {
+        let mut s = Session::new();
+        s.script(
+            r#"level {"name": "Roof", "elevation": 3000}
+                   camera {"eye": [5000, 5000, 3500], "target": [6000, 5000, 3200]}"#,
+        )
+        .unwrap();
+        assert_eq!(at(&s.model, P2(5030.0, 5020.0), &[], &Snaps::default()).kind, Kind::Free);
+        let level = s.model.levels().last().unwrap().0;
+        assert_eq!(snap(&s.model, level, P2(5030.0, 5020.0), REACH, &[], false, &Snaps::default()).kind, Kind::Endpoint);
     }
 }

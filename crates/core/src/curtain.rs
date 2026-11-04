@@ -104,7 +104,7 @@ pub(crate) fn starter_types(m: &mut Model) {
     }
 }
 
-/// What's wrong with the project's panel and mullion types, its patterns and its curtain walls, saying what to fix.
+/// What's wrong with the project's panel and mullion types and its patterns, saying what to fix.
 pub(crate) fn check(m: &Model) -> Result<(), String> {
     let material = |who: &str, name: &str| {
         if !name.is_empty() && !m.materials.contains_key(name) {
@@ -138,34 +138,30 @@ pub(crate) fn check(m: &Model) -> Result<(), String> {
         offset(&who, "offset_y", t.offset_y)?;
         material(&who, &t.material)?;
     }
-    let mut any = false;
     for (n, t) in &m.types.wall {
         if let Some(l) = &t.curtain {
             check_pattern(m, n, l)?;
-            any = true;
-        }
-    }
-    if any {
-        let mut taken = BTreeSet::new();
-        for (id, e) in m.elements.iter() {
-            match e {
-                Element::Wall(w) => {
-                    if let Some(l) = pattern(m, w) {
-                        check_wall(m, *id, w, l)?;
-                    }
-                    check_panel_wall(m, *id, w, &mut taken)?;
-                }
-                Element::Door(o) | Element::Window(o) if m.wall(o.host).is_some_and(|w| pattern(m, w).is_some()) => {
-                    return Err(format!(
-                        "{} {id} is in a curtain wall: replace a panel with a wall first, and put it in that wall",
-                        e.category()
-                    ));
-                }
-                _ => {}
-            }
         }
     }
     Ok(())
+}
+
+/// What's wrong with element `id` as a curtain wall, a wall standing in a cell, or a door or a window in a curtain wall.
+/// `taken`: the cells seen so far.
+pub(crate) fn check_element(m: &Model, id: u64, e: &Element, taken: &mut BTreeSet<(Guid, i64, i64)>) -> Result<(), String> {
+    match e {
+        Element::Wall(w) => {
+            if let Some(l) = pattern(m, w) {
+                check_wall(m, id, w, l)?;
+            }
+            check_panel_wall(m, id, w, taken)
+        }
+        Element::Door(o) | Element::Window(o) if m.wall(o.host).is_some_and(|w| pattern(m, w).is_some()) => Err(format!(
+            "{} {id} is in a curtain wall: replace a panel with a wall first, and put it in that wall",
+            e.category()
+        )),
+        _ => Ok(()),
+    }
 }
 
 /// The most a panel's thickness, a mullion's width or depth, or an offset of one may be, mm.
@@ -1241,6 +1237,19 @@ pub(crate) fn from_params(m: &Model, v: &Value) -> Result<CurtainLayout, String>
         }
     }
     serde_json::from_value(Value::Object(o)).map_err(|e| format!("`curtain`: {e}"))
+}
+
+/// Whether [`out_of_date`] can say yes of a model a command made of `before`, a model that was in date, without looking at
+/// every wall: only a change to a type, a setting or a level, or to a wall that holds a pattern's edits or stands in a cell, can
+/// put one out of date.
+pub(crate) fn may_be_out_of_date(m: &Model, before: &Model) -> bool {
+    let crate::ids::Changed::Ids(changed) = m.changed_since(before) else { return true };
+    let reaches = |e: &Element| match e {
+        Element::Level(_) => true,
+        Element::Wall(w) => w.panel_of.is_some() || pattern(m, w).is_some() || pattern(before, w).is_some(),
+        _ => false,
+    };
+    changed.iter().any(|id| [m, before].iter().any(|x| x.elements.get(*id).is_some_and(reaches)))
 }
 
 /// Whether a curtain wall type's thickness isn't what its panels and mullions make it.

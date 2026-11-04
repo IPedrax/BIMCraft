@@ -10,6 +10,7 @@ pub mod autosave;
 #[cfg(test)]
 mod autosave_tests;
 pub mod background_grid;
+pub mod bounds;
 pub mod bridge;
 pub mod cad;
 #[cfg(test)]
@@ -21,11 +22,13 @@ mod commands;
 mod component_geometry;
 pub mod conduit;
 mod constraints;
+pub mod crosscheck;
 mod csg;
 pub mod curtain;
 #[cfg(test)]
 mod curtain_tests;
 pub mod curves;
+pub mod derived;
 pub mod dims;
 pub mod dims3d;
 pub mod drainage;
@@ -62,6 +65,8 @@ pub mod loads;
 pub mod massing;
 pub mod model;
 pub mod nbr5410;
+#[cfg(test)]
+mod oracle_tests;
 pub mod paint;
 pub mod pat;
 pub mod pdf;
@@ -86,6 +91,7 @@ mod room_bounds_tests;
 mod room_freeze_tests;
 #[cfg(test)]
 mod room_height_tests;
+pub mod rooms;
 pub mod runs;
 pub mod sample;
 pub mod schedule;
@@ -94,6 +100,7 @@ mod section_box_tests;
 pub mod selection;
 #[cfg(test)]
 mod shape_tests;
+pub mod shared;
 pub mod sheet;
 pub mod skeleton;
 pub mod sketch;

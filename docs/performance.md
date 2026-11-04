@@ -118,11 +118,200 @@ An additional 80-storey probe (38,081 elements) measured approximately 27 ms pla
 correctness sweep, so treat those numbers as a scaling diagnostic, not an idle-machine baseline.
 This exposes the remaining cost of whole-model validation and processing every instance.
 
+## The reference tower: the baseline of the next core (2026-10-31)
+
+`tower` ([`sample/tower.rs`](../crates/core/src/sample/tower.rs)) is the original reference building of the next core
+([plan](spatial-core-plan.md)): 100 storeys at 4 m on an 84 × 60 m plate, **10,017 elements a storey and 195 rooms that
+bound**, 1,001,701 elements in all. It is built through the ordinary commands, then stacked.
+
+```sh
+cargo build --release -p bimcraft-core --example performance
+target/release/examples/performance --fixture tower --storeys 1 --repeat 5 --output dist/tower1 --report dist/tower1.json
+target/release/examples/performance --fixture tower --storeys 10 --repeat 3 --rooms 100 --skip ifc,inspect --report dist/tower10.json
+target/release/examples/performance --fixture tower --storeys 100 --repeat 3 --rooms 3 --skip ifc,inspect,plan,scene --report dist/tower100.json
+```
+
+Release build, Ryzen 7 2700X, idle apart from the probe; one run each. [Raw reports](performance/tower-baseline.json).
+A room's boundary is timed over a sample of rooms spread over the storeys; "every room" is that times the rooms.
+
+| Operation | 1 storey (10,018) | 10 storeys (100,171) | 100 storeys (1,001,701) |
+|---|---:|---:|---:|
+| Build (one storey through commands, then stacked) | 68.8 s | 69.8 s | 90.8 s |
+| Full model check | 215 ms | 2.07 s | 21.3 s |
+| Validated edit (move a column 10 mm), median | 220 ms | 2.16 s | 21.5 s |
+| One room's boundary | 48.5 ms | 1.63 s | 16.3 s |
+| Every room's boundary (estimated) | 9.5 s | 53 min | 88 h |
+| `inspect` (every room's boundary) | 9.3 s | skipped | skipped |
+| Fit and draw the plan of Level 1 | 10.9 s | 322 s | skipped |
+| Build the 3D scene | 605 ms | 8.1 s | skipped |
+| Changing-camera CPU frame, 1280 × 720 | 270 ms | 2.17 s | skipped |
+| Write the project | 29 ms | 283 ms | 3.36 s (366 MB) |
+| Read it back | 96 ms | 905 ms | 10.3 s |
+| IFC export | 54.7 s | skipped | skipped |
+| Memory after load / peak | 1.3 / 1.5 GB | 1.4 / 5.0 GB | 2.2 / 4.4 GB |
+
+What it says:
+
+* **Every edit costs the whole project.** Check and edit grow with the element count: 21 s to move one column of a
+  million-element project. The check is most of an edit.
+* **Rooms grow faster than the project.** A room's boundary takes its level's bounding walls with their joins, and each
+  wall's joins are found among every wall of the project, so one room is levels' walls × all walls: 34× from 1 to 10
+  storeys. Every room of the tower would take days.
+* **A plan is its rooms.** The plan of one storey is 10.9 s at one storey and 322 s at ten, nearly all of it the room tags'
+  areas, each finding its boundary again (the 20-storey highrise has no rooms and draws in 6.7 ms).
+* Building one storey through 400-odd commands takes 69 s, because each command checks the whole storey; stacking a
+  hundred is 22 s more.
+* Reading and writing are linear and fine; memory is 2.2 GB for a million elements.
+
+### Piece 2: wall joins by plan tile, rooms a level at a time
+
+A wall's joins are looked for among the walls reaching the same 6 m plan tile, and one look at the model
+(`rooms::Rooms`) arranges each level's room-bounding lines once for all its rooms. Same machine, release, one run each:
+
+| Operation | 1 storey, before | after | 10 storeys, before | after |
+|---|---:|---:|---:|---:|
+| Fit and draw the plan of Level 1 | 10.9 s | 274 ms | 322 s | 394 ms |
+| Redraw it | 10.4 s | 68 ms | 326 s | 151 ms |
+| `inspect` (every room's boundary) | 9.3 s | 7.8 ms | 53 min (estimated) | 163 ms |
+| One room's boundary, alone | 48.5 ms | 5.7 ms | 1.63 s | 17.2 ms |
+| IFC export | 54.7 s | 984 ms | skipped | skipped |
+| Check, edit, scene, files | unchanged | | unchanged | |
+
+The plan and the 3D picture of one storey are byte for byte the ones before. Every room at both measures, and every
+wall's centre line, caps, outline, layers and prisms, are tested against the way they were found before.
+
+### Pieces 3 to 5: change sets, the incremental check, shared storage
+
+Each command's model knows which elements it added, changed or removed; the engine checks those, the walls they might
+join and what points at them (the full check stays where a change reaches levels, views, sheets or settings, and in
+tests, after every command, as the oracle). Elements are kept in chunks of 1,024 ids that copies share until they change
+them, so the copy a command makes and the snapshot undo keeps cost a pointer a chunk. A storey's check also builds each
+family, type and values' shape once instead of each component's.
+
+The 100-storey tower (1,001,701 elements), release, one run each, edit the median of five:
+
+| Operation | Baseline | Piece 2 and the shapes | Pieces 3–5 |
+|---|---:|---:|---:|
+| Validated edit (move a column 10 mm) | 21.5 s | 1.66 s | **272 ms** |
+| Full model check | 21.3 s | 1.19 s | 1.27 s |
+| Build the tower | 90.8 s | 10.9 s | 5.6 s |
+| `inspect`, every room's boundary (19,500) | ~88 h (estimated) | 9.3 s | 10.1 s |
+| Fit and draw the plan of one storey | didn't finish | 1.53 s | 1.68 s |
+| One room's boundary, alone | 16.3 s | 128 ms | 140 ms |
+| Memory after load / peak | 2.2 / 4.4 GB | 2.2 / 4.4 GB | **1.1 / 3.5 GB** |
+| Write / read the project | 3.4 / 10.3 s | 3.2 / 10.1 s | 3.4 / 10.7 s |
+
+At 100,171 elements (ten storeys) an edit went 156 → 29 ms. What is left of an edit at a million is the incremental
+check's walk over every element to find what points at what changed: an index of references kept with the model
+(piece 6) makes it what changed. A plan of one storey and `inspect` still go through every element of the project:
+plans by level (piece 7).
+
+### Piece 6: what elements point at, kept with each model
+
+`derived::Lookup` keeps, with each model, what each element points at and what points at it, the walls by 6 m plan tile
+and the dimensions, in chunks behind `Arc`s; a command's copy brings its model's lookup up to date by what it changed.
+The edit path asks it, and the change set, instead of going through every element: the incremental check follows
+references and finds the walls a changed wall might join in its tiles (overlapping in height); moving finds the walls to
+stretch and the openings to slide there; keeping locked dimensions, resolving references and whether the library is in
+step look at what changed.
+
+The million-element tower, median of nine, each undone after it:
+
+| Edit | Baseline | Pieces 3–5 | Piece 6, plan tiles | Piece 6, tiles by height | Undo |
+|---|---:|---:|---:|---:|---:|
+| Move a column 10 mm | 21.5 s | 272 ms | 1.7 ms | **1.65 ms** | 1.0 ms → **under 0.01 ms** |
+| Move a corridor wall with 24 doors and the partitions joined to it | | | 23 ms | **8.3 ms** | 14 ms → **under 0.01 ms** |
+
+With plan tiles alone, the wall's neighbours were the same wall of every storey above and below. Each tile now holds its
+walls in bands of 1 m of height, by the heights their levels give them (a wall attached to a roof or floor is in every
+band, and a level that changes makes the lookup again), so the check and Move ask for the walls near in plan and in
+height: the check went from 10 ms to 1.4 ms. The bands sit behind `Arc`s within each tile, so a copy shares what an
+edit didn't touch. Undo and redo go back to a model that passed the check and take it as it was: each step remembers
+whether its model passed (a model opened and never checked is still checked when undo comes back to it).
+
+### 2D in big numbers, and rooms by #181's rules
+
+`tower {"annotation": true}` (`performance --annotation true`) details every storey's plan as a drawing set does: about
+2,000 detail lines, text notes, filled regions and dimensions on its walls a storey, 1,200,101 elements in 100 storeys.
+The 2D found what the model-only tower hid; each fix keeps its old way as a twin the tests hold it to:
+
+- a point a dimension measures to was looked for among every wall, door and window: now among the walls near it in the
+  lookup's tiles, at the plan's cut height; a wall's joins without an index ask the tiles at its own heights;
+- `Model::levels`, behind every plan range, walked every element: now the lookup's levels;
+- the library's parts (every sketch line of every region, floor and ceiling) were one map copied with each model and
+  synced by walking every element, touching all of them: now chunks behind `Arc`s and a sync of what the command changed;
+- a region kept the model's ink above it by clipping all of it, each line cut by every fill ring: now grids of the ink
+  and of the fills;
+- a plan's dozen passes went through every element: now through those that may show in it (`plan_elements`);
+- rooms (#181: Room Bounding, columns that bound, frozen and redundant rooms) are found a level at a time, the level's
+  faces through a grid of its lines rather than every line against every other.
+
+The 1.2 million elements, release, median of nine:
+
+| | Before | Now |
+|---|---:|---:|
+| Full check (on opening) | 52 s | 2.2 s |
+| A new dimension by points on walls | 1.5 s at 120,000 elements; 120 ms | **10.5 ms** |
+| A wall slid along itself with its doors and the dimensions on it | 253 ms | **10.0 ms** |
+| Move a detail line / a text note | 4.4 ms | 4.6 / 4.5 ms |
+| A new filled region (120,000 elements) | 215 ms | 11 ms |
+| A storey's plan redrawn (52,000 primitives) | 2.8 s | 0.45 s |
+| Every room's boundary (`inspect`, 19,500 rooms) | | 2.3 s |
+| One room's boundary alone | 163 ms | 11.7 ms |
+
+Building one annotated storey through commands went from 76 s to 4.4 s. A storey alone draws its plan in 136 ms; the
+rest of the 450 ms is the one pass over the project's elements that picks the plan's and the passes that are still
+linear: next, a cache of each element's heights in the lookup, so a plan asks for its band, and per-element fragments.
+
+### A drawing set: 406 sheets, and plans that ask the lookup for their elements
+
+`tower {"sheets": true}` (`performance --sheets true`) adds a drawing set: each storey's floor plan, ceiling plan (a
+duplicate) and two enlarged halves (dependent views, cropped, at 1 : 50) on A0 sheets of their own, each with eight
+general notes; and the project's sheets, made once: the cover with the 3D view, the four elevations, a section and the
+room, door and window schedules. With `annotation`, 100 storeys are 1,204,473 elements, 406 sheets, 409 viewports and
+300 plan views.
+
+What the sheets found:
+
+- a sheet, a viewport or a view was among the kinds whose edit checked the whole model: they are now checked as a
+  drawing set (every sheet, viewport and view, with the levels' names), their kinds kept by the lookup;
+- a sheet found its viewports and its notes, and `place` its sheet and view, by walking every element: now the
+  sheet's referrers and the lookup's views and sheets;
+- a plan found the elements that may show in it by asking each of the 1.2 million: now the lookup keeps components and
+  runs by band of the heights their own values give, grouped by what the library adds (a family's geometry, a run
+  type's depth), which the plan adds as it asks, so a library change needs no new lookup; doors come from the walls
+  they're in, annotation from the plan's referrers, view-less tags from what is on its level, the rest from one small
+  set of the kinds a plan looks for among all;
+- a slab less its shafts walked every element for each piece: shafts are kept by the lookup;
+- a plan's extent built each piece of furniture's whole geometry for its outline: now its outline, from the cache.
+
+The 1.2 million elements, release, median of three (each edit with its undo):
+
+| | Before | Now |
+|---|---:|---:|
+| A new sheet | 2,215 ms | **12 ms** |
+| A viewport moved | 2,165 ms | **7.6 ms** |
+| A new sheet and a schedule placed on it | 4,968 ms | 256 ms |
+| A note on a sheet moved | 3.8 ms | 3.9 ms |
+| A storey's plan fitted and drawn | 1,035 ms | **223 ms** |
+| A storey's plan redrawn (52,000 primitives) | 453 ms | **174 ms** |
+| A floor plan's sheet drawn | 1,233 ms | **227 ms** |
+| An enlarged half's sheet drawn (1 : 50) | 617 ms | 183 ms |
+| The door and window schedules' sheet (37,800 rows, 2.1 million primitives) | 1,373 ms | 1,226 ms |
+
+A storey's plan is now nearly the size of the storey's: 155 ms redrawn alone, 174 ms in 100 storeys. What is left is
+drawing it (walls' fills, regions, the floor below), which per-element fragments would keep from one draw to the next.
+Not yet in reach: the elevations' sheet, drawn from the 3D scene, takes 14.8 s at 10 storeys (7.1 s of it building the
+scene) and doesn't finish at 100, as the 3D view doesn't; and the schedules' sheet is as long as its rows.
+
 ## 3D on the graphics card
 
-`view3d::gpu::Mesh` keeps a view's shown triangles for the card (retained geometry, uploaded once for each model), and
-`crates/ui-egui/src/gpu.rs` draws them in passes: the opaque surfaces, those seen through (only when the view sees through any),
-edges, ground and the blend, then the levels' lines. It is opt-in
+`view3d::gpu::Mesh` keeps a view's shown triangles for the card (retained geometry, uploaded once for each model on a view worker), and
+`crates/ui-egui/src/gpu.rs` draws them in passes (components and round runs as one shape placed for each copy: on the annotated 10-storey tower all
+62,020 components and 16,970 runs come from 21 shapes, and a frame on an RTX 2060 is about 9 ms, against 55 ms with each copy's
+triangles its own; [the plan](3d-acceleration-plan.md#piece-4-the-same-for-runs-2026-11-03); a frame leaves out what the view can't see, so from inside the
+tower it is about 4 ms: [piece 5](3d-acceleration-plan.md#piece-5-draw-what-the-view-can-see-2026-11-03)): the opaque surfaces, those seen through (only when the view sees through any),
+edges, ground and the blend, then the levels' lines. It was opt-in then
 (File > Settings > Performance). Release build on Linux, an NVIDIA GeForce RTX 3060 over Vulkan, the 20-storey tower
 (427,280 triangles, 1,281,840 vertices) at 1920 × 1080 with the camera turning 3° a frame, median of nine:
 
@@ -164,8 +353,8 @@ than the opaque depth, as `Scene::picture`'s second raster finds it; the edge pa
 view lets show (a tinted one at least 35%). Edges and level lines stay the opaque surfaces', as the processor's do. The sample house
 with its walls 60% see-through differs from the processor's picture in 255 pixels of 307,200, with a mass in it 192.
 
-Not measured: integrated cards, macOS and Windows, a model of several million triangles (the mesh holds up to 1.6
-million and falls back to the processor above that).
+This was measured before the mesh cap was removed. The several-million-triangle measurement and current limits are in the
+[3D acceleration plan](3d-acceleration-plan.md#piece-1-measured-2026-11-02). Integrated cards, macOS and Windows remain unmeasured here.
 
 ## Verification
 
@@ -198,8 +387,8 @@ The measured next priorities are:
    latest-request queues and cancellation of obsolete views. The current parallel renderer still
    waits for its workers on the calling thread.
 4. Retained GPU geometry for orbit/pan/zoom is done for shaded, opaque views (above), with the processor as the
-   reference and the fallback, and for surfaces seen through. Still to do on the card: hidden line and wireframe, then viewport
-   culling, level of detail and instancing before pursuing full-size multi-million-triangle scenes.
+   reference and the fallback, and for surfaces seen through, hidden line and wireframe; what is left is followed in
+   [the 3D plan](3d-acceleration-plan.md).
 5. Profile IFC stages and reuse representation/placement decoding. Expand import coverage alongside
    speed work; never count skipped source geometry as a performance improvement.
 6. Introduce dependency-aware validation while retaining a full-check oracle and command rollback.

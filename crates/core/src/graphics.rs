@@ -1033,7 +1033,7 @@ pub fn graphics_of(m: &Model, view: impl Key) -> Option<&Graphics> {
 }
 
 /// What a view's graphics come to for each element of the model.
-#[derive(Default)]
+#[derive(Default, PartialEq)]
 pub struct Look {
     hidden: BTreeSet<Id>,
     /// The layers of each CAD drawing it hides, by the drawing's name.
@@ -1107,7 +1107,7 @@ impl Look {
         let mut look = Look { style: g.style, layers: own.layers.clone(), ..Look::default() };
         // Nothing to look for: no graphics of its own, and nothing in the project phased or in an option.
         let linked = m.elements.keys().next_back().is_some_and(|id| crate::link::is_linked(*id));
-        if own.draws_as_is() && !linked && !crate::phasing::any(m) && !m.elements.values().any(|e| matches!(e, Element::Mass(_))) {
+        if own.draws_as_is() && !linked && !crate::phasing::any(m) && m.rare("mass").is_empty() {
             return look;
         }
         // The phase it shows, as where it stands in the project's order, and how its phase filter shows each status.

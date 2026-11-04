@@ -229,3 +229,16 @@ fn reading_lends_a_session_read_only_for_what_it_runs_and_gives_it_back() {
     assert_eq!(s.read_only, Some("the server's"));
     let _ = std::fs::remove_dir_all(file.parent().unwrap());
 }
+
+/// A command refused for changing the project puts back the model it found, and with it that the model passed the check: the
+/// next command checks only what it changes, as it would have.
+#[test]
+fn a_refused_change_leaves_the_model_checked_as_it_was() {
+    let (mut s, _) = house("verified");
+    s.execute("move", &json!({"ids": [], "by": [0, 0]})).ok();
+    assert!(s.verified_now());
+    s.read_only = Some(HOW);
+    let e = s.execute("wall", &json!({"points": [[0, 9000], [3000, 9000]]})).unwrap_err();
+    assert!(e.contains("would change the project"), "{e}");
+    assert!(s.verified_now(), "the model put back isn't the checked one");
+}
