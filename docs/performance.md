@@ -304,6 +304,59 @@ drawing it (walls' fills, regions, the floor below), which per-element fragments
 Not yet in reach: the elevations' sheet, drawn from the 3D scene, takes 14.8 s at 10 storeys (7.1 s of it building the
 scene) and doesn't finish at 100, as the 3D view doesn't; and the schedules' sheet is as long as its rows.
 
+### #188 merged with main (2026-11-04)
+
+The spatial core merged with what main gained since #188's base (camera views, 3D dimensions, shaped floors and flat roofs,
+Graphic Display Options, a slope per roof edge, a wall's top offset, electrical settings, symbol sets, multi-category schedules
+and the rest), measured with the same probe and flags as above on the reference tower. The machine is not the one above: an
+Intel Xeon at 2.10 GHz with 4 logical CPUs (a cloud container), so #188's own head (2177a284) was built and run there too,
+alternating with the merged tree: three runs each at one storey (medians), two at ten (means), release, idle apart from the
+probe. Both give the same tower (10,018 and 100,171 elements, 37,114 plan primitives) and the same section and elevation
+pictures as the whole scene's. [Raw reports](performance/merge-188.json).
+
+| One storey (10,018 elements) | Baseline, above | #188, above | #188 here | Merged here |
+|---|---:|---:|---:|---:|
+| Build (one storey through commands) | 68.8 s | | 837 ms | 971 ms |
+| Full model check | 215 ms | | 16.6 ms | 15.2 ms |
+| Validated edit (move a column 10 mm), median | 220 ms | | 0.92 ms | 1.04 ms |
+| A wall moved with its doors, median | | | 1.66 ms | 1.80 ms |
+| Undo of either | | | 0.003 ms | 0.003 ms |
+| A new dimension by points on walls | | | 1.46 ms | 1.52 ms |
+| One room's boundary | 48.5 ms | 5.7 ms | 6.0 ms | 6.2 ms |
+| `inspect` (every room's boundary) | 9.3 s | 7.8 ms | 15.1 ms | 16.2 ms |
+| Fit and draw the plan of Level 1 | 10.9 s | 274 ms | 83 ms | 89 ms |
+| Redraw it | 10.4 s | 68 ms | 60 ms | 64 ms |
+| Build the 3D scene | 605 ms | | 831 ms | 741 ms |
+| Changing-camera CPU frame, 1280 × 720 | 270 ms | | 372 ms | 377 ms |
+| Write / read the project | 29 / 96 ms | | 32 / 109 ms | 30 / 98 ms |
+| IFC export | 54.7 s | 984 ms | 938 ms | 860 ms |
+| Memory after load / peak | 1.3 / 1.5 GB | | 254 / 592 MB | 310 / 628 MB |
+
+| Ten storeys (100,171 elements) | Baseline, above | #188, above | #188 here | Merged here |
+|---|---:|---:|---:|---:|
+| Full model check | 2.07 s | | 127 ms | 134 ms |
+| Validated edit (move a column 10 mm), median | 2.16 s | 29 ms (pieces 3–5) | 1.71 ms | 1.82 ms |
+| A wall moved with its doors, median | | | 2.99 ms | 2.69 ms |
+| Undo of either | | | 0.004 ms | 0.004 ms |
+| A new dimension by points on walls | | | 2.35 ms | 1.86 ms |
+| One room's boundary | 1.63 s | 17.2 ms | 33.5 ms | 35.0 ms |
+| Fit and draw the plan of Level 1 | 322 s | 394 ms | 92 ms | 102 ms |
+| Redraw it | 326 s | 151 ms | 62 ms | 80 ms |
+| Build the 3D scene | 8.1 s | | 9.2 s | 9.4 s |
+| Changing-camera CPU frame, 1280 × 720 | 2.17 s | | 2.94 s | 3.16 s |
+| Write / read the project | 283 / 905 ms | | 357 / 1077 ms | 327 / 1078 ms |
+| Memory after load / peak | 1.4 / 5.0 GB | | 345 MB / 3.9 GB | 428 MB / 4.0 GB |
+
+What it says:
+
+* The merge keeps #188's core: an edit, a wall with its doors, a new dimension and undo cost what they cost before it, at one
+  storey and at ten, and the check, a room's boundary, the files and IFC are within a few per cent, either way.
+* Building a storey through its 400-odd commands is 16 % slower and memory after load is 56 MB more at one storey, 83 MB at
+  ten: main's commands and elements carry more. Ten storeys' plan redraws in 80 ms against 62 (the two runs 90 and 71 ms), and
+  a changed-camera frame on the processor takes 8 % longer; neither is traced to its cause yet.
+* The tower has none of main's new kinds; the oracle tests (`oracle_tests::edit_more`) hold the incremental check, the library's
+  sync, a plan's elements and the 3D scene's update to their whole computations for those kinds.
+
 ## 3D on the graphics card
 
 `view3d::gpu::Mesh` keeps a view's shown triangles for the card (retained geometry, uploaded once for each model on a view worker), and
