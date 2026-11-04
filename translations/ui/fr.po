@@ -2704,8 +2704,8 @@ msgid "Far Clip Offset"
 msgstr "Décalage de coupe arrière"
 
 #: crates/ui-egui/src/settings.rs:399
-msgid "Faster for large models. Point clouds are still drawn on the processor, and so is everything if the card fails"
-msgstr "Plus rapide pour les grands modèles. Les nuages de points sont toujours dessinés par le processeur, comme tout le reste si la carte échoue"
+msgid "Faster for large models. If the card fails, the 3D view is drawn on the processor"
+msgstr "Plus rapide pour les grands modèles. Si la carte échoue, la vue 3D est dessinée par le processeur"
 
 #: crates/ui-egui/src/favorites.rs:112
 #: crates/ui-egui/src/lib.rs:3481

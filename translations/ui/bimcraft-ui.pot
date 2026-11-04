@@ -2704,7 +2704,7 @@ msgid "Far Clip Offset"
 msgstr ""
 
 #: crates/ui-egui/src/settings.rs:399
-msgid "Faster for large models. Point clouds are still drawn on the processor, and so is everything if the card fails"
+msgid "Faster for large models. If the card fails, the 3D view is drawn on the processor"
 msgstr ""
 
 #: crates/ui-egui/src/favorites.rs:112

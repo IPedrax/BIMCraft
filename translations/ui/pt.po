@@ -2704,8 +2704,8 @@ msgid "Far Clip Offset"
 msgstr "Deslocamento do recorte distante"
 
 #: crates/ui-egui/src/settings.rs:399
-msgid "Faster for large models. Point clouds are still drawn on the processor, and so is everything if the card fails"
-msgstr "Mais rápido para modelos grandes. Nuvens de pontos ainda são desenhadas no processador, e tudo também se a placa falhar"
+msgid "Faster for large models. If the card fails, the 3D view is drawn on the processor"
+msgstr "Mais rápido para modelos grandes. Se a placa falhar, a vista 3D é desenhada no processador"
 
 #: crates/ui-egui/src/favorites.rs:112
 #: crates/ui-egui/src/lib.rs:3481

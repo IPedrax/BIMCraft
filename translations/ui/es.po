@@ -2704,8 +2704,8 @@ msgid "Far Clip Offset"
 msgstr "Desfase del plano lejano"
 
 #: crates/ui-egui/src/settings.rs:399
-msgid "Faster for large models. Point clouds are still drawn on the processor, and so is everything if the card fails"
-msgstr "Más rápido para modelos grandes. Las nubes de puntos se siguen dibujando en el procesador, y todo si la tarjeta falla"
+msgid "Faster for large models. If the card fails, the 3D view is drawn on the processor"
+msgstr "Más rápido para modelos grandes. Si la tarjeta falla, la vista 3D se dibuja en el procesador"
 
 #: crates/ui-egui/src/favorites.rs:112
 #: crates/ui-egui/src/lib.rs:3481

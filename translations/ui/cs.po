@@ -2703,8 +2703,8 @@ msgid "Far Clip Offset"
 msgstr "Odsazení ořezu hloubky"
 
 #: crates/ui-egui/src/settings.rs:399
-msgid "Faster for large models. Point clouds are still drawn on the processor, and so is everything if the card fails"
-msgstr "Rychlejší pro velké modely. Mračna bodů se stále vykreslují procesorem, stejně jako vše ostatní při selhání grafické karty"
+msgid "Faster for large models. If the card fails, the 3D view is drawn on the processor"
+msgstr "Rychlejší pro velké modely. Při selhání grafické karty se 3D pohled vykresluje procesorem"
 
 #: crates/ui-egui/src/favorites.rs:112
 #: crates/ui-egui/src/lib.rs:3481

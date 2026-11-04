@@ -2704,8 +2704,8 @@ msgid "Far Clip Offset"
 msgstr "远剪裁偏移"
 
 #: crates/ui-egui/src/settings.rs:399
-msgid "Faster for large models. Point clouds are still drawn on the processor, and so is everything if the card fails"
-msgstr "大型模型更快。点云仍由处理器绘制，显卡失败时一切也由处理器绘制"
+msgid "Faster for large models. If the card fails, the 3D view is drawn on the processor"
+msgstr "大型模型更快。显卡失败时，三维视图由处理器绘制"
 
 #: crates/ui-egui/src/favorites.rs:112
 #: crates/ui-egui/src/lib.rs:3481
