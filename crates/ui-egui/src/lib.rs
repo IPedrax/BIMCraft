@@ -17,6 +17,7 @@ mod canvas;
 mod clouds;
 mod context;
 pub mod control;
+mod curtain;
 mod dialog;
 mod dimtypes;
 mod display;
@@ -621,6 +622,11 @@ pub struct BimApp {
     /// Text Type Properties, while it's open.
     text_type_dialog: Option<notes::TextTypeDialog>,
     dimension_type_dialog: Option<dimtypes::DimensionTypeDialog>,
+    curtain_editor: Option<curtain::CurtainEditor>,
+    /// The model the malformed curtain walls were last looked for in, those it had, and those being asked about.
+    curtain_seen: Option<Arc<Model>>,
+    curtain_known: std::collections::BTreeSet<Id>,
+    curtain_asking: std::collections::BTreeSet<Id>,
     dimension_text_dialog: Option<dimtypes::DimensionTextDialog>,
     /// The line style the Detail Line tool draws in; blank for the project's Thin Lines.
     line_style: String,
@@ -1129,6 +1135,9 @@ fn rail_button(ui: &mut Ui, icon: Icon, label: &str, open: bool) -> Response {
     r.on_hover_text(label)
 }
 
+/// The ribbon's name for the Wall tool drawing a curtain wall type.
+const CURTAIN_TOOL: &str = msg!("Curtain Wall");
+
 impl BimApp {
     pub fn new(session: Session) -> BimApp {
         let first = Sheet::Plan(session.model.levels().first().map_or(0, |(id, _)| *id));
@@ -1251,6 +1260,10 @@ impl BimApp {
             note_edit: None,
             text_type_dialog: None,
             dimension_type_dialog: None,
+            curtain_editor: None,
+            curtain_seen: None,
+            curtain_known: Default::default(),
+            curtain_asking: Default::default(),
             dimension_text_dialog: None,
             line_style: String::new(),
             linework_style: String::new(),
@@ -1803,6 +1816,8 @@ impl BimApp {
         if self.type_dialog.is_some()
             || self.text_type_dialog.is_some()
             || self.dimension_type_dialog.is_some()
+            || self.curtain_editor.is_some()
+            || !self.curtain_asking.is_empty()
             || self.dimension_text_dialog.is_some()
             || self.materials_dialog.is_some()
             || self.family_dialog.is_some()
@@ -3502,8 +3517,28 @@ impl BimApp {
     fn tools(&mut self, ui: &mut Ui, name: &str, tools: Tools) {
         panel(ui, name, |ui| {
             for (icon, label, tip, tool) in tools {
-                let active = structure::same_tool(&self.tool, tool);
+                // In the panel's list and the palette only: the ribbon has no width to spare for it, and the Wall tool's Type
+                // Selector offers the same types.
+                if *label == CURTAIN_TOOL && !ribbon::listing() {
+                    continue;
+                }
+                // Wall and Curtain Wall are one tool, told apart by the type it draws.
+                let curtain_type =
+                    self.types.get("wall").is_some_and(|n| self.session.model.types.wall.get(n).is_some_and(|t| t.curtain.is_some()));
+                let wall = matches!(tool, Tool::Wall(_));
+                let active = structure::same_tool(&self.tool, tool) && (!wall || curtain_type == (*label == CURTAIN_TOOL));
                 if big_button(ui, *icon, label, active, tip).clicked() {
+                    if wall && curtain_type != (*label == CURTAIN_TOOL) {
+                        let m = &self.session.model;
+                        let name = if *label == CURTAIN_TOOL {
+                            m.types.wall.iter().find(|(_, t)| t.curtain.is_some()).map(|(n, _)| n.clone())
+                        } else {
+                            m.default_type("wall").map(String::from)
+                        };
+                        if let Some(name) = name {
+                            self.types.insert("wall", name);
+                        }
+                    }
                     self.set_tool(tool.clone());
                 }
             }
@@ -3583,6 +3618,12 @@ impl BimApp {
             msg!("Build"),
             &[
                 (Icon::Wall, "Wall", msg!("Wall (WA): each click builds a wall; Enter or Esc ends the chain"), Tool::Wall(Vec::new())),
+                (
+                    Icon::Wall,
+                    CURTAIN_TOOL,
+                    msg!("Curtain Wall: a wall divided by its type's pattern into panels and mullions"),
+                    Tool::Wall(Vec::new()),
+                ),
                 (Icon::Door, "Door", msg!("Door (DR): click a wall"), Tool::Door),
                 (Icon::Window, "Window", msg!("Window (WN): click a wall"), Tool::Window),
                 (Icon::Column, "Column", msg!("Column (CL): click where it stands"), Tool::Column),
@@ -5135,6 +5176,8 @@ impl BimApp {
         self.fill_patterns_window(ctx);
         self.text_type_window(ctx);
         self.dimension_type_window(ctx);
+        self.curtain_editor_window(ctx);
+        self.curtain_message(ctx);
         self.dimension_text_window(ctx);
         self.standards_window(ctx);
         self.electrical_window(ctx);

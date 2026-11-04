@@ -6115,6 +6115,30 @@ fn wall(s: &mut Session, p: &Value) -> R {
         Some(Value::Bool(b)) => *b,
         Some(_) => return Err(bad(c, "`room_bounding` is true or false")),
     };
+    // A Fixed Grid draws a wall in its pattern's lengths: each end moves to the nearest, the next wall going on from there. A
+    // closed chain's last wall still closes it. A height a top level sets can't move, and its top row takes up the difference.
+    let pattern = m.types.wall.get(&type_name).and_then(|t| t.curtain.as_ref());
+    let height = match pattern.filter(|l| l.rows.fit == crate::curtain::Fit::Fixed && top_level.is_none()) {
+        Some(l) => crate::curtain::snap_length(&l.rows, height),
+        None => height,
+    };
+    let mut adjusted = Vec::new();
+    if let Some(l) = pattern.filter(|l| l.columns.fit == crate::curtain::Fit::Fixed && arc == 0.0) {
+        let closes = flag(c, p, "closed")?;
+        let last = pts.len() - 1;
+        for i in 1..=last {
+            let (a, b) = (pts[i - 1], pts[i]);
+            let given = a.dist(b);
+            if given <= crate::model::TOL || (closes && i == last) {
+                continue;
+            }
+            let length = crate::curtain::snap_length(&l.columns, given);
+            if (length - given).abs() > crate::model::TOL {
+                pts[i] = micron(a + (b - a).unit() * length);
+                adjusted.push(json!({"wall": i - 1, "given": given, "length": length}));
+            }
+        }
+    }
     let m = s.model_mut();
     let ids: Vec<Id> = pts
         .windows(2)
@@ -6139,7 +6163,18 @@ fn wall(s: &mut Session, p: &Value) -> R {
             _ => None,
         })
         .collect();
-    Ok(json!({"ids": ids}))
+    let mut out = json!({"ids": ids});
+    if !adjusted.is_empty() {
+        out["adjusted"] = json!(adjusted);
+    }
+    let malformed: Vec<Id> = crate::curtain::malformed_walls(&s.model).into_iter().filter(|id| ids.contains(id)).collect();
+    if !malformed.is_empty() {
+        out["warning"] = json!(format!(
+            "{} (wall {malformed:?}); `modify {{id, curtain: {{absorb_columns: true}}}}` removes the last interior grid",
+            crate::curtain::MALFORMED
+        ));
+    }
+    Ok(out)
 }
 
 fn location_names(n: &str) -> String {

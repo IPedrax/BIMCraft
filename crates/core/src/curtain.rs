@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use bimcraft_i18n::ui_msg;
 use std::collections::HashMap;
 
 use serde_json::{Value, json};
@@ -368,6 +369,39 @@ impl Layout {
 /// A wall's type's pattern, if it's a curtain wall.
 pub fn pattern<'a>(m: &'a Model, w: &Wall) -> Option<&'a CurtainLayout> {
     m.types.wall.get(&w.type_name).and_then(|t| t.curtain.as_ref())
+}
+
+/// What a wall too short or too low for its pattern's last segment is told. Agents and the desktop's message say the same.
+pub const MALFORMED: &str = ui_msg!("Due to the defined wall length the last grid segment draws a malformed panel");
+
+/// The length nearest `length` a Fixed Grid draws: a whole number of its segments, at least its first.
+pub fn snap_length(d: &Direction, length: f64) -> f64 {
+    let module: f64 = d.segments.iter().sum();
+    if !(module > 0.0 && module.is_finite() && length.is_finite() && length > 0.0) {
+        return length;
+    }
+    // Whole modules below it, and then each segment's end on the way past it.
+    let mut at = (length / module).floor().max(0.0) * module;
+    let mut best = if at > 0.0 { at } else { d.segments.first().copied().unwrap_or(length) };
+    for size in &d.segments {
+        at += size;
+        if (at - length).abs() < (best - length).abs() {
+            best = at;
+        }
+    }
+    best
+}
+
+/// The walls whose segment at an end can't hold a panel, by id.
+pub fn malformed_walls(m: &Model) -> Vec<u64> {
+    if !m.types.wall.values().any(|t| t.curtain.is_some()) {
+        return Vec::new();
+    }
+    let walls = m.elements.iter().filter_map(|(id, e)| match e {
+        Element::Wall(w) if pattern(m, w).is_some() => Some((*id, w)),
+        _ => None,
+    });
+    walls.filter(|(_, w)| !layout(m, w).malformed.is_empty()).map(|(id, _)| id).collect()
 }
 
 /// How many stretches a pattern makes of `length`, at most.

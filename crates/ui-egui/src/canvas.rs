@@ -977,6 +977,8 @@ impl BimApp {
             && !square
             && self.snap_once.is_none()
             && self.grid_snapping
+            // A wall of a Fixed Grid has its pattern's lengths: a background grid would fight them.
+            && self.drawing_fixed_curtain().is_none()
             && let Some(at) = self.background_grid().nearest(v.mm(at))
         {
             return Found { at, kind: Kind::Intersection, guide: None, source: None };
@@ -2568,6 +2570,9 @@ impl BimApp {
                     if self.options_refused() {
                         return;
                     }
+                    // A Fixed Grid ends the wall at its pattern's nearest length, and the chain goes on from there.
+                    let fixed = self.drawing_fixed_curtain().cloned();
+                    let p = self.fixed_end(fixed.as_ref(), last, p);
                     if self.build_walls(level, &draw::offset_line(last, p, self.draw_options().offset), false, 0.0) {
                         let Tool::Wall(chain) = &mut self.tool else { return };
                         // Back on its start, the chain closes; without Chain, every wall stands alone.
@@ -2715,6 +2720,16 @@ impl BimApp {
         });
         if let Some(t) = self.types.get("wall") {
             p["type"] = json!(t);
+            // A curtain wall stands on its exterior or interior face: the command puts it on one unless one is asked for.
+            let curtain = self.session.model.types.wall.get(t).is_some_and(|w| w.curtain.is_some());
+            if curtain
+                && !matches!(
+                    self.wall_location,
+                    bimcraft_core::model::Location::ExteriorFinish | bimcraft_core::model::Location::InteriorFinish
+                )
+            {
+                p.as_object_mut().map(|o| o.remove("location"));
+            }
         }
         // Drawn in the 3D view, on the face their base stands on.
         if let Some(offset) = self.orbit.wall_base {
@@ -2751,6 +2766,9 @@ impl BimApp {
         } else {
             found.at
         };
+        // A wall of a Fixed Grid stays in its pattern's lengths.
+        let pattern = m.types.wall.get(&w.type_name).and_then(|t| t.curtain.as_ref()).map(|l| &l.columns);
+        let at = self.fixed_end(pattern.filter(|d| d.fit == bimcraft_core::curtain::Fit::Fixed), fixed, at);
         (found, at)
     }
 

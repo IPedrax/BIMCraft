@@ -87,6 +87,8 @@ enum Act {
     Pick(&'static str, String),
     /// A link: it is the selection, for Properties.
     Select(Id),
+    /// A curtain panel's or a mullion's type: Type Properties on it.
+    EditType(&'static str, String),
 }
 
 /// An entry of the tree, or a group of them.
@@ -310,6 +312,9 @@ impl BimApp {
                 self.types.insert(category, name);
             }
             Some(Act::Select(id)) => self.selection = vec![id],
+            Some(Act::EditType(category, name)) => {
+                self.type_dialog = Some(crate::properties::TypeDialog::new(&self.session.model, category, name, Vec::new()));
+            }
             _ => {}
         }
     }
@@ -550,8 +555,10 @@ impl BimApp {
                     .iter()
                     .map(|ty| {
                         let on = self.types.get(category).is_some_and(|t| t == ty);
-                        Node::leaf(ty, Act::Pick(category, ty.to_string()), on)
-                            .with_menu(delete(serde_json::json!({"category": category, "type": ty})))
+                        Node::leaf(ty, Act::Pick(category, ty.to_string()), on).with_menu(vec![
+                            ("Edit Type", Act::EditType(category, ty.to_string())),
+                            ("Delete", Act::Do("delete_type", serde_json::json!({"category": category, "type": ty}))),
+                        ])
                     })
                     .collect();
                 (!names.is_empty())

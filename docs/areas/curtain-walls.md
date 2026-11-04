@@ -47,6 +47,33 @@ still one `Solid::Box` (`view3d::curtain_solids`), and sections and elevations r
 An unedited part has no id of its own, only its `Address`: an agreed exception to the id rule, since a tower's façades would use up
 the six-digit ids and every change of length would rewrite them.
 
+## Fit
+
+`Fit::Fixed` draws a wall in its pattern's lengths: `curtain::snap_length` gives the nearest whole number of segments, at least the
+first. `wall` moves each end to it, the next wall going on from there, and says so in `adjusted`; the last wall of a closed chain still
+closes it. A height set directly snaps too; one a top level sets can't, and the top row takes up the difference. The desktop's Wall
+tool and an end's grip snap the same way (`BimApp::fixed_end`), and background grid snapping stays out of the way while a wall of a
+Fixed Grid is drawn (`drawing_fixed_curtain`). `Fit::Flexible` keeps the length given.
+
+Fit doesn't change what `layout` does with a length: at any length, what's left past the last whole segment is a cut segment.
+
+`Justify` lays the pattern from the start, from the end, with whole modules centred (`Centre`) or with a grid line on the middle
+(`CentreLine`). What an end leaves over is the cut segment at that end.
+
+## The desktop
+
+- **Curtain Wall tool:** the Wall tool drawing the first curtain type, in the Build panel's list and the Tools palette (the ribbon has no
+  width to spare); the Wall tool's Type Selector offers the same types. The Options Bar's Location Line is kept where it is a face.
+- **Type Properties:** a curtain wall type shows Layout [Edit…] and its thickness, which can't be typed. Duplicate keeps the pattern.
+- **Edit Pattern** (`crates/ui-egui/src/curtain.rs`): segments each way, fit, justification, borders, and one module to scale. Click a
+  panel or a mullion, Shift to add to the selection, and pick its type, none or how it joins. Each piece is a widget named as tests
+  and screen readers find it: `Panel B1`, `Vertical B1`, `Horizontal B1`.
+- **Project Browser:** Families > Curtain Panels > Generic Panel and Mullions > Rectangular Mullion; a type's right-click has Edit Type.
+- **The message:** `BimApp::curtain_message` looks for walls newly malformed whenever the model changes, so it comes when a change is
+  finished and never during a drag, once for a wall while it stays so, one message for many walls, and not for what a project opened
+  with. Remove last interior grid sets `absorb_columns` or `absorb_rows`; I will fix it myself leaves the wall, and `inspect` keeps
+  warning. Agents get the same words in the `wall` reply's `warning` and in `Model::warnings`.
+
 ## What it can't be yet
 
 `curtain::check` refuses a curved curtain wall, an attached top or base, a location line other than the exterior or interior face, a

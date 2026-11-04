@@ -5673,6 +5673,7 @@ impl Model {
                 if k == 1 { "s" } else { "" }
             )
         }));
+        out.extend(crate::curtain::malformed_walls(self).into_iter().map(|id| format!("curtain wall {id}: {}", crate::curtain::MALFORMED)));
         out
     }
 

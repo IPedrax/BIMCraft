@@ -5680,6 +5680,7 @@ mod cad;
 mod chinese;
 mod clouds;
 mod control;
+mod curtain;
 mod dialog;
 mod dimensions;
 mod dims3d;

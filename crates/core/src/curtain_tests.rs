@@ -576,3 +576,69 @@ fn ifc_writes_identical_parts_with_one_shape_and_each_its_own_lasting_global_id(
     assert_eq!(once.iter().collect::<std::collections::BTreeSet<_>>().len(), 100);
     assert_eq!(once, ids(&crate::ifc::export(&s.model)));
 }
+
+// ---------- fit ----------
+
+#[test]
+fn a_fixed_grid_draws_a_wall_in_the_lengths_of_its_pattern() {
+    let mut s = session();
+    grid(&mut s, "CW", &[900.0, 600.0], &[3000.0], json!({}));
+    let fixed = |s: &mut Session| {
+        let mut l = s.model.types.wall["CW"].curtain.clone().unwrap();
+        l.columns.fit = Fit::Fixed;
+        l.rows.fit = Fit::Fixed;
+        run(s, "type", json!({"category": "wall", "name": "CW", "curtain": l}));
+    };
+    fixed(&mut s);
+    let d = s.model.types.wall["CW"].curtain.clone().unwrap().columns;
+    assert_eq!(curtain::snap_length(&d, 1000.0), 900.0);
+    assert_eq!(curtain::snap_length(&d, 1300.0), 1500.0);
+    assert_eq!(curtain::snap_length(&d, 100.0), 900.0, "never shorter than its first segment");
+    assert_eq!(curtain::snap_length(&d, 3100.0), 3000.0);
+    let out = run(&mut s, "wall", json!({"points": [[0, 0], [3100, 0]], "type": "CW", "height": 3000}));
+    let id = out["ids"][0].as_u64().unwrap();
+    assert_eq!(wall_of(&s, id).end.0, 3000.0, "{out}");
+    assert_eq!(out["adjusted"][0]["length"], 3000.0, "the reply says the length it used: {out}");
+    // A chain goes on from where the last wall ended.
+    let out = run(&mut s, "wall", json!({"points": [[0, 5000], [1000, 5000], [900, 7000]], "type": "CW", "height": 3000}));
+    let (a, b) = (out["ids"][0].as_u64().unwrap(), out["ids"][1].as_u64().unwrap());
+    assert_eq!(wall_of(&s, a).end.0, 900.0);
+    assert_eq!(wall_of(&s, b).start.0, 900.0);
+    assert_eq!(wall_of(&s, b).end.1, 5000.0 + 2400.0);
+    // A height set directly snaps too; one a top level sets can't, and the top row takes up the difference.
+    let id = run(&mut s, "wall", json!({"points": [[0, 9000], [900, 9000]], "type": "CW", "height": 4000}))["ids"][0].as_u64().unwrap();
+    assert_eq!(wall_of(&s, id).height, 3000.0);
+    let id =
+        run(&mut s, "wall", json!({"points": [[0, 11000], [900, 11000]], "type": "CW", "top_level": "Level 2", "top_offset": 500}))["ids"]
+            [0]
+        .as_u64()
+        .unwrap();
+    assert_eq!(layout_of(&s, id).rows.len(), 2, "3500 tall: a whole row and what's left");
+}
+
+#[test]
+fn a_flexible_grid_keeps_the_length_given() {
+    let mut s = session();
+    grid(&mut s, "CW", &[900.0], &[3000.0], json!({}));
+    let out = run(&mut s, "wall", json!({"points": [[0, 0], [2000, 0]], "type": "CW", "height": 3000}));
+    assert_eq!(wall_of(&s, out["ids"][0].as_u64().unwrap()).end.0, 2000.0);
+    assert!(out.get("adjusted").is_none(), "{out}");
+}
+
+#[test]
+fn a_malformed_wall_is_said_in_the_reply_and_the_warnings() {
+    let mut s = session();
+    grid(&mut s, "CW", &[1000.0], &[3000.0], json!({}));
+    let out = run(&mut s, "wall", json!({"points": [[0, 0], [3100, 0]], "type": "CW", "height": 3000}));
+    let id = out["ids"][0].as_u64().unwrap();
+    assert!(out["warning"].as_str().unwrap().contains(curtain::MALFORMED), "{out}");
+    assert_eq!(curtain::malformed_walls(&s.model), [id]);
+    assert!(s.model.warnings().iter().any(|w| w.contains(curtain::MALFORMED) && w.contains(&id.to_string())));
+    // Fixed by Remove Last Interior Grid.
+    run(&mut s, "modify", json!({"id": id, "curtain": {"absorb_columns": true}}));
+    assert!(curtain::malformed_walls(&s.model).is_empty());
+    assert!(!s.model.warnings().iter().any(|w| w.contains(curtain::MALFORMED)));
+    // A wall that's fine says nothing.
+    let out = run(&mut s, "wall", json!({"points": [[0, 5000], [3000, 5000]], "type": "CW", "height": 3000}));
+    assert!(out.get("warning").is_none(), "{out}");
+}

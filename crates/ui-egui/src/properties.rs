@@ -452,6 +452,13 @@ fn type_rows(category: &str) -> &'static [(&'static str, &'static str, &'static 
         "roof" => &[(C, "thickness", msg!("Thickness"))],
         "ceiling" => &[(C, "thickness", msg!("Thickness")), (C, "grid", msg!("Tile Size"))],
         "railing" => &[(C, "height", msg!("Height")), (C, "spacing", msg!("Baluster Spacing"))],
+        "curtainpanel" => &[(D, "thickness", msg!("Thickness")), (D, "offset", msg!("Offset"))],
+        "mullion" => &[
+            (D, "width", msg!("Width")),
+            (D, "depth", msg!("Depth")),
+            (D, "offset_x", msg!("X Offset")),
+            (D, "offset_y", msg!("Y Offset")),
+        ],
         _ => &[],
     }
 }
@@ -758,7 +765,10 @@ pub(crate) struct TypeDialog {
     layers: Vec<LayerRow>,
     layers_were: Vec<LayerRow>,
     /// A run type's section: whether it is round (then it has a diameter and no depth) and what it is made of ("" for nothing).
+    /// A curtain panel's or a mullion's too, which is never round.
     shape: Option<(bool, String)>,
+    /// A curtain wall type's pattern and how thick that makes it: it has no fields or layers to type.
+    curtain: Option<(bimcraft_core::curtain::CurtainLayout, f64)>,
 }
 
 impl TypeDialog {
@@ -768,7 +778,26 @@ impl TypeDialog {
             let t = m.types.runs.get(category).and_then(|t| t.get(&name));
             (t.is_some_and(|t| t.round), t.map(|t| t.material.clone()).unwrap_or_default())
         });
-        TypeDialog { category, name, elements, fields, naming: Naming::None, error: None, layers_were: layers.clone(), layers, shape }
+        let shape = match category {
+            "curtainpanel" => m.types.curtain_panel.get(&name).map(|t| (false, t.material.clone())),
+            "mullion" => m.types.mullion.get(&name).map(|t| (false, t.material.clone())),
+            _ => shape,
+        };
+        let curtain =
+            (category == "wall").then(|| m.types.wall.get(&name)).flatten().and_then(|t| t.curtain.clone().map(|l| (l, t.thickness)));
+        let fields = if curtain.is_some() { Vec::new() } else { fields };
+        TypeDialog {
+            category,
+            name,
+            elements,
+            fields,
+            naming: Naming::None,
+            error: None,
+            layers_were: layers.clone(),
+            layers,
+            shape,
+            curtain,
+        }
     }
 
     /// The dialog showing type `name` as the model has it now.
@@ -776,10 +805,24 @@ impl TypeDialog {
         *self = TypeDialog::new(m, self.category, name, std::mem::take(&mut self.elements));
     }
 
+    /// The type shown as the model has it now, what Edit Pattern changed among it.
+    pub(crate) fn refresh(&mut self, m: &Model) {
+        let name = self.name.clone();
+        self.show(m, name);
+    }
+
     /// A type's sizes, as typed: lengths in the project's units.
     fn fields(m: &Model, category: &str, name: &str) -> Vec<TypeField> {
         let types = serde_json::to_value(&m.types).unwrap_or_default();
-        type_rows(category).iter().map(|(g, k, l)| (*g, *k, *l, shown(Length, &type_json(&types, category, name)[k], m.units))).collect()
+        type_rows(category)
+            .iter()
+            .map(|(g, k, l)| {
+                // A mullion's width and depth are its profile's.
+                let t = type_json(&types, category, name);
+                let value = if t[k].is_null() { &t["profile"][k] } else { &t[k] };
+                (*g, *k, *l, shown(Length, value, m.units))
+            })
+            .collect()
     }
 
     /// A layered type's layers, as typed: one structure layer as thick as it, without any.
@@ -790,6 +833,11 @@ impl TypeDialog {
             [] => vec![(Function::Structure, String::new(), m.units.length(thickness), false)],
             layers => layers.iter().map(typed).collect(),
         }
+    }
+
+    /// A curtain panel's or a mullion's type.
+    fn curtain_part(&self) -> bool {
+        matches!(self.category, "curtainpanel" | "mullion")
     }
 
     /// The `type` command's parameters for the type as typed, or why they aren't lengths. Changed
@@ -815,8 +863,14 @@ impl TypeDialog {
             p[*key] = json!(units.parse(typed).ok_or_else(|| tf("{}: `{}` is not a length", &[t(label), typed]))?);
         }
         if let Some((round, material)) = &self.shape {
-            p["round"] = json!(round);
+            if !self.curtain_part() {
+                p["round"] = json!(round);
+            }
             p["material"] = json!(material);
+        }
+        if let Some((l, _)) = &self.curtain {
+            p["curtain"] = json!(l);
+            p.as_object_mut().map(|o| o.remove("layers"));
         }
         Ok(p)
     }
@@ -2035,18 +2089,23 @@ impl BimApp {
         let model = Arc::clone(&self.session.model);
         let names: Vec<String> = model.type_names(d.category).into_iter().map(String::from).collect();
         let (mut ok, mut cancel, mut apply, mut asked) = (false, false, false, None);
+        let mut edit_pattern = false;
         let r = Modal::new(UiId::new("type-properties"), t("Type Properties")).width(crate::typeprops::WIDTH).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
                 let family = tf("System Family: {}", &[&lang::category(d.category, true)]);
                 asked = typeprops::head(ui, "type", &family, &names, &d.name, &mut d.naming, true);
                 let below = typeprops::foot_height(ui, d.error.is_some());
                 let materials: Vec<String> = model.materials.keys().cloned().collect();
-                let layered = LAYERED.contains(&d.category);
+                let layered = LAYERED.contains(&d.category) && d.curtain.is_none();
                 let round = d.shape.as_ref().is_some_and(|(round, _)| *round);
                 // The groups in the order their first row comes; a run's roundness is a dimension, its material its own group.
                 let mut groups: Vec<&str> = Vec::new();
-                let extra =
-                    [(layered, "Construction"), (d.shape.is_some(), "Dimensions"), (d.shape.is_some(), msg!("Materials and Finishes"))];
+                let extra = [
+                    (layered || d.curtain.is_some(), "Construction"),
+                    (d.shape.is_some(), "Dimensions"),
+                    (d.shape.is_some(), msg!("Materials and Finishes")),
+                ];
+                let part = d.curtain_part();
                 for g in d.fields.iter().map(|f| f.0).chain(extra.iter().filter(|(on, _)| *on).map(|(_, g)| *g)) {
                     if !groups.contains(&g) {
                         groups.push(g);
@@ -2063,9 +2122,19 @@ impl BimApp {
                             tb.text(t(if round && *key == "width" { "Diameter" } else { label }), typed, model.units.name());
                         }
                         match (g, &mut d.shape) {
-                            ("Dimensions", Some((round, _))) => tb.check(t("Round"), round),
+                            ("Dimensions", Some((round, _))) if !part => tb.check(t("Round"), round),
                             ("Materials and Finishes", Some((_, material))) => tb.pick(t("Material"), material, &materials),
                             _ => {}
+                        }
+                        if g == "Construction"
+                            && let Some((_, thickness)) = &d.curtain
+                        {
+                            tb.row(t("Layout"), |ui, _| {
+                                if wide_button(ui, t("Edit…")).clicked() {
+                                    edit_pattern = true;
+                                }
+                            });
+                            tb.shown(t("Thickness"), &model.units.length(*thickness));
                         }
                         if g == "Construction" && layered {
                             let (out, inward) = if d.category == "wall" { (msg!("Out"), msg!("In")) } else { ("Up", "Down") };
@@ -2080,6 +2149,10 @@ impl BimApp {
                 (ok, cancel, apply) = typeprops::foot(ui);
             });
         });
+        if edit_pattern {
+            let name = d.name.clone();
+            self.open_curtain_editor(&name);
+        }
         let switch = match &asked {
             Some(Head::Switch(n)) => Some(n.clone()),
             _ => None,
