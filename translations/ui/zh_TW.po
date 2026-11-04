@@ -9575,7 +9575,7 @@ msgstr "這裡沒有可存放收藏夾的資料夾"
 
 #: crates/ui-egui/src/orbit.rs:1405
 #: crates/ui-egui/src/paper.rs:158
-#: crates/ui-egui/src/section.rs:398
+#: crates/ui-egui/src/section.rs:409
 msgid "this tool works in plan views: open one from the Project Browser"
 msgstr "此工具適用於平面視圖：請從項目瀏覽器中開啟一個"
 

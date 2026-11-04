@@ -9575,7 +9575,7 @@ msgstr "no hay carpeta donde guardar favoritos aquí"
 
 #: crates/ui-egui/src/orbit.rs:1405
 #: crates/ui-egui/src/paper.rs:158
-#: crates/ui-egui/src/section.rs:398
+#: crates/ui-egui/src/section.rs:409
 msgid "this tool works in plan views: open one from the Project Browser"
 msgstr "esta herramienta funciona en plantas: abre una desde el navegador de proyectos"
 
