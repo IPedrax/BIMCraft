@@ -10248,6 +10248,10 @@ msgctxt "side"
 msgid "Top"
 msgstr "上"
 
+#: crates/ui-egui/src/orbit.rs:835
+msgid "in the 3D view this tool draws on a level face: the top of a floor, a flat roof or a level"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3433
 #~ msgid "Click a point the arc passes through: it sets the radius. Esc cancels."
 #~ msgstr "單擊圓弧經過的一點：由此確定半徑。按 Esc 取消。"

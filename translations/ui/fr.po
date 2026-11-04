@@ -10248,6 +10248,10 @@ msgctxt "side"
 msgid "Top"
 msgstr "Dessus"
 
+#: crates/ui-egui/src/orbit.rs:835
+msgid "in the 3D view this tool draws on a level face: the top of a floor, a flat roof or a level"
+msgstr ""
+
 #: crates/ui-egui/src/fillpatterns.rs:634
 #~ msgid "A pattern of the file replaces the one of its name in this list; else it is left out"
 #~ msgstr "Un motif du fichier remplace celui du même nom dans cette liste; sinon il est omis"
