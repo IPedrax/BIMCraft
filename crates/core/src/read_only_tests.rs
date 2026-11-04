@@ -31,15 +31,23 @@ fn house(name: &str) -> (Session, std::path::PathBuf) {
 
 /// What a session that may only read must keep: its project, its undo and redo history, its file, the phase and option it makes
 /// things in.
-type Kept = (Arc<crate::model::Model>, Vec<&'static str>, usize, Option<std::path::PathBuf>, Option<String>, Option<String>);
+type Kept = (Arc<crate::model::Model>, Vec<String>, usize, Option<std::path::PathBuf>, Option<String>, Option<String>);
 
 fn kept(s: &Session) -> Kept {
-    (Arc::clone(&s.model), s.history(), s.steps(true).len(), s.path.clone(), s.phase.clone(), s.option.clone())
+    (
+        Arc::clone(&s.model),
+        s.history().into_iter().map(str::to_string).collect(),
+        s.steps(true).len(),
+        s.path.clone(),
+        s.phase.clone(),
+        s.option.clone(),
+    )
 }
 
 fn same(s: &Session, k: &Kept) {
     assert!(Arc::ptr_eq(&k.0, &s.model) || *k.0 == *s.model, "the project changed");
-    assert_eq!((&k.1, k.2, &k.3, &k.4, &k.5), (&s.history(), s.steps(true).len(), &s.path, &s.phase, &s.option));
+    let history: Vec<String> = s.history().into_iter().map(str::to_string).collect();
+    assert_eq!((&k.1, k.2, &k.3, &k.4, &k.5), (&history, s.steps(true).len(), &s.path, &s.phase, &s.option));
 }
 
 #[test]
@@ -186,9 +194,10 @@ fn whatever_a_command_is_given_a_session_that_may_only_read_keeps_its_project() 
                                 Err(_) => {}
                             }
                             assert!(Arc::ptr_eq(&before.0, &s.model) || *before.0 == *s.model, "{} {p} changed the project", cmd.id);
+                            let history: Vec<String> = s.history().into_iter().map(str::to_string).collect();
                             assert_eq!(
                                 (&before.1, before.2, &before.3, &before.4, &before.5),
-                                (&s.history(), s.steps(true).len(), &s.path, &s.phase, &s.option),
+                                (&history, s.steps(true).len(), &s.path, &s.phase, &s.option),
                                 "{} {p}",
                                 cmd.id
                             );

@@ -650,16 +650,16 @@ fn scripts_run_line_by_line_and_name_the_line_that_fails() {
 fn an_atomic_script_is_one_undo_step_and_leaves_nothing_done_when_a_line_fails() {
     let mut s = Session::new();
     run(&mut s, "level", json!({"elevation": 3000}));
-    let (history, levels) = (s.history(), count(&mut s, "level"));
+    let (history, levels) = (s.history().len(), count(&mut s, "level"));
     let e = s.script_atomic("level {\"elevation\": 6000}\nphase {\"name\": \"Later\"}\nnope\n").unwrap_err();
     assert!(e.contains("line 3"), "{e}");
     assert_eq!(count(&mut s, "level"), levels, "the lines before the failure are undone too");
-    assert_eq!(s.history(), history, "and leave no undo step");
+    assert_eq!(s.history().len(), history, "and leave no undo step");
     // One that goes through is one step: undo takes all of it back, redo puts it all again.
     let out = s.script_atomic("# two levels\nlevel {\"elevation\": 6000}\nlevel {\"elevation\": 9000}\n").unwrap();
     assert_eq!(out.len(), 2);
     assert_eq!(count(&mut s, "level"), levels + 2);
-    assert_eq!(s.history().len(), history.len() + 1);
+    assert_eq!(s.history().len(), history + 1);
     assert_eq!(s.history().last(), Some(&"Script"));
     run(&mut s, "undo", json!({}));
     assert_eq!(count(&mut s, "level"), levels);
@@ -676,7 +676,7 @@ fn a_failed_transaction_puts_back_the_history_the_phase_and_the_path_too() {
     let mut s = Session::new();
     run(&mut s, "level", json!({"elevation": 3000}));
     run(&mut s, "undo", json!({}));
-    let (model, history) = (Arc::clone(&s.model), s.history());
+    let (model, history) = (Arc::clone(&s.model), s.history().len());
     s.path = Some("kept.bimcraft".into());
     let e = s
         .transaction("Grouped", |s| {
@@ -690,7 +690,7 @@ fn a_failed_transaction_puts_back_the_history_the_phase_and_the_path_too() {
         .unwrap_err();
     assert!(!e.is_empty());
     assert!(Arc::ptr_eq(&s.model, &model), "the very model it started from");
-    assert_eq!(s.history(), history);
+    assert_eq!(s.history().len(), history);
     assert_eq!(s.phase, None);
     assert_eq!(s.path.as_deref(), Some(std::path::Path::new("kept.bimcraft")));
     // The redo that was there before is still there.
@@ -1311,9 +1311,9 @@ fn a_family_loads_from_its_file() {
 fn reading_a_family_adds_no_undo_step() {
     let mut s = Session::new();
     desk(&mut s);
-    let before = s.history();
+    let before = s.history().len();
     let read = run(&mut s, "family", json!({"name": "Work Desk"}));
-    assert_eq!(s.history(), before, "reading costs no undo step");
+    assert_eq!(s.history().len(), before, "reading costs no undo step");
     // What it is, whole: its forms with their ids and GUIDs, its types, its values worked out.
     assert_eq!(read["name"], json!("Work Desk"));
     let form = &read["family"]["forms"][0];
@@ -1332,7 +1332,7 @@ fn reading_a_family_adds_no_undo_step() {
     let e = s.execute("family", &json!({"name": "Nope"})).unwrap_err();
     assert!(e.contains("there's no family `Nope`"), "{e}");
     assert!(!s.model.families.contains_key("Nope"));
-    assert_eq!(s.history(), before, "not even a failed read costs an undo step");
+    assert_eq!(s.history().len(), before, "not even a failed read costs an undo step");
 }
 
 /// `dry_run` holds when the family comes from a file (`path`) and when it is saved to one (`save`): neither loads nor writes.
@@ -1346,12 +1346,12 @@ fn dry_run_holds_for_a_family_loaded_from_a_file_and_one_saved_to_a_file() {
     // Saved for real once, the file the loads below read.
     run(&mut s, "family", json!({"name": "Work Desk", "save": file_name}));
     assert!(file.exists());
-    let before = s.history();
+    let before = s.history().len();
     // Loaded under another name with `dry_run`: it says what it would make, and the project has no such family.
     let dry = run(&mut s, "family", json!({"path": file_name, "name": "Loaded Desk", "dry_run": true}));
     assert_eq!(dry["dry_run"], json!(true), "{dry}");
     assert!(!s.model.families.contains_key("Loaded Desk"), "a dry run of a file makes nothing");
-    assert_eq!(s.history(), before);
+    assert_eq!(s.history().len(), before);
     // Saved with `dry_run`: the file is not written.
     let _ = std::fs::remove_file(&file);
     let dry = run(&mut s, "family", json!({"name": "Work Desk", "save": file_name, "dry_run": true}));
@@ -1365,7 +1365,7 @@ fn dry_run_holds_for_a_family_loaded_from_a_file_and_one_saved_to_a_file() {
 fn dry_run_reports_changes_and_keeps_the_model() {
     let mut s = Session::new();
     desk(&mut s);
-    let before = s.history();
+    let before = s.history().len();
     let change = json!({
         "name": "Work Desk", "dry_run": true,
         "parameters": [
@@ -1393,20 +1393,20 @@ fn dry_run_reports_changes_and_keeps_the_model() {
     // A `dry_run` of nothing to change reads the family as reading it does.
     let plain = run(&mut s, "family", json!({"name": "Work Desk"}));
     assert_eq!(run(&mut s, "family", json!({"name": "Work Desk", "dry_run": true}))["family"], plain["family"]);
-    assert_eq!(s.history(), before, "dry_run costs no undo step");
+    assert_eq!(s.history().len(), before, "dry_run costs no undo step");
     // The same change without `dry_run` makes it: one undo step, and the family as it said it would be.
     let mut change = change;
     change["dry_run"] = Value::Null;
     run(&mut s, "family", change);
     assert!(!s.model.families["Work Desk"].types.contains_key("1800 x 800"), "nothing named that");
     assert_eq!(s.model.families["Work Desk"].types["1800 x 900"]["Width"], json!(1800));
-    assert_eq!(s.history().len(), before.len() + 1);
+    assert_eq!(s.history().len(), before + 1);
     // A change that's refused comes back as an error without `dry_run` too, and makes nothing.
-    let before = s.history();
+    let before = s.history().len();
     let e = s.execute("family", &json!({"name": "Work Desk", "dry_run": true, "types": {"1800 x 900": {"Width": 0}}})).unwrap_err();
     assert!(e.contains("no area"), "{e}");
     assert_eq!(s.model.families["Work Desk"].types["1800 x 900"]["Width"], json!(1800));
-    assert_eq!(s.history(), before);
+    assert_eq!(s.history().len(), before);
 }
 
 /// One form patched by its id: every other form keeps its id, its GUID and its place.
@@ -1543,7 +1543,7 @@ fn a_family_is_saved_with_the_fields_it_has_always_had() {
 #[test]
 fn a_family_is_drawn_on_its_own_and_the_project_is_left_alone() {
     let mut s = family_house();
-    let before = s.history();
+    let before = s.history().len();
     let counts = run(&mut s, "inspect", json!({}))["counts"].clone();
     // The model the expensive way: a wall, the door in it, drawn by `render` on that model itself.
     let mut hand = Session::new();
@@ -1577,7 +1577,7 @@ fn a_family_is_drawn_on_its_own_and_the_project_is_left_alone() {
     }
     // The project: no element made, no step of history, nothing of it drawn on.
     assert_eq!(run(&mut s, "inspect", json!({}))["counts"], counts, "a preview makes no element");
-    assert_eq!(s.history(), before, "a preview makes no undo step");
+    assert_eq!(s.history().len(), before, "a preview makes no undo step");
     // A family never placed anywhere draws as well: it's drawn from what it is, not from what stands.
     let never = json!({"name": "Stool", "types": {"A": {}}, "forms": [
         {"profile": [[0, 0], [320, 0], [320, 320], [0, 320]], "from": 420, "to": 450, "material": "Timber"},
@@ -1604,7 +1604,7 @@ fn a_family_is_drawn_on_its_own_and_the_project_is_left_alone() {
     let _ = std::fs::remove_file(&path);
     // What's refused says so and draws nothing: no such family, no such type, no such mode.
     // (The history grew once above, when `Stool` was made: a real change, as it should be.)
-    let before = s.history();
+    let before = s.history().len();
     for (p, says) in [
         (json!({"family": "Nowhere"}), "there's no family `Nowhere`"),
         (json!({"family": "Single Door", "type": "9 x 9"}), "no type `9 x 9`"),
@@ -1614,7 +1614,7 @@ fn a_family_is_drawn_on_its_own_and_the_project_is_left_alone() {
         let e = s.execute("render", &p).unwrap_err();
         assert!(e.contains(says), "{p}: {e}");
     }
-    assert_eq!(s.history(), before, "not even a refused preview costs an undo step");
+    assert_eq!(s.history().len(), before, "not even a refused preview costs an undo step");
 }
 
 /// A table: a top 750 mm up over two legs, one square at a corner, one round.
@@ -5790,13 +5790,13 @@ fn each_undo_step_says_what_it_made_or_took_away_and_undo_and_redo_go_back_sever
     run(&mut s, "move", json!({"ids": [walls[1]], "by": [0, 100]}));
     // Newest first, as Undo's list shows them.
     let steps = s.steps(false);
-    assert_eq!(steps.iter().map(|st| st.label).collect::<Vec<_>>(), ["Move", "Delete", "Door", "Wall"]);
+    assert_eq!(steps.iter().map(|st| st.label.clone()).collect::<Vec<_>>(), ["Move", "Delete", "Door", "Wall"]);
     assert!(steps[0].made.is_empty() && steps[0].removed.is_empty());
     assert_eq!(steps[1].removed, [("wall", 1), ("door", 1)], "by the first of each, in id order");
     assert_eq!((steps[2].made.as_slice(), steps[3].made.as_slice()), (&[("door", 1)][..], &[("wall", 4)][..]));
     assert_eq!(run(&mut s, "undo", json!({"count": 3})), json!({"undone": "Door", "count": 3}));
     assert_eq!((count(&mut s, "wall"), count(&mut s, "door")), (4, 0));
-    assert_eq!(s.steps(true).iter().map(|st| st.label).collect::<Vec<_>>(), ["Door", "Delete", "Move"]);
+    assert_eq!(s.steps(true).iter().map(|st| st.label.clone()).collect::<Vec<_>>(), ["Door", "Delete", "Move"]);
     assert_eq!(run(&mut s, "redo", json!({"count": 2})), json!({"redone": "Delete", "count": 2}));
     assert_eq!((count(&mut s, "wall"), count(&mut s, "door")), (3, 0));
     assert_eq!(run(&mut s, "undo", json!({})), json!({"undone": "Delete", "count": 1}));

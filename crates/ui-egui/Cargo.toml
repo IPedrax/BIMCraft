@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 bimcraft-i18n = { workspace = true }
 bimcraft-core = { workspace = true }
+bimcraft-plugin = { workspace = true }
 bimcraft-update = { workspace = true }
 serde_json = { workspace = true }
 egui = { workspace = true }

@@ -5706,6 +5706,7 @@ mod objectstyles;
 mod patterns;
 mod perspective;
 mod planviews;
+mod plugins;
 mod popup;
 mod presets;
 mod profile;

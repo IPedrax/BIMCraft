@@ -5,7 +5,8 @@
 
 use std::io::{BufRead, Write};
 
-use bimcraft_core::engine::{Session, catalog};
+use bimcraft_core::engine::Session;
+use bimcraft_plugin::Plugins;
 use serde_json::{Value, json};
 
 use crate::window::Window;
@@ -75,10 +76,21 @@ impl Backend {
                 .into()),
         }
     }
+
+    /// The command catalog, with the session's plugin commands: agents see a plugin without a tool of its own.
+    fn catalog(&mut self) -> Result<Value, String> {
+        match self {
+            Backend::Own(s) => Ok(s.catalog()),
+            Backend::Window(w) => w.ask(json!({"op": "catalog"})),
+        }
+    }
 }
 
 pub struct Server {
     backend: Backend,
+    /// The plugins of a headless server's own session, and how much of their log has been said.
+    plugins: Option<Plugins>,
+    seen: usize,
 }
 
 impl Default for Server {
@@ -130,12 +142,14 @@ impl Server {
     pub fn new() -> Self {
         let mut session = Session::new();
         session.dwg = crate::dwg_reader();
-        Server { backend: Backend::Own(session) }
+        let plugins = crate::load_plugins(&mut session);
+        let seen = plugins.log().len();
+        Server { backend: Backend::Own(session), plugins: Some(plugins), seen }
     }
 
     /// A server whose tools work on the project `window` has open.
     pub fn attached(window: Window) -> Self {
-        Server { backend: Backend::Window(window) }
+        Server { backend: Backend::Window(window), plugins: None, seen: 0 }
     }
 
     /// Opens `path` as the server's own project (before it answers: `bimcraft-cli mcp FILE`), a Revit file as `open` imports one.
@@ -274,7 +288,7 @@ impl Server {
             "list_commands" => {
                 let filter = args["filter"].as_str().map(str::to_ascii_lowercase).unwrap_or_default();
                 let has = |v: &Value| v.as_str().is_some_and(|t| t.to_ascii_lowercase().contains(&filter));
-                let all = catalog();
+                let all = b.catalog().map_err(|e| (INVALID_PARAMS, e))?;
                 Ok(all
                     .as_array()
                     .map(|cmds| {
@@ -328,6 +342,11 @@ impl Server {
             }
             _ => return Err((INVALID_PARAMS, format!("unknown tool `{name}`"))),
         };
+        if let Some(plugins) = &self.plugins {
+            let mut seen = self.seen;
+            crate::note_plugins(plugins, &mut seen);
+            self.seen = seen;
+        }
         Ok(match result {
             Ok(v) => text(&v),
             Err(e) => tool_error(&e),
