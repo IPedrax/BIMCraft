@@ -1580,6 +1580,34 @@ impl Model {
     }
 }
 
+/// The kinds of part an element holds, as [`element_parts`] names them.
+const ELEMENT_PARTS: [&str; 3] = ["sketch line", "shape point", "split line"];
+
+/// An element's own parts, in the order [`Model::parts_now`] walks them: its sketch lines, then a floor's or a roof's shape's
+/// points and its split lines, each with what it is, its place in its list, its id and its GUID.
+fn element_parts(e: &Element) -> Vec<(&'static str, usize, Id, Guid)> {
+    let mut out: Vec<(&'static str, usize, Id, Guid)> = Vec::new();
+    if let Some(lines) = e.sketch() {
+        out.extend(lines.iter().enumerate().map(|(k, l)| ("sketch line", k, l.id, l.guid)));
+    }
+    if let Some(sh) = e.shape().filter(|sh| !sh.is_empty()) {
+        out.extend(sh.points.iter().enumerate().map(|(k, x)| ("shape point", k, x.id, x.guid)));
+        out.extend(sh.lines.iter().enumerate().map(|(k, x)| ("split line", k, x.id, x.guid)));
+    }
+    out
+}
+
+/// Each of an element's own parts' id and GUID, given to `f` in the order of [`element_parts`].
+fn element_parts_mut(e: &mut Element, f: &mut dyn FnMut(&mut Id, &mut Guid)) {
+    if let Some(lines) = e.sketch_mut() {
+        lines.iter_mut().for_each(|l| f(&mut l.id, &mut l.guid));
+    }
+    if let Some(sh) = e.shape_mut().filter(|sh| !sh.is_empty()) {
+        sh.points.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
+        sh.lines.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::{Value, json};
@@ -1997,33 +2025,5 @@ type {"category": "wall", "name": "Partition", "thickness": 110}"#,
         );
         let r = run(&mut s, "library", json!({"kind": "form", "name": "Box"}));
         assert_eq!(r["parts"].as_array().map(Vec::len), Some(2));
-    }
-}
-
-/// The kinds of part an element holds, as [`element_parts`] names them.
-const ELEMENT_PARTS: [&str; 3] = ["sketch line", "shape point", "split line"];
-
-/// An element's own parts, in the order [`Model::parts_now`] walks them: its sketch lines, then a floor's or a roof's shape's
-/// points and its split lines, each with what it is, its place in its list, its id and its GUID.
-fn element_parts(e: &Element) -> Vec<(&'static str, usize, Id, Guid)> {
-    let mut out: Vec<(&'static str, usize, Id, Guid)> = Vec::new();
-    if let Some(lines) = e.sketch() {
-        out.extend(lines.iter().enumerate().map(|(k, l)| ("sketch line", k, l.id, l.guid)));
-    }
-    if let Some(sh) = e.shape().filter(|sh| !sh.is_empty()) {
-        out.extend(sh.points.iter().enumerate().map(|(k, x)| ("shape point", k, x.id, x.guid)));
-        out.extend(sh.lines.iter().enumerate().map(|(k, x)| ("split line", k, x.id, x.guid)));
-    }
-    out
-}
-
-/// Each of an element's own parts' id and GUID, given to `f` in the order of [`element_parts`].
-fn element_parts_mut(e: &mut Element, f: &mut dyn FnMut(&mut Id, &mut Guid)) {
-    if let Some(lines) = e.sketch_mut() {
-        lines.iter_mut().for_each(|l| f(&mut l.id, &mut l.guid));
-    }
-    if let Some(sh) = e.shape_mut().filter(|sh| !sh.is_empty()) {
-        sh.points.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
-        sh.lines.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
     }
 }

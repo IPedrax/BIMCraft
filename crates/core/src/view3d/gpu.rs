@@ -315,6 +315,9 @@ struct Node {
 /// The nearest of what a pixel shows: how near, what it is, and its triangle as placed (none for a scan's point).
 type Found = Option<(f32, Hit, Option<[P3; 3]>)>;
 
+/// What a pixel shows, while the nearest is looked for: how near, its place in the scene's order, what it is, and its triangle.
+type Candidate = Option<(f32, usize, Hit, Option<[P3; 3]>)>;
+
 struct Bvh {
     nodes: Vec<Node>,
     order: Vec<usize>,
@@ -1262,7 +1265,7 @@ impl Mesh {
     fn nearest(&self, cam: &Camera, cut: Option<(P3, P3)>, (x, y): (f64, f64)) -> (Found, Found) {
         let bvh = self.bvh();
         // Opaque, then seen through.
-        let mut found: [Option<(f32, usize, Hit, Option<[P3; 3]>)>; 2] = [None, None];
+        let mut found: [Candidate; 2] = [None, None];
         let project = cam.projector();
         // What the section box keeps, asked as the processor's picture asks it.
         let cut = cut.map(|b| Boxed::new(cam, b));
@@ -1340,7 +1343,7 @@ impl Mesh {
         {
             found[0] = Some((z, usize::MAX, Hit { id: id.id, face: "" }, None));
         }
-        let hit = |f: Option<(f32, usize, Hit, Option<[P3; 3]>)>| f.map(|(z, _, hit, tri)| (z, hit, tri));
+        let hit = |f: Candidate| f.map(|(z, _, hit, tri)| (z, hit, tri));
         (hit(found[0]), hit(found[1]))
     }
 }
