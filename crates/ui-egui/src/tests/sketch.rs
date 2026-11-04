@@ -333,3 +333,65 @@ fn a_sketch_line_picked_alone_has_a_palette_of_what_can_be_done_to_it() {
     press(&mut h, "Add Vertex");
     assert!(matches!(h.state().tool, Tool::Vertex { delete: false }));
 }
+
+/// A roof over the box's footprint, its east and west edges at 45° and the others at the roof's 30°.
+const SLOPED: &str = r#"roof {"boundary": [[0,0],[8000,0],[8000,6000],[0,6000]], "slope": 30, "slopes": [0, 45, 0, 45]}"#;
+
+#[test]
+fn a_picked_line_of_a_roofs_sketch_shows_its_slope_in_properties_and_sets_it_in_both_profiles() {
+    for rev in [false, true] {
+        let script = format!("{BOX}\n{SLOPED}");
+        let mut h = if rev { app(&script) } else { bimcraft(&script) };
+        let roof = ids(&h, "roof")[0];
+        h.state_mut().selection = vec![roof];
+        h.run();
+        h.state_mut().edit_boundary();
+        h.run();
+        key(&mut h, Key::Escape);
+        assert!(h.query_by_role_and_label(Role::TextInput, "Slope").is_none(), "rev {rev}: no line picked, no slope");
+        let slope = |h: &Harness<BimApp>| h.get_by_role_and_label(Role::TextInput, "Slope").value().unwrap_or_default();
+        // The east line, which the roof's edge there rises along at 45°; the south one has the roof's, blank.
+        click(&mut h, P2(8000.0, 3000.0));
+        assert_eq!(slope(&h), "45", "rev {rev}");
+        click(&mut h, P2(4000.0, 0.0));
+        assert_eq!(slope(&h), "", "rev {rev}");
+        // The south line given 20°, which Finish sends with the lines: the roof's south edge, number 0, rises at 20°.
+        type_into(&mut h, "Slope", "20");
+        key(&mut h, Key::Enter);
+        assert_eq!(slope(&h), "20", "rev {rev}");
+        assert_eq!(field(&h, roof, "slopes").as_array().map(Vec::len), Some(4), "nothing is the roof's until Finish");
+        assert_eq!(field(&h, roof, "slopes"), json!([0.0, 45.0, 0.0, 45.0]), "rev {rev}");
+        // Blank is the roof's again, and a number out of range is refused, saying so, the line keeping the slope it had.
+        type_into(&mut h, "Slope", "90");
+        key(&mut h, Key::Enter);
+        assert!(h.state().status.error && h.state().status.text.contains("from 0 to 75"), "rev {rev}: {}", h.state().status.text);
+        assert_eq!(slope(&h), "20", "rev {rev}");
+        press(&mut h, "Finish Edit Mode");
+        assert!(h.state().sketch.is_none(), "rev {rev}: {}", h.state().status.text);
+        assert_eq!(field(&h, roof, "slopes"), json!([20.0, 45.0, 0.0, 45.0]), "rev {rev}");
+        assert_eq!(h.state().session.history().last(), Some(&"Edit Boundary"), "rev {rev}");
+        // Edit Boundary again hands the lines back with the slopes the edges have; one set blank is the roof's, not the edge's old slope.
+        h.state_mut().edit_boundary();
+        h.run();
+        key(&mut h, Key::Escape);
+        click(&mut h, P2(8000.0, 3000.0));
+        assert_eq!(slope(&h), "45", "rev {rev}");
+        type_into(&mut h, "Slope", "");
+        key(&mut h, Key::Backspace);
+        key(&mut h, Key::Enter);
+        assert_eq!(slope(&h), "", "rev {rev}");
+        press(&mut h, "Finish Edit Mode");
+        assert_eq!(field(&h, roof, "slopes"), json!([20.0, 0.0, 0.0, 45.0]), "rev {rev}");
+        // A floor's sketch has no slope to give.
+        let floor = format!("{BOX}\nfloor {{}}");
+        let mut f = if rev { app(&floor) } else { bimcraft(&floor) };
+        let id = ids(&f, "floor")[0];
+        f.state_mut().selection = vec![id];
+        f.run();
+        f.state_mut().edit_boundary();
+        f.run();
+        key(&mut f, Key::Escape);
+        click(&mut f, P2(4000.0, 6000.0));
+        assert!(f.query_by_role_and_label(Role::TextInput, "Slope").is_none(), "rev {rev}");
+    }
+}

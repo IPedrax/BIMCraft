@@ -23,7 +23,7 @@ the model starts with Level 1 (0) and Level 2 (3000). Model with execute: wall {
 closed: true}, door {at: [2000, 0]}, window {at: [8000, 3000]}, room {point: [4000, 3000], name: \"Living\"}, floor {} (open \
 over a loop of walls standing free inside), \
 roof {} (on Level 2, over the walls below, hipped, open over a loop of them standing free inside; gables: [1, 3] stands \
-those edges upright; courtyards: [[[x,y],…]] slopes it round holes in it too), dormer {host: <roof id>, \
+those edges upright; slopes: [30, 45, 30, 45] gives each edge its own slope; courtyards: [[[x,y],…]] slopes it round holes in it too), dormer {host: <roof id>, \
 at: [4000, 800]} (on its slope), column {at: [4000, 3000]}, stair {start: [1000, 1000], end: [1000, 2000], \
 railings: true} (with landings: [{at: 8, turn: -90}], it turns right after 8 risers), ramp {start: [-5000, 0], height: 600}, \
 dimension {refs: [[0, 3000], [8000, 3000]], at: [4000, -1000]} (between the walls under those points), tag {} (every door and \
