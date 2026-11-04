@@ -72,7 +72,7 @@ pub enum Group {
 /// under its ends (`runs::Geom::half`, and its justification).
 const STEEP: f64 = 2.0;
 
-/// The kinds a plan finds by height, by view, by level or by host, not in [`Lookup::other`].
+/// The kinds a plan finds by height, by view, by level or by host, or never shows, not in [`Lookup::other`].
 fn found_otherwise(e: &Element) -> bool {
     matches!(
         e,
@@ -93,6 +93,8 @@ fn found_otherwise(e: &Element) -> bool {
             | Element::Column(_)
             | Element::StructuralColumn(_)
             | Element::Tag(_)
+            // A 3D view's own: no plan shows it.
+            | Element::Dimension3D(_)
     )
 }
 

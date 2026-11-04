@@ -737,12 +737,15 @@ fn plan_filter<'a>(
             Element::Door(o) | Element::Window(o) => m.wall(o.host).is_some_and(|w| m.spans(w, r.cut)),
             Element::Component(c) => {
                 let (bottom, top) = components.heights_of(c);
-                bottom < r.cut && top > r.depth
+                // Its plan symbols are annotation of its level, whatever height its forms reach.
+                bottom < r.cut && top > r.depth || c.level == level && m.families.get(&c.family).is_some_and(|f| !f.symbols.is_empty())
             }
             Element::Room(x) => x.level == level,
             Element::RoomSeparator(x) => x.level == level,
             Element::Rebar(_) => m.level_of(e) == Some(level),
             Element::Ceiling(_) => false,
+            // A 3D view's own dimension shows in no plan.
+            Element::Dimension3D(_) => false,
             Element::Text(_)
             | Element::DetailLine(_)
             | Element::FilledRegion(_)
