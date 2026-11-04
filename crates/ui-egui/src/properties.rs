@@ -1196,6 +1196,10 @@ impl BimApp {
     fn layer_picture(&mut self, ui: &mut Ui, model: &Model) {
         let Some((category, name, ids)) = self.type_subject() else { return };
         let Some((.., thickness, layers)) = model.layered_types().find(|(c, n, ..)| *c == category && *n == name) else { return };
+        // A curtain wall has no layers, only its panels and mullions, and stands on a face its pattern's editor doesn't move.
+        if category == "wall" && model.types.wall.get(&name).is_some_and(|w| w.curtain.is_some()) {
+            return;
+        }
         if !LAYERED.contains(&category) || thickness.is_nan() || thickness <= 0.0 {
             return;
         }

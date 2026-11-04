@@ -19,6 +19,8 @@ pub const GLAZED: &str = "Glazed";
 pub const SPANDREL: &str = "Spandrel";
 /// The mullion type a project starts with.
 pub const RECTANGULAR_MULLION: &str = "50 x 150";
+/// How far the starter mullion stands toward the wall's exterior from its grid line, mm.
+const STARTER_OFFSET: f64 = 50.0;
 
 /// A type of the Generic Panel family: a flat panel `thickness` thick, its centre `offset` mm from the grid's plane toward the
 /// exterior.
@@ -83,7 +85,9 @@ pub(crate) fn starter_types(m: &mut Model) {
     }
     if m.types.mullion.is_empty() {
         let profile = MullionProfile::Rectangular { width: 50.0, depth: 150.0 };
-        m.types.mullion.insert(RECTANGULAR_MULLION.into(), MullionType { profile, offset_x: 0.0, offset_y: 0.0, material: metal });
+        m.types
+            .mullion
+            .insert(RECTANGULAR_MULLION.into(), MullionType { profile, offset_x: 0.0, offset_y: STARTER_OFFSET, material: metal });
     }
     if !m.types.wall.contains_key(CURTAIN_WALL) {
         let way = || Direction { segments: vec![1500.0], fit: Fit::Flexible, justify: Justify::Start };
@@ -199,7 +203,8 @@ pub enum Justify {
     End,
 }
 
-/// Which mullions run through where they cross at a butt joint.
+/// Which mullions run through where they cross at a butt joint, when neither is bigger: a deeper one, or of one depth a wider
+/// one, runs through whatever this says ([`Bar::runs_through`]).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Continuous {
@@ -511,6 +516,18 @@ impl Bar<'_> {
         (self.lo + self.hi) / 2.0
     }
 
+    /// Whether it runs through `o` where they cross: being the deeper, of one depth the wider, and of one size if `tie`.
+    fn runs_through(&self, o: &Bar, tie: bool) -> bool {
+        let (depth, width) = (self.depth - o.depth, (self.hi - self.lo) - (o.hi - o.lo));
+        if depth.abs() >= SAME {
+            depth > 0.0
+        } else if width.abs() >= SAME {
+            width > 0.0
+        } else {
+            tie
+        }
+    }
+
     /// Whether a mitre can join it to `o`: both ask for one and they're the same size in the same place across the wall.
     fn mitres_with(&self, o: &Bar) -> bool {
         self.join == Join::Mitre
@@ -668,14 +685,12 @@ fn build(m: &Model, l: &CurtainLayout, columns: Vec<Span>, rows: Vec<Span>, leng
         for (r, bar) in line.iter().enumerate() {
             let Some(b) = bar else { continue };
             let span = (rows[r].from, rows[r].to);
-            let (v0, v1) = if l.continuous == Continuous::Horizontal {
-                let cols = i.saturating_sub(1)..=i.min(nc.saturating_sub(1));
-                let bars: Vec<&Bar> =
-                    cols.flat_map(|c| near(&horizontal, r).filter_map(|j| horizontal[j][c].as_ref()).collect::<Vec<_>>()).collect();
-                narrowed(span, b.across, bars.iter().copied())
-            } else {
-                span
-            };
+            let cols = i.saturating_sub(1)..=i.min(nc.saturating_sub(1));
+            let bars: Vec<&Bar> = cols
+                .flat_map(|c| near(&horizontal, r).filter_map(|j| horizontal[j][c].as_ref()).collect::<Vec<_>>())
+                .filter(|h| h.runs_through(b, l.continuous == Continuous::Horizontal))
+                .collect();
+            let (v0, v1) = narrowed(span, b.across, bars.iter().copied());
             let (low, high) = (mitres.get(&(i, r)), mitres.get(&(i, r + 1)));
             let at = |along: f64| (low.map_or(v0, |c| c.up_at(along)), high.map_or(v1, |c| c.up_at(along)));
             let (left, right) = (at(b.lo), at(b.hi));
@@ -695,14 +710,12 @@ fn build(m: &Model, l: &CurtainLayout, columns: Vec<Span>, rows: Vec<Span>, leng
         for (c, bar) in line.iter().enumerate() {
             let Some(b) = bar else { continue };
             let span = (columns[c].from, columns[c].to);
-            let (u0, u1) = if l.continuous == Continuous::Vertical {
-                let rows_near = j.saturating_sub(1)..=j.min(nr.saturating_sub(1));
-                let bars: Vec<&Bar> =
-                    rows_near.flat_map(|r| near(&vertical, c).filter_map(|i| vertical[i][r].as_ref()).collect::<Vec<_>>()).collect();
-                narrowed(span, b.across, bars.iter().copied())
-            } else {
-                span
-            };
+            let rows_near = j.saturating_sub(1)..=j.min(nr.saturating_sub(1));
+            let bars: Vec<&Bar> = rows_near
+                .flat_map(|r| near(&vertical, c).filter_map(|i| vertical[i][r].as_ref()).collect::<Vec<_>>())
+                .filter(|v| v.runs_through(b, l.continuous == Continuous::Vertical))
+                .collect();
+            let (u0, u1) = narrowed(span, b.across, bars.iter().copied());
             let (first, last) = (mitres.get(&(c, j)), mitres.get(&(c + 1, j)));
             let at = |up: f64| (first.map_or(u0, |x| x.along_at(up)), last.map_or(u1, |x| x.along_at(up)));
             let (under, over) = (at(b.lo), at(b.hi));

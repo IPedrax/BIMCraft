@@ -7,7 +7,7 @@ filters treat it as any wall. Its panels and mullions are worked out from that p
 ## Types
 
 Panels and mullions are system families: `Types::curtain_panel` (the Generic Panel family: `Glazed` and `Spandrel` to start with;
-thickness, material, offset) and `Types::mullion` (Rectangular Mullion: width, depth, `offset_x`, `offset_y`, material, both offsets
+thickness, material, offset) and `Types::mullion` (Rectangular Mullion, whose starter `50 x 150` stands 50 mm toward the exterior: width, depth, `offset_x`, `offset_y`, material, both offsets
 from its centre). `MullionProfile` holds the section, so a drawn profile can be another kind. They are library entries
 (`Kind::Type("curtainpanel")`, `Kind::Type("mullion")`), and a pattern's names of them are `CurtainLayout::names_mut`. `type` makes and
 edits them. A project of file format 16 gets the starter set when read.
@@ -29,8 +29,8 @@ panels and mullions the pattern uses reach (`envelope`), after every command.
 which is its name as the wall changes; a part's `Address` is made of those. `layout` then places:
 
 - **Border mullions** stand inside the wall, so it never reaches past its ends, its base or its top.
-- **Mullions** sit on their line plus their offsets. A mullion that would run into its neighbour goes, the border winning. The run
-  that isn't `continuous` is cut back to the faces of those it meets.
+- **Mullions** sit on their line plus their offsets. A mullion that would run into its neighbour goes, the border winning. Where two
+  cross, the bigger runs through and the other is cut back to its faces: see Joins.
 - **Panels** sit in their cell plus their offset, cut back to any mullion that reaches them in depth. A panel in front of the
   mullions isn't cut (structural glazing), and with no mullion panels run gapless.
 - **Malformed:** a cell left no more than `min_panel` gets no panel. At an end's cut segment that goes in `Layout::malformed`; in a
@@ -62,7 +62,8 @@ Fit doesn't change what `layout` does with a length: at any length, what's left 
 
 ## Joins
 
-Where mullions meet, `CurtainLayout.continuous` says which run through: the others stop at their faces. A mitre is asked for on a
+Where mullions meet, the bigger runs through and the other stops at its faces (`Bar::runs_through`): the deeper, of one depth the
+wider. `CurtainLayout.continuous` only fine-tunes a joint of one size, saying which runs through there. A mitre is asked for on a
 mullion (`MullionPick.join`) and made only at a corner: exactly one vertical and one horizontal bar on the node, both asking, of the
 same width and depth and at the same offset. A T or a crossing stays butt whatever its bars ask for, and so does a corner of unlike
 bars. Both bars run out to the corner's outer point, cut on its diagonal; the panels are the same either way. A mitred bar is a

@@ -236,7 +236,7 @@ msgid "Gate Valve"
 msgstr "Absperrventil"
 
 #: crates/core/src/family.rs:1898
-#: crates/core/src/view3d.rs:739
+#: crates/core/src/view3d.rs:748
 msgid "Glass"
 msgstr "Glas"
 

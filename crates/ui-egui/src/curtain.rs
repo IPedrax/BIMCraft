@@ -438,7 +438,7 @@ impl BimApp {
                         ui.separator();
                         choice(
                             ui,
-                            t("Runs Through"),
+                            t("Of One Size, Runs Through"),
                             &mut d.l.continuous,
                             &[(Continuous::Vertical, msg!("Vertical Mullions")), (Continuous::Horizontal, msg!("Horizontal Mullions"))],
                         );

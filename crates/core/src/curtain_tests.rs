@@ -32,6 +32,7 @@ fn a_new_project_has_the_generic_panels_and_a_rectangular_mullion() {
     assert_eq!(m.curtain_panel["Glazed"].material, "Glass");
     assert_eq!(m.mullion["50 x 150"].width(), 50.0);
     assert_eq!(m.mullion["50 x 150"].depth(), 150.0);
+    assert_eq!(m.mullion["50 x 150"].offset_y, 50.0, "the panels sit toward its back");
 }
 
 #[test]
@@ -209,8 +210,8 @@ fn a_curtain_walls_thickness_comes_from_what_it_is_made_of() {
     grid(&mut s, "CW", &[1000.0], &[1500.0], json!({}));
     assert_eq!(s.model.types.wall["CW"].thickness, 150.0, "the mullion is the deepest");
     // Moved out, the panel reaches past the mullion on one side only.
-    run(&mut s, "type", json!({"category": "curtainpanel", "name": "Glazed", "offset": 100}));
-    assert_eq!(s.model.types.wall["CW"].thickness, 75.0 + 112.0);
+    run(&mut s, "type", json!({"category": "curtainpanel", "name": "Glazed", "offset": 200}));
+    assert_eq!(s.model.types.wall["CW"].thickness, 212.0 + 25.0);
     // Without mullions, the panel alone.
     grid(&mut s, "Bare", &[1000.0], &[1500.0], json!({"mullion": null}));
     assert_eq!(s.model.types.wall["Bare"].thickness, 24.0);
@@ -893,4 +894,55 @@ fn walls_by_face_cant_be_curtain_walls_yet() {
     let plain = run(&mut s, "wall_by_face", json!({"mass": mass, "faces": [0]}))["ids"][0].as_u64().unwrap();
     let why = fails(&mut s, "modify", json!({"id": plain, "type": "CW"}));
     assert!(why.contains("by face"), "{why}");
+}
+
+// Which mullion runs through.
+
+/// A wall 4 × 2 m of a 2 m × 1 m grid, its verticals and horizontals as given, its borders the starter mullion.
+fn crossing(s: &mut Session, vertical: &str, horizontal: &str, continuous: &str) -> Layout {
+    let (v, h) = (json!({"type": vertical}), json!({"type": horizontal}));
+    grid(s, "X", &[2000.0], &[1000.0], json!({"vertical": [[v]], "horizontal": [[h]], "continuous": continuous}));
+    built(s, "X", 4000.0, 2000.0)
+}
+
+fn size_of(l: &Layout, a: curtain::Address) -> [f64; 3] {
+    let p = l.parts.iter().find(|p| p.address == a).unwrap_or_else(|| panic!("{a:?}: {:?}", l.parts));
+    l.shapes[p.shape as usize].size
+}
+
+const V: curtain::Address = curtain::Address::Vertical { column: 1, row: 0 };
+const H: curtain::Address = curtain::Address::Horizontal { column: 0, row: 1 };
+
+#[test]
+fn a_deeper_mullion_runs_through_whatever_the_setting_says() {
+    let mut s = session();
+    run(&mut s, "type", json!({"category": "mullion", "name": "Deep", "width": 50, "depth": 300}));
+    // The picture: deep horizontals, shallow verticals, and the setting for verticals. No notch: the horizontal is whole.
+    let l = crossing(&mut s, "50 x 150", "Deep", "vertical");
+    assert_eq!(size_of(&l, H)[0], 2000.0, "line to line");
+    assert_eq!(size_of(&l, V)[1], 975.0, "the vertical stops at it");
+    // And the other way round.
+    let l = crossing(&mut s, "Deep", "50 x 150", "horizontal");
+    assert_eq!(size_of(&l, V)[1], 1000.0);
+    assert_eq!(size_of(&l, H)[0], 1975.0, "through the border, as the setting says, to the deep vertical");
+}
+
+#[test]
+fn of_the_same_depth_the_wider_runs_through() {
+    let mut s = session();
+    run(&mut s, "type", json!({"category": "mullion", "name": "Wide", "width": 100, "depth": 150, "offset_y": 50}));
+    let l = crossing(&mut s, "50 x 150", "Wide", "vertical");
+    assert_eq!(size_of(&l, H)[0], 2000.0);
+    assert_eq!(size_of(&l, V)[1], 950.0);
+}
+
+#[test]
+fn of_the_same_size_the_setting_says_which_runs_through() {
+    let mut s = session();
+    let l = crossing(&mut s, "50 x 150", "50 x 150", "vertical");
+    assert_eq!(size_of(&l, V)[1], 1000.0);
+    assert_eq!(size_of(&l, H)[0], 1925.0, "between the border and the vertical");
+    let l = crossing(&mut s, "50 x 150", "50 x 150", "horizontal");
+    assert_eq!(size_of(&l, V)[1], 925.0, "between the border and the horizontal");
+    assert_eq!(size_of(&l, H)[0], 2000.0);
 }

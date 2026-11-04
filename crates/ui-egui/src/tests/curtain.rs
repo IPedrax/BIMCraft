@@ -176,3 +176,20 @@ fn the_browser_edits_a_panel_and_a_mullions_type() {
     let t = &h.state().session.model.types.mullion["50 x 150"];
     assert_eq!((t.width(), t.offset_y), (60.0, 20.0), "{}", h.state().status.text);
 }
+
+#[test]
+fn a_curtain_wall_shows_no_wall_layers_a_plain_one_does_in_both_profiles() {
+    for rev in [false, true] {
+        let script = "wall {\"points\":[[0,0],[6000,0]],\"type\":\"Curtain Wall\"}\nwall {\"points\":[[0,3000],[6000,3000]]}";
+        let mut h = if rev { app(script) } else { bimcraft(script) };
+        let w = walls(&h);
+        let (curtain, plain) =
+            (w.iter().find(|x| x.1.type_name == "Curtain Wall").unwrap().0, w.iter().find(|x| x.1.type_name != "Curtain Wall").unwrap().0);
+        h.state_mut().selection = vec![plain];
+        h.run();
+        assert!(h.query_by_label("Wall layers").is_some(), "rev {rev}: a plain wall has them");
+        h.state_mut().selection = vec![curtain];
+        h.run();
+        assert!(h.query_by_label("Wall layers").is_none(), "rev {rev}: not a curtain wall");
+    }
+}
