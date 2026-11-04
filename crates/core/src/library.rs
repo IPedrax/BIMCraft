@@ -801,7 +801,8 @@ impl Model {
         let parts_same = self.library.parts == before.library.parts;
         let mut differing = if parts_same { Default::default() } else { self.library.parts.differing(&before.library.parts) };
         let (mut held, mut had) = (std::collections::BTreeSet::new(), Vec::new());
-        let sketch = |m: &Model, id: Id| -> Vec<(&'static str, usize, Id, Guid)> { m.elements.get(id).map_or_else(Vec::new, element_parts) };
+        let sketch =
+            |m: &Model, id: Id| -> Vec<(&'static str, usize, Id, Guid)> { m.elements.get(id).map_or_else(Vec::new, element_parts) };
         let mut new = Vec::new();
         for &id in &changed {
             // An element that took another GUID; one made or taken away is asked of below, by its sketch and its GUID.
@@ -908,7 +909,9 @@ impl Model {
             }
             let owner = self.guid(*id).to_string();
             let of = format!("{} {owner}", e.category());
-            out.extend(parts.into_iter().map(|(what, index, id, guid)| (id, Part { what, of: of.clone(), owner: owner.clone(), index, guid })));
+            out.extend(
+                parts.into_iter().map(|(what, index, id, guid)| (id, Part { what, of: of.clone(), owner: owner.clone(), index, guid })),
+            );
         }
         out
     }
