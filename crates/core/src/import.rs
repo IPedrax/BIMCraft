@@ -2857,16 +2857,19 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     // program's, named for the property (less what a formula can't say, as the brackets of "Cargas (G2)"). Each one's kind from
     // its first value's, for the categories of the elements holding one; up to as many as a project holds, and as many values
     // as `MAX_VALUES`.
-    let (mut over, mut values) = (BTreeSet::new(), 0);
+    let (mut over, mut clash, mut values) = (BTreeSet::new(), BTreeSet::new(), 0);
     // Puts `value` as `name` on the elements the products `on` made; false once a project can hold no more values.
     let mut put = |m: &mut Model, skipped: &mut Vec<String>, on: &[u64], name: &str, kind: ParameterKind, value: &serde_json::Value| {
         for id in on.iter().filter_map(|x| elements_from.get(x)).flatten() {
             let Some(el) = m.elements.get(id) else { continue };
             let cat = el.category();
-            let theirs = |f: &str| m.families.get(f).is_some_and(|f| f.parameters.iter().any(|p| p.name == name));
+            // A component's parameter may not be one a family of the project has, whichever family it is: `Model::check` refuses it.
+            if cat == "component" && m.families.values().any(|f| f.parameters.iter().any(|p| p.name == name)) {
+                clash.insert(name.to_string());
+                continue;
+            }
             let fits = PARAMETER_CATEGORIES.contains(&cat)
                 && !crate::schedule::own_field(cat, name)
-                && !matches!(el, Element::Component(c) if theirs(&c.family))
                 && m.parameters.get(name).is_none_or(|p| p.kind == kind);
             let p = ProjectParameter { kind, categories: vec![cat.to_string()] };
             if !fits || !p.holds(value) {
@@ -2943,6 +2946,13 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
 
     if !over.is_empty() {
         skipped.push(format!("{} project parameters: past the {MAX_PROJECT_PARAMETERS} a project holds", over.len()));
+    }
+    if !clash.is_empty() {
+        let names: Vec<&str> = clash.iter().map(String::as_str).collect();
+        skipped.push(format!(
+            "{} on components: a family of the project has a parameter of that name, so it is not a project parameter too",
+            names.join(", ")
+        ));
     }
 
     // The project's phases, and what it changed of its phase filters, overrides and design option sets, from the
@@ -3723,6 +3733,28 @@ ENDSEC;END-ISO-10303-21;",
         let metres = file.replace(".MILLI.,.METRE.", "$,.METRE.").replace("IFCLENGTHMEASURE(2400.)", "IFCLENGTHMEASURE(2.4)");
         let i = ifc(metres.as_bytes(), "x").unwrap();
         assert_eq!(values(&i.model, "room").and_then(|p| p.get("Finish Height").cloned()), Some(json!(2400.0)));
+    }
+
+    #[test]
+    fn a_property_named_as_a_parameter_of_a_family_does_not_stop_the_file_from_opening() {
+        let mut s = crate::engine::Session::new();
+        s.script(
+            r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}
+               component {"family": "Chair", "at": [2000, 2000]}
+               parameter {"name": "Depth Of", "kind": "length", "categories": ["component"]}
+               parameter {"name": "Supplier", "categories": ["component"]}"#,
+        )
+        .unwrap();
+        let chair = s.model.elements.iter().find(|(_, e)| e.category() == "component").map(|(id, _)| *id).unwrap();
+        s.execute("modify", &json!({"id": chair, "params": {"Depth Of": 450, "Supplier": "Acme"}})).unwrap();
+        // Another program calls the property by the name of a parameter the starter "Base Cabinet" family has.
+        assert!(s.model.families.values().any(|f| f.parameters.iter().any(|p| p.name == "Depth")));
+        let file = crate::ifc::export(&s.model).replace("'Depth Of'", "'Depth'");
+        let i = ifc(file.as_bytes(), "x").unwrap();
+        assert!(!i.model.parameters.contains_key("Depth"), "a family's parameter is not a project parameter too");
+        let kept = i.model.elements.values().find(|e| e.category() == "component").and_then(Element::params).unwrap();
+        assert_eq!(kept.get("Supplier"), Some(&json!("Acme")), "the other values stay");
+        assert!(i.skipped.iter().any(|n| n.contains("Depth") && n.contains("family")), "{:?}", i.skipped);
     }
 
     #[test]
