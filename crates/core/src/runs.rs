@@ -369,6 +369,11 @@ impl Model {
                 if !matches!(self.elements.get(connection.device), Some(Element::Component(c)) if c.is_placed()) {
                     return Err(format!("{id}: a connection must name placed equipment"));
                 }
+                if connection.terminal.is_some_and(
+                    |guid| !matches!(self.elements.get(guid), Some(Element::ElectricalTerminal(t)) if t.device == connection.device),
+                ) {
+                    return Err(format!("{id}: a connection terminal must belong to its equipment"));
+                }
                 if connection.surface.is_some() {
                     let Some(Element::Component(component)) = self.elements.get(connection.device) else {
                         return Err("connection equipment is missing".into());

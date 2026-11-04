@@ -363,6 +363,117 @@ impl BimApp {
                 }
             });
         });
+        if !self.minimal {
+            panel(ui, msg!("Electrical Lines"), |ui| self.electrical_lines(ui));
+        }
+    }
+
+    fn electrical_lines(&mut self, ui: &mut Ui) {
+        use bimcraft_core::model::Element;
+        use serde_json::json;
+
+        ui.menu_button(crate::lang::t(msg!("Electrical Lines")), |ui| {
+            let model = &self.session.model;
+            let devices: Vec<_> = self
+                .selection
+                .iter()
+                .copied()
+                .filter(|id| matches!(model.elements.get(*id), Some(Element::Component(c)) if c.is_placed()))
+                .collect();
+            let segments: Vec<_> = self
+                .selection
+                .iter()
+                .copied()
+                .filter(|id| matches!(model.elements.get(*id), Some(Element::Wire(w)) if w.feeder.is_none()))
+                .collect();
+            if let Some((source, rest)) = devices.split_first()
+                && ui.button(crate::lang::t(msg!("Create Line from Selection"))).clicked()
+            {
+                self.run("electrical_line", json!({"source":source,"devices":rest,"segments":segments}));
+                ui.close();
+                return;
+            }
+            if let [device] = devices.as_slice() {
+                self.electrical_terminals(ui, *device);
+            }
+            let lines: Vec<_> = self
+                .session
+                .model
+                .elements
+                .iter()
+                .filter_map(|(&id, element)| {
+                    let Element::ElectricalLine(line) = element else { return None };
+                    Some((id, line.system.clone()))
+                })
+                .collect();
+            for (id, system) in lines {
+                ui.menu_button(format!("{id} {system}"), |ui| {
+                    let model = &self.session.model;
+                    let Some(Element::ElectricalLine(line)) = model.elements.get(id) else { return };
+                    let rows: Vec<_> = line
+                        .order(model)
+                        .into_iter()
+                        .zip(line.marks(model))
+                        .map(|(guid, mark)| {
+                            let locked = line.locked_marks.iter().any(|entry| entry.device == guid);
+                            (guid, model.elements.id(guid), mark, locked)
+                        })
+                        .collect();
+                    for (guid, device, mark, locked) in rows {
+                        ui.horizontal(|ui| {
+                            ui.label(format!("{}  {mark}", device.map_or_else(String::new, |id| id.to_string())));
+                            let label = if locked { msg!("Unlock Mark") } else { msg!("Lock Mark") };
+                            if ui.button(crate::lang::t(label)).clicked() {
+                                self.run("electrical_line_mark", json!({"id":id,"device":guid,"mark":(!locked).then_some(mark)}));
+                            }
+                        });
+                    }
+                    if ui.button(crate::lang::t(msg!("Renumber Electrical Line"))).clicked() {
+                        self.run("electrical_line_renumber", json!({"id":id}));
+                    }
+                });
+            }
+        });
+    }
+
+    fn electrical_terminals(&mut self, ui: &mut Ui, device: bimcraft_core::ids::Id) {
+        use bimcraft_core::model::Element;
+
+        ui.menu_button(crate::lang::t(msg!("Electrical Terminals")), |ui| {
+            let model = &self.session.model;
+            let owner = model.guid(device);
+            let terminals: Vec<_> = model
+                .elements
+                .iter()
+                .filter_map(|(&id, element)| {
+                    let Element::ElectricalTerminal(terminal) = element else { return None };
+                    (terminal.device == owner).then(|| (id, terminal.name.clone()))
+                })
+                .collect();
+            for (id, name) in terminals {
+                self.electrical_terminal_name(ui, device, Some(id), name);
+            }
+            self.electrical_terminal_name(ui, device, None, String::new());
+        });
+    }
+
+    fn electrical_terminal_name(&mut self, ui: &mut Ui, device: bimcraft_core::ids::Id, id: Option<bimcraft_core::ids::Id>, name: String) {
+        use serde_json::json;
+
+        let key = ui.make_persistent_id(("electrical-terminal-name", device, id));
+        let mut draft = ui.data_mut(|data| data.get_temp::<String>(key)).unwrap_or(name);
+        ui.horizontal(|ui| {
+            ui.text_edit_singleline(&mut draft);
+            let label = if id.is_some() { msg!("Rename Terminal") } else { msg!("Add Terminal") };
+            if ui.add_enabled(!draft.trim().is_empty(), egui::Button::new(crate::lang::t(label))).clicked() {
+                let params = id.map_or_else(|| json!({"device":device,"name":draft}), |id| json!({"id":id,"name":draft}));
+                if self.run("electrical_terminal", params).is_some() {
+                    ui.data_mut(|data| data.remove::<String>(key));
+                    return;
+                }
+            }
+            ui.data_mut(|data| data.insert_temp(key, draft));
+        });
     }
 
     /// The Lightning Protection tab (SPDA, NBR 5419): what captures, what carries the current down, and what earths it. Revit

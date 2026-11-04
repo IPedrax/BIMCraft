@@ -629,6 +629,65 @@ fn stage41_wire_chain_starts_at_equipment_height() {
 }
 
 #[test]
+fn stage5_low_voltage_ribbon_creates_an_electrical_line_from_selection() {
+    let mut h = app(STAGE5_LINE);
+    stage5_create_line(&mut h);
+}
+
+const STAGE5_LINE: &str = r#"component {"family":"Fire Alarm Panel","type":"300 x 400","at":[0,0]}
+component {"family":"Fire Alarm Panel","type":"300 x 400","at":[3000,0]}
+wire {"points":[[0,0],[3000,0]]}"#;
+
+fn stage5_create_line(h: &mut Harness<'_, BimApp>) {
+    let devices = ids(h, "component");
+    let wire = ids(h, "wire")[0];
+    h.state_mut().selection = vec![devices[1], wire, devices[0]];
+    press(h, "Low Voltage");
+    press(h, "Electrical Lines");
+    press(h, "Create Line from Selection");
+    let line = ids(h, "electricalline")[0];
+    let model = &h.state().session.model;
+    let Some(Element::ElectricalLine(line)) = model.elements.get(line) else { panic!("electrical line missing") };
+    assert_eq!(line.source, model.guid(devices[1]));
+    assert_eq!(line.devices, vec![model.guid(devices[0])]);
+    assert_eq!(line.segments, vec![model.guid(wire)]);
+}
+
+#[cfg(feature = "visual-tests")]
+#[test]
+#[ignore = "renders stage 5 in three looks for visual inspection"]
+fn stage5_visual_acceptance() {
+    let output =
+        std::env::var_os("DUMP").map(std::path::PathBuf::from).unwrap_or_else(|| std::path::PathBuf::from("../../target/stage5-visual"));
+    std::fs::create_dir_all(&output).unwrap();
+    for (name, theme, light_canvas) in [
+        ("light", egui::ThemePreference::Light, false),
+        ("dark", egui::ThemePreference::Dark, false),
+        ("dark-light-canvas", egui::ThemePreference::Dark, true),
+    ] {
+        let mut session = Session::new();
+        session.script(STAGE5_LINE).unwrap();
+        let mut state = BimApp::new(session);
+        state.theme_wanted = Some(theme);
+        state.light_canvas = light_canvas;
+        let mut h = Harness::builder()
+            .with_size([1280.0, 800.0])
+            .with_max_steps(32)
+            .renderer(egui_kittest::wgpu::WgpuTestRenderer::new())
+            .build_ui_state(|ui, state: &mut BimApp| state.show(ui), state);
+        h.run();
+        stage5_create_line(&mut h);
+        let line = ids(&h, "electricalline")[0];
+        h.state_mut().selection.clear();
+        h.run();
+        press(&mut h, "Electrical Lines");
+        press(&mut h, &format!("{line}  ⏵"));
+        h.get_by_label("Renumber Electrical Line");
+        h.render().unwrap().save(output.join(format!("electrical-line-{name}.png"))).unwrap();
+    }
+}
+
+#[test]
 fn carrier_ribbon_routes_current_level_then_remaining_project_wires() {
     let mut h = app(r#"level {"name":"Upper","elevation":3000}
 wire {"points":[[0,0],[2000,0]]}

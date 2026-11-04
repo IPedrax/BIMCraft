@@ -579,10 +579,64 @@ pub static ALL: &[Command] = &[
         wire,
     ),
     edit(
+        "electrical_terminal",
+        "Electrical Terminal",
+        &[],
+        "{device:id|GUID, name:string, purpose?:string, address?:string, load_ma?:number|null, limit_ma?:number|null} add a logical terminal; give id instead of device to edit supplied fields",
+        electrical_terminal,
+    ),
+    edit(
+        "electrical_line",
+        "Electrical Line",
+        &[],
+        "{source:id|GUID, devices:[id|GUID,…], branches?:[{from:id|GUID,devices:[id|GUID,…]}], segments?:[wire id|GUID,…], terminals?:[terminal id|GUID,…], system?:string, mark_prefix?:string} create a line from its source and ordered devices",
+        electrical_line,
+    ),
+    edit(
+        "electrical_line_edit",
+        "Edit Electrical Line",
+        &[],
+        "{id:id|GUID, devices?:[id|GUID,…], branches?:[{from:id|GUID,devices:[id|GUID,…]}], segments?:[wire id|GUID,…], terminals?:[terminal id|GUID,…], system?:string, mark_prefix?:string} update the supplied properties and recalculate automatic marks",
+        electrical_line_edit,
+    ),
+    other(
+        "electrical_line_inspect",
+        "Inspect Electrical Line",
+        "{id:id|GUID} read the line, ordered devices and their marks",
+        electrical_line_inspect,
+    ),
+    other(
+        "cable_journal",
+        "Cable Journal",
+        "{id:line id|GUID, mode?:segments|line} measured cable lengths in mm including owned leads and reserve",
+        cable_journal,
+    ),
+    edit(
+        "electrical_line_mark",
+        "Lock Electrical Line Mark",
+        &[],
+        "{id:id|GUID, device:id|GUID, mark:string|null} lock a unique mark for a device on the line; null restores automatic numbering",
+        electrical_line_mark,
+    ),
+    edit(
+        "electrical_mark_template",
+        "Electrical Mark Template",
+        &[],
+        "{system:string, prefix:string|null} set or remove a system's default mark prefix",
+        electrical_mark_template,
+    ),
+    edit(
+        "electrical_line_renumber",
+        "Renumber Electrical Line",
+        &[],
+        "{id:id|GUID, mark_prefix?:string} compute marks in current traversal order; an optional new prefix changes automatic marks and keeps locked marks",
+        electrical_line_renumber,
+    ),
+    edit(
         "wire_connect",
         ui_msg!("Connect Wire"),
         &[],
-        "{wire: id|GUID, device: id|GUID, end?: 0|1, point?: [x,y,z], surface?: {host: id|GUID, face: interior|exterior}, carrier?: id|GUID|null, in_carrier?: bool, min_bend_radius?: mm|null} choose exactly one of a fixed local point or a free wall-surface contact. Free contacts slide on the device connection_sides (bottom/top/right/left, empty means any), independent of cable diameter; the physical cable is tangent to the wall. end defaults to 0 and distinguishes returning cable ends. An explicit carrier selects this end's route independently; omitted/null uses the main wire route. Deleting an explicit carrier preserves the last landing and detaches its carrier branches; reconnect to choose a route again. Creates and updates physical feeder legs without duplicating them. A free surface lead follows the wall with a vertical transition when needed. min_bend_radius checks space for the transition and at the route entry. Reconnecting a free end keeps the previous radius if omitted; null clears it",
+        "{wire: id|GUID, device: id|GUID, end?: 0|1, point?: [x,y,z], surface?: {host: id|GUID, face: interior|exterior}, carrier?: id|GUID|null, in_carrier?: bool, min_bend_radius?: mm|null, terminal?: id|GUID|null} choose exactly one of a fixed local point or a free wall-surface contact. Free contacts slide on the device connection_sides (bottom/top/right/left, empty means any), independent of cable diameter; the physical cable is tangent to the wall. end defaults to 0 and distinguishes returning cable ends. An explicit carrier selects this end's route independently; omitted/null uses the main wire route. Deleting an explicit carrier preserves the last landing and detaches its carrier branches; reconnect to choose a route again. Creates and updates physical feeder legs without duplicating them. A free surface lead follows the wall with a vertical transition when needed. min_bend_radius checks space for the transition and at the route entry. Reconnecting a free end keeps the previous radius if omitted; null clears it",
         wire_connect,
     ),
     edit(
@@ -2356,7 +2410,20 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             extra.insert("loaded".into(), json!(m.loaded.contains_key(&l.path)));
             extra.insert("elements".into(), json!(m.loaded.get(&l.path).map(|o| o.elements.len())));
         }
-        Element::Level(_) | Element::Grid(_) | Element::Schedule(_) | Element::View3D(_) | Element::PlanView(_) => {}
+        Element::Level(_)
+        | Element::Grid(_)
+        | Element::Schedule(_)
+        | Element::View3D(_)
+        | Element::PlanView(_)
+        | Element::ElectricalLine(_) => {}
+        Element::ElectricalTerminal(t) => {
+            extra.insert("name".into(), json!(t.name));
+            extra.insert("purpose".into(), json!(t.purpose));
+            extra.insert("address".into(), json!(t.address));
+            extra.insert("load_ma".into(), json!(t.load_ma));
+            extra.insert("limit_ma".into(), json!(t.limit_ma));
+            extra.insert("device_id".into(), json!(m.elements.id(t.device)));
+        }
     }
     let mut v = serde_json::to_value(e).unwrap_or_default();
     if let Some(o) = v.as_object_mut() {
@@ -5538,6 +5605,225 @@ fn cable_carrier_candidates(s: &mut Session, p: &Value) -> R {
     Ok(json!({"carrier":carrier,"ambiguous":wires.len()>1,"wires":wires}))
 }
 
+fn electrical_terminal(s: &mut Session, p: &Value) -> R {
+    let c = "electrical_terminal";
+    only(c, p, &["id", "device", "name", "purpose", "address", "load_ma", "limit_ma"])?;
+    let name = string(c, p, "name")?;
+    let purpose = string(c, p, "purpose")?;
+    let address = string(c, p, "address")?;
+    let current = |key| match p.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => value
+            .as_f64()
+            .filter(|n| (0.0..=MAX_COORD).contains(n))
+            .map(Some)
+            .ok_or_else(|| bad(c, format!("{key} must be nonnegative milliamps or null"))),
+    };
+    let load_ma = current("load_ma")?;
+    let limit_ma = current("limit_ma")?;
+    let id = if let Some(id) = p.get("id") {
+        if p.get("device").is_some() {
+            return Err(bad(c, "terminal device is fixed"));
+        }
+        let id = element_id(c, &s.model, id)?;
+        let Some(Element::ElectricalTerminal(t)) = s.model_mut().elements.get_mut(id) else {
+            return Err(bad(c, "select an electrical terminal"));
+        };
+        if let Some(name) = name {
+            t.name = name;
+        }
+        if let Some(purpose) = purpose {
+            t.purpose = purpose;
+        }
+        if let Some(address) = address {
+            t.address = address;
+        }
+        if p.get("load_ma").is_some() {
+            t.load_ma = load_ma;
+        }
+        if p.get("limit_ma").is_some() {
+            t.limit_ma = limit_ma;
+        }
+        id
+    } else {
+        let device = s.model.guid(element_id(c, &s.model, &p["device"])?);
+        let name = name.ok_or_else(|| bad(c, "name is required"))?;
+        s.model_mut().insert(Element::ElectricalTerminal(crate::model::ElectricalTerminal {
+            device,
+            name,
+            purpose: purpose.unwrap_or_default(),
+            address: address.unwrap_or_default(),
+            load_ma,
+            limit_ma,
+        }))
+    };
+    Ok(json!({"id":id}))
+}
+
+fn electrical_branches(c: &str, model: &Model, value: &Value) -> Result<Vec<crate::model::ElectricalBranch>, String> {
+    let branches =
+        value.as_array().filter(|entries| entries.len() <= MAX_POINTS).ok_or_else(|| bad(c, "branches must be a bounded array"))?;
+    let mut remaining = MAX_POINTS;
+    branches
+        .iter()
+        .map(|branch| {
+            only(c, branch, &["from", "devices"])?;
+            let from = model.guid(element_id(c, model, &branch["from"])?);
+            let devices = guids_param(c, model, &branch["devices"], "devices")?;
+            remaining = remaining.checked_sub(devices.len()).ok_or_else(|| bad(c, "too many branch devices"))?;
+            Ok(crate::model::ElectricalBranch { from, devices })
+        })
+        .collect()
+}
+
+fn electrical_line(s: &mut Session, p: &Value) -> R {
+    let c = "electrical_line";
+    only(c, p, &["source", "devices", "branches", "segments", "terminals", "system", "mark_prefix"])?;
+    let source = s.model.guid(element_id(c, &s.model, &p["source"])?);
+    let devices = guids_param(c, &s.model, &p["devices"], "devices")?;
+    let segments = p.get("segments").map(|v| guids_param(c, &s.model, v, "segments")).transpose()?.unwrap_or_default();
+    let mark_prefix = string(c, p, "mark_prefix")?.unwrap_or_default();
+    let terminals = p.get("terminals").map(|v| guids_param(c, &s.model, v, "terminals")).transpose()?.unwrap_or_default();
+    let branches = p.get("branches").map(|v| electrical_branches(c, &s.model, v)).transpose()?.unwrap_or_default();
+    let system = string(c, p, "system")?.unwrap_or_default();
+    let line =
+        crate::model::ElectricalLine { source, system, devices, branches, segments, terminals, mark_prefix, locked_marks: Vec::new() };
+    let id = s.model_mut().insert(Element::ElectricalLine(line));
+    Ok(json!({"id":id}))
+}
+
+fn electrical_line_edit(s: &mut Session, p: &Value) -> R {
+    let c = "electrical_line_edit";
+    only(c, p, &["id", "devices", "branches", "segments", "terminals", "system", "mark_prefix"])?;
+    let id = element_id(c, &s.model, &p["id"])?;
+    let Some(Element::ElectricalLine(line)) = s.model.elements.get(id) else { return Err(bad(c, "select an electrical line")) };
+    let mut line = line.clone();
+    if let Some(v) = p.get("devices") {
+        line.devices = guids_param(c, &s.model, v, "devices")?;
+    }
+    if let Some(v) = p.get("branches") {
+        line.branches = electrical_branches(c, &s.model, v)?;
+    }
+    if p.get("devices").is_some() || p.get("branches").is_some() {
+        let members: BTreeSet<_> = line.members().collect();
+        line.locked_marks.retain(|entry| members.contains(&entry.device));
+        line.terminals.retain(|g| matches!(s.model.elements.get(*g), Some(Element::ElectricalTerminal(t)) if members.contains(&t.device)));
+    }
+    if let Some(v) = p.get("segments") {
+        line.segments = guids_param(c, &s.model, v, "segments")?;
+    }
+    if let Some(v) = p.get("terminals") {
+        line.terminals = guids_param(c, &s.model, v, "terminals")?;
+    }
+    if let Some(system) = string(c, p, "system")? {
+        line.system = system;
+    }
+    if let Some(prefix) = string(c, p, "mark_prefix")? {
+        line.mark_prefix = prefix;
+    }
+    s.model_mut().elements.insert(id, Element::ElectricalLine(line));
+    Ok(json!({"id":id}))
+}
+
+fn electrical_line_inspect(s: &mut Session, p: &Value) -> R {
+    let c = "electrical_line_inspect";
+    only(c, p, &["id"])?;
+    let id = element_id(c, &s.model, &p["id"])?;
+    let Some(Element::ElectricalLine(line)) = s.model.elements.get(id) else { return Err(bad(c, "select an electrical line")) };
+    let ordered_devices: Vec<_> = line.order(&s.model).into_iter().filter_map(|guid| s.model.elements.id(guid)).collect();
+    let terminal_checks: Vec<_> = line
+        .terminals
+        .iter()
+        .filter_map(|guid| {
+            let Element::ElectricalTerminal(t) = s.model.elements.get(*guid)? else { return None };
+            Some(json!({"guid":guid,"address":t.address,"load_ma":t.load_ma,"limit_ma":t.limit_ma,
+            "overload":t.load_ma.zip(t.limit_ma).map(|(load, limit)| load > limit)}))
+        })
+        .collect();
+    Ok(
+        json!({"id":id,"ordered_devices":ordered_devices,"system":line.system,"branches":line.branches,"source":line.source,"devices":line.devices,"segments":line.segments,"terminals":line.terminals,"terminal_checks":terminal_checks,"marks":line.marks(&s.model),"locked_marks":line.locked_marks}),
+    )
+}
+
+fn cable_journal(s: &mut Session, p: &Value) -> R {
+    let c = "cable_journal";
+    only(c, p, &["id", "mode"])?;
+    let m = &s.model;
+    let id = element_id(c, m, &p["id"])?;
+    let Some(Element::ElectricalLine(line)) = m.elements.get(id) else { return Err(bad(c, "select an electrical line")) };
+    let mode = string(c, p, "mode")?.unwrap_or_else(|| "segments".into());
+    if !matches!(mode.as_str(), "segments" | "line") {
+        return Err(bad(c, "mode must be segments or line"));
+    }
+    let mut lengths: BTreeMap<_, _> = line.segments.iter().map(|guid| (*guid, 0.0)).collect();
+    for (_, guid, element) in m.elements.with_guids() {
+        let Element::Wire(wire) = element else { continue };
+        let owner = wire.feeder.as_ref().map_or(guid, |lead| lead.wire);
+        if let Some(length) = lengths.get_mut(&owner)
+            && let Some(geometry) = m.run_geom(element)
+        {
+            *length += geometry.length();
+        }
+    }
+    for (guid, length) in &mut lengths {
+        if let Some(Element::Wire(wire)) = m.elements.get(*guid) {
+            *length *= 1.0 + wire.reserve / 100.0;
+        }
+    }
+    let rows = if mode == "line" {
+        vec![json!({"id":id,"length":hundredth(lengths.values().sum())})]
+    } else {
+        line.segments.iter().map(|guid| json!({"id":m.elements.id(*guid),"guid":guid,"length":hundredth(lengths[guid])})).collect()
+    };
+    Ok(json!({"line":id,"rows":rows}))
+}
+
+fn electrical_mark_template(s: &mut Session, p: &Value) -> R {
+    let c = "electrical_mark_template";
+    only(c, p, &["system", "prefix"])?;
+    let system = string(c, p, "system")?.filter(|name| !name.trim().is_empty()).ok_or_else(|| bad(c, "system is required"))?;
+    let templates = &mut s.model_mut().electrical_mark_templates;
+    match p.get("prefix") {
+        Some(Value::Null) => {
+            templates.remove(&system);
+        }
+        Some(Value::String(prefix)) => {
+            templates.insert(system.clone(), prefix.clone());
+        }
+        _ => return Err(bad(c, "prefix must be a string or null")),
+    }
+    Ok(json!({"system":system,"prefix":p["prefix"]}))
+}
+
+fn electrical_line_renumber(s: &mut Session, p: &Value) -> R {
+    only("electrical_line_renumber", p, &["id", "mark_prefix"])?;
+    if p.get("mark_prefix").is_some() {
+        electrical_line_edit(s, p)?;
+    }
+    electrical_line_inspect(s, &json!({"id":p["id"]}))
+}
+
+fn electrical_line_mark(s: &mut Session, p: &Value) -> R {
+    let c = "electrical_line_mark";
+    only(c, p, &["id", "device", "mark"])?;
+    let id = element_id(c, &s.model, &p["id"])?;
+    let device = s.model.guid(element_id(c, &s.model, &p["device"])?);
+    let mark = match p.get("mark") {
+        Some(Value::Null) => None,
+        Some(Value::String(mark)) => Some(mark.clone()),
+        _ => return Err(bad(c, "mark must be a string or null")),
+    };
+    let Some(Element::ElectricalLine(line)) = s.model_mut().elements.get_mut(id) else { return Err(bad(c, "select an electrical line")) };
+    if !line.members().any(|guid| guid == device) {
+        return Err(bad(c, "device must belong to the line"));
+    }
+    line.locked_marks.retain(|entry| entry.device != device);
+    if let Some(mark) = mark {
+        line.locked_marks.push(crate::model::ElectricalMark { device, mark });
+    }
+    electrical_line_inspect(s, &json!({"id":id}))
+}
+
 fn wire(s: &mut Session, p: &Value) -> R {
     let Some(connection) = p.get("start_connection") else { return chain(s, p, "wire") };
     only("wire", connection, &["device", "point"])?;
@@ -5552,7 +5838,7 @@ fn wire(s: &mut Session, p: &Value) -> R {
 
 fn wire_connect(s: &mut Session, p: &Value) -> R {
     let c = "wire_connect";
-    only(c, p, &["wire", "device", "end", "point", "surface", "carrier", "in_carrier", "min_bend_radius"])?;
+    only(c, p, &["wire", "device", "end", "point", "surface", "carrier", "in_carrier", "min_bend_radius", "terminal"])?;
     let end = count_opt(c, p, "end", 0)?;
     if end > 1 {
         return Err(bad(c, "end must be 0 or 1"));
@@ -5602,7 +5888,14 @@ fn wire_connect(s: &mut Session, p: &Value) -> R {
     if min_bend_radius.is_some() && surface.is_none() {
         return Err(bad(c, "min_bend_radius requires a free surface"));
     }
+    let terminal = id_opt(c, p, "terminal")?
+        .map(|g| match s.model.elements.get(g) {
+            Some(Element::ElectricalTerminal(t)) if t.device == s.model.guid(device_id) => Ok(s.model.guid(g)),
+            _ => Err(bad(c, "terminal must belong to the connected device")),
+        })
+        .transpose()?;
     let mut connection = crate::model::WireConnection {
+        terminal,
         min_bend_radius,
         device: s.model.guid(device_id),
         end,
@@ -5622,6 +5915,9 @@ fn wire_connect(s: &mut Session, p: &Value) -> R {
     if let Some(existing) = wire.connections.iter_mut().find(|v| v.device == connection.device && v.end == connection.end) {
         if p.get("min_bend_radius").is_none() && connection.surface.is_some() {
             connection.min_bend_radius = existing.min_bend_radius;
+        }
+        if p.get("terminal").is_none() {
+            connection.terminal = existing.terminal;
         }
         *existing = connection;
     } else {
@@ -7743,6 +8039,9 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         lines.iter_mut().for_each(|l| *l = l.map(f));
     }
     match &mut e {
+        Element::ElectricalLine(_) | Element::ElectricalTerminal(_) => {
+            return Err(bad(c, format!("electrical line {id} has no geometry; move its devices or wires")));
+        }
         Element::Level(_) => return Err(bad(c, format!("level {id} has no place in plan; change its elevation, or add a level"))),
         Element::Sheet(_) => return Err(bad(c, format!("sheet {id} has no place in plan; move the views on it"))),
         Element::Schedule(_) | Element::View3D(_) | Element::PlanView(_) => {
@@ -8165,7 +8464,10 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
                 mount.host = hosts.get(&mount.host).copied().unwrap_or(mount.host);
             }
             for connection in &mut run.connections {
-                connection.device = hosts.get(&connection.device).copied().unwrap_or(connection.device);
+                if let Some(device) = hosts.get(&connection.device) {
+                    connection.device = *device;
+                    connection.terminal = connection.terminal.and_then(|guid| hosts.get(&guid).copied());
+                }
                 connection.carrier = connection.carrier.map(|guid| hosts.get(&guid).copied().unwrap_or(guid));
                 if let Some(surface) = &mut connection.surface {
                     surface.host = surface.host.map(|guid| hosts.get(&guid).copied().unwrap_or(guid));
@@ -8507,6 +8809,9 @@ fn split_route(s: &mut Session, id: Id, mut first: Element, p: &Value) -> R {
     let second = m.insert(second);
     let second_guid = m.guid(second);
     transfer_feeders(m, guid, second_guid, &transferred);
+    if matches!(m.elements.get(id), Some(Element::Wire(_))) {
+        split_electrical_segment(m, guid, second_guid)?;
+    }
     if matches!(m.elements.get(id), Some(Element::CableCarrier(_))) {
         split_carried_wires(m, [id, second], geometry, fraction)?;
     }
@@ -8537,6 +8842,20 @@ fn check_split_bend(m: &Model, first: &Element, second: &Element) -> Result<(), 
         let cosine = dot(unit(sub(a.b, a.a)), unit(sub(b.b, b.a)));
         if !crate::runs::bend_fits(minimum, a.length(), b.length(), cosine) {
             return Err(bad("split", format!("the route vertex does not have room for a {minimum} mm cable bend")));
+        }
+    }
+    Ok(())
+}
+
+fn split_electrical_segment(m: &mut Model, first: Guid, second: Guid) -> Result<(), String> {
+    for (_, element) in m.elements.iter_mut() {
+        if let Element::ElectricalLine(line) = element
+            && let Some(index) = line.segments.iter().position(|guid| *guid == first)
+        {
+            if line.segments.len() >= MAX_POINTS {
+                return Err(bad("split", "electrical line has too many segments"));
+            }
+            line.segments.insert(index + 1, second);
         }
     }
     Ok(())
@@ -8658,7 +8977,9 @@ fn split_carried_wires(m: &mut Model, carriers: [Id; 2], old: crate::runs::Geom,
             second.connections.clear();
             let transferred = split_wire_connections(m, guid, first, second, geometry, cable_fraction);
             let extra = m.insert(extra);
-            transfer_feeders(m, guid, m.guid(extra), &transferred);
+            let extra_guid = m.guid(extra);
+            transfer_feeders(m, guid, extra_guid, &transferred);
+            split_electrical_segment(m, guid, extra_guid)?;
         }
         m.elements.insert(id, edited);
     }
@@ -9069,6 +9390,8 @@ fn delete(s: &mut Session, p: &Value) -> R {
                 !gone.contains(id)
                     && match e {
                         Element::Door(o) | Element::Window(o) => gone.contains(&o.host),
+                        Element::ElectricalLine(line) => gone.contains(&line.source),
+                        Element::ElectricalTerminal(t) => gone.contains(&t.device),
                         Element::Railing(r) => r.host.is_some_and(|h| gone.contains(&h)),
                         // A plan view goes with its level and its parent; what is annotated in a view goes with it.
                         Element::PlanView(v) => gone.contains(&v.level) || v.parent.is_some_and(|p| gone.contains(&p)),
@@ -9102,6 +9425,35 @@ fn delete(s: &mut Session, p: &Value) -> R {
     // A dimension loses the references that go; left with fewer than two, it goes too.
     let mut kept = Vec::new();
     for (id, guid, e) in m.elements.with_guids() {
+        if let Element::ElectricalLine(line) = e
+            && !gone.contains(&guid)
+            && line.members().chain(line.segments.iter().copied()).chain(line.terminals.iter().copied()).any(|g| gone.contains(&g))
+        {
+            let mut line = line.clone();
+            let mut predecessors = BTreeMap::new();
+            for (start, devices) in
+                std::iter::once((line.source, &line.devices)).chain(line.branches.iter().map(|branch| (branch.from, &branch.devices)))
+            {
+                predecessors.extend(
+                    std::iter::once(start)
+                        .chain(devices.iter().copied())
+                        .zip(devices.iter().copied())
+                        .map(|(parent, child)| (child, parent)),
+                );
+            }
+            line.devices.retain(|g| !gone.contains(g));
+            for branch in &mut line.branches {
+                while gone.contains(&branch.from) {
+                    branch.from = predecessors.get(&branch.from).copied().unwrap_or(line.source);
+                }
+                branch.devices.retain(|g| !gone.contains(g));
+            }
+            line.branches.retain(|branch| !branch.devices.is_empty());
+            line.segments.retain(|g| !gone.contains(g));
+            line.terminals.retain(|g| !gone.contains(g));
+            line.locked_marks.retain(|entry| !gone.contains(&entry.device));
+            kept.push((id, Element::ElectricalLine(line)));
+        }
         if let Element::Dimension(d) = e
             && !gone.contains(&guid)
             && d.refs.iter().any(|r| gone.contains(&r.id))
@@ -9121,7 +9473,7 @@ fn delete(s: &mut Session, p: &Value) -> R {
                 .into_iter()
                 .chain(w.devices.iter().copied())
                 .chain(w.carrier)
-                .chain(w.connections.iter().filter_map(|connection| connection.carrier))
+                .chain(w.connections.iter().flat_map(|connection| connection.carrier.into_iter().chain(connection.terminal)))
                 .any(|g| gone.contains(&g))
         {
             let mut w = w.clone();
@@ -9142,6 +9494,9 @@ fn delete(s: &mut Session, p: &Value) -> R {
                 }
             }
             for connection in &mut w.connections {
+                if connection.terminal.is_some_and(|guid| gone.contains(&guid)) {
+                    connection.terminal = None;
+                }
                 if connection.carrier.is_some_and(|guid| gone.contains(&guid)) {
                     connection.carrier = None;
                     connection.in_carrier = false;

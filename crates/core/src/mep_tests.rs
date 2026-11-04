@@ -10,6 +10,157 @@ use crate::model::Element;
 use crate::render::{self, Drawing, POCHE, Prim, View};
 
 #[test]
+fn stage5_line_insertion_and_deletion_recalculate_marks_without_replacing_devices() {
+    let mut s = Session::new();
+    let panel = made(&mut s, "component", json!({"family":"Fire Alarm Panel","type":"300 x 400","at":[0,0]}));
+    let first = made(&mut s, "component", json!({"family":"Fire Alarm Panel","type":"300 x 400","at":[1000,0]}));
+    let last = made(&mut s, "component", json!({"family":"Fire Alarm Panel","type":"300 x 400","at":[3000,0]}));
+    let last_guid = s.model.guid(last);
+    let line = made(&mut s, "electrical_line", json!({"source":panel,"devices":[first,last]}));
+    let marks = |s: &mut Session| run(s, "electrical_line_inspect", json!({"id":line}))["marks"].clone();
+    assert_eq!(marks(&mut s), json!(["1", "2", "3"]));
+
+    let middle = made(&mut s, "component", json!({"family":"Fire Alarm Panel","type":"300 x 400","at":[2000,0]}));
+    run(&mut s, "electrical_line_edit", json!({"id":line,"devices":[first,middle,last]}));
+    assert_eq!(marks(&mut s), json!(["1", "2", "3", "4"]));
+    assert_eq!(s.model.guid(last), last_guid);
+    run(&mut s, "delete", json!({"ids":[middle]}));
+    assert_eq!(marks(&mut s), json!(["1", "2", "3"]));
+    assert_eq!(s.model.guid(last), last_guid);
+    run(&mut s, "undo", json!({}));
+    assert_eq!(marks(&mut s), json!(["1", "2", "3", "4"]));
+    run(&mut s, "redo", json!({}));
+    assert_eq!(marks(&mut s), json!(["1", "2", "3"]));
+    run(&mut s, "electrical_line_mark", json!({"id":line,"device":last,"mark":"3"}));
+    let file = s.model.to_json().unwrap();
+    let (opened, omitted) = crate::model::Model::read(&file).unwrap();
+    assert!(omitted.is_empty());
+    s.reset(opened, None);
+    assert_eq!(s.model.guid(last), last_guid);
+    let middle = made(&mut s, "component", json!({"family":"Fire Alarm Panel","type":"300 x 400","at":[2000,0]}));
+    run(&mut s, "electrical_line_edit", json!({"id":line,"devices":[first,middle,last]}));
+    assert_eq!(marks(&mut s), json!(["1", "2", "4", "3"]));
+    assert_eq!(s.model.guid(last), last_guid);
+}
+
+#[test]
+fn stage5_locked_marks_survive_line_edits_and_file_roundtrip() {
+    let mut s = Session::new();
+    let panel = made(&mut s, "component", json!({"family":"Fire Alarm Panel","type":"300 x 400","at":[0,0]}));
+    let first = made(&mut s, "component", json!({"family":"Fire Alarm Panel","type":"300 x 400","at":[1000,0]}));
+    let last = made(&mut s, "component", json!({"family":"Fire Alarm Panel","type":"300 x 400","at":[3000,0]}));
+    run(&mut s, "electrical_mark_template", json!({"system":"Fire Alarm","prefix":"FA-"}));
+    let line = made(&mut s, "electrical_line", json!({"source":panel,"devices":[last],"system":"Fire Alarm"}));
+    run(&mut s, "electrical_line_mark", json!({"id":line,"device":last,"mark":"FA-2"}));
+    run(&mut s, "electrical_line_edit", json!({"id":line,"devices":[first,last]}));
+    let saved = s.model.to_json().unwrap();
+    let (opened, omitted) = crate::model::Model::read(&saved).unwrap();
+    assert!(omitted.is_empty());
+    assert_eq!(opened.guid(line), s.model.guid(line));
+    s.reset(opened, None);
+    let marks = |s: &mut Session| run(s, "electrical_line_inspect", json!({"id":line}))["marks"].clone();
+    assert_eq!(marks(&mut s), json!(["FA-1", "FA-3", "FA-2"]));
+    let renumbered = run(&mut s, "electrical_line_renumber", json!({"id":line,"mark_prefix":"AL-"}));
+    assert_eq!(renumbered["marks"], json!(["AL-1", "AL-2", "FA-2"]));
+    run(&mut s, "electrical_line_mark", json!({"id":line,"device":last,"mark":null}));
+    assert_eq!(marks(&mut s), json!(["AL-1", "AL-2", "AL-3"]));
+}
+
+#[test]
+fn stage5_logical_terminal_can_be_renamed_without_moving_its_wire() {
+    let mut s = Session::new();
+    let panel = made(&mut s, "component", json!({"family":"Fire Alarm Panel","type":"300 x 400","at":[0,0]}));
+    let device = made(&mut s, "component", json!({"family":"Fire Alarm Panel","type":"300 x 400","at":[3000,500]}));
+    let wire = made(&mut s, "wire", json!({"points":[[0,0],[3000,0]]}));
+    let terminal = made(
+        &mut s,
+        "electrical_terminal",
+        json!({"device":device,"name":"A","purpose":"Input","address":"007","load_ma":25,"limit_ma":20}),
+    );
+    let feeders = ids(&run(&mut s, "wire_connect", json!({"wire":wire,"device":device,"end":1,"point":[0,0,0],"terminal":terminal})));
+    assert!(!feeders.is_empty());
+    let line = made(&mut s, "electrical_line", json!({"source":panel,"devices":[device],"segments":[wire],"terminals":[terminal]}));
+    let before = s.model.elements.get(wire).cloned();
+    let guid = s.model.guid(terminal);
+    run(&mut s, "electrical_terminal", json!({"id":terminal,"name":"B","purpose":"Output"}));
+    assert_eq!(s.model.guid(terminal), guid);
+    let inspected = run(&mut s, "electrical_line_inspect", json!({"id":line}));
+    assert_eq!(inspected["terminal_checks"][0]["address"], json!("007"));
+    assert_eq!(inspected["terminal_checks"][0]["overload"], json!(true));
+    assert_eq!(element_json(&s.model, terminal)["address"], json!("007"));
+    assert_eq!(s.model.elements.get(wire), before.as_ref());
+    assert_eq!(run(&mut s, "electrical_line_inspect", json!({"id":line}))["terminals"], json!([guid]));
+    let (opened, omitted) = crate::model::Model::read(&s.model.to_json().unwrap()).unwrap();
+    assert!(omitted.is_empty());
+    assert_eq!(opened.elements.get(wire).unwrap().run().unwrap().connections[0].terminal, Some(guid));
+    s.reset(opened, None);
+    run(&mut s, "delete", json!({"ids":[terminal]}));
+    assert_eq!(run(&mut s, "electrical_line_inspect", json!({"id":line}))["terminals"], json!([]));
+    let mut expected = before.unwrap();
+    expected.run_mut().unwrap().connections[0].terminal = None;
+    assert_eq!(s.model.elements.get(wire), Some(&expected));
+    assert!(feeders.iter().all(|id| s.model.elements.get(*id).is_some()));
+}
+
+#[test]
+fn stage5_cable_journal_totals_physical_segments_with_reserve_once() {
+    let mut s = Session::new();
+    let panel = made(&mut s, "component", json!({"family":"Fire Alarm Panel","type":"300 x 400","at":[0,0]}));
+    let device = made(&mut s, "component", json!({"family":"Fire Alarm Panel","type":"300 x 400","at":[3000,0]}));
+    let a = made(&mut s, "wire", json!({"points":[[0,0],[1000,0]],"reserve":10}));
+    let b = made(&mut s, "wire", json!({"points":[[1000,0],[3000,0]]}));
+    let line = made(&mut s, "electrical_line", json!({"source":panel,"devices":[device],"segments":[a,b]}));
+    let detailed = run(&mut s, "cable_journal", json!({"id":line,"mode":"segments"}));
+    assert_eq!(detailed["rows"][0]["length"], json!(1100.0));
+    assert_eq!(detailed["rows"][1]["length"], json!(2000.0));
+    let total = run(&mut s, "cable_journal", json!({"id":line,"mode":"line"}));
+    assert_eq!(total["rows"][0]["length"], json!(3100.0));
+    run(&mut s, "split", json!({"id":b,"at":[2000,0]}));
+    let detailed = run(&mut s, "cable_journal", json!({"id":line,"mode":"segments"}));
+    assert_eq!(detailed["rows"].as_array().unwrap().len(), 3);
+    assert_eq!(run(&mut s, "cable_journal", json!({"id":line,"mode":"line"}))["rows"][0]["length"], json!(3100.0));
+    let feeds = ids(&run(&mut s, "wire_connect", json!({"wire":a,"device":panel,"point":[0,500,0]})));
+    assert!(!feeds.is_empty());
+    let feed_length: f64 = feeds.into_iter().map(|id| s.model.run_geom(s.model.elements.get(id).unwrap()).unwrap().length()).sum();
+    let expected = ((3100.0 + feed_length * 1.1) * 100.0).round() / 100.0;
+    assert_eq!(run(&mut s, "cable_journal", json!({"id":line,"mode":"line"}))["rows"][0]["length"], json!(expected));
+}
+
+#[test]
+fn stage5_numbering_visits_short_branch_before_long_branch_and_continuation() {
+    let mut s = Session::new();
+    let mut device = |at| made(&mut s, "component", json!({"family":"Fire Alarm Panel","type":"300 x 400","at":at}));
+    let panel = device([0, 0]);
+    let junction = device([1000, 0]);
+    let continuation = device([2000, 0]);
+    let short = device([1000, -500]);
+    let equal = device([1000, 500]);
+    let long = device([1000, 1500]);
+    let line = made(
+        &mut s,
+        "electrical_line",
+        json!({
+            "source":panel,"devices":[junction,continuation],
+        "branches":[{"from":junction,"devices":[long]},{"from":junction,"devices":[equal]},{"from":junction,"devices":[short]}]
+        }),
+    );
+    let inspected = run(&mut s, "electrical_line_inspect", json!({"id":line}));
+    assert_eq!(inspected["ordered_devices"], json!([panel, junction, short, equal, long, continuation]));
+    assert_eq!(inspected["marks"], json!(["1", "2", "3", "4", "5", "6"]));
+    let saved = s.model.to_json().unwrap();
+    assert!(s.execute("electrical_line_edit", &json!({"id":line,"branches":[{"from":short,"devices":[short]}]})).is_err());
+    assert_eq!(s.model.to_json().unwrap(), saved);
+
+    let line_guid = s.model.guid(line);
+    run(&mut s, "delete", json!({"ids":[junction]}));
+    let inspected = run(&mut s, "electrical_line_inspect", json!({"id":line}));
+    assert_eq!(inspected["ordered_devices"], json!([panel, short, equal, long, continuation]));
+    assert_eq!(s.model.guid(line), line_guid);
+    run(&mut s, "undo", json!({}));
+    assert_eq!(s.model.to_json().unwrap(), saved);
+}
+
+#[test]
 fn stage4_render_is_bound_to_requested_revision() {
     let mut s = Session::new();
     let revision = run(&mut s, "inspect", json!({}))["revision"].clone();

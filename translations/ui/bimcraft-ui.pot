@@ -232,6 +232,10 @@ msgstr ""
 msgid "Add Sort"
 msgstr ""
 
+#: crates/ui-egui/src/mep.rs:467
+msgid "Add Terminal"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:639
 msgid "Add Type"
 msgstr ""
@@ -305,7 +309,7 @@ msgstr ""
 msgid "Aligned"
 msgstr ""
 
-#: crates/core/src/commands.rs:687
+#: crates/core/src/commands.rs:741
 msgid "Aligned Dimension"
 msgstr ""
 
@@ -680,7 +684,7 @@ msgstr ""
 msgid "Box limits: 35% blind, 40% lidded; measured clear section required. This is not a full compliance check."
 msgstr ""
 
-#: crates/core/src/model.rs:2138
+#: crates/core/src/model.rs:2263
 msgid "Brick"
 msgstr ""
 
@@ -744,7 +748,7 @@ msgstr ""
 msgid "Cable entry sides (none selected allows any)"
 msgstr ""
 
-#: crates/core/src/commands.rs:608
+#: crates/core/src/commands.rs:662
 msgid "Cabling"
 msgstr ""
 
@@ -818,7 +822,7 @@ msgstr ""
 msgid "Cancel Edit Mode: drop the lines, keep it as it was"
 msgstr ""
 
-#: crates/ui-egui/src/mep.rs:372
+#: crates/ui-egui/src/mep.rs:483
 msgid "Capture & Descent"
 msgstr ""
 
@@ -923,7 +927,7 @@ msgstr ""
 msgid "Centre Lines"
 msgstr ""
 
-#: crates/core/src/model.rs:2146
+#: crates/core/src/model.rs:2271
 msgid "Ceramic tile"
 msgstr ""
 
@@ -1539,7 +1543,7 @@ msgstr ""
 msgid "Compartment width:"
 msgstr ""
 
-#: crates/core/src/commands.rs:913
+#: crates/core/src/commands.rs:967
 msgid "Component"
 msgstr ""
 
@@ -1555,7 +1559,7 @@ msgstr ""
 msgid "Concrete"
 msgstr ""
 
-#: crates/core/src/model.rs:2140
+#: crates/core/src/model.rs:2265
 msgid "Concrete block"
 msgstr ""
 
@@ -1576,7 +1580,7 @@ msgstr ""
 msgid "Connect Equipment to Wire"
 msgstr ""
 
-#: crates/core/src/commands.rs:583
+#: crates/core/src/commands.rs:637
 msgid "Connect Wire"
 msgstr ""
 
@@ -1625,11 +1629,11 @@ msgstr ""
 msgid "Copied {} rows, tab-separated."
 msgstr ""
 
-#: crates/core/src/model.rs:2154
+#: crates/core/src/model.rs:2279
 msgid "Copper"
 msgstr ""
 
-#: crates/core/src/commands.rs:966
+#: crates/core/src/commands.rs:1020
 #: crates/ui-egui/src/inquiry.rs:172
 #: crates/ui-egui/src/lib.rs:3943
 #: crates/ui-egui/src/lib.rs:3977
@@ -1751,6 +1755,10 @@ msgstr ""
 
 #: crates/ui-egui/src/draw.rs:664
 msgid "Create Group (GP): the selected detail lines, filled regions and text made one detail group"
+msgstr ""
+
+#: crates/ui-egui/src/mep.rs:390
+msgid "Create Line from Selection"
 msgstr ""
 
 #: crates/ui-egui/src/sketch.rs:88
@@ -1993,7 +2001,7 @@ msgstr ""
 msgid "Demolished"
 msgstr ""
 
-#: crates/core/src/commands.rs:6525
+#: crates/core/src/commands.rs:6821
 msgid "Dependent"
 msgstr ""
 
@@ -2161,7 +2169,7 @@ msgstr ""
 msgid "Door Schedule"
 msgstr ""
 
-#: crates/core/src/commands.rs:677
+#: crates/core/src/commands.rs:731
 msgid "Dormer"
 msgstr ""
 
@@ -2190,11 +2198,11 @@ msgstr ""
 msgid "Down"
 msgstr ""
 
-#: crates/core/src/commands.rs:590
+#: crates/core/src/commands.rs:644
 msgid "Down Conductor"
 msgstr ""
 
-#: crates/ui-egui/src/mep.rs:376
+#: crates/ui-egui/src/mep.rs:487
 msgid "Down Conductor (DC): click its start and its end; the same point twice and two heights stand it up a wall"
 msgstr ""
 
@@ -2281,15 +2289,15 @@ msgstr ""
 msgid "Each pen's width on paper, mm, in views at each scale: a view between two takes the nearer one's. Pen 0 is always a hairline."
 msgstr ""
 
-#: crates/ui-egui/src/mep.rs:381
+#: crates/ui-egui/src/mep.rs:492
 msgid "Earthing"
 msgstr ""
 
-#: crates/core/src/commands.rs:599
+#: crates/core/src/commands.rs:653
 msgid "Earthing Conductor"
 msgstr ""
 
-#: crates/ui-egui/src/mep.rs:385
+#: crates/ui-egui/src/mep.rs:496
 msgid "Earthing Conductor (GC): click its start and its end; a chain of clicks makes the ring or the mesh, under the level"
 msgstr ""
 
@@ -2305,7 +2313,7 @@ msgstr ""
 msgid "Earthing Electrodes"
 msgstr ""
 
-#: crates/core/src/model.rs:1352
+#: crates/core/src/model.rs:1457
 msgid "East"
 msgstr ""
 
@@ -2376,7 +2384,16 @@ msgstr ""
 msgid "Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it"
 msgstr ""
 
-#: crates/core/src/commands.rs:1495
+#: crates/ui-egui/src/mep.rs:367
+#: crates/ui-egui/src/mep.rs:375
+msgid "Electrical Lines"
+msgstr ""
+
+#: crates/ui-egui/src/mep.rs:442
+msgid "Electrical Terminals"
+msgstr ""
+
+#: crates/core/src/commands.rs:1549
 msgid "Elements"
 msgstr ""
 
@@ -2478,7 +2495,7 @@ msgstr ""
 msgid "Entities"
 msgstr ""
 
-#: crates/core/src/commands.rs:923
+#: crates/core/src/commands.rs:977
 #: crates/ui-egui/src/minimal.rs:33
 msgid "Equipment"
 msgstr ""
@@ -2673,7 +2690,7 @@ msgstr ""
 msgid "Filled Region (FR): sketch an area filled with a pattern, in this view"
 msgstr ""
 
-#: crates/core/src/commands.rs:1037
+#: crates/core/src/commands.rs:1091
 msgid "Fillet Arc"
 msgstr ""
 
@@ -3052,7 +3069,7 @@ msgstr ""
 msgid "Group:"
 msgstr ""
 
-#: crates/core/src/model.rs:2145
+#: crates/core/src/model.rs:2270
 msgid "Gypsum board"
 msgstr ""
 
@@ -3457,7 +3474,7 @@ msgstr ""
 msgid "Lateral Offset:"
 msgstr ""
 
-#: crates/core/src/commands.rs:617
+#: crates/core/src/commands.rs:671
 msgid "Lay Detectors"
 msgstr ""
 
@@ -3732,6 +3749,10 @@ msgstr ""
 msgid "Location Line:"
 msgstr ""
 
+#: crates/ui-egui/src/mep.rs:425
+msgid "Lock Mark"
+msgstr ""
+
 #: crates/ui-egui/src/catalogue.rs:294
 msgid "Lock selected carrier sizes"
 msgstr ""
@@ -3817,7 +3838,7 @@ msgstr ""
 msgid "Massing"
 msgstr ""
 
-#: crates/core/src/commands.rs:949
+#: crates/core/src/commands.rs:1003
 msgid "Match Properties"
 msgstr ""
 
@@ -3874,7 +3895,7 @@ msgstr ""
 msgid "Maximum fill (%):"
 msgstr ""
 
-#: crates/core/src/commands.rs:1448
+#: crates/core/src/commands.rs:1502
 msgid "Measure"
 msgstr ""
 
@@ -4031,7 +4052,7 @@ msgstr ""
 msgid "Mounting surface"
 msgstr ""
 
-#: crates/core/src/commands.rs:957
+#: crates/core/src/commands.rs:1011
 msgid "Move"
 msgstr ""
 
@@ -4242,7 +4263,7 @@ msgstr ""
 msgid "None"
 msgstr ""
 
-#: crates/core/src/model.rs:1350
+#: crates/core/src/model.rs:1455
 msgid "North"
 msgstr ""
 
@@ -4749,7 +4770,7 @@ msgstr ""
 msgid "Pipe"
 msgstr ""
 
-#: crates/ui-egui/src/mep.rs:399
+#: crates/ui-egui/src/mep.rs:510
 msgid "Pipe (PI): click its start and its end; a chain of clicks makes a pipe for each step"
 msgstr ""
 
@@ -5030,7 +5051,7 @@ msgstr ""
 msgid "Plumbing"
 msgstr ""
 
-#: crates/ui-egui/src/mep.rs:395
+#: crates/ui-egui/src/mep.rs:506
 msgid "Plumbing & Piping"
 msgstr ""
 
@@ -5264,7 +5285,7 @@ msgstr ""
 msgid "Radius:"
 msgstr ""
 
-#: crates/core/src/commands.rs:650
+#: crates/core/src/commands.rs:704
 msgid "Railing"
 msgstr ""
 
@@ -5277,7 +5298,7 @@ msgstr ""
 msgid "Railings"
 msgstr ""
 
-#: crates/core/src/commands.rs:640
+#: crates/core/src/commands.rs:694
 msgid "Ramp"
 msgstr ""
 
@@ -5412,6 +5433,14 @@ msgstr ""
 msgid "Rename Set"
 msgstr ""
 
+#: crates/ui-egui/src/mep.rs:467
+msgid "Rename Terminal"
+msgstr ""
+
+#: crates/ui-egui/src/mep.rs:431
+msgid "Renumber Electrical Line"
+msgstr ""
+
 #: crates/ui-egui/src/settings.rs:386
 msgid "Reopen the views that were open"
 msgstr ""
@@ -5530,7 +5559,7 @@ msgstr ""
 msgid "Risers"
 msgstr ""
 
-#: crates/core/src/commands.rs:660
+#: crates/core/src/commands.rs:714
 msgid "Roof"
 msgstr ""
 
@@ -5554,7 +5583,7 @@ msgstr ""
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr ""
 
-#: crates/core/src/model.rs:2147
+#: crates/core/src/model.rs:2272
 msgid "Roof tiles"
 msgstr ""
 
@@ -5574,7 +5603,7 @@ msgstr ""
 msgid "Room Schedule"
 msgstr ""
 
-#: crates/core/src/commands.rs:973
+#: crates/core/src/commands.rs:1027
 msgid "Rotate"
 msgstr ""
 
@@ -5680,7 +5709,7 @@ msgstr ""
 msgid "Scan"
 msgstr ""
 
-#: crates/core/src/commands.rs:1311
+#: crates/core/src/commands.rs:1365
 msgid "Schedule"
 msgstr ""
 
@@ -5710,7 +5739,7 @@ msgstr ""
 msgid "Schedules/Quantities (all)"
 msgstr ""
 
-#: crates/core/src/model.rs:2143
+#: crates/core/src/model.rs:2268
 msgid "Screed"
 msgstr ""
 
@@ -6141,7 +6170,7 @@ msgstr ""
 msgid "Source code on GitHub"
 msgstr ""
 
-#: crates/core/src/model.rs:1351
+#: crates/core/src/model.rs:1456
 msgid "South"
 msgstr ""
 
@@ -6165,7 +6194,7 @@ msgstr ""
 msgid "Speakers"
 msgstr ""
 
-#: crates/core/src/commands.rs:7226
+#: crates/core/src/commands.rs:7522
 msgid "Specification Items"
 msgstr ""
 
@@ -6185,7 +6214,7 @@ msgstr ""
 msgid "Spline: click its control points; Enter finishes it"
 msgstr ""
 
-#: crates/core/src/commands.rs:1015
+#: crates/core/src/commands.rs:1069
 msgid "Split"
 msgstr ""
 
@@ -6201,7 +6230,7 @@ msgstr ""
 msgid "Split between the line's ends."
 msgstr ""
 
-#: crates/core/src/commands.rs:709
+#: crates/core/src/commands.rs:763
 msgid "Spot Elevation"
 msgstr ""
 
@@ -6213,7 +6242,7 @@ msgstr ""
 msgid "Square Grid"
 msgstr ""
 
-#: crates/core/src/commands.rs:628
+#: crates/core/src/commands.rs:682
 msgid "Stair"
 msgstr ""
 
@@ -6435,7 +6464,7 @@ msgstr ""
 msgid "Temporary dimension {}"
 msgstr ""
 
-#: crates/core/src/commands.rs:699
+#: crates/core/src/commands.rs:753
 msgid "Text"
 msgstr ""
 
@@ -6764,7 +6793,7 @@ msgstr ""
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr ""
 
-#: crates/core/src/commands.rs:989
+#: crates/core/src/commands.rs:1043
 msgid "Trim/Extend to Corner"
 msgstr ""
 
@@ -6921,11 +6950,15 @@ msgstr ""
 msgid "Unlink"
 msgstr ""
 
+#: crates/ui-egui/src/mep.rs:425
+msgid "Unlock Mark"
+msgstr ""
+
 #: crates/ui-egui/src/catalogue.rs:295
 msgid "Unlock selected carrier sizes"
 msgstr ""
 
-#: crates/core/src/commands.rs:6666
+#: crates/core/src/commands.rs:6962
 msgid "Unnamed"
 msgstr ""
 
@@ -7161,7 +7194,7 @@ msgstr ""
 msgid "Washbasin"
 msgstr ""
 
-#: crates/core/src/model.rs:1353
+#: crates/core/src/model.rs:1458
 msgid "West"
 msgstr ""
 

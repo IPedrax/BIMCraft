@@ -85,7 +85,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 20;
+pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -1003,11 +1003,116 @@ pub struct Run {
     pub params: BTreeMap<String, serde_json::Value>,
 }
 
+/// An electrical line's connectivity, independent of physical wire geometry.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ElectricalLine {
+    pub source: Guid,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub system: String,
+    pub devices: Vec<Guid>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub branches: Vec<ElectricalBranch>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub segments: Vec<Guid>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub terminals: Vec<Guid>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub mark_prefix: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub locked_marks: Vec<ElectricalMark>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ElectricalBranch {
+    pub from: Guid,
+    pub devices: Vec<Guid>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ElectricalTerminal {
+    pub device: Guid,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub purpose: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub address: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load_ma: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit_ma: Option<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ElectricalMark {
+    pub device: Guid,
+    pub mark: String,
+}
+
+impl ElectricalLine {
+    pub fn members(&self) -> impl Iterator<Item = Guid> + '_ {
+        std::iter::once(self.source)
+            .chain(self.devices.iter().copied())
+            .chain(self.branches.iter().flat_map(|branch| branch.devices.iter().copied()))
+    }
+
+    pub fn order(&self, model: &Model) -> Vec<Guid> {
+        let at = |guid| model.anchor(guid).unwrap_or(P2(0.0, 0.0));
+        let mut continuation = BTreeMap::new();
+        let mut branches = BTreeMap::<_, Vec<_>>::new();
+        continuation.extend(std::iter::once(self.source).chain(self.devices.iter().copied()).zip(self.devices.iter().copied()));
+        for ElectricalBranch { from, devices } in &self.branches {
+            continuation.extend(devices.windows(2).map(|pair| (pair[0], pair[1])));
+            if let Some(first) = devices.first() {
+                let length = at(*from).dist(at(*first)) + devices.windows(2).map(|pair| at(pair[0]).dist(at(pair[1]))).sum::<f64>();
+                let delta = at(*first) - at(*from);
+                let angle = (-delta.1.atan2(delta.0)).rem_euclid(std::f64::consts::TAU);
+                branches.entry(*from).or_default().push((length, angle, *first));
+            }
+        }
+        let mut order = Vec::new();
+        let mut stack = vec![self.source];
+        let mut seen = BTreeSet::new();
+        while let Some(device) = stack.pop() {
+            if !seen.insert(device) {
+                continue;
+            }
+            order.push(device);
+            stack.extend(continuation.get(&device).copied());
+            if let Some(mut children) = branches.remove(&device) {
+                children.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)).then(a.2.cmp(&b.2)));
+                stack.extend(children.into_iter().rev().map(|(_, _, guid)| guid));
+            }
+        }
+        order
+    }
+
+    pub fn marks(&self, model: &Model) -> Vec<String> {
+        let locked: BTreeMap<_, _> = self.locked_marks.iter().map(|entry| (entry.device, entry.mark.as_str())).collect();
+        let reserved: BTreeSet<_> = locked.values().copied().collect();
+        let prefix = if self.mark_prefix.is_empty() {
+            model.electrical_mark_templates.get(&self.system).map_or("", String::as_str)
+        } else {
+            &self.mark_prefix
+        };
+        let mut automatic = (1..).map(|number| format!("{prefix}{number}")).filter(|mark| !reserved.contains(mark.as_str()));
+        self.order(model)
+            .into_iter()
+            .map(|device| locked.get(&device).map_or_else(|| automatic.next().unwrap_or_default(), |mark| (*mark).to_owned()))
+            .collect()
+    }
+}
+
 /// A fixed local point, or an explicitly selected free surface contact, in millimetres.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WireConnection {
     pub device: Guid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal: Option<Guid>,
     /// Distinguishes the two ends of a cable returning to the same equipment.
     #[serde(default)]
     pub end: u8,
@@ -1464,6 +1569,18 @@ macro_rules! visit_refs {
                 f(& $($m)? v.sheet);
                 f(& $($m)? v.view);
             }
+            Element::ElectricalTerminal(terminal) => f(& $($m)? terminal.device),
+            Element::ElectricalLine(line) => {
+                for terminal in & $($m)? line.terminals { f(terminal); }
+                f(& $($m)? line.source);
+                for device in & $($m)? line.devices { f(device); }
+                for branch in & $($m)? line.branches {
+                    f(& $($m)? branch.from);
+                    for device in & $($m)? branch.devices { f(device); }
+                }
+                for segment in & $($m)? line.segments { f(segment); }
+                for entry in & $($m)? line.locked_marks { f(& $($m)? entry.device); }
+            }
             run_arm!(r) => {
                 f(& $($m)? r.level);
                 if let Some(mount) = & $($m)? r.mount { f(& $($m)? mount.host); }
@@ -1471,6 +1588,7 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? r.carrier { f(g) }
                 for connection in & $($m)? r.connections {
                     f(& $($m)? connection.device);
+                    if let Some(g) = & $($m)? connection.terminal { f(g); }
                     if let Some(g) = & $($m)? connection.carrier { f(g); }
                     if let Some(surface) = & $($m)? connection.surface
                         && let Some(host) = & $($m)? surface.host
@@ -1555,6 +1673,8 @@ pub enum Element {
     #[serde(rename = "cablecarrier")]
     CableCarrier(Run),
     Wire(Run),
+    ElectricalLine(ElectricalLine),
+    ElectricalTerminal(ElectricalTerminal),
     DownConductor(Run),
     GroundConductor(Run),
     Cable(Run),
@@ -1782,6 +1902,8 @@ impl Element {
             Element::Pipe(_) => "pipe",
             Element::CableCarrier(_) => "cablecarrier",
             Element::Wire(_) => "wire",
+            Element::ElectricalLine(_) => "electricalline",
+            Element::ElectricalTerminal(_) => "electricalterminal",
             Element::DownConductor(_) => "downconductor",
             Element::GroundConductor(_) => "groundconductor",
             Element::Cable(_) => "cable",
@@ -1999,6 +2121,8 @@ pub struct Model {
     pub catalogue: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub carrier_settings: Option<CarrierSettings>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub electrical_mark_templates: BTreeMap<String, String>,
     /// Cancelled catalogue identities awaiting cleanup; these are tombstones, not element references.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub catalogue_retired: BTreeSet<Guid>,
@@ -2105,6 +2229,7 @@ impl Model {
             language,
             catalogue: None,
             carrier_settings: None,
+            electrical_mark_templates: BTreeMap::new(),
             catalogue_retired: BTreeSet::new(),
             catalogue_unexported: BTreeSet::new(),
             catalogue_pending_edits: BTreeMap::new(),
@@ -2943,6 +3068,7 @@ impl Model {
         // Older readers must not drop the mode and change a detached sloped carrier's shape.
         // 19 to 20: absent connection surfaces/sides retain fixed-point connections.
         // Older readers must not discard a free-contact policy and regenerate legacy legs.
+        // 20 to 21: electrical lines are a new category. Existing wires retain their circuit data.
         self.format = FORMAT;
     }
 
@@ -3580,6 +3706,8 @@ impl Model {
             | Element::Sheet(_)
             | Element::Viewport(_)
             | Element::Schedule(_)
+            | Element::ElectricalLine(_)
+            | Element::ElectricalTerminal(_)
             | Element::Link(_)
             | Element::View3D(_) => None,
         }
@@ -4741,6 +4869,64 @@ impl Model {
     /// not degenerate, doors and windows fit their walls and don't overlap.
     pub fn check(&self) -> Result<(), String> {
         self.check_wire_connections()?;
+        if self.electrical_mark_templates.len() > MAX_POINTS {
+            return Err("Too many electrical mark templates".into());
+        }
+        for (system, prefix) in &self.electrical_mark_templates {
+            text("Electrical mark template", "system", system)?;
+            text("Electrical mark template", "prefix", prefix)?;
+            if system.trim().is_empty() {
+                return Err("Electrical mark template needs a system name".into());
+            }
+        }
+        for element in self.elements.values() {
+            let Element::ElectricalLine(line) = element else { continue };
+            let mut devices = BTreeSet::new();
+            if line.branches.len() > MAX_POINTS
+                || line.branches.iter().any(|branch| branch.devices.is_empty())
+                || line.members().skip(1).take(MAX_POINTS + 1).count() > MAX_POINTS
+                || line
+                    .members()
+                    .any(|g| !devices.insert(g) || !matches!(self.elements.get(g), Some(Element::Component(c)) if c.is_placed()))
+            {
+                return Err("Electrical line needs distinct placed components as source and devices".into());
+            }
+            if line.order(self).len() != devices.len() {
+                return Err("Electrical line branches must connect to the source without cycles".into());
+            }
+            let mut segments = BTreeSet::new();
+            if line.segments.len() > MAX_POINTS
+                || line
+                    .segments
+                    .iter()
+                    .any(|g| !segments.insert(*g) || !matches!(self.elements.get(*g), Some(Element::Wire(w)) if w.feeder.is_none()))
+            {
+                return Err("Electrical line segments must be distinct main wires".into());
+            }
+            let mut terminals = BTreeSet::new();
+            if line.terminals.len() > MAX_POINTS
+                || line.terminals.iter().any(|g| {
+                    !terminals.insert(*g)
+                        || !matches!(self.elements.get(*g), Some(Element::ElectricalTerminal(t)) if devices.contains(&t.device))
+                })
+            {
+                return Err("Electrical line terminals must be distinct and belong to devices on the line".into());
+            }
+            text("Electrical line", "mark_prefix", &line.mark_prefix)?;
+            text("Electrical line", "system", &line.system)?;
+            let mut marked_devices = BTreeSet::new();
+            let mut marks = BTreeSet::new();
+            for entry in &line.locked_marks {
+                text("Electrical line", "locked mark", &entry.mark)?;
+                if entry.mark.trim().is_empty()
+                    || !devices.contains(&entry.device)
+                    || !marked_devices.insert(entry.device)
+                    || !marks.insert(&entry.mark)
+                {
+                    return Err("Electrical line locked marks must be nonempty and unique, with one per device on the line".into());
+                }
+            }
+        }
         if let Some(p) = &self.carrier_settings {
             text("Carrier settings", "default_type", &p.default_type)?;
             if !p.default_type.is_empty() && !self.types.runs.get("cablecarrier").is_some_and(|types| types.contains_key(&p.default_type)) {
@@ -5032,6 +5218,20 @@ impl Model {
             }
             phasing::check_order(self, &who, e)?;
             match e {
+                Element::ElectricalLine(_) => {}
+                Element::ElectricalTerminal(t) => {
+                    text(&who, "name", &t.name)?;
+                    text(&who, "purpose", &t.purpose)?;
+                    text(&who, "address", &t.address)?;
+                    for current in [t.load_ma, t.limit_ma].into_iter().flatten() {
+                        if !current.is_finite() || !(0.0..=MAX_COORD).contains(&current) {
+                            return Err(format!("{who}: terminal currents must be finite nonnegative milliamps"));
+                        }
+                    }
+                    if t.name.trim().is_empty() || !matches!(self.elements.get(t.device), Some(Element::Component(c)) if c.is_placed()) {
+                        return Err(format!("{who}: a terminal needs a name and a placed component"));
+                    }
+                }
                 Element::Level(l) => {
                     text(&who, "name", &l.name)?;
                     coord(&format!("{who} elevation"), l.elevation)?;

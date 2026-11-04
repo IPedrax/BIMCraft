@@ -102,7 +102,31 @@ instance. It projects onto the wire in plan (onto its height span for a vertical
 wire), creates the vertical leg followed by the horizontal leg, and omits zero
 length legs. A sloped wire supplies the connection height at that plan position.
 `in_carrier` requires the main wire to have a carrier and creates matching carrier
-legs with its type. This explicit point precedes the ports planned for stage 5.
+legs with its type. Stage 5 logical terminals belong to the electrical line topology.
+Keep their identity separate from the physical wire end and its attachment point,
+so a terminal edit does not move a wire. Existing wires with `source` and `devices`
+have an estimated circuit length. For a line made of drawn segments, the cable
+journal must use their measured lengths and count each generated lead and reserve
+once.
+
+Create logical terminals with `electrical_terminal` and group the source, devices,
+terminals and main wires with `electrical_line`. Edit the topology with
+`electrical_line_edit`. On a physical connection, `wire_connect` accepts the GUID
+of a terminal owned by the connected device. Removing the terminal clears that
+reference and retains the lead.
+The `branches` list names each tap's starting device and
+its ordered devices. Numbering visits taps before the main continuation, shortest
+first by plan distance, with clockwise order from east for equal lengths.
+`electrical_mark_template` sets the default prefix for a system.
+`electrical_line_renumber` can set a line-specific prefix, while
+`electrical_line_mark` locks or unlocks an individual device mark.
+`electrical_line_inspect` returns the traversal, marks and terminal current checks.
+`cable_journal` reports measured lengths by wire or for the entire line.
+In the desktop's standard Low Voltage ribbon, open Electrical Lines to create
+a line from the current selection. The first selected placed component is the
+source, the remaining components follow in selection order, and selected main
+wires become its segments. Open a line in that menu to see the ordered marks,
+lock or unlock one, or run renumbering.
 
 The main `Run.connections` holds equipment GUIDs and local points; generated
 `Run.feeder` names the main wire, equipment and leg role. All are visited GUID
