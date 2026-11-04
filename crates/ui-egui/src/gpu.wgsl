@@ -375,17 +375,16 @@ fn outlined(x: i32, y: i32) -> bool {
         var left_in = false;
         for (var i = 0; i <= width; i++) {
             let q = corner + vec2<i32>(i, j);
-            let inside = q.x >= 0 && q.y >= 0 && q.x < size.x && q.y < size.y;
+            var inside = q.x >= 0 && q.y >= 0 && q.x < size.x && q.y < size.y;
             var d = 0.0;
             var p = 0u;
             if inside {
                 p = textureLoad(scene_ids, q, 0).x;
-                // A scan's point is drawn after the surfaces' silhouettes are found: where it is, they see nothing.
-                if p == DOT_PLANE {
-                    p = 0u;
-                } else {
-                    d = textureLoad(scene_depth, q, 0);
-                }
+                d = textureLoad(scene_depth, q, 0);
+            }
+            // The processor finds silhouettes before a scan's points are drawn: a pixel a point covers is asked of no neighbour.
+            if p == DOT_PLANE {
+                inside = false;
             }
             if inside && left_in && gap(left_d, left_p, d, p) {
                 return true;

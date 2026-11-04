@@ -422,7 +422,10 @@ silhouette (`view3d::outlines`) is wherever two neighbouring pixels are one on a
 planes `OUTLINE_GAP` (4) pixels' worth apart in depth: each pixel whose square `width + 1` across (from `width / 2` before it)
 holds such a pair is drawn in the edge's colour, so a straight outline is exactly `width` px wide. The card does the same in
 `fs_post` (`ambient`, `outlined`, `worth` in `gpu.wgsl`, the options in the globals' ninth vector, from `Mesh::display`), so
-no pass is added: `the_card_draws_edges_silhouettes_and_ambient_shadows_as_the_processor_does` compares them. Cast shadows
+no pass is added: `the_card_draws_edges_silhouettes_and_ambient_shadows_as_the_processor_does` compares them. The card draws a
+scan's points in the same pass as the surfaces, so a pixel a point covers is asked of no neighbour for a silhouette and counts as
+nothing for ambient shadows, as the processor, which finds both before its points are drawn, has it: the two can differ only under
+a point. Hidden Line on the card draws its edges whatever `edges` says, as the processor's does. Cast shadows
 from a sun are not drawn yet. The desktop's dialog (`display.rs`) opens by GD and from the view control bar's Visual Style
 menu, alike in both looks of the window, and runs the command on the 3D view on screen.
 
