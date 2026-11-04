@@ -107,8 +107,9 @@ round what the family takes up, named; and, with Work Plane > Show, a grid a met
 Line draw on. That is Revit's
 **Placement Plane**, in the Options Bar while drawing (`WorkPlane`, `Modeller::work_plane`): one of the datums (Ref. Level to
 begin with) or one of a point's three planes, or **Pick…**, first in the list as in Revit: the next click picks the plane under
-the pointer, lit as the pointer passes over it (`Evaluation::pick_plane`: the nearest the eye, a point's plane before a datum it
-lies on; Escape gives up). The datums reach 300 mm beyond what the family takes up, and at least 1.5 m from its origin. A point drawn on a datum has the datum's axes and keeps it as its Work Plane
+the pointer, lit as the pointer passes over it (`Evaluation::pick_plane`: a point's plane under the pointer first, the nearest the
+eye, and only where there is none a datum, since the datums fill the room and one in front of a point would hide its planes;
+Escape gives up). The datums reach 300 mm beyond what the family takes up, and at least 1.5 m from its origin. A point drawn on a datum has the datum's axes and keeps it as its Work Plane
 (`Host::World`'s `datum`); one drawn on a point's plane is hosted on it, at an offset in it, and follows that point
 (`Definition::add_point_on`). Properties shows it under Constraints as **Work Plane**. Its tools:
 
@@ -128,13 +129,20 @@ lies on; Escape gives up). The datums reach 300 mm beyond what the family takes 
   a point changes its offset). **Delete** removes what is selected and what depends on it, as Revit does (`remove`).
 - **Undo** steps back through the view's edits; Cancel forgets them all, Apply or OK makes the family the project's.
 
-Beside the view, Properties shows what is selected. A point first has Revit's fields (`point_properties`): **Point** (Reference
+Beside the view, Properties shows what is selected. A point first has Revit's fields (`point_properties`): under Constraints its
+**Work Plane**, where it is along its line or edge (named after its measurement, as Revit names it) and how it is turned now
+(Rotation X, Y, Z); then **Point** (Reference
 Point, Placement Point (Adaptive) or Shape Handle Point (Adaptive): `set_point_type`), **Number** (typing one another point holds
 swaps the two: `set_number`), **Show Placement Number**, **Orients to**, **Constrained** on a shape handle, then **Show
 Reference Planes** and **Visible**, with Revit's defaults (`Node::look`). The view draws a placement point filled and numbered, a
 shape handle a filled square, a reference point a ring, and each point's three planes (light blue outlines of squares centred on it) and three axes (short light blue arrows, the gizmo's long ones when it is selected) when Show Reference Planes
-says so. Then come its relationship (host), offsets and rotations, a form's depth, void,
-material and visibility, each a number or a formula of the family's parameters. Below it, **All elements and the test placement**
+says so. A form has **Material** (Materials and Finishes), **Visible** and Solid/Void. Each number, Yes/No and material ends in
+Revit's **=**, and so does each of a point's offsets and rotations in its relationship (OffsetX, OffsetY, OffsetZ, RotX, RotY,
+RotZ: Revit's single Offset and Rotation Angle are OffsetZ and RotZ, so they are not shown twice): **Associate Family
+Parameter** lists the family's parameters holding the same (a length for an offset, an angle for a rotation) and <None>; OK ties the row to the one chosen (its expression becomes the parameter's name, and the row
+shows its value, greyed), <None> unties it keeping the value it had. **New Parameter** there asks Revit's Parameter
+Properties (a name, Type or Instance; the kind is the row's) and adds it to the family at once, with the row's value
+(`adaptive_editor::associate`, held open in `FamilyEditor::associating`). Then come its relationship (host) and a form's depth and void. Below it, **All elements and the test placement**
 lists every element with the same fields, the test placement's frames, and what the evaluation says; that is where a relationship
 the tools don't make yet (a point on a form's face by index, an intersection, a Bezier) is set. What is under the pointer is the
 core's to say (`Evaluation::pick`: a point first, then a line, then the form nearest the camera).
@@ -165,8 +173,7 @@ options. Each is covered by tests in `adaptive/tests.rs`, `adaptive/edit_tests.r
 and the desktop's `tests/adaptive_modelling.rs`.
 
 Next: the order of work in [adaptive-revit-parity.md](../adaptive-revit-parity.md), the study of how Revit does it (with its
-defaults, observed in Revit 2025) and where each tool here differs. What is left of step 1: Revit's single Offset and Rotation Angle
-in Properties (the three offsets and rotations stay, a superset), Mirrored and Flipped, and dragging shape handles in a project;
+defaults, observed in Revit 2025) and where each tool here differs. What is left of step 1: Mirrored and Flipped, and dragging shape handles in a project;
 then the family editor's space, Create Form, the 3D control, placing
 in the project, and divided surfaces.
 

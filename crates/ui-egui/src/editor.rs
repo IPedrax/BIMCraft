@@ -27,7 +27,7 @@ use crate::style::pal;
 use crate::{BimApp, Status, Tool};
 
 /// A number, as the editor writes it: whole, or to a millionth.
-fn number_text(x: f64) -> String {
+pub(crate) fn number_text(x: f64) -> String {
     let r = (x * 1e6).round() / 1e6;
     if r == r.trunc() && r.abs() < 1e15 { format!("{}", r as i64) } else { format!("{r}") }
 }
@@ -312,6 +312,8 @@ pub(crate) struct FamilyEditor {
     pub(crate) modeller: crate::adaptive_view::Modeller,
     replay: Option<bimcraft_core::model::Id>,
     preview_params: BTreeMap<String, Value>,
+    /// Associate Family Parameter, open on a row of Properties its "=" was pressed on.
+    pub(crate) associating: Option<crate::adaptive_editor::Associating>,
     symbols: Vec<SymbolText>,
     /// How a door's or a window's leaves open; none, not said.
     operation: Option<Operation>,
@@ -404,6 +406,7 @@ impl FamilyEditor {
             modeller: Default::default(),
             replay: None,
             preview_params: BTreeMap::new(),
+            associating: None,
             symbols: f.symbols.iter().map(SymbolText::of).collect(),
             operation: f.operation,
             tab: Tab::Parameters,
@@ -417,6 +420,11 @@ impl FamilyEditor {
             dialog: None,
             source: None,
         }
+    }
+
+    /// Each of its parameters, by name, and what it holds: what a row of Properties may be tied to.
+    pub(crate) fn parameter_kinds(&self) -> Vec<(String, Holds)> {
+        self.params.iter().map(|p| (p.name.trim().to_string(), p.kind)).collect()
     }
 
     /// Whether it is edited as Revit edits a family, a document taking the whole window: an adaptive family is.
@@ -604,6 +612,7 @@ fn adaptive_side(ui: &mut Ui, ed: &mut FamilyEditor, values: &BTreeMap<String, b
     if let Some(p) = &ed.problem {
         ui.label(RichText::new(p).color(pal().error));
     }
+    let params = ed.parameter_kinds();
     let Some(d) = ed.adaptive.as_mut() else { return };
     ui.label(RichText::new(t("Properties")).strong());
     let selected = ed.modeller.selection.clone();
@@ -614,11 +623,17 @@ fn adaptive_side(ui: &mut Ui, ed: &mut FamilyEditor, values: &BTreeMap<String, b
     for id in &selected {
         ui.push_id(id, |ui| {
             egui::Frame::group(ui.style()).show(ui, |ui| {
-                crate::adaptive_editor::point_properties(ui, d, id, values);
-                if let Some(node) = d.nodes.iter_mut().find(|n| &n.id == id)
-                    && crate::adaptive_editor::node_properties(ui, node)
-                {
-                    delete.push(id.clone());
+                if let Some(a) = crate::adaptive_editor::point_properties(ui, d, id, values, &params) {
+                    ed.associating = Some(a);
+                }
+                if let Some(node) = d.nodes.iter_mut().find(|n| &n.id == id) {
+                    let (deleted, asked) = crate::adaptive_editor::node_properties(ui, node, values, &params);
+                    if deleted {
+                        delete.push(id.clone());
+                    }
+                    if asked.is_some() {
+                        ed.associating = asked;
+                    }
                 }
             });
         });
@@ -628,7 +643,13 @@ fn adaptive_side(ui: &mut Ui, ed: &mut FamilyEditor, values: &BTreeMap<String, b
         ed.modeller.selection.retain(|id| !delete.contains(id));
     }
     ui.separator();
-    ui.collapsing(t("All elements and the test placement"), |ui| crate::adaptive_editor::show(ui, &mut ed.adaptive, values));
+    if let Some(a) = ui
+        .collapsing(t("All elements and the test placement"), |ui| crate::adaptive_editor::show(ui, &mut ed.adaptive, values, &params))
+        .body_returned
+        .flatten()
+    {
+        ed.associating = Some(a);
+    }
     if let Some(d) = &ed.adaptive {
         crate::adaptive_editor::diagnostics(ui, &d.evaluate(values, &d.preview));
     }
@@ -1208,7 +1229,12 @@ impl BimApp {
                                     Tab::Types => types_tab(&mut ed, ui, &materials),
                                     Tab::Forms => forms_tab(&mut ed, ui, &materials),
                                     Tab::Symbols => symbols_tab(&mut ed, ui),
-                                    Tab::Adaptive => crate::adaptive_editor::show(ui, &mut ed.adaptive, &values),
+                                    Tab::Adaptive => {
+                                        let params = ed.parameter_kinds();
+                                        if let Some(a) = crate::adaptive_editor::show(ui, &mut ed.adaptive, &values, &params) {
+                                            ed.associating = Some(a);
+                                        }
+                                    }
                                 }
                             });
                         }

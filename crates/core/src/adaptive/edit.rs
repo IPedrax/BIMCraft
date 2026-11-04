@@ -103,9 +103,10 @@ impl Evaluation {
     }
 
     /// The work plane under the pointer, for Placement Plane's Pick: of each point's three planes (squares `half` mm from it
-    /// each way) and the datums (as far as box `room` reaches), the one nearest the eye where the pointer's ray meets it. `hit`
-    /// gives where the ray meets the plane through a point square to a direction, `depth` how near the eye a point is (larger
-    /// is nearer); a point's plane wins over a datum it lies on.
+    /// each way), the one nearest the eye where the pointer's ray meets it; with none under it, of the datums (as far as box
+    /// `room` reaches), the nearest. A point's planes come first, as in Revit: the datums fill the room, so one in front of a
+    /// point would hide them. `hit` gives where the ray meets the plane through a point square to a direction, `depth` how
+    /// near the eye a point is (larger is nearer).
     pub fn pick_plane(
         &self,
         hit: &dyn Fn(P3, P3) -> Option<P3>,
@@ -114,10 +115,10 @@ impl Evaluation {
         room: (P3, P3),
     ) -> Option<WorkPlane> {
         let mut best: Option<(f64, WorkPlane)> = None;
-        let mut consider = |p: P3, plane: WorkPlane| {
+        let consider = |best: &mut Option<(f64, WorkPlane)>, p: P3, plane: WorkPlane| {
             let z = depth(p);
             if z.is_finite() && best.as_ref().is_none_or(|(b, _)| z > *b + 1e-6) {
-                best = Some((z, plane));
+                *best = Some((z, plane));
             }
         };
         for id in &self.order {
@@ -127,11 +128,14 @@ impl Evaluation {
                     if let Some(p) = hit(f.origin, f.z) {
                         let local = f.inverse_point(p);
                         if local[0].abs() <= half && local[1].abs() <= half {
-                            consider(p, WorkPlane::Point { point: id.clone(), plane });
+                            consider(&mut best, p, WorkPlane::Point { point: id.clone(), plane });
                         }
                     }
                 }
             }
+        }
+        if best.is_some() {
+            return best.map(|(_, plane)| plane);
         }
         let (lo, hi) = room;
         for datum in Datum::ALL {
@@ -139,7 +143,7 @@ impl Evaluation {
             if let Some(p) = hit(f.origin, f.z)
                 && (0..3).all(|i| p[i] >= lo[i] - 1e-6 && p[i] <= hi[i] + 1e-6)
             {
-                consider(p, WorkPlane::Datum(datum));
+                consider(&mut best, p, WorkPlane::Datum(datum));
             }
         }
         best.map(|(_, plane)| plane)

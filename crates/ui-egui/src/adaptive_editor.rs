@@ -2,24 +2,12 @@
 //! (`adaptive_view.rs`), and the list of every element, the test placement and what the evaluation says.
 use crate::lang::{t, tf};
 use bimcraft_core::adaptive::{self, Constrained, Definition, Evaluated, Frame, Host, Operation, OrientsTo, Placement, PointType, Show};
-use bimcraft_core::family::{Expr, Val};
+use bimcraft_core::family::{Expr, Kind as Holds, Val};
 use bimcraft_i18n::msg;
-use egui::{ComboBox, DragValue, RichText, Ui};
+use egui::{ComboBox, DragValue, RichText, TextEdit, Ui, WidgetInfo, WidgetType};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
-fn expression(ui: &mut Ui, label: &str, value: &mut Expr) {
-    let mut text = match value {
-        Expr::Number(n) => n.to_string(),
-        Expr::Formula(s) => s.clone(),
-    };
-    ui.horizontal(|ui| {
-        ui.label(t(label));
-        if ui.text_edit_singleline(&mut text).changed() {
-            *value = text.parse().map(Expr::Number).unwrap_or(Expr::Formula(text));
-        }
-    });
-}
 /// Where a point is, mm.
 fn position(ui: &mut Ui, value: &mut Frame) {
     ui.horizontal(|ui| {
@@ -164,7 +152,14 @@ fn host(kind: &str) -> Value {
         _ => json!({"type":"frame","point":"p1"}),
     }
 }
-pub(crate) fn show(ui: &mut Ui, definition: &mut Option<Definition>, values: &BTreeMap<String, Val>) {
+/// Every element of the family, with its properties, and the test placement; Associate Family Parameter, when an "=" of one
+/// of them was pressed.
+pub(crate) fn show(
+    ui: &mut Ui,
+    definition: &mut Option<Definition>,
+    values: &BTreeMap<String, Val>,
+    params: &[(String, Holds)],
+) -> Option<Associating> {
     if definition.is_none() {
         ui.label(t("An adaptive family's points are placed where each instance is clicked, as Revit's Generic Model Adaptive."));
         if ui.button(t("Make this family adaptive")).clicked() {
@@ -173,9 +168,10 @@ pub(crate) fn show(ui: &mut Ui, definition: &mut Option<Definition>, values: &BT
         if ui.button(t("Create four-point adaptive panel")).clicked() {
             *definition = Some(adaptive::four_point_panel());
         }
-        return;
+        return None;
     }
-    let Some(d) = definition else { return };
+    let d = definition.as_mut()?;
+    let mut asked = None;
     ui.label(t("Lengths: mm. Rotations: degrees, local intrinsic X then Y then Z. Offsets use host axes."));
     ui.collapsing(t("Simulate placement frames"), |ui| {
         ui.text_edit_singleline(&mut d.preview.context);
@@ -197,8 +193,12 @@ pub(crate) fn show(ui: &mut Ui, definition: &mut Option<Definition>, values: &BT
     for (i, node) in d.nodes.iter_mut().enumerate() {
         ui.push_id(node.id.clone(), |ui| {
             egui::CollapsingHeader::new(format!("{} - {}", node.id, node.name)).show(ui, |ui| {
-                if node_properties(ui, node) {
+                let (deleted, a) = node_properties(ui, node, values, params);
+                if deleted {
                     remove = Some(i);
+                }
+                if a.is_some() {
+                    asked = a;
                 }
             });
         });
@@ -243,6 +243,7 @@ pub(crate) fn show(ui: &mut Ui, definition: &mut Option<Definition>, values: &BT
         });
     }
     diagnostics(ui, &report);
+    asked
 }
 
 /// What the evaluation says went wrong, or warns of.
@@ -294,28 +295,269 @@ fn pick<T: Copy + PartialEq>(ui: &mut Ui, label: &str, value: &mut T, options: &
     *value != before
 }
 
-/// A point's properties as Revit's palette groups them: Constraints (how it is turned, as `values` evaluate it), Adaptive
-/// Component (Point, Number, Show Placement Number, Orients to, Constrained), Graphics (Show Reference Planes, Visible) and
-/// Identity Data (Name). Nothing for an element that is not a point.
-pub(crate) fn point_properties(ui: &mut Ui, d: &mut Definition, id: &str, values: &BTreeMap<String, Val>) {
+/// A value in an element's Properties that Revit's "=" ties to a family parameter.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Field {
+    /// A point's offset from its host along x, y or z, mm (z: off its work plane, along the normal, Revit's Offset).
+    Offset(usize),
+    /// A point's turn about its x, y or z, degrees (z: about its normal, Revit's Rotation Angle).
+    Rotation(usize),
+    /// Where a point is along the line or the edge it is on, as its measurement says.
+    Along,
+    /// Whether it shows when the family is in a project.
+    Visible,
+    /// What a form is made of.
+    Material,
+}
+
+/// Associate Family Parameter, open on `field` of element `id` (its row is `label`, holding a `kind`): the parameter chosen
+/// (none: <None>) and, while New Parameter's Parameter Properties are filled in, the new one's name and whether each instance
+/// has its own.
+#[derive(Clone, Debug)]
+pub(crate) struct Associating {
+    pub(crate) id: String,
+    pub(crate) field: Field,
+    pub(crate) kind: Holds,
+    pub(crate) label: String,
+    pub(crate) chosen: Option<String>,
+    pub(crate) new: Option<(String, bool)>,
+}
+
+/// A parameter New Parameter adds to the family: its name, what it holds, whether each instance has its own, and its value
+/// as the Family Types dialog types it.
+pub(crate) struct NewParameter {
+    pub(crate) name: String,
+    pub(crate) kind: Holds,
+    pub(crate) instance: bool,
+    pub(crate) value: String,
+}
+
+/// The largest number a row takes, mm or degrees.
+const LIMIT: f64 = 1e7;
+
+/// The name of what a parameter holds, as Revit's Parameter type says it.
+fn holds(kind: Holds) -> &'static str {
+    match kind {
+        Holds::Length => "Length",
+        Holds::Number => "Number",
+        Holds::Angle => "Angle",
+        Holds::YesNo => msg!("Yes/No"),
+        Holds::Material => "Material",
+    }
+}
+
+/// What `e` comes to with the type's `values`; none for a formula that does not work out.
+fn worth(e: &Expr, values: &BTreeMap<String, Val>) -> Option<f64> {
+    match e {
+        Expr::Number(x) => Some(*x),
+        Expr::Formula(f) => bimcraft_core::family::eval(f, &mut |n| match values.get(n) {
+            Some(Val::Number(x)) => Ok(*x),
+            _ => Err(format!("`{n}` is not a number")),
+        })
+        .ok(),
+    }
+}
+
+/// The expression `field` of `node` is; none for Material (a name) and for a field the node has not.
+fn expr_mut(node: &mut adaptive::Node, field: Field) -> Option<&mut Expr> {
+    // A point is not visible in a project unless it is said to be, a form is.
+    let shown = node.is_form() || node.look().visible;
+    match (field, &mut node.operation) {
+        (Field::Offset(i), Operation::Point { transform, .. }) => transform.offset.get_mut(i),
+        (Field::Rotation(i), Operation::Point { transform, .. }) => transform.rotation.get_mut(i),
+        (Field::Along, Operation::Point { host: Host::Curve { location, .. }, .. }) => Some(&mut location.value),
+        (Field::Along, Operation::Point { host: Host::Edge { parameter, .. }, .. }) => Some(parameter),
+        (Field::Visible, _) => Some(node.appearance.visible.get_or_insert(Expr::Number(if shown { 1. } else { 0. }))),
+        _ => None,
+    }
+}
+
+/// Revit's "=" at the end of a row: Associate Family Parameter for `label`, lit while the row is tied. Whether it was pressed.
+fn equals(ui: &mut Ui, label: &str, tied: bool) -> bool {
+    let name = tf("Associate Family Parameter: {}", &[t(label)]);
+    let r = ui.add(egui::Button::new("=").small().selected(tied)).on_hover_text(t("Associate Family Parameter"));
+    r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &name));
+    r.clicked()
+}
+
+/// The width of a row's field beside its "=".
+fn field_width(ui: &Ui) -> f32 {
+    let column = ui.ctx().data(|w| w.get_temp::<f32>(egui::Id::new("family-group-column"))).unwrap_or(160.0);
+    (column - 34.0).max(40.0)
+}
+
+/// A row of Properties holding a number, with Revit's "=" at its end when it is `editable`; tied to a parameter, it shows what
+/// the parameter comes to, greyed, and takes no typing. Whether "=" was pressed.
+fn number_row(ui: &mut Ui, label: &str, value: &mut Expr, values: &BTreeMap<String, Val>, editable: bool) -> bool {
+    let l = ui.label(t(label));
+    let width = field_width(ui);
+    let tied = matches!(value, Expr::Formula(_));
+    let pressed = ui
+        .horizontal(|ui| {
+            if tied || !editable {
+                let mut shown = worth(value, values).map(crate::editor::number_text).unwrap_or_else(|| "?".into());
+                ui.add_enabled(false, TextEdit::singleline(&mut shown).desired_width(width)).labelled_by(l.id);
+            } else {
+                // What is typed stays as typed while the field has the focus, so "2." is not read back as "2".
+                let key = ui.make_persistent_id(("number-row", label));
+                let mut text = ui
+                    .data(|w| w.get_temp::<String>(key))
+                    .unwrap_or_else(|| worth(value, values).map(crate::editor::number_text).unwrap_or_default());
+                let r = ui.add(TextEdit::singleline(&mut text).desired_width(width)).labelled_by(l.id);
+                if r.changed()
+                    && let Ok(x) = text.trim().parse::<f64>()
+                    && x.is_finite()
+                    && x.abs() <= LIMIT
+                {
+                    *value = Expr::Number(x);
+                }
+                if r.has_focus() {
+                    ui.data_mut(|w| w.insert_temp(key, text));
+                } else {
+                    ui.data_mut(|w| w.remove::<String>(key));
+                }
+            }
+            editable && equals(ui, label, tied)
+        })
+        .inner;
+    ui.end_row();
+    pressed
+}
+
+/// A Yes/No row of Properties, with Revit's "=" at its end; tied, it shows what the parameter comes to, greyed. Whether "="
+/// was pressed.
+fn yes_no_row(ui: &mut Ui, label: &str, value: &mut Option<Expr>, shown: bool, values: &BTreeMap<String, Val>) -> bool {
+    let l = ui.label(t(label));
+    let tied = matches!(value, Some(Expr::Formula(_)));
+    let pressed = ui
+        .horizontal(|ui| {
+            let mut on = value.as_ref().and_then(|e| worth(e, values)).map_or(shown, |x| x != 0.);
+            let r = ui.add_enabled(!tied, egui::Checkbox::without_text(&mut on)).labelled_by(l.id);
+            if r.changed() {
+                *value = Some(Expr::Number(if on { 1. } else { 0. }));
+            }
+            ui.add_space((field_width(ui) - r.rect.width()).max(0.0));
+            equals(ui, label, tied)
+        })
+        .inner;
+    ui.end_row();
+    pressed
+}
+
+/// A form's Material row, with Revit's "=" at its end; tied to a material parameter it shows the material that has, greyed.
+fn material_row(ui: &mut Ui, material: &mut String, values: &BTreeMap<String, Val>, params: &[(String, Holds)]) -> bool {
+    let label = msg!("Material");
+    let l = ui.label(t(label));
+    let width = field_width(ui);
+    let tied = params.iter().any(|(n, k)| *k == Holds::Material && n == material);
+    let pressed = ui
+        .horizontal(|ui| {
+            if tied {
+                let mut shown = match values.get(material.as_str()) {
+                    Some(Val::Text(m)) => m.clone(),
+                    _ => String::new(),
+                };
+                ui.add_enabled(false, TextEdit::singleline(&mut shown).desired_width(width)).labelled_by(l.id);
+            } else {
+                ui.add(TextEdit::singleline(material).desired_width(width)).labelled_by(l.id);
+            }
+            equals(ui, label, tied)
+        })
+        .inner;
+    ui.end_row();
+    pressed
+}
+
+/// Associate Family Parameter, opening on `field` of `id`: tied already to one of `params`, that one is chosen.
+fn associating(id: &str, field: Field, kind: Holds, label: &str, now: Option<&str>, params: &[(String, Holds)]) -> Associating {
+    let chosen = now.filter(|n| params.iter().any(|(p, k)| p == n && *k == kind)).map(String::from);
+    Associating { id: id.to_string(), field, kind, label: label.to_string(), chosen, new: None }
+}
+
+/// The name a measurement's value goes by in Properties, as Revit's.
+fn measured(m: adaptive::Measurement) -> (&'static str, Holds) {
+    use adaptive::Measurement as M;
+    match m {
+        M::NonNormalizedCurveParameter => (msg!("Non-Normalized Curve Parameter"), Holds::Length),
+        M::NormalizedCurveParameter => (msg!("Normalized Curve Parameter"), Holds::Number),
+        M::SegmentLength => (msg!("Segment Length"), Holds::Length),
+        M::NormalizedSegmentLength => (msg!("Normalized Segment Length"), Holds::Number),
+        M::ChordLength => (msg!("Chord Length"), Holds::Length),
+        M::Angle => (msg!("Angle"), Holds::Angle),
+    }
+}
+
+/// An element's properties as Revit's palette groups them, each number, Yes/No and material with Revit's "=" to tie it to one
+/// of the family's `params`. A point: Constraints (its Work Plane, where it is along its line, and how it is turned as `values`
+/// evaluate it; its offsets and rotations are in its relationship, `node_properties`), Adaptive Component (Point, Number, Show Placement Number, Orients to, Constrained),
+/// Graphics (Show Reference Planes, Visible) and Identity Data (Name). A form: Materials and Finishes, Graphics, Identity Data.
+/// Associate Family Parameter, when an "=" was pressed.
+pub(crate) fn point_properties(
+    ui: &mut Ui,
+    d: &mut Definition,
+    id: &str,
+    values: &BTreeMap<String, Val>,
+    params: &[(String, Holds)],
+) -> Option<Associating> {
     use crate::editor::document::group;
-    let Some(kind) = d.point_type(id) else { return };
+    let mut asked = None;
+    if let Some(node) = d.nodes.iter_mut().find(|n| n.id == id && n.is_form()) {
+        if !node.appearance.void {
+            group(ui, msg!("Materials and Finishes"), |ui| {
+                if material_row(ui, &mut node.appearance.material, values, params) {
+                    let now = node.appearance.material.clone();
+                    asked = Some(associating(id, Field::Material, Holds::Material, msg!("Material"), Some(&now), params));
+                }
+            });
+        }
+        group(ui, msg!("Graphics"), |ui| {
+            if yes_no_row(ui, msg!("Visible"), &mut node.appearance.visible, true, values) {
+                let now = match &node.appearance.visible {
+                    Some(Expr::Formula(f)) => Some(f.clone()),
+                    _ => None,
+                };
+                asked = Some(associating(id, Field::Visible, Holds::YesNo, msg!("Visible"), now.as_deref(), params));
+            }
+        });
+        group(ui, msg!("Identity Data"), |ui| {
+            ui.label(t("Solid/Void"));
+            ui.label(t(if node.appearance.void { "Void" } else { "Solid" }));
+            ui.end_row();
+        });
+        return asked;
+    }
+    let kind = d.point_type(id)?;
     // Its axes where it is now (an instance replayed may turn them): the angles about X, then Y, then Z from the family's.
-    if let Some(Evaluated::Point { frame }) = d.evaluate(values, &d.preview).values.get(id) {
-        let angles = frame.rotations();
-        let work_plane = d
-            .work_plane(id)
-            .and_then(|w| crate::editor::document::work_planes(d).into_iter().find(|(p, _)| *p == w).map(|(_, label)| label));
+    let angles = match d.evaluate(values, &d.preview).values.get(id) {
+        Some(Evaluated::Point { frame }) => Some(frame.rotations()),
+        _ => None,
+    };
+    let work_plane =
+        d.work_plane(id).and_then(|w| crate::editor::document::work_planes(d).into_iter().find(|(p, _)| *p == w).map(|(_, label)| label));
+    if let Some(node) = d.nodes.iter_mut().find(|n| n.id == id) {
         group(ui, msg!("Constraints"), |ui| {
             if let Some(label) = &work_plane {
                 ui.label(t("Work Plane"));
                 ui.label(label.as_str());
                 ui.end_row();
             }
-            for (label, a) in [(msg!("Rotation X"), angles[0]), (msg!("Rotation Y"), angles[1]), (msg!("Rotation Z"), angles[2])] {
-                ui.label(t(label));
-                ui.label(format!("{:.2}°", if a.abs() < 0.005 { 0.0 } else { a }));
-                ui.end_row();
+            let along = match &node.operation {
+                Operation::Point { host: Host::Curve { location, .. }, .. } => Some(measured(location.measurement)),
+                Operation::Point { host: Host::Edge { .. }, .. } => Some((msg!("Normalized Curve Parameter"), Holds::Number)),
+                _ => None,
+            };
+            if let Some((label, kind)) = along
+                && let Some(e) = expr_mut(node, Field::Along)
+                && number_row(ui, label, e, values, true)
+            {
+                asked = Some(associating(id, Field::Along, kind, label, formula(e), params));
+            }
+            if let Some(angles) = angles {
+                for (label, a) in [(msg!("Rotation X"), angles[0]), (msg!("Rotation Y"), angles[1]), (msg!("Rotation Z"), angles[2])] {
+                    ui.label(t(label));
+                    ui.label(format!("{:.2}°", if a.abs() < 0.005 { 0.0 } else { a }));
+                    ui.end_row();
+                }
             }
         });
     }
@@ -357,34 +599,160 @@ pub(crate) fn point_properties(ui: &mut Ui, d: &mut Definition, id: &str, values
             pick(ui, msg!("Constrained"), constrained, &CONSTRAINTS);
         }
     });
-    let Some(node) = d.nodes.iter_mut().find(|n| n.id == id) else { return };
+    let node = d.nodes.iter_mut().find(|n| n.id == id)?;
     let look = node.look();
     group(ui, msg!("Graphics"), |ui| {
         let mut planes = look.planes;
         if pick(ui, msg!("Show Reference Planes"), &mut planes, &SHOWS) {
             node.appearance.show_planes = Some(planes);
         }
-        let l = ui.label(t("Visible"));
-        let mut visible = look.visible;
-        if ui.checkbox(&mut visible, "").labelled_by(l.id).changed() {
-            node.appearance.visible = Some(Expr::Number(if visible { 1. } else { 0. }));
+        if yes_no_row(ui, msg!("Visible"), &mut node.appearance.visible, look.visible, values) {
+            let now = match &node.appearance.visible {
+                Some(Expr::Formula(f)) => Some(f.clone()),
+                _ => None,
+            };
+            asked = Some(associating(id, Field::Visible, Holds::YesNo, msg!("Visible"), now.as_deref(), params));
         }
-        ui.end_row();
     });
     group(ui, msg!("Identity Data"), |ui| {
         let l = ui.label(t("Name"));
-        ui.add(egui::TextEdit::singleline(&mut node.name).desired_width(f32::INFINITY)).labelled_by(l.id);
+        ui.add(TextEdit::singleline(&mut node.name).desired_width(f32::INFINITY)).labelled_by(l.id);
         ui.end_row();
     });
     if let Some(e) = problem {
         ui.colored_label(ui.visuals().error_fg_color, e);
     }
+    asked
 }
 
-/// One element's properties: its name, its relationship and what that takes, and a form's appearance. Whether Delete was
-/// pressed.
-pub(crate) fn node_properties(ui: &mut Ui, node: &mut adaptive::Node) -> bool {
+/// `a`'s choice made: the row tied to the parameter chosen or, with <None>, untied, keeping what it came to.
+fn tie(d: &mut Definition, a: &Associating, values: &BTreeMap<String, Val>) {
+    let Some(node) = d.nodes.iter_mut().find(|n| n.id == a.id) else { return };
+    if a.field == Field::Material {
+        let now = &node.appearance.material;
+        node.appearance.material = match (&a.chosen, values.get(now.as_str())) {
+            (Some(p), _) => p.clone(),
+            (None, Some(Val::Text(m))) => m.clone(),
+            (None, _) => now.clone(),
+        };
+        return;
+    }
+    let Some(e) = expr_mut(node, a.field) else { return };
+    *e = match &a.chosen {
+        Some(p) => Expr::Formula(p.clone()),
+        None => Expr::Number(worth(e, values).unwrap_or(0.)),
+    };
+}
+
+/// What the row `a` is open on holds now, as the Family Types dialog types a value: a new parameter starts from it.
+fn value_now(d: &mut Definition, a: &Associating, values: &BTreeMap<String, Val>) -> String {
+    let Some(node) = d.nodes.iter_mut().find(|n| n.id == a.id) else { return String::new() };
+    if a.field == Field::Material {
+        return node.appearance.material.clone();
+    }
+    expr_mut(node, a.field).and_then(|e| worth(e, values)).map(crate::editor::number_text).unwrap_or_default()
+}
+
+/// Revit's Associate Family Parameter for `a`: the family's parameters holding what its row does (of `params`), <None>, and New
+/// Parameter, which asks a name and whether it is a type's or each instance's (Parameter Properties) and adds it. OK ties the
+/// row to the one chosen, or with <None> unties it. Whether it is done, and a parameter to add.
+pub(crate) fn associate(
+    ctx: &egui::Context,
+    a: &mut Associating,
+    d: &mut Definition,
+    params: &[(String, Holds)],
+    values: &BTreeMap<String, Val>,
+) -> (bool, Option<NewParameter>) {
+    let (mut done, mut add, mut ok, mut cancel) = (false, None, false, false);
+    let title = if a.new.is_some() { t("Parameter Properties") } else { t("Associate Family Parameter") };
+    let r = crate::popup::Modal::new(egui::Id::new("associate-family-parameter"), title).width(380.0).show(ctx, |ui| {
+        crate::popup::body(ui, |ui| {
+            if let Some((name, instance)) = &mut a.new {
+                egui::Grid::new("parameter-properties").num_columns(2).spacing(egui::vec2(12.0, 6.0)).show(ui, |ui| {
+                    let l = ui.label(t("Name:"));
+                    ui.add_sized([220.0, ui.spacing().interact_size.y], TextEdit::singleline(name)).labelled_by(l.id);
+                    ui.end_row();
+                    ui.label("");
+                    ui.horizontal(|ui| {
+                        ui.radio_value(instance, false, t("Type"));
+                        ui.radio_value(instance, true, t("Instance"));
+                    });
+                    ui.end_row();
+                    ui.label(t("Type of Parameter:"));
+                    ui.label(t(holds(a.kind)));
+                    ui.end_row();
+                });
+                let name = name.trim();
+                if params.iter().any(|(p, _)| p == name) {
+                    ui.colored_label(ui.visuals().error_fg_color, tf("The family has a parameter named {} already.", &[name]));
+                }
+            } else {
+                ui.label(tf("Family parameter: {}", &[t(&a.label)]));
+                ui.label(tf("Parameter type: {}", &[t(holds(a.kind))]));
+                ui.add_space(6.0);
+                ui.label(t("Existing family parameters of compatible type:"));
+                egui::Frame::group(ui.style()).show(ui, |ui| {
+                    ui.set_min_width(ui.available_width());
+                    if ui.selectable_label(a.chosen.is_none(), t("<None>")).clicked() {
+                        a.chosen = None;
+                    }
+                    for (name, _) in params.iter().filter(|(_, k)| *k == a.kind) {
+                        if ui.selectable_label(a.chosen.as_ref() == Some(name), name.as_str()).clicked() {
+                            a.chosen = Some(name.clone());
+                        }
+                    }
+                });
+                if ui.button(t("New Parameter")).clicked() {
+                    a.new = Some((String::new(), false));
+                }
+            }
+        });
+        crate::popup::footer(ui, |ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                cancel = ui.button(t("Cancel")).clicked();
+                ok = ui.button(t("OK")).clicked();
+            });
+        });
+    });
+    match a.new.take() {
+        // Parameter Properties: OK adds the parameter, chosen; Cancel goes back to the list.
+        Some((typed, instance)) => {
+            let name = typed.trim().to_string();
+            if ok && !name.is_empty() && !params.iter().any(|(p, _)| *p == name) {
+                add = Some(NewParameter { name: name.clone(), kind: a.kind, instance, value: value_now(d, a, values) });
+                a.chosen = Some(name);
+            } else if !(cancel || r.should_close()) {
+                a.new = Some((typed, instance));
+            }
+        }
+        None if ok => {
+            tie(d, a, values);
+            done = true;
+        }
+        None => done = cancel || r.should_close(),
+    }
+    (done, add)
+}
+
+/// The parameter `e` names, when it is a formula.
+fn formula(e: &Expr) -> Option<&str> {
+    match e {
+        Expr::Formula(f) => Some(f),
+        Expr::Number(_) => None,
+    }
+}
+
+/// One element's properties: its name, its relationship and what that takes (a point's offsets and rotations each with Revit's
+/// "=" to tie it to one of `params`), and a form's appearance. Whether Delete was pressed, and Associate Family Parameter when
+/// an "=" was.
+pub(crate) fn node_properties(
+    ui: &mut Ui,
+    node: &mut adaptive::Node,
+    values: &BTreeMap<String, Val>,
+    params: &[(String, Holds)],
+) -> (bool, Option<Associating>) {
     let mut delete = false;
+    let mut asked = None;
     ui.horizontal(|ui| {
         ui.label(t("Name"));
         ui.text_edit_singleline(&mut node.name);
@@ -419,12 +787,28 @@ pub(crate) fn node_properties(ui: &mut Ui, node: &mut adaptive::Node) -> bool {
                 if let Host::Adaptive { frame: f, .. } | Host::Handle { frame: f, .. } | Host::World { frame: f, .. } = host {
                     position(ui, f);
                 }
-                for i in 0..3 {
-                    expression(ui, [msg!("OffsetX (mm)"), msg!("OffsetY (mm)"), msg!("OffsetZ (mm)")][i], &mut t.offset[i]);
-                }
-                for i in 0..3 {
-                    expression(ui, [msg!("RotX (degrees)"), msg!("RotY (degrees)"), msg!("RotZ (degrees)")][i], &mut t.rotation[i]);
-                }
+                let rows = [
+                    (Field::Offset(0), msg!("OffsetX (mm)"), Holds::Length),
+                    (Field::Offset(1), msg!("OffsetY (mm)"), Holds::Length),
+                    (Field::Offset(2), msg!("OffsetZ (mm)"), Holds::Length),
+                    (Field::Rotation(0), msg!("RotX (degrees)"), Holds::Angle),
+                    (Field::Rotation(1), msg!("RotY (degrees)"), Holds::Angle),
+                    (Field::Rotation(2), msg!("RotZ (degrees)"), Holds::Angle),
+                ];
+                egui::Grid::new("point-transform").num_columns(2).show(ui, |ui| {
+                    for (field, label, kind) in rows {
+                        let e = match field {
+                            Field::Offset(i) => t.offset.get_mut(i),
+                            Field::Rotation(i) => t.rotation.get_mut(i),
+                            _ => None,
+                        };
+                        if let Some(e) = e
+                            && number_row(ui, label, e, values, true)
+                        {
+                            asked = Some(associating(&node.id, field, kind, label, formula(e), params));
+                        }
+                    }
+                });
                 transform = serde_json::to_value(t).ok();
             }
             v = serde_json::to_value(typed).unwrap_or(v);
@@ -464,15 +848,6 @@ pub(crate) fn node_properties(ui: &mut Ui, node: &mut adaptive::Node) -> bool {
     }
     if node.is_form() {
         ui.checkbox(&mut node.appearance.void, t("Void"));
-        if !node.appearance.void {
-            ui.horizontal(|ui| {
-                ui.label(t("Material or material parameter"));
-                ui.text_edit_singleline(&mut node.appearance.material);
-            });
-        }
-        let mut visible = node.appearance.visible.clone().unwrap_or(Expr::Number(1.));
-        expression(ui, msg!("Visible (formula)"), &mut visible);
-        node.appearance.visible = Some(visible);
     }
-    delete
+    (delete, asked)
 }

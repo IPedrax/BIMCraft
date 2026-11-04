@@ -357,6 +357,7 @@ impl BimApp {
         let values = ed.values();
         let category = category_label(ed.category);
         let selected = ed.modeller.selection.clone();
+        let params = ed.parameter_kinds();
         if let Some(d) = ed.adaptive.as_mut() {
             // The type selector's place: what is selected, as Revit names it, or the family.
             let (what, icon) = match selected.as_slice() {
@@ -391,7 +392,9 @@ impl BimApp {
             let mut delete = Vec::new();
             for id in &selected {
                 ui.push_id(id, |ui| {
-                    crate::adaptive_editor::point_properties(ui, d, id, &values);
+                    if let Some(a) = crate::adaptive_editor::point_properties(ui, d, id, &values, &params) {
+                        ed.associating = Some(a);
+                    }
                     if let Some(node) = d.nodes.iter_mut().find(|n| &n.id == id) {
                         let open = ui.ctx().data(|w| w.get_temp::<bool>(UiId::new("family-relationship"))).unwrap_or(true);
                         if group_header(ui, t("Relationship"), open) {
@@ -399,8 +402,12 @@ impl BimApp {
                         }
                         if open {
                             Frame::new().inner_margin(Margin { left: 8, right: 4, top: 4, bottom: 4 }).show(ui, |ui| {
-                                if crate::adaptive_editor::node_properties(ui, node) {
+                                let (deleted, asked) = crate::adaptive_editor::node_properties(ui, node, &values, &params);
+                                if deleted {
                                     delete.push(id.clone());
+                                }
+                                if asked.is_some() {
+                                    ed.associating = asked;
                                 }
                             });
                         }
@@ -417,7 +424,13 @@ impl BimApp {
         if let Some(p) = ed.problem() {
             ui.label(RichText::new(p).color(pal().error));
         }
-        ui.collapsing(t("All elements and the test placement"), |ui| crate::adaptive_editor::show(ui, &mut ed.adaptive, &values));
+        if let Some(a) = ui
+            .collapsing(t("All elements and the test placement"), |ui| crate::adaptive_editor::show(ui, &mut ed.adaptive, &values, &params))
+            .body_returned
+            .flatten()
+        {
+            ed.associating = Some(a);
+        }
         self.family_editor = Some(ed);
     }
 
@@ -556,6 +569,19 @@ impl BimApp {
     /// The dialogs a family document's ribbon opens: Family Types (its parameters and types, on two tabs) and Family
     /// Category and Parameters (its name, category and, for a door or a window, how it opens).
     pub(crate) fn document_dialogs(&mut self, ctx: &Context, ed: &mut FamilyEditor, materials: &[String]) {
+        // Associate Family Parameter, from a row's "=": a parameter New Parameter makes goes in the family at once, as in Revit.
+        if let Some(mut a) = ed.associating.take() {
+            let (params, values) = (ed.parameter_kinds(), ed.values());
+            if let Some(d) = ed.adaptive.as_mut() {
+                let (done, new) = crate::adaptive_editor::associate(ctx, &mut a, d, &params, &values);
+                if let Some(n) = new {
+                    ed.params.push(ParamText { name: n.name, kind: n.kind, instance: n.instance, value: n.value, formula: String::new() });
+                }
+                if !done {
+                    ed.associating = Some(a);
+                }
+            }
+        }
         let Some(dialog) = ed.dialog else { return };
         let title = match dialog {
             DocDialog::Types => t("Family Types"),

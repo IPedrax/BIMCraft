@@ -6202,5 +6202,12 @@ fn adaptive_editor_visual_preview_in_three_looks() {
         }
         h.run();
         h.render().unwrap().save(std::path::Path::new(&folder).join(format!("adaptive-{name}.png"))).unwrap();
+        // Its OffsetZ's "=": Associate Family Parameter.
+        h.get_by_label("Associate Family Parameter: OffsetZ (mm)").scroll_to_me();
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("adaptive-relationship-{name}.png"))).unwrap();
+        press(&mut h, "Associate Family Parameter: OffsetZ (mm)");
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("adaptive-associate-{name}.png"))).unwrap();
     }
 }

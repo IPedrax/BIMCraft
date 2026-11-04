@@ -291,11 +291,12 @@ Status: **same** as Revit; **differs** (we have it, but not as Revit has it); **
 | Next number on Make Adaptive; gaps closed; typing a number swaps | the same, the number typed in Properties | differs: not yet typed on its label in the view |
 | Show Placement Number, Show Reference Planes, Visible | the same, with Revit's defaults | same |
 | Orients to, six options, default Instance (xyz) | the same, by the rules measured (§1.4) | same; X and Y of the "then Host" options follow the help, unmeasured |
-| Offset along the normal, Rotation Angle, Mirrored, Flipped | Offset X/Y/Z and rotations X/Y/Z (a superset) | differs |
+| Offset along the normal, Rotation Angle | OffsetZ and RotZ, beside OffsetX/Y and RotX/Y (a superset), each with its "=" | differs: three of each |
+| Mirrored, Flipped | none | missing |
 | Six measurement types and Measure From | the same | same; Angle is refused, since there are no arcs yet |
 | Hosting on a line: X along the tangent, turned by Rotation Angle | four orientation rules of our own | differs |
 | Hosting on a face (U, V), at a crossing of edges, edge and face | face, edge, vertex of a form by index; Intersection of two directions | differs |
-| The grey button that ties a number to a parameter | every field takes a formula | same in effect |
+| The grey button that ties a number to a parameter | "=" on each offset and rotation, the measurement's value, Visible and a form's Material: Associate Family Parameter with New Parameter; every field of the relationship also takes a formula | same |
 
 ### 2.3 Forms
 
@@ -347,7 +348,7 @@ These are kept to where Revit is painful (§1.10). None of them changes what a R
 Each step is Revit's behaviour first, with a core test for the edit or command and a desktop test that drives it as a user would.
 The data comes first: every interface step stands on it.
 
-1. **The point as Revit has it.** Done on 2026-11-02, except Revit's single Offset and Rotation Angle in Properties, Mirrored and
+1. **The point as Revit has it.** Done on 2026-11-02 (the "=" on 2026-11-03), except Mirrored and
    Flipped, and dragging a shape handle in a project.
    - The point type with shape handles.
    - Numbering: the next number, gaps closed, a typed number swaps.

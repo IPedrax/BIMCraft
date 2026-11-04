@@ -496,3 +496,98 @@ fn move_copy_and_rotate_take_the_selection_from_two_clicks_as_in_revit() {
     click_model(&mut h, [500., 1000., 0.], Modifiers::NONE);
     assert!(close(at(&h, &b), [500., 1000., 0.]) && close(at(&h, &a), [500., 0., 0.]), "turned: {:?} {:?}", at(&h, &a), at(&h, &b));
 }
+
+/// The value of `name` in the type the family document previews.
+fn parameter(h: &Harness<BimApp>, name: &str) -> Option<f64> {
+    match h.state().family_editor.as_ref()?.values().get(name)? {
+        bimcraft_core::family::Val::Number(x) => Some(*x),
+        bimcraft_core::family::Val::Text(_) => None,
+    }
+}
+
+/// How high the only point of the family stands, as the type it previews has it.
+fn height(h: &Harness<BimApp>) -> f64 {
+    let ed = h.state().family_editor.as_ref().unwrap();
+    let d = definition(h);
+    let r = d.evaluate(&ed.values(), &d.preview);
+    r.origin(&d.nodes[0].id).map(|p| p[2]).unwrap()
+}
+
+/// The "=" of the row of Properties named `row`, scrolled to first, as a user scrolls the palette to it.
+fn equals(h: &mut Harness<BimApp>, row: &str) {
+    let label = format!("Associate Family Parameter: {row}");
+    h.get_by_label(&label).scroll_to_me();
+    h.run();
+    press(h, &label);
+}
+
+#[test]
+fn the_equals_button_ties_each_offset_and_rotation_of_a_point_to_a_family_parameter_as_in_revit() {
+    let mut h = modelling();
+    tool(&mut h, "Point");
+    click_model(&mut h, [500., 500., 0.], Modifiers::NONE);
+    tool(&mut h, "Modify");
+    click_model(&mut h, [500., 500., 0.], Modifiers::NONE);
+    // One row for each offset and rotation, no Offset or Rotation Angle beside them.
+    assert!(h.query_by_label("Associate Family Parameter: Offset").is_none());
+    assert!(h.query_by_label("Associate Family Parameter: Rotation Angle").is_none());
+    // OffsetZ, typed: the point rises off its work plane.
+    type_role(&mut h, Role::TextInput, "OffsetZ (mm)", "250");
+    assert!((height(&h) - 250.).abs() < 1e-6, "typed, the offset lifts the point: {}", height(&h));
+    // "=" opens Associate Family Parameter; New Parameter makes a length named Height, a type's, of the value the field had.
+    equals(&mut h, "OffsetZ (mm)");
+    assert!(h.query_by_label("Associate Family Parameter").is_some());
+    press(&mut h, "New Parameter");
+    type_into(&mut h, "Name:", "Panel Offset");
+    press(&mut h, "OK");
+    assert_eq!(parameter(&h, "Panel Offset"), Some(250.), "the new parameter takes the value the field had");
+    press(&mut h, "OK");
+    assert!(h.query_by_label("Associate Family Parameter").is_none(), "OK closes it");
+    let tied = |h: &Harness<BimApp>| match &definition(h).nodes[0].operation {
+        Operation::Point { transform, .. } => transform.offset[2].clone(),
+        _ => panic!("a point"),
+    };
+    assert_eq!(tied(&h), bimcraft_core::family::Expr::Formula("Panel Offset".into()));
+    // The type's value changed in Family Types moves the point.
+    tool(&mut h, "Family Types");
+    // Its row is the last of the parameters.
+    let row = h.state().family_editor.as_ref().map(|e| e.parameter_kinds().len()).unwrap();
+    type_into(&mut h, &format!("Parameter Value {row}"), "800");
+    press(&mut h, "OK");
+    assert!((height(&h) - 800.).abs() < 1e-6, "the parameter drives the offset: {}", height(&h));
+    // A rotation takes angles only: Panel Offset is not offered.
+    equals(&mut h, "RotZ (degrees)");
+    assert!(h.query_by_label("Panel Offset").is_none(), "a length is not offered for an angle");
+    press(&mut h, "Cancel");
+    // <None> unties it, keeping the value it had.
+    equals(&mut h, "OffsetZ (mm)");
+    press(&mut h, "<None>");
+    press(&mut h, "OK");
+    assert_eq!(tied(&h), bimcraft_core::family::Expr::Number(800.));
+}
+
+#[test]
+fn pick_takes_a_points_plane_even_with_a_reference_plane_in_front_of_it_as_in_revit() {
+    let mut h = modelling();
+    tool(&mut h, "Point");
+    click_model(&mut h, [500., 500., 0.], Modifiers::NONE);
+    let point = definition(&h).nodes[0].id.clone();
+    // Center (Front/Back) lies between the eye and the point: the point's own planes, drawn around it, are what is picked there.
+    for off in [vec2(5., 3.), vec2(-6., 2.), vec2(3., -6.)] {
+        choose(&mut h, "Placement Plane", "Pick…");
+        let at = h.state().family_editor.as_ref().unwrap().modeller.screen([500., 500., 0.]) + off;
+        click_at(&mut h, at);
+        let ed = h.state().family_editor.as_ref().unwrap();
+        assert!(!ed.modeller.picking_plane, "picked");
+        assert!(
+            matches!(&ed.modeller.work_plane, bimcraft_core::adaptive::WorkPlane::Point { point: p, .. } if *p == point),
+            "one of the point's planes, {off:?}: {:?}",
+            ed.modeller.work_plane
+        );
+    }
+    // Away from any point, a reference plane is still picked.
+    choose(&mut h, "Placement Plane", "Pick…");
+    click_model(&mut h, [800., 0., 600.], Modifiers::NONE);
+    let ed = h.state().family_editor.as_ref().unwrap();
+    assert_eq!(ed.modeller.work_plane, bimcraft_core::adaptive::WorkPlane::Datum(bimcraft_core::adaptive::Datum::FrontBack));
+}
