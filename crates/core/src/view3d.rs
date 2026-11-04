@@ -2292,7 +2292,7 @@ pub(crate) fn weighed(p: &[P3; 3], w: &[P3; 3]) -> [P3; 3] {
 
 impl Camera {
     /// Toward the camera, and the picture's right and up, in the model.
-    fn axes(&self) -> (P3, P3, P3) {
+    pub(crate) fn axes(&self) -> (P3, P3, P3) {
         let (a, e) = (self.azimuth.to_radians(), self.elevation.clamp(-89.0, 89.0).to_radians());
         let back = [e.cos() * a.cos(), e.cos() * a.sin(), e.sin()];
         let right = [-a.sin(), a.cos(), 0.0];

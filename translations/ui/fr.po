@@ -10173,6 +10173,48 @@ msgstr ""
 msgid "{}: in the 3D view its points go on a level face (the top of a floor, a column, a flat roof or a level): point at one"
 msgstr ""
 
+#: crates/ui-egui/src/triad.rs:131
+msgid "The work plane is on the level already"
+msgstr ""
+
+#: crates/ui-egui/src/triad.rs:108 crates/ui-egui/src/triad.rs:133
+msgid "Work plane back to the level"
+msgstr ""
+
+#: crates/ui-egui/src/triad.rs:107 crates/ui-egui/src/triad.rs:119
+msgid "Work plane square to the {} axis"
+msgstr ""
+
+#: crates/core/src/triad.rs:114
+msgctxt "side"
+msgid "Back"
+msgstr ""
+
+#: crates/core/src/triad.rs:112
+msgctxt "side"
+msgid "Bottom"
+msgstr ""
+
+#: crates/core/src/triad.rs:113
+msgctxt "side"
+msgid "Front"
+msgstr ""
+
+#: crates/core/src/triad.rs:115
+msgctxt "side"
+msgid "Left"
+msgstr ""
+
+#: crates/core/src/triad.rs:116
+msgctxt "side"
+msgid "Right"
+msgstr ""
+
+#: crates/core/src/triad.rs:111
+msgctxt "side"
+msgid "Top"
+msgstr ""
+
 #: crates/ui-egui/src/fillpatterns.rs:634
 #~ msgid "A pattern of the file replaces the one of its name in this list; else it is left out"
 #~ msgstr "Un motif du fichier remplace celui du même nom dans cette liste; sinon il est omis"

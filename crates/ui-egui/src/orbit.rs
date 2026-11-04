@@ -38,6 +38,7 @@ use crate::icons::Icon;
 use crate::lang::{t, tf};
 use crate::sketch3d::Plane;
 use crate::style::{canvas_pal, pal};
+use crate::triad::Ask;
 use crate::workplane::Picking;
 use crate::{BimApp, Status, Tool, icon_button};
 
@@ -116,6 +117,8 @@ pub struct Orbit {
     /// While the Wall tool places a point in the 3D view, the base offset its walls take there: the height of the face they
     /// stand on over their level, which `BimApp::wall_params` puts in.
     pub(crate) wall_base: Option<f64>,
+    /// Where the pointer was over the navigation triad in the last frame (`triad.rs`).
+    pub(crate) triad: crate::triad::Over,
 }
 
 /// A room as the 3D view draws it: its outline in plan (an unbounded one's square), swept from `bottom` to `top`.
@@ -143,6 +146,7 @@ impl Default for Orbit {
             rooms: None,
             plane: None,
             wall_base: None,
+            triad: Default::default(),
         }
     }
 }
@@ -361,6 +365,9 @@ impl BimApp {
     pub(crate) fn view3d(&mut self, ui: &mut Ui) {
         let (rect, response) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
         self.canvas.track(ui, &response);
+        // The navigation triad's widget lies over the view's, so a click or a drag on it is its own and the model behind never
+        // sees it; what it asks for is done below.
+        let asked = self.triad_input(ui, rect);
         let ppp = ui.ctx().pixels_per_point();
         let side = |v: f32| ((v * ppp).round().max(1.0) as u32).min(MAX_SIDE);
         let (w, h) = (side(rect.width()), side(rect.height()));
@@ -617,6 +624,10 @@ impl BimApp {
             if let (true, Some(before)) = (self.canvas.quick(), o.before.take()) {
                 cam = before;
             }
+        }
+        // A click on one of the triad's ends turns the camera to look from that side (or from the opposite one, if it does already).
+        if let Some(Ask::Turn(end)) = asked {
+            cam = bimcraft_core::triad::turned(cam, end);
         }
         o.camera = Some(cam);
         // The hand and the wheel have let the camera be: a camera view's position is written back then (below).
@@ -1043,6 +1054,13 @@ impl BimApp {
                 }
             }
         });
+        // The navigation triad, over the picture whichever painter made it; Alt and a click on it sets the work plane.
+        self.triad_draw(&p, rect, &cam);
+        match asked {
+            Some(Ask::Plane(end)) => self.triad_plane(end, cam.target),
+            Some(Ask::Level) => self.triad_level(),
+            _ => {}
+        }
         // A camera view remembers where the hand and the wheel left it: once they let it be, its eye and target are written
         // back, so leaving the view and returning comes back to the same place (and Properties shows them). A view drawn
         // beside the active one (a floating window) writes nothing: the hand is working in the active view.

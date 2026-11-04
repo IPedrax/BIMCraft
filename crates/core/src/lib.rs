@@ -102,6 +102,7 @@ pub mod styles;
 pub mod symbol_set;
 pub mod text;
 pub mod texture;
+pub mod triad;
 pub mod triangulation;
 pub mod units;
 pub mod view3d;
