@@ -44,12 +44,15 @@ pub struct Cut {
     /// pan or a zoom draws it once.
     #[cfg(test)]
     pub(crate) pictures: usize,
+    /// How many times the picture was put on screen in its colours: a new canvas colour does that, without drawing it again.
+    #[cfg(test)]
+    pub(crate) uploads: usize,
     image: Option<Arc<Image>>,
     texture: Option<TextureHandle>,
     shown: Option<Shot>,
     grid_background: bool,
     tints: Vec<(Id, Rgb)>,
-    ground: Color32,
+    pub(crate) ground: Color32,
     #[cfg(test)]
     overlay: Option<render::SectionOverlay>,
     mode: Mode,
@@ -182,6 +185,10 @@ impl Cut {
     }
 
     fn upload(&mut self, ctx: &Context, ground: Color32, grid_background: bool) {
+        #[cfg(test)]
+        {
+            self.uploads += 1;
+        }
         if let Some(image) = &self.image {
             // A hidden-line picture, so dark as the drawing over it is.
             let (rgba, _) = image.rgba.as_chunks::<4>();

@@ -214,14 +214,17 @@ fn a_new_canvas_colour_draws_a_sections_picture_again_on_it() {
         browse(&mut h, "Section 1");
         h.run();
         let drawn = |h: &Harness<BimApp>| h.state().cut.pictures;
+        let uploaded = |h: &Harness<BimApp>| h.state().cut.uploads;
         let still = drawn(&h);
-        // Two dark ones: the drawing stays dark, its ground is new.
+        // Two dark ones: the drawing stays dark, its ground is new. The picture is what it was: it is put on screen again in the
+        // new colours, its paper the canvas's, without being drawn again.
         for canvas in [[16, 24, 48], [48, 16, 16]] {
-            let before = drawn(&h);
+            let before = uploaded(&h);
             h.state_mut().canvas_colour = Some(canvas);
             h.run();
-            assert!(drawn(&h) > before, "rev {rev}: the picture of {canvas:?} is drawn again, its paper in the canvas's colour");
+            assert!(uploaded(&h) > before, "rev {rev}: the picture of {canvas:?} is put on screen again, its paper in the canvas's colour");
+            assert_eq!(h.state().cut.ground, crate::canvas::color(bimcraft_core::render::PAPER), "rev {rev}: on {canvas:?}");
         }
-        assert!(still >= 1, "rev {rev}");
+        assert!(still >= 1 && drawn(&h) == still, "rev {rev}: a colour is paint, not a picture drawn again");
     }
 }
