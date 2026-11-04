@@ -1763,6 +1763,24 @@ impl Gpu {
     }
 }
 
+/// How many pixels may differ between one picture drawn two ways, on a card of this kind. A real card must match to the byte. The
+/// software card on Windows' CI has differed by one pixel, in a different test from run to run, so it is allowed a few.
+#[cfg(test)]
+pub(crate) fn pixels_that_may_differ_on(kind: wgpu::DeviceType) -> usize {
+    if kind == wgpu::DeviceType::Cpu { 4 } else { 0 }
+}
+
+/// [`pixels_that_may_differ_on`] the card a test here gets, the one `headless` asks for.
+#[cfg(test)]
+pub(crate) fn pixels_that_may_differ() -> usize {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        flags: wgpu::InstanceFlags::empty(),
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
+    });
+    pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+        .map_or(0, |adapter| pixels_that_may_differ_on(adapter.get_info().device_type))
+}
+
 /// The machine's graphics card with no window to show on, for tests; none on a runner that has no adapter (those tests say so
 /// and pass).
 #[cfg(test)]
@@ -1799,6 +1817,14 @@ mod tests {
     use bimcraft_core::graphics::Look;
     use bimcraft_core::render::PAPER;
     use bimcraft_core::view3d::{AZIMUTH, ELEVATION, Scene};
+
+    #[test]
+    fn only_a_software_card_may_differ_by_a_few_pixels_and_a_real_one_must_match_to_the_byte() {
+        for real in [wgpu::DeviceType::DiscreteGpu, wgpu::DeviceType::IntegratedGpu, wgpu::DeviceType::VirtualGpu] {
+            assert_eq!(pixels_that_may_differ_on(real), 0, "{real:?}");
+        }
+        assert_eq!(pixels_that_may_differ_on(wgpu::DeviceType::Cpu), 4);
+    }
 
     /// DirectX 12's FXC compiler refuses a function that can end without returning a value, and a last `discard` is such an end:
     /// no pipeline, so a window on it has no card at all. Vulkan and Metal take it, so a card here never finds this one out.
@@ -1953,7 +1979,7 @@ mod tests {
                 gpu.draw(&mesh, &cam, &tints, PAPER).unwrap();
                 let placed = read(&gpu);
                 let differ = own.chunks(4).zip(placed.chunks(4)).filter(|(a, b)| a != b).count();
-                assert_eq!(differ, 0, "{name}, {} tints: {differ} pixels differ", tints.len());
+                assert!(differ <= pixels_that_may_differ(), "{name}, {} tints: {differ} pixels differ", tints.len());
             }
         }
     }
