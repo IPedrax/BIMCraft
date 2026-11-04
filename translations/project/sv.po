@@ -37,7 +37,7 @@ msgstr "Tegel 225 x 75"
 
 #: crates/core/src/commands.rs:3851
 msgid "Camera"
-msgstr ""
+msgstr "Kamera"
 
 #: crates/core/src/family.rs:2047
 msgid "Casement Window"
@@ -312,7 +312,7 @@ msgstr "Nivåförteckning"
 
 #: crates/core/src/fixtures.rs:247
 msgid "Load"
-msgstr ""
+msgstr "Belastning"
 
 #: crates/core/src/lines.rs:178
 msgid "Long Dash"
@@ -416,7 +416,7 @@ msgstr "Projekt"
 
 #: crates/core/src/render.rs:1839
 msgid "REDUNDANT"
-msgstr ""
+msgstr "ÖVERFLÖDIGT"
 
 #: crates/core/src/family.rs:104
 msgid "Rack"
@@ -561,7 +561,7 @@ msgstr "Tunna linjer"
 
 #: crates/core/src/fixtures.rs:326
 msgid "Three-Phase Outlet"
-msgstr ""
+msgstr "Trefasuttag"
 
 #: crates/core/src/fills.rs:422
 msgid "Tile 300"
@@ -589,7 +589,7 @@ msgstr "UPP"
 
 #: crates/core/src/schedule.rs:215
 msgid "Unbounded Height"
-msgstr ""
+msgstr "Obegränsad höjd"
 
 #: crates/core/src/commands.rs:8704
 msgid "Unnamed"
@@ -657,13 +657,13 @@ msgstr "Ja"
 
 #: crates/core/src/loads.rs:78
 msgid "bath"
-msgstr ""
+msgstr "bath"
 
 #: crates/core/src/loads.rs:78
 msgid "bwc"
-msgstr ""
+msgstr "bwc"
 
 #: crates/core/src/loads.rs:78
 msgid "wc"
-msgstr ""
+msgstr "wc"
 
