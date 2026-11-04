@@ -43,7 +43,7 @@ msgstr "Slagfönster"
 msgid "Ceiling Luminaire"
 msgstr "Takarmatur"
 
-#: crates/core/src/render.rs:1952
+#: crates/core/src/render.rs:2049
 msgid "Ceiling Plan"
 msgstr "Undertaksplan"
 
@@ -87,7 +87,7 @@ msgstr "Antal"
 msgid "Crosshatch"
 msgstr "Korsskraffering"
 
-#: crates/core/src/render.rs:2495
+#: crates/core/src/render.rs:2592
 msgid "DN"
 msgstr "NED"
 
@@ -103,7 +103,7 @@ msgstr "Streckpunkt"
 msgid "Data Outlet"
 msgstr "Datauttag"
 
-#: crates/core/src/commands.rs:8767
+#: crates/core/src/commands.rs:8768
 msgid "Dependent"
 msgstr "Beroende"
 
@@ -167,8 +167,8 @@ msgstr "Öster"
 msgid "Elbow 90"
 msgstr "Böj 90"
 
-#: crates/core/src/commands.rs:8551
-#: crates/core/src/commands.rs:10238
+#: crates/core/src/commands.rs:8552
+#: crates/core/src/commands.rs:10239
 msgid "Elevation"
 msgstr "Fasad"
 
@@ -285,7 +285,7 @@ msgstr "Benbredd"
 msgid "Length"
 msgstr "Längd"
 
-#: crates/core/src/commands.rs:4523
+#: crates/core/src/commands.rs:4524
 #: crates/core/src/model.rs:2604
 msgid "Level"
 msgstr "Nivå"
@@ -306,7 +306,7 @@ msgstr "Beteckning"
 msgid "Masking"
 msgstr "Maskering"
 
-#: crates/core/src/commands.rs:5560
+#: crates/core/src/commands.rs:5561
 msgid "Mass"
 msgstr "Volymmodell"
 
@@ -326,7 +326,7 @@ msgstr "Metall"
 msgid "Mounting Height"
 msgstr "Montagehöjd"
 
-#: crates/core/src/render.rs:1802
+#: crates/core/src/render.rs:1899
 msgid "NOT ENCLOSED"
 msgstr "EJ OMSLUTET"
 
@@ -370,7 +370,7 @@ msgstr "Linjer ovanför"
 msgid "PVC"
 msgstr "PVC"
 
-#: crates/core/src/commands.rs:6649
+#: crates/core/src/commands.rs:6650
 msgid "Pad"
 msgstr ""
 
@@ -418,7 +418,7 @@ msgstr "Sättsteg"
 msgid "Roof tiles"
 msgstr "Takpannor"
 
-#: crates/core/src/commands.rs:7314
+#: crates/core/src/commands.rs:7315
 msgid "Room"
 msgstr "Rum"
 
@@ -446,8 +446,8 @@ msgstr "Avjämningsmassa"
 msgid "Seat Height"
 msgstr "Sitthöjd"
 
-#: crates/core/src/commands.rs:8528
-#: crates/core/src/commands.rs:10237
+#: crates/core/src/commands.rs:8529
+#: crates/core/src/commands.rs:10238
 msgid "Section"
 msgstr "Sektion"
 
@@ -547,7 +547,7 @@ msgstr "Platta 300"
 msgid "Timber"
 msgstr "Trä"
 
-#: crates/core/src/commands.rs:6685
+#: crates/core/src/commands.rs:6686
 msgid "Toposurface"
 msgstr ""
 
@@ -563,11 +563,11 @@ msgstr "Plansteg"
 msgid "Type"
 msgstr "Typ"
 
-#: crates/core/src/render.rs:2495
+#: crates/core/src/render.rs:2592
 msgid "UP"
 msgstr "UPP"
 
-#: crates/core/src/commands.rs:8908
+#: crates/core/src/commands.rs:8909
 msgid "Unnamed"
 msgstr "Namnlös"
 

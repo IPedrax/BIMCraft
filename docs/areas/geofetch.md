@@ -108,8 +108,8 @@ JPEG as well as PNG (`tiles::decode`, the picker's map, still reads only PNG). B
 as the research found, their terms do not allow fetching them into a project.
 
 **Found on a real machine (2026-11-04), Flanders works** once asked with an empty style: zoom 18 over Ghent, 0.375 m a pixel, 4 x 3 tiles,
-0 % without imagery. The service takes **PNG only** (`image/jpeg is not a supported format`), about 92 KB a tile, and its matrices run 0 to 22
-(23 is unknown); zooms 17 to 19 are proven, 20 to 22 are tried by `imagery probe`. **A tile off a service's grid is an HTTP 400 naming
+0 % without imagery. The service takes **PNG only** (`image/jpeg is not a supported format`), about 92 KB a tile, and its matrices run 0 to 21
+(22 and 23 are unknown, so the table's `max_zoom: 21` is exactly its finest; a tile at 21 is 26 KB, mostly upsampled); zooms 17 to 21 are proven. **A tile off a service's grid is an HTTP 400 naming
 `TileOutOfRange`, not a 404** (Flanders: `Column 54613 is out of range, min: 66453`; PDOK: `outside the bounding box of the tile map`), so
 `ImageryTiles` takes that 400, and only that one, as a tile with no imagery (`no_tile_here`): a box at the edge of a service's grid gives a
 picture clear where there is no tile, not a failed fetch that falls through to a coarser source.
@@ -139,7 +139,7 @@ addresses and no others: a REST address by its text and its numbers (one to ten 
 address that can only be asked by query (Flanders) by its exact path and its whole query, pair by pair, in order, each value as
 written or a number. `imagery warp` in the example does the whole of it for a place and writes the picture, the picture with a 100 m
 grid, a world file (`world_file` gives its six numbers; it has no CRS, so a note says which) and a note of the source and its terms.
-The `fetch_imagery` command, the planar texture and its drawing in the 3D view (processor and card) are built too ([terrain](terrain.md)). The Site tab's Aerial Imagery button runs it, says what it will ask for before it does (a line for each source: metres a pixel, tiles, about how many MB; `Plan::tiles`, `estimated_bytes`, `is_coarse`) and counts tiles while it runs (`ImageryTiles::progress`, two atomics, read through `GeoSource::imagery_progress`, which `Prefetched` hands on to the real fetcher). Not yet: the plans' underlay, the credit drawn in the views.
+The `fetch_imagery` command, the planar texture and its drawing in the 3D view (processor and card) are built too ([terrain](terrain.md)). The Site tab's Aerial Imagery button runs it, says what it will ask for before it does (a line for each source: metres a pixel, tiles, about how many MB; `Plan::tiles`, `estimated_bytes`, `is_coarse`) and counts tiles while it runs (`ImageryTiles::progress`, two atomics, read through `GeoSource::imagery_progress`, which `Prefetched` hands on to the real fetcher). The plans' underlay is built too ([terrain](terrain.md#the-photograph-in-plans)). Not yet: the credit drawn in the views.
 
 ## Not yet
 

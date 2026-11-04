@@ -564,6 +564,30 @@ fn a_source_that_was_passed_over_is_named_in_the_result_with_what_it_said() {
 }
 
 #[test]
+fn visibility_graphics_lists_aerial_imagery_with_the_model_categories_and_hides_the_photograph_under_the_plan() {
+    let mut h = ghent(Arc::new(Fake::new()));
+    press(&mut h, "Site");
+    press(&mut h, "Aerial Imagery");
+    fetch(&mut h);
+    until_fetched(&mut h);
+    press(&mut h, "Close");
+    let level = h.state().session.model.levels()[0].0;
+    let photographs = |h: &Harness<BimApp>| {
+        let d = bimcraft_core::render::plan(&h.state().session.model, level, 600, 600);
+        d.prims.iter().filter(|p| matches!(p, bimcraft_core::render::Prim::Image { .. })).count()
+    };
+    assert_eq!(photographs(&h), 1, "the photograph is under the plan once it is fetched");
+    // The view hides it by the category it lists with the model's.
+    press(&mut h, "View");
+    press(&mut h, "Visibility/Graphics");
+    type_into(&mut h, "Category name search:", "aerial");
+    pick(&mut h, Role::CheckBox, "Aerial Imagery");
+    press(&mut h, "OK");
+    assert_eq!(photographs(&h), 0, "the plan hides it now");
+    assert_eq!(count(&h, "toposurface"), 1, "and the terrain stays");
+}
+
+#[test]
 fn a_pad_is_drawn_by_clicks_and_cut_fill_and_place_on_terrain_work_on_what_is_selected() {
     let mut h = located(Arc::new(Fake::new()));
     // A tilted ground, plainly: the fake's, 1 m rise each 100 m east, 2 m each 100 m north, from 0 at the origin.

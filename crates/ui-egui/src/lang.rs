@@ -236,6 +236,7 @@ pub fn category(category: &str, several: bool) -> String {
         "link" => (msg!("category", "Linked Model"), msg!("category-plural", "Linked Models")),
         "pointcloud" => (msg!("category", "Point Cloud"), msg!("category-plural", "Point Clouds")),
         "cadimport" => (msg!("category", "CAD Import"), msg!("category-plural", "CAD Imports")),
+        "aerialimagery" => (msg!("category", "Aerial Imagery"), msg!("category-plural", "Aerial Imagery")),
         other => return other.to_string(),
     };
     tc(if several { "category-plural" } else { "category" }, if several { many } else { one }).to_string()

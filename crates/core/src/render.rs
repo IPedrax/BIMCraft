@@ -1446,6 +1446,102 @@ pub fn draw_at(m: &Model, level: impl Key, view: View, k: f32) -> Drawing {
     draw_plan(m, level, view, false, k, f64::from(k) * sheet::DENSITY / view.scale, false)
 }
 
+/// The smallest picture, pixels, that a plan's photograph is made on more than one thread, and the most threads it takes.
+const BAND_PIXELS: usize = 200_000;
+const MAX_BANDS: usize = 8;
+
+/// The aerial photograph a toposurface wears, under all the rest of a plan: for each toposurface the view shows whose material is
+/// a picture laid over the ground by where it is (a planar image texture, not turned), the part of it the window shows, one picture of
+/// the window's pixels made with the same lookup the 3D view uses (the mip level a pixel covers, blended between pixels), cut to the
+/// terrain's boundary, clear where the picture lets nothing through, and toned down as the view's "Aerial Imagery" says. It is
+/// nobody's (never picked or boxed), and all its work is bounded by the window whatever the zoom.
+fn aerial_imagery(d: &mut Drawing, m: &Model, look: &Look) {
+    use crate::texture::{Kind, Sampler};
+    let Some(paint) = look.imagery() else { return };
+    let (w, h, scale) = (d.view.width, d.view.height, d.view.scale);
+    if w == 0 || h == 0 || !scale.is_finite() || scale <= 0.0 {
+        return;
+    }
+    let opacity = 1.0 - f64::from(paint.transparency.min(100)) / 100.0;
+    let foot = 1.0 / scale;
+    for (&id, e) in &m.elements {
+        let Element::Toposurface(t) = e else { continue };
+        let Some(material) = m.materials.get(&t.material).filter(|_| look.shows(id)) else { continue };
+        let Some(texture) = material.texture.as_ref().filter(|x| x.kind == Kind::Image && x.planar && x.angle == 0.0) else { continue };
+        let Some(sampler) = Sampler::new(texture, material.color, &m.images) else { continue };
+        // The ground it covers: west and north at its offset, `size` across and down.
+        let (west, east, north, south) =
+            (texture.offset[0], texture.offset[0] + texture.size[0], texture.offset[1], texture.offset[1] - texture.size[1]);
+        let (corner, far) = (d.view.px(P2(west, north)), d.view.px(P2(east, south)));
+        if ![corner.0, corner.1, far.0, far.1].iter().all(|v| v.is_finite()) {
+            continue;
+        }
+        // Its pixels that the window has.
+        let (left, top) = (corner.0.max(0.0).floor() as i64, corner.1.max(0.0).floor() as i64);
+        let (right, bottom) = (far.0.min(w as f32).ceil() as i64, far.1.min(h as f32).ceil() as i64);
+        let (pw, ph) = ((right - left).max(0) as usize, (bottom - top).max(0) as usize);
+        if pw == 0 || ph == 0 {
+            continue;
+        }
+        // Where the terrain is, if it is not the whole rectangle: its boundary, in these pixels.
+        let ring: Vec<(f32, f32)> = t
+            .boundary
+            .iter()
+            .map(|q| {
+                let (x, y) = d.view.px(*q);
+                (x - left as f32, y - top as f32)
+            })
+            .collect();
+        let cut = (ring.len() >= 3)
+            .then(|| {
+                let mut mask = tiny_skia::Mask::new(pw as u32, ph as u32)?;
+                mask.fill_path(&path(&[ring.as_slice()], true)?, FillRule::Winding, true, Transform::identity());
+                Some(mask)
+            })
+            .flatten();
+        // A row at a time: its points are a pixel apart along x, and the picture's two rows they blend are found once. The rows are
+        // nobody's but their own, so a big window is made in bands, a thread to each.
+        let view = d.view;
+        let fill = |first: usize, rows: &mut [u8]| {
+            let mut line = vec![[0u8; 4]; pw];
+            for (i, out) in rows.chunks_exact_mut(pw * 4).enumerate() {
+                let r = first + i;
+                let P2(from, y) = view.mm((left as f32 + 0.5, (top + r as i64) as f32 + 0.5));
+                if !(south..=north).contains(&y) {
+                    continue;
+                }
+                sampler.row(from, foot, y, foot, &mut line);
+                for (c, (&[red, green, blue, there], px)) in line.iter().zip(out.chunks_exact_mut(4)).enumerate() {
+                    if !(west..=east).contains(&(from + c as f64 * foot)) {
+                        continue;
+                    }
+                    let kept = cut.as_ref().map_or(1.0, |m| f64::from(m.data().get(r * pw + c).copied().unwrap_or(0)) / 255.0);
+                    let alpha = (f64::from(there) * opacity * kept).round().clamp(0.0, 255.0) as u8;
+                    if alpha > 0 {
+                        let tone = |v: u8| if paint.halftone { v + (255 - v) / 2 } else { v };
+                        px.copy_from_slice(&[tone(red), tone(green), tone(blue), alpha]);
+                    }
+                }
+            }
+        };
+        let mut rgba = vec![0u8; pw * ph * 4];
+        let threads = if pw * ph >= BAND_PIXELS { std::thread::available_parallelism().map_or(1, |n| n.get()).min(MAX_BANDS) } else { 1 };
+        if threads <= 1 {
+            fill(0, &mut rgba);
+        } else {
+            let per = ph.div_ceil(threads);
+            std::thread::scope(|scope| {
+                for (n, rows) in rgba.chunks_mut(per * pw * 4).enumerate() {
+                    let fill = &fill;
+                    scope.spawn(move || fill(n * per, rows));
+                }
+            });
+        }
+        d.own(None);
+        d.push(Prim::Image { at: (left as f32, top as f32), width: pw as u32, height: ph as u32, rgba, ink: false });
+    }
+}
+
 /// The points of the scans a plan sees, from its cut plane down to its view depth, as Revit draws a point cloud in plan: from
 /// above, each a dot [`view3d::DOT`] pixels wide in its colour (or the view's), the highest at each pixel on top, no more than
 /// [`view3d::DRAWN`] of them among the scans. Each scan is one picture, no bigger than its dots and clear where it has none, so
@@ -1607,8 +1703,9 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         range.cut = m.elevation(level) + CEILING_CUT;
         range.top = range.top.max(range.cut);
     }
-    // The scans it sees, under all the rest; then its CAD drawings.
+    // The photograph under its terrain, under all the rest; then the scans it sees; then its CAD drawings.
     if !up {
+        aerial_imagery(&mut d, m, &look);
         scans(&mut d, m, &range, &look);
         cad_imports(&mut d, m, key, level, &look);
     }

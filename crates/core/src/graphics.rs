@@ -60,10 +60,17 @@ pub const ANNOTATION: [&str; 10] = ["dimension", "tag", "text", "line", "region"
 pub const SCANS: [&str; 1] = ["pointcloud"];
 /// The CAD imports, which views hide and override on a tab of their own too, as Revit's Imported Categories.
 pub const IMPORTED: [&str; 1] = ["cadimport"];
+/// The aerial photograph a plan draws under a toposurface that wears one: not an element, so a view hides it by this name, tones it
+/// down by its halftone and transparency, and nothing else of an override applies to it.
+pub const IMAGERY: [&str; 1] = ["aerialimagery"];
 
 /// Whether views draw elements of `category`.
 pub fn drawn(category: &str) -> bool {
-    MODEL.contains(&category) || ANNOTATION.contains(&category) || SCANS.contains(&category) || IMPORTED.contains(&category)
+    MODEL.contains(&category)
+        || ANNOTATION.contains(&category)
+        || SCANS.contains(&category)
+        || IMPORTED.contains(&category)
+        || IMAGERY.contains(&category)
 }
 
 /// How much of a mass a 3D view sees through, percent, unless its graphics say otherwise.
@@ -482,7 +489,7 @@ impl Graphics {
             if !drawn(c) {
                 return Err(format!(
                     "`{c}` isn't a category views draw; there are: {}",
-                    MODEL.iter().chain(&ANNOTATION).chain(&SCANS).chain(&IMPORTED).copied().collect::<Vec<_>>().join(", ")
+                    MODEL.iter().chain(&ANNOTATION).chain(&SCANS).chain(&IMPORTED).chain(&IMAGERY).copied().collect::<Vec<_>>().join(", ")
                 ));
             }
             o.check(&format!("category `{c}`"))?;
@@ -760,6 +767,16 @@ pub struct Look {
     style: VisualStyle,
     /// The section box a 3D view is cut to, its min and max corners, while it's on.
     section: Option<([f64; 3], [f64; 3])>,
+    /// How it draws the aerial photograph under a plan: hidden, and the halftone and transparency (percent) it tones it down by.
+    imagery: ImageryLook,
+}
+
+/// How a view draws the aerial photograph a plan has under its terrain.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ImageryLook {
+    pub hidden: bool,
+    pub halftone: bool,
+    pub transparency: u8,
 }
 
 /// `c` halfway to the paper.
@@ -811,7 +828,12 @@ impl Look {
     /// (a room's area) makes redraws slow.
     pub fn with(m: &Model, own: &Graphics) -> Look {
         let g = own.resolved(m);
-        let mut look = Look { style: g.style, layers: own.layers.clone(), ..Look::default() };
+        let imagery = g.categories.get(IMAGERY[0]).map_or_else(ImageryLook::default, |o| ImageryLook {
+            hidden: o.hidden,
+            halftone: o.halftone,
+            transparency: o.transparency.min(100),
+        });
+        let mut look = Look { style: g.style, layers: own.layers.clone(), imagery, ..Look::default() };
         // Nothing to look for: no graphics of its own, and nothing in the project phased or in an option.
         let linked = m.elements.keys().next_back().is_some_and(|id| crate::link::is_linked(*id));
         if own.draws_as_is() && !linked && !crate::phasing::any(m) && !m.elements.values().any(|e| matches!(e, Element::Mass(_))) {
@@ -878,6 +900,11 @@ impl Look {
     /// How the view draws surfaces in 3D.
     pub fn style(&self) -> VisualStyle {
         self.style
+    }
+
+    /// How the view draws the aerial photograph under a plan's terrain, or none if it hides it.
+    pub fn imagery(&self) -> Option<ImageryLook> {
+        (!self.imagery.hidden).then_some(self.imagery)
     }
 
     /// The layers of the CAD drawing `cad` the view hides.

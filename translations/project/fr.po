@@ -43,7 +43,7 @@ msgstr "Fenêtre à battant"
 msgid "Ceiling Luminaire"
 msgstr "Luminaire de plafond"
 
-#: crates/core/src/render.rs:1952
+#: crates/core/src/render.rs:2049
 msgid "Ceiling Plan"
 msgstr "Plan de plafond"
 
@@ -87,7 +87,7 @@ msgstr "Nombre"
 msgid "Crosshatch"
 msgstr "Hachures croisées"
 
-#: crates/core/src/render.rs:2495
+#: crates/core/src/render.rs:2592
 msgid "DN"
 msgstr "DESCEND"
 
@@ -103,7 +103,7 @@ msgstr "Tiret point"
 msgid "Data Outlet"
 msgstr "Prise de données"
 
-#: crates/core/src/commands.rs:8767
+#: crates/core/src/commands.rs:8768
 msgid "Dependent"
 msgstr "Dépendant"
 
@@ -167,8 +167,8 @@ msgstr "Est"
 msgid "Elbow 90"
 msgstr "Coude 90"
 
-#: crates/core/src/commands.rs:8551
-#: crates/core/src/commands.rs:10238
+#: crates/core/src/commands.rs:8552
+#: crates/core/src/commands.rs:10239
 msgid "Elevation"
 msgstr "Élévation"
 
@@ -285,7 +285,7 @@ msgstr "Largeur du pied"
 msgid "Length"
 msgstr "Longueur"
 
-#: crates/core/src/commands.rs:4523
+#: crates/core/src/commands.rs:4524
 #: crates/core/src/model.rs:2604
 msgid "Level"
 msgstr "Niveau"
@@ -306,7 +306,7 @@ msgstr "Repère"
 msgid "Masking"
 msgstr "Masque"
 
-#: crates/core/src/commands.rs:5560
+#: crates/core/src/commands.rs:5561
 msgid "Mass"
 msgstr "Volume"
 
@@ -326,7 +326,7 @@ msgstr "Métal"
 msgid "Mounting Height"
 msgstr "Hauteur de pose"
 
-#: crates/core/src/render.rs:1802
+#: crates/core/src/render.rs:1899
 msgid "NOT ENCLOSED"
 msgstr "NON DÉLIMITÉE"
 
@@ -370,7 +370,7 @@ msgstr "Lignes aériennes"
 msgid "PVC"
 msgstr "PVC"
 
-#: crates/core/src/commands.rs:6649
+#: crates/core/src/commands.rs:6650
 msgid "Pad"
 msgstr "Plate-forme"
 
@@ -418,7 +418,7 @@ msgstr "Contremarches"
 msgid "Roof tiles"
 msgstr "Tuiles"
 
-#: crates/core/src/commands.rs:7314
+#: crates/core/src/commands.rs:7315
 msgid "Room"
 msgstr "Pièce"
 
@@ -446,8 +446,8 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Hauteur assise"
 
-#: crates/core/src/commands.rs:8528
-#: crates/core/src/commands.rs:10237
+#: crates/core/src/commands.rs:8529
+#: crates/core/src/commands.rs:10238
 msgid "Section"
 msgstr "Coupe"
 
@@ -547,7 +547,7 @@ msgstr "Carrelage 300"
 msgid "Timber"
 msgstr "Bois"
 
-#: crates/core/src/commands.rs:6685
+#: crates/core/src/commands.rs:6686
 msgid "Toposurface"
 msgstr "Surface topographique"
 
@@ -563,11 +563,11 @@ msgstr "Giron"
 msgid "Type"
 msgstr "Type"
 
-#: crates/core/src/render.rs:2495
+#: crates/core/src/render.rs:2592
 msgid "UP"
 msgstr "MONTE"
 
-#: crates/core/src/commands.rs:8908
+#: crates/core/src/commands.rs:8909
 msgid "Unnamed"
 msgstr "Sans nom"
 

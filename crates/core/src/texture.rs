@@ -177,6 +177,17 @@ impl Level {
         }
     }
 
+    /// The bytes of pixel row `y` (held to the first and last), if it has any.
+    fn row(&self, y: i64) -> Option<&[u8]> {
+        let y = y.clamp(0, self.h.max(1) as i64 - 1) as usize;
+        self.rgb.get(y * self.w * 3..(y + 1) * self.w * 3)
+    }
+
+    /// Pixel column `x` of `w`, held to the first and last.
+    fn column(x: i64, w: usize) -> usize {
+        x.clamp(0, w.max(1) as i64 - 1) as usize
+    }
+
     /// The colour at a fraction `(fu, fv)` of the way across and down it, blended between the four pixels round it,
     /// wrapping at its edges, so a tile meets the next.
     fn bilinear(&self, fu: f64, fv: f64) -> [f64; 3] {
@@ -225,6 +236,9 @@ pub struct Picture {
     name: String,
     png: Arc<Vec<u8>>,
     levels: Arc<Vec<Level>>,
+    /// What its PNG lets through: a byte for each pixel of the finest level, 255 all there and 0 none, when any pixel is not all
+    /// there. The levels are over white (3D shows white where it lets through); a plan leaves it clear.
+    alpha: Option<Arc<Vec<u8>>>,
 }
 
 impl std::fmt::Debug for Picture {
@@ -253,7 +267,8 @@ impl TryFrom<PictureFile> for Picture {
     fn try_from(f: PictureFile) -> Result<Picture, String> {
         let bytes = unbase64(&f.png).ok_or("a picture's data isn't base64")?;
         let base = decode(&bytes).map_err(|e| format!("picture `{}`: {e}", f.name))?;
-        Ok(Picture { name: f.name, png: Arc::new(bytes), levels: Arc::new(chain(shrunk(base))) })
+        let alpha = (base.w.max(base.h) <= MAX_SIDE).then(|| clear_pixmap(&bytes)).flatten().map(|pm| alpha_plane(&pm));
+        Ok(Picture { name: f.name, png: Arc::new(bytes), levels: Arc::new(chain(shrunk(base))), alpha: alpha.map(Arc::new) })
     }
 }
 
@@ -273,11 +288,25 @@ impl Picture {
     /// A picture named `name` from the bytes of a PNG or a JPEG file; refused if it's neither, or too big to hold. It's
     /// kept as a PNG, at most [`MAX_SIDE`] px a side.
     pub fn import(name: &str, bytes: &[u8]) -> Result<Picture, String> {
-        let base = shrunk(decode(bytes)?);
-        let rgba: Vec<u8> = base.rgb.as_chunks::<3>().0.iter().flat_map(|p| [p[0], p[1], p[2], 255]).collect();
-        let size = tiny_skia::IntSize::from_wh(base.w as u32, base.h as u32).ok_or("it has no size")?;
-        let png = tiny_skia::Pixmap::from_vec(rgba, size).ok_or("it has no size")?.encode_png().map_err(|e| e.to_string())?;
-        Ok(Picture { name: name.chars().take(MAX_TEXT).collect(), png: Arc::new(png), levels: Arc::new(chain(base)) })
+        let decoded = decode(bytes)?;
+        // What a PNG lets through is kept (a plan leaves it clear), when the picture needs no shrinking: a shrunk one is over white.
+        let clear = (decoded.w.max(decoded.h) <= MAX_SIDE).then(|| clear_pixmap(bytes)).flatten();
+        let base = shrunk(decoded);
+        let (png, alpha) = match clear {
+            Some(pixmap) => (pixmap.encode_png().map_err(|e| e.to_string())?, Some(Arc::new(alpha_plane(&pixmap)))),
+            None => {
+                let rgba: Vec<u8> = base.rgb.as_chunks::<3>().0.iter().flat_map(|p| [p[0], p[1], p[2], 255]).collect();
+                let size = tiny_skia::IntSize::from_wh(base.w as u32, base.h as u32).ok_or("it has no size")?;
+                (tiny_skia::Pixmap::from_vec(rgba, size).ok_or("it has no size")?.encode_png().map_err(|e| e.to_string())?, None)
+            }
+        };
+        Ok(Picture { name: name.chars().take(MAX_TEXT).collect(), png: Arc::new(png), levels: Arc::new(chain(base)), alpha })
+    }
+
+    /// What the picture lets through, a byte for each pixel of its finest level (255 all there, 0 none), row after row; none if it lets
+    /// nothing through.
+    pub fn alpha(&self) -> Option<&[u8]> {
+        self.alpha.as_deref().map(Vec::as_slice)
     }
 
     pub fn name(&self) -> &str {
@@ -300,6 +329,20 @@ impl Picture {
         let hash = self.png.iter().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(*b)).wrapping_mul(0x0100_0000_01b3));
         format!("img-{hash:016x}")
     }
+}
+
+/// The pixels of `bytes`, a PNG `decode` has already passed, if some of them let the paper through.
+fn clear_pixmap(bytes: &[u8]) -> Option<tiny_skia::Pixmap> {
+    if !bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+        return None;
+    }
+    let pixmap = tiny_skia::Pixmap::decode_png(bytes).ok()?;
+    pixmap.data().as_chunks::<4>().0.iter().any(|p| p[3] != 255).then_some(pixmap)
+}
+
+/// A byte for each pixel of `pixmap`: how much of it is there.
+fn alpha_plane(pixmap: &tiny_skia::Pixmap) -> Vec<u8> {
+    pixmap.data().as_chunks::<4>().0.iter().map(|p| p[3]).collect()
 }
 
 /// `level` halved down until neither side is longer than [`MAX_SIDE`].
@@ -568,6 +611,8 @@ pub fn level_for(texel: f64, foot: f64, count: usize) -> usize {
 #[derive(Clone)]
 pub struct Sampler {
     levels: Arc<Vec<Level>>,
+    /// What the picture lets through, if it does (see [`Picture::alpha`]).
+    alpha: Option<Arc<Vec<u8>>>,
     size: [f64; 2],
     turn: (f64, f64),
     offset: [f64; 2],
@@ -579,15 +624,19 @@ pub struct Sampler {
 impl Sampler {
     /// `texture` over a material of `color`, of a picture `images` holds; none for one that can't be: a picture it hasn't.
     pub fn new(texture: &Texture, color: [u8; 3], images: &BTreeMap<String, Picture>) -> Option<Sampler> {
-        let levels = match texture.kind {
-            Kind::Image => Arc::clone(&images.get(&texture.image)?.levels),
-            kind => pattern(kind, color),
+        let (levels, alpha) = match texture.kind {
+            Kind::Image => {
+                let picture = images.get(&texture.image)?;
+                (Arc::clone(&picture.levels), picture.alpha.clone())
+            }
+            kind => (pattern(kind, color), None),
         };
         let base = levels.first()?;
         let texel = (texture.size[0] / base.w as f64).max(texture.size[1] / base.h as f64);
         let (s, c) = texture.angle.to_radians().sin_cos();
         (texel.is_finite() && texel > 0.0).then_some(Sampler {
             levels,
+            alpha,
             size: texture.size,
             turn: (s, c),
             offset: texture.offset,
@@ -618,6 +667,101 @@ impl Sampler {
         };
         let [r, g, b] = l.bilinear(fu, fv);
         Rgb(r.clamp(0.0, 255.0) as u8, g.clamp(0.0, 255.0) as u8, b.clamp(0.0, 255.0) as u8)
+    }
+
+    /// How much of the picture is there at `(u, v)` mm over its face, 0 to 1: 1 where it lets nothing through, and everywhere for a
+    /// picture that never does; blended between the four pixels round the point, held at the edge as the colours are.
+    pub fn coverage(&self, u: f64, v: f64) -> f64 {
+        let (Some(alpha), Some(base)) = (&self.alpha, self.levels.first()) else { return 1.0 };
+        let (x, y) = (u - self.offset[0], v - self.offset[1]);
+        let (x, y) = (x * self.turn.1 + y * self.turn.0, y * self.turn.1 - x * self.turn.0);
+        let (fu, fv) = (x / self.size[0], -y / self.size[1]);
+        let (w, h) = (base.w.max(1) as i64, base.h.max(1) as i64);
+        let (fu, fv) = if self.planar {
+            let (half_u, half_v) = (0.5 / w as f64, 0.5 / h as f64);
+            (fu.clamp(half_u, 1.0 - half_u), fv.clamp(half_v, 1.0 - half_v))
+        } else {
+            (fu - fu.floor(), fv - fv.floor())
+        };
+        let (px, py) = (fu * w as f64 - 0.5, fv * h as f64 - 0.5);
+        let (x0, y0) = (px.floor(), py.floor());
+        let (tx, ty) = (px - x0, py - y0);
+        let (x0, y0) = (x0 as i64, y0 as i64);
+        let at = |x: i64, y: i64| {
+            let (x, y) = (
+                if self.planar { x.clamp(0, w - 1) } else { x.rem_euclid(w) },
+                if self.planar { y.clamp(0, h - 1) } else { y.rem_euclid(h) },
+            );
+            alpha.get((y * w + x) as usize).map_or(1.0, |a| f64::from(*a) / 255.0)
+        };
+        let top = at(x0, y0) * (1.0 - tx) + at(x0 + 1, y0) * tx;
+        let bottom = at(x0, y0 + 1) * (1.0 - tx) + at(x0 + 1, y0 + 1) * tx;
+        (top * (1.0 - ty) + bottom * ty).clamp(0.0, 1.0)
+    }
+
+    /// A row of points `dx` mm apart along x, the first at `(x, y)`, for pixels that cover `foot` mm: `out[k]` is the colour there and how
+    /// much of it is there, `[r, g, b, coverage]` with coverage 0 to 255. Each is what [`at`](Self::at) and [`coverage`](Self::coverage)
+    /// give for its point; a picture laid over the ground and not turned (what a plan draws under its terrain) is done a row at a time
+    /// (the level and the two rows of the picture it blends are found once), the rest point by point.
+    pub fn row(&self, x: f64, dx: f64, y: f64, foot: f64, out: &mut [[u8; 4]]) {
+        if !self.planar || self.turn != (0.0, 1.0) {
+            for (k, px) in out.iter_mut().enumerate() {
+                let p = x + k as f64 * dx;
+                let Rgb(r, g, b) = self.at(p, y, foot);
+                *px = [r, g, b, (self.coverage(p, y) * 255.0).round().clamp(0.0, 255.0) as u8];
+            }
+            return;
+        }
+        let Some(level) = self.levels.get(self.level_for(foot)) else {
+            out.fill([128, 128, 128, 255]);
+            return;
+        };
+        // Down the picture: the two pixel rows blended, and how far between them.
+        let across = |fraction: f64, n: usize| {
+            let half = 0.5 / n.max(1) as f64;
+            let held = fraction.clamp(half, 1.0 - half) * n as f64 - 0.5;
+            let low = held.floor();
+            (low as i64, held - low)
+        };
+        // Blended with eighths of 1/256, in whole numbers: the same as the point-by-point lookup to a unit of colour.
+        let weight = |t: f64| (t * 256.0).round().clamp(0.0, 256.0) as u32;
+        let down = -(y - self.offset[1]) / self.size[1];
+        let (row_a, ty) = across(down, level.h);
+        let wy = weight(ty);
+        let (rows_a, rows_b) = (level.row(row_a).unwrap_or_default(), level.row(row_a + 1).unwrap_or_default());
+        // What it lets through is blended on the finest level, whatever level the colours come from.
+        let alpha = self.alpha.as_deref().zip(self.levels.first()).map(|(plane, base)| {
+            let (low, ty) = across(down, base.h);
+            let last = base.h.max(1) as i64 - 1;
+            let row = |r: i64| plane.get(r.clamp(0, last) as usize * base.w..(r.clamp(0, last) as usize + 1) * base.w).unwrap_or_default();
+            (row(low), row(low + 1), base.w, weight(ty))
+        });
+        for (k, px) in out.iter_mut().enumerate() {
+            let fu = (x + k as f64 * dx - self.offset[0]) / self.size[0];
+            let (x0, tx) = across(fu, level.w);
+            let (wx, left, right) = (weight(tx), Level::column(x0, level.w) * 3, Level::column(x0 + 1, level.w) * 3);
+            let blend = |a: u8, b: u8, c: u8, d: u8| {
+                let top = u32::from(a) * (256 - wx) + u32::from(b) * wx;
+                let bottom = u32::from(c) * (256 - wx) + u32::from(d) * wx;
+                ((top * (256 - wy) + bottom * wy + 32768) >> 16) as u8
+            };
+            let mut pixel = [128, 128, 128, 255];
+            if let (Some([a0, a1, a2]), Some([b0, b1, b2]), Some([c0, c1, c2]), Some([d0, d1, d2])) =
+                (rows_a.get(left..left + 3), rows_a.get(right..right + 3), rows_b.get(left..left + 3), rows_b.get(right..right + 3))
+            {
+                pixel = [blend(*a0, *b0, *c0, *d0), blend(*a1, *b1, *c1, *d1), blend(*a2, *b2, *c2, *d2), 255];
+            }
+            if let Some((above, below, w, wy)) = &alpha {
+                let (x0, tx) = across(fu, *w);
+                let (wx, left, right) = (weight(tx), Level::column(x0, *w), Level::column(x0 + 1, *w));
+                if let (Some(a), Some(b), Some(c), Some(d)) = (above.get(left), above.get(right), below.get(left), below.get(right)) {
+                    let top = u32::from(*a) * (256 - wx) + u32::from(*b) * wx;
+                    let bottom = u32::from(*c) * (256 - wx) + u32::from(*d) * wx;
+                    pixel[3] = ((top * (256 - wy) + bottom * wy + 32768) >> 16) as u8;
+                }
+            }
+            *px = pixel;
+        }
     }
 
     /// The level of the mip chain a pixel that covers `foot` mm of the face looks up in.
@@ -679,6 +823,138 @@ mod tests {
         assert_eq!(Picture::import("spot", &pixmap(spot)).unwrap().flat(), None);
         let halves = pixmap((0..32 * 32).flat_map(|i| if i % 32 < 16 { [255, 0, 0, 255] } else { [0, 0, 255, 255] }).collect());
         assert_eq!(Picture::import("halves", &halves).unwrap().flat(), None);
+    }
+
+    /// A picture of 4 by 2 pixels laid over the 4 m by 2 m ground whose west and north corner is at x = 0, y = 2000: opaque red in the
+    /// west half, and nothing at all in the east half.
+    fn half_clear() -> (Picture, Sampler) {
+        let rgba: Vec<u8> = (0..8).flat_map(|k| if k % 4 < 2 { [255, 0, 0, 255] } else { [0, 0, 0, 0] }).collect();
+        let png = tiny_skia::Pixmap::from_vec(rgba, tiny_skia::IntSize::from_wh(4, 2).unwrap()).unwrap().encode_png().unwrap();
+        let picture = Picture::import("half clear", &png).unwrap();
+        let id = picture.id();
+        let images = BTreeMap::from([(id.clone(), picture.clone())]);
+        let texture = Texture { kind: Kind::Image, size: [4000.0, 2000.0], angle: 0.0, offset: [0.0, 2000.0], image: id, planar: true };
+        (picture, Sampler::new(&texture, [128, 128, 128], &images).unwrap())
+    }
+
+    #[test]
+    fn a_picture_keeps_what_its_png_lets_through_so_a_plan_can_leave_it_clear_and_3d_still_shows_white() {
+        let (picture, over) = half_clear();
+        assert_eq!(picture.alpha().map(<[u8]>::len), Some(8), "a plane of alpha, a byte for a pixel");
+        // The ground it covers: 1 = all there, 0 = none, half way across the edge between the two.
+        let at = |x: f64| over.coverage(x, 1000.0);
+        assert_eq!((at(500.0), at(3500.0)), (1.0, 0.0));
+        assert!((at(2000.0) - 0.5).abs() < 1e-9, "half way, blended: {}", at(2000.0));
+        // Beyond its edge the edge goes on (held, as the colours are).
+        assert_eq!((over.coverage(-5000.0, 1000.0), over.coverage(9000.0, 1000.0)), (1.0, 0.0));
+        // Everything else reads it as it always did, white where it lets the paper through.
+        assert_eq!(over.at(3500.0, 1000.0, 10.0), Rgb(255, 255, 255));
+        assert_eq!(over.at(500.0, 1000.0, 10.0), Rgb(255, 0, 0));
+        // It goes into a project file and comes out whole: the PNG is kept with its alpha, and the plane is read back from it.
+        let text = serde_json::to_string(&picture).unwrap();
+        let back: Picture = serde_json::from_str(&text).unwrap();
+        assert_eq!((back.alpha(), back == picture), (picture.alpha(), true));
+        assert_eq!(back.id(), picture.id());
+    }
+
+    /// A picture of 16 by 12 pixels whose colours change everywhere and whose east third lets some through.
+    fn busy() -> Picture {
+        let rgba: Vec<u8> = (0..16 * 12)
+            .flat_map(|k| {
+                let (x, y) = (k % 16, k / 16);
+                let a = if x >= 11 { 255 - (y * 20) as u8 } else { 255 };
+                // Premultiplied: a colour no brighter than its alpha.
+                let c = |v: u32| (v * u32::from(a) / 255) as u8;
+                [c(x * 16), c(y * 20), c((x + y) * 8), a]
+            })
+            .collect();
+        let png = tiny_skia::Pixmap::from_vec(rgba, tiny_skia::IntSize::from_wh(16, 12).unwrap()).unwrap().encode_png().unwrap();
+        Picture::import("busy", &png).unwrap()
+    }
+
+    fn over(picture: &Picture, angle: f64, planar: bool) -> Sampler {
+        let images = BTreeMap::from([(picture.id(), picture.clone())]);
+        let texture =
+            Texture { kind: Kind::Image, size: [16000.0, 12000.0], angle, offset: [2000.0, 15000.0], image: picture.id(), planar };
+        Sampler::new(&texture, [128, 128, 128], &images).unwrap()
+    }
+
+    #[test]
+    fn a_row_is_what_looking_up_each_of_its_points_gives_at_every_zoom_and_beyond_the_edges() {
+        let picture = busy();
+        for (what, sampler) in [
+            ("laid over the ground", over(&picture, 0.0, true)),
+            ("turned", over(&picture, 30.0, true)),
+            ("across a face", over(&picture, 0.0, false)),
+        ] {
+            // Pixels of 5 mm (finer than the picture's), 1 m (about its own), and 40 m (many to a pixel of the coarser levels).
+            for foot in [5.0, 1000.0, 3000.0, 40_000.0] {
+                // Rows well inside the picture, along its edge, and beyond it; from before its west edge to after its east one.
+                for y in [14_000.0, 9_000.0, 3_500.0, 3_000.0, 15_000.0, -2_000.0, 40_000.0] {
+                    let (x0, dx) = (-3000.0, 137.0);
+                    let mut row = vec![[0u8; 4]; 160];
+                    sampler.row(x0, dx, y, foot, &mut row);
+                    for (k, got) in row.iter().enumerate() {
+                        let x = x0 + k as f64 * dx;
+                        let Rgb(r, g, b) = sampler.at(x, y, foot);
+                        let want = [r, g, b, (sampler.coverage(x, y) * 255.0).round() as u8];
+                        assert!(
+                            got.iter().zip(want).all(|(a, b)| a.abs_diff(b) <= 1),
+                            "{what}, a pixel of {foot} mm, row {y}, point {k} at x = {x}: {got:?} against {want:?}"
+                        );
+                    }
+                }
+            }
+        }
+        // A row of nothing, and a row of no pixels, are no trouble.
+        over(&picture, 0.0, true).row(0.0, 1.0, 0.0, 1.0, &mut []);
+    }
+
+    #[test]
+    fn a_row_of_hostile_numbers_is_filled_and_never_panics() {
+        let picture = busy();
+        let sampler = over(&picture, 0.0, true);
+        for (x, dx, y, foot) in [
+            (f64::NAN, 1.0, 0.0, 1.0),
+            (0.0, f64::NAN, 0.0, 1.0),
+            (0.0, f64::INFINITY, f64::NEG_INFINITY, 1.0),
+            (1e300, 1e300, 1e300, 1e300),
+            (-1e300, -1e300, 0.0, 0.0),
+            (0.0, 1.0, 0.0, f64::NAN),
+            (0.0, 0.0, 0.0, -1.0),
+        ] {
+            let mut row = vec![[7u8; 4]; 33];
+            sampler.row(x, dx, y, foot, &mut row);
+        }
+    }
+
+    #[test]
+    fn a_picture_that_lets_nothing_through_has_no_alpha_and_is_kept_as_it_always_was() {
+        for (what, picture) in [
+            ("an opaque png", Picture::import("opaque", &png(8, 4, [10, 20, 30, 255])).unwrap()),
+            ("a jpeg", Picture::import("jpeg", JPEG).unwrap()),
+        ] {
+            assert!(picture.alpha().is_none(), "{what}");
+            let images = BTreeMap::from([(picture.id(), picture.clone())]);
+            let texture =
+                Texture { kind: Kind::Image, size: [1000.0, 1000.0], angle: 0.0, offset: [0.0, 1000.0], image: picture.id(), planar: true };
+            let over = Sampler::new(&texture, [0, 0, 0], &images).unwrap();
+            assert_eq!(over.coverage(500.0, 500.0), 1.0, "{what}: all there");
+        }
+        // The bytes kept for an opaque png are what they were before pictures kept alpha: the same png re-encoded opaque, so ids stay.
+        let opaque = Picture::import("opaque", &png(8, 4, [10, 20, 30, 255])).unwrap();
+        assert_eq!(*opaque.png, png(8, 4, [10, 20, 30, 255]));
+    }
+
+    #[test]
+    fn a_picture_that_has_to_be_shrunk_loses_its_alpha_as_it_always_did() {
+        // Twice as wide as a picture may be, with a clear end: it is halved, over white, and the plane would not fit it.
+        let wide = MAX_SIDE as u32 * 2;
+        let rgba: Vec<u8> = (0..wide * 2).flat_map(|k| if k % wide < wide / 2 { [9, 9, 9, 255] } else { [0, 0, 0, 0] }).collect();
+        let png = tiny_skia::Pixmap::from_vec(rgba, tiny_skia::IntSize::from_wh(wide, 2).unwrap()).unwrap().encode_png().unwrap();
+        let picture = Picture::import("wide", &png).unwrap();
+        assert_eq!(picture.size().0, MAX_SIDE);
+        assert!(picture.alpha().is_none());
     }
 
     /// A picture of 2 by 2 pixels: red and blue above, green and yellow under.

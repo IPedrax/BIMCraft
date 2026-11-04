@@ -16,6 +16,9 @@ placed with no scale takes the view's. The units name the scales and list the on
 1" = 200'-0"), and 1 : n for any other. The Scale menu, Properties, templates and sheets' titles name them so, and a scale is typed
 as n, 1 : n, or two lengths (`1/4" = 1'-0"`).
 
+A plan draws the aerial photograph of its terrain first of all, under the scans and the CAD imports, and a view hides it or tones it down by
+its category `aerialimagery` (Aerial Imagery in Visibility/Graphics; hidden, halftone, transparency: [terrain](terrain.md#the-photograph-in-plans)).
+
 The view control bar's High Contrast Point Clouds (`footer.rs`, wherever the project or a link holds a scan, in a plan, a section, an elevation
 and the 3D view) fills the view's `pointcloud` category with one colour, the user's, in one `graphics` command; how it behaves is in
 [point clouds](point-clouds.md).

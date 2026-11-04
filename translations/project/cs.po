@@ -43,7 +43,7 @@ msgstr "Křídlové okno"
 msgid "Ceiling Luminaire"
 msgstr "Stropní svítidlo"
 
-#: crates/core/src/render.rs:1952
+#: crates/core/src/render.rs:2049
 msgid "Ceiling Plan"
 msgstr "Půdorys podhledu"
 
@@ -87,7 +87,7 @@ msgstr "Počet"
 msgid "Crosshatch"
 msgstr "Křížové šrafování"
 
-#: crates/core/src/render.rs:2495
+#: crates/core/src/render.rs:2592
 msgid "DN"
 msgstr "DOLŮ"
 
@@ -103,7 +103,7 @@ msgstr "Čerchovaná"
 msgid "Data Outlet"
 msgstr "Datová zásuvka"
 
-#: crates/core/src/commands.rs:8767
+#: crates/core/src/commands.rs:8768
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -167,8 +167,8 @@ msgstr "Východ"
 msgid "Elbow 90"
 msgstr "Koleno 90°"
 
-#: crates/core/src/commands.rs:8551
-#: crates/core/src/commands.rs:10238
+#: crates/core/src/commands.rs:8552
+#: crates/core/src/commands.rs:10239
 msgid "Elevation"
 msgstr "Pohled"
 
@@ -285,7 +285,7 @@ msgstr "Šířka nohy"
 msgid "Length"
 msgstr "Délka"
 
-#: crates/core/src/commands.rs:4523
+#: crates/core/src/commands.rs:4524
 #: crates/core/src/model.rs:2604
 msgid "Level"
 msgstr "Podlaží"
@@ -306,7 +306,7 @@ msgstr "Označení"
 msgid "Masking"
 msgstr "Maskovací"
 
-#: crates/core/src/commands.rs:5560
+#: crates/core/src/commands.rs:5561
 msgid "Mass"
 msgstr "Objem"
 
@@ -326,7 +326,7 @@ msgstr "Kov"
 msgid "Mounting Height"
 msgstr "Montážní výška"
 
-#: crates/core/src/render.rs:1802
+#: crates/core/src/render.rs:1899
 msgid "NOT ENCLOSED"
 msgstr "NEUZAVŘENÝ OBVOD"
 
@@ -370,7 +370,7 @@ msgstr "Promítnuté horní obrysy"
 msgid "PVC"
 msgstr "PVC"
 
-#: crates/core/src/commands.rs:6649
+#: crates/core/src/commands.rs:6650
 msgid "Pad"
 msgstr ""
 
@@ -418,7 +418,7 @@ msgstr "Počet stupňů"
 msgid "Roof tiles"
 msgstr "Střešní tašky"
 
-#: crates/core/src/commands.rs:7314
+#: crates/core/src/commands.rs:7315
 msgid "Room"
 msgstr "Místnost"
 
@@ -446,8 +446,8 @@ msgstr "Potěr"
 msgid "Seat Height"
 msgstr "Výška sedáku"
 
-#: crates/core/src/commands.rs:8528
-#: crates/core/src/commands.rs:10237
+#: crates/core/src/commands.rs:8529
+#: crates/core/src/commands.rs:10238
 msgid "Section"
 msgstr "Řez"
 
@@ -547,7 +547,7 @@ msgstr "Dlažba 300"
 msgid "Timber"
 msgstr "Dřevo"
 
-#: crates/core/src/commands.rs:6685
+#: crates/core/src/commands.rs:6686
 msgid "Toposurface"
 msgstr ""
 
@@ -563,11 +563,11 @@ msgstr "Šířka stupně"
 msgid "Type"
 msgstr "Typ"
 
-#: crates/core/src/render.rs:2495
+#: crates/core/src/render.rs:2592
 msgid "UP"
 msgstr "NAHORU"
 
-#: crates/core/src/commands.rs:8908
+#: crates/core/src/commands.rs:8909
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 

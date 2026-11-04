@@ -3015,6 +3015,7 @@ fn drawn_category(c: &str, given: &str) -> Result<String, String> {
                     .chain(&graphics::ANNOTATION)
                     .chain(&graphics::SCANS)
                     .chain(&graphics::IMPORTED)
+                    .chain(&graphics::IMAGERY)
                     .copied()
                     .collect::<Vec<_>>()
                     .join(", ")

@@ -73,9 +73,29 @@ named `Aerial imagery (<id>)` that the toposurface wears. The texture is `planar
 it covers and `offset` its west and north corner, so the picture lies on the ground whatever the slope and its edge goes on beyond it
 (the processor looks it up by east and north in `view3d::GROUND`, the card in `gpu.wgsl` by its spare word). Fetched again, from the
 same source or another, it replaces the picture and the material, and one undo takes it back. The source, its credit and where its
-terms are stay with the toposurface as the parameters Imagery Source, Imagery Credit and Imagery Terms. A picture of a project has no
-alpha, so a place without imagery shows white, not the terrain's colour. The Site tab's Aerial Imagery button runs it ([the desktop](desktop.md#the-site-tab)). Not yet: the plans' underlay, the credit
-drawn in the views.
+terms are stay with the toposurface as the parameters Imagery Source, Imagery Credit and Imagery Terms. The 3D view lays the picture over white where it has
+no imagery (its levels are over white, as every picture's are); **a plan leaves it clear** (below). The Site tab's Aerial Imagery button runs it ([the desktop](desktop.md#the-site-tab)). Not yet: the credit drawn in the views, a nudge, and imagery
+in the 3D view that lets the terrain's colour through where there is none.
+
+### The photograph in plans
+
+Every floor plan that shows the terrain draws the photograph under everything else (before the scans and the CAD imports), as
+`render::aerial_imagery`: for each toposurface the view shows whose material wears a planar image texture, not turned (`angle` 0), one
+`Prim::Image` of the window's own pixels, north up, made with the lookup the 3D view uses (`texture::Sampler`: the mip level a pixel
+covers, blended between pixels; a row at a time, `Sampler::row`, which the tests hold equal to the point-by-point lookup). Only the part of
+the picture the window shows is made, so the work and the memory are bounded by the window whatever the zoom (about 40 ms a
+window of 1.5 megapixels, a plan being rebuilt on each step of a pan or a zoom; the timing is the ignored test
+`a_window_full_of_photograph_is_drawn_in_a_moment`). It is cut to the terrain's boundary (an L-shaped terrain leaves its notch clear)
+and **clear where the picture lets nothing through**: `Picture` keeps what a PNG lets through (`Picture::alpha`, a plane of one byte for
+each pixel; `Sampler::coverage`) when it needs no shrinking, so a place with no imagery is paper in the plan, the PNG, the SVG and, masked,
+the PDF; the 3D view reads the same picture over white as before, and a file written before or after is the same PNG it always was (no
+`FORMAT` bump). It is nobody's (`owner` none): never picked, boxed, or snapped to. A plan that looks up (a ceiling plan) has none.
+
+A view hides it, or tones it down, by its own category **Aerial Imagery** (`aerialimagery`, in Visibility/Graphics beside the model's
+categories; `graphics::IMAGERY`, `Look::imagery`): hidden, or by **halftone** (half way to the paper) and **transparency** (that percent
+let through), so a plan can have it faint under its linework, or none on the upper floors; a view template that controls Categories
+controls it too. Nothing else of an override applies to it. A dark canvas dims a plan's pictures, the photograph with them; a sheet and a
+PDF carry it as it is.
 
 ## Not yet
 
