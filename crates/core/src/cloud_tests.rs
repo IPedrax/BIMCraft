@@ -527,10 +527,12 @@ fn a_snap_on_a_big_scan_looks_only_near_the_cursor() {
     assert!(each <= 2_000, "{each} points looked at for a snap");
 }
 
-/// A project of `n` two-point scans, as it is written to a file.
-fn project_file(n: usize) -> Value {
+/// A project of `n` two-point scans, as it is written to a file. Each caller names itself, so the
+/// parallel tests' `dot.xyz` files never share a folder: one test writing would truncate the file
+/// while another read it ("it holds no points").
+fn project_file(test: &str, n: usize) -> Value {
     let mut s = Session::new();
-    let path = scan("file", "dot.xyz", "0 0 0\n1 0 0\n");
+    let path = scan(test, "dot.xyz", "0 0 0\n1 0 0\n");
     for i in 0..n {
         run(&mut s, "point_cloud", json!({"path": path, "name": format!("dot {i}")}));
     }
@@ -540,7 +542,7 @@ fn project_file(n: usize) -> Value {
 #[test]
 fn a_file_of_format_4_that_holds_scans_opens_as_this_builds_format() {
     // Builds before 5 saved scans as format 4 (PRs 61 to 72); those files open, and are this build's format once read.
-    let mut file = project_file(2);
+    let mut file = project_file("format4", 2);
     assert_eq!(file["format"], crate::model::FORMAT);
     file["format"] = json!(4);
     let (m, left_out) = crate::model::Model::read(&file.to_string()).unwrap();
@@ -551,11 +553,11 @@ fn a_file_of_format_4_that_holds_scans_opens_as_this_builds_format() {
 fn a_project_file_with_too_many_scans_is_refused_before_the_extra_one_is_unpacked() {
     use crate::model::Model;
     for n in [0, 1, 3, MAX_CLOUDS] {
-        let (m, left_out) = Model::read(&project_file(n).to_string()).unwrap();
+        let (m, left_out) = Model::read(&project_file("cap", n).to_string()).unwrap();
         assert_eq!((m.clouds.len(), left_out.len()), (n, 0));
     }
     // One past the cap, its data nonsense: the error is the cap's, since the data was never looked at.
-    let mut file = project_file(MAX_CLOUDS);
+    let mut file = project_file("cap", MAX_CLOUDS);
     file["clouds"]["zzz"] = json!({"nonsense": 1});
     for e in [Model::read(&file.to_string()).map(|_| ()), Model::from_json(&file.to_string()).map(|_| ())] {
         let e = e.unwrap_err();
