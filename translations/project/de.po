@@ -36,7 +36,7 @@ msgstr "Ziegel 225 x 75"
 
 #: crates/core/src/commands.rs:3851
 msgid "Camera"
-msgstr ""
+msgstr "Kamera"
 
 #: crates/core/src/family.rs:2047
 msgid "Casement Window"
@@ -92,7 +92,7 @@ msgstr "Schraffur"
 
 #: crates/core/src/render.rs:2600
 msgid "DN"
-msgstr ""
+msgstr "AB"
 
 #: crates/core/src/lines.rs:177
 msgid "Dash"
@@ -311,7 +311,7 @@ msgstr "Geschosstabelle"
 
 #: crates/core/src/fixtures.rs:247
 msgid "Load"
-msgstr ""
+msgstr "Last"
 
 #: crates/core/src/lines.rs:178
 msgid "Long Dash"
@@ -351,7 +351,7 @@ msgstr "NICHT UMSCHLOSSEN"
 
 #: crates/core/src/model.rs:1480
 msgid "Name"
-msgstr ""
+msgstr "Name"
 
 #: crates/core/src/phasing.rs:117
 msgid "New Construction"
@@ -387,7 +387,7 @@ msgstr "Überkopflinien"
 
 #: crates/core/src/fixtures.rs:187
 msgid "PVC"
-msgstr ""
+msgstr "PVC"
 
 #: crates/core/src/fixtures.rs:441
 msgid "Patch Panel"
@@ -415,7 +415,7 @@ msgstr "Projekt"
 
 #: crates/core/src/render.rs:1839
 msgid "REDUNDANT"
-msgstr ""
+msgstr "REDUNDANT"
 
 #: crates/core/src/family.rs:104
 msgid "Rack"
@@ -455,7 +455,7 @@ msgstr "MASSSTAB WIE ANGEGEBEN"
 
 #: crates/core/src/fills.rs:413
 msgid "Sand"
-msgstr ""
+msgstr "Sand"
 
 #: crates/core/src/model.rs:2840
 msgid "Screed"
@@ -520,7 +520,7 @@ msgstr "Neigung"
 
 #: crates/core/src/family.rs:1785
 msgid "Sofa"
-msgstr ""
+msgstr "Sofa"
 
 #: crates/core/src/fills.rs:395
 msgid "Solid Black"
@@ -560,7 +560,7 @@ msgstr "Dünne Linien"
 
 #: crates/core/src/fixtures.rs:326
 msgid "Three-Phase Outlet"
-msgstr ""
+msgstr "Drehstromsteckdose"
 
 #: crates/core/src/fills.rs:422
 msgid "Tile 300"
@@ -588,7 +588,7 @@ msgstr "AUF"
 
 #: crates/core/src/schedule.rs:215
 msgid "Unbounded Height"
-msgstr ""
+msgstr "Unbegrenzte Höhe"
 
 #: crates/core/src/commands.rs:8704
 msgid "Unnamed"
@@ -608,7 +608,7 @@ msgstr "Volumen"
 
 #: crates/core/src/family.rs:1841
 msgid "WC"
-msgstr ""
+msgstr "WC"
 
 #: crates/core/src/commands.rs:184
 msgid "Wall"
@@ -656,13 +656,13 @@ msgstr "Ja"
 
 #: crates/core/src/loads.rs:78
 msgid "bath"
-msgstr ""
+msgstr "bath"
 
 #: crates/core/src/loads.rs:78
 msgid "bwc"
-msgstr ""
+msgstr "bwc"
 
 #: crates/core/src/loads.rs:78
 msgid "wc"
-msgstr ""
+msgstr "wc"
 
