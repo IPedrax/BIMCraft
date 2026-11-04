@@ -1800,6 +1800,20 @@ mod tests {
     use bimcraft_core::render::PAPER;
     use bimcraft_core::view3d::{AZIMUTH, ELEVATION, Scene};
 
+    /// DirectX 12's FXC compiler refuses a function that can end without returning a value, and a last `discard` is such an end:
+    /// no pipeline, so a window on it has no card at all. Vulkan and Metal take it, so a card here never finds this one out.
+    #[test]
+    fn no_shader_function_ends_in_a_discard_which_directx_refuses() {
+        let lines: Vec<&str> = include_str!("gpu.wgsl").lines().collect();
+        let ends: Vec<usize> = lines
+            .windows(2)
+            .enumerate()
+            .filter(|(_, pair)| pair[0].trim() == "discard;" && pair[1] == "}")
+            .map(|(line, _)| line + 1)
+            .collect();
+        assert!(ends.is_empty(), "gpu.wgsl: a function ends in a discard at line {ends:?}");
+    }
+
     /// The picture's pixels as rows of red, green, blue and alpha.
     fn read(gpu: &Gpu) -> Vec<u8> {
         let texture = gpu.picture().expect("a picture drawn");
