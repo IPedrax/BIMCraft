@@ -20,7 +20,7 @@ use crate::ids::{Guid, Id};
 
 /// Where the library's ids start, counting down.
 pub const LAST_ID: Id = 999_999;
-use crate::model::Model;
+use crate::model::{Element, Model};
 use serde_json::Value;
 
 /// What a library entry is.
@@ -797,13 +797,11 @@ impl Model {
     pub fn library_in_step_since(&self, before: &Model) -> bool {
         let crate::ids::Changed::Ids(changed) = self.changed_since(before) else { return self.library_in_step() };
         // Where the parts changed (a sync of what the command changed), each that differs must be a changed element's
-        // sketch line, now its part or no longer one.
+        // part (a sketch line, a shape's point or split line), now its part or no longer one.
         let parts_same = self.library.parts == before.library.parts;
         let mut differing = if parts_same { Default::default() } else { self.library.parts.differing(&before.library.parts) };
         let (mut held, mut had) = (std::collections::BTreeSet::new(), Vec::new());
-        let sketch = |m: &Model, id: Id| -> Vec<(Id, Guid)> {
-            m.elements.get(id).and_then(|e| e.sketch()).map_or_else(Vec::new, |lines| lines.iter().map(|l| (l.id, l.guid)).collect())
-        };
+        let sketch = |m: &Model, id: Id| -> Vec<(&'static str, usize, Id, Guid)> { m.elements.get(id).map_or_else(Vec::new, element_parts) };
         let mut new = Vec::new();
         for &id in &changed {
             // An element that took another GUID; one made or taken away is asked of below, by its sketch and its GUID.
@@ -818,13 +816,13 @@ impl Model {
                     return false;
                 }
                 let (Some(e), Some(g)) = (self.elements.get(id), now) else {
-                    had.extend(before_lines.iter().map(|(l, _)| *l));
+                    had.extend(before_lines.iter().map(|(.., l, _)| *l));
                     continue;
                 };
                 let owner = g.to_string();
                 let of = format!("{} {owner}", e.category());
-                for (index, (l, lg)) in lines.iter().enumerate() {
-                    let part = Part { what: "sketch line", of: of.clone(), owner: owner.clone(), index, guid: *lg };
+                for &(what, index, ref l, ref lg) in &lines {
+                    let part = Part { what, of: of.clone(), owner: owner.clone(), index, guid: *lg };
                     let own = !crate::ids::unset(l)
                         && !lg.is_nil()
                         && lg.pending().is_none()
@@ -841,7 +839,7 @@ impl Model {
                     held.insert(*l);
                     differing.remove(l);
                 }
-                had.extend(before_lines.iter().map(|(l, _)| *l));
+                had.extend(before_lines.iter().map(|(.., l, _)| *l));
             }
             if let Some(g) = now {
                 // A part's id taken by an element (an entry's is check_ids' to refuse, not out of step).
@@ -901,17 +899,16 @@ impl Model {
         for (n, g) in &self.detail_groups {
             add("member", "detail group", n, g.members.iter().map(|x| (x.id, x.guid)).collect());
         }
-        // An element's sketch lines, the element named by its GUID, which never changes.
+        // An element's sketch lines, then a floor's or a roof's shape's points and split lines, the element named by its GUID,
+        // which never changes.
         for (id, e) in self.elements.iter() {
-            if let Some(lines) = e.sketch().filter(|l| !l.is_empty()) {
-                add("sketch line", e.category(), &self.guid(*id).to_string(), lines.iter().map(|l| (l.id, l.guid)).collect());
+            let parts = element_parts(e);
+            if parts.is_empty() {
+                continue;
             }
-            // A floor's shape: its points, then its split lines.
-            if let Some(sh) = e.shape().filter(|sh| !sh.is_empty()) {
-                let owner = self.guid(*id).to_string();
-                add("shape point", e.category(), &owner, sh.points.iter().map(|x| (x.id, x.guid)).collect());
-                add("split line", e.category(), &owner, sh.lines.iter().map(|x| (x.id, x.guid)).collect());
-            }
+            let owner = self.guid(*id).to_string();
+            let of = format!("{} {owner}", e.category());
+            out.extend(parts.into_iter().map(|(what, index, id, guid)| (id, Part { what, of: of.clone(), owner: owner.clone(), index, guid })));
         }
         out
     }
@@ -1032,13 +1029,7 @@ impl Model {
             g.members.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
         }
         for e in self.elements.values_mut() {
-            if let Some(lines) = e.sketch_mut() {
-                lines.iter_mut().for_each(|l| give(&mut l.id, &mut l.guid));
-            }
-            if let Some(sh) = e.shape_mut() {
-                sh.points.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
-                sh.lines.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
-            }
+            element_parts_mut(e, &mut give);
         }
         self.library.parts = self.parts_now().into_iter().collect();
         self.library.lowest = self.library.lowest_id().unwrap_or(0);
@@ -1057,12 +1048,14 @@ impl Model {
         if changed.iter().any(|&id| before.elements.contains_key(id) && self.elements.guid(id) != before.elements.guid(id)) {
             return false;
         }
-        // The parts the changed elements held, and the sketch lines they hold now, in the order `parts_now` walks them.
+        // The parts the changed elements held, and the parts they hold now (sketch lines, a shape's points and split lines), in
+        // the order `parts_now` walks them.
         let old: Vec<Id> = changed
             .iter()
-            .filter_map(|&id| before.elements.get(id)?.sketch())
-            .flat_map(|lines| lines.iter().map(|l| l.id))
-            .filter(|id| before.library.part(*id).is_some_and(|p| p.what == "sketch line"))
+            .filter_map(|&id| before.elements.get(id))
+            .flat_map(element_parts)
+            .map(|(.., id, _)| id)
+            .filter(|id| before.library.part(*id).is_some_and(|p| ELEMENT_PARTS.contains(&p.what)))
             .collect();
         struct Line {
             element: Id,
@@ -1073,14 +1066,13 @@ impl Model {
         let mut lines: Vec<Line> = Vec::new();
         for &element in &changed {
             let (Some(e), Some(g)) = (self.elements.get(element), self.elements.guid(element)) else { continue };
-            let Some(sketch) = e.sketch().filter(|l| !l.is_empty()) else { continue };
             let owner = g.to_string();
             let of = format!("{} {owner}", e.category());
-            lines.extend(sketch.iter().enumerate().map(|(index, l)| Line {
+            lines.extend(element_parts(e).into_iter().map(|(what, index, id, guid)| Line {
                 element,
-                id: l.id,
-                guid: l.guid,
-                part: Part { what: "sketch line", of: of.clone(), owner: owner.clone(), index, guid: l.guid },
+                id,
+                guid,
+                part: Part { what, of: of.clone(), owner: owner.clone(), index, guid },
             }));
         }
         if let Some(lowest) = lines.iter().map(|l| l.id).filter(|id| !crate::ids::unset(id)).min() {
@@ -1161,12 +1153,12 @@ impl Model {
             if given.peek().is_none_or(|l| l.element != element) {
                 continue;
             }
-            if let Some(sketch) = self.elements.get_mut(element).and_then(|e| e.sketch_mut()) {
-                for line in sketch.iter_mut() {
+            if let Some(e) = self.elements.get_mut(element) {
+                element_parts_mut(e, &mut |id, guid| {
                     if let Some(l) = given.next_if(|l| l.element == element) {
-                        (line.id, line.guid) = (l.id, l.guid);
+                        (*id, *guid) = (l.id, l.guid);
                     }
-                }
+                });
             }
         }
         for l in lines {
@@ -2002,5 +1994,33 @@ type {"category": "wall", "name": "Partition", "thickness": 110}"#,
         );
         let r = run(&mut s, "library", json!({"kind": "form", "name": "Box"}));
         assert_eq!(r["parts"].as_array().map(Vec::len), Some(2));
+    }
+}
+
+/// The kinds of part an element holds, as [`element_parts`] names them.
+const ELEMENT_PARTS: [&str; 3] = ["sketch line", "shape point", "split line"];
+
+/// An element's own parts, in the order [`Model::parts_now`] walks them: its sketch lines, then a floor's or a roof's shape's
+/// points and its split lines, each with what it is, its place in its list, its id and its GUID.
+fn element_parts(e: &Element) -> Vec<(&'static str, usize, Id, Guid)> {
+    let mut out: Vec<(&'static str, usize, Id, Guid)> = Vec::new();
+    if let Some(lines) = e.sketch() {
+        out.extend(lines.iter().enumerate().map(|(k, l)| ("sketch line", k, l.id, l.guid)));
+    }
+    if let Some(sh) = e.shape().filter(|sh| !sh.is_empty()) {
+        out.extend(sh.points.iter().enumerate().map(|(k, x)| ("shape point", k, x.id, x.guid)));
+        out.extend(sh.lines.iter().enumerate().map(|(k, x)| ("split line", k, x.id, x.guid)));
+    }
+    out
+}
+
+/// Each of an element's own parts' id and GUID, given to `f` in the order of [`element_parts`].
+fn element_parts_mut(e: &mut Element, f: &mut dyn FnMut(&mut Id, &mut Guid)) {
+    if let Some(lines) = e.sketch_mut() {
+        lines.iter_mut().for_each(|l| f(&mut l.id, &mut l.guid));
+    }
+    if let Some(sh) = e.shape_mut().filter(|sh| !sh.is_empty()) {
+        sh.points.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
+        sh.lines.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
     }
 }
