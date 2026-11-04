@@ -10160,3 +10160,11 @@ msgstr ""
 #: crates/ui-egui/src/properties.rs:134
 msgid "Top Offset"
 msgstr ""
+
+#: crates/ui-egui/src/orbit.rs:353
+msgid "{}: in the 3D view it stands on a level face (the top of a floor, a flat roof or a level): point at one"
+msgstr ""
+
+#: crates/ui-egui/src/orbit.rs:351
+msgid "{}: in the 3D view its points go on a level face (the top of a floor, a column, a flat roof or a level): point at one"
+msgstr ""

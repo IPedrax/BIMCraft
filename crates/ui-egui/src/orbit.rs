@@ -9,14 +9,18 @@
 //! round what it keeps, with a grip on each face in Modify that a drag moves along its axis (`section_box.rs`). An Edit
 //! Boundary begun here is sketched here, on the element's plane (`sketch3d.rs`): its clicks are the sketch's.
 //! With Shape Editing's tools, the selected floor's points and corners have grips that drag their heights, and clicks
-//! land on its top (`shape.rs`).
+//! land on its top (`shape.rs`). The drawing tools (walls, runs, columns, components) take their points on the level face under
+//! the cursor, snapped as that level's plan snaps; a run's ends may lie on two faces, and climb from one to the other.
 
 use std::sync::Arc;
+
+use bimcraft_i18n::msg;
 
 use bimcraft_core::geom::{self, P2};
 use bimcraft_core::graphics::{Look, VisualStyle};
 use bimcraft_core::model::{Id, Model, TOL, ViewCamera};
 use bimcraft_core::render::{self, Rgb};
+use bimcraft_core::snap::{self, Found, Kind, Reach, Snaps};
 use bimcraft_core::view3d::gpu::{Hit, Mesh};
 use bimcraft_core::view3d::{
     AZIMUTH, Camera, ELEVATION, Image, MAX_SIDE, P3, Scene, Surface, box_grips, move_box_face, on_floor_top, shape_handles, shape_pick_3d,
@@ -29,8 +33,9 @@ use egui::{
 };
 use serde_json::json;
 
-use crate::canvas::{click_modifiers, color};
+use crate::canvas::{PICK, SNAP, click_modifiers, color};
 use crate::icons::Icon;
+use crate::lang::{t, tf};
 use crate::sketch3d::Plane;
 use crate::style::{canvas_pal, pal};
 use crate::workplane::Picking;
@@ -105,8 +110,9 @@ pub struct Orbit {
     pub(crate) built: Option<(Id, ViewCamera, Option<f64>)>,
     /// Each room's solid as the model shown last has it: its outline, bottom and top. Found once for each model.
     rooms: Option<(Arc<Model>, std::collections::BTreeMap<Id, RoomSolid>)>,
-    /// The work plane the Wall tool's chain under way is drawn on, which its first point found.
-    plane: Option<CursorPlane>,
+    /// The last point a drawing tool clicked here, in plan, and the plane it went on: a wall chain under way stays on it, and
+    /// a run's end falls back to it where nothing is under the cursor.
+    plane: Option<(P2, CursorPlane)>,
     /// While the Wall tool places a point in the 3D view, the base offset its walls take there: the height of the face they
     /// stand on over their level, which `BimApp::wall_params` puts in.
     pub(crate) wall_base: Option<f64>,
@@ -141,13 +147,51 @@ impl Default for Orbit {
     }
 }
 
-/// Where a tool drawing in the 3D view puts its point for pixel `at`, through `cam`: on `held`, the plane of the chain under
-/// way, else on the work plane of `under`, the surface the view shows there; to the 10 mm, as a plan's free point is.
-fn aim(m: &Model, cam: &Camera, at: (f64, f64), held: Option<CursorPlane>, under: Option<Surface>) -> Option<(P3, CursorPlane)> {
-    let plane = held.or_else(|| cursor_plane(m, cam, at, under))?;
-    let q = cam.on_plane(at, plane.z)?;
-    let round = |v: f64| (v / 10.0).round() * 10.0 + 0.0;
-    Some(([round(q[0]), round(q[1]), plane.z], plane))
+/// Where a tool drawing in the 3D view aims for pixel `at`, through `cam`, before it snaps: on `held`, the plane of a wall
+/// chain under way; else on the work plane of `under`, the surface the view shows there; with nothing there, on `fallback`
+/// (the plane a run's start went on), else on the ground.
+fn aim(
+    m: &Model,
+    cam: &Camera,
+    at: (f64, f64),
+    held: Option<CursorPlane>,
+    fallback: Option<CursorPlane>,
+    under: Option<Surface>,
+) -> Option<(P3, CursorPlane)> {
+    let plane = match (held, fallback, under) {
+        (Some(p), ..) => p,
+        (None, Some(p), None) => p,
+        (None, _, under) => cursor_plane(m, cam, at, under)?,
+    };
+    Some((cam.on_plane(at, plane.z)?, plane))
+}
+
+/// Where a point aimed at `q` on `plane`, at pixel `at` (`ppp` pixels a point), lands: snapped as its level's plan snaps
+/// (`snap::snap`: ends, middles, crossings, guides from `from`, else the nearest 10 mm), within as many mm of it as the snap's
+/// points cover on the plane there.
+#[allow(clippy::too_many_arguments)]
+fn snap3d(m: &Model, cam: &Camera, at: (f64, f64), ppp: f32, q: P3, plane: CursorPlane, from: &[P2], square: bool, o: &Snaps) -> Found {
+    let per_px = cam
+        .on_plane((at.0 + 1.0, at.1), plane.z)
+        .map(|r| (r[0] - q[0]).hypot(r[1] - q[1]))
+        .filter(|d| d.is_finite() && *d > 0.0)
+        .unwrap_or(1.0 / cam.scale.max(1e-9));
+    let reach = Reach { point: SNAP * f64::from(ppp) * per_px, line: f64::from(PICK) * f64::from(ppp) * per_px };
+    snap::snap(m, plane.level, P2(q[0], q[1]), reach, from, square, o)
+}
+
+/// Whether `tool` draws in the 3D view on the face under the cursor.
+fn draws_on_faces(tool: &Tool) -> bool {
+    matches!(tool, Tool::Wall(_) | Tool::Run(..) | Tool::Column | Tool::Stand(_) | Tool::Component | Tool::Fixture(_))
+}
+
+/// The point the tool's next goes on from, in plan: a wall chain's last, a run's start.
+fn base_point(tool: &Tool) -> Option<P2> {
+    match tool {
+        Tool::Wall(chain) => chain.last().copied(),
+        Tool::Run(_, start) => *start,
+        _ => None,
+    }
 }
 
 /// A room as a see-through solid, drawn over the 3D view's picture in the selection's colour: its outline swept from its
@@ -259,17 +303,57 @@ impl BimApp {
     }
 
     /// A drawing tool's click in the 3D view, its point `q` on work plane `plane`: the Wall tool's next point, its walls going
-    /// on the plane's level with their base on the plane (`place`, as in a plan); a component placed there.
+    /// on the plane's level with their base on the plane (`place`, as in a plan); a run's start, then its end, each as high
+    /// as the face it was clicked on (a brace, from one face up to another); a column, a structural column, a footing or a
+    /// component standing on the plane.
     fn draw3d(&mut self, q: P3, plane: CursorPlane) {
         let at = P2(q[0], q[1]);
-        if matches!(self.tool, Tool::Wall(_)) {
-            (self.orbit.plane, self.orbit.wall_base) = (Some(plane), Some(plane.offset));
-            self.place(plane.level, at);
-            self.orbit.wall_base = None;
-        } else if let Some((family, ty)) = self.placing() {
-            let p = json!({"family": family, "type": ty, "at": [at.0, at.1], "level": plane.level, "offset": plane.offset,
-                           "angle": self.component_angle});
-            self.run("component", p);
+        let m = Arc::clone(&self.session.model);
+        match self.tool.clone() {
+            Tool::Wall(_) => {
+                self.orbit.wall_base = Some(plane.offset);
+                self.place(plane.level, at);
+                self.orbit.wall_base = None;
+            }
+            Tool::Run(_, start) => {
+                // Its start's plane, where it was clicked here; else the end's.
+                let from = self.orbit.plane.filter(|(p, _)| Some(*p) == start).map_or(plane, |(_, p)| p);
+                let micron = |v: f64| (v * 1e3).round() / 1e3 + 0.0;
+                self.place_run_lifted(from.level, at, (from.offset, micron(plane.z - m.elevation(from.level))));
+            }
+            Tool::Column => self.place_column(plane.level, at, plane.offset),
+            Tool::Stand(category) => self.place_stand_lifted(plane.level, at, category, plane.offset),
+            Tool::Component | Tool::Fixture(_) => {
+                if let Some((family, ty)) = self.placing() {
+                    let p = json!({"family": family, "type": ty, "at": [at.0, at.1], "level": plane.level, "offset": plane.offset,
+                                   "angle": self.component_angle});
+                    self.run("component", p);
+                }
+            }
+            _ => {}
+        }
+        self.orbit.plane = Some((at, plane));
+    }
+
+    /// What the tool on needs under the cursor in the 3D view and found none of there: a level face to stand on or to take
+    /// its points on.
+    fn needs_face(&self) -> String {
+        let title = match &self.tool {
+            Tool::Wall(_) => Some(msg!("Place Wall")),
+            Tool::Column => Some(msg!("Place Column")),
+            Tool::Run(..) | Tool::Stand(_) => crate::structure::title(&self.tool),
+            Tool::Component => Some(msg!("Place Component")),
+            Tool::Fixture(key) => crate::mep::fixture(key).map(|f| f.title),
+            _ => None,
+        };
+        let title = title.map(t).unwrap_or_default();
+        if matches!(self.tool, Tool::Wall(_) | Tool::Run(..)) {
+            tf(
+                "{}: in the 3D view its points go on a level face (the top of a floor, a column, a flat roof or a level): point at one",
+                &[title],
+            )
+        } else {
+            tf("{}: in the 3D view it stands on a level face (the top of a floor, a flat roof or a level): point at one", &[title])
         }
     }
 
@@ -334,6 +418,14 @@ impl BimApp {
         });
         let lens = three_d.and_then(|(_, l)| l);
         let stored = three_d.and_then(|(c, _)| c);
+        let snaps = self.snaps_now();
+        // The points a drawing tool's next snaps from (guides, perpendiculars), as in a plan.
+        let from: Vec<P2> = match (&self.tool, self.shape()) {
+            (Tool::Wall(chain), crate::draw::Shape::Line) => chain.clone(),
+            (Tool::Wall(chain), _) if chain.len() < 2 => chain.clone(),
+            (Tool::Run(_, start), _) => start.iter().copied().collect(),
+            _ => Vec::new(),
+        };
         let o = &mut self.orbit;
         (o.rect, o.ppp) = (rect, ppp);
         // The camera changed elsewhere than by the hand in this view (dragged on a plan, a command, undo): the picture stands
@@ -657,32 +749,45 @@ impl BimApp {
         if let Some(b) = reboxed.or(boxed) {
             crate::section_box::draw(&p, &cam, b, modify, o.boxing.map(|(k, _)| k), screen);
         }
-        // The Wall tool and a component take their points on the face under the cursor (`workplane`), a wall chain under way
-        // on the plane its first point found; the point is shown as a plan shows a snap, and the wall from the chain's last.
-        let drawing = matches!(self.tool, Tool::Wall(_) | Tool::Component | Tool::Fixture(_));
-        let held = o.plane.filter(|_| matches!(&self.tool, Tool::Wall(chain) if !chain.is_empty()));
-        let aimed = |picker: &Option<Picker>, at: Pos2| {
+        // The drawing tools take their points on the face under the cursor (`workplane`), snapped as its level's plan snaps:
+        // a wall chain under way on the plane its first point found, a run's end on the face it is clicked on (where there is
+        // none, the plane of its start). The point is shown as a plan shows a snap, and the wall or run from the point before.
+        let drawing = draws_on_faces(&self.tool) && sketch_z.is_none();
+        let last3 = o.plane.filter(|(q, _)| base_point(&self.tool) == Some(*q));
+        let held = last3.filter(|_| matches!(self.tool, Tool::Wall(_))).map(|(_, p)| p);
+        let fallback = last3.filter(|_| matches!(self.tool, Tool::Run(..))).map(|(_, p)| p);
+        let aimed = |picker: &Option<Picker>, at: Pos2| -> Option<(P3, CursorPlane, Found)> {
             let under = picker.as_ref().and_then(|k| k.surface(Some(scene), &cam, px(at)));
-            aim(&model, &cam, px(at), held, under)
+            let (q, plane) = aim(&model, &cam, px(at), held, fallback, under)?;
+            let f = snap3d(&model, &cam, px(at), ppp, q, plane, &from, shift, &snaps);
+            Some(([f.at.0, f.at.1, plane.z], plane, f))
         };
-        if let Some((q, plane)) = hover.filter(|_| drawing && o.drag.is_none()).and_then(|at| aimed(&o.picker, at))
+        if let Some((q, plane, found)) = hover.filter(|_| drawing && o.drag.is_none()).and_then(|at| aimed(&o.picker, at))
             && let at = screen(q)
             && at.is_finite()
         {
-            let from = match &self.tool {
-                Tool::Wall(chain) => chain.last().map(|a| screen([a.0, a.1, plane.z])).filter(|a| a.is_finite()),
-                _ => None,
-            };
-            if let Some(from) = from {
+            // The point before, at the height of the plane it went on.
+            let before = base_point(&self.tool).map(|b| [b.0, b.1, last3.map_or(plane.z, |(_, p)| p.z)]);
+            if let Some(b) = before
+                && let from = screen(b)
+                && from.is_finite()
+            {
                 p.line_segment([from, at], Stroke::new(1.0, pal().accent));
+                let long = P2(b[0], b[1]).dist(P2(q[0], q[1])).hypot(q[2] - b[2]);
+                crate::canvas::tag(&p, at + vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM, model.units.with_unit(long));
             }
             let diamond = [vec2(0.0, -6.0), vec2(6.0, 0.0), vec2(0.0, 6.0), vec2(-6.0, 0.0)].map(|d| at + d).to_vec();
             p.add(egui::Shape::closed_line(diamond, Stroke::new(2.0, pal().accent)));
-            if let Some(e) = model.elements.get(plane.on) {
-                let (near, of) = (crate::lang::t(bimcraft_core::snap::Kind::Nearest.name()), crate::lang::category(e.category(), false));
-                let name = crate::lang::tf("{} of {} {}", &[near, &of, &plane.on.to_string()]);
-                crate::canvas::tag(&p, at + vec2(12.0, 14.0), egui::Align2::LEFT_TOP, name);
-            }
+            // What it snapped to, of which element; a free point, the face it's on.
+            let (kind, of) = match found.kind {
+                Kind::Free => (Kind::Nearest, Some(plane.on)),
+                k => (k, found.source),
+            };
+            let name = match of.and_then(|id| Some((id, model.elements.get(id)?))) {
+                Some((id, e)) => tf("{} of {} {}", &[t(kind.name()), &crate::lang::category(e.category(), false), &id.to_string()]),
+                None => t(kind.name()).to_string(),
+            };
+            crate::canvas::tag(&p, at + vec2(12.0, 14.0), egui::Align2::LEFT_TOP, name);
         }
         // Where a click lands on the floor being shaped, in plan: a point or corner within reach of it, else on an edge within
         // reach (the edge, to light up), else its top there.
@@ -830,11 +935,8 @@ impl BimApp {
             // Nothing under the cursor: nothing to take down, or to paint.
             Some(None) if demolish || paint || unpaint => {}
             Some(_) if drawing => match target {
-                Some((q, plane)) => self.draw3d(q, plane),
-                None => {
-                    let why = crate::lang::t("in the 3D view this tool draws on a level face: the top of a floor, a flat roof or a level");
-                    self.status = Status { text: why.into(), error: true };
-                }
+                Some((q, plane, _)) => self.draw3d(q, plane),
+                None => self.status = Status { text: self.needs_face(), error: true },
             },
             Some(_) => {
                 self.status =
