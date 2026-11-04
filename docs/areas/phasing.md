@@ -40,3 +40,12 @@ tool (DW, `BimApp::demolish`, in the Modify tab's Phasing panel) runs `modify {p
 plan, a section or the 3D view: the phase of the view on screen (the project's last unless it has one), or null when the element
 already comes down in it, one undo step a click. A door or window that only follows its wall gets a note instead, and an element that
 holds no `params` (annotation, levels, grids, shafts) says so and changes nothing.
+The view control bar's Renovation menu (`BimApp::renovation_menu`, `phasing.rs` in the desktop, the same in both profiles) says in plain
+words which phase of the work a plan, a section or the 3D view shows: All (no phase and no phase filter of its own, the view as it
+starts), Existing (the project's first phase, every status by its category), Demolition (the last phase through a filter that hides
+what is new, draws what stood before by its category and what comes down overridden) and New (the last through one that draws what
+stood before overridden and hides what comes down). A pick is one `graphics {phase, phase_filter}`, one undo step. The words map onto
+filters by what they do, never by their names, which a project renames or has in its own language (`RENOVATION`, `renovation`,
+`filter_for`): the project's `Show Previous + Demolished` and `Show Previous + New` to start with. A choice the project has no
+filter for is greyed out and says so, a view whose phase and filter match none of them shows Custom, the menu is greyed out where
+a view template sets the phase, and the Sketch scale leaves it out with the rest of phasing.

@@ -31,7 +31,11 @@ click from the point before until Esc. A room's height is Revit's: from `base_of
 its Upper Limit, `top_level` (none: Not Bounded, the offset then over its own level). A new room reaches 300 mm under the
 level above (`ROOM_BELOW_ABOVE`), or with none above is Not Bounded and 2500 mm tall; a room read from a file without them is
 Not Bounded, 2500 mm. `Model::room_span` and `room_height` give it, `elements` its `unbounded_height` and `volume_m3` (the area times that height, not cut by floors or roofs), and the IFC
-space is swept that tall. A frozen room (`frozen`, an instance parameter: `room {frozen}` or `modify {id, frozen}`) keeps the
+space is swept that tall. A room's colour on plans (`Room::colour`) styles that solid in IFC as other elements' colours do: an
+`IfcStyledItem` on the swept solid, its unnamed `IfcSurfaceStyle` shading in the colour (`IfcSurfaceStyleShading`, which IFC4's
+rendering style extends; `Step::surface_style`, which a material's style shares), so a viewer shades the space in it. The import
+reads it back from the colour the space's body is styled in (`import::item_colours`), so a round trip keeps it and a space
+another program styled comes in filled in its colour; a room that isn't enclosed has no body, so no colour, in IFC. A frozen room (`frozen`, an instance parameter: `room {frozen}` or `modify {id, frozen}`) keeps the
 boundary it has when frozen, both ways it can be measured (`Room::kept`, given after the command that froze it by
 `Model::keep_rooms`, which the engine calls after every command, and let go when it is thawed): `room_region_at` returns it
 and the plan draws it without finding the level's lines, so the walls are never searched for it again, which saves the time
@@ -61,10 +65,26 @@ doors and windows in it (each cut to its height; joins aside), or only `Length` 
 a level slab its `Width` (depth), `Perimeter` and area and volume less its openings, a sloped one only its `Width`; a door or window
 its `Width`, `Height`, `Perimeter` and `Area`. An attached top or base follows the roof's or floor's plane
 over each part of the wall (a roof's slopes each over its own part of the plan); a mirrored wall runs back the other way.
+A wall's top is `Model::own_top`, and 3D, sections, plans, IFC and what a wall is attached to all read it there (`walls::heights`
+takes it, or what the wall is attached to): its `top_level`'s elevation plus its `top_offset` (file format 15, Revit's Top Offset,
+mm, negative below the level), or its base plus its `height` when it has no top level, which an offset does not touch.
+`Model::check` refuses a wall whose top does not come out above its base, saying how tall it comes out and by how much to raise it.
+The Properties palette shows Top Offset under Top Constraint for a wall that has one.
 A roof by footprint is the straight skeleton of its outline and its `courtyards` (`skeleton::faces`: the outline
 counter-clockwise, the courtyards clockwise, the roof to the left of every edge): each edge moves in at speed 1, a gable's at
 0, and its slope rises from it, reaching the roof's base `overhang` in from its eaves; a courtyard's edges number on after
 the outline's, and every ring keeps its numbers whichever way round it runs, so `gables` stay put through a mirror.
+`Roof::slopes` (file format 15) gives each edge a slope of its own, in degrees, numbered as `gables` are: 0 is the roof's `slope`,
+and an empty list, every edge. `Model::roof_faces` then moves an edge in at the run over the rise of its slope, scaled so the
+shallowest moves at 1 (every edge at one slope still moves at exactly 1), so edges of different slopes reach the same height
+together and the slopes meet along their hips; the eaves stay level, the roof's base `overhang` in from them lowered by the roof's
+`slope`, whatever the edges' own. A gable stays upright whatever its slope, and a flat roof (`slope` 0) keeps its `slopes` as it keeps
+its `gables`, unused. `Model::check` refuses a list of the wrong length, saying how many edges there are, and a slope outside 0
+to 75°, saying which edge. A sketch line may carry a `slope` (`SketchLine::slope`; the Slope row of Properties, with one line of a
+roof's sketch picked, sets it): the roof keeps it as the `slopes` of the edges along that line (`sketch::along`), never in its
+`sketch`, which `sketch::check` refuses to hold one. `edit_boundary` keeps the slope of an edge that stays or that a new
+line cuts in two (an edge lying along an old one), the lines' own `slope` (0 sets the roof's) winning over it, and without
+`slope` on the lines it keeps what the edges had; `edit_boundary` without a sketch gives the lines with the slope their edges share.
 Over the walls (`floor_outline`, which `roof_footprint` grows by the overhang), a loop of them standing free inside the outer
 ones, joined to none of them and with no room in it, is a courtyard, open through the floor and the roof; one joined to them,
 or with a room in it, is rooms, and both run over it.
@@ -73,7 +93,53 @@ gable) with the plane of its underside, trimmed where it `join`s another; `Model
 and its `openings`, convex where cut. A floor's top is at its level plus `offset`,
 or with a slope arrow, there at the arrow's tail and rising `slope` degrees toward its head (`Model::floor_top`); it's its
 type's thickness across the slope, so plumb it's thicker. Its `openings` are holes inside it, apart, and `Model::floor_slabs`
-what's left, convex where cut. A ceiling's `offset` is its underside; its `openings` are holes as a floor's
+what's left, convex where cut. A floor's `shape` (IDEAS MOD-16, [design](../shape-editing.md)) folds its top into planes:
+points `z` mm above (negative, below) where the top would be without them, and split lines it folds along, each a part
+with an id and a GUID (`ShapePoint`, `SplitLine`). `Model::shape_planes` triangulates its outline, openings, points and
+lines (`triangulation::constrained`), lifts each corner by the point there (a corner with none stays at 0) and merges
+neighbours in one plane; `Model::floor_faces` are those planes in convex pieces, or the unshaped top, and `floor_slabs`,
+the 3D view, sections and the element's details take them. In IFC a shaped slab is one closed `IfcFacetedBrep`
+(`Model::shape_solid`: its top's planes, the same planes under them, plumb sides round its outline and openings, each
+corner written once), and a sloped or shaped slab gives `GrossVolume` and `NetVolume`, its plan through its depth plumb;
+every floor's details give `volume_m3`, what's left of it in plan (shafts too) through that depth. A shaped floor is its type's thickness plumb, so its planes meet
+underneath too, and has no slope arrow (`Model::check`, `shape_ok`, refuses one, and points outside the outline or in an
+opening, points within a millimetre of each other, a split line's end that is no point and no corner, and lines that
+cross). A wall attached to one follows `Model::shape_triangles`, its top over the whole outline as if its openings were
+closed, as a slope arrow's plane runs on over them. Plans draw each plane's edges as thin as the outline. `edit_shape`
+gives the shape anew or says what it is, `add_point`, `add_split_line` and `reset_shape` change it a piece at a time (an
+end of a line that is no point becomes one, at the height the top has there), `edit_boundary` keeps what stays inside the
+new outline and its openings, cuts a split line where it leaves them, and gives each new end and each new corner a point at
+the height the top had there, so a hole cut through a shaped top leaves it as it was round the hole; it names what it
+`dropped`, `cut` and `added`. Moves and mirrors take the shape along, and snaps find its points. A flat roof by
+footprint (`slope` 0, no extrusion, joining none) takes a shape too (`Roof::shape`, `Roof::unshapeable` says why another
+can't): the commands, checks and both views' tools see its top as a floor's (`Model::shapeable`, `Model::roof_as_floor`:
+its footprint, its courtyards and openings as openings, at its top), and `roof_faces` lays each plane's underside its
+thickness below, plumb (`roof_rise`), so its slabs, IFC, sections and the walls attached under it follow its falls; plans
+draw its creases thin. Under its type's variable layer a shaped roof's underside stays level at its base
+(`Model::roof_under`, `roof_prisms`), as a floor's does: its layers in 3D and sections share `Variable::bounds` through
+`Model::variable_under`, walls attached under it stop at that underside, IFC writes it as one closed faceted Brep
+(`Model::roof_solid`), and `Model::check` refuses a point that leaves the layer thinner than nothing. `falls` (`falls.rs`) gives a floor or a flat roof its shape from its drains and the least fall:
+catchments nearest each drain, ridges between them at the top's height, valleys from each drain to its catchment's corners,
+each drain as deep as the fall takes its farthest corner; round an opening the valleys turn at its corners, which lie on
+the drain's cone, and ridges drawn part the top first. A slab or flat roof whose top isn't one plane comes in from IFC
+shaped (`import::shaped_top`), its variable layer marked by its `Description` or, under a level underside, guessed
+(`import::guess_variable`); and a spot slope (`Spot::slope`) reads a floor's or roof's fall in a plan. A layer of a floor or roof type may be `variable` (one a type at most; never a wall's or a ceiling's): under a
+shaped floor of that type, the underside stays level where the unshaped floor's was (`Model::floor_under`), the layers
+above the variable one follow the top, those below it stay level, and the variable one takes up the difference
+(`Variable::bounds`, which the 3D view's layers and sections share). Its pieces are then prisms from that level underside
+(`Model::floor_prisms`), its volume is less where its top falls (`Model::floor_volume`, `model::volume` for IFC), a wall
+attached under it stops at the level underside, and `Model::check` refuses a point that would leave the variable layer
+thinner than nothing, saying by how much to raise it. Reinforcement arms a shaped floor only when a variable layer lies
+over all its structure: the bars keep to the layers under it, as on a level floor that thick. Without one it refuses,
+saying why. In the desktop, a floor selected shows Shape Editing in its contextual tab: Slope Arrow, Modify Sub Elements (a point, a corner or an edge's two ends,
+`Floor::shape_pick`, to the Options Bar's Elevation), Add Point (a
+click on the top, at the Options Bar's Elevation, above the unshaped top or, with Absolute, above the level; empty, the
+top's height there), Add Split Line (two clicks, snapping to points, corners and edges) and Reset Shape, each a command.
+While one is on, each point's height is labelled beside it (`Model::shape_labels`); under Modify Sub Elements a point's
+grip drags it in plan at its height, its split lines with it (`Shape::moved`), in one `edit_shape`. In the 3D view the
+same tools work on the floor's top: each point's and corner's grip drags its height up or down, and clicks land on the top
+(`view3d::shape_handles`, `on_floor_top`, `shape_pick_3d`); both views run `shape.rs`. While a grip is held, either
+view draws the creases its release will leave (`Model::shape_creases` of the floor with the shape it would have). Type Properties ticks a floor's or a roof's variable layer. A ceiling's `offset` is its underside; its `openings` are holes as a floor's
 are, and `Model::ceiling_slabs` what's left. A shaft cuts each floor,
 ceiling and roof its span reaches into over its outline, all the way through (`Model::less_shafts`). A stair or a ramp
 is runs and landings laid out from its start (`stairs::stair`, `stairs::ramp`): a landing after `at` risers (a ramp's, `at`

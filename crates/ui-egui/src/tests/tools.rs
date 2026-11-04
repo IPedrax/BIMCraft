@@ -293,7 +293,6 @@ fn a_loop_that_closes_after_one_line_makes_no_second_line_on_the_first() {
 fn ctrl_z_while_sketching_takes_back_one_change_whole_not_one_line() {
     let mut h = app(BOX);
     tool(&mut h, "Floor");
-    press(&mut h, "Boundary Line");
     press(&mut h, "Line");
     for p in [P2(1000.0, 1000.0), P2(4000.0, 1000.0), P2(4000.0, 4000.0)] {
         click(&mut h, p);

@@ -191,7 +191,6 @@ fn the_wall_tool_draws_circles_polygons_and_rectangles_from_the_draw_panel() {
 fn a_sketch_draws_with_every_shape_and_a_circle_floors_a_round_room() {
     let mut h = app(BOX);
     tool(&mut h, "Floor");
-    press(&mut h, "Boundary Line");
     press(&mut h, "Circle");
     click(&mut h, P2(4000.0, 3000.0));
     click(&mut h, P2(6000.0, 3000.0));
@@ -279,7 +278,6 @@ fn trim_extend_and_offset_work_on_detail_lines_as_on_walls() {
 fn modify_tools_change_the_sketch_lines_while_sketching() {
     let mut h = app(BOX);
     tool(&mut h, "Floor");
-    press(&mut h, "Boundary Line");
     press(&mut h, "Line");
     for (k, p) in [P2(1000.0, 1000.0), P2(3500.0, 1000.0), P2(4000.0, 1500.0), P2(4000.0, 4000.0)].into_iter().enumerate() {
         click(&mut h, p);
@@ -491,7 +489,6 @@ fn trim_extend_to_corner_joins_two_selected_lines_at_once_and_asks_for_picks_oth
     // While sketching, the two lines picked.
     key(&mut h, Key::Escape);
     tool(&mut h, "Floor");
-    press(&mut h, "Boundary Line");
     for (a, b) in [(P2(1000.0, 1000.0), P2(3500.0, 1000.0)), (P2(4000.0, 1500.0), P2(4000.0, 4000.0))] {
         click(&mut h, a);
         click(&mut h, b);

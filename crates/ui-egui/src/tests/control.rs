@@ -213,7 +213,11 @@ fn a_request_whose_agent_has_given_up_is_not_done_and_the_next_one_is() {
     let mut h = app(BOX);
     let (control, tx) = Control::detached();
     h.state_mut().use_control(control);
-    let wall = |y: i32| bimcraft_core::bridge::Request::Execute { command: "wall".into(), params: json!({"points": [[0, y], [5000, y]]}) };
+    let wall = |y: i32| bimcraft_core::bridge::Request::Execute {
+        command: "wall".into(),
+        params: json!({"points": [[0, y], [5000, y]]}),
+        read_only: false,
+    };
     let before = walls(&h).len();
     let (gave_up, never) = channel();
     let (waiting, answer) = channel();
@@ -223,4 +227,152 @@ fn a_request_whose_agent_has_given_up_is_not_done_and_the_next_one_is() {
     assert_eq!(walls(&h).len(), before + 1, "only the wall somebody was waiting for");
     assert!(answer.try_recv().unwrap().contains("\"ok\""));
     assert!(never.try_recv().is_err(), "nobody is told what nobody asked for");
+}
+
+/// File > Settings at its Agents page.
+fn agents_page(h: &mut Harness<BimApp>) {
+    press(h, "Settings");
+    press(h, "Agents");
+}
+
+/// Frames until `done` holds of the window, or ten seconds.
+fn until(h: &mut Harness<BimApp>, done: impl Fn(&Harness<BimApp>) -> bool) -> bool {
+    let start = std::time::Instant::now();
+    while !done(h) && start.elapsed() < Duration::from_secs(10) {
+        h.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    done(h)
+}
+
+#[test]
+fn settings_open_the_port_and_close_it_and_the_view_control_bar_says_how_it_is_in_both_profiles() {
+    for mut h in [app(BOX), bimcraft(BOX)] {
+        assert!(h.query_by_label("Agents: off").is_some(), "the bar says no agent can come in");
+        agents_page(&mut h);
+        pick(&mut h, Role::CheckBox, "Let agents work on this project");
+        let port = entry(&h).port;
+        assert!(port != 0 && h.state().agents.listen, "listening, on a port that was free, and kept");
+        assert!(h.query_by_label_contains(&format!("port {port}: agents connect with")).is_some(), "Settings says where");
+        press(&mut h, "Close");
+        let listening = format!("Agents: port {port}");
+        assert!(h.query_by_label(&listening).is_some(), "the bar says the port");
+        // An agent that has said hello is counted while it stays, and no longer once it has gone.
+        let token = entry(&h).token;
+        let agent = std::thread::spawn(move || {
+            let stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(20))).unwrap();
+            let (mut writer, mut reader) = (stream.try_clone().unwrap(), BufReader::new(stream));
+            writeln!(writer, "{}", json!({"token": token, "op": "hello"})).unwrap();
+            let mut reply = String::new();
+            reader.read_line(&mut reply).unwrap();
+            (writer, reply)
+        });
+        while !agent.is_finished() {
+            h.step();
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        let (held, reply) = agent.join().unwrap();
+        assert!(reply.contains("bimcraft"), "{reply}");
+        assert!(until(&mut h, |h| h.query_by_label("Agents: 1 connected").is_some()), "one agent connected");
+        drop(held);
+        assert!(until(&mut h, |h| h.query_by_label(&listening).is_some()), "the agent has gone");
+        // Closed from Settings: the bar says so, and the port is let go, so nothing answers on it.
+        agents_page(&mut h);
+        pick(&mut h, Role::CheckBox, "Let agents work on this project");
+        assert!(h.state().control.is_none() && !h.state().agents.listen);
+        press(&mut h, "Close");
+        assert!(h.query_by_label("Agents: off").is_some());
+        let start = std::time::Instant::now();
+        while TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            assert!(start.elapsed() < Duration::from_secs(10), "port {port} still listens");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+}
+
+#[test]
+fn settings_let_agents_only_read_and_an_agents_edit_comes_back_as_an_error_that_names_the_box() {
+    let (mut h, file) = controlled("read-only");
+    let model = std::sync::Arc::clone(&h.state().session.model);
+    let port = entry(&h).port;
+    agents_page(&mut h);
+    pick(&mut h, Role::CheckBox, "Allow agents to edit this project");
+    assert!(!h.state().agents.edit);
+    press(&mut h, "Close");
+    assert!(h.query_by_label(&format!("Agents: port {port}, read-only")).is_some(), "the bar says agents only read");
+    let lines = vec![
+        request(&h, json!({"op": "hello"})),
+        request(&h, json!({"op": "execute", "command": "wall", "params": {"points": [[0, 7000], [5000, 7000]]}})),
+        request(&h, json!({"op": "script", "text": "inspect\nwall {\"points\": [[0, 8000], [5000, 8000]]}", "atomic": true})),
+        request(&h, json!({"op": "execute", "command": "undo"})),
+        request(&h, json!({"op": "execute", "command": "open", "params": {"path": "/nowhere.bimcraft"}})),
+        request(&h, json!({"op": "execute", "command": "inspect"})),
+        request(&h, json!({"op": "execute", "command": "schedule", "params": {"category": "walls"}})),
+    ];
+    let replies = ask(&mut h, lines);
+    assert_eq!(replies[0]["ok"]["read_only"], true, "the hello says so: {replies:?}");
+    for reply in &replies[1..4] {
+        let e = reply["error"].as_str().unwrap_or_default();
+        assert!(e.contains("read-only for agents") && e.contains("File > Settings > Agents"), "{reply}");
+    }
+    let e = replies[4]["error"].as_str().unwrap_or_default();
+    assert!(e.contains("would replace the project") && e.contains("File > Open"), "{e}");
+    assert_eq!(replies[5]["ok"]["counts"]["wall"], 4, "what reads answers: {replies:?}");
+    assert_eq!(replies[6]["ok"]["rows"].as_array().map(Vec::len), Some(4));
+    assert!(std::sync::Arc::ptr_eq(&model, &h.state().session.model), "nothing changed in the project");
+    assert!(!h.state().dirty());
+    // The user's own edits are theirs to make: the window's session is not read-only.
+    h.state_mut().run("wall", json!({"points": [[0, 9000], [5000, 9000]]}));
+    assert_eq!(walls(&h).len(), 5);
+    // Let edit again, the agent's wall goes in.
+    agents_page(&mut h);
+    pick(&mut h, Role::CheckBox, "Allow agents to edit this project");
+    press(&mut h, "Close");
+    let wall = request(&h, json!({"op": "execute", "command": "wall", "params": {"points": [[0, 7000], [5000, 7000]]}}));
+    let replies = ask(&mut h, vec![wall]);
+    assert!(replies[0]["ok"].is_object(), "{replies:?}");
+    assert_eq!(walls(&h).len(), 6);
+    let _ = std::fs::remove_dir_all(file.parent().unwrap());
+}
+
+#[test]
+fn the_settings_file_keeps_the_agents_port_and_a_window_opens_the_port_it_keeps() {
+    let dir = std::env::temp_dir().join(format!("bimcraft-ui-control-kept-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let settings = dir.join("settings.json");
+    let mut h = app(BOX);
+    h.state_mut().use_settings(settings.clone());
+    h.run();
+    agents_page(&mut h);
+    pick(&mut h, Role::CheckBox, "Let agents work on this project");
+    pick(&mut h, Role::CheckBox, "Allow agents to edit this project");
+    press(&mut h, "Close");
+    let kept: Value = serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+    assert_eq!(kept["agents"], json!({"listen": true, "port": 0, "edit": false}));
+    // The next window reads them, and its start opens the port they keep (here, any free one), writing its bridge file.
+    let bridge = dir.join("bridge.json");
+    let mut again = app(BOX);
+    again.state_mut().use_settings(settings.clone());
+    again.state_mut().use_bridge_file(Some(bridge.clone()));
+    again.state_mut().listen_as_kept().unwrap();
+    again.run();
+    assert!(!again.state().agents.edit);
+    let port = entry(&again).port;
+    assert_eq!(bimcraft_core::bridge::read_entry(&bridge).map(|e| e.port), Some(port));
+    assert!(again.query_by_label(&format!("Agents: port {port}, read-only")).is_some());
+    // A port that is taken is said, and the window goes on without one.
+    let (mut third, taken) = (app(BOX), std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap());
+    third.state_mut().use_settings(settings.clone());
+    third.state_mut().agents.port = taken.local_addr().unwrap().port();
+    let e = third.state_mut().listen_as_kept().unwrap_err();
+    assert!(e.contains("Couldn't listen on port"), "{e}");
+    assert!(third.state().control.is_none());
+    // What is not a setting of the agents' reads as the defaults: closed, on any port, agents may edit.
+    let base = h.state().settings_kept.clone().unwrap();
+    let read = crate::settings::Settings::from_json(&json!({"agents": {"listen": "yes", "port": 70000, "edit": 1}}), base.clone());
+    assert_eq!((read.agents_listen, read.agents_port, read.agents_edit), (base.agents_listen, base.agents_port, base.agents_edit));
+    drop(again);
+    assert!(bimcraft_core::bridge::read_entry(&bridge).is_none(), "the window's bridge file goes with it");
+    let _ = std::fs::remove_dir_all(&dir);
 }

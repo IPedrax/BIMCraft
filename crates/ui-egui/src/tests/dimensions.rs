@@ -176,3 +176,66 @@ fn a_selected_dimension_shows_padlocks_and_eq_which_lock_its_segments_and_make_t
     assert!(dim(&h).equal, "{}", h.state().status.text);
     assert_eq!(field(&h, id, "values"), json!([4000.0, 4000.0]));
 }
+
+/// Two walls running north, apart: the west one's centre at x = 0, the east one's at x = 2000; and a dimension between their
+/// centre lines, south of them.
+const TWO_WALLS: &str = r#"wall {"points": [[0, 0], [0, 4000]]}
+wall {"points": [[2000, 0], [2000, 4000]]}
+dimension {"refs": [[0, 2000], [2000, 2000]], "at": [1000, -1000]}"#;
+
+#[test]
+fn typing_3000_into_a_dimension_between_two_walls_moves_the_second_wall() {
+    for own in [false, true] {
+        let mut h = if own { bimcraft(TWO_WALLS) } else { app(TWO_WALLS) };
+        let id = ids(&h, "dimension")[0];
+        h.state_mut().selection = vec![id];
+        h.run();
+        h.get_by_label("Dimension 2000").click();
+        h.run();
+        h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+        h.event(Event::Text("3000".into()));
+        h.run();
+        key(&mut h, Key::Enter);
+        assert_eq!(field(&h, id, "values"), json!([3000.0]), "{}", h.state().status.text);
+        let walls = ids(&h, "wall");
+        assert_eq!((field(&h, walls[0], "start"), field(&h, walls[1], "start")), (json!([0.0, 0.0]), json!([3000.0, 0.0])));
+        assert!(h.query_by_label("Dimension 3000").is_some(), "its number, typed again");
+    }
+}
+
+#[test]
+fn a_locked_segment_shows_its_lock_when_its_dimension_isnt_selected() {
+    let mut h = app(TWO_WALLS);
+    let id = ids(&h, "dimension")[0];
+    assert!(h.query_by_label("Locked segment 1").is_none());
+    h.state_mut().run("dimension_constraint", json!({"id": id, "locked": [0]}));
+    h.run();
+    assert!(h.state().selection.is_empty());
+    assert!(h.query_by_label("Locked segment 1").is_some(), "shown, though nothing is selected");
+}
+
+#[test]
+fn align_offers_a_padlock_that_keeps_the_lines_aligned_and_shows_until_a_click_unlocks_it() {
+    let script = r#"wall {"points": [[0, 0], [0, 4000]]}
+wall {"points": [[500, 6000], [500, 9000]]}"#;
+    let mut h = app(script);
+    let walls = ids(&h, "wall");
+    shortcut(&mut h, "AL");
+    // The first wall's centre line, then the second's: it moves onto it.
+    click(&mut h, P2(0.0, 2000.0));
+    click(&mut h, P2(500.0, 7500.0));
+    assert_eq!(field(&h, walls[1], "start"), json!([0.0, 6000.0]), "{}", h.state().status.text);
+    press(&mut h, "Lock alignment");
+    let locks: Vec<Id> = ids(&h, "dimension");
+    assert_eq!(locks.len(), 1, "{}", h.state().status.text);
+    key(&mut h, Key::Escape);
+    assert_eq!(h.state().tool, Tool::Modify);
+    assert!(h.query_by_label("Unlock alignment").is_some(), "its lock, shown with the tool put down");
+    // The first wall moved, by a command: the second follows.
+    h.state_mut().run("move", json!({"ids": [walls[0]], "by": [300, 0]}));
+    h.run();
+    assert_eq!(field(&h, walls[1], "start"), json!([300.0, 6000.0]));
+    // A click on the padlock unlocks it.
+    press(&mut h, "Unlock alignment");
+    assert!(ids(&h, "dimension").is_empty());
+}

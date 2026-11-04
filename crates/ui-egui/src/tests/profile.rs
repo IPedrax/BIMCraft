@@ -36,7 +36,7 @@ fn the_profile_is_picked_in_settings_and_the_settings_file_keeps_it() {
     std::fs::create_dir_all(file.parent().unwrap()).unwrap();
     // A profile this version doesn't know (a newer one's) leaves BIMCraft's, the default.
     std::fs::write(&file, r#"{"profile": "from-a-newer-version"}"#).unwrap();
-    let mut h = app(BOX);
+    let mut h = bimcraft(BOX);
     h.state_mut().use_settings(file.clone());
     h.run();
     assert_eq!(h.state().profile, Profile::BimCraft);
@@ -47,7 +47,7 @@ fn the_profile_is_picked_in_settings_and_the_settings_file_keeps_it() {
     let kept: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
     assert_eq!(kept["profile"], "rev");
     // A window started on the same file is in the profile this one was left in, and BIMCraft puts its own look back.
-    let mut again = app(BOX);
+    let mut again = bimcraft(BOX);
     again.state_mut().use_settings(file.clone());
     again.run();
     assert_eq!(again.state().profile, Profile::Rev);
@@ -62,7 +62,7 @@ fn the_profile_is_picked_in_settings_and_the_settings_file_keeps_it() {
 
 #[test]
 fn rev_leads_the_ribbons_tabs_with_file_and_docks_the_options_bar_under_the_ribbon_so_the_view_never_moves() {
-    let mut h = app(BOX);
+    let mut h = bimcraft(BOX);
     let (file, tab) = (h.get_by_label("File").rect(), h.get_by_label("Architecture").rect());
     assert!(file.bottom() < tab.top(), "BIMCraft's File is on the app bar, over the tabs: {file:?} {tab:?}");
     h.state_mut().profile = Profile::Rev;
@@ -86,7 +86,7 @@ fn rev_leads_the_ribbons_tabs_with_file_and_docks_the_options_bar_under_the_ribb
 
 #[test]
 fn rev_is_flush_light_chrome_whatever_layout_bimcraft_keeps() {
-    let mut h = app(BOX);
+    let mut h = bimcraft(BOX);
     let ground = app_bar_ground(&h);
     assert!(luminance(ground) < 0.1, "BIMCraft's app bar is dark in the light theme: {ground:?}");
     h.state_mut().profile = Profile::Rev;
@@ -141,7 +141,7 @@ fn rules_by(h: &Harness<BimApp>, field: egui::Rect) -> (usize, usize) {
 
 #[test]
 fn revs_properties_are_a_ruled_grid_and_apply_stays_at_the_palettes_foot_while_the_rows_scroll() {
-    let mut h = app(BOX);
+    let mut h = bimcraft(BOX);
     click(&mut h, P2(0.0, 3000.0));
     assert_eq!(h.state().selection.len(), 1, "a wall, whose rows run past the palette");
     // The row's field, which its name labels.
@@ -157,4 +157,75 @@ fn revs_properties_are_a_ruled_grid_and_apply_stays_at_the_palettes_foot_while_t
     let (apply, browser) = (h.get_by_label("Apply").rect(), h.get_by_label_contains("Project Browser ·").rect());
     assert!(apply.bottom() <= browser.top() && browser.top() - apply.bottom() < 16.0, "{apply:?} over {browser:?}");
     assert!(field.bottom() < apply.top());
+}
+
+#[test]
+fn bimcrafts_tools_are_a_palette_in_place_of_the_ribbon_and_dock_where_they_are_put() {
+    use crate::dock::{Palette, Side, Target};
+    let mut h = bimcraft(BOX);
+    assert!(h.query_by_label("Minimize the Ribbon").is_none(), "no ribbon");
+    let docking = &h.state().docking;
+    assert_eq!(docking.docked(Palette::Tools), Some(Side::Left), "the tools down the left");
+    assert_eq!((docking.docked(Palette::Properties), docking.docked(Palette::Browser)), (Some(Side::Right), Some(Side::Right)));
+    // A tab picked on the rail, a tool from its rows: the tool's own (contextual) rows come first, named for it.
+    tool(&mut h, "Wall");
+    assert!(matches!(h.state().tool, Tool::Wall(_)));
+    let (context, view) = (h.get_by_label("Modify | Place Wall").rect(), h.state().view_rect);
+    assert!(context.right() <= view.left(), "in the column left of the view: {context:?} {view:?}");
+    key(&mut h, Key::Escape);
+    key(&mut h, Key::Escape);
+    press(&mut h, "Structure");
+    assert!(h.query_by_label("Beam").is_some(), "the Structure tab's tools");
+    // Moved like any palette: docked on the right, the column is right of the view.
+    h.state_mut().docking.put(Palette::Tools, Target::Side(Side::Right));
+    h.run();
+    h.run();
+    assert!(h.get_by_label("Structure").rect().left() >= h.state().view_rect.right());
+    // Rev has the ribbon, and no Tools palette.
+    h.state_mut().profile = Profile::Rev;
+    h.run();
+    h.run();
+    assert!(!h.state().docking.shown(Palette::Tools) && h.query_by_label("Minimize the Ribbon").is_some());
+}
+
+#[test]
+fn bimcrafts_inspector_and_navigator_are_the_properties_and_the_browser_on_the_right() {
+    let mut h = bimcraft(BOX);
+    let (inspector, view) = (h.get_by_label("Inspector").rect(), h.state().view_rect);
+    assert!(inspector.left() >= view.right(), "{inspector:?} right of {view:?}");
+    assert!(h.query_by_label_contains("Navigator ·").is_some());
+    h.state_mut().profile = Profile::Rev;
+    h.run();
+    assert!(h.query_by_label("Inspector").is_none() && h.query_by_label_contains("Project Browser ·").is_some(), "Rev's own names");
+}
+
+#[test]
+fn find_runs_a_tool_or_opens_a_view_by_what_is_typed_in_both_profiles() {
+    for profile in [Profile::BimCraft, Profile::Rev] {
+        let mut h = bimcraft(BOX);
+        h.state_mut().profile = profile;
+        h.run();
+        let find = |h: &mut Harness<BimApp>, text: &str| {
+            h.key_press_modifiers(Modifiers::COMMAND, Key::K);
+            h.run();
+            assert!(h.state().find.is_some(), "Ctrl+K opens Find ({profile:?})");
+            h.event(egui::Event::Text(text.to_string()));
+            h.run();
+            key(h, Key::Enter);
+        };
+        find(&mut h, "wall");
+        assert!(matches!(h.state().tool, Tool::Wall(_)), "{profile:?}");
+        assert!(h.state().find.is_none(), "and closes");
+        key(&mut h, Key::Escape);
+        key(&mut h, Key::Escape);
+        let level_2 = h.state().session.model.levels()[1].0;
+        find(&mut h, "plan level 2");
+        assert_eq!(h.state().sheet, Sheet::Plan(level_2), "{profile:?}");
+    }
+    // BIMCraft's title bar has a button for it.
+    let mut h = bimcraft(BOX);
+    press(&mut h, "Find");
+    assert!(h.state().find.is_some());
+    key(&mut h, Key::Escape);
+    assert!(h.state().find.is_none(), "Escape closes it");
 }

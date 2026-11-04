@@ -245,6 +245,24 @@ pub fn category(category: &str, several: bool) -> String {
         "viewport" => (msg!("category", "Viewport"), msg!("category-plural", "Viewports")),
         "column" => (msg!("category", "Column"), msg!("category-plural", "Columns")),
         "component" => (msg!("category", "Component"), msg!("category-plural", "Components")),
+        "furniture" => (msg!("category", "Furniture"), msg!("category-plural", "Furniture")),
+        "casework" => (msg!("category", "Casework"), msg!("category-plural", "Casework")),
+        "plumbing" => (msg!("category", "Plumbing Fixture"), msg!("category-plural", "Plumbing Fixtures")),
+        "drain" => (msg!("category", "Drain"), msg!("category-plural", "Drains")),
+        "pipefitting" => (msg!("category", "Pipe Fitting"), msg!("category-plural", "Pipe Fittings")),
+        "pipeaccessory" => (msg!("category", "Pipe Accessory"), msg!("category-plural", "Pipe Accessories")),
+        "equipment" => (msg!("category", "Electrical Equipment"), msg!("category-plural", "Electrical Equipment")),
+        "outlet" => (msg!("category", "Outlet"), msg!("category-plural", "Outlets")),
+        "switch" => (msg!("category", "Switch"), msg!("category-plural", "Switches")),
+        "airterminal" => (msg!("category", "Air Terminal"), msg!("category-plural", "Air Terminals")),
+        "earthing" => (msg!("category", "Earthing Electrode"), msg!("category-plural", "Earthing Electrodes")),
+        "inspectionbox" => (msg!("category", "Inspection Box"), msg!("category-plural", "Inspection Boxes")),
+        "lighting" => (msg!("category", "Lighting Fixture"), msg!("category-plural", "Lighting Fixtures")),
+        "generic" => (msg!("category", "Generic Component"), msg!("category-plural", "Generic Components")),
+        "dataoutlet" => (msg!("category", "Data Outlet"), msg!("category-plural", "Data Outlets")),
+        "voiceoutlet" => (msg!("category", "Voice Outlet"), msg!("category-plural", "Voice Outlets")),
+        "patchpanel" => (msg!("category", "Patch Panel"), msg!("category-plural", "Patch Panels")),
+        "rack" => (msg!("category", "Rack"), msg!("category-plural", "Racks")),
         "stair" => (msg!("category", "Stair"), msg!("category-plural", "Stairs")),
         "roof" => (msg!("category", "Roof"), msg!("category-plural", "Roofs")),
         "ceiling" => (msg!("category", "Ceiling"), msg!("category-plural", "Ceilings")),
@@ -278,7 +296,10 @@ pub fn category(category: &str, several: bool) -> String {
         "multicategory" => (msg!("category", "Multi-Category"), msg!("category-plural", "Multi-Category")),
         other => return other.to_string(),
     };
-    tc(if several { "category-plural" } else { "category" }, if several { many } else { one }).to_string()
+    let (context, english) = if several { ("category-plural", many) } else { ("category", one) };
+    // A category the family editor already names (Casework, Outlets…) is named as it does where the catalogs have no word for it
+    // as a category.
+    bimcraft_i18n::translated(CATALOGS, get().code(), context, english).map_or_else(|| t(english), |named| named).to_string()
 }
 
 #[cfg(test)]
@@ -312,7 +333,7 @@ mod tests {
         );
         assert_eq!(tf("Save changes to {}?", &["house"]), "是否将更改保存到 house？");
         assert_eq!((category("wall", true), category("wall", false), category("spot", false)), ("墙".into(), "墙".into(), "高程点".into()));
-        assert_eq!(category("airterminal", true), "airterminal", "a category without a name is its key, as in the other languages");
+        assert_eq!(category("detailgroup", true), "detailgroup", "a category without a name is its key, as in the other languages");
         assert_eq!((Lang::Chinese.label(), Lang::Portuguese.label()), ("简体中文", "Português (Brasil)"));
         set(Lang::English);
         assert_eq!(

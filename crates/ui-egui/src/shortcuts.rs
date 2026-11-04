@@ -141,7 +141,7 @@ pub struct ShortcutsDialog {
 }
 
 /// A shortcut key: two letters or digits, which is all the typed buffer holds.
-fn is_key(k: &str) -> bool {
+pub(crate) fn is_key(k: &str) -> bool {
     k.len() == 2 && k.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
@@ -280,6 +280,7 @@ impl BimApp {
             "Aligned Dimension" => self.set_tool(Tool::Dimension(crate::DimMode::Aligned, Vec::new())),
             "Text" => self.set_tool(Tool::Text),
             "Spot Elevation" => self.set_tool(Tool::Spot),
+            "Spot Slope" => self.set_tool(Tool::SpotSlope),
             "Tag by Category" => self.set_tool(Tool::Tag),
             "Section" => self.set_tool(Tool::Section(None)),
             "Elevation" => self.set_tool(Tool::Elevation),

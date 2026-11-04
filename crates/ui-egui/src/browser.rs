@@ -183,9 +183,10 @@ pub fn words(find: &str) -> Vec<String> {
 }
 
 impl BimApp {
-    /// The Project Browser's palette: its tabs and its search over the tree, which scrolls under them.
+    /// The Project Browser's palette: the minimap of the view, its tabs and its search over the tree, which scrolls under them.
     pub(crate) fn browser_palette(&mut self, ui: &mut Ui) {
         egui::Frame::new().inner_margin(egui::Margin { left: 8, right: 8, top: 6, bottom: 4 }).show(ui, |ui| {
+            self.minimap(ui);
             self.browser_tabs(ui);
             ui.add_space(4.0);
             self.browser_search(ui);
@@ -383,6 +384,26 @@ impl BimApp {
         if tab != Tab::All && out.len() == 1 {
             return out.pop().map(|n| n.kids).unwrap_or_default();
         }
+        out
+    }
+
+    /// Every view the browser opens (plans, 3D views, sections, schedules, sheets), in its order, as Find lists them.
+    pub(crate) fn openable(&self) -> Vec<(String, crate::find::Found)> {
+        use crate::find::Found;
+        fn walk(app: &BimApp, nodes: &[Node], out: &mut Vec<(String, Found)>) {
+            for n in nodes {
+                match &n.act {
+                    Act::Open(sheet) => out.push((app.view_title(*sheet), Found::View(*sheet))),
+                    Act::Open3D(id) => out.push((format!("{}: {}", t("3D View"), n.label), Found::View3D(*id))),
+                    _ => {}
+                }
+                walk(app, &n.kids, out);
+            }
+        }
+        let sheets = self.sheets().into_iter().map(|(id, name)| self.view_leaf(&name, Sheet::Paper(id)));
+        let nodes: Vec<Node> = [self.views_node(), self.schedules_node()].into_iter().chain(sheets).collect();
+        let mut out = Vec::new();
+        walk(self, &nodes, &mut out);
         out
     }
 

@@ -22,12 +22,12 @@ use crate::library::Kind as LibKind;
 use crate::lines::{DetailLine, LineStyle};
 use crate::massing;
 use crate::model::{
-    CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Element, End,
-    Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, Id, Key, Landing, Layer, Level, Line, Location, MAX_COORD, MAX_POINTS,
-    MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind, Pattern, Perspective,
-    PlanView, PointCloud, ProjectParameter, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp, Rebar, Reference, Roof, RoofType,
-    Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox, Shaft, Sheet, Side, Spot, Stair, TOL, TREAD, Tag, Unbound,
-    View3D, Viewport, Wall, WallType, heading, paper,
+    CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
+    Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, Id, Key, Landing, Layer, Level, Line, Location, MAX_COORD,
+    MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind, Pattern,
+    Perspective, PlanView, PointCloud, ProjectParameter, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp, Rebar, Ref3, Reference,
+    Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox, Shaft, Sheet, Side, Spot, Stair, TOL, TREAD,
+    Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
@@ -37,6 +37,7 @@ use crate::sketch::{self, SketchLine};
 use crate::texture::{self, Kind, Picture, Texture};
 use crate::units::Units;
 use crate::walls::{self, Axis, stacked};
+use crate::workplane::{Surface, WorkPlane};
 use crate::{pdf, render, schedule, sheet, snap, stairs, view3d};
 
 type R = Result<Value, String>;
@@ -109,8 +110,9 @@ pub static ALL: &[Command] = &[
     other(
         "save",
         "Save",
-        "{path?} .bimcraft saves the project (Save As with a path); .ifc exports IFC4; .svg or .png exports the lowest level's \
-         plan; .pdf prints every sheet, a page each",
+        "{path?} .bimcraft saves the project (Save As with a path); .ifc exports IFC4; .glb exports the default 3D view's scene as \
+         glTF 2.0 (metres, y up, a node for each element named by its id, GUID and category in `extras`; returns `elements` and \
+         `triangles`); .svg or .png exports the lowest level's plan; .pdf prints every sheet, a page each",
         save,
     ),
     other("undo", "Undo", "{count?} takes back the last `count` steps (1 by default)", undo),
@@ -181,9 +183,9 @@ pub static ALL: &[Command] = &[
         "wall",
         msg!("Wall"),
         &["WA"],
-        "{points: [[x,y],…], closed?, type?, level?, top_level?, height?, base_offset?, arc?, location?, attach_top?, \
+        "{points: [[x,y],…], closed?, type?, level?, top_level?, top_offset?, height?, base_offset?, arc?, location?, attach_top?, \
          attach_base?, room_bounding?} one wall per segment of its location line; up to the next level, or `height` mm tall (unconnected), or up \
-         to `top_level`. `arc`: degrees each turns from its start to its end, counter-clockwise (180, a half circle bulging to \
+         to `top_level`, `top_offset` mm above it (0; negative, below it; the top must stay above the base). `arc`: degrees each turns from its start to its end, counter-clockwise (180, a half circle bulging to \
          its right). `location`: the line of it the points are on: centre (the default), core-centre, exterior-finish, \
          interior-finish, exterior-core or interior-core; its exterior side is to the left of its start to its end, so walls \
          drawn clockwise face out. `attach_top`, `attach_base`: a roof or floor its top follows from below, or its base stands \
@@ -270,6 +272,59 @@ pub static ALL: &[Command] = &[
          outline and holes it has now, as the lines to edit. The outline must be simple, as `floor` says; a line that \
          crosses itself is found as two that cross are",
         edit_boundary,
+    ),
+    edit(
+        "edit_shape",
+        "Modify Sub Elements",
+        &[],
+        "{id, points?: [{at: [x,y], z, id?}, …], lines?: [{a: [x,y], b: [x,y], id?}, …], absolute?} gives a floor's top, or a \
+         flat roof's by footprint (its underside following), its shape anew, all at once: points `z` mm above (negative, below) where its top would be without them (with `absolute`, \
+         at that elevation), and split lines it folds along, between which it's flat triangles, merged where neighbours lie \
+         in one plane: falls to drains, ridges, valleys. Its outline's and openings' corners stay at 0 unless a point is \
+         there; a line's end that is no point and no corner becomes a point at the height the top has there. Sent back with \
+         its `id`, a point or a line keeps it. A shaped floor has no slope arrow, a shaped roof no `slope`. Without `points` or `lines`, gives the \
+         shape: its points and lines with their ids, its corners at their heights, how many planes (`faces`) and its top's \
+         lowest and highest (`top`, mm above zero)",
+        edit_shape,
+    ),
+    edit(
+        "add_point",
+        "Add Point",
+        &[],
+        "{id, at: [x,y], z?, absolute?, offset?} a point on a floor's or flat roof's top: `offset` mm over the top as it is \
+         there now (Revit's Along Surface), or `z` mm above where it would be without its shape (with `absolute`, at that \
+         elevation); with neither, at the height the top has there now. Within a millimetre of a point it has, sets that \
+         one's height",
+        add_point,
+    ),
+    edit(
+        "add_split_line",
+        "Add Split Line",
+        &[],
+        "{id, a: [x,y], b: [x,y]} a line a floor's or flat roof's top folds along; an end that is no point of its shape and no corner of its \
+         outline or an opening becomes a point, at the height the top has there now",
+        add_split_line,
+    ),
+    edit(
+        "reset_shape",
+        "Reset Shape",
+        &[],
+        "{id} takes a floor's or roof's points and split lines all off: it's flat at its offset again",
+        reset_shape,
+    ),
+    edit(
+        "falls",
+        "Falls",
+        &[],
+        "{id, drains: [[x,y], …], fall: 1.5, ridges?: [[[x,y], [x,y]], …]} gives a floor's or flat roof's top falls to its \
+         drains, at no less than `fall` %: `ridges` (each from the outline, an opening or another ridge to another) split it \
+         into parts, each needing a drain; in a part each drain takes what is nearest it, a ridge runs at the top's height \
+         where two meet, a valley runs from each drain to each corner of its part (round an opening's corners, which lie on \
+         the drain's cone, where it can't see straight), and each drain goes down as far as `fall` takes its farthest corner. \
+         Its shape is given anew (points and split lines, as `edit_shape` would); the reply gives each drain's depth, how many \
+         planes (`faces`) and its top's lowest and highest. Refused, saying why and where: a corner a drain can reach only \
+         over the outline or a ridge, or a plane that can't fall as asked to a drain",
+        falls,
     ),
     edit(
         "mass",
@@ -603,14 +658,17 @@ pub static ALL: &[Command] = &[
         "roof",
         ui_msg!("Roof"),
         &[],
-        "{level?, boundary?: [[x,y],…], courtyards?: [[[x,y],…],…] | sketch?: [[[x,y],[x,y]],…], slope?, overhang?, gables?: [edge, …], gable?, offset?, \
+        "{level?, boundary?: [[x,y],…], courtyards?: [[[x,y],…],…] | sketch?: [[[x,y],[x,y]],…], slope?, slopes?: [degrees, …], overhang?, gables?: [edge, …], gable?, offset?, \
          extrusion?, openings?: [[[x,y],…],…], join?, type?} a roof on `level` (by default the one above the lowest), its \
          base `offset` mm above it. Over `boundary` or else the walls of the level below, `overhang` mm (500) past their \
          faces, round any `courtyards` (holes in it, inside it and apart, with eaves of their own; over the walls, by \
          default each loop of them standing free inside, joined to none of the outer ones and with no room in it): flat \
          at `slope` 0, else every edge sloping up at `slope` degrees (30), hips, valleys and ridges where the slopes meet, \
          but the edges in `gables` (edge i runs from point i to the next, the courtyards' edges numbered on after the \
-         boundary's) left upright, gable ends; `gable` leaves a rectangle's short ends upright. Or with `extrusion` {line: \
+         boundary's) left upright, gable ends; `gable` leaves a rectangle's short ends upright. `slopes`: a slope in \
+         degrees (up to 75) for each edge, numbered as `gables` are, 0 for an edge that takes `slope`; none, every edge \
+         does; the eaves stay level and an edge in `gables` stays upright whatever its slope. A `sketch` line may carry \
+         a `slope` for the edges along it. Or with `extrusion` {line: \
          [[x,y],[x,y]], profile: [[along, up],…], from?, to}: its underside's profile in the upright plane through `line`, \
          along it from its start and up from the base, swept square to it from `from` (0) to `to` mm to its left. \
          `openings` are holes through it in plan; with `join`, a roof it runs into, it ends where it meets that one's top",
@@ -647,6 +705,18 @@ pub static ALL: &[Command] = &[
          radial and diameter, on a round edge; for arc_length, on the arc), or {endpoint: [x, y]}, the end of one nearest \
          it, within 100 mm. It follows what it measures",
         dimension,
+    ),
+    edit(
+        "dimension_3d",
+        ui_msg!("Aligned Dimension in 3D"),
+        &[],
+        "{refs: [ref, ref], at: [x, y, z], view?, type?} an aligned dimension in a 3D view (the default 3D view unless `view` \
+         names another, by name or id), kept by the view and drawn in it and on a sheet that holds it: how far apart its two \
+         references are, along a line through `at` moved square off them. A ref is {at: [x, y, z]}, a point of the model, or \
+         {at, edge: [[x, y, z], [x, y, z]]}, a point on an edge, which it measures square to (from a point, to the edge's line; \
+         between two parallel edges, how far apart they are). `type` is a dimension type, the aligned one's unless told. On the \
+         desktop, Aligned Dimension (DI) in the 3D view runs it. Returns its id and its length",
+        dimension_3d,
     ),
     edit(
         "text",
@@ -727,6 +797,15 @@ pub static ALL: &[Command] = &[
          what stands on the level at `at` (or of `host`), following it; in a section or an elevation, of its point `at`, \
          along and up",
         spot,
+    ),
+    edit(
+        "spot_slope",
+        ui_msg!("Spot Slope"),
+        &[],
+        "{at: [x, y], view?, host?} a spot slope in a level's plan (the lowest by default): how steeply the top of the floor \
+         or roof at `at` (or `host`) falls there, %, an arrow pointing downhill; it follows the top. The reply gives `slope` \
+         and `toward`, the way down in plan (null on the level)",
+        spot_slope,
     ),
     edit(
         "tag",
@@ -1008,10 +1087,23 @@ pub static ALL: &[Command] = &[
         "align",
         ui_msg!("Align"),
         &["AL"],
-        "{id, reference: [[x,y],[x,y]], line: [[x,y],[x,y]]} aligns an element's picked line with a reference in plan: \
-         turns by the smaller angle about the picked line's midpoint, then moves it onto the reference, keeping its size. \
-         Doors and windows slide along their host wall; they cannot turn independently. Returns {aligned, angle, by}",
+        "{id, reference: [[x,y],[x,y]], line: [[x,y],[x,y]], lock?: true, to?: id} aligns an element's picked line with a \
+         reference in plan: turns by the smaller angle about the picked line's midpoint, then moves it onto the reference, keeping \
+         its size. Doors and windows slide along their host wall; they cannot turn independently. With `lock`, Revit's padlock: \
+         the line and the reference (of element `to`, else whatever has a line along it) are kept on one line after every \
+         command, as a locked dimension keeps its length; refused when that can't hold with the other locks. Returns {aligned, \
+         angle, by, line} (the picked line where it went), and the lock's id",
         align_element,
+    ),
+    edit(
+        "dimension_value",
+        ui_msg!("Dimension Value"),
+        &[],
+        "{id, value, segment?} types a length into an aligned or a linear dimension's segment (the first unless told), as a \
+         click on its number does: what the segment ends at (its second reference, as the dimension runs west to east or south \
+         to north) moves along the dimension so the segment is `value` mm; a locked segment is locked at it, and the other \
+         locks hold, or it is refused. Returns {id, moved, by}",
+        dimension_value,
     ),
     edit(
         "move",
@@ -1511,6 +1603,18 @@ pub static ALL: &[Command] = &[
         perspective,
     ),
     edit(
+        "graphic_display_options",
+        "Graphic Display Options",
+        &["GD"],
+        "{view?: a 3D view's name or id ({3D} unless given), edges?: true | false, silhouette?: px, ambient_shadows?: true | \
+         false} how a 3D view draws its edges and shadows, as Revit's Graphic Display Options: `edges`, the lines where its \
+         surfaces meet in Shaded (on unless turned off; Hidden Line always draws them); `silhouette`, an outline that many \
+         pixels wide (a whole number, 0 to 10; 0, the default, for none) round what stands in front of what is further off \
+         or of nothing; `ambient_shadows`, soft shadows where faces meet inside a corner (off unless turned on). What is left \
+         out stays as it was; with none of them it only says what the view has",
+        graphic_display_options,
+    ),
+    edit(
         "camera",
         ui_msg!("Camera"),
         &[],
@@ -1523,6 +1627,21 @@ pub static ALL: &[Command] = &[
          `lens` it reads the camera back: `eye`, `target`, `lens` and whether the view is in perspective (null eye/target \
          for a view with no camera yet). The eye is never on the target, so the view always has a direction to look in",
         camera,
+    ),
+    edit(
+        "work_plane",
+        "Work Plane",
+        &[],
+        "{view?: a 3D view's name or id ({3D} unless given), level?: a level's name or id, points?: [[x, y, z], [x, y, z], \
+         [x, y, z]], surface?: {point: [x, y, z], normal: [x, y, z]}, offset?: mm} what a 3D view sketches on, as Revit's \
+         Work Plane > Set: a level; the plane through three `points` (not along a line), facing up unless upright; or a \
+         surface of the model, a point of it and the way it faces (a wall's face, picked). Any of them may be moved `offset` mm \
+         along its normal (up, for a level; 0 unless given), and may lie at any angle, upright too: what a tool may sketch on \
+         it is up to the tool (a floor, a ceiling, a roof and a shaft need a level plane, and stand on the highest level at or \
+         below it). Given only `offset`, the plane as it is is moved by that instead. Given nothing, it's the lowest level \
+         again, as it is until set. A level deleted takes its work plane with it. Says the plane: a point of it (`origin`), its \
+         `normal`, its height at the origin where it isn't upright (`z`) and its `slope` in degrees from level",
+        work_plane,
     ),
     edit(
         "filter",
@@ -1987,8 +2106,13 @@ fn type_param(c: &str, p: &Value, m: &Model, category: &str) -> Result<String, S
 pub(crate) fn category(s: &str) -> String {
     // `structural column` and `structural_column` are `structuralcolumn`.
     let s: String = s.to_ascii_lowercase().chars().filter(char::is_ascii_alphanumeric).collect();
-    // `mass` ends in the plural's letter.
-    if s == "mass" || s == "masses" { "mass".into() } else { s.trim_end_matches('s').to_string() }
+    // `mass` and `switch` end in the plural's letter, and an accessory's plural isn't made by it.
+    match s.as_str() {
+        "mass" | "masses" => "mass".into(),
+        "switch" | "switches" => "switch".into(),
+        "pipeaccessory" | "pipeaccessories" => "pipeaccessory".into(),
+        _ => s.trim_end_matches('s').to_string(),
+    }
 }
 
 // ---------- derived values ----------
@@ -2325,11 +2449,10 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             let left: f64 = m.floor_slabs(f).iter().map(|(face, rise)| area(&m.less_shafts(face, *rise).0)).sum();
             extra.insert("area_m2".into(), json!(m2(left)));
             extra.insert("thickness".into(), json!(m.types.floor.get(&f.type_name).map_or(0.0, |t| t.thickness)));
-            // How high its top is, at its lowest and its highest.
-            let top = m.floor_top(f);
-            let (lo, hi) =
-                f.boundary.iter().map(|q| top.at(*q)).fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
-            extra.insert("top".into(), json!([hundredth(lo), hundredth(hi)]));
+            // What it holds, less its openings and the shafts through it: under a variable layer, less where its top falls.
+            extra.insert("volume_m3".into(), json!((m.floor_volume(f) / 1e6).round() / 1e3));
+            // How high its top is, at its lowest and its highest, its shape's points too.
+            extra.insert("top".into(), top_range(m, f));
             // Where its top's model pattern starts and how far it's turned: shown at their defaults too, to be set by modify.
             extra.insert("pattern_origin".into(), json!(f.pattern_origin));
             extra.insert("pattern_angle".into(), json!(f.pattern_angle));
@@ -2394,6 +2517,12 @@ pub fn element_json(m: &Model, id: Id) -> Value {
             extra.insert("length".into(), json!(hundredth(length)));
             extra.insert("level".into(), json!(m.level_of(e)));
         }
+        Element::Spot(sp) if sp.slope => {
+            let read = m.spot_slope(sp);
+            extra.insert("slope".into(), json!(read.map(|(f, _)| hundredth(f))));
+            extra.insert("toward".into(), json!(read.and_then(|(_, d)| d).map(|d| [hundredth(d.0), hundredth(d.1)])));
+            extra.insert("level".into(), json!(m.level_of(e)));
+        }
         Element::Spot(sp) => {
             extra.insert("elevation".into(), json!(m.spot_value(sp).map(hundredth)));
             extra.insert("level".into(), json!(m.level_of(e)));
@@ -2405,6 +2534,9 @@ pub fn element_json(m: &Model, id: Id) -> Value {
         // Its Computation Height, which its JSON leaves out at the usual 1200 mm.
         Element::Level(l) => {
             extra.insert("computation_height".into(), json!(l.computation_height));
+        }
+        Element::Dimension3D(d) => {
+            extra.insert("length".into(), json!(hundredth(crate::dims3d::length(d))));
         }
         Element::Grid(_) | Element::Schedule(_) | Element::View3D(_) | Element::PlanView(_) => {}
     }
@@ -2742,6 +2874,11 @@ fn save(s: &mut Session, p: &Value) -> R {
         std::fs::write(&path, crate::ifc::export(&s.model)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         return Ok(json!({"path": path, "format": "IFC4"}));
     }
+    if format == "glb" {
+        let out = crate::gltf::export(&crate::link::seen(&s.model)).map_err(|e| bad(c, e))?;
+        std::fs::write(&path, &out.bytes).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        return Ok(json!({"path": path, "format": "glTF 2.0", "elements": out.nodes, "triangles": out.triangles}));
+    }
     if format == "pdf" {
         let seen = crate::link::seen(&s.model);
         let m = &*seen;
@@ -2991,7 +3128,12 @@ fn render_view(s: &mut Session, p: &Value) -> R {
             (Some(_), None) => return Err(bad(c, "a parallel 3D view has no eye to raise: turn it to perspective first (`perspective`)")),
             (None, _) => fitted,
         };
-        let png = scene.render_in(&cam, &[], &look).png().map_err(|e| bad(c, e))?;
+        let mut image = scene.render_in(&cam, &[], &look);
+        // Its dimensions, over the picture.
+        if let Some(v) = three {
+            crate::dims3d::paint(&mut image, &crate::dims3d::marks(m, v, &cam, &look, crate::dims3d::SCREEN));
+        }
+        let png = image.png().map_err(|e| bad(c, e))?;
         return png_reply(
             c,
             p,
@@ -3187,6 +3329,7 @@ fn drawn_category(c: &str, given: &str) -> Result<String, String> {
                     .chain(&graphics::SCANS)
                     .chain(&graphics::IMPORTED)
                     .copied()
+                    .chain([graphics::COMPONENT])
                     .chain(graphics::SUBCATEGORIES.iter().map(|s| s.key))
                     .collect::<Vec<_>>()
                     .join(", ")
@@ -3585,6 +3728,61 @@ fn perspective(s: &mut Session, p: &Value) -> R {
     Ok(json!({"view": v, "on": on, "lens": lens}))
 }
 
+fn graphic_display_options(s: &mut Session, p: &Value) -> R {
+    let c = "graphic_display_options";
+    let m = &s.model;
+    let default = absent(p.get("view"))
+        || matches!(p.get("view"), Some(Value::String(n)) if n.eq_ignore_ascii_case("{3D}") || n.eq_ignore_ascii_case("3D"));
+    // The default 3D view is made when its options first change, as when its graphics first change.
+    let view = if default {
+        m.default_3d()
+    } else {
+        let v = view_param(c, m, p, false)?;
+        if !matches!(m.elements.get(v), Some(Element::View3D(_))) {
+            return Err(bad(c, format!("{} isn't a 3D view; only a 3D view has graphic display options", view_title(m, v))));
+        }
+        Some(v)
+    };
+    let was = view
+        .and_then(|v| match m.elements.get(v) {
+            Some(Element::View3D(v3)) => Some(v3.display),
+            _ => None,
+        })
+        .unwrap_or_default();
+    let on = |key: &str| match p.get(key) {
+        v if absent(v) => Ok(None),
+        Some(Value::Bool(b)) => Ok(Some(*b)),
+        Some(v) => Err(bad(c, format!("`{key}` must be true or false, got {v}"))),
+        None => Ok(None),
+    };
+    let most = view3d::MAX_SILHOUETTE;
+    let silhouette = match p.get("silhouette") {
+        v if absent(v) => None,
+        Some(v) => Some(
+            v.as_f64()
+                .filter(|px| px.fract() == 0.0 && (0.0..=f64::from(most)).contains(px))
+                .map(|px| px as u32)
+                .ok_or_else(|| bad(c, format!("`silhouette` is how many px wide the outline is, a whole number 0 to {most}, got {v}")))?,
+        ),
+        None => None,
+    };
+    let now = view3d::DisplayOptions {
+        edges: on("edges")?.unwrap_or(was.edges),
+        silhouette: silhouette.unwrap_or(was.silhouette),
+        ambient_shadows: on("ambient_shadows")?.unwrap_or(was.ambient_shadows),
+    };
+    let view = match view {
+        None if now != was => Some(s.model_mut().insert(Element::View3D(View3D::default_view()))),
+        v => v,
+    };
+    if let (true, Some(v)) = (now != was, view)
+        && let Some(Element::View3D(v3)) = s.model_mut().elements.get_mut(v)
+    {
+        v3.display = now;
+    }
+    Ok(json!({"view": view, "edges": now.edges, "silhouette": now.silhouette, "ambient_shadows": now.ambient_shadows}))
+}
+
 /// `[x, y, z]` in mm within the model's limits, or an error naming `key`.
 fn point3_req(c: &str, p: &Value, key: &str) -> Result<[f64; 3], String> {
     match p.get(key) {
@@ -3675,6 +3873,61 @@ fn camera(s: &mut Session, p: &Value) -> R {
         v3.perspective = Some(Perspective { lens, on: true });
     }
     Ok(json!({"view": id, "id": id, "name": s.model.view_name(id), "eye": eye, "target": target, "lens": lens, "perspective": true}))
+}
+
+fn work_plane(s: &mut Session, p: &Value) -> R {
+    let c = "work_plane";
+    only(c, p, &["view", "level", "offset", "points", "surface"])?;
+    let m = &s.model;
+    let default = absent(p.get("view"))
+        || matches!(p.get("view"), Some(Value::String(n)) if n.eq_ignore_ascii_case("{3D}") || n.eq_ignore_ascii_case("3D"));
+    let view = if default {
+        m.default_3d()
+    } else {
+        let v = view_param(c, m, p, false)?;
+        if !matches!(m.elements.get(v), Some(Element::View3D(_))) {
+            return Err(bad(c, format!("{} isn't a 3D view; only a 3D view has a work plane to set", view_title(m, v))));
+        }
+        Some(v)
+    };
+    let offset = num(c, p, "offset")?;
+    let points = match p.get("points") {
+        v if absent(v) => None,
+        Some(v) => Some(
+            serde_json::from_value::<[[f64; 3]; 3]>(v.clone())
+                .map_err(|_| bad(c, format!("`points` are three points [[x, y, z], [x, y, z], [x, y, z]] in mm, not {v}")))?,
+        ),
+        None => None,
+    };
+    let surface = match p.get("surface") {
+        v if absent(v) => None,
+        Some(v) => Some(serde_json::from_value::<Surface>(v.clone()).map_err(|e| {
+            bad(c, format!("`surface` is {{point: [x, y, z], normal: [x, y, z]}}, a point of it in mm and the way it faces: {e}"))
+        })?),
+        None => None,
+    };
+    let level = if absent(p.get("level")) { None } else { Some(level_param(c, m, p, "level")?) };
+    let given = WorkPlane { level, offset: offset.unwrap_or(0.0), points, surface };
+    let plane = if level.is_some() || points.is_some() || surface.is_some() {
+        Some(given)
+    } else {
+        offset.map(|offset| WorkPlane { offset, ..m.work_plane(view) })
+    };
+    let resolved = plane.as_ref().map_or_else(|| m.work_plane(view).resolve(m), |wp| wp.resolve(m)).map_err(|e| bad(c, e))?;
+    let v = match view {
+        Some(v) => v,
+        None => s.model_mut().insert(Element::View3D(View3D::default_view())),
+    };
+    if let Some(Element::View3D(v3)) = s.model_mut().elements.get_mut(v) {
+        v3.work_plane = plane;
+    }
+    let wp = s.model.work_plane(Some(v));
+    let level = wp.level.and_then(|g| s.model.elements.id(g));
+    let z = resolved.over_plan().map(|p| p.z);
+    Ok(json!({
+        "view": v, "level": level, "offset": wp.offset, "points": wp.points, "surface": wp.surface,
+        "origin": resolved.origin, "normal": resolved.normal, "z": z, "slope": resolved.slope(),
+    }))
 }
 
 fn set_graphics(m: &mut Model, view: impl Key, g: Graphics) {
@@ -5860,6 +6113,7 @@ fn wall(s: &mut Session, p: &Value) -> R {
         _ => Some(level_param(c, m, p, "top_level")?),
     };
     let base_offset = num(c, p, "base_offset")?.unwrap_or(0.0);
+    let top_offset = num(c, p, "top_offset")?.unwrap_or(0.0);
     let height = height.unwrap_or(DEFAULT_HEIGHT);
     let arc = num(c, p, "arc")?.unwrap_or(0.0);
     let location = match string(c, p, "location")? {
@@ -5885,6 +6139,7 @@ fn wall(s: &mut Session, p: &Value) -> R {
                 top_level,
                 height,
                 base_offset,
+                top_offset,
                 arc,
                 location,
                 attach_top,
@@ -6080,6 +6335,7 @@ fn floor(s: &mut Session, p: &Value) -> R {
         arrow,
         structural,
         sketch,
+        shape: Default::default(),
         pattern_origin: P2(0.0, 0.0),
         pattern_angle: 0.0,
     }));
@@ -6554,6 +6810,52 @@ fn arc_near(m: &Model, level: Guid, view: Option<Guid>, p: P2) -> Option<Referen
         .map(|(r, _)| r)
 }
 
+/// A dimension in a 3D view: see its params doc.
+fn dimension_3d(s: &mut Session, p: &Value) -> R {
+    let c = "dimension_3d";
+    let m = &s.model;
+    let default = absent(p.get("view"))
+        || matches!(p.get("view"), Some(Value::String(n)) if n.eq_ignore_ascii_case("{3D}") || n.eq_ignore_ascii_case("3D"));
+    let view = if default {
+        m.default_3d()
+    } else {
+        let v = view_param(c, m, p, false)?;
+        if !matches!(m.elements.get(v), Some(Element::View3D(_))) {
+            return Err(bad(
+                c,
+                format!("{} isn't a 3D view; a dimension of points and edges in space goes in a 3D view", view_title(m, v)),
+            ));
+        }
+        Some(v)
+    };
+    let refs = match p.get("refs") {
+        Some(Value::Array(a)) if a.len() == 2 => a,
+        _ => return Err(bad(c, "`refs` is two references [{at: [x, y, z], edge?: [[x, y, z], [x, y, z]]}, …]")),
+    };
+    let one = |v: &Value| -> Result<Ref3, String> {
+        let r = serde_json::from_value::<Ref3>(v.clone()).map_err(|e| bad(c, format!("a ref is {{at: [x, y, z], edge?}}: {e}")))?;
+        let fine = |q: [f64; 3]| q.iter().all(|x| x.is_finite() && x.abs() <= MAX_COORD);
+        if !fine(r.at) || r.edge.is_some_and(|[a, b]| !fine(a) || !fine(b)) {
+            return Err(bad(c, format!("a ref's points must be [x, y, z] in mm within ±{MAX_COORD}, got {v}")));
+        }
+        Ok(r)
+    };
+    let refs = [one(&refs[0])?, one(&refs[1])?];
+    let at = point3_req(c, p, "at")?;
+    let type_name = match string(c, p, "type")? {
+        Some(t) => t,
+        None => crate::dims::default_type(&m.dimension_types, DimKind::Aligned).cloned().unwrap_or_default(),
+    };
+    let view = match view {
+        Some(v) => v,
+        None => s.model_mut().insert(Element::View3D(View3D::default_view())),
+    };
+    let d = Dimension3D { view: s.model.guid(view), refs, at, type_name };
+    let length = crate::dims3d::length(&d);
+    let id = s.model_mut().insert(Element::Dimension3D(d));
+    Ok(json!({"id": id, "view": view, "length": hundredth(length)}))
+}
+
 fn dimension(s: &mut Session, p: &Value) -> R {
     let c = "dimension";
     let m = &s.model;
@@ -6629,6 +6931,7 @@ fn dimension(s: &mut Session, p: &Value) -> R {
         texts: Vec::new(),
         equal: false,
         locked: Vec::new(),
+        alignment: false,
     };
     let values: Vec<f64> = m.dimension_values(&d).into_iter().map(hundredth).collect();
     let id = s.model_mut().insert(Element::Dimension(d));
@@ -6975,11 +7278,35 @@ fn spot(s: &mut Session, p: &Value) -> R {
         })?)),
         (None, None) => None,
     };
-    let sp = Spot { view: m.guid(view), at, host };
+    let sp = Spot { view: m.guid(view), at, host, slope: false };
     let elevation = m.spot_value(&sp).map(hundredth);
     let host = host.and_then(|h| m.elements.id(h));
     let id = s.model_mut().insert(Element::Spot(sp));
     Ok(json!({"id": id, "elevation": elevation, "host": host}))
+}
+
+/// A spot slope: in a plan, how steeply the top of the floor or roof at `at` (or `host`) falls there, and which way.
+fn spot_slope(s: &mut Session, p: &Value) -> R {
+    let c = "spot_slope";
+    let m = &s.model;
+    let at = point_req(c, p, "at")?;
+    let view = view_param(c, m, p, false)?;
+    let level = m.plan_level(view).ok_or_else(|| bad(c, "a spot slope reads a floor's or a roof's top: place it in a plan"))?;
+    let tops = |id: &Id| matches!(m.elements.get(*id), Some(Element::Floor(_) | Element::Roof(_)));
+    let host = match id_opt(c, p, "host")? {
+        Some(h) => m.elements.id(h),
+        None => m.spot_host(level, at),
+    };
+    let host = host.filter(tops).ok_or_else(|| {
+        let place = format!("[{}, {}] on {}", at.0, at.1, level_name(m, level));
+        bad(c, format!("no slope to read at {place}; place it on a floor or a roof"))
+    })?;
+    let sp = Spot { view: m.guid(view), at, host: Some(m.guid(host)), slope: true };
+    let read = m.spot_slope(&sp);
+    let id = s.model_mut().insert(Element::Spot(sp));
+    Ok(
+        json!({"id": id, "host": host, "slope": read.map(|(f, _)| hundredth(f)), "toward": read.and_then(|(_, d)| d).map(|d| [hundredth(d.0), hundredth(d.1)])}),
+    )
 }
 
 /// The top of something standing on `level`: up to the next level, or `height` mm tall, or up to
@@ -7314,7 +7641,8 @@ fn roof(s: &mut Session, p: &Value) -> R {
     let type_name = type_param(c, p, m, "roof")?;
     let extrusion: Option<Extrusion> = shaped(c, p, "extrusion", "{line: [[x,y],[x,y]], profile: [[along, up],…], from?, to}")?;
     let drawn = sketched(c, p, "courtyards", &[])?;
-    let sketch = drawn.as_ref().map(|(_, lines)| lines.clone()).unwrap_or_default();
+    let lines = drawn.as_ref().map(|(_, lines)| lines.clone()).unwrap_or_default();
+    let sketch = unslope(&lines);
     let given = !absent(p.get("boundary")) || drawn.is_some();
     let overhang = num(c, p, "overhang")?.unwrap_or(if given || extrusion.is_some() { 0.0 } else { 500.0 });
     let (boundary, found) = match (drawn, given, &extrusion) {
@@ -7323,7 +7651,7 @@ fn roof(s: &mut Session, p: &Value) -> R {
         (None, false, Some(_)) => (Vec::new(), Vec::new()),
         (None, false, None) => roof_footprint(m, level, overhang).map_err(|e| bad(c, e))?,
     };
-    let r = Roof {
+    let mut r = Roof {
         params: Default::default(),
         type_name,
         level,
@@ -7333,14 +7661,44 @@ fn roof(s: &mut Session, p: &Value) -> R {
         overhang,
         gable: flag(c, p, "gable")?,
         gables: shaped(c, p, "gables", "a list of edge numbers")?.unwrap_or_default(),
+        slopes: shaped(c, p, "slopes", "a list of degrees, one for each edge")?.unwrap_or_default(),
         offset: num(c, p, "offset")?.unwrap_or(0.0),
         openings: rings(c, p, "openings")?.unwrap_or_default(),
         join: id_opt(c, p, "join")?,
         extrusion,
         sketch,
+        shape: Default::default(),
     };
+    // Its sketch lines' slopes are its edges', unless it is given `slopes`.
+    if absent(p.get("slopes")) {
+        r.slopes = slopes_of_edges(&r, &lines, &[]);
+    }
     let id = s.model_mut().insert(Element::Roof(r));
     Ok(json!({"id": id}))
+}
+
+/// `lines` as a roof keeps them: none holds a `slope`, which the roof keeps as its `slopes`.
+fn unslope(lines: &[SketchLine]) -> Vec<SketchLine> {
+    lines.iter().map(|l| SketchLine { slope: None, ..l.clone() }).collect()
+}
+
+/// The `slopes` of roof `r`'s footprint edges, as the sketch `lines` that say a `slope` give them: an edge along such a line has
+/// its slope, 0 meaning the roof's; any other edge the one it had along an edge of `was` (an edited roof's edges, each with its
+/// slope), else 0. Empty when none has a slope, and for a footprint too big to pitch, whose slopes nothing reads.
+fn slopes_of_edges(r: &Roof, lines: &[SketchLine], was: &[((P2, P2), f64)]) -> Vec<f64> {
+    let said: Vec<(Vec<P2>, f64)> = lines.iter().filter_map(|l| Some((l.points(), l.slope?))).collect();
+    if r.edges().count() > crate::model::MAX_ROOF_POINTS || (said.is_empty() && was.iter().all(|(_, s)| *s == 0.0)) {
+        return Vec::new();
+    }
+    let within = |(a, b): (P2, P2), (c, d): (P2, P2)| geom::dist_to_segment(c, a, b) <= TOL && geom::dist_to_segment(d, a, b) <= TOL;
+    let slopes: Vec<f64> = r
+        .edges()
+        .map(|e| {
+            let own = said.iter().find(|(drawn, _)| sketch::along(drawn, e.0, e.1)).map(|(_, s)| *s);
+            own.or_else(|| was.iter().find(|(old, _)| within(*old, e)).map(|(_, s)| *s)).unwrap_or(0.0)
+        })
+        .collect();
+    if slopes.iter().all(|s| *s == 0.0) { Vec::new() } else { slopes }
 }
 
 /// A dormer on a roof's slope: its front wall across the slope through `at`, its cheek walls back
@@ -7401,11 +7759,13 @@ fn dormer(s: &mut Session, p: &Value) -> R {
         overhang: f,
         gable: false,
         gables: vec![0, 2],
+        slopes: Vec::new(),
         offset: eave - model.elevation(level),
         openings: Vec::new(),
         join: Some(host),
         extrusion: None,
         sketch: Vec::new(),
+        shape: Default::default(),
     }));
     let roof_guid = model.guid(roof);
     let wall = |start: P2, end: P2| {
@@ -7418,6 +7778,7 @@ fn dormer(s: &mut Session, p: &Value) -> R {
             top_level: None,
             height: ridge - front,
             base_offset,
+            top_offset: 0.0,
             arc: 0.0,
             location: Location::Centre,
             attach_top: Some(roof_guid),
@@ -7466,7 +7827,7 @@ fn sketch_param(c: &str, p: &Value, key: &str, old: &[SketchLine]) -> Result<Opt
             Given::Arc([a, b, t]) => Ok(SketchLine::arc(a, b, t)),
             Given::Full(k) => {
                 let curve = k.fields().curve().map_err(|e| bad(c, format!("`{key}` line {i}: {e}")))?;
-                let mut l = SketchLine { style: k.style.clone(), invisible: k.invisible, ..SketchLine::from(curve) };
+                let mut l = SketchLine { style: k.style.clone(), invisible: k.invisible, slope: k.slope, ..SketchLine::from(curve) };
                 if k.id != 0 {
                     let id = k.id;
                     let was = old.iter().find(|o| o.id == id).ok_or_else(|| {
@@ -7543,7 +7904,24 @@ fn boundary_now(e: &Element) -> Option<Vec<SketchLine>> {
         _ => return None,
     };
     let kept = e.sketch().filter(|ls| sketch::draws(ls, &outline, &holes)).cloned();
-    Some(kept.unwrap_or_else(|| sketch::lines_of(&outline, &holes)))
+    let mut lines = kept.unwrap_or_else(|| sketch::lines_of(&outline, &holes));
+    // A roof's lines say the slope their edges share, when they have one of their own.
+    if let Element::Roof(r) = e
+        && !r.slopes.is_empty()
+        && r.edges().count() <= crate::model::MAX_ROOF_POINTS
+    {
+        for l in &mut lines {
+            let drawn = l.points();
+            let mine: Vec<f64> = r
+                .edges()
+                .enumerate()
+                .filter(|(_, (a, b))| sketch::along(&drawn, *a, *b))
+                .map(|(i, _)| r.slopes.get(i).copied().unwrap_or(0.0))
+                .collect();
+            l.slope = mine.first().copied().filter(|first| mine.iter().all(|s| s == first));
+        }
+    }
+    Some(lines)
 }
 
 /// Revit's Edit Boundary: an element's outline and its holes redrawn as one sketch.
@@ -7570,13 +7948,24 @@ fn edit_boundary(s: &mut Session, p: &Value) -> R {
         return Ok(json!({"id": id, "sketch": now}));
     };
     let area = m2(r.area());
+    let mut said = serde_json::Map::new();
     let e = match e {
-        Element::Floor(f) => Element::Floor(Floor { boundary: r.outer, openings: r.holes, sketch: lines, ..f }),
+        Element::Floor(f) => {
+            let shape;
+            (shape, said) = shape_within(m, &f, &r.outer, &r.holes);
+            Element::Floor(Floor { boundary: r.outer, openings: r.holes, sketch: lines, shape, ..f })
+        }
         Element::Ceiling(x) => Element::Ceiling(Ceiling { boundary: r.outer, openings: r.holes, sketch: lines, ..x }),
         Element::Shaft(_) if !r.holes.is_empty() => return Err(bad(c, "a shaft is one outline with no holes in it")),
         Element::Shaft(sh) => Element::Shaft(Shaft { boundary: r.outer, sketch: lines, ..sh }),
         Element::Roof(old) => {
-            let mut new = Roof { boundary: r.outer, courtyards: r.holes, gables: Vec::new(), sketch: lines, ..old.clone() };
+            let mut new = Roof { boundary: r.outer, courtyards: r.holes, gables: Vec::new(), sketch: unslope(&lines), ..old.clone() };
+            // A slope stays with its edge too, where the edge stays or is cut in two; the lines may say it instead.
+            let was: Vec<((P2, P2), f64)> = old.edges().enumerate().map(|(i, e)| (e, old.slopes.get(i).copied().unwrap_or(0.0))).collect();
+            new.slopes = slopes_of_edges(&new, &lines, &was);
+            // A flat one's shape keeps what stays on its top, as a floor's does.
+            let holes: Vec<Vec<P2>> = new.courtyards.iter().chain(&new.openings).cloned().collect();
+            (new.shape, said) = shape_within(m, &m.roof_as_floor(&old), &new.boundary, &holes);
             // A gable stays where its edge does, either way round.
             let same =
                 |(a, b): (P2, P2), (c, d): (P2, P2)| (a.dist(c) <= TOL && b.dist(d) <= TOL) || (a.dist(d) <= TOL && b.dist(c) <= TOL);
@@ -7588,7 +7977,309 @@ fn edit_boundary(s: &mut Session, p: &Value) -> R {
     };
     let id = m.elements.id(id).ok_or_else(|| bad(c, "no such element"))?;
     s.model_mut().elements.insert(id, e);
-    Ok(json!({"id": id, "area_m2": area}))
+    let mut reply = json!({"id": id, "area_m2": area});
+    if let Some(o) = reply.as_object_mut() {
+        o.extend(said);
+    }
+    Ok(reply)
+}
+
+/// What of a floor's (or a flat roof's, seen as one) shape a new outline and openings keep, so its top round them stays
+/// as it was: the points inside the outline (or on it) and in no opening; each split line cut where it leaves the outline
+/// or enters an opening, the pieces inside kept; and at each end of a piece, and each new corner of the outline or an
+/// opening, a point at the height the top had there, unless one is there or it was 0. And what changed, as `dropped`
+/// (`{points: [[x, y], …], lines: [[[x, y], [x, y]], …]}`, what went), `cut` (the lines cut) and `added` (the points made).
+fn shape_within(m: &Model, old: &Floor, outline: &[P2], holes: &[Vec<P2>]) -> (crate::model::Shape, serde_json::Map<String, Value>) {
+    let sh = &old.shape;
+    let mut said = serde_json::Map::new();
+    if sh.is_empty() {
+        return (sh.clone(), said);
+    }
+    let was = |q: P2| (m.shape_height(old, q) * 1000.0).round() / 1000.0;
+    let near = |r: &[P2], q: P2| geom::ring_edges(r).any(|(a, b)| geom::dist_to_segment(q, a, b) <= TOL);
+    let inside = |q: P2| (geom::contains(outline, q) || near(outline, q)) && !holes.iter().any(|h| geom::contains(h, q) && !near(h, q));
+    let (mut points, gone_points): (Vec<_>, Vec<_>) = sh.points.iter().cloned().partition(|x| inside(x.at));
+    let corners: Vec<P2> = outline.iter().chain(holes.iter().flatten()).copied().collect();
+    let old_corners: Vec<P2> = old.boundary.iter().chain(old.openings.iter().flatten()).copied().collect();
+    let edges: Vec<(P2, P2)> = std::iter::once(outline).chain(holes.iter().map(Vec::as_slice)).flat_map(geom::ring_edges).collect();
+    let mut added: Vec<P2> = Vec::new();
+    // A point at `q` at the height the top had there, unless one is there, it's a corner the top already meets, or it was 0.
+    let mut keep_height = |points: &mut Vec<crate::model::ShapePoint>, q: P2, corner_ok: bool| {
+        let known = points.iter().any(|x| x.at.dist(q) <= TOL) || (corner_ok && corners.iter().any(|c| c.dist(q) <= TOL));
+        let z = was(q);
+        if !known && z.abs() > 0.01 {
+            points.push(crate::model::ShapePoint { at: q, z, ..Default::default() });
+            added.push(q);
+        }
+    };
+    // Each new corner where the top wasn't at 0.
+    for &c in &corners {
+        if !old_corners.iter().any(|o| o.dist(c) <= TOL) {
+            keep_height(&mut points, c, false);
+        }
+    }
+    let (mut lines, mut gone_lines, mut cut) = (Vec::new(), Vec::new(), Vec::new());
+    for l in &sh.lines {
+        // Where it crosses an edge, or passes a corner: the pieces between, those inside kept.
+        let mut ts = vec![0.0, 1.0];
+        ts.extend(edges.iter().filter_map(|&(a, b)| geom::crossing(l.a, l.b, a, b)));
+        ts.extend(corners.iter().filter(|c| geom::dist_to_segment(**c, l.a, l.b) <= TOL).map(|c| geom::param_on_segment(*c, l.a, l.b)));
+        ts.sort_by(f64::total_cmp);
+        ts.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+        let at = |t: f64| l.a + (l.b - l.a) * t;
+        let mut pieces: Vec<(f64, f64)> = Vec::new();
+        for w in ts.windows(2) {
+            if let [t0, t1] = *w
+                && inside(at((t0 + t1) / 2.0))
+            {
+                match pieces.last_mut() {
+                    Some(last) if (last.1 - t0).abs() < 1e-9 => last.1 = t1,
+                    _ => pieces.push((t0, t1)),
+                }
+            }
+        }
+        let pieces: Vec<(P2, P2)> = pieces.into_iter().map(|(t0, t1)| (at(t0), at(t1))).filter(|(a, b)| a.dist(*b) > TOL).collect();
+        match pieces.as_slice() {
+            [] => gone_lines.push(l.clone()),
+            [(a, b)] if a.dist(l.a) <= TOL && b.dist(l.b) <= TOL => lines.push(l.clone()),
+            _ => {
+                cut.push([l.a, l.b]);
+                lines.extend(pieces.iter().map(|&(a, b)| crate::model::SplitLine { a, b, ..Default::default() }));
+            }
+        }
+    }
+    // Each end of a line kept a point or a corner, at the height the top had there.
+    for end in lines.iter().flat_map(|l| [l.a, l.b]).collect::<Vec<_>>() {
+        keep_height(&mut points, end, true);
+    }
+    if !gone_points.is_empty() || !gone_lines.is_empty() {
+        said.insert(
+            "dropped".into(),
+            json!({
+                "points": gone_points.iter().map(|x| x.at).collect::<Vec<_>>(),
+                "lines": gone_lines.iter().map(|l| [l.a, l.b]).collect::<Vec<_>>(),
+            }),
+        );
+    }
+    if !cut.is_empty() {
+        said.insert("cut".into(), json!(cut));
+    }
+    if !added.is_empty() {
+        said.insert("added".into(), json!(added));
+    }
+    (crate::model::Shape { points, lines }, said)
+}
+
+/// A shape's point as a command takes it; `id` keeps the point it names, and a `guid` sent back with it is let be.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PointIn {
+    #[serde(default)]
+    id: Option<Id>,
+    #[serde(default, rename = "guid")]
+    _guid: Option<Guid>,
+    at: P2,
+    #[serde(default)]
+    z: Option<f64>,
+}
+
+/// A split line as a command takes it.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LineIn {
+    #[serde(default)]
+    id: Option<Id>,
+    #[serde(default, rename = "guid")]
+    _guid: Option<Guid>,
+    a: P2,
+    b: P2,
+}
+
+/// The floor or flat roof `id` names, by its id, with params that are only `keys`: as shape editing sees it
+/// (`Model::shapeable`), a roof's top as a floor's.
+fn shaped_floor(c: &str, s: &Session, p: &Value, keys: &[&str]) -> Result<(Id, Floor), String> {
+    if let Some(key) = p.as_object().and_then(|o| o.keys().find(|k| !keys.contains(&k.as_str()))) {
+        return Err(bad(c, format!("unknown parameter `{key}`")));
+    }
+    let m = &s.model;
+    let key = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, the floor or flat roof to shape, is required"))?;
+    let id = m.elements.id(key).ok_or_else(|| bad(c, format!("no element {key}")))?;
+    m.shapeable(id).map(|f| (id, f)).map_err(|e| bad(c, format!("{id}: {e}")))
+}
+
+/// Element `id`'s shape given anew: a floor's or a roof's.
+fn put_shape(s: &mut Session, id: Id, shape: crate::model::Shape) {
+    if let Some(sh) = s.model_mut().elements.get_mut(id).and_then(Element::shape_mut) {
+        *sh = shape;
+    }
+}
+
+/// A height as a command takes it, mm: `z`, finite and in range.
+fn height(c: &str, z: f64) -> Result<f64, String> {
+    (z.is_finite() && z.abs() <= MAX_COORD).then_some(z).ok_or_else(|| bad(c, format!("`z` must be a number in mm, got {z}")))
+}
+
+/// Each end of `lines` that is none of `points` and no corner of `f`'s outline or openings, made a point at the height
+/// `f`'s top has there with `points` and no lines.
+fn loose_ends(m: &Model, f: &Floor, points: &mut Vec<crate::model::ShapePoint>, lines: &[crate::model::SplitLine]) {
+    let corners: Vec<P2> = f.boundary.iter().chain(f.openings.iter().flatten()).copied().collect();
+    let base = Floor { shape: crate::model::Shape { points: points.clone(), lines: Vec::new() }, ..f.clone() };
+    for end in lines.iter().flat_map(|l| [l.a, l.b]) {
+        let known = |q: &P2| q.dist(end) <= TOL;
+        if !points.iter().any(|x| known(&x.at)) && !corners.iter().any(known) {
+            points.push(crate::model::ShapePoint { at: end, z: m.shape_height(&base, end), ..Default::default() });
+        }
+    }
+}
+
+/// What `edit_shape` says of a floor's shape: its points and split lines, its corners at their heights, how many planes
+/// its top is, and its lowest and highest.
+fn shape_reply(m: &Model, id: Id, f: &Floor) -> Value {
+    let points: Vec<Value> = f.shape.points.iter().map(|x| json!({"id": x.id, "at": x.at, "z": x.z})).collect();
+    let lines: Vec<Value> = f.shape.lines.iter().map(|l| json!({"id": l.id, "a": l.a, "b": l.b})).collect();
+    let corners: Vec<Value> =
+        f.boundary.iter().chain(f.openings.iter().flatten()).map(|q| json!({"at": q, "z": hundredth(m.shape_height(f, *q))})).collect();
+    json!({"id": id, "points": points, "lines": lines, "corners": corners, "faces": shape_faces(m, f), "top": top_range(m, f)})
+}
+
+/// How many planes a floor's top is.
+fn shape_faces(m: &Model, f: &Floor) -> usize {
+    if f.shape.is_empty() { 1 } else { m.shape_planes(f).map_or(1, |planes| planes.len()) }
+}
+
+/// A floor's top at its lowest and its highest, mm above the project's zero, to the hundredth.
+fn top_range(m: &Model, f: &Floor) -> Value {
+    let (lo, hi) = m
+        .floor_faces(f)
+        .iter()
+        .flat_map(|(ring, plane)| ring.iter().map(move |q| plane.at(*q)))
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
+    json!([hundredth(lo), hundredth(hi)])
+}
+
+/// The established tools' shape editing, all at once: a floor's points and split lines given anew, as `edit_boundary`
+/// gives an outline. Asked with neither, says what the shape is.
+fn edit_shape(s: &mut Session, p: &Value) -> R {
+    let c = "edit_shape";
+    let (id, f) = shaped_floor(c, s, p, &["id", "points", "lines", "absolute"])?;
+    let m = &s.model;
+    if absent(p.get("points")) && absent(p.get("lines")) {
+        return Ok(shape_reply(m, id, &f));
+    }
+    let absolute = flag(c, p, "absolute")?;
+    let given: Vec<PointIn> = shaped(c, p, "points", "a list of {at: [x, y], z, id?}")?.unwrap_or_default();
+    let lines_in: Vec<LineIn> = shaped(c, p, "lines", "a list of {a: [x, y], b: [x, y], id?}")?.unwrap_or_default();
+    let top = m.floor_top(&f);
+    let old = &f.shape;
+    let mut points = Vec::with_capacity(given.len());
+    for x in given {
+        let z = height(c, x.z.ok_or_else(|| bad(c, format!("the point at {:?} needs its height `z`", x.at)))?)?;
+        let was = x.id.and_then(|i| old.points.iter().find(|o| o.id == i));
+        let (pid, guid) = was.map_or((0, Guid::default()), |o| (o.id, o.guid));
+        points.push(crate::model::ShapePoint { id: pid, guid, at: x.at, z: if absolute { z - top.at(x.at) } else { z } });
+    }
+    let lines: Vec<crate::model::SplitLine> = lines_in
+        .into_iter()
+        .map(|l| {
+            let was = l.id.and_then(|i| old.lines.iter().find(|o| o.id == i));
+            let (lid, guid) = was.map_or((0, Guid::default()), |o| (o.id, o.guid));
+            crate::model::SplitLine { id: lid, guid, a: l.a, b: l.b }
+        })
+        .collect();
+    loose_ends(m, &f, &mut points, &lines);
+    let f = Floor { shape: crate::model::Shape { points, lines }, ..f };
+    let reply = json!({"id": id, "faces": shape_faces(m, &f), "top": top_range(m, &f)});
+    put_shape(s, id, f.shape);
+    Ok(reply)
+}
+
+/// Add Point: a point on a floor's top at `at`, `z` mm above where the top would be without its shape (with `absolute`,
+/// at that elevation); with no `z`, at the height the top has there now. Within a millimetre of a point it has, that one.
+fn add_point(s: &mut Session, p: &Value) -> R {
+    let c = "add_point";
+    let (id, mut f) = shaped_floor(c, s, p, &["id", "at", "z", "absolute", "offset"])?;
+    let m = &s.model;
+    let at = point_req(c, p, "at")?;
+    let z = match (num(c, p, "z")?, num(c, p, "offset")?) {
+        (Some(_), Some(_)) => return Err(bad(c, "give `z` or `offset`, not both")),
+        (None, Some(by)) => m.shape_height(&f, at) + by,
+        (Some(z), None) if flag(c, p, "absolute")? => z - m.floor_top(&f).at(at),
+        (Some(z), None) => z,
+        (None, None) => m.shape_height(&f, at),
+    };
+    match f.shape.points.iter_mut().find(|x| x.at.dist(at) <= TOL) {
+        Some(x) => x.z = z,
+        None => f.shape.points.push(crate::model::ShapePoint { at, z, ..Default::default() }),
+    }
+    let reply = json!({"id": id, "faces": shape_faces(m, &f), "top": top_range(m, &f)});
+    put_shape(s, id, f.shape);
+    Ok(reply)
+}
+
+/// Add Split Line: a line from `a` to `b` a floor's top folds along; an end that is no point of its and no corner becomes
+/// a point, at the height the top has there now.
+fn add_split_line(s: &mut Session, p: &Value) -> R {
+    let c = "add_split_line";
+    let (id, mut f) = shaped_floor(c, s, p, &["id", "a", "b"])?;
+    let m = &s.model;
+    let line = crate::model::SplitLine { a: point_req(c, p, "a")?, b: point_req(c, p, "b")?, ..Default::default() };
+    let mut points = f.shape.points.clone();
+    loose_ends(m, &f, &mut points, std::slice::from_ref(&line));
+    f.shape.points = points;
+    f.shape.lines.push(line);
+    let reply = json!({"id": id, "faces": shape_faces(m, &f), "top": top_range(m, &f)});
+    put_shape(s, id, f.shape);
+    Ok(reply)
+}
+
+/// Falls: a floor's or flat roof's shape worked out from its drains and the least fall (`falls::falls`), given anew.
+fn falls(s: &mut Session, p: &Value) -> R {
+    let c = "falls";
+    let (id, f) = shaped_floor(c, s, p, &["id", "drains", "fall", "ridges"])?;
+    let drains = points(c, p, "drains")?;
+    let fall = num(c, p, "fall")?.ok_or_else(|| bad(c, "`fall`, the least fall in %, is required"))?;
+    let ridges: Vec<[P2; 2]> = shaped(c, p, "ridges", "a list of lines [[x, y], [x, y]]")?.unwrap_or_default();
+    if let Some(q) = ridges.iter().flatten().find(|q| !(q.0.is_finite() && q.1.is_finite() && q.0.abs().max(q.1.abs()) <= MAX_COORD)) {
+        return Err(bad(c, format!("a ridge's end {q:?} is not a point in mm")));
+    }
+    let ridges: Vec<(P2, P2)> = ridges.into_iter().map(|[a, b]| (a, b)).collect();
+    let out = crate::falls::falls(&f.boundary, &f.openings, &drains, fall, &ridges).map_err(|e| bad(c, e))?;
+    let points: Vec<crate::model::ShapePoint> =
+        out.drains.iter().chain(&out.points).map(|&(at, z)| crate::model::ShapePoint { at, z, ..Default::default() }).collect();
+    let lines = out.lines.iter().map(|&(a, b)| crate::model::SplitLine { a, b, ..Default::default() }).collect();
+    let f = Floor { shape: crate::model::Shape { points, lines }, ..f };
+    let m = &s.model;
+    // Every plane at least as steep as asked, its lowest corner a drain or an opening's corner a valley runs on from.
+    let planes = m.shape_planes(&f).map_err(|e| bad(c, format!("the falls don't fold into planes: {e}")))?;
+    let low = |q: P2| out.drains.iter().chain(&out.points).any(|(r, z)| r.dist(q) <= TOL && *z < 0.0);
+    for (loops, plane) in &planes {
+        let ring = loops.first().map(Vec::as_slice).unwrap_or_default();
+        let steep = plane.g.length() * 100.0 >= fall - 1e-6;
+        let lowest = ring.iter().copied().min_by(|a, b| plane.at(*a).total_cmp(&plane.at(*b)));
+        if !steep || !lowest.is_some_and(low) {
+            let q = geom::centroid(ring);
+            return Err(bad(
+                c,
+                format!(
+                    "round ({:.0}, {:.0}) the top can't fall {fall} % to a drain: add a drain there, or a ridge to part it off",
+                    q.0, q.1
+                ),
+            ));
+        }
+    }
+    let drains: Vec<Value> = out.drains.iter().map(|(at, z)| json!({"at": at, "z": z})).collect();
+    let reply = json!({"id": id, "drains": drains, "faces": shape_faces(m, &f), "top": top_range(m, &f)});
+    put_shape(s, id, f.shape);
+    Ok(reply)
+}
+
+/// Reset Shape: a floor's points and split lines all taken off; it's flat at its offset again.
+fn reset_shape(s: &mut Session, p: &Value) -> R {
+    let c = "reset_shape";
+    let (id, mut f) = shaped_floor(c, s, p, &["id"])?;
+    f.shape = Default::default();
+    put_shape(s, id, f.shape);
+    Ok(json!({"id": id}))
 }
 
 /// `key` as JSON shaped like `T` (a list of at most `MAX_POINTS`), or none.
@@ -9337,6 +10028,9 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         // Its edges keep their numbers, its gables with them; a mirror image sweeps the other way.
         Element::Roof(r) => {
             r.boundary.iter_mut().chain(r.courtyards.iter_mut().flatten()).chain(r.openings.iter_mut().flatten()).for_each(|q| *q = f(*q));
+            // A flat one's shape goes with it, each point at its height.
+            r.shape.points.iter_mut().for_each(|x| x.at = f(x.at));
+            r.shape.lines.iter_mut().for_each(|l| (l.a, l.b) = (f(l.a), f(l.b)));
             if let Some(x) = &mut r.extrusion {
                 x.line = x.line.map(&f);
                 if mo.mirror {
@@ -9362,6 +10056,9 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
             }
             fl.arrow = fl.arrow.map(|a| a.map(f));
             (fl.pattern_origin, fl.pattern_angle) = turned(f, fl.pattern_origin, fl.pattern_angle);
+            // Its shape's points and lines go with it, each at its height.
+            fl.shape.points.iter_mut().for_each(|x| x.at = f(x.at));
+            fl.shape.lines.iter_mut().for_each(|l| (l.a, l.b) = (f(l.a), f(l.b)));
         }
         Element::Ceiling(cl) => {
             cl.boundary.iter_mut().chain(cl.openings.iter_mut().flatten()).for_each(|q| *q = f(*q));
@@ -9397,6 +10094,20 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         },
         Element::Door(_) | Element::Window(_) => {}
         Element::Dimension(d) => d.at = f(d.at),
+        // In plan, its points and edges; their heights stay.
+        Element::Dimension3D(d) => {
+            let flat = |q: &mut [f64; 3]| {
+                let P2(x, y) = f(P2(q[0], q[1]));
+                (q[0], q[1]) = (x, y);
+            };
+            flat(&mut d.at);
+            for r in &mut d.refs {
+                flat(&mut r.at);
+                if let Some(e) = &mut r.edge {
+                    e.iter_mut().for_each(flat);
+                }
+            }
+        }
         // A tag's place hangs on its door or window's: see `relocate` and `duplicate`.
         Element::Tag(_) => {}
         Element::Section(v) | Element::Elevation(v) => {
@@ -9710,7 +10421,86 @@ fn align_element(s: &mut Session, p: &Value) -> R {
     }
     let mo = Motion { map: &|q| placement.map(q), slide: (placement.angle.abs() <= 1e-9).then_some(placement.by), mirror: false };
     relocate(c, s, &[id], &mo, None)?;
-    Ok(json!({"aligned": id, "angle": placement.angle, "by": placement.by}))
+    let (reference, line) = (line("reference")?, line("line")?);
+    let moved = (placement.map(line.0), placement.map(line.1));
+    let lock = if flag(c, p, "lock")? { Some(alignment_lock(c, s, id, id_opt(c, p, "to")?, reference, moved)?) } else { None };
+    Ok(json!({"aligned": id, "angle": placement.angle, "by": placement.by, "line": [moved.0, moved.1], "lock": lock}))
+}
+
+/// Align's padlock: element `id`'s reference along `moved`, and the reference of element `to` (else of whatever has one) along
+/// `reference`, kept on one line: a dimension between them, its one segment locked at 0 (`Dimension::alignment`), which
+/// `constraints::keep` holds as it holds the others.
+fn alignment_lock(c: &str, s: &mut Session, id: Id, to: Option<Guid>, reference: Line, moved: Line) -> Result<Id, String> {
+    let m = &s.model;
+    // Whether line `l` lies along the line through `on`.
+    let along = |l: Line, on: Line| {
+        let (u, len) = ((on.1 - on.0).unit(), on.0.dist(on.1));
+        len > TOL && l.0.dist(l.1) > TOL && [l.0, l.1].iter().all(|q| (*q - on.0).cross(u).abs() <= TOL)
+    };
+    let of = |e: Id, on: Line| m.reference_lines(e).into_iter().find(|(r, l)| r.point.is_none() && along(*l, on)).map(|(r, _)| r);
+    let mine = of(id, moved).ok_or_else(|| bad(c, format!("element {id} has no line along the one aligned to lock")))?;
+    let theirs = match to {
+        Some(g) => {
+            let t = m.elements.id(g).ok_or_else(|| bad(c, format!("`to`: no element {g:?}")))?;
+            of(t, reference).ok_or_else(|| bad(c, format!("element {t} has no line along the reference to lock to")))?
+        }
+        None => m
+            .elements
+            .keys()
+            .filter(|e| **e != id)
+            .find_map(|e| of(*e, reference))
+            .ok_or_else(|| bad(c, "nothing has a line along the reference to lock to: a wall's face or centre, a grid…"))?,
+    };
+    let level = m
+        .elements
+        .get(id)
+        .and_then(|e| m.level_of(e))
+        .or_else(|| m.levels().first().map(|(l, _)| m.guid(*l)))
+        .ok_or_else(|| bad(c, "the project has no level for the lock"))?;
+    let d = Dimension {
+        level,
+        refs: vec![theirs, mine],
+        at: micron((moved.0 + moved.1) * 0.5),
+        type_name: crate::dims::default_type(&m.dimension_types, DimKind::Aligned).cloned().unwrap_or_default(),
+        locked: vec![crate::model::Lock { segment: 0, length: 0.0 }],
+        alignment: true,
+        ..Dimension::default()
+    };
+    Ok(s.model_mut().insert(Element::Dimension(d)))
+}
+
+/// A typed value for a dimension's segment, as Revit's: what the segment ends at moves along the dimension (its second
+/// reference, as the dimension's line runs) so the segment is that long; a locked segment is locked at it.
+fn dimension_value(s: &mut Session, p: &Value) -> R {
+    let c = "dimension_value";
+    only(c, p, &["id", "value", "segment"])?;
+    let id = element_id(c, &s.model, p.get("id").unwrap_or(&Value::Null))?;
+    let Some(Element::Dimension(d)) = s.model.elements.get(id) else {
+        return Err(bad(c, format!("{} {id} isn't a dimension", s.model.elements.get(id).map_or("nothing", |e| e.category()))));
+    };
+    if !matches!(d.kind, DimKind::Aligned | DimKind::Linear) || d.alignment {
+        return Err(bad(c, format!("dimension {id} isn't an aligned or a linear one: only their lengths are typed")));
+    }
+    let mut d = d.clone();
+    let value = num(c, p, "value")?.ok_or_else(|| bad(c, "`value`, the length in mm, is required"))?;
+    if !(value > TOL && value <= MAX_COORD) {
+        return Err(bad(c, format!("`value` is a length above 0 and at most {MAX_COORD} mm, not {value}")));
+    }
+    let (n, st) = s.model.stations(&d);
+    let segment = count_opt(c, p, "segment", 0)?;
+    let (Some((from, ..)), Some((to, _, r))) = (st.get(segment), st.get(segment + 1)) else {
+        return Err(bad(c, format!("dimension {id} has segments 0 to {}, not {segment}", st.len().saturating_sub(2))));
+    };
+    let by = value - (to - from);
+    let moved = s.model.elements.id(r.id).ok_or_else(|| bad(c, "what it measures to is gone"))?;
+    if let Some(l) = d.locked.iter_mut().find(|l| l.segment == segment) {
+        l.length = value;
+        s.model_mut().elements.insert(id, Element::Dimension(d));
+    }
+    if by.abs() > 1e-9 {
+        move_by(s, moved, n * by)?;
+    }
+    Ok(json!({"id": id, "moved": moved, "by": hundredth(by)}))
 }
 
 /// Element `id` moved `by` in plan, as `move` moves it: what keeps a dimension's constraints.
@@ -10330,6 +11120,7 @@ fn delete(s: &mut Session, p: &Value) -> R {
                         Element::PlanView(v) => gone.contains(&v.level) || v.parent.is_some_and(|p| gone.contains(&p)),
                         Element::Tag(t) => gone.contains(&t.host) || t.view.is_some_and(|v| gone.contains(&v)),
                         Element::Dimension(d) => d.view.is_some_and(|v| gone.contains(&v)),
+                        Element::Dimension3D(d) => gone.contains(&d.view),
                         Element::Viewport(v) => gone.contains(&v.sheet) || gone.contains(&v.view),
                         // Notes and spot elevations go with their view, spots with what they read.
                         Element::Text(n) => gone.contains(&n.view),
@@ -10368,6 +11159,14 @@ fn delete(s: &mut Session, p: &Value) -> R {
     }
     let deleted: Vec<Id> = m.elements.with_guids().filter(|(_, g, _)| gone.contains(g)).map(|(id, ..)| id).collect();
     let m = s.model_mut();
+    // A 3D view whose work plane's level goes sketches on the lowest level again.
+    for e in m.elements.values_mut() {
+        if let Element::View3D(v) = e
+            && v.work_plane.as_ref().is_some_and(|wp| wp.level.is_some_and(|l| gone.contains(&l)))
+        {
+            v.work_plane = None;
+        }
+    }
     for id in &gone {
         m.elements.remove(id);
     }
@@ -11184,12 +11983,16 @@ fn object_styles(s: &mut Session, p: &Value) -> R {
         let given: BTreeMap<String, Given> = serde_json::from_value(v.clone())
             .map_err(|e| bad(c, format!("`categories` is {{category: {{projection?: pen, cut?: pen}}, …}}: {e}")))?;
         let mut styles = s.model.object_styles.clone();
+        // `component` first: the family categories given with it are given on top of it, in whatever order they came.
+        let mut given: Vec<(String, Given)> = given.into_iter().collect();
+        given.sort_by_key(|(cat, _)| cat != graphics::COMPONENT);
         for (cat, g) in given {
             crate::styles::known(&cat).map_err(|e| bad(c, e))?;
-            let was = s.model.object_style(&cat);
+            let was = styles.get(&cat).copied().unwrap_or_else(|| crate::styles::inherited(&styles, &cat));
             let style = crate::styles::ObjectStyle { projection: g.projection.unwrap_or(was.projection), cut: g.cut.unwrap_or(was.cut) };
             style.check(&cat).map_err(|e| bad(c, e))?;
-            if style == crate::styles::default_of(&cat) {
+            // A category given what it starts with has nothing of its own to keep, unless `component` says another.
+            if style == crate::styles::inherited(&styles, &cat) {
                 styles.remove(&cat);
             } else {
                 styles.insert(cat, style);

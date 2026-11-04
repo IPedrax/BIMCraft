@@ -15,6 +15,10 @@ is in the root `CLAUDE.md`; the write-ups by area are in `docs/areas/`, which th
 - **A new kind of element** is a variant of `Element` and its arms in the places that match on it (`category`, `params`,
   `level_of`, `element_json`, copy and delete, IFC, import, the schedules' `OWN` table): the compiler lists them.
 - **References hold GUIDs**, never ids (`ids.rs`, the root rules); library entries are named in memory and held by GUID in a file.
+- **A session may only read** (`Session::read_only`: the agents a window lets only read, `mcp --read-only`). `execute` refuses there what
+  replaces the project (`REPLACES`), undo and redo, and a command given the project's own file as `path` or `save`; whatever else
+  changed the project, its history or the phase and option it makes things in is taken back and refused. So a new command needs
+  nothing for it, but one that writes a file takes its path as `path` or `save` (`read_only_tests.rs` sweeps every command).
 
 ## Read by task
 

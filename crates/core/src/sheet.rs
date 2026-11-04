@@ -306,7 +306,13 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
                 let cam = view3d::camera_of(m, v, view.scale, ROOM * DENSITY, &look);
                 let img = scene.get_or_insert_with(|| view3d::Scene::new(m)).render_in(&cam, &[], &look);
                 d.push(Prim::Image { at: (ox, oy), width: img.width, height: img.height, rgba: img.rgba, ink: false });
-                Drawing::new(view)
+                // Its dimensions, over the picture: lines of the sheet's, at paper size.
+                let mut inner = Drawing::new(view);
+                for mk in crate::dims3d::marks(m, vp.view, &cam, &look, DENSITY) {
+                    inner.own(Some(mk.owner));
+                    inner.push(Prim::Line { pts: mk.pts, width: mk.width, color: mk.color, dash: None, closed: false });
+                }
+                inner
             }
             _ => continue,
         };

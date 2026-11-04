@@ -231,6 +231,18 @@ impl HasPart for crate::sketch::SketchLine {
     }
 }
 
+impl HasPart for crate::model::ShapePoint {
+    fn ident(&mut self) -> (&mut Id, &mut Guid) {
+        (&mut self.id, &mut self.guid)
+    }
+}
+
+impl HasPart for crate::model::SplitLine {
+    fn ident(&mut self) -> (&mut Id, &mut Guid) {
+        (&mut self.id, &mut self.guid)
+    }
+}
+
 impl HasPart for crate::family::Symbol {
     fn ident(&mut self) -> (&mut Id, &mut Guid) {
         (&mut self.id, &mut self.guid)
@@ -656,6 +668,12 @@ impl Model {
             if let Some(lines) = e.sketch().filter(|l| !l.is_empty()) {
                 add("sketch line", e.category(), &self.guid(*id).to_string(), lines.iter().map(|l| (l.id, l.guid)).collect());
             }
+            // A floor's shape: its points, then its split lines.
+            if let Some(sh) = e.shape().filter(|sh| !sh.is_empty()) {
+                let owner = self.guid(*id).to_string();
+                add("shape point", e.category(), &owner, sh.points.iter().map(|x| (x.id, x.guid)).collect());
+                add("split line", e.category(), &owner, sh.lines.iter().map(|x| (x.id, x.guid)).collect());
+            }
         }
         out
     }
@@ -779,6 +797,10 @@ impl Model {
             if let Some(lines) = e.sketch_mut() {
                 lines.iter_mut().for_each(|l| give(&mut l.id, &mut l.guid));
             }
+            if let Some(sh) = e.shape_mut() {
+                sh.points.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
+                sh.lines.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
+            }
         }
         self.library.parts = self.parts_now().into_iter().collect();
         self.library.lowest = self.library.lowest_id().unwrap_or(0);
@@ -848,6 +870,10 @@ impl Model {
         for e in self.elements.values_mut() {
             if let Some(lines) = e.sketch_mut() {
                 lines.iter_mut().for_each(|l| (l.id, l.guid) = (0, Guid::default()));
+            }
+            if let Some(sh) = e.shape_mut() {
+                sh.points.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+                sh.lines.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
             }
         }
         self.library.parts.clear();
@@ -1006,6 +1032,7 @@ impl crate::model::Element {
             Element::CadImport(ci) => f(&Kind::Cad, &mut ci.cad),
             Element::Text(n) => f(&Kind::TextType, &mut n.type_name),
             Element::Dimension(d) => f(&Kind::DimensionType, &mut d.type_name),
+            Element::Dimension3D(d) => f(&Kind::DimensionType, &mut d.type_name),
             Element::Schedule(sc) => {
                 let mut fields: Vec<&mut String> =
                     sc.fields.iter_mut().map(|x| &mut x.name).chain(sc.sort.iter_mut().map(|x| &mut x.field)).collect();

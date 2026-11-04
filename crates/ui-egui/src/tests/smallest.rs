@@ -21,7 +21,7 @@ fn window(size: egui::Vec2) -> Rect {
 fn cards(h: &Harness<BimApp>) -> Vec<Rect> {
     fn walk(s: &Shape, out: &mut Vec<Rect>) {
         match s {
-            Shape::Rect(r) if r.fill == crate::style::pal().panel && r.rect.width() >= 250.0 && r.rect.height() >= 24.0 => out.push(r.rect),
+            Shape::Rect(r) if r.fill == crate::style::pal().panel && r.rect.width() >= 200.0 && r.rect.height() >= 24.0 => out.push(r.rect),
             Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
             _ => {}
         }
@@ -56,7 +56,7 @@ fn no_card_runs_under_another_or_off_the_window_at_the_least_a_window_can_be() {
         for from_bigger in [false, true] {
             let h = at_the_least(look, from_bigger);
             let cards = cards(&h);
-            assert!(cards.len() >= 4, "the ribbon, two palettes and the status bar ({look:?}): {cards:?}");
+            assert!(cards.len() >= 4, "the ribbon or the Tools palette, two palettes and the status bar ({look:?}): {cards:?}");
             let w = window(least());
             for (i, a) in cards.iter().enumerate() {
                 assert!(w.expand(0.5).contains_rect(*a), "{a:?} is off the window ({look:?}, from_bigger={from_bigger})");
@@ -112,7 +112,9 @@ fn the_title_stays_between_the_quick_access_and_the_caption_buttons_whatever_the
 
 #[test]
 fn the_tab_just_picked_is_in_view_though_the_tabs_run_past_the_window() {
-    for profile in [Profile::BimCraft, Profile::Rev] {
+    // The ribbon's tabs: BIMCraft has none.
+    {
+        let profile = Profile::Rev;
         let mut h = own(BOX);
         h.state_mut().profile = profile;
         h.set_size(least());
