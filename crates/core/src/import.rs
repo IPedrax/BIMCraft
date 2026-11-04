@@ -2317,6 +2317,8 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     #[derive(Default)]
     struct Made {
         category: Category,
+        // Which fixture or fitting it is, from the first of its products' predefined types that names one.
+        kind: Option<&'static str>,
         types: Vec<(String, Vec<Form>, u64)>,
         named: HashMap<String, Vec<usize>>,
         names: HashSet<String>,
@@ -2368,6 +2370,9 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             let family = clip(parts.next().unwrap_or_default());
             let base = clip(parts.next().unwrap_or(&family));
             let fam = made.entry(family.clone()).or_insert_with(|| Made { category, ..Made::default() });
+            if fam.kind.is_none() {
+                fam.kind = category.kind_of(enumeration(x.args.get(8)));
+            }
             // A type of that name and shape, or its mirror image, found by its shapes' key; a type the
             // file gives another shape is another type, while the family has room for its forms.
             let flipped = mirrored(&forms);
@@ -2403,10 +2408,10 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         }
     }
     let mut families: BTreeMap<String, Family> = BTreeMap::new();
-    for (name, Made { category, types, .. }) in made {
+    for (name, Made { category, kind, types, .. }) in made {
         // Several types: each its own forms, shown by a parameter only its type sets.
         let several = types.len() > 1;
-        let mut family = Family { category, ..Family::default() };
+        let mut family = Family { category, kind: kind.map(String::from), ..Family::default() };
         if several {
             family.parameters.push(Parameter { name: "Variant".into(), kind: crate::family::Kind::Number, ..Parameter::default() });
         }

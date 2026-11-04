@@ -1119,15 +1119,16 @@ pub fn export(m: &Model) -> String {
                 }
                 let shape = w.tessellated(&items);
                 // A door's or a window's family is placed in a wall, never as a component.
-                let (entity, kind, object_type) = f.category.ifc();
+                let (entity, kind, object_type) = f.ifc();
                 let label = format!("{}:{}", cp.family, cp.type_name);
                 let name = s(&label);
                 let object = object_type.map_or_else(|| name.clone(), s);
                 let ent = w.add(format!("{entity}({},$,{name},$,{object},#{at},#{shape},'{id}',{kind})", w.guid(ELEMENT, id)));
                 contained.entry(cp.level).or_default().push(ent);
                 products.insert(id, ent);
-                // Its type object, of the class it is written as, its predefined type not defined.
-                w.typed_with(&format!("{entity}TYPE"), component_type_before(entity), ".NOTDEFINED.", "", &label, ent);
+                // Its type object, of the class it is written as, with its family's kind's predefined type, or none defined.
+                let type_kind = if f.kind.is_some() { kind } else { ".NOTDEFINED." };
+                w.typed_with(&format!("{entity}TYPE"), component_type_before(entity), type_kind, "", &label, ent);
                 // What it's made of: its material, or the set of them.
                 let relating = match made_of.as_slice() {
                     [] => None,

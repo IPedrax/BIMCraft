@@ -1,6 +1,12 @@
 #
 msgid ""
-msgstr "Project-Id-Version: BIMCraft\nLast-Translator: Christopher Kluge\nLanguage: de\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n"
+msgstr ""
+"Project-Id-Version: BIMCraft\n"
+"Last-Translator: Christopher Kluge\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
 
 #: crates/core/src/fixtures.rs:364
 msgid "Air Terminal"
@@ -182,8 +188,7 @@ msgstr "Elektro Beleuchtung"
 msgid "Electrical Power"
 msgstr "Elektro Energie"
 
-#: crates/core/src/commands.rs:8347
-#: crates/core/src/commands.rs:10324
+#: crates/core/src/commands.rs:8347 crates/core/src/commands.rs:10324
 msgid "Elevation"
 msgstr "Ansicht"
 
@@ -235,8 +240,7 @@ msgstr "Rahmenbreite"
 msgid "Gate Valve"
 msgstr "Absperrventil"
 
-#: crates/core/src/family.rs:1898
-#: crates/core/src/view3d.rs:702
+#: crates/core/src/family.rs:1898 crates/core/src/view3d.rs:702
 msgid "Glass"
 msgstr "Glas"
 
@@ -300,8 +304,7 @@ msgstr "Beinbreite"
 msgid "Length"
 msgstr "Länge"
 
-#: crates/core/src/commands.rs:5170
-#: crates/core/src/model.rs:2981
+#: crates/core/src/commands.rs:5170 crates/core/src/model.rs:2981
 msgid "Level"
 msgstr "Geschoss"
 
@@ -465,8 +468,7 @@ msgstr "Estrich"
 msgid "Seat Height"
 msgstr "Sitzhöhe"
 
-#: crates/core/src/commands.rs:8324
-#: crates/core/src/commands.rs:10323
+#: crates/core/src/commands.rs:8324 crates/core/src/commands.rs:10323
 msgid "Section"
 msgstr "Schnitt"
 
@@ -665,4 +667,3 @@ msgstr "bwc"
 #: crates/core/src/loads.rs:78
 msgid "wc"
 msgstr "wc"
-
