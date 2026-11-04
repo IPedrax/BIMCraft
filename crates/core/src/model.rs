@@ -1055,6 +1055,10 @@ pub struct Dimension {
     /// Its segments locked at a length: what it measures to moves together to keep them so.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub locked: Vec<Lock>,
+    /// The lock Align left: two references kept on one line (its one segment locked at 0), drawn on screen as a padlock where
+    /// they meet and never on paper.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub alignment: bool,
 }
 
 /// A dimension in a 3D view, as Revit's aligned dimension there: the distance between two points of the model, or square
@@ -3286,7 +3290,8 @@ impl Model {
         // 12 to 13 (a floor's or flat roof's shape, a variable layer, a spot slope) has none either: a file of 12 holds none.
         // 13 to 14 (the categories of family components, and the starter view templates) has no step: a file of 13 names
         // `component` for them all, which still does, and has the templates it was given: none, unless the user made them.
-        // 14 to 15 (dimensions in 3D views, a category 14 doesn't know and would refuse) has no step: a file of 14 holds none.
+        // 14 to 15 (dimensions in 3D views, a category 14 doesn't know and would refuse; the locks Align leaves, which 14 would
+        // read as dimensions of nothing) has no step: a file of 14 holds none.
         self.format = FORMAT;
     }
 

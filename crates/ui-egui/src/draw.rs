@@ -52,6 +52,15 @@ fn field(text: &mut String, width: f32, bad: bool) -> TextEdit<'_> {
     if bad { edit.text_color(pal().error) } else { edit }
 }
 
+/// What Align lined up: element `id`'s line, now along `reference`, the line of element `to` where one was picked.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct AlignLock {
+    pub id: Id,
+    pub to: Option<Id>,
+    pub reference: (P2, P2),
+    pub line: (P2, P2),
+}
+
 /// The shapes' state: which each target draws, the Options Bar's settings as typed, the line before (for a tangent arc),
 /// and the lines picked for a fillet.
 #[derive(Clone, Debug, PartialEq)]
@@ -77,6 +86,8 @@ pub struct Drawing {
     pub trim: Option<(usize, P2)>,
     /// Align's reference owner: a model element or a line of the active sketch.
     pub align_reference: Option<Picked>,
+    /// What Align last lined up, while its padlock is offered: a click on it locks the two lines together.
+    pub align_lock: Option<AlignLock>,
     /// The Options Bar's Show Centre: new detail arcs and circles take a centre mark.
     pub centre_mark: bool,
     /// Which of a shape's numbers is being typed (a rectangle's width, 0, or height, 1), and what's typed in the other.
@@ -99,6 +110,7 @@ impl Default for Drawing {
             grip: None,
             trim: None,
             align_reference: None,
+            align_lock: None,
             insulation: None,
             cloud: None,
             centre_mark: false,
@@ -482,6 +494,7 @@ impl BimApp {
         self.drawing.fillet.clear();
         self.drawing.trim = None;
         self.drawing.align_reference = None;
+        self.drawing.align_lock = None;
     }
 
     /// What's typed dropped: a length, or a shape's numbers.
