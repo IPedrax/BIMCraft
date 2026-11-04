@@ -24,11 +24,22 @@ pub const WORKERS: usize = 4;
 pub struct ImageryTiles {
     net: Arc<dyn Net>,
     cache: Arc<Cache>,
+    /// How many tiles the fetch that is running (or the last one) has done, and how many it has in all: for a bar to read from another
+    /// thread. One fetch runs at a time, so one pair is enough.
+    done: AtomicUsize,
+    total: AtomicUsize,
 }
 
 impl ImageryTiles {
     pub fn new(net: Arc<dyn Net>, cache: Arc<Cache>) -> ImageryTiles {
-        ImageryTiles { net, cache }
+        ImageryTiles { net, cache, done: AtomicUsize::new(0), total: AtomicUsize::new(0) }
+    }
+
+    /// The tiles done and the tiles in all of the fetch that is running, or of the last one; none before any has begun. A fetch that
+    /// failed has tried every tile, so its count ends full.
+    pub fn progress(&self) -> Option<(usize, usize)> {
+        let total = self.total.load(Ordering::SeqCst);
+        (total > 0).then(|| (self.done.load(Ordering::SeqCst).min(total), total))
     }
 
     /// The tiles of `plan` from `source`, as a mosaic. Every address is made first, so a plan the source cannot serve is refused before
@@ -42,11 +53,15 @@ impl ImageryTiles {
             .collect::<Result<Vec<_>, _>>()?;
         let results: Mutex<Vec<Option<Result<Tile, String>>>> = Mutex::new(wanted.iter().map(|_| None).collect());
         let next = AtomicUsize::new(0);
+        // Only now that the plan is one the source can serve: a refused plan leaves the count as it was.
+        self.done.store(0, Ordering::SeqCst);
+        self.total.store(wanted.len(), Ordering::SeqCst);
         std::thread::scope(|scope| {
             for _ in 0..WORKERS.min(wanted.len()) {
                 scope.spawn(|| {
                     while let Some((col, row, url)) = wanted.get(next.fetch_add(1, Ordering::SeqCst)) {
                         let got = self.tile(source, plan, (*col, *row), url);
+                        self.done.fetch_add(1, Ordering::SeqCst);
                         if let Ok(mut all) = results.lock()
                             && let Some(slot) = all.get_mut(row_major(plan, *col, *row))
                         {
@@ -383,5 +398,55 @@ mod tests {
         got.mosaic.check().unwrap();
         // Every tile is the same here, so any tile put in the wrong place would still look right: the order is tested above, where
         // each tile is its own.
+    }
+    /// A net that, each time it is asked, notes how far the fetch it is part of says it has got.
+    struct Spy {
+        body: Vec<u8>,
+        tiles: std::sync::OnceLock<Arc<ImageryTiles>>,
+        seen: Mutex<Vec<Option<(usize, usize)>>>,
+    }
+
+    impl Net for Spy {
+        fn get(&self, _: &str, _: u64) -> Result<crate::net::Reply, crate::net::NetError> {
+            if let Some(tiles) = self.tiles.get() {
+                self.seen.lock().unwrap().push(tiles.progress());
+            }
+            Ok(crate::net::Reply { body: self.body.clone(), content_type: Some("image/png".into()) })
+        }
+        fn get_range(&self, _: &str, _: u64, _: u64) -> Result<crate::net::Reply, crate::net::NetError> {
+            Err(crate::net::NetError::new("no"))
+        }
+        fn post(&self, _: &str, _: &str, _: &[u8], _: u64) -> Result<crate::net::Reply, crate::net::NetError> {
+            Err(crate::net::NetError::new("no"))
+        }
+    }
+
+    #[test]
+    fn how_many_tiles_are_done_can_be_read_while_they_come_and_starts_again_with_the_next_fetch() {
+        let s = source("pdok").unwrap();
+        let spy = Arc::new(Spy { body: tile(5), tiles: std::sync::OnceLock::new(), seen: Mutex::default() });
+        let tiles = Arc::new(ImageryTiles::new(spy.clone(), Arc::new(Cache::new(None))));
+        assert!(spy.tiles.set(tiles.clone()).is_ok());
+        assert_eq!(tiles.progress(), None, "nothing has begun");
+        tiles.fetch(s, &plan(3, 2)).unwrap();
+        assert_eq!(tiles.progress(), Some((6, 6)), "all of them, when it is over");
+        // While it ran, the total was already known and the count never ran ahead of it.
+        let seen = spy.seen.lock().unwrap().clone();
+        assert_eq!(seen.len(), 6);
+        assert!(seen.iter().all(|p| matches!(p, Some((done, 6)) if *done <= 6)), "{seen:?}");
+        // The next fetch begins again.
+        spy.seen.lock().unwrap().clear();
+        tiles.fetch(s, &Plan { x0: 5000, ..plan(1, 2) }).unwrap();
+        assert_eq!(tiles.progress(), Some((2, 2)));
+        assert!(spy.seen.lock().unwrap().iter().all(|p| matches!(p, Some((_, 2)))), "{:?}", spy.seen.lock().unwrap());
+        // A fetch that fails has tried every tile, so a bar that was filling ends full; one that is refused before anything is asked
+        // leaves the count as it was.
+        let p = plan(2, 1);
+        let failing = Fake::new().get(&url(s, &p, 0, 0), &tile(1)).status("GET", &url(s, &p, 1, 0), 500, None);
+        let broken = ImageryTiles::new(Arc::new(failing), Arc::new(Cache::new(None)));
+        assert!(broken.fetch(s, &p).is_err());
+        assert_eq!(broken.progress(), Some((2, 2)));
+        assert!(broken.fetch(s, &Plan { zoom: 40, ..plan(1, 1) }).is_err());
+        assert_eq!(broken.progress(), Some((2, 2)));
     }
 }

@@ -116,6 +116,15 @@ pub(crate) struct ImageryBox {
     error: Option<String>,
 }
 
+/// What the Aerial Imagery box tells before anything is asked: a line for each source it would try, in order, a note when the best of
+/// them is too coarse for buildings, and why it cannot fetch when it cannot (which turns Fetch off).
+#[derive(Default)]
+struct ImageryPreview {
+    lines: Vec<String>,
+    coarse: Option<String>,
+    error: Option<String>,
+}
+
 /// What a fetch or a calculation says when it is done: kept in a box until it is closed.
 pub(crate) struct Said {
     title: String,
@@ -613,6 +622,43 @@ impl BimApp {
         Ok(params)
     }
 
+    /// What the box would ask for, worked out as the command works it out (`imagery_ask`), and nothing is asked of a service.
+    fn imagery_preview(&self, b: &ImageryBox) -> ImageryPreview {
+        let ask = self.imagery_params(b).and_then(|params| imagery_ask("fetch_imagery", &self.session.model, &params));
+        let ask = match ask {
+            Ok(ask) if ask.tries.is_empty() => return ImageryPreview { error: Some(ask.reason), ..Default::default() },
+            Ok(ask) => ask,
+            Err(e) => return ImageryPreview { error: Some(e), ..Default::default() },
+        };
+        let megabytes = |bytes: u64| format!("{:.1}", bytes as f64 / 1_048_576.0);
+        let lines = ask
+            .tries
+            .iter()
+            .map(|(source, plan)| {
+                tf(
+                    "{}: {} m a pixel, {} × {} tiles (about {} MB), a picture of {} × {} pixels",
+                    &[
+                        source.name,
+                        &format!("{:.2}", plan.metres_per_pixel),
+                        &plan.cols.to_string(),
+                        &plan.rows.to_string(),
+                        &megabytes(plan.estimated_bytes()),
+                        &plan.width.to_string(),
+                        &plan.height.to_string(),
+                    ],
+                )
+            })
+            .collect();
+        // The first is the one used, unless it brings nothing: if it is too coarse, say so before the wait.
+        let coarse = ask.tries.first().filter(|(_, plan)| plan.is_coarse()).map(|(source, plan)| {
+            tf(
+                "The finest photographs of this place are from {}, at {} m a pixel: too coarse to recognise buildings",
+                &[source.name, &format!("{:.1}", plan.metres_per_pixel)],
+            )
+        });
+        ImageryPreview { lines, coarse, error: None }
+    }
+
     fn imagery_error(&mut self, e: String) {
         if let Some(b) = self.site.imagery.as_mut() {
             b.error = Some(e);
@@ -625,6 +671,7 @@ impl BimApp {
             return;
         }
         let offline = self.session.geo.is_none();
+        let Some(preview) = self.site.imagery.as_ref().map(|b| self.imagery_preview(b)) else { return };
         let Some(b) = self.site.imagery.as_mut() else { return };
         let (mut ok, mut close) = (false, false);
         let r = Modal::new(UiId::new("site-imagery"), t("Aerial Imagery")).width(460.0).show(ctx, |ui| {
@@ -664,6 +711,21 @@ impl BimApp {
                     ))
                     .color(pal().muted),
                 );
+                // What will be asked, before anything is: a line for each source in the order it is tried, or why nothing can be.
+                ui.add_space(6.0);
+                match &preview.error {
+                    Some(e) => {
+                        ui.label(RichText::new(e).color(pal().error));
+                    }
+                    None => {
+                        for line in &preview.lines {
+                            ui.label(line);
+                        }
+                        if let Some(note) = &preview.coarse {
+                            ui.label(RichText::new(note).color(pal().error));
+                        }
+                    }
+                }
                 if let Some(e) = &b.error {
                     ui.add_space(6.0);
                     ui.label(RichText::new(e).color(pal().error));
@@ -672,7 +734,7 @@ impl BimApp {
             crate::popup::footer(ui, |ui| {
                 ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                     close = ui.button(t("Cancel")).clicked();
-                    ok = ui.add_enabled(!offline, Button::new(t("Fetch"))).clicked();
+                    ok = ui.add_enabled(!offline && preview.error.is_none(), Button::new(t("Fetch"))).clicked();
                 });
             });
         });
@@ -954,6 +1016,9 @@ impl BimApp {
                 if blank >= 0.5 {
                     lines.push(tf("{} % of it has no imagery and shows white", &[&format!("{blank:.0}")]));
                 }
+                if v["cached"].as_bool() == Some(true) {
+                    lines.push(t("The tiles were kept from an earlier fetch").to_string());
+                }
                 // A source passed over is said, so that a coarser picture than expected is never a mystery.
                 for passed in v["skipped"].as_array().into_iter().flatten() {
                     lines.push(tf(
@@ -981,6 +1046,8 @@ impl BimApp {
             Kind::Imagery => t("Fetching aerial imagery…"),
         };
         let km2 = tf("{} km²", &[&format!("{:.2}", job.bbox.area_km2())]);
+        // An imagery fetch counts its tiles, as far as the fetcher says; the others have nothing to count.
+        let progress = if job.kind == Kind::Imagery { self.session.geo.as_ref().and_then(|g| g.imagery_progress()) } else { None };
         let mut cancel = false;
         Modal::new(UiId::new("site-fetching"), t("Fetching")).width(420.0).closable(false).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
@@ -989,6 +1056,11 @@ impl BimApp {
                     ui.label(RichText::new(what).strong());
                 });
                 ui.label(RichText::new(km2).color(pal().muted));
+                if let Some((done, total)) = progress.filter(|(_, total)| *total > 0) {
+                    ui.add_space(6.0);
+                    ui.add(egui::ProgressBar::new(done as f32 / total as f32));
+                    ui.label(tf("{} of {} tiles", &[&done.to_string(), &total.to_string()]));
+                }
                 if let Some(q) = &job.query {
                     ui.add_space(6.0);
                     ui.label(t("Overpass query"));

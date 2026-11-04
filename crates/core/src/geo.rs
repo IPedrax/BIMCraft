@@ -339,6 +339,11 @@ pub trait GeoSource: Send + Sync {
     fn imagery(&self, _source: &str, _plan: &Plan) -> Result<Imagery, String> {
         Err("this BIMCraft has no aerial imagery to fetch".into())
     }
+    /// How far the imagery fetch that is running has got, from another thread: the tiles done, and the tiles in all. None for a
+    /// fetcher that does not say, or when none has begun.
+    fn imagery_progress(&self) -> Option<(usize, usize)> {
+        None
+    }
 }
 
 /// A fetcher an app attached.
@@ -407,6 +412,10 @@ impl GeoSource for Prefetched {
 
     fn tile(&self, zoom: u8, x: u32, y: u32) -> Result<Tile, String> {
         self.inner.tile(zoom, x, y)
+    }
+
+    fn imagery_progress(&self) -> Option<(usize, usize)> {
+        self.inner.imagery_progress()
     }
 
     fn imagery(&self, source: &str, plan: &Plan) -> Result<Imagery, String> {

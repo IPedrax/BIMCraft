@@ -115,6 +115,10 @@ impl GeoSource for Geofetch {
         self.tiles.tile(zoom, x, y)
     }
 
+    fn imagery_progress(&self) -> Option<(usize, usize)> {
+        self.imagery.progress()
+    }
+
     fn imagery(&self, source: &str, plan: &Plan) -> Result<Imagery, String> {
         match bimcraft_core::imagery::source(source) {
             Some(source) => self.imagery.fetch(source, plan),
@@ -154,8 +158,10 @@ mod tests {
         let plan = Plan { zoom: 18, x0: 100, y0: 200, cols: 1, rows: 1, metres_per_pixel: 0.4, width: 10, height: 10 };
         let net = Arc::new(Fake::new().get(&s.url(18, 100, 200).unwrap(), include_bytes!("../testdata/tile256.jpg")));
         let f = Geofetch::new(net, Arc::new(Cache::new(None)), OVERPASS);
+        assert_eq!(f.imagery_progress(), None, "no fetch has begun");
         let got = f.imagery("pdok", &plan).unwrap();
         assert_eq!((got.source.as_str(), got.mosaic.has.as_slice()), ("pdok", &[true][..]));
+        assert_eq!(f.imagery_progress(), Some((1, 1)), "and it says how far the last one got");
         assert_eq!(f.attribution("pdok"), s.credit);
         for sx in SOURCES {
             assert_eq!(f.attribution(sx.id), sx.credit, "{}", sx.id);

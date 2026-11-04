@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use bimcraft_core::geo::{Bbox, Elevation, ElevationGrid, GeoSource, Reply};
+use egui_kittest::kittest::NodeT;
 
 use super::*;
 
@@ -27,6 +28,9 @@ struct Fake {
     no_tiles: bool,
     /// The imagery sources it has no photographs from.
     no_imagery: Vec<&'static str>,
+    /// How far an imagery fetch says it has got, while it runs; and whether its tiles were kept from an earlier fetch.
+    progress: Option<(usize, usize)>,
+    cached: bool,
 }
 
 impl Fake {
@@ -39,6 +43,8 @@ impl Fake {
             tiles: Mutex::default(),
             no_tiles: false,
             no_imagery: Vec::new(),
+            progress: None,
+            cached: false,
         }
     }
 }
@@ -99,7 +105,11 @@ impl GeoSource for Fake {
                 mosaic.put(col, row, &tile)?;
             }
         }
-        Ok(Imagery { source: source.into(), plan: plan.clone(), mosaic, cached: false })
+        Ok(Imagery { source: source.into(), plan: plan.clone(), mosaic, cached: self.cached })
+    }
+
+    fn imagery_progress(&self) -> Option<(usize, usize)> {
+        self.progress
     }
 
     fn attribution(&self, what: &str) -> String {
@@ -167,7 +177,6 @@ fn fetch(h: &mut Harness<BimApp>) {
 
 /// The Overpass query a box shows, whole (its label).
 fn query_shown(h: &Harness<BimApp>) -> String {
-    use egui_kittest::kittest::NodeT;
     let n = h.get_by_label_contains("[out:json]");
     n.accesskit_node().label().or_else(|| n.accesskit_node().value()).unwrap_or_default().to_string()
 }
@@ -376,6 +385,109 @@ fn aerial_imagery_without_terrain_or_from_a_service_that_fails_says_why_in_its_o
     until_fetched(&mut h);
     assert!(h.query_by_label_contains("HTTP 503").is_some());
     assert!(h.state().session.model.images.is_empty());
+}
+
+/// A project at Ghent with a 300 by 200 m toposurface, ready for Aerial Imagery.
+fn ghent(fake: Arc<Fake>) -> Harness<'static, BimApp> {
+    let mut h = located(fake);
+    h.state_mut().session.execute("geolocate", &json!({"latitude": 51.0543, "longitude": 3.7174})).unwrap();
+    h.state_mut()
+        .session
+        .execute("toposurface", &json!({"points": [[0, 0, 0], [300000, 0, 1000], [300000, 200000, 2000], [0, 200000, 500]]}))
+        .unwrap();
+    h.run();
+    h
+}
+
+#[test]
+fn the_aerial_imagery_box_says_what_it_will_ask_for_before_anything_is_asked() {
+    let fake = Arc::new(Fake::new());
+    let mut h = ghent(fake.clone());
+    press(&mut h, "Site");
+    press(&mut h, "Aerial Imagery");
+    // One line for each source it would try, in order, with the pixel, the tiles and about what they weigh.
+    for name in ["Flanders orthophoto mosaic (Digitaal Vlaanderen)", "Aerial photographs, most recent (PDOK)"] {
+        let wanted = format!("{name}: ");
+        let node = h.get_by_label_contains(&wanted);
+        let seen = node.accesskit_node();
+        let line = seen.label().or_else(|| seen.value()).unwrap_or_default().to_string();
+        assert!(
+            line.contains(" m a pixel") && line.contains(" tiles (about ") && line.contains(" MB)") && line.contains("a picture of "),
+            "{line}"
+        );
+    }
+    assert!(h.query_by_label_contains("Flanders orthophoto mosaic (Digitaal Vlaanderen): 0.38 m a pixel").is_some(), "zoom 18 over Ghent");
+    assert!(h.query_by_label_contains("too coarse").is_none(), "0.38 m a pixel shows buildings");
+    assert_eq!(*fake.asked.lock().unwrap(), 0, "nothing was asked of a service");
+    // A smaller picture is coarser, and the lines follow it.
+    type_into(&mut h, "Picture size (pixels)", "64");
+    h.run();
+    assert!(h.query_by_label_contains("0.38 m a pixel").is_none());
+    assert!(h.query_all_by_label_contains(" m a pixel").count() >= 2, "a line for each source, still");
+    assert_eq!(*fake.asked.lock().unwrap(), 0);
+}
+
+#[test]
+fn the_aerial_imagery_box_warns_when_the_best_photographs_are_too_coarse_and_when_there_is_nothing_to_lay_them_on() {
+    // At home (São Paulo) only the world's Sentinel-2 mosaic has the place, at several metres a pixel.
+    let mut h = located(Arc::new(Fake::new()));
+    h.state_mut()
+        .session
+        .execute("toposurface", &json!({"points": [[0, 0, 0], [300000, 0, 1000], [300000, 200000, 2000], [0, 200000, 500]]}))
+        .unwrap();
+    h.run();
+    press(&mut h, "Site");
+    press(&mut h, "Aerial Imagery");
+    assert!(h.query_by_label_contains("too coarse").is_some(), "buildings cannot be told at that size");
+    assert!(!h.get_by_label("Fetch").accesskit_node().is_disabled(), "a coarse picture can still be fetched");
+    press(&mut h, "Cancel");
+    // No toposurface: the box says so at once, and Fetch is off.
+    let mut bare = located(Arc::new(Fake::new()));
+    press(&mut bare, "Site");
+    press(&mut bare, "Aerial Imagery");
+    assert!(bare.query_by_label_contains("toposurface").is_some());
+    assert!(bare.get_by_label("Fetch").accesskit_node().is_disabled());
+    // A picture size that is not a number: the same.
+    let mut h = ghent(Arc::new(Fake::new()));
+    press(&mut h, "Site");
+    press(&mut h, "Aerial Imagery");
+    type_into(&mut h, "Picture size (pixels)", "lots");
+    h.run();
+    assert!(h.query_by_label_contains("not a whole number").is_some());
+    assert!(h.get_by_label("Fetch").accesskit_node().is_disabled());
+}
+
+#[test]
+fn a_fetch_of_aerial_imagery_shows_how_many_tiles_are_done_and_a_fetch_of_buildings_does_not() {
+    let fake = Arc::new(Fake { delay: Duration::from_millis(400), progress: Some((3, 12)), ..Fake::new() });
+    let mut h = ghent(fake.clone());
+    press(&mut h, "Site");
+    press(&mut h, "Aerial Imagery");
+    fetch(&mut h);
+    assert!(h.state().fetching());
+    assert!(h.query_by_label_contains("3 of 12 tiles").is_some(), "the bar says how far it has got");
+    until_fetched(&mut h);
+    assert!(h.query_by_label_contains("3 of 12 tiles").is_none(), "and goes with the fetch");
+    press(&mut h, "Close");
+    // A fetch of buildings has no tiles to count, whatever the fetcher says of imagery.
+    press(&mut h, "Import from OpenStreetMap");
+    fetch(&mut h);
+    assert!(h.state().fetching());
+    assert!(h.query_by_label_contains("of 12 tiles").is_none());
+    until_fetched(&mut h);
+}
+
+#[test]
+fn the_result_says_when_the_tiles_were_kept_from_an_earlier_fetch() {
+    for (cached, shown) in [(true, true), (false, false)] {
+        let mut h = ghent(Arc::new(Fake { cached, ..Fake::new() }));
+        press(&mut h, "Site");
+        press(&mut h, "Aerial Imagery");
+        fetch(&mut h);
+        until_fetched(&mut h);
+        assert!(h.query_by_label_contains("Photographs from").is_some());
+        assert_eq!(h.query_by_label_contains("kept from an earlier fetch").is_some(), shown, "cached {cached}");
+    }
 }
 
 #[test]

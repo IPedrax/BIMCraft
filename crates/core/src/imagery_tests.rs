@@ -87,6 +87,24 @@ fn a_zoom_is_the_finest_that_gives_the_pixels_asked_for_and_the_tiles_that_cover
 }
 
 #[test]
+fn a_plan_says_how_many_tiles_it_takes_what_they_weigh_about_and_whether_they_are_too_coarse_for_buildings() {
+    let site = Bbox::around(4.9041, 52.3676, 180.0).unwrap();
+    let p = plan(source("pdok").unwrap(), &site, 300.0, 200.0, 1024).unwrap();
+    assert_eq!(p.tiles(), u64::from(p.cols) * u64::from(p.rows));
+    assert_eq!(p.estimated_bytes(), p.tiles() * TYPICAL_TILE_BYTES);
+    assert!(!p.is_coarse(), "0.36 m a pixel shows buildings: {p:?}");
+    let wide = plan(source("eox2016").unwrap(), &Bbox::around(4.35, 50.85, 2500.0).unwrap(), 5000.0, 5000.0, 1024).unwrap();
+    assert!(wide.is_coarse(), "6 m a pixel does not: {wide:?}");
+    // The edge: exactly the limit is not coarse, a little over is, and a number that is not one is not.
+    let at = |metres: f64| Plan { metres_per_pixel: metres, ..p.clone() };
+    assert!(!at(COARSE_METRES).is_coarse() && at(COARSE_METRES + 0.01).is_coarse() && !at(f64::NAN).is_coarse());
+    // Whatever a plan holds, the arithmetic does not overflow.
+    let big = Plan { cols: u32::MAX, rows: u32::MAX, ..p.clone() };
+    assert_eq!(big.tiles(), u64::from(u32::MAX) * u64::from(u32::MAX));
+    assert_eq!(big.estimated_bytes(), u64::MAX);
+}
+
+#[test]
 fn a_plan_asked_for_nonsense_says_what_is_wrong() {
     let pdok = source("pdok").unwrap();
     let site = Bbox::around(4.9, 52.3, 100.0).unwrap();

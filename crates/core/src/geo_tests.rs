@@ -622,6 +622,31 @@ fn imagery_held_by_a_fetch_is_handed_back_for_the_source_and_plan_it_was_fetched
     assert!(TileFake.imagery("pdok", &plan).unwrap_err().contains("imagery"));
 }
 
+#[test]
+fn how_far_a_fetch_has_got_is_the_real_fetchers_to_say_even_through_what_was_prefetched() {
+    /// A fetcher in the middle of an imagery fetch: 2 tiles of 5.
+    struct Midway;
+    impl GeoSource for Midway {
+        fn overpass(&self, _: &Bbox, _: &str) -> Result<Reply, String> {
+            Err("none".into())
+        }
+        fn elevation(&self, _: &Bbox, _: f64, _: Option<&str>) -> Result<Elevation, String> {
+            Err("none".into())
+        }
+        fn attribution(&self, _: &str) -> String {
+            String::new()
+        }
+        fn imagery_progress(&self) -> Option<(usize, usize)> {
+            Some((2, 5))
+        }
+    }
+    let bbox = Bbox::new(-23.56, -46.64, -23.54, -46.62).unwrap();
+    assert_eq!(TileFake.imagery_progress(), None, "a fetcher that does not say has no progress");
+    assert_eq!(Midway.imagery_progress(), Some((2, 5)));
+    assert_eq!(crate::geo::Prefetched::new(Arc::new(Midway), bbox).imagery_progress(), Some((2, 5)));
+    assert_eq!(crate::geo::Prefetched::new(Arc::new(TileFake), bbox).imagery_progress(), None);
+}
+
 /// A fetcher that has one tile, a pixel.
 struct TileFake;
 

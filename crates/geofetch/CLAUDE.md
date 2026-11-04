@@ -22,5 +22,6 @@ are in the root `CLAUDE.md`.
   [geofetch](../../docs/areas/geofetch.md).
 - What a server says is hostile, and is still the best clue: an error status keeps its number and carries a short reason made of the
   first bytes of its page (`net::reason`, one line of plain text), so a 400 names the parameter it did not like.
+- A fetch of imagery counts its tiles (`ImageryTiles::progress`, read by the window's bar from another thread through `GeoSource::imagery_progress`): every tile is counted when it is done, so a fetch that failed ends full.
 - Time is injected (`Cache::with_clock`, `Overpass::with_pause`), so no test waits or depends on the date.
 - `cargo test -p bimcraft-geofetch` runs in a few seconds.

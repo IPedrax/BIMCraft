@@ -202,6 +202,29 @@ pub struct Plan {
     pub height: u32,
 }
 
+/// About what a tile weighs, bytes (the services' are 20 to 90 KB): for the estimate the Site tab shows before a fetch, not a limit.
+pub const TYPICAL_TILE_BYTES: u64 = 100 << 10;
+
+/// Photographs coarser than this many metres a pixel show where a place is but not its buildings.
+pub const COARSE_METRES: f64 = 3.0;
+
+impl Plan {
+    /// How many tiles the fetch takes.
+    pub fn tiles(&self) -> u64 {
+        u64::from(self.cols) * u64::from(self.rows)
+    }
+
+    /// About how many bytes those tiles weigh: an estimate (see [`TYPICAL_TILE_BYTES`]).
+    pub fn estimated_bytes(&self) -> u64 {
+        self.tiles().saturating_mul(TYPICAL_TILE_BYTES)
+    }
+
+    /// Whether the pixels are too coarse to recognise buildings by ([`COARSE_METRES`]).
+    pub fn is_coarse(&self) -> bool {
+        self.metres_per_pixel > COARSE_METRES
+    }
+}
+
 /// The column, row, columns and rows of the tiles at `zoom` that cover the box.
 fn tile_range(b: &Bbox, zoom: u8) -> (u32, u32, u32, u32) {
     let last = 2f64.powi(i32::from(zoom)) - 1.0;
